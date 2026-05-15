@@ -1,0 +1,22 @@
+{
+  "name": "tm1_ide",
+  "version": "1.0.0",
+  "description": "Models-as-code tooling and IDE for IBM Planning Analytics (TM1).",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev":   "node --watch server.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "axios": "^1.16.1",
+    "axios-cookiejar-support": "^6.0.5",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "js-yaml": "^4.1.1",
+    "tough-cookie": "^6.0.1",
+    "ws": "^8.20.1"
+  }
+}

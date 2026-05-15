@@ -1,12 +1,14 @@
 # Credentials
 .env
-venv/
-env/
+config/servers.json
 
-# Python
+# Node
+node_modules/
+
+# Python (deploy CLI)
+venv/
 __pycache__/
 *.pyc
-*.pyo
 
 # Editor
 .vscode/
@@ -18,5 +20,3 @@ CLAUDE.md
 
 # Runtime
 *.db
-*.db-wal
-*.db-shm
