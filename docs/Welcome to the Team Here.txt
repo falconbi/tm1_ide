@@ -1,0 +1,93 @@
+Welcome to the Team — Here's What We're Building
+First, some context on TM1
+IBM Planning Analytics (TM1) is a high-performance in-memory OLAP database used by finance teams at large companies for budgeting, forecasting, and financial consolidation. Think of it as a multidimensional spreadsheet engine — data is stored in cubes, cubes have dimensions, dimensions have hierarchies of members, and business logic lives in rules files attached to each cube.
+
+A typical TM1 installation has dozens of cubes, hundreds of dimensions, thousands of TI processes (ETL scripts), and gigabytes of financial data. It is mission-critical infrastructure — payroll, revenue reporting, and board-level forecasts run through it.
+
+The Problem
+Here is how every TM1 shop on the planet manages their models today:
+
+A developer opens IBM Architect — a Java desktop app that connects directly to the TM1 server. They edit a dimension. They edit a rules file. They click save. The change is live on the production server immediately. No review. No history. No rollback. If something breaks, you find out when the CFO calls.
+
+There is no git. There is no diff. There is no "what changed last Tuesday". There is no way to reproduce the model on a new server without manually recreating every object. There is no staging environment workflow. Two developers editing the same object at the same time silently overwrite each other.
+
+This is the state of the art. IBM has never solved it. The TM1 community has never solved it. Every consulting firm has a slightly different manual discipline that breaks down as soon as someone is in a hurry.
+
+What We're Building
+Three things that fit together:
+
+1. Models as Code
+
+Every TM1 object — dimensions, cubes, rules, processes — defined as a YAML file in a git repository. The structure is human-readable, version controlled, and deployable.
+
+
+dimension: entity
+hierarchy: entity
+elements:
+  - name: Total Company
+    type: Consolidated
+    children:
+      - name: "10110"
+        type: Numeric
+        attributes:
+          currency: USD
+          region: North America
+A deploy tool reads the YAML and calls the TM1 REST API to create or update the objects on the server. Same idea as Terraform for cloud infrastructure or dbt for data models — except for TM1.
+
+2. CICD Pipeline
+
+Once the model is in git, you get the full software development workflow for free:
+
+Branch per environment — dev, staging, prod
+Pull request review before any model change hits production
+Pipeline runs tm1_deploy --diff to show exactly what changes, then tm1_deploy --apply to deploy
+Rollback is git revert
+Full history of who changed what and why
+Nobody in the TM1 world has this today.
+
+3. A TM1 IDE
+
+The tool developers use to author and manage the YAML files and interact with live TM1 servers. Modelled on VS Code:
+
+Explorer panel — browse all objects on a server: cubes, dimensions, processes, chores
+Editor tabs — open multiple objects at once. Rules files in Monaco with TM1 syntax highlighting. Dimension hierarchies in a visual tree editor that syncs with the underlying YAML. TI processes with separate tabs for each code section.
+Terminal panel — execute a TI process and watch the log stream in real time
+Cube Viewer — open any TM1 view as an interactive data grid, edit leaf cells directly
+Diff view — see exactly what your local YAML changes would do to the live server before you deploy
+The IDE writes to YAML files locally. The deploy pipeline pushes those files to the server. The server never gets edited directly.
+
+Module Architecture
+Large TM1 implementations have a second problem: contamination between functional areas. Apportionment logic sharing dimensions with planning logic sharing dimensions with consolidation logic — one team changes a shared dimension and breaks another team's cube.
+
+We solve this the same way microservices solve it. Each functional module runs as a separate TM1 database instance on the same physical server — zero extra licensing cost, zero extra hardware. Each module declares what dimensions it owns and what it depends on from other modules:
+
+
+name: apportionment
+owns:
+  - dimensions/apport_driver.yaml
+  - cubes/apport_allocation.yaml
+depends_on:
+  - core_db/entity
+  - core_db/time
+Clean boundaries. Cross-server feeders handle data flow between modules natively — that is a first-class TM1 feature. No message queues, no API contracts needed.
+
+The Tech Stack
+Backend: Python / Flask — already running, already has TM1 REST API auth working via PAW proxy
+Frontend: Single page app — same pattern as the existing PAW Tree tool
+Editor: Monaco Editor — the VS Code editor component, embeddable as a JS library
+Deployment CLI: Python — reads YAML, calls TM1 REST API, handles diff and apply
+Database: SQLite for local state tracking
+CI: GitHub Actions / GitLab CI — standard pipeline configs we provide as templates
+No exotic dependencies. The TM1 REST API is a standard OData endpoint. We have already traced every API call needed — create dimension, create cube, write rules, execute views, write cells. It all works.
+
+Why This Matters
+TM1 runs the financial operations of some of the largest companies in the world. The people who build and maintain TM1 models are highly skilled but working with tools that were designed before git existed. They are doing mission-critical work with no safety net.
+
+What we are building is the safety net. Version control, code review, reproducible deployments, module isolation — everything the software industry figured out twenty years ago, brought to TM1.
+
+IBM is not going to build this. The community has not built it. We are.
+
+Where We Are Now
+The foundation exists: a working Flask app with PAW and TM1 auth, proven REST API call sequences for every object type, and a clear build order. The first milestone is the deploy CLI — YAML in, TM1 objects out, with a diff mode so you always know what will change before it changes.
+
+That is where you would start.

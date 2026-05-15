@@ -1,0 +1,17 @@
+dimension: entity
+hierarchy: entity
+elements:
+  - name: Total Company
+    type: Consolidated
+    children:
+      - name: "10110"
+        type: Numeric
+      - name: "10120"
+        type: Numeric
+      - name: "10130"
+        type: Numeric
+attributes:
+  - name: currency
+    type: String
+  - name: region
+    type: String

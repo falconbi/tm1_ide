@@ -1,0 +1,22 @@
+# Credentials
+.env
+venv/
+env/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Editor
+.vscode/
+.idea/
+*.swp
+
+# Project notes
+CLAUDE.md
+
+# Runtime
+*.db
+*.db-wal
+*.db-shm
