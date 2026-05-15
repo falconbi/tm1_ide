@@ -9,6 +9,7 @@ A browser-based IDE for TM1 model development where:
 - CI/CD deploys on merge — TM1 becomes a deployment target, not a source of truth
 - Full data audit trail via DuckDB time travel
 - TM1py Python scripts managed alongside model definitions
+- All users have admin rights — attribution not restriction is the security model
 
 ---
 
@@ -134,6 +135,36 @@ PROJECTS
 
 [+ New Project]  [⊕ Open Project]
 ```
+
+---
+
+## Authentication and Audit
+
+### Security model — attribution not restriction
+
+All IDE users get full admin access to all TM1 servers. There are no per-user permissions. The security model is a complete audit trail — every action is attributed to a named user.
+
+**Login:**
+- Each developer has their own username and password
+- Simple login form + server-side session cookie (8 hour expiry)
+- Credentials stored in `.env` as `IDE_USERS=james:pass1,dev2:pass2`
+- No password reset, no MFA, no user management UI
+
+**Three audit layers:**
+
+| Layer | What it tracks | Where stored |
+|-------|---------------|-------------|
+| Git commits | Every model change with author, timestamp, diff | GitHub — immutable |
+| DuckDB changes | Every TM1 data write, old/new value, user | `}TransactionLog` → DuckDB |
+| IDE session log | Every action taken — save, deploy, execute, export | Server log file |
+
+**User identity flows through everything:**
+- Login session tags all actions with the developer's name
+- Git commits use their name: `git commit --author "James <james@...>"`
+- DuckDB change records include IDE username
+- TI process executions logged with who triggered them
+
+The result: a complete immutable record of who changed what and when — at both the model structure level (git) and the data level (DuckDB).
 
 ---
 
@@ -351,6 +382,7 @@ main    → prod server
 |-------|------|----------------|----------------|
 | 1 | Foundation | Starting point | Browse + edit rules ✅ |
 | 2 | Project structure | Container for everything else | Projects have a home |
+| 2b | Auth + audit | Before opening to a team | Named users, full attribution |
 | 3 | Model export | Seeds the container with content | Real YAML from TM1 |
 | 4 | Git integration | Makes content versionable | Full git workflow |
 | 5 | Complete editors | Useful now that git tracks saves | All object types covered |
