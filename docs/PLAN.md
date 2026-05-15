@@ -376,6 +376,70 @@ main    → prod server
 
 ---
 
+### Phase 9 — CubeMap + PAW Tree Integration
+
+**Why last:** Both tools already work standalone. Folding them in is additive — by this phase auth, projects, git, and DuckDB are all in place, making the integration much richer than the standalone versions.
+
+**Activity bar gains two new tabs:**
+
+```
+⬜ Explorer        ← live server browse
+📁 Projects        ← models as code
+⎇  Source Control
+▦  CubeMap         ← folded in here
+🌳 PAW Tree        ← folded in here
+```
+
+**CubeMap — two modes:**
+
+```
+Live mode:  reads from TM1 server → shows what is deployed now
+Code mode:  reads from YAML files → shows what will be deployed
+```
+
+Code mode renders the full dependency graph — cubes, dimensions, rules, feeders — directly from the YAML files in the project. No server connection needed.
+
+**Visual diff — code vs live side by side:**
+
+```
+grey nodes   = unchanged
+green nodes  = added in YAML, not yet deployed
+red nodes    = removed in YAML, still on server
+yellow nodes = modified — YAML differs from live
+```
+
+A PR reviewer sees exactly what the model change does to the dependency graph — visually — before approving the merge.
+
+**CubeMap as pre-deploy validator:**
+
+Reading from YAML enables validation before anything touches TM1:
+- Cube references a dimension that doesn't exist in the model → error
+- Rules file references a cube not defined in YAML → warning
+- Circular feeder dependencies → error
+- Dimension referenced by multiple cubes — shows impact of changing it
+
+**Cross-tool links (the real value):**
+
+| From | To | Action |
+|------|----|--------|
+| CubeMap node (cube) | Editor | Click cube → opens rules file in Monaco |
+| CubeMap node (dimension) | Editor | Click dimension → opens YAML in dimension editor |
+| PAW Tree book | CubeMap | Click book tab → highlights referenced cube in CubeMap |
+| PAW Tree book | Editor | Click book tab view → jumps to rules file |
+
+These connections don't exist anywhere in IBM's tooling today.
+
+**PAW Tree inside IDE:**
+
+- Same session, no separate login
+- Activity tracking writes to the project's DuckDB instance
+- Click a PAW book → shows which YAML file defines the view it uses
+- Governance dashboard integrated with project diff — orphaned books that reference objects not in any YAML
+
+**Value:** Complete picture of the TM1 system — structure, code, content, and data — in one tool with full cross-navigation.
+
+---
+
 ## Build Order Summary
 
 | Phase | What | Why this order | Value unlocked |
@@ -389,6 +453,7 @@ main    → prod server
 | 6 | DuckDB data layer | Model stable, add data versioning | Time travel + audit trail |
 | 7 | GitHub integration | Local git works, extend to remote | PR review workflow |
 | 8 | CI/CD | Everything in place | Auto-deploy on merge |
+| 9 | CubeMap + PAW Tree | All foundations ready | Visual lineage, pre-deploy validation, cross-tool links |
 
 ---
 
