@@ -2,10 +2,705 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>TM1 IDE</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --activity-bg:   #333333;
+    --sidebar-bg:    #252526;
+    --editor-bg:     #1e1e1e;
+    --tab-bg:        #2d2d2d;
+    --tab-active-bg: #1e1e1e;
+    --panel-bg:      #1e1e1e;
+    --statusbar-bg:  #007acc;
+    --border:        #3c3c3c;
+    --text:          #cccccc;
+    --text-dim:      #888888;
+    --text-bright:   #ffffff;
+    --accent:        #007acc;
+    --hover-bg:      #2a2d2e;
+    --selected-bg:   #094771;
+    --activity-w:    48px;
+    --sidebar-w:     260px;
+    --panel-h:       180px;
+    --tab-h:         35px;
+    --statusbar-h:   22px;
+    --font:          'Segoe UI', system-ui, sans-serif;
+    --mono:          'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+  }
+
+  html, body { height: 100%; background: var(--editor-bg); color: var(--text); font-family: var(--font); font-size: 13px; overflow: hidden; }
+
+  /* ── Layout ── */
+  #app { display: flex; flex-direction: column; height: 100vh; }
+
+  #main { display: flex; flex: 1; overflow: hidden; }
+
+  /* ── Activity Bar ── */
+  #activity-bar {
+    width: var(--activity-w);
+    background: var(--activity-bg);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding-top: 8px;
+    gap: 4px;
+    flex-shrink: 0;
+    border-right: 1px solid var(--border);
+  }
+
+  .activity-btn {
+    width: 40px; height: 40px;
+    display: flex; align-items: center; justify-content: center;
+    color: var(--text-dim); cursor: pointer; border-radius: 4px;
+    font-size: 18px; transition: color .15s;
+    border: none; background: none;
+  }
+  .activity-btn:hover { color: var(--text-bright); }
+  .activity-btn.active { color: var(--text-bright); border-left: 2px solid var(--text-bright); margin-left: -2px; }
+
+  /* ── Sidebar ── */
+  #sidebar {
+    width: var(--sidebar-w);
+    background: var(--sidebar-bg);
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+    border-right: 1px solid var(--border);
+    overflow: hidden;
+  }
+
+  #sidebar-header {
+    padding: 10px 12px 6px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    flex-shrink: 0;
+  }
+
+  #server-select-wrap {
+    padding: 4px 8px 8px;
+    flex-shrink: 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  #server-select {
+    width: 100%;
+    background: var(--editor-bg);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 4px 6px;
+    font-size: 12px;
+    font-family: var(--font);
+    cursor: pointer;
+    outline: none;
+  }
+  #server-select:focus { border-color: var(--accent); }
+
+  #explorer-tree {
+    flex: 1;
+    overflow-y: auto;
+    padding: 4px 0;
+  }
+  #explorer-tree::-webkit-scrollbar { width: 6px; }
+  #explorer-tree::-webkit-scrollbar-thumb { background: #555; border-radius: 3px; }
+
+  .tree-section {}
+
+  .tree-section-header {
+    display: flex; align-items: center; gap: 6px;
+    padding: 4px 8px 4px 12px;
+    font-size: 11px; font-weight: 700;
+    letter-spacing: .05em; text-transform: uppercase;
+    color: var(--text-dim); cursor: pointer;
+    user-select: none;
+  }
+  .tree-section-header:hover { color: var(--text); }
+  .tree-section-header .arrow { font-size: 10px; transition: transform .15s; }
+  .tree-section-header.collapsed .arrow { transform: rotate(-90deg); }
+
+  .tree-section-body { display: block; }
+  .tree-section-body.hidden { display: none; }
+
+  .tree-item {
+    display: flex; align-items: center; gap: 6px;
+    padding: 3px 8px 3px 28px;
+    cursor: pointer; user-select: none;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    color: var(--text); font-size: 13px;
+  }
+  .tree-item:hover { background: var(--hover-bg); }
+  .tree-item.active { background: var(--selected-bg); color: var(--text-bright); }
+  .tree-item .icon { font-size: 14px; flex-shrink: 0; }
+
+  .tree-loading { padding: 6px 12px 6px 28px; color: var(--text-dim); font-size: 12px; font-style: italic; }
+  .tree-empty   { padding: 6px 12px 6px 28px; color: var(--text-dim); font-size: 12px; }
+  .tree-error   { padding: 6px 12px 6px 28px; color: #f48771; font-size: 12px; }
+
+  /* ── Editor area ── */
+  #editor-area { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+
+  /* ── Tab bar ── */
+  #tab-bar {
+    height: var(--tab-h);
+    background: var(--tab-bg);
+    display: flex;
+    align-items: flex-end;
+    overflow-x: auto;
+    flex-shrink: 0;
+    border-bottom: 1px solid var(--border);
+  }
+  #tab-bar::-webkit-scrollbar { height: 3px; }
+  #tab-bar::-webkit-scrollbar-thumb { background: #555; }
+
+  .tab {
+    display: flex; align-items: center; gap: 6px;
+    padding: 0 12px;
+    height: 31px;
+    background: var(--tab-bg);
+    color: var(--text-dim);
+    cursor: pointer;
+    border-right: 1px solid var(--border);
+    white-space: nowrap;
+    font-size: 13px;
+    border-top: 1px solid transparent;
+    flex-shrink: 0;
+  }
+  .tab:hover { color: var(--text); background: var(--hover-bg); }
+  .tab.active {
+    background: var(--tab-active-bg);
+    color: var(--text-bright);
+    border-top: 1px solid var(--accent);
+  }
+  .tab .tab-icon { font-size: 13px; }
+  .tab .tab-close {
+    font-size: 14px; color: var(--text-dim); margin-left: 2px;
+    width: 16px; height: 16px; display: flex; align-items: center; justify-content: center;
+    border-radius: 3px;
+  }
+  .tab .tab-close:hover { background: rgba(255,255,255,.15); color: var(--text-bright); }
+
+  #tab-welcome { color: var(--text-dim); padding: 8px 14px; font-size: 12px; font-style: italic; align-self: center; }
+
+  /* ── Editor / content pane ── */
+  #editor-content { flex: 1; display: flex; flex-direction: column; overflow: hidden; position: relative; }
+
+  #welcome-screen {
+    flex: 1; display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    color: var(--text-dim); gap: 8px;
+  }
+  #welcome-screen h2 { font-size: 28px; font-weight: 300; color: var(--text); }
+  #welcome-screen p  { font-size: 13px; }
+
+  #monaco-container { flex: 1; overflow: hidden; }
+
+  /* ── Panel (terminal / problems) ── */
+  #panel {
+    height: var(--panel-h);
+    background: var(--panel-bg);
+    border-top: 1px solid var(--border);
+    display: flex; flex-direction: column;
+    flex-shrink: 0;
+  }
+
+  #panel-tabs {
+    display: flex; align-items: center;
+    background: var(--tab-bg);
+    border-bottom: 1px solid var(--border);
+    height: 28px; flex-shrink: 0;
+  }
+
+  .panel-tab {
+    padding: 0 14px;
+    height: 28px; display: flex; align-items: center;
+    cursor: pointer; font-size: 12px; color: var(--text-dim);
+    border-bottom: 1px solid transparent;
+  }
+  .panel-tab:hover { color: var(--text); }
+  .panel-tab.active { color: var(--text-bright); border-bottom-color: var(--accent); }
+
+  .panel-close {
+    margin-left: auto; margin-right: 8px;
+    color: var(--text-dim); cursor: pointer; font-size: 16px;
+    width: 20px; height: 20px; display: flex; align-items: center; justify-content: center;
+    border-radius: 3px;
+  }
+  .panel-close:hover { background: var(--hover-bg); color: var(--text); }
+
+  #panel-content { flex: 1; overflow: hidden; padding: 0; }
+
+  #terminal-output {
+    height: 100%; overflow-y: auto; padding: 8px 12px;
+    font-family: var(--mono); font-size: 12px; line-height: 1.5;
+    color: var(--text);
+  }
+  #terminal-output::-webkit-scrollbar { width: 6px; }
+  #terminal-output::-webkit-scrollbar-thumb { background: #555; border-radius: 3px; }
+  .term-ok    { color: #89d185; }
+  .term-err   { color: #f48771; }
+  .term-info  { color: var(--text-dim); }
+  .term-cmd   { color: #569cd6; }
+
+  /* ── Status bar ── */
+  #statusbar {
+    height: var(--statusbar-h);
+    background: var(--statusbar-bg);
+    display: flex; align-items: center;
+    padding: 0 10px; gap: 14px;
+    font-size: 12px; color: #ffffffcc;
+    flex-shrink: 0;
+  }
+  .statusbar-item { display: flex; align-items: center; gap: 4px; cursor: default; }
+  .statusbar-item:hover { background: rgba(255,255,255,.1); padding: 0 4px; border-radius: 2px; }
+  #status-server { font-weight: 600; }
+</style>
 </head>
 <body>
-<h1>TM1 IDE</h1>
-<p>Coming soon.</p>
+<div id="app">
+
+  <!-- ── Main ── -->
+  <div id="main">
+
+    <!-- Activity Bar -->
+    <div id="activity-bar">
+      <button class="activity-btn active" id="btn-explorer" title="Explorer" onclick="setActivity('explorer')">⬜</button>
+      <button class="activity-btn" id="btn-search"   title="Search"   onclick="setActivity('search')">🔍</button>
+    </div>
+
+    <!-- Sidebar -->
+    <div id="sidebar">
+      <div id="sidebar-header">Explorer</div>
+
+      <div id="server-select-wrap">
+        <select id="server-select" onchange="loadServer(this.value)">
+          <option value="">Select server...</option>
+        </select>
+      </div>
+
+      <div id="explorer-tree">
+        <div style="padding:20px 12px; color:var(--text-dim); font-size:12px;">
+          Select a server to browse objects.
+        </div>
+      </div>
+    </div>
+
+    <!-- Editor Area -->
+    <div id="editor-area">
+
+      <!-- Tab Bar -->
+      <div id="tab-bar">
+        <span id="tab-welcome">No file open</span>
+      </div>
+
+      <!-- Editor Content -->
+      <div id="editor-content">
+        <div id="welcome-screen">
+          <h2>TM1 IDE</h2>
+          <p>Select a server and open an object from the explorer.</p>
+        </div>
+        <div id="monaco-container" style="display:none;"></div>
+      </div>
+
+      <!-- Bottom Panel -->
+      <div id="panel">
+        <div id="panel-tabs">
+          <div class="panel-tab active" onclick="switchPanel('terminal')">Terminal</div>
+          <div class="panel-tab" onclick="switchPanel('problems')">Problems</div>
+          <div class="panel-close" onclick="togglePanel()" title="Close panel">✕</div>
+        </div>
+        <div id="panel-content">
+          <div id="terminal-output">
+            <div class="term-info">TM1 IDE terminal ready.</div>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /editor-area -->
+  </div><!-- /main -->
+
+  <!-- Status Bar -->
+  <div id="statusbar">
+    <div class="statusbar-item"><span>⬡</span><span id="status-server">No server</span></div>
+    <div class="statusbar-item" id="status-msg">Ready</div>
+  </div>
+
+</div><!-- /app -->
+
+<!-- Monaco from CDN -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.52.2/min/vs/loader.min.js"></script>
+
+<script>
+'use strict'
+
+// ── State ─────────────────────────────────────────────────────────────────────
+let currentServer = null
+let monacoEditor  = null
+let openTabs      = []   // [{id, label, icon, type, meta, content}]
+let activeTabId   = null
+let panelVisible  = true
+
+// ── Monaco init ───────────────────────────────────────────────────────────────
+require.config({ paths: { vs: 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.52.2/min/vs' } })
+
+require(['vs/editor/editor.main'], () => {
+  monaco.editor.defineTheme('tm1-dark', {
+    base: 'vs-dark', inherit: true,
+    rules: [
+      { token: 'keyword',   foreground: '569cd6', fontStyle: 'bold' },
+      { token: 'comment',   foreground: '6a9955', fontStyle: 'italic' },
+      { token: 'string',    foreground: 'ce9178' },
+      { token: 'number',    foreground: 'b5cea8' },
+      { token: 'function',  foreground: 'dcdcaa' },
+      { token: 'variable',  foreground: '9cdcfe' },
+      { token: 'operator',  foreground: 'd4d4d4' },
+    ],
+    colors: { 'editor.background': '#1e1e1e' }
+  })
+
+  // TM1 Rules language
+  monaco.languages.register({ id: 'tm1rules' })
+  monaco.languages.setMonarchTokensProvider('tm1rules', {
+    keywords: ['SKIPCHECK', 'FEEDERS', 'FEEDER', 'IF', 'ELSE', 'ELSEIF', 'ENDIF', 'N:', 'C:', 'S:'],
+    functions: ['DB', 'ATTRS', 'ATTR', 'ATTRN', 'ATTRS', 'STET', 'CONTINUE', 'IF', 'ELSEIF'],
+    tokenizer: {
+      root: [
+        [/#.*/,                       'comment'],
+        [/\/\/.*/,                    'comment'],
+        [/'[^']*'/,                   'string'],
+        [/\b(SKIPCHECK|FEEDERS?|N:|C:|S:)\b/i, 'keyword'],
+        [/\b(DB|ATTRS?|ATTRN|STET|CONTINUE)\b/i, 'function'],
+        [/[!][a-zA-Z_]\w*/,           'variable'],
+        [/\[([^\]]+)\]/,              'variable'],
+        [/[0-9]+(\.[0-9]+)?/,         'number'],
+        [/[=>|,;()+\-*/]/,            'operator'],
+      ]
+    }
+  })
+
+  // TM1 TI language (reuse rules base + TI keywords)
+  monaco.languages.register({ id: 'tm1ti' })
+  monaco.languages.setMonarchTokensProvider('tm1ti', {
+    keywords: ['IF', 'ELSE', 'ELSEIF', 'ENDIF', 'WHILE', 'END', 'NEXT', 'FOR', 'BREAK'],
+    functions: [
+      'CellGetN','CellGetS','CellPutN','CellPutS','CellIsUpdateable',
+      'DimensionElementInsert','DimensionElementAdd','DimensionElementDelete',
+      'ElementInsert','ElementAdd','ElementDelete','HierarchyElementInsert',
+      'AttrPutN','AttrPutS','AttrDelete',
+      'SubsetCreate','SubsetDelete','SubsetAddElement',
+      'ProcessBreak','ProcessError','ProcessQuit',
+      'StringToNumber','NumberToString','TRIM','UPPER','LOWER','SUBST','CODE',
+      'IF','WHILE','FOR','NEXT',
+    ],
+    tokenizer: {
+      root: [
+        [/#.*/,                        'comment'],
+        [/'[^']*'/,                    'string'],
+        [/\b(IF|ELSE|ELSEIF|ENDIF|WHILE|END|NEXT|FOR|BREAK)\b/i, 'keyword'],
+        [/\b[A-Za-z_]\w*\s*(?=\()/,   'function'],
+        [/[0-9]+(\.[0-9]+)?/,          'number'],
+        [/[=><!|,;()+\-*/]/,           'operator'],
+        [/[A-Za-z_]\w*/,               'variable'],
+      ]
+    }
+  })
+
+  monacoEditor = monaco.editor.create(document.getElementById('monaco-container'), {
+    theme:          'tm1-dark',
+    language:       'tm1rules',
+    value:          '',
+    fontSize:       14,
+    lineHeight:     22,
+    fontFamily:     'Cascadia Code, Fira Code, Consolas, monospace',
+    fontLigatures:  true,
+    minimap:        { enabled: false },
+    scrollBeyondLastLine: false,
+    renderLineHighlight: 'line',
+    padding:        { top: 8 },
+    automaticLayout: true,
+  })
+
+  // Ctrl+S → save
+  monacoEditor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, saveActiveTab)
+
+  termLog('Monaco editor loaded.', 'info')
+})
+
+// ── Activity bar ─────────────────────────────────────────────────────────────
+function setActivity(name) {
+  document.querySelectorAll('.activity-btn').forEach(b => b.classList.remove('active'))
+  document.getElementById('btn-' + name)?.classList.add('active')
+}
+
+// ── Servers ───────────────────────────────────────────────────────────────────
+async function initServers() {
+  const servers = await api('/api/servers')
+  const sel = document.getElementById('server-select')
+  servers.forEach(s => {
+    const o = document.createElement('option')
+    o.value = o.textContent = s
+    sel.appendChild(o)
+  })
+}
+
+async function loadServer(server) {
+  if (!server) return
+  currentServer = server
+  document.getElementById('status-server').textContent = server
+  setStatus('Loading ' + server + '...')
+  await loadExplorer(server)
+  setStatus('Ready')
+}
+
+// ── Explorer tree ─────────────────────────────────────────────────────────────
+async function loadExplorer(server) {
+  const tree = document.getElementById('explorer-tree')
+  tree.innerHTML = '<div class="tree-loading">Loading...</div>'
+
+  const [cubes, dims, procs, chores] = await Promise.all([
+    api(`/api/cubes?server=${enc(server)}`),
+    api(`/api/dimensions?server=${enc(server)}`),
+    api(`/api/processes?server=${enc(server)}`),
+    api(`/api/chores?server=${enc(server)}`),
+  ])
+
+  tree.innerHTML = ''
+
+  renderSection(tree, 'Cubes',      cubes,  '▦', 'cube',      openRules)
+  renderSection(tree, 'Dimensions', dims,   '◈', 'dimension', openDimension)
+  renderSection(tree, 'Processes',  procs,  '⚙', 'process',   openProcess)
+  renderSection(tree, 'Chores',     chores, '⏱', 'chore',     openChore)
+}
+
+function renderSection(parent, title, items, icon, type, openFn) {
+  const sec = document.createElement('div')
+  sec.className = 'tree-section'
+
+  const hdr = document.createElement('div')
+  hdr.className = 'tree-section-header'
+  hdr.innerHTML = `<span class="arrow">▾</span><span>${title}</span><span style="margin-left:auto;color:var(--text-dim);font-weight:400">${items.length}</span>`
+  hdr.onclick = () => {
+    hdr.classList.toggle('collapsed')
+    body.classList.toggle('hidden')
+  }
+
+  const body = document.createElement('div')
+  body.className = 'tree-section-body'
+
+  if (!items.length) {
+    const empty = document.createElement('div')
+    empty.className = 'tree-empty'
+    empty.textContent = 'None'
+    body.appendChild(empty)
+  } else {
+    items.forEach(name => {
+      const row = document.createElement('div')
+      row.className = 'tree-item'
+      row.dataset.type = type
+      row.dataset.name = name
+      row.innerHTML = `<span class="icon">${icon}</span><span>${name}</span>`
+      row.onclick = () => {
+        document.querySelectorAll('.tree-item.active').forEach(r => r.classList.remove('active'))
+        row.classList.add('active')
+        openFn(name)
+      }
+      body.appendChild(row)
+    })
+  }
+
+  sec.appendChild(hdr)
+  sec.appendChild(body)
+  parent.appendChild(sec)
+}
+
+// ── Open objects ──────────────────────────────────────────────────────────────
+async function openRules(cubeName) {
+  const tabId = `rules:${currentServer}:${cubeName}`
+  if (activateTab(tabId)) return
+
+  setStatus('Loading rules for ' + cubeName + '...')
+  const data = await api(`/api/rules?server=${enc(currentServer)}&cube=${enc(cubeName)}`)
+  const content = data.rules ?? ''
+
+  addTab({
+    id: tabId, label: cubeName + '.rules', icon: '▦',
+    type: 'rules', meta: { server: currentServer, cube: cubeName },
+    content, language: 'tm1rules'
+  })
+  setStatus('Ready')
+}
+
+async function openProcess(procName) {
+  const tabId = `process:${currentServer}:${procName}`
+  if (activateTab(tabId)) return
+
+  setStatus('Loading ' + procName + '...')
+  const data = await api(`/api/process?server=${enc(currentServer)}&name=${enc(procName)}`)
+
+  addTab({
+    id: tabId, label: procName, icon: '⚙',
+    type: 'process', meta: { server: currentServer, name: procName, data },
+    content: data.Code ?? data.PrologProcedure ?? '',
+    language: 'tm1ti'
+  })
+  setStatus('Ready')
+}
+
+function openDimension(dimName) {
+  termLog(`Dimension editor coming soon: ${dimName}`, 'info')
+}
+
+function openChore(choreName) {
+  termLog(`Chore editor coming soon: ${choreName}`, 'info')
+}
+
+// ── Tab management ────────────────────────────────────────────────────────────
+function addTab(tab) {
+  // Save current editor state if there's an active tab
+  if (activeTabId) {
+    const curr = openTabs.find(t => t.id === activeTabId)
+    if (curr) curr.content = monacoEditor.getValue()
+  }
+
+  openTabs.push(tab)
+  renderTabs()
+  activateTab(tab.id)
+}
+
+function activateTab(tabId) {
+  const tab = openTabs.find(t => t.id === tabId)
+  if (!tab) return false
+
+  // Save current
+  if (activeTabId && activeTabId !== tabId) {
+    const curr = openTabs.find(t => t.id === activeTabId)
+    if (curr) curr.content = monacoEditor.getValue()
+  }
+
+  activeTabId = tabId
+  renderTabs()
+
+  // Show Monaco
+  document.getElementById('welcome-screen').style.display = 'none'
+  document.getElementById('monaco-container').style.display = 'flex'
+  document.getElementById('tab-welcome').style.display = 'none'
+
+  if (monacoEditor) {
+    const lang = tab.language || 'tm1rules'
+    monaco.editor.setModelLanguage(monacoEditor.getModel(), lang)
+    monacoEditor.setValue(tab.content ?? '')
+    monacoEditor.setScrollPosition({ scrollTop: 0 })
+  }
+
+  return true
+}
+
+function closeTab(tabId, e) {
+  e?.stopPropagation()
+  const idx = openTabs.findIndex(t => t.id === tabId)
+  if (idx === -1) return
+  openTabs.splice(idx, 1)
+
+  if (activeTabId === tabId) {
+    activeTabId = null
+    const next = openTabs[Math.min(idx, openTabs.length - 1)]
+    if (next) {
+      activateTab(next.id)
+    } else {
+      document.getElementById('welcome-screen').style.display = 'flex'
+      document.getElementById('monaco-container').style.display = 'none'
+      document.getElementById('tab-welcome').style.display = 'inline'
+      if (monacoEditor) monacoEditor.setValue('')
+    }
+  }
+  renderTabs()
+}
+
+function renderTabs() {
+  const bar = document.getElementById('tab-bar')
+  bar.innerHTML = ''
+
+  if (!openTabs.length) {
+    const w = document.createElement('span')
+    w.id = 'tab-welcome'
+    w.textContent = 'No file open'
+    bar.appendChild(w)
+    return
+  }
+
+  openTabs.forEach(tab => {
+    const el = document.createElement('div')
+    el.className = 'tab' + (tab.id === activeTabId ? ' active' : '')
+    el.innerHTML = `<span class="tab-icon">${tab.icon}</span><span>${tab.label}</span><span class="tab-close" onclick="closeTab('${tab.id}',event)">✕</span>`
+    el.onclick = () => activateTab(tab.id)
+    bar.appendChild(el)
+  })
+}
+
+// ── Save ──────────────────────────────────────────────────────────────────────
+async function saveActiveTab() {
+  const tab = openTabs.find(t => t.id === activeTabId)
+  if (!tab || !monacoEditor) return
+
+  tab.content = monacoEditor.getValue()
+
+  if (tab.type === 'rules') {
+    setStatus('Saving rules...')
+    termLog(`Saving rules for ${tab.meta.cube}...`, 'cmd')
+    try {
+      await api(`/api/rules?server=${enc(tab.meta.server)}&cube=${enc(tab.meta.cube)}`, {
+        method: 'POST', body: JSON.stringify({ rules: tab.content })
+      })
+      termLog(`Saved ${tab.meta.cube}.rules ✓`, 'ok')
+      setStatus('Saved')
+    } catch (e) {
+      termLog(`Error saving: ${e.message}`, 'err')
+      setStatus('Error saving')
+    }
+  }
+}
+
+// ── Panel ─────────────────────────────────────────────────────────────────────
+function togglePanel() {
+  panelVisible = !panelVisible
+  document.getElementById('panel').style.display = panelVisible ? 'flex' : 'none'
+}
+
+function switchPanel(name) {
+  document.querySelectorAll('.panel-tab').forEach(t => t.classList.remove('active'))
+  event.target.classList.add('active')
+}
+
+function termLog(msg, cls = '') {
+  const out = document.getElementById('terminal-output')
+  const line = document.createElement('div')
+  line.className = cls ? 'term-' + cls : ''
+  line.textContent = msg
+  out.appendChild(line)
+  out.scrollTop = out.scrollHeight
+}
+
+// ── Utilities ─────────────────────────────────────────────────────────────────
+function enc(s) { return encodeURIComponent(s) }
+
+function setStatus(msg) {
+  document.getElementById('status-msg').textContent = msg
+}
+
+async function api(url, opts = {}) {
+  const defaults = { headers: { 'Content-Type': 'application/json' } }
+  const r = await fetch(url, { ...defaults, ...opts })
+  if (!r.ok) throw new Error(`HTTP ${r.status}`)
+  return r.json()
+}
+
+// ── Boot ──────────────────────────────────────────────────────────────────────
+initServers()
+</script>
 </body>
 </html>
