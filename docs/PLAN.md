@@ -7,6 +7,8 @@ A browser-based IDE for TM1 model development where:
 - The IDE edits those files, not the TM1 server directly
 - Changes are reviewed via GitHub pull requests before deployment
 - CI/CD deploys on merge — TM1 becomes a deployment target, not a source of truth
+- Full data audit trail via DuckDB time travel
+- TM1py Python scripts managed alongside model definitions
 
 ---
 
@@ -14,8 +16,9 @@ A browser-based IDE for TM1 model development where:
 
 ```
 Developer opens IDE
-  → browses live TM1 server or local YAML files
-  → makes changes (rules, dimensions, processes)
+  → opens a project (one TM1 module = one git repo)
+  → browses live TM1 server or local YAML/script files
+  → makes changes (rules, dimensions, processes, Python scripts)
   → IDE shows diff vs git HEAD
   → commits to a branch
   → pushes to GitHub
@@ -31,23 +34,34 @@ Developer opens IDE
 Browser (IDE)
   ↓ HTTP / WebSocket
 Node.js/Express server
+  ├── core/paw_connect.js    → PAW V11 session auth
   ├── core/tm1_client.js     → TM1 REST via PAW proxy
-  ├── core/git_client.js     → local git operations (simple-git)
+  ├── core/git_client.js     → local git (simple-git)
   ├── core/github_client.js  → GitHub API (Octokit)
-  ├── core/fs_model.js       → read/write YAML model files
+  ├── core/fs_model.js       → read/write YAML + scripts
+  ├── core/db_client.js      → DuckDB in-process
   └── tm1_deploy/            → diff + apply engine
 
-Local git repo (on IDE server machine)
-  └── models/
-        ├── module.yaml          ← module definition + dependencies
-        ├── dimensions/
-        ├── cubes/
-        ├── rules/
-        ├── processes/
-        └── chores/
+Projects (each is a separate git repo)
+  └── my_apportionment/
+        ├── project.yaml         ← module definition
+        ├── models/
+        │     ├── dimensions/
+        │     ├── cubes/
+        │     ├── rules/
+        │     ├── processes/
+        │     └── chores/
+        ├── scripts/             ← TM1py Python scripts
+        ├── data/
+        │     └── snapshots.duckdb  ← time travel + audit
+        ├── docs/
+        ├── tests/
+        └── .github/
+              └── workflows/
+                    └── deploy.yml
 
 GitHub
-  ├── remote repo
+  ├── remote repo per module
   ├── PR reviews
   └── Actions CI → deploy on merge
 ```
@@ -63,203 +77,296 @@ Bootstrap (one-time): TM1 server → export → YAML files → git commit
 Day-to-day:           edit YAML → commit → deploy → TM1 server
 ```
 
-The IDE has two modes for any object:
-- **Live view**: shows what is currently on the TM1 server
-- **Code view**: shows the YAML definition in the repo
+The IDE shows two views for any object:
+- **Live**: what is currently on the TM1 server
+- **Code**: what the YAML definition says
 
 Diff between them shows what would change on next deploy.
 
 ---
 
-## Build Phases
+## Project Structure
+
+Each TM1 module is a project. A project is a git repository with a `project.yaml`:
+
+```yaml
+name: apportionment
+version: 1.0.0
+description: Cost apportionment module
+
+server:
+  dev:     apport_dev
+  staging: apport_staging
+  prod:    apport_prod
+
+depends_on:
+  - repo: falconbi/tm1_core
+    objects:
+      - dimensions/entity
+      - dimensions/time
+
+python:
+  version: "3.11"
+  packages:
+    - tm1py
+    - pandas
+
+deploy:
+  branch_map:
+    develop: dev
+    staging: staging
+    main:    prod
+```
+
+The IDE sidebar shows all open projects with their active environment:
+
+```
+PROJECTS
+▾ apportionment    ● dev
+  ├── Models
+  ├── Scripts
+  ├── Data
+  ├── Docs
+  └── Tests
+
+▾ tm1_core         ● prod
+  └── Models
+
+[+ New Project]  [⊕ Open Project]
+```
+
+---
+
+## Build Phases — Recommended Order
+
+### Why this order?
+
+Each phase unlocks the next. Project structure is the container everything lives in — nothing else can be built cleanly without it. Model export seeds the container with real content. Git makes that content versionable. Everything else builds on top of that foundation.
+
+---
 
 ### Phase 1 — Foundation ✅
 - Express server, PAW auth, TM1 client
 - Explorer tree, Monaco rules editor
 - Save rules back to TM1
 
-### Phase 2 — Model Export (next)
+**Value:** Browse and edit rules live on any TM1 server.
 
-Pull existing TM1 objects into YAML files:
+---
+
+### Phase 2 — Project Structure
+
+**Why first:** Everything else lives inside a project. Without this we're building on shifting ground — files have no home, git has no repo, the deploy pipeline has no target.
+
+Define `project.yaml` schema, file system layout, and the Projects panel in the IDE sidebar:
+- New project wizard: name, server targets, GitHub repo
+- Open existing project from local path or GitHub URL
+- Project switcher in sidebar
+- Active environment indicator (dev / staging / prod)
+
+New file: `core/fs_project.js` — read/write `project.yaml`, resolve project paths.
+
+**Value:** Projects have a defined structure. Everything else can be built inside them.
+
+---
+
+### Phase 3 — Model Export
+
+**Why second:** You can't version control nothing. Export seeds each project with real content from the live TM1 server — dimensions, cubes, rules, processes — all as YAML files.
 
 ```
-IDE → Export → YAML
+IDE → [Export from server] → YAML files in project/models/
 ```
 
-Endpoints needed:
-- `GET /api/model/export?server=` — pull all objects, write YAML to repo
-- `GET /api/model/export?server=&type=dimension&name=` — export one object
+Export one object or the whole server. Writes clean YAML that the deploy engine can read back.
 
-File system layer (`core/fs_model.js`):
-- `readModel(dir)` — load all YAML from `models/`
-- `writeModel(dir, objects)` — write YAML files
-- `readRules(cube)` — read `models/rules/{cube}.rules`
-- `writeRules(cube, text)` — write rules file
+New file: `core/fs_model.js` — read/write YAML model files, generate from TM1 API responses.
 
-### Phase 3 — Git Integration
+**Value:** Project has real content. Ready to version control.
+
+---
+
+### Phase 4 — Git Integration
+
+**Why third:** Once files exist, track them. This is the core of models-as-code — every change is a commit with a message and an author.
 
 Local git operations via `simple-git`:
 
 ```
-GET  /api/git/status          → which files changed
-POST /api/git/stage           → git add file(s)
-POST /api/git/commit          → git commit -m "message"
-POST /api/git/push            → git push origin branch
-GET  /api/git/diff            → diff vs HEAD
-GET  /api/git/branches        → branch list
-POST /api/git/branch          → create + checkout branch
+GET  /api/git/status     → changed files
+POST /api/git/stage      → git add
+POST /api/git/commit     → git commit
+POST /api/git/push       → git push
+GET  /api/git/diff       → diff vs HEAD
+GET  /api/git/branches   → branch list
+POST /api/git/branch     → create + checkout
 ```
 
-IDE sidebar gains a **Source Control** panel (like VS Code):
-- Changed files list with diff indicators (M, A, D)
-- Stage/unstage
-- Commit message box + commit button
-- Push button
-- Branch selector
+IDE gains a **Source Control** panel:
+- Changed files with M / A / D indicators
+- Stage / unstage individual files
+- Commit message input + commit button
+- Branch selector + push button
 
-### Phase 4 — GitHub Integration
+**Value:** Full git workflow from inside the IDE. No terminal needed.
 
-GitHub API via Octokit:
+---
+
+### Phase 5 — Complete Editors
+
+**Why fourth:** With project structure, content, and git in place — the editors become genuinely useful. Every save writes to both TM1 and the YAML file. Every change is trackable.
+
+**TI Process editor** (highest value — used daily)
+- 4 Monaco tabs: Prolog / Metadata / Data / Epilog
+- Parameters panel
+- Execute button → stream output to terminal panel
+- Save → writes to TM1 AND updates YAML
+
+**Dimension editor**
+- Visual hierarchy tree (drag-drop, add/remove elements)
+- Attribute table (define + set values)
+- YAML panel synced with visual editor
+- Save → updates TM1 AND writes YAML
+
+**Cube viewer**
+- Server → Cube → View dropdowns
+- Execute view → render grid
+- Editable leaf cells → PATCH to TM1
+- Read-only consolidated cells
+
+**TM1py Script editor**
+- Monaco Python editor
+- Run button → spawns Python subprocess → streams output to terminal
+- venv per project with TM1py installed
+
+**Value:** IDE covers all TM1 object types. Full read/write for everything.
+
+---
+
+### Phase 6 — DuckDB Data Layer
+
+**Why fifth:** Once the model is stable and version controlled, add data versioning on top. Requires the project structure to know where `data/snapshots.duckdb` lives.
+
+```javascript
+const db = new Database('project/data/snapshots.duckdb')
+```
+
+**Snapshot table** — cube data over time:
+```sql
+CREATE TABLE snapshots (
+    server       VARCHAR,
+    cube         VARCHAR,
+    view         VARCHAR,
+    snapshot_date DATE,
+    captured_at  TIMESTAMP,
+    elements     VARCHAR,   -- JSON array
+    value        DOUBLE
+)
+```
+
+**Changes table** — from `}TransactionLog`:
+```sql
+CREATE TABLE changes (
+    server      VARCHAR,
+    cube        VARCHAR,
+    user        VARCHAR,
+    changed_at  TIMESTAMP,
+    elements    VARCHAR,
+    old_value   DOUBLE,
+    new_value   DOUBLE,
+    change_type VARCHAR    -- INPUT, SPREAD, PROCESS
+)
+```
+
+IDE gains a **Data** panel per project:
+- Time travel query: pick cube + date → see historical data
+- Change audit: pick cube + cell → see who changed it and when
+- Delta view: compare two dates side by side
+
+**Value:** Complete audit trail. Who changed what data and when — permanently archived, TM1 transaction log never rolls over.
+
+---
+
+### Phase 7 — GitHub Integration
+
+**Why sixth:** Git works locally first, then extend to GitHub. Adds PR workflow and remote collaboration.
 
 ```
-POST /api/github/pr           → open pull request
-GET  /api/github/prs          → list open PRs
-GET  /api/github/pr/:id       → PR detail + status
+POST /api/github/pr      → open pull request
+GET  /api/github/prs     → list open PRs
+GET  /api/github/pr/:id  → PR detail + CI status
 ```
 
 `.env` additions:
 ```
 GITHUB_TOKEN=ghp_...
-GITHUB_REPO=falconbi/tm1_apportionment
 ```
 
-PR creation flow from IDE:
+PR creation from IDE:
 1. Push branch
-2. Click "Open PR" → IDE posts to GitHub API
-3. PR body auto-includes a `tm1_deploy diff` summary
+2. Click "Open PR"
+3. PR body auto-includes `tm1_deploy diff` output
 
-### Phase 5 — Complete Editors
+**Value:** Changes require review before hitting prod. Full team workflow.
 
-Build remaining object editors in priority order:
+---
 
-**TI Process editor**
-- 4 Monaco tabs: Prolog / Metadata / Data / Epilog
-- Parameters panel (name, type, default value)
-- Execute button → run process → stream output to terminal
-- Save → writes process back to TM1 AND updates YAML
+### Phase 8 — CI/CD
 
-**Dimension editor**
-- Visual hierarchy tree: drag-drop parent/child, add/remove elements
-- Attribute table: define attributes, set values per element
-- YAML panel: synced with visual editor, both editable
-- Save → updates dimension on TM1 AND writes YAML
-
-**Cube viewer**
-- Server → Cube → View dropdowns
-- Execute view → render grid (rows/columns from axis tuples)
-- Editable leaf cells → PATCH back to TM1
-- Read-only for consolidated cells
-
-**Subset editor**
-- Element picker: checkbox tree of hierarchy members
-- MDX input for dynamic subsets
-- Save as named subset on server
-
-### Phase 6 — CI/CD
-
-GitHub Actions workflow template committed to every model repo:
+**Why last:** Depends on everything above. GitHub Actions runs the deploy engine on merge.
 
 ```yaml
 # .github/workflows/deploy.yml
 on:
   push:
     branches: [main]
-
 jobs:
   deploy:
-    runs-on: self-hosted   ← runs on RIG, has PAW network access
+    runs-on: self-hosted
     steps:
       - uses: actions/checkout@v4
       - run: npm ci
-      - run: node -e "require('./tm1_deploy').diff('$SERVER')"
-      - run: node -e "require('./tm1_deploy').apply('$SERVER')"
+      - run: node tm1_deploy/cli.js diff  --server $SERVER
+      - run: node tm1_deploy/cli.js apply --server $SERVER
     env:
       PAW_HOST:     ${{ secrets.PAW_HOST }}
       PAW_USERNAME: ${{ secrets.PAW_USERNAME }}
       PAW_PASSWORD: ${{ secrets.PAW_PASSWORD }}
 ```
 
-Branch strategy:
+Branch → server mapping from `project.yaml`:
 ```
-feature/add-entity-rollup  → dev server
-staging                    → staging server
-main                       → production server
-```
-
-### Phase 7 — Diff Panel
-
-IDE shows pending changes at all times:
-
-```
-┌─────────────────────────────────┐
-│ PENDING CHANGES                 │
-│                                 │
-│ ~ dimension  entity             │
-│   add elements: [10140, 10150]  │
-│                                 │
-│ ~ cube  plan_BudgetPlan         │
-│   rules file differs            │
-│                                 │
-│ [Deploy Now]  [Open PR]         │
-└─────────────────────────────────┘
+develop → dev server
+staging → staging server
+main    → prod server
 ```
 
----
-
-## New npm Packages Needed
-
-| Package | Purpose |
-|---------|---------|
-| `simple-git` | Local git operations |
-| `@octokit/rest` | GitHub API |
-| `js-yaml` | Already installed |
-| `chokidar` | Watch YAML files for external changes |
-
----
-
-## File Structure (target)
-
-```
-tm1_ide/
-├── server.js
-├── core/
-│   ├── paw_connect.js
-│   ├── tm1_client.js
-│   ├── git_client.js       ← Phase 3
-│   ├── github_client.js    ← Phase 4
-│   └── fs_model.js         ← Phase 2
-├── tm1_deploy/
-│   ├── loader.js
-│   ├── diff.js
-│   ├── apply.js
-│   └── __main__.js
-├── static/
-│   └── ide.html
-├── models/                 ← exported TM1 model YAML
-└── config/
-    └── servers.json
-```
+**Value:** Zero-touch deployment. Merge PR → TM1 updated automatically.
 
 ---
 
 ## Build Order Summary
 
-| Phase | What | Value unlocked |
-|-------|------|----------------|
-| 1 | Foundation | Browse + edit rules live ✅ |
-| 2 | Model export | Pull TM1 → YAML, start a repo |
-| 3 | Git integration | Track changes, commit, push |
-| 4 | GitHub integration | PR workflow, review before deploy |
-| 5 | Complete editors | TI, dimensions, cube viewer |
-| 6 | CI/CD | Auto-deploy on merge |
-| 7 | Diff panel | Always-visible pending changes |
+| Phase | What | Why this order | Value unlocked |
+|-------|------|----------------|----------------|
+| 1 | Foundation | Starting point | Browse + edit rules ✅ |
+| 2 | Project structure | Container for everything else | Projects have a home |
+| 3 | Model export | Seeds the container with content | Real YAML from TM1 |
+| 4 | Git integration | Makes content versionable | Full git workflow |
+| 5 | Complete editors | Useful now that git tracks saves | All object types covered |
+| 6 | DuckDB data layer | Model stable, add data versioning | Time travel + audit trail |
+| 7 | GitHub integration | Local git works, extend to remote | PR review workflow |
+| 8 | CI/CD | Everything in place | Auto-deploy on merge |
+
+---
+
+## npm Packages Needed
+
+| Package | Phase | Purpose |
+|---------|-------|---------|
+| `simple-git` | 4 | Local git operations |
+| `@octokit/rest` | 7 | GitHub API |
+| `duckdb` | 6 | In-process analytical DB |
+| `chokidar` | 3 | Watch YAML files for external changes |
+| `js-yaml` | ✅ | Already installed |
+| `ws` | ✅ | Already installed (WebSocket for terminal) |
