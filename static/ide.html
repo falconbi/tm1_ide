@@ -523,16 +523,22 @@ async function openRules(cubeName) {
   const tabId = `rules:${currentServer}:${cubeName}`
   if (activateTab(tabId)) return
 
+  termLog(`Opening rules: ${cubeName}`, 'cmd')
   setStatus('Loading rules for ' + cubeName + '...')
-  const data = await api(`/api/rules?server=${enc(currentServer)}&cube=${enc(cubeName)}`)
-  const content = data.rules ?? ''
-
-  addTab({
-    id: tabId, label: cubeName + '.rules', icon: '▦',
-    type: 'rules', meta: { server: currentServer, cube: cubeName },
-    content, language: 'tm1rules'
-  })
-  setStatus('Ready')
+  try {
+    const data = await api(`/api/rules?server=${enc(currentServer)}&cube=${enc(cubeName)}`)
+    const content = data.rules ?? ''
+    termLog(`Rules loaded — ${content.length} chars`, 'info')
+    addTab({
+      id: tabId, label: cubeName + '.rules', icon: '▦',
+      type: 'rules', meta: { server: currentServer, cube: cubeName },
+      content, language: 'tm1rules'
+    })
+    setStatus('Ready')
+  } catch(e) {
+    termLog(`Error loading rules: ${e.message}`, 'err')
+    setStatus('Error')
+  }
 }
 
 async function openProcess(procName) {
@@ -587,8 +593,9 @@ function activateTab(tabId) {
 
   // Show Monaco
   document.getElementById('welcome-screen').style.display = 'none'
-  document.getElementById('monaco-container').style.display = 'flex'
-  document.getElementById('tab-welcome').style.display = 'none'
+  document.getElementById('monaco-container').style.display = 'block'
+  const tw = document.getElementById('tab-welcome')
+  if (tw) tw.style.display = 'none'
 
   if (monacoEditor) {
     const lang = tab.language || 'tm1rules'
