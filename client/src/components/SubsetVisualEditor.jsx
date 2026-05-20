@@ -255,6 +255,7 @@ function SubsetGrid({ members, onReorder, onRemove, cols, childrenMap = {}, elem
     const [dragIdx, setDragIdx]         = useState(null)
     const [dropIdx, setDropIdx]         = useState(null)
     const [treeView, setTreeView]       = useState(true)
+    const [showTotals, setShowTotals]   = useState(false)
     const [expandedTree, setExpandedTree] = useState(new Set())
     const lastClickRef                  = useRef(null)
 
@@ -336,6 +337,10 @@ function SubsetGrid({ members, onReorder, onRemove, cols, childrenMap = {}, elem
     const activeAttrs = attributes.filter(a => cols[`attr_${a.name}`])
     const leafCount   = members.filter(m => m.type === 'N').length
     const consolCount = members.filter(m => m.type === 'C').length
+    const strCount    = members.filter(m => m.type === 'S').length
+    const avgLevel    = members.length
+        ? (members.reduce((s, m) => s + (m.level ?? 0), 0) / members.length).toFixed(1)
+        : '—'
 
     return (
         <div className="flex flex-col h-full">
@@ -365,6 +370,11 @@ function SubsetGrid({ members, onReorder, onRemove, cols, childrenMap = {}, elem
                     title={treeView ? 'Switch to flat list' : 'Switch to tree view'}
                     className={cn('px-1.5 py-0.5 rounded text-[10px] border transition-colors', treeView ? 'border-primary text-primary bg-primary/10' : 'border-border text-muted-foreground hover:bg-muted')}>
                     Tree
+                </button>
+                <button onClick={() => setShowTotals(v => !v)}
+                    title={showTotals ? 'Hide totals' : 'Show totals'}
+                    className={cn('px-1.5 py-0.5 rounded text-[10px] border transition-colors', showTotals ? 'border-primary text-primary bg-primary/10' : 'border-border text-muted-foreground hover:bg-muted')}>
+                    Σ
                 </button>
                 <button onClick={removeSelected} disabled={selected.size === 0}
                     className="p-1 rounded hover:bg-muted disabled:opacity-30 text-red-400 transition-colors">
@@ -437,6 +447,22 @@ function SubsetGrid({ members, onReorder, onRemove, cols, childrenMap = {}, elem
                 {members.length === 0 && (
                     <div className="flex items-center justify-center py-8 text-muted-foreground text-xs">
                         Select elements from the dimension and click Keep →
+                    </div>
+                )}
+
+                {showTotals && members.length > 0 && (
+                    <div className="sticky bottom-0 flex items-center gap-1 px-2 py-0.5 border-t-2 border-border bg-muted/90 backdrop-blur text-[10px] font-medium text-muted-foreground">
+                        <span className="w-5 shrink-0 text-center text-foreground">{members.length}</span>
+                        <span className="w-3 shrink-0" />
+                        {cols.type && <span className="w-4 shrink-0" />}
+                        <span className="flex-1 flex items-center gap-2">
+                            <span className={TYPE_COLOR.N}>○ {leafCount}</span>
+                            {consolCount > 0 && <span className={TYPE_COLOR.C}>◆ {consolCount}</span>}
+                            {strCount > 0 && <span className={TYPE_COLOR.S}>" {strCount}</span>}
+                        </span>
+                        {cols.level  && <span className="w-10 shrink-0" title="Average level">⌀ {avgLevel}</span>}
+                        {cols.parent && <span className="w-24 shrink-0" />}
+                        {activeAttrs.map(a => <span key={a.name} className="w-24 shrink-0" />)}
                     </div>
                 )}
             </div>
