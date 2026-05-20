@@ -1,6 +1,6 @@
 import { useState, useMemo, useCallback, useRef, useEffect } from 'react'
 import { useStore } from '@/store'
-import { useElements, useEdges, useSubsets, useSubsetElements, useSaveStaticSubset, useSaveSubset, useDimAttributes } from '@/hooks/useApi'
+import { useElements, useEdges, useSubsets, useSubsetElements, useSaveStaticSubset, useDimAttributes } from '@/hooks/useApi'
 import { toast } from 'sonner'
 import { ChevronRight, ChevronDown, Loader2, Search, ArrowUp, ArrowDown, Trash2, Settings2, X, PanelLeftClose, PanelLeftOpen } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -249,7 +249,7 @@ function renderSubsetTree(members, memberMap, childrenMap, parentMap, depth, col
 
 // ── Right panel: subset grid ──────────────────────────────────────────────────
 
-function SubsetGrid({ members, onReorder, onRemove, cols, childrenMap = {}, elementMap = {}, parentMap = {}, subsets = [], server, dim, onLoadSubset, attributes = [] }) {
+function SubsetGrid({ members, onReorder, onRemove, cols, childrenMap = {}, elementMap = {}, parentMap = {}, subsets = [], onLoadSubset, attributes = [] }) {
     const [selected, setSelected]       = useState(new Set())
     const [search, setSearch]           = useState('')
     const [dragIdx, setDragIdx]         = useState(null)
@@ -266,24 +266,29 @@ function SubsetGrid({ members, onReorder, onRemove, cols, childrenMap = {}, elem
     const memberSet = useMemo(() => new Set(members.map(m => m.name)), [members])
     const memberMap = useMemo(() => Object.fromEntries(members.map(m => [m.name, m])), [members])
 
-    // Tree view: roots are members whose parent is not also in the subset
-    const treeRoots = useMemo(() => {
-        const roots = members.filter(m => !memberSet.has(parentMap[m.name]))
-        if (!showTotals) return roots
-        return [...roots.filter(m => m.type !== 'C'), ...roots.filter(m => m.type === 'C')]
-    }, [members, memberSet, parentMap, showTotals])
+    const sortTotalsLast = (list) => {
+        if (!showTotals) return list
+        return [...list.filter(m => m.type !== 'C'), ...list.filter(m => m.type === 'C')]
+    }
+
+    // Tree roots: members whose parent is not in the subset
+    const treeRoots = useMemo(() =>
+        sortTotalsLast(members.filter(m => !memberSet.has(parentMap[m.name]))),
+        [members, memberSet, parentMap, showTotals]
+    )
 
     const visible = useMemo(() => {
-        let list = search.trim()
+        const filtered = search.trim()
             ? members.filter(m => m.name.toLowerCase().includes(search.toLowerCase()))
             : members
-        if (showTotals) {
-            const leaves  = list.filter(m => m.type !== 'C')
-            const consols = list.filter(m => m.type === 'C')
-            list = [...leaves, ...consols]
-        }
-        return list
+        return sortTotalsLast(filtered)
     }, [members, search, showTotals])
+
+    // O(1) row number lookup by member name (original order in members array)
+    const memberIndex = useMemo(() =>
+        Object.fromEntries(members.map((m, i) => [m.name, i + 1])),
+        [members]
+    )
 
     const selectRow = (name, idx, e) => {
         if (e.shiftKey && lastClickRef.current !== null) {
@@ -415,7 +420,7 @@ function SubsetGrid({ members, onReorder, onRemove, cols, childrenMap = {}, elem
                     {activeAttrs.map(a => <span key={a.name} className="w-24 shrink-0 truncate">{a.name}</span>)}
                 </div>
 
-                {treeView && !search.trim() && !showTotals
+                {treeView && !search.trim()
                     ? renderSubsetTree(
                         treeRoots, memberMap, childrenMap, parentMap, 0, cols, selected,
                         (name, e) => selectRow(name, members.findIndex(m => m.name === name), e),
@@ -436,7 +441,7 @@ function SubsetGrid({ members, onReorder, onRemove, cols, childrenMap = {}, elem
                                 dropIdx === i && dragIdx !== i && 'border-t-2 border-primary'
                             )}
                         >
-                            <span className="w-5 shrink-0 text-center text-muted-foreground text-[10px]">{members.indexOf(m) + 1}</span>
+                            <span className="w-5 shrink-0 text-center text-muted-foreground text-[10px]">{memberIndex[m.name]}</span>
                             <span className="w-3 shrink-0" />
                             {cols.type   && <span className={cn('w-4 shrink-0 text-[10px]', TYPE_COLOR[m.type])}>{TYPE_ICON[m.type]}</span>}
                             <span className="flex-1 truncate font-mono">{m.name}</span>
