@@ -415,7 +415,7 @@ function SubsetGrid({ members, onReorder, onRemove, cols, childrenMap = {}, elem
                     {activeAttrs.map(a => <span key={a.name} className="w-24 shrink-0 truncate">{a.name}</span>)}
                 </div>
 
-                {treeView && !search.trim()
+                {treeView && !search.trim() && !showTotals
                     ? renderSubsetTree(
                         treeRoots, memberMap, childrenMap, parentMap, 0, cols, selected,
                         (name, e) => selectRow(name, members.findIndex(m => m.name === name), e),
