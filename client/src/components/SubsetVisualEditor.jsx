@@ -267,16 +267,23 @@ function SubsetGrid({ members, onReorder, onRemove, cols, childrenMap = {}, elem
     const memberMap = useMemo(() => Object.fromEntries(members.map(m => [m.name, m])), [members])
 
     // Tree view: roots are members whose parent is not also in the subset
-    const treeRoots = useMemo(() =>
-        members.filter(m => !memberSet.has(parentMap[m.name])),
-        [members, memberSet, parentMap]
-    )
+    const treeRoots = useMemo(() => {
+        const roots = members.filter(m => !memberSet.has(parentMap[m.name]))
+        if (!showTotals) return roots
+        return [...roots.filter(m => m.type !== 'C'), ...roots.filter(m => m.type === 'C')]
+    }, [members, memberSet, parentMap, showTotals])
 
     const visible = useMemo(() => {
-        if (!search.trim()) return members
-        const q = search.toLowerCase()
-        return members.filter(m => m.name.toLowerCase().includes(q))
-    }, [members, search])
+        let list = search.trim()
+            ? members.filter(m => m.name.toLowerCase().includes(search.toLowerCase()))
+            : members
+        if (showTotals) {
+            const leaves  = list.filter(m => m.type !== 'C')
+            const consols = list.filter(m => m.type === 'C')
+            list = [...leaves, ...consols]
+        }
+        return list
+    }, [members, search, showTotals])
 
     const selectRow = (name, idx, e) => {
         if (e.shiftKey && lastClickRef.current !== null) {
@@ -337,10 +344,6 @@ function SubsetGrid({ members, onReorder, onRemove, cols, childrenMap = {}, elem
     const activeAttrs = attributes.filter(a => cols[`attr_${a.name}`])
     const leafCount   = members.filter(m => m.type === 'N').length
     const consolCount = members.filter(m => m.type === 'C').length
-    const strCount    = members.filter(m => m.type === 'S').length
-    const avgLevel    = members.length
-        ? (members.reduce((s, m) => s + (m.level ?? 0), 0) / members.length).toFixed(1)
-        : '—'
 
     return (
         <div className="flex flex-col h-full">
@@ -450,21 +453,6 @@ function SubsetGrid({ members, onReorder, onRemove, cols, childrenMap = {}, elem
                     </div>
                 )}
 
-                {showTotals && members.length > 0 && (
-                    <div className="sticky bottom-0 flex items-center gap-1 px-2 py-0.5 border-t-2 border-border bg-muted/90 backdrop-blur text-[10px] font-medium text-muted-foreground">
-                        <span className="w-5 shrink-0 text-center text-foreground">{members.length}</span>
-                        <span className="w-3 shrink-0" />
-                        {cols.type && <span className="w-4 shrink-0" />}
-                        <span className="flex-1 flex items-center gap-2">
-                            <span className={TYPE_COLOR.N}>○ {leafCount}</span>
-                            {consolCount > 0 && <span className={TYPE_COLOR.C}>◆ {consolCount}</span>}
-                            {strCount > 0 && <span className={TYPE_COLOR.S}>" {strCount}</span>}
-                        </span>
-                        {cols.level  && <span className="w-10 shrink-0" title="Average level">⌀ {avgLevel}</span>}
-                        {cols.parent && <span className="w-24 shrink-0" />}
-                        {activeAttrs.map(a => <span key={a.name} className="w-24 shrink-0" />)}
-                    </div>
-                )}
             </div>
 
             {/* Status bar */}
