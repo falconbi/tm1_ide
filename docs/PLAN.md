@@ -243,34 +243,134 @@ IDE gains a **Source Control** panel:
 
 ---
 
-### Phase 5 — Complete Editors
+### Phase 5 — Complete Editors (Five Builders)
 
 **Why fourth:** With project structure, content, and git in place — the editors become genuinely useful. Every save writes to both TM1 and the YAML file. Every change is trackable.
 
-**TI Process editor** (highest value — used daily)
-- 4 Monaco tabs: Prolog / Metadata / Data / Epilog
-- Parameters panel
-- Execute button → stream output to terminal panel
-- Save → writes to TM1 AND updates YAML
+Each builder uses a consistent **three-panel layout**:
 
-**Dimension editor**
-- Visual hierarchy tree (drag-drop, add/remove elements)
-- Attribute table (define + set values)
-- YAML panel synced with visual editor
-- Save → updates TM1 AND writes YAML
+```
+┌──────────────────┬────────────────────┬──────────────────┐
+│  Visual / Form   │  Code (Monaco)     │   Live Preview   │
+│  drag-drop tree  │  YAML or rules     │   from dev       │
+│  or form fields  │  or TI code        │   server         │
+│                  │                    │   diff markers   │
+└──────────────────┴────────────────────┴──────────────────┘
+```
 
-**Cube viewer**
-- Server → Cube → View dropdowns
-- Execute view → render grid
+Editing any panel updates the others. Live preview shows what is currently on the dev server with diff markers showing what will change on save/deploy.
+
+---
+
+#### Dimension Builder
+
+Left panel — visual editor:
+- Hierarchy tree with drag-drop to restructure (add/remove/reparent elements)
+- Attribute table — define attribute types, set values per element
+- Subset manager — list, create, and edit named subsets with MDX or static element lists
+
+Middle panel — YAML (Monaco):
+- Live YAML representation of the dimension, synced with the visual editor
+- Edit YAML directly → visual tree updates
+
+Right panel — live preview:
+- Element tree fetched from dev server
+- Green = in YAML but not on server yet / Red = on server but removed in YAML / Yellow = modified
+- Attribute values side by side (YAML vs live)
+
+Save → PATCH to TM1 AND writes YAML file.
+
+---
+
+#### Cube Builder
+
+Left panel — visual editor:
+- Dimension picker — select which dimensions form the cube
+- View manager — list, create, delete named views
+- MDX editor for each view — Monaco with MDX syntax highlighting
+
+Middle panel — YAML (Monaco):
+- Cube definition with dimension list, rules reference
+- View definitions as YAML blocks
+
+Right panel — live preview:
+- Cube structure from dev server
+- Execute a view and render the result grid
 - Editable leaf cells → PATCH to TM1
-- Read-only consolidated cells
+- Read-only consolidated cells (grey)
 
-**TM1py Script editor**
+Save → updates cube/views on TM1 AND writes YAML.
+
+---
+
+#### TI Builder (highest value — used daily)
+
+Left panel — code editor (4 tabs):
+- **Prolog** / **Metadata** / **Data** / **Epilog** — each a Monaco editor with TI syntax highlighting
+- Parameters panel — define parameter names, types, default values
+- Data source config — file path, server datasource, view, etc.
+
+Middle panel — YAML:
+- Full TI process definition (parameters, datasource, all four code tabs) as YAML
+
+Right panel — execute terminal:
+- Execute button → runs TI process on dev server → streams output line by line
+- Colour-coded: normal output / warnings / errors
+- Last execution timestamp + status
+
+Save → writes TI process to TM1 AND updates YAML.
+
+---
+
+#### Rules Builder
+
+Left panel — Monaco editor:
+- Full rules file with `tm1rules` syntax highlighting (skip-blocks, feeders, DB() references)
+- AI explain button — sends selected rule to Claude, explanation in side panel
+- Feeder validator — static analysis of feeder completeness
+
+Middle panel — YAML:
+- Rules stored as a string field in the cube YAML
+- Cube name, dimension list, rules together in one file
+
+Right panel — live test:
+- Pick a cell (select element per dimension)
+- Show current value from dev server
+- Show which rule line calculates it (rule trace)
+- Execute feeder check on that cell
+
+Save → PATCH rules to TM1 AND writes cube YAML.
+
+---
+
+#### Chore Builder
+
+Left panel — visual editor:
+- Process list — ordered list of TI processes in the chore, drag-drop to reorder
+- Per-process parameter overrides
+- Schedule editor — frequency, start time, active/inactive toggle
+
+Middle panel — YAML:
+- Full chore definition as YAML (process list, schedule, parameters)
+
+Right panel — live preview:
+- Chore status from dev server (last run, next run, active/inactive)
+- Execution log — last N runs with status + duration
+
+Save → updates chore on TM1 AND writes YAML.
+
+---
+
+#### TM1py Script Editor
+
 - Monaco Python editor
 - Run button → spawns Python subprocess → streams output to terminal
 - venv per project with TM1py installed
+- Scripts live in `project/scripts/` alongside model YAML files
 
-**Value:** IDE covers all TM1 object types. Full read/write for everything.
+---
+
+**Value:** IDE covers all TM1 object types with purpose-built builders. Visual editing and code are always in sync. Every save is tracked in git.
 
 ---
 
@@ -457,13 +557,44 @@ These connections don't exist anywhere in IBM's tooling today.
 
 ---
 
-## npm Packages Needed
+## Technology Stack
+
+Frontend adoption is critical — the IDE must feel fast, modern, and polished or developers won't use it. The frontend stack is chosen to deliver that.
+
+### Frontend
+
+| Package | Purpose |
+| ------- | ------- |
+| `react` + `vite` | Component framework + build tool. Vite gives instant hot reload during development. |
+| `shadcn/ui` + `tailwindcss` | Component library + styling. Consistent, accessible UI out of the box. |
+| `zustand` | Lightweight state management. One store per open object — fits the per-builder model exactly. |
+| `@tanstack/react-query` | Server state caching. Handles live TM1 responses alongside YAML code views — stale/refresh built in. |
+| `@xyflow/react` (React Flow) | Node-graph UI for CubeMap dependency visualisation. No viable alternative for this. |
+| `@monaco-editor/react` | Monaco editor inside React. Handles editor lifecycle correctly within the component model. |
+
+**Phase 1 note:** Phase 1 was built as vanilla JS. Before Phase 2 begins the frontend is migrated to React + Vite. The Express backend stays unchanged — React becomes the client, Express remains the API server.
+
+### Backend
 
 | Package | Phase | Purpose |
-|---------|-------|---------|
+| ------- | ----- | ------- |
+| `zod` | 2 | Schema validation for `project.yaml` and all TM1 object YAML files — catches errors at edit time, not deploy time |
 | `simple-git` | 4 | Local git operations |
 | `@octokit/rest` | 7 | GitHub API |
 | `duckdb` | 6 | In-process analytical DB |
 | `chokidar` | 3 | Watch YAML files for external changes |
 | `js-yaml` | ✅ | Already installed |
 | `ws` | ✅ | Already installed (WebSocket for terminal) |
+
+### Deployment
+
+Docker + docker-compose for all environments. The IDE is self-hosted — Docker makes deployment reproducible and supports the CI/CD self-hosted runner needed in Phase 8.
+
+### Deliberately excluded
+
+| Suggestion | Reason |
+| ---------- | ------ |
+| BullMQ / Redis | Add only if feed orchestration hits limits — unneeded complexity for current scale |
+| Loki / Grafana | Overkill — DuckDB covers TM1 audit, server logs cover IDE ops |
+| tRPC | Adds abstraction without proportional benefit at this team size |
+| Playwright E2E | Aspirational — revisit when the builders are stable |

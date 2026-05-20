@@ -55,11 +55,26 @@ class TM1Client {
     }
 
     async getElements(dim) {
+        const TYPE = { Numeric: 'N', Consolidated: 'C', String: 'S', N: 'N', C: 'C', S: 'S' }
         const d = await this.get(
             `Dimensions('${dim}')/Hierarchies('${dim}')/Elements`,
             { '$select': 'Name,Type,Level' }
         )
-        return d.value ?? []
+        return (d.value ?? []).map(e => ({ ...e, Type: TYPE[e.Type] ?? e.Type }))
+    }
+
+    async getElementsWithAttributes(dim) {
+        const TYPE = { Numeric: 'N', Consolidated: 'C', String: 'S', N: 'N', C: 'C', S: 'S' }
+        const d = await this.get(
+            `Dimensions('${dim}')/Hierarchies('${dim}')/Elements`,
+            { '$select': 'Name,Type,Level', '$expand': 'Attributes' }
+        )
+        return (d.value ?? []).map(e => ({
+            Name: e.Name,
+            Type: TYPE[e.Type] ?? e.Type,
+            Level: e.Level,
+            Attributes: Object.fromEntries((e.Attributes ?? []).map(a => [a.Name, a.Value])),
+        }))
     }
 
     async getEdges(dim) {
@@ -124,6 +139,54 @@ class TM1Client {
         return (d.value ?? []).map(r => r.Name).filter(n => !n.startsWith('}'))
     }
 
+    // ── Subsets ───────────────────────────────────────────────────────────────
+
+    async getSubsets(dim) {
+        const d = await this.get(
+            `Dimensions('${dim}')/Hierarchies('${dim}')/Subsets`,
+            { '$select': 'Name,Expression' }
+        )
+        return (d.value ?? []).filter(s => !s.Name.startsWith('}'))
+    }
+
+    async getSubset(dim, name) {
+        return this.get(
+            `Dimensions('${dim}')/Hierarchies('${dim}')/Subsets('${name}')`,
+            { '$select': 'Name,Expression' }
+        )
+    }
+
+    async saveSubset(dim, name, mdx) {
+        const body = { '@odata.type': '#ibm.tm1.api.v1.MDXSubset', Name: name, Expression: mdx, Hierarchy: { Name: dim, Dimension: { Name: dim } } }
+        try {
+            await this.patch(
+                `Dimensions('${dim}')/Hierarchies('${dim}')/Subsets('${name}')`,
+                body
+            )
+        } catch (e) {
+            if (e.response?.status === 404) {
+                await this.post(`Dimensions('${dim}')/Hierarchies('${dim}')/Subsets`, body)
+            } else throw e
+        }
+    }
+
+    async previewMDX(dim, mdx, limit = 100) {
+        const tmpName = `}TM1IDE_preview_${Date.now()}`
+        try {
+            await this.post(
+                `Dimensions('${dim}')/Hierarchies('${dim}')/Subsets`,
+                { '@odata.type': '#ibm.tm1.api.v1.MDXSubset', Name: tmpName, Expression: mdx, Hierarchy: { Name: dim, Dimension: { Name: dim } } }
+            )
+            const d = await this.get(
+                `Dimensions('${dim}')/Hierarchies('${dim}')/Subsets('${tmpName}')/Elements`,
+                { '$select': 'Name,Type', '$top': limit }
+            )
+            return (d.value ?? []).map(e => ({ name: e.Name, type: e.Type }))
+        } finally {
+            try { await this.delete(`Dimensions('${dim}')/Hierarchies('${dim}')/Subsets('${tmpName}')`) } catch {}
+        }
+    }
+
     // ── Views ─────────────────────────────────────────────────────────────────
 
     async getViews(cube) {
@@ -131,11 +194,86 @@ class TM1Client {
         return (d.value ?? []).map(r => r.Name).filter(n => !n.startsWith('}'))
     }
 
-    async executeView(cube, view) {
-        return this.post(
-            `Cubes('${cube}')/Views('${view}')/tm1.Execute`,
-            {},
+    async getView(cube, name) {
+        try {
+            return await this.get(`Cubes('${cube}')/Views('${name}')`)
+        } catch (e) {
+            if (e.response?.status === 404) return null
+            throw e
+        }
+    }
+
+    async getSubsetElements(dim, name) {
+        const TYPE = { Numeric: 'N', Consolidated: 'C', String: 'S', N: 'N', C: 'C', S: 'S', 1: 'N', 2: 'S', 3: 'C' }
+        const d = await this.get(
+            `Dimensions('${dim}')/Hierarchies('${dim}')/Subsets('${name}')/Elements`,
+            { '$select': 'Name,Type,Level' }
         )
+        return (d.value ?? []).map(e => ({ name: e.Name, type: TYPE[e.Type] ?? e.Type, level: e.Level }))
+    }
+
+    async saveStaticSubset(dim, name, elements) {
+        const bind = elements.map(el => `Dimensions('${dim}')/Hierarchies('${dim}')/Elements('${el.replace(/'/g, "''")}')`        )
+        const body = {
+            '@odata.type': '#ibm.tm1.api.v1.StaticSubset',
+            Name: name,
+            Hierarchy: { Name: dim, Dimension: { Name: dim } },
+            'Elements@odata.bind': bind,
+        }
+        try {
+            await this.patch(`Dimensions('${dim}')/Hierarchies('${dim}')/Subsets('${name}')`, body)
+        } catch (e) {
+            if (e.response?.status === 404) {
+                await this.post(`Dimensions('${dim}')/Hierarchies('${dim}')/Subsets`, body)
+            } else throw e
+        }
+    }
+
+    async saveView(cube, name, mdx) {
+        const body = { '@odata.type': '#ibm.tm1.api.v1.MDXView', Name: name, MDX: mdx }
+        try {
+            await this.patch(`Cubes('${cube}')/Views('${name}')`, body)
+        } catch (e) {
+            if (e.response?.status === 404) {
+                await this.post(`Cubes('${cube}')/Views`, body)
+            } else throw e
+        }
+    }
+
+    async executeMDX(mdx) {
+        const { ID } = await this.post('ExecuteMDX', { MDX: mdx })
+        const s = await this._session()
+        const h = await this._headers()
+        const [axisRes, cellRes] = await Promise.all([
+            s.get(this._url(`Cellsets('${ID}')/Axes`), {
+                params: { '$expand': 'Tuples($expand=Members($select=Name,UniqueName))' },
+                headers: h,
+            }),
+            s.get(this._url(`Cellsets('${ID}')/Cells`), {
+                params: { '$select': 'Ordinal,Value,FormattedValue' },
+                headers: h,
+            }),
+        ])
+        try { await this.delete(`Cellsets('${ID}')`) } catch {}
+        return { Axes: axisRes.data.value, Cells: cellRes.data.value }
+    }
+
+    async executeView(cube, view) {
+        const { ID } = await this.post(`Cubes('${cube}')/Views('${view}')/tm1.Execute`, {})
+        const s = await this._session()
+        const h = await this._headers()
+        const [axisRes, cellRes] = await Promise.all([
+            s.get(this._url(`Cellsets('${ID}')/Axes`), {
+                params: { '$expand': 'Tuples($expand=Members($select=Name,UniqueName))' },
+                headers: h,
+            }),
+            s.get(this._url(`Cellsets('${ID}')/Cells`), {
+                params: { '$select': 'Ordinal,Value,FormattedValue' },
+                headers: h,
+            }),
+        ])
+        try { await this.delete(`Cellsets('${ID}')`) } catch {}
+        return { Axes: axisRes.data.value, Cells: cellRes.data.value }
     }
 }
 

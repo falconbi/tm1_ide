@@ -1,0 +1,97 @@
+import { useStore } from '@/store'
+import { X, Box, Cog, XSquare, ChevronDown, ChevronUp, Table2, FileCode2, Layers } from 'lucide-react'
+import { cn } from '@/lib/utils'
+
+const TYPE_ICON = { rules: FileCode2, process: Cog, cubeview: Table2, subset: Layers, dimension: Layers }
+
+export default function TabBar() {
+  const { tabs, activeTab, setActiveTab, closeTab, closeAllTabs, tabsVisible, toggleTabs } = useStore()
+
+  const handleCloseAll = () => {
+    const dirty = tabs.filter(t => t.dirty).map(t => t.label)
+    if (dirty.length > 0) {
+      const ok = window.confirm(
+        `${dirty.length} tab${dirty.length > 1 ? 's have' : ' has'} unsaved changes:\n\n${dirty.join('\n')}\n\nClose all anyway?`
+      )
+      if (!ok) return
+    }
+    closeAllTabs()
+  }
+
+  // Collapsed: just a thin strip with toggle + tab count
+  if (!tabsVisible) {
+    return (
+      <div className="flex items-center border-b border-border bg-muted/40 shrink-0 h-5">
+        <button
+          onClick={toggleTabs}
+          title="Show tabs"
+          className="flex items-center gap-1 px-2 h-full text-[10px] text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+        >
+          <ChevronDown size={10} />
+          {tabs.length > 0 && <span>{tabs.length} tab{tabs.length !== 1 ? 's' : ''}</span>}
+        </button>
+      </div>
+    )
+  }
+
+  if (!tabs.length) {
+    return (
+      <div className="flex items-center border-b border-border bg-background shrink-0 h-6">
+        <button
+          onClick={toggleTabs}
+          title="Hide tabs"
+          className="px-2 h-full text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+        >
+          <ChevronUp size={10} />
+        </button>
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex items-center border-b border-border bg-background shrink-0">
+      <button
+        onClick={toggleTabs}
+        title="Hide tabs"
+        className="shrink-0 px-1.5 h-full self-stretch text-muted-foreground hover:text-foreground hover:bg-muted transition-colors border-r border-border"
+      >
+        <ChevronUp size={10} />
+      </button>
+      <div className="flex items-center overflow-x-auto scrollbar-none flex-1 min-w-0">
+        {tabs.map(tab => {
+          const Icon = TYPE_ICON[tab.type] ?? Box
+          const active = tab.id === activeTab
+          return (
+            <div
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={cn(
+                'flex items-center gap-1 px-2 py-1 border-r border-border cursor-pointer shrink-0 text-xs max-w-40 group',
+                active
+                  ? 'bg-background text-foreground border-t-2 border-t-primary -mt-px'
+                  : 'bg-muted/60 text-muted-foreground hover:bg-background hover:text-foreground',
+              )}
+            >
+              <Icon size={10} className="shrink-0" />
+              <span className="truncate">{tab.label}</span>
+              {tab.dirty && <span className="text-orange-400 text-[10px]">●</span>}
+              <button
+                onClick={e => { e.stopPropagation(); closeTab(tab.id) }}
+                className="ml-0.5 rounded opacity-0 group-hover:opacity-100 hover:bg-muted-foreground/20 p-0.5"
+              >
+                <X size={9} />
+              </button>
+            </div>
+          )
+        })}
+      </div>
+      <button
+        onClick={handleCloseAll}
+        title="Close all tabs"
+        className="shrink-0 px-2 self-stretch text-muted-foreground hover:text-foreground hover:bg-muted transition-colors border-l border-border"
+      >
+        <XSquare size={11} />
+      </button>
+    </div>
+  )
+}
