@@ -204,7 +204,7 @@ function DimensionBrowser({ server, dim, onKeep, subsets = [], sourceFilter }) {
 
 // ── Subset tree view helpers ──────────────────────────────────────────────────
 
-function renderSubsetTree(members, memberMap, childrenMap, parentMap, depth, cols, selected, onSelect, activeAttrs, expanded, onToggle, elementMap = {}) {
+function renderSubsetTree(members, memberMap, childrenMap, parentMap, depth, cols, selected, onSelect, onAdd, activeAttrs, expanded, onToggle, elementMap = {}) {
     return members.map((m) => {
         const allChildNames = childrenMap[m.name] ?? []
         const children = allChildNames.map(n => {
@@ -220,13 +220,14 @@ function renderSubsetTree(members, memberMap, childrenMap, parentMap, depth, col
             <div key={m.name}>
                 <div
                     style={{ paddingLeft: `${indent}px` }}
-                    onClick={m._ghost ? undefined : e => onSelect(m.name, e)}
+                    onClick={m._ghost ? () => onAdd(m) : e => onSelect(m.name, e)}
                     className={cn(
-                        'flex items-center gap-1 pr-2 py-0.5 border-b border-border/30 select-none text-xs',
+                        'flex items-center gap-1 pr-2 py-0.5 border-b border-border/30 select-none text-xs cursor-pointer',
                         m._ghost
-                            ? 'opacity-40 cursor-default'
-                            : cn('cursor-pointer', selected.has(m.name) ? 'bg-primary/20 text-primary' : 'hover:bg-muted')
+                            ? 'opacity-40 hover:opacity-70 hover:bg-primary/10'
+                            : cn(selected.has(m.name) ? 'bg-primary/20 text-primary' : 'hover:bg-muted')
                     )}
+                    title={m._ghost ? 'Click to add to subset' : undefined}
                 >
                     <span className="w-3 shrink-0 text-muted-foreground">
                         {isConsol
@@ -241,7 +242,7 @@ function renderSubsetTree(members, memberMap, childrenMap, parentMap, depth, col
                     {cols.parent && depth === 0 && <span className="w-24 shrink-0 truncate text-muted-foreground">{parentMap[m.name] ?? ''}</span>}
                     {activeAttrs.map(a => <span key={a.name} className="w-24 shrink-0 truncate text-muted-foreground">{m.attrs?.[a.name] ?? ''}</span>)}
                 </div>
-                {isConsol && isExpanded && renderSubsetTree(children, memberMap, childrenMap, parentMap, depth + 1, cols, selected, onSelect, activeAttrs, expanded, onToggle, elementMap)}
+                {isConsol && isExpanded && renderSubsetTree(children, memberMap, childrenMap, parentMap, depth + 1, cols, selected, onSelect, onAdd, activeAttrs, expanded, onToggle, elementMap)}
             </div>
         )
     })
@@ -249,7 +250,7 @@ function renderSubsetTree(members, memberMap, childrenMap, parentMap, depth, col
 
 // ── Right panel: subset grid ──────────────────────────────────────────────────
 
-function SubsetGrid({ members, onReorder, onRemove, cols, childrenMap = {}, elementMap = {}, parentMap = {}, subsets = [], onLoadSubset, attributes = [] }) {
+function SubsetGrid({ members, onReorder, onRemove, onAdd, cols, childrenMap = {}, elementMap = {}, parentMap = {}, subsets = [], onLoadSubset, attributes = [] }) {
     const [selected, setSelected]       = useState(new Set())
     const [search, setSearch]           = useState('')
     const [dragIdx, setDragIdx]         = useState(null)
@@ -430,6 +431,7 @@ function SubsetGrid({ members, onReorder, onRemove, cols, childrenMap = {}, elem
                     ? renderSubsetTree(
                         treeRoots, memberMap, childrenMap, parentMap, 0, cols, selected,
                         (name, e) => selectRow(name, members.findIndex(m => m.name === name), e),
+                        onAdd,
                         activeAttrs, expandedTree, toggleTreeNode, elementMap
                       )
                     : visible.map((m, i) => (
@@ -617,6 +619,7 @@ export default function SubsetVisualEditor({ tab, onMdxConvert }) {
                         members={members}
                         onReorder={handleReorder}
                         onRemove={handleRemove}
+                        onAdd={handleKeep}
                         cols={cols}
                         childrenMap={childrenMap}
                         elementMap={elementMap}
