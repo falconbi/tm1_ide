@@ -220,7 +220,7 @@ function renderSubsetTree(members, memberMap, childrenMap, parentMap, depth, col
             <div key={m.name}>
                 <div
                     style={{ paddingLeft: `${indent}px` }}
-                    onClick={m._ghost ? () => onAdd(m) : e => onSelect(m.name, e)}
+                    onClick={m._ghost ? () => onAdd([m]) : e => onSelect(m.name, e)}
                     className={cn(
                         'flex items-center gap-1 pr-2 py-0.5 border-b border-border/30 select-none text-xs cursor-pointer',
                         m._ghost
