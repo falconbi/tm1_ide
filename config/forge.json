@@ -1,0 +1,14 @@
+{
+  "server": "24retail",
+  "tabs": [
+    {
+      "id": "subset:24retail:Asset Types:Asset Type",
+      "type": "subset",
+      "label": "Asset Type",
+      "server": "24retail",
+      "dimension": "Asset Types",
+      "subsetName": "Asset Type"
+    }
+  ],
+  "activeTab": "subset:24retail:Asset Types:Asset Type"
+}
