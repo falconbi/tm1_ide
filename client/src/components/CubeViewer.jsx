@@ -5,7 +5,7 @@ import { DndContext, DragOverlay, PointerSensor, useSensor, useSensors, useDropp
 import { useStore } from '@/store'
 import { useCubeDimensions, useSubsets, useSubsetElements, useViews, useExecuteMDX, useViewAxes } from '@/hooks/useApi'
 import { toast } from 'sonner'
-import { Play, Loader2, Table2, GripVertical, X, LayoutGrid, Rows3, Columns3, Filter, ZapOff, Zap } from 'lucide-react'
+import { Play, Loader2, Table2, GripVertical, X, LayoutGrid, Rows3, Columns3, Filter, ZapOff, Zap, ChevronLeft, ChevronRight } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 ModuleRegistry.registerModules([AllCommunityModule])
@@ -173,8 +173,9 @@ function SubsetPopover({ server, dim, zone, subsets, onSubsetSelect, onMemberSel
 
 // ── Draggable dimension pill ──────────────────────────────────────────────────
 
-function DimPill({ id, dim, zone, server, onRemove, onSubsetChange, onMemberChange }) {
-    const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id })
+function DimPill({ id, dim, zone, server, onRemove, onSubsetChange, onMemberChange, onMoveLeft, onMoveRight }) {
+    const { attributes, listeners, setNodeRef: setDragRef, isDragging } = useDraggable({ id })
+    const { setNodeRef: setDropRef, isOver } = useDroppable({ id: `dim:${dim.dimension}` })
     const { data: subsets = [] } = useSubsets(server, dim.dimension)
     const [open, setOpen] = useState(false)
     const ref = useRef(null)
@@ -192,9 +193,14 @@ function DimPill({ id, dim, zone, server, onRemove, onSubsetChange, onMemberChan
 
     return (
         <div ref={ref} className="relative">
-            <div ref={setNodeRef}
-                className={cn('flex items-center gap-1 px-2 py-0.5 rounded border text-xs bg-muted border-border select-none',
-                    isDragging && 'opacity-40', open && 'border-primary')}
+            <div
+                ref={el => { setDragRef(el); setDropRef(el) }}
+                className={cn(
+                    'flex items-center gap-1 px-2 py-0.5 rounded border text-xs bg-muted border-border select-none group',
+                    isDragging && 'opacity-40',
+                    isOver && !isDragging && 'border-primary border-l-[3px]',
+                    open && 'border-primary'
+                )}
             >
                 <span {...attributes} {...listeners} className="cursor-grab text-muted-foreground hover:text-foreground shrink-0">
                     <GripVertical size={11} />
@@ -210,9 +216,27 @@ function DimPill({ id, dim, zone, server, onRemove, onSubsetChange, onMemberChan
                     <span className="text-[10px] text-primary/70 truncate max-w-[80px] shrink-0">{label}</span>
                 )}
                 {zone !== 'bench' && (
-                    <button onClick={() => onRemove(dim.dimension)} className="ml-0.5 text-muted-foreground hover:text-foreground shrink-0">
-                        <X size={10} />
-                    </button>
+                    <div className="flex items-center ml-0.5">
+                        <button
+                            onClick={e => { e.stopPropagation(); onMoveLeft?.() }}
+                            disabled={!onMoveLeft}
+                            className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-foreground disabled:opacity-0 p-0.5 rounded"
+                            title="Move left"
+                        >
+                            <ChevronLeft size={10} />
+                        </button>
+                        <button
+                            onClick={e => { e.stopPropagation(); onMoveRight?.() }}
+                            disabled={!onMoveRight}
+                            className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-foreground disabled:opacity-0 p-0.5 rounded"
+                            title="Move right"
+                        >
+                            <ChevronRight size={10} />
+                        </button>
+                        <button onClick={() => onRemove(dim.dimension)} className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-foreground p-0.5 rounded">
+                            <X size={10} />
+                        </button>
+                    </div>
                 )}
             </div>
 
@@ -230,7 +254,7 @@ function DimPill({ id, dim, zone, server, onRemove, onSubsetChange, onMemberChan
 
 // ── Drop zone ─────────────────────────────────────────────────────────────────
 
-function DropZone({ id, label, icon: Icon, dims, server, onRemove, onSubsetChange, onMemberChange, accent }) {
+function DropZone({ id, label, icon: Icon, dims, server, onRemove, onSubsetChange, onMemberChange, onReorder, accent }) {
     const { setNodeRef, isOver } = useDroppable({ id })
     return (
         <div ref={setNodeRef}
@@ -242,10 +266,13 @@ function DropZone({ id, label, icon: Icon, dims, server, onRemove, onSubsetChang
                 <Icon size={10} /> {label}
             </div>
             <div className="flex flex-wrap gap-1">
-                {dims.map(d => (
+                {dims.map((d, i) => (
                     <DimPill key={d.dimension} id={d.dimension} dim={d} zone={id}
                         server={server} onRemove={onRemove}
-                        onSubsetChange={onSubsetChange} onMemberChange={onMemberChange} />
+                        onSubsetChange={onSubsetChange} onMemberChange={onMemberChange}
+                        onMoveLeft={i > 0 ? () => onReorder(i, i - 1) : null}
+                        onMoveRight={i < dims.length - 1 ? () => onReorder(i, i + 1) : null}
+                    />
                 ))}
                 {dims.length === 0 && (
                     <span className="text-[10px] text-muted-foreground/40 italic px-1">Drop here</span>
@@ -303,14 +330,32 @@ export default function CubeViewer({ tab }) {
         return 'bench'
     }
 
+    const reorderDim = useCallback((zone, fromIdx, toIdx) => {
+        setAxes(prev => {
+            const arr = [...prev[zone]]
+            const [item] = arr.splice(fromIdx, 1)
+            arr.splice(toIdx, 0, item)
+            return { ...prev, [zone]: arr }
+        })
+    }, [])
+
     const handleDragEnd = ({ active, over }) => {
         setActiveDrag(null)
         if (!over) return
         const dimName = active.id
-        const toZone  = over.id
-        if (!['rows', 'columns', 'pages', 'bench'].includes(toZone)) return
+        const overId  = over.id
+        if (overId === `dim:${dimName}`) return  // dropped on self
+
+        let toZone, insertBeforeDim = null
+        if (overId.startsWith('dim:')) {
+            insertBeforeDim = overId.slice(4)
+            toZone = findZone(insertBeforeDim)
+        } else {
+            if (!['rows', 'columns', 'pages', 'bench'].includes(overId)) return
+            toZone = overId
+        }
+
         const fromZone = findZone(dimName)
-        if (fromZone === toZone) return
         setAxes(prev => {
             const existing = [...prev.rows, ...prev.columns, ...prev.pages, ...bench]
                 .find(d => d.dimension === dimName) ?? { dimension: dimName, subset: null, member: null }
@@ -319,7 +364,15 @@ export default function CubeViewer({ tab }) {
                 columns: prev.columns.filter(d => d.dimension !== dimName),
                 pages:   prev.pages.filter(d => d.dimension !== dimName),
             }
-            if (toZone !== 'bench') next[toZone] = [...next[toZone], existing]
+            if (toZone === 'bench') return next
+            if (insertBeforeDim) {
+                const idx = next[toZone].findIndex(d => d.dimension === insertBeforeDim)
+                next[toZone] = idx >= 0
+                    ? [...next[toZone].slice(0, idx), existing, ...next[toZone].slice(idx)]
+                    : [...next[toZone], existing]
+            } else {
+                next[toZone] = [...next[toZone], existing]
+            }
             return next
         })
     }
@@ -422,10 +475,10 @@ export default function CubeViewer({ tab }) {
             {/* Axis builder */}
             <DndContext sensors={sensors} onDragStart={({ active }) => setActiveDrag(active.id)} onDragEnd={handleDragEnd}>
                 <div className="shrink-0 px-3 py-2 border-b border-border bg-muted/10 grid grid-cols-4 gap-2">
-                    <DropZone id="columns" label="Columns" icon={Columns3} dims={axes.columns} server={tab.server} onRemove={removeDim} onSubsetChange={setSubset} onMemberChange={setMember} accent="text-blue-400" />
-                    <DropZone id="rows"    label="Rows"    icon={Rows3}    dims={axes.rows}    server={tab.server} onRemove={removeDim} onSubsetChange={setSubset} onMemberChange={setMember} accent="text-green-400" />
-                    <DropZone id="pages"   label="Filter"  icon={Filter}   dims={axes.pages}   server={tab.server} onRemove={removeDim} onSubsetChange={setSubset} onMemberChange={setMember} accent="text-amber-400" />
-                    <DropZone id="bench"   label="Bench"   icon={LayoutGrid} dims={bench}      server={tab.server} onRemove={() => {}}  onSubsetChange={() => {}}  onMemberChange={() => {}}  accent="text-muted-foreground" />
+                    <DropZone id="columns" label="Columns" icon={Columns3} dims={axes.columns} server={tab.server} onRemove={removeDim} onSubsetChange={setSubset} onMemberChange={setMember} onReorder={(f,t) => reorderDim('columns',f,t)} accent="text-blue-400" />
+                    <DropZone id="rows"    label="Rows"    icon={Rows3}    dims={axes.rows}    server={tab.server} onRemove={removeDim} onSubsetChange={setSubset} onMemberChange={setMember} onReorder={(f,t) => reorderDim('rows',f,t)}    accent="text-green-400" />
+                    <DropZone id="pages"   label="Filter"  icon={Filter}   dims={axes.pages}   server={tab.server} onRemove={removeDim} onSubsetChange={setSubset} onMemberChange={setMember} onReorder={(f,t) => reorderDim('pages',f,t)}   accent="text-amber-400" />
+                    <DropZone id="bench"   label="Bench"   icon={LayoutGrid} dims={bench}      server={tab.server} onRemove={() => {}}  onSubsetChange={() => {}}  onMemberChange={() => {}}  onReorder={() => {}}                           accent="text-muted-foreground" />
                 </div>
                 <DragOverlay>
                     {activeDim && (
