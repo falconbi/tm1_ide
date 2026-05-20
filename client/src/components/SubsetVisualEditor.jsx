@@ -380,7 +380,10 @@ function SubsetGrid({ members, onReorder, onRemove, cols, childrenMap = {}, elem
                     Tree
                 </button>
                 <button
-                    onClick={() => setShowTotals(v => !v)}
+                    onClick={() => {
+                        if (!showTotals) { setShowTotals(true); setTreeView(false) }
+                        else             { setShowTotals(false); setTreeView(true) }
+                    }}
                     className={cn('px-1.5 py-0.5 rounded text-[10px] border transition-colors',
                         showTotals ? 'border-primary text-primary bg-primary/10' : 'border-border text-muted-foreground hover:bg-muted')}
                     title={showTotals ? 'Hide totals at bottom' : 'Show totals at bottom'}
