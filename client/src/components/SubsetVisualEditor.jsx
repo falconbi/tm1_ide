@@ -379,9 +379,12 @@ function SubsetGrid({ members, onReorder, onRemove, cols, childrenMap = {}, elem
                     className={cn('px-1.5 py-0.5 rounded text-[10px] border transition-colors', treeView ? 'border-primary text-primary bg-primary/10' : 'border-border text-muted-foreground hover:bg-muted')}>
                     Tree
                 </button>
-                <button onClick={() => { setShowTotals(v => { if (!v) setTreeView(false); return !v }) }}
-                    title={showTotals ? 'Hide totals' : 'Show consolidated at bottom'}
-                    className={cn('px-1.5 py-0.5 rounded text-[10px] border transition-colors', showTotals ? 'border-primary text-primary bg-primary/10' : 'border-border text-muted-foreground hover:bg-muted')}>
+                <button
+                    onClick={() => setShowTotals(v => !v)}
+                    className={cn('px-1.5 py-0.5 rounded text-[10px] border transition-colors',
+                        showTotals ? 'border-primary text-primary bg-primary/10' : 'border-border text-muted-foreground hover:bg-muted')}
+                    title={showTotals ? 'Hide totals at bottom' : 'Show totals at bottom'}
+                >
                     Σ
                 </button>
                 <button onClick={removeSelected} disabled={selected.size === 0}
