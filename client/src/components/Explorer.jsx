@@ -1,5 +1,6 @@
 import { useState, useRef, useMemo } from 'react'
-import { useCubes, useDims, useProcs, useChores, useSubsets, useViews, useCubeDimensions } from '@/hooks/useApi'
+import { toast } from 'sonner'
+import { useCubes, useDims, useProcs, useChores, useSubsets, useViews, useCubeDimensions, useSaveView } from '@/hooks/useApi'
 import { useStore } from '@/store'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { ChevronRight, ChevronDown, Box, Layers, Cog, Clock, Loader2, List, Plus, Table2, Code2, PencilLine, Search, X } from 'lucide-react'
@@ -36,17 +37,40 @@ function Section({ icon: Icon, label, items, isLoading, onSelect, itemIcon: Item
   )
 }
 
-function CubeSubSection({ label, loading, children }) {
+function CubeSubSection({ label, loading, children, onAdd, adding, onAddCommit, onAddCancel, addValue, onAddChange, addRef }) {
   const [open, setOpen] = useState(false)
   return (
     <div>
-      <button onClick={() => setOpen(o => !o)}
-        className="flex items-center gap-1 w-full px-9 py-0.5 text-[10px] uppercase tracking-wider text-muted-foreground/60 font-semibold hover:text-muted-foreground transition-colors">
-        {open ? <ChevronDown size={9} /> : <ChevronRight size={9} />}
-        {label}
-        {loading && <Loader2 size={9} className="ml-1 animate-spin" />}
-      </button>
+      <div className="flex items-center w-full pr-2 group">
+        <button onClick={() => setOpen(o => !o)}
+          className="flex items-center gap-1 flex-1 px-9 py-0.5 text-[10px] uppercase tracking-wider text-muted-foreground/60 font-semibold hover:text-muted-foreground transition-colors">
+          {open ? <ChevronDown size={9} /> : <ChevronRight size={9} />}
+          {label}
+          {loading && <Loader2 size={9} className="ml-1 animate-spin" />}
+        </button>
+        {onAdd && !adding && (
+          <button onClick={onAdd}
+            className="hidden group-hover:flex items-center gap-0.5 px-1 py-0.5 rounded text-[10px] text-muted-foreground hover:text-foreground hover:bg-sidebar-accent shrink-0 ml-auto transition-colors"
+            title={`New ${label.toLowerCase()}`}>
+            <Plus size={9} />
+          </button>
+        )}
+      </div>
       {open && children}
+      {adding && (
+        <div className="flex items-center gap-1 px-12 py-0.5">
+          <Table2 size={10} className="shrink-0 text-muted-foreground" />
+          <input
+            ref={addRef}
+            value={addValue}
+            onChange={onAddChange}
+            onKeyDown={e => { if (e.key === 'Enter') onAddCommit(); if (e.key === 'Escape') onAddCancel() }}
+            onBlur={onAddCommit}
+            placeholder={`${label.toLowerCase()} name\u2026`}
+            className="flex-1 text-xs bg-transparent border-b border-primary outline-none font-mono py-px"
+          />
+        </div>
+      )}
     </div>
   )
 }
@@ -137,32 +161,55 @@ function CubeRow({ server, cube, onOpenRules, onOpenView, onOpenSubset, onOpenDi
   const { data: views,    isFetching: loadingViews } = useViews(open ? server : null, open ? cube : null)
   const { data: cubeDims, isFetching: loadingDims  } = useCubeDimensions(open ? server : null, open ? cube : null)
 
+  const [addingView, setAddingView] = useState(false)
+  const [newViewName, setNewViewName] = useState('')
+  const viewInputRef = useRef(null)
+  const saveView = useSaveView()
+
+  const startAddView = () => {
+    setAddingView(true)
+    setNewViewName('')
+    setTimeout(() => viewInputRef.current?.focus(), 0)
+  }
+
+  const commitAddView = () => {
+    const name = newViewName.trim()
+    setAddingView(false)
+    setNewViewName('')
+    if (!name) return
+    const id = toast.loading(`Creating view "${name}"…`)
+    saveView.mutate(
+      { server, cube, name, mdx: `SELECT {} ON COLUMNS FROM [${cube}]` },
+      {
+        onSuccess: () => {
+          toast.success(`View "${name}" created`, { id })
+          onOpenView(cube, name)
+        },
+        onError: e => toast.error(e.message, { id }),
+      }
+    )
+  }
+
   const loading = loadingViews || loadingDims
 
   return (
     <div>
-      <button onClick={() => setOpen(o => !o)}
-        className="flex items-center w-full px-6 py-0.5 text-sm text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground group">
-        <span className="shrink-0 mr-1.5 text-muted-foreground">
+      <div className="flex items-center w-full px-6 py-0.5 text-sm text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground group">
+        <button onClick={() => setOpen(o => !o)} className="shrink-0 mr-1.5 text-muted-foreground hover:text-foreground">
           {open ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
-        </span>
-        <Box size={12} className="shrink-0 text-muted-foreground mr-2" />
-        <span className="truncate flex-1 text-left">{cube}</span>
+        </button>
+        <button onClick={() => onOpenViewer(cube)} className="flex items-center flex-1 min-w-0 text-left">
+          <Box size={12} className="shrink-0 text-muted-foreground mr-2" />
+          <span className="truncate">{cube}</span>
+        </button>
         {loading && <Loader2 size={10} className="ml-1 animate-spin text-muted-foreground shrink-0" />}
-      </button>
+      </div>
       {open && <>
-        <button onClick={() => onOpenViewer(cube)}
-          className="flex items-center gap-2 w-full px-9 py-0.5 text-xs text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground">
-          <Table2 size={10} className="shrink-0 text-blue-400" />
-          <span>Data</span>
-        </button>
-        <button onClick={() => onOpenRules(cube)}
-          className="flex items-center gap-2 w-full px-9 py-0.5 text-xs text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground">
-          <Code2 size={10} className="shrink-0 text-muted-foreground" />
-          <span>Rules</span>
-        </button>
-        <CubeSubSection label="Views" loading={loadingViews}>
-          {(views ?? []).length === 0 && !loadingViews
+        <CubeSubSection label="Views" loading={loadingViews}
+          onAdd={startAddView} adding={addingView}
+          addValue={newViewName} onAddChange={e => setNewViewName(e.target.value)}
+          addRef={viewInputRef} onAddCommit={commitAddView} onAddCancel={() => setAddingView(false)}>
+          {(views ?? []).length === 0 && !loadingViews && !addingView
             ? <p className="px-12 py-0.5 text-xs text-muted-foreground/50 italic">No views</p>
             : (views ?? []).map(v => (
                 <button key={v} onClick={() => onOpenView(cube, v)}
@@ -178,6 +225,11 @@ function CubeRow({ server, cube, onOpenRules, onOpenView, onOpenSubset, onOpenDi
             <CubeDimRow key={dim} server={server} dim={dim} onOpenSubset={onOpenSubset} onOpenDim={onOpenDim} />
           ))}
         </CubeSubSection>
+        <button onClick={() => onOpenRules(cube)}
+          className="flex items-center gap-2 w-full px-9 py-0.5 text-xs text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground">
+          <Code2 size={10} className="shrink-0 text-muted-foreground" />
+          <span>Rules</span>
+        </button>
       </>}
     </div>
   )

@@ -259,7 +259,7 @@ function PatternCard({ pattern: p, dimension, onUse }) {
 // ── Main component ────────────────────────────────────────────────────────────
 
 export default function SubsetEditor({ tab }) {
-  const { server, dark, markTabSaved, bumpSubsetVersion } = useStore()
+  const { server, dark, markTabSaved, bumpSubsetVersion, closeTab, openTab } = useStore()
   const queryClient = useQueryClient()
   const { data, isLoading } = useSubset(tab.server, tab.dimension, tab.subsetName)
   const saveSubset  = useSaveSubset()
@@ -267,7 +267,27 @@ export default function SubsetEditor({ tab }) {
   const generateMDX = useGenerateMDX()
   const { data: elements } = useElements(tab.server, tab.dimension)
 
-  const [mode, setMode]         = useState('visual')    // 'visual' | 'mdx'
+  const [mode, _setMode]        = useState('visual')    // 'visual' | 'mdx'
+  const visualDirtyRef          = useRef(false)
+  const visualMembersRef        = useRef([])
+
+  const handleModeChange = (next) => {
+    if (mode === 'visual' && next === 'mdx') {
+      if (visualMembersRef.current.length) {
+        const names = visualMembersRef.current.map(m => `[${tab.dimension}].[${tab.dimension}].[${m.name ?? m}]`)
+        setMdx(names.length ? `{${names.join(', ')}}` : '{}')
+        setDirty(true)
+        setMembers(null)
+      }
+    }
+    setMode(next)
+  }
+  const setMode = (next) => {
+    if (mode === 'visual' && next === 'mdx' && visualDirtyRef.current) {
+      if (!window.confirm('Switch to MDX mode? Unsaved changes in the visual editor will be lost.')) return
+    }
+    _setMode(next)
+  }
   const [mdx, setMdx]           = useState(null)
   const [members, setMembers]   = useState(null)
   const [dirty, setDirty]       = useState(false)
@@ -308,12 +328,17 @@ export default function SubsetEditor({ tab }) {
           monacoRef.current.editor.setModelMarkers(model, 'mdx-validate', [])
         } else {
           const d = await r.json().catch(() => ({}))
+          // Try to parse line/col from TM1 error message, e.g. "Syntax error on line 3, column 12"
+          let [sl, sc] = [1, 1]
+          const m = (d.error || '').match(/line\s+(\d+)/i)
+          if (m) sl = parseInt(m[1], 10)
+          const mc = (d.error || '').match(/column\s+(\d+)/i)
+          if (mc) sc = parseInt(mc[1], 10)
           monacoRef.current.editor.setModelMarkers(model, 'mdx-validate', [{
             severity: monacoRef.current.MarkerSeverity.Error,
             message: d.error || 'Invalid MDX',
-            startLineNumber: 1, startColumn: 1,
-            endLineNumber: editorRef.current.getModel().getLineCount(),
-            endColumn: 9999,
+            startLineNumber: sl, startColumn: sc,
+            endLineNumber: sl, endColumn: sc + 1,
           }])
         }
       } catch { /* ignore network errors during validation */ }
@@ -345,6 +370,43 @@ export default function SubsetEditor({ tab }) {
           bumpSubsetVersion(tab.server, tab.dimension)
         },
         onError:   (e) => toast.error(e.message, { id }),
+      }
+    )
+  }
+
+  const [saveAsOpen, setSaveAsOpen] = useState(false)
+  const [saveAsName, setSaveAsName] = useState('')
+  const saveAsRef = useRef(null)
+
+  const startSaveAs = () => {
+    setSaveAsOpen(true)
+    setSaveAsName('')
+    setTimeout(() => saveAsRef.current?.focus(), 0)
+  }
+
+  const commitSaveAs = () => {
+    const name = saveAsName.trim()
+    setSaveAsOpen(false)
+    setSaveAsName('')
+    if (!name || name === tab.subsetName) return
+    const id = toast.loading(`Saving as "${name}"…`)
+    saveSubset.mutate(
+      { server: tab.server, dimension: tab.dimension, name, mdx },
+      {
+        onSuccess: () => {
+          toast.success(`Saved as "${name}"`, { id })
+          bumpSubsetVersion(tab.server, tab.dimension)
+          closeTab(tab.id)
+          openTab({
+            id:         `subset:${tab.server}:${tab.dimension}:${name}`,
+            type:       'subset',
+            label:      name,
+            server:     tab.server,
+            dimension:  tab.dimension,
+            subsetName: name,
+          })
+        },
+        onError: e => toast.error(e.message, { id }),
       }
     )
   }
@@ -398,18 +460,22 @@ Member reference: [${tab.dimension}].[${tab.dimension}].[MemberName]`
   const handleInsertFunction = useCallback((fn) => {
     const editor = editorRef.current
     if (!editor) return
-    // Replace placeholders with actual dimension name
+    // Replace the first tab-stop (${1:Dim}) with the actual dimension name
+    // so the user only has to fill in higher tab-stops interactively
     const snippet = fn.template.replaceAll('${1:Dim}', tab.dimension).replaceAll('${1:dim}', tab.dimension)
-    const sel = editor.getSelection()
-    editor.executeEdits('insert-fn', [{ range: sel, text: snippet, forceMoveMarkers: true }])
     editor.focus()
+    editor.getContribution('snippetController2')?.insert(snippet)
   }, [tab.dimension])
 
   const handleMount = (editor, monaco) => {
     editorRef.current  = editor
     monacoRef.current  = monaco
 
-    // Fix paste
+    // Override paste to prevent Monaco from stripping whitespace on paste.
+    // Without this, Monaco normalises pasted multi-line MDX (e.g. FILTER with
+    // line-breaks) into collapsed single lines. The native paste handler is
+    // cancelled and text is injected via executeEdits which preserves the
+    // original formatting.
     editor.getDomNode()?.addEventListener('paste', (e) => {
       const text = e.clipboardData?.getData('text/plain')
       if (!text) return
@@ -444,7 +510,7 @@ Member reference: [${tab.dimension}].[${tab.dimension}].[MemberName]`
           {[{ id: 'visual', label: 'Visual' }, { id: 'mdx', label: 'MDX' }].map(t => (
             <button
               key={t.id}
-              onClick={() => setMode(t.id)}
+              onClick={() => handleModeChange(t.id)}
               className={cn(
                 'px-3 py-0.5 text-xs rounded transition-colors',
                 mode === t.id
@@ -466,6 +532,8 @@ Member reference: [${tab.dimension}].[${tab.dimension}].[MemberName]`
         <SubsetVisualEditor
           tab={tab}
           onMdxConvert={handleMdxConvert}
+          onVisualDirty={v => { visualDirtyRef.current = v }}
+          onVisualMembersChange={m => { visualMembersRef.current = m }}
         />
       )}
 
@@ -484,13 +552,36 @@ Member reference: [${tab.dimension}].[${tab.dimension}].[MemberName]`
             {previewMDX.isPending ? <Loader2 size={11} className="animate-spin" /> : <Play size={11} />}
             Execute
           </button>
-          <button
-            onClick={handleSave}
-            disabled={!dirty || saveSubset.isPending}
-            className="px-3 py-1 text-xs rounded bg-primary text-primary-foreground disabled:opacity-40 hover:opacity-90 transition-opacity"
-          >
-            {saveSubset.isPending ? 'Saving…' : 'Save'}
-          </button>
+          {saveAsOpen ? (
+            <div className="flex items-center gap-1">
+              <input
+                ref={saveAsRef}
+                value={saveAsName}
+                onChange={e => setSaveAsName(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') commitSaveAs(); if (e.key === 'Escape') setSaveAsOpen(false) }}
+                onBlur={commitSaveAs}
+                placeholder="New name…"
+                className="w-28 text-xs bg-background border border-border rounded px-1.5 py-1 outline-none font-mono"
+              />
+            </div>
+          ) : (
+            <>
+              <button
+                onClick={startSaveAs}
+                disabled={!mdx?.trim()}
+                className="px-2 py-1 text-xs rounded border border-border text-muted-foreground hover:bg-muted disabled:opacity-40 transition-colors"
+              >
+                Save As
+              </button>
+              <button
+                onClick={handleSave}
+                disabled={!dirty || saveSubset.isPending}
+                className="px-3 py-1 text-xs rounded bg-primary text-primary-foreground disabled:opacity-40 hover:opacity-90 transition-opacity"
+              >
+                {saveSubset.isPending ? 'Saving…' : 'Save'}
+              </button>
+            </>
+          )}
         </div>
       </div>
 

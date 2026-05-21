@@ -2,113 +2,20 @@
   "server": "24retail",
   "tabs": [
     {
-      "id": "dim:24retail:Exchange Rate Type",
-      "type": "dimension",
-      "label": "Exchange Rate Type",
-      "server": "24retail",
-      "dimension": "Exchange Rate Type"
-    },
-    {
-      "id": "dim:24retail:Month",
-      "type": "dimension",
-      "label": "Month",
-      "server": "24retail",
-      "dimension": "Month",
-      "scrollToLine": null,
-      "scrollToSection": null
-    },
-    {
-      "id": "dim:24retail:Year",
-      "type": "dimension",
-      "label": "Year",
-      "server": "24retail",
-      "dimension": "Year",
-      "scrollToLine": null,
-      "scrollToSection": null
-    },
-    {
-      "id": "dim:24retail:Asset Types",
-      "type": "dimension",
-      "label": "Asset Types",
-      "server": "24retail",
-      "dimension": "Asset Types"
-    },
-    {
-      "id": "dim:24retail:Asset Life",
-      "type": "dimension",
-      "label": "Asset Life",
-      "server": "24retail",
-      "dimension": "Asset Life"
-    },
-    {
-      "id": "dim:24retail:Employee",
-      "type": "dimension",
-      "label": "Employee",
-      "server": "24retail",
-      "dimension": "Employee",
-      "scrollToLine": null,
-      "scrollToSection": null
-    },
-    {
-      "id": "cubeview:24retail:Allocation Source Definition:Allocation Source Definition",
-      "type": "cubeview",
-      "label": "⊞ Allocation Source Definition / Allocation Source Definition",
-      "server": "24retail",
-      "cube": "Allocation Source Definition",
-      "viewName": "Allocation Source Definition"
-    },
-    {
-      "id": "dim:24retail:Benefit",
-      "type": "dimension",
-      "label": "Benefit",
-      "server": "24retail",
-      "dimension": "Benefit"
-    },
-    {
-      "id": "dim:24retail:jobcode",
-      "type": "dimension",
-      "label": "jobcode",
-      "server": "24retail",
-      "dimension": "jobcode"
-    },
-    {
-      "id": "subset:24retail:Account:Commentary",
-      "type": "subset",
-      "label": "Commentary",
-      "server": "24retail",
-      "dimension": "Account",
-      "subsetName": "Commentary"
-    },
-    {
       "id": "dim:24retail:Account",
       "type": "dimension",
       "label": "Account",
       "server": "24retail",
-      "dimension": "Account",
-      "scrollToLine": null,
-      "scrollToSection": null
+      "dimension": "Account"
     },
     {
-      "id": "dim:24retail:Channel",
-      "type": "dimension",
-      "label": "Channel",
+      "id": "rules:24retail:Allocation Calculation",
+      "type": "rules",
+      "label": "Allocation Calculation",
       "server": "24retail",
-      "dimension": "Channel"
-    },
-    {
-      "id": "dim:24retail:Account Reporting",
-      "type": "dimension",
-      "label": "Account Reporting",
-      "server": "24retail",
-      "dimension": "Account Reporting"
-    },
-    {
-      "id": "dim:24retail:Version",
-      "type": "dimension",
-      "label": "Version",
-      "server": "24retail",
-      "dimension": "Version"
+      "cube": "Allocation Calculation",
+      "content": null
     }
   ],
-  "activeTab": "dim:24retail:Version"
+  "activeTab": "rules:24retail:Allocation Calculation"
 }

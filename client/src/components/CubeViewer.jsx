@@ -5,7 +5,7 @@ import { DndContext, DragOverlay, PointerSensor, useSensor, useSensors, useDropp
 import { useStore } from '@/store'
 import { useCubeDimensions, useSubsets, useSubsetElements, useViews, useExecuteMDX, useViewAxes } from '@/hooks/useApi'
 import { toast } from 'sonner'
-import { Play, Loader2, Table2, GripVertical, X, LayoutGrid, Rows3, Columns3, Filter, ZapOff, Zap, ChevronLeft, ChevronRight } from 'lucide-react'
+import { RefreshCw, Loader2, Table2, GripVertical, X, LayoutGrid, Rows3, Columns3, Filter, ZapOff, Zap, ChevronLeft, ChevronRight, PencilLine } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 ModuleRegistry.registerModules([AllCommunityModule])
@@ -119,7 +119,7 @@ function buildGridData(parsed) {
 
 // ── Subset/member popover ─────────────────────────────────────────────────────
 
-function SubsetPopover({ server, dim, zone, subsets, onSubsetSelect, onMemberSelect, onClose }) {
+function SubsetPopover({ server, dim, zone, subsets, onSubsetSelect, onMemberSelect, onEditSubset, onClose }) {
     const [pickedSubset, setPickedSubset] = useState(dim.subset ?? '')
     const { data: elements = [], isLoading } = useSubsetElements(
         zone === 'pages' && pickedSubset ? server : null,
@@ -143,11 +143,18 @@ function SubsetPopover({ server, dim, zone, subsets, onSubsetSelect, onMemberSel
                 All Members
             </button>
             {subsets.map(s => (
-                <button key={s.Name} onClick={() => handleSubset(s.Name)}
-                    className={cn('flex w-full px-3 py-1 hover:bg-muted text-left font-mono truncate',
-                        pickedSubset === s.Name && 'text-primary font-medium')}>
-                    {s.Name}
-                </button>
+                <div key={s.Name} className="flex items-center group">
+                    <button onClick={() => handleSubset(s.Name)}
+                        className={cn('flex-1 px-3 py-1 hover:bg-muted text-left font-mono truncate',
+                            pickedSubset === s.Name && 'text-primary font-medium')}>
+                        {s.Name}
+                    </button>
+                    <button onClick={(e) => { e.stopPropagation(); onEditSubset?.(dim.dimension, s.Name) }}
+                        className="opacity-0 group-hover:opacity-100 px-1 py-1 text-muted-foreground hover:text-foreground shrink-0 transition-opacity"
+                        title={`Edit "${s.Name}"`}>
+                        <PencilLine size={10} />
+                    </button>
+                </div>
             ))}
 
             {zone === 'pages' && pickedSubset && (
@@ -179,6 +186,19 @@ function DimPill({ id, dim, zone, server, onRemove, onSubsetChange, onMemberChan
     const { data: subsets = [] } = useSubsets(server, dim.dimension)
     const [open, setOpen] = useState(false)
     const ref = useRef(null)
+    const openTab = useStore(s => s.openTab)
+
+    const onEditSubset = (dimName, subsetName) => {
+        setOpen(false)
+        openTab({
+            id:         `subset:${server}:${dimName}:${subsetName}`,
+            type:       'subset',
+            label:      subsetName,
+            server,
+            dimension:  dimName,
+            subsetName,
+        })
+    }
 
     useEffect(() => {
         if (!open) return
@@ -187,9 +207,7 @@ function DimPill({ id, dim, zone, server, onRemove, onSubsetChange, onMemberChan
         return () => document.removeEventListener('mousedown', handler)
     }, [open])
 
-    const label = dim.subset
-        ? `${dim.subset}${dim.member ? ` › ${dim.member}` : ''}`
-        : null
+    const label = dim.member ?? dim.subset ?? (zone === 'bench' ? null : 'Members')
 
     return (
         <div ref={ref} className="relative">
@@ -245,6 +263,7 @@ function DimPill({ id, dim, zone, server, onRemove, onSubsetChange, onMemberChan
                     server={server} dim={dim} zone={zone} subsets={subsets}
                     onSubsetSelect={name => onSubsetChange(dim.dimension, name)}
                     onMemberSelect={name => onMemberChange(dim.dimension, name)}
+                    onEditSubset={onEditSubset}
                     onClose={() => setOpen(false)}
                 />
             )}
@@ -297,6 +316,7 @@ export default function CubeViewer({ tab }) {
     const [activeDrag, setActiveDrag] = useState(null)
 
     const viewLoaded = useRef(false)
+    const defaultExecuted = useRef(false)
 
     // Default layout for plain cube open (no saved view)
     useEffect(() => {
@@ -307,7 +327,16 @@ export default function CubeViewer({ tab }) {
             rows:    cubeDims.slice(1, 2).map(make),
             pages:   [],
         })
+        defaultExecuted.current = false  // axes will change, re-enable auto-execute
     }, [cubeDims])
+
+    // Auto-execute once after default layout settles
+    useEffect(() => {
+        if (tab.viewName || defaultExecuted.current) return
+        if (!axes.rows.length && !axes.columns.length) return
+        defaultExecuted.current = true
+        handleExecute()
+    }, [axes])
 
     // Auto-load saved view once cubeDims are ready
     useEffect(() => {
@@ -460,15 +489,15 @@ export default function CubeViewer({ tab }) {
                 )}
                 <div className="flex-1" />
                 <button onClick={() => setSuppressZeros(v => !v)}
-                    className={cn('flex items-center gap-1 px-2 py-1 text-xs rounded border transition-colors',
-                        suppressZeros ? 'border-primary text-primary bg-primary/10' : 'border-border text-muted-foreground hover:bg-muted')}>
-                    {suppressZeros ? <Zap size={11} /> : <ZapOff size={11} />}
-                    {suppressZeros ? 'NON EMPTY' : 'All Cells'}
+                    title={suppressZeros ? 'Zero suppression on' : 'Zero suppression off'}
+                    className={cn('flex items-center justify-center p-1.5 rounded border border-border transition-colors',
+                        suppressZeros ? 'text-primary bg-primary/10' : 'text-muted-foreground hover:bg-muted')}>
+                    {suppressZeros ? <Zap size={12} /> : <ZapOff size={12} />}
                 </button>
                 <button onClick={handleExecute} disabled={executeMDX.isPending || loadViewAxes.isPending}
-                    className="flex items-center gap-1 px-3 py-1 text-xs rounded bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors">
-                    {executeMDX.isPending ? <Loader2 size={11} className="animate-spin" /> : <Play size={11} />}
-                    Execute
+                    title="Refresh"
+                    className="flex items-center justify-center p-1.5 rounded border border-border text-muted-foreground hover:bg-muted disabled:opacity-50 transition-colors">
+                    {executeMDX.isPending ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
                 </button>
             </div>
 
@@ -494,7 +523,7 @@ export default function CubeViewer({ tab }) {
                 <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm select-none">
                     <div className="text-center">
                         <Table2 size={32} className="mx-auto mb-2 opacity-30" />
-                        <p>Arrange dimensions then press Execute</p>
+                        <p>Arrange dimensions then press Refresh</p>
                     </div>
                 </div>
             ) : !parsed || parsed.grid.length === 0 ? (

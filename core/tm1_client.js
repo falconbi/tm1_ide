@@ -421,12 +421,13 @@ class TM1Client {
     }
 
     async saveView(cube, name, mdx) {
+        const esc = s => s.replace(/'/g, "''")
         const body = { '@odata.type': '#ibm.tm1.api.v1.MDXView', Name: name, MDX: mdx }
         try {
-            await this.patch(`Cubes('${cube}')/Views('${name}')`, body)
+            await this.patch(`Cubes('${esc(cube)}')/Views('${esc(name)}')`, body)
         } catch (e) {
             if (e.response?.status === 404) {
-                await this.post(`Cubes('${cube}')/Views`, body)
+                await this.post(`Cubes('${esc(cube)}')/Views`, body)
             } else throw e
         }
     }
@@ -450,7 +451,8 @@ class TM1Client {
     }
 
     async executeView(cube, view) {
-        const { ID } = await this.post(`Cubes('${cube}')/Views('${view}')/tm1.Execute`, {})
+        const viewDef  = await this.get(`Cubes('${cube}')/Views('${view}')`)
+        const { ID }   = await this.post(`Cubes('${cube}')/Views('${view}')/tm1.Execute`, {})
         const s = await this._session()
         const h = await this._headers()
         const [axisRes, cellRes] = await Promise.all([
@@ -464,7 +466,11 @@ class TM1Client {
             }),
         ])
         try { await this.delete(`Cellsets('${ID}')`) } catch {}
-        return { Axes: axisRes.data.value, Cells: cellRes.data.value }
+        return {
+            Axes: axisRes.data.value,
+            Cells: cellRes.data.value,
+            ViewType: viewDef?.['@odata.type'] ?? null,
+        }
     }
 }
 

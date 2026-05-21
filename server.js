@@ -564,7 +564,7 @@ app.get('/api/view/axes', async (req, res) => {
                 ? (ax.Tuples?.[0]?.Members ?? []).map(m => ({ dimension: parseDim(m.UniqueName), member: m.Name }))
                 : [],
         }))
-        res.json({ axisConfig, cellset: data })
+        res.json({ axisConfig, cellset: data, viewType: data.ViewType })
     } catch (e) {
         const detail = e.response?.data?.error?.message ?? e.response?.data ?? e.message
         res.status(500).json({ error: typeof detail === 'string' ? detail : JSON.stringify(detail) })

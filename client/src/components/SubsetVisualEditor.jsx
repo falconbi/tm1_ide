@@ -50,7 +50,19 @@ function ColConfig({ cols, onChange, onClose, attributes = [] }) {
         <div className="absolute right-0 top-7 z-20 bg-popover border border-border rounded shadow-lg p-3 w-52 max-h-80 overflow-auto">
             <div className="flex items-center justify-between mb-2">
                 <span className="text-xs font-semibold">Columns</span>
-                <button onClick={onClose}><X size={12} /></button>
+                <div className="flex items-center gap-1">
+                    <button onClick={() => {
+                        const all = { type: true, level: true, parent: true }
+                        attributes.forEach(a => { all[`attr_${a.name}`] = true })
+                        onChange(all)
+                    }} className="text-[10px] text-muted-foreground hover:text-foreground px-1 py-0.5 rounded hover:bg-muted transition-colors">All</button>
+                    <button onClick={() => {
+                        const none = { type: false, level: false, parent: false }
+                        attributes.forEach(a => { none[`attr_${a.name}`] = false })
+                        onChange(none)
+                    }} className="text-[10px] text-muted-foreground hover:text-foreground px-1 py-0.5 rounded hover:bg-muted transition-colors">None</button>
+                    <button onClick={onClose}><X size={12} /></button>
+                </div>
             </div>
             <p className="text-[9px] uppercase tracking-wider text-muted-foreground/60 font-semibold mb-1">Element Info</p>
             {[['type', 'Type'], ['level', 'Level'], ['parent', 'Parent']].map(([k, label]) => (
@@ -76,12 +88,14 @@ function ColConfig({ cols, onChange, onClose, attributes = [] }) {
 
 // ── Left panel: dimension browser ─────────────────────────────────────────────
 
-function DimensionBrowser({ server, dim, onKeep, subsets = [], sourceFilter }) {
+function DimensionBrowser({ server, dim, onKeep, subsets = [], cols, attributes, onColsChange }) {
     const { data: elements = [], isLoading: loadingEl } = useElements(server, dim)
     const { data: edges = [],    isLoading: loadingEd } = useEdges(server, dim)
     const [search, setSearch]         = useState('')
     const [expanded, setExpanded]     = useState(new Set())
     const [selected, setSelected]     = useState(new Set())
+    const [showColsPopup, setShowColsPopup] = useState(false)
+    const colsPopupRef = useRef(null)
     const lastClickRef                = useRef(null)
 
     const { elementMap, childrenMap, parentMap, roots } = useMemo(
@@ -93,14 +107,22 @@ function DimensionBrowser({ server, dim, onKeep, subsets = [], sourceFilter }) {
         if (search.trim()) {
             const q = search.toLowerCase()
             return elements
-                .filter(e => e.Name.toLowerCase().includes(q) && (!sourceFilter || sourceFilter.has(e.Name)))
+                .filter(e => e.Name.toLowerCase().includes(q))
                 .map(e => ({ ...e, depth: 0, hasChildren: false, parent: parentMap[e.Name] ?? '' }))
         }
-        const rows = flattenTree(roots, childrenMap, elementMap, expanded, parentMap)
-        return sourceFilter ? rows.filter(r => sourceFilter.has(r.Name)) : rows
-    }, [search, elements, roots, childrenMap, elementMap, expanded, parentMap, sourceFilter])
+        return flattenTree(roots, childrenMap, elementMap, expanded, parentMap)
+    }, [search, elements, roots, childrenMap, elementMap, expanded, parentMap])
 
     const toggle = (name) => setExpanded(s => { const n = new Set(s); n.has(name) ? n.delete(name) : n.add(name); return n })
+
+    useEffect(() => {
+        if (!showColsPopup) return
+        const handler = e => { if (colsPopupRef.current && !colsPopupRef.current.contains(e.target)) setShowColsPopup(false) }
+        document.addEventListener('mousedown', handler)
+        return () => document.removeEventListener('mousedown', handler)
+    }, [showColsPopup])
+
+    const activeAttrs = useMemo(() => attributes.filter(a => cols[`attr_${a.name}`]), [attributes, cols])
 
     const selectRow = (name, e) => {
         if (e.shiftKey && lastClickRef.current) {
@@ -116,8 +138,18 @@ function DimensionBrowser({ server, dim, onKeep, subsets = [], sourceFilter }) {
         lastClickRef.current = name
     }
 
-    const addLeaf   = () => onKeep(elements.filter(e => e.Type === 'N'))
-    const addConsol = () => onKeep(elements.filter(e => e.Type === 'C'))
+    const BATCH_LIMIT = 5000
+    const addWithLimit = (label, els) => {
+        if (els.length > BATCH_LIMIT) {
+            const confirmed = window.confirm(
+                `Add all ${els.length.toLocaleString()} ${label} members?\nThis may be slow for large selections.`
+            )
+            if (!confirmed) return
+        }
+        onKeep(els)
+    }
+    const addLeaf   = () => addWithLimit('leaf', elements.filter(e => e.Type === 'N'))
+    const addConsol = () => addWithLimit('consolidated', elements.filter(e => e.Type === 'C'))
     const keepSelected = () => {
         const els = [...selected].map(n => elementMap[n]).filter(Boolean)
         onKeep(els)
@@ -162,10 +194,29 @@ function DimensionBrowser({ server, dim, onKeep, subsets = [], sourceFilter }) {
                             + {l}
                         </button>
                     ))}
+                    <div className="flex-1" />
+                    <div ref={colsPopupRef} className="relative">
+                        <button onClick={() => setShowColsPopup(s => !s)}
+                            className={cn('px-1.5 py-0.5 text-[10px] rounded border transition-colors',
+                                showColsPopup ? 'border-primary text-primary bg-primary/10' : 'border-border text-muted-foreground hover:bg-muted')}>
+                            Cols
+                        </button>
+                        {showColsPopup && (
+                            <ColConfig cols={cols} onChange={onColsChange} onClose={() => setShowColsPopup(false)} attributes={attributes} />
+                        )}
+                    </div>
                 </div>
             </div>
 
-            <div className="flex-1 overflow-auto text-xs">
+                    <div className="flex-1 overflow-auto text-xs">
+                <div className="flex items-center gap-1 px-2 py-0.5 border-b border-border bg-muted/50 sticky top-0 text-[10px] text-muted-foreground font-medium">
+                    <span className="w-3 shrink-0" />
+                    <span className="w-4 shrink-0" />
+                    <span className="flex-1">Name</span>
+                    {cols.level  && <span className="w-10 shrink-0">Lvl</span>}
+                    {cols.parent && <span className="w-24 shrink-0 truncate">Parent</span>}
+                    {activeAttrs.map(a => <span key={a.name} className="w-24 shrink-0 truncate">{a.name}</span>)}
+                </div>
                 {loading && <div className="flex items-center justify-center p-4"><Loader2 size={14} className="animate-spin text-muted-foreground" /></div>}
                 {visibleRows.map(row => (
                     <div
@@ -173,18 +224,22 @@ function DimensionBrowser({ server, dim, onKeep, subsets = [], sourceFilter }) {
                         onClick={e => selectRow(row.Name, e)}
                         style={{ paddingLeft: `${8 + row.depth * 14}px` }}
                         className={cn(
-                            'flex items-center gap-1 py-0.5 pr-2 cursor-pointer select-none',
+                            'flex items-center gap-1 pr-2 py-0.5 border-b border-border/30 select-none text-xs cursor-pointer',
                             selected.has(row.Name) ? 'bg-primary/20 text-primary' : 'hover:bg-muted'
                         )}
                     >
-                        {row.hasChildren
-                            ? <button onClick={e => { e.stopPropagation(); toggle(row.Name) }} className="shrink-0 text-muted-foreground">
-                                {expanded.has(row.Name) ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
-                              </button>
-                            : <span className="w-3 shrink-0" />
-                        }
-                        <span className={cn('shrink-0 text-[10px]', TYPE_COLOR[row.Type])}>{TYPE_ICON[row.Type]}</span>
-                        <span className="truncate">{row.Name}</span>
+                        <span className="w-3 shrink-0 text-muted-foreground">
+                            {row.hasChildren
+                                ? <button onClick={e => { e.stopPropagation(); toggle(row.Name) }}>
+                                    {expanded.has(row.Name) ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
+                                  </button>
+                                : null}
+                        </span>
+                        {cols.type && <span className={cn('w-4 shrink-0 text-[10px]', TYPE_COLOR[row.Type])}>{TYPE_ICON[row.Type]}</span>}
+                        <span className="flex-1 truncate font-mono">{row.Name}</span>
+                        {cols.level  && <span className="w-10 shrink-0 text-muted-foreground">{row.Level}</span>}
+                        {cols.parent && <span className="w-24 shrink-0 truncate text-muted-foreground">{row.parent ?? ''}</span>}
+                        {activeAttrs.map(a => <span key={a.name} className="w-24 shrink-0 truncate text-muted-foreground">{''}</span>)}
                     </div>
                 ))}
             </div>
@@ -264,8 +319,20 @@ function SubsetGrid({ members, onReorder, onRemove, onAdd, cols, childrenMap = {
         const n = new Set(s); n.has(name) ? n.delete(name) : n.add(name); return n
     })
 
-    const memberSet = useMemo(() => new Set(members.map(m => m.name)), [members])
-    const memberMap = useMemo(() => Object.fromEntries(members.map(m => [m.name, m])), [members])
+    const memberSet  = useMemo(() => new Set(members.map(m => m.name)), [members])
+    const memberMap  = useMemo(() => Object.fromEntries(members.map(m => [m.name, m])), [members])
+
+    const canMoveUp = useMemo(() => {
+        if (selected.size === 0) return false
+        const indices = members.map((m, i) => selected.has(m.name) ? i : -1).filter(i => i >= 0).sort((a, b) => a - b)
+        return indices[0] > 0
+    }, [members, selected])
+
+    const canMoveDown = useMemo(() => {
+        if (selected.size === 0) return false
+        const indices = members.map((m, i) => selected.has(m.name) ? i : -1).filter(i => i >= 0).sort((a, b) => b - a)
+        return indices[0] < members.length - 1
+    }, [members, selected])
 
     const sortTotalsLast = (list) => {
         if (!showTotals) return list
@@ -333,6 +400,8 @@ function SubsetGrid({ members, onReorder, onRemove, onAdd, cols, childrenMap = {
     }
 
     const keepSelected = () => {
+        const removeCount = members.length - selected.size
+        if (removeCount > 0 && !window.confirm(`Remove ${removeCount} unselected member${removeCount === 1 ? '' : 's'}?`)) return
         onRemove(members.filter(m => !selected.has(m.name)).map(m => m.name))
     }
 
@@ -362,12 +431,14 @@ function SubsetGrid({ members, onReorder, onRemove, onAdd, cols, childrenMap = {
                         className="flex-1 bg-transparent outline-none placeholder:text-muted-foreground/50 min-w-0" />
                     {search && <button onClick={() => setSearch('')}><X size={10} /></button>}
                 </div>
-                <button onClick={moveUp} disabled={selected.size === 0}
-                    className="p-1 rounded hover:bg-muted disabled:opacity-30 transition-colors">
+                <button onClick={moveUp} disabled={!canMoveUp}
+                    className="p-1 rounded hover:bg-muted disabled:opacity-30 transition-colors"
+                    title={canMoveUp ? 'Move up' : 'Already at top'}>
                     <ArrowUp size={12} />
                 </button>
-                <button onClick={moveDown} disabled={selected.size === 0}
-                    className="p-1 rounded hover:bg-muted disabled:opacity-30 transition-colors">
+                <button onClick={moveDown} disabled={!canMoveDown}
+                    className="p-1 rounded hover:bg-muted disabled:opacity-30 transition-colors"
+                    title={canMoveDown ? 'Move down' : 'Already at bottom'}>
                     <ArrowDown size={12} />
                 </button>
                 <button onClick={keepSelected} disabled={selected.size === 0}
@@ -481,8 +552,8 @@ function SubsetGrid({ members, onReorder, onRemove, onAdd, cols, childrenMap = {
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-export default function SubsetVisualEditor({ tab, onMdxConvert }) {
-    const { bumpSubsetVersion } = useStore()
+export default function SubsetVisualEditor({ tab, onMdxConvert, onVisualDirty, onVisualMembersChange }) {
+    const { bumpSubsetVersion, markTabSaved, closeTab, openTab } = useStore()
     const saveStatic = useSaveStaticSubset()
 
     const { data: allElements = [] } = useElements(tab.server, tab.dimension)
@@ -495,17 +566,16 @@ export default function SubsetVisualEditor({ tab, onMdxConvert }) {
         [allElements, allEdges]
     )
 
-    const { data: existingElements, isLoading: loadingExisting } = useSubsetElements(
-        tab.server, tab.dimension, tab.subsetName
-    )
+    const { data: existingElements, isLoading: loadingExisting, isError, error } =
+        useSubsetElements(tab.server, tab.dimension, tab.subsetName)
 
     const [members, setMembers]             = useState(null)
-    const [dirty, setDirty]                 = useState(false)
+    const [dirty, _setDirty]        = useState(false)
+    const setDirty = (v) => { _setDirty(v); onVisualDirty?.(v) }
     const [showCols, setShowCols]           = useState(false)
     const [leftCollapsed, setLeftCollapsed] = useState(false)
-    const [cols, setCols] = useState(() => {
-        try { return JSON.parse(localStorage.getItem(`tm1-cols-${tab.dimension}`)) || DEFAULT_COLS } catch { return DEFAULT_COLS }
-    })
+    const [tgtCols, setTgtCols] = useState(DEFAULT_COLS)
+    const [srcCols, setSrcCols] = useState(DEFAULT_COLS)
 
     useEffect(() => {
         if (existingElements && members === null) setMembers(existingElements)
@@ -515,7 +585,12 @@ export default function SubsetVisualEditor({ tab, onMdxConvert }) {
         if (!loadingExisting && members === null) setMembers([])
     }, [loadingExisting])
 
-    const saveCols = (c) => { setCols(c); localStorage.setItem(`tm1-cols-${tab.dimension}`, JSON.stringify(c)) }
+    useEffect(() => {
+        onVisualMembersChange?.(members ?? [])
+    }, [members, onVisualMembersChange])
+
+    const saveTgtCols = (c) => { setTgtCols(c); localStorage.setItem(`tm1-cols-${tab.dimension}-tgt`, JSON.stringify(c)) }
+    const saveSrcCols = (c) => { setSrcCols(c); localStorage.setItem(`tm1-cols-${tab.dimension}-src`, JSON.stringify(c)) }
 
     const handleKeep = useCallback((els) => {
         setMembers(prev => {
@@ -551,12 +626,54 @@ export default function SubsetVisualEditor({ tab, onMdxConvert }) {
     }
 
     const handleSaveStatic = () => {
-        const id = toast.loading('Saving static subset…')
+        const id = toast.loading('Saving static subset\u2026')
         saveStatic.mutate(
             { server: tab.server, dimension: tab.dimension, name: tab.subsetName, elements: (members ?? []).map(m => m.name) },
             {
-                onSuccess: () => { setDirty(false); toast.success('Saved as static subset', { id }); bumpSubsetVersion(tab.server, tab.dimension) },
+                onSuccess: () => {
+                    setDirty(false)
+                    markTabSaved(tab.id)
+                    toast.success('Saved as static subset', { id })
+                    bumpSubsetVersion(tab.server, tab.dimension)
+                },
                 onError:   (e) => toast.error(e.message, { id }),
+            }
+        )
+    }
+
+    const [saveAsOpen, setSaveAsOpen] = useState(false)
+    const [saveAsName, setSaveAsName] = useState('')
+    const saveAsRef = useRef(null)
+
+    const startSaveAs = () => {
+        setSaveAsOpen(true)
+        setSaveAsName('')
+        setTimeout(() => saveAsRef.current?.focus(), 0)
+    }
+
+    const commitSaveAs = () => {
+        const name = saveAsName.trim()
+        setSaveAsOpen(false)
+        setSaveAsName('')
+        if (!name || name === tab.subsetName) return
+        const id = toast.loading(`Saving as "${name}"\u2026`)
+        saveStatic.mutate(
+            { server: tab.server, dimension: tab.dimension, name, elements: (members ?? []).map(m => m.name) },
+            {
+                onSuccess: () => {
+                    toast.success(`Saved as "${name}"`, { id })
+                    bumpSubsetVersion(tab.server, tab.dimension)
+                    closeTab(tab.id)
+                    openTab({
+                        id: `subset:${tab.server}:${tab.dimension}:${name}`,
+                        type: 'subset',
+                        label: name,
+                        server: tab.server,
+                        dimension: tab.dimension,
+                        subsetName: name,
+                    })
+                },
+                onError: e => toast.error(e.message, { id }),
             }
         )
     }
@@ -564,6 +681,16 @@ export default function SubsetVisualEditor({ tab, onMdxConvert }) {
     const handleConvertMDX = () => {
         const names = (members ?? []).map(m => `[${tab.dimension}].[${tab.dimension}].[${m.name}]`)
         onMdxConvert(names.length ? `{${names.join(', ')}}` : '{}')
+    }
+
+    if (isError && !loadingExisting && members === null) {
+        return (
+            <div className="flex-1 flex flex-col items-center justify-center gap-2 p-6 text-xs">
+                <span className="text-red-400 font-semibold">Failed to load subset</span>
+                <span className="text-muted-foreground text-center max-w-md">{error?.message ?? 'Unknown error'}</span>
+                <span className="text-muted-foreground/60">Check the server connection and try again.</span>
+            </div>
+        )
     }
 
     if (members === null) {
@@ -586,20 +713,36 @@ export default function SubsetVisualEditor({ tab, onMdxConvert }) {
                 <div className="flex-1" />
                 <div className="relative">
                     <button onClick={() => setShowCols(s => !s)}
-                        className="flex items-center gap-1 px-2 py-1 text-xs rounded border border-border hover:bg-muted transition-colors">
-                        <Settings2 size={11} /> Columns
+                        className={cn('px-2 py-1 text-xs rounded border transition-colors',
+                            showCols ? 'border-primary text-primary bg-primary/10' : 'border-border hover:bg-muted')}>
+                        Cols
                     </button>
-                    {showCols && <ColConfig cols={cols} onChange={saveCols} onClose={() => setShowCols(false)} attributes={attributes} />}
+                    {showCols && <ColConfig cols={tgtCols} onChange={saveTgtCols} onClose={() => setShowCols(false)} attributes={attributes} />}
                 </div>
-                <button onClick={handleConvertMDX}
-                    className="flex items-center gap-1 px-2 py-1 text-xs rounded border border-border hover:bg-muted transition-colors">
-                    → MDX
-                </button>
-                <button onClick={handleSaveStatic} disabled={!dirty || saveStatic.isPending}
-                    className="flex items-center gap-1 px-3 py-1 text-xs rounded bg-primary text-primary-foreground disabled:opacity-40 hover:opacity-90 transition-opacity">
-                    {saveStatic.isPending ? <Loader2 size={11} className="animate-spin" /> : null}
-                    Save
-                </button>
+                {saveAsOpen ? (
+                    <input
+                        ref={saveAsRef}
+                        value={saveAsName}
+                        onChange={e => setSaveAsName(e.target.value)}
+                        onKeyDown={e => { if (e.key === 'Enter') commitSaveAs(); if (e.key === 'Escape') setSaveAsOpen(false) }}
+                        onBlur={commitSaveAs}
+                        placeholder="New name\u2026"
+                        className="w-28 text-xs bg-background border border-border rounded px-1.5 py-1 outline-none font-mono"
+                    />
+                ) : (
+                    <>
+                        <button onClick={startSaveAs}
+                            disabled={!(members ?? []).length}
+                            className="px-2 py-1 text-xs rounded border border-border text-muted-foreground hover:bg-muted disabled:opacity-40 transition-colors">
+                            Save As
+                        </button>
+                        <button onClick={handleSaveStatic} disabled={!dirty || saveStatic.isPending}
+                            className="flex items-center gap-1 px-3 py-1 text-xs rounded bg-primary text-primary-foreground disabled:opacity-40 hover:opacity-90 transition-opacity">
+                            {saveStatic.isPending ? <Loader2 size={11} className="animate-spin" /> : null}
+                            Save
+                        </button>
+                    </>
+                )}
             </div>
 
             {/* Two-panel layout */}
@@ -611,6 +754,9 @@ export default function SubsetVisualEditor({ tab, onMdxConvert }) {
                             dim={tab.dimension}
                             onKeep={handleKeep}
                             subsets={subsets}
+                            cols={srcCols}
+                            attributes={attributes}
+                            onColsChange={saveSrcCols}
                         />
                     </div>
                 )}
@@ -620,7 +766,7 @@ export default function SubsetVisualEditor({ tab, onMdxConvert }) {
                         onReorder={handleReorder}
                         onRemove={handleRemove}
                         onAdd={handleKeep}
-                        cols={cols}
+                        cols={tgtCols}
                         childrenMap={childrenMap}
                         elementMap={elementMap}
                         parentMap={parentMap}

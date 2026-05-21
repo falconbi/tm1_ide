@@ -7,7 +7,6 @@ import ProcessEditor from '@/components/ProcessEditor'
 import SubsetEditor from '@/components/SubsetEditor'
 import DimensionEditor from '@/components/DimensionEditor'
 import ViewEditor from '@/components/ViewEditor'
-import CubeViewer from '@/components/CubeViewer'
 import { toast } from 'sonner'
 import { GitBranch, ChevronRight, ChevronDown, Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -215,13 +214,12 @@ export default function EditorPane() {
         {tab.type === 'process'   && <ProcessEditor    key={tab.id} tab={tab} />}
         {tab.type === 'subset'    && <SubsetEditor     key={tab.id} tab={tab} />}
         {tab.type === 'dimension' && <DimensionEditor  key={tab.id} tab={tab} />}
-        {tab.type === 'view'      && <ViewEditor       key={tab.id} tab={tab} />}
-        {tab.type === 'cubeview'  && <CubeViewer      key={tab.id} tab={tab} />}
+        {(tab.type === 'view' || tab.type === 'cubeview') && <ViewEditor key={tab.id} tab={tab} />}
       </div>
       <div className="flex items-center px-3 py-0.5 bg-muted border-t border-border text-xs text-muted-foreground shrink-0">
         <span>Ln {cursor.line}, Col {cursor.col}</span>
         <span className="ml-4">
-          {tab.type === 'rules' ? 'TM1 Rules' : tab.type === 'subset' ? 'MDX' : tab.type === 'dimension' ? 'Dimension' : tab.type === 'view' ? 'View' : 'TM1 TI'}
+          {tab.type === 'rules' ? 'TM1 Rules' : tab.type === 'subset' ? 'MDX' : tab.type === 'dimension' ? 'Dimension' : tab.type === 'view' || tab.type === 'cubeview' ? 'View' : 'TM1 TI'}
         </span>
       </div>
     </div>

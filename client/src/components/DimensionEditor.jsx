@@ -7,8 +7,9 @@ import {
 import { AgGridReact } from 'ag-grid-react'
 import { AllCommunityModule, ModuleRegistry, themeBalham, colorSchemeDark, colorSchemeLight } from 'ag-grid-community'
 import { useStore } from '@/store'
-import { ChevronRight, ChevronDown, Loader2, List, GitBranch, Plus, Trash2, Check, X, ClipboardList, ChevronLeft, Table2, Search } from 'lucide-react'
+import { ChevronRight, ChevronDown, Loader2, List, GitBranch, Plus, Trash2, Check, X, ClipboardList, ChevronLeft, Table2, Search, ListOrdered } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import PicklistBuilder from './PicklistBuilder'
 
 ModuleRegistry.registerModules([AllCommunityModule])
 const lightTheme = themeBalham.withPart(colorSchemeLight).withParams({ fontSize: 12, rowHeight: 24, headerHeight: 28 })
@@ -569,8 +570,10 @@ export default function DimensionEditor({ tab }) {
   const [bulkAdd, setBulkAdd]     = useState(false)
   const [busy, setBusy]           = useState(false)
   const [error, setError]         = useState(null)
+  const [showCubes, setShowCubes]       = useState(false)
   const [filterSubset, setFilterSubset] = useState('')
   const [filterSearch, setFilterSearch] = useState('')
+  const [showPicklist, setShowPicklist] = useState(false)
 
   const { data: elements = [], isLoading: loadingEl, refetch: refetchEl } = useElements(tab.server, tab.dimension)
   const { data: edges    = [], isLoading: loadingEd, refetch: refetchEd } = useEdges(tab.server, tab.dimension)
@@ -728,15 +731,24 @@ export default function DimensionEditor({ tab }) {
               view === 'attrs' ? 'bg-primary text-primary-foreground border-primary' : 'border-border text-muted-foreground hover:bg-background')}>
             <Table2 size={11} /> Attrs
           </button>
+          <span className="w-px h-4 bg-border mx-0.5" />
+          <button onClick={() => setShowPicklist(true)}
+            className="flex items-center gap-1 px-2 py-0.5 text-xs rounded border border-border text-muted-foreground hover:bg-background hover:text-foreground transition-colors">
+            <ListOrdered size={11} /> Picklists
+          </button>
         </div>
       </div>
 
       {/* Toolbar row 2 — cube usage + filters */}
       <div className="flex items-center gap-2 px-3 py-1 border-b border-border bg-muted/50 shrink-0 flex-wrap">
         {dimCubes.length > 0 && (
-          <span className="flex items-center gap-1 flex-wrap">
-            <span className="text-[10px] text-muted-foreground/60 uppercase tracking-wider">Used in:</span>
-            {dimCubes.map(c => (
+          <span className="flex items-center gap-1.5 flex-wrap">
+            <button onClick={() => setShowCubes(s => !s)}
+              className="flex items-center gap-0.5 text-[10px] text-muted-foreground uppercase tracking-wider hover:text-foreground transition-colors shrink-0">
+              {showCubes ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
+              Used in {dimCubes.length} cube{dimCubes.length !== 1 ? 's' : ''}
+            </button>
+            {showCubes && dimCubes.map(c => (
               <span key={c} className="px-1.5 py-px rounded bg-background border border-border text-[10px] font-mono text-muted-foreground">{c}</span>
             ))}
           </span>
@@ -816,6 +828,13 @@ export default function DimensionEditor({ tab }) {
           consolElements={consolElements}
           onConfirm={handleBulkAdd}
           onClose={() => setBulkAdd(false)}
+        />
+      )}
+      {showPicklist && (
+        <PicklistBuilder
+          server={tab.server}
+          dim={tab.dimension}
+          onClose={() => setShowPicklist(false)}
         />
       )}
     </div>
