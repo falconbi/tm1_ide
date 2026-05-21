@@ -12,8 +12,8 @@ const patch = (url, body) => fetch(url, { method: 'PATCH',  headers: { 'Content-
 const enc = encodeURIComponent
 
 export const useServers   = ()                    => useQuery({ queryKey: ['servers'],                    queryFn: () => get('/api/servers') })
-export const useElements  = (server, dim)         => useQuery({ queryKey: ['elements', server, dim],      queryFn: () => get(`/api/elements?server=${enc(server)}&dimension=${enc(dim)}`),  enabled: !!server && !!dim })
-export const useEdges     = (server, dim)         => useQuery({ queryKey: ['edges', server, dim],         queryFn: () => get(`/api/edges?server=${enc(server)}&dimension=${enc(dim)}`),     enabled: !!server && !!dim })
+export const useElements  = (server, dim, hierarchy) => useQuery({ queryKey: ['elements', server, dim, hierarchy], queryFn: () => get(`/api/elements?server=${enc(server)}&dimension=${enc(dim)}${hierarchy ? `&hierarchy=${enc(hierarchy)}` : ''}`), enabled: !!server && !!dim })
+export const useEdges     = (server, dim, hierarchy) => useQuery({ queryKey: ['edges', server, dim, hierarchy],    queryFn: () => get(`/api/edges?server=${enc(server)}&dimension=${enc(dim)}${hierarchy ? `&hierarchy=${enc(hierarchy)}` : ''}`),    enabled: !!server && !!dim })
 export const useCubes    = (server)     => useQuery({ queryKey: ['cubes', server],     queryFn: () => get(`/api/cubes?server=${enc(server)}`),      enabled: !!server })
 export const useDims     = (server)     => useQuery({ queryKey: ['dims', server],      queryFn: () => get(`/api/dimensions?server=${enc(server)}`),  enabled: !!server })
 export const useProcs    = (server)     => useQuery({ queryKey: ['procs', server],     queryFn: () => get(`/api/processes?server=${enc(server)}`),   enabled: !!server })
@@ -56,30 +56,30 @@ export const useLineageConsumers = (server, cube, enabled) => useQuery({
   staleTime: 30_000,
 })
 
-export const useSubsets = (server, dimension) => {
+export const useSubsets = (server, dimension, hierarchy) => {
   const v = useStore(s => s.subsetVersions[`${server}::${dimension}`] ?? 0)
   return useQuery({
-    queryKey: ['subsets', server, dimension, v],
-    queryFn:  () => get(`/api/subsets?server=${enc(server)}&dimension=${enc(dimension)}`),
+    queryKey: ['subsets', server, dimension, hierarchy, v],
+    queryFn:  () => get(`/api/subsets?server=${enc(server)}&dimension=${enc(dimension)}${hierarchy ? `&hierarchy=${enc(hierarchy)}` : ''}`),
     enabled:  !!server && !!dimension,
     staleTime: 0,
   })
 }
 
-export const useSubset = (server, dimension, name) => useQuery({
-  queryKey: ['subset', server, dimension, name],
-  queryFn:  () => get(`/api/subset?server=${enc(server)}&dimension=${enc(dimension)}&name=${enc(name)}`),
+export const useSubset = (server, dimension, name, hierarchy) => useQuery({
+  queryKey: ['subset', server, dimension, name, hierarchy],
+  queryFn:  () => get(`/api/subset?server=${enc(server)}&dimension=${enc(dimension)}&name=${enc(name)}${hierarchy ? `&hierarchy=${enc(hierarchy)}` : ''}`),
   enabled:  !!server && !!dimension && !!name,
 })
 
 export const useSaveSubset = () => useMutation({
-  mutationFn: ({ server, dimension, name, mdx }) =>
-    post(`/api/subset?server=${enc(server)}&dimension=${enc(dimension)}&name=${enc(name)}`, { mdx }),
+  mutationFn: ({ server, dimension, name, mdx, hierarchy }) =>
+    post(`/api/subset?server=${enc(server)}&dimension=${enc(dimension)}&name=${enc(name)}${hierarchy ? `&hierarchy=${enc(hierarchy)}` : ''}`, { mdx }),
 })
 
 export const usePreviewMDX = () => useMutation({
-  mutationFn: ({ server, dimension, mdx }) =>
-    post(`/api/subset/preview?server=${enc(server)}&dimension=${enc(dimension)}`, { mdx }),
+  mutationFn: ({ server, dimension, mdx, hierarchy }) =>
+    post(`/api/subset/preview?server=${enc(server)}&dimension=${enc(dimension)}${hierarchy ? `&hierarchy=${enc(hierarchy)}` : ''}`, { mdx }),
 })
 
 export const useGenerateMDX = () => useMutation({
@@ -94,16 +94,16 @@ export const useDimAttributes = (server, dimension) => useQuery({
   staleTime: 60_000,
 })
 
-export const useSubsetElements = (server, dimension, name) => useQuery({
-  queryKey: ['subset-elements', server, dimension, name],
-  queryFn:  () => get(`/api/subset/elements?server=${enc(server)}&dimension=${enc(dimension)}&name=${enc(name)}`),
+export const useSubsetElements = (server, dimension, name, hierarchy) => useQuery({
+  queryKey: ['subset-elements', server, dimension, name, hierarchy],
+  queryFn:  () => get(`/api/subset/elements?server=${enc(server)}&dimension=${enc(dimension)}&name=${enc(name)}${hierarchy ? `&hierarchy=${enc(hierarchy)}` : ''}`),
   enabled:  !!server && !!dimension && !!name,
   staleTime: 0,
 })
 
 export const useSaveStaticSubset = () => useMutation({
-  mutationFn: ({ server, dimension, name, elements }) =>
-    post(`/api/subset/static?server=${enc(server)}&dimension=${enc(dimension)}&name=${enc(name)}`, { elements }),
+  mutationFn: ({ server, dimension, name, elements, hierarchy }) =>
+    post(`/api/subset/static?server=${enc(server)}&dimension=${enc(dimension)}&name=${enc(name)}${hierarchy ? `&hierarchy=${enc(hierarchy)}` : ''}`, { elements }),
 })
 
 export const useCubeDimensions = (server, cube) => useQuery({
@@ -139,16 +139,16 @@ export const useSaveView = () => useMutation({
     post(`/api/view/save?server=${enc(server)}&cube=${enc(cube)}&name=${enc(name)}`, { mdx }),
 })
 
-export const useElementsWithAttrs = (server, dim) => useQuery({
-  queryKey: ['elements-attrs', server, dim],
-  queryFn:  () => get(`/api/elements/attributes?server=${enc(server)}&dimension=${enc(dim)}`),
+export const useElementsWithAttrs = (server, dim, hierarchy) => useQuery({
+  queryKey: ['elements-attrs', server, dim, hierarchy],
+  queryFn:  () => get(`/api/elements/attributes?server=${enc(server)}&dimension=${enc(dim)}${hierarchy ? `&hierarchy=${enc(hierarchy)}` : ''}`),
   enabled:  !!server && !!dim,
   staleTime: 30_000,
 })
 
-export const useElementAttrValues = (server, dim, element) => useQuery({
-  queryKey: ['element-attrs', server, dim, element],
-  queryFn:  () => get(`/api/element/attributes?server=${enc(server)}&dimension=${enc(dim)}&element=${enc(element)}`),
+export const useElementAttrValues = (server, dim, element, hierarchy) => useQuery({
+  queryKey: ['element-attrs', server, dim, element, hierarchy],
+  queryFn:  () => get(`/api/element/attributes?server=${enc(server)}&dimension=${enc(dim)}&element=${enc(element)}${hierarchy ? `&hierarchy=${enc(hierarchy)}` : ''}`),
   enabled:  !!server && !!dim && !!element,
   staleTime: 30_000,
 })
@@ -161,28 +161,28 @@ export const useHierarchies = (server, dim) => useQuery({
 })
 
 export const useAddElement = () => useMutation({
-  mutationFn: ({ server, dimension, name, type }) =>
-    post(`/api/dimension/element?server=${enc(server)}&dimension=${enc(dimension)}`, { name, type }),
+  mutationFn: ({ server, dimension, name, type, hierarchy }) =>
+    post(`/api/dimension/element?server=${enc(server)}&dimension=${enc(dimension)}${hierarchy ? `&hierarchy=${enc(hierarchy)}` : ''}`, { name, type }),
 })
 
 export const useDeleteElement = () => useMutation({
-  mutationFn: ({ server, dimension, name }) =>
-    del(`/api/dimension/element?server=${enc(server)}&dimension=${enc(dimension)}&name=${enc(name)}`),
+  mutationFn: ({ server, dimension, name, hierarchy }) =>
+    del(`/api/dimension/element?server=${enc(server)}&dimension=${enc(dimension)}&name=${enc(name)}${hierarchy ? `&hierarchy=${enc(hierarchy)}` : ''}`),
 })
 
 export const useRenameElement = () => useMutation({
-  mutationFn: ({ server, dimension, name, newName }) =>
-    patch(`/api/dimension/element?server=${enc(server)}&dimension=${enc(dimension)}&name=${enc(name)}`, { newName }),
+  mutationFn: ({ server, dimension, name, newName, hierarchy }) =>
+    patch(`/api/dimension/element?server=${enc(server)}&dimension=${enc(dimension)}&name=${enc(name)}${hierarchy ? `&hierarchy=${enc(hierarchy)}` : ''}`, { newName }),
 })
 
 export const useAddEdge = () => useMutation({
-  mutationFn: ({ server, dimension, parent, child, weight }) =>
-    post(`/api/dimension/edge?server=${enc(server)}&dimension=${enc(dimension)}`, { parent, child, weight: weight ?? 1 }),
+  mutationFn: ({ server, dimension, parent, child, weight, hierarchy }) =>
+    post(`/api/dimension/edge?server=${enc(server)}&dimension=${enc(dimension)}${hierarchy ? `&hierarchy=${enc(hierarchy)}` : ''}`, { parent, child, weight: weight ?? 1 }),
 })
 
 export const useDeleteEdge = () => useMutation({
-  mutationFn: ({ server, dimension, parent, child }) =>
-    del(`/api/dimension/edge?server=${enc(server)}&dimension=${enc(dimension)}&parent=${enc(parent)}&child=${enc(child)}`),
+  mutationFn: ({ server, dimension, parent, child, hierarchy }) =>
+    del(`/api/dimension/edge?server=${enc(server)}&dimension=${enc(dimension)}&parent=${enc(parent)}&child=${enc(child)}${hierarchy ? `&hierarchy=${enc(hierarchy)}` : ''}`),
 })
 
 export const useDimCubes = (server, dimension) => useQuery({
@@ -193,18 +193,18 @@ export const useDimCubes = (server, dimension) => useQuery({
 })
 
 export const useCreateAttrDef = () => useMutation({
-  mutationFn: ({ server, dimension, name, type }) =>
-    post('/api/dimension/attribute-def', { server, dimension, name, type }),
+  mutationFn: ({ server, dimension, name, type, hierarchy }) =>
+    post('/api/dimension/attribute-def', { server, dimension, name, type, hierarchy }),
 })
 
 export const useDeleteAttrDef = () => useMutation({
-  mutationFn: ({ server, dimension, name }) =>
-    del(`/api/dimension/attribute-def?server=${enc(server)}&dimension=${enc(dimension)}&name=${enc(name)}`),
+  mutationFn: ({ server, dimension, name, hierarchy }) =>
+    del(`/api/dimension/attribute-def?server=${enc(server)}&dimension=${enc(dimension)}&name=${enc(name)}${hierarchy ? `&hierarchy=${enc(hierarchy)}` : ''}`),
 })
 
-export const useAttrGrid = (server, dimension) => useQuery({
-  queryKey: ['attr-grid', server, dimension],
-  queryFn:  () => get(`/api/dimension/attr-grid?server=${enc(server)}&dimension=${enc(dimension)}`),
+export const useAttrGrid = (server, dimension, hierarchy) => useQuery({
+  queryKey: ['attr-grid', server, dimension, hierarchy],
+  queryFn:  () => get(`/api/dimension/attr-grid?server=${enc(server)}&dimension=${enc(dimension)}${hierarchy ? `&hierarchy=${enc(hierarchy)}` : ''}`),
   enabled:  !!server && !!dimension,
   staleTime: 30_000,
 })
@@ -214,6 +214,6 @@ export const useWriteElementAttribute = () => useMutation({
 })
 
 export const useUpdateEdgeWeight = () => useMutation({
-  mutationFn: ({ server, dimension, parent, child, weight }) =>
-    patch(`/api/dimension/edge?server=${enc(server)}&dimension=${enc(dimension)}&parent=${enc(parent)}&child=${enc(child)}`, { weight }),
+  mutationFn: ({ server, dimension, parent, child, weight, hierarchy }) =>
+    patch(`/api/dimension/edge?server=${enc(server)}&dimension=${enc(dimension)}&parent=${enc(parent)}&child=${enc(child)}${hierarchy ? `&hierarchy=${enc(hierarchy)}` : ''}`, { weight }),
 })

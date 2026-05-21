@@ -425,15 +425,15 @@ function NewAttrModal({ onConfirm, onClose }) {
   )
 }
 
-function AttrGrid({ tab, elements, edges }) {
+function AttrGrid({ tab, elements, edges, hierarchy }) {
   const theme     = useStore(s => s.theme)
   const [subset, setSubset]     = useState('')
   const [search,  setSearch]    = useState('')
   const [newAttr, setNewAttr]   = useState(false)
 
-  const { data: grid, isLoading, refetch } = useAttrGrid(tab.server, tab.dimension)
-  const { data: subsets = [] }             = useSubsets(tab.server, tab.dimension)
-  const { data: subElems = [] }            = useSubsetElements(tab.server, tab.dimension, subset)
+  const { data: grid, isLoading, refetch } = useAttrGrid(tab.server, tab.dimension, hierarchy)
+  const { data: subsets = [] }             = useSubsets(tab.server, tab.dimension, hierarchy)
+  const { data: subElems = [] }            = useSubsetElements(tab.server, tab.dimension, subset, hierarchy)
   const writeAttr                          = useWriteElementAttribute()
   const createAttr                         = useCreateAttrDef()
   const deleteAttr                         = useDeleteAttrDef()
@@ -441,18 +441,18 @@ function AttrGrid({ tab, elements, edges }) {
   const handleCreateAttr = useCallback((name, type) => {
     setNewAttr(false)
     createAttr.mutate(
-      { server: tab.server, dimension: tab.dimension, name, type },
+      { server: tab.server, dimension: tab.dimension, name, type, hierarchy },
       { onSuccess: () => refetch() }
     )
-  }, [createAttr, tab, refetch])
+  }, [createAttr, tab, refetch, hierarchy])
 
   const handleDeleteAttr = useCallback((name) => {
     if (!window.confirm(`Delete attribute "${name}" and all its values?`)) return
     deleteAttr.mutate(
-      { server: tab.server, dimension: tab.dimension, name },
+      { server: tab.server, dimension: tab.dimension, name, hierarchy },
       { onSuccess: () => refetch() }
     )
-  }, [deleteAttr, tab, refetch])
+  }, [deleteAttr, tab, refetch, hierarchy])
 
   const attrs = grid?.attrs ?? []
 
@@ -509,8 +509,8 @@ function AttrGrid({ tab, elements, edges }) {
     const attribute = p.colDef.field
     const attrDef   = attrs.find(a => a.Name === attribute)
     const type      = attrDef?.Type === 'Numeric' ? 'N' : 'S'
-    writeAttr.mutate({ server: tab.server, dimension: tab.dimension, element, attribute, value: p.newValue ?? '', type })
-  }, [writeAttr, tab, attrs])
+    writeAttr.mutate({ server: tab.server, dimension: tab.dimension, element, attribute, value: p.newValue ?? '', type, hierarchy })
+  }, [writeAttr, tab, attrs, hierarchy])
 
   if (isLoading) return (
     <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm">
@@ -574,14 +574,15 @@ export default function DimensionEditor({ tab }) {
   const [filterSubset, setFilterSubset] = useState('')
   const [filterSearch, setFilterSearch] = useState('')
   const [showPicklist, setShowPicklist] = useState(false)
+  const [selectedHierarchy, setSelectedHierarchy] = useState(tab.hierarchy ?? tab.dimension)
 
-  const { data: elements = [], isLoading: loadingEl, refetch: refetchEl } = useElements(tab.server, tab.dimension)
-  const { data: edges    = [], isLoading: loadingEd, refetch: refetchEd } = useEdges(tab.server, tab.dimension)
+  const { data: elements = [], isLoading: loadingEl, refetch: refetchEl } = useElements(tab.server, tab.dimension, selectedHierarchy)
+  const { data: edges    = [], isLoading: loadingEd, refetch: refetchEd } = useEdges(tab.server, tab.dimension, selectedHierarchy)
   const { data: hierarchies = [] } = useHierarchies(tab.server, tab.dimension)
   const { data: dimCubes   = [] } = useDimCubes(tab.server, tab.dimension)
-  const { data: elemAttrs, isFetching: loadingAttrs } = useElementAttrValues(tab.server, tab.dimension, selected)
-  const { data: subsets = [] }    = useSubsets(tab.server, tab.dimension)
-  const { data: subsetElems = [] } = useSubsetElements(tab.server, tab.dimension, filterSubset)
+  const { data: elemAttrs, isFetching: loadingAttrs } = useElementAttrValues(tab.server, tab.dimension, selected, selectedHierarchy)
+  const { data: subsets = [] }    = useSubsets(tab.server, tab.dimension, selectedHierarchy)
+  const { data: subsetElems = [] } = useSubsetElements(tab.server, tab.dimension, filterSubset, selectedHierarchy)
 
   const addElementMut     = useAddElement()
   const deleteElementMut  = useDeleteElement()
@@ -624,31 +625,31 @@ export default function DimensionEditor({ tab }) {
   const handleAddRoot = useCallback((name, type) => {
     setAddRoot(false)
     run(async () => {
-      await addElementMut.mutateAsync({ server: tab.server, dimension: tab.dimension, name, type })
+      await addElementMut.mutateAsync({ server: tab.server, dimension: tab.dimension, name, type, hierarchy: selectedHierarchy })
       refresh()
     })
-  }, [run, addElementMut, tab, refresh])
+  }, [run, addElementMut, tab, refresh, selectedHierarchy])
 
   const handleAddChild = useCallback((parent, name, type) => {
     run(async () => {
-      await addElementMut.mutateAsync({ server: tab.server, dimension: tab.dimension, name, type })
-      await addEdgeMut.mutateAsync({ server: tab.server, dimension: tab.dimension, parent, child: name })
+      await addElementMut.mutateAsync({ server: tab.server, dimension: tab.dimension, name, type, hierarchy: selectedHierarchy })
+      await addEdgeMut.mutateAsync({ server: tab.server, dimension: tab.dimension, parent, child: name, hierarchy: selectedHierarchy })
       refresh()
     })
-  }, [run, addElementMut, addEdgeMut, tab, refresh])
+  }, [run, addElementMut, addEdgeMut, tab, refresh, selectedHierarchy])
 
   const handleBulkAdd = useCallback((names, type, parent) => {
     setBulkAdd(false)
     run(async () => {
       for (const name of names) {
-        await addElementMut.mutateAsync({ server: tab.server, dimension: tab.dimension, name, type })
+        await addElementMut.mutateAsync({ server: tab.server, dimension: tab.dimension, name, type, hierarchy: selectedHierarchy })
         if (parent) {
-          await addEdgeMut.mutateAsync({ server: tab.server, dimension: tab.dimension, parent, child: name })
+          await addEdgeMut.mutateAsync({ server: tab.server, dimension: tab.dimension, parent, child: name, hierarchy: selectedHierarchy })
         }
       }
       refresh()
     })
-  }, [run, addElementMut, addEdgeMut, tab, refresh])
+  }, [run, addElementMut, addEdgeMut, tab, refresh, selectedHierarchy])
 
   const handleDelete = useCallback((name) => {
     const childCount = (tree.childrenOf[name] ?? []).length
@@ -657,30 +658,30 @@ export default function DimensionEditor({ tab }) {
     run(async () => {
       const involving = edges.filter(e => e.ParentName === name || e.ComponentName === name)
       await Promise.all(involving.map(e =>
-        deleteEdgeMut.mutateAsync({ server: tab.server, dimension: tab.dimension, parent: e.ParentName, child: e.ComponentName })
+        deleteEdgeMut.mutateAsync({ server: tab.server, dimension: tab.dimension, parent: e.ParentName, child: e.ComponentName, hierarchy: selectedHierarchy })
       ))
-      await deleteElementMut.mutateAsync({ server: tab.server, dimension: tab.dimension, name })
+      await deleteElementMut.mutateAsync({ server: tab.server, dimension: tab.dimension, name, hierarchy: selectedHierarchy })
       refresh()
     })
-  }, [run, selected, tree, edges, deleteEdgeMut, deleteElementMut, tab, refresh])
+  }, [run, selected, tree, edges, deleteEdgeMut, deleteElementMut, tab, refresh, selectedHierarchy])
 
   const handleAddParent = useCallback((child, parent) => {
     run(async () => {
-      await addEdgeMut.mutateAsync({ server: tab.server, dimension: tab.dimension, parent, child })
+      await addEdgeMut.mutateAsync({ server: tab.server, dimension: tab.dimension, parent, child, hierarchy: selectedHierarchy })
       refresh()
     })
-  }, [run, addEdgeMut, tab, refresh])
+  }, [run, addEdgeMut, tab, refresh, selectedHierarchy])
 
   const handleRemoveParent = useCallback((child, parent) => {
     run(async () => {
-      await deleteEdgeMut.mutateAsync({ server: tab.server, dimension: tab.dimension, parent, child })
+      await deleteEdgeMut.mutateAsync({ server: tab.server, dimension: tab.dimension, parent, child, hierarchy: selectedHierarchy })
       refresh()
     })
-  }, [run, deleteEdgeMut, tab, refresh])
+  }, [run, deleteEdgeMut, tab, refresh, selectedHierarchy])
 
   const handleUpdateWeight = useCallback((parent, child, weight) => {
     run(async () => {
-      await updateWeightMut.mutateAsync({ server: tab.server, dimension: tab.dimension, parent, child, weight })
+      await updateWeightMut.mutateAsync({ server: tab.server, dimension: tab.dimension, parent, child, weight, hierarchy: selectedHierarchy })
       refresh()
     })
   }, [run, updateWeightMut, tab, refresh])
@@ -696,9 +697,19 @@ export default function DimensionEditor({ tab }) {
 
   return (
     <div className="flex flex-col h-full">
-      {/* Toolbar row 1 — title + actions */}
+      {/* Toolbar row 1 — title + hierarchy + actions */}
       <div className="flex items-center gap-2 px-3 py-1.5 border-b border-border bg-muted shrink-0">
         <span className="text-xs font-semibold">{tab.dimension}</span>
+        {hierarchies.length > 1 && (
+          <select
+            value={selectedHierarchy}
+            onChange={e => { setSelectedHierarchy(e.target.value); setSelected(null) }}
+            className="text-xs bg-background border border-border rounded px-1.5 py-0.5 text-foreground max-w-36"
+            title="Select hierarchy"
+          >
+            {hierarchies.map(h => <option key={h} value={h}>{h}</option>)}
+          </select>
+        )}
         <span className="text-xs text-muted-foreground">
           {filteredElements.length !== elements.length
             ? `${filteredElements.length} / ${elements.length} elements`
@@ -777,7 +788,7 @@ export default function DimensionEditor({ tab }) {
 
       {/* Body */}
       <div className="flex-1 min-h-0 flex overflow-hidden">
-        {view === 'attrs' && <div className="flex-1 min-w-0 min-h-0 flex flex-col"><AttrGrid tab={tab} elements={elements} edges={edges} /></div>}
+        {view === 'attrs' && <div className="flex-1 min-w-0 min-h-0 flex flex-col"><AttrGrid tab={tab} elements={elements} edges={edges} hierarchy={selectedHierarchy} /></div>}
         {/* Tree / Flat pane */}
         {view !== 'attrs' && <>
           <div className={cn('flex-1 min-w-0 overflow-auto', selectedEl && 'max-w-[55%]')}>
@@ -834,6 +845,7 @@ export default function DimensionEditor({ tab }) {
         <PicklistBuilder
           server={tab.server}
           dim={tab.dimension}
+          hierarchy={selectedHierarchy}
           onClose={() => setShowPicklist(false)}
         />
       )}

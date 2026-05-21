@@ -54,21 +54,21 @@ class TM1Client {
         }
     }
 
-    async getElements(dim) {
+    async getElements(dim, hierarchy = dim) {
         const TYPE = { Numeric: 'N', Consolidated: 'C', String: 'S', N: 'N', C: 'C', S: 'S' }
         const d = await this.get(
-            `Dimensions('${dim}')/Hierarchies('${dim}')/Elements`,
+            `Dimensions('${dim}')/Hierarchies('${hierarchy}')/Elements`,
             { '$select': 'Name,Type,Level' }
         )
         return (d.value ?? []).map(e => ({ ...e, Type: TYPE[e.Type] ?? e.Type }))
     }
 
-    async getElementsWithAttributes(dim) {
+    async getElementsWithAttributes(dim, hierarchy = dim) {
         // PAW does not support $expand=Attributes on the collection (returns 400).
         // Return elements with empty attributes — callers that need values use getElementAttributeValues per element.
         const TYPE = { Numeric: 'N', Consolidated: 'C', String: 'S', N: 'N', C: 'C', S: 'S' }
         const d = await this.get(
-            `Dimensions('${dim}')/Hierarchies('${dim}')/Elements`,
+            `Dimensions('${dim}')/Hierarchies('${hierarchy}')/Elements`,
             { '$select': 'Name,Type,Level' }
         )
         return (d.value ?? []).map(e => ({
@@ -79,58 +79,58 @@ class TM1Client {
         }))
     }
 
-    async getElementAttributeValues(dim, element) {
+    async getElementAttributeValues(dim, element, hierarchy = dim) {
         // Returns flat object: { Caption: "...", signswitch: 0, ... }
         // Filters out @odata.* metadata keys.
         const raw = await this.get(
-            `Dimensions('${dim}')/Hierarchies('${dim}')/Elements('${element}')/Attributes`
+            `Dimensions('${dim}')/Hierarchies('${hierarchy}')/Elements('${element}')/Attributes`
         )
         return Object.fromEntries(Object.entries(raw).filter(([k]) => !k.startsWith('@')))
     }
 
-    async getEdges(dim) {
+    async getEdges(dim, hierarchy = dim) {
         const d = await this.get(
-            `Dimensions('${dim}')/Hierarchies('${dim}')/Edges`,
+            `Dimensions('${dim}')/Hierarchies('${hierarchy}')/Edges`,
             { '$select': 'ParentName,ComponentName,Weight' }
         )
         return d.value ?? []
     }
 
-    async addElement(dim, name, type) {
+    async addElement(dim, name, type, hierarchy = dim) {
         const TYPE_MAP = { N: 'Numeric', C: 'Consolidated', S: 'String' }
         return this.post(
-            `Dimensions('${dim}')/Hierarchies('${dim}')/Elements`,
+            `Dimensions('${dim}')/Hierarchies('${hierarchy}')/Elements`,
             { Name: name, Type: TYPE_MAP[type] ?? type }
         )
     }
 
-    async deleteElement(dim, name) {
-        return this.delete(`Dimensions('${dim}')/Hierarchies('${dim}')/Elements('${name}')`)
+    async deleteElement(dim, name, hierarchy = dim) {
+        return this.delete(`Dimensions('${dim}')/Hierarchies('${hierarchy}')/Elements('${name}')`)
     }
 
-    async renameElement(dim, name, newName) {
+    async renameElement(dim, name, newName, hierarchy = dim) {
         return this.patch(
-            `Dimensions('${dim}')/Hierarchies('${dim}')/Elements('${name}')`,
+            `Dimensions('${dim}')/Hierarchies('${hierarchy}')/Elements('${name}')`,
             { Name: newName }
         )
     }
 
-    async addEdge(dim, parent, child, weight = 1) {
+    async addEdge(dim, parent, child, weight = 1, hierarchy = dim) {
         return this.post(
-            `Dimensions('${dim}')/Hierarchies('${dim}')/Edges`,
+            `Dimensions('${dim}')/Hierarchies('${hierarchy}')/Edges`,
             { ParentName: parent, ComponentName: child, Weight: weight }
         )
     }
 
-    async deleteEdge(dim, parent, child) {
+    async deleteEdge(dim, parent, child, hierarchy = dim) {
         return this.delete(
-            `Dimensions('${dim}')/Hierarchies('${dim}')/Edges(ParentName='${parent}',ComponentName='${child}')`
+            `Dimensions('${dim}')/Hierarchies('${hierarchy}')/Edges(ParentName='${parent}',ComponentName='${child}')`
         )
     }
 
-    async updateEdgeWeight(dim, parent, child, weight) {
+    async updateEdgeWeight(dim, parent, child, weight, hierarchy = dim) {
         return this.patch(
-            `Dimensions('${dim}')/Hierarchies('${dim}')/Edges(ParentName='${parent}',ComponentName='${child}')`,
+            `Dimensions('${dim}')/Hierarchies('${hierarchy}')/Edges(ParentName='${parent}',ComponentName='${child}')`,
             { Weight: weight }
         )
     }
@@ -144,9 +144,9 @@ class TM1Client {
     // Tests PATCH on Elements('name')/Attributes — the sub-resource we confirmed
     // works for reads. Writes back the SAME value already there (safe no-op).
     // Tries two body formats: flat object and array.
-    async probeAttributeValueWrite(dim, element, attribute, value) {
+    async probeAttributeValueWrite(dim, element, attribute, value, hierarchy = dim) {
         const results = {}
-        const base = `Dimensions('${dim}')/Hierarchies('${dim}')/Elements('${element}')/Attributes`
+        const base = `Dimensions('${dim}')/Hierarchies('${hierarchy}')/Elements('${element}')/Attributes`
 
         // Format A: flat object { attrName: value } — mirrors what GET returns
         try {
@@ -236,23 +236,23 @@ class TM1Client {
         return results
     }
 
-    async createElementAttribute(dim, name, type) {
+    async createElementAttribute(dim, name, type, hierarchy = dim) {
         // type: 'String' | 'Numeric' | 'Alias'
         return this.post(
-            `Dimensions('${dim}')/Hierarchies('${dim}')/ElementAttributes`,
+            `Dimensions('${dim}')/Hierarchies('${hierarchy}')/ElementAttributes`,
             { Name: name, Type: type }
         )
     }
 
-    async deleteElementAttribute(dim, name) {
-        return this.delete(`Dimensions('${dim}')/Hierarchies('${dim}')/ElementAttributes('${name}')`)
+    async deleteElementAttribute(dim, name, hierarchy = dim) {
+        return this.delete(`Dimensions('${dim}')/Hierarchies('${hierarchy}')/ElementAttributes('${name}')`)
     }
 
-    async writeElementAttribute(dim, element, attribute, value, attrType = 'S') {
+    async writeElementAttribute(dim, element, attribute, value, attrType = 'S', hierarchy = dim) {
         const safe = s => String(s).replace(/'/g, "''")
         const tiCode = attrType === 'N'
-            ? `ElementAttrPutN(${Number(value)}, '${safe(dim)}', '${safe(dim)}', '${safe(element)}', '${safe(attribute)}');`
-            : `ElementAttrPutS('${safe(String(value))}', '${safe(dim)}', '${safe(dim)}', '${safe(element)}', '${safe(attribute)}');`
+            ? `ElementAttrPutN(${Number(value)}, '${safe(dim)}', '${safe(hierarchy)}', '${safe(element)}', '${safe(attribute)}');`
+            : `ElementAttrPutS('${safe(String(value))}', '${safe(dim)}', '${safe(hierarchy)}', '${safe(element)}', '${safe(attribute)}');`
         return this.post('ExecuteProcessWithReturn?$expand=*', {
             Process: {
                 Name: `}TM1IDE_write`,
@@ -268,9 +268,9 @@ class TM1Client {
         })
     }
 
-    async getElementAttributes(dim) {
+    async getElementAttributes(dim, hierarchy = dim) {
         const d = await this.get(
-            `Dimensions('${dim}')/Hierarchies('${dim}')/ElementAttributes`,
+            `Dimensions('${dim}')/Hierarchies('${hierarchy}')/ElementAttributes`,
             { '$select': 'Name,Type' }
         )
         return d.value ?? []
@@ -332,49 +332,49 @@ class TM1Client {
 
     // ── Subsets ───────────────────────────────────────────────────────────────
 
-    async getSubsets(dim) {
+    async getSubsets(dim, hierarchy = dim) {
         const d = await this.get(
-            `Dimensions('${dim}')/Hierarchies('${dim}')/Subsets`,
+            `Dimensions('${dim}')/Hierarchies('${hierarchy}')/Subsets`,
             { '$select': 'Name,Expression' }
         )
         return (d.value ?? []).filter(s => !s.Name.startsWith('}'))
     }
 
-    async getSubset(dim, name) {
+    async getSubset(dim, name, hierarchy = dim) {
         return this.get(
-            `Dimensions('${dim}')/Hierarchies('${dim}')/Subsets('${name}')`,
+            `Dimensions('${dim}')/Hierarchies('${hierarchy}')/Subsets('${name}')`,
             { '$select': 'Name,Expression' }
         )
     }
 
-    async saveSubset(dim, name, mdx) {
-        const body = { '@odata.type': '#ibm.tm1.api.v1.MDXSubset', Name: name, Expression: mdx, Hierarchy: { Name: dim, Dimension: { Name: dim } } }
+    async saveSubset(dim, name, mdx, hierarchy = dim) {
+        const body = { '@odata.type': '#ibm.tm1.api.v1.MDXSubset', Name: name, Expression: mdx, Hierarchy: { Name: hierarchy, Dimension: { Name: dim } } }
         try {
             await this.patch(
-                `Dimensions('${dim}')/Hierarchies('${dim}')/Subsets('${name}')`,
+                `Dimensions('${dim}')/Hierarchies('${hierarchy}')/Subsets('${name}')`,
                 body
             )
         } catch (e) {
             if (e.response?.status === 404) {
-                await this.post(`Dimensions('${dim}')/Hierarchies('${dim}')/Subsets`, body)
+                await this.post(`Dimensions('${dim}')/Hierarchies('${hierarchy}')/Subsets`, body)
             } else throw e
         }
     }
 
-    async previewMDX(dim, mdx, limit = 100) {
+    async previewMDX(dim, mdx, limit = 100, hierarchy = dim) {
         const tmpName = `}TM1IDE_preview_${Date.now()}`
         try {
             await this.post(
-                `Dimensions('${dim}')/Hierarchies('${dim}')/Subsets`,
-                { '@odata.type': '#ibm.tm1.api.v1.MDXSubset', Name: tmpName, Expression: mdx, Hierarchy: { Name: dim, Dimension: { Name: dim } } }
+                `Dimensions('${dim}')/Hierarchies('${hierarchy}')/Subsets`,
+                { '@odata.type': '#ibm.tm1.api.v1.MDXSubset', Name: tmpName, Expression: mdx, Hierarchy: { Name: hierarchy, Dimension: { Name: dim } } }
             )
             const d = await this.get(
-                `Dimensions('${dim}')/Hierarchies('${dim}')/Subsets('${tmpName}')/Elements`,
+                `Dimensions('${dim}')/Hierarchies('${hierarchy}')/Subsets('${tmpName}')/Elements`,
                 { '$select': 'Name,Type', '$top': limit }
             )
             return (d.value ?? []).map(e => ({ name: e.Name, type: e.Type }))
         } finally {
-            try { await this.delete(`Dimensions('${dim}')/Hierarchies('${dim}')/Subsets('${tmpName}')`) } catch {}
+            try { await this.delete(`Dimensions('${dim}')/Hierarchies('${hierarchy}')/Subsets('${tmpName}')`) } catch {}
         }
     }
 
@@ -394,21 +394,21 @@ class TM1Client {
         }
     }
 
-    async getSubsetElements(dim, name) {
+    async getSubsetElements(dim, name, hierarchy = dim) {
         const TYPE = { Numeric: 'N', Consolidated: 'C', String: 'S', N: 'N', C: 'C', S: 'S', 1: 'N', 2: 'S', 3: 'C' }
         const d = await this.get(
-            `Dimensions('${dim}')/Hierarchies('${dim}')/Subsets('${name}')/Elements`,
+            `Dimensions('${dim}')/Hierarchies('${hierarchy}')/Subsets('${name}')/Elements`,
             { '$select': 'Name,Type,Level' }
         )
         return (d.value ?? []).map(e => ({ name: e.Name, type: TYPE[e.Type] ?? e.Type, level: e.Level }))
     }
 
-    async saveStaticSubset(dim, name, elements) {
-        const bind = elements.map(el => `Dimensions('${dim}')/Hierarchies('${dim}')/Elements('${el.replace(/'/g, "''")}')`        )
+    async saveStaticSubset(dim, name, elements, hierarchy = dim) {
+        const bind = elements.map(el => `Dimensions('${dim}')/Hierarchies('${hierarchy}')/Elements('${el.replace(/'/g, "''")}')`        )
         const body = {
             '@odata.type': '#ibm.tm1.api.v1.StaticSubset',
             Name: name,
-            Hierarchy: { Name: dim, Dimension: { Name: dim } },
+            Hierarchy: { Name: hierarchy, Dimension: { Name: dim } },
             'Elements@odata.bind': bind,
         }
         try {

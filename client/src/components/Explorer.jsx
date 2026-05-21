@@ -1,6 +1,6 @@
 import { useState, useRef, useMemo } from 'react'
 import { toast } from 'sonner'
-import { useCubes, useDims, useProcs, useChores, useSubsets, useViews, useCubeDimensions, useSaveView } from '@/hooks/useApi'
+import { useCubes, useDims, useProcs, useChores, useSubsets, useViews, useCubeDimensions, useSaveView, useHierarchies } from '@/hooks/useApi'
 import { useStore } from '@/store'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { ChevronRight, ChevronDown, Box, Layers, Cog, Clock, Loader2, List, Plus, Table2, Code2, PencilLine, Search, X } from 'lucide-react'
@@ -268,6 +268,8 @@ function DimRow({ server, dim, onOpenSubset, onOpenDim }) {
   const [newName, setNewName] = useState('')
   const inputRef = useRef(null)
   const { data: subsets, isFetching } = useSubsets(open ? server : null, open ? dim : null)
+  const { data: hierarchies = [] } = useHierarchies(open ? server : null, open ? dim : null)
+  const hasMultipleHierarchies = hierarchies.length > 1
 
   const startAdd = () => {
     setAdding(true)
@@ -306,6 +308,24 @@ function DimRow({ server, dim, onOpenSubset, onOpenDim }) {
       </div>
       {open && (
         <div>
+          {/* Hierarchies */}
+          {hasMultipleHierarchies && (
+            <div className="px-10 py-0.5">
+              <div className="text-[10px] uppercase tracking-wider text-muted-foreground/60 font-semibold mb-0.5">Hierarchies</div>
+              {hierarchies.map(h => (
+                <button
+                  key={h}
+                  onClick={() => onOpenDim(dim, h)}
+                  className="flex items-center gap-2 w-full px-4 py-0.5 text-xs text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground truncate"
+                  title={`Open ${h} hierarchy`}
+                >
+                  <Layers size={10} className="shrink-0 text-muted-foreground" />
+                  <span className="truncate font-mono">{h}</span>
+                  {h === dim && <span className="text-[10px] text-muted-foreground/50">(default)</span>}
+                </button>
+              ))}
+            </div>
+          )}
           {adding && (
             <div className="flex items-center gap-1 px-14 py-0.5">
               <List size={10} className="shrink-0 text-muted-foreground" />
@@ -320,7 +340,7 @@ function DimRow({ server, dim, onOpenSubset, onOpenDim }) {
               />
             </div>
           )}
-          {(subsets ?? []).length === 0 && !isFetching && !adding && (
+          {(subsets ?? []).length === 0 && !isFetching && !adding && !hasMultipleHierarchies && (
             <p className="px-14 py-0.5 text-xs text-muted-foreground italic">No subsets — hover to add</p>
           )}
           {(subsets ?? []).map(s => (
@@ -431,12 +451,13 @@ export default function Explorer() {
     viewName: view,
   })
 
-  const openDim = (dim) => openTab({
-    id:        `dim:${server}:${dim}`,
+  const openDim = (dim, hierarchy = dim) => openTab({
+    id:        `dim:${server}:${dim}:${hierarchy}`,
     type:      'dimension',
-    label:     dim,
+    label:     hierarchy === dim ? dim : `${dim} / ${hierarchy}`,
     server,
     dimension: dim,
+    hierarchy,
   })
 
   if (!server) {

@@ -158,16 +158,16 @@ app.get('/api/dimension/cubes', async (req, res) => {
 // ── Attribute grid (all elements × all attrs in one response) ─────────────────
 app.get('/api/dimension/attr-grid', async (req, res) => {
     try {
-        const { server, dimension } = req.query
+        const { server, dimension, hierarchy } = req.query
         const client = new TM1Client(server)
         const [attrs, elements, edges] = await Promise.all([
-            client.getElementAttributes(dimension),
-            client.getElements(dimension),
-            client.getEdges(dimension),
+            client.getElementAttributes(dimension, hierarchy),
+            client.getElements(dimension, hierarchy),
+            client.getEdges(dimension, hierarchy),
         ])
         const valueEntries = await Promise.all(
             elements.map(async el => {
-                try { return [el.Name, await client.getElementAttributeValues(dimension, el.Name)] }
+                try { return [el.Name, await client.getElementAttributeValues(dimension, el.Name, hierarchy)] }
                 catch  { return [el.Name, {}] }
             })
         )
@@ -179,8 +179,8 @@ app.get('/api/dimension/attr-grid', async (req, res) => {
 
 app.post('/api/dimension/attribute-def', async (req, res) => {
     try {
-        const { server, dimension, name, type } = req.body
-        await new TM1Client(server).createElementAttribute(dimension, name, type)
+        const { server, dimension, name, type, hierarchy } = req.body
+        await new TM1Client(server).createElementAttribute(dimension, name, type, hierarchy)
         res.json({ ok: true })
     } catch (e) {
         res.status(500).json({ error: e.message })
@@ -189,8 +189,8 @@ app.post('/api/dimension/attribute-def', async (req, res) => {
 
 app.delete('/api/dimension/attribute-def', async (req, res) => {
     try {
-        const { server, dimension, name } = req.query
-        await new TM1Client(server).deleteElementAttribute(dimension, name)
+        const { server, dimension, name, hierarchy } = req.query
+        await new TM1Client(server).deleteElementAttribute(dimension, name, hierarchy)
         res.json({ ok: true })
     } catch (e) {
         res.status(500).json({ error: e.message })
@@ -199,8 +199,8 @@ app.delete('/api/dimension/attribute-def', async (req, res) => {
 
 app.post('/api/element/attribute', async (req, res) => {
     try {
-        const { server, dimension, element, attribute, value, type } = req.body
-        await new TM1Client(server).writeElementAttribute(dimension, element, attribute, value, type)
+        const { server, dimension, element, attribute, value, type, hierarchy } = req.body
+        await new TM1Client(server).writeElementAttribute(dimension, element, attribute, value, type, hierarchy)
         res.json({ ok: true })
     } catch (e) {
         res.status(500).json({ error: e.message })
@@ -250,7 +250,7 @@ app.post('/api/view/save', async (req, res) => {
 app.get('/api/elements', async (req, res) => {
     try {
         const client = new TM1Client(req.query.server)
-        res.json(await client.getElements(req.query.dimension))
+        res.json(await client.getElements(req.query.dimension, req.query.hierarchy))
     } catch (e) {
         res.status(500).json({ error: e.message })
     }
@@ -259,7 +259,7 @@ app.get('/api/elements', async (req, res) => {
 app.get('/api/elements/attributes', async (req, res) => {
     try {
         const client = new TM1Client(req.query.server)
-        res.json(await client.getElementsWithAttributes(req.query.dimension))
+        res.json(await client.getElementsWithAttributes(req.query.dimension, req.query.hierarchy))
     } catch (e) {
         res.status(500).json({ error: e.message })
     }
@@ -268,7 +268,7 @@ app.get('/api/elements/attributes', async (req, res) => {
 app.get('/api/element/attributes', async (req, res) => {
     try {
         const client = new TM1Client(req.query.server)
-        res.json(await client.getElementAttributeValues(req.query.dimension, req.query.element))
+        res.json(await client.getElementAttributeValues(req.query.dimension, req.query.element, req.query.hierarchy))
     } catch (e) {
         res.status(500).json({ error: e.message })
     }
@@ -277,7 +277,7 @@ app.get('/api/element/attributes', async (req, res) => {
 app.get('/api/edges', async (req, res) => {
     try {
         const client = new TM1Client(req.query.server)
-        res.json(await client.getEdges(req.query.dimension))
+        res.json(await client.getEdges(req.query.dimension, req.query.hierarchy))
     } catch (e) {
         res.status(500).json({ error: e.message })
     }
@@ -365,7 +365,7 @@ app.post('/api/test/attr-write', async (req, res) => {
 app.post('/api/dimension/element', async (req, res) => {
     try {
         const client = new TM1Client(req.query.server)
-        await client.addElement(req.query.dimension, req.body.name, req.body.type)
+        await client.addElement(req.query.dimension, req.body.name, req.body.type, req.query.hierarchy)
         res.json({ ok: true })
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
@@ -373,7 +373,7 @@ app.post('/api/dimension/element', async (req, res) => {
 app.delete('/api/dimension/element', async (req, res) => {
     try {
         const client = new TM1Client(req.query.server)
-        await client.deleteElement(req.query.dimension, req.query.name)
+        await client.deleteElement(req.query.dimension, req.query.name, req.query.hierarchy)
         res.json({ ok: true })
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
@@ -381,7 +381,7 @@ app.delete('/api/dimension/element', async (req, res) => {
 app.patch('/api/dimension/element', async (req, res) => {
     try {
         const client = new TM1Client(req.query.server)
-        await client.renameElement(req.query.dimension, req.query.name, req.body.newName)
+        await client.renameElement(req.query.dimension, req.query.name, req.body.newName, req.query.hierarchy)
         res.json({ ok: true })
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
@@ -389,7 +389,7 @@ app.patch('/api/dimension/element', async (req, res) => {
 app.post('/api/dimension/edge', async (req, res) => {
     try {
         const client = new TM1Client(req.query.server)
-        await client.addEdge(req.query.dimension, req.body.parent, req.body.child, req.body.weight ?? 1)
+        await client.addEdge(req.query.dimension, req.body.parent, req.body.child, req.body.weight ?? 1, req.query.hierarchy)
         res.json({ ok: true })
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
@@ -397,7 +397,7 @@ app.post('/api/dimension/edge', async (req, res) => {
 app.patch('/api/dimension/edge', async (req, res) => {
     try {
         const client = new TM1Client(req.query.server)
-        await client.updateEdgeWeight(req.query.dimension, req.query.parent, req.query.child, req.body.weight)
+        await client.updateEdgeWeight(req.query.dimension, req.query.parent, req.query.child, req.body.weight, req.query.hierarchy)
         res.json({ ok: true })
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
@@ -405,7 +405,7 @@ app.patch('/api/dimension/edge', async (req, res) => {
 app.delete('/api/dimension/edge', async (req, res) => {
     try {
         const client = new TM1Client(req.query.server)
-        await client.deleteEdge(req.query.dimension, req.query.parent, req.query.child)
+        await client.deleteEdge(req.query.dimension, req.query.parent, req.query.child, req.query.hierarchy)
         res.json({ ok: true })
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
