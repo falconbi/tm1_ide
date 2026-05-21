@@ -217,3 +217,13 @@ export const useUpdateEdgeWeight = () => useMutation({
   mutationFn: ({ server, dimension, parent, child, weight, hierarchy }) =>
     patch(`/api/dimension/edge?server=${enc(server)}&dimension=${enc(dimension)}&parent=${enc(parent)}&child=${enc(child)}${hierarchy ? `&hierarchy=${enc(hierarchy)}` : ''}`, { weight }),
 })
+
+export const useCreateHierarchy = () => useMutation({
+  mutationFn: ({ server, dimension, name }) =>
+    post('/api/dimension/hierarchy', { server, dimension, name }),
+})
+
+export const useDeleteHierarchy = () => useMutation({
+  mutationFn: ({ server, dimension, name }) =>
+    del(`/api/dimension/hierarchy?server=${enc(server)}&dimension=${enc(dimension)}&name=${enc(name)}`),
+})

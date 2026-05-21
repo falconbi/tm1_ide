@@ -1,21 +1,14 @@
 {
-  "server": "24retail",
+  "server": "GO_New_Stores",
   "tabs": [
     {
-      "id": "dim:24retail:Account",
-      "type": "dimension",
-      "label": "Account",
-      "server": "24retail",
-      "dimension": "Account"
-    },
-    {
-      "id": "rules:24retail:Allocation Calculation",
-      "type": "rules",
-      "label": "Allocation Calculation",
-      "server": "24retail",
-      "cube": "Allocation Calculation",
-      "content": null
+      "id": "subset:GO_New_Stores:Products:Productos_ES",
+      "type": "subset",
+      "label": "Productos_ES",
+      "server": "GO_New_Stores",
+      "dimension": "Products",
+      "subsetName": "Productos_ES"
     }
   ],
-  "activeTab": "rules:24retail:Allocation Calculation"
+  "activeTab": "subset:GO_New_Stores:Products:Productos_ES"
 }

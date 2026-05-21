@@ -417,6 +417,22 @@ app.get('/api/hierarchies', async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
+app.post('/api/dimension/hierarchy', async (req, res) => {
+    try {
+        const { server, dimension, name } = req.body
+        await new TM1Client(server).createHierarchy(dimension, name)
+        res.json({ ok: true })
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.delete('/api/dimension/hierarchy', async (req, res) => {
+    try {
+        const { server, dimension, name } = req.query
+        await new TM1Client(server).deleteHierarchy(dimension, name)
+        res.json({ ok: true })
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
 // ── Search index — all rules + all process code in one call ──────────────────
 app.get('/api/search/index', async (req, res) => {
     try {

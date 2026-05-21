@@ -1,6 +1,6 @@
 import { useState, useRef, useMemo } from 'react'
 import { toast } from 'sonner'
-import { useCubes, useDims, useProcs, useChores, useSubsets, useViews, useCubeDimensions, useSaveView, useHierarchies } from '@/hooks/useApi'
+import { useCubes, useDims, useProcs, useChores, useSubsets, useViews, useCubeDimensions, useSaveView, useHierarchies, useCreateHierarchy } from '@/hooks/useApi'
 import { useStore } from '@/store'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { ChevronRight, ChevronDown, Box, Layers, Cog, Clock, Loader2, List, Plus, Table2, Code2, PencilLine, Search, X } from 'lucide-react'
@@ -266,10 +266,14 @@ function DimRow({ server, dim, onOpenSubset, onOpenDim }) {
   const [open, setOpen] = useState(false)
   const [adding, setAdding] = useState(false)
   const [newName, setNewName] = useState('')
+  const [addingHierarchy, setAddingHierarchy] = useState(false)
+  const [newHierarchyName, setNewHierarchyName] = useState('')
   const inputRef = useRef(null)
+  const hierarchyInputRef = useRef(null)
   const { data: subsets, isFetching } = useSubsets(open ? server : null, open ? dim : null)
   const { data: hierarchies = [] } = useHierarchies(open ? server : null, open ? dim : null)
-  const hasMultipleHierarchies = hierarchies.length > 1
+  const createHierarchyMut = useCreateHierarchy()
+  const hasMultipleHierarchies = hierarchies.length > 1 || addingHierarchy
 
   const startAdd = () => {
     setAdding(true)
@@ -311,7 +315,44 @@ function DimRow({ server, dim, onOpenSubset, onOpenDim }) {
           {/* Hierarchies */}
           {hasMultipleHierarchies && (
             <div className="px-10 py-0.5">
-              <div className="text-[10px] uppercase tracking-wider text-muted-foreground/60 font-semibold mb-0.5">Hierarchies</div>
+              <div className="flex items-center justify-between mb-0.5">
+                <div className="text-[10px] uppercase tracking-wider text-muted-foreground/60 font-semibold">Hierarchies</div>
+                {!addingHierarchy && (
+                  <button
+                    onClick={() => { setAddingHierarchy(true); setNewHierarchyName(''); setTimeout(() => hierarchyInputRef.current?.focus(), 0) }}
+                    className="flex items-center gap-0.5 px-1 py-0.5 rounded text-[10px] text-muted-foreground hover:text-foreground hover:bg-sidebar-accent"
+                    title="New hierarchy"
+                  >
+                    <Plus size={9} />
+                  </button>
+                )}
+              </div>
+              {addingHierarchy && (
+                <div className="flex items-center gap-1 px-4 py-0.5">
+                  <Layers size={10} className="shrink-0 text-muted-foreground" />
+                  <input
+                    ref={hierarchyInputRef}
+                    value={newHierarchyName}
+                    onChange={e => setNewHierarchyName(e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter' && newHierarchyName.trim()) {
+                        createHierarchyMut.mutate({ server, dimension: dim, name: newHierarchyName.trim() }, {
+                          onSuccess: () => {
+                            setAddingHierarchy(false)
+                            setNewHierarchyName('')
+                            onOpenDim(dim, newHierarchyName.trim())
+                          },
+                          onError: err => toast.error(err.message),
+                        })
+                      }
+                      if (e.key === 'Escape') { setAddingHierarchy(false); setNewHierarchyName('') }
+                    }}
+                    onBlur={() => { setAddingHierarchy(false); setNewHierarchyName('') }}
+                    placeholder="Hierarchy name…"
+                    className="flex-1 text-xs bg-transparent border-b border-primary outline-none font-mono py-px"
+                  />
+                </div>
+              )}
               {hierarchies.map(h => (
                 <button
                   key={h}

@@ -3,6 +3,7 @@ import {
   useElements, useEdges, useElementAttrValues, useHierarchies,
   useAddElement, useDeleteElement, useAddEdge, useDeleteEdge, useUpdateEdgeWeight,
   useAttrGrid, useWriteElementAttribute, useCreateAttrDef, useDeleteAttrDef, useSubsets, useSubsetElements, useDimCubes,
+  useCreateHierarchy,
 } from '@/hooks/useApi'
 import { AgGridReact } from 'ag-grid-react'
 import { AllCommunityModule, ModuleRegistry, themeBalham, colorSchemeDark, colorSchemeLight } from 'ag-grid-community'
@@ -575,6 +576,8 @@ export default function DimensionEditor({ tab }) {
   const [filterSearch, setFilterSearch] = useState('')
   const [showPicklist, setShowPicklist] = useState(false)
   const [selectedHierarchy, setSelectedHierarchy] = useState(tab.hierarchy ?? tab.dimension)
+  const [addingHierarchy, setAddingHierarchy] = useState(false)
+  const [newHierarchyName, setNewHierarchyName] = useState('')
 
   const { data: elements = [], isLoading: loadingEl, refetch: refetchEl } = useElements(tab.server, tab.dimension, selectedHierarchy)
   const { data: edges    = [], isLoading: loadingEd, refetch: refetchEd } = useEdges(tab.server, tab.dimension, selectedHierarchy)
@@ -589,6 +592,7 @@ export default function DimensionEditor({ tab }) {
   const addEdgeMut        = useAddEdge()
   const deleteEdgeMut     = useDeleteEdge()
   const updateWeightMut   = useUpdateEdgeWeight()
+  const createHierarchyMut = useCreateHierarchy()
 
   const tree = useMemo(() => buildTree(elements, edges), [elements, edges])
 
@@ -709,6 +713,38 @@ export default function DimensionEditor({ tab }) {
           >
             {hierarchies.map(h => <option key={h} value={h}>{h}</option>)}
           </select>
+        )}
+        {addingHierarchy ? (
+          <div className="flex items-center gap-1">
+            <input
+              autoFocus
+              value={newHierarchyName}
+              onChange={e => setNewHierarchyName(e.target.value)}
+              onKeyDown={e => {
+                if (e.key === 'Enter' && newHierarchyName.trim()) {
+                  run(async () => {
+                    await createHierarchyMut.mutateAsync({ server: tab.server, dimension: tab.dimension, name: newHierarchyName.trim() })
+                    setAddingHierarchy(false)
+                    setNewHierarchyName('')
+                    setSelectedHierarchy(newHierarchyName.trim())
+                  })
+                }
+                if (e.key === 'Escape') { setAddingHierarchy(false); setNewHierarchyName('') }
+              }}
+              onBlur={() => { setAddingHierarchy(false); setNewHierarchyName('') }}
+              placeholder="Hierarchy name…"
+              className="text-xs bg-background border border-primary rounded px-1.5 py-0.5 outline-none w-28"
+            />
+            <button onClick={() => { setAddingHierarchy(false); setNewHierarchyName('') }} className="text-muted-foreground hover:text-foreground"><X size={10} /></button>
+          </div>
+        ) : (
+          <button
+            onClick={() => { setAddingHierarchy(true); setNewHierarchyName('') }}
+            className="flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] rounded border border-border text-muted-foreground hover:text-foreground hover:bg-background"
+            title="New hierarchy"
+          >
+            <Plus size={9} /> Hierarchy
+          </button>
         )}
         <span className="text-xs text-muted-foreground">
           {filteredElements.length !== elements.length

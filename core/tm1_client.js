@@ -140,6 +140,14 @@ class TM1Client {
         return (d.value ?? []).map(h => h.Name)
     }
 
+    async createHierarchy(dim, name) {
+        return this.post(`Dimensions('${dim}')/Hierarchies`, { Name: name })
+    }
+
+    async deleteHierarchy(dim, name) {
+        return this.delete(`Dimensions('${dim}')/Hierarchies('${name}')`)
+    }
+
     // ── Attribute value write probe ───────────────────────────────────────────
     // Tests PATCH on Elements('name')/Attributes — the sub-resource we confirmed
     // works for reads. Writes back the SAME value already there (safe no-op).
