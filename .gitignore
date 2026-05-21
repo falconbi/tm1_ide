@@ -1,22 +1,54 @@
-# Credentials
+# ── Credentials ──
 .env
+.env.local
+.env.*.local
 config/servers.json
 
-# Node
+# ── Node / npm ──
 node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
 
-# Python (deploy CLI)
+# ── Vite / Build ──
+client/dist/
+dist/
+*.local
+
+# ── Python ──
 venv/
 __pycache__/
-*.pyc
+*.py[cod]
+*$py.class
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
 
-# Editor
+# ── Editor / OS ──
 .vscode/
 .idea/
 *.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
 
-# Project notes
-CLAUDE.md
-
-# Runtime
+# ── Logs / Runtime ──
+*.log
 *.db
+*.sqlite
+*.sqlite3
+nohup.out
+tmp/
+temp/
+
+# ── Claude / AI ──
+CLAUDE.md
+.claude/
+
+# ── Git ──
+!.gitkeep
