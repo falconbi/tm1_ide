@@ -1,7 +1,18 @@
-import { useMemo, useState } from 'react'
-import { useElements, useEdges } from '@/hooks/useApi'
-import { ChevronRight, ChevronDown, Loader2, List, GitBranch } from 'lucide-react'
+import { useMemo, useState, useCallback, useRef } from 'react'
+import {
+  useElements, useEdges, useElementAttrValues, useHierarchies,
+  useAddElement, useDeleteElement, useAddEdge, useDeleteEdge, useUpdateEdgeWeight,
+  useAttrGrid, useWriteElementAttribute, useCreateAttrDef, useDeleteAttrDef, useSubsets, useSubsetElements, useDimCubes,
+} from '@/hooks/useApi'
+import { AgGridReact } from 'ag-grid-react'
+import { AllCommunityModule, ModuleRegistry, themeBalham, colorSchemeDark, colorSchemeLight } from 'ag-grid-community'
+import { useStore } from '@/store'
+import { ChevronRight, ChevronDown, Loader2, List, GitBranch, Plus, Trash2, Check, X, ClipboardList, ChevronLeft, Table2, Search } from 'lucide-react'
 import { cn } from '@/lib/utils'
+
+ModuleRegistry.registerModules([AllCommunityModule])
+const lightTheme = themeBalham.withPart(colorSchemeLight).withParams({ fontSize: 12, rowHeight: 24, headerHeight: 28 })
+const darkTheme  = themeBalham.withPart(colorSchemeDark).withParams({ fontSize: 12, rowHeight: 24, headerHeight: 28 })
 
 const TYPE_ICON  = { N: '○', C: '◆', S: '"' }
 const TYPE_COLOR = { N: 'text-blue-400', C: 'text-orange-400', S: 'text-green-400' }
@@ -10,7 +21,6 @@ const TYPE_LABEL = { N: 'Numeric', C: 'Consolidated', S: 'String' }
 function buildTree(elements, edges) {
   const byName = {}
   for (const e of elements) byName[e.Name] = e
-
   const childrenOf = {}
   const isChild = new Set()
   for (const edge of edges) {
@@ -18,42 +28,309 @@ function buildTree(elements, edges) {
     childrenOf[edge.ParentName].push(edge.ComponentName)
     isChild.add(edge.ComponentName)
   }
-
   const roots = elements.filter(e => !isChild.has(e.Name)).map(e => e.Name)
   return { roots, childrenOf, byName }
 }
 
-function TreeNode({ name, childrenOf, byName, depth, visited = new Set() }) {
-  const children = childrenOf[name] ?? []
-  const hasChildren = children.length > 0
-  const cycle = visited.has(name)
-  const [open, setOpen] = useState(depth < 2)
-  const el = byName[name]
-  const nextVisited = new Set(visited).add(name)
+// ── Weight input ────────────────────────────────────────────────────────────
+function WeightInput({ value, onSave }) {
+  return (
+    <input
+      type="number"
+      defaultValue={value}
+      onBlur={e => { const n = parseFloat(e.target.value); if (!isNaN(n) && n !== value) onSave(n) }}
+      onKeyDown={e => { if (e.key === 'Enter') e.target.blur() }}
+      step="any"
+      className="w-14 text-[10px] font-mono bg-muted border border-border rounded px-1 py-px text-right outline-none focus:border-primary"
+    />
+  )
+}
+
+// ── Bulk add modal ──────────────────────────────────────────────────────────
+function BulkAddModal({ consolElements, onConfirm, onClose }) {
+  const [text, setText] = useState('')
+  const [type, setType] = useState('N')
+  const [parent, setParent] = useState('')
+
+  const names = text.split('\n').map(s => s.trim()).filter(Boolean)
 
   return (
-    <div className={cn(depth > 0 && 'ml-4 border-l border-border/50 pl-1.5')}>
-      <div className="flex items-center gap-1 py-px group">
-        {hasChildren && !cycle ? (
-          <button onClick={() => setOpen(o => !o)} className="shrink-0 text-muted-foreground hover:text-foreground">
-            {open ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
-          </button>
-        ) : <span className="w-3 shrink-0" />}
-        <span className={cn('shrink-0 text-[10px] w-3', TYPE_COLOR[el?.Type])}>{TYPE_ICON[el?.Type] ?? '·'}</span>
-        <span className="text-xs font-mono truncate" title={name}>{name}</span>
-        {cycle && <span className="text-muted-foreground/50 text-[10px] ml-1">(cycle)</span>}
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={onClose}>
+      <div className="bg-background border border-border rounded-lg w-[420px] shadow-xl" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+          <span className="text-sm font-semibold">Bulk Add Elements</span>
+          <button onClick={onClose} className="text-muted-foreground hover:text-foreground"><X size={14} /></button>
+        </div>
+        <div className="p-4 space-y-3">
+          <div>
+            <label className="text-xs text-muted-foreground block mb-1">Paste element names — one per line</label>
+            <textarea
+              autoFocus
+              value={text}
+              onChange={e => setText(e.target.value)}
+              placeholder={"Revenue\nExpenses\nEBITDA\n..."}
+              rows={8}
+              className="w-full text-xs font-mono bg-muted border border-border rounded p-2 outline-none resize-none focus:border-primary"
+            />
+          </div>
+          <div className="flex items-center gap-4">
+            <span className="text-xs text-muted-foreground shrink-0">Type:</span>
+            {[['N','○ Leaf','text-blue-400'], ['C','◆ Consol','text-orange-400'], ['S','" String','text-green-400']].map(([v, label, col]) => (
+              <label key={v} className="flex items-center gap-1 text-xs cursor-pointer">
+                <input type="radio" name="btype" value={v} checked={type === v} onChange={() => setType(v)} />
+                <span className={col}>{label}</span>
+              </label>
+            ))}
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground shrink-0">Parent:</span>
+            <select value={parent} onChange={e => setParent(e.target.value)}
+              className="flex-1 text-xs bg-muted border border-border rounded px-2 py-1 outline-none">
+              <option value="">None (root element)</option>
+              {consolElements.map(e => <option key={e.Name} value={e.Name}>{e.Name}</option>)}
+            </select>
+          </div>
+        </div>
+        <div className="flex items-center justify-between px-4 py-3 border-t border-border">
+          <span className="text-xs text-muted-foreground">{names.length} element{names.length !== 1 ? 's' : ''} to add</span>
+          <div className="flex gap-2">
+            <button onClick={onClose}
+              className="px-3 py-1.5 text-xs border border-border rounded text-muted-foreground hover:text-foreground">
+              Cancel
+            </button>
+            <button
+              onClick={() => names.length > 0 && onConfirm(names, type, parent || null)}
+              disabled={names.length === 0}
+              className="px-3 py-1.5 text-xs bg-primary text-primary-foreground rounded disabled:opacity-40">
+              Add {names.length > 0 ? names.length : ''} Element{names.length !== 1 ? 's' : ''}
+            </button>
+          </div>
+        </div>
       </div>
-      {open && !cycle && children.map(c => (
-        <TreeNode key={c} name={c} childrenOf={childrenOf} byName={byName} depth={depth + 1} visited={nextVisited} />
-      ))}
     </div>
   )
 }
 
-function FlatList({ elements }) {
+// ── Element properties panel ────────────────────────────────────────────────
+function ElementPanel({ el, parents, children, byName, consolElements, elemAttrs, loadingAttrs, hierarchies,
+  onDelete, onAddParent, onRemoveParent, onUpdateWeight, onClose }) {
+  const [addingParent, setAddingParent] = useState(false)
+  const [newParent, setNewParent] = useState('')
+
+  const existingParentNames = new Set(parents.map(p => p.ParentName))
+  const availableParents = consolElements.filter(e => e.Name !== el.Name && !existingParentNames.has(e.Name))
+
+  return (
+    <div className="flex flex-col h-full border-l border-border bg-background text-xs">
+      {/* Panel header */}
+      <div className="flex items-center gap-2 px-3 py-2 border-b border-border bg-muted shrink-0">
+        <span className={cn('text-[11px]', TYPE_COLOR[el.Type])}>{TYPE_ICON[el.Type]}</span>
+        <span className="font-mono font-semibold truncate flex-1">{el.Name}</span>
+        <span className={cn('shrink-0 text-[10px] px-1.5 py-px rounded border', TYPE_COLOR[el.Type])}>
+          {TYPE_LABEL[el.Type]}
+        </span>
+        <span className="shrink-0 text-muted-foreground text-[10px]">L{el.Level}</span>
+        <button onClick={onClose} className="shrink-0 text-muted-foreground hover:text-foreground ml-1">
+          <ChevronLeft size={12} />
+        </button>
+      </div>
+
+      <div className="flex-1 overflow-auto p-3 space-y-4">
+
+        {/* Hierarchies */}
+        {hierarchies && hierarchies.length > 1 && (
+          <section>
+            <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">Hierarchies</div>
+            <div className="flex flex-wrap gap-1">
+              {hierarchies.map(h => (
+                <span key={h} className="px-1.5 py-px rounded border border-border text-[10px] text-muted-foreground">{h}</span>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {/* Parents */}
+        <section>
+          <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">
+            Parents ({parents.length})
+          </div>
+          {parents.length === 0 && (
+            <p className="text-muted-foreground italic text-[11px]">Root element — no parents</p>
+          )}
+          {parents.map(p => (
+            <div key={p.ParentName} className="flex items-center gap-1.5 py-0.5">
+              <span className="text-orange-400 shrink-0 text-[10px]">◆</span>
+              <span className="font-mono flex-1 truncate">{p.ParentName}</span>
+              <span className="text-muted-foreground shrink-0">W</span>
+              <WeightInput key={`${p.ParentName}-${p.Weight}`} value={p.Weight}
+                onSave={w => onUpdateWeight(p.ParentName, el.Name, w)} />
+              <button onClick={() => onRemoveParent(p.ParentName)}
+                className="shrink-0 text-muted-foreground hover:text-red-400 p-0.5">
+                <X size={10} />
+              </button>
+            </div>
+          ))}
+          {addingParent ? (
+            <div className="flex items-center gap-1 mt-1">
+              <select value={newParent} onChange={e => setNewParent(e.target.value)}
+                className="flex-1 text-[10px] bg-muted border border-border rounded px-1 py-0.5 outline-none">
+                <option value="">Pick consolidation…</option>
+                {availableParents.map(e => <option key={e.Name} value={e.Name}>{e.Name}</option>)}
+              </select>
+              <button onClick={() => { if (newParent) { onAddParent(newParent); setAddingParent(false); setNewParent('') } }}
+                className="p-0.5 text-primary shrink-0"><Check size={10} /></button>
+              <button onClick={() => setAddingParent(false)}
+                className="p-0.5 text-muted-foreground shrink-0"><X size={10} /></button>
+            </div>
+          ) : (
+            <button onClick={() => setAddingParent(true)}
+              className="flex items-center gap-0.5 mt-1 text-muted-foreground hover:text-foreground">
+              <Plus size={9} /> Add parent
+            </button>
+          )}
+        </section>
+
+        {/* Children */}
+        {el.Type === 'C' && (
+          <section>
+            <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">
+              Children ({children.length})
+            </div>
+            {children.length === 0 && (
+              <p className="text-muted-foreground italic text-[11px]">No children yet</p>
+            )}
+            {children.map(c => {
+              const child = byName[c.ComponentName]
+              return (
+                <div key={c.ComponentName} className="flex items-center gap-1.5 py-0.5">
+                  <span className={cn('shrink-0 text-[10px]', TYPE_COLOR[child?.Type] ?? 'text-muted-foreground')}>
+                    {TYPE_ICON[child?.Type] ?? '·'}
+                  </span>
+                  <span className="font-mono flex-1 truncate">{c.ComponentName}</span>
+                  <span className="text-muted-foreground shrink-0">W</span>
+                  <WeightInput key={`${c.ComponentName}-${c.Weight}`} value={c.Weight}
+                    onSave={w => onUpdateWeight(el.Name, c.ComponentName, w)} />
+                </div>
+              )
+            })}
+          </section>
+        )}
+
+        {/* Attributes */}
+        <section>
+          <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">Attributes</div>
+          {loadingAttrs && <Loader2 size={11} className="animate-spin text-muted-foreground" />}
+          {!loadingAttrs && elemAttrs && Object.keys(elemAttrs).length === 0 && (
+            <p className="text-muted-foreground italic text-[11px]">No attributes defined</p>
+          )}
+          {!loadingAttrs && elemAttrs && Object.entries(elemAttrs).map(([k, v]) => (
+            <div key={k} className="flex items-start gap-2 py-0.5">
+              <span className="text-muted-foreground shrink-0 min-w-[80px]">{k}:</span>
+              <span className="font-mono break-all">{v ?? <span className="text-muted-foreground/50 italic">—</span>}</span>
+            </div>
+          ))}
+        </section>
+
+      </div>
+
+      {/* Delete */}
+      <div className="shrink-0 px-3 py-2 border-t border-border">
+        <button onClick={() => onDelete(el.Name)}
+          className="flex items-center gap-1.5 px-2 py-1.5 w-full justify-center text-xs rounded border border-red-400/30 text-red-400 hover:bg-red-500/10">
+          <Trash2 size={11} /> Delete Element
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// ── Tree node ───────────────────────────────────────────────────────────────
+function AddRow({ onConfirm, onCancel }) {
+  const [name, setName] = useState('')
+  const [type, setType] = useState('N')
+  const confirm = () => { if (name.trim()) onConfirm(name.trim(), type) }
+  return (
+    <div className="flex items-center gap-1 py-1 px-1 bg-muted/40 rounded mb-1">
+      <span className={cn('shrink-0 text-[10px] w-3', TYPE_COLOR[type])}>{TYPE_ICON[type]}</span>
+      <input autoFocus value={name} onChange={e => setName(e.target.value)}
+        onKeyDown={e => { if (e.key === 'Enter') confirm(); if (e.key === 'Escape') onCancel() }}
+        placeholder="element name…"
+        className="flex-1 text-xs font-mono bg-transparent border-b border-primary outline-none py-px min-w-0" />
+      <select value={type} onChange={e => setType(e.target.value)}
+        className="text-[10px] bg-background border border-border rounded px-1 py-px text-muted-foreground shrink-0">
+        <option value="N">Leaf</option>
+        <option value="C">Consol</option>
+        <option value="S">String</option>
+      </select>
+      <button onClick={confirm} className="p-1 text-primary shrink-0"><Check size={11} /></button>
+      <button onClick={onCancel} className="p-1 text-muted-foreground shrink-0"><X size={11} /></button>
+    </div>
+  )
+}
+
+function TreeNode({ name, childrenOf, byName, depth, onAddChild, onDelete, selected, onSelect, visited = new Set() }) {
+  const children = childrenOf[name] ?? []
+  const hasChildren = children.length > 0
+  const cycle = visited.has(name)
+  const [open, setOpen] = useState(depth < 2)
+  const [addingChild, setAddingChild] = useState(false)
+  const el = byName[name]
+  const isC = el?.Type === 'C'
+  const isSel = selected === name
+  const nextVisited = new Set(visited).add(name)
+
+  return (
+    <div className={cn(depth > 0 && 'ml-4 border-l border-border/40 pl-1.5')}>
+      <div
+        onClick={() => onSelect(isSel ? null : name)}
+        className={cn('flex items-center gap-1 py-0.5 cursor-pointer rounded-sm',
+          isSel ? 'bg-primary/10 text-foreground' : 'hover:bg-muted/50')}
+      >
+        <button onClick={e => { e.stopPropagation(); setOpen(o => !o) }}
+          className={cn('shrink-0 text-muted-foreground hover:text-foreground', (!hasChildren || cycle) && 'invisible')}>
+          {open ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
+        </button>
+        <span className={cn('shrink-0 text-[10px] w-3', TYPE_COLOR[el?.Type] ?? '')}>{TYPE_ICON[el?.Type] ?? '·'}</span>
+        <span className="text-xs font-mono truncate flex-1">{name}</span>
+        {cycle && <span className="text-muted-foreground/50 text-[10px]">(cycle)</span>}
+        {isSel && !cycle && (
+          <span className="flex items-center gap-1 shrink-0 ml-1">
+            {isC && (
+              <button onClick={e => { e.stopPropagation(); setOpen(true); setAddingChild(true) }}
+                className="flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] rounded border border-border bg-background text-muted-foreground hover:text-foreground">
+                <Plus size={9} /> Child
+              </button>
+            )}
+            <button onClick={e => { e.stopPropagation(); onDelete(name) }}
+              className="flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] rounded border border-border bg-background text-muted-foreground hover:text-red-400 hover:border-red-400/40">
+              <Trash2 size={9} /> Del
+            </button>
+          </span>
+        )}
+      </div>
+      {open && !cycle && (
+        <>
+          {addingChild && (
+            <div className="ml-4 border-l border-border/40 pl-1.5">
+              <AddRow
+                onConfirm={(n, t) => { onAddChild(name, n, t); setAddingChild(false) }}
+                onCancel={() => setAddingChild(false)}
+              />
+            </div>
+          )}
+          {children.map(c => (
+            <TreeNode key={c} name={c} childrenOf={childrenOf} byName={byName} depth={depth + 1}
+              onAddChild={onAddChild} onDelete={onDelete} selected={selected} onSelect={onSelect} visited={nextVisited} />
+          ))}
+        </>
+      )}
+    </div>
+  )
+}
+
+function FlatList({ elements, selected, onSelect, onDelete }) {
   const counts = { N: 0, C: 0, S: 0 }
   for (const e of elements) if (counts[e.Type] != null) counts[e.Type]++
-
   return (
     <div className="flex flex-col h-full">
       <div className="flex gap-3 px-3 py-2 border-b border-border shrink-0 text-xs text-muted-foreground">
@@ -63,28 +340,350 @@ function FlatList({ elements }) {
         <span className="ml-auto">{elements.length} total</span>
       </div>
       <div className="flex-1 overflow-auto">
-        {elements.map(e => (
-          <div key={e.Name} className="flex items-center gap-2 px-3 py-px text-xs hover:bg-muted">
-            <span className={cn('shrink-0 text-[10px]', TYPE_COLOR[e.Type])}>{TYPE_ICON[e.Type] ?? '·'}</span>
-            <span className="font-mono truncate">{e.Name}</span>
-            <span className="ml-auto text-muted-foreground/60 shrink-0">L{e.Level}</span>
-          </div>
-        ))}
+        {elements.map(e => {
+          const isSel = selected === e.Name
+          return (
+            <div key={e.Name} onClick={() => onSelect(isSel ? null : e.Name)}
+              className={cn('flex items-center gap-2 px-3 py-0.5 text-xs cursor-pointer',
+                isSel ? 'bg-primary/10' : 'hover:bg-muted/50')}>
+              <span className={cn('shrink-0 text-[10px]', TYPE_COLOR[e.Type])}>{TYPE_ICON[e.Type] ?? '·'}</span>
+              <span className="font-mono truncate flex-1">{e.Name}</span>
+              <span className="text-muted-foreground/50 shrink-0 text-[10px]">L{e.Level}</span>
+              {isSel && (
+                <button onClick={ev => { ev.stopPropagation(); onDelete(e.Name) }}
+                  className="flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] rounded border border-border bg-background text-muted-foreground hover:text-red-400 hover:border-red-400/40 shrink-0">
+                  <Trash2 size={9} /> Del
+                </button>
+              )}
+            </div>
+          )
+        })}
       </div>
     </div>
   )
 }
 
+// ── Tree order helper ───────────────────────────────────────────────────────
+function buildTreeOrder(elements, edges) {
+  const childrenOf = {}
+  const isChild = new Set()
+  for (const edge of edges) {
+    if (!childrenOf[edge.ParentName]) childrenOf[edge.ParentName] = []
+    childrenOf[edge.ParentName].push(edge.ComponentName)
+    isChild.add(edge.ComponentName)
+  }
+  const byName = Object.fromEntries(elements.map(e => [e.Name, e]))
+  const roots = elements.filter(e => !isChild.has(e.Name)).map(e => e.Name)
+  const result = []
+  const visited = new Set()
+  function dfs(name, depth) {
+    if (visited.has(name)) return
+    visited.add(name)
+    const el = byName[name]
+    if (el) result.push({ ...el, depth })
+    for (const child of childrenOf[name] ?? []) dfs(child, depth + 1)
+  }
+  for (const r of roots) dfs(r, 0)
+  for (const el of elements) if (!visited.has(el.Name)) result.push({ ...el, depth: 0 })
+  return result
+}
+
+// ── Attribute grid ──────────────────────────────────────────────────────────
+function NewAttrModal({ onConfirm, onClose }) {
+  const [name, setName] = useState('')
+  const [type, setType] = useState('String')
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={onClose}>
+      <div className="bg-background border border-border rounded-lg p-4 w-72 shadow-xl" onClick={e => e.stopPropagation()}>
+        <p className="text-sm font-semibold mb-3">New Attribute</p>
+        <input autoFocus value={name} onChange={e => setName(e.target.value)}
+          placeholder="Attribute name (e.g. DOB)"
+          onKeyDown={e => { if (e.key === 'Enter' && name.trim()) onConfirm(name.trim(), type) }}
+          className="w-full text-xs bg-muted border border-border rounded px-2 py-1.5 mb-2 outline-none focus:border-primary" />
+        <div className="flex gap-2 mb-3">
+          {['String', 'Numeric', 'Alias'].map(t => (
+            <button key={t} onClick={() => setType(t)}
+              className={cn('flex-1 text-xs px-2 py-1 rounded border transition-colors',
+                type === t ? 'bg-primary text-primary-foreground border-primary' : 'border-border text-muted-foreground hover:bg-muted')}>
+              {t}
+            </button>
+          ))}
+        </div>
+        <div className="flex gap-2">
+          <button onClick={() => name.trim() && onConfirm(name.trim(), type)}
+            disabled={!name.trim()}
+            className="flex-1 text-xs px-3 py-1.5 rounded bg-primary text-primary-foreground disabled:opacity-40">
+            Create
+          </button>
+          <button onClick={onClose} className="flex-1 text-xs px-3 py-1.5 rounded border border-border text-muted-foreground hover:bg-muted">
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function AttrGrid({ tab, elements, edges }) {
+  const theme     = useStore(s => s.theme)
+  const [subset, setSubset]     = useState('')
+  const [search,  setSearch]    = useState('')
+  const [newAttr, setNewAttr]   = useState(false)
+
+  const { data: grid, isLoading, refetch } = useAttrGrid(tab.server, tab.dimension)
+  const { data: subsets = [] }             = useSubsets(tab.server, tab.dimension)
+  const { data: subElems = [] }            = useSubsetElements(tab.server, tab.dimension, subset)
+  const writeAttr                          = useWriteElementAttribute()
+  const createAttr                         = useCreateAttrDef()
+  const deleteAttr                         = useDeleteAttrDef()
+
+  const handleCreateAttr = useCallback((name, type) => {
+    setNewAttr(false)
+    createAttr.mutate(
+      { server: tab.server, dimension: tab.dimension, name, type },
+      { onSuccess: () => refetch() }
+    )
+  }, [createAttr, tab, refetch])
+
+  const handleDeleteAttr = useCallback((name) => {
+    if (!window.confirm(`Delete attribute "${name}" and all its values?`)) return
+    deleteAttr.mutate(
+      { server: tab.server, dimension: tab.dimension, name },
+      { onSuccess: () => refetch() }
+    )
+  }, [deleteAttr, tab, refetch])
+
+  const attrs = grid?.attrs ?? []
+
+  const ordered = useMemo(() => buildTreeOrder(elements, edges), [elements, edges])
+
+  const rows = useMemo(() => {
+    let list = ordered
+    if (subset && subElems.length > 0) {
+      const names = new Set(subElems.map(e => e.name))
+      list = list.filter(e => names.has(e.Name))
+    }
+    if (search) {
+      const q = search.toLowerCase()
+      list = list.filter(e => e.Name.toLowerCase().includes(q))
+    }
+    const vals = grid?.values ?? {}
+    return list.map(el => ({ __name: el.Name, __type: el.Type, __depth: el.depth, ...vals[el.Name] }))
+  }, [ordered, subset, subElems, search, grid])
+
+  const colDefs = useMemo(() => [
+    {
+      field: '__name',
+      headerName: 'Element',
+      pinned: 'left',
+      width: 220,
+      editable: false,
+      cellRenderer: p => (
+        <span style={{ paddingLeft: p.data.__depth * 14 }}>
+          <span className={TYPE_COLOR[p.data.__type]}>{TYPE_ICON[p.data.__type]}</span>
+          {' '}{p.value}
+        </span>
+      ),
+    },
+    ...attrs.map(attr => ({
+      field: attr.Name,
+      headerName: attr.Name,
+      editable: true,
+      width: 140,
+      headerComponent: p => (
+        <div className="flex items-center gap-1 w-full group">
+          <span className="flex-1 truncate">{attr.Name}</span>
+          <button onClick={() => handleDeleteAttr(attr.Name)}
+            className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-red-400 transition-opacity"
+            title={`Delete attribute ${attr.Name}`}>
+            <X size={10} />
+          </button>
+        </div>
+      ),
+    })),
+  ], [attrs])
+
+  const onCellValueChanged = useCallback(p => {
+    const element   = p.data.__name
+    const attribute = p.colDef.field
+    const attrDef   = attrs.find(a => a.Name === attribute)
+    const type      = attrDef?.Type === 'Numeric' ? 'N' : 'S'
+    writeAttr.mutate({ server: tab.server, dimension: tab.dimension, element, attribute, value: p.newValue ?? '', type })
+  }, [writeAttr, tab, attrs])
+
+  if (isLoading) return (
+    <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm">
+      <Loader2 size={16} className="animate-spin mr-2" /> Loading attributes…
+    </div>
+  )
+
+  if (attrs.length === 0) return (
+    <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm">
+      No attributes defined on this dimension.
+    </div>
+  )
+
+  return (
+    <div className="flex flex-col h-full">
+      <div className="flex items-center gap-2 px-3 py-1.5 border-b border-border bg-muted shrink-0">
+        <select value={subset} onChange={e => setSubset(e.target.value)}
+          className="text-xs bg-background border border-border rounded px-1.5 py-0.5 text-foreground max-w-44">
+          <option value="">All elements</option>
+          {subsets.map(s => <option key={s.Name} value={s.Name}>{s.Name}</option>)}
+        </select>
+        <div className="flex items-center gap-1 bg-background border border-border rounded px-1.5 py-0.5">
+          <Search size={10} className="text-muted-foreground shrink-0" />
+          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Filter elements…"
+            className="text-xs bg-transparent outline-none w-32 placeholder:text-muted-foreground" />
+        </div>
+        {(writeAttr.isPending || createAttr.isPending || deleteAttr.isPending) && <Loader2 size={11} className="animate-spin text-muted-foreground" />}
+        {writeAttr.isError  && <span className="text-xs text-red-400">{writeAttr.error?.message}</span>}
+        {createAttr.isError && <span className="text-xs text-red-400">{createAttr.error?.message}</span>}
+        <button onClick={() => setNewAttr(true)}
+          className="flex items-center gap-0.5 px-2 py-0.5 text-xs rounded border border-border bg-background text-muted-foreground hover:text-foreground ml-auto">
+          <Plus size={10} /> New Attr
+        </button>
+        <span className="text-xs text-muted-foreground">{rows.length} elements · {attrs.length} attrs</span>
+      </div>
+      <div className="flex-1 min-h-0 w-full">
+        <AgGridReact
+          theme={theme === 'dark' ? darkTheme : lightTheme}
+          rowData={rows}
+          columnDefs={colDefs}
+          onCellValueChanged={onCellValueChanged}
+          getRowId={p => p.data.__name}
+          stopEditingWhenCellsLoseFocus
+          singleClickEdit
+        />
+      </div>
+      {newAttr && <NewAttrModal onConfirm={handleCreateAttr} onClose={() => setNewAttr(false)} />}
+    </div>
+  )
+}
+
+// ── Main component ──────────────────────────────────────────────────────────
 export default function DimensionEditor({ tab }) {
-  const { data: elements = [], isLoading: loadingEl } = useElements(tab.server, tab.dimension)
-  const { data: edges    = [], isLoading: loadingEd } = useEdges(tab.server, tab.dimension)
-  const [view, setView] = useState('tree')
+  const [view, setView]           = useState('tree')
+  const [selected, setSelected]   = useState(null)
+  const [addRoot, setAddRoot]     = useState(false)
+  const [bulkAdd, setBulkAdd]     = useState(false)
+  const [busy, setBusy]           = useState(false)
+  const [error, setError]         = useState(null)
+  const [filterSubset, setFilterSubset] = useState('')
+  const [filterSearch, setFilterSearch] = useState('')
+
+  const { data: elements = [], isLoading: loadingEl, refetch: refetchEl } = useElements(tab.server, tab.dimension)
+  const { data: edges    = [], isLoading: loadingEd, refetch: refetchEd } = useEdges(tab.server, tab.dimension)
+  const { data: hierarchies = [] } = useHierarchies(tab.server, tab.dimension)
+  const { data: dimCubes   = [] } = useDimCubes(tab.server, tab.dimension)
+  const { data: elemAttrs, isFetching: loadingAttrs } = useElementAttrValues(tab.server, tab.dimension, selected)
+  const { data: subsets = [] }    = useSubsets(tab.server, tab.dimension)
+  const { data: subsetElems = [] } = useSubsetElements(tab.server, tab.dimension, filterSubset)
+
+  const addElementMut     = useAddElement()
+  const deleteElementMut  = useDeleteElement()
+  const addEdgeMut        = useAddEdge()
+  const deleteEdgeMut     = useDeleteEdge()
+  const updateWeightMut   = useUpdateEdgeWeight()
 
   const tree = useMemo(() => buildTree(elements, edges), [elements, edges])
 
-  const isLoading = loadingEl || loadingEd
+  const filteredElements = useMemo(() => {
+    let list = elements
+    if (filterSubset && subsetElems.length > 0) {
+      const names = new Set(subsetElems.map(e => e.name))
+      list = list.filter(e => names.has(e.Name))
+    }
+    if (filterSearch) {
+      const q = filterSearch.toLowerCase()
+      list = list.filter(e => e.Name.toLowerCase().includes(q))
+    }
+    return list
+  }, [elements, filterSubset, subsetElems, filterSearch])
 
-  if (isLoading) {
+  const filteredTree = useMemo(() => buildTree(filteredElements, edges), [filteredElements, edges])
+
+  const consolElements   = useMemo(() => elements.filter(e => e.Type === 'C'), [elements])
+  const selectedEl       = selected ? tree.byName[selected] : null
+  const selectedParents  = selected ? edges.filter(e => e.ComponentName === selected) : []
+  const selectedChildren = selected ? edges.filter(e => e.ParentName === selected) : []
+
+  const refresh = useCallback(() => {
+    refetchEl(); refetchEd(); setError(null)
+  }, [refetchEl, refetchEd])
+
+  const run = useCallback(async (fn) => {
+    setBusy(true); setError(null)
+    try { await fn() } catch (e) { setError(e.message) }
+    finally { setBusy(false) }
+  }, [])
+
+  const handleAddRoot = useCallback((name, type) => {
+    setAddRoot(false)
+    run(async () => {
+      await addElementMut.mutateAsync({ server: tab.server, dimension: tab.dimension, name, type })
+      refresh()
+    })
+  }, [run, addElementMut, tab, refresh])
+
+  const handleAddChild = useCallback((parent, name, type) => {
+    run(async () => {
+      await addElementMut.mutateAsync({ server: tab.server, dimension: tab.dimension, name, type })
+      await addEdgeMut.mutateAsync({ server: tab.server, dimension: tab.dimension, parent, child: name })
+      refresh()
+    })
+  }, [run, addElementMut, addEdgeMut, tab, refresh])
+
+  const handleBulkAdd = useCallback((names, type, parent) => {
+    setBulkAdd(false)
+    run(async () => {
+      for (const name of names) {
+        await addElementMut.mutateAsync({ server: tab.server, dimension: tab.dimension, name, type })
+        if (parent) {
+          await addEdgeMut.mutateAsync({ server: tab.server, dimension: tab.dimension, parent, child: name })
+        }
+      }
+      refresh()
+    })
+  }, [run, addElementMut, addEdgeMut, tab, refresh])
+
+  const handleDelete = useCallback((name) => {
+    const childCount = (tree.childrenOf[name] ?? []).length
+    if (childCount > 0 && !window.confirm(`"${name}" has ${childCount} child${childCount !== 1 ? 'ren' : ''}. Remove all edges and delete?`)) return
+    if (selected === name) setSelected(null)
+    run(async () => {
+      const involving = edges.filter(e => e.ParentName === name || e.ComponentName === name)
+      await Promise.all(involving.map(e =>
+        deleteEdgeMut.mutateAsync({ server: tab.server, dimension: tab.dimension, parent: e.ParentName, child: e.ComponentName })
+      ))
+      await deleteElementMut.mutateAsync({ server: tab.server, dimension: tab.dimension, name })
+      refresh()
+    })
+  }, [run, selected, tree, edges, deleteEdgeMut, deleteElementMut, tab, refresh])
+
+  const handleAddParent = useCallback((child, parent) => {
+    run(async () => {
+      await addEdgeMut.mutateAsync({ server: tab.server, dimension: tab.dimension, parent, child })
+      refresh()
+    })
+  }, [run, addEdgeMut, tab, refresh])
+
+  const handleRemoveParent = useCallback((child, parent) => {
+    run(async () => {
+      await deleteEdgeMut.mutateAsync({ server: tab.server, dimension: tab.dimension, parent, child })
+      refresh()
+    })
+  }, [run, deleteEdgeMut, tab, refresh])
+
+  const handleUpdateWeight = useCallback((parent, child, weight) => {
+    run(async () => {
+      await updateWeightMut.mutateAsync({ server: tab.server, dimension: tab.dimension, parent, child, weight })
+      refresh()
+    })
+  }, [run, updateWeightMut, tab, refresh])
+
+
+  if (loadingEl || loadingEd) {
     return (
       <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm">
         <Loader2 size={16} className="animate-spin mr-2" /> Loading dimension…
@@ -94,42 +693,131 @@ export default function DimensionEditor({ tab }) {
 
   return (
     <div className="flex flex-col h-full">
-      {/* Toolbar */}
+      {/* Toolbar row 1 — title + actions */}
       <div className="flex items-center gap-2 px-3 py-1.5 border-b border-border bg-muted shrink-0">
         <span className="text-xs font-semibold">{tab.dimension}</span>
-        <span className="text-xs text-muted-foreground">{elements.length} elements</span>
+        <span className="text-xs text-muted-foreground">
+          {filteredElements.length !== elements.length
+            ? `${filteredElements.length} / ${elements.length} elements`
+            : `${elements.length} elements`}
+        </span>
+        {busy && <Loader2 size={11} className="animate-spin text-muted-foreground" />}
+        {error && <span className="text-xs text-red-400 truncate max-w-40" title={error}>{error}</span>}
         <div className="ml-auto flex items-center gap-1">
-          <button
-            onClick={() => setView('tree')}
+          <button onClick={() => { setAddRoot(true); setView('tree') }} disabled={busy}
+            className="flex items-center gap-0.5 px-2 py-0.5 text-xs rounded border border-border bg-background text-muted-foreground hover:text-foreground disabled:opacity-40">
+            <Plus size={10} /> Add
+          </button>
+          <button onClick={() => setBulkAdd(true)} disabled={busy}
+            className="flex items-center gap-0.5 px-2 py-0.5 text-xs rounded border border-border bg-background text-muted-foreground hover:text-foreground disabled:opacity-40">
+            <ClipboardList size={10} /> Bulk
+          </button>
+          <span className="w-px h-4 bg-border mx-0.5" />
+          <button onClick={() => setView('tree')}
             className={cn('flex items-center gap-1 px-2 py-0.5 text-xs rounded border transition-colors',
-              view === 'tree' ? 'bg-primary text-primary-foreground border-primary' : 'border-border text-muted-foreground hover:bg-muted')}
-          >
+              view === 'tree' ? 'bg-primary text-primary-foreground border-primary' : 'border-border text-muted-foreground hover:bg-background')}>
             <GitBranch size={11} /> Tree
           </button>
-          <button
-            onClick={() => setView('flat')}
+          <button onClick={() => setView('flat')}
             className={cn('flex items-center gap-1 px-2 py-0.5 text-xs rounded border transition-colors',
-              view === 'flat' ? 'bg-primary text-primary-foreground border-primary' : 'border-border text-muted-foreground hover:bg-muted')}
-          >
+              view === 'flat' ? 'bg-primary text-primary-foreground border-primary' : 'border-border text-muted-foreground hover:bg-background')}>
             <List size={11} /> Flat
+          </button>
+          <button onClick={() => setView('attrs')}
+            className={cn('flex items-center gap-1 px-2 py-0.5 text-xs rounded border transition-colors',
+              view === 'attrs' ? 'bg-primary text-primary-foreground border-primary' : 'border-border text-muted-foreground hover:bg-background')}>
+            <Table2 size={11} /> Attrs
           </button>
         </div>
       </div>
 
-      {/* Content */}
-      <div className="flex-1 min-h-0 overflow-auto">
-        {view === 'flat' && <FlatList elements={elements} />}
-        {view === 'tree' && (
-          <div className="p-2">
-            {tree.roots.length === 0 && (
-              <p className="text-xs text-muted-foreground px-2 py-4">No elements found.</p>
-            )}
-            {tree.roots.map(r => (
-              <TreeNode key={r} name={r} childrenOf={tree.childrenOf} byName={tree.byName} depth={0} />
+      {/* Toolbar row 2 — cube usage + filters */}
+      <div className="flex items-center gap-2 px-3 py-1 border-b border-border bg-muted/50 shrink-0 flex-wrap">
+        {dimCubes.length > 0 && (
+          <span className="flex items-center gap-1 flex-wrap">
+            <span className="text-[10px] text-muted-foreground/60 uppercase tracking-wider">Used in:</span>
+            {dimCubes.map(c => (
+              <span key={c} className="px-1.5 py-px rounded bg-background border border-border text-[10px] font-mono text-muted-foreground">{c}</span>
             ))}
-          </div>
+          </span>
         )}
+        <span className="ml-auto flex items-center gap-2">
+          {subsets.length > 0 && (
+            <select value={filterSubset} onChange={e => setFilterSubset(e.target.value)}
+              className="text-xs bg-background border border-border rounded px-1.5 py-0.5 text-foreground max-w-36">
+              <option value="">All elements</option>
+              {subsets.map(s => <option key={s.Name} value={s.Name}>{s.Name}</option>)}
+            </select>
+          )}
+          <div className="flex items-center gap-1 bg-background border border-border rounded px-1.5 py-0.5">
+            <Search size={10} className="text-muted-foreground shrink-0" />
+            <input value={filterSearch} onChange={e => setFilterSearch(e.target.value)}
+              placeholder="Filter elements…"
+              className="text-xs bg-transparent outline-none w-28 placeholder:text-muted-foreground" />
+            {filterSearch && (
+              <button onClick={() => setFilterSearch('')} className="text-muted-foreground hover:text-foreground shrink-0">
+                <X size={9} />
+              </button>
+            )}
+          </div>
+        </span>
       </div>
+
+      {/* Body */}
+      <div className="flex-1 min-h-0 flex overflow-hidden">
+        {view === 'attrs' && <div className="flex-1 min-w-0 min-h-0 flex flex-col"><AttrGrid tab={tab} elements={elements} edges={edges} /></div>}
+        {/* Tree / Flat pane */}
+        {view !== 'attrs' && <>
+          <div className={cn('flex-1 min-w-0 overflow-auto', selectedEl && 'max-w-[55%]')}>
+            {view === 'flat' && (
+              <FlatList elements={filteredElements} selected={selected} onSelect={setSelected} onDelete={handleDelete} />
+            )}
+            {view === 'tree' && (
+              <div className="p-2">
+                {addRoot && <AddRow onConfirm={handleAddRoot} onCancel={() => setAddRoot(false)} />}
+                {filteredTree.roots.length === 0 && !addRoot && (
+                  <p className="text-xs text-muted-foreground px-2 py-4 text-center">
+                    {filterSubset || filterSearch ? 'No elements match the current filter.' : 'No elements. Click Add or Bulk to start.'}
+                  </p>
+                )}
+                {filteredTree.roots.map(r => (
+                  <TreeNode key={r} name={r} childrenOf={filteredTree.childrenOf} byName={filteredTree.byName} depth={0}
+                    onAddChild={handleAddChild} onDelete={handleDelete}
+                    selected={selected} onSelect={setSelected} visited={new Set()} />
+                ))}
+              </div>
+            )}
+          </div>
+          {selectedEl && (
+            <div className="w-[45%] shrink-0 overflow-auto">
+              <ElementPanel
+                el={selectedEl}
+                parents={selectedParents}
+                children={selectedChildren}
+                byName={tree.byName}
+                consolElements={consolElements}
+                hierarchies={hierarchies}
+                elemAttrs={elemAttrs}
+                loadingAttrs={loadingAttrs}
+                onDelete={handleDelete}
+                onAddParent={parent => handleAddParent(selected, parent)}
+                onRemoveParent={parent => handleRemoveParent(selected, parent)}
+                onUpdateWeight={handleUpdateWeight}
+                onClose={() => setSelected(null)}
+              />
+            </div>
+          )}
+        </>}
+      </div>
+
+      {/* Bulk add modal */}
+      {bulkAdd && (
+        <BulkAddModal
+          consolElements={consolElements}
+          onConfirm={handleBulkAdd}
+          onClose={() => setBulkAdd(false)}
+        />
+      )}
     </div>
   )
 }

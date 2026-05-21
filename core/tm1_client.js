@@ -64,17 +64,28 @@ class TM1Client {
     }
 
     async getElementsWithAttributes(dim) {
+        // PAW does not support $expand=Attributes on the collection (returns 400).
+        // Return elements with empty attributes — callers that need values use getElementAttributeValues per element.
         const TYPE = { Numeric: 'N', Consolidated: 'C', String: 'S', N: 'N', C: 'C', S: 'S' }
         const d = await this.get(
             `Dimensions('${dim}')/Hierarchies('${dim}')/Elements`,
-            { '$select': 'Name,Type,Level', '$expand': 'Attributes' }
+            { '$select': 'Name,Type,Level' }
         )
         return (d.value ?? []).map(e => ({
             Name: e.Name,
             Type: TYPE[e.Type] ?? e.Type,
             Level: e.Level,
-            Attributes: Object.fromEntries((e.Attributes ?? []).map(a => [a.Name, a.Value])),
+            Attributes: {},
         }))
+    }
+
+    async getElementAttributeValues(dim, element) {
+        // Returns flat object: { Caption: "...", signswitch: 0, ... }
+        // Filters out @odata.* metadata keys.
+        const raw = await this.get(
+            `Dimensions('${dim}')/Hierarchies('${dim}')/Elements('${element}')/Attributes`
+        )
+        return Object.fromEntries(Object.entries(raw).filter(([k]) => !k.startsWith('@')))
     }
 
     async getEdges(dim) {
@@ -83,6 +94,178 @@ class TM1Client {
             { '$select': 'ParentName,ComponentName,Weight' }
         )
         return d.value ?? []
+    }
+
+    async addElement(dim, name, type) {
+        const TYPE_MAP = { N: 'Numeric', C: 'Consolidated', S: 'String' }
+        return this.post(
+            `Dimensions('${dim}')/Hierarchies('${dim}')/Elements`,
+            { Name: name, Type: TYPE_MAP[type] ?? type }
+        )
+    }
+
+    async deleteElement(dim, name) {
+        return this.delete(`Dimensions('${dim}')/Hierarchies('${dim}')/Elements('${name}')`)
+    }
+
+    async renameElement(dim, name, newName) {
+        return this.patch(
+            `Dimensions('${dim}')/Hierarchies('${dim}')/Elements('${name}')`,
+            { Name: newName }
+        )
+    }
+
+    async addEdge(dim, parent, child, weight = 1) {
+        return this.post(
+            `Dimensions('${dim}')/Hierarchies('${dim}')/Edges`,
+            { ParentName: parent, ComponentName: child, Weight: weight }
+        )
+    }
+
+    async deleteEdge(dim, parent, child) {
+        return this.delete(
+            `Dimensions('${dim}')/Hierarchies('${dim}')/Edges(ParentName='${parent}',ComponentName='${child}')`
+        )
+    }
+
+    async updateEdgeWeight(dim, parent, child, weight) {
+        return this.patch(
+            `Dimensions('${dim}')/Hierarchies('${dim}')/Edges(ParentName='${parent}',ComponentName='${child}')`,
+            { Weight: weight }
+        )
+    }
+
+    async getHierarchies(dim) {
+        const d = await this.get(`Dimensions('${dim}')/Hierarchies`, { '$select': 'Name' })
+        return (d.value ?? []).map(h => h.Name)
+    }
+
+    // ── Attribute value write probe ───────────────────────────────────────────
+    // Tests PATCH on Elements('name')/Attributes — the sub-resource we confirmed
+    // works for reads. Writes back the SAME value already there (safe no-op).
+    // Tries two body formats: flat object and array.
+    async probeAttributeValueWrite(dim, element, attribute, value) {
+        const results = {}
+        const base = `Dimensions('${dim}')/Hierarchies('${dim}')/Elements('${element}')/Attributes`
+
+        // Format A: flat object { attrName: value } — mirrors what GET returns
+        try {
+            await this.patch(base, { [attribute]: value })
+            results.flatObject = { ok: true }
+        } catch (e) {
+            results.flatObject = { ok: false, status: e.response?.status, error: e.message }
+        }
+
+        // Format B: array [ { Name, Value } ]
+        try {
+            await this.patch(base, [{ Name: attribute, Value: value }])
+            results.arrayFormat = { ok: true }
+        } catch (e) {
+            results.arrayFormat = { ok: false, status: e.response?.status, error: e.message }
+        }
+
+        // Format C: POST (create/upsert) with flat object
+        try {
+            await this.post(base, { [attribute]: value })
+            results.postFlat = { ok: true }
+        } catch (e) {
+            results.postFlat = { ok: false, status: e.response?.status, error: e.message }
+        }
+
+        return results
+    }
+
+    async _put(path, body = {}) {
+        const s = await this._session()
+        const r = await s.put(this._url(path), body, { headers: await this._headers() })
+        return r.data ?? {}
+    }
+
+    // ── Attribute write probe (TM1py-derived approaches) ─────────────────────
+    async probeAttributeWrite(dim, element, attribute, value) {
+        const results = {}
+        const enc = s => String(s).replace(/'/g, "''").replace(/%/g, '%25').replace(/#/g, '%23')
+        const attrDim = `}ElementAttributes_${dim}`
+        const elemDim = `}Elements_${dim}`
+
+        // Method A: tm1.Update on the }ElementAttributes cube (TM1py write_value pattern)
+        try {
+            await this.post(`Cubes('${enc(attrDim)}')/tm1.Update`, {
+                Cells: [{
+                    'Tuple@odata.bind': [
+                        `Dimensions('${enc(attrDim)}')/Hierarchies('${enc(attrDim)}')/Elements('${enc(attribute)}')`,
+                        `Dimensions('${enc(elemDim)}')/Hierarchies('${enc(elemDim)}')/Elements('${enc(element)}')`,
+                    ]
+                }],
+                Value: String(value),
+            })
+            results.tmUpdate = { ok: true }
+        } catch (e) {
+            console.error('[probe-tmUpdate] status:', e.response?.status, 'data:', JSON.stringify(e.response?.data ?? ''))
+            results.tmUpdate = { ok: false, status: e.response?.status, error: e.message }
+        }
+
+        // Method B: ExecuteProcessWithReturn — inline TI, no create/delete needed (TM1py pattern)
+        const isNumeric = typeof value === 'number'
+        const safeVal = isNumeric ? value : `'${String(value).replace(/'/g, "''")}'`
+        const safeElem = String(element).replace(/'/g, "''")
+        const safeAttr = String(attribute).replace(/'/g, "''")
+        const tiCode = isNumeric
+            ? `ElementAttrPutN(${safeVal}, '${enc(dim)}', '${safeElem}', '${safeAttr}');`
+            : `ElementAttrPutS(${safeVal}, '${enc(dim)}', '${safeElem}', '${safeAttr}');`
+        try {
+            await this.post('ExecuteProcessWithReturn?$expand=*', {
+                Process: {
+                    Name: `}TM1IDE_probe_${Date.now()}`,
+                    PrologProcedure: tiCode,
+                    MetadataProcedure: '',
+                    DataProcedure: '',
+                    EpilogProcedure: '',
+                    HasSecurityAccess: false,
+                    DataSource: { Type: 'None' },
+                    Parameters: [],
+                    Variables: [],
+                }
+            })
+            results.tiInline = { ok: true }
+        } catch (e) {
+            console.error('[probe-tiInline] status:', e.response?.status, 'data:', JSON.stringify(e.response?.data ?? ''))
+            results.tiInline = { ok: false, status: e.response?.status, error: e.message }
+        }
+
+        return results
+    }
+
+    async createElementAttribute(dim, name, type) {
+        // type: 'String' | 'Numeric' | 'Alias'
+        return this.post(
+            `Dimensions('${dim}')/Hierarchies('${dim}')/ElementAttributes`,
+            { Name: name, Type: type }
+        )
+    }
+
+    async deleteElementAttribute(dim, name) {
+        return this.delete(`Dimensions('${dim}')/Hierarchies('${dim}')/ElementAttributes('${name}')`)
+    }
+
+    async writeElementAttribute(dim, element, attribute, value, attrType = 'S') {
+        const safe = s => String(s).replace(/'/g, "''")
+        const tiCode = attrType === 'N'
+            ? `ElementAttrPutN(${Number(value)}, '${safe(dim)}', '${safe(dim)}', '${safe(element)}', '${safe(attribute)}');`
+            : `ElementAttrPutS('${safe(String(value))}', '${safe(dim)}', '${safe(dim)}', '${safe(element)}', '${safe(attribute)}');`
+        return this.post('ExecuteProcessWithReturn?$expand=*', {
+            Process: {
+                Name: `}TM1IDE_write`,
+                PrologProcedure: tiCode,
+                MetadataProcedure: '',
+                DataProcedure: '',
+                EpilogProcedure: '',
+                HasSecurityAccess: false,
+                DataSource: { Type: 'None' },
+                Parameters: [],
+                Variables: [],
+            }
+        })
     }
 
     async getElementAttributes(dim) {
@@ -110,6 +293,14 @@ class TM1Client {
             if (e.response?.status === 404) return null
             throw e
         }
+    }
+
+    async getCubesForDimension(dim) {
+        const names = await this.getCubes()
+        const cubes = await Promise.all(names.map(n => this.getCube(n)))
+        return cubes
+            .filter(c => c && (c.Dimensions ?? []).some(d => d.Name === dim))
+            .map(c => c.Name)
     }
 
     async getCubes() {

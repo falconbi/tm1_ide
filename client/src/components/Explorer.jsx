@@ -1,8 +1,8 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useMemo } from 'react'
 import { useCubes, useDims, useProcs, useChores, useSubsets, useViews, useCubeDimensions } from '@/hooks/useApi'
 import { useStore } from '@/store'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { ChevronRight, ChevronDown, Box, Layers, Cog, Clock, Loader2, List, Plus, Table2, Code2, PencilLine } from 'lucide-react'
+import { ChevronRight, ChevronDown, Box, Layers, Cog, Clock, Loader2, List, Plus, Table2, Code2, PencilLine, Search, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 function Section({ icon: Icon, label, items, isLoading, onSelect, itemIcon: ItemIcon }) {
@@ -54,7 +54,23 @@ function CubeSubSection({ label, loading, children }) {
 // Dimension row inside a cube — shows subsets on expand
 function CubeDimRow({ server, dim, onOpenSubset, onOpenDim }) {
   const [open, setOpen] = useState(false)
+  const [adding, setAdding] = useState(false)
+  const [newName, setNewName] = useState('')
+  const inputRef = useRef(null)
   const { data: subsets, isFetching } = useSubsets(open ? server : null, open ? dim : null)
+
+  const startAdd = () => {
+    setAdding(true)
+    setNewName('')
+    setTimeout(() => inputRef.current?.focus(), 0)
+  }
+
+  const commitAdd = () => {
+    const name = newName.trim()
+    if (name) onOpenSubset(dim, name)
+    setAdding(false)
+    setNewName('')
+  }
 
   return (
     <div>
@@ -65,29 +81,53 @@ function CubeDimRow({ server, dim, onOpenSubset, onOpenDim }) {
         <Layers size={10} className="shrink-0 text-muted-foreground mr-1.5" />
         <span className="truncate flex-1">{dim}</span>
         <span className="hidden group-hover:flex items-center gap-1 shrink-0 ml-1">
-          <button
-            onClick={() => onOpenDim(dim)}
-            title="Edit dimension"
-            className="flex items-center gap-0.5 px-1 py-0.5 rounded text-[10px] text-muted-foreground hover:text-foreground hover:bg-sidebar-accent"
-          >
+          <button onClick={() => onOpenDim(dim)} title="Edit dimension"
+            className="flex items-center gap-0.5 px-1 py-0.5 rounded text-[10px] text-muted-foreground hover:text-foreground hover:bg-sidebar-accent">
             <PencilLine size={9} /> Edit
           </button>
+          {isFetching
+            ? <Loader2 size={10} className="animate-spin text-muted-foreground" />
+            : <button onClick={(e) => { e.stopPropagation(); setOpen(true); startAdd() }} title="New subset"
+                className="flex items-center gap-0.5 px-1 py-0.5 rounded text-[10px] text-muted-foreground hover:text-foreground hover:bg-sidebar-accent">
+                <Plus size={9} /> Subset
+              </button>
+          }
         </span>
-        {isFetching && <Loader2 size={10} className="animate-spin text-muted-foreground shrink-0" />}
       </div>
-      {open && (subsets ?? []).map(s => (
-        <button
-          key={s.Name}
-          onClick={() => onOpenSubset(dim, s.Name)}
-          className="flex items-center gap-2 w-full px-16 py-0.5 text-xs text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground truncate"
-          title={s.Expression ? 'MDX subset' : 'Static subset'}
-        >
-          {s.Expression
-            ? <Code2 size={10} className="shrink-0 text-violet-400" />
-            : <List   size={10} className="shrink-0 text-muted-foreground" />}
-          <span className="truncate font-mono">{s.Name}</span>
-        </button>
-      ))}
+      {open && (
+        <div>
+          {adding && (
+            <div className="flex items-center gap-1 px-20 py-0.5">
+              <List size={10} className="shrink-0 text-muted-foreground" />
+              <input
+                ref={inputRef}
+                value={newName}
+                onChange={e => setNewName(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') commitAdd(); if (e.key === 'Escape') setAdding(false) }}
+                onBlur={commitAdd}
+                placeholder="Subset name…"
+                className="flex-1 text-xs bg-transparent border-b border-primary outline-none font-mono py-px"
+              />
+            </div>
+          )}
+          {(subsets ?? []).length === 0 && !isFetching && !adding && (
+            <p className="px-20 py-0.5 text-xs text-muted-foreground italic">No subsets — hover to add</p>
+          )}
+          {(subsets ?? []).map(s => (
+            <button
+              key={s.Name}
+              onClick={() => onOpenSubset(dim, s.Name)}
+              className="flex items-center gap-2 w-full px-20 py-0.5 text-xs text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground truncate"
+              title={s.Expression ? 'MDX subset' : 'Static subset'}
+            >
+              {s.Expression
+                ? <Code2 size={10} className="shrink-0 text-violet-400" />
+                : <List   size={10} className="shrink-0 text-muted-foreground" />}
+              <span className="truncate font-mono">{s.Name}</span>
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
@@ -197,15 +237,20 @@ function DimRow({ server, dim, onOpenSubset, onOpenDim }) {
           {open ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
         </button>
         <Layers size={12} className="shrink-0 text-muted-foreground mr-2" />
-        <button onClick={() => onOpenDim(dim)} className="truncate text-left flex-1">{dim}</button>
-        {isFetching
-          ? <Loader2 size={10} className="ml-1 animate-spin text-muted-foreground shrink-0" />
-          : <button onClick={(e) => { e.stopPropagation(); setOpen(true); startAdd() }}
-              className="ml-1 shrink-0 opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-foreground transition-opacity"
-              title="New subset">
-              <Plus size={11} />
-            </button>
-        }
+        <span className="truncate flex-1 text-left">{dim}</span>
+        <span className="hidden group-hover:flex items-center gap-1 shrink-0 ml-1">
+          <button onClick={() => onOpenDim(dim)} title="Edit dimension"
+            className="flex items-center gap-0.5 px-1 py-0.5 rounded text-[10px] text-muted-foreground hover:text-foreground hover:bg-sidebar-accent">
+            <PencilLine size={9} /> Edit
+          </button>
+          {isFetching
+            ? <Loader2 size={10} className="animate-spin text-muted-foreground" />
+            : <button onClick={(e) => { e.stopPropagation(); setOpen(true); startAdd() }} title="New subset"
+                className="flex items-center gap-0.5 px-1 py-0.5 rounded text-[10px] text-muted-foreground hover:text-foreground hover:bg-sidebar-accent">
+                <Plus size={9} /> Subset
+              </button>
+          }
+        </span>
       </div>
       {open && (
         <div>
@@ -272,10 +317,23 @@ function DimSection({ server, dims, isLoading, onOpenSubset, onOpenDim }) {
 
 export default function Explorer() {
   const { server, openTab } = useStore()
+  const [search, setSearch] = useState('')
   const { data: cubes,  isFetching: loadingCubes  } = useCubes(server)
   const { data: dims,   isFetching: loadingDims   } = useDims(server)
   const { data: procs,  isFetching: loadingProcs  } = useProcs(server)
   const { data: chores, isFetching: loadingChores } = useChores(server)
+
+  const searchResults = useMemo(() => {
+    if (!search.trim()) return null
+    const q = search.toLowerCase()
+    const match = (name) => name.toLowerCase().includes(q)
+    return [
+      ...(cubes  ?? []).filter(match).map(n => ({ type: 'cube',      name: n, Icon: Box    })),
+      ...(dims   ?? []).filter(match).map(n => ({ type: 'dimension', name: n, Icon: Layers  })),
+      ...(procs  ?? []).filter(match).map(n => ({ type: 'process',   name: n, Icon: Cog    })),
+      ...(chores ?? []).filter(match).map(n => ({ type: 'chore',     name: n, Icon: Clock   })),
+    ]
+  }, [search, cubes, dims, procs, chores])
 
   const openRules = (cube) => openTab({
     id:      `rules:${server}:${cube}`,
@@ -337,17 +395,56 @@ export default function Explorer() {
     )
   }
 
+  const handleResultClick = (r) => {
+    if (r.type === 'cube')      openCubeViewer(r.name)
+    else if (r.type === 'dimension') openDim(r.name)
+    else if (r.type === 'process')   openProcess(r.name)
+  }
+
   return (
-    <ScrollArea className="flex-1 min-h-0">
-      <div className="py-1">
-        <CubeSection server={server} cubes={cubes} isLoading={loadingCubes}
-          onOpenRules={openRules} onOpenView={openView}
-          onOpenSubset={openSubset} onOpenDim={openDim}
-          onOpenViewer={openCubeViewer} />
-        <DimSection server={server} dims={dims}    isLoading={loadingDims}   onOpenSubset={openSubset} onOpenDim={openDim} />
-        <Section    icon={Cog}   label="Processes" items={procs}  isLoading={loadingProcs}  onSelect={openProcess} itemIcon={Cog} />
-        <Section    icon={Clock} label="Chores"    items={chores} isLoading={loadingChores} onSelect={() => {}}    itemIcon={Clock} />
+    <div className="flex flex-col flex-1 min-h-0">
+      <div className="px-2 py-1.5 border-b border-border shrink-0">
+        <div className="flex items-center gap-1.5 bg-muted rounded px-2 py-1">
+          <Search size={11} className="text-muted-foreground shrink-0" />
+          <input
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Search objects…"
+            className="flex-1 text-xs bg-transparent outline-none placeholder:text-muted-foreground"
+          />
+          {search && (
+            <button onClick={() => setSearch('')} className="text-muted-foreground hover:text-foreground shrink-0">
+              <X size={10} />
+            </button>
+          )}
+        </div>
       </div>
-    </ScrollArea>
+      <ScrollArea className="flex-1 min-h-0">
+        <div className="py-1">
+          {searchResults ? (
+            searchResults.length === 0
+              ? <p className="px-4 py-3 text-xs text-muted-foreground">No results for "{search}"</p>
+              : searchResults.map(r => (
+                  <button key={`${r.type}:${r.name}`} onClick={() => handleResultClick(r)}
+                    className="flex items-center gap-2 w-full px-4 py-0.5 text-xs text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground">
+                    <r.Icon size={11} className="shrink-0 text-muted-foreground" />
+                    <span className="truncate flex-1 text-left">{r.name}</span>
+                    <span className="text-[10px] text-muted-foreground shrink-0">{r.type}</span>
+                  </button>
+                ))
+          ) : (
+            <>
+              <CubeSection server={server} cubes={cubes} isLoading={loadingCubes}
+                onOpenRules={openRules} onOpenView={openView}
+                onOpenSubset={openSubset} onOpenDim={openDim}
+                onOpenViewer={openCubeViewer} />
+              <DimSection server={server} dims={dims}    isLoading={loadingDims}   onOpenSubset={openSubset} onOpenDim={openDim} />
+              <Section    icon={Cog}   label="Processes" items={procs}  isLoading={loadingProcs}  onSelect={openProcess} itemIcon={Cog} />
+              <Section    icon={Clock} label="Chores"    items={chores} isLoading={loadingChores} onSelect={() => {}}    itemIcon={Clock} />
+            </>
+          )}
+        </div>
+      </ScrollArea>
+    </div>
   )
 }
