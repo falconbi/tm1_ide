@@ -368,6 +368,9 @@ class TM1Client {
 
         // 2. Scan TI processes
         const processes = await this.getProcesses()
+        const esc = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+        const safeSubset = esc(subsetName)
+        const safeDim    = esc(dim)
         for (const proc of processes) {
             try {
                 const p = await this.getProcess(proc)
@@ -377,18 +380,28 @@ class TM1Client {
                     p.DataProcedure     ?? '',
                     p.EpilogProcedure   ?? '',
                 ].join('\n')
-                if (code.includes(subsetName)) {
-                    // Check if it's actually referencing this dimension's subset
-                    // Look for specific patterns
-                    const patterns = [
-                        new RegExp(`Subset[^\\s(]*\\s*\\([^)]*['"]?${subsetName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}['"]?`, 'i'),
-                        new RegExp(`View[^\\s(]*\\s*\\([^)]*['"]?${subsetName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}['"]?`, 'i'),
-                        new RegExp(`['"]?${dim.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}['"]?,\\s*['"]?${subsetName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}['"]?`, 'i'),
-                    ]
-                    const matched = patterns.some(rx => rx.test(code))
-                    if (matched) {
-                        tiUsage.push({ process: proc })
-                    }
+                // Quick string test first
+                if (!code.includes(subsetName)) continue
+                // Check multiple usage patterns
+                const patterns = [
+                    // Direct subset functions: SubsetCreate, SubsetDelete, SubsetGet, etc.
+                    new RegExp(`Subset[^\\s(]*\\s*\\([^)]*['"]?${safeSubset}['"]?`, 'i'),
+                    // View functions referencing subset
+                    new RegExp(`View[^\\s(]*\\s*\\([^)]*['"]?${safeSubset}['"]?`, 'i'),
+                    // Dimension + subset as separate args
+                    new RegExp(`['"]?${safeDim}['"]?,\\s*['"]?${safeSubset}['"]?`, 'i'),
+                    // MDX subset reference: [Dim].[Subset] or [Dim].[Dim].[Subset]
+                    new RegExp(`\\[${safeDim}\\]\\s*\.\\s*\\[${safeSubset}\\]`, 'i'),
+                    // TM1SubsetToSet
+                    new RegExp(`TM1SubsetToSet\\s*\\([^)]*['"]?${safeSubset}['"]?`, 'i'),
+                    // ViewCreateByMDX containing subset name anywhere in MDX
+                    new RegExp(`ViewCreateByMDX[^;]*${safeSubset}`, 'is'),
+                    // CellClearView or similar using subset
+                    new RegExp(`CellClear[^;]*${safeSubset}`, 'is'),
+                ]
+                const matched = patterns.some(rx => rx.test(code))
+                if (matched) {
+                    tiUsage.push({ process: proc })
                 }
             } catch { /* skip inaccessible processes */ }
         }
