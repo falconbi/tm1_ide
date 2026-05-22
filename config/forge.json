@@ -2,28 +2,14 @@
   "server": "24retail",
   "tabs": [
     {
-      "id": "subset:24retail:Account:AllocationDrivers",
-      "type": "subset",
-      "label": "AllocationDrivers",
-      "server": "24retail",
-      "dimension": "Account",
-      "subsetName": "AllocationDrivers"
-    },
-    {
-      "id": "subset:24retail:organization:Default",
-      "type": "subset",
-      "label": "Default",
-      "server": "24retail",
-      "dimension": "organization",
-      "subsetName": "Default"
-    },
-    {
       "id": "cubeview:24retail:Allocation Calculation:Allocation Calculation",
       "type": "cubeview",
       "label": "⊞ Allocation Calculation / Allocation Calculation",
       "server": "24retail",
       "cube": "Allocation Calculation",
-      "viewName": "Allocation Calculation"
+      "viewName": "Allocation Calculation",
+      "scrollToLine": null,
+      "scrollToSection": null
     }
   ],
   "activeTab": "cubeview:24retail:Allocation Calculation:Allocation Calculation"

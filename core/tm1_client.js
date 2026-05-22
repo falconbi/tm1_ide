@@ -466,7 +466,10 @@ class TM1Client {
 
     async getView(cube, name) {
         try {
-            return await this.get(`Cubes('${cube}')/Views('${name}')`)
+            return await this.get(
+                `Cubes('${cube}')/Views('${name}')`,
+                { '$expand': 'Rows($expand=Subset($select=Name)),Columns($expand=Subset($select=Name)),Titles($expand=Subset($select=Name),Selection($select=Name))' }
+            )
         } catch (e) {
             if (e.response?.status === 404) return null
             throw e
