@@ -4,14 +4,14 @@ import { useState, useEffect } from 'react'
 import { useStore } from '@/store'
 import { cn } from '@/lib/utils'
 import { Toaster } from '@/components/ui/sonner'
-import { Sun, Moon, Search, PanelLeftClose, PanelLeftOpen } from 'lucide-react'
-import { PanelGroup, Panel, PanelResizeHandle } from 'react-resizable-panels'
+import { Sun, Moon, Search, PanelLeftClose, PanelLeftOpen, Keyboard } from 'lucide-react'
 import ServerSelector from '@/components/ServerSelector'
 import Explorer from '@/components/Explorer'
 import TabBar from '@/components/TabBar'
 import EditorPane from '@/components/EditorPane'
 import StatusBar from '@/components/StatusBar'
 import FindReplace from '@/components/FindReplace'
+import ShortcutsHelp from '@/components/ShortcutsHelp'
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { staleTime: 30_000, retry: 1 } },
@@ -21,8 +21,21 @@ export default function App() {
   const { dark, setDark, loadForge } = useStore()
   const [showFind, setShowFind]       = useState(false)
   const [showSidebar, setShowSidebar] = useState(true)
+  const [showShortcuts, setShowShortcuts] = useState(false)
 
   useEffect(() => { loadForge() }, [])
+
+  useEffect(() => {
+    const onKey = (e) => {
+      const ctrl = e.ctrlKey || e.metaKey
+      if (e.key === 'F1' || (ctrl && e.shiftKey && e.key.toLowerCase() === 'k')) {
+        e.preventDefault()
+        setShowShortcuts(true)
+      }
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [])
 
   return (
     <QueryClientProvider client={queryClient}>
@@ -43,9 +56,16 @@ export default function App() {
               <button
                 onClick={() => setShowFind(f => !f)}
                 className={cn('p-1.5 rounded text-muted-foreground hover:text-foreground transition-colors', showFind && 'bg-muted text-foreground')}
-                title="Find & Replace"
+                title="Find & Replace (Ctrl+F)"
               >
                 <Search size={15} />
+              </button>
+              <button
+                onClick={() => setShowShortcuts(true)}
+                className="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                title="Keyboard Shortcuts (F1)"
+              >
+                <Keyboard size={15} />
               </button>
               <button
                 onClick={() => setDark(!dark)}
@@ -94,6 +114,7 @@ export default function App() {
           <StatusBar />
 
         </div>
+        <ShortcutsHelp open={showShortcuts} onClose={() => setShowShortcuts(false)} />
         <Toaster position="bottom-right" />
       </TooltipProvider>
     </QueryClientProvider>

@@ -8,7 +8,7 @@ import SubsetEditor from '@/components/SubsetEditor'
 import DimensionEditor from '@/components/DimensionEditor'
 import ViewEditor from '@/components/ViewEditor'
 import { toast } from 'sonner'
-import { GitBranch, ChevronRight, ChevronDown, Loader2 } from 'lucide-react'
+import { GitBranch, ChevronRight, ChevronDown, Loader2, ChevronsUpDown, ChevronsDownUp, ListTree, AlignLeft } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 // ── Lineage panel ─────────────────────────────────────────────────────────────
@@ -105,6 +105,8 @@ function RulesEditor({ tab, onCursor }) {
   const registeredRef = useRef(false)
   const editorRef = useRef(null)
   const [showLineage, setShowLineage] = useState(false)
+  const [regionsCollapsed, setRegionsCollapsed] = useState(false)
+  const [showRegionMenu, setShowRegionMenu] = useState(false)
 
   const openCube = useCallback((cube) => {
     openTab({ id: `rules:${tab.server}:${cube}`, type: 'rules', label: cube, server: tab.server, cube, content: null })
@@ -126,6 +128,16 @@ function RulesEditor({ tab, onCursor }) {
     }
   }, [tab.scrollToLine])
 
+  // Close region menu on click outside
+  useEffect(() => {
+    if (!showRegionMenu) return
+    const handler = (e) => {
+      if (!e.target.closest('.region-menu-container')) setShowRegionMenu(false)
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [showRegionMenu])
+
   const handleMount = (editor, monaco) => {
     editorRef.current = editor
     if (!registeredRef.current) {
@@ -145,11 +157,49 @@ function RulesEditor({ tab, onCursor }) {
         },
       )
     })
+    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyF, () => {
+      editor.getAction('editor.action.formatDocument').run()
+    })
     if (tab.scrollToLine) {
       editor.revealLineInCenter(tab.scrollToLine)
       editor.setPosition({ lineNumber: tab.scrollToLine, column: 1 })
       clearScrollTo(tab.id)
     }
+  }
+
+  const toggleRegions = () => {
+    const editor = editorRef.current
+    if (!editor) return
+    if (regionsCollapsed) {
+      editor.trigger('fold', 'editor.unfoldAll')
+      setRegionsCollapsed(false)
+    } else {
+      editor.trigger('fold', 'editor.foldAll')
+      setRegionsCollapsed(true)
+    }
+  }
+
+  const getRegions = () => {
+    const editor = editorRef.current
+    if (!editor) return []
+    const regions = []
+    const lineCount = editor.getModel().getLineCount()
+    for (let line = 1; line <= lineCount; line++) {
+      const text = editor.getModel().getLineContent(line).trim()
+      const match = text.match(/^#Region\s+(.*)$/i)
+      if (match) {
+        regions.push({ line, name: match[1].trim() || 'Region' })
+      }
+    }
+    return regions
+  }
+
+  const goToRegion = (line) => {
+    const editor = editorRef.current
+    if (!editor) return
+    editor.revealLineInCenter(line)
+    editor.setPosition({ lineNumber: line, column: 1 })
+    setShowRegionMenu(false)
   }
 
   if (isLoading && tab.content === null) {
@@ -159,17 +209,70 @@ function RulesEditor({ tab, onCursor }) {
   return (
     <div className="flex h-full min-h-0">
       <div className="flex-1 min-w-0 relative">
-        <button
-          onClick={() => setShowLineage(s => !s)}
-          className={cn(
-            'absolute top-2 right-2 z-10 flex items-center gap-1 px-2 py-1 rounded text-xs border transition-colors',
-            showLineage ? 'bg-primary text-primary-foreground border-primary' : 'bg-background/80 border-border text-muted-foreground hover:text-foreground'
-          )}
-          title="Toggle lineage trace"
-        >
-          <GitBranch size={11} />
-          Lineage
-        </button>
+        <div className="absolute top-2 right-2 z-10 flex items-center gap-1.5">
+          <button
+            onClick={() => editorRef.current?.getAction('editor.action.formatDocument').run()}
+            className="flex items-center gap-1 px-2 py-1 rounded text-xs border border-border bg-background/80 text-muted-foreground hover:text-foreground transition-colors"
+            title="Format Document (Ctrl+Shift+F)"
+          >
+            <AlignLeft size={11} />
+            Format
+          </button>
+          <div className="relative region-menu-container">
+            <button
+              onClick={() => setShowRegionMenu(v => !v)}
+              className={cn(
+                'flex items-center gap-1 px-2 py-1 rounded text-xs border transition-colors',
+                showRegionMenu ? 'bg-primary text-primary-foreground border-primary' : 'bg-background/80 border-border text-muted-foreground hover:text-foreground'
+              )}
+              title="Go to region"
+            >
+              <ListTree size={11} />
+              Regions
+            </button>
+            {showRegionMenu && (
+              <div className="absolute right-0 top-full mt-1 w-56 bg-popover border border-border rounded shadow-lg z-50 max-h-64 overflow-auto text-xs">
+                {getRegions().length === 0 ? (
+                  <div className="px-3 py-1.5 text-muted-foreground italic">No regions found</div>
+                ) : (
+                  getRegions().map(r => (
+                    <button
+                      key={r.line}
+                      onClick={() => goToRegion(r.line)}
+                      className="flex items-center gap-1.5 w-full px-3 py-1 text-left hover:bg-muted text-sidebar-foreground truncate"
+                      title={`Line ${r.line}`}
+                    >
+                      <span className="text-muted-foreground/50 font-mono text-[10px] shrink-0">{r.line}</span>
+                      <span className="truncate">{r.name}</span>
+                    </button>
+                  ))
+                )}
+              </div>
+            )}
+          </div>
+          <button
+            onClick={toggleRegions}
+            className={cn(
+              'flex items-center gap-1 px-2 py-1 rounded text-xs border transition-colors',
+              regionsCollapsed ? 'bg-primary text-primary-foreground border-primary' : 'bg-background/80 border-border text-muted-foreground hover:text-foreground'
+            )}
+            title={regionsCollapsed ? 'Expand all regions' : 'Collapse all regions'}
+          >
+            {regionsCollapsed ? <ChevronsDownUp size={11} /> : <ChevronsUpDown size={11} />}
+            {regionsCollapsed ? 'Expand' : 'Collapse'}
+          </button>
+          <button
+            onClick={() => setShowLineage(s => !s)}
+            className={cn(
+              'flex items-center gap-1 px-2 py-1 rounded text-xs border transition-colors',
+              showLineage ? 'bg-primary text-primary-foreground border-primary' : 'bg-background/80 border-border text-muted-foreground hover:text-foreground'
+            )}
+            title="Toggle lineage trace"
+          >
+            <GitBranch size={11} />
+            Lineage
+          </button>
+        </div>
         <MonacoEditor
           height="100%"
           language="tm1rules"

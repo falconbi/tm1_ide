@@ -1037,6 +1037,110 @@ function registerTM1Completions(monaco, getServer) {
     }
   })
 
+  // Go to Symbol: #Region blocks appear in Ctrl+Shift+O outline
+  monaco.languages.registerDocumentSymbolProvider('tm1rules', {
+    provideDocumentSymbols(model, _token) {
+      const symbols = []
+      const lineCount = model.getLineCount()
+      const stack = []
+      for (let line = 1; line <= lineCount; line++) {
+        const text = model.getLineContent(line).trim()
+        const match = text.match(/^#Region\s+(.*)$/i)
+        if (match) {
+          const name = match[1].trim() || 'Region'
+          stack.push({ name, line })
+        } else if (/^#EndRegion\b/i.test(text)) {
+          const region = stack.pop()
+          if (region) {
+            symbols.push({
+              name: region.name,
+              kind: monaco.languages.SymbolKind.Namespace,
+              range: new monaco.Range(region.line, 1, line, model.getLineMaxColumn(line)),
+              selectionRange: new monaco.Range(region.line, 1, region.line, model.getLineMaxColumn(region.line)),
+              children: [],
+            })
+          }
+        }
+      }
+      // Close any unclosed regions at end of file
+      while (stack.length) {
+        const region = stack.pop()
+        symbols.push({
+          name: region.name,
+          kind: monaco.languages.SymbolKind.Namespace,
+          range: new monaco.Range(region.line, 1, lineCount, model.getLineMaxColumn(lineCount)),
+          selectionRange: new monaco.Range(region.line, 1, region.line, model.getLineMaxColumn(region.line)),
+          children: [],
+        })
+      }
+      return symbols
+    }
+  })
+
+  // Format Document: auto-format TM1 rules
+  monaco.languages.registerDocumentFormattingEditProvider('tm1rules', {
+    provideDocumentFormattingEdits(model, _options, _token) {
+      const lines = model.getLinesContent()
+      const formatted = []
+      let indentLevel = 0
+      const indentSize = 2
+      const indent = (lvl) => ' '.repeat(lvl * indentSize)
+
+      for (let i = 0; i < lines.length; i++) {
+        let text = lines[i].trim()
+        if (!text) {
+          formatted.push('')
+          continue
+        }
+
+        // Decrease indent for #EndRegion, ENDIF, ELSE, ELSEIF
+        if (/^#EndRegion\b/i.test(text) || /^ENDIF\b/i.test(text) || /^ELSE\b/i.test(text) || /^ELSEIF\b/i.test(text)) {
+          indentLevel = Math.max(0, indentLevel - 1)
+        }
+
+        // Normalize spacing around operators
+        text = text
+          .replace(/\s*=\s*/g, ' = ')
+          .replace(/\s*,\s*/g, ', ')
+          .replace(/\s*;\s*/g, '; ')
+          .replace(/\s*\+\s*/g, ' + ')
+          .replace(/\s*-\s*/g, ' - ')
+          .replace(/\s*\*\s*/g, ' * ')
+          .replace(/\s*\/\s*/g, ' / ')
+          .replace(/\s*%\s*/g, ' % ')
+          .replace(/\s*:\s*/g, ' : ')
+          .replace(/\s*\|\s*/g, ' | ')
+          .replace(/\s*&\s*/g, ' & ')
+          .replace(/\s*!\s*/g, ' ! ')
+          .replace(/\s*>=\s*/g, ' >= ')
+          .replace(/\s*<=\s*/g, ' <= ')
+          .replace(/\s*<>\s*/g, ' <> ')
+          .replace(/\s*=\s*=\s*/g, ' == ')
+          .replace(/\s*>\s*/g, ' > ')
+          .replace(/\s*<\s*/g, ' < ')
+          // Clean up double spaces
+          .replace(/\s{2,}/g, ' ')
+          // But preserve single spaces after commas and semicolons
+          .replace(/;\s/g, '; ')
+          .replace(/,\s/g, ', ')
+
+        // Apply indent
+        formatted.push(indent(indentLevel) + text)
+
+        // Increase indent after #Region, IF
+        if (/^#Region\b/i.test(text) || /^IF\b/i.test(text) || /^ELSEIF\b/i.test(text) || /^ELSE\b/i.test(text)) {
+          indentLevel++
+        }
+      }
+
+      const fullText = formatted.join('\n')
+      return [{
+        range: model.getFullModelRange(),
+        text: fullText,
+      }]
+    }
+  })
+
   monaco.languages.register({ id: 'tm1ti' })
   monaco.languages.setMonarchTokensProvider('tm1ti', {
     tokenizer: {
