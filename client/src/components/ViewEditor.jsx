@@ -353,11 +353,20 @@ export default function ViewEditor({ tab }) {
         loadViewAxes.mutate(
             { server: tab.server, cube: tab.cube, view: tab.viewName },
             {
-                onSuccess: ({ axisConfig, cellset, viewType: vt }) => {
-                    const make = (dim, member = null) => ({ dimension: dim, subset: null, member })
-                    let cols  = (axisConfig.find(a => a.ordinal === 0)?.dimensions ?? []).map(d => make(d))
-                    let rows  = (axisConfig.find(a => a.ordinal === 1)?.dimensions ?? []).map(d => make(d))
-                    const pages = (axisConfig.find(a => a.ordinal === 2)?.selectedMembers ?? []).map(({ dimension, member }) => make(dimension, member))
+                onSuccess: ({ axisConfig, cellset, viewType: vt, nativeConfig }) => {
+                    const make = (dim, subset = null, member = null) => ({ dimension: dim, subset, member })
+                    let cols, rows, pages
+                    if (nativeConfig) {
+                        // Use native view definition with actual subsets
+                        cols  = nativeConfig.columns.map(c => make(c.dimension, c.subset))
+                        rows  = nativeConfig.rows.map(r => make(r.dimension, r.subset))
+                        pages = nativeConfig.titles.map(t => make(t.dimension, null, t.member))
+                    } else {
+                        // Fallback to cellset axes
+                        cols  = (axisConfig.find(a => a.ordinal === 0)?.dimensions ?? []).map(d => make(d))
+                        rows  = (axisConfig.find(a => a.ordinal === 1)?.dimensions ?? []).map(d => make(d))
+                        pages = (axisConfig.find(a => a.ordinal === 2)?.selectedMembers ?? []).map(({ dimension, member }) => make(dimension, null, member))
+                    }
                     if (!cols.length && cubeDims.length) cols = [make(cubeDims[0])]
                     if (!rows.length && cubeDims.length > 1) rows = [make(cubeDims[1])]
                     setAxes({ rows, columns: cols, pages })

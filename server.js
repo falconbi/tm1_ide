@@ -575,7 +575,10 @@ Rules:
 app.get('/api/view/axes', async (req, res) => {
     try {
         const client = new TM1Client(req.query.server)
-        const data   = await client.executeView(req.query.cube, req.query.view)
+        const [data, viewDef] = await Promise.all([
+            client.executeView(req.query.cube, req.query.view),
+            client.getView(req.query.cube, req.query.view),
+        ])
         // Parse dimension names from UniqueName: [Dim].[Hier].[Member] → Dim
         const parseDim = (uniqueName) => uniqueName?.match(/^\[([^\]]+)\]/)?.[1] ?? null
         const axisConfig = data.Axes.map(ax => ({
@@ -587,7 +590,13 @@ app.get('/api/view/axes', async (req, res) => {
                 ? (ax.Tuples?.[0]?.Members ?? []).map(m => ({ dimension: parseDim(m.UniqueName), member: m.Name }))
                 : [],
         }))
-        res.json({ axisConfig, cellset: data, viewType: data.ViewType })
+        // Also return native view axis config with subsets
+        const nativeConfig = viewDef ? {
+            rows:    (viewDef.Rows ?? []).map(r => ({ dimension: r.Name, subset: r.Subset?.Name ?? null })),
+            columns: (viewDef.Columns ?? []).map(c => ({ dimension: c.Name, subset: c.Subset?.Name ?? null })),
+            titles:  (viewDef.Titles ?? []).map(t => ({ dimension: t.Name, member: t.Selection?.Name ?? null })),
+        } : null
+        res.json({ axisConfig, cellset: data, viewType: data.ViewType, nativeConfig })
     } catch (e) {
         const detail = e.response?.data?.error?.message ?? e.response?.data ?? e.message
         res.status(500).json({ error: typeof detail === 'string' ? detail : JSON.stringify(detail) })
