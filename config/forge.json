@@ -2,21 +2,37 @@
   "server": "24retail",
   "tabs": [
     {
-      "id": "subset:24retail:Account:Travel",
+      "id": "subset:24retail:Account:AllocationDrivers",
       "type": "subset",
-      "label": "Travel",
+      "label": "AllocationDrivers",
       "server": "24retail",
       "dimension": "Account",
-      "subsetName": "Travel"
+      "subsetName": "AllocationDrivers"
     },
     {
-      "id": "dim:24retail:Account:Account",
-      "type": "dimension",
-      "label": "Account",
+      "id": "subset:24retail:Account:Analysis",
+      "type": "subset",
+      "label": "Analysis",
       "server": "24retail",
       "dimension": "Account",
-      "hierarchy": "Account"
+      "subsetName": "Analysis"
+    },
+    {
+      "id": "subset:24retail:Account:GM Review",
+      "type": "subset",
+      "label": "GM Review",
+      "server": "24retail",
+      "dimension": "Account",
+      "subsetName": "GM Review"
+    },
+    {
+      "id": "subset:24retail:Account:Marketing",
+      "type": "subset",
+      "label": "Marketing",
+      "server": "24retail",
+      "dimension": "Account",
+      "subsetName": "Marketing"
     }
   ],
-  "activeTab": "dim:24retail:Account:Account"
+  "activeTab": "subset:24retail:Account:Marketing"
 }

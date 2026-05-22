@@ -530,12 +530,59 @@ Member reference: [${tab.dimension}].[${tab.dimension}].[MemberName]`
 
       {/* ── Visual mode ─────────────────────────────────────────────────────── */}
       {mode === 'visual' && (
-        <SubsetVisualEditor
-          tab={tab}
-          onMdxConvert={handleMdxConvert}
-          onVisualDirty={v => { visualDirtyRef.current = v }}
-          onVisualMembersChange={m => { visualMembersRef.current = m }}
-        />
+        <div className="flex flex-1 min-h-0">
+          <div className="flex-1 min-w-0">
+            <SubsetVisualEditor
+              tab={tab}
+              onMdxConvert={handleMdxConvert}
+              onVisualDirty={v => { visualDirtyRef.current = v }}
+              onVisualMembersChange={m => { visualMembersRef.current = m }}
+            />
+          </div>
+          {/* Right panel — Usage only in Visual mode */}
+          <div className="w-64 shrink-0 border-l border-border flex flex-col bg-sidebar">
+            <div className="flex border-b border-border shrink-0">
+              <button className="flex-1 py-1.5 text-xs border-b-2 border-primary text-foreground font-medium">Usage</button>
+            </div>
+            <div className="flex-1 min-h-0 overflow-auto p-2">
+              <button
+                onClick={() => refetchUsage()}
+                disabled={loadingUsage}
+                className="w-full flex items-center justify-center gap-1 px-2 py-1 text-xs rounded border border-border text-muted-foreground hover:bg-muted disabled:opacity-40 mb-2"
+              >
+                {loadingUsage ? <Loader2 size={10} className="animate-spin" /> : <Search size={10} />}
+                Scan for usage
+              </button>
+              {usageData && (
+                <>
+                  <div className="mb-3">
+                    <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">Cube Views ({usageData.cubes.length})</div>
+                    {usageData.cubes.length === 0 && <p className="text-[10px] text-muted-foreground italic">Not used in any view</p>}
+                    {usageData.cubes.map((u, i) => (
+                      <div key={i} className="flex items-center gap-1 px-1 py-0.5 text-xs hover:bg-muted rounded">
+                        <Box size={10} className="shrink-0 text-muted-foreground" />
+                        <span className="font-mono truncate">{u.cube}</span>
+                        <span className="text-muted-foreground/50">·</span>
+                        <span className="font-mono truncate">{u.view}</span>
+                        <span className="text-[10px] text-muted-foreground/60 shrink-0 ml-auto">{u.axis}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <div>
+                    <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">TI Processes ({usageData.processes.length})</div>
+                    {usageData.processes.length === 0 && <p className="text-[10px] text-muted-foreground italic">Not referenced in any process</p>}
+                    {usageData.processes.map((u, i) => (
+                      <div key={i} className="flex items-center gap-1 px-1 py-0.5 text-xs hover:bg-muted rounded">
+                        <Cog size={10} className="shrink-0 text-muted-foreground" />
+                        <span className="font-mono truncate">{u.process}</span>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
       )}
 
       {/* ── MDX mode ────────────────────────────────────────────────────────── */}
