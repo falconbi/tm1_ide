@@ -19,7 +19,7 @@ const darkTheme  = themeBalham.withPart(colorSchemeDark).withParams({ fontSize: 
 function buildMDX({ cube, rows, columns, pages, suppressZeros }) {
     const memberSet = ({ dimension: dim, subset, member }) => {
         if (member) return `{[${dim}].[${dim}].[${member}]}`
-        if (subset)  return `{[${dim}].[${dim}].[${subset}]}`
+        if (subset)  return `TM1SubsetToSet([${dim}], "${subset}")`
         return `{[${dim}].[${dim}].Members}`
     }
     const axisExpr = (placements) => {
@@ -66,7 +66,11 @@ function parseCellset(data) {
     const grid = (rows.length ? rows : [[]]).map((_, ri) =>
         cols.map((_, ci) => {
             const c = cellMap[ri * numCols + ci]
-            return c ? (c.FormattedValue ?? c.Value ?? '') : ''
+            if (!c) return ''
+            const fv = c.FormattedValue
+            if (fv !== '' && fv != null) return fv
+            const v = c.Value
+            return v != null ? String(v) : ''
         })
     )
 
