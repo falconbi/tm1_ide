@@ -461,7 +461,7 @@ class TM1Client {
 
     async getViews(cube) {
         const d = await this.get(`Cubes('${cube}')/Views`)
-        return (d.value ?? [])
+return (d.value ?? [])
             .filter(r => !r.Name.startsWith('}'))
             .map(r => ({
                 name: r.Name,

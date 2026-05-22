@@ -217,9 +217,8 @@ function CubeRow({ server, cube, onOpenRules, onOpenView, onOpenSubset, onOpenDi
                   title={v.type === 'mdx' ? 'MDX view' : 'Native view'}>
                   {v.type === 'mdx'
                     ? <Code2 size={10} className="shrink-0 text-violet-400" />
-                    : <Table2 size={10} className="shrink-0 text-amber-400" />}
+                    : <Table2 size={10} className="shrink-0 text-muted-foreground" />}
                   <span className="truncate font-mono">{v.name}</span>
-                  {v.type === 'native' && <span className="text-[10px] text-muted-foreground/50">Native</span>}
                 </button>
               ))
           }

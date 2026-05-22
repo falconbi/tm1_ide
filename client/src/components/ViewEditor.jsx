@@ -4,9 +4,9 @@ import { AllCommunityModule, ModuleRegistry, themeBalham, colorSchemeDark, color
 import { DndContext, DragOverlay, PointerSensor, useSensor, useSensors, useDroppable, useDraggable } from '@dnd-kit/core'
 import MonacoEditor from '@monaco-editor/react'
 import { useStore } from '@/store'
-import { useCubeDimensions, useSubsets, useSubsetElements, useViews, useExecuteMDX, useViewAxes, useSaveView } from '@/hooks/useApi'
+import { useCubeDimensions, useSubsets, useSubsetElements, useViews, useExecuteMDX, useViewAxes, useSaveView, usePawBookUsage } from '@/hooks/useApi'
 import { toast } from 'sonner'
-import { RefreshCw, Loader2, Table2, GripVertical, X, LayoutGrid, Rows3, Columns3, Filter, ZapOff, Zap, ChevronLeft, ChevronRight, PencilLine, Play, Save, Code2, Eye, ChevronDown } from 'lucide-react'
+import { RefreshCw, Loader2, Table2, GripVertical, X, LayoutGrid, Rows3, Columns3, Filter, ZapOff, Zap, ChevronLeft, ChevronRight, PencilLine, Play, Save, Code2, Eye, ChevronDown, BookOpen, ChevronUp } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 ModuleRegistry.registerModules([AllCommunityModule])
@@ -331,6 +331,10 @@ export default function ViewEditor({ tab }) {
     // View mode: 'visual' | 'mdx'
     const [mode, setMode] = useState(tab.mode ?? 'visual')
 
+    // PAW Books panel
+    const [showPawBooks, setShowPawBooks] = useState(false)
+    const { data: pawBookData, isFetching: loadingPawBooks, refetch: refetchPawBooks } = usePawBookUsage(tab.server, tab.cube, tab.viewName)
+
     // Loading guard using state (not ref) to survive StrictMode remounts
     const [loadedKey, setLoadedKey] = useState(null)
 
@@ -357,11 +361,16 @@ export default function ViewEditor({ tab }) {
             const extractSets = (expr) => {
                 if (!expr) return []
                 const sets = []
-                // Match TM1SubsetToSet([Dim], "Subset")
-                const subsetRegex = /TM1SubsetToSet\s*\(\s*\[(.*?)\]\s*,\s*"(.*?)"\s*\)/gi
                 let m
+                // Match TM1SubsetToSet([Dim], "Subset") or TM1SubsetToSet([Dim], "Subset", "scope")
+                const subsetRegex = /TM1SubsetToSet\s*\(\s*\[(.*?)\]\s*,\s*"(.*?)"(?:\s*,\s*".*?")?\s*\)/gi
                 while ((m = subsetRegex.exec(expr)) !== null) {
                     sets.push(make(m[1], m[2]))
+                }
+                // Match TM1SUBSETALL([Dim].[Hier])
+                const allRegex = /TM1SUBSETALL\s*\(\s*\[(.*?)\]\.\[(.*?)\]\s*\)/gi
+                while ((m = allRegex.exec(expr)) !== null) {
+                    sets.push(make(m[1]))
                 }
                 // Match {[Dim].[Dim].Members}
                 const membersRegex = /\{\[(.*?)\]\.\[(.*?)\]\.Members\}/gi
@@ -646,10 +655,7 @@ export default function ViewEditor({ tab }) {
                         <span className="text-foreground">{tab.viewName}</span>
                     </>}
                     {viewType && (
-                        <span className={cn('ml-1.5 text-[10px] px-1 py-px rounded border',
-                            viewType.includes('NativeView')
-                                ? 'border-amber-400/30 text-amber-600 bg-amber-50'
-                                : 'border-violet-400/30 text-violet-600 bg-violet-50')}>
+                        <span className="ml-1.5 text-[10px] px-1 py-px rounded border border-border text-muted-foreground bg-muted">
                             {viewType.includes('NativeView') ? 'Native' : 'MDX'}
                         </span>
                     )}
@@ -695,7 +701,7 @@ export default function ViewEditor({ tab }) {
                         disabled={isLoadingView}
                         className="text-xs px-2 py-0.5 rounded border border-border bg-background text-muted-foreground">
                         <option value="">Load view…</option>
-                        {views.map(v => <option key={v} value={v}>{v}</option>)}
+                        {views.map(v => <option key={v.name} value={v.name}>{v.name}</option>)}
                     </select>
                 )}
 
@@ -740,6 +746,47 @@ export default function ViewEditor({ tab }) {
                 <div className="shrink-0 px-3 py-1 border-b border-border bg-amber-50 dark:bg-amber-950/20 text-amber-800 dark:text-amber-200 text-[10px] flex items-center gap-1">
                     <ZapOff size={10} />
                     <span>Native view — saving will convert it to MDX.</span>
+                </div>
+            )}
+
+            {/* PAW Books */}
+            {tab.viewName && (
+                <div className="shrink-0 border-b border-border">
+                    <button
+                        onClick={() => { setShowPawBooks(v => !v); if (!showPawBooks) refetchPawBooks() }}
+                        className="flex items-center gap-1.5 w-full px-3 py-1 text-[10px] text-muted-foreground hover:text-foreground hover:bg-muted/30 transition-colors"
+                    >
+                        {showPawBooks ? <ChevronUp size={10} /> : <ChevronDown size={10} />}
+                        <BookOpen size={10} />
+                        <span>PAW Books</span>
+                        {pawBookData && <span className="text-muted-foreground/60">({pawBookData.books.length})</span>}
+                        {loadingPawBooks && <Loader2 size={10} className="animate-spin" />}
+                    </button>
+                    {showPawBooks && (
+                        <div className="px-3 py-1.5 bg-muted/10 max-h-32 overflow-auto">
+                            {!pawBookData ? (
+                                <p className="text-[10px] text-muted-foreground">Click to scan PAW books.</p>
+                            ) : pawBookData.books.length === 0 ? (
+                                <p className="text-[10px] text-muted-foreground italic">Not referenced in any PAW book.</p>
+                            ) : (
+                                <div className="space-y-0.5">
+                                    {pawBookData.books.map(book => (
+                                        <a
+                                            key={book.id}
+                                            href={`${pawBookData?.pawHost || ''}/ui?type=book&path=${encodeURIComponent(book.path)}`}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                            className="flex items-center gap-1.5 text-[10px] hover:bg-muted rounded px-1 py-0.5"
+                                            title={book.path}
+                                        >
+                                            <BookOpen size={9} className="shrink-0 text-muted-foreground" />
+                                            <span className="truncate">{book.name}</span>
+                                        </a>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    )}
                 </div>
             )}
 

@@ -234,3 +234,10 @@ export const useDeleteHierarchy = () => useMutation({
   mutationFn: ({ server, dimension, name }) =>
     del(`/api/dimension/hierarchy?server=${enc(server)}&dimension=${enc(dimension)}&name=${enc(name)}`),
 })
+
+export const usePawBookUsage = (server, cube, view) => useQuery({
+  queryKey: ['paw-book-usage', server, cube, view],
+  queryFn:  () => get(`/api/paw/book-usage?server=${enc(server)}&cube=${enc(cube)}${view ? `&view=${enc(view)}` : ''}`),
+  enabled:  !!server && !!cube,
+  staleTime: 0,
+})
