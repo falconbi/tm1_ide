@@ -6,7 +6,7 @@ import { useSubset, useSaveSubset, usePreviewMDX, useGenerateMDX, useElements, u
 import { MDX_CATALOG, MDX_FUNCTIONS_FLAT, MDX_ADVANCED_PATTERNS } from '@/lib/tm1-mdx-catalog'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
-import { Play, Loader2, Sparkles, Copy, Search, ChevronDown, ChevronRight, Box, Cog } from 'lucide-react'
+import { Play, Loader2, Sparkles, Copy, Search, ChevronDown, ChevronRight, Box, Cog, MapPin } from 'lucide-react'
 import SubsetVisualEditor from './SubsetVisualEditor'
 
 const TYPE_ICON  = { N: '○', C: '◆', S: '"' }
@@ -526,6 +526,16 @@ Member reference: [${tab.dimension}].[${tab.dimension}].[MemberName]`
         <span className="text-xs text-muted-foreground font-medium px-1">{tab.dimension}</span>
         <span className="text-muted-foreground/40">·</span>
         <span className="text-xs font-mono px-1">{tab.subsetName}</span>
+        <button
+          onClick={() => {
+            const { setRevealTarget } = useStore.getState()
+            setRevealTarget({ type: 'subset', server: tab.server, dimension: tab.dimension, subsetName: tab.subsetName })
+          }}
+          className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors ml-1"
+          title="Show in Explorer tree"
+        >
+          <MapPin size={11} />
+        </button>
       </div>
 
       {/* ── Visual mode ─────────────────────────────────────────────────────── */}

@@ -1,4 +1,4 @@
-import { useQuery, useMutation } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useStore } from '@/store'
 
 const extractError = async (r) => {
@@ -21,10 +21,15 @@ export const useChores   = (server)     => useQuery({ queryKey: ['chores', serve
 export const useRules    = (server, cube) => useQuery({ queryKey: ['rules', server, cube], queryFn: () => get(`/api/rules?server=${enc(server)}&cube=${enc(cube)}`), enabled: !!server && !!cube })
 export const useProcess  = (server, name) => useQuery({ queryKey: ['process', server, name], queryFn: () => get(`/api/process?server=${enc(server)}&name=${enc(name)}`), enabled: !!server && !!name })
 
-export const useSaveRules = () => useMutation({
-  mutationFn: ({ server, cube, rules }) =>
-    post(`/api/rules?server=${enc(server)}&cube=${enc(cube)}`, { rules }),
-})
+export const useSaveRules = () => {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ server, cube, rules }) =>
+      post(`/api/rules?server=${enc(server)}&cube=${enc(cube)}`, { rules }),
+    onSuccess: (_, { server, cube }) =>
+      queryClient.invalidateQueries({ queryKey: ['rules', server, cube] }),
+  })
+}
 
 export const useSaveProcess = () => useMutation({
   mutationFn: ({ server, name, body }) =>

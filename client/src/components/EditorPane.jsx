@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, useCallback } from 'react'
 import MonacoEditor from '@monaco-editor/react'
 import { useStore } from '@/store'
 import { useRules, useSaveRules, useLineage, useLineageConsumers } from '@/hooks/useApi'
-import { registerTM1Completions } from '@/lib/tm1-functions'
+import { registerTM1Completions, registerTM1Theme } from '@/lib/tm1-functions'
 import ProcessEditor from '@/components/ProcessEditor'
 import SubsetEditor from '@/components/SubsetEditor'
 import DimensionEditor from '@/components/DimensionEditor'
@@ -99,7 +99,7 @@ function LineagePanel({ server, cube, onOpen }) {
 // ── Rules editor ─────────────────────────────────────────────────────────────
 
 function RulesEditor({ tab, onCursor }) {
-  const { updateTabContent, markTabSaved, clearScrollTo, openTab, server, dark } = useStore()
+  const { initTabContent, updateTabContent, markTabSaved, clearScrollTo, openTab, server, dark } = useStore()
   const { data, isLoading } = useRules(tab.server, tab.cube)
   const saveRules = useSaveRules()
   const registeredRef = useRef(false)
@@ -115,8 +115,8 @@ function RulesEditor({ tab, onCursor }) {
   const content = tab.content ?? data?.rules ?? ''
 
   useEffect(() => {
-    if (data?.rules != null && tab.content === null) {
-      updateTabContent(tab.id, data.rules)
+    if (data?.rules != null && !tab.dirty) {
+      initTabContent(tab.id, data.rules)
     }
   }, [data])
 
@@ -142,23 +142,32 @@ function RulesEditor({ tab, onCursor }) {
     editorRef.current = editor
     if (!registeredRef.current) {
       registerTM1Completions(monaco, () => server)
+      registerTM1Theme(monaco)
       registeredRef.current = true
     }
     editor.onDidChangeCursorPosition(e => {
       onCursor({ line: e.position.lineNumber, col: e.position.column })
     })
-    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
-      const id = toast.loading('Saving rules…')
-      saveRules.mutate(
-        { server: tab.server, cube: tab.cube, rules: editor.getValue() },
-        {
-          onSuccess: () => { markTabSaved(tab.id); toast.success('Rules saved', { id }) },
-          onError:   (e) => toast.error(e.message, { id }),
-        },
-      )
-    })
-    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyF, () => {
-      editor.getAction('editor.action.formatDocument').run()
+
+    // Prevent browser's Ctrl+S "Save Page" dialog and trigger save instead
+    const keyDownDisposable = editor.onKeyDown(e => {
+      if (e.keyCode === monaco.KeyCode.KeyS && (e.ctrlKey || e.metaKey) && !e.shiftKey) {
+        e.browserEvent.preventDefault()
+        e.browserEvent.stopPropagation()
+        const id = toast.loading('Saving rules…')
+        saveRules.mutate(
+          { server: tab.server, cube: tab.cube, rules: editor.getValue() },
+          {
+            onSuccess: () => { markTabSaved(tab.id); toast.success('Rules saved', { id }) },
+            onError:   (err) => toast.error(err.message, { id }),
+          },
+        )
+      }
+      if (e.keyCode === monaco.KeyCode.KeyF && (e.ctrlKey || e.metaKey) && e.shiftKey) {
+        e.browserEvent.preventDefault()
+        e.browserEvent.stopPropagation()
+        editor.getAction('editor.action.formatDocument').run()
+      }
     })
     if (tab.scrollToLine) {
       editor.revealLineInCenter(tab.scrollToLine)

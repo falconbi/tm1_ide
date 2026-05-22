@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import MonacoEditor from '@monaco-editor/react'
 import { useStore } from '@/store'
 import { useProcess, useSaveProcess, useRunProcess, useCubes, useViews } from '@/hooks/useApi'
-import { registerTM1Completions } from '@/lib/tm1-functions'
+import { registerTM1Completions, registerTM1Theme } from '@/lib/tm1-functions'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
 import { ChevronRight, ChevronDown, Play, X } from 'lucide-react'
@@ -461,6 +461,7 @@ export default function ProcessEditor({ tab }) {
     monacoRef.current = monaco
     if (!registeredRef.current) {
       registerTM1Completions(monaco, () => server)
+      registerTM1Theme(monaco)
       registeredRef.current = true
     }
     if (pendingLineRef.current) {

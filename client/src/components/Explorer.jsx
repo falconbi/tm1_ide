@@ -1,4 +1,4 @@
-import { useState, useRef, useMemo } from 'react'
+import { useState, useRef, useMemo, useEffect } from 'react'
 import { toast } from 'sonner'
 import { useCubes, useDims, useProcs, useChores, useSubsets, useViews, useCubeDimensions, useSaveView, useHierarchies, useCreateHierarchy } from '@/hooks/useApi'
 import { useStore } from '@/store'
@@ -6,8 +6,56 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { ChevronRight, ChevronDown, Box, Layers, Cog, Clock, Loader2, List, Plus, Table2, Code2, PencilLine, Search, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
-function Section({ icon: Icon, label, items, isLoading, onSelect, itemIcon: ItemIcon }) {
+// ── Reveal / locate helpers ───────────────────────────────────────────────────
+
+function shouldAutoOpen(sectionId, target) {
+  if (!target) return false
+  const parts = sectionId.split(':')
+  const type = parts[0]
+
+  if (target.type === 'view') {
+    if (type === 'cubes') return true
+    if (type === 'cube' && parts[1] === target.cube) return true
+    if (type === 'cube' && parts[1] === target.cube && parts[2] === 'views') return true
+    return false
+  }
+
+  if (target.type === 'cube' || target.type === 'rules') {
+    if (type === 'cubes') return true
+    if (type === 'rules') return true
+    if (type === 'cube' && parts[1] === target.cube) return true
+    return false
+  }
+
+  if (target.type === 'dimension' || target.type === 'hierarchy' || target.type === 'subset') {
+    if (type === 'dimensions') return true
+    if (type === 'dim' && parts[1] === target.dimension) return true
+    return false
+  }
+
+  if (target.type === 'process') {
+    if (type === 'processes') return true
+  }
+
+  return false
+}
+
+function getLocateId(target) {
+  if (!target) return ''
+  if (target.type === 'view') return `view:${target.cube}:${target.viewName}`
+  if (target.type === 'cube') return `cube:${target.cube}`
+  if (target.type === 'dimension') return `dimension:${target.dimension}`
+  if (target.type === 'hierarchy') return `hierarchy:${target.dimension}:${target.hierarchy}`
+  if (target.type === 'subset') return `subset:${target.dimension}:${target.subsetName}`
+  return ''
+}
+
+function Section({ icon: Icon, label, items, isLoading, onSelect, itemIcon: ItemIcon, sectionId }) {
   const [open, setOpen] = useState(false)
+  const revealTarget = useStore(s => s.revealTarget)
+  useEffect(() => {
+    if (revealTarget && shouldAutoOpen(sectionId, revealTarget)) setOpen(true)
+  }, [revealTarget, sectionId])
   return (
     <div>
       <button
@@ -37,8 +85,12 @@ function Section({ icon: Icon, label, items, isLoading, onSelect, itemIcon: Item
   )
 }
 
-function CubeSubSection({ label, loading, children, onAdd, adding, onAddCommit, onAddCancel, addValue, onAddChange, addRef }) {
+function CubeSubSection({ label, loading, children, onAdd, adding, onAddCommit, onAddCancel, addValue, onAddChange, addRef, sectionId }) {
   const [open, setOpen] = useState(false)
+  const revealTarget = useStore(s => s.revealTarget)
+  useEffect(() => {
+    if (revealTarget && shouldAutoOpen(sectionId, revealTarget)) setOpen(true)
+  }, [revealTarget, sectionId])
   return (
     <div>
       <div className="flex items-center w-full pr-2 group">
@@ -76,12 +128,13 @@ function CubeSubSection({ label, loading, children, onAdd, adding, onAddCommit, 
 }
 
 // Dimension row inside a cube — shows subsets on expand
-function CubeDimRow({ server, dim, onOpenSubset, onOpenDim }) {
+function CubeDimRow({ server, dim, onOpenSubset, onOpenDim, cube }) {
   const [open, setOpen] = useState(false)
   const [adding, setAdding] = useState(false)
   const [newName, setNewName] = useState('')
   const inputRef = useRef(null)
   const { data: subsets, isFetching } = useSubsets(open ? server : null, open ? dim : null)
+  const sectionId = `cube:${cube}:dim:${dim}`
 
   const startAdd = () => {
     setAdding(true)
@@ -97,7 +150,7 @@ function CubeDimRow({ server, dim, onOpenSubset, onOpenDim }) {
   }
 
   return (
-    <div>
+    <div data-section={sectionId}>
       <div className="flex items-center w-full px-12 py-0.5 text-xs text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground group">
         <button onClick={() => setOpen(o => !o)} className="shrink-0 mr-1.5 text-muted-foreground">
           {open ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
@@ -158,6 +211,11 @@ function CubeDimRow({ server, dim, onOpenSubset, onOpenDim }) {
 
 function CubeRow({ server, cube, onOpenRules, onOpenView, onOpenSubset, onOpenDim, onOpenViewer }) {
   const [open, setOpen] = useState(false)
+  const revealTarget = useStore(s => s.revealTarget)
+  const sectionId = `cube:${cube}`
+  useEffect(() => {
+    if (revealTarget && shouldAutoOpen(sectionId, revealTarget)) setOpen(true)
+  }, [revealTarget, sectionId])
   const { data: views,    isFetching: loadingViews } = useViews(open ? server : null, open ? cube : null)
   const { data: cubeDims, isFetching: loadingDims  } = useCubeDimensions(open ? server : null, open ? cube : null)
 
@@ -193,8 +251,8 @@ function CubeRow({ server, cube, onOpenRules, onOpenView, onOpenSubset, onOpenDi
   const loading = loadingViews || loadingDims
 
   return (
-    <div>
-      <div className="flex items-center w-full px-6 py-0.5 text-sm text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground group">
+    <div data-section={sectionId}>
+      <div data-locate-id={`cube:${cube}`} className="flex items-center w-full px-6 py-0.5 text-sm text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground group">
         <button onClick={() => setOpen(o => !o)} className="shrink-0 mr-1.5 text-muted-foreground hover:text-foreground">
           {open ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
         </button>
@@ -205,7 +263,7 @@ function CubeRow({ server, cube, onOpenRules, onOpenView, onOpenSubset, onOpenDi
         {loading && <Loader2 size={10} className="ml-1 animate-spin text-muted-foreground shrink-0" />}
       </div>
       {open && <>
-        <CubeSubSection label="Views" loading={loadingViews}
+        <CubeSubSection label="Views" loading={loadingViews} sectionId={`cube:${cube}:views`}
           onAdd={startAddView} adding={addingView}
           addValue={newViewName} onAddChange={e => setNewViewName(e.target.value)}
           addRef={viewInputRef} onAddCommit={commitAddView} onAddCancel={() => setAddingView(false)}>
@@ -213,6 +271,7 @@ function CubeRow({ server, cube, onOpenRules, onOpenView, onOpenSubset, onOpenDi
             ? <p className="px-12 py-0.5 text-xs text-muted-foreground/50 italic">No views</p>
             : (views ?? []).map(v => (
                 <button key={v.name} onClick={() => onOpenView(cube, v.name)}
+                  data-locate-id={`view:${cube}:${v.name}`}
                   className="flex items-center gap-2 w-full px-12 py-0.5 text-xs text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground truncate"
                   title={v.type === 'mdx' ? 'MDX view' : 'Native view'}>
                   {v.type === 'mdx'
@@ -223,9 +282,9 @@ function CubeRow({ server, cube, onOpenRules, onOpenView, onOpenSubset, onOpenDi
               ))
           }
         </CubeSubSection>
-        <CubeSubSection label="Dimensions" loading={loadingDims}>
+        <CubeSubSection label="Dimensions" loading={loadingDims} sectionId={`cube:${cube}:dimensions`}>
           {(cubeDims ?? []).map(dim => (
-            <CubeDimRow key={dim} server={server} dim={dim} onOpenSubset={onOpenSubset} onOpenDim={onOpenDim} />
+            <CubeDimRow key={dim} server={server} dim={dim} cube={cube} onOpenSubset={onOpenSubset} onOpenDim={onOpenDim} />
           ))}
         </CubeSubSection>
         <button onClick={() => onOpenRules(cube)}
@@ -240,8 +299,12 @@ function CubeRow({ server, cube, onOpenRules, onOpenView, onOpenSubset, onOpenDi
 
 function CubeSection({ server, cubes, isLoading, onOpenRules, onOpenView, onOpenSubset, onOpenDim, onOpenViewer }) {
   const [open, setOpen] = useState(false)
+  const revealTarget = useStore(s => s.revealTarget)
+  useEffect(() => {
+    if (revealTarget && shouldAutoOpen('cubes', revealTarget)) setOpen(true)
+  }, [revealTarget])
   return (
-    <div>
+    <div data-section="cubes">
       <button
         onClick={() => setOpen(o => !o)}
         className="flex items-center gap-1.5 w-full px-3 py-1 text-xs font-semibold text-muted-foreground hover:text-foreground uppercase tracking-wider"
@@ -265,8 +328,57 @@ function CubeSection({ server, cubes, isLoading, onOpenRules, onOpenView, onOpen
   )
 }
 
+// ── Rules Section ────────────────────────────────────────────────────────────
+// Quick-access list of all cubes — clicking opens the rules editor directly.
+
+function RulesSection({ server, cubes, isLoading, onOpenRules }) {
+  const [open, setOpen] = useState(false)
+  const revealTarget = useStore(s => s.revealTarget)
+  useEffect(() => {
+    if (revealTarget && shouldAutoOpen('rules', revealTarget)) setOpen(true)
+  }, [revealTarget])
+
+  return (
+    <div data-section="rules">
+      <button
+        onClick={() => setOpen(o => !o)}
+        className="flex items-center gap-1.5 w-full px-3 py-1 text-xs font-semibold text-muted-foreground hover:text-foreground uppercase tracking-wider"
+      >
+        {open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+        <Code2 size={12} />
+        <span>Rules</span>
+        {isLoading && <Loader2 size={10} className="ml-auto animate-spin" />}
+      </button>
+      {open && (
+        <div className="pb-1">
+          {(cubes ?? []).length === 0 && !isLoading && (
+            <p className="px-6 py-0.5 text-xs text-muted-foreground/50 italic">No cubes</p>
+          )}
+          {(cubes ?? []).map(cube => (
+            <button
+              key={cube}
+              onClick={() => onOpenRules(cube)}
+              className="flex items-center gap-2 w-full px-6 py-0.5 text-xs text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground group"
+              title={`Open rules for ${cube}`}
+            >
+              <Box size={10} className="shrink-0 text-muted-foreground" />
+              <span className="truncate font-mono">{cube}</span>
+              <span className="hidden group-hover:inline text-[10px] text-muted-foreground ml-auto">Rules</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function DimRow({ server, dim, onOpenSubset, onOpenDim }) {
   const [open, setOpen] = useState(false)
+  const revealTarget = useStore(s => s.revealTarget)
+  const sectionId = `dim:${dim}`
+  useEffect(() => {
+    if (revealTarget && shouldAutoOpen(sectionId, revealTarget)) setOpen(true)
+  }, [revealTarget, sectionId])
   const [adding, setAdding] = useState(false)
   const [newName, setNewName] = useState('')
   const [addingHierarchy, setAddingHierarchy] = useState(false)
@@ -292,8 +404,11 @@ function DimRow({ server, dim, onOpenSubset, onOpenDim }) {
   }
 
   return (
-    <div>
-      <div className="flex items-center w-full px-6 py-0.5 text-sm text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground group">
+    <div data-section={sectionId}>
+      <div
+        data-locate-id={`dimension:${dim}`}
+        className="flex items-center w-full px-6 py-0.5 text-sm text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground group"
+      >
         <button onClick={() => setOpen(o => !o)} className="shrink-0 mr-1.5 text-muted-foreground">
           {open ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
         </button>
@@ -360,6 +475,7 @@ function DimRow({ server, dim, onOpenSubset, onOpenDim }) {
                 <button
                   key={h}
                   onClick={() => onOpenDim(dim, h)}
+                  data-locate-id={`hierarchy:${dim}:${h}`}
                   className="flex items-center gap-2 w-full px-4 py-0.5 text-xs text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground truncate"
                   title={`Open ${h} hierarchy`}
                 >
@@ -391,6 +507,7 @@ function DimRow({ server, dim, onOpenSubset, onOpenDim }) {
             <button
               key={s.Name}
               onClick={() => onOpenSubset(dim, s.Name)}
+              data-locate-id={`subset:${dim}:${s.Name}`}
               className="flex items-center gap-2 w-full px-14 py-0.5 text-xs text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground truncate"
               title={s.Expression ? 'MDX subset' : 'Static subset'}
             >
@@ -409,8 +526,12 @@ function DimRow({ server, dim, onOpenSubset, onOpenDim }) {
 
 function DimSection({ server, dims, isLoading, onOpenSubset, onOpenDim }) {
   const [open, setOpen] = useState(false)
+  const revealTarget = useStore(s => s.revealTarget)
+  useEffect(() => {
+    if (revealTarget && shouldAutoOpen('dimensions', revealTarget)) setOpen(true)
+  }, [revealTarget])
   return (
-    <div>
+    <div data-section="dimensions">
       <button
         onClick={() => setOpen(o => !o)}
         className="flex items-center gap-1.5 w-full px-3 py-1 text-xs font-semibold text-muted-foreground hover:text-foreground uppercase tracking-wider"
@@ -504,6 +625,28 @@ export default function Explorer() {
     hierarchy,
   })
 
+  const revealTarget = useStore(s => s.revealTarget)
+  const clearRevealTarget = useStore(s => s.clearRevealTarget)
+
+  // Scroll to and highlight the revealed object in the tree
+  useEffect(() => {
+    if (!revealTarget || revealTarget.server !== server) return
+    // Clear search so the tree is visible
+    if (search) setSearch('')
+    const id = getLocateId(revealTarget)
+    if (!id) return
+    const timer = setTimeout(() => {
+      const el = document.querySelector(`[data-locate-id="${id}"]`)
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        el.classList.add('bg-primary/30')
+        setTimeout(() => el.classList.remove('bg-primary/30'), 1500)
+      }
+      clearRevealTarget()
+    }, 400)
+    return () => clearTimeout(timer)
+  }, [revealTarget, server, search, clearRevealTarget])
+
   if (!server) {
     return (
       <div className="px-4 py-6 text-xs text-muted-foreground text-center">
@@ -551,13 +694,14 @@ export default function Explorer() {
                 ))
           ) : (
             <>
+              <RulesSection server={server} cubes={cubes} isLoading={loadingCubes} onOpenRules={openRules} />
               <CubeSection server={server} cubes={cubes} isLoading={loadingCubes}
                 onOpenRules={openRules} onOpenView={openView}
                 onOpenSubset={openSubset} onOpenDim={openDim}
                 onOpenViewer={openCubeViewer} />
               <DimSection server={server} dims={dims}    isLoading={loadingDims}   onOpenSubset={openSubset} onOpenDim={openDim} />
-              <Section    icon={Cog}   label="Processes" items={procs}  isLoading={loadingProcs}  onSelect={openProcess} itemIcon={Cog} />
-              <Section    icon={Clock} label="Chores"    items={chores} isLoading={loadingChores} onSelect={() => {}}    itemIcon={Clock} />
+              <Section    icon={Cog}   label="Processes" items={procs}  isLoading={loadingProcs}  onSelect={openProcess} itemIcon={Cog} sectionId="processes" />
+              <Section    icon={Clock} label="Chores"    items={chores} isLoading={loadingChores} onSelect={() => {}}    itemIcon={Clock} sectionId="chores" />
             </>
           )}
         </div>

@@ -1,4 +1,7 @@
 // TM1 function catalog and Monaco autocomplete registration
+import { formatRules } from '@/lib/formatters/rules-formatter.js'
+import { loadSettings } from '@/lib/formatters/settings.js'
+import { getNamingMap } from '@/lib/formatters/naming.js'
 
 // ── TM1 Function Catalog ──────────────────────────────────────────────────────
 // Each entry: description, params[], returns, variadic, language
@@ -1077,66 +1080,16 @@ function registerTM1Completions(monaco, getServer) {
     }
   })
 
-  // Format Document: auto-format TM1 rules
+  // Format Document: auto-format TM1 rules (token-aware engine)
   monaco.languages.registerDocumentFormattingEditProvider('tm1rules', {
     provideDocumentFormattingEdits(model, _options, _token) {
-      const lines = model.getLinesContent()
-      const formatted = []
-      let indentLevel = 0
-      const indentSize = 2
-      const indent = (lvl) => ' '.repeat(lvl * indentSize)
-
-      for (let i = 0; i < lines.length; i++) {
-        let text = lines[i].trim()
-        if (!text) {
-          formatted.push('')
-          continue
-        }
-
-        // Decrease indent for #EndRegion, ENDIF, ELSE, ELSEIF
-        if (/^#EndRegion\b/i.test(text) || /^ENDIF\b/i.test(text) || /^ELSE\b/i.test(text) || /^ELSEIF\b/i.test(text)) {
-          indentLevel = Math.max(0, indentLevel - 1)
-        }
-
-        // Normalize spacing around operators
-        text = text
-          .replace(/\s*=\s*/g, ' = ')
-          .replace(/\s*,\s*/g, ', ')
-          .replace(/\s*;\s*/g, '; ')
-          .replace(/\s*\+\s*/g, ' + ')
-          .replace(/\s*-\s*/g, ' - ')
-          .replace(/\s*\*\s*/g, ' * ')
-          .replace(/\s*\/\s*/g, ' / ')
-          .replace(/\s*%\s*/g, ' % ')
-          .replace(/\s*:\s*/g, ' : ')
-          .replace(/\s*\|\s*/g, ' | ')
-          .replace(/\s*&\s*/g, ' & ')
-          .replace(/\s*!\s*/g, ' ! ')
-          .replace(/\s*>=\s*/g, ' >= ')
-          .replace(/\s*<=\s*/g, ' <= ')
-          .replace(/\s*<>\s*/g, ' <> ')
-          .replace(/\s*=\s*=\s*/g, ' == ')
-          .replace(/\s*>\s*/g, ' > ')
-          .replace(/\s*<\s*/g, ' < ')
-          // Clean up double spaces
-          .replace(/\s{2,}/g, ' ')
-          // But preserve single spaces after commas and semicolons
-          .replace(/;\s/g, '; ')
-          .replace(/,\s/g, ', ')
-
-        // Apply indent
-        formatted.push(indent(indentLevel) + text)
-
-        // Increase indent after #Region, IF
-        if (/^#Region\b/i.test(text) || /^IF\b/i.test(text) || /^ELSEIF\b/i.test(text) || /^ELSE\b/i.test(text)) {
-          indentLevel++
-        }
-      }
-
-      const fullText = formatted.join('\n')
+      const text = model.getValue()
+      const settings = loadSettings()
+      const { map: namingMap } = getNamingMap()
+      const formatted = formatRules(text, settings.rules, namingMap)
       return [{
         range: model.getFullModelRange(),
-        text: fullText,
+        text: formatted,
       }]
     }
   })
@@ -1349,6 +1302,19 @@ function registerTM1Completions(monaco, getServer) {
   })
 
   console.log(`TM1 autocomplete registered — ${Object.keys(TM1_FUNCTIONS).length} functions`)
+}
+
+// ── Register custom Monaco theme with user-defined colours ────────────────────
+
+import { buildMonacoTheme, loadColourSettings } from '@/lib/formatters/colours.js'
+
+export function registerTM1Theme(monaco) {
+  const colourSettings = loadColourSettings()
+  const editorTheme = localStorage.getItem('tm1-theme') === 'dark' ? 'vs-dark' : 'vs'
+
+  const themeDef = buildMonacoTheme(editorTheme, colourSettings)
+  monaco.editor.defineTheme('tm1-custom', themeDef)
+  monaco.editor.setTheme('tm1-custom')
 }
 
 export { registerTM1Completions, TM1_FUNCTIONS }

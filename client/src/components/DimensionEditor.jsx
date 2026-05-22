@@ -8,7 +8,7 @@ import {
 import { AgGridReact } from 'ag-grid-react'
 import { AllCommunityModule, ModuleRegistry, themeBalham, colorSchemeDark, colorSchemeLight } from 'ag-grid-community'
 import { useStore } from '@/store'
-import { ChevronRight, ChevronDown, Loader2, List, GitBranch, Plus, Trash2, Check, X, ClipboardList, ChevronLeft, Table2, Search, ListOrdered } from 'lucide-react'
+import { ChevronRight, ChevronDown, Loader2, List, GitBranch, Plus, Trash2, Check, X, ClipboardList, ChevronLeft, Table2, Search, ListOrdered, MapPin } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import PicklistBuilder from './PicklistBuilder'
 
@@ -704,6 +704,21 @@ export default function DimensionEditor({ tab }) {
       {/* Toolbar row 1 — title + hierarchy + actions */}
       <div className="flex items-center gap-2 px-3 py-1.5 border-b border-border bg-muted shrink-0">
         <span className="text-xs font-semibold">{tab.dimension}</span>
+        <button
+          onClick={() => {
+            const { setRevealTarget } = useStore.getState()
+            setRevealTarget({
+              type: tab.hierarchy && tab.hierarchy !== tab.dimension ? 'hierarchy' : 'dimension',
+              server: tab.server,
+              dimension: tab.dimension,
+              hierarchy: tab.hierarchy,
+            })
+          }}
+          className="p-1 rounded hover:bg-background text-muted-foreground hover:text-foreground transition-colors"
+          title="Show in Explorer tree"
+        >
+          <MapPin size={11} />
+        </button>
         {hierarchies.length > 1 && (
           <select
             value={selectedHierarchy}

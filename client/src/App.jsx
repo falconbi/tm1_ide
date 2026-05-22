@@ -4,7 +4,8 @@ import { useState, useEffect } from 'react'
 import { useStore } from '@/store'
 import { cn } from '@/lib/utils'
 import { Toaster } from '@/components/ui/sonner'
-import { Sun, Moon, Search, PanelLeftClose, PanelLeftOpen, Keyboard } from 'lucide-react'
+import { Sun, Moon, Search, PanelLeftClose, PanelLeftOpen, Keyboard, Settings } from 'lucide-react'
+import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels'
 import ServerSelector from '@/components/ServerSelector'
 import Explorer from '@/components/Explorer'
 import TabBar from '@/components/TabBar'
@@ -12,6 +13,7 @@ import EditorPane from '@/components/EditorPane'
 import StatusBar from '@/components/StatusBar'
 import FindReplace from '@/components/FindReplace'
 import ShortcutsHelp from '@/components/ShortcutsHelp'
+import FormatSettings from '@/components/FormatSettings'
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { staleTime: 30_000, retry: 1 } },
@@ -22,8 +24,15 @@ export default function App() {
   const [showFind, setShowFind]       = useState(false)
   const [showSidebar, setShowSidebar] = useState(true)
   const [showShortcuts, setShowShortcuts] = useState(false)
+  const [showFormatSettings, setShowFormatSettings] = useState(false)
 
   useEffect(() => { loadForge() }, [])
+
+  // Auto-show sidebar when revealing an object in the Explorer tree
+  const revealTarget = useStore(s => s.revealTarget)
+  useEffect(() => {
+    if (revealTarget && !showSidebar) setShowSidebar(true)
+  }, [revealTarget, showSidebar])
 
   useEffect(() => {
     const onKey = (e) => {
@@ -66,6 +75,13 @@ export default function App() {
                 title="Keyboard Shortcuts (F1)"
               >
                 <Keyboard size={15} />
+              </button>
+              <button
+                onClick={() => setShowFormatSettings(true)}
+                className="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                title="Format Settings"
+              >
+                <Settings size={15} />
               </button>
               <button
                 onClick={() => setDark(!dark)}
@@ -115,6 +131,7 @@ export default function App() {
 
         </div>
         <ShortcutsHelp open={showShortcuts} onClose={() => setShowShortcuts(false)} />
+        <FormatSettings open={showFormatSettings} onClose={() => setShowFormatSettings(false)} />
         <Toaster position="bottom-right" />
       </TooltipProvider>
     </QueryClientProvider>

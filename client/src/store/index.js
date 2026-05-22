@@ -87,6 +87,12 @@ export const useStore = create((set, get) => ({
 
   closeAllTabs: () => { set({ tabs: [], activeTab: null }); _saveForge({ ...get(), tabs: [], activeTab: null }) },
 
+  initTabContent: (id, content) => {
+    set(s => ({
+      tabs: s.tabs.map(t => t.id === id ? { ...t, content } : t),
+    }))
+  },
+
   updateTabContent: (id, content) => {
     set(s => ({
       tabs: s.tabs.map(t => t.id === id ? { ...t, content, dirty: true } : t),
@@ -103,4 +109,9 @@ export const useStore = create((set, get) => ({
   bumpSubsetVersion: (server, dim) => set(s => ({
     subsetVersions: { ...s.subsetVersions, [`${server}::${dim}`]: (s.subsetVersions[`${server}::${dim}`] ?? 0) + 1 },
   })),
+
+  // ── Reveal in Explorer tree ────────────────────────────────────────────────
+  revealTarget: null,
+  setRevealTarget: (target) => set({ revealTarget: { ...target, _ts: Date.now() } }),
+  clearRevealTarget: () => set({ revealTarget: null }),
 }))

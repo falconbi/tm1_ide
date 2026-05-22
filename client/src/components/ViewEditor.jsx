@@ -6,7 +6,7 @@ import MonacoEditor from '@monaco-editor/react'
 import { useStore } from '@/store'
 import { useCubeDimensions, useSubsets, useSubsetElements, useViews, useExecuteMDX, useViewAxes, useSaveView, usePawBookUsage } from '@/hooks/useApi'
 import { toast } from 'sonner'
-import { RefreshCw, Loader2, Table2, GripVertical, X, LayoutGrid, Rows3, Columns3, Filter, ZapOff, Zap, ChevronLeft, ChevronRight, PencilLine, Play, Save, Code2, Eye, ChevronDown, BookOpen, ChevronUp } from 'lucide-react'
+import { RefreshCw, Loader2, Table2, GripVertical, X, LayoutGrid, Rows3, Columns3, Filter, ZapOff, Zap, ChevronLeft, ChevronRight, PencilLine, Play, Save, Code2, Eye, ChevronDown, BookOpen, ChevronUp, MapPin } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 ModuleRegistry.registerModules([AllCommunityModule])
@@ -674,6 +674,21 @@ export default function ViewEditor({ tab }) {
                         <Code2 size={10} /> MDX
                     </button>
                 </div>
+
+                <button
+                    onClick={() => {
+                        const { setRevealTarget } = useStore.getState()
+                        if (tab.viewName) {
+                            setRevealTarget({ type: 'view', server: tab.server, cube: tab.cube, viewName: tab.viewName })
+                        } else {
+                            setRevealTarget({ type: 'cube', server: tab.server, cube: tab.cube })
+                        }
+                    }}
+                    className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                    title="Show in Explorer tree"
+                >
+                    <MapPin size={11} />
+                </button>
 
                 <div className="flex-1" />
 
