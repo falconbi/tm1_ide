@@ -1,14 +1,22 @@
 {
-  "server": "GO_New_Stores",
+  "server": "24retail",
   "tabs": [
     {
-      "id": "subset:GO_New_Stores:Products:Productos_ES",
+      "id": "subset:24retail:Account:Travel",
       "type": "subset",
-      "label": "Productos_ES",
-      "server": "GO_New_Stores",
-      "dimension": "Products",
-      "subsetName": "Productos_ES"
+      "label": "Travel",
+      "server": "24retail",
+      "dimension": "Account",
+      "subsetName": "Travel"
+    },
+    {
+      "id": "dim:24retail:Account:Account",
+      "type": "dimension",
+      "label": "Account",
+      "server": "24retail",
+      "dimension": "Account",
+      "hierarchy": "Account"
     }
   ],
-  "activeTab": "subset:GO_New_Stores:Products:Productos_ES"
+  "activeTab": "dim:24retail:Account:Account"
 }

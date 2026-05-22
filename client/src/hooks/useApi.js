@@ -218,6 +218,13 @@ export const useUpdateEdgeWeight = () => useMutation({
     patch(`/api/dimension/edge?server=${enc(server)}&dimension=${enc(dimension)}&parent=${enc(parent)}&child=${enc(child)}${hierarchy ? `&hierarchy=${enc(hierarchy)}` : ''}`, { weight }),
 })
 
+export const useSubsetUsage = (server, dimension, subset) => useQuery({
+  queryKey: ['subset-usage', server, dimension, subset],
+  queryFn:  () => get(`/api/subset/usage?server=${enc(server)}&dimension=${enc(dimension)}&subset=${enc(subset)}`),
+  enabled:  !!server && !!dimension && !!subset,
+  staleTime: 0,
+})
+
 export const useCreateHierarchy = () => useMutation({
   mutationFn: ({ server, dimension, name }) =>
     post('/api/dimension/hierarchy', { server, dimension, name }),

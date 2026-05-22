@@ -417,6 +417,13 @@ app.get('/api/hierarchies', async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
+app.get('/api/subset/usage', async (req, res) => {
+    try {
+        const client = new TM1Client(req.query.server)
+        res.json(await client.scanSubsetUsage(req.query.dimension, req.query.subset))
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
 app.post('/api/dimension/hierarchy', async (req, res) => {
     try {
         const { server, dimension, name } = req.body

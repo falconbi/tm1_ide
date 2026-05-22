@@ -338,6 +338,64 @@ class TM1Client {
         return (d.value ?? []).map(r => r.Name).filter(n => !n.startsWith('}'))
     }
 
+    // ── Subset usage scan ─────────────────────────────────────────────────────
+
+    async scanSubsetUsage(dim, subsetName) {
+        const cubeUsage = []
+        const tiUsage   = []
+
+        // 1. Scan cube views
+        const cubes = await this.getCubes()
+        for (const cube of cubes) {
+            const views = await this.getViews(cube)
+            for (const view of views) {
+                try {
+                    const v = await this.getView(cube, view)
+                    if (!v || v['@odata.type']?.includes('MDXView')) continue
+                    // Native view - check axes for subset references
+                    const axes = ['Rows', 'Columns', 'Titles']
+                    for (const axis of axes) {
+                        const placements = v[axis] ?? []
+                        for (const p of placements) {
+                            if (p.Subset?.Name === subsetName && p.Dimension?.Name === dim) {
+                                cubeUsage.push({ cube, view, axis })
+                            }
+                        }
+                    }
+                } catch { /* skip inaccessible views */ }
+            }
+        }
+
+        // 2. Scan TI processes
+        const processes = await this.getProcesses()
+        for (const proc of processes) {
+            try {
+                const p = await this.getProcess(proc)
+                const code = [
+                    p.PrologProcedure   ?? '',
+                    p.MetaDataProcedure ?? '',
+                    p.DataProcedure     ?? '',
+                    p.EpilogProcedure   ?? '',
+                ].join('\n')
+                if (code.includes(subsetName)) {
+                    // Check if it's actually referencing this dimension's subset
+                    // Look for specific patterns
+                    const patterns = [
+                        new RegExp(`Subset[^\\s(]*\\s*\\([^)]*['"]?${subsetName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}['"]?`, 'i'),
+                        new RegExp(`View[^\\s(]*\\s*\\([^)]*['"]?${subsetName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}['"]?`, 'i'),
+                        new RegExp(`['"]?${dim.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}['"]?,\\s*['"]?${subsetName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}['"]?`, 'i'),
+                    ]
+                    const matched = patterns.some(rx => rx.test(code))
+                    if (matched) {
+                        tiUsage.push({ process: proc })
+                    }
+                }
+            } catch { /* skip inaccessible processes */ }
+        }
+
+        return { cubes: cubeUsage, processes: tiUsage }
+    }
+
     // ── Subsets ───────────────────────────────────────────────────────────────
 
     async getSubsets(dim, hierarchy = dim) {

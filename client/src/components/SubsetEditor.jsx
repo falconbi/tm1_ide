@@ -2,11 +2,11 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import MonacoEditor from '@monaco-editor/react'
 import { useQueryClient } from '@tanstack/react-query'
 import { useStore } from '@/store'
-import { useSubset, useSaveSubset, usePreviewMDX, useGenerateMDX, useElements } from '@/hooks/useApi'
+import { useSubset, useSaveSubset, usePreviewMDX, useGenerateMDX, useElements, useSubsetUsage } from '@/hooks/useApi'
 import { MDX_CATALOG, MDX_FUNCTIONS_FLAT, MDX_ADVANCED_PATTERNS } from '@/lib/tm1-mdx-catalog'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
-import { Play, Loader2, Sparkles, Copy, Search, ChevronDown, ChevronRight } from 'lucide-react'
+import { Play, Loader2, Sparkles, Copy, Search, ChevronDown, ChevronRight, Box, Cog } from 'lucide-react'
 import SubsetVisualEditor from './SubsetVisualEditor'
 
 const TYPE_ICON  = { N: '○', C: '◆', S: '"' }
@@ -293,7 +293,8 @@ export default function SubsetEditor({ tab }) {
   const [dirty, setDirty]       = useState(false)
   const [aiPrompt, setAiPrompt] = useState('')
   const [copyingPrompt, setCopyingPrompt] = useState(false)
-  const [rightTab, setRightTab] = useState('members')   // 'members' | 'functions' | 'patterns'
+  const [rightTab, setRightTab] = useState('members')   // 'members' | 'functions' | 'patterns' | 'usage'
+  const { data: usageData, isFetching: loadingUsage, refetch: refetchUsage } = useSubsetUsage(tab.server, tab.dimension, tab.subsetName)
   const [validating, setValidating] = useState(false)
 
   const editorRef      = useRef(null)
@@ -642,12 +643,14 @@ Member reference: [${tab.dimension}].[${tab.dimension}].[MemberName]`
               { id: 'members',  label: 'Members' },
               { id: 'functions', label: 'Fns' },
               { id: 'patterns', label: 'Patterns' },
+              { id: 'usage',    label: 'Usage' },
             ].map(t => (
               <button key={t.id} onClick={() => setRightTab(t.id)}
                 className={cn('flex-1 py-1.5 text-xs transition-colors',
                   rightTab === t.id ? 'border-b-2 border-primary text-foreground font-medium' : 'text-muted-foreground hover:text-foreground')}>
                 {t.label}
                 {t.id === 'members' && members && <span className="ml-1 text-muted-foreground">({members.length})</span>}
+                {t.id === 'usage' && usageData && <span className="ml-1 text-muted-foreground">({usageData.cubes.length + usageData.processes.length})</span>}
               </button>
             ))}
           </div>
@@ -686,6 +689,59 @@ Member reference: [${tab.dimension}].[${tab.dimension}].[MemberName]`
                 <PatternCard key={p.name} pattern={p} dimension={tab.dimension}
                   onUse={() => { setMdx(p.mdx(tab.dimension)); setDirty(true); setMembers(null) }} />
               ))}
+            </div>
+          )}
+
+          {/* Usage */}
+          {rightTab === 'usage' && (
+            <div className="flex-1 min-h-0 overflow-auto p-2">
+              <button
+                onClick={() => refetchUsage()}
+                disabled={loadingUsage}
+                className="w-full flex items-center justify-center gap-1 px-2 py-1 text-xs rounded border border-border text-muted-foreground hover:bg-muted disabled:opacity-40 mb-2"
+              >
+                {loadingUsage ? <Loader2 size={10} className="animate-spin" /> : <Search size={10} />}
+                Scan for usage
+              </button>
+
+              {usageData && (
+                <>
+                  {/* Cube Views */}
+                  <div className="mb-3">
+                    <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">
+                      Cube Views ({usageData.cubes.length})
+                    </div>
+                    {usageData.cubes.length === 0 && (
+                      <p className="text-[10px] text-muted-foreground italic">Not used in any view</p>
+                    )}
+                    {usageData.cubes.map((u, i) => (
+                      <div key={i} className="flex items-center gap-1 px-1 py-0.5 text-xs hover:bg-muted rounded">
+                        <Box size={10} className="shrink-0 text-muted-foreground" />
+                        <span className="font-mono truncate">{u.cube}</span>
+                        <span className="text-muted-foreground/50">·</span>
+                        <span className="font-mono truncate">{u.view}</span>
+                        <span className="text-[10px] text-muted-foreground/60 shrink-0 ml-auto">{u.axis}</span>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* TI Processes */}
+                  <div>
+                    <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">
+                      TI Processes ({usageData.processes.length})
+                    </div>
+                    {usageData.processes.length === 0 && (
+                      <p className="text-[10px] text-muted-foreground italic">Not referenced in any process</p>
+                    )}
+                    {usageData.processes.map((u, i) => (
+                      <div key={i} className="flex items-center gap-1 px-1 py-0.5 text-xs hover:bg-muted rounded">
+                        <Cog size={10} className="shrink-0 text-muted-foreground" />
+                        <span className="font-mono truncate">{u.process}</span>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
             </div>
           )}
         </div>
