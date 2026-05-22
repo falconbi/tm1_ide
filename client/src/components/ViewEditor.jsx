@@ -346,13 +346,13 @@ export default function ViewEditor({ tab }) {
         const make = (dim, subset = null, member = null) => ({ dimension: dim, subset, member })
         const cols = [], rows = [], pages = []
 
-        // Extract axes: ON COLUMNS / ON ROWS
+        // Extract axes: ON COLUMNS / ON ROWS (or ON 0 / ON 1)
         const axisMatch = mdxText.match(/SELECT\s+(.*?)\s+FROM\s+\[(.*?)\]/is)
         if (axisMatch) {
             const axesPart = axisMatch[1]
-            // Split by ON COLUMNS / ON ROWS
-            const colMatch = axesPart.match(/(.*?)\s+ON\s+COLUMNS/is)
-            const rowMatch = axesPart.match(/(.*?)\s+ON\s+ROWS/is)
+            // Split by ON COLUMNS / ON ROWS / ON 0 / ON 1
+            const colMatch = axesPart.match(/(.*?)\s+ON\s+(?:COLUMNS|0)/is)
+            const rowMatch = axesPart.match(/(.*?)\s+ON\s+(?:ROWS|1)/is)
 
             const extractSets = (expr) => {
                 if (!expr) return []

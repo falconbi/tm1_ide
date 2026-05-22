@@ -2,14 +2,6 @@
   "server": "24retail",
   "tabs": [
     {
-      "id": "cubeview:24retail:Allocation Calculation:Allocation Calculation",
-      "type": "cubeview",
-      "label": "⊞ Allocation Calculation / Allocation Calculation",
-      "server": "24retail",
-      "cube": "Allocation Calculation",
-      "viewName": "Allocation Calculation"
-    },
-    {
       "id": "cubeview:24retail:Allocation Calculation:Allocation Summary",
       "type": "cubeview",
       "label": "⊞ Allocation Calculation / Allocation Summary",
