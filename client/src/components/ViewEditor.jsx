@@ -649,9 +649,9 @@ export default function ViewEditor({ tab }) {
 
                 <button onClick={handleExecute} disabled={isExecuting || isLoadingView}
                     title="Execute / Refresh (Ctrl+Enter)"
-                    className="flex items-center gap-1 px-2 py-1 rounded text-xs bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors">
-                    {isExecuting ? <Loader2 size={12} className="animate-spin" /> : <Play size={12} />}
-                    Execute
+                    className={cn('flex items-center justify-center p-1.5 rounded border border-border transition-colors',
+                        isExecuting ? 'text-primary bg-primary/10' : 'text-muted-foreground hover:bg-muted')}>
+                    {isExecuting ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
                 </button>
             </div>
 

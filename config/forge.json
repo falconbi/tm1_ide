@@ -10,29 +10,21 @@
       "subsetName": "AllocationDrivers"
     },
     {
-      "id": "subset:24retail:Account:Analysis",
+      "id": "subset:24retail:organization:Default",
       "type": "subset",
-      "label": "Analysis",
+      "label": "Default",
       "server": "24retail",
-      "dimension": "Account",
-      "subsetName": "Analysis"
+      "dimension": "organization",
+      "subsetName": "Default"
     },
     {
-      "id": "subset:24retail:Account:GM Review",
-      "type": "subset",
-      "label": "GM Review",
+      "id": "cubeview:24retail:Allocation Calculation:Allocation Calculation",
+      "type": "cubeview",
+      "label": "⊞ Allocation Calculation / Allocation Calculation",
       "server": "24retail",
-      "dimension": "Account",
-      "subsetName": "GM Review"
-    },
-    {
-      "id": "subset:24retail:Account:Marketing",
-      "type": "subset",
-      "label": "Marketing",
-      "server": "24retail",
-      "dimension": "Account",
-      "subsetName": "Marketing"
+      "cube": "Allocation Calculation",
+      "viewName": "Allocation Calculation"
     }
   ],
-  "activeTab": "subset:24retail:Account:Marketing"
+  "activeTab": "cubeview:24retail:Allocation Calculation:Allocation Calculation"
 }
