@@ -474,33 +474,33 @@ class TM1Client {
     }
 
     async getViewWithSubsets(cube, name) {
-        // PAW proxy returns empty axis config on single view endpoint.
-        // Use collection endpoint with $expand=Rows,Columns,Titles then pick the view.
+        // Try collection endpoint with $expand first (some TM1 versions support it)
         try {
             const d = await this.get(
                 `Cubes('${cube}')/Views`,
                 { '$select': 'Name,Rows,Columns,Titles,FormatString,SuppressEmptyColumns,SuppressEmptyRows', '$expand': 'Rows,Columns,Titles' }
             )
             const view = (d.value ?? []).find(v => v.Name === name)
-            if (!view) return null
-            // Extract subset names from the expanded axis config
-            const getSubset = (placements) => {
-                if (!placements) return []
-                return placements.map(p => ({
-                    dimension: p.DimensionName ?? p.Name,
-                    subset:    p.SubsetName ?? p.Subset?.Name ?? null,
-                }))
-            }
-            return {
-                ...view,
-                _rows:    getSubset(view.Rows),
-                _columns: getSubset(view.Columns),
-                _titles:  getSubset(view.Titles),
+            if (view) {
+                const getSubset = (placements) => {
+                    if (!placements) return []
+                    return placements.map(p => ({
+                        dimension: p.DimensionName ?? p.Name,
+                        subset:    p.SubsetName ?? p.Subset?.Name ?? null,
+                    }))
+                }
+                return {
+                    ...view,
+                    _rows:    getSubset(view.Rows),
+                    _columns: getSubset(view.Columns),
+                    _titles:  getSubset(view.Titles),
+                }
             }
         } catch (e) {
-            if (e.response?.status === 404) return null
-            throw e
+            // $expand not supported — fall through to basic getView
         }
+        // Fallback: basic view definition (no axis config for native views)
+        return this.getView(cube, name)
     }
 
     async getSubsetElements(dim, name, hierarchy = dim) {

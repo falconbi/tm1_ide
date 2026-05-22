@@ -8,7 +8,15 @@
       "server": "24retail",
       "cube": "Allocation Calculation",
       "viewName": "Allocation Calculation"
+    },
+    {
+      "id": "cubeview:24retail:Allocation Calculation:Allocation Summary",
+      "type": "cubeview",
+      "label": "⊞ Allocation Calculation / Allocation Summary",
+      "server": "24retail",
+      "cube": "Allocation Calculation",
+      "viewName": "Allocation Summary"
     }
   ],
-  "activeTab": "cubeview:24retail:Allocation Calculation:Allocation Calculation"
+  "activeTab": "cubeview:24retail:Allocation Calculation:Allocation Summary"
 }
