@@ -7,9 +7,7 @@
       "label": "⊞ Allocation Calculation / Allocation Calculation",
       "server": "24retail",
       "cube": "Allocation Calculation",
-      "viewName": "Allocation Calculation",
-      "scrollToLine": null,
-      "scrollToSection": null
+      "viewName": "Allocation Calculation"
     }
   ],
   "activeTab": "cubeview:24retail:Allocation Calculation:Allocation Calculation"

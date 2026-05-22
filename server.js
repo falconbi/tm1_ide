@@ -577,7 +577,7 @@ app.get('/api/view/axes', async (req, res) => {
         const client = new TM1Client(req.query.server)
         const [data, viewDef] = await Promise.all([
             client.executeView(req.query.cube, req.query.view),
-            client.getView(req.query.cube, req.query.view),
+            client.getViewWithSubsets(req.query.cube, req.query.view),
         ])
         // Parse dimension names from UniqueName: [Dim].[Hier].[Member] → Dim
         const parseDim = (uniqueName) => uniqueName?.match(/^\[([^\]]+)\]/)?.[1] ?? null
@@ -592,11 +592,13 @@ app.get('/api/view/axes', async (req, res) => {
         }))
         // Also return native view axis config with subsets
         const nativeConfig = viewDef ? {
-            rows:    (viewDef.Rows ?? []).map(r => ({ dimension: r.Name, subset: r.Subset?.Name ?? null })),
-            columns: (viewDef.Columns ?? []).map(c => ({ dimension: c.Name, subset: c.Subset?.Name ?? null })),
-            titles:  (viewDef.Titles ?? []).map(t => ({ dimension: t.Name, member: t.Selection?.Name ?? null })),
+            rows:    viewDef._rows    ?? (viewDef.Rows ?? []).map(r => ({ dimension: r.DimensionName ?? r.Name, subset: r.SubsetName ?? r.Subset?.Name ?? null })),
+            columns: viewDef._columns ?? (viewDef.Columns ?? []).map(c => ({ dimension: c.DimensionName ?? c.Name, subset: c.SubsetName ?? c.Subset?.Name ?? null })),
+            titles:  viewDef._titles  ?? (viewDef.Titles ?? []).map(t => ({ dimension: t.DimensionName ?? t.Name, member: t.Selection?.Name ?? null })),
         } : null
-        res.json({ axisConfig, cellset: data, viewType: data.ViewType, nativeConfig })
+        // For MDX views, return the MDX text so the client can parse it back to axes
+        const mdxText = (viewDef && viewDef['@odata.type']?.includes('MDXView')) ? (viewDef.MDX || null) : null
+        res.json({ axisConfig, cellset: data, viewType: data.ViewType, nativeConfig, mdx: mdxText })
     } catch (e) {
         const detail = e.response?.data?.error?.message ?? e.response?.data ?? e.message
         res.status(500).json({ error: typeof detail === 'string' ? detail : JSON.stringify(detail) })

@@ -466,10 +466,37 @@ class TM1Client {
 
     async getView(cube, name) {
         try {
-            return await this.get(
-                `Cubes('${cube}')/Views('${name}')`,
-                { '$expand': 'Rows($expand=Subset($select=Name)),Columns($expand=Subset($select=Name)),Titles($expand=Subset($select=Name),Selection($select=Name))' }
+            return await this.get(`Cubes('${cube}')/Views('${name}')`)
+        } catch (e) {
+            if (e.response?.status === 404) return null
+            throw e
+        }
+    }
+
+    async getViewWithSubsets(cube, name) {
+        // PAW proxy returns empty axis config on single view endpoint.
+        // Use collection endpoint with $expand=Rows,Columns,Titles then pick the view.
+        try {
+            const d = await this.get(
+                `Cubes('${cube}')/Views`,
+                { '$select': 'Name,Rows,Columns,Titles,FormatString,SuppressEmptyColumns,SuppressEmptyRows', '$expand': 'Rows,Columns,Titles' }
             )
+            const view = (d.value ?? []).find(v => v.Name === name)
+            if (!view) return null
+            // Extract subset names from the expanded axis config
+            const getSubset = (placements) => {
+                if (!placements) return []
+                return placements.map(p => ({
+                    dimension: p.DimensionName ?? p.Name,
+                    subset:    p.SubsetName ?? p.Subset?.Name ?? null,
+                }))
+            }
+            return {
+                ...view,
+                _rows:    getSubset(view.Rows),
+                _columns: getSubset(view.Columns),
+                _titles:  getSubset(view.Titles),
+            }
         } catch (e) {
             if (e.response?.status === 404) return null
             throw e

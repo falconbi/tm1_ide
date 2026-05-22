@@ -341,6 +341,58 @@ export default function ViewEditor({ tab }) {
 
     const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
 
+    // ── Parse MDX string to visual builder axes ───────────────────────────────
+    const parseMdxToAxes = useCallback((mdxText) => {
+        const make = (dim, subset = null, member = null) => ({ dimension: dim, subset, member })
+        const cols = [], rows = [], pages = []
+
+        // Extract axes: ON COLUMNS / ON ROWS
+        const axisMatch = mdxText.match(/SELECT\s+(.*?)\s+FROM\s+\[(.*?)\]/is)
+        if (axisMatch) {
+            const axesPart = axisMatch[1]
+            // Split by ON COLUMNS / ON ROWS
+            const colMatch = axesPart.match(/(.*?)\s+ON\s+COLUMNS/is)
+            const rowMatch = axesPart.match(/(.*?)\s+ON\s+ROWS/is)
+
+            const extractSets = (expr) => {
+                if (!expr) return []
+                const sets = []
+                // Match TM1SubsetToSet([Dim], "Subset")
+                const subsetRegex = /TM1SubsetToSet\s*\(\s*\[(.*?)\]\s*,\s*"(.*?)"\s*\)/gi
+                let m
+                while ((m = subsetRegex.exec(expr)) !== null) {
+                    sets.push(make(m[1], m[2]))
+                }
+                // Match {[Dim].[Dim].Members}
+                const membersRegex = /\{\[(.*?)\]\.\[(.*?)\]\.Members\}/gi
+                while ((m = membersRegex.exec(expr)) !== null) {
+                    sets.push(make(m[1]))
+                }
+                // Match {[Dim].[Dim].[Member]} (single member)
+                const singleMemberRegex = /\{\[(.*?)\]\.\[(.*?)\]\.\[(.*?)\]\}/gi
+                while ((m = singleMemberRegex.exec(expr)) !== null) {
+                    sets.push(make(m[1], null, m[3]))
+                }
+                return sets
+            }
+
+            if (colMatch) cols.push(...extractSets(colMatch[1]))
+            if (rowMatch) rows.push(...extractSets(rowMatch[1]))
+        }
+
+        // Extract WHERE slicers
+        const whereMatch = mdxText.match(/WHERE\s*\((.*)\)/is)
+        if (whereMatch) {
+            const slicers = whereMatch[1].split(/,\s*/)
+            for (const s of slicers) {
+                const m = s.match(/\[(.*?)\]\.\[(.*?)\]\.\[(.*?)\]/)
+                if (m) pages.push(make(m[1], null, m[3]))
+            }
+        }
+
+        return { columns: cols, rows, pages }
+    }, [])
+
     // ── Load existing view ──────────────────────────────────────────────────
     useEffect(() => {
         if (!tab.viewName || !cubeDims.length) return
@@ -353,11 +405,18 @@ export default function ViewEditor({ tab }) {
         loadViewAxes.mutate(
             { server: tab.server, cube: tab.cube, view: tab.viewName },
             {
-                onSuccess: ({ axisConfig, cellset, viewType: vt, nativeConfig }) => {
+                onSuccess: ({ axisConfig, cellset, viewType: vt, nativeConfig, mdx: viewMdx }) => {
                     const make = (dim, subset = null, member = null) => ({ dimension: dim, subset, member })
                     let cols, rows, pages
-                    if (nativeConfig) {
-                        // Use native view definition with actual subsets
+
+                    if (viewMdx && vt?.includes('MDXView')) {
+                        // MDX view — parse the MDX to reconstruct axes
+                        const parsed = parseMdxToAxes(viewMdx)
+                        cols  = parsed.columns
+                        rows  = parsed.rows
+                        pages = parsed.pages
+                    } else if (nativeConfig) {
+                        // Native view — use native definition with actual subsets
                         cols  = nativeConfig.columns.map(c => make(c.dimension, c.subset))
                         rows  = nativeConfig.rows.map(r => make(r.dimension, r.subset))
                         pages = nativeConfig.titles.map(t => make(t.dimension, null, t.member))
@@ -372,7 +431,7 @@ export default function ViewEditor({ tab }) {
                     setAxes({ rows, columns: cols, pages })
                     setResult(cellset)
                     setViewType(vt ?? null)
-                    setMdx(buildMDX({ cube: tab.cube, rows, columns: cols, pages, suppressZeros: true }))
+                    setMdx(viewMdx || buildMDX({ cube: tab.cube, rows, columns: cols, pages, suppressZeros: true }))
                     setMdxDirty(false)
                     toast.success(`Loaded ${tab.viewName}`, { id })
                 },
@@ -382,7 +441,7 @@ export default function ViewEditor({ tab }) {
                 },
             }
         )
-    }, [tab.viewName, cubeDims])
+    }, [tab.viewName, cubeDims, parseMdxToAxes])
 
     // ── Default layout for new cube view (no viewName) ──────────────────────
     useEffect(() => {
