@@ -1,5 +1,15 @@
 {
   "server": "24retail",
-  "tabs": [],
-  "activeTab": null
+  "tabs": [
+    {
+      "id": "cubeview:24retail:Allocation Calculation:undefined",
+      "type": "cubeview",
+      "label": "⊞ Allocation Calculation / undefined",
+      "server": "24retail",
+      "cube": "Allocation Calculation",
+      "scrollToLine": null,
+      "scrollToSection": null
+    }
+  ],
+  "activeTab": "cubeview:24retail:Allocation Calculation:undefined"
 }

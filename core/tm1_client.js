@@ -460,12 +460,12 @@ class TM1Client {
     // ── Views ─────────────────────────────────────────────────────────────────
 
     async getViews(cube) {
-        const d = await this.get(`Cubes('${cube}')/Views`, { '$select': 'Name,@odata.type' })
+        const d = await this.get(`Cubes('${cube}')/Views`, { '$select': 'Name,MDX' })
         return (d.value ?? [])
             .filter(r => !r.Name.startsWith('}'))
             .map(r => ({
                 name: r.Name,
-                type: r['@odata.type']?.includes('MDXView') ? 'mdx' : 'native',
+                type: r.MDX ? 'mdx' : 'native',
             }))
     }
 
