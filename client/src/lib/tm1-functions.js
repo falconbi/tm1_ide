@@ -1016,6 +1016,27 @@ function registerTM1Completions(monaco, getServer) {
     }
   })
 
+  // Folding: #Region / #EndRegion blocks (PAW-style)
+  monaco.languages.registerFoldingRangeProvider('tm1rules', {
+    provideFoldingRanges(model, _context, _token) {
+      const ranges = []
+      const lineCount = model.getLineCount()
+      const stack = []
+      for (let line = 1; line <= lineCount; line++) {
+        const text = model.getLineContent(line).trim()
+        if (/^#Region\b/i.test(text)) {
+          stack.push(line)
+        } else if (/^#EndRegion\b/i.test(text)) {
+          const start = stack.pop()
+          if (start != null) {
+            ranges.push({ start, end: line, kind: monaco.languages.FoldingRangeKind.Region })
+          }
+        }
+      }
+      return ranges
+    }
+  })
+
   monaco.languages.register({ id: 'tm1ti' })
   monaco.languages.setMonarchTokensProvider('tm1ti', {
     tokenizer: {
