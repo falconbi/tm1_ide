@@ -645,6 +645,14 @@ export default function ViewEditor({ tab }) {
                         <span className="mx-1 text-muted-foreground/40">/</span>
                         <span className="text-foreground">{tab.viewName}</span>
                     </>}
+                    {viewType && (
+                        <span className={cn('ml-1.5 text-[10px] px-1 py-px rounded border',
+                            viewType.includes('NativeView')
+                                ? 'border-amber-400/30 text-amber-600 bg-amber-50'
+                                : 'border-violet-400/30 text-violet-600 bg-violet-50')}>
+                            {viewType.includes('NativeView') ? 'Native' : 'MDX'}
+                        </span>
+                    )}
                 </span>
 
                 {/* Mode toggle */}

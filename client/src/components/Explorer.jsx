@@ -212,10 +212,14 @@ function CubeRow({ server, cube, onOpenRules, onOpenView, onOpenSubset, onOpenDi
           {(views ?? []).length === 0 && !loadingViews && !addingView
             ? <p className="px-12 py-0.5 text-xs text-muted-foreground/50 italic">No views</p>
             : (views ?? []).map(v => (
-                <button key={v} onClick={() => onOpenView(cube, v)}
-                  className="flex items-center gap-2 w-full px-12 py-0.5 text-xs text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground truncate">
-                  <Table2 size={10} className="shrink-0 text-muted-foreground" />
-                  <span className="truncate font-mono">{v}</span>
+                <button key={v.name} onClick={() => onOpenView(cube, v.name)}
+                  className="flex items-center gap-2 w-full px-12 py-0.5 text-xs text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground truncate"
+                  title={v.type === 'mdx' ? 'MDX view' : 'Native view'}>
+                  {v.type === 'mdx'
+                    ? <Code2 size={10} className="shrink-0 text-violet-400" />
+                    : <Table2 size={10} className="shrink-0 text-amber-400" />}
+                  <span className="truncate font-mono">{v.name}</span>
+                  {v.type === 'native' && <span className="text-[10px] text-muted-foreground/50">Native</span>}
                 </button>
               ))
           }
