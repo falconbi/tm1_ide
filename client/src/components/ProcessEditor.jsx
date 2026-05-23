@@ -409,7 +409,7 @@ function RunDialog({ params, onRun, onClose, isPending }) {
 }
 
 export default function ProcessEditor({ tab }) {
-  const { server, dark, updateTabContent, markTabSaved, clearScrollTo } = useStore()
+  const { server, dark, themeVersion, updateTabContent, markTabSaved, clearScrollTo } = useStore()
   const { data, isLoading } = useProcess(tab.server, tab.name)
   const saveProcess = useSaveProcess()
   const runProcess  = useRunProcess()
@@ -456,12 +456,16 @@ export default function ProcessEditor({ tab }) {
     setShowDsInsert(false)
   }
 
+  useEffect(() => {
+    if (monacoRef.current) registerTM1Theme(monacoRef.current, dark)
+  }, [dark, themeVersion])
+
   const handleMount = (editor, monaco) => {
     editorRef.current = editor
     monacoRef.current = monaco
     if (!registeredRef.current) {
       registerTM1Completions(monaco, () => server)
-      registerTM1Theme(monaco)
+      registerTM1Theme(monaco, dark)
       registeredRef.current = true
     }
     if (pendingLineRef.current) {

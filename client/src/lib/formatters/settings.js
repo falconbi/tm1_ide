@@ -9,6 +9,7 @@ export const DEFAULT_SETTINGS = {
   version: 1,
   rules: {
     preset: 'standard',
+    expressionFormatter: null,
     indentStyle: 'spaces2',
     areaPrefixSpacing: 'single',
     functionCallSpacing: 'standard',
@@ -79,12 +80,14 @@ export function applyPreset(presetName, type, currentSettings = null) {
   const preset = PRESETS[presetName]
   if (!preset) return settings
 
-  settings[type] = {
-    ...settings[type],
-    ...preset[type],
-    preset: presetName,
+  return {
+    ...settings,
+    [type]: {
+      ...settings[type],
+      ...preset[type],
+      preset: presetName,
+    },
   }
-  return settings
 }
 
 /**

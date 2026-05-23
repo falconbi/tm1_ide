@@ -2,13 +2,39 @@
   "server": "24retail",
   "tabs": [
     {
-      "id": "rules:24retail:Allocation Calculation",
-      "type": "rules",
-      "label": "Allocation Calculation",
+      "id": "cubeview:24retail:Allocation Calculation:Allocation Calculation",
+      "type": "cubeview",
+      "label": "⊞ Allocation Calculation / Allocation Calculation",
       "server": "24retail",
       "cube": "Allocation Calculation",
-      "content": null
+      "viewName": "Allocation Calculation",
+      "scrollToLine": null,
+      "scrollToSection": null
+    },
+    {
+      "id": "subset:24retail:Asset Life:Default",
+      "type": "subset",
+      "label": "Default",
+      "server": "24retail",
+      "dimension": "Asset Life",
+      "subsetName": "Default"
+    },
+    {
+      "id": "subset:24retail:Asset Life:All Members",
+      "type": "subset",
+      "label": "All Members",
+      "server": "24retail",
+      "dimension": "Asset Life",
+      "subsetName": "All Members"
+    },
+    {
+      "id": "subset:24retail:Asset Types:Asset Type",
+      "type": "subset",
+      "label": "Asset Type",
+      "server": "24retail",
+      "dimension": "Asset Types",
+      "subsetName": "Asset Type"
     }
   ],
-  "activeTab": "rules:24retail:Allocation Calculation"
+  "activeTab": "subset:24retail:Asset Types:Asset Type"
 }

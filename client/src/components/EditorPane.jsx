@@ -99,11 +99,12 @@ function LineagePanel({ server, cube, onOpen }) {
 // ── Rules editor ─────────────────────────────────────────────────────────────
 
 function RulesEditor({ tab, onCursor }) {
-  const { initTabContent, updateTabContent, markTabSaved, clearScrollTo, openTab, server, dark } = useStore()
+  const { initTabContent, updateTabContent, markTabSaved, clearScrollTo, openTab, server, dark, themeVersion } = useStore()
   const { data, isLoading } = useRules(tab.server, tab.cube)
   const saveRules = useSaveRules()
   const registeredRef = useRef(false)
   const editorRef = useRef(null)
+  const monacoRef = useRef(null)
   const [showLineage, setShowLineage] = useState(false)
   const [regionsCollapsed, setRegionsCollapsed] = useState(false)
   const [showRegionMenu, setShowRegionMenu] = useState(false)
@@ -138,11 +139,16 @@ function RulesEditor({ tab, onCursor }) {
     return () => document.removeEventListener('mousedown', handler)
   }, [showRegionMenu])
 
+  useEffect(() => {
+    if (monacoRef.current) registerTM1Theme(monacoRef.current, dark)
+  }, [dark, themeVersion])
+
   const handleMount = (editor, monaco) => {
     editorRef.current = editor
+    monacoRef.current = monaco
     if (!registeredRef.current) {
       registerTM1Completions(monaco, () => server)
-      registerTM1Theme(monaco)
+      registerTM1Theme(monaco, dark)
       registeredRef.current = true
     }
     editor.onDidChangeCursorPosition(e => {

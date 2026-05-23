@@ -1308,10 +1308,9 @@ function registerTM1Completions(monaco, getServer) {
 
 import { buildMonacoTheme, loadColourSettings } from '@/lib/formatters/colours.js'
 
-export function registerTM1Theme(monaco) {
+export function registerTM1Theme(monaco, dark) {
   const colourSettings = loadColourSettings()
-  const editorTheme = localStorage.getItem('tm1-theme') === 'dark' ? 'vs-dark' : 'vs'
-
+  const editorTheme = dark ? 'vs-dark' : 'vs'
   const themeDef = buildMonacoTheme(editorTheme, colourSettings)
   monaco.editor.defineTheme('tm1-custom', themeDef)
   monaco.editor.setTheme('tm1-custom')

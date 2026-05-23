@@ -80,12 +80,15 @@ export function tokenize(line) {
     }
 
     // Dimension variable: !identifier
+    // Dimension names may contain spaces (e.g. !GBL Year), so continue
+    // greedily past a space when the next char is still a word character.
     if (ch === '!') {
       let val = '!'
       i++
-      while (i < len && /[a-zA-Z0-9_]/.test(line[i])) {
-        val += line[i]
-        i++
+      while (i < len && /[a-zA-Z0-9_]/.test(line[i])) { val += line[i++] }
+      while (i < len && line[i] === ' ' && i + 1 < len && /[a-zA-Z0-9_]/.test(line[i + 1])) {
+        val += line[i++]
+        while (i < len && /[a-zA-Z0-9_]/.test(line[i])) { val += line[i++] }
       }
       tokens.push({ type: 'dim_var', value: val, raw: val, pos: start })
       continue

@@ -1,15 +1,50 @@
 import { useState, useMemo, useCallback } from 'react'
+import { useStore } from '@/store'
 import { X, RotateCcw, Save, Download, Upload, Plus, Trash2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { loadSettings, saveSettings, applyPreset, resetAllSettings, isCustomPreset, DEFAULT_SETTINGS } from '@/lib/formatters/settings.js'
+import { loadSettings, saveSettings, resetAllSettings } from '@/lib/formatters/settings.js'
 import { getNamingMap, updateNamingDictionary, resetNamingDictionary, exportNamingDictionary, importNamingDictionary, IBM_DEFAULTS } from '@/lib/formatters/naming.js'
 import { formatRules } from '@/lib/formatters/rules-formatter.js'
-import { PRESETS, listPresets } from '@/lib/formatters/presets.js'
-import { loadColourSettings, saveColourSettings, resetColourSettings, exportColourSettings, importColourSettings, DEFAULT_COLOURS } from '@/lib/formatters/colours.js'
+import { tokenize } from '@/lib/formatters/tokenizer.js'
+import { listPresets } from '@/lib/formatters/presets.js'
+import { loadColourSettings, saveColourSettings, resetColourSettings, exportColourSettings, importColourSettings, DEFAULT_COLOURS, COLOUR_THEMES, applyColourTheme } from '@/lib/formatters/colours.js'
 
 // ── Sample code for live preview ──────────────────────────────────────────────
 
-const SAMPLE_RULES = `[#Region Revenue]
+const SAMPLE_TI = `#****Begin: Generated Statements***
+#****End: Generated Statements****
+
+DimName='FCM Journal Item';
+
+#DimensionDeleteAllElements(DimName);
+
+# Create hierarchy [Year-Year Period-Month]
+
+StartYear='2013';
+EndYear='2018';
+
+NumberYears = NUMBR(EndYear)-NUMBR(StartYear);
+Counter = NumberYears;
+
+While (Counter >= 0);
+  ElNameYear = STR((NUMBR(EndYear)-Counter), 4, 0);
+  DimensionElementInsert(DimName, '', ElNameYear, 'N');
+
+  # Add Year Period Code to hierarchies
+  vNumberYearPeriods = 5;
+  vCounter = 0;
+
+  While (vCounter <= vNumberYearPeriods);
+    ElNamePY = ElNameYear|'-'|'Y0'|STR(vCounter, 1, 0);
+    DimensionElementInsert(DimName, '', ElNamePY, 'N');
+    DimensionElementComponentAdd(DimName, ElNameYear, ElNamePY, 1);
+    vCounter = vCounter + 1;
+  End;
+
+  Counter = Counter - 1;
+End;`
+
+const SAMPLE_RULES = `#Region Revenue
 ['Gross Revenue'] = N: DB('Sales', !organization, !Channel, !product, !Month, !Year, 'Gross Revenue', !Version);
 ['Indirect COGS'] = N: IF(DB('Supply Chain', !organization, !Channel, !product, !Month, !Year, 'Units Sold', !Version) <> 0, DB('Supply Chain', !organization, !Channel, !product, !Month, !Year, 'Indirect Costs', !Version), CONTINUE);
 ['Net Revenue'] = N: ['Gross Revenue'] - ['Indirect COGS'];
@@ -296,20 +331,37 @@ function NamingEditor({ onClose }) {
 
 // ── Live Preview ─────────────────────────────────────────────────────────────
 
-function LivePreview({ settings, namingMap }) {
+function LivePreview({ settings, colourSettings, namingMap, sampleCode, skipFormat }) {
   const formatted = useMemo(() => {
+    if (skipFormat) return sampleCode
     try {
-      return formatRules(SAMPLE_RULES, settings.rules, namingMap)
+      return formatRules(sampleCode, settings.rules, namingMap)
     } catch {
       return 'Error formatting preview'
     }
-  }, [settings.rules, namingMap])
+  }, [sampleCode, skipFormat, settings.rules, namingMap])
+
+  const lines = useMemo(() => formatted.split('\n').map(line => tokenize(line)), [formatted])
+
+  const colours = colourSettings?.rules ?? {}
+  const getColour = (type) => colours[type] ?? colours.default ?? '#f8f8f2'
 
   return (
     <div className="flex flex-col h-full">
       <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">Live Preview</div>
-      <div className="flex-1 overflow-auto bg-muted/30 rounded border border-border p-2 font-mono text-[10px] whitespace-pre">
-        {formatted}
+      <div className="flex-1 overflow-auto rounded border border-border p-2 font-mono text-[10px]" style={{ background: colourSettings?.background ?? '#1e1e1e' }}>
+        {lines.map((lineTokens, i) => (
+          <div key={i} className="whitespace-pre leading-5">
+            {lineTokens.length === 0
+              ? ' '
+              : lineTokens.map((tok, j) => (
+                  <span key={j} style={tok.type !== 'whitespace' ? { color: getColour(tok.type) } : undefined}>
+                    {tok.value}
+                  </span>
+                ))
+            }
+          </div>
+        ))}
       </div>
     </div>
   )
@@ -320,8 +372,9 @@ function LivePreview({ settings, namingMap }) {
 export default function FormatSettings({ open, onClose }) {
   if (!open) return null
 
+  const { bumpThemeVersion } = useStore()
   const [settings, setSettings] = useState(() => loadSettings())
-  const [tab, setTab] = useState('rules') // 'general' | 'rules' | 'ti' | 'colours'
+  const [tab, setTab] = useState('rules') // 'rules' | 'ti' | 'colours'
   const [showNamingEditor, setShowNamingEditor] = useState(false)
   const [colourSettings, setColourSettings] = useState(() => loadColourSettings())
 
@@ -341,26 +394,10 @@ export default function FormatSettings({ open, onClose }) {
     }))
   }, [])
 
-  const updateEditorSetting = useCallback((key, value) => {
-    setSettings(prev => ({
-      ...prev,
-      editor: { ...prev.editor, [key]: value },
-    }))
-  }, [])
-
-  const applyRulesPreset = (presetName) => {
-    const next = applyPreset(presetName, 'rules', settings)
-    setSettings(next)
-  }
-
-  const applyTiPreset = (presetName) => {
-    const next = applyPreset(presetName, 'ti', settings)
-    setSettings(next)
-  }
-
   const handleSave = () => {
     saveSettings(settings)
     saveColourSettings(colourSettings)
+    bumpThemeVersion()
     onClose()
   }
 
@@ -370,9 +407,6 @@ export default function FormatSettings({ open, onClose }) {
       setSettings(defaults)
     }
   }
-
-  const rulePreset = isCustomPreset(settings, 'rules') ? 'custom' : settings.rules.preset
-  const tiPreset = isCustomPreset(settings, 'ti') ? 'custom' : settings.ti.preset
 
   const indentOptions = [
     { value: 'spaces2', label: '2 Spaces' },
@@ -441,7 +475,6 @@ export default function FormatSettings({ open, onClose }) {
             {/* Tabs */}
             <div className="flex border-b border-border shrink-0">
               {[
-                { id: 'general', label: 'General' },
                 { id: 'rules', label: 'Rules' },
                 { id: 'ti', label: 'TI Process' },
                 { id: 'colours', label: 'Colours' },
@@ -461,46 +494,30 @@ export default function FormatSettings({ open, onClose }) {
 
             {/* Scrollable settings */}
             <div className="flex-1 overflow-auto p-3">
-              {tab === 'general' && (
-                <div className="space-y-2">
-                  <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-2">Editor</div>
-                  <Select label="Font family" value={settings.editor.fontFamily} onChange={v => updateEditorSetting('fontFamily', v)} options={[
-                    { value: 'Geist Mono', label: 'Geist Mono' },
-                    { value: 'Fira Code', label: 'Fira Code' },
-                    { value: 'JetBrains Mono', label: 'JetBrains Mono' },
-                    { value: 'Cascadia Code', label: 'Cascadia Code' },
-                    { value: 'Consolas', label: 'Consolas' },
-                    { value: 'Courier New', label: 'Courier New' },
-                  ]} />
-                  <div className="flex items-center justify-between gap-4 py-1">
-                    <label className="text-xs text-foreground">Font size</label>
-                    <input type="range" min="10" max="18" value={settings.editor.fontSize} onChange={e => updateEditorSetting('fontSize', parseInt(e.target.value))} className="w-24" />
-                    <span className="text-xs text-muted-foreground w-6 text-right">{settings.editor.fontSize}px</span>
-                  </div>
-                  <div className="flex items-center justify-between gap-4 py-1">
-                    <label className="text-xs text-foreground">Line height</label>
-                    <input type="range" min="12" max="20" value={Math.round(settings.editor.lineHeight * 10)} onChange={e => updateEditorSetting('lineHeight', parseInt(e.target.value) / 10)} className="w-24" />
-                    <span className="text-xs text-muted-foreground w-6 text-right">{settings.editor.lineHeight.toFixed(1)}</span>
-                  </div>
-                  <Select label="Monaco theme" value={settings.editor.monacoTheme} onChange={v => updateEditorSetting('monacoTheme', v)} options={[
-                    { value: 'vs', label: 'Light' },
-                    { value: 'vs-dark', label: 'Dark' },
-                    { value: 'hc-black', label: 'High Contrast' },
-                  ]} />
-                  <Select label="UI accent" value={settings.editor.uiAccent} onChange={v => updateEditorSetting('uiAccent', v)} options={[
-                    { value: 'blue', label: 'Blue' },
-                    { value: 'green', label: 'Green' },
-                    { value: 'orange', label: 'Orange' },
-                    { value: 'purple', label: 'Purple' },
-                    { value: 'red', label: 'Red' },
-                  ]} />
-                </div>
-              )}
-
               {tab === 'rules' && (
                 <div className="space-y-2">
-                  <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Preset</div>
-                  <PresetButtons active={rulePreset} onSelect={applyRulesPreset} />
+                  <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Structure</div>
+                  <div className="flex gap-1.5 mb-1">
+                    {[
+                      { id: null,             label: 'No Change' },
+                      { id: 'tm1-verbose',    label: 'TM1 Verbose' },
+                      { id: 'tm1-structured', label: 'TM1 Structured' },
+                    ].map(opt => (
+                      <button
+                        key={opt.id ?? 'none'}
+                        onClick={() => updateRuleSetting('expressionFormatter', opt.id)}
+                        className={cn(
+                          'px-2.5 py-1 text-[10px] rounded border transition-colors',
+                          settings.rules.expressionFormatter === opt.id
+                            ? 'bg-primary text-primary-foreground border-primary'
+                            : 'bg-background text-muted-foreground border-border hover:text-foreground'
+                        )}
+                        title={opt.id === null ? 'Keep existing line structure' : opt.id === 'tm1-verbose' ? 'Each string argument on its own line' : 'Consecutive string arguments grouped on one line'}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
 
                   <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mt-2">Spacing</div>
                   <Select label="Indent style" value={settings.rules.indentStyle} onChange={v => updateRuleSetting('indentStyle', v)} options={indentOptions} />
@@ -533,10 +550,7 @@ export default function FormatSettings({ open, onClose }) {
 
               {tab === 'ti' && (
                 <div className="space-y-2">
-                  <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Preset</div>
-                  <PresetButtons active={tiPreset} onSelect={applyTiPreset} />
-
-                  <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mt-2">Spacing</div>
+                  <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Spacing</div>
                   <Select label="Indent style" value={settings.ti.indentStyle} onChange={v => updateTiSetting('indentStyle', v)} options={indentOptions} />
                   <Select label="Function calls" value={settings.ti.functionCallSpacing} onChange={v => updateTiSetting('functionCallSpacing', v)} options={callSpacingOptions} />
                   <Select label="Comma spacing" value={settings.ti.commaSpacing} onChange={v => updateTiSetting('commaSpacing', v)} options={spacingOptions.slice(0, 2)} />
@@ -556,8 +570,33 @@ export default function FormatSettings({ open, onClose }) {
 
               {tab === 'colours' && (
                 <div className="space-y-2">
+                  <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">Theme</div>
+                  <div className="flex flex-wrap gap-1.5 mb-3">
+                    {COLOUR_THEMES.map(t => (
+                      <button
+                        key={t.id}
+                        onClick={() => setColourSettings(applyColourTheme(t.id, colourSettings))}
+                        className={cn(
+                          'px-2.5 py-1 text-[10px] rounded border transition-colors',
+                          colourSettings.theme === t.id
+                            ? 'bg-primary text-primary-foreground border-primary'
+                            : 'bg-background text-muted-foreground border-border hover:text-foreground'
+                        )}
+                      >
+                        <span
+                          className="inline-block w-2 h-2 rounded-full mr-1.5 align-middle border border-white/20"
+                          style={{ background: t.background }}
+                        />
+                        {t.name}
+                      </button>
+                    ))}
+                    {!COLOUR_THEMES.find(t => t.id === colourSettings.theme) && (
+                      <span className="px-2.5 py-1 text-[10px] rounded border border-primary bg-primary text-primary-foreground">Custom</span>
+                    )}
+                  </div>
+
                   <div className="flex items-center justify-between">
-                    <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Rules Syntax Colours</div>
+                    <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Token Colours</div>
                     <div className="flex items-center gap-1">
                       <button onClick={() => {
                         const json = exportColourSettings()
@@ -599,8 +638,7 @@ export default function FormatSettings({ open, onClose }) {
                           type="color"
                           value={colour}
                           onChange={e => {
-                            const next = { ...colourSettings, rules: { ...colourSettings.rules, [tokenType]: e.target.value } }
-                            setColourSettings(next)
+                            setColourSettings(prev => ({ ...prev, theme: 'custom', rules: { ...prev.rules, [tokenType]: e.target.value } }))
                           }}
                           className="w-6 h-5 p-0 border-0 rounded cursor-pointer"
                         />
@@ -630,7 +668,13 @@ export default function FormatSettings({ open, onClose }) {
             {showNamingEditor ? (
               <NamingEditor onClose={() => setShowNamingEditor(false)} />
             ) : (
-              <LivePreview settings={settings} namingMap={namingData.map} />
+              <LivePreview
+                settings={settings}
+                colourSettings={colourSettings}
+                namingMap={namingData.map}
+                sampleCode={tab === 'ti' ? SAMPLE_TI : SAMPLE_RULES}
+                skipFormat={tab === 'ti'}
+              />
             )}
           </div>
         </div>

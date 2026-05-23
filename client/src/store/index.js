@@ -22,6 +22,8 @@ export const useStore = create((set, get) => ({
     localStorage.setItem('tm1-theme', dark ? 'dark' : 'light')
     set({ dark })
   },
+  themeVersion: 0,
+  bumpThemeVersion: () => set(s => ({ themeVersion: s.themeVersion + 1 })),
 
   // ── Tab bar visibility ───────────────────────────────────────────────────────
   tabsVisible: localStorage.getItem('tm1-tabs-visible') !== 'false',

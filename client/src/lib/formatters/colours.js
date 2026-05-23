@@ -4,34 +4,187 @@
 
 const STORAGE_KEY = 'tm1-ide-colour-settings'
 
-// Default colour scheme — inspired by standard dark IDE palettes
+// ── Preset themes ─────────────────────────────────────────────────────────────
+
+export const COLOUR_THEMES = [
+  {
+    id: 'dracula',
+    name: 'Dracula',
+    background: '#282a36',
+    rules: {
+      area_prefix:  '#ff79c6',
+      keyword:      '#8be9fd',
+      function:     '#50fa7b',
+      string:       '#f1fa8c',
+      dim_var:      '#bd93f9',
+      number:       '#ffb86c',
+      comment:      '#6272a4',
+      operator:     '#ff79c6',
+      punctuation:  '#f8f8f2',
+      directive:    '#ff79c6',
+      default:      '#f8f8f2',
+    },
+    ti: {
+      keyword:      '#8be9fd',
+      function:     '#50fa7b',
+      string:       '#f1fa8c',
+      number:       '#ffb86c',
+      comment:      '#6272a4',
+      operator:     '#ff79c6',
+      punctuation:  '#f8f8f2',
+      variable:     '#bd93f9',
+      metadata:     '#ff79c6',
+      default:      '#f8f8f2',
+    },
+  },
+  {
+    id: 'vscode-dark',
+    name: 'VS Code Dark+',
+    background: '#1e1e1e',
+    rules: {
+      area_prefix:  '#c586c0',
+      keyword:      '#569cd6',
+      function:     '#dcdcaa',
+      string:       '#ce9178',
+      dim_var:      '#9cdcfe',
+      number:       '#b5cea8',
+      comment:      '#6a9955',
+      operator:     '#d4d4d4',
+      punctuation:  '#d4d4d4',
+      directive:    '#c586c0',
+      default:      '#d4d4d4',
+    },
+    ti: {
+      keyword:      '#569cd6',
+      function:     '#dcdcaa',
+      string:       '#ce9178',
+      number:       '#b5cea8',
+      comment:      '#6a9955',
+      operator:     '#d4d4d4',
+      punctuation:  '#d4d4d4',
+      variable:     '#9cdcfe',
+      metadata:     '#c586c0',
+      default:      '#d4d4d4',
+    },
+  },
+  {
+    id: 'monokai',
+    name: 'Monokai',
+    background: '#272822',
+    rules: {
+      area_prefix:  '#f92672',
+      keyword:      '#f92672',
+      function:     '#a6e22e',
+      string:       '#e6db74',
+      dim_var:      '#66d9e8',
+      number:       '#ae81ff',
+      comment:      '#75715e',
+      operator:     '#f8f8f2',
+      punctuation:  '#f8f8f2',
+      directive:    '#f92672',
+      default:      '#f8f8f2',
+    },
+    ti: {
+      keyword:      '#f92672',
+      function:     '#a6e22e',
+      string:       '#e6db74',
+      number:       '#ae81ff',
+      comment:      '#75715e',
+      operator:     '#f8f8f2',
+      punctuation:  '#f8f8f2',
+      variable:     '#66d9e8',
+      metadata:     '#f92672',
+      default:      '#f8f8f2',
+    },
+  },
+  {
+    id: 'one-dark',
+    name: 'One Dark',
+    background: '#282c34',
+    rules: {
+      area_prefix:  '#c678dd',
+      keyword:      '#c678dd',
+      function:     '#61afef',
+      string:       '#98c379',
+      dim_var:      '#e06c75',
+      number:       '#d19a66',
+      comment:      '#5c6370',
+      operator:     '#abb2bf',
+      punctuation:  '#abb2bf',
+      directive:    '#c678dd',
+      default:      '#abb2bf',
+    },
+    ti: {
+      keyword:      '#c678dd',
+      function:     '#61afef',
+      string:       '#98c379',
+      number:       '#d19a66',
+      comment:      '#5c6370',
+      operator:     '#abb2bf',
+      punctuation:  '#abb2bf',
+      variable:     '#e06c75',
+      metadata:     '#c678dd',
+      default:      '#abb2bf',
+    },
+  },
+  {
+    id: 'light',
+    name: 'Light',
+    background: '#ffffff',
+    rules: {
+      area_prefix:  '#af00db',
+      keyword:      '#0000ff',
+      function:     '#795e26',
+      string:       '#a31515',
+      dim_var:      '#001080',
+      number:       '#098658',
+      comment:      '#008000',
+      operator:     '#000000',
+      punctuation:  '#000000',
+      directive:    '#af00db',
+      default:      '#000000',
+    },
+    ti: {
+      keyword:      '#0000ff',
+      function:     '#795e26',
+      string:       '#a31515',
+      number:       '#098658',
+      comment:      '#008000',
+      operator:     '#000000',
+      punctuation:  '#000000',
+      variable:     '#001080',
+      metadata:     '#af00db',
+      default:      '#000000',
+    },
+  },
+]
+
+// ── Default colour scheme (Dracula) ───────────────────────────────────────────
 export const DEFAULT_COLOURS = {
   version: 1,
-  rules: {
-    area_prefix:   '#ff79c6',  // pink — N:, C:, S:
-    keyword:       '#8be9fd',  // cyan — IF, ELSE, ENDIF, FEEDERS, SKIPCHECK, STET
-    function:      '#50fa7b',  // green — DB, ATTRS, ATTRN, CellGetN, etc.
-    string:        '#f1fa8c',  // yellow — 'cube name', 'member'
-    dim_var:       '#bd93f9',  // purple — !organization, !Month
-    number:        '#ffb86c',  // orange — 100, -0.5
-    comment:       '#6272a4',  // muted blue-grey — // ..., # ...
-    operator:      '#ff79c6',  // pink — =, <>, >=, =>, +, -, *, /
-    punctuation:   '#f8f8f2',  // near-white — ( ) [ ] { } , ;
-    directive:     '#ff79c6',  // pink — #Region, #EndRegion
-    default:       '#f8f8f2',  // near-white — everything else
-  },
-  ti: {
-    keyword:       '#8be9fd',
-    function:      '#50fa7b',
-    string:        '#f1fa8c',
-    number:        '#ffb86c',
-    comment:       '#6272a4',
-    operator:      '#ff79c6',
-    punctuation:   '#f8f8f2',
-    variable:      '#bd93f9',  // purple — vValue, pParam
-    metadata:      '#ff79c6',  // pink — #****Begin: Metadata
-    default:       '#f8f8f2',
-  },
+  theme: 'dracula',
+  background: '#282a36',
+  rules: { ...COLOUR_THEMES[0].rules },
+  ti:    { ...COLOUR_THEMES[0].ti },
+}
+
+/**
+ * Return a fresh colourSettings object with the named theme applied.
+ * Preserves any fields not covered by the theme.
+ * @param {string} themeId
+ * @param {object} current — existing colourSettings to merge into
+ * @returns {object}
+ */
+export function applyColourTheme(themeId, current) {
+  const theme = COLOUR_THEMES.find(t => t.id === themeId)
+  if (!theme) return current
+  return {
+    ...current,
+    theme: theme.id,
+    background: theme.background,
+    rules: { ...theme.rules },
+    ti:    { ...theme.ti },
+  }
 }
 
 /**

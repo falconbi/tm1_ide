@@ -2,6 +2,7 @@
 // Token-aware formatter. Walks tokens left-to-right and applies spacing rules.
 
 import { tokenize } from './tokenizer.js'
+import { formatTM1Structured } from './tm1-structured.js'
 
 /**
  * Get indent string based on settings.
@@ -201,6 +202,11 @@ function formatLine(line, settings, namingMap) {
  * @returns {string} formatted text
  */
 export function formatRules(text, settings, namingMap) {
+  const { expressionFormatter } = settings
+  if (expressionFormatter === 'tm1-verbose' || expressionFormatter === 'tm1-structured') {
+    return formatTM1Structured(text, settings, namingMap, expressionFormatter)
+  }
+
   const lines = text.split('\n')
   const formatted = []
   let indentLevel = 0
