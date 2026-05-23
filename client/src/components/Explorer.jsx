@@ -44,13 +44,15 @@ function getLocateId(target) {
   if (!target) return ''
   if (target.type === 'view') return `view:${target.cube}:${target.viewName}`
   if (target.type === 'cube') return `cube:${target.cube}`
+  if (target.type === 'rules') return `rules:${target.cube}`
   if (target.type === 'dimension') return `dimension:${target.dimension}`
   if (target.type === 'hierarchy') return `hierarchy:${target.dimension}:${target.hierarchy}`
   if (target.type === 'subset') return `subset:${target.dimension}:${target.subsetName}`
+  if (target.type === 'process') return `process:${target.name}`
   return ''
 }
 
-function Section({ icon: Icon, label, items, isLoading, onSelect, itemIcon: ItemIcon, sectionId }) {
+function Section({ icon: Icon, label, items, isLoading, onSelect, itemIcon: ItemIcon, sectionId, locateIdPrefix }) {
   const [open, setOpen] = useState(false)
   const revealTarget = useStore(s => s.revealTarget)
   useEffect(() => {
@@ -73,6 +75,7 @@ function Section({ icon: Icon, label, items, isLoading, onSelect, itemIcon: Item
             <button
               key={item}
               onClick={() => onSelect(item)}
+              data-locate-id={locateIdPrefix ? `${locateIdPrefix}:${item}` : undefined}
               className="flex items-center gap-2 w-full px-6 py-0.5 text-sm text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground truncate"
             >
               {ItemIcon && <ItemIcon size={12} className="shrink-0 text-muted-foreground" />}
@@ -358,6 +361,7 @@ function RulesSection({ server, cubes, isLoading, onOpenRules }) {
             <button
               key={cube}
               onClick={() => onOpenRules(cube)}
+              data-locate-id={`rules:${cube}`}
               className="flex items-center gap-2 w-full px-6 py-0.5 text-xs text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground group"
               title={`Open rules for ${cube}`}
             >
@@ -366,6 +370,47 @@ function RulesSection({ server, cubes, isLoading, onOpenRules }) {
               <span className="hidden group-hover:inline text-[10px] text-muted-foreground ml-auto">Rules</span>
             </button>
           ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function HistorySection({ server, onOpen }) {
+  const [open, setOpen] = useState(false)
+  const tabHistory = useStore(s => s.tabHistory)
+  const serverHistory = tabHistory.filter(h => h.server === server)
+  if (serverHistory.length === 0) return null
+
+  const typeIcon = { rules: Code2, process: Cog, subset: List, dimension: Layers, cubeview: Table2, view: Table2 }
+
+  return (
+    <div>
+      <button
+        onClick={() => setOpen(o => !o)}
+        className="flex items-center gap-1.5 w-full px-3 py-1 text-xs font-semibold text-muted-foreground hover:text-foreground uppercase tracking-wider"
+      >
+        {open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+        <Clock size={12} />
+        <span>History</span>
+      </button>
+      {open && (
+        <div className="pb-1">
+          {serverHistory.map(h => {
+            const Icon = typeIcon[h.type] ?? Box
+            return (
+              <button
+                key={h.id}
+                onClick={() => onOpen(h)}
+                className="flex items-center gap-2 w-full px-6 py-0.5 text-xs text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground truncate"
+                title={`${h.type}: ${h.label}`}
+              >
+                <Icon size={11} className="shrink-0 text-muted-foreground" />
+                <span className="truncate flex-1 text-left">{h.label}</span>
+                <span className="text-[10px] text-muted-foreground/50 shrink-0 capitalize">{h.type}</span>
+              </button>
+            )
+          })}
         </div>
       )}
     </div>
@@ -625,6 +670,8 @@ export default function Explorer() {
     hierarchy,
   })
 
+  const openFromHistory = (h) => openTab({ ...h, content: null })
+
   const revealTarget = useStore(s => s.revealTarget)
   const clearRevealTarget = useStore(s => s.clearRevealTarget)
 
@@ -694,13 +741,14 @@ export default function Explorer() {
                 ))
           ) : (
             <>
+              <HistorySection server={server} onOpen={openFromHistory} />
               <RulesSection server={server} cubes={cubes} isLoading={loadingCubes} onOpenRules={openRules} />
               <CubeSection server={server} cubes={cubes} isLoading={loadingCubes}
                 onOpenRules={openRules} onOpenView={openView}
                 onOpenSubset={openSubset} onOpenDim={openDim}
                 onOpenViewer={openCubeViewer} />
               <DimSection server={server} dims={dims}    isLoading={loadingDims}   onOpenSubset={openSubset} onOpenDim={openDim} />
-              <Section    icon={Cog}   label="Processes" items={procs}  isLoading={loadingProcs}  onSelect={openProcess} itemIcon={Cog} sectionId="processes" />
+              <Section    icon={Cog}   label="Processes" items={procs}  isLoading={loadingProcs}  onSelect={openProcess} itemIcon={Cog}   sectionId="processes" locateIdPrefix="process" />
               <Section    icon={Clock} label="Chores"    items={chores} isLoading={loadingChores} onSelect={() => {}}    itemIcon={Clock} sectionId="chores" />
             </>
           )}

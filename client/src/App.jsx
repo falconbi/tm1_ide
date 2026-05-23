@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { useStore } from '@/store'
 import { cn } from '@/lib/utils'
 import { Toaster } from '@/components/ui/sonner'
-import { Search, PanelLeftClose, PanelLeftOpen, Keyboard, Settings, SlidersHorizontal } from 'lucide-react'
+import { Search, PanelLeftClose, PanelLeftOpen, Keyboard, Settings, SlidersHorizontal, BookType } from 'lucide-react'
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels'
 import ServerSelector from '@/components/ServerSelector'
 import Explorer from '@/components/Explorer'
@@ -15,18 +15,19 @@ import FindReplace from '@/components/FindReplace'
 import ShortcutsHelp from '@/components/ShortcutsHelp'
 import FormatSettings from '@/components/FormatSettings'
 import EditorPreferences from '@/components/EditorPreferences'
+import NamingDictionary from '@/components/NamingDictionary'
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { staleTime: 30_000, retry: 1 } },
 })
 
 export default function App() {
-  const { loadForge } = useStore()
-  const [showFind, setShowFind]       = useState(false)
-  const [showSidebar, setShowSidebar] = useState(true)
+  const { loadForge, formatSettingsOpen, setFormatSettingsOpen } = useStore()
+  const [showFind, setShowFind]           = useState(false)
+  const [showSidebar, setShowSidebar]     = useState(true)
   const [showShortcuts, setShowShortcuts] = useState(false)
-  const [showFormatSettings, setShowFormatSettings] = useState(false)
-  const [showPrefs, setShowPrefs] = useState(false)
+  const [showNamingDict, setShowNamingDict] = useState(false)
+  const [showPrefs, setShowPrefs]         = useState(false)
 
   useEffect(() => { loadForge() }, [])
 
@@ -79,6 +80,13 @@ export default function App() {
                 <Keyboard size={15} />
               </button>
               <button
+                onClick={() => setShowNamingDict(true)}
+                className="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                title="Naming Dictionary"
+              >
+                <BookType size={15} />
+              </button>
+              <button
                 data-prefs-trigger
                 onClick={() => setShowPrefs(p => !p)}
                 className={cn('p-1.5 rounded text-muted-foreground hover:text-foreground transition-colors', showPrefs && 'bg-muted text-foreground')}
@@ -87,7 +95,7 @@ export default function App() {
                 <SlidersHorizontal size={15} />
               </button>
               <button
-                onClick={() => setShowFormatSettings(true)}
+                onClick={() => setFormatSettingsOpen(true)}
                 className="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
                 title="Format Settings"
               >
@@ -135,7 +143,8 @@ export default function App() {
         </div>
         <ShortcutsHelp open={showShortcuts} onClose={() => setShowShortcuts(false)} />
         <EditorPreferences open={showPrefs} onClose={() => setShowPrefs(false)} />
-        <FormatSettings open={showFormatSettings} onClose={() => setShowFormatSettings(false)} />
+        <FormatSettings open={formatSettingsOpen} onClose={() => setFormatSettingsOpen(false)} />
+        <NamingDictionary open={showNamingDict} onClose={() => setShowNamingDict(false)} />
         <Toaster position="bottom-right" />
       </TooltipProvider>
     </QueryClientProvider>

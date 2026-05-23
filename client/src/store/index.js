@@ -24,6 +24,13 @@ export const useStore = create((set, get) => ({
   },
   themeVersion: 0,
   bumpThemeVersion: () => set(s => ({ themeVersion: s.themeVersion + 1 })),
+  formatSettingsOpen: false,
+  setFormatSettingsOpen: (v) => set({ formatSettingsOpen: v }),
+
+  // ── Tab history (last 10 unique opened objects) ──────────────────────────────
+  tabHistory: (() => {
+    try { return JSON.parse(localStorage.getItem('tm1-tab-history') ?? '[]') } catch { return [] }
+  })(),
 
   // ── Tab bar visibility ───────────────────────────────────────────────────────
   tabsVisible: localStorage.getItem('tm1-tabs-visible') !== 'false',
@@ -67,6 +74,10 @@ export const useStore = create((set, get) => ({
     } else {
       set(s => ({ tabs: [...s.tabs, tab], activeTab: tab.id }))
     }
+    const { content, dirty, ...meta } = tab
+    const history = [meta, ...get().tabHistory.filter(h => h.id !== tab.id)].slice(0, 10)
+    localStorage.setItem('tm1-tab-history', JSON.stringify(history))
+    set({ tabHistory: history })
     _saveForge(get())
   },
 

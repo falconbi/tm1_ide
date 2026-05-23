@@ -356,6 +356,44 @@ export const IBM_DEFAULTS = {
   'linregvariance': 'LinRegVariance',
 }
 
+// ── IBM Type Map ────────────────────────────────────────────────────────────
+// Maps each key to its primary context: 'rules' | 'ti' | 'mdx'
+
+export const IBM_TYPES = {
+  'if':'rules','elseif':'rules','else':'rules','endif':'rules','continue':'rules','stet':'rules','feeders':'rules','skipcheck':'rules',
+  'db':'rules','attrs':'rules','attrn':'rules','attrsl':'rules','cellgetn':'rules','cellgets':'rules','cellgetsn':'rules','dnlev':'rules','dnum':'rules','dtlev':'rules','dtnum':'rules','parel':'rules',
+  'abs':'rules','acos':'rules','asin':'rules','atan':'rules','cos':'rules','exp':'rules','int':'rules','isund':'rules','ln':'rules','log':'rules','max':'rules','min':'rules','mod':'rules','rand':'rules','round':'rules','roundp':'rules','sign':'rules','sin':'rules','sqrt':'rules','tan':'rules','undef':'rules','undeffn':'rules',
+  'consolidatedavg':'rules','consolidatedcount':'rules','consolidatedmax':'rules','consolidatedmin':'rules','consolidatedsum':'rules',
+  'dat':'rules','date':'rules','dates':'rules','day':'rules','dayno':'rules','month':'rules','now':'rules','time':'rules','timst':'rules','today':'rules','year':'rules',
+  'char':'rules','code':'rules','delet':'rules','fill':'rules','insrt':'rules','long':'rules','lower':'rules','numbertostring':'rules','numbertostringex':'rules','scan':'rules','str':'rules','subst':'rules','trim':'rules','upper':'rules',
+  'cubeexists':'rules','dimensionelementexists':'rules','dimensionelementsortorder':'rules','dimensionhierarchysortorder':'rules','elcomp':'rules','elcompn':'rules','ellev':'rules','elisanc':'rules','elispar':'rules','elisparc':'rules','elpar':'rules','elparn':'rules','elweight':'rules','tabdim':'rules','tidy':'rules',
+  'logoutput':'rules',
+  'while':'ti','end':'ti','break':'ti','executeprocess':'ti','processreturncode':'ti','processerror':'ti','processbreak':'ti','processcontinue':'ti','processexit':'ti',
+  'asciidelete':'ti','asciioutput':'ti','asciiread':'ti','asctowide':'ti','filedelete':'ti','fileexists':'ti','removedirectory':'ti','textoutput':'ti','widedelete':'ti','wideread':'ti','widetoasc':'ti','read':'ti','write':'ti',
+  'batchupdatefinish':'ti','batchupdatestart':'ti','cellincrementn':'ti','cellputn':'ti','cellputs':'ti','cellputsn':'ti','cellsetdn':'ti','cellsetds':'ti',
+  'cubecreate':'ti','cubecomponentadd':'ti','cubecomponentdelete':'ti','cubecreatedatacopy':'ti','cubedatacopy':'ti','cubedestroy':'ti','cubesaveas':'ti','cubesetlogchanges':'ti','rulesloadoptimization':'ti',
+  'dimensioncreate':'ti','dimensiondeleteallelements':'ti','dimensiondestroy':'ti','dimensionelementcomponentadd':'ti','dimensionelementcomponentdelete':'ti','dimensionelementcreate':'ti','dimensionelementdelete':'ti','dimensionelementinsert':'ti','dimensiontopelementinsert':'ti','dimensionsortorder':'ti',
+  'elementcomponentadd':'ti','elementcomponentdelete':'ti','elementcreate':'ti','elementdelete':'ti','elementinsert':'ti','elementtype':'ti','elementupdate':'ti','newelementinsert':'ti','setelement':'ti',
+  'elementattributedelete':'ti','elementattributeinsert':'ti','elementattributegetn':'ti','elementattributegets':'ti','elementattributeputn':'ti','elementattributeputs':'ti',
+  'hierarchycreate':'ti','hierarchydestroy':'ti','hierarchyelementcomponentadd':'ti','hierarchyelementcomponentdelete':'ti','hierarchyelementcreate':'ti','hierarchyelementdelete':'ti','hierarchyelementinsert':'ti',
+  'subsetcreate':'ti','subsetaliasgetsort':'ti','subsetaliasset':'ti','subsetdeleteallelements':'ti','subsetelementdelete':'ti','subsetelementinsert':'ti','subsetexists':'ti','subsetgetelement':'ti','subsetgetelementname':'ti','subsetgetsize':'ti','subsetmdxset':'ti','subsettomdx':'ti','subsetisallset':'ti','createtemporarysubsetbymdx':'ti',
+  'viewcreate':'ti','viewdestroy':'ti','viewexists':'ti','viewconstruct':'ti','viewextract':'ti','publishview':'ti','unpublishview':'ti','refreshmdxview':'ti','viewcolumnsuppresszeroset':'ti','viewrowsuppresszeroset':'ti','viewextractskipcalcsset':'ti','viewextractskipconsolidatedstringset':'ti','viewextractskiprulevaluesset':'ti','viewextractskipzeroesset':'ti','viewsetdn':'ti','viewsetds':'ti','viewsubsetassign':'ti','viewtitlesubsetassign':'ti',
+  'addclient':'ti','deleteclient':'ti','assignclienttogroup':'ti','removeclientfromgroup':'ti','addgroup':'ti','deletegroup':'ti','assigngrouptoroles':'ti','removegroupfromroles':'ti','securityrefresh':'ti','setpwd':'ti',
+  'choreerror':'ti','getcurrentuser':'ti','sleep':'ti','serverrename':'ti',
+  'getusenamedtailors':'ti','setnamedtailor':'ti','setusenamedtailors':'ti','numberoftailors':'ti',
+  'lock':'ti','lockname':'ti','periods':'ti','error':'ti','itemreject':'ti','itemskip':'ti','save':'ti',
+  'tm1subsetall':'mdx','tm1subsettoset':'mdx','tm1elementlisttoset':'mdx','tm1filterbylevel':'mdx','tm1filterbypattern':'mdx','tm1member':'mdx','tm1sort':'mdx','tm1lastupdated':'mdx','tm1lastupdatedby':'mdx','tm1drilldownmember':'mdx',
+  'members':'mdx','allmembers':'mdx','children':'mdx','descendants':'mdx','ancestors':'mdx','crossjoin':'mdx','nonemptycrossjoin':'mdx','filter':'mdx','nonempty':'mdx','order':'mdx','hierarchize':'mdx','distinct':'mdx','union':'mdx','intersect':'mdx','except':'mdx','subset':'mdx','generate':'mdx','extract':'mdx','head':'mdx','tail':'mdx','addcalculatedmembers':'mdx','stripcalculatedmembers':'mdx','toggledrillstate':'mdx','drilldownlevel':'mdx','drilldownmember':'mdx','drilluplevel':'mdx','drillupmember':'mdx',
+  'topcount':'mdx','bottomcount':'mdx','toppercent':'mdx','bottompercent':'mdx','topsum':'mdx','bottomsum':'mdx','rank':'mdx',
+  'currentmember':'mdx','parent':'mdx','ancestor':'mdx','cousin':'mdx','firstchild':'mdx','lastchild':'mdx','firstsibling':'mdx','lastsibling':'mdx','prevmember':'mdx','nextmember':'mdx','defaultmember':'mdx',
+  'name':'mdx','uniquename':'mdx','caption':'mdx','ordinal':'mdx','item':'mdx','properties':'mdx','dimension':'mdx','hierarchy':'mdx','level':'mdx','levels':'mdx',
+  'count':'mdx','sum':'mdx','avg':'mdx','aggregate':'mdx','coalesceempty':'mdx','validmeasure':'mdx',
+  'iif':'mdx','isempty':'mdx','isancestor':'mdx','isleaf':'mdx','isgeneration':'mdx','islevel':'mdx','isparent':'mdx','issibling':'mdx','ischild':'mdx',
+  'strtomember':'mdx','strtoset':'mdx','strtotuple':'mdx','membertostr':'mdx','settostr':'mdx','tupletostr':'mdx',
+  'periodstodate':'mdx','parallelperiod':'mdx','lastperiods':'mdx','mtd':'mdx','qtd':'mdx','ytd':'mdx','wtd':'mdx',
+  'linregintercept':'mdx','linregpoint':'mdx','linregr2':'mdx','linregslope':'mdx','linregvariance':'mdx',
+}
+
 const STORAGE_KEY = 'tm1-ide-naming-dictionary'
 
 /**

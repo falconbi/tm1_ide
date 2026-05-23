@@ -546,7 +546,7 @@ return (d.value ?? [])
         }
     }
 
-    async executeMDX(mdx) {
+    async executeMDX(mdx, maxCells = 50_000) {
         const { ID } = await this.post('ExecuteMDX', { MDX: mdx })
         const s = await this._session()
         const h = await this._headers()
@@ -556,15 +556,16 @@ return (d.value ?? [])
                 headers: h,
             }),
             s.get(this._url(`Cellsets('${ID}')/Cells`), {
-                params: { '$select': 'Ordinal,Value,FormattedValue' },
+                params: { '$select': 'Ordinal,Value,FormattedValue', '$top': maxCells },
                 headers: h,
             }),
         ])
         try { await this.delete(`Cellsets('${ID}')`) } catch {}
-        return { Axes: axisRes.data.value, Cells: cellRes.data.value }
+        const cells = cellRes.data.value
+        return { Axes: axisRes.data.value, Cells: cells, truncated: cells.length >= maxCells }
     }
 
-    async executeView(cube, view) {
+    async executeView(cube, view, maxCells = 50_000) {
         const viewDef  = await this.get(`Cubes('${cube}')/Views('${view}')`)
         const { ID }   = await this.post(`Cubes('${cube}')/Views('${view}')/tm1.Execute`, {})
         const s = await this._session()
@@ -575,15 +576,17 @@ return (d.value ?? [])
                 headers: h,
             }),
             s.get(this._url(`Cellsets('${ID}')/Cells`), {
-                params: { '$select': 'Ordinal,Value,FormattedValue' },
+                params: { '$select': 'Ordinal,Value,FormattedValue', '$top': maxCells },
                 headers: h,
             }),
         ])
         try { await this.delete(`Cellsets('${ID}')`) } catch {}
+        const cells = cellRes.data.value
         return {
             Axes: axisRes.data.value,
-            Cells: cellRes.data.value,
+            Cells: cells,
             ViewType: viewDef?.['@odata.type'] ?? null,
+            truncated: cells.length >= maxCells,
         }
     }
 }

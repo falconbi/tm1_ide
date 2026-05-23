@@ -324,6 +324,7 @@ export default function ViewEditor({ tab }) {
 
     // Results
     const [result, setResult] = useState(null)
+    const [truncated, setTruncated] = useState(false)
 
     // View type: track if original was native (warn on save)
     const [viewType, setViewType] = useState(null)
@@ -409,6 +410,7 @@ export default function ViewEditor({ tab }) {
         if (loadedKey === key) return
         setLoadedKey(key)
         setResult(null)
+        setTruncated(false)
 
         const id = toast.loading(`Loading ${tab.viewName}…`)
         loadViewAxes.mutate(
@@ -439,6 +441,7 @@ export default function ViewEditor({ tab }) {
                     if (!rows.length && cubeDims.length > 1) rows = [make(cubeDims[1])]
                     setAxes({ rows, columns: cols, pages })
                     setResult(cellset)
+                    setTruncated(cellset?.truncated ?? false)
                     setViewType(vt ?? null)
                     setMdx(viewMdx || buildMDX({ cube: tab.cube, rows, columns: cols, pages, suppressZeros: true }))
                     setMdxDirty(false)
@@ -549,7 +552,7 @@ export default function ViewEditor({ tab }) {
         executeMDX.mutate(
             { server: tab.server, mdx: query },
             {
-                onSuccess: data => { setResult(data); toast.success('Done', { id }) },
+                onSuccess: data => { setResult(data); setTruncated(data?.truncated ?? false); toast.success('Done', { id }) },
                 onError:   e    => toast.error(e.message, { id }),
             }
         )
@@ -847,6 +850,14 @@ export default function ViewEditor({ tab }) {
                             folding: false,
                         }}
                     />
+                </div>
+            )}
+
+            {/* Truncation warning */}
+            {truncated && (
+                <div className="shrink-0 px-3 py-1 bg-yellow-500/10 border-b border-yellow-500/30 text-yellow-600 dark:text-yellow-400 text-xs flex items-center gap-1.5">
+                    <span>⚠</span>
+                    <span>Result capped at 50,000 cells — add filters or subsets to narrow the view.</span>
                 </div>
             )}
 

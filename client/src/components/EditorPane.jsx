@@ -8,8 +8,9 @@ import SubsetEditor from '@/components/SubsetEditor'
 import DimensionEditor from '@/components/DimensionEditor'
 import ViewEditor from '@/components/ViewEditor'
 import { toast } from 'sonner'
-import { GitBranch, ChevronRight, ChevronDown, Loader2, ChevronsUpDown, ChevronsDownUp, ListTree, AlignLeft } from 'lucide-react'
+import { GitBranch, ChevronRight, ChevronDown, Loader2, ChevronsUpDown, ChevronsDownUp, ListTree, AlignLeft, Settings, Locate } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { loadSettings, saveSettings } from '@/lib/formatters/settings.js'
 
 // ── Lineage panel ─────────────────────────────────────────────────────────────
 
@@ -99,15 +100,18 @@ function LineagePanel({ server, cube, onOpen }) {
 // ── Rules editor ─────────────────────────────────────────────────────────────
 
 function RulesEditor({ tab, onCursor }) {
-  const { initTabContent, updateTabContent, markTabSaved, clearScrollTo, openTab, server, dark, themeVersion } = useStore()
+  const { initTabContent, updateTabContent, markTabSaved, clearScrollTo, openTab, server, dark, themeVersion, setFormatSettingsOpen } = useStore()
   const { data, isLoading } = useRules(tab.server, tab.cube)
   const saveRules = useSaveRules()
   const registeredRef = useRef(false)
   const editorRef = useRef(null)
   const monacoRef = useRef(null)
+  const formatPopupRef = useRef(null)
   const [showLineage, setShowLineage] = useState(false)
   const [regionsCollapsed, setRegionsCollapsed] = useState(false)
   const [showRegionMenu, setShowRegionMenu] = useState(false)
+  const [showFormatPopup, setShowFormatPopup] = useState(false)
+  const [formatStruct, setFormatStruct] = useState(() => loadSettings().rules.expressionFormatter ?? null)
 
   const openCube = useCallback((cube) => {
     openTab({ id: `rules:${tab.server}:${cube}`, type: 'rules', label: cube, server: tab.server, cube, content: null })
@@ -138,6 +142,23 @@ function RulesEditor({ tab, onCursor }) {
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
   }, [showRegionMenu])
+
+  // Close format popup on click outside
+  useEffect(() => {
+    if (!showFormatPopup) return
+    const handler = (e) => {
+      if (formatPopupRef.current && !formatPopupRef.current.contains(e.target)) setShowFormatPopup(false)
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [showFormatPopup])
+
+  const runFormat = () => {
+    const s = loadSettings()
+    saveSettings({ ...s, rules: { ...s.rules, expressionFormatter: formatStruct } })
+    editorRef.current?.getAction('editor.action.formatDocument').run()
+    setShowFormatPopup(false)
+  }
 
   useEffect(() => {
     if (monacoRef.current) registerTM1Theme(monacoRef.current, dark)
@@ -225,14 +246,60 @@ function RulesEditor({ tab, onCursor }) {
     <div className="flex h-full min-h-0">
       <div className="flex-1 min-w-0 relative">
         <div className="absolute top-2 right-2 z-10 flex items-center gap-1.5">
-          <button
-            onClick={() => editorRef.current?.getAction('editor.action.formatDocument').run()}
-            className="flex items-center gap-1 px-2 py-1 rounded text-xs border border-border bg-background/80 text-muted-foreground hover:text-foreground transition-colors"
-            title="Format Document (Ctrl+Shift+F)"
-          >
-            <AlignLeft size={11} />
-            Format
-          </button>
+          <div ref={formatPopupRef} className="relative format-popup-container">
+            <button
+              onClick={() => setShowFormatPopup(v => !v)}
+              className={cn(
+                'flex items-center gap-1 px-2 py-1 rounded text-xs border bg-background/80 transition-colors',
+                showFormatPopup ? 'border-primary text-foreground' : 'border-border text-muted-foreground hover:text-foreground'
+              )}
+              title="Format Document (Ctrl+Shift+F)"
+            >
+              <AlignLeft size={11} />
+              Format
+            </button>
+            {showFormatPopup && (
+              <div className="absolute right-0 top-full mt-1 w-56 bg-popover border border-border rounded-lg shadow-lg z-50 p-3">
+                <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-2">Structure</div>
+                <div className="flex flex-col gap-1 mb-3">
+                  {[
+                    { id: null,             label: 'No Change',      desc: 'Keep existing line breaks' },
+                    { id: 'tm1-verbose',    label: 'TM1 Verbose',    desc: 'Each string arg on its own line' },
+                    { id: 'tm1-structured', label: 'TM1 Structured', desc: 'Group consecutive string args' },
+                  ].map(opt => (
+                    <button
+                      key={opt.id ?? 'none'}
+                      onClick={() => setFormatStruct(opt.id)}
+                      className={cn(
+                        'flex flex-col items-start px-2 py-1.5 rounded border text-left transition-colors',
+                        formatStruct === opt.id
+                          ? 'border-primary bg-primary/10 text-foreground'
+                          : 'border-border text-muted-foreground hover:text-foreground hover:bg-muted'
+                      )}
+                    >
+                      <span className="text-xs font-medium">{opt.label}</span>
+                      <span className="text-[10px] opacity-70">{opt.desc}</span>
+                    </button>
+                  ))}
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={runFormat}
+                    className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 text-xs rounded bg-primary text-primary-foreground hover:opacity-90 transition-opacity"
+                  >
+                    <AlignLeft size={11} /> Format
+                  </button>
+                  <button
+                    onClick={() => { setShowFormatPopup(false); setFormatSettingsOpen(true) }}
+                    className="p-1.5 rounded border border-border text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                    title="Format Settings"
+                  >
+                    <Settings size={11} />
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
           <div className="relative region-menu-container">
             <button
               onClick={() => setShowRegionMenu(v => !v)}
@@ -307,8 +374,21 @@ function RulesEditor({ tab, onCursor }) {
 
 // ── Dispatcher ────────────────────────────────────────────────────────────────
 
+function getRevealTarget(tab) {
+  if (!tab) return null
+  if (tab.type === 'rules')     return { type: 'rules',     server: tab.server, cube: tab.cube }
+  if (tab.type === 'process')   return { type: 'process',   server: tab.server, name: tab.name }
+  if (tab.type === 'subset')    return { type: 'subset',    server: tab.server, dimension: tab.dimension, subsetName: tab.subsetName }
+  if (tab.type === 'dimension') return { type: 'dimension', server: tab.server, dimension: tab.dimension }
+  if (tab.type === 'cubeview' || tab.type === 'view') {
+    if (tab.viewName) return { type: 'view', server: tab.server, cube: tab.cube, viewName: tab.viewName }
+    return { type: 'cube', server: tab.server, cube: tab.cube }
+  }
+  return null
+}
+
 export default function EditorPane() {
-  const { tabs, activeTab, setCursor } = useStore()
+  const { tabs, activeTab, setRevealTarget } = useStore()
   const [cursor, setCursorLocal] = useState({ line: 1, col: 1 })
   const tab = tabs.find(t => t.id === activeTab)
 
@@ -339,6 +419,15 @@ export default function EditorPane() {
         <span className="ml-4">
           {tab.type === 'rules' ? 'TM1 Rules' : tab.type === 'subset' ? 'MDX' : tab.type === 'dimension' ? 'Dimension' : tab.type === 'view' || tab.type === 'cubeview' ? 'View' : 'TM1 TI'}
         </span>
+        {getRevealTarget(tab) && (
+          <button
+            onClick={() => setRevealTarget(getRevealTarget(tab))}
+            className="ml-auto flex items-center gap-1 hover:text-foreground transition-colors"
+            title="Show in tree"
+          >
+            <Locate size={11} /> Show in tree
+          </button>
+        )}
       </div>
     </div>
   )

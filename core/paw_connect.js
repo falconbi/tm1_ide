@@ -14,7 +14,7 @@ let _expiry  = 0
 
 async function getPawSession() {
     const jar = new CookieJar()
-    const s   = wrapper(axios.create({ jar, withCredentials: true }))
+    const s   = wrapper(axios.create({ jar, withCredentials: true, timeout: 120_000 }))
 
     await s.post(`${PAW_HOST}/login/form/`,
         new URLSearchParams({ username: PAW_USERNAME, password: PAW_PASSWORD, mode: 'basic' }),
