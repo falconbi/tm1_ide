@@ -1,5 +1,37 @@
 import { create } from 'zustand'
 
+/**
+ * @typedef {'rules'|'process'|'subset'|'dimension'|'cubeview'} TabType
+ *
+ * @typedef {Object} Tab
+ * @property {string}   id
+ * @property {TabType}  type
+ * @property {string}   label
+ * @property {string}   server
+ * @property {string}   [cube]        - rules, cubeview
+ * @property {string}   [viewName]    - cubeview with a named view
+ * @property {string}   [name]        - process
+ * @property {string}   [dimension]   - dimension, subset
+ * @property {string}   [subsetName]  - subset
+ * @property {string}   [hierarchy]   - dimension
+ * @property {string}   [content]     - editor content (null = not yet loaded)
+ * @property {boolean}  [dirty]       - unsaved changes
+ * @property {number}   [scrollToLine]
+ * @property {string}   [scrollToSection]
+ */
+
+/**
+ * @typedef {Object} RevealTarget
+ * @property {'rules'|'cube'|'view'|'dimension'|'hierarchy'|'subset'|'process'} type
+ * @property {string}  server
+ * @property {string}  [cube]        - rules, cube, view
+ * @property {string}  [viewName]    - view
+ * @property {string}  [dimension]   - dimension, hierarchy, subset
+ * @property {string}  [hierarchy]   - hierarchy
+ * @property {string}  [subsetName]  - subset
+ * @property {string}  [name]        - process
+ */
+
 let _forgeTimer = null
 const _saveForge = (state) => {
   clearTimeout(_forgeTimer)
@@ -62,6 +94,7 @@ export const useStore = create((set, get) => ({
   tabs: [],
   activeTab: null,
 
+  /** @param {Tab} tab */
   openTab: (tab) => {
     const existing = get().tabs.find(t => t.id === tab.id)
     if (existing) {
@@ -124,7 +157,9 @@ export const useStore = create((set, get) => ({
   })),
 
   // ── Reveal in Explorer tree ────────────────────────────────────────────────
+  /** @type {RevealTarget|null} */
   revealTarget: null,
+  /** @param {RevealTarget} target */
   setRevealTarget: (target) => set({ revealTarget: { ...target, _ts: Date.now() } }),
   clearRevealTarget: () => set({ revealTarget: null }),
 }))

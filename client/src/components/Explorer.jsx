@@ -8,6 +8,7 @@ import { cn } from '@/lib/utils'
 
 // ── Reveal / locate helpers ───────────────────────────────────────────────────
 
+/** @param {string} sectionId @param {import('@/store').RevealTarget} target */
 function shouldAutoOpen(sectionId, target) {
   if (!target) return false
   const parts = sectionId.split(':')

@@ -374,6 +374,10 @@ function RulesEditor({ tab, onCursor }) {
 
 // ── Dispatcher ────────────────────────────────────────────────────────────────
 
+/**
+ * @param {import('@/store').Tab} tab
+ * @returns {import('@/store').RevealTarget|null}
+ */
 function getRevealTarget(tab) {
   if (!tab) return null
   if (tab.type === 'rules')     return { type: 'rules',     server: tab.server, cube: tab.cube }
