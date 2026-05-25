@@ -5,7 +5,9 @@ import { useProcess, useSaveProcess, useRunProcess, useCubes, useViews } from '@
 import { registerTM1Completions, registerTM1Theme } from '@/lib/tm1-functions'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
-import { ChevronRight, ChevronDown, Play, X } from 'lucide-react'
+import { ChevronRight, ChevronDown, Play, X, Braces } from 'lucide-react'
+import { getSnippets } from '@/lib/tm1-snippets.js'
+import SnippetPanel from '@/components/SnippetPanel'
 
 const CODE_TABS = [
   { key: 'PrologProcedure',    label: 'Prolog'   },
@@ -420,6 +422,7 @@ export default function ProcessEditor({ tab }) {
   const [activeSection, setActiveSection] = useState('PrologProcedure')
   const [showRun, setShowRun] = useState(false)
   const [showDsInsert, setShowDsInsert] = useState(false)
+  const [showSnippets, setShowSnippets] = useState(false)
   const editorRef = useRef(null)
   const monacoRef = useRef(null)
   const pendingLineRef = useRef(null)
@@ -444,6 +447,15 @@ export default function ProcessEditor({ tab }) {
       pendingLineRef.current = null
     }
   }, [tab.scrollToLine])
+
+  const insertSnippet = (code) => {
+    const editor = editorRef.current
+    const monaco = monacoRef.current
+    if (!editor || !monaco) return
+    const sel = editor.getSelection()
+    editor.executeEdits('snippet', [{ range: sel, text: code }])
+    editor.focus()
+  }
 
   const handleInsertDs = (code) => {
     const editor = editorRef.current
@@ -563,6 +575,16 @@ export default function ProcessEditor({ tab }) {
 
         <div className="ml-auto flex items-center gap-2 mr-2">
           <button
+            onClick={() => setShowSnippets(s => !s)}
+            className={cn(
+              'flex items-center gap-1.5 px-3 py-1 text-xs rounded border transition-colors',
+              showSnippets ? 'bg-primary text-primary-foreground border-primary' : 'border-border text-muted-foreground hover:text-foreground hover:bg-muted'
+            )}
+          >
+            <Braces size={11} />
+            Snippets
+          </button>
+          <button
             onClick={() => setShowDsInsert(true)}
             disabled={!data}
             className="px-3 py-1 text-xs rounded border border-border text-muted-foreground hover:text-foreground hover:bg-muted transition-colors disabled:opacity-40"
@@ -615,22 +637,29 @@ export default function ProcessEditor({ tab }) {
       )}
 
       {/* ── Monaco editor ─────────────────────────────────────────────── */}
-      <div className="flex-1 min-h-0">
-        <MonacoEditor
-          key={activeSection}
-          height="100%"
-          language="tm1ti"
-          value={value}
-          theme={dark ? 'vs-dark' : 'vs'}
-          onChange={v => setEdits(e => ({ ...e, [activeSection]: v }))}
-          onMount={handleMount}
-          options={{
-            fontSize: 13,
-            minimap: { enabled: false },
-            wordWrap: 'on',
-            scrollBeyondLastLine: false,
-          }}
-        />
+      <div className="flex flex-1 min-h-0">
+        <div className="flex-1 min-h-0">
+          <MonacoEditor
+            key={activeSection}
+            height="100%"
+            language="tm1ti"
+            value={value}
+            theme={dark ? 'vs-dark' : 'vs'}
+            onChange={v => setEdits(e => ({ ...e, [activeSection]: v }))}
+            onMount={handleMount}
+            options={{
+              fontSize: 13,
+              minimap: { enabled: false },
+              wordWrap: 'on',
+              scrollBeyondLastLine: false,
+            }}
+          />
+        </div>
+        {showSnippets && (
+          <div className="w-72 shrink-0 border-l border-border flex flex-col bg-sidebar overflow-hidden">
+            <SnippetPanel snippets={getSnippets('ti')} onInsert={insertSnippet} />
+          </div>
+        )}
       </div>
 
     </div>

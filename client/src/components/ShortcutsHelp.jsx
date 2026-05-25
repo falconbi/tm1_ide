@@ -18,6 +18,11 @@ const SHORTCUTS = [
       { key: 'Ctrl + Shift + S', desc: 'Save As' },
       { key: 'Ctrl + Enter', desc: 'Execute / Refresh' },
       { key: 'Ctrl + Shift + F', desc: 'Format Document' },
+      { key: 'Ctrl + Z', desc: 'Undo' },
+      { key: 'Ctrl + Y', desc: 'Redo' },
+      { key: 'Ctrl + /', desc: 'Toggle line comment' },
+      { key: 'Ctrl + D', desc: 'Select next occurrence' },
+      { key: 'Alt + ↑ / ↓', desc: 'Move line up / down' },
     ],
   },
   {

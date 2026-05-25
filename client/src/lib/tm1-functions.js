@@ -2,6 +2,7 @@
 import { formatRules } from '@/lib/formatters/rules-formatter.js'
 import { loadSettings } from '@/lib/formatters/settings.js'
 import { getNamingMap } from '@/lib/formatters/naming.js'
+import { registerTM1Snippets } from '@/lib/tm1-snippets.js'
 
 // ── TM1 Function Catalog ──────────────────────────────────────────────────────
 // Each entry: description, params[], returns, variadic, language
@@ -1301,6 +1302,7 @@ function registerTM1Completions(monaco, getServer) {
     })
   })
 
+  registerTM1Snippets(monaco)
   console.log(`TM1 autocomplete registered — ${Object.keys(TM1_FUNCTIONS).length} functions`)
 }
 

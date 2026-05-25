@@ -1,9 +1,9 @@
 import { useState, useRef, useMemo, useEffect } from 'react'
 import { toast } from 'sonner'
-import { useCubes, useDims, useProcs, useChores, useSubsets, useViews, useCubeDimensions, useSaveView, useHierarchies, useCreateHierarchy } from '@/hooks/useApi'
+import { useCubes, useDims, useProcs, useChores, useSubsets, useViews, useCubeDimensions, useSaveView, useHierarchies, useCreateHierarchy, useControlObjects } from '@/hooks/useApi'
 import { useStore } from '@/store'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { ChevronRight, ChevronDown, Box, Layers, Cog, Clock, Loader2, List, Plus, Table2, Code2, PencilLine, Search, X } from 'lucide-react'
+import { ChevronRight, ChevronDown, Box, Layers, Cog, Clock, Loader2, List, Plus, Table2, Code2, PencilLine, Search, X, Braces } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 // ── Reveal / locate helpers ───────────────────────────────────────────────────
@@ -598,6 +598,81 @@ function DimSection({ server, dims, isLoading, onOpenSubset, onOpenDim }) {
   )
 }
 
+function ControlSection({ server, onOpenViewer, onOpenDim, onOpenProcess }) {
+  const [open, setOpen]           = useState(false)
+  const [cubesOpen, setCubesOpen] = useState(false)
+  const [dimsOpen,  setDimsOpen]  = useState(false)
+  const [procsOpen, setProcsOpen] = useState(false)
+
+  // Fetch eagerly — data is ready when user opens the section
+  const { data, isFetching } = useControlObjects(server)
+  const cubes = data?.cubes      ?? []
+  const dims  = data?.dimensions ?? []
+  const procs = data?.processes  ?? []
+
+  const SubHeader = ({ label, count, isOpen, onToggle }) => (
+    <button
+      onClick={onToggle}
+      className="flex items-center gap-1.5 w-full px-5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70 hover:text-muted-foreground"
+    >
+      {isOpen ? <ChevronDown size={9} /> : <ChevronRight size={9} />}
+      <span>{label}</span>
+      {isFetching
+        ? <Loader2 size={9} className="ml-1 animate-spin" />
+        : <span className="ml-1 text-muted-foreground/40">{count}</span>
+      }
+    </button>
+  )
+
+  return (
+    <div>
+      <button
+        onClick={() => setOpen(o => !o)}
+        className="flex items-center gap-1.5 w-full px-3 py-1 text-xs font-semibold text-muted-foreground hover:text-foreground uppercase tracking-wider"
+      >
+        {open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+        <Braces size={12} />
+        <span>Control Objects</span>
+      </button>
+
+      {open && (
+        <div className="pb-1">
+          <SubHeader label="Cubes" count={cubes.length} isOpen={cubesOpen} onToggle={() => setCubesOpen(o => !o)} />
+          {cubesOpen && cubes.map(name => (
+            <button key={name} onClick={() => onOpenViewer(name)}
+              className="flex items-center gap-2 w-full px-9 py-0.5 text-xs text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground truncate">
+              <Box size={11} className="shrink-0 text-muted-foreground" />
+              <span className="truncate">{name}</span>
+            </button>
+          ))}
+
+          <SubHeader label="Dimensions" count={dims.length} isOpen={dimsOpen} onToggle={() => setDimsOpen(o => !o)} />
+          {dimsOpen && dims.map(name => (
+            <button key={name} onClick={() => onOpenDim(name)}
+              className="flex items-center gap-2 w-full px-9 py-0.5 text-xs text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground truncate">
+              <Layers size={11} className="shrink-0 text-muted-foreground" />
+              <span className="truncate">{name}</span>
+            </button>
+          ))}
+
+          {(isFetching || procs.length > 0) && (
+            <>
+              <SubHeader label="Processes" count={procs.length} isOpen={procsOpen} onToggle={() => setProcsOpen(o => !o)} />
+              {procsOpen && procs.map(name => (
+                <button key={name} onClick={() => onOpenProcess(name)}
+                  className="flex items-center gap-2 w-full px-9 py-0.5 text-xs text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground truncate">
+                  <Cog size={11} className="shrink-0 text-muted-foreground" />
+                  <span className="truncate">{name}</span>
+                </button>
+              ))}
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function Explorer() {
   const { server, openTab } = useStore()
   const [search, setSearch] = useState('')
@@ -751,6 +826,12 @@ export default function Explorer() {
               <DimSection server={server} dims={dims}    isLoading={loadingDims}   onOpenSubset={openSubset} onOpenDim={openDim} />
               <Section    icon={Cog}   label="Processes" items={procs}  isLoading={loadingProcs}  onSelect={openProcess} itemIcon={Cog}   sectionId="processes" locateIdPrefix="process" />
               <Section    icon={Clock} label="Chores"    items={chores} isLoading={loadingChores} onSelect={() => {}}    itemIcon={Clock} sectionId="chores" />
+              <ControlSection
+                server={server}
+                onOpenViewer={openCubeViewer}
+                onOpenDim={openDim}
+                onOpenProcess={openProcess}
+              />
             </>
           )}
         </div>

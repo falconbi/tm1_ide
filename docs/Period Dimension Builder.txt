@@ -1,0 +1,55 @@
+Period Dimension Builder — Build Recap
+What it is
+A wizard UI inside the TM1 IDE that generates a correctly structured Period dimension with all attributes computed automatically. Eliminates sloppy, inconsistent period dimension builds.
+
+Wizard inputs
+Input	Options
+Dimension name	text field (e.g. GBL Period)
+Fiscal year start month	dropdown (Jan–Dec)
+First calendar year	number
+Last calendar year	number
+Year member format	FY + end year (FY2024), FY + start year, YYYY
+Month member format	YYYY-MM, Mon-YY, YYYYMM
+Caption format	Mon-YY, Mon YYYY, January YYYY
+Long Name format	Month YYYY, YYYY-MM
+Include Total member	yes/no
+Include Quarter level	yes/no
+Include Half-year level	yes/no
+Partial boundary years	include partial / full FY only
+Include Is Current Period attribute	yes/no (gates dynamic subsets)
+Attributes	all 12 pre-selected, all computed
+Live FY boundary preview
+Before generating, show a table mapping each FY label to its calendar months — validates the fiscal year start is correct before anything is written.
+
+Subset selector
+Checklist of static subsets to generate. All maintained by RefreshSubsets TI — no MDX.
+
+Subset	Default
+All Periods	✓
+All FY	✓
+Current Period	✓
+Current FY	✓
+Prior FY	✓
+YTD	✓
+Prior YTD	✓
+Rolling 12	
+Rolling 6	
+Rolling 3	
+Next FY	
+Historical	
+Future	
+Current FY Remaining	
+Prior Period	
+Subsets requiring Is Current Period grey out if that attribute is not selected.
+
+Outputs
+Artifact	Purpose
+Period.BuildDimension TI	Creates elements, hierarchy, all attribute values. Idempotent — safe to re-run, appends new years if dimension exists
+Period.RefreshSubsets TI	Rebuilds selected static subsets. Runs monthly in chore
+Run now	Execute BuildDimension directly against Dev server via REST
+Extension mode
+If dimension already exists on the target server, switch to "Add years" mode — only appends the new year range, does not rebuild existing members or wipe attribute values.
+
+What it does NOT build
+The month-end chore itself (user wires RefreshSubsets into their existing chore)
+13-period or 4-4-5 week calendars (calendar-month only for now)

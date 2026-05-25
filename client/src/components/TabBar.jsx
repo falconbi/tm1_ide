@@ -1,47 +1,49 @@
 import { useStore } from '@/store'
-import { X, Box, Cog, XSquare, ChevronDown, ChevronUp, Table2, FileCode2, Layers } from 'lucide-react'
+import { X, Box, Cog, XSquare, ChevronDown, ChevronUp, Table2, FileCode2, Layers, Columns2, PanelRightClose } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 const TYPE_ICON = { rules: FileCode2, process: Cog, cubeview: Table2, subset: Layers, dimension: Layers }
 
-export default function TabBar() {
-  const { tabs, activeTab, setActiveTab, closeTab, closeAllTabs, tabsVisible, toggleTabs } = useStore()
+export default function TabBar({ groupId }) {
+  const { tabs, groups, activeGroupId, setActiveTab, closeTab, closeAllTabs, closeGroup, splitGroup, tabsVisible, toggleTabs } = useStore()
+
+  const group = groups.find(g => g.id === groupId)
+  const groupTabs = group ? group.tabIds.map(id => tabs.find(t => t.id === id)).filter(Boolean) : []
+  const activeTabId = group?.activeTabId ?? null
+  const isActiveGroup = activeGroupId === groupId
+  const multiGroup = groups.length > 1
 
   const handleCloseAll = () => {
-    const dirty = tabs.filter(t => t.dirty).map(t => t.label)
+    const dirty = groupTabs.filter(t => t.dirty).map(t => t.label)
     if (dirty.length > 0) {
       const ok = window.confirm(
         `${dirty.length} tab${dirty.length > 1 ? 's have' : ' has'} unsaved changes:\n\n${dirty.join('\n')}\n\nClose all anyway?`
       )
       if (!ok) return
     }
-    closeAllTabs()
+    if (multiGroup) closeGroup(groupId)
+    else closeAllTabs()
   }
 
-  // Collapsed: just a thin strip with toggle + tab count
   if (!tabsVisible) {
     return (
-      <div className="flex items-center border-b border-border bg-muted/40 shrink-0 h-5">
+      <div className={cn('flex items-center border-b border-border bg-muted/40 shrink-0 h-5', isActiveGroup && multiGroup && 'border-t-2 border-t-primary')}>
         <button
           onClick={toggleTabs}
           title="Show tabs"
           className="flex items-center gap-1 px-2 h-full text-[10px] text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
         >
           <ChevronDown size={10} />
-          {tabs.length > 0 && <span>{tabs.length} tab{tabs.length !== 1 ? 's' : ''}</span>}
+          {groupTabs.length > 0 && <span>{groupTabs.length} tab{groupTabs.length !== 1 ? 's' : ''}</span>}
         </button>
       </div>
     )
   }
 
-  if (!tabs.length) {
+  if (!groupTabs.length) {
     return (
-      <div className="flex items-center border-b border-border bg-background shrink-0 h-6">
-        <button
-          onClick={toggleTabs}
-          title="Hide tabs"
-          className="px-2 h-full text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-        >
+      <div className={cn('flex items-center border-b border-border bg-background shrink-0 h-6', isActiveGroup && multiGroup && 'border-t-2 border-t-primary')}>
+        <button onClick={toggleTabs} title="Hide tabs" className="px-2 h-full text-muted-foreground hover:text-foreground hover:bg-muted transition-colors">
           <ChevronUp size={10} />
         </button>
       </div>
@@ -49,18 +51,14 @@ export default function TabBar() {
   }
 
   return (
-    <div className="flex items-center border-b border-border bg-background shrink-0">
-      <button
-        onClick={toggleTabs}
-        title="Hide tabs"
-        className="shrink-0 px-1.5 h-full self-stretch text-muted-foreground hover:text-foreground hover:bg-muted transition-colors border-r border-border"
-      >
+    <div className={cn('flex items-center border-b border-border bg-background shrink-0', isActiveGroup && multiGroup && 'border-t-2 border-t-primary')}>
+      <button onClick={toggleTabs} title="Hide tabs" className="shrink-0 px-1.5 h-full self-stretch text-muted-foreground hover:text-foreground hover:bg-muted transition-colors border-r border-border">
         <ChevronUp size={10} />
       </button>
       <div className="flex items-center overflow-x-auto scrollbar-none flex-1 min-w-0">
-        {tabs.map(tab => {
+        {groupTabs.map(tab => {
           const Icon = TYPE_ICON[tab.type] ?? Box
-          const active = tab.id === activeTab
+          const active = tab.id === activeTabId
           return (
             <div
               key={tab.id}
@@ -85,6 +83,22 @@ export default function TabBar() {
           )
         })}
       </div>
+      <button
+        onClick={splitGroup}
+        title="Split editor right"
+        className="shrink-0 px-2 self-stretch text-muted-foreground hover:text-foreground hover:bg-muted transition-colors border-l border-border"
+      >
+        <Columns2 size={11} />
+      </button>
+      {multiGroup && (
+        <button
+          onClick={() => closeGroup(groupId)}
+          title="Close group"
+          className="shrink-0 px-2 self-stretch text-muted-foreground hover:text-foreground hover:bg-muted transition-colors border-l border-border"
+        >
+          <PanelRightClose size={11} />
+        </button>
+      )}
       <button
         onClick={handleCloseAll}
         title="Close all tabs"

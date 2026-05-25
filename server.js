@@ -16,7 +16,7 @@ const anthropic = new Anthropic.default({ apiKey: process.env.ANTHROPIC_API_KEY 
 const app  = express()
 const PORT = process.env.PORT || 8083
 
-app.use(express.json())
+app.use(express.json({ limit: '10mb' }))
 app.use(express.static(path.join(__dirname, 'static'), {
     setHeaders(res, filePath) {
         if (filePath.endsWith('.html')) res.setHeader('Cache-Control', 'no-store')
@@ -785,6 +785,105 @@ app.get('/api/paw/book-usage', async (req, res) => {
 })
 
 // ── Forge (workspace persistence) ────────────────────────────────────────────
+// ── Control Objects ───────────────────────────────────────────────────────────
+app.get('/api/control/objects', async (req, res) => {
+    try {
+        const client = new TM1Client(req.query.server)
+        res.json(await client.getControlObjects())
+    } catch (e) {
+        res.status(500).json({ error: e.message })
+    }
+})
+
+// ── Period Builder ────────────────────────────────────────────────────────────
+// Creates 3 TI processes on the target server then executes BuildDimension.
+// Request body: { server, dimensionName, processes: [{name, prolog, metadata, data, epilog, parameters}] }
+app.post('/api/period-builder/run', async (req, res) => {
+    const { server, dimensionName, processes, elements = [], edges = [] } = req.body
+    if (!server || !dimensionName || !Array.isArray(processes)) {
+        return res.status(400).json({ ok: false, error: 'server, dimensionName and processes required' })
+    }
+    const PERIOD_ATTRS = [
+        { name: 'Period Start Serial', type: 'Numeric' },
+        { name: 'Period End Serial',   type: 'Numeric' },
+        { name: 'Calendar Year',       type: 'Numeric' },
+        { name: 'Calendar Month',      type: 'Numeric' },
+        { name: 'Days in Period',      type: 'Numeric' },
+        { name: 'Fin Year',            type: 'String'  },
+        { name: 'First Period',        type: 'String'  },
+        { name: 'Last Period',         type: 'String'  },
+        { name: 'Previous Period',     type: 'String'  },
+        { name: 'Next Period',         type: 'String'  },
+        { name: 'Caption',             type: 'Alias'   },
+        { name: 'Long Name',           type: 'String'  },
+        { name: 'Is Current Period',   type: 'String'  },
+    ]
+    try {
+        const client = new TM1Client(server)
+
+        // 1. Create dimension (ignore "already exists" — code 52 or HTTP 409)
+        try {
+            await client.post('Dimensions', {
+                Name: dimensionName,
+                Hierarchies: [{ Name: dimensionName }],
+            })
+        } catch (e) {
+            const code = e.response?.data?.error?.code
+            if (code !== '52' && e.response?.status !== 409) throw e
+        }
+
+        // 2. Create element attribute definitions via REST
+        for (const attr of PERIOD_ATTRS) {
+            try { await client.createElementAttribute(dimensionName, attr.name, attr.type) } catch {}
+        }
+
+        // 3. Create elements in parallel — consolidations first, then numerics
+        const consolidated = elements.filter(e => e.type === 'C')
+        const numeric      = elements.filter(e => e.type === 'N')
+        await Promise.all(consolidated.map(e =>
+            client.addElement(dimensionName, e.name, e.type).catch(() => {})
+        ))
+        await Promise.all(numeric.map(e =>
+            client.addElement(dimensionName, e.name, e.type).catch(() => {})
+        ))
+
+        // 4. Create hierarchy edges in parallel
+        await Promise.all(edges.map(e =>
+            client.addEdge(dimensionName, e.parent, e.child, e.weight ?? 1).catch(() => {})
+        ))
+
+        // 5. Write all attribute values in one inline TI execution
+        const attrEpilog = processes[0]?.epilog
+        if (attrEpilog) {
+            const safe = s => String(s).replace(/'/g, "''")
+            await client.post('ExecuteProcessWithReturn?$expand=*', {
+                Process: {
+                    Name:               `}Period_Build_Attrs`,
+                    PrologProcedure:    `pDimension = '${safe(dimensionName)}';\n${attrEpilog}`,
+                    MetadataProcedure:  '',
+                    DataProcedure:      '',
+                    EpilogProcedure:    '',
+                    HasSecurityAccess:  false,
+                    DataSource:         { Type: 'None' },
+                    Parameters:         [],
+                    Variables:          [],
+                }
+            })
+        }
+
+        // 6. Create / replace the 3 TI processes (for future scheduling)
+        for (const proc of processes) {
+            await client.createOrReplaceProcess(proc)
+        }
+
+        res.json({ ok: true })
+    } catch (e) {
+        const detail = e.response?.data ? JSON.stringify(e.response.data) : e.message
+        console.error('[period-builder]', detail)
+        res.status(500).json({ ok: false, error: detail })
+    }
+})
+
 app.get('/api/forge', (req, res) => {
     try {
         const data = fs.existsSync(FORGE_PATH)

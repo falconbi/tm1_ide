@@ -50,7 +50,6 @@ tm1_ide/
 ### Prerequisites
 
 - Node.js 20+
-- Python 3.10+ (for deploy CLI)
 - IBM Planning Analytics Workspace (PAW) V11 on-prem
 - TM1 V11 on-prem (one or more databases)
 

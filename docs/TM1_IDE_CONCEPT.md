@@ -61,30 +61,47 @@ YAML is what you write. JSON is what the TM1 REST API speaks. The deploy tool co
 
 ## Module Architecture
 
-Each functional area is a separate TM1 database instance on the same physical server:
+All modules live on a **single TM1 server per environment** — not one server per module.
 
 ```
-core_db          — master dimensions (entity, time, account)
-planning_db      — budget and forecast cubes
-apportionment_db — allocation logic
-consolidation_db — reads from planning via cross-server feeders
-reporting_db     — output layer
+tm1-dev.company.com
+  ├── APR_CostPool        (apportionment module)
+  ├── APR_Allocation      (apportionment module)
+  ├── FIN_Budget          (finance module)
+  ├── FIN_Actuals         (finance module)
+  ├── HR_Headcount        (hr module)
+  ├── Period              (core — shared)
+  ├── Entity              (core — shared)
+  └── Currency            (core — shared)
 ```
 
-Each module declares what it owns and what it depends on:
+Module separation is a **naming convention and package boundary**, not a server boundary.
+Shared dimensions (`Period`, `Entity`, `Currency`) are owned by the `core` package.
+Cross-module `DB()` rules, shared chores, and shared dimensions all work naturally
+because everything is on the same server.
+
+Each module is a **package** — a folder with a manifest declaring what it owns and what
+it modifies on shared objects owned by other packages:
 
 ```yaml
-# module.yaml
+# packages/apportionment/tm1package.yaml
 name: apportionment
+version: 1.0.0
+dependencies:
+  core: ">=1.0.0"    # Period and Entity must exist first
+
 owns:
-  - dimensions/apport_driver.yaml
-  - cubes/apport_allocation.yaml
-depends_on:
-  - core_db/entity
-  - core_db/time
+  dimensions: [APR_CostPool, APR_Driver]
+  cubes: [APR_Allocation]
+  processes: [APR_LoadDrivers, APR_RunAllocation]
+
+modifies:
+  - object: Entity
+    type: attribute
+    name: APR_DriverGroup    # attribute added to shared dimension
 ```
 
-The deploy tool checks dependencies exist before applying. Shared dimensions are owned by the core module — everything else depends on it.
+The deploy tool resolves dependencies and checks they exist on the target before applying.
 
 ---
 

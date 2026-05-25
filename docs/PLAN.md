@@ -3,13 +3,17 @@
 ## Vision
 
 A browser-based IDE for TM1 model development where:
-- Every TM1 object is defined in YAML files in a git repository
-- The IDE edits those files, not the TM1 server directly
-- Changes are reviewed via GitHub pull requests before deployment
-- CI/CD deploys on merge — TM1 becomes a deployment target, not a source of truth
+
+- Developers build freely on the Dev server — live, interactive, no friction
+- Every save is logged — who changed what, in which session, at what time
+- At deployment time, the session log + targeted diff generates a YAML package
+- Packages are reviewed and deployed to Test then Prod via a pre-deploy risk check
+- git holds the packages — small, focused, meaningful commits only
+- CI/CD deploys packages on merge — TM1 becomes a controlled deployment target
 - Full data audit trail via DuckDB time travel
-- TM1py Python scripts managed alongside model definitions
 - All users have admin rights — attribution not restriction is the security model
+
+See DEPLOYMENT.md for the complete deployment architecture.
 
 ---
 
@@ -71,18 +75,24 @@ GitHub
 
 ## Source of Truth
 
-**YAML files are the source of truth — not the TM1 server.**
+**During development the Dev server is the source of truth. At deployment time YAML is.**
+
+TM1's strength is live, interactive development — you build, run, and test in real time.
+Forcing a YAML-first workflow fights that. The IDE works directly against the Dev server
+and crystallises to YAML only when a package is ready to promote to Test or Prod.
 
 ```
-Bootstrap (one-time): TM1 server → export → YAML files → git commit
-Day-to-day:           edit YAML → commit → deploy → TM1 server
+Development:   build freely on Dev server — no YAML, no friction
+Deployment:    session log + targeted diff → YAML package → deploy to Test/Prod
 ```
 
-The IDE shows two views for any object:
-- **Live**: what is currently on the TM1 server
-- **Code**: what the YAML definition says
+The **change log** is the backbone — the IDE writes a structured entry every time anything
+is saved. At package time, the log defines scope; a targeted diff against the Dev server
+verifies reality. Only changed objects are serialised to YAML. See DEPLOYMENT.md for the
+full architecture.
 
-Diff between them shows what would change on next deploy.
+The IDE shows live server state for any object. YAML only appears when a package is being
+reviewed or deployed — never as a mandatory step during day-to-day development.
 
 ---
 
@@ -574,27 +584,38 @@ Frontend adoption is critical — the IDE must feel fast, modern, and polished o
 
 **Phase 1 note:** Phase 1 was built as vanilla JS. Before Phase 2 begins the frontend is migrated to React + Vite. The Express backend stays unchanged — React becomes the client, Express remains the API server.
 
-### Backend
+### Backend (IDE server)
 
-| Package | Phase | Purpose |
-| ------- | ----- | ------- |
-| `zod` | 2 | Schema validation for `project.yaml` and all TM1 object YAML files — catches errors at edit time, not deploy time |
-| `simple-git` | 4 | Local git operations |
-| `@octokit/rest` | 7 | GitHub API |
-| `duckdb` | 6 | In-process analytical DB |
-| `chokidar` | 3 | Watch YAML files for external changes |
-| `js-yaml` | ✅ | Already installed |
-| `ws` | ✅ | Already installed (WebSocket for terminal) |
+| Package | Purpose |
+| ------- | ------- |
+| `js-yaml` | YAML serialisation for package files |
+| `ws` | WebSocket for terminal output streaming |
+| `simple-git` | Local git operations (Phase 4) |
+| `@octokit/rest` | GitHub API (Phase 7) |
+| `duckdb` | In-process analytical DB for data audit (Phase 6) |
+
+### Deploy CLI (tools/tm1deploy)
+
+Separate Node.js package — no Python required. All TM1 interaction is direct REST calls.
+
+| Package | Purpose |
+| ------- | ------- |
+| `better-sqlite3` | Change log store — fast, local, no server |
+| `js-yaml` | Read/write tm1package.yaml and object YAML files |
+| `node-fetch` | TM1 REST API calls |
+| `commander` | CLI argument parsing |
 
 ### Deployment
 
-Docker + docker-compose for all environments. The IDE is self-hosted — Docker makes deployment reproducible and supports the CI/CD self-hosted runner needed in Phase 8.
+Docker + docker-compose for all environments. The IDE is self-hosted — Docker makes deployment reproducible and supports the CI/CD self-hosted runner.
 
 ### Deliberately excluded
 
 | Suggestion | Reason |
 | ---------- | ------ |
-| BullMQ / Redis | Add only if feed orchestration hits limits — unneeded complexity for current scale |
+| Python / tm1py | No Python runtime needed — deploy CLI is Node.js with direct REST calls |
+| tm1npm | Third-party dependency we don't control — REST calls are straightforward to own directly |
+| BullMQ / Redis | Unneeded complexity for current scale |
 | Loki / Grafana | Overkill — DuckDB covers TM1 audit, server logs cover IDE ops |
 | tRPC | Adds abstraction without proportional benefit at this team size |
 | Playwright E2E | Aspirational — revisit when the builders are stable |

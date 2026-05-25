@@ -1,10 +1,10 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { TooltipProvider } from '@/components/ui/tooltip'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, Fragment } from 'react'
 import { useStore } from '@/store'
 import { cn } from '@/lib/utils'
 import { Toaster } from '@/components/ui/sonner'
-import { Search, PanelLeftClose, PanelLeftOpen, Keyboard, Settings, SlidersHorizontal, BookType } from 'lucide-react'
+import { Search, PanelLeftClose, PanelLeftOpen, Keyboard, Settings, SlidersHorizontal, BookType, Sigma, CalendarDays } from 'lucide-react'
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels'
 import ServerSelector from '@/components/ServerSelector'
 import Explorer from '@/components/Explorer'
@@ -16,18 +16,26 @@ import ShortcutsHelp from '@/components/ShortcutsHelp'
 import FormatSettings from '@/components/FormatSettings'
 import EditorPreferences from '@/components/EditorPreferences'
 import NamingDictionary from '@/components/NamingDictionary'
+import PeriodBuilder from '@/components/PeriodBuilder'
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { staleTime: 30_000, retry: 1 } },
 })
 
 export default function App() {
-  const { loadForge, formatSettingsOpen, setFormatSettingsOpen } = useStore()
+  const { loadForge, formatSettingsOpen, setFormatSettingsOpen, openTab, server } = useStore()
+  const groups = useStore(s => s.groups)
+
+  const openMDXSandbox = () => {
+    if (!server) return
+    openTab({ id: `mdxsandbox:${server}`, type: 'mdxsandbox', label: 'MDX Sandbox', server })
+  }
   const [showFind, setShowFind]           = useState(false)
   const [showSidebar, setShowSidebar]     = useState(true)
   const [showShortcuts, setShowShortcuts] = useState(false)
-  const [showNamingDict, setShowNamingDict] = useState(false)
-  const [showPrefs, setShowPrefs]         = useState(false)
+  const [showNamingDict, setShowNamingDict]     = useState(false)
+  const [showPrefs, setShowPrefs]               = useState(false)
+  const [showPeriodBuilder, setShowPeriodBuilder] = useState(false)
 
   useEffect(() => { loadForge() }, [])
 
@@ -65,6 +73,20 @@ export default function App() {
             </button>
             <span className="font-semibold text-sm tracking-tight">TM1 IDE</span>
             <div className="ml-auto flex items-center gap-1">
+              <button
+                onClick={() => setShowPeriodBuilder(true)}
+                className="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                title="Period Dimension Builder"
+              >
+                <CalendarDays size={15} />
+              </button>
+              <button
+                onClick={openMDXSandbox}
+                className="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                title="MDX Sandbox"
+              >
+                <Sigma size={15} />
+              </button>
               <button
                 onClick={() => setShowFind(f => !f)}
                 className={cn('p-1.5 rounded text-muted-foreground hover:text-foreground transition-colors', showFind && 'bg-muted text-foreground')}
@@ -129,10 +151,19 @@ export default function App() {
                 </>
               )}
 
-              {/* Editor */}
-              <Panel className="flex flex-col min-w-0">
-                <EditorPane />
-                <TabBar />
+              {/* Editor groups */}
+              <Panel className="flex flex-col min-w-0 overflow-hidden">
+                <PanelGroup direction="horizontal" className="flex-1">
+                  {groups.map((group, i) => (
+                    <Fragment key={group.id}>
+                      {i > 0 && <PanelResizeHandle className="w-1 bg-border hover:bg-primary/50 transition-colors cursor-col-resize" />}
+                      <Panel className="flex flex-col min-w-0">
+                        <EditorPane groupId={group.id} />
+                        <TabBar groupId={group.id} />
+                      </Panel>
+                    </Fragment>
+                  ))}
+                </PanelGroup>
               </Panel>
 
             </PanelGroup>
@@ -145,6 +176,7 @@ export default function App() {
         <EditorPreferences open={showPrefs} onClose={() => setShowPrefs(false)} />
         <FormatSettings open={formatSettingsOpen} onClose={() => setFormatSettingsOpen(false)} />
         <NamingDictionary open={showNamingDict} onClose={() => setShowNamingDict(false)} />
+        <PeriodBuilder open={showPeriodBuilder} onClose={() => setShowPeriodBuilder(false)} />
         <Toaster position="bottom-right" />
       </TooltipProvider>
     </QueryClientProvider>

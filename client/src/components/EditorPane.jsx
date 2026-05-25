@@ -7,10 +7,13 @@ import ProcessEditor from '@/components/ProcessEditor'
 import SubsetEditor from '@/components/SubsetEditor'
 import DimensionEditor from '@/components/DimensionEditor'
 import ViewEditor from '@/components/ViewEditor'
+import MDXSandbox from '@/components/MDXSandbox'
 import { toast } from 'sonner'
-import { GitBranch, ChevronRight, ChevronDown, Loader2, ChevronsUpDown, ChevronsDownUp, ListTree, AlignLeft, Settings, Locate } from 'lucide-react'
+import { GitBranch, ChevronRight, ChevronDown, Loader2, ChevronsUpDown, ChevronsDownUp, ListTree, AlignLeft, Settings, Locate, Braces } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { loadSettings, saveSettings } from '@/lib/formatters/settings.js'
+import { getSnippets } from '@/lib/tm1-snippets.js'
+import SnippetPanel from '@/components/SnippetPanel'
 
 // ── Lineage panel ─────────────────────────────────────────────────────────────
 
@@ -108,6 +111,7 @@ function RulesEditor({ tab, onCursor }) {
   const monacoRef = useRef(null)
   const formatPopupRef = useRef(null)
   const [showLineage, setShowLineage] = useState(false)
+  const [showSnippets, setShowSnippets] = useState(false)
   const [regionsCollapsed, setRegionsCollapsed] = useState(false)
   const [showRegionMenu, setShowRegionMenu] = useState(false)
   const [showFormatPopup, setShowFormatPopup] = useState(false)
@@ -238,6 +242,14 @@ function RulesEditor({ tab, onCursor }) {
     setShowRegionMenu(false)
   }
 
+  const insertSnippet = (code) => {
+    const editor = editorRef.current
+    if (!editor) return
+    const sel = editor.getSelection()
+    editor.executeEdits('snippet', [{ range: sel, text: code }])
+    editor.focus()
+  }
+
   if (isLoading && tab.content === null) {
     return <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm">Loading rules…</div>
   }
@@ -344,6 +356,17 @@ function RulesEditor({ tab, onCursor }) {
             {regionsCollapsed ? 'Expand' : 'Collapse'}
           </button>
           <button
+            onClick={() => setShowSnippets(s => !s)}
+            className={cn(
+              'flex items-center gap-1 px-2 py-1 rounded text-xs border transition-colors',
+              showSnippets ? 'bg-primary text-primary-foreground border-primary' : 'bg-background/80 border-border text-muted-foreground hover:text-foreground'
+            )}
+            title="Toggle snippets panel"
+          >
+            <Braces size={11} />
+            Snippets
+          </button>
+          <button
             onClick={() => setShowLineage(s => !s)}
             className={cn(
               'flex items-center gap-1 px-2 py-1 rounded text-xs border transition-colors',
@@ -365,6 +388,11 @@ function RulesEditor({ tab, onCursor }) {
           options={{ fontSize: 13, minimap: { enabled: false }, wordWrap: 'on', scrollBeyondLastLine: false }}
         />
       </div>
+      {showSnippets && (
+        <div className="w-72 shrink-0 border-l border-border flex flex-col bg-sidebar overflow-hidden">
+          <SnippetPanel snippets={getSnippets('rules')} onInsert={insertSnippet} />
+        </div>
+      )}
       {showLineage && (
         <LineagePanel server={tab.server} cube={tab.cube} onOpen={openCube} />
       )}
@@ -391,16 +419,17 @@ function getRevealTarget(tab) {
   return null
 }
 
-export default function EditorPane() {
-  const { tabs, activeTab, setRevealTarget } = useStore()
+export default function EditorPane({ groupId }) {
+  const { tabs, groups, setRevealTarget, setActiveGroup } = useStore()
+  const group = groups.find(g => g.id === groupId)
+  const tab = tabs.find(t => t.id === group?.activeTabId)
   const [cursor, setCursorLocal] = useState({ line: 1, col: 1 })
-  const tab = tabs.find(t => t.id === activeTab)
 
   const handleCursor = (pos) => setCursorLocal(pos)
 
   if (!tab) {
     return (
-      <div className="flex-1 flex flex-col min-h-0">
+      <div className="flex-1 flex flex-col min-h-0" onClick={() => setActiveGroup(groupId)}>
         <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm select-none">
           Open an object from the explorer to start editing.
         </div>
@@ -410,18 +439,19 @@ export default function EditorPane() {
   }
 
   return (
-    <div className="flex-1 flex flex-col min-h-0">
+    <div className="flex-1 flex flex-col min-h-0" onClick={() => setActiveGroup(groupId)}>
       <div className="flex-1 min-h-0">
-        {tab.type === 'rules'     && <RulesEditor     key={tab.id} tab={tab} onCursor={handleCursor} />}
-        {tab.type === 'process'   && <ProcessEditor    key={tab.id} tab={tab} />}
-        {tab.type === 'subset'    && <SubsetEditor     key={tab.id} tab={tab} />}
-        {tab.type === 'dimension' && <DimensionEditor  key={tab.id} tab={tab} />}
+        {tab.type === 'rules'      && <RulesEditor    key={tab.id} tab={tab} onCursor={handleCursor} />}
+        {tab.type === 'process'    && <ProcessEditor  key={tab.id} tab={tab} />}
+        {tab.type === 'subset'     && <SubsetEditor   key={tab.id} tab={tab} />}
+        {tab.type === 'dimension'  && <DimensionEditor key={tab.id} tab={tab} />}
         {(tab.type === 'view' || tab.type === 'cubeview') && <ViewEditor key={tab.id} tab={tab} />}
+        {tab.type === 'mdxsandbox' && <MDXSandbox     key={tab.id} tab={tab} onCursor={handleCursor} />}
       </div>
       <div className="flex items-center px-3 py-0.5 bg-muted border-t border-border text-xs text-muted-foreground shrink-0">
         <span>Ln {cursor.line}, Col {cursor.col}</span>
         <span className="ml-4">
-          {tab.type === 'rules' ? 'TM1 Rules' : tab.type === 'subset' ? 'MDX' : tab.type === 'dimension' ? 'Dimension' : tab.type === 'view' || tab.type === 'cubeview' ? 'View' : 'TM1 TI'}
+          {tab.type === 'rules' ? 'TM1 Rules' : tab.type === 'subset' ? 'MDX' : tab.type === 'dimension' ? 'Dimension' : tab.type === 'view' || tab.type === 'cubeview' ? 'View' : tab.type === 'mdxsandbox' ? 'MDX' : 'TM1 TI'}
         </span>
         {getRevealTarget(tab) && (
           <button

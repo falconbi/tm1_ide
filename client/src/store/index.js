@@ -39,7 +39,13 @@ const _saveForge = (state) => {
     fetch('/api/forge', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ server: state.server, tabs: state.tabs, activeTab: state.activeTab }),
+      body: JSON.stringify({
+        server: state.server,
+        tabs: state.tabs,
+        activeTab: state.activeTab,
+        groups: state.groups,
+        activeGroupId: state.activeGroupId,
+      }),
     }).catch(() => {})
   }, 800)
 }
@@ -80,7 +86,18 @@ export const useStore = create((set, get) => ({
       const forge = await r.json()
       const patch = {}
       if (forge.server) patch.server = forge.server
-      if (forge.tabs?.length) { patch.tabs = forge.tabs; patch.activeTab = forge.activeTab ?? null }
+      if (forge.tabs?.length) {
+        patch.tabs = forge.tabs
+        patch.activeTab = forge.activeTab ?? null
+        if (forge.groups?.length) {
+          patch.groups = forge.groups
+          patch.activeGroupId = forge.activeGroupId ?? forge.groups[0].id
+        } else {
+          // Migrate old single-group forge state
+          patch.groups = [{ id: 'g1', tabIds: forge.tabs.map(t => t.id), activeTabId: forge.activeTab ?? null }]
+          patch.activeGroupId = 'g1'
+        }
+      }
       patch.forgeLoaded = true
       set(patch)
     } catch { set({ forgeLoaded: true }) }
@@ -90,22 +107,36 @@ export const useStore = create((set, get) => ({
   server: null,
   setServer: (server) => { set({ server }); _saveForge({ ...get(), server }) },
 
-  // ── Tabs (open editors) ──────────────────────────────────────────────────────
+  // ── Tabs & Editor Groups ─────────────────────────────────────────────────────
+  // tabs is flat; groups track which tabIds belong to each group and which is active.
   tabs: [],
   activeTab: null,
+  groups: [{ id: 'g1', tabIds: [], activeTabId: null }],
+  activeGroupId: 'g1',
 
   /** @param {Tab} tab */
   openTab: (tab) => {
-    const existing = get().tabs.find(t => t.id === tab.id)
-    if (existing) {
+    const { groups, activeGroupId } = get()
+    const existingGroup = groups.find(g => g.tabIds.includes(tab.id))
+    if (existingGroup) {
+      // Already open somewhere — activate that group and tab
       set(s => ({
         tabs: s.tabs.map(t => t.id === tab.id
           ? { ...t, scrollToLine: tab.scrollToLine ?? null, scrollToSection: tab.scrollToSection ?? null }
           : t),
+        groups: s.groups.map(g => g.id === existingGroup.id ? { ...g, activeTabId: tab.id } : g),
+        activeGroupId: existingGroup.id,
         activeTab: tab.id,
       }))
     } else {
-      set(s => ({ tabs: [...s.tabs, tab], activeTab: tab.id }))
+      // New tab — add to active group
+      set(s => ({
+        tabs: [...s.tabs, tab],
+        groups: s.groups.map(g => g.id === activeGroupId
+          ? { ...g, tabIds: [...g.tabIds, tab.id], activeTabId: tab.id }
+          : g),
+        activeTab: tab.id,
+      }))
     }
     const { content, dirty, ...meta } = tab
     const history = [meta, ...get().tabHistory.filter(h => h.id !== tab.id)].slice(0, 10)
@@ -121,34 +152,87 @@ export const useStore = create((set, get) => ({
   },
 
   closeTab: (id) => {
-    const tabs = get().tabs.filter(t => t.id !== id)
-    const activeTab = get().activeTab === id
-      ? (tabs.at(-1)?.id ?? null)
-      : get().activeTab
-    set({ tabs, activeTab })
-    _saveForge({ ...get(), tabs, activeTab })
+    const { tabs, groups, activeGroupId } = get()
+    const newTabs = tabs.filter(t => t.id !== id)
+    const groupIdx = groups.findIndex(g => g.tabIds.includes(id))
+    if (groupIdx < 0) { set({ tabs: newTabs }); return }
+
+    const group = groups[groupIdx]
+    const newTabIds = group.tabIds.filter(tid => tid !== id)
+    let newGroups, newActiveGroupId = activeGroupId
+
+    if (newTabIds.length === 0 && groups.length > 1) {
+      // Last tab in group and not the only group — remove the group
+      newGroups = groups.filter((_, i) => i !== groupIdx)
+      newActiveGroupId = newGroups[Math.max(0, groupIdx - 1)].id
+    } else {
+      const newActiveTabId = group.activeTabId === id ? (newTabIds.at(-1) ?? null) : group.activeTabId
+      newGroups = groups.map((g, i) => i === groupIdx ? { ...g, tabIds: newTabIds, activeTabId: newActiveTabId } : g)
+    }
+
+    const newActiveTab = newGroups.find(g => g.id === newActiveGroupId)?.activeTabId ?? null
+    set({ tabs: newTabs, groups: newGroups, activeGroupId: newActiveGroupId, activeTab: newActiveTab })
+    _saveForge(get())
   },
 
-  setActiveTab: (id) => { set({ activeTab: id }); _saveForge({ ...get(), activeTab: id }) },
+  setActiveTab: (id) => {
+    const group = get().groups.find(g => g.tabIds.includes(id))
+    if (!group) return
+    set(s => ({
+      activeTab: id,
+      activeGroupId: group.id,
+      groups: s.groups.map(g => g.id === group.id ? { ...g, activeTabId: id } : g),
+    }))
+    _saveForge(get())
+  },
 
-  closeAllTabs: () => { set({ tabs: [], activeTab: null }); _saveForge({ ...get(), tabs: [], activeTab: null }) },
+  closeAllTabs: () => {
+    set({ tabs: [], activeTab: null, groups: [{ id: 'g1', tabIds: [], activeTabId: null }], activeGroupId: 'g1' })
+    _saveForge(get())
+  },
+
+  splitGroup: () => {
+    const { activeTab } = get()
+    if (!activeTab) return
+    const newGroupId = `g${Date.now()}`
+    set(s => ({
+      groups: [...s.groups, { id: newGroupId, tabIds: [activeTab], activeTabId: activeTab }],
+      activeGroupId: newGroupId,
+    }))
+    _saveForge(get())
+  },
+
+  setActiveGroup: (groupId) => {
+    const group = get().groups.find(g => g.id === groupId)
+    if (!group) return
+    set({ activeGroupId: groupId, activeTab: group.activeTabId })
+  },
+
+  closeGroup: (groupId) => {
+    const { groups, tabs } = get()
+    if (groups.length <= 1) return
+    const groupIdx = groups.findIndex(g => g.id === groupId)
+    if (groupIdx < 0) return
+    const group = groups[groupIdx]
+    const newGroups = groups.filter(g => g.id !== groupId)
+    const newActiveGroupId = newGroups[Math.max(0, groupIdx - 1)].id
+    const otherTabIds = new Set(newGroups.flatMap(g => g.tabIds))
+    const newTabs = tabs.filter(t => otherTabIds.has(t.id) || !group.tabIds.includes(t.id))
+    const newActiveTab = newGroups.find(g => g.id === newActiveGroupId)?.activeTabId ?? null
+    set({ groups: newGroups, activeGroupId: newActiveGroupId, tabs: newTabs, activeTab: newActiveTab })
+    _saveForge(get())
+  },
 
   initTabContent: (id, content) => {
-    set(s => ({
-      tabs: s.tabs.map(t => t.id === id ? { ...t, content } : t),
-    }))
+    set(s => ({ tabs: s.tabs.map(t => t.id === id ? { ...t, content } : t) }))
   },
 
   updateTabContent: (id, content) => {
-    set(s => ({
-      tabs: s.tabs.map(t => t.id === id ? { ...t, content, dirty: true } : t),
-    }))
+    set(s => ({ tabs: s.tabs.map(t => t.id === id ? { ...t, content, dirty: true } : t) }))
   },
 
   markTabSaved: (id) => {
-    set(s => ({
-      tabs: s.tabs.map(t => t.id === id ? { ...t, dirty: false } : t),
-    }))
+    set(s => ({ tabs: s.tabs.map(t => t.id === id ? { ...t, dirty: false } : t) }))
   },
 
   subsetVersions: {},

@@ -17,7 +17,8 @@ export const useEdges     = (server, dim, hierarchy) => useQuery({ queryKey: ['e
 export const useCubes    = (server)     => useQuery({ queryKey: ['cubes', server],     queryFn: () => get(`/api/cubes?server=${enc(server)}`),      enabled: !!server })
 export const useDims     = (server)     => useQuery({ queryKey: ['dims', server],      queryFn: () => get(`/api/dimensions?server=${enc(server)}`),  enabled: !!server })
 export const useProcs    = (server)     => useQuery({ queryKey: ['procs', server],     queryFn: () => get(`/api/processes?server=${enc(server)}`),   enabled: !!server })
-export const useChores   = (server)     => useQuery({ queryKey: ['chores', server],    queryFn: () => get(`/api/chores?server=${enc(server)}`),      enabled: !!server })
+export const useChores          = (server) => useQuery({ queryKey: ['chores', server],          queryFn: () => get(`/api/chores?server=${enc(server)}`),          enabled: !!server })
+export const useControlObjects  = (server) => useQuery({ queryKey: ['control-objects', server], queryFn: () => get(`/api/control/objects?server=${enc(server)}`), enabled: !!server, staleTime: 60_000 })
 export const useRules    = (server, cube) => useQuery({ queryKey: ['rules', server, cube], queryFn: () => get(`/api/rules?server=${enc(server)}&cube=${enc(cube)}`), enabled: !!server && !!cube })
 export const useProcess  = (server, name) => useQuery({ queryKey: ['process', server, name], queryFn: () => get(`/api/process?server=${enc(server)}&name=${enc(name)}`), enabled: !!server && !!name })
 

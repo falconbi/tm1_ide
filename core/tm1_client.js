@@ -289,6 +289,19 @@ class TM1Client {
         return (d.value ?? []).map(r => r.Name).filter(n => !n.startsWith('}'))
     }
 
+    async getControlObjects() {
+        const [cubesRaw, dimsRaw, procsRaw] = await Promise.all([
+            this.get('Cubes',      { '$select': 'Name' }),
+            this.get('Dimensions', { '$select': 'Name' }),
+            this.get('Processes',  { '$select': 'Name' }),
+        ])
+        return {
+            cubes:      (cubesRaw.value  ?? []).map(r => r.Name).filter(n => n.startsWith('}')).sort(),
+            dimensions: (dimsRaw.value   ?? []).map(r => r.Name).filter(n => n.startsWith('}')).sort(),
+            processes:  (procsRaw.value  ?? []).map(r => r.Name).filter(n => n.startsWith('}')).sort(),
+        }
+    }
+
     // ── Cubes ─────────────────────────────────────────────────────────────────
 
     async getCube(name) {
@@ -329,6 +342,36 @@ class TM1Client {
 
     async executeProcess(name, params = {}) {
         return this.post(`Processes('${name}')/tm1.Execute`, { Parameters: params })
+    }
+
+    async createOrReplaceProcess(proc) {
+        // proc: { name, prolog, metadata, data, epilog, parameters }
+        const body = {
+            Name:               proc.name,
+            PrologProcedure:    proc.prolog   ?? '',
+            MetadataProcedure:  proc.metadata ?? '',
+            DataProcedure:      proc.data     ?? '',
+            EpilogProcedure:    proc.epilog   ?? '',
+            HasSecurityAccess:  false,
+            DataSource:         { Type: 'None' },
+            Parameters:         (proc.parameters ?? []).map(p => ({
+                Name:   p.Name,
+                Type:   p.Type,
+                Value:  p.Value ?? '',
+                Prompt: p.Prompt ?? '',
+            })),
+            Variables: [],
+        }
+        try {
+            await this.post('Processes', body)
+        } catch (e) {
+            // Process already exists — patch it
+            if (e.response?.status === 409 || e.response?.status === 400) {
+                await this.patch(`Processes('${encodeURIComponent(proc.name)}')`, body)
+            } else {
+                throw e
+            }
+        }
     }
 
     // ── Chores ────────────────────────────────────────────────────────────────
