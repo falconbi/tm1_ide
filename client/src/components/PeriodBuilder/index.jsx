@@ -9,24 +9,24 @@ import {
   generateRolloverSections,
 } from './lib/generateTI.js'
 import Step1Parameters from './Step1Parameters.jsx'
-import Step2Preview from './Step2Preview.jsx'
 import Step3Subsets from './Step3Subsets.jsx'
+
+const currentYear = new Date().getFullYear()
 
 const DEFAULT_PARAMS = {
   dimensionName: 'GBL Period',
   fyStartMonth: 4,
-  firstCalYear: new Date().getFullYear() - 2,
-  lastCalYear: new Date().getFullYear() + 8,
+  firstFY: currentYear - 1,
+  lastFY: currentYear + 9,
   yearFormat: 'fy-end',
   monthFormat: 'YYYY-MM',
   captionFormat: 'Mon-YY',
   longNameFormat: 'Month YYYY',
-  includeTotal: false,
-  partialBoundary: 'include',
-  includeCurrentPeriodAttr: true,
+  replaceDimension: false,
+  defaultCurrentPeriod: '',
 }
 
-const STEPS = ['Parameters', 'FY Preview', 'Subsets & Output']
+const STEPS = ['Parameters', 'Subsets & Output']
 
 export default function PeriodBuilder({ open, onClose }) {
   const { server } = useStore()
@@ -39,16 +39,6 @@ export default function PeriodBuilder({ open, onClose }) {
   const [subsetPrefix, setSubsetPrefix] = useState('')
   const [generating, setGenerating]     = useState(false)
   const [result, setResult]             = useState(null)
-
-  // Re-filter selected subsets when Is Current Period toggled off
-  useEffect(() => {
-    if (!params.includeCurrentPeriodAttr) {
-      setSubsets(prev => prev.filter(id => {
-        const def = SUBSET_DEFS.find(d => d.id === id)
-        return !def?.requiresCurrent
-      }))
-    }
-  }, [params.includeCurrentPeriodAttr])
 
   useEffect(() => {
     if (!open) return
@@ -72,14 +62,14 @@ export default function PeriodBuilder({ open, onClose }) {
     setGenerating(true)
     setResult(null)
     try {
-      const buildSections    = generateBuildDimensionSections(params, computed)
-      const subsetsSections  = generateRefreshSubsetsSections(params, computed, selectedSubsets, subsetPrefix)
+      const buildSections    = generateBuildDimensionSections(params, selectedSubsets)
+      const subsetsSections  = generateRefreshSubsetsSections(params, selectedSubsets, subsetPrefix)
       const rolloverSections = generateRolloverSections(params)
 
       const processes = [
-        { name: `${params.dimensionName}.BuildDimension`,  ...buildSections,    parameters: [] },
-        { name: `${params.dimensionName}.RefreshSubsets`,  ...subsetsSections,  parameters: [] },
-        { name: `${params.dimensionName}.Rollover`,        ...rolloverSections },
+        { name: `${params.dimensionName}.Build Period Dimension`, ...buildSections },
+        { name: `${params.dimensionName}.Refresh Subsets`,       ...subsetsSections },
+        { name: `${params.dimensionName}.Rollover`,              ...rolloverSections },
       ]
 
       const res = await fetch('/api/period-builder/run', {
@@ -89,13 +79,11 @@ export default function PeriodBuilder({ open, onClose }) {
           server,
           dimensionName: params.dimensionName,
           processes,
-          elements: computed.elements,
-          edges:    computed.edges,
         }),
       })
       const data = await res.json()
       setResult(data.ok
-        ? { ok: true,  message: `${params.dimensionName} built on ${server} — 3 processes created` }
+        ? { ok: true,  message: `3 TI processes created on ${server}` }
         : { ok: false, message: data.error ?? 'Unknown error' }
       )
     } catch (e) {
@@ -119,7 +107,6 @@ export default function PeriodBuilder({ open, onClose }) {
         <div className="flex items-center gap-4 px-6 py-3 border-b border-border shrink-0">
           <span className="font-semibold text-sm">Period Dimension Builder</span>
 
-          {/* Step indicators */}
           <div className="flex items-center gap-1 ml-2">
             {STEPS.map((label, i) => (
               <div key={i} className="flex items-center gap-1">
@@ -156,9 +143,6 @@ export default function PeriodBuilder({ open, onClose }) {
             </div>
           )}
           {step === 1 && computed && (
-            <Step2Preview params={params} computed={computed} />
-          )}
-          {step === 2 && computed && (
             <Step3Subsets
               params={params}
               computed={computed}

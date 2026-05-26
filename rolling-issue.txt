@@ -1,0 +1,58 @@
+Rolling 12/6/3 Consolidation — Off-by-One Issue
+================================================
+
+Current Approach
+----------------
+Uses day-based date serial filtering to determine which months are children
+of the Rolling 12/6/3 consolidations.
+
+  nCurStart = ParseDate(sCurStr, 'yyyyMMdd', nFmt) + 21916
+  nSerial   = ParseDate(sMStr,    'yyyyMMdd', nFmt) + 21916
+
+  Filter:  nSerial <= nCurStart AND nSerial > nCurStart - DAYS
+
+  DAYS values:  365 (Rolling 12), 183 (Rolling 6), 90 (Rolling 3)
+
+Where:
+  - nCurStart = first day of the current period month (e.g. May 1, 2026)
+  - nSerial   = first day of the candidate month
+
+The Problem
+-----------
+Day-based boundaries don't align with month boundaries. Month lengths vary
+(28-31 days), so a fixed number of days can include a different number of
+months depending on where the cutoff falls.
+
+Example: Current period = May 2026, 365 days back ≈ May 2025.
+  - May 2025 is EXACTLY 365 days before May 2026
+  - The filter "nSerial > nCurStart - 365" EXCLUDES May 2025
+  - Result: June 2025 through May 2026 = 12 months (correct!)
+  - BUT if months have varying lengths, the cutoff can shift by 1-2 days
+  - A slightly different month configuration could include/exclude 1 extra
+
+Similarly: 90 days can give 3 or 4 months depending on boundary alignment.
+
+What Was Tried
+--------------
+Changed values:  367 → 365, 184 → 183, 93 → 90.
+This reduced the overcount but doesn't solve the fundamental imprecision
+of day-based windows versus month boundaries.
+
+Potential Fix
+-------------
+Count months by fiscal position instead of days:
+
+  nFisP = MOD(vCalM - pFYStartM + 12, 12) + 1   (fiscal position 1-12)
+
+  For Rolling 12: include months whose fiscal position is within
+  12 positions of the current period (wrapping across FY boundaries)
+
+  For Rolling 6:  within 6 positions
+  For Rolling 3:  within 3 positions
+
+This approach counts months directly, avoiding the day-length variance issue.
+
+File Location
+-------------
+/home/jdlove/apps/tm1_ide/client/src/components/PeriodBuilder/lib/computeDimension.js
+Top-level consolidations WHILE loop (~lines 275-290)

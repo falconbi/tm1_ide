@@ -1,0 +1,94 @@
+================================================================================
+IBM PLANNING ANALYTICS (TM1) - CUBE RULES FUNCTIONS
+Complete List
+================================================================================
+
+1. LOGICAL FUNCTIONS
+--------------------
+IF(condition, TrueValue, FalseValue)
+STET                                → Skip this rule (return previous value)
+CONTINUE                            → Continue to next rule
+
+2. MATHEMATICAL FUNCTIONS
+-------------------------
+ABS(Number)
+EXP(Number)
+INT(Number)
+LOG(Number)
+LOG10(Number)
+MOD(Number, Divisor)
+POW(Base, Exponent)
+ROUND(Number, Decimals)
+SQRT(Number)
+TRUNC(Number, Decimals)
+
+3. STRING FUNCTIONS
+-------------------
+LONG(String)
+LOWER(String)
+UPPER(String)
+SUBST(String, Start, Length)
+TRIM(String)
+CHAR(Code)
+CODE(String)
+
+4. DATE & TIME FUNCTIONS
+------------------------
+DATE(Number)                        → Serial to string
+DATES(Year, Month, Day)             → Create date string
+DAY(Date)
+MONTH(Date)
+YEAR(Date)
+NOW
+TIMST(Number, Format)
+TIMVL(String, Format)
+
+5. LOOKUP & CROSS CUBE FUNCTIONS
+--------------------------------
+DB(CubeName, El1, El2, ..., Measure)
+DBR(CubeName, El1, El2, ..., Measure)   → Same as DB
+
+6. CONSOLIDATION FUNCTIONS
+--------------------------
+C: SUM(CHILDREN)
+C: AVG(CHILDREN)
+C: MIN(CHILDREN)
+C: MAX(CHILDREN)
+C: FIRST(CHILDREN)
+C: LAST(CHILDREN)
+
+7. SPECIAL RULES KEYWORDS
+-------------------------
+SKIPCHECK;          → Disable zero suppression check
+FEEDERS;            → Start of feeder section
+NOFEEDERS;          → Disable automatic feeders
+STET;               → Skip this calculation
+CONTINUE;           → Move to next rule
+
+8. OPERATORS
+------------
++   -   *   /   ^
+&                   → String concatenation
+=   <>   >   <   >=   <=
+@=                  → String comparison
+
+9. ADVANCED / LESS COMMON
+-------------------------
+ISLEAF(Element)
+ISCONS(Element)
+ELPAR(Dim, Element, Level)
+ELWEIGHT(Dim, Parent, Child)
+ELCNT(Dim, Parent)
+
+10. EXAMPLE USAGE
+-----------------
+['Revenue'] = ['Price'] * ['Quantity'];
+['Margin %'] = IF(['Revenue'] <> 0, ['Margin'] / ['Revenue'] * 100, 0);
+['YTD'] = C: ['Revenue'] + DB('ThisCube', !Account, !Month-1, 'YTD');
+
+================================================================================
+Notes:
+- Rules are calculated top to bottom.
+- Use N: and C: prefixes for leaf vs consolidated level control.
+- Always pair SKIPCHECK with proper FEEDERS for performance.
+================================================================================

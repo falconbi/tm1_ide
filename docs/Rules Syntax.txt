@@ -1,0 +1,91 @@
+================================================================================
+IBM PLANNING ANALYTICS (TM1) - CUBE RULES REFERENCE
+Version 2.0.x
+================================================================================
+
+1. RULES GENERAL RULES
+----------------------
+- Rules are written in the **Rules** tab of a cube
+- Every rule statement ends with a semicolon `;`
+- Comments start with `#`
+- Rules are calculated in the order they are written
+- Use `SKIPCHECK;` and `FEEDERS;` for performance
+
+2. BASIC RULE STRUCTURE
+-----------------------
+['Measure Name'] = Expression;
+
+Example:
+['Revenue'] = ['Price'] * ['Quantity'];
+['Total Cost'] = ['Unit Cost'] * ['Units'];
+
+3. CONSOLIDATION RULES
+----------------------
+['Total Revenue'] = C: SUM(CHILDREN);
+['Total'] = C: ['Revenue'] + ['Other Income'];
+
+4. LEAF vs CONSOLIDATED RULES
+-----------------------------
+N: ['Revenue'] = ['Price'] * ['Quantity'];     # Only leaf level
+C: ['Total Revenue'] = SUM(CHILDREN);          # Only consolidated level
+
+5. LOGICAL FUNCTIONS
+--------------------
+IF(condition, TrueValue, FalseValue)
+
+Example:
+['Gross Margin %'] = IF(['Revenue'] <> 0, ['Gross Margin'] / ['Revenue'], 0);
+
+6. LOOKUP FUNCTIONS
+-------------------
+DB('OtherCube', Dim1Element, Dim2Element, ..., Measure)
+
+Example:
+['Budget Revenue'] = DB('Budget Cube', !Product, !Region, 'Revenue');
+
+7. SPECIAL KEYWORDS
+-------------------
+STET;           → Skip this rule (do nothing)
+CONTINUE;       → Continue to next rule
+SKIPCHECK;      → Skip zero suppression check
+FEEDERS;        → Start of feeder section
+NOFEEDERS;      → Disable feeders
+
+8. FEEDERS
+----------
+Feeder syntax:
+['Source Measure'] => ['Target Measure'];
+
+Example:
+['Quantity'] => ['Total Quantity'];
+['Price'] * ['Quantity'] => ['Revenue'];
+
+9. COMMON OPERATORS
+-------------------
++ - * / ^ 
+&               → String concatenation
+=  <>  >  <  >=  <=
+@=              → String comparison
+
+10. USEFUL RULES PATTERNS
+-------------------------
+# Percentage Calculation
+['Margin %'] = IF(['Revenue'] <> 0, ['Margin'] / ['Revenue'] * 100, 0);
+
+# Opening Balance
+['Opening'] = DB('Closing Cube', !Account, !Month-1);
+
+# Year-to-Date
+['YTD'] = C: ['Revenue'] + DB('This Cube', !Account, !Month-1, 'YTD');
+
+11. BEST PRACTICES
+------------------
+- Put SKIPCHECK; at the top
+- Write FEEDERS at the bottom
+- Keep rules simple and readable
+- Use N: and C: where appropriate
+- Always test feeders thoroughly
+
+================================================================================
+End of TM1 Cube Rules Reference
+================================================================================

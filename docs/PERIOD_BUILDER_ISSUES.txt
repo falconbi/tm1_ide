@@ -1,0 +1,145 @@
+Period Builder — Code Review & Root Cause Analysis
+===================================================
+
+Root Cause: ElementAttrPutS/ElementAttrPutN called with 5 args instead of 4
+----------------------------------------------------------------------------
+
+Standard TM1 TI function signatures (4 arguments):
+
+    ElementAttrPutN(Value, DimName, ElName, AttrName)
+    ElementAttrPutS(Value, DimName, ElName, AttrName)
+
+The codebase generates TI code with an extra hierarchy parameter (5 arguments):
+
+    ElementAttrPutN(val, dim, hierarchy, elemName, attrName)    // ❌ 5 args
+    ElementAttrPutS(val, dim, hierarchy, elemName, attrName)    // ❌ 5 args
+
+TM1 interprets the extra argument incorrectly:
+  - dim       → still DimName (correct)
+  - hierarchy → interpreted as ElName   (WRONG — e.g. "GBL Period" instead of element name)
+  - elemName  → interpreted as AttrName (WRONG)
+  - attrName  → invalid 5th argument    (WRONG)
+
+All attribute writes fail silently as a result.
+
+Proof: The probeAttributeWrite() function at core/tm1_client.js:222-223 uses the
+CORRECT 4-arg syntax. The production code was written with an incorrect 5-arg
+form that doesn't match the probe.
+
+-----
+
+Affected Locations
+------------------
+
+1. client/src/components/PeriodBuilder/lib/generateTI.js:63
+
+    out.push(`ElementAttrPutN(${val}, pDimension, pDimension, '${elemName}', '${attr}');`)
+    //                                ^^^^^^^^^^  ^^^^^^^^^^  extra "pDimension" as hierarchy
+
+    Should be:
+
+    out.push(`ElementAttrPutN(${val}, pDimension, '${elemName}', '${attr}');`)
+
+2. client/src/components/PeriodBuilder/lib/generateTI.js:65
+
+    out.push(`ElementAttrPutS('${val}', pDimension, pDimension, '${elemName}', '${attr}');`)
+    //                                    ^^^^^^^^^^  ^^^^^^^^^^  extra "pDimension" as hierarchy
+
+    Should be:
+
+    out.push(`ElementAttrPutS('${val}', pDimension, '${elemName}', '${attr}');`)
+
+3. client/src/components/PeriodBuilder/lib/generateTI.js:323
+
+    out.push(`  ElementAttrPutS('', pDimension, pDimension, sOldPeriod, 'Is Current Period');`)
+    //                                          ^^^^^^^^^^  ^^^^^^^^^^  extra "pDimension"
+
+    Should be:
+
+    out.push(`  ElementAttrPutS('', pDimension, sOldPeriod, 'Is Current Period');`)
+
+4. client/src/components/PeriodBuilder/lib/generateTI.js:325
+
+    out.push(`ElementAttrPutS('Y', pDimension, pDimension, sNewPeriod, 'Is Current Period');`)
+    //                                   ^^^^^^^^^^  ^^^^^^^^^^  extra "pDimension"
+
+    Should be:
+
+    out.push(`ElementAttrPutS('Y', pDimension, sNewPeriod, 'Is Current Period');`)
+
+5. core/tm1_client.js:262-263 (writeElementAttribute method)
+
+    ElementAttrPutN(${Number(value)}, '${safe(dim)}', '${safe(hierarchy)}', '${safe(element)}', '${safe(attribute)}');
+    //                                               ^^^^^^^^^^^^^^^^^^^^  extra hierarchy arg
+
+    Should be:
+
+    ElementAttrPutN(${Number(value)}, '${safe(dim)}', '${safe(element)}', '${safe(attribute)}');
+
+    And:
+
+    ElementAttrPutS('${safe(String(value))}', '${safe(dim)}', '${safe(hierarchy)}', '${safe(element)}', '${safe(attribute)}');
+
+    Should be:
+
+    ElementAttrPutS('${safe(String(value))}', '${safe(dim)}', '${safe(element)}', '${safe(attribute)}');
+
+    Note: The writeElementAttribute method signature has a "hierarchy" parameter
+    that defaults to "dim". That parameter is used correctly for REST API calls
+    elsewhere (e.g. addElement, getElements, etc. where hierarchy is part of the
+    URL path). But it should NOT be injected into TI function calls because TI
+    functions don't support it.
+
+-----
+
+Secondary Issue: Silent Error Swallowing
+----------------------------------------
+
+server.js:843-853 — all addElement and addEdge calls discard errors with
+.catch(() => {}). If any REST call fails (network, permissions, TM1 errors),
+the server continues and returns { ok: true }.
+
+    await Promise.all(consolidated.map(e =>
+        client.addElement(dimensionName, e.name, e.type).catch(() => {})  // <-- swallows all errors
+    ))
+    await Promise.all(numeric.map(e =>
+        client.addElement(dimensionName, e.name, e.type).catch(() => {})  // <-- swallows all errors
+    ))
+    await Promise.all(edges.map(e =>
+        client.addEdge(dimensionName, e.parent, e.child, e.weight ?? 1).catch(() => {})  // <-- swallows all errors
+    ))
+
+-----
+
+Impact Summary
+--------------
+
+  ┌──────────────────────────────────────────────────────────────────┐
+  │ Period Builder Step 5 (attribute writes via inline TI):          │
+  │   - ALL 13 attributes × N months fail silently due to 5-arg bug │
+  │                                                                  │
+  │ Period Builder Step 6 (saved TI processes):                      │
+  │   - BuildDimension: epilog with 5-arg calls → fails on execute  │
+  │   - Rollover: prolog with 5-arg calls → fails on execute        │
+  │   - RefreshSubsets: prolog only, no attr writes → works         │
+  │                                                                  │
+  │ IDE attribute editor (server.js:204):                            │
+  │   - POST /api/element/attribute → uses writeElementAttribute    │
+  │   - Also generates 5-arg TI → all individual attribute edits    │
+  │     from the IDE fail silently                                   │
+  └──────────────────────────────────────────────────────────────────┘
+
+Correct 4-arg reference (known working):
+  probeAttributeWrite() at core/tm1_client.js:222-223
+
+========================================
+STATUS AFTER FIX (2026-05-25)
+========================================
+
+✅ generateTI.js:63,65 — 4-arg ElementAttrPutS/N (pDimension removed as hierarchy arg)
+✅ generateTI.js:323,325 — 4-arg ElementAttrPutS in Rollover prolog
+✅ tm1_client.js:282-283 — 4-arg ElementAttrPutS/N in writeElementAttribute
+✅ index.jsx:94 — attributes: computed.attributes added to POST body
+✅ static/ rebuilt from client/dist/ — served files now have 4-arg code
+✅ ide.html restored for SPA fallback (server.js:960)
+✅ Server restarted on port 8083

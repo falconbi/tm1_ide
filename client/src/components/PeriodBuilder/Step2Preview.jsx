@@ -4,25 +4,17 @@ export default function Step2Preview({ params, computed }) {
   const { fyData, includedFYs, includedMonths } = computed
   const { fyStartMonth, yearFormat, monthFormat } = params
 
-  const totalMonths  = includedMonths.length
-  const totalFYs     = includedFYs.length
-  const partialCount = includedFYs.filter(fy => fyData[fy]?.isPartial).length
+  const totalMonths = includedMonths.length
+  const totalFYs    = includedFYs.length
 
   return (
     <div className="flex flex-col gap-4 p-6 h-full overflow-hidden">
-      {/* Summary stats */}
       <div className="flex gap-6 text-sm">
         <span><span className="text-muted-foreground">Fiscal years: </span><span className="font-medium">{totalFYs}</span></span>
         <span><span className="text-muted-foreground">Months: </span><span className="font-medium">{totalMonths}</span></span>
-        {partialCount > 0 && (
-          <span className="text-amber-500">
-            {partialCount} partial {partialCount === 1 ? 'FY' : 'FYs'}
-            {params.partialBoundary === 'include' ? ' (included)' : ' (excluded)'}
-          </span>
-        )}
+        <span className="text-muted-foreground">(all full 12-month FYs)</span>
       </div>
 
-      {/* FY boundary table */}
       <div className="flex-1 overflow-y-auto border border-border rounded text-xs font-mono">
         <table className="w-full">
           <thead className="sticky top-0 bg-card z-10">
@@ -34,18 +26,12 @@ export default function Step2Preview({ params, computed }) {
           </thead>
           <tbody>
             {includedFYs.map(fyYear => {
-              const fyName  = formatFY(fyYear, fyStartMonth, yearFormat)
-              const months  = fyData[fyYear]?.months ?? []
-              const partial = fyData[fyYear]?.isPartial
+              const fyName = formatFY(fyYear, fyStartMonth, yearFormat)
+              const months = fyData[fyYear]?.months ?? []
 
               return (
                 <tr key={fyYear} className="border-b border-border/50 hover:bg-muted/30">
-                  <td className="px-3 py-1.5 font-medium">
-                    {fyName}
-                    {partial && (
-                      <span className="ml-1.5 text-amber-500 text-[10px]">partial</span>
-                    )}
-                  </td>
+                  <td className="px-3 py-1.5 font-medium">{fyName}</td>
                   <td className="px-3 py-1.5">
                     <div className="flex flex-wrap gap-1">
                       {months.map(({ year, month }) => (
@@ -70,7 +56,7 @@ export default function Step2Preview({ params, computed }) {
 
       <p className="text-xs text-muted-foreground">
         FY start: <strong>{MONTH_SHORT[fyStartMonth - 1]}</strong>.
-        Go back to Step 1 to adjust if this does not match your calendar.
+        Each FY has exactly 12 months. Go back to Step 1 to adjust.
       </p>
     </div>
   )

@@ -1,0 +1,119 @@
+IBM Planning Analytics (TM1) - TurboIntegrator (TI) Syntax Rules Guide
+====================================================================
+
+1. General Rules
+----------------
+- Every statement must end with a semicolon: ;
+- String literals must be enclosed in single quotes: 'Text'
+- Variable names are case-insensitive
+- Comments: # (hash) for single line
+- Maximum argument length: 256 characters
+- TI processes have 4 tabs: Prolog, Metadata, Data, Epilog
+
+2. Logical Operators (Very Important)
+-------------------------------------
+AND     →   &
+OR      →   %
+NOT     →   ~
+NOT EQUAL →   ~=
+
+Example:
+IF( nMonth = 2 & (MOD(nYear,4)=0 % MOD(nYear,400)=0) );
+
+3. Comparison Operators
+-----------------------
+=     Equal (numeric)
+@=    Equal (string)
+<>    Not equal (numeric)
+~     Not equal (alternative)
+>     Greater than
+<     Less than
+>=    Greater or equal
+<=    Less or equal
+
+4. Data Types
+-------------
+- Numeric: No quotes (e.g. 123, 45.67)
+- String: Single quotes (e.g. 'FY2025')
+- Use NumberToString() and StringToNumber() for conversion
+
+5. Control Structures
+---------------------
+IF(condition);
+    statements;
+ELSEIF(condition);
+    statements;
+ELSE;
+    statements;
+ENDIF;
+
+WHILE(condition);
+    statements;
+END;
+
+6. Common Functions Categories
+------------------------------
+String Functions:
+- SUBST(string, start, length)
+- TRIM(string)
+- LONG(string)
+- UPPER(string), LOWER(string)
+- SCAN('text', string)
+- @= for string comparison
+
+Numeric Functions:
+- MOD(number, divisor)
+- DATE(year, month, day)
+- NOW, TODAY
+- INT(), ROUND(), SQRT()
+
+Dimension & Element Functions:
+- DimensionElementInsert(dimension, parent, element, type)
+- DimensionElementComponentAdd(dimension, parent, child, weight)
+- DIMIX(dimension, element)
+- ELPAR(dimension, element, level)
+
+Attribute Functions:
+- AttrInsert(dimension, '', attrname, 'S'/'N'/'A')
+- ElementAttrPutS(value, dimension, element, attrname)
+- ElementAttrPutN(value, dimension, element, attrname)
+- AttrPutS() / AttrPutN()  (shorter version for default hierarchy)
+
+7. Important TI-Specific Notes
+------------------------------
+- Use ElementAttrPutS / ElementAttrPutN when hierarchy aware
+- Use AttrPutS / AttrPutN for default hierarchy
+- All TurboIntegrator functions end with ;
+- Cube rules can be used inside TI processes
+- Variables starting with p = parameter, v = local variable (convention)
+
+8. Leap Year Example (Corrected)
+--------------------------------
+IF(nMonth = 2);
+    IF(MOD(nYear, 4) = 0 & (MOD(nYear, 100) <> 0 % MOD(nYear, 400) = 0));
+        nDays = 29;
+    ELSE;
+        nDays = 28;
+    ENDIF;
+ELSEIF(nMonth = 4 % nMonth = 6 % nMonth = 9 % nMonth = 11);
+    nDays = 30;
+ELSE;
+    nDays = 31;
+ENDIF;
+
+9. Best Practices
+-----------------
+- Always check DIMIX before inserting elements
+- Use DimensionElementInsertDirect for better performance
+- Initialize variables in Prolog
+- Use ASCIIOutput for debugging
+- Keep code indented properly
+
+Official Documentation Links:
+- TurboIntegrator Functions: https://www.ibm.com/docs/en/planning-analytics/2.0.0?topic=reference-turbointegrator-functions
+- Full TM1 Reference Guide (PDF available on IBM site)
+
+Last Updated: May 2026
+
+Latest See
+https://www.ibm.com/docs/en/planning-analytics/2.0.0?topic=resources-tm1-reference

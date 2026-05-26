@@ -53,6 +53,32 @@ app.get('/api/dimensions', async (req, res) => {
     }
 })
 
+app.delete('/api/dimension', async (req, res) => {
+    try {
+        const client = new TM1Client(req.query.server)
+        await client.deleteDimension(req.query.name)
+        res.json({ ok: true })
+    } catch (e) {
+        res.status(500).json({ error: e.message })
+    }
+})
+
+app.delete('/api/cube', async (req, res) => {
+    try {
+        const client = new TM1Client(req.query.server)
+        await client.deleteCube(req.query.name)
+        res.json({ ok: true })
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.delete('/api/subset', async (req, res) => {
+    try {
+        const client = new TM1Client(req.query.server)
+        await client.deleteSubset(req.query.dimension, req.query.name, req.query.hierarchy)
+        res.json({ ok: true })
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
 // ── Processes ─────────────────────────────────────────────────────────────────
 app.get('/api/processes', async (req, res) => {
     try {
@@ -63,6 +89,14 @@ app.get('/api/processes', async (req, res) => {
     }
 })
 
+app.delete('/api/process', async (req, res) => {
+    try {
+        const client = new TM1Client(req.query.server)
+        await client.deleteProcess(req.query.name)
+        res.json({ ok: true })
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
 // ── Chores ────────────────────────────────────────────────────────────────────
 app.get('/api/chores', async (req, res) => {
     try {
@@ -71,6 +105,14 @@ app.get('/api/chores', async (req, res) => {
     } catch (e) {
         res.status(500).json({ error: e.message })
     }
+})
+
+app.delete('/api/chore', async (req, res) => {
+    try {
+        const client = new TM1Client(req.query.server)
+        await client.deleteChore(req.query.name)
+        res.json({ ok: true })
+    } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
 // ── Rules ─────────────────────────────────────────────────────────────────────
@@ -117,9 +159,10 @@ app.post('/api/process', async (req, res) => {
 app.post('/api/process/run', async (req, res) => {
     try {
         const client = new TM1Client(req.query.server)
-        const result = await client.executeProcess(req.query.name, req.body.params ?? {})
+        const result = await client.executeProcess(req.query.name, req.body.params ?? [])
         res.json({ ok: true, result })
     } catch (e) {
+        console.error('[process/run]', e.response?.data ? JSON.stringify(e.response.data) : e.message)
         res.status(500).json({ error: e.message })
     }
 })
@@ -796,86 +839,18 @@ app.get('/api/control/objects', async (req, res) => {
 })
 
 // ── Period Builder ────────────────────────────────────────────────────────────
-// Creates 3 TI processes on the target server then executes BuildDimension.
-// Request body: { server, dimensionName, processes: [{name, prolog, metadata, data, epilog, parameters}] }
+// Saves 3 TI processes to the target TM1 server.
+// Request body: { server, processes: [{name, prolog, metadata, data, epilog, parameters}] }
 app.post('/api/period-builder/run', async (req, res) => {
-    const { server, dimensionName, processes, elements = [], edges = [] } = req.body
-    if (!server || !dimensionName || !Array.isArray(processes)) {
-        return res.status(400).json({ ok: false, error: 'server, dimensionName and processes required' })
+    const { server, processes } = req.body
+    if (!server || !Array.isArray(processes)) {
+        return res.status(400).json({ ok: false, error: 'server and processes required' })
     }
-    const PERIOD_ATTRS = [
-        { name: 'Period Start Serial', type: 'Numeric' },
-        { name: 'Period End Serial',   type: 'Numeric' },
-        { name: 'Calendar Year',       type: 'Numeric' },
-        { name: 'Calendar Month',      type: 'Numeric' },
-        { name: 'Days in Period',      type: 'Numeric' },
-        { name: 'Fin Year',            type: 'String'  },
-        { name: 'First Period',        type: 'String'  },
-        { name: 'Last Period',         type: 'String'  },
-        { name: 'Previous Period',     type: 'String'  },
-        { name: 'Next Period',         type: 'String'  },
-        { name: 'Caption',             type: 'Alias'   },
-        { name: 'Long Name',           type: 'String'  },
-        { name: 'Is Current Period',   type: 'String'  },
-    ]
     try {
         const client = new TM1Client(server)
-
-        // 1. Create dimension (ignore "already exists" — code 52 or HTTP 409)
-        try {
-            await client.post('Dimensions', {
-                Name: dimensionName,
-                Hierarchies: [{ Name: dimensionName }],
-            })
-        } catch (e) {
-            const code = e.response?.data?.error?.code
-            if (code !== '52' && e.response?.status !== 409) throw e
-        }
-
-        // 2. Create element attribute definitions via REST
-        for (const attr of PERIOD_ATTRS) {
-            try { await client.createElementAttribute(dimensionName, attr.name, attr.type) } catch {}
-        }
-
-        // 3. Create elements in parallel — consolidations first, then numerics
-        const consolidated = elements.filter(e => e.type === 'C')
-        const numeric      = elements.filter(e => e.type === 'N')
-        await Promise.all(consolidated.map(e =>
-            client.addElement(dimensionName, e.name, e.type).catch(() => {})
-        ))
-        await Promise.all(numeric.map(e =>
-            client.addElement(dimensionName, e.name, e.type).catch(() => {})
-        ))
-
-        // 4. Create hierarchy edges in parallel
-        await Promise.all(edges.map(e =>
-            client.addEdge(dimensionName, e.parent, e.child, e.weight ?? 1).catch(() => {})
-        ))
-
-        // 5. Write all attribute values in one inline TI execution
-        const attrEpilog = processes[0]?.epilog
-        if (attrEpilog) {
-            const safe = s => String(s).replace(/'/g, "''")
-            await client.post('ExecuteProcessWithReturn?$expand=*', {
-                Process: {
-                    Name:               `}Period_Build_Attrs`,
-                    PrologProcedure:    `pDimension = '${safe(dimensionName)}';\n${attrEpilog}`,
-                    MetadataProcedure:  '',
-                    DataProcedure:      '',
-                    EpilogProcedure:    '',
-                    HasSecurityAccess:  false,
-                    DataSource:         { Type: 'None' },
-                    Parameters:         [],
-                    Variables:          [],
-                }
-            })
-        }
-
-        // 6. Create / replace the 3 TI processes (for future scheduling)
         for (const proc of processes) {
             await client.createOrReplaceProcess(proc)
         }
-
         res.json({ ok: true })
     } catch (e) {
         const detail = e.response?.data ? JSON.stringify(e.response.data) : e.message

@@ -16,6 +16,43 @@ export const useElements  = (server, dim, hierarchy) => useQuery({ queryKey: ['e
 export const useEdges     = (server, dim, hierarchy) => useQuery({ queryKey: ['edges', server, dim, hierarchy],    queryFn: () => get(`/api/edges?server=${enc(server)}&dimension=${enc(dim)}${hierarchy ? `&hierarchy=${enc(hierarchy)}` : ''}`),    enabled: !!server && !!dim })
 export const useCubes    = (server)     => useQuery({ queryKey: ['cubes', server],     queryFn: () => get(`/api/cubes?server=${enc(server)}`),      enabled: !!server })
 export const useDims     = (server)     => useQuery({ queryKey: ['dims', server],      queryFn: () => get(`/api/dimensions?server=${enc(server)}`),  enabled: !!server })
+export const useDeleteDimension = () => {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ server, name }) => del(`/api/dimension?server=${enc(server)}&name=${enc(name)}`),
+    onSuccess: (_, { server }) => queryClient.invalidateQueries({ queryKey: ['dims', server] }),
+  })
+}
+export const useDeleteCube = () => {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ server, name }) => del(`/api/cube?server=${enc(server)}&name=${enc(name)}`),
+    onSuccess: (_, { server }) => queryClient.invalidateQueries({ queryKey: ['cubes', server] }),
+  })
+}
+export const useDeleteProcess = () => {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ server, name }) => del(`/api/process?server=${enc(server)}&name=${enc(name)}`),
+    onSuccess: (_, { server }) => queryClient.invalidateQueries({ queryKey: ['procs', server] }),
+  })
+}
+export const useDeleteChore = () => {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ server, name }) => del(`/api/chore?server=${enc(server)}&name=${enc(name)}`),
+    onSuccess: (_, { server }) => queryClient.invalidateQueries({ queryKey: ['chores', server] }),
+  })
+}
+export const useDeleteSubset = () => {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ server, dimension, name, hierarchy }) =>
+      del(`/api/subset?server=${enc(server)}&dimension=${enc(dimension)}&name=${enc(name)}${hierarchy ? `&hierarchy=${enc(hierarchy)}` : ''}`),
+    onSuccess: (_, { server, dimension }) =>
+      queryClient.invalidateQueries({ queryKey: ['subsets', server, dimension] }),
+  })
+}
 export const useProcs    = (server)     => useQuery({ queryKey: ['procs', server],     queryFn: () => get(`/api/processes?server=${enc(server)}`),   enabled: !!server })
 export const useChores          = (server) => useQuery({ queryKey: ['chores', server],          queryFn: () => get(`/api/chores?server=${enc(server)}`),          enabled: !!server })
 export const useControlObjects  = (server) => useQuery({ queryKey: ['control-objects', server], queryFn: () => get(`/api/control/objects?server=${enc(server)}`), enabled: !!server, staleTime: 60_000 })

@@ -1,0 +1,57 @@
+Period Builder — Code Map
+========================
+
+Files
+-----
+client/src/components/PeriodBuilder/
+  index.jsx              Wizard container: 2 steps, handles generate + POST
+  Step1Parameters.jsx    Parameters form: dimension name, FY range, formats
+  Step3Subsets.jsx       Subset selector + TI preview + "Create" button
+  lib/computeDimension.js  computeDimension() for Step 2 preview +
+                           generateBuildDimension{Prolog,Metadata,Data,Epilog}()
+  lib/generateTI.js      Wires sections together, exports for preview +
+                           RefreshSubsets + Rollover TI generators
+  lib/dateUtils.js       Date helpers: daysInMonth, fyForMonth, formatFY, etc.
+  lib/subsetDefs.js      Subset definitions list (YTD, Rolling 12, etc.)
+
+server.js:843            POST /api/period-builder/run — saves 3 TIs to TM1
+core/tm1_client.js:367   createOrReplaceProcess() — POST/PATCH/delete+recreate
+
+Flow
+----
+1. User sets params (dimension name, firstFY, lastFY, fyStartMonth, formats)
+2. Wizard generates 3 TI processes in JS:
+   - {name}.Build Period Dimension  (Prolog → Metadata → Data → Epilog)
+   - {name}.Refresh Subsets          (Prolog only, dynamic subset rebuild)
+   - {name}.Rollover                 (Prolog + parameter pPeriod)
+3. POST /api/period-builder/run with { server, processes }
+4. Server calls createOrReplaceProcess() × 3
+5. User opens TM1 and runs {name}.Build Period Dimension
+
+Build Period Dimension TI structure
+-------------------------------------
+Prolog:
+  - Create dimension (if not exists)
+  - Create 18 element attributes (if not exists)
+  - Init vFY = pFirstFY
+
+Metadata:
+  - WHILE loop over FYs
+  - Create FY consolidation
+  - Create OBL (Opening Balance) leaf
+  - Create 12 months per FY
+  - Create YTD/YTG/LTD per-month consolidations
+  - Build hierarchy edges (FY→month, YTD→month, LTD→OBL+YTD)
+
+Data:
+  - Re-init loop over FYs
+  - Write OBL attributes
+  - Date calculations (leap year, days in month, Excel serial)
+  - Write 18 attributes per month
+
+Epilog:
+  - Create All Years/All YTD/All LTD/All YTG top-level consolidations
+  - Add FYs under All Years
+  - Set Caption as default alias
+
+Parameters: pFirstFY, pLastFY, pFYStartM

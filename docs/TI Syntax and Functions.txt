@@ -1,0 +1,117 @@
+================================================================================
+IBM PLANNING ANALYTICS (TM1) - COMPLETE SYNTAX & FUNCTIONS REFERENCE
+Version 2.0.x
+Last Updated: May 2026
+================================================================================
+
+1. TURBOINTEGRATOR (TI) GENERAL RULES
+-------------------------------------
+- Every statement must end with ;
+- Strings use single quotes: 'Text'
+- Comments start with #
+- Variables are case-insensitive
+- Process has 4 tabs: Prolog, Metadata, Data, Epilog
+
+2. LOGICAL OPERATORS
+--------------------
+AND          →   &
+OR           →   %
+NOT          →   ~
+Not Equal    →   ~=   or   <>
+
+3. CONTROL STRUCTURES
+---------------------
+IF(condition);
+    ...
+ELSEIF(condition);
+    ...
+ELSE;
+    ...
+ENDIF;
+
+WHILE(condition);
+    ...
+END;
+
+4. DIMENSION & ELEMENT FUNCTIONS
+--------------------------------
+DimensionCreate(DimName)
+DimensionElementInsert(Dim, '', Element, 'N'/'C'/'S')
+DimensionElementDelete(Dim, Element)
+DimensionElementComponentAdd(Dim, Parent, Child, Weight)
+DIMIX(Dim, Element)                  → Returns 0 if element does not exist
+DIMNM(Dim, Index)
+
+5. ATTRIBUTE FUNCTIONS
+----------------------
+AttrInsert(Dim, '', AttrName, 'S'/'N'/'A')
+
+# Default Hierarchy (4 arguments - most stable)
+AttrPutS(Value, Dim, Element, AttrName)
+AttrPutN(Value, Dim, Element, AttrName)
+
+# Hierarchy-Aware (5 arguments)
+ElementAttrPutS(Value, Dim, '', Element, AttrName)
+ElementAttrPutN(Value, Dim, '', Element, AttrName)
+
+6. DATE & TIME FUNCTIONS (Modern)
+---------------------------------
+nFmt = NewDateFormatter('yyyyMMdd')
+ParseDate(DateString, 'yyyyMMdd', nFmt)
+FormatDate(DateValue, FormatterIndex)
+
+7. STRING FUNCTIONS
+-------------------
+SUBST(String, Start, Length)
+TRIM(String)
+LONG(String)
+UPPER(String)
+LOWER(String)
+SCAN(SearchText, String)
+NumberToString(Number)
+StringToNumber(String)
+
+8. NUMERIC FUNCTIONS
+--------------------
+MOD(Number, Divisor)
+INT(Number)
+ROUND(Number, Decimals)
+POW(Base, Exponent)
+ABS(Number)
+SQRT(Number)
+
+9. CUBE FUNCTIONS
+-----------------
+CubeCreate(CubeName, Dim1, Dim2, ...)
+CellPutN(Value, Cube, El1, El2, ..., Measure)
+CellPutS(Value, Cube, El1, El2, ..., Measure)
+
+10. SUBSET & ALIAS FUNCTIONS
+----------------------------
+SubsetCreate(Dim, SubsetName)
+SubsetElementInsert(Dim, SubsetName, Element, Position)
+SubsetAliasSet(Dim, SubsetName, AliasName)
+
+11. CUBE RULES SYNTAX
+---------------------
+['Measure'] = Expression;
+STET;
+CONTINUE;
+IF(condition, TrueValue, FalseValue);
+DB(Cube, El1, El2, ..., Measure)
+SKIPCHECK;
+FEEDERS;
+['Revenue'] => ['Total Revenue'];
+
+================================================================================
+BEST PRACTICES
+================================================================================
+- Create ALL elements first, then write attributes
+- Use DIMIX() check before ElementAttrPut* and DimensionElementInsert
+- Prefer AttrPutS/AttrPutN for default hierarchies
+- Avoid very long complex lines
+- Separate structure building from attribute writing
+
+================================================================================
+End of TM1 Syntax & Functions Reference
+================================================================================

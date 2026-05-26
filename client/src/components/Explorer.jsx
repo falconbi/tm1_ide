@@ -1,9 +1,9 @@
 import { useState, useRef, useMemo, useEffect } from 'react'
 import { toast } from 'sonner'
-import { useCubes, useDims, useProcs, useChores, useSubsets, useViews, useCubeDimensions, useSaveView, useHierarchies, useCreateHierarchy, useControlObjects } from '@/hooks/useApi'
+import { useCubes, useDims, useProcs, useChores, useSubsets, useViews, useCubeDimensions, useSaveView, useHierarchies, useCreateHierarchy, useControlObjects, useDeleteDimension, useDeleteCube, useDeleteProcess, useDeleteChore, useDeleteSubset } from '@/hooks/useApi'
 import { useStore } from '@/store'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { ChevronRight, ChevronDown, Box, Layers, Cog, Clock, Loader2, List, Plus, Table2, Code2, PencilLine, Search, X, Braces } from 'lucide-react'
+import { ChevronRight, ChevronDown, Box, Layers, Cog, Clock, Loader2, List, Plus, Table2, Code2, PencilLine, Search, X, Braces, Trash2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 // ── Reveal / locate helpers ───────────────────────────────────────────────────
@@ -53,7 +53,7 @@ function getLocateId(target) {
   return ''
 }
 
-function Section({ icon: Icon, label, items, isLoading, onSelect, itemIcon: ItemIcon, sectionId, locateIdPrefix }) {
+function Section({ icon: Icon, label, items, isLoading, onSelect, itemIcon: ItemIcon, sectionId, locateIdPrefix, onDelete }) {
   const [open, setOpen] = useState(false)
   const revealTarget = useStore(s => s.revealTarget)
   useEffect(() => {
@@ -73,15 +73,25 @@ function Section({ icon: Icon, label, items, isLoading, onSelect, itemIcon: Item
       {open && (
         <div className="pb-1">
           {(items ?? []).map(item => (
-            <button
-              key={item}
-              onClick={() => onSelect(item)}
-              data-locate-id={locateIdPrefix ? `${locateIdPrefix}:${item}` : undefined}
-              className="flex items-center gap-2 w-full px-6 py-0.5 text-sm text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground truncate"
-            >
-              {ItemIcon && <ItemIcon size={12} className="shrink-0 text-muted-foreground" />}
-              <span className="truncate">{item}</span>
-            </button>
+            <div key={item} className="flex items-center text-sm text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground group">
+              <button
+                onClick={() => onSelect(item)}
+                data-locate-id={locateIdPrefix ? `${locateIdPrefix}:${item}` : undefined}
+                className="flex items-center gap-2 flex-1 pl-6 pr-2 py-0.5 truncate min-w-0"
+              >
+                {ItemIcon && <ItemIcon size={12} className="shrink-0 text-muted-foreground" />}
+                <span className="truncate">{item}</span>
+              </button>
+              {onDelete && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); onDelete(item) }}
+                  title={`Delete ${item}`}
+                  className="hidden group-hover:flex items-center pr-2 py-0.5 text-muted-foreground hover:text-red-400 shrink-0"
+                >
+                  <Trash2 size={9} />
+                </button>
+              )}
+            </div>
           ))}
         </div>
       )}
@@ -139,6 +149,15 @@ function CubeDimRow({ server, dim, onOpenSubset, onOpenDim, cube }) {
   const inputRef = useRef(null)
   const { data: subsets, isFetching } = useSubsets(open ? server : null, open ? dim : null)
   const sectionId = `cube:${cube}:dim:${dim}`
+  const deleteSubsetMut = useDeleteSubset()
+
+  const handleDeleteSubset = (name) => {
+    if (!window.confirm(`Delete subset "${name}"? This cannot be undone.`)) return
+    deleteSubsetMut.mutate({ server, dimension: dim, name }, {
+      onSuccess: () => toast.success(`Deleted ${name}`),
+      onError:   (err) => toast.error(err.message ?? 'Delete failed'),
+    })
+  }
 
   const startAdd = () => {
     setAdding(true)
@@ -195,17 +214,25 @@ function CubeDimRow({ server, dim, onOpenSubset, onOpenDim, cube }) {
             <p className="px-20 py-0.5 text-xs text-muted-foreground italic">No subsets — hover to add</p>
           )}
           {(subsets ?? []).map(s => (
-            <button
-              key={s.Name}
-              onClick={() => onOpenSubset(dim, s.Name)}
-              className="flex items-center gap-2 w-full px-20 py-0.5 text-xs text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground truncate"
-              title={s.Expression ? 'MDX subset' : 'Static subset'}
-            >
-              {s.Expression
-                ? <Code2 size={10} className="shrink-0 text-violet-400" />
-                : <List   size={10} className="shrink-0 text-muted-foreground" />}
-              <span className="truncate font-mono">{s.Name}</span>
-            </button>
+            <div key={s.Name} className="flex items-center text-xs text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground group">
+              <button
+                onClick={() => onOpenSubset(dim, s.Name)}
+                className="flex items-center gap-2 flex-1 pl-20 pr-2 py-0.5 truncate min-w-0"
+                title={s.Expression ? 'MDX subset' : 'Static subset'}
+              >
+                {s.Expression
+                  ? <Code2 size={10} className="shrink-0 text-violet-400" />
+                  : <List   size={10} className="shrink-0 text-muted-foreground" />}
+                <span className="truncate font-mono">{s.Name}</span>
+              </button>
+              <button
+                onClick={(e) => { e.stopPropagation(); handleDeleteSubset(s.Name) }}
+                title="Delete subset"
+                className="hidden group-hover:flex items-center pr-2 py-0.5 text-muted-foreground hover:text-red-400 shrink-0"
+              >
+                <Trash2 size={9} />
+              </button>
+            </div>
           ))}
         </div>
       )}
@@ -227,6 +254,16 @@ function CubeRow({ server, cube, onOpenRules, onOpenView, onOpenSubset, onOpenDi
   const [newViewName, setNewViewName] = useState('')
   const viewInputRef = useRef(null)
   const saveView = useSaveView()
+  const deleteCubeMut = useDeleteCube()
+
+  const handleDeleteCube = (e) => {
+    e.stopPropagation()
+    if (!window.confirm(`Delete cube "${cube}"? This cannot be undone.`)) return
+    deleteCubeMut.mutate({ server, name: cube }, {
+      onSuccess: () => toast.success(`Deleted ${cube}`),
+      onError:   (err) => toast.error(err.message ?? 'Delete failed'),
+    })
+  }
 
   const startAddView = () => {
     setAddingView(true)
@@ -264,7 +301,15 @@ function CubeRow({ server, cube, onOpenRules, onOpenView, onOpenSubset, onOpenDi
           <Box size={12} className="shrink-0 text-muted-foreground mr-2" />
           <span className="truncate">{cube}</span>
         </button>
-        {loading && <Loader2 size={10} className="ml-1 animate-spin text-muted-foreground shrink-0" />}
+        {loading
+        ? <Loader2 size={10} className="ml-1 animate-spin text-muted-foreground shrink-0" />
+        : <span className="hidden group-hover:flex items-center shrink-0 ml-auto">
+            <button onClick={handleDeleteCube} title="Delete cube"
+              className="flex items-center gap-0.5 px-1 py-0.5 rounded text-[10px] text-muted-foreground hover:text-red-400 hover:bg-sidebar-accent">
+              <Trash2 size={9} />
+            </button>
+          </span>
+      }
       </div>
       {open && <>
         <CubeSubSection label="Views" loading={loadingViews} sectionId={`cube:${cube}:views`}
@@ -435,6 +480,25 @@ function DimRow({ server, dim, onOpenSubset, onOpenDim }) {
   const { data: hierarchies = [] } = useHierarchies(open ? server : null, open ? dim : null)
   const createHierarchyMut = useCreateHierarchy()
   const hasMultipleHierarchies = hierarchies.length > 1 || addingHierarchy
+  const deleteDimMut = useDeleteDimension()
+  const deleteSubsetMut = useDeleteSubset()
+
+  const handleDeleteSubset = (name) => {
+    if (!window.confirm(`Delete subset "${name}"? This cannot be undone.`)) return
+    deleteSubsetMut.mutate({ server, dimension: dim, name }, {
+      onSuccess: () => toast.success(`Deleted ${name}`),
+      onError:   (err) => toast.error(err.message ?? 'Delete failed'),
+    })
+  }
+
+  const handleDelete = (e) => {
+    e.stopPropagation()
+    if (!window.confirm(`Delete dimension "${dim}"? This cannot be undone.`)) return
+    deleteDimMut.mutate({ server, name: dim }, {
+      onSuccess: () => toast.success(`Deleted ${dim}`),
+      onError:   (err) => toast.error(err.message ?? 'Delete failed'),
+    })
+  }
 
   const startAdd = () => {
     setAdding(true)
@@ -472,6 +536,10 @@ function DimRow({ server, dim, onOpenSubset, onOpenDim }) {
                 <Plus size={9} /> Subset
               </button>
           }
+          <button onClick={handleDelete} title="Delete dimension"
+            className="flex items-center gap-0.5 px-1 py-0.5 rounded text-[10px] text-muted-foreground hover:text-red-400 hover:bg-sidebar-accent">
+            <Trash2 size={9} />
+          </button>
         </span>
       </div>
       {open && (
@@ -550,19 +618,27 @@ function DimRow({ server, dim, onOpenSubset, onOpenDim }) {
             <p className="px-14 py-0.5 text-xs text-muted-foreground italic">No subsets — hover to add</p>
           )}
           {(subsets ?? []).map(s => (
-            <button
-              key={s.Name}
-              onClick={() => onOpenSubset(dim, s.Name)}
-              data-locate-id={`subset:${dim}:${s.Name}`}
-              className="flex items-center gap-2 w-full px-14 py-0.5 text-xs text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground truncate"
-              title={s.Expression ? 'MDX subset' : 'Static subset'}
-            >
-              {s.Expression
-                ? <Code2 size={10} className="shrink-0 text-violet-400" />
-                : <List   size={10} className="shrink-0 text-muted-foreground" />
-              }
-              <span className="truncate font-mono">{s.Name}</span>
-            </button>
+            <div key={s.Name} className="flex items-center text-xs text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground group">
+              <button
+                onClick={() => onOpenSubset(dim, s.Name)}
+                data-locate-id={`subset:${dim}:${s.Name}`}
+                className="flex items-center gap-2 flex-1 pl-14 pr-2 py-0.5 truncate min-w-0"
+                title={s.Expression ? 'MDX subset' : 'Static subset'}
+              >
+                {s.Expression
+                  ? <Code2 size={10} className="shrink-0 text-violet-400" />
+                  : <List   size={10} className="shrink-0 text-muted-foreground" />
+                }
+                <span className="truncate font-mono">{s.Name}</span>
+              </button>
+              <button
+                onClick={(e) => { e.stopPropagation(); handleDeleteSubset(s.Name) }}
+                title="Delete subset"
+                className="hidden group-hover:flex items-center pr-2 py-0.5 text-muted-foreground hover:text-red-400 shrink-0"
+              >
+                <Trash2 size={9} />
+              </button>
+            </div>
           ))}
         </div>
       )}
@@ -680,6 +756,24 @@ export default function Explorer() {
   const { data: dims,   isFetching: loadingDims   } = useDims(server)
   const { data: procs,  isFetching: loadingProcs  } = useProcs(server)
   const { data: chores, isFetching: loadingChores } = useChores(server)
+  const deleteProcessMut = useDeleteProcess()
+  const deleteCoreMut    = useDeleteChore()
+
+  const handleDeleteProcess = (name) => {
+    if (!window.confirm(`Delete process "${name}"? This cannot be undone.`)) return
+    deleteProcessMut.mutate({ server, name }, {
+      onSuccess: () => toast.success(`Deleted ${name}`),
+      onError:   (err) => toast.error(err.message ?? 'Delete failed'),
+    })
+  }
+
+  const handleDeleteChore = (name) => {
+    if (!window.confirm(`Delete chore "${name}"? This cannot be undone.`)) return
+    deleteCoreMut.mutate({ server, name }, {
+      onSuccess: () => toast.success(`Deleted ${name}`),
+      onError:   (err) => toast.error(err.message ?? 'Delete failed'),
+    })
+  }
 
   const searchResults = useMemo(() => {
     if (!search.trim()) return null
@@ -824,8 +918,8 @@ export default function Explorer() {
                 onOpenSubset={openSubset} onOpenDim={openDim}
                 onOpenViewer={openCubeViewer} />
               <DimSection server={server} dims={dims}    isLoading={loadingDims}   onOpenSubset={openSubset} onOpenDim={openDim} />
-              <Section    icon={Cog}   label="Processes" items={procs}  isLoading={loadingProcs}  onSelect={openProcess} itemIcon={Cog}   sectionId="processes" locateIdPrefix="process" />
-              <Section    icon={Clock} label="Chores"    items={chores} isLoading={loadingChores} onSelect={() => {}}    itemIcon={Clock} sectionId="chores" />
+              <Section    icon={Cog}   label="Processes" items={procs}  isLoading={loadingProcs}  onSelect={openProcess} itemIcon={Cog}   sectionId="processes" locateIdPrefix="process" onDelete={handleDeleteProcess} />
+              <Section    icon={Clock} label="Chores"    items={chores} isLoading={loadingChores} onSelect={() => {}}    itemIcon={Clock} sectionId="chores" onDelete={handleDeleteChore} />
               <ControlSection
                 server={server}
                 onOpenViewer={openCubeViewer}

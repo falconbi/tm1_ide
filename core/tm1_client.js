@@ -45,6 +45,26 @@ class TM1Client {
 
     // ── Dimensions ────────────────────────────────────────────────────────────
 
+    async deleteDimension(name) {
+        return this.delete(`Dimensions('${encodeURIComponent(name)}')`)
+    }
+
+    async deleteCube(name) {
+        return this.delete(`Cubes('${encodeURIComponent(name)}')`)
+    }
+
+    async deleteProcess(name) {
+        return this.delete(`Processes('${encodeURIComponent(name)}')`)
+    }
+
+    async deleteChore(name) {
+        return this.delete(`Chores('${encodeURIComponent(name)}')`)
+    }
+
+    async deleteSubset(dim, name, hierarchy = dim) {
+        return this.delete(`Dimensions('${encodeURIComponent(dim)}')/Hierarchies('${encodeURIComponent(hierarchy)}')/Subsets('${encodeURIComponent(name)}')`)
+    }
+
     async getDimension(name) {
         try {
             return await this.get(`Dimensions('${name}')`, { '$select': 'Name' })
@@ -259,8 +279,8 @@ class TM1Client {
     async writeElementAttribute(dim, element, attribute, value, attrType = 'S', hierarchy = dim) {
         const safe = s => String(s).replace(/'/g, "''")
         const tiCode = attrType === 'N'
-            ? `ElementAttrPutN(${Number(value)}, '${safe(dim)}', '${safe(hierarchy)}', '${safe(element)}', '${safe(attribute)}');`
-            : `ElementAttrPutS('${safe(String(value))}', '${safe(dim)}', '${safe(hierarchy)}', '${safe(element)}', '${safe(attribute)}');`
+            ? `ElementAttrPutN(${Number(value)}, '${safe(dim)}', '${safe(element)}', '${safe(attribute)}');`
+            : `ElementAttrPutS('${safe(String(value))}', '${safe(dim)}', '${safe(element)}', '${safe(attribute)}');`
         return this.post('ExecuteProcessWithReturn?$expand=*', {
             Process: {
                 Name: `}TM1IDE_write`,
@@ -341,7 +361,10 @@ class TM1Client {
     }
 
     async executeProcess(name, params = {}) {
-        return this.post(`Processes('${name}')/tm1.Execute`, { Parameters: params })
+        const paramArray = Array.isArray(params)
+            ? params
+            : Object.entries(params).map(([Name, Value]) => ({ Name, Value: String(Value) }))
+        return this.post(`Processes('${encodeURIComponent(name)}')/tm1.Execute`, { Parameters: paramArray })
     }
 
     async createOrReplaceProcess(proc) {
@@ -365,9 +388,9 @@ class TM1Client {
         try {
             await this.post('Processes', body)
         } catch (e) {
-            // Process already exists — patch it
             if (e.response?.status === 409 || e.response?.status === 400) {
-                await this.patch(`Processes('${encodeURIComponent(proc.name)}')`, body)
+                await this.deleteProcess(proc.name)
+                await this.post('Processes', body)
             } else {
                 throw e
             }
