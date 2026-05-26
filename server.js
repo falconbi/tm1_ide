@@ -160,10 +160,16 @@ app.post('/api/process/run', async (req, res) => {
     try {
         const client = new TM1Client(req.query.server)
         const result = await client.executeProcess(req.query.name, req.body.params ?? [])
-        res.json({ ok: true, result })
+        const duration = result?.Times?.ExecutionTimeInMilliseconds ?? null
+        res.json({ ok: true, duration })
     } catch (e) {
-        console.error('[process/run]', e.response?.data ? JSON.stringify(e.response.data) : e.message)
-        res.status(500).json({ error: e.message })
+        const inner = e.response?.data?.error?.innererror ?? {}
+        console.error('[process/run]', JSON.stringify(inner) || e.message)
+        res.status(500).json({
+            error:   inner.Message || e.message,
+            section: inner.ProcedureSection ?? null,
+            line:    inner.LineNumber ?? null,
+        })
     }
 })
 

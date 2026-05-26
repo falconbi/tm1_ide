@@ -198,6 +198,22 @@ const TI = [
   S('hierinsert','HierarchyElementInsert','Insert element into a specific hierarchy',                'Dimension Operations', 'ti',
     `HierarchyElementInsert('\${1:DimensionName}', '\${1:DimensionName}', '', '\${2:ElementName}', 'N');\n\${0}`),
 
+  // Subsets
+  S('subcreate', 'SubsetCreate',           'Create a subset (destroy first if it exists)',           'Subsets', 'ti',
+    `IF(SubsetExists('\${1:DimensionName}', '\${2:SubsetName}') = 1);\n  SubsetDestroy('\${1:DimensionName}', '\${2:SubsetName}');\nENDIF;\nSubsetCreate('\${1:DimensionName}', '\${2:SubsetName}');\n\${0}`),
+
+  S('submdx',   'SubsetCreateByMDX',       'Create a subset from an MDX expression',                'Subsets', 'ti',
+    `IF(SubsetExists('\${1:DimensionName}', '\${2:SubsetName}') = 1);\n  SubsetDestroy('\${1:DimensionName}', '\${2:SubsetName}');\nENDIF;\nSubsetCreateByMDX('\${2:SubsetName}', '\${3:MDX}', '\${1:DimensionName}');\n\${0}`),
+
+  S('subinsert','SubsetElementInsert',     'Insert an element into a subset at a given position',   'Subsets', 'ti',
+    `SubsetElementInsert('\${1:DimensionName}', '\${2:SubsetName}', '\${3:ElementName}', \${4:1});\n\${0}`),
+
+  S('subdestroy','SubsetDestroy',          'Destroy a subset if it exists',                          'Subsets', 'ti',
+    `IF(SubsetExists('\${1:DimensionName}', '\${2:SubsetName}') = 1);\n  SubsetDestroy('\${1:DimensionName}', '\${2:SubsetName}');\nENDIF;\n\${0}`),
+
+  S('subassign','ViewSubsetAssign',        'Assign a subset to a view dimension',                   'Subsets', 'ti',
+    `ViewSubsetAssign('\${1:CubeName}', '\${2:ViewName}', '\${3:DimensionName}', '\${4:SubsetName}');\n\${0}`),
+
   // Attributes
   S('attrcreate','ElementAttributeCreate S','Create a string attribute on a dimension',             'Attributes', 'ti',
     `ElementAttributeCreate('\${1:DimensionName}', '\${2:AttributeName}', 'S');\n\${0}`),
@@ -205,11 +221,11 @@ const TI = [
   S('attrcreatein','ElementAttributeCreate N','Create a numeric attribute on a dimension',          'Attributes', 'ti',
     `ElementAttributeCreate('\${1:DimensionName}', '\${2:AttributeName}', 'N');\n\${0}`),
 
-  S('attrputs', 'ElementAttributePut string','Set a string attribute value for an element',         'Attributes', 'ti',
-    `ElementAttributePut('\${1:Value}', '\${2:DimensionName}', '\${3:ElementName}', '\${4:AttributeName}');\n\${0}`),
+  S('attrputs', 'ElementAttrPutS',           'Set a string attribute value for an element',         'Attributes', 'ti',
+    `ElementAttrPutS('\${1:DimensionName}', '\${2:ElementName}', '\${3:AttributeName}', '\${4:Value}');\n\${0}`),
 
-  S('attrputn', 'ElementAttributePutN numeric','Set a numeric attribute value for an element',      'Attributes', 'ti',
-    `ElementAttributePutN(\${1:value}, '\${2:DimensionName}', '\${3:ElementName}', '\${4:AttributeName}');\n\${0}`),
+  S('attrputn', 'ElementAttrPutN',           'Set a numeric attribute value for an element',         'Attributes', 'ti',
+    `ElementAttrPutN('\${1:DimensionName}', '\${2:ElementName}', '\${3:AttributeName}', \${4:0});\n\${0}`),
 
   S('attrdelete','ElementAttributeDelete','Delete an attribute from a dimension',                   'Attributes', 'ti',
     `ElementAttributeDelete('\${1:DimensionName}', '\${2:AttributeName}');\n\${0}`),
@@ -232,6 +248,15 @@ const TI = [
 
   S('viewcreate','ViewCreate (native)',   'Create a native cube view programmatically',              'Cube Operations', 'ti',
     `ViewCreate('\${1:CubeName}', '\${2:ViewName}');\nViewRowDimensionSet('\${1:CubeName}', '\${2:ViewName}', '\${3:RowDimension}');\nViewColumnDimensionSet('\${1:CubeName}', '\${2:ViewName}', '\${4:ColumnDimension}');\nViewExtractSkipRuleValuesSet('\${1:CubeName}', '\${2:ViewName}', 0);\n\${0}`),
+
+  S('viewzero', 'ViewZeroOut',            'Zero all cells in a view (Bedrock pattern with cleanup)', 'Cube Operations', 'ti',
+    `cProcName = GetProcessName();\ncView = 'TI Zero Out - ' | cProcName;\n\nIF(ViewExists('\${1:CubeName}', cView) = 1);\n  ViewDestroy('\${1:CubeName}', cView);\nENDIF;\nViewCreate('\${1:CubeName}', cView);\n\nViewZeroOut('\${1:CubeName}', cView);\n\nViewDestroy('\${1:CubeName}', cView);\n\${0}`),
+
+  S('viewdestroy','ViewDestroy (safe)',   'Destroy a view if it exists',                             'Cube Operations', 'ti',
+    `IF(ViewExists('\${1:CubeName}', '\${2:ViewName}') = 1);\n  ViewDestroy('\${1:CubeName}', '\${2:ViewName}');\nENDIF;\n\${0}`),
+
+  S('viewsubset','ViewSubsetAssign',      'Assign a named subset to a view dimension slot',          'Cube Operations', 'ti',
+    `ViewSubsetAssign('\${1:CubeName}', '\${2:ViewName}', '\${3:DimensionName}', '\${4:SubsetName}');\n\${0}`),
 
   // Process Control
   S('execp',    'ExecuteProcess',        'Run another TI process, passing parameters',               'Process Control', 'ti',
@@ -263,6 +288,18 @@ const TI = [
 
   S('getdate',  'Get current date parts','Get today\'s year, month, and day into variables',        'Process Control', 'ti',
     `nYear  = Year(Today);\nnMonth = Month(Today);\nnDay   = DayNo(Today);\n\${0}`),
+
+  S('numtostr', 'NumberToString',         'Convert a number to a string',                            'Process Control', 'ti',
+    `NumberToString(\${1:nValue})`),
+
+  S('timst',    'TimSt timestamp',        'Format current time as a string (e.g. for log entries)',  'Process Control', 'ti',
+    `TimSt(Now, '\\\\Y-\\\\m-\\\\d \\\\H:\\\\i:\\\\s')`),
+
+  S('getpname', 'GetProcessName',         'Get the name of the currently running process',           'Process Control', 'ti',
+    `cProcName = GetProcessName();\n\${0}`),
+
+  S('geterrdir','GetProcessErrorFileDirectory','Get the server error log directory path',            'Process Control', 'ti',
+    `cLogFile = GetProcessErrorFileDirectory() | '\${1:debug.log}';\n\${0}`),
 
   // Error handling patterns
   S('trycatch', 'Try / error-check pattern','Execute a process and check for errors',               'Process Control', 'ti',

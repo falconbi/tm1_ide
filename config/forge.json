@@ -1,12 +1,76 @@
 {
   "server": "24retail",
-  "tabs": [],
-  "activeTab": null,
+  "tabs": [
+    {
+      "id": "process:24retail:Add_Product",
+      "type": "process",
+      "label": "Add_Product",
+      "server": "24retail",
+      "name": "Add_Product",
+      "content": {
+        "@odata.context": "$metadata#Processes/$entity",
+        "@odata.etag": "W/\"399221c3898a8dd1ad12836e716c69f20dbb364b\"",
+        "Name": "Add_Product",
+        "HasSecurityAccess": true,
+        "PrologProcedure": "\r\n#****Begin: Generated Statements***\r\n#****End: Generated Statements****\r\n\r\npParent=DimensionElementPrincipalName('Product',pParent);\r\n\r\n\r\nDimensionElementInsert('Product','',pNewNumber,'N');\r\n\r\nDimensionElementComponentAdd('Product',pParent,pNewNumber,1);\r\n\r\n###Check for Required Subsets###\r\n\r\nIF(SubsetExists('Product', 'New')=0);\r\nSubsetCreate('Product', 'New');\r\nENDIF;\r\n\r\nIF(SubsetExists('Product', 'Compare')=0);\r\nSubsetCreate('Product', 'Compare');\r\nENDIF;\r\n\r\n\r\n\r\n\r\n",
+        "MetadataProcedure": "\r\n#****Begin: Generated Statements***\r\n#****End: Generated Statements****",
+        "DataProcedure": "\r\n#****Begin: Generated Statements***\r\n#****End: Generated Statements****",
+        "EpilogProcedure": "\r\n#****Begin: Generated Statements***\r\n#****End: Generated Statements****\r\n\r\n\r\nAttrPutS(pNewName, 'Product',pNewNumber,'Caption_Default');\r\nAttrPutS('Y','Product',pNewNumber,'NewProduct');\r\n\r\n\r\nIF(SubsetGetSize('Product','New')>0);\r\nSubsetDeleteAllElements('Product','New');\r\nENDIF;\r\nSubsetElementInsert('Product','New',pNewNumber,1);\r\n\r\n\r\n###Update Price and Cost Assumptions###\r\nExecuteProcess('Copy_RevAsmpt','pParent',pParent,'pNewNumber',pNewNumber);\r\n\r\npFromSKU=SubsetGetElementName('Product', 'Compare', 1);\r\n\r\nExecuteProcess('Copy_SKU_detail_BOM','pFromSKU',pFromSKU,'pToSKU',pNewNumber);\r\nExecuteProcess('Copy_Product_SupplyChain','pCopyFrom',pFromSKU,'pCopyTo',pNewNumber);\r\n\r\n###Update Subsets###\r\n\r\nProdSize=DimSiz('Product');\r\nIF(SubsetGetSize('Product','Gaming')>0);\r\nSubsetDeleteAllElements('Product','Gaming');\r\nENDIF;\r\nSubsetElementInsert('Product','Gaming','Gaming',1);\r\nn=1;\r\nWhile(n<=ProdSize);\r\nCurrent=DIMNM('Product',n);\r\nIF(ELISANC('Product','Gaming',Current)=1);\r\nSubsetElementInsert('Product','Gaming',Current,0);\r\nENDIF;\r\nn=n+1;\r\nEND;\r\n\r\nProdSize=DimSiz('Product');\r\nIF(SubsetGetSize('Product','Phones')>0);\r\nSubsetDeleteAllElements('Product','Phones');\r\nENDIF;\r\nSubsetElementInsert('Product','Phones','Phones',1);\r\nn=1;\r\nWhile(n<=ProdSize);\r\nCurrent=DIMNM('Product',n);\r\nIF(ELISANC('Product','Phones',Current)=1);\r\nSubsetElementInsert('Product','Phones',Current,0);\r\nENDIF;\r\nn=n+1;\r\nEND;\r\n\r\nProdSize=DimSiz('Product');\r\nIF(SubsetGetSize('Product','Tablets')>0);\r\nSubsetDeleteAllElements('Product','Tablets');\r\nENDIF;\r\nSubsetElementInsert('Product','Tablets','Tablets',1);\r\nn=1;\r\nWhile(n<=ProdSize);\r\nCurrent=DIMNM('Product',n);\r\nIF(ELISANC('Product','Tablets',Current)=1);\r\nSubsetElementInsert('Product','Tablets',Current,0);\r\nENDIF;\r\nn=n+1;\r\nEND;\r\n\r\n\r\n\r\n\r\n\r\n",
+        "DataSource": {
+          "Type": "None"
+        },
+        "Parameters": [
+          {
+            "Name": "pParent",
+            "Prompt": "",
+            "Value": "",
+            "Type": "String"
+          },
+          {
+            "Name": "pNewNumber",
+            "Prompt": "",
+            "Value": "",
+            "Type": "String"
+          },
+          {
+            "Name": "pNewName",
+            "Prompt": "",
+            "Value": "",
+            "Type": "String"
+          }
+        ],
+        "Variables": [],
+        "Attributes": {
+          "Caption": "Add_Product"
+        }
+      },
+      "dirty": true
+    },
+    {
+      "id": "rules:24retail:Allocation Calculation",
+      "type": "rules",
+      "label": "Allocation Calculation",
+      "server": "24retail",
+      "cube": "Allocation Calculation",
+      "content": "#Region System\nFEEDSTRINGS;\nSKIPCHECK;\nUNDEFVALS;\n#EndRegion\n\n\n['Credit Amount']=N:IF(ATTRS('Organization',DIMNM('Organization',DIMIX('Organization',!Organization)),'Caption_Default')@=\n\t\t\tDB('Allocation Source Definition',!Allocation List,!Year,!Version,'Source Entity'),\n\t\t\t['Allocation Amount']*-1 ,0);\n\n['Allocated Amount']=N:['Allocation Amount']*['Ratio'];\n\n['Total Driver']=['Total Company','Driver'];\n\n['Driver','Q1']=IF(DB('Allocation Calculation',!organization,!Allocation List,!Year,!Month,!Version,'Allocation Driver')@='FTE',['Driver','Mar'],CONTINUE);\n['Driver','Q2']=IF(DB('Allocation Calculation',!organization,!Allocation List,!Year,!Month,!Version,'Allocation Driver')@='FTE',['Driver','Jun'],CONTINUE);\n['Driver','Q3']=IF(DB('Allocation Calculation',!organization,!Allocation List,!Year,!Month,!Version,'Allocation Driver')@='FTE',['Driver','Sep'],CONTINUE);\n['Driver','Q4']=IF(DB('Allocation Calculation',!organization,!Allocation List,!Year,!Month,!Version,'Allocation Driver')@='FTE',['Driver','Dec'],CONTINUE);\n['Driver','Year']=IF(DB('Allocation Calculation',!organization,!Allocation List,!Year,!Month,!Version,'Allocation Driver')@='FTE',['Driver','Dec'],CONTINUE);\n\n['Driver','Q1']=IF(DB('Allocation Calculation',!organization,!Allocation List,!Year,!Month,!Version,'Allocation Driver')@='Square Footage',['Driver','Mar'],CONTINUE);\n['Driver','Q2']=IF(DB('Allocation Calculation',!organization,!Allocation List,!Year,!Month,!Version,'Allocation Driver')@='Square Footage',['Driver','Jun'],CONTINUE);\n['Driver','Q3']=IF(DB('Allocation Calculation',!organization,!Allocation List,!Year,!Month,!Version,'Allocation Driver')@='Square Footage',['Driver','Sep'],CONTINUE);\n['Driver','Q4']=IF(DB('Allocation Calculation',!organization,!Allocation List,!Year,!Month,!Version,'Allocation Driver')@='Square Footage',['Driver','Dec'],CONTINUE);\n['Driver','Year']=IF(DB('Allocation Calculation',!organization,!Allocation List,!Year,!Month,!Version,'Allocation Driver')@='Square Footage',['Driver','Dec'],CONTINUE);\n\n['Driver','Q1']=IF(DB('Allocation Calculation',!organization,!Allocation List,!Year,!Month,!Version,'Allocation Driver')@='Server Space',['Driver','Mar'],CONTINUE);\n['Driver','Q2']=IF(DB('Allocation Calculation',!organization,!Allocation List,!Year,!Month,!Version,'Allocation Driver')@='Server Space',['Driver','Jun'],CONTINUE);\n['Driver','Q3']=IF(DB('Allocation Calculation',!organization,!Allocation List,!Year,!Month,!Version,'Allocation Driver')@='Server Space',['Driver','Sep'],CONTINUE);\n['Driver','Q4']=IF(DB('Allocation Calculation',!organization,!Allocation List,!Year,!Month,!Version,'Allocation Driver')@='Server Space',['Driver','Dec'],CONTINUE);\n['Driver','Year']=IF(DB('Allocation Calculation',!organization,!Allocation List,!Year,!Month,!Version,'Allocation Driver')@='Server Space',['Driver','Dec'],CONTINUE);\n\n['Driver']=N:IF(SUBST(DB('Allocation Calculation',!Organization,!Allocation List,!Year,'Year',!Version,'Exclude Entity'),1,1)@='Y',0,\nDB('Income Statement','Base',!Organization,!Year,!Month,DB('Allocation Source Definition',!Allocation List,!Year,!Version,'Allocation Driver'),!Version) );\n\n['Exclude Entity']=S:IF(ATTRS('Organization',DIMNM('Organization',DIMIX('Organization',!Organization)),'Caption_Default')@=\n\t\t\tDB('Allocation Source Definition',!Allocation List,!Year,!Version,'Source Entity'),\n\t\t\t'Y',STET);\n\n['Allocation Amount']= DB('Income Statement','Base',DB('Allocation Source Definition',!Allocation List,!Year,!Version,'Source Entity'),!Year,!Month,DB('Allocation Source Definition',!Allocation List,!Year,!Version,'Source Account'),!Version)\n                                   * DB('Allocation Source Definition',!Allocation List,!Year,!Version,'Pct to Allocate');\n\n\n\n#[{'Source Entity','Source Account','Allocation Driver'}] = S: DB('Allocation Source Definition',!Allocation List,!Year,!Version,!Allocation Calculation);\n\n#Region N-Calculation rules: Dimension:Allocation Calculation\n#Autogenerated CALC NUMERIC 416C6C6F636174696F6E2043616C63756C6174696F6E\n   #Region Dimension:Allocation Calculation, Member:Ratio\n   #Autogenerated MEMBERCALC NUMERIC 5B416C6C6F636174696F6E2043616C63756C6174696F6E5D2E5B526174696F5D\n   ['Allocation Calculation':'Ratio']=N:(['Allocation Calculation':'Driver']\\['Allocation Calculation':'Total Driver']);\n   #EndRegion\n   #Region Dimension:Allocation Calculation, Member:Allocated Amount\n   #Autogenerated MEMBERCALC NUMERIC 5B416C6C6F636174696F6E2043616C63756C6174696F6E5D2E5B416C6C6F636174656420416D6F756E745D\n   ['Allocation Calculation':'Allocated Amount']=N:(['Allocation Calculation':'Allocation Amount']*['Allocation Calculation':'Ratio']);\n   #EndRegion\n#EndRegion\n\n#Region Link rule: Allocation Calculation:Allocation Source Definition - String\n#Source cube: Allocation Source Definition\n#Target cube: Allocation Calculation\n#Autogenerated LINK STRING 7D4C696E6B5F416C6C6F636174696F6E2043616C63756C6174696F6E5F3341416C6C6F636174696F6E20536F7572636520446566696E6974696F6E\n['Allocation Calculation':{'Allocation Driver','Source Entity','Source Account'}] = S:DB('Allocation Source Definition',\n    !Allocation List, !Year, !Version, ATTRS('Allocation Calculation',\n    !Allocation Calculation, '}Map_}Link_Allocation Calculation_3AAllocation Source Definition'));\n#EndRegion\n\n#Region C-Calculation rules: Dimension:Allocation Calculation\n#Autogenerated CALC CONSOLIDATED 416C6C6F636174696F6E2043616C63756C6174696F6E\n   #Region Dimension:Allocation Calculation, Member:Ratio\n   #Autogenerated MEMBERCALC CONSOLIDATED 5B416C6C6F636174696F6E2043616C63756C6174696F6E5D2E5B526174696F5D\n   ['Allocation Calculation':'Ratio']=C:(['Allocation Calculation':'Driver']\\['Allocation Calculation':'Total Driver']);\n   #EndRegion\n#EndRegion\n\nFEEDERS;\n\n['Driver']=>['Ratio'];\n['Allocation Amount']=>['Allocated Amount'],['Total Driver'];\n['Allocation Amount']=>DB(IF(ATTRS('Organization',DIMNM('Organization',DIMIX('Organization',!Organization)),'Organization Description')@=\n\t\t\tDB('Allocation Source Definition',!Allocation List,!Year,!Version,'Source Entity'),'Allocation Calculation',''),!Organization,!Allocation List,!Year,!Month,!Version,'Exclude Entity');\n['Exclude Entity']=>['Credit Amount'];\n\n\n\n\n#Region FEED The Income Statement\n['Credit Amount']=>DB(IF(ATTRS('Version',!Version,'Version Type') @= 'B' %\n                        ATTRS('Version',!Version,'Version Type') @= 'A' %\n                        ATTRS('Version',!Version,'Version Type') @= 'T'\n                   ,'Income Statement',''), 'Local', !organization,!Year, !Month, '6610', !Version);\n['Allocated Amount']=>DB(IF(ATTRS('Version',!Version,'Version Type') @= 'B' %\n                        ATTRS('Version',!Version,'Version Type') @= 'A' %\n                        ATTRS('Version',!Version,'Version Type') @= 'T'\n                      ,'Income Statement',''), 'Local', !organization,!Year, !Month, '6600', !Version);\n#EndRegion"
+    },
+    {
+      "id": "mdxsandbox:24retail",
+      "type": "mdxsandbox",
+      "label": "MDX Sandbox",
+      "server": "24retail"
+    }
+  ],
+  "activeTab": "mdxsandbox:24retail",
   "groups": [
     {
       "id": "g1",
-      "tabIds": [],
-      "activeTabId": null
+      "tabIds": [
+        "process:24retail:Add_Product",
+        "rules:24retail:Allocation Calculation",
+        "mdxsandbox:24retail"
+      ],
+      "activeTabId": "mdxsandbox:24retail"
     }
   ],
   "activeGroupId": "g1"

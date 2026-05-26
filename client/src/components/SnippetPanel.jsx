@@ -10,7 +10,7 @@ function cleanInsert(code) {
 
 export default function SnippetPanel({ snippets, onInsert }) {
   const allCats = useMemo(() => [...new Set(snippets.map(s => s.category))], [snippets])
-  const [openCats, setOpenCats] = useState(() => new Set(allCats))
+  const [openCats, setOpenCats] = useState(() => new Set())
   const [query, setQuery] = useState('')
 
   const toggleCat = (cat) =>
@@ -43,9 +43,8 @@ export default function SnippetPanel({ snippets, onInsert }) {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="px-3 py-2 border-b border-border shrink-0">
-        <div className="text-xs font-semibold">Snippets</div>
-        <div className="text-[10px] text-muted-foreground">Click any snippet to insert at cursor</div>
+      <div className="px-3 py-1.5 border-b border-border shrink-0">
+        <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Snippets</div>
       </div>
 
       <div className="px-2 py-1.5 border-b border-border shrink-0">
@@ -71,9 +70,9 @@ export default function SnippetPanel({ snippets, onInsert }) {
             <div key={cat}>
               <button
                 onClick={() => toggleCat(cat)}
-                className="flex items-center gap-1.5 w-full px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground border-b border-border/50 sticky top-0 bg-sidebar z-10"
+                className="flex items-center gap-1.5 w-full px-3 py-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground border-b border-border/50 sticky top-0 bg-sidebar z-10"
               >
-                {open ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
+                {open ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
                 <span className="flex-1 text-left">{cat}</span>
                 <span className="font-mono normal-case tracking-normal text-muted-foreground/50">{items.length}</span>
               </button>

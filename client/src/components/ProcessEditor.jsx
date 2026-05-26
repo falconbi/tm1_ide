@@ -5,9 +5,10 @@ import { useProcess, useSaveProcess, useRunProcess, useCubes, useViews } from '@
 import { registerTM1Completions, registerTM1Theme } from '@/lib/tm1-functions'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
-import { ChevronRight, ChevronDown, Play, X, Braces } from 'lucide-react'
+import { ChevronRight, ChevronDown, Play, X, Braces, Wand2, CheckCircle2, XCircle, Database } from 'lucide-react'
 import { getSnippets } from '@/lib/tm1-snippets.js'
 import SnippetPanel from '@/components/SnippetPanel'
+import PatternDialog from '@/components/PatternDialog'
 
 const CODE_TABS = [
   { key: 'PrologProcedure',    label: 'Prolog'   },
@@ -423,6 +424,8 @@ export default function ProcessEditor({ tab }) {
   const [showRun, setShowRun] = useState(false)
   const [showDsInsert, setShowDsInsert] = useState(false)
   const [showSnippets, setShowSnippets] = useState(false)
+  const [showPatterns, setShowPatterns] = useState(false)
+  const [runOutput, setRunOutput] = useState(null)
   const editorRef = useRef(null)
   const monacoRef = useRef(null)
   const pendingLineRef = useRef(null)
@@ -487,13 +490,55 @@ export default function ProcessEditor({ tab }) {
     }
   }
 
+  const jumpToError = (tmSection, line) => {
+    const key = SECTION_TO_KEY[tmSection]
+    if (!key) return
+    pendingLineRef.current = line
+    if (key !== activeSection) {
+      setActiveSection(key)
+    } else if (editorRef.current) {
+      editorRef.current.revealLineInCenter(line)
+      editorRef.current.setPosition({ lineNumber: line, column: 1 })
+      pendingLineRef.current = null
+    }
+  }
+
+  const handleInsertPattern = (generated) => {
+    const keys = Object.keys(generated).filter(k => generated[k]?.trim())
+    if (!keys.length) return
+    setEdits(prev => {
+      const next = { ...prev }
+      for (const key of keys) {
+        const existing = (prev[key] ?? data?.[key] ?? '').trimEnd()
+        next[key] = existing ? existing + '\n\n' + generated[key] : generated[key]
+      }
+      return next
+    })
+    const firstKey = keys[0]
+    if (firstKey !== activeSection) setActiveSection(firstKey)
+  }
+
   const handleRun = (values) => {
+    setRunOutput(null)
     const id = toast.loading('Running process…')
     runProcess.mutate(
       { server: tab.server, name: tab.name, params: values },
       {
-        onSuccess: () => { setShowRun(false); toast.success('Process completed', { id }) },
-        onError:   (e) => toast.error(e.message, { id }),
+        onSuccess: (res) => {
+          setShowRun(false)
+          toast.success('Process completed', { id })
+          setRunOutput({ status: 'ok', duration: res?.duration ?? null })
+        },
+        onError: (e) => {
+          toast.dismiss(id)
+          const detail = e.response?.data ?? {}
+          setRunOutput({
+            status:  'error',
+            message: detail.error || e.message,
+            section: detail.section ?? null,
+            line:    detail.line   ?? null,
+          })
+        },
       },
     )
   }
@@ -543,6 +588,14 @@ export default function ProcessEditor({ tab }) {
         />
       )}
 
+      {/* ── Pattern dialog ────────────────────────────────────────────── */}
+      {showPatterns && (
+        <PatternDialog
+          onInsert={handleInsertPattern}
+          onClose={() => setShowPatterns(false)}
+        />
+      )}
+
       {/* ── Run dialog ────────────────────────────────────────────────── */}
       {showRun && (
         <RunDialog
@@ -554,7 +607,7 @@ export default function ProcessEditor({ tab }) {
       )}
 
       {/* ── Section tabs + actions ─────────────────────────────────────── */}
-      <div className="flex items-center border-b border-border bg-muted shrink-0">
+      <div className="flex items-center border-b border-border bg-muted shrink-0 overflow-x-auto">
         {CODE_TABS.map(({ key, label }) => (
           <button
             key={key}
@@ -573,24 +626,34 @@ export default function ProcessEditor({ tab }) {
           </button>
         ))}
 
-        <div className="ml-auto flex items-center gap-2 mr-2">
+        <div className="ml-auto flex items-center gap-1 mr-2">
+          <button
+            onClick={() => setShowPatterns(true)}
+            title="Patterns"
+            className="flex items-center gap-1.5 px-2.5 py-1 text-xs rounded border border-border text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+          >
+            <Wand2 size={11} />
+            <span className="hidden sm:inline">Patterns</span>
+          </button>
           <button
             onClick={() => setShowSnippets(s => !s)}
+            title="Snippets"
             className={cn(
-              'flex items-center gap-1.5 px-3 py-1 text-xs rounded border transition-colors',
+              'flex items-center gap-1.5 px-2.5 py-1 text-xs rounded border transition-colors',
               showSnippets ? 'bg-primary text-primary-foreground border-primary' : 'border-border text-muted-foreground hover:text-foreground hover:bg-muted'
             )}
           >
             <Braces size={11} />
-            Snippets
+            <span className="hidden sm:inline">Snippets</span>
           </button>
           <button
             onClick={() => setShowDsInsert(true)}
             disabled={!data}
-            className="px-3 py-1 text-xs rounded border border-border text-muted-foreground hover:text-foreground hover:bg-muted transition-colors disabled:opacity-40"
-            title="Insert datasource block at cursor"
+            className="flex items-center gap-1 px-2.5 py-1 text-xs rounded border border-border text-muted-foreground hover:text-foreground hover:bg-muted transition-colors disabled:opacity-40"
+            title="Insert datasource block"
           >
-            + Datasource
+            <Database size={11} />
+            <span className="hidden sm:inline">Datasource</span>
           </button>
           <button
             onClick={() => setShowRun(true)}
@@ -636,9 +699,45 @@ export default function ProcessEditor({ tab }) {
         </CollapsibleSection>
       )}
 
+      {/* ── Run output panel ──────────────────────────────────────────── */}
+      {runOutput && (
+        <div className={cn(
+          'shrink-0 border-t border-border flex items-center gap-3 px-4 py-2 text-xs',
+          runOutput.status === 'error' ? 'bg-red-950/20' : 'bg-green-950/10'
+        )}>
+          {runOutput.status === 'ok' ? (
+            <>
+              <CheckCircle2 size={13} className="text-green-500 shrink-0" />
+              <span className="text-green-400">
+                Completed successfully{runOutput.duration != null ? ` — ${runOutput.duration}ms` : ''}
+              </span>
+            </>
+          ) : (
+            <>
+              <XCircle size={13} className="text-red-400 shrink-0" />
+              <span className="text-red-300 font-mono truncate flex-1">{runOutput.message}</span>
+              {runOutput.section && runOutput.line && (
+                <button
+                  onClick={() => jumpToError(runOutput.section, runOutput.line)}
+                  className="shrink-0 text-red-300 hover:text-red-100 underline underline-offset-2"
+                >
+                  → {runOutput.section} line {runOutput.line}
+                </button>
+              )}
+            </>
+          )}
+          <button
+            onClick={() => setRunOutput(null)}
+            className="shrink-0 ml-auto text-muted-foreground hover:text-foreground"
+          >
+            <X size={11} />
+          </button>
+        </div>
+      )}
+
       {/* ── Monaco editor ─────────────────────────────────────────────── */}
-      <div className="flex flex-1 min-h-0">
-        <div className="flex-1 min-h-0">
+      <div className="flex flex-1 min-h-0 overflow-hidden">
+        <div className="flex-1 min-h-0 min-w-0">
           <MonacoEditor
             key={activeSection}
             height="100%"

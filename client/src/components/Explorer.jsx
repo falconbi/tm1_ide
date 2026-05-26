@@ -1,4 +1,4 @@
-import { useState, useRef, useMemo, useEffect } from 'react'
+import { useState, useRef, useMemo, useEffect, createContext, useContext } from 'react'
 import { toast } from 'sonner'
 import { useCubes, useDims, useProcs, useChores, useSubsets, useViews, useCubeDimensions, useSaveView, useHierarchies, useCreateHierarchy, useControlObjects, useDeleteDimension, useDeleteCube, useDeleteProcess, useDeleteChore, useDeleteSubset } from '@/hooks/useApi'
 import { useStore } from '@/store'
@@ -53,8 +53,21 @@ function getLocateId(target) {
   return ''
 }
 
+function getLocateIdFromTab(tab) {
+  if (!tab) return ''
+  if (tab.type === 'process')   return `process:${tab.name}`
+  if (tab.type === 'rules')     return `rules:${tab.cube}`
+  if (tab.type === 'view' || tab.type === 'cubeview') return tab.viewName ? `view:${tab.cube}:${tab.viewName}` : `cube:${tab.cube}`
+  if (tab.type === 'subset')    return `subset:${tab.dimension}:${tab.subsetName}`
+  if (tab.type === 'dimension') return `dimension:${tab.dimension}`
+  return ''
+}
+
+const ActiveLocateCtx = createContext('')
+
 function Section({ icon: Icon, label, items, isLoading, onSelect, itemIcon: ItemIcon, sectionId, locateIdPrefix, onDelete }) {
   const [open, setOpen] = useState(false)
+  const activeId = useContext(ActiveLocateCtx)
   const revealTarget = useStore(s => s.revealTarget)
   useEffect(() => {
     if (revealTarget && shouldAutoOpen(sectionId, revealTarget)) setOpen(true)
@@ -80,7 +93,7 @@ function Section({ icon: Icon, label, items, isLoading, onSelect, itemIcon: Item
                 className="flex items-center gap-2 flex-1 pl-6 pr-2 py-0.5 truncate min-w-0"
               >
                 {ItemIcon && <ItemIcon size={12} className="shrink-0 text-muted-foreground" />}
-                <span className="truncate">{item}</span>
+                <span className={cn('truncate', locateIdPrefix && activeId === `${locateIdPrefix}:${item}` && 'text-amber-400 dark:text-amber-300')}>{item}</span>
               </button>
               {onDelete && (
                 <button
@@ -241,6 +254,7 @@ function CubeDimRow({ server, dim, onOpenSubset, onOpenDim, cube }) {
 }
 
 function CubeRow({ server, cube, onOpenRules, onOpenView, onOpenSubset, onOpenDim, onOpenViewer }) {
+  const activeId = useContext(ActiveLocateCtx)
   const [open, setOpen] = useState(false)
   const revealTarget = useStore(s => s.revealTarget)
   const sectionId = `cube:${cube}`
@@ -299,7 +313,7 @@ function CubeRow({ server, cube, onOpenRules, onOpenView, onOpenSubset, onOpenDi
         </button>
         <button onClick={() => onOpenViewer(cube)} className="flex items-center flex-1 min-w-0 text-left">
           <Box size={12} className="shrink-0 text-muted-foreground mr-2" />
-          <span className="truncate">{cube}</span>
+          <span className={cn('truncate', activeId === `cube:${cube}` && 'text-amber-400 dark:text-amber-300')}>{cube}</span>
         </button>
         {loading
         ? <Loader2 size={10} className="ml-1 animate-spin text-muted-foreground shrink-0" />
@@ -326,7 +340,7 @@ function CubeRow({ server, cube, onOpenRules, onOpenView, onOpenSubset, onOpenDi
                   {v.type === 'mdx'
                     ? <Code2 size={10} className="shrink-0 text-violet-400" />
                     : <Table2 size={10} className="shrink-0 text-muted-foreground" />}
-                  <span className="truncate font-mono">{v.name}</span>
+                  <span className={cn('truncate font-mono', activeId === `view:${cube}:${v.name}` && 'text-amber-400 dark:text-amber-300')}>{v.name}</span>
                 </button>
               ))
           }
@@ -382,6 +396,7 @@ function CubeSection({ server, cubes, isLoading, onOpenRules, onOpenView, onOpen
 
 function RulesSection({ server, cubes, isLoading, onOpenRules }) {
   const [open, setOpen] = useState(false)
+  const activeId = useContext(ActiveLocateCtx)
   const revealTarget = useStore(s => s.revealTarget)
   useEffect(() => {
     if (revealTarget && shouldAutoOpen('rules', revealTarget)) setOpen(true)
@@ -412,7 +427,7 @@ function RulesSection({ server, cubes, isLoading, onOpenRules }) {
               title={`Open rules for ${cube}`}
             >
               <Box size={10} className="shrink-0 text-muted-foreground" />
-              <span className="truncate font-mono">{cube}</span>
+              <span className={cn('truncate font-mono', activeId === `rules:${cube}` && 'text-amber-400 dark:text-amber-300')}>{cube}</span>
               <span className="hidden group-hover:inline text-[10px] text-muted-foreground ml-auto">Rules</span>
             </button>
           ))}
@@ -464,6 +479,7 @@ function HistorySection({ server, onOpen }) {
 }
 
 function DimRow({ server, dim, onOpenSubset, onOpenDim }) {
+  const activeId = useContext(ActiveLocateCtx)
   const [open, setOpen] = useState(false)
   const revealTarget = useStore(s => s.revealTarget)
   const sectionId = `dim:${dim}`
@@ -523,7 +539,7 @@ function DimRow({ server, dim, onOpenSubset, onOpenDim }) {
           {open ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
         </button>
         <Layers size={12} className="shrink-0 text-muted-foreground mr-2" />
-        <span className="truncate flex-1 text-left">{dim}</span>
+        <span className={cn('truncate flex-1 text-left', activeId === `dimension:${dim}` && 'text-amber-400 dark:text-amber-300')}>{dim}</span>
         <span className="hidden group-hover:flex items-center gap-1 shrink-0 ml-1">
           <button onClick={() => onOpenDim(dim)} title="Edit dimension"
             className="flex items-center gap-0.5 px-1 py-0.5 rounded text-[10px] text-muted-foreground hover:text-foreground hover:bg-sidebar-accent">
@@ -629,7 +645,7 @@ function DimRow({ server, dim, onOpenSubset, onOpenDim }) {
                   ? <Code2 size={10} className="shrink-0 text-violet-400" />
                   : <List   size={10} className="shrink-0 text-muted-foreground" />
                 }
-                <span className="truncate font-mono">{s.Name}</span>
+                <span className={cn('truncate font-mono', activeId === `subset:${dim}:${s.Name}` && 'text-amber-400 dark:text-amber-300')}>{s.Name}</span>
               </button>
               <button
                 onClick={(e) => { e.stopPropagation(); handleDeleteSubset(s.Name) }}
@@ -842,6 +858,12 @@ export default function Explorer() {
 
   const openFromHistory = (h) => openTab({ ...h, content: null })
 
+  const tabs          = useStore(s => s.tabs)
+  const groups        = useStore(s => s.groups)
+  const activeGroupId = useStore(s => s.activeGroupId)
+  const activeTab     = tabs.find(t => t.id === groups.find(g => g.id === activeGroupId)?.activeTabId)
+  const activeLocateId = activeTab?.server === server ? getLocateIdFromTab(activeTab) : ''
+
   const revealTarget = useStore(s => s.revealTarget)
   const clearRevealTarget = useStore(s => s.clearRevealTarget)
 
@@ -856,8 +878,10 @@ export default function Explorer() {
       const el = document.querySelector(`[data-locate-id="${id}"]`)
       if (el) {
         el.scrollIntoView({ behavior: 'smooth', block: 'center' })
-        el.classList.add('bg-primary/30')
-        setTimeout(() => el.classList.remove('bg-primary/30'), 1500)
+        el.classList.remove('tree-reveal-glow')
+        void el.offsetWidth // force reflow so re-triggering works
+        el.classList.add('tree-reveal-glow')
+        setTimeout(() => el.classList.remove('tree-reveal-glow'), 2100)
       }
       clearRevealTarget()
     }, 400)
@@ -879,6 +903,7 @@ export default function Explorer() {
   }
 
   return (
+    <ActiveLocateCtx.Provider value={activeLocateId}>
     <div className="flex flex-col flex-1 min-h-0">
       <div className="px-2 py-1.5 border-b border-border shrink-0">
         <div className="flex items-center gap-1.5 bg-muted rounded px-2 py-1">
@@ -931,5 +956,6 @@ export default function Explorer() {
         </div>
       </ScrollArea>
     </div>
+    </ActiveLocateCtx.Provider>
   )
 }

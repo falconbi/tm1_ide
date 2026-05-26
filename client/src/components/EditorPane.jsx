@@ -255,8 +255,8 @@ function RulesEditor({ tab, onCursor }) {
   }
 
   return (
-    <div className="flex h-full min-h-0">
-      <div className="flex-1 min-w-0 relative">
+    <div className="flex h-full min-h-0 overflow-hidden">
+      <div className="flex-1 min-w-0 overflow-hidden relative">
         <div className="absolute top-2 right-2 z-10 flex items-center gap-1.5">
           <div ref={formatPopupRef} className="relative format-popup-container">
             <button

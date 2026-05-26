@@ -128,3 +128,14 @@
     @apply font-sans;
     }
 }
+
+@keyframes tree-reveal-glow {
+  0%   { color: inherit;                    text-shadow: none; }
+  15%  { color: rgb(251, 191, 36);          text-shadow: 0 0 10px rgba(251, 191, 36, 0.8); }
+  70%  { color: rgba(251, 191, 36, 0.75);  text-shadow: 0 0 6px rgba(251, 191, 36, 0.4); }
+  100% { color: inherit;                    text-shadow: none; }
+}
+
+.tree-reveal-glow span {
+  animation: tree-reveal-glow 2s ease-out forwards;
+}
