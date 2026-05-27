@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, useRef } from 'react'
 import { useCubes, useCubeDimensions, useDims, useDimAttributes, useAttributeValues } from '@/hooks/useApi'
 import { useStore } from '@/store'
 import { ArrowLeft, ArrowRight, Play, Loader2, Copy, X, Check, Code2, ExternalLink } from 'lucide-react'
@@ -43,6 +43,40 @@ const WRAPPERS = {
   'except':      (dim, inner) => `{EXCEPT(${inner}, {[${dim}].[Member]})}`,
 }
 
+const FUNCTIONS = [
+  { id: 'fn-val',         label: 'VAL(attr + "0")',           mdx: () => `VAL([Dim].[Dim].CURRENTMEMBER.PROPERTIES("Attr") + "0")` },
+  { id: 'fn-strtovalue',  label: 'STRTOVALUE(attr)',          mdx: () => `STRTOVALUE([Dim].[Dim].CURRENTMEMBER.PROPERTIES("Attr"))` },
+  { id: 'fn-strtomember', label: 'STRTOMEMBER(expr)',         mdx: () => `STRTOMEMBER("[Dim].[" + [Cube].([Measure]) + "]")` },
+  { id: 'fn-iif',         label: 'IIF(cond, t, f)',           mdx: () => `IIF([Dim].[Dim].CURRENTMEMBER.PROPERTIES("Attr") = "Val", 1, 0)` },
+  { id: 'fn-currentmember', label: 'CURRENTMEMBER',           mdx: () => `[Dim].[Dim].CURRENTMEMBER` },
+  { id: 'fn-properties',  label: '.PROPERTIES("Attr")',       mdx: () => `[Dim].[Dim].CURRENTMEMBER.PROPERTIES("Attr")` },
+  { id: 'fn-generate',    label: 'GENERATE(set, expr)',       mdx: () => `{GENERATE({TM1SUBSETALL([Dim].[Dim])}, {[Dim].[Dim].CURRENTMEMBER})}` },
+  { id: 'fn-extract',     label: 'EXTRACT(set, dim)',         mdx: () => `{EXTRACT({set}, [Dim])}` },
+  { id: 'fn-lag',         label: 'LAG(member, N)',            mdx: () => `[Dim].[Dim].CURRENTMEMBER.LAG(1)` },
+  { id: 'fn-lead',        label: 'LEAD(member, N)',           mdx: () => `[Dim].[Dim].CURRENTMEMBER.LEAD(1)` },
+  { id: 'fn-periodstodate',label: 'PERIODSTODATE(member)',    mdx: () => `{PERIODSTODATE([Dim].[Dim].[FY],[Dim].[Dim].CURRENTMEMBER)}` },
+  { id: 'fn-isancestor',  label: 'ISANCESTOR(a, b)',          mdx: () => `ISANCESTOR([Dim].[Member], [Dim].[Dim].CURRENTMEMBER)` },
+  { id: 'fn-closingperiod',label: 'CLOSINGPERIOD(member)',    mdx: () => `CLOSINGPERIOD([Dim].[Dim].[FY],[Dim].[Dim].CURRENTMEMBER)` },
+  { id: 'fn-openingperiod',label:'OPENINGPERIOD(member)',     mdx: () => `OPENINGPERIOD([Dim].[Dim].[FY],[Dim].[Dim].CURRENTMEMBER)` },
+  { id: 'fn-cousin',      label: 'COUSIN(m1, m2)',            mdx: () => `[Dim].[Member].COUSIN([Dim].[Other])` },
+  { id: 'fn-parallelperiod',label:'PARALLELPERIOD(mem, N)',   mdx: () => `PARALLELPERIOD([Dim].[Dim].[FY], 1, [Dim].[Dim].CURRENTMEMBER)` },
+  { id: 'fn-opening-closing',label:'OPENING/CLOSINGPERIOD',   mdx: () => `OPENINGPERIOD([Dim].[Dim].[FY],[Dim].[Dim].CURRENTMEMBER)` },
+  { id: 'fn-tm1member',   label: 'TM1MEMBER(name)',           mdx: () => `TM1MEMBER("[Dim].[Name]")` },
+  { id: 'fn-tm1tuplesize',label: 'TM1TUPLESIZE(tuple)',       mdx: () => `TM1TUPLESIZE()` },
+  { id: 'fn-tm1subsettoset',label:'TM1SubsetToSet(dim, sub)', mdx: () => `TM1SubsetToSet([Dim], "MySubset")` },
+  { id: 'fn-tm1settosubset',label:'TM1SetToSubset(...)',      mdx: () => `TM1SetToSubset([Dim], {set}, "SubsetName", 0)` },
+  { id: 'fn-dimname',     label: 'DIMNAME(dim)',              mdx: () => `DIMNAME([Dim])` },
+  { id: 'fn-dimix',       label: 'DIMIX(dim, member)',        mdx: () => `DIMIX([Dim], [Dim].[Member])` },
+  { id: 'fn-head',        label: 'HEAD(set, N)',              mdx: () => `{HEAD({TM1SUBSETALL([Dim].[Dim])}, 10)}` },
+  { id: 'fn-tail',        label: 'TAIL(set, N)',              mdx: () => `{TAIL({TM1SUBSETALL([Dim].[Dim])}, 10)}` },
+  { id: 'fn-item',        label: 'ITEM(set, N)',              mdx: () => `{TM1SUBSETALL([Dim].[Dim])}.ITEM(0)` },
+  { id: 'fn-count',       label: 'COUNT(set)',                mdx: () => `COUNT({TM1SUBSETALL([Dim].[Dim])} INCLUDEEMPTY)` },
+  { id: 'fn-sum',         label: 'SUM(set, cube)',            mdx: () => `SUM({TM1SUBSETALL([Dim].[Dim])}, [Cube].([Measure]))` },
+  { id: 'fn-avg',         label: 'AVG(set, cube)',            mdx: () => `AVG({TM1SUBSETALL([Dim].[Dim])}, [Cube].([Measure]))` },
+  { id: 'fn-min-max',     label: 'MIN / MAX(set, cube)',      mdx: () => `MIN({TM1SUBSETALL([Dim].[Dim])}, [Cube].([Measure]))` },
+  { id: 'fn-rank',        label: 'RANK(member, set)',         mdx: () => `RANK([Dim].[Dim].CURRENTMEMBER, {TM1SUBSETALL([Dim].[Dim])})` },
+]
+
 const PATTERNS = [
   { id: 'all',         label: 'All members',              cat: 'Basic',        unwrapped: true },
   { id: 'leaf',        label: 'Leaf only (level 0)',      cat: 'Basic' },
@@ -68,8 +102,8 @@ const PATTERNS = [
   { id: 'strtomember', label: 'Using STRTTOMEMBER',       cat: 'Advanced' },
   { id: 'except-attr', label: 'Except by attribute',      cat: 'Set Ops' },
   { id: 'children',    label: 'Children of member',       cat: 'Hierarchy' },
-  { id: 'descendants', label: 'Descendants of member',    cat: 'Hierarchy' },
-  { id: 'filter-desc', label: 'Filter then Descendants',  cat: 'Hierarchy' },
+  { id: 'descendants', label: 'Drill down from member',    cat: 'Hierarchy' },
+  { id: 'filter-desc', label: 'Get descendants of result', cat: 'Hierarchy' },
   { id: 'ancestors',   label: 'Ancestors of member',      cat: 'Hierarchy' },
   { id: 'parent',      label: 'Parent of member',         cat: 'Hierarchy' },
   { id: 'range',       label: 'Range between members',    cat: 'Time / Range' },
@@ -99,6 +133,7 @@ export default function GuidedMDXBuilder({ tab, server: serverProp, onSwitchToRa
   const [previewResult, setPreviewResult] = useState(null)
   const [previewError, setPreviewError] = useState(null)
   const [previewLoading, setPreviewLoading] = useState(false)
+  const [isFormatted, setIsFormatted] = useState(false)
 
   const { data: cubes = [] } = useCubes(server)
   const { data: cubeDims = [] } = useCubeDimensions(server, selectedCube)
@@ -106,6 +141,15 @@ export default function GuidedMDXBuilder({ tab, server: serverProp, onSwitchToRa
   const { data: dimAttrs = [] } = useDimAttributes(server, selectedDim)
   const { data: attrValues = { values: [] } } = useAttributeValues(server, selectedDim, selectedAttr)
   const { openTab } = useStore()
+  const editorRef = useRef(null)
+
+  const insertAtCursor = (text) => {
+    const editor = editorRef.current
+    if (!editor) { setCurrentMDX(prev => prev + text); return }
+    const pos = editor.getPosition()
+    editor.executeEdits('insert', [{ range: { startLineNumber: pos.lineNumber, startColumn: pos.column, endLineNumber: pos.lineNumber, endColumn: pos.column }, text }])
+    editor.focus()
+  }
 
   // View mode axes + MDX
   const { axes, dimExpressions } = useMemo(() => {
@@ -181,12 +225,28 @@ export default function GuidedMDXBuilder({ tab, server: serverProp, onSwitchToRa
   }
 
   const copyMDX = async () => { if (generatedMDX) try { await navigator.clipboard.writeText(generatedMDX) } catch {} }
+
+  const toggleFormat = () => {
+    let mdx = currentMDX
+    if (isFormatted) {
+      mdx = mdx.replace(/\s+/g, ' ').replace(/\s*(\{)\s*/g, '$1').replace(/\s*(\})\s*/g, '$1').replace(/\s*,\s*/g, ', ').trim()
+      setIsFormatted(false)
+    } else {
+      mdx = mdx.replace(/\s+/g, ' ').trim()
+      mdx = mdx.replace(/\{FILTER\(([^,]+),\s*([^}]+)\)\}/g, (_, inner, cond) =>
+        `{\n  FILTER(\n    ${inner.trim()},\n    ${cond.trim()}\n  )\n}`)
+      mdx = mdx.replace(/\,\s*\)\}$/g, '\n  )\n}')
+      setIsFormatted(true)
+    }
+    setCurrentMDX(mdx)
+  }
   const canNext = () => isSubsetMode ? (step === 0 ? !!selectedDim : !!currentMDX) : (step === 0 ? !!selectedCube : step === 1 ? Object.keys(dimConfig).some(k => dimConfig[k]?.axis) : true)
   const next = () => { if (canNext()) setStep(s => Math.min(s + 1, 2)) }
   const back = () => setStep(s => Math.max(s - 1, 0))
 
   // Monaco syntax highlighting
   const handleEditorMount = (editor, monaco) => {
+    editorRef.current = editor
     if (monaco.languages.getLanguages().find(l => l.id === 'tm1mdx')) return
     monaco.languages.register({ id: 'tm1mdx' })
     monaco.languages.setMonarchTokensProvider('tm1mdx', { tokenizer: { root: [
@@ -314,11 +374,26 @@ export default function GuidedMDXBuilder({ tab, server: serverProp, onSwitchToRa
                       )}
                     </div>
                   ))}
+                  <div className="mb-1">
+                    <button onClick={() => setExpandedCat(expandedCat === 'functions' ? null : 'functions')}
+                      className="w-full flex items-center gap-1 text-[10px] uppercase tracking-wider text-amber-400 font-semibold py-1 hover:text-foreground">
+                      {expandedCat === 'functions' ? '▾' : '▸'} Functions
+                    </button>
+                    {expandedCat === 'functions' && (
+                      <div className="grid grid-cols-2 gap-0.5 pl-3">
+                        {FUNCTIONS.map(fn => (
+                          <button key={fn.id} onClick={() => insertAtCursor(fn.mdx())}
+                            className="text-left px-2 py-1 rounded border border-border hover:bg-muted text-[10px] font-mono leading-tight">{fn.label}</button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                 <div className="flex items-center justify-between mt-2 mb-1">
                   <span className="text-[10px] text-muted-foreground">MDX Editor</span>
                   <div className="flex gap-1">
+                    <button onClick={toggleFormat} className="text-[9px] px-1.5 py-0.5 border rounded hover:bg-muted">{isFormatted ? 'Inline' : 'Format'}</button>
                     <button onClick={copyMDX} className="text-[9px] px-1.5 py-0.5 border rounded hover:bg-muted">Copy</button>
                   </div>
                 </div>
