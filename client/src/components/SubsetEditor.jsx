@@ -305,6 +305,12 @@ export default function SubsetEditor({ tab }) {
   elementsRef.current  = elements
 
   useEffect(() => {
+    // If opened from Guided MDX Builder with pre-built MDX
+    if (tab.mdx && mdx === null) {
+      setMdx(tab.mdx)
+      setMode('mdx')
+      return
+    }
     if (data && mdx === null) {
       setMdx(data.Expression ?? '')
       setMode(data.Expression ? 'mdx' : 'visual')

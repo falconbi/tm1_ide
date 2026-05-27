@@ -55,6 +55,7 @@ export const useDeleteSubset = () => {
 }
 export const useProcs    = (server)     => useQuery({ queryKey: ['procs', server],     queryFn: () => get(`/api/processes?server=${enc(server)}`),   enabled: !!server })
 export const useChores          = (server) => useQuery({ queryKey: ['chores', server],          queryFn: () => get(`/api/chores?server=${enc(server)}`),          enabled: !!server })
+export const useChore           = (server, name) => useQuery({ queryKey: ['chore', server, name], queryFn: () => get(`/api/chore?server=${enc(server)}&name=${enc(name)}`), enabled: !!server && !!name })
 export const useControlObjects  = (server) => useQuery({ queryKey: ['control-objects', server], queryFn: () => get(`/api/control/objects?server=${enc(server)}`), enabled: !!server, staleTime: 60_000 })
 export const useRules    = (server, cube) => useQuery({ queryKey: ['rules', server, cube], queryFn: () => get(`/api/rules?server=${enc(server)}&cube=${enc(cube)}`), enabled: !!server && !!cube })
 export const useProcess  = (server, name) => useQuery({ queryKey: ['process', server, name], queryFn: () => get(`/api/process?server=${enc(server)}&name=${enc(name)}`), enabled: !!server && !!name })
@@ -73,6 +74,43 @@ export const useSaveProcess = () => useMutation({
   mutationFn: ({ server, name, body }) =>
     post(`/api/process?server=${enc(server)}&name=${enc(name)}`, body),
 })
+
+export const useDebugProcess = () => useMutation({
+  mutationFn: ({ server, name, params, sections }) =>
+    post('/api/process/debug', { server, name, params, sections }),
+})
+
+export const useSearchProcesses = () => useMutation({
+  mutationFn: ({ server, q }) =>
+    get(`/api/processes/search?server=${enc(server)}&q=${enc(q)}`),
+})
+
+export const useFetchProcessLog = () => useMutation({
+  mutationFn: ({ server, name }) =>
+    get(`/api/process/log?server=${enc(server)}&name=${enc(name)}`),
+})
+
+export const useCreateProcess = () => {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ server, name }) =>
+      post(`/api/process/create?server=${enc(server)}&name=${enc(name)}`, {}),
+    onSuccess: (_, { server }) =>
+      queryClient.invalidateQueries({ queryKey: ['procs', server] }),
+  })
+}
+
+export const useSaveChore = () => {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ server, name, body }) =>
+      patch(`/api/chore?server=${enc(server)}&name=${enc(name)}`, body),
+    onSuccess: (_, { server, name }) => {
+      queryClient.invalidateQueries({ queryKey: ['chore', server, name] })
+      queryClient.invalidateQueries({ queryKey: ['chores', server] })
+    },
+  })
+}
 
 export const useRunProcess = () => useMutation({
   mutationFn: ({ server, name, params }) =>
@@ -134,6 +172,13 @@ export const useDimAttributes = (server, dimension) => useQuery({
   queryKey: ['dim-attributes', server, dimension],
   queryFn:  () => get(`/api/dimension/attributes?server=${enc(server)}&dimension=${enc(dimension)}`),
   enabled:  !!server && !!dimension,
+  staleTime: 60_000,
+})
+
+export const useAttributeValues = (server, dimension, attribute) => useQuery({
+  queryKey: ['attribute-values', server, dimension, attribute],
+  queryFn:  () => get(`/api/dimension/attribute-values?server=${enc(server)}&dimension=${enc(dimension)}&attribute=${enc(attribute)}`),
+  enabled:  !!server && !!dimension && !!attribute,
   staleTime: 60_000,
 })
 

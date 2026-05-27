@@ -404,6 +404,16 @@ class TM1Client {
         return (d.value ?? []).map(r => r.Name).filter(n => !n.startsWith('}'))
     }
 
+    async getChore(name) {
+        return this.get(`Chores('${encodeURIComponent(name)}')`, {
+            '$expand': 'Steps($expand=Process,Parameters)'
+        })
+    }
+
+    async updateChore(name, data) {
+        return this.patch(`Chores('${encodeURIComponent(name)}')`, data)
+    }
+
     // ── Subset usage scan ─────────────────────────────────────────────────────
 
     async scanSubsetUsage(dim, subsetName) {

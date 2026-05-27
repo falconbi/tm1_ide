@@ -7,7 +7,9 @@ import ProcessEditor from '@/components/ProcessEditor'
 import SubsetEditor from '@/components/SubsetEditor'
 import DimensionEditor from '@/components/DimensionEditor'
 import ViewEditor from '@/components/ViewEditor'
-import MDXSandbox from '@/components/MDXSandbox'
+import ChoreEditor from '@/components/ChoreEditor'
+import MDXSubsetBuilder from '@/components/MDXSubsetBuilder'
+import GuidedMDXBuilder from '@/components/GuidedMDXBuilder'
 import { toast } from 'sonner'
 import { GitBranch, ChevronRight, ChevronDown, Loader2, ChevronsUpDown, ChevronsDownUp, ListTree, AlignLeft, Settings, Locate, Braces } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -446,12 +448,14 @@ export default function EditorPane({ groupId }) {
         {tab.type === 'subset'     && <SubsetEditor   key={tab.id} tab={tab} />}
         {tab.type === 'dimension'  && <DimensionEditor key={tab.id} tab={tab} />}
         {(tab.type === 'view' || tab.type === 'cubeview') && <ViewEditor key={tab.id} tab={tab} />}
-        {tab.type === 'mdxsandbox' && <MDXSandbox     key={tab.id} tab={tab} onCursor={handleCursor} />}
+        {tab.type === 'chore'      && <ChoreEditor    key={tab.id} tab={tab} />}
+        {tab.type === 'guidedmdxsubset' && <GuidedMDXBuilder  key={tab.id} tab={tab} />}
+        {tab.type === 'guidedmdxview'   && <GuidedMDXBuilder  key={tab.id} tab={tab} />}
       </div>
       <div className="flex items-center px-3 py-0.5 bg-muted border-t border-border text-xs text-muted-foreground shrink-0">
         <span>Ln {cursor.line}, Col {cursor.col}</span>
         <span className="ml-4">
-          {tab.type === 'rules' ? 'TM1 Rules' : tab.type === 'subset' ? 'MDX' : tab.type === 'dimension' ? 'Dimension' : tab.type === 'view' || tab.type === 'cubeview' ? 'View' : tab.type === 'mdxsandbox' ? 'MDX' : 'TM1 TI'}
+          {tab.type === 'rules' ? 'TM1 Rules' : tab.type === 'subset' ? 'Subset' : tab.type === 'dimension' ? 'Dimension' : tab.type === 'view' || tab.type === 'cubeview' ? 'View' : tab.type === 'chore' ? 'Chore' : 'TM1 TI'}
         </span>
         {getRevealTarget(tab) && (
           <button

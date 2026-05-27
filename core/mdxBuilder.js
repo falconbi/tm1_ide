@@ -1,27 +1,21 @@
-'use strict'
-
 /**
  * Build a TM1 MDX SELECT statement from an axis configuration.
  *
- * axisConfig: {
- *   cube:    string,
- *   rows:    DimensionPlacement[],
- *   columns: DimensionPlacement[],
- *   pages:   DimensionPlacement[],   // slicer / WHERE clause
- *   suppressZeros: boolean,
- * }
+ * @param {Object} config
+ * @param {string} config.cube - Cube name
+ * @param {Array}  config.rows - DimensionPlacement[] for rows axis
+ * @param {Array}  config.columns - DimensionPlacement[] for columns axis
+ * @param {Array}  config.pages - DimensionPlacement[] for slicer/WHERE
+ * @param {boolean} [config.suppressZeros=true] - NON EMPTY on axes
  *
- * DimensionPlacement: {
- *   dimension: string,
- *   subset?:   string,   // null = all members via .Members
- *   member?:   string,   // for pages axis — single member selection
- * }
+ * @typedef {Object} DimensionPlacement
+ * @property {string} dimension - Dimension name
+ * @property {string} [subset]  - Named subset (uses TM1SubsetToSet)
+ * @property {string} [member]  - Single member (for pages axis)
  */
-
-function memberSet(placement) {
-    const { dimension: dim, subset, member } = placement
+function memberSet({ dimension: dim, subset, member }) {
     if (member) return `{[${dim}].[${dim}].[${member}]}`
-    if (subset)  return `{[${dim}].[${dim}].[${subset}]}`  // named subset
+    if (subset) return `TM1SubsetToSet([${dim}], "${subset}")`
     return `{[${dim}].[${dim}].Members}`
 }
 
@@ -32,9 +26,7 @@ function axisExpression(placements, suppress) {
     return suppress ? `NON EMPTY ${joined}` : joined
 }
 
-function buildMDX({ cube, rows = [], columns = [], pages = [], suppressZeros = true }) {
-    if (!columns.length && !rows.length) throw new Error('At least one dimension required on rows or columns')
-
+export function buildMDX({ cube, rows = [], columns = [], pages = [], suppressZeros = true }) {
     const colExpr = axisExpression(columns, suppressZeros) ?? '{}'
     const rowExpr = axisExpression(rows,    suppressZeros)
 
@@ -44,14 +36,10 @@ function buildMDX({ cube, rows = [], columns = [], pages = [], suppressZeros = t
     let mdx = `SELECT ${axes.join(',\n       ')}\nFROM [${cube}]`
 
     if (pages.length) {
-        const slicers = pages.map(p => {
-            const { dimension: dim, member } = p
-            return `[${dim}].[${dim}].[${member ?? dim}]`
-        })
+        const slicers = pages.map(({ dimension: dim, member }) =>
+            `[${dim}].[${dim}].[${member ?? dim}]`)
         mdx += `\nWHERE (${slicers.join(', ')})`
     }
 
     return mdx
 }
-
-module.exports = { buildMDX }

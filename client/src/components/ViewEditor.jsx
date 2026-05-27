@@ -14,32 +14,7 @@ ModuleRegistry.registerModules([AllCommunityModule])
 const lightTheme = themeBalham.withPart(colorSchemeLight).withParams({ fontSize: 12, rowHeight: 24, headerHeight: 28 })
 const darkTheme  = themeBalham.withPart(colorSchemeDark).withParams({ fontSize: 12, rowHeight: 24, headerHeight: 28 })
 
-// ── MDX builder ───────────────────────────────────────────────────────────────
-
-function buildMDX({ cube, rows, columns, pages, suppressZeros }) {
-    const memberSet = ({ dimension: dim, subset, member }) => {
-        if (member) return `{[${dim}].[${dim}].[${member}]}`
-        if (subset)  return `TM1SubsetToSet([${dim}], "${subset}")`
-        return `{[${dim}].[${dim}].Members}`
-    }
-    const axisExpr = (placements) => {
-        if (!placements.length) return null
-        const sets = placements.map(memberSet)
-        const joined = sets.length === 1 ? sets[0] : `CrossJoin(${sets.join(', ')})`
-        return suppressZeros ? `NON EMPTY ${joined}` : joined
-    }
-    const colExpr = axisExpr(columns) ?? '{}'
-    const rowExpr = axisExpr(rows)
-    const axes = [`${colExpr} ON COLUMNS`]
-    if (rowExpr) axes.push(`${rowExpr} ON ROWS`)
-    let mdx = `SELECT ${axes.join(',\n       ')}\nFROM [${cube}]`
-    if (pages.length) {
-        const slicers = pages.map(({ dimension: dim, member }) => `[${dim}].[${dim}].[${member ?? dim}]`)
-        mdx += `\nWHERE (${slicers.join(', ')})`
-    }
-    return mdx
-}
-
+import { buildMDX } from '@core/mdxBuilder.js'
 // ── Cellset → AG Grid ─────────────────────────────────────────────────────────
 
 function parseDimFromUniqueName(un) {

@@ -107,6 +107,21 @@ app.get('/api/chores', async (req, res) => {
     }
 })
 
+app.get('/api/chore', async (req, res) => {
+    try {
+        const client = new TM1Client(req.query.server)
+        res.json(await client.getChore(req.query.name))
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.patch('/api/chore', async (req, res) => {
+    try {
+        const client = new TM1Client(req.query.server)
+        await client.updateChore(req.query.name, req.body)
+        res.json({ ok: true })
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
 app.delete('/api/chore', async (req, res) => {
     try {
         const client = new TM1Client(req.query.server)
@@ -141,6 +156,186 @@ app.get('/api/process', async (req, res) => {
     try {
         const client = new TM1Client(req.query.server)
         res.json(await client.getProcess(req.query.name))
+    } catch (e) {
+        res.status(500).json({ error: e.message })
+    }
+})
+
+// TM1 REST API rejects newlines inside open parentheses (multi-line TI expressions).
+// Merge any continuation line into the preceding line so the code round-trips safely.
+const HANGING_KW = /\b(IF|WHILE|ELSEIF)\s*$/i
+function joinContinuations(code) {
+    let out = '', depth = 0, inStr = false, lineBuffer = ''
+    for (let i = 0; i < code.length; i++) {
+        const ch = code[i]
+        if (inStr) {
+            if (ch === "'") {
+                if (code[i + 1] === "'") { out += "''"; lineBuffer += "''"; i++ }
+                else { inStr = false; out += ch; lineBuffer += ch }
+            } else { out += ch; lineBuffer += ch }
+        } else {
+            if      (ch === "'") { inStr = true; out += ch; lineBuffer += ch }
+            else if (ch === '(') { depth++; out += ch; lineBuffer += ch }
+            else if (ch === ')') { depth--; out += ch; lineBuffer += ch }
+            else if (ch === '\n') {
+                // Join if inside open paren OR previous line ends with IF/WHILE/ELSEIF
+                out += (depth > 0 || HANGING_KW.test(lineBuffer)) ? ' ' : '\n'
+                lineBuffer = ''
+            }
+            else { out += ch; lineBuffer += ch }
+        }
+    }
+    return out
+}
+
+app.post('/api/process/debug', async (req, res) => {
+    const { server, name, params, sections } = req.body
+    const client   = new TM1Client(server)
+    const tempName = `_IDE_Debug_${Date.now()}`
+    let log = '', runError = null
+
+    // ── 1. Fetch source process metadata ─────────────────────────────────────
+    let proc
+    try {
+        proc = await client.get(`Processes('${encodeURIComponent(name)}')`)
+    } catch (e) {
+        console.error('[debug] fetch source process failed:', e.response?.status, e.message)
+        return res.status(500).json({ error: `Could not load process "${name}": ${e.message}` })
+    }
+
+    // ── 2. Create + populate instrumented temp process ───────────────────────
+    // POST Processes can't handle multi-line TI expressions (newline inside open
+    // parentheses). PATCH on an existing process can — same path the Save flow uses.
+    // Strategy: POST an empty shell, then PATCH in the actual injected code.
+    const stripMeta   = obj => Object.fromEntries(Object.entries(obj).filter(([k]) => !k.startsWith('@')))
+    const nl          = s   => (s ?? '').replace(/\r\n/g, '\n').replace(/\r/g, '\n')
+    const cleanParams = (proc.Parameters ?? []).map(p => ({
+        Name: p.Name, Type: p.Type ?? 2, Value: String(p.Value ?? ''), Prompt: p.Prompt ?? '',
+    }))
+    const cleanVars = (proc.Variables ?? []).map(v => ({
+        Name: v.Name, Type: v.Type, Position: v.Position ?? 0,
+    }))
+    const cleanDs = stripMeta(proc.DataSource ?? { Type: 'None' })
+
+    try {
+        await client.post('Processes', {
+            Name: tempName, HasSecurityAccess: false,
+            PrologProcedure: '', MetadataProcedure: '', DataProcedure: '', EpilogProcedure: '',
+            DataSource: { Type: 'None' }, Parameters: cleanParams, Variables: cleanVars,
+        })
+    } catch (e) {
+        console.error('[debug] create shell failed:', e.response?.status, JSON.stringify(e.response?.data ?? e.message))
+        return res.status(500).json({ error: `Failed to create debug process: ${e.message}` })
+    }
+
+    try {
+        // Both POST and PATCH require MetadataProcedure (lowercase d).
+        // TM1 GET returns MetaDataProcedure (capital D) — asymmetry in the TM1 REST API.
+        // joinContinuations merges lines inside unclosed parens so TM1 can parse them.
+        const jc = s => joinContinuations(nl(s))
+        await client.patch(`Processes('${encodeURIComponent(tempName)}')`, {
+            PrologProcedure:   jc(sections.PrologProcedure),
+            MetadataProcedure: jc(sections.MetaDataProcedure),
+            DataProcedure:     jc(sections.DataProcedure),
+            EpilogProcedure:   jc(sections.EpilogProcedure),
+            DataSource:        cleanDs,
+        })
+    } catch (e) {
+        console.error('[debug] patch code failed:', e.response?.status, JSON.stringify(e.response?.data ?? e.message))
+        try { await client.delete(`Processes('${encodeURIComponent(tempName)}')`) } catch {}
+        return res.status(500).json({ error: `Failed to write debug code: ${e.message}` })
+    }
+
+    // ── 3. Execute ────────────────────────────────────────────────────────────
+    try {
+        await client.executeProcess(tempName, params ?? [])
+    } catch (e) {
+        const data  = e.response?.data
+        const inner = data?.error?.innererror ?? {}
+        console.error('[debug] execute failed:', e.response?.status, JSON.stringify(data ?? e.message))
+        runError = inner.Message || (data?.error?.message) || e.message
+        // PAW embeds the process log in details.ProcessError on execution failure
+        const procLog = data?.error?.details?.ProcessError
+        if (procLog) log = procLog
+    }
+
+    // ── 4. Fetch log ──────────────────────────────────────────────────────────
+    try {
+        const r = await client.get(`Processes('${encodeURIComponent(tempName)}')/ErrorLog`)
+        console.log('[debug] ErrorLog raw:', JSON.stringify(r)?.slice(0, 600))
+        const fetched = typeof r === 'string' ? r
+            : typeof r?.Content === 'string'  ? r.Content
+            : typeof r?.value   === 'string'  ? r.value
+            : Array.isArray(r?.value)          ? r.value.map(e => e.Content ?? e.Message ?? JSON.stringify(e)).join('\n')
+            : ''
+        if (fetched) log = fetched   // prefer fetched log; fall back to ProcessError captured above
+    } catch (e) {
+        console.error('[debug] fetch log failed:', e.response?.status, e.message)
+        // log may already contain ProcessError from step 3 — leave it
+    }
+
+    // ── 5. Cleanup ────────────────────────────────────────────────────────────
+    try { await client.delete(`Processes('${encodeURIComponent(tempName)}')`) }
+    catch (e) { console.error('[debug] delete temp failed:', e.message) }
+
+    res.json({ log, error: runError })
+})
+
+app.get('/api/processes/search', async (req, res) => {
+    try {
+        const { server, q } = req.query
+        if (!q || q.length < 2) return res.json({ results: [] })
+        const client = new TM1Client(server)
+        const data = await client.get('Processes', {
+            '$select': 'Name,PrologProcedure,MetaDataProcedure,DataProcedure,EpilogProcedure',
+        })
+        const lower = q.toLowerCase()
+        const sections = [
+            { key: 'PrologProcedure',   label: 'Prolog'   },
+            { key: 'MetaDataProcedure', label: 'Metadata' },
+            { key: 'DataProcedure',     label: 'Data'     },
+            { key: 'EpilogProcedure',   label: 'Epilog'   },
+        ]
+        const results = []
+        for (const proc of (data.value ?? [])) {
+            if (proc.Name.startsWith('}')) continue
+            for (const { key, label } of sections) {
+                const lines = (proc[key] ?? '').split('\n')
+                for (let i = 0; i < lines.length; i++) {
+                    if (lines[i].toLowerCase().includes(lower)) {
+                        results.push({ process: proc.Name, section: label, line: i + 1, preview: lines[i].trim().slice(0, 150) })
+                    }
+                }
+            }
+        }
+        res.json({ results })
+    } catch (e) {
+        res.status(500).json({ error: e.message })
+    }
+})
+
+app.get('/api/process/log', async (req, res) => {
+    try {
+        const client = new TM1Client(req.query.server)
+        const result = await client.get(`Processes('${encodeURIComponent(req.query.name)}')/ErrorLog`)
+        const log = typeof result === 'string' ? result : (result?.value ?? '')
+        res.json({ log })
+    } catch (e) {
+        res.json({ log: '' })
+    }
+})
+
+app.post('/api/process/create', async (req, res) => {
+    try {
+        const client = new TM1Client(req.query.server)
+        await client.post('Processes', {
+            Name: req.query.name,
+            PrologProcedure: '', MetadataProcedure: '', DataProcedure: '', EpilogProcedure: '',
+            DataSource: { Type: 'None' },
+            Parameters: [],
+            Variables: [],
+        })
+        res.json({ ok: true })
     } catch (e) {
         res.status(500).json({ error: e.message })
     }
@@ -574,15 +769,49 @@ app.post('/api/subset/static', async (req, res) => {
     }
 })
 
+// Get distinct attribute values for a dimension (samples up to 500 elements)
+app.get('/api/dimension/attribute-values', async (req, res) => {
+    const { server, dimension, attribute } = req.query
+    if (!server || !dimension || !attribute) return res.status(400).json({ error: 'server, dimension and attribute required' })
+    try {
+        const client = new TM1Client(server)
+        const elements = await client.getElements(dimension, dimension, { $top: 500 })
+        const valueSet = new Set()
+        const list = Array.isArray(elements?.value) ? elements.value : Array.isArray(elements) ? elements : []
+        for (const el of list) {
+            try {
+                const vals = await client.getElementAttributeValues(dimension, el.Name, dimension)
+                const v = (vals?.value ?? vals)?.[attribute]
+                if (v !== undefined && v !== null && v !== '') valueSet.add(String(v))
+            } catch {}
+        }
+        res.json({ values: [...valueSet].sort() })
+    } catch (e) {
+        res.status(500).json({ error: e.message })
+    }
+})
+
 app.post('/api/subset/preview', async (req, res) => {
     try {
         const client = new TM1Client(req.query.server)
-        const members = await client.previewMDX(req.query.dimension, req.body.mdx, req.body.limit ?? 100)
+        const dim = req.query.dimension
+        const members = await client.previewMDX(dim, req.body.mdx, req.body.limit ?? 100)
+        // Batch-fetch attributes for up to 100 members
+        const toFetch = members.slice(0, 100)
+        if (toFetch.length > 0) {
+            const attrResults = await Promise.all(
+                toFetch.map(m =>
+                    client.getElementAttributeValues(dim, m.name, dim)
+                        .then(r => r?.value ?? r ?? {})
+                        .catch(() => ({}))
+                )
+            )
+            toFetch.forEach((m, i) => { m.attributes = attrResults[i] ?? {} })
+        }
         res.json({ members })
     } catch (e) {
-        const detail = e.response?.data?.error?.message ?? e.response?.data ?? e.message
-        console.error('[subset/preview]', detail)
-        res.status(500).json({ error: typeof detail === 'string' ? detail : JSON.stringify(detail) })
+        console.error('[subset/preview]', e.message)
+        res.status(500).json({ error: e.message })
     }
 })
 

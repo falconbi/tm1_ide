@@ -4,7 +4,7 @@ import { useState, useEffect, Fragment } from 'react'
 import { useStore } from '@/store'
 import { cn } from '@/lib/utils'
 import { Toaster } from '@/components/ui/sonner'
-import { Search, PanelLeftClose, PanelLeftOpen, Keyboard, Settings, SlidersHorizontal, BookType, Sigma, CalendarDays } from 'lucide-react'
+import { Search, PanelLeftClose, PanelLeftOpen, Keyboard, Code2, SlidersHorizontal, Braces } from 'lucide-react'
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels'
 import ServerSelector from '@/components/ServerSelector'
 import Explorer from '@/components/Explorer'
@@ -26,16 +26,23 @@ export default function App() {
   const { loadForge, formatSettingsOpen, setFormatSettingsOpen, openTab, server } = useStore()
   const groups = useStore(s => s.groups)
 
-  const openMDXSandbox = () => {
-    if (!server) return
-    openTab({ id: `mdxsandbox:${server}`, type: 'mdxsandbox', label: 'MDX Sandbox', server })
-  }
   const [showFind, setShowFind]           = useState(false)
   const [showSidebar, setShowSidebar]     = useState(true)
   const [showShortcuts, setShowShortcuts] = useState(false)
   const [showNamingDict, setShowNamingDict]     = useState(false)
   const [showPrefs, setShowPrefs]               = useState(false)
   const [showPeriodBuilder, setShowPeriodBuilder] = useState(false)
+  const [showMDXMenu, setShowMDXMenu] = useState(false)
+
+  const openGuidedMDXMenu = () => setShowMDXMenu(prev => !prev)
+  const openGuidedMDXSubset = () => {
+    if (!server) return
+    openTab({ id: `guidedmdxsubset:${server}`, type: 'guidedmdxsubset', label: 'Guided MDX Subset', server })
+  }
+  const openGuidedMDXView = () => {
+    if (!server) return
+    openTab({ id: `guidedmdxview:${server}`, type: 'guidedmdxview', label: 'Guided MDX View', server })
+  }
 
   useEffect(() => { loadForge() }, [])
 
@@ -73,20 +80,27 @@ export default function App() {
             </button>
             <span className="font-semibold text-sm tracking-tight">TM1 IDE</span>
             <div className="ml-auto flex items-center gap-1">
-              <button
-                onClick={() => setShowPeriodBuilder(true)}
-                className="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
-                title="Period Dimension Builder"
-              >
-                <CalendarDays size={15} />
-              </button>
-              <button
-                onClick={openMDXSandbox}
-                className="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
-                title="MDX Sandbox"
-              >
-                <Sigma size={15} />
-              </button>
+              <div className="relative">
+                <button
+                  onClick={openGuidedMDXMenu}
+                  className="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                  title="Guided MDX Builder"
+                >
+                  <Braces size={15} />
+                </button>
+                {showMDXMenu && (
+                  <div className="absolute right-0 top-full mt-1 bg-popover border border-border rounded shadow-lg z-50 py-1 min-w-[200px]">
+                    <button onClick={() => { openGuidedMDXSubset(); setShowMDXMenu(false) }}
+                      className="w-full text-left px-3 py-1.5 text-xs hover:bg-muted flex items-center gap-2">
+                      <Braces size={12} /> Guided MDX Subset
+                    </button>
+                    <button onClick={() => { openGuidedMDXView(); setShowMDXMenu(false) }}
+                      className="w-full text-left px-3 py-1.5 text-xs hover:bg-muted flex items-center gap-2">
+                      <Code2 size={12} /> Guided MDX View
+                    </button>
+                  </div>
+                )}
+              </div>
               <button
                 onClick={() => setShowFind(f => !f)}
                 className={cn('p-1.5 rounded text-muted-foreground hover:text-foreground transition-colors', showFind && 'bg-muted text-foreground')}
@@ -101,13 +115,7 @@ export default function App() {
               >
                 <Keyboard size={15} />
               </button>
-              <button
-                onClick={() => setShowNamingDict(true)}
-                className="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
-                title="Naming Dictionary"
-              >
-                <BookType size={15} />
-              </button>
+
               <button
                 data-prefs-trigger
                 onClick={() => setShowPrefs(p => !p)}
@@ -116,13 +124,7 @@ export default function App() {
               >
                 <SlidersHorizontal size={15} />
               </button>
-              <button
-                onClick={() => setFormatSettingsOpen(true)}
-                className="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
-                title="Format Settings"
-              >
-                <Settings size={15} />
-              </button>
+
             </div>
           </div>
 
@@ -173,7 +175,13 @@ export default function App() {
 
         </div>
         <ShortcutsHelp open={showShortcuts} onClose={() => setShowShortcuts(false)} />
-        <EditorPreferences open={showPrefs} onClose={() => setShowPrefs(false)} />
+        <EditorPreferences
+          open={showPrefs}
+          onClose={() => setShowPrefs(false)}
+          onOpenPeriodBuilder={() => setShowPeriodBuilder(true)}
+          onOpenNamingDictionary={() => setShowNamingDict(true)}
+          onOpenFormatSettings={() => setFormatSettingsOpen(true)}
+        />
         <FormatSettings open={formatSettingsOpen} onClose={() => setFormatSettingsOpen(false)} />
         <NamingDictionary open={showNamingDict} onClose={() => setShowNamingDict(false)} />
         <PeriodBuilder open={showPeriodBuilder} onClose={() => setShowPeriodBuilder(false)} />
