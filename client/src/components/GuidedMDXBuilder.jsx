@@ -197,10 +197,16 @@ export default function GuidedMDXBuilder({ tab, server: serverProp, onSwitchToRa
   const [previewResult, setPreviewResult] = useState(null)
   const [previewError, setPreviewError] = useState(null)
   const [previewLoading, setPreviewLoading] = useState(false)
+  const [viewMDX, setViewMDX] = useState('')
   const [isFormatted, setIsFormatted] = useState(false)
   const [selectedMeasures, setSelectedMeasures] = useState([])
   const [intent, setIntent] = useState(null)
   const [secondCube, setSecondCube] = useState(null)
+  const [timeDim, setTimeDim] = useState(null)
+  const [timeDim2, setTimeDim2] = useState(null)
+  const [timeExpr1, setTimeExpr1] = useState('')
+  const [timeExpr2, setTimeExpr2] = useState('')
+  const [timeShowPatterns, setTimeShowPatterns] = useState(false)
 
   // Helper: pick a cube button click also runs intent-specific setup
   const handleCubePick = (cube) => {
@@ -283,7 +289,7 @@ export default function GuidedMDXBuilder({ tab, server: serverProp, onSwitchToRa
     if (!selectedCube) return ''
     const build = (dims, axis) => {
       if (!dims.length) return ''
-      const sets = dims.map(d => `{${dimExpressions[d]}}`)
+      const sets = dims.map(d => dimExpressions[d])
       const joined = sets.length === 1 ? sets[0] : `(${sets.join('\n        *\n        ')})`
       return `NON EMPTY\n    ${joined} ON ${axis}`
     }
@@ -310,7 +316,13 @@ export default function GuidedMDXBuilder({ tab, server: serverProp, onSwitchToRa
           c[cubeDims[1]] = { axis: 'columns' }
         }
       } else if (intent === 'Time Series') {
-        cubeDims.forEach((d, i) => { c[d] = { axis: i === 0 ? 'columns' : 'rows' } })
+        const lastI = cubeDims.length - 1
+        cubeDims.forEach((d, i) => {
+          const isTime = d === timeDim || d === timeDim2
+          c[d] = { axis: isTime || i === lastI ? 'columns' : 'rows' }
+          if (d === timeDim && timeExpr1) c[d].subsetExpression = timeExpr1
+          if (d === timeDim2 && timeExpr2) c[d].subsetExpression = timeExpr2
+        })
       } else if (intent === 'Filtered by another cube' || intent === 'Cross-cube reference') {
         if (secondCube) {
           cubeDims.forEach((d) => { c[d] = { axis: 'rows' } })
@@ -388,7 +400,11 @@ export default function GuidedMDXBuilder({ tab, server: serverProp, onSwitchToRa
   }
   const canNext = () => isSubsetMode ? (step === 0 ? !!selectedDim : !!currentMDX) : (step === 0 ? !!selectedCube : step === 1 ? Object.keys(dimConfig).some(k => dimConfig[k]?.axis) : true)
   const next = () => { if (canNext()) setStep(s => Math.min(s + 1, 2)) }
-  const back = () => setStep(s => Math.max(s - 1, 0))
+  const back = () => {
+    if (!isSubsetMode && step === 1) { setIntent(null); setSelectedCube(null); setDimConfig({}) }
+    setPreviewResult(null); setPreviewError(null)
+    setStep(s => Math.max(s - 1, 0))
+  }
 
   // Monaco syntax highlighting
   const handleEditorMount = (editor, monaco) => {
@@ -742,11 +758,58 @@ export default function GuidedMDXBuilder({ tab, server: serverProp, onSwitchToRa
                   </div>
                 ) : (
                   <div>
-                    <div className="flex items-center gap-2 mb-3">
-                      <div className="text-[10px] px-2 py-0.5 rounded bg-primary/10 text-primary font-medium">{intent}</div>
-                      <button onClick={() => setIntent(null)} className="text-[10px] text-muted-foreground underline">Change</button>
+                  <div className="flex items-center gap-2 mb-3">
+                    <div className="text-[10px] px-2 py-0.5 rounded bg-primary/10 text-primary font-medium">{intent}</div>
+                    <button onClick={() => setIntent(null)} className="text-[10px] text-muted-foreground underline">Change</button>
+                  </div>
+                  {intent === 'Time Series' && (
+                    <div className="mb-3 p-2 border rounded bg-muted/20">
+                      <div className="text-[10px] text-muted-foreground mb-1">Which dimensions are your time? (up to 2)</div>
+                      <div className="flex gap-2">
+                        <select value={timeDim || ''} onChange={e => setTimeDim(e.target.value)}
+                          className="flex-1 text-[10px] px-2 py-1 border rounded bg-background">
+                          <option value="">— primary (e.g. Year) —</option>
+                          {dims.map(d => <option key={d} value={d}>{d}</option>)}
+                        </select>
+                        <select value={timeDim2 || ''} onChange={e => setTimeDim2(e.target.value)}
+                          className="flex-1 text-[10px] px-2 py-1 border rounded bg-background">
+                          <option value="">— secondary (e.g. Month) —</option>
+                          {dims.map(d => <option key={d} value={d}>{d}</option>)}
+                        </select>
+                      </div>
                     </div>
-                    <div className="font-medium text-sm mb-1">Choose a Cube</div>
+                  )}
+                  {(timeDim || timeDim2) && (
+                    <div className="mb-3 p-2 border rounded bg-muted/20">
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-[10px] text-muted-foreground">Time subset expression</span>
+                        <button onClick={() => setTimeShowPatterns(!timeShowPatterns)}
+                          className="text-[9px] text-muted-foreground underline">{timeShowPatterns ? 'Hide' : 'Patterns'}</button>
+                      </div>
+                      {timeShowPatterns && (
+                        <div className="grid grid-cols-2 gap-0.5 mb-2">
+                          {PATTERNS.filter(p => p.cat === 'Time / Range' || p.cat === 'Ranking' || p.cat === 'Sorting' || p.id === 'leaf').map(p => (
+                            <button key={p.id} onClick={() => {
+                              const expr = WRAPPERS[p.id](timeDim || selectedDim, '{...}')
+                              if (timeDim) setTimeExpr1(expr)
+                              if (timeDim2 && !timeDim) setTimeExpr2(expr)
+                            }} className="text-left px-1.5 py-0.5 rounded border border-border hover:bg-muted text-[9px] font-mono">{p.label}</button>
+                          ))}
+                        </div>
+                      )}
+                      {timeDim && (
+                        <input type="text" placeholder={`{TM1SUBSETALL([${timeDim}].[${timeDim}])}`}
+                          value={timeExpr1} onChange={e => setTimeExpr1(e.target.value)}
+                          className="w-full font-mono text-[9px] px-1.5 py-0.5 border rounded bg-background mb-1" />
+                      )}
+                      {timeDim2 && (
+                        <input type="text" placeholder={`{TM1SUBSETALL([${timeDim2}].[${timeDim2}])}`}
+                          value={timeExpr2} onChange={e => setTimeExpr2(e.target.value)}
+                          className="w-full font-mono text-[9px] px-1.5 py-0.5 border rounded bg-background" />
+                      )}
+                    </div>
+                  )}
+                  <div className="font-medium text-sm mb-1">Choose a Cube</div>
                     <div className="text-[11px] text-muted-foreground mb-3">Pick the cube to query.</div>
                     <input type="text" placeholder="Filter cubes…" className="w-full mb-2 px-2 py-1.5 text-xs border rounded bg-background"
                       value={filterText} onChange={e => setFilterText(e.target.value)} />
@@ -851,18 +914,28 @@ export default function GuidedMDXBuilder({ tab, server: serverProp, onSwitchToRa
             <>
               <div className="flex items-center justify-between mb-2">
                 <div className="text-sm font-medium">Generated MDX</div>
-                <button onClick={runViewPreview} disabled={!generatedMDX || previewLoading}
-                  className="px-3 py-1 text-xs rounded bg-primary text-primary-foreground flex items-center gap-1 disabled:opacity-40">
-                  {previewLoading ? <Loader2 size={12} className="animate-spin" /> : <Play size={12} />} Run
-                </button>
+                <div className="flex gap-1">
+                  <button onClick={() => { setViewMDX(prev => { const c = prev.replace(/\s+/g,' ').replace(/\{FILTER\(/s, '{\n  FILTER(').replace(/\,\s*\)\}$/g,'\n  )\n}'); return c }) }} className="px-2 py-0.5 text-[9px] rounded border hover:bg-muted">Format</button>
+                  <button onClick={runViewPreview} disabled={!viewMDX || previewLoading}
+                    className="px-3 py-1 text-xs rounded bg-primary text-primary-foreground flex items-center gap-1 disabled:opacity-40">
+                    {previewLoading ? <Loader2 size={12} className="animate-spin" /> : <Play size={12} />} Run
+                  </button>
+                </div>
               </div>
-              <div className="border rounded bg-muted/40 p-3 font-mono text-[11px] whitespace-pre-wrap overflow-auto max-h-[140px] mb-3 shrink-0">
-                {generatedMDX || 'Build your query on the left…'}
+              <div className="rounded overflow-hidden mb-3 shrink-0" style={{ height: '55%', minHeight: 140 }}>
+                <MonacoEditor
+                  height="100%" language="tm1mdx"
+                  value={viewMDX || generatedMDX}
+                  onChange={v => setViewMDX(v)}
+                  onMount={handleEditorMount}
+                  options={{ fontSize: 11, minimap: { enabled: false }, wordWrap: 'on', scrollBeyondLastLine: false, folding: false, renderLineHighlight: 'none', overviewRulerLanes: 0, lineNumbers: 'on' }}
+                  theme="vs-dark"
+                />
               </div>
             </>
           )}
-          <div className="text-xs font-medium mb-1 text-muted-foreground">{isSubsetMode ? 'Member Preview' : 'Results'}</div>
-          <div className="flex-1 min-h-0 border rounded overflow-auto bg-background p-2">
+          <div className="text-xs font-medium text-muted-foreground">Results</div>
+          <div className="flex-1 min-h-0 rounded overflow-auto bg-background p-2">
             {isSubsetMode ? (
               previewLoading ? <div className="h-full flex items-center justify-center"><Loader2 size={14} className="animate-spin text-muted-foreground" /></div> :
               previewMembers && previewMembers.length > 0 && previewMembers[0]?.attributes ? (
