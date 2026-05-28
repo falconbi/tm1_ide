@@ -1,10 +1,19 @@
 import { useState, useMemo, useEffect, useRef } from 'react'
 import { useCubes, useCubeDimensions, useDims, useDimAttributes, useAttributeValues } from '@/hooks/useApi'
 import { useStore } from '@/store'
-import { ArrowLeft, ArrowRight, Play, Loader2, Copy, X, Check, Code2, ExternalLink } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Play, Loader2, Copy, X, Check, Code2, ExternalLink, HelpCircle, Save, Clock } from 'lucide-react'
 import MonacoEditor from '@monaco-editor/react'
 import { cn } from '@/lib/utils'
 import ResultGrid from '@/components/mdx/ResultGrid'
+
+const RECENT_KEY = 'tm1-mdx-recent'
+
+function loadRecent() { try { return JSON.parse(localStorage.getItem(RECENT_KEY) || '[]') } catch { return [] } }
+function saveRecent(entry) {
+  const recent = loadRecent().filter(r => r.mdx !== entry.mdx)
+  recent.unshift({ ...entry, time: Date.now() })
+  localStorage.setItem(RECENT_KEY, JSON.stringify(recent.slice(0, 10)))
+}
 
 const WRAPPERS = {
   'all':         (dim, inner) => `{TM1SUBSETALL([${dim}].[${dim}])}`,
@@ -44,37 +53,66 @@ const WRAPPERS = {
 }
 
 const FUNCTIONS = [
-  { id: 'fn-val',         label: 'VAL(attr + "0")',           mdx: () => `VAL([Dim].[Dim].CURRENTMEMBER.PROPERTIES("Attr") + "0")` },
-  { id: 'fn-strtovalue',  label: 'STRTOVALUE(attr)',          mdx: () => `STRTOVALUE([Dim].[Dim].CURRENTMEMBER.PROPERTIES("Attr"))` },
-  { id: 'fn-strtomember', label: 'STRTOMEMBER(expr)',         mdx: () => `STRTOMEMBER("[Dim].[" + [Cube].([Measure]) + "]")` },
-  { id: 'fn-iif',         label: 'IIF(cond, t, f)',           mdx: () => `IIF([Dim].[Dim].CURRENTMEMBER.PROPERTIES("Attr") = "Val", 1, 0)` },
-  { id: 'fn-currentmember', label: 'CURRENTMEMBER',           mdx: () => `[Dim].[Dim].CURRENTMEMBER` },
-  { id: 'fn-properties',  label: '.PROPERTIES("Attr")',       mdx: () => `[Dim].[Dim].CURRENTMEMBER.PROPERTIES("Attr")` },
-  { id: 'fn-generate',    label: 'GENERATE(set, expr)',       mdx: () => `{GENERATE({TM1SUBSETALL([Dim].[Dim])}, {[Dim].[Dim].CURRENTMEMBER})}` },
-  { id: 'fn-extract',     label: 'EXTRACT(set, dim)',         mdx: () => `{EXTRACT({set}, [Dim])}` },
-  { id: 'fn-lag',         label: 'LAG(member, N)',            mdx: () => `[Dim].[Dim].CURRENTMEMBER.LAG(1)` },
-  { id: 'fn-lead',        label: 'LEAD(member, N)',           mdx: () => `[Dim].[Dim].CURRENTMEMBER.LEAD(1)` },
-  { id: 'fn-periodstodate',label: 'PERIODSTODATE(member)',    mdx: () => `{PERIODSTODATE([Dim].[Dim].[FY],[Dim].[Dim].CURRENTMEMBER)}` },
-  { id: 'fn-isancestor',  label: 'ISANCESTOR(a, b)',          mdx: () => `ISANCESTOR([Dim].[Member], [Dim].[Dim].CURRENTMEMBER)` },
-  { id: 'fn-closingperiod',label: 'CLOSINGPERIOD(member)',    mdx: () => `CLOSINGPERIOD([Dim].[Dim].[FY],[Dim].[Dim].CURRENTMEMBER)` },
-  { id: 'fn-openingperiod',label:'OPENINGPERIOD(member)',     mdx: () => `OPENINGPERIOD([Dim].[Dim].[FY],[Dim].[Dim].CURRENTMEMBER)` },
-  { id: 'fn-cousin',      label: 'COUSIN(m1, m2)',            mdx: () => `[Dim].[Member].COUSIN([Dim].[Other])` },
-  { id: 'fn-parallelperiod',label:'PARALLELPERIOD(mem, N)',   mdx: () => `PARALLELPERIOD([Dim].[Dim].[FY], 1, [Dim].[Dim].CURRENTMEMBER)` },
-  { id: 'fn-opening-closing',label:'OPENING/CLOSINGPERIOD',   mdx: () => `OPENINGPERIOD([Dim].[Dim].[FY],[Dim].[Dim].CURRENTMEMBER)` },
-  { id: 'fn-tm1member',   label: 'TM1MEMBER(name)',           mdx: () => `TM1MEMBER("[Dim].[Name]")` },
-  { id: 'fn-tm1tuplesize',label: 'TM1TUPLESIZE(tuple)',       mdx: () => `TM1TUPLESIZE()` },
-  { id: 'fn-tm1subsettoset',label:'TM1SubsetToSet(dim, sub)', mdx: () => `TM1SubsetToSet([Dim], "MySubset")` },
-  { id: 'fn-tm1settosubset',label:'TM1SetToSubset(...)',      mdx: () => `TM1SetToSubset([Dim], {set}, "SubsetName", 0)` },
-  { id: 'fn-dimname',     label: 'DIMNAME(dim)',              mdx: () => `DIMNAME([Dim])` },
-  { id: 'fn-dimix',       label: 'DIMIX(dim, member)',        mdx: () => `DIMIX([Dim], [Dim].[Member])` },
-  { id: 'fn-head',        label: 'HEAD(set, N)',              mdx: () => `{HEAD({TM1SUBSETALL([Dim].[Dim])}, 10)}` },
-  { id: 'fn-tail',        label: 'TAIL(set, N)',              mdx: () => `{TAIL({TM1SUBSETALL([Dim].[Dim])}, 10)}` },
-  { id: 'fn-item',        label: 'ITEM(set, N)',              mdx: () => `{TM1SUBSETALL([Dim].[Dim])}.ITEM(0)` },
-  { id: 'fn-count',       label: 'COUNT(set)',                mdx: () => `COUNT({TM1SUBSETALL([Dim].[Dim])} INCLUDEEMPTY)` },
-  { id: 'fn-sum',         label: 'SUM(set, cube)',            mdx: () => `SUM({TM1SUBSETALL([Dim].[Dim])}, [Cube].([Measure]))` },
-  { id: 'fn-avg',         label: 'AVG(set, cube)',            mdx: () => `AVG({TM1SUBSETALL([Dim].[Dim])}, [Cube].([Measure]))` },
-  { id: 'fn-min-max',     label: 'MIN / MAX(set, cube)',      mdx: () => `MIN({TM1SUBSETALL([Dim].[Dim])}, [Cube].([Measure]))` },
-  { id: 'fn-rank',        label: 'RANK(member, set)',         mdx: () => `RANK([Dim].[Dim].CURRENTMEMBER, {TM1SUBSETALL([Dim].[Dim])})` },
+  { id: 'fn-val',         label: 'VAL(attr + "0")',           mdx: () => `VAL([Dim].[Dim].CURRENTMEMBER.PROPERTIES("Attr") + "0")`,
+    desc: 'Converts a string property to a number by appending "0". Required for numeric comparisons in TM1 because PROPERTIES always returns strings.' },
+  { id: 'fn-strtovalue',  label: 'STRTOVALUE(attr)',          mdx: () => `STRTOVALUE([Dim].[Dim].CURRENTMEMBER.PROPERTIES("Attr"))`,
+    desc: 'Explicitly converts a string property to a numeric value.' },
+  { id: 'fn-strtomember', label: 'STRTOMEMBER(expr)',         mdx: () => `STRTOMEMBER("[Dim].[" + [Cube].([Measure]) + "]")`,
+    desc: 'Converts a string expression to a member reference. Useful for dynamic member selection based on cube data or attributes.' },
+  { id: 'fn-iif',         label: 'IIF(cond, t, f)',           mdx: () => `IIF([Dim].[Dim].CURRENTMEMBER.PROPERTIES("Attr") = "Val", 1, 0)`,
+    desc: 'Inline conditional. Returns the second argument if true, third if false.' },
+  { id: 'fn-currentmember', label: 'CURRENTMEMBER',           mdx: () => `[Dim].[Dim].CURRENTMEMBER`,
+    desc: 'References the current member in the iteration context. Used inside FILTER, GENERATE, and other set-iterating functions.' },
+  { id: 'fn-properties',  label: '.PROPERTIES("Attr")',       mdx: () => `[Dim].[Dim].CURRENTMEMBER.PROPERTIES("Attr")`,
+    desc: 'Accesses an element attribute value. Always returns a string — use VAL() or STRTOVALUE() for numeric attributes.' },
+  { id: 'fn-generate',    label: 'GENERATE(set, expr)',       mdx: () => `{GENERATE({TM1SUBSETALL([Dim].[Dim])}, {[Dim].[Dim].CURRENTMEMBER})}`,
+    desc: 'Iterates over a set and evaluates an expression for each member. Most powerful set-construction function in MDX.' },
+  { id: 'fn-extract',     label: 'EXTRACT(set, dim)',         mdx: () => `{EXTRACT({set}, [Dim])}`,
+    desc: 'Extracts members of a specific dimension from tuples in a set.' },
+  { id: 'fn-lag',         label: 'LAG(member, N)',            mdx: () => `[Dim].[Dim].CURRENTMEMBER.LAG(1)`,
+    desc: 'Returns the member N positions before the given member in the dimension order.' },
+  { id: 'fn-lead',        label: 'LEAD(member, N)',           mdx: () => `[Dim].[Dim].CURRENTMEMBER.LEAD(1)`,
+    desc: 'Returns the member N positions after the given member in the dimension order.' },
+  { id: 'fn-periodstodate',label: 'PERIODSTODATE(member)',    mdx: () => `{PERIODSTODATE([Dim].[Dim].[FY],[Dim].[Dim].CURRENTMEMBER)}`,
+    desc: 'Returns all members from the start of the period up to the given member (YTD-style).' },
+  { id: 'fn-isancestor',  label: 'ISANCESTOR(a, b)',          mdx: () => `ISANCESTOR([Dim].[Member], [Dim].[Dim].CURRENTMEMBER)`,
+    desc: 'Returns TRUE if the first member is an ancestor of the second in the hierarchy.' },
+  { id: 'fn-closingperiod',label: 'CLOSINGPERIOD(member)',    mdx: () => `CLOSINGPERIOD([Dim].[Dim].[FY],[Dim].[Dim].CURRENTMEMBER)`,
+    desc: 'Returns the last sibling in the same level under the given ancestor (e.g., last month in the FY).' },
+  { id: 'fn-openingperiod',label:'OPENINGPERIOD(member)',     mdx: () => `OPENINGPERIOD([Dim].[Dim].[FY],[Dim].[Dim].CURRENTMEMBER)`,
+    desc: 'Returns the first sibling in the same level under the given ancestor (e.g., first month in the FY).' },
+  { id: 'fn-cousin',      label: 'COUSIN(m1, m2)',            mdx: () => `[Dim].[Member].COUSIN([Dim].[Other])`,
+    desc: 'Returns the member at the same relative position under a different parent.' },
+  { id: 'fn-parallelperiod',label:'PARALLELPERIOD(mem, N)',   mdx: () => `PARALLELPERIOD([Dim].[Dim].[FY], 1, [Dim].[Dim].CURRENTMEMBER)`,
+    desc: 'Returns the member N periods prior at the same relative position (e.g., same month last year).' },
+  { id: 'fn-tm1member',   label: 'TM1MEMBER(name)',           mdx: () => `TM1MEMBER("[Dim].[Name]")`,
+    desc: 'Creates a member reference from a string. Validates that the member exists.' },
+  { id: 'fn-tm1tuplesize',label: 'TM1TUPLESIZE(tuple)',       mdx: () => `TM1TUPLESIZE()`,
+    desc: 'Returns the number of elements in a tuple.' },
+  { id: 'fn-tm1subsettoset',label:'TM1SubsetToSet(dim, sub)', mdx: () => `TM1SubsetToSet([Dim], "MySubset")`,
+    desc: 'Converts a named public subset into an MDX set expression.' },
+  { id: 'fn-tm1settosubset',label:'TM1SetToSubset(...)',      mdx: () => `TM1SetToSubset([Dim], {set}, "SubsetName", 0)`,
+    desc: 'Creates a named public subset from an MDX set. 0=static, 1=dynamic.' },
+  { id: 'fn-dimname',     label: 'DIMNAME(dim)',              mdx: () => `DIMNAME([Dim])`,
+    desc: 'Returns the dimension name of a member.' },
+  { id: 'fn-dimix',       label: 'DIMIX(dim, member)',        mdx: () => `DIMIX([Dim], [Dim].[Member])`,
+    desc: 'Returns the index of a member in the dimension. Returns 0 if not found.' },
+  { id: 'fn-head',        label: 'HEAD(set, N)',              mdx: () => `{HEAD({TM1SUBSETALL([Dim].[Dim])}, 10)}`,
+    desc: 'Returns the first N members of a set. Unlike TOPCOUNT, does not sort.' },
+  { id: 'fn-tail',        label: 'TAIL(set, N)',              mdx: () => `{TAIL({TM1SUBSETALL([Dim].[Dim])}, 10)}`,
+    desc: 'Returns the last N members of a set.' },
+  { id: 'fn-item',        label: 'ITEM(set, N)',              mdx: () => `{TM1SUBSETALL([Dim].[Dim])}.ITEM(0)`,
+    desc: 'Returns the Nth member of a set (0-indexed).' },
+  { id: 'fn-count',       label: 'COUNT(set)',                mdx: () => `COUNT({TM1SUBSETALL([Dim].[Dim])} INCLUDEEMPTY)`,
+    desc: 'Returns the number of members in a set. INCLUDEEMPTY or EXCLUDEEMPTY.' },
+  { id: 'fn-sum',         label: 'SUM(set, cube)',            mdx: () => `SUM({TM1SUBSETALL([Dim].[Dim])}, [Cube].([Measure]))`,
+    desc: 'Sums a cube value across all members in a set.' },
+  { id: 'fn-avg',         label: 'AVG(set, cube)',            mdx: () => `AVG({TM1SUBSETALL([Dim].[Dim])}, [Cube].([Measure]))`,
+    desc: 'Averages a cube value across all members in a set.' },
+  { id: 'fn-min-max',     label: 'MIN / MAX(set, cube)',      mdx: () => `MIN({TM1SUBSETALL([Dim].[Dim])}, [Cube].([Measure]))`,
+    desc: 'Returns the minimum or maximum cube value across a set. Use MAX() for maximum.' },
+  { id: 'fn-rank',        label: 'RANK(member, set)',         mdx: () => `RANK([Dim].[Dim].CURRENTMEMBER, {TM1SUBSETALL([Dim].[Dim])})`,
+    desc: 'Returns the rank position of a member within a sorted set.' },
 ]
 
 const PATTERNS = [
@@ -128,6 +166,32 @@ export default function GuidedMDXBuilder({ tab, server: serverProp, onSwitchToRa
   const [currentMDX, setCurrentMDX] = useState('')
   const [buildHistory, setBuildHistory] = useState([])
   const [expandedCat, setExpandedCat] = useState(null)
+  const [hoveredPattern, setHoveredPattern] = useState(null)
+  const [helpOpen, setHelpOpen] = useState(false)
+  const [helpSearch, setHelpSearch] = useState('')
+  const [expandedHelp, setExpandedHelp] = useState(null)
+  const [recent, setRecent] = useState(loadRecent())
+  const [showRecent, setShowRecent] = useState(false)
+
+  const saveSession = () => {
+    if (!currentMDX || !selectedDim) return
+    const entry = { mdx: currentMDX, dimension: selectedDim, patterns: buildHistory.map(h => h.id) }
+    saveRecent(entry)
+    setRecent(loadRecent())
+  }
+
+  const loadSession = (entry) => {
+    setSelectedDim(entry.dimension)
+    setCurrentMDX(entry.mdx)
+    if (entry.patterns?.length) {
+      setBuildHistory(entry.patterns.map(id => {
+        const p = PATTERNS.find(p => p.id === id) || FUNCTIONS.find(f => f.id === id)
+        return { id, label: p?.label || id }
+      }))
+    }
+    setStep(1)
+    setShowRecent(false)
+  }
   const [selectedAttr, setSelectedAttr] = useState('')
   const [previewMembers, setPreviewMembers] = useState(null)
   const [previewResult, setPreviewResult] = useState(null)
@@ -299,6 +363,32 @@ export default function GuidedMDXBuilder({ tab, server: serverProp, onSwitchToRa
         <div className="flex items-center gap-3">
           <div className="font-semibold text-sm">{isSubsetMode ? 'Guided Subset Builder' : 'Guided View Builder'}</div>
           <div className="text-[10px] px-2 py-0.5 rounded bg-primary/10 text-primary">{isSubsetMode ? 'MDX Subset' : 'MDX View'}</div>
+          <button onClick={() => setHelpOpen(!helpOpen)}
+            className="px-2 py-0.5 text-[10px] rounded border border-border hover:bg-muted flex items-center gap-1">
+            <HelpCircle size={12} /> Help
+          </button>
+          <div className="relative">
+            <button onClick={() => setShowRecent(!showRecent)}
+              className="px-2 py-0.5 text-[10px] rounded border border-border hover:bg-muted flex items-center gap-1">
+              <Clock size={12} /> Sessions
+            </button>
+            {showRecent && (
+              <div className="absolute top-full right-0 mt-1 bg-popover border border-border rounded shadow-lg z-50 py-1 min-w-[280px] max-h-[200px] overflow-auto">
+                <button onClick={saveSession} disabled={!currentMDX || !selectedDim}
+                  className="w-full text-left px-3 py-1.5 text-[10px] hover:bg-muted flex items-center gap-2 disabled:opacity-40 border-b border-border">
+                  <Save size={11} /> Save current session
+                </button>
+                {recent.length === 0 && <div className="px-3 py-2 text-[10px] text-muted-foreground">No saved sessions</div>}
+                {recent.map((r, i) => (
+                  <button key={i} onClick={() => loadSession(r)}
+                    className="w-full text-left px-3 py-1.5 text-[10px] hover:bg-muted flex items-center justify-between">
+                    <span className="font-mono truncate flex-1 mr-2">{r.dimension}</span>
+                    <span className="text-muted-foreground shrink-0">{new Date(r.time).toLocaleDateString()}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
         <div className="text-[10px] text-muted-foreground">Server: <span className="font-mono">{server || '—'}</span></div>
       </div>
@@ -316,6 +406,99 @@ export default function GuidedMDXBuilder({ tab, server: serverProp, onSwitchToRa
           </div>
         ))}
       </div>
+
+      {helpOpen && (
+        <div className="px-4 py-2.5 border-b border-border bg-muted/10 shrink-0">
+          <div className="flex items-center justify-between mb-2">
+            <div className="text-xs font-semibold">MDX Reference</div>
+            <div className="flex items-center gap-2">
+              <input type="text" placeholder="Search functions & patterns…" value={helpSearch}
+                onChange={e => setHelpSearch(e.target.value)}
+                className="text-[10px] px-2 py-1 border rounded bg-background w-64" />
+              <button onClick={() => { setHelpOpen(false); setHelpSearch('') }} className="p-0.5 rounded hover:bg-muted"><X size={12} /></button>
+            </div>
+          </div>
+          {helpSearch ? (
+            <div className="space-y-1 max-h-[140px] overflow-auto">
+              {[...PATTERNS, ...FUNCTIONS.map(fn => ({ ...fn, isFn: true }))]
+                .filter(item => {
+                  const mdx = item.isFn ? item.mdx() : (WRAPPERS[item.id] ? WRAPPERS[item.id](selectedDim||'Dim', '{...}') : '')
+                  return item.label.toLowerCase().includes(helpSearch.toLowerCase())
+                    || (item.desc||'').toLowerCase().includes(helpSearch.toLowerCase())
+                    || mdx.toLowerCase().includes(helpSearch.toLowerCase())
+                })
+                .map((item, i) => {
+                  const mdx = item.isFn ? item.mdx() : (WRAPPERS[item.id] ? WRAPPERS[item.id](selectedDim||'Dim', '{...}') : '')
+                  return (
+                    <div key={i} className="text-[10px] border-b border-border/30 pb-2 last:border-0">
+                      <button className="w-full text-left cursor-pointer hover:text-sky-400"
+                        onClick={() => setExpandedHelp(expandedHelp === i ? null : i)}>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[9px]">{expandedHelp === i ? '▾' : '▸'}</span>
+                          <span className="font-mono text-sky-400 font-medium">{item.label}</span>
+                          <span className="text-muted-foreground">{item.isFn ? 'function' : 'pattern'}</span>
+                        </div>
+                        {expandedHelp !== i && item.desc && <div className="text-[9px] text-muted-foreground mt-0.5 ml-4 truncate">{item.desc}</div>}
+                      </button>
+                      {expandedHelp === i && (
+                        <div className="ml-4 mt-1">
+                          {item.desc && <div className="text-[9px] text-muted-foreground mb-1.5">{item.desc}</div>}
+                          <div className="font-mono text-[9px] text-muted-foreground bg-muted/30 p-1.5 rounded whitespace-pre-wrap break-all">{mdx}</div>
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              {[...PATTERNS, ...FUNCTIONS].filter(item => item.label.toLowerCase().includes(helpSearch.toLowerCase())).length === 0 &&
+                <div className="text-[10px] text-muted-foreground">No matches for "{helpSearch}"</div>}
+            </div>
+          ) : (
+            <div>
+              <div className="text-[10px] text-muted-foreground mb-2">Type in the search box to find functions and patterns by name.</div>
+              <div className="grid grid-cols-3 gap-x-4 gap-y-1 text-[10px]">
+                {[
+                  { name: 'TM1SUBSETALL',     desc: 'all members' },
+                  { name: 'TM1FILTERBYLEVEL', desc: 'leaf only' },
+                  { name: 'TM1FILTERBYPATTERN', desc: 'wildcard' },
+                  { name: 'FILTER',           desc: 'cube/attr condition' },
+                  { name: 'DESCENDANTS',      desc: 'drill down' },
+                  { name: 'TM1SORT',          desc: 'sort A-Z/Z-A' },
+                  { name: 'TOPCOUNT',         desc: 'top N' },
+                  { name: 'BOTTOMCOUNT',      desc: 'bottom N' },
+                  { name: 'HEAD/TAIL',        desc: 'first/last N' },
+                  { name: 'UNION',            desc: 'combine sets' },
+                  { name: 'INTERSECT',        desc: 'common members' },
+                  { name: 'EXCEPT',           desc: 'exclude members' },
+                  { name: 'GENERATE',         desc: 'iterate set' },
+                  { name: 'ORDER',            desc: 'sort by cube value' },
+                  { name: 'LAG/LEAD',         desc: 'offset member' },
+                  { name: 'LASTPERIODS',      desc: 'trailing periods' },
+                  { name: 'OPENINGPERIOD',    desc: 'first period' },
+                  { name: 'CLOSINGPERIOD',    desc: 'last period' },
+                  { name: 'PARALLELPERIOD',   desc: 'prior year' },
+                  { name: 'PERIODSTODATE',    desc: 'cumulative' },
+                  { name: 'VAL',              desc: 'numeric attribute' },
+                  { name: 'STRTOVALUE',       desc: 'string→number' },
+                  { name: 'STRTOMEMBER',      desc: 'string→member' },
+                  { name: 'IIF',              desc: 'conditional' },
+                  { name: 'MIN/MAX',          desc: 'aggregate' },
+                  { name: 'SUM/AVG/COUNT',    desc: 'aggregates' },
+                  { name: 'RANK',             desc: 'rank in set' },
+                  { name: 'DIMIX/DIMNAME',    desc: 'dimension lookup' },
+                  { name: 'EXTRACT',          desc: 'extract hierarchy' },
+                  { name: 'COUSIN',           desc: 'parallel member' },
+                ].map(fn => (
+                  <button key={fn.name}
+                    onClick={() => { setHelpSearch(fn.name); setExpandedHelp(0) }}
+                    className="text-left hover:text-sky-400 cursor-pointer">
+                    <span className="font-mono text-sky-400">{fn.name}</span> <span className="text-muted-foreground">— {fn.desc}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Body */}
       <div className="flex-1 min-h-0 flex overflow-hidden">
