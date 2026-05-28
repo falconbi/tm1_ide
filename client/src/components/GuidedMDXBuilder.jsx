@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useRef } from 'react'
-import { useCubes, useCubeDimensions, useDims, useDimAttributes, useAttributeValues } from '@/hooks/useApi'
+import { useCubes, useCubeDimensions, useDims, useDimAttributes, useAttributeValues, useElements } from '@/hooks/useApi'
 import { useStore } from '@/store'
 import { ArrowLeft, ArrowRight, Play, Loader2, Copy, X, Check, Code2, ExternalLink, HelpCircle, Save, Clock } from 'lucide-react'
 import MonacoEditor from '@monaco-editor/react'
@@ -198,9 +198,56 @@ export default function GuidedMDXBuilder({ tab, server: serverProp, onSwitchToRa
   const [previewError, setPreviewError] = useState(null)
   const [previewLoading, setPreviewLoading] = useState(false)
   const [isFormatted, setIsFormatted] = useState(false)
+  const [selectedMeasures, setSelectedMeasures] = useState([])
+  const [intent, setIntent] = useState(null)
+  const [secondCube, setSecondCube] = useState(null)
+
+  // Helper: pick a cube button click also runs intent-specific setup
+  const handleCubePick = (cube) => {
+    setSelectedCube(cube)
+    if (intent === 'Measures by Dimension') {
+      // Auto:  measures dim -> columns, leave rest for user
+      setTimeout(() => {
+        if (cubeDims.length > 0) {
+          const c = {}
+          cubeDims.forEach((d, i) => { c[d] = { axis: i < cubeDims.length - 1 ? 'rows' : 'columns' } })
+          setDimConfig(c)
+        }
+        setStep(1)
+      }, 150)
+    } else if (intent === 'Cross-tab') {
+      setTimeout(() => {
+        if (cubeDims.length >= 3) {
+          const c = {}
+          c[cubeDims[0]] = { axis: 'rows' }
+          c[cubeDims[1]] = { axis: 'columns' }
+          c[cubeDims[cubeDims.length - 1]] = { axis: 'columns' }
+          setDimConfig(c)
+        }
+        setStep(1)
+      }, 150)
+    } else if (intent === 'Time Series') {
+      setTimeout(() => {
+        if (cubeDims.length > 0) {
+          const c = {}
+          c[cubeDims[cubeDims.length - 1]] = { axis: 'columns' }
+          cubeDims.forEach((d, i) => { if (i < cubeDims.length - 1) c[d] = { axis: 'rows' } })
+          setDimConfig(c)
+        }
+        setStep(1)
+      }, 150)
+    } else if (intent === 'Filtered by another cube') {
+      // Stay in step 0, show second cube picker
+      // Will be handled below
+    } else {
+      setTimeout(() => setStep(1), 100)
+    }
+  }
 
   const { data: cubes = [] } = useCubes(server)
   const { data: cubeDims = [] } = useCubeDimensions(server, selectedCube)
+  const measuresDim = cubeDims?.length ? cubeDims[cubeDims.length - 1] : null
+  const { data: measureElements = [] } = useElements(server, measuresDim)
   const { data: dims = [] } = useDims(server)
   const { data: dimAttrs = [] } = useDimAttributes(server, selectedDim)
   const { data: attrValues = { values: [] } } = useAttributeValues(server, selectedDim, selectedAttr)
@@ -223,7 +270,10 @@ export default function GuidedMDXBuilder({ tab, server: serverProp, onSwitchToRa
       if (cfg.axis === 'columns') cols.push(dim)
       else if (cfg.axis === 'rows') rows.push(dim)
       else if (cfg.axis === 'filter') filt.push(dim)
-      exprs[dim] = cfg.subsetExpression || `TM1SubsetAll([${dim}])`
+      exprs[dim] = cfg.subsetExpression || `TM1SUBSETALL([${dim}].[${dim}])`
+      if (dim === measuresDim && selectedMeasures.length > 0) {
+        exprs[dim] = `{${selectedMeasures.map(m => `[${dim}].[${dim}].[${m}]`).join(', ')}}`
+      }
     })
     return { axes: { columns: cols, rows: rows, filter: filt }, dimExpressions: exprs }
   }, [dimConfig])
@@ -231,7 +281,12 @@ export default function GuidedMDXBuilder({ tab, server: serverProp, onSwitchToRa
   const generatedMDX = useMemo(() => {
     if (isSubsetMode) return currentMDX || (selectedDim ? `{TM1SUBSETALL([${selectedDim}].[${selectedDim}])}` : '')
     if (!selectedCube) return ''
-    const build = (dims, axis) => dims.length ? dims.map(d => `NON EMPTY {${dimExpressions[d]}}`).join(', ') + ` ON ${axis}` : ''
+    const build = (dims, axis) => {
+      if (!dims.length) return ''
+      const sets = dims.map(d => `{${dimExpressions[d]}}`)
+      const joined = sets.length === 1 ? sets[0] : `(${sets.join('\n        *\n        ')})`
+      return `NON EMPTY\n    ${joined} ON ${axis}`
+    }
     let mdx = 'SELECT'
     const colPart = build(axes.columns, 'COLUMNS')
     const rowPart = build(axes.rows, 'ROWS')
@@ -242,6 +297,33 @@ export default function GuidedMDXBuilder({ tab, server: serverProp, onSwitchToRa
     if (axes.filter.length) mdx += `\nWHERE ([${axes.filter[0]}].[All])`
     return mdx
   }, [isSubsetMode, currentMDX, selectedDim, selectedCube, axes, dimExpressions])
+
+  // Intent auto-config: when cubeDims load, apply intent axis setup
+  useEffect(() => {
+    if (!isSubsetMode && selectedCube && cubeDims.length > 0 && intent && step === 0) {
+      let c = {}
+      if (intent === 'Measures by Dimension') {
+        cubeDims.forEach((d, i) => { c[d] = { axis: i < cubeDims.length - 1 ? 'rows' : 'columns' } })
+      } else if (intent === 'Cross-tab') {
+        if (cubeDims.length >= 2) {
+          c[cubeDims[0]] = { axis: 'rows' }
+          c[cubeDims[1]] = { axis: 'columns' }
+        }
+      } else if (intent === 'Time Series') {
+        cubeDims.forEach((d, i) => { c[d] = { axis: i === 0 ? 'columns' : 'rows' } })
+      } else if (intent === 'Filtered by another cube' || intent === 'Cross-cube reference') {
+        if (secondCube) {
+          cubeDims.forEach((d) => { c[d] = { axis: 'rows' } })
+        } else {
+          return // wait for second cube pick
+        }
+      }
+      if (Object.keys(c).length > 0) {
+        setDimConfig(c)
+        setTimeout(() => setStep(1), 200)
+      }
+    }
+  }, [cubeDims, intent, step, secondCube, isSubsetMode, selectedCube])
 
   // Auto-preview for subset mode
   useEffect(() => {
@@ -626,21 +708,98 @@ export default function GuidedMDXBuilder({ tab, server: serverProp, onSwitchToRa
           {!isSubsetMode && (
             step === 0 ? (
               <div>
-                <div className="font-medium text-sm mb-1">Choose a Cube</div>
-                <div className="text-[11px] text-muted-foreground mb-3">Pick the cube to query.</div>
-                <input type="text" placeholder="Filter cubes…" className="w-full mb-2 px-2 py-1.5 text-xs border rounded bg-background"
-                  value={filterText} onChange={e => setFilterText(e.target.value)} />
-                <div className="space-y-0.5 max-h-[420px] overflow-auto">
-                  {cubes.filter(c => !filterText || c.toLowerCase().includes(filterText.toLowerCase())).map(cube => (
-                    <button key={cube} onClick={() => { setSelectedCube(cube); setTimeout(() => setStep(1), 100) }}
-                      className={cn('w-full text-left px-3 py-2 rounded border text-xs font-mono',
-                        selectedCube === cube ? 'border-primary bg-primary/5' : 'border-border hover:bg-muted')}>{cube}</button>
-                  ))}
-                </div>
+                {!intent ? (
+                  <div>
+                    <div className="font-medium text-sm mb-1">What do you want to build?</div>
+                    <div className="text-[11px] text-muted-foreground mb-3">Pick a template, then choose your cube.</div>
+                    <div className="grid grid-cols-2 gap-2 mb-4">
+                      {[
+                        { label: 'Measures by Dimension', desc: 'e.g. Sales by Product', icon: '📊',
+                          detail: 'Simple 2-axis view: spread measures across columns, breakdown by one dimension on rows.\n\nExample: SELECT [Revenue], [Cost] ON COLUMNS...\nFROM [Sales]\nWHERE Region = Total Company' },
+                        { label: 'Cross-tab', desc: 'e.g. Sales × Month', icon: '📋',
+                          detail: 'Two dimensions on axes with measures. Creates a grid/matrix.\n\nExample: Products ON ROWS, Months ON COLUMNS\nFROM [Sales]\nResult: Revenue × Product × Month' },
+                        { label: 'Time Series', desc: 'e.g. Revenue over 12 months', icon: '📈',
+                          detail: 'Time on columns with measures. Typically uses a time dimension with year/month members.\n\nExample: LastPeriods(12, [Period].[Current]) ON COLUMNS, Products ON ROWS\nFROM [Sales]' },
+                        { label: 'Filtered by another cube', desc: 'e.g. Products with Budget > 0', icon: '🔗',
+                          detail: 'Filter one cube\'s dimension members based on values from another cube.\n\nBoth cubes must share at least one dimension. For unshared dims, you pick an explicit member.\n\nExample using Product & Period as shared dims, Region fixed:\n{FILTER({TM1SUBSETALL([Product])}, [Budget].([Period].[Current], [Region].[Total], [Amount]) > 0)} ON ROWS\nFROM [Sales]' },
+                        { label: 'Cross-cube reference', desc: 'Advanced: FILTER using 2nd cube data', icon: '🔀',
+                          detail: 'Reference a second cube inside GENERATE or FILTER. Must specify members for ALL dimensions that the referenced cube has but the query cube doesn\'t share.\n\nShared dims use CurrentMember or explicit member. Unshared dims: provide explicit member.\n\nExample — Budget runs across Product × Period × Version:\n{FILTER({TM1SUBSETALL([Product])}, [Budget].([Period].[Current], [Version].[Budget], [Amount]) > 0)}\nON ROWS FROM [Sales]' },
+                        { label: 'Freeform', desc: 'Manual axes setup', icon: '🔧',
+                          detail: 'Start with a blank cube. Manually assign dimensions to axes, choose subsets, add slicers.\n\nFull control — recommended for experienced users.' },
+                      ].map(tpl => (
+                        <button key={tpl.label} onClick={() => setIntent(tpl.label)}
+                          title={tpl.detail}
+                          className="flex items-start gap-2 p-3 rounded border border-border hover:bg-muted text-left cursor-help">
+                          <span className="text-lg">{tpl.icon}</span>
+                          <div>
+                            <div className="text-xs font-medium">{tpl.label}</div>
+                            <div className="text-[10px] text-muted-foreground">{tpl.desc}</div>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                    <button onClick={() => setIntent('Freeform')} className="text-[10px] text-muted-foreground underline">Skip, just pick a cube</button>
+                  </div>
+                ) : (
+                  <div>
+                    <div className="flex items-center gap-2 mb-3">
+                      <div className="text-[10px] px-2 py-0.5 rounded bg-primary/10 text-primary font-medium">{intent}</div>
+                      <button onClick={() => setIntent(null)} className="text-[10px] text-muted-foreground underline">Change</button>
+                    </div>
+                    <div className="font-medium text-sm mb-1">Choose a Cube</div>
+                    <div className="text-[11px] text-muted-foreground mb-3">Pick the cube to query.</div>
+                    <input type="text" placeholder="Filter cubes…" className="w-full mb-2 px-2 py-1.5 text-xs border rounded bg-background"
+                      value={filterText} onChange={e => setFilterText(e.target.value)} />
+                    <div className="space-y-0.5 max-h-[360px] overflow-auto">
+                      {cubes.filter(c => !filterText || c.toLowerCase().includes(filterText.toLowerCase())).map(cube => (
+                        <button key={cube} onClick={() => handleCubePick(cube)}
+                          className={cn('w-full text-left px-3 py-2 rounded border text-xs font-mono',
+                            selectedCube === cube ? 'border-primary bg-primary/5' : 'border-border hover:bg-muted')}>{cube}</button>
+                      ))}
+                    </div>
+                    {intent === 'Filtered by another cube' && selectedCube && !secondCube && (
+                      <div className="mt-4 pt-4 border-t">
+                        <div className="text-[10px] px-2 py-0.5 rounded bg-primary/10 text-primary font-medium mb-2 inline-block">Filter Cube</div>
+                        <div className="font-medium text-sm mb-1">Choose the Filter Cube</div>
+                        <div className="text-[11px] text-muted-foreground mb-3">This cube's data will filter {selectedCube}.</div>
+                        <div className="space-y-0.5 max-h-[200px] overflow-auto">
+                          {cubes.filter(c => c !== selectedCube).map(cube => (
+                            <button key={cube} onClick={() => { setSecondCube(cube); setTimeout(() => setStep(1), 100) }}
+                              className={cn('w-full text-left px-3 py-2 rounded border text-xs font-mono',
+                                secondCube === cube ? 'border-amber-400 bg-amber-400/5' : 'border-border hover:bg-muted')}>{cube}</button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             ) : step === 1 && selectedCube ? (
               <div>
                 <div className="font-medium text-sm mb-1">Assign Dimensions</div>
+                {measuresDim && measureElements.length > 0 && (
+                  <div className="mb-3 p-2 border rounded bg-muted/20">
+                    <div className="text-[10px] text-muted-foreground mb-1 font-medium">Measures ({measuresDim})</div>
+                    <div className="grid grid-cols-3 gap-1 max-h-[120px] overflow-auto">
+                      {measureElements.slice(0, 60).map(el => {
+                        const name = el.Name || el.name || el
+                        const checked = selectedMeasures.includes(name)
+                        return (
+                          <label key={name} className="flex items-center gap-1 text-[10px] cursor-pointer">
+                            <input type="checkbox" checked={checked}
+                              onChange={() => setSelectedMeasures(prev => checked ? prev.filter(m => m !== name) : [...prev, name])}
+                              className="accent-primary" />
+                            <span className="font-mono truncate">{name}</span>
+                          </label>
+                        )
+                      })}
+                    </div>
+                    {selectedMeasures.length > 0 && (
+                      <button onClick={() => setSelectedMeasures([])}
+                        className="text-[9px] px-2 py-0.5 border rounded hover:bg-muted mt-1">Clear</button>
+                    )}
+                  </div>
+                )}
                 <input type="text" placeholder="Filter dims…" className="w-full mb-2 px-2 py-1.5 text-xs border rounded bg-background"
                   value={filterText} onChange={e => setFilterText(e.target.value)} />
                 <div className="space-y-1.5">
