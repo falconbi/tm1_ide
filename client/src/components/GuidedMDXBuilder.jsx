@@ -223,7 +223,7 @@ export default function GuidedMDXBuilder({ tab, server: serverProp, onSwitchToRa
       if (cfg.axis === 'columns') cols.push(dim)
       else if (cfg.axis === 'rows') rows.push(dim)
       else if (cfg.axis === 'filter') filt.push(dim)
-      exprs[dim] = `TM1SubsetAll([${dim}])`
+      exprs[dim] = cfg.subsetExpression || `TM1SubsetAll([${dim}])`
     })
     return { axes: { columns: cols, rows: rows, filter: filt }, dimExpressions: exprs }
   }, [dimConfig])
@@ -455,6 +455,22 @@ export default function GuidedMDXBuilder({ tab, server: serverProp, onSwitchToRa
           ) : (
             <div>
               <div className="text-[10px] text-muted-foreground mb-2">Type in the search box to find functions and patterns by name.</div>
+              {!isSubsetMode && (
+                <div className="mb-2">
+                  <div className="text-[9px] uppercase text-muted-foreground font-semibold mb-1">View MDX Syntax</div>
+                  <div className="grid grid-cols-4 gap-x-3 gap-y-1 text-[10px]">
+                    <span><span className="font-mono text-amber-400">SELECT</span> — required clause</span>
+                    <span><span className="font-mono text-amber-400">FROM</span> — cube name</span>
+                    <span><span className="font-mono text-amber-400">WHERE</span> — slicer</span>
+                    <span><span className="font-mono text-amber-400">ON COLUMNS/ROWS</span> — axis</span>
+                    <span><span className="font-mono text-amber-400">NON EMPTY</span> — suppress zeros</span>
+                    <span><span className="font-mono text-amber-400">CROSSJOIN</span> — nested axes</span>
+                    <span><span className="font-mono text-amber-400">WITH MEMBER/SET</span> — calculated</span>
+                    <span><span className="font-mono text-amber-400">ORDER</span> — sort result</span>
+                  </div>
+                </div>
+              )}
+              <div className="text-[9px] uppercase text-muted-foreground font-semibold mb-1">{!isSubsetMode ? 'Set Expressions (for axes/slicer)' : 'Subset Functions'}</div>
               <div className="grid grid-cols-3 gap-x-4 gap-y-1 text-[10px]">
                 {[
                   { name: 'TM1SUBSETALL',     desc: 'all members' },
@@ -631,14 +647,22 @@ export default function GuidedMDXBuilder({ tab, server: serverProp, onSwitchToRa
                   {filteredDims.map(dim => {
                     const cur = dimConfig[dim]?.axis || null
                     return (
-                      <div key={dim} className="flex items-center gap-1 border rounded px-2 py-1.5 bg-background">
-                        <div className="font-mono text-[11px] flex-1 truncate">{dim}</div>
-                        <button onClick={() => setDimConfig(p => ({ ...p, [dim]: { axis: p[dim]?.axis === 'columns' ? null : 'columns' } }))}
-                          className={cn('px-1.5 py-0.5 text-[10px] rounded border', cur === 'columns' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted')}>Cols</button>
-                        <button onClick={() => setDimConfig(p => ({ ...p, [dim]: { axis: p[dim]?.axis === 'rows' ? null : 'rows' } }))}
-                          className={cn('px-1.5 py-0.5 text-[10px] rounded border', cur === 'rows' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted')}>Rows</button>
-                        <button onClick={() => setDimConfig(p => ({ ...p, [dim]: { axis: p[dim]?.axis === 'filter' ? null : 'filter' } }))}
-                          className={cn('px-1.5 py-0.5 text-[10px] rounded border', cur === 'filter' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted')}>Filt</button>
+                      <div key={dim} className="border rounded px-2 py-1.5 bg-background space-y-1">
+                        <div className="flex items-center gap-1">
+                          <div className="font-mono text-[11px] flex-1 truncate">{dim}</div>
+                          <button onClick={() => setDimConfig(p => ({ ...p, [dim]: { axis: p[dim]?.axis === 'columns' ? null : 'columns', subsetExpression: p[dim]?.subsetExpression || '' } }))}
+                            className={cn('px-1.5 py-0.5 text-[10px] rounded border', cur === 'columns' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted')}>Cols</button>
+                          <button onClick={() => setDimConfig(p => ({ ...p, [dim]: { axis: p[dim]?.axis === 'rows' ? null : 'rows', subsetExpression: p[dim]?.subsetExpression || '' } }))}
+                            className={cn('px-1.5 py-0.5 text-[10px] rounded border', cur === 'rows' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted')}>Rows</button>
+                          <button onClick={() => setDimConfig(p => ({ ...p, [dim]: { axis: p[dim]?.axis === 'filter' ? null : 'filter', subsetExpression: p[dim]?.subsetExpression || '' } }))}
+                            className={cn('px-1.5 py-0.5 text-[10px] rounded border', cur === 'filter' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted')}>Filt</button>
+                        </div>
+                        {cur && (
+                          <input type="text" placeholder={`{TM1SUBSETALL([${dim}].[${dim}])}`}
+                            value={dimConfig[dim]?.subsetExpression || ''}
+                            onChange={e => setDimConfig(p => ({ ...p, [dim]: { ...p[dim], subsetExpression: e.target.value } }))}
+                            className="w-full font-mono text-[10px] px-1.5 py-0.5 border rounded bg-background" />
+                        )}
                       </div>
                     )
                   })}
