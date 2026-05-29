@@ -175,7 +175,11 @@ function joinContinuations(code) {
                 else { inStr = false; out += ch; lineBuffer += ch }
             } else { out += ch; lineBuffer += ch }
         } else {
-            if      (ch === "'") { inStr = true; out += ch; lineBuffer += ch }
+            if (ch === '#') {
+                out += '#'
+                while (i + 1 < code.length && code[i + 1] !== '\n') { out += code[++i] }
+            }
+            else if (ch === "'") { inStr = true; out += ch; lineBuffer += ch }
             else if (ch === '(') { depth++; out += ch; lineBuffer += ch }
             else if (ch === ')') { depth--; out += ch; lineBuffer += ch }
             else if (ch === '\n') {
@@ -202,14 +206,6 @@ app.post('/api/process/debug', async (req, res) => {
     } catch (e) {
         return res.status(500).json({ error: `Failed to create debug process: ${e.message}` })
     }
-
-    // Verify what TM1 actually stored
-    try {
-        const v = await client.get(`Processes('${encodeURIComponent(tempName)}')`)
-        const vl = (v?.PrologProcedure ?? '').split('\n')
-        console.log('[debug] TM1 stored line 65:', JSON.stringify(vl[64]?.slice(0, 400)))
-        console.log('[debug] TM1 stored line 66:', JSON.stringify(vl[65]?.slice(0, 400)))
-    } catch (ve) { console.log('[debug] Verify failed:', ve.message) }
 
     const stripMeta   = obj => Object.fromEntries(Object.entries(obj).filter(([k]) => !k.startsWith('@')))
     const nl          = s   => (s ?? '').replace(/\r\n/g, '\n').replace(/\r/g, '\n')
@@ -304,30 +300,7 @@ app.post('/api/process/debug', async (req, res) => {
         ? instrumentSection(sections.EpilogProcedure,   'EpilogProcedure',   'Epilog')
         : (jc(sections.EpilogProcedure ?? ''))
 
-    // ── 4a. Check long variable names for TM1 POST bug ───────────────────────
-    const longVars = new Set()
-    const varRegex = /(?:^\s*|;\s*)([a-zA-Z_]\w{9,})\s*=/gm
-    for (const code of [prologInst, metaInst, dataInst, epilInst]) {
-        for (const m of code.matchAll(varRegex)) {
-            if (!/^(IF|WHILE|ELSEIF|ENDIF|END)$/i.test(m[1])) longVars.add(m[1])
-        }
-    }
-    const badVars = []
-    for (const v of longVars) {
-        try {
-            const testName = `_IDE_Test_${Date.now()}`
-            await client.createOrReplaceProcess({
-                name: testName, prolog: `${v} = 1;`, metadata: '', data: '', epilog: '', parameters: [],
-            })
-            await client.executeProcess(testName, [])
-            try { await client.delete(`Processes('${encodeURIComponent(testName)}')`) } catch {}
-        } catch (e) {
-            badVars.push(v)
-            try { await client.delete(`Processes('${encodeURIComponent(testName)}')`) } catch {}
-        }
-    }
-
-    // ── 4b. Create temp process with instrumented code ────────────────────────
+    // ── 4. Create temp process with instrumented code ────────────────────────
     try {
         await client.createOrReplaceProcess({
             name:       tempName,
@@ -347,8 +320,9 @@ app.post('/api/process/debug', async (req, res) => {
     } catch (e) {
         const data  = e.response?.data
         const inner = data?.error?.innererror ?? {}
+        const procErr = data?.error?.details?.ProcessError ?? ''
         console.error('[debug] execute error:', e.response?.status, JSON.stringify(data ?? e.message).slice(0, 400))
-        runError = inner.Message || data?.error?.message || e.message
+        runError = procErr || inner.Message || data?.error?.message || e.message
     }
 
     // ── 6. Read captured log via MDX ──────────────────────────────────────────
@@ -374,7 +348,7 @@ app.post('/api/process/debug', async (req, res) => {
         log = '__DBG_DONE:ok'
     }
 
-    res.json({ log, error: runError, noCapture: !hasCapture && !runError, badVars: badVars.length ? badVars : undefined })
+    res.json({ log, error: runError, noCapture: !hasCapture && !runError })
 })
 
 app.get('/api/processes/search', async (req, res) => {
