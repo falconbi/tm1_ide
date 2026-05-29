@@ -1030,6 +1030,8 @@ export default function ProcessEditor({ tab }) {
         }
         setIsDebugging(false)
         if (res.error) toast.warning(`Process errored: ${res.error}`)
+        else if (res.badVars?.length) toast.warning(`Variable names may cause TM1 API issues: ${res.badVars.join(', ')} — consider shortening`)
+        else if (res.noCapture) toast.info('Debug run complete — no watches or breakpoints set')
         else toast.success('Debug run complete')
       },
       onError: e => {

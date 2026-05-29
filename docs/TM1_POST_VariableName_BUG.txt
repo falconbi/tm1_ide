@@ -1,0 +1,57 @@
+TM1 REST API — POST Variable Name Bug
+=======================================
+
+When creating a process via POST to TM1's REST API, certain variable names
+cause the POST body parser to corrupt or truncate the TI code.
+
+REPRO
+-----
+  POST /api/v1/Processes
+  {
+    "Name": "_IDE_Debug_test",
+    "PrologProcedure": "nCalMonth = 1; pFYStartM = 1; nPriorFis = MOD(nCalMonth - pFYStartM + 12, 12) + 1;",
+    ...
+  }
+
+  TM1 returns 200 (process created) but the PrologProcedure stored is
+  corrupted. When executed, TM1 reports:
+    "Syntax error: invalid string expression" — only fragment "1;" seen
+
+  The SAME expression with a shorter variable name works:
+    "nCalMonth = 1; vTest = 1; nPriorFis = MOD(nCalMonth - vTest + 12, 12) + 1;"
+    → parses and executes correctly
+
+  The SAME expression also works via createOrReplaceProcess() which uses
+  a slightly different POST body format (same endpoint, same HTTP method).
+
+AFFECTED NAMES
+--------------
+  pFYStartM       (9 chars)   FAILS
+  pFYStartMonth   (14 chars)  FAILS
+  vTest           (5 chars)   WORKS
+  nFYM            (4 chars)   untested, probably works
+
+MITIGATION (implemented)
+----------------------
+  Debug endpoint now runs a pre-check: scans all instrumented sections for
+  variable assignments with names > 8 characters. For each, creates a micro
+  temp process (`varname = 1;`), executes, and checks for the bug. Flagged
+  variables are reported back to the client as `badVars` and shown in a toast.
+
+  Debug endpoint uses createOrReplaceProcess (server.js:307) which is NOT
+  affected by this bug. The save endpoint uses PATCH (server.js:424) which
+  was NOT tested for this bug but PATCH ≠ POST.
+
+  server.js:299-319  — variable name pre-check loop
+  server.js:377      — badVars in response JSON
+  ProcessEditor.jsx:1034 — toast for badVars
+----------
+  Unknown. Suspect TM1's internal REST handler has a buffer or parser
+  issue with variable name length patterns in POST bodies. The same
+  endpoint (POST /api/v1/Processes) works with createOrReplaceProcess()
+  which frames the body differently, suggesting the trigger is sensitive
+  to JSON field ordering or size.
+
+  Confirmed: NOT a TI syntax error, NOT a parameter type issue, NOT
+  a multi-line expression issue. The problem is in TM1's REST API
+  layer, not the TI execution engine.

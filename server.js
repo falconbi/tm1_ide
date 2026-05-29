@@ -294,10 +294,40 @@ app.post('/api/process/debug', async (req, res) => {
 
     // ── 4. Create temp process with instrumented code ────────────────────────
     const prologInst = instrumentSection(sections.PrologProcedure,   'PrologProcedure',   'Prolog')
-    const metaInst   = instrumentSection(sections.MetaDataProcedure, 'MetaDataProcedure', 'Metadata')
-    const dataInst   = instrumentSection(sections.DataProcedure,     'DataProcedure',     'Data')
-    const epilInst   = instrumentSection(sections.EpilogProcedure,   'EpilogProcedure',   'Epilog')
+    const metaInst   = (sections.MetaDataProcedure ?? '').trim()
+        ? instrumentSection(sections.MetaDataProcedure, 'MetaDataProcedure', 'Metadata')
+        : (jc(sections.MetaDataProcedure ?? ''))
+    const dataInst   = (sections.DataProcedure ?? '').trim()
+        ? instrumentSection(sections.DataProcedure,     'DataProcedure',     'Data')
+        : (jc(sections.DataProcedure ?? ''))
+    const epilInst   = (sections.EpilogProcedure ?? '').trim()
+        ? instrumentSection(sections.EpilogProcedure,   'EpilogProcedure',   'Epilog')
+        : (jc(sections.EpilogProcedure ?? ''))
 
+    // ── 4a. Check long variable names for TM1 POST bug ───────────────────────
+    const longVars = new Set()
+    const varRegex = /(?:^\s*|;\s*)([a-zA-Z_]\w{9,})\s*=/gm
+    for (const code of [prologInst, metaInst, dataInst, epilInst]) {
+        for (const m of code.matchAll(varRegex)) {
+            if (!/^(IF|WHILE|ELSEIF|ENDIF|END)$/i.test(m[1])) longVars.add(m[1])
+        }
+    }
+    const badVars = []
+    for (const v of longVars) {
+        try {
+            const testName = `_IDE_Test_${Date.now()}`
+            await client.createOrReplaceProcess({
+                name: testName, prolog: `${v} = 1;`, metadata: '', data: '', epilog: '', parameters: [],
+            })
+            await client.executeProcess(testName, [])
+            try { await client.delete(`Processes('${encodeURIComponent(testName)}')`) } catch {}
+        } catch (e) {
+            badVars.push(v)
+            try { await client.delete(`Processes('${encodeURIComponent(testName)}')`) } catch {}
+        }
+    }
+
+    // ── 4b. Create temp process with instrumented code ────────────────────────
     try {
         await client.createOrReplaceProcess({
             name:       tempName,
@@ -332,6 +362,7 @@ app.post('/api/process/debug', async (req, res) => {
             ].join(' ')
             const result  = await client.executeMDX(mdx)
             const attrLog = (result?.Cells?.[0]?.Value ?? '').replace(/\r/g, '')
+            console.log('[debug] MDX raw:', JSON.stringify(attrLog).slice(0, 300))
             if (attrLog.includes('__DBG_BP:')) {
                 log      = attrLog + '\n__DBG_DONE:ok'
                 runError = null
@@ -343,11 +374,7 @@ app.post('/api/process/debug', async (req, res) => {
         log = '__DBG_DONE:ok'
     }
 
-    // ── 7. Cleanup ─────────────────────────────────────────────────────────────
-    try { await client.delete(`Processes('${encodeURIComponent(tempName)}')`) }
-    catch (e) { console.error('[debug] delete temp failed:', e.message) }
-
-    res.json({ log, error: runError })
+    res.json({ log, error: runError, noCapture: !hasCapture && !runError, badVars: badVars.length ? badVars : undefined })
 })
 
 app.get('/api/processes/search', async (req, res) => {
