@@ -951,19 +951,19 @@ export default function ProcessEditor({ tab }) {
     })
   }, [])
 
-  // Keep decorations in sync whenever breakpoints or active section changes
+  // Keep decorations in sync whenever breakpoints, active section, or debug mode changes
   useEffect(() => {
     const editor = editorRef.current
     const monaco = monacoRef.current
     if (!editor || !monaco) return
-    const bps = breakpoints[activeSection] ?? new Set()
+    const bps = showDebug ? (breakpoints[activeSection] ?? new Set()) : new Set()
     const newDecs = [...bps].map(line => ({
       range: new monaco.Range(line, 1, line, 1),
       options: { glyphMarginClassName: 'debug-bp-glyph' },
     }))
     const old = decorationIdsRef.current[activeSection] ?? []
     decorationIdsRef.current[activeSection] = editor.deltaDecorations(old, newDecs)
-  }, [breakpoints, activeSection])
+  }, [breakpoints, activeSection, showDebug])
 
   const jumpToDebugLine = useCallback((section, lineNum) => {
     const key = SECTION_TO_KEY[section]
@@ -998,6 +998,8 @@ export default function ProcessEditor({ tab }) {
   }
 
   const handleDebugRun = (params) => {
+    setShowDebugRun(false)
+    setRunOutput(null)
     setIsDebugging(true)
     setDebugEvents([])
     const sections = {}
@@ -1029,7 +1031,13 @@ export default function ProcessEditor({ tab }) {
           toast.warning(`${res.warnings.length} unknown function${res.warnings.length > 1 ? 's' : ''} commented out — see Issues panel`)
         }
         setIsDebugging(false)
-        if (res.error) toast.warning(`Process errored: ${res.error}`)
+        if (res.error) {
+            if (res.error.includes('invalid string expression')) {
+                toast.warning(`Process errored: ${res.error} — this may be a TM1 variable name length bug. Try shortening variable names to ≤ 8 characters.`)
+            } else {
+                toast.warning(`Process errored: ${res.error}`)
+            }
+        }
         else if (res.badVars?.length) toast.warning(`Variable names may cause TM1 API issues: ${res.badVars.join(', ')} — consider shortening`)
         else if (res.noCapture) toast.info('Debug run complete — no watches or breakpoints set')
         else toast.success('Debug run complete')

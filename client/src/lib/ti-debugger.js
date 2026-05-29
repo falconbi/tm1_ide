@@ -16,7 +16,11 @@ export function parseDebugLog(log) {
       if (!trimmed || trimmed.startsWith('__DBG_DONE')) continue
       // BP marker: __DBG_BP:line:section
       const bpMatch = trimmed.match(/^__DBG_BP:(\d+):(\w+)/)
-      if (bpMatch) { bpLine = +bpMatch[1]; bpSection = bpMatch[2]; continue }
+      if (bpMatch) {
+        bpLine = +bpMatch[1]; bpSection = bpMatch[2]
+        events.push({ type: 'breakpoint', section: bpSection, line: bpLine })
+        continue
+      }
       // Watch line: __DBG_VAR:name__Section__line=value
       let m = trimmed.match(/^__DBG_VAR:(.+)=(.+)$/)
       if (m) {
@@ -26,7 +30,6 @@ export function parseDebugLog(log) {
         const cleanValue = value.replace(/__DBG_BP:.*$/, '').trim()
         const bp = rawName.match(/^(.+?)__(\w+)__(\d+)$/)
         if (bp) {
-          events.push({ type: 'breakpoint', section: bp[2], line: +bp[3] })
           events.push({ type: 'watch', name: bp[1], section: bp[2], line: +bp[3], value: cleanValue })
         } else {
           events.push({ type: 'watch', name: rawName, section: bpSection || 'Epilog', line: bpLine, value: cleanValue })
@@ -40,7 +43,6 @@ export function parseDebugLog(log) {
         const value   = (m[2] ?? '').replace(/__DBG_BP:.*$/, '').trim()
         const bp = rawName.match(/^(.+?)__(\w+)__(\d+)$/)
         if (bp) {
-          events.push({ type: 'breakpoint', section: bp[2], line: +bp[3] })
           events.push({ type: 'watch', name: bp[1], section: bp[2], line: +bp[3], value })
         } else {
           events.push({ type: 'watch', name: rawName, section: bpSection || 'Epilog', line: bpLine, value })

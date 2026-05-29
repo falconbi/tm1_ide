@@ -214,7 +214,7 @@ app.post('/api/process/debug', async (req, res) => {
         Name: p.Name, Type: p.Type ?? 2, Value: String(p.Value ?? ''), Prompt: p.Prompt ?? '',
     }))
 
-    // ── 2. Ensure __DBG_LOG attribute exists and clear it ────────────────────
+    // ── 2. Ensure __DBG_LOG attribute exists ──────────────────────────────────
     const ATTR         = '__DBG_LOG'
     const safeProcName = name.replace(/'/g, "''")
     const hasCapture   = (watches?.length > 0) || Object.values(breakpoints ?? {}).some(a => a.length > 0)
@@ -227,8 +227,18 @@ app.post('/api/process/debug', async (req, res) => {
             )
         } catch (e) { /* 409 = already exists — fine */ }
         try {
-            await client.writeElementAttribute('}Processes', name, ATTR, '', 'S')
-        } catch (e) { /* ignore */ }
+            await client.post('ExecuteProcessWithReturn?$expand=*', {
+                Process: {
+                    Name: '_IDE_ClearDbg',
+                    PrologProcedure: `AttrPutS('', '}Processes', '${safeProcName}', '${ATTR}');`,
+                    MetadataProcedure: '', DataProcedure: '', EpilogProcedure: '',
+                    HasSecurityAccess: false, DataSource: { Type: 'None' },
+                    Parameters: [], Variables: [],
+                }
+            })
+        } catch (e) {
+            console.warn('[debug] could not clear __DBG_LOG:', e.message)
+        }
     }
 
     // ── 3. Instrument sections ────────────────────────────────────────────────
@@ -278,11 +288,6 @@ app.post('/api/process/debug', async (req, res) => {
             result.push(lines[i])
             trackDepth(lines[i])
             prevDepth = parenDepth
-        }
-
-        if (watches?.length) {
-            const endLine = lines.length + 1
-            result.push(...appendLines(`__DBG_BP:${endLine}:${sectionLabel}`, endLine, sectionLabel))
         }
 
         return result.join('\n')
