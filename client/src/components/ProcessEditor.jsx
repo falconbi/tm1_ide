@@ -1,12 +1,15 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import MonacoEditor from '@monaco-editor/react'
 import { useStore } from '@/store'
-import { useProcess, useSaveProcess, useRunProcess, useCubes, useViews } from '@/hooks/useApi'
+import { useProcess, useSaveProcess, useRunProcess, useFetchProcessLog, useCreateProcess, useDebugProcess, useCubes, useViews } from '@/hooks/useApi'
 import { registerTM1Completions, registerTM1Theme } from '@/lib/tm1-functions'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
-import { ChevronRight, ChevronDown, Play, X, Braces, Wand2, CheckCircle2, XCircle, Database } from 'lucide-react'
+import { ChevronRight, ChevronDown, Play, X, Braces, Wand2, CheckCircle2, XCircle, Database, Trash2, Plus, Loader2, Bug, Search, AlertTriangle, AlertCircle } from 'lucide-react'
 import { getSnippets } from '@/lib/tm1-snippets.js'
+import { executeTI, scanVariables } from '@/lib/ti-interpreter'
+import { parseDebugLog } from '@/lib/ti-debugger'
+import { validateTICode } from '@/lib/ti-validator'
 import SnippetPanel from '@/components/SnippetPanel'
 import PatternDialog from '@/components/PatternDialog'
 
@@ -19,107 +22,157 @@ const CODE_TABS = [
 
 const PARAM_TYPE = { 1: 'Numeric', 2: 'String' }
 
-function ParamsPanel({ params }) {
-  if (!params?.length) return (
-    <div className="px-4 py-3 text-xs text-muted-foreground">No parameters</div>
-  )
+function EditableParamsPanel({ params, onChange }) {
+  const cell = 'w-full bg-transparent border-b border-transparent hover:border-border focus:border-primary px-1 py-0.5 font-mono focus:outline-none text-xs'
+
+  const set = (i, field, val) => onChange(params.map((p, idx) => idx === i ? { ...p, [field]: val } : p))
+  const add = () => onChange([...params, { Name: 'p', Type: 2, Value: '', Prompt: '' }])
+  const remove = (i) => onChange(params.filter((_, idx) => idx !== i))
+
   return (
-    <div className="overflow-auto">
-      <table className="w-full text-xs">
-        <thead>
-          <tr className="border-b border-border bg-muted text-muted-foreground">
-            <th className="text-left px-3 py-1.5">Name</th>
-            <th className="text-left px-3 py-1.5">Type</th>
-            <th className="text-left px-3 py-1.5">Default</th>
-            <th className="text-left px-3 py-1.5">Prompt</th>
-          </tr>
-        </thead>
-        <tbody>
-          {params.map(p => (
-            <tr key={p.Name} className="border-b border-border hover:bg-muted/50">
-              <td className="px-3 py-1.5 font-mono">{p.Name}</td>
-              <td className="px-3 py-1.5 text-muted-foreground">{PARAM_TYPE[p.Type] ?? p.Type}</td>
-              <td className="px-3 py-1.5 font-mono">{String(p.Value ?? '')}</td>
-              <td className="px-3 py-1.5 text-muted-foreground">{p.Prompt}</td>
+    <div>
+      {params.length > 0 && (
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="border-b border-border bg-muted text-muted-foreground">
+              <th className="text-left px-3 py-1.5">Name</th>
+              <th className="text-left px-3 py-1.5 w-24">Type</th>
+              <th className="text-left px-3 py-1.5">Default</th>
+              <th className="text-left px-3 py-1.5">Prompt</th>
+              <th className="w-6" />
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {params.map((p, i) => (
+              <tr key={i} className="border-b border-border hover:bg-muted/30 group">
+                <td className="px-2 py-0.5">
+                  <input value={p.Name ?? ''} onChange={e => set(i, 'Name', e.target.value)} className={cell} />
+                </td>
+                <td className="px-2 py-0.5">
+                  <select
+                    value={p.Type ?? 2}
+                    onChange={e => set(i, 'Type', +e.target.value)}
+                    className="w-full bg-transparent text-xs focus:outline-none"
+                  >
+                    <option value={2}>String</option>
+                    <option value={1}>Numeric</option>
+                  </select>
+                </td>
+                <td className="px-2 py-0.5">
+                  <input value={String(p.Value ?? '')} onChange={e => set(i, 'Value', e.target.value)} className={cell} />
+                </td>
+                <td className="px-2 py-0.5">
+                  <input value={p.Prompt ?? ''} onChange={e => set(i, 'Prompt', e.target.value)} className={cell} />
+                </td>
+                <td className="px-1 py-0.5">
+                  <button
+                    onClick={() => remove(i)}
+                    className="hidden group-hover:flex items-center text-muted-foreground hover:text-red-400 p-0.5"
+                  >
+                    <Trash2 size={10} />
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      {params.length === 0 && (
+        <p className="px-4 py-2 text-xs text-muted-foreground italic">No parameters — click below to add one.</p>
+      )}
+      <button
+        onClick={add}
+        className="flex items-center gap-1 w-full px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-muted transition-colors border-t border-border"
+      >
+        <Plus size={10} /> Add parameter
+      </button>
     </div>
   )
 }
 
-const DS_TYPE_BADGE = {
-  ASCII:                'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200',
-  ODBC:                 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200',
-  TM1CubeView:          'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200',
-  TM1DimensionSubset:   'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200',
-  None:                 'bg-muted text-muted-foreground',
-}
+function EditableDatasourcePanel({ ds, server, onChange }) {
+  const type = ds?.Type ?? 'None'
+  const set  = (k, v) => onChange({ ...ds, Type: type, [k]: v })
 
-function buildDsRows(ds) {
-  const { Type, password, dataSourceNameForClient, dataSourceNameForServer, ...rest } = ds
+  const { data: cubes }  = useCubes(server)
+  const { data: views }  = useViews(server, type === 'TM1CubeView' ? (ds?.dataSourceNameForServer ?? '') : null)
 
-  const rows = []
-
-  if (Type === 'TM1CubeView' || Type === 'TM1DimensionSubset') {
-    rows.push(['Cube', dataSourceNameForServer ?? dataSourceNameForClient ?? ''])
-    if (rest.view)   rows.push(['View',   rest.view])
-    if (rest.subset) rows.push(['Subset', rest.subset])
-    return rows
-  }
-
-  if (Type === 'ODBC') {
-    const dsn = dataSourceNameForServer ?? dataSourceNameForClient ?? ''
-    rows.push(['DSN', dsn])
-    if (rest.query)    rows.push(['SQL query', rest.query])
-    if (rest.userName) rows.push(['Username',  rest.userName])
-    if (rest.usesUnicode !== undefined) rows.push(['Unicode', String(rest.usesUnicode)])
-    return rows
-  }
-
-  // ASCII / default: show file path once if client == server, else show both
-  if (dataSourceNameForServer && dataSourceNameForServer === dataSourceNameForClient) {
-    rows.push(['File path', dataSourceNameForServer])
-  } else {
-    if (dataSourceNameForServer) rows.push(['File (server)', dataSourceNameForServer])
-    if (dataSourceNameForClient) rows.push(['File (client)', dataSourceNameForClient])
-  }
-
-  const ASCII_LABELS = {
-    asciiDelimiterType:    'Delimiter type',
-    asciiDelimiterChar:    'Delimiter char',
-    asciiDecimalSeparator: 'Decimal separator',
-    asciiThousandSeparator:'Thousand separator',
-    asciiQuoteCharacter:   'Quote char',
-    asciiHeaderRecords:    'Header rows',
-  }
-  for (const [k, label] of Object.entries(ASCII_LABELS)) {
-    if (rest[k] !== undefined) rows.push([label, String(rest[k])])
-  }
-  return rows
-}
-
-function DatasourcePanel({ ds }) {
-  if (!ds || ds.Type === 'None') return (
-    <div className="px-4 py-3 text-xs text-muted-foreground">No datasource configured</div>
+  const row = (label, key, opts = {}) => (
+    <div key={key} className="flex items-center gap-3">
+      <span className="text-[10px] text-muted-foreground w-28 shrink-0">{label}</span>
+      <input
+        type={opts.type ?? 'text'}
+        value={ds?.[key] ?? opts.default ?? ''}
+        onChange={e => set(key, e.target.value)}
+        placeholder={opts.placeholder ?? ''}
+        className="flex-1 bg-transparent border-b border-border focus:border-primary text-xs font-mono py-0.5 focus:outline-none"
+      />
+    </div>
   )
-  const rows = buildDsRows(ds)
+
+  const sel = (label, key, options, loading) => (
+    <div key={key} className="flex items-center gap-3">
+      <span className="text-[10px] text-muted-foreground w-28 shrink-0">{label}</span>
+      <select
+        value={ds?.[key] ?? ''}
+        onChange={e => set(key, e.target.value)}
+        className="flex-1 bg-muted border border-border rounded px-1.5 py-0.5 text-xs font-mono focus:outline-none"
+      >
+        <option value="">{loading ? 'Loading…' : 'Select…'}</option>
+        {(options ?? []).map(o => <option key={o} value={o}>{o}</option>)}
+      </select>
+    </div>
+  )
+
   return (
-    <div className="px-3 py-2 space-y-2">
-      <span className={cn('text-xs font-semibold px-2 py-0.5 rounded-full inline-block', DS_TYPE_BADGE[ds.Type] ?? DS_TYPE_BADGE.None)}>
-        {ds.Type}
-      </span>
-      <table className="w-full text-xs">
-        <tbody>
-          {rows.map(([label, value]) => (
-            <tr key={label} className="border-b border-border last:border-0">
-              <td className="py-1 pr-4 text-muted-foreground w-36 shrink-0">{label}</td>
-              <td className="py-1 font-mono text-foreground break-all">{value}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+    <div className="px-3 py-2 space-y-2.5">
+      <div className="flex items-center gap-3">
+        <span className="text-[10px] text-muted-foreground w-28 shrink-0">Type</span>
+        <select
+          value={type}
+          onChange={e => onChange({ Type: e.target.value })}
+          className="flex-1 bg-muted border border-border rounded px-1.5 py-0.5 text-xs font-mono focus:outline-none"
+        >
+          <option value="None">None (no data loop)</option>
+          <option value="ASCII">ASCII File</option>
+          <option value="ODBC">ODBC</option>
+          <option value="TM1CubeView">TM1 Cube View</option>
+          <option value="TM1DimensionSubset">TM1 Dimension Subset</option>
+        </select>
+      </div>
+
+      {type === 'ASCII' && <>
+        {row('File (server)', 'dataSourceNameForServer', { placeholder: '.\\data\\file.csv' })}
+        {row('File (client)', 'dataSourceNameForClient', { placeholder: 'Leave blank = mirror server' })}
+        {row('Delimiter char', 'asciiDelimiterChar', { placeholder: ',', default: ',' })}
+        {row('Header rows', 'asciiHeaderRecords', { type: 'number', default: '1' })}
+        {row('Quote char', 'asciiQuoteCharacter', { placeholder: '"' })}
+      </>}
+
+      {type === 'ODBC' && <>
+        {row('DSN', 'dataSourceNameForServer', { placeholder: 'MyDatabase' })}
+        <div className="flex items-start gap-3">
+          <span className="text-[10px] text-muted-foreground w-28 shrink-0 pt-1">SQL query</span>
+          <textarea
+            value={ds?.query ?? ''}
+            onChange={e => set('query', e.target.value)}
+            rows={3}
+            placeholder="SELECT col1, col2 FROM table"
+            className="flex-1 bg-muted border border-border rounded px-2 py-1 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-ring resize-none"
+          />
+        </div>
+        {row('Username', 'userName', { placeholder: 'Optional' })}
+      </>}
+
+      {type === 'TM1CubeView' && <>
+        {sel('Cube', 'dataSourceNameForServer', cubes)}
+        {sel('View', 'view', views)}
+      </>}
+
+      {type === 'TM1DimensionSubset' && <>
+        {row('Dimension', 'dataSourceNameForServer', { placeholder: 'CostCentre' })}
+        {row('Subset', 'subset', { placeholder: 'All CostCentres' })}
+      </>}
     </div>
   )
 }
@@ -349,7 +402,7 @@ function DatasourceInsertDialog({ server, onInsert, onClose }) {
   )
 }
 
-function RunDialog({ params, onRun, onClose, isPending }) {
+function RunDialog({ params, onRun, onClose, isPending, title = 'Run Process' }) {
   const [values, setValues] = useState(() =>
     Object.fromEntries((params ?? []).map(p => [p.Name, String(p.Value ?? '')]))
   )
@@ -362,7 +415,7 @@ function RunDialog({ params, onRun, onClose, isPending }) {
 
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-border">
-          <span className="text-sm font-semibold">Run Process</span>
+          <span className="text-sm font-semibold">{title}</span>
           <button onClick={onClose} className="text-muted-foreground hover:text-foreground">
             <X size={14} />
           </button>
@@ -411,31 +464,292 @@ function RunDialog({ params, onRun, onClose, isPending }) {
   )
 }
 
+function SaveAsDialog({ sourceName, onSave, onClose, isPending }) {
+  const [name, setName] = useState(`${sourceName}_copy`)
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+      <div className="bg-background border border-border rounded-lg shadow-xl w-full max-w-sm mx-4">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+          <span className="text-sm font-semibold">Save As</span>
+          <button onClick={onClose} className="text-muted-foreground hover:text-foreground"><X size={14} /></button>
+        </div>
+        <div className="px-4 py-3">
+          <label className="text-xs text-muted-foreground block mb-1.5">New process name</label>
+          <input
+            autoFocus
+            value={name}
+            onChange={e => setName(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter' && name.trim()) onSave(name.trim()); if (e.key === 'Escape') onClose() }}
+            className="w-full bg-muted border border-border rounded px-2 py-1.5 text-sm font-mono focus:outline-none focus:ring-1 focus:ring-ring"
+          />
+        </div>
+        <div className="flex justify-end gap-2 px-4 py-3 border-t border-border">
+          <button onClick={onClose} className="px-3 py-1.5 text-xs rounded border border-border hover:bg-muted transition-colors">Cancel</button>
+          <button
+            onClick={() => name.trim() && onSave(name.trim())}
+            disabled={!name.trim() || isPending}
+            className="px-3 py-1.5 text-xs rounded bg-primary text-primary-foreground disabled:opacity-50 hover:opacity-90 transition-opacity"
+          >
+            {isPending ? 'Creating…' : 'Save As'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function DebugPanel({ watches, onWatchesChange, events, isDebugging, onRun, onJumpTo, availableVars }) {
+  const [newName, setNewName] = useState('')
+  const [newType, setNewType] = useState('number')
+  const [dropdownOpen, setDropdownOpen] = useState(false)
+  const [filterText, setFilterText] = useState('')
+  const dropdownRef = useRef(null)
+
+  useEffect(() => {
+    const handler = (e) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target)) setDropdownOpen(false)
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
+
+  const addWatch = () => {
+    const name = newName.trim()
+    if (!name || watches.some(w => w.name.toLowerCase() === name.toLowerCase())) return
+    onWatchesChange([...watches, { name, type: newType }])
+    setNewName('')
+    setFilterText('')
+    setDropdownOpen(false)
+  }
+
+  const selectVar = (v) => {
+    setNewName(v.name)
+    setNewType(v.type)
+    setFilterText('')
+    setDropdownOpen(false)
+  }
+
+  const filteredVars = (availableVars ?? []).filter(v => {
+    if (!filterText) return true
+    const lo = filterText.toLowerCase()
+    return v.name.toLowerCase().includes(lo) || v.section.toLowerCase().includes(lo)
+  }).slice(0, 30)
+
+  // Group events into frames anchored at each breakpoint hit
+  const frames = []
+  let cur = null
+  for (const evt of events) {
+    if (evt.type === 'breakpoint') {
+      if (cur) frames.push(cur)
+      cur = { section: evt.section, line: evt.line, watches: [], logs: [] }
+    } else if (evt.type === 'watch' && cur) {
+      cur.watches.push(evt)
+    } else if (evt.type === 'log') {
+      if (cur) cur.logs.push(evt.message)
+      else frames.push({ section: null, line: null, watches: [], logs: [evt.message] })
+    }
+  }
+  if (cur) frames.push(cur)
+
+  const SECTION_COLOR = {
+    Prolog: 'text-blue-400', Metadata: 'text-purple-400',
+    Data: 'text-green-400',  Epilog: 'text-orange-400',
+  }
+
+  return (
+    <div className="w-64 shrink-0 border-l border-border flex flex-col bg-sidebar overflow-hidden">
+      {/* Header + run */}
+      <div className="flex items-center justify-between px-3 py-2 border-b border-border shrink-0">
+        <span className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+          <Bug size={11} /> Debug
+        </span>
+        <button
+          onClick={onRun}
+          disabled={isDebugging}
+          className="flex items-center gap-1 px-2 py-1 text-xs rounded bg-orange-600 text-white disabled:opacity-50 hover:bg-orange-500 transition-colors"
+        >
+          {isDebugging ? <Loader2 size={10} className="animate-spin" /> : <Play size={10} />}
+          {isDebugging ? 'Running…' : 'Run'}
+        </button>
+      </div>
+
+      {/* Watch variables */}
+      <div className="shrink-0 border-b border-border">
+        <div className="px-3 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+          Watches
+        </div>
+        {watches.length === 0 && (
+          <div className="px-3 pb-2 text-xs italic text-muted-foreground">None added</div>
+        )}
+        {watches.map((w, i) => (
+          <div key={i} className="flex items-center gap-2 px-3 py-0.5 group hover:bg-muted/50">
+            <span className="flex-1 text-xs font-mono truncate">{w.name}</span>
+            <span className="text-[10px] text-muted-foreground w-7 shrink-0">{w.type === 'number' ? 'num' : 'str'}</span>
+            <button
+              onClick={() => onWatchesChange(watches.filter((_, idx) => idx !== i))}
+              className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-red-400 transition-opacity"
+            >
+              <X size={10} />
+            </button>
+          </div>
+        ))}
+        <div className="flex items-center gap-1 px-2 pt-1 pb-2 border-t border-border/50" ref={dropdownRef}>
+          <div className="relative flex-1 min-w-0">
+            <input
+              value={dropdownOpen ? filterText : newName}
+              onChange={e => {
+                const v = e.target.value
+                if (dropdownOpen) {
+                  setFilterText(v)
+                  setNewName(v)
+                } else {
+                  setNewName(v)
+                }
+              }}
+              onFocus={() => { setDropdownOpen(true); setFilterText(newName) }}
+              onKeyDown={e => {
+                if (e.key === 'Enter') { addWatch(); e.preventDefault() }
+                if (e.key === 'Escape') setDropdownOpen(false)
+                if (e.key === 'ArrowDown' && filteredVars.length > 0) {
+                  e.preventDefault()
+                  // focus first item — simplified: just select it
+                }
+              }}
+              placeholder="variable or type…"
+              className="w-full text-xs font-mono bg-muted border border-border rounded px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-ring"
+            />
+            {dropdownOpen && filteredVars.length > 0 && (
+              <div className="absolute bottom-full left-0 mb-1 w-56 max-h-48 overflow-auto bg-popover border border-border rounded shadow-lg z-50">
+                {filteredVars.map((v, i) => (
+                  <button
+                    key={i}
+                    onClick={() => selectVar(v)}
+                    className="w-full flex items-center gap-2 px-2 py-1 text-xs hover:bg-muted text-left"
+                  >
+                    <span className={cn(
+                      'font-mono flex-1 truncate',
+                      v.section === 'Param' ? 'text-amber-400' : 'text-foreground'
+                    )}>{v.name}</span>
+                    <span className={cn(
+                      'text-[10px] shrink-0',
+                      v.section === 'Prolog' ? 'text-blue-400' :
+                      v.section === 'Metadata' ? 'text-purple-400' :
+                      v.section === 'Data' ? 'text-green-400' :
+                      v.section === 'Epilog' ? 'text-orange-400' :
+                      v.section === 'Param' ? 'text-amber-400' : 'text-muted-foreground'
+                    )}>{v.section}{v.line ? `:${v.line}` : ''}</span>
+                    <span className="text-[10px] text-muted-foreground w-7 shrink-0 text-right">{v.type === 'number' ? 'num' : 'str'}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+          <select
+            value={newType}
+            onChange={e => setNewType(e.target.value)}
+            className="text-xs bg-muted border border-border rounded px-1 py-0.5 focus:outline-none w-12 shrink-0"
+          >
+            <option value="number">num</option>
+            <option value="string">str</option>
+          </select>
+          <button onClick={addWatch} className="shrink-0 text-muted-foreground hover:text-foreground">
+            <Plus size={12} />
+          </button>
+        </div>
+      </div>
+
+      {/* Trace output */}
+      <div className="flex-1 overflow-auto">
+        {events.length === 0 ? (
+          <p className="px-3 py-3 text-xs text-muted-foreground italic leading-relaxed">
+            Add watches above, then Run. Watches are captured at end of each section — click the gutter to also capture at specific lines.
+          </p>
+        ) : (
+          <div className="py-1">
+            {frames.map((f, fi) => (
+              <div key={fi} className="border-b border-border/30 last:border-0 pb-1 mb-1">
+                {f.line != null && (
+                  <button
+                    onClick={() => onJumpTo(f.section, f.line)}
+                    className={cn(
+                      'flex items-center gap-1 w-full px-3 py-1 text-xs hover:bg-muted/50 font-semibold',
+                      SECTION_COLOR[f.section] ?? 'text-muted-foreground'
+                    )}
+                  >
+                    {f.section}
+                    <span className="font-normal text-muted-foreground ml-0.5">:{f.line}</span>
+                  </button>
+                )}
+                {f.watches.map((w, wi) => (
+                  <div key={wi} className="flex items-baseline gap-1 px-4 py-0.5">
+                    <span className="text-xs font-mono text-foreground/80 shrink-0">{w.name}</span>
+                    <span className="text-[10px] text-muted-foreground mx-0.5">=</span>
+                    <span className="text-xs font-mono text-primary truncate">{w.value}</span>
+                  </div>
+                ))}
+                {f.logs.map((msg, li) => (
+                  <div key={li} className="px-3 py-0.5 text-xs font-mono text-muted-foreground/80 break-all leading-relaxed">{msg}</div>
+                ))}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 export default function ProcessEditor({ tab }) {
-  const { server, dark, themeVersion, updateTabContent, markTabSaved, clearScrollTo } = useStore()
+  const { server, dark, themeVersion, updateTabContent, markTabSaved, clearScrollTo, openTab } = useStore()
   const { data, isLoading } = useProcess(tab.server, tab.name)
-  const saveProcess = useSaveProcess()
-  const runProcess  = useRunProcess()
-  const registeredRef = useRef(false)
+  const saveProcess   = useSaveProcess()
+  const runProcess    = useRunProcess()
+  const fetchLog      = useFetchProcessLog()
+  const createProcess = useCreateProcess()
+  const registeredRef    = useRef(false)
+  const decorationIdsRef = useRef({})
+  const debugProcess     = useDebugProcess()
+
+  const [showDebug, setShowDebug]       = useState(false)
+  const [breakpoints, setBreakpoints]   = useState({})
+  const [watches, setWatches]           = useState([])
+  const [debugEvents, setDebugEvents]   = useState([])
+  const [isDebugging, setIsDebugging]   = useState(false)
+  const [showDebugRun, setShowDebugRun] = useState(false)
+  const [checkResults, setCheckResults] = useState(null)
+  const [showCheck, setShowCheck]       = useState(false)
 
   const SECTION_TO_KEY = { Prolog: 'PrologProcedure', Metadata: 'MetaDataProcedure', Data: 'DataProcedure', Epilog: 'EpilogProcedure' }
 
   const [activeSection, setActiveSection] = useState('PrologProcedure')
+  const [showSaveAs, setShowSaveAs] = useState(false)
   const [showRun, setShowRun] = useState(false)
   const [showDsInsert, setShowDsInsert] = useState(false)
   const [showSnippets, setShowSnippets] = useState(false)
   const [showPatterns, setShowPatterns] = useState(false)
   const [runOutput, setRunOutput] = useState(null)
+  const [logContent, setLogContent] = useState(null)
+  const [logOpen, setLogOpen] = useState(true)
   const editorRef = useRef(null)
   const monacoRef = useRef(null)
   const pendingLineRef = useRef(null)
 
-  // Local edits keyed by section
-  const [edits, setEdits] = useState({})
+  // Local edits keyed by section; null = no changes
+  const [edits, setEdits]           = useState({})
+  const [paramEdits, setParamEdits] = useState(null)
+  const [dsEdits, setDsEdits]       = useState(null)
 
   useEffect(() => {
-    if (data) updateTabContent(tab.id, data)
+    if (data) { updateTabContent(tab.id, data); setParamEdits(null); setDsEdits(null) }
   }, [data])
+
+  // Build sorted variable list for watch dropdown
+  const availableVars = (() => {
+    const sections = {}
+    CODE_TABS.forEach(({ key }) => { sections[key] = edits[key] ?? data?.[key] ?? '' })
+    const params = paramEdits ?? data?.Parameters ?? []
+    return scanVariables(sections, params)
+  })()
 
   useEffect(() => {
     if (!tab.scrollToLine) return
@@ -488,6 +802,22 @@ export default function ProcessEditor({ tab }) {
       editor.setPosition({ lineNumber: pendingLineRef.current, column: 1 })
       pendingLineRef.current = null
     }
+    // Apply any existing breakpoints for this section
+    const bps = breakpoints[activeSection] ?? new Set()
+    if (bps.size > 0) {
+      const decs = [...bps].map(line => ({
+        range: new monaco.Range(line, 1, line, 1),
+        options: { glyphMarginClassName: 'debug-bp-glyph' },
+      }))
+      decorationIdsRef.current[activeSection] = editor.deltaDecorations([], decs)
+    }
+    // Toggle breakpoint on glyph margin click
+    editor.onMouseDown(e => {
+      if (e.target.type === monaco.editor.MouseTargetType.GUTTER_GLYPH_MARGIN) {
+        const line = e.target.position?.lineNumber
+        if (line) toggleBreakpoint(activeSection, line)
+      }
+    })
   }
 
   const jumpToError = (tmSection, line) => {
@@ -518,8 +848,17 @@ export default function ProcessEditor({ tab }) {
     if (firstKey !== activeSection) setActiveSection(firstKey)
   }
 
+  const grabLog = () => {
+    fetchLog.mutate({ server: tab.server, name: tab.name }, {
+      onSuccess: (r) => setLogContent(r?.log ?? ''),
+      onError:   ()  => setLogContent(''),
+    })
+  }
+
   const handleRun = (values) => {
     setRunOutput(null)
+    setLogContent(null)
+    setLogOpen(true)
     const id = toast.loading('Running process…')
     runProcess.mutate(
       { server: tab.server, name: tab.name, params: values },
@@ -528,6 +867,7 @@ export default function ProcessEditor({ tab }) {
           setShowRun(false)
           toast.success('Process completed', { id })
           setRunOutput({ status: 'ok', duration: res?.duration ?? null })
+          grabLog()
         },
         onError: (e) => {
           toast.dismiss(id)
@@ -538,6 +878,7 @@ export default function ProcessEditor({ tab }) {
             section: detail.section ?? null,
             line:    detail.line   ?? null,
           })
+          grabLog()
         },
       },
     )
@@ -549,6 +890,17 @@ export default function ProcessEditor({ tab }) {
     CODE_TABS.forEach(({ key }) => {
       body[key] = edits[key] ?? data[key] ?? ''
     })
+    if (paramEdits !== null) {
+      body.Parameters = paramEdits.map(p => ({
+        Name:   p.Name,
+        Type:   p.Type ?? 2,
+        Value:  String(p.Value ?? ''),
+        Prompt: p.Prompt ?? '',
+      }))
+    }
+    if (dsEdits !== null) {
+      body.DataSource = dsEdits
+    }
     const id = toast.loading('Saving process…')
     saveProcess.mutate(
       { server: tab.server, name: tab.name, body },
@@ -557,6 +909,25 @@ export default function ProcessEditor({ tab }) {
         onError:   (e) => toast.error(e.message, { id }),
       },
     )
+  }
+
+  const handleSaveAs = (newName) => {
+    const body = {}
+    CODE_TABS.forEach(({ key }) => { body[key] = edits[key] ?? data?.[key] ?? '' })
+    if (paramEdits !== null) body.Parameters = paramEdits.map(p => ({ Name: p.Name, Type: p.Type ?? 2, Value: String(p.Value ?? ''), Prompt: p.Prompt ?? '' }))
+    if (dsEdits !== null) body.DataSource = dsEdits
+    const id = toast.loading(`Creating "${newName}"…`)
+    createProcess.mutate({ server: tab.server, name: newName }, {
+      onSuccess: () => saveProcess.mutate({ server: tab.server, name: newName, body }, {
+        onSuccess: () => {
+          toast.success(`Saved as "${newName}"`, { id })
+          setShowSaveAs(false)
+          openTab({ id: `process:${tab.server}:${newName}`, type: 'process', label: newName, server: tab.server, name: newName, content: null })
+        },
+        onError: e => toast.error(e.message, { id }),
+      }),
+      onError: e => toast.error(e.message, { id }),
+    })
   }
 
   useEffect(() => {
@@ -570,6 +941,104 @@ export default function ProcessEditor({ tab }) {
     return () => window.removeEventListener('keydown', handler)
   }, [data, edits])
 
+  const toggleBreakpoint = useCallback((sectionKey, lineNum) => {
+    setBreakpoints(prev => {
+      const next = { ...prev }
+      const set = new Set(next[sectionKey] ?? [])
+      set.has(lineNum) ? set.delete(lineNum) : set.add(lineNum)
+      next[sectionKey] = set
+      return next
+    })
+  }, [])
+
+  // Keep decorations in sync whenever breakpoints or active section changes
+  useEffect(() => {
+    const editor = editorRef.current
+    const monaco = monacoRef.current
+    if (!editor || !monaco) return
+    const bps = breakpoints[activeSection] ?? new Set()
+    const newDecs = [...bps].map(line => ({
+      range: new monaco.Range(line, 1, line, 1),
+      options: { glyphMarginClassName: 'debug-bp-glyph' },
+    }))
+    const old = decorationIdsRef.current[activeSection] ?? []
+    decorationIdsRef.current[activeSection] = editor.deltaDecorations(old, newDecs)
+  }, [breakpoints, activeSection])
+
+  const jumpToDebugLine = useCallback((section, lineNum) => {
+    const key = SECTION_TO_KEY[section]
+    if (!key) return
+    pendingLineRef.current = lineNum
+    if (key !== activeSection) {
+      setActiveSection(key)
+    } else if (editorRef.current) {
+      editorRef.current.revealLineInCenter(lineNum)
+      editorRef.current.setPosition({ lineNumber: lineNum, column: 1 })
+      pendingLineRef.current = null
+    }
+  }, [activeSection])
+
+  const handleCheck = () => {
+    const sections = {}
+    CODE_TABS.forEach(({ key }) => {
+      sections[key] = edits[key] ?? data?.[key] ?? ''
+    })
+    const results = validateTICode(sections)
+    setCheckResults(results)
+    setShowCheck(true)
+    if (results.length === 0) {
+      toast.success('No issues found')
+    } else {
+      const errors = results.filter(r => r.severity === 'error').length
+      const warnings = results.filter(r => r.severity === 'warning').length
+      toast[errors > 0 ? 'error' : 'warning'](
+        `${errors > 0 ? `${errors} error${errors > 1 ? 's' : ''}, ` : ''}${warnings} warning${warnings !== 1 ? 's' : ''} found`
+      )
+    }
+  }
+
+  const handleDebugRun = (params) => {
+    setIsDebugging(true)
+    setDebugEvents([])
+    const sections = {}
+    CODE_TABS.forEach(({ key }) => {
+      sections[key] = edits[key] ?? data?.[key] ?? ''
+    })
+    // Build param array from RunDialog values
+    const paramArray = (data?.Parameters ?? []).map(p => {
+      const raw = params?.[p.Name]
+      return { Name: p.Name, Value: raw !== undefined ? raw : (p.Value ?? '') }
+    })
+    debugProcess.mutate({
+      server: tab.server,
+      name: tab.name,
+      params: paramArray,
+      sections,
+      watches,
+      breakpoints,
+    }, {
+      onSuccess: res => {
+        setDebugEvents(parseDebugLog(res.log))
+        setCheckResults((res.warnings ?? []).map(w => ({
+          severity: 'warning',
+          section: w.section,
+          line: w.line,
+          message: w.msg || `Unknown function "${w.name}"`,
+        })))
+        if (res.warnings?.length) {
+          toast.warning(`${res.warnings.length} unknown function${res.warnings.length > 1 ? 's' : ''} commented out — see Issues panel`)
+        }
+        setIsDebugging(false)
+        if (res.error) toast.warning(`Process errored: ${res.error}`)
+        else toast.success('Debug run complete')
+      },
+      onError: e => {
+        setIsDebugging(false)
+        toast.error(`Debug failed: ${e.message}`)
+      },
+    })
+  }
+
   if (isLoading && !data) {
     return <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm">Loading process…</div>
   }
@@ -578,6 +1047,16 @@ export default function ProcessEditor({ tab }) {
 
   return (
     <div className="flex flex-col h-full">
+
+      {/* ── Save As dialog ────────────────────────────────────────────── */}
+      {showSaveAs && (
+        <SaveAsDialog
+          sourceName={tab.name}
+          onSave={handleSaveAs}
+          onClose={() => setShowSaveAs(false)}
+          isPending={createProcess.isPending || saveProcess.isPending}
+        />
+      )}
 
       {/* ── Datasource insert dialog ──────────────────────────────────── */}
       {showDsInsert && (
@@ -603,6 +1082,17 @@ export default function ProcessEditor({ tab }) {
           onRun={handleRun}
           onClose={() => setShowRun(false)}
           isPending={runProcess.isPending}
+        />
+      )}
+
+      {/* ── Debug run dialog ──────────────────────────────────────────── */}
+      {showDebugRun && (
+        <RunDialog
+          title="Debug Run"
+          params={paramEdits ?? data?.Parameters}
+          onRun={handleDebugRun}
+          onClose={() => setShowDebugRun(false)}
+          isPending={isDebugging}
         />
       )}
 
@@ -636,7 +1126,7 @@ export default function ProcessEditor({ tab }) {
             <span className="hidden sm:inline">Patterns</span>
           </button>
           <button
-            onClick={() => setShowSnippets(s => !s)}
+            onClick={() => { setShowSnippets(s => !s); setShowDebug(false) }}
             title="Snippets"
             className={cn(
               'flex items-center gap-1.5 px-2.5 py-1 text-xs rounded border transition-colors',
@@ -656,6 +1146,38 @@ export default function ProcessEditor({ tab }) {
             <span className="hidden sm:inline">Datasource</span>
           </button>
           <button
+            onClick={() => {
+              setShowDebug(false)
+              setShowSnippets(false)
+              if (showCheck) {
+                setShowCheck(false)
+              } else {
+                handleCheck()
+              }
+            }}
+            disabled={!data}
+            title="Check code for errors and warnings"
+            className={cn(
+              'flex items-center gap-1.5 px-2.5 py-1 text-xs rounded border transition-colors disabled:opacity-40',
+              showCheck ? 'bg-amber-600 text-white border-amber-600 hover:bg-amber-700' : 'border-border text-muted-foreground hover:text-foreground hover:bg-muted'
+            )}
+          >
+            <Search size={11} />
+            <span className="hidden sm:inline">Check</span>
+          </button>
+          <button
+            onClick={() => { setShowDebug(d => !d); setShowSnippets(false) }}
+            disabled={!data}
+            title="Debug — click gutter to set breakpoints"
+            className={cn(
+              'flex items-center gap-1.5 px-2.5 py-1 text-xs rounded border transition-colors disabled:opacity-40',
+              showDebug ? 'bg-orange-600 text-white border-orange-600 hover:bg-orange-700' : 'border-border text-muted-foreground hover:text-foreground hover:bg-muted'
+            )}
+          >
+            <Bug size={11} />
+            <span className="hidden sm:inline">Debug</span>
+          </button>
+          <button
             onClick={() => setShowRun(true)}
             disabled={!data}
             className="flex items-center gap-1.5 px-3 py-1 text-xs rounded bg-green-600 text-white disabled:opacity-40 hover:bg-green-700 transition-colors"
@@ -664,8 +1186,16 @@ export default function ProcessEditor({ tab }) {
             Run
           </button>
           <button
+            onClick={() => setShowSaveAs(true)}
+            disabled={!data}
+            className="px-2.5 py-1 text-xs rounded border border-border text-muted-foreground hover:text-foreground hover:bg-muted disabled:opacity-40 transition-colors"
+            title="Save As — copy to new process name"
+          >
+            Save As
+          </button>
+          <button
             onClick={handleSave}
-            disabled={!Object.keys(edits).length || saveProcess.isPending}
+            disabled={(!Object.keys(edits).length && paramEdits === null && dsEdits === null) || saveProcess.isPending}
             className="px-3 py-1 text-xs rounded bg-primary text-primary-foreground disabled:opacity-40 hover:opacity-90 transition-opacity"
           >
             {saveProcess.isPending ? 'Saving…' : 'Save'}
@@ -674,16 +1204,22 @@ export default function ProcessEditor({ tab }) {
       </div>
 
       {/* ── Collapsible metadata sections ─────────────────────────────── */}
-      {data?.DataSource?.Type && data.DataSource.Type !== 'None' && (
+      {data && (
         <CollapsibleSection
           label="Datasource"
           hint={(() => {
-            const ds = data.DataSource
-            const name = ds.dataSourceNameForServer ?? ds.dataSourceNameForClient ?? ''
-            return `${ds.Type}  ·  ${name}`
+            const d = dsEdits ?? data.DataSource
+            const t = d?.Type ?? 'None'
+            if (!d || t === 'None') return dsEdits !== null ? 'None · unsaved' : 'None'
+            const name = d.dataSourceNameForServer ?? d.dataSourceNameForClient ?? ''
+            return `${t}${name ? '  ·  ' + name : ''}${dsEdits !== null ? ' · unsaved' : ''}`
           })()}
         >
-          <DatasourcePanel ds={data.DataSource} />
+          <EditableDatasourcePanel
+            ds={dsEdits ?? data.DataSource ?? { Type: 'None' }}
+            server={tab.server}
+            onChange={setDsEdits}
+          />
         </CollapsibleSection>
       )}
 
@@ -693,45 +1229,84 @@ export default function ProcessEditor({ tab }) {
         </CollapsibleSection>
       )}
 
-      {data?.Parameters?.length > 0 && (
-        <CollapsibleSection label="Parameters" hint={`${data.Parameters.length} parameter${data.Parameters.length !== 1 ? 's' : ''}`}>
-          <ParamsPanel params={data.Parameters} />
+      {data && (
+        <CollapsibleSection
+          label="Parameters"
+          hint={(() => {
+            const list = paramEdits ?? data.Parameters ?? []
+            const base = `${list.length} parameter${list.length !== 1 ? 's' : ''}`
+            return paramEdits !== null ? base + ' · unsaved' : base
+          })()}
+        >
+          <EditableParamsPanel
+            params={paramEdits ?? data.Parameters ?? []}
+            onChange={setParamEdits}
+          />
         </CollapsibleSection>
       )}
 
-      {/* ── Run output panel ──────────────────────────────────────────── */}
+      {/* ── Run output + log panel ────────────────────────────────────── */}
       {runOutput && (
         <div className={cn(
-          'shrink-0 border-t border-border flex items-center gap-3 px-4 py-2 text-xs',
+          'shrink-0 border-t border-border',
           runOutput.status === 'error' ? 'bg-red-950/20' : 'bg-green-950/10'
         )}>
-          {runOutput.status === 'ok' ? (
-            <>
-              <CheckCircle2 size={13} className="text-green-500 shrink-0" />
-              <span className="text-green-400">
-                Completed successfully{runOutput.duration != null ? ` — ${runOutput.duration}ms` : ''}
-              </span>
-            </>
-          ) : (
-            <>
-              <XCircle size={13} className="text-red-400 shrink-0" />
-              <span className="text-red-300 font-mono truncate flex-1">{runOutput.message}</span>
-              {runOutput.section && runOutput.line && (
-                <button
-                  onClick={() => jumpToError(runOutput.section, runOutput.line)}
-                  className="shrink-0 text-red-300 hover:text-red-100 underline underline-offset-2"
-                >
-                  → {runOutput.section} line {runOutput.line}
-                </button>
+          {/* Status bar */}
+          <div className="flex items-center gap-3 px-4 py-1.5 text-xs">
+            {runOutput.status === 'ok' ? (
+              <>
+                <CheckCircle2 size={13} className="text-green-500 shrink-0" />
+                <span className="text-green-400">
+                  Completed{runOutput.duration != null ? ` — ${runOutput.duration}ms` : ''}
+                </span>
+              </>
+            ) : (
+              <>
+                <XCircle size={13} className="text-red-400 shrink-0" />
+                <span className="text-red-300 font-mono truncate flex-1">{runOutput.message}</span>
+                {runOutput.section && runOutput.line && (
+                  <button
+                    onClick={() => jumpToError(runOutput.section, runOutput.line)}
+                    className="shrink-0 text-red-300 hover:text-red-100 underline underline-offset-2"
+                  >
+                    → {runOutput.section} line {runOutput.line}
+                  </button>
+                )}
+              </>
+            )}
+            <div className="ml-auto flex items-center gap-2 shrink-0">
+              <button
+                onClick={() => setLogOpen(o => !o)}
+                className="flex items-center gap-1 text-muted-foreground hover:text-foreground transition-colors"
+                title="Toggle log output"
+              >
+                {logOpen ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
+                <span>Log</span>
+                {fetchLog.isPending && <Loader2 size={10} className="animate-spin" />}
+              </button>
+              <button
+                onClick={() => { setRunOutput(null); setLogContent(null) }}
+                className="text-muted-foreground hover:text-foreground"
+              >
+                <X size={11} />
+              </button>
+            </div>
+          </div>
+
+          {/* Log content */}
+          {logOpen && (
+            <div className="border-t border-border/50 max-h-52 overflow-auto px-4 py-2">
+              {fetchLog.isPending || logContent === null ? (
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <Loader2 size={11} className="animate-spin" /> Fetching log…
+                </div>
+              ) : logContent === '' ? (
+                <p className="text-xs text-muted-foreground italic">No log output.</p>
+              ) : (
+                <pre className="text-xs font-mono text-foreground/80 whitespace-pre-wrap leading-relaxed">{logContent}</pre>
               )}
-            </>
+            </div>
           )}
-          <button
-            onClick={() => setRunOutput(null)}
-            className="shrink-0 ml-auto text-muted-foreground hover:text-foreground"
-          >
-            <X size={11} />
-          </button>
         </div>
       )}
 
@@ -751,6 +1326,7 @@ export default function ProcessEditor({ tab }) {
               minimap: { enabled: false },
               wordWrap: 'on',
               scrollBeyondLastLine: false,
+              glyphMargin: true,
             }}
           />
         </div>
@@ -759,7 +1335,74 @@ export default function ProcessEditor({ tab }) {
             <SnippetPanel snippets={getSnippets('ti')} onInsert={insertSnippet} />
           </div>
         )}
-      </div>
+        {showDebug && (
+            <DebugPanel
+              watches={watches}
+              onWatchesChange={setWatches}
+              events={debugEvents}
+              isDebugging={isDebugging}
+              availableVars={availableVars}
+              onRun={() => {
+                const params = paramEdits ?? data?.Parameters ?? []
+                if (params.length) setShowDebugRun(true)
+                else handleDebugRun({})
+              }}
+              onJumpTo={jumpToDebugLine}
+            />
+          )}
+          {showCheck && checkResults && (
+            <div className="w-80 shrink-0 border-l border-border flex flex-col bg-sidebar overflow-hidden">
+              <div className="flex items-center justify-between px-3 py-2 border-b border-border shrink-0">
+                <span className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                  <Search size={11} /> Issues
+                </span>
+                <span className="text-[10px] text-muted-foreground">
+                  {checkResults.length === 0
+                    ? 'No issues'
+                    : `${checkResults.filter(r => r.severity === 'error').length} err / ${checkResults.filter(r => r.severity === 'warning').length} warn`}
+                </span>
+              </div>
+              <div className="flex-1 overflow-auto">
+                {checkResults.length === 0 ? (
+                  <div className="px-3 py-3 text-xs text-muted-foreground italic flex items-center gap-1.5">
+                    <CheckCircle2 size={12} className="text-green-500 shrink-0" />
+                    All checks passed
+                  </div>
+                ) : (
+                  <div className="py-1">
+                    {checkResults.map((r, i) => (
+                      <div
+                        key={i}
+                        onClick={() => r.line && jumpToDebugLine(r.section, r.line)}
+                        className={cn(
+                          'flex items-start gap-2 px-3 py-1.5 text-xs border-b border-border/30 last:border-0 cursor-pointer hover:bg-muted/50',
+                          r.severity === 'error' ? 'text-red-400' : 'text-amber-400'
+                        )}
+                      >
+                        {r.severity === 'error'
+                          ? <XCircle size={12} className="mt-0.5 shrink-0" />
+                          : <AlertTriangle size={12} className="mt-0.5 shrink-0" />}
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-1.5 mb-0.5">
+                            <span className={cn(
+                              'font-semibold uppercase text-[10px]',
+                              r.section === 'Prolog' ? 'text-blue-400' :
+                              r.section === 'Metadata' ? 'text-purple-400' :
+                              r.section === 'Data' ? 'text-green-400' :
+                              r.section === 'Epilog' ? 'text-orange-400' : ''
+                            )}>{r.section}</span>
+                            {r.line && <span className="text-muted-foreground text-[10px]">:{r.line}</span>}
+                          </div>
+                          <div className="text-foreground/80 text-[11px] leading-relaxed break-words">{r.message}</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
 
     </div>
   )

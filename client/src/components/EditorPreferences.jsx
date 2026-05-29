@@ -1,10 +1,10 @@
 import { useState, useEffect, useRef } from 'react'
 import { useStore } from '@/store'
-import { X } from 'lucide-react'
+import { X, CalendarDays, BookType, SlidersHorizontal } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { loadSettings, saveSettings } from '@/lib/formatters/settings.js'
 
-export default function EditorPreferences({ open, onClose }) {
+export default function EditorPreferences({ open, onClose, onOpenPeriodBuilder, onOpenNamingDictionary, onOpenFormatSettings }) {
   if (!open) return null
 
   const { dark, setDark } = useStore()
@@ -85,6 +85,50 @@ export default function EditorPreferences({ open, onClose }) {
           />
           <span className="text-xs text-muted-foreground w-5 text-right shrink-0">{settings.editor.lineHeight.toFixed(1)}</span>
         </div>
+      </div>
+
+      <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mt-3 mb-1">Utilities</div>
+
+      <div className="flex items-center justify-between py-1 gap-2">
+        <label className="text-xs shrink-0">Period Builder</label>
+        <button
+          onClick={() => {
+            onOpenPeriodBuilder?.()
+            onClose?.()
+          }}
+          className="text-xs px-2 py-0.5 rounded border border-border hover:bg-muted flex items-center gap-1"
+        >
+          <CalendarDays size={12} />
+          Open
+        </button>
+      </div>
+
+      <div className="flex items-center justify-between py-1 gap-2">
+        <label className="text-xs shrink-0">Naming Dictionary</label>
+        <button
+          onClick={() => {
+            onOpenNamingDictionary?.()
+            onClose?.()
+          }}
+          className="text-xs px-2 py-0.5 rounded border border-border hover:bg-muted flex items-center gap-1"
+        >
+          <BookType size={12} />
+          Open
+        </button>
+      </div>
+
+      <div className="flex items-center justify-between py-1 gap-2">
+        <label className="text-xs shrink-0">Format Settings</label>
+        <button
+          onClick={() => {
+            onOpenFormatSettings?.()
+            onClose?.()
+          }}
+          className="text-xs px-2 py-0.5 rounded border border-border hover:bg-muted flex items-center gap-1"
+        >
+          <SlidersHorizontal size={12} />
+          Open
+        </button>
       </div>
     </div>
   )

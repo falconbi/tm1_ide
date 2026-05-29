@@ -1,9 +1,10 @@
-import { useState, useRef, useMemo, useEffect, createContext, useContext } from 'react'
+import { useState, useRef, useMemo, useEffect, createContext, useContext, useCallback } from 'react'
 import { toast } from 'sonner'
-import { useCubes, useDims, useProcs, useChores, useSubsets, useViews, useCubeDimensions, useSaveView, useHierarchies, useCreateHierarchy, useControlObjects, useDeleteDimension, useDeleteCube, useDeleteProcess, useDeleteChore, useDeleteSubset } from '@/hooks/useApi'
+import { useCubes, useDims, useProcs, useChores, useSubsets, useViews, useCubeDimensions, useSaveView, useHierarchies, useCreateHierarchy, useControlObjects, useDeleteDimension, useDeleteCube, useDeleteProcess, useDeleteChore, useDeleteSubset, useCreateProcess } from '@/hooks/useApi'
 import { useStore } from '@/store'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { ChevronRight, ChevronDown, Box, Layers, Cog, Clock, Loader2, List, Plus, Table2, Code2, PencilLine, Search, X, Braces, Trash2 } from 'lucide-react'
+import { ChevronRight, ChevronDown, Box, Layers, Cog, Clock, Loader2, List, Plus, Table2, Code2, PencilLine, Search, X, Braces, Trash2, FileSearch } from 'lucide-react'
+import GlobalSearch from '@/components/GlobalSearch'
 import { cn } from '@/lib/utils'
 
 // ── Reveal / locate helpers ───────────────────────────────────────────────────
@@ -60,31 +61,74 @@ function getLocateIdFromTab(tab) {
   if (tab.type === 'view' || tab.type === 'cubeview') return tab.viewName ? `view:${tab.cube}:${tab.viewName}` : `cube:${tab.cube}`
   if (tab.type === 'subset')    return `subset:${tab.dimension}:${tab.subsetName}`
   if (tab.type === 'dimension') return `dimension:${tab.dimension}`
+  if (tab.type === 'chore')     return `chore:${tab.name}`
   return ''
 }
 
 const ActiveLocateCtx = createContext('')
 
-function Section({ icon: Icon, label, items, isLoading, onSelect, itemIcon: ItemIcon, sectionId, locateIdPrefix, onDelete }) {
+function Section({ icon: Icon, label, items, isLoading, onSelect, itemIcon: ItemIcon, sectionId, locateIdPrefix, onDelete, onAdd }) {
   const [open, setOpen] = useState(false)
+  const [adding, setAdding] = useState(false)
+  const [newName, setNewName] = useState('')
+  const inputRef = useRef(null)
   const activeId = useContext(ActiveLocateCtx)
   const revealTarget = useStore(s => s.revealTarget)
   useEffect(() => {
     if (revealTarget && shouldAutoOpen(sectionId, revealTarget)) setOpen(true)
   }, [revealTarget, sectionId])
+
+  const startAdd = () => {
+    setOpen(true)
+    setAdding(true)
+    setNewName('')
+    setTimeout(() => inputRef.current?.focus(), 0)
+  }
+  const commitAdd = () => {
+    const name = newName.trim()
+    if (name && onAdd) onAdd(name)
+    setAdding(false)
+    setNewName('')
+  }
+
   return (
     <div>
-      <button
-        onClick={() => setOpen(o => !o)}
-        className="flex items-center gap-1.5 w-full px-3 py-1 text-xs font-semibold text-muted-foreground hover:text-foreground uppercase tracking-wider"
-      >
-        {open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-        <Icon size={12} />
-        <span>{label}</span>
-        {isLoading && <Loader2 size={10} className="ml-auto animate-spin" />}
-      </button>
+      <div className="flex items-center w-full px-3 py-1 group">
+        <button
+          onClick={() => setOpen(o => !o)}
+          className="flex items-center gap-1.5 flex-1 text-xs font-semibold text-muted-foreground hover:text-foreground uppercase tracking-wider min-w-0"
+        >
+          {open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+          <Icon size={12} className="shrink-0" />
+          <span className="truncate">{label}</span>
+        </button>
+        {isLoading && <Loader2 size={10} className="animate-spin text-muted-foreground shrink-0 ml-1" />}
+        {onAdd && !isLoading && (
+          <button
+            onClick={startAdd}
+            title={`New ${label.toLowerCase().replace(/s$/, '')}`}
+            className="hidden group-hover:flex items-center ml-1 text-muted-foreground hover:text-foreground shrink-0"
+          >
+            <Plus size={11} />
+          </button>
+        )}
+      </div>
       {open && (
         <div className="pb-1">
+          {adding && (
+            <div className="flex items-center gap-2 pl-6 pr-2 py-0.5">
+              {ItemIcon && <ItemIcon size={12} className="shrink-0 text-muted-foreground" />}
+              <input
+                ref={inputRef}
+                value={newName}
+                onChange={e => setNewName(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') commitAdd(); if (e.key === 'Escape') setAdding(false) }}
+                onBlur={commitAdd}
+                placeholder="name…"
+                className="flex-1 text-xs bg-transparent border-b border-primary outline-none font-mono py-px"
+              />
+            </div>
+          )}
           {(items ?? []).map(item => (
             <div key={item} className="flex items-center text-sm text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground group">
               <button
@@ -768,18 +812,39 @@ function ControlSection({ server, onOpenViewer, onOpenDim, onOpenProcess }) {
 export default function Explorer() {
   const { server, openTab } = useStore()
   const [search, setSearch] = useState('')
+  const [showGlobalSearch, setShowGlobalSearch] = useState(false)
+
+  useEffect(() => {
+    const handler = (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'f') {
+        e.preventDefault()
+        setShowGlobalSearch(true)
+      }
+    }
+    document.addEventListener('keydown', handler)
+    return () => document.removeEventListener('keydown', handler)
+  }, [])
   const { data: cubes,  isFetching: loadingCubes  } = useCubes(server)
   const { data: dims,   isFetching: loadingDims   } = useDims(server)
   const { data: procs,  isFetching: loadingProcs  } = useProcs(server)
   const { data: chores, isFetching: loadingChores } = useChores(server)
-  const deleteProcessMut = useDeleteProcess()
-  const deleteCoreMut    = useDeleteChore()
+  const deleteProcessMut  = useDeleteProcess()
+  const deleteCoreMut     = useDeleteChore()
+  const createProcessMut  = useCreateProcess()
 
   const handleDeleteProcess = (name) => {
     if (!window.confirm(`Delete process "${name}"? This cannot be undone.`)) return
     deleteProcessMut.mutate({ server, name }, {
       onSuccess: () => toast.success(`Deleted ${name}`),
       onError:   (err) => toast.error(err.message ?? 'Delete failed'),
+    })
+  }
+
+  const handleCreateProcess = (name) => {
+    const id = toast.loading(`Creating "${name}"…`)
+    createProcessMut.mutate({ server, name }, {
+      onSuccess: () => { toast.success(`Created ${name}`, { id }); openProcess(name) },
+      onError:   (err) => toast.error(err.message ?? 'Create failed', { id }),
     })
   }
 
@@ -856,6 +921,19 @@ export default function Explorer() {
     hierarchy,
   })
 
+  const openChore = (name) => openTab({
+    id:     `chore:${server}:${name}`,
+    type:   'chore',
+    label:  name,
+    server,
+    name,
+  })
+
+  const openProcessAtLine = useCallback((name, section, line) => openTab({
+    id: `process:${server}:${name}`, type: 'process', label: name, server, name, content: null,
+    ...(section && line ? { scrollToSection: section, scrollToLine: line } : {}),
+  }), [server, openTab])
+
   const openFromHistory = (h) => openTab({ ...h, content: null })
 
   const tabs          = useStore(s => s.tabs)
@@ -897,13 +975,21 @@ export default function Explorer() {
   }
 
   const handleResultClick = (r) => {
-    if (r.type === 'cube')      openCubeViewer(r.name)
+    if (r.type === 'cube')           openCubeViewer(r.name)
     else if (r.type === 'dimension') openDim(r.name)
     else if (r.type === 'process')   openProcess(r.name)
+    else if (r.type === 'chore')     openChore(r.name)
   }
 
   return (
     <ActiveLocateCtx.Provider value={activeLocateId}>
+    {showGlobalSearch && server && (
+      <GlobalSearch
+        server={server}
+        onOpen={openProcessAtLine}
+        onClose={() => setShowGlobalSearch(false)}
+      />
+    )}
     <div className="flex flex-col flex-1 min-h-0">
       <div className="px-2 py-1.5 border-b border-border shrink-0">
         <div className="flex items-center gap-1.5 bg-muted rounded px-2 py-1">
@@ -919,6 +1005,13 @@ export default function Explorer() {
               <X size={10} />
             </button>
           )}
+          <button
+            onClick={() => setShowGlobalSearch(true)}
+            title="Search code (Ctrl+Shift+F)"
+            className="shrink-0 text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <FileSearch size={11} />
+          </button>
         </div>
       </div>
       <ScrollArea className="flex-1 min-h-0">
@@ -943,8 +1036,8 @@ export default function Explorer() {
                 onOpenSubset={openSubset} onOpenDim={openDim}
                 onOpenViewer={openCubeViewer} />
               <DimSection server={server} dims={dims}    isLoading={loadingDims}   onOpenSubset={openSubset} onOpenDim={openDim} />
-              <Section    icon={Cog}   label="Processes" items={procs}  isLoading={loadingProcs}  onSelect={openProcess} itemIcon={Cog}   sectionId="processes" locateIdPrefix="process" onDelete={handleDeleteProcess} />
-              <Section    icon={Clock} label="Chores"    items={chores} isLoading={loadingChores} onSelect={() => {}}    itemIcon={Clock} sectionId="chores" onDelete={handleDeleteChore} />
+              <Section    icon={Cog}   label="Processes" items={procs}  isLoading={loadingProcs}  onSelect={openProcess} itemIcon={Cog}   sectionId="processes" locateIdPrefix="process" onDelete={handleDeleteProcess} onAdd={handleCreateProcess} />
+              <Section    icon={Clock} label="Chores"    items={chores} isLoading={loadingChores} onSelect={openChore}   itemIcon={Clock} sectionId="chores" locateIdPrefix="chore" onDelete={handleDeleteChore} />
               <ControlSection
                 server={server}
                 onOpenViewer={openCubeViewer}

@@ -157,6 +157,7 @@ app.get('/api/process', async (req, res) => {
         const client = new TM1Client(req.query.server)
         res.json(await client.getProcess(req.query.name))
     } catch (e) {
+        console.error('[api/process] GET failed:', e.response?.status, e.response?.data?.error?.message || e.message)
         res.status(500).json({ error: e.message })
     }
 })
@@ -189,7 +190,7 @@ function joinContinuations(code) {
 }
 
 app.post('/api/process/debug', async (req, res) => {
-    const { server, name, params, sections } = req.body
+    const { server, name, params, sections, watches, breakpoints } = req.body
     const client   = new TM1Client(server)
     const tempName = `_IDE_Debug_${Date.now()}`
     let log = '', runError = null
@@ -199,82 +200,150 @@ app.post('/api/process/debug', async (req, res) => {
     try {
         proc = await client.get(`Processes('${encodeURIComponent(name)}')`)
     } catch (e) {
-        console.error('[debug] fetch source process failed:', e.response?.status, e.message)
-        return res.status(500).json({ error: `Could not load process "${name}": ${e.message}` })
-    }
-
-    // ── 2. Create + populate instrumented temp process ───────────────────────
-    // POST Processes can't handle multi-line TI expressions (newline inside open
-    // parentheses). PATCH on an existing process can — same path the Save flow uses.
-    // Strategy: POST an empty shell, then PATCH in the actual injected code.
-    const stripMeta   = obj => Object.fromEntries(Object.entries(obj).filter(([k]) => !k.startsWith('@')))
-    const nl          = s   => (s ?? '').replace(/\r\n/g, '\n').replace(/\r/g, '\n')
-    const cleanParams = (proc.Parameters ?? []).map(p => ({
-        Name: p.Name, Type: p.Type ?? 2, Value: String(p.Value ?? ''), Prompt: p.Prompt ?? '',
-    }))
-    const cleanVars = (proc.Variables ?? []).map(v => ({
-        Name: v.Name, Type: v.Type, Position: v.Position ?? 0,
-    }))
-    const cleanDs = stripMeta(proc.DataSource ?? { Type: 'None' })
-
-    try {
-        await client.post('Processes', {
-            Name: tempName, HasSecurityAccess: false,
-            PrologProcedure: '', MetadataProcedure: '', DataProcedure: '', EpilogProcedure: '',
-            DataSource: { Type: 'None' }, Parameters: cleanParams, Variables: cleanVars,
-        })
-    } catch (e) {
-        console.error('[debug] create shell failed:', e.response?.status, JSON.stringify(e.response?.data ?? e.message))
         return res.status(500).json({ error: `Failed to create debug process: ${e.message}` })
     }
 
+    // Verify what TM1 actually stored
     try {
-        // Both POST and PATCH require MetadataProcedure (lowercase d).
-        // TM1 GET returns MetaDataProcedure (capital D) — asymmetry in the TM1 REST API.
-        // joinContinuations merges lines inside unclosed parens so TM1 can parse them.
-        const jc = s => joinContinuations(nl(s))
-        await client.patch(`Processes('${encodeURIComponent(tempName)}')`, {
-            PrologProcedure:   jc(sections.PrologProcedure),
-            MetadataProcedure: jc(sections.MetaDataProcedure),
-            DataProcedure:     jc(sections.DataProcedure),
-            EpilogProcedure:   jc(sections.EpilogProcedure),
-            DataSource:        cleanDs,
-        })
-    } catch (e) {
-        console.error('[debug] patch code failed:', e.response?.status, JSON.stringify(e.response?.data ?? e.message))
-        try { await client.delete(`Processes('${encodeURIComponent(tempName)}')`) } catch {}
-        return res.status(500).json({ error: `Failed to write debug code: ${e.message}` })
+        const v = await client.get(`Processes('${encodeURIComponent(tempName)}')`)
+        const vl = (v?.PrologProcedure ?? '').split('\n')
+        console.log('[debug] TM1 stored line 65:', JSON.stringify(vl[64]?.slice(0, 400)))
+        console.log('[debug] TM1 stored line 66:', JSON.stringify(vl[65]?.slice(0, 400)))
+    } catch (ve) { console.log('[debug] Verify failed:', ve.message) }
+
+    const stripMeta   = obj => Object.fromEntries(Object.entries(obj).filter(([k]) => !k.startsWith('@')))
+    const nl          = s   => (s ?? '').replace(/\r\n/g, '\n').replace(/\r/g, '\n')
+    const jc          = s   => joinContinuations(nl(s))
+    const cleanParams = (proc.Parameters ?? []).map(p => ({
+        Name: p.Name, Type: p.Type ?? 2, Value: String(p.Value ?? ''), Prompt: p.Prompt ?? '',
+    }))
+
+    // ── 2. Ensure __DBG_LOG attribute exists and clear it ────────────────────
+    const ATTR         = '__DBG_LOG'
+    const safeProcName = name.replace(/'/g, "''")
+    const hasCapture   = (watches?.length > 0) || Object.values(breakpoints ?? {}).some(a => a.length > 0)
+
+    if (hasCapture) {
+        try {
+            await client.post(
+                `Dimensions('%7DProcesses')/Hierarchies('%7DProcesses')/ElementAttributes`,
+                { Name: ATTR, Type: 'String' }
+            )
+        } catch (e) { /* 409 = already exists — fine */ }
+        try {
+            await client.writeElementAttribute('}Processes', name, ATTR, '', 'S')
+        } catch (e) { /* ignore */ }
     }
 
-    // ── 3. Execute ────────────────────────────────────────────────────────────
+    // ── 3. Instrument sections ────────────────────────────────────────────────
+    function appendLines(label, lineNum, sectionLabel) {
+        const AT = safeProcName
+        const lines = [`sDBGLog__IDE__ = ATTRS('}Processes', '${AT}', '${ATTR}');`]
+        lines.push(`sDBGLog__IDE__ = sDBGLog__IDE__ | '${label}' | CHAR(10);`)
+        for (const w of (watches ?? [])) {
+            const val = w.type === 'number' ? `NumberToString(${w.name})` : w.name
+            lines.push(`sDBGLog__IDE__ = sDBGLog__IDE__ | '__DBG_VAR:${w.name}__${sectionLabel}__${lineNum}=' | ${val} | CHAR(10);`)
+        }
+        lines.push(`AttrPutS(sDBGLog__IDE__, '}Processes', '${AT}', '${ATTR}');`)
+        return lines
+    }
+
+    function instrumentSection(rawCode, sectionKey, sectionLabel) {
+        const code  = jc(rawCode ?? '')
+        const bpSet = new Set(breakpoints?.[sectionKey] ?? [])
+        if (!watches?.length && !bpSet.size) return code
+
+        const lines  = code.split('\n')
+        const result = []
+        let parenDepth = 0, inStr = false
+
+        const trackDepth = (line) => {
+            for (let j = 0; j < line.length; j++) {
+                const ch = line[j]
+                if (inStr) {
+                    if (ch === "'") { if (line[j + 1] === "'") j++; else inStr = false }
+                } else {
+                    if      (ch === '#')  break
+                    else if (ch === "'")  inStr = true
+                    else if (ch === '(')  parenDepth++
+                    else if (ch === ')')  parenDepth--
+                }
+            }
+        }
+
+        let prevDepth = 0
+        for (let i = 0; i < lines.length; i++) {
+            const lineNum   = i + 1
+            const prevLine  = i > 0 ? lines[i - 1] : ''
+            const canInject = prevDepth === 0 && !/^\s*(IF|WHILE|ELSEIF)\s*$/i.test(prevLine)
+            if (bpSet.has(lineNum) && canInject) {
+                result.push(...appendLines(`__DBG_BP:${lineNum}:${sectionLabel}`, lineNum, sectionLabel))
+            }
+            result.push(lines[i])
+            trackDepth(lines[i])
+            prevDepth = parenDepth
+        }
+
+        if (watches?.length) {
+            const endLine = lines.length + 1
+            result.push(...appendLines(`__DBG_BP:${endLine}:${sectionLabel}`, endLine, sectionLabel))
+        }
+
+        return result.join('\n')
+    }
+
+    // ── 4. Create temp process with instrumented code ────────────────────────
+    const prologInst = instrumentSection(sections.PrologProcedure,   'PrologProcedure',   'Prolog')
+    const metaInst   = instrumentSection(sections.MetaDataProcedure, 'MetaDataProcedure', 'Metadata')
+    const dataInst   = instrumentSection(sections.DataProcedure,     'DataProcedure',     'Data')
+    const epilInst   = instrumentSection(sections.EpilogProcedure,   'EpilogProcedure',   'Epilog')
+
+    try {
+        await client.createOrReplaceProcess({
+            name:       tempName,
+            prolog:     prologInst,
+            metadata:   metaInst,
+            data:       dataInst,
+            epilog:     epilInst,
+            parameters: cleanParams,
+        })
+    } catch (e) {
+        return res.status(500).json({ error: `Failed to create debug process: ${e.message}` })
+    }
+
+    // ── 5. Execute ─────────────────────────────────────────────────────────────
     try {
         await client.executeProcess(tempName, params ?? [])
     } catch (e) {
         const data  = e.response?.data
         const inner = data?.error?.innererror ?? {}
-        console.error('[debug] execute failed:', e.response?.status, JSON.stringify(data ?? e.message))
-        runError = inner.Message || (data?.error?.message) || e.message
-        // PAW embeds the process log in details.ProcessError on execution failure
-        const procLog = data?.error?.details?.ProcessError
-        if (procLog) log = procLog
+        console.error('[debug] execute error:', e.response?.status, JSON.stringify(data ?? e.message).slice(0, 400))
+        runError = inner.Message || data?.error?.message || e.message
     }
 
-    // ── 4. Fetch log ──────────────────────────────────────────────────────────
-    try {
-        const r = await client.get(`Processes('${encodeURIComponent(tempName)}')/ErrorLog`)
-        console.log('[debug] ErrorLog raw:', JSON.stringify(r)?.slice(0, 600))
-        const fetched = typeof r === 'string' ? r
-            : typeof r?.Content === 'string'  ? r.Content
-            : typeof r?.value   === 'string'  ? r.value
-            : Array.isArray(r?.value)          ? r.value.map(e => e.Content ?? e.Message ?? JSON.stringify(e)).join('\n')
-            : ''
-        if (fetched) log = fetched   // prefer fetched log; fall back to ProcessError captured above
-    } catch (e) {
-        console.error('[debug] fetch log failed:', e.response?.status, e.message)
-        // log may already contain ProcessError from step 3 — leave it
+    // ── 6. Read captured log via MDX ──────────────────────────────────────────
+    if (hasCapture) {
+        try {
+            const mdxMember = name.replace(/\]/g, ']]')
+            const mdx = [
+                `SELECT {[}ElementAttributes_}Processes].[}ElementAttributes_}Processes].[${ATTR}]} ON COLUMNS,`,
+                `{[}Processes].[}Processes].[${mdxMember}]} ON ROWS`,
+                `FROM [}ElementAttributes_}Processes]`,
+            ].join(' ')
+            const result  = await client.executeMDX(mdx)
+            const attrLog = (result?.Cells?.[0]?.Value ?? '').replace(/\r/g, '')
+            if (attrLog.includes('__DBG_BP:')) {
+                log      = attrLog + '\n__DBG_DONE:ok'
+                runError = null
+            }
+        } catch (e) {
+            console.error('[debug] MDX read failed:', e.message)
+        }
+    } else if (!runError) {
+        log = '__DBG_DONE:ok'
     }
 
-    // ── 5. Cleanup ────────────────────────────────────────────────────────────
+    // ── 7. Cleanup ─────────────────────────────────────────────────────────────
     try { await client.delete(`Processes('${encodeURIComponent(tempName)}')`) }
     catch (e) { console.error('[debug] delete temp failed:', e.message) }
 
@@ -344,9 +413,15 @@ app.post('/api/process/create', async (req, res) => {
 app.post('/api/process', async (req, res) => {
     try {
         const client = new TM1Client(req.query.server)
-        await client.patch(`Processes('${req.query.name}')`, req.body)
+        const body = { ...req.body }
+        if ('MetaDataProcedure' in body) {
+            body.MetadataProcedure = body.MetaDataProcedure
+            delete body.MetaDataProcedure
+        }
+        await client.patch(`Processes('${req.query.name}')`, body)
         res.json({ ok: true })
     } catch (e) {
+        console.error('[api/process] SAVE failed:', e.response?.status, e.response?.data?.error?.message || e.message)
         res.status(500).json({ error: e.message })
     }
 })
@@ -687,8 +762,9 @@ app.delete('/api/dimension/hierarchy', async (req, res) => {
 
 // ── Search index — all rules + all process code in one call ──────────────────
 app.get('/api/search/index', async (req, res) => {
+    console.log('[api/process] request:', req.query.server, req.query.name)
     try {
-        const client  = new TM1Client(req.query.server)
+        const client = new TM1Client(req.query.server)
         const [cubes, processes] = await Promise.all([
             client.getCubes(),
             client.getProcesses(),
@@ -1028,7 +1104,8 @@ app.get('/api/paw/book-usage', async (req, res) => {
                         await walk(item.path)
                     } else if (item.type === 'dashboard' || item.type === 'workbench') {
                         // Book — fetch with expanded content
-                        try {
+    console.log('[api/process] request:', req.query.server, req.query.name)
+    try {
                             const book = await pawSession.get(
                                 `${base}/Assets(path='${encodePath(item.path)}')?$expand=content`,
                                 { headers: { 'ba-sso-authenticity': csrf } }

@@ -139,3 +139,18 @@
 .tree-reveal-glow span {
   animation: tree-reveal-glow 2s ease-out forwards;
 }
+
+/* Debugger breakpoint glyph in Monaco gutter */
+.debug-bp-glyph {
+  cursor: pointer;
+}
+.debug-bp-glyph::before {
+  content: '';
+  display: block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #ef4444;
+  box-shadow: 0 0 4px rgba(239, 68, 68, 0.6);
+  margin: 3px auto 0;
+}
