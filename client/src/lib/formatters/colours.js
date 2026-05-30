@@ -253,7 +253,7 @@ export function importColourSettings(json) {
  */
 export function buildMonacoTheme(baseTheme, colourSettings) {
   const isDark = baseTheme !== 'vs'
-  const bg = isDark ? '#282a36' : '#ffffff'
+  const bg = colourSettings.background ?? (isDark ? '#282a36' : '#ffffff')
   const fg = isDark ? '#f8f8f2' : '#1e1e1e'
   const lineHighlight = isDark ? '#44475a' : '#f5f5f5'
   const selection = isDark ? '#44475a' : '#add6ff'

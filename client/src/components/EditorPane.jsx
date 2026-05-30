@@ -384,7 +384,8 @@ function RulesEditor({ tab, onCursor }) {
           height="100%"
           language="tm1rules"
           value={content}
-          theme={dark ? 'vs-dark' : 'vs'}
+          theme="tm1-custom"
+          beforeMount={monaco => registerTM1Theme(monaco, dark)}
           onChange={v => updateTabContent(tab.id, v)}
           onMount={handleMount}
           options={{ fontSize: 13, minimap: { enabled: false }, wordWrap: 'on', scrollBeyondLastLine: false }}

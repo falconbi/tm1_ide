@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import MonacoEditor from '@monaco-editor/react'
 import { useStore } from '@/store'
-import { useProcess, useSaveProcess, useRunProcess, useFetchProcessLog, useCreateProcess, useDebugProcess, useCubes, useViews } from '@/hooks/useApi'
+import { useProcess, useSaveProcess, useRunProcess, useCreateProcess, useDebugProcess, useCubes, useViews } from '@/hooks/useApi'
 import { registerTM1Completions, registerTM1Theme } from '@/lib/tm1-functions'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
@@ -20,13 +20,14 @@ const CODE_TABS = [
   { key: 'EpilogProcedure',    label: 'Epilog'   },
 ]
 
-const PARAM_TYPE = { 1: 'Numeric', 2: 'String' }
+const PARAM_TYPE = { 1: 'Numeric', 2: 'String', Numeric: 'Numeric', String: 'String' }
+const toTypeStr = t => (t === 1 ? 'Numeric' : t === 2 ? 'String' : t ?? 'String')
 
 function EditableParamsPanel({ params, onChange }) {
   const cell = 'w-full bg-transparent border-b border-transparent hover:border-border focus:border-primary px-1 py-0.5 font-mono focus:outline-none text-xs'
 
   const set = (i, field, val) => onChange(params.map((p, idx) => idx === i ? { ...p, [field]: val } : p))
-  const add = () => onChange([...params, { Name: 'p', Type: 2, Value: '', Prompt: '' }])
+  const add = () => onChange([...params, { Name: 'p', Type: 'String', Value: '', Prompt: '' }])
   const remove = (i) => onChange(params.filter((_, idx) => idx !== i))
 
   return (
@@ -50,12 +51,12 @@ function EditableParamsPanel({ params, onChange }) {
                 </td>
                 <td className="px-2 py-0.5">
                   <select
-                    value={p.Type ?? 2}
-                    onChange={e => set(i, 'Type', +e.target.value)}
+                    value={toTypeStr(p.Type)}
+                    onChange={e => set(i, 'Type', e.target.value)}
                     className="w-full bg-transparent text-xs focus:outline-none"
                   >
-                    <option value={2}>String</option>
-                    <option value={1}>Numeric</option>
+                    <option value="String">String</option>
+                    <option value="Numeric">Numeric</option>
                   </select>
                 </td>
                 <td className="px-2 py-0.5">
@@ -433,7 +434,7 @@ function RunDialog({ params, onRun, onClose, isPending, title = 'Run Process' })
                 {p.Prompt && <span className="text-muted-foreground/70 truncate">{p.Prompt}</span>}
               </label>
               <input
-                type={p.Type === 1 ? 'number' : 'text'}
+                type={p.Type === 1 || p.Type === 'Numeric' ? 'number' : 'text'}
                 value={values[p.Name] ?? ''}
                 onChange={e => set(p.Name, e.target.value)}
                 className="w-full bg-muted border border-border rounded px-2 py-1.5 text-sm font-mono focus:outline-none focus:ring-1 focus:ring-ring"
@@ -704,7 +705,6 @@ export default function ProcessEditor({ tab }) {
   const { data, isLoading } = useProcess(tab.server, tab.name)
   const saveProcess   = useSaveProcess()
   const runProcess    = useRunProcess()
-  const fetchLog      = useFetchProcessLog()
   const createProcess = useCreateProcess()
   const registeredRef    = useRef(false)
   const decorationIdsRef = useRef({})
@@ -811,6 +811,29 @@ export default function ProcessEditor({ tab }) {
       }))
       decorationIdsRef.current[activeSection] = editor.deltaDecorations([], decs)
     }
+    // TI comment toggle — uses # (not // which is Monaco's default)
+    editor.addAction({
+      id: 'ti-toggle-comment',
+      label: 'Toggle TI Comment (#)',
+      keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.Slash],
+      run: (ed) => {
+        const model = ed.getModel()
+        const sel   = ed.getSelection()
+        const edits = []
+        for (let ln = sel.startLineNumber; ln <= sel.endLineNumber; ln++) {
+          const text = model.getLineContent(ln)
+          const trimmed = text.trimStart()
+          if (trimmed.startsWith('#')) {
+            const idx = text.indexOf('#')
+            edits.push({ range: new monaco.Range(ln, idx + 1, ln, idx + 2), text: '' })
+          } else {
+            edits.push({ range: new monaco.Range(ln, 1, ln, 1), text: '#' })
+          }
+        }
+        ed.executeEdits('ti-comment', edits)
+      }
+    })
+
     // Toggle breakpoint on glyph margin click
     editor.onMouseDown(e => {
       if (e.target.type === monaco.editor.MouseTargetType.GUTTER_GLYPH_MARGIN) {
@@ -848,13 +871,6 @@ export default function ProcessEditor({ tab }) {
     if (firstKey !== activeSection) setActiveSection(firstKey)
   }
 
-  const grabLog = () => {
-    fetchLog.mutate({ server: tab.server, name: tab.name }, {
-      onSuccess: (r) => setLogContent(r?.log ?? ''),
-      onError:   ()  => setLogContent(''),
-    })
-  }
-
   const handleRun = (values) => {
     setRunOutput(null)
     setLogContent(null)
@@ -867,18 +883,18 @@ export default function ProcessEditor({ tab }) {
           setShowRun(false)
           toast.success('Process completed', { id })
           setRunOutput({ status: 'ok', duration: res?.duration ?? null })
-          grabLog()
+          setLogContent(res?.runLog ?? '')
         },
         onError: (e) => {
           toast.dismiss(id)
-          const detail = e.response?.data ?? {}
+          const detail = e.data ?? {}
           setRunOutput({
             status:  'error',
             message: detail.error || e.message,
             section: detail.section ?? null,
             line:    detail.line   ?? null,
           })
-          grabLog()
+          setLogContent(detail.runLog ?? '')
         },
       },
     )
@@ -893,7 +909,7 @@ export default function ProcessEditor({ tab }) {
     if (paramEdits !== null) {
       body.Parameters = paramEdits.map(p => ({
         Name:   p.Name,
-        Type:   p.Type ?? 2,
+        Type:   toTypeStr(p.Type),
         Value:  String(p.Value ?? ''),
         Prompt: p.Prompt ?? '',
       }))
@@ -914,7 +930,7 @@ export default function ProcessEditor({ tab }) {
   const handleSaveAs = (newName) => {
     const body = {}
     CODE_TABS.forEach(({ key }) => { body[key] = edits[key] ?? data?.[key] ?? '' })
-    if (paramEdits !== null) body.Parameters = paramEdits.map(p => ({ Name: p.Name, Type: p.Type ?? 2, Value: String(p.Value ?? ''), Prompt: p.Prompt ?? '' }))
+    if (paramEdits !== null) body.Parameters = paramEdits.map(p => ({ Name: p.Name, Type: toTypeStr(p.Type), Value: String(p.Value ?? ''), Prompt: p.Prompt ?? '' }))
     if (dsEdits !== null) body.DataSource = dsEdits
     const id = toast.loading(`Creating "${newName}"…`)
     createProcess.mutate({ server: tab.server, name: newName }, {
@@ -1292,7 +1308,6 @@ export default function ProcessEditor({ tab }) {
               >
                 {logOpen ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
                 <span>Log</span>
-                {fetchLog.isPending && <Loader2 size={10} className="animate-spin" />}
               </button>
               <button
                 onClick={() => { setRunOutput(null); setLogContent(null) }}
@@ -1306,12 +1321,12 @@ export default function ProcessEditor({ tab }) {
           {/* Log content */}
           {logOpen && (
             <div className="border-t border-border/50 max-h-52 overflow-auto px-4 py-2">
-              {fetchLog.isPending || logContent === null ? (
+              {logContent === null ? (
                 <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <Loader2 size={11} className="animate-spin" /> Fetching log…
+                  <Loader2 size={11} className="animate-spin" /> Running…
                 </div>
               ) : logContent === '' ? (
-                <p className="text-xs text-muted-foreground italic">No log output.</p>
+                <p className="text-xs text-muted-foreground italic">No log output. Use AttrPutS to write to __RUN_LOG in your TI.</p>
               ) : (
                 <pre className="text-xs font-mono text-foreground/80 whitespace-pre-wrap leading-relaxed">{logContent}</pre>
               )}
@@ -1328,7 +1343,8 @@ export default function ProcessEditor({ tab }) {
             height="100%"
             language="tm1ti"
             value={value}
-            theme={dark ? 'vs-dark' : 'vs'}
+            theme="tm1-custom"
+            beforeMount={monaco => registerTM1Theme(monaco, dark)}
             onChange={v => setEdits(e => ({ ...e, [activeSection]: v }))}
             onMount={handleMount}
             options={{
@@ -1337,6 +1353,8 @@ export default function ProcessEditor({ tab }) {
               wordWrap: 'on',
               scrollBeyondLastLine: false,
               glyphMargin: true,
+              fixedOverflowWidgets: true,
+              find: { seedSearchStringFromSelection: 'always', autoFindInSelection: 'never' },
             }}
           />
         </div>

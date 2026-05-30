@@ -3,12 +3,17 @@ import { useStore } from '@/store'
 import { X, CalendarDays, BookType, SlidersHorizontal } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { loadSettings, saveSettings } from '@/lib/formatters/settings.js'
+import { COLOUR_THEMES, applyColourTheme, loadColourSettings, saveColourSettings } from '@/lib/formatters/colours.js'
+
+const DARK_THEMES  = COLOUR_THEMES.filter(t => t.id !== 'light')
+const LIGHT_THEMES = COLOUR_THEMES.filter(t => t.id === 'light')
 
 export default function EditorPreferences({ open, onClose, onOpenPeriodBuilder, onOpenNamingDictionary, onOpenFormatSettings }) {
   if (!open) return null
 
-  const { dark, setDark } = useStore()
+  const { dark, setDark, bumpThemeVersion } = useStore()
   const [settings, setSettings] = useState(() => loadSettings())
+  const [colourTheme, setColourTheme] = useState(() => loadColourSettings().theme)
   const ref = useRef(null)
 
   useEffect(() => {
@@ -27,6 +32,36 @@ export default function EditorPreferences({ open, onClose, onOpenPeriodBuilder, 
     saveSettings(next)
   }
 
+  const handleDarkToggle = () => {
+    const newDark = !dark
+    const current = loadColourSettings()
+
+    // Remember the current theme for the mode we're leaving
+    localStorage.setItem(dark ? 'tm1-dark-colour-theme' : 'tm1-light-colour-theme', current.theme)
+
+    // Load the preferred theme for the mode we're entering (with sensible defaults)
+    const remembered = localStorage.getItem(newDark ? 'tm1-dark-colour-theme' : 'tm1-light-colour-theme')
+    const fallback   = newDark ? 'dracula' : 'light'
+    const newThemeId = remembered || fallback
+
+    const updated = applyColourTheme(newThemeId, current)
+    saveColourSettings(updated)
+    setColourTheme(newThemeId)
+    setDark(newDark)
+    bumpThemeVersion()
+  }
+
+  const pickTheme = (themeId) => {
+    const current = loadColourSettings()
+    const updated  = applyColourTheme(themeId, current)
+    saveColourSettings(updated)
+    setColourTheme(themeId)
+    localStorage.setItem(dark ? 'tm1-dark-colour-theme' : 'tm1-light-colour-theme', themeId)
+    bumpThemeVersion()
+  }
+
+  const availableThemes = dark ? DARK_THEMES : LIGHT_THEMES
+
   return (
     <div ref={ref} className="fixed top-10 right-2 z-50 w-60 bg-card border border-border rounded-lg shadow-lg p-3">
       <div className="flex items-center justify-between mb-3">
@@ -42,11 +77,28 @@ export default function EditorPreferences({ open, onClose, onOpenPeriodBuilder, 
         <div className="flex items-center justify-between py-1">
           <label className="text-xs">Dark mode</label>
           <button
-            onClick={() => setDark(!dark)}
+            onClick={handleDarkToggle}
             className={cn('w-8 h-4 rounded-full transition-colors relative shrink-0', dark ? 'bg-primary' : 'bg-muted')}
           >
             <span className={cn('absolute top-0.5 left-0.5 w-3 h-3 bg-white rounded-full transition-transform', dark && 'translate-x-4')} />
           </button>
+        </div>
+
+        <div className="flex items-center justify-between py-1 gap-2">
+          <label className="text-xs shrink-0">Colour theme</label>
+          {availableThemes.length > 1 ? (
+            <select
+              value={colourTheme}
+              onChange={e => pickTheme(e.target.value)}
+              className="text-xs bg-background border border-border rounded px-1.5 py-0.5 outline-none flex-1 min-w-0"
+            >
+              {availableThemes.map(t => (
+                <option key={t.id} value={t.id}>{t.name}</option>
+              ))}
+            </select>
+          ) : (
+            <span className="text-xs text-muted-foreground">{availableThemes[0]?.name ?? '—'}</span>
+          )}
         </div>
 
         <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mt-3 mb-1">Editor</div>
@@ -92,10 +144,7 @@ export default function EditorPreferences({ open, onClose, onOpenPeriodBuilder, 
       <div className="flex items-center justify-between py-1 gap-2">
         <label className="text-xs shrink-0">Period Builder</label>
         <button
-          onClick={() => {
-            onOpenPeriodBuilder?.()
-            onClose?.()
-          }}
+          onClick={() => { onOpenPeriodBuilder?.(); onClose?.() }}
           className="text-xs px-2 py-0.5 rounded border border-border hover:bg-muted flex items-center gap-1"
         >
           <CalendarDays size={12} />
@@ -106,10 +155,7 @@ export default function EditorPreferences({ open, onClose, onOpenPeriodBuilder, 
       <div className="flex items-center justify-between py-1 gap-2">
         <label className="text-xs shrink-0">Naming Dictionary</label>
         <button
-          onClick={() => {
-            onOpenNamingDictionary?.()
-            onClose?.()
-          }}
+          onClick={() => { onOpenNamingDictionary?.(); onClose?.() }}
           className="text-xs px-2 py-0.5 rounded border border-border hover:bg-muted flex items-center gap-1"
         >
           <BookType size={12} />
@@ -120,10 +166,7 @@ export default function EditorPreferences({ open, onClose, onOpenPeriodBuilder, 
       <div className="flex items-center justify-between py-1 gap-2">
         <label className="text-xs shrink-0">Format Settings</label>
         <button
-          onClick={() => {
-            onOpenFormatSettings?.()
-            onClose?.()
-          }}
+          onClick={() => { onOpenFormatSettings?.(); onClose?.() }}
           className="text-xs px-2 py-0.5 rounded border border-border hover:bg-muted flex items-center gap-1"
         >
           <SlidersHorizontal size={12} />

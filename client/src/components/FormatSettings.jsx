@@ -240,7 +240,7 @@ export default function FormatSettings({ open, onClose }) {
           {/* Left: Tabs + Settings */}
           <div className="w-[340px] flex flex-col border-r border-border">
             <div className="flex border-b border-border shrink-0">
-              {[{ id: 'rules', label: 'Rules' }, { id: 'ti', label: 'TI Process' }, { id: 'theme', label: 'Theme' }].map(t => (
+              {[{ id: 'rules', label: 'Rules' }, { id: 'ti', label: 'TI Process' }].map(t => (
                 <button
                   key={t.id}
                   onClick={() => setTab(t.id)}
@@ -316,69 +316,6 @@ export default function FormatSettings({ open, onClose }) {
                 </div>
               )}
 
-              {tab === 'theme' && (
-                <div className="space-y-2">
-                  <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">Presets</div>
-                  <div className="flex flex-wrap gap-1.5 mb-3">
-                    {COLOUR_THEMES.map(t => (
-                      <button
-                        key={t.id}
-                        onClick={() => setColourSettings(applyColourTheme(t.id, colourSettings))}
-                        className={cn('px-2.5 py-1 text-[10px] rounded border transition-colors',
-                          colourSettings.theme === t.id
-                            ? 'bg-primary text-primary-foreground border-primary'
-                            : 'bg-background text-muted-foreground border-border hover:text-foreground'
-                        )}
-                      >
-                        <span className="inline-block w-2 h-2 rounded-full mr-1.5 align-middle border border-white/20" style={{ background: t.background }} />
-                        {t.name}
-                      </button>
-                    ))}
-                    {!COLOUR_THEMES.find(t => t.id === colourSettings.theme) && (
-                      <span className="px-2.5 py-1 text-[10px] rounded border border-primary bg-primary text-primary-foreground">Custom</span>
-                    )}
-                  </div>
-
-                  <div className="flex items-center justify-between mb-1">
-                    <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Token Colours</div>
-                    <div className="flex items-center gap-1">
-                      <button onClick={() => {
-                        const blob = new Blob([exportColourSettings()], { type: 'application/json' })
-                        const url = URL.createObjectURL(blob)
-                        const a = document.createElement('a'); a.href = url; a.download = 'tm1-colour-scheme.json'; a.click()
-                        URL.revokeObjectURL(url)
-                      }} className="p-1 rounded hover:bg-muted text-muted-foreground" title="Export"><Download size={9} /></button>
-                      <button onClick={() => {
-                        const inp = document.createElement('input'); inp.type = 'file'; inp.accept = '.json'
-                        inp.onchange = async (e) => {
-                          const f = e.target.files[0]; if (!f) return
-                          if (importColourSettings(await f.text())) setColourSettings(loadColourSettings())
-                        }; inp.click()
-                      }} className="p-1 rounded hover:bg-muted text-muted-foreground" title="Import"><Upload size={9} /></button>
-                    </div>
-                  </div>
-
-                  {Object.entries(colourSettings.rules).map(([tokenType, colour]) => (
-                    <div key={tokenType} className="flex items-center justify-between gap-2 py-0.5">
-                      <label className="text-[10px] text-foreground capitalize flex-1">{tokenType.replace('_', ' ')}</label>
-                      <div className="flex items-center gap-1.5">
-                        <input type="color" value={colour}
-                          onChange={e => setColourSettings(prev => ({ ...prev, theme: 'custom', rules: { ...prev.rules, [tokenType]: e.target.value } }))}
-                          className="w-6 h-5 p-0 border-0 rounded cursor-pointer"
-                        />
-                        <span className="text-[9px] font-mono text-muted-foreground w-16">{colour}</span>
-                      </div>
-                    </div>
-                  ))}
-
-                  <button
-                    onClick={() => { if (window.confirm('Reset all colours to defaults?')) { resetColourSettings(); setColourSettings(structuredClone(DEFAULT_COLOURS)) } }}
-                    className="flex items-center gap-1 mt-2 px-2 py-1 text-[10px] rounded border border-border text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-                  >
-                    <RotateCcw size={9} /> Reset colours
-                  </button>
-                </div>
-              )}
             </div>
           </div>
 

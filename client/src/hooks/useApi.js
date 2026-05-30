@@ -2,7 +2,12 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useStore } from '@/store'
 
 const extractError = async (r) => {
-  try { const d = await r.json(); return new Error(d.error || d.message || r.statusText) } catch { return new Error(r.statusText) }
+  try {
+    const d = await r.json()
+    const err = new Error(d.error || d.message || r.statusText)
+    err.data = d  // preserve full body so callers can read runLog, section, line, etc.
+    return err
+  } catch { return new Error(r.statusText) }
 }
 const get   = (url)       => fetch(url).then(async r => { if (!r.ok) throw await extractError(r); return r.json() })
 const post  = (url, body) => fetch(url, { method: 'POST',   headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(async r => { if (!r.ok) throw await extractError(r); return r.json() })

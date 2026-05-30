@@ -353,6 +353,9 @@ app.post('/api/process/debug', async (req, res) => {
         log = '__DBG_DONE:ok'
     }
 
+    try { await client.deleteProcess(tempName) }
+    catch (e) { console.error('[debug] cleanup failed:', e.message) }
+
     res.json({ log, error: runError, noCapture: !hasCapture && !runError })
 })
 
@@ -433,19 +436,83 @@ app.post('/api/process', async (req, res) => {
 })
 
 app.post('/api/process/run', async (req, res) => {
+    const client   = new TM1Client(req.query.server)
+    const procName = req.query.name
+    const RUN_ATTR = '__RUN_LOG'
+    const safeName = procName.replace(/'/g, "''")
+
+    // ── 1. Ensure __RUN_LOG attribute exists and is cleared ──────────────────
     try {
-        const client = new TM1Client(req.query.server)
-        const result = await client.executeProcess(req.query.name, req.body.params ?? [])
-        const duration = result?.Times?.ExecutionTimeInMilliseconds ?? null
-        res.json({ ok: true, duration })
+        await client.post(
+            `Dimensions('%7DProcesses')/Hierarchies('%7DProcesses')/ElementAttributes`,
+            { Name: RUN_ATTR, Type: 'String' }
+        )
+    } catch (_) { /* 409 = already exists — fine */ }
+    try {
+        await client.post('ExecuteProcessWithReturn?$expand=*', {
+            Process: {
+                Name: '_IDE_ClearRunLog',
+                PrologProcedure: `AttrPutS('', '}Processes', '${safeName}', '${RUN_ATTR}');`,
+                MetadataProcedure: '', DataProcedure: '', EpilogProcedure: '',
+                HasSecurityAccess: false, DataSource: { Type: 'None' },
+                Parameters: [], Variables: [],
+            }
+        })
+    } catch (_) { /* non-critical */ }
+
+    // ── 2. Execute the process ────────────────────────────────────────────────
+    let duration = null, runError = null, errorSection = null, errorLine = null
+    try {
+        const result = await client.executeProcess(procName, req.body.params ?? [])
+        duration = result?.Times?.ExecutionTimeInMilliseconds ?? null
     } catch (e) {
         const inner = e.response?.data?.error?.innererror ?? {}
         console.error('[process/run]', JSON.stringify(inner) || e.message)
-        res.status(500).json({
-            error:   inner.Message || e.message,
-            section: inner.ProcedureSection ?? null,
-            line:    inner.LineNumber ?? null,
-        })
+        runError     = inner.Message || e.message
+        errorSection = inner.ProcedureSection ?? null
+        errorLine    = inner.LineNumber ?? null
+    }
+
+    // ── 3. Read __RUN_LOG back via MDX ────────────────────────────────────────
+    let runLog = ''
+    try {
+        const mdxMember = procName.replace(/\]/g, ']]')
+        const mdx = [
+            `SELECT {[}ElementAttributes_}Processes].[}ElementAttributes_}Processes].[${RUN_ATTR}]} ON COLUMNS,`,
+            `{[}Processes].[}Processes].[${mdxMember}]} ON ROWS`,
+            `FROM [}ElementAttributes_}Processes]`,
+        ].join(' ')
+        const mdxResult = await client.executeMDX(mdx)
+        runLog = (mdxResult?.Cells?.[0]?.Value ?? '').replace(/\r/g, '')
+        console.log(`[process/run] __RUN_LOG MDX result: "${runLog.slice(0, 200)}"`)
+    } catch (e) {
+        console.error('[process/run] __RUN_LOG MDX failed:', e.message)
+    }
+
+    // ── 4. Fallback: if no __RUN_LOG and process errored, use TM1 ErrorLog ────
+    if (!runLog && runError) {
+        console.log('[process/run] __RUN_LOG empty, trying ErrorLog fallback')
+        try {
+            const errLog = await client.get(`Processes('${encodeURIComponent(procName)}')/ErrorLog`)
+            runLog = typeof errLog === 'string' ? errLog : (errLog?.value ?? '')
+            console.log(`[process/run] ErrorLog result: "${String(runLog).slice(0, 200)}"`)
+        } catch (e) {
+            console.error('[process/run] ErrorLog fallback failed:', e.message)
+        }
+    }
+
+    // ── 5. Detect __ERROR: validation marker (written before ProcessQuit) ────────
+    if (!runError && runLog.startsWith('__ERROR:')) {
+        const msg = runLog.replace(/^__ERROR:/, '').trim()
+        console.log(`[process/run] validation quit detected: "${msg}"`)
+        return res.status(500).json({ error: msg, section: null, line: null, runLog: msg })
+    }
+
+    console.log(`[process/run] final runLog length: ${runLog.length}, runError: ${!!runError}`)
+    if (runError) {
+        res.status(500).json({ error: runError, section: errorSection, line: errorLine, runLog })
+    } else {
+        res.json({ ok: true, duration, runLog })
     }
 })
 

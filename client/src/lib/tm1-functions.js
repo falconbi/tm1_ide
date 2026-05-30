@@ -1308,12 +1308,24 @@ function registerTM1Completions(monaco, getServer) {
 
 // ── Register custom Monaco theme with user-defined colours ────────────────────
 
-import { buildMonacoTheme, loadColourSettings } from '@/lib/formatters/colours.js'
+import { buildMonacoTheme, loadColourSettings, applyColourTheme } from '@/lib/formatters/colours.js'
+
+function bgIsLight(hex) {
+  const h = (hex ?? '#282a36').replace('#', '')
+  const r = parseInt(h.slice(0, 2), 16)
+  const g = parseInt(h.slice(2, 4), 16)
+  const b = parseInt(h.slice(4, 6), 16)
+  return (0.299 * r + 0.587 * g + 0.114 * b) / 255 > 0.5
+}
 
 export function registerTM1Theme(monaco, dark) {
-  const colourSettings = loadColourSettings()
+  let cs = loadColourSettings()
+  // Auto-correct if the stored colour theme doesn't match the UI dark/light mode
+  const colourIsLight = bgIsLight(cs.background)
+  if (!dark && !colourIsLight) cs = applyColourTheme('light', cs)
+  else if (dark && colourIsLight) cs = applyColourTheme('dracula', cs)
   const editorTheme = dark ? 'vs-dark' : 'vs'
-  const themeDef = buildMonacoTheme(editorTheme, colourSettings)
+  const themeDef = buildMonacoTheme(editorTheme, cs)
   monaco.editor.defineTheme('tm1-custom', themeDef)
   monaco.editor.setTheme('tm1-custom')
 }

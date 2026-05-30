@@ -379,8 +379,8 @@ class TM1Client {
             DataSource:         { Type: 'None' },
             Parameters:         (proc.parameters ?? []).map(p => ({
                 Name:   p.Name,
-                Type:   p.Type,
-                Value:  p.Value ?? '',
+                Type:   p.Type ?? 'String',
+                Value:  String(p.Value ?? ''),
                 Prompt: p.Prompt ?? '',
             })),
             Variables: [],

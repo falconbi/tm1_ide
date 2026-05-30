@@ -271,6 +271,9 @@ const TI = [
   S('logmsg',   'LogOutput message',     'Write a message to the TM1 process log',                  'Process Control', 'ti',
     `LogOutput('\${1:INFO}', '\${2:Message: }' | \${3:sVariable});\n\${0}`),
 
+  S('idelog',   'IDE Run Log — append',  'Append a line to the IDE run log panel (works on Cloud)',  'Process Control', 'ti',
+    `AttrPutS(ATTRS('}Processes', GetProcessName(), '__RUN_LOG') | \${1:sMessage} | CHAR(10), '}Processes', GetProcessName(), '__RUN_LOG');\n\${0}`),
+
   S('asciiout', 'ASCIIOutput to file',   'Append a delimited line to an ASCII log file',            'Process Control', 'ti',
     `ASCIIOutput('\${1:logfile.txt}', \${2:sField1}, \${3:sField2});\n\${0}`),
 
