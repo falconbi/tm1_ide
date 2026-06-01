@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import MonacoEditor from '@monaco-editor/react'
 import { useStore } from '@/store'
-import { useProcess, useSaveProcess, useRunProcess, useCreateProcess, useDebugProcess, useCubes, useViews } from '@/hooks/useApi'
+import { useProcess, useSaveProcess, useRunProcess, useCreateProcess, useDebugProcess, useCubes, useViews, usePreviewDatasource } from '@/hooks/useApi'
 import { registerTM1Completions, registerTM1Theme } from '@/lib/tm1-functions'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
@@ -174,6 +174,80 @@ function EditableDatasourcePanel({ ds, server, onChange }) {
         {row('Dimension', 'dataSourceNameForServer', { placeholder: 'CostCentre' })}
         {row('Subset', 'subset', { placeholder: 'All CostCentres' })}
       </>}
+    </div>
+  )
+}
+
+function DatasourcePreviewPanel({ ds }) {
+  const preview = usePreviewDatasource()
+  const [result, setResult] = useState(null)
+  const [error,  setError]  = useState(null)
+
+  const dsn   = ds?.dataSourceNameForServer
+  const query = ds?.query
+
+  const run = () => {
+    setResult(null); setError(null)
+    preview.mutate({ dsn, query }, {
+      onSuccess: (r) => setResult(r),
+      onError:   (e) => setError(e.message),
+    })
+  }
+
+  return (
+    <div className="px-3 py-2 space-y-2">
+      <div className="flex items-center justify-between">
+        <div className="text-[10px] text-muted-foreground">
+          DSN: <span className="font-mono text-foreground">{dsn || '—'}</span>
+        </div>
+        <button
+          onClick={run}
+          disabled={preview.isPending || !dsn || !query}
+          className="flex items-center gap-1.5 px-2.5 py-1 text-xs rounded bg-primary text-primary-foreground disabled:opacity-50 hover:opacity-90 transition-opacity"
+        >
+          {preview.isPending ? <Loader2 size={10} className="animate-spin" /> : <Play size={10} />}
+          Preview
+        </button>
+      </div>
+
+      {error && (
+        <div className="flex items-start gap-2 text-red-400 text-xs">
+          <AlertCircle size={12} className="shrink-0 mt-0.5" />
+          <span className="font-mono whitespace-pre-wrap">{error}</span>
+        </div>
+      )}
+
+      {result && (
+        <div className="border border-border rounded overflow-hidden">
+          <div className="flex items-center justify-between px-2 py-1 bg-muted border-b border-border">
+            <span className="text-[10px] text-muted-foreground">
+              {result.rowCount} row{result.rowCount !== 1 ? 's' : ''}{result.duration != null ? ` — ${result.duration}ms` : ''}
+            </span>
+          </div>
+          <div className="overflow-x-auto max-h-48">
+            <table className="w-full text-xs border-collapse">
+              <thead className="sticky top-0 bg-muted">
+                <tr>
+                  {result.columns.map(c => (
+                    <th key={c} className="text-left px-2 py-1 font-medium text-muted-foreground border-b border-border whitespace-nowrap">{c}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {result.rows.map((row, i) => (
+                  <tr key={i} className={cn('border-b border-border/50', i % 2 === 0 ? 'bg-background' : 'bg-muted/20')}>
+                    {row.map((cell, j) => (
+                      <td key={j} className="px-2 py-0.5 font-mono whitespace-nowrap max-w-xs truncate text-foreground/80">
+                        {cell === null ? <span className="text-muted-foreground italic">NULL</span> : String(cell)}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -1246,6 +1320,12 @@ export default function ProcessEditor({ tab }) {
             server={tab.server}
             onChange={setDsEdits}
           />
+        </CollapsibleSection>
+      )}
+
+      {data && (dsEdits ?? data.DataSource)?.Type === 'ODBC' && (
+        <CollapsibleSection label="Datasource Preview" hint={(dsEdits ?? data.DataSource)?.dataSourceNameForServer ?? ''}>
+          <DatasourcePreviewPanel ds={dsEdits ?? data.DataSource} />
         </CollapsibleSection>
       )}
 

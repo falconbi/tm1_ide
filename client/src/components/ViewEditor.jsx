@@ -4,9 +4,9 @@ import { AllCommunityModule, ModuleRegistry, themeBalham, colorSchemeDark, color
 import { DndContext, DragOverlay, PointerSensor, useSensor, useSensors, useDroppable, useDraggable } from '@dnd-kit/core'
 import MonacoEditor from '@monaco-editor/react'
 import { useStore } from '@/store'
-import { useCubeDimensions, useSubsets, useSubsetElements, useViews, useExecuteMDX, useViewAxes, useSaveView, usePawBookUsage } from '@/hooks/useApi'
+import { useCubeDimensions, useSubsets, useElementsTree, useViews, useExecuteMDX, useViewAxes, useSaveView, usePawBookUsage } from '@/hooks/useApi'
 import { toast } from 'sonner'
-import { RefreshCw, Loader2, Table2, GripVertical, X, LayoutGrid, Rows3, Columns3, Filter, ZapOff, Zap, ChevronLeft, ChevronRight, PencilLine, Play, Save, Code2, Eye, ChevronDown, BookOpen, ChevronUp, MapPin } from 'lucide-react'
+import { RefreshCw, Loader2, Table2, GripVertical, X, LayoutGrid, Rows3, Columns3, Filter, ZapOff, Zap, ChevronLeft, ChevronRight, PencilLine, Save, Code2, Eye, ChevronDown, BookOpen, ChevronUp, MapPin, WrapText, Braces } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 ModuleRegistry.registerModules([AllCommunityModule])
@@ -15,6 +15,114 @@ const lightTheme = themeBalham.withPart(colorSchemeLight).withParams({ fontSize:
 const darkTheme  = themeBalham.withPart(colorSchemeDark).withParams({ fontSize: 12, rowHeight: 24, headerHeight: 28 })
 
 import { buildMDX } from '@core/mdxBuilder.js'
+import HierarchyGrid from '@/components/HierarchyGrid'
+
+// ── Cellset → HierarchyGrid transforms ───────────────────────────────────────
+
+function buildHierarchyFromElements(elements, name) {
+    if (!elements?.length) return null
+    const nodes = {}
+    for (const el of elements) {
+        nodes[el.Name] = {
+            id:       el.Name,
+            label:    el.Name,
+            level:    el.Level ?? 0,
+            isLeaf:   el.Type !== 'C',
+            children: el.Components ?? [],
+        }
+    }
+    const childSet = new Set(elements.flatMap(e => e.Components ?? []))
+    const roots    = elements.filter(e => !childSet.has(e.Name)).map(e => e.Name)
+    const maxLevel = Math.max(0, ...elements.map(e => e.Level ?? 0))
+    return { nodes, roots, maxLevel, name }
+}
+
+// Prune hierarchy to only members present in the cellset result.
+// Consolidations only appear if they were actually returned by TM1.
+// Children list is filtered to only present members; isLeaf recomputed.
+function constrainHierarchy(hierarchy, presentMembers) {
+    if (!hierarchy || !presentMembers?.length) return hierarchy
+    const presentSet = new Set(presentMembers)
+    const { nodes: allNodes, name } = hierarchy
+
+    const nodes = {}
+    for (const id of presentMembers) {
+        const node = allNodes[id]
+        if (!node) continue
+        const children = (node.children ?? []).filter(c => presentSet.has(c))
+        nodes[id] = { ...node, children, isLeaf: children.length === 0 }
+    }
+
+    const childSet = new Set(Object.values(nodes).flatMap(n => n.children))
+    const roots    = Object.keys(nodes).filter(id => !childSet.has(id))
+    const maxLevel = Math.max(0, ...Object.values(nodes).map(n => n.level ?? 0))
+    return { nodes, roots, maxLevel, name }
+}
+
+function cellsetToHierarchyData(cellset) {
+    if (!cellset?.Axes?.length) return null
+    const colAxis = cellset.Axes.find(a => a.Ordinal === 0)
+    const rowAxis = cellset.Axes.find(a => a.Ordinal === 1)
+    if (!colAxis) return null
+
+    const colTuples = colAxis.Tuples ?? []
+    const rowTuples = rowAxis?.Tuples ?? []
+
+    // Include members array so HierarchyGrid can build tuple keys for multi-dim cols
+    const columns = colTuples.map((t, i) => ({
+        id:      `c${i}`,
+        label:   (t.Members ?? []).map(m => m.Name).join(' / '),
+        members: (t.Members ?? []).map(m => m.Name),
+    }))
+
+    const cellMap = {}
+    ;(cellset.Cells ?? []).forEach(c => { cellMap[c.Ordinal] = c })
+
+    const data = {}
+    rowTuples.forEach((tuple, ri) => {
+        // Multi-dim row: key is all member names joined with ::
+        const tupleKey = (tuple.Members ?? []).map(m => m.Name).join('::')
+        if (!tupleKey) return
+        if (!data[tupleKey]) data[tupleKey] = {}
+        columns.forEach((col, ci) => {
+            const cell = cellMap[ri * columns.length + ci]
+            data[tupleKey][col.id] = cell?.FormattedValue ?? cell?.Value ?? null
+        })
+    })
+
+    return { columns, data }
+}
+
+// Convert ViewEditor axis state → GuidedMDXBuilder dimConfig format
+function viewerAxesToBuilderConfig(axes) {
+    const toExpr = (dim, d, isFilter) => {
+        if (d.memberSet === 'leaf') return `{TM1FILTERBYLEVEL({[${dim}].[${dim}].Members}, 0)}`
+        if (d.memberSet === 'root') return `{[${dim}].[${dim}].DefaultMember}`
+        if (d.memberSet === 'all')  return `{TM1SUBSETALL([${dim}].[${dim}])}`
+        if (d.subset)               return `TM1SubsetToSet([${dim}].[${dim}], "${d.subset}", "public")`
+        if (d.members?.length > 1)  return `{${d.members.map(m => `[${dim}].[${dim}].[${m}]`).join(', ')}}`
+        if (d.member)               return isFilter ? d.member : `{[${dim}].[${dim}].[${d.member}]}`
+        return ''
+    }
+    const config = {}
+    for (const d of axes.rows)    config[d.dimension] = { axis: 'rows',    subsetExpression: toExpr(d.dimension, d, false) }
+    for (const d of axes.columns) config[d.dimension] = { axis: 'columns', subsetExpression: toExpr(d.dimension, d, false) }
+    for (const d of axes.pages)   config[d.dimension] = { axis: 'filter',  subsetExpression: toExpr(d.dimension, d, true) }
+    return config
+}
+
+function formatMDX(mdx) {
+    return mdx
+        .replace(/\s+/g, ' ')
+        .replace(/\bSELECT\b/gi, 'SELECT\n  ')
+        .replace(/\bON COLUMNS\s*,?\s*/gi, ' ON COLUMNS,\n  ')
+        .replace(/\bON ROWS\b/gi, ' ON ROWS')
+        .replace(/\bON 0\b\s*,?\s*/gi, ' ON COLUMNS,\n  ')
+        .replace(/\bON 1\b/gi, ' ON ROWS')
+        .replace(/\bFROM\b/gi, '\nFROM')
+        .replace(/\bWHERE\b/gi, '\nWHERE ')
+        .trim()
+}
 // ── Cellset → AG Grid ─────────────────────────────────────────────────────────
 
 function parseDimFromUniqueName(un) {
@@ -95,60 +203,217 @@ function buildGridData(parsed) {
 
 // ── Subset/member popover ─────────────────────────────────────────────────────
 
-function SubsetPopover({ server, dim, zone, subsets, onSubsetSelect, onMemberSelect, onEditSubset, onClose }) {
-    const [pickedSubset, setPickedSubset] = useState(dim.subset ?? '')
-    const { data: elements = [], isLoading } = useSubsetElements(
-        zone === 'pages' && pickedSubset ? server : null,
-        zone === 'pages' && pickedSubset ? dim.dimension : null,
-        zone === 'pages' && pickedSubset ? pickedSubset : null,
-    )
-
-    const handleSubset = (name) => {
-        setPickedSubset(name)
-        onSubsetSelect(name || null)
-        if (zone !== 'pages') onClose()
-    }
-
+function Checkbox({ active }) {
     return (
-        <div className="absolute top-full left-0 mt-1 z-50 bg-popover border border-border rounded shadow-lg w-52 max-h-72 overflow-auto text-xs">
-            <div className="px-2 py-1 text-[10px] text-muted-foreground uppercase tracking-wider font-semibold border-b border-border sticky top-0 bg-popover">
-                Subset
-            </div>
-            <button onClick={() => handleSubset('')}
-                className={cn('flex w-full px-3 py-1 hover:bg-muted text-left', !pickedSubset && 'text-primary font-medium')}>
-                All Members
-            </button>
-            {subsets.map(s => (
-                <div key={s.Name} className="flex items-center group">
-                    <button onClick={() => handleSubset(s.Name)}
-                        className={cn('flex-1 px-3 py-1 hover:bg-muted text-left font-mono truncate',
-                            pickedSubset === s.Name && 'text-primary font-medium')}>
-                        {s.Name}
-                    </button>
-                    <button onClick={(e) => { e.stopPropagation(); onEditSubset?.(dim.dimension, s.Name) }}
-                        className="opacity-0 group-hover:opacity-100 px-1 py-1 text-muted-foreground hover:text-foreground shrink-0 transition-opacity"
-                        title={`Edit "${s.Name}"`}>
-                        <PencilLine size={10} />
+        <span className={cn('w-3 h-3 shrink-0 rounded border flex items-center justify-center',
+            active ? 'bg-primary border-primary' : 'border-border')}>
+            {active && <span className="text-primary-foreground text-[8px] font-bold">✓</span>}
+        </span>
+    )
+}
+
+function TreeNodes({ nodes, depth, isFilter, checked, expanded, toggleMember, toggleExpand, dimMember }) {
+    return nodes.map(node => {
+        const isC    = node.Type === 'C'
+        const isOpen = expanded.has(node.Name)
+        const active = isFilter ? dimMember === node.Name : checked?.has(node.Name)
+        return (
+            <div key={node.Name}>
+                <div className={cn('flex items-center gap-1 w-full pr-2 py-1 hover:bg-muted group',
+                    isC ? 'font-medium' : 'text-muted-foreground',
+                    active && 'text-primary font-medium')}
+                    style={{ paddingLeft: `${8 + depth * 12}px` }}>
+                    {isC ? (
+                        <button onClick={() => toggleExpand(node.Name)}
+                            className="shrink-0 text-muted-foreground hover:text-foreground w-3 flex items-center">
+                            {isOpen ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
+                        </button>
+                    ) : <span className="w-3 shrink-0" />}
+                    <button onClick={() => toggleMember(node.Name)}
+                        className="flex items-center gap-1.5 flex-1 text-left font-mono truncate text-xs min-w-0">
+                        {!isFilter && <Checkbox active={active} />}
+                        <span className="truncate">{node.Name}</span>
                     </button>
                 </div>
-            ))}
+                {isC && isOpen && node.children.length > 0 && (
+                    <TreeNodes nodes={node.children} depth={depth + 1} isFilter={isFilter}
+                        checked={checked} expanded={expanded} toggleMember={toggleMember}
+                        toggleExpand={toggleExpand} dimMember={dimMember} />
+                )}
+            </div>
+        )
+    })
+}
 
-            {zone === 'pages' && pickedSubset && (
-                <>
-                    <div className="px-2 py-1 text-[10px] text-muted-foreground uppercase tracking-wider font-semibold border-t border-b border-border mt-1 sticky top-7 bg-popover">
-                        Member
-                    </div>
-                    {isLoading
-                        ? <div className="px-3 py-1 text-muted-foreground flex items-center gap-1"><Loader2 size={10} className="animate-spin" /> Loading…</div>
-                        : elements.map(el => (
-                            <button key={el.name} onClick={() => { onMemberSelect(el.name); onClose() }}
-                                className={cn('flex w-full px-3 py-1 hover:bg-muted text-left font-mono truncate',
-                                    dim.member === el.name && 'text-primary font-medium')}>
-                                {el.name}
+// Build a tree using Components (explicit children) when available
+function buildElementTree(elements) {
+    const byName = Object.fromEntries(elements.map(el => [el.Name, { ...el, children: [] }]))
+    const hasComponents = elements.some(el => el.Components?.length)
+
+    if (hasComponents) {
+        // Use explicit parent-child relationships from $expand=Components
+        const childSet = new Set()
+        for (const el of elements) {
+            for (const childName of (el.Components ?? [])) {
+                if (byName[childName]) {
+                    byName[el.Name].children.push(byName[childName])
+                    childSet.add(childName)
+                }
+            }
+        }
+        return Object.values(byName).filter(n => !childSet.has(n.Name))
+    }
+
+    // Fallback: group by level — show consolidations at top, leaves below
+    const maxLevel = Math.max(0, ...elements.map(el => el.Level ?? 0))
+    if (maxLevel === 0) return elements.map(el => ({ ...el, children: [] }))
+
+    // Sort by level descending so highest consolidations come first
+    const sorted = [...elements].sort((a, b) => (b.Level ?? 0) - (a.Level ?? 0))
+    const roots = []
+    for (const el of sorted) {
+        byName[el.Name].children = []
+        if ((el.Level ?? 0) === maxLevel) roots.push(byName[el.Name])
+    }
+    return roots
+}
+
+function SubsetPopover({ server, dim, zone, subsets, onSubsetSelect, onMemberSelect, onMembersSelect, onMemberSetSelect, onEditSubset, onClose }) {
+    const isFilter    = zone === 'pages'
+    const [tab, setTab]           = useState((dim.member || dim.members?.length) ? 'editor' : 'subset')
+    const [search, setSearch]     = useState('')
+    const [checked, setChecked]   = useState(() => new Set(dim.members ?? (dim.member ? [dim.member] : [])))
+    const [expanded, setExpanded] = useState(new Set())
+
+    const { data: allElements = [], isLoading: loadingElements } = useElementsTree(
+        tab === 'editor' ? server : null,
+        tab === 'editor' ? dim.dimension : null,
+    )
+
+    const tree     = useMemo(() => buildElementTree(allElements), [allElements])
+    const filtered = search ? allElements.filter(el => el.Name.toLowerCase().includes(search.toLowerCase())) : null
+
+    // Auto-expand all consolidations when filter has a selected member so it's visible in the tree
+    useEffect(() => {
+        if (!isFilter || !dim.member || !allElements.length) return
+        setExpanded(new Set(allElements.filter(el => el.Type === 'C').map(el => el.Name)))
+    }, [allElements.length, isFilter, dim.member])
+
+    const toggleExpand = name => setExpanded(prev => {
+        const next = new Set(prev); next.has(name) ? next.delete(name) : next.add(name); return next
+    })
+
+    const toggleMember = name => {
+        if (isFilter) { onMemberSelect(name); onClose() }
+        else setChecked(prev => { const next = new Set(prev); next.has(name) ? next.delete(name) : next.add(name); return next })
+    }
+
+    const applyMulti = () => {
+        const arr = [...checked]
+        if (arr.length === 0) { onMemberSelect(null) }
+        else if (arr.length === 1) { onMemberSelect(arr[0]) }
+        else { onMembersSelect?.(arr) }
+        onClose()
+    }
+
+    const selectMemberSet = mset => { onMemberSetSelect?.(mset); onClose() }
+
+    const QUICK = [
+        { id: 'all',  label: 'All',  title: 'All members of the dimension' },
+        { id: 'leaf', label: 'Leaf', title: 'Leaf (level 0) members only' },
+        { id: 'root', label: 'Root', title: 'Root (top-level) member only' },
+    ]
+
+    return (
+        <div className="absolute top-full left-0 mt-1 z-50 bg-popover border border-border rounded shadow-lg w-56 text-xs" style={{ maxHeight: 360 }}>
+
+            {/* Tabs */}
+            <div className="flex border-b border-border shrink-0">
+                <button onClick={() => setTab('subset')}
+                    className={cn('flex-1 py-1.5 text-[10px] uppercase tracking-wider font-semibold transition-colors',
+                        tab === 'subset' ? 'text-foreground border-b-2 border-primary -mb-px' : 'text-muted-foreground hover:text-foreground')}>
+                    Subset
+                </button>
+                <button onClick={() => setTab('editor')}
+                    className={cn('flex-1 py-1.5 text-[10px] uppercase tracking-wider font-semibold transition-colors',
+                        tab === 'editor' ? 'text-foreground border-b-2 border-primary -mb-px' : 'text-muted-foreground hover:text-foreground')}>
+                    Editor
+                </button>
+            </div>
+
+            {tab === 'subset' ? (
+                <div className="flex flex-col" style={{ maxHeight: 310 }}>
+                    {/* Quick-select: All / Leaf / Root */}
+                    <div className="flex items-center gap-1 px-2 py-1.5 border-b border-border shrink-0">
+                        {QUICK.map(q => (
+                            <button key={q.id} onClick={() => selectMemberSet(q.id)} title={q.title}
+                                className={cn('flex-1 py-1 text-[10px] rounded border transition-colors font-medium',
+                                    dim.memberSet === q.id
+                                        ? 'bg-primary text-primary-foreground border-primary'
+                                        : 'border-border text-muted-foreground hover:bg-muted hover:text-foreground')}>
+                                {q.label}
                             </button>
-                        ))
-                    }
-                </>
+                        ))}
+                    </div>
+                    {/* Named subsets */}
+                    <div className="overflow-auto flex-1">
+                        {subsets.length === 0 && (
+                            <p className="px-3 py-2 text-muted-foreground italic text-[10px]">No saved subsets</p>
+                        )}
+                        {subsets.map(s => (
+                            <div key={s.Name} className="flex items-center group">
+                                <button onClick={() => { onSubsetSelect(s.Name); onMemberSelect(null); onClose() }}
+                                    className={cn('flex-1 px-3 py-1.5 hover:bg-muted text-left font-mono truncate',
+                                        dim.subset === s.Name && 'text-primary font-medium')}>
+                                    {s.Name}
+                                </button>
+                                <button onClick={e => { e.stopPropagation(); onEditSubset?.(dim.dimension, s.Name) }}
+                                    className="opacity-0 group-hover:opacity-100 px-2 py-1 text-muted-foreground hover:text-foreground shrink-0">
+                                    <PencilLine size={10} />
+                                </button>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            ) : (
+                /* Editor tab: ad-hoc member selection — no save required */
+                <div className="flex flex-col" style={{ maxHeight: 310 }}>
+                    <div className="px-2 py-1.5 border-b border-border shrink-0">
+                        <input autoFocus value={search} onChange={e => setSearch(e.target.value)}
+                            placeholder="Search members…"
+                            className="w-full bg-muted rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-ring font-mono" />
+                    </div>
+                    <div className="overflow-auto flex-1">
+                        {loadingElements ? (
+                            <div className="px-3 py-2 text-muted-foreground flex items-center gap-1"><Loader2 size={10} className="animate-spin" /> Loading…</div>
+                        ) : filtered ? (
+                            filtered.map(el => {
+                                const active = isFilter ? dim.member === el.Name : checked.has(el.Name)
+                                return (
+                                    <button key={el.Name} onClick={() => toggleMember(el.Name)}
+                                        className={cn('flex items-center gap-2 w-full px-3 py-1 hover:bg-muted text-left font-mono truncate',
+                                            el.Type === 'C' ? 'font-medium' : 'text-muted-foreground',
+                                            active && 'text-primary font-medium')}>
+                                        {!isFilter && <Checkbox active={active} />}
+                                        <span className="truncate">{el.Name}</span>
+                                    </button>
+                                )
+                            })
+                        ) : (
+                            <TreeNodes nodes={tree} depth={0} isFilter={isFilter} checked={checked}
+                                expanded={expanded} toggleMember={toggleMember} toggleExpand={toggleExpand} dimMember={dim.member} />
+                        )}
+                    </div>
+                    {!isFilter && (
+                        <div className="border-t border-border px-2 py-1.5 flex items-center justify-between shrink-0">
+                            <span className="text-[10px] text-muted-foreground">{checked.size} selected</span>
+                            <button onClick={applyMulti}
+                                className="px-3 py-1 text-[10px] rounded bg-primary text-primary-foreground hover:opacity-90 transition-opacity">
+                                Apply
+                            </button>
+                        </div>
+                    )}
+                </div>
             )}
         </div>
     )
@@ -156,7 +421,7 @@ function SubsetPopover({ server, dim, zone, subsets, onSubsetSelect, onMemberSel
 
 // ── Draggable dimension pill ──────────────────────────────────────────────────
 
-function DimPill({ id, dim, zone, server, onRemove, onSubsetChange, onMemberChange, onMoveLeft, onMoveRight }) {
+function DimPill({ id, dim, zone, server, onRemove, onSubsetChange, onMemberChange, onMembersChange, onMemberSetChange, onMoveLeft, onMoveRight }) {
     const { attributes, listeners, setNodeRef: setDragRef, isDragging } = useDraggable({ id })
     const { setNodeRef: setDropRef, isOver } = useDroppable({ id: `dim:${dim.dimension}` })
     const { data: subsets = [] } = useSubsets(server, dim.dimension)
@@ -183,7 +448,11 @@ function DimPill({ id, dim, zone, server, onRemove, onSubsetChange, onMemberChan
         return () => document.removeEventListener('mousedown', handler)
     }, [open])
 
-    const label = dim.member ?? dim.subset ?? (zone === 'bench' ? null : 'Members')
+    const label = dim.memberSet
+        ? { leaf: 'Leaf', root: 'Root', all: 'All' }[dim.memberSet]
+        : dim.members?.length
+            ? `{${dim.members.slice(0, 2).join(', ')}${dim.members.length > 2 ? ` +${dim.members.length - 2}` : ''}}`
+            : dim.member ?? dim.subset ?? (zone === 'bench' ? null : 'Members')
 
     return (
         <div ref={ref} className="relative">
@@ -239,6 +508,8 @@ function DimPill({ id, dim, zone, server, onRemove, onSubsetChange, onMemberChan
                     server={server} dim={dim} zone={zone} subsets={subsets}
                     onSubsetSelect={name => onSubsetChange(dim.dimension, name)}
                     onMemberSelect={name => onMemberChange(dim.dimension, name)}
+                    onMembersSelect={members => onMembersChange?.(dim.dimension, members)}
+                    onMemberSetSelect={mset => onMemberSetChange?.(dim.dimension, mset)}
                     onEditSubset={onEditSubset}
                     onClose={() => setOpen(false)}
                 />
@@ -249,7 +520,7 @@ function DimPill({ id, dim, zone, server, onRemove, onSubsetChange, onMemberChan
 
 // ── Drop zone ─────────────────────────────────────────────────────────────────
 
-function DropZone({ id, label, icon: Icon, dims, server, onRemove, onSubsetChange, onMemberChange, onReorder, accent }) {
+function DropZone({ id, label, icon: Icon, dims, server, onRemove, onSubsetChange, onMemberChange, onMembersChange, onMemberSetChange, onReorder, accent }) {
     const { setNodeRef, isOver } = useDroppable({ id })
     return (
         <div ref={setNodeRef}
@@ -264,7 +535,7 @@ function DropZone({ id, label, icon: Icon, dims, server, onRemove, onSubsetChang
                 {dims.map((d, i) => (
                     <DimPill key={d.dimension} id={d.dimension} dim={d} zone={id}
                         server={server} onRemove={onRemove}
-                        onSubsetChange={onSubsetChange} onMemberChange={onMemberChange}
+                        onSubsetChange={onSubsetChange} onMemberChange={onMemberChange} onMembersChange={onMembersChange} onMemberSetChange={onMemberSetChange}
                         onMoveLeft={i > 0 ? () => onReorder(i, i - 1) : null}
                         onMoveRight={i < dims.length - 1 ? () => onReorder(i, i + 1) : null}
                     />
@@ -280,20 +551,22 @@ function DropZone({ id, label, icon: Icon, dims, server, onRemove, onSubsetChang
 // ── Main ViewEditor ───────────────────────────────────────────────────────────
 
 export default function ViewEditor({ tab }) {
-    const { dark, openTab } = useStore()
+    const { dark, openTab, patchTab } = useStore()
     const { data: cubeDims = [] } = useCubeDimensions(tab.server, tab.cube)
     const { data: views    = [] } = useViews(tab.server, tab.cube)
     const executeMDX   = useExecuteMDX()
     const loadViewAxes = useViewAxes()
     const saveView     = useSaveView()
 
-    // Visual builder state
-    const [axes, setAxes] = useState({ rows: [], columns: [], pages: [] })
+    // Visual builder state — seed from Builder handoff if provided
+    const [axes, setAxes] = useState(tab.initialAxes ?? { rows: [], columns: [], pages: [] })
     const [suppressZeros, setSuppressZeros] = useState(true)
+    const [totalsPosition,    setTotalsPosition]    = useState('top')
+    const [colTotalsPosition, setColTotalsPosition] = useState('top')
     const [activeDrag, setActiveDrag] = useState(null)
 
     // MDX editor state
-    const [mdx, setMdx] = useState('')
+    const [mdx, setMdx] = useState(tab.initialMdx ?? '')
     const [mdxDirty, setMdxDirty] = useState(false)
     const editorRef = useRef(null)
 
@@ -305,7 +578,7 @@ export default function ViewEditor({ tab }) {
     const [viewType, setViewType] = useState(null)
 
     // View mode: 'visual' | 'mdx'
-    const [mode, setMode] = useState(tab.mode ?? 'visual')
+    const [mode, setMode] = useState(tab.initialMdx ? 'mdx' : (tab.mode ?? 'visual'))
 
     // PAW Books panel
     const [showPawBooks, setShowPawBooks] = useState(false)
@@ -326,52 +599,74 @@ export default function ViewEditor({ tab }) {
         const make = (dim, subset = null, member = null) => ({ dimension: dim, subset, member })
         const cols = [], rows = [], pages = []
 
-        // Extract axes: ON COLUMNS / ON ROWS (or ON 0 / ON 1)
-        const axisMatch = mdxText.match(/SELECT\s+(.*?)\s+FROM\s+\[(.*?)\]/is)
+        // Extract axes part between SELECT and FROM
+        const axisMatch = mdxText.match(/SELECT\s+([\s\S]*?)\s+FROM\s+\[/i)
         if (axisMatch) {
             const axesPart = axisMatch[1]
-            // Split by ON COLUMNS / ON ROWS / ON 0 / ON 1
-            const colMatch = axesPart.match(/(.*?)\s+ON\s+(?:COLUMNS|0)/is)
-            const rowMatch = axesPart.match(/(.*?)\s+ON\s+(?:ROWS|1)/is)
+
+            // Find ordinal positions to split axes without overlap
+            const colPos = axesPart.search(/\bON\s+(?:COLUMNS|0)\b/i)
+            const rowPos = axesPart.search(/\bON\s+(?:ROWS|1)\b/i)
+
+            let colExpr = null, rowExpr = null
+            if (colPos >= 0 && rowPos >= 0) {
+                if (colPos < rowPos) {
+                    colExpr = axesPart.slice(0, colPos).replace(/,\s*$/, '').trim()
+                    const afterCol = axesPart.indexOf(',', colPos)
+                    rowExpr = axesPart.slice(afterCol + 1, rowPos).trim()
+                } else {
+                    rowExpr = axesPart.slice(0, rowPos).replace(/,\s*$/, '').trim()
+                    const afterRow = axesPart.indexOf(',', rowPos)
+                    colExpr = axesPart.slice(afterRow + 1, colPos).trim()
+                }
+            } else if (colPos >= 0) {
+                colExpr = axesPart.slice(0, colPos).trim()
+            } else if (rowPos >= 0) {
+                rowExpr = axesPart.slice(0, rowPos).trim()
+            }
 
             const extractSets = (expr) => {
                 if (!expr) return []
                 const sets = []
                 let m
-                // Match TM1SubsetToSet([Dim], "Subset") or TM1SubsetToSet([Dim], "Subset", "scope")
-                const subsetRegex = /TM1SubsetToSet\s*\(\s*\[(.*?)\]\s*,\s*"(.*?)"(?:\s*,\s*".*?")?\s*\)/gi
-                while ((m = subsetRegex.exec(expr)) !== null) {
-                    sets.push(make(m[1], m[2]))
+                // TM1SubsetToSet([Dim].[Hier], "Sub") or TM1SubsetToSet([Dim], "Sub")
+                const subsetRe = /TM1SubsetToSet\s*\(\s*\[([^\]]+)\](?:\.[^\]]*\])?\s*,\s*"([^"]+)"(?:\s*,\s*"[^"]*")?\s*\)/gi
+                while ((m = subsetRe.exec(expr)) !== null) sets.push(make(m[1], m[2]))
+                // TM1SUBSETALL([Dim].[Hier])
+                const allRe = /TM1SUBSETALL\s*\(\s*\[([^\]]+)\](?:\.[^\]]*\])?\s*\)/gi
+                while ((m = allRe.exec(expr)) !== null) sets.push(make(m[1]))
+                // [Dim].[Dim].Members or MEMBERS
+                const membersRe = /\[([^\]]+)\]\.[^\]]*\]\.Members/gi
+                while ((m = membersRe.exec(expr)) !== null) {
+                    if (!sets.some(s => s.dimension === m[1])) sets.push(make(m[1]))
                 }
-                // Match TM1SUBSETALL([Dim].[Hier])
-                const allRegex = /TM1SUBSETALL\s*\(\s*\[(.*?)\]\.\[(.*?)\]\s*\)/gi
-                while ((m = allRegex.exec(expr)) !== null) {
-                    sets.push(make(m[1]))
-                }
-                // Match {[Dim].[Dim].Members}
-                const membersRegex = /\{\[(.*?)\]\.\[(.*?)\]\.Members\}/gi
-                while ((m = membersRegex.exec(expr)) !== null) {
-                    sets.push(make(m[1]))
-                }
-                // Match {[Dim].[Dim].[Member]} (single member)
-                const singleMemberRegex = /\{\[(.*?)\]\.\[(.*?)\]\.\[(.*?)\]\}/gi
-                while ((m = singleMemberRegex.exec(expr)) !== null) {
-                    sets.push(make(m[1], null, m[3]))
+                // {[Dim].[Dim].[M1], [Dim].[Dim].[M2], ...} — multi-member set
+                const multiRe = /\{\s*(\[[^\]]+\]\.\[[^\]]+\]\.\[[^\]]+\](?:\s*,\s*\[[^\]]+\]\.\[[^\]]+\]\.\[[^\]]+\])*)\s*\}/gi
+                while ((m = multiRe.exec(expr)) !== null) {
+                    const memberMatches = [...m[1].matchAll(/\[([^\]]+)\]\.\[[^\]]+\]\.\[([^\]]+)\]/g)]
+                    if (memberMatches.length > 0) {
+                        const dim = memberMatches[0][1]
+                        if (!sets.some(s => s.dimension === dim)) {
+                            const members = memberMatches.map(mm => mm[2])
+                            sets.push(members.length === 1
+                                ? make(dim, null, members[0])
+                                : { ...make(dim), members })
+                        }
+                    }
                 }
                 return sets
             }
 
-            if (colMatch) cols.push(...extractSets(colMatch[1]))
-            if (rowMatch) rows.push(...extractSets(rowMatch[1]))
+            if (colExpr) cols.push(...extractSets(colExpr))
+            if (rowExpr) rows.push(...extractSets(rowExpr))
         }
 
         // Extract WHERE slicers
-        const whereMatch = mdxText.match(/WHERE\s*\((.*)\)/is)
+        const whereMatch = mdxText.match(/WHERE\s*\(([\s\S]*?)\)\s*$/i)
         if (whereMatch) {
-            const slicers = whereMatch[1].split(/,\s*/)
-            for (const s of slicers) {
-                const m = s.match(/\[(.*?)\]\.\[(.*?)\]\.\[(.*?)\]/)
-                if (m) pages.push(make(m[1], null, m[3]))
+            for (const s of whereMatch[1].split(',')) {
+                const m = s.trim().match(/\[([^\]]+)\]\.[^\]]*\]\.\[([^\]]+)\]/)
+                if (m) pages.push(make(m[1], null, m[2]))
             }
         }
 
@@ -418,7 +713,9 @@ export default function ViewEditor({ tab }) {
                     setResult(cellset)
                     setTruncated(cellset?.truncated ?? false)
                     setViewType(vt ?? null)
-                    setMdx(viewMdx || buildMDX({ cube: tab.cube, rows, columns: cols, pages, suppressZeros: true }))
+                    patchTab(tab.id, { viewType: vt ?? null })
+                    if (viewMdx && vt?.includes('MDXView')) setMode('mdx')
+                    setMdx(viewMdx || buildMDX({ cube: tab.cube, rows, columns: cols, pages, suppressZeros: false }))
                     setMdxDirty(false)
                     toast.success(`Loaded ${tab.viewName}`, { id })
                 },
@@ -473,7 +770,6 @@ export default function ViewEditor({ tab }) {
             toZone = overId
         }
 
-        const fromZone = findZone(dimName)
         setAxes(prev => {
             const existing = [...prev.rows, ...prev.columns, ...prev.pages, ...bench]
                 .find(d => d.dimension === dimName) ?? { dimension: dimName, subset: null, member: null }
@@ -505,14 +801,28 @@ export default function ViewEditor({ tab }) {
 
     const setSubset = useCallback((dimName, subset) => {
         setAxes(prev => {
-            const update = zone => zone.map(d => d.dimension === dimName ? { ...d, subset, member: null } : d)
+            const update = zone => zone.map(d => d.dimension === dimName ? { ...d, subset, member: null, members: null, memberSet: null } : d)
             return { rows: update(prev.rows), columns: update(prev.columns), pages: update(prev.pages) }
         })
     }, [])
 
     const setMember = useCallback((dimName, member) => {
         setAxes(prev => {
-            const update = zone => zone.map(d => d.dimension === dimName ? { ...d, member } : d)
+            const update = zone => zone.map(d => d.dimension === dimName ? { ...d, member, members: null, memberSet: null, subset: null } : d)
+            return { rows: update(prev.rows), columns: update(prev.columns), pages: update(prev.pages) }
+        })
+    }, [])
+
+    const setMembers = useCallback((dimName, members) => {
+        setAxes(prev => {
+            const update = zone => zone.map(d => d.dimension === dimName ? { ...d, members, member: null, subset: null, memberSet: null } : d)
+            return { rows: update(prev.rows), columns: update(prev.columns), pages: update(prev.pages) }
+        })
+    }, [])
+
+    const setMemberSet = useCallback((dimName, memberSet) => {
+        setAxes(prev => {
+            const update = zone => zone.map(d => d.dimension === dimName ? { ...d, memberSet, subset: null, member: null, members: null } : d)
             return { rows: update(prev.rows), columns: update(prev.columns), pages: update(prev.pages) }
         })
     }, [])
@@ -542,11 +852,35 @@ export default function ViewEditor({ tab }) {
     }, [axes, autoExecuted, tab.viewName, result, handleExecute])
 
     // Sync MDX when visual axes change (if in visual mode)
+    const isFirstAxesRender = useRef(true)
     useEffect(() => {
         if (mode !== 'visual') return
         setMdx(buildMDX({ cube: tab.cube, ...axes, suppressZeros }))
         setMdxDirty(false)
+
+        // Auto-execute after axes settle (skip initial mount)
+        if (isFirstAxesRender.current) { isFirstAxesRender.current = false; return }
+        if (!axes.columns.length && !axes.rows.length) return
+        const t = setTimeout(() => handleExecute(), 800)
+        return () => clearTimeout(t)
     }, [axes, suppressZeros, mode])
+
+    // When switching to MDX mode, mark dirty so save is enabled
+    const prevModeRef = useRef(mode)
+    useEffect(() => {
+        if (prevModeRef.current === 'visual' && mode === 'mdx') {
+            setMdxDirty(true)
+        } else if (prevModeRef.current === 'mdx' && mode === 'visual') {
+            // Sync visual axes from whatever is currently in the MDX editor
+            if (mdx.trim()) {
+                const parsed = parseMdxToAxes(mdx)
+                if (parsed.rows.length || parsed.columns.length || parsed.pages.length) {
+                    setAxes(parsed)
+                }
+            }
+        }
+        prevModeRef.current = mode
+    }, [mode, mdx, parseMdxToAxes])
 
     const handleSave = useCallback(() => {
         const name = tab.viewName ?? prompt('View name?')
@@ -616,6 +950,55 @@ export default function ViewEditor({ tab }) {
     const parsed = useMemo(() => result ? parseCellset(result) : null, [result])
     const { colDefs, rowData } = useMemo(() => buildGridData(parsed), [parsed])
 
+    // ── HierarchyGrid data ────────────────────────────────────────────────────
+    // Fixed 4-slot hooks per axis (React rules: no conditional/loop hooks)
+    const rowDims = useMemo(() => axes.rows.map(d => d.dimension),    [axes.rows])
+    const colDims = useMemo(() => axes.columns.map(d => d.dimension), [axes.columns])
+
+    const { data: rTree0 = [] } = useElementsTree(rowDims[0] ? tab.server : null, rowDims[0] ?? null)
+    const { data: rTree1 = [] } = useElementsTree(rowDims[1] ? tab.server : null, rowDims[1] ?? null)
+    const { data: rTree2 = [] } = useElementsTree(rowDims[2] ? tab.server : null, rowDims[2] ?? null)
+    const { data: rTree3 = [] } = useElementsTree(rowDims[3] ? tab.server : null, rowDims[3] ?? null)
+
+    const { data: cTree0 = [] } = useElementsTree(colDims[0] ? tab.server : null, colDims[0] ?? null)
+    const { data: cTree1 = [] } = useElementsTree(colDims[1] ? tab.server : null, colDims[1] ?? null)
+    const { data: cTree2 = [] } = useElementsTree(colDims[2] ? tab.server : null, colDims[2] ?? null)
+    const { data: cTree3 = [] } = useElementsTree(colDims[3] ? tab.server : null, colDims[3] ?? null)
+
+    const hierarchies = useMemo(() => {
+        const trees = [rTree0, rTree1, rTree2, rTree3]
+        return rowDims.map((dim, i) => buildHierarchyFromElements(trees[i], dim)).filter(Boolean)
+    }, [rowDims, rTree0, rTree1, rTree2, rTree3])
+
+    const columnHierarchies = useMemo(() => {
+        const trees = [cTree0, cTree1, cTree2, cTree3]
+        return colDims.map((dim, i) => buildHierarchyFromElements(trees[i], dim)).filter(Boolean)
+    }, [colDims, cTree0, cTree1, cTree2, cTree3])
+
+    const hierarchyData = useMemo(() => cellsetToHierarchyData(result), [result])
+
+    // Constrain hierarchies to only members the cellset actually returned
+    const constrainedHierarchies = useMemo(() => {
+        if (!hierarchyData || !hierarchies.length) return hierarchies
+        const dimCount = hierarchies.length
+        const perDim   = Array.from({ length: dimCount }, () => new Set())
+        for (const key of Object.keys(hierarchyData.data)) {
+            key.split('::').forEach((m, i) => { if (perDim[i]) perDim[i].add(m) })
+        }
+        return hierarchies.map((h, i) => constrainHierarchy(h, [...perDim[i]]))
+    }, [hierarchies, hierarchyData])
+
+    const constrainedColHierarchies = useMemo(() => {
+        if (!hierarchyData || !columnHierarchies.length) return columnHierarchies
+        const perDim = Array.from({ length: columnHierarchies.length }, () => new Set())
+        for (const col of hierarchyData.columns) {
+            (col.members ?? [col.label]).forEach((m, i) => { if (perDim[i]) perDim[i].add(m) })
+        }
+        return columnHierarchies.map((h, i) => constrainHierarchy(h, [...perDim[i]]))
+    }, [columnHierarchies, hierarchyData])
+
+    const useHierarchy  = !!(rowDims.length > 0 && constrainedHierarchies.length > 0 && hierarchyData && result)
+
     const allDims = useMemo(() => [...axes.rows, ...axes.columns, ...axes.pages, ...bench], [axes, bench])
     const activeDim = activeDrag ? allDims.find(d => d.dimension === activeDrag) : null
 
@@ -646,12 +1029,37 @@ export default function ViewEditor({ tab }) {
                             mode === 'visual' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground')}>
                         <Eye size={10} /> Visual
                     </button>
-                    <button onClick={() => setMode('mdx')}
+                    <button onClick={() => {
+                        if (mode === 'visual') setMdx(buildMDX({ cube: tab.cube, ...axes, suppressZeros }))
+                        setMode('mdx')
+                    }}
                         className={cn('flex items-center gap-1 px-2 py-0.5 text-[10px] rounded transition-colors',
                             mode === 'mdx' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground')}>
                         <Code2 size={10} /> MDX
                     </button>
                 </div>
+
+                <button
+                    onClick={() => {
+                        const { openTab } = useStore.getState()
+                        openTab({
+                            id:           `guidedmdxview:${tab.server}:${tab.cube}:${Date.now()}`,
+                            type:         'guidedmdxview',
+                            label:        `Builder — ${tab.cube}`,
+                            server:       tab.server,
+                            cube:         tab.cube,
+                            initialState: {
+                                selectedCube: tab.cube,
+                                dimConfig:    viewerAxesToBuilderConfig(axes),
+                                step:         1,
+                            },
+                        })
+                    }}
+                    className="flex items-center gap-1 px-2 py-0.5 text-[10px] rounded border border-border text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                    title="Open in Guided MDX Builder"
+                >
+                    <Braces size={10} /> Builder
+                </button>
 
                 <button
                     onClick={() => {
@@ -675,6 +1083,20 @@ export default function ViewEditor({ tab }) {
                     className={cn('flex items-center justify-center p-1.5 rounded border border-border transition-colors',
                         suppressZeros ? 'text-primary bg-primary/10' : 'text-muted-foreground hover:bg-muted')}>
                     {suppressZeros ? <Zap size={12} /> : <ZapOff size={12} />}
+                </button>
+
+                <button onClick={() => setTotalsPosition(v => v === 'top' ? 'bottom' : 'top')}
+                    title={totalsPosition === 'bottom' ? 'Row totals at bottom' : 'Row totals at top'}
+                    className={cn('flex items-center justify-center px-2 py-1.5 rounded border border-border text-[10px] font-mono transition-colors',
+                        totalsPosition === 'bottom' ? 'text-primary bg-primary/10' : 'text-muted-foreground hover:bg-muted')}>
+                    {totalsPosition === 'bottom' ? '∑↓' : '∑↑'}
+                </button>
+
+                <button onClick={() => setColTotalsPosition(v => v === 'top' ? 'bottom' : 'top')}
+                    title={colTotalsPosition === 'bottom' ? 'Col totals at right' : 'Col totals at left'}
+                    className={cn('flex items-center justify-center px-2 py-1.5 rounded border border-border text-[10px] font-mono transition-colors',
+                        colTotalsPosition === 'bottom' ? 'text-primary bg-primary/10' : 'text-muted-foreground hover:bg-muted')}>
+                    {colTotalsPosition === 'bottom' ? '∑→' : '∑←'}
                 </button>
 
                 {views.length > 0 && !tab.viewName && (
@@ -787,10 +1209,10 @@ export default function ViewEditor({ tab }) {
             {mode === 'visual' && (
                 <DndContext sensors={sensors} onDragStart={({ active }) => setActiveDrag(active.id)} onDragEnd={handleDragEnd}>
                     <div className="shrink-0 px-3 py-2 border-b border-border bg-muted/10 grid grid-cols-4 gap-2">
-                        <DropZone id="columns" label="Columns" icon={Columns3} dims={axes.columns} server={tab.server} onRemove={removeDim} onSubsetChange={setSubset} onMemberChange={setMember} onReorder={(f,t) => reorderDim('columns',f,t)} accent="text-blue-400" />
-                        <DropZone id="rows"    label="Rows"    icon={Rows3}    dims={axes.rows}    server={tab.server} onRemove={removeDim} onSubsetChange={setSubset} onMemberChange={setMember} onReorder={(f,t) => reorderDim('rows',f,t)}    accent="text-green-400" />
-                        <DropZone id="pages"   label="Filter"  icon={Filter}   dims={axes.pages}   server={tab.server} onRemove={removeDim} onSubsetChange={setSubset} onMemberChange={setMember} onReorder={(f,t) => reorderDim('pages',f,t)}   accent="text-amber-400" />
-                        <DropZone id="bench"   label="Bench"   icon={LayoutGrid} dims={bench}      server={tab.server} onRemove={() => {}}  onSubsetChange={() => {}}  onMemberChange={() => {}}  onReorder={() => {}}                           accent="text-muted-foreground" />
+                        <DropZone id="rows"    label="Rows"    icon={Rows3}    dims={axes.rows}    server={tab.server} onRemove={removeDim} onSubsetChange={setSubset} onMemberChange={setMember} onMembersChange={setMembers} onMemberSetChange={setMemberSet} onReorder={(f,t) => reorderDim('rows',f,t)}    accent="text-green-400" />
+                        <DropZone id="columns" label="Columns" icon={Columns3} dims={axes.columns} server={tab.server} onRemove={removeDim} onSubsetChange={setSubset} onMemberChange={setMember} onMembersChange={setMembers} onMemberSetChange={setMemberSet} onReorder={(f,t) => reorderDim('columns',f,t)} accent="text-blue-400" />
+                        <DropZone id="pages"   label="Filter"  icon={Filter}   dims={axes.pages}   server={tab.server} onRemove={removeDim} onSubsetChange={setSubset} onMemberChange={setMember} onMembersChange={setMembers} onReorder={(f,t) => reorderDim('pages',f,t)}   accent="text-amber-400" />
+                        <DropZone id="bench"   label="Bench"   icon={LayoutGrid} dims={bench}      server={tab.server} onRemove={() => {}}  onSubsetChange={() => {}}  onMemberChange={() => {}}  onMembersChange={() => {}}  onReorder={() => {}}                           accent="text-muted-foreground" />
                     </div>
                     <DragOverlay>
                         {activeDim && (
@@ -804,10 +1226,21 @@ export default function ViewEditor({ tab }) {
 
             {/* MDX editor */}
             {mode === 'mdx' && (
-                <div className="shrink-0 h-48 border-b border-border flex flex-col min-h-0">
+                <div className="shrink-0 h-56 border-b border-border flex flex-col min-h-0">
+                    <div className="flex items-center justify-between px-2 py-0.5 border-b border-border bg-muted/30 shrink-0">
+                        <span className="text-[10px] text-muted-foreground">MDX</span>
+                        <button
+                            onClick={() => { const f = formatMDX(mdx); setMdx(f); setMdxDirty(true) }}
+                            className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground transition-colors px-1.5 py-0.5 rounded hover:bg-muted"
+                            title="Format MDX"
+                        >
+                            <WrapText size={10} /> Format
+                        </button>
+                    </div>
                     <MonacoEditor
+                        key={`mdx-editor-${tab.id}`}
                         height="100%"
-                        language="plaintext"
+                        language="sql"
                         value={mdx}
                         theme={dark ? 'vs-dark' : 'vs'}
                         onChange={v => { setMdx(v ?? ''); setMdxDirty(true) }}
@@ -821,7 +1254,7 @@ export default function ViewEditor({ tab }) {
                             minimap: { enabled: false },
                             wordWrap: 'on',
                             scrollBeyondLastLine: false,
-                            lineNumbers: 'off',
+                            lineNumbers: 'on',
                             folding: false,
                         }}
                     />
@@ -843,6 +1276,19 @@ export default function ViewEditor({ tab }) {
                         <Table2 size={32} className="mx-auto mb-2 opacity-30" />
                         <p>{mode === 'visual' ? 'Arrange dimensions then press Execute' : 'Edit MDX then press Execute'}</p>
                     </div>
+                </div>
+            ) : useHierarchy ? (
+                <div className="flex-1 min-h-0">
+                    <HierarchyGrid
+                        hierarchies={constrainedHierarchies}
+                        columnHierarchies={colDims.length > 0 ? constrainedColHierarchies : []}
+                        columns={hierarchyData.columns}
+                        data={hierarchyData.data}
+                        dark={dark}
+                        keepMode="parent"
+                        totalsPosition={totalsPosition}
+                        colTotalsPosition={colTotalsPosition}
+                    />
                 </div>
             ) : !parsed || parsed.grid.length === 0 ? (
                 <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm">No data returned</div>

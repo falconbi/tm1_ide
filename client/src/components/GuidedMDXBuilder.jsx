@@ -158,10 +158,11 @@ export default function GuidedMDXBuilder({ tab, server: serverProp, onSwitchToRa
   const mode = tab?.type === 'guidedmdxsubset' ? 'subset' : 'view'
   const isSubsetMode = mode === 'subset'
 
-  const [step, setStep] = useState(0)
-  const [selectedCube, setSelectedCube] = useState(null)
+  const init = tab?.initialState ?? {}
+  const [step, setStep] = useState(init.step ?? 0)
+  const [selectedCube, setSelectedCube] = useState(init.selectedCube ?? null)
   const [selectedDim, setSelectedDim] = useState('')
-  const [dimConfig, setDimConfig] = useState({})
+  const [dimConfig, setDimConfig] = useState(init.dimConfig ?? {})
   const [filterText, setFilterText] = useState('')
   const [currentMDX, setCurrentMDX] = useState('')
   const [buildHistory, setBuildHistory] = useState([])
@@ -198,9 +199,11 @@ export default function GuidedMDXBuilder({ tab, server: serverProp, onSwitchToRa
   const [previewError, setPreviewError] = useState(null)
   const [previewLoading, setPreviewLoading] = useState(false)
   const [viewMDX, setViewMDX] = useState('')
+  const [userEditedMDX, setUserEditedMDX] = useState(false)
+  const prevGeneratedRef = useRef('')
   const [isFormatted, setIsFormatted] = useState(false)
   const [selectedMeasures, setSelectedMeasures] = useState([])
-  const [intent, setIntent] = useState(null)
+  const [intent, setIntent] = useState(init.selectedCube ? 'Freeform' : null)
   const [secondCube, setSecondCube] = useState(null)
   const [timeDim, setTimeDim] = useState(null)
   const [timeDim2, setTimeDim2] = useState(null)
@@ -287,10 +290,11 @@ export default function GuidedMDXBuilder({ tab, server: serverProp, onSwitchToRa
   const generatedMDX = useMemo(() => {
     if (isSubsetMode) return currentMDX || (selectedDim ? `{TM1SUBSETALL([${selectedDim}].[${selectedDim}])}` : '')
     if (!selectedCube) return ''
+    const wrap  = s => (s?.trimStart().startsWith('{') ? s : `{${s}}`)
     const build = (dims, axis) => {
       if (!dims.length) return ''
-      const sets = dims.map(d => dimExpressions[d])
-      const joined = sets.length === 1 ? sets[0] : `(${sets.join('\n        *\n        ')})`
+      const sets   = dims.map(d => wrap(dimExpressions[d]))
+      const joined = sets.length === 1 ? sets[0] : sets.join(' *\n        ')
       return `NON EMPTY\n    ${joined} ON ${axis}`
     }
     let mdx = 'SELECT'
@@ -300,7 +304,16 @@ export default function GuidedMDXBuilder({ tab, server: serverProp, onSwitchToRa
     if (rowPart) mdx += `${colPart ? ',' : ''}\n  ${rowPart}`
     if (!colPart && !rowPart) mdx += '\n  NON EMPTY {TM1SubsetAll([Dim])} ON COLUMNS'
     mdx += `\nFROM [${selectedCube}]`
-    if (axes.filter.length) mdx += `\nWHERE ([${axes.filter[0]}].[All])`
+    if (axes.filter.length) {
+      const slicers = axes.filter.map(d => {
+        const expr = dimConfig[d]?.subsetExpression?.trim()
+        // Plain member name (no MDX syntax chars) → use as member reference
+        return expr && !/[{}()[\]]/.test(expr)
+          ? `[${d}].[${d}].[${expr}]`
+          : `[${d}].[${d}].DefaultMember`
+      })
+      mdx += `\nWHERE (${slicers.join(', ')})`
+    }
     return mdx
   }, [isSubsetMode, currentMDX, selectedDim, selectedCube, axes, dimExpressions])
 
@@ -337,6 +350,15 @@ export default function GuidedMDXBuilder({ tab, server: serverProp, onSwitchToRa
     }
   }, [cubeDims, intent, step, secondCube, isSubsetMode, selectedCube])
 
+  // Sync generatedMDX → Monaco editor unless user has manually edited
+  useEffect(() => {
+    if (!generatedMDX) return
+    if (!userEditedMDX || viewMDX === prevGeneratedRef.current) {
+      setViewMDX(generatedMDX)
+    }
+    prevGeneratedRef.current = generatedMDX
+  }, [generatedMDX])
+
   // Auto-preview for subset mode
   useEffect(() => {
     if (!isSubsetMode || !currentMDX || !selectedDim || step < 1) return
@@ -357,12 +379,14 @@ export default function GuidedMDXBuilder({ tab, server: serverProp, onSwitchToRa
     return () => clearTimeout(timer)
   }, [currentMDX, selectedDim, isSubsetMode, step, server])
 
+  const activeMDX = viewMDX || generatedMDX
+
   const runViewPreview = async () => {
     if (isSubsetMode) return
     setPreviewLoading(true); setPreviewError(null)
     try {
       const res = await fetch(`/api/mdx/execute?server=${encodeURIComponent(server)}`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mdx: generatedMDX }),
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mdx: activeMDX }),
       })
       const d = await res.json()
       if (!res.ok) throw new Error(d.error ?? 'Preview failed')
@@ -897,9 +921,39 @@ export default function GuidedMDXBuilder({ tab, server: serverProp, onSwitchToRa
                   className="w-full px-3 py-2 rounded border text-xs flex items-center justify-center gap-2 disabled:opacity-40 hover:bg-muted mb-2">
                   <Copy size={13} /> Copy MDX
                 </button>
-                <button onClick={() => onSwitchToRaw?.(generatedMDX)} disabled={!generatedMDX}
+                <button onClick={() => {
+                    if (!selectedCube) return
+                    // Convert Builder dimConfig → ViewEditor axes format
+                    const toEntry = (dim) => {
+                        const expr = dimConfig[dim]?.subsetExpression?.trim()
+                        const entry = { dimension: dim, subset: null, member: null, members: null, memberSet: null }
+                        if (!expr) return entry
+                        const subsetMatch = expr.match(/TM1SubsetToSet\([^,]+,\s*"([^"]+)"/)
+                        if (subsetMatch) { entry.subset = subsetMatch[1]; return entry }
+                        if (expr.includes('FILTERBYLEVEL') && expr.includes(', 0)')) { entry.memberSet = 'leaf'; return entry }
+                        if (expr.includes('DefaultMember')) { entry.memberSet = 'root'; return entry }
+                        if (expr.includes('SUBSETALL')) { return entry }  // all members = default
+                        // Plain member name (filter dims)
+                        if (!/[{}()[\]]/.test(expr)) { entry.member = expr; return entry }
+                        return entry
+                    }
+                    const initialAxes = {
+                        rows:    axes.rows.map(toEntry),
+                        columns: axes.columns.map(toEntry),
+                        pages:   axes.filter.map(toEntry),
+                    }
+                    openTab({
+                        id:          `view:${server}:${selectedCube}:guided-${Date.now()}`,
+                        type:        'view',
+                        label:       selectedCube,
+                        server,
+                        cube:        selectedCube,
+                        initialMdx:  activeMDX,
+                        initialAxes,
+                    })
+                }} disabled={!activeMDX}
                   className="w-full px-3 py-2 rounded bg-primary text-primary-foreground text-xs flex items-center justify-center gap-2 disabled:opacity-40">
-                  <ExternalLink size={13} /> Open in Raw Editor
+                  <ExternalLink size={13} /> Open in View Editor
                 </button>
               </div>
             )
@@ -915,8 +969,11 @@ export default function GuidedMDXBuilder({ tab, server: serverProp, onSwitchToRa
               <div className="flex items-center justify-between mb-2">
                 <div className="text-sm font-medium">Generated MDX</div>
                 <div className="flex gap-1">
-                  <button onClick={() => { setViewMDX(prev => { const c = prev.replace(/\s+/g,' ').replace(/\{FILTER\(/s, '{\n  FILTER(').replace(/\,\s*\)\}$/g,'\n  )\n}'); return c }) }} className="px-2 py-0.5 text-[9px] rounded border hover:bg-muted">Format</button>
-                  <button onClick={runViewPreview} disabled={!viewMDX || previewLoading}
+                  {userEditedMDX && (
+                    <button onClick={() => { setViewMDX(generatedMDX); setUserEditedMDX(false) }}
+                      className="px-2 py-0.5 text-[9px] rounded border hover:bg-muted text-muted-foreground" title="Reset to generated MDX">↺ Reset</button>
+                  )}
+                  <button onClick={runViewPreview} disabled={!activeMDX || previewLoading}
                     className="px-3 py-1 text-xs rounded bg-primary text-primary-foreground flex items-center gap-1 disabled:opacity-40">
                     {previewLoading ? <Loader2 size={12} className="animate-spin" /> : <Play size={12} />} Run
                   </button>
@@ -925,8 +982,8 @@ export default function GuidedMDXBuilder({ tab, server: serverProp, onSwitchToRa
               <div className="rounded overflow-hidden mb-3 shrink-0" style={{ height: '55%', minHeight: 140 }}>
                 <MonacoEditor
                   height="100%" language="tm1mdx"
-                  value={viewMDX || generatedMDX}
-                  onChange={v => setViewMDX(v)}
+                  value={viewMDX}
+                  onChange={v => { setViewMDX(v); setUserEditedMDX(true) }}
                   onMount={handleEditorMount}
                   options={{ fontSize: 11, minimap: { enabled: false }, wordWrap: 'on', scrollBeyondLastLine: false, folding: false, renderLineHighlight: 'none', overviewRulerLanes: 0, lineNumbers: 'on' }}
                   theme="vs-dark"

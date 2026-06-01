@@ -17,7 +17,8 @@ const patch = (url, body) => fetch(url, { method: 'PATCH',  headers: { 'Content-
 const enc = encodeURIComponent
 
 export const useServers   = ()                    => useQuery({ queryKey: ['servers'],                    queryFn: () => get('/api/servers') })
-export const useElements  = (server, dim, hierarchy) => useQuery({ queryKey: ['elements', server, dim, hierarchy], queryFn: () => get(`/api/elements?server=${enc(server)}&dimension=${enc(dim)}${hierarchy ? `&hierarchy=${enc(hierarchy)}` : ''}`), enabled: !!server && !!dim })
+export const useElements      = (server, dim, hierarchy) => useQuery({ queryKey: ['elements', server, dim, hierarchy],      queryFn: () => get(`/api/elements?server=${enc(server)}&dimension=${enc(dim)}${hierarchy ? `&hierarchy=${enc(hierarchy)}` : ''}`),      enabled: !!server && !!dim })
+export const useElementsTree  = (server, dim, hierarchy) => useQuery({ queryKey: ['elements-tree', server, dim, hierarchy], queryFn: () => get(`/api/elements/tree?server=${enc(server)}&dimension=${enc(dim)}${hierarchy ? `&hierarchy=${enc(hierarchy)}` : ''}`), enabled: !!server && !!dim, staleTime: 60_000 })
 export const useEdges     = (server, dim, hierarchy) => useQuery({ queryKey: ['edges', server, dim, hierarchy],    queryFn: () => get(`/api/edges?server=${enc(server)}&dimension=${enc(dim)}${hierarchy ? `&hierarchy=${enc(hierarchy)}` : ''}`),    enabled: !!server && !!dim })
 export const useCubes    = (server)     => useQuery({ queryKey: ['cubes', server],     queryFn: () => get(`/api/cubes?server=${enc(server)}`),      enabled: !!server })
 export const useDims     = (server)     => useQuery({ queryKey: ['dims', server],      queryFn: () => get(`/api/dimensions?server=${enc(server)}`),  enabled: !!server })
@@ -58,7 +59,8 @@ export const useDeleteSubset = () => {
       queryClient.invalidateQueries({ queryKey: ['subsets', server, dimension] }),
   })
 }
-export const useProcs    = (server)     => useQuery({ queryKey: ['procs', server],     queryFn: () => get(`/api/processes?server=${enc(server)}`),   enabled: !!server })
+export const useProcs        = (server) => useQuery({ queryKey: ['procs', server],      queryFn: () => get(`/api/processes?server=${enc(server)}`),                enabled: !!server })
+export const useODBCProcs    = (server) => useQuery({ queryKey: ['procs-odbc', server], queryFn: () => get(`/api/processes?server=${enc(server)}&datasource=odbc`), enabled: !!server, staleTime: 30_000 })
 export const useChores          = (server) => useQuery({ queryKey: ['chores', server],          queryFn: () => get(`/api/chores?server=${enc(server)}`),          enabled: !!server })
 export const useChore           = (server, name) => useQuery({ queryKey: ['chore', server, name], queryFn: () => get(`/api/chore?server=${enc(server)}&name=${enc(name)}`), enabled: !!server && !!name })
 export const useControlObjects  = (server) => useQuery({ queryKey: ['control-objects', server], queryFn: () => get(`/api/control/objects?server=${enc(server)}`), enabled: !!server, staleTime: 60_000 })
@@ -338,3 +340,16 @@ export const usePawBookUsage = (server, cube, view) => useQuery({
   enabled:  !!server && !!cube,
   staleTime: 0,
 })
+
+// ── SQL Editor ────────────────────────────────────────────────────────────────
+export const useSQLConnections  = () => useQuery({ queryKey: ['sql-connections'], queryFn: () => get('/api/sql/connections'), staleTime: 0 })
+export const useSaveSQLConn     = () => { const qc = useQueryClient(); return useMutation({ mutationFn: (conn) => post('/api/sql/connections', conn), onSuccess: () => qc.invalidateQueries({ queryKey: ['sql-connections'] }) }) }
+export const useDeleteSQLConn   = () => { const qc = useQueryClient(); return useMutation({ mutationFn: (id)   => del(`/api/sql/connections/${enc(id)}`),  onSuccess: () => qc.invalidateQueries({ queryKey: ['sql-connections'] }) }) }
+export const useTestSQLConn     = () => useMutation({ mutationFn: (conn) => post('/api/sql/test', conn) })
+export const useExecuteSQL      = () => useMutation({ mutationFn: ({ connectionId, sql, params }) => post('/api/sql/execute', { connectionId, sql, params }) })
+export const useSQLSchema       = (id) => useQuery({ queryKey: ['sql-schema', id], queryFn: () => get(`/api/sql/schema/${enc(id)}`), enabled: !!id, staleTime: 60_000 })
+export const usePostToTI            = () => useMutation({ mutationFn: (body) => post('/api/sql/post-to-ti', body) })
+export const usePreviewDatasource   = () => useMutation({ mutationFn: (body) => post('/api/sql/preview-datasource', body) })
+export const useSQLQueries     = (connectionId) => useQuery({ queryKey: ['sql-queries', connectionId], queryFn: () => get(`/api/sql/queries${connectionId ? `?connectionId=${enc(connectionId)}` : ''}`), staleTime: 0 })
+export const useSaveSQLQuery   = () => { const qc = useQueryClient(); return useMutation({ mutationFn: (q) => post('/api/sql/queries', q), onSuccess: (_, v) => qc.invalidateQueries({ queryKey: ['sql-queries', v.connectionId] }) }) }
+export const useDeleteSQLQuery = () => { const qc = useQueryClient(); return useMutation({ mutationFn: ({ id, connectionId }) => del(`/api/sql/queries/${enc(id)}`), onSuccess: (_, v) => qc.invalidateQueries({ queryKey: ['sql-queries', v.connectionId] }) }) }

@@ -4,6 +4,8 @@ import { useStore } from '@/store'
 import { useRules, useSaveRules, useLineage, useLineageConsumers } from '@/hooks/useApi'
 import { registerTM1Completions, registerTM1Theme } from '@/lib/tm1-functions'
 import ProcessEditor from '@/components/ProcessEditor'
+import SQLEditor from '@/components/SQLEditor'
+import HierarchyGridTest from '@/components/HierarchyGridTest'
 import SubsetEditor from '@/components/SubsetEditor'
 import DimensionEditor from '@/components/DimensionEditor'
 import ViewEditor from '@/components/ViewEditor'
@@ -452,6 +454,8 @@ export default function EditorPane({ groupId }) {
         {tab.type === 'chore'      && <ChoreEditor    key={tab.id} tab={tab} />}
         {tab.type === 'guidedmdxsubset' && <GuidedMDXBuilder  key={tab.id} tab={tab} />}
         {tab.type === 'guidedmdxview'   && <GuidedMDXBuilder  key={tab.id} tab={tab} />}
+        {tab.type === 'sql'             && <SQLEditor          key={tab.id} tab={tab} />}
+        {tab.type === 'hierarchytest'   && <HierarchyGridTest  key={tab.id} />}
       </div>
       <div className="flex items-center px-3 py-0.5 bg-muted border-t border-border text-xs text-muted-foreground shrink-0">
         <span>Ln {cursor.line}, Col {cursor.col}</span>

@@ -235,6 +235,10 @@ export const useStore = create((set, get) => ({
     set(s => ({ tabs: s.tabs.map(t => t.id === id ? { ...t, dirty: false } : t) }))
   },
 
+  patchTab: (id, props) => {
+    set(s => ({ tabs: s.tabs.map(t => t.id === id ? { ...t, ...props } : t) }))
+  },
+
   subsetVersions: {},
   bumpSubsetVersion: (server, dim) => set(s => ({
     subsetVersions: { ...s.subsetVersions, [`${server}::${dim}`]: (s.subsetVersions[`${server}::${dim}`] ?? 0) + 1 },

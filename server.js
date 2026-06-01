@@ -7,6 +7,7 @@ const path      = require('path')
 const fs        = require('fs')
 const Anthropic = require('@anthropic-ai/sdk')
 const { TM1Client } = require('./core/tm1_client')
+const { loadConnections, saveConnections, getConnection, executeQuery, testConnection, getSchema, loadQueries, saveQueries } = require('./core/sql_client')
 const { getCachedPawSession, getCSRF, PAW_HOST } = require('./core/paw_connect')
 
 const FORGE_PATH = path.join(__dirname, 'config', 'forge.json')
@@ -83,6 +84,13 @@ app.delete('/api/subset', async (req, res) => {
 app.get('/api/processes', async (req, res) => {
     try {
         const client = new TM1Client(req.query.server)
+        if (req.query.datasource === 'odbc') {
+            const d = await client.get('Processes', { '$select': 'Name,DataSource' })
+            const names = (d.value ?? [])
+                .filter(p => !p.Name.startsWith('}') && p.DataSource?.Type === 'ODBC')
+                .map(p => p.Name)
+            return res.json(names)
+        }
         res.json(await client.getProcesses())
     } catch (e) {
         res.status(500).json({ error: e.message })
@@ -649,6 +657,16 @@ app.get('/api/elements', async (req, res) => {
     }
 })
 
+app.get('/api/elements/tree', async (req, res) => {
+    try {
+        const client = new TM1Client(req.query.server)
+        const result = await client.getElementsWithTree(req.query.dimension, req.query.hierarchy)
+        const sample = result.slice(0, 3)
+        console.log('[elements/tree] count:', result.length, 'sample:', JSON.stringify(sample))
+        res.json(result)
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
 app.get('/api/elements/attributes', async (req, res) => {
     try {
         const client = new TM1Client(req.query.server)
@@ -1018,12 +1036,35 @@ app.get('/api/view/axes', async (req, res) => {
                 ? (ax.Tuples?.[0]?.Members ?? []).map(m => ({ dimension: parseDim(m.UniqueName), member: m.Name }))
                 : [],
         }))
-        // Also return native view axis config with subsets
-        const nativeConfig = viewDef ? {
+        // Build raw native config from view definition
+        const rawNative = viewDef ? {
             rows:    viewDef._rows    ?? (viewDef.Rows ?? []).map(r => ({ dimension: r.DimensionName ?? r.Name, subset: r.SubsetName ?? r.Subset?.Name ?? null })),
             columns: viewDef._columns ?? (viewDef.Columns ?? []).map(c => ({ dimension: c.DimensionName ?? c.Name, subset: c.SubsetName ?? c.Subset?.Name ?? null })),
             titles:  viewDef._titles  ?? (viewDef.Titles ?? []).map(t => ({ dimension: t.DimensionName ?? t.Name, member: t.Selection?.Name ?? null })),
         } : null
+
+        // Rebuild nativeConfig using axisConfig (cellset) for correct axis placement
+        // and rawNative for subset names — fixes TM1 REST API returning wrong axis assignments
+        let nativeConfig = rawNative
+        if (rawNative && axisConfig.length) {
+            const subsetMap = {}
+            for (const d of [...rawNative.rows, ...rawNative.columns, ...rawNative.titles])
+                if (d.dimension) subsetMap[d.dimension] = d.subset ?? null
+
+            const colAxis    = axisConfig.find(a => a.ordinal === 0)
+            const rowAxis    = axisConfig.find(a => a.ordinal === 1)
+            const filterAxis = axisConfig.find(a => a.ordinal === 2)
+
+            nativeConfig = {
+                columns: (colAxis?.dimensions ?? []).map(d => ({ dimension: d, subset: subsetMap[d] ?? null })),
+                rows:    (rowAxis?.dimensions ?? []).map(d => ({ dimension: d, subset: subsetMap[d] ?? null })),
+                titles:  (filterAxis?.selectedMembers ?? rawNative.titles ?? []).map(t => ({
+                    dimension: t.dimension,
+                    member:    t.member ?? rawNative.titles?.find(n => n.dimension === t.dimension)?.member ?? null,
+                })),
+            }
+        }
+
         // For MDX views, return the MDX text so the client can parse it back to axes
         const mdxText = (viewDef && viewDef['@odata.type']?.includes('MDXView')) ? (viewDef.MDX || null) : null
         res.json({ axisConfig, cellset: data, viewType: data.ViewType, nativeConfig, mdx: mdxText })
@@ -1257,6 +1298,162 @@ app.post('/api/forge', (req, res) => {
     try {
         fs.mkdirSync(path.dirname(FORGE_PATH), { recursive: true })
         fs.writeFileSync(FORGE_PATH, JSON.stringify(req.body, null, 2))
+        res.json({ ok: true })
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// ── SQL Editor ───────────────────────────────────────────────────────────────
+
+app.get('/api/sql/connections', (req, res) => {
+    res.json(loadConnections().map(c => ({ ...c, password: c.password ? '••••••••' : '' })))
+})
+
+app.post('/api/sql/connections', (req, res) => {
+    try {
+        const conns = loadConnections()
+        const conn  = { ...req.body, id: req.body.id || `sql-${Date.now()}` }
+        const idx   = conns.findIndex(c => c.id === conn.id)
+        if (idx >= 0) conns[idx] = conn; else conns.push(conn)
+        saveConnections(conns)
+        res.json({ ok: true, id: conn.id })
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.delete('/api/sql/connections/:id', (req, res) => {
+    try {
+        saveConnections(loadConnections().filter(c => c.id !== req.params.id))
+        res.json({ ok: true })
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.post('/api/sql/test', async (req, res) => {
+    try {
+        const conn = req.body.id ? getConnection(req.body.id) : req.body
+        if (!conn) return res.status(404).json({ error: 'Connection not found' })
+        await testConnection(conn)
+        res.json({ ok: true })
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.post('/api/sql/execute', async (req, res) => {
+    try {
+        const conn = req.body.connectionId ? getConnection(req.body.connectionId) : req.body.connection
+        if (!conn) return res.status(404).json({ error: 'Connection not found' })
+        const start  = Date.now()
+        const result = await executeQuery(conn, req.body.sql, req.body.params)
+        res.json({ ...result, duration: Date.now() - start })
+    } catch (e) {
+        console.error('[sql/execute]', e.message)
+        res.status(500).json({ error: e.message })
+    }
+})
+
+app.get('/api/sql/schema/:id', async (req, res) => {
+    try {
+        const conn = getConnection(req.params.id)
+        if (!conn) return res.status(404).json({ error: 'Connection not found' })
+        res.json(await getSchema(conn))
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.post('/api/sql/post-to-ti', async (req, res) => {
+    try {
+        const { connectionId, sql, server, processName, createNew = false } = req.body
+        if (!connectionId || !sql || !server || !processName)
+            return res.status(400).json({ error: 'connectionId, sql, server and processName are required' })
+
+        const conn = getConnection(connectionId)
+        if (!conn) return res.status(404).json({ error: 'Connection not found' })
+        if (!conn.dsn) return res.status(400).json({ error: 'Connection has no TM1 DSN configured' })
+
+        const client = new TM1Client(server)
+
+        // Parse ?pParam? tokens from SQL
+        const tokens = [...new Set([...sql.matchAll(/\?(\w+)\?/g)].map(m => m[1]))]
+
+        // TM1 REST API: all ODBC fields are camelCase inside the DataSource object
+        const odbcProps = {
+            DataSource: {
+                Type:                   'ODBC',
+                dataSourceNameForServer: conn.dsn,
+                dataSourceNameForClient: '',
+                query:                   sql,
+                userName:                '',
+                password:                '',
+                usesUnicode:             true,
+            },
+        }
+
+        if (createNew) {
+            await client.post('Processes', {
+                Name:               processName,
+                PrologProcedure:    '',
+                MetadataProcedure:  '',
+                DataProcedure:      '',
+                EpilogProcedure:    '',
+                HasSecurityAccess:  false,
+                ...odbcProps,
+                Parameters:         tokens.map(t => ({ Name: t, Type: 'String', Value: '', Prompt: '' })),
+                Variables:          [],
+            })
+            return res.json({ ok: true, created: true, dsn: conn.dsn, paramsAdded: tokens })
+        }
+
+        // Existing process — fetch, merge parameters, patch
+        const proc      = await client.getProcess(processName)
+        const existing  = (proc.Parameters ?? []).map(p => p.Name)
+        const newParams = tokens.filter(t => !existing.includes(t))
+            .map(t => ({ Name: t, Type: 'String', Value: '', Prompt: '' }))
+        const parameters = [...(proc.Parameters ?? []), ...newParams]
+
+        await client.patch(`Processes('${processName}')`, {
+            ...odbcProps,
+            Parameters: parameters,
+        })
+
+        res.json({ ok: true, created: createNew, dsn: conn.dsn, paramsAdded: newParams.map(p => p.Name) })
+    } catch (e) {
+        const tm1Msg = e.response?.data?.error?.message
+        console.error('[sql/post-to-ti]', tm1Msg || e.message)
+        res.status(500).json({ error: tm1Msg || e.message })
+    }
+})
+
+app.post('/api/sql/preview-datasource', async (req, res) => {
+    try {
+        const { dsn, query } = req.body
+        if (!dsn || !query) return res.status(400).json({ error: 'dsn and query are required' })
+        const conn = loadConnections().find(c => c.dsn === dsn)
+        if (!conn) return res.status(404).json({ error: `No SQL connection configured for DSN "${dsn}"` })
+        const start  = Date.now()
+        const result = await executeQuery(conn, query)
+        res.json({ ...result, duration: Date.now() - start })
+    } catch (e) {
+        const tm1Msg = e.response?.data?.error?.message
+        console.error('[sql/preview-datasource]', tm1Msg || e.message)
+        res.status(500).json({ error: tm1Msg || e.message })
+    }
+})
+
+app.get('/api/sql/queries', (req, res) => {
+    const all = loadQueries()
+    res.json(req.query.connectionId ? all.filter(q => q.connectionId === req.query.connectionId) : all)
+})
+
+app.post('/api/sql/queries', (req, res) => {
+    try {
+        const queries = loadQueries()
+        const query   = { ...req.body, id: req.body.id || `sqlq-${Date.now()}` }
+        const idx     = queries.findIndex(q => q.id === query.id)
+        if (idx >= 0) queries[idx] = query; else queries.push(query)
+        saveQueries(queries)
+        res.json({ ok: true, id: query.id })
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.delete('/api/sql/queries/:id', (req, res) => {
+    try {
+        saveQueries(loadQueries().filter(q => q.id !== req.params.id))
         res.json({ ok: true })
     } catch (e) { res.status(500).json({ error: e.message }) }
 })

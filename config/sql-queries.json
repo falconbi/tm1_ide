@@ -1,0 +1,20 @@
+[
+  {
+    "name": "TEST Params 1",
+    "sql": "SELECT e.code, e.name, e.currency\nFROM entities e\nWHERE e.region = ?pRegion?\n\n",
+    "connectionId": "sql-1780173360058",
+    "id": "sqlq-1780178688828"
+  },
+  {
+    "name": "TEST Params 2",
+    "sql": "SELECT a.entity_code, a.account_code, a.amount\nFROM actuals a\nWHERE a.period = ?pPeriod?\n  AND a.entity_code = ?pEntity?\n\n\n",
+    "connectionId": "sql-1780173360058",
+    "id": "sqlq-1780178806625"
+  },
+  {
+    "name": "TEST Params 3",
+    "sql": "SELECT ac.type, SUM(a.amount) AS total\nFROM actuals a\nJOIN accounts ac ON a.account_code = ac.code\nWHERE ac.type = ?pAccountType?\nGROUP BY ac.type\nHAVING SUM(a.amount) > ?pMinAmount?\n\n\n\n",
+    "connectionId": "sql-1780173360058",
+    "id": "sqlq-1780178846381"
+  }
+]

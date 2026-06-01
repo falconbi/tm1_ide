@@ -2,67 +2,117 @@
   "server": "24retail",
   "tabs": [
     {
-      "id": "process:24retail:GBL Period.Build Period Dimension",
-      "type": "process",
-      "label": "GBL Period.Build Period Dimension",
+      "id": "guidedmdxview:24retail",
+      "type": "guidedmdxview",
+      "label": "Guided MDX View",
+      "server": "24retail"
+    },
+    {
+      "id": "view:24retail:Allocation Calculation:guided-1780354869762",
+      "type": "view",
+      "label": "Allocation Calculation",
       "server": "24retail",
-      "name": "GBL Period.Build Period Dimension",
-      "content": {
-        "@odata.context": "$metadata#Processes/$entity",
-        "@odata.etag": "W/\"97f15c8e1f0c6f8592c7ee6a58e2f16bae7ec292\"",
-        "Name": "GBL Period.Build Period Dimension",
-        "HasSecurityAccess": false,
-        "PrologProcedure": "# =============================================\r\n# Build Period Dimension — GBL Period\r\n# Parameters: pFirstFY, pLastFY, pFYStartM, pCurrentPeriod\r\n# =============================================\r\n\r\n# ── Input: constant, string working copies ──\r\ncDimension = 'GBL Period';\r\nsCurrentPeriod = pCurrentPeriod;\r\nsMsg = '';\r\n  \r\n# ── Validate parameters ──\r\nnFirstFY = NUMBR(TRIM(pFirstFY));\r\nIF(nFirstFY < 1900 % nFirstFY > 2200);\r\n  sMsg = 'pFirstFY invalid: ' | pFirstFY | ' — expected a 4-digit fiscal year number';\r\n  AttrPutS(ATTRS('}Processes', GetProcessName(), '__RUN_LOG') | sMsg | CHAR(10), '}Processes', GetProcessName(), '__RUN_LOG');\r\n  ProcessError;\r\nENDIF;\r\n\r\nnLastFY = NUMBR(TRIM(pLastFY));\r\nIF(nLastFY < nFirstFY);\r\n  sMsg = 'pLastFY invalid: ' | pLastFY | ' — must be >= pFirstFY (' | pFirstFY | ')';\r\n  AttrPutS(ATTRS('}Processes', GetProcessName(), '__RUN_LOG') | sMsg | CHAR(10), '}Processes', GetProcessName(), '__RUN_LOG');\r\n  ProcessError;\r\nENDIF;\r\n\r\nnFYStartM = NUMBR(TRIM(pFYStartM));\r\nIF(nFYStartM < 1 % nFYStartM > 12);\r\n  sMsg = 'pFYStartM invalid: ' | pFYStartM | ' — must be 1-12';\r\n  AttrPutS(ATTRS('}Processes', GetProcessName(), '__RUN_LOG') | sMsg | CHAR(10), '}Processes', GetProcessName(), '__RUN_LOG');\r\n  ProcessError;\r\nENDIF;\r\n\r\nIF(sCurrentPeriod @= '');\r\n  sMsg = 'pCurrentPeriod is required — format YYYY-MM e.g. 2027-05';\r\n  AttrPutS(ATTRS('}Processes', GetProcessName(), '__RUN_LOG') | sMsg | CHAR(10), '}Processes', GetProcessName(), '__RUN_LOG');\r\n  ProcessError;\r\nENDIF;\r\nIF(LONG(sCurrentPeriod) <> 7 % SUBST(sCurrentPeriod, 5, 1) @<> '-');\r\n  sMsg = 'pCurrentPeriod invalid format: ' | sCurrentPeriod | ' — expected YYYY-MM e.g. 2027-05';\r\n  AttrPutS(ATTRS('}Processes', GetProcessName(), '__RUN_LOG') | sMsg | CHAR(10), '}Processes', GetProcessName(), '__RUN_LOG');\r\n  ProcessError;\r\nENDIF;\r\nnCPYear  = NUMBR(SUBST(sCurrentPeriod, 1, 4));\r\nnCPMonth = NUMBR(SUBST(sCurrentPeriod, 6, 2));\r\nIF(nCPYear < nFirstFY % nCPYear > nLastFY % nCPMonth < 1 % nCPMonth > 12);\r\n  sMsg = 'pCurrentPeriod out of range: ' | sCurrentPeriod | ' — year must be ' | NumberToString(nFirstFY) | '-' | NumberToString(nLastFY) | ', month 1-12';\r\n  AttrPutS(ATTRS('}Processes', GetProcessName(), '__RUN_LOG') | sMsg | CHAR(10), '}Processes', GetProcessName(), '__RUN_LOG');\r\n  ProcessError;\r\nENDIF;\r\n\r\n# 1. Create Dimension\r\n# ─────────────────────────────────────────────\r\n# Create the dimension if it does not already exist\r\nIF(DIMIX('}Dimensions', cDimension) = 0);\r\n    DimensionCreate(cDimension);\r\nENDIF;\r\n\r\n# 2. Create Attributes\r\n# ─────────────────────────────────────────────\r\n# Create element attributes (N = numeric, S = string, A = alias)\r\nsAttrDim = '}ElementAttributes_' | cDimension;\r\nIF(DIMIX(sAttrDim, 'Period Start Serial') = 0); AttrInsert(cDimension, '', 'Period Start Serial', 'N'); ENDIF;\r\nIF(DIMIX(sAttrDim, 'Period End Serial') = 0); AttrInsert(cDimension, '', 'Period End Serial', 'N'); ENDIF;\r\nIF(DIMIX(sAttrDim, 'Calendar Year') = 0); AttrInsert(cDimension, '', 'Calendar Year', 'N'); ENDIF;\r\nIF(DIMIX(sAttrDim, 'Calendar Month') = 0); AttrInsert(cDimension, '', 'Calendar Month', 'N'); ENDIF;\r\nIF(DIMIX(sAttrDim, 'Days in Period') = 0); AttrInsert(cDimension, '', 'Days in Period', 'N'); ENDIF;\r\nIF(DIMIX(sAttrDim, 'Fin Year') = 0); AttrInsert(cDimension, '', 'Fin Year', 'S'); ENDIF;\r\nIF(DIMIX(sAttrDim, 'First Period') = 0); AttrInsert(cDimension, '', 'First Period', 'S'); ENDIF;\r\nIF(DIMIX(sAttrDim, 'Last Period') = 0); AttrInsert(cDimension, '', 'Last Period', 'S'); ENDIF;\r\nIF(DIMIX(sAttrDim, 'Previous Period') = 0); AttrInsert(cDimension, '', 'Previous Period', 'S'); ENDIF;\r\nIF(DIMIX(sAttrDim, 'Next Period') = 0); AttrInsert(cDimension, '', 'Next Period', 'S'); ENDIF;\r\nIF(DIMIX(sAttrDim, 'Caption') = 0); AttrInsert(cDimension, '', 'Caption', 'A'); ENDIF;\r\nIF(DIMIX(sAttrDim, 'Long Name') = 0); AttrInsert(cDimension, '', 'Long Name', 'S'); ENDIF;\r\nIF(DIMIX(sAttrDim, 'Is Current Period') = 0); AttrInsert(cDimension, '', 'Is Current Period', 'S'); ENDIF;\r\nIF(DIMIX(sAttrDim, 'YTD') = 0); AttrInsert(cDimension, '', 'YTD', 'S'); ENDIF;\r\nIF(DIMIX(sAttrDim, 'YTG') = 0); AttrInsert(cDimension, '', 'YTG', 'S'); ENDIF;\r\nIF(DIMIX(sAttrDim, 'LTD') = 0); AttrInsert(cDimension, '', 'LTD', 'S'); ENDIF;\r\nIF(DIMIX(sAttrDim, 'Period Type') = 0); AttrInsert(cDimension, '', 'Period Type', 'S'); ENDIF;\r\n\r\n# Date Formatter\r\nnFmt = NewDateFormatter('yyyyMMdd');\r\n\r\n# =============================================\r\n# 3. BUILD STRUCTURE\r\n# =============================================\r\n# Loops through each FY year\r\n# For each FY: creates consolidation, OBL, 12 months\r\n# Then builds YTD/YTG/LTD consolidations with correct child ranges\r\n# ═══════════════════════════════════════════════════════════\r\nnFY = nFirstFY;\r\n\r\nWHILE(nFY <= nLastFY);\r\n\r\n    IF(nFYStartM = 1);\r\n        nFisStartY = nFY; nFisStartM = 1; nFisEndY = nFY; nFisEndM = 12;\r\n    ELSE;\r\n        nFisStartY = nFY - 1; nFisStartM = nFYStartM; nFisEndY = nFY; nFisEndM = nFYStartM - 1;\r\n    ENDIF;\r\n\r\n    # ─────────────────────────────────────────────\r\n    # Create FY consolidation (e.g. FY2025)\r\n    # ─────────────────────────────────────────────\r\n    sFY = 'FY' | NumberToString(nFY);\r\n\r\n    IF(DIMIX(cDimension, sFY) = 0);\r\n        DimensionElementInsert(cDimension, '', sFY, 'C');\r\n    ENDIF;\r\n\r\n    # ─────────────────────────────────────────────\r\n    # Create OBL leaf (e.g. 2025 OBL)\r\n    # ─────────────────────────────────────────────\r\n    sOBL = NumberToString(nFY) | ' OBL';\r\n    IF(DIMIX(cDimension, sOBL) = 0);\r\n        DimensionElementInsert(cDimension, '', sOBL, 'N');\r\n    ENDIF;\r\n\r\n    # ─────────────────────────────────────────────\r\n    # Create 12 months and link to FY\r\n    # ─────────────────────────────────────────────\r\n    nFisY = nFisStartY;\r\n    nFisM = nFisStartM;\r\n    nMonthCount = 0;\r\n\r\n    WHILE(nMonthCount < 12);\r\n        sMonth = NumberToString(nFisY) | '-' | IF(nFisM < 10, '0' | NumberToString(nFisM), NumberToString(nFisM));\r\n        IF(DIMIX(cDimension, sMonth) = 0);\r\n            DimensionElementInsert(cDimension, '', sMonth, 'N');\r\n        ENDIF;\r\n        DimensionElementComponentAdd(cDimension, sFY, sMonth, 1);\r\n        nFisM = nFisM + 1;\r\n        IF(nFisM > 12); nFisM = 1; nFisY = nFisY + 1; ENDIF;\r\n        nMonthCount = nMonthCount + 1;\r\n    END;\r\n\r\n    # ─────────────────────────────────────────────\r\n    # Build YTD / YTG / LTD per-month consolidations\r\n    # YTD = months from FY start through current; YTG = remaining months\r\n    # LTD = OBL + YTD\r\n    # ─────────────────────────────────────────────\r\n    nPos = 0;\r\n    nCalY = nFisStartY;\r\n    nCalM = nFisStartM;\r\n\r\n    WHILE(nPos < 12);\r\n        sYM = NumberToString(nCalY) | '-' | IF(nCalM < 10, '0' | NumberToString(nCalM), NumberToString(nCalM));\r\n        nFisP = MOD(nCalM - nFYStartM + 12, 12) + 1;\r\n        sYTDName = 'YTD FY' | NumberToString(nFY) | ' P' | IF(nFisP < 10, '0' | NumberToString(nFisP), NumberToString(nFisP));\r\n        sYTGName = 'YTG FY' | NumberToString(nFY) | ' P' | IF(nFisP < 10, '0' | NumberToString(nFisP), NumberToString(nFisP));\r\n        sLTDName = 'LTD FY' | NumberToString(nFY) | ' P' | IF(nFisP < 10, '0' | NumberToString(nFisP), NumberToString(nFisP));\r\n\r\n        DimensionElementInsert(cDimension, '', sYTDName, 'C');\r\n        DimensionElementInsert(cDimension, '', sYTGName, 'C');\r\n        DimensionElementInsert(cDimension, '', sLTDName, 'C');\r\n\r\n        # Walk all 12 months and classify as YTD / YTG\r\n        nInner = 0;\r\n        nIY = nFisStartY;\r\n        nIM = nFisStartM;\r\n        WHILE(nInner < 12);\r\n            sIM = NumberToString(nIY) | '-' | IF(nIM < 10, '0' | NumberToString(nIM), NumberToString(nIM));\r\n            IF(nInner <= nPos);\r\n                DimensionElementComponentAdd(cDimension, sYTDName, sIM, 1);\r\n            ENDIF;\r\n            IF(nInner > nPos);\r\n                DimensionElementComponentAdd(cDimension, sYTGName, sIM, 1);\r\n            ENDIF;\r\n            nIM = nIM + 1;\r\n            IF(nIM > 12); nIM = 1; nIY = nIY + 1; ENDIF;\r\n            nInner = nInner + 1;\r\n        END;\r\n\r\n        DimensionElementComponentAdd(cDimension, sLTDName, sOBL, 1);\r\n        DimensionElementComponentAdd(cDimension, sLTDName, sYTDName, 1);\r\n\r\n        nCalM = nCalM + 1;\r\n        IF(nCalM > 12); nCalM = 1; nCalY = nCalY + 1; ENDIF;\r\n        nPos = nPos + 1;\r\n    END;\r\n\r\n    nFY = nFY + 1;\r\nEND;\r\n\r\n# =============================================\r\n# Top-Level Consolidations\r\n# Populates All Periods, All FY, All YTD, All YTG, All LTD, All OBL\r\n# =============================================\r\nIF(DIMIX(cDimension, 'All Periods') = 0); DimensionElementInsert(cDimension, '', 'All Periods', 'C'); ENDIF;\r\nIF(DIMIX(cDimension, 'All FY') = 0);  DimensionElementInsert(cDimension, '', 'All FY', 'C'); ENDIF;\r\nIF(DIMIX(cDimension, 'All YTD') = 0); DimensionElementInsert(cDimension, '', 'All YTD', 'C'); ENDIF;\r\nIF(DIMIX(cDimension, 'All YTG') = 0); DimensionElementInsert(cDimension, '', 'All YTG', 'C'); ENDIF;\r\nIF(DIMIX(cDimension, 'All LTD') = 0); DimensionElementInsert(cDimension, '', 'All LTD', 'C'); ENDIF;\r\nIF(DIMIX(cDimension, 'All OBL') = 0); DimensionElementInsert(cDimension, '', 'All OBL', 'C'); ENDIF;\r\nIF(DIMIX(cDimension, 'Rolling 12') = 0); DimensionElementInsert(cDimension, '', 'Rolling 12', 'C'); ENDIF;\r\nIF(DIMIX(cDimension, 'Rolling 6') = 0); DimensionElementInsert(cDimension, '', 'Rolling 6', 'C'); ENDIF;\r\nIF(DIMIX(cDimension, 'Rolling 3') = 0); DimensionElementInsert(cDimension, '', 'Rolling 3', 'C'); ENDIF;\r\n\r\nnFY = nFirstFY;\r\nWHILE(nFY <= nLastFY);\r\n    IF(nFYStartM = 1);\r\n        nFisStartY = nFY; nFisStartM = 1;\r\n    ELSE;\r\n        nFisStartY = nFY - 1; nFisStartM = nFYStartM;\r\n    ENDIF;\r\n    sFY = 'FY' | NumberToString(nFY);\r\n    sOBL = NumberToString(nFY) | ' OBL';\r\n\r\n    IF(DIMIX(cDimension, sFY) > 0);\r\n        DimensionElementComponentAdd(cDimension, 'All FY', sFY, 1);\r\n    ENDIF;\r\n    IF(DIMIX(cDimension, sOBL) > 0);\r\n        DimensionElementComponentAdd(cDimension, 'All OBL', sOBL, 1);\r\n    ENDIF;\r\n\r\n    nCY = nFisStartY; nCM = nFisStartM; nCount = 0;\r\n    WHILE(nCount < 12);\r\n        sM = NumberToString(nCY) | '-' | IF(nCM < 10, '0' | NumberToString(nCM), NumberToString(nCM));\r\n        nFisP = MOD(nCM - nFYStartM + 12, 12) + 1;\r\n        DimensionElementComponentAdd(cDimension, 'All Periods', sM, 1);\r\n        sYTDName = 'YTD FY' | NumberToString(nFY) | ' P' | IF(nFisP < 10, '0' | NumberToString(nFisP), NumberToString(nFisP));\r\n        sYTGName = 'YTG FY' | NumberToString(nFY) | ' P' | IF(nFisP < 10, '0' | NumberToString(nFisP), NumberToString(nFisP));\r\n        sLTDName = 'LTD FY' | NumberToString(nFY) | ' P' | IF(nFisP < 10, '0' | NumberToString(nFisP), NumberToString(nFisP));\r\n        IF(DIMIX(cDimension, sYTDName) > 0); DimensionElementComponentAdd(cDimension, 'All YTD', sYTDName, 1); ENDIF;\r\n        IF(DIMIX(cDimension, sYTGName) > 0); DimensionElementComponentAdd(cDimension, 'All YTG', sYTGName, 1); ENDIF;\r\n        IF(DIMIX(cDimension, sLTDName) > 0); DimensionElementComponentAdd(cDimension, 'All LTD', sLTDName, 1); ENDIF;\r\n        nCM = nCM + 1; IF(nCM > 12); nCM = 1; nCY = nCY + 1; ENDIF;\r\n        nCount = nCount + 1;\r\n    END;\r\n\r\n    nFY = nFY + 1;\r\nEND;",
-        "MetadataProcedure": "",
-        "DataProcedure": "",
-        "EpilogProcedure": "# =============================================\r\n# 4. WRITE ATTRIBUTES\r\n# =============================================\r\nnFY = nFirstFY;\r\n\r\nWHILE(nFY <= nLastFY);\r\n\r\n    IF(nFYStartM = 1);\r\n        nFisStartY = nFY; nFisStartM = 1; nFisEndY = nFY; nFisEndM = 12;\r\n    ELSE;\r\n        nFisStartY = nFY - 1; nFisStartM = nFYStartM; nFisEndY = nFY; nFisEndM = nFYStartM - 1;\r\n    ENDIF;\r\n\r\n    sFY = 'FY' | NumberToString(nFY);\r\n    sOBL = NumberToString(nFY) | ' OBL';\r\n\r\n    IF(DIMIX(cDimension, sOBL) > 0);\r\n        ElementAttrPutS(sFY, cDimension, '', sOBL, 'Fin Year');\r\n        ElementAttrPutS('OBL', cDimension, '', sOBL, 'Period Type');\r\n        ElementAttrPutS(sOBL, cDimension, '', sOBL, 'Caption');\r\n        ElementAttrPutS('Opening Balance ' | NumberToString(nFY), cDimension, '', sOBL, 'Long Name');\r\n    ENDIF;\r\n\r\n    nFisY = nFisStartY;\r\n    nFisM = nFisStartM;\r\n    nMonthCount = 0;\r\n\r\n    WHILE(nMonthCount < 12);\r\n       \r\n        sMonth = NumberToString(nFisY) | '-' | IF(nFisM < 10, '0' | NumberToString(nFisM), NumberToString(nFisM));\r\n\r\n        IF(DIMIX(cDimension, sMonth) > 0);\r\n            nYear = nFisY;\r\n            nMonth = nFisM;\r\n\r\n            IF(nMonth = 2);\r\n                nDays = 28;\r\n            ELSEIF(nMonth = 4 % nMonth = 6 % nMonth = 9 % nMonth = 11);\r\n                nDays = 30;\r\n            ELSE;\r\n                nDays = 31;\r\n            ENDIF;\r\n\r\n            IF(nFisM = 1);\r\n                nPrevY = nFisY - 1; nPrevM = 12;\r\n            ELSE;\r\n                nPrevY = nFisY; nPrevM = nFisM - 1;\r\n            ENDIF;\r\n\r\n            IF(nFisM = 12);\r\n                nNextY = nFisY + 1; nNextM = 1;\r\n            ELSE;\r\n                nNextY = nFisY; nNextM = nFisM + 1;\r\n            ENDIF;\r\n\r\n            sPrev   = NumberToString(nPrevY) | '-' | IF(nPrevM < 10, '0' | NumberToString(nPrevM), NumberToString(nPrevM));\r\n            sNext   = NumberToString(nNextY) | '-' | IF(nNextM < 10, '0' | NumberToString(nNextM), NumberToString(nNextM));\r\n            sFirstM = NumberToString(nFisStartY) | '-' | IF(nFisStartM < 10, '0' | NumberToString(nFisStartM), NumberToString(nFisStartM));\r\n            sLastM  = NumberToString(nFisEndY) | '-' | IF(nFisEndM < 10, '0' | NumberToString(nFisEndM), NumberToString(nFisEndM));\r\n\r\n            nFisP = MOD(nFisM - nFYStartM + 12, 12) + 1;\r\n            sYTD = 'YTD FY' | NumberToString(nFY) | ' P' | IF(nFisP < 10, '0' | NumberToString(nFisP), NumberToString(nFisP));\r\n            sYTG = 'YTG FY' | NumberToString(nFY) | ' P' | IF(nFisP < 10, '0' | NumberToString(nFisP), NumberToString(nFisP));\r\n            sLTD = 'LTD FY' | NumberToString(nFY) | ' P' | IF(nFisP < 10, '0' | NumberToString(nFisP), NumberToString(nFisP));\r\n\r\n            sStartStr = NumberToString(nYear) | IF(nMonth < 10, '0', '') | NumberToString(nMonth) | '01';\r\n            sEndStr   = NumberToString(nYear) | IF(nMonth < 10, '0', '') | NumberToString(nMonth) | IF(nDays < 10, '0', '') | NumberToString(nDays);\r\n            nStartSerial = ParseDate(sStartStr, 'yyyyMMdd', nFmt) + 21916;\r\n            nEndSerial   = ParseDate(sEndStr,   'yyyyMMdd', nFmt) + 21916;\r\n\r\n            sCaption  = IF(nFisM=1,'Jan',IF(nFisM=2,'Feb',IF(nFisM=3,'Mar',IF(nFisM=4,'Apr',IF(nFisM=5,'May',IF(nFisM=6,'Jun',IF(nFisM=7,'Jul',IF(nFisM=8,'Aug',IF(nFisM=9,'Sep',IF(nFisM=10,'Oct',IF(nFisM=11,'Nov','Dec'))))))))))) | ' ' | SUBST(NumberToString(nYear), 3, 2);\r\n            ElementAttrPutS(sCaption, cDimension, '', sMonth, 'Caption');\r\n            ElementAttrPutS(sMonth, cDimension, '', sMonth, 'Long Name');\r\n            ElementAttrPutS('Month', cDimension, '', sMonth, 'Period Type');\r\n            IF(sMonth @= sCurrentPeriod);\r\n                ElementAttrPutS('Y', cDimension, '', sMonth, 'Is Current Period');\r\n            ELSE;\r\n                ElementAttrPutS('', cDimension, '', sMonth, 'Is Current Period');\r\n            ENDIF;\r\n            ElementAttrPutN(nStartSerial, cDimension, '', sMonth, 'Period Start Serial');\r\n            ElementAttrPutN(nEndSerial,   cDimension, '', sMonth, 'Period End Serial');\r\n            ElementAttrPutN(nYear,        cDimension, '', sMonth, 'Calendar Year');\r\n            ElementAttrPutN(nMonth,       cDimension, '', sMonth, 'Calendar Month');\r\n            ElementAttrPutN(nDays,        cDimension, '', sMonth, 'Days in Period');\r\n            ElementAttrPutS(sFY,      cDimension, '', sMonth, 'Fin Year');\r\n            ElementAttrPutS(sFirstM,  cDimension, '', sMonth, 'First Period');\r\n            ElementAttrPutS(sLastM,   cDimension, '', sMonth, 'Last Period');\r\n            ElementAttrPutS(sPrev,    cDimension, '', sMonth, 'Previous Period');\r\n            ElementAttrPutS(sNext,    cDimension, '', sMonth, 'Next Period');\r\n            ElementAttrPutS(sYTD,     cDimension, '', sMonth, 'YTD');\r\n            ElementAttrPutS(sYTG,     cDimension, '', sMonth, 'YTG');\r\n            ElementAttrPutS(sLTD,     cDimension, '', sMonth, 'LTD');\r\n        ENDIF;\r\n\r\n        nFisM = nFisM + 1;\r\n        IF(nFisM > 12);\r\n            nFisM = 1;\r\n            nFisY = nFisY + 1;\r\n        ENDIF;\r\n       \r\n        nMonthCount = nMonthCount + 1;\r\n    END;\r\n\r\n    nFY = nFY + 1;\r\nEND;\r\n\r\n# Consolidation Captions\r\nnFY = nFirstFY;\r\nWHILE(nFY <= nLastFY);\r\n    IF(nFYStartM = 1);\r\n        nFisStartY = nFY; nFisStartM = 1;\r\n    ELSE;\r\n        nFisStartY = nFY - 1; nFisStartM = nFYStartM;\r\n    ENDIF;\r\n    nCY = nFisStartY;\r\n    nCM = nFisStartM;\r\n    nCount = 0;\r\n    WHILE(nCount < 12);\r\n        nFisP = MOD(nCM - nFYStartM + 12, 12) + 1;\r\n        sYTDName = 'YTD FY' | NumberToString(nFY) | ' P' | IF(nFisP < 10, '0' | NumberToString(nFisP), NumberToString(nFisP));\r\n        sYTGName = 'YTG FY' | NumberToString(nFY) | ' P' | IF(nFisP < 10, '0' | NumberToString(nFisP), NumberToString(nFisP));\r\n        sLTDName = 'LTD FY' | NumberToString(nFY) | ' P' | IF(nFisP < 10, '0' | NumberToString(nFisP), NumberToString(nFisP));\r\n        sCap = NumberToString(nCY) | '-' | IF(nCM < 10, '0' | NumberToString(nCM), NumberToString(nCM));\r\n        ElementAttrPutS('YTD ' | sCap, cDimension, '', sYTDName, 'Caption');\r\n        ElementAttrPutS('YTG ' | sCap, cDimension, '', sYTGName, 'Caption');\r\n        ElementAttrPutS('LTD ' | sCap, cDimension, '', sLTDName, 'Caption');\r\n        nCM = nCM + 1; IF(nCM > 12); nCM = 1; nCY = nCY + 1; ENDIF;\r\n        nCount = nCount + 1;\r\n    END;\r\n    nFY = nFY + 1;\r\nEND;\r\n\r\n# =============================================\r\n# 5. POPULATE ROLLING CONSOLIDATIONS (using Next Period chain)\r\n# =============================================\r\nIF(sCurrentPeriod @<> '');\r\n    IF(DIMIX(cDimension, 'Rolling 3') > 0);\r\n        sM = sCurrentPeriod;\r\n        nDone = 0;\r\n        WHILE(nDone < 3 & DIMIX(cDimension, sM) > 0);\r\n            DimensionElementComponentAddDirect(cDimension, 'Rolling 3', sM, 1);\r\n            sM = ATTRS(cDimension, sM, 'Next Period');\r\n            nDone = nDone + 1;\r\n        END;\r\n    ENDIF;\r\n    IF(DIMIX(cDimension, 'Rolling 6') > 0);\r\n        sM = sCurrentPeriod;\r\n        nDone = 0;\r\n        WHILE(nDone < 6 & DIMIX(cDimension, sM) > 0);\r\n            DimensionElementComponentAddDirect(cDimension, 'Rolling 6', sM, 1);\r\n            sM = ATTRS(cDimension, sM, 'Next Period');\r\n            nDone = nDone + 1;\r\n        END;\r\n    ENDIF;\r\n    IF(DIMIX(cDimension, 'Rolling 12') > 0);\r\n        sM = sCurrentPeriod;\r\n        nDone = 0;\r\n        WHILE(nDone < 12 & DIMIX(cDimension, sM) > 0);\r\n            DimensionElementComponentAddDirect(cDimension, 'Rolling 12', sM, 1);\r\n            sM = ATTRS(cDimension, sM, 'Next Period');\r\n            nDone = nDone + 1;\r\n        END;\r\n    ENDIF;\r\nENDIF;",
-        "DataSource": {
-          "Type": "None"
-        },
-        "Parameters": [
+      "cube": "Allocation Calculation",
+      "initialMdx": "SELECT\n  NON EMPTY\n    {[Allocation Calculation].[Allocation Calculation].[Allocation Amount], [Allocation Calculation].[Allocation Calculation].[Total Driver]} ON COLUMNS,\n  NON EMPTY\n    {TM1SUBSETALL([organization].[organization])} *\n        {TM1SUBSETALL([Allocation List].[Allocation List])} ON ROWS\nFROM [Allocation Calculation]\nWHERE ([Year].[Year].[Y1], [Month].[Month].[Mar], [Version].[Version].[Version 1])",
+      "initialAxes": {
+        "rows": [
           {
-            "Name": "pFirstFY",
-            "Prompt": "First Fiscal Year (e.g. 2025)",
-            "Value": "2025",
-            "Type": "String"
+            "dimension": "organization",
+            "subset": null,
+            "member": null,
+            "members": null,
+            "memberSet": null
           },
           {
-            "Name": "pLastFY",
-            "Prompt": "Last Fiscal Year (e.g. 2035)",
-            "Value": "2030",
-            "Type": "String"
-          },
-          {
-            "Name": "pFYStartM",
-            "Prompt": "FY start month (1-12)",
-            "Value": "4",
-            "Type": "String"
-          },
-          {
-            "Name": "pCurrentPeriod",
-            "Prompt": "REQUIRED — Current period e.g. 2027-05",
-            "Value": "",
-            "Type": "String"
+            "dimension": "Allocation List",
+            "subset": null,
+            "member": null,
+            "members": null,
+            "memberSet": null
           }
         ],
-        "Variables": [],
-        "Attributes": {
-          "Caption": "GBL Period.Build Period Dimension"
-        }
-      },
-      "dirty": true,
-      "scrollToLine": null,
-      "scrollToSection": null
+        "columns": [
+          {
+            "dimension": "Allocation Calculation",
+            "subset": null,
+            "member": null,
+            "members": null,
+            "memberSet": null
+          }
+        ],
+        "pages": [
+          {
+            "dimension": "Year",
+            "subset": null,
+            "member": null,
+            "members": null,
+            "memberSet": null
+          },
+          {
+            "dimension": "Month",
+            "subset": null,
+            "member": null,
+            "members": null,
+            "memberSet": null
+          },
+          {
+            "dimension": "Version",
+            "subset": null,
+            "member": null,
+            "members": null,
+            "memberSet": null
+          }
+        ]
+      }
+    },
+    {
+      "id": "guidedmdxview:24retail:Allocation Calculation:1780355050872",
+      "type": "guidedmdxview",
+      "label": "Builder — Allocation Calculation",
+      "server": "24retail",
+      "cube": "Allocation Calculation",
+      "initialState": {
+        "selectedCube": "Allocation Calculation",
+        "dimConfig": {
+          "organization": {
+            "axis": "rows",
+            "subsetExpression": ""
+          },
+          "Allocation List": {
+            "axis": "rows",
+            "subsetExpression": ""
+          },
+          "Allocation Calculation": {
+            "axis": "columns",
+            "subsetExpression": ""
+          },
+          "Year": {
+            "axis": "filter",
+            "subsetExpression": ""
+          },
+          "Month": {
+            "axis": "filter",
+            "subsetExpression": ""
+          },
+          "Version": {
+            "axis": "filter",
+            "subsetExpression": ""
+          }
+        },
+        "step": 1
+      }
     }
   ],
-  "activeTab": "process:24retail:GBL Period.Build Period Dimension",
+  "activeTab": "guidedmdxview:24retail:Allocation Calculation:1780355050872",
   "groups": [
     {
       "id": "g1",
       "tabIds": [
-        "process:24retail:GBL Period.Build Period Dimension"
+        "guidedmdxview:24retail",
+        "view:24retail:Allocation Calculation:guided-1780354869762",
+        "guidedmdxview:24retail:Allocation Calculation:1780355050872"
       ],
-      "activeTabId": "process:24retail:GBL Period.Build Period Dimension"
+      "activeTabId": "guidedmdxview:24retail:Allocation Calculation:1780355050872"
     }
   ],
   "activeGroupId": "g1"

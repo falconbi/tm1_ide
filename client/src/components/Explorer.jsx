@@ -906,7 +906,7 @@ export default function Explorer() {
   const openView = (cube, view) => openTab({
     id:       `cubeview:${server}:${cube}:${view}`,
     type:     'cubeview',
-    label:    `⊞ ${cube} / ${view}`,
+    label:    view,
     server,
     cube,
     viewName: view,

@@ -1,0 +1,30 @@
+[
+  {
+    "name": "Test SQLite",
+    "driver": "sqlite",
+    "server": "",
+    "port": "",
+    "database": "",
+    "auth": "sql",
+    "username": "",
+    "password": "",
+    "encrypt": false,
+    "file": "/tmp/tm1_test.db",
+    "dsn": "TM1_SQLite_Test",
+    "id": "sql-1780173360058"
+  },
+  {
+    "name": "",
+    "driver": "mssql",
+    "server": "",
+    "port": "",
+    "database": "",
+    "auth": "sql",
+    "username": "",
+    "password": "",
+    "encrypt": false,
+    "file": "",
+    "dsn": "TM1_SQLite_Test",
+    "id": "sql-1780194055441"
+  }
+]

@@ -75,12 +75,31 @@ class TM1Client {
     }
 
     async getElements(dim, hierarchy = dim) {
-        const TYPE = { Numeric: 'N', Consolidated: 'C', String: 'S', N: 'N', C: 'C', S: 'S' }
+        const TYPE = { Numeric: 'N', Consolidated: 'C', String: 'S', N: 'N', C: 'C', S: 'S', 1: 'N', 2: 'S', 3: 'C' }
         const d = await this.get(
             `Dimensions('${dim}')/Hierarchies('${hierarchy}')/Elements`,
             { '$select': 'Name,Type,Level' }
         )
         return (d.value ?? []).map(e => ({ ...e, Type: TYPE[e.Type] ?? e.Type }))
+    }
+
+    async getElementsWithTree(dim, hierarchy = dim) {
+        const TYPE = { Numeric: 'N', Consolidated: 'C', String: 'S', N: 'N', C: 'C', S: 'S', 1: 'N', 2: 'S', 3: 'C' }
+        try {
+            const d = await this.get(
+                `Dimensions('${dim}')/Hierarchies('${hierarchy}')/Elements`,
+                { '$select': 'Name,Type,Level', '$expand': 'Components($select=Name)' }
+            )
+            return (d.value ?? []).map(e => ({
+                Name:       e.Name,
+                Type:       TYPE[e.Type] ?? e.Type,
+                Level:      e.Level ?? 0,
+                Components: (e.Components ?? []).map(c => c.Name),
+            }))
+        } catch {
+            // $expand=Components not supported — return flat list
+            return this.getElements(dim, hierarchy)
+        }
     }
 
     async getElementsWithAttributes(dim, hierarchy = dim) {
@@ -559,7 +578,7 @@ return (d.value ?? [])
         try {
             const d = await this.get(
                 `Cubes('${cube}')/Views`,
-                { '$select': 'Name,Rows,Columns,Titles,FormatString,SuppressEmptyColumns,SuppressEmptyRows', '$expand': 'Rows,Columns,Titles' }
+                { '$expand': 'Rows,Columns,Titles' }
             )
             const view = (d.value ?? []).find(v => v.Name === name)
             if (view) {

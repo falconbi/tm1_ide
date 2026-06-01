@@ -1,8 +1,26 @@
 import { useStore } from '@/store'
-import { X, Box, Cog, XSquare, ChevronDown, ChevronUp, Table2, FileCode2, Layers, Columns2, PanelRightClose } from 'lucide-react'
+import { X, Box, Cog, XSquare, ChevronDown, ChevronUp, Table2, FileCode2, Layers, Columns2, PanelRightClose, Database, Clock, Braces, Code2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
-const TYPE_ICON = { rules: FileCode2, process: Cog, cubeview: Table2, subset: Layers, dimension: Layers }
+const TYPE_ICON = {
+  rules:           FileCode2,
+  process:         Cog,
+  cubeview:        Table2,
+  view:            Table2,
+  subset:          Layers,
+  dimension:       Layers,
+  chore:           Clock,
+  sql:             Database,
+  guidedmdxsubset: Braces,
+  guidedmdxview:   Braces,
+}
+
+const getTabIcon = (tab) => {
+  if ((tab.type === 'cubeview' || tab.type === 'view') && tab.viewType) {
+    return tab.viewType.includes('MDXView') ? Code2 : Table2
+  }
+  return TYPE_ICON[tab.type] ?? Box
+}
 
 export default function TabBar({ groupId }) {
   const { tabs, groups, activeGroupId, setActiveTab, closeTab, closeAllTabs, closeGroup, splitGroup, tabsVisible, toggleTabs } = useStore()
@@ -57,7 +75,7 @@ export default function TabBar({ groupId }) {
       </button>
       <div className="flex items-center overflow-x-auto scrollbar-none flex-1 min-w-0">
         {groupTabs.map(tab => {
-          const Icon = TYPE_ICON[tab.type] ?? Box
+          const Icon = getTabIcon(tab)
           const active = tab.id === activeTabId
           return (
             <div
