@@ -665,8 +665,13 @@ export default function ViewEditor({ tab }) {
         const whereMatch = mdxText.match(/WHERE\s*\(([\s\S]*?)\)\s*$/i)
         if (whereMatch) {
             for (const s of whereMatch[1].split(',')) {
-                const m = s.trim().match(/\[([^\]]+)\]\.[^\]]*\]\.\[([^\]]+)\]/)
-                if (m) pages.push(make(m[1], null, m[2]))
+                const trimmed = s.trim()
+                // [Dim].[Hier].[Member] — specific member
+                const m = trimmed.match(/\[([^\]]+)\]\.[^\]]*\]\.\[([^\]]+)\]/)
+                if (m) { pages.push(make(m[1], null, m[2])); continue }
+                // [Dim].[Hier].DefaultMember — placeholder slicer, keep dim in filter zone with no member
+                const dm = trimmed.match(/\[([^\]]+)\]\.[^\]]*\]\.DefaultMember/i)
+                if (dm) pages.push(make(dm[1]))
             }
         }
 

@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect, useRef } from 'react'
-import { useCubes, useCubeDimensions, useDims, useDimAttributes, useAttributeValues, useElements } from '@/hooks/useApi'
+import { useCubes, useCubeDimensions, useDims, useDimAttributes, useAttributeValues, useElements, useSubsets } from '@/hooks/useApi'
 import { useStore } from '@/store'
-import { ArrowLeft, ArrowRight, Play, Loader2, Copy, X, Check, Code2, ExternalLink, HelpCircle, Save, Clock } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Play, Loader2, Copy, X, Check, Code2, ExternalLink, HelpCircle, Save, Clock, Plus, Pencil, Trash2, ChevronDown, ChevronRight } from 'lucide-react'
 import MonacoEditor from '@monaco-editor/react'
 import { cn } from '@/lib/utils'
 import ResultGrid from '@/components/mdx/ResultGrid'
@@ -52,106 +52,532 @@ const WRAPPERS = {
   'except':      (dim, inner) => `{EXCEPT(${inner}, {[${dim}].[Member]})}`,
 }
 
+const QUERY_CLAUSES = [
+  { id: 'qc-select',      label: 'SELECT',              cat: 'Query Clauses', mdx: () => `SELECT\n  NON EMPTY {set} ON COLUMNS,\n  NON EMPTY {set} ON ROWS\nFROM [CubeName]`,
+    desc: 'Required opening clause. Lists axis expressions followed by ON COLUMNS / ON ROWS, separated by commas.' },
+  { id: 'qc-from',        label: 'FROM',                cat: 'Query Clauses', mdx: () => `FROM [CubeName]`,
+    desc: 'Specifies the cube to query. Must match the cube name exactly as registered in TM1.' },
+  { id: 'qc-where',       label: 'WHERE',               cat: 'Query Clauses', mdx: () => `WHERE ([Dim1].[Dim1].[Member1], [Dim2].[Dim2].[Member2])`,
+    desc: 'Slicer / context clause. Each dimension contributes one member (or set) as context for the cell values. Does not filter rows — it restricts the cube calculation space.' },
+  { id: 'qc-nonempty',    label: 'NON EMPTY',           cat: 'Query Clauses', mdx: () => `NON EMPTY {TM1SUBSETALL([Dim].[Dim])} ON COLUMNS`,
+    desc: 'Suppresses axis members that have no data (all cells empty/zero) in the result. Applied per axis, before the WHERE slicer.' },
+  { id: 'qc-on-cols',     label: 'ON COLUMNS (axis 0)', cat: 'Query Clauses', mdx: () => `{set} ON COLUMNS`,
+    desc: 'Places a set expression on the column axis (axis 0). Required in every TM1 MDX query.' },
+  { id: 'qc-on-rows',     label: 'ON ROWS (axis 1)',    cat: 'Query Clauses', mdx: () => `{set} ON ROWS`,
+    desc: 'Places a set expression on the row axis (axis 1). Optional — omit for a single-axis (columns-only) query.' },
+  { id: 'qc-with-member', label: 'WITH MEMBER',         cat: 'Query Clauses', mdx: () => `WITH MEMBER [Dim].[Dim].[CalcName] AS\n  [Dim].[Dim].[A] + [Dim].[Dim].[B]\nSELECT ...`,
+    desc: 'Defines a calculated member inline before the SELECT. The member exists only for this query — it does not create a persistent element in TM1.' },
+  { id: 'qc-with-set',    label: 'WITH SET',            cat: 'Query Clauses', mdx: () => `WITH SET [MySet] AS\n  {TM1SUBSETALL([Dim].[Dim])}\nSELECT {[MySet]} ON COLUMNS ...`,
+    desc: 'Defines a named set inline before the SELECT. Useful for reusing a complex set expression in multiple axes.' },
+  { id: 'qc-crossjoin',   label: 'CrossJoin / *',       cat: 'Query Clauses', mdx: () => `{TM1SUBSETALL([Dim1].[Dim1])} * {TM1SUBSETALL([Dim2].[Dim2])} ON ROWS`,
+    desc: 'Creates the Cartesian product of two sets. Both [Set1] * [Set2] and CrossJoin([Set1], [Set2]) are valid in TM1. Nests multiple dimensions on one axis.' },
+  { id: 'qc-having',      label: 'HAVING',              cat: 'Query Clauses', mdx: () => `NON EMPTY {set} ON ROWS\nHAVING [Cube].([Measure]) > 0`,
+    desc: 'Post-aggregation filter on axis members (MDX 2.0). Supported in some TM1/PA versions — filters after values are resolved, unlike NON EMPTY which suppresses before.' },
+  { id: 'qc-order',       label: 'ORDER (axis)',         cat: 'Query Clauses', mdx: () => `ORDER({TM1SUBSETALL([Dim].[Dim])}, [Cube].([Measure]), BDESC) ON ROWS`,
+    desc: 'Sorts an axis set by a cube value or member property. BASC/BDESC break hierarchy; ASC/DESC preserve it.' },
+]
+
 const FUNCTIONS = [
-  { id: 'fn-val',         label: 'VAL(attr + "0")',           mdx: () => `VAL([Dim].[Dim].CURRENTMEMBER.PROPERTIES("Attr") + "0")`,
+  { id: 'fn-tm1user',       label: 'TM1User()',                  cat: 'TM1 Specific', mdx: () => `TM1User()`,
+    desc: 'Returns the login name of the current user as a string. Used in dynamic member resolution, personalised filters, and security-aware MDX via STRTOMEMBER.' },
+  { id: 'fn-cubevalue',    label: 'CUBEVALUE(cube, ...)',       cat: 'TM1 Specific', mdx: () => `CUBEVALUE("CubeName", "[Dim1].[Dim1].[Member1]", "[Dim2].[Dim2].[Member2]")`,
+    desc: 'Returns the value of a cell in any cube. Each argument after the cube name is a member reference string (in quotes). Used in cross-cube FILTER conditions and dynamic calculations.' },
+  { id: 'fn-elemcomp',     label: 'ELEMENTCOMPONENTOF()',       cat: 'TM1 Specific', mdx: () => `ELEMENTCOMPONENTOF("[Dimension]", "ParentMember", Index)`,
+    desc: 'Returns the Nth child (1-based index) of a parent element in a dimension. Commonly used with TM1User() to look up a user\'s assigned entity from a security/mapping dimension.' },
+  { id: 'fn-val',           label: 'VAL(attr + "0")',           cat: 'Type Conversion', mdx: () => `VAL([Dim].[Dim].CURRENTMEMBER.PROPERTIES("Attr") + "0")`,
     desc: 'Converts a string property to a number by appending "0". Required for numeric comparisons in TM1 because PROPERTIES always returns strings.' },
-  { id: 'fn-strtovalue',  label: 'STRTOVALUE(attr)',          mdx: () => `STRTOVALUE([Dim].[Dim].CURRENTMEMBER.PROPERTIES("Attr"))`,
+  { id: 'fn-strtovalue',    label: 'STRTOVALUE(attr)',          cat: 'Type Conversion', mdx: () => `STRTOVALUE([Dim].[Dim].CURRENTMEMBER.PROPERTIES("Attr"))`,
     desc: 'Explicitly converts a string property to a numeric value.' },
-  { id: 'fn-strtomember', label: 'STRTOMEMBER(expr)',         mdx: () => `STRTOMEMBER("[Dim].[" + [Cube].([Measure]) + "]")`,
+  { id: 'fn-strtomember',   label: 'STRTOMEMBER(expr)',         cat: 'Member Resolution', mdx: () => `STRTOMEMBER("[Dim].[" + [Cube].([Measure]) + "]")`,
     desc: 'Converts a string expression to a member reference. Useful for dynamic member selection based on cube data or attributes.' },
-  { id: 'fn-iif',         label: 'IIF(cond, t, f)',           mdx: () => `IIF([Dim].[Dim].CURRENTMEMBER.PROPERTIES("Attr") = "Val", 1, 0)`,
-    desc: 'Inline conditional. Returns the second argument if true, third if false.' },
-  { id: 'fn-currentmember', label: 'CURRENTMEMBER',           mdx: () => `[Dim].[Dim].CURRENTMEMBER`,
-    desc: 'References the current member in the iteration context. Used inside FILTER, GENERATE, and other set-iterating functions.' },
-  { id: 'fn-properties',  label: '.PROPERTIES("Attr")',       mdx: () => `[Dim].[Dim].CURRENTMEMBER.PROPERTIES("Attr")`,
-    desc: 'Accesses an element attribute value. Always returns a string — use VAL() or STRTOVALUE() for numeric attributes.' },
-  { id: 'fn-generate',    label: 'GENERATE(set, expr)',       mdx: () => `{GENERATE({TM1SUBSETALL([Dim].[Dim])}, {[Dim].[Dim].CURRENTMEMBER})}`,
-    desc: 'Iterates over a set and evaluates an expression for each member. Most powerful set-construction function in MDX.' },
-  { id: 'fn-extract',     label: 'EXTRACT(set, dim)',         mdx: () => `{EXTRACT({set}, [Dim])}`,
-    desc: 'Extracts members of a specific dimension from tuples in a set.' },
-  { id: 'fn-lag',         label: 'LAG(member, N)',            mdx: () => `[Dim].[Dim].CURRENTMEMBER.LAG(1)`,
-    desc: 'Returns the member N positions before the given member in the dimension order.' },
-  { id: 'fn-lead',        label: 'LEAD(member, N)',           mdx: () => `[Dim].[Dim].CURRENTMEMBER.LEAD(1)`,
-    desc: 'Returns the member N positions after the given member in the dimension order.' },
-  { id: 'fn-periodstodate',label: 'PERIODSTODATE(member)',    mdx: () => `{PERIODSTODATE([Dim].[Dim].[FY],[Dim].[Dim].CURRENTMEMBER)}`,
-    desc: 'Returns all members from the start of the period up to the given member (YTD-style).' },
-  { id: 'fn-isancestor',  label: 'ISANCESTOR(a, b)',          mdx: () => `ISANCESTOR([Dim].[Member], [Dim].[Dim].CURRENTMEMBER)`,
-    desc: 'Returns TRUE if the first member is an ancestor of the second in the hierarchy.' },
-  { id: 'fn-closingperiod',label: 'CLOSINGPERIOD(member)',    mdx: () => `CLOSINGPERIOD([Dim].[Dim].[FY],[Dim].[Dim].CURRENTMEMBER)`,
-    desc: 'Returns the last sibling in the same level under the given ancestor (e.g., last month in the FY).' },
-  { id: 'fn-openingperiod',label:'OPENINGPERIOD(member)',     mdx: () => `OPENINGPERIOD([Dim].[Dim].[FY],[Dim].[Dim].CURRENTMEMBER)`,
-    desc: 'Returns the first sibling in the same level under the given ancestor (e.g., first month in the FY).' },
-  { id: 'fn-cousin',      label: 'COUSIN(m1, m2)',            mdx: () => `[Dim].[Member].COUSIN([Dim].[Other])`,
-    desc: 'Returns the member at the same relative position under a different parent.' },
-  { id: 'fn-parallelperiod',label:'PARALLELPERIOD(mem, N)',   mdx: () => `PARALLELPERIOD([Dim].[Dim].[FY], 1, [Dim].[Dim].CURRENTMEMBER)`,
-    desc: 'Returns the member N periods prior at the same relative position (e.g., same month last year).' },
-  { id: 'fn-tm1member',   label: 'TM1MEMBER(name)',           mdx: () => `TM1MEMBER("[Dim].[Name]")`,
+  { id: 'fn-tm1member',     label: 'TM1MEMBER(name)',           cat: 'Member Resolution', mdx: () => `TM1MEMBER("[Dim].[Name]")`,
     desc: 'Creates a member reference from a string. Validates that the member exists.' },
-  { id: 'fn-tm1tuplesize',label: 'TM1TUPLESIZE(tuple)',       mdx: () => `TM1TUPLESIZE()`,
-    desc: 'Returns the number of elements in a tuple.' },
-  { id: 'fn-tm1subsettoset',label:'TM1SubsetToSet(dim, sub)', mdx: () => `TM1SubsetToSet([Dim], "MySubset")`,
-    desc: 'Converts a named public subset into an MDX set expression.' },
-  { id: 'fn-tm1settosubset',label:'TM1SetToSubset(...)',      mdx: () => `TM1SetToSubset([Dim], {set}, "SubsetName", 0)`,
-    desc: 'Creates a named public subset from an MDX set. 0=static, 1=dynamic.' },
-  { id: 'fn-dimname',     label: 'DIMNAME(dim)',              mdx: () => `DIMNAME([Dim])`,
-    desc: 'Returns the dimension name of a member.' },
-  { id: 'fn-dimix',       label: 'DIMIX(dim, member)',        mdx: () => `DIMIX([Dim], [Dim].[Member])`,
-    desc: 'Returns the index of a member in the dimension. Returns 0 if not found.' },
-  { id: 'fn-head',        label: 'HEAD(set, N)',              mdx: () => `{HEAD({TM1SUBSETALL([Dim].[Dim])}, 10)}`,
+  { id: 'fn-iif',           label: 'IIF(cond, t, f)',           cat: 'Logic', mdx: () => `IIF([Dim].[Dim].CURRENTMEMBER.PROPERTIES("Attr") = "Val", 1, 0)`,
+    desc: 'Inline conditional. Returns the second argument if true, third if false.' },
+  { id: 'fn-currentmember', label: 'CURRENTMEMBER',             cat: 'Navigation', mdx: () => `[Dim].[Dim].CURRENTMEMBER`,
+    desc: 'References the current member in the iteration context. Used inside FILTER, GENERATE, and other set-iterating functions.' },
+  { id: 'fn-properties',    label: '.PROPERTIES("Attr")',        cat: 'Navigation', mdx: () => `[Dim].[Dim].CURRENTMEMBER.PROPERTIES("Attr")`,
+    desc: 'Accesses an element attribute value. Always returns a string — use VAL() or STRTOVALUE() for numeric attributes.' },
+  { id: 'fn-isancestor',    label: 'ISANCESTOR(a, b)',           cat: 'Hierarchy', mdx: () => `ISANCESTOR([Dim].[Member], [Dim].[Dim].CURRENTMEMBER)`,
+    desc: 'Returns TRUE if the first member is an ancestor of the second in the hierarchy.' },
+  { id: 'fn-cousin',        label: 'COUSIN(m1, m2)',             cat: 'Hierarchy', mdx: () => `[Dim].[Member].COUSIN([Dim].[Other])`,
+    desc: 'Returns the member at the same relative position under a different parent.' },
+  { id: 'fn-lag',           label: 'LAG(member, N)',             cat: 'Time / Range', mdx: () => `[Dim].[Dim].CURRENTMEMBER.LAG(1)`,
+    desc: 'Returns the member N positions before the given member in the dimension order.' },
+  { id: 'fn-lead',          label: 'LEAD(member, N)',            cat: 'Time / Range', mdx: () => `[Dim].[Dim].CURRENTMEMBER.LEAD(1)`,
+    desc: 'Returns the member N positions after the given member in the dimension order.' },
+  { id: 'fn-periodstodate', label: 'PERIODSTODATE(member)',      cat: 'Time / Range', mdx: () => `{PERIODSTODATE([Dim].[Dim].[FY],[Dim].[Dim].CURRENTMEMBER)}`,
+    desc: 'Returns all members from the start of the period up to the given member (YTD-style).' },
+  { id: 'fn-closingperiod', label: 'CLOSINGPERIOD(member)',      cat: 'Time / Range', mdx: () => `CLOSINGPERIOD([Dim].[Dim].[FY],[Dim].[Dim].CURRENTMEMBER)`,
+    desc: 'Returns the last sibling in the same level under the given ancestor (e.g., last month in the FY).' },
+  { id: 'fn-openingperiod', label: 'OPENINGPERIOD(member)',      cat: 'Time / Range', mdx: () => `OPENINGPERIOD([Dim].[Dim].[FY],[Dim].[Dim].CURRENTMEMBER)`,
+    desc: 'Returns the first sibling in the same level under the given ancestor (e.g., first month in the FY).' },
+  { id: 'fn-parallelperiod',label: 'PARALLELPERIOD(mem, N)',     cat: 'Time / Range', mdx: () => `PARALLELPERIOD([Dim].[Dim].[FY], 1, [Dim].[Dim].CURRENTMEMBER)`,
+    desc: 'Returns the member N periods prior at the same relative position (e.g., same month last year).' },
+  { id: 'fn-generate',      label: 'GENERATE(set, expr)',        cat: 'Set Construction', mdx: () => `{GENERATE({TM1SUBSETALL([Dim].[Dim])}, {[Dim].[Dim].CURRENTMEMBER})}`,
+    desc: 'Iterates over a set and evaluates an expression for each member. Most powerful set-construction function in MDX.' },
+  { id: 'fn-extract',       label: 'EXTRACT(set, dim)',          cat: 'Set Construction', mdx: () => `{EXTRACT({set}, [Dim])}`,
+    desc: 'Extracts members of a specific dimension from tuples in a set.' },
+  { id: 'fn-head',          label: 'HEAD(set, N)',               cat: 'Set Ops', mdx: () => `{HEAD({TM1SUBSETALL([Dim].[Dim])}, 10)}`,
     desc: 'Returns the first N members of a set. Unlike TOPCOUNT, does not sort.' },
-  { id: 'fn-tail',        label: 'TAIL(set, N)',              mdx: () => `{TAIL({TM1SUBSETALL([Dim].[Dim])}, 10)}`,
+  { id: 'fn-tail',          label: 'TAIL(set, N)',               cat: 'Set Ops', mdx: () => `{TAIL({TM1SUBSETALL([Dim].[Dim])}, 10)}`,
     desc: 'Returns the last N members of a set.' },
-  { id: 'fn-item',        label: 'ITEM(set, N)',              mdx: () => `{TM1SUBSETALL([Dim].[Dim])}.ITEM(0)`,
+  { id: 'fn-item',          label: 'ITEM(set, N)',               cat: 'Set Ops', mdx: () => `{TM1SUBSETALL([Dim].[Dim])}.ITEM(0)`,
     desc: 'Returns the Nth member of a set (0-indexed).' },
-  { id: 'fn-count',       label: 'COUNT(set)',                mdx: () => `COUNT({TM1SUBSETALL([Dim].[Dim])} INCLUDEEMPTY)`,
+  { id: 'fn-count',         label: 'COUNT(set)',                 cat: 'Aggregation', mdx: () => `COUNT({TM1SUBSETALL([Dim].[Dim])} INCLUDEEMPTY)`,
     desc: 'Returns the number of members in a set. INCLUDEEMPTY or EXCLUDEEMPTY.' },
-  { id: 'fn-sum',         label: 'SUM(set, cube)',            mdx: () => `SUM({TM1SUBSETALL([Dim].[Dim])}, [Cube].([Measure]))`,
+  { id: 'fn-sum',           label: 'SUM(set, cube)',             cat: 'Aggregation', mdx: () => `SUM({TM1SUBSETALL([Dim].[Dim])}, [Cube].([Measure]))`,
     desc: 'Sums a cube value across all members in a set.' },
-  { id: 'fn-avg',         label: 'AVG(set, cube)',            mdx: () => `AVG({TM1SUBSETALL([Dim].[Dim])}, [Cube].([Measure]))`,
+  { id: 'fn-avg',           label: 'AVG(set, cube)',             cat: 'Aggregation', mdx: () => `AVG({TM1SUBSETALL([Dim].[Dim])}, [Cube].([Measure]))`,
     desc: 'Averages a cube value across all members in a set.' },
-  { id: 'fn-min-max',     label: 'MIN / MAX(set, cube)',      mdx: () => `MIN({TM1SUBSETALL([Dim].[Dim])}, [Cube].([Measure]))`,
+  { id: 'fn-min-max',       label: 'MIN / MAX(set, cube)',       cat: 'Aggregation', mdx: () => `MIN({TM1SUBSETALL([Dim].[Dim])}, [Cube].([Measure]))`,
     desc: 'Returns the minimum or maximum cube value across a set. Use MAX() for maximum.' },
-  { id: 'fn-rank',        label: 'RANK(member, set)',         mdx: () => `RANK([Dim].[Dim].CURRENTMEMBER, {TM1SUBSETALL([Dim].[Dim])})`,
+  { id: 'fn-rank',          label: 'RANK(member, set)',          cat: 'Aggregation', mdx: () => `RANK([Dim].[Dim].CURRENTMEMBER, {TM1SUBSETALL([Dim].[Dim])})`,
     desc: 'Returns the rank position of a member within a sorted set.' },
+  { id: 'fn-tm1subsettoset',label: 'TM1SubsetToSet(dim, sub)',   cat: 'TM1 Specific', mdx: () => `TM1SubsetToSet([Dim], "MySubset")`,
+    desc: 'Converts a named public subset into an MDX set expression.' },
+  { id: 'fn-tm1settosubset',label: 'TM1SetToSubset(...)',        cat: 'TM1 Specific', mdx: () => `TM1SetToSubset([Dim], {set}, "SubsetName", 0)`,
+    desc: 'Creates a named public subset from an MDX set. 0=static, 1=dynamic.' },
+  { id: 'fn-tm1tuplesize',  label: 'TM1TUPLESIZE(tuple)',        cat: 'TM1 Specific', mdx: () => `TM1TUPLESIZE()`,
+    desc: 'Returns the number of elements in a tuple.' },
+  { id: 'fn-dimname',       label: 'DIMNAME(dim)',               cat: 'Metadata', mdx: () => `DIMNAME([Dim])`,
+    desc: 'Returns the dimension name of a member.' },
+  { id: 'fn-dimix',         label: 'DIMIX(dim, member)',         cat: 'Metadata', mdx: () => `DIMIX([Dim], [Dim].[Member])`,
+    desc: 'Returns the index of a member in the dimension. Returns 0 if not found.' },
 ]
 
 const PATTERNS = [
-  { id: 'all',         label: 'All members',              cat: 'Basic',        unwrapped: true },
-  { id: 'leaf',        label: 'Leaf only (level 0)',      cat: 'Basic' },
-  { id: 'consol',      label: 'Consolidated only',        cat: 'Basic' },
-  { id: 'sort-asc',    label: 'Sort A–Z',                 cat: 'Sorting' },
-  { id: 'sort-desc',   label: 'Sort Z–A',                 cat: 'Sorting' },
-  { id: 'sort-index-a',label: 'Sort by index (Asc)',      cat: 'Sorting' },
-  { id: 'sort-index-d',label: 'Sort by index (Desc)',     cat: 'Sorting' },
-  { id: 'top10',       label: 'Top 10',                   cat: 'Ranking' },
-  { id: 'top5',        label: 'Top 5',                    cat: 'Ranking' },
-  { id: 'bottom10',    label: 'Bottom 10',                cat: 'Ranking' },
-  { id: 'head5',       label: 'First 5 (Head)',           cat: 'Ranking' },
-  { id: 'tail5',       label: 'Last 5 (Tail)',            cat: 'Ranking' },
-  { id: 'attr',        label: 'Filter by attribute',      cat: 'Filtering' },
-  { id: 'pattern',     label: 'Filter by name pattern',   cat: 'Filtering' },
-  { id: 'cubeval',     label: 'Filter by cube value > 0', cat: 'Filtering' },
-  { id: 'cube-compare',label: 'Filter vs another member',  cat: 'Filtering' },
-  { id: 'order-num',   label: 'Order by cube value',      cat: 'Filtering' },
-  { id: 'cm-filter',   label: 'Filter CurrentMember value',cat: 'Filtering' },
-  { id: 'boolean',     label: 'NOT / AND / OR logic',     cat: 'Advanced' },
-  { id: 'numeric-attr',label: 'Filter by numeric attr',   cat: 'Advanced' },
-  { id: 'val-filter',  label: 'Filter by attr (VAL)',     cat: 'Advanced' },
-  { id: 'strtomember', label: 'Using STRTTOMEMBER',       cat: 'Advanced' },
-  { id: 'except-attr', label: 'Except by attribute',      cat: 'Set Ops' },
-  { id: 'children',    label: 'Children of member',       cat: 'Hierarchy' },
+  { id: 'all',         label: 'All members',               cat: 'Basic',       unwrapped: true },
+  { id: 'leaf',        label: 'Leaf only (level 0)',       cat: 'Basic' },
+  { id: 'consol',      label: 'Consolidated only',         cat: 'Basic' },
+  { id: 'children',    label: 'Children of member',        cat: 'Hierarchy' },
   { id: 'descendants', label: 'Drill down from member',    cat: 'Hierarchy' },
   { id: 'filter-desc', label: 'Get descendants of result', cat: 'Hierarchy' },
-  { id: 'ancestors',   label: 'Ancestors of member',      cat: 'Hierarchy' },
-  { id: 'parent',      label: 'Parent of member',         cat: 'Hierarchy' },
-  { id: 'range',       label: 'Range between members',    cat: 'Time / Range' },
-  { id: 'last12',      label: 'Last 12 periods',          cat: 'Time / Range' },
-  { id: 'next',        label: 'Next member',              cat: 'Time / Range' },
-  { id: 'union',       label: 'Union of two sets',        cat: 'Set Ops' },
-  { id: 'intersect',   label: 'Intersect of two sets',    cat: 'Set Ops' },
-  { id: 'except',      label: 'Except (set minus)',       cat: 'Set Ops' },
+  { id: 'ancestors',   label: 'Ancestors of member',       cat: 'Hierarchy' },
+  { id: 'parent',      label: 'Parent of member',          cat: 'Hierarchy' },
+  { id: 'range',       label: 'Range between members',     cat: 'Time / Range' },
+  { id: 'last12',      label: 'Last 12 periods',           cat: 'Time / Range' },
+  { id: 'next',        label: 'Next member',               cat: 'Time / Range' },
+  { id: 'top10',       label: 'Top 10',                    cat: 'Ranking' },
+  { id: 'top5',        label: 'Top 5',                     cat: 'Ranking' },
+  { id: 'bottom10',    label: 'Bottom 10',                 cat: 'Ranking' },
+  { id: 'head5',       label: 'First 5 (Head)',            cat: 'Ranking' },
+  { id: 'tail5',       label: 'Last 5 (Tail)',             cat: 'Ranking' },
+  { id: 'sort-asc',    label: 'Sort A–Z',                  cat: 'Sorting' },
+  { id: 'sort-desc',   label: 'Sort Z–A',                  cat: 'Sorting' },
+  { id: 'sort-index-a',label: 'Sort by index (Asc)',       cat: 'Sorting' },
+  { id: 'sort-index-d',label: 'Sort by index (Desc)',      cat: 'Sorting' },
+  { id: 'attr',        label: 'Filter by attribute',       cat: 'Filtering' },
+  { id: 'pattern',     label: 'Filter by name pattern',    cat: 'Filtering' },
+  { id: 'cubeval',     label: 'Filter by cube value > 0',  cat: 'Filtering' },
+  { id: 'cube-compare',label: 'Filter vs another member',  cat: 'Filtering' },
+  { id: 'order-num',   label: 'Order by cube value',       cat: 'Filtering' },
+  { id: 'cm-filter',   label: 'Filter CurrentMember value',cat: 'Filtering' },
+  { id: 'union',       label: 'Union of two sets',         cat: 'Set Ops' },
+  { id: 'intersect',   label: 'Intersect of two sets',     cat: 'Set Ops' },
+  { id: 'except',      label: 'Except (set minus)',        cat: 'Set Ops' },
+  { id: 'except-attr', label: 'Except by attribute',       cat: 'Set Ops' },
+  { id: 'boolean',     label: 'NOT / AND / OR logic',      cat: 'Advanced' },
+  { id: 'numeric-attr',label: 'Filter by numeric attr',    cat: 'Advanced' },
+  { id: 'val-filter',  label: 'Filter by attr (VAL)',      cat: 'Advanced' },
+  { id: 'strtomember', label: 'Using STRTOMEMBER',         cat: 'Advanced' },
 ]
-const CATEGORIES = [...new Set(PATTERNS.map(p => p.cat))]
+
+const CUSTOM_PATTERNS_KEY = 'tm1ide-custom-patterns'
+const loadCustomPatterns = () => { try { return JSON.parse(localStorage.getItem(CUSTOM_PATTERNS_KEY) || '[]') } catch { return [] } }
+const saveCustomPatterns = (list) => localStorage.setItem(CUSTOM_PATTERNS_KEY, JSON.stringify(list))
+
+const CAT_ORDER = ['Query Clauses','Basic','Hierarchy','Time / Range','Ranking','Sorting','Filtering','Set Ops','Set Construction','Aggregation','Type Conversion','Member Resolution','Logic','Navigation','TM1 Specific','Metadata','Advanced','Custom']
+const ALL_ITEMS = [...QUERY_CLAUSES, ...PATTERNS, ...FUNCTIONS.map(f => ({ ...f, isFn: true }))]
+const CATEGORIES = CAT_ORDER.filter(c => ALL_ITEMS.some(i => i.cat === c))
+
+// ── Axis Set Builder (Rows / Cols) ───────────────────────────────────────────
+
+function buildAxisExpr(dim, mode, fc = {}, measuresDim = null) {
+  if (mode === 'all')  return `{TM1SUBSETALL([${dim}].[${dim}])}`
+  if (mode === 'leaf') return `{TM1FILTERBYLEVEL({TM1SUBSETALL([${dim}].[${dim}])}, 0)}`
+  if (mode === 'member') {
+    const ms = fc.selectedMembers || []
+    if (!ms.length) return ''
+    return ms.length === 1
+      ? `{[${dim}].[${dim}].[${ms[0]}]}`
+      : `{${ms.map(m => `[${dim}].[${dim}].[${m}]`).join(', ')}}`
+  }
+  if (mode === 'range' && fc.rangeFrom && fc.rangeTo)
+    return `{[${dim}].[${dim}].[${fc.rangeFrom}]:[${dim}].[${dim}].[${fc.rangeTo}]}`
+  if (mode === 'subset' && fc.subsetName)
+    return `TM1SubsetToSet([${dim}].[${dim}], "${fc.subsetName}")`
+  if (mode === 'condition') {
+    const t    = fc.condType || 'value'
+    const base = fc.condLeafOnly
+      ? `{TM1FILTERBYLEVEL({TM1SUBSETALL([${dim}].[${dim}])}, 0)}`
+      : `{TM1SUBSETALL([${dim}].[${dim}])}`
+    const op   = fc.condOp || '>'
+    const raw  = String(fc.condValue ?? '0').trim()
+    // Quote string values; leave numerics bare
+    const val  = raw !== '' && isNaN(Number(raw)) ? `"${raw}"` : raw
+    // Full 3-part measure reference: [MeasuresDim].[MeasuresDim].[MeasureName]
+    const mRef = (m) => measuresDim ? `[${measuresDim}].[${measuresDim}].[${m}]` : `[${m}]`
+    if (t === 'value' && fc.condMeasure)
+      return `{FILTER(${base}, ([${dim}].[${dim}].CURRENTMEMBER, ${mRef(fc.condMeasure)}) ${op} ${val})}`
+    if (t === 'attr' && fc.condAttr)
+      return `{FILTER(${base}, [${dim}].[${dim}].CURRENTMEMBER.PROPERTIES("${fc.condAttr}") = "${fc.condAttrValue || ''}")}`
+    if (t === 'ranking' && fc.condMeasure) {
+      const fn = fc.condRankDir === 'bottom' ? 'BOTTOMCOUNT' : 'TOPCOUNT'
+      return `{${fn}(${base}, ${fc.condN || 10}, ([${dim}].[${dim}].CURRENTMEMBER, ${mRef(fc.condMeasure)}))}`
+    }
+    if (t === 'crosscube' && fc.condCube && fc.condMeasure)
+      return `{FILTER(${base}, CUBEVALUE("${fc.condCube}", "[${dim}].[${dim}].[" + [${dim}].[${dim}].CURRENTMEMBER.NAME + "]", "[${fc.condMeasure}]") ${op} ${val})}`
+    return ''
+  }
+  if (mode === 'expression') return fc.customExpr || ''
+  return ''
+}
+
+function AxisMemberPicker({ dim, server, fc, setFc }) {
+  const [search, setSearch] = useState('')
+  const { data: elements = [] } = useElements(server, dim)
+  const selected = useMemo(() => new Set(fc.selectedMembers || []), [fc.selectedMembers])
+  const filtered = useMemo(() => {
+    const q = search.toLowerCase()
+    return q ? elements.filter(e => e.Name.toLowerCase().includes(q)) : elements
+  }, [elements, search])
+  const toggle = (name) => {
+    const next = new Set(selected)
+    next.has(name) ? next.delete(name) : next.add(name)
+    setFc({ ...fc, selectedMembers: [...next] })
+  }
+  return (
+    <div className="space-y-1">
+      <div className="flex items-center gap-2">
+        <input placeholder="Search…" value={search} onChange={e => setSearch(e.target.value)}
+          className="flex-1 text-[10px] px-1.5 py-0.5 border rounded bg-background" />
+        {selected.size > 0 && <span className="text-[9px] text-muted-foreground shrink-0">{selected.size} selected</span>}
+      </div>
+      <div className="max-h-[120px] overflow-auto rounded border border-border/40 bg-background/50">
+        {filtered.length === 0 && <div className="text-[10px] text-muted-foreground p-2 italic">{elements.length ? 'No match' : 'Loading…'}</div>}
+        {filtered.slice(0, 200).map(el => (
+          <button key={el.Name} onClick={() => toggle(el.Name)}
+            className={cn('w-full text-left text-[10px] px-2 py-0.5 hover:bg-muted/60 truncate flex items-center gap-1.5',
+              selected.has(el.Name) && 'bg-primary/10 text-primary')}>
+            <span className={cn('w-2.5 h-2.5 rounded-sm border shrink-0 transition-colors',
+              selected.has(el.Name) ? 'bg-primary border-primary' : 'border-muted-foreground/40')} />
+            {el.Name}
+          </button>
+        ))}
+      </div>
+      {selected.size > 0 && (
+        <button onClick={() => setFc({ ...fc, selectedMembers: [] })} className="text-[9px] text-muted-foreground hover:text-foreground">
+          × Clear all
+        </button>
+      )}
+    </div>
+  )
+}
+
+function AxisCondition({ dim, server, measuresDim, fc, setFc }) {
+  const type = fc.condType || 'value'
+  const { data: attrs    = [] } = useDimAttributes(server, dim)
+  const { data: measures = [] } = useElements(measuresDim ? server : null, measuresDim)
+  const op  = fc.condOp    || '>'
+  const val = fc.condValue ?? ''
+  const ops = ['>','<','=','>=','<=','<>']
+
+  // TM1 FILTER evaluates conditions numerically — string-type (S) measures always
+  // return 0 in that context, making any comparison silently return nothing.
+  const numericMeasures = measures.filter(m => m.Type === 'N')
+  const hasStringMeasures = measures.some(m => m.Type === 'S')
+
+  const MeasureSelect = ({ field }) => (
+    <select value={fc[field] || ''} onChange={e => setFc({ ...fc, [field]: e.target.value })}
+      className="px-1.5 py-0.5 border rounded bg-background flex-1 font-mono text-[10px]">
+      <option value="">measure…</option>
+      {numericMeasures.map(m => <option key={m.Name} value={m.Name}>{m.Name}</option>)}
+    </select>
+  )
+
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <div className="flex gap-0.5 flex-wrap">
+          {[['value','Value'],['attr','Attribute'],['ranking','Ranking'],['crosscube','Cross-cube']].map(([id, label]) => (
+            <button key={id} onClick={() => setFc({ condType: id })}
+              className={cn('px-1.5 py-0.5 text-[9px] rounded border transition-colors',
+                type === id ? 'bg-primary/20 border-primary/40 text-primary' : 'border-border hover:bg-muted')}>
+              {label}
+            </button>
+          ))}
+        </div>
+        <button onClick={() => setFc({ ...fc, condLeafOnly: !fc.condLeafOnly })}
+          className={cn('px-1.5 py-0.5 text-[9px] rounded border transition-colors shrink-0',
+            fc.condLeafOnly ? 'bg-primary/20 border-primary/40 text-primary' : 'border-border hover:bg-muted text-muted-foreground')}>
+          Leaf only
+        </button>
+      </div>
+      {type === 'value' && (
+        <div className="space-y-1">
+          <div className="flex items-center gap-1 text-[10px] flex-wrap">
+            <span className="text-muted-foreground shrink-0">where</span>
+            <MeasureSelect field="condMeasure" />
+            <select value={op} onChange={e => setFc({ ...fc, condOp: e.target.value })} className="px-1 py-0.5 border rounded bg-background">
+              {ops.map(o => <option key={o}>{o}</option>)}
+            </select>
+            <input placeholder="0" value={val} onChange={e => setFc({ ...fc, condValue: e.target.value })}
+              className="px-1.5 py-0.5 border rounded bg-background w-16 text-[10px]" />
+          </div>
+          {hasStringMeasures && (
+            <div className="text-[9px] text-amber-400/80">
+              String-type measures are hidden — TM1 FILTER cannot compare string cell values. Use Attribute condition for string comparisons.
+            </div>
+          )}
+        </div>
+      )}
+      {type === 'attr' && (
+        <div className="flex items-center gap-1 text-[10px] flex-wrap">
+          <span className="text-muted-foreground shrink-0">where</span>
+          <select value={fc.condAttr || ''} onChange={e => setFc({ ...fc, condAttr: e.target.value })}
+            className="px-1.5 py-0.5 border rounded bg-background flex-1">
+            <option value="">attr…</option>
+            {attrs.map(a => <option key={a.Name} value={a.Name}>{a.Name}</option>)}
+          </select>
+          <span>=</span>
+          <input placeholder="value" value={fc.condAttrValue || ''} onChange={e => setFc({ ...fc, condAttrValue: e.target.value })}
+            className="px-1.5 py-0.5 border rounded bg-background w-20" />
+        </div>
+      )}
+      {type === 'ranking' && (
+        <div className="flex items-center gap-1 text-[10px] flex-wrap">
+          <select value={fc.condRankDir || 'top'} onChange={e => setFc({ ...fc, condRankDir: e.target.value })}
+            className="px-1.5 py-0.5 border rounded bg-background">
+            <option value="top">Top</option><option value="bottom">Bottom</option>
+          </select>
+          <input type="number" min={1} value={fc.condN || 10} onChange={e => setFc({ ...fc, condN: Number(e.target.value) })}
+            className="px-1.5 py-0.5 border rounded bg-background w-14" />
+          <span className="text-muted-foreground shrink-0">by</span>
+          <MeasureSelect field="condMeasure" />
+        </div>
+      )}
+      {type === 'crosscube' && (
+        <div className="space-y-1 text-[10px]">
+          <input placeholder="Cube name" value={fc.condCube || ''} onChange={e => setFc({ ...fc, condCube: e.target.value })}
+            className="w-full font-mono px-1.5 py-0.5 border rounded bg-background" />
+          <div className="flex items-center gap-1">
+            <input placeholder="measure name in that cube" value={fc.condMeasure || ''} onChange={e => setFc({ ...fc, condMeasure: e.target.value })}
+              className="font-mono px-1.5 py-0.5 border rounded bg-background flex-1" />
+            <select value={op} onChange={e => setFc({ ...fc, condOp: e.target.value })} className="px-1 py-0.5 border rounded bg-background">
+              {ops.map(o => <option key={o}>{o}</option>)}
+            </select>
+            <input placeholder="0" value={val} onChange={e => setFc({ ...fc, condValue: e.target.value })}
+              className="px-1.5 py-0.5 border rounded bg-background w-14" />
+          </div>
+          <div className="text-[9px] text-muted-foreground italic">CUBEVALUE() — measure name is freehand since it references a different cube.</div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function AxisSetBuilder({ dim, server, measuresDim, config, onChange }) {
+  const hasCustomExpr = config?.subsetExpression && !config?.axisMode
+  const axisMode   = config?.axisMode   || (hasCustomExpr ? 'expression' : 'all')
+  const axisConfig = config?.axisConfig || (hasCustomExpr ? { customExpr: config.subsetExpression } : {})
+  const { data: subsets = [] } = useSubsets(axisMode === 'subset' ? server : null, dim)
+
+  const setMode = (m) => {
+    const fc = {}
+    onChange({ axisMode: m, axisConfig: fc, subsetExpression: buildAxisExpr(dim, m, fc, measuresDim) })
+  }
+  const setFc = (patch) => {
+    const newFc = { ...axisConfig, ...patch }
+    onChange({ axisMode, axisConfig: newFc, subsetExpression: buildAxisExpr(dim, axisMode, newFc, measuresDim) })
+  }
+
+  return (
+    <div className="mt-1 border-t border-border/30 pt-1.5 space-y-1.5">
+      <div className="flex gap-0.5 flex-wrap">
+        {[['all','All'],['leaf','Leaf'],['member','Member(s)'],['range','Range'],['subset','Subset'],['condition','Condition'],['expression','Expression']].map(([id, label]) => (
+          <button key={id} onClick={() => setMode(id)}
+            className={cn('px-1.5 py-0.5 text-[9px] rounded border transition-colors',
+              axisMode === id ? 'bg-primary/20 border-primary/40 text-primary' : 'border-border hover:bg-muted')}>
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {axisMode === 'all'  && <div className="text-[9px] text-muted-foreground italic">All members via TM1SUBSETALL.</div>}
+      {axisMode === 'leaf' && <div className="text-[9px] text-muted-foreground italic">Leaf (level-0) members only — consolidations excluded.</div>}
+      {axisMode === 'member'    && <AxisMemberPicker dim={dim} server={server} fc={axisConfig} setFc={setFc} />}
+      {axisMode === 'range'     && (
+        <div className="grid grid-cols-2 gap-1">
+          <input placeholder="From…" value={axisConfig.rangeFrom || ''} onChange={e => setFc({ ...axisConfig, rangeFrom: e.target.value })}
+            className="text-[10px] px-1.5 py-0.5 border rounded bg-background" />
+          <input placeholder="To…"   value={axisConfig.rangeTo   || ''} onChange={e => setFc({ ...axisConfig, rangeTo:   e.target.value })}
+            className="text-[10px] px-1.5 py-0.5 border rounded bg-background" />
+        </div>
+      )}
+      {axisMode === 'subset' && (
+        <select value={axisConfig.subsetName || ''} onChange={e => setFc({ ...axisConfig, subsetName: e.target.value })}
+          className="w-full text-[10px] px-1.5 py-0.5 border rounded bg-background">
+          <option value="">Pick named subset…</option>
+          {subsets.map(s => <option key={s.Name} value={s.Name}>{s.Name}</option>)}
+        </select>
+      )}
+      {axisMode === 'condition' && <AxisCondition dim={dim} server={server} measuresDim={measuresDim} fc={axisConfig} setFc={setFc} />}
+      {axisMode === 'expression' && (
+        <textarea value={axisConfig.customExpr || ''} onChange={e => setFc({ ...axisConfig, customExpr: e.target.value })}
+          rows={2} placeholder={`{TM1SUBSETALL([${dim}].[${dim}])}`}
+          className="w-full font-mono text-[10px] px-1.5 py-1 border rounded bg-background resize-none" />
+      )}
+
+      {config?.subsetExpression && (
+        <div className="font-mono text-[9px] text-muted-foreground bg-muted/20 px-1.5 py-0.5 rounded truncate" title={config.subsetExpression}>
+          → {config.subsetExpression}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Filter Builder ────────────────────────────────────────────────────────────
+
+function buildFilterExpr(dim, mode, fc = {}) {
+  if (mode === 'static') {
+    const t = fc.staticType || 'member'
+    if (t === 'all')    return `TM1SUBSETALL([${dim}].[${dim}])`
+    if (t === 'leaf')   return `{TM1FILTERBYLEVEL({TM1SUBSETALL([${dim}].[${dim}])}, 0)}`
+    if (t === 'member' && fc.selectedMember) return fc.selectedMember
+    if (t === 'range'  && fc.rangeFrom && fc.rangeTo)
+      return `{[${dim}].[${dim}].[${fc.rangeFrom}]:[${dim}].[${dim}].[${fc.rangeTo}]}`
+    if (t === 'subset' && fc.subsetName)
+      return `TM1SubsetToSet([${dim}].[${dim}], "${fc.subsetName}")`
+    return ''
+  }
+  if (mode === 'rule') {
+    const t   = fc.ruleType || 'value'
+    const base = `{TM1SUBSETALL([${dim}].[${dim}])}`
+    const op   = fc.ruleOp || '>'
+    const val  = fc.ruleValue ?? '0'
+    if (t === 'value' && fc.ruleMeasure)
+      return `{FILTER(${base}, ([${dim}].[${dim}].CURRENTMEMBER, [${fc.ruleMeasure}]) ${op} ${val})}`
+    if (t === 'attr' && fc.ruleAttr)
+      return `{FILTER(${base}, [${dim}].[${dim}].CURRENTMEMBER.PROPERTIES("${fc.ruleAttr}") = "${fc.ruleAttrValue || ''}")}`
+    if (t === 'ranking' && fc.ruleMeasure) {
+      const fn = fc.ruleRankDir === 'bottom' ? 'BOTTOMCOUNT' : 'TOPCOUNT'
+      return `{${fn}(${base}, ${fc.ruleN || 10}, ([${dim}].[${dim}].CURRENTMEMBER, [${fc.ruleMeasure}]))}`
+    }
+    if (t === 'crosscube' && fc.ruleCube && fc.ruleMeasure)
+      return `{FILTER(${base}, CUBEVALUE("${fc.ruleCube}", "[${dim}].[${dim}].[" + [${dim}].[${dim}].CURRENTMEMBER.NAME + "]", "[${fc.ruleMeasure}]") ${op} ${val})}`
+    return ''
+  }
+  if (mode === 'dynamic') return fc.dynamicExpr || ''
+  return ''
+}
+
+// WHERE slicer = one member per dimension. Simple searchable picker only.
+function WhereMemberPicker({ dim, server, fc, setFc }) {
+  const [search, setSearch] = useState('')
+  const { data: elements = [] } = useElements(server, dim)
+  const filtered = useMemo(() => {
+    const q = search.toLowerCase()
+    return q ? elements.filter(e => e.Name.toLowerCase().includes(q)) : elements
+  }, [elements, search])
+
+  return (
+    <div className="space-y-1">
+      <input placeholder="Search members…" value={search} onChange={e => setSearch(e.target.value)}
+        className="w-full text-[10px] px-1.5 py-0.5 border rounded bg-background" />
+      <div className="max-h-[120px] overflow-auto rounded border border-border/40 bg-background/50">
+        {filtered.length === 0 && (
+          <div className="text-[10px] text-muted-foreground p-2 italic">
+            {elements.length ? 'No match' : 'Loading…'}
+          </div>
+        )}
+        {filtered.slice(0, 200).map(el => (
+          <button key={el.Name}
+            onClick={() => setFc({ selectedMember: el.Name })}
+            className={cn('w-full text-left text-[10px] px-2 py-0.5 hover:bg-muted/60 truncate',
+              fc.selectedMember === el.Name && 'bg-primary/10 text-primary font-medium')}>
+            {el.Name}
+          </button>
+        ))}
+      </div>
+      {fc.selectedMember && (
+        <button onClick={() => setFc({ selectedMember: null })}
+          className="text-[9px] text-muted-foreground hover:text-foreground">
+          × Clear
+        </button>
+      )}
+    </div>
+  )
+}
+
+function DynamicFilter({ dim, fc, setFc }) {
+  const snippets = [
+    ['TM1User()',             'TM1User()'],
+    ['CUBEVALUE()',           `CUBEVALUE("CubeName", "[Dim].[Member]")`],
+    ['ELEMENTCOMPONENTOF()', `ELEMENTCOMPONENTOF("[${dim}]", TM1User(), 1)`],
+  ]
+  const expr = fc.dynamicExpr ?? `STRTOMEMBER("[${dim}].[${dim}].[" + TM1User() + "]")`
+
+  return (
+    <div className="space-y-1.5">
+      <div className="text-[9px] text-amber-400/80 flex items-center gap-1">
+        ⚡ Resolved at runtime — preview unavailable
+      </div>
+      <textarea value={expr}
+        onChange={e => setFc({ ...fc, dynamicExpr: e.target.value })}
+        rows={3}
+        className="w-full font-mono text-[10px] px-1.5 py-1 border rounded bg-background resize-none" />
+      <div className="flex flex-wrap gap-1">
+        {snippets.map(([label, val]) => (
+          <button key={label} onClick={() => setFc({ ...fc, dynamicExpr: expr + ' + ' + val })}
+            className="text-[9px] px-1.5 py-0.5 rounded border border-border hover:bg-muted font-mono">
+            + {label}
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function FilterBuilder({ dim, server, config, onChange }) {
+  // WHERE = one element per dimension. Only Member (static single pick) and
+  // Dynamic (STRTOMEMBER resolves at runtime) are valid slicer modes.
+  const filterMode   = config?.filterMode   || 'static'
+  const filterConfig = config?.filterConfig || {}
+
+  const setMode = (m) => {
+    const fc = {}
+    onChange({ filterMode: m, filterConfig: fc, subsetExpression: buildFilterExpr(dim, m, fc) })
+  }
+  const setFc = (patch) => {
+    const newFc = { ...filterConfig, ...patch }
+    onChange({ filterMode, filterConfig: newFc, subsetExpression: buildFilterExpr(dim, filterMode, newFc) })
+  }
+
+  return (
+    <div className="mt-1 border-t border-border/30 pt-1.5 space-y-1.5">
+      <div className="flex gap-0.5 bg-muted/30 rounded p-0.5">
+        {[['static','Member'],['dynamic','Dynamic']].map(([id, label]) => (
+          <button key={id} onClick={() => setMode(id)}
+            className={cn('flex-1 py-0.5 text-[9px] rounded transition-colors',
+              filterMode === id ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground')}>
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {filterMode === 'static'  && <WhereMemberPicker dim={dim} server={server} fc={filterConfig} setFc={setFc} />}
+      {filterMode === 'dynamic' && <DynamicFilter dim={dim} fc={filterConfig} setFc={setFc} />}
+
+      {config?.subsetExpression && (
+        <div className="font-mono text-[9px] text-muted-foreground bg-muted/20 px-1.5 py-0.5 rounded truncate" title={config.subsetExpression}>
+          → {config.subsetExpression}
+        </div>
+      )}
+    </div>
+  )
+}
 
 export default function GuidedMDXBuilder({ tab, server: serverProp, onSwitchToRaw }) {
   const server = serverProp || tab?.server
@@ -170,7 +596,26 @@ export default function GuidedMDXBuilder({ tab, server: serverProp, onSwitchToRa
   const [hoveredPattern, setHoveredPattern] = useState(null)
   const [helpOpen, setHelpOpen] = useState(false)
   const [helpSearch, setHelpSearch] = useState('')
-  const [expandedHelp, setExpandedHelp] = useState(null)
+  const [helpDetail, setHelpDetail] = useState(null)
+  const [collapsedCats, setCollapsedCats] = useState(() => Object.fromEntries(CAT_ORDER.map(c => [c, true])))
+  const [customPatterns, setCustomPatterns] = useState(loadCustomPatterns)
+  const [customForm, setCustomForm] = useState(null) // null | { id?, label, cat, desc, mdxTemplate }
+  const [collapsedBuilders, setCollapsedBuilders] = useState(new Set())
+  const toggleBuilderCollapse = (dim) => setCollapsedBuilders(prev => {
+    const next = new Set(prev)
+    next.has(dim) ? next.delete(dim) : next.add(dim)
+    return next
+  })
+
+  const saveCustom = (list) => { setCustomPatterns(list); saveCustomPatterns(list) }
+  const deleteCustom = (id) => saveCustom(customPatterns.filter(p => p.id !== id))
+  const upsertCustom = (entry) => {
+    const list = entry.id
+      ? customPatterns.map(p => p.id === entry.id ? entry : p)
+      : [...customPatterns, { ...entry, id: `custom-${Date.now()}`, cat: entry.cat || 'Custom', isCustom: true }]
+    saveCustom(list)
+    setCustomForm(null)
+  }
   const [recent, setRecent] = useState(loadRecent())
   const [showRecent, setShowRecent] = useState(false)
 
@@ -203,6 +648,8 @@ export default function GuidedMDXBuilder({ tab, server: serverProp, onSwitchToRa
   const prevGeneratedRef = useRef('')
   const [isFormatted, setIsFormatted] = useState(false)
   const [selectedMeasures, setSelectedMeasures] = useState([])
+  const [measuresMode, setMeasuresMode]         = useState('select') // 'select' | 'subset'
+  const [measuresSubset, setMeasuresSubset]     = useState('')
   const [intent, setIntent] = useState(init.selectedCube ? 'Freeform' : null)
   const [secondCube, setSecondCube] = useState(null)
   const [timeDim, setTimeDim] = useState(null)
@@ -257,6 +704,7 @@ export default function GuidedMDXBuilder({ tab, server: serverProp, onSwitchToRa
   const { data: cubeDims = [] } = useCubeDimensions(server, selectedCube)
   const measuresDim = cubeDims?.length ? cubeDims[cubeDims.length - 1] : null
   const { data: measureElements = [] } = useElements(server, measuresDim)
+  const { data: measureSubsets  = [] } = useSubsets(server, measuresDim)
   const { data: dims = [] } = useDims(server)
   const { data: dimAttrs = [] } = useDimAttributes(server, selectedDim)
   const { data: attrValues = { values: [] } } = useAttributeValues(server, selectedDim, selectedAttr)
@@ -280,8 +728,11 @@ export default function GuidedMDXBuilder({ tab, server: serverProp, onSwitchToRa
       else if (cfg.axis === 'rows') rows.push(dim)
       else if (cfg.axis === 'filter') filt.push(dim)
       exprs[dim] = cfg.subsetExpression || `TM1SUBSETALL([${dim}].[${dim}])`
-      if (dim === measuresDim && selectedMeasures.length > 0) {
-        exprs[dim] = `{${selectedMeasures.map(m => `[${dim}].[${dim}].[${m}]`).join(', ')}}`
+      if (dim === measuresDim) {
+        if (measuresMode === 'subset' && measuresSubset)
+          exprs[dim] = `TM1SubsetToSet([${dim}].[${dim}], "${measuresSubset}")`
+        else if (selectedMeasures.length > 0)
+          exprs[dim] = `{${selectedMeasures.map(m => `[${dim}].[${dim}].[${m}]`).join(', ')}}`
       }
     })
     return { axes: { columns: cols, rows: rows, filter: filt }, dimExpressions: exprs }
@@ -305,14 +756,17 @@ export default function GuidedMDXBuilder({ tab, server: serverProp, onSwitchToRa
     if (!colPart && !rowPart) mdx += '\n  NON EMPTY {TM1SubsetAll([Dim])} ON COLUMNS'
     mdx += `\nFROM [${selectedCube}]`
     if (axes.filter.length) {
-      const slicers = axes.filter.map(d => {
+      const slicers = axes.filter.flatMap(d => {
         const expr = dimConfig[d]?.subsetExpression?.trim()
-        // Plain member name (no MDX syntax chars) → use as member reference
-        return expr && !/[{}()[\]]/.test(expr)
-          ? `[${d}].[${d}].[${expr}]`
-          : `[${d}].[${d}].DefaultMember`
+        if (!expr) return []
+        // Set expressions that return multiple members are invalid as WHERE tuple members — skip them
+        if (/TM1SUBSETALL|TM1SubsetToSet|TM1FILTERBYLEVEL|TOPCOUNT|BOTTOMCOUNT|FILTER\s*\(|HEAD\s*\(|TAIL\s*\(/i.test(expr)) return []
+        // Plain member name → 3-part reference
+        if (!/[{}()[\]]/.test(expr)) return [`[${d}].[${d}].[${expr}]`]
+        // Range or STRTOMEMBER — valid in WHERE
+        return [expr]
       })
-      mdx += `\nWHERE (${slicers.join(', ')})`
+      if (slicers.length) mdx += `\nWHERE (${slicers.join(', ')})`
     }
     return mdx
   }, [isSubsetMode, currentMDX, selectedDim, selectedCube, axes, dimExpressions])
@@ -472,7 +926,7 @@ export default function GuidedMDXBuilder({ tab, server: serverProp, onSwitchToRa
     ? [{ num: 0, title: 'Pick Dimension' }, { num: 1, title: 'Build Set' }, { num: 2, title: 'Review' }]
     : [{ num: 0, title: 'Choose Cube' }, { num: 1, title: 'Assign Axes' }, { num: 2, title: 'Review' }]
 
-  const dimsList = isSubsetMode ? dims : cubeDims
+  const dimsList = isSubsetMode ? dims : cubeDims.filter(d => d !== measuresDim)
   const filteredDims = useMemo(() => {
     const q = filterText.trim().toLowerCase()
     return q ? dimsList.filter(d => d.toLowerCase().includes(q)) : dimsList
@@ -529,114 +983,150 @@ export default function GuidedMDXBuilder({ tab, server: serverProp, onSwitchToRa
         ))}
       </div>
 
-      {helpOpen && (
-        <div className="px-4 py-2.5 border-b border-border bg-muted/10 shrink-0">
-          <div className="flex items-center justify-between mb-2">
-            <div className="text-xs font-semibold">MDX Reference</div>
-            <div className="flex items-center gap-2">
-              <input type="text" placeholder="Search functions & patterns…" value={helpSearch}
+      {helpOpen && (() => {
+        const allItems = [...ALL_ITEMS, ...customPatterns.map(p => ({ ...p, isCustom: true }))]
+        const getItemMdx = (item) => item.isCustom ? item.mdxTemplate : (item.isFn || item.cat === 'Query Clauses') ? item.mdx() : (WRAPPERS[item.id] ? WRAPPERS[item.id](selectedDim||'Dim', '{...}') : '')
+        const searchResults = helpSearch
+          ? allItems.filter(item => {
+              const mdx = getItemMdx(item)
+              const q = helpSearch.toLowerCase()
+              return item.label.toLowerCase().includes(q) || (item.desc||'').toLowerCase().includes(q) || mdx.toLowerCase().includes(q)
+            })
+          : null
+
+        return (
+        <div className="px-4 py-2.5 border-b border-border bg-muted/10 shrink-0 max-h-[380px] overflow-auto">
+
+          {/* Header */}
+          <div className="flex items-center gap-2 mb-2 sticky top-0 bg-muted/10 py-0.5 z-10">
+            {helpDetail && (
+              <button onClick={() => setHelpDetail(null)}
+                className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground">
+                <ArrowLeft size={11} /> Back
+              </button>
+            )}
+            {!helpDetail && <div className="text-xs font-semibold flex-1">MDX Reference</div>}
+            {helpDetail && <div className="text-xs font-semibold flex-1 truncate">{helpDetail.label}</div>}
+            {!helpDetail && (
+              <input type="text" placeholder="Search…" value={helpSearch}
                 onChange={e => setHelpSearch(e.target.value)}
-                className="text-[10px] px-2 py-1 border rounded bg-background w-64" />
-              <button onClick={() => { setHelpOpen(false); setHelpSearch('') }} className="p-0.5 rounded hover:bg-muted"><X size={12} /></button>
-            </div>
+                className="text-[10px] px-2 py-1 border rounded bg-background w-44" />
+            )}
+            <button onClick={() => setCustomForm({ label:'', cat:'Custom', desc:'', mdxTemplate:'' })}
+              title="Add custom pattern"
+              className="p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground"><Plus size={12} /></button>
+            <button onClick={() => { setHelpOpen(false); setHelpSearch(''); setHelpDetail(null) }}
+              className="p-0.5 rounded hover:bg-muted"><X size={12} /></button>
           </div>
-          {helpSearch ? (
-            <div className="space-y-1 max-h-[140px] overflow-auto">
-              {[...PATTERNS, ...FUNCTIONS.map(fn => ({ ...fn, isFn: true }))]
-                .filter(item => {
-                  const mdx = item.isFn ? item.mdx() : (WRAPPERS[item.id] ? WRAPPERS[item.id](selectedDim||'Dim', '{...}') : '')
-                  return item.label.toLowerCase().includes(helpSearch.toLowerCase())
-                    || (item.desc||'').toLowerCase().includes(helpSearch.toLowerCase())
-                    || mdx.toLowerCase().includes(helpSearch.toLowerCase())
-                })
-                .map((item, i) => {
-                  const mdx = item.isFn ? item.mdx() : (WRAPPERS[item.id] ? WRAPPERS[item.id](selectedDim||'Dim', '{...}') : '')
-                  return (
-                    <div key={i} className="text-[10px] border-b border-border/30 pb-2 last:border-0">
-                      <button className="w-full text-left cursor-pointer hover:text-sky-400"
-                        onClick={() => setExpandedHelp(expandedHelp === i ? null : i)}>
-                        <div className="flex items-center gap-2">
-                          <span className="text-[9px]">{expandedHelp === i ? '▾' : '▸'}</span>
-                          <span className="font-mono text-sky-400 font-medium">{item.label}</span>
-                          <span className="text-muted-foreground">{item.isFn ? 'function' : 'pattern'}</span>
-                        </div>
-                        {expandedHelp !== i && item.desc && <div className="text-[9px] text-muted-foreground mt-0.5 ml-4 truncate">{item.desc}</div>}
-                      </button>
-                      {expandedHelp === i && (
-                        <div className="ml-4 mt-1">
-                          {item.desc && <div className="text-[9px] text-muted-foreground mb-1.5">{item.desc}</div>}
-                          <div className="font-mono text-[9px] text-muted-foreground bg-muted/30 p-1.5 rounded whitespace-pre-wrap break-all">{mdx}</div>
-                        </div>
-                      )}
-                    </div>
-                  )
-                })}
-              {[...PATTERNS, ...FUNCTIONS].filter(item => item.label.toLowerCase().includes(helpSearch.toLowerCase())).length === 0 &&
-                <div className="text-[10px] text-muted-foreground">No matches for "{helpSearch}"</div>}
-            </div>
-          ) : (
-            <div>
-              <div className="text-[10px] text-muted-foreground mb-2">Type in the search box to find functions and patterns by name.</div>
-              {!isSubsetMode && (
-                <div className="mb-2">
-                  <div className="text-[9px] uppercase text-muted-foreground font-semibold mb-1">View MDX Syntax</div>
-                  <div className="grid grid-cols-4 gap-x-3 gap-y-1 text-[10px]">
-                    <span><span className="font-mono text-amber-400">SELECT</span> — required clause</span>
-                    <span><span className="font-mono text-amber-400">FROM</span> — cube name</span>
-                    <span><span className="font-mono text-amber-400">WHERE</span> — slicer</span>
-                    <span><span className="font-mono text-amber-400">ON COLUMNS/ROWS</span> — axis</span>
-                    <span><span className="font-mono text-amber-400">NON EMPTY</span> — suppress zeros</span>
-                    <span><span className="font-mono text-amber-400">CROSSJOIN</span> — nested axes</span>
-                    <span><span className="font-mono text-amber-400">WITH MEMBER/SET</span> — calculated</span>
-                    <span><span className="font-mono text-amber-400">ORDER</span> — sort result</span>
-                  </div>
+
+          {/* Detail view */}
+          {helpDetail && (() => {
+            const mdx = getItemMdx(helpDetail)
+            return (
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-[9px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground uppercase tracking-wide">{helpDetail.cat}</span>
+                  {helpDetail.isFn && <span className="text-[9px] text-sky-400">function</span>}
+                  {helpDetail.isCustom && <span className="text-[9px] text-amber-400">custom</span>}
                 </div>
-              )}
-              <div className="text-[9px] uppercase text-muted-foreground font-semibold mb-1">{!isSubsetMode ? 'Set Expressions (for axes/slicer)' : 'Subset Functions'}</div>
-              <div className="grid grid-cols-3 gap-x-4 gap-y-1 text-[10px]">
-                {[
-                  { name: 'TM1SUBSETALL',     desc: 'all members' },
-                  { name: 'TM1FILTERBYLEVEL', desc: 'leaf only' },
-                  { name: 'TM1FILTERBYPATTERN', desc: 'wildcard' },
-                  { name: 'FILTER',           desc: 'cube/attr condition' },
-                  { name: 'DESCENDANTS',      desc: 'drill down' },
-                  { name: 'TM1SORT',          desc: 'sort A-Z/Z-A' },
-                  { name: 'TOPCOUNT',         desc: 'top N' },
-                  { name: 'BOTTOMCOUNT',      desc: 'bottom N' },
-                  { name: 'HEAD/TAIL',        desc: 'first/last N' },
-                  { name: 'UNION',            desc: 'combine sets' },
-                  { name: 'INTERSECT',        desc: 'common members' },
-                  { name: 'EXCEPT',           desc: 'exclude members' },
-                  { name: 'GENERATE',         desc: 'iterate set' },
-                  { name: 'ORDER',            desc: 'sort by cube value' },
-                  { name: 'LAG/LEAD',         desc: 'offset member' },
-                  { name: 'LASTPERIODS',      desc: 'trailing periods' },
-                  { name: 'OPENINGPERIOD',    desc: 'first period' },
-                  { name: 'CLOSINGPERIOD',    desc: 'last period' },
-                  { name: 'PARALLELPERIOD',   desc: 'prior year' },
-                  { name: 'PERIODSTODATE',    desc: 'cumulative' },
-                  { name: 'VAL',              desc: 'numeric attribute' },
-                  { name: 'STRTOVALUE',       desc: 'string→number' },
-                  { name: 'STRTOMEMBER',      desc: 'string→member' },
-                  { name: 'IIF',              desc: 'conditional' },
-                  { name: 'MIN/MAX',          desc: 'aggregate' },
-                  { name: 'SUM/AVG/COUNT',    desc: 'aggregates' },
-                  { name: 'RANK',             desc: 'rank in set' },
-                  { name: 'DIMIX/DIMNAME',    desc: 'dimension lookup' },
-                  { name: 'EXTRACT',          desc: 'extract hierarchy' },
-                  { name: 'COUSIN',           desc: 'parallel member' },
-                ].map(fn => (
-                  <button key={fn.name}
-                    onClick={() => { setHelpSearch(fn.name); setExpandedHelp(0) }}
-                    className="text-left hover:text-sky-400 cursor-pointer">
-                    <span className="font-mono text-sky-400">{fn.name}</span> <span className="text-muted-foreground">— {fn.desc}</span>
+                {helpDetail.desc && <div className="text-[10px] text-muted-foreground">{helpDetail.desc}</div>}
+                <div className="relative">
+                  <div className="font-mono text-[9px] bg-muted/40 p-2 rounded whitespace-pre-wrap break-all">{mdx}</div>
+                  <button onClick={() => navigator.clipboard.writeText(mdx)}
+                    className="absolute top-1 right-1 p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground">
+                    <Copy size={10} />
                   </button>
-                ))}
+                </div>
+                {helpDetail.isCustom && (
+                  <div className="flex gap-2">
+                    <button onClick={() => setCustomForm({ ...helpDetail })}
+                      className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground">
+                      <Pencil size={10} /> Edit
+                    </button>
+                    <button onClick={() => { deleteCustom(helpDetail.id); setHelpDetail(null) }}
+                      className="flex items-center gap-1 text-[10px] text-red-400 hover:text-red-300">
+                      <Trash2 size={10} /> Delete
+                    </button>
+                  </div>
+                )}
+              </div>
+            )
+          })()}
+
+          {/* Search results */}
+          {!helpDetail && searchResults && (
+            <div className="space-y-0.5">
+              {searchResults.length === 0 && <div className="text-[10px] text-muted-foreground">No matches for "{helpSearch}"</div>}
+              {[...new Set(searchResults.map(i => i.cat))].map(cat => (
+                <div key={cat}>
+                  <div className="text-[9px] uppercase text-muted-foreground font-semibold mt-2 mb-1">{cat}</div>
+                  {searchResults.filter(i => i.cat === cat).map(item => (
+                    <button key={item.id} onClick={() => setHelpDetail(item)}
+                      className="w-full text-left text-[10px] flex items-center gap-2 px-1.5 py-1 rounded hover:bg-muted/40 group">
+                      <span className="font-mono text-sky-400 font-medium">{item.label}</span>
+                      {item.desc && <span className="text-muted-foreground truncate">{item.desc}</span>}
+                    </button>
+                  ))}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Browse by category */}
+          {!helpDetail && !searchResults && (
+            <div className="space-y-1">
+              {[...CAT_ORDER.filter(c => allItems.some(i => i.cat === c))].map(cat => {
+                const items = allItems.filter(i => i.cat === cat)
+                const collapsed = collapsedCats[cat]
+                return (
+                  <div key={cat}>
+                    <button onClick={() => setCollapsedCats(prev => ({ ...prev, [cat]: !prev[cat] }))}
+                      className="flex items-center gap-1.5 w-full text-left text-[9px] uppercase font-semibold text-muted-foreground hover:text-foreground py-1">
+                      {collapsed ? <ChevronRight size={10} /> : <ChevronDown size={10} />}
+                      {cat}
+                      <span className="font-normal normal-case ml-1 opacity-60">{items.length}</span>
+                    </button>
+                    {!collapsed && (
+                      <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 pl-4 pb-1">
+                        {items.map(item => (
+                          <button key={item.id} onClick={() => setHelpDetail(item)}
+                            className="text-left text-[10px] flex items-center gap-1 py-0.5 rounded hover:text-sky-400 group truncate">
+                            <span className="font-mono text-sky-400 group-hover:text-sky-300 truncate">{item.label}</span>
+                            {item.isCustom && <span className="shrink-0 text-[8px] text-amber-400/70">★</span>}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          )}
+
+          {/* Add / edit custom pattern form */}
+          {customForm && (
+            <div className="mt-3 border border-border rounded p-3 space-y-2 bg-muted/20">
+              <div className="text-[10px] font-semibold">{customForm.id ? 'Edit Pattern' : 'Add Custom Pattern'}</div>
+              <div className="grid grid-cols-2 gap-2">
+                <input placeholder="Label" value={customForm.label} onChange={e => setCustomForm(f => ({ ...f, label: e.target.value }))}
+                  className="text-[10px] px-2 py-1 border rounded bg-background col-span-1" />
+                <input placeholder="Category" value={customForm.cat} onChange={e => setCustomForm(f => ({ ...f, cat: e.target.value }))}
+                  className="text-[10px] px-2 py-1 border rounded bg-background col-span-1" />
+              </div>
+              <input placeholder="Description (optional)" value={customForm.desc} onChange={e => setCustomForm(f => ({ ...f, desc: e.target.value }))}
+                className="text-[10px] px-2 py-1 border rounded bg-background w-full" />
+              <textarea placeholder="MDX template" value={customForm.mdxTemplate} onChange={e => setCustomForm(f => ({ ...f, mdxTemplate: e.target.value }))}
+                rows={3} className="text-[10px] font-mono px-2 py-1 border rounded bg-background w-full resize-none" />
+              <div className="flex gap-2">
+                <button onClick={() => upsertCustom(customForm)} disabled={!customForm.label || !customForm.mdxTemplate}
+                  className="px-3 py-1 text-[10px] rounded bg-primary text-primary-foreground disabled:opacity-40">Save</button>
+                <button onClick={() => setCustomForm(null)} className="px-3 py-1 text-[10px] rounded hover:bg-muted">Cancel</button>
               </div>
             </div>
           )}
         </div>
-      )}
+        )
+      })()}
 
       {/* Body */}
       <div className="flex-1 min-h-0 flex overflow-hidden">
@@ -866,24 +1356,45 @@ export default function GuidedMDXBuilder({ tab, server: serverProp, onSwitchToRa
                 <div className="font-medium text-sm mb-1">Assign Dimensions</div>
                 {measuresDim && measureElements.length > 0 && (
                   <div className="mb-3 p-2 border rounded bg-muted/20">
-                    <div className="text-[10px] text-muted-foreground mb-1 font-medium">Measures ({measuresDim})</div>
-                    <div className="grid grid-cols-3 gap-1 max-h-[120px] overflow-auto">
-                      {measureElements.slice(0, 60).map(el => {
-                        const name = el.Name || el.name || el
-                        const checked = selectedMeasures.includes(name)
-                        return (
-                          <label key={name} className="flex items-center gap-1 text-[10px] cursor-pointer">
-                            <input type="checkbox" checked={checked}
-                              onChange={() => setSelectedMeasures(prev => checked ? prev.filter(m => m !== name) : [...prev, name])}
-                              className="accent-primary" />
-                            <span className="font-mono truncate">{name}</span>
-                          </label>
-                        )
-                      })}
+                    <div className="flex items-center justify-between mb-1.5">
+                      <div className="text-[10px] text-muted-foreground font-medium">Measures ({measuresDim})</div>
+                      <div className="flex gap-0.5 bg-muted/40 rounded p-0.5">
+                        {[['select','Select'],['subset','Subset']].map(([id, label]) => (
+                          <button key={id} onClick={() => { setMeasuresMode(id); setSelectedMeasures([]); setMeasuresSubset('') }}
+                            className={cn('px-1.5 py-0.5 text-[9px] rounded transition-colors',
+                              measuresMode === id ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground')}>
+                            {label}
+                          </button>
+                        ))}
+                      </div>
                     </div>
-                    {selectedMeasures.length > 0 && (
-                      <button onClick={() => setSelectedMeasures([])}
-                        className="text-[9px] px-2 py-0.5 border rounded hover:bg-muted mt-1">Clear</button>
+                    {measuresMode === 'select' ? (
+                      <>
+                        <div className="grid grid-cols-3 gap-1 max-h-[120px] overflow-auto">
+                          {measureElements.filter(el => el.Type === 'N').slice(0, 60).map(el => {
+                            const name = el.Name || el.name || el
+                            const checked = selectedMeasures.includes(name)
+                            return (
+                              <label key={name} className="flex items-center gap-1 text-[10px] cursor-pointer">
+                                <input type="checkbox" checked={checked}
+                                  onChange={() => setSelectedMeasures(prev => checked ? prev.filter(m => m !== name) : [...prev, name])}
+                                  className="accent-primary" />
+                                <span className="font-mono truncate">{name}</span>
+                              </label>
+                            )
+                          })}
+                        </div>
+                        {selectedMeasures.length > 0 && (
+                          <button onClick={() => setSelectedMeasures([])}
+                            className="text-[9px] px-2 py-0.5 border rounded hover:bg-muted mt-1">Clear</button>
+                        )}
+                      </>
+                    ) : (
+                      <select value={measuresSubset} onChange={e => setMeasuresSubset(e.target.value)}
+                        className="w-full text-[10px] px-1.5 py-0.5 border rounded bg-background">
+                        <option value="">Pick named subset…</option>
+                        {measureSubsets.map(s => <option key={s.Name} value={s.Name}>{s.Name}</option>)}
+                      </select>
                     )}
                   </div>
                 )}
@@ -891,23 +1402,72 @@ export default function GuidedMDXBuilder({ tab, server: serverProp, onSwitchToRa
                   value={filterText} onChange={e => setFilterText(e.target.value)} />
                 <div className="space-y-1.5">
                   {filteredDims.map(dim => {
-                    const cur = dimConfig[dim]?.axis || null
+                    const cur       = dimConfig[dim]?.axis || null
+                    const collapsed = collapsedBuilders.has(dim)
+                    const cfg       = dimConfig[dim] || {}
+
+                    // Compact summary shown when builder is collapsed
+                    const summary = (() => {
+                      if (!cur) return null
+                      if (cur === 'filter') {
+                        const fm = cfg.filterMode || 'static'
+                        if (fm === 'dynamic') return 'Dynamic'
+                        return cfg.filterConfig?.selectedMember || null
+                      }
+                      const mode = cfg.axisMode
+                      if (!mode || mode === 'all') return 'All'
+                      if (mode === 'leaf') return 'Leaf'
+                      if (mode === 'member') {
+                        const ms = cfg.axisConfig?.selectedMembers || []
+                        return ms.length ? `${ms.length} member${ms.length > 1 ? 's' : ''}` : null
+                      }
+                      if (mode === 'range') {
+                        const { rangeFrom, rangeTo } = cfg.axisConfig || {}
+                        return rangeFrom && rangeTo ? `${rangeFrom} → ${rangeTo}` : 'Range'
+                      }
+                      if (mode === 'subset')    return cfg.axisConfig?.subsetName || 'Subset'
+                      if (mode === 'condition') return cfg.axisConfig?.condType || 'Condition'
+                      if (mode === 'expression') return 'Expression'
+                      return null
+                    })()
+
                     return (
                       <div key={dim} className="border rounded px-2 py-1.5 bg-background space-y-1">
                         <div className="flex items-center gap-1">
                           <div className="font-mono text-[11px] flex-1 truncate">{dim}</div>
+                          {cur && collapsed && summary && (
+                            <span className="text-[9px] text-muted-foreground truncate max-w-[80px]">{summary}</span>
+                          )}
                           <button onClick={() => setDimConfig(p => ({ ...p, [dim]: { axis: p[dim]?.axis === 'columns' ? null : 'columns', subsetExpression: p[dim]?.subsetExpression || '' } }))}
                             className={cn('px-1.5 py-0.5 text-[10px] rounded border', cur === 'columns' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted')}>Cols</button>
                           <button onClick={() => setDimConfig(p => ({ ...p, [dim]: { axis: p[dim]?.axis === 'rows' ? null : 'rows', subsetExpression: p[dim]?.subsetExpression || '' } }))}
                             className={cn('px-1.5 py-0.5 text-[10px] rounded border', cur === 'rows' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted')}>Rows</button>
                           <button onClick={() => setDimConfig(p => ({ ...p, [dim]: { axis: p[dim]?.axis === 'filter' ? null : 'filter', subsetExpression: p[dim]?.subsetExpression || '' } }))}
                             className={cn('px-1.5 py-0.5 text-[10px] rounded border', cur === 'filter' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted')}>Filt</button>
+                          {cur && (
+                            <button onClick={() => toggleBuilderCollapse(dim)}
+                              className="p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground ml-0.5">
+                              {collapsed ? <ChevronRight size={11} /> : <ChevronDown size={11} />}
+                            </button>
+                          )}
                         </div>
-                        {cur && (
-                          <input type="text" placeholder={`{TM1SUBSETALL([${dim}].[${dim}])}`}
-                            value={dimConfig[dim]?.subsetExpression || ''}
-                            onChange={e => setDimConfig(p => ({ ...p, [dim]: { ...p[dim], subsetExpression: e.target.value } }))}
-                            className="w-full font-mono text-[10px] px-1.5 py-0.5 border rounded bg-background" />
+                        {cur && !collapsed && (cur === 'columns' || cur === 'rows') && (
+                          <AxisSetBuilder
+                            dim={dim}
+                            server={server}
+                            measuresDim={measuresDim}
+                            config={dimConfig[dim]}
+                            onChange={cfg => setDimConfig(p => ({ ...p, [dim]: { ...p[dim], ...cfg } }))}
+                          />
+                        )}
+                        {cur && !collapsed && cur === 'filter' && (
+                          <FilterBuilder
+                            dim={dim}
+                            server={server}
+                            cube={selectedCube}
+                            config={dimConfig[dim]}
+                            onChange={cfg => setDimConfig(p => ({ ...p, [dim]: { ...p[dim], ...cfg } }))}
+                          />
                         )}
                       </div>
                     )
@@ -991,6 +1551,27 @@ export default function GuidedMDXBuilder({ tab, server: serverProp, onSwitchToRa
               </div>
             </>
           )}
+          {/* Stats bar */}
+          {!isSubsetMode && (() => {
+            const mdxLen   = (activeMDX || '').length
+            const mdxKB    = (mdxLen / 1024).toFixed(1)
+            const rows     = previewResult?.Axes?.[1]?.Tuples?.length ?? null
+            const cols     = previewResult?.Axes?.[0]?.Tuples?.length ?? null
+            const cells    = previewResult?.Cells?.length ?? null
+            const LIMIT    = 262144  // 256 KB
+            const lenColor = mdxLen > LIMIT ? 'text-red-400' : mdxLen > LIMIT * 0.85 ? 'text-amber-400' : 'text-muted-foreground'
+            return (
+              <div className="flex items-center gap-3 mb-1.5 text-[10px]">
+                <span className={cn('font-mono', lenColor)}
+                  title={`${mdxLen.toLocaleString()} chars — limit is 256 KB (262,144 chars)`}>
+                  {mdxKB} KB{mdxLen > LIMIT ? ' ⚠ >256KB' : ''}
+                </span>
+                {rows !== null && <span className="text-muted-foreground">{rows.toLocaleString()} rows</span>}
+                {cols !== null && <span className="text-muted-foreground">{cols.toLocaleString()} cols</span>}
+                {cells !== null && <span className="text-muted-foreground">{cells.toLocaleString()} cells</span>}
+              </div>
+            )
+          })()}
           <div className="text-xs font-medium text-muted-foreground">Results</div>
           <div className="flex-1 min-h-0 rounded overflow-auto bg-background p-2">
             {isSubsetMode ? (

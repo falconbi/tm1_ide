@@ -2,71 +2,7 @@
   "server": "24retail",
   "tabs": [
     {
-      "id": "guidedmdxview:24retail",
-      "type": "guidedmdxview",
-      "label": "Guided MDX View",
-      "server": "24retail"
-    },
-    {
-      "id": "view:24retail:Allocation Calculation:guided-1780354869762",
-      "type": "view",
-      "label": "Allocation Calculation",
-      "server": "24retail",
-      "cube": "Allocation Calculation",
-      "initialMdx": "SELECT\n  NON EMPTY\n    {[Allocation Calculation].[Allocation Calculation].[Allocation Amount], [Allocation Calculation].[Allocation Calculation].[Total Driver]} ON COLUMNS,\n  NON EMPTY\n    {TM1SUBSETALL([organization].[organization])} *\n        {TM1SUBSETALL([Allocation List].[Allocation List])} ON ROWS\nFROM [Allocation Calculation]\nWHERE ([Year].[Year].[Y1], [Month].[Month].[Mar], [Version].[Version].[Version 1])",
-      "initialAxes": {
-        "rows": [
-          {
-            "dimension": "organization",
-            "subset": null,
-            "member": null,
-            "members": null,
-            "memberSet": null
-          },
-          {
-            "dimension": "Allocation List",
-            "subset": null,
-            "member": null,
-            "members": null,
-            "memberSet": null
-          }
-        ],
-        "columns": [
-          {
-            "dimension": "Allocation Calculation",
-            "subset": null,
-            "member": null,
-            "members": null,
-            "memberSet": null
-          }
-        ],
-        "pages": [
-          {
-            "dimension": "Year",
-            "subset": null,
-            "member": null,
-            "members": null,
-            "memberSet": null
-          },
-          {
-            "dimension": "Month",
-            "subset": null,
-            "member": null,
-            "members": null,
-            "memberSet": null
-          },
-          {
-            "dimension": "Version",
-            "subset": null,
-            "member": null,
-            "members": null,
-            "memberSet": null
-          }
-        ]
-      }
-    },
-    {
-      "id": "guidedmdxview:24retail:Allocation Calculation:1780355050872",
+      "id": "guidedmdxview:24retail:Allocation Calculation:1780363829074",
       "type": "guidedmdxview",
       "label": "Builder — Allocation Calculation",
       "server": "24retail",
@@ -88,31 +24,71 @@
           },
           "Year": {
             "axis": "filter",
-            "subsetExpression": ""
+            "subsetExpression": "Y1"
           },
           "Month": {
             "axis": "filter",
-            "subsetExpression": ""
+            "subsetExpression": "Mar"
           },
           "Version": {
             "axis": "filter",
-            "subsetExpression": ""
+            "subsetExpression": "Version 1"
           }
         },
         "step": 1
       }
+    },
+    {
+      "id": "cubeview:24retail:User Input",
+      "type": "cubeview",
+      "label": "⊞ User Input",
+      "server": "24retail",
+      "cube": "User Input",
+      "scrollToLine": null,
+      "scrollToSection": null
+    },
+    {
+      "id": "cubeview:24retail:User Input:Default",
+      "type": "cubeview",
+      "label": "Default",
+      "server": "24retail",
+      "cube": "User Input",
+      "viewName": "Default",
+      "scrollToLine": null,
+      "scrollToSection": null,
+      "viewType": "#ibm.tm1.api.v1.MDXView"
+    },
+    {
+      "id": "cubeview:24retail:Employee",
+      "type": "cubeview",
+      "label": "⊞ Employee",
+      "server": "24retail",
+      "cube": "Employee",
+      "scrollToLine": null,
+      "scrollToSection": null
+    },
+    {
+      "id": "cubeview:24retail:Exchange Rates",
+      "type": "cubeview",
+      "label": "⊞ Exchange Rates",
+      "server": "24retail",
+      "cube": "Exchange Rates",
+      "scrollToLine": null,
+      "scrollToSection": null
     }
   ],
-  "activeTab": "guidedmdxview:24retail:Allocation Calculation:1780355050872",
+  "activeTab": "cubeview:24retail:Exchange Rates",
   "groups": [
     {
       "id": "g1",
       "tabIds": [
-        "guidedmdxview:24retail",
-        "view:24retail:Allocation Calculation:guided-1780354869762",
-        "guidedmdxview:24retail:Allocation Calculation:1780355050872"
+        "guidedmdxview:24retail:Allocation Calculation:1780363829074",
+        "cubeview:24retail:User Input",
+        "cubeview:24retail:User Input:Default",
+        "cubeview:24retail:Employee",
+        "cubeview:24retail:Exchange Rates"
       ],
-      "activeTabId": "guidedmdxview:24retail:Allocation Calculation:1780355050872"
+      "activeTabId": "cubeview:24retail:Exchange Rates"
     }
   ],
   "activeGroupId": "g1"
