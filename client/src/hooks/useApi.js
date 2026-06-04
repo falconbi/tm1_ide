@@ -353,3 +353,9 @@ export const usePreviewDatasource   = () => useMutation({ mutationFn: (body) => 
 export const useSQLQueries     = (connectionId) => useQuery({ queryKey: ['sql-queries', connectionId], queryFn: () => get(`/api/sql/queries${connectionId ? `?connectionId=${enc(connectionId)}` : ''}`), staleTime: 0 })
 export const useSaveSQLQuery   = () => { const qc = useQueryClient(); return useMutation({ mutationFn: (q) => post('/api/sql/queries', q), onSuccess: (_, v) => qc.invalidateQueries({ queryKey: ['sql-queries', v.connectionId] }) }) }
 export const useDeleteSQLQuery = () => { const qc = useQueryClient(); return useMutation({ mutationFn: ({ id, connectionId }) => del(`/api/sql/queries/${enc(id)}`), onSuccess: (_, v) => qc.invalidateQueries({ queryKey: ['sql-queries', v.connectionId] }) }) }
+
+export const useCurrentUser      = (server) => useQuery({ queryKey: ['whoami', server], queryFn: () => get(`/api/whoami?server=${enc(server)}`), enabled: !!server, staleTime: 300_000 })
+export const useWriteCell        = () => useMutation({ mutationFn: (body) => post('/api/cells/write', body) })
+export const useCreateDimension  = () => useMutation({ mutationFn: (body) => post('/api/dimension/create', body) })
+export const useBulkDimImport    = () => useMutation({ mutationFn: (body) => post('/api/dimension/bulk-import', body) })
+export const useBulkAttrImport   = () => useMutation({ mutationFn: (body) => post('/api/dimension/bulk-attr-import', body) })

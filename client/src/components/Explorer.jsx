@@ -59,7 +59,7 @@ function getLocateIdFromTab(tab) {
   if (tab.type === 'process')   return `process:${tab.name}`
   if (tab.type === 'rules')     return `rules:${tab.cube}`
   if (tab.type === 'view' || tab.type === 'cubeview') return tab.viewName ? `view:${tab.cube}:${tab.viewName}` : `cube:${tab.cube}`
-  if (tab.type === 'subset')    return `subset:${tab.dimension}:${tab.subsetName}`
+  if (tab.type === 'subset')    return tab.subsetName ? `subset:${tab.dimension}:${tab.subsetName}` : `dimension:${tab.dimension}`
   if (tab.type === 'dimension') return `dimension:${tab.dimension}`
   if (tab.type === 'chore')     return `chore:${tab.name}`
   return ''
@@ -952,6 +952,7 @@ export default function Explorer() {
     if (search) setSearch('')
     const id = getLocateId(revealTarget)
     if (!id) return
+    const delay = revealTarget?.type === 'subset' ? 800 : 400
     const timer = setTimeout(() => {
       const el = document.querySelector(`[data-locate-id="${id}"]`)
       if (el) {
@@ -962,7 +963,7 @@ export default function Explorer() {
         setTimeout(() => el.classList.remove('tree-reveal-glow'), 2100)
       }
       clearRevealTarget()
-    }, 400)
+    }, delay)
     return () => clearTimeout(timer)
   }, [revealTarget, server, search, clearRevealTarget])
 

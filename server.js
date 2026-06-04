@@ -45,6 +45,59 @@ app.get('/api/cubes', async (req, res) => {
 })
 
 // ── Dimensions ────────────────────────────────────────────────────────────────
+app.post('/api/dimension/create', async (req, res) => {
+    try {
+        const { server, name } = req.body
+        await new TM1Client(server).createDimension(name)
+        res.json({ ok: true })
+    } catch (e) {
+        res.status(500).json({ error: e.message })
+    }
+})
+
+// Bulk import: rows = [{ name, type, parent, weight }]
+app.post('/api/dimension/bulk-import', async (req, res) => {
+    try {
+        const { server, dimension, hierarchy = dimension, rows } = req.body
+        const client = new TM1Client(server)
+        const errors = []
+        // Pass 1: create all elements
+        for (const row of rows) {
+            if (!row.name?.trim()) continue
+            try { await client.addElement(dimension, row.name.trim(), row.type || 'N', hierarchy) } catch (e) {
+                if (!e.message?.includes('already exists') && !e.response?.status === 409) errors.push(`${row.name}: ${e.message}`)
+            }
+        }
+        // Pass 2: create edges
+        for (const row of rows) {
+            if (!row.name?.trim() || !row.parent?.trim()) continue
+            try { await client.addEdge(dimension, row.parent.trim(), row.name.trim(), row.weight ?? 1, hierarchy) } catch (e) {
+                if (!e.message?.includes('already exists')) errors.push(`${row.parent}→${row.name}: ${e.message}`)
+            }
+        }
+        res.json({ ok: true, errors })
+    } catch (e) {
+        res.status(500).json({ error: e.message })
+    }
+})
+
+// Bulk attribute import: rows = [{ element, attrName, value }]
+app.post('/api/dimension/bulk-attr-import', async (req, res) => {
+    try {
+        const { server, dimension, hierarchy = dimension, rows } = req.body
+        const client = new TM1Client(server)
+        const errors = []
+        for (const row of rows) {
+            if (!row.element?.trim() || !row.attrName?.trim()) continue
+            try { await client.writeElementAttribute(dimension, row.element.trim(), row.attrName.trim(), row.value ?? '', row.type || 'S', hierarchy) }
+            catch (e) { errors.push(`${row.element}[${row.attrName}]: ${e.message}`) }
+        }
+        res.json({ ok: true, errors })
+    } catch (e) {
+        res.status(500).json({ error: e.message })
+    }
+})
+
 app.get('/api/dimensions', async (req, res) => {
     try {
         const client = new TM1Client(req.query.server)
@@ -1456,6 +1509,35 @@ app.delete('/api/sql/queries/:id', (req, res) => {
         saveQueries(loadQueries().filter(q => q.id !== req.params.id))
         res.json({ ok: true })
     } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// ── Current user ──────────────────────────────────────────────────────────────
+app.get('/api/whoami', async (req, res) => {
+    try {
+        const client = new TM1Client(req.query.server)
+        const name = await client.getCurrentUser()
+        res.json({ name })
+    } catch (e) {
+        res.status(500).json({ error: e.message })
+    }
+})
+
+// ── Cell write ────────────────────────────────────────────────────────────────
+// Body: { server, cube, dims: [{ dim, element }, ...], value }
+app.post('/api/cells/write', async (req, res) => {
+    try {
+        const { server, cube, dims, value } = req.body
+        if (!server || !cube || !Array.isArray(dims) || dims.length === 0)
+            return res.status(400).json({ error: 'server, cube, and dims are required' })
+        const client = new TM1Client(server)
+        await client.writeCellValue(cube, dims, value)
+        res.json({ ok: true })
+    } catch (e) {
+        const detail = e.response?.data?.error?.message ?? e.response?.data ?? e.message
+        console.error('[cells/write]', detail)
+        const msg = typeof detail === 'string' ? detail : JSON.stringify(detail)
+        res.status(500).json({ error: msg })
+    }
 })
 
 // ── SPA fallback ──────────────────────────────────────────────────────────────

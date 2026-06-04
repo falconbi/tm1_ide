@@ -1,17 +1,11 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react'
-import { AgGridReact } from 'ag-grid-react'
-import { AllCommunityModule, ModuleRegistry, themeBalham, colorSchemeDark, colorSchemeLight } from 'ag-grid-community'
 import { DndContext, DragOverlay, PointerSensor, useSensor, useSensors, useDroppable, useDraggable } from '@dnd-kit/core'
 import { useStore } from '@/store'
 import { useCubeDimensions, useSubsets, useSubsetElements, useViews, useExecuteMDX, useViewAxes } from '@/hooks/useApi'
 import { toast } from 'sonner'
 import { RefreshCw, Loader2, Table2, GripVertical, X, LayoutGrid, Rows3, Columns3, Filter, ZapOff, Zap, ChevronLeft, ChevronRight, PencilLine } from 'lucide-react'
 import { cn } from '@/lib/utils'
-
-ModuleRegistry.registerModules([AllCommunityModule])
-
-const lightTheme = themeBalham.withPart(colorSchemeLight).withParams({ fontSize: 12, rowHeight: 24, headerHeight: 28 })
-const darkTheme  = themeBalham.withPart(colorSchemeDark).withParams({ fontSize: 12, rowHeight: 24, headerHeight: 28 })
+import ResultGrid from '@/components/mdx/ResultGrid'
 
 // ── MDX builder ───────────────────────────────────────────────────────────────
 
@@ -45,77 +39,6 @@ function parseDimFromUniqueName(un) {
     return un?.match(/^\[([^\]]+)\]/)?.[1] ?? ''
 }
 
-function parseCellset(data) {
-    if (!data?.Axes?.length) return null
-    const colAx = data.Axes.find(a => a.Ordinal === 0)
-    const rowAx = data.Axes.find(a => a.Ordinal === 1)
-    if (!colAx) return null
-
-    const colTuples = colAx.Tuples ?? []
-    const rowTuples = rowAx ? (rowAx.Tuples ?? []) : []
-
-    // Column headers — join multi-member tuples
-    const cols = colTuples.map(t => (t.Members ?? []).map(m => m.Name).join(' / '))
-
-    // Row headers — keep as arrays for multi-dim split
-    const rowDimNames = (rowTuples[0]?.Members ?? []).map(m => parseDimFromUniqueName(m.UniqueName))
-    const rows = rowTuples.map(t => (t.Members ?? []).map(m => m.Name))
-
-    const numCols = cols.length
-    const cellMap = {}
-    ;(data.Cells ?? []).forEach(c => { cellMap[c.Ordinal] = c })
-
-    const grid = (rows.length ? rows : [[]]).map((_, ri) =>
-        cols.map((_, ci) => {
-            const c = cellMap[ri * numCols + ci]
-            return c ? (c.FormattedValue ?? c.Value ?? '') : ''
-        })
-    )
-
-    return { cols, rows, rowDimNames, grid }
-}
-
-function buildGridData(parsed) {
-    if (!parsed) return { colDefs: [], rowData: [] }
-    const { cols, rows, rowDimNames, grid } = parsed
-    const rowDimCount = rowDimNames.length || 1
-
-    const rowColDefs = Array.from({ length: rowDimCount }, (_, i) => ({
-        field: `__row_${i}__`,
-        headerName: rowDimNames[i] ?? '',
-        pinned: 'left',
-        width: 160,
-        minWidth: 60,
-        resizable: true,
-        cellStyle: (params) => {
-            // Visually deduplicate outer dimensions
-            if (i < rowDimCount - 1 && params.node.rowIndex > 0) {
-                const prev = params.api.getDisplayedRowAtIndex(params.node.rowIndex - 1)?.data?.[`__row_${i}__`]
-                if (prev === params.value) return { fontWeight: 600, color: 'var(--ag-row-border-color, #ccc)' }
-            }
-            return { fontWeight: 600 }
-        },
-    }))
-
-    const colDefs = [
-        ...rowColDefs,
-        ...cols.map((c, i) => ({
-            field: `c${i}`, headerName: c, width: 110, minWidth: 60, resizable: true, type: 'numericColumn',
-            valueFormatter: p => (p.value === '' || p.value == null) ? '—' : String(p.value),
-            cellStyle: p => (p.value === '' || p.value == null) ? { color: '#888' } : {},
-        })),
-    ]
-
-    const rowData = grid.map((row, ri) => {
-        const obj = {}
-        const members = rows[ri] ?? []
-        Array.from({ length: rowDimCount }, (_, i) => { obj[`__row_${i}__`] = members[i] ?? '' })
-        row.forEach((v, ci) => { obj[`c${ci}`] = v })
-        return obj
-    })
-
-    return { colDefs, rowData }
-}
 
 // ── Subset/member popover ─────────────────────────────────────────────────────
 
@@ -304,7 +227,6 @@ function DropZone({ id, label, icon: Icon, dims, server, onRemove, onSubsetChang
 // ── Main CubeViewer ───────────────────────────────────────────────────────────
 
 export default function CubeViewer({ tab }) {
-    const { dark } = useStore()
     const { data: cubeDims = [] } = useCubeDimensions(tab.server, tab.cube)
     const { data: views    = [] } = useViews(tab.server, tab.cube)
     const executeMDX  = useExecuteMDX()
@@ -467,8 +389,9 @@ export default function CubeViewer({ tab }) {
         )
     }
 
-    const parsed = useMemo(() => result ? parseCellset(result) : null, [result])
-    const { colDefs, rowData } = useMemo(() => buildGridData(parsed), [parsed])
+    const slicerCoords = useMemo(() =>
+      axes.pages.flatMap(d => d.member ? [{ dim: d.dimension, name: d.member }] : [])
+    , [axes.pages])
 
     const allDims = useMemo(() => [...axes.rows, ...axes.columns, ...axes.pages, ...bench], [axes, bench])
     const activeDim = activeDrag ? allDims.find(d => d.dimension === activeDrag) : null
@@ -526,18 +449,17 @@ export default function CubeViewer({ tab }) {
                         <p>Arrange dimensions then press Refresh</p>
                     </div>
                 </div>
-            ) : !parsed || parsed.grid.length === 0 ? (
-                <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm">No data returned</div>
             ) : (
                 <div className="flex-1 min-h-0">
-                    <AgGridReact
-                        theme={dark ? darkTheme : lightTheme}
-                        columnDefs={colDefs}
-                        rowData={rowData}
-                        suppressMovableColumns
-                        enableCellTextSelection
-                        defaultColDef={{ sortable: false }}
-                        onFirstDataRendered={p => p.api.autoSizeAllColumns()}
+                    <ResultGrid
+                        axes={result.Axes}
+                        cells={result.Cells}
+                        truncated={result.truncated}
+                        server={tab.server}
+                        cube={tab.cube}
+                        writable
+                        slicerCoords={slicerCoords}
+                        dimOrder={cubeDims}
                     />
                 </div>
             )}

@@ -2,93 +2,42 @@
   "server": "24retail",
   "tabs": [
     {
-      "id": "guidedmdxview:24retail:Allocation Calculation:1780363829074",
-      "type": "guidedmdxview",
-      "label": "Builder — Allocation Calculation",
+      "id": "cubeview:24retail:Calendar",
+      "type": "cubeview",
+      "label": "⊞ Calendar",
+      "server": "24retail",
+      "cube": "Calendar",
+      "scrollToLine": null,
+      "scrollToSection": null
+    },
+    {
+      "id": "cubeview:24retail:Compensation",
+      "type": "cubeview",
+      "label": "⊞ Compensation",
+      "server": "24retail",
+      "cube": "Compensation"
+    },
+    {
+      "id": "cubeview:24retail:Allocation Calculation:Allocation Summary",
+      "type": "cubeview",
+      "label": "Allocation Summary",
       "server": "24retail",
       "cube": "Allocation Calculation",
-      "initialState": {
-        "selectedCube": "Allocation Calculation",
-        "dimConfig": {
-          "organization": {
-            "axis": "rows",
-            "subsetExpression": ""
-          },
-          "Allocation List": {
-            "axis": "rows",
-            "subsetExpression": ""
-          },
-          "Allocation Calculation": {
-            "axis": "columns",
-            "subsetExpression": ""
-          },
-          "Year": {
-            "axis": "filter",
-            "subsetExpression": "Y1"
-          },
-          "Month": {
-            "axis": "filter",
-            "subsetExpression": "Mar"
-          },
-          "Version": {
-            "axis": "filter",
-            "subsetExpression": "Version 1"
-          }
-        },
-        "step": 1
-      }
-    },
-    {
-      "id": "cubeview:24retail:User Input",
-      "type": "cubeview",
-      "label": "⊞ User Input",
-      "server": "24retail",
-      "cube": "User Input",
-      "scrollToLine": null,
-      "scrollToSection": null
-    },
-    {
-      "id": "cubeview:24retail:User Input:Default",
-      "type": "cubeview",
-      "label": "Default",
-      "server": "24retail",
-      "cube": "User Input",
-      "viewName": "Default",
-      "scrollToLine": null,
-      "scrollToSection": null,
-      "viewType": "#ibm.tm1.api.v1.MDXView"
-    },
-    {
-      "id": "cubeview:24retail:Employee",
-      "type": "cubeview",
-      "label": "⊞ Employee",
-      "server": "24retail",
-      "cube": "Employee",
-      "scrollToLine": null,
-      "scrollToSection": null
-    },
-    {
-      "id": "cubeview:24retail:Exchange Rates",
-      "type": "cubeview",
-      "label": "⊞ Exchange Rates",
-      "server": "24retail",
-      "cube": "Exchange Rates",
+      "viewName": "Allocation Summary",
       "scrollToLine": null,
       "scrollToSection": null
     }
   ],
-  "activeTab": "cubeview:24retail:Exchange Rates",
+  "activeTab": "cubeview:24retail:Allocation Calculation:Allocation Summary",
   "groups": [
     {
       "id": "g1",
       "tabIds": [
-        "guidedmdxview:24retail:Allocation Calculation:1780363829074",
-        "cubeview:24retail:User Input",
-        "cubeview:24retail:User Input:Default",
-        "cubeview:24retail:Employee",
-        "cubeview:24retail:Exchange Rates"
+        "cubeview:24retail:Calendar",
+        "cubeview:24retail:Compensation",
+        "cubeview:24retail:Allocation Calculation:Allocation Summary"
       ],
-      "activeTabId": "cubeview:24retail:Exchange Rates"
+      "activeTabId": "cubeview:24retail:Allocation Calculation:Allocation Summary"
     }
   ],
   "activeGroupId": "g1"

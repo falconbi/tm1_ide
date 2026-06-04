@@ -127,6 +127,11 @@ class TM1Client {
         return Object.fromEntries(Object.entries(raw).filter(([k]) => !k.startsWith('@')))
     }
 
+    async createDimension(name) {
+        await this.post('Dimensions', { Name: name })
+        // TM1 auto-creates a default hierarchy with the same name
+    }
+
     async getEdges(dim, hierarchy = dim) {
         const d = await this.get(
             `Dimensions('${dim}')/Hierarchies('${hierarchy}')/Edges`,
@@ -339,6 +344,13 @@ class TM1Client {
             dimensions: (dimsRaw.value   ?? []).map(r => r.Name).filter(n => n.startsWith('}')).sort(),
             processes:  (procsRaw.value  ?? []).map(r => r.Name).filter(n => n.startsWith('}')).sort(),
         }
+    }
+
+    // ── Current user ─────────────────────────────────────────────────────────
+
+    async getCurrentUser() {
+        const d = await this.get('ActiveUser')
+        return d?.Name ?? null
     }
 
     // ── Cubes ─────────────────────────────────────────────────────────────────
@@ -647,11 +659,11 @@ return (d.value ?? [])
         const h = await this._headers()
         const [axisRes, cellRes] = await Promise.all([
             s.get(this._url(`Cellsets('${ID}')/Axes`), {
-                params: { '$expand': 'Tuples($expand=Members($select=Name,UniqueName))' },
+                params: { '$expand': 'Tuples($expand=Members($select=Name,UniqueName,Type))' },
                 headers: h,
             }),
             s.get(this._url(`Cellsets('${ID}')/Cells`), {
-                params: { '$select': 'Ordinal,Value,FormattedValue', '$top': maxCells },
+                params: { '$select': 'Ordinal,Value,FormattedValue,Updateable', '$top': maxCells },
                 headers: h,
             }),
         ])
@@ -667,11 +679,11 @@ return (d.value ?? [])
         const h = await this._headers()
         const [axisRes, cellRes] = await Promise.all([
             s.get(this._url(`Cellsets('${ID}')/Axes`), {
-                params: { '$expand': 'Tuples($expand=Members($select=Name,UniqueName))' },
+                params: { '$expand': 'Tuples($expand=Members($select=Name,UniqueName,Type))' },
                 headers: h,
             }),
             s.get(this._url(`Cellsets('${ID}')/Cells`), {
-                params: { '$select': 'Ordinal,Value,FormattedValue', '$top': maxCells },
+                params: { '$select': 'Ordinal,Value,FormattedValue,Updateable', '$top': maxCells },
                 headers: h,
             }),
         ])
@@ -683,6 +695,21 @@ return (d.value ?? [])
             ViewType: viewDef?.['@odata.type'] ?? null,
             truncated: cells.length >= maxCells,
         }
+    }
+
+    // ── Cell write ────────────────────────────────────────────────────────────
+
+    // dimElemPairs: [{ dim, element }, ...] — one entry per cube dimension, in order
+    async writeCellValue(cube, dimElemPairs, value) {
+        const enc = encodeURIComponent
+        return this.post(`Cubes('${enc(cube)}')/tm1.Update`, {
+            Cells: [{
+                'Tuple@odata.bind': dimElemPairs.map(({ dim, element }) =>
+                    `Dimensions('${enc(dim)}')/Hierarchies('${enc(dim)}')/Elements('${enc(element)}')`
+                ),
+            }],
+            Value: value,
+        })
     }
 }
 

@@ -1,14 +1,14 @@
-import { useMemo, useState, useCallback, useRef } from 'react'
+import { useMemo, useState, useCallback, useRef, useEffect } from 'react'
 import {
   useElements, useEdges, useElementAttrValues, useHierarchies,
   useAddElement, useDeleteElement, useAddEdge, useDeleteEdge, useUpdateEdgeWeight,
   useAttrGrid, useWriteElementAttribute, useCreateAttrDef, useDeleteAttrDef, useSubsets, useSubsetElements, useDimCubes,
-  useCreateHierarchy,
+  useCreateHierarchy, useBulkDimImport, useBulkAttrImport,
 } from '@/hooks/useApi'
 import { AgGridReact } from 'ag-grid-react'
 import { AllCommunityModule, ModuleRegistry, themeBalham, colorSchemeDark, colorSchemeLight } from 'ag-grid-community'
 import { useStore } from '@/store'
-import { ChevronRight, ChevronDown, Loader2, List, GitBranch, Plus, Trash2, Check, X, ClipboardList, ChevronLeft, Table2, Search, ListOrdered, MapPin } from 'lucide-react'
+import { ChevronRight, ChevronDown, Loader2, List, GitBranch, Plus, Trash2, Check, X, ClipboardList, ChevronLeft, Table2, Search, ListOrdered, MapPin, Upload, Grid3x3 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import PicklistBuilder from './PicklistBuilder'
 
@@ -431,6 +431,7 @@ function AttrGrid({ tab, elements, edges, hierarchy }) {
   const [subset, setSubset]     = useState('')
   const [search,  setSearch]    = useState('')
   const [newAttr, setNewAttr]   = useState(false)
+  const attrFileRef             = useRef(null)
 
   const { data: grid, isLoading, refetch } = useAttrGrid(tab.server, tab.dimension, hierarchy)
   const { data: subsets = [] }             = useSubsets(tab.server, tab.dimension, hierarchy)
@@ -438,6 +439,7 @@ function AttrGrid({ tab, elements, edges, hierarchy }) {
   const writeAttr                          = useWriteElementAttribute()
   const createAttr                         = useCreateAttrDef()
   const deleteAttr                         = useDeleteAttrDef()
+  const bulkAttrImport                     = useBulkAttrImport()
 
   const handleCreateAttr = useCallback((name, type) => {
     setNewAttr(false)
@@ -513,6 +515,37 @@ function AttrGrid({ tab, elements, edges, hierarchy }) {
     writeAttr.mutate({ server: tab.server, dimension: tab.dimension, element, attribute, value: p.newValue ?? '', type, hierarchy })
   }, [writeAttr, tab, attrs, hierarchy])
 
+  const handleAttrPaste = useCallback(async (text) => {
+    if (!text?.trim() || !attrs.length) return
+    const lines = text.trim().split(/\r?\n/)
+    // Detect if first row is a header (first cell doesn't match any element)
+    const firstCell = lines[0].split('\t')[0].trim()
+    const allNames = new Set(elements.map(e => e.Name))
+    const startIdx = allNames.has(firstCell) ? 0 : 1
+    const attrNames = startIdx === 1 ? lines[0].split('\t').slice(1).map(s => s.trim()) : attrs.map(a => a.Name)
+    const rows = []
+    for (let i = startIdx; i < lines.length; i++) {
+      const cols = lines[i].split('\t')
+      const element = cols[0]?.trim(); if (!element) continue
+      attrNames.forEach((attrName, j) => {
+        const val = cols[j + 1]?.trim() ?? ''
+        const attrDef = attrs.find(a => a.Name === attrName)
+        if (attrDef) rows.push({ element, attrName, value: val, type: attrDef.Type === 'Numeric' ? 'N' : 'S' })
+      })
+    }
+    if (!rows.length) return
+    await bulkAttrImport.mutateAsync({ server: tab.server, dimension: tab.dimension, hierarchy, rows })
+    refetch()
+  }, [attrs, elements, tab, hierarchy, bulkAttrImport, refetch])
+
+  const handleAttrFileUpload = useCallback(e => {
+    const file = e.target.files?.[0]; if (!file) return
+    const reader = new FileReader()
+    reader.onload = ev => handleAttrPaste(ev.target.result)
+    reader.readAsText(file)
+    e.target.value = ''
+  }, [handleAttrPaste])
+
   if (isLoading) return (
     <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm">
       <Loader2 size={16} className="animate-spin mr-2" /> Loading attributes…
@@ -541,13 +574,24 @@ function AttrGrid({ tab, elements, edges, hierarchy }) {
         {(writeAttr.isPending || createAttr.isPending || deleteAttr.isPending) && <Loader2 size={11} className="animate-spin text-muted-foreground" />}
         {writeAttr.isError  && <span className="text-xs text-red-400">{writeAttr.error?.message}</span>}
         {createAttr.isError && <span className="text-xs text-red-400">{createAttr.error?.message}</span>}
-        <button onClick={() => setNewAttr(true)}
-          className="flex items-center gap-0.5 px-2 py-0.5 text-xs rounded border border-border bg-background text-muted-foreground hover:text-foreground ml-auto">
-          <Plus size={10} /> New Attr
-        </button>
+        <div className="ml-auto flex items-center gap-1">
+          <button onClick={() => attrFileRef.current?.click()}
+            className="flex items-center gap-0.5 px-2 py-0.5 text-xs rounded border border-border bg-background text-muted-foreground hover:text-foreground"
+            title="Upload CSV (Element, Attr1, Attr2…)">
+            <Upload size={10} /> CSV
+          </button>
+          <input ref={attrFileRef} type="file" accept=".csv,.txt" className="hidden" onChange={handleAttrFileUpload} />
+          <button onClick={() => setNewAttr(true)}
+            className="flex items-center gap-0.5 px-2 py-0.5 text-xs rounded border border-border bg-background text-muted-foreground hover:text-foreground">
+            <Plus size={10} /> New Attr
+          </button>
+        </div>
         <span className="text-xs text-muted-foreground">{rows.length} elements · {attrs.length} attrs</span>
       </div>
-      <div className="flex-1 min-h-0 w-full">
+      <div className="text-[10px] text-muted-foreground px-3 py-1 border-b border-border bg-muted/10 shrink-0">
+        Paste from clipboard (Element · Attr1 · Attr2…) or upload CSV to bulk-import attribute values
+      </div>
+      <div className="flex-1 min-h-0 w-full" onPaste={e => { const text = e.clipboardData?.getData('text/plain'); if (text) { e.preventDefault(); handleAttrPaste(text) } }}>
         <AgGridReact
           theme={theme === 'dark' ? darkTheme : lightTheme}
           rowData={rows}
@@ -564,6 +608,131 @@ function AttrGrid({ tab, elements, edges, hierarchy }) {
 }
 
 // ── Main component ──────────────────────────────────────────────────────────
+// ── Structure Grid (Element / Parent / Weight bulk editor) ────────────────────
+function parseTabDelimited(text) {
+  return text.trim().split(/\r?\n/).map(line => {
+    const cols = line.split('\t')
+    return { name: cols[0]?.trim() ?? '', type: cols[1]?.trim() || 'N', parent: cols[2]?.trim() ?? '', weight: parseFloat(cols[3]) || 1 }
+  }).filter(r => r.name)
+}
+
+function StructureGrid({ tab, elements, edges, hierarchy, onApplied }) {
+  const theme = useStore(s => s.theme)
+  const bulkImport = useBulkDimImport()
+  const fileRef = useRef(null)
+  const gridRef = useRef(null)
+
+  // Initialise rows from existing elements + edges
+  const initRows = useMemo(() => {
+    if (!elements.length) return [{ name: '', type: 'N', parent: '', weight: 1 }]
+    const edgeMap = {}
+    edges.forEach(e => { if (!edgeMap[e.ComponentName]) edgeMap[e.ComponentName] = []; edgeMap[e.ComponentName].push({ parent: e.ParentName, weight: e.Weight ?? 1 }) })
+    const rows = []
+    elements.forEach(el => {
+      const parents = edgeMap[el.Name] ?? [null]
+      parents.forEach(p => rows.push({ name: el.Name, type: el.Type ?? 'N', parent: p?.parent ?? '', weight: p?.weight ?? 1 }))
+    })
+    return rows
+  }, [elements, edges])
+
+  const [rows, setRows] = useState(initRows)
+  const [applying, setApplying] = useState(false)
+  const [result, setResult] = useState(null)
+
+  useEffect(() => { setRows(initRows) }, [elements.length, edges.length])
+
+  const colDefs = useMemo(() => [
+    { field: 'name',   headerName: 'Element',  flex: 2, editable: true, cellStyle: { fontFamily: 'monospace' } },
+    { field: 'type',   headerName: 'Type',     width: 80, editable: true, cellEditor: 'agSelectCellEditor', cellEditorParams: { values: ['N', 'S', 'C'] },
+      cellStyle: p => ({ color: p.value === 'C' ? '#f59e0b' : p.value === 'S' ? '#34d399' : '#60a5fa' }) },
+    { field: 'parent', headerName: 'Parent',   flex: 2, editable: true, cellStyle: { fontFamily: 'monospace', color: '#9ca3af' } },
+    { field: 'weight', headerName: 'Weight',   width: 80, editable: true, type: 'numericColumn' },
+    { headerName: '', width: 36, pinned: 'right', cellRenderer: p => (
+      <button onClick={() => setRows(r => r.filter((_, i) => i !== p.node.rowIndex))}
+        className="text-muted-foreground hover:text-red-400 transition-colors px-1">×</button>
+    )},
+  ], [])
+
+  const handlePaste = (e) => {
+    const text = e.clipboardData?.getData('text/plain')
+    if (!text) return
+    const parsed = parseTabDelimited(text)
+    if (!parsed.length) return
+    e.preventDefault()
+    setRows(r => [...r, ...parsed])
+    setResult(null)
+  }
+
+  const handleFileUpload = (e) => {
+    const file = e.target.files?.[0]; if (!file) return
+    const reader = new FileReader()
+    reader.onload = ev => {
+      const parsed = parseTabDelimited(ev.target.result)
+      setRows(r => [...r, ...parsed])
+      setResult(null)
+    }
+    reader.readAsText(file)
+    e.target.value = ''
+  }
+
+  const handleApply = async () => {
+    const validRows = rows.filter(r => r.name.trim())
+    if (!validRows.length) return
+    setApplying(true); setResult(null)
+    try {
+      const res = await bulkImport.mutateAsync({ server: tab.server, dimension: tab.dimension, hierarchy, rows: validRows })
+      setResult(res.errors?.length ? `Applied with ${res.errors.length} error(s): ${res.errors[0]}` : `Applied ${validRows.length} row(s) successfully`)
+      onApplied?.()
+    } catch (e) { setResult(`Error: ${e.message}`) }
+    finally { setApplying(false) }
+  }
+
+  return (
+    <div className="flex flex-col h-full" onPaste={handlePaste}>
+      {/* Toolbar */}
+      <div className="flex items-center gap-2 px-3 py-1.5 border-b border-border bg-muted/20 shrink-0 flex-wrap">
+        <span className="text-xs text-muted-foreground">Paste from Excel (Name · Type · Parent · Weight) or upload CSV</span>
+        <div className="flex-1" />
+        <button onClick={() => setRows(r => [...r, { name: '', type: 'N', parent: '', weight: 1 }])}
+          className="flex items-center gap-1 px-2 py-1 text-xs rounded border border-border hover:bg-muted transition-colors">
+          <Plus size={10} /> Row
+        </button>
+        <button onClick={() => fileRef.current?.click()}
+          className="flex items-center gap-1 px-2 py-1 text-xs rounded border border-border hover:bg-muted transition-colors">
+          <Upload size={10} /> CSV
+        </button>
+        <input ref={fileRef} type="file" accept=".csv,.txt" className="hidden" onChange={handleFileUpload} />
+        <button onClick={() => { setRows([]); setResult(null) }}
+          className="flex items-center gap-1 px-2 py-1 text-xs rounded border border-border text-muted-foreground hover:bg-muted transition-colors">
+          Clear
+        </button>
+        <button onClick={handleApply} disabled={applying || !rows.some(r => r.name.trim())}
+          className="flex items-center gap-1 px-3 py-1 text-xs rounded bg-primary text-primary-foreground disabled:opacity-40 hover:opacity-90 transition-opacity">
+          {applying ? <Loader2 size={11} className="animate-spin" /> : <Check size={11} />}
+          Apply to TM1
+        </button>
+      </div>
+      {result && (
+        <div className={`px-3 py-1.5 text-xs border-b border-border shrink-0 ${result.includes('Error') || result.includes('error') ? 'text-red-400 bg-red-950/20' : 'text-emerald-400 bg-emerald-950/20'}`}>
+          {result}
+        </div>
+      )}
+      {/* Grid */}
+      <div className="flex-1 min-h-0">
+        <AgGridReact
+          ref={gridRef}
+          theme={theme === 'dark' ? darkTheme : lightTheme}
+          columnDefs={colDefs}
+          rowData={rows}
+          onCellValueChanged={p => setRows(r => r.map((row, i) => i === p.node.rowIndex ? { ...row, [p.column.colId]: p.newValue } : row))}
+          defaultColDef={{ resizable: true }}
+          stopEditingWhenCellsLoseFocus
+        />
+      </div>
+    </div>
+  )
+}
+
 export default function DimensionEditor({ tab }) {
   const [view, setView]           = useState('tree')
   const [selected, setSelected]   = useState(null)
@@ -788,6 +957,11 @@ export default function DimensionEditor({ tab }) {
               view === 'flat' ? 'bg-primary text-primary-foreground border-primary' : 'border-border text-muted-foreground hover:bg-background')}>
             <List size={11} /> Flat
           </button>
+          <button onClick={() => setView('grid')}
+            className={cn('flex items-center gap-1 px-2 py-0.5 text-xs rounded border transition-colors',
+              view === 'grid' ? 'bg-primary text-primary-foreground border-primary' : 'border-border text-muted-foreground hover:bg-background')}>
+            <Grid3x3 size={11} /> Grid
+          </button>
           <button onClick={() => setView('attrs')}
             className={cn('flex items-center gap-1 px-2 py-0.5 text-xs rounded border transition-colors',
               view === 'attrs' ? 'bg-primary text-primary-foreground border-primary' : 'border-border text-muted-foreground hover:bg-background')}>
@@ -840,8 +1014,9 @@ export default function DimensionEditor({ tab }) {
       {/* Body */}
       <div className="flex-1 min-h-0 flex overflow-hidden">
         {view === 'attrs' && <div className="flex-1 min-w-0 min-h-0 flex flex-col"><AttrGrid tab={tab} elements={elements} edges={edges} hierarchy={selectedHierarchy} /></div>}
+        {view === 'grid' && <div className="flex-1 min-w-0 min-h-0 flex flex-col"><StructureGrid tab={tab} elements={elements} edges={edges} hierarchy={selectedHierarchy} onApplied={refresh} /></div>}
         {/* Tree / Flat pane */}
-        {view !== 'attrs' && <>
+        {view !== 'attrs' && view !== 'grid' && <>
           <div className={cn('flex-1 min-w-0 overflow-auto', selectedEl && 'max-w-[55%]')}>
             {view === 'flat' && (
               <FlatList elements={filteredElements} selected={selected} onSelect={setSelected} onDelete={handleDelete} />
