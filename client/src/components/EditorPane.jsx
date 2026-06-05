@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import MonacoEditor from '@monaco-editor/react'
 import { useStore } from '@/store'
-import { useRules, useSaveRules, useLineage, useLineageConsumers } from '@/hooks/useApi'
+import { useRules, useSaveRules, useLineage, useLineageConsumers, useTraceCellCalc } from '@/hooks/useApi'
 import { registerTM1Completions, registerTM1Theme } from '@/lib/tm1-functions'
 import ProcessEditor from '@/components/ProcessEditor'
 import SQLEditor from '@/components/SQLEditor'
@@ -11,12 +11,15 @@ import DimensionEditor from '@/components/DimensionEditor'
 import ViewEditor from '@/components/ViewEditor'
 import ChoreEditor from '@/components/ChoreEditor'
 import GuidedMDXBuilder from '@/components/GuidedMDXBuilder'
+import CubeEditor from '@/components/CubeEditor'
 import { toast } from 'sonner'
-import { GitBranch, ChevronRight, ChevronDown, Loader2, ChevronsUpDown, ChevronsDownUp, ListTree, AlignLeft, Settings, Locate, Braces } from 'lucide-react'
+import { GitBranch, ChevronRight, ChevronDown, Loader2, ChevronsUpDown, ChevronsDownUp, ListTree, AlignLeft, Settings, Locate, Braces, Save, Map, Microscope, X, Plus, Trash2, History } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { loadSettings, saveSettings } from '@/lib/formatters/settings.js'
+import { registerRulesCompletions } from '@/lib/tm1-completion'
 import { getSnippets } from '@/lib/tm1-snippets.js'
 import SnippetPanel from '@/components/SnippetPanel'
+import TransactionLogPanel from '@/components/TransactionLogPanel'
 
 // ── Lineage panel ─────────────────────────────────────────────────────────────
 
@@ -103,6 +106,144 @@ function LineagePanel({ server, cube, onOpen }) {
   )
 }
 
+// ── Cell Trace Panel ──────────────────────────────────────────────────────────
+
+function TraceNode({ node, depth = 0, onShowHistory }) {
+  const [open, setOpen] = useState(depth < 2)
+  const hasChildren = node.Components?.length > 0
+  const isRule  = node.Type === 'Rule'
+  const isFeed  = node.Type === 'Feeders'
+  const isConst = node.Type === 'Constant'
+  const isLeaf  = !hasChildren && node.Tuple?.length > 0
+
+  const typeColor = isRule  ? 'text-emerald-400'
+                 : isFeed  ? 'text-amber-400'
+                 : isConst ? 'text-blue-400'
+                 : 'text-muted-foreground'
+
+  const tuple    = (node.Tuple ?? []).map(m => m.Name ?? m.UniqueName ?? '').join(', ')
+  const cubeName = node.Cube?.Name ?? ''
+
+  return (
+    <div className={cn('text-xs', depth > 0 && 'ml-4 border-l border-border pl-2 mt-0.5')}>
+      <div className="flex items-start gap-1.5 py-0.5 group">
+        {hasChildren ? (
+          <button onClick={() => setOpen(o => !o)} className="shrink-0 mt-0.5 text-muted-foreground">
+            {open ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
+          </button>
+        ) : <span className="w-3 shrink-0" />}
+        <div className="flex-1 min-w-0">
+          <span className={cn('font-semibold', typeColor)}>{node.Type ?? '?'}</span>
+          {cubeName && <span className="ml-1.5 text-muted-foreground">← {cubeName}</span>}
+          {tuple    && <span className="ml-1.5 text-foreground/60 truncate block font-mono">[{tuple}]</span>}
+          {node.Statements?.length > 0 && (
+            <div className="mt-0.5 space-y-px">
+              {node.Statements.map((s, i) => (
+                <div key={i} className="font-mono text-[10px] text-foreground/70 bg-muted/30 px-1.5 py-px rounded truncate" title={s}>{s}</div>
+              ))}
+            </div>
+          )}
+          <span className="font-mono text-foreground font-bold">{node.Value ?? ''}</span>
+        </div>
+        {isLeaf && onShowHistory && (
+          <button
+            onClick={() => onShowHistory(node.Cube?.Name, node.Tuple)}
+            title="Show transaction history for this cell"
+            className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity p-0.5 rounded text-muted-foreground hover:text-blue-400"
+          >
+            <History size={10} />
+          </button>
+        )}
+      </div>
+      {open && hasChildren && node.Components.map((c, i) => (
+        <TraceNode key={i} node={c} depth={depth + 1} onShowHistory={onShowHistory} />
+      ))}
+    </div>
+  )
+}
+
+function CellTracePanel({ server, cube, cubeDims, onClose }) {
+  const [rows, setRows] = useState(() => (cubeDims ?? []).map(d => ({ dim: d, element: '' })))
+  const trace = useTraceCellCalc()
+  const { openTab } = useStore()
+
+  const setElement = (i, val) => setRows(r => r.map((row, j) => j === i ? { ...row, element: val } : row))
+
+  const run = () => {
+    const pairs = rows.map(r => ({ dim: r.dim, element: r.element.trim() }))
+    if (pairs.some(p => !p.element)) return
+    trace.mutate({ server, cube, dimElemPairs: pairs })
+  }
+
+  const handleShowHistory = (srcCube, tuple) => {
+    const tgtCube = srcCube || cube
+    const elements = tuple?.map(m => m.Name ?? m.UniqueName ?? '') ?? []
+    openTab({
+      id:       `txlog:${server}:${tgtCube}:${elements.join(':')}:${Date.now()}`,
+      type:     'transactionlog',
+      label:    `Log — ${tgtCube}`,
+      server,
+      cube:     tgtCube,
+      elements,
+    })
+  }
+
+  return (
+    <div className="w-80 shrink-0 border-l border-border flex flex-col bg-sidebar overflow-hidden">
+      <div className="flex items-center justify-between px-3 py-2 border-b border-border shrink-0">
+        <div className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+          <Microscope size={11} className="text-emerald-400" />
+          Trace Cell
+        </div>
+        <button onClick={onClose} className="text-muted-foreground hover:text-foreground"><X size={13} /></button>
+      </div>
+
+      {/* Tuple inputs */}
+      <div className="px-3 py-2 space-y-1.5 border-b border-border shrink-0">
+        <div className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1">Tuple — {cube}</div>
+        {rows.map((row, i) => (
+          <div key={i} className="flex items-center gap-1.5">
+            <span className="text-[10px] text-muted-foreground w-24 truncate shrink-0" title={row.dim}>{row.dim}</span>
+            <input
+              value={row.element}
+              onChange={e => setElement(i, e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && run()}
+              placeholder="element…"
+              className="flex-1 min-w-0 bg-muted border border-border rounded px-1.5 py-0.5 text-xs font-mono focus:outline-none focus:border-primary"
+            />
+          </div>
+        ))}
+        <button
+          onClick={run}
+          disabled={trace.isPending || rows.some(r => !r.element.trim())}
+          className="w-full mt-1 flex items-center justify-center gap-1.5 py-1 text-xs rounded bg-emerald-700 text-white hover:bg-emerald-600 disabled:opacity-40 transition-colors"
+        >
+          {trace.isPending ? <Loader2 size={11} className="animate-spin" /> : <Microscope size={11} />}
+          Trace
+        </button>
+      </div>
+
+      {/* Result */}
+      <div className="flex-1 min-h-0 overflow-auto px-3 py-2">
+        {trace.isPending && (
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <Loader2 size={11} className="animate-spin" /> Tracing…
+          </div>
+        )}
+        {trace.isError && (
+          <p className="text-xs text-red-400">{trace.error?.message ?? 'Trace failed'}</p>
+        )}
+        {trace.data && !trace.isPending && (
+          <TraceNode node={trace.data} depth={0} onShowHistory={handleShowHistory} />
+        )}
+        {!trace.data && !trace.isPending && !trace.isError && (
+          <p className="text-xs text-muted-foreground italic">Enter a tuple and click Trace to see how this cell is calculated.</p>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ── Rules editor ─────────────────────────────────────────────────────────────
 
 function RulesEditor({ tab, onCursor }) {
@@ -115,6 +256,16 @@ function RulesEditor({ tab, onCursor }) {
   const formatPopupRef = useRef(null)
   const [showLineage, setShowLineage] = useState(false)
   const [showSnippets, setShowSnippets] = useState(false)
+  const [showMinimap, setShowMinimap] = useState(() => loadSettings().editor?.minimap?.rules ?? false)
+  const [showTrace, setShowTrace] = useState(false)
+  const [cubeDims, setCubeDims] = useState(null)
+
+  useEffect(() => {
+    if (!showTrace || cubeDims !== null) return
+    fetch(`/api/cube/dimensions?server=${encodeURIComponent(tab.server)}&cube=${encodeURIComponent(tab.cube)}`)
+      .then(r => r.json()).then(d => setCubeDims(Array.isArray(d) ? d : []))
+      .catch(() => setCubeDims([]))
+  }, [showTrace])
   const [regionsCollapsed, setRegionsCollapsed] = useState(false)
   const [showRegionMenu, setShowRegionMenu] = useState(false)
   const [showFormatPopup, setShowFormatPopup] = useState(false)
@@ -131,6 +282,33 @@ function RulesEditor({ tab, onCursor }) {
       initTabContent(tab.id, data.rules)
     }
   }, [data])
+
+  // Live rules validation — debounced 800ms after last keystroke
+  useEffect(() => {
+    if (!content || !editorRef.current || !monacoRef.current) return
+    const timer = setTimeout(async () => {
+      try {
+        const r = await fetch('/api/rules/check', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ server: tab.server, cube: tab.cube, rules: content }),
+        })
+        const d = await r.json()
+        const model = editorRef.current?.getModel()
+        if (!model || !monacoRef.current) return
+        const markers = (d.errors ?? []).map(e => ({
+          severity: monacoRef.current.MarkerSeverity.Error,
+          message:  e.Message,
+          startLineNumber: e.LineNumber,
+          startColumn: 1,
+          endLineNumber: e.LineNumber,
+          endColumn: model.getLineMaxColumn(e.LineNumber),
+        }))
+        monacoRef.current.editor.setModelMarkers(model, 'rules-check', markers)
+      } catch { /* network error — silently skip */ }
+    }, 800)
+    return () => clearTimeout(timer)
+  }, [content, tab.server, tab.cube])
 
   useEffect(() => {
     if (tab.scrollToLine && editorRef.current) {
@@ -171,11 +349,25 @@ function RulesEditor({ tab, onCursor }) {
     if (monacoRef.current) registerTM1Theme(monacoRef.current, dark)
   }, [dark, themeVersion])
 
+  const handleSave = () => {
+    const editor = editorRef.current
+    if (!editor) return
+    const id = toast.loading('Saving rules…')
+    saveRules.mutate(
+      { server: tab.server, cube: tab.cube, rules: editor.getValue() },
+      {
+        onSuccess: () => { markTabSaved(tab.id); toast.success('Rules saved', { id }) },
+        onError:   (err) => toast.error(err.message, { id }),
+      },
+    )
+  }
+
   const handleMount = (editor, monaco) => {
     editorRef.current = editor
     monacoRef.current = monaco
     if (!registeredRef.current) {
       registerTM1Completions(monaco, () => server)
+      registerRulesCompletions(monaco, () => tab.server ?? server)
       registerTM1Theme(monaco, dark)
       registeredRef.current = true
     }
@@ -188,19 +380,25 @@ function RulesEditor({ tab, onCursor }) {
       if (e.keyCode === monaco.KeyCode.KeyS && (e.ctrlKey || e.metaKey) && !e.shiftKey) {
         e.browserEvent.preventDefault()
         e.browserEvent.stopPropagation()
-        const id = toast.loading('Saving rules…')
-        saveRules.mutate(
-          { server: tab.server, cube: tab.cube, rules: editor.getValue() },
-          {
-            onSuccess: () => { markTabSaved(tab.id); toast.success('Rules saved', { id }) },
-            onError:   (err) => toast.error(err.message, { id }),
-          },
-        )
+        handleSave()
       }
       if (e.keyCode === monaco.KeyCode.KeyF && (e.ctrlKey || e.metaKey) && e.shiftKey) {
         e.browserEvent.preventDefault()
         e.browserEvent.stopPropagation()
         editor.getAction('editor.action.formatDocument').run()
+      }
+      if (e.ctrlKey || e.metaKey) {
+        const code = e.browserEvent.code
+        if (code === 'Equal' || code === 'NumpadAdd') {
+          e.browserEvent.preventDefault(); e.browserEvent.stopPropagation()
+          editor.getAction('editor.action.fontZoomIn')?.run()
+        } else if (code === 'Minus' || code === 'NumpadSubtract') {
+          e.browserEvent.preventDefault(); e.browserEvent.stopPropagation()
+          editor.getAction('editor.action.fontZoomOut')?.run()
+        } else if (code === 'Digit0' || code === 'Numpad0') {
+          e.browserEvent.preventDefault(); e.browserEvent.stopPropagation()
+          editor.getAction('editor.action.fontZoomReset')?.run()
+        }
       }
     })
     if (tab.scrollToLine) {
@@ -253,6 +451,14 @@ function RulesEditor({ tab, onCursor }) {
     editor.focus()
   }
 
+  const toggleMinimap = () => {
+    const next = !showMinimap
+    setShowMinimap(next)
+    editorRef.current?.updateOptions({ minimap: { enabled: next } })
+    const s = loadSettings()
+    saveSettings({ ...s, editor: { ...s.editor, minimap: { ...(s.editor.minimap ?? {}), rules: next } } })
+  }
+
   if (isLoading && tab.content === null) {
     return <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm">Loading rules…</div>
   }
@@ -261,6 +467,20 @@ function RulesEditor({ tab, onCursor }) {
     <div className="flex h-full min-h-0 overflow-hidden">
       <div className="flex-1 min-w-0 overflow-hidden relative">
         <div className="absolute top-2 right-2 z-10 flex items-center gap-1.5">
+          <button
+            onClick={handleSave}
+            disabled={!tab.dirty || saveRules.isPending}
+            className={cn(
+              'flex items-center gap-1 px-2 py-1 rounded text-xs border transition-colors',
+              tab.dirty
+                ? 'bg-primary text-primary-foreground border-primary hover:opacity-90'
+                : 'bg-background/80 border-border text-muted-foreground opacity-40'
+            )}
+            title="Save (Ctrl+S)"
+          >
+            {saveRules.isPending ? <Loader2 size={11} className="animate-spin" /> : <Save size={11} />}
+            Save
+          </button>
           <div ref={formatPopupRef} className="relative format-popup-container">
             <button
               onClick={() => setShowFormatPopup(v => !v)}
@@ -370,6 +590,41 @@ function RulesEditor({ tab, onCursor }) {
             Snippets
           </button>
           <button
+            onClick={() => setShowTrace(s => !s)}
+            className={cn(
+              'flex items-center gap-1 px-2 py-1 rounded text-xs border transition-colors',
+              showTrace ? 'bg-emerald-700 text-white border-emerald-700' : 'bg-background/80 border-border text-muted-foreground hover:text-foreground'
+            )}
+            title="Trace cell calculation"
+          >
+            <Microscope size={11} />
+            Trace
+          </button>
+          <div className="flex items-center rounded border border-border overflow-hidden bg-background/80 shrink-0">
+            <button onClick={() => editorRef.current?.getAction('editor.action.fontZoomOut')?.run()}
+              className="px-1.5 py-1 text-[9px] font-bold text-muted-foreground hover:bg-muted hover:text-foreground transition-colors leading-none"
+              title="Decrease font size (Ctrl+-)">A</button>
+            <div className="w-px h-3 bg-border" />
+            <button onClick={() => editorRef.current?.getAction('editor.action.fontZoomReset')?.run()}
+              className="px-1.5 py-1 text-[11px] font-bold text-muted-foreground hover:bg-muted hover:text-foreground transition-colors leading-none"
+              title="Reset font size (Ctrl+0)">A</button>
+            <div className="w-px h-3 bg-border" />
+            <button onClick={() => editorRef.current?.getAction('editor.action.fontZoomIn')?.run()}
+              className="px-1.5 py-1 text-[13px] font-bold text-muted-foreground hover:bg-muted hover:text-foreground transition-colors leading-none"
+              title="Increase font size (Ctrl++)">A</button>
+          </div>
+          <button
+            onClick={toggleMinimap}
+            className={cn(
+              'flex items-center gap-1 px-2 py-1 rounded text-xs border transition-colors',
+              showMinimap ? 'bg-primary text-primary-foreground border-primary' : 'bg-background/80 border-border text-muted-foreground hover:text-foreground'
+            )}
+            title="Toggle minimap"
+          >
+            <Map size={11} />
+            Minimap
+          </button>
+          <button
             onClick={() => setShowLineage(s => !s)}
             className={cn(
               'flex items-center gap-1 px-2 py-1 rounded text-xs border transition-colors',
@@ -389,13 +644,21 @@ function RulesEditor({ tab, onCursor }) {
           beforeMount={monaco => registerTM1Theme(monaco, dark)}
           onChange={v => updateTabContent(tab.id, v)}
           onMount={handleMount}
-          options={{ fontSize: 13, minimap: { enabled: false }, wordWrap: 'on', scrollBeyondLastLine: false }}
+          options={{ fontSize: 13, minimap: { enabled: showMinimap }, wordWrap: 'on', scrollBeyondLastLine: false, fixedOverflowWidgets: true }}
         />
       </div>
       {showSnippets && (
         <div className="w-72 shrink-0 border-l border-border flex flex-col bg-sidebar overflow-hidden">
-          <SnippetPanel snippets={getSnippets('rules')} onInsert={insertSnippet} />
+          <SnippetPanel snippets={getSnippets('rules')} language="rules" onInsert={insertSnippet} />
         </div>
+      )}
+      {showTrace && (
+        <CellTracePanel
+          server={tab.server}
+          cube={tab.cube}
+          cubeDims={cubeDims}
+          onClose={() => setShowTrace(false)}
+        />
       )}
       {showLineage && (
         <LineagePanel server={tab.server} cube={tab.cube} onOpen={openCube} />
@@ -451,15 +714,27 @@ export default function EditorPane({ groupId }) {
         {tab.type === 'dimension'  && <DimensionEditor key={tab.id} tab={tab} />}
         {(tab.type === 'view' || tab.type === 'cubeview') && <ViewEditor key={tab.id} tab={tab} />}
         {tab.type === 'chore'      && <ChoreEditor    key={tab.id} tab={tab} />}
-        {tab.type === 'guidedmdxsubset' && <GuidedMDXBuilder  key={tab.id} tab={tab} />}
         {tab.type === 'guidedmdxview'   && <GuidedMDXBuilder  key={tab.id} tab={tab} />}
         {tab.type === 'sql'             && <SQLEditor          key={tab.id} tab={tab} />}
         {tab.type === 'hierarchytest'   && <HierarchyGridTest  key={tab.id} />}
+        {tab.type === 'cubeeditor'      && <CubeEditor         key={tab.id} tab={tab} />}
+        {tab.type === 'transactionlog'  && (
+          <div key={tab.id} className="flex h-full min-h-0 bg-sidebar">
+            <TransactionLogPanel
+              server={tab.server}
+              cube={tab.cube}
+              cubeDims={tab.cubeDims ?? []}
+              tupleFilter={tab.elements?.length ? tab.elements : null}
+              onClearFilter={null}
+              onClose={null}
+            />
+          </div>
+        )}
       </div>
       <div className="flex items-center px-3 py-0.5 bg-muted border-t border-border text-xs text-muted-foreground shrink-0">
         <span>Ln {cursor.line}, Col {cursor.col}</span>
         <span className="ml-4">
-          {tab.type === 'rules' ? 'TM1 Rules' : tab.type === 'subset' ? 'Subset' : tab.type === 'dimension' ? 'Dimension' : tab.type === 'view' || tab.type === 'cubeview' ? 'View' : tab.type === 'chore' ? 'Chore' : 'TM1 TI'}
+          {tab.type === 'rules' ? 'TM1 Rules' : tab.type === 'subset' ? 'Subset' : tab.type === 'dimension' ? 'Dimension' : tab.type === 'view' || tab.type === 'cubeview' ? 'View' : tab.type === 'chore' ? 'Chore' : tab.type === 'cubeeditor' ? 'Cube' : 'TM1 TI'}
         </span>
         {getRevealTarget(tab) && (
           <button

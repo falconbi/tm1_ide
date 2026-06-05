@@ -41,6 +41,7 @@ export const DEFAULT_SETTINGS = {
     lineHeight: 1.5,
     monacoTheme: 'vs-dark',
     uiAccent: 'blue',
+    minimap: { rules: false, ti: false, sql: false },
   },
 }
 

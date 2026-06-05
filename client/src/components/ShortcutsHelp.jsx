@@ -23,6 +23,9 @@ const SHORTCUTS = [
       { key: 'Ctrl + /', desc: 'Toggle line comment' },
       { key: 'Ctrl + D', desc: 'Select next occurrence' },
       { key: 'Alt + ↑ / ↓', desc: 'Move line up / down' },
+      { key: 'Ctrl + =', desc: 'Increase editor font size' },
+      { key: 'Ctrl + -', desc: 'Decrease editor font size' },
+      { key: 'Ctrl + 0', desc: 'Reset editor font size' },
     ],
   },
   {

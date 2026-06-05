@@ -76,7 +76,7 @@ export default function MDXSandbox({ tab }) {
               <button
                 onClick={() => executeRaw()}
                 disabled={rawRunning || !rawMdx.trim()}
-                className="flex items-center gap-1.5 px-3 py-1 text-xs rounded bg-primary text-primary-foreground disabled:opacity-50"
+                className="flex items-center gap-1.5 px-3 py-1 text-xs rounded bg-emerald-700 text-white disabled:opacity-40 hover:bg-emerald-600 transition-colors"
               >
                 {rawRunning ? <Loader2 size={11} className="animate-spin" /> : <Play size={11} />}
                 Execute

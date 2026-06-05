@@ -1,6 +1,6 @@
 import { useState, useRef, useMemo, useEffect, createContext, useContext, useCallback } from 'react'
 import { toast } from 'sonner'
-import { useCubes, useDims, useProcs, useChores, useSubsets, useViews, useCubeDimensions, useSaveView, useHierarchies, useCreateHierarchy, useControlObjects, useDeleteDimension, useDeleteCube, useDeleteProcess, useDeleteChore, useDeleteSubset, useCreateProcess } from '@/hooks/useApi'
+import { useCubes, useDims, useProcs, useChores, useSubsets, useViews, useCubeDimensions, useSaveView, useHierarchies, useCreateHierarchy, useControlObjects, useDeleteDimension, useDeleteCube, useDeleteProcess, useDeleteChore, useDeleteSubset, useCreateProcess, useCreateDimension } from '@/hooks/useApi'
 import { useStore } from '@/store'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { ChevronRight, ChevronDown, Box, Layers, Cog, Clock, Loader2, List, Plus, Table2, Code2, PencilLine, Search, X, Braces, Trash2, FileSearch } from 'lucide-react'
@@ -297,7 +297,7 @@ function CubeDimRow({ server, dim, onOpenSubset, onOpenDim, cube }) {
   )
 }
 
-function CubeRow({ server, cube, onOpenRules, onOpenView, onOpenSubset, onOpenDim, onOpenViewer }) {
+function CubeRow({ server, cube, onOpenRules, onOpenView, onOpenSubset, onOpenDim, onOpenViewer, onOpenCubeEditor }) {
   const activeId = useContext(ActiveLocateCtx)
   const [open, setOpen] = useState(false)
   const revealTarget = useStore(s => s.revealTarget)
@@ -362,6 +362,14 @@ function CubeRow({ server, cube, onOpenRules, onOpenView, onOpenSubset, onOpenDi
         {loading
         ? <Loader2 size={10} className="ml-1 animate-spin text-muted-foreground shrink-0" />
         : <span className="hidden group-hover:flex items-center shrink-0 ml-auto">
+            <button onClick={e => { e.stopPropagation(); onOpenCubeEditor?.(cube) }} title="Edit cube structure"
+              className="flex items-center gap-0.5 px-1 py-0.5 rounded text-[10px] text-muted-foreground hover:text-foreground hover:bg-sidebar-accent">
+              <PencilLine size={9} />
+            </button>
+            <button onClick={e => { e.stopPropagation(); openTab({ id: `guidedmdxview:${server}:${cube}:${Date.now()}`, type: 'guidedmdxview', label: `Builder — ${cube}`, server, initialState: { selectedCube: cube, step: 1 } }) }} title="Build MDX View"
+              className="flex items-center gap-0.5 px-1 py-0.5 rounded text-[10px] text-muted-foreground hover:text-foreground hover:bg-sidebar-accent">
+              <Braces size={9} />
+            </button>
             <button onClick={handleDeleteCube} title="Delete cube"
               className="flex items-center gap-0.5 px-1 py-0.5 rounded text-[10px] text-muted-foreground hover:text-red-400 hover:bg-sidebar-accent">
               <Trash2 size={9} />
@@ -404,7 +412,7 @@ function CubeRow({ server, cube, onOpenRules, onOpenView, onOpenSubset, onOpenDi
   )
 }
 
-function CubeSection({ server, cubes, isLoading, onOpenRules, onOpenView, onOpenSubset, onOpenDim, onOpenViewer }) {
+function CubeSection({ server, cubes, isLoading, onOpenRules, onOpenView, onOpenSubset, onOpenDim, onOpenViewer, onOpenCubeEditor }) {
   const [open, setOpen] = useState(false)
   const revealTarget = useStore(s => s.revealTarget)
   useEffect(() => {
@@ -419,7 +427,14 @@ function CubeSection({ server, cubes, isLoading, onOpenRules, onOpenView, onOpen
         {open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
         <Box size={12} />
         <span>Cubes</span>
-        {isLoading && <Loader2 size={10} className="ml-auto animate-spin" />}
+        {isLoading
+          ? <Loader2 size={10} className="ml-auto animate-spin" />
+          : <button onClick={e => { e.stopPropagation(); onOpenCubeEditor(null) }}
+              title="New cube"
+              className="ml-auto p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors">
+              <Plus size={11} />
+            </button>
+        }
       </button>
       {open && (
         <div className="pb-1">
@@ -427,7 +442,7 @@ function CubeSection({ server, cubes, isLoading, onOpenRules, onOpenView, onOpen
             <CubeRow key={cube} server={server} cube={cube}
               onOpenRules={onOpenRules} onOpenView={onOpenView}
               onOpenSubset={onOpenSubset} onOpenDim={onOpenDim}
-              onOpenViewer={onOpenViewer} />
+              onOpenViewer={onOpenViewer} onOpenCubeEditor={onOpenCubeEditor} />
           ))}
         </div>
       )}
@@ -706,12 +721,22 @@ function DimRow({ server, dim, onOpenSubset, onOpenDim }) {
   )
 }
 
-function DimSection({ server, dims, isLoading, onOpenSubset, onOpenDim }) {
-  const [open, setOpen] = useState(false)
+function DimSection({ server, dims, isLoading, onOpenSubset, onOpenDim, onCreateDim }) {
+  const [open, setOpen]       = useState(false)
+  const [adding, setAdding]   = useState(false)
+  const [newName, setNewName] = useState('')
+  const inputRef              = useRef(null)
   const revealTarget = useStore(s => s.revealTarget)
   useEffect(() => {
     if (revealTarget && shouldAutoOpen('dimensions', revealTarget)) setOpen(true)
   }, [revealTarget])
+
+  const startAdd = (e) => { e.stopPropagation(); setAdding(true); setNewName(''); setTimeout(() => inputRef.current?.focus(), 0) }
+  const commitAdd = () => {
+    const name = newName.trim(); setAdding(false); setNewName('')
+    if (name) onCreateDim(name)
+  }
+
   return (
     <div data-section="dimensions">
       <button
@@ -721,8 +746,23 @@ function DimSection({ server, dims, isLoading, onOpenSubset, onOpenDim }) {
         {open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
         <Layers size={12} />
         <span>Dimensions</span>
-        {isLoading && <Loader2 size={10} className="ml-auto animate-spin" />}
+        {isLoading
+          ? <Loader2 size={10} className="ml-auto animate-spin" />
+          : <button onClick={startAdd} title="New dimension"
+              className="ml-auto p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors">
+              <Plus size={11} />
+            </button>
+        }
       </button>
+      {adding && (
+        <div className="flex items-center gap-1 px-6 py-0.5">
+          <Layers size={10} className="shrink-0 text-muted-foreground" />
+          <input ref={inputRef} value={newName} onChange={e => setNewName(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') commitAdd(); if (e.key === 'Escape') setAdding(false) }}
+            onBlur={commitAdd} placeholder="Dimension name…"
+            className="flex-1 text-xs bg-transparent border-b border-primary outline-none font-mono py-px" />
+        </div>
+      )}
       {open && (
         <div className="pb-1">
           {(dims ?? []).map(dim => (
@@ -831,6 +871,15 @@ export default function Explorer() {
   const deleteProcessMut  = useDeleteProcess()
   const deleteCoreMut     = useDeleteChore()
   const createProcessMut  = useCreateProcess()
+  const createDimMut      = useCreateDimension()
+
+  const handleCreateDim = (name) => {
+    const id = toast.loading(`Creating "${name}"…`)
+    createDimMut.mutate({ server, name }, {
+      onSuccess: () => { toast.success(`Created ${name}`, { id }); openDim(name) },
+      onError:   (err) => toast.error(err.message ?? 'Create failed', { id }),
+    })
+  }
 
   const handleDeleteProcess = (name) => {
     if (!window.confirm(`Delete process "${name}"? This cannot be undone.`)) return
@@ -919,6 +968,14 @@ export default function Explorer() {
     server,
     dimension: dim,
     hierarchy,
+  })
+
+  const openCubeEditor = (cube) => openTab({
+    id:     cube ? `cubeeditor:${server}:${cube}` : `cubeeditor:${server}:new:${Date.now()}`,
+    type:   'cubeeditor',
+    label:  cube ?? 'New Cube',
+    server,
+    cube:   cube ?? null,
   })
 
   const openChore = (name) => openTab({
@@ -1035,8 +1092,8 @@ export default function Explorer() {
               <CubeSection server={server} cubes={cubes} isLoading={loadingCubes}
                 onOpenRules={openRules} onOpenView={openView}
                 onOpenSubset={openSubset} onOpenDim={openDim}
-                onOpenViewer={openCubeViewer} />
-              <DimSection server={server} dims={dims}    isLoading={loadingDims}   onOpenSubset={openSubset} onOpenDim={openDim} />
+                onOpenViewer={openCubeViewer} onOpenCubeEditor={openCubeEditor} />
+              <DimSection server={server} dims={dims}    isLoading={loadingDims}   onOpenSubset={openSubset} onOpenDim={openDim} onCreateDim={handleCreateDim} />
               <Section    icon={Cog}   label="Processes" items={procs}  isLoading={loadingProcs}  onSelect={openProcess} itemIcon={Cog}   sectionId="processes" locateIdPrefix="process" onDelete={handleDeleteProcess} onAdd={handleCreateProcess} />
               <Section    icon={Clock} label="Chores"    items={chores} isLoading={loadingChores} onSelect={openChore}   itemIcon={Clock} sectionId="chores" locateIdPrefix="chore" onDelete={handleDeleteChore} />
               <ControlSection

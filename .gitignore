@@ -39,6 +39,7 @@ Thumbs.db
 
 # ── Logs / Runtime ──
 *.log
+docs/Archive/writeback_debug_log.txt
 *.db
 *.sqlite
 *.sqlite3

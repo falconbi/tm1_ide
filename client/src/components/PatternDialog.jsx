@@ -1,7 +1,8 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { X, ChevronRight } from 'lucide-react'
 import { PATTERN_CATEGORIES } from '@/lib/ti-patterns'
 import { cn } from '@/lib/utils'
+import { addOrUpdateCustomSnippet } from '@/lib/custom-snippets'
 
 const SECTION_LABELS = {
   PrologProcedure:   'Prolog',
@@ -57,6 +58,13 @@ export default function PatternDialog({ onInsert, onClose }) {
   const [activeCat, setActiveCat] = useState(PATTERN_CATEGORIES[0].id)
   const [activePattern, setActivePattern] = useState(PATTERN_CATEGORIES[0].patterns[0].id)
   const [fields, setFields] = useState({})
+  const [savedMsg, setSavedMsg] = useState('')
+
+  useEffect(() => {
+    if (!savedMsg) return
+    const t = setTimeout(() => setSavedMsg(''), 3500)
+    return () => clearTimeout(t)
+  }, [savedMsg])
 
   const category = PATTERN_CATEGORIES.find(c => c.id === activeCat)
   const pattern  = category?.patterns.find(p => p.id === activePattern)
@@ -75,6 +83,25 @@ export default function PatternDialog({ onInsert, onClose }) {
     setActiveCat(catId)
     setActivePattern(patternId)
     setFields({})
+  }
+
+  const handleSaveSnippets = () => {
+    let count = 0
+    for (const [key, code] of sections) {
+      if (!code?.trim()) continue
+      const sectionLabel = SECTION_LABELS[key] ?? key
+      addOrUpdateCustomSnippet({
+        trigger: `${pattern.id}-${key.replace('Procedure', '').toLowerCase()}`,
+        label: `${pattern.label} — ${sectionLabel}`,
+        description: pattern.description,
+        category: 'TI Patterns',
+        language: 'ti',
+        code,
+        custom: true,
+      })
+      count++
+    }
+    setSavedMsg(`Saved ${count} snippet(s) to My Snippets.`)
   }
 
   return (
@@ -166,13 +193,23 @@ export default function PatternDialog({ onInsert, onClose }) {
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-between px-4 py-3 border-t border-border shrink-0">
-          <p className="text-xs text-muted-foreground">
-            {sections.length > 0
-              ? `Inserts into: ${sections.map(([k]) => SECTION_LABELS[k]).join(', ')}`
-              : 'No code generated yet'}
+        <div className="flex items-center justify-between px-4 py-3 border-t border-border shrink-0 gap-3">
+          <p className="text-xs text-muted-foreground truncate">
+            {savedMsg
+              ? <span className="text-emerald-600 dark:text-emerald-400 italic">{savedMsg}</span>
+              : sections.length > 0
+                ? `Inserts into: ${sections.map(([k]) => SECTION_LABELS[k]).join(', ')}`
+                : 'No code generated yet'}
           </p>
-          <div className="flex gap-2">
+          <div className="flex gap-2 shrink-0">
+            <button
+              onClick={handleSaveSnippets}
+              disabled={sections.length === 0}
+              title="Save generated sections as custom snippets in the TI snippet panel"
+              className="px-3 py-1.5 text-xs rounded border border-border disabled:opacity-40 hover:bg-muted transition-colors"
+            >
+              + My Snippets
+            </button>
             <button
               onClick={onClose}
               className="px-3 py-1.5 text-xs rounded border border-border hover:bg-muted transition-colors"

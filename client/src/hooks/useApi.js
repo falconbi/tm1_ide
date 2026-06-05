@@ -36,6 +36,13 @@ export const useDeleteCube = () => {
     onSuccess: (_, { server }) => queryClient.invalidateQueries({ queryKey: ['cubes', server] }),
   })
 }
+export const useCreateCube = () => {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ server, name, dims }) => post('/api/cube', { server, name, dims }),
+    onSuccess: (_, { server }) => queryClient.invalidateQueries({ queryKey: ['cubes', server] }),
+  })
+}
 export const useDeleteProcess = () => {
   const queryClient = useQueryClient()
   return useMutation({
@@ -356,6 +363,33 @@ export const useDeleteSQLQuery = () => { const qc = useQueryClient(); return use
 
 export const useCurrentUser      = (server) => useQuery({ queryKey: ['whoami', server], queryFn: () => get(`/api/whoami?server=${enc(server)}`), enabled: !!server, staleTime: 300_000 })
 export const useWriteCell        = () => useMutation({ mutationFn: (body) => post('/api/cells/write', body) })
-export const useCreateDimension  = () => useMutation({ mutationFn: (body) => post('/api/dimension/create', body) })
+export const useCreateDimension  = () => {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (body) => post('/api/dimension/create', body),
+    onSuccess: (_, { server }) => queryClient.invalidateQueries({ queryKey: ['dims', server] }),
+  })
+}
 export const useBulkDimImport    = () => useMutation({ mutationFn: (body) => post('/api/dimension/bulk-import', body) })
 export const useBulkAttrImport   = () => useMutation({ mutationFn: (body) => post('/api/dimension/bulk-attr-import', body) })
+export const useTraceCellCalc    = () => useMutation({ mutationFn: (body) => post('/api/cube/trace', body) })
+export const useTransactionLog   = () => useMutation({
+  mutationFn: ({ server, cube, top = 200, elements = null }) => {
+    const p = new URLSearchParams({ server, cube, top })
+    if (elements) p.set('elements', JSON.stringify(elements))
+    return get(`/api/transactions?${p}`)
+  },
+})
+export const useJobs             = (server, opts = {}) => useQuery({ queryKey: ['jobs', server], queryFn: () => get(`/api/jobs?server=${enc(server)}`), enabled: !!server, staleTime: 0, ...opts })
+export const useCancelJob        = () => useMutation({ mutationFn: ({ server, id }) => post(`/api/job/cancel?server=${enc(server)}&id=${enc(id)}`, {}) })
+export const useChoreActions     = () => useMutation({ mutationFn: ({ action, server, name }) => post(`/api/chore/${action}?server=${enc(server)}&name=${enc(name)}`, {}) })
+
+// ── Server admin ──────────────────────────────────────────────────────────────
+export const useServerMetrics        = (server, opts = {}) => useQuery({ queryKey: ['metrics', server], queryFn: () => get(`/api/admin/metrics?server=${enc(server)}`), enabled: !!server, staleTime: 15_000, ...opts })
+export const useActiveConfiguration  = (server, opts = {}) => useQuery({ queryKey: ['config', server],  queryFn: () => get(`/api/admin/configuration?server=${enc(server)}`), enabled: !!server, staleTime: 30_000, ...opts })
+export const usePatchConfiguration   = () => useMutation({ mutationFn: ({ server, section, values }) => patch('/api/admin/configuration', { server, section, values }) })
+export const useMaintenanceMode      = () => useMutation({ mutationFn: ({ server, enable }) => post(`/api/admin/maintenance/${enable ? 'enable' : 'disable'}`, { server }) })
+
+// ── Sessions ──────────────────────────────────────────────────────────────────
+export const useSessions          = (server, opts = {}) => useQuery({ queryKey: ['sessions', server], queryFn: () => get(`/api/sessions?server=${enc(server)}`), enabled: !!server, staleTime: 0, ...opts })
+export const useDisconnectSession = () => useMutation({ mutationFn: ({ server, id }) => del(`/api/session?server=${enc(server)}&id=${enc(id)}`) })

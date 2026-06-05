@@ -6,7 +6,8 @@ import MonacoEditor from '@monaco-editor/react'
 import { useStore } from '@/store'
 import { useCubeDimensions, useSubsets, useElementsTree, useViews, useExecuteMDX, useViewAxes, useSaveView, usePawBookUsage } from '@/hooks/useApi'
 import { toast } from 'sonner'
-import { RefreshCw, Loader2, Table2, GripVertical, X, LayoutGrid, Rows3, Columns3, Filter, ZapOff, Zap, ChevronLeft, ChevronRight, PencilLine, Save, Code2, Eye, ChevronDown, BookOpen, ChevronUp, MapPin, WrapText, Braces } from 'lucide-react'
+import { RefreshCw, Loader2, Table2, GripVertical, X, LayoutGrid, Rows3, Columns3, Filter, ZapOff, Zap, ChevronLeft, ChevronRight, PencilLine, Save, Code2, Eye, ChevronDown, BookOpen, ChevronUp, MapPin, WrapText, Braces, History } from 'lucide-react'
+import TransactionLogPanel from '@/components/TransactionLogPanel'
 import { cn } from '@/lib/utils'
 
 ModuleRegistry.registerModules([AllCommunityModule])
@@ -582,6 +583,10 @@ export default function ViewEditor({ tab }) {
 
     // PAW Books panel
     const [showPawBooks, setShowPawBooks] = useState(false)
+
+    // Transaction Log panel
+    const [showLog,   setShowLog]   = useState(false)
+    const [logTuple,  setLogTuple]  = useState(null)   // null = whole cube, array = filtered cell
     const { data: pawBookData, isFetching: loadingPawBooks, refetch: refetchPawBooks } = usePawBookUsage(tab.server, tab.cube, tab.viewName)
 
     // Loading guard using state (not ref) to survive StrictMode remounts
@@ -1002,7 +1007,60 @@ export default function ViewEditor({ tab }) {
         return columnHierarchies.map((h, i) => constrainHierarchy(h, [...perDim[i]]))
     }, [columnHierarchies, hierarchyData])
 
+    const handleCellEdit = useCallback(async ({ tupleKey, colId, value }) => {
+        if (!tab.server || !tab.cube) return
+        const rowMembers = tupleKey.split('::')
+        const rowCoords  = axes.rows.map((d, i) => ({ dim: d.dimension, element: rowMembers[i] })).filter(c => c.element != null)
+        const col        = hierarchyData?.columns?.find(c => c.id === colId)
+        if (!col) return
+        const colMembers = col.members ?? [col.label]
+        const colCoords  = axes.columns.map((d, i) => ({ dim: d.dimension, element: colMembers[i] })).filter(c => c.element != null)
+        const pageCoords = axes.pages.filter(p => p.member).map(p => ({ dim: p.dimension, element: p.member }))
+        const coordMap   = new Map([...rowCoords, ...colCoords, ...pageCoords].map(c => [c.dim, c.element]))
+        const missing    = cubeDims.filter(d => !coordMap.has(d))
+        if (missing.length) {
+            toast.error(`Cannot write — move all dimensions to an axis: ${missing.join(', ')}`)
+            handleExecute()
+            return
+        }
+        const dims = cubeDims.map(dim => ({ dim, element: coordMap.get(dim) }))
+        const id = toast.loading('Writing…')
+        try {
+            const res = await fetch('/api/cells/write', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ server: tab.server, cube: tab.cube, dims, value }),
+            })
+            const d = await res.json()
+            if (!res.ok) throw new Error(d.error || 'Write failed')
+            toast.success('Written', { id })
+            handleExecute()
+        } catch (e) {
+            toast.error(e.message, { id })
+            handleExecute()
+        }
+    }, [tab.server, tab.cube, axes, hierarchyData, cubeDims, handleExecute])
+
     const useHierarchy  = !!(rowDims.length > 0 && constrainedHierarchies.length > 0 && hierarchyData && result)
+
+    // Build full tuple from a cell context-menu event — used to filter the Transaction Log
+    const buildTupleFromCell = useCallback(({ tupleKey, colId }) => {
+        const rowMembers = (tupleKey ?? '').split('::')
+        const rowCoords  = axes.rows.map((d, i) => ({ dim: d.dimension, element: rowMembers[i] }))
+        const col        = hierarchyData?.columns?.find(c => c.id === colId)
+        const colMembers = col?.members ?? (col?.label ? [col.label] : [])
+        const colCoords  = axes.columns.map((d, i) => ({ dim: d.dimension, element: colMembers[i] }))
+        const pageCoords = axes.pages.filter(p => p.member).map(p => ({ dim: p.dimension, element: p.member }))
+        const coordMap   = new Map([...rowCoords, ...colCoords, ...pageCoords].map(c => [c.dim, c.element]))
+        return cubeDims.map(d => coordMap.get(d) ?? null)
+    }, [axes, hierarchyData, cubeDims])
+
+    const handleCellContextMenu = useCallback((e) => {
+        if (!showLog) return
+        e.event?.preventDefault?.()
+        const tuple = buildTupleFromCell({ tupleKey: e.data?.__tupleKey__, colId: e.colDef?.field })
+        setLogTuple(tuple)
+    }, [showLog, buildTupleFromCell])
 
     const allDims = useMemo(() => [...axes.rows, ...axes.columns, ...axes.pages, ...bench], [axes, bench])
     const activeDim = activeDrag ? allDims.find(d => d.dimension === activeDrag) : null
@@ -1011,7 +1069,8 @@ export default function ViewEditor({ tab }) {
     const isExecuting   = executeMDX.isPending
 
     return (
-        <div className="flex flex-col h-full min-h-0">
+        <div className="flex h-full min-h-0">
+        <div className="flex flex-col flex-1 min-w-0 min-h-0">
             {/* Toolbar */}
             <div className="flex items-center gap-2 px-3 py-1.5 border-b border-border bg-muted/30 shrink-0">
                 <span className="text-xs font-mono text-muted-foreground truncate">
@@ -1079,6 +1138,19 @@ export default function ViewEditor({ tab }) {
                     title="Show in Explorer tree"
                 >
                     <MapPin size={11} />
+                </button>
+
+                <button
+                    onClick={() => setShowLog(v => !v)}
+                    title="Transaction log — see who changed what and when"
+                    className={cn(
+                        'flex items-center gap-1 px-2 py-0.5 text-[10px] rounded border transition-colors',
+                        showLog
+                            ? 'bg-blue-600 text-white border-blue-600'
+                            : 'border-border text-muted-foreground hover:text-foreground hover:bg-muted'
+                    )}
+                >
+                    <History size={10} /> Log
                 </button>
 
                 <div className="flex-1" />
@@ -1155,8 +1227,7 @@ export default function ViewEditor({ tab }) {
 
                 <button onClick={handleExecute} disabled={isExecuting || isLoadingView}
                     title="Execute / Refresh (Ctrl+Enter)"
-                    className={cn('flex items-center justify-center p-1.5 rounded border border-border transition-colors',
-                        isExecuting ? 'text-primary bg-primary/10' : 'text-muted-foreground hover:bg-muted')}>
+                    className="flex items-center justify-center p-1.5 rounded bg-emerald-700 text-white hover:bg-emerald-600 transition-colors disabled:opacity-40">
                     {isExecuting ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
                 </button>
             </div>
@@ -1293,6 +1364,8 @@ export default function ViewEditor({ tab }) {
                         keepMode="parent"
                         totalsPosition={totalsPosition}
                         colTotalsPosition={colTotalsPosition}
+                        onCellEdit={handleCellEdit}
+                        onCellContextMenu={handleCellContextMenu}
                     />
                 </div>
             ) : !parsed || parsed.grid.length === 0 ? (
@@ -1307,9 +1380,21 @@ export default function ViewEditor({ tab }) {
                         enableCellTextSelection
                         defaultColDef={{ sortable: false }}
                         onFirstDataRendered={p => p.api.autoSizeAllColumns()}
+                        onCellContextMenu={handleCellContextMenu}
                     />
                 </div>
             )}
+        </div>
+        {showLog && (
+            <TransactionLogPanel
+                server={tab.server}
+                cube={tab.cube}
+                cubeDims={cubeDims}
+                tupleFilter={logTuple}
+                onClearFilter={() => setLogTuple(null)}
+                onClose={() => { setShowLog(false); setLogTuple(null) }}
+            />
+        )}
         </div>
     )
 }

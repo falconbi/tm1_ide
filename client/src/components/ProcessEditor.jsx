@@ -3,10 +3,12 @@ import MonacoEditor from '@monaco-editor/react'
 import { useStore } from '@/store'
 import { useProcess, useSaveProcess, useRunProcess, useCreateProcess, useDebugProcess, useCubes, useViews, usePreviewDatasource } from '@/hooks/useApi'
 import { registerTM1Completions, registerTM1Theme } from '@/lib/tm1-functions'
+import { registerTICompletions } from '@/lib/tm1-completion'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
-import { ChevronRight, ChevronDown, Play, X, Braces, Wand2, CheckCircle2, XCircle, Database, Trash2, Plus, Loader2, Bug, Search, AlertTriangle, AlertCircle } from 'lucide-react'
+import { ChevronRight, ChevronDown, Play, X, Braces, Wand2, CheckCircle2, XCircle, Database, Trash2, Plus, Loader2, Bug, Search, AlertTriangle, AlertCircle, Map } from 'lucide-react'
 import { getSnippets } from '@/lib/tm1-snippets.js'
+import { loadSettings, saveSettings } from '@/lib/formatters/settings.js'
 import { executeTI, scanVariables } from '@/lib/ti-interpreter'
 import { parseDebugLog } from '@/lib/ti-debugger'
 import { validateTICode } from '@/lib/ti-validator'
@@ -203,7 +205,7 @@ function DatasourcePreviewPanel({ ds }) {
         <button
           onClick={run}
           disabled={preview.isPending || !dsn || !query}
-          className="flex items-center gap-1.5 px-2.5 py-1 text-xs rounded bg-primary text-primary-foreground disabled:opacity-50 hover:opacity-90 transition-opacity"
+          className="flex items-center gap-1.5 px-2.5 py-1 text-xs rounded bg-emerald-700 text-white disabled:opacity-40 hover:bg-emerald-600 transition-colors"
         >
           {preview.isPending ? <Loader2 size={10} className="animate-spin" /> : <Play size={10} />}
           Preview
@@ -641,7 +643,7 @@ function DebugPanel({ watches, onWatchesChange, events, isDebugging, onRun, onJu
         <button
           onClick={onRun}
           disabled={isDebugging}
-          className="flex items-center gap-1 px-2 py-1 text-xs rounded bg-orange-600 text-white disabled:opacity-50 hover:bg-orange-500 transition-colors"
+          className="flex items-center gap-1 px-2 py-1 text-xs rounded bg-emerald-700 text-white disabled:opacity-40 hover:bg-emerald-600 transition-colors"
         >
           {isDebugging ? <Loader2 size={10} className="animate-spin" /> : <Play size={10} />}
           {isDebugging ? 'Running…' : 'Run'}
@@ -801,9 +803,14 @@ export default function ProcessEditor({ tab }) {
   const [showDsInsert, setShowDsInsert] = useState(false)
   const [showSnippets, setShowSnippets] = useState(false)
   const [showPatterns, setShowPatterns] = useState(false)
+  const [showMinimap, setShowMinimap] = useState(() => loadSettings().editor?.minimap?.ti ?? false)
   const [runOutput, setRunOutput] = useState(null)
   const [logContent, setLogContent] = useState(null)
   const [logOpen, setLogOpen] = useState(true)
+  const [errorLogFilename, setErrorLogFilename] = useState(null)
+  const [errorLogContent, setErrorLogContent] = useState(null)
+  const [errorLogOpen, setErrorLogOpen] = useState(false)
+  const [errorLogLoading, setErrorLogLoading] = useState(false)
   const editorRef = useRef(null)
   const monacoRef = useRef(null)
   const pendingLineRef = useRef(null)
@@ -848,6 +855,14 @@ export default function ProcessEditor({ tab }) {
     editor.focus()
   }
 
+  const toggleMinimap = () => {
+    const next = !showMinimap
+    setShowMinimap(next)
+    editorRef.current?.updateOptions({ minimap: { enabled: next } })
+    const s = loadSettings()
+    saveSettings({ ...s, editor: { ...s.editor, minimap: { ...(s.editor.minimap ?? {}), ti: next } } })
+  }
+
   const handleInsertDs = (code) => {
     const editor = editorRef.current
     const monaco = monacoRef.current
@@ -868,6 +883,7 @@ export default function ProcessEditor({ tab }) {
     monacoRef.current = monaco
     if (!registeredRef.current) {
       registerTM1Completions(monaco, () => server)
+      registerTICompletions(monaco, () => tab.server ?? server)
       registerTM1Theme(monaco, dark)
       registeredRef.current = true
     }
@@ -905,6 +921,23 @@ export default function ProcessEditor({ tab }) {
           }
         }
         ed.executeEdits('ti-comment', edits)
+      }
+    })
+
+    // Font zoom shortcuts (Ctrl++/Ctrl+-/Ctrl+0)
+    editor.onKeyDown(e => {
+      if (e.ctrlKey || e.metaKey) {
+        const code = e.browserEvent.code
+        if (code === 'Equal' || code === 'NumpadAdd') {
+          e.browserEvent.preventDefault(); e.browserEvent.stopPropagation()
+          editor.getAction('editor.action.fontZoomIn')?.run()
+        } else if (code === 'Minus' || code === 'NumpadSubtract') {
+          e.browserEvent.preventDefault(); e.browserEvent.stopPropagation()
+          editor.getAction('editor.action.fontZoomOut')?.run()
+        } else if (code === 'Digit0' || code === 'Numpad0') {
+          e.browserEvent.preventDefault(); e.browserEvent.stopPropagation()
+          editor.getAction('editor.action.fontZoomReset')?.run()
+        }
       }
     })
 
@@ -949,6 +982,9 @@ export default function ProcessEditor({ tab }) {
     setRunOutput(null)
     setLogContent(null)
     setLogOpen(true)
+    setErrorLogFilename(null)
+    setErrorLogContent(null)
+    setErrorLogOpen(false)
     const id = toast.loading('Running process…')
     runProcess.mutate(
       { server: tab.server, name: tab.name, params: values },
@@ -958,6 +994,7 @@ export default function ProcessEditor({ tab }) {
           toast.success('Process completed', { id })
           setRunOutput({ status: 'ok', duration: res?.duration ?? null })
           setLogContent(res?.runLog ?? '')
+          if (res?.errorLogFilename) setErrorLogFilename(res.errorLogFilename)
         },
         onError: (e) => {
           toast.dismiss(id)
@@ -969,9 +1006,26 @@ export default function ProcessEditor({ tab }) {
             line:    detail.line   ?? null,
           })
           setLogContent(detail.runLog ?? '')
+          if (detail.errorLogFilename) setErrorLogFilename(detail.errorLogFilename)
         },
       },
     )
+  }
+
+  const loadErrorLog = async () => {
+    if (!errorLogFilename) return
+    setErrorLogOpen(true)
+    setErrorLogLoading(true)
+    setErrorLogContent(null)
+    try {
+      const r = await fetch(`/api/process/errorlog/content?server=${encodeURIComponent(tab.server)}&filename=${encodeURIComponent(errorLogFilename)}`)
+      const d = await r.json()
+      setErrorLogContent(d.content ?? '')
+    } catch {
+      setErrorLogContent('Failed to load error log.')
+    } finally {
+      setErrorLogLoading(false)
+    }
   }
 
   const handleSave = () => {
@@ -1217,6 +1271,30 @@ export default function ProcessEditor({ tab }) {
         ))}
 
         <div className="ml-auto flex items-center gap-1 mr-2">
+          <div className="flex items-center rounded border border-border overflow-hidden shrink-0">
+            <button onClick={() => editorRef.current?.getAction('editor.action.fontZoomOut')?.run()}
+              className="px-1.5 py-1 text-[9px] font-bold text-muted-foreground hover:bg-muted hover:text-foreground transition-colors leading-none"
+              title="Decrease font size (Ctrl+-)">A</button>
+            <div className="w-px h-3 bg-border" />
+            <button onClick={() => editorRef.current?.getAction('editor.action.fontZoomReset')?.run()}
+              className="px-1.5 py-1 text-[11px] font-bold text-muted-foreground hover:bg-muted hover:text-foreground transition-colors leading-none"
+              title="Reset font size (Ctrl+0)">A</button>
+            <div className="w-px h-3 bg-border" />
+            <button onClick={() => editorRef.current?.getAction('editor.action.fontZoomIn')?.run()}
+              className="px-1.5 py-1 text-[13px] font-bold text-muted-foreground hover:bg-muted hover:text-foreground transition-colors leading-none"
+              title="Increase font size (Ctrl++)">A</button>
+          </div>
+          <button
+            onClick={toggleMinimap}
+            title="Toggle minimap"
+            className={cn(
+              'flex items-center gap-1.5 px-2.5 py-1 text-xs rounded border transition-colors',
+              showMinimap ? 'bg-primary text-primary-foreground border-primary' : 'border-border text-muted-foreground hover:text-foreground hover:bg-muted'
+            )}
+          >
+            <Map size={11} />
+            <span className="hidden sm:inline">Minimap</span>
+          </button>
           <button
             onClick={() => setShowPatterns(true)}
             title="Patterns"
@@ -1381,16 +1459,29 @@ export default function ProcessEditor({ tab }) {
               </>
             )}
             <div className="ml-auto flex items-center gap-2 shrink-0">
+              {errorLogFilename && (
+                <button
+                  onClick={errorLogOpen ? () => setErrorLogOpen(false) : loadErrorLog}
+                  className={cn(
+                    'flex items-center gap-1 text-xs transition-colors',
+                    errorLogOpen ? 'text-amber-400 hover:text-amber-300' : 'text-amber-500 hover:text-amber-400'
+                  )}
+                  title={`View TM1 error log: ${errorLogFilename}`}
+                >
+                  <AlertCircle size={11} />
+                  Error Log
+                </button>
+              )}
               <button
                 onClick={() => setLogOpen(o => !o)}
                 className="flex items-center gap-1 text-muted-foreground hover:text-foreground transition-colors"
-                title="Toggle log output"
+                title="Toggle run log output"
               >
                 {logOpen ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
                 <span>Log</span>
               </button>
               <button
-                onClick={() => { setRunOutput(null); setLogContent(null) }}
+                onClick={() => { setRunOutput(null); setLogContent(null); setErrorLogFilename(null); setErrorLogContent(null); setErrorLogOpen(false) }}
                 className="text-muted-foreground hover:text-foreground"
               >
                 <X size={11} />
@@ -1398,7 +1489,7 @@ export default function ProcessEditor({ tab }) {
             </div>
           </div>
 
-          {/* Log content */}
+          {/* __RUN_LOG content */}
           {logOpen && (
             <div className="border-t border-border/50 max-h-52 overflow-auto px-4 py-2">
               {logContent === null ? (
@@ -1409,6 +1500,22 @@ export default function ProcessEditor({ tab }) {
                 <p className="text-xs text-muted-foreground italic">No log output. Use AttrPutS to write to __RUN_LOG in your TI.</p>
               ) : (
                 <pre className="text-xs font-mono text-foreground/80 whitespace-pre-wrap leading-relaxed">{logContent}</pre>
+              )}
+            </div>
+          )}
+
+          {/* TM1 Error Log file content */}
+          {errorLogOpen && (
+            <div className="border-t border-amber-900/40 bg-amber-950/10 max-h-64 overflow-auto px-4 py-2">
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="text-[10px] font-mono text-amber-500/70 truncate">{errorLogFilename}</span>
+              </div>
+              {errorLogLoading ? (
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <Loader2 size={11} className="animate-spin" /> Loading…
+                </div>
+              ) : (
+                <pre className="text-xs font-mono text-amber-200/80 whitespace-pre-wrap leading-relaxed">{errorLogContent ?? ''}</pre>
               )}
             </div>
           )}
@@ -1429,7 +1536,7 @@ export default function ProcessEditor({ tab }) {
             onMount={handleMount}
             options={{
               fontSize: 13,
-              minimap: { enabled: false },
+              minimap: { enabled: showMinimap },
               wordWrap: 'on',
               scrollBeyondLastLine: false,
               glyphMargin: true,
@@ -1440,7 +1547,7 @@ export default function ProcessEditor({ tab }) {
         </div>
         {showSnippets && (
           <div className="w-72 shrink-0 border-l border-border flex flex-col bg-sidebar overflow-hidden">
-            <SnippetPanel snippets={getSnippets('ti')} onInsert={insertSnippet} />
+            <SnippetPanel snippets={getSnippets('ti')} language="ti" onInsert={insertSnippet} />
           </div>
         )}
         {showDebug && (

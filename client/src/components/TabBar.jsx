@@ -11,8 +11,8 @@ const TYPE_ICON = {
   dimension:       Layers,
   chore:           Clock,
   sql:             Database,
-  guidedmdxsubset: Braces,
   guidedmdxview:   Braces,
+  cubeeditor:      Box,
 }
 
 const getTabIcon = (tab) => {

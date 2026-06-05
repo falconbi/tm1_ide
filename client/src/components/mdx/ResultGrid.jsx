@@ -243,8 +243,7 @@ export default function ResultGrid({ axes, cells, truncated, onReady, server, cu
         ...cd,
         editable: (p) => {
           const ri = p.node?.rowIndex ?? 0
-          const updatable = parsed?.cellUpdateable?.[ri]?.[ci] ?? false
-          return updatable
+          return parsed?.cellUpdateable?.[ri]?.[ci] ?? false
         },
         singleClickEdit: true,
         cellEditor: 'agTextCellEditor',
@@ -291,7 +290,6 @@ export default function ResultGrid({ axes, cells, truncated, onReady, server, cu
     }
     try {
       await writeCell(server, cube, parsed.cellCoords[ri][ci], effectiveSlicers, p.newValue, cubeDimOrder)
-      // success: ag-grid edit already applied the newValue locally
     } catch (e) {
       toast.error(e.message)
       // revert the local change in the grid since server did not accept it

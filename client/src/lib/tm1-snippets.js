@@ -2,6 +2,8 @@
 // code uses Monaco snippet syntax: ${N:placeholder}, ${0} = final cursor.
 // The panel strips markers before insertion; autocomplete uses them as tab stops.
 
+import { loadCustomSnippets } from './custom-snippets'
+
 const S = (trigger, label, description, category, language, code) =>
   ({ trigger, label, description, category, language, code })
 
@@ -376,8 +378,12 @@ export function registerTM1Snippets(monaco) {
           startColumn: word.startColumn,        endColumn: word.endColumn,
         }
 
-        const suggestions = ALL_SNIPPETS
-          .filter(s => s.language === langKey || s.language === 'both')
+        const allForLang = [
+          ...ALL_SNIPPETS.filter(s => s.language === langKey || s.language === 'both'),
+          ...loadCustomSnippets().filter(s => s.language === langKey),
+        ]
+
+        const suggestions = allForLang
           .filter(s => s.trigger.startsWith(trigger) || s.label.toLowerCase().startsWith(trigger))
           .map(s => ({
             label:           s.label,

@@ -3,8 +3,9 @@ import MonacoEditor from '@monaco-editor/react'
 import { useStore } from '@/store'
 import { useSQLConnections, useSaveSQLConn, useDeleteSQLConn, useTestSQLConn, useExecuteSQL, useSQLSchema, useSQLQueries, useSaveSQLQuery, useDeleteSQLQuery, usePostToTI, useODBCProcs } from '@/hooks/useApi'
 import { cn } from '@/lib/utils'
-import { Play, Plus, Trash2, ChevronDown, ChevronRight, Database, Settings, X, CheckCircle, AlertCircle, Loader2, Copy, Table, Save, BookOpen, Pencil, Send, Cog } from 'lucide-react'
+import { Play, Plus, Trash2, ChevronDown, ChevronRight, Database, Settings, X, CheckCircle, AlertCircle, Loader2, Copy, Table, Save, BookOpen, Pencil, Send, Cog, Map } from 'lucide-react'
 import { toast } from 'sonner'
+import { loadSettings, saveSettings } from '@/lib/formatters/settings.js'
 
 const DRIVERS = [
   { id: 'mssql',  label: 'SQL Server' },
@@ -244,6 +245,7 @@ export default function SQLEditor({ tab }) {
   const [showSchema, setShowSchema]     = useState(true)
   const [isRunning, setIsRunning]       = useState(false)
   const [showSavedQueries, setShowSavedQueries] = useState(false)
+  const [showMinimap, setShowMinimap] = useState(() => loadSettings().editor?.minimap?.sql ?? false)
   const savedQueriesRef = useRef(null)
   const [showPostToTI, setShowPostToTI]   = useState(false)
   const [processSearch, setProcessSearch] = useState('')
@@ -297,6 +299,14 @@ export default function SQLEditor({ tab }) {
   const { data: savedQueries = [] } = useSQLQueries(connId)
   const saveQuery   = useSaveSQLQuery()
   const deleteQuery = useDeleteSQLQuery()
+
+  const toggleMinimap = () => {
+    const next = !showMinimap
+    setShowMinimap(next)
+    editorRef.current?.updateOptions({ minimap: { enabled: next } })
+    const s = loadSettings()
+    saveSettings({ ...s, editor: { ...s.editor, minimap: { ...(s.editor.minimap ?? {}), sql: next } } })
+  }
 
   const handleSaveQuery = () => {
     const name = window.prompt('Query name:')
@@ -352,6 +362,21 @@ export default function SQLEditor({ tab }) {
     editorRef.current  = editor
     monacoRef.current  = monaco
     editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => runQueryRef.current?.())
+    editor.onKeyDown(e => {
+      if (e.ctrlKey || e.metaKey) {
+        const code = e.browserEvent.code
+        if (code === 'Equal' || code === 'NumpadAdd') {
+          e.browserEvent.preventDefault(); e.browserEvent.stopPropagation()
+          editor.getAction('editor.action.fontZoomIn')?.run()
+        } else if (code === 'Minus' || code === 'NumpadSubtract') {
+          e.browserEvent.preventDefault(); e.browserEvent.stopPropagation()
+          editor.getAction('editor.action.fontZoomOut')?.run()
+        } else if (code === 'Digit0' || code === 'Numpad0') {
+          e.browserEvent.preventDefault(); e.browserEvent.stopPropagation()
+          editor.getAction('editor.action.fontZoomReset')?.run()
+        }
+      }
+    })
   }
 
   const insertText = (text) => {
@@ -426,6 +451,31 @@ export default function SQLEditor({ tab }) {
         )}
 
         <div className="flex-1" />
+
+        {/* Font zoom + minimap */}
+        <div className="flex items-center rounded border border-border overflow-hidden shrink-0">
+          <button onClick={() => editorRef.current?.getAction('editor.action.fontZoomOut')?.run()}
+            className="px-1.5 py-1 text-[9px] font-bold text-muted-foreground hover:bg-muted hover:text-foreground transition-colors leading-none"
+            title="Decrease font size (Ctrl+-)">A</button>
+          <div className="w-px h-3 bg-border" />
+          <button onClick={() => editorRef.current?.getAction('editor.action.fontZoomReset')?.run()}
+            className="px-1.5 py-1 text-[11px] font-bold text-muted-foreground hover:bg-muted hover:text-foreground transition-colors leading-none"
+            title="Reset font size (Ctrl+0)">A</button>
+          <div className="w-px h-3 bg-border" />
+          <button onClick={() => editorRef.current?.getAction('editor.action.fontZoomIn')?.run()}
+            className="px-1.5 py-1 text-[13px] font-bold text-muted-foreground hover:bg-muted hover:text-foreground transition-colors leading-none"
+            title="Increase font size (Ctrl++)">A</button>
+        </div>
+        <button
+          onClick={toggleMinimap}
+          title="Toggle minimap"
+          className={cn(
+            'flex items-center gap-1 px-2 py-1.5 text-xs rounded border transition-colors',
+            showMinimap ? 'bg-primary text-primary-foreground border-primary' : 'border-border text-muted-foreground hover:text-foreground hover:bg-muted'
+          )}
+        >
+          <Map size={11} />
+        </button>
 
         {/* Save query */}
         {connId && (
@@ -603,7 +653,7 @@ export default function SQLEditor({ tab }) {
         <button
           onClick={runQuery}
           disabled={isRunning || !connId}
-          className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded bg-primary text-primary-foreground disabled:opacity-50 hover:opacity-90 transition-opacity"
+          className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded bg-emerald-700 text-white disabled:opacity-40 hover:bg-emerald-600 transition-colors"
           title="Run (Ctrl+Enter)"
         >
           {isRunning ? <Loader2 size={11} className="animate-spin" /> : <Play size={11} />}
@@ -678,8 +728,9 @@ export default function SQLEditor({ tab }) {
               onMount={handleMount}
               options={{
                 fontSize: 13,
-                minimap: { enabled: false },
+                minimap: { enabled: showMinimap },
                 scrollBeyondLastLine: false,
+                fixedOverflowWidgets: true,
                 wordWrap: 'off',
                 lineNumbers: 'on',
                 folding: true,

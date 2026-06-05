@@ -43,6 +43,14 @@ class TM1Client {
         await s.delete(this._url(path), { headers: await this._headers() })
     }
 
+    async put(path, data, contentType = 'application/octet-stream') {
+        const s = await this._session()
+        const r = await s.put(this._url(path), data, {
+            headers: { ...await this._headers(), 'Content-Type': contentType },
+        })
+        return r.data
+    }
+
     // ── Dimensions ────────────────────────────────────────────────────────────
 
     async deleteDimension(name) {
@@ -145,6 +153,18 @@ class TM1Client {
         return this.post(
             `Dimensions('${dim}')/Hierarchies('${hierarchy}')/Elements`,
             { Name: name, Type: TYPE_MAP[type] ?? type }
+        )
+    }
+
+    // Bulk-create elements in one POST — far faster than addElement() in a loop
+    async bulkSetElements(dim, elements, hierarchy = dim) {
+        const TYPE_MAP = { N: 'Numeric', C: 'Consolidated', S: 'String' }
+        const body = elements.map(({ name, type }) => ({
+            Element: { Name: name, Type: TYPE_MAP[type] ?? type ?? 'Numeric' },
+        }))
+        return this.post(
+            `Dimensions('${encodeURIComponent(dim)}')/Hierarchies('${encodeURIComponent(hierarchy)}')/tm1.SetElement`,
+            body
         )
     }
 
@@ -380,6 +400,16 @@ class TM1Client {
         return (d.value ?? []).map(r => r.Name).filter(n => !n.startsWith('}'))
     }
 
+    async getModelCubes() {
+        const d = await this.get('ModelCubes()', { '$select': 'Name' })
+        return (d.value ?? []).map(r => r.Name)
+    }
+
+    async getModelDimensions() {
+        const d = await this.get('ModelDimensions()', { '$select': 'Name' })
+        return (d.value ?? []).map(r => r.Name)
+    }
+
     // ── Processes ─────────────────────────────────────────────────────────────
 
     async getProcesses() {
@@ -395,7 +425,11 @@ class TM1Client {
         const paramArray = Array.isArray(params)
             ? params
             : Object.entries(params).map(([Name, Value]) => ({ Name, Value: String(Value) }))
-        return this.post(`Processes('${encodeURIComponent(name)}')/tm1.Execute`, { Parameters: paramArray })
+        // ExecuteWithReturn returns status + ErrorLogFile reference inline — better than tm1.Execute
+        return this.post(
+            `Processes('${encodeURIComponent(name)}')/tm1.ExecuteWithReturn?$expand=ErrorLogFile`,
+            { Parameters: paramArray }
+        )
     }
 
     async createOrReplaceProcess(proc) {
@@ -420,8 +454,8 @@ class TM1Client {
             await this.post('Processes', body)
         } catch (e) {
             if (e.response?.status === 409 || e.response?.status === 400) {
-                await this.deleteProcess(proc.name)
-                await this.post('Processes', body)
+                // PATCH is atomic — no delete+recreate risk
+                await this.patch(`Processes('${encodeURIComponent(proc.name)}')`, body)
             } else {
                 throw e
             }
@@ -443,6 +477,22 @@ class TM1Client {
 
     async updateChore(name, data) {
         return this.patch(`Chores('${encodeURIComponent(name)}')`, data)
+    }
+
+    async createChore(data) {
+        return this.post('Chores', data)
+    }
+
+    async executeChore(name) {
+        return this.post(`Chores('${encodeURIComponent(name)}')/tm1.Execute`, {})
+    }
+
+    async activateChore(name) {
+        return this.patch(`Chores('${encodeURIComponent(name)}')`, { Active: true })
+    }
+
+    async deactivateChore(name) {
+        return this.patch(`Chores('${encodeURIComponent(name)}')`, { Active: false })
     }
 
     // ── Subset usage scan ─────────────────────────────────────────────────────
@@ -548,19 +598,29 @@ class TM1Client {
     }
 
     async previewMDX(dim, mdx, limit = 100, hierarchy = dim) {
-        const tmpName = `}TM1IDE_preview_${Date.now()}`
+        const enc = encodeURIComponent
+        // Primary: ExecuteMDXSetExpression — single call, no subset created
         try {
-            await this.post(
-                `Dimensions('${dim}')/Hierarchies('${hierarchy}')/Subsets`,
-                { '@odata.type': '#ibm.tm1.api.v1.MDXSubset', Name: tmpName, Expression: mdx, Hierarchy: { Name: hierarchy, Dimension: { Name: dim } } }
+            const expand = `Tuples($expand=Members($select=Name,Type);$top=${limit})`
+            const d = await this.post(`ExecuteMDXSetExpression?$expand=${expand}`, { MDX: mdx })
+            const tuples = d.Tuples ?? d.value ?? []
+            return tuples.map(t => {
+                const m = t.Members?.[0] ?? {}
+                return { name: m.Name, type: m.Type ?? 'Numeric' }
+            }).filter(e => e.name)
+        } catch {
+            // Fallback: session subset (auto-expires, no cleanup risk)
+            const created = await this.post(
+                `Dimensions('${enc(dim)}')/Hierarchies('${enc(hierarchy)}')/tm1.CreateSessionSubset`,
+                { Subset: { Expression: mdx } }
             )
+            const id = created?.Name ?? created?.ID
+            if (!id) throw new Error('Session subset creation returned no ID')
             const d = await this.get(
-                `Dimensions('${dim}')/Hierarchies('${hierarchy}')/Subsets('${tmpName}')/Elements`,
+                `Dimensions('${enc(dim)}')/Hierarchies('${enc(hierarchy)}')/SessionSubsets('${enc(id)}')/Elements`,
                 { '$select': 'Name,Type', '$top': limit }
             )
             return (d.value ?? []).map(e => ({ name: e.Name, type: e.Type }))
-        } finally {
-            try { await this.delete(`Dimensions('${dim}')/Hierarchies('${hierarchy}')/Subsets('${tmpName}')`) } catch {}
         }
     }
 
@@ -702,14 +762,178 @@ return (d.value ?? [])
     // dimElemPairs: [{ dim, element }, ...] — one entry per cube dimension, in order
     async writeCellValue(cube, dimElemPairs, value) {
         const enc = encodeURIComponent
-        return this.post(`Cubes('${enc(cube)}')/tm1.Update`, {
+        const esc = s => s.replace(/'/g, "''")
+        const body = {
             Cells: [{
                 'Tuple@odata.bind': dimElemPairs.map(({ dim, element }) =>
-                    `Dimensions('${enc(dim)}')/Hierarchies('${enc(dim)}')/Elements('${enc(element)}')`
+                    `Dimensions('${esc(dim)}')/Hierarchies('${esc(dim)}')/Elements('${esc(element)}')`
                 ),
             }],
             Value: value,
+        }
+        return this.post(`Cubes('${enc(cube)}')/tm1.Update`, body)
+    }
+
+    async createCube(name, dims) {
+        const esc = s => s.replace(/'/g, "''")
+        return this.post('Cubes', {
+            Name: name,
+            'Dimensions@odata.bind': dims.map(d => `Dimensions('${esc(d)}')`),
         })
+    }
+
+    // ── Jobs ──────────────────────────────────────────────────────────────────
+
+    async getJobs() {
+        const d = await this.get('Jobs', { '$expand': '*' })
+        return d.value ?? []
+    }
+
+    async cancelJob(id) {
+        return this.post(`Jobs('${encodeURIComponent(id)}')/tm1.Cancel`, {})
+    }
+
+    // ── Bulk cell write ───────────────────────────────────────────────────────
+
+    // updates: [{ dimElemPairs: [{dim, element}, ...], value }, ...]
+    async updateCells(cube, updates) {
+        const esc = s => s.replace(/'/g, "''")
+        const enc = encodeURIComponent
+        const body = {
+            Updates: updates.map(u => ({
+                'Tuple@odata.bind': u.dimElemPairs.map(({ dim, element }) =>
+                    `Dimensions('${esc(dim)}')/Hierarchies('${esc(dim)}')/Elements('${esc(element)}')`
+                ),
+                Value: u.value,
+            })),
+        }
+        return this.post(`Cubes('${enc(cube)}')/tm1.UpdateCells`, body)
+    }
+
+    // ── Cell calculation trace ────────────────────────────────────────────────
+
+    // dimElemPairs: [{ dim, element }, ...] — one per cube dimension in order
+    async traceCellCalculation(cube, dimElemPairs) {
+        const esc = s => s.replace(/'/g, "''")
+        const enc = encodeURIComponent
+        const select = 'Type,Value,Statements,Components/Type,Components/Value,Components/Statements,Components/Components/Value'
+        const expand = [
+            'Components/Cube($select=Name)',
+            'Components/Tuple($select=Name,Type,UniqueName;$expand=Hierarchy($expand=Dimension))',
+            'Tuple($select=Name,Type,UniqueName;$expand=Hierarchy($expand=Dimension))',
+        ].join(',')
+        return this.post(
+            `Cubes('${enc(cube)}')/tm1.TraceCellCalculation?$select=${select}&$expand=${expand}`,
+            {
+                'Tuple@odata.bind': dimElemPairs.map(({ dim, element }) =>
+                    `Dimensions('${esc(dim)}')/Hierarchies('${esc(dim)}')/Elements('${esc(element)}')`
+                ),
+            }
+        )
+    }
+
+    // ── Transaction log ───────────────────────────────────────────────────────
+
+    // elements: array of element names in cube dimension order (nulls = unfiltered)
+    async getTransactionLog(cube, { top = 200, elements = null } = {}) {
+        const esc = s => String(s).replace(/'/g, "''")
+        let filter = `Cube eq '${esc(cube)}'`
+        if (Array.isArray(elements)) {
+            elements.forEach((el, i) => {
+                if (el != null && el !== '') filter += ` and Element${i + 1} eq '${esc(el)}'`
+            })
+        }
+        const d = await this.get('TransactionLogEntries', {
+            '$filter':  filter,
+            '$top':     top,
+            '$orderby': 'TimeStamp desc',
+        })
+        return d.value ?? []
+    }
+
+    // ── Process error logs ────────────────────────────────────────────────────
+
+    async getErrorLogFiles() {
+        const d = await this.get('ErrorLogFiles', { '$select': 'Filename,LastUpdated' })
+        return d.value ?? []
+    }
+
+    async getErrorLogContent(filename) {
+        const d = await this.get(`ErrorLogFiles('${encodeURIComponent(filename)}')/Content`)
+        return typeof d === 'string' ? d : (d?.value ?? '')
+    }
+
+    // ── File management ───────────────────────────────────────────────────────
+
+    // pathParts: ['Files'] for root, ['Files','data'] for a subfolder
+    _contentsPath(pathParts) {
+        return pathParts.map(p => `Contents('${encodeURIComponent(p)}')`).join('/')
+    }
+
+    async listFiles(pathParts = ['Files']) {
+        const d = await this.get(`${this._contentsPath(pathParts)}/Contents`)
+        return (d.value ?? []).map(item => ({
+            name:     item.Name,
+            isFolder: item['@odata.type']?.includes('Folder') ?? false,
+            size:     item.Size ?? null,
+        }))
+    }
+
+    async getFileContent(pathParts, name) {
+        return this.get(`${this._contentsPath(pathParts)}/Contents('${encodeURIComponent(name)}')/Content`)
+    }
+
+    async createFileDocument(pathParts, name) {
+        return this.post(`${this._contentsPath(pathParts)}/Contents`, {
+            '@odata.type': '#ibm.tm1.api.v1.Document',
+            Name: name,
+        })
+    }
+
+    async putFileContent(pathParts, name, buffer) {
+        return this.put(
+            `${this._contentsPath(pathParts)}/Contents('${encodeURIComponent(name)}')/Content`,
+            buffer,
+            'application/octet-stream'
+        )
+    }
+
+    async deleteFile(pathParts, name) {
+        return this.delete(`${this._contentsPath(pathParts)}/Contents('${encodeURIComponent(name)}')`)
+    }
+
+    // ── Sessions ──────────────────────────────────────────────────────────────
+
+    async getSessions() {
+        const d = await this.get('Sessions', { '$expand': '*' })
+        return d.value ?? []
+    }
+
+    async disconnectSession(id) {
+        return this.delete(`Sessions('${encodeURIComponent(id)}')`)
+    }
+
+    // ── Server admin ──────────────────────────────────────────────────────────
+
+    async getMetrics(cube = null) {
+        const params = cube ? { '$filter': `CubeName eq '${cube}'` } : { '$filter': '(CubeName eq null)' }
+        return this.get('Metrics()', params)
+    }
+
+    async getActiveConfiguration() {
+        return this.get('ActiveConfiguration')
+    }
+
+    async patchStaticConfiguration(section, values) {
+        return this.patch(`StaticConfiguration/${section}`, values)
+    }
+
+    async enableMaintenanceMode() {
+        return this.post('tm1s.EnableMaintenanceMode', {})
+    }
+
+    async disableMaintenanceMode() {
+        return this.post('tm1s.DisableMaintenanceMode', {})
     }
 }
 

@@ -27,7 +27,7 @@ app.use(express.static(path.join(__dirname, 'static'), {
 // ── Servers ───────────────────────────────────────────────────────────────────
 app.get('/api/servers', (req, res) => {
     try {
-        const servers = require('./config/servers.json')
+        const servers = JSON.parse(fs.readFileSync(path.join(__dirname, 'config', 'servers.json'), 'utf-8'))
         res.json(servers.map(s => s.name))
     } catch {
         res.json([])
@@ -61,14 +61,18 @@ app.post('/api/dimension/bulk-import', async (req, res) => {
         const { server, dimension, hierarchy = dimension, rows } = req.body
         const client = new TM1Client(server)
         const errors = []
-        // Pass 1: create all elements
-        for (const row of rows) {
-            if (!row.name?.trim()) continue
-            try { await client.addElement(dimension, row.name.trim(), row.type || 'N', hierarchy) } catch (e) {
-                if (!e.message?.includes('already exists') && !e.response?.status === 409) errors.push(`${row.name}: ${e.message}`)
+
+        // Pass 1: create all elements in one bulk call
+        const validRows = rows.filter(r => r.name?.trim())
+        if (validRows.length) {
+            try {
+                await client.bulkSetElements(dimension, validRows.map(r => ({ name: r.name.trim(), type: r.type || 'N' })), hierarchy)
+            } catch (e) {
+                errors.push(`Bulk element create: ${e.message}`)
             }
         }
-        // Pass 2: create edges
+
+        // Pass 2: create edges (no bulk API — sequential)
         for (const row of rows) {
             if (!row.name?.trim() || !row.parent?.trim()) continue
             try { await client.addEdge(dimension, row.parent.trim(), row.name.trim(), row.weight ?? 1, hierarchy) } catch (e) {
@@ -114,6 +118,20 @@ app.delete('/api/dimension', async (req, res) => {
         res.json({ ok: true })
     } catch (e) {
         res.status(500).json({ error: e.message })
+    }
+})
+
+app.post('/api/cube', async (req, res) => {
+    try {
+        const { server, name, dims } = req.body
+        if (!server || !name?.trim() || !Array.isArray(dims) || dims.length < 2)
+            return res.status(400).json({ error: 'Name and at least 2 dimensions are required' })
+        const client = new TM1Client(server)
+        await client.createCube(name.trim(), dims)
+        res.json({ ok: true })
+    } catch (e) {
+        const detail = e.response?.data?.error?.message ?? e.message
+        res.status(500).json({ error: typeof detail === 'string' ? detail : JSON.stringify(detail) })
     }
 })
 
@@ -209,6 +227,19 @@ app.post('/api/rules', async (req, res) => {
         res.json({ ok: true })
     } catch (e) {
         res.status(500).json({ error: e.message })
+    }
+})
+
+app.post('/api/rules/check', async (req, res) => {
+    try {
+        const { server, cube, rules } = req.body
+        const client = new TM1Client(server)
+        const enc = encodeURIComponent
+        const result = await client.post(`Cubes('${enc(cube)}')/tm1.CheckRules`, { Rules: rules })
+        res.json({ errors: result.value ?? [] })
+    } catch (e) {
+        const detail = e.response?.data?.error?.message ?? e.message
+        res.status(500).json({ error: typeof detail === 'string' ? detail : JSON.stringify(detail) })
     }
 })
 
@@ -522,16 +553,21 @@ app.post('/api/process/run', async (req, res) => {
     } catch (_) { /* non-critical */ }
 
     // ── 2. Execute the process ────────────────────────────────────────────────
-    let duration = null, runError = null, errorSection = null, errorLine = null
+    let duration = null, runError = null, errorSection = null, errorLine = null, errorLogFilename = null
     try {
         const result = await client.executeProcess(procName, req.body.params ?? [])
-        duration = result?.Times?.ExecutionTimeInMilliseconds ?? null
+        duration         = result?.Times?.ExecutionTimeInMilliseconds ?? null
+        errorLogFilename = result?.ErrorLogFile?.Filename ?? null
     } catch (e) {
         const inner = e.response?.data?.error?.innererror ?? {}
         console.error('[process/run]', JSON.stringify(inner) || e.message)
-        runError     = inner.Message || e.message
-        errorSection = inner.ProcedureSection ?? null
-        errorLine    = inner.LineNumber ?? null
+        runError         = inner.Message || e.message
+        errorSection     = inner.ProcedureSection ?? null
+        errorLine        = inner.LineNumber ?? null
+        // ErrorLogFile may be in the error response body
+        errorLogFilename = e.response?.data?.error?.innererror?.ErrorLogFile?.Filename
+                        ?? e.response?.data?.ErrorLogFile?.Filename
+                        ?? null
     }
 
     // ── 3. Read __RUN_LOG back via MDX ────────────────────────────────────────
@@ -571,9 +607,9 @@ app.post('/api/process/run', async (req, res) => {
 
     console.log(`[process/run] final runLog length: ${runLog.length}, runError: ${!!runError}`)
     if (runError) {
-        res.status(500).json({ error: runError, section: errorSection, line: errorLine, runLog })
+        res.status(500).json({ error: runError, section: errorSection, line: errorLine, runLog, errorLogFilename })
     } else {
-        res.json({ ok: true, duration, runLog })
+        res.json({ ok: true, duration, runLog, errorLogFilename })
     }
 })
 
@@ -1306,6 +1342,201 @@ app.get('/api/paw/book-usage', async (req, res) => {
     }
 })
 
+// ── Model objects (non-control) ───────────────────────────────────────────────
+app.get('/api/model/cubes', async (req, res) => {
+    try {
+        res.json(await new TM1Client(req.query.server).getModelCubes())
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.get('/api/model/dimensions', async (req, res) => {
+    try {
+        res.json(await new TM1Client(req.query.server).getModelDimensions())
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// ── Chore execute / activate / deactivate / create ────────────────────────────
+app.post('/api/chore/execute', async (req, res) => {
+    try {
+        await new TM1Client(req.query.server).executeChore(req.query.name)
+        res.json({ ok: true })
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.post('/api/chore/activate', async (req, res) => {
+    try {
+        await new TM1Client(req.query.server).activateChore(req.query.name)
+        res.json({ ok: true })
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.post('/api/chore/deactivate', async (req, res) => {
+    try {
+        await new TM1Client(req.query.server).deactivateChore(req.query.name)
+        res.json({ ok: true })
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.post('/api/chore', async (req, res) => {
+    try {
+        await new TM1Client(req.query.server).createChore(req.body)
+        res.json({ ok: true })
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// ── Jobs ──────────────────────────────────────────────────────────────────────
+app.get('/api/jobs', async (req, res) => {
+    try {
+        res.json(await new TM1Client(req.query.server).getJobs())
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.post('/api/job/cancel', async (req, res) => {
+    try {
+        await new TM1Client(req.query.server).cancelJob(req.query.id)
+        res.json({ ok: true })
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// ── Process error logs ────────────────────────────────────────────────────────
+app.get('/api/process/errorlogs', async (req, res) => {
+    try {
+        res.json(await new TM1Client(req.query.server).getErrorLogFiles())
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.get('/api/process/errorlog/content', async (req, res) => {
+    try {
+        const content = await new TM1Client(req.query.server).getErrorLogContent(req.query.filename)
+        res.json({ content })
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// ── Cell calculation trace ────────────────────────────────────────────────────
+app.post('/api/cube/trace', async (req, res) => {
+    try {
+        const { server, cube, dimElemPairs } = req.body
+        res.json(await new TM1Client(server).traceCellCalculation(cube, dimElemPairs))
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// ── Transaction log ───────────────────────────────────────────────────────────
+app.get('/api/transactions', async (req, res) => {
+    try {
+        const { server, cube, top, elements } = req.query
+        const parsed = elements ? JSON.parse(elements) : null
+        res.json(await new TM1Client(server).getTransactionLog(cube, {
+            top:      top ? parseInt(top) : 200,
+            elements: parsed,
+        }))
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// ── File management ───────────────────────────────────────────────────────────
+app.get('/api/files/list', async (req, res) => {
+    try {
+        const { server, path: p } = req.query
+        const pathParts = p ? JSON.parse(p) : ['Files']
+        res.json(await new TM1Client(server).listFiles(pathParts))
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.get('/api/files/content', async (req, res) => {
+    try {
+        const { server, path: p, name } = req.query
+        const pathParts = p ? JSON.parse(p) : ['Files']
+        const client = new TM1Client(server)
+        // Get raw content — stream back as download
+        const session = await require('./core/paw_connect').getCachedPawSession()
+        const csrf    = await require('./core/paw_connect').getCSRF(session)
+        const url     = client._url(`${client._contentsPath(pathParts)}/Contents('${encodeURIComponent(name)}')/Content`)
+        const r = await session.get(url, { headers: { 'ba-sso-authenticity': csrf }, responseType: 'arraybuffer' })
+        res.setHeader('Content-Disposition', `attachment; filename="${name}"`)
+        res.setHeader('Content-Type', 'application/octet-stream')
+        res.send(Buffer.from(r.data))
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.post('/api/files/upload', express.raw({ type: '*/*', limit: '50mb' }), async (req, res) => {
+    try {
+        const { server, path: p, name } = req.query
+        const pathParts = p ? JSON.parse(p) : ['Files']
+        const client = new TM1Client(server)
+        // Create the document entry (ignore 409 if already exists)
+        try { await client.createFileDocument(pathParts, name) } catch (e) {
+            if (!e.message?.includes('already exists') && !(e.response?.status === 409)) throw e
+        }
+        await client.putFileContent(pathParts, name, req.body)
+        res.json({ ok: true })
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.delete('/api/files', async (req, res) => {
+    try {
+        const { server, path: p, name } = req.query
+        const pathParts = p ? JSON.parse(p) : ['Files']
+        await new TM1Client(server).deleteFile(pathParts, name)
+        res.json({ ok: true })
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// ── Sessions ──────────────────────────────────────────────────────────────────
+app.get('/api/sessions', async (req, res) => {
+    try {
+        const client = new TM1Client(req.query.server)
+        console.log('[sessions] GET', client._url('Sessions'))
+        res.json(await client.getSessions())
+    } catch (e) {
+        console.error('[sessions] error:', e.response?.status, e.response?.data ?? e.message)
+        res.status(500).json({ error: e.message })
+    }
+})
+
+app.delete('/api/session', async (req, res) => {
+    try {
+        await new TM1Client(req.query.server).disconnectSession(req.query.id)
+        res.json({ ok: true })
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// ── Server admin ─────────────────────────────────────────────────────────────
+app.get('/api/admin/metrics', async (req, res) => {
+    try {
+        const { server, cube } = req.query
+        res.json(await new TM1Client(server).getMetrics(cube || null))
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.get('/api/admin/configuration', async (req, res) => {
+    try {
+        const client = new TM1Client(req.query.server)
+        console.log('[config] GET', client._url('ActiveConfiguration'))
+        res.json(await client.getActiveConfiguration())
+    } catch (e) {
+        console.error('[config] error:', e.response?.status, e.response?.data ?? e.message)
+        res.status(500).json({ error: e.message })
+    }
+})
+
+app.patch('/api/admin/configuration', async (req, res) => {
+    try {
+        const { server, section = 'Administration', values } = req.body
+        res.json(await new TM1Client(server).patchStaticConfiguration(section, values))
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.post('/api/admin/maintenance/enable', async (req, res) => {
+    try {
+        res.json(await new TM1Client(req.body.server).enableMaintenanceMode())
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.post('/api/admin/maintenance/disable', async (req, res) => {
+    try {
+        res.json(await new TM1Client(req.body.server).disableMaintenanceMode())
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
 // ── Forge (workspace persistence) ────────────────────────────────────────────
 // ── Control Objects ───────────────────────────────────────────────────────────
 app.get('/api/control/objects', async (req, res) => {
@@ -1527,14 +1758,16 @@ app.get('/api/whoami', async (req, res) => {
 app.post('/api/cells/write', async (req, res) => {
     try {
         const { server, cube, dims, value } = req.body
+        console.log('[cells/write] REQUEST BODY:', JSON.stringify({ server, cube, dims, value }))
         if (!server || !cube || !Array.isArray(dims) || dims.length === 0)
             return res.status(400).json({ error: 'server, cube, and dims are required' })
         const client = new TM1Client(server)
-        await client.writeCellValue(cube, dims, value)
+        const result = await client.writeCellValue(cube, dims, value)
+        console.log('[cells/write] TM1 RESPONSE:', JSON.stringify(result))
         res.json({ ok: true })
     } catch (e) {
         const detail = e.response?.data?.error?.message ?? e.response?.data ?? e.message
-        console.error('[cells/write]', detail)
+        console.error('[cells/write] ERROR:', detail)
         const msg = typeof detail === 'string' ? detail : JSON.stringify(detail)
         res.status(500).json({ error: msg })
     }
@@ -1542,7 +1775,7 @@ app.post('/api/cells/write', async (req, res) => {
 
 // ── SPA fallback ──────────────────────────────────────────────────────────────
 app.get('/{*path}', (req, res) => {
-    res.sendFile(path.join(__dirname, 'static', 'ide.html'))
+    res.sendFile(path.join(__dirname, 'static', 'index.html'))
 })
 
 app.listen(PORT, () => {

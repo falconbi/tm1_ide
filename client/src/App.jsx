@@ -4,7 +4,7 @@ import { useState, useEffect, Fragment } from 'react'
 import { useStore } from '@/store'
 import { cn } from '@/lib/utils'
 import { Toaster } from '@/components/ui/sonner'
-import { Search, PanelLeftClose, PanelLeftOpen, Keyboard, Code2, SlidersHorizontal, Braces, Database } from 'lucide-react'
+import { Search, PanelLeftClose, PanelLeftOpen, Keyboard, SlidersHorizontal, Database } from 'lucide-react'
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels'
 import ServerSelector from '@/components/ServerSelector'
 import Explorer from '@/components/Explorer'
@@ -32,18 +32,6 @@ export default function App() {
   const [showNamingDict, setShowNamingDict]     = useState(false)
   const [showPrefs, setShowPrefs]               = useState(false)
   const [showPeriodBuilder, setShowPeriodBuilder] = useState(false)
-  const [showMDXMenu, setShowMDXMenu] = useState(false)
-
-  const openGuidedMDXMenu = () => setShowMDXMenu(prev => !prev)
-  const openGuidedMDXSubset = () => {
-    if (!server) return
-    openTab({ id: `guidedmdxsubset:${server}`, type: 'guidedmdxsubset', label: 'Guided MDX Subset', server })
-  }
-  const openGuidedMDXView = () => {
-    if (!server) return
-    openTab({ id: `guidedmdxview:${server}`, type: 'guidedmdxview', label: 'Guided MDX View', server })
-  }
-
   useEffect(() => { loadForge() }, [])
 
   // Auto-show sidebar when revealing an object in the Explorer tree
@@ -80,27 +68,6 @@ export default function App() {
             </button>
             <span className="font-semibold text-sm tracking-tight">TM1 IDE</span>
             <div className="ml-auto flex items-center gap-1">
-              <div className="relative">
-                <button
-                  onClick={openGuidedMDXMenu}
-                  className="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
-                  title="Guided MDX Builder"
-                >
-                  <Braces size={15} />
-                </button>
-                {showMDXMenu && (
-                  <div className="absolute right-0 top-full mt-1 bg-popover border border-border rounded shadow-lg z-50 py-1 min-w-[200px]">
-                    <button onClick={() => { openGuidedMDXSubset(); setShowMDXMenu(false) }}
-                      className="w-full text-left px-3 py-1.5 text-xs hover:bg-muted flex items-center gap-2">
-                      <Braces size={12} /> Guided MDX Subset
-                    </button>
-                    <button onClick={() => { openGuidedMDXView(); setShowMDXMenu(false) }}
-                      className="w-full text-left px-3 py-1.5 text-xs hover:bg-muted flex items-center gap-2">
-                      <Code2 size={12} /> Guided MDX View
-                    </button>
-                  </div>
-                )}
-              </div>
               <button
                 onClick={() => openTab({ id: `sql:${Date.now()}`, type: 'sql', label: 'SQL Editor' })}
                 className="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"

@@ -234,6 +234,7 @@ export default function HierarchyGrid({
     colTotalsPosition       = 'top',
     dark              = false,
     onCellEdit,
+    onCellContextMenu,
 }) {
     const gridRef = useRef(null)
 
@@ -395,7 +396,10 @@ export default function HierarchyGrid({
                     minWidth:        60,
                     resizable:       true,
                     type:            'numericColumn',
-                    editable:        !!onCellEdit,
+                    editable:        onCellEdit ? (p) => {
+                        const rowIsAllLeaf = hierarchies.every((_, i) => p.data?.[`__d${i}_isLeaf__`] ?? true)
+                        return rowIsAllLeaf && colIsLeaf
+                    } : false,
                     suppressMenu:    true,
                     valueFormatter:  p => (p.value === null || p.value === '') ? '—' : String(p.value),
                     cellStyle:       p => {
@@ -447,9 +451,12 @@ export default function HierarchyGrid({
                     context={context}
                     getRowId={p => p.data.__tupleKey__}
                     suppressMovableColumns
-                    enableCellTextSelection
+                    enableCellTextSelection={!onCellEdit}
+                    singleClickEdit={!!onCellEdit}
+                    stopEditingWhenCellsLoseFocus
                     defaultColDef={{ sortable: false }}
                     onCellValueChanged={handleCellEdit}
+                    onCellContextMenu={onCellContextMenu}
                     onFirstDataRendered={p => p.api.autoSizeAllColumns()}
                 />
             </div>

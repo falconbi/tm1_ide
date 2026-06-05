@@ -1,43 +1,44 @@
 {
-  "server": "24retail",
+  "server": "TM1_Apportionment",
   "tabs": [
     {
-      "id": "cubeview:24retail:Calendar",
+      "id": "cubeview:24retail:Allocation Calculation",
       "type": "cubeview",
-      "label": "⊞ Calendar",
+      "label": "⊞ Allocation Calculation",
       "server": "24retail",
-      "cube": "Calendar",
-      "scrollToLine": null,
-      "scrollToSection": null
+      "cube": "Allocation Calculation"
     },
     {
-      "id": "cubeview:24retail:Compensation",
-      "type": "cubeview",
-      "label": "⊞ Compensation",
-      "server": "24retail",
-      "cube": "Compensation"
-    },
-    {
-      "id": "cubeview:24retail:Allocation Calculation:Allocation Summary",
-      "type": "cubeview",
-      "label": "Allocation Summary",
+      "id": "guidedmdxview:24retail:Allocation Calculation:1780697979483",
+      "type": "guidedmdxview",
+      "label": "Builder — Allocation Calculation",
       "server": "24retail",
       "cube": "Allocation Calculation",
-      "viewName": "Allocation Summary",
-      "scrollToLine": null,
-      "scrollToSection": null
+      "initialState": {
+        "selectedCube": "Allocation Calculation",
+        "dimConfig": {
+          "Allocation List": {
+            "axis": "rows",
+            "subsetExpression": ""
+          },
+          "organization": {
+            "axis": "columns",
+            "subsetExpression": ""
+          }
+        },
+        "step": 1
+      }
     }
   ],
-  "activeTab": "cubeview:24retail:Allocation Calculation:Allocation Summary",
+  "activeTab": "cubeview:24retail:Allocation Calculation",
   "groups": [
     {
       "id": "g1",
       "tabIds": [
-        "cubeview:24retail:Calendar",
-        "cubeview:24retail:Compensation",
-        "cubeview:24retail:Allocation Calculation:Allocation Summary"
+        "cubeview:24retail:Allocation Calculation",
+        "guidedmdxview:24retail:Allocation Calculation:1780697979483"
       ],
-      "activeTabId": "cubeview:24retail:Allocation Calculation:Allocation Summary"
+      "activeTabId": "cubeview:24retail:Allocation Calculation"
     }
   ],
   "activeGroupId": "g1"
