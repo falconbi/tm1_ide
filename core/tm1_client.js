@@ -351,10 +351,30 @@ class TM1Client {
             const map = {}
             rowTuples.forEach((tuple, i) => {
                 const el  = tuple.Members?.[0]?.Name
-                const val = result.Cells?.[i]?.Value
+                const val = result.Cells?.[i]?.Value ?? result.Cells?.[i]?.FormattedValue
                 if (el && val !== null && val !== undefined && val !== '') map[el] = String(val)
             })
             return map
+        } catch { return {} }
+    }
+
+    async getFormatAttrs(dim, hierarchy = dim) {
+        try {
+            const elements = await this.getElements(dim, hierarchy)
+            const formatMap = {}
+            for (let i = 0; i < elements.length; i += 50) {
+                const chunk = elements.slice(i, i + 50)
+                const entries = await Promise.all(chunk.map(async el => {
+                    try {
+                        const attrs = await this.getElementAttributeValues(dim, el.Name, hierarchy)
+                        return [el.Name, attrs.Format]
+                    } catch { return [el.Name, undefined] }
+                }))
+                entries.forEach(([name, fmt]) => {
+                    if (fmt != null && fmt !== '') formatMap[name] = fmt
+                })
+            }
+            return formatMap
         } catch { return {} }
     }
 

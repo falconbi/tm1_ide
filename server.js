@@ -718,7 +718,7 @@ app.get('/api/dimensions/format-attrs', async (req, res) => {
         const dimensions = dims ? dims.split(',').filter(Boolean) : []
         if (!dimensions.length) return res.json({})
         const client = new TM1Client(server)
-        const maps = await Promise.all(dimensions.map(dim => client.getAliasValues(dim, 'Format', dim).catch(() => ({}))))
+        const maps = await Promise.all(dimensions.map(dim => client.getFormatAttrs(dim, dim).catch(() => ({}))))
         res.json(Object.assign({}, ...maps))
     } catch (e) {
         res.status(500).json({ error: e.message })
