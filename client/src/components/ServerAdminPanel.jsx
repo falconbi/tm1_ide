@@ -124,7 +124,7 @@ export default function ServerAdminPanel({ server, onClose }) {
             <span className="text-xs text-muted-foreground font-mono">— {server}</span>
           </div>
           <div className="flex items-center gap-1.5">
-            <button onClick={refresh} title="Refresh" className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors">
+            <button onClick={refresh} title="Refresh" className="p-1 rounded text-emerald-500 hover:text-emerald-400 hover:bg-emerald-500/10 transition-colors">
               {(metrics.isFetching || config.isFetching) ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
             </button>
             <button onClick={onClose} className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors">

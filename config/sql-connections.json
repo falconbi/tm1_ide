@@ -9,7 +9,7 @@
     "username": "",
     "password": "",
     "encrypt": false,
-    "file": "/tmp/tm1_test.db",
+    "file": "/home/jdlove/apps/tm1_ide/data/tm1_test.db",
     "dsn": "TM1_SQLite_Test",
     "id": "sql-1780173360058"
   },

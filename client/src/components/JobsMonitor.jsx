@@ -59,7 +59,7 @@ export default function JobsMonitor({ server, onClose }) {
             <button
               onClick={() => qc.invalidateQueries({ queryKey: ['jobs', server] })}
               title="Refresh"
-              className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+              className="p-1 rounded text-emerald-500 hover:text-emerald-400 hover:bg-emerald-500/10 transition-colors"
             >
               {jobs.isFetching ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
             </button>

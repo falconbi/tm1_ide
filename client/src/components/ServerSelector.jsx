@@ -21,7 +21,7 @@ export default function ServerSelector() {
         {server && (
           <button
             onClick={refresh}
-            className="ml-auto p-0.5 rounded hover:bg-sidebar-accent hover:text-sidebar-foreground"
+            className="ml-auto p-0.5 rounded text-emerald-500 hover:text-emerald-400 hover:bg-emerald-500/10"
             title="Refresh server objects"
           >
             <RefreshCw size={12} />

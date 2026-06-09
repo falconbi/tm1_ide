@@ -1,9 +1,9 @@
 import { useStore } from '@/store'
-import { X, Box, Cog, XSquare, ChevronDown, ChevronUp, Table2, FileCode2, Layers, Columns2, PanelRightClose, Database, Clock, Braces, Code2 } from 'lucide-react'
+import { X, Box, Cog, XSquare, ChevronDown, ChevronUp, Table2, Sigma, Layers, Columns2, PanelRightClose, Database, Clock, Braces, Code2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 const TYPE_ICON = {
-  rules:           FileCode2,
+  rules:           Sigma,
   process:         Cog,
   cubeview:        Table2,
   view:            Table2,
@@ -93,7 +93,7 @@ export default function TabBar({ groupId }) {
               {tab.dirty && <span className="text-orange-400 text-[10px]">●</span>}
               <button
                 onClick={e => { e.stopPropagation(); closeTab(tab.id) }}
-                className="ml-0.5 rounded opacity-0 group-hover:opacity-100 hover:bg-muted-foreground/20 p-0.5"
+                className="ml-0.5 rounded opacity-0 group-hover:opacity-100 hover:bg-red-500/20 p-0.5 text-red-400"
               >
                 <X size={9} />
               </button>
@@ -112,7 +112,7 @@ export default function TabBar({ groupId }) {
         <button
           onClick={() => closeGroup(groupId)}
           title="Close group"
-          className="shrink-0 px-2 self-stretch text-muted-foreground hover:text-foreground hover:bg-muted transition-colors border-l border-border"
+          className="shrink-0 px-2 self-stretch text-red-400 hover:text-red-300 hover:bg-red-500/10 transition-colors border-l border-border"
         >
           <PanelRightClose size={11} />
         </button>
@@ -120,7 +120,7 @@ export default function TabBar({ groupId }) {
       <button
         onClick={handleCloseAll}
         title="Close all tabs"
-        className="shrink-0 px-2 self-stretch text-muted-foreground hover:text-foreground hover:bg-muted transition-colors border-l border-border"
+        className="shrink-0 px-2 self-stretch text-red-400 hover:text-red-300 hover:bg-red-500/10 transition-colors border-l border-border"
       >
         <XSquare size={11} />
       </button>

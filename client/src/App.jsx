@@ -4,7 +4,7 @@ import { useState, useEffect, Fragment } from 'react'
 import { useStore } from '@/store'
 import { cn } from '@/lib/utils'
 import { Toaster } from '@/components/ui/sonner'
-import { Search, PanelLeftClose, PanelLeftOpen, Keyboard, SlidersHorizontal, Database } from 'lucide-react'
+import { Search, PanelLeftClose, PanelLeftOpen, Keyboard, SlidersHorizontal, Database, Braces } from 'lucide-react'
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels'
 import ServerSelector from '@/components/ServerSelector'
 import Explorer from '@/components/Explorer'
@@ -69,9 +69,16 @@ export default function App() {
             <span className="font-semibold text-sm tracking-tight">TM1 IDE</span>
             <div className="ml-auto flex items-center gap-1">
               <button
+                onClick={() => openTab({ id: `guidedmdxview:${Date.now()}`, type: 'guidedmdxview', label: 'MDX Builder', server })}
+                className="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                title="Guided MDX View Builder"
+              >
+                <Braces size={15} />
+              </button>
+              <button
                 onClick={() => openTab({ id: `sql:${Date.now()}`, type: 'sql', label: 'SQL Editor' })}
                 className="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
-                title="New SQL Editor"
+                title="SQL Editor"
               >
                 <Database size={15} />
               </button>

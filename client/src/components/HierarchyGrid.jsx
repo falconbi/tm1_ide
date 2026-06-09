@@ -75,7 +75,7 @@ function computeVisibleTuples(hierarchies, expandedSets, keepMode, totalsAtBotto
             expanded = expandedSets[0] ?? new Set()
         } else {
             const map = expandedSets[dimIdx]
-            expanded  = (map instanceof Map ? map.get(contextKey) : null) ?? allExpanded(h.nodes)
+            expanded  = (map instanceof Map ? (map.get(contextKey) ?? map.get('*') ?? allExpanded(h.nodes)) : null) ?? allExpanded(h.nodes)
         }
 
         const visible = computeVisibleNodes(h.roots, h.nodes, expanded, keepMode, totalsAtBottom)
@@ -99,8 +99,9 @@ function initExpandedSets(hierarchies) {
 // ── Row hierarchy cell ─────────────────────────────────────────────────────────
 
 function HierarchyCell(params) {
-    const dimIdx     = params.colDef.__dimIdx__ ?? 0
-    const { rowExpandedSets, onToggleRow, hierarchies } = params.context
+    const dimIdx     = params.colDef.context?.dimIdx ?? 0
+    const ctx        = params.context ?? params.api?.getGridOption?.('context') ?? {}
+    const { rowExpandedSets, onToggleRow, hierarchies } = ctx
     const h          = hierarchies?.[dimIdx]
     const nodeId     = params.data[`__d${dimIdx}__`]
     const label      = params.data[`__d${dimIdx}_label__`]
@@ -146,7 +147,7 @@ function HierarchyCell(params) {
 // ── Single-dim col header (existing behaviour) ────────────────────────────────
 
 function SingleDimColHeader(params) {
-    const { onToggleCol, colExpandedSets, colNodeMap, columnHierarchies } = params.context
+    const { onToggleCol, colExpandedSets, colNodeMap, columnHierarchies } = params.context ?? params.api?.getGridOption?.('context') ?? {}
     const colNodes = columnHierarchies?.[0]?.nodes ?? {}
     const expanded = colExpandedSets?.[0] ?? new Set()
     const nodeId   = colNodeMap?.[params.column?.getColId()]
@@ -168,9 +169,9 @@ function SingleDimColHeader(params) {
 // ── Multi-dim col header (stacked rows, one per col dim) ──────────────────────
 
 function MultiDimColHeader(params) {
-    const { onToggleCol, colExpandedSets, columnHierarchies } = params.context
-    const tuple   = params.colDef.__colTuple__   ?? []
-    const changed = params.colDef.__colChanged__  ?? tuple.map(() => true)
+    const { onToggleCol, colExpandedSets, columnHierarchies } = params.context ?? params.api?.getGridOption?.('context') ?? {}
+    const tuple   = params.colDef.context?.colTuple   ?? []
+    const changed = params.colDef.context?.colChanged  ?? tuple.map(() => true)
 
     return (
         <div className="flex flex-col w-full h-full">
@@ -291,6 +292,32 @@ export default function HierarchyGrid({
         })
     }, [columnHierarchies])
 
+    const collapseAllDim = useCallback((dimIdx) => {
+        setRowExpandedSets(prev => {
+            const next = [...prev]
+            if (dimIdx === 0) {
+                next[0] = new Set()
+            } else {
+                const map = new Map(prev[dimIdx] instanceof Map ? prev[dimIdx] : [])
+                map.set('*', new Set())
+                next[dimIdx] = map
+            }
+            return next
+        })
+    }, [])
+
+    const expandAllDim = useCallback((dimIdx) => {
+        setRowExpandedSets(prev => {
+            const next = [...prev]
+            if (dimIdx === 0) {
+                next[0] = allExpanded(hierarchies[dimIdx]?.nodes ?? {})
+            } else {
+                next[dimIdx] = new Map() // empty map → missing key → allExpanded default
+            }
+            return next
+        })
+    }, [hierarchies])
+
     // ── Column lookup ─────────────────────────────────────────────────────────
 
     const colByTupleKey = useMemo(() =>
@@ -355,6 +382,26 @@ export default function HierarchyGrid({
         })
     }, [visibleRowTuples, hierarchies, data, visibleColumns])
 
+    // ── Row dim header (collapse/expand all) ─────────────────────────────────
+
+    const RowDimHeader = useCallback((params) => {
+        const dimIdx = params.column?.getColDef()?.context?.dimIdx ?? 0
+        const { onCollapseAll, onExpandAll } = params.context ?? params.api?.getGridOption?.('context') ?? {}
+        return (
+            <div className="flex items-center gap-1 w-full h-full group px-1">
+                <span className="flex-1 truncate text-[11px] font-semibold">{params.displayName}</span>
+                <button
+                    onClick={e => { e.stopPropagation(); onCollapseAll(dimIdx) }}
+                    className="opacity-0 group-hover:opacity-100 transition-opacity w-4 h-4 flex items-center justify-center rounded hover:bg-black/10 dark:hover:bg-white/10 text-[11px] font-bold leading-none shrink-0"
+                    title="Collapse all">−</button>
+                <button
+                    onClick={e => { e.stopPropagation(); onExpandAll(dimIdx) }}
+                    className="opacity-0 group-hover:opacity-100 transition-opacity w-4 h-4 flex items-center justify-center rounded hover:bg-black/10 dark:hover:bg-white/10 text-[11px] font-bold leading-none shrink-0"
+                    title="Expand all">+</button>
+            </div>
+        )
+    }, [])
+
     // ── Column defs ───────────────────────────────────────────────────────────
 
     const multiCol = columnHierarchies.length > 1
@@ -364,15 +411,16 @@ export default function HierarchyGrid({
         return [
             // Pinned left: one column per row dim
             ...hierarchies.map((h, dimIdx) => ({
-                field:        `__d${dimIdx}__`,
-                headerName:   h.name ?? (hierarchies.length === 1 ? 'Member' : `Dim ${dimIdx + 1}`),
-                pinned:       'left',
-                width:        dimIdx === 0 ? 190 : 150,
-                minWidth:     80,
-                resizable:    true,
-                suppressMenu: true,
-                __dimIdx__:   dimIdx,
-                cellRenderer: HierarchyCell,
+                field:           `__d${dimIdx}__`,
+                headerName:      h.name ?? (hierarchies.length === 1 ? 'Member' : `Dim ${dimIdx + 1}`),
+                headerComponent: RowDimHeader,
+                pinned:          'left',
+                width:           dimIdx === 0 ? 190 : 150,
+                minWidth:        80,
+                resizable:       true,
+                menuTabs:        [],
+                context:         { dimIdx },
+                cellRenderer:    HierarchyCell,
             })),
             // Data columns
             ...visibleColumns.map(col => {
@@ -390,8 +438,7 @@ export default function HierarchyGrid({
                     field:           col.id,
                     headerName:      col.label,
                     headerComponent: multiCol ? MultiDimColHeader : (columnHierarchies.length === 1 ? SingleDimColHeader : undefined),
-                    __colTuple__:    tuple,
-                    __colChanged__:  changed,
+                    context:         { colTuple: tuple, colChanged: changed },
                     width:           110,
                     minWidth:        60,
                     resizable:       true,
@@ -400,7 +447,7 @@ export default function HierarchyGrid({
                         const rowIsAllLeaf = hierarchies.every((_, i) => p.data?.[`__d${i}_isLeaf__`] ?? true)
                         return rowIsAllLeaf && colIsLeaf
                     } : false,
-                    suppressMenu:    true,
+                    menuTabs:        [],
                     valueFormatter:  p => (p.value === null || p.value === '') ? '—' : String(p.value),
                     cellStyle:       p => {
                         const rowIsAllLeaf   = hierarchies.every((_, i) => p.data?.[`__d${i}_isLeaf__`] ?? true)
@@ -422,12 +469,14 @@ export default function HierarchyGrid({
     const context = useMemo(() => ({
         hierarchies,
         rowExpandedSets,
-        onToggleRow: toggleRow,
+        onToggleRow:     toggleRow,
+        onCollapseAll:   collapseAllDim,
+        onExpandAll:     expandAllDim,
         columnHierarchies,
         colExpandedSets,
-        onToggleCol:  toggleCol,
+        onToggleCol:     toggleCol,
         colNodeMap,
-    }), [hierarchies, rowExpandedSets, toggleRow, columnHierarchies, colExpandedSets, toggleCol, colNodeMap])
+    }), [hierarchies, rowExpandedSets, toggleRow, collapseAllDim, expandAllDim, columnHierarchies, colExpandedSets, toggleCol, colNodeMap])
 
     const handleCellEdit = useCallback((e) => {
         if (!onCellEdit) return

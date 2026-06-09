@@ -247,6 +247,12 @@ export default function SQLEditor({ tab }) {
   const [showSavedQueries, setShowSavedQueries] = useState(false)
   const [showMinimap, setShowMinimap] = useState(() => loadSettings().editor?.minimap?.sql ?? false)
   const savedQueriesRef = useRef(null)
+  const [currentQueryId,   setCurrentQueryId]   = useState(tab.queryId ?? null)
+  const [currentQueryName, setCurrentQueryName] = useState(tab.queryId ? (tab.label ?? '') : '')
+  const [showSaveInput,    setShowSaveInput]     = useState(false)
+  const [saveInputName,    setSaveInputName]     = useState('')
+  const [resultHeight,     setResultHeight]      = useState(220)
+  const dragRef = useRef(null)
   const [showPostToTI, setShowPostToTI]   = useState(false)
   const [processSearch, setProcessSearch] = useState('')
   const [newProcName, setNewProcName]     = useState('')
@@ -308,13 +314,44 @@ export default function SQLEditor({ tab }) {
     saveSettings({ ...s, editor: { ...s.editor, minimap: { ...(s.editor.minimap ?? {}), sql: next } } })
   }
 
-  const handleSaveQuery = () => {
-    const name = window.prompt('Query name:')
-    if (!name?.trim()) return
-    saveQuery.mutate({ name: name.trim(), sql, connectionId: connId }, {
-      onSuccess: () => toast.success('Query saved'),
-      onError:   (e) => toast.error(e.message),
+  const handleSave = () => {
+    if (currentQueryId) {
+      saveQuery.mutate({ id: currentQueryId, name: currentQueryName, sql, connectionId: connId }, {
+        onSuccess: () => toast.success('Saved'),
+        onError:   (e) => toast.error(e.message),
+      })
+    } else {
+      setSaveInputName('')
+      setShowSaveInput(true)
+    }
+  }
+
+  const handleSaveAs = () => {
+    setSaveInputName(currentQueryName || '')
+    setShowSaveInput(true)
+  }
+
+  const handleSaveConfirm = () => {
+    if (!saveInputName.trim()) return
+    saveQuery.mutate({ name: saveInputName.trim(), sql, connectionId: connId }, {
+      onSuccess: (res) => {
+        setCurrentQueryId(res.id)
+        setCurrentQueryName(saveInputName.trim())
+        setShowSaveInput(false)
+        toast.success('Query saved')
+      },
+      onError: (e) => toast.error(e.message),
     })
+  }
+
+  const startDrag = (e) => {
+    e.preventDefault()
+    const startY = e.clientY
+    const startH = resultHeight
+    const onMove = (ev) => setResultHeight(Math.max(80, Math.min(600, startH - (ev.clientY - startY))))
+    const onUp   = () => { document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp) }
+    document.addEventListener('mousemove', onMove)
+    document.addEventListener('mouseup', onUp)
   }
 
   // Close saved-queries dropdown when clicking outside
@@ -477,16 +514,34 @@ export default function SQLEditor({ tab }) {
           <Map size={11} />
         </button>
 
-        {/* Save query */}
-        {connId && (
-          <button
-            onClick={handleSaveQuery}
-            disabled={saveQuery.isPending}
-            className="flex items-center gap-1 px-2 py-1.5 text-xs rounded border border-border text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-            title="Save query"
-          >
-            <Save size={11} />
-          </button>
+        {/* Save / Save As */}
+        {connId && !showSaveInput && (
+          <>
+            <button onClick={handleSave} disabled={saveQuery.isPending}
+              className="flex items-center gap-1 px-2 py-1.5 text-xs rounded border border-border text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+              title={currentQueryId ? `Save "${currentQueryName}"` : 'Save query'}>
+              <Save size={11} />
+              {currentQueryName && <span className="max-w-[80px] truncate">{currentQueryName}</span>}
+            </button>
+            {currentQueryId && (
+              <button onClick={handleSaveAs} disabled={saveQuery.isPending}
+                className="flex items-center gap-1 px-2 py-1.5 text-xs rounded border border-border text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                title="Save as new query">
+                <Save size={11} /><span>As…</span>
+              </button>
+            )}
+          </>
+        )}
+        {connId && showSaveInput && (
+          <div className="flex items-center gap-1">
+            <input autoFocus value={saveInputName} onChange={e => setSaveInputName(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') handleSaveConfirm(); if (e.key === 'Escape') setShowSaveInput(false) }}
+              placeholder="Query name…"
+              className="bg-muted border border-border rounded px-2 py-1 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-ring w-36" />
+            <button onClick={handleSaveConfirm} disabled={!saveInputName.trim() || saveQuery.isPending}
+              className="px-2 py-1 text-xs rounded bg-primary text-primary-foreground disabled:opacity-40">Save</button>
+            <button onClick={() => setShowSaveInput(false)} className="px-2 py-1 text-xs rounded border border-border text-muted-foreground hover:bg-muted">✕</button>
+          </div>
         )}
 
         {/* Saved queries dropdown */}
@@ -509,16 +564,24 @@ export default function SQLEditor({ tab }) {
                     <div key={q.id} className="flex items-center gap-1 px-2 py-1 hover:bg-muted group">
                       <button
                         className="flex-1 text-left text-xs truncate"
-                        onClick={() => { setSql(q.sql); setShowSavedQueries(false) }}
+                        onClick={() => {
+                          setSql(q.sql)
+                          setCurrentQueryId(q.id)
+                          setCurrentQueryName(q.name)
+                          setShowSavedQueries(false)
+                        }}
                       >
                         {q.name}
                       </button>
                       <button
                         className="hidden group-hover:flex text-muted-foreground hover:text-foreground transition-colors shrink-0"
                         onClick={() => {
-                          const name = window.prompt('Rename query:', q.name)
-                          if (name?.trim() && name.trim() !== q.name)
-                            saveQuery.mutate({ ...q, name: name.trim() }, { onError: (e) => toast.error(e.message) })
+                          setSaveInputName(q.name)
+                          setCurrentQueryId(q.id)
+                          setCurrentQueryName(q.name)
+                          setSql(q.sql)
+                          setShowSavedQueries(false)
+                          setShowSaveInput(true)
                         }}
                         title="Rename"
                       >
@@ -739,8 +802,16 @@ export default function SQLEditor({ tab }) {
             />
           </div>
 
+          {/* Drag handle */}
+          <div
+            onMouseDown={startDrag}
+            className="h-1.5 shrink-0 border-t border-border cursor-row-resize hover:bg-primary/20 transition-colors flex items-center justify-center group"
+          >
+            <div className="w-8 h-0.5 rounded bg-border group-hover:bg-primary/40 transition-colors" />
+          </div>
+
           {/* Results */}
-          <div className="flex flex-col border-t border-border" style={{ height: '220px' }}>
+          <div className="flex flex-col border-border overflow-hidden" style={{ height: `${resultHeight}px` }}>
             <ResultsGrid result={result} error={queryError} duration={duration} />
           </div>
         </div>

@@ -82,11 +82,11 @@ class TM1Client {
         }
     }
 
-    async getElements(dim, hierarchy = dim) {
+    async getElements(dim, hierarchy = dim, includeIndex = false) {
         const TYPE = { Numeric: 'N', Consolidated: 'C', String: 'S', N: 'N', C: 'C', S: 'S', 1: 'N', 2: 'S', 3: 'C' }
         const d = await this.get(
             `Dimensions('${dim}')/Hierarchies('${hierarchy}')/Elements`,
-            { '$select': 'Name,Type,Level' }
+            { '$select': includeIndex ? 'Name,Type,Level,Index' : 'Name,Type,Level' }
         )
         return (d.value ?? []).map(e => ({ ...e, Type: TYPE[e.Type] ?? e.Type }))
     }
@@ -322,21 +322,15 @@ class TM1Client {
 
     async writeElementAttribute(dim, element, attribute, value, attrType = 'S', hierarchy = dim) {
         const safe = s => String(s).replace(/'/g, "''")
-        const tiCode = attrType === 'N'
-            ? `ElementAttrPutN(${Number(value)}, '${safe(dim)}', '${safe(element)}', '${safe(attribute)}');`
-            : `ElementAttrPutS('${safe(String(value))}', '${safe(dim)}', '${safe(element)}', '${safe(attribute)}');`
-        return this.post('ExecuteProcessWithReturn?$expand=*', {
-            Process: {
-                Name: `}TM1IDE_write`,
-                PrologProcedure: tiCode,
-                MetadataProcedure: '',
-                DataProcedure: '',
-                EpilogProcedure: '',
-                HasSecurityAccess: false,
-                DataSource: { Type: 'None' },
-                Parameters: [],
-                Variables: [],
-            }
+        const attrCube = `}ElementAttributes_${dim}`
+        return this.post(`Cubes('${safe(attrCube)}')/tm1.Update`, {
+            Cells: [{
+                'Tuple@odata.bind': [
+                    `Dimensions('${safe(attrCube)}')/Hierarchies('${safe(attrCube)}')/Elements('${safe(attribute)}')`,
+                    `Dimensions('${safe(dim)}')/Hierarchies('${safe(dim)}')/Elements('${safe(element)}')`,
+                ]
+            }],
+            Value: attrType === 'N' ? Number(value) : String(value),
         })
     }
 
@@ -346,6 +340,22 @@ class TM1Client {
             { '$select': 'Name,Type' }
         )
         return d.value ?? []
+    }
+
+    async getAliasValues(dim, aliasAttr, hierarchy = dim) {
+        const attrDim = `}ElementAttributes_${dim}`
+        const mdx = `SELECT {[${attrDim}].[${attrDim}].[${aliasAttr}]} ON COLUMNS, {TM1SUBSETALL([${dim}].[${hierarchy}])} ON ROWS FROM [${attrDim}]`
+        try {
+            const result = await this.executeMDX(mdx, 200000)
+            const rowTuples = result.Axes?.find(a => a.Ordinal === 1)?.Tuples ?? []
+            const map = {}
+            rowTuples.forEach((tuple, i) => {
+                const el  = tuple.Members?.[0]?.Name
+                const val = result.Cells?.[i]?.Value
+                if (el && val !== null && val !== undefined && val !== '') map[el] = String(val)
+            })
+            return map
+        } catch { return {} }
     }
 
     async getDimensions() {
@@ -566,6 +576,99 @@ class TM1Client {
         return { cubes: cubeUsage, processes: tiUsage }
     }
 
+    async scanViewUsage(cube, viewName) {
+        const tiUsage   = []
+        const viewUsage = []
+        const esc = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+        const safeView = esc(viewName)
+        const safeCube = esc(cube)
+
+        // 1. Scan TI processes
+        const processes = await this.getProcesses()
+        for (const proc of processes) {
+            try {
+                const p = await this.getProcess(proc)
+                const code = [
+                    p.PrologProcedure   ?? '',
+                    p.MetaDataProcedure ?? '',
+                    p.DataProcedure     ?? '',
+                    p.EpilogProcedure   ?? '',
+                ].join('\n')
+                if (!code.includes(viewName)) continue
+                const patterns = [
+                    new RegExp(`View(?:Create|Delete|Exists|ZeroOut|Apply|Construct|Export|Import)[^;\\n]*['"]${safeView}['"]`, 'i'),
+                    new RegExp(`ViewCreateByMDX[^;\\n]*['"]${safeView}['"]`, 'i'),
+                    new RegExp(`ViewAdd(?:Row|Col|Sup)|ViewDimensionSet|ViewSubsetAssign[^;\\n]*['"]${safeView}['"]`, 'i'),
+                    new RegExp(`Cell(?:Get|Put|Clear|Zero)View[^;\\n]*['"]${safeView}['"]`, 'i'),
+                    new RegExp(`['"]${safeCube}['"][^;\\n]*['"]${safeView}['"]`, 'i'),
+                    new RegExp(`['"]${safeView}['"][^;\\n]*['"]${safeCube}['"]`, 'i'),
+                ]
+                if (patterns.some(rx => rx.test(code))) {
+                    tiUsage.push({ process: proc })
+                }
+            } catch { /* skip inaccessible */ }
+        }
+
+        // 2. Scan MDX views across all cubes for text references
+        const cubes = await this.getCubes()
+        for (const c of cubes) {
+            const views = await this.getViews(c)
+            for (const vMeta of views) {
+                if (c === cube && vMeta.name === viewName) continue
+                if (vMeta.type !== 'mdx') continue
+                try {
+                    const vDef = await this.getView(c, vMeta.name)
+                    if (vDef?.MDX?.includes(viewName)) {
+                        viewUsage.push({ cube: c, view: vMeta.name })
+                    }
+                } catch { /* skip */ }
+            }
+        }
+
+        return { processes: tiUsage, views: viewUsage }
+    }
+
+    async scanDimensionUsage(dim) {
+        const cubes = await this.getCubesForDimension(dim)
+        const tiUsage = []
+        const processes = await this.getProcesses()
+        for (const proc of processes) {
+            try {
+                const p = await this.getProcess(proc)
+                const code = [p.PrologProcedure ?? '', p.MetaDataProcedure ?? '', p.DataProcedure ?? '', p.EpilogProcedure ?? ''].join('\n')
+                if (code.includes(dim)) tiUsage.push({ process: proc })
+            } catch { /* skip */ }
+        }
+        return { cubes, processes: tiUsage }
+    }
+
+    async scanCubeUsage(cube) {
+        const tiUsage = []
+        const processes = await this.getProcesses()
+        for (const proc of processes) {
+            try {
+                const p = await this.getProcess(proc)
+                const code = [p.PrologProcedure ?? '', p.MetaDataProcedure ?? '', p.DataProcedure ?? '', p.EpilogProcedure ?? ''].join('\n')
+                if (code.includes(cube)) tiUsage.push({ process: proc })
+            } catch { /* skip */ }
+        }
+        return { processes: tiUsage }
+    }
+
+    async scanProcessUsage(processName) {
+        const choreUsage = []
+        const chores = await this.getChores()
+        for (const choreName of chores) {
+            try {
+                const chore = await this.getChore(choreName)
+                if ((chore.Steps ?? []).some(s => s.Process?.Name === processName)) {
+                    choreUsage.push({ chore: choreName })
+                }
+            } catch { /* skip */ }
+        }
+        return { chores: choreUsage }
+    }
+
     // ── Subsets ───────────────────────────────────────────────────────────────
 
     async getSubsets(dim, hierarchy = dim) {
@@ -704,6 +807,36 @@ return (d.value ?? [])
     async saveView(cube, name, mdx) {
         const esc = s => s.replace(/'/g, "''")
         const body = { '@odata.type': '#ibm.tm1.api.v1.MDXView', Name: name, MDX: mdx }
+        try {
+            await this.patch(`Cubes('${esc(cube)}')/Views('${esc(name)}')`, body)
+        } catch (e) {
+            if (e.response?.status === 404) {
+                await this.post(`Cubes('${esc(cube)}')/Views`, body)
+            } else throw e
+        }
+    }
+
+    async saveNativeView(cube, name, { rows, columns, titles }) {
+        const esc = s => s.replace(/'/g, "''")
+        const subsetRef = (dim, subset) => ({
+            '@odata.type': '#ibm.tm1.api.v1.Subset',
+            Name:          subset ?? '',
+            Hierarchy:     { Name: dim, Dimension: { Name: dim } },
+        })
+        const body = {
+            '@odata.type': '#ibm.tm1.api.v1.NativeView',
+            Name: name,
+            Rows:    rows.map(({ dimension: d, subset: s }) => ({ Subset: subsetRef(d, s) })),
+            Columns: columns.map(({ dimension: d, subset: s }) => ({ Subset: subsetRef(d, s) })),
+            Titles:  titles.map(({ dimension: d, subset: s, member: m }) => ({
+                Subset: subsetRef(d, s),
+                ...(m ? { Selected: {
+                    '@odata.type': '#ibm.tm1.api.v1.Member',
+                    Name:         m,
+                    UniqueName:   `[${d}].[${d}].[${m}]`,
+                }} : {}),
+            })),
+        }
         try {
             await this.patch(`Cubes('${esc(cube)}')/Views('${esc(name)}')`, body)
         } catch (e) {

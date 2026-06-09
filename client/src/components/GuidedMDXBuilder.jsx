@@ -1,8 +1,9 @@
-import { useState, useMemo, useEffect, useRef } from 'react'
+import { useState, useMemo, useEffect, useRef, useCallback } from 'react'
 import { useCubes, useCubeDimensions, useDims, useDimAttributes, useAttributeValues, useElements, useSubsets } from '@/hooks/useApi'
 import { useStore } from '@/store'
+import { registerTM1Theme } from '@/lib/tm1-functions'
 import { subsetApplyCallbacks } from '@/lib/subsetCallbacks'
-import { ArrowLeft, ArrowRight, Play, Loader2, Copy, X, Check, Code2, ExternalLink, HelpCircle, Save, Clock, Plus, Pencil, Trash2, ChevronDown, ChevronRight } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Play, Loader2, Copy, X, Check, Code2, ExternalLink, HelpCircle, Save, Clock, Plus, Pencil, Trash2, ChevronDown, ChevronRight, GripHorizontal, WrapText } from 'lucide-react'
 import MonacoEditor from '@monaco-editor/react'
 import { cn } from '@/lib/utils'
 import ResultGrid from '@/components/mdx/ResultGrid'
@@ -18,6 +19,39 @@ function saveRecent(entry) {
 }
 function loadPersistedState(tabId) { try { return JSON.parse(localStorage.getItem(PERSIST_KEY(tabId)) || 'null') } catch { return null } }
 function savePersistedState(tabId, state) { try { localStorage.setItem(PERSIST_KEY(tabId), JSON.stringify(state)) } catch {} }
+
+function formatMDX(mdx) {
+  if (!mdx?.trim()) return mdx
+  let s = mdx.replace(/\s+/g, ' ').trim()
+  s = s
+    .replace(/\bSELECT\b\s*/gi,               'SELECT\n  ')
+    .replace(/\s*\bNON EMPTY\b\s*/gi,          ' NON EMPTY ')
+    .replace(/\s*\bON COLUMNS\s*,\s*/gi,       ' ON COLUMNS,\n  ')
+    .replace(/\s*\bON COLUMNS\b/gi,            ' ON COLUMNS')
+    .replace(/\s*\bON ROWS\s*,\s*/gi,          ' ON ROWS,\n  ')
+    .replace(/\s*\bON ROWS\b/gi,               ' ON ROWS')
+    .replace(/\s*\bON 0\s*,\s*/gi,             ' ON COLUMNS,\n  ')
+    .replace(/\s*\bON 0\b/gi,                  ' ON COLUMNS')
+    .replace(/\s*\bON 1\s*,\s*/gi,             ' ON ROWS,\n  ')
+    .replace(/\s*\bON 1\b/gi,                  ' ON ROWS')
+    .replace(/\s*\bFROM\b\s*/gi,               '\nFROM ')
+    .replace(/\s*\bWHERE\b\s*/gi,              '\nWHERE ')
+    .trim()
+  return s.split('\n').map(line => {
+    const lead = line.match(/^(\s*)/)[1]
+    const body = line.trimStart()
+    if (!body.includes('{')) return line
+    let out = '', depth = 0
+    for (let i = 0; i < body.length; i++) {
+      const ch = body[i]
+      if      (ch === '{') { out += '{\n' + lead + '  '.repeat(depth + 1); depth++ }
+      else if (ch === '}') { depth = Math.max(0, depth - 1); out = out.trimEnd() + '\n' + lead + '  '.repeat(depth) + '}' }
+      else if (ch === ',' && depth > 0) { out += ',\n' + lead + '  '.repeat(depth) }
+      else { out += ch }
+    }
+    return lead + out.trim()
+  }).join('\n').trim()
+}
 
 const WRAPPERS = {
   'all':         (dim, inner) => `{TM1SUBSETALL([${dim}].[${dim}])}`,
@@ -202,7 +236,7 @@ const FUNCTIONS = [
     desc: 'Adds any WITH MEMBER calculated members defined in the query to the given set. Ensures calculated members appear alongside stored members.' },
   // ── Hierarchy drill functions ─────────────────────────────────────────────
   { id: 'fn-drilldownmember',   label: 'DRILLDOWNMEMBER(set,members)', cat: 'Hierarchy', mdx: () => `DRILLDOWNMEMBER({TM1SUBSETALL([Dim].[Dim])}, {[Dim].[Dim].[Parent]})`,
-    desc: 'Expands specified members in a set to show their children inline. Returns the original set with children inserted after each matched member.' },
+    desc: 'Reorders Set1 so children of Set2 members appear directly after their parent — the drill-expand effect. Does not add new members; Set1 is the pool. Use ALL to expand every consolidation, RECURSIVE for full descendants.' },
   { id: 'fn-drilldownlevel',    label: 'DRILLDOWNLEVEL(set, level)',   cat: 'Hierarchy', mdx: () => `DRILLDOWNLEVEL({TM1SUBSETALL([Dim].[Dim])}, [Dim].[Dim].Levels(1))`,
     desc: 'Expands all members at the specified level in a set by inserting their children. Drills down one level at a time.' },
   { id: 'fn-drilldownleveltop', label: 'DRILLDOWNLEVELTOP(set,N,lvl,cube)', cat: 'Hierarchy', mdx: () => `DRILLDOWNLEVELTOP({TM1SUBSETALL([Dim].[Dim])}, 5, [Dim].[Dim].Levels(1), [Cube].([Measure]))`,
@@ -382,7 +416,7 @@ function AxisMemberPicker({ dim, server, fc, setFc }) {
 }
 
 
-function AxisSetBuilder({ dim, server, measuresDim, config, onChange }) {
+function AxisSetBuilder({ dim, server, measuresDim, config, onChange, returnTabId }) {
   const { openTab } = useStore()
   const hasCustomExpr = config?.subsetExpression && !config?.axisMode
   const axisMode   = config?.axisMode   || (hasCustomExpr ? 'expression' : 'all')
@@ -434,7 +468,7 @@ function AxisSetBuilder({ dim, server, measuresDim, config, onChange }) {
             onClick={() => {
               const tabId = `subset-filter:${server}:${dim}:${Date.now()}`
               subsetApplyCallbacks.set(tabId, (mdx) => onChange({ axisMode: 'condition', axisConfig: { customExpr: mdx }, subsetExpression: mdx }))
-              openTab({ id: tabId, type: 'subset', label: `Filter: ${dim}`, server, dimension: dim, subsetName: null, mdx: axisConfig.customExpr || '' })
+              openTab({ id: tabId, type: 'subset', label: `Filter: ${dim}`, server, dimension: dim, subsetName: null, mdx: axisConfig.customExpr || '', returnTabId })
             }}
             className="px-2 py-1 text-[10px] border rounded hover:bg-muted transition-colors w-full text-left">
             {axisConfig.customExpr ? 'Edit filter…' : 'Build filter…'}
@@ -563,59 +597,78 @@ function DynamicFilter({ dim, fc, setFc }) {
   )
 }
 
-function FilterBuilder({ dim, server, config, onChange }) {
+function FilterBuilder({ dim, server, config, onChange, returnTabId }) {
   const { openTab } = useStore()
+  const [advanced, setAdvanced] = useState(false)
   const filterMode   = config?.filterMode   || 'static'
   const filterConfig = config?.filterConfig || {}
 
-  const setMode = (m) => {
-    const fc = {}
-    onChange({ filterMode: m, filterConfig: fc, subsetExpression: buildFilterExpr(dim, m, fc) })
+  // Picking a member always resets to static mode
+  const pickMember = (patch) => {
+    const fc = { selectedMember: patch.selectedMember }
+    onChange({ filterMode: 'static', filterConfig: fc, subsetExpression: buildFilterExpr(dim, 'static', fc) })
   }
-  const setFc = (patch) => {
+  const setMode = (m) => {
+    onChange({ filterMode: m, filterConfig: {}, subsetExpression: buildFilterExpr(dim, m, {}) })
+  }
+  const setExprFc = (patch) => {
     const newFc = { ...filterConfig, ...patch }
-    onChange({ filterMode, filterConfig: newFc, subsetExpression: buildFilterExpr(dim, filterMode, newFc) })
+    onChange({ filterMode: 'expression', filterConfig: newFc, subsetExpression: buildFilterExpr(dim, 'expression', newFc) })
   }
 
   return (
     <div className="mt-1 border-t border-border/30 pt-1.5 space-y-1.5">
-      <div className="flex gap-0.5 bg-muted/30 rounded p-0.5">
-        {[['static','Member'],['expression','Expression']].map(([id, label]) => (
-          <button key={id} onClick={() => setMode(id)}
-            className={cn('flex-1 py-0.5 text-[9px] rounded transition-colors',
-              filterMode === id ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground')}>
-            {label}
-          </button>
-        ))}
-      </div>
+      {/* Primary: always show element picker */}
+      <WhereMemberPicker dim={dim} server={server} fc={filterMode === 'static' ? filterConfig : {}} setFc={pickMember} />
 
-      {filterMode === 'static' && <WhereMemberPicker dim={dim} server={server} fc={filterConfig} setFc={setFc} />}
-
-      {filterMode === 'expression' && (
-        <div className="space-y-1">
-          <button
-            onClick={() => {
-              const tabId = `subset-filter:${server}:${dim}:${Date.now()}`
-              subsetApplyCallbacks.set(tabId, (mdx) => {
-                setFc({ dynamicExpr: mdx })
-                onChange({ filterMode: 'expression', filterConfig: { dynamicExpr: mdx }, subsetExpression: mdx })
-              })
-              openTab({ id: tabId, type: 'subset', label: `Filter: ${dim}`, server, dimension: dim, subsetName: null, mdx: filterConfig.dynamicExpr || '' })
-            }}
-            className="px-2 py-1 text-[10px] border rounded hover:bg-muted transition-colors w-full text-left">
-            {filterConfig.dynamicExpr ? 'Edit expression…' : 'Build expression…'}
-          </button>
-          {filterConfig.dynamicExpr && (
-            <div className="font-mono text-[9px] text-muted-foreground bg-muted/20 px-1.5 py-0.5 rounded truncate" title={filterConfig.dynamicExpr}>
-              {filterConfig.dynamicExpr}
-            </div>
-          )}
+      {/* Show active expression as a badge when in expression mode */}
+      {filterMode === 'expression' && filterConfig.dynamicExpr && (
+        <div className="flex items-center gap-1">
+          <div className="font-mono text-[9px] text-violet-400 bg-violet-400/10 border border-violet-400/20 px-1.5 py-0.5 rounded truncate flex-1" title={filterConfig.dynamicExpr}>
+            {filterConfig.dynamicExpr}
+          </div>
+          <button onClick={() => setMode('static')} className="text-[9px] text-muted-foreground hover:text-foreground shrink-0" title="Clear expression">×</button>
         </div>
       )}
 
-      {config?.subsetExpression && filterMode === 'static' && (
-        <div className="font-mono text-[9px] text-muted-foreground bg-muted/20 px-1.5 py-0.5 rounded truncate" title={config.subsetExpression}>
-          → {config.subsetExpression}
+      {/* Advanced toggle */}
+      <button onClick={() => setAdvanced(a => !a)}
+        className="flex items-center gap-1 text-[9px] text-muted-foreground hover:text-foreground transition-colors">
+        <ChevronRight size={9} className={cn('transition-transform', advanced && 'rotate-90')} />
+        Advanced
+      </button>
+
+      {advanced && (
+        <div className="space-y-1.5 pl-2 border-l border-border/40">
+          <div className="flex gap-0.5 bg-muted/30 rounded p-0.5">
+            {[['static','Member'],['expression','Expression']].map(([id, label]) => (
+              <button key={id} onClick={() => setMode(id)}
+                className={cn('flex-1 py-0.5 text-[9px] rounded transition-colors',
+                  filterMode === id ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground')}>
+                {label}
+              </button>
+            ))}
+          </div>
+          {filterMode === 'expression' && (
+            <div className="space-y-1">
+              <button
+                onClick={() => {
+                  const tabId = `subset-filter:${server}:${dim}:${Date.now()}`
+                  subsetApplyCallbacks.set(tabId, (mdx) => {
+                    setExprFc({ dynamicExpr: mdx })
+                  })
+                  openTab({ id: tabId, type: 'subset', label: `Filter: ${dim}`, server, dimension: dim, subsetName: null, mdx: filterConfig.dynamicExpr || '', returnTabId })
+                }}
+                className="px-2 py-1 text-[10px] border rounded hover:bg-muted transition-colors w-full text-left">
+                {filterConfig.dynamicExpr ? 'Edit expression…' : 'Build expression…'}
+              </button>
+              {filterConfig.dynamicExpr && (
+                <div className="font-mono text-[9px] text-muted-foreground bg-muted/20 px-1.5 py-0.5 rounded truncate" title={filterConfig.dynamicExpr}>
+                  {filterConfig.dynamicExpr}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -627,7 +680,7 @@ export default function GuidedMDXBuilder({ tab, server: serverProp, onSwitchToRa
   const mode = tab?.type === 'guidedmdxsubset' ? 'subset' : 'view'
   const isSubsetMode = mode === 'subset'
 
-  const init = useMemo(() => tab?.initialState ?? loadPersistedState(tab?.id) ?? {}, [])
+  const init = useMemo(() => loadPersistedState(tab?.id) ?? tab?.initialState ?? {}, [])
   const [step, setStep] = useState(init.step ?? 0)
   const [selectedCube, setSelectedCube] = useState(init.selectedCube ?? null)
   const [selectedDim, setSelectedDim] = useState('')
@@ -643,8 +696,8 @@ export default function GuidedMDXBuilder({ tab, server: serverProp, onSwitchToRa
   const [collapsedCats, setCollapsedCats] = useState(() => Object.fromEntries(CAT_ORDER.map(c => [c, true])))
   const [customPatterns, setCustomPatterns] = useState(loadCustomPatterns)
   const [customForm, setCustomForm] = useState(null) // null | { id?, label, cat, desc, mdxTemplate }
-  const [collapsedBuilders, setCollapsedBuilders] = useState(new Set())
-  const toggleBuilderCollapse = (dim) => setCollapsedBuilders(prev => {
+  const [expandedBuilders, setExpandedBuilders] = useState(new Set())
+  const toggleBuilderCollapse = (dim) => setExpandedBuilders(prev => {
     const next = new Set(prev)
     next.has(dim) ? next.delete(dim) : next.add(dim)
     return next
@@ -661,11 +714,13 @@ export default function GuidedMDXBuilder({ tab, server: serverProp, onSwitchToRa
   }
   const [recent, setRecent] = useState(loadRecent())
   const [showRecent, setShowRecent] = useState(false)
+  const sessionNameRef = useRef(null)
 
   const saveSession = (name) => {
-    const mdx = viewMDX || currentMDX
+    const mdx = activeMDX || viewMDX || currentMDX
     if (!mdx) return
-    const entry = { mdx, cube: selectedCube, dimension: selectedDim, name: name?.trim() || selectedCube || 'Session', time: Date.now() }
+    const label = name?.trim() || selectedCube || selectedDim || 'Session'
+    const entry = { mdx, cube: selectedCube, dimension: selectedDim, name: label, time: Date.now() }
     saveRecent(entry)
     setRecent(loadRecent())
   }
@@ -687,6 +742,16 @@ export default function GuidedMDXBuilder({ tab, server: serverProp, onSwitchToRa
   const [previewResult, setPreviewResult] = useState(null)
   const [previewError, setPreviewError] = useState(null)
   const [previewLoading, setPreviewLoading] = useState(false)
+  const [resultsHeight, setResultsHeight] = useState(240)
+  const startResultsResize = useCallback((e) => {
+    e.preventDefault()
+    const startY = e.clientY
+    const startH = resultsHeight
+    const onMove = (mv) => setResultsHeight(Math.max(80, Math.min(startH + (startY - mv.clientY), 700)))
+    const onUp = () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp) }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+  }, [resultsHeight])
   const [viewMDX, setViewMDX] = useState(init.viewMDX ?? '')
   const [userEditedMDX, setUserEditedMDX] = useState(init.userEditedMDX ?? false)
   const prevGeneratedRef = useRef('')
@@ -758,6 +823,13 @@ export default function GuidedMDXBuilder({ tab, server: serverProp, onSwitchToRa
   useEffect(() => {
     savePersistedState(tab?.id, { step, selectedCube, dimConfig, viewMDX, userEditedMDX, selectedMeasures, measuresMode, measuresSubset, intent })
   }, [step, selectedCube, dimConfig, viewMDX, userEditedMDX, selectedMeasures, measuresMode, measuresSubset, intent])
+
+  // Auto-assign measures dim to columns when entering step 1 if not yet assigned
+  useEffect(() => {
+    if (!isSubsetMode && step === 1 && measuresDim && !dimConfig[measuresDim]?.axis) {
+      setDimConfig(prev => ({ ...prev, [measuresDim]: { ...(prev[measuresDim] || {}), axis: 'columns' } }))
+    }
+  }, [measuresDim, step, isSubsetMode])
 
   const insertAtCursor = (text) => {
     const editor = editorRef.current
@@ -924,10 +996,10 @@ export default function GuidedMDXBuilder({ tab, server: serverProp, onSwitchToRa
     }
     setCurrentMDX(mdx)
   }
-  const canNext = () => isSubsetMode ? (step === 0 ? !!selectedDim : !!currentMDX) : (step === 0 ? !!selectedCube : step === 1 ? Object.keys(dimConfig).some(k => dimConfig[k]?.axis) : true)
+  const canNext = () => isSubsetMode ? (step === 0 ? !!selectedDim : !!currentMDX) : (step === 0 ? !!selectedCube : step === 1 ? cubeDims.every(d => !!dimConfig[d]?.axis) : true)
   const next = () => { if (canNext()) setStep(s => Math.min(s + 1, 2)) }
   const back = () => {
-    if (!isSubsetMode && step === 1) { setIntent(null); setSelectedCube(null); setDimConfig({}) }
+    if (!isSubsetMode && step === 1) { setIntent('Freeform'); setSelectedCube(null); setDimConfig({}) }
     setPreviewResult(null); setPreviewError(null)
     setStep(s => Math.max(s - 1, 0))
   }
@@ -935,14 +1007,15 @@ export default function GuidedMDXBuilder({ tab, server: serverProp, onSwitchToRa
   // Monaco syntax highlighting
   const handleEditorMount = (editor, monaco) => {
     editorRef.current = editor
-    if (monaco.languages.getLanguages().find(l => l.id === 'tm1mdx')) return
-    monaco.languages.register({ id: 'tm1mdx' })
+    if (!monaco.languages.getLanguages().find(l => l.id === 'tm1mdx')) {
+      monaco.languages.register({ id: 'tm1mdx' })
+    }
     monaco.languages.setMonarchTokensProvider('tm1mdx', { tokenizer: { root: [
-      [/--.*/, 'comment'], [/'[^']*'/, 'string'], [/\[([^\]]*)\]/, 'variable'],
+      [/--.*/, 'comment'], [/'[^']*'/, 'string'], [/"[^"]*"/, 'string'], [/\[([^\]]*)\]/, 'variable'],
       [/\b(SELECT|FROM|WHERE|ON|ROWS|COLUMNS|NON|EMPTY)\b/i, 'keyword'],
       [/\b(FILTER|CROSSJOIN|TOPCOUNT|BOTTOMCOUNT|ORDER|DESCENDANTS|UNION|INTERSECT|EXCEPT|LAG|LEAD)\b/i, 'type'],
       [/\b(TM1[A-Z_]+|HEAD|TAIL|LASTPERIODS|VAL|STRTOVALUE|STRTOMEMBER)\b/i, 'type'],
-      [/\b(CURRENTMEMBER|PROPERTIES|CHILDREN|ANCESTORS|PARENT|NEXTMEMBER|SIBLINGS|MEMBERS)\b/i, 'variable'],
+      [/\b(CURRENTMEMBER|PROPERTIES|CHILDREN|ANCESTORS|PARENT|NEXTMEMBER|PREVMEMBER|SIBLINGS|MEMBERS|ALLMEMBERS|DEFAULTMEMBER|FIRSTCHILD|LASTCHILD)\b/i, 'type'],
       [/[0-9]+(\.[0-9]+)?/, 'number'], [/[{}()\[\],.]/, 'operator'],
     ]}})
   }
@@ -974,7 +1047,7 @@ export default function GuidedMDXBuilder({ tab, server: serverProp, onSwitchToRa
     ? [{ num: 0, title: 'Pick Dimension' }, { num: 1, title: 'Build Set' }, { num: 2, title: 'Review' }]
     : [{ num: 0, title: 'Choose Cube' }, { num: 1, title: 'Assign Axes' }, { num: 2, title: 'Review' }]
 
-  const dimsList = isSubsetMode ? dims : cubeDims.filter(d => d !== measuresDim)
+  const dimsList = isSubsetMode ? dims : cubeDims
   const filteredDims = useMemo(() => {
     const q = filterText.trim().toLowerCase()
     return q ? dimsList.filter(d => d.toLowerCase().includes(q)) : dimsList
@@ -999,11 +1072,11 @@ export default function GuidedMDXBuilder({ tab, server: serverProp, onSwitchToRa
             {showRecent && (
               <div className="absolute top-full right-0 mt-1 bg-popover border border-border rounded shadow-lg z-50 py-1 min-w-[280px] max-h-[200px] overflow-auto">
                 <div className="flex items-center gap-1 px-2 py-1.5 border-b border-border">
-                  <input id="session-name-input" placeholder="Session name…"
+                  <input ref={sessionNameRef} placeholder="Session name…"
                     className="flex-1 px-1.5 py-0.5 text-[10px] border rounded bg-background"
                     onKeyDown={e => { if (e.key === 'Enter') { saveSession(e.target.value); e.target.value = '' } }} />
-                  <button onClick={() => { const input = document.getElementById('session-name-input'); saveSession(input.value); input.value = '' }}
-                    disabled={!viewMDX && !currentMDX}
+                  <button onClick={() => { saveSession(sessionNameRef.current?.value ?? ''); if (sessionNameRef.current) sessionNameRef.current.value = '' }}
+                    disabled={!activeMDX && !viewMDX && !currentMDX}
                     className="px-2 py-0.5 text-[10px] border rounded hover:bg-muted flex items-center gap-1 disabled:opacity-40">
                     <Save size={11} /> Save
                   </button>
@@ -1011,8 +1084,8 @@ export default function GuidedMDXBuilder({ tab, server: serverProp, onSwitchToRa
                 {recent.length === 0 && <div className="px-3 py-2 text-[10px] text-muted-foreground">No saved sessions</div>}
                 {recent.map((r, i) => (
                   <button key={i} onClick={() => loadSession(r)}
-                    className="w-full text-left px-3 py-1.5 text-[10px] hover:bg-muted flex items-center justify-between">
-                    <span className="font-mono truncate flex-1 mr-2">{r.dimension}</span>
+                    className="w-full text-left px-3 py-1.5 text-[10px] hover:bg-muted flex items-center justify-between gap-2">
+                    <span className="font-mono truncate flex-1">{r.name || r.cube || r.dimension}</span>
                     <span className="text-muted-foreground shrink-0">{new Date(r.time).toLocaleDateString()}</span>
                   </button>
                 ))}
@@ -1267,9 +1340,10 @@ export default function GuidedMDXBuilder({ tab, server: serverProp, onSwitchToRa
                     height="100%" language="tm1mdx"
                     value={currentMDX}
                     onChange={v => setCurrentMDX(v)}
+                    beforeMount={monaco => registerTM1Theme(monaco, dark)}
                     onMount={handleEditorMount}
                     options={{ fontSize: 11, minimap: { enabled: false }, wordWrap: 'on', scrollBeyondLastLine: false, lineNumbers: 'off', folding: false, renderLineHighlight: 'none', overviewRulerLanes: 0 }}
-                    theme={dark ? 'vs-dark' : 'vs'}
+                    theme="tm1-custom"
                   />
                 </div>
               </div>
@@ -1361,7 +1435,7 @@ export default function GuidedMDXBuilder({ tab, server: serverProp, onSwitchToRa
                 <div className="space-y-1.5">
                   {filteredDims.map(dim => {
                     const cur       = dimConfig[dim]?.axis || null
-                    const collapsed = collapsedBuilders.has(dim)
+                    const collapsed = !expandedBuilders.has(dim)
                     const cfg       = dimConfig[dim] || {}
 
                     // Compact summary shown when builder is collapsed
@@ -1402,29 +1476,31 @@ export default function GuidedMDXBuilder({ tab, server: serverProp, onSwitchToRa
                             className={cn('px-1.5 py-0.5 text-[10px] rounded border', cur === 'rows' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted')}>Rows</button>
                           <button onClick={() => setDimConfig(p => ({ ...p, [dim]: { axis: p[dim]?.axis === 'filter' ? null : 'filter', subsetExpression: p[dim]?.subsetExpression || '' } }))}
                             className={cn('px-1.5 py-0.5 text-[10px] rounded border', cur === 'filter' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted')}>Filt</button>
-                          {cur && (
+                          {cur && dim !== measuresDim && (
                             <button onClick={() => toggleBuilderCollapse(dim)}
                               className="p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground ml-0.5">
                               {collapsed ? <ChevronRight size={11} /> : <ChevronDown size={11} />}
                             </button>
                           )}
                         </div>
-                        {cur && !collapsed && (cur === 'columns' || cur === 'rows') && (
+                        {cur && !collapsed && dim !== measuresDim && (cur === 'columns' || cur === 'rows') && (
                           <AxisSetBuilder
                             dim={dim}
                             server={server}
                             measuresDim={measuresDim}
                             config={dimConfig[dim]}
                             onChange={cfg => setDimConfig(p => ({ ...p, [dim]: { ...p[dim], ...cfg } }))}
+                            returnTabId={tab?.id}
                           />
                         )}
-                        {cur && !collapsed && cur === 'filter' && (
+                        {cur && !collapsed && dim !== measuresDim && cur === 'filter' && (
                           <FilterBuilder
                             dim={dim}
                             server={server}
                             cube={selectedCube}
                             config={dimConfig[dim]}
                             onChange={cfg => setDimConfig(p => ({ ...p, [dim]: { ...p[dim], ...cfg } }))}
+                            returnTabId={tab?.id}
                           />
                         )}
                       </div>
@@ -1488,25 +1564,32 @@ export default function GuidedMDXBuilder({ tab, server: serverProp, onSwitchToRa
             <>
               <div className="flex items-center justify-between mb-2">
                 <div className="text-sm font-medium">Generated MDX</div>
-                <div className="flex gap-1">
+                <div className="flex gap-1 items-center">
                   {userEditedMDX && (
                     <button onClick={() => { setViewMDX(generatedMDX); setUserEditedMDX(false) }}
                       className="px-2 py-0.5 text-[9px] rounded border hover:bg-muted text-muted-foreground" title="Reset to generated MDX">↺ Reset</button>
                   )}
+                  <button
+                    onClick={() => { const f = formatMDX(viewMDX); setViewMDX(f); setUserEditedMDX(true) }}
+                    className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground transition-colors px-1.5 py-0.5 rounded hover:bg-muted"
+                    title="Format MDX">
+                    <WrapText size={10} /> Format
+                  </button>
                   <button onClick={runViewPreview} disabled={!activeMDX || previewLoading}
                     className="px-3 py-1 text-xs rounded bg-emerald-700 text-white hover:bg-emerald-600 flex items-center gap-1 disabled:opacity-40 transition-colors">
                     {previewLoading ? <Loader2 size={12} className="animate-spin" /> : <Play size={12} />} Execute
                   </button>
                 </div>
               </div>
-              <div className="rounded overflow-hidden mb-3 shrink-0" style={{ height: '55%', minHeight: 140 }}>
+              <div className="rounded overflow-hidden mb-3 flex-1 min-h-0">
                 <MonacoEditor
                   height="100%" language="tm1mdx"
                   value={viewMDX}
                   onChange={v => { setViewMDX(v); setUserEditedMDX(true) }}
+                  beforeMount={monaco => registerTM1Theme(monaco, dark)}
                   onMount={handleEditorMount}
                   options={{ fontSize: 11, minimap: { enabled: false }, wordWrap: 'on', scrollBeyondLastLine: false, folding: false, renderLineHighlight: 'none', overviewRulerLanes: 0, lineNumbers: 'on' }}
-                  theme={dark ? 'vs-dark' : 'vs'}
+                  theme="tm1-custom"
                 />
               </div>
             </>
@@ -1532,8 +1615,16 @@ export default function GuidedMDXBuilder({ tab, server: serverProp, onSwitchToRa
               </div>
             )
           })()}
-          <div className="text-xs font-medium text-muted-foreground">Results</div>
-          <div className="flex-1 min-h-0 rounded overflow-auto bg-background p-2">
+          {!isSubsetMode && (
+            <div onMouseDown={startResultsResize}
+              className="shrink-0 h-1.5 cursor-row-resize flex items-center justify-center hover:bg-primary/20 transition-colors group"
+              title="Drag to resize results">
+              <GripHorizontal size={12} className="text-muted-foreground/40 group-hover:text-primary/60" />
+            </div>
+          )}
+          <div className="text-xs font-medium text-muted-foreground shrink-0">Results</div>
+          <div className={cn('rounded overflow-auto bg-background p-2', isSubsetMode ? 'flex-1 min-h-0' : 'shrink-0')}
+            style={!isSubsetMode ? { height: resultsHeight } : undefined}>
             {isSubsetMode ? (
               previewLoading ? <div className="h-full flex items-center justify-center"><Loader2 size={14} className="animate-spin text-muted-foreground" /></div> :
               previewMembers && previewMembers.length > 0 && previewMembers[0]?.attributes ? (
@@ -1584,8 +1675,15 @@ export default function GuidedMDXBuilder({ tab, server: serverProp, onSwitchToRa
                 dimOrder={cubeDims}
                 slicerCoords={axes?.filter?.flatMap(d => {
                   const expr = dimConfig[d]?.subsetExpression?.trim()
-                  if (!expr || /[{}()[\]]/.test(expr)) return []
-                  return [{ dim: d, name: expr }]
+                  if (!expr) return []
+                  // Plain name — no brackets at all
+                  if (!/[{}()[\]]/.test(expr)) return [{ dim: d, name: expr }]
+                  // 3-part member ref [Dim].[Dim].[Member] — extract last bracket segment
+                  if (!/[{}()]/.test(expr)) {
+                    const parts = expr.match(/\[([^\]]+)\]/g)
+                    if (parts?.length) return [{ dim: d, name: parts[parts.length - 1].slice(1, -1) }]
+                  }
+                  return []
                 })}
               /> :
               previewError ? <div className="text-xs text-red-400 p-2">{previewError}</div> :
@@ -1599,7 +1697,11 @@ export default function GuidedMDXBuilder({ tab, server: serverProp, onSwitchToRa
       <div className="flex justify-between items-center px-4 py-2.5 border-t border-border shrink-0 bg-muted/30">
         <button onClick={back} disabled={step === 0}
           className="flex items-center gap-1 px-3 py-1.5 text-xs rounded border disabled:opacity-40 hover:bg-muted"><ArrowLeft size={13} /> Back</button>
-        <div className="text-[10px] text-muted-foreground">Step {step + 1} of {steps.length}</div>
+        <div className="text-[10px] text-muted-foreground">
+          {step === 1 && !isSubsetMode && cubeDims.some(d => !dimConfig[d]?.axis)
+            ? `${cubeDims.filter(d => !dimConfig[d]?.axis).length} dimension${cubeDims.filter(d => !dimConfig[d]?.axis).length !== 1 ? 's' : ''} unassigned`
+            : `Step ${step + 1} of ${steps.length}`}
+        </div>
         <button onClick={next} disabled={!canNext() || step === steps.length - 1}
           className="flex items-center gap-1 px-3 py-1.5 text-xs rounded bg-primary text-primary-foreground disabled:opacity-40">
           {step === steps.length - 1 ? 'Done' : 'Next'} <ArrowRight size={13} />

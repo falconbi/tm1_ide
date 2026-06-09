@@ -10,14 +10,15 @@ const extractError = async (r) => {
   } catch { return new Error(r.statusText) }
 }
 const get   = (url)       => fetch(url).then(async r => { if (!r.ok) throw await extractError(r); return r.json() })
-const post  = (url, body) => fetch(url, { method: 'POST',   headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(async r => { if (!r.ok) throw await extractError(r); return r.json() })
+const post  = (url, body) => fetch(url, { method: 'POST',   headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(async r => { if (!r.ok) throw await extractError(r); const d = await r.json(); if (d?.noSession) window.dispatchEvent(new CustomEvent('tm1-no-session')); return d })
 const del   = (url)       => fetch(url, { method: 'DELETE' }).then(async r => { if (!r.ok) throw await extractError(r); return r.json() })
 const patch = (url, body) => fetch(url, { method: 'PATCH',  headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(async r => { if (!r.ok) throw await extractError(r); return r.json() })
 
 const enc = encodeURIComponent
 
 export const useServers   = ()                    => useQuery({ queryKey: ['servers'],                    queryFn: () => get('/api/servers') })
-export const useElements      = (server, dim, hierarchy) => useQuery({ queryKey: ['elements', server, dim, hierarchy],      queryFn: () => get(`/api/elements?server=${enc(server)}&dimension=${enc(dim)}${hierarchy ? `&hierarchy=${enc(hierarchy)}` : ''}`),      enabled: !!server && !!dim })
+export const useElements           = (server, dim, hierarchy) => useQuery({ queryKey: ['elements', server, dim, hierarchy],           queryFn: () => get(`/api/elements?server=${enc(server)}&dimension=${enc(dim)}${hierarchy ? `&hierarchy=${enc(hierarchy)}` : ''}`),           enabled: !!server && !!dim })
+export const useElementsWithIndex  = (server, dim, hierarchy) => useQuery({ queryKey: ['elements-index', server, dim, hierarchy],     queryFn: () => get(`/api/elements?server=${enc(server)}&dimension=${enc(dim)}${hierarchy ? `&hierarchy=${enc(hierarchy)}` : ''}&index=1`), enabled: !!server && !!dim })
 export const useElementsTree  = (server, dim, hierarchy) => useQuery({ queryKey: ['elements-tree', server, dim, hierarchy], queryFn: () => get(`/api/elements/tree?server=${enc(server)}&dimension=${enc(dim)}${hierarchy ? `&hierarchy=${enc(hierarchy)}` : ''}`), enabled: !!server && !!dim, staleTime: 60_000 })
 export const useEdges     = (server, dim, hierarchy) => useQuery({ queryKey: ['edges', server, dim, hierarchy],    queryFn: () => get(`/api/edges?server=${enc(server)}&dimension=${enc(dim)}${hierarchy ? `&hierarchy=${enc(hierarchy)}` : ''}`),    enabled: !!server && !!dim })
 export const useCubes    = (server)     => useQuery({ queryKey: ['cubes', server],     queryFn: () => get(`/api/cubes?server=${enc(server)}`),      enabled: !!server })
@@ -241,8 +242,16 @@ export const useExecuteMDX = () => useMutation({
 })
 
 export const useSaveView = () => useMutation({
-  mutationFn: ({ server, cube, name, mdx }) =>
-    post(`/api/view/save?server=${enc(server)}&cube=${enc(cube)}&name=${enc(name)}`, { mdx }),
+  mutationFn: ({ server, cube, name, mdx, nativeAxes }) =>
+    post(`/api/view/save?server=${enc(server)}&cube=${enc(cube)}&name=${enc(name)}`,
+         nativeAxes ? { nativeAxes } : { mdx }),
+})
+
+export const useMultiFormatAttrs = (server, dims) => useQuery({
+  queryKey: ['format-attrs', server, ...(dims ?? []).slice().sort()],
+  queryFn:  () => get(`/api/dimensions/format-attrs?server=${enc(server)}&dims=${(dims ?? []).map(enc).join(',')}`),
+  enabled:  !!server && !!(dims?.length),
+  staleTime: 60_000,
 })
 
 export const useElementsWithAttrs = (server, dim, hierarchy) => useQuery({
@@ -315,6 +324,13 @@ export const useAttrGrid = (server, dimension, hierarchy) => useQuery({
   staleTime: 30_000,
 })
 
+export const useAliasValues = (server, dim, aliasAttr) => useQuery({
+  queryKey: ['alias-values', server, dim, aliasAttr],
+  queryFn:  () => get(`/api/dimension/alias-values?server=${enc(server)}&dimension=${enc(dim)}&alias=${enc(aliasAttr)}`),
+  enabled:  !!server && !!dim && !!aliasAttr,
+  staleTime: 60_000,
+})
+
 export const useWriteElementAttribute = () => useMutation({
   mutationFn: (body) => post('/api/element/attribute', body),
 })
@@ -328,6 +344,34 @@ export const useSubsetUsage = (server, dimension, subset) => useQuery({
   queryKey: ['subset-usage', server, dimension, subset],
   queryFn:  () => get(`/api/subset/usage?server=${enc(server)}&dimension=${enc(dimension)}&subset=${enc(subset)}`),
   enabled:  !!server && !!dimension && !!subset,
+  staleTime: 0,
+})
+
+export const useViewUsage = (server, cube, view) => useQuery({
+  queryKey: ['view-usage', server, cube, view],
+  queryFn:  () => get(`/api/view/usage?server=${enc(server)}&cube=${enc(cube)}&view=${enc(view)}`),
+  enabled:  false,
+  staleTime: 0,
+})
+
+export const useDimensionUsage = (server, dimension) => useQuery({
+  queryKey: ['dimension-usage', server, dimension],
+  queryFn:  () => get(`/api/dimension/usage?server=${enc(server)}&dimension=${enc(dimension)}`),
+  enabled:  !!server && !!dimension,
+  staleTime: 0,
+})
+
+export const useCubeUsage = (server, cube) => useQuery({
+  queryKey: ['cube-usage', server, cube],
+  queryFn:  () => get(`/api/cube/usage?server=${enc(server)}&cube=${enc(cube)}`),
+  enabled:  !!server && !!cube,
+  staleTime: 0,
+})
+
+export const useProcessUsage = (server, process) => useQuery({
+  queryKey: ['process-usage', server, process],
+  queryFn:  () => get(`/api/process/usage?server=${enc(server)}&process=${enc(process)}`),
+  enabled:  !!server && !!process,
   staleTime: 0,
 })
 
@@ -390,6 +434,28 @@ export const useActiveConfiguration  = (server, opts = {}) => useQuery({ queryKe
 export const usePatchConfiguration   = () => useMutation({ mutationFn: ({ server, section, values }) => patch('/api/admin/configuration', { server, section, values }) })
 export const useMaintenanceMode      = () => useMutation({ mutationFn: ({ server, enable }) => post(`/api/admin/maintenance/${enable ? 'enable' : 'disable'}`, { server }) })
 
-// ── Sessions ──────────────────────────────────────────────────────────────────
+// ── TM1 Sessions (who is connected) ──────────────────────────────────────────
 export const useSessions          = (server, opts = {}) => useQuery({ queryKey: ['sessions', server], queryFn: () => get(`/api/sessions?server=${enc(server)}`), enabled: !!server, staleTime: 0, ...opts })
 export const useDisconnectSession = () => useMutation({ mutationFn: ({ server, id }) => del(`/api/session?server=${enc(server)}&id=${enc(id)}`) })
+
+// ── Change log / Work sessions ────────────────────────────────────────────────
+export const useActiveWorkSession  = (server) => useQuery({ queryKey: ['work-session-active', server], queryFn: () => get(`/api/sessions/active?server=${enc(server)}`), enabled: !!server, staleTime: 0, refetchInterval: 0 })
+export const useWorkSessions       = (server) => useQuery({ queryKey: ['work-sessions', server], queryFn: () => get(`/api/sessions?server=${enc(server)}`), enabled: !!server, staleTime: 0 })
+export const useWorkSessionLog     = (sessionId) => useQuery({ queryKey: ['work-session-log', sessionId], queryFn: () => get(`/api/sessions/${enc(sessionId)}/log`), enabled: !!sessionId, staleTime: 0 })
+export const useRecentLog          = (server) => useQuery({ queryKey: ['recent-log', server], queryFn: () => get(`/api/log/recent?server=${enc(server)}`), enabled: !!server, staleTime: 0 })
+export const useStartWorkSession   = () => { const qc = useQueryClient(); return useMutation({ mutationFn: (body) => post('/api/sessions/start', body), onSuccess: (_, v) => { qc.invalidateQueries({ queryKey: ['work-session-active', v.server] }); qc.invalidateQueries({ queryKey: ['work-sessions', v.server] }) } }) }
+export const useCloseWorkSession   = () => { const qc = useQueryClient(); return useMutation({ mutationFn: (body) => post('/api/sessions/close', body), onSuccess: (_, v) => { qc.invalidateQueries({ queryKey: ['work-session-active'] }); qc.invalidateQueries({ queryKey: ['work-sessions'] }) } }) }
+export const useResumeWorkSession  = () => { const qc = useQueryClient(); return useMutation({ mutationFn: (body) => post('/api/sessions/resume', body), onSuccess: (_, v) => { qc.invalidateQueries({ queryKey: ['work-session-active'] }); qc.invalidateQueries({ queryKey: ['work-sessions'] }) } }) }
+
+// ── Files availability probe ──────────────────────────────────────────────────
+export const useFilesAvailable = (server) => useQuery({
+  queryKey: ['files-available', server],
+  queryFn:  async () => {
+    const r = await fetch(`/api/files/list?server=${enc(server)}&path=${enc(JSON.stringify(['Files']))}`)
+    if (r.status === 404) return false
+    return true
+  },
+  enabled:   !!server,
+  staleTime: Infinity,
+  retry:     false,
+})

@@ -1,7 +1,7 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react'
 import { DndContext, DragOverlay, PointerSensor, useSensor, useSensors, useDroppable, useDraggable } from '@dnd-kit/core'
 import { useStore } from '@/store'
-import { useCubeDimensions, useSubsets, useSubsetElements, useViews, useExecuteMDX, useViewAxes } from '@/hooks/useApi'
+import { useCubeDimensions, useSubsets, useSubsetElements, useViews, useExecuteMDX, useViewAxes, useDimAttributes } from '@/hooks/useApi'
 import { toast } from 'sonner'
 import { RefreshCw, Loader2, Table2, GripVertical, X, LayoutGrid, Rows3, Columns3, Filter, ZapOff, Zap, ChevronLeft, ChevronRight, PencilLine } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -103,11 +103,14 @@ function SubsetPopover({ server, dim, zone, subsets, onSubsetSelect, onMemberSel
 
 // ── Draggable dimension pill ──────────────────────────────────────────────────
 
-function DimPill({ id, dim, zone, server, onRemove, onSubsetChange, onMemberChange, onMoveLeft, onMoveRight }) {
+function DimPill({ id, dim, zone, server, onRemove, onSubsetChange, onMemberChange, onMoveLeft, onMoveRight, activeAlias, onAliasChange }) {
     const { attributes, listeners, setNodeRef: setDragRef, isDragging } = useDraggable({ id })
     const { setNodeRef: setDropRef, isOver } = useDroppable({ id: `dim:${dim.dimension}` })
     const { data: subsets = [] } = useSubsets(server, dim.dimension)
+    const { data: dimAttrs = [] } = useDimAttributes(server, dim.dimension)
+    const aliasAttrs = dimAttrs.filter(a => a.type === 'Alias')
     const [open, setOpen] = useState(false)
+    const [aliasOpen, setAliasOpen] = useState(false)
     const ref = useRef(null)
     const openTab = useStore(s => s.openTab)
 
@@ -124,11 +127,11 @@ function DimPill({ id, dim, zone, server, onRemove, onSubsetChange, onMemberChan
     }
 
     useEffect(() => {
-        if (!open) return
-        const handler = e => { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
+        if (!open && !aliasOpen) return
+        const handler = e => { if (ref.current && !ref.current.contains(e.target)) { setOpen(false); setAliasOpen(false) } }
         document.addEventListener('mousedown', handler)
         return () => document.removeEventListener('mousedown', handler)
-    }, [open])
+    }, [open, aliasOpen])
 
     const label = dim.member ?? dim.subset ?? (zone === 'bench' ? null : 'Members')
 
@@ -155,6 +158,28 @@ function DimPill({ id, dim, zone, server, onRemove, onSubsetChange, onMemberChan
                 </button>
                 {label && (
                     <span className="text-[10px] text-primary/70 truncate max-w-[80px] shrink-0">{label}</span>
+                )}
+                {zone !== 'bench' && aliasAttrs.length > 0 && (
+                    <div className="relative">
+                        <button
+                            onClick={e => { e.stopPropagation(); setAliasOpen(o => !o) }}
+                            className={cn('text-[9px] font-bold px-1 rounded transition-colors',
+                                activeAlias ? 'text-amber-400' : 'text-muted-foreground/40 hover:text-amber-400/70')}
+                            title={activeAlias ? `Alias: ${activeAlias}` : 'Display alias'}
+                        >A</button>
+                        {aliasOpen && (
+                            <div className="absolute top-full left-0 mt-0.5 bg-popover border border-border rounded shadow-lg z-50 min-w-[120px] py-0.5">
+                                <button onClick={() => { onAliasChange?.(dim.dimension, null); setAliasOpen(false) }}
+                                    className={cn('w-full text-left px-2.5 py-1 text-[10px] hover:bg-muted', !activeAlias && 'text-primary')}>None</button>
+                                {aliasAttrs.map(a => (
+                                    <button key={a.name} onClick={() => { onAliasChange?.(dim.dimension, a.name); setAliasOpen(false) }}
+                                        className={cn('w-full text-left px-2.5 py-1 text-[10px] hover:bg-muted font-mono', activeAlias === a.name && 'text-amber-400')}>
+                                        {a.name}
+                                    </button>
+                                ))}
+                            </div>
+                        )}
+                    </div>
                 )}
                 {zone !== 'bench' && (
                     <div className="flex items-center ml-0.5">
@@ -196,7 +221,7 @@ function DimPill({ id, dim, zone, server, onRemove, onSubsetChange, onMemberChan
 
 // ── Drop zone ─────────────────────────────────────────────────────────────────
 
-function DropZone({ id, label, icon: Icon, dims, server, onRemove, onSubsetChange, onMemberChange, onReorder, accent }) {
+function DropZone({ id, label, icon: Icon, dims, server, onRemove, onSubsetChange, onMemberChange, onReorder, accent, dimAliases, onAliasChange }) {
     const { setNodeRef, isOver } = useDroppable({ id })
     return (
         <div ref={setNodeRef}
@@ -214,6 +239,7 @@ function DropZone({ id, label, icon: Icon, dims, server, onRemove, onSubsetChang
                         onSubsetChange={onSubsetChange} onMemberChange={onMemberChange}
                         onMoveLeft={i > 0 ? () => onReorder(i, i - 1) : null}
                         onMoveRight={i < dims.length - 1 ? () => onReorder(i, i + 1) : null}
+                        activeAlias={dimAliases?.[d.dimension]} onAliasChange={onAliasChange}
                     />
                 ))}
                 {dims.length === 0 && (
@@ -236,6 +262,18 @@ export default function CubeViewer({ tab }) {
     const [result, setResult] = useState(null)
     const [suppressZeros, setSuppressZeros] = useState(true)
     const [activeDrag, setActiveDrag] = useState(null)
+    const [dimAliases, setDimAliases]         = useState({})
+    const [aliasValueMaps, setAliasValueMaps] = useState({})
+    const handleAliasChange = useCallback(async (dim, attr) => {
+        setDimAliases(prev => ({ ...prev, [dim]: attr || null }))
+        if (!attr) return
+        const key = `${dim}:${attr}`
+        if (aliasValueMaps[key]) return
+        try {
+            const r = await fetch(`/api/dimension/alias-values?server=${encodeURIComponent(tab.server)}&dimension=${encodeURIComponent(dim)}&alias=${encodeURIComponent(attr)}`)
+            if (r.ok) { const map = await r.json(); setAliasValueMaps(prev => ({ ...prev, [key]: map })) }
+        } catch {}
+    }, [tab.server, aliasValueMaps])
 
     const viewLoaded = useRef(false)
     const defaultExecuted = useRef(false)
@@ -396,6 +434,24 @@ export default function CubeViewer({ tab }) {
     const allDims = useMemo(() => [...axes.rows, ...axes.columns, ...axes.pages, ...bench], [axes, bench])
     const activeDim = activeDrag ? allDims.find(d => d.dimension === activeDrag) : null
 
+    const aliasActive  = Object.values(dimAliases).some(Boolean)
+    const displayAxes  = useMemo(() => {
+        if (!result?.Axes || !aliasActive) return result?.Axes
+        return result.Axes.map(axis => ({
+            ...axis,
+            Tuples: axis.Tuples.map(tuple => ({
+                ...tuple,
+                Members: tuple.Members.map(m => {
+                    const dim  = m.UniqueName?.match(/^\[([^\]]+)\]/)?.[1]
+                    const attr = dim ? dimAliases[dim] : null
+                    if (!attr) return m
+                    const v = aliasValueMaps[`${dim}:${attr}`]?.[m.Name]
+                    return v ? { ...m, Name: v } : m
+                })
+            }))
+        }))
+    }, [result?.Axes, dimAliases, aliasValueMaps]) // eslint-disable-line
+
     return (
         <div className="flex flex-col h-full min-h-0">
             {/* Toolbar */}
@@ -419,7 +475,7 @@ export default function CubeViewer({ tab }) {
                 </button>
                 <button onClick={handleExecute} disabled={executeMDX.isPending || loadViewAxes.isPending}
                     title="Refresh"
-                    className="flex items-center justify-center p-1.5 rounded border border-border text-muted-foreground hover:bg-muted disabled:opacity-50 transition-colors">
+                    className="flex items-center justify-center p-1.5 rounded border border-emerald-600 text-emerald-500 hover:bg-emerald-600/10 disabled:opacity-50 transition-colors">
                     {executeMDX.isPending ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
                 </button>
             </div>
@@ -427,9 +483,9 @@ export default function CubeViewer({ tab }) {
             {/* Axis builder */}
             <DndContext sensors={sensors} onDragStart={({ active }) => setActiveDrag(active.id)} onDragEnd={handleDragEnd}>
                 <div className="shrink-0 px-3 py-2 border-b border-border bg-muted/10 grid grid-cols-4 gap-2">
-                    <DropZone id="columns" label="Columns" icon={Columns3} dims={axes.columns} server={tab.server} onRemove={removeDim} onSubsetChange={setSubset} onMemberChange={setMember} onReorder={(f,t) => reorderDim('columns',f,t)} accent="text-blue-400" />
-                    <DropZone id="rows"    label="Rows"    icon={Rows3}    dims={axes.rows}    server={tab.server} onRemove={removeDim} onSubsetChange={setSubset} onMemberChange={setMember} onReorder={(f,t) => reorderDim('rows',f,t)}    accent="text-green-400" />
-                    <DropZone id="pages"   label="Filter"  icon={Filter}   dims={axes.pages}   server={tab.server} onRemove={removeDim} onSubsetChange={setSubset} onMemberChange={setMember} onReorder={(f,t) => reorderDim('pages',f,t)}   accent="text-amber-400" />
+                    <DropZone id="columns" label="Columns" icon={Columns3} dims={axes.columns} server={tab.server} onRemove={removeDim} onSubsetChange={setSubset} onMemberChange={setMember} onReorder={(f,t) => reorderDim('columns',f,t)} accent="text-blue-400"       dimAliases={dimAliases} onAliasChange={handleAliasChange} />
+                    <DropZone id="rows"    label="Rows"    icon={Rows3}    dims={axes.rows}    server={tab.server} onRemove={removeDim} onSubsetChange={setSubset} onMemberChange={setMember} onReorder={(f,t) => reorderDim('rows',f,t)}    accent="text-green-400"     dimAliases={dimAliases} onAliasChange={handleAliasChange} />
+                    <DropZone id="pages"   label="Filter"  icon={Filter}   dims={axes.pages}   server={tab.server} onRemove={removeDim} onSubsetChange={setSubset} onMemberChange={setMember} onReorder={(f,t) => reorderDim('pages',f,t)}   accent="text-amber-400"     dimAliases={dimAliases} onAliasChange={handleAliasChange} />
                     <DropZone id="bench"   label="Bench"   icon={LayoutGrid} dims={bench}      server={tab.server} onRemove={() => {}}  onSubsetChange={() => {}}  onMemberChange={() => {}}  onReorder={() => {}}                           accent="text-muted-foreground" />
                 </div>
                 <DragOverlay>
@@ -452,7 +508,7 @@ export default function CubeViewer({ tab }) {
             ) : (
                 <div className="flex-1 min-h-0">
                     <ResultGrid
-                        axes={result.Axes}
+                        axes={displayAxes ?? result.Axes}
                         cells={result.Cells}
                         truncated={result.truncated}
                         server={tab.server}

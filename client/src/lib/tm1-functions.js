@@ -1116,10 +1116,12 @@ function registerTM1Completions(monaco, getServer) {
       root: [
         [/--.*/, 'comment'],
         [/'[^']*'/, 'string'],
+        [/"[^"]*"/, 'string'],
         [/\[([^\]]*)\]/, 'variable'],
         [/\b(SELECT|FROM|WHERE|ON|ROWS|COLUMNS|AXIS|WITH|MEMBER|AS|SET|NON|EMPTY)\b/i, 'keyword'],
         [/\b(FILTER|CROSSJOIN|TOPCOUNT|BOTTOMCOUNT|ORDER|DESCENDANTS|ANCESTORS|NONEMPTY|INTERSECT|UNION|EXCEPT|GENERATE|EXTRACT|PERIODSTODATE|PARALLELPERIOD|LAG|LEAD)\b/i, 'type'],
         [/\b(TM1FILTERBYLEVEL|TM1FILTERBYPATTERN|TM1SORT|TM1MEMBER|TM1DRILLDOWNMEMBER|TM1DRILLDOWNLEVEL)\b/i, 'type'],
+        [/\b(CURRENTMEMBER|PROPERTIES|CHILDREN|ANCESTORS|PARENT|NEXTMEMBER|PREVMEMBER|SIBLINGS|MEMBERS|ALLMEMBERS|DEFAULTMEMBER|FIRSTCHILD|LASTCHILD)\b/i, 'type'],
         [/[0-9]+(\.[0-9]+)?/, 'number'],
         [/[{}()\[\],.]/, 'operator'],
       ]

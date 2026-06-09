@@ -449,3 +449,75 @@ tools/
 
 The same diff and report logic is exposed as IDE server routes — the IDE can show the
 targeted diff and pre-deploy report inline without leaving the browser.
+
+---
+
+## Test Data Seeding
+
+The package system deploys **model only** — structure, rules, processes, views. Test data
+is seeded separately using TI processes built as part of each module.
+
+### Two types of seed data
+
+**Attribute data** — element attribute values in `}ElementAttributes_*` control cubes:
+
+- TI process using `AttrPutS` / `AttrPutN` to write known attribute values per element
+- Example: set `APR_DriverGroup` values for all Entity elements
+
+**Cube data** — cell values in regular cubes:
+
+- TI process that reads a CSV file and loads values using `CellPutN` / `CellPutS`
+- Example: load test budget amounts into `APR_Allocation`
+
+### Seed package structure
+
+Seed processes live in a dedicated seed package per module, deployed to Dev and Test only:
+
+```
+packages/
+  apportionment/          ← model package (all environments)
+  apportionment-seed/     ← data seed package (dev + test only)
+    tm1package.yaml
+    processes/
+      APR_Seed_Attributes.yaml   ← loads attribute values via AttrPutS/AttrPutN
+      APR_Seed_CubeData.yaml     ← loads cube values from CSV
+    data/
+      APR_Seed_CubeData.csv      ← test data file
+```
+
+The `tm1package.yaml` for seed packages carries an environment restriction:
+
+```yaml
+name: apportionment-seed
+environments: [dev, test]    # never deploy to prod
+deploy_after: [apportionment] # model must exist before seeding
+```
+
+### Seed execution order
+
+Attributes must be seeded before cube data (cube processes may depend on attribute values):
+
+```
+1. APR_Seed_Attributes    ← AttrPutS/AttrPutN for all relevant dimensions
+2. APR_Seed_CubeData      ← CellPutN/CellPutS from CSV
+```
+
+A seed chore chains all seed processes in the correct order and can be run on demand
+from the IDE.
+
+### CSV file placement
+
+Seed CSV files need to be present on the server's Files directory before the TI processes
+run. On Dev and Test, place them manually or via the IDE Files panel (PA v12+). The CSV
+files are version-controlled in Git alongside the seed package — the deployer copies them
+to the server's Files directory as part of `tm1deploy apply`.
+
+### CLI
+
+```bash
+# Deploy seed package to Test (model package must already be deployed)
+tm1deploy apply --package apportionment-seed --target test
+
+# Run seed chore via IDE or:
+tm1deploy seed-run --package apportionment-seed --target test
+```

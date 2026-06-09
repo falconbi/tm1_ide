@@ -739,7 +739,7 @@ export default function EditorPane({ groupId }) {
         {getRevealTarget(tab) && (
           <button
             onClick={() => setRevealTarget(getRevealTarget(tab))}
-            className="ml-auto flex items-center gap-1 hover:text-foreground transition-colors"
+            className="ml-auto flex items-center gap-1 text-amber-400 hover:text-amber-300 transition-colors"
             title="Show in tree"
           >
             <Locate size={11} /> Show in tree

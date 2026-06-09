@@ -14,6 +14,7 @@ export const COLOUR_THEMES = [
     rules: {
       area_prefix:  '#ff79c6',
       keyword:      '#8be9fd',
+      mdx_keyword:  '#ff79c6',
       function:     '#50fa7b',
       string:       '#f1fa8c',
       dim_var:      '#bd93f9',
@@ -44,6 +45,7 @@ export const COLOUR_THEMES = [
     rules: {
       area_prefix:  '#c586c0',
       keyword:      '#569cd6',
+      mdx_keyword:  '#c586c0',
       function:     '#dcdcaa',
       string:       '#ce9178',
       dim_var:      '#9cdcfe',
@@ -74,6 +76,7 @@ export const COLOUR_THEMES = [
     rules: {
       area_prefix:  '#f92672',
       keyword:      '#f92672',
+      mdx_keyword:  '#f92672',
       function:     '#a6e22e',
       string:       '#e6db74',
       dim_var:      '#66d9e8',
@@ -104,6 +107,7 @@ export const COLOUR_THEMES = [
     rules: {
       area_prefix:  '#c678dd',
       keyword:      '#c678dd',
+      mdx_keyword:  '#c678dd',
       function:     '#61afef',
       string:       '#98c379',
       dim_var:      '#e06c75',
@@ -134,6 +138,7 @@ export const COLOUR_THEMES = [
     rules: {
       area_prefix:  '#af00db',
       keyword:      '#0000ff',
+      mdx_keyword:  '#af00db',
       function:     '#795e26',
       string:       '#a31515',
       dim_var:      '#001080',
@@ -288,6 +293,14 @@ export function buildMonacoTheme(baseTheme, colourSettings) {
       { token: 'punctuation.tm1rules', foreground: r.punctuation },
       // Directives
       { token: 'directive.tm1rules', foreground: r.directive },
+      // MDX editor tokens
+      { token: 'keyword.tm1mdx',  foreground: r.mdx_keyword ?? r.keyword },
+      { token: 'type.tm1mdx',     foreground: r.function },
+      { token: 'variable.tm1mdx', foreground: r.dim_var },
+      { token: 'string.tm1mdx',   foreground: r.string },
+      { token: 'number.tm1mdx',   foreground: r.number },
+      { token: 'comment.tm1mdx',  foreground: r.comment },
+      { token: 'operator.tm1mdx', foreground: r.operator },
       // Default
       { token: '', foreground: r.default },
     ],

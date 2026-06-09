@@ -2,13 +2,13 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import MonacoEditor from '@monaco-editor/react'
 import { useQueryClient } from '@tanstack/react-query'
 import { useStore } from '@/store'
-import { useSubset, useSaveSubset, usePreviewMDX, useGenerateMDX, useElements, useSubsetUsage, useAttrGrid } from '@/hooks/useApi'
+import { useSubset, useSaveSubset, usePreviewMDX, useGenerateMDX, useElements, useSubsetUsage, useAttrGrid, useDimAttributes, useAliasValues } from '@/hooks/useApi'
 import { MDX_CATALOG, MDX_FUNCTIONS_FLAT } from '@/lib/tm1-mdx-catalog'
 import { MDX_PATTERN_CATEGORIES } from '@/lib/tm1-mdx-primer-patterns'
 import { subsetApplyCallbacks } from '@/lib/subsetCallbacks'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
-import { Play, Loader2, Sparkles, Copy, Search, ChevronDown, ChevronRight, ChevronLeft, Box, Cog, MapPin, Clock, Save, AlignLeft, Check, X } from 'lucide-react'
+import { Play, Loader2, Sparkles, Copy, Search, ChevronDown, ChevronRight, ChevronLeft, Box, Cog, Locate, Clock, Save, AlignLeft, Check, X, GripHorizontal } from 'lucide-react'
 import SubsetVisualEditor from './SubsetVisualEditor'
 
 const TYPE_ICON  = { N: '○', C: '◆', S: '"' }
@@ -237,7 +237,7 @@ function registerMDXLanguage(monaco, dimension, getElements) {
 
 // ── Main Component ────────────────────────────────────────────────────────────
 export default function SubsetEditor({ tab }) {
-  const { server, dark, markTabSaved, bumpSubsetVersion, closeTab, openTab } = useStore()
+  const { server, dark, markTabSaved, bumpSubsetVersion, closeTab, openTab, setActiveTab } = useStore()
   const queryClient = useQueryClient()
   const { data, isLoading } = useSubset(tab.server, tab.dimension, tab.subsetName)
   const saveSubset  = useSaveSubset()
@@ -248,18 +248,35 @@ export default function SubsetEditor({ tab }) {
 
   const hasApply = !!subsetApplyCallbacks.get(tab.id)
 
-  const [mode, _setMode]     = useState('visual')
+  const [mode, _setMode]     = useState(hasApply ? 'mdx' : 'visual')
   const visualDirtyRef       = useRef(false)
   const visualMembersRef     = useRef([])
   const [mdx, setMdx]        = useState(null)
   const [members, setMembers] = useState(null)
   const [dirty, setDirty]    = useState(false)
   const [showAttrs, setShowAttrs] = useState(false)
+  const [activeAlias, setActiveAlias] = useState(null)
   const [rightTab, setRightTab] = useState('functions')
-  const { data: attrGrid } = useAttrGrid(showAttrs ? tab.server : null, tab.dimension, tab.dimension)
+  const { data: dimAttrs = [] } = useDimAttributes(tab.server, tab.dimension)
+  const aliasAttrs = dimAttrs.filter(a => a.type === 'Alias')
+  const { data: aliasValues } = useAliasValues(tab.server, tab.dimension, activeAlias)
+  const { data: attrGrid } = useAttrGrid(showAttrs || activeAlias ? tab.server : null, tab.dimension, tab.dimension)
   const [rightWidth, setRightWidth] = useState(400)
   const [rightCollapsed, setRightCollapsed] = useState(false)
   const dragRef = useRef(null)
+  const [resultsHeight, setResultsHeight] = useState(224)
+  const startResultsResize = useCallback((e) => {
+    e.preventDefault()
+    const startY = e.clientY
+    const startH = resultsHeight
+    const onMove = (mv) => {
+      const delta = startY - mv.clientY
+      setResultsHeight(Math.max(80, Math.min(startH + delta, 600)))
+    }
+    const onUp = () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp) }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+  }, [resultsHeight])
   const [validating, setValidating] = useState(false)
   const [aiPrompt, setAiPrompt] = useState('')
   const [copyingPrompt, setCopyingPrompt] = useState(false)
@@ -347,10 +364,11 @@ export default function SubsetEditor({ tab }) {
 
   const handleApply = () => {
     const cb = subsetApplyCallbacks.get(tab.id)
-    if (cb) { cb(mdx); subsetApplyCallbacks.delete(tab.id); closeTab(tab.id) }
+    if (cb) { cb(mdx); subsetApplyCallbacks.delete(tab.id); if (tab.returnTabId) setActiveTab(tab.returnTabId); closeTab(tab.id) }
   }
 
   const handleSave = () => {
+    if (!tab.subsetName) { setSaveAsOpen(true); return }
     const id = toast.loading('Saving…')
     saveSubset.mutate(
       { server: tab.server, dimension: tab.dimension, name: tab.subsetName, mdx },
@@ -468,8 +486,8 @@ export default function SubsetEditor({ tab }) {
             : { type: 'dimension', server: tab.server, dimension: tab.dimension }
           )
         }}
-          className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors" title="Show in tree">
-          <MapPin size={11} />
+          className="p-1 rounded hover:bg-muted text-amber-400 hover:text-amber-300 transition-colors" title="Show in tree">
+          <Locate size={11} />
         </button>
       </div>
 
@@ -627,7 +645,15 @@ export default function SubsetEditor({ tab }) {
 
               {/* Results panel — below editor, shown after Execute */}
               {(members !== null || previewMDX.isPending) && (
-                <div className="h-56 shrink-0 border-t border-border flex flex-col bg-muted/5">
+                <div
+                  onMouseDown={startResultsResize}
+                  className="shrink-0 h-1.5 cursor-row-resize flex items-center justify-center hover:bg-primary/20 transition-colors group border-t border-border"
+                  title="Drag to resize results">
+                  <GripHorizontal size={12} className="text-muted-foreground/40 group-hover:text-primary/60" />
+                </div>
+              )}
+              {(members !== null || previewMDX.isPending) && (
+                <div className="shrink-0 border-t border-border flex flex-col bg-muted/5" style={{ height: resultsHeight }}>
                   {/* Results header */}
                   <div className="flex items-center gap-2 px-3 py-1.5 border-b border-border shrink-0">
                     <span className="text-xs font-medium">
@@ -639,6 +665,14 @@ export default function SubsetEditor({ tab }) {
                           showAttrs ? 'bg-primary/20 border-primary/40 text-primary' : 'border-border text-muted-foreground hover:bg-muted')}>
                         Attributes
                       </button>
+                    )}
+                    {members !== null && aliasAttrs.length > 0 && (
+                      <select value={activeAlias ?? ''} onChange={e => setActiveAlias(e.target.value || null)}
+                        className="text-[10px] border border-border rounded bg-background px-1.5 py-0 text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+                        title="Display alias instead of element name">
+                        <option value="">Name</option>
+                        {aliasAttrs.map(a => <option key={a.name} value={a.name}>{a.name}</option>)}
+                      </select>
                     )}
                     <button onClick={() => setMembers(null)} className="ml-auto text-muted-foreground hover:text-foreground p-1 rounded hover:bg-muted transition-colors">
                       <X size={11} />
@@ -658,7 +692,12 @@ export default function SubsetEditor({ tab }) {
                             <div className="w-8 shrink-0" />
                             <div className="flex-1 px-3 py-1 text-[10px] font-semibold text-muted-foreground">Element</div>
                             {attrGrid.attrs.map(a => (
-                              <div key={a.Name} className="w-32 shrink-0 px-2 py-1 text-[10px] font-semibold text-muted-foreground truncate border-l border-border/40">{a.Name}</div>
+                              <div key={a.Name} className="w-32 shrink-0 px-2 py-1 text-[10px] font-semibold text-muted-foreground truncate border-l border-border/40 flex items-center gap-1">
+                                <span className="truncate">{a.Name}</span>
+                                <span className={cn('text-[8px] font-bold shrink-0', a.Type === 'Numeric' ? 'text-sky-400/70' : a.Type === 'Alias' ? 'text-amber-400/70' : 'text-muted-foreground/50')}>
+                                  {a.Type === 'Numeric' ? 'N' : a.Type === 'Alias' ? 'A' : 'S'}
+                                </span>
+                              </div>
                             ))}
                           </div>
                         )}
@@ -667,7 +706,9 @@ export default function SubsetEditor({ tab }) {
                           return (
                             <div key={m.name} className={cn('flex items-center gap-0 hover:bg-muted/40', i % 2 === 0 ? '' : 'bg-muted/10')}>
                               <span className={cn('w-8 shrink-0 text-center text-[10px]', TYPE_COLOR[m.type])}>{TYPE_ICON[m.type] ?? '·'}</span>
-                              <span className="flex-1 px-3 py-0.5 text-xs font-mono truncate">{m.name}</span>
+                              <span className="flex-1 px-3 py-0.5 text-xs font-mono truncate" title={activeAlias && aliasValues?.[m.name] ? m.name : undefined}>
+                                {activeAlias && aliasValues?.[m.name] ? aliasValues[m.name] : m.name}
+                              </span>
                               {showAttrs && attrGrid?.attrs?.map(a => (
                                 <span key={a.Name} className="w-32 shrink-0 px-2 py-0.5 text-xs text-muted-foreground truncate border-l border-border/20">{attrValues?.[a.Name] ?? ''}</span>
                               ))}

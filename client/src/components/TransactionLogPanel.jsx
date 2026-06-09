@@ -41,7 +41,7 @@ export default function TransactionLogPanel({ server, cube, cubeDims, tupleFilte
           <button
             onClick={() => fetch(tupleFilter)}
             title="Refresh"
-            className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+            className="p-1 rounded text-emerald-500 hover:text-emerald-400 hover:bg-emerald-500/10 transition-colors"
           >
             {log.isPending ? <Loader2 size={11} className="animate-spin" /> : <RefreshCw size={11} />}
           </button>

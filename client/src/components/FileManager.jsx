@@ -112,7 +112,7 @@ export default function FileManager({ server, onClose }) {
             <button
               onClick={() => qc.invalidateQueries({ queryKey: ['files', server, pathKey] })}
               title="Refresh"
-              className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+              className="p-1 rounded text-emerald-500 hover:text-emerald-400 hover:bg-emerald-500/10 transition-colors"
             >
               {files.isFetching ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
             </button>
@@ -150,7 +150,9 @@ export default function FileManager({ server, onClose }) {
             </div>
           )}
           {files.isError && (
-            <p className="px-4 py-6 text-xs text-red-400">{files.error?.message}</p>
+            <div className="flex flex-col items-center gap-2 px-8 py-10 text-center">
+              <p className="text-xs text-red-400">{files.error?.message}</p>
+            </div>
           )}
           {!files.isLoading && !files.isError && entries.length === 0 && (
             <p className="px-4 py-6 text-xs text-muted-foreground italic text-center">Folder is empty.</p>

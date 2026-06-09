@@ -4,9 +4,10 @@ import { AllCommunityModule, ModuleRegistry, themeBalham, colorSchemeDark, color
 import { DndContext, DragOverlay, PointerSensor, useSensor, useSensors, useDroppable, useDraggable } from '@dnd-kit/core'
 import MonacoEditor from '@monaco-editor/react'
 import { useStore } from '@/store'
-import { useCubeDimensions, useSubsets, useElementsTree, useViews, useExecuteMDX, useViewAxes, useSaveView, usePawBookUsage } from '@/hooks/useApi'
+import { subsetApplyCallbacks } from '@/lib/subsetCallbacks'
+import { useCubeDimensions, useSubsets, useElementsTree, useViews, useExecuteMDX, useViewAxes, useSaveView, usePawBookUsage, useDimAttributes, useViewUsage, useAliasValues } from '@/hooks/useApi'
 import { toast } from 'sonner'
-import { RefreshCw, Loader2, Table2, GripVertical, X, LayoutGrid, Rows3, Columns3, Filter, ZapOff, Zap, ChevronLeft, ChevronRight, PencilLine, Save, Code2, Eye, ChevronDown, BookOpen, ChevronUp, MapPin, WrapText, Braces, History } from 'lucide-react'
+import { RefreshCw, Loader2, Table2, GripVertical, GripHorizontal, X, LayoutGrid, Rows3, Columns3, Filter, ZapOff, Zap, ChevronLeft, ChevronRight, PencilLine, Save, Code2, Eye, ChevronDown, BookOpen, ChevronUp, Locate, WrapText, Braces, History, AlertTriangle, Search, Cog, Box } from 'lucide-react'
 import TransactionLogPanel from '@/components/TransactionLogPanel'
 import { cn } from '@/lib/utils'
 
@@ -17,6 +18,49 @@ const darkTheme  = themeBalham.withPart(colorSchemeDark).withParams({ fontSize: 
 
 import { buildMDX } from '@core/mdxBuilder.js'
 import HierarchyGrid from '@/components/HierarchyGrid'
+import { Component } from 'react'
+
+class GridErrorBoundary extends Component {
+    constructor(props) { super(props); this.state = { error: null } }
+    static getDerivedStateFromError(error) { return { error } }
+    render() {
+        if (this.state.error) {
+            return (
+                <div className="flex-1 flex flex-col items-center justify-center gap-3 text-sm text-muted-foreground p-8">
+                    <AlertTriangle size={28} className="text-amber-500" />
+                    <p className="font-medium text-foreground">View could not be rendered</p>
+                    <p className="text-xs text-center max-w-xs">{this.state.error.message}</p>
+                    <button
+                        className="mt-2 px-3 py-1.5 rounded border text-xs hover:bg-muted"
+                        onClick={() => this.setState({ error: null })}
+                    >Retry</button>
+                </div>
+            )
+        }
+        return this.props.children
+    }
+}
+
+// MDX functions the visual builder cannot represent — triggers MDX-only lock
+const COMPLEX_MDX_PATTERNS = [
+    ['STRTOMEMBER',    /\bSTRTOMEMBER\b/i],
+    ['DRILLDOWNMEMBER',/\bDRILLDOWNMEMBER\b/i],
+    ['DRILLUPMEMBER',  /\bDRILLUPMEMBER\b/i],
+    ['SUBSET',         /\bSUBSET\s*\(/i],
+    ['GENERATE',       /\bGENERATE\s*\(/i],
+    ['FILTER',         /\bFILTER\s*\(/i],
+    ['ORDER',          /\bORDER\s*\(/i],
+    ['TOPCOUNT',       /\bTOPCOUNT\b/i],
+    ['BOTTOMCOUNT',    /\bBOTTOMCOUNT\b/i],
+    ['.PROPERTIES',    /\.PROPERTIES\s*\(/i],
+    ['HIERARCHIZE',    /\bHIERARCHIZE\b/i],
+]
+
+function detectComplexMDX(mdx) {
+    if (!mdx) return null
+    const found = COMPLEX_MDX_PATTERNS.filter(([, re]) => re.test(mdx)).map(([name]) => name)
+    return found.length ? found : null
+}
 
 // ── Cellset → HierarchyGrid transforms ───────────────────────────────────────
 
@@ -113,16 +157,38 @@ function viewerAxesToBuilderConfig(axes) {
 }
 
 function formatMDX(mdx) {
-    return mdx
-        .replace(/\s+/g, ' ')
-        .replace(/\bSELECT\b/gi, 'SELECT\n  ')
-        .replace(/\bON COLUMNS\s*,?\s*/gi, ' ON COLUMNS,\n  ')
-        .replace(/\bON ROWS\b/gi, ' ON ROWS')
-        .replace(/\bON 0\b\s*,?\s*/gi, ' ON COLUMNS,\n  ')
-        .replace(/\bON 1\b/gi, ' ON ROWS')
-        .replace(/\bFROM\b/gi, '\nFROM')
-        .replace(/\bWHERE\b/gi, '\nWHERE ')
+    if (!mdx?.trim()) return mdx
+    // Pass 1 — collapse whitespace and split on SELECT structure keywords
+    let s = mdx.replace(/\s+/g, ' ').trim()
+    s = s
+        .replace(/\bSELECT\b\s*/gi,               'SELECT\n  ')
+        .replace(/\s*\bNON EMPTY\b\s*/gi,          ' NON EMPTY ')
+        .replace(/\s*\bON COLUMNS\s*,\s*/gi,       ' ON COLUMNS,\n  ')
+        .replace(/\s*\bON COLUMNS\b/gi,            ' ON COLUMNS')
+        .replace(/\s*\bON ROWS\s*,\s*/gi,          ' ON ROWS,\n  ')
+        .replace(/\s*\bON ROWS\b/gi,               ' ON ROWS')
+        .replace(/\s*\bON 0\s*,\s*/gi,             ' ON COLUMNS,\n  ')
+        .replace(/\s*\bON 0\b/gi,                  ' ON COLUMNS')
+        .replace(/\s*\bON 1\s*,\s*/gi,             ' ON ROWS,\n  ')
+        .replace(/\s*\bON 1\b/gi,                  ' ON ROWS')
+        .replace(/\s*\bFROM\b\s*/gi,               '\nFROM ')
+        .replace(/\s*\bWHERE\b\s*/gi,              '\nWHERE ')
         .trim()
+    // Pass 2 — brace-indent each line that contains { } expressions
+    return s.split('\n').map(line => {
+        const lead = line.match(/^(\s*)/)[1]
+        const body = line.trimStart()
+        if (!body.includes('{')) return line
+        let out = '', depth = 0
+        for (let i = 0; i < body.length; i++) {
+            const ch = body[i]
+            if      (ch === '{') { out += '{\n' + lead + '  '.repeat(depth + 1); depth++ }
+            else if (ch === '}') { depth = Math.max(0, depth - 1); out = out.trimEnd() + '\n' + lead + '  '.repeat(depth) + '}' }
+            else if (ch === ',' && depth > 0) { out += ',\n' + lead + '  '.repeat(depth) }
+            else { out += ch }
+        }
+        return lead + out.trim()
+    }).join('\n').trim()
 }
 // ── Cellset → AG Grid ─────────────────────────────────────────────────────────
 
@@ -130,7 +196,29 @@ function parseDimFromUniqueName(un) {
     return un?.match(/^\[([^\]]+)\]/)?.[1] ?? ''
 }
 
-function parseCellset(data) {
+function applyTm1Format(value, fmt) {
+    if (!fmt || fmt === 'General') return value != null ? String(value) : ''
+    if (fmt === '@') return String(value ?? '')
+    if (typeof value !== 'number') return String(value ?? '')
+    const parts = fmt.split(';')
+    const activeFmt = value < 0 && parts[1] ? parts[1] : parts[0]
+    const absVal = Math.abs(value)
+    const isPct = activeFmt.includes('%')
+    const num = isPct ? absVal * 100 : absVal
+    const useGrouping = activeFmt.includes(',')
+    const decMatch = activeFmt.replace(/\[[^\]]*\]/g, '').match(/\.([0#]+)/)
+    const dec = decMatch ? decMatch[1].length : 0
+    const prefixMatch = activeFmt.match(/^([^#0,.@%[\\]*)/)
+    const prefix = prefixMatch?.[1] ?? ''
+    const formatted = num.toLocaleString('en-US', { useGrouping, minimumFractionDigits: dec, maximumFractionDigits: dec })
+    const useParens = parts[1]?.includes('(') && value < 0
+    let out = prefix + formatted + (isPct ? '%' : '')
+    if (useParens) return '(' + out + ')'
+    if (value < 0 && !parts[1]) return '-' + out
+    return out
+}
+
+function parseCellset(data, formatMap = {}) {
     if (!data?.Axes?.length) return null
     const colAx = data.Axes.find(a => a.Ordinal === 0)
     const rowAx = data.Axes.find(a => a.Ordinal === 1)
@@ -148,9 +236,15 @@ function parseCellset(data) {
     ;(data.Cells ?? []).forEach(c => { cellMap[c.Ordinal] = c })
 
     const grid = (rows.length ? rows : [[]]).map((_, ri) =>
-        cols.map((_, ci) => {
+        colTuples.map((tuple, ci) => {
             const c = cellMap[ri * numCols + ci]
             if (!c) return ''
+            const members = (tuple.Members ?? []).map(m => m.Name)
+            const fmtKey = members.find(n => formatMap[n])
+            if (fmtKey) {
+                const v = c.Value
+                return v != null ? applyTm1Format(v, formatMap[fmtKey]) : ''
+            }
             const fv = c.FormattedValue
             if (fv !== '' && fv != null) return fv
             const v = c.Value
@@ -213,7 +307,7 @@ function Checkbox({ active }) {
     )
 }
 
-function TreeNodes({ nodes, depth, isFilter, checked, expanded, toggleMember, toggleExpand, dimMember }) {
+function TreeNodes({ nodes, depth, isFilter, checked, expanded, toggleMember, toggleExpand, dimMember, onCheckDescendants }) {
     return nodes.map(node => {
         const isC    = node.Type === 'C'
         const isOpen = expanded.has(node.Name)
@@ -235,11 +329,18 @@ function TreeNodes({ nodes, depth, isFilter, checked, expanded, toggleMember, to
                         {!isFilter && <Checkbox active={active} />}
                         <span className="truncate">{node.Name}</span>
                     </button>
+                    {isC && !isFilter && onCheckDescendants && (
+                        <button onClick={e => { e.stopPropagation(); onCheckDescendants(node) }}
+                            className="opacity-0 group-hover:opacity-100 shrink-0 text-[9px] text-muted-foreground hover:text-primary transition-opacity px-1 rounded hover:bg-primary/10"
+                            title="Select all leaf members under this consolidation">
+                            ↓all
+                        </button>
+                    )}
                 </div>
                 {isC && isOpen && node.children.length > 0 && (
                     <TreeNodes nodes={node.children} depth={depth + 1} isFilter={isFilter}
                         checked={checked} expanded={expanded} toggleMember={toggleMember}
-                        toggleExpand={toggleExpand} dimMember={dimMember} />
+                        toggleExpand={toggleExpand} dimMember={dimMember} onCheckDescendants={onCheckDescendants} />
                 )}
             </div>
         )
@@ -279,16 +380,16 @@ function buildElementTree(elements) {
     return roots
 }
 
-function SubsetPopover({ server, dim, zone, subsets, onSubsetSelect, onMemberSelect, onMembersSelect, onMemberSetSelect, onEditSubset, onClose }) {
+function SubsetPopover({ server, dim, zone, subsets, onSubsetSelect, onMemberSelect, onMembersSelect, onMemberSetSelect, onEditSubset, onBuildSubset, onClose }) {
     const isFilter    = zone === 'pages'
-    const [tab, setTab]           = useState((dim.member || dim.members?.length) ? 'editor' : 'subset')
+    const [tab, setTab]           = useState((dim.member || dim.members?.length) ? 'manual' : 'subset')
     const [search, setSearch]     = useState('')
     const [checked, setChecked]   = useState(() => new Set(dim.members ?? (dim.member ? [dim.member] : [])))
     const [expanded, setExpanded] = useState(new Set())
 
     const { data: allElements = [], isLoading: loadingElements } = useElementsTree(
-        tab === 'editor' ? server : null,
-        tab === 'editor' ? dim.dimension : null,
+        tab === 'manual' ? server : null,
+        tab === 'manual' ? dim.dimension : null,
     )
 
     const tree     = useMemo(() => buildElementTree(allElements), [allElements])
@@ -319,6 +420,17 @@ function SubsetPopover({ server, dim, zone, subsets, onSubsetSelect, onMemberSel
 
     const selectMemberSet = mset => { onMemberSetSelect?.(mset); onClose() }
 
+    const checkDescendants = useCallback((node) => {
+        const leaves = []
+        const collect = (n) => {
+            if (!n.children?.length) leaves.push(n.Name)
+            else n.children.forEach(collect)
+        }
+        collect(node)
+        setChecked(prev => new Set([...prev, ...leaves]))
+        if (tab !== 'manual') setTab('manual')
+    }, [tab])
+
     const QUICK = [
         { id: 'all',  label: 'All',  title: 'All members of the dimension' },
         { id: 'leaf', label: 'Leaf', title: 'Leaf (level 0) members only' },
@@ -335,10 +447,10 @@ function SubsetPopover({ server, dim, zone, subsets, onSubsetSelect, onMemberSel
                         tab === 'subset' ? 'text-foreground border-b-2 border-primary -mb-px' : 'text-muted-foreground hover:text-foreground')}>
                     Subset
                 </button>
-                <button onClick={() => setTab('editor')}
+                <button onClick={() => setTab('manual')}
                     className={cn('flex-1 py-1.5 text-[10px] uppercase tracking-wider font-semibold transition-colors',
-                        tab === 'editor' ? 'text-foreground border-b-2 border-primary -mb-px' : 'text-muted-foreground hover:text-foreground')}>
-                    Editor
+                        tab === 'manual' ? 'text-foreground border-b-2 border-primary -mb-px' : 'text-muted-foreground hover:text-foreground')}>
+                    Manual
                 </button>
             </div>
 
@@ -356,6 +468,15 @@ function SubsetPopover({ server, dim, zone, subsets, onSubsetSelect, onMemberSel
                             </button>
                         ))}
                     </div>
+                    {/* Build & apply via SubsetEditor */}
+                    {onBuildSubset && (
+                        <div className="px-2 py-1.5 border-b border-border shrink-0">
+                            <button onClick={() => { onBuildSubset(); onClose() }}
+                                className="w-full px-2 py-1 text-[10px] rounded border border-border text-muted-foreground hover:bg-muted hover:text-foreground transition-colors text-left flex items-center gap-1.5">
+                                <Braces size={9} /> Open in Subset Editor…
+                            </button>
+                        </div>
+                    )}
                     {/* Named subsets */}
                     <div className="overflow-auto flex-1">
                         {subsets.length === 0 && (
@@ -377,7 +498,7 @@ function SubsetPopover({ server, dim, zone, subsets, onSubsetSelect, onMemberSel
                     </div>
                 </div>
             ) : (
-                /* Editor tab: ad-hoc member selection — no save required */
+                /* Manual tab: ad-hoc member selection — no save required */
                 <div className="flex flex-col" style={{ maxHeight: 310 }}>
                     <div className="px-2 py-1.5 border-b border-border shrink-0">
                         <input autoFocus value={search} onChange={e => setSearch(e.target.value)}
@@ -402,7 +523,8 @@ function SubsetPopover({ server, dim, zone, subsets, onSubsetSelect, onMemberSel
                             })
                         ) : (
                             <TreeNodes nodes={tree} depth={0} isFilter={isFilter} checked={checked}
-                                expanded={expanded} toggleMember={toggleMember} toggleExpand={toggleExpand} dimMember={dim.member} />
+                                expanded={expanded} toggleMember={toggleMember} toggleExpand={toggleExpand}
+                                dimMember={dim.member} onCheckDescendants={!isFilter ? checkDescendants : null} />
                         )}
                     </div>
                     {!isFilter && (
@@ -422,11 +544,14 @@ function SubsetPopover({ server, dim, zone, subsets, onSubsetSelect, onMemberSel
 
 // ── Draggable dimension pill ──────────────────────────────────────────────────
 
-function DimPill({ id, dim, zone, server, onRemove, onSubsetChange, onMemberChange, onMembersChange, onMemberSetChange, onMoveLeft, onMoveRight }) {
+function DimPill({ id, dim, zone, server, onRemove, onSubsetChange, onMemberChange, onMembersChange, onMemberSetChange, onMoveLeft, onMoveRight, activeAlias, onAliasChange, onBuildSubset }) {
     const { attributes, listeners, setNodeRef: setDragRef, isDragging } = useDraggable({ id })
     const { setNodeRef: setDropRef, isOver } = useDroppable({ id: `dim:${dim.dimension}` })
     const { data: subsets = [] } = useSubsets(server, dim.dimension)
+    const { data: dimAttrs = [] } = useDimAttributes(server, dim.dimension)
+    const aliasAttrs = dimAttrs.filter(a => a.type === 'Alias')
     const [open, setOpen] = useState(false)
+    const [aliasOpen, setAliasOpen] = useState(false)
     const ref = useRef(null)
     const openTab = useStore(s => s.openTab)
 
@@ -447,13 +572,12 @@ function DimPill({ id, dim, zone, server, onRemove, onSubsetChange, onMemberChan
         const handler = e => { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
         document.addEventListener('mousedown', handler)
         return () => document.removeEventListener('mousedown', handler)
-    }, [open])
+    }, [open, aliasOpen])
 
-    const label = dim.memberSet
-        ? { leaf: 'Leaf', root: 'Root', all: 'All' }[dim.memberSet]
-        : dim.members?.length
-            ? `{${dim.members.slice(0, 2).join(', ')}${dim.members.length > 2 ? ` +${dim.members.length - 2}` : ''}}`
-            : dim.member ?? dim.subset ?? (zone === 'bench' ? null : 'Members')
+    const label = dim.customExpr ? 'MDX·expr'
+        : dim.memberSet ? { leaf: 'Leaf', root: 'Root', all: 'All' }[dim.memberSet]
+        : dim.members?.length ? `{${dim.members.slice(0, 2).join(', ')}${dim.members.length > 2 ? ` +${dim.members.length - 2}` : ''}}`
+        : dim.member ?? dim.subset ?? (zone === 'bench' ? null : 'Members')
 
     return (
         <div ref={ref} className="relative">
@@ -478,6 +602,28 @@ function DimPill({ id, dim, zone, server, onRemove, onSubsetChange, onMemberChan
                 </button>
                 {label && (
                     <span className="text-[10px] text-primary/70 truncate max-w-[80px] shrink-0">{label}</span>
+                )}
+                {zone !== 'bench' && aliasAttrs.length > 0 && (
+                    <div className="relative">
+                        <button
+                            onClick={e => { e.stopPropagation(); setAliasOpen(o => !o) }}
+                            className={cn('text-[9px] font-bold px-1 rounded transition-colors',
+                                activeAlias ? 'text-amber-400' : 'text-muted-foreground/40 hover:text-amber-400/70')}
+                            title={activeAlias ? `Alias: ${activeAlias}` : 'Display alias'}
+                        >A</button>
+                        {aliasOpen && (
+                            <div className="absolute top-full left-0 mt-0.5 bg-popover border border-border rounded shadow-lg z-50 min-w-[120px] py-0.5">
+                                <button onClick={() => { onAliasChange?.(dim.dimension, null); setAliasOpen(false) }}
+                                    className={cn('w-full text-left px-2.5 py-1 text-[10px] hover:bg-muted', !activeAlias && 'text-primary')}>None</button>
+                                {aliasAttrs.map(a => (
+                                    <button key={a.name} onClick={() => { onAliasChange?.(dim.dimension, a.name); setAliasOpen(false) }}
+                                        className={cn('w-full text-left px-2.5 py-1 text-[10px] hover:bg-muted font-mono', activeAlias === a.name && 'text-amber-400')}>
+                                        {a.name}
+                                    </button>
+                                ))}
+                            </div>
+                        )}
+                    </div>
                 )}
                 {zone !== 'bench' && (
                     <div className="flex items-center ml-0.5">
@@ -512,6 +658,7 @@ function DimPill({ id, dim, zone, server, onRemove, onSubsetChange, onMemberChan
                     onMembersSelect={members => onMembersChange?.(dim.dimension, members)}
                     onMemberSetSelect={mset => onMemberSetChange?.(dim.dimension, mset)}
                     onEditSubset={onEditSubset}
+                    onBuildSubset={onBuildSubset ? () => { setOpen(false); onBuildSubset(dim.dimension) } : null}
                     onClose={() => setOpen(false)}
                 />
             )}
@@ -521,7 +668,7 @@ function DimPill({ id, dim, zone, server, onRemove, onSubsetChange, onMemberChan
 
 // ── Drop zone ─────────────────────────────────────────────────────────────────
 
-function DropZone({ id, label, icon: Icon, dims, server, onRemove, onSubsetChange, onMemberChange, onMembersChange, onMemberSetChange, onReorder, accent }) {
+function DropZone({ id, label, icon: Icon, dims, server, onRemove, onSubsetChange, onMemberChange, onMembersChange, onMemberSetChange, onReorder, accent, dimAliases, onAliasChange, onBuildSubset }) {
     const { setNodeRef, isOver } = useDroppable({ id })
     return (
         <div ref={setNodeRef}
@@ -539,6 +686,8 @@ function DropZone({ id, label, icon: Icon, dims, server, onRemove, onSubsetChang
                         onSubsetChange={onSubsetChange} onMemberChange={onMemberChange} onMembersChange={onMembersChange} onMemberSetChange={onMemberSetChange}
                         onMoveLeft={i > 0 ? () => onReorder(i, i - 1) : null}
                         onMoveRight={i < dims.length - 1 ? () => onReorder(i, i + 1) : null}
+                        activeAlias={dimAliases?.[d.dimension]} onAliasChange={onAliasChange}
+                        onBuildSubset={onBuildSubset}
                     />
                 ))}
                 {dims.length === 0 && (
@@ -561,6 +710,7 @@ export default function ViewEditor({ tab }) {
 
     // Visual builder state — seed from Builder handoff if provided
     const [axes, setAxes] = useState(tab.initialAxes ?? { rows: [], columns: [], pages: [] })
+    const [benchState, setBenchState] = useState({}) // persists member/subset for benched dims
     const [suppressZeros, setSuppressZeros] = useState(true)
     const [totalsPosition,    setTotalsPosition]    = useState('top')
     const [colTotalsPosition, setColTotalsPosition] = useState('top')
@@ -569,33 +719,65 @@ export default function ViewEditor({ tab }) {
     // MDX editor state
     const [mdx, setMdx] = useState(tab.initialMdx ?? '')
     const [mdxDirty, setMdxDirty] = useState(false)
+    const [dimAliases, setDimAliases]         = useState({})
+    const [aliasValueMaps, setAliasValueMaps] = useState({})
+    const handleAliasChange = useCallback(async (dim, attr) => {
+        setDimAliases(prev => ({ ...prev, [dim]: attr || null }))
+        if (!attr) return
+        const key = `${dim}:${attr}`
+        if (aliasValueMaps[key]) return
+        try {
+            const r = await fetch(`/api/dimension/alias-values?server=${encodeURIComponent(tab.server)}&dimension=${encodeURIComponent(dim)}&alias=${encodeURIComponent(attr)}`)
+            if (r.ok) { const map = await r.json(); setAliasValueMaps(prev => ({ ...prev, [key]: map })) }
+        } catch {}
+    }, [tab.server, aliasValueMaps])
+
+    const [mdxEditorHeight, setMdxEditorHeight] = useState(224)
+    const startMdxEditorResize = useCallback((e) => {
+        e.preventDefault()
+        const startY = e.clientY
+        const startH = mdxEditorHeight
+        const onMove = (mv) => setMdxEditorHeight(Math.max(80, Math.min(startH + (mv.clientY - startY), 600)))
+        const onUp = () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp) }
+        window.addEventListener('mousemove', onMove)
+        window.addEventListener('mouseup', onUp)
+    }, [mdxEditorHeight])
     const editorRef = useRef(null)
 
     // Results
     const [result, setResult] = useState(null)
     const [truncated, setTruncated] = useState(false)
 
-    // View type: track if original was native (warn on save)
-    const [viewType, setViewType] = useState(null)
+    // View type + native/complexity tracking
+    const [viewType,          setViewType]          = useState(null)
+    const [isOriginallyNative, setIsOriginallyNative] = useState(false)
+    const [mdxTooComplex,      setMdxTooComplex]      = useState(null)  // null | string[]
 
     // View mode: 'visual' | 'mdx'
     const [mode, setMode] = useState(tab.initialMdx ? 'mdx' : (tab.mode ?? 'visual'))
+    const [showSaveMenu, setShowSaveMenu] = useState(false)
+    useEffect(() => { patchTab(tab.id, { mode }) }, [mode])
 
     // PAW Books panel
     const [showPawBooks, setShowPawBooks] = useState(false)
+    const [showUsage,    setShowUsage]    = useState(false)
 
     // Transaction Log panel
     const [showLog,   setShowLog]   = useState(false)
     const [logTuple,  setLogTuple]  = useState(null)   // null = whole cube, array = filtered cell
     const { data: pawBookData, isFetching: loadingPawBooks, refetch: refetchPawBooks } = usePawBookUsage(tab.server, tab.cube, tab.viewName)
+    const { data: usageData,   isFetching: loadingUsage,   refetch: refetchUsage }    = useViewUsage(tab.server, tab.cube, tab.viewName)
 
     // Loading guard using state (not ref) to survive StrictMode remounts
     const [loadedKey, setLoadedKey] = useState(null)
 
     const bench = useMemo(() => {
         const placed = new Set([...axes.rows, ...axes.columns, ...axes.pages].map(d => d.dimension))
-        return cubeDims.filter(d => !placed.has(d)).map(d => ({ dimension: d, subset: null, member: null }))
-    }, [cubeDims, axes])
+        return cubeDims.filter(d => !placed.has(d)).map(d => ({
+            dimension: d,
+            ...(benchState[d] ?? { subset: null, member: null }),
+        }))
+    }, [cubeDims, axes, benchState])
 
     const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
 
@@ -724,7 +906,12 @@ export default function ViewEditor({ tab }) {
                     setTruncated(cellset?.truncated ?? false)
                     setViewType(vt ?? null)
                     patchTab(tab.id, { viewType: vt ?? null })
-                    if (viewMdx && vt?.includes('MDXView')) setMode('mdx')
+                    const isNative = vt?.includes('NativeView') ?? false
+                    const complex  = viewMdx ? detectComplexMDX(viewMdx) : null
+                    setIsOriginallyNative(isNative)
+                    setMdxTooComplex(complex)
+                    // Lock to MDX mode when complex expressions are present
+                    if (viewMdx && (complex || vt?.includes('MDXView'))) setMode('mdx')
                     setMdx(viewMdx || buildMDX({ cube: tab.cube, rows, columns: cols, pages, suppressZeros: false }))
                     setMdxDirty(false)
                     toast.success(`Loaded ${tab.viewName}`, { id })
@@ -780,15 +967,28 @@ export default function ViewEditor({ tab }) {
             toZone = overId
         }
 
+        const existing = [...axes.rows, ...axes.columns, ...axes.pages, ...bench]
+            .find(d => d.dimension === dimName) ?? { dimension: dimName, subset: null, member: null }
+
+        if (toZone === 'bench') {
+            // Preserve member/subset so it's remembered if moved back
+            setBenchState(prev => ({ ...prev, [dimName]: { subset: existing.subset ?? null, member: existing.member ?? null, members: existing.members ?? null, memberSet: existing.memberSet ?? null } }))
+            setAxes(prev => ({
+                rows:    prev.rows.filter(d => d.dimension !== dimName),
+                columns: prev.columns.filter(d => d.dimension !== dimName),
+                pages:   prev.pages.filter(d => d.dimension !== dimName),
+            }))
+            return
+        }
+
+        // Moving to an active zone — clear saved bench state for this dim
+        setBenchState(prev => { const n = { ...prev }; delete n[dimName]; return n })
         setAxes(prev => {
-            const existing = [...prev.rows, ...prev.columns, ...prev.pages, ...bench]
-                .find(d => d.dimension === dimName) ?? { dimension: dimName, subset: null, member: null }
             const next = {
                 rows:    prev.rows.filter(d => d.dimension !== dimName),
                 columns: prev.columns.filter(d => d.dimension !== dimName),
                 pages:   prev.pages.filter(d => d.dimension !== dimName),
             }
-            if (toZone === 'bench') return next
             if (insertBeforeDim) {
                 const idx = next[toZone].findIndex(d => d.dimension === insertBeforeDim)
                 next[toZone] = idx >= 0
@@ -837,8 +1037,22 @@ export default function ViewEditor({ tab }) {
         })
     }, [])
 
+    const setCustomExpr = useCallback((dimName, customExpr) => {
+        setAxes(prev => {
+            const update = zone => zone.map(d => d.dimension === dimName ? { ...d, customExpr, subset: null, member: null, members: null, memberSet: null } : d)
+            return { rows: update(prev.rows), columns: update(prev.columns), pages: update(prev.pages) }
+        })
+    }, [])
+
+    const handleBuildSubset = useCallback((dimName) => {
+        const tabId = `subset-filter:${tab.server}:${dimName}:${Date.now()}`
+        const existing = [...axes.rows, ...axes.columns, ...axes.pages].find(d => d.dimension === dimName)
+        subsetApplyCallbacks.set(tabId, (mdxExpr) => setCustomExpr(dimName, mdxExpr))
+        openTab({ id: tabId, type: 'subset', label: `Build: ${dimName}`, server: tab.server, dimension: dimName, subsetName: null, mdx: existing?.customExpr ?? '', returnTabId: tab.id })
+    }, [tab.server, tab.id, axes, openTab, setCustomExpr])
+
     const handleExecute = useCallback(() => {
-        const query = mode === 'mdx' ? mdx : buildMDX({ cube: tab.cube, ...axes, suppressZeros })
+        const query = mode === 'mdx' ? mdx : buildMDX({ cube: tab.cube, ...axes, bench, suppressZeros })
         if (!query.trim()) {
             toast.error('No MDX to execute')
             return
@@ -865,7 +1079,7 @@ export default function ViewEditor({ tab }) {
     const isFirstAxesRender = useRef(true)
     useEffect(() => {
         if (mode !== 'visual') return
-        setMdx(buildMDX({ cube: tab.cube, ...axes, suppressZeros }))
+        setMdx(buildMDX({ cube: tab.cube, ...axes, bench, suppressZeros }))
         setMdxDirty(false)
 
         // Auto-execute after axes settle (skip initial mount)
@@ -892,30 +1106,52 @@ export default function ViewEditor({ tab }) {
         prevModeRef.current = mode
     }, [mode, mdx, parseMdxToAxes])
 
+    const buildSavePayload = useCallback(() => {
+        // Visual mode always saves as Native — it's the correct TM1 format for axis-built views
+        if (mode === 'visual') {
+            return { nativeAxes: { rows: axes.rows, columns: axes.columns, titles: axes.pages } }
+        }
+        return { mdx: mdx }
+    }, [mode, mdx, axes])
+
     const handleSave = useCallback(() => {
         const name = tab.viewName ?? prompt('View name?')
         if (!name) return
-        const query = mode === 'mdx' ? mdx : buildMDX({ cube: tab.cube, ...axes, suppressZeros })
+        // Warn before converting a native view to MDX
+        if (isOriginallyNative && mode === 'mdx') {
+            if (!window.confirm('Saving in MDX mode will convert this Native view to MDX. This affects PAX and Architect users.\n\nContinue?')) return
+        }
         const id = toast.loading('Saving view…')
         saveView.mutate(
-            { server: tab.server, cube: tab.cube, name, mdx: query },
+            { server: tab.server, cube: tab.cube, name, ...buildSavePayload() },
             {
-                onSuccess: () => {
-                    setMdxDirty(false)
-                    toast.success(`Saved "${name}"`, { id })
-                },
-                onError: e => toast.error(e.message, { id }),
+                onSuccess: () => { setMdxDirty(false); toast.success(`Saved "${name}"`, { id }) },
+                onError:   e => toast.error(e.message, { id }),
             }
         )
-    }, [mode, mdx, axes, suppressZeros, tab.server, tab.cube, tab.viewName])
+    }, [mode, buildSavePayload, tab.server, tab.cube, tab.viewName, isOriginallyNative])
+
+    const handleSaveAsNative = useCallback(() => {
+        const name = tab.viewName ?? prompt('Save as native view…')
+        if (!name) return
+        const parsed = parseMdxToAxes(mdx)
+        if (!parsed.columns.length && !parsed.rows.length) { toast.error('Could not parse MDX axes — switch to Visual mode and arrange dimensions first'); return }
+        const id = toast.loading('Saving as Native…')
+        saveView.mutate(
+            { server: tab.server, cube: tab.cube, name, nativeAxes: { rows: parsed.rows, columns: parsed.columns, titles: parsed.pages } },
+            {
+                onSuccess: () => { setMdxDirty(false); toast.success(`Saved "${name}" as Native`, { id }) },
+                onError:   e => toast.error(e.message, { id }),
+            }
+        )
+    }, [mdx, parseMdxToAxes, tab.server, tab.cube, tab.viewName, saveView])
 
     const handleSaveAs = useCallback(() => {
         const name = prompt('Save view as…')
         if (!name) return
-        const query = mode === 'mdx' ? mdx : buildMDX({ cube: tab.cube, ...axes, suppressZeros })
         const id = toast.loading(`Saving "${name}"…`)
         saveView.mutate(
-            { server: tab.server, cube: tab.cube, name, mdx: query },
+            { server: tab.server, cube: tab.cube, name, ...buildSavePayload() },
             {
                 onSuccess: () => {
                     setMdxDirty(false)
@@ -932,7 +1168,7 @@ export default function ViewEditor({ tab }) {
                 onError: e => toast.error(e.message, { id }),
             }
         )
-    }, [mode, mdx, axes, suppressZeros, tab.server, tab.cube, openTab])
+    }, [buildSavePayload, tab.server, tab.cube, openTab])
 
     // Keyboard shortcuts (work globally in both visual + MDX modes)
     useEffect(() => {
@@ -957,7 +1193,30 @@ export default function ViewEditor({ tab }) {
         return () => window.removeEventListener('keydown', onKey)
     }, [handleExecute, handleSave, handleSaveAs, tab.viewName])
 
-    const parsed = useMemo(() => result ? parseCellset(result) : null, [result])
+    const displayResult = useMemo(() => {
+        if (!result?.Axes || !Object.values(dimAliases).some(Boolean)) return result
+        const axes = result.Axes.map(axis => ({
+            ...axis,
+            Tuples: axis.Tuples.map(tuple => ({
+                ...tuple,
+                Members: tuple.Members.map(m => {
+                    const dim = m.UniqueName?.match(/^\[([^\]]+)\]/)?.[1]
+                    const attr = dim ? dimAliases[dim] : null
+                    if (!attr) return m
+                    const v = aliasValueMaps[`${dim}:${attr}`]?.[m.Name]
+                    return v ? { ...m, Name: v } : m
+                })
+            }))
+        }))
+        return { ...result, Axes: axes }
+    }, [result, dimAliases, aliasValueMaps])
+    const allAxesDims = useMemo(() => [...new Set([...axes.columns, ...axes.rows].map(d => d.dimension))], [axes.columns, axes.rows])
+    const { data: fmtAttrs0 = {} } = useAliasValues(allAxesDims[0] ? tab.server : null, allAxesDims[0] ?? null, 'Format')
+    const { data: fmtAttrs1 = {} } = useAliasValues(allAxesDims[1] ? tab.server : null, allAxesDims[1] ?? null, 'Format')
+    const { data: fmtAttrs2 = {} } = useAliasValues(allAxesDims[2] ? tab.server : null, allAxesDims[2] ?? null, 'Format')
+    const { data: fmtAttrs3 = {} } = useAliasValues(allAxesDims[3] ? tab.server : null, allAxesDims[3] ?? null, 'Format')
+    const formatAttrs = useMemo(() => ({ ...fmtAttrs0, ...fmtAttrs1, ...fmtAttrs2, ...fmtAttrs3 }), [fmtAttrs0, fmtAttrs1, fmtAttrs2, fmtAttrs3])
+    const parsed = useMemo(() => displayResult ? parseCellset(displayResult, formatAttrs) : null, [displayResult, formatAttrs])
     const { colDefs, rowData } = useMemo(() => buildGridData(parsed), [parsed])
 
     // ── HierarchyGrid data ────────────────────────────────────────────────────
@@ -1006,6 +1265,47 @@ export default function ViewEditor({ tab }) {
         }
         return columnHierarchies.map((h, i) => constrainHierarchy(h, [...perDim[i]]))
     }, [columnHierarchies, hierarchyData])
+
+    const aliasActive = Object.values(dimAliases).some(Boolean)
+    const applyAliasToNodes = (nodes, dim) => {
+        const attr = dimAliases[dim]; if (!attr) return nodes
+        const map  = aliasValueMaps[`${dim}:${attr}`]; if (!map) return nodes
+        return Object.fromEntries(Object.entries(nodes).map(([id, n]) => [id, { ...n, label: map[id] ?? n.label ?? id }]))
+    }
+    const displayHierarchies = useMemo(() =>
+        !aliasActive ? constrainedHierarchies
+        : constrainedHierarchies.map((h, i) => ({ ...h, nodes: applyAliasToNodes(h.nodes ?? {}, rowDims[i]) })),
+    [constrainedHierarchies, rowDims, dimAliases, aliasValueMaps]) // eslint-disable-line
+    const displayColHierarchies = useMemo(() =>
+        !aliasActive ? constrainedColHierarchies
+        : constrainedColHierarchies.map((h, i) => ({ ...h, nodes: applyAliasToNodes(h.nodes ?? {}, colDims[i]) })),
+    [constrainedColHierarchies, colDims, dimAliases, aliasValueMaps]) // eslint-disable-line
+    const displayColumns = useMemo(() => {
+        if (!hierarchyData?.columns || !aliasActive) return hierarchyData?.columns
+        return hierarchyData.columns.map(col => {
+            const aliased = (col.members ?? [col.label]).map((name, i) => {
+                const dim = colDims[i]; const attr = dim ? dimAliases[dim] : null
+                return attr ? (aliasValueMaps[`${dim}:${attr}`]?.[name] ?? name) : name
+            })
+            return { ...col, label: aliased.join(' / '), members: aliased }
+        })
+    }, [hierarchyData?.columns, colDims, dimAliases, aliasValueMaps])
+    const displayAxes = useMemo(() => {
+        if (!result?.Axes || !aliasActive) return result?.Axes
+        return result.Axes.map(axis => ({
+            ...axis,
+            Tuples: axis.Tuples.map(tuple => ({
+                ...tuple,
+                Members: tuple.Members.map(m => {
+                    const dim = m.UniqueName?.match(/^\[([^\]]+)\]/)?.[1]
+                    const attr = dim ? dimAliases[dim] : null
+                    if (!attr) return m
+                    const v = aliasValueMaps[`${dim}:${attr}`]?.[m.Name]
+                    return v ? { ...m, Name: v } : m
+                })
+            }))
+        }))
+    }, [result?.Axes, dimAliases, aliasValueMaps])
 
     const handleCellEdit = useCallback(async ({ tupleKey, colId, value }) => {
         if (!tab.server || !tab.cube) return
@@ -1088,13 +1388,20 @@ export default function ViewEditor({ tab }) {
 
                 {/* Mode toggle */}
                 <div className="flex items-center gap-0.5 bg-muted rounded p-0.5">
-                    <button onClick={() => setMode('visual')}
+                    <button
+                        onClick={() => !mdxTooComplex && setMode('visual')}
+                        disabled={!!mdxTooComplex}
+                        title={mdxTooComplex
+                            ? `Visual mode unavailable — MDX uses: ${mdxTooComplex.join(', ')}. Replace these with named subsets to enable.`
+                            : undefined}
                         className={cn('flex items-center gap-1 px-2 py-0.5 text-[10px] rounded transition-colors',
-                            mode === 'visual' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground')}>
+                            mode === 'visual' ? 'bg-background text-foreground shadow-sm'
+                            : mdxTooComplex  ? 'text-muted-foreground/40 cursor-not-allowed'
+                            : 'text-muted-foreground hover:text-foreground')}>
                         <Eye size={10} /> Visual
                     </button>
                     <button onClick={() => {
-                        if (mode === 'visual') setMdx(buildMDX({ cube: tab.cube, ...axes, suppressZeros }))
+                        if (mode === 'visual') setMdx(buildMDX({ cube: tab.cube, ...axes, bench, suppressZeros }))
                         setMode('mdx')
                     }}
                         className={cn('flex items-center gap-1 px-2 py-0.5 text-[10px] rounded transition-colors',
@@ -1134,10 +1441,10 @@ export default function ViewEditor({ tab }) {
                             setRevealTarget({ type: 'cube', server: tab.server, cube: tab.cube })
                         }
                     }}
-                    className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
-                    title="Show in Explorer tree"
+                    className="p-1 rounded hover:bg-muted text-amber-400 hover:text-amber-300 transition-colors"
+                    title="Show in tree"
                 >
-                    <MapPin size={11} />
+                    <Locate size={11} />
                 </button>
 
                 <button
@@ -1152,6 +1459,23 @@ export default function ViewEditor({ tab }) {
                 >
                     <History size={10} /> Log
                 </button>
+
+                {tab.viewName && (
+                    <button
+                        onClick={() => { setShowUsage(v => !v); if (!showUsage) refetchUsage() }}
+                        title="Scan TI processes and MDX views for references to this view"
+                        className={cn(
+                            'flex items-center gap-1 px-2 py-0.5 text-[10px] rounded border transition-colors',
+                            showUsage
+                                ? 'bg-blue-600 text-white border-blue-600'
+                                : 'border-border text-muted-foreground hover:text-foreground hover:bg-muted'
+                        )}
+                    >
+                        <Search size={10} /> Usage
+                        {usageData && <span className="opacity-70">({usageData.processes.length + usageData.views.length})</span>}
+                        {loadingUsage && <Loader2 size={10} className="animate-spin" />}
+                    </button>
+                )}
 
                 <div className="flex-1" />
 
@@ -1197,46 +1521,119 @@ export default function ViewEditor({ tab }) {
                     </select>
                 )}
 
-                {tab.viewName ? (
+                <div className="relative">
                     <div className="flex items-center">
                         <button onClick={handleSave}
-                            disabled={mode === 'mdx' && !mdxDirty}
+                            disabled={tab.viewName && mode === 'mdx' && !mdxDirty}
                             title="Save (Ctrl+S)"
                             className={cn('flex items-center gap-1 px-2 py-1 rounded-l text-xs border border-r-0 transition-colors',
-                                (mode === 'mdx' && mdxDirty) || mode === 'visual'
+                                !tab.viewName || (mode === 'mdx' && mdxDirty) || mode === 'visual'
                                     ? 'border-primary bg-primary text-primary-foreground hover:bg-primary/90'
                                     : 'border-border text-muted-foreground hover:bg-muted')}>
-                            <Save size={11} /> Save
+                            <Save size={11} /> {tab.viewName ? 'Save' : 'Save As'}
                         </button>
-                        <button onClick={handleSaveAs}
-                            title="Save As… (Ctrl+Shift+S)"
+                        <button onClick={() => setShowSaveMenu(v => !v)}
+                            title="Save options"
                             className={cn('flex items-center px-1 py-1 rounded-r text-xs border transition-colors',
-                                (mode === 'mdx' && mdxDirty) || mode === 'visual'
+                                !tab.viewName || (mode === 'mdx' && mdxDirty) || mode === 'visual'
                                     ? 'border-primary bg-primary text-primary-foreground hover:bg-primary/90'
                                     : 'border-border text-muted-foreground hover:bg-muted')}>
                             <ChevronDown size={10} />
                         </button>
                     </div>
-                ) : (
-                    <button onClick={handleSaveAs}
-                        title="Save As… (Ctrl+Shift+S)"
-                        className="flex items-center gap-1 px-2 py-1 rounded text-xs border border-border text-muted-foreground hover:bg-muted transition-colors">
-                        <Save size={11} /> Save As
-                    </button>
-                )}
+                    {showSaveMenu && (
+                        <div className="absolute right-0 top-full mt-1 z-50 bg-popover border border-border rounded shadow-lg py-1 w-44" onMouseLeave={() => setShowSaveMenu(false)}>
+                            <button onClick={() => { handleSave(); setShowSaveMenu(false) }}
+                                className="w-full text-left px-3 py-1.5 text-xs hover:bg-muted transition-colors">
+                                Save {mode === 'visual' ? 'as Native' : 'as MDX'}
+                            </button>
+                            <button onClick={() => { handleSaveAsNative(); setShowSaveMenu(false) }}
+                                className="w-full text-left px-3 py-1.5 text-xs hover:bg-muted transition-colors">
+                                Save as Native view
+                            </button>
+                            <button onClick={() => { handleSaveAs(); setShowSaveMenu(false) }}
+                                className="w-full text-left px-3 py-1.5 text-xs hover:bg-muted transition-colors">
+                                Save As… (new name)
+                            </button>
+                        </div>
+                    )}
+                </div>
 
                 <button onClick={handleExecute} disabled={isExecuting || isLoadingView}
                     title="Execute / Refresh (Ctrl+Enter)"
-                    className="flex items-center justify-center p-1.5 rounded bg-emerald-700 text-white hover:bg-emerald-600 transition-colors disabled:opacity-40">
+                    className="flex items-center justify-center p-1.5 rounded border border-emerald-600 text-emerald-500 hover:bg-emerald-600/10 transition-colors disabled:opacity-40">
                     {isExecuting ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
                 </button>
             </div>
 
-            {/* Native view warning */}
-            {viewType && viewType.includes('NativeView') && (
+            {/* Complex MDX banner — Visual mode locked */}
+            {mdxTooComplex && (
+                <div className="shrink-0 px-3 py-1.5 border-b border-border bg-amber-50 dark:bg-amber-950/20 text-amber-800 dark:text-amber-200 text-[10px] flex items-center gap-2">
+                    <AlertTriangle size={11} className="shrink-0" />
+                    <span>Visual mode unavailable — MDX uses <strong>{mdxTooComplex.join(', ')}</strong>. Replace these with named subsets to enable visual editing.</span>
+                </div>
+            )}
+
+            {/* Native view in MDX mode warning */}
+            {isOriginallyNative && mode === 'mdx' && !mdxTooComplex && (
                 <div className="shrink-0 px-3 py-1 border-b border-border bg-amber-50 dark:bg-amber-950/20 text-amber-800 dark:text-amber-200 text-[10px] flex items-center gap-1">
                     <ZapOff size={10} />
-                    <span>Native view — saving will convert it to MDX.</span>
+                    <span>Editing in MDX mode — saving will convert this Native view to MDX.</span>
+                </div>
+            )}
+
+            {/* View Usage */}
+            {tab.viewName && showUsage && (
+                <div className="shrink-0 border-b border-border">
+                    <div className="flex items-center justify-between px-3 py-1 border-b border-border bg-muted/20">
+                        <span className="text-[10px] font-semibold text-muted-foreground">Usage</span>
+                        <button onClick={() => refetchUsage()} disabled={loadingUsage}
+                            className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground disabled:opacity-40 transition-colors">
+                            {loadingUsage ? <Loader2 size={10} className="animate-spin" /> : <Search size={10} />}
+                            {loadingUsage ? 'Scanning…' : 'Rescan'}
+                        </button>
+                    </div>
+                    <div className="px-3 py-1.5 bg-muted/10 max-h-48 overflow-auto space-y-2">
+                        {!usageData && !loadingUsage && (
+                            <p className="text-[10px] text-muted-foreground italic">Scanning…</p>
+                        )}
+                        {usageData && (
+                            <>
+                                <div>
+                                    <div className="text-[10px] uppercase tracking-wider text-muted-foreground/60 font-semibold mb-1">
+                                        TI Processes ({usageData.processes.length})
+                                    </div>
+                                    {usageData.processes.length === 0 ? (
+                                        <p className="text-[10px] text-muted-foreground italic">None found.</p>
+                                    ) : usageData.processes.map((u, i) => (
+                                        <button key={i}
+                                            onClick={() => openTab({ id: `process:${tab.server}:${u.process}`, type: 'process', label: u.process, server: tab.server, processName: u.process })}
+                                            className="flex items-center gap-1.5 w-full px-1 py-0.5 text-[11px] hover:bg-muted rounded text-left">
+                                            <Cog size={10} className="shrink-0 text-muted-foreground" />
+                                            <span className="font-mono truncate">{u.process}</span>
+                                        </button>
+                                    ))}
+                                </div>
+                                <div>
+                                    <div className="text-[10px] uppercase tracking-wider text-muted-foreground/60 font-semibold mb-1">
+                                        MDX Views ({usageData.views.length})
+                                    </div>
+                                    {usageData.views.length === 0 ? (
+                                        <p className="text-[10px] text-muted-foreground italic">None found.</p>
+                                    ) : usageData.views.map((u, i) => (
+                                        <button key={i}
+                                            onClick={() => openTab({ id: `cubeview:${tab.server}:${u.cube}:${u.view}`, type: 'cubeview', label: u.view, server: tab.server, cube: u.cube, viewName: u.view })}
+                                            className="flex items-center gap-1.5 w-full px-1 py-0.5 text-[11px] hover:bg-muted rounded text-left">
+                                            <Box size={10} className="shrink-0 text-muted-foreground" />
+                                            <span className="font-mono truncate">{u.cube}</span>
+                                            <span className="text-muted-foreground/50 shrink-0">·</span>
+                                            <span className="font-mono truncate text-[10px]">{u.view}</span>
+                                        </button>
+                                    ))}
+                                </div>
+                            </>
+                        )}
+                    </div>
                 </div>
             )}
 
@@ -1285,9 +1682,9 @@ export default function ViewEditor({ tab }) {
             {mode === 'visual' && (
                 <DndContext sensors={sensors} onDragStart={({ active }) => setActiveDrag(active.id)} onDragEnd={handleDragEnd}>
                     <div className="shrink-0 px-3 py-2 border-b border-border bg-muted/10 grid grid-cols-4 gap-2">
-                        <DropZone id="rows"    label="Rows"    icon={Rows3}    dims={axes.rows}    server={tab.server} onRemove={removeDim} onSubsetChange={setSubset} onMemberChange={setMember} onMembersChange={setMembers} onMemberSetChange={setMemberSet} onReorder={(f,t) => reorderDim('rows',f,t)}    accent="text-green-400" />
-                        <DropZone id="columns" label="Columns" icon={Columns3} dims={axes.columns} server={tab.server} onRemove={removeDim} onSubsetChange={setSubset} onMemberChange={setMember} onMembersChange={setMembers} onMemberSetChange={setMemberSet} onReorder={(f,t) => reorderDim('columns',f,t)} accent="text-blue-400" />
-                        <DropZone id="pages"   label="Filter"  icon={Filter}   dims={axes.pages}   server={tab.server} onRemove={removeDim} onSubsetChange={setSubset} onMemberChange={setMember} onMembersChange={setMembers} onReorder={(f,t) => reorderDim('pages',f,t)}   accent="text-amber-400" />
+                        <DropZone id="rows"    label="Rows"    icon={Rows3}    dims={axes.rows}    server={tab.server} onRemove={removeDim} onSubsetChange={setSubset} onMemberChange={setMember} onMembersChange={setMembers} onMemberSetChange={setMemberSet} onReorder={(f,t) => reorderDim('rows',f,t)}    accent="text-green-400"       dimAliases={dimAliases} onAliasChange={handleAliasChange} onBuildSubset={handleBuildSubset} />
+                        <DropZone id="columns" label="Columns" icon={Columns3} dims={axes.columns} server={tab.server} onRemove={removeDim} onSubsetChange={setSubset} onMemberChange={setMember} onMembersChange={setMembers} onMemberSetChange={setMemberSet} onReorder={(f,t) => reorderDim('columns',f,t)} accent="text-blue-400"        dimAliases={dimAliases} onAliasChange={handleAliasChange} onBuildSubset={handleBuildSubset} />
+                        <DropZone id="pages"   label="Filter"  icon={Filter}   dims={axes.pages}   server={tab.server} onRemove={removeDim} onSubsetChange={setSubset} onMemberChange={setMember} onMembersChange={setMembers} onReorder={(f,t) => reorderDim('pages',f,t)}   accent="text-amber-400"      dimAliases={dimAliases} onAliasChange={handleAliasChange} onBuildSubset={handleBuildSubset} />
                         <DropZone id="bench"   label="Bench"   icon={LayoutGrid} dims={bench}      server={tab.server} onRemove={() => {}}  onSubsetChange={() => {}}  onMemberChange={() => {}}  onMembersChange={() => {}}  onReorder={() => {}}                           accent="text-muted-foreground" />
                     </div>
                     <DragOverlay>
@@ -1302,7 +1699,7 @@ export default function ViewEditor({ tab }) {
 
             {/* MDX editor */}
             {mode === 'mdx' && (
-                <div className="shrink-0 h-56 border-b border-border flex flex-col min-h-0">
+                <div className="shrink-0 border-b border-border flex flex-col min-h-0" style={{ height: mdxEditorHeight }}>
                     <div className="flex items-center justify-between px-2 py-0.5 border-b border-border bg-muted/30 shrink-0">
                         <span className="text-[10px] text-muted-foreground">MDX</span>
                         <button
@@ -1316,7 +1713,7 @@ export default function ViewEditor({ tab }) {
                     <MonacoEditor
                         key={`mdx-editor-${tab.id}`}
                         height="100%"
-                        language="sql"
+                        language="tm1mdx"
                         value={mdx}
                         theme={dark ? 'vs-dark' : 'vs'}
                         onChange={v => { setMdx(v ?? ''); setMdxDirty(true) }}
@@ -1326,14 +1723,23 @@ export default function ViewEditor({ tab }) {
                             editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, handleExecute)
                         }}
                         options={{
-                            fontSize: 12,
+                            fontSize: 13,
                             minimap: { enabled: false },
                             wordWrap: 'on',
                             scrollBeyondLastLine: false,
                             lineNumbers: 'on',
                             folding: false,
+                            fixedOverflowWidgets: true,
                         }}
                     />
+                </div>
+            )}
+
+            {mode === 'mdx' && (
+                <div onMouseDown={startMdxEditorResize}
+                    className="shrink-0 h-1.5 cursor-row-resize flex items-center justify-center hover:bg-primary/20 transition-colors group"
+                    title="Drag to resize editor">
+                    <GripHorizontal size={12} className="text-muted-foreground/40 group-hover:text-primary/60" />
                 </div>
             )}
 
@@ -1355,18 +1761,20 @@ export default function ViewEditor({ tab }) {
                 </div>
             ) : useHierarchy ? (
                 <div className="flex-1 min-h-0">
-                    <HierarchyGrid
-                        hierarchies={constrainedHierarchies}
-                        columnHierarchies={colDims.length > 0 ? constrainedColHierarchies : []}
-                        columns={hierarchyData.columns}
-                        data={hierarchyData.data}
-                        dark={dark}
-                        keepMode="parent"
-                        totalsPosition={totalsPosition}
-                        colTotalsPosition={colTotalsPosition}
-                        onCellEdit={handleCellEdit}
-                        onCellContextMenu={handleCellContextMenu}
-                    />
+                    <GridErrorBoundary>
+                        <HierarchyGrid
+                            hierarchies={displayHierarchies}
+                            columnHierarchies={colDims.length > 0 ? displayColHierarchies : []}
+                            columns={displayColumns ?? hierarchyData.columns}
+                            data={hierarchyData.data}
+                            dark={dark}
+                            keepMode="parent"
+                            totalsPosition={totalsPosition}
+                            colTotalsPosition={colTotalsPosition}
+                            onCellEdit={handleCellEdit}
+                            onCellContextMenu={handleCellContextMenu}
+                        />
+                    </GridErrorBoundary>
                 </div>
             ) : !parsed || parsed.grid.length === 0 ? (
                 <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm">No data returned</div>

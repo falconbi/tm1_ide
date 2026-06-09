@@ -1,10 +1,11 @@
 import { useState, useRef, useMemo, useEffect, createContext, useContext, useCallback } from 'react'
 import { toast } from 'sonner'
-import { useCubes, useDims, useProcs, useChores, useSubsets, useViews, useCubeDimensions, useSaveView, useHierarchies, useCreateHierarchy, useControlObjects, useDeleteDimension, useDeleteCube, useDeleteProcess, useDeleteChore, useDeleteSubset, useCreateProcess, useCreateDimension } from '@/hooks/useApi'
+import { useCubes, useDims, useProcs, useChores, useSubsets, useViews, useCubeDimensions, useSaveView, useHierarchies, useCreateHierarchy, useControlObjects, useDeleteDimension, useDeleteCube, useDeleteProcess, useDeleteChore, useDeleteSubset } from '@/hooks/useApi'
 import { useStore } from '@/store'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { ChevronRight, ChevronDown, Box, Layers, Cog, Clock, Loader2, List, Plus, Table2, Code2, PencilLine, Search, X, Braces, Trash2, FileSearch } from 'lucide-react'
+import { ChevronRight, ChevronDown, Box, Layers, Cog, Clock, Loader2, List, Plus, Table2, Code2, Sigma, PencilLine, Search, X, Braces, Trash2, FileSearch, Database, Tag } from 'lucide-react'
 import GlobalSearch from '@/components/GlobalSearch'
+import { DeleteWarningModal } from '@/components/DeleteWarningModal'
 import { cn } from '@/lib/utils'
 
 // ── Reveal / locate helpers ───────────────────────────────────────────────────
@@ -67,29 +68,35 @@ function getLocateIdFromTab(tab) {
 
 const ActiveLocateCtx = createContext('')
 
+function NamePopover({ open, onCommit, onCancel, placeholder = 'name…' }) {
+  const inputRef = useRef(null)
+  const [value, setValue] = useState('')
+  useEffect(() => { if (open) { setValue(''); setTimeout(() => inputRef.current?.focus(), 0) } }, [open])
+  if (!open) return null
+  const commit = () => { const n = value.trim(); if (n) onCommit(n); else onCancel() }
+  return (
+    <div className="absolute right-0 top-full mt-0.5 z-50 w-52 rounded-md border border-border bg-popover p-2 shadow-lg flex flex-col gap-1.5">
+      <input ref={inputRef} value={value} onChange={e => setValue(e.target.value)}
+        onKeyDown={e => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') onCancel() }}
+        placeholder={placeholder}
+        className="text-xs bg-transparent border-b border-primary outline-none font-mono py-px w-full" />
+      <div className="flex gap-1 justify-end pt-0.5">
+        <button onClick={onCancel}
+          className="text-[10px] px-2 py-0.5 rounded hover:bg-muted text-muted-foreground">Cancel</button>
+        <button onClick={commit}
+          className="text-[10px] px-2 py-0.5 rounded bg-primary text-primary-foreground hover:bg-primary/90">Create</button>
+      </div>
+    </div>
+  )
+}
+
 function Section({ icon: Icon, label, items, isLoading, onSelect, itemIcon: ItemIcon, sectionId, locateIdPrefix, onDelete, onAdd }) {
   const [open, setOpen] = useState(false)
-  const [adding, setAdding] = useState(false)
-  const [newName, setNewName] = useState('')
-  const inputRef = useRef(null)
   const activeId = useContext(ActiveLocateCtx)
   const revealTarget = useStore(s => s.revealTarget)
   useEffect(() => {
     if (revealTarget && shouldAutoOpen(sectionId, revealTarget)) setOpen(true)
   }, [revealTarget, sectionId])
-
-  const startAdd = () => {
-    setOpen(true)
-    setAdding(true)
-    setNewName('')
-    setTimeout(() => inputRef.current?.focus(), 0)
-  }
-  const commitAdd = () => {
-    const name = newName.trim()
-    if (name && onAdd) onAdd(name)
-    setAdding(false)
-    setNewName('')
-  }
 
   return (
     <div>
@@ -105,7 +112,7 @@ function Section({ icon: Icon, label, items, isLoading, onSelect, itemIcon: Item
         {isLoading && <Loader2 size={10} className="animate-spin text-muted-foreground shrink-0 ml-1" />}
         {onAdd && !isLoading && (
           <button
-            onClick={startAdd}
+            onClick={() => { setOpen(true); onAdd() }}
             title={`New ${label.toLowerCase().replace(/s$/, '')}`}
             className="hidden group-hover:flex items-center ml-1 text-muted-foreground hover:text-foreground shrink-0"
           >
@@ -115,20 +122,6 @@ function Section({ icon: Icon, label, items, isLoading, onSelect, itemIcon: Item
       </div>
       {open && (
         <div className="pb-1">
-          {adding && (
-            <div className="flex items-center gap-2 pl-6 pr-2 py-0.5">
-              {ItemIcon && <ItemIcon size={12} className="shrink-0 text-muted-foreground" />}
-              <input
-                ref={inputRef}
-                value={newName}
-                onChange={e => setNewName(e.target.value)}
-                onKeyDown={e => { if (e.key === 'Enter') commitAdd(); if (e.key === 'Escape') setAdding(false) }}
-                onBlur={commitAdd}
-                placeholder="name…"
-                className="flex-1 text-xs bg-transparent border-b border-primary outline-none font-mono py-px"
-              />
-            </div>
-          )}
           {(items ?? []).map(item => (
             <div key={item} className="flex items-center text-sm text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground group">
               <button
@@ -156,7 +149,7 @@ function Section({ icon: Icon, label, items, isLoading, onSelect, itemIcon: Item
   )
 }
 
-function CubeSubSection({ label, loading, children, onAdd, adding, onAddCommit, onAddCancel, addValue, onAddChange, addRef, sectionId }) {
+function CubeSubSection({ label, loading, children, onAdd, sectionId }) {
   const [open, setOpen] = useState(false)
   const revealTarget = useStore(s => s.revealTarget)
   useEffect(() => {
@@ -171,8 +164,8 @@ function CubeSubSection({ label, loading, children, onAdd, adding, onAddCommit, 
           {label}
           {loading && <Loader2 size={9} className="ml-1 animate-spin" />}
         </button>
-        {onAdd && !adding && (
-          <button onClick={onAdd}
+        {onAdd && (
+          <button onClick={() => onAdd()}
             className="hidden group-hover:flex items-center gap-0.5 px-1 py-0.5 rounded text-[10px] text-muted-foreground hover:text-foreground hover:bg-sidebar-accent shrink-0 ml-auto transition-colors"
             title={`New ${label.toLowerCase()}`}>
             <Plus size={9} />
@@ -180,20 +173,6 @@ function CubeSubSection({ label, loading, children, onAdd, adding, onAddCommit, 
         )}
       </div>
       {open && children}
-      {adding && (
-        <div className="flex items-center gap-1 px-12 py-0.5">
-          <Table2 size={10} className="shrink-0 text-muted-foreground" />
-          <input
-            ref={addRef}
-            value={addValue}
-            onChange={onAddChange}
-            onKeyDown={e => { if (e.key === 'Enter') onAddCommit(); if (e.key === 'Escape') onAddCancel() }}
-            onBlur={onAddCommit}
-            placeholder={`${label.toLowerCase()} name\u2026`}
-            className="flex-1 text-xs bg-transparent border-b border-primary outline-none font-mono py-px"
-          />
-        </div>
-      )}
     </div>
   )
 }
@@ -201,32 +180,18 @@ function CubeSubSection({ label, loading, children, onAdd, adding, onAddCommit, 
 // Dimension row inside a cube — shows subsets on expand
 function CubeDimRow({ server, dim, onOpenSubset, onOpenDim, cube }) {
   const [open, setOpen] = useState(false)
-  const [adding, setAdding] = useState(false)
-  const [newName, setNewName] = useState('')
-  const inputRef = useRef(null)
+  const [deleteModal, setDeleteModal] = useState(null)
   const { data: subsets, isFetching } = useSubsets(open ? server : null, open ? dim : null)
   const sectionId = `cube:${cube}:dim:${dim}`
   const deleteSubsetMut = useDeleteSubset()
 
-  const handleDeleteSubset = (name) => {
-    if (!window.confirm(`Delete subset "${name}"? This cannot be undone.`)) return
+  const confirmDeleteSubset = () => {
+    const name = deleteModal
+    setDeleteModal(null)
     deleteSubsetMut.mutate({ server, dimension: dim, name }, {
       onSuccess: () => toast.success(`Deleted ${name}`),
       onError:   (err) => toast.error(err.message ?? 'Delete failed'),
     })
-  }
-
-  const startAdd = () => {
-    setAdding(true)
-    setNewName('')
-    setTimeout(() => inputRef.current?.focus(), 0)
-  }
-
-  const commitAdd = () => {
-    const name = newName.trim()
-    if (name) onOpenSubset(dim, name)
-    setAdding(false)
-    setNewName('')
   }
 
   return (
@@ -244,7 +209,7 @@ function CubeDimRow({ server, dim, onOpenSubset, onOpenDim, cube }) {
           </button>
           {isFetching
             ? <Loader2 size={10} className="animate-spin text-muted-foreground" />
-            : <button onClick={(e) => { e.stopPropagation(); setOpen(true); startAdd() }} title="New subset"
+            : <button onClick={(e) => { e.stopPropagation(); setOpen(true); onOpenSubset(dim, null) }} title="New subset"
                 className="flex items-center gap-0.5 px-1 py-0.5 rounded text-[10px] text-muted-foreground hover:text-foreground hover:bg-sidebar-accent">
                 <Plus size={9} /> Subset
               </button>
@@ -253,21 +218,7 @@ function CubeDimRow({ server, dim, onOpenSubset, onOpenDim, cube }) {
       </div>
       {open && (
         <div>
-          {adding && (
-            <div className="flex items-center gap-1 px-20 py-0.5">
-              <List size={10} className="shrink-0 text-muted-foreground" />
-              <input
-                ref={inputRef}
-                value={newName}
-                onChange={e => setNewName(e.target.value)}
-                onKeyDown={e => { if (e.key === 'Enter') commitAdd(); if (e.key === 'Escape') setAdding(false) }}
-                onBlur={commitAdd}
-                placeholder="Subset name…"
-                className="flex-1 text-xs bg-transparent border-b border-primary outline-none font-mono py-px"
-              />
-            </div>
-          )}
-          {(subsets ?? []).length === 0 && !isFetching && !adding && (
+          {(subsets ?? []).length === 0 && !isFetching && (
             <p className="px-20 py-0.5 text-xs text-muted-foreground italic">No subsets — hover to add</p>
           )}
           {(subsets ?? []).map(s => (
@@ -283,7 +234,7 @@ function CubeDimRow({ server, dim, onOpenSubset, onOpenDim, cube }) {
                 <span className="truncate font-mono">{s.Name}</span>
               </button>
               <button
-                onClick={(e) => { e.stopPropagation(); handleDeleteSubset(s.Name) }}
+                onClick={(e) => { e.stopPropagation(); setDeleteModal(s.Name) }}
                 title="Delete subset"
                 className="hidden group-hover:flex items-center pr-2 py-0.5 text-muted-foreground hover:text-red-400 shrink-0"
               >
@@ -293,6 +244,8 @@ function CubeDimRow({ server, dim, onOpenSubset, onOpenDim, cube }) {
           ))}
         </div>
       )}
+      <DeleteWarningModal open={!!deleteModal} type="subset" name={deleteModal} server={server}
+        dimension={dim} onClose={() => setDeleteModal(null)} onConfirm={confirmDeleteSubset} />
     </div>
   )
 }
@@ -308,43 +261,21 @@ function CubeRow({ server, cube, onOpenRules, onOpenView, onOpenSubset, onOpenDi
   const { data: views,    isFetching: loadingViews } = useViews(open ? server : null, open ? cube : null)
   const { data: cubeDims, isFetching: loadingDims  } = useCubeDimensions(open ? server : null, open ? cube : null)
 
-  const [addingView, setAddingView] = useState(false)
-  const [newViewName, setNewViewName] = useState('')
-  const viewInputRef = useRef(null)
+  const [deleteModal, setDeleteModal] = useState(false)
   const saveView = useSaveView()
   const deleteCubeMut = useDeleteCube()
 
-  const handleDeleteCube = (e) => {
-    e.stopPropagation()
-    if (!window.confirm(`Delete cube "${cube}"? This cannot be undone.`)) return
+  const handleDeleteCube = (e) => { e.stopPropagation(); setDeleteModal(true) }
+  const confirmDeleteCube = () => {
+    setDeleteModal(false)
     deleteCubeMut.mutate({ server, name: cube }, {
       onSuccess: () => toast.success(`Deleted ${cube}`),
       onError:   (err) => toast.error(err.message ?? 'Delete failed'),
     })
   }
 
-  const startAddView = () => {
-    setAddingView(true)
-    setNewViewName('')
-    setTimeout(() => viewInputRef.current?.focus(), 0)
-  }
-
-  const commitAddView = () => {
-    const name = newViewName.trim()
-    setAddingView(false)
-    setNewViewName('')
-    if (!name) return
-    const id = toast.loading(`Creating view "${name}"…`)
-    saveView.mutate(
-      { server, cube, name, mdx: `SELECT {} ON COLUMNS FROM [${cube}]` },
-      {
-        onSuccess: () => {
-          toast.success(`View "${name}" created`, { id })
-          onOpenView(cube, name)
-        },
-        onError: e => toast.error(e.message, { id }),
-      }
-    )
+  const handleAddView = () => {
+    openTab({ id: `guidedmdxview:${server}:${cube}:${Date.now()}`, type: 'guidedmdxview', label: `Builder — ${cube}`, server, initialState: { selectedCube: cube, step: 1 } })
   }
 
   const loading = loadingViews || loadingDims
@@ -379,10 +310,8 @@ function CubeRow({ server, cube, onOpenRules, onOpenView, onOpenSubset, onOpenDi
       </div>
       {open && <>
         <CubeSubSection label="Views" loading={loadingViews} sectionId={`cube:${cube}:views`}
-          onAdd={startAddView} adding={addingView}
-          addValue={newViewName} onAddChange={e => setNewViewName(e.target.value)}
-          addRef={viewInputRef} onAddCommit={commitAddView} onAddCancel={() => setAddingView(false)}>
-          {(views ?? []).length === 0 && !loadingViews && !addingView
+          onAdd={handleAddView}>
+          {(views ?? []).length === 0 && !loadingViews
             ? <p className="px-12 py-0.5 text-xs text-muted-foreground/50 italic">No views</p>
             : (views ?? []).map(v => (
                 <button key={v.name} onClick={() => onOpenView(cube, v.name)}
@@ -404,10 +333,12 @@ function CubeRow({ server, cube, onOpenRules, onOpenView, onOpenSubset, onOpenDi
         </CubeSubSection>
         <button onClick={() => onOpenRules(cube)}
           className="flex items-center gap-2 w-full px-9 py-0.5 text-xs text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground">
-          <Code2 size={10} className="shrink-0 text-muted-foreground" />
+          <Sigma size={10} className="shrink-0 text-muted-foreground" />
           <span>Rules</span>
         </button>
       </>}
+      <DeleteWarningModal open={deleteModal} type="cube" name={cube} server={server}
+        onClose={() => setDeleteModal(false)} onConfirm={confirmDeleteCube} />
     </div>
   )
 }
@@ -468,7 +399,7 @@ function RulesSection({ server, cubes, isLoading, onOpenRules }) {
         className="flex items-center gap-1.5 w-full px-3 py-1 text-xs font-semibold text-muted-foreground hover:text-foreground uppercase tracking-wider"
       >
         {open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-        <Code2 size={12} />
+        <Sigma size={12} />
         <span>Rules</span>
         {isLoading && <Loader2 size={10} className="ml-auto animate-spin" />}
       </button>
@@ -502,7 +433,18 @@ function HistorySection({ server, onOpen }) {
   const serverHistory = tabHistory.filter(h => h.server === server)
   if (serverHistory.length === 0) return null
 
-  const typeIcon = { rules: Code2, process: Cog, subset: List, dimension: Layers, cubeview: Table2, view: Table2 }
+  const typeIcon = {
+    rules: Code2, process: Cog, subset: List, dimension: Layers,
+    cubeview: Table2, view: Table2, sql: Database, guidedmdxview: Braces,
+  }
+  const typeLabel = {
+    rules: 'Rules', process: 'Process', subset: 'Subset', dimension: 'Dimension',
+    cubeview: 'View', view: 'View', sql: 'SQL', guidedmdxview: 'MDX Builder',
+  }
+
+  // SQL/MDX Builder tabs have no server — show them regardless
+  const visible = tabHistory.filter(h => h.server === server || !h.server)
+  if (visible.length === 0) return null
 
   return (
     <div>
@@ -516,18 +458,18 @@ function HistorySection({ server, onOpen }) {
       </button>
       {open && (
         <div className="pb-1">
-          {serverHistory.map(h => {
+          {visible.map(h => {
             const Icon = typeIcon[h.type] ?? Box
             return (
               <button
                 key={h.id}
                 onClick={() => onOpen(h)}
                 className="flex items-center gap-2 w-full px-6 py-0.5 text-xs text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground truncate"
-                title={`${h.type}: ${h.label}`}
+                title={`${typeLabel[h.type] ?? h.type}: ${h.label}`}
               >
                 <Icon size={11} className="shrink-0 text-muted-foreground" />
                 <span className="truncate flex-1 text-left">{h.label}</span>
-                <span className="text-[10px] text-muted-foreground/50 shrink-0 capitalize">{h.type}</span>
+                <span className="text-[10px] text-muted-foreground/50 shrink-0">{typeLabel[h.type] ?? h.type}</span>
               </button>
             )
           })}
@@ -545,11 +487,8 @@ function DimRow({ server, dim, onOpenSubset, onOpenDim }) {
   useEffect(() => {
     if (revealTarget && shouldAutoOpen(sectionId, revealTarget)) setOpen(true)
   }, [revealTarget, sectionId])
-  const [adding, setAdding] = useState(false)
-  const [newName, setNewName] = useState('')
   const [addingHierarchy, setAddingHierarchy] = useState(false)
   const [newHierarchyName, setNewHierarchyName] = useState('')
-  const inputRef = useRef(null)
   const hierarchyInputRef = useRef(null)
   const { data: subsets, isFetching } = useSubsets(open ? server : null, open ? dim : null)
   const { data: hierarchies = [] } = useHierarchies(open ? server : null, open ? dim : null)
@@ -558,34 +497,37 @@ function DimRow({ server, dim, onOpenSubset, onOpenDim }) {
   const deleteDimMut = useDeleteDimension()
   const deleteSubsetMut = useDeleteSubset()
 
-  const handleDeleteSubset = (name) => {
-    if (!window.confirm(`Delete subset "${name}"? This cannot be undone.`)) return
-    deleteSubsetMut.mutate({ server, dimension: dim, name }, {
-      onSuccess: () => toast.success(`Deleted ${name}`),
-      onError:   (err) => toast.error(err.message ?? 'Delete failed'),
-    })
-  }
+  const [deleteModal, setDeleteModal] = useState(null)
 
-  const handleDelete = (e) => {
-    e.stopPropagation()
-    if (!window.confirm(`Delete dimension "${dim}"? This cannot be undone.`)) return
-    deleteDimMut.mutate({ server, name: dim }, {
-      onSuccess: () => toast.success(`Deleted ${dim}`),
-      onError:   (err) => toast.error(err.message ?? 'Delete failed'),
-    })
-  }
+  const handleDeleteSubset = (name) => setDeleteModal({ type: 'subset', name })
+  const handleDelete = (e) => { e.stopPropagation(); setDeleteModal({ type: 'dimension' }) }
 
-  const startAdd = () => {
-    setAdding(true)
-    setNewName('')
-    setTimeout(() => inputRef.current?.focus(), 0)
-  }
-
-  const commitAdd = () => {
-    const name = newName.trim()
-    if (name) onOpenSubset(dim, name)
-    setAdding(false)
-    setNewName('')
+  const confirmDelete = () => {
+    const m = deleteModal
+    setDeleteModal(null)
+    if (m.type === 'subset') {
+      deleteSubsetMut.mutate({ server, dimension: dim, name: m.name }, {
+        onSuccess: () => {
+          toast.success(`Deleted ${m.name}`)
+          const { tabs, closeTab } = useStore.getState()
+          tabs
+            .filter(t => t.id === `subset:${server}:${dim}:${m.name}`)
+            .forEach(t => closeTab(t.id))
+        },
+        onError: (err) => toast.error(err.message ?? 'Delete failed'),
+      })
+    } else {
+      deleteDimMut.mutate({ server, name: dim }, {
+        onSuccess: () => {
+          toast.success(`Deleted ${dim}`)
+          const { tabs, closeTab } = useStore.getState()
+          tabs
+            .filter(t => t.id.startsWith(`dim:${server}:${dim}:`) || t.id.startsWith(`subset:${server}:${dim}:`))
+            .forEach(t => closeTab(t.id))
+        },
+        onError: (err) => toast.error(err.message ?? 'Delete failed'),
+      })
+    }
   }
 
   return (
@@ -606,7 +548,7 @@ function DimRow({ server, dim, onOpenSubset, onOpenDim }) {
           </button>
           {isFetching
             ? <Loader2 size={10} className="animate-spin text-muted-foreground" />
-            : <button onClick={(e) => { e.stopPropagation(); setOpen(true); startAdd() }} title="New subset"
+            : <button onClick={(e) => { e.stopPropagation(); setOpen(true); onOpenSubset(dim, null) }} title="New subset"
                 className="flex items-center gap-0.5 px-1 py-0.5 rounded text-[10px] text-muted-foreground hover:text-foreground hover:bg-sidebar-accent">
                 <Plus size={9} /> Subset
               </button>
@@ -675,21 +617,7 @@ function DimRow({ server, dim, onOpenSubset, onOpenDim }) {
               ))}
             </div>
           )}
-          {adding && (
-            <div className="flex items-center gap-1 px-14 py-0.5">
-              <List size={10} className="shrink-0 text-muted-foreground" />
-              <input
-                ref={inputRef}
-                value={newName}
-                onChange={e => setNewName(e.target.value)}
-                onKeyDown={e => { if (e.key === 'Enter') commitAdd(); if (e.key === 'Escape') setAdding(false) }}
-                onBlur={commitAdd}
-                placeholder="Subset name…"
-                className="flex-1 text-xs bg-transparent border-b border-primary outline-none font-mono py-px"
-              />
-            </div>
-          )}
-          {(subsets ?? []).length === 0 && !isFetching && !adding && !hasMultipleHierarchies && (
+          {(subsets ?? []).length === 0 && !isFetching && !hasMultipleHierarchies && (
             <p className="px-14 py-0.5 text-xs text-muted-foreground italic">No subsets — hover to add</p>
           )}
           {(subsets ?? []).map(s => (
@@ -717,52 +645,45 @@ function DimRow({ server, dim, onOpenSubset, onOpenDim }) {
           ))}
         </div>
       )}
+      <DeleteWarningModal
+        open={!!deleteModal}
+        type={deleteModal?.type === 'dimension' ? 'dimension' : 'subset'}
+        name={deleteModal?.type === 'dimension' ? dim : deleteModal?.name}
+        server={server}
+        dimension={deleteModal?.type === 'subset' ? dim : undefined}
+        onClose={() => setDeleteModal(null)}
+        onConfirm={confirmDelete}
+      />
     </div>
   )
 }
 
 function DimSection({ server, dims, isLoading, onOpenSubset, onOpenDim, onCreateDim }) {
-  const [open, setOpen]       = useState(false)
-  const [adding, setAdding]   = useState(false)
-  const [newName, setNewName] = useState('')
-  const inputRef              = useRef(null)
+  const [open, setOpen] = useState(false)
   const revealTarget = useStore(s => s.revealTarget)
   useEffect(() => {
     if (revealTarget && shouldAutoOpen('dimensions', revealTarget)) setOpen(true)
   }, [revealTarget])
 
-  const startAdd = (e) => { e.stopPropagation(); setAdding(true); setNewName(''); setTimeout(() => inputRef.current?.focus(), 0) }
-  const commitAdd = () => {
-    const name = newName.trim(); setAdding(false); setNewName('')
-    if (name) onCreateDim(name)
-  }
-
   return (
     <div data-section="dimensions">
-      <button
-        onClick={() => setOpen(o => !o)}
-        className="flex items-center gap-1.5 w-full px-3 py-1 text-xs font-semibold text-muted-foreground hover:text-foreground uppercase tracking-wider"
-      >
-        {open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-        <Layers size={12} />
-        <span>Dimensions</span>
+      <div className="flex items-center w-full px-3 py-1 group">
+        <button
+          onClick={() => setOpen(o => !o)}
+          className="flex items-center gap-1.5 flex-1 text-xs font-semibold text-muted-foreground hover:text-foreground uppercase tracking-wider"
+        >
+          {open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+          <Layers size={12} />
+          <span>Dimensions</span>
+        </button>
         {isLoading
           ? <Loader2 size={10} className="ml-auto animate-spin" />
-          : <button onClick={startAdd} title="New dimension"
-              className="ml-auto p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors">
+          : <button onClick={e => { e.stopPropagation(); onCreateDim() }} title="New dimension"
+              className="hidden group-hover:flex ml-auto p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors">
               <Plus size={11} />
             </button>
         }
-      </button>
-      {adding && (
-        <div className="flex items-center gap-1 px-6 py-0.5">
-          <Layers size={10} className="shrink-0 text-muted-foreground" />
-          <input ref={inputRef} value={newName} onChange={e => setNewName(e.target.value)}
-            onKeyDown={e => { if (e.key === 'Enter') commitAdd(); if (e.key === 'Escape') setAdding(false) }}
-            onBlur={commitAdd} placeholder="Dimension name…"
-            className="flex-1 text-xs bg-transparent border-b border-primary outline-none font-mono py-px" />
-        </div>
-      )}
+      </div>
       {open && (
         <div className="pb-1">
           {(dims ?? []).map(dim => (
@@ -774,74 +695,173 @@ function DimSection({ server, dims, isLoading, onOpenSubset, onOpenDim, onCreate
   )
 }
 
-function ControlSection({ server, onOpenViewer, onOpenDim, onOpenProcess }) {
-  const [open, setOpen]           = useState(false)
-  const [cubesOpen, setCubesOpen] = useState(false)
-  const [dimsOpen,  setDimsOpen]  = useState(false)
-  const [procsOpen, setProcsOpen] = useState(false)
+// ── SQL / ODBC section ────────────────────────────────────────────────────────
 
-  // Fetch eagerly — data is ready when user opens the section
+// ── Control object classifiers ────────────────────────────────────────────────
+const CUBE_GROUPS = [
+  { id: 'picklist',  label: 'Picklist Cubes',   match: n => n.startsWith('}PickList_') },
+  { id: 'attribute', label: 'Attribute Cubes',  match: n => n.startsWith('}ElementAttributes_') },
+  { id: 'security',  label: 'Security Cubes',   match: n => n.startsWith('}ElementSecurity_') || ['}ClientGroups','}ClientProperties','}GroupProperties','}Clients','}Groups'].includes(n) },
+  { id: 'stats',     label: 'Statistics Cubes', match: n => n.startsWith('}Stats_') },
+  { id: 'other',     label: 'Other Cubes',      match: () => true },
+]
+const DIM_GROUPS = [
+  { id: 'attribute', label: 'Attribute Dims',   match: n => n.startsWith('}ElementAttributes_') },
+  { id: 'security',  label: 'Security Dims',    match: n => ['}Clients','}Groups','}GroupProperties','}ClientProperties'].some(p => n === p || n.startsWith(p)) },
+  { id: 'hierarchy', label: 'Hierarchy Dims',   match: n => n.startsWith('}Hierarchies_') },
+  { id: 'other',     label: 'Other Dims',       match: () => true },
+]
+
+function classify(items, groups) {
+  const result = groups.map(g => ({ ...g, items: [] }))
+  for (const name of items) {
+    const g = result.find(g => g.match(name))
+    if (g) g.items.push(name)
+  }
+  return result.filter(g => g.items.length > 0)
+}
+
+// Lightweight expandable cube row for control objects (Views only, no rules/editor)
+function CtrlCubeRow({ server, name, onOpenViewer, onOpenView }) {
+  const [open, setOpen] = useState(false)
+  const { data: views, isFetching } = useViews(open ? server : null, open ? name : null)
+  return (
+    <div>
+      <div className="flex items-center group w-full px-9 hover:bg-sidebar-accent">
+        <button onClick={() => setOpen(o => !o)} className="flex items-center gap-1 mr-1 text-muted-foreground/50 hover:text-muted-foreground">
+          {open ? <ChevronDown size={9} /> : <ChevronRight size={9} />}
+        </button>
+        <button onClick={() => onOpenViewer(name)} className="flex items-center gap-2 flex-1 min-w-0 py-0.5 text-xs text-sidebar-foreground truncate">
+          <Box size={11} className="shrink-0 text-muted-foreground" />
+          <span className="truncate">{name}</span>
+        </button>
+      </div>
+      {open && (
+        <div>
+          {isFetching && <div className="px-14 py-0.5 text-[10px] text-muted-foreground flex items-center gap-1"><Loader2 size={9} className="animate-spin" /> Loading…</div>}
+          {(views ?? []).map(v => (
+            <button key={v.name} onClick={() => onOpenView(name, v.name)}
+              className="flex items-center gap-2 w-full px-14 py-0.5 text-xs text-sidebar-foreground hover:bg-sidebar-accent truncate">
+              <Table2 size={10} className="shrink-0 text-muted-foreground" />
+              <span className="truncate">{v.name}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// Lightweight expandable dim row for control objects (Subsets only)
+function CtrlDimRow({ server, name, onOpenDim, onOpenSubset }) {
+  const [open, setOpen] = useState(false)
+  const { data: subsets, isFetching } = useSubsets(open ? server : null, open ? name : null)
+  return (
+    <div>
+      <div className="flex items-center group w-full px-9 hover:bg-sidebar-accent">
+        <button onClick={() => setOpen(o => !o)} className="flex items-center gap-1 mr-1 text-muted-foreground/50 hover:text-muted-foreground">
+          {open ? <ChevronDown size={9} /> : <ChevronRight size={9} />}
+        </button>
+        <button onClick={() => onOpenDim(name)} className="flex items-center gap-2 flex-1 min-w-0 py-0.5 text-xs text-sidebar-foreground truncate">
+          <Layers size={11} className="shrink-0 text-muted-foreground" />
+          <span className="truncate">{name}</span>
+        </button>
+      </div>
+      {open && (
+        <div>
+          {isFetching && <div className="px-14 py-0.5 text-[10px] text-muted-foreground flex items-center gap-1"><Loader2 size={9} className="animate-spin" /> Loading…</div>}
+          {(subsets ?? []).map(s => (
+            <button key={s.Name} onClick={() => onOpenSubset(name, s.Name)}
+              className="flex items-center gap-2 w-full px-14 py-0.5 text-xs text-sidebar-foreground hover:bg-sidebar-accent truncate">
+              <List size={10} className="shrink-0 text-muted-foreground" />
+              <span className="truncate">{s.Name}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function ControlSection({ server, onOpenViewer, onOpenDim, onOpenProcess, onOpenView, onOpenSubset }) {
+  const [open, setOpen] = useState(false)
+  const [openGroups, setOpenGroups] = useState({})
+
   const { data, isFetching } = useControlObjects(server)
   const cubes = data?.cubes      ?? []
   const dims  = data?.dimensions ?? []
   const procs = data?.processes  ?? []
 
-  const SubHeader = ({ label, count, isOpen, onToggle }) => (
-    <button
-      onClick={onToggle}
-      className="flex items-center gap-1.5 w-full px-5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70 hover:text-muted-foreground"
-    >
-      {isOpen ? <ChevronDown size={9} /> : <ChevronRight size={9} />}
+  const cubeGroups = useMemo(() => classify(cubes, CUBE_GROUPS), [cubes])
+  const dimGroups  = useMemo(() => classify(dims,  DIM_GROUPS),  [dims])
+
+  const toggleGroup = id => setOpenGroups(prev => ({ ...prev, [id]: !prev[id] }))
+
+  const GroupHeader = ({ id, label, count }) => (
+    <button onClick={() => toggleGroup(id)}
+      className="flex items-center gap-1.5 w-full px-5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70 hover:text-muted-foreground">
+      {openGroups[id] ? <ChevronDown size={9} /> : <ChevronRight size={9} />}
       <span>{label}</span>
-      {isFetching
-        ? <Loader2 size={9} className="ml-1 animate-spin" />
-        : <span className="ml-1 text-muted-foreground/40">{count}</span>
-      }
+      <span className="ml-1 text-muted-foreground/40">{count}</span>
     </button>
   )
 
   return (
     <div>
-      <button
-        onClick={() => setOpen(o => !o)}
-        className="flex items-center gap-1.5 w-full px-3 py-1 text-xs font-semibold text-muted-foreground hover:text-foreground uppercase tracking-wider"
-      >
+      <button onClick={() => setOpen(o => !o)}
+        className="flex items-center gap-1.5 w-full px-3 py-1 text-xs font-semibold text-muted-foreground hover:text-foreground uppercase tracking-wider">
         {open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
         <Braces size={12} />
         <span>Control Objects</span>
+        {isFetching && <Loader2 size={10} className="ml-1 animate-spin" />}
       </button>
 
       {open && (
         <div className="pb-1">
-          <SubHeader label="Cubes" count={cubes.length} isOpen={cubesOpen} onToggle={() => setCubesOpen(o => !o)} />
-          {cubesOpen && cubes.map(name => (
-            <button key={name} onClick={() => onOpenViewer(name)}
-              className="flex items-center gap-2 w-full px-9 py-0.5 text-xs text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground truncate">
-              <Box size={11} className="shrink-0 text-muted-foreground" />
-              <span className="truncate">{name}</span>
-            </button>
+          {/* ── Cubes ── */}
+          <GroupHeader id="cubes-top" label={`Cubes (${cubes.length})`} count={null} />
+          {openGroups['cubes-top'] && cubeGroups.map(g => (
+            <div key={g.id}>
+              <button onClick={() => toggleGroup(`cube-${g.id}`)}
+                className="flex items-center gap-1.5 w-full px-7 py-0.5 text-[10px] font-medium text-muted-foreground/60 hover:text-muted-foreground">
+                {openGroups[`cube-${g.id}`] ? <ChevronDown size={8} /> : <ChevronRight size={8} />}
+                <span>{g.label}</span>
+                <span className="ml-1 text-muted-foreground/40">{g.items.length}</span>
+              </button>
+              {openGroups[`cube-${g.id}`] && g.items.map(name => (
+                <CtrlCubeRow key={name} server={server} name={name} onOpenViewer={onOpenViewer} onOpenView={onOpenView} />
+              ))}
+            </div>
           ))}
 
-          <SubHeader label="Dimensions" count={dims.length} isOpen={dimsOpen} onToggle={() => setDimsOpen(o => !o)} />
-          {dimsOpen && dims.map(name => (
-            <button key={name} onClick={() => onOpenDim(name)}
-              className="flex items-center gap-2 w-full px-9 py-0.5 text-xs text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground truncate">
-              <Layers size={11} className="shrink-0 text-muted-foreground" />
-              <span className="truncate">{name}</span>
-            </button>
+          {/* ── Dimensions ── */}
+          <GroupHeader id="dims-top" label={`Dimensions (${dims.length})`} count={null} />
+          {openGroups['dims-top'] && dimGroups.map(g => (
+            <div key={g.id}>
+              <button onClick={() => toggleGroup(`dim-${g.id}`)}
+                className="flex items-center gap-1.5 w-full px-7 py-0.5 text-[10px] font-medium text-muted-foreground/60 hover:text-muted-foreground">
+                {openGroups[`dim-${g.id}`] ? <ChevronDown size={8} /> : <ChevronRight size={8} />}
+                <span>{g.label}</span>
+                <span className="ml-1 text-muted-foreground/40">{g.items.length}</span>
+              </button>
+              {openGroups[`dim-${g.id}`] && g.items.map(name => (
+                <CtrlDimRow key={name} server={server} name={name} onOpenDim={onOpenDim} onOpenSubset={onOpenSubset} />
+              ))}
+            </div>
           ))}
 
-          {(isFetching || procs.length > 0) && (
-            <>
-              <SubHeader label="Processes" count={procs.length} isOpen={procsOpen} onToggle={() => setProcsOpen(o => !o)} />
-              {procsOpen && procs.map(name => (
+          {/* ── Processes ── */}
+          {procs.length > 0 && (
+            <div>
+              <GroupHeader id="procs-top" label={`Processes (${procs.length})`} count={null} />
+              {openGroups['procs-top'] && procs.map(name => (
                 <button key={name} onClick={() => onOpenProcess(name)}
-                  className="flex items-center gap-2 w-full px-9 py-0.5 text-xs text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground truncate">
+                  className="flex items-center gap-2 w-full px-9 py-0.5 text-xs text-sidebar-foreground hover:bg-sidebar-accent truncate">
                   <Cog size={11} className="shrink-0 text-muted-foreground" />
                   <span className="truncate">{name}</span>
                 </button>
               ))}
-            </>
+            </div>
           )}
         </div>
       )}
@@ -870,32 +890,27 @@ export default function Explorer() {
   const { data: chores, isFetching: loadingChores } = useChores(server)
   const deleteProcessMut  = useDeleteProcess()
   const deleteCoreMut     = useDeleteChore()
-  const createProcessMut  = useCreateProcess()
-  const createDimMut      = useCreateDimension()
 
-  const handleCreateDim = (name) => {
-    const id = toast.loading(`Creating "${name}"…`)
-    createDimMut.mutate({ server, name }, {
-      onSuccess: () => { toast.success(`Created ${name}`, { id }); openDim(name) },
-      onError:   (err) => toast.error(err.message ?? 'Create failed', { id }),
-    })
-  }
+  const openNewProcess = () => openTab({
+    id: `process:${server}:new:${Date.now()}`,
+    type: 'process',
+    label: 'New Process',
+    server,
+    name: null,
+  })
 
-  const handleDeleteProcess = (name) => {
-    if (!window.confirm(`Delete process "${name}"? This cannot be undone.`)) return
+  const [deleteModal, setDeleteModal] = useState(null)
+
+  const handleDeleteProcess = (name) => setDeleteModal(name)
+  const confirmDeleteProcess = () => {
+    const name = deleteModal
+    setDeleteModal(null)
     deleteProcessMut.mutate({ server, name }, {
       onSuccess: () => toast.success(`Deleted ${name}`),
       onError:   (err) => toast.error(err.message ?? 'Delete failed'),
     })
   }
 
-  const handleCreateProcess = (name) => {
-    const id = toast.loading(`Creating "${name}"…`)
-    createProcessMut.mutate({ server, name }, {
-      onSuccess: () => { toast.success(`Created ${name}`, { id }); openProcess(name) },
-      onError:   (err) => toast.error(err.message ?? 'Create failed', { id }),
-    })
-  }
 
   const handleDeleteChore = (name) => {
     if (!window.confirm(`Delete chore "${name}"? This cannot be undone.`)) return
@@ -936,12 +951,12 @@ export default function Explorer() {
   })
 
   const openSubset = (dim, name) => openTab({
-    id:         `subset:${server}:${dim}:${name}`,
+    id:         name ? `subset:${server}:${dim}:${name}` : `subset:${server}:${dim}:new:${Date.now()}`,
     type:       'subset',
-    label:      name,
+    label:      name ?? 'New Subset',
     server,
     dimension:  dim,
-    subsetName: name,
+    subsetName: name ?? null,
   })
 
   const openCubeViewer = (cube) => openTab({
@@ -961,13 +976,13 @@ export default function Explorer() {
     viewName: view,
   })
 
-  const openDim = (dim, hierarchy = dim) => openTab({
-    id:        `dim:${server}:${dim}:${hierarchy}`,
+  const openDim = (dim, hierarchy) => openTab({
+    id:        dim ? `dim:${server}:${dim}:${hierarchy ?? dim}` : `dim:${server}:new:${Date.now()}`,
     type:      'dimension',
-    label:     hierarchy === dim ? dim : `${dim} / ${hierarchy}`,
+    label:     dim ? (hierarchy && hierarchy !== dim ? `${dim} / ${hierarchy}` : dim) : 'New Dimension',
     server,
-    dimension: dim,
-    hierarchy,
+    dimension: dim ?? null,
+    hierarchy: dim ? (hierarchy ?? dim) : null,
   })
 
   const openCubeEditor = (cube) => openTab({
@@ -1093,19 +1108,24 @@ export default function Explorer() {
                 onOpenRules={openRules} onOpenView={openView}
                 onOpenSubset={openSubset} onOpenDim={openDim}
                 onOpenViewer={openCubeViewer} onOpenCubeEditor={openCubeEditor} />
-              <DimSection server={server} dims={dims}    isLoading={loadingDims}   onOpenSubset={openSubset} onOpenDim={openDim} onCreateDim={handleCreateDim} />
-              <Section    icon={Cog}   label="Processes" items={procs}  isLoading={loadingProcs}  onSelect={openProcess} itemIcon={Cog}   sectionId="processes" locateIdPrefix="process" onDelete={handleDeleteProcess} onAdd={handleCreateProcess} />
+              <DimSection server={server} dims={dims}    isLoading={loadingDims}   onOpenSubset={openSubset} onOpenDim={openDim} onCreateDim={() => openDim(null)} />
+              <Section    icon={Cog}   label="Processes" items={procs}  isLoading={loadingProcs}  onSelect={openProcess} itemIcon={Cog}   sectionId="processes" locateIdPrefix="process" onDelete={handleDeleteProcess} onAdd={openNewProcess} />
               <Section    icon={Clock} label="Chores"    items={chores} isLoading={loadingChores} onSelect={openChore}   itemIcon={Clock} sectionId="chores" locateIdPrefix="chore" onDelete={handleDeleteChore} />
               <ControlSection
                 server={server}
                 onOpenViewer={openCubeViewer}
                 onOpenDim={openDim}
                 onOpenProcess={openProcess}
+                onOpenView={openView}
+                onOpenSubset={openSubset}
               />
+
             </>
           )}
         </div>
       </ScrollArea>
+      <DeleteWarningModal open={!!deleteModal} type="process" name={deleteModal} server={server}
+        onClose={() => setDeleteModal(null)} onConfirm={confirmDeleteProcess} />
     </div>
     </ActiveLocateCtx.Provider>
   )

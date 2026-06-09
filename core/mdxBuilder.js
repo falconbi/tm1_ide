@@ -13,7 +13,8 @@
  * @property {string} [subset]  - Named subset (uses TM1SubsetToSet)
  * @property {string} [member]  - Single member (for pages axis)
  */
-function buildAxisSet({ dimension: dim, subset, member, members, memberSet: mset }) {
+function buildAxisSet({ dimension: dim, subset, member, members, memberSet: mset, customExpr }) {
+    if (customExpr) return customExpr
     if (mset === 'leaf') return `{TM1FILTERBYLEVEL({[${dim}].[${dim}].Members}, 0)}`
     if (mset === 'root') return `{[${dim}].[${dim}].DefaultMember}`
     if (members?.length > 1) return `{${members.map(m => `[${dim}].[${dim}].[${m}]`).join(', ')}}`
@@ -22,14 +23,23 @@ function buildAxisSet({ dimension: dim, subset, member, members, memberSet: mset
     return `{[${dim}].[${dim}].Members}`
 }
 
+function nestCrossJoin(sets) {
+    if (sets.length === 1) return sets[0]
+    // TM1 CrossJoin takes exactly 2 args — nest left-to-right for 3+
+    return sets.slice(2).reduce(
+        (acc, s) => `CrossJoin(${acc}, ${s})`,
+        `CrossJoin(${sets[0]}, ${sets[1]})`
+    )
+}
+
 function axisExpression(placements, suppress) {
     if (!placements.length) return null
     const sets = placements.map(buildAxisSet)
-    const joined = sets.length === 1 ? sets[0] : `CrossJoin(${sets.join(', ')})`
+    const joined = nestCrossJoin(sets)
     return suppress ? `NON EMPTY ${joined}` : joined
 }
 
-export function buildMDX({ cube, rows = [], columns = [], pages = [], suppressZeros = true }) {
+export function buildMDX({ cube, rows = [], columns = [], pages = [], bench = [], suppressZeros = true }) {
     const colExpr = axisExpression(columns, suppressZeros) ?? '{}'
     const rowExpr = axisExpression(rows,    suppressZeros)
 
@@ -38,14 +48,24 @@ export function buildMDX({ cube, rows = [], columns = [], pages = [], suppressZe
 
     let mdx = `SELECT ${axes.join(',\n       ')}\nFROM [${cube}]`
 
-    const validSlicers = pages
+    const pageSlicers = pages
         .filter(({ member, members }) => member || members?.length)
         .map(({ dimension: dim, member, members }) =>
             members?.length > 1
                 ? `{${members.map(m => `[${dim}].[${dim}].[${m}]`).join(', ')}}`
                 : `[${dim}].[${dim}].[${member ?? members?.[0]}]`)
-    if (validSlicers.length) {
-        mdx += `\nWHERE (${validSlicers.join(', ')})`
+
+    // Bench dims always appear in WHERE — with their saved member or DefaultMember
+    const benchSlicers = bench.map(({ dimension: dim, member, members }) =>
+        (member || members?.length)
+            ? (members?.length > 1
+                ? `{${members.map(m => `[${dim}].[${dim}].[${m}]`).join(', ')}}`
+                : `[${dim}].[${dim}].[${member ?? members?.[0]}]`)
+            : `[${dim}].[${dim}].DefaultMember`)
+
+    const allSlicers = [...pageSlicers, ...benchSlicers]
+    if (allSlicers.length) {
+        mdx += `\nWHERE (${allSlicers.join(', ')})`
     }
 
     return mdx

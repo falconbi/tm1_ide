@@ -1,7 +1,7 @@
-import { useState } from 'react'
+import { useState, useCallback } from 'react'
 import MonacoEditor from '@monaco-editor/react'
 import { useStore } from '@/store'
-import { Play, Loader2 } from 'lucide-react'
+import { Play, Loader2, GripHorizontal } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import GuidedMDXBuilder from './GuidedMDXBuilder'
 import ResultGrid from './mdx/ResultGrid'
@@ -19,6 +19,16 @@ export default function MDXSandbox({ tab }) {
   const [rawResult, setRawResult] = useState(null)
   const [rawError, setRawError] = useState(null)
   const [rawRunning, setRawRunning] = useState(false)
+  const [resultsHeight, setResultsHeight] = useState(260)
+  const startResultsResize = useCallback((e) => {
+    e.preventDefault()
+    const startY = e.clientY
+    const startH = resultsHeight
+    const onMove = (mv) => setResultsHeight(Math.max(80, Math.min(startH + (startY - mv.clientY), 700)))
+    const onUp = () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp) }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+  }, [resultsHeight])
 
   const executeRaw = async (query) => {
     const q = (query || rawMdx).trim()
@@ -112,7 +122,12 @@ export default function MDXSandbox({ tab }) {
               </div>
             )}
 
-            <div className="flex-1 min-h-0 border-t border-border">
+            <div onMouseDown={startResultsResize}
+              className="shrink-0 h-1.5 cursor-row-resize flex items-center justify-center hover:bg-primary/20 transition-colors group border-t border-border"
+              title="Drag to resize results">
+              <GripHorizontal size={12} className="text-muted-foreground/40 group-hover:text-primary/60" />
+            </div>
+            <div className="shrink-0 border-t border-border" style={{ height: resultsHeight }}>
               {rawResult ? (
                 <ResultGrid axes={rawResult.Axes} cells={rawResult.Cells} truncated={rawResult.truncated} />
               ) : (

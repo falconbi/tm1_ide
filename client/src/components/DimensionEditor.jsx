@@ -1,15 +1,16 @@
-import { useMemo, useState, useCallback, useRef, useEffect } from 'react'
+import { useMemo, useState, useCallback, useRef, useEffect, forwardRef, useImperativeHandle } from 'react'
 import {
-  useElements, useEdges, useElementAttrValues, useHierarchies,
+  useElements, useElementsWithIndex, useEdges, useElementAttrValues, useHierarchies,
   useAddElement, useDeleteElement, useAddEdge, useDeleteEdge, useUpdateEdgeWeight,
   useAttrGrid, useWriteElementAttribute, useCreateAttrDef, useDeleteAttrDef, useSubsets, useSubsetElements, useDimCubes,
-  useCreateHierarchy, useBulkDimImport, useBulkAttrImport,
+  useCreateHierarchy, useBulkDimImport, useBulkAttrImport, useCreateDimension,
 } from '@/hooks/useApi'
 import { AgGridReact } from 'ag-grid-react'
 import { AllCommunityModule, ModuleRegistry, themeBalham, colorSchemeDark, colorSchemeLight } from 'ag-grid-community'
 import { useStore } from '@/store'
 import { ChevronRight, ChevronDown, Loader2, List, GitBranch, Plus, Trash2, Check, X, ClipboardList, ChevronLeft, Table2, Search, ListOrdered, MapPin, Upload, Grid3x3 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { toast } from 'sonner'
 import PicklistBuilder from './PicklistBuilder'
 
 ModuleRegistry.registerModules([AllCommunityModule])
@@ -270,7 +271,7 @@ function AddRow({ onConfirm, onCancel }) {
   )
 }
 
-function TreeNode({ name, childrenOf, byName, depth, onAddChild, onDelete, selected, onSelect, visited = new Set() }) {
+function TreeNode({ name, childrenOf, byName, depth, onAddChild, onDelete, selected, onSelect, visited = new Set(), indexMap }) {
   const children = childrenOf[name] ?? []
   const hasChildren = children.length > 0
   const cycle = visited.has(name)
@@ -293,6 +294,7 @@ function TreeNode({ name, childrenOf, byName, depth, onAddChild, onDelete, selec
           {open ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
         </button>
         <span className={cn('shrink-0 text-[10px] w-3', TYPE_COLOR[el?.Type] ?? '')}>{TYPE_ICON[el?.Type] ?? '·'}</span>
+        {indexMap && <span className="shrink-0 text-[9px] text-muted-foreground/50 w-7 text-right font-mono">{indexMap[name] ?? ''}</span>}
         <span className="text-xs font-mono truncate flex-1">{name}</span>
         {cycle && <span className="text-muted-foreground/50 text-[10px]">(cycle)</span>}
         {isSel && !cycle && (
@@ -322,7 +324,7 @@ function TreeNode({ name, childrenOf, byName, depth, onAddChild, onDelete, selec
           )}
           {children.map(c => (
             <TreeNode key={c} name={c} childrenOf={childrenOf} byName={byName} depth={depth + 1}
-              onAddChild={onAddChild} onDelete={onDelete} selected={selected} onSelect={onSelect} visited={nextVisited} />
+              onAddChild={onAddChild} onDelete={onDelete} selected={selected} onSelect={onSelect} visited={nextVisited} indexMap={indexMap} />
           ))}
         </>
       )}
@@ -330,7 +332,7 @@ function TreeNode({ name, childrenOf, byName, depth, onAddChild, onDelete, selec
   )
 }
 
-function FlatList({ elements, selected, onSelect, onDelete }) {
+function FlatList({ elements, selected, onSelect, onDelete, indexMap }) {
   const counts = { N: 0, C: 0, S: 0 }
   for (const e of elements) if (counts[e.Type] != null) counts[e.Type]++
   return (
@@ -349,6 +351,7 @@ function FlatList({ elements, selected, onSelect, onDelete }) {
               className={cn('flex items-center gap-2 px-3 py-0.5 text-xs cursor-pointer',
                 isSel ? 'bg-primary/10' : 'hover:bg-muted/50')}>
               <span className={cn('shrink-0 text-[10px]', TYPE_COLOR[e.Type])}>{TYPE_ICON[e.Type] ?? '·'}</span>
+              {indexMap && <span className="shrink-0 text-[9px] text-muted-foreground/50 w-7 text-right font-mono">{indexMap[e.Name] ?? ''}</span>}
               <span className="font-mono truncate flex-1">{e.Name}</span>
               <span className="text-muted-foreground/50 shrink-0 text-[10px]">L{e.Level}</span>
               {isSel && (
@@ -391,6 +394,82 @@ function buildTreeOrder(elements, edges) {
 }
 
 // ── Attribute grid ──────────────────────────────────────────────────────────
+const TM1_FORMAT_PRESETS = [
+  { group: 'Number',     items: [
+    { fmt: '#,##0',       label: '1,000' },
+    { fmt: '#,##0.0',     label: '1,000.0' },
+    { fmt: '#,##0.00',    label: '1,000.00' },
+    { fmt: '#,##0.000',   label: '1,000.000' },
+    { fmt: '0',           label: '1000' },
+    { fmt: '0.00',        label: '1000.00' },
+  ]},
+  { group: 'Currency',   items: [
+    { fmt: '$#,##0',      label: '$1,000' },
+    { fmt: '$#,##0.00',   label: '$1,000.00' },
+    { fmt: '£#,##0.00',   label: '£1,000.00' },
+    { fmt: '€#,##0.00',   label: '€1,000.00' },
+  ]},
+  { group: 'Percentage', items: [
+    { fmt: '0%',          label: '10%' },
+    { fmt: '0.0%',        label: '10.0%' },
+    { fmt: '0.00%',       label: '10.00%' },
+  ]},
+  { group: 'Accounting', items: [
+    { fmt: '#,##0;(#,##0)',       label: '1,000 / (1,000)' },
+    { fmt: '#,##0.00;(#,##0.00)', label: '1,000.00 / (1,000.00)' },
+    { fmt: '#,##0;[Red]-#,##0',   label: '1,000 / red −1,000' },
+  ]},
+  { group: 'Other',      items: [
+    { fmt: 'General',     label: 'General' },
+    { fmt: '@',           label: 'Text' },
+  ]},
+]
+
+const FormatPickerEditor = forwardRef(({ value: initialValue, stopEditing }, ref) => {
+  const valueRef = useRef(initialValue ?? '')
+  const [value, setValue] = useState(initialValue ?? '')
+  const inputRef = useRef(null)
+
+  useEffect(() => { setTimeout(() => inputRef.current?.select(), 0) }, [])
+
+  useImperativeHandle(ref, () => ({
+    getValue: () => valueRef.current,
+    isCancelBeforeStart: () => false,
+  }))
+
+  const set = (fmt) => { valueRef.current = fmt; setValue(fmt) }
+  const selectPreset = (fmt) => { set(fmt); stopEditing?.() }
+
+  return (
+    <div className="bg-popover border border-border rounded shadow-xl p-2 w-64 text-xs" style={{ zIndex: 9999 }}>
+      <input ref={inputRef} value={value} onChange={e => set(e.target.value)}
+        onKeyDown={e => e.key === 'Enter' && stopEditing?.()}
+        placeholder="TM1 format string…"
+        className="w-full bg-background border border-border rounded px-2 py-1 mb-2 font-mono text-xs outline-none focus:border-primary" />
+      <div className="space-y-1.5 max-h-56 overflow-auto">
+        {TM1_FORMAT_PRESETS.map(({ group, items }) => (
+          <div key={group}>
+            <div className="text-[9px] uppercase tracking-wider text-muted-foreground/60 font-semibold px-0.5 mb-0.5">{group}</div>
+            <div className="flex flex-wrap gap-1">
+              {items.map(({ fmt, label }) => (
+                <button key={fmt} onClick={() => selectPreset(fmt)}
+                  className={cn('px-1.5 py-0.5 rounded border text-[10px] font-mono transition-colors',
+                    value === fmt
+                      ? 'bg-primary text-primary-foreground border-primary'
+                      : 'border-border text-muted-foreground hover:bg-muted hover:text-foreground')}
+                  title={fmt}>
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+})
+FormatPickerEditor.displayName = 'FormatPickerEditor'
+
 function NewAttrModal({ onConfirm, onClose }) {
   const [name, setName] = useState('')
   const [type, setType] = useState('String')
@@ -427,10 +506,11 @@ function NewAttrModal({ onConfirm, onClose }) {
 }
 
 function AttrGrid({ tab, elements, edges, hierarchy }) {
-  const theme     = useStore(s => s.theme)
+  const dark      = useStore(s => s.dark)
   const [subset, setSubset]     = useState('')
   const [search,  setSearch]    = useState('')
   const [newAttr, setNewAttr]   = useState(false)
+  const [formatPicker, setFormatPicker] = useState(null) // { element, value }
   const attrFileRef             = useRef(null)
 
   const { data: grid, isLoading, refetch } = useAttrGrid(tab.server, tab.dimension, hierarchy)
@@ -489,14 +569,27 @@ function AttrGrid({ tab, elements, edges, hierarchy }) {
         </span>
       ),
     },
-    ...attrs.map(attr => ({
+    ...attrs.map(attr => {
+      const isFormat = attr.Name.toLowerCase() === 'format'
+      return {
       field: attr.Name,
       headerName: attr.Name,
-      editable: true,
-      width: 140,
+      editable: !isFormat,
+      width: isFormat ? 170 : 140,
+      ...(isFormat ? { cellRenderer: p => (
+        <button onClick={() => setFormatPicker({ element: p.data.__name, value: p.value ?? '' })}
+          className="w-full text-left font-mono text-xs hover:text-primary truncate"
+          title="Click to set format">
+          {p.value || <span className="opacity-30 italic">click to set</span>}
+        </button>
+      )} : {}),
       headerComponent: p => (
         <div className="flex items-center gap-1 w-full group">
           <span className="flex-1 truncate">{attr.Name}</span>
+          <span className={cn('text-[8px] font-bold shrink-0',
+            attr.Type === 'Numeric' ? 'text-sky-400/70' : attr.Type === 'Alias' ? 'text-amber-400/70' : 'text-muted-foreground/50')}>
+            {attr.Type === 'Numeric' ? 'N' : attr.Type === 'Alias' ? 'A' : 'S'}
+          </span>
           <button onClick={() => handleDeleteAttr(attr.Name)}
             className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-red-400 transition-opacity"
             title={`Delete attribute ${attr.Name}`}>
@@ -504,7 +597,8 @@ function AttrGrid({ tab, elements, edges, hierarchy }) {
           </button>
         </div>
       ),
-    })),
+    }
+    }),
   ], [attrs])
 
   const onCellValueChanged = useCallback(p => {
@@ -512,8 +606,9 @@ function AttrGrid({ tab, elements, edges, hierarchy }) {
     const attribute = p.colDef.field
     const attrDef   = attrs.find(a => a.Name === attribute)
     const type      = attrDef?.Type === 'Numeric' ? 'N' : 'S'
-    writeAttr.mutate({ server: tab.server, dimension: tab.dimension, element, attribute, value: p.newValue ?? '', type, hierarchy })
-  }, [writeAttr, tab, attrs, hierarchy])
+    writeAttr.mutate({ server: tab.server, dimension: tab.dimension, element, attribute, value: p.newValue ?? '', type, hierarchy },
+      { onSuccess: () => refetch(), onError: (e) => toast.error(`Failed to save ${attribute}: ${e.message}`) })
+  }, [writeAttr, tab, attrs, hierarchy, refetch])
 
   const handleAttrPaste = useCallback(async (text) => {
     if (!text?.trim() || !attrs.length) return
@@ -593,7 +688,7 @@ function AttrGrid({ tab, elements, edges, hierarchy }) {
       </div>
       <div className="flex-1 min-h-0 w-full" onPaste={e => { const text = e.clipboardData?.getData('text/plain'); if (text) { e.preventDefault(); handleAttrPaste(text) } }}>
         <AgGridReact
-          theme={theme === 'dark' ? darkTheme : lightTheme}
+          theme={dark ? darkTheme : lightTheme}
           rowData={rows}
           columnDefs={colDefs}
           onCellValueChanged={onCellValueChanged}
@@ -603,6 +698,44 @@ function AttrGrid({ tab, elements, edges, hierarchy }) {
         />
       </div>
       {newAttr && <NewAttrModal onConfirm={handleCreateAttr} onClose={() => setNewAttr(false)} />}
+      {formatPicker && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center" onClick={() => setFormatPicker(null)}>
+          <div className="bg-popover border border-border rounded shadow-xl p-3 w-72 text-xs" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-2">
+              <span className="font-medium">Format for <span className="font-mono text-primary">{formatPicker.element}</span></span>
+              <button onClick={() => setFormatPicker(null)} className="text-muted-foreground hover:text-foreground"><X size={12} /></button>
+            </div>
+            <input value={formatPicker.value} onChange={e => setFormatPicker(p => ({ ...p, value: e.target.value }))}
+              placeholder="TM1 format string…"
+              className="w-full bg-background border border-border rounded px-2 py-1 mb-2 font-mono text-xs outline-none focus:border-primary" />
+            <div className="space-y-1.5 max-h-56 overflow-auto mb-2">
+              {TM1_FORMAT_PRESETS.map(({ group, items }) => (
+                <div key={group}>
+                  <div className="text-[9px] uppercase tracking-wider text-muted-foreground/60 font-semibold px-0.5 mb-0.5">{group}</div>
+                  <div className="flex flex-wrap gap-1">
+                    {items.map(({ fmt, label }) => (
+                      <button key={fmt} onClick={() => setFormatPicker(p => ({ ...p, value: fmt }))}
+                        className={cn('px-1.5 py-0.5 rounded border text-[10px] font-mono transition-colors',
+                          formatPicker.value === fmt ? 'bg-primary text-primary-foreground border-primary' : 'border-border text-muted-foreground hover:bg-muted hover:text-foreground')}>
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+            <button
+              onClick={() => writeAttr.mutate(
+                { server: tab.server, dimension: tab.dimension, element: formatPicker.element, attribute: 'Format', value: formatPicker.value, type: 'S', hierarchy },
+                { onSuccess: () => { refetch(); setFormatPicker(null) }, onError: e => toast.error(`Format save failed: ${e.message}`) }
+              )}
+              disabled={writeAttr.isPending}
+              className="w-full py-1 rounded bg-primary text-primary-foreground text-xs disabled:opacity-40 hover:opacity-90 transition-opacity">
+              {writeAttr.isPending ? 'Saving…' : 'Apply'}
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -617,7 +750,7 @@ function parseTabDelimited(text) {
 }
 
 function StructureGrid({ tab, elements, edges, hierarchy, onApplied }) {
-  const theme = useStore(s => s.theme)
+  const dark = useStore(s => s.dark)
   const bulkImport = useBulkDimImport()
   const fileRef = useRef(null)
   const gridRef = useRef(null)
@@ -721,7 +854,7 @@ function StructureGrid({ tab, elements, edges, hierarchy, onApplied }) {
       <div className="flex-1 min-h-0">
         <AgGridReact
           ref={gridRef}
-          theme={theme === 'dark' ? darkTheme : lightTheme}
+          theme={dark ? darkTheme : lightTheme}
           columnDefs={colDefs}
           rowData={rows}
           onCellValueChanged={p => setRows(r => r.map((row, i) => i === p.node.rowIndex ? { ...row, [p.column.colId]: p.newValue } : row))}
@@ -733,9 +866,56 @@ function StructureGrid({ tab, elements, edges, hierarchy, onApplied }) {
   )
 }
 
+function NewDimensionScreen({ tab }) {
+  const [name, setName] = useState('')
+  const createMut = useCreateDimension()
+  const { patchTab } = useStore()
+  const inputRef = useRef(null)
+  useEffect(() => { setTimeout(() => inputRef.current?.focus(), 50) }, [])
+
+  const handleCreate = () => {
+    const n = name.trim()
+    if (!n) return
+    const id = toast.loading(`Creating "${n}"…`)
+    createMut.mutate({ server: tab.server, name: n }, {
+      onSuccess: () => {
+        toast.success(`Created ${n}`, { id })
+        patchTab(tab.id, { dimension: n, hierarchy: n, label: n })
+      },
+      onError: (err) => toast.error(err.message ?? 'Create failed', { id }),
+    })
+  }
+
+  return (
+    <div className="flex flex-col items-center justify-center h-full gap-4 text-sm">
+      <div className="font-semibold text-base">New Dimension</div>
+      <div className="flex gap-2 w-72">
+        <input
+          ref={inputRef}
+          value={name}
+          onChange={e => setName(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') handleCreate() }}
+          placeholder="Dimension name…"
+          className="flex-1 px-3 py-1.5 text-sm border rounded bg-background outline-none focus:border-primary font-mono"
+        />
+        <button onClick={handleCreate} disabled={!name.trim() || createMut.isPending}
+          className="px-3 py-1.5 text-sm rounded bg-primary text-primary-foreground disabled:opacity-40">
+          {createMut.isPending ? 'Creating…' : 'Create'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
 export default function DimensionEditor({ tab }) {
+  if (!tab.dimension) return <NewDimensionScreen tab={tab} />
+  return <DimensionEditorCore tab={tab} />
+}
+
+function DimensionEditorCore({ tab }) {
   const [view, setView]           = useState('tree')
   const [selected, setSelected]   = useState(null)
+  const [showIndex, setShowIndex] = useState(false)
   const [addRoot, setAddRoot]     = useState(false)
   const [bulkAdd, setBulkAdd]     = useState(false)
   const [busy, setBusy]           = useState(false)
@@ -749,6 +929,8 @@ export default function DimensionEditor({ tab }) {
   const [newHierarchyName, setNewHierarchyName] = useState('')
 
   const { data: elements = [], isLoading: loadingEl, refetch: refetchEl } = useElements(tab.server, tab.dimension, selectedHierarchy)
+  const { data: indexedEls = [] } = useElementsWithIndex(showIndex ? tab.server : null, tab.dimension, selectedHierarchy)
+  const indexMap = useMemo(() => Object.fromEntries(indexedEls.map(e => [e.Name, e.Index])), [indexedEls])
   const { data: edges    = [], isLoading: loadingEd, refetch: refetchEd } = useEdges(tab.server, tab.dimension, selectedHierarchy)
   const { data: hierarchies = [] } = useHierarchies(tab.server, tab.dimension)
   const { data: dimCubes   = [] } = useDimCubes(tab.server, tab.dimension)
@@ -968,6 +1150,12 @@ export default function DimensionEditor({ tab }) {
             <Table2 size={11} /> Attrs
           </button>
           <span className="w-px h-4 bg-border mx-0.5" />
+          <button onClick={() => setShowIndex(v => !v)}
+            className={cn('flex items-center gap-1 px-2 py-0.5 text-xs rounded border transition-colors',
+              showIndex ? 'bg-primary/10 border-primary/40 text-primary' : 'border-border text-muted-foreground hover:bg-background hover:text-foreground')}
+            title="Toggle element index">
+            # Idx
+          </button>
           <button onClick={() => setShowPicklist(true)}
             className="flex items-center gap-1 px-2 py-0.5 text-xs rounded border border-border text-muted-foreground hover:bg-background hover:text-foreground transition-colors">
             <ListOrdered size={11} /> Picklists
@@ -1019,7 +1207,7 @@ export default function DimensionEditor({ tab }) {
         {view !== 'attrs' && view !== 'grid' && <>
           <div className={cn('flex-1 min-w-0 overflow-auto', selectedEl && 'max-w-[55%]')}>
             {view === 'flat' && (
-              <FlatList elements={filteredElements} selected={selected} onSelect={setSelected} onDelete={handleDelete} />
+              <FlatList elements={filteredElements} selected={selected} onSelect={setSelected} onDelete={handleDelete} indexMap={showIndex ? indexMap : null} />
             )}
             {view === 'tree' && (
               <div className="p-2">
@@ -1032,7 +1220,7 @@ export default function DimensionEditor({ tab }) {
                 {filteredTree.roots.map(r => (
                   <TreeNode key={r} name={r} childrenOf={filteredTree.childrenOf} byName={filteredTree.byName} depth={0}
                     onAddChild={handleAddChild} onDelete={handleDelete}
-                    selected={selected} onSelect={setSelected} visited={new Set()} />
+                    selected={selected} onSelect={setSelected} visited={new Set()} indexMap={showIndex ? indexMap : null} />
                 ))}
               </div>
             )}

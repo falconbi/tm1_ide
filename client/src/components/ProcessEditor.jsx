@@ -777,7 +777,7 @@ function DebugPanel({ watches, onWatchesChange, events, isDebugging, onRun, onJu
 }
 
 export default function ProcessEditor({ tab }) {
-  const { server, dark, themeVersion, updateTabContent, markTabSaved, clearScrollTo, openTab } = useStore()
+  const { server, dark, themeVersion, updateTabContent, markTabSaved, clearScrollTo, openTab, patchTab } = useStore()
   const { data, isLoading } = useProcess(tab.server, tab.name)
   const saveProcess   = useSaveProcess()
   const runProcess    = useRunProcess()
@@ -799,6 +799,7 @@ export default function ProcessEditor({ tab }) {
 
   const [activeSection, setActiveSection] = useState('PrologProcedure')
   const [showSaveAs, setShowSaveAs] = useState(false)
+  const [draftName, setDraftName] = useState('')
   const [showRun, setShowRun] = useState(false)
   const [showDsInsert, setShowDsInsert] = useState(false)
   const [showSnippets, setShowSnippets] = useState(false)
@@ -1028,7 +1029,25 @@ export default function ProcessEditor({ tab }) {
     }
   }
 
+  const handleCreateNew = () => {
+    const name = draftName.trim()
+    if (!name) return
+    const body = {}
+    CODE_TABS.forEach(({ key }) => { body[key] = edits[key] ?? '' })
+    if (paramEdits !== null) body.Parameters = paramEdits.map(p => ({ Name: p.Name, Type: toTypeStr(p.Type), Value: String(p.Value ?? ''), Prompt: p.Prompt ?? '' }))
+    if (dsEdits !== null) body.DataSource = dsEdits
+    const id = toast.loading(`Creating "${name}"…`)
+    createProcess.mutate({ server: tab.server, name }, {
+      onSuccess: () => saveProcess.mutate({ server: tab.server, name, body }, {
+        onSuccess: () => { toast.success(`Process created`, { id }); patchTab(tab.id, { name, label: name }) },
+        onError: e => toast.error(e.message, { id }),
+      }),
+      onError: e => toast.error(e.message, { id }),
+    })
+  }
+
   const handleSave = () => {
+    if (!tab.name) { handleCreateNew(); return }
     if (!data) return
     const body = {}
     CODE_TABS.forEach(({ key }) => {
@@ -1371,13 +1390,32 @@ export default function ProcessEditor({ tab }) {
           >
             Save As
           </button>
-          <button
-            onClick={handleSave}
-            disabled={(!Object.keys(edits).length && paramEdits === null && dsEdits === null) || saveProcess.isPending}
-            className="px-3 py-1 text-xs rounded bg-primary text-primary-foreground disabled:opacity-40 hover:opacity-90 transition-opacity"
-          >
-            {saveProcess.isPending ? 'Saving…' : 'Save'}
-          </button>
+          {!tab.name ? (
+            <>
+              <input
+                value={draftName}
+                onChange={e => setDraftName(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && handleCreateNew()}
+                placeholder="Process name…"
+                className="px-2 py-1 text-xs border rounded bg-background font-mono outline-none focus:border-primary w-44"
+              />
+              <button
+                onClick={handleCreateNew}
+                disabled={!draftName.trim() || createProcess.isPending || saveProcess.isPending}
+                className="px-3 py-1 text-xs rounded bg-emerald-700 text-white disabled:opacity-40 hover:opacity-90 transition-opacity"
+              >
+                {createProcess.isPending || saveProcess.isPending ? 'Creating…' : 'Create & Save'}
+              </button>
+            </>
+          ) : (
+            <button
+              onClick={handleSave}
+              disabled={(!Object.keys(edits).length && paramEdits === null && dsEdits === null) || saveProcess.isPending}
+              className="px-3 py-1 text-xs rounded bg-primary text-primary-foreground disabled:opacity-40 hover:opacity-90 transition-opacity"
+            >
+              {saveProcess.isPending ? 'Saving…' : 'Save'}
+            </button>
+          )}
         </div>
       </div>
 
