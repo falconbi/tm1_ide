@@ -718,7 +718,16 @@ app.get('/api/dimensions/format-attrs', async (req, res) => {
         const dimensions = dims ? dims.split(',').filter(Boolean) : []
         if (!dimensions.length) return res.json({})
         const client = new TM1Client(server)
-        const maps = await Promise.all(dimensions.map(dim => client.getFormatAttrs(dim, dim).catch(() => ({}))))
+        const maps = await Promise.all(dimensions.map(async dim => {
+            const mdxResult = await client.getAliasValues(dim, 'Format', dim).catch(() => null)
+            if (mdxResult && Object.keys(mdxResult).length > 0) {
+                console.log(`[Format Debug] MDX returned ${Object.keys(mdxResult).length} format attrs for ${dim}`, Object.entries(mdxResult).slice(0, 3))
+                return mdxResult
+            }
+            const restResult = await client.getFormatAttrs(dim, dim).catch(() => ({}))
+            console.log(`[Format Debug] REST returned ${Object.keys(restResult).length} format attrs for ${dim}`, Object.entries(restResult).slice(0, 3))
+            return restResult
+        }))
         res.json(Object.assign({}, ...maps))
     } catch (e) {
         res.status(500).json({ error: e.message })

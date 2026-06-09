@@ -1216,7 +1216,10 @@ export default function ViewEditor({ tab }) {
     }, [result, dimAliases, aliasValueMaps])
     const allAxesDims = useMemo(() => [...new Set([...axes.columns, ...axes.rows].map(d => d.dimension))], [axes.columns, axes.rows])
     const { data: formatAttrs = {} } = useMultiFormatAttrs(tab.server, allAxesDims)
-    const parsed = useMemo(() => displayResult ? parseCellset(displayResult, formatAttrs) : null, [displayResult, formatAttrs])
+    const parsed = useMemo(() => {
+        console.log('[Format Debug] allAxesDims:', allAxesDims, 'formatAttrs:', Object.keys(formatAttrs), JSON.stringify(formatAttrs).slice(0, 200))
+        return displayResult ? parseCellset(displayResult, formatAttrs) : null
+    }, [displayResult, formatAttrs, allAxesDims])
     const { colDefs, rowData } = useMemo(() => buildGridData(parsed), [parsed])
 
     // ── HierarchyGrid data ────────────────────────────────────────────────────

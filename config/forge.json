@@ -21,7 +21,7 @@
       "hierarchy": "CST Account Config Measure"
     }
   ],
-  "activeTab": "cubeview:TM1_Apportionment:CST Account Config:JDLove Test",
+  "activeTab": "dim:TM1_Apportionment:CST Account Config Measure:CST Account Config Measure",
   "groups": [
     {
       "id": "g1",
@@ -29,7 +29,7 @@
         "cubeview:TM1_Apportionment:CST Account Config:JDLove Test",
         "dim:TM1_Apportionment:CST Account Config Measure:CST Account Config Measure"
       ],
-      "activeTabId": "cubeview:TM1_Apportionment:CST Account Config:JDLove Test"
+      "activeTabId": "dim:TM1_Apportionment:CST Account Config Measure:CST Account Config Measure"
     }
   ],
   "activeGroupId": "g1"
