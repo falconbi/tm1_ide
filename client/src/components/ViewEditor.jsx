@@ -222,7 +222,7 @@ function applyTm1Format(value, fmt) {
     return out
 }
 
-function parseCellset(data, formatMap = {}) {
+function parseCellset(data, formatMap = {}, pageMembers = []) {
     if (!data?.Axes?.length) return null
     const colAx = data.Axes.find(a => a.Ordinal === 0)
     const rowAx = data.Axes.find(a => a.Ordinal === 1)
@@ -244,7 +244,7 @@ function parseCellset(data, formatMap = {}) {
             const c = cellMap[ri * numCols + ci]
             if (!c) return ''
             const elemNames = (tuple.Members ?? []).map(m => elementFromUniqueName(m.UniqueName) || m.Name)
-            const fmtKey = elemNames.find(n => formatMap[n])
+            const fmtKey = elemNames.find(n => formatMap[n]) || pageMembers.find(n => formatMap[n])
             if (fmtKey) {
                 const v = c.Value
                 return v != null ? applyTm1Format(v, formatMap[fmtKey]) : ''
@@ -1214,12 +1214,13 @@ export default function ViewEditor({ tab }) {
         }))
         return { ...result, Axes: axes }
     }, [result, dimAliases, aliasValueMaps])
-    const allAxesDims = useMemo(() => [...new Set([...axes.columns, ...axes.rows].map(d => d.dimension))], [axes.columns, axes.rows])
+    const allAxesDims = useMemo(() => [...new Set([...axes.columns, ...axes.rows, ...axes.pages].map(d => d.dimension))], [axes.columns, axes.rows, axes.pages])
     const { data: formatAttrs = {} } = useMultiFormatAttrs(tab.server, allAxesDims)
+    const pageMembers = useMemo(() => axes.pages.map(p => p.member).filter(Boolean), [axes.pages])
     const parsed = useMemo(() => {
         console.log('[Format Debug] allAxesDims:', allAxesDims, 'formatAttrs:', Object.keys(formatAttrs), JSON.stringify(formatAttrs).slice(0, 200))
-        return displayResult ? parseCellset(displayResult, formatAttrs) : null
-    }, [displayResult, formatAttrs, allAxesDims])
+        return displayResult ? parseCellset(displayResult, formatAttrs, pageMembers) : null
+    }, [displayResult, formatAttrs, allAxesDims, pageMembers])
     const { colDefs, rowData } = useMemo(() => buildGridData(parsed), [parsed])
 
     // ── HierarchyGrid data ────────────────────────────────────────────────────
