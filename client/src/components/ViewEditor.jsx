@@ -5,7 +5,7 @@ import { DndContext, DragOverlay, PointerSensor, useSensor, useSensors, useDropp
 import MonacoEditor from '@monaco-editor/react'
 import { useStore } from '@/store'
 import { subsetApplyCallbacks } from '@/lib/subsetCallbacks'
-import { useCubeDimensions, useSubsets, useElementsTree, useViews, useExecuteMDX, useViewAxes, useSaveView, usePawBookUsage, useDimAttributes, useViewUsage, useAliasValues } from '@/hooks/useApi'
+import { useCubeDimensions, useSubsets, useElementsTree, useViews, useExecuteMDX, useViewAxes, useSaveView, usePawBookUsage, useDimAttributes, useViewUsage, useMultiFormatAttrs } from '@/hooks/useApi'
 import { toast } from 'sonner'
 import { RefreshCw, Loader2, Table2, GripVertical, GripHorizontal, X, LayoutGrid, Rows3, Columns3, Filter, ZapOff, Zap, ChevronLeft, ChevronRight, PencilLine, Save, Code2, Eye, ChevronDown, BookOpen, ChevronUp, Locate, WrapText, Braces, History, AlertTriangle, Search, Cog, Box } from 'lucide-react'
 import TransactionLogPanel from '@/components/TransactionLogPanel'
@@ -196,6 +196,10 @@ function parseDimFromUniqueName(un) {
     return un?.match(/^\[([^\]]+)\]/)?.[1] ?? ''
 }
 
+function elementFromUniqueName(un) {
+    return un?.match(/\[([^\]]+)\]$/)?.[1] ?? ''
+}
+
 function applyTm1Format(value, fmt) {
     if (!fmt || fmt === 'General') return value != null ? String(value) : ''
     if (fmt === '@') return String(value ?? '')
@@ -239,8 +243,8 @@ function parseCellset(data, formatMap = {}) {
         colTuples.map((tuple, ci) => {
             const c = cellMap[ri * numCols + ci]
             if (!c) return ''
-            const members = (tuple.Members ?? []).map(m => m.Name)
-            const fmtKey = members.find(n => formatMap[n])
+            const elemNames = (tuple.Members ?? []).map(m => elementFromUniqueName(m.UniqueName) || m.Name)
+            const fmtKey = elemNames.find(n => formatMap[n])
             if (fmtKey) {
                 const v = c.Value
                 return v != null ? applyTm1Format(v, formatMap[fmtKey]) : ''
@@ -1211,11 +1215,7 @@ export default function ViewEditor({ tab }) {
         return { ...result, Axes: axes }
     }, [result, dimAliases, aliasValueMaps])
     const allAxesDims = useMemo(() => [...new Set([...axes.columns, ...axes.rows].map(d => d.dimension))], [axes.columns, axes.rows])
-    const { data: fmtAttrs0 = {} } = useAliasValues(allAxesDims[0] ? tab.server : null, allAxesDims[0] ?? null, 'Format')
-    const { data: fmtAttrs1 = {} } = useAliasValues(allAxesDims[1] ? tab.server : null, allAxesDims[1] ?? null, 'Format')
-    const { data: fmtAttrs2 = {} } = useAliasValues(allAxesDims[2] ? tab.server : null, allAxesDims[2] ?? null, 'Format')
-    const { data: fmtAttrs3 = {} } = useAliasValues(allAxesDims[3] ? tab.server : null, allAxesDims[3] ?? null, 'Format')
-    const formatAttrs = useMemo(() => ({ ...fmtAttrs0, ...fmtAttrs1, ...fmtAttrs2, ...fmtAttrs3 }), [fmtAttrs0, fmtAttrs1, fmtAttrs2, fmtAttrs3])
+    const { data: formatAttrs = {} } = useMultiFormatAttrs(tab.server, allAxesDims)
     const parsed = useMemo(() => displayResult ? parseCellset(displayResult, formatAttrs) : null, [displayResult, formatAttrs])
     const { colDefs, rowData } = useMemo(() => buildGridData(parsed), [parsed])
 
