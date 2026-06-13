@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Falcon BI — TM1 IDE</title>
+  <title>TM1 IDE — Documentation</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     html { scroll-behavior: smooth; }
@@ -12,305 +12,343 @@
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
       background: #0e0c09;
       color: #c8b99a;
+      display: flex;
       min-height: 100vh;
     }
 
-    /* ── Nav ── */
-    nav {
-      position: fixed; top: 0; left: 0; right: 0; z-index: 100;
-      display: flex; align-items: center; justify-content: space-between;
-      padding: 0 32px; height: 52px;
-      background: rgba(14,12,9,0.92);
-      backdrop-filter: blur(16px);
-      border-bottom: 1px solid rgba(255,255,255,0.07);
+    /* ── Sidebar ── */
+    aside {
+      width: 220px;
+      flex-shrink: 0;
+      position: fixed;
+      top: 0; left: 0; bottom: 0;
+      overflow-y: auto;
+      background: #0a0906;
+      border-right: 1px solid rgba(255,255,255,0.06);
+      padding: 24px 0 40px;
     }
 
-    .nav-logo {
-      display: flex; align-items: center; gap: 10px; text-decoration: none;
+    .sidebar-logo {
+      display: flex; align-items: center; gap: 8px;
+      padding: 0 18px 20px;
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+      margin-bottom: 16px;
     }
-    .nav-logo svg { width: 24px; height: 24px; }
-    .nav-logo span { font-size: 14px; font-weight: 700; color: #f5ede0; letter-spacing: -0.2px; }
+    .sidebar-logo svg { width: 20px; height: 20px; }
+    .sidebar-logo span { font-size: 13px; font-weight: 700; color: #f5ede0; }
 
-    nav a.nav-link {
+    .nav-section {
+      font-size: 10px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase;
+      color: #4a4035; padding: 12px 18px 4px;
+    }
+
+    aside a {
+      display: block; padding: 5px 18px;
       font-size: 13px; color: #7a6e5c; text-decoration: none;
-      padding: 6px 14px; border-radius: 6px; transition: color .15s;
+      transition: color .12s;
+      border-left: 2px solid transparent;
     }
-    nav a.nav-link:hover { color: #d4c4a8; }
+    aside a:hover { color: #c8b99a; }
+    aside a.active { color: #e8a020; border-left-color: #e8a020; }
 
-    /* ── Hero ── */
-    .hero {
-      padding: 120px 32px 72px;
-      max-width: 860px;
-      margin: 0 auto;
-      text-align: center;
-    }
-
-    .hero-badge {
-      display: inline-flex; align-items: center; gap: 6px;
-      font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase;
-      color: #e8a020; background: rgba(232,160,32,0.1); border: 1px solid rgba(232,160,32,0.25);
-      padding: 4px 12px; border-radius: 20px; margin-bottom: 24px;
+    /* ── Main ── */
+    main {
+      margin-left: 220px;
+      max-width: 820px;
+      padding: 48px 56px 100px;
     }
 
-    .hero h1 {
-      font-size: clamp(32px, 5vw, 52px);
-      font-weight: 800;
-      color: #f5ede0;
-      letter-spacing: -0.03em;
-      line-height: 1.1;
-      margin-bottom: 20px;
+    h1 { font-size: 26px; font-weight: 800; color: #f5ede0; letter-spacing: -0.03em; margin-bottom: 6px; }
+    h2 { font-size: 18px; font-weight: 700; color: #f5ede0; letter-spacing: -0.02em;
+         margin: 48px 0 16px; padding-top: 48px; border-top: 1px solid rgba(255,255,255,0.06); }
+    h2:first-of-type { margin-top: 32px; }
+    h3 { font-size: 14px; font-weight: 700; color: #d4c4a8; margin: 24px 0 8px; }
+
+    p { font-size: 14px; line-height: 1.75; color: #8a7d6a; margin-bottom: 12px; }
+    p + p { margin-top: 0; }
+
+    .subtitle { font-size: 15px; color: #5a5045; margin-bottom: 32px; }
+
+    ul, ol { padding-left: 20px; margin-bottom: 12px; }
+    li { font-size: 14px; line-height: 1.75; color: #8a7d6a; margin-bottom: 2px; }
+    li strong { color: #c8b99a; font-weight: 600; }
+
+    code {
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      font-size: 12px; background: rgba(255,255,255,0.06);
+      color: #e8c88a; padding: 1px 5px; border-radius: 3px;
     }
 
-    .hero h1 span { color: #e8a020; }
-
-    .hero p {
-      font-size: 17px; line-height: 1.7;
-      color: #8a7d6a; max-width: 600px; margin: 0 auto 40px;
-    }
-
-    .hero-actions {
-      display: flex; gap: 12px; justify-content: center; flex-wrap: wrap;
-    }
-
-    .btn-primary {
-      display: inline-flex; align-items: center; gap-8px;
-      padding: 10px 24px; border-radius: 8px;
-      background: #e8a020; color: #0e0c09;
-      font-size: 14px; font-weight: 700; text-decoration: none;
-      transition: background .15s;
-    }
-    .btn-primary:hover { background: #f0b030; }
-
-    .btn-secondary {
-      display: inline-flex; align-items: center;
-      padding: 10px 24px; border-radius: 8px;
-      border: 1px solid rgba(255,255,255,0.12); color: #c8b99a;
-      font-size: 14px; font-weight: 600; text-decoration: none;
-      transition: border-color .15s, color .15s;
-    }
-    .btn-secondary:hover { border-color: rgba(255,255,255,0.28); color: #f5ede0; }
-
-    /* ── Features ── */
-    .features {
-      max-width: 1080px; margin: 0 auto; padding: 0 32px 80px;
-    }
-
-    .section-label {
-      text-align: center;
-      font-size: 11px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase;
-      color: #e8a020; margin-bottom: 48px;
-    }
-
-    .feature-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-      gap: 20px;
-    }
-
-    .feature-card {
-      background: rgba(255,255,255,0.03);
+    pre {
+      background: rgba(255,255,255,0.04);
       border: 1px solid rgba(255,255,255,0.07);
-      border-radius: 12px; padding: 24px;
-      transition: border-color .2s;
+      border-radius: 8px; padding: 16px 18px; margin: 12px 0;
+      overflow-x: auto;
     }
-    .feature-card:hover { border-color: rgba(232,160,32,0.3); }
+    pre code { background: none; padding: 0; color: #c8b99a; font-size: 13px; line-height: 1.6; }
 
-    .feature-header {
-      display: flex; align-items: center; gap: 10px; margin-bottom: 10px;
+    /* ── Shortcut table ── */
+    table { width: 100%; border-collapse: collapse; margin: 12px 0; }
+    th {
+      text-align: left; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase;
+      color: #4a4035; padding: 6px 12px; border-bottom: 1px solid rgba(255,255,255,0.07);
     }
-
-    .feature-icon {
-      width: 30px; height: 30px; border-radius: 7px; flex-shrink: 0;
-      background: rgba(232,160,32,0.1); display: flex; align-items: center; justify-content: center;
-    }
-    .feature-icon svg { width: 15px; height: 15px; stroke: #e8a020; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
-
-    .feature-card h3 {
-      font-size: 14px; font-weight: 700; color: #f5ede0;
-      letter-spacing: -0.01em;
-    }
-
-    .feature-card p {
-      font-size: 13px; line-height: 1.65; color: #7a6e5c;
+    td { padding: 7px 12px; font-size: 13px; color: #8a7d6a; border-bottom: 1px solid rgba(255,255,255,0.04); }
+    td:first-child { color: #c8b99a; }
+    kbd {
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      font-size: 11px; color: #e8c88a;
+      background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.12);
+      padding: 2px 6px; border-radius: 4px;
     }
 
-    /* ── Deploy section ── */
-    .deploy-section {
-      max-width: 1080px; margin: 0 auto; padding: 0 32px 80px;
+    /* ── Note / callout ── */
+    .note {
+      background: rgba(232,160,32,0.06); border-left: 3px solid #e8a020;
+      border-radius: 0 6px 6px 0; padding: 10px 14px; margin: 12px 0;
+      font-size: 13px; line-height: 1.65; color: #9a8d70;
     }
+    .note strong { color: #e8a020; }
 
-    .deploy-card {
-      background: rgba(232,160,32,0.05);
-      border: 1px solid rgba(232,160,32,0.2);
-      border-radius: 16px; padding: 40px 48px;
-      display: grid; grid-template-columns: 1fr 1fr; gap: 32px; align-items: center;
-    }
-
-    .deploy-card h2 {
-      font-size: 24px; font-weight: 800; color: #f5ede0;
-      letter-spacing: -0.02em; margin-bottom: 12px;
-    }
-
-    .deploy-card p { font-size: 14px; line-height: 1.7; color: #8a7d6a; }
-
-    .deploy-steps {
-      display: flex; flex-direction: column; gap: 10px;
-    }
-
-    .deploy-step {
-      display: flex; align-items: center; gap: 12px;
-      font-size: 13px; color: #c8b99a;
-    }
-
+    /* ── Deploy steps ── */
+    .steps { display: flex; flex-direction: column; gap: 8px; margin: 12px 0; }
+    .step { display: flex; gap: 12px; align-items: flex-start; }
     .step-num {
-      width: 22px; height: 22px; border-radius: 50%;
-      background: rgba(232,160,32,0.15); border: 1px solid rgba(232,160,32,0.3);
+      width: 20px; height: 20px; border-radius: 50%; flex-shrink: 0; margin-top: 2px;
+      background: rgba(232,160,32,0.12); border: 1px solid rgba(232,160,32,0.3);
       display: flex; align-items: center; justify-content: center;
-      font-size: 11px; font-weight: 700; color: #e8a020; flex-shrink: 0;
+      font-size: 10px; font-weight: 700; color: #e8a020;
     }
-
-    /* ── Footer ── */
-    footer {
-      border-top: 1px solid rgba(255,255,255,0.06);
-      padding: 24px 32px;
-      display: flex; align-items: center; justify-content: space-between;
-      max-width: 1080px; margin: 0 auto;
-      font-size: 12px; color: #4a4035;
-    }
-
-    @media (max-width: 640px) {
-      .deploy-card { grid-template-columns: 1fr; }
-      nav { padding: 0 16px; }
-      .hero { padding: 100px 16px 48px; }
-      .features, .deploy-section { padding-left: 16px; padding-right: 16px; }
-    }
+    .step p { margin: 0; }
   </style>
 </head>
 <body>
 
-  <nav>
-    <a href="index.html" class="nav-logo">
-      <svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <path d="M16 7 C13 5 9 5 5 6.5 L5 26 C9 24.5 13 24.5 16 26.5 C19 24.5 23 24.5 27 26 L27 6.5 C23 5 19 5 16 7Z"
-              stroke="#e8a020" stroke-width="2" stroke-linejoin="round" fill="#e8a020" fill-opacity="0.05"/>
-        <line x1="16" y1="7" x2="16" y2="26.5" stroke="#e8a020" stroke-width="2"/>
-      </svg>
-      <span>Falcon BI</span>
-    </a>
-    <a href="docs.html" class="nav-link">Documentation</a>
-  </nav>
+<aside>
+  <div class="sidebar-logo">
+    <svg viewBox="0 0 32 32" fill="none">
+      <path d="M16 7 C13 5 9 5 5 6.5 L5 26 C9 24.5 13 24.5 16 26.5 C19 24.5 23 24.5 27 26 L27 6.5 C23 5 19 5 16 7Z"
+            stroke="#e8a020" stroke-width="2" stroke-linejoin="round" fill="#e8a020" fill-opacity="0.05"/>
+      <line x1="16" y1="7" x2="16" y2="26.5" stroke="#e8a020" stroke-width="2"/>
+    </svg>
+    <span>TM1 IDE</span>
+  </div>
 
-  <!-- Hero -->
-  <section class="hero">
-    <div class="hero-badge">IBM Planning Analytics</div>
-    <h1>TM1 IDE<br /><span>Browser-based developer tools</span></h1>
-    <p>A full-featured IDE for IBM Planning Analytics — edit rules, processes, dimensions, views, and subsets directly in your browser.</p>
-    <div class="hero-actions">
-      <a href="docs.html" class="btn-primary">Get Started</a>
-      <a href="docs.html#keyboard" class="btn-secondary">Keyboard Shortcuts</a>
-    </div>
-  </section>
+  <div class="nav-section">Reference</div>
+  <a href="#shortcuts">Keyboard Shortcuts</a>
+  <a href="#connect">Connecting</a>
 
-  <!-- Features -->
-  <section class="features">
-    <p class="section-label">Core Features</p>
-    <div class="feature-grid">
+  <div class="nav-section">Editors</div>
+  <a href="#rules">Rules Editor</a>
+  <a href="#ti">TI Process Editor</a>
+  <a href="#dimension">Dimension Editor</a>
+  <a href="#view">View Editor</a>
+  <a href="#subset">Subset Editor</a>
+  <a href="#chore">Chore Editor</a>
+  <a href="#sql">SQL Editor</a>
 
-      <div class="feature-card">
-        <div class="feature-header">
-          <div class="feature-icon"><svg viewBox="0 0 24 24"><polyline points="18,5 6,5 12,12 6,19 18,19"/></svg></div>
-          <h3>Rules Editor</h3>
-        </div>
-        <p>Monaco-based editor with TM1 syntax highlighting, live validation via CheckRules, code formatter, regions, snippets, and cell calculation trace.</p>
-      </div>
+  <div class="nav-section">Deploy</div>
+  <a href="#changesets">Change Sets</a>
+  <a href="#deploy">Deploy Pipeline</a>
+</aside>
 
-      <div class="feature-card">
-        <div class="feature-header">
-          <div class="feature-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><path d="M4.93 4.93a10 10 0 0 0 0 14.14"/></svg></div>
-          <h3>TI Process Editor</h3>
-        </div>
-        <p>Full TurboIntegrator editor with 4-section tabs, parameter editor, datasource config, run with return, step debugger, and error log viewer.</p>
-      </div>
+<main>
 
-      <div class="feature-card">
-        <div class="feature-header">
-          <div class="feature-icon"><svg viewBox="0 0 24 24"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg></div>
-          <h3>Dimension Editor</h3>
-        </div>
-        <p>Hierarchy tree with element and edge CRUD, attribute grid, bulk import, and element rename tracking.</p>
-      </div>
+  <h1>TM1 IDE</h1>
+  <p class="subtitle">Browser-based IDE for IBM Planning Analytics</p>
 
-      <div class="feature-card">
-        <div class="feature-header">
-          <div class="feature-icon"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/><line x1="9" y1="3" x2="9" y2="21"/></svg></div>
-          <h3>View Editor</h3>
-        </div>
-        <p>Native and MDX view builder with live cell grid, writeback support, and subset assignment per axis.</p>
-      </div>
+  <!-- ── Keyboard Shortcuts ── -->
+  <h2 id="shortcuts">Keyboard Shortcuts</h2>
 
-      <div class="feature-card">
-        <div class="feature-header">
-          <div class="feature-icon"><svg viewBox="0 0 24 24"><path d="M22 3H2l8 9.46V19l4 2V12.46L22 3z"/></svg></div>
-          <h3>Subset Editor</h3>
-        </div>
-        <p>MDX code view and visual tree subset builder with static and MDX save, preview execution, and guided filter builder.</p>
-      </div>
+  <h3>Global</h3>
+  <table>
+    <tr><th>Key</th><th>Action</th></tr>
+    <tr><td><kbd>F1</kbd></td><td>Open shortcut reference panel</td></tr>
+    <tr><td><kbd>Ctrl+S</kbd></td><td>Save current tab</td></tr>
+    <tr><td><kbd>Ctrl+W</kbd></td><td>Close current tab</td></tr>
+    <tr><td><kbd>Ctrl+Shift+F</kbd></td><td>Global search (rules + TI)</td></tr>
+    <tr><td><kbd>Ctrl+1–9</kbd></td><td>Switch to tab by position</td></tr>
+  </table>
 
-      <div class="feature-card">
-        <div class="feature-header">
-          <div class="feature-icon"><svg viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg></div>
-          <h3>Chore Editor</h3>
-        </div>
-        <p>Schedule editor with step management, activate/deactivate, and manual execute with live status feedback.</p>
-      </div>
+  <h3>Rules Editor</h3>
+  <table>
+    <tr><th>Key</th><th>Action</th></tr>
+    <tr><td><kbd>Ctrl+S</kbd></td><td>Save rules</td></tr>
+    <tr><td><kbd>Ctrl+Shift+V</kbd></td><td>Validate (CheckRules)</td></tr>
+    <tr><td><kbd>Ctrl+Shift+F</kbd></td><td>Format document (or selection)</td></tr>
+    <tr><td><kbd>Ctrl+Space</kbd></td><td>Trigger autocomplete</td></tr>
+    <tr><td><kbd>Ctrl+/</kbd></td><td>Toggle line comment</td></tr>
+    <tr><td><kbd>F2</kbd></td><td>Rename symbol</td></tr>
+  </table>
 
-      <div class="feature-card">
-        <div class="feature-header">
-          <div class="feature-icon"><svg viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg></div>
-          <h3>SQL Editor</h3>
-        </div>
-        <p>Multi-driver external SQL connections (MSSQL, PostgreSQL, MySQL, SQLite) with schema browser, saved queries, and post-to-TI.</p>
-      </div>
+  <h3>TI Process Editor</h3>
+  <table>
+    <tr><th>Key</th><th>Action</th></tr>
+    <tr><td><kbd>Ctrl+S</kbd></td><td>Save process</td></tr>
+    <tr><td><kbd>Ctrl+Enter</kbd></td><td>Run process</td></tr>
+    <tr><td><kbd>F9</kbd></td><td>Toggle breakpoint (debugger)</td></tr>
+    <tr><td><kbd>F10</kbd></td><td>Step over (debugger)</td></tr>
+    <tr><td><kbd>F5</kbd></td><td>Resume (debugger)</td></tr>
+  </table>
 
-      <div class="feature-card">
-        <div class="feature-header">
-          <div class="feature-icon"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></div>
-          <h3>Global Search</h3>
-        </div>
-        <p>Cross-object search across all rules and TI code on the server. Find any function, cube reference, or variable across the entire model.</p>
-      </div>
+  <!-- ── Connecting ── -->
+  <h2 id="connect">Connecting to a Server</h2>
+  <p>The server list is defined in <code>config/servers.json</code>. Add a server entry with <code>name</code>, <code>host</code>, and <code>port</code>. The IDE proxies all TM1 REST API calls through PAW — no direct TM1 connection is made from the browser.</p>
+  <p>Select a server from the dropdown in the top bar. Your selection is persisted across sessions in <code>config/forge.json</code> along with your open tabs.</p>
 
-      <div class="feature-card">
-        <div class="feature-header">
-          <div class="feature-icon"><svg viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg></div>
-          <h3>Deploy Pipeline</h3>
-        </div>
-        <p>Change set tracking, baseline diff, package builder, risk analyser, and server-to-server deployment — with full audit trail.</p>
-      </div>
+  <div class="note"><strong>Auth:</strong> Login uses your PAW credentials. The session cookie and CSRF token are cached server-side and reused for all TM1 calls.</div>
 
-    </div>
-  </section>
+  <!-- ── Rules Editor ── -->
+  <h2 id="rules">Rules Editor</h2>
+  <p>Open from the Explorer under any cube. The editor uses Monaco with <code>tm1rules</code> syntax highlighting.</p>
 
-  <!-- Deploy highlight -->
-  <section class="deploy-section">
-    <div class="deploy-card">
-      <div>
-        <h2>Dev to Test in four steps</h2>
-        <p>The built-in deploy pipeline tracks every change you make, compares against a baseline snapshot, packages only what changed, checks for risks, and deploys to any registered target server.</p>
-      </div>
-      <div class="deploy-steps">
-        <div class="deploy-step"><span class="step-num">1</span> Diff — compare session changes against baseline</div>
-        <div class="deploy-step"><span class="step-num">2</span> Package — fetch live objects and write to disk</div>
-        <div class="deploy-step"><span class="step-num">3</span> Risk — syntax check, dependency check, chore conflict</div>
-        <div class="deploy-step"><span class="step-num">4</span> Deploy — push to target server with dry-run option</div>
-      </div>
-    </div>
-  </section>
+  <h3>Formatting</h3>
+  <p>Click <strong>Format</strong> in the toolbar to format the entire rules file. To format a single rule, highlight it first — the formatter applies only to the selection. The formatter preserves regions, comments, and feeders structure.</p>
 
-  <footer>
-    <span>Falcon BI &mdash; TM1 IDE</span>
-    <a href="docs.html" style="color:#4a4035; text-decoration:none;">Documentation &rarr;</a>
-  </footer>
+  <h3>Validation</h3>
+  <p><strong>Check Rules</strong> sends the current buffer to the TM1 <code>tm1.CheckRules</code> endpoint and displays errors inline. Errors are shown in the panel below the editor with line numbers.</p>
+
+  <h3>Cell Trace</h3>
+  <p>The <strong>Trace</strong> panel lets you enter element coordinates and see the full calculation chain — which rules fired, in what order, and what intermediate values were produced.</p>
+
+  <h3>Regions</h3>
+  <p>Use <code>#Region Name</code> / <code>#EndRegion</code> to fold and organise sections. The editor respects region fold markers.</p>
+
+  <h3>Snippets</h3>
+  <p>Type a function name and press <kbd>Tab</kbd> to expand. Common functions (DB, ATTRS, CONTINUE, SKIPCHECK, etc.) have full signature snippets with tab stops.</p>
+
+  <!-- ── TI Editor ── -->
+  <h2 id="ti">TI Process Editor</h2>
+  <p>Open from the Explorer under Processes. The editor splits into four tabs: <strong>Prolog</strong>, <strong>Metadata</strong>, <strong>Data</strong>, <strong>Epilog</strong>.</p>
+
+  <h3>Parameters</h3>
+  <p>The <strong>Parameters</strong> panel defines input parameters with name, type, and default value. All IDE-generated parameters follow the <code>p</code> prefix convention (<code>pServer</code>, <code>pCube</code>, etc.).</p>
+
+  <h3>Variable naming convention</h3>
+  <table>
+    <tr><th>Prefix</th><th>Meaning</th></tr>
+    <tr><td><code>p</code></td><td>Parameter (input)</td></tr>
+    <tr><td><code>v</code></td><td>String variable</td></tr>
+    <tr><td><code>n</code></td><td>Numeric variable</td></tr>
+    <tr><td><code>s</code></td><td>Server name variable</td></tr>
+    <tr><td><code>c</code></td><td>Cube name variable</td></tr>
+  </table>
+
+  <h3>Running a process</h3>
+  <p>Click <strong>Run</strong> or press <kbd>Ctrl+Enter</kbd>. The process runs via <code>tm1.ExecuteWithReturn</code> which returns timing and the error log filename inline. Results and any errors appear in the panel below.</p>
+
+  <h3>Debugger</h3>
+  <p>Set breakpoints with <kbd>F9</kbd>. The debugger injects capture statements around each breakpoint and runs a modified copy of the process. Variable values at each breakpoint are shown in the debug panel.</p>
+
+  <h3>Datasource</h3>
+  <p>The <strong>Datasource</strong> tab configures the TI data source — type (None, ASCII, ODBC, TM1CubeView, TM1DimensionSubset), file path, delimiter, and header row settings.</p>
+
+  <!-- ── Dimension Editor ── -->
+  <h2 id="dimension">Dimension Editor</h2>
+  <p>Open from the Explorer under any dimension. Shows the default hierarchy tree on the left and the attribute grid on the right.</p>
+  <ul>
+    <li><strong>Add / rename / delete elements</strong> — right-click context menu in the tree</li>
+    <li><strong>Add edge</strong> — drag an element onto a consolidation, or use the context menu</li>
+    <li><strong>Attributes</strong> — edit inline in the grid; add/delete attribute columns via the column header menu</li>
+    <li><strong>Bulk import</strong> — paste a tab-separated list of elements with optional attributes</li>
+  </ul>
+
+  <!-- ── View Editor ── -->
+  <h2 id="view">View Editor</h2>
+  <p>Open from the Explorer under any cube → Views. Supports both native TM1 views and MDX views.</p>
+
+  <h3>Native views</h3>
+  <p>Drag dimensions between the Row, Column, and Title (filter) axes. Click a dimension pill to assign a subset — choose a named subset or define member selections inline. The cell grid updates live as you change the view structure.</p>
+
+  <h3>MDX views</h3>
+  <p>Switch to MDX mode to write a raw MDX query. The result grid renders the same as native views. MDX views can be saved back to the server.</p>
+
+  <h3>Writeback</h3>
+  <p>Click any numeric cell in the grid to edit it. Changes are written via <code>tm1.Update</code>. The cell flashes green on success.</p>
+
+  <!-- ── Subset Editor ── -->
+  <h2 id="subset">Subset Editor</h2>
+  <p>Open from the Explorer under any dimension → Subsets, or from within the View Editor when assigning a subset to an axis.</p>
+  <ul>
+    <li><strong>MDX mode</strong> — write an MDX set expression directly; preview executes it and shows the member list</li>
+    <li><strong>Visual mode</strong> — browse the hierarchy tree and tick members to build a static subset</li>
+    <li><strong>Guided filter</strong> — build an MDX filter by attribute value, level, or parent without writing MDX</li>
+  </ul>
+  <p>Save as <strong>Static</strong> (fixed member list) or <strong>MDX</strong> (expression evaluated at runtime).</p>
+
+  <!-- ── Chore Editor ── -->
+  <h2 id="chore">Chore Editor</h2>
+  <p>Open from the Explorer under Chores. Shows the schedule, step list, and execution controls.</p>
+  <ul>
+    <li><strong>Schedule</strong> — set start time, frequency (daily, weekly, monthly, etc.), and DST handling</li>
+    <li><strong>Steps</strong> — add/remove/reorder TI processes; set parameters per step</li>
+    <li><strong>Activate / Deactivate</strong> — toggle the chore without changing its schedule</li>
+    <li><strong>Execute Now</strong> — run the chore immediately outside its schedule</li>
+  </ul>
+
+  <!-- ── SQL Editor ── -->
+  <h2 id="sql">SQL Editor</h2>
+  <p>Connects to external databases (MSSQL, PostgreSQL, MySQL, SQLite) — useful for querying source systems before writing TI to pull from them.</p>
+  <ul>
+    <li>Connection definitions stored in <code>config/sql-connections.json</code></li>
+    <li>Schema browser shows tables and columns on the left</li>
+    <li>Saved queries stored in <code>config/sql-queries.json</code></li>
+    <li><strong>Post to TI</strong> — copies the query as a TI datasource configuration snippet</li>
+  </ul>
+
+  <!-- ── Change Sets ── -->
+  <h2 id="changesets">Change Sets</h2>
+  <p>A Change Set is a named session that tracks every save you make — rules, TI processes, dimensions, views, subsets. Without an active Change Set, changes are still saved to TM1 but are not included in a deploy package.</p>
+
+  <h3>Start a Change Set</h3>
+  <p>Click <strong>Start Change Set</strong> in the status bar. Give it a name (e.g. "Sprint 14 — Budget fixes"). All subsequent saves are logged against this session.</p>
+
+  <h3>Close a Change Set</h3>
+  <p>Click <strong>Close</strong> in the Change Set panel. The session is marked complete and can be selected as the source for a deploy.</p>
+
+  <div class="note"><strong>Note:</strong> Only saves made while a Change Set is active are tracked. Saving without an active Change Set shows a toast reminder.</div>
+
+  <!-- ── Deploy Pipeline ── -->
+  <h2 id="deploy">Deploy Pipeline</h2>
+  <p>Open the Deploy tab from the toolbar. Select a closed Change Set as the source and a target server to deploy to.</p>
+
+  <div class="steps">
+    <div class="step"><span class="step-num">1</span><p><strong>Diff</strong> — compares each changed object against the target server. Shows what has changed, what is new, and what is missing on target.</p></div>
+    <div class="step"><span class="step-num">2</span><p><strong>Package</strong> — fetches the live objects from the source server and writes them to disk as a deployable package with a <code>manifest.json</code>.</p></div>
+    <div class="step"><span class="step-num">3</span><p><strong>Risk</strong> — checks for blockers: syntax errors in rules, missing cube dependencies on target, chore conflicts. Blockers must be resolved before deploy.</p></div>
+    <div class="step"><span class="step-num">4</span><p><strong>Deploy</strong> — pushes each object to the target server in dependency order. Run as a <strong>Dry Run</strong> first to validate without making changes, then click <strong>Deploy for Real</strong>.</p></div>
+  </div>
+
+  <h3>Supported object types</h3>
+  <ul>
+    <li>Rules (cube calculation rules)</li>
+    <li>TI Processes</li>
+    <li>Dimensions (elements, edges, attributes)</li>
+    <li>Cubes (structure — create only, not destructive)</li>
+    <li>Views (native and MDX)</li>
+    <li>Subsets (static and MDX)</li>
+    <li>Element attributes</li>
+  </ul>
+
+  <div class="note"><strong>Deploy order:</strong> Objects are always deployed in dependency order — attributes → dimensions → cubes → rules → subsets → views → processes.</div>
+
+</main>
+
+<script>
+  // Highlight active nav link on scroll
+  const links = document.querySelectorAll('aside a')
+  const sections = [...links].map(a => document.querySelector(a.getAttribute('href'))).filter(Boolean)
+
+  const observer = new IntersectionObserver(entries => {
+    entries.forEach(e => {
+      if (e.isIntersecting) {
+        links.forEach(l => l.classList.toggle('active', l.getAttribute('href') === '#' + e.target.id))
+      }
+    })
+  }, { rootMargin: '-20% 0px -70% 0px' })
+
+  sections.forEach(s => observer.observe(s))
+</script>
 
 </body>
 </html>
