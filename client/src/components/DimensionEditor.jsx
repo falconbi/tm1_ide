@@ -3,12 +3,12 @@ import {
   useElements, useElementsWithIndex, useEdges, useElementAttrValues, useHierarchies,
   useAddElement, useDeleteElement, useAddEdge, useDeleteEdge, useUpdateEdgeWeight,
   useAttrGrid, useWriteElementAttribute, useCreateAttrDef, useDeleteAttrDef, useSubsets, useSubsetElements, useDimCubes,
-  useCreateHierarchy, useBulkDimImport, useBulkAttrImport, useCreateDimension,
+  useDimensionUsage, useCreateHierarchy, useBulkDimImport, useBulkAttrImport, useCreateDimension,
 } from '@/hooks/useApi'
 import { AgGridReact } from 'ag-grid-react'
 import { AllCommunityModule, ModuleRegistry, themeBalham, colorSchemeDark, colorSchemeLight } from 'ag-grid-community'
 import { useStore } from '@/store'
-import { ChevronRight, ChevronDown, Loader2, List, GitBranch, Plus, Trash2, Check, X, ClipboardList, ChevronLeft, Table2, Search, ListOrdered, MapPin, Upload, Grid3x3 } from 'lucide-react'
+import { ChevronRight, ChevronDown, Loader2, List, GitBranch, Plus, Trash2, Check, X, ClipboardList, ChevronLeft, Table2, Search, ListOrdered, MapPin, Upload, Grid3x3, Cog } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
 import PicklistBuilder from './PicklistBuilder'
@@ -647,9 +647,17 @@ function AttrGrid({ tab, elements, edges, hierarchy }) {
     </div>
   )
 
+  const hasFormat = attrs.some(a => a.Name.toLowerCase() === 'format')
+
   if (attrs.length === 0) return (
-    <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm">
-      No attributes defined on this dimension.
+    <div className="flex-1 flex flex-col items-center justify-center gap-3 text-muted-foreground text-sm">
+      <span>No attributes defined on this dimension.</span>
+      <button
+        onClick={() => handleCreateAttr('Format', 'String')}
+        className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded border border-border bg-background hover:bg-muted text-foreground"
+      >
+        <Plus size={11} /> Add Format attribute
+      </button>
     </div>
   )
 
@@ -676,6 +684,13 @@ function AttrGrid({ tab, elements, edges, hierarchy }) {
             <Upload size={10} /> CSV
           </button>
           <input ref={attrFileRef} type="file" accept=".csv,.txt" className="hidden" onChange={handleAttrFileUpload} />
+          {!hasFormat && (
+            <button onClick={() => handleCreateAttr('Format', 'String')}
+              className="flex items-center gap-0.5 px-2 py-0.5 text-xs rounded border border-border bg-background text-muted-foreground hover:text-foreground"
+              title="Add Format attribute (String)">
+              <Plus size={10} /> Format
+            </button>
+          )}
           <button onClick={() => setNewAttr(true)}
             className="flex items-center gap-0.5 px-2 py-0.5 text-xs rounded border border-border bg-background text-muted-foreground hover:text-foreground">
             <Plus size={10} /> New Attr
@@ -876,7 +891,7 @@ function NewDimensionScreen({ tab }) {
   const handleCreate = () => {
     const n = name.trim()
     if (!n) return
-    const id = toast.loading(`Creating "${n}"…`)
+    const id = toast.loading(`Creating "${n}"…`, { duration: 30000 })
     createMut.mutate({ server: tab.server, name: n }, {
       onSuccess: () => {
         toast.success(`Created ${n}`, { id })
@@ -933,7 +948,9 @@ function DimensionEditorCore({ tab }) {
   const indexMap = useMemo(() => Object.fromEntries(indexedEls.map(e => [e.Name, e.Index])), [indexedEls])
   const { data: edges    = [], isLoading: loadingEd, refetch: refetchEd } = useEdges(tab.server, tab.dimension, selectedHierarchy)
   const { data: hierarchies = [] } = useHierarchies(tab.server, tab.dimension)
-  const { data: dimCubes   = [] } = useDimCubes(tab.server, tab.dimension)
+  const { data: dimUsageData } = useDimensionUsage(tab.server, tab.dimension)
+  const dimCubes    = dimUsageData?.cubes    ?? []
+  const dimProcs    = dimUsageData?.processes ?? []
   const { data: elemAttrs, isFetching: loadingAttrs } = useElementAttrValues(tab.server, tab.dimension, selected, selectedHierarchy)
   const { data: subsets = [] }    = useSubsets(tab.server, tab.dimension, selectedHierarchy)
   const { data: subsetElems = [] } = useSubsetElements(tab.server, tab.dimension, filterSubset, selectedHierarchy)
@@ -1065,7 +1082,7 @@ function DimensionEditorCore({ tab }) {
               hierarchy: tab.hierarchy,
             })
           }}
-          className="p-1 rounded hover:bg-background text-muted-foreground hover:text-foreground transition-colors"
+          className="p-1 rounded hover:bg-muted text-amber-400 hover:text-amber-300 transition-colors"
           title="Show in Explorer tree"
         >
           <MapPin size={11} />
@@ -1163,18 +1180,25 @@ function DimensionEditorCore({ tab }) {
         </div>
       </div>
 
-      {/* Toolbar row 2 — cube usage + filters */}
+      {/* Toolbar row 2 — used in + filters */}
       <div className="flex items-center gap-2 px-3 py-1 border-b border-border bg-muted/50 shrink-0 flex-wrap">
-        {dimCubes.length > 0 && (
+        {(dimCubes.length > 0 || dimProcs.length > 0) && (
           <span className="flex items-center gap-1.5 flex-wrap">
             <button onClick={() => setShowCubes(s => !s)}
               className="flex items-center gap-0.5 text-[10px] text-muted-foreground uppercase tracking-wider hover:text-foreground transition-colors shrink-0">
               {showCubes ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
-              Used in {dimCubes.length} cube{dimCubes.length !== 1 ? 's' : ''}
+              Used in {dimCubes.length} cube{dimCubes.length !== 1 ? 's' : ''}{dimProcs.length > 0 ? `, ${dimProcs.length} TI` : ''}
             </button>
-            {showCubes && dimCubes.map(c => (
-              <span key={c} className="px-1.5 py-px rounded bg-background border border-border text-[10px] font-mono text-muted-foreground">{c}</span>
-            ))}
+            {showCubes && <>
+              {dimCubes.map(c => (
+                <span key={c} className="px-1.5 py-px rounded bg-background border border-border text-[10px] font-mono text-muted-foreground">{c}</span>
+              ))}
+              {dimProcs.map((p, i) => (
+                <span key={`p-${i}`} className="flex items-center gap-1 px-1.5 py-px rounded bg-background border border-border text-[10px] font-mono text-muted-foreground">
+                  <Cog size={8} />{p.process}
+                </span>
+              ))}
+            </>}
           </span>
         )}
         <span className="ml-auto flex items-center gap-2">

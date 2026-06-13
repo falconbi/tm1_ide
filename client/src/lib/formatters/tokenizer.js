@@ -105,6 +105,25 @@ export function tokenize(line) {
       continue
     }
 
+    // String comparison operators: @=, @<, @>, @<>, @<=, @>=
+    if (ch === '@') {
+      const three = peek(3)
+      if (three === '@<>' || three === '@<=' || three === '@>=') {
+        tokens.push({ type: 'operator', value: three, raw: three, pos: start })
+        advance(3)
+        continue
+      }
+      const two = peek(2)
+      if (two === '@=' || two === '@<' || two === '@>') {
+        tokens.push({ type: 'operator', value: two, raw: two, pos: start })
+        advance(2)
+        continue
+      }
+      tokens.push({ type: 'unknown', value: ch, raw: ch, pos: start })
+      advance()
+      continue
+    }
+
     // Multi-char operators (check before single-char)
     const two = peek(2)
     if (MULTI_CHAR_OPS.includes(two)) {

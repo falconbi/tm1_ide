@@ -1,6 +1,6 @@
 import { useState, useRef, useMemo, useEffect, createContext, useContext, useCallback } from 'react'
 import { toast } from 'sonner'
-import { useCubes, useDims, useProcs, useChores, useSubsets, useViews, useCubeDimensions, useSaveView, useHierarchies, useCreateHierarchy, useControlObjects, useDeleteDimension, useDeleteCube, useDeleteProcess, useDeleteChore, useDeleteSubset } from '@/hooks/useApi'
+import { useCubes, useDims, useProcs, useChores, useSubsets, useViews, useCubeDimensions, useSaveView, useHierarchies, useCreateHierarchy, useControlObjects, useDeleteDimension, useDeleteCube, useDeleteProcess, useDeleteChore, useDeleteSubset, useDeleteView, useActiveWorkSession, useWorkSessionLog } from '@/hooks/useApi'
 import { useStore } from '@/store'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { ChevronRight, ChevronDown, Box, Layers, Cog, Clock, Loader2, List, Plus, Table2, Code2, Sigma, PencilLine, Search, X, Braces, Trash2, FileSearch, Database, Tag } from 'lucide-react'
@@ -62,11 +62,12 @@ function getLocateIdFromTab(tab) {
   if (tab.type === 'view' || tab.type === 'cubeview') return tab.viewName ? `view:${tab.cube}:${tab.viewName}` : `cube:${tab.cube}`
   if (tab.type === 'subset')    return tab.subsetName ? `subset:${tab.dimension}:${tab.subsetName}` : `dimension:${tab.dimension}`
   if (tab.type === 'dimension') return `dimension:${tab.dimension}`
-  if (tab.type === 'chore')     return `chore:${tab.name}`
+  if (tab.type === 'chore')     return tab.name ? `chore:${tab.name}` : ''
   return ''
 }
 
 const ActiveLocateCtx = createContext('')
+const ChangedCtx      = createContext(new Set())
 
 function NamePopover({ open, onCommit, onCancel, placeholder = 'name…' }) {
   const inputRef = useRef(null)
@@ -90,9 +91,10 @@ function NamePopover({ open, onCommit, onCancel, placeholder = 'name…' }) {
   )
 }
 
-function Section({ icon: Icon, label, items, isLoading, onSelect, itemIcon: ItemIcon, sectionId, locateIdPrefix, onDelete, onAdd }) {
+function Section({ icon: Icon, label, items, isLoading, onSelect, itemIcon: ItemIcon, sectionId, locateIdPrefix, onDelete, onAdd, csType }) {
   const [open, setOpen] = useState(false)
-  const activeId = useContext(ActiveLocateCtx)
+  const activeId  = useContext(ActiveLocateCtx)
+  const changedSet = useContext(ChangedCtx)
   const revealTarget = useStore(s => s.revealTarget)
   useEffect(() => {
     if (revealTarget && shouldAutoOpen(sectionId, revealTarget)) setOpen(true)
@@ -131,6 +133,9 @@ function Section({ icon: Icon, label, items, isLoading, onSelect, itemIcon: Item
               >
                 {ItemIcon && <ItemIcon size={12} className="shrink-0 text-muted-foreground" />}
                 <span className={cn('truncate', locateIdPrefix && activeId === `${locateIdPrefix}:${item}` && 'text-amber-400 dark:text-amber-300')}>{item}</span>
+                {csType && changedSet.has(`${csType}::${item}`) && (
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0 ml-auto mr-1" title="Changed in active change set" />
+                )}
               </button>
               {onDelete && (
                 <button
@@ -179,6 +184,7 @@ function CubeSubSection({ label, loading, children, onAdd, sectionId }) {
 
 // Dimension row inside a cube — shows subsets on expand
 function CubeDimRow({ server, dim, onOpenSubset, onOpenDim, cube }) {
+  const changedSet = useContext(ChangedCtx)
   const [open, setOpen] = useState(false)
   const [deleteModal, setDeleteModal] = useState(null)
   const { data: subsets, isFetching } = useSubsets(open ? server : null, open ? dim : null)
@@ -229,8 +235,9 @@ function CubeDimRow({ server, dim, onOpenSubset, onOpenDim, cube }) {
                 title={s.Expression ? 'MDX subset' : 'Static subset'}
               >
                 {s.Expression
-                  ? <Code2 size={10} className="shrink-0 text-violet-400" />
+                  ? <Code2 size={10} className="shrink-0 text-muted-foreground" />
                   : <List   size={10} className="shrink-0 text-muted-foreground" />}
+                {changedSet.has(`subset::${dim}::${s.Name}`) && <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0 mr-1" />}
                 <span className="truncate font-mono">{s.Name}</span>
               </button>
               <button
@@ -251,25 +258,37 @@ function CubeDimRow({ server, dim, onOpenSubset, onOpenDim, cube }) {
 }
 
 function CubeRow({ server, cube, onOpenRules, onOpenView, onOpenSubset, onOpenDim, onOpenViewer, onOpenCubeEditor }) {
-  const activeId = useContext(ActiveLocateCtx)
+  const activeId   = useContext(ActiveLocateCtx)
+  const changedSet = useContext(ChangedCtx)
   const [open, setOpen] = useState(false)
   const revealTarget = useStore(s => s.revealTarget)
   const sectionId = `cube:${cube}`
   useEffect(() => {
     if (revealTarget && shouldAutoOpen(sectionId, revealTarget)) setOpen(true)
   }, [revealTarget, sectionId])
-  const { data: views,    isFetching: loadingViews } = useViews(open ? server : null, open ? cube : null)
-  const { data: cubeDims, isFetching: loadingDims  } = useCubeDimensions(open ? server : null, open ? cube : null)
+  const { data: views,       isFetching: loadingViews } = useViews(open ? server : null, open ? cube : null)
+  const { data: cubeDims,    isFetching: loadingDims  } = useCubeDimensions(open ? server : null, open ? cube : null)
 
   const [deleteModal, setDeleteModal] = useState(false)
+  const [viewDeleteModal, setViewDeleteModal] = useState(null)
   const saveView = useSaveView()
   const deleteCubeMut = useDeleteCube()
+  const deleteViewMut = useDeleteView()
 
   const handleDeleteCube = (e) => { e.stopPropagation(); setDeleteModal(true) }
   const confirmDeleteCube = () => {
     setDeleteModal(false)
     deleteCubeMut.mutate({ server, name: cube }, {
       onSuccess: () => toast.success(`Deleted ${cube}`),
+      onError:   (err) => toast.error(err.message ?? 'Delete failed'),
+    })
+  }
+  const confirmDeleteView = () => {
+    const m = viewDeleteModal
+    setViewDeleteModal(null)
+    if (!m) return
+    deleteViewMut.mutate({ server, cube, name: m.name }, {
+      onSuccess: () => toast.success(`Deleted "${m.name}"`),
       onError:   (err) => toast.error(err.message ?? 'Delete failed'),
     })
   }
@@ -314,15 +333,23 @@ function CubeRow({ server, cube, onOpenRules, onOpenView, onOpenSubset, onOpenDi
           {(views ?? []).length === 0 && !loadingViews
             ? <p className="px-12 py-0.5 text-xs text-muted-foreground/50 italic">No views</p>
             : (views ?? []).map(v => (
-                <button key={v.name} onClick={() => onOpenView(cube, v.name)}
-                  data-locate-id={`view:${cube}:${v.name}`}
-                  className="flex items-center gap-2 w-full px-12 py-0.5 text-xs text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground truncate"
-                  title={v.type === 'mdx' ? 'MDX view' : 'Native view'}>
-                  {v.type === 'mdx'
-                    ? <Code2 size={10} className="shrink-0 text-violet-400" />
-                    : <Table2 size={10} className="shrink-0 text-muted-foreground" />}
-                  <span className={cn('truncate font-mono', activeId === `view:${cube}:${v.name}` && 'text-amber-400 dark:text-amber-300')}>{v.name}</span>
-                </button>
+                <div key={v.name} className="group flex items-center w-full">
+                  <button onClick={() => onOpenView(cube, v.name)}
+                    data-locate-id={`view:${cube}:${v.name}`}
+                    className="flex items-center gap-2 flex-1 min-w-0 px-12 py-0.5 text-xs text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                    title={v.type === 'mdx' ? 'MDX view' : 'Native view'}>
+                    {v.type === 'mdx'
+                      ? <Code2 size={10} className="shrink-0 text-muted-foreground" />
+                      : <Table2 size={10} className="shrink-0 text-muted-foreground" />}
+                    {changedSet.has(`view::${cube}::${v.name}`) && <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0 mr-1" />}
+                    <span className={cn('truncate font-mono', activeId === `view:${cube}:${v.name}` && 'text-amber-400 dark:text-amber-300')}>{v.name}</span>
+                  </button>
+                  <button onClick={(e) => { e.stopPropagation(); setViewDeleteModal({ name: v.name }) }}
+                    title="Delete view"
+                    className="hidden group-hover:flex items-center pr-2 py-0.5 text-muted-foreground hover:text-red-400 shrink-0">
+                    <Trash2 size={9} />
+                  </button>
+                </div>
               ))
           }
         </CubeSubSection>
@@ -339,6 +366,8 @@ function CubeRow({ server, cube, onOpenRules, onOpenView, onOpenSubset, onOpenDi
       </>}
       <DeleteWarningModal open={deleteModal} type="cube" name={cube} server={server}
         onClose={() => setDeleteModal(false)} onConfirm={confirmDeleteCube} />
+      <DeleteWarningModal open={!!viewDeleteModal} type="view" name={viewDeleteModal?.name} server={server}
+        cube={cube} onClose={() => setViewDeleteModal(null)} onConfirm={confirmDeleteView} />
     </div>
   )
 }
@@ -360,11 +389,11 @@ function CubeSection({ server, cubes, isLoading, onOpenRules, onOpenView, onOpen
         <span>Cubes</span>
         {isLoading
           ? <Loader2 size={10} className="ml-auto animate-spin" />
-          : <button onClick={e => { e.stopPropagation(); onOpenCubeEditor(null) }}
-              title="New cube"
-              className="ml-auto p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors">
+          : <span onClick={e => { e.stopPropagation(); onOpenCubeEditor(null) }}
+              title="New cube" role="button" tabIndex={0} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); onOpenCubeEditor(null) } }}
+              className="ml-auto p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors cursor-pointer">
               <Plus size={11} />
-            </button>
+            </span>
         }
       </button>
       {open && (
@@ -386,7 +415,8 @@ function CubeSection({ server, cubes, isLoading, onOpenRules, onOpenView, onOpen
 
 function RulesSection({ server, cubes, isLoading, onOpenRules }) {
   const [open, setOpen] = useState(false)
-  const activeId = useContext(ActiveLocateCtx)
+  const activeId   = useContext(ActiveLocateCtx)
+  const changedSet = useContext(ChangedCtx)
   const revealTarget = useStore(s => s.revealTarget)
   useEffect(() => {
     if (revealTarget && shouldAutoOpen('rules', revealTarget)) setOpen(true)
@@ -418,6 +448,7 @@ function RulesSection({ server, cubes, isLoading, onOpenRules }) {
             >
               <Box size={10} className="shrink-0 text-muted-foreground" />
               <span className={cn('truncate font-mono', activeId === `rules:${cube}` && 'text-amber-400 dark:text-amber-300')}>{cube}</span>
+              {changedSet.has(`rules::${cube}`) && <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0 ml-auto" title="Changed in active change set" />}
               <span className="hidden group-hover:inline text-[10px] text-muted-foreground ml-auto">Rules</span>
             </button>
           ))}
@@ -430,8 +461,7 @@ function RulesSection({ server, cubes, isLoading, onOpenRules }) {
 function HistorySection({ server, onOpen }) {
   const [open, setOpen] = useState(false)
   const tabHistory = useStore(s => s.tabHistory)
-  const serverHistory = tabHistory.filter(h => h.server === server)
-  if (serverHistory.length === 0) return null
+  const visible = tabHistory.filter(h => h.server === server || !h.server)
 
   const typeIcon = {
     rules: Code2, process: Cog, subset: List, dimension: Layers,
@@ -441,10 +471,6 @@ function HistorySection({ server, onOpen }) {
     rules: 'Rules', process: 'Process', subset: 'Subset', dimension: 'Dimension',
     cubeview: 'View', view: 'View', sql: 'SQL', guidedmdxview: 'MDX Builder',
   }
-
-  // SQL/MDX Builder tabs have no server — show them regardless
-  const visible = tabHistory.filter(h => h.server === server || !h.server)
-  if (visible.length === 0) return null
 
   return (
     <div>
@@ -458,21 +484,25 @@ function HistorySection({ server, onOpen }) {
       </button>
       {open && (
         <div className="pb-1">
-          {visible.map(h => {
-            const Icon = typeIcon[h.type] ?? Box
-            return (
-              <button
-                key={h.id}
-                onClick={() => onOpen(h)}
-                className="flex items-center gap-2 w-full px-6 py-0.5 text-xs text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground truncate"
-                title={`${typeLabel[h.type] ?? h.type}: ${h.label}`}
-              >
-                <Icon size={11} className="shrink-0 text-muted-foreground" />
-                <span className="truncate flex-1 text-left">{h.label}</span>
-                <span className="text-[10px] text-muted-foreground/50 shrink-0">{typeLabel[h.type] ?? h.type}</span>
-              </button>
-            )
-          })}
+          {visible.length === 0 ? (
+            <div className="px-6 py-2 text-[10px] text-muted-foreground/60 italic">Open objects to build history</div>
+          ) : (
+            visible.map(h => {
+              const Icon = typeIcon[h.type] ?? Box
+              return (
+                <button
+                  key={h.id}
+                  onClick={() => onOpen(h)}
+                  className="flex items-center gap-2 w-full px-6 py-0.5 text-xs text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground truncate"
+                  title={`${typeLabel[h.type] ?? h.type}: ${h.label}`}
+                >
+                  <Icon size={11} className="shrink-0 text-muted-foreground" />
+                  <span className="truncate flex-1 text-left">{h.label}</span>
+                  <span className="text-[10px] text-muted-foreground/50 shrink-0">{typeLabel[h.type] ?? h.type}</span>
+                </button>
+              )
+            })
+          )}
         </div>
       )}
     </div>
@@ -480,7 +510,8 @@ function HistorySection({ server, onOpen }) {
 }
 
 function DimRow({ server, dim, onOpenSubset, onOpenDim }) {
-  const activeId = useContext(ActiveLocateCtx)
+  const activeId   = useContext(ActiveLocateCtx)
+  const changedSet = useContext(ChangedCtx)
   const [open, setOpen] = useState(false)
   const revealTarget = useStore(s => s.revealTarget)
   const sectionId = `dim:${dim}`
@@ -540,6 +571,7 @@ function DimRow({ server, dim, onOpenSubset, onOpenDim }) {
           {open ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
         </button>
         <Layers size={12} className="shrink-0 text-muted-foreground mr-2" />
+        {changedSet.has(`dimension::${dim}`) && <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0 mr-1.5" />}
         <span className={cn('truncate flex-1 text-left', activeId === `dimension:${dim}` && 'text-amber-400 dark:text-amber-300')}>{dim}</span>
         <span className="hidden group-hover:flex items-center gap-1 shrink-0 ml-1">
           <button onClick={() => onOpenDim(dim)} title="Edit dimension"
@@ -629,9 +661,10 @@ function DimRow({ server, dim, onOpenSubset, onOpenDim }) {
                 title={s.Expression ? 'MDX subset' : 'Static subset'}
               >
                 {s.Expression
-                  ? <Code2 size={10} className="shrink-0 text-violet-400" />
+                  ? <Code2 size={10} className="shrink-0 text-muted-foreground" />
                   : <List   size={10} className="shrink-0 text-muted-foreground" />
                 }
+                {changedSet.has(`subset::${dim}::${s.Name}`) && <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0 mr-1" />}
                 <span className={cn('truncate font-mono', activeId === `subset:${dim}:${s.Name}` && 'text-amber-400 dark:text-amber-300')}>{s.Name}</span>
               </button>
               <button
@@ -874,6 +907,17 @@ export default function Explorer() {
   const [search, setSearch] = useState('')
   const [showGlobalSearch, setShowGlobalSearch] = useState(false)
 
+  const { data: activeSession }    = useActiveWorkSession(server)
+  const { data: sessionEntries = [] } = useWorkSessionLog(activeSession?.id)
+  const changedSet = useMemo(() => {
+    const s = new Set()
+    for (const e of sessionEntries) {
+      s.add(`${e.object_type}::${e.object_name}`)
+      if (e.detail) s.add(`${e.object_type}::${e.detail}::${e.object_name}`)
+    }
+    return s
+  }, [sessionEntries])
+
   useEffect(() => {
     const handler = (e) => {
       if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'f') {
@@ -895,6 +939,14 @@ export default function Explorer() {
     id: `process:${server}:new:${Date.now()}`,
     type: 'process',
     label: 'New Process',
+    server,
+    name: null,
+  })
+
+  const openNewChore = () => openTab({
+    id: `chore:${server}:new:${Date.now()}`,
+    type: 'chore',
+    label: 'New Chore',
     server,
     name: null,
   })
@@ -960,11 +1012,12 @@ export default function Explorer() {
   })
 
   const openCubeViewer = (cube) => openTab({
-    id:      `cubeview:${server}:${cube}`,
-    type:    'cubeview',
-    label:   `⊞ ${cube}`,
+    id:       `cubeview:${server}:${cube}`,
+    type:     'cubeview',
+    label:    `⊞ ${cube}`,
     server,
     cube,
+    viewName: 'Default',
   })
 
   const openView = (cube, view) => openTab({
@@ -1055,6 +1108,7 @@ export default function Explorer() {
   }
 
   return (
+    <ChangedCtx.Provider value={changedSet}>
     <ActiveLocateCtx.Provider value={activeLocateId}>
     {showGlobalSearch && server && (
       <GlobalSearch
@@ -1109,8 +1163,8 @@ export default function Explorer() {
                 onOpenSubset={openSubset} onOpenDim={openDim}
                 onOpenViewer={openCubeViewer} onOpenCubeEditor={openCubeEditor} />
               <DimSection server={server} dims={dims}    isLoading={loadingDims}   onOpenSubset={openSubset} onOpenDim={openDim} onCreateDim={() => openDim(null)} />
-              <Section    icon={Cog}   label="Processes" items={procs}  isLoading={loadingProcs}  onSelect={openProcess} itemIcon={Cog}   sectionId="processes" locateIdPrefix="process" onDelete={handleDeleteProcess} onAdd={openNewProcess} />
-              <Section    icon={Clock} label="Chores"    items={chores} isLoading={loadingChores} onSelect={openChore}   itemIcon={Clock} sectionId="chores" locateIdPrefix="chore" onDelete={handleDeleteChore} />
+              <Section    icon={Cog}   label="Processes" items={procs}  isLoading={loadingProcs}  onSelect={openProcess} itemIcon={Cog}   sectionId="processes" locateIdPrefix="process" onDelete={handleDeleteProcess} onAdd={openNewProcess} csType="process" />
+              <Section    icon={Clock} label="Chores"    items={chores} isLoading={loadingChores} onSelect={openChore}   itemIcon={Clock} sectionId="chores" locateIdPrefix="chore" onDelete={handleDeleteChore} onAdd={openNewChore} csType="chore" />
               <ControlSection
                 server={server}
                 onOpenViewer={openCubeViewer}
@@ -1128,5 +1182,6 @@ export default function Explorer() {
         onClose={() => setDeleteModal(null)} onConfirm={confirmDeleteProcess} />
     </div>
     </ActiveLocateCtx.Provider>
+    </ChangedCtx.Provider>
   )
 }

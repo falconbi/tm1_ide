@@ -253,12 +253,15 @@ function parseLogicalUnits(text) {
     while (i < rawLines.length && !complete) {
       const lt = rawLines[i].trim()
 
-      // A blank line or a comment line mid-accumulation ends the statement
-      if (!lt) break
-      if (parts.length > 0) {
+      // Blank lines and comments end the statement only at depth 0 (not inside parens)
+      if (!lt && depth === 0) break
+      if (parts.length > 0 && depth === 0) {
         if (lt.startsWith('//')) break
         if (lt.startsWith('#') && !lt.toLowerCase().startsWith('#region') && !lt.toLowerCase().startsWith('#endregion')) break
       }
+
+      // Inside parens: skip blank lines silently (don't push to parts)
+      if (!lt) { i++; continue }
 
       parts.push(lt)
 

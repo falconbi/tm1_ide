@@ -739,8 +739,8 @@ export default function GuidedMDXBuilder({ tab, server: serverProp, onSwitchToRa
   }
   const [selectedAttr, setSelectedAttr] = useState('')
   const [previewMembers, setPreviewMembers] = useState(null)
-  const [previewResult, setPreviewResult] = useState(null)
-  const [previewError, setPreviewError] = useState(null)
+  const [previewResult, setPreviewResult] = useState(init.previewResult ?? null)
+  const [previewError, setPreviewError] = useState(init.previewError ?? null)
   const [previewLoading, setPreviewLoading] = useState(false)
   const [resultsHeight, setResultsHeight] = useState(240)
   const startResultsResize = useCallback((e) => {
@@ -821,8 +821,8 @@ export default function GuidedMDXBuilder({ tab, server: serverProp, onSwitchToRa
   const editorRef = useRef(null)
 
   useEffect(() => {
-    savePersistedState(tab?.id, { step, selectedCube, dimConfig, viewMDX, userEditedMDX, selectedMeasures, measuresMode, measuresSubset, intent })
-  }, [step, selectedCube, dimConfig, viewMDX, userEditedMDX, selectedMeasures, measuresMode, measuresSubset, intent])
+    savePersistedState(tab?.id, { step, selectedCube, dimConfig, viewMDX, userEditedMDX, selectedMeasures, measuresMode, measuresSubset, intent, previewResult, previewError })
+  }, [step, selectedCube, dimConfig, viewMDX, userEditedMDX, selectedMeasures, measuresMode, measuresSubset, intent, previewResult, previewError])
 
   // Auto-assign measures dim to columns when entering step 1 if not yet assigned
   useEffect(() => {
@@ -856,7 +856,7 @@ export default function GuidedMDXBuilder({ tab, server: serverProp, onSwitchToRa
       }
     })
     return { axes: { columns: cols, rows: rows, filter: filt }, dimExpressions: exprs }
-  }, [dimConfig])
+  }, [dimConfig, measuresDim, measuresMode, measuresSubset, selectedMeasures])
 
   const generatedMDX = useMemo(() => {
     if (isSubsetMode) return currentMDX || (selectedDim ? `{TM1SUBSETALL([${selectedDim}].[${selectedDim}])}` : '')
@@ -877,14 +877,16 @@ export default function GuidedMDXBuilder({ tab, server: serverProp, onSwitchToRa
     mdx += `\nFROM [${selectedCube}]`
     if (axes.filter.length) {
       const slicers = axes.filter.flatMap(d => {
-        const expr = dimConfig[d]?.subsetExpression?.trim()
+        const expr = (dimExpressions[d] || dimConfig[d]?.subsetExpression)?.trim()
         if (!expr) return []
         // Set expressions that return multiple members are invalid as WHERE tuple members — skip them
         if (/TM1SUBSETALL|TM1SubsetToSet|TM1FILTERBYLEVEL|TOPCOUNT|BOTTOMCOUNT|FILTER\s*\(|HEAD\s*\(|TAIL\s*\(/i.test(expr)) return []
         // Plain member name → 3-part reference
         if (!/[{}()[\]]/.test(expr)) return [`[${d}].[${d}].[${expr}]`]
-        // Range or STRTOMEMBER — valid in WHERE. Strip {} if present (WHERE needs members not sets)
-        return [expr.replace(/^\{([\s\S]*)\}$/, '$1').trim()]
+        // Brace expression — strip braces. If the result contains commas (multiple members), skip.
+        const stripped = expr.replace(/^\{([\s\S]*)\}$/, '$1').trim()
+        if (stripped.includes(',')) return []
+        return [stripped]
       })
       if (slicers.length) mdx += `\nWHERE (${slicers.join(', ')})`
     }
@@ -924,12 +926,10 @@ export default function GuidedMDXBuilder({ tab, server: serverProp, onSwitchToRa
     }
   }, [cubeDims, intent, step, secondCube, isSubsetMode, selectedCube])
 
-  // Sync generatedMDX → Monaco editor unless user has manually edited
+  // Sync generatedMDX → Monaco editor
   useEffect(() => {
     if (!generatedMDX) return
-    if (!userEditedMDX || viewMDX === prevGeneratedRef.current) {
-      setViewMDX(generatedMDX)
-    }
+    setViewMDX(generatedMDX)
     prevGeneratedRef.current = generatedMDX
   }, [generatedMDX])
 
@@ -996,13 +996,6 @@ export default function GuidedMDXBuilder({ tab, server: serverProp, onSwitchToRa
     }
     setCurrentMDX(mdx)
   }
-  const canNext = () => isSubsetMode ? (step === 0 ? !!selectedDim : !!currentMDX) : (step === 0 ? !!selectedCube : step === 1 ? cubeDims.every(d => !!dimConfig[d]?.axis) : true)
-  const next = () => { if (canNext()) setStep(s => Math.min(s + 1, 2)) }
-  const back = () => {
-    if (!isSubsetMode && step === 1) { setIntent('Freeform'); setSelectedCube(null); setDimConfig({}) }
-    setPreviewResult(null); setPreviewError(null)
-    setStep(s => Math.max(s - 1, 0))
-  }
 
   // Monaco syntax highlighting
   const handleEditorMount = (editor, monaco) => {
@@ -1044,8 +1037,8 @@ export default function GuidedMDXBuilder({ tab, server: serverProp, onSwitchToRa
   }
 
   const steps = isSubsetMode
-    ? [{ num: 0, title: 'Pick Dimension' }, { num: 1, title: 'Build Set' }, { num: 2, title: 'Review' }]
-    : [{ num: 0, title: 'Choose Cube' }, { num: 1, title: 'Assign Axes' }, { num: 2, title: 'Review' }]
+    ? [{ num: 0, title: 'Pick Dimension' }, { num: 1, title: 'Build Set' }]
+    : [{ num: 0, title: 'Choose Cube' }, { num: 1, title: 'Assign Axes' }]
 
   const dimsList = isSubsetMode ? dims : cubeDims
   const filteredDims = useMemo(() => {
@@ -1263,7 +1256,7 @@ export default function GuidedMDXBuilder({ tab, server: serverProp, onSwitchToRa
 
           {!server && <div className="text-xs text-muted-foreground border border-dashed rounded p-3 mb-3">No server connected.</div>}
 
-          {isSubsetMode && (
+          {isSubsetMode ? (
             step === 0 ? (
               <div>
                 <div className="font-medium text-sm mb-1">Pick a Dimension</div>
@@ -1346,24 +1339,13 @@ export default function GuidedMDXBuilder({ tab, server: serverProp, onSwitchToRa
                     theme="tm1-custom"
                   />
                 </div>
-              </div>
-            ) : (
-              <div>
-                <div className="font-medium text-sm mb-1">Review & Use</div>
-                <div className="text-[11px] text-muted-foreground mb-4">Your MDX is ready.</div>
-                <button onClick={copyMDX} disabled={!generatedMDX}
-                  className="w-full px-3 py-2 rounded border text-xs flex items-center justify-center gap-2 disabled:opacity-40 hover:bg-muted mb-2">
-                  <Copy size={13} /> Copy MDX
-                </button>
                 <button onClick={() => openTab({ id: `subsetmdx:${selectedDim}:${Date.now()}`, type: 'subset', label: `MDX: ${selectedDim}`, server, dimension: selectedDim, mdx: currentMDX })}
-                  className="w-full px-3 py-2 rounded bg-primary text-primary-foreground text-xs flex items-center justify-center gap-2 disabled:opacity-40">
+                  className="w-full mt-2 px-3 py-2 rounded bg-primary text-primary-foreground text-xs flex items-center justify-center gap-2 disabled:opacity-40">
                   <ExternalLink size={13} /> Open in Subset Editor
                 </button>
               </div>
-            )
-          )}
-
-          {!isSubsetMode && (
+            ) : null
+          ) : (
             step === 0 ? (
               <div>
                 <div className="font-medium text-sm mb-1">Choose a Cube</div>
@@ -1507,50 +1489,46 @@ export default function GuidedMDXBuilder({ tab, server: serverProp, onSwitchToRa
                     )
                   })}
                 </div>
+                <div className="flex items-center gap-2 mt-3">
+                  <button onClick={copyMDX} disabled={!generatedMDX}
+                    className="flex-1 px-3 py-2 rounded border text-xs flex items-center justify-center gap-2 disabled:opacity-40 hover:bg-muted">
+                    <Copy size={13} /> Copy MDX
+                  </button>
+                  <button onClick={() => {
+                      if (!selectedCube) return
+                      const toEntry = (dim) => {
+                          const expr = dimConfig[dim]?.subsetExpression?.trim()
+                          const entry = { dimension: dim, subset: null, member: null, members: null, memberSet: null }
+                          if (!expr) return entry
+                          const subsetMatch = expr.match(/TM1SubsetToSet\([^,]+,\s*"([^"]+)"/)
+                          if (subsetMatch) { entry.subset = subsetMatch[1]; return entry }
+                          if (expr.includes('FILTERBYLEVEL') && expr.includes(', 0)')) { entry.memberSet = 'leaf'; return entry }
+                          if (expr.includes('DefaultMember')) { entry.memberSet = 'root'; return entry }
+                          if (expr.includes('SUBSETALL')) { return entry }
+                          if (!/[{}()[\]]/.test(expr)) { entry.member = expr; return entry }
+                          return entry
+                      }
+                      const initialAxes = {
+                          rows:    axes.rows.map(toEntry),
+                          columns: axes.columns.map(toEntry),
+                          pages:   axes.filter.map(toEntry),
+                      }
+                      openTab({
+                          id:          `view:${server}:${selectedCube}:guided-${Date.now()}`,
+                          type:        'view',
+                          label:       selectedCube,
+                          server,
+                          cube:        selectedCube,
+                          initialMdx:  activeMDX,
+                          initialAxes,
+                      })
+                  }} disabled={!activeMDX}
+                    className="flex-1 px-3 py-2 rounded bg-primary text-primary-foreground text-xs flex items-center justify-center gap-2 disabled:opacity-40">
+                    <ExternalLink size={13} /> Open in View Editor
+                  </button>
+                </div>
               </div>
-            ) : (
-              <div>
-                <div className="font-medium text-sm mb-1">Review</div>
-                <button onClick={copyMDX} disabled={!generatedMDX}
-                  className="w-full px-3 py-2 rounded border text-xs flex items-center justify-center gap-2 disabled:opacity-40 hover:bg-muted mb-2">
-                  <Copy size={13} /> Copy MDX
-                </button>
-                <button onClick={() => {
-                    if (!selectedCube) return
-                    // Convert Builder dimConfig → ViewEditor axes format
-                    const toEntry = (dim) => {
-                        const expr = dimConfig[dim]?.subsetExpression?.trim()
-                        const entry = { dimension: dim, subset: null, member: null, members: null, memberSet: null }
-                        if (!expr) return entry
-                        const subsetMatch = expr.match(/TM1SubsetToSet\([^,]+,\s*"([^"]+)"/)
-                        if (subsetMatch) { entry.subset = subsetMatch[1]; return entry }
-                        if (expr.includes('FILTERBYLEVEL') && expr.includes(', 0)')) { entry.memberSet = 'leaf'; return entry }
-                        if (expr.includes('DefaultMember')) { entry.memberSet = 'root'; return entry }
-                        if (expr.includes('SUBSETALL')) { return entry }  // all members = default
-                        // Plain member name (filter dims)
-                        if (!/[{}()[\]]/.test(expr)) { entry.member = expr; return entry }
-                        return entry
-                    }
-                    const initialAxes = {
-                        rows:    axes.rows.map(toEntry),
-                        columns: axes.columns.map(toEntry),
-                        pages:   axes.filter.map(toEntry),
-                    }
-                    openTab({
-                        id:          `view:${server}:${selectedCube}:guided-${Date.now()}`,
-                        type:        'view',
-                        label:       selectedCube,
-                        server,
-                        cube:        selectedCube,
-                        initialMdx:  activeMDX,
-                        initialAxes,
-                    })
-                }} disabled={!activeMDX}
-                  className="w-full px-3 py-2 rounded bg-primary text-primary-foreground text-xs flex items-center justify-center gap-2 disabled:opacity-40">
-                  <ExternalLink size={13} /> Open in View Editor
-                </button>
-              </div>
-            )
+            ) : null
           )}
 
           </div>
@@ -1693,20 +1671,6 @@ export default function GuidedMDXBuilder({ tab, server: serverProp, onSwitchToRa
         </div>
       </div>
 
-      {/* Footer */}
-      <div className="flex justify-between items-center px-4 py-2.5 border-t border-border shrink-0 bg-muted/30">
-        <button onClick={back} disabled={step === 0}
-          className="flex items-center gap-1 px-3 py-1.5 text-xs rounded border disabled:opacity-40 hover:bg-muted"><ArrowLeft size={13} /> Back</button>
-        <div className="text-[10px] text-muted-foreground">
-          {step === 1 && !isSubsetMode && cubeDims.some(d => !dimConfig[d]?.axis)
-            ? `${cubeDims.filter(d => !dimConfig[d]?.axis).length} dimension${cubeDims.filter(d => !dimConfig[d]?.axis).length !== 1 ? 's' : ''} unassigned`
-            : `Step ${step + 1} of ${steps.length}`}
-        </div>
-        <button onClick={next} disabled={!canNext() || step === steps.length - 1}
-          className="flex items-center gap-1 px-3 py-1.5 text-xs rounded bg-primary text-primary-foreground disabled:opacity-40">
-          {step === steps.length - 1 ? 'Done' : 'Next'} <ArrowRight size={13} />
-        </button>
-      </div>
     </div>
   )
 }

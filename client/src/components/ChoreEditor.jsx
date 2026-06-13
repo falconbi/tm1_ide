@@ -1,17 +1,13 @@
 import { useState, useEffect } from 'react'
-import { useChore, useSaveChore, useProcs } from '@/hooks/useApi'
+import { useChore, useSaveChore, useCreateChore, useProcs, useProcess } from '@/hooks/useApi'
 import { useStore } from '@/store'
 import { toast } from 'sonner'
 import { Plus, Trash2, ChevronUp, ChevronDown, Clock, Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
 function parseFreq(f) {
   if (!f) return { Days: 0, Hours: 0, Minutes: 0, Seconds: 0 }
-  // PA returns either numbers or strings like "P0DT01H00M00S"
   if (typeof f.Days === 'number') return { Days: f.Days, Hours: f.Hours, Minutes: f.Minutes, Seconds: f.Seconds }
-  // fallback: parse duration string
   const m = String(f).match(/P(\d+)DT(\d+)H(\d+)M(\d+)S/)
   return m ? { Days: +m[1], Hours: +m[2], Minutes: +m[3], Seconds: +m[4] } : { Days: 0, Hours: 0, Minutes: 0, Seconds: 0 }
 }
@@ -26,10 +22,28 @@ function buildStartTime(date, time) {
   return `${date}T${time}:00`
 }
 
-// ── Step row ──────────────────────────────────────────────────────────────────
-
-function StepRow({ step, index, total, procs, onChange, onRemove, onMoveUp, onMoveDown }) {
+function StepRow({ step, index, total, server, procs, onChange, onRemove, onMoveUp, onMoveDown }) {
   const base = 'w-full bg-muted border border-border rounded px-2 py-1 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-ring'
+  const { data: procDef } = useProcess(step.Process?.Name ? server : null, step.Process?.Name)
+
+  const handleProcessSelect = (name) => {
+    const params = (procDef?.Parameters ?? []).map(p => ({
+      Name:  p.Name,
+      Type:  p.Type,
+      Value: String(p.Value ?? ''),
+    }))
+    onChange({ ...step, Process: { Name: name }, Parameters: params })
+  }
+
+  useEffect(() => {
+    if (!procDef || step.Parameters?.length > 0) return
+    const params = (procDef.Parameters ?? []).map(p => ({
+      Name:  p.Name,
+      Type:  p.Type,
+      Value: String(p.Value ?? ''),
+    }))
+    if (params.length) onChange({ ...step, Parameters: params })
+  }, [procDef])
 
   return (
     <div className="border border-border rounded-md p-3 space-y-2 bg-muted/20">
@@ -37,7 +51,7 @@ function StepRow({ step, index, total, procs, onChange, onRemove, onMoveUp, onMo
         <span className="text-xs text-muted-foreground font-mono w-5 shrink-0">{index + 1}.</span>
         <select
           value={step.Process?.Name ?? ''}
-          onChange={e => onChange({ ...step, Process: { Name: e.target.value }, Parameters: [] })}
+          onChange={e => handleProcessSelect(e.target.value)}
           className={cn(base, 'flex-1')}
         >
           <option value="">— select process —</option>
@@ -48,8 +62,11 @@ function StepRow({ step, index, total, procs, onChange, onRemove, onMoveUp, onMo
         <button onClick={onRemove}   title="Remove step" className="p-1 text-muted-foreground hover:text-red-400"><Trash2 size={12} /></button>
       </div>
 
-      {(step.Parameters ?? []).length > 0 && (
+      {step.Process?.Name && (
         <div className="pl-7 space-y-1">
+          {(step.Parameters ?? []).length === 0 && (
+            <p className="text-[10px] text-muted-foreground italic">No parameters defined on this process.</p>
+          )}
           {step.Parameters.map((p, pi) => (
             <div key={p.Name} className="flex items-center gap-2">
               <span className="text-[10px] text-muted-foreground font-mono w-28 shrink-0 truncate" title={p.Name}>{p.Name}</span>
@@ -61,7 +78,11 @@ function StepRow({ step, index, total, procs, onChange, onRemove, onMoveUp, onMo
                   onChange({ ...step, Parameters: updated })
                 }}
                 className={base}
+                placeholder={p.Type === 'Numeric' ? '0' : ''}
               />
+              {p.Type === 'Numeric' && (
+                <span className="text-[10px] text-muted-foreground/50 w-10 shrink-0">numeric</span>
+              )}
             </div>
           ))}
         </div>
@@ -70,15 +91,16 @@ function StepRow({ step, index, total, procs, onChange, onRemove, onMoveUp, onMo
   )
 }
 
-// ── Main editor ───────────────────────────────────────────────────────────────
-
 export default function ChoreEditor({ tab }) {
-  const { server, name } = tab
-  const { dark } = useStore()
-  const { data, isLoading } = useChore(server, name)
+  const { server } = tab
+  const isNew = !tab.name
+  const { openTab, closeTab } = useStore()
+  const { data, isLoading } = useChore(server, tab.name)
   const saveChore = useSaveChore()
+  const createChore = useCreateChore()
   const { data: procs } = useProcs(server)
 
+  const [choreName, setChoreName] = useState(tab.name ?? '')
   const [active,   setActive]   = useState(true)
   const [execMode, setExecMode] = useState('SingleCommit')
   const [freqDays, setFreqDays] = useState(0)
@@ -91,7 +113,7 @@ export default function ChoreEditor({ tab }) {
   const [dirty, setDirty] = useState(false)
 
   useEffect(() => {
-    if (!data) return
+    if (!data || isNew) return
     setActive(data.Active ?? true)
     setExecMode(data.ExecutionMode ?? 'SingleCommit')
     const freq = parseFreq(data.Frequency)
@@ -104,7 +126,7 @@ export default function ChoreEditor({ tab }) {
     setStartTime(time || '09:00')
     setSteps((data.Steps ?? []).slice().sort((a, b) => a.Ordinal - b.Ordinal))
     setDirty(false)
-  }, [data])
+  }, [data, isNew])
 
   const mark = fn => (...args) => { fn(...args); setDirty(true) }
 
@@ -118,26 +140,42 @@ export default function ChoreEditor({ tab }) {
   }))
   const addStep = mark(() => setSteps(s => [...s, { Process: { Name: '' }, Parameters: [] }]))
 
+  const buildBody = () => ({
+    Active:        active,
+    ExecutionMode: execMode,
+    StartTime:     buildStartTime(startDate, startTime),
+    Frequency:     { Days: +freqDays, Hours: +freqHrs, Minutes: +freqMins, Seconds: +freqSecs },
+    Steps: steps.map((st, i) => ({
+      Ordinal:    i,
+      'Process@odata.bind': `Processes('${encodeURIComponent(st.Process?.Name ?? '')}')`,
+      Parameters: (st.Parameters ?? []).map(p => ({ Name: p.Name, Value: String(p.Value ?? '') })),
+    })),
+  })
+
+  const handleCreate = () => {
+    if (!choreName.trim()) { toast.error('Enter a chore name'); return }
+    const name = choreName.trim()
+    const id = toast.loading(`Creating chore "${name}"…`, { duration: 30000 })
+    createChore.mutate({ server, name, body: buildBody() }, {
+      onSuccess: () => {
+        toast.success(`Chore "${name}" created`, { id })
+        closeTab(tab.id)
+        openTab({ id: `chore:${server}:${name}`, type: 'chore', label: name, server, name })
+      },
+      onError: e => toast.error(e.message, { id }),
+    })
+  }
+
   const handleSave = () => {
-    const body = {
-      Active:        active,
-      ExecutionMode: execMode,
-      StartTime:     buildStartTime(startDate, startTime),
-      Frequency:     { Days: +freqDays, Hours: +freqHrs, Minutes: +freqMins, Seconds: +freqSecs },
-      Steps: steps.map((st, i) => ({
-        Ordinal:    i,
-        'Process@odata.bind': `Processes('${encodeURIComponent(st.Process?.Name ?? '')}')`,
-        Parameters: (st.Parameters ?? []).map(p => ({ Name: p.Name, Value: String(p.Value ?? '') })),
-      })),
-    }
-    const id = toast.loading('Saving chore…')
-    saveChore.mutate({ server, name, body }, {
+    const body = buildBody()
+    const id = toast.loading('Saving chore…', { duration: 30000 })
+    saveChore.mutate({ server, name: tab.name, body }, {
       onSuccess: () => { toast.success('Chore saved', { id }); setDirty(false) },
       onError:   e  => toast.error(e.message, { id }),
     })
   }
 
-  if (isLoading) return (
+  if (!isNew && isLoading) return (
     <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm gap-2">
       <Loader2 size={14} className="animate-spin" /> Loading chore…
     </div>
@@ -152,29 +190,48 @@ export default function ChoreEditor({ tab }) {
       {/* Toolbar */}
       <div className="flex items-center gap-3 px-4 py-2 border-b border-border bg-muted shrink-0">
         <Clock size={13} className="text-muted-foreground shrink-0" />
-        <span className="text-sm font-medium truncate flex-1">{name}</span>
+        {isNew ? (
+          <input value={choreName} onChange={e => setChoreName(e.target.value)}
+            placeholder="Chore name…" autoFocus
+            onKeyDown={e => e.key === 'Enter' && handleCreate()}
+            className="text-sm font-semibold bg-transparent outline-none border-b border-border/60 focus:border-primary pb-0.5 w-64 transition-colors placeholder:font-normal placeholder:text-muted-foreground" />
+        ) : (
+          <span className="text-sm font-medium truncate flex-1">{tab.name}</span>
+        )}
 
-        {/* Active toggle */}
-        <button
-          onClick={() => { setActive(a => !a); setDirty(true) }}
-          className={cn(
-            'flex items-center gap-1.5 px-3 py-1 text-xs rounded border transition-colors',
-            active
-              ? 'bg-green-600/20 border-green-600/50 text-green-400'
-              : 'bg-muted border-border text-muted-foreground'
-          )}
-        >
-          <span className={cn('w-1.5 h-1.5 rounded-full', active ? 'bg-green-400' : 'bg-muted-foreground')} />
-          {active ? 'Active' : 'Inactive'}
-        </button>
+        <div className="flex-1" />
 
-        <button
-          onClick={handleSave}
-          disabled={!dirty || saveChore.isPending}
-          className="px-3 py-1 text-xs rounded bg-primary text-primary-foreground disabled:opacity-40 hover:opacity-90 transition-opacity"
-        >
-          {saveChore.isPending ? 'Saving…' : 'Save'}
-        </button>
+        {!isNew && (
+          <>
+            {/* Active toggle */}
+            <button
+              onClick={() => { setActive(a => !a); setDirty(true) }}
+              className={cn(
+                'flex items-center gap-1.5 px-3 py-1 text-xs rounded border transition-colors',
+                active
+                  ? 'bg-green-600/20 border-green-600/50 text-green-400'
+                  : 'bg-muted border-border text-muted-foreground'
+              )}
+            >
+              <span className={cn('w-1.5 h-1.5 rounded-full', active ? 'bg-green-400' : 'bg-muted-foreground')} />
+              {active ? 'Active' : 'Inactive'}
+            </button>
+
+            <button
+              onClick={handleSave}
+              disabled={!dirty || saveChore.isPending}
+              className="px-3 py-1 text-xs rounded bg-primary text-primary-foreground disabled:opacity-40 hover:opacity-90 transition-opacity"
+            >
+              {saveChore.isPending ? 'Saving…' : 'Save'}
+            </button>
+          </>
+        )}
+        {isNew && (
+          <button onClick={handleCreate} disabled={!choreName.trim() || steps.length === 0 || createChore.isPending}
+            className="flex items-center gap-1.5 px-3 py-1 text-xs rounded bg-emerald-700 text-white hover:bg-emerald-600 disabled:opacity-40 transition-colors">
+            {createChore.isPending ? <Loader2 size={11} className="animate-spin" /> : <Plus size={11} />} Create Chore
+          </button>
+        )}
       </div>
 
       <div className="flex-1 overflow-y-auto p-4 space-y-5">
@@ -247,6 +304,7 @@ export default function ChoreEditor({ tab }) {
                   step={step}
                   index={i}
                   total={steps.length}
+                  server={server}
                   procs={procs}
                   onChange={updated => updateStep(i, updated)}
                   onRemove={() => removeStep(i)}

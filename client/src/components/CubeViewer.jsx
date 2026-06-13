@@ -390,7 +390,7 @@ export default function CubeViewer({ tab }) {
 
     const handleLoadView = (viewName) => {
         if (!viewName) return
-        const id = toast.loading(`Loading ${viewName}…`)
+        const id = toast.loading(`Loading ${viewName}…`, { duration: 30000 })
         loadViewAxes.mutate(
             { server: tab.server, cube: tab.cube, view: viewName },
             {
@@ -417,7 +417,7 @@ export default function CubeViewer({ tab }) {
             return
         }
         const mdx = buildMDX({ cube: tab.cube, ...axes, suppressZeros })
-        const id  = toast.loading('Executing…')
+        const id  = toast.loading('Executing…', { duration: 30000 })
         executeMDX.mutate(
             { server: tab.server, mdx },
             {

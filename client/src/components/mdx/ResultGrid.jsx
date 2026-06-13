@@ -346,7 +346,7 @@ export default function ResultGrid({ axes, cells, truncated, onReady, server, cu
     if (!writes.length) { toast.error('No writable cells in paste range'); return }
 
     // Optimistic update
-    const toastId = toast.loading(`Writing ${writes.length} cell(s)…`)
+    const toastId = toast.loading(`Writing ${writes.length} cell(s)…`, { duration: 30000 })
     try {
       await Promise.all(writes.map(w => writeCell(server, cube, w.coords, effectiveSlicers, w.value, cubeDimOrder)))
       // Update grid display

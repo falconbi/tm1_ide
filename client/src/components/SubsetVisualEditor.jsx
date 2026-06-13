@@ -626,7 +626,7 @@ export default function SubsetVisualEditor({ tab, onMdxConvert, onVisualDirty, o
     }
 
     const handleSaveStatic = () => {
-        const id = toast.loading('Saving static subset\u2026')
+        const id = toast.loading('Saving static subset\u2026', { duration: 30000 })
         saveStatic.mutate(
             { server: tab.server, dimension: tab.dimension, name: tab.subsetName, elements: (members ?? []).map(m => m.name) },
             {
@@ -656,7 +656,7 @@ export default function SubsetVisualEditor({ tab, onMdxConvert, onVisualDirty, o
         setSaveAsOpen(false)
         setSaveAsName('')
         if (!name || name === tab.subsetName) return
-        const id = toast.loading(`Saving as "${name}"\u2026`)
+        const id = toast.loading(`Saving as "${name}"\u2026`, { duration: 30000 })
         saveStatic.mutate(
             { server: tab.server, dimension: tab.dimension, name, elements: (members ?? []).map(m => m.name) },
             {

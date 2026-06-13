@@ -31,7 +31,19 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_log_session   ON log_entries(session_id);
   CREATE INDEX IF NOT EXISTS idx_log_server    ON log_entries(server, timestamp);
   CREATE INDEX IF NOT EXISTS idx_sessions_srv  ON sessions(server, started_at);
+  CREATE INDEX IF NOT EXISTS idx_log_object    ON log_entries(server, object_type, object_name);
 `)
+
+// ── Internal helpers ──────────────────────────────────────────────────────────
+
+function parseEntry(e) {
+    if (!e) return e
+    return {
+        ...e,
+        before_state: e.before_state ? JSON.parse(e.before_state) : null,
+        after_state:  e.after_state  ? JSON.parse(e.after_state)  : null,
+    }
+}
 
 // ── Sessions ──────────────────────────────────────────────────────────────────
 
@@ -69,12 +81,40 @@ function getSessions(server, limit = 50) {
     `).all(server, limit)
 }
 
+function getAllSessions(limit = 200) {
+    return db.prepare(`
+        SELECT s.*, COUNT(l.id) as entry_count
+        FROM sessions s
+        LEFT JOIN log_entries l ON l.session_id = s.id
+        GROUP BY s.id
+        ORDER BY s.started_at DESC
+        LIMIT ?
+    `).all(limit)
+}
+
 function getSessionLog(sessionId) {
-    return db.prepare(`SELECT * FROM log_entries WHERE session_id = ? ORDER BY timestamp ASC`).all(sessionId)
+    return db.prepare(`SELECT * FROM log_entries WHERE session_id = ? ORDER BY timestamp ASC`).all(sessionId).map(parseEntry)
 }
 
 function getRecentLog(server, limit = 100) {
-    return db.prepare(`SELECT * FROM log_entries WHERE server = ? ORDER BY timestamp DESC LIMIT ?`).all(server, limit)
+    return db.prepare(`SELECT * FROM log_entries WHERE server = ? ORDER BY timestamp DESC LIMIT ?`).all(server, limit).map(parseEntry)
+}
+
+// ── Object history ────────────────────────────────────────────────────────────
+
+function getObjectHistory(server, objectType, objectName) {
+    return db.prepare(`
+        SELECT l.*, s.name as session_name
+        FROM log_entries l
+        LEFT JOIN sessions s ON s.id = l.session_id
+        WHERE l.server = ? AND l.object_type = ? AND l.object_name = ?
+        ORDER BY l.timestamp DESC
+        LIMIT 200
+    `).all(server, objectType, objectName).map(parseEntry)
+}
+
+function getEntryById(id) {
+    return parseEntry(db.prepare(`SELECT * FROM log_entries WHERE id = ?`).get(id) ?? null)
 }
 
 // ── Log writer ────────────────────────────────────────────────────────────────
@@ -98,4 +138,4 @@ function writeLog({ server, action, objectType, objectName, detail, beforeState,
     return { hasSession: !!session }
 }
 
-module.exports = { startSession, closeSession, resumeSession, getActiveSession, getSessions, getSessionLog, getRecentLog, writeLog }
+module.exports = { startSession, closeSession, resumeSession, getActiveSession, getSessions, getAllSessions, getSessionLog, getRecentLog, getObjectHistory, getEntryById, writeLog }

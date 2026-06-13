@@ -1,35 +1,12 @@
 {
   "server": "TM1_Apportionment",
-  "tabs": [
-    {
-      "id": "cubeview:TM1_Apportionment:CST Account Config:JDLove Test",
-      "type": "cubeview",
-      "label": "JDLove Test",
-      "server": "TM1_Apportionment",
-      "cube": "CST Account Config",
-      "viewName": "JDLove Test",
-      "content": null,
-      "viewType": "#ibm.tm1.api.v1.MDXView",
-      "mode": "mdx"
-    },
-    {
-      "id": "dim:TM1_Apportionment:CST Account Config Measure:CST Account Config Measure",
-      "type": "dimension",
-      "label": "CST Account Config Measure",
-      "server": "TM1_Apportionment",
-      "dimension": "CST Account Config Measure",
-      "hierarchy": "CST Account Config Measure"
-    }
-  ],
-  "activeTab": "cubeview:TM1_Apportionment:CST Account Config:JDLove Test",
+  "tabs": [],
+  "activeTab": null,
   "groups": [
     {
       "id": "g1",
-      "tabIds": [
-        "cubeview:TM1_Apportionment:CST Account Config:JDLove Test",
-        "dim:TM1_Apportionment:CST Account Config Measure:CST Account Config Measure"
-      ],
-      "activeTabId": "cubeview:TM1_Apportionment:CST Account Config:JDLove Test"
+      "tabIds": [],
+      "activeTabId": null
     }
   ],
   "activeGroupId": "g1"

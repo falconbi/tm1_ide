@@ -36,6 +36,7 @@ const Toaster = ({
           "--border-radius": "var(--radius)"
         }
       }
+      closeButton
       toastOptions={{
         classNames: {
           toast: "cn-toast",

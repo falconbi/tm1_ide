@@ -1,26 +1,34 @@
 import { Loader2, Trash2 } from 'lucide-react'
-import { useSubsetUsage, useDimensionUsage, useCubeUsage, useProcessUsage } from '@/hooks/useApi'
+import { useSubsetUsage, useDimensionUsage, useCubeUsage, useProcessUsage, useViewUsage, usePawBookUsage } from '@/hooks/useApi'
 
-export function DeleteWarningModal({ open, type, name, server, dimension, onClose, onConfirm }) {
+export function DeleteWarningModal({ open, type, name, server, dimension, cube, onClose, onConfirm }) {
   const isSubset  = open && type === 'subset'
   const isDim     = open && type === 'dimension'
   const isCube    = open && type === 'cube'
   const isProcess = open && type === 'process'
+  const isView    = open && type === 'view'
 
   const subsetScan  = useSubsetUsage(isSubset  ? server : null, isSubset  ? dimension : null, isSubset  ? name : null)
   const dimScan     = useDimensionUsage(isDim     ? server : null, isDim     ? name : null)
   const cubeScan    = useCubeUsage(isCube    ? server : null, isCube    ? name : null)
   const procScan    = useProcessUsage(isProcess ? server : null, isProcess ? name : null)
+  const viewScan    = useViewUsage(isView ? server : null, isView ? cube : null, isView ? name : null)
+  const bookScan    = usePawBookUsage(isView ? server : null, isView ? cube : null, isView ? name : null)
 
-  const scan = isSubset ? subsetScan : isDim ? dimScan : isCube ? cubeScan : procScan
+  const scan = isSubset ? subsetScan : isDim ? dimScan : isCube ? cubeScan : isProcess ? procScan : viewScan
   const { data, isLoading } = scan
 
+  const books = bookScan?.data?.books
   const hasDeps = !isLoading && data && (
     (data.cubes?.length > 0) ||
     (data.processes?.length > 0) ||
     (data.chores?.length > 0) ||
-    (data.views?.length > 0)
+    (!isView && data.views?.length > 0) ||
+    (books?.length > 0)
   )
+
+  // For views, refetch paw books too
+  const viewLoading = isView && (isLoading || bookScan.isFetching)
 
   if (!open) return null
 
@@ -34,19 +42,19 @@ export function DeleteWarningModal({ open, type, name, server, dimension, onClos
           <div>
             <div className="text-sm font-semibold capitalize">Delete {type}: <span className="font-mono">{name}</span></div>
             <div className="text-xs text-muted-foreground mt-0.5">
-              {isLoading ? 'Scanning for dependencies…' : hasDeps ? 'Dependencies found.' : 'No dependencies found.'}
+              {viewLoading ? 'Scanning for dependencies…' : hasDeps ? 'Dependencies found.' : 'No dependencies found.'}
             </div>
           </div>
         </div>
 
-        {isLoading && (
+        {viewLoading && (
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
             <Loader2 size={12} className="animate-spin" />
-            Checking cubes, views, processes, and chores…
+            Checking processes, views, and PAW books…
           </div>
         )}
 
-        {!isLoading && data && (
+        {!viewLoading && data && (
           <div className="flex flex-col gap-2 max-h-48 overflow-y-auto">
             {data.cubes?.length > 0 && (
               <div>
@@ -56,7 +64,7 @@ export function DeleteWarningModal({ open, type, name, server, dimension, onClos
                 ))}
               </div>
             )}
-            {data.views?.length > 0 && (
+            {!isView && data.views?.length > 0 && (
               <div>
                 <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">Used in Views</div>
                 {data.views.map((v, i) => (
@@ -80,6 +88,14 @@ export function DeleteWarningModal({ open, type, name, server, dimension, onClos
                 ))}
               </div>
             )}
+            {isView && books?.length > 0 && (
+              <div>
+                <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">Referenced in PAW Books</div>
+                {books.map((b, i) => (
+                  <div key={i} className="text-xs font-mono pl-2 py-0.5 text-amber-400 truncate">{b.name}</div>
+                ))}
+              </div>
+            )}
             {!hasDeps && (
               <div className="text-xs text-muted-foreground italic">Safe to delete — no active dependencies found.</div>
             )}
@@ -88,7 +104,9 @@ export function DeleteWarningModal({ open, type, name, server, dimension, onClos
 
         {hasDeps && (
           <div className="text-xs text-amber-400 bg-amber-400/10 border border-amber-400/20 rounded px-3 py-2">
-            Deleting this {type} may break the items listed above.
+            {isDim && data?.cubes?.length > 0
+              ? 'This dimension is used in cubes and cannot be deleted from TM1. Remove it from all cubes first.'
+              : `Deleting this ${type} may break the items listed above.`}
           </div>
         )}
 

@@ -16,10 +16,15 @@ import { toast } from 'sonner'
 import { GitBranch, ChevronRight, ChevronDown, Loader2, ChevronsUpDown, ChevronsDownUp, ListTree, AlignLeft, Settings, Locate, Braces, Save, Map, Microscope, X, Plus, Trash2, History } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { loadSettings, saveSettings } from '@/lib/formatters/settings.js'
+import { formatRules } from '@/lib/formatters/rules-formatter.js'
+import { getNamingMap } from '@/lib/formatters/naming.js'
 import { registerRulesCompletions } from '@/lib/tm1-completion'
 import { getSnippets } from '@/lib/tm1-snippets.js'
 import SnippetPanel from '@/components/SnippetPanel'
 import TransactionLogPanel from '@/components/TransactionLogPanel'
+import ObjectHistoryPanel from '@/components/ObjectHistoryPanel'
+import DiffTab from '@/components/DiffTab'
+import DeployPanel from '@/components/DeployPanel'
 
 // ── Lineage panel ─────────────────────────────────────────────────────────────
 
@@ -258,6 +263,7 @@ function RulesEditor({ tab, onCursor }) {
   const [showSnippets, setShowSnippets] = useState(false)
   const [showMinimap, setShowMinimap] = useState(() => loadSettings().editor?.minimap?.rules ?? false)
   const [showTrace, setShowTrace] = useState(false)
+  const [showHistory, setShowHistory] = useState(false)
   const [cubeDims, setCubeDims] = useState(null)
 
   useEffect(() => {
@@ -341,7 +347,19 @@ function RulesEditor({ tab, onCursor }) {
   const runFormat = () => {
     const s = loadSettings()
     saveSettings({ ...s, rules: { ...s.rules, expressionFormatter: formatStruct } })
-    editorRef.current?.getAction('editor.action.formatDocument').run()
+    const editor = editorRef.current
+    if (!editor) { setShowFormatPopup(false); return }
+    const selection = editor.getSelection()
+    if (selection && !selection.isEmpty()) {
+      const model = editor.getModel()
+      const selectedText = model.getValueInRange(selection)
+      const { map: namingMap } = getNamingMap()
+      const formatted = formatRules(selectedText, s.rules, namingMap)
+      editor.executeEdits('format-selection', [{ range: selection, text: formatted }])
+      editor.setSelection(selection)
+    } else {
+      editor.getAction('editor.action.formatDocument').run()
+    }
     setShowFormatPopup(false)
   }
 
@@ -352,7 +370,7 @@ function RulesEditor({ tab, onCursor }) {
   const handleSave = () => {
     const editor = editorRef.current
     if (!editor) return
-    const id = toast.loading('Saving rules…')
+    const id = toast.loading('Saving rules…', { duration: 30000 })
     saveRules.mutate(
       { server: tab.server, cube: tab.cube, rules: editor.getValue() },
       {
@@ -467,6 +485,16 @@ function RulesEditor({ tab, onCursor }) {
     <div className="flex h-full min-h-0 overflow-hidden">
       <div className="flex-1 min-w-0 overflow-hidden relative">
         <div className="absolute top-2 right-2 z-10 flex items-center gap-1.5">
+          <button
+            onClick={() => setShowHistory(v => !v)}
+            title="Object history"
+            className={cn(
+              'flex items-center gap-1 px-2 py-1 rounded text-xs border bg-background/80 transition-colors',
+              showHistory ? 'border-primary text-foreground' : 'border-border text-muted-foreground hover:text-foreground'
+            )}
+          >
+            <History size={11} />
+          </button>
           <button
             onClick={handleSave}
             disabled={!tab.dirty || saveRules.isPending}
@@ -646,6 +674,14 @@ function RulesEditor({ tab, onCursor }) {
           onMount={handleMount}
           options={{ fontSize: 13, minimap: { enabled: showMinimap }, wordWrap: 'on', scrollBeyondLastLine: false, fixedOverflowWidgets: true }}
         />
+        {showHistory && (
+          <ObjectHistoryPanel
+            server={tab.server}
+            objectType="rules"
+            objectName={tab.cube}
+            onClose={() => setShowHistory(false)}
+          />
+        )}
       </div>
       {showSnippets && (
         <div className="w-72 shrink-0 border-l border-border flex flex-col bg-sidebar overflow-hidden">
@@ -707,7 +743,7 @@ export default function EditorPane({ groupId }) {
 
   return (
     <div className="flex-1 flex flex-col min-h-0" onClick={() => setActiveGroup(groupId)}>
-      <div className="flex-1 min-h-0">
+      <div className="flex-1 min-h-0 overflow-hidden">
         {tab.type === 'rules'      && <RulesEditor    key={tab.id} tab={tab} onCursor={handleCursor} />}
         {tab.type === 'process'    && <ProcessEditor  key={tab.id} tab={tab} />}
         {tab.type === 'subset'     && <SubsetEditor   key={tab.id} tab={tab} />}
@@ -718,6 +754,8 @@ export default function EditorPane({ groupId }) {
         {tab.type === 'sql'             && <SQLEditor          key={tab.id} tab={tab} />}
         {tab.type === 'hierarchytest'   && <HierarchyGridTest  key={tab.id} />}
         {tab.type === 'cubeeditor'      && <CubeEditor         key={tab.id} tab={tab} />}
+        {tab.type === 'diff'            && <DiffTab            key={tab.id} tab={tab} />}
+        {tab.type === 'deploy'          && <DeployPanel        key={tab.id} tab={tab} />}
         {tab.type === 'transactionlog'  && (
           <div key={tab.id} className="flex h-full min-h-0 bg-sidebar">
             <TransactionLogPanel

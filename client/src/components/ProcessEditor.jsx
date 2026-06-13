@@ -6,7 +6,8 @@ import { registerTM1Completions, registerTM1Theme } from '@/lib/tm1-functions'
 import { registerTICompletions } from '@/lib/tm1-completion'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
-import { ChevronRight, ChevronDown, Play, X, Braces, Wand2, CheckCircle2, XCircle, Database, Trash2, Plus, Loader2, Bug, Search, AlertTriangle, AlertCircle, Map } from 'lucide-react'
+import { ChevronRight, ChevronDown, Play, X, Braces, Wand2, CheckCircle2, XCircle, Database, Trash2, Plus, Loader2, Bug, Search, AlertTriangle, AlertCircle, Map, Upload, History } from 'lucide-react'
+import ObjectHistoryPanel from '@/components/ObjectHistoryPanel'
 import { getSnippets } from '@/lib/tm1-snippets.js'
 import { loadSettings, saveSettings } from '@/lib/formatters/settings.js'
 import { executeTI, scanVariables } from '@/lib/ti-interpreter'
@@ -96,6 +97,31 @@ function EditableParamsPanel({ params, onChange }) {
 function EditableDatasourcePanel({ ds, server, onChange }) {
   const type = ds?.Type ?? 'None'
   const set  = (k, v) => onChange({ ...ds, Type: type, [k]: v })
+  const csvInputRef = useRef(null)
+  const [csvUploading, setCsvUploading] = useState(false)
+  const enc = encodeURIComponent
+
+  const handleCsvUpload = async (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setCsvUploading(true)
+    try {
+      const buffer = await file.arrayBuffer()
+      const r = await fetch(
+        `/api/files/upload?server=${enc(server)}&name=${enc(file.name)}`,
+        { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: buffer }
+      )
+      const d = await r.json()
+      if (!r.ok) throw new Error(d.error || 'Upload failed')
+      set('dataSourceNameForServer', file.name)
+      toast.success(`Uploaded: ${file.name}`)
+    } catch (err) {
+      toast.error(err.message)
+    } finally {
+      setCsvUploading(false)
+      e.target.value = ''
+    }
+  }
 
   const { data: cubes }  = useCubes(server)
   const { data: views }  = useViews(server, type === 'TM1CubeView' ? (ds?.dataSourceNameForServer ?? '') : null)
@@ -145,7 +171,25 @@ function EditableDatasourcePanel({ ds, server, onChange }) {
       </div>
 
       {type === 'ASCII' && <>
-        {row('File (server)', 'dataSourceNameForServer', { placeholder: '.\\data\\file.csv' })}
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] text-muted-foreground w-28 shrink-0">File (server)</span>
+          <input
+            type="text"
+            value={ds?.dataSourceNameForServer ?? ''}
+            onChange={e => set('dataSourceNameForServer', e.target.value)}
+            placeholder=".\\data\\file.csv"
+            className="flex-1 bg-transparent border-b border-border focus:border-primary text-xs font-mono py-0.5 focus:outline-none"
+          />
+          <input type="file" accept=".csv,.txt,.asc" ref={csvInputRef} onChange={handleCsvUpload} className="hidden" />
+          <button
+            onClick={() => csvInputRef.current?.click()}
+            disabled={csvUploading}
+            className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground border border-border rounded px-1.5 py-0.5 disabled:opacity-50 shrink-0"
+          >
+            {csvUploading ? <Loader2 size={12} className="animate-spin" /> : <Upload size={12} />}
+            Upload
+          </button>
+        </div>
         {row('File (client)', 'dataSourceNameForClient', { placeholder: 'Leave blank = mirror server' })}
         {row('Delimiter char', 'asciiDelimiterChar', { placeholder: ',', default: ',' })}
         {row('Header rows', 'asciiHeaderRecords', { type: 'number', default: '1' })}
@@ -349,6 +393,31 @@ function DatasourceInsertDialog({ server, onInsert, onClose }) {
   const [type, setType]     = useState('ASCII')
   const [fields, setFields] = useState({})
   const set = (k, v) => setFields(f => ({ ...f, [k]: v }))
+  const csvInputRef = useRef(null)
+  const [csvUploading, setCsvUploading] = useState(false)
+  const enc = encodeURIComponent
+
+  const handleCsvUpload = async (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setCsvUploading(true)
+    try {
+      const buffer = await file.arrayBuffer()
+      const r = await fetch(
+        `/api/files/upload?server=${enc(server)}&name=${enc(file.name)}`,
+        { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: buffer }
+      )
+      const d = await r.json()
+      if (!r.ok) throw new Error(d.error || 'Upload failed')
+      set('serverPath', file.name)
+      toast.success(`Uploaded: ${file.name}`)
+    } catch (err) {
+      toast.error(err.message)
+    } finally {
+      setCsvUploading(false)
+      e.target.value = ''
+    }
+  }
 
   const { data: cubes }                          = useCubes(server)
   const { data: views, isFetching: fetchingViews } = useViews(server, fields.cube)
@@ -383,7 +452,27 @@ function DatasourceInsertDialog({ server, onInsert, onClose }) {
   const fields_for_type = () => {
     if (type === 'ASCII') return (
       <div className="space-y-3">
-        {input('File path (server)', 'serverPath', { placeholder: '.\\data\\file.csv' })}
+        <div className="space-y-1">
+          <label className="text-xs font-medium text-muted-foreground">File path (server)</label>
+          <div className="flex items-center gap-2">
+            <input
+              type="text"
+              value={fields.serverPath ?? ''}
+              onChange={e => set('serverPath', e.target.value)}
+              placeholder=".\\data\\file.csv"
+              className="flex-1 bg-muted border border-border rounded px-2 py-1.5 text-sm font-mono focus:outline-none focus:ring-1 focus:ring-ring"
+            />
+            <input type="file" accept=".csv,.txt,.asc" ref={csvInputRef} onChange={handleCsvUpload} className="hidden" />
+            <button
+              onClick={() => csvInputRef.current?.click()}
+              disabled={csvUploading}
+              className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground border border-border rounded px-2 py-1.5 disabled:opacity-50 shrink-0"
+            >
+              {csvUploading ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
+              Upload
+            </button>
+          </div>
+        </div>
         {input('File path (client)', 'clientPath', { placeholder: 'Leave blank to mirror server path' })}
         {input('Delimiter char', 'delimiter', { placeholder: ',', default: ',' })}
         {input('Header rows', 'headerRows', { type: 'number', default: '1' })}
@@ -804,7 +893,8 @@ export default function ProcessEditor({ tab }) {
   const [showDsInsert, setShowDsInsert] = useState(false)
   const [showSnippets, setShowSnippets] = useState(false)
   const [showPatterns, setShowPatterns] = useState(false)
-  const [showMinimap, setShowMinimap] = useState(() => loadSettings().editor?.minimap?.ti ?? false)
+  const [showMinimap, setShowMinimap]   = useState(() => loadSettings().editor?.minimap?.ti ?? false)
+  const [showHistory, setShowHistory]   = useState(false)
   const [runOutput, setRunOutput] = useState(null)
   const [logContent, setLogContent] = useState(null)
   const [logOpen, setLogOpen] = useState(true)
@@ -986,7 +1076,7 @@ export default function ProcessEditor({ tab }) {
     setErrorLogFilename(null)
     setErrorLogContent(null)
     setErrorLogOpen(false)
-    const id = toast.loading('Running process…')
+    const id = toast.loading('Running process…', { duration: 30000 })
     runProcess.mutate(
       { server: tab.server, name: tab.name, params: values },
       {
@@ -1036,7 +1126,7 @@ export default function ProcessEditor({ tab }) {
     CODE_TABS.forEach(({ key }) => { body[key] = edits[key] ?? '' })
     if (paramEdits !== null) body.Parameters = paramEdits.map(p => ({ Name: p.Name, Type: toTypeStr(p.Type), Value: String(p.Value ?? ''), Prompt: p.Prompt ?? '' }))
     if (dsEdits !== null) body.DataSource = dsEdits
-    const id = toast.loading(`Creating "${name}"…`)
+    const id = toast.loading(`Creating "${name}"…`, { duration: 30000 })
     createProcess.mutate({ server: tab.server, name }, {
       onSuccess: () => saveProcess.mutate({ server: tab.server, name, body }, {
         onSuccess: () => { toast.success(`Process created`, { id }); patchTab(tab.id, { name, label: name }) },
@@ -1064,7 +1154,7 @@ export default function ProcessEditor({ tab }) {
     if (dsEdits !== null) {
       body.DataSource = dsEdits
     }
-    const id = toast.loading('Saving process…')
+    const id = toast.loading('Saving process…', { duration: 30000 })
     saveProcess.mutate(
       { server: tab.server, name: tab.name, body },
       {
@@ -1079,7 +1169,7 @@ export default function ProcessEditor({ tab }) {
     CODE_TABS.forEach(({ key }) => { body[key] = edits[key] ?? data?.[key] ?? '' })
     if (paramEdits !== null) body.Parameters = paramEdits.map(p => ({ Name: p.Name, Type: toTypeStr(p.Type), Value: String(p.Value ?? ''), Prompt: p.Prompt ?? '' }))
     if (dsEdits !== null) body.DataSource = dsEdits
-    const id = toast.loading(`Creating "${newName}"…`)
+    const id = toast.loading(`Creating "${newName}"…`, { duration: 30000 })
     createProcess.mutate({ server: tab.server, name: newName }, {
       onSuccess: () => saveProcess.mutate({ server: tab.server, name: newName, body }, {
         onSuccess: () => {
@@ -1383,6 +1473,17 @@ export default function ProcessEditor({ tab }) {
             Run
           </button>
           <button
+            onClick={() => setShowHistory(v => !v)}
+            disabled={!tab.name}
+            title="Object history"
+            className={cn(
+              'flex items-center gap-1.5 px-2.5 py-1 text-xs rounded border transition-colors disabled:opacity-40',
+              showHistory ? 'bg-primary text-primary-foreground border-primary' : 'border-border text-muted-foreground hover:text-foreground hover:bg-muted'
+            )}
+          >
+            <History size={11} />
+          </button>
+          <button
             onClick={() => setShowSaveAs(true)}
             disabled={!data}
             className="px-2.5 py-1 text-xs rounded border border-border text-muted-foreground hover:text-foreground hover:bg-muted disabled:opacity-40 transition-colors"
@@ -1582,6 +1683,14 @@ export default function ProcessEditor({ tab }) {
               find: { seedSearchStringFromSelection: 'always', autoFindInSelection: 'never' },
             }}
           />
+          {showHistory && tab.name && (
+            <ObjectHistoryPanel
+              server={tab.server}
+              objectType="process"
+              objectName={tab.name}
+              onClose={() => setShowHistory(false)}
+            />
+          )}
         </div>
         {showSnippets && (
           <div className="w-72 shrink-0 border-l border-border flex flex-col bg-sidebar overflow-hidden">

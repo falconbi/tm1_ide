@@ -5,9 +5,9 @@ import { DndContext, DragOverlay, PointerSensor, useSensor, useSensors, useDropp
 import MonacoEditor from '@monaco-editor/react'
 import { useStore } from '@/store'
 import { subsetApplyCallbacks } from '@/lib/subsetCallbacks'
-import { useCubeDimensions, useSubsets, useElementsTree, useViews, useExecuteMDX, useViewAxes, useSaveView, usePawBookUsage, useDimAttributes, useViewUsage, useMultiFormatAttrs } from '@/hooks/useApi'
+import { useCubeDimensions, useSubsets, useElementsTree, useViews, useExecuteMDX, useViewAxes, useSaveView, useSetDefaultView, usePawBookUsage, useDimAttributes, useViewUsage, useMultiFormatAttrs } from '@/hooks/useApi'
 import { toast } from 'sonner'
-import { RefreshCw, Loader2, Table2, GripVertical, GripHorizontal, X, LayoutGrid, Rows3, Columns3, Filter, ZapOff, Zap, ChevronLeft, ChevronRight, PencilLine, Save, Code2, Eye, ChevronDown, BookOpen, ChevronUp, Locate, WrapText, Braces, History, AlertTriangle, Search, Cog, Box } from 'lucide-react'
+import { RefreshCw, Loader2, Table2, GripVertical, GripHorizontal, X, LayoutGrid, Rows3, Columns3, Filter, ZapOff, Zap, ChevronLeft, ChevronRight, PencilLine, Save, Code2, Eye, ChevronDown, BookOpen, ChevronUp, Locate, MapPin, WrapText, Braces, History, AlertTriangle, Search, Cog, Box, FileSearch } from 'lucide-react'
 import TransactionLogPanel from '@/components/TransactionLogPanel'
 import { cn } from '@/lib/utils'
 
@@ -104,7 +104,7 @@ function constrainHierarchy(hierarchy, presentMembers) {
     return { nodes, roots, maxLevel, name }
 }
 
-function cellsetToHierarchyData(cellset) {
+function cellsetToHierarchyData(cellset, formatMap = {}, pageMembers = [], suppressZeros = false) {
     if (!cellset?.Axes?.length) return null
     const colAxis = cellset.Axes.find(a => a.Ordinal === 0)
     const rowAxis = cellset.Axes.find(a => a.Ordinal === 1)
@@ -128,10 +128,27 @@ function cellsetToHierarchyData(cellset) {
         // Multi-dim row: key is all member names joined with ::
         const tupleKey = (tuple.Members ?? []).map(m => m.Name).join('::')
         if (!tupleKey) return
+
+        // Client-side zero suppression: skip rows where every cell is zero or null
+        if (suppressZeros) {
+            const allZero = columns.every((_, ci) => {
+                const v = cellMap[ri * columns.length + ci]?.Value
+                return v == null || v === 0 || v === ''
+            })
+            if (allZero) return
+        }
+
         if (!data[tupleKey]) data[tupleKey] = {}
         columns.forEach((col, ci) => {
             const cell = cellMap[ri * columns.length + ci]
-            data[tupleKey][col.id] = cell?.FormattedValue ?? cell?.Value ?? null
+            const colTuple = colTuples[ci]
+            const elemNames = (colTuple?.Members ?? []).map(m => elementFromUniqueName(m.UniqueName) || m.Name)
+            const fmtKey = elemNames.find(n => formatMap[n]) || pageMembers.find(n => formatMap[n])
+            if (fmtKey) {
+                data[tupleKey][col.id] = cell?.Value != null ? applyTm1Format(cell.Value, formatMap[fmtKey]) : ''
+            } else {
+                data[tupleKey][col.id] = cell?.FormattedValue ?? cell?.Value ?? null
+            }
         })
     })
 
@@ -488,7 +505,7 @@ function SubsetPopover({ server, dim, zone, subsets, onSubsetSelect, onMemberSel
                         )}
                         {subsets.map(s => (
                             <div key={s.Name} className="flex items-center group">
-                                <button onClick={() => { onSubsetSelect(s.Name); onMemberSelect(null); onClose() }}
+                                <button onClick={() => { onSubsetSelect(s.Name); onClose() }}
                                     className={cn('flex-1 px-3 py-1.5 hover:bg-muted text-left font-mono truncate',
                                         dim.subset === s.Name && 'text-primary font-medium')}>
                                     {s.Name}
@@ -588,7 +605,7 @@ function DimPill({ id, dim, zone, server, onRemove, onSubsetChange, onMemberChan
             <div
                 ref={el => { setDragRef(el); setDropRef(el) }}
                 className={cn(
-                    'flex items-center gap-1 px-2 py-0.5 rounded border text-xs bg-muted border-border select-none group',
+                    'flex items-center gap-1 px-2 py-0.5 rounded border text-xs bg-muted border-border select-none group max-w-[200px] min-w-0',
                     isDragging && 'opacity-40',
                     isOver && !isDragging && 'border-primary border-l-[3px]',
                     open && 'border-primary'
@@ -605,7 +622,7 @@ function DimPill({ id, dim, zone, server, onRemove, onSubsetChange, onMemberChan
                     {dim.dimension}
                 </button>
                 {label && (
-                    <span className="text-[10px] text-primary/70 truncate max-w-[80px] shrink-0">{label}</span>
+                    <span className="text-[10px] text-primary/70 truncate min-w-0 shrink">{label}</span>
                 )}
                 {zone !== 'bench' && aliasAttrs.length > 0 && (
                     <div className="relative">
@@ -629,8 +646,8 @@ function DimPill({ id, dim, zone, server, onRemove, onSubsetChange, onMemberChan
                         )}
                     </div>
                 )}
-                {zone !== 'bench' && (
-                    <div className="flex items-center ml-0.5">
+                <div className="flex items-center ml-0.5">
+                    {zone !== 'bench' && (<>
                         <button
                             onClick={e => { e.stopPropagation(); onMoveLeft?.() }}
                             disabled={!onMoveLeft}
@@ -650,8 +667,15 @@ function DimPill({ id, dim, zone, server, onRemove, onSubsetChange, onMemberChan
                         <button onClick={() => onRemove(dim.dimension)} className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-foreground p-0.5 rounded">
                             <X size={10} />
                         </button>
-                    </div>
-                )}
+                    </>)}
+                    <button
+                        onClick={e => { e.stopPropagation(); openTab({ id: `dimension:${server}:${dim.dimension}`, type: 'dimension', label: dim.dimension, server, dimension: dim.dimension }) }}
+                        className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-primary p-0.5 rounded"
+                        title="Open in Dimension Editor"
+                    >
+                        <PencilLine size={10} />
+                    </button>
+                </div>
             </div>
 
             {open && (
@@ -711,6 +735,7 @@ export default function ViewEditor({ tab }) {
     const executeMDX   = useExecuteMDX()
     const loadViewAxes = useViewAxes()
     const saveView     = useSaveView()
+    const setDefault   = useSetDefaultView()
 
     // Visual builder state — seed from Builder handoff if provided
     const [axes, setAxes] = useState(tab.initialAxes ?? { rows: [], columns: [], pages: [] })
@@ -762,15 +787,17 @@ export default function ViewEditor({ tab }) {
     const [showSaveMenu, setShowSaveMenu] = useState(false)
     useEffect(() => { patchTab(tab.id, { mode }) }, [mode])
 
-    // PAW Books panel
-    const [showPawBooks, setShowPawBooks] = useState(false)
-    const [showUsage,    setShowUsage]    = useState(false)
+    // Used In panel
+    const [showUsedIn, setShowUsedIn] = useState(false)
 
     // Transaction Log panel
     const [showLog,   setShowLog]   = useState(false)
     const [logTuple,  setLogTuple]  = useState(null)   // null = whole cube, array = filtered cell
     const { data: pawBookData, isFetching: loadingPawBooks, refetch: refetchPawBooks } = usePawBookUsage(tab.server, tab.cube, tab.viewName)
     const { data: usageData,   isFetching: loadingUsage,   refetch: refetchUsage }    = useViewUsage(tab.server, tab.cube, tab.viewName)
+
+    const refetchUsedIn = useCallback(() => { refetchUsage(); refetchPawBooks() }, [refetchUsage, refetchPawBooks])
+    const loadingUsedIn = loadingUsage || loadingPawBooks
 
     // Loading guard using state (not ref) to survive StrictMode remounts
     const [loadedKey, setLoadedKey] = useState(null)
@@ -878,12 +905,12 @@ export default function ViewEditor({ tab }) {
         setResult(null)
         setTruncated(false)
 
-        const id = toast.loading(`Loading ${tab.viewName}…`)
+        const id = toast.loading(`Loading ${tab.viewName}…`, { duration: 30000 })
         loadViewAxes.mutate(
             { server: tab.server, cube: tab.cube, view: tab.viewName },
             {
                 onSuccess: ({ axisConfig, cellset, viewType: vt, nativeConfig, mdx: viewMdx }) => {
-                    const make = (dim, subset = null, member = null) => ({ dimension: dim, subset, member })
+                    const make = (dim, subset = null, member = null, members = null, memberSet = null) => ({ dimension: dim, subset, member, members, memberSet })
                     let cols, rows, pages
 
                     if (viewMdx && vt?.includes('MDXView')) {
@@ -894,8 +921,8 @@ export default function ViewEditor({ tab }) {
                         pages = parsed.pages
                     } else if (nativeConfig) {
                         // Native view — use native definition with actual subsets
-                        cols  = nativeConfig.columns.map(c => make(c.dimension, c.subset))
-                        rows  = nativeConfig.rows.map(r => make(r.dimension, r.subset))
+                        cols  = nativeConfig.columns.map(c => make(c.dimension, c.subset, null, c.members ?? null, c.memberSet ?? null))
+                        rows  = nativeConfig.rows.map(r => make(r.dimension, r.subset, null, r.members ?? null, r.memberSet ?? null))
                         pages = nativeConfig.titles.map(t => make(t.dimension, null, t.member))
                     } else {
                         // Fallback to cellset axes
@@ -921,6 +948,11 @@ export default function ViewEditor({ tab }) {
                     toast.success(`Loaded ${tab.viewName}`, { id })
                 },
                 onError: e => {
+                    if (tab.viewName === 'Default') {
+                        toast.dismiss(id)
+                        setLoadedKey(null)
+                        return
+                    }
                     toast.error(e.message, { id })
                     setLoadedKey(null)
                 },
@@ -1061,7 +1093,7 @@ export default function ViewEditor({ tab }) {
             toast.error('No MDX to execute')
             return
         }
-        const id = toast.loading('Executing…')
+        const id = toast.loading('Executing…', { duration: 30000 })
         executeMDX.mutate(
             { server: tab.server, mdx: query },
             {
@@ -1111,7 +1143,6 @@ export default function ViewEditor({ tab }) {
     }, [mode, mdx, parseMdxToAxes])
 
     const buildSavePayload = useCallback(() => {
-        // Visual mode always saves as Native — it's the correct TM1 format for axis-built views
         if (mode === 'visual') {
             return { nativeAxes: { rows: axes.rows, columns: axes.columns, titles: axes.pages } }
         }
@@ -1125,7 +1156,7 @@ export default function ViewEditor({ tab }) {
         if (isOriginallyNative && mode === 'mdx') {
             if (!window.confirm('Saving in MDX mode will convert this Native view to MDX. This affects PAX and Architect users.\n\nContinue?')) return
         }
-        const id = toast.loading('Saving view…')
+        const id = toast.loading('Saving view…', { duration: 30000 })
         saveView.mutate(
             { server: tab.server, cube: tab.cube, name, ...buildSavePayload() },
             {
@@ -1136,11 +1167,11 @@ export default function ViewEditor({ tab }) {
     }, [mode, buildSavePayload, tab.server, tab.cube, tab.viewName, isOriginallyNative])
 
     const handleSaveAsNative = useCallback(() => {
-        const name = tab.viewName ?? prompt('Save as native view…')
+        const name = prompt('Save as native view…')
         if (!name) return
         const parsed = parseMdxToAxes(mdx)
         if (!parsed.columns.length && !parsed.rows.length) { toast.error('Could not parse MDX axes — switch to Visual mode and arrange dimensions first'); return }
-        const id = toast.loading('Saving as Native…')
+        const id = toast.loading('Saving as Native…', { duration: 30000 })
         saveView.mutate(
             { server: tab.server, cube: tab.cube, name, nativeAxes: { rows: parsed.rows, columns: parsed.columns, titles: parsed.pages } },
             {
@@ -1151,9 +1182,13 @@ export default function ViewEditor({ tab }) {
     }, [mdx, parseMdxToAxes, tab.server, tab.cube, tab.viewName, saveView])
 
     const handleSaveAs = useCallback(() => {
-        const name = prompt('Save view as…')
+        const currentName = tab.viewName || ''
+        const suggested = currentName ? currentName.replace(/\s*\(default\)\s*$/i, '') : ''
+        const name = prompt('Save view as…', suggested)
         if (!name) return
-        const id = toast.loading(`Saving "${name}"…`)
+        const exists = views.some(v => v.name === name && name !== tab.viewName)
+        if (exists && !window.confirm(`View "${name}" already exists. Overwrite?`)) return
+        const id = toast.loading(`Saving "${name}"…`, { duration: 30000 })
         saveView.mutate(
             { server: tab.server, cube: tab.cube, name, ...buildSavePayload() },
             {
@@ -1172,7 +1207,27 @@ export default function ViewEditor({ tab }) {
                 onError: e => toast.error(e.message, { id }),
             }
         )
-    }, [buildSavePayload, tab.server, tab.cube, openTab])
+    }, [buildSavePayload, tab.server, tab.cube, tab.viewName, openTab, views])
+
+    const handleSetDefault = useCallback(() => {
+        if (!window.confirm(`Overwrite the default view for [${tab.cube}]?\n\nThis will save the current layout as "Default".`)) return
+        const id = toast.loading('Setting as default…', { duration: 30000 })
+        saveView.mutate(
+            { server: tab.server, cube: tab.cube, name: 'Default', ...buildSavePayload() },
+            {
+                onSuccess: () => {
+                    setDefault.mutate(
+                        { server: tab.server, cube: tab.cube, name: 'Default' },
+                        {
+                            onSuccess: () => { toast.success('Default view saved', { id }) },
+                            onError:   e => toast.error(e.message, { id }),
+                        }
+                    )
+                },
+                onError: e => toast.error(e.message, { id }),
+            }
+        )
+    }, [tab.server, tab.cube, buildSavePayload, saveView, setDefault])
 
     // Keyboard shortcuts (work globally in both visual + MDX modes)
     useEffect(() => {
@@ -1218,7 +1273,6 @@ export default function ViewEditor({ tab }) {
     const { data: formatAttrs = {} } = useMultiFormatAttrs(tab.server, allAxesDims)
     const pageMembers = useMemo(() => axes.pages.map(p => p.member).filter(Boolean), [axes.pages])
     const parsed = useMemo(() => {
-        console.log('[Format Debug] allAxesDims:', allAxesDims, 'formatAttrs:', Object.keys(formatAttrs), JSON.stringify(formatAttrs).slice(0, 200))
         return displayResult ? parseCellset(displayResult, formatAttrs, pageMembers) : null
     }, [displayResult, formatAttrs, allAxesDims, pageMembers])
     const { colDefs, rowData } = useMemo(() => buildGridData(parsed), [parsed])
@@ -1248,7 +1302,7 @@ export default function ViewEditor({ tab }) {
         return colDims.map((dim, i) => buildHierarchyFromElements(trees[i], dim)).filter(Boolean)
     }, [colDims, cTree0, cTree1, cTree2, cTree3])
 
-    const hierarchyData = useMemo(() => cellsetToHierarchyData(result), [result])
+    const hierarchyData = useMemo(() => cellsetToHierarchyData(result, formatAttrs, pageMembers, suppressZeros), [result, formatAttrs, pageMembers, suppressZeros])
 
     // Constrain hierarchies to only members the cellset actually returned
     const constrainedHierarchies = useMemo(() => {
@@ -1328,7 +1382,7 @@ export default function ViewEditor({ tab }) {
             return
         }
         const dims = cubeDims.map(dim => ({ dim, element: coordMap.get(dim) }))
-        const id = toast.loading('Writing…')
+        const id = toast.loading('Writing…', { duration: 30000 })
         try {
             const res = await fetch('/api/cells/write', {
                 method: 'POST',
@@ -1390,6 +1444,21 @@ export default function ViewEditor({ tab }) {
                     )}
                 </span>
 
+                <button
+                    onClick={() => {
+                        const { setRevealTarget } = useStore.getState()
+                        if (tab.viewName) {
+                            setRevealTarget({ type: 'view', server: tab.server, cube: tab.cube, viewName: tab.viewName })
+                        } else {
+                            setRevealTarget({ type: 'cube', server: tab.server, cube: tab.cube })
+                        }
+                    }}
+                    className="p-1 rounded hover:bg-muted text-amber-400 hover:text-amber-300 transition-colors"
+                    title="Show in tree"
+                >
+                    <MapPin size={11} />
+                </button>
+
                 {/* Mode toggle */}
                 <div className="flex items-center gap-0.5 bg-muted rounded p-0.5">
                     <button
@@ -1437,21 +1506,6 @@ export default function ViewEditor({ tab }) {
                 </button>
 
                 <button
-                    onClick={() => {
-                        const { setRevealTarget } = useStore.getState()
-                        if (tab.viewName) {
-                            setRevealTarget({ type: 'view', server: tab.server, cube: tab.cube, viewName: tab.viewName })
-                        } else {
-                            setRevealTarget({ type: 'cube', server: tab.server, cube: tab.cube })
-                        }
-                    }}
-                    className="p-1 rounded hover:bg-muted text-amber-400 hover:text-amber-300 transition-colors"
-                    title="Show in tree"
-                >
-                    <Locate size={11} />
-                </button>
-
-                <button
                     onClick={() => setShowLog(v => !v)}
                     title="Transaction log — see who changed what and when"
                     className={cn(
@@ -1466,17 +1520,17 @@ export default function ViewEditor({ tab }) {
 
                 {tab.viewName && (
                     <button
-                        onClick={() => { setShowUsage(v => !v); if (!showUsage) refetchUsage() }}
-                        title="Scan TI processes and MDX views for references to this view"
+                        onClick={() => { setShowUsedIn(v => !v); if (!showUsedIn) refetchUsedIn() }}
+                        title="Scan TI processes, MDX views, and PAW books for references to this view"
                         className={cn(
                             'flex items-center gap-1 px-2 py-0.5 text-[10px] rounded border transition-colors',
-                            showUsage
+                            showUsedIn
                                 ? 'bg-blue-600 text-white border-blue-600'
                                 : 'border-border text-muted-foreground hover:text-foreground hover:bg-muted'
                         )}
                     >
-                        <Search size={10} /> Usage
-                        {usageData && <span className="opacity-70">({usageData.processes.length + usageData.views.length})</span>}
+                        <FileSearch size={10} /> Used In
+                        {usageData?.processes?.length > 0 && <span className="opacity-70">({usageData.processes.length})</span>}
                         {loadingUsage && <Loader2 size={10} className="animate-spin" />}
                     </button>
                 )}
@@ -1486,7 +1540,7 @@ export default function ViewEditor({ tab }) {
                 <button onClick={() => setSuppressZeros(v => !v)}
                     title={suppressZeros ? 'Zero suppression on' : 'Zero suppression off'}
                     className={cn('flex items-center justify-center p-1.5 rounded border border-border transition-colors',
-                        suppressZeros ? 'text-primary bg-primary/10' : 'text-muted-foreground hover:bg-muted')}>
+                        suppressZeros ? 'text-emerald-600 bg-emerald-100 dark:text-emerald-400 dark:bg-emerald-900/30 border-emerald-400/40' : 'text-muted-foreground hover:bg-muted')}>
                     {suppressZeros ? <Zap size={12} /> : <ZapOff size={12} />}
                 </button>
 
@@ -1547,25 +1601,29 @@ export default function ViewEditor({ tab }) {
                     </div>
                     {showSaveMenu && (
                         <div className="absolute right-0 top-full mt-1 z-50 bg-popover border border-border rounded shadow-lg py-1 w-44" onMouseLeave={() => setShowSaveMenu(false)}>
-                            <button onClick={() => { handleSave(); setShowSaveMenu(false) }}
-                                className="w-full text-left px-3 py-1.5 text-xs hover:bg-muted transition-colors">
-                                Save {mode === 'visual' ? 'as Native' : 'as MDX'}
-                            </button>
-                            <button onClick={() => { handleSaveAsNative(); setShowSaveMenu(false) }}
-                                className="w-full text-left px-3 py-1.5 text-xs hover:bg-muted transition-colors">
-                                Save as Native view
-                            </button>
+                            {mode === 'mdx' && (
+                                <button onClick={() => { handleSaveAsNative(); setShowSaveMenu(false) }}
+                                    className="w-full text-left px-3 py-1.5 text-xs hover:bg-muted transition-colors">
+                                    Save as Native view
+                                </button>
+                            )}
                             <button onClick={() => { handleSaveAs(); setShowSaveMenu(false) }}
                                 className="w-full text-left px-3 py-1.5 text-xs hover:bg-muted transition-colors">
                                 Save As… (new name)
                             </button>
+                            {tab.viewName && (
+                                <button onClick={() => { handleSetDefault(); setShowSaveMenu(false) }}
+                                    className="w-full text-left px-3 py-1.5 text-xs hover:bg-muted transition-colors border-t border-border mt-1 pt-1.5">
+                                    Save as Default View
+                                </button>
+                            )}
                         </div>
                     )}
                 </div>
 
                 <button onClick={handleExecute} disabled={isExecuting || isLoadingView}
                     title="Execute / Refresh (Ctrl+Enter)"
-                    className="flex items-center justify-center p-1.5 rounded border border-emerald-600 text-emerald-500 hover:bg-emerald-600/10 transition-colors disabled:opacity-40">
+                    className="flex items-center justify-center p-1.5 rounded text-emerald-500 hover:bg-muted transition-colors disabled:opacity-40">
                     {isExecuting ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
                 </button>
             </div>
@@ -1586,30 +1644,29 @@ export default function ViewEditor({ tab }) {
                 </div>
             )}
 
-            {/* View Usage */}
-            {tab.viewName && showUsage && (
+            {/* Used In */}
+            {tab.viewName && (
                 <div className="shrink-0 border-b border-border">
-                    <div className="flex items-center justify-between px-3 py-1 border-b border-border bg-muted/20">
-                        <span className="text-[10px] font-semibold text-muted-foreground">Usage</span>
-                        <button onClick={() => refetchUsage()} disabled={loadingUsage}
-                            className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground disabled:opacity-40 transition-colors">
-                            {loadingUsage ? <Loader2 size={10} className="animate-spin" /> : <Search size={10} />}
-                            {loadingUsage ? 'Scanning…' : 'Rescan'}
-                        </button>
-                    </div>
-                    <div className="px-3 py-1.5 bg-muted/10 max-h-48 overflow-auto space-y-2">
-                        {!usageData && !loadingUsage && (
-                            <p className="text-[10px] text-muted-foreground italic">Scanning…</p>
-                        )}
-                        {usageData && (
-                            <>
+                    <button
+                        onClick={() => { setShowUsedIn(v => !v); if (!showUsedIn) refetchUsedIn() }}
+                        className="flex items-center gap-1.5 w-full px-3 py-1 text-[10px] text-muted-foreground hover:text-foreground hover:bg-muted/30 transition-colors"
+                    >
+                        {showUsedIn ? <ChevronUp size={10} /> : <ChevronDown size={10} />}
+                        <FileSearch size={10} />
+                        <span>Used In</span>
+                        {loadingUsedIn && <Loader2 size={10} className="animate-spin ml-1" />}
+                    </button>
+                    {showUsedIn && (
+                        <div className="px-3 py-1.5 bg-muted/10 max-h-48 overflow-auto space-y-2">
+                            {!usageData && !pawBookData && !loadingUsedIn && (
+                                <p className="text-[10px] text-muted-foreground italic">Scanning…</p>
+                            )}
+                            {usageData && usageData.processes.length > 0 && (
                                 <div>
                                     <div className="text-[10px] uppercase tracking-wider text-muted-foreground/60 font-semibold mb-1">
                                         TI Processes ({usageData.processes.length})
                                     </div>
-                                    {usageData.processes.length === 0 ? (
-                                        <p className="text-[10px] text-muted-foreground italic">None found.</p>
-                                    ) : usageData.processes.map((u, i) => (
+                                    {usageData.processes.map((u, i) => (
                                         <button key={i}
                                             onClick={() => openTab({ id: `process:${tab.server}:${u.process}`, type: 'process', label: u.process, server: tab.server, processName: u.process })}
                                             className="flex items-center gap-1.5 w-full px-1 py-0.5 text-[11px] hover:bg-muted rounded text-left">
@@ -1618,65 +1675,30 @@ export default function ViewEditor({ tab }) {
                                         </button>
                                     ))}
                                 </div>
-                                <div>
-                                    <div className="text-[10px] uppercase tracking-wider text-muted-foreground/60 font-semibold mb-1">
-                                        MDX Views ({usageData.views.length})
-                                    </div>
-                                    {usageData.views.length === 0 ? (
-                                        <p className="text-[10px] text-muted-foreground italic">None found.</p>
-                                    ) : usageData.views.map((u, i) => (
-                                        <button key={i}
-                                            onClick={() => openTab({ id: `cubeview:${tab.server}:${u.cube}:${u.view}`, type: 'cubeview', label: u.view, server: tab.server, cube: u.cube, viewName: u.view })}
-                                            className="flex items-center gap-1.5 w-full px-1 py-0.5 text-[11px] hover:bg-muted rounded text-left">
-                                            <Box size={10} className="shrink-0 text-muted-foreground" />
-                                            <span className="font-mono truncate">{u.cube}</span>
-                                            <span className="text-muted-foreground/50 shrink-0">·</span>
-                                            <span className="font-mono truncate text-[10px]">{u.view}</span>
-                                        </button>
-                                    ))}
-                                </div>
-                            </>
-                        )}
-                    </div>
-                </div>
-            )}
-
-            {/* PAW Books */}
-            {tab.viewName && (
-                <div className="shrink-0 border-b border-border">
-                    <button
-                        onClick={() => { setShowPawBooks(v => !v); if (!showPawBooks) refetchPawBooks() }}
-                        className="flex items-center gap-1.5 w-full px-3 py-1 text-[10px] text-muted-foreground hover:text-foreground hover:bg-muted/30 transition-colors"
-                    >
-                        {showPawBooks ? <ChevronUp size={10} /> : <ChevronDown size={10} />}
-                        <BookOpen size={10} />
-                        <span>PAW Books</span>
-                        {pawBookData && <span className="text-muted-foreground/60">({pawBookData.books.length})</span>}
-                        {loadingPawBooks && <Loader2 size={10} className="animate-spin" />}
-                    </button>
-                    {showPawBooks && (
-                        <div className="px-3 py-1.5 bg-muted/10 max-h-32 overflow-auto">
-                            {!pawBookData ? (
-                                <p className="text-[10px] text-muted-foreground">Click to scan PAW books.</p>
-                            ) : pawBookData.books.length === 0 ? (
-                                <p className="text-[10px] text-muted-foreground italic">Not referenced in any PAW book.</p>
-                            ) : (
-                                <div className="space-y-0.5">
-                                    {pawBookData.books.map(book => (
-                                        <a
-                                            key={book.id}
-                                            href={`${pawBookData?.pawHost || ''}/ui?type=book&path=${encodeURIComponent(book.path)}`}
-                                            target="_blank"
-                                            rel="noreferrer"
-                                            className="flex items-center gap-1.5 text-[10px] hover:bg-muted rounded px-1 py-0.5"
-                                            title={book.path}
-                                        >
-                                            <BookOpen size={9} className="shrink-0 text-muted-foreground" />
-                                            <span className="truncate">{book.name}</span>
-                                        </a>
-                                    ))}
-                                </div>
                             )}
+                            <div>
+                                <div className="text-[10px] uppercase tracking-wider text-muted-foreground/60 font-semibold mb-1">
+                                    PAW Books ({pawBookData?.books.length ?? 0})
+                                </div>
+                                {!pawBookData ? (
+                                    <p className="text-[10px] text-muted-foreground italic">Scanning…</p>
+                                ) : pawBookData.books.length === 0 ? (
+                                    <p className="text-[10px] text-muted-foreground italic">None found.</p>
+                                ) : (
+                                    <div className="space-y-0.5">
+                                        {pawBookData.books.map(book => (
+                                            <a key={book.id}
+                                                href={`${pawBookData?.pawHost || ''}/ui?type=book&path=${encodeURIComponent(book.path)}`}
+                                                target="_blank" rel="noreferrer"
+                                                className="flex items-center gap-1.5 text-[10px] hover:bg-muted rounded px-1 py-0.5"
+                                                title={book.path}>
+                                                <BookOpen size={9} className="shrink-0 text-muted-foreground" />
+                                                <span className="truncate">{book.name}</span>
+                                            </a>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
                         </div>
                     )}
                 </div>
@@ -1686,9 +1708,9 @@ export default function ViewEditor({ tab }) {
             {mode === 'visual' && (
                 <DndContext sensors={sensors} onDragStart={({ active }) => setActiveDrag(active.id)} onDragEnd={handleDragEnd}>
                     <div className="shrink-0 px-3 py-2 border-b border-border bg-muted/10 grid grid-cols-4 gap-2">
-                        <DropZone id="rows"    label="Rows"    icon={Rows3}    dims={axes.rows}    server={tab.server} onRemove={removeDim} onSubsetChange={setSubset} onMemberChange={setMember} onMembersChange={setMembers} onMemberSetChange={setMemberSet} onReorder={(f,t) => reorderDim('rows',f,t)}    accent="text-green-400"       dimAliases={dimAliases} onAliasChange={handleAliasChange} onBuildSubset={handleBuildSubset} />
-                        <DropZone id="columns" label="Columns" icon={Columns3} dims={axes.columns} server={tab.server} onRemove={removeDim} onSubsetChange={setSubset} onMemberChange={setMember} onMembersChange={setMembers} onMemberSetChange={setMemberSet} onReorder={(f,t) => reorderDim('columns',f,t)} accent="text-blue-400"        dimAliases={dimAliases} onAliasChange={handleAliasChange} onBuildSubset={handleBuildSubset} />
-                        <DropZone id="pages"   label="Filter"  icon={Filter}   dims={axes.pages}   server={tab.server} onRemove={removeDim} onSubsetChange={setSubset} onMemberChange={setMember} onMembersChange={setMembers} onReorder={(f,t) => reorderDim('pages',f,t)}   accent="text-amber-400"      dimAliases={dimAliases} onAliasChange={handleAliasChange} onBuildSubset={handleBuildSubset} />
+                        <DropZone id="rows"    label="Rows"    icon={Rows3}    dims={axes.rows}    server={tab.server} onRemove={removeDim} onSubsetChange={setSubset} onMemberChange={setMember} onMembersChange={setMembers} onMemberSetChange={setMemberSet} onReorder={(f,t) => reorderDim('rows',f,t)}    accent="text-muted-foreground" dimAliases={dimAliases} onAliasChange={handleAliasChange} onBuildSubset={handleBuildSubset} />
+                        <DropZone id="columns" label="Columns" icon={Columns3} dims={axes.columns} server={tab.server} onRemove={removeDim} onSubsetChange={setSubset} onMemberChange={setMember} onMembersChange={setMembers} onMemberSetChange={setMemberSet} onReorder={(f,t) => reorderDim('columns',f,t)} accent="text-muted-foreground" dimAliases={dimAliases} onAliasChange={handleAliasChange} onBuildSubset={handleBuildSubset} />
+                        <DropZone id="pages"   label="Filter"  icon={Filter}   dims={axes.pages}   server={tab.server} onRemove={removeDim} onSubsetChange={setSubset} onMemberChange={setMember} onMembersChange={setMembers} onReorder={(f,t) => reorderDim('pages',f,t)}   accent="text-muted-foreground" dimAliases={dimAliases} onAliasChange={handleAliasChange} onBuildSubset={handleBuildSubset} />
                         <DropZone id="bench"   label="Bench"   icon={LayoutGrid} dims={bench}      server={tab.server} onRemove={() => {}}  onSubsetChange={() => {}}  onMemberChange={() => {}}  onMembersChange={() => {}}  onReorder={() => {}}                           accent="text-muted-foreground" />
                     </div>
                     <DragOverlay>
@@ -1767,6 +1789,7 @@ export default function ViewEditor({ tab }) {
                 <div className="flex-1 min-h-0">
                     <GridErrorBoundary>
                         <HierarchyGrid
+                            key={tab.server && tab.cube ? `hg::${tab.server}::${tab.cube}::${tab.viewName || 'adhoc'}` : undefined}
                             hierarchies={displayHierarchies}
                             columnHierarchies={colDims.length > 0 ? displayColHierarchies : []}
                             columns={displayColumns ?? hierarchyData.columns}
@@ -1777,6 +1800,7 @@ export default function ViewEditor({ tab }) {
                             colTotalsPosition={colTotalsPosition}
                             onCellEdit={handleCellEdit}
                             onCellContextMenu={handleCellContextMenu}
+                            storageKey={tab.server && tab.cube ? `hg::${tab.server}::${tab.cube}::${tab.viewName || 'adhoc'}` : undefined}
                         />
                     </GridErrorBoundary>
                 </div>

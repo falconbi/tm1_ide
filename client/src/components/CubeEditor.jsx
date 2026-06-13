@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react'
-import { useDims, useCubeDimensions, useCreateCube, useDeleteCube } from '@/hooks/useApi'
+import { useDims, useCubeDimensions, useCreateCube, useDeleteCube, useControlObjects } from '@/hooks/useApi'
 import { useStore } from '@/store'
-import { Box, Code2, Table2, Trash2, ChevronUp, ChevronDown, X, Plus, Star, Loader2 } from 'lucide-react'
+import { Box, Code2, Table2, Trash2, ChevronUp, ChevronDown, X, Plus, Star, Loader2, Eye, EyeOff } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 
@@ -13,9 +13,11 @@ export default function CubeEditor({ tab }) {
     const [name, setName]         = useState('')
     const [selected, setSelected] = useState([])
     const [dimSearch, setDimSearch] = useState('')
+    const [showControl, setShowControl] = useState(false)
 
     const { data: allDims  = [], isLoading: loadingDims  } = useDims(server)
     const { data: cubeDims = [], isLoading: loadingCubeDims } = useCubeDimensions(server, tab.cube)
+    const { data: control   = {} } = useControlObjects(showControl ? server : null)
 
     const createCube = useCreateCube()
     const deleteCube = useDeleteCube()
@@ -23,8 +25,9 @@ export default function CubeEditor({ tab }) {
     const available = useMemo(() => {
         const sel = new Set(selected)
         const q   = dimSearch.toLowerCase()
-        return allDims.filter(d => !sel.has(d) && (!q || d.toLowerCase().includes(q)))
-    }, [allDims, selected, dimSearch])
+        const dims = showControl ? [...allDims, ...(control.dimensions ?? [])] : allDims
+        return dims.filter(d => !sel.has(d) && (!q || d.toLowerCase().includes(q)))
+    }, [allDims, control.dimensions, selected, dimSearch, showControl])
 
     const addDim    = (dim) => setSelected(p => [...p, dim])
     const removeDim = (dim) => setSelected(p => p.filter(d => d !== dim))
@@ -34,7 +37,7 @@ export default function CubeEditor({ tab }) {
     const handleCreate = () => {
         if (!name.trim())        { toast.error('Enter a cube name'); return }
         if (selected.length < 2) { toast.error('Add at least 2 dimensions'); return }
-        const id = toast.loading(`Creating "${name.trim()}"…`)
+        const id = toast.loading(`Creating "${name.trim()}"…`, { duration: 30000 })
         createCube.mutate({ server, name: name.trim(), dims: selected }, {
             onSuccess: () => {
                 toast.success(`Cube "${name.trim()}" created`, { id })
@@ -47,7 +50,7 @@ export default function CubeEditor({ tab }) {
 
     const handleDelete = () => {
         if (!window.confirm(`Delete cube "${tab.cube}"? This cannot be undone.`)) return
-        const id = toast.loading(`Deleting "${tab.cube}"…`)
+        const id = toast.loading(`Deleting "${tab.cube}"…`, { duration: 30000 })
         deleteCube.mutate({ server, name: tab.cube }, {
             onSuccess: () => { toast.success(`Deleted "${tab.cube}"`, { id }); closeTab(tab.id) },
             onError:   e => toast.error(e.message, { id }),
@@ -102,7 +105,16 @@ export default function CubeEditor({ tab }) {
                 {isNew && (
                     <div className="w-64 shrink-0 border-r border-border flex flex-col">
                         <div className="px-3 py-2 border-b border-border shrink-0">
-                            <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1.5">Available Dimensions</div>
+                            <div className="flex items-center justify-between mb-1.5">
+                                <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Available Dimensions</span>
+                                <button onClick={() => setShowControl(v => !v)}
+                                    className={cn('flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded transition-colors',
+                                        showControl ? 'text-amber-400 hover:text-amber-300' : 'text-muted-foreground hover:text-foreground')}
+                                    title={showControl ? 'Hide control objects' : 'Show control objects'}>
+                                    {showControl ? <Eye size={10} /> : <EyeOff size={10} />}
+                                    Control
+                                </button>
+                            </div>
                             <input value={dimSearch} onChange={e => setDimSearch(e.target.value)}
                                 placeholder="Filter…"
                                 className="w-full text-xs px-2 py-1 rounded border border-border bg-background outline-none" />

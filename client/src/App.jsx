@@ -4,7 +4,7 @@ import { useState, useEffect, Fragment } from 'react'
 import { useStore } from '@/store'
 import { cn } from '@/lib/utils'
 import { Toaster } from '@/components/ui/sonner'
-import { Search, PanelLeftClose, PanelLeftOpen, Keyboard, SlidersHorizontal, Database, Braces } from 'lucide-react'
+import { Search, PanelLeftClose, PanelLeftOpen, Keyboard, SlidersHorizontal, Database, Braces, HardDriveDownload, Loader2, CheckCircle2 } from 'lucide-react'
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels'
 import ServerSelector from '@/components/ServerSelector'
 import Explorer from '@/components/Explorer'
@@ -17,10 +17,91 @@ import FormatSettings from '@/components/FormatSettings'
 import EditorPreferences from '@/components/EditorPreferences'
 import NamingDictionary from '@/components/NamingDictionary'
 import PeriodBuilder from '@/components/PeriodBuilder'
+import SessionControl from '@/components/SessionControl'
+import { useDeploySeed, useDeployBaseline, useServers } from '@/hooks/useApi'
+import { toast } from 'sonner'
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { staleTime: 30_000, retry: 1 } },
 })
+
+function SeedButton() {
+  const currentServer = useStore(s => s.server)
+  const { data: servers }  = useServers()
+  const { data: baseline } = useDeployBaseline()
+  const seedMut = useDeploySeed()
+  const [open,   setOpen]   = useState(false)
+  const [target, setTarget] = useState('')
+
+  const serverList = (servers?.value ?? servers ?? []).map(s => s.name ?? s).filter(Boolean)
+
+  const handleOpen = () => {
+    setTarget(currentServer ?? '')
+    setOpen(o => !o)
+  }
+
+  return (
+    <div className="relative">
+      <button
+        onClick={handleOpen}
+        className={cn('p-1.5 rounded text-muted-foreground hover:text-foreground transition-colors', open && 'bg-muted text-foreground')}
+        title="Seed baseline snapshot"
+      >
+        <HardDriveDownload size={15} />
+      </button>
+      {open && (
+        <div className="absolute top-10 right-0 w-80 bg-popover border border-border rounded-lg shadow-xl z-50 p-3 flex flex-col gap-2">
+          <div className="text-xs font-semibold">Seed Baseline</div>
+          {baseline?.exists ? (
+            <div className="text-[11px] bg-muted/40 rounded px-2 py-1.5 flex items-center gap-1.5">
+              <CheckCircle2 size={9} className="text-emerald-400 shrink-0" />
+              <span className="text-muted-foreground">
+                Last seeded <span className="text-foreground">{baseline.seeded_at?.slice(0,10)}</span> from <span className="font-mono text-foreground">{baseline.server}</span>
+                {baseline.counts && <span className="text-muted-foreground/60"> · {baseline.counts.cubes}c {baseline.counts.dimensions}d {baseline.counts.processes}p</span>}
+              </span>
+            </div>
+          ) : (
+            <div className="text-[11px] text-amber-400 bg-amber-500/10 rounded px-2 py-1.5">No baseline seeded yet.</div>
+          )}
+          <p className="text-[11px] text-muted-foreground">
+            Snapshot a server as the baseline for future diffs. Re-seed after promoting changes to Prod.
+          </p>
+          <select
+            value={target}
+            onChange={e => setTarget(e.target.value)}
+            className="w-full bg-muted border border-border rounded px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
+          >
+            <option value="">— select server —</option>
+            {serverList.map(s => <option key={s} value={s}>{s}</option>)}
+          </select>
+          <div className="flex gap-1.5 justify-end mt-1">
+            <button onClick={() => setOpen(false)}
+              className="px-2.5 py-1 text-xs rounded border border-border text-muted-foreground hover:bg-muted">
+              Cancel
+            </button>
+            <button
+              disabled={!target || seedMut.isPending}
+              onClick={async () => {
+                try {
+                  const r = await seedMut.mutateAsync({ server: target })
+                  toast.success(`Baseline seeded from ${target} — ${r.counts.cubes} cubes, ${r.counts.dimensions} dims, ${r.counts.processes} processes`)
+                  setOpen(false)
+                } catch (e) {
+                  toast.error(e.message ?? 'Seed failed')
+                }
+              }}
+              className="flex items-center gap-1.5 px-2.5 py-1 text-xs rounded bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-40"
+            >
+              {seedMut.isPending
+                ? <><Loader2 size={10} className="animate-spin" /> Seeding…</>
+                : <><HardDriveDownload size={10} /> Seed now</>}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
 
 export default function App() {
   const { loadForge, formatSettingsOpen, setFormatSettingsOpen, openTab, server } = useStore()
@@ -105,6 +186,14 @@ export default function App() {
               >
                 <SlidersHorizontal size={15} />
               </button>
+
+              <div className="w-px h-4 bg-border mx-1" />
+
+              {/* Seed baseline */}
+              <SeedButton />
+
+              <div className="w-px h-4 bg-border mx-1" />
+              <SessionControl />
 
             </div>
           </div>

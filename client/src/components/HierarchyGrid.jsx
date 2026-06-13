@@ -23,7 +23,7 @@
 import { useState, useMemo, useCallback, useRef, useEffect } from 'react'
 import { AgGridReact } from 'ag-grid-react'
 import { AllCommunityModule, ModuleRegistry, themeBalham, colorSchemeDark, colorSchemeLight } from 'ag-grid-community'
-import { ChevronRight, ChevronDown } from 'lucide-react'
+import { ChevronRight, ChevronDown, Shrink } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 ModuleRegistry.registerModules([AllCommunityModule])
@@ -236,8 +236,10 @@ export default function HierarchyGrid({
     dark              = false,
     onCellEdit,
     onCellContextMenu,
+    storageKey,         // optional: persisting column widths across sessions
 }) {
-    const gridRef = useRef(null)
+    const gridRef       = useRef(null)
+    const prevColDefs   = useRef(null)
 
     const [rowExpandedSets, setRowExpandedSets] = useState(() => initExpandedSets(hierarchies))
     const [colExpandedSets, setColExpandedSets] = useState(() => initExpandedSets(columnHierarchies))
@@ -402,20 +404,44 @@ export default function HierarchyGrid({
         )
     }, [])
 
+    // ── Column width persistence (session + localStorage) ────────────────────
+
+    const savedWidthsRef = useRef(null)
+    if (savedWidthsRef.current === null) {
+        savedWidthsRef.current = storageKey
+            ? (() => { try { return JSON.parse(localStorage.getItem(storageKey) || '{}') } catch { return {} } })()
+            : {}
+    }
+
+    const w = (colId, fallback) => savedWidthsRef.current[colId] ?? fallback
+
+    const persistWidths = useCallback(() => {
+        if (!storageKey) return
+        try { localStorage.setItem(storageKey, JSON.stringify(savedWidthsRef.current)) } catch {}
+    }, [storageKey])
+
+    const onColumnResized = useCallback((e) => {
+        if (!e.finished || !e.column) return
+        const colId = e.column.getColId()
+        const width = e.column.getActualWidth()
+        savedWidthsRef.current[colId] = width
+        persistWidths()
+    }, [persistWidths])
+
     // ── Column defs ───────────────────────────────────────────────────────────
 
     const multiCol = columnHierarchies.length > 1
 
     const colDefs = useMemo(() => {
         let prevTuple = null
-        return [
+        const newDefs = [
             // Pinned left: one column per row dim
             ...hierarchies.map((h, dimIdx) => ({
                 field:           `__d${dimIdx}__`,
                 headerName:      h.name ?? (hierarchies.length === 1 ? 'Member' : `Dim ${dimIdx + 1}`),
                 headerComponent: RowDimHeader,
                 pinned:          'left',
-                width:           dimIdx === 0 ? 190 : 150,
+                width:           w(`__d${dimIdx}__`, dimIdx === 0 ? 190 : 150),
                 minWidth:        80,
                 resizable:       true,
                 menuTabs:        [],
@@ -439,7 +465,7 @@ export default function HierarchyGrid({
                     headerName:      col.label,
                     headerComponent: multiCol ? MultiDimColHeader : (columnHierarchies.length === 1 ? SingleDimColHeader : undefined),
                     context:         { colTuple: tuple, colChanged: changed },
-                    width:           110,
+                    width:           w(col.id, 110),
                     minWidth:        60,
                     resizable:       true,
                     type:            'numericColumn',
@@ -461,7 +487,16 @@ export default function HierarchyGrid({
                     },
                 }
             }),
-        ]
+        ]  // end newDefs
+        // Return same reference if columns are structurally unchanged — prevents AG Grid
+        // from seeing new columnDefs and resetting user-resized widths
+        const prev = prevColDefs.current
+        if (prev && prev.length === newDefs.length &&
+            prev.every((c, i) => c.field === newDefs[i].field && c.headerName === newDefs[i].headerName)) {
+            return prev
+        }
+        prevColDefs.current = newDefs
+        return newDefs
     }, [hierarchies, visibleColumns, colNodeMap, columnHierarchies, multiCol, onCellEdit, dark])
 
     // ── AG Grid context ───────────────────────────────────────────────────────
@@ -485,13 +520,35 @@ export default function HierarchyGrid({
 
     const theme = useMemo(() => makeTheme(dark, Math.max(1, columnHierarchies.length)), [dark, columnHierarchies.length])
 
+    // Ctrl+Shift+A — auto-size all columns
+    useEffect(() => {
+        const onKey = (e) => {
+            if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'a' || e.key === 'A')) {
+                gridRef.current?.api?.autoSizeAllColumns()
+                e.preventDefault()
+            }
+        }
+        window.addEventListener('keydown', onKey)
+        return () => window.removeEventListener('keydown', onKey)
+    }, [])
+
+    const autoSizeAll = useCallback(() => {
+        gridRef.current?.api?.autoSizeAllColumns()
+    }, [])
+
     if (!hierarchies.length) {
         return <div className="flex h-full items-center justify-center text-xs text-muted-foreground">No hierarchy data</div>
     }
 
     return (
         <div className="flex flex-col h-full min-h-0">
-            <div className="flex-1 min-h-0">
+            <div className="flex-1 min-h-0 relative">
+                <button
+                    onClick={autoSizeAll}
+                    className="absolute top-1 right-1 z-10 w-5 h-5 flex items-center justify-center rounded hover:bg-black/10 dark:hover:bg-white/10 text-muted-foreground/60 hover:text-muted-foreground transition-colors"
+                    title="Auto-fit columns (resize to fit content)">
+                    <Shrink size={12} />
+                </button>
                 <AgGridReact
                     ref={gridRef}
                     theme={theme}
@@ -506,7 +563,8 @@ export default function HierarchyGrid({
                     defaultColDef={{ sortable: false }}
                     onCellValueChanged={handleCellEdit}
                     onCellContextMenu={onCellContextMenu}
-                    onFirstDataRendered={p => p.api.autoSizeAllColumns()}
+                    onColumnResized={onColumnResized}
+                    onFirstDataRendered={p => { if (!Object.keys(savedWidthsRef.current).length) p.api.autoSizeAllColumns() }}
                 />
             </div>
         </div>

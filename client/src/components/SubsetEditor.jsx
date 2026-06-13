@@ -369,7 +369,7 @@ export default function SubsetEditor({ tab }) {
 
   const handleSave = () => {
     if (!tab.subsetName) { setSaveAsOpen(true); return }
-    const id = toast.loading('Saving…')
+    const id = toast.loading('Saving…', { duration: 30000 })
     saveSubset.mutate(
       { server: tab.server, dimension: tab.dimension, name: tab.subsetName, mdx },
       { onSuccess: () => { setDirty(false); markTabSaved(tab.id); toast.success('Saved', { id }); bumpSubsetVersion(tab.server, tab.dimension) }, onError: (e) => toast.error(e.message, { id }) }
@@ -379,7 +379,7 @@ export default function SubsetEditor({ tab }) {
   const commitSaveAs = () => {
     const name = saveAsName.trim(); setSaveAsOpen(false); setSaveAsName('')
     if (!name || name === tab.subsetName) return
-    const id = toast.loading(`Saving as "${name}"…`)
+    const id = toast.loading(`Saving as "${name}"…`, { duration: 30000 })
     saveSubset.mutate(
       { server: tab.server, dimension: tab.dimension, name, mdx },
       { onSuccess: () => { toast.success(`Saved as "${name}"`, { id }); bumpSubsetVersion(tab.server, tab.dimension); closeTab(tab.id); openTab({ id: `subset:${tab.server}:${tab.dimension}:${name}`, type: 'subset', label: name, server: tab.server, dimension: tab.dimension, subsetName: name }) }, onError: e => toast.error(e.message, { id }) }

@@ -5,7 +5,8 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "dev": "node --watch server.js"
+    "dev": "node --watch server.js",
+    "tm1deploy": "node tools/tm1deploy/bin/tm1deploy.js"
   },
   "keywords": [],
   "author": "",

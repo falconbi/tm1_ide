@@ -166,7 +166,7 @@ export default function FindReplace({ onClose }) {
   const handleReplace = async () => {
     if (!preview) return
     const { rulesChanges, processChanges } = preview
-    const id = toast.loading(`Replacing in ${rulesChanges.length + processChanges.length} objects…`)
+    const id = toast.loading(`Replacing in ${rulesChanges.length + processChanges.length} objects…`, { duration: 30000 })
     try {
       await Promise.all([
         ...rulesChanges.map(({ name, newRules }) =>

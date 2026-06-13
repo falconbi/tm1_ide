@@ -1010,9 +1010,9 @@ function registerTM1Completions(monaco, getServer) {
         [/#.*/, 'comment'],
         [/\/\/.*/, 'comment'],
         [/'[^']*'/, 'string'],
-        [/\b(SKIPCHECK|FEEDERS?|N:|C:|S:)\b/i, 'keyword'],
+        [/\b(SKIPCHECK|FEEDSTRINGS|FEEDERS|FEEDER|N:|C:|S:)\b/i, 'keyword'],
         [/\b(DB|DBS|ATTRS?|ATTRN|ATTRL|STET|CONTINUE|IF|ELSEIF|ELSE|ENDIF)\b/i, 'type'],
-        [/![a-zA-Z_]\w*/, 'variable'],
+        [/![a-zA-Z_][\w ]*/, 'variable'],
         [/\[([^\]]+)\]/, 'variable'],
         [/[0-9]+(\.[0-9]+)?/, 'number'],
         [/[=>|,;()+\-*/]/, 'operator'],
@@ -1088,10 +1088,17 @@ function registerTM1Completions(monaco, getServer) {
       const settings = loadSettings()
       const { map: namingMap } = getNamingMap()
       const formatted = formatRules(text, settings.rules, namingMap)
-      return [{
-        range: model.getFullModelRange(),
-        text: formatted,
-      }]
+      return [{ range: model.getFullModelRange(), text: formatted }]
+    }
+  })
+
+  monaco.languages.registerDocumentRangeFormattingEditProvider('tm1rules', {
+    provideDocumentRangeFormattingEdits(model, range, _options, _token) {
+      const text = model.getValueInRange(range)
+      const settings = loadSettings()
+      const { map: namingMap } = getNamingMap()
+      const formatted = formatRules(text, settings.rules, namingMap)
+      return [{ range, text: formatted }]
     }
   })
 

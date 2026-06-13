@@ -37,6 +37,10 @@ __pycache__/
 .DS_Store
 Thumbs.db
 
+# ── Baseline snapshot + deployment packages (machine-generated, not version controlled) ──
+.tm1baseline/
+packages/
+
 # ── Logs / Runtime ──
 *.log
 docs/Archive/writeback_debug_log.txt

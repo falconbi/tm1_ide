@@ -10,6 +10,12 @@ const { TM1Client } = require('./core/tm1_client')
 const { loadConnections, saveConnections, getConnection, executeQuery, testConnection, getSchema, loadQueries, saveQueries } = require('./core/sql_client')
 const { getCachedPawSession, getCSRF, PAW_HOST } = require('./core/paw_connect')
 const cl = require('./core/change_log')
+const { diff: deployDiff }      = require('./tools/tm1deploy/src/diff')
+const { pack: deployPack }      = require('./tools/tm1deploy/src/packager')
+const { analyzeRisk }           = require('./tools/tm1deploy/src/risk')
+const { deploy: deployExecute } = require('./tools/tm1deploy/src/deployer')
+const { seed: deploySeed }      = require('./tools/tm1deploy/src/snapshot')
+const { BASELINE_PATH }         = require('./tools/tm1deploy/src/diff')
 
 const FORGE_PATH = path.join(__dirname, 'config', 'forge.json')
 
@@ -69,6 +75,48 @@ app.get('/api/sessions/:id/log', (req, res) => {
 app.get('/api/log/recent', (req, res) => {
     try { res.json(cl.getRecentLog(req.query.server)) }
     catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.get('/api/log/object', (req, res) => {
+    try { res.json(cl.getObjectHistory(req.query.server, req.query.type, req.query.name)) }
+    catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.post('/api/log/rollback', async (req, res) => {
+    try {
+        const { entryId, server } = req.body
+        const entry = cl.getEntryById(entryId)
+        if (!entry)              return res.status(404).json({ error: 'Entry not found' })
+        if (!entry.before_state) return res.status(400).json({ error: 'No before state captured for this entry' })
+
+        const before = entry.before_state
+        const client = new TM1Client(server)
+        const enc    = encodeURIComponent
+
+        if (entry.object_type === 'rules') {
+            await client.patch(`Cubes('${enc(entry.object_name)}')`, { Rules: before.text ?? '' })
+        } else if (entry.object_type === 'process') {
+            await client.patch(`Processes('${enc(entry.object_name)}')`, {
+                PrologProcedure:   before.prolog   ?? '',
+                MetadataProcedure: before.metadata ?? '',
+                DataProcedure:     before.data     ?? '',
+                EpilogProcedure:   before.epilog   ?? '',
+            })
+        } else if (entry.object_type === 'subset') {
+            if (before.expression != null) {
+                await client.saveSubset(entry.detail, entry.object_name, before.expression)
+            } else if (before.elements) {
+                await client.saveStaticSubset(entry.detail, entry.object_name, before.elements)
+            }
+        } else if (entry.object_type === 'view' && before.type === 'mdx') {
+            await client.saveView(entry.detail, entry.object_name, before.mdx)
+        }
+
+        cl.writeLog({ server, action: 'ROLLED_BACK', objectType: entry.object_type, objectName: entry.object_name, detail: entry.detail })
+        res.json({ ok: true })
+    } catch (e) {
+        res.status(500).json({ error: e.message })
+    }
 })
 
 // ── Servers ───────────────────────────────────────────────────────────────────
@@ -180,7 +228,8 @@ app.post('/api/cube', async (req, res) => {
         const { hasSession } = cl.writeLog({ server, action: 'CUBE_CREATED', objectType: 'cube', objectName: name.trim() })
         res.json({ ok: true, noSession: !hasSession })
     } catch (e) {
-        const detail = e.response?.data?.error?.message ?? e.message
+        console.error('[view/save] error:', e.message, 'data:', JSON.stringify(e.response?.data).slice(0, 300))
+        const detail = e.response?.data?.error?.message ?? e.response?.data ?? e.message
         res.status(500).json({ error: typeof detail === 'string' ? detail : JSON.stringify(detail) })
     }
 })
@@ -276,8 +325,11 @@ app.get('/api/rules', async (req, res) => {
 app.post('/api/rules', async (req, res) => {
     try {
         const client = new TM1Client(req.query.server)
+        const current     = await client.getCube(req.query.cube).catch(() => null)
+        const beforeState = { text: current?.Rules ?? '' }
         await client.patch(`Cubes('${req.query.cube}')`, { Rules: req.body.rules })
-        const { hasSession } = cl.writeLog({ server: req.query.server, action: 'RULES_SAVED', objectType: 'rules', objectName: req.query.cube })
+        const afterState  = { text: req.body.rules }
+        const { hasSession } = cl.writeLog({ server: req.query.server, action: 'RULES_SAVED', objectType: 'rules', objectName: req.query.cube, beforeState, afterState })
         res.json({ ok: true, noSession: !hasSession })
     } catch (e) {
         res.status(500).json({ error: e.message })
@@ -568,14 +620,27 @@ app.post('/api/process/create', async (req, res) => {
 
 app.post('/api/process', async (req, res) => {
     try {
-        const client = new TM1Client(req.query.server)
+        const client  = new TM1Client(req.query.server)
+        const current = await client.getProcess(req.query.name).catch(() => null)
+        const beforeState = current ? {
+            prolog:   current.PrologProcedure                             ?? '',
+            metadata: current.MetaDataProcedure ?? current.MetadataProcedure ?? '',
+            data:     current.DataProcedure                               ?? '',
+            epilog:   current.EpilogProcedure                             ?? '',
+        } : null
         const body = { ...req.body }
         if ('MetaDataProcedure' in body) {
             body.MetadataProcedure = body.MetaDataProcedure
             delete body.MetaDataProcedure
         }
         await client.patch(`Processes('${req.query.name}')`, body)
-        const { hasSession } = cl.writeLog({ server: req.query.server, action: 'PROCESS_SAVED', objectType: 'process', objectName: req.query.name })
+        const afterState = {
+            prolog:   req.body.PrologProcedure                                       ?? beforeState?.prolog   ?? '',
+            metadata: req.body.MetaDataProcedure ?? req.body.MetadataProcedure       ?? beforeState?.metadata ?? '',
+            data:     req.body.DataProcedure                                         ?? beforeState?.data     ?? '',
+            epilog:   req.body.EpilogProcedure                                       ?? beforeState?.epilog   ?? '',
+        }
+        const { hasSession } = cl.writeLog({ server: req.query.server, action: 'PROCESS_SAVED', objectType: 'process', objectName: req.query.name, beforeState, afterState })
         res.json({ ok: true, noSession: !hasSession })
     } catch (e) {
         console.error('[api/process] SAVE failed:', e.response?.status, e.response?.data?.error?.message || e.message)
@@ -721,11 +786,9 @@ app.get('/api/dimensions/format-attrs', async (req, res) => {
         const maps = await Promise.all(dimensions.map(async dim => {
             const mdxResult = await client.getAliasValues(dim, 'Format', dim).catch(() => null)
             if (mdxResult && Object.keys(mdxResult).length > 0) {
-                console.log(`[Format Debug] MDX returned ${Object.keys(mdxResult).length} format attrs for ${dim}`, Object.entries(mdxResult).slice(0, 3))
                 return mdxResult
             }
             const restResult = await client.getFormatAttrs(dim, dim).catch(() => ({}))
-            console.log(`[Format Debug] REST returned ${Object.keys(restResult).length} format attrs for ${dim}`, Object.entries(restResult).slice(0, 3))
             return restResult
         }))
         res.json(Object.assign({}, ...maps))
@@ -819,18 +882,48 @@ app.post('/api/view/save', async (req, res) => {
     try {
         const { server, cube, name } = req.query
         const { mdx, nativeAxes } = req.body
-        const client = new TM1Client(server)
+        const client  = new TM1Client(server)
+        const current = await client.getView(cube, name).catch(() => null)
+        const beforeState = current
+            ? current['@odata.type']?.includes('MDXView')
+                ? { type: 'mdx', mdx: current.MDX ?? '' }
+                : { type: 'native', definition: current }
+            : null
         if (nativeAxes) {
+            console.log('[view/save] cube=%s name=%s nativeAxes=%s', cube, name, JSON.stringify(nativeAxes).slice(0, 500))
             await client.saveNativeView(cube, name, nativeAxes)
         } else {
+            console.log('[view/save] cube=%s name=%s mdx=%s', cube, name, (mdx ?? '').slice(0, 300))
             await client.saveView(cube, name, mdx)
         }
-        const { hasSession } = cl.writeLog({ server, action: 'VIEW_SAVED', objectType: 'view', objectName: name, detail: cube })
+        const afterState = nativeAxes ? { type: 'native', definition: nativeAxes } : { type: 'mdx', mdx: mdx ?? '' }
+        const { hasSession } = cl.writeLog({ server, action: 'VIEW_SAVED', objectType: 'view', objectName: name, detail: cube, beforeState, afterState })
         res.json({ ok: true, noSession: !hasSession })
     } catch (e) {
         const detail = e.response?.data?.error?.message ?? e.response?.data ?? e.message
         res.status(500).json({ error: typeof detail === 'string' ? detail : JSON.stringify(detail) })
     }
+})
+
+app.post('/api/view/set-default', async (req, res) => {
+    try {
+        const { server, cube, name } = req.query
+        const client = new TM1Client(server)
+        await client.setDefaultView(cube, name)
+        res.json({ ok: true, noSession: false })
+    } catch (e) {
+        console.error('[set-default]', e.message, e.response?.status, e.response?.data ? JSON.stringify(e.response.data).slice(0, 200) : '')
+        res.status(500).json({ error: e.message })
+    }
+})
+
+app.delete('/api/view', async (req, res) => {
+    try {
+        const client = new TM1Client(req.query.server)
+        await client.deleteView(req.query.cube, req.query.name)
+        const { hasSession } = cl.writeLog({ server: req.query.server, action: 'VIEW_DELETED', objectType: 'view', objectName: req.query.name, detail: req.query.cube })
+        res.json({ ok: true, noSession: !hasSession })
+    } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
 // ── Elements ──────────────────────────────────────────────────────────────────
@@ -961,24 +1054,30 @@ app.post('/api/test/attr-write', async (req, res) => {
 // ── Dimension element + edge write ───────────────────────────────────────────
 app.post('/api/dimension/element', async (req, res) => {
     try {
-        const client = new TM1Client(req.query.server)
-        await client.addElement(req.query.dimension, req.body.name, req.body.type, req.query.hierarchy)
+        const { server, dimension, hierarchy } = req.query
+        const client = new TM1Client(server)
+        await client.addElement(dimension, req.body.name, req.body.type, hierarchy)
+        cl.writeLog({ server, action: 'ELEMENT_ADDED', objectType: 'dimension', objectName: req.body.name, detail: dimension })
         res.json({ ok: true })
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
 app.delete('/api/dimension/element', async (req, res) => {
     try {
-        const client = new TM1Client(req.query.server)
-        await client.deleteElement(req.query.dimension, req.query.name, req.query.hierarchy)
+        const { server, dimension, name, hierarchy } = req.query
+        const client = new TM1Client(server)
+        await client.deleteElement(dimension, name, hierarchy)
+        cl.writeLog({ server, action: 'ELEMENT_DELETED', objectType: 'dimension', objectName: name, detail: dimension })
         res.json({ ok: true })
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
 app.patch('/api/dimension/element', async (req, res) => {
     try {
-        const client = new TM1Client(req.query.server)
-        await client.renameElement(req.query.dimension, req.query.name, req.body.newName, req.query.hierarchy)
+        const { server, dimension, name, hierarchy } = req.query
+        const client = new TM1Client(server)
+        await client.renameElement(dimension, name, req.body.newName, hierarchy)
+        cl.writeLog({ server, action: 'ELEMENT_RENAMED', objectType: 'dimension', objectName: req.body.newName, detail: `${dimension} · was: ${name}` })
         res.json({ ok: true })
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
@@ -1001,8 +1100,10 @@ app.patch('/api/dimension/edge', async (req, res) => {
 
 app.delete('/api/dimension/edge', async (req, res) => {
     try {
-        const client = new TM1Client(req.query.server)
-        await client.deleteEdge(req.query.dimension, req.query.parent, req.query.child, req.query.hierarchy)
+        const { server, dimension, parent, child, hierarchy } = req.query
+        const client = new TM1Client(server)
+        await client.deleteEdge(dimension, parent, child, hierarchy)
+        cl.writeLog({ server, action: 'EDGE_REMOVED', objectType: 'dimension', objectName: child, detail: `${dimension} · removed from ${parent}` })
         res.json({ ok: true })
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
@@ -1053,6 +1154,7 @@ app.post('/api/dimension/hierarchy', async (req, res) => {
     try {
         const { server, dimension, name } = req.body
         await new TM1Client(server).createHierarchy(dimension, name)
+        cl.writeLog({ server, action: 'HIERARCHY_CREATED', objectType: 'dimension', objectName: name, detail: dimension })
         res.json({ ok: true })
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
@@ -1061,6 +1163,7 @@ app.delete('/api/dimension/hierarchy', async (req, res) => {
     try {
         const { server, dimension, name } = req.query
         await new TM1Client(server).deleteHierarchy(dimension, name)
+        cl.writeLog({ server, action: 'HIERARCHY_DELETED', objectType: 'dimension', objectName: name, detail: dimension })
         res.json({ ok: true })
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
@@ -1115,9 +1218,12 @@ app.get('/api/subset', async (req, res) => {
 
 app.post('/api/subset', async (req, res) => {
     try {
-        const client = new TM1Client(req.query.server)
+        const client      = new TM1Client(req.query.server)
+        const current     = await client.getSubset(req.query.dimension, req.query.name).catch(() => null)
+        const beforeState = current ? { expression: current.Expression ?? '' } : null
         await client.saveSubset(req.query.dimension, req.query.name, req.body.mdx)
-        const { hasSession } = cl.writeLog({ server: req.query.server, action: 'SUBSET_SAVED', objectType: 'subset', objectName: req.query.name, detail: req.query.dimension })
+        const afterState  = { expression: req.body.mdx }
+        const { hasSession } = cl.writeLog({ server: req.query.server, action: 'SUBSET_SAVED', objectType: 'subset', objectName: req.query.name, detail: req.query.dimension, beforeState, afterState })
         res.json({ ok: true, noSession: !hasSession })
     } catch (e) {
         const detail = e.response?.data?.error?.message ?? e.response?.data ?? e.message
@@ -1136,13 +1242,15 @@ app.get('/api/subset/elements', async (req, res) => {
 
 app.post('/api/subset/static', async (req, res) => {
     try {
-        const client = new TM1Client(req.query.server)
+        const client      = new TM1Client(req.query.server)
+        const currentEls  = await client.getSubsetElements(req.query.dimension, req.query.name).catch(() => null)
+        const beforeState = currentEls ? { elements: currentEls.map(e => e.name) } : null
         await client.saveStaticSubset(req.query.dimension, req.query.name, req.body.elements)
-        const { hasSession } = cl.writeLog({ server: req.query.server, action: 'SUBSET_SAVED', objectType: 'subset', objectName: req.query.name, detail: req.query.dimension })
+        const afterState  = { elements: req.body.elements ?? [] }
+        const { hasSession } = cl.writeLog({ server: req.query.server, action: 'SUBSET_SAVED', objectType: 'subset', objectName: req.query.name, detail: req.query.dimension, beforeState, afterState })
         res.json({ ok: true, noSession: !hasSession })
     } catch (e) {
         const detail = e.response?.data?.error?.message ?? e.response?.data ?? e.message
-        console.error('[subset/static] ERROR:', detail)
         res.status(500).json({ error: typeof detail === 'string' ? detail : JSON.stringify(detail) })
     }
 })
@@ -1229,6 +1337,15 @@ Rules:
 })
 
 // ── View → axis config (execute view, return cellset + axis dim names) ───────
+// Extract member names from an inline Subset Expression like {[Dim].[Hier].[M1], [Dim].[Hier].[M2]}
+function extractMembersFromExpression(expr) {
+    if (!expr) return null
+    const trimmed = expr.trim()
+    if (!trimmed.startsWith('{') || !trimmed.endsWith('}')) return null
+    const matches = [...trimmed.matchAll(/\[[^\]]+\]\.\[[^\]]+\]\.\[([^\]]+)\]/g)]
+    return matches.length > 0 ? matches.map(m => m[1]) : null
+}
+
 app.get('/api/view/axes', async (req, res) => {
     try {
         const client = new TM1Client(req.query.server)
@@ -1236,6 +1353,7 @@ app.get('/api/view/axes', async (req, res) => {
             client.executeView(req.query.cube, req.query.view),
             client.getViewWithSubsets(req.query.cube, req.query.view),
         ])
+        console.log('[view/axes] viewDef keys:', viewDef ? Object.keys(viewDef) : 'null', 'has _rows:', !!viewDef?._rows, 'has Rows:', !!(viewDef?.Rows?.length), 'Rows[0] keys:', viewDef?.Rows?.[0] ? Object.keys(viewDef.Rows[0]) : 'none', '_rows sample:', viewDef?._rows ? JSON.stringify(viewDef._rows).slice(0, 500) : 'none')
         // Parse dimension names from UniqueName: [Dim].[Hier].[Member] → Dim
         const parseDim = (uniqueName) => uniqueName?.match(/^\[([^\]]+)\]/)?.[1] ?? null
         const axisConfig = data.Axes.map(ax => ({
@@ -1248,27 +1366,41 @@ app.get('/api/view/axes', async (req, res) => {
                 : [],
         }))
         // Build raw native config from view definition
+        const extractAxis = (placement) => {
+            const expr = placement.Subset?.Expression
+            const hasNamedSubset = !!(placement.SubsetName ?? (placement.Subset?.Name || null))
+            return {
+                dimension: placement.DimensionName ?? placement.Name,
+                subset:    placement.SubsetName ?? (placement.Subset?.Name || null),
+                memberSet: !hasNamedSubset && /^TM1SubsetAll\(/i.test(expr ?? '') ? 'all' : null,
+                members:   !hasNamedSubset ? extractMembersFromExpression(expr) : null,
+            }
+        }
+        const extractTitle = (t) => ({
+            dimension: t.DimensionName ?? t.Name,
+            member:    t.Selection?.Name ?? null,
+        })
         const rawNative = viewDef ? {
-            rows:    viewDef._rows    ?? (viewDef.Rows ?? []).map(r => ({ dimension: r.DimensionName ?? r.Name, subset: r.SubsetName ?? r.Subset?.Name ?? null })),
-            columns: viewDef._columns ?? (viewDef.Columns ?? []).map(c => ({ dimension: c.DimensionName ?? c.Name, subset: c.SubsetName ?? c.Subset?.Name ?? null })),
-            titles:  viewDef._titles  ?? (viewDef.Titles ?? []).map(t => ({ dimension: t.DimensionName ?? t.Name, member: t.Selection?.Name ?? null })),
+            rows:    (viewDef.Rows ?? []).length > 0 ? (viewDef.Rows ?? []).map(extractAxis) : (viewDef._rows ?? []),
+            columns: (viewDef.Columns ?? []).length > 0 ? (viewDef.Columns ?? []).map(extractAxis) : (viewDef._columns ?? []),
+            titles:  (viewDef.Titles ?? []).length > 0 ? (viewDef.Titles ?? []).map(extractTitle) : (viewDef._titles ?? []),
         } : null
 
         // Rebuild nativeConfig using axisConfig (cellset) for correct axis placement
-        // and rawNative for subset names — fixes TM1 REST API returning wrong axis assignments
+        // and rawNative for subset/member info
         let nativeConfig = rawNative
         if (rawNative && axisConfig.length) {
-            const subsetMap = {}
+            const dimInfo = {}
             for (const d of [...rawNative.rows, ...rawNative.columns, ...rawNative.titles])
-                if (d.dimension) subsetMap[d.dimension] = d.subset ?? null
+                if (d.dimension) dimInfo[d.dimension] = { subset: d.subset ?? null, memberSet: d.memberSet ?? null, members: d.members ?? null }
 
             const colAxis    = axisConfig.find(a => a.ordinal === 0)
             const rowAxis    = axisConfig.find(a => a.ordinal === 1)
             const filterAxis = axisConfig.find(a => a.ordinal === 2)
 
             nativeConfig = {
-                columns: (colAxis?.dimensions ?? []).map(d => ({ dimension: d, subset: subsetMap[d] ?? null })),
-                rows:    (rowAxis?.dimensions ?? []).map(d => ({ dimension: d, subset: subsetMap[d] ?? null })),
+                columns: (colAxis?.dimensions ?? []).map(d => ({ dimension: d, subset: dimInfo[d]?.subset ?? null, memberSet: dimInfo[d]?.memberSet ?? null, members: dimInfo[d]?.members ?? null })),
+                rows:    (rowAxis?.dimensions ?? []).map(d => ({ dimension: d, subset: dimInfo[d]?.subset ?? null, memberSet: dimInfo[d]?.memberSet ?? null, members: dimInfo[d]?.members ?? null })),
                 titles:  (filterAxis?.selectedMembers ?? rawNative.titles ?? []).map(t => ({
                     dimension: t.dimension,
                     member:    t.member ?? rawNative.titles?.find(n => n.dimension === t.dimension)?.member ?? null,
@@ -1630,6 +1762,21 @@ app.delete('/api/session', async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
+app.get('/api/threads', async (req, res) => {
+    try {
+        const client = new TM1Client(req.query.server)
+        const threads = await client.getThreads()
+        res.json(threads)
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.post('/api/thread/cancel', async (req, res) => {
+    try {
+        await new TM1Client(req.query.server).cancelThread(req.query.id)
+        res.json({ ok: true })
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
 // ── Server admin ─────────────────────────────────────────────────────────────
 app.get('/api/admin/metrics', async (req, res) => {
     try {
@@ -1786,13 +1933,18 @@ app.post('/api/sql/post-to-ti', async (req, res) => {
         // Parse ?pParam? tokens from SQL
         const tokens = [...new Set([...sql.matchAll(/\?(\w+)\?/g)].map(m => m[1]))]
 
+        // Prep TM1 comment header
+        const paramList = tokens.length ? `-- Parameters: ${tokens.map(t => '?' + t + '?').join(', ')}\n` : ''
+        const header    = `-- TM1 Process Datasource (via IDE)\n-- DSN: ${conn.dsn}\n${paramList}--\n\n`
+        const sqlWithHeader = header + sql
+
         // TM1 REST API: all ODBC fields are camelCase inside the DataSource object
         const odbcProps = {
             DataSource: {
                 Type:                   'ODBC',
                 dataSourceNameForServer: conn.dsn,
                 dataSourceNameForClient: '',
-                query:                   sql,
+                query:                   sqlWithHeader,
                 userName:                '',
                 password:                '',
                 usesUnicode:             true,
@@ -1902,6 +2054,113 @@ app.post('/api/cells/write', async (req, res) => {
         const msg = typeof detail === 'string' ? detail : JSON.stringify(detail)
         res.status(500).json({ error: msg })
     }
+})
+
+// ── Deploy pipeline ───────────────────────────────────────────────────────────
+
+app.get('/api/deploy/object-diff', async (req, res) => {
+    try {
+        const { server, type, name, detail } = req.query
+        if (!fs.existsSync(BASELINE_PATH)) return res.status(404).json({ error: 'No baseline seeded' })
+        const snapshot = JSON.parse(fs.readFileSync(BASELINE_PATH, 'utf8'))
+        const client = new TM1Client(server)
+        let before = null, after = null
+
+        if (type === 'rules') {
+            before = { text: snapshot.cubes?.[name]?.rules ?? '' }
+            const cube = await client.getCube(name)
+            after = { text: cube?.Rules ?? '' }
+        } else if (type === 'process') {
+            const bp = snapshot.processes?.[name]
+            before = bp ? { prolog: bp.PrologProcedure ?? '', metadata: bp.MetadataProcedure ?? bp.MetaDataProcedure ?? '', data: bp.DataProcedure ?? '', epilog: bp.EpilogProcedure ?? '' } : null
+            const p = await client.getProcess(name)
+            after = { prolog: p.PrologProcedure ?? '', metadata: p.MetaDataProcedure ?? p.MetadataProcedure ?? '', data: p.DataProcedure ?? '', epilog: p.EpilogProcedure ?? '' }
+        } else if (type === 'subset') {
+            const bs = snapshot.subsets?.[detail]?.[detail]?.[name]
+            before = bs ?? null
+            const sub = await client.getSubset(detail, name, detail)
+            after = sub?.Expression ? { expression: sub.Expression } : { elements: [] }
+        } else if (type === 'view') {
+            const bv = snapshot.views?.[detail]?.[name]
+            before = bv ? (bv.type === 'mdx' ? { type: 'mdx', mdx: bv.MDX ?? bv.mdx ?? '' } : { type: 'native', definition: bv.definition }) : null
+            const view = await client.getView(detail, name)
+            after = view?.MDX ? { type: 'mdx', mdx: view.MDX } : { type: 'native', definition: view }
+        } else {
+            return res.status(400).json({ error: `Unsupported type: ${type}` })
+        }
+
+        res.json({ before, after })
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.get('/api/deploy/baseline', (req, res) => {
+    try {
+        const fs = require('fs')
+        if (!fs.existsSync(BASELINE_PATH)) return res.json({ exists: false })
+        const snapshot = JSON.parse(fs.readFileSync(BASELINE_PATH, 'utf8'))
+        res.json({ exists: true, ...snapshot._meta })
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.post('/api/deploy/seed', async (req, res) => {
+    try {
+        const { server } = req.body
+        if (!server) return res.status(400).json({ error: 'server required' })
+        const snapshot = await deploySeed(server, BASELINE_PATH)
+        res.json({ ok: true, server, seeded_at: snapshot._meta.seeded_at, counts: snapshot._meta.counts })
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.post('/api/deploy/diff', async (req, res) => {
+    try {
+        const { server, sessionId } = req.body
+        const entries = cl.getSessionLog(sessionId)
+        const result  = await deployDiff(server, entries)
+        res.json(result)
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.post('/api/deploy/package', async (req, res) => {
+    try {
+        const { server, sessionId, sessionName, forceInclude = [] } = req.body
+        const entries = cl.getSessionLog(sessionId)
+        const result  = await deployPack(server, entries, sessionName, { force: true, forceInclude })
+        res.json(result)
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.get('/api/deploy/packages', (req, res) => {
+    try {
+        const dir = path.join(__dirname, 'packages')
+        if (!fs.existsSync(dir)) return res.json([])
+        const items = fs.readdirSync(dir)
+            .filter(n => fs.statSync(path.join(dir, n)).isDirectory())
+            .map(n => {
+                const mp = path.join(dir, n, 'manifest.json')
+                if (!fs.existsSync(mp)) return null
+                const m = JSON.parse(fs.readFileSync(mp, 'utf8'))
+                return { dir: path.join(dir, n), name: n, meta: m._meta, objectCount: m.objects?.length ?? 0 }
+            })
+            .filter(Boolean)
+            .sort((a, b) => (b.meta?.packaged_at ?? '').localeCompare(a.meta?.packaged_at ?? ''))
+        res.json(items)
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.post('/api/deploy/risk', async (req, res) => {
+    try {
+        const { packageDir, target } = req.body
+        const result = await analyzeRisk(packageDir, target)
+        res.json(result)
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.post('/api/deploy/execute', async (req, res) => {
+    try {
+        const { packageDir, target, dryRun } = req.body
+        const result = await deployExecute(packageDir, target, { dryRun, skipRiskCheck: true })
+        res.json(result)
+    } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
 // ── SPA fallback ──────────────────────────────────────────────────────────────

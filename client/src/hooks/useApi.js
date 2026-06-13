@@ -119,6 +119,17 @@ export const useCreateProcess = () => {
   })
 }
 
+export const useCreateChore = () => {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ server, name, body }) =>
+      post(`/api/chore?server=${enc(server)}`, { Name: name, ...body }),
+    onSuccess: (_, { server }) => {
+      queryClient.invalidateQueries({ queryKey: ['chores', server] })
+    },
+  })
+}
+
 export const useSaveChore = () => {
   const queryClient = useQueryClient()
   return useMutation({
@@ -241,11 +252,37 @@ export const useExecuteMDX = () => useMutation({
     post(`/api/mdx/execute?server=${enc(server)}`, { mdx }),
 })
 
-export const useSaveView = () => useMutation({
-  mutationFn: ({ server, cube, name, mdx, nativeAxes }) =>
-    post(`/api/view/save?server=${enc(server)}&cube=${enc(cube)}&name=${enc(name)}`,
-         nativeAxes ? { nativeAxes } : { mdx }),
-})
+export const useSaveView = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ server, cube, name, mdx, nativeAxes }) =>
+      post(`/api/view/save?server=${enc(server)}&cube=${enc(cube)}&name=${enc(name)}`,
+           nativeAxes ? { nativeAxes } : { mdx }),
+    onSuccess: (_data, { server, cube }) => {
+      qc.invalidateQueries({ queryKey: ['views', server, cube] })
+    },
+  })
+}
+
+export const useSetDefaultView = () => {
+    const qc = useQueryClient()
+    return useMutation({
+        mutationFn: ({ server, cube, name }) =>
+            post(`/api/view/set-default?server=${enc(server)}&cube=${enc(cube)}&name=${enc(name)}`),
+        onSuccess: (_, { server, cube }) =>
+            qc.invalidateQueries({ queryKey: ['default-view', server, cube] }),
+    })
+}
+
+export const useDeleteView = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ server, cube, name }) => del(`/api/view?server=${enc(server)}&cube=${enc(cube)}&name=${enc(name)}`),
+    onSuccess: (_data, { server, cube }) => {
+      qc.invalidateQueries({ queryKey: ['views', server, cube] })
+    },
+  })
+}
 
 export const useMultiFormatAttrs = (server, dims) => useQuery({
   queryKey: ['format-attrs', server, ...(dims ?? []).slice().sort()],
@@ -437,6 +474,8 @@ export const useMaintenanceMode      = () => useMutation({ mutationFn: ({ server
 // ── TM1 Sessions (who is connected) ──────────────────────────────────────────
 export const useSessions          = (server, opts = {}) => useQuery({ queryKey: ['sessions', server], queryFn: () => get(`/api/sessions?server=${enc(server)}`), enabled: !!server, staleTime: 0, ...opts })
 export const useDisconnectSession = () => useMutation({ mutationFn: ({ server, id }) => del(`/api/session?server=${enc(server)}&id=${enc(id)}`) })
+export const useThreads           = (server, opts = {}) => useQuery({ queryKey: ['threads', server], queryFn: () => get(`/api/threads?server=${enc(server)}`), enabled: !!server, staleTime: 0, ...opts })
+export const useCancelThread      = () => useMutation({ mutationFn: ({ server, id }) => post(`/api/thread/cancel?server=${enc(server)}&id=${enc(id)}`, {}) })
 
 // ── Change log / Work sessions ────────────────────────────────────────────────
 export const useActiveWorkSession  = (server) => useQuery({ queryKey: ['work-session-active', server], queryFn: () => get(`/api/sessions/active?server=${enc(server)}`), enabled: !!server, staleTime: 0, refetchInterval: 0 })
@@ -446,6 +485,17 @@ export const useRecentLog          = (server) => useQuery({ queryKey: ['recent-l
 export const useStartWorkSession   = () => { const qc = useQueryClient(); return useMutation({ mutationFn: (body) => post('/api/sessions/start', body), onSuccess: (_, v) => { qc.invalidateQueries({ queryKey: ['work-session-active', v.server] }); qc.invalidateQueries({ queryKey: ['work-sessions', v.server] }) } }) }
 export const useCloseWorkSession   = () => { const qc = useQueryClient(); return useMutation({ mutationFn: (body) => post('/api/sessions/close', body), onSuccess: (_, v) => { qc.invalidateQueries({ queryKey: ['work-session-active'] }); qc.invalidateQueries({ queryKey: ['work-sessions'] }) } }) }
 export const useResumeWorkSession  = () => { const qc = useQueryClient(); return useMutation({ mutationFn: (body) => post('/api/sessions/resume', body), onSuccess: (_, v) => { qc.invalidateQueries({ queryKey: ['work-session-active'] }); qc.invalidateQueries({ queryKey: ['work-sessions'] }) } }) }
+export const useObjectHistory      = (server, type, name) => useQuery({ queryKey: ['object-history', server, type, name], queryFn: () => get(`/api/log/object?server=${enc(server)}&type=${enc(type)}&name=${enc(name)}`), enabled: !!(server && type && name), staleTime: 0 })
+export const useRollbackEntry      = () => { const qc = useQueryClient(); return useMutation({ mutationFn: (body) => post('/api/log/rollback', body), onSuccess: () => { qc.invalidateQueries({ queryKey: ['object-history'] }); qc.invalidateQueries({ queryKey: ['work-session-log'] }); qc.invalidateQueries({ queryKey: ['work-sessions'] }) } }) }
+
+// ── Deploy pipeline ───────────────────────────────────────────────────────────
+export const useDeployPackages = () => useQuery({ queryKey: ['deploy-packages'], queryFn: () => get('/api/deploy/packages'), staleTime: 0 })
+export const useDeployBaseline = () => useQuery({ queryKey: ['deploy-baseline'], queryFn: () => get('/api/deploy/baseline'), staleTime: 60_000 })
+export const useDeploySeed     = () => { const qc = useQueryClient(); return useMutation({ mutationFn: (body) => post('/api/deploy/seed', body), onSuccess: () => qc.invalidateQueries({ queryKey: ['deploy-baseline'] }) }) }
+export const useDeployDiff     = () => useMutation({ mutationFn: (body) => post('/api/deploy/diff',    body) })
+export const useDeployPackage  = () => { const qc = useQueryClient(); return useMutation({ mutationFn: (body) => post('/api/deploy/package', body), onSuccess: () => qc.invalidateQueries({ queryKey: ['deploy-packages'] }) }) }
+export const useDeployRisk     = () => useMutation({ mutationFn: (body) => post('/api/deploy/risk',    body) })
+export const useDeployExecute  = () => useMutation({ mutationFn: (body) => post('/api/deploy/execute', body) })
 
 // ── Files availability probe ──────────────────────────────────────────────────
 export const useFilesAvailable = (server) => useQuery({

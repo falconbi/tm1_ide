@@ -13,7 +13,7 @@ All TM1 communication routes through Planning Analytics Workspace (PAW), so ther
 | Editor | What it does |
 |--------|-------------|
 | **Rules Editor** | Monaco editor with TM1 rules syntax highlighting, live syntax validation (CheckRules API), code formatter (3 structure presets), region collapse/expand, lineage trace panel, **cell calculation trace** (shows full rule chain for any cell), snippet library |
-| **TI Editor** | Four-tab editor (Prolog / Metadata / Data / Epilog), parameter editor, datasource editor, run with output log, **error log viewer** (reads TM1 `.log` file inline after errors), static code analysis (validator), debugger, snippets, pattern generators |
+| **TI Editor** | Four-tab editor (Prolog / Metadata / Data / Epilog), parameter editor, datasource editor with CSV file upload to TM1 server, run with output log, **error log viewer** (reads TM1 `.log` file inline after errors), static code analysis (validator), debugger, snippets, pattern generators |
 | **TI Debugger** | Set breakpoints in any section, capture variable values at each breakpoint, watch panel, section-by-section execution |
 | **Dimension Editor** | Hierarchy tree with drag-style CRUD, attribute grid, element search, bulk CSV import, attribute definition management |
 | **Subset Editor** | MDX code view + visual element tree, static/MDX save, MDX preview, ghost children |
@@ -199,6 +199,67 @@ Browser  ←→  Express (server.js)  ←→  PAW  ←→  TM1 Server
 - PAW handles TM1 authentication; the IDE authenticates with PAW using the credentials in `.env`
 - `core/tm1_client.js` wraps every TM1 API call — routes call client methods, never the API directly
 - The frontend uses TanStack Query for all server state — all cache keys include the server name
+
+---
+
+## Provisioning a New TM1 Server Instance
+
+To set up a new Dev or Test TM1 instance on Windows, use the included PowerShell script:
+
+```powershell
+.\tools\provision-tm1-server.ps1
+```
+
+The script prompts for the instance name, port numbers, and directory paths, generates a `tm1s.cfg` from an existing server's config, and creates the required directory structure (`Data\`, `Logs\`, `Files\Scripts\`, `Files\Import\`, `Files\Export\`). After running it, open Cognos Configuration, point it at the new root directory, and start the instance.
+
+See [docs/provision-tm1-server.md](docs/provision-tm1-server.md) for full instructions.
+
+---
+
+## Deployment Pipeline (tm1deploy)
+
+The IDE includes a built-in CI/CD pipeline for promoting changes from Dev to Prod. The full workflow is available in the browser — no CLI required.
+
+### Concept
+
+Every save in the IDE is logged to a **Change Set** (named work session). When you're ready to deploy, the pipeline diffs your changes against a baseline snapshot of Prod, packages the changed objects, runs a pre-deploy risk analysis, then pushes to the target server.
+
+### Step 1 — Seed the Baseline (once per server)
+
+Click the **HardDriveDownload** icon in the header toolbar → select your Prod server → **Seed now**.
+
+This snapshots Prod's entire state into `.tm1baseline/snapshot.json`. It is the reference point all future diffs compare against. Re-seed after every promotion to Prod to keep it current.
+
+### Step 2 — Work in a Change Set
+
+Click the **Clock** icon in the header → name the change set (e.g. `budget-fix`) → **Start**.
+
+Everything saved in the IDE while the change set is open gets logged. Green indicator dots appear in the Explorer sidebar on every changed object. Close the change set when your work is done.
+
+### Step 3 — Deploy
+
+Open the **Change Sets** panel (History icon, header toolbar) → hover the change set row → click the green **Rocket**.
+
+The Deploy Panel opens and walks through four steps:
+
+| Step | What it does |
+|------|--------------|
+| **Diff** | Compares logged changes against the baseline and the live Dev server. Each object gets an outcome: `MATCH` (changed vs baseline, server agrees), `NEW` (not in baseline), `DRIFT` (server diverged since last save), `MISSING` (not on server), `UNCHANGED` |
+| **Package** | Fetches `MATCH` + `NEW` objects from Dev and writes them to a `packages/` folder with a manifest. Drift and missing objects are skipped |
+| **Risk** | Select the target server. Runs automated checks: rules syntax errors, broken dependencies, chore conflicts (running or active chores containing changed processes), structural impact (elements removed). Returns `BLOCKER` / `WARNING` / `INFO` — blockers prevent deploy |
+| **Deploy** | Confirm and push. Objects are written in dependency order: attributes → dimensions → cubes → rules → subsets → views → processes |
+
+### CLI (optional)
+
+The same pipeline is available as a CLI for scripting and CI use:
+
+```bash
+node tools/tm1deploy/bin/tm1deploy.js seed <server>
+node tools/tm1deploy/bin/tm1deploy.js diff <session-name>
+node tools/tm1deploy/bin/tm1deploy.js package <session-name>
+node tools/tm1deploy/bin/tm1deploy.js risk <package-dir> <target-server>
+node tools/tm1deploy/bin/tm1deploy.js deploy <package-dir> <target-server>
+```
 
 ---
 

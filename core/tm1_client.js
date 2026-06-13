@@ -73,6 +73,10 @@ class TM1Client {
         return this.delete(`Dimensions('${encodeURIComponent(dim)}')/Hierarchies('${encodeURIComponent(hierarchy)}')/Subsets('${encodeURIComponent(name)}')`)
     }
 
+    async deleteView(cube, name) {
+        return this.delete(`Cubes('${encodeURIComponent(cube)}')/Views('${encodeURIComponent(name)}')`)
+    }
+
     async getDimension(name) {
         try {
             return await this.get(`Dimensions('${name}')`, { '$select': 'Name' })
@@ -769,33 +773,72 @@ return (d.value ?? [])
     }
 
     async getViewWithSubsets(cube, name) {
-        // Try collection endpoint with $expand first (some TM1 versions support it)
+        const getSubset = (placements) => {
+            if (!placements) return []
+            return placements.map(p => {
+                const expr = p.Subset?.Expression
+                // Extract dimension name from Expression if placement-level props are missing
+                // Handles: {[Dim].[Hier]...} and TM1SubsetAll([Dim].[Hier]...)
+                const dimFromExpr = expr ? (expr.match(/\[([^\]]+)\]/)?.[1] ?? null) : null
+                const hasNamedSubset = !!(p.SubsetName ?? (p.Subset?.Name || null))
+                return {
+                    dimension: p.DimensionName ?? p.Name ?? dimFromExpr,
+                    subset:    p.SubsetName ?? (p.Subset?.Name || null),
+                    memberSet: !hasNamedSubset && /^TM1SubsetAll\(/i.test(expr ?? '') ? 'all' : null,
+                    members:   !hasNamedSubset ? this._extractMembersFromExpression(expr) : null,
+                }
+            })
+        }
+        // Try expanding Subset within each placement collection (most reliable)
         try {
-            const d = await this.get(
-                `Cubes('${cube}')/Views`,
-                { '$expand': 'Rows,Columns,Titles' }
-            )
+            const [rowsRes, colsRes, titlesRes] = await Promise.all([
+                this.get(`Cubes('${cube}')/Views('${name}')/Rows?%24expand=Subset`),
+                this.get(`Cubes('${cube}')/Views('${name}')/Columns?%24expand=Subset`),
+                this.get(`Cubes('${cube}')/Views('${name}')/Titles?%24expand=Subset`),
+            ])
+            const rows    = getSubset(rowsRes.value)
+            const columns = getSubset(colsRes.value)
+            const titles  = getSubset(titlesRes.value)
+            return { _rows: rows, _columns: columns, _titles: titles, '@odata.type': 'NativeView' }
+        } catch (e) {
+            console.log('[getViewWithSubsets] placement expand failed:', e.message)
+        }
+        // Try direct entity with $expand
+        try {
+            const view = await this.get(`Cubes('${cube}')/Views('${name}')`, { '$expand': 'Rows,Columns,Titles' })
+            if (view) {
+                return { ...view, _rows: getSubset(view.Rows), _columns: getSubset(view.Columns), _titles: getSubset(view.Titles) }
+            }
+        } catch (e) {}
+        // Try collection endpoint with $expand
+        try {
+            const d = await this.get(`Cubes('${cube}')/Views`, { '$expand': 'Rows,Columns,Titles' })
             const view = (d.value ?? []).find(v => v.Name === name)
             if (view) {
-                const getSubset = (placements) => {
-                    if (!placements) return []
-                    return placements.map(p => ({
-                        dimension: p.DimensionName ?? p.Name,
-                        subset:    p.SubsetName ?? p.Subset?.Name ?? null,
-                    }))
-                }
-                return {
-                    ...view,
-                    _rows:    getSubset(view.Rows),
-                    _columns: getSubset(view.Columns),
-                    _titles:  getSubset(view.Titles),
-                }
+                return { ...view, _rows: getSubset(view.Rows), _columns: getSubset(view.Columns), _titles: getSubset(view.Titles) }
             }
-        } catch (e) {
-            // $expand not supported — fall through to basic getView
+        } catch (e) {}
+        // Basic fallback
+        const basic = await this.getView(cube, name)
+        if (basic) {
+            // Try fetching placements separately (may not have Subset expanded)
+            try {
+                const [rr, cr] = await Promise.all([
+                    this.get(`Cubes('${cube}')/Views('${name}')/Rows`),
+                    this.get(`Cubes('${cube}')/Views('${name}')/Columns`),
+                ])
+                return { ...basic, _rows: getSubset(rr.value), _columns: getSubset(cr.value), _titles: [] }
+            } catch (e2) {}
         }
-        // Fallback: basic view definition (no axis config for native views)
-        return this.getView(cube, name)
+        return basic
+    }
+
+    _extractMembersFromExpression(expr) {
+        if (!expr) return null
+        const trimmed = expr.trim()
+        if (!trimmed.startsWith('{') || !trimmed.endsWith('}')) return null
+        const matches = [...trimmed.matchAll(/\[[^\]]+\]\.\[[^\]]+\]\.\[([^\]]+)\]/g)]
+        return matches.length > 0 ? matches.map(m => m[1]) : null
     }
 
     async getSubsetElements(dim, name, hierarchy = dim) {
@@ -816,54 +859,103 @@ return (d.value ?? [])
             'Elements@odata.bind': bind,
         }
         try {
-            await this.patch(`Dimensions('${dim}')/Hierarchies('${dim}')/Subsets('${name}')`, body)
+            await this.patch(`Cubes('${esc(cube)}')/Views('${esc(name)}')`, body)
         } catch (e) {
             if (e.response?.status === 404) {
-                await this.post(`Dimensions('${dim}')/Hierarchies('${dim}')/Subsets`, body)
+                console.error('[save-native-view] PATCH 404, trying POST')
+                await this.post(`Cubes('${esc(cube)}')/Views`, body)
             } else throw e
         }
     }
 
     async saveView(cube, name, mdx) {
         const esc = s => s.replace(/'/g, "''")
-        const body = { '@odata.type': '#ibm.tm1.api.v1.MDXView', Name: name, MDX: mdx }
+        const body = { MDX: mdx }
         try {
             await this.patch(`Cubes('${esc(cube)}')/Views('${esc(name)}')`, body)
         } catch (e) {
             if (e.response?.status === 404) {
-                await this.post(`Cubes('${esc(cube)}')/Views`, body)
+                await this.post(`Cubes('${esc(cube)}')/Views`, {
+                    '@odata.type': '#ibm.tm1.api.v1.MDXView',
+                    Name: name,
+                    MDX: mdx,
+                })
             } else throw e
         }
     }
 
+    async _defaultMember(dim) {
+        const d = await this.get(`Dimensions('${dim}')/Hierarchies('${dim}')/DefaultMember`, { '$select': 'Name' })
+        return d?.Name
+    }
+
+    _esc(s) { return String(s).replace(/'/g, "''") }
+
     async saveNativeView(cube, name, { rows, columns, titles }) {
-        const esc = s => s.replace(/'/g, "''")
-        const subsetRef = (dim, subset) => ({
-            '@odata.type': '#ibm.tm1.api.v1.Subset',
-            Name:          subset ?? '',
-            Hierarchy:     { Name: dim, Dimension: { Name: dim } },
+        const esc = s => String(s).replace(/'/g, "''")
+        const hierBind = dim => `Dimensions('${esc(dim)}')/Hierarchies('${esc(dim)}')`
+
+        // Ensure all cube dimensions are placed on an axis
+        const cubeInfo = await this.getCube(cube)
+        const allDims = (cubeInfo?.Dimensions ?? []).map(d => d.Name)
+        const placedDims = new Set([...rows, ...columns, ...titles].map(a => a.dimension ?? a))
+        const missingDims = allDims.filter(d => !placedDims.has(d))
+        if (missingDims.length) {
+            const defaultMembers = await Promise.all(missingDims.map(d =>
+                this._defaultMember(d).then(name => ({ dimension: d, member: name ?? '' }))
+            ))
+            titles = [...titles, ...defaultMembers]
+        }
+
+        const buildSubsetRef = a => {
+            const dim = a.dimension ?? a
+            if (a.subset) {
+                return { 'Subset@odata.bind': `${hierBind(dim)}/Subsets('${esc(a.subset)}')` }
+            }
+            const hier = `[${dim}].[${dim}]`
+            let expression
+            if (a.customExpr) {
+                expression = a.customExpr
+            } else if (a.memberSet === 'leaf') {
+                expression = `TM1FILTERBYLEVEL({${hier}.Members}, 0)`
+            } else if (a.memberSet === 'root') {
+                expression = `{${hier}.DefaultMember}`
+            } else if (a.members?.length) {
+                expression = `{${a.members.map(m => `${hier}.[${esc(m)}]`).join(', ')}}`
+            } else if (a.member) {
+                expression = `{${hier}.[${esc(a.member)}]}`
+            } else {
+                expression = `TM1SubsetAll(${hier})`
+            }
+            return {
+                Subset: {
+                    Expression: expression,
+                    'Hierarchy@odata.bind': hierBind(dim),
+                },
+            }
+        }
+
+        const buildAxis = dims => dims.map(buildSubsetRef)
+        const buildTitle = a => ({
+            ...buildSubsetRef(a),
+            ...(a.member ? { 'Selected@odata.bind': `${hierBind(a.dimension ?? a)}/Elements('${esc(a.member)}')` } : {}),
         })
-        const body = {
+
+        // PATCH — only axis payload, no odata.type or Name
+        const patchBody = {
+            Columns: buildAxis(columns),
+            Rows:    buildAxis(rows),
+            Titles:  titles.map(buildTitle),
+        }
+        // POST — full NativeView payload with odata.type and Name
+        const postBody = {
             '@odata.type': '#ibm.tm1.api.v1.NativeView',
             Name: name,
-            Rows:    rows.map(({ dimension: d, subset: s }) => ({ Subset: subsetRef(d, s) })),
-            Columns: columns.map(({ dimension: d, subset: s }) => ({ Subset: subsetRef(d, s) })),
-            Titles:  titles.map(({ dimension: d, subset: s, member: m }) => ({
-                Subset: subsetRef(d, s),
-                ...(m ? { Selected: {
-                    '@odata.type': '#ibm.tm1.api.v1.Member',
-                    Name:         m,
-                    UniqueName:   `[${d}].[${d}].[${m}]`,
-                }} : {}),
-            })),
+            ...patchBody,
         }
-        try {
-            await this.patch(`Cubes('${esc(cube)}')/Views('${esc(name)}')`, body)
-        } catch (e) {
-            if (e.response?.status === 404) {
-                await this.post(`Cubes('${esc(cube)}')/Views`, body)
-            } else throw e
-        }
+        // Delete existing view (regardless of type) then create fresh native view
+        try { await this.deleteView(cube, name) } catch {}
+        await this.post(`Cubes('${esc(cube)}')/Views`, postBody)
     }
 
     async executeMDX(mdx, maxCells = 50_000) {
@@ -1058,12 +1150,21 @@ return (d.value ?? [])
     // ── Sessions ──────────────────────────────────────────────────────────────
 
     async getSessions() {
-        const d = await this.get('Sessions', { '$expand': '*' })
+        const d = await this.get('Sessions', { '$expand': 'User,CurrentThread' })
         return d.value ?? []
     }
 
     async disconnectSession(id) {
         return this.delete(`Sessions('${encodeURIComponent(id)}')`)
+    }
+
+    async getThreads() {
+        const d = await this.get('Threads', { '$expand': 'User,Session' })
+        return d.value ?? []
+    }
+
+    async cancelThread(id) {
+        return this.post(`Threads('${encodeURIComponent(id)}')/tm1.Cancel`, {})
     }
 
     // ── Server admin ──────────────────────────────────────────────────────────
@@ -1079,6 +1180,21 @@ return (d.value ?? [])
 
     async patchStaticConfiguration(section, values) {
         return this.patch(`StaticConfiguration/${section}`, values)
+    }
+
+    async setDefaultView(cube, viewName) {
+        const esc = s => String(s).replace(/'/g, "''")
+        const procName = `__SetDefaultView_${Date.now()}`
+        try {
+            await this.createOrReplaceProcess({
+                name: procName,
+                prolog: `CubeSetDefaultView('${esc(cube)}', '${esc(viewName)}');`,
+                parameters: [],
+            })
+            await this.executeProcess(procName)
+        } finally {
+            try { await this.delete(`Processes('${esc(procName)}')`) } catch {}
+        }
     }
 
     async enableMaintenanceMode() {
