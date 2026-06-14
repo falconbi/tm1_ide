@@ -130,10 +130,13 @@ function cellsetToHierarchyData(cellset, formatMap = {}, pageMembers = [], suppr
         if (!tupleKey) return
 
         // Client-side zero suppression: skip rows where every cell is zero or null
+        // String values don't count as "data" for suppression (matches TM1's SuppressEmptyRows behavior)
         if (suppressZeros) {
             const allZero = columns.every((_, ci) => {
                 const v = cellMap[ri * columns.length + ci]?.Value
-                return v == null || v === 0 || v === ''
+                if (v == null || v === 0 || v === '') return true
+                if (typeof v === 'string' && v.trim() !== '' && !isNaN(Number(v)) && Number(v) === 0) return true
+                return false
             })
             if (allZero) return
         }
@@ -1087,8 +1090,9 @@ export default function ViewEditor({ tab }) {
         openTab({ id: tabId, type: 'subset', label: `Build: ${dimName}`, server: tab.server, dimension: dimName, subsetName: null, mdx: existing?.customExpr ?? '', returnTabId: tab.id })
     }, [tab.server, tab.id, axes, openTab, setCustomExpr])
 
-    const handleExecute = useCallback(() => {
-        const query = mode === 'mdx' ? mdx : buildMDX({ cube: tab.cube, ...axes, bench, suppressZeros })
+    const handleExecute = useCallback((opts = {}) => {
+        const sz    = 'suppressZeros' in opts ? opts.suppressZeros : suppressZeros
+        const query = mode === 'mdx' ? mdx : buildMDX({ cube: tab.cube, ...axes, bench, suppressZeros: sz })
         if (!query.trim()) {
             toast.error('No MDX to execute')
             return
@@ -1097,7 +1101,12 @@ export default function ViewEditor({ tab }) {
         executeMDX.mutate(
             { server: tab.server, mdx: query },
             {
-                onSuccess: data => { setResult(data); setTruncated(data?.truncated ?? false); toast.success('Done', { id }) },
+                onSuccess: data => {
+                    setResult(data)
+                    setTruncated(data?.truncated ?? false)
+                    if ('suppressZeros' in opts) setSuppressZeros(sz)
+                    toast.success('Done', { id })
+                },
                 onError:   e    => toast.error(e.message, { id }),
             }
         )
@@ -1123,7 +1132,7 @@ export default function ViewEditor({ tab }) {
         if (!axes.columns.length && !axes.rows.length) return
         const t = setTimeout(() => handleExecute(), 800)
         return () => clearTimeout(t)
-    }, [axes, suppressZeros, mode])
+    }, [axes, mode])
 
     // When switching to MDX mode, mark dirty so save is enabled
     const prevModeRef = useRef(mode)
@@ -1537,7 +1546,7 @@ export default function ViewEditor({ tab }) {
 
                 <div className="flex-1" />
 
-                <button onClick={() => setSuppressZeros(v => !v)}
+                <button onClick={() => handleExecute({ suppressZeros: !suppressZeros })}
                     title={suppressZeros ? 'Zero suppression on' : 'Zero suppression off'}
                     className={cn('flex items-center justify-center p-1.5 rounded border border-border transition-colors',
                         suppressZeros ? 'text-emerald-600 bg-emerald-100 dark:text-emerald-400 dark:bg-emerald-900/30 border-emerald-400/40' : 'text-muted-foreground hover:bg-muted')}>

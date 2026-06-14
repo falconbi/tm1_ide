@@ -89,16 +89,6 @@ export default function StatusBar() {
           )
         )}
 
-        <a
-          href="https://falconbi.github.io/tm1_ide/"
-          target="_blank"
-          rel="noreferrer"
-          title="Documentation"
-          className="flex items-center gap-1 px-1.5 py-0.5 rounded text-amber-400/70 hover:text-amber-300 hover:bg-white/10 transition-colors"
-        >
-          Docs
-        </a>
-
         <span className="opacity-40">TM1 IDE</span>
       </div>
 

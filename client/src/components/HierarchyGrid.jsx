@@ -23,7 +23,7 @@
 import { useState, useMemo, useCallback, useRef, useEffect } from 'react'
 import { AgGridReact } from 'ag-grid-react'
 import { AllCommunityModule, ModuleRegistry, themeBalham, colorSchemeDark, colorSchemeLight } from 'ag-grid-community'
-import { ChevronRight, ChevronDown, Shrink } from 'lucide-react'
+import { ChevronRight, ChevronDown } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 ModuleRegistry.registerModules([AllCommunityModule])
@@ -441,7 +441,7 @@ export default function HierarchyGrid({
                 headerName:      h.name ?? (hierarchies.length === 1 ? 'Member' : `Dim ${dimIdx + 1}`),
                 headerComponent: RowDimHeader,
                 pinned:          'left',
-                width:           w(`__d${dimIdx}__`, dimIdx === 0 ? 190 : 150),
+                initialWidth:    w(`__d${dimIdx}__`, dimIdx === 0 ? 190 : 150),
                 minWidth:        80,
                 resizable:       true,
                 menuTabs:        [],
@@ -465,7 +465,7 @@ export default function HierarchyGrid({
                     headerName:      col.label,
                     headerComponent: multiCol ? MultiDimColHeader : (columnHierarchies.length === 1 ? SingleDimColHeader : undefined),
                     context:         { colTuple: tuple, colChanged: changed },
-                    width:           w(col.id, 110),
+                    initialWidth:    w(col.id, 110),
                     minWidth:        60,
                     resizable:       true,
                     type:            'numericColumn',
@@ -542,13 +542,7 @@ export default function HierarchyGrid({
 
     return (
         <div className="flex flex-col h-full min-h-0">
-            <div className="flex-1 min-h-0 relative">
-                <button
-                    onClick={autoSizeAll}
-                    className="absolute top-1 right-1 z-10 w-5 h-5 flex items-center justify-center rounded hover:bg-black/10 dark:hover:bg-white/10 text-muted-foreground/60 hover:text-muted-foreground transition-colors"
-                    title="Auto-fit columns (resize to fit content)">
-                    <Shrink size={12} />
-                </button>
+            <div className="flex-1 min-h-0">
                 <AgGridReact
                     ref={gridRef}
                     theme={theme}

@@ -1417,6 +1417,18 @@ app.get('/api/view/axes', async (req, res) => {
     }
 })
 
+// ── Native View Execute (with suppression toggle) ────────────────────────────
+app.post('/api/view/execute-suppressed', async (req, res) => {
+    try {
+        const client = new TM1Client(req.query.server)
+        const { suppressZeros } = req.body
+        res.json(await client.executeViewWithSuppression(req.query.cube, req.query.view, suppressZeros))
+    } catch (e) {
+        const detail = e.response?.data?.error?.message ?? e.response?.data ?? e.message
+        res.status(500).json({ error: typeof detail === 'string' ? detail : JSON.stringify(detail) })
+    }
+})
+
 // ── MDX Execute ──────────────────────────────────────────────────────────────
 app.post('/api/mdx/execute', async (req, res) => {
     try {

@@ -17,6 +17,7 @@ function buildAxisSet({ dimension: dim, subset, member, members, memberSet: mset
     if (customExpr) return customExpr
     if (mset === 'leaf') return `{TM1FILTERBYLEVEL({[${dim}].[${dim}].Members}, 0)}`
     if (mset === 'root') return `{[${dim}].[${dim}].DefaultMember}`
+    if (mset === 'all')  return `{TM1SUBSETALL([${dim}].[${dim}])}`
     if (members?.length > 1) return `{${members.map(m => `[${dim}].[${dim}].[${m}]`).join(', ')}}`
     if (member || members?.length === 1) return `{[${dim}].[${dim}].[${member ?? members[0]}]}`
     if (subset) return `TM1SubsetToSet([${dim}].[${dim}], "${subset}", "public")`

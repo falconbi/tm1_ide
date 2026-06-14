@@ -252,6 +252,11 @@ export const useExecuteMDX = () => useMutation({
     post(`/api/mdx/execute?server=${enc(server)}`, { mdx }),
 })
 
+export const useExecuteViewSuppressed = () => useMutation({
+  mutationFn: ({ server, cube, view, suppressZeros }) =>
+    post(`/api/view/execute-suppressed?server=${enc(server)}&cube=${enc(cube)}&view=${enc(view)}`, { suppressZeros }),
+})
+
 export const useSaveView = () => {
   const qc = useQueryClient()
   return useMutation({

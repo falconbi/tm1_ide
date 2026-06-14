@@ -39,7 +39,7 @@ function fmtAtom(node, settings, namingMap) {
 }
 
 const isDimVar = n => n.kind === 'atom' && n.token?.type === 'dim_var'
-const isStr    = n => n.kind === 'atom' && n.token?.type === 'string'
+const isStr    = n => (n.kind === 'atom' && n.token?.type === 'string') || (n.kind === 'binary' && n.op === ':')
 
 const cmaSep  = s => s.commaSpacing    === 'none'    ? ','  : ', '
 const opWrap  = (op, s) => s.operatorSpacing === 'compact' ? op   : ` ${op} `
@@ -53,6 +53,9 @@ function fmtExpr(node, baseLevel, settings, namingMap, preset) {
     case 'call':
       return fmtCall(node, baseLevel, settings, namingMap, preset)
     case 'binary':
+      if (node.op === ':')
+        return fmtExpr(node.left, baseLevel, settings, namingMap, preset) + ':' +
+               fmtExpr(node.right, baseLevel, settings, namingMap, preset)
       return fmtExpr(node.left, baseLevel, settings, namingMap, preset) +
              opWrap(node.op, settings) +
              fmtExpr(node.right, baseLevel, settings, namingMap, preset)
@@ -209,7 +212,39 @@ function fmtStatement(raw, baseLevel, settings, namingMap, preset) {
       return prefixStr + lhs + ' = ' + rhsPrefixStr + rhsFmt + semi
     }
 
-    // No assignment — format entire expression (feeders, standalone calls, etc.)
+    // Feeder: LHS => DB1(...), DB2(...);
+    // parseExpression stops at the first top-level comma, so we must split
+    // the RHS ourselves before parsing each feed expression separately.
+    const feederOpIdx = (() => {
+      let d = 0
+      for (let i = from; i < end; i++) {
+        const v = toks[i].value
+        if (v === '(' || v === '[') d++
+        else if (v === ')' || v === ']') d--
+        else if (toks[i].type === 'operator' && v === '=>' && d === 0) return i
+      }
+      return -1
+    })()
+
+    if (feederOpIdx !== -1) {
+      const lhs     = toks.slice(from, feederOpIdx).map(t => t.value).join('')
+      const rhsToks = toks.slice(feederOpIdx + 1, end)
+      const feeds   = []
+      let cur = [], d = 0
+      for (const tok of rhsToks) {
+        if (tok.value === '(' || tok.value === '[') { d++; cur.push(tok) }
+        else if (tok.value === ')' || tok.value === ']') { d--; cur.push(tok) }
+        else if (tok.type === 'punctuation' && tok.value === ',' && d === 0) {
+          if (cur.length) feeds.push(cur); cur = []
+        } else { cur.push(tok) }
+      }
+      if (cur.length) feeds.push(cur)
+      const innerInd = indentStr(baseLevel + 1, settings)
+      const feedFmts = feeds.map(ftoks => innerInd + fmtExpr(parseExpression(ftoks), baseLevel + 1, settings, namingMap, preset))
+      return prefixStr + lhs + ' =>\n' + feedFmts.join(',\n') + semi
+    }
+
+    // No assignment — format entire expression (standalone calls, etc.)
     const expr    = parseExpression(toks.slice(from, end))
     const exprFmt = fmtExpr(expr, baseLevel, settings, namingMap, preset)
     return prefixStr + exprFmt + semi

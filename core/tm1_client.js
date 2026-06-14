@@ -977,6 +977,11 @@ return (d.value ?? [])
         return { Axes: axisRes.data.value, Cells: cells, truncated: cells.length >= maxCells }
     }
 
+    async executeViewWithSuppression(cube, view, suppressZeros, maxCells = 50_000) {
+        await this.patch(`Cubes('${cube}')/Views('${view}')`, { SuppressEmptyRows: suppressZeros })
+        return this.executeView(cube, view, maxCells)
+    }
+
     async executeView(cube, view, maxCells = 50_000) {
         const viewDef  = await this.get(`Cubes('${cube}')/Views('${view}')`)
         const { ID }   = await this.post(`Cubes('${cube}')/Views('${view}')/tm1.Execute`, {})
