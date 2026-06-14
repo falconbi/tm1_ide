@@ -784,7 +784,9 @@ return (d.value ?? [])
                 return {
                     dimension: p.DimensionName ?? p.Name ?? dimFromExpr,
                     subset:    p.SubsetName ?? (p.Subset?.Name || null),
-                    memberSet: !hasNamedSubset && /^TM1SubsetAll\(/i.test(expr ?? '') ? 'all' : null,
+                    memberSet: !hasNamedSubset && /^TM1SubsetAll\(/i.test(expr ?? '') ? 'all'
+                             : !hasNamedSubset && /^TM1FILTERBYLEVEL\s*\(/i.test(expr ?? '') ? 'leaf'
+                             : null,
                     members:   !hasNamedSubset ? this._extractMembersFromExpression(expr) : null,
                 }
             })

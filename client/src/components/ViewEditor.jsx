@@ -104,7 +104,7 @@ function constrainHierarchy(hierarchy, presentMembers) {
     return { nodes, roots, maxLevel, name }
 }
 
-function cellsetToHierarchyData(cellset, formatMap = {}, pageMembers = [], suppressZeros = false) {
+function cellsetToHierarchyData(cellset, formatMap = {}, pageMembers = [], suppressZeros = 'none') {
     if (!cellset?.Axes?.length) return null
     const colAxis = cellset.Axes.find(a => a.Ordinal === 0)
     const rowAxis = cellset.Axes.find(a => a.Ordinal === 1)
@@ -114,7 +114,7 @@ function cellsetToHierarchyData(cellset, formatMap = {}, pageMembers = [], suppr
     const rowTuples = rowAxis?.Tuples ?? []
 
     // Include members array so HierarchyGrid can build tuple keys for multi-dim cols
-    const columns = colTuples.map((t, i) => ({
+    let columns = colTuples.map((t, i) => ({
         id:      `c${i}`,
         label:   (t.Members ?? []).map(m => m.Name).join(' / '),
         members: (t.Members ?? []).map(m => m.Name),
@@ -123,27 +123,47 @@ function cellsetToHierarchyData(cellset, formatMap = {}, pageMembers = [], suppr
     const cellMap = {}
     ;(cellset.Cells ?? []).forEach(c => { cellMap[c.Ordinal] = c })
 
+    const isValEmpty = v => {
+        if (v == null || v === 0) return true
+        if (typeof v === 'string') {
+            const t = v.trim()
+            if (t === '') return true
+            if (!isNaN(Number(t)) && Number(t) === 0) return true
+        }
+        return false
+    }
+
+    const supRows = suppressZeros === 'rows' || suppressZeros === 'all' || suppressZeros === true
+    const supCols = suppressZeros === 'columns' || suppressZeros === 'all'
+
     const data = {}
+    const colHasData = {}
+    let debugIdx = 0
+    let debugSupIdx = 0
+    let keptCount = 0
+    let supCount = 0
     rowTuples.forEach((tuple, ri) => {
-        // Multi-dim row: key is all member names joined with ::
         const tupleKey = (tuple.Members ?? []).map(m => m.Name).join('::')
         if (!tupleKey) return
 
-        // Client-side zero suppression: skip rows where every cell is zero or null
-        // String values don't count as "data" for suppression (matches TM1's SuppressEmptyRows behavior)
-        if (suppressZeros) {
-            const allZero = columns.every((_, ci) => {
-                const v = cellMap[ri * columns.length + ci]?.Value
-                if (v == null || v === 0 || v === '') return true
-                if (typeof v === 'string' && v.trim() !== '' && !isNaN(Number(v)) && Number(v) === 0) return true
-                return false
-            })
-            if (allZero) return
+        if (supRows) {
+            const cellsThisRow = columns.map((_, ci) => cellMap[ri * columns.length + ci])
+            const allZero = cellsThisRow.every(c => isValEmpty(c?.Value))
+            if (!allZero && tupleKey.includes('A01')) {
+                console.warn('DEBUG A01 KEPT:', tupleKey, 'cells:', JSON.stringify(cellsThisRow.map(c => c ? { V: c.Value, F: c.FormattedValue, t: typeof c.Value } : 'MISSING')))
+
+            }
+            if (allZero) {
+                supCount++
+                return
+            }
+            keptCount++
         }
 
         if (!data[tupleKey]) data[tupleKey] = {}
         columns.forEach((col, ci) => {
             const cell = cellMap[ri * columns.length + ci]
+            if (!isValEmpty(cell?.Value)) colHasData[col.id] = true
             const colTuple = colTuples[ci]
             const elemNames = (colTuple?.Members ?? []).map(m => elementFromUniqueName(m.UniqueName) || m.Name)
             const fmtKey = elemNames.find(n => formatMap[n]) || pageMembers.find(n => formatMap[n])
@@ -154,6 +174,18 @@ function cellsetToHierarchyData(cellset, formatMap = {}, pageMembers = [], suppr
             }
         })
     })
+
+    if (supRows) console.warn('DEBUG rows total kept/suppressed:', keptCount, '/', supCount)
+
+    if (supCols && Object.keys(data).length) {
+        const emptyColIds = columns.filter(col => !colHasData[col.id]).map(col => col.id)
+        if (emptyColIds.length) {
+            for (const key of Object.keys(data)) {
+                for (const cid of emptyColIds) delete data[key][cid]
+            }
+            columns = columns.filter(c => !emptyColIds.includes(c.id))
+        }
+    }
 
     return { columns, data }
 }
@@ -743,7 +775,7 @@ export default function ViewEditor({ tab }) {
     // Visual builder state — seed from Builder handoff if provided
     const [axes, setAxes] = useState(tab.initialAxes ?? { rows: [], columns: [], pages: [] })
     const [benchState, setBenchState] = useState({}) // persists member/subset for benched dims
-    const [suppressZeros, setSuppressZeros] = useState(true)
+    const [suppressZeros, setSuppressZeros] = useState('rows')
     const [totalsPosition,    setTotalsPosition]    = useState('top')
     const [colTotalsPosition, setColTotalsPosition] = useState('top')
     const [activeDrag, setActiveDrag] = useState(null)
@@ -946,7 +978,7 @@ export default function ViewEditor({ tab }) {
                     setMdxTooComplex(complex)
                     // Lock to MDX mode when complex expressions are present
                     if (viewMdx && (complex || vt?.includes('MDXView'))) setMode('mdx')
-                    setMdx(viewMdx || buildMDX({ cube: tab.cube, rows, columns: cols, pages, suppressZeros: false }))
+                    setMdx(viewMdx || buildMDX({ cube: tab.cube, rows, columns: cols, pages, suppressZeros: 'none' }))
                     setMdxDirty(false)
                     toast.success(`Loaded ${tab.viewName}`, { id })
                 },
@@ -1098,10 +1130,16 @@ export default function ViewEditor({ tab }) {
             return
         }
         const id = toast.loading('Executing…', { duration: 30000 })
+        console.warn('DEBUG suppressZeros mode:', sz)
+        console.warn('DEBUG MDX:', query)
         executeMDX.mutate(
             { server: tab.server, mdx: query },
             {
                 onSuccess: data => {
+                    const colLen = data?.Axes?.find(a => a.Ordinal === 0)?.Tuples?.length ?? 0
+                    const rowLen = data?.Axes?.find(a => a.Ordinal === 1)?.Tuples?.length ?? 0
+                    const cellCount = data?.Cells?.length ?? 0
+                    console.warn('DEBUG cellset axes:', { cols: colLen, rows: rowLen, cells: cellCount })
                     setResult(data)
                     setTruncated(data?.truncated ?? false)
                     if ('suppressZeros' in opts) setSuppressZeros(sz)
@@ -1546,11 +1584,16 @@ export default function ViewEditor({ tab }) {
 
                 <div className="flex-1" />
 
-                <button onClick={() => handleExecute({ suppressZeros: !suppressZeros })}
-                    title={suppressZeros ? 'Zero suppression on' : 'Zero suppression off'}
+                <button onClick={() => {
+                        const modes = ['none', 'rows', 'columns', 'all']
+                        const idx = modes.indexOf(suppressZeros)
+                        const next = modes[(idx + 1) % modes.length]
+                        handleExecute({ suppressZeros: next })
+                    }}
+                    title={suppressZeros === 'none' ? 'Suppression off' : suppressZeros === 'rows' ? 'Suppress empty rows' : suppressZeros === 'columns' ? 'Suppress empty columns' : 'Suppress empty rows & columns'}
                     className={cn('flex items-center justify-center p-1.5 rounded border border-border transition-colors',
-                        suppressZeros ? 'text-emerald-600 bg-emerald-100 dark:text-emerald-400 dark:bg-emerald-900/30 border-emerald-400/40' : 'text-muted-foreground hover:bg-muted')}>
-                    {suppressZeros ? <Zap size={12} /> : <ZapOff size={12} />}
+                        suppressZeros === 'none' ? 'text-muted-foreground hover:bg-muted' : 'text-emerald-600 bg-emerald-100 dark:text-emerald-400 dark:bg-emerald-900/30 border-emerald-400/40')}>
+                    {suppressZeros === 'none' ? <ZapOff size={12} /> : suppressZeros === 'rows' ? <Rows3 size={12} /> : suppressZeros === 'columns' ? <Columns3 size={12} /> : <Zap size={12} />}
                 </button>
 
                 <button onClick={() => setTotalsPosition(v => v === 'top' ? 'bottom' : 'top')}

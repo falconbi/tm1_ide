@@ -6,7 +6,7 @@
  * @param {Array}  config.rows - DimensionPlacement[] for rows axis
  * @param {Array}  config.columns - DimensionPlacement[] for columns axis
  * @param {Array}  config.pages - DimensionPlacement[] for slicer/WHERE
- * @param {boolean} [config.suppressZeros=true] - NON EMPTY on axes
+ * @param {'none'|'rows'|'columns'|'all'} [config.suppressZeros='rows'] - NON EMPTY on axes
  *
  * @typedef {Object} DimensionPlacement
  * @property {string} dimension - Dimension name
@@ -33,16 +33,18 @@ function nestCrossJoin(sets) {
     )
 }
 
-function axisExpression(placements, suppress) {
+function axisExpression(placements, mode) {
     if (!placements.length) return null
     const sets = placements.map(buildAxisSet)
     const joined = nestCrossJoin(sets)
-    return suppress ? `NON EMPTY ${joined}` : joined
+    return mode ? `NON EMPTY ${joined}` : joined
 }
 
-export function buildMDX({ cube, rows = [], columns = [], pages = [], bench = [], suppressZeros = true }) {
-    const colExpr = axisExpression(columns, suppressZeros) ?? '{}'
-    const rowExpr = axisExpression(rows,    suppressZeros)
+export function buildMDX({ cube, rows = [], columns = [], pages = [], bench = [], suppressZeros = 'rows' }) {
+    const supRows = suppressZeros === 'rows' || suppressZeros === 'all'
+    const supCols = suppressZeros === 'columns' || suppressZeros === 'all'
+    const colExpr = axisExpression(columns, supCols) ?? '{}'
+    const rowExpr = axisExpression(rows,    supRows)
 
     const axes = [`${colExpr} ON COLUMNS`]
     if (rowExpr) axes.push(`${rowExpr} ON ROWS`)

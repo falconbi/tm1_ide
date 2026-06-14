@@ -1367,12 +1367,14 @@ app.get('/api/view/axes', async (req, res) => {
         }))
         // Build raw native config from view definition
         const extractAxis = (placement) => {
-            const expr = placement.Subset?.Expression
+            const expr = (placement.Subset?.Expression ?? '').trim()
             const hasNamedSubset = !!(placement.SubsetName ?? (placement.Subset?.Name || null))
             return {
                 dimension: placement.DimensionName ?? placement.Name,
                 subset:    placement.SubsetName ?? (placement.Subset?.Name || null),
-                memberSet: !hasNamedSubset && /^TM1SubsetAll\(/i.test(expr ?? '') ? 'all' : null,
+                memberSet: !hasNamedSubset && /^TM1SubsetAll\(/i.test(expr) ? 'all'
+                         : !hasNamedSubset && /^TM1FILTERBYLEVEL\s*\(/i.test(expr) ? 'leaf'
+                         : null,
                 members:   !hasNamedSubset ? extractMembersFromExpression(expr) : null,
             }
         }

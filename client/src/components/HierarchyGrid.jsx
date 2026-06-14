@@ -365,9 +365,11 @@ export default function HierarchyGrid({
 
     const rowData = useMemo(() => {
         let prevTuple = null
-        return visibleRowTuples.map(tuple => {
+        const results = []
+        for (const tuple of visibleRowTuples) {
             const tupleKey = tuple.join('::')
-            const values   = data[tupleKey] ?? {}
+            const values   = data[tupleKey]
+            if (values === undefined) continue
             const row      = { __tupleKey__: tupleKey }
             tuple.forEach((nodeId, i) => {
                 const node = hierarchies[i]?.nodes[nodeId]
@@ -380,8 +382,9 @@ export default function HierarchyGrid({
             })
             prevTuple = tuple
             for (const col of visibleColumns) row[col.id] = values[col.id] ?? null
-            return row
-        })
+            results.push(row)
+        }
+        return results
     }, [visibleRowTuples, hierarchies, data, visibleColumns])
 
     // ── Row dim header (collapse/expand all) ─────────────────────────────────
