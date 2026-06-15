@@ -99,7 +99,7 @@ function initExpandedSets(hierarchies) {
 // ── Row hierarchy cell ─────────────────────────────────────────────────────────
 
 function HierarchyCell(params) {
-    const dimIdx     = params.colDef.context?.dimIdx ?? 0
+    const dimIdx     = params.colDef?.context?.dimIdx ?? 0
     const ctx        = params.context ?? params.api?.getGridOption?.('context') ?? {}
     const { rowExpandedSets, onToggleRow, hierarchies } = ctx
     const h          = hierarchies?.[dimIdx]
@@ -170,8 +170,9 @@ function SingleDimColHeader(params) {
 
 function MultiDimColHeader(params) {
     const { onToggleCol, colExpandedSets, columnHierarchies } = params.context ?? params.api?.getGridOption?.('context') ?? {}
-    const tuple   = params.colDef.context?.colTuple   ?? []
-    const changed = params.colDef.context?.colChanged  ?? tuple.map(() => true)
+    const colDef  = params.column?.getColDef()
+    const tuple   = colDef?.context?.colTuple   ?? []
+    const changed = colDef?.context?.colChanged  ?? tuple.map(() => true)
 
     return (
         <div className="flex flex-col w-full h-full">
@@ -495,7 +496,7 @@ export default function HierarchyGrid({
         // from seeing new columnDefs and resetting user-resized widths
         const prev = prevColDefs.current
         if (prev && prev.length === newDefs.length &&
-            prev.every((c, i) => c.field === newDefs[i].field && c.headerName === newDefs[i].headerName)) {
+            prev.every((c, i) => c.field === newDefs[i].field && c.headerName === newDefs[i].headerName && c.headerComponent === newDefs[i].headerComponent)) {
             return prev
         }
         prevColDefs.current = newDefs

@@ -1,0 +1,92 @@
+TM1 TI Variable Naming & Type Convention
+1. Process Parameters (Input Layer)
+Prefix: p
+Type: Always string (TM1 TI parameter limitation)
+Rule: Never used directly in logic except for initial assignment and validation
+Purpose: Raw external input (user, chore, feeder, interface)
+
+Example:
+
+pAmount
+pPeriod
+pProduct
+2. Working Variables (String Layer)
+Prefix: v
+Type: String
+Rule: Used for intermediate values, copied from parameters or derived string operations
+Purpose: Internal working state before type conversion or final transformation
+
+Example:
+
+vAmount = pAmount
+vPeriod = pPeriod
+3. Numeric Variables (Numeric Domain)
+Prefix: n
+Type: Numeric
+Rule: Created once using STRTONUM() and used for all numeric logic
+Purpose: Any arithmetic, comparison, or cube numeric write operations
+
+Example:
+
+nAmount = STRTONUM(vAmount)
+nRate = STRTONUM(pRate)
+
+Usage Rule:
+
+Never call STRTONUM() repeatedly on the same value
+Always convert once in Prolog after validation
+4. String Variables (Derived / Transformed Strings)
+Prefix: s
+Type: String
+Rule: Only used when a meaningful transformation of a string is created
+Purpose: Cleaned, formatted, or derived string values (not routine copies)
+
+Example:
+
+sPeriodKey = TRIM(vPeriod)
+sCustomerCode = UPPER(vCustomer)
+Core Processing Rules
+1. Input Handling
+All parameters (pXxx) are treated as raw strings
+Immediately copied into vXxx variables if used beyond validation
+2. Validation (Prolog)
+Validate all required inputs before conversion
+Fail fast using ProcessError;
+
+Example:
+
+IF(pAmount @= '');
+  LogOutput('ERROR', 'Amount is missing');
+  ProcessError;
+ENDIF;
+3. Type Conversion Rule
+Convert to numeric once only
+Conversion happens immediately after validation
+nAmount = STRTONUM(vAmount);
+4. Logic Rule
+All numeric logic uses nXxx
+No repeated STRTONUM() calls in Data or loops
+5. Naming Discipline Principle
+
+Variable names must always indicate type and intent:
+
+p = input boundary
+v = working string state
+n = numeric domain
+s = derived string transformation
+Summary Principle
+
+“All inputs enter as strings, are validated once, converted once if numeric, and then used in a strictly typed internal model.”
+
+How it fits into your existing convention
+
+Your current model:
+
+pXxx → parameters (input)
+vXxx → working string
+nXxx → numeric
+sXxx → derived string
+
+Add:
+
+cXxx → constants (never change after declaration

@@ -8,7 +8,7 @@ import { formatRules } from '@/lib/formatters/rules-formatter.js'
 import { tokenize } from '@/lib/formatters/tokenizer.js'
 import { loadColourSettings, saveColourSettings, resetColourSettings, exportColourSettings, importColourSettings, DEFAULT_COLOURS, COLOUR_THEMES, applyColourTheme } from '@/lib/formatters/colours.js'
 
-// ── Sample code for live preview ──────────────────────────────────────────────
+// ── Sample code for preview ───────────────────────────────────────────────────
 
 const SAMPLE_TI = `#****Begin: Generated Statements***
 #****End: Generated Statements****
@@ -43,14 +43,13 @@ While (Counter >= 0);
   Counter = Counter - 1;
 End;`
 
-const SAMPLE_RULES = `#Region Revenue
-['Gross Revenue'] = N: DB('Sales', !organization, !Channel, !product, !Month, !Year, 'Gross Revenue', !Version);
-['Indirect COGS'] = N: IF(DB('Supply Chain', !organization, !Channel, !product, !Month, !Year, 'Units Sold', !Version) <> 0, DB('Supply Chain', !organization, !Channel, !product, !Month, !Year, 'Indirect Costs', !Version), CONTINUE);
-['Net Revenue'] = N: ['Gross Revenue'] - ['Indirect COGS'];
+const SAMPLE_RULES = `#Region Calculations
+['Sales'] = N: DB('Sales Cube', !Region, !Product, !Period, 'Actual', 'USD', 'Net');
+['Margin'] = N: IF(DB('Sales Cube', !Region, !Product, !Period, 'Actual', 'USD') > 0, DB('Cost Cube', !Region, !Product, !Period, 'Plan', 'USD'), CONTINUE);
 #EndRegion
 
 FEEDERS;
-['Units Sold'] => ['Net Revenue'];`
+['Sales'] => DB('Sales Cube', !Region, !Product, !Period, 'Actual', 'USD', 'Net');`
 
 // ── UI Controls ─────────────────────────────────────────────────────────────
 
@@ -142,25 +141,74 @@ function Section({ label, open, onToggle, children }) {
 
 // ── Live Preview ─────────────────────────────────────────────────────────────
 
-function LivePreview({ settings, colourSettings, namingMap, sampleCode, skipFormat }) {
-  const formatted = useMemo(() => {
-    if (skipFormat) return sampleCode
-    try {
-      return formatRules(sampleCode, settings.rules, namingMap)
-    } catch {
-      return 'Error formatting preview'
-    }
-  }, [sampleCode, skipFormat, settings.rules, namingMap])
+const LIGHT_COLOURS = {
+  string: '#b91c1c', keyword: '#1d4ed8', comment: '#6b7280',
+  identifier: '#111827', operator: '#7c3aed', number: '#b45309',
+  dim_var: '#047857', directive: '#6b7280', area_prefix: '#7c3aed',
+  default: '#111827',
+}
 
+function CodePanel({ formatted, colourSettings, label, dark }) {
   const lines = useMemo(() => formatted.split('\n').map(line => tokenize(line)), [formatted])
+  const darkColours = colourSettings?.rules ?? {}
+  const getColour = type => dark
+    ? (darkColours[type] ?? darkColours.default ?? '#f8f8f2')
+    : (LIGHT_COLOURS[type] ?? LIGHT_COLOURS.default)
+  const bg = dark ? (colourSettings?.background ?? '#1e1e1e') : '#f5f5f5'
+  return (
+    <div className="flex flex-col flex-1 min-h-0">
+      <div className="text-[10px] uppercase tracking-wider text-muted-foreground/60 font-semibold mb-1">{label}</div>
+      <div className="flex-1 overflow-auto rounded border border-border p-2 font-mono text-[10px]" style={{ background: bg }}>
+        {lines.map((lineTokens, i) => (
+          <div key={i} className="whitespace-pre leading-5">
+            {lineTokens.length === 0
+              ? ' '
+              : lineTokens.map((tok, j) => (
+                  <span key={j} style={tok.type !== 'whitespace' ? { color: getColour(tok.type) } : undefined}>
+                    {tok.value}
+                  </span>
+                ))
+            }
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
 
-  const colours = colourSettings?.rules ?? {}
-  const getColour = (type) => colours[type] ?? colours.default ?? '#f8f8f2'
+function RulesPreview({ settings, colourSettings, namingMap, dark }) {
+  const verboseFormatted = useMemo(() => {
+    try { return formatRules(SAMPLE_RULES, { ...settings.rules, expressionFormatter: 'tm1-verbose' }, namingMap) }
+    catch { return 'Error formatting preview' }
+  }, [settings.rules, namingMap])
+
+  const structuredFormatted = useMemo(() => {
+    try { return formatRules(SAMPLE_RULES, { ...settings.rules, expressionFormatter: 'tm1-structured' }, namingMap) }
+    catch { return 'Error formatting preview' }
+  }, [settings.rules, namingMap])
 
   return (
     <div className="flex flex-col h-full">
-      <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">Live Preview</div>
-      <div className="flex-1 overflow-auto rounded border border-border p-2 font-mono text-[10px]" style={{ background: colourSettings?.background ?? '#1e1e1e' }}>
+      <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-2">Preview</div>
+      <div className="flex flex-col flex-1 min-h-0 gap-2">
+        <CodePanel formatted={verboseFormatted} colourSettings={colourSettings} label="TM1 Verbose" dark={dark} />
+        <CodePanel formatted={structuredFormatted} colourSettings={colourSettings} label="TM1 Structured" dark={dark} />
+      </div>
+    </div>
+  )
+}
+
+function TIPreview({ colourSettings, sampleCode, dark }) {
+  const lines = useMemo(() => sampleCode.split('\n').map(line => tokenize(line)), [sampleCode])
+  const darkColours = colourSettings?.rules ?? {}
+  const getColour = type => dark
+    ? (darkColours[type] ?? darkColours.default ?? '#f8f8f2')
+    : (LIGHT_COLOURS[type] ?? LIGHT_COLOURS.default)
+  const bg = dark ? (colourSettings?.background ?? '#1e1e1e') : '#f5f5f5'
+  return (
+    <div className="flex flex-col h-full">
+      <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">Preview</div>
+      <div className="flex-1 overflow-auto rounded border border-border p-2 font-mono text-[10px]" style={{ background: bg }}>
         {lines.map((lineTokens, i) => (
           <div key={i} className="whitespace-pre leading-5">
             {lineTokens.length === 0
@@ -183,7 +231,7 @@ function LivePreview({ settings, colourSettings, namingMap, sampleCode, skipForm
 export default function FormatSettings({ open, onClose }) {
   if (!open) return null
 
-  const { bumpThemeVersion } = useStore()
+  const { bumpThemeVersion, dark } = useStore()
   const [settings, setSettings]           = useState(() => loadSettings())
   const [tab, setTab]                     = useState('rules')
   const [colourSettings, setColourSettings] = useState(() => loadColourSettings())
@@ -319,15 +367,12 @@ export default function FormatSettings({ open, onClose }) {
             </div>
           </div>
 
-          {/* Right: Live Preview */}
+          {/* Right: Preview */}
           <div className="flex-1 p-3">
-            <LivePreview
-              settings={settings}
-              colourSettings={colourSettings}
-              namingMap={namingData.map}
-              sampleCode={tab === 'ti' ? SAMPLE_TI : SAMPLE_RULES}
-              skipFormat={tab === 'ti'}
-            />
+            {tab === 'rules'
+              ? <RulesPreview settings={settings} colourSettings={colourSettings} namingMap={namingData.map} dark={dark} />
+              : <TIPreview sampleCode={SAMPLE_TI} colourSettings={colourSettings} dark={dark} />
+            }
           </div>
         </div>
 

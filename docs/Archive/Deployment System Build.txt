@@ -1,0 +1,118 @@
+Deployment System — Build Recap
+Core concept
+Dev server IS the model during development. YAML is only crystallised at deployment time. The change log is the backbone that makes this work.
+
+1. Change Log (SQLite)
+Every IDE save already goes through server routes — intercept those and write a structured entry.
+
+
+{
+  "timestamp": "...",
+  "user": "jdlove",
+  "server": "dev",
+  "session": "apportionment-v1",
+  "action": "RULES_SAVED",
+  "object": { "type": "rules", "cube": "APR_Allocation" },
+  "before": "...",
+  "after": "..."
+}
+Storage: SQLite alongside server.js
+Before/after state captured at every save
+Sessions scope the entries into named units of work
+2. Session Management
+Named work context a developer starts before beginning a piece of work.
+
+
+tm1deploy session start "apportionment-v1"
+tm1deploy session end
+tm1deploy session list
+Without sessions the log is noise. With sessions each unit of work has a name, a scope, and a clear boundary.
+
+3. Module Tagging (tm1tags.yaml)
+Flat file mapping object names to modules. Objects not listed = shared (core).
+
+
+APR_CostPool: apportionment
+APR_Allocation: apportionment
+FIN_Budget: finance
+Handles cases where naming conventions aren't clean or a shared object was modified. Editable via an IDE panel.
+
+4. Baseline
+Separate JSON snapshot of Prod state. NOT in git. Lives in .tm1baseline/snapshot.json.
+
+
+tm1deploy seed --server prod
+git tag baseline-from-prod-2026-05-24
+Refreshed at project start. Used only for comparison — not version controlled.
+
+5. Targeted Diff
+Log defines scope → diff verifies only those objects against the server.
+
+Three outcomes per object:
+
+Match — log and server agree → straight into package
+Drift — server has more than log recorded → prompt user to include or exclude
+Missing — log says it happened, server disagrees → must resolve before packaging
+
+tm1deploy diff --session apportionment-v1 --server dev
+6. Package Generator
+Produces tm1package.yaml + all YAML object files from the verified diff.
+
+
+tm1deploy package --session apportionment-v1
+Output structure:
+
+
+packages/apportionment/
+  tm1package.yaml          ← owns + modifies manifest
+  dimensions/
+  cubes/
+  processes/
+  modifications/           ← changes to shared objects (attributes, subsets, views)
+Control cube data (}ElementAttributes_*) captured per column introduced by the session — not the full cube.
+
+7. Pre-Deploy Risk Report
+Compares package against target server before any deployment.
+
+
+BLOCKED  — cube dimension list changed, data loss risk — manual action required
+RISKY    — attribute values differ, element list changed — requires --include-risky
+SAFE     — new objects, no conflicts — deploys automatically
+
+tm1deploy check --package apportionment --target test
+8. Deployer
+Applies package to target server in fixed order:
+
+
+Dimensions → Cubes → Rules → Attribute values → Subsets → Views → TI Processes → Chores
+
+tm1deploy apply --package apportionment --target test
+tm1deploy apply --package apportionment --target test --include-risky
+Git tagged after each successful deployment:
+
+
+git tag test-deployed-2026-05-25
+9. Dev-Time Rollback
+Restore individual objects from the change log before-state — no git needed, surgical.
+
+
+tm1deploy rollback --object APR_Allocation --type rules --to "2026-05-24T09:00"
+10. tm1deploy CLI
+Node.js — same runtime as the IDE server.
+
+
+tools/tm1deploy/
+  bin/tm1deploy.js
+  src/
+    client.js       ← TM1 REST wrapper
+    log.js          ← SQLite change log read/write
+    diff.js         ← targeted diff
+    packager.js     ← generate YAML from diff
+    deployer.js     ← apply package to server
+    report.js       ← pre-deploy risk report
+    snapshot.js     ← baseline seeding
+  config/servers.yaml
+Same diff/report logic exposed as IDE server routes — visible inline in the browser without leaving the IDE.
+
+What Git holds
+Only confirmed deployment artefacts — the package YAML files. Tagged at each environment promotion. Not WIP, not sessions, not the baseline.

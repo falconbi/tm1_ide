@@ -1013,7 +1013,7 @@ function registerTM1Completions(monaco, getServer) {
         [/\b(SKIPCHECK|FEEDSTRINGS|FEEDERS|FEEDER|N:|C:|S:)\b/i, 'keyword'],
         [/\b(DB|DBS|ATTRS?|ATTRN|ATTRL|STET|CONTINUE|IF|ELSEIF|ELSE|ENDIF)\b/i, 'type'],
         [/![a-zA-Z_][\w ]*/, 'variable'],
-        [/\[([^\]]+)\]/, 'variable'],
+        [/\[([^\]]+)\]/, 'string'],
         [/[0-9]+(\.[0-9]+)?/, 'number'],
         [/[=>|,;()+\-*/]/, 'operator'],
       ]

@@ -25,6 +25,7 @@ import TransactionLogPanel from '@/components/TransactionLogPanel'
 import ObjectHistoryPanel from '@/components/ObjectHistoryPanel'
 import DiffTab from '@/components/DiffTab'
 import DeployPanel from '@/components/DeployPanel'
+import SessionReportTab from '@/components/SessionReportTab'
 
 // ── Lineage panel ─────────────────────────────────────────────────────────────
 
@@ -756,6 +757,7 @@ export default function EditorPane({ groupId }) {
         {tab.type === 'cubeeditor'      && <CubeEditor         key={tab.id} tab={tab} />}
         {tab.type === 'diff'            && <DiffTab            key={tab.id} tab={tab} />}
         {tab.type === 'deploy'          && <DeployPanel        key={tab.id} tab={tab} />}
+        {tab.type === 'session-report'  && <SessionReportTab   key={tab.id} tab={tab} />}
         {tab.type === 'transactionlog'  && (
           <div key={tab.id} className="flex h-full min-h-0 bg-sidebar">
             <TransactionLogPanel

@@ -222,39 +222,121 @@ The IDE includes a built-in CI/CD pipeline for promoting changes from Dev to Pro
 
 ### Concept
 
-Every save in the IDE is logged to a **Change Set** (named work session). When you're ready to deploy, the pipeline diffs your changes against a baseline snapshot of Prod, packages the changed objects, runs a pre-deploy risk analysis, then pushes to the target server.
+Every save in the IDE is logged to a **Change Set** (named work session). When you're ready to deploy, the pipeline compares your changes against a baseline snapshot of **Prod** (the target), not Dev. This ensures that only objects which have actually changed relative to Prod are packaged — and that nothing is deployed if Prod has drifted since the baseline was taken.
 
-### Step 1 — Seed the Baseline (once per server)
+### Flow Overview
 
-Click the **HardDriveDownload** icon in the header toolbar → select your Prod server → **Seed now**.
+```
+           ①                           ②                        ③
+  ┌─────────────────┐         ┌──────────────────┐       ┌─────────────────┐
+  │  Seed baseline   │         │  Align Dev        │       │  Work in Dev     │
+  │  from Prod       │────────→│  to match Prod    │──────→│  via change set  │
+  │  (snapshot)      │         │  (provision)      │       │  (IDE tracks)    │
+  └─────────────────┘         └──────────────────┘       └────────┬────────┘
+                                                                  │
+                                                                  ▼
+           ④                           ⑤                           ⑥
+  ┌─────────────────┐         ┌──────────────────┐       ┌─────────────────┐
+  │  Diff Dev vs     │         │  Drift re-check   │       │  Risk + Deploy   │
+  │  Prod baseline   │────────→│  Prod hasn't      │──────→│  to Prod         │
+  │  (package)       │         │  changed?         │       │                  │
+  └─────────────────┘         └──────────────────┘       └─────────────────┘
+```
 
-This snapshots Prod's entire state into `.tm1baseline/snapshot.json`. It is the reference point all future diffs compare against. Re-seed after every promotion to Prod to keep it current.
+### Step ① — Provision Dev from Prod
 
-### Step 2 — Work in a Change Set
+Before starting work, align Dev to match Prod's current state:
 
-Click the **Clock** icon in the header → name the change set (e.g. `budget-fix`) → **Start**.
+```powershell
+.\tools\provision-tm1-server.ps1 -TemplateCfg "\\prod-server\tm1s.cfg"
+```
 
-Everything saved in the IDE while the change set is open gets logged. Green indicator dots appear in the Explorer sidebar on every changed object. Close the change set when your work is done.
+This creates a Dev instance with the same config and provisions all TM1 objects
+(cubes, dimensions, rules, processes, subsets, views). **This script does not
+exist yet — it needs to be built.** Currently Dev is set up manually or from
+a template config.
 
-### Step 3 — Deploy
+### Step ② — Seed the Baseline from Prod
 
-Open the **Change Sets** panel (History icon, header toolbar) → hover the change set row → click the green **Rocket**.
+Seed by running the deploy CLI against your Prod server:
 
-The Deploy Panel opens and walks through four steps:
+```bash
+node tools/tm1deploy/bin/tm1deploy.js seed Production
+```
 
-| Step | What it does |
-|------|--------------|
-| **Diff** | Compares logged changes against the baseline and the live Dev server. Each object gets an outcome: `MATCH` (changed vs baseline, server agrees), `NEW` (not in baseline), `DRIFT` (server diverged since last save), `MISSING` (not on server), `UNCHANGED` |
-| **Package** | Fetches `MATCH` + `NEW` objects from Dev and writes them to a `packages/` folder with a manifest. Drift and missing objects are skipped |
-| **Risk** | Select the target server. Runs automated checks: rules syntax errors, broken dependencies, chore conflicts (running or active chores containing changed processes), structural impact (elements removed). Returns `BLOCKER` / `WARNING` / `INFO` — blockers prevent deploy |
-| **Deploy** | Confirm and push. Objects are written in dependency order: attributes → dimensions → cubes → rules → subsets → views → processes |
+This snapshots Prod's entire object state into `.tm1baseline/snapshot.json`.
+Every diff from this point forward compares against this reference.
+
+Best practice: re-seed after every successful deployment to Prod so the
+baseline always reflects what's live.
+
+### Step ③ — Work in a Change Set
+
+Click the **Clock** icon in the header → name the change set → **Start**.
+
+Everything saved in the IDE while the change set is active gets logged.
+Green indicator dots appear in the Explorer sidebar on every changed object.
+Close the change set when your work is done.
+
+Each developer with their own PAW login gets their **own active change set**
+per server — no collision in the audit trail.
+
+### Step ④ — Diff & Package
+
+Open the **Change Sets** panel → hover the change set row → click the green
+**Rocket**. The Deploy Panel opens. Step 1 (Diff) compares your session's
+logged changes against the Prod baseline:
+
+| Outcome | Meaning |
+|---------|---------|
+| `MATCH` | Changed in Dev, verified against Prod baseline — ready to deploy |
+| `NEW` | Object exists on Dev but not in Prod baseline (e.g. new cube) |
+| `DRIFT` | Dev's current state differs from the last IDE save — re-save or investigate |
+| `UNCHANGED` | Object in the session is the same as the Prod baseline — nothing to deploy |
+| `MISSING` | Object in baseline but not found on Dev — possibly deleted |
+| `ERROR` | Fetch failed |
+
+Step 2 (Package) fetches `MATCH` + `NEW` objects from Dev and writes them to
+a `packages/` folder with a manifest. Drift and missing objects are skipped.
+
+### Step ⑤ — Drift Re-check (not yet implemented)
+
+Before the package can proceed to deployment, a **drift re-check** runs against
+the Target server (Prod). For each object in the package, Prod's current state
+is fetched and compared against the baseline snapshot:
+
+- **All match** → Prod hasn't changed since seeding → proceed to risk/deploy
+- **Any differ** → Prod has drifted. Those objects are flagged as
+  `TARGET_DRIFT` and **block deployment**. The developer must:
+  1. Re-seed the baseline from Prod
+  2. Re-align Dev to match the new baseline
+  3. Re-apply their changes on top
+
+This prevents silent overwrites of Prod changes.
+
+> **Drift check between any environment pair.** The same drift comparison can
+> validate that Test is still aligned to the Prod baseline before running
+> user acceptance testing. If Test has drifted from Prod, passing tests there
+> doesn't guarantee Prod behaves the same way. A drift check between Test
+> and the baseline tells you whether Test is a faithful copy of Prod.
+
+### Step ⑥ — Risk & Deploy
+
+Step 3 (Risk): Select the target server (Prod). Automated checks run:
+rules syntax errors → broken dependencies → chore conflicts (running chores
+containing changed processes) → structural impact (elements removed).
+
+Returns `BLOCKER` / `WARNING` / `INFO`. Blockers prevent deployment.
+
+Step 4 (Deploy): Confirm and push. Objects are written in dependency order:
+attributes → dimensions → cubes → rules → subsets → views → processes.
 
 ### CLI (optional)
 
 The same pipeline is available as a CLI for scripting and CI use:
 
 ```bash
-node tools/tm1deploy/bin/tm1deploy.js seed <server>
+node tools/tm1deploy/bin/tm1deploy.js seed <prod-server>
 node tools/tm1deploy/bin/tm1deploy.js diff <session-name>
 node tools/tm1deploy/bin/tm1deploy.js package <session-name>
 node tools/tm1deploy/bin/tm1deploy.js risk <package-dir> <target-server>

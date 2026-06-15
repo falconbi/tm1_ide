@@ -6,12 +6,13 @@ const db = new Database(path.join(__dirname, '..', 'change_log.db'))
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS sessions (
-    id         TEXT PRIMARY KEY,
-    name       TEXT NOT NULL,
-    server     TEXT NOT NULL,
-    user       TEXT,
-    started_at TEXT NOT NULL,
-    closed_at  TEXT
+    id          TEXT PRIMARY KEY,
+    name        TEXT NOT NULL,
+    server      TEXT NOT NULL,
+    user        TEXT,
+    started_at  TEXT NOT NULL,
+    closed_at   TEXT,
+    description TEXT
   );
 
   CREATE TABLE IF NOT EXISTS log_entries (
@@ -65,6 +66,11 @@ function resumeSession(id) {
     return db.prepare(`SELECT * FROM sessions WHERE id = ?`).get(id)
 }
 
+function updateSessionDescription(id, description) {
+    db.prepare(`UPDATE sessions SET description = ? WHERE id = ?`).run(description ?? null, id)
+    return db.prepare(`SELECT * FROM sessions WHERE id = ?`).get(id)
+}
+
 function getActiveSession(server) {
     return db.prepare(`SELECT * FROM sessions WHERE server = ? AND closed_at IS NULL ORDER BY started_at DESC LIMIT 1`).get(server) ?? null
 }
@@ -93,7 +99,24 @@ function getAllSessions(limit = 200) {
 }
 
 function getSessionLog(sessionId) {
-    return db.prepare(`SELECT * FROM log_entries WHERE session_id = ? ORDER BY timestamp ASC`).all(sessionId).map(parseEntry)
+    return db.prepare(`
+        SELECT * FROM log_entries
+        WHERE session_id = ?
+        AND id IN (
+            SELECT MAX(id) FROM log_entries
+            WHERE session_id = ?
+            GROUP BY object_type, object_name, action
+        )
+        ORDER BY timestamp ASC
+    `).all(sessionId, sessionId).map(parseEntry)
+}
+
+function getSessionLogVerbose(sessionId) {
+    return db.prepare(`
+        SELECT * FROM log_entries
+        WHERE session_id = ?
+        ORDER BY timestamp ASC
+    `).all(sessionId).map(parseEntry)
 }
 
 function getRecentLog(server, limit = 100) {
@@ -119,8 +142,27 @@ function getEntryById(id) {
 
 // ── Log writer ────────────────────────────────────────────────────────────────
 
+// Save actions within the same session collapse into one entry per object:
+// before_state stays as the original seed; after_state is always the latest.
+const COLLAPSIBLE_ACTIONS = new Set(['RULES_SAVED', 'PROCESS_SAVED', 'SUBSET_SAVED', 'VIEW_SAVED'])
+
 function writeLog({ server, action, objectType, objectName, detail, beforeState, afterState }) {
     const session = getActiveSession(server)
+
+    if (session && COLLAPSIBLE_ACTIONS.has(action)) {
+        const existing = db.prepare(`
+            SELECT id FROM log_entries
+            WHERE session_id = ? AND object_type = ? AND object_name = ? AND action = ?
+            ORDER BY timestamp DESC LIMIT 1
+        `).get(session.id, objectType, objectName, action)
+
+        if (existing) {
+            db.prepare(`UPDATE log_entries SET after_state = ?, timestamp = ? WHERE id = ?`)
+              .run(afterState ? JSON.stringify(afterState) : null, new Date().toISOString(), existing.id)
+            return { hasSession: true }
+        }
+    }
+
     db.prepare(`
         INSERT INTO log_entries (session_id, timestamp, server, action, object_type, object_name, detail, before_state, after_state)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -138,4 +180,7 @@ function writeLog({ server, action, objectType, objectName, detail, beforeState,
     return { hasSession: !!session }
 }
 
-module.exports = { startSession, closeSession, resumeSession, getActiveSession, getSessions, getAllSessions, getSessionLog, getRecentLog, getObjectHistory, getEntryById, writeLog }
+// SQLite doesn't add columns to existing tables via CREATE TABLE — migrate if needed
+try { db.exec(`ALTER TABLE sessions ADD COLUMN description TEXT`) } catch {}
+
+module.exports = { startSession, closeSession, resumeSession, updateSessionDescription, getActiveSession, getSessions, getAllSessions, getSessionLog, getSessionLogVerbose, getRecentLog, getObjectHistory, getEntryById, writeLog }

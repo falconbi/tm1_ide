@@ -1,8 +1,34 @@
-import { useState } from 'react'
-import { X, ChevronRight, ChevronDown, Clock, Box, Layers, Cog, FileText, Table2, List, Tag, Loader2, Diff, RotateCcw, Rocket } from 'lucide-react'
-import { useWorkSessions, useWorkSessionLog, useRollbackEntry } from '@/hooks/useApi'
+import { useState, useRef, useEffect } from 'react'
+import { X, ChevronRight, ChevronDown, Clock, Box, Layers, Cog, FileText, Table2, List, Tag, Loader2, Diff, Rocket, ScrollText, Pencil } from 'lucide-react'
+import { useWorkSessions, useWorkSessionLog, useUpdateSessionDescription } from '@/hooks/useApi'
 import { useStore } from '@/store'
 import { cn } from '@/lib/utils'
+
+export function autoDescription(action, objectName, detail) {
+  switch (action) {
+    case 'RULES_SAVED':        return `Rules updated for cube '${objectName}'`
+    case 'PROCESS_SAVED':      return `Process '${objectName}' modified`
+    case 'PROCESS_CREATED':    return `Process '${objectName}' created`
+    case 'PROCESS_DELETED':    return `Process '${objectName}' deleted`
+    case 'DIMENSION_CREATED':  return `Dimension '${objectName}' created`
+    case 'DIMENSION_DELETED':  return `Dimension '${objectName}' deleted`
+    case 'CUBE_CREATED':       return `Cube '${objectName}' created`
+    case 'CUBE_DELETED':       return `Cube '${objectName}' deleted`
+    case 'SUBSET_SAVED':       return `Subset '${objectName}' saved${detail ? ` in '${detail}'` : ''}`
+    case 'SUBSET_DELETED':     return `Subset '${objectName}' deleted${detail ? ` from '${detail}'` : ''}`
+    case 'VIEW_SAVED':         return `View '${objectName}' saved${detail ? ` in cube '${detail}'` : ''}`
+    case 'VIEW_DELETED':       return `View '${objectName}' deleted${detail ? ` from cube '${detail}'` : ''}`
+    case 'ELEMENT_ADDED':      return `Element '${objectName}' added${detail ? ` to '${detail}'` : ''}`
+    case 'ELEMENT_DELETED':    return `Element '${objectName}' removed${detail ? ` from '${detail}'` : ''}`
+    case 'ELEMENT_RENAMED':    return `Element renamed${detail ? ` in '${detail}'` : ''}`
+    case 'ATTRIBUTE_CREATED':  return `Attribute '${objectName}' added${detail ? ` to '${detail}'` : ''}`
+    case 'ATTRIBUTE_DELETED':  return `Attribute '${objectName}' removed${detail ? ` from '${detail}'` : ''}`
+    case 'HIERARCHY_CREATED':  return `Hierarchy '${objectName}' created`
+    case 'HIERARCHY_DELETED':  return `Hierarchy '${objectName}' deleted`
+    case 'EDGE_REMOVED':       return `Parent relationship removed${detail ? ` in '${detail}'` : ''}`
+    default:                   return `${action.replace(/_/g, ' ').toLowerCase()} — ${objectName}`
+  }
+}
 
 const ACTION_META = {
   RULES_SAVED:        { label: 'Rules saved',        icon: FileText, colour: 'text-amber-400' },
@@ -38,10 +64,10 @@ function fmtDate(ts) {
   try { return new Date(ts).toLocaleDateString([], { month: 'short', day: 'numeric' }) } catch { return ts }
 }
 
-function LogEntry({ entry, server, openTab, onRollback, rollingBack }) {
+function LogEntry({ entry, server, openTab }) {
   const meta = ACTION_META[entry.action] ?? { label: entry.action, icon: FileText, colour: 'text-muted-foreground' }
   const Icon = meta.icon
-  const hasDiff     = !!(entry.before_state && entry.after_state)
+  const hasDiff = !!(entry.before_state && entry.after_state)
 
   const openDiff = () => openTab({
     id:         `diff:log:${entry.id}`,
@@ -52,7 +78,6 @@ function LogEntry({ entry, server, openTab, onRollback, rollingBack }) {
     before:     entry.before_state,
     after:      entry.after_state,
   })
-  const hasRollback = !!entry.before_state && entry.action !== 'ROLLED_BACK'
 
   const handleClick = () => {
     if (!openTab) return
@@ -91,22 +116,24 @@ function LogEntry({ entry, server, openTab, onRollback, rollingBack }) {
 }
 
 function SessionRow({ session, server, openTab }) {
-  const [open, setOpen] = useState(false)
-  const [rollbackId, setRollbackId] = useState(null)
+  const [open, setOpen]           = useState(false)
+  const [editingDesc, setEditingDesc] = useState(false)
+  const [descValue, setDescValue]     = useState(session.description ?? '')
+  const descRef = useRef(null)
+  const updateDesc = useUpdateSessionDescription()
 
-  const { data: entries = [], isFetching, refetch } = useWorkSessionLog(open ? session.id : null)
-  const rollback = useRollbackEntry()
+  useEffect(() => {
+    if (!editingDesc) setDescValue(session.description ?? '')
+  }, [session.description])
+
+  const { data: entries = [], isFetching } = useWorkSessionLog(open ? session.id : null)
   const isActive = !session.closed_at
 
-  const handleRollback = async (entry) => {
-    if (!confirm(`Restore "${entry.object_name}" to its state from ${new Date(entry.timestamp).toLocaleString()}?`)) return
-    setRollbackId(entry.id)
-    try {
-      await rollback.mutateAsync({ entryId: entry.id, server })
-      refetch()
-    } finally {
-      setRollbackId(null)
-    }
+  useEffect(() => { if (editingDesc) descRef.current?.focus() }, [editingDesc])
+
+  const saveDesc = () => {
+    setEditingDesc(false)
+    updateDesc.mutate({ id: session.id, description: descValue.trim() || null, server })
   }
 
   return (
@@ -128,18 +155,54 @@ function SessionRow({ session, server, openTab }) {
               <div className="text-[10px] text-muted-foreground/60">
                 {fmtDate(session.started_at)} · {session.entry_count} change{session.entry_count !== 1 ? 's' : ''}
               </div>
+              {!editingDesc && (descValue
+                ? <div className="text-[10px] text-muted-foreground/80 truncate mt-0.5 italic">{descValue}</div>
+                : <div className="text-[10px] text-muted-foreground/30 truncate mt-0.5 italic">Add a note…</div>
+              )}
             </div>
           </button>
+          <button
+            onClick={e => { e.stopPropagation(); setEditingDesc(v => !v) }}
+            title="Add / edit note"
+            className="opacity-0 group-hover:opacity-100 transition-opacity p-2 rounded hover:bg-muted text-muted-foreground hover:text-foreground shrink-0"
+          >
+            <Pencil size={10} />
+          </button>
           {(session.entry_count ?? 0) > 0 && (
-            <button
-              onClick={() => openTab({ id: `deploy:${server}:${session.id}`, type: 'deploy', label: `Deploy: ${session.name}`, server, session })}
-              title="Deploy this session"
-              className="opacity-0 group-hover:opacity-100 transition-opacity p-2 mr-1 rounded hover:bg-muted text-emerald-500 hover:text-emerald-400"
-            >
-              <Rocket size={11} />
-            </button>
+            <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center mr-1">
+              <button
+                onClick={() => openTab({ id: `session-report:${session.id}`, type: 'session-report', label: `Report: ${session.name}`, server, session })}
+                title="View change report"
+                className="p-2 rounded hover:bg-muted text-muted-foreground hover:text-foreground"
+              >
+                <ScrollText size={11} />
+              </button>
+              <button
+                onClick={() => openTab({ id: `deploy:${server}:${session.id}`, type: 'deploy', label: `Deploy: ${session.name}`, server, session })}
+                title="Deploy this session"
+                className="p-2 rounded hover:bg-muted text-emerald-500 hover:text-emerald-400"
+              >
+                <Rocket size={11} />
+              </button>
+            </div>
           )}
         </div>
+
+        {editingDesc && (
+          <div className="px-3 pb-2">
+            <textarea
+              ref={descRef}
+              value={descValue}
+              onChange={e => setDescValue(e.target.value)}
+              onBlur={saveDesc}
+              onKeyDown={e => { if (e.key === 'Escape') { setEditingDesc(false); setDescValue(session.description ?? '') } }}
+              placeholder="Add a note about this change set…"
+              rows={3}
+              className="w-full text-[10px] bg-background border border-border rounded px-2 py-1 outline-none focus:border-primary text-foreground placeholder:text-muted-foreground/40 resize-none"
+            />
+            <div className="text-[9px] text-muted-foreground/40 mt-0.5">Blur or click away to save · Esc to cancel</div>
+          </div>
+        )}
 
         {open && (
           <div className="bg-muted/10">
@@ -157,8 +220,6 @@ function SessionRow({ session, server, openTab }) {
                 entry={e}
                 server={server}
                 openTab={openTab}
-                onRollback={handleRollback}
-                rollingBack={rollbackId === e.id}
               />
             ))}
           </div>
@@ -188,7 +249,7 @@ export default function ChangeLogPanel({ server, onClose, direction = 'up' }) {
             {isFetching && <Loader2 size={10} className="animate-spin text-muted-foreground" />}
           </div>
           <div className="flex items-center gap-1 text-[10px] text-muted-foreground/60 mr-2">
-            <Diff size={9} /> diff &nbsp; <RotateCcw size={9} /> restore &nbsp; <Rocket size={9} /> deploy
+            <Diff size={9} /> diff &nbsp; <Rocket size={9} /> deploy
           </div>
           <button onClick={onClose} className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors">
             <X size={12} />

@@ -1,6 +1,6 @@
 'use strict'
 
-require('dotenv').config()
+require('dotenv').config({ path: require('path').join(__dirname, '.env') })
 
 const express   = require('express')
 const path      = require('path')
@@ -69,6 +69,16 @@ app.get('/api/sessions', (req, res) => {
 
 app.get('/api/sessions/:id/log', (req, res) => {
     try { res.json(cl.getSessionLog(req.params.id)) }
+    catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.get('/api/sessions/:id/log/verbose', (req, res) => {
+    try { res.json(cl.getSessionLogVerbose(req.params.id)) }
+    catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.patch('/api/sessions/:id/description', (req, res) => {
+    try { res.json(cl.updateSessionDescription(req.params.id, req.body.description)) }
     catch (e) { res.status(500).json({ error: e.message }) }
 })
 

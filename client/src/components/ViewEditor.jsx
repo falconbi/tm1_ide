@@ -138,10 +138,6 @@ function cellsetToHierarchyData(cellset, formatMap = {}, pageMembers = [], suppr
 
     const data = {}
     const colHasData = {}
-    let debugIdx = 0
-    let debugSupIdx = 0
-    let keptCount = 0
-    let supCount = 0
     rowTuples.forEach((tuple, ri) => {
         const tupleKey = (tuple.Members ?? []).map(m => m.Name).join('::')
         if (!tupleKey) return
@@ -149,15 +145,7 @@ function cellsetToHierarchyData(cellset, formatMap = {}, pageMembers = [], suppr
         if (supRows) {
             const cellsThisRow = columns.map((_, ci) => cellMap[ri * columns.length + ci])
             const allZero = cellsThisRow.every(c => isValEmpty(c?.Value))
-            if (!allZero && tupleKey.includes('A01')) {
-                console.warn('DEBUG A01 KEPT:', tupleKey, 'cells:', JSON.stringify(cellsThisRow.map(c => c ? { V: c.Value, F: c.FormattedValue, t: typeof c.Value } : 'MISSING')))
-
-            }
-            if (allZero) {
-                supCount++
-                return
-            }
-            keptCount++
+            if (allZero) return
         }
 
         if (!data[tupleKey]) data[tupleKey] = {}
@@ -174,8 +162,6 @@ function cellsetToHierarchyData(cellset, formatMap = {}, pageMembers = [], suppr
             }
         })
     })
-
-    if (supRows) console.warn('DEBUG rows total kept/suppressed:', keptCount, '/', supCount)
 
     if (supCols && Object.keys(data).length) {
         const emptyColIds = columns.filter(col => !colHasData[col.id]).map(col => col.id)
@@ -640,76 +626,79 @@ function DimPill({ id, dim, zone, server, onRemove, onSubsetChange, onMemberChan
             <div
                 ref={el => { setDragRef(el); setDropRef(el) }}
                 className={cn(
-                    'flex items-center gap-1 px-2 py-0.5 rounded border text-xs bg-muted border-border select-none group max-w-[200px] min-w-0',
+                    'flex items-start gap-1 px-2 py-1 rounded border text-xs bg-muted border-border select-none group max-w-[200px] min-w-0',
                     isDragging && 'opacity-40',
                     isOver && !isDragging && 'border-primary border-l-[3px]',
                     open && 'border-primary'
                 )}
             >
-                <span {...attributes} {...listeners} className="cursor-grab text-muted-foreground hover:text-foreground shrink-0">
+                <span {...attributes} {...listeners} className="cursor-grab text-muted-foreground hover:text-foreground shrink-0 mt-0.5">
                     <GripVertical size={11} />
                 </span>
-                <button
-                    onClick={() => zone !== 'bench' && setOpen(o => !o)}
-                    className="font-mono truncate max-w-[100px] text-left"
-                    title={dim.dimension}
-                >
-                    {dim.dimension}
-                </button>
-                {label && (
-                    <span className="text-[10px] text-primary/70 truncate min-w-0 shrink">{label}</span>
-                )}
-                {zone !== 'bench' && aliasAttrs.length > 0 && (
-                    <div className="relative">
-                        <button
-                            onClick={e => { e.stopPropagation(); setAliasOpen(o => !o) }}
-                            className={cn('text-[9px] font-bold px-1 rounded transition-colors',
-                                activeAlias ? 'text-amber-400' : 'text-muted-foreground/40 hover:text-amber-400/70')}
-                            title={activeAlias ? `Alias: ${activeAlias}` : 'Display alias'}
-                        >A</button>
-                        {aliasOpen && (
-                            <div className="absolute top-full left-0 mt-0.5 bg-popover border border-border rounded shadow-lg z-50 min-w-[120px] py-0.5">
-                                <button onClick={() => { onAliasChange?.(dim.dimension, null); setAliasOpen(false) }}
-                                    className={cn('w-full text-left px-2.5 py-1 text-[10px] hover:bg-muted', !activeAlias && 'text-primary')}>None</button>
-                                {aliasAttrs.map(a => (
-                                    <button key={a.name} onClick={() => { onAliasChange?.(dim.dimension, a.name); setAliasOpen(false) }}
-                                        className={cn('w-full text-left px-2.5 py-1 text-[10px] hover:bg-muted font-mono', activeAlias === a.name && 'text-amber-400')}>
-                                        {a.name}
-                                    </button>
-                                ))}
+                <div className="flex-1 min-w-0">
+                    <button
+                        onClick={() => zone !== 'bench' && setOpen(o => !o)}
+                        className="w-full text-left"
+                        title={dim.dimension}
+                    >
+                        <span className="font-mono truncate block text-xs">{dim.dimension}</span>
+                    </button>
+                    <div className="flex items-center gap-0.5 min-w-0">
+                        {label
+                            ? <span className="text-[10px] text-primary/70 truncate flex-1 min-w-0">{label}</span>
+                            : <span className="flex-1" />
+                        }
+                        {zone !== 'bench' && aliasAttrs.length > 0 && (
+                            <div className="relative">
+                                <button
+                                    onClick={e => { e.stopPropagation(); setAliasOpen(o => !o) }}
+                                    className={cn('text-[9px] font-bold px-1 rounded transition-colors',
+                                        activeAlias ? 'text-amber-400' : 'text-muted-foreground/40 hover:text-amber-400/70')}
+                                    title={activeAlias ? `Alias: ${activeAlias}` : 'Display alias'}
+                                >A</button>
+                                {aliasOpen && (
+                                    <div className="absolute top-full left-0 mt-0.5 bg-popover border border-border rounded shadow-lg z-50 min-w-[120px] py-0.5">
+                                        <button onClick={() => { onAliasChange?.(dim.dimension, null); setAliasOpen(false) }}
+                                            className={cn('w-full text-left px-2.5 py-1 text-[10px] hover:bg-muted', !activeAlias && 'text-primary')}>None</button>
+                                        {aliasAttrs.map(a => (
+                                            <button key={a.name} onClick={() => { onAliasChange?.(dim.dimension, a.name); setAliasOpen(false) }}
+                                                className={cn('w-full text-left px-2.5 py-1 text-[10px] hover:bg-muted font-mono', activeAlias === a.name && 'text-amber-400')}>
+                                                {a.name}
+                                            </button>
+                                        ))}
+                                    </div>
+                                )}
                             </div>
                         )}
+                        {zone !== 'bench' && (<>
+                            <button
+                                onClick={e => { e.stopPropagation(); onMoveLeft?.() }}
+                                disabled={!onMoveLeft}
+                                className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-foreground disabled:opacity-0 p-0.5 rounded"
+                                title="Move left"
+                            >
+                                <ChevronLeft size={10} />
+                            </button>
+                            <button
+                                onClick={e => { e.stopPropagation(); onMoveRight?.() }}
+                                disabled={!onMoveRight}
+                                className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-foreground disabled:opacity-0 p-0.5 rounded"
+                                title="Move right"
+                            >
+                                <ChevronRight size={10} />
+                            </button>
+                            <button onClick={() => onRemove(dim.dimension)} className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-foreground p-0.5 rounded">
+                                <X size={10} />
+                            </button>
+                        </>)}
+                        <button
+                            onClick={e => { e.stopPropagation(); openTab({ id: `dimension:${server}:${dim.dimension}`, type: 'dimension', label: dim.dimension, server, dimension: dim.dimension }) }}
+                            className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-primary p-0.5 rounded"
+                            title="Open in Dimension Editor"
+                        >
+                            <PencilLine size={10} />
+                        </button>
                     </div>
-                )}
-                <div className="flex items-center ml-0.5">
-                    {zone !== 'bench' && (<>
-                        <button
-                            onClick={e => { e.stopPropagation(); onMoveLeft?.() }}
-                            disabled={!onMoveLeft}
-                            className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-foreground disabled:opacity-0 p-0.5 rounded"
-                            title="Move left"
-                        >
-                            <ChevronLeft size={10} />
-                        </button>
-                        <button
-                            onClick={e => { e.stopPropagation(); onMoveRight?.() }}
-                            disabled={!onMoveRight}
-                            className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-foreground disabled:opacity-0 p-0.5 rounded"
-                            title="Move right"
-                        >
-                            <ChevronRight size={10} />
-                        </button>
-                        <button onClick={() => onRemove(dim.dimension)} className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-foreground p-0.5 rounded">
-                            <X size={10} />
-                        </button>
-                    </>)}
-                    <button
-                        onClick={e => { e.stopPropagation(); openTab({ id: `dimension:${server}:${dim.dimension}`, type: 'dimension', label: dim.dimension, server, dimension: dim.dimension }) }}
-                        className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-primary p-0.5 rounded"
-                        title="Open in Dimension Editor"
-                    >
-                        <PencilLine size={10} />
-                    </button>
                 </div>
             </div>
 
@@ -1130,16 +1119,10 @@ export default function ViewEditor({ tab }) {
             return
         }
         const id = toast.loading('Executing…', { duration: 30000 })
-        console.warn('DEBUG suppressZeros mode:', sz)
-        console.warn('DEBUG MDX:', query)
         executeMDX.mutate(
             { server: tab.server, mdx: query },
             {
                 onSuccess: data => {
-                    const colLen = data?.Axes?.find(a => a.Ordinal === 0)?.Tuples?.length ?? 0
-                    const rowLen = data?.Axes?.find(a => a.Ordinal === 1)?.Tuples?.length ?? 0
-                    const cellCount = data?.Cells?.length ?? 0
-                    console.warn('DEBUG cellset axes:', { cols: colLen, rows: rowLen, cells: cellCount })
                     setResult(data)
                     setTruncated(data?.truncated ?? false)
                     if ('suppressZeros' in opts) setSuppressZeros(sz)
@@ -1565,22 +1548,6 @@ export default function ViewEditor({ tab }) {
                     <History size={10} /> Log
                 </button>
 
-                {tab.viewName && (
-                    <button
-                        onClick={() => { setShowUsedIn(v => !v); if (!showUsedIn) refetchUsedIn() }}
-                        title="Scan TI processes, MDX views, and PAW books for references to this view"
-                        className={cn(
-                            'flex items-center gap-1 px-2 py-0.5 text-[10px] rounded border transition-colors',
-                            showUsedIn
-                                ? 'bg-blue-600 text-white border-blue-600'
-                                : 'border-border text-muted-foreground hover:text-foreground hover:bg-muted'
-                        )}
-                    >
-                        <FileSearch size={10} /> Used In
-                        {usageData?.processes?.length > 0 && <span className="opacity-70">({usageData.processes.length})</span>}
-                        {loadingUsage && <Loader2 size={10} className="animate-spin" />}
-                    </button>
-                )}
 
                 <div className="flex-1" />
 
@@ -1706,6 +1673,7 @@ export default function ViewEditor({ tab }) {
                         {showUsedIn ? <ChevronUp size={10} /> : <ChevronDown size={10} />}
                         <FileSearch size={10} />
                         <span>Used In</span>
+                        {usageData?.processes?.length > 0 && <span className="opacity-60">({usageData.processes.length})</span>}
                         {loadingUsedIn && <Loader2 size={10} className="animate-spin ml-1" />}
                     </button>
                     {showUsedIn && (

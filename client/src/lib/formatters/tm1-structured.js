@@ -56,6 +56,10 @@ function fmtExpr(node, baseLevel, settings, namingMap, preset) {
       if (node.op === ':')
         return fmtExpr(node.left, baseLevel, settings, namingMap, preset) + ':' +
                fmtExpr(node.right, baseLevel, settings, namingMap, preset)
+      if (node.op === '&')
+        return fmtExpr(node.left, baseLevel, settings, namingMap, preset) +
+               '\n' + indentStr(baseLevel, settings) + '& ' +
+               fmtExpr(node.right, baseLevel, settings, namingMap, preset)
       return fmtExpr(node.left, baseLevel, settings, namingMap, preset) +
              opWrap(node.op, settings) +
              fmtExpr(node.right, baseLevel, settings, namingMap, preset)
@@ -78,7 +82,9 @@ function fmtCall(node, baseLevel, settings, namingMap, preset) {
   // IF always fully expands — each arg on its own line
   if (node.name.toLowerCase() === 'if') {
     const lines = args.map(a => innerInd + fmtExpr(a, inner, settings, namingMap, preset))
-    return fn + '(\n' + lines.join(',\n') + '\n' + baseInd + ')'
+    return preset === 'tm1-structured'
+      ? fn + '(\n' + lines.join(',\n') + ')'
+      : fn + '(\n' + lines.join(',\n') + '\n' + baseInd + ')'
   }
   // (comma between IF args is always at end-of-line; commaSpacing controls same-line joins below)
 
@@ -131,7 +137,9 @@ function fmtCall(node, baseLevel, settings, namingMap, preset) {
     }
   }
 
-  return inlinePart + ',\n' + breakLines.join(',\n') + '\n' + baseInd + ')'
+  return preset === 'tm1-structured'
+    ? inlinePart + ',\n' + breakLines.join(',\n') + ')'
+    : inlinePart + ',\n' + breakLines.join(',\n') + '\n' + baseInd + ')'
 }
 
 // ── Statement formatter ───────────────────────────────────────────────────────
