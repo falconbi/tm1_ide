@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useRef, useEffect, useMemo, useCallback } from 'react'
 import { useStore } from '@/store'
 
 const extractError = async (r) => {
@@ -497,6 +498,36 @@ export const useStartWorkSession   = () => { const qc = useQueryClient(); return
 export const useCloseWorkSession   = () => { const qc = useQueryClient(); return useMutation({ mutationFn: (body) => post('/api/sessions/close', body), onSuccess: (_, v) => { qc.invalidateQueries({ queryKey: ['work-session-active'] }); qc.invalidateQueries({ queryKey: ['work-sessions'] }) } }) }
 export const useResumeWorkSession  = () => { const qc = useQueryClient(); return useMutation({ mutationFn: (body) => post('/api/sessions/resume', body), onSuccess: (_, v) => { qc.invalidateQueries({ queryKey: ['work-session-active'] }); qc.invalidateQueries({ queryKey: ['work-sessions'] }) } }) }
 export const useObjectHistory      = (server, type, name) => useQuery({ queryKey: ['object-history', server, type, name], queryFn: () => get(`/api/log/object?server=${enc(server)}&type=${enc(type)}&name=${enc(name)}`), enabled: !!(server && type && name), staleTime: 0 })
+
+export function useConflictCheck(server, type, name) {
+  const username = useStore(s => s.username)
+  const { data: history = [], refetch } = useObjectHistory(server, type, name)
+  const baselineRef = useRef(undefined)
+  const initializedRef = useRef(false)
+  useEffect(() => {
+    if (!initializedRef.current && history.length > 0) {
+      baselineRef.current = history[0].id ?? null
+      initializedRef.current = true
+    }
+  }, [history])
+  const openConflict = useMemo(() => {
+    if (!username || !initializedRef.current) return null
+    const latest = history[0]
+    if (!latest?.user || latest.user === username) return null
+    if (latest.id === baselineRef.current) return null
+    return latest
+  }, [history, username])
+  const checkBeforeSave = useCallback(async () => {
+    const result = await refetch()
+    const fresh = result.data ?? []
+    const latest = fresh[0]
+    if (!latest) return null
+    if (latest.id === baselineRef.current) return null
+    if (!latest.user || latest.user === username) { baselineRef.current = latest.id; return null }
+    return latest
+  }, [refetch, username])
+  return { openConflict, checkBeforeSave }
+}
 export const useRollbackEntry            = () => { const qc = useQueryClient(); return useMutation({ mutationFn: (body) => post('/api/log/rollback', body), onSuccess: () => { qc.invalidateQueries({ queryKey: ['object-history'] }); qc.invalidateQueries({ queryKey: ['work-session-log'] }); qc.invalidateQueries({ queryKey: ['work-sessions'] }) } }) }
 export const useUpdateSessionDescription = () => { const qc = useQueryClient(); return useMutation({ mutationFn: ({ id, description }) => patch(`/api/sessions/${enc(id)}/description`, { description }), onSuccess: (_, { server }) => qc.invalidateQueries({ queryKey: ['work-sessions', server] }) }) }
 
@@ -508,6 +539,17 @@ export const useDeployDiff     = () => useMutation({ mutationFn: (body) => post(
 export const useDeployPackage  = () => { const qc = useQueryClient(); return useMutation({ mutationFn: (body) => post('/api/deploy/package', body), onSuccess: () => qc.invalidateQueries({ queryKey: ['deploy-packages'] }) }) }
 export const useDeployRisk     = () => useMutation({ mutationFn: (body) => post('/api/deploy/risk',    body) })
 export const useDeployExecute  = () => useMutation({ mutationFn: (body) => post('/api/deploy/execute', body) })
+
+// ── User management ───────────────────────────────────────────────────────────
+export const useClients      = (server) => useQuery({ queryKey: ['clients', server], queryFn: () => get(`/api/users?server=${enc(server)}`), enabled: !!server, staleTime: 0 })
+export const useGroups       = (server) => useQuery({ queryKey: ['groups',  server], queryFn: () => get(`/api/groups?server=${enc(server)}`),  enabled: !!server, staleTime: 60_000 })
+export const useClientGroups = (server, name) => useQuery({ queryKey: ['client-groups', server, name], queryFn: () => get(`/api/users/${enc(name)}/groups?server=${enc(server)}`), enabled: !!(server && name), staleTime: 0 })
+export const useCreateClient = () => { const qc = useQueryClient(); return useMutation({ mutationFn: (body) => post('/api/users/provision', body), onSuccess: (_, v) => qc.invalidateQueries({ queryKey: ['clients', v.server] }) }) }
+export const useResetClientPassword = () => useMutation({ mutationFn: ({ server, name, password }) => post(`/api/users/${enc(name)}/password`, { server, password }) })
+export const useUpdateClient = () => { const qc = useQueryClient(); return useMutation({ mutationFn: ({ server, name, ...p }) => patch(`/api/users/${enc(name)}`, { server, ...p }), onSuccess: (_, v) => qc.invalidateQueries({ queryKey: ['clients', v.server] }) }) }
+export const useDeleteClient = () => { const qc = useQueryClient(); return useMutation({ mutationFn: ({ server, name }) => del(`/api/users/${enc(name)}?server=${enc(server)}`), onSuccess: (_, v) => qc.invalidateQueries({ queryKey: ['clients', v.server] }) }) }
+export const useAddClientToGroup    = () => { const qc = useQueryClient(); return useMutation({ mutationFn: ({ server, name, group }) => post(`/api/users/${enc(name)}/groups`, { server, group }), onSuccess: (_, v) => qc.invalidateQueries({ queryKey: ['client-groups', v.server, v.name] }) }) }
+export const useRemoveClientFromGroup = () => { const qc = useQueryClient(); return useMutation({ mutationFn: ({ server, name, group }) => del(`/api/users/${enc(name)}/groups/${enc(group)}?server=${enc(server)}`), onSuccess: (_, v) => qc.invalidateQueries({ queryKey: ['client-groups', v.server, v.name] }) }) }
 
 // ── Files availability probe ──────────────────────────────────────────────────
 export const useFilesAvailable = (server) => useQuery({

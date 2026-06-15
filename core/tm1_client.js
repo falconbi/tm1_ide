@@ -1212,6 +1212,92 @@ return (d.value ?? [])
     async disableMaintenanceMode() {
         return this.post('tm1s.DisableMaintenanceMode', {})
     }
+
+    // ── TI helper ─────────────────────────────────────────────────────────────
+    async _runTI(code) {
+        const name = `}TempIDE_${Date.now()}`
+        await this.createOrReplaceProcess({ name, prolog: code })
+        try {
+            const result = await this.executeProcess(name)
+            const status = result?.ProcessExecuteStatusCode ?? result?.['odata.ProcessExecuteStatusCode']
+            const ok = status === undefined || status === 0 || status === 'CompletedSuccessfully' || status === 'HasMinorErrors'
+            if (!ok) {
+                const errFile = result?.ErrorLogFile?.Filename ?? ''
+                let detail = `TI process failed (status ${status})`
+                if (errFile) {
+                    try {
+                        const log = await this.getErrorLogContent(errFile)
+                        detail += '\n' + (log?.Content ?? log ?? errFile)
+                    } catch { detail += ': ' + errFile }
+                }
+                throw new Error(detail)
+            }
+        } finally {
+            await this.deleteProcess(name).catch(() => {})
+        }
+    }
+
+    // ── Users ─────────────────────────────────────────────────────────────────
+    async getClients() {
+        const data = await this.get('Users?$select=Name,FriendlyName,Enabled')
+        return (data.value ?? []).filter(c => !c.Name.startsWith('}'))
+    }
+
+    async createClient(name, password, friendlyName = '') {
+        const body = { Name: name, Password: password, Type: 'User' }
+        if (friendlyName) body.FriendlyName = friendlyName
+        return this.post('Users', body)
+    }
+
+    async updateClient(name, patch) {
+        return this.patch(`Users('${encodeURIComponent(name)}')`, patch)
+    }
+
+    async deleteClient(name) {
+        return this.delete(`Users('${encodeURIComponent(name)}')`)
+    }
+
+    async getGroups() {
+        const data = await this.get('Groups?$select=Name')
+        return (data.value ?? []).map(g => g.Name).filter(n => !n.startsWith('}'))
+    }
+
+    async getClientGroups(clientName) {
+        const data = await this.get(`Users('${encodeURIComponent(clientName)}')/Groups?$select=Name`)
+        return (data.value ?? []).map(g => g.Name)
+    }
+
+    async provisionUser(clientName, password, groups = [], friendlyName = '') {
+        const s = v => `'${v.replace(/'/g, "''")}'`
+        await this._runTI([
+            `AddClient(${s(clientName)});`,
+            `AssignClientPassword(${s(clientName)}, ${s(password)});`,
+        ].join('\n'))
+        for (const g of groups) {
+            try { await this.addClientToGroup(clientName, g) } catch {}
+        }
+        if (friendlyName) {
+            try { await this.updateClient(clientName, { FriendlyName: friendlyName }) } catch {}
+        }
+    }
+
+    async resetClientPassword(clientName, password) {
+        const s = v => `'${v.replace(/'/g, "''")}'`
+        return this._runTI(`AssignClientPassword(${s(clientName)}, ${s(password)});`)
+    }
+
+    async addClientToGroup(clientName, groupName) {
+        const current = await this.getClientGroups(clientName)
+        if (current.includes(groupName)) return
+        const groups = [...current, groupName].map(g => ({ '@odata.id': `Groups('${encodeURIComponent(g)}')` }))
+        return this.patch(`Users('${encodeURIComponent(clientName)}')`, { Groups: groups })
+    }
+
+    async removeClientFromGroup(clientName, groupName) {
+        const current = await this.getClientGroups(clientName)
+        const groups = current.filter(g => g !== groupName).map(g => ({ '@odata.id': `Groups('${encodeURIComponent(g)}')` }))
+        return this.patch(`Users('${encodeURIComponent(clientName)}')`, { Groups: groups })
+    }
 }
 
 module.exports = { TM1Client }

@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import MonacoEditor from '@monaco-editor/react'
 import { useStore } from '@/store'
-import { useProcess, useSaveProcess, useRunProcess, useCreateProcess, useDebugProcess, useCubes, useViews, usePreviewDatasource } from '@/hooks/useApi'
+import { useProcess, useSaveProcess, useRunProcess, useCreateProcess, useDebugProcess, useCubes, useViews, usePreviewDatasource, useConflictCheck } from '@/hooks/useApi'
 import { registerTM1Completions, registerTM1Theme } from '@/lib/tm1-functions'
 import { registerTICompletions } from '@/lib/tm1-completion'
 import { cn } from '@/lib/utils'
@@ -15,6 +15,7 @@ import { parseDebugLog } from '@/lib/ti-debugger'
 import { validateTICode } from '@/lib/ti-validator'
 import SnippetPanel from '@/components/SnippetPanel'
 import PatternDialog from '@/components/PatternDialog'
+import { ConflictBanner, ConflictSaveWarning } from '@/components/ConflictBanner'
 
 const CODE_TABS = [
   { key: 'PrologProcedure',    label: 'Prolog'   },
@@ -895,6 +896,9 @@ export default function ProcessEditor({ tab }) {
   const [showPatterns, setShowPatterns] = useState(false)
   const [showMinimap, setShowMinimap]   = useState(() => loadSettings().editor?.minimap?.ti ?? false)
   const [showHistory, setShowHistory]   = useState(false)
+  const [dismissedId, setDismissedId]   = useState(null)
+  const [saveConflict, setSaveConflict] = useState(null)
+  const { openConflict, checkBeforeSave } = useConflictCheck(tab.server, 'process', tab.name)
   const [runOutput, setRunOutput] = useState(null)
   const [logContent, setLogContent] = useState(null)
   const [logOpen, setLogOpen] = useState(true)
@@ -1136,8 +1140,7 @@ export default function ProcessEditor({ tab }) {
     })
   }
 
-  const handleSave = () => {
-    if (!tab.name) { handleCreateNew(); return }
+  const doSave = () => {
     if (!data) return
     const body = {}
     CODE_TABS.forEach(({ key }) => {
@@ -1162,6 +1165,13 @@ export default function ProcessEditor({ tab }) {
         onError:   (e) => toast.error(e.message, { id }),
       },
     )
+  }
+
+  const handleSave = async () => {
+    if (!tab.name) { handleCreateNew(); return }
+    const conflict = await checkBeforeSave()
+    if (conflict) { setSaveConflict(conflict); return }
+    doSave()
   }
 
   const handleSaveAs = (newName) => {
@@ -1310,6 +1320,8 @@ export default function ProcessEditor({ tab }) {
 
   return (
     <div className="flex flex-col h-full">
+      <ConflictBanner conflict={openConflict?.id !== dismissedId ? openConflict : null} onDismiss={() => setDismissedId(openConflict?.id)} />
+      <ConflictSaveWarning conflict={saveConflict} onSaveAnyway={() => { setSaveConflict(null); doSave() }} onCancel={() => setSaveConflict(null)} />
 
       {/* ── Save As dialog ────────────────────────────────────────────── */}
       {showSaveAs && (

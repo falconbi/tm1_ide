@@ -5,7 +5,7 @@ import { DndContext, DragOverlay, PointerSensor, useSensor, useSensors, useDropp
 import MonacoEditor from '@monaco-editor/react'
 import { useStore } from '@/store'
 import { subsetApplyCallbacks } from '@/lib/subsetCallbacks'
-import { useCubeDimensions, useSubsets, useElementsTree, useViews, useExecuteMDX, useViewAxes, useSaveView, useSetDefaultView, usePawBookUsage, useDimAttributes, useViewUsage, useMultiFormatAttrs } from '@/hooks/useApi'
+import { useCubeDimensions, useSubsets, useElementsTree, useViews, useExecuteMDX, useViewAxes, useSaveView, useSetDefaultView, usePawBookUsage, useDimAttributes, useViewUsage, useMultiFormatAttrs, useConflictCheck } from '@/hooks/useApi'
 import { toast } from 'sonner'
 import { RefreshCw, Loader2, Table2, GripVertical, GripHorizontal, X, LayoutGrid, Rows3, Columns3, Filter, ZapOff, Zap, ChevronLeft, ChevronRight, PencilLine, Save, Code2, Eye, ChevronDown, BookOpen, ChevronUp, Locate, MapPin, WrapText, Braces, History, AlertTriangle, Search, Cog, Box, FileSearch } from 'lucide-react'
 import TransactionLogPanel from '@/components/TransactionLogPanel'
@@ -18,6 +18,7 @@ const darkTheme  = themeBalham.withPart(colorSchemeDark).withParams({ fontSize: 
 
 import { buildMDX } from '@core/mdxBuilder.js'
 import HierarchyGrid from '@/components/HierarchyGrid'
+import { ConflictBanner, ConflictSaveWarning } from '@/components/ConflictBanner'
 import { Component } from 'react'
 
 class GridErrorBoundary extends Component {
@@ -817,6 +818,9 @@ export default function ViewEditor({ tab }) {
     // Transaction Log panel
     const [showLog,   setShowLog]   = useState(false)
     const [logTuple,  setLogTuple]  = useState(null)   // null = whole cube, array = filtered cell
+    const [dismissedId, setDismissedId]   = useState(null)
+    const [saveConflict, setSaveConflict] = useState(null)
+    const { openConflict, checkBeforeSave } = useConflictCheck(tab.server, 'view', tab.viewName)
     const { data: pawBookData, isFetching: loadingPawBooks, refetch: refetchPawBooks } = usePawBookUsage(tab.server, tab.cube, tab.viewName)
     const { data: usageData,   isFetching: loadingUsage,   refetch: refetchUsage }    = useViewUsage(tab.server, tab.cube, tab.viewName)
 
@@ -1179,10 +1183,7 @@ export default function ViewEditor({ tab }) {
         return { mdx: mdx }
     }, [mode, mdx, axes])
 
-    const handleSave = useCallback(() => {
-        const name = tab.viewName ?? prompt('View name?')
-        if (!name) return
-        // Warn before converting a native view to MDX
+    const executeSave = useCallback((name) => {
         if (isOriginallyNative && mode === 'mdx') {
             if (!window.confirm('Saving in MDX mode will convert this Native view to MDX. This affects PAX and Architect users.\n\nContinue?')) return
         }
@@ -1194,7 +1195,17 @@ export default function ViewEditor({ tab }) {
                 onError:   e => toast.error(e.message, { id }),
             }
         )
-    }, [mode, buildSavePayload, tab.server, tab.cube, tab.viewName, isOriginallyNative])
+    }, [isOriginallyNative, mode, buildSavePayload, tab.server, tab.cube, saveView])
+
+    const handleSave = useCallback(async () => {
+        const name = tab.viewName ?? prompt('View name?')
+        if (!name) return
+        if (tab.viewName) {
+            const conflict = await checkBeforeSave()
+            if (conflict) { setSaveConflict(conflict); return }
+        }
+        executeSave(name)
+    }, [tab.viewName, checkBeforeSave, executeSave])
 
     const handleSaveAsNative = useCallback(() => {
         const name = prompt('Save as native view…')
@@ -1459,6 +1470,8 @@ export default function ViewEditor({ tab }) {
     return (
         <div className="flex h-full min-h-0">
         <div className="flex flex-col flex-1 min-w-0 min-h-0">
+            <ConflictBanner conflict={openConflict?.id !== dismissedId ? openConflict : null} onDismiss={() => setDismissedId(openConflict?.id)} />
+            <ConflictSaveWarning conflict={saveConflict} onSaveAnyway={() => { setSaveConflict(null); executeSave(tab.viewName) }} onCancel={() => setSaveConflict(null)} />
             {/* Toolbar */}
             <div className="flex items-center gap-2 px-3 py-1.5 border-b border-border bg-muted/30 shrink-0">
                 <span className="text-xs font-mono text-muted-foreground truncate">

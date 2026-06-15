@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import MonacoEditor from '@monaco-editor/react'
 import { useStore } from '@/store'
-import { useRules, useSaveRules, useLineage, useLineageConsumers, useTraceCellCalc } from '@/hooks/useApi'
+import { useRules, useSaveRules, useLineage, useLineageConsumers, useTraceCellCalc, useConflictCheck } from '@/hooks/useApi'
 import { registerTM1Completions, registerTM1Theme } from '@/lib/tm1-functions'
 import ProcessEditor from '@/components/ProcessEditor'
 import SQLEditor from '@/components/SQLEditor'
@@ -26,6 +26,7 @@ import ObjectHistoryPanel from '@/components/ObjectHistoryPanel'
 import DiffTab from '@/components/DiffTab'
 import DeployPanel from '@/components/DeployPanel'
 import SessionReportTab from '@/components/SessionReportTab'
+import { ConflictBanner, ConflictSaveWarning } from '@/components/ConflictBanner'
 
 // ── Lineage panel ─────────────────────────────────────────────────────────────
 
@@ -266,6 +267,9 @@ function RulesEditor({ tab, onCursor }) {
   const [showTrace, setShowTrace] = useState(false)
   const [showHistory, setShowHistory] = useState(false)
   const [cubeDims, setCubeDims] = useState(null)
+  const [dismissedId, setDismissedId] = useState(null)
+  const [saveConflict, setSaveConflict] = useState(null)
+  const { openConflict, checkBeforeSave } = useConflictCheck(tab.server, 'rules', tab.cube)
 
   useEffect(() => {
     if (!showTrace || cubeDims !== null) return
@@ -368,7 +372,7 @@ function RulesEditor({ tab, onCursor }) {
     if (monacoRef.current) registerTM1Theme(monacoRef.current, dark)
   }, [dark, themeVersion])
 
-  const handleSave = () => {
+  const doSave = () => {
     const editor = editorRef.current
     if (!editor) return
     const id = toast.loading('Saving rules…', { duration: 30000 })
@@ -379,6 +383,12 @@ function RulesEditor({ tab, onCursor }) {
         onError:   (err) => toast.error(err.message, { id }),
       },
     )
+  }
+
+  const handleSave = async () => {
+    const conflict = await checkBeforeSave()
+    if (conflict) { setSaveConflict(conflict); return }
+    doSave()
   }
 
   const handleMount = (editor, monaco) => {
@@ -483,7 +493,10 @@ function RulesEditor({ tab, onCursor }) {
   }
 
   return (
-    <div className="flex h-full min-h-0 overflow-hidden">
+    <div className="flex flex-col h-full min-h-0 overflow-hidden">
+      <ConflictBanner conflict={openConflict?.id !== dismissedId ? openConflict : null} onDismiss={() => setDismissedId(openConflict?.id)} />
+      <ConflictSaveWarning conflict={saveConflict} onSaveAnyway={() => { setSaveConflict(null); doSave() }} onCancel={() => setSaveConflict(null)} />
+      <div className="flex flex-1 min-h-0 overflow-hidden">
       <div className="flex-1 min-w-0 overflow-hidden relative">
         <div className="absolute top-2 right-2 z-10 flex items-center gap-1.5">
           <button
@@ -700,6 +713,7 @@ function RulesEditor({ tab, onCursor }) {
       {showLineage && (
         <LineagePanel server={tab.server} cube={tab.cube} onOpen={openCube} />
       )}
+      </div>
     </div>
   )
 }

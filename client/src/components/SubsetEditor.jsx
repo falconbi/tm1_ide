@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import MonacoEditor from '@monaco-editor/react'
 import { useQueryClient } from '@tanstack/react-query'
 import { useStore } from '@/store'
-import { useSubset, useSaveSubset, usePreviewMDX, useGenerateMDX, useElements, useSubsetUsage, useAttrGrid, useDimAttributes, useAliasValues } from '@/hooks/useApi'
+import { useSubset, useSaveSubset, usePreviewMDX, useGenerateMDX, useElements, useSubsetUsage, useAttrGrid, useDimAttributes, useAliasValues, useConflictCheck } from '@/hooks/useApi'
 import { MDX_CATALOG, MDX_FUNCTIONS_FLAT } from '@/lib/tm1-mdx-catalog'
 import { MDX_PATTERN_CATEGORIES } from '@/lib/tm1-mdx-primer-patterns'
 import { subsetApplyCallbacks } from '@/lib/subsetCallbacks'
@@ -10,6 +10,7 @@ import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
 import { Play, Loader2, Sparkles, Copy, Search, ChevronDown, ChevronRight, ChevronLeft, Box, Cog, Locate, Clock, Save, AlignLeft, Check, X, GripHorizontal } from 'lucide-react'
 import SubsetVisualEditor from './SubsetVisualEditor'
+import { ConflictBanner, ConflictSaveWarning } from '@/components/ConflictBanner'
 
 const TYPE_ICON  = { N: '○', C: '◆', S: '"' }
 const TYPE_COLOR = { N: 'text-blue-400', C: 'text-amber-400', S: 'text-emerald-400' }
@@ -287,6 +288,9 @@ export default function SubsetEditor({ tab }) {
   const [sessionName, setSessionName] = useState('')
   const [sessions, setSessions] = useState(loadSessions)
   const [savedIndicator, setSavedIndicator] = useState(false)
+  const [dismissedId, setDismissedId]   = useState(null)
+  const [saveConflict, setSaveConflict] = useState(null)
+  const { openConflict, checkBeforeSave } = useConflictCheck(tab.server, 'subset', tab.subsetName)
 
   const editorRef     = useRef(null)
   const monacoRef     = useRef(null)
@@ -367,13 +371,19 @@ export default function SubsetEditor({ tab }) {
     if (cb) { cb(mdx); subsetApplyCallbacks.delete(tab.id); if (tab.returnTabId) setActiveTab(tab.returnTabId); closeTab(tab.id) }
   }
 
-  const handleSave = () => {
-    if (!tab.subsetName) { setSaveAsOpen(true); return }
+  const doSave = () => {
     const id = toast.loading('Saving…', { duration: 30000 })
     saveSubset.mutate(
       { server: tab.server, dimension: tab.dimension, name: tab.subsetName, mdx },
       { onSuccess: () => { setDirty(false); markTabSaved(tab.id); toast.success('Saved', { id }); bumpSubsetVersion(tab.server, tab.dimension) }, onError: (e) => toast.error(e.message, { id }) }
     )
+  }
+
+  const handleSave = async () => {
+    if (!tab.subsetName) { setSaveAsOpen(true); return }
+    const conflict = await checkBeforeSave()
+    if (conflict) { setSaveConflict(conflict); return }
+    doSave()
   }
 
   const commitSaveAs = () => {
@@ -462,6 +472,8 @@ export default function SubsetEditor({ tab }) {
 
   return (
     <div className="flex flex-col h-full bg-background">
+      <ConflictBanner conflict={openConflict?.id !== dismissedId ? openConflict : null} onDismiss={() => setDismissedId(openConflict?.id)} />
+      <ConflictSaveWarning conflict={saveConflict} onSaveAnyway={() => { setSaveConflict(null); doSave() }} onCancel={() => setSaveConflict(null)} />
 
       {/* ── Mode bar ─────────────────────────────────────────────────────────── */}
       <div className="flex items-center gap-2 px-3 py-1.5 border-b border-border bg-muted/40 shrink-0">

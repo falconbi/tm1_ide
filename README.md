@@ -202,6 +202,60 @@ Browser  ←→  Express (server.js)  ←→  PAW  ←→  TM1 Server
 
 ---
 
+## Multi-User Login
+
+The IDE supports multiple simultaneous users, each authenticating through PAW with their own credentials.
+
+### How It Works
+
+```
+User  →  IDE Login Page  →  POST /api/auth/login  →  PAW session cookie  →  TM1 REST API calls
+```
+
+- Each login creates a **per-user PAW session** stored in `core/paw_connect.js` (keyed by UUID token, auto-refreshed on expiry)
+- All subsequent TM1 API calls use that user's session — TM1 authorizes operations based on the authenticated user's `}Clients` group membership
+- Each user gets their own **active change set** per server — no audit trail collisions
+
+### PAW Authentication Mode
+
+The IDE adapts to your PAW configuration:
+
+| `PAW_AUTH_MODE` | PAW Config | Login Flow |
+|-----------------|-----------|------------|
+| `native` | Authentication Mode = **TM1** | PAW validates credentials against TM1 `}Clients` via the TM1 REST API (HTTPPortNumber). Works with PAW V11. |
+| `authentik` | Authentication Mode = **Authentik SSO** | PAW delegates auth to an external Authentik provider. Used with PAW V12. |
+
+When PAW is in **TM1 authentication mode**, all user accounts come from the TM1 `}Clients` dimension — there is no separate PAW user store.
+
+### Creating Users
+
+Open the **User Management** panel (shield icon in the header). Create users with:
+
+- Username + Password
+- Display name (optional)
+- Group membership (defaults to `ADMIN`)
+
+Under the hood, the IDE uses the TM1 REST API (`POST /Users`) to create the account with a password set. This is more reliable than the TI-based `AddClient()`/`AssignClientPassword()` approach, which requires `HasSecurityAccess: true` on the process and SecurityAdmin group membership.
+
+### Workspace Activation
+
+New users **must log into the PAW workspace directly** (`http://paw-host`) at least once before they appear in the PAW Admin Console. PAW creates a workspace profile on first login. After that, the user can log into the IDE or PAW interchangeably with the same credentials.
+
+### API Endpoints
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| `POST` | `/api/auth/login` | Authenticate with PAW, returns session token |
+| `POST` | `/api/auth/logout` | Invalidate session |
+| `GET` | `/api/users` | List TM1 users |
+| `POST` | `/api/users/provision` | Create user with password + groups |
+| `PATCH` | `/api/users/:name` | Update user (enable/disable, friendly name) |
+| `DELETE` | `/api/users/:name` | Delete user |
+| `POST` | `/api/users/:name/password` | Reset password |
+| `GET` | `/api/groups` | List TM1 groups |
+
+---
+
 ## Provisioning a New TM1 Server Instance
 
 To set up a new Dev or Test TM1 instance on Windows, use the included PowerShell script:

@@ -1866,6 +1866,102 @@ app.post('/api/admin/maintenance/disable', async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
+// ── User management ───────────────────────────────────────────────────────────
+app.post('/api/users/provision', async (req, res) => {
+    try {
+        const { server, name, password, groups = [], friendlyName = '' } = req.body
+        const cl = new TM1Client(server, req.ideToken)
+        await cl.createClient(name, password, friendlyName)
+        for (const g of groups) {
+            try { await cl.addClientToGroup(name, g) } catch {}
+        }
+        res.json({ ok: true })
+    } catch (e) {
+        const detail = e.response?.data ?? e.message
+        console.error('[provisionUser]', e.response?.status, JSON.stringify(detail))
+        res.status(500).json({ error: typeof detail === 'string' ? detail : JSON.stringify(detail) })
+    }
+})
+
+app.post('/api/users/:name/password', async (req, res) => {
+    try {
+        const { server, password } = req.body
+        const cl = new TM1Client(server, req.ideToken)
+        await cl.resetClientPassword(req.params.name, password)
+        res.json({ ok: true })
+    } catch (e) {
+        const detail = e.response?.data ?? e.message
+        res.status(500).json({ error: typeof detail === 'string' ? detail : JSON.stringify(detail) })
+    }
+})
+
+app.get('/api/users', async (req, res) => {
+    try {
+        const cl = new TM1Client(req.query.server, req.ideToken)
+        res.json(await cl.getClients())
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.post('/api/users', async (req, res) => {
+    try {
+        const { server, name, password, friendlyName } = req.body
+        const cl = new TM1Client(server, req.ideToken)
+        res.json(await cl.createClient(name, password, friendlyName))
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.patch('/api/users/:name', async (req, res) => {
+    try {
+        const { server, ...patch } = req.body
+        const cl = new TM1Client(server, req.ideToken)
+        await cl.updateClient(req.params.name, patch)
+        res.json({ ok: true })
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.delete('/api/users/:name', async (req, res) => {
+    try {
+        const cl = new TM1Client(req.query.server, req.ideToken)
+        await cl.deleteClient(req.params.name)
+        res.json({ ok: true })
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.get('/api/groups', async (req, res) => {
+    try {
+        const cl = new TM1Client(req.query.server, req.ideToken)
+        res.json(await cl.getGroups())
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.get('/api/users/:name/groups', async (req, res) => {
+    try {
+        const cl = new TM1Client(req.query.server, req.ideToken)
+        res.json(await cl.getClientGroups(req.params.name))
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.post('/api/users/:name/groups', async (req, res) => {
+    try {
+        const { server, group } = req.body
+        const cl = new TM1Client(server, req.ideToken)
+        await cl.addClientToGroup(req.params.name, group)
+        res.json({ ok: true })
+    } catch (e) {
+        const detail = e.response?.data ?? e.message
+        console.error('[addClientToGroup]', e.response?.status, JSON.stringify(detail))
+        res.status(500).json({ error: typeof detail === 'string' ? detail : JSON.stringify(detail) })
+    }
+})
+
+app.delete('/api/users/:name/groups/:group', async (req, res) => {
+    try {
+        const cl = new TM1Client(req.query.server, req.ideToken)
+        await cl.removeClientFromGroup(req.params.name, req.params.group)
+        res.json({ ok: true })
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
 // ── Forge (workspace persistence) ────────────────────────────────────────────
 // ── Control Objects ───────────────────────────────────────────────────────────
 app.get('/api/control/objects', async (req, res) => {

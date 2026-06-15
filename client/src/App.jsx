@@ -4,7 +4,7 @@ import { useState, useEffect, Fragment } from 'react'
 import { useStore } from '@/store'
 import { cn } from '@/lib/utils'
 import { Toaster } from '@/components/ui/sonner'
-import { Search, PanelLeftClose, PanelLeftOpen, Keyboard, SlidersHorizontal, Database, Braces, HardDriveDownload, Loader2, CheckCircle2 } from 'lucide-react'
+import { Search, PanelLeftClose, PanelLeftOpen, Keyboard, SlidersHorizontal, Database, Braces, HardDriveDownload, Loader2, CheckCircle2, Users } from 'lucide-react'
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels'
 import ServerSelector from '@/components/ServerSelector'
 import Explorer from '@/components/Explorer'
@@ -19,6 +19,7 @@ import NamingDictionary from '@/components/NamingDictionary'
 import PeriodBuilder from '@/components/PeriodBuilder'
 import SessionControl from '@/components/SessionControl'
 import LoginPage from '@/components/LoginPage'
+import UserManagement from '@/components/UserManagement'
 import { useDeploySeed, useDeployBaseline, useServers } from '@/hooks/useApi'
 import { toast } from 'sonner'
 
@@ -115,6 +116,7 @@ export default function App() {
   const [showNamingDict, setShowNamingDict]       = useState(false)
   const [showPrefs, setShowPrefs]                 = useState(false)
   const [showPeriodBuilder, setShowPeriodBuilder] = useState(false)
+  const [showUserMgmt, setShowUserMgmt]           = useState(false)
 
   useEffect(() => {
     const handler = () => clearAuth()
@@ -208,6 +210,16 @@ export default function App() {
 
               <div className="w-px h-4 bg-border mx-1" />
 
+              {server && (
+                <button
+                  onClick={() => setShowUserMgmt(v => !v)}
+                  className={cn('p-1.5 rounded text-muted-foreground hover:text-foreground transition-colors', showUserMgmt && 'bg-muted text-foreground')}
+                  title="User Management"
+                >
+                  <Users size={15} />
+                </button>
+              )}
+
               {/* Seed baseline */}
               <SeedButton />
 
@@ -272,6 +284,7 @@ export default function App() {
           onOpenFormatSettings={() => setFormatSettingsOpen(true)}
         />
         <FormatSettings open={formatSettingsOpen} onClose={() => setFormatSettingsOpen(false)} />
+        {showUserMgmt && server && <UserManagement server={server} onClose={() => setShowUserMgmt(false)} />}
         <NamingDictionary open={showNamingDict} onClose={() => setShowNamingDict(false)} />
         <PeriodBuilder open={showPeriodBuilder} onClose={() => setShowPeriodBuilder(false)} />
         <Toaster position="bottom-right" />
