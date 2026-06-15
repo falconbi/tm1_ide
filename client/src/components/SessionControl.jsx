@@ -7,11 +7,12 @@ import ChangeLogPanel from '@/components/ChangeLogPanel'
 
 function StartModal({ server, onClose, onStart }) {
   const [name, setName] = useState('')
-  const start = useStartWorkSession()
+  const start    = useStartWorkSession()
+  const username = useStore(s => s.username)
 
   const handleStart = async () => {
     if (!name.trim()) return
-    await start.mutateAsync({ name: name.trim(), server, user: 'jdlove' })
+    await start.mutateAsync({ name: name.trim(), server, user: username })
     onStart?.()
     onClose()
   }

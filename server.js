@@ -8,7 +8,7 @@ const fs        = require('fs')
 const Anthropic = require('@anthropic-ai/sdk')
 const { TM1Client } = require('./core/tm1_client')
 const { loadConnections, saveConnections, getConnection, executeQuery, testConnection, getSchema, loadQueries, saveQueries } = require('./core/sql_client')
-const { getCachedPawSession, getCSRF, PAW_HOST } = require('./core/paw_connect')
+const { getCachedPawSession, createSession, getSessionUser, invalidateSession, getCSRF, PAW_HOST } = require('./core/paw_connect')
 const cl = require('./core/change_log')
 const { diff: deployDiff }      = require('./tools/tm1deploy/src/diff')
 const { pack: deployPack }      = require('./tools/tm1deploy/src/packager')
@@ -31,12 +31,39 @@ app.use(express.static(path.join(__dirname, 'static'), {
     }
 }))
 
+// ── Auth ──────────────────────────────────────────────────────────────────────
+app.post('/api/auth/login', async (req, res) => {
+    try {
+        const { username, password } = req.body
+        if (!username || !password) return res.status(400).json({ error: 'username and password required' })
+        const token = await createSession(username, password)
+        res.json({ token, username })
+    } catch (e) { res.status(401).json({ error: 'Login failed — check your PAW credentials' }) }
+})
+
+app.post('/api/auth/logout', (req, res) => {
+    const token = req.headers['x-ide-token']
+    if (token) invalidateSession(token)
+    res.json({ ok: true })
+})
+
+app.use('/api', (req, res, next) => {
+    if (req.path === '/auth/login' || req.path === '/auth/logout') return next()
+    const token = req.headers['x-ide-token']
+    if (!token) return res.status(401).json({ error: 'Not authenticated' })
+    const user = getSessionUser(token)
+    if (!user) return res.status(401).json({ error: 'Session expired — please log in again' })
+    req.ideToken = token
+    req.user = user
+    next()
+})
+
 // ── Change log / Sessions ─────────────────────────────────────────────────────
 app.post('/api/sessions/start', (req, res) => {
     try {
-        const { name, server, user } = req.body
+        const { name, server } = req.body
         if (!name?.trim() || !server) return res.status(400).json({ error: 'name and server required' })
-        const session = cl.startSession(name.trim(), server, user)
+        const session = cl.startSession(name.trim(), server, req.user)
         res.json(session)
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
@@ -100,7 +127,7 @@ app.post('/api/log/rollback', async (req, res) => {
         if (!entry.before_state) return res.status(400).json({ error: 'No before state captured for this entry' })
 
         const before = entry.before_state
-        const client = new TM1Client(server)
+        const client = new TM1Client(server, req.ideToken)
         const enc    = encodeURIComponent
 
         if (entry.object_type === 'rules') {
@@ -142,7 +169,7 @@ app.get('/api/servers', (req, res) => {
 // ── Cubes ─────────────────────────────────────────────────────────────────────
 app.get('/api/cubes', async (req, res) => {
     try {
-        const client = new TM1Client(req.query.server)
+        const client = new TM1Client(req.query.server, req.ideToken)
         res.json(await client.getCubes())
     } catch (e) {
         res.status(500).json({ error: e.message })
@@ -153,7 +180,7 @@ app.get('/api/cubes', async (req, res) => {
 app.post('/api/dimension/create', async (req, res) => {
     try {
         const { server, name } = req.body
-        await new TM1Client(server).createDimension(name)
+        await new TM1Client(server, req.ideToken).createDimension(name)
         const { hasSession } = cl.writeLog({ server, action: 'DIMENSION_CREATED', objectType: 'dimension', objectName: name })
         res.json({ ok: true, noSession: !hasSession })
     } catch (e) {
@@ -165,7 +192,7 @@ app.post('/api/dimension/create', async (req, res) => {
 app.post('/api/dimension/bulk-import', async (req, res) => {
     try {
         const { server, dimension, hierarchy = dimension, rows } = req.body
-        const client = new TM1Client(server)
+        const client = new TM1Client(server, req.ideToken)
         const errors = []
 
         // Pass 1: create all elements in one bulk call
@@ -195,7 +222,7 @@ app.post('/api/dimension/bulk-import', async (req, res) => {
 app.post('/api/dimension/bulk-attr-import', async (req, res) => {
     try {
         const { server, dimension, hierarchy = dimension, rows } = req.body
-        const client = new TM1Client(server)
+        const client = new TM1Client(server, req.ideToken)
         const errors = []
         for (const row of rows) {
             if (!row.element?.trim() || !row.attrName?.trim()) continue
@@ -210,7 +237,7 @@ app.post('/api/dimension/bulk-attr-import', async (req, res) => {
 
 app.get('/api/dimensions', async (req, res) => {
     try {
-        const client = new TM1Client(req.query.server)
+        const client = new TM1Client(req.query.server, req.ideToken)
         res.json(await client.getDimensions())
     } catch (e) {
         res.status(500).json({ error: e.message })
@@ -219,7 +246,7 @@ app.get('/api/dimensions', async (req, res) => {
 
 app.delete('/api/dimension', async (req, res) => {
     try {
-        const client = new TM1Client(req.query.server)
+        const client = new TM1Client(req.query.server, req.ideToken)
         await client.deleteDimension(req.query.name)
         const { hasSession } = cl.writeLog({ server: req.query.server, action: 'DIMENSION_DELETED', objectType: 'dimension', objectName: req.query.name })
         res.json({ ok: true, noSession: !hasSession })
@@ -233,7 +260,7 @@ app.post('/api/cube', async (req, res) => {
         const { server, name, dims } = req.body
         if (!server || !name?.trim() || !Array.isArray(dims) || dims.length < 2)
             return res.status(400).json({ error: 'Name and at least 2 dimensions are required' })
-        const client = new TM1Client(server)
+        const client = new TM1Client(server, req.ideToken)
         await client.createCube(name.trim(), dims)
         const { hasSession } = cl.writeLog({ server, action: 'CUBE_CREATED', objectType: 'cube', objectName: name.trim() })
         res.json({ ok: true, noSession: !hasSession })
@@ -246,7 +273,7 @@ app.post('/api/cube', async (req, res) => {
 
 app.delete('/api/cube', async (req, res) => {
     try {
-        const client = new TM1Client(req.query.server)
+        const client = new TM1Client(req.query.server, req.ideToken)
         await client.deleteCube(req.query.name)
         const { hasSession } = cl.writeLog({ server: req.query.server, action: 'CUBE_DELETED', objectType: 'cube', objectName: req.query.name })
         res.json({ ok: true, noSession: !hasSession })
@@ -255,7 +282,7 @@ app.delete('/api/cube', async (req, res) => {
 
 app.delete('/api/subset', async (req, res) => {
     try {
-        const client = new TM1Client(req.query.server)
+        const client = new TM1Client(req.query.server, req.ideToken)
         await client.deleteSubset(req.query.dimension, req.query.name, req.query.hierarchy)
         const { hasSession } = cl.writeLog({ server: req.query.server, action: 'SUBSET_DELETED', objectType: 'subset', objectName: req.query.name, detail: req.query.dimension })
         res.json({ ok: true, noSession: !hasSession })
@@ -265,7 +292,7 @@ app.delete('/api/subset', async (req, res) => {
 // ── Processes ─────────────────────────────────────────────────────────────────
 app.get('/api/processes', async (req, res) => {
     try {
-        const client = new TM1Client(req.query.server)
+        const client = new TM1Client(req.query.server, req.ideToken)
         if (req.query.datasource === 'odbc') {
             const d = await client.get('Processes', { '$select': 'Name,DataSource' })
             const names = (d.value ?? [])
@@ -281,7 +308,7 @@ app.get('/api/processes', async (req, res) => {
 
 app.delete('/api/process', async (req, res) => {
     try {
-        const client = new TM1Client(req.query.server)
+        const client = new TM1Client(req.query.server, req.ideToken)
         await client.deleteProcess(req.query.name)
         const { hasSession } = cl.writeLog({ server: req.query.server, action: 'PROCESS_DELETED', objectType: 'process', objectName: req.query.name })
         res.json({ ok: true, noSession: !hasSession })
@@ -291,7 +318,7 @@ app.delete('/api/process', async (req, res) => {
 // ── Chores ────────────────────────────────────────────────────────────────────
 app.get('/api/chores', async (req, res) => {
     try {
-        const client = new TM1Client(req.query.server)
+        const client = new TM1Client(req.query.server, req.ideToken)
         res.json(await client.getChores())
     } catch (e) {
         res.status(500).json({ error: e.message })
@@ -300,14 +327,14 @@ app.get('/api/chores', async (req, res) => {
 
 app.get('/api/chore', async (req, res) => {
     try {
-        const client = new TM1Client(req.query.server)
+        const client = new TM1Client(req.query.server, req.ideToken)
         res.json(await client.getChore(req.query.name))
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
 app.patch('/api/chore', async (req, res) => {
     try {
-        const client = new TM1Client(req.query.server)
+        const client = new TM1Client(req.query.server, req.ideToken)
         await client.updateChore(req.query.name, req.body)
         res.json({ ok: true })
     } catch (e) { res.status(500).json({ error: e.message }) }
@@ -315,7 +342,7 @@ app.patch('/api/chore', async (req, res) => {
 
 app.delete('/api/chore', async (req, res) => {
     try {
-        const client = new TM1Client(req.query.server)
+        const client = new TM1Client(req.query.server, req.ideToken)
         await client.deleteChore(req.query.name)
         res.json({ ok: true })
     } catch (e) { res.status(500).json({ error: e.message }) }
@@ -324,7 +351,7 @@ app.delete('/api/chore', async (req, res) => {
 // ── Rules ─────────────────────────────────────────────────────────────────────
 app.get('/api/rules', async (req, res) => {
     try {
-        const client = new TM1Client(req.query.server)
+        const client = new TM1Client(req.query.server, req.ideToken)
         const cube   = await client.getCube(req.query.cube)
         res.json({ rules: cube?.Rules ?? '' })
     } catch (e) {
@@ -334,7 +361,7 @@ app.get('/api/rules', async (req, res) => {
 
 app.post('/api/rules', async (req, res) => {
     try {
-        const client = new TM1Client(req.query.server)
+        const client = new TM1Client(req.query.server, req.ideToken)
         const current     = await client.getCube(req.query.cube).catch(() => null)
         const beforeState = { text: current?.Rules ?? '' }
         await client.patch(`Cubes('${req.query.cube}')`, { Rules: req.body.rules })
@@ -349,7 +376,7 @@ app.post('/api/rules', async (req, res) => {
 app.post('/api/rules/check', async (req, res) => {
     try {
         const { server, cube, rules } = req.body
-        const client = new TM1Client(server)
+        const client = new TM1Client(server, req.ideToken)
         const enc = encodeURIComponent
         const result = await client.post(`Cubes('${enc(cube)}')/tm1.CheckRules`, { Rules: rules })
         res.json({ errors: result.value ?? [] })
@@ -362,7 +389,7 @@ app.post('/api/rules/check', async (req, res) => {
 // ── Process detail + execute ──────────────────────────────────────────────────
 app.get('/api/process', async (req, res) => {
     try {
-        const client = new TM1Client(req.query.server)
+        const client = new TM1Client(req.query.server, req.ideToken)
         res.json(await client.getProcess(req.query.name))
     } catch (e) {
         console.error('[api/process] GET failed:', e.response?.status, e.response?.data?.error?.message || e.message)
@@ -403,7 +430,7 @@ function joinContinuations(code) {
 
 app.post('/api/process/debug', async (req, res) => {
     const { server, name, params, sections, watches, breakpoints } = req.body
-    const client   = new TM1Client(server)
+    const client   = new TM1Client(server, req.ideToken)
     const tempName = `_IDE_Debug_${Date.now()}`
     let log = '', runError = null
 
@@ -571,7 +598,7 @@ app.get('/api/processes/search', async (req, res) => {
     try {
         const { server, q } = req.query
         if (!q || q.length < 2) return res.json({ results: [] })
-        const client = new TM1Client(server)
+        const client = new TM1Client(server, req.ideToken)
         const data = await client.get('Processes', {
             '$select': 'Name,PrologProcedure,MetaDataProcedure,DataProcedure,EpilogProcedure',
         })
@@ -602,7 +629,7 @@ app.get('/api/processes/search', async (req, res) => {
 
 app.get('/api/process/log', async (req, res) => {
     try {
-        const client = new TM1Client(req.query.server)
+        const client = new TM1Client(req.query.server, req.ideToken)
         const result = await client.get(`Processes('${encodeURIComponent(req.query.name)}')/ErrorLog`)
         const log = typeof result === 'string' ? result : (result?.value ?? '')
         res.json({ log })
@@ -613,7 +640,7 @@ app.get('/api/process/log', async (req, res) => {
 
 app.post('/api/process/create', async (req, res) => {
     try {
-        const client = new TM1Client(req.query.server)
+        const client = new TM1Client(req.query.server, req.ideToken)
         await client.post('Processes', {
             Name: req.query.name,
             PrologProcedure: '', MetadataProcedure: '', DataProcedure: '', EpilogProcedure: '',
@@ -630,7 +657,7 @@ app.post('/api/process/create', async (req, res) => {
 
 app.post('/api/process', async (req, res) => {
     try {
-        const client  = new TM1Client(req.query.server)
+        const client  = new TM1Client(req.query.server, req.ideToken)
         const current = await client.getProcess(req.query.name).catch(() => null)
         const beforeState = current ? {
             prolog:   current.PrologProcedure                             ?? '',
@@ -659,7 +686,7 @@ app.post('/api/process', async (req, res) => {
 })
 
 app.post('/api/process/run', async (req, res) => {
-    const client   = new TM1Client(req.query.server)
+    const client   = new TM1Client(req.query.server, req.ideToken)
     const procName = req.query.name
     const RUN_ATTR = '__RUN_LOG'
     const safeName = procName.replace(/'/g, "''")
@@ -747,7 +774,7 @@ app.post('/api/process/run', async (req, res) => {
 // ── Cube dimensions ───────────────────────────────────────────────────────────
 app.get('/api/cube/dimensions', async (req, res) => {
     try {
-        const client = new TM1Client(req.query.server)
+        const client = new TM1Client(req.query.server, req.ideToken)
         const cube   = await client.getCube(req.query.cube)
         const dims   = (cube?.Dimensions ?? []).map(d => d.Name)
         res.json(dims)
@@ -759,7 +786,7 @@ app.get('/api/cube/dimensions', async (req, res) => {
 // ── Dimension attributes ──────────────────────────────────────────────────────
 app.get('/api/dimension/attributes', async (req, res) => {
     try {
-        const client = new TM1Client(req.query.server)
+        const client = new TM1Client(req.query.server, req.ideToken)
         const attrs  = await client.getElementAttributes(req.query.dimension)
         res.json(attrs.map(a => ({ name: a.Name, type: a.Type })))
     } catch (e) {
@@ -770,7 +797,7 @@ app.get('/api/dimension/attributes', async (req, res) => {
 app.get('/api/dimension/alias-values', async (req, res) => {
     try {
         const { server, dimension, alias } = req.query
-        const client = new TM1Client(server)
+        const client = new TM1Client(server, req.ideToken)
         res.json(await client.getAliasValues(dimension, alias))
     } catch (e) {
         res.status(500).json({ error: e.message })
@@ -779,7 +806,7 @@ app.get('/api/dimension/alias-values', async (req, res) => {
 
 app.get('/api/dimension/cubes', async (req, res) => {
     try {
-        const client = new TM1Client(req.query.server)
+        const client = new TM1Client(req.query.server, req.ideToken)
         res.json(await client.getCubesForDimension(req.query.dimension))
     } catch (e) {
         res.status(500).json({ error: e.message })
@@ -792,7 +819,7 @@ app.get('/api/dimensions/format-attrs', async (req, res) => {
         const { server, dims } = req.query
         const dimensions = dims ? dims.split(',').filter(Boolean) : []
         if (!dimensions.length) return res.json({})
-        const client = new TM1Client(server)
+        const client = new TM1Client(server, req.ideToken)
         const maps = await Promise.all(dimensions.map(async dim => {
             const mdxResult = await client.getAliasValues(dim, 'Format', dim).catch(() => null)
             if (mdxResult && Object.keys(mdxResult).length > 0) {
@@ -810,7 +837,7 @@ app.get('/api/dimensions/format-attrs', async (req, res) => {
 app.get('/api/dimension/attr-grid', async (req, res) => {
     try {
         const { server, dimension, hierarchy } = req.query
-        const client = new TM1Client(server)
+        const client = new TM1Client(server, req.ideToken)
         const [attrs, elements, edges] = await Promise.all([
             client.getElementAttributes(dimension, hierarchy),
             client.getElements(dimension, hierarchy),
@@ -831,7 +858,7 @@ app.get('/api/dimension/attr-grid', async (req, res) => {
 app.post('/api/dimension/attribute-def', async (req, res) => {
     try {
         const { server, dimension, name, type, hierarchy } = req.body
-        await new TM1Client(server).createElementAttribute(dimension, name, type, hierarchy)
+        await new TM1Client(server, req.ideToken).createElementAttribute(dimension, name, type, hierarchy)
         const { hasSession } = cl.writeLog({ server, action: 'ATTRIBUTE_CREATED', objectType: 'attribute', objectName: name, detail: dimension })
         res.json({ ok: true, noSession: !hasSession })
     } catch (e) {
@@ -842,7 +869,7 @@ app.post('/api/dimension/attribute-def', async (req, res) => {
 app.delete('/api/dimension/attribute-def', async (req, res) => {
     try {
         const { server, dimension, name, hierarchy } = req.query
-        await new TM1Client(server).deleteElementAttribute(dimension, name, hierarchy)
+        await new TM1Client(server, req.ideToken).deleteElementAttribute(dimension, name, hierarchy)
         const { hasSession } = cl.writeLog({ server, action: 'ATTRIBUTE_DELETED', objectType: 'attribute', objectName: name, detail: dimension })
         res.json({ ok: true, noSession: !hasSession })
     } catch (e) {
@@ -853,7 +880,7 @@ app.delete('/api/dimension/attribute-def', async (req, res) => {
 app.post('/api/element/attribute', async (req, res) => {
     try {
         const { server, dimension, element, attribute, value, type, hierarchy } = req.body
-        await new TM1Client(server).writeElementAttribute(dimension, element, attribute, value, type, hierarchy)
+        await new TM1Client(server, req.ideToken).writeElementAttribute(dimension, element, attribute, value, type, hierarchy)
         res.json({ ok: true })
     } catch (e) {
         res.status(500).json({ error: e.message })
@@ -863,7 +890,7 @@ app.post('/api/element/attribute', async (req, res) => {
 // ── Views ─────────────────────────────────────────────────────────────────────
 app.get('/api/views', async (req, res) => {
     try {
-        const client = new TM1Client(req.query.server)
+        const client = new TM1Client(req.query.server, req.ideToken)
         res.json(await client.getViews(req.query.cube))
     } catch (e) {
         res.status(500).json({ error: e.message })
@@ -872,7 +899,7 @@ app.get('/api/views', async (req, res) => {
 
 app.get('/api/view', async (req, res) => {
     try {
-        const client = new TM1Client(req.query.server)
+        const client = new TM1Client(req.query.server, req.ideToken)
         res.json(await client.getView(req.query.cube, req.query.name))
     } catch (e) {
         res.status(500).json({ error: e.message })
@@ -881,7 +908,7 @@ app.get('/api/view', async (req, res) => {
 
 app.post('/api/view/execute', async (req, res) => {
     try {
-        const client = new TM1Client(req.query.server)
+        const client = new TM1Client(req.query.server, req.ideToken)
         res.json(await client.executeView(req.query.cube, req.query.view))
     } catch (e) {
         res.status(500).json({ error: e.message })
@@ -892,7 +919,7 @@ app.post('/api/view/save', async (req, res) => {
     try {
         const { server, cube, name } = req.query
         const { mdx, nativeAxes } = req.body
-        const client  = new TM1Client(server)
+        const client  = new TM1Client(server, req.ideToken)
         const current = await client.getView(cube, name).catch(() => null)
         const beforeState = current
             ? current['@odata.type']?.includes('MDXView')
@@ -918,7 +945,7 @@ app.post('/api/view/save', async (req, res) => {
 app.post('/api/view/set-default', async (req, res) => {
     try {
         const { server, cube, name } = req.query
-        const client = new TM1Client(server)
+        const client = new TM1Client(server, req.ideToken)
         await client.setDefaultView(cube, name)
         res.json({ ok: true, noSession: false })
     } catch (e) {
@@ -929,7 +956,7 @@ app.post('/api/view/set-default', async (req, res) => {
 
 app.delete('/api/view', async (req, res) => {
     try {
-        const client = new TM1Client(req.query.server)
+        const client = new TM1Client(req.query.server, req.ideToken)
         await client.deleteView(req.query.cube, req.query.name)
         const { hasSession } = cl.writeLog({ server: req.query.server, action: 'VIEW_DELETED', objectType: 'view', objectName: req.query.name, detail: req.query.cube })
         res.json({ ok: true, noSession: !hasSession })
@@ -939,7 +966,7 @@ app.delete('/api/view', async (req, res) => {
 // ── Elements ──────────────────────────────────────────────────────────────────
 app.get('/api/elements', async (req, res) => {
     try {
-        const client = new TM1Client(req.query.server)
+        const client = new TM1Client(req.query.server, req.ideToken)
         res.json(await client.getElements(req.query.dimension, req.query.hierarchy, req.query.index === '1'))
     } catch (e) {
         res.status(500).json({ error: e.message })
@@ -948,7 +975,7 @@ app.get('/api/elements', async (req, res) => {
 
 app.get('/api/elements/tree', async (req, res) => {
     try {
-        const client = new TM1Client(req.query.server)
+        const client = new TM1Client(req.query.server, req.ideToken)
         const result = await client.getElementsWithTree(req.query.dimension, req.query.hierarchy)
         const sample = result.slice(0, 3)
         console.log('[elements/tree] count:', result.length, 'sample:', JSON.stringify(sample))
@@ -958,7 +985,7 @@ app.get('/api/elements/tree', async (req, res) => {
 
 app.get('/api/elements/attributes', async (req, res) => {
     try {
-        const client = new TM1Client(req.query.server)
+        const client = new TM1Client(req.query.server, req.ideToken)
         res.json(await client.getElementsWithAttributes(req.query.dimension, req.query.hierarchy))
     } catch (e) {
         res.status(500).json({ error: e.message })
@@ -967,7 +994,7 @@ app.get('/api/elements/attributes', async (req, res) => {
 
 app.get('/api/element/attributes', async (req, res) => {
     try {
-        const client = new TM1Client(req.query.server)
+        const client = new TM1Client(req.query.server, req.ideToken)
         res.json(await client.getElementAttributeValues(req.query.dimension, req.query.element, req.query.hierarchy))
     } catch (e) {
         res.status(500).json({ error: e.message })
@@ -976,7 +1003,7 @@ app.get('/api/element/attributes', async (req, res) => {
 
 app.get('/api/edges', async (req, res) => {
     try {
-        const client = new TM1Client(req.query.server)
+        const client = new TM1Client(req.query.server, req.ideToken)
         res.json(await client.getEdges(req.query.dimension, req.query.hierarchy))
     } catch (e) {
         res.status(500).json({ error: e.message })
@@ -986,7 +1013,7 @@ app.get('/api/edges', async (req, res) => {
 // ── Attribute debug — try multiple approaches to see what PAW returns ─────────
 app.get('/api/debug/element-attrs', async (req, res) => {
     const { server, dimension } = req.query
-    const client = new TM1Client(server)
+    const client = new TM1Client(server, req.ideToken)
     const results = {}
 
     // Approach A: $expand=Attributes on elements collection
@@ -1027,7 +1054,7 @@ app.get('/api/debug/element-attrs', async (req, res) => {
 app.post('/api/test/attr-write', async (req, res) => {
     try {
         const { server, dimension } = req.body
-        const client = new TM1Client(server)
+        const client = new TM1Client(server, req.ideToken)
 
         // Get first element that has at least one attribute value set
         const els = await client.get(
@@ -1065,7 +1092,7 @@ app.post('/api/test/attr-write', async (req, res) => {
 app.post('/api/dimension/element', async (req, res) => {
     try {
         const { server, dimension, hierarchy } = req.query
-        const client = new TM1Client(server)
+        const client = new TM1Client(server, req.ideToken)
         await client.addElement(dimension, req.body.name, req.body.type, hierarchy)
         cl.writeLog({ server, action: 'ELEMENT_ADDED', objectType: 'dimension', objectName: req.body.name, detail: dimension })
         res.json({ ok: true })
@@ -1075,7 +1102,7 @@ app.post('/api/dimension/element', async (req, res) => {
 app.delete('/api/dimension/element', async (req, res) => {
     try {
         const { server, dimension, name, hierarchy } = req.query
-        const client = new TM1Client(server)
+        const client = new TM1Client(server, req.ideToken)
         await client.deleteElement(dimension, name, hierarchy)
         cl.writeLog({ server, action: 'ELEMENT_DELETED', objectType: 'dimension', objectName: name, detail: dimension })
         res.json({ ok: true })
@@ -1085,7 +1112,7 @@ app.delete('/api/dimension/element', async (req, res) => {
 app.patch('/api/dimension/element', async (req, res) => {
     try {
         const { server, dimension, name, hierarchy } = req.query
-        const client = new TM1Client(server)
+        const client = new TM1Client(server, req.ideToken)
         await client.renameElement(dimension, name, req.body.newName, hierarchy)
         cl.writeLog({ server, action: 'ELEMENT_RENAMED', objectType: 'dimension', objectName: req.body.newName, detail: `${dimension} · was: ${name}` })
         res.json({ ok: true })
@@ -1094,7 +1121,7 @@ app.patch('/api/dimension/element', async (req, res) => {
 
 app.post('/api/dimension/edge', async (req, res) => {
     try {
-        const client = new TM1Client(req.query.server)
+        const client = new TM1Client(req.query.server, req.ideToken)
         await client.addEdge(req.query.dimension, req.body.parent, req.body.child, req.body.weight ?? 1, req.query.hierarchy)
         res.json({ ok: true })
     } catch (e) { res.status(500).json({ error: e.message }) }
@@ -1102,7 +1129,7 @@ app.post('/api/dimension/edge', async (req, res) => {
 
 app.patch('/api/dimension/edge', async (req, res) => {
     try {
-        const client = new TM1Client(req.query.server)
+        const client = new TM1Client(req.query.server, req.ideToken)
         await client.updateEdgeWeight(req.query.dimension, req.query.parent, req.query.child, req.body.weight, req.query.hierarchy)
         res.json({ ok: true })
     } catch (e) { res.status(500).json({ error: e.message }) }
@@ -1111,7 +1138,7 @@ app.patch('/api/dimension/edge', async (req, res) => {
 app.delete('/api/dimension/edge', async (req, res) => {
     try {
         const { server, dimension, parent, child, hierarchy } = req.query
-        const client = new TM1Client(server)
+        const client = new TM1Client(server, req.ideToken)
         await client.deleteEdge(dimension, parent, child, hierarchy)
         cl.writeLog({ server, action: 'EDGE_REMOVED', objectType: 'dimension', objectName: child, detail: `${dimension} · removed from ${parent}` })
         res.json({ ok: true })
@@ -1120,42 +1147,42 @@ app.delete('/api/dimension/edge', async (req, res) => {
 
 app.get('/api/hierarchies', async (req, res) => {
     try {
-        const client = new TM1Client(req.query.server)
+        const client = new TM1Client(req.query.server, req.ideToken)
         res.json(await client.getHierarchies(req.query.dimension))
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
 app.get('/api/subset/usage', async (req, res) => {
     try {
-        const client = new TM1Client(req.query.server)
+        const client = new TM1Client(req.query.server, req.ideToken)
         res.json(await client.scanSubsetUsage(req.query.dimension, req.query.subset))
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
 app.get('/api/view/usage', async (req, res) => {
     try {
-        const client = new TM1Client(req.query.server)
+        const client = new TM1Client(req.query.server, req.ideToken)
         res.json(await client.scanViewUsage(req.query.cube, req.query.view))
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
 app.get('/api/dimension/usage', async (req, res) => {
     try {
-        const client = new TM1Client(req.query.server)
+        const client = new TM1Client(req.query.server, req.ideToken)
         res.json(await client.scanDimensionUsage(req.query.dimension))
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
 app.get('/api/cube/usage', async (req, res) => {
     try {
-        const client = new TM1Client(req.query.server)
+        const client = new TM1Client(req.query.server, req.ideToken)
         res.json(await client.scanCubeUsage(req.query.cube))
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
 app.get('/api/process/usage', async (req, res) => {
     try {
-        const client = new TM1Client(req.query.server)
+        const client = new TM1Client(req.query.server, req.ideToken)
         res.json(await client.scanProcessUsage(req.query.process))
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
@@ -1163,7 +1190,7 @@ app.get('/api/process/usage', async (req, res) => {
 app.post('/api/dimension/hierarchy', async (req, res) => {
     try {
         const { server, dimension, name } = req.body
-        await new TM1Client(server).createHierarchy(dimension, name)
+        await new TM1Client(server, req.ideToken).createHierarchy(dimension, name)
         cl.writeLog({ server, action: 'HIERARCHY_CREATED', objectType: 'dimension', objectName: name, detail: dimension })
         res.json({ ok: true })
     } catch (e) { res.status(500).json({ error: e.message }) }
@@ -1172,7 +1199,7 @@ app.post('/api/dimension/hierarchy', async (req, res) => {
 app.delete('/api/dimension/hierarchy', async (req, res) => {
     try {
         const { server, dimension, name } = req.query
-        await new TM1Client(server).deleteHierarchy(dimension, name)
+        await new TM1Client(server, req.ideToken).deleteHierarchy(dimension, name)
         cl.writeLog({ server, action: 'HIERARCHY_DELETED', objectType: 'dimension', objectName: name, detail: dimension })
         res.json({ ok: true })
     } catch (e) { res.status(500).json({ error: e.message }) }
@@ -1182,7 +1209,7 @@ app.delete('/api/dimension/hierarchy', async (req, res) => {
 app.get('/api/search/index', async (req, res) => {
     console.log('[api/process] request:', req.query.server, req.query.name)
     try {
-        const client = new TM1Client(req.query.server)
+        const client = new TM1Client(req.query.server, req.ideToken)
         const [cubes, processes] = await Promise.all([
             client.getCubes(),
             client.getProcesses(),
@@ -1214,21 +1241,21 @@ app.get('/api/search/index', async (req, res) => {
 // ── Subsets ───────────────────────────────────────────────────────────────────
 app.get('/api/subsets', async (req, res) => {
     try {
-        const client = new TM1Client(req.query.server)
+        const client = new TM1Client(req.query.server, req.ideToken)
         res.json(await client.getSubsets(req.query.dimension))
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
 app.get('/api/subset', async (req, res) => {
     try {
-        const client = new TM1Client(req.query.server)
+        const client = new TM1Client(req.query.server, req.ideToken)
         res.json(await client.getSubset(req.query.dimension, req.query.name))
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
 app.post('/api/subset', async (req, res) => {
     try {
-        const client      = new TM1Client(req.query.server)
+        const client      = new TM1Client(req.query.server, req.ideToken)
         const current     = await client.getSubset(req.query.dimension, req.query.name).catch(() => null)
         const beforeState = current ? { expression: current.Expression ?? '' } : null
         await client.saveSubset(req.query.dimension, req.query.name, req.body.mdx)
@@ -1243,7 +1270,7 @@ app.post('/api/subset', async (req, res) => {
 
 app.get('/api/subset/elements', async (req, res) => {
     try {
-        const client = new TM1Client(req.query.server)
+        const client = new TM1Client(req.query.server, req.ideToken)
         res.json(await client.getSubsetElements(req.query.dimension, req.query.name))
     } catch (e) {
         res.status(500).json({ error: e.message })
@@ -1252,7 +1279,7 @@ app.get('/api/subset/elements', async (req, res) => {
 
 app.post('/api/subset/static', async (req, res) => {
     try {
-        const client      = new TM1Client(req.query.server)
+        const client      = new TM1Client(req.query.server, req.ideToken)
         const currentEls  = await client.getSubsetElements(req.query.dimension, req.query.name).catch(() => null)
         const beforeState = currentEls ? { elements: currentEls.map(e => e.name) } : null
         await client.saveStaticSubset(req.query.dimension, req.query.name, req.body.elements)
@@ -1270,7 +1297,7 @@ app.get('/api/dimension/attribute-values', async (req, res) => {
     const { server, dimension, attribute } = req.query
     if (!server || !dimension || !attribute) return res.status(400).json({ error: 'server, dimension and attribute required' })
     try {
-        const client = new TM1Client(server)
+        const client = new TM1Client(server, req.ideToken)
         const elements = await client.getElements(dimension, dimension, { $top: 500 })
         const valueSet = new Set()
         const list = Array.isArray(elements?.value) ? elements.value : Array.isArray(elements) ? elements : []
@@ -1289,7 +1316,7 @@ app.get('/api/dimension/attribute-values', async (req, res) => {
 
 app.post('/api/subset/preview', async (req, res) => {
     try {
-        const client = new TM1Client(req.query.server)
+        const client = new TM1Client(req.query.server, req.ideToken)
         const dim = req.query.dimension
         const members = await client.previewMDX(dim, req.body.mdx, req.body.limit ?? 100)
         // Batch-fetch attributes for up to 100 members
@@ -1317,7 +1344,7 @@ app.post('/api/subset/generate', async (req, res) => {
     }
     try {
         const { server, dimension, prompt } = req.body
-        const client   = new TM1Client(server)
+        const client   = new TM1Client(server, req.ideToken)
         const elements = await client.getElements(dimension)
         const sample   = elements.slice(0, 200).map(e => `${e.Name} (${e.Type === 'N' ? 'leaf' : e.Type === 'C' ? 'consolidated' : 'string'}, level ${e.Level})`).join('\n')
 
@@ -1358,7 +1385,7 @@ function extractMembersFromExpression(expr) {
 
 app.get('/api/view/axes', async (req, res) => {
     try {
-        const client = new TM1Client(req.query.server)
+        const client = new TM1Client(req.query.server, req.ideToken)
         const [data, viewDef] = await Promise.all([
             client.executeView(req.query.cube, req.query.view),
             client.getViewWithSubsets(req.query.cube, req.query.view),
@@ -1432,7 +1459,7 @@ app.get('/api/view/axes', async (req, res) => {
 // ── Native View Execute (with suppression toggle) ────────────────────────────
 app.post('/api/view/execute-suppressed', async (req, res) => {
     try {
-        const client = new TM1Client(req.query.server)
+        const client = new TM1Client(req.query.server, req.ideToken)
         const { suppressZeros } = req.body
         res.json(await client.executeViewWithSuppression(req.query.cube, req.query.view, suppressZeros))
     } catch (e) {
@@ -1444,7 +1471,7 @@ app.post('/api/view/execute-suppressed', async (req, res) => {
 // ── MDX Execute ──────────────────────────────────────────────────────────────
 app.post('/api/mdx/execute', async (req, res) => {
     try {
-        const client = new TM1Client(req.query.server)
+        const client = new TM1Client(req.query.server, req.ideToken)
         res.json(await client.executeMDX(req.body.mdx))
     } catch (e) {
         const detail = e.response?.data?.error?.message ?? e.response?.data ?? e.message
@@ -1463,7 +1490,7 @@ function parseDbRefs(rules) {
 
 app.get('/api/lineage', async (req, res) => {
     try {
-        const client   = new TM1Client(req.query.server)
+        const client   = new TM1Client(req.query.server, req.ideToken)
         const root     = req.query.cube
         const maxDepth = Math.min(parseInt(req.query.depth ?? '4'), 6)
         const visited  = new Set()
@@ -1492,7 +1519,7 @@ app.get('/api/lineage', async (req, res) => {
 
 app.get('/api/lineage/consumers', async (req, res) => {
     try {
-        const client = new TM1Client(req.query.server)
+        const client = new TM1Client(req.query.server, req.ideToken)
         const target = req.query.cube
         const cubes  = await client.getCubes()
         const escaped = target.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
@@ -1521,7 +1548,7 @@ app.get('/api/paw/book-usage', async (req, res) => {
         const { server, cube, view } = req.query
         if (!server || !cube) return res.json({ books: [] })
 
-        const pawSession = await getCachedPawSession()
+        const pawSession = await getCachedPawSession(req.ideToken)
         const csrf = await getCSRF(pawSession)
         const base = `${PAW_HOST}/pacontent/v1`
 
@@ -1623,41 +1650,41 @@ app.get('/api/paw/book-usage', async (req, res) => {
 // ── Model objects (non-control) ───────────────────────────────────────────────
 app.get('/api/model/cubes', async (req, res) => {
     try {
-        res.json(await new TM1Client(req.query.server).getModelCubes())
+        res.json(await new TM1Client(req.query.server, req.ideToken).getModelCubes())
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
 app.get('/api/model/dimensions', async (req, res) => {
     try {
-        res.json(await new TM1Client(req.query.server).getModelDimensions())
+        res.json(await new TM1Client(req.query.server, req.ideToken).getModelDimensions())
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
 // ── Chore execute / activate / deactivate / create ────────────────────────────
 app.post('/api/chore/execute', async (req, res) => {
     try {
-        await new TM1Client(req.query.server).executeChore(req.query.name)
+        await new TM1Client(req.query.server, req.ideToken).executeChore(req.query.name)
         res.json({ ok: true })
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
 app.post('/api/chore/activate', async (req, res) => {
     try {
-        await new TM1Client(req.query.server).activateChore(req.query.name)
+        await new TM1Client(req.query.server, req.ideToken).activateChore(req.query.name)
         res.json({ ok: true })
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
 app.post('/api/chore/deactivate', async (req, res) => {
     try {
-        await new TM1Client(req.query.server).deactivateChore(req.query.name)
+        await new TM1Client(req.query.server, req.ideToken).deactivateChore(req.query.name)
         res.json({ ok: true })
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
 app.post('/api/chore', async (req, res) => {
     try {
-        await new TM1Client(req.query.server).createChore(req.body)
+        await new TM1Client(req.query.server, req.ideToken).createChore(req.body)
         res.json({ ok: true })
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
@@ -1665,7 +1692,7 @@ app.post('/api/chore', async (req, res) => {
 // ── Jobs ──────────────────────────────────────────────────────────────────────
 app.get('/api/jobs', async (req, res) => {
     try {
-        res.json(await new TM1Client(req.query.server).getJobs())
+        res.json(await new TM1Client(req.query.server, req.ideToken).getJobs())
     } catch (e) {
         // Jobs endpoint is V12+ only — return empty list with flag for V11 servers
         const is404 = e.message?.includes('404') || e.response?.status === 404
@@ -1676,7 +1703,7 @@ app.get('/api/jobs', async (req, res) => {
 
 app.post('/api/job/cancel', async (req, res) => {
     try {
-        await new TM1Client(req.query.server).cancelJob(req.query.id)
+        await new TM1Client(req.query.server, req.ideToken).cancelJob(req.query.id)
         res.json({ ok: true })
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
@@ -1684,13 +1711,13 @@ app.post('/api/job/cancel', async (req, res) => {
 // ── Process error logs ────────────────────────────────────────────────────────
 app.get('/api/process/errorlogs', async (req, res) => {
     try {
-        res.json(await new TM1Client(req.query.server).getErrorLogFiles())
+        res.json(await new TM1Client(req.query.server, req.ideToken).getErrorLogFiles())
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
 app.get('/api/process/errorlog/content', async (req, res) => {
     try {
-        const content = await new TM1Client(req.query.server).getErrorLogContent(req.query.filename)
+        const content = await new TM1Client(req.query.server, req.ideToken).getErrorLogContent(req.query.filename)
         res.json({ content })
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
@@ -1699,7 +1726,7 @@ app.get('/api/process/errorlog/content', async (req, res) => {
 app.post('/api/cube/trace', async (req, res) => {
     try {
         const { server, cube, dimElemPairs } = req.body
-        res.json(await new TM1Client(server).traceCellCalculation(cube, dimElemPairs))
+        res.json(await new TM1Client(server, req.ideToken).traceCellCalculation(cube, dimElemPairs))
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
@@ -1708,7 +1735,7 @@ app.get('/api/transactions', async (req, res) => {
     try {
         const { server, cube, top, elements } = req.query
         const parsed = elements ? JSON.parse(elements) : null
-        res.json(await new TM1Client(server).getTransactionLog(cube, {
+        res.json(await new TM1Client(server, req.ideToken).getTransactionLog(cube, {
             top:      top ? parseInt(top) : 200,
             elements: parsed,
         }))
@@ -1720,7 +1747,7 @@ app.get('/api/files/list', async (req, res) => {
     try {
         const { server, path: p } = req.query
         const pathParts = p ? JSON.parse(p) : ['Files']
-        res.json(await new TM1Client(server).listFiles(pathParts))
+        res.json(await new TM1Client(server, req.ideToken).listFiles(pathParts))
     } catch (e) {
         const is404 = e.response?.status === 404 || e.message?.includes('404')
         if (is404) return res.status(404).json({ error: 'File browsing is not available on this server. The Contents API requires Planning Analytics v12 or later.' })
@@ -1732,10 +1759,10 @@ app.get('/api/files/content', async (req, res) => {
     try {
         const { server, path: p, name } = req.query
         const pathParts = p ? JSON.parse(p) : ['Files']
-        const client = new TM1Client(server)
+        const client = new TM1Client(server, req.ideToken)
         // Get raw content — stream back as download
-        const session = await require('./core/paw_connect').getCachedPawSession()
-        const csrf    = await require('./core/paw_connect').getCSRF(session)
+        const session = await getCachedPawSession(req.ideToken)
+        const csrf    = await getCSRF(session)
         const url     = client._url(`${client._contentsPath(pathParts)}/Contents('${encodeURIComponent(name)}')/Content`)
         const r = await session.get(url, { headers: { 'ba-sso-authenticity': csrf }, responseType: 'arraybuffer' })
         res.setHeader('Content-Disposition', `attachment; filename="${name}"`)
@@ -1748,7 +1775,7 @@ app.post('/api/files/upload', express.raw({ type: '*/*', limit: '50mb' }), async
     try {
         const { server, path: p, name } = req.query
         const pathParts = p ? JSON.parse(p) : ['Files']
-        const client = new TM1Client(server)
+        const client = new TM1Client(server, req.ideToken)
         // Create the document entry (ignore 409 if already exists)
         try { await client.createFileDocument(pathParts, name) } catch (e) {
             if (!e.message?.includes('already exists') && !(e.response?.status === 409)) throw e
@@ -1762,7 +1789,7 @@ app.delete('/api/files', async (req, res) => {
     try {
         const { server, path: p, name } = req.query
         const pathParts = p ? JSON.parse(p) : ['Files']
-        await new TM1Client(server).deleteFile(pathParts, name)
+        await new TM1Client(server, req.ideToken).deleteFile(pathParts, name)
         res.json({ ok: true })
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
@@ -1770,7 +1797,7 @@ app.delete('/api/files', async (req, res) => {
 // ── Sessions ──────────────────────────────────────────────────────────────────
 app.get('/api/sessions', async (req, res) => {
     try {
-        const client = new TM1Client(req.query.server)
+        const client = new TM1Client(req.query.server, req.ideToken)
         const sessions = await client.getSessions()
         res.json(sessions)
     } catch (e) {
@@ -1781,14 +1808,14 @@ app.get('/api/sessions', async (req, res) => {
 
 app.delete('/api/session', async (req, res) => {
     try {
-        await new TM1Client(req.query.server).disconnectSession(req.query.id)
+        await new TM1Client(req.query.server, req.ideToken).disconnectSession(req.query.id)
         res.json({ ok: true })
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
 app.get('/api/threads', async (req, res) => {
     try {
-        const client = new TM1Client(req.query.server)
+        const client = new TM1Client(req.query.server, req.ideToken)
         const threads = await client.getThreads()
         res.json(threads)
     } catch (e) { res.status(500).json({ error: e.message }) }
@@ -1796,7 +1823,7 @@ app.get('/api/threads', async (req, res) => {
 
 app.post('/api/thread/cancel', async (req, res) => {
     try {
-        await new TM1Client(req.query.server).cancelThread(req.query.id)
+        await new TM1Client(req.query.server, req.ideToken).cancelThread(req.query.id)
         res.json({ ok: true })
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
@@ -1805,13 +1832,13 @@ app.post('/api/thread/cancel', async (req, res) => {
 app.get('/api/admin/metrics', async (req, res) => {
     try {
         const { server, cube } = req.query
-        res.json(await new TM1Client(server).getMetrics(cube || null))
+        res.json(await new TM1Client(server, req.ideToken).getMetrics(cube || null))
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
 app.get('/api/admin/configuration', async (req, res) => {
     try {
-        const client = new TM1Client(req.query.server)
+        const client = new TM1Client(req.query.server, req.ideToken)
         console.log('[config] GET', client._url('ActiveConfiguration'))
         res.json(await client.getActiveConfiguration())
     } catch (e) {
@@ -1823,19 +1850,19 @@ app.get('/api/admin/configuration', async (req, res) => {
 app.patch('/api/admin/configuration', async (req, res) => {
     try {
         const { server, section = 'Administration', values } = req.body
-        res.json(await new TM1Client(server).patchStaticConfiguration(section, values))
+        res.json(await new TM1Client(server, req.ideToken).patchStaticConfiguration(section, values))
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
 app.post('/api/admin/maintenance/enable', async (req, res) => {
     try {
-        res.json(await new TM1Client(req.body.server).enableMaintenanceMode())
+        res.json(await new TM1Client(req.body.server, req.ideToken).enableMaintenanceMode())
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
 app.post('/api/admin/maintenance/disable', async (req, res) => {
     try {
-        res.json(await new TM1Client(req.body.server).disableMaintenanceMode())
+        res.json(await new TM1Client(req.body.server, req.ideToken).disableMaintenanceMode())
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
@@ -1843,7 +1870,7 @@ app.post('/api/admin/maintenance/disable', async (req, res) => {
 // ── Control Objects ───────────────────────────────────────────────────────────
 app.get('/api/control/objects', async (req, res) => {
     try {
-        const client = new TM1Client(req.query.server)
+        const client = new TM1Client(req.query.server, req.ideToken)
         res.json(await client.getControlObjects())
     } catch (e) {
         res.status(500).json({ error: e.message })
@@ -1859,7 +1886,7 @@ app.post('/api/period-builder/run', async (req, res) => {
         return res.status(400).json({ ok: false, error: 'server and processes required' })
     }
     try {
-        const client = new TM1Client(server)
+        const client = new TM1Client(server, req.ideToken)
         for (const proc of processes) {
             await client.createOrReplaceProcess(proc)
         }
@@ -1952,7 +1979,7 @@ app.post('/api/sql/post-to-ti', async (req, res) => {
         if (!conn) return res.status(404).json({ error: 'Connection not found' })
         if (!conn.dsn) return res.status(400).json({ error: 'Connection has no TM1 DSN configured' })
 
-        const client = new TM1Client(server)
+        const client = new TM1Client(server, req.ideToken)
 
         // Parse ?pParam? tokens from SQL
         const tokens = [...new Set([...sql.matchAll(/\?(\w+)\?/g)].map(m => m[1]))]
@@ -2052,7 +2079,7 @@ app.delete('/api/sql/queries/:id', (req, res) => {
 // ── Current user ──────────────────────────────────────────────────────────────
 app.get('/api/whoami', async (req, res) => {
     try {
-        const client = new TM1Client(req.query.server)
+        const client = new TM1Client(req.query.server, req.ideToken)
         const name = await client.getCurrentUser()
         res.json({ name })
     } catch (e) {
@@ -2068,7 +2095,7 @@ app.post('/api/cells/write', async (req, res) => {
         console.log('[cells/write] REQUEST BODY:', JSON.stringify({ server, cube, dims, value }))
         if (!server || !cube || !Array.isArray(dims) || dims.length === 0)
             return res.status(400).json({ error: 'server, cube, and dims are required' })
-        const client = new TM1Client(server)
+        const client = new TM1Client(server, req.ideToken)
         const result = await client.writeCellValue(cube, dims, value)
         console.log('[cells/write] TM1 RESPONSE:', JSON.stringify(result))
         res.json({ ok: true })
@@ -2087,7 +2114,7 @@ app.get('/api/deploy/object-diff', async (req, res) => {
         const { server, type, name, detail } = req.query
         if (!fs.existsSync(BASELINE_PATH)) return res.status(404).json({ error: 'No baseline seeded' })
         const snapshot = JSON.parse(fs.readFileSync(BASELINE_PATH, 'utf8'))
-        const client = new TM1Client(server)
+        const client = new TM1Client(server, req.ideToken)
         let before = null, after = null
 
         if (type === 'rules') {

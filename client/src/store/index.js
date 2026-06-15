@@ -38,7 +38,7 @@ const _saveForge = (state) => {
   _forgeTimer = setTimeout(() => {
     fetch('/api/forge', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'x-ide-token': localStorage.getItem('tm1-token') ?? '' },
       body: JSON.stringify({
         server: state.server,
         tabs: state.tabs,
@@ -82,7 +82,7 @@ export const useStore = create((set, get) => ({
   forgeLoaded: false,
   loadForge: async () => {
     try {
-      const r = await fetch('/api/forge')
+      const r = await fetch('/api/forge', { headers: { 'x-ide-token': localStorage.getItem('tm1-token') ?? '' } })
       const forge = await r.json()
       const patch = {}
       if (forge.server) patch.server = forge.server
@@ -101,6 +101,20 @@ export const useStore = create((set, get) => ({
       patch.forgeLoaded = true
       set(patch)
     } catch { set({ forgeLoaded: true }) }
+  },
+
+  // ── Auth ────────────────────────────────────────────────────────────────────
+  token:    localStorage.getItem('tm1-token')    ?? null,
+  username: localStorage.getItem('tm1-username') ?? null,
+  setAuth: (token, username) => {
+    localStorage.setItem('tm1-token', token)
+    localStorage.setItem('tm1-username', username)
+    set({ token, username })
+  },
+  clearAuth: () => {
+    localStorage.removeItem('tm1-token')
+    localStorage.removeItem('tm1-username')
+    set({ token: null, username: null })
   },
 
   // ── Server ──────────────────────────────────────────────────────────────────

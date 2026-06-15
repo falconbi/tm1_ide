@@ -153,7 +153,7 @@ function SessionRow({ session, server, openTab }) {
                 <span className="text-xs font-medium truncate">{session.name}</span>
               </div>
               <div className="text-[10px] text-muted-foreground/60">
-                {fmtDate(session.started_at)} · {session.entry_count} change{session.entry_count !== 1 ? 's' : ''}
+                {fmtDate(session.started_at)} · {session.entry_count} change{session.entry_count !== 1 ? 's' : ''}{session.user ? ` · ${session.user}` : ''}
               </div>
               {!editingDesc && (descValue
                 ? <div className="text-[10px] text-muted-foreground/80 truncate mt-0.5 italic">{descValue}</div>

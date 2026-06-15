@@ -3,8 +3,9 @@
 const { getCachedPawSession, getCSRF, PAW_HOST } = require('./paw_connect')
 
 class TM1Client {
-    constructor(server) {
+    constructor(server, token = null) {
         this.server = server
+        this._token = token
     }
 
     _url(path) {
@@ -12,12 +13,12 @@ class TM1Client {
     }
 
     async _headers() {
-        const session = await getCachedPawSession()
+        const session = await getCachedPawSession(this._token)
         return { 'ba-sso-authenticity': await getCSRF(session) }
     }
 
     async _session() {
-        return getCachedPawSession()
+        return getCachedPawSession(this._token)
     }
 
     async get(path, params = {}) {

@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useStore } from '@/store'
 
 const extractError = async (r) => {
+  if (r.status === 401) window.dispatchEvent(new CustomEvent('tm1-unauthorized'))
   try {
     const d = await r.json()
     const err = new Error(d.error || d.message || r.statusText)
@@ -9,10 +10,14 @@ const extractError = async (r) => {
     return err
   } catch { return new Error(r.statusText) }
 }
-const get   = (url)       => fetch(url).then(async r => { if (!r.ok) throw await extractError(r); return r.json() })
-const post  = (url, body) => fetch(url, { method: 'POST',   headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(async r => { if (!r.ok) throw await extractError(r); const d = await r.json(); if (d?.noSession) window.dispatchEvent(new CustomEvent('tm1-no-session')); return d })
-const del   = (url)       => fetch(url, { method: 'DELETE' }).then(async r => { if (!r.ok) throw await extractError(r); return r.json() })
-const patch = (url, body) => fetch(url, { method: 'PATCH',  headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(async r => { if (!r.ok) throw await extractError(r); return r.json() })
+const authHeader = () => ({ 'x-ide-token': localStorage.getItem('tm1-token') ?? '' })
+const get   = (url)       => fetch(url, { headers: authHeader() }).then(async r => { if (!r.ok) throw await extractError(r); return r.json() })
+const post  = (url, body) => fetch(url, { method: 'POST',   headers: { 'Content-Type': 'application/json', ...authHeader() }, body: JSON.stringify(body) }).then(async r => { if (!r.ok) throw await extractError(r); const d = await r.json(); if (d?.noSession) window.dispatchEvent(new CustomEvent('tm1-no-session')); return d })
+const del   = (url)       => fetch(url, { method: 'DELETE', headers: authHeader() }).then(async r => { if (!r.ok) throw await extractError(r); return r.json() })
+const patch = (url, body) => fetch(url, { method: 'PATCH',  headers: { 'Content-Type': 'application/json', ...authHeader() }, body: JSON.stringify(body) }).then(async r => { if (!r.ok) throw await extractError(r); return r.json() })
+
+export const useLogin  = () => useMutation({ mutationFn: ({ username, password }) => fetch('/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username, password }) }).then(async r => { if (!r.ok) throw await extractError(r); return r.json() }) })
+export const useLogout = () => useMutation({ mutationFn: () => fetch('/api/auth/logout', { method: 'POST', headers: authHeader() }).then(r => r.json()) })
 
 const enc = encodeURIComponent
 

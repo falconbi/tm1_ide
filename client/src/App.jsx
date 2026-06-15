@@ -18,6 +18,7 @@ import EditorPreferences from '@/components/EditorPreferences'
 import NamingDictionary from '@/components/NamingDictionary'
 import PeriodBuilder from '@/components/PeriodBuilder'
 import SessionControl from '@/components/SessionControl'
+import LoginPage from '@/components/LoginPage'
 import { useDeploySeed, useDeployBaseline, useServers } from '@/hooks/useApi'
 import { toast } from 'sonner'
 
@@ -104,19 +105,26 @@ function SeedButton() {
 }
 
 export default function App() {
-  const { loadForge, formatSettingsOpen, setFormatSettingsOpen, openTab, server } = useStore()
-  const groups = useStore(s => s.groups)
+  const { loadForge, formatSettingsOpen, setFormatSettingsOpen, openTab, server, token, clearAuth } = useStore()
+  const groups       = useStore(s => s.groups)
+  const revealTarget = useStore(s => s.revealTarget)
 
-  const [showFind, setShowFind]           = useState(false)
-  const [showSidebar, setShowSidebar]     = useState(true)
-  const [showShortcuts, setShowShortcuts] = useState(false)
-  const [showNamingDict, setShowNamingDict]     = useState(false)
-  const [showPrefs, setShowPrefs]               = useState(false)
+  const [showFind, setShowFind]                   = useState(false)
+  const [showSidebar, setShowSidebar]             = useState(true)
+  const [showShortcuts, setShowShortcuts]         = useState(false)
+  const [showNamingDict, setShowNamingDict]       = useState(false)
+  const [showPrefs, setShowPrefs]                 = useState(false)
   const [showPeriodBuilder, setShowPeriodBuilder] = useState(false)
-  useEffect(() => { loadForge() }, [])
+
+  useEffect(() => {
+    const handler = () => clearAuth()
+    window.addEventListener('tm1-unauthorized', handler)
+    return () => window.removeEventListener('tm1-unauthorized', handler)
+  }, [])
+
+  useEffect(() => { if (token) loadForge() }, [token])
 
   // Auto-show sidebar when revealing an object in the Explorer tree
-  const revealTarget = useStore(s => s.revealTarget)
   useEffect(() => {
     if (revealTarget && !showSidebar) setShowSidebar(true)
   }, [revealTarget, showSidebar])
@@ -132,6 +140,17 @@ export default function App() {
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
   }, [])
+
+  if (!token) {
+    return (
+      <QueryClientProvider client={queryClient}>
+        <TooltipProvider>
+          <LoginPage />
+          <Toaster />
+        </TooltipProvider>
+      </QueryClientProvider>
+    )
+  }
 
   return (
     <QueryClientProvider client={queryClient}>
