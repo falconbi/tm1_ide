@@ -2,7 +2,7 @@
 
 const fs   = require('fs')
 const path = require('path')
-const { TM1Client }   = require('./client')
+const { makeClient }  = require('./client')
 const { analyzeRisk } = require('./risk')
 
 // ── Per-type deployers ────────────────────────────────────────────────────────
@@ -115,14 +115,14 @@ const DEPLOY_ORDER = ['attribute', 'dimension', 'cube', 'rules', 'subset', 'view
 
 // ── Main deploy ───────────────────────────────────────────────────────────────
 
-async function deploy(packageDir, targetServer, options = {}) {
+async function deploy(packageDir, targetServer, options = {}, ideToken) {
     const { dryRun = false, skipRiskCheck = false, onProgress } = options
 
     const manifestPath = path.join(packageDir, 'manifest.json')
     if (!fs.existsSync(manifestPath)) throw new Error(`No manifest.json found in ${packageDir}`)
 
     const manifest     = JSON.parse(fs.readFileSync(manifestPath, 'utf8'))
-    const targetClient = new TM1Client(targetServer)
+    const targetClient = makeClient(targetServer, ideToken)
 
     const report = {
         source_server:  manifest._meta.server,
@@ -138,7 +138,7 @@ async function deploy(packageDir, targetServer, options = {}) {
     // ── Risk check ────────────────────────────────────────────────────────────
     if (!skipRiskCheck) {
         onProgress?.('risk-check')
-        const riskReport = await analyzeRisk(packageDir, targetServer)
+        const riskReport = await analyzeRisk(packageDir, targetServer, ideToken)
         report.risk = riskReport
         if (!riskReport.safe_to_deploy) {
             return { ...report, aborted: true, reason: `${riskReport.blockers.length} blocker(s) found — run tm1deploy risk for details` }

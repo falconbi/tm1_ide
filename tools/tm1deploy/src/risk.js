@@ -2,7 +2,7 @@
 
 const fs   = require('fs')
 const path = require('path')
-const { TM1Client } = require('./client')
+const { makeClient } = require('./client')
 
 // ── Result builder ────────────────────────────────────────────────────────────
 
@@ -254,12 +254,12 @@ async function checkViewOverwrite(obj, client) {
 
 // ── Main analyzer ─────────────────────────────────────────────────────────────
 
-async function analyzeRisk(packageDir, targetServer) {
+async function analyzeRisk(packageDir, targetServer, ideToken) {
     const manifestPath = path.join(packageDir, 'manifest.json')
     if (!fs.existsSync(manifestPath)) throw new Error(`No manifest.json found in ${packageDir}`)
 
     const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'))
-    const client   = new TM1Client(targetServer)
+    const client   = makeClient(targetServer, ideToken)
     const objects  = manifest.objects ?? []
 
     if (!objects.length) {

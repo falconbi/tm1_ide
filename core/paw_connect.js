@@ -50,6 +50,12 @@ function getSessionUser(token) {
     return _sessions.get(token)?.username ?? null
 }
 
+function getSessionCredentials(token) {
+    const entry = _sessions.get(token)
+    if (!entry) return null
+    return { username: entry.username, password: entry.password }
+}
+
 function invalidateSession(token) {
     _sessions.delete(token)
 }
@@ -59,4 +65,4 @@ async function getCSRF(session) {
     return cookies.find(c => c.key === 'ba-sso-csrf')?.value ?? ''
 }
 
-module.exports = { createSession, getCachedPawSession, getSessionUser, invalidateSession, getCSRF, PAW_HOST }
+module.exports = { createSession, getCachedPawSession, getSessionUser, getSessionCredentials, invalidateSession, getCSRF, PAW_HOST }

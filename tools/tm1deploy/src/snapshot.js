@@ -2,7 +2,7 @@
 
 const fs   = require('fs')
 const path = require('path')
-const { TM1Client } = require('./client')
+const { makeClient } = require('./client')
 
 // Run items in batches — each batch is parallel, batches are sequential.
 // Prevents overwhelming TM1 with hundreds of simultaneous requests.
@@ -190,8 +190,8 @@ async function snapshotViews(client, cubeNames) {
     return views
 }
 
-async function takeSnapshot(server) {
-    const client    = new TM1Client(server)
+async function takeSnapshot(server, ideToken) {
+    const client    = makeClient(server, ideToken)
     const seeded_at = new Date().toISOString()
 
     console.log(`\nConnecting → TM1 server: ${server}`)
@@ -269,8 +269,8 @@ async function takeSnapshot(server) {
     }
 }
 
-async function seed(server, outputPath) {
-    const snapshot = await takeSnapshot(server)
+async function seed(server, outputPath, ideToken) {
+    const snapshot = await takeSnapshot(server, ideToken)
 
     const dir = path.dirname(outputPath)
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true })

@@ -2,7 +2,7 @@
 
 const fs   = require('fs')
 const path = require('path')
-const { TM1Client } = require('./client')
+const { makeClient } = require('./client')
 const { diff }      = require('./diff')
 
 const PACKAGES_DIR = path.resolve(__dirname, '../../../packages')
@@ -99,12 +99,12 @@ async function fetchAttribute(dim, attrName, client) {
 
 // ── Main packager ─────────────────────────────────────────────────────────────
 
-async function pack(server, sessionEntries, sessionName, options = {}) {
+async function pack(server, sessionEntries, sessionName, options = {}, ideToken) {
     const { baselinePath, outputDir: overrideDir, force = false, forceInclude = [] } = options
-    const client = new TM1Client(server)
+    const client = makeClient(server, ideToken)
 
     // Run diff to get packable objects
-    const diffResult = await diff(server, sessionEntries, baselinePath)
+    const diffResult = await diff(server, sessionEntries, baselinePath, ideToken)
 
     // Merge force-included drift objects (user explicitly selected them)
     const forcedKeys = new Set(forceInclude.map(i => `${i.object_type}::${i.object_name}::${i.detail ?? ''}`))

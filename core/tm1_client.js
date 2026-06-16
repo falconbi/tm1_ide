@@ -1,55 +1,29 @@
 'use strict'
 
-const { getCachedPawSession, getCSRF, PAW_HOST } = require('./paw_connect')
-
 class TM1Client {
-    constructor(server, token = null) {
+    constructor(server, adapter) {
         this.server = server
-        this._token = token
-    }
-
-    _url(path) {
-        return `${PAW_HOST}/api/v0/tm1/${this.server}/api/v1/${path}`
-    }
-
-    async _headers() {
-        const session = await getCachedPawSession(this._token)
-        return { 'ba-sso-authenticity': await getCSRF(session) }
-    }
-
-    async _session() {
-        return getCachedPawSession(this._token)
+        this._adapter = adapter
     }
 
     async get(path, params = {}) {
-        const s = await this._session()
-        const r = await s.get(this._url(path), { params, headers: await this._headers() })
-        return r.data
+        return this._adapter.get(path, params)
     }
 
     async post(path, body = {}) {
-        const s = await this._session()
-        const r = await s.post(this._url(path), body, { headers: await this._headers() })
-        return r.data
+        return this._adapter.post(path, body)
     }
 
     async patch(path, body = {}) {
-        const s = await this._session()
-        const r = await s.patch(this._url(path), body, { headers: await this._headers() })
-        return r.data ?? {}
+        return this._adapter.patch(path, body)
     }
 
     async delete(path) {
-        const s = await this._session()
-        await s.delete(this._url(path), { headers: await this._headers() })
+        return this._adapter.delete(path)
     }
 
     async put(path, data, contentType = 'application/octet-stream') {
-        const s = await this._session()
-        const r = await s.put(this._url(path), data, {
-            headers: { ...await this._headers(), 'Content-Type': contentType },
-        })
-        return r.data
+        return this._adapter.put(path, data, contentType)
     }
 
     // ── Dimensions ────────────────────────────────────────────────────────────
@@ -250,12 +224,6 @@ class TM1Client {
         }
 
         return results
-    }
-
-    async _put(path, body = {}) {
-        const s = await this._session()
-        const r = await s.put(this._url(path), body, { headers: await this._headers() })
-        return r.data ?? {}
     }
 
     // ── Attribute write probe (TM1py-derived approaches) ─────────────────────
@@ -963,21 +931,13 @@ return (d.value ?? [])
 
     async executeMDX(mdx, maxCells = 50_000) {
         const { ID } = await this.post('ExecuteMDX', { MDX: mdx })
-        const s = await this._session()
-        const h = await this._headers()
-        const [axisRes, cellRes] = await Promise.all([
-            s.get(this._url(`Cellsets('${ID}')/Axes`), {
-                params: { '$expand': 'Tuples($expand=Members($select=Name,UniqueName,Type))' },
-                headers: h,
-            }),
-            s.get(this._url(`Cellsets('${ID}')/Cells`), {
-                params: { '$select': 'Ordinal,Value,FormattedValue,Updateable', '$top': maxCells },
-                headers: h,
-            }),
+        const [axisData, cellData] = await Promise.all([
+            this.get(`Cellsets('${ID}')/Axes`, { '$expand': 'Tuples($expand=Members($select=Name,UniqueName,Type))' }),
+            this.get(`Cellsets('${ID}')/Cells`, { '$select': 'Ordinal,Value,FormattedValue,Updateable', '$top': maxCells }),
         ])
         try { await this.delete(`Cellsets('${ID}')`) } catch {}
-        const cells = cellRes.data.value
-        return { Axes: axisRes.data.value, Cells: cells, truncated: cells.length >= maxCells }
+        const cells = cellData.value
+        return { Axes: axisData.value, Cells: cells, truncated: cells.length >= maxCells }
     }
 
     async executeViewWithSuppression(cube, view, suppressZeros, maxCells = 50_000) {
@@ -986,24 +946,16 @@ return (d.value ?? [])
     }
 
     async executeView(cube, view, maxCells = 50_000) {
-        const viewDef  = await this.get(`Cubes('${cube}')/Views('${view}')`)
-        const { ID }   = await this.post(`Cubes('${cube}')/Views('${view}')/tm1.Execute`, {})
-        const s = await this._session()
-        const h = await this._headers()
-        const [axisRes, cellRes] = await Promise.all([
-            s.get(this._url(`Cellsets('${ID}')/Axes`), {
-                params: { '$expand': 'Tuples($expand=Members($select=Name,UniqueName,Type))' },
-                headers: h,
-            }),
-            s.get(this._url(`Cellsets('${ID}')/Cells`), {
-                params: { '$select': 'Ordinal,Value,FormattedValue,Updateable', '$top': maxCells },
-                headers: h,
-            }),
+        const viewDef = await this.get(`Cubes('${cube}')/Views('${view}')`)
+        const { ID }  = await this.post(`Cubes('${cube}')/Views('${view}')/tm1.Execute`, {})
+        const [axisData, cellData] = await Promise.all([
+            this.get(`Cellsets('${ID}')/Axes`, { '$expand': 'Tuples($expand=Members($select=Name,UniqueName,Type))' }),
+            this.get(`Cellsets('${ID}')/Cells`, { '$select': 'Ordinal,Value,FormattedValue,Updateable', '$top': maxCells }),
         ])
         try { await this.delete(`Cellsets('${ID}')`) } catch {}
-        const cells = cellRes.data.value
+        const cells = cellData.value
         return {
-            Axes: axisRes.data.value,
+            Axes: axisData.value,
             Cells: cells,
             ViewType: viewDef?.['@odata.type'] ?? null,
             truncated: cells.length >= maxCells,

@@ -2,7 +2,7 @@
 
 const fs   = require('fs')
 const path = require('path')
-const { TM1Client } = require('./client')
+const { makeClient } = require('./client')
 
 const BASELINE_PATH = path.resolve(__dirname, '../../../.tm1baseline/snapshot.json')
 
@@ -201,8 +201,8 @@ function outcome(result, entry, note, extra = {}) {
 
 // ── Main diff ─────────────────────────────────────────────────────────────────
 
-async function diff(server, sessionEntries, baselinePath) {
-    const client   = new TM1Client(server)
+async function diff(server, sessionEntries, baselinePath, ideToken) {
+    const client   = makeClient(server, ideToken)
     const baseline = loadBaseline(baselinePath)
 
     // Annotate each entry with its last_action for deduplication
