@@ -521,3 +521,57 @@ tm1deploy apply --package apportionment-seed --target test
 # Run seed chore via IDE or:
 tm1deploy seed-run --package apportionment-seed --target test
 ```
+
+---
+
+## Security Settings Deployment
+
+### What is and isn't deployed
+
+| Object | Deployed | Reason |
+|---|---|---|
+| `}Clients` (users) | Never | Environment-specific. Dev has test accounts, Prod has real users. |
+| `}Groups` | Yes | Group structure must be consistent across environments. |
+| `}CubeSecurity` | Yes | Access rights travel with the cube. |
+| `}ElementSecurity_{Dim}` | Yes | Element access travels with the dimension. |
+| `}ProcessSecurity` | Yes | Process access travels with the process. |
+| `}ViewSecurity` | Yes | View access travels with the view. |
+| `}ChoresSecurity` | Yes | Chore access travels with the chore. |
+
+### Why manual, not automated
+
+Security changes in Prod are high-risk — a mistake can expose or lock out data for real users. Automated deployment of security settings is explicitly out of scope. Instead the pipeline generates a checklist, the admin applies it manually, and the result is verified and logged.
+
+### The Security Checklist
+
+At deploy time the pipeline reads the relevant control cubes from Dev and generates a **Security Actions Required** report alongside the deployment package. Example:
+
+```
+SECURITY ACTIONS REQUIRED — apportionment-v1
+─────────────────────────────────────────────
+New cube: SalesForecast
+  → }CubeSecurity:  ADMIN=Write, DataEntry=Write, ReadOnly=Read
+
+New dimension elements: Month (Jan-26, Feb-26, Mar-26)
+  → }ElementSecurity_Month:  DataEntry=Read for new elements
+
+New process: }Generate_Forecast
+  → }ProcessSecurity:  ADMIN=Execute
+
+New group: Forecasters
+  → Create group in Prod first, assign users manually
+```
+
+The developer reviews the checklist and ticks **"I confirm these security settings will be applied"** in the Deploy Panel. This confirmation is timestamped and logged against the deployment record. Deployment is not blocked — it proceeds on confirmation regardless.
+
+### Security Verification
+
+After the admin has applied the security settings in Prod/Test, a **Verify Security** action is available in the Deploy Panel. It connects to the target server, reads the relevant control cube cells, and compares against the checklist:
+
+```
+✓ }CubeSecurity SalesForecast — ADMIN=Write     MATCH
+✓ }CubeSecurity SalesForecast — ReadOnly=Read   MATCH
+✗ }ProcessSecurity }Generate_Forecast           MISSING
+```
+
+This is a manual trigger — not a deployment gate. The result is logged against the deployment record for audit and compliance. All green = deployment fully verified.

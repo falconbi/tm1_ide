@@ -75,6 +75,12 @@ PAW_USERNAME=admin
 PAW_PASSWORD=your_password
 PAW_AUTH_MODE=native          # "native" (PAW V11) or "authentik" (PAW V12)
 
+# The TM1 server configured as the PAW Login Server in the PAW admin console.
+# All PAW logins are validated against this server's }Clients — users must
+# exist here to log into PAW. Check PAW Admin Console → Configuration →
+# TM1 Login Server URI to find yours.
+PAW_LOGIN_SERVER=24Retail
+
 # Server port
 PORT=8083
 
@@ -227,6 +233,12 @@ The IDE adapts to your PAW configuration:
 
 When PAW is in **TM1 authentication mode**, all user accounts come from the TM1 `}Clients` dimension — there is no separate PAW user store.
 
+### PAW Login Server
+
+PAW validates all logins against one specific TM1 server — the **TM1 Login Server** — configured in the PAW Admin Console under **Configuration → TM1 Login Server URI**. Users must exist on that server's `}Clients` to log into PAW. Users created on any other TM1 server are invisible to PAW authentication.
+
+Set `PAW_LOGIN_SERVER` in `.env` to the name of that server (must match exactly how it appears in `config/servers.json`). All User Management operations in the IDE always target this server regardless of which workspace server is currently selected.
+
 ### Creating Users
 
 Open the **User Management** panel (shield icon in the header). Create users with:
@@ -235,7 +247,7 @@ Open the **User Management** panel (shield icon in the header). Create users wit
 - Display name (optional)
 - Group membership (defaults to `ADMIN`)
 
-Under the hood, the IDE uses the TM1 REST API (`POST /Users`) to create the account with a password set. This is more reliable than the TI-based `AddClient()`/`AssignClientPassword()` approach, which requires `HasSecurityAccess: true` on the process and SecurityAdmin group membership.
+Under the hood, the IDE uses the TM1 REST API (`POST /Users`) to create the account with a password set against `PAW_LOGIN_SERVER`.
 
 ### Workspace Activation
 
