@@ -12,21 +12,33 @@ All TM1 communication routes through Planning Analytics Workspace (PAW), so ther
 
 | Editor | What it does |
 |--------|-------------|
-| **Rules Editor** | Monaco editor with TM1 rules syntax highlighting, live syntax validation (CheckRules API), code formatter (3 structure presets), region collapse/expand, lineage trace panel, **cell calculation trace** (shows full rule chain for any cell), snippet library |
-| **TI Editor** | Four-tab editor (Prolog / Metadata / Data / Epilog), parameter editor, datasource editor with CSV file upload to TM1 server, run with output log, **error log viewer** (reads TM1 `.log` file inline after errors), static code analysis (validator), debugger, snippets, pattern generators |
+| **Rules Editor** | Monaco editor with TM1 rules syntax highlighting, live validation (CheckRules API) + static analysis (arg counts, keyword validity, line-accurate squiggles), **Check Now** button with green/red pass/fail glow, code formatter (3 structure presets), **#Region/#EndRegion folding**, lineage trace panel, **cell calculation trace** (shows full rule chain for any cell), snippet library |
+| **TI Editor** | Four-tab editor (Prolog / Metadata / Data / Epilog), parameter editor, datasource editor with CSV file upload to TM1 server, run with output log, **error log viewer** (reads TM1 `.log` file inline after errors), static analysis (IF/WHILE/FOR/NEXT block structure, arg counts), **block folding**, debugger, snippets, pattern generators |
 | **TI Debugger** | Set breakpoints in any section, capture variable values at each breakpoint, watch panel, section-by-section execution |
 | **Dimension Editor** | Hierarchy tree with drag-style CRUD, attribute grid, element search, bulk CSV import, attribute definition management |
 | **Subset Editor** | MDX code view + visual element tree, static/MDX save, MDX preview, ghost children |
-| **View Editor** | Native and MDX view builder, cell grid with inline writeback, save/save-as |
+| **View Editor** | Native and MDX view builder, cell grid with inline writeback, save/save-as, **auto-refreshes when rules for the same cube are saved** |
 | **Guided MDX Builder** | Axis-by-axis view builder, subset filter builder, MDX execution |
 | **Chore Editor** | Schedule editor, step list, activate/deactivate/execute on demand |
 | **Cube Editor** | Create and delete cubes, dimension assignment |
 | **SQL Editor** | External database queries (SQL Server, PostgreSQL, MySQL, SQLite), schema browser, saved queries, post SQL as TI datasource |
 | **MDX Sandbox** | Ad-hoc MDX execution with result grid |
+| **Deploy Panel** | Change set → diff vs Prod baseline → package → risk check → deploy to target server |
+| **Deploy History** | Archive log of past deployments with timestamps and object counts |
 
 ### Explorer (Left Sidebar)
 
 Browse and manage all TM1 objects: cubes, dimensions, subsets, views, processes, chores. Full CRUD for every object type — create, rename, delete. Inline `+` buttons to add objects without leaving the explorer.
+
+### Tab System & Split Panes
+
+- **Drag to reorder** tabs within a group
+- **Right-click context menu** on any tab: Split Right, Split Down, Move to other pane, Close others, Close to right, Close
+- **Arrow button** on tab hover — instantly send a tab to the other pane
+- **Split Right** (`⊟`) — side-by-side panes; **Split Down** (`⊞`) — stacked panes
+- **Toggle layout** button when 2+ panes are open — switch between horizontal and vertical without closing panes
+- Split direction is persisted across sessions
+- Useful pattern: open a view in one pane, rules in the other (stacked) — save rules and the view auto-refreshes below
 
 ### Cross-Object Search
 
