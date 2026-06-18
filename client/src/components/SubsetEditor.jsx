@@ -4,6 +4,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useStore } from '@/store'
 import { useSubset, useSaveSubset, usePreviewMDX, useGenerateMDX, useElements, useSubsetUsage, useAttrGrid, useDimAttributes, useAliasValues, useConflictCheck } from '@/hooks/useApi'
 import { MDX_CATALOG, MDX_FUNCTIONS_FLAT } from '@/lib/tm1-mdx-catalog'
+import { validateMDX } from '@/lib/mdx-validator'
 import { MDX_PATTERN_CATEGORIES } from '@/lib/tm1-mdx-primer-patterns'
 import { subsetApplyCallbacks } from '@/lib/subsetCallbacks'
 import { cn } from '@/lib/utils'
@@ -316,30 +317,49 @@ export default function SubsetEditor({ tab }) {
     if (data && mdx === null) { setMdx(data.Expression ?? ''); _setMode(data.Expression ? 'mdx' : 'visual') }
   }, [data])
 
-  // Inline validation
+  // Inline validation — client-side (function names/args) + server-side (execution)
   useEffect(() => {
     if (!mdx?.trim() || !editorRef.current || !monacoRef.current) return
     clearTimeout(validateTimer.current)
     validateTimer.current = setTimeout(async () => {
       setValidating(true)
+      const model = editorRef.current?.getModel()
+      const monaco = monacoRef.current
+      if (!model || !monaco) { setValidating(false); return }
+
+      // 1. Client-side validation (function names, arg counts)
+      const clientResults = validateMDX(mdx)
+      const markers = clientResults.map(r => ({
+        severity: monaco.MarkerSeverity.Warning,
+        message: r.message,
+        startLineNumber: r.line,
+        startColumn: 1,
+        endLineNumber: r.line,
+        endColumn: model.getLineMaxColumn(r.line),
+      }))
+
+      // 2. Server-side validation (execution errors — syntax, missing elements, etc.)
       try {
         const enc = encodeURIComponent
         const r = await fetch(`/api/subset/preview?server=${enc(tab.server)}&dimension=${enc(tab.dimension)}`, {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ mdx, limit: 1 }),
         })
-        const model = editorRef.current?.getModel()
-        if (!model) return
-        if (r.ok) {
-          monacoRef.current.editor.setModelMarkers(model, 'mdx-validate', [])
-        } else {
+        if (!r.ok) {
           const d = await r.json().catch(() => ({}))
           let [sl, sc] = [1, 1]
           const m = (d.error || '').match(/line\s+(\d+)/i); if (m) sl = parseInt(m[1], 10)
           const mc = (d.error || '').match(/column\s+(\d+)/i); if (mc) sc = parseInt(mc[1], 10)
-          monacoRef.current.editor.setModelMarkers(model, 'mdx-validate', [{ severity: monacoRef.current.MarkerSeverity.Error, message: d.error || 'Invalid MDX', startLineNumber: sl, startColumn: sc, endLineNumber: sl, endColumn: sc + 1 }])
+          markers.push({
+            severity: monaco.MarkerSeverity.Error,
+            message: d.error || 'Invalid MDX',
+            startLineNumber: sl, startColumn: sc,
+            endLineNumber: sl, endColumn: sc + 1,
+          })
         }
       } catch {} finally { setValidating(false) }
+
+      monaco.editor.setModelMarkers(model, 'mdx-validate', markers)
     }, 800)
     return () => clearTimeout(validateTimer.current)
   }, [mdx])

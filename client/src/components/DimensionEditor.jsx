@@ -3,12 +3,12 @@ import {
   useElements, useElementsWithIndex, useEdges, useElementAttrValues, useHierarchies,
   useAddElement, useDeleteElement, useAddEdge, useDeleteEdge, useUpdateEdgeWeight,
   useAttrGrid, useWriteElementAttribute, useCreateAttrDef, useDeleteAttrDef, useSubsets, useSubsetElements, useDimCubes,
-  useDimensionUsage, useCreateHierarchy, useBulkDimImport, useBulkAttrImport, useCreateDimension,
+  useDimensionUsage, useCreateHierarchy, useBulkDimImport, useBulkAttrImport, useCreateDimension, usePreDeleteElementCheck,
 } from '@/hooks/useApi'
 import { AgGridReact } from 'ag-grid-react'
 import { AllCommunityModule, ModuleRegistry, themeBalham, colorSchemeDark, colorSchemeLight } from 'ag-grid-community'
 import { useStore } from '@/store'
-import { ChevronRight, ChevronDown, Loader2, List, GitBranch, Plus, Trash2, Check, X, ClipboardList, ChevronLeft, Table2, Search, ListOrdered, MapPin, Upload, Grid3x3, Cog } from 'lucide-react'
+import { ChevronRight, ChevronDown, Loader2, List, GitBranch, Plus, Trash2, Check, X, ClipboardList, ChevronLeft, Table2, Search, ListOrdered, MapPin, Upload, Grid3x3, Cog, AlertTriangle, XCircle, CheckCircle2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
 import PicklistBuilder from './PicklistBuilder'
@@ -922,6 +922,82 @@ function NewDimensionScreen({ tab }) {
   )
 }
 
+function PreDeleteDialog({ check, elementName, onConfirm, onCancel }) {
+  if (!check) return null
+  const { blockers, warnings, info, can_delete } = check
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+      <div className="bg-background border rounded-lg shadow-xl w-[520px] max-h-[80vh] flex flex-col">
+        <div className="flex items-center gap-2 px-4 py-3 border-b">
+          {can_delete
+            ? <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0" />
+            : <XCircle className="w-4 h-4 text-red-500 shrink-0" />}
+          <span className="font-semibold text-sm">Delete &quot;{elementName}&quot;</span>
+        </div>
+
+        <div className="overflow-y-auto flex-1 px-4 py-3 space-y-3 text-sm">
+          {blockers.length > 0 && (
+            <div>
+              <div className="flex items-center gap-1.5 font-semibold text-red-500 mb-1.5">
+                <XCircle className="w-3.5 h-3.5" /> Blockers — cannot delete
+              </div>
+              <ul className="space-y-1">
+                {blockers.map((b, i) => (
+                  <li key={i} className="text-xs bg-red-500/10 border border-red-500/20 rounded px-2 py-1.5 text-red-700 dark:text-red-300">{b.message}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {warnings.length > 0 && (
+            <div>
+              <div className="flex items-center gap-1.5 font-semibold text-amber-500 mb-1.5">
+                <AlertTriangle className="w-3.5 h-3.5" /> Warnings — references will break
+              </div>
+              <ul className="space-y-1">
+                {warnings.map((w, i) => (
+                  <li key={i} className="text-xs bg-amber-500/10 border border-amber-500/20 rounded px-2 py-1.5 text-amber-700 dark:text-amber-300">{w.message}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {info.length > 0 && (
+            <div>
+              <div className="flex items-center gap-1.5 font-semibold text-muted-foreground mb-1.5">
+                <CheckCircle2 className="w-3.5 h-3.5" /> Info
+              </div>
+              <ul className="space-y-1">
+                {info.map((n, i) => (
+                  <li key={i} className="text-xs bg-muted/50 rounded px-2 py-1.5 text-muted-foreground">{n.message}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {blockers.length === 0 && warnings.length === 0 && info.length === 0 && (
+            <div className="flex items-center gap-2 text-muted-foreground">
+              <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+              No references found — safe to delete.
+            </div>
+          )}
+        </div>
+
+        <div className="flex justify-end gap-2 px-4 py-3 border-t">
+          <button onClick={onCancel}
+            className="px-3 py-1.5 text-sm rounded border hover:bg-muted">
+            Cancel
+          </button>
+          <button onClick={onConfirm} disabled={!can_delete}
+            className="px-3 py-1.5 text-sm rounded bg-red-600 text-white hover:bg-red-700 disabled:opacity-40 disabled:cursor-not-allowed">
+            {can_delete ? 'Delete' : 'Cannot Delete'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function DimensionEditor({ tab }) {
   if (!tab.dimension) return <NewDimensionScreen tab={tab} />
   return <DimensionEditorCore tab={tab} />
@@ -942,6 +1018,8 @@ function DimensionEditorCore({ tab }) {
   const [selectedHierarchy, setSelectedHierarchy] = useState(tab.hierarchy ?? tab.dimension)
   const [addingHierarchy, setAddingHierarchy] = useState(false)
   const [newHierarchyName, setNewHierarchyName] = useState('')
+  const [deleteCheck, setDeleteCheck] = useState(null)
+  const [deleteTarget, setDeleteTarget] = useState(null)
 
   const { data: elements = [], isLoading: loadingEl, refetch: refetchEl } = useElements(tab.server, tab.dimension, selectedHierarchy)
   const { data: indexedEls = [] } = useElementsWithIndex(showIndex ? tab.server : null, tab.dimension, selectedHierarchy)
@@ -961,6 +1039,7 @@ function DimensionEditorCore({ tab }) {
   const deleteEdgeMut     = useDeleteEdge()
   const updateWeightMut   = useUpdateEdgeWeight()
   const createHierarchyMut = useCreateHierarchy()
+  const preDeleteMut      = usePreDeleteElementCheck()
 
   const tree = useMemo(() => buildTree(elements, edges), [elements, edges])
 
@@ -1023,9 +1102,7 @@ function DimensionEditorCore({ tab }) {
     })
   }, [run, addElementMut, addEdgeMut, tab, refresh, selectedHierarchy])
 
-  const handleDelete = useCallback((name) => {
-    const childCount = (tree.childrenOf[name] ?? []).length
-    if (childCount > 0 && !window.confirm(`"${name}" has ${childCount} child${childCount !== 1 ? 'ren' : ''}. Remove all edges and delete?`)) return
+  const execDelete = useCallback((name) => {
     if (selected === name) setSelected(null)
     run(async () => {
       const involving = edges.filter(e => e.ParentName === name || e.ComponentName === name)
@@ -1035,7 +1112,23 @@ function DimensionEditorCore({ tab }) {
       await deleteElementMut.mutateAsync({ server: tab.server, dimension: tab.dimension, name, hierarchy: selectedHierarchy })
       refresh()
     })
-  }, [run, selected, tree, edges, deleteEdgeMut, deleteElementMut, tab, refresh, selectedHierarchy])
+  }, [run, selected, edges, deleteEdgeMut, deleteElementMut, tab, refresh, selectedHierarchy])
+
+  const handleDelete = useCallback((name) => {
+    const childCount = (tree.childrenOf[name] ?? []).length
+    if (childCount > 0 && !window.confirm(`"${name}" has ${childCount} child${childCount !== 1 ? 'ren' : ''}. Remove all edges and delete?`)) return
+    const id = toast.loading(`Checking references for "${name}"…`)
+    preDeleteMut.mutateAsync({ server: tab.server, dimension: tab.dimension, element: name, hierarchy: selectedHierarchy })
+      .then(result => {
+        toast.dismiss(id)
+        setDeleteTarget(name)
+        setDeleteCheck(result)
+      })
+      .catch(() => {
+        toast.dismiss(id)
+        execDelete(name)
+      })
+  }, [tree, tab, selectedHierarchy, preDeleteMut, execDelete])
 
   const handleAddParent = useCallback((child, parent) => {
     run(async () => {
@@ -1287,6 +1380,12 @@ function DimensionEditorCore({ tab }) {
           onClose={() => setShowPicklist(false)}
         />
       )}
+      <PreDeleteDialog
+        check={deleteCheck}
+        elementName={deleteTarget}
+        onConfirm={() => { setDeleteCheck(null); execDelete(deleteTarget); setDeleteTarget(null) }}
+        onCancel={() => { setDeleteCheck(null); setDeleteTarget(null) }}
+      />
     </div>
   )
 }

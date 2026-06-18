@@ -25,6 +25,43 @@ function uniqueObjects(entries) {
 
 function norm(s) { return (s ?? '').replace(/\r\n/g, '\n').trim() }
 
+function normAxes(vws) {
+    const axis = (placements) => (placements ?? []).map(p => ({
+        dim:    p.dimension,
+        subset: p.subset    ?? null,
+        expr:   p.members   ? [...p.members].sort().join(',') : null,
+        all:    p.memberSet ?? null,
+    }))
+    return {
+        rows:   axis(vws._rows),
+        cols:   axis(vws._columns),
+        titles: (vws._titles ?? []).map(t => ({ dim: t.dimension, member: t.member ?? null })),
+    }
+}
+
+function axesDiffNote(base, current) {
+    const notes = []
+    const axisNote = (label, bAxis, cAxis) => {
+        const bStr = JSON.stringify(bAxis)
+        const cStr = JSON.stringify(cAxis)
+        if (bStr === cStr) return
+        const bDims = bAxis.map(a => a.dim)
+        const cDims = cAxis.map(a => a.dim)
+        if (JSON.stringify(bDims) !== JSON.stringify(cDims)) {
+            notes.push(`${label} dimensions changed: [${bDims.join(', ')}] → [${cDims.join(', ')}]`)
+        } else {
+            const changed = cAxis.filter((a, i) => JSON.stringify(a) !== JSON.stringify(bAxis[i])).map(a => a.dim)
+            if (changed.length) notes.push(`${label} subset changed: ${changed.join(', ')}`)
+        }
+    }
+    axisNote('Rows',    base.rows,   current.rows)
+    axisNote('Columns', base.cols,   current.cols)
+    const bTitles = JSON.stringify(base.titles)
+    const cTitles = JSON.stringify(current.titles)
+    if (bTitles !== cTitles) notes.push('Title selection changed')
+    return notes.join('; ') || 'view structure changed'
+}
+
 // ── Per-type diff logic ────────────────────────────────────────────────────────
 
 async function diffRules(entry, baseline, client) {
@@ -111,13 +148,32 @@ async function diffView(entry, baseline, client) {
 
     if (!view) return outcome('MISSING', entry, `view not found in cube ${cube}`)
 
-    const inBase = !!(baseline?.views?.[cube]?.[entry.object_name])
+    const inBase    = !!(baseline?.views?.[cube]?.[entry.object_name])
     if (!inBase) return outcome('NEW', entry, `not in baseline — new view in ${cube}`)
 
-    if (entry.after_state?.type === 'mdx' && entry.after_state?.mdx) {
-        const logged  = norm(entry.after_state.mdx)
-        const current = norm(view.MDX ?? '')
-        if (logged !== current) return outcome('DRIFT', entry, 'view MDX differs from last IDE save')
+    const baseView = baseline.views[cube][entry.object_name]
+
+    // MDX view — compare MDX strings
+    if (baseView.type === 'mdx') {
+        if (entry.after_state?.type === 'mdx' && entry.after_state?.mdx) {
+            const logged  = norm(entry.after_state.mdx)
+            const current = norm(view.MDX ?? '')
+            if (logged !== current) return outcome('DRIFT', entry, 'view MDX differs from last IDE save')
+        }
+        return outcome('MATCH', entry, `MDX changed from baseline in ${cube}`)
+    }
+
+    // Native view — compare normalized axes
+    if (baseView.type === 'native' && baseView.axes) {
+        const vws = await client.getViewWithSubsets(cube, entry.object_name).catch(() => null)
+        if (vws) {
+            const currentAxes = normAxes(vws)
+            if (JSON.stringify(baseView.axes) === JSON.stringify(currentAxes)) {
+                return outcome('UNCHANGED', entry, 'native view unchanged from baseline — no delta to package')
+            }
+            const note = axesDiffNote(baseView.axes, currentAxes)
+            return outcome('MATCH', entry, `native view changed: ${note}`)
+        }
     }
 
     return outcome('MATCH', entry, `changed from baseline in ${cube}`)

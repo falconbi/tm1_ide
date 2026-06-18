@@ -22,6 +22,7 @@ export const useLogout = () => useMutation({ mutationFn: () => fetch('/api/auth/
 
 const enc = encodeURIComponent
 
+export const useConfig    = ()                    => useQuery({ queryKey: ['config'],                     queryFn: () => get('/api/config'), staleTime: Infinity })
 export const useServers   = ()                    => useQuery({ queryKey: ['servers'],                    queryFn: () => get('/api/servers') })
 export const useElements           = (server, dim, hierarchy) => useQuery({ queryKey: ['elements', server, dim, hierarchy],           queryFn: () => get(`/api/elements?server=${enc(server)}&dimension=${enc(dim)}${hierarchy ? `&hierarchy=${enc(hierarchy)}` : ''}`),           enabled: !!server && !!dim })
 export const useElementsWithIndex  = (server, dim, hierarchy) => useQuery({ queryKey: ['elements-index', server, dim, hierarchy],     queryFn: () => get(`/api/elements?server=${enc(server)}&dimension=${enc(dim)}${hierarchy ? `&hierarchy=${enc(hierarchy)}` : ''}&index=1`), enabled: !!server && !!dim })
@@ -532,6 +533,8 @@ export const useRollbackEntry            = () => { const qc = useQueryClient(); 
 export const useUpdateSessionDescription = () => { const qc = useQueryClient(); return useMutation({ mutationFn: ({ id, description }) => patch(`/api/sessions/${enc(id)}/description`, { description }), onSuccess: (_, { server }) => qc.invalidateQueries({ queryKey: ['work-sessions', server] }) }) }
 
 // ── Deploy pipeline ───────────────────────────────────────────────────────────
+export const usePreDeleteElementCheck = () => useMutation({ mutationFn: (body) => post('/api/deploy/pre-delete-check', body) })
+
 export const useDeployPackages = () => useQuery({ queryKey: ['deploy-packages'], queryFn: () => get('/api/deploy/packages'), staleTime: 0 })
 export const useDeployBaseline = () => useQuery({ queryKey: ['deploy-baseline'], queryFn: () => get('/api/deploy/baseline'), staleTime: 60_000 })
 export const useDeploySeed     = () => { const qc = useQueryClient(); return useMutation({ mutationFn: (body) => post('/api/deploy/seed', body), onSuccess: () => qc.invalidateQueries({ queryKey: ['deploy-baseline'] }) }) }
@@ -539,6 +542,9 @@ export const useDeployDiff     = () => useMutation({ mutationFn: (body) => post(
 export const useDeployPackage  = () => { const qc = useQueryClient(); return useMutation({ mutationFn: (body) => post('/api/deploy/package', body), onSuccess: () => qc.invalidateQueries({ queryKey: ['deploy-packages'] }) }) }
 export const useDeployRisk     = () => useMutation({ mutationFn: (body) => post('/api/deploy/risk',    body) })
 export const useDeployExecute  = () => useMutation({ mutationFn: (body) => post('/api/deploy/execute', body) })
+export const useDeployApprove  = () => useMutation({ mutationFn: (body) => post('/api/deploy/approve', body) })
+export const useDeployArchive  = () => useMutation({ mutationFn: (body) => post('/api/deploy/archive', body) })
+export const useDeployArchives = () => useQuery({ queryKey: ['deploy-archives'], queryFn: () => get('/api/deploy/archives'), staleTime: 0 })
 
 // ── User management ───────────────────────────────────────────────────────────
 export const useClients      = (server) => useQuery({ queryKey: ['clients', server], queryFn: () => get(`/api/users?server=${enc(server)}`), enabled: !!server, staleTime: 0 })

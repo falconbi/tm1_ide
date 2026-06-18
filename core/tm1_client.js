@@ -662,6 +662,128 @@ class TM1Client {
         return { chores: choreUsage }
     }
 
+    // ── Pre-delete element check ──────────────────────────────────────────────
+
+    async preDeleteElementCheck(dim, element, hierarchy = dim) {
+        const blockers = []
+        const warnings = []
+        const info     = []
+        const esc      = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+        const safeEl   = esc(element)
+        const elRx     = new RegExp(`['"]${safeEl}['"]`, 'i')
+
+        // 1. Cubes using this dimension — check for data (BLOCKER)
+        const cubeNames = await this.getCubesForDimension(dim)
+        await Promise.all(cubeNames.map(async cubeName => {
+            try {
+                const hasData = await this._checkElementHasData(cubeName, dim, hierarchy, element)
+                if (hasData) blockers.push({
+                    type: 'data', cube: cubeName,
+                    message: `"${element}" has data in "${cubeName}" — zero out before deleting`,
+                })
+            } catch { /* skip unreadable cubes */ }
+        }))
+
+        // 2. TI process scan — creates element (BLOCKER) or references it (WARNING)
+        const processNames = await this.getProcesses()
+        await Promise.all(processNames.map(async procName => {
+            try {
+                const p = await this.getProcess(procName)
+                const sections = {
+                    Prolog:   p.PrologProcedure                              ?? '',
+                    Metadata: p.MetaDataProcedure ?? p.MetadataProcedure    ?? '',
+                    Data:     p.DataProcedure                                ?? '',
+                    Epilog:   p.EpilogProcedure                              ?? '',
+                }
+                const allCode = Object.values(sections).join('\n')
+                if (!allCode.includes(element)) return
+                for (const [section, code] of Object.entries(sections)) {
+                    code.split('\n').forEach((line, i) => {
+                        const t = line.trim()
+                        if (!t.includes(element) || t.startsWith('#')) return
+                        if (!elRx.test(t)) return
+                        if (/DimensionElement(?:Insert|Create|ComponentAdd)/i.test(t)) {
+                            blockers.push({
+                                type: 'ti_creates', process: procName, section, line: i + 1, code: t,
+                                message: `Process "${procName}" (${section} line ${i + 1}) creates "${element}" — will be recreated on next run`,
+                            })
+                        } else {
+                            warnings.push({
+                                type: 'ti_reference', process: procName, section, line: i + 1, code: t,
+                                message: `Process "${procName}" (${section} line ${i + 1}) references "${element}"`,
+                            })
+                        }
+                    })
+                }
+            } catch { /* skip inaccessible */ }
+        }))
+
+        // 3. Rules scan on cubes using this dimension (WARNING)
+        await Promise.all(cubeNames.map(async cubeName => {
+            try {
+                const cube  = await this.getCube(cubeName)
+                const rules = cube.Rules ?? ''
+                if (!rules.includes(element)) return
+                rules.split('\n').forEach((line, i) => {
+                    const t = line.trim()
+                    if (!t.includes(element) || t.startsWith('#') || t.startsWith('//')) return
+                    if (elRx.test(t)) warnings.push({
+                        type: 'rules_reference', cube: cubeName, line: i + 1, code: t,
+                        message: `Rules on "${cubeName}" (line ${i + 1}) reference "${element}"`,
+                    })
+                })
+            } catch { /* skip */ }
+        }))
+
+        // 4. Subset check — MDX subsets referencing element (WARNING), static count (INFO)
+        try {
+            const subsets = await this.getSubsets(dim, hierarchy)
+            let staticCount = 0
+            for (const s of subsets) {
+                if (s.Expression) {
+                    if (s.Expression.includes(element)) warnings.push({
+                        type: 'subset_mdx', subset: s.Name,
+                        message: `MDX subset "${s.Name}" expression references "${element}" — update the expression`,
+                    })
+                } else {
+                    staticCount++
+                }
+            }
+            if (staticCount > 0) info.push({
+                type: 'subset_static',
+                message: `${staticCount} static subset(s) on "${dim}" — TM1 removes "${element}" from them automatically`,
+            })
+        } catch { /* skip */ }
+
+        return { blockers, warnings, info, can_delete: blockers.length === 0 }
+    }
+
+    async _checkElementHasData(cubeName, dimName, hierarchy, elementName) {
+        const cube      = await this.getCube(cubeName)
+        const dims      = (cube.Dimensions ?? []).map(d => d.Name)
+        const otherDims = dims.filter(d => d !== dimName)
+        if (!otherDims.length) return false
+
+        let colExpr = `{TM1FILTERBYLEVEL({TM1SUBSETALL([${otherDims[0]}].[${otherDims[0]}])}, 0)}`
+        for (let i = 1; i < otherDims.length; i++) {
+            const d = otherDims[i]
+            colExpr = `CROSSJOIN(${colExpr}, {TM1FILTERBYLEVEL({TM1SUBSETALL([${d}].[${d}])}, 0)})`
+        }
+        const mdx = [
+            `SELECT NON EMPTY ${colExpr} ON COLUMNS,`,
+            `  NON EMPTY {[${dimName}].[${hierarchy}].[${elementName}]} ON ROWS`,
+            `FROM [${cubeName}]`,
+        ].join('\n')
+
+        try {
+            const result  = await this.executeMDX(mdx, 1)
+            const rowAxis = result.Axes?.find(a => a.Ordinal === 1)
+            return (rowAxis?.Tuples?.length ?? 0) > 0
+        } catch {
+            return false
+        }
+    }
+
     // ── Subsets ───────────────────────────────────────────────────────────────
 
     async getSubsets(dim, hierarchy = dim) {

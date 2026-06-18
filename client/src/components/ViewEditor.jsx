@@ -755,6 +755,7 @@ function DropZone({ id, label, icon: Icon, dims, server, onRemove, onSubsetChang
 
 export default function ViewEditor({ tab }) {
     const { dark, openTab, patchTab } = useStore()
+    const rulesVersion = useStore(s => s.rulesVersions[`${tab.server}::${tab.cube}`] ?? 0)
     const { data: cubeDims = [] } = useCubeDimensions(tab.server, tab.cube)
     const { data: views    = [] } = useViews(tab.server, tab.cube)
     const executeMDX   = useExecuteMDX()
@@ -763,15 +764,22 @@ export default function ViewEditor({ tab }) {
     const setDefault   = useSetDefaultView()
 
     // Visual builder state — seed from Builder handoff if provided
-    const [axes, setAxes] = useState(tab.initialAxes ?? { rows: [], columns: [], pages: [] })
+    // Use savedAxes to survive tab-switch remounts
+    const [axes, setAxes] = useState(tab.savedAxes ?? tab.initialAxes ?? { rows: [], columns: [], pages: [] })
     const [benchState, setBenchState] = useState({}) // persists member/subset for benched dims
     const [suppressZeros, setSuppressZeros] = useState('rows')
     const [totalsPosition,    setTotalsPosition]    = useState('top')
     const [colTotalsPosition, setColTotalsPosition] = useState('top')
     const [activeDrag, setActiveDrag] = useState(null)
 
-    // MDX editor state
-    const [mdx, setMdx] = useState(tab.initialMdx ?? '')
+    // Save axes to tab store on unmount so tab-switch preserves changes
+    const axesRef = useRef(axes); axesRef.current = axes
+    useEffect(() => () => patchTab(tab.id, { savedAxes: axesRef.current }), [])
+
+    // MDX editor state — use savedMdx to survive remounts
+    const [mdx, setMdx] = useState(tab.savedMdx ?? tab.initialMdx ?? '')
+    const mdxRef = useRef(mdx); mdxRef.current = mdx
+    useEffect(() => () => patchTab(tab.id, { savedMdx: mdxRef.current }), [])
     const [mdxDirty, setMdxDirty] = useState(false)
     const [dimAliases, setDimAliases]         = useState({})
     const [aliasValueMaps, setAliasValueMaps] = useState({})
@@ -808,7 +816,7 @@ export default function ViewEditor({ tab }) {
     const [mdxTooComplex,      setMdxTooComplex]      = useState(null)  // null | string[]
 
     // View mode: 'visual' | 'mdx'
-    const [mode, setMode] = useState(tab.initialMdx ? 'mdx' : (tab.mode ?? 'visual'))
+    const [mode, setMode] = useState(tab.mode ?? (tab.initialMdx ? 'mdx' : 'visual'))
     const [showSaveMenu, setShowSaveMenu] = useState(false)
     useEffect(() => { patchTab(tab.id, { mode }) }, [mode])
 
@@ -1158,6 +1166,14 @@ export default function ViewEditor({ tab }) {
         const t = setTimeout(() => handleExecute(), 800)
         return () => clearTimeout(t)
     }, [axes, mode])
+
+    // Auto-refresh when rules for this cube are saved
+    const prevRulesVersion = useRef(rulesVersion)
+    useEffect(() => {
+        if (rulesVersion === prevRulesVersion.current) return
+        prevRulesVersion.current = rulesVersion
+        if (result !== null) handleExecute()
+    }, [rulesVersion])
 
     // When switching to MDX mode, mark dirty so save is enabled
     const prevModeRef = useRef(mode)

@@ -267,7 +267,7 @@ function fmtStatement(raw, baseLevel, settings, namingMap, preset) {
 // Multi-line rules (one statement across several physical lines) are joined
 // into a single flat string for the expression parser.
 
-function parseLogicalUnits(text) {
+export function parseLogicalUnits(text) {
   const units    = []
   const rawLines = text.split('\n')
   let i = 0
@@ -288,6 +288,7 @@ function parseLogicalUnits(text) {
     }
 
     // Accumulate physical lines into one logical statement (terminated by ;)
+    const startLine = i + 1  // 1-indexed line number of first line of this statement
     const parts   = []
     let inStr     = false
     let depth     = 0
@@ -336,7 +337,7 @@ function parseLogicalUnits(text) {
     }
 
     if (parts.length) {
-      units.push({ type: 'statement', text: parts.join(' ') })
+      units.push({ type: 'statement', text: parts.join(' '), startLine })
     }
   }
 

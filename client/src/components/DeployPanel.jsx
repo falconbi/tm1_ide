@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react'
-import { X, Loader2, ChevronRight, CheckCircle2, XCircle, AlertTriangle, Info,
-         Package, Rocket, ShieldCheck, GitCompare, ArrowRight, Database, Diff } from 'lucide-react'
+import { X, Loader2, ChevronRight, ChevronDown, CheckCircle2, XCircle, AlertTriangle, Info,
+         Package, Rocket, ShieldCheck, GitCompare, ArrowRight, Database, Diff, UserCheck, Clock, History } from 'lucide-react'
 import { useServers } from '@/hooks/useApi'
-import { useDeploySeed, useDeployDiff, useDeployPackage, useDeployRisk, useDeployExecute } from '@/hooks/useApi'
+import { useDeploySeed, useDeployDiff, useDeployPackage, useDeployRisk, useDeployExecute,
+         useDeployApprove, useDeployArchive } from '@/hooks/useApi'
 import { cn } from '@/lib/utils'
 import { useStore } from '@/store'
 
@@ -27,7 +28,8 @@ const STEPS = [
   { id: 1, label: 'Diff',    icon: GitCompare  },
   { id: 2, label: 'Package', icon: Package     },
   { id: 3, label: 'Risk',    icon: ShieldCheck },
-  { id: 4, label: 'Deploy',  icon: Rocket      },
+  { id: 4, label: 'Approve', icon: UserCheck   },
+  { id: 5, label: 'Deploy',  icon: Rocket      },
 ]
 
 function StepBar({ step, status }) {
@@ -203,6 +205,97 @@ function StepDiff({ result, error, running, onSeed, seeding, seedResult, server,
   )
 }
 
+// ── Control Object Disclosure Panel ───────────────────────────────────────────
+
+function ControlObjectPanel({ manifest }) {
+  const [open, setOpen] = useState(false)
+  const objects = manifest?.objects ?? []
+
+  const dims = [...new Set([
+    ...objects.filter(o => o.type === 'dimension').map(o => o.name),
+    ...objects.filter(o => o.type === 'attribute').map(o => o.detail).filter(Boolean),
+  ])]
+  const cubes = [...new Set(objects.filter(o => o.type === 'rules').map(o => o.name))]
+  const procs = [...new Set(objects.filter(o => o.type === 'process').map(o => o.name))]
+
+  const attrsByDim = {}
+  objects.filter(o => o.type === 'attribute').forEach(o => {
+    if (!o.detail) return
+    if (!attrsByDim[o.detail]) attrsByDim[o.detail] = []
+    attrsByDim[o.detail].push(o.name)
+  })
+
+  if (!dims.length && !cubes.length && !procs.length) return null
+
+  const summary = [
+    dims.length  && `${dims.length} dim${dims.length  !== 1 ? 's' : ''}`,
+    cubes.length && `${cubes.length} cube${cubes.length !== 1 ? 's' : ''}`,
+    procs.length && `${procs.length} process${procs.length !== 1 ? 'es' : ''}`,
+  ].filter(Boolean).join(' · ')
+
+  return (
+    <div className="border border-border rounded overflow-hidden">
+      <button
+        onClick={() => setOpen(v => !v)}
+        className="flex items-center gap-2 w-full px-3 py-2 text-left text-xs font-medium text-muted-foreground hover:bg-muted/30 transition-colors"
+      >
+        {open ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
+        Control Object Changes
+        <span className="ml-auto text-[10px] text-muted-foreground/50">{summary}</span>
+      </button>
+
+      {open && (
+        <div className="border-t border-border">
+          {dims.map(dim => (
+            <div key={dim} className="px-3 py-2 border-b border-border/40 last:border-0">
+              <div className="text-[10px] font-mono font-semibold text-foreground mb-1.5">{dim}</div>
+              <div className="flex flex-col gap-1">
+                {attrsByDim[dim]?.length > 0 && (
+                  <div className="flex items-center gap-2 text-[10px]">
+                    <CheckCircle2 size={10} className="text-emerald-400 shrink-0" />
+                    <span className="text-muted-foreground font-mono">{'}'+'ElementAttributes'}</span>
+                    <span className="text-muted-foreground/60">— {attrsByDim[dim].length} def{attrsByDim[dim].length !== 1 ? 's' : ''} captured</span>
+                  </div>
+                )}
+                <div className="flex items-center gap-2 text-[10px]">
+                  <AlertTriangle size={10} className="text-amber-400 shrink-0" />
+                  <span className="text-muted-foreground font-mono">{'}'+'ElementFormats'}</span>
+                  <span className="text-muted-foreground/60">— not captured (gap)</span>
+                </div>
+                <div className="flex items-center gap-2 text-[10px]">
+                  <Info size={10} className="text-muted-foreground/40 shrink-0" />
+                  <span className="text-muted-foreground font-mono">{'}'+'ElementSecurity'}</span>
+                  <span className="text-muted-foreground/60">— disclosure only, not packaged</span>
+                </div>
+              </div>
+            </div>
+          ))}
+          {cubes.map(cube => (
+            <div key={cube} className="px-3 py-2 border-b border-border/40 last:border-0">
+              <div className="text-[10px] font-mono font-semibold text-foreground mb-1.5">{cube}</div>
+              <div className="flex items-center gap-2 text-[10px]">
+                <Info size={10} className="text-muted-foreground/40 shrink-0" />
+                <span className="text-muted-foreground font-mono">{'}'+'CubeSecurity'}</span>
+                <span className="text-muted-foreground/60">— disclosure only, not packaged</span>
+              </div>
+            </div>
+          ))}
+          {procs.map(proc => (
+            <div key={proc} className="px-3 py-2 border-b border-border/40 last:border-0">
+              <div className="text-[10px] font-mono font-semibold text-foreground mb-1.5">{proc}</div>
+              <div className="flex items-center gap-2 text-[10px]">
+                <Info size={10} className="text-muted-foreground/40 shrink-0" />
+                <span className="text-muted-foreground font-mono">{'}'+'ProcessSecurity'}</span>
+                <span className="text-muted-foreground/60">— disclosure only, not packaged</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Step 2: Package ───────────────────────────────────────────────────────────
 
 function StepPackage({ diffResult, result, error, running, onBuild }) {
@@ -243,45 +336,76 @@ function StepPackage({ diffResult, result, error, running, onBuild }) {
         </p>
       )}
       <div className="border border-border rounded overflow-hidden">
-        <div className="grid grid-cols-[80px_1fr_160px] text-[10px] font-medium text-muted-foreground bg-muted/30 px-3 py-1.5 border-b border-border">
-          <span>TYPE</span><span>NAME</span><span>FILE</span>
+        <div className="grid grid-cols-[70px_70px_1fr_140px] text-[10px] font-medium text-muted-foreground bg-muted/30 px-3 py-1.5 border-b border-border">
+          <span>CHANGE</span><span>TYPE</span><span>NAME</span><span>FILE</span>
         </div>
         <div className="overflow-auto max-h-[260px]">
-          {(result.manifest?.objects ?? []).map((o, i) => (
-            <div key={i} className="grid grid-cols-[80px_1fr_160px] px-3 py-1 border-b border-border/40 last:border-0 hover:bg-muted/20">
-              <span className="text-[10px] text-muted-foreground">{o.type}</span>
-              <span className="text-[10px] font-mono truncate pr-2">
-                {o.name}{o.detail ? ` [${o.detail}]` : ''}
-              </span>
-              <span className="text-[10px] text-muted-foreground/60 font-mono truncate">{o.file}</span>
-            </div>
-          ))}
+          {(result.manifest?.objects ?? []).map((o, i) => {
+            const isOwns = o.outcome === 'NEW'
+            const isMod  = o.outcome === 'MATCH'
+            const isRef  = o.outcome === 'REFERENCED'
+            return (
+              <div key={i} className="grid grid-cols-[70px_70px_1fr_140px] px-3 py-1 border-b border-border/40 last:border-0 hover:bg-muted/20 items-center">
+                <span className={`text-[10px] font-medium ${isOwns ? 'text-blue-400' : isMod ? 'text-emerald-400' : 'text-muted-foreground/50'}`}>
+                  {isOwns ? 'owns' : isMod ? 'modifies' : isRef ? 'ref' : o.outcome?.toLowerCase()}
+                </span>
+                <span className="text-[10px] text-muted-foreground">{o.type}</span>
+                <span className="text-[10px] font-mono truncate pr-2">
+                  {o.name}{o.detail ? ` [${o.detail}]` : ''}
+                </span>
+                <span className="text-[10px] text-muted-foreground/60 font-mono truncate">{o.file}</span>
+              </div>
+            )
+          })}
         </div>
       </div>
+      <ControlObjectPanel manifest={result.manifest} />
     </div>
   )
 
   if (error) return <div className="text-sm text-red-400 py-8 text-center">{error}</div>
 
+  const ownsItems     = packable.filter(r => r.outcome === 'NEW')
+  const modifiesItems = packable.filter(r => r.outcome === 'MATCH')
+
+  const ObjectTable = ({ items, accent }) => (
+    <div className="border rounded overflow-hidden" style={{ borderColor: accent === 'blue' ? 'rgb(96 165 250 / 0.3)' : 'rgb(52 211 153 / 0.3)' }}>
+      <div className={`grid grid-cols-[80px_1fr_1fr] text-[10px] font-medium text-muted-foreground px-3 py-1.5 border-b ${accent === 'blue' ? 'bg-blue-500/5 border-blue-500/20' : 'bg-emerald-500/5 border-emerald-500/20'}`}>
+        <span>TYPE</span><span>NAME</span><span>NOTE</span>
+      </div>
+      {items.map((r, i) => (
+        <div key={i} className="grid grid-cols-[80px_1fr_1fr] px-3 py-1 border-b border-border/40 last:border-0 text-[10px] hover:bg-muted/20">
+          <span className="text-muted-foreground">{r.object_type}</span>
+          <span className="font-mono truncate pr-2">{r.object_name}{r.detail ? ` [${r.detail}]` : ''}</span>
+          <span className="text-muted-foreground/60 truncate">{r.note}</span>
+        </div>
+      ))}
+    </div>
+  )
+
   return (
     <div className="flex flex-col gap-4">
-      {/* Packable objects */}
-      <div>
-        <p className="text-sm text-muted-foreground mb-2">
-          {packable.length} object(s) ready to package.
-        </p>
-        <div className="border border-border rounded overflow-hidden">
-          <div className="grid grid-cols-[80px_1fr] text-[10px] font-medium text-muted-foreground bg-muted/30 px-3 py-1.5 border-b border-border">
-            <span>TYPE</span><span>NAME</span>
+      {/* Owns — NEW objects */}
+      {ownsItems.length > 0 && (
+        <div>
+          <div className="flex items-center gap-2 mb-1.5">
+            <span className="text-[10px] font-semibold text-blue-400 uppercase tracking-wider">Owns</span>
+            <span className="text-[10px] text-muted-foreground">— {ownsItems.length} new object{ownsItems.length !== 1 ? 's' : ''}, created on target</span>
           </div>
-          {packable.map((r, i) => (
-            <div key={i} className="grid grid-cols-[80px_1fr] px-3 py-1 border-b border-border/40 last:border-0 text-[10px]">
-              <span className="text-muted-foreground">{r.object_type}</span>
-              <span className="font-mono">{r.object_name}{r.detail ? ` [${r.detail}]` : ''}</span>
-            </div>
-          ))}
+          <ObjectTable items={ownsItems} accent="blue" />
         </div>
-      </div>
+      )}
+
+      {/* Modifies — MATCH objects */}
+      {modifiesItems.length > 0 && (
+        <div>
+          <div className="flex items-center gap-2 mb-1.5">
+            <span className="text-[10px] font-semibold text-emerald-400 uppercase tracking-wider">Modifies</span>
+            <span className="text-[10px] text-muted-foreground">— {modifiesItems.length} existing object{modifiesItems.length !== 1 ? 's' : ''}, updated on target</span>
+          </div>
+          <ObjectTable items={modifiesItems} accent="emerald" />
+        </div>
+      )}
 
       {/* Drift objects — user can opt in */}
       {driftItems.length > 0 && (
@@ -421,15 +545,95 @@ function StepRisk({ packageResult, servers, target, onTargetChange, result, erro
   )
 }
 
-// ── Step 4: Deploy ────────────────────────────────────────────────────────────
+// ── Step 4: Approve ───────────────────────────────────────────────────────────
 
-function StepDeploy({ packageResult, riskResult, target, result, error, running, onDeploy }) {
+function StepApprove({ packageResult, riskResult, source, target, defaultApprover, result, running, error, onApprove }) {
+  const [approver, setApprover] = useState(defaultApprover ?? '')
+  const [notes,    setNotes]    = useState('')
+
+  if (!riskResult) return <p className="text-sm text-muted-foreground">Complete the risk check first.</p>
+
+  if (result) return (
+    <div className="flex flex-col gap-4">
+      <div className="flex items-center gap-2 bg-emerald-500/10 border border-emerald-500/30 rounded px-4 py-3 text-sm text-emerald-400">
+        <CheckCircle2 size={14} />
+        Approved by <span className="font-semibold mx-1">{result.approver}</span>
+        at {new Date(result.approved_at).toLocaleString()}
+      </div>
+      {result.notes && (
+        <p className="text-[11px] text-muted-foreground italic px-1">"{result.notes}"</p>
+      )}
+    </div>
+  )
+
+  if (running) return (
+    <div className="flex items-center gap-2 text-sm text-muted-foreground py-12 justify-center">
+      <Loader2 size={14} className="animate-spin" /> Recording approval…
+    </div>
+  )
+
+  if (error) return <div className="text-sm text-red-400 py-4">{error}</div>
+
+  return (
+    <div className="flex flex-col gap-5">
+      {/* Summary */}
+      <div className="flex flex-col gap-3 bg-muted/20 rounded p-4">
+        <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-1">Deployment Summary</div>
+        <div className="grid grid-cols-2 gap-3 text-xs">
+          <div><span className="text-muted-foreground">Source  </span><span className="font-mono">{source}</span></div>
+          <div><span className="text-muted-foreground">Target  </span><span className="font-mono">{target}</span></div>
+          <div><span className="text-muted-foreground">Objects </span><span>{packageResult?.packaged}</span></div>
+          <div><span className="text-muted-foreground">Risk    </span>
+            {riskResult.safe_to_deploy
+              ? <span className="text-emerald-400">Clear</span>
+              : <span className="text-amber-400">{riskResult.warnings.length} warning(s)</span>}
+          </div>
+        </div>
+      </div>
+
+      {/* Approver */}
+      <div className="flex flex-col gap-1.5">
+        <label className="text-xs text-muted-foreground">Approver name</label>
+        <input
+          value={approver}
+          onChange={e => setApprover(e.target.value)}
+          placeholder="Your name"
+          className="bg-muted border border-border rounded px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+        />
+      </div>
+
+      {/* Notes */}
+      <div className="flex flex-col gap-1.5">
+        <label className="text-xs text-muted-foreground">Notes <span className="text-muted-foreground/50">(optional)</span></label>
+        <textarea
+          value={notes}
+          onChange={e => setNotes(e.target.value)}
+          placeholder="Tested in staging, safe to deploy…"
+          rows={3}
+          className="bg-muted border border-border rounded px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary resize-none"
+        />
+      </div>
+
+      <button
+        onClick={() => onApprove(approver.trim(), notes.trim())}
+        disabled={!approver.trim()}
+        className="self-start flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground text-sm rounded hover:bg-primary/90 disabled:opacity-40 transition-colors"
+      >
+        <UserCheck size={13} /> Approve & Proceed to Deploy
+      </button>
+    </div>
+  )
+}
+
+// ── Step 5: Deploy ────────────────────────────────────────────────────────────
+
+function StepDeploy({ packageResult, riskResult, target, approval, result, error, running, onDeploy }) {
   const [dryRun,    setDryRun]    = useState(false)
   const [confirmed, setConfirmed] = useState(false)
 
   if (!riskResult) return <p className="text-sm text-muted-foreground">Complete the risk check first.</p>
 
-  const blocked = !riskResult.safe_to_deploy
+  const blocked = !riskResult.safe_to_deploy || !approval
 
   if (running) return (
     <div className="flex items-center gap-2 text-sm text-muted-foreground py-12 justify-center">
@@ -489,7 +693,20 @@ function StepDeploy({ packageResult, riskResult, target, result, error, running,
 
   return (
     <div className="flex flex-col gap-5">
-      {blocked && (
+      {approval && (
+        <div className="flex items-center gap-2 bg-muted/30 border border-border rounded px-3 py-2 text-[11px] text-muted-foreground">
+          <UserCheck size={11} className="text-emerald-400 shrink-0" />
+          Approved by <span className="font-semibold text-foreground mx-1">{approval.approver}</span>
+          · {new Date(approval.approved_at).toLocaleString()}
+          {approval.notes && <span className="italic ml-1">"{approval.notes}"</span>}
+        </div>
+      )}
+      {blocked && !approval && (
+        <div className="flex items-center gap-2 bg-red-500/10 border border-red-500/30 rounded px-4 py-2.5 text-sm text-red-400">
+          <XCircle size={14} /> Approval required before deploying
+        </div>
+      )}
+      {blocked && approval && (
         <div className="flex items-center gap-2 bg-red-500/10 border border-red-500/30 rounded px-4 py-2.5 text-sm text-red-400">
           <XCircle size={14} /> Blocked — resolve {riskResult.blockers.length} blocker(s) in the risk report before deploying
         </div>
@@ -551,9 +768,10 @@ function Chip({ children, cls }) {
 
 export default function DeployPanel({ tab }) {
   const { openTab, closeTab } = useStore()
+  const username = useStore(s => s.username)
   const { session, server } = tab
   const [step,   setStep]   = useState(1)
-  const [status, setStatus] = useState({ 1: 'idle', 2: 'idle', 3: 'idle', 4: 'idle' })
+  const [status, setStatus] = useState({ 1: 'idle', 2: 'idle', 3: 'idle', 4: 'idle', 5: 'idle' })
   const [target, setTarget] = useState('')
 
   const { data: servers } = useServers()
@@ -562,6 +780,8 @@ export default function DeployPanel({ tab }) {
   const diffMut    = useDeployDiff()
   const packageMut = useDeployPackage()
   const riskMut    = useDeployRisk()
+  const approveMut = useDeployApprove()
+  const archiveMut = useDeployArchive()
   const deployMut  = useDeployExecute()
 
   const setStepStatus = (s, v) => setStatus(prev => ({ ...prev, [s]: v }))
@@ -604,25 +824,54 @@ export default function DeployPanel({ tab }) {
     }
   }
 
-  async function runDeploy(dryRun) {
+  async function runApprove(approver, notes) {
     if (!packageMut.data?.outputDir || !target) return
     setStepStatus(4, 'running')
     try {
-      await deployMut.mutateAsync({ packageDir: packageMut.data.outputDir, target, dryRun })
+      await approveMut.mutateAsync({
+        source: server, target, approver, notes,
+        packaged: packageMut.data?.packaged,
+        session: session.name,
+        packageDir: packageMut.data?.outputDir,
+      })
       setStepStatus(4, 'done')
+      setStep(5)
     } catch {
       setStepStatus(4, 'error')
+    }
+  }
+
+  async function runDeploy(dryRun) {
+    if (!packageMut.data?.outputDir || !target) return
+    setStepStatus(5, 'running')
+    try {
+      const result = await deployMut.mutateAsync({ packageDir: packageMut.data.outputDir, target, dryRun })
+      if (!dryRun && !result.aborted) {
+        await archiveMut.mutateAsync({
+          approval: approveMut.data,
+          deployResult: result,
+          manifest: packageMut.data?.manifest,
+          source: server,
+          target,
+          deployer: approveMut.data?.approver ?? username,
+        }).catch(() => {})
+      }
+      setStepStatus(5, 'done')
+    } catch {
+      setStepStatus(5, 'error')
     }
   }
 
   const diffResult    = diffMut.data
   const packageResult = packageMut.data
   const riskResult    = riskMut.data
+  const approveResult = approveMut.data
   const deployResult  = deployMut.data
 
   const canAdvance1 = status[1] === 'done' && ((diffResult?.match?.length ?? 0) + (diffResult?.new?.length ?? 0)) > 0
   const canAdvance2 = status[2] === 'done'
   const canAdvance3 = status[3] === 'done'
+  const canAdvance4 = status[4] === 'done'
 
   return (
     <div className="flex flex-col h-full">
@@ -639,9 +888,18 @@ export default function DeployPanel({ tab }) {
               {' · '}{session.entry_count ?? '?'} changes
             </div>
           </div>
-          <button onClick={() => closeTab(tab.id)} className="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors">
-            <X size={14} />
-          </button>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => openTab({ id: 'deploy-history', type: 'deploy-history', label: 'Deploy History' })}
+              className="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+              title="Deploy History"
+            >
+              <History size={14} />
+            </button>
+            <button onClick={() => closeTab(tab.id)} className="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors">
+              <X size={14} />
+            </button>
+          </div>
         </div>
 
         {/* Steps */}
@@ -683,13 +941,27 @@ export default function DeployPanel({ tab }) {
             />
           )}
           {step === 4 && (
+            <StepApprove
+              packageResult={packageResult}
+              riskResult={riskResult}
+              source={server}
+              target={target}
+              defaultApprover={username ?? ''}
+              result={approveResult}
+              error={approveMut.error?.message}
+              running={status[4] === 'running'}
+              onApprove={runApprove}
+            />
+          )}
+          {step === 5 && (
             <StepDeploy
               packageResult={packageResult}
               riskResult={riskResult}
               target={target}
+              approval={approveResult}
               result={deployResult}
               error={deployMut.error?.message}
-              running={status[4] === 'running'}
+              running={status[5] === 'running'}
               onDeploy={runDeploy}
             />
           )}
@@ -735,6 +1007,14 @@ export default function DeployPanel({ tab }) {
             {step === 3 && canAdvance3 && (
               <button
                 onClick={() => setStep(4)}
+                className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
+              >
+                Approve <ArrowRight size={11} />
+              </button>
+            )}
+            {step === 4 && canAdvance4 && (
+              <button
+                onClick={() => setStep(5)}
                 className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
               >
                 Deploy <ArrowRight size={11} />

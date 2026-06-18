@@ -39,6 +39,31 @@ Context-aware Monaco autocomplete in both Rules and TI editors:
 - **Dimension name** — lists server dimensions for dimension-first functions (`DimensionElementInsert()`, `ELCOMP()`, etc.)
 - **Function keywords** — snippet completions for ~40 verified TI functions and 6 Rules functions with correct parameter signatures (sourced from IBM TM1 Reference)
 
+### Function Catalog Maintenance
+
+Three catalogs control autocomplete, signature help, and syntax validation across Rules, TI, and MDX. **All relevant catalogs must be updated when adding a new function.**
+
+| Catalog | File | Language | Purpose |
+|---------|------|----------|---------|
+| `RULES_CATALOG` | `client/src/lib/tm1-completion.js` | Rules | Param-context autocomplete + arg count info for `rules-validator.js` |
+| `TI_CATALOG` | `client/src/lib/tm1-completion.js` | TI | Param-context autocomplete + arg count info for `ti-validator.js` |
+| `TM1_FUNCTIONS` | `client/src/lib/tm1-functions.js` | Rules + TI | Name completions, signature help, Monarch highlight, metadata |
+| `MDX_CATALOG` / `MDX_FUNCTIONS_FLAT` | `client/src/lib/tm1-mdx-catalog.js` | MDX | Function autocomplete, signature help, arg count info for `mdx-validator.js` |
+
+**Rules of thumb:**
+- `RULES_CATALOG` / `TI_CATALOG` use param type arrays: `['cubename', 'element*']` where `*` = "1 or more"
+- `TM1_FUNCTIONS` uses structured objects with `description`, `params[]`, `returns`, `variadic`, `language`
+- Every `TM1_FUNCTIONS` entry with `language: 'rules'`/`'both'` must also be in `RULES_CATALOG`
+- Every `TM1_FUNCTIONS` entry with `language: 'ti'`/`'both'` should also be in `TI_CATALOG`
+- `MDX_FUNCTIONS_FLAT` is derived from `MDX_CATALOG` via `.flatMap(c => c.fns)` — add entries there
+
+**Validator wiring:**
+- `rules-validator.js` imports `RULES_CATALOG` + `TM1_FUNCTIONS` — validates functions/args in AST
+- `ti-validator.js` imports `TI_CATALOG` + `TM1_FUNCTIONS` — validates functions/args per section
+- `mdx-validator.js` imports `MDX_FUNCTIONS_FLAT` — validates functions/args client-side
+
+All three feed into their respective editor components via Monaco `setModelMarkers`.
+
 ---
 
 ## Prerequisites

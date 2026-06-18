@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { X, Plus, Loader2, Eye, EyeOff, Trash2, Check, Shield, Users } from 'lucide-react'
 import { useStore } from '@/store'
-import { useClients, useGroups, useClientGroups, useCreateClient, useUpdateClient, useDeleteClient, useAddClientToGroup, useRemoveClientFromGroup, useResetClientPassword } from '@/hooks/useApi'
+import { useConfig, useClients, useGroups, useClientGroups, useCreateClient, useUpdateClient, useDeleteClient, useAddClientToGroup, useRemoveClientFromGroup, useResetClientPassword } from '@/hooks/useApi'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
 
@@ -285,8 +285,10 @@ function CreateUserForm({ server, allGroups, onCreated, onCancel }) {
 }
 
 export default function UserManagement({ server, onClose }) {
-  const { data: clients = [], isLoading, isFetching } = useClients(server)
-  const { data: groups  = [] }                        = useGroups(server)
+  const { data: config }                              = useConfig()
+  const loginServer                                   = config?.loginServer ?? server
+  const { data: clients = [], isLoading, isFetching } = useClients(loginServer)
+  const { data: groups  = [] }                        = useGroups(loginServer)
   const [selectedName, setSelectedName] = useState(null)
   const [creating, setCreating]         = useState(false)
 
@@ -301,7 +303,7 @@ export default function UserManagement({ server, onClose }) {
         <div className="flex items-center gap-2 px-4 py-3 border-b border-border bg-muted/30 shrink-0">
           <Shield size={14} className="text-muted-foreground" />
           <span className="text-sm font-semibold">User Management</span>
-          <span className="text-xs text-muted-foreground font-mono">— {server}</span>
+          <span className="text-xs text-muted-foreground font-mono">— {loginServer}</span>
           {isFetching && <Loader2 size={10} className="animate-spin text-muted-foreground" />}
           <div className="ml-auto flex items-center gap-2">
             <button
@@ -348,7 +350,7 @@ export default function UserManagement({ server, onClose }) {
           <div className="flex-1 overflow-y-auto p-5">
             {creating && (
               <CreateUserForm
-                server={server}
+                server={loginServer}
                 allGroups={groups}
                 onCreated={(name) => { setCreating(false); setSelectedName(name) }}
                 onCancel={() => setCreating(false)}
@@ -357,7 +359,7 @@ export default function UserManagement({ server, onClose }) {
             {!creating && selectedClient && (
               <UserDetail
                 key={selectedClient.Name}
-                server={server}
+                server={loginServer}
                 client={selectedClient}
                 allGroups={groups}
                 onDeleted={() => setSelectedName(null)}

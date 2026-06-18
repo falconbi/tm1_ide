@@ -49,12 +49,57 @@ const RULES_CATALOG = {
   // Attribute functions (Rules and TI)
   ATTRN:                  ['dimname', 'element', 'attribute'],
   ATTRS:                  ['dimname', 'element', 'attribute'],
+  ATTRL:                  ['dimname', 'element', 'attribute'],
   CUBEATTRN:              ['cubename', 'attribute'],
   CUBEATTRS:              ['cubename', 'attribute'],
   DIMENSIONATTRN:         ['dimname', 'attribute'],
   DIMENSIONATTRS:         ['dimname', 'attribute'],
   ELEMENTATTRN:           ['dimname', 'hiername', 'element', 'attribute'],
   ELEMENTATTRS:           ['dimname', 'hiername', 'element', 'attribute'],
+
+  // Cube Data string
+  DBS:                    ['cubename', 'element*'],
+
+  // Control
+  STET:                   [],
+  CONTINUE:               [],
+
+  // Conditional
+  IF:                     ['condition', 'true_value', 'false_value'],
+
+  // String functions
+  CAPIT:                  ['string'],
+  CHAR:                   ['code'],
+  CODE:                   ['string', 'position'],
+  CONT:                   ['string1', 'string2'],
+  DELET:                  ['string', 'start', 'length'],
+  FILL:                   ['string', 'length'],
+  INSRT:                  ['insert', 'string', 'position'],
+  LONG:                   ['string'],
+  LOWER:                  ['string'],
+  LTRIM:                  ['string'],
+  NUMBR:                  ['string'],
+  RTRIM:                  ['string'],
+  SCAN:                   ['find', 'within'],
+  SCANR:                  ['find', 'within'],
+  STR:                    ['number', 'length', 'decimals'],
+  SUBST:                  ['string', 'start', 'length'],
+  TRIM:                   ['string'],
+  UPPER:                  ['string'],
+
+  // Math / Numeric functions
+  ABS:                    ['number'],
+  EXP:                    ['number'],
+  INT:                    ['number'],
+  LOG:                    ['number'],
+  MAX:                    ['number1', 'number2'],
+  MIN:                    ['number1', 'number2'],
+  MOD:                    ['number', 'divisor'],
+  POWER:                  ['base', 'exponent'],
+  RAND:                   [],
+  ROUND:                  ['number', 'decimals'],
+  SIGN:                   ['number'],
+  SQRT:                   ['number'],
 }
 
 // ── TurboIntegrator Functions (Chapter 5) ─────────────────────────────────────
@@ -286,27 +331,94 @@ function _cached(key, ttlMs, fn) {
 }
 
 const enc = encodeURIComponent
+const authFetch = (url) => fetch(url, { headers: { 'x-ide-token': localStorage.getItem('tm1-token') ?? '' } })
 
 async function fetchCubes(server) {
   return _cached(`cubes:${server}`, 30_000, async () => {
-    const r = await fetch(`/api/cubes?server=${enc(server)}`)
+    const r = await authFetch(`/api/cubes?server=${enc(server)}`)
     return r.ok ? r.json() : []
   })
 }
 
 async function fetchDims(server) {
   return _cached(`dims:${server}`, 30_000, async () => {
-    const r = await fetch(`/api/dimensions?server=${enc(server)}`)
+    const r = await authFetch(`/api/dimensions?server=${enc(server)}`)
     return r.ok ? r.json() : []
   })
 }
 
 async function fetchCubeDims(server, cube) {
   return _cached(`cubedims:${server}:${cube}`, 60_000, async () => {
-    const r = await fetch(`/api/cube/dimensions?server=${enc(server)}&cube=${enc(cube)}`)
+    const r = await authFetch(`/api/cube/dimensions?server=${enc(server)}&cube=${enc(cube)}`)
     return r.ok ? r.json() : []
   })
 }
+
+async function fetchElements(server, dim) {
+  return _cached(`elements:${server}:${dim}`, 60_000, async () => {
+    const r = await authFetch(`/api/elements?server=${enc(server)}&dimension=${enc(dim)}`)
+    return r.ok ? r.json() : []
+  })
+}
+
+// Returns true if textBefore ends inside an unclosed quoted string
+function isInsideString(textBefore) {
+  let inStr = false, strCh = null
+  for (let i = 0; i < textBefore.length; i++) {
+    const ch = textBefore[i]
+    if (inStr) {
+      if (ch === strCh && textBefore[i - 1] !== '\\') inStr = false
+      continue
+    }
+    if (ch === "'" || ch === '"') { inStr = true; strCh = ch; continue }
+  }
+  return inStr
+}
+
+// Returns the string value of the Nth argument of the innermost unclosed call
+function extractStringArg(textBefore, argIndex) {
+  const stack = []
+  let inStr = false, strCh = null
+  for (let i = 0; i < textBefore.length; i++) {
+    const ch = textBefore[i]
+    if (inStr) {
+      if (ch === strCh && textBefore[i - 1] !== '\\') inStr = false
+      continue
+    }
+    if (ch === "'" || ch === '"') { inStr = true; strCh = ch; continue }
+    if (ch === '(') stack.push(i)
+    else if (ch === ')') stack.pop()
+  }
+  if (!stack.length) return null
+  const inside = textBefore.slice(stack[stack.length - 1] + 1)
+
+  let args = [], current = '', depth = 0
+  inStr = false; strCh = null
+  for (const ch of inside) {
+    if (inStr) {
+      if (ch === strCh) inStr = false
+      current += ch
+      continue
+    }
+    if (ch === "'" || ch === '"') { inStr = true; strCh = ch; current += ch; continue }
+    if (ch === '(' || ch === '[') { depth++; current += ch }
+    else if ((ch === ')' || ch === ']') && depth > 0) { depth--; current += ch }
+    else if (ch === ',' && depth === 0) { args.push(current.trim()); current = '' }
+    else { current += ch }
+  }
+  args.push(current.trim())
+
+  const arg = args[argIndex]
+  if (!arg) return null
+  const m = arg.match(/^['"](.+)['"]$/)
+  return m ? m[1] : null
+}
+
+// Functions where param 0 is cubename and params 1+ are element positions
+const CUBE_FIRST_FNS = new Set([
+  'DB', 'DBS', 'CELLVALUEN', 'CELLVALUES', 'CELLGETN', 'CELLGETS',
+  'CELLPUTN', 'CELLPUTS', 'CELLINCREMENTN',
+])
 
 // ── Provider factory ─────────────────────────────────────────────────────────
 
@@ -408,12 +520,59 @@ export function registerTM1Completions(monaco, language, catalog, keywords, getS
         }
       }
 
+      // ── Element parameter ─────────────────────────────────────────────────
+      if (paramType === 'element') {
+        const inQuote = isInsideString(textBefore)
+        let targetDim = null
+
+        if (CUBE_FIRST_FNS.has(ctx.fn)) {
+          const cubeName = extractStringArg(textBefore, 0)
+          if (cubeName) {
+            const dims = await fetchCubeDims(server, cubeName)
+            targetDim = dims[ctx.paramIdx - 1] ?? null
+          }
+        } else {
+          // dim-first functions (ATTRN, ELPAR, etc.) — dim name is at arg 0
+          targetDim = extractStringArg(textBefore, 0)
+        }
+
+        if (!targetDim) return { suggestions: [] }
+
+        if (inQuote) {
+          const ETYPE = { N: 'Numeric', C: 'Consolidated', S: 'String' }
+          const elements = await fetchElements(server, targetDim)
+          return {
+            suggestions: elements.map(el => ({
+              label:      el.Name,
+              kind:       CIK.Value,
+              detail:     ETYPE[el.Type] ?? el.Type,
+              insertText: el.Name,
+              range,
+            })),
+          }
+        }
+
+        // Not inside a quote — suggest !DimName element reference
+        return {
+          suggestions: [{
+            label:      `!${targetDim}`,
+            kind:       CIK.Variable,
+            detail:     `Current element — ${targetDim}`,
+            insertText: `!${targetDim}`,
+            range,
+            sortText:   '!',
+          }],
+        }
+      }
+
       return { suggestions: [] }
     },
   })
 }
 
 // ── Convenience registrations ─────────────────────────────────────────────────
+
+export { RULES_CATALOG, TI_CATALOG }
 
 export function registerRulesCompletions(monaco, getServer) {
   return registerTM1Completions(monaco, 'tm1rules', RULES_CATALOG, RULES_KEYWORDS, getServer)

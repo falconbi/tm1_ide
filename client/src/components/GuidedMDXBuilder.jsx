@@ -6,6 +6,7 @@ import { subsetApplyCallbacks } from '@/lib/subsetCallbacks'
 import { ArrowLeft, ArrowRight, Play, Loader2, Copy, X, Check, Code2, ExternalLink, HelpCircle, Save, Clock, Plus, Pencil, Trash2, ChevronDown, ChevronRight, GripHorizontal, WrapText } from 'lucide-react'
 import MonacoEditor from '@monaco-editor/react'
 import { cn } from '@/lib/utils'
+import { validateMDX } from '@/lib/mdx-validator'
 import ResultGrid from '@/components/mdx/ResultGrid'
 
 const RECENT_KEY  = 'tm1-mdx-recent'
@@ -819,6 +820,7 @@ export default function GuidedMDXBuilder({ tab, server: serverProp, onSwitchToRa
   const { data: attrValues = { values: [] } } = useAttributeValues(server, selectedDim, selectedAttr)
   const { openTab, dark } = useStore()
   const editorRef = useRef(null)
+  const monacoRef = useRef(null)
 
   useEffect(() => {
     savePersistedState(tab?.id, { step, selectedCube, dimConfig, viewMDX, userEditedMDX, selectedMeasures, measuresMode, measuresSubset, intent, previewResult, previewError })
@@ -953,6 +955,29 @@ export default function GuidedMDXBuilder({ tab, server: serverProp, onSwitchToRa
     return () => clearTimeout(timer)
   }, [currentMDX, selectedDim, isSubsetMode, step, server])
 
+  // Client-side MDX validation (function names, arg counts)
+  const mdxValidateTimer = useRef(null)
+  useEffect(() => {
+    const content = isSubsetMode ? currentMDX : (viewMDX || generatedMDX)
+    if (!content?.trim() || !editorRef.current || !monacoRef.current) return
+    clearTimeout(mdxValidateTimer.current)
+    mdxValidateTimer.current = setTimeout(() => {
+      const editor = editorRef.current
+      const monaco = monacoRef.current
+      const model = editor.getModel()
+      if (!model) return
+      const results = validateMDX(content)
+      const markers = results.map(r => ({
+        severity: monaco.MarkerSeverity.Warning,
+        message: r.message,
+        startLineNumber: r.line, startColumn: 1,
+        endLineNumber: r.line, endColumn: model.getLineMaxColumn(r.line),
+      }))
+      monaco.editor.setModelMarkers(model, 'mdx-validate', markers)
+    }, 700)
+    return () => clearTimeout(mdxValidateTimer.current)
+  }, [currentMDX, viewMDX, generatedMDX, isSubsetMode])
+
   const activeMDX = viewMDX || generatedMDX
 
   const runViewPreview = async () => {
@@ -960,7 +985,7 @@ export default function GuidedMDXBuilder({ tab, server: serverProp, onSwitchToRa
     setPreviewLoading(true); setPreviewError(null)
     try {
       const res = await fetch(`/api/mdx/execute?server=${encodeURIComponent(server)}`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mdx: activeMDX }),
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'x-ide-token': localStorage.getItem('tm1-token') ?? '' }, body: JSON.stringify({ mdx: activeMDX }),
       })
       const d = await res.json()
       if (!res.ok) throw new Error(d.error ?? 'Preview failed')
@@ -1000,6 +1025,7 @@ export default function GuidedMDXBuilder({ tab, server: serverProp, onSwitchToRa
   // Monaco syntax highlighting
   const handleEditorMount = (editor, monaco) => {
     editorRef.current = editor
+    monacoRef.current = monaco
     if (!monaco.languages.getLanguages().find(l => l.id === 'tm1mdx')) {
       monaco.languages.register({ id: 'tm1mdx' })
     }

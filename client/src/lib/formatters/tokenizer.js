@@ -10,7 +10,7 @@ const KEYWORDS = new Set([
 ])
 
 const MULTI_CHAR_OPS = ['<>', '>=', '<=', '=>']
-const SINGLE_CHAR_OPS = new Set(['=', '+', '-', '*', '/', '%', '&', '|', '<', '>', ':'])
+const SINGLE_CHAR_OPS = new Set(['=', '+', '-', '*', '/', '\\', '%', '&', '|', '<', '>', ':'])
 const PUNCTUATION = new Set(['(', ')', '[', ']', '{', '}', ',', ';'])
 
 /**

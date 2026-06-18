@@ -36,6 +36,12 @@ async function createSession(username, password) {
     return token
 }
 
+async function createDirectSession(username, password) {
+    const token = randomUUID()
+    _sessions.set(token, { username, password, session: null, expiry: Date.now() + SESSION_TTL })
+    return token
+}
+
 async function getCachedPawSession(token) {
     const entry = _sessions.get(token)
     if (!entry) throw new Error('Invalid or expired session — please log in again')
@@ -65,4 +71,4 @@ async function getCSRF(session) {
     return cookies.find(c => c.key === 'ba-sso-csrf')?.value ?? ''
 }
 
-module.exports = { createSession, getCachedPawSession, getSessionUser, getSessionCredentials, invalidateSession, getCSRF, PAW_HOST }
+module.exports = { createSession, createDirectSession, getCachedPawSession, getSessionUser, getSessionCredentials, invalidateSession, getCSRF, PAW_HOST }

@@ -1,6 +1,12 @@
 // ── TI Process Code Validator ─────────────────────────────────────────────────
-// Static analysis: syntax errors, structural issues, and best-practice warnings
+// Static analysis: syntax errors, structural issues, best-practice warnings,
+// and function name/argument validation against TI_CATALOG + TM1_FUNCTIONS.
 // Runs client-side against unsaved editor content across all four sections.
+
+import { TM1_FUNCTIONS } from '@/lib/tm1-functions.js'
+import { TI_CATALOG } from '@/lib/tm1-completion.js'
+
+const TI_CONTROL_KEYWORDS = new Set(['IF', 'WHILE', 'ELSEIF'])
 
 const SECTION_LABELS = {
   PrologProcedure:   'Prolog',
@@ -13,14 +19,158 @@ const SECTION_LABELS = {
 // before they hit the Data tab — a common validation pattern.
 
 // Keywords that must be matched as pairs
-const IF_KW   = /^\s*IF\s*\(/i
-const WHILE_KW = /^\s*WHILE\s*\(/i
-const END_KW   = /^\s*END\s*;?\s*$/i
-const ENDIF_KW = /^\s*ENDIF\s*;?\s*$/i
-const ELSE_KW  = /^\s*ELSE\s*;?\s*$/i
+const IF_KW     = /^\s*IF\s*\(/i
+const WHILE_KW  = /^\s*WHILE\s*\(/i
+const END_KW    = /^\s*END\s*;?\s*$/i
+const ENDIF_KW  = /^\s*ENDIF\s*;?\s*$/i
+const ELSE_KW   = /^\s*ELSE\s*;?\s*$/i
 const ELSEIF_KW = /^\s*ELSEIF\s*\(/i
+const FOR_KW    = /^\s*FOR\s+\w/i
+const NEXT_KW   = /^\s*NEXT\s*(\(|\s*;)/i
 
 const SECTION_ORDER = ['Prolog', 'Metadata', 'Data', 'Epilog']
+
+// ── Function call extraction ───────────────────────────────────────────────────
+// Walks text char-by-charm tracking strings + paren depth to find every
+// identifier(…) call. Returns [{ fn, argCount, line }].
+
+function findFunctionCalls(text) {
+  const calls = []
+  const stack = []
+  let inStr = false
+  let wordBuf = ''
+
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i]
+
+    if (inStr) {
+      if (ch === "'") {
+        if (i + 1 < text.length && text[i + 1] === "'") { i++ }
+        else { inStr = false }
+      }
+      wordBuf = ''
+      continue
+    }
+
+    if (ch === "'") {
+      inStr = true
+      if (stack.length && stack[stack.length - 1].depth === 1) {
+        stack[stack.length - 1].hasArgs = true
+      }
+      wordBuf = ''
+      continue
+    }
+
+    if (/[a-zA-Z0-9_]/.test(ch)) {
+      wordBuf += ch
+      continue
+    }
+
+    // Word.method(…) — skip dotted calls
+    if (ch === '.' && wordBuf.length) {
+      wordBuf = ''
+      continue
+    }
+
+    if (ch === '(') {
+      if (wordBuf.length) {
+        const lineNum = text.substring(0, i).split('\n').length
+        if (stack.length) stack[stack.length - 1].hasArgs = true
+        stack.push({ name: wordBuf, line: lineNum, depth: 1, commas: 0, hasArgs: false })
+      } else if (stack.length) {
+        stack[stack.length - 1].depth++
+      }
+      wordBuf = ''
+      continue
+    }
+
+    if (ch === ')') {
+      if (stack.length) {
+        stack[stack.length - 1].depth--
+        if (stack[stack.length - 1].depth === 0) {
+          const call = stack.pop()
+          let argCount = 0
+          if (call.hasArgs) argCount = call.commas + 1
+          calls.push({ fn: call.name, argCount, line: call.line })
+        }
+      }
+      wordBuf = ''
+      continue
+    }
+
+    if (ch === ',' && stack.length && stack[stack.length - 1].depth === 1) {
+      stack[stack.length - 1].commas++
+    }
+
+    if (stack.length && stack[stack.length - 1].depth === 1 && ch !== ' ' && ch !== '\t' && ch !== ',') {
+      stack[stack.length - 1].hasArgs = true
+    }
+
+    wordBuf = ''
+  }
+
+  return calls
+}
+
+// ── Arg info from TI_CATALOG or TM1_FUNCTIONS ─────────────────────────────────
+// Mirrors the pattern from rules-validator.js.
+
+function getTIFunctionArgInfo(fnName) {
+  const upper = fnName.toUpperCase()
+  const catEntry = TI_CATALOG[upper]
+  if (catEntry) {
+    const starCount = catEntry.filter(p => p.endsWith('*')).length
+    const nonStarCount = catEntry.length - starCount
+    if (starCount > 0) return { variadic: true, min: nonStarCount + 1, max: Infinity }
+    return { variadic: false, min: catEntry.length, max: catEntry.length }
+  }
+  const fnDef = TM1_FUNCTIONS[fnName] || TM1_FUNCTIONS[upper]
+  if (!fnDef || (fnDef.language !== 'ti' && fnDef.language !== 'both')) return null
+  const params = fnDef.params || []
+  const dotdotdot = params.filter(p => p.name === '...').length
+  if (fnDef.variadic && dotdotdot > 0) return { variadic: true, min: params.length - dotdotdot, max: Infinity }
+  if (fnDef.variadic) return { variadic: true, min: 1, max: Infinity }
+  return { variadic: false, min: params.length, max: params.length }
+}
+
+// ── Function name + argument count validation ──────────────────────────────────
+
+function checkFunctions(rawCode, sectionLabel) {
+  const errors = []
+  const calls = findFunctionCalls(rawCode)
+
+  for (const call of calls) {
+    const upper = call.fn.toUpperCase()
+    if (TI_CONTROL_KEYWORDS.has(upper)) continue
+
+    const catInfo = getTIFunctionArgInfo(call.fn)
+
+    if (!catInfo) {
+      if (!isBuiltInTM1Function(call.fn)) {
+        errors.push({
+          severity: 'warning',
+          section: sectionLabel,
+          line: call.line,
+          message: `Unknown function '${call.fn}'`,
+        })
+      }
+    } else if (catInfo.variadic) {
+      if (call.argCount < catInfo.min) {
+        errors.push({
+          severity: 'error', section: sectionLabel, line: call.line,
+          message: `${upper} expects at least ${catInfo.min} arguments, got ${call.argCount}`,
+        })
+      }
+    } else if (call.argCount !== catInfo.min) {
+      errors.push({
+        severity: 'error', section: sectionLabel, line: call.line,
+        message: `${upper} expects ${catInfo.min} arguments, got ${call.argCount}`,
+      })
+    }
+  }
+
+  return errors
+}
 
 // ── Line-level helpers ────────────────────────────────────────────────────────
 
@@ -208,17 +358,36 @@ function checkStructure(rawCode, sectionLabel) {
       } else {
         stack.pop()
       }
+    } else if (FOR_KW.test(t)) {
+      stack.push({ type: 'for', line: stmt.startLine })
+    } else if (NEXT_KW.test(t)) {
+      let found = false
+      for (let j = stack.length - 1; j >= 0; j--) {
+        if (stack[j].type === 'for') { found = true; break }
+      }
+      if (!found) {
+        errors.push({
+          severity: 'error',
+          section: sectionLabel,
+          line: stmt.startLine,
+          message: 'NEXT without matching FOR',
+        })
+      } else {
+        while (stack.length && stack[stack.length - 1].type !== 'for') stack.pop()
+        if (stack.length) stack.pop()
+      }
     }
   }
 
   // Remaining unmatched blocks
   for (const item of stack) {
-    const label = item.type === 'if' || item.type === 'ifline' ? 'IF' : 'WHILE'
+    const label = item.type === 'if' || item.type === 'ifline' ? 'IF' : item.type === 'while' ? 'WHILE' : 'FOR'
+    const close = item.type.startsWith('if') ? 'ENDIF' : item.type === 'while' ? 'END' : 'NEXT'
     errors.push({
       severity: 'error',
       section: sectionLabel,
       line: item.line,
-      message: `Unclosed ${label} block — missing ${item.type.startsWith('if') ? 'ENDIF' : 'END'}`,
+      message: `Unclosed ${label} block — missing ${close}`,
     })
   }
 
@@ -255,13 +424,13 @@ function checkBestPractices(rawCode, sectionLabel, allSections) {
       })
     }
 
-    // ItemReject / ItemSkip called with arguments (these take none)
+    // ItemReject / ItemSkip are statements, not functions — no parentheses
     if (/\bItemReject\s*\(/.test(t)) {
       warnings.push({
         severity: 'error',
         section: sectionLabel,
         line: stmt.startLine,
-        message: 'ItemReject does not accept arguments — use LogOutput before it to write a message',
+        message: "ItemReject is a statement, not a function — write 'ItemReject;' without parentheses. Use LogOutput to log a reason before rejecting.",
       })
     }
     if (/\bItemSkip\s*\(/.test(t)) {
@@ -269,7 +438,7 @@ function checkBestPractices(rawCode, sectionLabel, allSections) {
         severity: 'error',
         section: sectionLabel,
         line: stmt.startLine,
-        message: 'ItemSkip does not accept arguments',
+        message: "ItemSkip is a statement, not a function — write 'ItemSkip;' without parentheses",
       })
     }
   }
@@ -320,7 +489,7 @@ function assignedVarsForStatement(text) {
 
 function isBuiltInTM1Function(name) {
   const fns = new Set([
-    'if', 'elseif', 'else', 'endif', 'while', 'end', 'processquit', 'processerror',
+    'if', 'elseif', 'else', 'endif', 'while', 'end', 'for', 'next', 'processquit', 'processerror',
     'processbreak', 'itemreject', 'itemskip', 'asciioutput', 'textoutput', 'logoutput',
     'cellgetn', 'cellgets', 'cellputn', 'cellputs', 'cellisupdateable',
     'dimensionelementinsert', 'dimensionelementdelete', 'dimensionexists',
@@ -409,6 +578,9 @@ export function validateTICode(sections) {
     results.push(...checkQuotes(code, label))
     const { errors: structErr } = checkStructure(code, label)
     results.push(...structErr)
+
+    // Function validation
+    results.push(...checkFunctions(code, label))
 
     // Warnings
     results.push(...checkBestPractices(code, label, sections))

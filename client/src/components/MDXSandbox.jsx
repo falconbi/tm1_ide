@@ -1,8 +1,9 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useRef, useEffect } from 'react'
 import MonacoEditor from '@monaco-editor/react'
 import { useStore } from '@/store'
 import { Play, Loader2, GripHorizontal } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { validateMDX } from '@/lib/mdx-validator'
 import GuidedMDXBuilder from './GuidedMDXBuilder'
 import ResultGrid from './mdx/ResultGrid'
 
@@ -20,6 +21,32 @@ export default function MDXSandbox({ tab }) {
   const [rawError, setRawError] = useState(null)
   const [rawRunning, setRawRunning] = useState(false)
   const [resultsHeight, setResultsHeight] = useState(260)
+  const rawEditorRef = useRef(null)
+  const rawMonacoRef = useRef(null)
+  const validateTimer = useRef(null)
+
+  // Client-side MDX validation for raw editor
+  useEffect(() => {
+    if (!rawMdx?.trim() || !rawEditorRef.current || !rawMonacoRef.current || mode !== 'raw') return
+    clearTimeout(validateTimer.current)
+    validateTimer.current = setTimeout(() => {
+      const editor = rawEditorRef.current
+      const monaco = rawMonacoRef.current
+      const model = editor.getModel()
+      if (!model) return
+      const results = validateMDX(rawMdx)
+      const markers = results.map(r => ({
+        severity: monaco.MarkerSeverity.Warning,
+        message: r.message,
+        startLineNumber: r.line,
+        startColumn: 1,
+        endLineNumber: r.line,
+        endColumn: model.getLineMaxColumn(r.line),
+      }))
+      monaco.editor.setModelMarkers(model, 'mdx-validate', markers)
+    }, 600)
+    return () => clearTimeout(validateTimer.current)
+  }, [rawMdx, mode])
   const startResultsResize = useCallback((e) => {
     e.preventDefault()
     const startY = e.clientY
@@ -111,6 +138,8 @@ export default function MDXSandbox({ tab }) {
                 onChange={v => setRawMdx(v ?? '')}
                 options={{ fontSize: 13, minimap: { enabled: false }, wordWrap: 'on', suggestOnTriggerCharacters: true }}
                 onMount={(editor, monaco) => {
+                  rawEditorRef.current = editor
+                  rawMonacoRef.current = monaco
                   editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => executeRaw())
                 }}
               />

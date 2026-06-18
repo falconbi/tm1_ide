@@ -13,11 +13,12 @@ import ChoreEditor from '@/components/ChoreEditor'
 import GuidedMDXBuilder from '@/components/GuidedMDXBuilder'
 import CubeEditor from '@/components/CubeEditor'
 import { toast } from 'sonner'
-import { GitBranch, ChevronRight, ChevronDown, Loader2, ChevronsUpDown, ChevronsDownUp, ListTree, AlignLeft, Settings, Locate, Braces, Save, Map, Microscope, X, Plus, Trash2, History } from 'lucide-react'
+import { GitBranch, ChevronRight, ChevronDown, Loader2, ChevronsUpDown, ChevronsDownUp, ListTree, AlignLeft, Settings, Locate, Braces, Save, Map, Microscope, X, Plus, Trash2, History, ShieldCheck } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { loadSettings, saveSettings } from '@/lib/formatters/settings.js'
 import { formatRules } from '@/lib/formatters/rules-formatter.js'
 import { getNamingMap } from '@/lib/formatters/naming.js'
+import { validateRulesSyntax } from '@/lib/rules-validator'
 import { registerRulesCompletions } from '@/lib/tm1-completion'
 import { getSnippets } from '@/lib/tm1-snippets.js'
 import SnippetPanel from '@/components/SnippetPanel'
@@ -25,6 +26,7 @@ import TransactionLogPanel from '@/components/TransactionLogPanel'
 import ObjectHistoryPanel from '@/components/ObjectHistoryPanel'
 import DiffTab from '@/components/DiffTab'
 import DeployPanel from '@/components/DeployPanel'
+import DeployHistory from '@/components/DeployHistory'
 import SessionReportTab from '@/components/SessionReportTab'
 import { ConflictBanner, ConflictSaveWarning } from '@/components/ConflictBanner'
 
@@ -254,7 +256,7 @@ function CellTracePanel({ server, cube, cubeDims, onClose }) {
 // ── Rules editor ─────────────────────────────────────────────────────────────
 
 function RulesEditor({ tab, onCursor }) {
-  const { initTabContent, updateTabContent, markTabSaved, clearScrollTo, openTab, server, dark, themeVersion, setFormatSettingsOpen } = useStore()
+  const { initTabContent, updateTabContent, markTabSaved, clearScrollTo, openTab, server, dark, themeVersion, setFormatSettingsOpen, setRevealTarget, bumpRulesVersion } = useStore()
   const { data, isLoading } = useRules(tab.server, tab.cube)
   const saveRules = useSaveRules()
   const registeredRef = useRef(false)
@@ -281,6 +283,8 @@ function RulesEditor({ tab, onCursor }) {
   const [showRegionMenu, setShowRegionMenu] = useState(false)
   const [showFormatPopup, setShowFormatPopup] = useState(false)
   const [formatStruct, setFormatStruct] = useState(() => loadSettings().rules.expressionFormatter ?? null)
+  const [checking, setChecking] = useState(false)
+  const [checkResult, setCheckResult] = useState(null) // null | 'pass' | 'fail'
 
   const openCube = useCallback((cube) => {
     openTab({ id: `rules:${tab.server}:${cube}`, type: 'rules', label: cube, server: tab.server, cube, content: null })
@@ -294,32 +298,58 @@ function RulesEditor({ tab, onCursor }) {
     }
   }, [data])
 
-  // Live rules validation — debounced 800ms after last keystroke
-  useEffect(() => {
-    if (!content || !editorRef.current || !monacoRef.current) return
-    const timer = setTimeout(async () => {
+  // Validation: static analysis + TM1 CheckRules API
+  const runCheck = useCallback(async () => {
+    const model = editorRef.current?.getModel()
+    if (!model || !monacoRef.current) return
+    setChecking(true)
+    try {
+      const staticErrors = validateRulesSyntax(content)
+      let tm1Errors = []
       try {
         const r = await fetch('/api/rules/check', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            'x-ide-token': localStorage.getItem('tm1-token') ?? '',
+          },
           body: JSON.stringify({ server: tab.server, cube: tab.cube, rules: content }),
         })
         const d = await r.json()
-        const model = editorRef.current?.getModel()
-        if (!model || !monacoRef.current) return
-        const markers = (d.errors ?? []).map(e => ({
+        tm1Errors = d.errors ?? []
+      } catch { /* TM1 check failed — static errors still shown */ }
+      const markers = [
+        ...tm1Errors.map(e => ({
           severity: monacoRef.current.MarkerSeverity.Error,
           message:  e.Message,
           startLineNumber: e.LineNumber,
           startColumn: 1,
           endLineNumber: e.LineNumber,
           endColumn: model.getLineMaxColumn(e.LineNumber),
-        }))
-        monacoRef.current.editor.setModelMarkers(model, 'rules-check', markers)
-      } catch { /* network error — silently skip */ }
-    }, 800)
-    return () => clearTimeout(timer)
+        })),
+        ...staticErrors.map(e => ({
+          severity: monacoRef.current.MarkerSeverity.Error,
+          message: e.message,
+          startLineNumber: e.line,
+          startColumn: 1,
+          endLineNumber: e.line,
+          endColumn: model.getLineMaxColumn(e.line),
+        })),
+      ]
+      monacoRef.current.editor.setModelMarkers(model, 'rules-check', markers)
+      setCheckResult(markers.length === 0 ? 'pass' : 'fail')
+    } finally {
+      setChecking(false)
+    }
   }, [content, tab.server, tab.cube])
+
+  // Live validation — debounced 800ms after last keystroke
+  useEffect(() => {
+    if (!content || !editorRef.current || !monacoRef.current) return
+    setCheckResult(null)
+    const timer = setTimeout(runCheck, 800)
+    return () => clearTimeout(timer)
+  }, [content, tab.server, tab.cube, runCheck])
 
   useEffect(() => {
     if (tab.scrollToLine && editorRef.current) {
@@ -379,7 +409,7 @@ function RulesEditor({ tab, onCursor }) {
     saveRules.mutate(
       { server: tab.server, cube: tab.cube, rules: editor.getValue() },
       {
-        onSuccess: () => { markTabSaved(tab.id); toast.success('Rules saved', { id }) },
+        onSuccess: () => { markTabSaved(tab.id); bumpRulesVersion(tab.server, tab.cube); toast.success('Rules saved', { id }) },
         onError:   (err) => toast.error(err.message, { id }),
       },
     )
@@ -496,6 +526,17 @@ function RulesEditor({ tab, onCursor }) {
     <div className="flex flex-col h-full min-h-0 overflow-hidden">
       <ConflictBanner conflict={openConflict?.id !== dismissedId ? openConflict : null} onDismiss={() => setDismissedId(openConflict?.id)} />
       <ConflictSaveWarning conflict={saveConflict} onSaveAnyway={() => { setSaveConflict(null); doSave() }} onCancel={() => setSaveConflict(null)} />
+      <div className="flex items-center gap-1.5 px-3 py-1 border-b border-border bg-muted/30 shrink-0">
+        <span className="text-xs font-mono font-semibold text-foreground">{tab.cube}</span>
+        <button
+          onClick={() => setRevealTarget({ type: 'rules', server: tab.server, cube: tab.cube })}
+          className="flex items-center text-amber-400 hover:text-amber-300 transition-colors"
+          title="Show in tree"
+        >
+          <Locate size={11} />
+        </button>
+        <span className="text-xs text-muted-foreground">Rules</span>
+      </div>
       <div className="flex flex-1 min-h-0 overflow-hidden">
       <div className="flex-1 min-w-0 overflow-hidden relative">
         <div className="absolute top-2 right-2 z-10 flex items-center gap-1.5">
@@ -522,6 +563,20 @@ function RulesEditor({ tab, onCursor }) {
           >
             {saveRules.isPending ? <Loader2 size={11} className="animate-spin" /> : <Save size={11} />}
             Save
+          </button>
+          <button
+            onClick={runCheck}
+            disabled={checking}
+            className={cn(
+              'flex items-center gap-1 px-2 py-1 rounded text-xs border transition-all disabled:opacity-40',
+              checkResult === 'pass' && 'border-emerald-500 text-emerald-400 shadow-[0_0_8px_2px_rgba(52,211,153,0.4)]',
+              checkResult === 'fail' && 'border-red-500 text-red-400 shadow-[0_0_8px_2px_rgba(239,68,68,0.4)]',
+              !checkResult && 'bg-background/80 border-border text-muted-foreground hover:text-foreground',
+            )}
+            title="Run CheckRules + static analysis now"
+          >
+            {checking ? <Loader2 size={11} className="animate-spin" /> : <ShieldCheck size={11} />}
+            Check
           </button>
           <div ref={formatPopupRef} className="relative format-popup-container">
             <button
@@ -686,7 +741,7 @@ function RulesEditor({ tab, onCursor }) {
           beforeMount={monaco => registerTM1Theme(monaco, dark)}
           onChange={v => updateTabContent(tab.id, v)}
           onMount={handleMount}
-          options={{ fontSize: 13, minimap: { enabled: showMinimap }, wordWrap: 'on', scrollBeyondLastLine: false, fixedOverflowWidgets: true }}
+          options={{ fontSize: 13, minimap: { enabled: showMinimap }, wordWrap: 'on', scrollBeyondLastLine: false, fixedOverflowWidgets: true, folding: true, foldingStrategy: 'auto', glyphMargin: true }}
         />
         {showHistory && (
           <ObjectHistoryPanel
@@ -771,6 +826,7 @@ export default function EditorPane({ groupId }) {
         {tab.type === 'cubeeditor'      && <CubeEditor         key={tab.id} tab={tab} />}
         {tab.type === 'diff'            && <DiffTab            key={tab.id} tab={tab} />}
         {tab.type === 'deploy'          && <DeployPanel        key={tab.id} tab={tab} />}
+        {tab.type === 'deploy-history'  && <DeployHistory      key={tab.id} />}
         {tab.type === 'session-report'  && <SessionReportTab   key={tab.id} tab={tab} />}
         {tab.type === 'transactionlog'  && (
           <div key={tab.id} className="flex h-full min-h-0 bg-sidebar">

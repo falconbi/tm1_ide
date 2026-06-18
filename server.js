@@ -6,9 +6,9 @@ const express   = require('express')
 const path      = require('path')
 const fs        = require('fs')
 const Anthropic = require('@anthropic-ai/sdk')
-const { makeClient, listServers } = require('./core/adapter_registry')
+const { makeClient, listServers, getDefaultAdapterType, getLoginServer } = require('./core/adapter_registry')
 const { loadConnections, saveConnections, getConnection, executeQuery, testConnection, getSchema, loadQueries, saveQueries } = require('./core/sql_client')
-const { createSession, getSessionUser, invalidateSession, getCachedPawSession, getCSRF, PAW_HOST } = require('./core/paw_connect')
+const { createSession, createDirectSession, getSessionUser, invalidateSession, getCachedPawSession, getCSRF, PAW_HOST } = require('./core/paw_connect')
 const cl = require('./core/change_log')
 const { diff: deployDiff }      = require('./tools/tm1deploy/src/diff')
 const { pack: deployPack }      = require('./tools/tm1deploy/src/packager')
@@ -37,15 +37,32 @@ app.post('/api/auth/login', async (req, res) => {
     try {
         const { username, password } = req.body
         if (!username || !password) return res.status(400).json({ error: 'username and password required' })
-        const token = await createSession(username, password)
-        res.json({ token, username })
-    } catch (e) { res.status(401).json({ error: 'Login failed — check your PAW credentials' }) }
+
+        if (getDefaultAdapterType() === 'direct-v11') {
+            const token = await createDirectSession(username, password)
+            try {
+                const cl = makeClient(getLoginServer(), token)
+                await cl.get('Configuration')
+                res.json({ token, username })
+            } catch (e) {
+                invalidateSession(token)
+                res.status(401).json({ error: 'Login failed — check your TM1 credentials' })
+            }
+        } else {
+            const token = await createSession(username, password)
+            res.json({ token, username })
+        }
+    } catch (e) { res.status(401).json({ error: 'Login failed' }) }
 })
 
 app.post('/api/auth/logout', (req, res) => {
     const token = req.headers['x-ide-token']
     if (token) invalidateSession(token)
     res.json({ ok: true })
+})
+
+app.get('/api/config', (req, res) => {
+    res.json({ loginServer: PAW_LOGIN_SERVER ?? null })
 })
 
 app.use('/api', (req, res, next) => {
@@ -2246,6 +2263,16 @@ app.get('/api/deploy/baseline', (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
+app.post('/api/deploy/pre-delete-check', async (req, res) => {
+    try {
+        const { server, dimension, element, hierarchy } = req.body
+        if (!server || !dimension || !element) return res.status(400).json({ error: 'server, dimension and element required' })
+        const cl     = makeClient(server, req.ideToken)
+        const result = await cl.preDeleteElementCheck(dimension, element, hierarchy ?? dimension)
+        res.json(result)
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
 app.post('/api/deploy/seed', async (req, res) => {
     try {
         const { server } = req.body
@@ -2304,6 +2331,59 @@ app.post('/api/deploy/execute', async (req, res) => {
         const { packageDir, target, dryRun } = req.body
         const result = await deployExecute(packageDir, target, { dryRun, skipRiskCheck: true }, req.ideToken)
         res.json(result)
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.post('/api/deploy/approve', (req, res) => {
+    try {
+        const { source, target, approver, notes, packaged, session, packageDir } = req.body
+        const id = new Date().toISOString()
+        const record = { id, approved_at: id, approver, notes: notes ?? '', source, target, packaged, session, packageDir }
+        const file = path.join(__dirname, 'config', 'deploy-approvals.json')
+        const existing = fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, 'utf8')) : []
+        existing.push(record)
+        fs.writeFileSync(file, JSON.stringify(existing, null, 2))
+        res.json(record)
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.post('/api/deploy/archive', (req, res) => {
+    try {
+        const { approval, deployResult, manifest, source, target, deployer } = req.body
+        const now = new Date()
+        const stamp = now.toISOString().replace(/[:.]/g, '-')
+        const filename = `${stamp}_${(source ?? '').replace(/\W+/g, '_')}_to_${(target ?? '').replace(/\W+/g, '_')}.json`
+        const dir = path.join(__dirname, 'config', 'archives')
+        if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true })
+        const record = { archived_at: now.toISOString(), source, target, deployer, approval, deploy: deployResult, manifest }
+        fs.writeFileSync(path.join(dir, filename), JSON.stringify(record, null, 2))
+        res.json({ id: filename.replace('.json', ''), ...record })
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.get('/api/deploy/archives', (req, res) => {
+    try {
+        const dir = path.join(__dirname, 'config', 'archives')
+        if (!fs.existsSync(dir)) return res.json([])
+        const archives = fs.readdirSync(dir)
+            .filter(f => f.endsWith('.json'))
+            .sort().reverse()
+            .map(f => {
+                try {
+                    const data = JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8'))
+                    return { id: f.replace('.json', ''), archived_at: data.archived_at, source: data.source, target: data.target, deployer: data.deployer, approval: data.approval, deployStats: { deployed: data.deploy?.deployed, failed: data.deploy?.failed, dry_run: data.deploy?.dry_run } }
+                } catch { return null }
+            })
+            .filter(Boolean)
+        res.json(archives)
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.get('/api/deploy/archives/:id', (req, res) => {
+    try {
+        const file = path.join(__dirname, 'config', 'archives', `${req.params.id}.json`)
+        if (!fs.existsSync(file)) return res.status(404).json({ error: 'Not found' })
+        res.json(JSON.parse(fs.readFileSync(file, 'utf8')))
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 

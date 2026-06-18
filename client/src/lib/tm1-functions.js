@@ -892,7 +892,7 @@ const _cache = new Map()
 async function tm1Fetch(url) {
   if (_cache.has(url)) return _cache.get(url)
   try {
-    const res  = await fetch(url)
+    const res  = await fetch(url, { headers: { 'x-ide-token': localStorage.getItem('tm1-token') ?? '' } })
     const data = res.ok ? await res.json() : []
     _cache.set(url, data)
     setTimeout(() => _cache.delete(url), 60_000)
@@ -1099,6 +1099,32 @@ function registerTM1Completions(monaco, getServer) {
       const { map: namingMap } = getNamingMap()
       const formatted = formatRules(text, settings.rules, namingMap)
       return [{ range, text: formatted }]
+    }
+  })
+
+  // Folding: IF/ENDIF, WHILE/END, FOR/NEXT blocks in TI
+  monaco.languages.registerFoldingRangeProvider('tm1ti', {
+    provideFoldingRanges(model, _context, _token) {
+      const ranges = []
+      const lineCount = model.getLineCount()
+      const stack = [] // { type: 'if'|'while'|'for', line }
+      for (let line = 1; line <= lineCount; line++) {
+        const text = model.getLineContent(line).trim()
+        if (/^IF\s*\(/i.test(text))          stack.push({ type: 'if',    line })
+        else if (/^WHILE\s*\(/i.test(text))  stack.push({ type: 'while', line })
+        else if (/^FOR\s+\w/i.test(text))    stack.push({ type: 'for',   line })
+        else if (/^ENDIF\s*;?\s*$/i.test(text)) {
+          const open = [...stack].reverse().find(s => s.type === 'if')
+          if (open) { stack.splice(stack.lastIndexOf(open), 1); ranges.push({ start: open.line, end: line, kind: monaco.languages.FoldingRangeKind.Region }) }
+        } else if (/^END\s*;?\s*$/i.test(text)) {
+          const open = [...stack].reverse().find(s => s.type === 'while')
+          if (open) { stack.splice(stack.lastIndexOf(open), 1); ranges.push({ start: open.line, end: line, kind: monaco.languages.FoldingRangeKind.Region }) }
+        } else if (/^NEXT\s*(\(|\s*;)/i.test(text)) {
+          const open = [...stack].reverse().find(s => s.type === 'for')
+          if (open) { stack.splice(stack.lastIndexOf(open), 1); ranges.push({ start: open.line, end: line, kind: monaco.languages.FoldingRangeKind.Region }) }
+        }
+      }
+      return ranges
     }
   })
 

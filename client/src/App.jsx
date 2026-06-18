@@ -1,11 +1,11 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { TooltipProvider } from '@/components/ui/tooltip'
-import { useState, useEffect, Fragment } from 'react'
+import { useState, useEffect, useRef, Fragment } from 'react'
 import { useStore } from '@/store'
 import { cn } from '@/lib/utils'
 import { Toaster } from '@/components/ui/sonner'
 import { Search, PanelLeftClose, PanelLeftOpen, Keyboard, SlidersHorizontal, Database, Braces, HardDriveDownload, Loader2, CheckCircle2, Users } from 'lucide-react'
-import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels'
+import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels' // used for inner editor split groups only
 import ServerSelector from '@/components/ServerSelector'
 import Explorer from '@/components/Explorer'
 import TabBar from '@/components/TabBar'
@@ -107,8 +107,9 @@ function SeedButton() {
 
 export default function App() {
   const { loadForge, formatSettingsOpen, setFormatSettingsOpen, openTab, server, token, clearAuth } = useStore()
-  const groups       = useStore(s => s.groups)
-  const revealTarget = useStore(s => s.revealTarget)
+  const groups         = useStore(s => s.groups)
+  const splitDirection = useStore(s => s.splitDirection)
+  const revealTarget   = useStore(s => s.revealTarget)
 
   const [showFind, setShowFind]                   = useState(false)
   const [showSidebar, setShowSidebar]             = useState(true)
@@ -117,6 +118,23 @@ export default function App() {
   const [showPrefs, setShowPrefs]                 = useState(false)
   const [showPeriodBuilder, setShowPeriodBuilder] = useState(false)
   const [showUserMgmt, setShowUserMgmt]           = useState(false)
+  const [sidebarWidth, setSidebarWidth]           = useState(280)
+  const [findWidth, setFindWidth]                 = useState(320)
+  const dragRef = useRef(null)
+
+  useEffect(() => {
+    const onMove = (e) => {
+      if (!dragRef.current) return
+      const { target, startX, startW } = dragRef.current
+      const delta = e.clientX - startX
+      if (target === 'sidebar') setSidebarWidth(w => Math.min(500, Math.max(160, startW + delta)))
+      else setFindWidth(w => Math.min(600, Math.max(240, startW + delta)))
+    }
+    const onUp = () => { dragRef.current = null; document.body.style.cursor = '' }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+    return () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp) }
+  }, [])
 
   useEffect(() => {
     const handler = () => clearAuth()
@@ -137,6 +155,22 @@ export default function App() {
       if (e.key === 'F1' || (ctrl && e.shiftKey && e.key.toLowerCase() === 'k')) {
         e.preventDefault()
         setShowShortcuts(true)
+      }
+      if (e.altKey && (e.key === ',' || e.key === '.' || e.key.toLowerCase() === 'w')) {
+        const { groups, activeGroupId, closeTab, setActiveTab } = useStore.getState()
+        const group = groups.find(g => g.id === activeGroupId)
+        if (!group || !group.tabIds.length) return
+        e.preventDefault()
+        if (e.key.toLowerCase() === 'w') {
+          if (group.activeTabId) closeTab(group.activeTabId)
+        } else {
+          const idx = group.tabIds.indexOf(group.activeTabId)
+          const len = group.tabIds.length
+          const next = e.key === '.'
+            ? group.tabIds[(idx + 1) % len]
+            : group.tabIds[(idx - 1 + len) % len]
+          setActiveTab(next)
+        }
       }
     }
     document.addEventListener('keydown', onKey)
@@ -231,45 +265,54 @@ export default function App() {
 
           {/* ── Body ─────────────────────────────────────────────────────── */}
           <div className="flex flex-1 min-h-0 overflow-hidden">
-            <PanelGroup direction="horizontal" className="flex-1">
 
-              {/* Explorer sidebar */}
-              {showSidebar && (
-                <>
-                  <Panel defaultSize={18} minSize={12} maxSize={35} className="flex flex-col border-r border-border bg-sidebar">
-                    <ServerSelector />
-                    <Explorer />
-                  </Panel>
-                  <PanelResizeHandle className="w-1 bg-border hover:bg-primary/50 transition-colors cursor-col-resize" />
-                </>
-              )}
+            {/* Explorer sidebar */}
+            {showSidebar && (
+              <>
+                <div style={{ width: sidebarWidth }} className="flex flex-col border-r border-border bg-sidebar shrink-0 min-w-0 overflow-hidden">
+                  <ServerSelector />
+                  <Explorer />
+                </div>
+                <div
+                  className="w-1 bg-border hover:bg-primary/50 transition-colors cursor-col-resize shrink-0"
+                  onMouseDown={e => { dragRef.current = { target: 'sidebar', startX: e.clientX, startW: sidebarWidth }; document.body.style.cursor = 'col-resize'; e.preventDefault() }}
+                />
+              </>
+            )}
 
-              {/* Find & Replace panel */}
-              {showFind && (
-                <>
-                  <Panel defaultSize={22} minSize={18} maxSize={40}>
-                    <FindReplace onClose={() => setShowFind(false)} />
-                  </Panel>
-                  <PanelResizeHandle className="w-1 bg-border hover:bg-primary/50 transition-colors cursor-col-resize" />
-                </>
-              )}
+            {/* Find & Replace panel */}
+            {showFind && (
+              <>
+                <div style={{ width: findWidth }} className="shrink-0 min-w-0 overflow-hidden">
+                  <FindReplace onClose={() => setShowFind(false)} />
+                </div>
+                <div
+                  className="w-1 bg-border hover:bg-primary/50 transition-colors cursor-col-resize shrink-0"
+                  onMouseDown={e => { dragRef.current = { target: 'find', startX: e.clientX, startW: findWidth }; document.body.style.cursor = 'col-resize'; e.preventDefault() }}
+                />
+              </>
+            )}
 
-              {/* Editor groups */}
-              <Panel className="flex flex-col min-w-0 overflow-hidden">
-                <PanelGroup direction="horizontal" className="flex-1">
-                  {groups.map((group, i) => (
-                    <Fragment key={group.id}>
-                      {i > 0 && <PanelResizeHandle className="w-1 bg-border hover:bg-primary/50 transition-colors cursor-col-resize" />}
-                      <Panel className="flex flex-col min-w-0">
-                        <EditorPane groupId={group.id} />
-                        <TabBar groupId={group.id} />
-                      </Panel>
-                    </Fragment>
-                  ))}
-                </PanelGroup>
-              </Panel>
+            {/* Editor groups */}
+            <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
+              <PanelGroup direction={splitDirection} className="flex-1">
+                {groups.map((group, i) => (
+                  <Fragment key={group.id}>
+                    {i > 0 && (
+                      <PanelResizeHandle className={splitDirection === 'horizontal'
+                        ? 'w-1 bg-border hover:bg-primary/50 transition-colors cursor-col-resize'
+                        : 'h-1 bg-border hover:bg-primary/50 transition-colors cursor-row-resize'}
+                      />
+                    )}
+                    <Panel className="flex flex-col min-w-0">
+                      <EditorPane groupId={group.id} />
+                      <TabBar groupId={group.id} />
+                    </Panel>
+                  </Fragment>
+                ))}
+              </PanelGroup>
+            </div>
 
-            </PanelGroup>
           </div>
 
           <StatusBar />

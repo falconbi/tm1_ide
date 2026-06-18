@@ -9,6 +9,9 @@ const SHORTCUTS = [
       { key: 'Ctrl + F', desc: 'Find & Replace' },
       { key: 'Ctrl + Shift + K', desc: 'Keyboard Shortcuts Help' },
       { key: 'F1', desc: 'Keyboard Shortcuts Help' },
+      { key: 'Alt + ,', desc: 'Previous tab' },
+      { key: 'Alt + .', desc: 'Next tab' },
+      { key: 'Alt + W', desc: 'Close current tab' },
     ],
   },
   {

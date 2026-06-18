@@ -162,6 +162,20 @@ async function snapshotSubsets(client, dimNames) {
     return subsets
 }
 
+function normAxes(vws) {
+    const axis = (placements) => (placements ?? []).map(p => ({
+        dim:    p.dimension,
+        subset: p.subset   ?? null,
+        expr:   p.members  ? [...p.members].sort().join(',') : null,
+        all:    p.memberSet ?? null,
+    }))
+    return {
+        rows:   axis(vws._rows),
+        cols:   axis(vws._columns),
+        titles: (vws._titles ?? []).map(t => ({ dim: t.dimension, member: t.member ?? null })),
+    }
+}
+
 async function snapshotViews(client, cubeNames) {
     const views = {}
     for (const cube of cubeNames) {
@@ -171,13 +185,14 @@ async function snapshotViews(client, cubeNames) {
             views[cube] = {}
             await batch(viewList, 5, async v => {
                 try {
-                    const vDef = await client.getView(cube, v.name)
-                    if (!vDef) return
                     if (v.type === 'mdx') {
+                        const vDef = await client.getView(cube, v.name)
+                        if (!vDef) return
                         views[cube][v.name] = { type: 'mdx', MDX: vDef.MDX ?? '' }
                     } else {
-                        // Native view — store the raw definition for comparison
-                        views[cube][v.name] = { type: 'native', definition: vDef }
+                        const vws = await client.getViewWithSubsets(cube, v.name)
+                        if (!vws) return
+                        views[cube][v.name] = { type: 'native', axes: normAxes(vws) }
                     }
                 } catch (e) {
                     console.warn(`  [warn] view ${cube}/${v.name}: ${e.message}`)

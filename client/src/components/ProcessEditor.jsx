@@ -6,7 +6,7 @@ import { registerTM1Completions, registerTM1Theme } from '@/lib/tm1-functions'
 import { registerTICompletions } from '@/lib/tm1-completion'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
-import { ChevronRight, ChevronDown, Play, X, Braces, Wand2, CheckCircle2, XCircle, Database, Trash2, Plus, Loader2, Bug, Search, AlertTriangle, AlertCircle, Map, Upload, History } from 'lucide-react'
+import { ChevronRight, ChevronDown, Play, X, Braces, Wand2, CheckCircle2, XCircle, Database, Trash2, Plus, Loader2, Bug, Search, AlertTriangle, AlertCircle, Map, Upload, History, Locate } from 'lucide-react'
 import ObjectHistoryPanel from '@/components/ObjectHistoryPanel'
 import { getSnippets } from '@/lib/tm1-snippets.js'
 import { loadSettings, saveSettings } from '@/lib/formatters/settings.js'
@@ -23,6 +23,7 @@ const CODE_TABS = [
   { key: 'DataProcedure',      label: 'Data'     },
   { key: 'EpilogProcedure',    label: 'Epilog'   },
 ]
+const SECTION_LABEL = Object.fromEntries(CODE_TABS.map(({ key, label }) => [key, label]))
 
 const PARAM_TYPE = { 1: 'Numeric', 2: 'String', Numeric: 'Numeric', String: 'String' }
 const toTypeStr = t => (t === 1 ? 'Numeric' : t === 2 ? 'String' : t ?? 'String')
@@ -867,7 +868,7 @@ function DebugPanel({ watches, onWatchesChange, events, isDebugging, onRun, onJu
 }
 
 export default function ProcessEditor({ tab }) {
-  const { server, dark, themeVersion, updateTabContent, markTabSaved, clearScrollTo, openTab, patchTab } = useStore()
+  const { server, dark, themeVersion, updateTabContent, markTabSaved, clearScrollTo, openTab, patchTab, setRevealTarget } = useStore()
   const { data, isLoading } = useProcess(tab.server, tab.name)
   const saveProcess   = useSaveProcess()
   const runProcess    = useRunProcess()
@@ -1258,6 +1259,25 @@ export default function ProcessEditor({ tab }) {
         `${errors > 0 ? `${errors} error${errors > 1 ? 's' : ''}, ` : ''}${warnings} warning${warnings !== 1 ? 's' : ''} found`
       )
     }
+    // Set Monaco markers for the active section
+    const editor = editorRef.current
+    const monaco = monacoRef.current
+    if (editor && monaco) {
+      const model = editor.getModel()
+      if (model) {
+        const activeLabel = SECTION_LABEL[activeSection]
+        const secResults = results.filter(r => r.section === activeLabel)
+        const markers = secResults.map(r => ({
+          severity: r.severity === 'error' ? monaco.MarkerSeverity.Error : monaco.MarkerSeverity.Warning,
+          message: r.message,
+          startLineNumber: r.line,
+          startColumn: 1,
+          endLineNumber: r.line,
+          endColumn: model.getLineMaxColumn(r.line),
+        }))
+        monaco.editor.setModelMarkers(model, 'ti-check', markers)
+      }
+    }
   }
 
   const handleDebugRun = (params) => {
@@ -1322,6 +1342,19 @@ export default function ProcessEditor({ tab }) {
     <div className="flex flex-col h-full">
       <ConflictBanner conflict={openConflict?.id !== dismissedId ? openConflict : null} onDismiss={() => setDismissedId(openConflict?.id)} />
       <ConflictSaveWarning conflict={saveConflict} onSaveAnyway={() => { setSaveConflict(null); doSave() }} onCancel={() => setSaveConflict(null)} />
+      {tab.name && (
+        <div className="flex items-center gap-1.5 px-3 py-1 border-b border-border bg-muted/30 shrink-0">
+          <span className="text-xs font-mono font-semibold text-foreground">{tab.name}</span>
+          <button
+            onClick={() => setRevealTarget({ type: 'process', server: tab.server, name: tab.name })}
+            className="flex items-center text-amber-400 hover:text-amber-300 transition-colors"
+            title="Show in tree"
+          >
+            <Locate size={11} />
+          </button>
+          <span className="text-xs text-muted-foreground">TI Process</span>
+        </div>
+      )}
 
       {/* ── Save As dialog ────────────────────────────────────────────── */}
       {showSaveAs && (
@@ -1692,6 +1725,8 @@ export default function ProcessEditor({ tab }) {
               scrollBeyondLastLine: false,
               glyphMargin: true,
               fixedOverflowWidgets: true,
+              folding: true,
+              foldingStrategy: 'auto',
               find: { seedSearchStringFromSelection: 'always', autoFindInSelection: 'never' },
             }}
           />
