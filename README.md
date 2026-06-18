@@ -17,7 +17,7 @@ All TM1 communication routes through Planning Analytics Workspace (PAW), so ther
 | **TI Debugger** | Set breakpoints in any section, capture variable values at each breakpoint, watch panel, section-by-section execution |
 | **Dimension Editor** | Hierarchy tree with drag-style CRUD, attribute grid, element search, bulk CSV import, attribute definition management |
 | **Subset Editor** | MDX code view + visual element tree, static/MDX save, MDX preview, ghost children |
-| **View Editor** | Native and MDX view builder, cell grid with inline writeback, save/save-as, **auto-refreshes when rules for the same cube are saved** |
+| **View Editor** | Native and MDX view builder, cell grid with inline writeback, save/save-as, **auto-refreshes when rules for the same cube are saved**, **cell right-click context menu** — write value inline, rule trace (RULE/CONSOLIDATED/BASE/FEEDER badge + rule chain), transaction log for the intersection, cell annotations (add/delete), copy intersection as MDX tuple, open rules editor |
 | **Guided MDX Builder** | Axis-by-axis view builder, subset filter builder, MDX execution |
 | **Chore Editor** | Schedule editor, step list, activate/deactivate/execute on demand |
 | **Cube Editor** | Create and delete cubes, dimension assignment |
