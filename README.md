@@ -106,31 +106,23 @@ cp .env.example .env
 Edit `.env`:
 
 ```env
-# PAW connection
+# PAW connection (used when servers.json is a plain array — paw-native mode)
 PAW_HOST=http://192.168.x.x
 PAW_USERNAME=admin
 PAW_PASSWORD=your_password
-PAW_AUTH_MODE=native          # "native" (PAW V11) or "authentik" (PAW V12)
 
-# The TM1 server configured as the PAW Login Server in the PAW admin console.
-# All PAW logins are validated against this server's }Clients — users must
-# exist here to log into PAW. Check PAW Admin Console → Configuration →
-# TM1 Login Server URI to find yours.
-PAW_LOGIN_SERVER=24Retail
+# The TM1 server PAW validates all logins against (PAW Admin Console →
+# Configuration → TM1 Login Server URI). Must match a name in servers.json.
+PAW_LOGIN_SERVER=Production
 
 # Server port
 PORT=8083
 
 # Optional: AI-powered MDX generation
 ANTHROPIC_API_KEY=sk-ant-...
-
-# Optional: Authentik SSO (PAW V12 only)
-AUTHENTIK_HOST=http://192.168.x.x:9000
-AUTHENTIK_USERNAME=akadmin
-AUTHENTIK_PASSWORD=...
 ```
 
-Add your TM1 servers to `config/servers.json`:
+Add your TM1 servers to `config/servers.json`. The simplest form is a plain array — the IDE defaults to `paw-native` using `PAW_HOST`:
 
 ```json
 [
@@ -138,6 +130,8 @@ Add your TM1 servers to `config/servers.json`:
   { "name": "Development" }
 ]
 ```
+
+For multi-adapter or multi-PAW-host setups, use the structured form — see the Connection Adapters section under Multi-User Login.
 
 ### 3. Run
 
@@ -247,34 +241,56 @@ Browser  ←→  Express (server.js)  ←→  PAW  ←→  TM1 Server
 
 ## Multi-User Login
 
-The IDE supports multiple simultaneous users, each authenticating through PAW with their own credentials.
+The IDE supports multiple simultaneous users. Each login produces an isolated session token — all TM1 calls made during that session use that user's credentials, so TM1 `}Clients` group membership controls what each user can see and do.
 
-### How It Works
-
-```
-User  →  IDE Login Page  →  POST /api/auth/login  →  PAW session cookie  →  TM1 REST API calls
-```
-
-- Each login creates a **per-user PAW session** stored in `core/paw_connect.js` (keyed by UUID token, auto-refreshed on expiry)
-- All subsequent TM1 API calls use that user's session — TM1 authorizes operations based on the authenticated user's `}Clients` group membership
+- Each login creates a **per-user session** (UUID token, stored in memory, auto-refreshed on expiry)
+- All TM1 API calls are routed through that user's session — no shared credentials
 - Each user gets their own **active change set** per server — no audit trail collisions
 
-### PAW Authentication Mode
+### Connection Adapters
 
-The IDE adapts to your PAW configuration:
+The adapter used for each server is determined by `config/servers.json` — not by any `.env` variable. Three adapters are available:
 
-| `PAW_AUTH_MODE` | PAW Config | Login Flow |
-|-----------------|-----------|------------|
-| `native` | Authentication Mode = **TM1** | PAW validates credentials against TM1 `}Clients` via the TM1 REST API (HTTPPortNumber). Works with PAW V11. |
-| `authentik` | Authentication Mode = **Authentik SSO** | PAW delegates auth to an external Authentik provider. Used with PAW V12. |
+| Adapter | `servers.json` key | When to use |
+| ------- | ------------------ | ----------- |
+| `paw-native` | `"adapter": "paw-native"` | PAW V11 or V12 with TM1 native auth. Each user's PAW session is created on login with their own credentials. Default when `servers.json` is a plain array. |
+| `direct-v11` | `"adapter": "direct-v11"` | Bypass PAW entirely — connect directly to the TM1 admin server (`HTTPPortNumber`). Useful when PAW is unavailable or not deployed. |
+| `paw-oauth2` | `"adapter": "paw-oauth2"` | PAW V12 with Authentik/OAuth2. Uses a machine credential (client ID + secret) — not per-user. Suitable for service accounts or CI. |
 
-When PAW is in **TM1 authentication mode**, all user accounts come from the TM1 `}Clients` dimension — there is no separate PAW user store.
+**Simple setup** — plain array in `servers.json` routes all servers through `paw-native` using `PAW_HOST` from `.env`:
+
+```json
+[{ "name": "Production" }, { "name": "Development" }]
+```
+
+**Advanced setup** — use `connections` (PAW-based) or `adminHosts` (direct TM1) blocks:
+
+```json
+{
+  "connections": [
+    {
+      "name": "paw-prod",
+      "adapter": "paw-native",
+      "pawHost": "http://192.168.1.37",
+      "loginServer": "Production",
+      "servers": ["Production", "Development"]
+    }
+  ],
+  "adminHosts": [
+    {
+      "adapter": "direct-v11",
+      "url": "http://192.168.1.10:5895",
+      "servers": ["Staging"]
+    }
+  ]
+}
+```
 
 ### PAW Login Server
 
 PAW validates all logins against one specific TM1 server — the **TM1 Login Server** — configured in the PAW Admin Console under **Configuration → TM1 Login Server URI**. Users must exist on that server's `}Clients` to log into PAW. Users created on any other TM1 server are invisible to PAW authentication.
 
-Set `PAW_LOGIN_SERVER` in `.env` to the name of that server (must match exactly how it appears in `config/servers.json`). All User Management operations in the IDE always target this server regardless of which workspace server is currently selected.
+Set `loginServer` on the relevant connection in `servers.json` (or `PAW_LOGIN_SERVER` in `.env` for the plain-array setup). All User Management operations always target this server regardless of which workspace server is active.
 
 ### Creating Users
 
