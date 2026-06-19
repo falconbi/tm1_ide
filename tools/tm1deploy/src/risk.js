@@ -207,7 +207,80 @@ async function checkDimensionImpact(obj, packageDir, client) {
     return risks
 }
 
-// ── 5. Overwrite summary ──────────────────────────────────────────────────────
+// ── 5. Picklist cube dependencies ─────────────────────────────────────────────
+
+async function checkPicklistCubeDependencies(obj, packageDir, client) {
+    let data
+    try { data = JSON.parse(fs.readFileSync(path.join(packageDir, obj.file), 'utf8')) }
+    catch (e) { return [item('BLOCKER', 'dependency', 'picklist-cube', obj.name, `Cannot parse package file: ${e.message}`)] }
+
+    const { picklistCube, cells = {} } = data
+    const risks = []
+
+    // Collect all unique subset/dimension references from cell values
+    const dimRefs    = new Set()
+    const subsetRefs = []   // { dim, subset }
+
+    for (const val of Object.values(cells)) {
+        if (typeof val !== 'string') continue
+        if (val.startsWith('dimension:')) {
+            dimRefs.add(val.slice('dimension:'.length).trim())
+        } else if (val.startsWith('subset:')) {
+            const parts = val.slice('subset:'.length).split(':')
+            if (parts.length >= 2) subsetRefs.push({ dim: parts[0].trim(), subset: parts[1].trim() })
+        }
+    }
+
+    // Check dimension references
+    await Promise.all([...dimRefs].map(async dim => {
+        const exists = await client.getDimension(dim).catch(() => null)
+        if (!exists) {
+            risks.push(item('BLOCKER', 'dependency', 'picklist-cube', obj.name,
+                `Picklist references dimension "${dim}" which does not exist on target`,
+                null, { referencedDimension: dim }))
+        } else {
+            risks.push(item('INFO', 'dependency', 'picklist-cube', obj.name,
+                `Picklist dimension reference "${dim}" present ✓`))
+        }
+    }))
+
+    // Check subset references
+    await Promise.all(subsetRefs.map(async ({ dim, subset }) => {
+        const subs = await client.getSubsets(dim, dim).catch(() => null)
+        if (!subs) {
+            risks.push(item('BLOCKER', 'dependency', 'picklist-cube', obj.name,
+                `Picklist references subset "${dim}:${subset}" but dimension "${dim}" does not exist on target`,
+                null, { referencedDimension: dim, referencedSubset: subset }))
+        } else if (!subs.some(s => s.Name?.toLowerCase() === subset.toLowerCase())) {
+            risks.push(item('WARNING', 'dependency', 'picklist-cube', obj.name,
+                `Picklist references subset "${subset}" in dimension "${dim}" which does not exist on target`,
+                null, { referencedDimension: dim, referencedSubset: subset }))
+        } else {
+            risks.push(item('INFO', 'dependency', 'picklist-cube', obj.name,
+                `Picklist subset reference "${dim}:${subset}" present ✓`))
+        }
+    }))
+
+    if (!risks.length) {
+        risks.push(item('INFO', 'dependency', 'picklist-cube', obj.name,
+            `${Object.keys(cells).length} picklist cell(s) — no external references to validate`))
+    }
+
+    // Check whether target cube exists (picklist cube can't be created without it)
+    const targetCubeName = obj.name  // cube name without }Picklist_ prefix
+    const cubeExists = await client.getCube(targetCubeName).catch(() => null)
+    if (!cubeExists) {
+        risks.push(item('WARNING', 'dependency', 'picklist-cube', obj.name,
+            `Target cube "${targetCubeName}" does not exist on target — picklist cube cannot be attached`))
+    }
+
+    risks.push(item('INFO', 'overwrite', 'picklist-cube', obj.name,
+        `Will write ${Object.keys(cells).length} picklist cell(s) to ${picklistCube}`))
+
+    return risks
+}
+
+// ── 6. Overwrite summary ──────────────────────────────────────────────────────
 
 async function checkRulesOverwrite(obj, packageDir, client) {
     const cube = await client.getCube(obj.name).catch(() => null)
@@ -297,7 +370,8 @@ async function analyzeRisk(packageDir, targetServer, ideToken) {
                 push(await checkViewDependency(obj, client))
                 push(await checkViewOverwrite(obj, client))
             }
-            if (obj.type === 'dimension') push(await checkDimensionImpact(obj, packageDir, client))
+            if (obj.type === 'dimension')     push(await checkDimensionImpact(obj, packageDir, client))
+            if (obj.type === 'picklist-cube') push(await checkPicklistCubeDependencies(obj, packageDir, client))
         } catch (e) {
             all.push(item('WARNING', 'check-failed', obj.type, obj.name, `Risk check threw: ${e.message}`))
         }

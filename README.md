@@ -402,6 +402,15 @@ logged changes against the Prod baseline:
 Step 2 (Package) fetches `MATCH` + `NEW` objects from Dev and writes them to
 a `packages/` folder with a manifest. Drift and missing objects are skipped.
 
+For **dimension** objects, the package includes:
+
+- Full element list, edges, and attribute definitions
+- **Element delta** — specific element names added and removed relative to the baseline, shown as green/red chips in the manifest UI
+- `}ElementFormats_{dim}` — all element format strings (width, colour, font, etc.) read via MDX and written on deploy
+- `}ElementAttributes_{dim}` — attribute values for all elements
+
+When packaging a **rules** or **cube** object, the packager also checks whether a corresponding `}Picklist_{cube}` control cube exists on Dev. If it does and its cells have changed relative to the baseline (or it is new), the picklist cube is **automatically included** in the package as a `picklist-cube` object — no manual step required.
+
 ### Step ⑤ — Drift Re-check (not yet implemented)
 
 Before the package can proceed to deployment, a **drift re-check** runs against
@@ -426,14 +435,18 @@ This prevents silent overwrites of Prod changes.
 ### Step ⑥ — Risk, Approve & Deploy
 
 **Step 3 (Risk):** Select the target server (Prod). Automated checks run:
-rules syntax errors → broken dependencies → chore conflicts (running chores
-containing changed processes) → structural impact (elements removed).
+
+- **Syntax** — rules checked via `tm1.CheckRules` against the target cube
+- **Dependencies** — cube dimensions, parent dimensions for subsets/views, and parent cubes for views must exist on target
+- **Picklist dependencies** — for any packaged `}Picklist_{cube}` object, cell values are parsed to validate `dimension:Dim` and `subset:Dim:SubsetName` references exist on target (`BLOCKER` if missing)
+- **Chore conflicts** — active or running chores referencing a packaged process are flagged
+- **Structural impact** — elements removed from a dimension on target raise `WARNING` (or `BLOCKER` for large removals or consolidation removal)
 
 Returns `BLOCKER` / `WARNING` / `INFO`. Blockers prevent deployment.
 
 **Step 4 (Approve):** A named approver signs off with optional notes before deployment is unlocked. The approval record (name, timestamp, notes) is stored permanently in the archive.
 
-**Step 5 (Deploy):** Confirm and push. Objects are written in dependency order: attributes → dimensions → cubes → rules → subsets → views → processes.
+**Step 5 (Deploy):** Confirm and push. Objects are written in dependency order: attributes → dimensions → cubes → picklist cubes → rules → subsets → views → processes. Picklist cubes deploy after their parent cube (so the cube exists) and before rules (which may reference picklist behaviour).
 
 Before deployment begins, the IDE captures a **pre-deploy snapshot** of the target server's current state for every packaged object. After deployment, a **post-deploy snapshot** is taken. Both are stored in the archive record alongside the manifest and results. In Deploy History, each deployment shows a per-object table with changed/unchanged status and a **Diff** button to compare pre/post state inline in the IDE diff viewer.
 

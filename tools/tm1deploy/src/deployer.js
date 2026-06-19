@@ -108,6 +108,27 @@ async function deployDimension(obj, packageDir, client) {
     }
 }
 
+async function deployPicklistCube(obj, packageDir, client) {
+    const data = JSON.parse(fs.readFileSync(path.join(packageDir, obj.file), 'utf8'))
+    const { picklistCube, dimensions: dims, cells } = data
+
+    if (!picklistCube || !dims || !cells) throw new Error('Invalid picklist package file')
+    if (!Object.keys(cells).length) return
+
+    const updates = Object.entries(cells).map(([tupleKey, value]) => {
+        const elements = tupleKey.split('::')
+        return {
+            dimElemPairs: [
+                ...dims.map((dim, i) => ({ dim, element: elements[i] })),
+                { dim: '}Picklist', element: 'Value' },
+            ],
+            value,
+        }
+    })
+
+    await client.updateCells(picklistCube, updates)
+}
+
 async function deployCube(obj, packageDir, client) {
     const data  = JSON.parse(fs.readFileSync(path.join(packageDir, obj.file), 'utf8'))
     const exists = await client.getCube(data.Name).catch(() => null)
@@ -130,7 +151,8 @@ async function deployAttribute(obj, packageDir, client) {
 // ── Dependency ordering ───────────────────────────────────────────────────────
 // Deploy in this order so dependencies are satisfied before dependents
 
-const DEPLOY_ORDER = ['attribute', 'dimension', 'cube', 'rules', 'subset', 'view', 'process']
+// picklist-cube goes after cube (depends on cube existing) but before rules
+const DEPLOY_ORDER = ['attribute', 'dimension', 'cube', 'picklist-cube', 'rules', 'subset', 'view', 'process']
 
 // ── Main deploy ───────────────────────────────────────────────────────────────
 
@@ -179,13 +201,14 @@ async function deploy(packageDir, targetServer, options = {}, ideToken) {
 
         try {
             switch (obj.type) {
-                case 'rules':     await deployRules(obj, packageDir, targetClient);     break
-                case 'process':   await deployProcess(obj, packageDir, targetClient);   break
-                case 'subset':    await deploySubset(obj, packageDir, targetClient);    break
-                case 'view':      await deployView(obj, packageDir, targetClient);      break
-                case 'dimension': await deployDimension(obj, packageDir, targetClient); break
-                case 'cube':      await deployCube(obj, packageDir, targetClient);      break
-                case 'attribute': await deployAttribute(obj, packageDir, targetClient); break
+                case 'rules':         await deployRules(obj, packageDir, targetClient);         break
+                case 'process':       await deployProcess(obj, packageDir, targetClient);       break
+                case 'subset':        await deploySubset(obj, packageDir, targetClient);        break
+                case 'view':          await deployView(obj, packageDir, targetClient);          break
+                case 'dimension':     await deployDimension(obj, packageDir, targetClient);     break
+                case 'cube':          await deployCube(obj, packageDir, targetClient);          break
+                case 'picklist-cube': await deployPicklistCube(obj, packageDir, targetClient);  break
+                case 'attribute':     await deployAttribute(obj, packageDir, targetClient);     break
                 default:
                     throw new Error(`No deployer for type: ${obj.type}`)
             }

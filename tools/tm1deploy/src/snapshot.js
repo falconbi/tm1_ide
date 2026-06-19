@@ -298,18 +298,25 @@ async function takeSnapshot(server, ideToken) {
     const viewCount = Object.values(views).reduce((n, v) => n + Object.keys(v).length, 0)
     console.log(`  ${viewCount} views done`)
 
+    // Picklist cubes (}Picklist_{CubeName} control cubes)
+    console.log('\nSnapshotting picklist cubes...')
+    const picklist_cubes = await snapshotPicklistCubes(client, cubeNames)
+    const picklistCount  = Object.keys(picklist_cubes).length
+    console.log(`  ${picklistCount} picklist cube(s) found`)
+
     return {
         _meta: {
             server,
             seeded_at,
             seeded_by: process.env.TM1_USER ?? process.env.PAW_USERNAME ?? 'unknown',
             counts: {
-                dimensions: dimNames.length,
-                cubes:      cubeNames.length,
-                processes:  processNames.length,
-                chores:     choreNames.length,
-                subsets:    subsetCount,
-                views:      viewCount,
+                dimensions:     dimNames.length,
+                cubes:          cubeNames.length,
+                processes:      processNames.length,
+                chores:         choreNames.length,
+                subsets:        subsetCount,
+                views:          viewCount,
+                picklist_cubes: picklistCount,
             },
         },
         dimensions,
@@ -318,6 +325,7 @@ async function takeSnapshot(server, ideToken) {
         chores,
         subsets,
         views,
+        picklist_cubes,
     }
 }
 
@@ -333,6 +341,53 @@ async function seed(server, outputPath, ideToken) {
     console.log(`\nBaseline written → ${outputPath} (${sizeKB} KB)`)
 
     return snapshot
+}
+
+// Build nested CROSSJOIN for N dimensions in TM1 MDX
+function buildCrossJoin(dims) {
+    if (dims.length === 1) return `{TM1SUBSETALL([${dims[0]}].[${dims[0]}])}`
+    return `CROSSJOIN({TM1SUBSETALL([${dims[0]}].[${dims[0]}])}, ${buildCrossJoin(dims.slice(1))})`
+}
+
+// Read all non-empty cells from a }Picklist_{cube} control cube.
+// Returns { 'elem1::elem2::elem3': 'static::A:B:C', ... }
+async function fetchPicklistCells(client, pkCubeName, dims) {
+    if (!dims.length) return {}
+    const mdx = [
+        `SELECT {[}Picklist].[}Picklist].[Value]} ON COLUMNS,`,
+        `NON EMPTY ${buildCrossJoin(dims)} ON ROWS`,
+        `FROM [${pkCubeName}]`,
+    ].join(' ')
+    try {
+        const result   = await client.executeMDX(mdx, 1_000_000)
+        const rowTuples = result.Axes?.find(a => a.Ordinal === 1)?.Tuples ?? []
+        const cells     = result.Cells ?? []
+        const out       = {}
+        rowTuples.forEach((tuple, i) => {
+            const val = cells[i]?.Value
+            if (val === null || val === undefined || val === '') return
+            out[tuple.Members.map(m => m.Name).join('::')] = val
+        })
+        return out
+    } catch {
+        return {}
+    }
+}
+
+// For each model cube, check if }Picklist_{name} exists and capture its cells.
+async function snapshotPicklistCubes(client, cubeNames) {
+    const result = {}
+    await batch(cubeNames, 5, async cubeName => {
+        const pkCubeName = `}Picklist_${cubeName}`
+        try {
+            const pkCube = await client.getCube(pkCubeName).catch(() => null)
+            if (!pkCube) return
+            const dims  = (pkCube.Dimensions ?? []).map(d => d.Name ?? d).filter(d => d !== '}Picklist')
+            const cells = await fetchPicklistCells(client, pkCubeName, dims)
+            result[cubeName] = { dims, cells }
+        } catch {}
+    })
+    return result
 }
 
 // Scoped snapshot — captures current state of only the objects in a manifest
@@ -407,6 +462,15 @@ async function scopedSnapshot(manifest, targetServer, ideToken) {
                     result.objects[key] = attr ? { Name: attr.Name, Type: attr.Type } : null
                     break
                 }
+                case 'picklist-cube': {
+                    const pkCubeName = `}Picklist_${obj.name}`
+                    const pkCube = await client.getCube(pkCubeName).catch(() => null)
+                    if (!pkCube) { result.objects[key] = null; break }
+                    const dims  = (pkCube.Dimensions ?? []).map(d => d.Name ?? d).filter(d => d !== '}Picklist')
+                    const cells = await fetchPicklistCells(client, pkCubeName, dims)
+                    result.objects[key] = { picklistCube: pkCubeName, cellCount: Object.keys(cells).length, cells }
+                    break
+                }
                 default:
                     result.objects[key] = null
             }
@@ -418,4 +482,4 @@ async function scopedSnapshot(manifest, targetServer, ideToken) {
     return result
 }
 
-module.exports = { seed, takeSnapshot, scopedSnapshot, fetchElementFormats }
+module.exports = { seed, takeSnapshot, scopedSnapshot, fetchElementFormats, fetchPicklistCells, snapshotPicklistCubes }

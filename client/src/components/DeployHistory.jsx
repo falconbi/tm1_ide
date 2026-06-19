@@ -16,9 +16,10 @@ function snapshotText(obj, type) {
       `#Epilog\n${obj.EpilogProcedure ?? ''}`,
     ].join('\n\n')
     case 'subset':    return obj.expression ?? (obj.elements ?? []).join('\n')
-    case 'view':      return obj.MDX ?? JSON.stringify(obj.axes ?? {}, null, 2)
-    case 'dimension': return `Elements: ${obj.elementCount ?? '?'}\nEdges: ${obj.edgeCount ?? '?'}`
-    case 'attribute': return `${obj.Name}: ${obj.Type}`
+    case 'view':          return obj.MDX ?? JSON.stringify(obj.axes ?? {}, null, 2)
+    case 'dimension':     return `Elements: ${obj.elementCount ?? '?'}\nEdges: ${obj.edgeCount ?? '?'}`
+    case 'attribute':     return `${obj.Name}: ${obj.Type}`
+    case 'picklist-cube': return Object.entries(obj.cells ?? {}).map(([k, v]) => `${k} = ${v}`).join('\n')
     default:          return JSON.stringify(obj, null, 2)
   }
 }
@@ -197,7 +198,7 @@ function ArchiveDetail({ id, approval, deployStats }) {
       {data?.preSnapshot && data?.postSnapshot && (() => {
         const pre  = data.preSnapshot.objects  ?? {}
         const post = data.postSnapshot.objects ?? {}
-        const DIFFABLE = new Set(['rules', 'process', 'subset', 'view'])
+        const DIFFABLE = new Set(['rules', 'process', 'subset', 'view', 'picklist-cube'])
         const keys = [...new Set([...Object.keys(pre), ...Object.keys(post)])]
         if (!keys.length) return null
         return (

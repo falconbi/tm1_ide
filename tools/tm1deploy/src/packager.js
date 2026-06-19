@@ -3,8 +3,8 @@
 const fs   = require('fs')
 const path = require('path')
 const { makeClient } = require('./client')
-const { diff }              = require('./diff')
-const { fetchElementFormats } = require('./snapshot')
+const { diff, loadBaseline, BASELINE_PATH } = require('./diff')
+const { fetchElementFormats, fetchPicklistCells } = require('./snapshot')
 
 const PACKAGES_DIR = path.resolve(__dirname, '../../../packages')
 
@@ -105,6 +105,9 @@ async function pack(server, sessionEntries, sessionName, options = {}, ideToken)
     const { baselinePath, outputDir: overrideDir, force = false, forceInclude = [] } = options
     const client = makeClient(server, ideToken)
 
+    // Load baseline now for picklist comparison later (diff() also loads it internally)
+    const loadedBaseline = loadBaseline(baselinePath ?? BASELINE_PATH)
+
     // Run diff to get packable objects
     const diffResult = await diff(server, sessionEntries, baselinePath, ideToken)
 
@@ -132,7 +135,7 @@ async function pack(server, sessionEntries, sessionName, options = {}, ideToken)
         }
     }
 
-    for (const sub of ['rules', 'processes', 'subsets', 'views', 'dimensions', 'cubes', 'attributes']) {
+    for (const sub of ['rules', 'processes', 'subsets', 'views', 'dimensions', 'cubes', 'attributes', 'picklists']) {
         fs.mkdirSync(path.join(outputDir, sub), { recursive: true })
     }
 
@@ -253,6 +256,36 @@ async function pack(server, sessionEntries, sessionName, options = {}, ideToken)
             reason: `${item.outcome.toLowerCase()}: ${item.note}`,
         })
     }
+
+    // Secondary pass: include changed }Picklist_{cube} cubes alongside any packaged rules/cube objects.
+    // These won't appear in the session log unless the user edited them explicitly, so we scan here.
+    const cubesToCheckPicklist = new Set([
+        ...packable.filter(i => i.object_type === 'rules').map(i => i.object_name),
+        ...packable.filter(i => i.object_type === 'cube').map(i => i.object_name),
+    ])
+    const baselinePicklists = loadedBaseline?.picklist_cubes ?? {}
+
+    await Promise.all([...cubesToCheckPicklist].map(async cubeName => {
+        if (manifest.objects.some(o => o.type === 'picklist-cube' && o.name === cubeName)) return
+        const pkCubeName = `}Picklist_${cubeName}`
+        try {
+            const pkCube = await client.getCube(pkCubeName).catch(() => null)
+            if (!pkCube) return
+            const dims  = (pkCube.Dimensions ?? []).map(d => d.Name ?? d).filter(d => d !== '}Picklist')
+            const cells = await fetchPicklistCells(client, pkCubeName, dims)
+            if (!Object.keys(cells).length) return
+
+            const baseCells    = baselinePicklists[cubeName]?.cells ?? null
+            const unchanged    = baseCells !== null && JSON.stringify(baseCells) === JSON.stringify(cells)
+            if (unchanged) return
+
+            const outcome = baseCells === null ? 'NEW' : 'MATCH'
+            const data    = { cube: cubeName, picklistCube: pkCubeName, dimensions: dims, cells }
+            const relPath = `picklists/${safeFilename(cubeName)}.json`
+            fs.writeFileSync(path.join(outputDir, relPath), JSON.stringify(data, null, 2))
+            manifest.objects.push({ type: 'picklist-cube', name: cubeName, detail: pkCubeName, outcome, file: relPath })
+        } catch {}
+    }))
 
     fs.writeFileSync(path.join(outputDir, 'manifest.json'), JSON.stringify(manifest, null, 2))
 
