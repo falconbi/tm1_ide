@@ -17,7 +17,7 @@ All TM1 communication routes through Planning Analytics Workspace (PAW), so ther
 | **TI Debugger** | Set breakpoints in any section, capture variable values at each breakpoint, watch panel, section-by-section execution |
 | **Dimension Editor** | Hierarchy tree with drag-style CRUD, attribute grid, element search, bulk CSV import, attribute definition management |
 | **Subset Editor** | MDX code view + visual element tree, static/MDX save, MDX preview, ghost children |
-| **View Editor** | Native and MDX view builder, cell grid with inline writeback, save/save-as, **auto-refreshes when rules for the same cube are saved**, **Feeders** toolbar button (`tm1.CheckFeedersForRules` + amber zero-cell highlighting for leaf rule cells with zero value — likely missing feeders), **cell right-click context menu** — write value inline, rule trace (RULE/CONSOLIDATED/BASE/FEEDER badge + rule chain), per-cell feeder check (`tm1.CheckFeedersOfCell`), transaction log for the intersection, cell annotations (add/delete), copy intersection as MDX tuple, open rules editor |
+| **View Editor** | Native and MDX view builder, cell grid with inline writeback, save/save-as, **auto-refreshes when rules for the same cube are saved**, **Feeders** toolbar button (`tm1.CheckFeedersForRules` + amber zero-cell highlighting for leaf rule cells with zero value — likely missing feeders), **cell right-click context menu** (see below) |
 | **Guided MDX Builder** | Axis-by-axis view builder, subset filter builder, MDX execution |
 | **Chore Editor** | Schedule editor, step list, activate/deactivate/execute on demand |
 | **Cube Editor** | Create and delete cubes, dimension assignment |
@@ -25,6 +25,24 @@ All TM1 communication routes through Planning Analytics Workspace (PAW), so ther
 | **MDX Sandbox** | Ad-hoc MDX execution with result grid |
 | **Deploy Panel** | 5-step wizard: Diff (change set vs Prod baseline) → Package (fetch + manifest) → Risk (**drift check** then BLOCKER/WARNING/INFO analysis) → **Approve** (named sign-off with notes, required before deploy) → Deploy (dependency-ordered, dry-run option) |
 | **Deploy History** | Permanent archive of every real deployment — approval record, manifest, deploy results, and **pre/post target snapshots** (state of each deployed object on the target before and after the push). Changed objects show a Diff button that opens the IDE diff viewer. |
+
+### View Editor — Cell Right-Click Menu
+
+Right-clicking any cell in the View Editor grid opens a fixed-position popup with the cube name, LEAF/CONSOLIDATED badge, and the full dimension:element coordinate strip. Each coordinate has a `→` link that opens the corresponding Dimension Editor tab.
+
+| Panel | Visible on | What it shows |
+| ----- | ---------- | ------------- |
+| **Write** | Leaf cells only | Inline value entry — writes via `tm1.Update`, then auto-refreshes the view |
+| **Trace** | All cells | Full rule chain: `Type` badge (RULE / CONSOLIDATED / BASE / FEEDER), rule statements, component breakdown with per-component values |
+| **Feeders** | All cells | `tm1.CheckFeedersOfCell` result — lists all feeder sources, or an amber warning if none found |
+| **Breakdown** | Consolidated cells | Direct children of each consolidated dimension member — sorted by absolute value with a contribution bar and percentage |
+| **Leaves** | Consolidated cells | All N-level leaf descendants (BFS walk via full edge set, up to 100 queried, top 50 shown) — sorted by absolute value with contribution bar and percentage |
+| **Log** | All cells | Transaction history for this intersection — last 30 writes with timestamp, user, old and new value |
+| **Notes** | All cells | Cell annotations — view, add, or delete free-text notes attached to this intersection |
+| **Copy** | All cells | Copies `dim: element` pairs and the MDX tuple `([Dim].[Dim].[Elem], ...)` to the clipboard |
+| **Rules** | All cells | Opens the Rules Editor tab for the cube |
+
+For **Breakdown** and **Leaves**, the server uses `getEdges()` (one call) to build the complete parent→children map for each consolidated dimension, then executes one MDX query per C-dimension to fetch the values. Other dimensions are held at their current member in the WHERE clause.
 
 ### Explorer (Left Sidebar)
 
