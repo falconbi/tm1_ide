@@ -489,20 +489,49 @@ function assignedVarsForStatement(text) {
 
 function isBuiltInTM1Function(name) {
   const fns = new Set([
-    'if', 'elseif', 'else', 'endif', 'while', 'end', 'for', 'next', 'processquit', 'processerror',
-    'processbreak', 'itemreject', 'itemskip', 'asciioutput', 'textoutput', 'logoutput',
+    // Control flow / process lifecycle
+    'if', 'elseif', 'else', 'endif', 'while', 'end', 'for', 'next',
+    'processquit', 'processerror', 'processbreak',
+    'itemreject', 'itemskip',
+    // Logging / output
+    'asciioutput', 'textoutput', 'logoutput',
+    // Cell read/write
     'cellgetn', 'cellgets', 'cellputn', 'cellputs', 'cellisupdateable',
+    'cellupdateable',
+    // Dimension / element
     'dimensionelementinsert', 'dimensionelementdelete', 'dimensionexists',
-    'elementattrputn', 'elementattrputs', 'attrputn', 'attrputs',
+    'dimensioncreate', 'dimensiondestroy',
+    'dimensionelementattributecreate',   // valid — delete is NOT (use DimensionElementDelete on control dim)
+    'hierarchycreate',
+    'elementtype', 'elementlevel', 'elementweight',
+    'elementattrputn', 'elementattrputs', 'elementattrs', 'elementattrn',
+    'attrputn', 'attrputs', 'attrs', 'attrn', 'attrtype',
+    // Subsets
     'subsetcreate', 'subsetdestroy', 'subsetexists', 'subsetelementinsert',
+    'subsetcreatebymdx', 'subsetalias', 'subsetcount', 'subsetelementname',
+    // Views
     'viewcreate', 'viewdestroy', 'viewexists', 'viewzeroout',
+    'viewextractskiprulevaluesset', 'viewextractskipzerosset', 'viewextractskipzerovaluesset',
+    'viewcolumnsuppressset', 'viewrowsuppressset',
+    // Cubes
+    'cubecreate', 'cubedestroy', 'cubeexists',
+    // Processes
     'executeprocess', 'sleep', 'securityrefresh',
+    'holdsecurity', 'unholdsecurity', 'savedataall', 'refreshmdxhierarchy',
+    // String / number
     'numbertostring', 'stringtonumber', 'char', 'code', 'fill', 'scan',
-    'subst', 'long', 'trim', 'ucase', 'lcase',
+    'subst', 'long', 'trim', 'ucase', 'lcase', 'isundefined',
+    // Dimension navigation
     'dimnm', 'dimix', 'dimsiz', 'ellevel', 'elcomp', 'elcompn',
-    'abs', 'round', 'int', 'mod', 'max', 'min', 'sqrt', 'rand',
+    'elnm', 'elix', 'elsiz', 'elcomp', 'elcompn', 'elcompweight',
+    'elparent', 'elparentcount', 'elisanc',
+    // Math
+    'abs', 'round', 'int', 'mod', 'max', 'min', 'sqrt', 'rand', 'exp', 'log', 'power',
+    // Date / time
     'now', 'today', 'date', 'time', 'timst', 'day', 'month', 'year', 'dayno',
+    // Process metadata
     'getprocessname', 'getcurrentuser', 'getprocesserrorfiledirectory',
+    'serverexists', 'serveractivetm1processcount',
     'newdateformatter', 'parsedate',
   ])
   return fns.has(name.toLowerCase())
