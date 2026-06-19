@@ -1101,6 +1101,34 @@ return (d.value ?? [])
         return this.post(`Cubes('${enc(cube)}')/tm1.Update`, body)
     }
 
+    // ── Cell annotations ──────────────────────────────────────────────────────
+
+    async getAnnotations(cube) {
+        const enc = encodeURIComponent
+        const d = await this.get(`Cubes('${enc(cube)}')/Annotations`, {
+            '$select':  'ID,Text,TimeStamp,Author',
+            '$expand':  'Tuple($select=Name;$expand=Hierarchy($select=Name;$expand=Dimension($select=Name)))',
+            '$orderby': 'TimeStamp desc',
+            '$top':     200,
+        })
+        return d.value ?? []
+    }
+
+    async addAnnotation(cube, dimElemPairs, text) {
+        const esc = s => s.replace(/'/g, "''")
+        const enc = encodeURIComponent
+        return this.post(`Cubes('${enc(cube)}')/Annotations`, {
+            Text: text,
+            'Tuple@odata.bind': dimElemPairs.map(({ dim, element }) =>
+                `Dimensions('${esc(dim)}')/Hierarchies('${esc(dim)}')/Elements('${esc(element)}')`
+            ),
+        })
+    }
+
+    async deleteAnnotation(id) {
+        return this.delete(`Annotations('${encodeURIComponent(id)}')`)
+    }
+
     async createCube(name, dims) {
         const esc = s => s.replace(/'/g, "''")
         return this.post('Cubes', {
@@ -1157,6 +1185,117 @@ return (d.value ?? [])
                 ),
             }
         )
+    }
+
+    // Scans TI sections for dead cube, dimension, and process references — runs after save
+    async checkTIReferences(sections) {
+        const warnings = []
+        const allCode = Object.values(sections).join('\n')
+        // Strip comment lines
+        const stripped = allCode.split('\n').map(l => l.replace(/#.*$/, '')).join('\n')
+
+        // Cell functions — first arg is cube name
+        const cubeFnRx = /\b(?:CellPut[NS]|CellGet[NS]|CellIsEmpty|CellIncrement[NS]|CellValue|CellValueN|CellValueS|DB)\s*\(\s*['"]([^'"]+)['"]/gi
+        // Dimension/element functions — first arg is dimension name
+        const dimFnRx  = /\b(?:DimensionElement(?:Count|Index|Insert|ComponentAdd|PrincipalName|Type)?|DimensionSize|ElementAscend|ElementComponent(?:Count|Weight)?|ElementParent(?:Count|Name)?|ElementIndex|ElementIsAncestor|ElementIsParent|ElementIsLeaf|ElementFirstChild|ElementLastChild|ElementRoot|ElementLevel|ElementType|SubsetCreate|SubsetAll|SubsetGetSize|SubsetElementIndex|SubsetToMDX|ElementAttributeValue|AttributeElementSet|Dnlookup)\s*\(\s*['"]([^'"]+)['"]/gi
+        // ProcessExecute — first arg is process name
+        const procFnRx = /\bProcessExecute\s*\(\s*['"]([^'"]+)['"]/gi
+
+        const foundCubes = new Set()
+        const foundDims  = new Set()
+        const foundProcs = new Set()
+        let m
+        while ((m = cubeFnRx.exec(stripped)) !== null) foundCubes.add(m[1])
+        while ((m = dimFnRx.exec(stripped))  !== null) foundDims.add(m[1])
+        while ((m = procFnRx.exec(stripped)) !== null) foundProcs.add(m[1])
+
+        if (!foundCubes.size && !foundDims.size && !foundProcs.size) return { warnings }
+
+        const [allCubesRaw, allDims, allProcs] = await Promise.all([
+            foundCubes.size ? this.get('Cubes',      { '$select': 'Name' }).then(d => (d.value ?? []).map(r => r.Name)) : Promise.resolve([]),
+            foundDims.size  ? this.getDimensions()                                                                        : Promise.resolve([]),
+            foundProcs.size ? this.getProcesses()                                                                         : Promise.resolve([]),
+        ])
+
+        const validCubes = new Set(allCubesRaw.map(n => n.toLowerCase()))
+        const validDims  = new Set(allDims.map(n => n.toLowerCase()))
+        const validProcs = new Set(allProcs.map(n => n.toLowerCase()))
+
+        for (const name of foundCubes)
+            if (!validCubes.has(name.toLowerCase()))
+                warnings.push({ type: 'dead_cube',    name, message: `Cube "${name}" does not exist` })
+        for (const name of foundDims)
+            if (!validDims.has(name.toLowerCase()))
+                warnings.push({ type: 'dead_dimension', name, message: `Dimension "${name}" does not exist` })
+        for (const name of foundProcs)
+            if (!validProcs.has(name.toLowerCase()))
+                warnings.push({ type: 'dead_process',  name, message: `Process "${name}" does not exist` })
+
+        return { warnings }
+    }
+
+    // Scans rules text for dead cube/dimension references — runs after save
+    async checkRulesReferences(cube, rulesText) {
+        const warnings = []
+        // Strip comment lines so quoted strings in comments don't produce false positives
+        const stripped = rulesText.split('\n').map(l => l.replace(/#.*$/, '')).join('\n')
+
+        // DB-family: first arg is a cube name
+        const cubeFnRx = /\b(?:DB|CELLVALUE|CELLINCREMENTN|CELLPUTN|CELLPUTNS|CELLVALUES|CELLISEMPTY)\s*\(\s*['"]([^'"]+)['"]/gi
+        // ATTR/DIM-family: first arg is a dimension name
+        const dimFnRx  = /\b(?:ATTRS|ATTRN|ATTRD|DIMIX|DIMNM|DIMENSIONELEMENTCOUNT|DIMENSIONELEMENT|DNLOOKUP)\s*\(\s*['"]([^'"]+)['"]/gi
+
+        const foundCubes = new Set()
+        const foundDims  = new Set()
+        let m
+        while ((m = cubeFnRx.exec(stripped)) !== null) foundCubes.add(m[1])
+        while ((m = dimFnRx.exec(stripped))  !== null) foundDims.add(m[1])
+        foundCubes.delete(cube) // self-reference is always valid
+
+        if (!foundCubes.size && !foundDims.size) return { warnings }
+
+        const [allCubesRaw, allDims] = await Promise.all([
+            foundCubes.size ? this.get('Cubes', { '$select': 'Name' }).then(d => (d.value ?? []).map(r => r.Name)) : Promise.resolve([]),
+            foundDims.size  ? this.getDimensions()                                                                  : Promise.resolve([]),
+        ])
+
+        const validCubes = new Set(allCubesRaw.map(n => n.toLowerCase()))
+        const validDims  = new Set(allDims.map(n => n.toLowerCase()))
+
+        for (const name of foundCubes) {
+            if (!validCubes.has(name.toLowerCase()))
+                warnings.push({ type: 'dead_cube', name, message: `Cube "${name}" does not exist` })
+        }
+        for (const name of foundDims) {
+            if (!validDims.has(name.toLowerCase()))
+                warnings.push({ type: 'dead_dimension', name, message: `Dimension "${name}" does not exist` })
+        }
+        return { warnings }
+    }
+
+    // Recalculates feeder propagation for all rules in the cube (equivalent to Architect "Check Feeders")
+    async checkFeedersForRules(cube) {
+        const enc = encodeURIComponent
+        return this.post(`Cubes('${enc(cube)}')/tm1.CheckFeedersForRules`, {})
+    }
+
+    // dimElemPairs: [{ dim, element }, ...] — returns list of cells feeding this intersection
+    async checkFeedersOfCell(cube, dimElemPairs) {
+        const esc = s => s.replace(/'/g, "''")
+        const enc = encodeURIComponent
+        const expand = [
+            'Cube($select=Name)',
+            'Tuple($select=Name;$expand=Hierarchy($select=Name;$expand=Dimension($select=Name)))',
+        ].join(',')
+        const d = await this.post(
+            `Cubes('${enc(cube)}')/tm1.CheckFeedersOfCell?$expand=${expand}`,
+            {
+                'Tuple@odata.bind': dimElemPairs.map(({ dim, element }) =>
+                    `Dimensions('${esc(dim)}')/Hierarchies('${esc(dim)}')/Elements('${esc(element)}')`
+                ),
+            }
+        )
+        return d.value ?? []
     }
 
     // ── Transaction log ───────────────────────────────────────────────────────

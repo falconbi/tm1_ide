@@ -298,4 +298,87 @@ async function seed(server, outputPath, ideToken) {
     return snapshot
 }
 
-module.exports = { seed, takeSnapshot }
+// Scoped snapshot — captures current state of only the objects in a manifest
+// from the target server. Used for pre/post deploy comparison in archives.
+async function scopedSnapshot(manifest, targetServer, ideToken) {
+    const client  = makeClient(targetServer, ideToken)
+    const objects = manifest.objects ?? []
+    const result  = { taken_at: new Date().toISOString(), target: targetServer, objects: {} }
+
+    await batch(objects, 5, async obj => {
+        const key = `${obj.type}::${obj.name}${obj.detail ? `::${obj.detail}` : ''}`
+        try {
+            switch (obj.type) {
+                case 'rules': {
+                    const cube = await client.getCube(obj.name).catch(() => null)
+                    result.objects[key] = cube ? { rules: cube.Rules ?? '' } : null
+                    break
+                }
+                case 'process': {
+                    const p = await client.getProcess(obj.name).catch(() => null)
+                    if (!p) { result.objects[key] = null; break }
+                    result.objects[key] = {
+                        PrologProcedure:   p.PrologProcedure   ?? '',
+                        MetadataProcedure: p.MetaDataProcedure ?? p.MetadataProcedure ?? '',
+                        DataProcedure:     p.DataProcedure     ?? '',
+                        EpilogProcedure:   p.EpilogProcedure   ?? '',
+                    }
+                    break
+                }
+                case 'subset': {
+                    const dim = obj.detail
+                    if (!dim) { result.objects[key] = null; break }
+                    const subs = await client.getSubsets(dim, dim).catch(() => [])
+                    const sub  = subs.find(s => s.Name?.toLowerCase() === obj.name.toLowerCase())
+                    if (!sub) { result.objects[key] = null; break }
+                    if (sub.Expression) {
+                        result.objects[key] = { expression: sub.Expression }
+                    } else {
+                        const els = await client.getSubsetElements(dim, obj.name, dim).catch(() => [])
+                        result.objects[key] = { elements: els.map(e => e.name ?? e.Name) }
+                    }
+                    break
+                }
+                case 'view': {
+                    const cube = obj.detail
+                    if (!cube) { result.objects[key] = null; break }
+                    const views = await client.getViews(cube).catch(() => [])
+                    const v = views.find(vw => vw.name?.toLowerCase() === obj.name.toLowerCase())
+                    if (!v) { result.objects[key] = null; break }
+                    if (v.type === 'mdx') {
+                        const vd = await client.getView(cube, obj.name).catch(() => null)
+                        result.objects[key] = vd ? { type: 'mdx', MDX: vd.MDX ?? '' } : null
+                    } else {
+                        const vws = await client.getViewWithSubsets(cube, obj.name).catch(() => null)
+                        result.objects[key] = vws ? { type: 'native', axes: normAxes(vws) } : null
+                    }
+                    break
+                }
+                case 'dimension': {
+                    const [elements, edges] = await Promise.all([
+                        client.getElementsWithTree(obj.name, obj.name).catch(() => []),
+                        client.getEdges(obj.name, obj.name).catch(() => []),
+                    ])
+                    result.objects[key] = { elementCount: elements.length, edgeCount: edges.length }
+                    break
+                }
+                case 'attribute': {
+                    const dim = obj.detail
+                    if (!dim) { result.objects[key] = null; break }
+                    const attrs = await client.getElementAttributes(dim).catch(() => [])
+                    const attr  = attrs.find(a => a.Name?.toLowerCase() === obj.name.toLowerCase())
+                    result.objects[key] = attr ? { Name: attr.Name, Type: attr.Type } : null
+                    break
+                }
+                default:
+                    result.objects[key] = null
+            }
+        } catch (e) {
+            result.objects[key] = { error: e.message }
+        }
+    })
+
+    return result
+}
+
+module.exports = { seed, takeSnapshot, scopedSnapshot }

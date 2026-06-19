@@ -382,7 +382,10 @@ export default function HierarchyGrid({
                 row[`__d${i}_ctx__`]     = tuple.slice(0, i).join('::')
             })
             prevTuple = tuple
-            for (const col of visibleColumns) row[col.id] = values[col.id] ?? null
+            for (const col of visibleColumns) {
+                row[col.id]              = values[col.id]              ?? null
+                row[`${col.id}__u`]     = values[`${col.id}__u`]     ?? 1
+            }
             results.push(row)
         }
         return results
@@ -483,10 +486,16 @@ export default function HierarchyGrid({
                         const rowIsAllLeaf   = hierarchies.every((_, i) => p.data?.[`__d${i}_isLeaf__`] ?? true)
                         const isConsolidated = !rowIsAllLeaf || !colIsLeaf
                         const innerIsLeaf    = p.data?.[`__d${hierarchies.length - 1}_isLeaf__`] ?? true
+                        const updateable     = p.data?.[`${p.colDef.field}__u`] ?? 1
+                        const isZeroRule     = updateable === 0 && rowIsAllLeaf && colIsLeaf &&
+                                               (p.value === null || p.value === '' || p.value === 0 || p.value === '0')
                         return {
                             color:      (p.value === null || p.value === '') ? 'var(--ag-data-color, #888)' : undefined,
                             fontWeight: !innerIsLeaf ? '600' : undefined,
-                            background: isConsolidated ? (dark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)') : undefined,
+                            background: isZeroRule
+                                ? (dark ? 'rgba(245,158,11,0.15)' : 'rgba(245,158,11,0.12)')
+                                : isConsolidated ? (dark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)') : undefined,
+                            borderLeft: isZeroRule ? '2px solid rgba(245,158,11,0.6)' : undefined,
                         }
                     },
                 }

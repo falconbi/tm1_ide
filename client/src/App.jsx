@@ -109,6 +109,8 @@ export default function App() {
   const { loadForge, formatSettingsOpen, setFormatSettingsOpen, openTab, server, token, clearAuth } = useStore()
   const groups         = useStore(s => s.groups)
   const splitDirection = useStore(s => s.splitDirection)
+  const panelSizes     = useStore(s => s.panelSizes)
+  const setPanelSizes  = useStore(s => s.setPanelSizes)
   const revealTarget   = useStore(s => s.revealTarget)
 
   const [showFind, setShowFind]                   = useState(false)
@@ -295,16 +297,28 @@ export default function App() {
 
             {/* Editor groups */}
             <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
-              <PanelGroup direction={splitDirection} className="flex-1">
+              <PanelGroup direction={splitDirection} className="flex-1" onLayout={setPanelSizes}>
                 {groups.map((group, i) => (
                   <Fragment key={group.id}>
                     {i > 0 && (
                       <PanelResizeHandle className={splitDirection === 'horizontal'
-                        ? 'w-1 bg-border hover:bg-primary/50 transition-colors cursor-col-resize'
-                        : 'h-1 bg-border hover:bg-primary/50 transition-colors cursor-row-resize'}
-                      />
+                        ? 'group relative w-1.5 bg-border hover:bg-primary/40 data-[resize-handle-active]:bg-primary transition-colors cursor-col-resize flex items-center justify-center'
+                        : 'group relative h-1.5 bg-border hover:bg-primary/40 data-[resize-handle-active]:bg-primary transition-colors cursor-row-resize flex items-center justify-center'
+                      }>
+                        <div className={splitDirection === 'horizontal'
+                          ? 'absolute w-4 h-8 flex flex-col items-center justify-center gap-0.5'
+                          : 'absolute h-4 w-8 flex flex-row items-center justify-center gap-0.5'
+                        }>
+                          {[0,1,2].map(d => (
+                            <div key={d} className={splitDirection === 'horizontal'
+                              ? 'w-0.5 h-0.5 rounded-full bg-border group-hover:bg-primary/60 transition-colors'
+                              : 'h-0.5 w-0.5 rounded-full bg-border group-hover:bg-primary/60 transition-colors'
+                            } />
+                          ))}
+                        </div>
+                      </PanelResizeHandle>
                     )}
-                    <Panel className="flex flex-col min-w-0">
+                    <Panel className="flex flex-col min-w-0" defaultSize={panelSizes?.[i] ?? (100 / groups.length)}>
                       <EditorPane groupId={group.id} />
                       <TabBar groupId={group.id} />
                     </Panel>

@@ -1162,7 +1162,22 @@ export default function ProcessEditor({ tab }) {
     saveProcess.mutate(
       { server: tab.server, name: tab.name, body },
       {
-        onSuccess: () => { markTabSaved(tab.id); toast.success('Process saved', { id }) },
+        onSuccess: () => {
+          markTabSaved(tab.id)
+          toast.success('Process saved', { id })
+          // Non-blocking reference integrity check
+          const sections = {}
+          CODE_TABS.forEach(({ key }) => { sections[key] = edits[key] ?? data[key] ?? '' })
+          const token = localStorage.getItem('tm1-token') ?? ''
+          fetch('/api/process/check-references', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'x-ide-token': token },
+            body: JSON.stringify({ server: tab.server, sections }),
+          })
+            .then(r => r.json())
+            .then(d => { d.warnings?.forEach(w => toast.warning(w.message, { duration: 8000 })) })
+            .catch(() => {})
+        },
         onError:   (e) => toast.error(e.message, { id }),
       },
     )

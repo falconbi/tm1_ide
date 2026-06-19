@@ -13,7 +13,7 @@ import ChoreEditor from '@/components/ChoreEditor'
 import GuidedMDXBuilder from '@/components/GuidedMDXBuilder'
 import CubeEditor from '@/components/CubeEditor'
 import { toast } from 'sonner'
-import { GitBranch, ChevronRight, ChevronDown, Loader2, ChevronsUpDown, ChevronsDownUp, ListTree, AlignLeft, Settings, Locate, Braces, Save, Map, Microscope, X, Plus, Trash2, History, ShieldCheck } from 'lucide-react'
+import { GitBranch, ChevronRight, ChevronDown, Loader2, ChevronsUpDown, ChevronsDownUp, ListTree, AlignLeft, Settings, Locate, Braces, Save, Map, Microscope, X, Plus, Trash2, History, ShieldCheck, Rss } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { loadSettings, saveSettings } from '@/lib/formatters/settings.js'
 import { formatRules } from '@/lib/formatters/rules-formatter.js'
@@ -283,8 +283,9 @@ function RulesEditor({ tab, onCursor }) {
   const [showRegionMenu, setShowRegionMenu] = useState(false)
   const [showFormatPopup, setShowFormatPopup] = useState(false)
   const [formatStruct, setFormatStruct] = useState(() => loadSettings().rules.expressionFormatter ?? null)
-  const [checking, setChecking] = useState(false)
-  const [checkResult, setCheckResult] = useState(null) // null | 'pass' | 'fail'
+  const [checking, setChecking]             = useState(false)
+  const [checkResult, setCheckResult]       = useState(null) // null | 'pass' | 'fail'
+  const [checkingFeeders, setCheckingFeeders] = useState(false)
 
   const openCube = useCallback((cube) => {
     openTab({ id: `rules:${tab.server}:${cube}`, type: 'rules', label: cube, server: tab.server, cube, content: null })
@@ -409,7 +410,25 @@ function RulesEditor({ tab, onCursor }) {
     saveRules.mutate(
       { server: tab.server, cube: tab.cube, rules: editor.getValue() },
       {
-        onSuccess: () => { markTabSaved(tab.id); bumpRulesVersion(tab.server, tab.cube); toast.success('Rules saved', { id }) },
+        onSuccess: () => {
+          markTabSaved(tab.id)
+          bumpRulesVersion(tab.server, tab.cube)
+          toast.success('Rules saved', { id })
+          // Non-blocking reference integrity check — warnings shown after save
+          const token = localStorage.getItem('tm1-token') ?? ''
+          fetch('/api/cube/rules/check-references', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'x-ide-token': token },
+            body: JSON.stringify({ server: tab.server, cube: tab.cube, rules: editor.getValue() }),
+          })
+            .then(r => r.json())
+            .then(d => {
+              if (d.warnings?.length) {
+                d.warnings.forEach(w => toast.warning(w.message, { duration: 8000 }))
+              }
+            })
+            .catch(() => {})
+        },
         onError:   (err) => toast.error(err.message, { id }),
       },
     )
@@ -577,6 +596,28 @@ function RulesEditor({ tab, onCursor }) {
           >
             {checking ? <Loader2 size={11} className="animate-spin" /> : <ShieldCheck size={11} />}
             Check
+          </button>
+          <button
+            onClick={async () => {
+              setCheckingFeeders(true)
+              try {
+                const token = localStorage.getItem('tm1-token') ?? ''
+                const r = await fetch('/api/cube/check-feeders-for-rules', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json', 'x-ide-token': token },
+                  body: JSON.stringify({ server: tab.server, cube: tab.cube }),
+                })
+                const d = await r.json()
+                d.error ? toast.error(`Feeder check failed: ${d.error}`) : toast.success('Feeder check complete — open a view to see highlighted zero cells')
+              } catch { toast.error('Feeder check failed') }
+              finally { setCheckingFeeders(false) }
+            }}
+            disabled={checkingFeeders}
+            className="flex items-center gap-1 px-2 py-1 rounded text-xs border bg-background/80 border-border text-muted-foreground hover:text-foreground disabled:opacity-40 transition-colors"
+            title="CheckFeedersForRules — recalculates feeder propagation for this cube. Open a view after to see zero rule cells highlighted amber."
+          >
+            {checkingFeeders ? <Loader2 size={11} className="animate-spin" /> : <Rss size={11} />}
+            Feeders
           </button>
           <div ref={formatPopupRef} className="relative format-popup-container">
             <button

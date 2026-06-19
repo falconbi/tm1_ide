@@ -46,6 +46,7 @@ const _saveForge = (state) => {
         groups: state.groups,
         activeGroupId: state.activeGroupId,
         splitDirection: state.splitDirection,
+        panelSizes: state.panelSizes,
       }),
     }).catch(() => {})
   }, 800)
@@ -100,6 +101,7 @@ export const useStore = create((set, get) => ({
         }
       }
       if (forge.splitDirection) patch.splitDirection = forge.splitDirection
+      if (forge.panelSizes)    patch.panelSizes    = forge.panelSizes
       patch.forgeLoaded = true
       set(patch)
     } catch { set({ forgeLoaded: true }) }
@@ -131,6 +133,8 @@ export const useStore = create((set, get) => ({
   activeGroupId: 'g1',
   splitDirection: 'horizontal',
   setSplitDirection: (dir) => { set({ splitDirection: dir }); _saveForge(get()) },
+  panelSizes: null,
+  setPanelSizes: (sizes) => { set({ panelSizes: sizes }); _saveForge(get()) },
 
   /** @param {Tab} tab */
   openTab: (tab) => {
@@ -209,12 +213,13 @@ export const useStore = create((set, get) => ({
     _saveForge(get())
   },
 
-  splitGroup: (direction) => {
+  splitGroup: (direction, tabId) => {
     const { activeTab } = get()
-    if (!activeTab) return
+    const id = tabId ?? activeTab
+    if (!id) return
     const newGroupId = `g${Date.now()}`
     set(s => ({
-      groups: [...s.groups, { id: newGroupId, tabIds: [activeTab], activeTabId: activeTab }],
+      groups: [...s.groups, { id: newGroupId, tabIds: [id], activeTabId: id }],
       activeGroupId: newGroupId,
       ...(direction ? { splitDirection: direction } : {}),
     }))

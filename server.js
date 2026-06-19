@@ -14,7 +14,7 @@ const { diff: deployDiff }      = require('./tools/tm1deploy/src/diff')
 const { pack: deployPack }      = require('./tools/tm1deploy/src/packager')
 const { analyzeRisk }           = require('./tools/tm1deploy/src/risk')
 const { deploy: deployExecute } = require('./tools/tm1deploy/src/deployer')
-const { seed: deploySeed }      = require('./tools/tm1deploy/src/snapshot')
+const { seed: deploySeed, scopedSnapshot: deployScopedSnapshot } = require('./tools/tm1deploy/src/snapshot')
 const { BASELINE_PATH }         = require('./tools/tm1deploy/src/diff')
 
 const FORGE_PATH = path.join(__dirname, 'config', 'forge.json')
@@ -1744,6 +1744,57 @@ app.post('/api/cube/trace', async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
+app.post('/api/cube/feeders', async (req, res) => {
+    try {
+        const { server, cube, dimElemPairs } = req.body
+        res.json(await makeClient(server, req.ideToken).checkFeedersOfCell(cube, dimElemPairs))
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.post('/api/cube/rules/check-references', async (req, res) => {
+    try {
+        const { server, cube, rules } = req.body
+        res.json(await makeClient(server, req.ideToken).checkRulesReferences(cube, rules))
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.post('/api/process/check-references', async (req, res) => {
+    try {
+        const { server, sections } = req.body
+        res.json(await makeClient(server, req.ideToken).checkTIReferences(sections))
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.post('/api/cube/check-feeders-for-rules', async (req, res) => {
+    try {
+        const { server, cube } = req.body
+        await makeClient(server, req.ideToken).checkFeedersForRules(cube)
+        res.json({ ok: true })
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// ── Cell annotations ──────────────────────────────────────────────────────────
+app.get('/api/cube/annotations', async (req, res) => {
+    try {
+        const { server, cube } = req.query
+        res.json(await makeClient(server, req.ideToken).getAnnotations(cube))
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.post('/api/cube/annotations', async (req, res) => {
+    try {
+        const { server, cube, dimElemPairs, text } = req.body
+        res.json(await makeClient(server, req.ideToken).addAnnotation(cube, dimElemPairs, text))
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.delete('/api/cube/annotations/:id', async (req, res) => {
+    try {
+        const { server } = req.query
+        res.json(await makeClient(server, req.ideToken).deleteAnnotation(req.params.id))
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
 // ── Transaction log ───────────────────────────────────────────────────────────
 app.get('/api/transactions', async (req, res) => {
     try {
@@ -2347,15 +2398,26 @@ app.post('/api/deploy/approve', (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
+app.post('/api/deploy/scoped-snapshot', async (req, res) => {
+    try {
+        const { packageDir, target } = req.body
+        const manifestPath = path.join(packageDir, 'manifest.json')
+        if (!fs.existsSync(manifestPath)) return res.status(400).json({ error: 'No manifest found' })
+        const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'))
+        const result = await deployScopedSnapshot(manifest, target, req.ideToken)
+        res.json(result)
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
 app.post('/api/deploy/archive', (req, res) => {
     try {
-        const { approval, deployResult, manifest, source, target, deployer } = req.body
+        const { approval, deployResult, manifest, source, target, deployer, preSnapshot, postSnapshot } = req.body
         const now = new Date()
         const stamp = now.toISOString().replace(/[:.]/g, '-')
         const filename = `${stamp}_${(source ?? '').replace(/\W+/g, '_')}_to_${(target ?? '').replace(/\W+/g, '_')}.json`
         const dir = path.join(__dirname, 'config', 'archives')
         if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true })
-        const record = { archived_at: now.toISOString(), source, target, deployer, approval, deploy: deployResult, manifest }
+        const record = { archived_at: now.toISOString(), source, target, deployer, approval, deploy: deployResult, manifest, preSnapshot, postSnapshot }
         fs.writeFileSync(path.join(dir, filename), JSON.stringify(record, null, 2))
         res.json({ id: filename.replace('.json', ''), ...record })
     } catch (e) { res.status(500).json({ error: e.message }) }

@@ -158,6 +158,16 @@
 /* ── Monaco widget z-index overrides ─────────────────────────────────────── */
 /* Find widget, hover tooltips, and context menus must float above the editor
    toolbar buttons (z-10) and any overflow-hidden stacking contexts.          */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+}
+
 .monaco-editor .find-widget                { z-index: 2000 !important; }
 .monaco-custom-hover                       { z-index: 2001 !important; }
 .monaco-hover                              { z-index: 2001 !important; }

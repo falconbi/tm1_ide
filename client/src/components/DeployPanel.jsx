@@ -844,9 +844,16 @@ export default function DeployPanel({ tab }) {
   async function runDeploy(dryRun) {
     if (!packageMut.data?.outputDir || !target) return
     setStepStatus(5, 'running')
+    const token = localStorage.getItem('tm1-token') ?? ''
+    const snapHeaders = { 'Content-Type': 'application/json', 'x-ide-token': token }
+    const snapBody    = JSON.stringify({ packageDir: packageMut.data.outputDir, target })
+    const takeSnap    = () => fetch('/api/deploy/scoped-snapshot', { method: 'POST', headers: snapHeaders, body: snapBody })
+                               .then(r => r.ok ? r.json() : null).catch(() => null)
     try {
+      const preSnapshot = dryRun ? null : await takeSnap()
       const result = await deployMut.mutateAsync({ packageDir: packageMut.data.outputDir, target, dryRun })
       if (!dryRun && !result.aborted) {
+        const postSnapshot = await takeSnap()
         await archiveMut.mutateAsync({
           approval: approveMut.data,
           deployResult: result,
@@ -854,6 +861,8 @@ export default function DeployPanel({ tab }) {
           source: server,
           target,
           deployer: approveMut.data?.approver ?? username,
+          preSnapshot,
+          postSnapshot,
         }).catch(() => {})
       }
       setStepStatus(5, 'done')

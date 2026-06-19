@@ -70,8 +70,8 @@ function ContextMenu({ tabId, groupId, x, y, onClose }) {
       style={style}
       className="bg-popover border border-border rounded-lg shadow-xl py-1 w-52 select-none"
     >
-      {item(<Columns2 size={11} />, 'Split Right', () => splitGroup('horizontal'))}
-      {item(<Rows2 size={11} />, 'Split Down', () => splitGroup('vertical'))}
+      {item(<Columns2 size={11} />, 'Split Right', () => splitGroup('horizontal', tabId))}
+      {item(<Rows2 size={11} />, 'Split Down', () => splitGroup('vertical', tabId))}
       {multiGroup && otherGroup && item(<ArrowRight size={11} />, 'Move to other pane', () => moveTabToGroup(tabId, groupId, otherGroup.id))}
       <div className="border-t border-border my-1" />
       {item(<ChevronsRight size={11} />, 'Close to the right', () => closeTabsToRight(tabId, groupId))}

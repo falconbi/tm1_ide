@@ -7,8 +7,9 @@ import { useStore } from '@/store'
 import { subsetApplyCallbacks } from '@/lib/subsetCallbacks'
 import { useCubeDimensions, useSubsets, useElementsTree, useViews, useExecuteMDX, useViewAxes, useSaveView, useSetDefaultView, usePawBookUsage, useDimAttributes, useViewUsage, useMultiFormatAttrs, useConflictCheck } from '@/hooks/useApi'
 import { toast } from 'sonner'
-import { RefreshCw, Loader2, Table2, GripVertical, GripHorizontal, X, LayoutGrid, Rows3, Columns3, Filter, ZapOff, Zap, ChevronLeft, ChevronRight, PencilLine, Save, Code2, Eye, ChevronDown, BookOpen, ChevronUp, Locate, MapPin, WrapText, Braces, History, AlertTriangle, Search, Cog, Box, FileSearch } from 'lucide-react'
+import { RefreshCw, Loader2, Table2, GripVertical, GripHorizontal, X, LayoutGrid, Rows3, Columns3, Filter, ZapOff, Zap, ChevronLeft, ChevronRight, PencilLine, Save, Code2, Eye, ChevronDown, BookOpen, ChevronUp, Locate, MapPin, WrapText, Braces, History, AlertTriangle, Search, Cog, Box, FileSearch, Rss } from 'lucide-react'
 import TransactionLogPanel from '@/components/TransactionLogPanel'
+import CellContextMenu from '@/components/CellContextMenu'
 import { cn } from '@/lib/utils'
 
 ModuleRegistry.registerModules([AllCommunityModule])
@@ -161,6 +162,7 @@ function cellsetToHierarchyData(cellset, formatMap = {}, pageMembers = [], suppr
             } else {
                 data[tupleKey][col.id] = cell?.FormattedValue ?? cell?.Value ?? null
             }
+            data[tupleKey][`${col.id}__u`] = cell?.Updateable ?? 1
         })
     })
 
@@ -828,6 +830,8 @@ export default function ViewEditor({ tab }) {
     const [logTuple,  setLogTuple]  = useState(null)   // null = whole cube, array = filtered cell
     const [dismissedId, setDismissedId]   = useState(null)
     const [saveConflict, setSaveConflict] = useState(null)
+    const [cellCtx, setCellCtx]           = useState(null)
+    const [checkingFeeders, setCheckingFeeders] = useState(false)
     const { openConflict, checkBeforeSave } = useConflictCheck(tab.server, 'view', tab.viewName)
     const { data: pawBookData, isFetching: loadingPawBooks, refetch: refetchPawBooks } = usePawBookUsage(tab.server, tab.cube, tab.viewName)
     const { data: usageData,   isFetching: loadingUsage,   refetch: refetchUsage }    = useViewUsage(tab.server, tab.cube, tab.viewName)
@@ -1471,11 +1475,30 @@ export default function ViewEditor({ tab }) {
     }, [axes, hierarchyData, cubeDims])
 
     const handleCellContextMenu = useCallback((e) => {
-        if (!showLog) return
         e.event?.preventDefault?.()
-        const tuple = buildTupleFromCell({ tupleKey: e.data?.__tupleKey__, colId: e.colDef?.field })
-        setLogTuple(tuple)
-    }, [showLog, buildTupleFromCell])
+        const tupleKey   = e.data?.__tupleKey__
+        const colId      = e.colDef?.field
+        const rowMembers = (tupleKey ?? '').split('::')
+        const rowCoords  = axes.rows.map((d, i) => ({ dim: d.dimension, element: rowMembers[i] }))
+        const col        = hierarchyData?.columns?.find(c => c.id === colId)
+        const colMembers = col?.members ?? (col?.label ? [col.label] : [])
+        const colCoords  = axes.columns.map((d, i) => ({ dim: d.dimension, element: colMembers[i] }))
+        const pageCoords = axes.pages.filter(p => p.member).map(p => ({ dim: p.dimension, element: p.member }))
+        const coordMap   = new Map([...rowCoords, ...colCoords, ...pageCoords].map(c => [c.dim, c.element]))
+        const dimElemPairs = cubeDims.map(d => ({ dim: d, element: coordMap.get(d) })).filter(p => p.element)
+        if (!dimElemPairs.length) return
+        const isAllLeaf = axes.rows.every((_, i) => e.data?.[`__d${i}_isLeaf__`] ?? true)
+        setCellCtx({
+            x: e.event?.clientX ?? 400,
+            y: e.event?.clientY ?? 200,
+            dimElemPairs,
+            value: e.data?.[colId],
+            isAllLeaf,
+            cube: tab.cube,
+            server: tab.server,
+        })
+        if (showLog) setLogTuple(cubeDims.map(d => coordMap.get(d) ?? null))
+    }, [axes, hierarchyData, cubeDims, tab.cube, tab.server, showLog])
 
     const allDims = useMemo(() => [...axes.rows, ...axes.columns, ...axes.pages, ...bench], [axes, bench])
     const activeDim = activeDrag ? allDims.find(d => d.dimension === activeDrag) : null
@@ -1577,6 +1600,27 @@ export default function ViewEditor({ tab }) {
                     <History size={10} /> Log
                 </button>
 
+                <button
+                    onClick={async () => {
+                        setCheckingFeeders(true)
+                        try {
+                            const token = localStorage.getItem('tm1-token') ?? ''
+                            await fetch('/api/cube/check-feeders-for-rules', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json', 'x-ide-token': token },
+                                body: JSON.stringify({ server: tab.server, cube: tab.cube }),
+                            })
+                            toast.success('Feeder check complete — refreshing view')
+                            handleExecute()
+                        } catch { toast.error('Feeder check failed') }
+                        finally { setCheckingFeeders(false) }
+                    }}
+                    disabled={checkingFeeders || !result}
+                    title="Run CheckFeedersForRules — recalculates feeder propagation for this cube. Zero rule cells highlight amber."
+                    className="flex items-center gap-1 px-2 py-0.5 text-[10px] rounded border border-border text-muted-foreground hover:text-foreground hover:bg-muted disabled:opacity-40 transition-colors"
+                >
+                    {checkingFeeders ? <Loader2 size={10} className="animate-spin" /> : <Rss size={10} />} Feeders
+                </button>
 
                 <div className="flex-1" />
 
@@ -1878,6 +1922,18 @@ export default function ViewEditor({ tab }) {
                 tupleFilter={logTuple}
                 onClearFilter={() => setLogTuple(null)}
                 onClose={() => { setShowLog(false); setLogTuple(null) }}
+            />
+        )}
+        {cellCtx && (
+            <CellContextMenu
+                ctx={cellCtx}
+                cubeDims={cubeDims}
+                onClose={() => setCellCtx(null)}
+                onWriteSuccess={() => { setCellCtx(null); handleExecute() }}
+                onOpenRules={() => {
+                    const { openTab } = useStore.getState()
+                    openTab({ type: 'rules', server: tab.server, cube: tab.cube, label: `${tab.cube} Rules` })
+                }}
             />
         )}
         </div>
