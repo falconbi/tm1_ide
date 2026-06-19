@@ -276,8 +276,8 @@ export const PATTERN_CATEGORIES = [
         label: 'Set Alias from Attribute',
         description: 'Copy an existing String attribute into an Alias-type attribute on every element. Creates the alias attribute if it does not exist. Handles blank source values per pHandleBlank.',
         fields: [
-          { key: 'dim',       label: 'Dimension',           type: 'text',   placeholder: 'MyDimension' },
-          { key: 'srcAttr',   label: 'Source attribute',    type: 'text',   placeholder: 'Caption' },
+          { key: 'dim',       label: 'Dimension',           type: 'dim-select' },
+          { key: 'srcAttr',   label: 'Source attribute',    type: 'attr-select', dependsOn: 'dim' },
           { key: 'aliasAttr', label: 'Alias attribute name',type: 'text',   placeholder: 'Alias' },
           { key: 'handleBlank', label: 'Blank source value', type: 'select', options: ['Use element name', 'Skip element'] },
         ],

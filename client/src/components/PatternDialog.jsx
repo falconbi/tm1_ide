@@ -3,6 +3,7 @@ import { X, ChevronRight } from 'lucide-react'
 import { PATTERN_CATEGORIES } from '@/lib/ti-patterns'
 import { cn } from '@/lib/utils'
 import { addOrUpdateCustomSnippet } from '@/lib/custom-snippets'
+import { useStore } from '@/store'
 
 const SECTION_LABELS = {
   PrologProcedure:   'Prolog',
@@ -11,8 +12,80 @@ const SECTION_LABELS = {
   EpilogProcedure:   'Epilog',
 }
 
-function Field({ def, value, onChange }) {
-  const base = 'w-full bg-muted border border-border rounded px-2 py-1.5 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-ring'
+const apiFetch = (path) => {
+  const token = localStorage.getItem('tm1-token') ?? ''
+  return fetch(path, { headers: { 'x-ide-token': token } }).then(r => r.json())
+}
+
+const BASE = 'w-full bg-muted border border-border rounded px-2 py-1.5 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-ring'
+
+// ── Dynamic dimension dropdown ─────────────────────────────────────────────────
+function DimSelectField({ def, value, onChange, server }) {
+  const [dims,    setDims]    = useState([])
+  const [loading, setLoading] = useState(false)
+
+  useEffect(() => {
+    if (!server) return
+    setLoading(true)
+    apiFetch(`/api/dimensions?server=${encodeURIComponent(server)}`)
+      .then(d => {
+        setDims(Array.isArray(d) ? d.filter(n => !n.startsWith('}')) : [])
+        setLoading(false)
+      })
+      .catch(() => setLoading(false))
+  }, [server])
+
+  return (
+    <div className="space-y-1">
+      <label className="text-xs font-medium text-muted-foreground">{def.label}</label>
+      <select value={value ?? ''} onChange={e => onChange(e.target.value)} className={BASE}>
+        <option value="">{loading ? 'Loading…' : '— select —'}</option>
+        {dims.map(d => <option key={d} value={d}>{d}</option>)}
+      </select>
+    </div>
+  )
+}
+
+// ── Dynamic attribute dropdown (depends on a dim-select field) ─────────────────
+function AttrSelectField({ def, value, onChange, server, allValues }) {
+  const depValue = def.dependsOn ? (allValues?.[def.dependsOn] ?? '') : ''
+  const [attrs,   setAttrs]   = useState([])
+  const [loading, setLoading] = useState(false)
+
+  useEffect(() => {
+    if (!server || !depValue) { setAttrs([]); return }
+    setLoading(true)
+    apiFetch(`/api/dimension/attributes?server=${encodeURIComponent(server)}&dimension=${encodeURIComponent(depValue)}`)
+      .then(d => {
+        // Show String and Alias-type attributes as valid sources
+        setAttrs(Array.isArray(d) ? d.filter(a => a.type === 'S' || a.type === 'A') : [])
+        setLoading(false)
+      })
+      .catch(() => setLoading(false))
+  }, [server, depValue])
+
+  return (
+    <div className="space-y-1">
+      <label className="text-xs font-medium text-muted-foreground">{def.label}</label>
+      <select
+        value={value ?? ''}
+        onChange={e => onChange(e.target.value)}
+        className={BASE}
+        disabled={!depValue}
+      >
+        <option value="">
+          {!depValue ? '— select dimension first —' : loading ? 'Loading…' : '— select —'}
+        </option>
+        {attrs.map(a => <option key={a.name} value={a.name}>{a.name}</option>)}
+      </select>
+    </div>
+  )
+}
+
+// ── Generic field (text / textarea / select) ───────────────────────────────────
+function Field({ def, value, onChange, server, allValues }) {
+  if (def.type === 'dim-select')  return <DimSelectField  def={def} value={value} onChange={onChange} server={server} />
+  if (def.type === 'attr-select') return <AttrSelectField def={def} value={value} onChange={onChange} server={server} allValues={allValues} />
 
   if (def.type === 'textarea') return (
     <div className="space-y-1">
@@ -22,7 +95,7 @@ function Field({ def, value, onChange }) {
         value={value ?? ''}
         onChange={e => onChange(e.target.value)}
         placeholder={def.placeholder ?? ''}
-        className={cn(base, 'resize-none')}
+        className={cn(BASE, 'resize-none')}
       />
     </div>
   )
@@ -33,7 +106,7 @@ function Field({ def, value, onChange }) {
       <select
         value={value ?? def.options[0]}
         onChange={e => onChange(e.target.value)}
-        className={base}
+        className={BASE}
       >
         {def.options.map(o => <option key={o} value={o}>{o}</option>)}
       </select>
@@ -48,17 +121,19 @@ function Field({ def, value, onChange }) {
         value={value ?? ''}
         onChange={e => onChange(e.target.value)}
         placeholder={def.placeholder ?? ''}
-        className={base}
+        className={BASE}
       />
     </div>
   )
 }
 
 export default function PatternDialog({ onInsert, onClose }) {
-  const [activeCat, setActiveCat] = useState(PATTERN_CATEGORIES[0].id)
+  const server = useStore(s => s.server)
+
+  const [activeCat,     setActiveCat]     = useState(PATTERN_CATEGORIES[0].id)
   const [activePattern, setActivePattern] = useState(PATTERN_CATEGORIES[0].patterns[0].id)
-  const [fields, setFields] = useState({})
-  const [savedMsg, setSavedMsg] = useState('')
+  const [fields,        setFields]        = useState({})
+  const [savedMsg,      setSavedMsg]      = useState('')
 
   useEffect(() => {
     if (!savedMsg) return
@@ -166,6 +241,8 @@ export default function PatternDialog({ onInsert, onClose }) {
                         def={f}
                         value={fields[f.key]}
                         onChange={v => setField(f.key, v)}
+                        server={server}
+                        allValues={fields}
                       />
                     ))}
                   </div>
