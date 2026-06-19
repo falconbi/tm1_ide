@@ -58,7 +58,10 @@ function AttrSelectField({ def, value, onChange, server, allValues }) {
     apiFetch(`/api/dimension/attributes?server=${encodeURIComponent(server)}&dimension=${encodeURIComponent(depValue)}`)
       .then(d => {
         // Show String and Alias-type attributes as valid sources
-        setAttrs(Array.isArray(d) ? d.filter(a => a.type === 'S' || a.type === 'A') : [])
+        setAttrs(Array.isArray(d) ? d.filter(a => {
+          const t = (a.type ?? '').toLowerCase()
+          return t === 's' || t === 'string' || t === 'a' || t === 'alias'
+        }) : [])
         setLoading(false)
       })
       .catch(() => setLoading(false))
