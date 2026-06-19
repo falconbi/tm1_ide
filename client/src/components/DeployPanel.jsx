@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, Fragment } from 'react'
 import { X, Loader2, ChevronRight, ChevronDown, CheckCircle2, XCircle, AlertTriangle, Info,
          Package, Rocket, ShieldCheck, GitCompare, ArrowRight, Database, Diff, UserCheck, Clock, History } from 'lucide-react'
 import { useServers } from '@/hooks/useApi'
@@ -341,20 +341,41 @@ function StepPackage({ diffResult, result, error, running, onBuild }) {
         </div>
         <div className="overflow-auto max-h-[260px]">
           {(result.manifest?.objects ?? []).map((o, i) => {
-            const isOwns = o.outcome === 'NEW'
-            const isMod  = o.outcome === 'MATCH'
-            const isRef  = o.outcome === 'REFERENCED'
+            const isOwns   = o.outcome === 'NEW'
+            const isMod    = o.outcome === 'MATCH'
+            const isRef    = o.outcome === 'REFERENCED'
+            const delta    = o.type === 'dimension' ? o.elementDelta : null
+            const hasChips = delta && (delta.added.length || delta.removed.length)
+            const MAX = 20
             return (
-              <div key={i} className="grid grid-cols-[70px_70px_1fr_140px] px-3 py-1 border-b border-border/40 last:border-0 hover:bg-muted/20 items-center">
-                <span className={`text-[10px] font-medium ${isOwns ? 'text-blue-400' : isMod ? 'text-emerald-400' : 'text-muted-foreground/50'}`}>
-                  {isOwns ? 'owns' : isMod ? 'modifies' : isRef ? 'ref' : o.outcome?.toLowerCase()}
-                </span>
-                <span className="text-[10px] text-muted-foreground">{o.type}</span>
-                <span className="text-[10px] font-mono truncate pr-2">
-                  {o.name}{o.detail ? ` [${o.detail}]` : ''}
-                </span>
-                <span className="text-[10px] text-muted-foreground/60 font-mono truncate">{o.file}</span>
-              </div>
+              <Fragment key={i}>
+                <div className={cn('grid grid-cols-[70px_70px_1fr_140px] px-3 py-1 hover:bg-muted/20 items-center', !hasChips && 'border-b border-border/40')}>
+                  <span className={`text-[10px] font-medium ${isOwns ? 'text-blue-400' : isMod ? 'text-emerald-400' : 'text-muted-foreground/50'}`}>
+                    {isOwns ? 'owns' : isMod ? 'modifies' : isRef ? 'ref' : o.outcome?.toLowerCase()}
+                  </span>
+                  <span className="text-[10px] text-muted-foreground">{o.type}</span>
+                  <span className="text-[10px] font-mono truncate pr-2">
+                    {o.name}{o.detail ? ` [${o.detail}]` : ''}
+                  </span>
+                  <span className="text-[10px] text-muted-foreground/60 font-mono truncate">{o.file}</span>
+                </div>
+                {hasChips && (
+                  <div className="px-4 pb-1.5 pt-0.5 flex flex-wrap gap-1 border-b border-border/40">
+                    {delta.added.slice(0, MAX).map(n => (
+                      <span key={n} className="text-[9px] bg-emerald-500/15 text-emerald-400 px-1.5 py-0.5 rounded font-mono">+{n}</span>
+                    ))}
+                    {delta.added.length > MAX && (
+                      <span className="text-[9px] text-emerald-400/60 px-1 py-0.5">+{delta.added.length - MAX} more</span>
+                    )}
+                    {delta.removed.slice(0, MAX).map(n => (
+                      <span key={n} className="text-[9px] bg-red-500/15 text-red-400 px-1.5 py-0.5 rounded font-mono">-{n}</span>
+                    ))}
+                    {delta.removed.length > MAX && (
+                      <span className="text-[9px] text-red-400/60 px-1 py-0.5">+{delta.removed.length - MAX} more</span>
+                    )}
+                  </div>
+                )}
+              </Fragment>
             )
           })}
         </div>

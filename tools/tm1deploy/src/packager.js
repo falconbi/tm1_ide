@@ -228,6 +228,9 @@ async function pack(server, sessionEntries, sessionName, options = {}, ideToken)
                 detail:      r.item.detail ?? null,
                 outcome:     r.item.outcome,
                 file:        r.relPath,
+                ...(r.item.object_type === 'dimension' && r.item.elementDelta
+                    ? { elementDelta: r.item.elementDelta }
+                    : {}),
             })
         } else {
             manifest.skipped.push({

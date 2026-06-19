@@ -190,15 +190,23 @@ async function diffDimension(entry, baseline, client) {
     const elements = await client.getElements(entry.object_name).catch(() => null)
     if (!elements) return outcome('MISSING', entry, 'dimension not found on server')
 
-    const baseDim      = baseline?.dimensions?.[entry.object_name]
-    if (!baseDim)      return outcome('NEW', entry, 'not in baseline — new dimension')
+    const baseDim = baseline?.dimensions?.[entry.object_name]
+    if (!baseDim) return outcome('NEW', entry, 'not in baseline — new dimension')
 
-    const baseCount    = baseDim.hierarchies?.[entry.object_name]?.elements?.length ?? 0
-    const currentCount = elements.length
-    const delta        = currentCount - baseCount
-    const deltaStr     = delta === 0 ? 'element count unchanged' : `${delta > 0 ? '+' : ''}${delta} elements from baseline`
+    const baseEls   = baseDim.hierarchies?.[entry.object_name]?.elements ?? []
+    const baseNames = new Set(baseEls.map(e => (e.name ?? e.Name ?? '').toLowerCase()))
+    const currNames = elements.map(e => e.name ?? e.Name ?? '').filter(Boolean)
+    const currSet   = new Set(currNames.map(n => n.toLowerCase()))
 
-    return outcome('MATCH', entry, deltaStr)
+    const added   = currNames.filter(n => !baseNames.has(n.toLowerCase()))
+    const removed = baseEls.map(e => e.name ?? e.Name ?? '').filter(n => n && !currSet.has(n.toLowerCase()))
+
+    const parts = []
+    if (added.length)   parts.push(`+${added.length} added`)
+    if (removed.length) parts.push(`-${removed.length} removed`)
+    const note = parts.length ? parts.join(', ') : 'element count unchanged'
+
+    return outcome('MATCH', entry, note, { elementDelta: { added, removed } })
 }
 
 async function diffAttribute(entry, baseline, client) {

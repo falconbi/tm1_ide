@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, Fragment } from 'react'
 import { useDeployArchives } from '@/hooks/useApi'
 import { Loader2, ChevronDown, ChevronRight, CheckCircle2, XCircle, UserCheck, ArrowRight, Diff } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -132,18 +132,41 @@ function ArchiveDetail({ id, approval, deployStats }) {
               <span>CHANGE</span><span>TYPE</span><span>NAME</span><span>OUTCOME</span>
             </div>
             <div className="max-h-[240px] overflow-auto">
-              {(data.manifest.objects ?? []).map((o, i) => (
-                <div key={i} className="grid grid-cols-[70px_70px_1fr_100px] px-3 py-1 border-b border-border/40 last:border-0 text-[10px] hover:bg-muted/20">
-                  <span className={cn(
-                    o.change === 'owns'     && 'text-blue-400',
-                    o.change === 'modifies' && 'text-emerald-400',
-                    o.change === 'ref'      && 'text-muted-foreground',
-                  )}>{o.change ?? '—'}</span>
-                  <span className="text-muted-foreground">{o.type}</span>
-                  <span className="font-mono truncate pr-2">{o.name}{o.detail ? ` [${o.detail}]` : ''}</span>
-                  <span className="text-muted-foreground">{o.outcome}</span>
-                </div>
-              ))}
+              {(data.manifest.objects ?? []).map((o, i) => {
+                const delta    = o.type === 'dimension' ? o.elementDelta : null
+                const hasChips = delta && (delta.added.length || delta.removed.length)
+                const MAX = 20
+                return (
+                  <Fragment key={i}>
+                    <div className={cn('grid grid-cols-[70px_70px_1fr_100px] px-3 py-1 text-[10px] hover:bg-muted/20', !hasChips && 'border-b border-border/40')}>
+                      <span className={cn(
+                        o.change === 'owns'     && 'text-blue-400',
+                        o.change === 'modifies' && 'text-emerald-400',
+                        o.change === 'ref'      && 'text-muted-foreground',
+                      )}>{o.change ?? '—'}</span>
+                      <span className="text-muted-foreground">{o.type}</span>
+                      <span className="font-mono truncate pr-2">{o.name}{o.detail ? ` [${o.detail}]` : ''}</span>
+                      <span className="text-muted-foreground">{o.outcome}</span>
+                    </div>
+                    {hasChips && (
+                      <div className="px-4 pb-1.5 pt-0.5 flex flex-wrap gap-1 border-b border-border/40">
+                        {delta.added.slice(0, MAX).map(n => (
+                          <span key={n} className="text-[9px] bg-emerald-500/15 text-emerald-400 px-1.5 py-0.5 rounded font-mono">+{n}</span>
+                        ))}
+                        {delta.added.length > MAX && (
+                          <span className="text-[9px] text-emerald-400/60 px-1 py-0.5">+{delta.added.length - MAX} more</span>
+                        )}
+                        {delta.removed.slice(0, MAX).map(n => (
+                          <span key={n} className="text-[9px] bg-red-500/15 text-red-400 px-1.5 py-0.5 rounded font-mono">-{n}</span>
+                        ))}
+                        {delta.removed.length > MAX && (
+                          <span className="text-[9px] text-red-400/60 px-1 py-0.5">+{delta.removed.length - MAX} more</span>
+                        )}
+                      </div>
+                    )}
+                  </Fragment>
+                )
+              })}
             </div>
           </div>
         </div>
