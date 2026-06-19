@@ -314,4 +314,159 @@ async function diff(server, sessionEntries, baselinePath, ideToken) {
     }
 }
 
-module.exports = { diff, loadBaseline, BASELINE_PATH }
+// ── Drift check — has the TARGET changed since the baseline was seeded? ────────
+// Compares each packaged object's current state on the target against the baseline.
+// Objects not in baseline (outcome=NEW) are skipped — can't drift without a record.
+
+async function checkObjectDrift(obj, baseline, client) {
+    switch (obj.type) {
+        case 'rules': {
+            const b = baseline.cubes?.[obj.name]
+            if (!b) return null
+            const cube = await client.getCube(obj.name).catch(() => null)
+            if (!cube) return null  // doesn't exist on target — not a drift issue
+            const targetRules = (cube.Rules ?? '').trim()
+            const baseRules   = (b.rules ?? '').trim()
+            if (targetRules === baseRules) return { drifted: false }
+            return { drifted: true, note: 'Rules changed on target since baseline' }
+        }
+        case 'process': {
+            const b = baseline.processes?.[obj.name]
+            if (!b) return null
+            const p = await client.getProcess(obj.name).catch(() => null)
+            if (!p) return { drifted: true, note: 'Process deleted from target since baseline' }
+            const sig = x => [x?.PrologProcedure, x?.MetaDataProcedure ?? x?.MetadataProcedure, x?.DataProcedure, x?.EpilogProcedure].join('\x00')
+            if (sig(p) === sig(b)) return { drifted: false }
+            return { drifted: true, note: 'Process code changed on target since baseline' }
+        }
+        case 'dimension': {
+            const b = baseline.dimensions?.[obj.name]
+            if (!b) return null
+            const bEls = b.hierarchies?.[obj.name]?.elements ?? null
+            if (!bEls) return null
+            const tEls = await client.getElements(obj.name).catch(() => null)
+            if (!tEls) return null  // new on target — not drift
+            const bNames = new Set(bEls.map(e => (e.name ?? e.Name ?? '').toLowerCase()))
+            const tNames = new Set(tEls.map(e => (e.Name ?? '').toLowerCase()))
+            const added   = [...tNames].filter(n => !bNames.has(n))
+            const removed = [...bNames].filter(n => !tNames.has(n))
+            if (!added.length && !removed.length) return { drifted: false }
+            const parts = []
+            if (added.length)   parts.push(`+${added.length} element(s) added`)
+            if (removed.length) parts.push(`-${removed.length} element(s) removed`)
+            return { drifted: true, note: parts.join(', ') + ' on target since baseline' }
+        }
+        case 'subset': {
+            const dim = obj.detail
+            if (!dim) return null
+            const b = baseline.subsets?.[dim]?.[dim]?.[obj.name]
+            if (!b) return null
+            const sub = await client.getSubset(dim, obj.name).catch(() => null)
+            if (!sub) return { drifted: true, note: 'Subset deleted from target since baseline' }
+            const tSig = sub.Expression ?? (sub.Elements ?? []).map(e => e.Name ?? e).sort().join(',')
+            const bSig = b.expression   ?? (b.elements   ?? []).sort().join(',')
+            if (tSig === bSig) return { drifted: false }
+            return { drifted: true, note: 'Subset definition changed on target since baseline' }
+        }
+        case 'view': {
+            const cube = obj.detail
+            if (!cube) return null
+            const b = baseline.views?.[cube]?.[obj.name]
+            if (!b) return null
+            const v = await client.getView(cube, obj.name).catch(() => null)
+            if (!v) return { drifted: true, note: 'View deleted from target since baseline' }
+            const tSig = v.MDX ?? JSON.stringify(v)
+            const bSig = b.MDX ?? JSON.stringify(b)
+            if (tSig === bSig) return { drifted: false }
+            return { drifted: true, note: 'View definition changed on target since baseline' }
+        }
+        case 'cube': {
+            const b = baseline.cubes?.[obj.name]
+            if (!b) return null
+            const cube = await client.getCube(obj.name).catch(() => null)
+            if (!cube) return null  // new on target
+            const tDims = (cube.Dimensions ?? []).map(d => d.Name ?? d).sort().join(',')
+            const bDims = (b.dimensions ?? []).sort().join(',')
+            if (tDims === bDims) return { drifted: false }
+            return { drifted: true, note: 'Cube dimension list changed on target since baseline' }
+        }
+        case 'attribute': {
+            const dim = obj.detail
+            if (!dim) return null
+            const bDim  = baseline.dimensions?.[dim]
+            const bAttr = (bDim?.hierarchies?.[dim]?.attributes ?? [])
+                .find(a => a.Name?.toLowerCase() === obj.name.toLowerCase())
+            if (!bAttr) return null
+            const attrs = await client.getElementAttributes(dim).catch(() => [])
+            const tAttr = attrs.find(a => a.Name?.toLowerCase() === obj.name.toLowerCase())
+            if (!tAttr) return { drifted: true, note: 'Attribute deleted from target since baseline' }
+            if (tAttr.Type !== bAttr.Type) return { drifted: true, note: `Attribute type changed: ${bAttr.Type} → ${tAttr.Type}` }
+            return { drifted: false }
+        }
+        case 'picklist-cube': {
+            const b = baseline.picklist_cubes?.[obj.name]
+            if (!b) return null
+            const pkCubeName = `}Picklist_${obj.name}`
+            const pkCube = await client.getCube(pkCubeName).catch(() => null)
+            if (!pkCube) return { drifted: true, note: 'Picklist cube deleted from target since baseline' }
+            const dims  = (pkCube.Dimensions ?? []).map(d => d.Name ?? d).filter(d => d !== '}Picklist')
+            const { fetchPicklistCells } = require('./snapshot')
+            const cells = await fetchPicklistCells(client, pkCubeName, dims)
+            if (JSON.stringify(cells) === JSON.stringify(b.cells ?? {})) return { drifted: false }
+            return { drifted: true, note: 'Picklist cube cells changed on target since baseline' }
+        }
+        default:
+            return null
+    }
+}
+
+async function driftCheck(packageDir, targetServer, ideToken) {
+    const manifestPath = path.join(packageDir, 'manifest.json')
+    if (!fs.existsSync(manifestPath)) throw new Error('No manifest.json found')
+
+    const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'))
+    const baseline = loadBaseline()
+
+    if (!baseline) {
+        return {
+            has_baseline:    false,
+            skipped:         true,
+            reason:          'No baseline found — drift check skipped',
+            target_aligned:  true,   // treat as aligned so deploy can proceed
+            drifted:         [],
+            clean:           [],
+            checked:         0,
+        }
+    }
+
+    const client  = makeClient(targetServer, ideToken)
+    const objects = manifest.objects ?? []
+
+    const drifted = []
+    const clean   = []
+    const skippedObjs = []
+
+    await Promise.all(objects.map(async obj => {
+        try {
+            const result = await checkObjectDrift(obj, baseline, client)
+            if (result === null) { skippedObjs.push(obj); return }
+            if (result.drifted) drifted.push({ type: obj.type, name: obj.name, detail: obj.detail ?? null, note: result.note })
+            else                clean.push(obj)
+        } catch (e) {
+            skippedObjs.push({ ...obj, skipReason: e.message })
+        }
+    }))
+
+    return {
+        has_baseline:    true,
+        skipped:         false,
+        target_aligned:  drifted.length === 0,
+        checked:         clean.length + drifted.length,
+        drifted,
+        clean,
+        skipped_objects: skippedObjs,
+        checked_at:      new Date().toISOString(),
+    }
+}
+
+module.exports = { diff, driftCheck, loadBaseline, BASELINE_PATH }

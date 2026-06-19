@@ -10,7 +10,7 @@ const { makeClient, listServers, getDefaultAdapterType, getLoginServer } = requi
 const { loadConnections, saveConnections, getConnection, executeQuery, testConnection, getSchema, loadQueries, saveQueries } = require('./core/sql_client')
 const { createSession, createDirectSession, getSessionUser, invalidateSession, getCachedPawSession, getCSRF, PAW_HOST } = require('./core/paw_connect')
 const cl = require('./core/change_log')
-const { diff: deployDiff }      = require('./tools/tm1deploy/src/diff')
+const { diff: deployDiff, driftCheck: deployDriftCheck } = require('./tools/tm1deploy/src/diff')
 const { pack: deployPack }      = require('./tools/tm1deploy/src/packager')
 const { analyzeRisk }           = require('./tools/tm1deploy/src/risk')
 const { deploy: deployExecute } = require('./tools/tm1deploy/src/deployer')
@@ -2366,6 +2366,15 @@ app.get('/api/deploy/packages', (req, res) => {
             .filter(Boolean)
             .sort((a, b) => (b.meta?.packaged_at ?? '').localeCompare(a.meta?.packaged_at ?? ''))
         res.json(items)
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.post('/api/deploy/drift-check', async (req, res) => {
+    try {
+        const { packageDir, target } = req.body
+        if (!packageDir || !target) return res.status(400).json({ error: 'packageDir and target required' })
+        const result = await deployDriftCheck(packageDir, target, req.ideToken)
+        res.json(result)
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 

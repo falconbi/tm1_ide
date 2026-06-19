@@ -2,8 +2,8 @@ import { useState, useEffect, Fragment } from 'react'
 import { X, Loader2, ChevronRight, ChevronDown, CheckCircle2, XCircle, AlertTriangle, Info,
          Package, Rocket, ShieldCheck, GitCompare, ArrowRight, Database, Diff, UserCheck, Clock, History } from 'lucide-react'
 import { useServers } from '@/hooks/useApi'
-import { useDeploySeed, useDeployDiff, useDeployPackage, useDeployRisk, useDeployExecute,
-         useDeployApprove, useDeployArchive } from '@/hooks/useApi'
+import { useDeploySeed, useDeployDiff, useDeployPackage, useDeployDriftCheck, useDeployRisk,
+         useDeployExecute, useDeployApprove, useDeployArchive } from '@/hooks/useApi'
 import { cn } from '@/lib/utils'
 import { useStore } from '@/store'
 
@@ -475,10 +475,13 @@ function StepPackage({ diffResult, result, error, running, onBuild }) {
 
 // ── Step 3: Risk ──────────────────────────────────────────────────────────────
 
-function StepRisk({ packageResult, servers, target, onTargetChange, result, error, running, onRun }) {
+function StepRisk({ packageResult, servers, target, onTargetChange,
+                    driftResult, driftRunning,
+                    result, error, running, onRun }) {
   if (!packageResult) return <p className="text-sm text-muted-foreground">Build a package first.</p>
 
   const serverList = (servers?.value ?? servers ?? []).map(s => s.name ?? s).filter(Boolean)
+  const hasDrift   = (driftResult?.drifted?.length ?? 0) > 0
 
   return (
     <div className="flex flex-col gap-4">
@@ -493,28 +496,79 @@ function StepRisk({ packageResult, servers, target, onTargetChange, result, erro
           <option value="">— select target —</option>
           {serverList.map(s => <option key={s} value={s}>{s}</option>)}
         </select>
-        {!running && !result && (
+        {!running && !driftRunning && !driftResult && !result && (
           <button
             onClick={onRun}
             disabled={!target}
             className="flex items-center gap-2 px-3 py-1.5 bg-primary text-primary-foreground text-sm rounded hover:bg-primary/90 disabled:opacity-40 transition-colors shrink-0"
           >
-            <ShieldCheck size={13} /> Run Risk Check
+            <ShieldCheck size={13} /> Run Check
           </button>
         )}
       </div>
 
+      {/* Drift check phase */}
+      {driftRunning && (
+        <div className="flex items-center gap-2 text-sm text-muted-foreground py-4 justify-center">
+          <Loader2 size={14} className="animate-spin" /> Checking {target} is aligned with baseline…
+        </div>
+      )}
+
+      {driftResult && (
+        <div>
+          <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">
+            Target Alignment Check
+          </div>
+          {driftResult.skipped ? (
+            <div className="flex items-center gap-2 bg-amber-500/10 border border-amber-500/30 rounded px-4 py-2.5 text-sm text-amber-400">
+              <AlertTriangle size={14} />
+              No baseline seeded — drift check skipped. Seed a baseline from Step 1 for full protection.
+            </div>
+          ) : hasDrift ? (
+            <>
+              <div className="flex items-center gap-2 bg-red-500/10 border border-red-500/30 rounded px-4 py-2.5 text-sm text-red-400 mb-2">
+                <XCircle size={14} />
+                {driftResult.drifted.length} object(s) on <span className="font-mono mx-1">{target}</span> have changed since the baseline was seeded — deployment blocked
+              </div>
+              <div className="border border-border rounded overflow-hidden mb-2">
+                <div className="grid grid-cols-[70px_180px_1fr] text-[10px] font-medium text-muted-foreground bg-muted/30 px-3 py-1.5 border-b border-border">
+                  <span>TYPE</span><span>OBJECT</span><span>CHANGE ON TARGET</span>
+                </div>
+                {driftResult.drifted.map((d, i) => (
+                  <div key={i} className="grid grid-cols-[70px_180px_1fr] px-3 py-1.5 border-b border-border/40 last:border-0 text-[10px] bg-red-500/5 hover:bg-red-500/10">
+                    <span className="text-muted-foreground">{d.type}</span>
+                    <span className="font-mono truncate pr-2">{d.name}{d.detail ? ` [${d.detail}]` : ''}</span>
+                    <span className="text-red-400/80">{d.note}</span>
+                  </div>
+                ))}
+              </div>
+              <p className="text-[11px] text-muted-foreground">
+                Re-seed the baseline from <span className="font-mono">{target}</span> (Step 1 → Seed), re-align Dev, then re-package before deploying.
+              </p>
+            </>
+          ) : (
+            <div className="flex items-center gap-2 bg-emerald-500/10 border border-emerald-500/30 rounded px-4 py-2.5 text-sm text-emerald-400">
+              <CheckCircle2 size={14} />
+              {target} is aligned with baseline ({driftResult.checked} object{driftResult.checked !== 1 ? 's' : ''} checked)
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Risk check phase */}
       {running && (
-        <div className="flex items-center gap-2 text-sm text-muted-foreground py-8 justify-center">
+        <div className="flex items-center gap-2 text-sm text-muted-foreground py-4 justify-center">
           <Loader2 size={14} className="animate-spin" /> Analyzing {packageResult.packaged} objects against {target}…
         </div>
       )}
 
-      {error && <div className="text-sm text-red-400">{error}</div>}
+      {error && !hasDrift && <div className="text-sm text-red-400">{error}</div>}
 
-      {result && (
+      {result && !hasDrift && (
         <>
-          {/* Safe / not safe banner */}
+          <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-0">
+            Risk Analysis
+          </div>
           {result.safe_to_deploy ? (
             <div className="flex items-center gap-2 bg-emerald-500/10 border border-emerald-500/30 rounded px-4 py-2.5 text-sm text-emerald-400">
               <CheckCircle2 size={14} />
@@ -529,7 +583,6 @@ function StepRisk({ packageResult, servers, target, onTargetChange, result, erro
             </div>
           )}
 
-          {/* Risk items */}
           {['BLOCKER', 'WARNING', 'INFO'].map(level => {
             const items = result.all.filter(r => r.level === level)
             if (!items.length) return null
@@ -800,6 +853,7 @@ export default function DeployPanel({ tab }) {
   const seedMut    = useDeploySeed()
   const diffMut    = useDeployDiff()
   const packageMut = useDeployPackage()
+  const driftMut   = useDeployDriftCheck()
   const riskMut    = useDeployRisk()
   const approveMut = useDeployApprove()
   const archiveMut = useDeployArchive()
@@ -837,6 +891,14 @@ export default function DeployPanel({ tab }) {
     if (!packageMut.data?.outputDir || !target) return
     setStepStatus(3, 'running')
     try {
+      // Phase 1: drift check — is the target still aligned with the baseline?
+      const drift = await driftMut.mutateAsync({ packageDir: packageMut.data.outputDir, target })
+      if (drift.drifted?.length > 0) {
+        // Target has changed since baseline — block and surface the drift table
+        setStepStatus(3, 'error')
+        return
+      }
+      // Phase 2: risk analysis
       await riskMut.mutateAsync({ packageDir: packageMut.data.outputDir, target })
       setStepStatus(3, 'done')
       setStep(4)
@@ -900,7 +962,7 @@ export default function DeployPanel({ tab }) {
 
   const canAdvance1 = status[1] === 'done' && ((diffResult?.match?.length ?? 0) + (diffResult?.new?.length ?? 0)) > 0
   const canAdvance2 = status[2] === 'done'
-  const canAdvance3 = status[3] === 'done'
+  const canAdvance3 = status[3] === 'done' && !(driftMut.data?.drifted?.length > 0)
   const canAdvance4 = status[4] === 'done'
 
   return (
@@ -964,9 +1026,11 @@ export default function DeployPanel({ tab }) {
               servers={servers}
               target={target}
               onTargetChange={setTarget}
+              driftResult={driftMut.data}
+              driftRunning={driftMut.isPending}
               result={riskResult}
               error={riskMut.error?.message}
-              running={status[3] === 'running'}
+              running={riskMut.isPending}
               onRun={runRisk}
             />
           )}

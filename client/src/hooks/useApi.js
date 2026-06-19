@@ -540,7 +540,8 @@ export const useDeployBaseline = () => useQuery({ queryKey: ['deploy-baseline'],
 export const useDeploySeed     = () => { const qc = useQueryClient(); return useMutation({ mutationFn: (body) => post('/api/deploy/seed', body), onSuccess: () => qc.invalidateQueries({ queryKey: ['deploy-baseline'] }) }) }
 export const useDeployDiff     = () => useMutation({ mutationFn: (body) => post('/api/deploy/diff',    body) })
 export const useDeployPackage  = () => { const qc = useQueryClient(); return useMutation({ mutationFn: (body) => post('/api/deploy/package', body), onSuccess: () => qc.invalidateQueries({ queryKey: ['deploy-packages'] }) }) }
-export const useDeployRisk     = () => useMutation({ mutationFn: (body) => post('/api/deploy/risk',    body) })
+export const useDeployDriftCheck = () => useMutation({ mutationFn: (body) => post('/api/deploy/drift-check', body) })
+export const useDeployRisk       = () => useMutation({ mutationFn: (body) => post('/api/deploy/risk',         body) })
 export const useDeployExecute  = () => useMutation({ mutationFn: (body) => post('/api/deploy/execute', body) })
 export const useDeployApprove  = () => useMutation({ mutationFn: (body) => post('/api/deploy/approve', body) })
 export const useDeployArchive  = () => useMutation({ mutationFn: (body) => post('/api/deploy/archive', body) })
