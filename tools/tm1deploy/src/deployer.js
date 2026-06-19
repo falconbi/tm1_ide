@@ -87,6 +87,25 @@ async function deployDimension(obj, packageDir, client) {
             }
         }
     }
+
+    // Element formats — write to }ElementFormats_{dim}
+    if (data.element_formats && Object.keys(data.element_formats).length) {
+        const fmtCube = `}ElementFormats_${name}`
+        const updates = Object.entries(data.element_formats).flatMap(([element, fmts]) =>
+            Object.entries(fmts).map(([fmtType, value]) => ({
+                dimElemPairs: [
+                    { dim: name,    element },
+                    { dim: fmtCube, element: fmtType },
+                ],
+                value,
+            }))
+        )
+        if (updates.length) {
+            await client.updateCells(fmtCube, updates).catch(e => {
+                console.warn(`  [warn] element formats for ${name}: ${e.message}`)
+            })
+        }
+    }
 }
 
 async function deployCube(obj, packageDir, client) {

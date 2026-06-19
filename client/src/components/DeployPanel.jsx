@@ -258,9 +258,9 @@ function ControlObjectPanel({ manifest }) {
                   </div>
                 )}
                 <div className="flex items-center gap-2 text-[10px]">
-                  <AlertTriangle size={10} className="text-amber-400 shrink-0" />
+                  <CheckCircle2 size={10} className="text-emerald-400 shrink-0" />
                   <span className="text-muted-foreground font-mono">{'}'+'ElementFormats'}</span>
-                  <span className="text-muted-foreground/60">— not captured (gap)</span>
+                  <span className="text-muted-foreground/60">— captured, included in package</span>
                 </div>
                 <div className="flex items-center gap-2 text-[10px]">
                   <Info size={10} className="text-muted-foreground/40 shrink-0" />

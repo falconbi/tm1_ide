@@ -3,7 +3,8 @@
 const fs   = require('fs')
 const path = require('path')
 const { makeClient } = require('./client')
-const { diff }      = require('./diff')
+const { diff }              = require('./diff')
+const { fetchElementFormats } = require('./snapshot')
 
 const PACKAGES_DIR = path.resolve(__dirname, '../../../packages')
 
@@ -78,12 +79,13 @@ async function fetchView(cube, name, client) {
 }
 
 async function fetchDimension(name, client) {
-    const [elements, edges, attributes] = await Promise.all([
+    const [elements, edges, attributes, element_formats] = await Promise.all([
         client.getElements(name).catch(() => []),
         client.getEdges(name).catch(() => []),
         client.getElementAttributes(name).catch(() => []),
+        fetchElementFormats(client, name, name),
     ])
-    return { Name: name, elements, edges, attributes }
+    return { Name: name, elements, edges, attributes, element_formats }
 }
 
 async function fetchCube(name, client) {

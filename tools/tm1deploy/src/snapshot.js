@@ -12,6 +12,42 @@ async function batch(items, size, fn) {
     }
 }
 
+// Read element format strings for a dimension from }ElementFormats_{dim}.
+// Returns { elementName: { format_type: value, ... }, ... } — empty if cube absent.
+async function fetchElementFormats(client, dim, hier) {
+    const fmtCube = `}ElementFormats_${dim}`
+    const mdx = [
+        `SELECT {TM1SUBSETALL([${fmtCube}].[${fmtCube}])} ON COLUMNS,`,
+        `{TM1SUBSETALL([${dim}].[${hier}])} ON ROWS`,
+        `FROM [${fmtCube}]`,
+    ].join(' ')
+
+    try {
+        const result   = await client.executeMDX(mdx, 500_000)
+        const colTuples = result.Axes?.find(a => a.Ordinal === 0)?.Tuples ?? []
+        const rowTuples = result.Axes?.find(a => a.Ordinal === 1)?.Tuples ?? []
+        const cells     = result.Cells ?? []
+        const colCount  = colTuples.length
+        const fmtNames  = colTuples.map(t => t.Members?.[0]?.Name)
+        const values    = {}
+
+        rowTuples.forEach((rowTuple, ri) => {
+            const el = rowTuple.Members?.[0]?.Name
+            if (!el) return
+            const row = {}
+            fmtNames.forEach((fmt, ci) => {
+                const val = cells[ri * colCount + ci]?.Value
+                if (val !== null && val !== undefined && val !== '') row[fmt] = val
+            })
+            if (Object.keys(row).length) values[el] = row
+        })
+
+        return values
+    } catch {
+        return {}
+    }
+}
+
 // Read all attribute values for a dimension in one MDX call against the
 // }ElementAttributes control cube, rather than N per-element calls.
 async function fetchAttributeValues(client, dim, hier) {
@@ -61,11 +97,12 @@ async function snapshotDimension(client, dimName) {
             client.getElementAttributes(dimName, hier).catch(() => []),
         ])
 
-        const attributeValues = attrs.length
-            ? await fetchAttributeValues(client, dimName, hier)
-            : {}
+        const [attributeValues, elementFormats] = await Promise.all([
+            attrs.length ? fetchAttributeValues(client, dimName, hier) : {},
+            fetchElementFormats(client, dimName, hier),
+        ])
 
-        hierarchies[hier] = { elements, edges, attributes: attrs, attribute_values: attributeValues }
+        hierarchies[hier] = { elements, edges, attributes: attrs, attribute_values: attributeValues, element_formats: elementFormats }
     }
 
     return hierarchies
@@ -381,4 +418,4 @@ async function scopedSnapshot(manifest, targetServer, ideToken) {
     return result
 }
 
-module.exports = { seed, takeSnapshot, scopedSnapshot }
+module.exports = { seed, takeSnapshot, scopedSnapshot, fetchElementFormats }
