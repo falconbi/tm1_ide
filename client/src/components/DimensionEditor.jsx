@@ -1004,7 +1004,7 @@ export default function DimensionEditor({ tab }) {
 }
 
 function DimensionEditorCore({ tab }) {
-  const [view, setView]           = useState('tree')
+  const [view, setView]           = useState('attrs')
   const [selected, setSelected]   = useState(null)
   const [showIndex, setShowIndex] = useState(false)
   const [addRoot, setAddRoot]     = useState(false)
