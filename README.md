@@ -12,19 +12,19 @@ All TM1 communication routes through Planning Analytics Workspace (PAW), so ther
 
 | Editor | What it does |
 |--------|-------------|
-| **Rules Editor** | Monaco editor with TM1 rules syntax highlighting, live validation (CheckRules API) + static analysis (arg counts, keyword validity, line-accurate squiggles), **Check Now** button with green/red pass/fail glow, code formatter (3 structure presets), **#Region/#EndRegion folding**, lineage trace panel, **cell calculation trace** (shows full rule chain for any cell), snippet library |
-| **TI Editor** | Four-tab editor (Prolog / Metadata / Data / Epilog), parameter editor, datasource editor with CSV file upload to TM1 server, run with output log, **error log viewer** (reads TM1 `.log` file inline after errors), static analysis (IF/WHILE/FOR/NEXT block structure, arg counts), **block folding**, debugger, snippets, pattern generators |
+| **Rules Editor** | Monaco editor with TM1 rules syntax highlighting, live validation (CheckRules API) + static analysis (arg counts, keyword validity, line-accurate squiggles), **Check Now** button with green/red pass/fail glow, code formatter (3 structure presets), **#Region/#EndRegion folding**, lineage trace panel, **cell calculation trace** (shows full rule chain for any cell), snippet library, **Feeders** button (`tm1.CheckFeedersForRules`), **post-save reference check** (dead cube/dimension warnings as amber toasts) |
+| **TI Editor** | Four-tab editor (Prolog / Metadata / Data / Epilog), parameter editor, datasource editor with CSV file upload to TM1 server, run with output log, **error log viewer** (reads TM1 `.log` file inline after errors), static analysis (IF/WHILE/FOR/NEXT block structure, arg counts), **block folding**, debugger, snippets, pattern generators, **post-save reference check** (dead cube/dimension/process warnings as amber toasts) |
 | **TI Debugger** | Set breakpoints in any section, capture variable values at each breakpoint, watch panel, section-by-section execution |
 | **Dimension Editor** | Hierarchy tree with drag-style CRUD, attribute grid, element search, bulk CSV import, attribute definition management |
 | **Subset Editor** | MDX code view + visual element tree, static/MDX save, MDX preview, ghost children |
-| **View Editor** | Native and MDX view builder, cell grid with inline writeback, save/save-as, **auto-refreshes when rules for the same cube are saved**, **cell right-click context menu** — write value inline, rule trace (RULE/CONSOLIDATED/BASE/FEEDER badge + rule chain), transaction log for the intersection, cell annotations (add/delete), copy intersection as MDX tuple, open rules editor |
+| **View Editor** | Native and MDX view builder, cell grid with inline writeback, save/save-as, **auto-refreshes when rules for the same cube are saved**, **Feeders** toolbar button (`tm1.CheckFeedersForRules` + amber zero-cell highlighting for leaf rule cells with zero value — likely missing feeders), **cell right-click context menu** — write value inline, rule trace (RULE/CONSOLIDATED/BASE/FEEDER badge + rule chain), per-cell feeder check (`tm1.CheckFeedersOfCell`), transaction log for the intersection, cell annotations (add/delete), copy intersection as MDX tuple, open rules editor |
 | **Guided MDX Builder** | Axis-by-axis view builder, subset filter builder, MDX execution |
 | **Chore Editor** | Schedule editor, step list, activate/deactivate/execute on demand |
 | **Cube Editor** | Create and delete cubes, dimension assignment |
 | **SQL Editor** | External database queries (SQL Server, PostgreSQL, MySQL, SQLite), schema browser, saved queries, post SQL as TI datasource |
 | **MDX Sandbox** | Ad-hoc MDX execution with result grid |
-| **Deploy Panel** | Change set → diff vs Prod baseline → package → risk check → deploy to target server |
-| **Deploy History** | Archive log of past deployments with timestamps and object counts |
+| **Deploy Panel** | 5-step wizard: Diff (change set vs Prod baseline) → Package (fetch + manifest) → Risk (BLOCKER/WARNING/INFO checks) → **Approve** (named sign-off with notes, required before deploy) → Deploy (dependency-ordered, dry-run option) |
+| **Deploy History** | Permanent archive of every real deployment — approval record, manifest, deploy results, and **pre/post target snapshots** (state of each deployed object on the target before and after the push). Changed objects show a Diff button that opens the IDE diff viewer. |
 
 ### Explorer (Left Sidebar)
 
@@ -423,16 +423,19 @@ This prevents silent overwrites of Prod changes.
 > doesn't guarantee Prod behaves the same way. A drift check between Test
 > and the baseline tells you whether Test is a faithful copy of Prod.
 
-### Step ⑥ — Risk & Deploy
+### Step ⑥ — Risk, Approve & Deploy
 
-Step 3 (Risk): Select the target server (Prod). Automated checks run:
+**Step 3 (Risk):** Select the target server (Prod). Automated checks run:
 rules syntax errors → broken dependencies → chore conflicts (running chores
 containing changed processes) → structural impact (elements removed).
 
 Returns `BLOCKER` / `WARNING` / `INFO`. Blockers prevent deployment.
 
-Step 4 (Deploy): Confirm and push. Objects are written in dependency order:
-attributes → dimensions → cubes → rules → subsets → views → processes.
+**Step 4 (Approve):** A named approver signs off with optional notes before deployment is unlocked. The approval record (name, timestamp, notes) is stored permanently in the archive.
+
+**Step 5 (Deploy):** Confirm and push. Objects are written in dependency order: attributes → dimensions → cubes → rules → subsets → views → processes.
+
+Before deployment begins, the IDE captures a **pre-deploy snapshot** of the target server's current state for every packaged object. After deployment, a **post-deploy snapshot** is taken. Both are stored in the archive record alongside the manifest and results. In Deploy History, each deployment shows a per-object table with changed/unchanged status and a **Diff** button to compare pre/post state inline in the IDE diff viewer.
 
 ### CLI (optional)
 
