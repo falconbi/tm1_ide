@@ -23,7 +23,7 @@ All TM1 communication routes through Planning Analytics Workspace (PAW), so ther
 | **Cube Editor** | Create and delete cubes, dimension assignment |
 | **SQL Editor** | External database queries (SQL Server, PostgreSQL, MySQL, SQLite), schema browser, saved queries, post SQL as TI datasource |
 | **MDX Sandbox** | Ad-hoc MDX execution with result grid |
-| **Deploy Panel** | 5-step wizard: Diff (change set vs Prod baseline) → Package (fetch + manifest) → Risk (BLOCKER/WARNING/INFO checks) → **Approve** (named sign-off with notes, required before deploy) → Deploy (dependency-ordered, dry-run option) |
+| **Deploy Panel** | 5-step wizard: Diff (change set vs Prod baseline) → Package (fetch + manifest) → Risk (**drift check** then BLOCKER/WARNING/INFO analysis) → **Approve** (named sign-off with notes, required before deploy) → Deploy (dependency-ordered, dry-run option) |
 | **Deploy History** | Permanent archive of every real deployment — approval record, manifest, deploy results, and **pre/post target snapshots** (state of each deployed object on the target before and after the push). Changed objects show a Diff button that opens the IDE diff viewer. |
 
 ### Explorer (Left Sidebar)
@@ -427,30 +427,21 @@ For **dimension** objects, the package includes:
 
 When packaging a **rules** or **cube** object, the packager also checks whether a corresponding `}Picklist_{cube}` control cube exists on Dev. If it does and its cells have changed relative to the baseline (or it is new), the picklist cube is **automatically included** in the package as a `picklist-cube` object — no manual step required.
 
-### Step ⑤ — Drift Re-check (not yet implemented)
+### Step ⑤ — Risk, Approve & Deploy
 
-Before the package can proceed to deployment, a **drift re-check** runs against
-the Target server (Prod). For each object in the package, Prod's current state
-is fetched and compared against the baseline snapshot:
+**Step 3 (Risk):** Select the target server (Prod) and click **Run Check**. The step runs two phases automatically:
 
-- **All match** → Prod hasn't changed since seeding → proceed to risk/deploy
-- **Any differ** → Prod has drifted. Those objects are flagged as
-  `TARGET_DRIFT` and **block deployment**. The developer must:
-  1. Re-seed the baseline from Prod
-  2. Re-align Dev to match the new baseline
-  3. Re-apply their changes on top
+**Phase 1 — Drift check.** For each packaged object, the IDE fetches its current state from the target and compares it against the baseline snapshot taken at seeding time:
 
-This prevents silent overwrites of Prod changes.
+- **All match** → Prod hasn't changed since seeding → Phase 2 runs immediately
+- **Any differ** → Prod has drifted. A table shows each drifted object and what changed (e.g. "Rules changed on target since baseline"). **Deployment is blocked.** The developer must:
+  1. Re-seed the baseline from Prod (Step 1 → Seed)
+  2. Re-align Dev to the new baseline
+  3. Re-package before retrying
 
-> **Drift check between any environment pair.** The same drift comparison can
-> validate that Test is still aligned to the Prod baseline before running
-> user acceptance testing. If Test has drifted from Prod, passing tests there
-> doesn't guarantee Prod behaves the same way. A drift check between Test
-> and the baseline tells you whether Test is a faithful copy of Prod.
+This prevents silent overwrites of changes made directly on Prod (hotfixes, manual edits) since the baseline was taken. Objects with outcome `NEW` (not in baseline) are skipped — there's no prior record to compare against. If no baseline exists, the drift check is skipped with a warning.
 
-### Step ⑥ — Risk, Approve & Deploy
-
-**Step 3 (Risk):** Select the target server (Prod). Automated checks run:
+**Phase 2 — Risk analysis** (only runs if Phase 1 is clean):
 
 - **Syntax** — rules checked via `tm1.CheckRules` against the target cube
 - **Dependencies** — cube dimensions, parent dimensions for subsets/views, and parent cubes for views must exist on target
