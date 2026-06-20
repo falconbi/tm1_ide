@@ -72,6 +72,7 @@ Context-aware Monaco autocomplete across all three TM1 languages:
 - **MDX — function names** — completions from `MDX_CATALOG` using the function's `template` field as the snippet (with tab stops)
 - **MDX — keywords** — `SELECT`, `FROM`, `WHERE`, `NON EMPTY`, `WITH MEMBER`, `BASC`, `BDESC`, etc.
 - **All languages — signature help** — triggered on `(` — shows param names and descriptions from the catalog; active parameter highlights as you tab through
+- **All languages — hover docs** — hover over any function name to see description, param list, return type, V11/V12 compat, and deprecated warning — sourced live from the catalog
 
 ### Function Catalog
 

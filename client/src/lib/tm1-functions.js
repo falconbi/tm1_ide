@@ -4,6 +4,7 @@ import { loadSettings } from '@/lib/formatters/settings.js'
 import { getNamingMap } from '@/lib/formatters/naming.js'
 import { registerTM1Snippets } from '@/lib/tm1-snippets.js'
 import { MDX_FUNCTIONS_FLAT, MDX_KEYWORDS } from '@/lib/tm1-mdx-catalog.js'
+import { RULES_CATALOG, TI_CATALOG } from '@/lib/tm1-completion.js'
 
 // ── TM1 Function Catalog ──────────────────────────────────────────────────────
 // Each entry: description, params[], returns, variadic, language
@@ -1431,6 +1432,69 @@ function registerTM1Completions(monaco, getServer) {
         }
       },
     })
+  })
+
+  // ── Hover providers ────────────────────────────────────────────────────────
+  function hoverMarkdown(name, entry, paramList) {
+    const lines = [`**${name}**`]
+    if (entry.description) lines.push('', entry.description)
+    if (paramList?.length) {
+      lines.push('', '**Parameters:**')
+      paramList.forEach(p => lines.push(`- \`${p}\``))
+    }
+    if (entry.returnType && entry.returnType !== 'void')
+      lines.push('', `**Returns:** \`${entry.returnType}\``)
+    if (entry.compat === 'v12')
+      lines.push('', '**Compat:** PA 2.0+ (V12) only')
+    else if (entry.compat === 'v11')
+      lines.push('', '**Compat:** V11 classic only')
+    if (entry.deprecated)
+      lines.push('', `> ⚠ Deprecated: ${entry.deprecated}`)
+    return { value: lines.join('\n') }
+  }
+
+  function catalogHover(catalog, model, position) {
+    const word = model.getWordAtPosition(position)
+    if (!word) return null
+    const upper = word.word.toUpperCase()
+    const cat = catalog[upper]
+    const fn  = TM1_FUNCTIONS[upper]
+    if (!cat && !fn) return null
+    const entry = cat ?? {
+      description: fn.description,
+      returnType:  fn.returns,
+      compat:      fn.language === 'rules' ? 'both' : fn.language === 'ti' ? 'both' : 'both',
+      deprecated:  null,
+    }
+    const params = cat?.params ?? fn?.params?.map(p => p.name) ?? []
+    return {
+      range:    new monaco.Range(position.lineNumber, word.startColumn, position.lineNumber, word.endColumn),
+      contents: [hoverMarkdown(upper, entry, params)],
+    }
+  }
+
+  monaco.languages.registerHoverProvider('tm1rules', {
+    provideHover: (model, pos) => catalogHover(RULES_CATALOG, model, pos),
+  })
+
+  monaco.languages.registerHoverProvider('tm1ti', {
+    provideHover: (model, pos) => catalogHover(TI_CATALOG, model, pos),
+  })
+
+  monaco.languages.registerHoverProvider('tm1mdx', {
+    provideHover: (model, position) => {
+      const word = model.getWordAtPosition(position)
+      if (!word) return null
+      const fn = MDX_FN_MAP[word.word.toUpperCase()]
+      if (!fn) return null
+      const lines = [`**${fn.name}**`, '', fn.description]
+      if (fn.params?.length) { lines.push('', '**Parameters:**'); fn.params.forEach(p => lines.push(`- ${p}`)) }
+      lines.push('', `\`${fn.signature}\``)
+      return {
+        range:    new monaco.Range(position.lineNumber, word.startColumn, position.lineNumber, word.endColumn),
+        contents: [{ value: lines.join('\n') }],
+      }
+    },
   })
 
   registerTM1Snippets(monaco)
