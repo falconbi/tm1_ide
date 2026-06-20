@@ -144,15 +144,15 @@ All three feed Monaco `setModelMarkers` in their respective editor components �
 
 #### Catalog Admin UI
 
-The **book icon** in the header opens the Function Catalog panel — three tabs: TI Functions | Rules Functions | MDX Functions.
+The **book icon** in the header opens the Function Catalog panel — four tabs: TI Functions | Rules Functions | MDX Functions | Naming / Formatter.
 
-Each row shows: function name, description, params, return type (→ numeric/string/void), compat badge (Both/V11/V12), source (built-in/user). Deprecated functions show a strikethrough name and amber warning. Statement-only functions show a `stmt` badge.
+**TI / Rules / MDX tabs** — each row shows: function name, description, params, return type (→ numeric/string/void), compat badge (Both/V11/V12), source (built-in/user). Deprecated functions show a strikethrough name and amber warning. Statement-only functions show a `stmt` badge.
 
-**Editing:** click the compat dropdown to reassign any entry — useful when reviewing IBM docs and finding a function is V11-only or V12-only. Changes save to `config/function-catalog-overrides.json` on the server. The built-in catalog in source code is the base; overrides are merged on top at runtime.
+- **Compat editing:** click the compat dropdown to reassign any entry — useful when reviewing IBM docs. Changes save to `config/function-catalog-overrides.json`. The built-in catalog is the base; overrides are merged on top at runtime.
+- **Adding functions:** name + param list + compat via the form at the bottom of each tab.
+- **Live validation:** the Validate button (TI and Rules tabs) tests every catalog entry against the live TM1 server by creating a minimal temp process per function. Results overlay ✓ / ✗ per row. Temp processes deleted immediately. Server endpoint: `POST /api/admin/validate-ti-functions`.
 
-**Adding functions:** name + param list + compat via the form at the bottom of each tab.
-
-**Live validation:** the Validate button (TI and Rules tabs) tests every catalog entry against the connected TM1 server by creating a minimal temp process per function and checking whether TM1 accepts the syntax. Results overlay ✓ / ✗ badges per row. Temp processes are deleted immediately — no data is modified. Server endpoint: `POST /api/admin/validate-ti-functions`.
+**Naming / Formatter tab** — controls how the code formatter capitalises identifiers (e.g. `cellputn` → `CellPutN`). Shows ~350 IBM defaults (Rules, TI, MDX, admin functions) plus any user-added custom mappings. IBM defaults can be disabled per-entry; custom mappings can be added, edited, or removed. Import/export JSON for sharing across environments. Accessible directly from the settings gear menu → Naming Dictionary, or via the book icon → Naming / Formatter tab.
 
 #### Catalog audit history
 

@@ -15,7 +15,6 @@ import FindReplace from '@/components/FindReplace'
 import ShortcutsHelp from '@/components/ShortcutsHelp'
 import FormatSettings from '@/components/FormatSettings'
 import EditorPreferences from '@/components/EditorPreferences'
-import NamingDictionary from '@/components/NamingDictionary'
 import PeriodBuilder from '@/components/PeriodBuilder'
 import SessionControl from '@/components/SessionControl'
 import LoginPage from '@/components/LoginPage'
@@ -117,11 +116,11 @@ export default function App() {
   const [showFind, setShowFind]                   = useState(false)
   const [showSidebar, setShowSidebar]             = useState(true)
   const [showShortcuts, setShowShortcuts]         = useState(false)
-  const [showNamingDict, setShowNamingDict]       = useState(false)
   const [showPrefs, setShowPrefs]                 = useState(false)
   const [showPeriodBuilder, setShowPeriodBuilder] = useState(false)
   const [showUserMgmt, setShowUserMgmt]           = useState(false)
   const [showCatalog, setShowCatalog]             = useState(false)
+  const [catalogTab, setCatalogTab]               = useState('ti')
   const [sidebarWidth, setSidebarWidth]           = useState(280)
   const [findWidth, setFindWidth]                 = useState(320)
   const dragRef = useRef(null)
@@ -347,13 +346,12 @@ export default function App() {
           open={showPrefs}
           onClose={() => setShowPrefs(false)}
           onOpenPeriodBuilder={() => setShowPeriodBuilder(true)}
-          onOpenNamingDictionary={() => setShowNamingDict(true)}
+          onOpenNamingDictionary={() => { setCatalogTab('naming'); setShowCatalog(true) }}
           onOpenFormatSettings={() => setFormatSettingsOpen(true)}
         />
         <FormatSettings open={formatSettingsOpen} onClose={() => setFormatSettingsOpen(false)} />
         {showUserMgmt && server && <UserManagement server={server} onClose={() => setShowUserMgmt(false)} />}
-        {showCatalog && <CatalogAdmin server={server} onClose={() => setShowCatalog(false)} />}
-        <NamingDictionary open={showNamingDict} onClose={() => setShowNamingDict(false)} />
+        {showCatalog && <CatalogAdmin server={server} onClose={() => setShowCatalog(false)} initialTab={catalogTab} />}
         <PeriodBuilder open={showPeriodBuilder} onClose={() => setShowPeriodBuilder(false)} />
         <Toaster position="bottom-right" />
       </TooltipProvider>

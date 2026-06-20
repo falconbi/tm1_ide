@@ -4,6 +4,7 @@ import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import { TI_CATALOG, RULES_CATALOG } from '@/lib/tm1-completion'
 import { MDX_CATALOG } from '@/lib/tm1-mdx-catalog'
+import { NamingDictionaryPanel } from '@/components/NamingDictionary'
 
 const COMPAT_OPTS = ['both', 'v11', 'v12']
 const COMPAT_LABEL = { both: 'Both', v11: 'V11', v12: 'V12' }
@@ -182,8 +183,8 @@ function AddFunctionForm({ onAdd }) {
   )
 }
 
-export default function CatalogAdmin({ server, onClose }) {
-  const [tab, setTab]               = useState('ti')
+export default function CatalogAdmin({ server, onClose, initialTab = 'ti' }) {
+  const [tab, setTab]               = useState(initialTab)
   const [search, setSearch]         = useState('')
   const [overrides, setOverrides]   = useState(null)
   const [dirty, setDirty]           = useState(false)
@@ -317,9 +318,10 @@ export default function CatalogAdmin({ server, onClose }) {
   }, [tab, server])
 
   const TABS = [
-    { id: 'ti',    label: 'TI Functions' },
-    { id: 'rules', label: 'Rules Functions' },
-    { id: 'mdx',   label: 'MDX Functions' },
+    { id: 'ti',     label: 'TI Functions' },
+    { id: 'rules',  label: 'Rules Functions' },
+    { id: 'mdx',    label: 'MDX Functions' },
+    { id: 'naming', label: 'Naming / Formatter' },
   ]
 
   return (
@@ -369,8 +371,15 @@ export default function CatalogAdmin({ server, onClose }) {
           ))}
         </div>
 
-        {/* Toolbar */}
-        <div className="flex items-center gap-2 px-3 py-2 border-b border-border shrink-0">
+        {/* Naming tab — full-panel replacement */}
+        {tab === 'naming' && (
+          <div className="flex-1 overflow-hidden flex flex-col min-h-0">
+            <NamingDictionaryPanel />
+          </div>
+        )}
+
+        {/* Toolbar — hidden on naming tab */}
+        {tab !== 'naming' && <div className="flex items-center gap-2 px-3 py-2 border-b border-border shrink-0">
           <input
             value={search}
             onChange={e => setSearch(e.target.value)}
@@ -404,51 +413,49 @@ export default function CatalogAdmin({ server, onClose }) {
               </button>
             )}
           </div>
-        </div>
+        </div>}
 
-        {/* Table */}
-        <div className="overflow-y-auto flex-1">
-          {!overrides ? (
-            <div className="flex items-center justify-center py-16 text-muted-foreground text-xs gap-2">
-              <Loader2 size={14} className="animate-spin" /> Loading…
-            </div>
-          ) : (
-            <table className="w-full">
-              <thead className="sticky top-0 bg-muted/80 backdrop-blur-sm z-10">
-                <tr className="text-xs text-muted-foreground">
-                  <th className="px-3 py-1.5 text-left font-medium">Function</th>
-                  <th className="px-3 py-1.5 text-left font-medium">Params</th>
-                  <th className="px-3 py-1.5 text-left font-medium">Compat</th>
-                  <th className="px-3 py-1.5 text-left font-medium">Source</th>
-                  <th className="px-3 py-1.5" />
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.length === 0 ? (
-                  <tr><td colSpan={5} className="text-center py-8 text-xs text-muted-foreground">No functions match</td></tr>
-                ) : filtered.map(row => (
-                  <FunctionRow
-                    key={row.name}
-                    row={row}
-                    onCompatChange={handleCompatChange}
-                    onDelete={handleDelete}
-                    onRestore={handleRestore}
-                    validateResult={validateResults?.[row.name]}
-                  />
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
-
-        {/* Add form */}
-        <AddFunctionForm onAdd={handleAdd} />
-
-        {/* Footer */}
-        <div className="px-4 py-2 border-t border-border text-[10px] text-muted-foreground flex justify-between shrink-0">
-          <span>Compat changes apply to autocomplete and static validation after page reload. Built-in deletions suppress warnings only.</span>
-          {dirty && <span className="text-amber-400">Unsaved changes</span>}
-        </div>
+        {/* Function table + add form + footer — hidden on naming tab */}
+        {tab !== 'naming' && <>
+          <div className="overflow-y-auto flex-1">
+            {!overrides ? (
+              <div className="flex items-center justify-center py-16 text-muted-foreground text-xs gap-2">
+                <Loader2 size={14} className="animate-spin" /> Loading…
+              </div>
+            ) : (
+              <table className="w-full">
+                <thead className="sticky top-0 bg-muted/80 backdrop-blur-sm z-10">
+                  <tr className="text-xs text-muted-foreground">
+                    <th className="px-3 py-1.5 text-left font-medium">Function</th>
+                    <th className="px-3 py-1.5 text-left font-medium">Params</th>
+                    <th className="px-3 py-1.5 text-left font-medium">Compat</th>
+                    <th className="px-3 py-1.5 text-left font-medium">Source</th>
+                    <th className="px-3 py-1.5" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {filtered.length === 0 ? (
+                    <tr><td colSpan={5} className="text-center py-8 text-xs text-muted-foreground">No functions match</td></tr>
+                  ) : filtered.map(row => (
+                    <FunctionRow
+                      key={row.name}
+                      row={row}
+                      onCompatChange={handleCompatChange}
+                      onDelete={handleDelete}
+                      onRestore={handleRestore}
+                      validateResult={validateResults?.[row.name]}
+                    />
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+          <AddFunctionForm onAdd={handleAdd} />
+          <div className="px-4 py-2 border-t border-border text-[10px] text-muted-foreground flex justify-between shrink-0">
+            <span>Compat changes apply to autocomplete and static validation after page reload. Built-in deletions suppress warnings only.</span>
+            {dirty && <span className="text-amber-400">Unsaved changes</span>}
+          </div>
+        </>}
       </div>
     </div>
   )
