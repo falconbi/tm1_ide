@@ -8,7 +8,7 @@ import {
 import { AgGridReact } from 'ag-grid-react'
 import { AllCommunityModule, ModuleRegistry, themeBalham, colorSchemeDark, colorSchemeLight } from 'ag-grid-community'
 import { useStore } from '@/store'
-import { ChevronRight, ChevronDown, Loader2, List, GitBranch, Plus, Trash2, Check, X, ClipboardList, ChevronLeft, Table2, Search, ListOrdered, MapPin, Upload, Grid3x3, Cog, AlertTriangle, XCircle, CheckCircle2 } from 'lucide-react'
+import { ChevronRight, ChevronDown, Loader2, List, GitBranch, Plus, Trash2, Check, X, ClipboardList, ChevronLeft, Table2, Search, ListOrdered, MapPin, Upload, Grid3x3, Cog, AlertTriangle, XCircle, CheckCircle2, RefreshCw } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
 import PicklistBuilder from './PicklistBuilder'
@@ -537,6 +537,24 @@ function AttrGrid({ tab, elements, edges, hierarchy }) {
     )
   }, [deleteAttr, tab, refetch, hierarchy])
 
+  const handleConvertToAlias = useCallback(async (attrName) => {
+    if (!window.confirm(`Convert "${attrName}" from String to Alias type?\n\nAll values will be preserved.`)) return
+    try {
+      const token = localStorage.getItem('tm1-token') ?? ''
+      const r = await fetch('/api/dimension/attribute/convert-to-alias', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-ide-token': token },
+        body: JSON.stringify({ server: tab.server, dimension: tab.dimension, attribute: attrName, hierarchy }),
+      })
+      const d = await r.json()
+      if (!r.ok) throw new Error(d.error)
+      toast.success(`Converted ${attrName} to Alias — ${d.converted} values preserved`)
+      refetch()
+    } catch (e) {
+      toast.error(`Convert to Alias failed: ${e.message}`)
+    }
+  }, [tab, hierarchy, refetch])
+
   const attrs = grid?.attrs ?? []
 
   const ordered = useMemo(() => buildTreeOrder(elements, edges), [elements, edges])
@@ -590,6 +608,13 @@ function AttrGrid({ tab, elements, edges, hierarchy }) {
             attr.Type === 'Numeric' ? 'text-sky-400/70' : attr.Type === 'Alias' ? 'text-amber-400/70' : 'text-muted-foreground/50')}>
             {attr.Type === 'Numeric' ? 'N' : attr.Type === 'Alias' ? 'A' : 'S'}
           </span>
+          {attr.Type === 'String' && (
+            <button onClick={() => handleConvertToAlias(attr.Name)}
+              className="opacity-0 group-hover:opacity-100 text-amber-500 hover:text-amber-400 transition-opacity text-[8px] font-bold leading-none"
+              title={`Convert ${attr.Name} to Alias type`}>
+              →A
+            </button>
+          )}
           <button onClick={() => handleDeleteAttr(attr.Name)}
             className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-red-400 transition-opacity"
             title={`Delete attribute ${attr.Name}`}>
@@ -599,7 +624,7 @@ function AttrGrid({ tab, elements, edges, hierarchy }) {
       ),
     }
     }),
-  ], [attrs])
+  ], [attrs, handleDeleteAttr, handleConvertToAlias])
 
   const onCellValueChanged = useCallback(p => {
     const element   = p.data.__name
@@ -678,6 +703,10 @@ function AttrGrid({ tab, elements, edges, hierarchy }) {
         {writeAttr.isError  && <span className="text-xs text-red-400">{writeAttr.error?.message}</span>}
         {createAttr.isError && <span className="text-xs text-red-400">{createAttr.error?.message}</span>}
         <div className="ml-auto flex items-center gap-1">
+          <button onClick={() => refetch()} title="Refresh attributes from TM1 (e.g. after running a TI process)"
+            className="flex items-center gap-0.5 px-2 py-0.5 text-xs rounded border border-border bg-background text-muted-foreground hover:text-foreground">
+            <RefreshCw size={10} />
+          </button>
           <button onClick={() => attrFileRef.current?.click()}
             className="flex items-center gap-0.5 px-2 py-0.5 text-xs rounded border border-border bg-background text-muted-foreground hover:text-foreground"
             title="Upload CSV (Element, Attr1, Attr2…)">

@@ -1934,6 +1934,10 @@ export default function ViewEditor({ tab }) {
                     const { openTab } = useStore.getState()
                     openTab({ type: 'rules', server: tab.server, cube: tab.cube, label: `${tab.cube} Rules` })
                 }}
+                onOpenDimension={(dim) => {
+                    const { openTab } = useStore.getState()
+                    openTab({ type: 'dimension', server: tab.server, objectName: dim, label: dim })
+                }}
             />
         )}
         </div>

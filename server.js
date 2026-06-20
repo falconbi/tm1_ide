@@ -891,6 +891,34 @@ app.delete('/api/dimension/attribute-def', async (req, res) => {
     }
 })
 
+app.post('/api/dimension/attribute/convert-to-alias', async (req, res) => {
+    try {
+        const { server, dimension, attribute, hierarchy = dimension } = req.body
+        const client = makeClient(server, req.ideToken)
+        const elements = await client.getElements(dimension, hierarchy)
+        const pairs = await Promise.all(
+            elements.map(async el => {
+                try {
+                    const vals = await client.getElementAttributeValues(dimension, el.Name, hierarchy)
+                    return [el.Name, vals[attribute] ?? null]
+                } catch { return [el.Name, null] }
+            })
+        )
+        const toRewrite = pairs.filter(([, v]) => v !== null && String(v) !== '')
+        await client.deleteElementAttribute(dimension, attribute, hierarchy)
+        await client.createElementAttribute(dimension, attribute, 'Alias', hierarchy)
+        await Promise.all(
+            toRewrite.map(([element, value]) =>
+                client.writeElementAttribute(dimension, element, attribute, String(value), 'S', hierarchy).catch(() => {})
+            )
+        )
+        cl.writeLog({ server, action: 'ATTRIBUTE_CONVERTED', objectType: 'attribute', objectName: attribute, detail: `${dimension} → Alias` })
+        res.json({ converted: toRewrite.length })
+    } catch (e) {
+        res.status(500).json({ error: e.message })
+    }
+})
+
 app.post('/api/element/attribute', async (req, res) => {
     try {
         const { server, dimension, element, attribute, value, type, hierarchy } = req.body
@@ -1751,6 +1779,113 @@ app.post('/api/cube/feeders', async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
+app.post('/api/cube/breakdown', async (req, res) => {
+    try {
+        const { server, cube, dimElemPairs } = req.body
+        const client = makeClient(server, req.ideToken)
+
+        // Classify each element — C (has children) vs leaf (no children)
+        const classified = await Promise.all(dimElemPairs.map(async p => {
+            const children = await client.getElementChildren(p.dim, p.element).catch(() => [])
+            return { ...p, children, isC: children.length > 0 }
+        }))
+
+        const cDims = classified.filter(d => d.isC)
+        if (!cDims.length) return res.json({ sections: [], note: 'All elements are at leaf level' })
+
+        // One MDX query per C-dim, keeping other dims at their current member
+        const sections = await Promise.all(cDims.map(async cd => {
+            const where   = classified.filter(d => d.dim !== cd.dim)
+                                      .map(d => `[${d.dim}].[${d.dim}].[${d.element}]`)
+            const setExpr = cd.children.map(c => `[${cd.dim}].[${cd.dim}].[${c.name}]`).join(', ')
+            const mdx     = [`SELECT NON EMPTY {${setExpr}} ON COLUMNS`, `FROM [${cube}]`,
+                             where.length ? `WHERE (${where.join(', ')})` : ''].filter(Boolean).join(' ')
+            try {
+                const result = await client.executeMDX(mdx)
+                const tuples = result.Axes?.[0]?.Tuples ?? []
+                const cells  = result.Cells ?? []
+                const rows = tuples.map((t, i) => ({
+                    element: t.Members?.[0]?.Name ?? '?',
+                    weight:  cd.children.find(c => c.name === t.Members?.[0]?.Name)?.weight ?? 1,
+                    value:   cells[i]?.Value ?? null,
+                })).filter(r => r.value !== null).sort((a, b) => Math.abs(b.value) - Math.abs(a.value))
+                const abs = rows.reduce((s, r) => s + Math.abs(r.value ?? 0), 0)
+                return {
+                    dim: cd.dim, element: cd.element,
+                    rows: rows.map(r => ({ ...r, pct: abs > 0 ? Math.round(Math.abs(r.value) / abs * 100) : 0 })),
+                }
+            } catch (e) {
+                return { dim: cd.dim, element: cd.element, rows: [], error: e.message }
+            }
+        }))
+        res.json({ sections })
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.post('/api/cube/leaves', async (req, res) => {
+    try {
+        const { server, cube, dimElemPairs } = req.body
+        const client = makeClient(server, req.ideToken)
+
+        const classified = await Promise.all(dimElemPairs.map(async p => {
+            const children = await client.getElementChildren(p.dim, p.element).catch(() => [])
+            return { ...p, children, isC: children.length > 0 }
+        }))
+
+        const cDims = classified.filter(d => d.isC)
+        if (!cDims.length) return res.json({ sections: [], note: 'All elements are at leaf level' })
+
+        const sections = await Promise.all(cDims.map(async cd => {
+            // Fetch all edges once — build parent→children map, then BFS to find all leaf descendants
+            const edges    = await client.getEdges(cd.dim)
+            const childMap = new Map()
+            for (const e of edges) {
+                if (!childMap.has(e.ParentName)) childMap.set(e.ParentName, [])
+                childMap.get(e.ParentName).push(e.ComponentName)
+            }
+            const leaves = [], queue = [cd.element], visited = new Set()
+            while (queue.length) {
+                const curr = queue.shift()
+                if (visited.has(curr)) continue
+                visited.add(curr)
+                const kids = childMap.get(curr) ?? []
+                if (kids.length) queue.push(...kids)
+                else leaves.push(curr)
+            }
+            if (!leaves.length) return { dim: cd.dim, element: cd.element, rows: [], totalLeaves: 0 }
+
+            const CAP     = 100
+            const leafSet = leaves.slice(0, CAP)
+            const where   = classified.filter(d => d.dim !== cd.dim)
+                                      .map(d => `[${d.dim}].[${d.dim}].[${d.element}]`)
+            const setExpr = leafSet.map(l => `[${cd.dim}].[${cd.dim}].[${l}]`).join(', ')
+            const mdx     = [`SELECT NON EMPTY {${setExpr}} ON COLUMNS`, `FROM [${cube}]`,
+                             where.length ? `WHERE (${where.join(', ')})` : ''].filter(Boolean).join(' ')
+            try {
+                const result = await client.executeMDX(mdx)
+                const tuples = result.Axes?.[0]?.Tuples ?? []
+                const cells  = result.Cells ?? []
+                const rows = tuples.map((t, i) => ({
+                    element: t.Members?.[0]?.Name ?? '?',
+                    value:   cells[i]?.Value ?? null,
+                }))
+                .filter(r => r.value !== null && r.value !== 0)
+                .sort((a, b) => Math.abs(b.value) - Math.abs(a.value))
+                .slice(0, 50)
+                const abs = rows.reduce((s, r) => s + Math.abs(r.value ?? 0), 0)
+                return {
+                    dim: cd.dim, element: cd.element,
+                    rows: rows.map(r => ({ ...r, pct: abs > 0 ? Math.round(Math.abs(r.value) / abs * 100) : 0 })),
+                    totalLeaves: leaves.length, capped: leaves.length > CAP,
+                }
+            } catch (e) {
+                return { dim: cd.dim, element: cd.element, rows: [], error: e.message, totalLeaves: leaves.length }
+            }
+        }))
+        res.json({ sections })
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
 app.post('/api/cube/rules/check-references', async (req, res) => {
     try {
         const { server, cube, rules } = req.body
@@ -2458,7 +2593,64 @@ app.get('/api/deploy/archives/:id', (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
+// Admin: function catalog overrides — compat, user additions, deletions
+const CATALOG_OVERRIDES_PATH = path.join(__dirname, 'config', 'function-catalog-overrides.json')
+const EMPTY_OVERRIDES = {
+    ti:    { overrides: {}, additions: {}, deletions: [] },
+    rules: { overrides: {}, additions: {}, deletions: [] },
+    mdx:   { overrides: {}, additions: {}, deletions: [] },
+}
+app.get('/api/admin/catalog-overrides', (req, res) => {
+    try {
+        if (!fs.existsSync(CATALOG_OVERRIDES_PATH)) return res.json(EMPTY_OVERRIDES)
+        res.json(JSON.parse(fs.readFileSync(CATALOG_OVERRIDES_PATH, 'utf8')))
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+app.put('/api/admin/catalog-overrides', (req, res) => {
+    try {
+        fs.writeFileSync(CATALOG_OVERRIDES_PATH, JSON.stringify(req.body, null, 2))
+        res.json({ ok: true })
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
 // ── SPA fallback ──────────────────────────────────────────────────────────────
+// Admin: validate TI function names against the live TM1 server using syntax check.
+// Client sends { server, tests: [{name, code}] } where code is minimal TI calling that function.
+// Each function is tested by creating a temp TI process; success = TM1 accepts the syntax.
+app.post('/api/admin/validate-ti-functions', async (req, res) => {
+    try {
+        const { server, tests } = req.body
+        const client = makeClient(server, req.ideToken)
+        const results = []
+        for (const { name, code } of tests) {
+            const procName = `}IDE_FnTest_${name}_${Date.now()}`
+            let status = 'unknown'
+            let message = ''
+            try {
+                await client.post('Processes', {
+                    Name: procName,
+                    PrologProcedure: code,
+                    MetaDataProcedure: '',
+                    DataProcedure: '',
+                    EpilogProcedure: '',
+                    Parameters: [],
+                    Variables: [],
+                })
+                status = 'valid'
+                try { await client.delete(`Processes('${encodeURIComponent(procName)}')`) } catch {}
+            } catch (e) {
+                message = e.message ?? ''
+                status = message.toLowerCase().includes('syntax') || message.toLowerCase().includes('equal sign') ? 'invalid' : 'error'
+                try { await client.delete(`Processes('${encodeURIComponent(procName)}')`) } catch {}
+            }
+            results.push({ name, status, message })
+        }
+        res.json({ results })
+    } catch (e) {
+        res.status(500).json({ error: e.message })
+    }
+})
+
 app.get('/{*path}', (req, res) => {
     res.sendFile(path.join(__dirname, 'static', 'index.html'))
 })

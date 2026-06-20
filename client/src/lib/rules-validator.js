@@ -14,12 +14,13 @@ function getFunctionArgInfo(fnName) {
   // Try RULES_CATALOG first (more accurate arg info for rules functions)
   const catEntry = RULES_CATALOG[upper]
   if (catEntry) {
-    const starCount = catEntry.filter(p => p.endsWith('*')).length
-    const nonStarCount = catEntry.length - starCount
-    if (starCount > 0) {
-      return { variadic: true, min: nonStarCount + 1, max: Infinity }
-    }
-    return { variadic: false, min: catEntry.length, max: catEntry.length }
+    const params = catEntry.params ?? []
+    const starCount = params.filter(p => p.endsWith('*')).length
+    const nonStarCount = params.length - starCount
+    const base = starCount > 0
+      ? { variadic: true,  min: nonStarCount + 1, max: Infinity }
+      : { variadic: false, min: params.length,     max: params.length }
+    return { ...base, deprecated: catEntry.deprecated ?? null, isStatement: catEntry.isStatement ?? false }
   }
 
   // Fall back to TM1_FUNCTIONS
@@ -391,6 +392,9 @@ function validateAST(ast, code, line) {
               issues.push({ severity: 'error', line, message: `${fnName} expects ${catInfo.min} arguments, got ${argCount}` })
             }
           }
+        }
+        if (catInfo.deprecated) {
+          issues.push({ severity: 'warning', line, message: `${fnName} is deprecated: ${catInfo.deprecated}` })
         }
       }
 

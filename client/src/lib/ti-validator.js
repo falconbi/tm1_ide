@@ -119,10 +119,13 @@ function getTIFunctionArgInfo(fnName) {
   const upper = fnName.toUpperCase()
   const catEntry = TI_CATALOG[upper]
   if (catEntry) {
-    const starCount = catEntry.filter(p => p.endsWith('*')).length
-    const nonStarCount = catEntry.length - starCount
-    if (starCount > 0) return { variadic: true, min: nonStarCount + 1, max: Infinity }
-    return { variadic: false, min: catEntry.length, max: catEntry.length }
+    const params = catEntry.params ?? []
+    const starCount = params.filter(p => p.endsWith('*')).length
+    const nonStarCount = params.length - starCount
+    const base = starCount > 0
+      ? { variadic: true,  min: nonStarCount + 1, max: Infinity }
+      : { variadic: false, min: params.length,     max: params.length }
+    return { ...base, deprecated: catEntry.deprecated ?? null, isStatement: catEntry.isStatement ?? false }
   }
   const fnDef = TM1_FUNCTIONS[fnName] || TM1_FUNCTIONS[upper]
   if (!fnDef || (fnDef.language !== 'ti' && fnDef.language !== 'both')) return null
@@ -165,6 +168,12 @@ function checkFunctions(rawCode, sectionLabel) {
       errors.push({
         severity: 'error', section: sectionLabel, line: call.line,
         message: `${upper} expects ${catInfo.min} arguments, got ${call.argCount}`,
+      })
+    }
+    if (catInfo?.deprecated) {
+      errors.push({
+        severity: 'warning', section: sectionLabel, line: call.line,
+        message: `${upper} is deprecated: ${catInfo.deprecated}`,
       })
     }
   }

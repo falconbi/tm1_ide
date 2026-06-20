@@ -127,6 +127,15 @@ class TM1Client {
         return d.value ?? []
     }
 
+    async getElementChildren(dim, elemName, hierarchy = dim) {
+        const safe = elemName.replace(/'/g, "''")
+        const d = await this.get(
+            `Dimensions('${dim}')/Hierarchies('${hierarchy}')/Edges`,
+            { '$filter': `ParentName eq '${safe}'`, '$select': 'ComponentName,Weight' }
+        )
+        return (d.value ?? []).map(e => ({ name: e.ComponentName, weight: e.Weight ?? 1 }))
+    }
+
     async addElement(dim, name, type, hierarchy = dim) {
         const TYPE_MAP = { N: 'Numeric', C: 'Consolidated', S: 'String' }
         return this.post(

@@ -13,9 +13,9 @@ All TM1 communication routes through Planning Analytics Workspace (PAW), so ther
 | Editor | What it does |
 |--------|-------------|
 | **Rules Editor** | Monaco editor with TM1 rules syntax highlighting, live validation (CheckRules API) + static analysis (arg counts, keyword validity, line-accurate squiggles), **Check Now** button with green/red pass/fail glow, code formatter (3 structure presets), **#Region/#EndRegion folding**, lineage trace panel, **cell calculation trace** (shows full rule chain for any cell), snippet library, **Feeders** button (`tm1.CheckFeedersForRules`), **post-save reference check** (dead cube/dimension warnings as amber toasts) |
-| **TI Editor** | Four-tab editor (Prolog / Metadata / Data / Epilog), parameter editor, datasource editor with CSV file upload to TM1 server, run with output log, **error log viewer** (reads TM1 `.log` file inline after errors), static analysis (IF/WHILE/FOR/NEXT block structure, arg counts), **block folding**, debugger, snippets, pattern generators, **post-save reference check** (dead cube/dimension/process warnings as amber toasts) |
+| **TI Editor** | Four-tab editor (Prolog / Metadata / Data / Epilog), parameter editor, datasource editor with CSV file upload to TM1 server, run with output log, **error log viewer** (reads TM1 `.log` file inline after errors), static analysis (IF/WHILE/FOR/NEXT block structure, arg counts), **block folding**, debugger, snippets, pattern generators, **post-save reference check** (dead cube/dimension/process warnings as amber toasts), **Validate** toolbar button — tests every `TI_CATALOG` function against the live TM1 server and shows pass/fail (see Function Catalog Maintenance below) |
 | **TI Debugger** | Set breakpoints in any section, capture variable values at each breakpoint, watch panel, section-by-section execution |
-| **Dimension Editor** | Hierarchy tree with drag-style CRUD, attribute grid, element search, bulk CSV import, attribute definition management |
+| **Dimension Editor** | Hierarchy tree with drag-style CRUD, attribute grid, element search, bulk CSV import, attribute definition management. AttrGrid toolbar has a **Refresh** button (re-fetches without closing the tab) and a per-column **→A** button on String-type attributes to convert them to Alias in one click — existing values are preserved via delete+recreate + bulk value copy |
 | **Subset Editor** | MDX code view + visual element tree, static/MDX save, MDX preview, ghost children |
 | **View Editor** | Native and MDX view builder, cell grid with inline writeback, save/save-as, **auto-refreshes when rules for the same cube are saved**, **Feeders** toolbar button (`tm1.CheckFeedersForRules` + amber zero-cell highlighting for leaf rule cells with zero value — likely missing feeders), **cell right-click context menu** (see below) |
 | **Guided MDX Builder** | Axis-by-axis view builder, subset filter builder, MDX execution |
@@ -65,34 +65,95 @@ Browse and manage all TM1 objects: cubes, dimensions, subsets, views, processes,
 ### Autocomplete
 
 Context-aware Monaco autocomplete in both Rules and TI editors:
+
 - **Cube name** — lists server cubes, expands to full snippet with dimension tab stops for cell functions (`DB()`, `CellPutN()`, etc.)
 - **Dimension name** — lists server dimensions for dimension-first functions (`DimensionElementInsert()`, `ELCOMP()`, etc.)
-- **Function keywords** — snippet completions for ~40 verified TI functions and 6 Rules functions with correct parameter signatures (sourced from IBM TM1 Reference)
+- **Function keywords** — snippet completions for all catalog functions with correct parameter signatures sourced from IBM TM1 Reference
 
-### Function Catalog Maintenance
+### Function Catalog
 
-Three catalogs control autocomplete, signature help, and syntax validation across Rules, TI, and MDX. **All relevant catalogs must be updated when adding a new function.**
+The function catalog is the intelligence layer that drives autocomplete, signature help, static validation, and hover documentation across all three TM1 languages. It is fully transparent and user-editable.
+
+#### Catalog files
 
 | Catalog | File | Language | Purpose |
 |---------|------|----------|---------|
-| `RULES_CATALOG` | `client/src/lib/tm1-completion.js` | Rules | Param-context autocomplete + arg count info for `rules-validator.js` |
-| `TI_CATALOG` | `client/src/lib/tm1-completion.js` | TI | Param-context autocomplete + arg count info for `ti-validator.js` |
-| `TM1_FUNCTIONS` | `client/src/lib/tm1-functions.js` | Rules + TI | Name completions, signature help, Monarch highlight, metadata |
-| `MDX_CATALOG` / `MDX_FUNCTIONS_FLAT` | `client/src/lib/tm1-mdx-catalog.js` | MDX | Function autocomplete, signature help, arg count info for `mdx-validator.js` |
+| `RULES_CATALOG` | `client/src/lib/tm1-completion.js` | Rules | Rich schema entries — drives param completions + `rules-validator.js` |
+| `TI_CATALOG` | `client/src/lib/tm1-completion.js` | TI | Rich schema entries — drives param completions + `ti-validator.js` |
+| `TM1_FUNCTIONS` | `client/src/lib/tm1-functions.js` | Rules + TI | Named-param signature help, Monarch highlighting, variadic flags |
+| `MDX_CATALOG` | `client/src/lib/tm1-mdx-catalog.js` | MDX | Category-grouped MDX functions with templates and descriptions |
 
-**Rules of thumb:**
-- `RULES_CATALOG` / `TI_CATALOG` use param type arrays: `['cubename', 'element*']` where `*` = "1 or more"
-- `TM1_FUNCTIONS` uses structured objects with `description`, `params[]`, `returns`, `variadic`, `language`
-- Every `TM1_FUNCTIONS` entry with `language: 'rules'`/`'both'` must also be in `RULES_CATALOG`
-- Every `TM1_FUNCTIONS` entry with `language: 'ti'`/`'both'` should also be in `TI_CATALOG`
-- `MDX_FUNCTIONS_FLAT` is derived from `MDX_CATALOG` via `.flatMap(c => c.fns)` — add entries there
+#### Rich catalog schema (RULES_CATALOG and TI_CATALOG)
 
-**Validator wiring:**
-- `rules-validator.js` imports `RULES_CATALOG` + `TM1_FUNCTIONS` — validates functions/args in AST
-- `ti-validator.js` imports `TI_CATALOG` + `TM1_FUNCTIONS` — validates functions/args per section
-- `mdx-validator.js` imports `MDX_FUNCTIONS_FLAT` — validates functions/args client-side
+Each entry is a structured object — not a bare param array:
 
-All three feed into their respective editor components via Monaco `setModelMarkers`.
+```js
+DIMSIZ: {
+  params:      ['dimname'],          // param type tags; '*' suffix = repeating/variadic
+  returnType:  'numeric',            // 'numeric' | 'string' | 'void' | 'any'
+  description: 'Returns the number of elements in a dimension.',
+  compat:      'both',               // 'both' | 'v11' | 'v12'
+  deprecated:  null,                 // string message shown as amber squiggle, or null
+  isStatement: false,                // true = cannot be used in an expression or assignment
+}
+
+CELLPUTN: {
+  params:      ['value', 'cubename', 'element*'],
+  returnType:  'void',
+  description: 'Writes a numeric value to a cube cell.',
+  compat:      'both',
+  deprecated:  null,
+  isStatement: true,                 // calling this in nV = CELLPUTN(...) would be wrong
+}
+
+HIERARCHYCREATE: {
+  params:      ['dimname', 'hiername'],
+  returnType:  'void',
+  description: 'Creates an alternate hierarchy within a dimension.',
+  compat:      'v12',                // PA 2.0 / TM1 12+ only — not available in classic V11
+  deprecated:  null,
+  isStatement: true,
+}
+```
+
+**Param type tags:** `cubename` | `dimname` | `element` | `attribute` | `hiername` | `value` | `n` | `string` | `condition`. `*` suffix on the last tag means it repeats (variadic).
+
+**`compat` values:**
+
+- `both` — works in TM1 V11 (classic) and PA 2.0+ (V12)
+- `v12` — PA 2.0 / TM1 12+ only. Primarily: all `ELEMENT*` hierarchy-aware functions, all `HIERARCHY*` functions, `DIMENSIONHIERARCHYCREATE`
+- `v11` — classic TM1 only with no V12 equivalent (rare; user-correctable via Catalog admin)
+
+#### Validator wiring
+
+- `rules-validator.js` imports `RULES_CATALOG` + `TM1_FUNCTIONS` — validates function names, arg counts, and deprecated warnings in AST
+- `ti-validator.js` imports `TI_CATALOG` + `TM1_FUNCTIONS` — validates per section with IF/WHILE/FOR block tracking
+- `mdx-validator.js` imports `MDX_CATALOG` via `MDX_FUNCTIONS_FLAT` — validates MDX function names and arg counts
+
+All three feed Monaco `setModelMarkers` in their respective editor components — squiggles appear before running.
+
+**What validators catch:**
+
+- Unknown function name → `error` squiggle
+- Wrong argument count → `error` squiggle
+- `deprecated: 'message'` set on catalog entry → `warning` squiggle with the deprecation message
+- TI-only function used in Rules → `error` noting it's a TI function
+
+#### Catalog Admin UI
+
+The **book icon** in the header opens the Function Catalog panel — three tabs: TI Functions | Rules Functions | MDX Functions.
+
+Each row shows: function name, description, params, return type (→ numeric/string/void), compat badge (Both/V11/V12), source (built-in/user). Deprecated functions show a strikethrough name and amber warning. Statement-only functions show a `stmt` badge.
+
+**Editing:** click the compat dropdown to reassign any entry — useful when reviewing IBM docs and finding a function is V11-only or V12-only. Changes save to `config/function-catalog-overrides.json` on the server. The built-in catalog in source code is the base; overrides are merged on top at runtime.
+
+**Adding functions:** name + param list + compat via the form at the bottom of each tab.
+
+**Live validation:** the Validate button (TI and Rules tabs) tests every catalog entry against the connected TM1 server by creating a minimal temp process per function and checking whether TM1 accepts the syntax. Results overlay ✓ / ✗ badges per row. Temp processes are deleted immediately — no data is modified. Server endpoint: `POST /api/admin/validate-ti-functions`.
+
+#### Catalog audit history
+
+The `TI_CATALOG` was audited against the IBM Planning Analytics 2.0 function reference (via Cubewise, which mirrors IBM docs) in Jun 2026. Removed: `DimensionElementAttributeCreate`, `DimensionElementAttributeDelete` (do not exist in PA 2.0). Corrected: `AttrInsert(dim, attr, type)` / `AttrDelete(dim, attr)` for classic attribute management; `ElementAttrPutS(value, dim, hier, el, attr)` for hierarchy-aware writes.
 
 ---
 

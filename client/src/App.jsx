@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, Fragment } from 'react'
 import { useStore } from '@/store'
 import { cn } from '@/lib/utils'
 import { Toaster } from '@/components/ui/sonner'
-import { Search, PanelLeftClose, PanelLeftOpen, Keyboard, SlidersHorizontal, Database, Braces, HardDriveDownload, Loader2, CheckCircle2, Users } from 'lucide-react'
+import { Search, PanelLeftClose, PanelLeftOpen, Keyboard, SlidersHorizontal, Database, Braces, HardDriveDownload, Loader2, CheckCircle2, Users, BookOpen } from 'lucide-react'
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels' // used for inner editor split groups only
 import ServerSelector from '@/components/ServerSelector'
 import Explorer from '@/components/Explorer'
@@ -20,6 +20,7 @@ import PeriodBuilder from '@/components/PeriodBuilder'
 import SessionControl from '@/components/SessionControl'
 import LoginPage from '@/components/LoginPage'
 import UserManagement from '@/components/UserManagement'
+import CatalogAdmin from '@/components/CatalogAdmin'
 import { useDeploySeed, useDeployBaseline, useServers } from '@/hooks/useApi'
 import { toast } from 'sonner'
 
@@ -120,6 +121,7 @@ export default function App() {
   const [showPrefs, setShowPrefs]                 = useState(false)
   const [showPeriodBuilder, setShowPeriodBuilder] = useState(false)
   const [showUserMgmt, setShowUserMgmt]           = useState(false)
+  const [showCatalog, setShowCatalog]             = useState(false)
   const [sidebarWidth, setSidebarWidth]           = useState(280)
   const [findWidth, setFindWidth]                 = useState(320)
   const dragRef = useRef(null)
@@ -246,6 +248,14 @@ export default function App() {
 
               <div className="w-px h-4 bg-border mx-1" />
 
+              <button
+                onClick={() => setShowCatalog(v => !v)}
+                className={cn('p-1.5 rounded text-muted-foreground hover:text-foreground transition-colors', showCatalog && 'bg-muted text-foreground')}
+                title="Function Catalog (Rules / TI / MDX)"
+              >
+                <BookOpen size={15} />
+              </button>
+
               {server && (
                 <button
                   onClick={() => setShowUserMgmt(v => !v)}
@@ -342,6 +352,7 @@ export default function App() {
         />
         <FormatSettings open={formatSettingsOpen} onClose={() => setFormatSettingsOpen(false)} />
         {showUserMgmt && server && <UserManagement server={server} onClose={() => setShowUserMgmt(false)} />}
+        {showCatalog && <CatalogAdmin server={server} onClose={() => setShowCatalog(false)} />}
         <NamingDictionary open={showNamingDict} onClose={() => setShowNamingDict(false)} />
         <PeriodBuilder open={showPeriodBuilder} onClose={() => setShowPeriodBuilder(false)} />
         <Toaster position="bottom-right" />

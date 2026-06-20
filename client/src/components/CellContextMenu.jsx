@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { cn } from '@/lib/utils'
 import {
   X, PencilLine, Zap, History, MessageSquare, Copy, Sigma,
-  Loader2, Check, ChevronRight, Rss,
+  Loader2, Check, Rss, Layers, Network, ExternalLink,
 } from 'lucide-react'
 
 const apiFetch = (path, opts = {}) => {
@@ -22,6 +22,45 @@ function TypeBadge({ type }) {
   if (t.includes('feed'))                 return <span className="badge bg-blue-500/20 text-blue-400">FEEDER</span>
   if (t.includes('base') || t === 'leaf') return <span className="badge bg-emerald-500/20 text-emerald-400">BASE</span>
   return <span className="badge bg-muted text-muted-foreground">{type.toUpperCase()}</span>
+}
+
+// ── Shared micro-components ───────────────────────────────────────────────────
+function Loading({ label }) {
+  return (
+    <div className="flex items-center gap-2 text-xs text-muted-foreground p-3">
+      <Loader2 size={11} className="animate-spin" /> {label}
+    </div>
+  )
+}
+function ErrorMsg({ msg }) {
+  return <div className="text-xs text-red-400 p-3">{msg}</div>
+}
+function Empty({ msg }) {
+  return <div className="text-xs text-muted-foreground p-3">{msg}</div>
+}
+
+// ── Breakdown rows (shared by Breakdown + Leaves panels) ──────────────────────
+function ContribRows({ rows }) {
+  if (!rows.length) return <div className="text-xs text-muted-foreground">All values are zero.</div>
+  return (
+    <div className="space-y-1">
+      {rows.map((r, i) => (
+        <div key={i} className="flex items-center gap-2 text-[11px]">
+          <span className="text-foreground font-medium w-28 truncate shrink-0" title={r.element}>{r.element}</span>
+          <div className="flex-1 bg-muted/40 rounded-full h-1.5 overflow-hidden min-w-0">
+            <div
+              className={cn('h-full rounded-full transition-all', r.value >= 0 ? 'bg-emerald-500' : 'bg-red-500')}
+              style={{ width: `${r.pct}%` }}
+            />
+          </div>
+          <span className={cn('font-mono tabular-nums shrink-0 w-20 text-right', r.value < 0 && 'text-red-400')}>
+            {typeof r.value === 'number' ? r.value.toLocaleString(undefined, { maximumFractionDigits: 2 }) : r.value}
+          </span>
+          <span className="text-muted-foreground w-8 text-right shrink-0 text-[10px]">{r.pct}%</span>
+        </div>
+      ))}
+    </div>
+  )
 }
 
 // ── Trace panel ───────────────────────────────────────────────────────────────
@@ -84,7 +123,6 @@ function TracePanel({ server, cube, dimElemPairs }) {
   )
 }
 
-// ── Transaction log panel ─────────────────────────────────────────────────────
 // ── Feeders panel ─────────────────────────────────────────────────────────────
 function FeedersPanel({ server, cube, dimElemPairs }) {
   const [feeders, setFeeders] = useState(null)
@@ -139,6 +177,7 @@ function FeedersPanel({ server, cube, dimElemPairs }) {
   )
 }
 
+// ── Transaction log panel ─────────────────────────────────────────────────────
 function LogPanel({ server, cube, dimElemPairs, cubeDims }) {
   const [entries, setEntries] = useState(null)
   const [error,   setError]   = useState(null)
@@ -326,23 +365,88 @@ function WritePanel({ server, cube, dimElemPairs, currentValue, onSuccess }) {
   )
 }
 
-// ── Shared micro-components ───────────────────────────────────────────────────
-function Loading({ label }) {
+// ── Consolidation breakdown panel ─────────────────────────────────────────────
+function BreakdownPanel({ server, cube, dimElemPairs }) {
+  const [data,  setData]  = useState(null)
+  const [error, setError] = useState(null)
+  const [busy,  setBusy]  = useState(true)
+
+  useEffect(() => {
+    setBusy(true); setError(null); setData(null)
+    apiFetch('/api/cube/breakdown', {
+      method: 'POST',
+      body: JSON.stringify({ server, cube, dimElemPairs }),
+    })
+      .then(d => { setBusy(false); d.error ? setError(d.error) : setData(d) })
+      .catch(e => { setBusy(false); setError(e.message) })
+  }, [server, cube, JSON.stringify(dimElemPairs)])  // eslint-disable-line
+
+  if (busy)  return <Loading label="Loading breakdown…" />
+  if (error) return <ErrorMsg msg={error} />
+  if (!data?.sections?.length) return <Empty msg={data?.note ?? 'No consolidated elements to break down.'} />
+
   return (
-    <div className="flex items-center gap-2 text-xs text-muted-foreground p-3">
-      <Loader2 size={11} className="animate-spin" /> {label}
+    <div className="max-h-64 overflow-y-auto divide-y divide-border/50">
+      {data.sections.map((sec, si) => (
+        <div key={si} className="p-3 space-y-2">
+          <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
+            {sec.dim} — {sec.element} — direct children
+          </div>
+          {sec.error
+            ? <div className="text-xs text-red-400">{sec.error}</div>
+            : <ContribRows rows={sec.rows} />
+          }
+        </div>
+      ))}
     </div>
   )
 }
-function ErrorMsg({ msg }) {
-  return <div className="text-xs text-red-400 p-3">{msg}</div>
-}
-function Empty({ msg }) {
-  return <div className="text-xs text-muted-foreground p-3">{msg}</div>
+
+// ── Leaf contributors panel ────────────────────────────────────────────────────
+function LeavesPanel({ server, cube, dimElemPairs }) {
+  const [data,  setData]  = useState(null)
+  const [error, setError] = useState(null)
+  const [busy,  setBusy]  = useState(true)
+
+  useEffect(() => {
+    setBusy(true); setError(null); setData(null)
+    apiFetch('/api/cube/leaves', {
+      method: 'POST',
+      body: JSON.stringify({ server, cube, dimElemPairs }),
+    })
+      .then(d => { setBusy(false); d.error ? setError(d.error) : setData(d) })
+      .catch(e => { setBusy(false); setError(e.message) })
+  }, [server, cube, JSON.stringify(dimElemPairs)])  // eslint-disable-line
+
+  if (busy)  return <Loading label="Finding leaf contributors…" />
+  if (error) return <ErrorMsg msg={error} />
+  if (!data?.sections?.length) return <Empty msg={data?.note ?? 'No consolidated elements.'} />
+
+  return (
+    <div className="max-h-64 overflow-y-auto divide-y divide-border/50">
+      {data.sections.map((sec, si) => (
+        <div key={si} className="p-3 space-y-2">
+          <div className="text-[10px] uppercase tracking-wide text-muted-foreground flex items-center justify-between">
+            <span>{sec.dim} — {sec.element}</span>
+            {sec.totalLeaves > 0 && (
+              <span className="normal-case">
+                {sec.totalLeaves} leaf{sec.totalLeaves !== 1 ? 'ves' : ''}
+                {sec.capped ? ', top 50 shown' : ''}
+              </span>
+            )}
+          </div>
+          {sec.error
+            ? <div className="text-xs text-red-400">{sec.error}</div>
+            : <ContribRows rows={sec.rows} />
+          }
+        </div>
+      ))}
+    </div>
+  )
 }
 
 // ── Main context menu ─────────────────────────────────────────────────────────
-export default function CellContextMenu({ ctx, cubeDims, onClose, onOpenRules, onWriteSuccess }) {
+export default function CellContextMenu({ ctx, cubeDims, onClose, onOpenRules, onOpenDimension, onWriteSuccess }) {
   const ref = useRef(null)
   const [panel, setPanel] = useState(null)
 
@@ -363,7 +467,7 @@ export default function CellContextMenu({ ctx, cubeDims, onClose, onOpenRules, o
 
   // Clamp to viewport
   const x = Math.min(ctx.x, window.innerWidth  - 372)
-  const y = Math.min(ctx.y, window.innerHeight - 420)
+  const y = Math.min(ctx.y, window.innerHeight - 460)
 
   const tabBtn = (id, icon, label, title) => (
     <button
@@ -384,7 +488,7 @@ export default function CellContextMenu({ ctx, cubeDims, onClose, onOpenRules, o
   return (
     <div
       ref={ref}
-      style={{ position: 'fixed', top: y, left: x, zIndex: 9999, width: 360 }}
+      style={{ position: 'fixed', top: y, left: x, zIndex: 9999, width: 380 }}
       className="bg-popover border border-border rounded-lg shadow-xl overflow-hidden"
     >
       {/* ── Header ── */}
@@ -409,9 +513,18 @@ export default function CellContextMenu({ ctx, cubeDims, onClose, onOpenRules, o
       {/* ── Coordinates ── */}
       <div className="px-3 py-2 border-b border-border/50 flex flex-wrap gap-x-3 gap-y-0.5">
         {ctx.dimElemPairs.map(p => (
-          <span key={p.dim} className="text-[10px]">
+          <span key={p.dim} className="text-[10px] flex items-center gap-1">
             <span className="text-muted-foreground">{p.dim}:</span>{' '}
             <span className="text-foreground font-medium">{p.element}</span>
+            {onOpenDimension && (
+              <button
+                onClick={() => { onOpenDimension(p.dim); onClose() }}
+                title={`Open ${p.dim} in Dimension Editor`}
+                className="text-muted-foreground/40 hover:text-muted-foreground transition-colors ml-0.5"
+              >
+                <ExternalLink size={8} />
+              </button>
+            )}
           </span>
         ))}
         {ctx.value != null && ctx.value !== '' && (
@@ -425,10 +538,12 @@ export default function CellContextMenu({ ctx, cubeDims, onClose, onOpenRules, o
       {/* ── Action bar ── */}
       <div className="flex items-center gap-1 px-2 py-1.5 border-b border-border flex-wrap">
         {ctx.isAllLeaf && tabBtn('write', <PencilLine size={10} />, 'Write', 'Write a new value to this cell')}
-        {tabBtn('trace',   <Zap size={10} />,           'Trace',   'Show the rule chain for this cell')}
-        {tabBtn('feeders', <Rss size={10} />,           'Feeders', 'Check what is feeding this cell')}
-        {tabBtn('log',     <History size={10} />,       'Log',     'Transaction history for this intersection')}
-        {tabBtn('notes',   <MessageSquare size={10} />, 'Notes',   'Cell annotations')}
+        {tabBtn('trace',   <Zap size={10} />,     'Trace',     'Show the rule chain for this cell')}
+        {tabBtn('feeders', <Rss size={10} />,     'Feeders',   'Check what is feeding this cell')}
+        {!ctx.isAllLeaf && tabBtn('breakdown', <Layers size={10} />,  'Breakdown', 'Show direct children contributions')}
+        {!ctx.isAllLeaf && tabBtn('leaves',    <Network size={10} />, 'Leaves',    'Drill down to all leaf contributors')}
+        {tabBtn('log',   <History size={10} />,       'Log',   'Transaction history for this intersection')}
+        {tabBtn('notes', <MessageSquare size={10} />, 'Notes', 'Cell annotations')}
         <button
           onClick={handleCopy}
           title="Copy intersection coordinates to clipboard"
@@ -460,6 +575,12 @@ export default function CellContextMenu({ ctx, cubeDims, onClose, onOpenRules, o
       )}
       {panel === 'feeders' && (
         <FeedersPanel server={ctx.server} cube={ctx.cube} dimElemPairs={ctx.dimElemPairs} />
+      )}
+      {panel === 'breakdown' && !ctx.isAllLeaf && (
+        <BreakdownPanel server={ctx.server} cube={ctx.cube} dimElemPairs={ctx.dimElemPairs} />
+      )}
+      {panel === 'leaves' && !ctx.isAllLeaf && (
+        <LeavesPanel server={ctx.server} cube={ctx.cube} dimElemPairs={ctx.dimElemPairs} />
       )}
       {panel === 'log' && (
         <LogPanel

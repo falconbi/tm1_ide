@@ -3,10 +3,10 @@ import MonacoEditor from '@monaco-editor/react'
 import { useStore } from '@/store'
 import { useProcess, useSaveProcess, useRunProcess, useCreateProcess, useDebugProcess, useCubes, useViews, usePreviewDatasource, useConflictCheck } from '@/hooks/useApi'
 import { registerTM1Completions, registerTM1Theme } from '@/lib/tm1-functions'
-import { registerTICompletions } from '@/lib/tm1-completion'
+import { registerTICompletions, TI_CATALOG } from '@/lib/tm1-completion'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
-import { ChevronRight, ChevronDown, Play, X, Braces, Wand2, CheckCircle2, XCircle, Database, Trash2, Plus, Loader2, Bug, Search, AlertTriangle, AlertCircle, Map, Upload, History, Locate } from 'lucide-react'
+import { ChevronRight, ChevronDown, Play, X, Braces, Wand2, CheckCircle2, XCircle, Database, Trash2, Plus, Loader2, Bug, Search, AlertTriangle, AlertCircle, Map, Upload, History, Locate, ShieldCheck } from 'lucide-react'
 import ObjectHistoryPanel from '@/components/ObjectHistoryPanel'
 import { getSnippets } from '@/lib/tm1-snippets.js'
 import { loadSettings, saveSettings } from '@/lib/formatters/settings.js'
@@ -885,6 +885,9 @@ export default function ProcessEditor({ tab }) {
   const [showDebugRun, setShowDebugRun] = useState(false)
   const [checkResults, setCheckResults] = useState(null)
   const [showCheck, setShowCheck]       = useState(false)
+  const [showValidate, setShowValidate]         = useState(false)
+  const [validateResults, setValidateResults]   = useState(null)
+  const [validateLoading, setValidateLoading]   = useState(false)
 
   const SECTION_TO_KEY = { Prolog: 'PrologProcedure', Metadata: 'MetaDataProcedure', Data: 'DataProcedure', Epilog: 'EpilogProcedure' }
 
@@ -1295,6 +1298,36 @@ export default function ProcessEditor({ tab }) {
     }
   }
 
+  const handleValidateFunctions = useCallback(async () => {
+    setShowValidate(true)
+    setValidateResults(null)
+    setValidateLoading(true)
+    try {
+      const token = localStorage.getItem('tm1-token') ?? ''
+      const tests = Object.entries(TI_CATALOG).map(([name, entry]) => {
+        const params = entry.params ?? []
+        const args = params.map(p => {
+          const base = p.replace('*', '')
+          return ['n', 'numeric', 'index', 'level', 'count', 'indent', 'position', 'value'].includes(base) ? '1' : "'x'"
+        })
+        return { name, code: `${name}(${args.join(', ')});` }
+      })
+      const r = await fetch('/api/admin/validate-ti-functions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-ide-token': token },
+        body: JSON.stringify({ server: tab.server, tests }),
+      })
+      const d = await r.json()
+      if (!r.ok) throw new Error(d.error)
+      setValidateResults(d.results)
+    } catch (e) {
+      toast.error(`Validate failed: ${e.message}`)
+      setShowValidate(false)
+    } finally {
+      setValidateLoading(false)
+    }
+  }, [tab.server])
+
   const handleDebugRun = (params) => {
     setShowDebugRun(false)
     setRunOutput(null)
@@ -1419,6 +1452,77 @@ export default function ProcessEditor({ tab }) {
         />
       )}
 
+      {/* ── TI Catalog Validate Modal ─────────────────────────────────────── */}
+      {showValidate && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setShowValidate(false)}>
+          <div className="bg-background border border-border rounded-lg shadow-xl w-[560px] max-h-[70vh] flex flex-col" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+              <div className="flex items-center gap-2 text-sm font-medium">
+                <ShieldCheck size={14} className="text-primary" />
+                TI Function Catalog — Live Validation
+              </div>
+              <button onClick={() => setShowValidate(false)} className="text-muted-foreground hover:text-foreground transition-colors">
+                <X size={14} />
+              </button>
+            </div>
+            <div className="overflow-y-auto flex-1 p-3">
+              {validateLoading && (
+                <div className="flex flex-col items-center gap-3 py-10 text-muted-foreground text-xs">
+                  <Loader2 size={20} className="animate-spin" />
+                  Testing {Object.keys(TI_CATALOG).length} functions against {tab.server}…
+                </div>
+              )}
+              {!validateLoading && validateResults && (() => {
+                const invalid = validateResults.filter(r => r.status === 'invalid')
+                const errors  = validateResults.filter(r => r.status === 'error')
+                const valid   = validateResults.filter(r => r.status === 'valid')
+                return (
+                  <div className="flex flex-col gap-3">
+                    <div className="flex gap-3 text-xs text-muted-foreground">
+                      <span className="text-green-500 font-medium">{valid.length} valid</span>
+                      {invalid.length > 0 && <span className="text-red-500 font-medium">{invalid.length} invalid</span>}
+                      {errors.length  > 0 && <span className="text-amber-500 font-medium">{errors.length} error</span>}
+                    </div>
+                    {invalid.length > 0 && (
+                      <div>
+                        <div className="text-xs font-medium text-red-500 mb-1">Not recognized by TM1 — remove from catalog</div>
+                        <div className="flex flex-wrap gap-1">
+                          {invalid.map(r => (
+                            <span key={r.name} className="font-mono text-[10px] bg-red-500/10 text-red-400 border border-red-500/20 rounded px-1.5 py-0.5" title={r.message}>{r.name}</span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {errors.length > 0 && (
+                      <div>
+                        <div className="text-xs font-medium text-amber-500 mb-1">Inconclusive — TM1 returned a non-syntax error</div>
+                        <div className="flex flex-wrap gap-1">
+                          {errors.map(r => (
+                            <span key={r.name} className="font-mono text-[10px] bg-amber-500/10 text-amber-400 border border-amber-500/20 rounded px-1.5 py-0.5" title={r.message}>{r.name}</span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {invalid.length === 0 && errors.length === 0 && (
+                      <div className="flex items-center gap-2 text-xs text-green-500">
+                        <CheckCircle2 size={14} />
+                        All {valid.length} catalog functions confirmed valid on {tab.server}
+                      </div>
+                    )}
+                  </div>
+                )
+              })()}
+            </div>
+            <div className="px-4 py-2 border-t border-border flex justify-between items-center text-xs text-muted-foreground">
+              <span>Tests create + delete temp processes — no data is modified</span>
+              {!validateLoading && (
+                <button onClick={handleValidateFunctions} className="text-primary hover:underline">Re-run</button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── Section tabs + actions ─────────────────────────────────────── */}
       <div className="flex items-center border-b border-border bg-muted shrink-0 overflow-x-auto">
         {CODE_TABS.map(({ key, label }) => (
@@ -1511,6 +1615,14 @@ export default function ProcessEditor({ tab }) {
           >
             <Search size={11} />
             <span className="hidden sm:inline">Check</span>
+          </button>
+          <button
+            onClick={handleValidateFunctions}
+            title="Validate TI function catalog against live TM1 server"
+            className="flex items-center gap-1.5 px-2.5 py-1 text-xs rounded border border-border text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+          >
+            <ShieldCheck size={11} />
+            <span className="hidden sm:inline">Validate</span>
           </button>
           <button
             onClick={() => { setShowDebug(d => !d); setShowSnippets(false) }}
