@@ -3,6 +3,7 @@ import { formatRules } from '@/lib/formatters/rules-formatter.js'
 import { loadSettings } from '@/lib/formatters/settings.js'
 import { getNamingMap } from '@/lib/formatters/naming.js'
 import { registerTM1Snippets } from '@/lib/tm1-snippets.js'
+import { MDX_FUNCTIONS_FLAT, MDX_KEYWORDS } from '@/lib/tm1-mdx-catalog.js'
 
 // ── TM1 Function Catalog ──────────────────────────────────────────────────────
 // Each entry: description, params[], returns, variadic, language
@@ -1159,6 +1160,101 @@ function registerTM1Completions(monaco, getServer) {
         [/[{}()\[\],.]/, 'operator'],
       ]
     }
+  })
+
+  // ── MDX context extractor ────────────────────────────────────────────────────
+  function extractMDXContext(model, position) {
+    const text = model.getValueInRange({
+      startLineNumber: 1, startColumn: 1,
+      endLineNumber: position.lineNumber, endColumn: position.column,
+    })
+    let depth = 0
+    let parenPos = -1
+    for (let i = text.length - 1; i >= 0; i--) {
+      const ch = text[i]
+      if (ch === ')') { depth++; continue }
+      if (ch === '(') {
+        if (depth === 0) { parenPos = i; break }
+        depth--
+      }
+    }
+    if (parenPos < 0) return null
+    const match = text.slice(0, parenPos).match(/([A-Za-z][A-Za-z0-9_]*)$/)
+    if (!match) return null
+    const funcName = match[1].toUpperCase()
+    let paramIndex = 0
+    let d = 0
+    for (let i = parenPos + 1; i < text.length; i++) {
+      const ch = text[i]
+      if (ch === '(') d++
+      else if (ch === ')') d--
+      else if (ch === ',' && d === 0) paramIndex++
+    }
+    return { funcName, paramIndex }
+  }
+
+  // ── MDX completion provider ──────────────────────────────────────────────────
+  const MDX_FN_MAP = Object.fromEntries(MDX_FUNCTIONS_FLAT.map(f => [f.name.toUpperCase(), f]))
+
+  monaco.languages.registerCompletionItemProvider('tm1mdx', {
+    triggerCharacters: ['(', ','],
+    provideCompletionItems: (model, position) => {
+      const word  = model.getWordUntilPosition(position)
+      const upper = word.word.toUpperCase()
+      const range = {
+        startLineNumber: position.lineNumber,
+        endLineNumber:   position.lineNumber,
+        startColumn:     word.startColumn,
+        endColumn:       position.column,
+      }
+
+      const fnSuggestions = MDX_FUNCTIONS_FLAT
+        .filter(f => !upper || f.name.toUpperCase().startsWith(upper))
+        .map(f => ({
+          label:           f.name,
+          kind:            monaco.languages.CompletionItemKind.Function,
+          detail:          f.signature,
+          documentation:   { value: f.description },
+          insertText:      f.template || f.name,
+          insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+          range,
+        }))
+
+      const kwSuggestions = MDX_KEYWORDS
+        .filter(k => !upper || k.startsWith(upper))
+        .map(k => ({
+          label:      k,
+          kind:       monaco.languages.CompletionItemKind.Keyword,
+          insertText: k,
+          range,
+        }))
+
+      return { suggestions: [...fnSuggestions, ...kwSuggestions] }
+    },
+  })
+
+  // ── MDX signature help provider ──────────────────────────────────────────────
+  monaco.languages.registerSignatureHelpProvider('tm1mdx', {
+    signatureHelpTriggerCharacters:   ['(', ','],
+    signatureHelpRetriggerCharacters: [','],
+    provideSignatureHelp: (model, position) => {
+      const ctx = extractMDXContext(model, position)
+      if (!ctx) return null
+      const fn = MDX_FN_MAP[ctx.funcName]
+      if (!fn || !fn.params?.length) return null
+      return {
+        value: {
+          signatures: [{
+            label:         fn.signature,
+            documentation: fn.description,
+            parameters:    fn.params.map(p => ({ label: p, documentation: p })),
+          }],
+          activeSignature: 0,
+          activeParameter: Math.min(ctx.paramIndex, fn.params.length - 1),
+        },
+        dispose: () => {},
+      }
+    },
   })
 
   const langMap = { tm1rules: 'rules', tm1ti: 'ti' }

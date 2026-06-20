@@ -387,3 +387,63 @@ export const MDX_ADVANCED_PATTERNS = [
 
 // Flat list for Monaco signature help and completions
 export const MDX_FUNCTIONS_FLAT = MDX_CATALOG.flatMap(c => c.fns)
+
+export const MDX_KEYWORDS = [
+  'SELECT', 'FROM', 'WHERE', 'WITH', 'MEMBER', 'SET', 'AS',
+  'ON', 'COLUMNS', 'ROWS', 'NON', 'EMPTY', 'NON EMPTY',
+  'PROPERTIES', 'DIMENSION', 'CELL', 'CALCULATION',
+  'ASC', 'DESC', 'BASC', 'BDESC', 'ALL', 'RECURSIVE',
+  'NOT', 'AND', 'OR', 'NULL', 'SELF', 'ISEMPTY',
+]
+
+export const MDX_QUERY_PATTERNS = [
+  {
+    label: 'Simple SELECT',
+    description: 'Two dimensions on columns and rows',
+    code: `SELECT
+  {TM1SUBSETALL([Dimension1])} ON COLUMNS,
+  {TM1SUBSETALL([Dimension2])} ON ROWS
+FROM [CubeName]`,
+  },
+  {
+    label: 'Non Empty',
+    description: 'Suppress rows and columns with no data',
+    code: `SELECT
+  NON EMPTY {TM1SUBSETALL([Dimension1])} ON COLUMNS,
+  NON EMPTY {TM1SUBSETALL([Dimension2])} ON ROWS
+FROM [CubeName]`,
+  },
+  {
+    label: 'WHERE slice',
+    description: 'Fix a dimension to a specific member',
+    code: `SELECT
+  NON EMPTY {TM1SUBSETALL([Dimension1])} ON COLUMNS,
+  NON EMPTY {TM1SUBSETALL([Dimension2])} ON ROWS
+FROM [CubeName]
+WHERE ([Dimension3].[MemberName])`,
+  },
+  {
+    label: 'Multiple WHERE',
+    description: 'Fix multiple dimensions as a tuple',
+    code: `SELECT
+  NON EMPTY {TM1SUBSETALL([Dimension1])} ON COLUMNS,
+  NON EMPTY {TM1SUBSETALL([Dimension2])} ON ROWS
+FROM [CubeName]
+WHERE ([Dimension3].[Member1], [Dimension4].[Member2])`,
+  },
+  {
+    label: 'WITH MEMBER — ratio',
+    description: 'Calculated percentage measure',
+    code: `WITH MEMBER [Measures].[Variance %] AS
+  IIf(
+    [Measures].[Budget] = 0, NULL,
+    ([Measures].[Actual] - [Measures].[Budget]) / [Measures].[Budget]
+  ),
+  FORMAT_STRING = '0.00%'
+SELECT
+  {[Measures].[Actual], [Measures].[Budget], [Measures].[Variance %]}
+  ON COLUMNS,
+  NON EMPTY {TM1SUBSETALL([DimensionName])} ON ROWS
+FROM [CubeName]`,
+  },
+]

@@ -64,11 +64,14 @@ Browse and manage all TM1 objects: cubes, dimensions, subsets, views, processes,
 
 ### Autocomplete
 
-Context-aware Monaco autocomplete in both Rules and TI editors:
+Context-aware Monaco autocomplete across all three TM1 languages:
 
-- **Cube name** — lists server cubes, expands to full snippet with dimension tab stops for cell functions (`DB()`, `CellPutN()`, etc.)
-- **Dimension name** — lists server dimensions for dimension-first functions (`DimensionElementInsert()`, `ELCOMP()`, etc.)
-- **Function keywords** — snippet completions for all catalog functions with correct parameter signatures sourced from IBM TM1 Reference
+- **Rules + TI — cube name** — lists server cubes, expands to full snippet with dimension tab stops for cell functions (`DB()`, `CellPutN()`, etc.)
+- **Rules + TI — dimension name** — lists server dimensions for dimension-first functions (`DimensionElementInsert()`, `ELCOMP()`, etc.)
+- **Rules + TI — function keywords** — snippet completions for all catalog functions with correct parameter signatures
+- **MDX — function names** — completions from `MDX_CATALOG` using the function's `template` field as the snippet (with tab stops)
+- **MDX — keywords** — `SELECT`, `FROM`, `WHERE`, `NON EMPTY`, `WITH MEMBER`, `BASC`, `BDESC`, etc.
+- **All languages — signature help** — triggered on `(` — shows param names and descriptions from the catalog; active parameter highlights as you tab through
 
 ### Function Catalog
 

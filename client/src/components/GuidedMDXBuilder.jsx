@@ -1022,21 +1022,10 @@ export default function GuidedMDXBuilder({ tab, server: serverProp, onSwitchToRa
     setCurrentMDX(mdx)
   }
 
-  // Monaco syntax highlighting
+  // tm1mdx language registered globally by registerTM1Languages in tm1-functions.js
   const handleEditorMount = (editor, monaco) => {
     editorRef.current = editor
     monacoRef.current = monaco
-    if (!monaco.languages.getLanguages().find(l => l.id === 'tm1mdx')) {
-      monaco.languages.register({ id: 'tm1mdx' })
-    }
-    monaco.languages.setMonarchTokensProvider('tm1mdx', { tokenizer: { root: [
-      [/--.*/, 'comment'], [/'[^']*'/, 'string'], [/"[^"]*"/, 'string'], [/\[([^\]]*)\]/, 'variable'],
-      [/\b(SELECT|FROM|WHERE|ON|ROWS|COLUMNS|NON|EMPTY)\b/i, 'keyword'],
-      [/\b(FILTER|CROSSJOIN|TOPCOUNT|BOTTOMCOUNT|ORDER|DESCENDANTS|UNION|INTERSECT|EXCEPT|LAG|LEAD)\b/i, 'type'],
-      [/\b(TM1[A-Z_]+|HEAD|TAIL|LASTPERIODS|VAL|STRTOVALUE|STRTOMEMBER)\b/i, 'type'],
-      [/\b(CURRENTMEMBER|PROPERTIES|CHILDREN|ANCESTORS|PARENT|NEXTMEMBER|PREVMEMBER|SIBLINGS|MEMBERS|ALLMEMBERS|DEFAULTMEMBER|FIRSTCHILD|LASTCHILD)\b/i, 'type'],
-      [/[0-9]+(\.[0-9]+)?/, 'number'], [/[{}()\[\],.]/, 'operator'],
-    ]}})
   }
 
   // Table interactive: column header click
