@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
-import { X, ChevronRight, ChevronDown, Clock, Box, Layers, Cog, FileText, Table2, List, Tag, Loader2, Diff, Rocket, ScrollText, Pencil } from 'lucide-react'
-import { useWorkSessions, useWorkSessionLog, useUpdateSessionDescription } from '@/hooks/useApi'
+import { X, ChevronRight, ChevronDown, Clock, Box, Layers, Cog, FileText, Table2, List, Tag, Loader2, Diff, Rocket, ScrollText, Pencil, RotateCcw } from 'lucide-react'
+import { useWorkSessions, useWorkSessionLog, useUpdateSessionDescription, useResumeWorkSession } from '@/hooks/useApi'
 import { useStore } from '@/store'
 import { cn } from '@/lib/utils'
 
@@ -121,6 +121,7 @@ function SessionRow({ session, server, openTab }) {
   const [descValue, setDescValue]     = useState(session.description ?? '')
   const descRef = useRef(null)
   const updateDesc = useUpdateSessionDescription()
+  const resume     = useResumeWorkSession()
 
   useEffect(() => {
     if (!editingDesc) setDescValue(session.description ?? '')
@@ -161,6 +162,15 @@ function SessionRow({ session, server, openTab }) {
               )}
             </div>
           </button>
+          {!isActive && (
+            <button
+              onClick={e => { e.stopPropagation(); resume.mutate({ id: session.id, server }) }}
+              title="Resume this change set"
+              className="opacity-0 group-hover:opacity-100 transition-opacity p-2 rounded hover:bg-muted text-muted-foreground hover:text-amber-400 shrink-0"
+            >
+              <RotateCcw size={10} />
+            </button>
+          )}
           <button
             onClick={e => { e.stopPropagation(); setEditingDesc(v => !v) }}
             title="Add / edit note"

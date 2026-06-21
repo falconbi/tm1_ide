@@ -74,31 +74,32 @@ export default function SessionControl() {
           </button>
         </div>
       ) : (
-        <button
-          onClick={() => { setShowModal(v => !v); setShowLog(false) }}
-          className={cn(
-            'flex items-center gap-1.5 px-2 py-1 rounded text-xs transition-colors',
-            showModal ? 'bg-muted text-foreground' : 'text-muted-foreground hover:text-foreground hover:bg-muted'
-          )}
-          title="Start a change set to track changes"
-        >
-          <Clock size={13} />
-          <span>Change set</span>
-        </button>
+        <div className="flex items-center gap-1">
+          <button
+            onClick={() => { setShowModal(v => !v); setShowLog(false) }}
+            className={cn(
+              'flex items-center gap-1.5 px-2 py-1 rounded text-xs transition-colors',
+              showModal ? 'bg-muted text-foreground' : 'text-muted-foreground hover:text-foreground hover:bg-muted'
+            )}
+            title="Start a change set to track changes"
+          >
+            <Clock size={13} />
+            <span>Change set</span>
+          </button>
+          <button
+            onClick={() => { setShowLog(v => !v); setShowModal(false) }}
+            className={cn(
+              'p-1.5 rounded transition-colors',
+              showLog ? 'bg-muted text-foreground' : 'text-muted-foreground hover:text-foreground hover:bg-muted'
+            )}
+            title="View change set log"
+          >
+            <History size={13} />
+          </button>
+        </div>
       )}
 
-      <button
-        onClick={() => { setShowLog(v => !v); setShowModal(false) }}
-        className={cn(
-          'p-1.5 rounded transition-colors',
-          showLog ? 'bg-muted text-foreground' : 'text-muted-foreground hover:text-foreground hover:bg-muted'
-        )}
-        title="Change set log"
-      >
-        <History size={13} />
-      </button>
-
-      {showModal && <StartModal server={server} onClose={() => setShowModal(false)} onStart={() => setShowLog(true)} />}
+{showModal && <StartModal server={server} onClose={() => setShowModal(false)} onStart={() => setShowLog(true)} />}
       {showLog   && <ChangeLogPanel server={server} onClose={() => setShowLog(false)} direction="down" />}
     </div>
   )

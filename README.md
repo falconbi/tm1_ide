@@ -1,43 +1,81 @@
+<div align="center">
+
 # TM1 IDE
 
-A browser-based IDE for IBM Planning Analytics (TM1). Edit rules, TI processes, dimensions, subsets, views, chores, and cube data directly from your browser — no TM1 Architect or Perspectives required.
+**A browser-based IDE for IBM Planning Analytics (TM1)**
 
-All TM1 communication routes through Planning Analytics Workspace (PAW), so there is no direct TM1 connection, no per-server port config, and no SSL to manage.
+[![Node.js](https://img.shields.io/badge/Node.js-20+-339933?logo=node.js&logoColor=white)](https://nodejs.org)
+[![License: ISC](https://img.shields.io/badge/License-ISC-blue.svg)](https://opensource.org/licenses/ISC)
+[![PAW](https://img.shields.io/badge/PAW-V11%20%7C%20V12-0062B1?logo=ibm&logoColor=white)](https://www.ibm.com/products/planning-analytics)
+[![Monaco](https://img.shields.io/badge/Editor-Monaco-646CFF)](https://microsoft.github.io/monaco-editor/)
+
+Edit rules, TI processes, dimensions, subsets, views, chores, and cube data — directly from your browser.  
+No TM1 Architect, no Perspectives, no per-server port config.
+
+All TM1 communication routes through **Planning Analytics Workspace (PAW)**, so there is no direct TM1 connection and no SSL to manage.
+
+</div>
 
 ---
 
-## Features
+## ⚡ Quick Start
+
+```bash
+git clone https://github.com/falconbi/tm1_ide.git
+cd tm1_ide
+npm install
+cp .env.example .env        # edit PAW_HOST, PAW_PASSWORD, PAW_LOGIN_SERVER
+npm start                   # → http://localhost:8083
+```
+
+> The frontend is pre-built — no build step needed.
+
+---
+
+## 📋 Table of Contents
+
+- [Features](#-features)
+- [Setup](#-setup)
+- [Keyboard Shortcuts](#-keyboard-shortcuts)
+- [Project Structure](#-project-structure)
+- [Architecture](#-architecture)
+- [Multi-User Login](#-multi-user-login)
+- [Deployment Pipeline](#-deployment-pipeline)
+- [IBM REST API Reference](#-ibm-rest-api-reference)
+
+---
+
+## ✨ Features
 
 ### Editors
 
 | Editor | What it does |
 |--------|-------------|
 | **Rules Editor** | Monaco editor with TM1 rules syntax highlighting, live validation (CheckRules API) + static analysis (arg counts, keyword validity, line-accurate squiggles), **Check Now** button with green/red pass/fail glow, code formatter (3 structure presets), **#Region/#EndRegion folding**, lineage trace panel, **cell calculation trace** (shows full rule chain for any cell), snippet library, **Feeders** button (`tm1.CheckFeedersForRules`), **post-save reference check** (dead cube/dimension warnings as amber toasts) |
-| **TI Editor** | Four-tab editor (Prolog / Metadata / Data / Epilog), parameter editor, datasource editor with CSV file upload to TM1 server, run with output log, **error log viewer** (reads TM1 `.log` file inline after errors), static analysis (IF/WHILE/FOR/NEXT block structure, arg counts), **block folding**, debugger, snippets, pattern generators, **post-save reference check** (dead cube/dimension/process warnings as amber toasts), **Validate** toolbar button — tests every `TI_CATALOG` function against the live TM1 server and shows pass/fail (see Function Catalog Maintenance below) |
+| **TI Editor** | Four-tab editor (Prolog / Metadata / Data / Epilog), parameter editor, datasource editor with CSV file upload to TM1 server, run with output log, **error log viewer** (reads TM1 `.log` file inline after errors), static analysis (IF/WHILE/FOR/NEXT block structure, arg counts), **block folding**, debugger, snippets, pattern generators, **post-save reference check**, **Validate** toolbar button — tests every `TI_CATALOG` function against the live TM1 server |
 | **TI Debugger** | Set breakpoints in any section, capture variable values at each breakpoint, watch panel, section-by-section execution |
-| **Dimension Editor** | Hierarchy tree with drag-style CRUD, attribute grid, element search, bulk CSV import, attribute definition management. AttrGrid toolbar has a **Refresh** button (re-fetches without closing the tab), a per-column **→A** button on String-type attributes (excluding Format and Picklist) to convert them to Alias in one click — existing values are preserved via delete+recreate + bulk value copy, and a **Format picker** for the Format attribute with colour swatch support (`@colour` convention) |
-| **Subset Editor** | MDX code view + visual element tree, static/MDX save, MDX preview, ghost children |
-| **View Editor** | Native and MDX view builder, cell grid with inline writeback, save/save-as, **auto-refreshes when rules for the same cube are saved**, **Feeders** toolbar button (`tm1.CheckFeedersForRules` + amber zero-cell highlighting for leaf rule cells with zero value — likely missing feeders), **cell right-click → Trace** (opens side drawer, see below) |
+| **Dimension Editor** | Hierarchy tree with CRUD, attribute grid, element search, bulk CSV import. Per-column **→A** button converts String attributes to Alias in one click (values preserved). **Format picker** for the Format attribute with colour swatch support |
+| **Subset Editor** | MDX code view + visual element tree, static/MDX save, MDX preview |
+| **View Editor** | Native and MDX view builder, cell grid with inline writeback, **auto-refreshes when rules for the same cube are saved**, Feeders check, **cell right-click → Trace** side drawer |
 | **Guided MDX Builder** | Axis-by-axis view builder, subset filter builder, MDX execution |
 | **Chore Editor** | Schedule editor, step list, activate/deactivate/execute on demand |
 | **Cube Editor** | Create and delete cubes, dimension assignment |
 | **SQL Editor** | External database queries (SQL Server, PostgreSQL, MySQL, SQLite), schema browser, saved queries, post SQL as TI datasource |
 | **MDX Sandbox** | Ad-hoc MDX execution with result grid |
-| **Deploy Panel** | 5-step wizard: Diff (change set vs Prod baseline) → Package (fetch + manifest) → Risk (**drift check** then BLOCKER/WARNING/INFO analysis) → **Approve** (named sign-off with notes, required before deploy) → Deploy (dependency-ordered, dry-run option) |
-| **Deploy History** | Permanent archive of every real deployment — approval record, manifest, deploy results, and **pre/post target snapshots** (state of each deployed object on the target before and after the push). Changed objects show a Diff button that opens the IDE diff viewer. |
+| **Deploy Panel** | 5-step wizard: Diff → Package → Risk (drift check + BLOCKER/WARNING/INFO) → Approve → Deploy |
+| **Deploy History** | Permanent archive of every deployment — approval record, manifest, results, and pre/post target snapshots with inline diff viewer |
 
-### View Editor — Cell Right-Click → Trace
+### 🔍 Cell Trace — Right-Click → Trace
 
-Right-clicking any cell opens a minimal popup showing the cube name, LEAF/CONSOLIDATED badge, and the element strip. Clicking **Trace** closes the popup and opens a 440px fixed right-side drawer:
+Right-clicking any cell in a view opens a popup with the cube name and element strip. Clicking **Trace** opens a 440px right-side drawer:
 
-- **Rule statements** — displayed via `RuleBreakdown`: each `DB()`, `ATTRN()`, `ATTRS()` call is annotated with the resolved cube/element/attribute values fetched live
-- **Components** — each consolidated or rule-driven component shown with a type badge (RULE / CONSOLIDATED / BASE / FEEDER) and its current value
-- **Drill-down navigation** — clicking any same-cube component re-runs the trace at that intersection and pushes onto a breadcrumb stack; clicking a breadcrumb entry jumps back up; **Back** button pops one level
-- Cross-cube feeder components are shown in blue but are not drillable (dimension order may differ)
+- **Rule statements** — each `DB()`, `ATTRN()`, `ATTRS()` call annotated with resolved live values
+- **Components** — type badge (RULE / CONSOLIDATED / BASE / FEEDER) and current value per component
+- **Drill-down navigation** — click any same-cube component to drill in; breadcrumb stack + Back button
 
-### View Editor — Cell Formatting
+### 🎨 Cell Formatting
 
-The View Editor reads the **Format** attribute from every dimension's `}ElementAttributes_` table and applies it to cell values in the grid. Add a `Format` attribute (String type) to your measure dimension and set values per element:
+Add a `Format` attribute (String type) to your measure dimension to control display in the View Editor:
 
 | Format value | Effect |
 | ------------ | ------ |
@@ -45,139 +83,99 @@ The View Editor reads the **Format** attribute from every dimension's `}ElementA
 | `#,##0.0` | One decimal place |
 | `#,##0.00` | Two decimal places |
 | `$#,##0` | Dollar with thousands separator |
-| `#,##0.0%` | Percentage — value is multiplied by 100 (TM1 standard: store 0.101 → display 10.1%) |
-| `#,##0.0%/100` | Percentage — value already stored as the display number (store 10.1 → display 10.1%) |
-| `@` | Text / string cell — displayed in cyan (dark mode) or teal (light mode) to distinguish from numeric |
-| `@blue` / `@#ff0000` | Text cell with a specific colour applied — named CSS colours or hex codes |
+| `#,##0.0%` | Percentage — store `0.101` → display `10.1%` |
+| `#,##0.0%/100` | Percentage — store `10.1` → display `10.1%` |
+| `@` | String cell — cyan (dark) / teal (light) |
+| `@blue` / `@#ff0000` | String cell with named or hex colour |
 
-Format lookup is **dimension-aware**: if two dimensions have elements with the same name, each element's own dimension is checked first, avoiding cross-dimension collisions. The Format attribute is cached per-query and invalidated immediately when you save a change in the Dimension Editor.
+### 🔎 Explorer
 
-### Explorer (Left Sidebar)
+Browse and manage all TM1 objects: cubes, dimensions, subsets, views, processes, chores. Full CRUD for every object type — inline `+` buttons to add objects without leaving the explorer.
 
-Browse and manage all TM1 objects: cubes, dimensions, subsets, views, processes, chores. Full CRUD for every object type — create, rename, delete. Inline `+` buttons to add objects without leaving the explorer.
+### 🗂️ Tabs & Split Panes
 
-### Tab System & Split Panes
+- Drag to reorder tabs within a group
+- Right-click any tab: Split Right, Split Down, Move to other pane, Close others, Close to right
+- Arrow button on tab hover — instantly send a tab to the other pane
+- Toggle horizontal/vertical split without closing panes — direction persisted across sessions
 
-- **Drag to reorder** tabs within a group
-- **Right-click context menu** on any tab: Split Right, Split Down, Move to other pane, Close others, Close to right, Close
-- **Arrow button** on tab hover — instantly send a tab to the other pane
-- **Split Right** (`⊟`) — side-by-side panes; **Split Down** (`⊞`) — stacked panes
-- **Toggle layout** button when 2+ panes are open — switch between horizontal and vertical without closing panes
-- Split direction is persisted across sessions
-- Useful pattern: open a view in one pane, rules in the other (stacked) — save rules and the view auto-refreshes below
+### 🔎 Cross-Object Search
 
-### Cross-Object Search
+`Ctrl+Shift+F` — full-text search across all rules and TI process code on the connected server simultaneously.
 
-`Ctrl+Shift+F` opens a full-text search across all rules files and TI process code on the connected server simultaneously.
+### 💡 Autocomplete & Intelligence
 
-### Autocomplete
+Context-aware Monaco autocomplete across all three TM1 languages (Rules, TI, MDX):
 
-Context-aware Monaco autocomplete across all three TM1 languages:
+- **Cube name / dimension name** completions with full snippet expansion and dimension tab stops
+- **Function keyword completions** — correct parameter signatures from the catalog
+- **Signature help** — triggered on `(`, shows param names and descriptions; active parameter highlights as you type
+- **Hover docs** — hover any function name for description, param list, return type, V11/V12 compat, deprecated warnings
 
-- **Rules + TI — cube name** — lists server cubes, expands to full snippet with dimension tab stops for cell functions (`DB()`, `CellPutN()`, etc.)
-- **Rules + TI — dimension name** — lists server dimensions for dimension-first functions (`DimensionElementInsert()`, `ELCOMP()`, etc.)
-- **Rules + TI — function keywords** — snippet completions for all catalog functions with correct parameter signatures
-- **MDX — function names** — completions from `MDX_CATALOG` using the function's `template` field as the snippet (with tab stops)
-- **MDX — keywords** — `SELECT`, `FROM`, `WHERE`, `NON EMPTY`, `WITH MEMBER`, `BASC`, `BDESC`, etc.
-- **All languages — signature help** — triggered on `(` — shows param names and descriptions from the catalog; active parameter highlights as you tab through
-- **All languages — hover docs** — hover over any function name to see description, param list, return type, V11/V12 compat, and deprecated warning — sourced live from the catalog
+### 📚 Function Catalog
 
-### Function Catalog
+<details>
+<summary>The intelligence layer behind completions, validation, and hover docs — click to expand</summary>
 
-The function catalog is the intelligence layer that drives autocomplete, signature help, static validation, and hover documentation across all three TM1 languages. It is fully transparent and user-editable.
+The function catalog drives autocomplete, signature help, static validation, and hover documentation. It is fully transparent and user-editable via the **book icon** in the header.
 
 #### Catalog files
 
 | Catalog | File | Language | Purpose |
 |---------|------|----------|---------|
-| `RULES_CATALOG` | `client/src/lib/tm1-completion.js` | Rules | Rich schema entries — drives param completions + `rules-validator.js` |
-| `TI_CATALOG` | `client/src/lib/tm1-completion.js` | TI | Rich schema entries — drives param completions + `ti-validator.js` |
-| `TM1_FUNCTIONS` | `client/src/lib/tm1-functions.js` | Rules + TI | Named-param signature help, Monarch highlighting, variadic flags |
-| `MDX_CATALOG` | `client/src/lib/tm1-mdx-catalog.js` | MDX | Category-grouped MDX functions with templates and descriptions |
+| `RULES_CATALOG` | `client/src/lib/tm1-completion.js` | Rules | Rich schema entries — drives completions + `rules-validator.js` |
+| `TI_CATALOG` | `client/src/lib/tm1-completion.js` | TI | Rich schema entries — drives completions + `ti-validator.js` |
+| `TM1_FUNCTIONS` | `client/src/lib/tm1-functions.js` | Rules + TI | Named-param signature help, Monarch highlighting |
+| `MDX_CATALOG` | `client/src/lib/tm1-mdx-catalog.js` | MDX | Category-grouped MDX functions with templates |
 
-#### Rich catalog schema (RULES_CATALOG and TI_CATALOG)
-
-Each entry is a structured object — not a bare param array:
+#### Rich catalog schema
 
 ```js
 DIMSIZ: {
-  params:      ['dimname'],          // param type tags; '*' suffix = repeating/variadic
-  returnType:  'numeric',            // 'numeric' | 'string' | 'void' | 'any'
+  params:      ['dimname'],
+  returnType:  'numeric',
   description: 'Returns the number of elements in a dimension.',
-  compat:      'both',               // 'both' | 'v11' | 'v12'
-  deprecated:  null,                 // string message shown as amber squiggle, or null
-  isStatement: false,                // true = cannot be used in an expression or assignment
+  compat:      'both',      // 'both' | 'v11' | 'v12'
+  deprecated:  null,
+  isStatement: false,
 }
 
 CELLPUTN: {
-  params:      ['value', 'cubename', 'element*'],
+  params:      ['value', 'cubename', 'element*'],  // '*' = variadic
   returnType:  'void',
   description: 'Writes a numeric value to a cube cell.',
   compat:      'both',
   deprecated:  null,
-  isStatement: true,                 // calling this in nV = CELLPUTN(...) would be wrong
-}
-
-HIERARCHYCREATE: {
-  params:      ['dimname', 'hiername'],
-  returnType:  'void',
-  description: 'Creates an alternate hierarchy within a dimension.',
-  compat:      'v12',                // PA 2.0 / TM1 12+ only — not available in classic V11
-  deprecated:  null,
-  isStatement: true,
+  isStatement: true,        // cannot appear in an expression
 }
 ```
 
-**Param type tags:** `cubename` | `dimname` | `element` | `attribute` | `hiername` | `value` | `n` | `string` | `condition`. `*` suffix on the last tag means it repeats (variadic).
-
-**`compat` values:**
-
-- `both` — works in TM1 V11 (classic) and PA 2.0+ (V12)
-- `v12` — PA 2.0 / TM1 12+ only. Primarily: all `ELEMENT*` hierarchy-aware functions, all `HIERARCHY*` functions, `DIMENSIONHIERARCHYCREATE`
-- `v11` — classic TM1 only with no V12 equivalent (rare; user-correctable via Catalog admin)
-
-#### Validator wiring
-
-- `rules-validator.js` imports `RULES_CATALOG` + `TM1_FUNCTIONS` — validates function names, arg counts, and deprecated warnings in AST
-- `ti-validator.js` imports `TI_CATALOG` + `TM1_FUNCTIONS` — validates per section with IF/WHILE/FOR block tracking
-- `mdx-validator.js` imports `MDX_CATALOG` via `MDX_FUNCTIONS_FLAT` — validates MDX function names and arg counts
-
-All three feed Monaco `setModelMarkers` in their respective editor components — squiggles appear before running.
-
-**What validators catch:**
+#### What validators catch
 
 - Unknown function name → `error` squiggle
 - Wrong argument count → `error` squiggle
-- `deprecated: 'message'` set on catalog entry → `warning` squiggle with the deprecation message
-- TI-only function used in Rules → `error` noting it's a TI function
+- `deprecated` set → `warning` squiggle with the deprecation message
+- TI-only function used in Rules → `error`
 
 #### Catalog Admin UI
 
-The **book icon** in the header opens the Function Catalog panel — four tabs: TI Functions | Rules Functions | MDX Functions | Naming / Formatter.
+The **book icon** in the header opens the Function Catalog — four tabs: TI Functions | Rules Functions | MDX Functions | Naming / Formatter.
 
-**TI / Rules / MDX tabs** — each row shows: function name, description, params, return type (→ numeric/string/void), compat badge (Both/V11/V12), source (built-in/user). Deprecated functions show a strikethrough name and amber warning. Statement-only functions show a `stmt` badge.
+- Edit compat, add functions, see deprecated warnings
+- **Validate** button — tests every catalog entry against the live TM1 server (creates a temp process per function, deletes immediately). Results overlay ✓ / ✗ per row.
+- User overrides persist to `config/function-catalog-overrides.json` — built-in catalog is never modified
 
-- **Compat editing:** click the compat dropdown to reassign any entry — useful when reviewing IBM docs. Changes save to `config/function-catalog-overrides.json`. The built-in catalog is the base; overrides are merged on top at runtime.
-- **Adding functions:** name + param list + compat via the form at the bottom of each tab.
-- **Live validation:** the Validate button (TI and Rules tabs) tests every catalog entry against the live TM1 server by creating a minimal temp process per function. Results overlay ✓ / ✗ per row. Temp processes deleted immediately. Server endpoint: `POST /api/admin/validate-ti-functions`.
-
-**Naming / Formatter tab** — controls how the code formatter capitalises identifiers (e.g. `cellputn` → `CellPutN`). Shows ~350 IBM defaults (Rules, TI, MDX, admin functions) plus any user-added custom mappings. IBM defaults can be disabled per-entry; custom mappings can be added, edited, or removed. Import/export JSON for sharing across environments. Accessible directly from the settings gear menu → Naming Dictionary, or via the book icon → Naming / Formatter tab.
-
-#### Catalog audit history
-
-The `TI_CATALOG` was audited against the IBM Planning Analytics 2.0 function reference (via Cubewise, which mirrors IBM docs) in Jun 2026. Removed: `DimensionElementAttributeCreate`, `DimensionElementAttributeDelete` (do not exist in PA 2.0). Corrected: `AttrInsert(dim, attr, type)` / `AttrDelete(dim, attr)` for classic attribute management; `ElementAttrPutS(value, dim, hier, el, attr)` for hierarchy-aware writes.
+</details>
 
 ---
 
-## Prerequisites
+## 🚀 Setup
 
-- Node.js 20+
-- IBM Planning Analytics Workspace (PAW) — V11 (native auth) or V12 (Authentik SSO)
+### Prerequisites
+
+- **Node.js 20+** — [nodejs.org](https://nodejs.org)
+- **IBM Planning Analytics Workspace (PAW)** — V11 (native auth) or V12 (Authentik SSO)
 - One or more TM1 databases registered in PAW
-
----
-
-## Setup
 
 ### 1. Install
 
@@ -198,23 +196,23 @@ cp .env.example .env
 Edit `.env`:
 
 ```env
-# PAW connection (used when servers.json is a plain array — paw-native mode)
+# PAW connection
 PAW_HOST=http://192.168.x.x
 PAW_USERNAME=admin
 PAW_PASSWORD=your_password
 
-# The TM1 server PAW validates all logins against (PAW Admin Console →
-# Configuration → TM1 Login Server URI). Must match a name in servers.json.
+# The TM1 server PAW validates logins against
+# (PAW Admin Console → Configuration → TM1 Login Server URI)
 PAW_LOGIN_SERVER=Production
 
-# Server port
+# Server port (default: 8083)
 PORT=8083
 
 # Optional: AI-powered MDX generation
 ANTHROPIC_API_KEY=sk-ant-...
 ```
 
-Add your TM1 servers to `config/servers.json`. The simplest form is a plain array — the IDE defaults to `paw-native` using `PAW_HOST`:
+Add your TM1 servers to `config/servers.json`. Simplest form — the IDE defaults to `paw-native` using `PAW_HOST`:
 
 ```json
 [
@@ -223,29 +221,28 @@ Add your TM1 servers to `config/servers.json`. The simplest form is a plain arra
 ]
 ```
 
-For multi-adapter or multi-PAW-host setups, use the structured form — see the Connection Adapters section under Multi-User Login.
-
 ### 3. Run
 
 ```bash
 npm start
 ```
 
-Open **http://localhost:8083**
+Open **[http://localhost:8083](http://localhost:8083)**
 
-### Development mode (with Vite HMR)
+<details>
+<summary>Development mode (Vite HMR)</summary>
 
 ```bash
 # Terminal 1 — backend
 npm start
 
 # Terminal 2 — frontend with hot reload
-cd client && npm run dev
+cd client && npm install && npm run dev
 ```
 
-Open **http://localhost:5173** for the Vite dev server.
+Open **http://localhost:5173**
 
-After making client changes in development, rebuild for production:
+After making client changes, rebuild for production:
 
 ```bash
 cd client && npm run build
@@ -254,9 +251,11 @@ cp dist/assets/index-*.css ../static/assets/
 cp dist/index.html ../static/index.html
 ```
 
+</details>
+
 ---
 
-## Keyboard Shortcuts
+## ⌨️ Keyboard Shortcuts
 
 ### Global
 | Shortcut | Action |
@@ -274,9 +273,7 @@ cp dist/index.html ../static/index.html
 | `Ctrl+/` | Toggle comment |
 | `Ctrl+D` | Select next occurrence |
 | `Alt+↑ / ↓` | Move line up / down |
-| `Ctrl+=` | Increase editor font size |
-| `Ctrl+-` | Decrease editor font size |
-| `Ctrl+0` | Reset editor font size |
+| `Ctrl+=` / `Ctrl+-` / `Ctrl+0` | Font size +/−/reset |
 | `Ctrl+F` | Find & Replace |
 
 ### Rules Editor
@@ -288,7 +285,7 @@ cp dist/index.html ../static/index.html
 
 ---
 
-## Project Structure
+## 📁 Project Structure
 
 ```
 tm1_ide/
@@ -296,66 +293,58 @@ tm1_ide/
 ├── core/
 │   ├── tm1_client.js             # TM1 REST client (proxies through PAW)
 │   ├── paw_connect.js            # PAW session auth + CSRF caching
+│   ├── adapter_registry.js       # Pluggable PAW connection adapters
 │   ├── sql_client.js             # External SQL connections
 │   └── mdxBuilder.js             # MDX query construction helpers
-├── client/                       # React + Vite frontend
+├── client/                       # React + Vite frontend source
 │   └── src/
 │       ├── App.jsx               # Root layout, global keyboard handlers
 │       ├── store/                # Zustand: tabs, server selection, UI state
 │       ├── hooks/useApi.js       # All TanStack Query data hooks
 │       ├── components/           # One file per editor/panel
 │       └── lib/                  # Monaco languages, completions, formatters
-├── static/                       # Built frontend (served directly)
+├── static/                       # Pre-built frontend (served directly)
 ├── config/
 │   ├── servers.json              # TM1 server list
 │   ├── forge.json                # Workspace state (open tabs, server)
 │   ├── sql-connections.json      # External SQL connections
 │   └── sql-queries.json          # Saved SQL queries
 └── docs/
-    ├── Planning Analytics.postman_collection.json   # IBM REST API reference
-    └── STATUS.md                 # Current development status
+    └── Planning Analytics.postman_collection.json   # IBM REST API reference
 ```
 
 ---
 
-## Architecture
+## 🏗️ Architecture
 
 ```
 Browser  ←→  Express (server.js)  ←→  PAW  ←→  TM1 Server
 ```
 
-- The backend never connects to TM1 directly — all calls go through PAW at `/api/v0/tm1/{server}/api/v1/`
-- PAW handles TM1 authentication; the IDE authenticates with PAW using the credentials in `.env`
-- `core/tm1_client.js` wraps every TM1 API call — routes call client methods, never the API directly
-- The frontend uses TanStack Query for all server state — all cache keys include the server name
+- The backend never connects to TM1 directly — all calls route through PAW at `/api/v0/tm1/{server}/api/v1/`
+- PAW handles TM1 authentication — the IDE authenticates with PAW using credentials in `.env`
+- `core/tm1_client.js` wraps every TM1 API call — routes never call the API directly
+- The frontend uses **TanStack Query** for all server state — all cache keys include the server name
 
 ---
 
-## Multi-User Login
+## 👥 Multi-User Login
 
-The IDE supports multiple simultaneous users. Each login produces an isolated session token — all TM1 calls made during that session use that user's credentials, so TM1 `}Clients` group membership controls what each user can see and do.
+Multiple users can be logged in simultaneously. Each login produces an isolated session token — TM1 `}Clients` group membership controls what each user can see and do.
 
-- Each login creates a **per-user session** (UUID token, stored in memory, auto-refreshed on expiry)
-- All TM1 API calls are routed through that user's session — no shared credentials
+- Each login creates a **per-user PAW session** (UUID token, auto-refreshed on expiry)
 - Each user gets their own **active change set** per server — no audit trail collisions
 
 ### Connection Adapters
 
-The adapter used for each server is determined by `config/servers.json` — not by any `.env` variable. Three adapters are available:
-
 | Adapter | `servers.json` key | When to use |
 | ------- | ------------------ | ----------- |
-| `paw-native` | `"adapter": "paw-native"` | PAW V11 or V12 with TM1 native auth. Each user's PAW session is created on login with their own credentials. Default when `servers.json` is a plain array. |
-| `direct-v11` | `"adapter": "direct-v11"` | Bypass PAW entirely — connect directly to the TM1 admin server (`HTTPPortNumber`). Useful when PAW is unavailable or not deployed. |
-| `paw-oauth2` | `"adapter": "paw-oauth2"` | PAW V12 with Authentik/OAuth2. Uses a machine credential (client ID + secret) — not per-user. Suitable for service accounts or CI. |
+| `paw-native` | `"adapter": "paw-native"` | PAW V11 or V12 with TM1 native auth. Default for plain-array `servers.json`. |
+| `direct-v11` | `"adapter": "direct-v11"` | Bypass PAW — connect directly to the TM1 admin server (`HTTPPortNumber`). |
+| `paw-oauth2` | `"adapter": "paw-oauth2"` | PAW V12 with Authentik/OAuth2. Uses a machine credential (client ID + secret). |
 
-**Simple setup** — plain array in `servers.json` routes all servers through `paw-native` using `PAW_HOST` from `.env`:
-
-```json
-[{ "name": "Production" }, { "name": "Development" }]
-```
-
-**Advanced setup** — use `connections` (PAW-based) or `adminHosts` (direct TM1) blocks:
+<details>
+<summary>Advanced servers.json (multi-adapter / multi-PAW-host)</summary>
 
 ```json
 {
@@ -378,27 +367,19 @@ The adapter used for each server is determined by `config/servers.json` — not 
 }
 ```
 
+</details>
+
 ### PAW Login Server
 
-PAW validates all logins against one specific TM1 server — the **TM1 Login Server** — configured in the PAW Admin Console under **Configuration → TM1 Login Server URI**. Users must exist on that server's `}Clients` to log into PAW. Users created on any other TM1 server are invisible to PAW authentication.
+PAW validates all logins against one specific TM1 server — configured in the PAW Admin Console under **Configuration → TM1 Login Server URI**. Users must exist on that server's `}Clients` to log in.
 
-Set `loginServer` on the relevant connection in `servers.json` (or `PAW_LOGIN_SERVER` in `.env` for the plain-array setup). All User Management operations always target this server regardless of which workspace server is active.
+Set `loginServer` in `servers.json` (or `PAW_LOGIN_SERVER` in `.env` for the plain-array setup).
 
 ### Creating Users
 
-Open the **User Management** panel (shield icon in the header). Create users with:
+Open the **User Management** panel (shield icon in the header). New users must log into the PAW workspace directly at least once to activate their workspace profile.
 
-- Username + Password
-- Display name (optional)
-- Group membership (defaults to `ADMIN`)
-
-Under the hood, the IDE uses the TM1 REST API (`POST /Users`) to create the account with a password set against `PAW_LOGIN_SERVER`.
-
-### Workspace Activation
-
-New users **must log into the PAW workspace directly** (`http://paw-host`) at least once before they appear in the PAW Admin Console. PAW creates a workspace profile on first login. After that, the user can log into the IDE or PAW interchangeably with the same credentials.
-
-### API Endpoints
+### Auth API
 
 | Method | Path | Purpose |
 |--------|------|---------|
@@ -406,152 +387,60 @@ New users **must log into the PAW workspace directly** (`http://paw-host`) at le
 | `POST` | `/api/auth/logout` | Invalidate session |
 | `GET` | `/api/users` | List TM1 users |
 | `POST` | `/api/users/provision` | Create user with password + groups |
-| `PATCH` | `/api/users/:name` | Update user (enable/disable, friendly name) |
+| `PATCH` | `/api/users/:name` | Update user |
 | `DELETE` | `/api/users/:name` | Delete user |
 | `POST` | `/api/users/:name/password` | Reset password |
-| `GET` | `/api/groups` | List TM1 groups |
 
 ---
 
-## Provisioning a New TM1 Server Instance
+## 🚢 Deployment Pipeline
 
-To set up a new Dev or Test TM1 instance on Windows, use the included PowerShell script:
+<details>
+<summary>Built-in CI/CD for promoting changes from Dev to Prod — click to expand</summary>
 
-```powershell
-.\tools\provision-tm1-server.ps1
-```
+Every save in the IDE is logged to a **Change Set** (named work session). The pipeline compares your changes against a baseline snapshot of **Prod** — not Dev — so only objects that have actually changed relative to Prod get packaged.
 
-The script prompts for the instance name, port numbers, and directory paths, generates a `tm1s.cfg` from an existing server's config, and creates the required directory structure (`Data\`, `Logs\`, `Files\Scripts\`, `Files\Import\`, `Files\Export\`). After running it, open Cognos Configuration, point it at the new root directory, and start the instance.
-
-See [docs/provision-tm1-server.md](docs/provision-tm1-server.md) for full instructions.
-
----
-
-## Deployment Pipeline (tm1deploy)
-
-The IDE includes a built-in CI/CD pipeline for promoting changes from Dev to Prod. The full workflow is available in the browser — no CLI required.
-
-### Concept
-
-Every save in the IDE is logged to a **Change Set** (named work session). When you're ready to deploy, the pipeline compares your changes against a baseline snapshot of **Prod** (the target), not Dev. This ensures that only objects which have actually changed relative to Prod are packaged — and that nothing is deployed if Prod has drifted since the baseline was taken.
-
-### Flow Overview
+### Flow
 
 ```
-           ①                           ②                        ③
-  ┌─────────────────┐         ┌──────────────────┐       ┌─────────────────┐
-  │  Seed baseline   │         │  Align Dev        │       │  Work in Dev     │
-  │  from Prod       │────────→│  to match Prod    │──────→│  via change set  │
-  │  (snapshot)      │         │  (provision)      │       │  (IDE tracks)    │
-  └─────────────────┘         └──────────────────┘       └────────┬────────┘
-                                                                  │
-                                                                  ▼
-           ④                           ⑤                           ⑥
-  ┌─────────────────┐         ┌──────────────────┐       ┌─────────────────┐
-  │  Diff Dev vs     │         │  Drift re-check   │       │  Risk + Deploy   │
-  │  Prod baseline   │────────→│  Prod hasn't      │──────→│  to Prod         │
-  │  (package)       │         │  changed?         │       │                  │
-  └─────────────────┘         └──────────────────┘       └─────────────────┘
+  ① Seed baseline     ② Align Dev         ③ Work in Dev
+    from Prod    ──→    to match Prod  ──→   via change set
+    (snapshot)          (provision)          (IDE tracks)
+                                                  │
+                                                  ▼
+  ④ Diff Dev vs       ⑤ Drift re-check     ⑥ Risk + Deploy
+    Prod baseline ──→   Prod hasn't    ──→   to Prod
+    (package)           changed?
 ```
 
-### Step ① — Provision Dev from Prod
+### Steps
 
-Before starting work, align Dev to match Prod's current state:
-
-```powershell
-.\tools\provision-tm1-server.ps1 -TemplateCfg "\\prod-server\tm1s.cfg"
-```
-
-This creates a Dev instance with the same config and provisions all TM1 objects
-(cubes, dimensions, rules, processes, subsets, views). **This script does not
-exist yet — it needs to be built.** Currently Dev is set up manually or from
-a template config.
-
-### Step ② — Seed the Baseline from Prod
-
-Seed by running the deploy CLI against your Prod server:
-
+**① Seed** — snapshot Prod's object state into `.tm1baseline/snapshot.json`:
 ```bash
 node tools/tm1deploy/bin/tm1deploy.js seed Production
 ```
 
-This snapshots Prod's entire object state into `.tm1baseline/snapshot.json`.
-Every diff from this point forward compares against this reference.
+**② Work** — click the **Clock** icon → name the change set → **Start**. Green dots appear in the Explorer sidebar on every changed object.
 
-Best practice: re-seed after every successful deployment to Prod so the
-baseline always reflects what's live.
-
-### Step ③ — Work in a Change Set
-
-Click the **Clock** icon in the header → name the change set → **Start**.
-
-Everything saved in the IDE while the change set is active gets logged.
-Green indicator dots appear in the Explorer sidebar on every changed object.
-Close the change set when your work is done.
-
-Each developer with their own PAW login gets their **own active change set**
-per server — no collision in the audit trail.
-
-### Step ④ — Diff & Package
-
-Open the **Change Sets** panel → hover the change set row → click the green
-**Rocket**. The Deploy Panel opens. Step 1 (Diff) compares your session's
-logged changes against the Prod baseline:
+**③ Diff & Package** — hover the change set row in the Change Sets panel → click the green **Rocket**. The Deploy Panel opens:
 
 | Outcome | Meaning |
 |---------|---------|
-| `MATCH` | Changed in Dev, verified against Prod baseline — ready to deploy |
-| `NEW` | Object exists on Dev but not in Prod baseline (e.g. new cube) |
-| `DRIFT` | Dev's current state differs from the last IDE save — re-save or investigate |
-| `UNCHANGED` | Object in the session is the same as the Prod baseline — nothing to deploy |
-| `MISSING` | Object in baseline but not found on Dev — possibly deleted |
-| `ERROR` | Fetch failed |
+| `MATCH` | Changed in Dev, verified against baseline — ready to deploy |
+| `NEW` | Object exists on Dev but not in baseline |
+| `DRIFT` | Dev's current state differs from the last IDE save |
+| `UNCHANGED` | Same as baseline — nothing to deploy |
+| `MISSING` | In baseline but not found on Dev — possibly deleted |
 
-Step 2 (Package) fetches `MATCH` + `NEW` objects from Dev and writes them to
-a `packages/` folder with a manifest. Drift and missing objects are skipped.
+**④ Risk** — two phases run automatically:
+1. **Drift check** — fetches current state from Prod and compares to baseline. Any drift **blocks deployment** until you re-seed.
+2. **Risk analysis** (if Phase 1 is clean) — syntax, dependencies, structural impact → `BLOCKER` / `WARNING` / `INFO`
 
-For **dimension** objects, the package includes:
+**⑤ Approve** — a named approver signs off with optional notes. Required before deployment unlocks.
 
-- Full element list, edges, and attribute definitions
-- **Element delta** — specific element names added and removed relative to the baseline, shown as green/red chips in the manifest UI
-- `}ElementFormats_{dim}` — all element format strings (width, colour, font, etc.) read via MDX and written on deploy
-- `}ElementAttributes_{dim}` — attribute values for all elements
-
-When packaging a **rules** or **cube** object, the packager also checks whether a corresponding `}Picklist_{cube}` control cube exists on Dev. If it does and its cells have changed relative to the baseline (or it is new), the picklist cube is **automatically included** in the package as a `picklist-cube` object — no manual step required.
-
-### Step ⑤ — Risk, Approve & Deploy
-
-**Step 3 (Risk):** Select the target server (Prod) and click **Run Check**. The step runs two phases automatically:
-
-**Phase 1 — Drift check.** For each packaged object, the IDE fetches its current state from the target and compares it against the baseline snapshot taken at seeding time:
-
-- **All match** → Prod hasn't changed since seeding → Phase 2 runs immediately
-- **Any differ** → Prod has drifted. A table shows each drifted object and what changed (e.g. "Rules changed on target since baseline"). **Deployment is blocked.** The developer must:
-  1. Re-seed the baseline from Prod (Step 1 → Seed)
-  2. Re-align Dev to the new baseline
-  3. Re-package before retrying
-
-This prevents silent overwrites of changes made directly on Prod (hotfixes, manual edits) since the baseline was taken. Objects with outcome `NEW` (not in baseline) are skipped — there's no prior record to compare against. If no baseline exists, the drift check is skipped with a warning.
-
-**Phase 2 — Risk analysis** (only runs if Phase 1 is clean):
-
-- **Syntax** — rules checked via `tm1.CheckRules` against the target cube
-- **Dependencies** — cube dimensions, parent dimensions for subsets/views, and parent cubes for views must exist on target
-- **Picklist dependencies** — for any packaged `}Picklist_{cube}` object, cell values are parsed to validate `dimension:Dim` and `subset:Dim:SubsetName` references exist on target (`BLOCKER` if missing)
-- **Chore conflicts** — active or running chores referencing a packaged process are flagged
-- **Structural impact** — elements removed from a dimension on target raise `WARNING` (or `BLOCKER` for large removals or consolidation removal)
-
-Returns `BLOCKER` / `WARNING` / `INFO`. Blockers prevent deployment.
-
-**Step 4 (Approve):** A named approver signs off with optional notes before deployment is unlocked. The approval record (name, timestamp, notes) is stored permanently in the archive.
-
-**Step 5 (Deploy):** Confirm and push. Objects are written in dependency order: attributes → dimensions → cubes → picklist cubes → rules → subsets → views → processes. Picklist cubes deploy after their parent cube (so the cube exists) and before rules (which may reference picklist behaviour).
-
-Before deployment begins, the IDE captures a **pre-deploy snapshot** of the target server's current state for every packaged object. After deployment, a **post-deploy snapshot** is taken. Both are stored in the archive record alongside the manifest and results. In Deploy History, each deployment shows a per-object table with changed/unchanged status and a **Diff** button to compare pre/post state inline in the IDE diff viewer.
+**⑥ Deploy** — objects written in dependency order: attributes → dimensions → cubes → picklist cubes → rules → subsets → views → processes. Pre/post snapshots captured and stored in Deploy History.
 
 ### CLI (optional)
-
-The same pipeline is available as a CLI for scripting and CI use:
 
 ```bash
 node tools/tm1deploy/bin/tm1deploy.js seed <prod-server>
@@ -561,14 +450,22 @@ node tools/tm1deploy/bin/tm1deploy.js risk <package-dir> <target-server>
 node tools/tm1deploy/bin/tm1deploy.js deploy <package-dir> <target-server>
 ```
 
----
-
-## IBM REST API Reference
-
-The full IBM Planning Analytics REST API is documented in `docs/Planning Analytics.postman_collection.json`. This covers all endpoint groups: Dimensions, Cubes, Processes, Chores, Views/MDX, Subsets, Sessions, Transactions, Jobs, ErrorLogFiles, Metrics, Configuration, File Management, GIT integration, and PAW Workspace management.
+</details>
 
 ---
 
-## Status
+## 📖 IBM REST API Reference
 
-Active development. Core IDE features are complete and production-stable. In-progress work tracked in `docs/STATUS.md`.
+The full IBM Planning Analytics REST API is documented in [`docs/Planning Analytics.postman_collection.json`](docs/Planning%20Analytics.postman_collection.json). Covers: Dimensions, Cubes, Processes, Chores, Views/MDX, Subsets, Sessions, Transactions, Jobs, ErrorLogFiles, Metrics, Configuration, File Management, GIT integration, and PAW Workspace management.
+
+---
+
+## 📊 Status
+
+Active development. Core IDE features are complete and production-stable.
+
+---
+
+<div align="center">
+Built for the IBM Planning Analytics community · <a href="https://github.com/falconbi/tm1_ide/issues">Report an issue</a>
+</div>
