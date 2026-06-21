@@ -312,6 +312,11 @@ export function buildMonacoTheme(baseTheme, colourSettings) {
       'editor.selectionBackground': selection,
       'editor.lineHighlightBackground': lineHighlight,
       'editorCursor.foreground': fg,
+      // Diff editor — vivid green/red so +/- lines pop clearly
+      'diffEditor.insertedLineBackground':  isDark ? '#1a3a1a' : '#d4f7d4',
+      'diffEditor.removedLineBackground':   isDark ? '#3a1a1a' : '#ffd4d4',
+      'diffEditor.insertedTextBackground':  isDark ? '#2a5a2a' : '#a8e6a8',
+      'diffEditor.removedTextBackground':   isDark ? '#5a2a2a' : '#f0a0a0',
     },
   }
 }

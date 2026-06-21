@@ -185,7 +185,6 @@ export default function App() {
       <QueryClientProvider client={queryClient}>
         <TooltipProvider>
           <LoginPage />
-          <Toaster />
         </TooltipProvider>
       </QueryClientProvider>
     )
@@ -353,7 +352,7 @@ export default function App() {
         {showUserMgmt && server && <UserManagement server={server} onClose={() => setShowUserMgmt(false)} />}
         {showCatalog && <CatalogAdmin server={server} onClose={() => setShowCatalog(false)} initialTab={catalogTab} />}
         <PeriodBuilder open={showPeriodBuilder} onClose={() => setShowPeriodBuilder(false)} />
-        <Toaster position="bottom-right" />
+        <Toaster position="bottom-right" duration={3000} />
       </TooltipProvider>
     </QueryClientProvider>
   )

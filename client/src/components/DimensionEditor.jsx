@@ -625,7 +625,7 @@ function AttrGrid({ tab, elements, edges, hierarchy }) {
             attr.Type === 'Numeric' ? 'text-sky-400/70' : attr.Type === 'Alias' ? 'text-amber-400/70' : 'text-muted-foreground/50')}>
             {attr.Type === 'Numeric' ? 'N' : attr.Type === 'Alias' ? 'A' : 'S'}
           </span>
-          {attr.Type === 'String' && (
+          {attr.Type === 'String' && !['Format', 'Picklist'].includes(attr.Name) && (
             <button onClick={() => handleConvertToAlias(attr.Name)}
               className="opacity-0 group-hover:opacity-100 text-amber-500 hover:text-amber-400 transition-opacity text-[8px] font-bold leading-none"
               title={`Convert ${attr.Name} to Alias type`}>

@@ -105,7 +105,7 @@ function LogEntry({ entry, server, openTab }) {
           <button
             onClick={openDiff}
             title="View diff"
-            className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+            className="p-1 rounded hover:bg-muted text-emerald-500/70 hover:text-emerald-400 transition-colors"
           >
             <Diff size={10} />
           </button>

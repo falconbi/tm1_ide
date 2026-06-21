@@ -15,9 +15,9 @@ All TM1 communication routes through Planning Analytics Workspace (PAW), so ther
 | **Rules Editor** | Monaco editor with TM1 rules syntax highlighting, live validation (CheckRules API) + static analysis (arg counts, keyword validity, line-accurate squiggles), **Check Now** button with green/red pass/fail glow, code formatter (3 structure presets), **#Region/#EndRegion folding**, lineage trace panel, **cell calculation trace** (shows full rule chain for any cell), snippet library, **Feeders** button (`tm1.CheckFeedersForRules`), **post-save reference check** (dead cube/dimension warnings as amber toasts) |
 | **TI Editor** | Four-tab editor (Prolog / Metadata / Data / Epilog), parameter editor, datasource editor with CSV file upload to TM1 server, run with output log, **error log viewer** (reads TM1 `.log` file inline after errors), static analysis (IF/WHILE/FOR/NEXT block structure, arg counts), **block folding**, debugger, snippets, pattern generators, **post-save reference check** (dead cube/dimension/process warnings as amber toasts), **Validate** toolbar button — tests every `TI_CATALOG` function against the live TM1 server and shows pass/fail (see Function Catalog Maintenance below) |
 | **TI Debugger** | Set breakpoints in any section, capture variable values at each breakpoint, watch panel, section-by-section execution |
-| **Dimension Editor** | Hierarchy tree with drag-style CRUD, attribute grid, element search, bulk CSV import, attribute definition management. AttrGrid toolbar has a **Refresh** button (re-fetches without closing the tab) and a per-column **→A** button on String-type attributes to convert them to Alias in one click — existing values are preserved via delete+recreate + bulk value copy |
+| **Dimension Editor** | Hierarchy tree with drag-style CRUD, attribute grid, element search, bulk CSV import, attribute definition management. AttrGrid toolbar has a **Refresh** button (re-fetches without closing the tab), a per-column **→A** button on String-type attributes (excluding Format and Picklist) to convert them to Alias in one click — existing values are preserved via delete+recreate + bulk value copy, and a **Format picker** for the Format attribute with colour swatch support (`@colour` convention) |
 | **Subset Editor** | MDX code view + visual element tree, static/MDX save, MDX preview, ghost children |
-| **View Editor** | Native and MDX view builder, cell grid with inline writeback, save/save-as, **auto-refreshes when rules for the same cube are saved**, **Feeders** toolbar button (`tm1.CheckFeedersForRules` + amber zero-cell highlighting for leaf rule cells with zero value — likely missing feeders), **cell right-click context menu** (see below) |
+| **View Editor** | Native and MDX view builder, cell grid with inline writeback, save/save-as, **auto-refreshes when rules for the same cube are saved**, **Feeders** toolbar button (`tm1.CheckFeedersForRules` + amber zero-cell highlighting for leaf rule cells with zero value — likely missing feeders), **cell right-click → Trace** (opens side drawer, see below) |
 | **Guided MDX Builder** | Axis-by-axis view builder, subset filter builder, MDX execution |
 | **Chore Editor** | Schedule editor, step list, activate/deactivate/execute on demand |
 | **Cube Editor** | Create and delete cubes, dimension assignment |
@@ -26,23 +26,31 @@ All TM1 communication routes through Planning Analytics Workspace (PAW), so ther
 | **Deploy Panel** | 5-step wizard: Diff (change set vs Prod baseline) → Package (fetch + manifest) → Risk (**drift check** then BLOCKER/WARNING/INFO analysis) → **Approve** (named sign-off with notes, required before deploy) → Deploy (dependency-ordered, dry-run option) |
 | **Deploy History** | Permanent archive of every real deployment — approval record, manifest, deploy results, and **pre/post target snapshots** (state of each deployed object on the target before and after the push). Changed objects show a Diff button that opens the IDE diff viewer. |
 
-### View Editor — Cell Right-Click Menu
+### View Editor — Cell Right-Click → Trace
 
-Right-clicking any cell in the View Editor grid opens a fixed-position popup with the cube name, LEAF/CONSOLIDATED badge, and the full dimension:element coordinate strip. Each coordinate has a `→` link that opens the corresponding Dimension Editor tab.
+Right-clicking any cell opens a minimal popup showing the cube name, LEAF/CONSOLIDATED badge, and the element strip. Clicking **Trace** closes the popup and opens a 440px fixed right-side drawer:
 
-| Panel | Visible on | What it shows |
-| ----- | ---------- | ------------- |
-| **Write** | Leaf cells only | Inline value entry — writes via `tm1.Update`, then auto-refreshes the view |
-| **Trace** | All cells | Full rule chain: `Type` badge (RULE / CONSOLIDATED / BASE / FEEDER), rule statements, component breakdown with per-component values |
-| **Feeders** | All cells | `tm1.CheckFeedersOfCell` result — lists all feeder sources, or an amber warning if none found |
-| **Breakdown** | Consolidated cells | Direct children of each consolidated dimension member — sorted by absolute value with a contribution bar and percentage |
-| **Leaves** | Consolidated cells | All N-level leaf descendants (BFS walk via full edge set, up to 100 queried, top 50 shown) — sorted by absolute value with contribution bar and percentage |
-| **Log** | All cells | Transaction history for this intersection — last 30 writes with timestamp, user, old and new value |
-| **Notes** | All cells | Cell annotations — view, add, or delete free-text notes attached to this intersection |
-| **Copy** | All cells | Copies `dim: element` pairs and the MDX tuple `([Dim].[Dim].[Elem], ...)` to the clipboard |
-| **Rules** | All cells | Opens the Rules Editor tab for the cube |
+- **Rule statements** — displayed via `RuleBreakdown`: each `DB()`, `ATTRN()`, `ATTRS()` call is annotated with the resolved cube/element/attribute values fetched live
+- **Components** — each consolidated or rule-driven component shown with a type badge (RULE / CONSOLIDATED / BASE / FEEDER) and its current value
+- **Drill-down navigation** — clicking any same-cube component re-runs the trace at that intersection and pushes onto a breadcrumb stack; clicking a breadcrumb entry jumps back up; **Back** button pops one level
+- Cross-cube feeder components are shown in blue but are not drillable (dimension order may differ)
 
-For **Breakdown** and **Leaves**, the server uses `getEdges()` (one call) to build the complete parent→children map for each consolidated dimension, then executes one MDX query per C-dimension to fetch the values. Other dimensions are held at their current member in the WHERE clause.
+### View Editor — Cell Formatting
+
+The View Editor reads the **Format** attribute from every dimension's `}ElementAttributes_` table and applies it to cell values in the grid. Add a `Format` attribute (String type) to your measure dimension and set values per element:
+
+| Format value | Effect |
+| ------------ | ------ |
+| `#,##0` | Integer with thousands separator |
+| `#,##0.0` | One decimal place |
+| `#,##0.00` | Two decimal places |
+| `$#,##0` | Dollar with thousands separator |
+| `#,##0.0%` | Percentage — value is multiplied by 100 (TM1 standard: store 0.101 → display 10.1%) |
+| `#,##0.0%/100` | Percentage — value already stored as the display number (store 10.1 → display 10.1%) |
+| `@` | Text / string cell — displayed in cyan (dark mode) or teal (light mode) to distinguish from numeric |
+| `@blue` / `@#ff0000` | Text cell with a specific colour applied — named CSS colours or hex codes |
+
+Format lookup is **dimension-aware**: if two dimensions have elements with the same name, each element's own dimension is checked first, avoiding cross-dimension collisions. The Format attribute is cached per-query and invalidated immediately when you save a change in the Dimension Editor.
 
 ### Explorer (Left Sidebar)
 
