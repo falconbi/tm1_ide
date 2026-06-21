@@ -111,7 +111,7 @@ function EditableDatasourcePanel({ ds, server, onChange }) {
       const buffer = await file.arrayBuffer()
       const r = await fetch(
         `/api/files/upload?server=${enc(server)}&name=${enc(file.name)}`,
-        { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: buffer }
+        { method: 'POST', headers: { 'Content-Type': 'application/octet-stream', 'x-ide-token': localStorage.getItem('tm1-token') ?? '' }, body: buffer }
       )
       const d = await r.json()
       if (!r.ok) throw new Error(d.error || 'Upload failed')
@@ -407,7 +407,7 @@ function DatasourceInsertDialog({ server, onInsert, onClose }) {
       const buffer = await file.arrayBuffer()
       const r = await fetch(
         `/api/files/upload?server=${enc(server)}&name=${enc(file.name)}`,
-        { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: buffer }
+        { method: 'POST', headers: { 'Content-Type': 'application/octet-stream', 'x-ide-token': localStorage.getItem('tm1-token') ?? '' }, body: buffer }
       )
       const d = await r.json()
       if (!r.ok) throw new Error(d.error || 'Upload failed')
@@ -1084,7 +1084,7 @@ export default function ProcessEditor({ tab }) {
     setErrorLogFilename(null)
     setErrorLogContent(null)
     setErrorLogOpen(false)
-    const id = toast.loading('Running process…', { duration: 30000 })
+    const id = toast.loading('Running process…')
     runProcess.mutate(
       { server: tab.server, name: tab.name, params: values },
       {
@@ -1117,7 +1117,7 @@ export default function ProcessEditor({ tab }) {
     setErrorLogLoading(true)
     setErrorLogContent(null)
     try {
-      const r = await fetch(`/api/process/errorlog/content?server=${encodeURIComponent(tab.server)}&filename=${encodeURIComponent(errorLogFilename)}`)
+      const r = await fetch(`/api/process/errorlog/content?server=${encodeURIComponent(tab.server)}&filename=${encodeURIComponent(errorLogFilename)}`, { headers: { 'x-ide-token': localStorage.getItem('tm1-token') ?? '' } })
       const d = await r.json()
       setErrorLogContent(d.content ?? '')
     } catch {
@@ -1134,7 +1134,7 @@ export default function ProcessEditor({ tab }) {
     CODE_TABS.forEach(({ key }) => { body[key] = edits[key] ?? '' })
     if (paramEdits !== null) body.Parameters = paramEdits.map(p => ({ Name: p.Name, Type: toTypeStr(p.Type), Value: String(p.Value ?? ''), Prompt: p.Prompt ?? '' }))
     if (dsEdits !== null) body.DataSource = dsEdits
-    const id = toast.loading(`Creating "${name}"…`, { duration: 30000 })
+    const id = toast.loading(`Creating "${name}"…`)
     createProcess.mutate({ server: tab.server, name }, {
       onSuccess: () => saveProcess.mutate({ server: tab.server, name, body }, {
         onSuccess: () => { toast.success(`Process created`, { id }); patchTab(tab.id, { name, label: name }) },
@@ -1161,7 +1161,7 @@ export default function ProcessEditor({ tab }) {
     if (dsEdits !== null) {
       body.DataSource = dsEdits
     }
-    const id = toast.loading('Saving process…', { duration: 30000 })
+    const id = toast.loading('Saving process…')
     saveProcess.mutate(
       { server: tab.server, name: tab.name, body },
       {
@@ -1198,7 +1198,7 @@ export default function ProcessEditor({ tab }) {
     CODE_TABS.forEach(({ key }) => { body[key] = edits[key] ?? data?.[key] ?? '' })
     if (paramEdits !== null) body.Parameters = paramEdits.map(p => ({ Name: p.Name, Type: toTypeStr(p.Type), Value: String(p.Value ?? ''), Prompt: p.Prompt ?? '' }))
     if (dsEdits !== null) body.DataSource = dsEdits
-    const id = toast.loading(`Creating "${newName}"…`, { duration: 30000 })
+    const id = toast.loading(`Creating "${newName}"…`)
     createProcess.mutate({ server: tab.server, name: newName }, {
       onSuccess: () => saveProcess.mutate({ server: tab.server, name: newName, body }, {
         onSuccess: () => {

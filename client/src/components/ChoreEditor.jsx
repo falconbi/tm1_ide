@@ -155,7 +155,7 @@ export default function ChoreEditor({ tab }) {
   const handleCreate = () => {
     if (!choreName.trim()) { toast.error('Enter a chore name'); return }
     const name = choreName.trim()
-    const id = toast.loading(`Creating chore "${name}"…`, { duration: 30000 })
+    const id = toast.loading(`Creating chore "${name}"…`)
     createChore.mutate({ server, name, body: buildBody() }, {
       onSuccess: () => {
         toast.success(`Chore "${name}" created`, { id })
@@ -168,7 +168,7 @@ export default function ChoreEditor({ tab }) {
 
   const handleSave = () => {
     const body = buildBody()
-    const id = toast.loading('Saving chore…', { duration: 30000 })
+    const id = toast.loading('Saving chore…')
     saveChore.mutate({ server, name: tab.name, body }, {
       onSuccess: () => { toast.success('Chore saved', { id }); setDirty(false) },
       onError:   e  => toast.error(e.message, { id }),

@@ -406,7 +406,7 @@ function RulesEditor({ tab, onCursor }) {
   const doSave = () => {
     const editor = editorRef.current
     if (!editor) return
-    const id = toast.loading('Saving rules…', { duration: 30000 })
+    const id = toast.loading('Saving rules…')
     saveRules.mutate(
       { server: tab.server, cube: tab.cube, rules: editor.getValue() },
       {

@@ -44,7 +44,7 @@ export default function MDXSubsetBuilder({
     try {
       const res = await fetch(`/api/subset/preview?server=${encodeURIComponent(server)}&dimension=${encodeURIComponent(dimension)}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'x-ide-token': localStorage.getItem('tm1-token') ?? '' },
         body: JSON.stringify({ mdx }),
       })
       const data = await res.json()

@@ -159,7 +159,7 @@ async function writeCell(server, cube, coords, slicerCoords, value, cubeDimOrder
   // TM1 Update accepts string values for both numeric and string cells (it parses where needed).
   const res = await fetch('/api/cells/write', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', 'x-ide-token': localStorage.getItem('tm1-token') ?? '' },
     body: JSON.stringify({ server, cube, dims: allDims, value }),
   })
   const d = await res.json()
@@ -346,7 +346,7 @@ export default function ResultGrid({ axes, cells, truncated, onReady, server, cu
     if (!writes.length) { toast.error('No writable cells in paste range'); return }
 
     // Optimistic update
-    const toastId = toast.loading(`Writing ${writes.length} cell(s)…`, { duration: 30000 })
+    const toastId = toast.loading(`Writing ${writes.length} cell(s)…`)
     try {
       await Promise.all(writes.map(w => writeCell(server, cube, w.coords, effectiveSlicers, w.value, cubeDimOrder)))
       // Update grid display

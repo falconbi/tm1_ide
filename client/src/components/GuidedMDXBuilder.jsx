@@ -944,7 +944,7 @@ export default function GuidedMDXBuilder({ tab, server: serverProp, onSwitchToRa
       setPreviewLoading(true)
       try {
         const res = await fetch(`/api/subset/preview?server=${encodeURIComponent(server)}&dimension=${encodeURIComponent(selectedDim)}`, {
-          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mdx: currentMDX }),
+          method: 'POST', headers: { 'Content-Type': 'application/json', 'x-ide-token': localStorage.getItem('tm1-token') ?? '' }, body: JSON.stringify({ mdx: currentMDX }),
         })
         const d = await res.json()
         if (res.ok) setPreviewMembers(d.members || [])

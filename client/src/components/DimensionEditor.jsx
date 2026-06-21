@@ -952,7 +952,7 @@ function NewDimensionScreen({ tab }) {
   const handleCreate = () => {
     const n = name.trim()
     if (!n) return
-    const id = toast.loading(`Creating "${n}"…`, { duration: 30000 })
+    const id = toast.loading(`Creating "${n}"…`)
     createMut.mutate({ server: tab.server, name: n }, {
       onSuccess: () => {
         toast.success(`Created ${n}`, { id })

@@ -67,7 +67,7 @@ export default function MDXSandbox({ tab }) {
     try {
       const res = await fetch(`/api/mdx/execute?server=${encodeURIComponent(tab.server)}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'x-ide-token': localStorage.getItem('tm1-token') ?? '' },
         body: JSON.stringify({ mdx: q }),
       })
       const data = await res.json()

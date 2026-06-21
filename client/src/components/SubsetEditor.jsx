@@ -342,7 +342,7 @@ export default function SubsetEditor({ tab }) {
       try {
         const enc = encodeURIComponent
         const r = await fetch(`/api/subset/preview?server=${enc(tab.server)}&dimension=${enc(tab.dimension)}`, {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          method: 'POST', headers: { 'Content-Type': 'application/json', 'x-ide-token': localStorage.getItem('tm1-token') ?? '' },
           body: JSON.stringify({ mdx, limit: 1 }),
         })
         if (!r.ok) {
@@ -392,7 +392,7 @@ export default function SubsetEditor({ tab }) {
   }
 
   const doSave = () => {
-    const id = toast.loading('Saving…', { duration: 30000 })
+    const id = toast.loading('Saving…')
     saveSubset.mutate(
       { server: tab.server, dimension: tab.dimension, name: tab.subsetName, mdx },
       { onSuccess: () => { setDirty(false); markTabSaved(tab.id); toast.success('Saved', { id }); bumpSubsetVersion(tab.server, tab.dimension) }, onError: (e) => toast.error(e.message, { id }) }
@@ -409,7 +409,7 @@ export default function SubsetEditor({ tab }) {
   const commitSaveAs = () => {
     const name = saveAsName.trim(); setSaveAsOpen(false); setSaveAsName('')
     if (!name || name === tab.subsetName) return
-    const id = toast.loading(`Saving as "${name}"…`, { duration: 30000 })
+    const id = toast.loading(`Saving as "${name}"…`)
     saveSubset.mutate(
       { server: tab.server, dimension: tab.dimension, name, mdx },
       { onSuccess: () => { toast.success(`Saved as "${name}"`, { id }); bumpSubsetVersion(tab.server, tab.dimension); closeTab(tab.id); openTab({ id: `subset:${tab.server}:${tab.dimension}:${name}`, type: 'subset', label: name, server: tab.server, dimension: tab.dimension, subsetName: name }) }, onError: e => toast.error(e.message, { id }) }
@@ -472,7 +472,7 @@ export default function SubsetEditor({ tab }) {
     setCopyingPrompt(true)
     try {
       const enc = encodeURIComponent
-      const r = await fetch(`/api/elements?server=${enc(tab.server)}&dimension=${enc(tab.dimension)}`)
+      const r = await fetch(`/api/elements?server=${enc(tab.server)}&dimension=${enc(tab.dimension)}`, { headers: { 'x-ide-token': localStorage.getItem('tm1-token') ?? '' } })
       const els = await r.json()
       const sample = els.slice(0, 200).map(e => `${e.Name} (${e.Type === 'N' ? 'leaf' : e.Type === 'C' ? 'consolidated' : 'string'}, level ${e.Level})`).join('\n')
       await navigator.clipboard.writeText(`TM1 MDX expert. Generate a valid TM1 MDX set expression for dimension: ${tab.dimension}\n\nSample elements:\n${sample}\n\nRequest: ${aiPrompt || '(describe what you want)'}`)

@@ -269,7 +269,7 @@ export default function CatalogAdmin({ server, onClose, initialTab = 'ti' }) {
     try {
       const r = await fetch('/api/admin/catalog-overrides', {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'x-ide-token': localStorage.getItem('tm1-token') ?? '' },
         body: JSON.stringify(overrides),
       })
       if (!r.ok) throw new Error((await r.json()).error)

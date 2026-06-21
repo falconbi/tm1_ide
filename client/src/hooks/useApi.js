@@ -566,7 +566,7 @@ export const useRemoveClientFromGroup = () => { const qc = useQueryClient(); ret
 export const useFilesAvailable = (server) => useQuery({
   queryKey: ['files-available', server],
   queryFn:  async () => {
-    const r = await fetch(`/api/files/list?server=${enc(server)}&path=${enc(JSON.stringify(['Files']))}`)
+    const r = await fetch(`/api/files/list?server=${enc(server)}&path=${enc(JSON.stringify(['Files']))}`, { headers: { 'x-ide-token': localStorage.getItem('tm1-token') ?? '' } })
     if (r.status === 404) return false
     return true
   },

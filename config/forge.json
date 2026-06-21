@@ -1,13 +1,113 @@
 {
-  "server": "24retail",
-  "tabs": [],
-  "activeTab": null,
+  "server": "TM1_Apportionment",
+  "tabs": [
+    {
+      "id": "process:TM1_Apportionment:Load-CST Activity Config-Activity to Service Line Drivers-CSV",
+      "type": "process",
+      "label": "Load-CST Activity Config-Activity to Service Line Drivers-CSV",
+      "server": "TM1_Apportionment",
+      "name": "Load-CST Activity Config-Activity to Service Line Drivers-CSV",
+      "content": {
+        "@odata.context": "$metadata#Processes/$entity",
+        "@odata.etag": "W/\"9916cfe128732009fce9ff95d0bac57ee437f4ac\"",
+        "Name": "Load-CST Activity Config-Activity to Service Line Drivers-CSV",
+        "HasSecurityAccess": false,
+        "PrologProcedure": "#****Begin: Generated Statements***\r\n#****End: Generated Statements****\r\n# =============================================\r\n# PROLOG \r\n# =============================================\r\nsCube = 'CST Activity Config';\r\nsDim_Period      = 'GBL Period';\r\nsDim_Version     = 'GBL Version';\r\nsDim_CostPool    = 'CST Cost Pool';\r\nsDim_ServiceLine = 'CST Driver';\r\nsDim_CostCentre  = 'CST Activity';\r\nsDim_Measure     = 'CST Activity Config Measure';\r\n# CLEAR CUBEVIEW\r\nsView = 'TI_Clear_Amount';\r\nsSubset = sView;\r\nIF(ViewExists(sCube, sView) = 1);\r\n    ViewDestroy(sCube, sView);\r\nENDIF;\r\nIF(SubsetExists(sDim_Measure, sSubset) = 1);\r\n    SubsetDestroy(sDim_Measure, sSubset);\r\nENDIF;\r\n# Create subset with only \"Amount\"\r\nSubsetCreate(sDim_Measure, sSubset);\r\nSubsetElementInsert(sDim_Measure, sSubset, 'Activity to Service Line Basis', 1);\r\nSubsetElementInsert(sDim_Measure, sSubset, 'Driver Value', 1);\r\nSubsetElementInsert(sDim_Measure, sSubset, 'Driver Percentage Share', 1);\r\n# Create view with subset\r\nViewCreate(sCube, sView, 1);\r\nViewSubsetAssign(sCube, sView, sDim_Measure, sView);\r\n#Zero\r\nViewZeroOut(sCube, sView);\r\n#Cleanup\r\nViewDestroy(sCube, sView);\r\nLogOutput('INFO', 'Cleared only \"Amount\" measure from cube');",
+        "MetadataProcedure": "#****Begin: Generated Statements***\r\n#****End: Generated Statements****\r\n# =============================================\r\n# METADATA\r\n# =============================================\r\n# No metadata processing needed for this simple load",
+        "DataProcedure": "#****Begin: Generated Statements***\r\n#****End: Generated Statements****\r\n# =============================================\r\n# DATA\r\n# =============================================\r\n# Skip header row\r\nIF(vGBL_Period @= 'vGBL Period');\r\n    ItemSkip;\r\nENDIF;\r\n# =============================================\r\n# DATA\r\n# =============================================\r\nsCostCentre = 'Input';\r\nIF( vMeasure @= 'Activity to Service Line Basis' );\r\n    CellPutS( vValue, sCube, vGBL_Period, vGBL_Version, vCST_Activity, vCST_Driver, vCST_Service_Line, vMeasure );\r\nELSE;\r\n    CellPutN( StringToNumber( vValue ), sCube, vGBL_Period, vGBL_Version, vCST_Activity, vCST_Driver, vCST_Service_Line, vMeasure );\r\nENDIF;",
+        "EpilogProcedure": "#****Begin: Generated Statements***\r\n#****End: Generated Statements****\r\n# =============================================\r\n# EPILOG\r\n# =============================================\r\nLogOutput('INFO', 'Process completed successfully for cube: ' | sCube);\r\n# Optional: Save cube\r\n# CubeSave(sCube);",
+        "DataSource": {
+          "Type": "ASCII",
+          "asciiDecimalSeparator": ".",
+          "asciiDelimiterChar": ",",
+          "asciiDelimiterType": "Character",
+          "asciiHeaderRecords": 1,
+          "asciiQuoteCharacter": "\"",
+          "asciiThousandSeparator": ",",
+          "dataSourceNameForClient": "Load_Activity_to_Service_Line_Driver_Value.csv",
+          "dataSourceNameForServer": "Load_Activity_to_Service_Line_Driver_Value.csv"
+        },
+        "Parameters": [],
+        "Variables": [
+          {
+            "Name": "vGBL_Period",
+            "Type": "String",
+            "Position": 1,
+            "StartByte": 0,
+            "EndByte": 0
+          },
+          {
+            "Name": "vGBL_Version",
+            "Type": "String",
+            "Position": 2,
+            "StartByte": 0,
+            "EndByte": 0
+          },
+          {
+            "Name": "vCST_Activity",
+            "Type": "String",
+            "Position": 3,
+            "StartByte": 0,
+            "EndByte": 0
+          },
+          {
+            "Name": "vCST_Driver",
+            "Type": "String",
+            "Position": 4,
+            "StartByte": 0,
+            "EndByte": 0
+          },
+          {
+            "Name": "vCST_Service_Line",
+            "Type": "String",
+            "Position": 5,
+            "StartByte": 0,
+            "EndByte": 0
+          },
+          {
+            "Name": "vMeasure",
+            "Type": "String",
+            "Position": 6,
+            "StartByte": 0,
+            "EndByte": 0
+          },
+          {
+            "Name": "vValue",
+            "Type": "String",
+            "Position": 7,
+            "StartByte": 0,
+            "EndByte": 0
+          }
+        ],
+        "Attributes": {
+          "Caption": "Load-CST Activity Config-Activity to Service Line Drivers-CSV"
+        }
+      },
+      "dirty": true
+    },
+    {
+      "id": "process:TM1_Apportionment:Load-CST Activity Config-Activity to Activity Drivers-CSV",
+      "type": "process",
+      "label": "Load-CST Activity Config-Activity to Activity Drivers-CSV",
+      "server": "TM1_Apportionment",
+      "name": "Load-CST Activity Config-Activity to Activity Drivers-CSV",
+      "content": null
+    }
+  ],
+  "activeTab": "process:TM1_Apportionment:Load-CST Activity Config-Activity to Activity Drivers-CSV",
   "groups": [
     {
       "id": "g1",
-      "tabIds": [],
-      "activeTabId": null
+      "tabIds": [
+        "process:TM1_Apportionment:Load-CST Activity Config-Activity to Service Line Drivers-CSV",
+        "process:TM1_Apportionment:Load-CST Activity Config-Activity to Activity Drivers-CSV"
+      ],
+      "activeTabId": "process:TM1_Apportionment:Load-CST Activity Config-Activity to Activity Drivers-CSV"
     }
   ],
-  "activeGroupId": "g1"
+  "activeGroupId": "g1",
+  "splitDirection": "horizontal",
+  "panelSizes": [
+    100
+  ]
 }

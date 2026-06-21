@@ -1167,7 +1167,7 @@ export default function ViewEditor({ tab }) {
         const key = `${dim}:${attr}`
         if (aliasValueMaps[key]) return
         try {
-            const r = await fetch(`/api/dimension/alias-values?server=${encodeURIComponent(tab.server)}&dimension=${encodeURIComponent(dim)}&alias=${encodeURIComponent(attr)}`)
+            const r = await fetch(`/api/dimension/alias-values?server=${encodeURIComponent(tab.server)}&dimension=${encodeURIComponent(dim)}&alias=${encodeURIComponent(attr)}`, { headers: { 'x-ide-token': localStorage.getItem('tm1-token') ?? '' } })
             if (r.ok) { const map = await r.json(); setAliasValueMaps(prev => ({ ...prev, [key]: map })) }
         } catch {}
     }, [tab.server, aliasValueMaps])
@@ -1322,7 +1322,6 @@ export default function ViewEditor({ tab }) {
         setResult(null)
         setTruncated(false)
 
-        const id = toast.loading(`Loading ${tab.viewName}…`, { duration: 30000 })
         loadViewAxes.mutate(
             { server: tab.server, cube: tab.cube, view: tab.viewName },
             {
@@ -1362,16 +1361,10 @@ export default function ViewEditor({ tab }) {
                     if (viewMdx && (complex || vt?.includes('MDXView'))) setMode('mdx')
                     setMdx(viewMdx || buildMDX({ cube: tab.cube, rows, columns: cols, pages, suppressZeros: 'none' }))
                     setMdxDirty(false)
-                    toast.success(`Loaded ${tab.viewName}`, { id })
                 },
                 onError: e => {
-                    if (tab.viewName === 'Default') {
-                        toast.dismiss(id)
-                        setLoadedKey(null)
-                        return
-                    }
-                    toast.error(e.message, { id })
                     setLoadedKey(null)
+                    if (tab.viewName !== 'Default') toast.error(e.message)
                 },
             }
         )
@@ -1511,7 +1504,7 @@ export default function ViewEditor({ tab }) {
             toast.error('No MDX to execute')
             return
         }
-        const id = toast.loading('Executing…', { duration: 30000 })
+        const id = toast.loading('Executing…')
         executeMDX.mutate(
             { server: tab.server, mdx: query },
             {
@@ -1584,7 +1577,7 @@ export default function ViewEditor({ tab }) {
         if (isOriginallyNative && mode === 'mdx') {
             if (!window.confirm('Saving in MDX mode will convert this Native view to MDX. This affects PAX and Architect users.\n\nContinue?')) return
         }
-        const id = toast.loading('Saving view…', { duration: 30000 })
+        const id = toast.loading('Saving view…')
         saveView.mutate(
             { server: tab.server, cube: tab.cube, name, ...buildSavePayload() },
             {
@@ -1609,7 +1602,7 @@ export default function ViewEditor({ tab }) {
         if (!name) return
         const parsed = parseMdxToAxes(mdx)
         if (!parsed.columns.length && !parsed.rows.length) { toast.error('Could not parse MDX axes — switch to Visual mode and arrange dimensions first'); return }
-        const id = toast.loading('Saving as Native…', { duration: 30000 })
+        const id = toast.loading('Saving as Native…')
         saveView.mutate(
             { server: tab.server, cube: tab.cube, name, nativeAxes: { rows: parsed.rows, columns: parsed.columns, titles: parsed.pages } },
             {
@@ -1626,7 +1619,7 @@ export default function ViewEditor({ tab }) {
         if (!name) return
         const exists = views.some(v => v.name === name && name !== tab.viewName)
         if (exists && !window.confirm(`View "${name}" already exists. Overwrite?`)) return
-        const id = toast.loading(`Saving "${name}"…`, { duration: 30000 })
+        const id = toast.loading(`Saving "${name}"…`)
         saveView.mutate(
             { server: tab.server, cube: tab.cube, name, ...buildSavePayload() },
             {
@@ -1649,7 +1642,7 @@ export default function ViewEditor({ tab }) {
 
     const handleSetDefault = useCallback(() => {
         if (!window.confirm(`Overwrite the default view for [${tab.cube}]?\n\nThis will save the current layout as "Default".`)) return
-        const id = toast.loading('Setting as default…', { duration: 30000 })
+        const id = toast.loading('Setting as default…')
         saveView.mutate(
             { server: tab.server, cube: tab.cube, name: 'Default', ...buildSavePayload() },
             {
@@ -1820,11 +1813,11 @@ export default function ViewEditor({ tab }) {
             return
         }
         const dims = cubeDims.map(dim => ({ dim, element: coordMap.get(dim) }))
-        const id = toast.loading('Writing…', { duration: 30000 })
+        const id = toast.loading('Writing…')
         try {
             const res = await fetch('/api/cells/write', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 'Content-Type': 'application/json', 'x-ide-token': localStorage.getItem('tm1-token') ?? '' },
                 body: JSON.stringify({ server: tab.server, cube: tab.cube, dims, value }),
             })
             const d = await res.json()

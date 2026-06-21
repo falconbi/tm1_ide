@@ -83,7 +83,7 @@ function StepDiff({ result, error, running, onSeed, seeding, seedResult, server,
     try {
       const params = new URLSearchParams({ server, type: r.object_type, name: r.object_name })
       if (r.detail) params.set('detail', r.detail)
-      const data = await fetch(`/api/deploy/object-diff?${params}`).then(res => res.json())
+      const data = await fetch(`/api/deploy/object-diff?${params}`, { headers: { 'x-ide-token': localStorage.getItem('tm1-token') ?? '' } }).then(res => res.json())
       openTab({
         id:         `diff:deploy:${r.object_type}:${r.object_name}`,
         type:       'diff',
@@ -187,7 +187,7 @@ function StepDiff({ result, error, running, onSeed, seeding, seedResult, server,
                 <span className="flex items-center justify-center">
                   {isDiffable && (loadingDiff === rowKey
                     ? <Loader2 size={9} className="animate-spin text-muted-foreground" />
-                    : <Diff size={9} className="opacity-0 group-hover:opacity-100 text-muted-foreground transition-opacity" />
+                    : <Diff size={9} className="text-emerald-400 hover:text-emerald-300" />
                   )}
                 </span>
               </div>

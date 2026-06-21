@@ -270,7 +270,7 @@ export default function CubeViewer({ tab }) {
         const key = `${dim}:${attr}`
         if (aliasValueMaps[key]) return
         try {
-            const r = await fetch(`/api/dimension/alias-values?server=${encodeURIComponent(tab.server)}&dimension=${encodeURIComponent(dim)}&alias=${encodeURIComponent(attr)}`)
+            const r = await fetch(`/api/dimension/alias-values?server=${encodeURIComponent(tab.server)}&dimension=${encodeURIComponent(dim)}&alias=${encodeURIComponent(attr)}`, { headers: { 'x-ide-token': localStorage.getItem('tm1-token') ?? '' } })
             if (r.ok) { const map = await r.json(); setAliasValueMaps(prev => ({ ...prev, [key]: map })) }
         } catch {}
     }, [tab.server, aliasValueMaps])
@@ -390,7 +390,7 @@ export default function CubeViewer({ tab }) {
 
     const handleLoadView = (viewName) => {
         if (!viewName) return
-        const id = toast.loading(`Loading ${viewName}…`, { duration: 30000 })
+        const id = toast.loading(`Loading ${viewName}…`)
         loadViewAxes.mutate(
             { server: tab.server, cube: tab.cube, view: viewName },
             {
@@ -417,7 +417,7 @@ export default function CubeViewer({ tab }) {
             return
         }
         const mdx = buildMDX({ cube: tab.cube, ...axes, suppressZeros })
-        const id  = toast.loading('Executing…', { duration: 30000 })
+        const id  = toast.loading('Executing…')
         executeMDX.mutate(
             { server: tab.server, mdx },
             {

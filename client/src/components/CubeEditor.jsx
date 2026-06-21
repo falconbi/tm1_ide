@@ -37,7 +37,7 @@ export default function CubeEditor({ tab }) {
     const handleCreate = () => {
         if (!name.trim())        { toast.error('Enter a cube name'); return }
         if (selected.length < 2) { toast.error('Add at least 2 dimensions'); return }
-        const id = toast.loading(`Creating "${name.trim()}"…`, { duration: 30000 })
+        const id = toast.loading(`Creating "${name.trim()}"…`)
         createCube.mutate({ server, name: name.trim(), dims: selected }, {
             onSuccess: () => {
                 toast.success(`Cube "${name.trim()}" created`, { id })
@@ -50,7 +50,7 @@ export default function CubeEditor({ tab }) {
 
     const handleDelete = () => {
         if (!window.confirm(`Delete cube "${tab.cube}"? This cannot be undone.`)) return
-        const id = toast.loading(`Deleting "${tab.cube}"…`, { duration: 30000 })
+        const id = toast.loading(`Deleting "${tab.cube}"…`)
         deleteCube.mutate({ server, name: tab.cube }, {
             onSuccess: () => { toast.success(`Deleted "${tab.cube}"`, { id }); closeTab(tab.id) },
             onError:   e => toast.error(e.message, { id }),

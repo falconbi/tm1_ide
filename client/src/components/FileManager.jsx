@@ -39,7 +39,7 @@ export default function FileManager({ server, onClose }) {
     mutationFn: async ({ name, buffer }) => {
       const r = await fetch(
         `/api/files/upload?server=${enc(server)}&path=${enc(pathKey)}&name=${enc(name)}`,
-        { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: buffer }
+        { method: 'POST', headers: { 'Content-Type': 'application/octet-stream', 'x-ide-token': localStorage.getItem('tm1-token') ?? '' }, body: buffer }
       )
       const d = await r.json()
       if (!r.ok) throw new Error(d.error || 'Upload failed')

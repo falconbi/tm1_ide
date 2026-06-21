@@ -74,7 +74,7 @@ export default function PeriodBuilder({ open, onClose }) {
 
       const res = await fetch('/api/period-builder/run', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'x-ide-token': localStorage.getItem('tm1-token') ?? '' },
         body: JSON.stringify({
           server,
           dimensionName: params.dimensionName,

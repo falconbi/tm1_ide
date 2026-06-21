@@ -176,7 +176,7 @@ function DimensionBrowser({ server, dim, onKeep, subsets = [], cols, attributes,
                             const name = e.target.value
                             if (!name) return
                             try {
-                                const r = await fetch(`/api/subset/elements?server=${enc(server)}&dimension=${enc(dim)}&name=${enc(name)}`)
+                                const r = await fetch(`/api/subset/elements?server=${enc(server)}&dimension=${enc(dim)}&name=${enc(name)}`, { headers: { 'x-ide-token': localStorage.getItem('tm1-token') ?? '' } })
                                 const els = await r.json()
                                 onKeep(els.map(el => ({ Name: el.name, Type: el.type, Level: el.level })))
                             } catch { toast.error('Failed to load subset') }
@@ -617,7 +617,7 @@ export default function SubsetVisualEditor({ tab, onMdxConvert, onVisualDirty, o
 
     const handleLoadSubset = async (name) => {
         try {
-            const r = await fetch(`/api/subset/elements?server=${enc(tab.server)}&dimension=${enc(tab.dimension)}&name=${enc(name)}`)
+            const r = await fetch(`/api/subset/elements?server=${enc(tab.server)}&dimension=${enc(tab.dimension)}&name=${enc(name)}`, { headers: { 'x-ide-token': localStorage.getItem('tm1-token') ?? '' } })
             if (!r.ok) throw new Error(await r.text())
             const els = await r.json()
             setMembers(els)
@@ -626,7 +626,7 @@ export default function SubsetVisualEditor({ tab, onMdxConvert, onVisualDirty, o
     }
 
     const handleSaveStatic = () => {
-        const id = toast.loading('Saving static subset\u2026', { duration: 30000 })
+        const id = toast.loading('Saving static subset\u2026')
         saveStatic.mutate(
             { server: tab.server, dimension: tab.dimension, name: tab.subsetName, elements: (members ?? []).map(m => m.name) },
             {
@@ -656,7 +656,7 @@ export default function SubsetVisualEditor({ tab, onMdxConvert, onVisualDirty, o
         setSaveAsOpen(false)
         setSaveAsName('')
         if (!name || name === tab.subsetName) return
-        const id = toast.loading(`Saving as "${name}"\u2026`, { duration: 30000 })
+        const id = toast.loading(`Saving as "${name}"\u2026`)
         saveStatic.mutate(
             { server: tab.server, dimension: tab.dimension, name, elements: (members ?? []).map(m => m.name) },
             {
