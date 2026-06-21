@@ -49,6 +49,22 @@ npm start                   # → http://localhost:8083
 
 ---
 
+## 📸 Screenshots
+
+| Rules Editor | TI Editor |
+|---|---|
+| ![Rules Editor](docs/images/1_screenshot.png) | ![TI Editor](docs/images/2_Screenshot.png) |
+
+| View Editor — Native | View Editor — MDX |
+|---|---|
+| ![View Editor Native](docs/images/3_screenshot.png) | ![View Editor MDX](docs/images/4_screenshot.png) |
+
+**Split pane — View + Rules (dark theme)**
+
+![Split pane dark theme](docs/images/5_screenshot.png)
+
+---
+
 ## ✨ Features
 
 ### Editors
@@ -261,31 +277,7 @@ cp dist/index.html ../static/index.html
 
 ## ⌨️ Keyboard Shortcuts
 
-### Global
-| Shortcut | Action |
-|----------|--------|
-| `Ctrl+Shift+F` | Global search across rules + TI code |
-| `Ctrl+Shift+K` or `F1` | Keyboard shortcuts help |
-
-### All Editors
-| Shortcut | Action |
-|----------|--------|
-| `Ctrl+S` | Save |
-| `Ctrl+Shift+S` | Save As |
-| `Ctrl+Enter` | Execute / Run / Refresh |
-| `Ctrl+Shift+F` | Format document |
-| `Ctrl+/` | Toggle comment |
-| `Ctrl+D` | Select next occurrence |
-| `Alt+↑ / ↓` | Move line up / down |
-| `Ctrl+=` / `Ctrl+-` / `Ctrl+0` | Font size +/−/reset |
-| `Ctrl+F` | Find & Replace |
-
-### Rules Editor
-| Shortcut | Action |
-|----------|--------|
-| `Ctrl+K Ctrl+0` | Collapse all regions |
-| `Ctrl+K Ctrl+J` | Expand all regions |
-| `Ctrl+Shift+O` | Go to symbol (#Region) |
+Keyboard shortcuts are available throughout the IDE. Press `F1` or `Ctrl+Shift+K` inside the app to open the full shortcut reference.
 
 ---
 
