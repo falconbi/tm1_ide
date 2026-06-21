@@ -394,6 +394,8 @@ function buildTreeOrder(elements, edges) {
 }
 
 // ── Attribute grid ──────────────────────────────────────────────────────────
+const COLOUR_HEX = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i
+
 const TM1_FORMAT_PRESETS = [
   { group: 'Number',     items: [
     { fmt: '#,##0',       label: '1,000' },
@@ -465,6 +467,21 @@ const FormatPickerEditor = forwardRef(({ value: initialValue, stopEditing }, ref
           </div>
         ))}
       </div>
+      {value.startsWith('@') && (
+        <div className="mt-2">
+          <div className="text-[9px] uppercase tracking-wider text-muted-foreground/60 font-semibold mb-1">Text Colour</div>
+          <div className="flex flex-wrap gap-1 items-center">
+            {['red','blue','green','orange','purple','grey','maroon','teal'].map(c => (
+              <button key={c} onClick={() => { valueRef.current = `@${c}`; setValue(`@${c}`) }}
+                className={cn('w-5 h-5 rounded border transition-colors', value === `@${c}` && 'ring-2 ring-primary')}
+                style={{ backgroundColor: c }} title={c} />
+            ))}
+            <input type="color" value={COLOUR_HEX.test(value.slice(1)) ? value.slice(1) : '#888888'}
+              onChange={e => { const v = `@${e.target.value}`; valueRef.current = v; setValue(v) }}
+              className="w-6 h-5 p-0 border border-border rounded cursor-pointer" title="Custom colour" />
+          </div>
+        </div>
+      )}
     </div>
   )
 })
@@ -632,7 +649,7 @@ function AttrGrid({ tab, elements, edges, hierarchy }) {
     const attrDef   = attrs.find(a => a.Name === attribute)
     const type      = attrDef?.Type === 'Numeric' ? 'N' : 'S'
     writeAttr.mutate({ server: tab.server, dimension: tab.dimension, element, attribute, value: p.newValue ?? '', type, hierarchy },
-      { onSuccess: () => refetch(), onError: (e) => toast.error(`Failed to save ${attribute}: ${e.message}`) })
+      { onSuccess: () => { refetch(); if (attribute === 'Format') useStore.getState().bumpFormatVersion(tab.server, tab.dimension) }, onError: (e) => toast.error(`Failed to save ${attribute}: ${e.message}`) })
   }, [writeAttr, tab, attrs, hierarchy, refetch])
 
   const handleAttrPaste = useCallback(async (text) => {
@@ -768,10 +785,25 @@ function AttrGrid({ tab, elements, edges, hierarchy }) {
                 </div>
               ))}
             </div>
+            {formatPicker.value.startsWith('@') && (
+              <div className="mb-2">
+                <div className="text-[9px] uppercase tracking-wider text-muted-foreground/60 font-semibold mb-1">Text Colour</div>
+                <div className="flex flex-wrap gap-1 items-center">
+                  {['red','blue','green','orange','purple','grey','maroon','teal'].map(c => (
+                    <button key={c} onClick={() => setFormatPicker(p => ({ ...p, value: `@${c}` }))}
+                      className={cn('w-5 h-5 rounded border transition-colors', formatPicker.value === `@${c}` && 'ring-2 ring-primary')}
+                      style={{ backgroundColor: c }} title={c} />
+                  ))}
+                  <input type="color" value={COLOUR_HEX.test(formatPicker.value.slice(1)) ? formatPicker.value.slice(1) : '#888888'}
+                    onChange={e => setFormatPicker(p => ({ ...p, value: `@${e.target.value}` }))}
+                    className="w-6 h-5 p-0 border border-border rounded cursor-pointer" title="Custom colour" />
+                </div>
+              </div>
+            )}
             <button
               onClick={() => writeAttr.mutate(
                 { server: tab.server, dimension: tab.dimension, element: formatPicker.element, attribute: 'Format', value: formatPicker.value, type: 'S', hierarchy },
-                { onSuccess: () => { refetch(); setFormatPicker(null) }, onError: e => toast.error(`Format save failed: ${e.message}`) }
+                { onSuccess: () => { refetch(); setFormatPicker(null); useStore.getState().bumpFormatVersion(tab.server, tab.dimension) }, onError: e => toast.error(`Format save failed: ${e.message}`) }
               )}
               disabled={writeAttr.isPending}
               className="w-full py-1 rounded bg-primary text-primary-foreground text-xs disabled:opacity-40 hover:opacity-90 transition-opacity">

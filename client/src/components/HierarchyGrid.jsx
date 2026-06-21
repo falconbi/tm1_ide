@@ -383,8 +383,10 @@ export default function HierarchyGrid({
             })
             prevTuple = tuple
             for (const col of visibleColumns) {
-                row[col.id]              = values[col.id]              ?? null
-                row[`${col.id}__u`]     = values[`${col.id}__u`]     ?? 1
+                row[col.id]                = values[col.id]                ?? null
+                row[`${col.id}__u`]       = values[`${col.id}__u`]       ?? 1
+                row[`${col.id}__fmt`]     = values[`${col.id}__fmt`]     ?? null
+                row[`${col.id}__colour`] = values[`${col.id}__colour`] ?? null
             }
             results.push(row)
         }
@@ -478,7 +480,8 @@ export default function HierarchyGrid({
                     type:            'numericColumn',
                     editable:        onCellEdit ? (p) => {
                         const rowIsAllLeaf = hierarchies.every((_, i) => p.data?.[`__d${i}_isLeaf__`] ?? true)
-                        return rowIsAllLeaf && colIsLeaf
+                        const updateable   = p.data?.[`${p.colDef.field}__u`] ?? 1
+                        return rowIsAllLeaf && colIsLeaf && updateable !== 0
                     } : false,
                     menuTabs:        [],
                     valueFormatter:  p => (p.value === null || p.value === '') ? '—' : String(p.value),
@@ -487,11 +490,15 @@ export default function HierarchyGrid({
                         const isConsolidated = !rowIsAllLeaf || !colIsLeaf
                         const innerIsLeaf    = p.data?.[`__d${hierarchies.length - 1}_isLeaf__`] ?? true
                         const updateable     = p.data?.[`${p.colDef.field}__u`] ?? 1
+                        const fmt            = p.data?.[`${p.colDef.field}__fmt`]
+                        const cellColour     = p.data?.[`${p.colDef.field}__colour`]
                         const isZeroRule     = updateable === 0 && rowIsAllLeaf && colIsLeaf &&
                                                (p.value === null || p.value === '' || p.value === 0 || p.value === '0')
+                        const isWritable = !isConsolidated && updateable !== 0
                         return {
-                            color:      (p.value === null || p.value === '') ? 'var(--ag-data-color, #888)' : undefined,
+                            color:      cellColour || (fmt === '@' && p.value !== null && p.value !== '' ? 'var(--ag-alpine-active-color, #888)' : (p.value === null || p.value === '') ? 'var(--ag-data-color, #888)' : undefined),
                             fontWeight: !innerIsLeaf ? '600' : undefined,
+                            cursor:     isWritable ? 'text' : 'default',
                             background: isZeroRule
                                 ? (dark ? 'rgba(245,158,11,0.15)' : 'rgba(245,158,11,0.12)')
                                 : isConsolidated ? (dark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)') : undefined,
@@ -565,8 +572,16 @@ export default function HierarchyGrid({
                     getRowId={p => p.data.__tupleKey__}
                     suppressMovableColumns
                     enableCellTextSelection={!onCellEdit}
-                    singleClickEdit={!!onCellEdit}
                     stopEditingWhenCellsLoseFocus
+                    onCellClicked={onCellEdit ? p => {
+                        const field        = p.colDef?.field
+                        const updateable   = p.data?.[`${field}__u`] ?? 1
+                        const rowIsAllLeaf = hierarchies.every((_, i) => p.data?.[`__d${i}_isLeaf__`] ?? true)
+                        const colDef       = p.column?.getColDef()
+                        const colIsLeafClk = colDef?.context?.colIsLeaf ?? true
+                        if (updateable !== 0 && rowIsAllLeaf && colIsLeafClk)
+                            p.api.startEditingCell({ rowIndex: p.rowIndex, colKey: field })
+                    } : undefined}
                     defaultColDef={{ sortable: false }}
                     onCellValueChanged={handleCellEdit}
                     onCellContextMenu={onCellContextMenu}

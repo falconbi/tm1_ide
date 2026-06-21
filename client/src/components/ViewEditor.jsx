@@ -106,6 +106,17 @@ function constrainHierarchy(hierarchy, presentMembers) {
     return { nodes, roots, maxLevel, name }
 }
 
+function lookupFormat(dim, elem, formatMap) {
+    if (!elem) return null
+    const scoped = formatMap[dim]?.[elem]
+    if (scoped) return scoped
+    for (const d of Object.keys(formatMap)) {
+        const f = formatMap[d]?.[elem]
+        if (f && typeof f === 'string') return f
+    }
+    return null
+}
+
 function cellsetToHierarchyData(cellset, formatMap = {}, pageMembers = [], suppressZeros = 'none') {
     if (!cellset?.Axes?.length) return null
     const colAxis = cellset.Axes.find(a => a.Ordinal === 0)
@@ -155,14 +166,40 @@ function cellsetToHierarchyData(cellset, formatMap = {}, pageMembers = [], suppr
             const cell = cellMap[ri * columns.length + ci]
             if (!isValEmpty(cell?.Value)) colHasData[col.id] = true
             const colTuple = colTuples[ci]
-            const elemNames = (colTuple?.Members ?? []).map(m => elementFromUniqueName(m.UniqueName) || m.Name)
-            const fmtKey = elemNames.find(n => formatMap[n]) || pageMembers.find(n => formatMap[n])
-            if (fmtKey) {
-                data[tupleKey][col.id] = cell?.Value != null ? applyTm1Format(cell.Value, formatMap[fmtKey]) : ''
-            } else {
-                data[tupleKey][col.id] = cell?.FormattedValue ?? cell?.Value ?? null
+            const colMembers = (colTuple?.Members ?? []).map(m => ({ dim: parseDimFromUniqueName(m.UniqueName), elem: elementFromUniqueName(m.UniqueName) || m.Name }))
+            const rowMembers = (tuple?.Members ?? []).map(m => ({ dim: parseDimFromUniqueName(m.UniqueName), elem: elementFromUniqueName(m.UniqueName) || m.Name }))
+            const allMembers = [...rowMembers, ...colMembers]
+            let fmt = null
+            for (const m of allMembers) {
+                fmt = lookupFormat(m.dim, m.elem, formatMap)
+                if (fmt) break
             }
+            if (!fmt) {
+                for (const p of pageMembers) {
+                    for (const d of Object.keys(formatMap)) {
+                        const f = formatMap[d]?.[p]
+                        if (f && typeof f === 'string') { fmt = f; break }
+                    }
+                    if (fmt) break
+                }
+            }
+            const rawVal = cell?.Value
+            const fv = cell?.FormattedValue
+            let display
+            if (fmt && rawVal != null) {
+                display = applyTm1Format(rawVal, fmt)
+            } else if (fv != null && fv !== '') {
+                display = fv
+            } else {
+                display = rawVal ?? null
+            }
+            data[tupleKey][col.id] = display
             data[tupleKey][`${col.id}__u`] = cell?.Updateable ?? 1
+            if (fmt?.startsWith('@')) {
+                data[tupleKey][`${col.id}__fmt`] = '@'
+                const colour = fmt.slice(1).trim()
+                if (colour) data[tupleKey][`${col.id}__colour`] = colour
+            }
         })
     })
 
@@ -243,13 +280,15 @@ function elementFromUniqueName(un) {
 
 function applyTm1Format(value, fmt) {
     if (!fmt || fmt === 'General') return value != null ? String(value) : ''
-    if (fmt === '@') return String(value ?? '')
+    if (fmt.startsWith('@')) return String(value ?? '')
     if (typeof value !== 'number') return String(value ?? '')
     const parts = fmt.split(';')
     const activeFmt = value < 0 && parts[1] ? parts[1] : parts[0]
     const absVal = Math.abs(value)
+    const pctDiv = activeFmt.includes('%/') // e.g. #,##0.0%/100 → divide value by 100 before % formatting
     const isPct = activeFmt.includes('%')
-    const num = isPct ? absVal * 100 : absVal
+    const adjustedVal = isPct && pctDiv ? absVal / 100 : absVal
+    const num = isPct ? adjustedVal * 100 : adjustedVal
     const useGrouping = activeFmt.includes(',')
     const decMatch = activeFmt.replace(/\[[^\]]*\]/g, '').match(/\.([0#]+)/)
     const dec = decMatch ? decMatch[1].length : 0
@@ -753,6 +792,343 @@ function DropZone({ id, label, icon: Icon, dims, server, onRemove, onSubsetChang
     )
 }
 
+// ── Rule parsing helpers ──────────────────────────────────────────────────────
+
+const TRACKED_FUNCS = new Set(['DB', 'ATTRN', 'ATTRS', 'DIMIX', 'DIMSIZ', 'CELLGET', 'TABDIM', 'ELISANC', 'ELASIS'])
+
+function extractRuleCalls(stmt) {
+    const calls = []
+    const re = /\b([A-Z][A-Z0-9]*)\s*\(/gi
+    let match
+    while ((match = re.exec(stmt)) !== null) {
+        const funcName = match[1].toUpperCase()
+        if (!TRACKED_FUNCS.has(funcName)) continue
+        const open = match.index + match[0].length - 1
+        let depth = 1, i = open + 1, inStr = false, strChar = ''
+        while (i < stmt.length && depth > 0) {
+            const c = stmt[i]
+            if (inStr) { if (c === strChar) inStr = false }
+            else if (c === "'" || c === '"') { inStr = true; strChar = c }
+            else if (c === '(') depth++
+            else if (c === ')') depth--
+            i++
+        }
+        calls.push({ funcName, argsStr: stmt.slice(open + 1, i - 1), start: match.index, end: i })
+    }
+    return calls
+}
+
+function splitArgs(argsStr) {
+    const args = []
+    let cur = '', depth = 0, inStr = false, strChar = ''
+    for (const c of argsStr) {
+        if (inStr) { cur += c; if (c === strChar) inStr = false }
+        else if (c === "'" || c === '"') { inStr = true; strChar = c; cur += c }
+        else if (c === '(') { depth++; cur += c }
+        else if (c === ')') { depth--; cur += c }
+        else if (c === ',' && depth === 0) { args.push(cur.trim()); cur = '' }
+        else cur += c
+    }
+    if (cur.trim()) args.push(cur.trim())
+    return args
+}
+
+function resolveArg(arg, dimElemPairs) {
+    if ((arg.startsWith("'") && arg.endsWith("'")) || (arg.startsWith('"') && arg.endsWith('"')))
+        return arg.slice(1, -1)
+    if (arg.startsWith('!')) {
+        const dimName = arg.slice(1).split(/[\\.]/).pop()
+        return dimElemPairs.find(p => p.dim.toLowerCase() === dimName.toLowerCase())?.element ?? arg
+    }
+    return arg
+}
+
+// ── Rule breakdown component ──────────────────────────────────────────────────
+
+function RuleBreakdown({ server, statements, components, dimElemPairs }) {
+    const [attrValues,   setAttrValues]   = useState({})
+    const [loadingAttrs, setLoadingAttrs] = useState(false)
+
+    const allCalls = useMemo(() => statements.flatMap(s => extractRuleCalls(s)), [statements])
+
+    useEffect(() => {
+        const attrCalls = allCalls.filter(c => c.funcName === 'ATTRN' || c.funcName === 'ATTRS')
+        if (!attrCalls.length) return
+        const toFetch = new Map()
+        for (const call of attrCalls) {
+            const args = splitArgs(call.argsStr)
+            if (args.length < 2) continue
+            const dim  = resolveArg(args[0], dimElemPairs)
+            const elem = resolveArg(args[1], dimElemPairs)
+            const key  = `${dim}::${elem}`
+            if (!toFetch.has(key)) toFetch.set(key, { dim, elem })
+        }
+        if (!toFetch.size) return
+        setLoadingAttrs(true)
+        const token = localStorage.getItem('tm1-token') ?? ''
+        Promise.all([...toFetch.entries()].map(([key, { dim, elem }]) =>
+            fetch(`/api/element/attributes?server=${encodeURIComponent(server)}&dimension=${encodeURIComponent(dim)}&element=${encodeURIComponent(elem)}`, {
+                headers: { 'x-ide-token': token },
+            }).then(r => r.json()).then(v => [key, v]).catch(() => [key, {}])
+        )).then(results => {
+            const map = {}
+            for (const [key, vals] of results) map[key] = vals
+            setAttrValues(map)
+            setLoadingAttrs(false)
+        })
+    }, [allCalls, server, dimElemPairs]) // eslint-disable-line
+
+    let dbIdx = 0
+
+    return (
+        <div className="space-y-3">
+            <div>
+                <div className="text-[10px] uppercase tracking-wide text-muted-foreground font-medium mb-1">Rule</div>
+                {statements.map((s, i) => (
+                    <div key={i} className="font-mono text-[11px] bg-muted/50 rounded px-3 py-2 break-all whitespace-pre-wrap leading-relaxed">
+                        {s}
+                    </div>
+                ))}
+            </div>
+            {allCalls.length > 0 && (
+                <div>
+                    <div className="text-[10px] uppercase tracking-wide text-muted-foreground font-medium mb-1.5">Function Calls</div>
+                    <div className="space-y-2">
+                        {allCalls.map((call, i) => {
+                            const args     = splitArgs(call.argsStr)
+                            const resolved = args.map(a => resolveArg(a, dimElemPairs))
+                            if (call.funcName === 'DB') {
+                                const comp     = components[dbIdx++]
+                                const cubeName = resolved[0] ?? '?'
+                                const elems    = resolved.slice(1)
+                                const ctype    = comp?.Type?.toLowerCase() ?? ''
+                                const badge    = ctype.includes('rule')   ? <span className="badge bg-amber-500/20 text-amber-400">RULE</span>
+                                              : ctype.includes('consol') ? <span className="badge bg-purple-500/20 text-purple-400">C</span>
+                                              : ctype.includes('base')   ? <span className="badge bg-emerald-500/20 text-emerald-400">BASE</span>
+                                              : null
+                                return (
+                                    <div key={i} className="border border-amber-500/20 bg-amber-500/5 rounded px-3 py-2 space-y-1">
+                                        <div className="flex items-center gap-2">
+                                            <span className="badge bg-amber-500/20 text-amber-400 font-mono">DB</span>
+                                            <span className="text-[11px] font-medium">{cubeName}</span>
+                                            {badge}
+                                            <span className="ml-auto font-mono text-[11px] font-semibold tabular-nums">{comp?.Value ?? '—'}</span>
+                                        </div>
+                                        <div className="font-mono text-[10px] text-muted-foreground">[{elems.join(' · ')}]</div>
+                                    </div>
+                                )
+                            }
+                            if (call.funcName === 'ATTRN' || call.funcName === 'ATTRS') {
+                                const dim  = resolved[0] ?? '?'
+                                const elem = resolved[1] ?? '?'
+                                const attr = resolved[2] ?? '?'
+                                const key  = `${dim}::${elem}`
+                                const val  = attrValues[key]?.[attr] ?? (loadingAttrs ? '…' : '—')
+                                return (
+                                    <div key={i} className="border border-blue-500/20 bg-blue-500/5 rounded px-3 py-2 space-y-1">
+                                        <div className="flex items-center gap-2">
+                                            <span className="badge bg-blue-500/20 text-blue-400 font-mono">{call.funcName}</span>
+                                            <span className="text-[11px] font-medium">{dim}</span>
+                                            <span className="ml-auto font-mono text-[11px] font-semibold tabular-nums">{val}</span>
+                                        </div>
+                                        <div className="font-mono text-[10px] text-muted-foreground">{elem} · {attr}</div>
+                                    </div>
+                                )
+                            }
+                            return (
+                                <div key={i} className="border border-border/50 bg-muted/20 rounded px-3 py-2">
+                                    <div className="flex items-center gap-2">
+                                        <span className="badge bg-muted text-muted-foreground font-mono text-[9px]">{call.funcName}</span>
+                                        <span className="font-mono text-[10px] text-muted-foreground">{resolved.join(', ')}</span>
+                                    </div>
+                                </div>
+                            )
+                        })}
+                    </div>
+                </div>
+            )}
+        </div>
+    )
+}
+
+// ── Trace side panel ──────────────────────────────────────────────────────────
+
+function TypeBadgeTrace({ type }) {
+    const t = type?.toLowerCase() ?? ''
+    if (t.includes('rule'))   return <span className="badge bg-amber-500/20 text-amber-400">RULE</span>
+    if (t.includes('consol')) return <span className="badge bg-purple-500/20 text-purple-400">CONSOLIDATED</span>
+    if (t.includes('feed'))   return <span className="badge bg-blue-500/20 text-blue-400">FEEDER</span>
+    if (t.includes('base') || t === 'leaf') return <span className="badge bg-emerald-500/20 text-emerald-400">BASE</span>
+    if (type) return <span className="badge bg-muted text-muted-foreground">{type.toUpperCase()}</span>
+    return null
+}
+
+function useTraceData(server, cube, dimElemPairs) {
+    const [data,  setData]  = useState(null)
+    const [error, setError] = useState(null)
+    const [busy,  setBusy]  = useState(true)
+    const key = JSON.stringify({ server, cube, dimElemPairs })
+
+    useEffect(() => {
+        setBusy(true); setError(null); setData(null)
+        const token = localStorage.getItem('tm1-token') ?? ''
+        fetch('/api/cube/trace', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'x-ide-token': token },
+            body: JSON.stringify({ server, cube, dimElemPairs }),
+        })
+            .then(r => r.json())
+            .then(d => { setBusy(false); d.error ? setError(d.error) : setData(d) })
+            .catch(e => { setBusy(false); setError(e.message) })
+    }, [key])  // eslint-disable-line
+
+    return { data, error, busy }
+}
+
+function TraceSidePanel({ ctx, onClose }) {
+    const [stack, setStack] = useState([{
+        cube:         ctx.cube,
+        dimElemPairs: ctx.dimElemPairs,
+        label:        ctx.dimElemPairs.map(p => p.element).join(' · '),
+    }])
+
+    const current = stack[stack.length - 1]
+    const { data, error, busy } = useTraceData(ctx.server, current.cube, current.dimElemPairs)
+
+    const stmts = data?.Statements ?? []
+    const comps = data?.Components ?? []
+
+    const canDrill = (comp) => {
+        const t = comp.Type?.toLowerCase() ?? ''
+        const sameCube = !comp.Cube?.Name || comp.Cube.Name === ctx.cube
+        return sameCube && (t.includes('consol') || t.includes('rule') || t.includes('base'))
+    }
+
+    const drillInto = (comp) => {
+        const targetCube = comp.Cube?.Name ?? current.cube
+        const tupleNames = (comp.Tuple ?? []).map(t => t.Name)
+        const dims = targetCube === ctx.cube ? ctx.cubeDims : null
+        if (!dims) return
+        const newPairs = dims.map((d, i) => ({ dim: d, element: tupleNames[i] })).filter(p => p.element)
+        if (!newPairs.length) return
+        setStack(s => [...s, { cube: targetCube, dimElemPairs: newPairs, label: tupleNames.filter(Boolean).join(' · ') }])
+    }
+
+    const goBack = () => setStack(s => s.slice(0, -1))
+
+    return (
+        <div
+            style={{ position: 'fixed', top: 0, right: 0, bottom: 0, width: 440, zIndex: 9000 }}
+            className="bg-popover border-l border-border shadow-2xl flex flex-col"
+        >
+            {/* Header */}
+            <div className="px-4 py-3 border-b border-border bg-muted/30 shrink-0 space-y-1.5">
+                <div className="flex items-center gap-2">
+                    <span className="text-xs font-semibold flex-1">{current.cube}</span>
+                    {data && <TypeBadgeTrace type={data.Type} />}
+                    {data?.Value != null && (
+                        <span className="font-mono text-xs font-semibold tabular-nums">{data.Value}</span>
+                    )}
+                    <button onClick={onClose} className="text-muted-foreground hover:text-foreground ml-1">
+                        <X size={14} />
+                    </button>
+                </div>
+                {/* Breadcrumb */}
+                <div className="flex items-center gap-1 flex-wrap">
+                    {stack.map((s, i) => (
+                        <span key={i} className="flex items-center gap-1">
+                            {i > 0 && <ChevronRight size={10} className="text-muted-foreground/50 shrink-0" />}
+                            <button
+                                onClick={() => i < stack.length - 1 && setStack(st => st.slice(0, i + 1))}
+                                className={cn('text-[10px] truncate max-w-[120px]',
+                                    i === stack.length - 1
+                                        ? 'text-foreground font-medium'
+                                        : 'text-muted-foreground hover:text-foreground'
+                                )}
+                                title={s.label}
+                            >
+                                {s.label}
+                            </button>
+                        </span>
+                    ))}
+                </div>
+                {stack.length > 1 && (
+                    <button
+                        onClick={goBack}
+                        className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                        <ChevronLeft size={10} /> Back
+                    </button>
+                )}
+            </div>
+
+            {/* Body */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-4 text-xs">
+                {busy && (
+                    <div className="flex items-center gap-2 text-muted-foreground">
+                        <Loader2 size={12} className="animate-spin" /> Tracing…
+                    </div>
+                )}
+                {error && <div className="text-red-400">{error}</div>}
+
+                {stmts.length > 0 && (
+                    <RuleBreakdown
+                        server={ctx.server}
+                        statements={stmts}
+                        components={comps}
+                        dimElemPairs={current.dimElemPairs}
+                    />
+                )}
+
+                {stmts.length === 0 && comps.length > 0 && (
+                    <div className="space-y-2">
+                        <div className="text-[10px] uppercase tracking-wide text-muted-foreground font-medium">
+                            Components ({comps.length})
+                        </div>
+                        <div className="space-y-1.5">
+                            {comps.map((c, i) => {
+                                const tuple    = (c.Tuple ?? []).map(t => t.Name).join(' · ')
+                                const drillable = canDrill(c)
+                                const crossCube = c.Cube?.Name && c.Cube.Name !== ctx.cube
+                                return (
+                                    <div
+                                        key={i}
+                                        onClick={() => drillable && drillInto(c)}
+                                        className={cn(
+                                            'bg-muted/30 border border-border/50 rounded px-3 py-2 space-y-1 transition-colors',
+                                            drillable && !crossCube && 'cursor-pointer hover:bg-muted/60 hover:border-border'
+                                        )}
+                                    >
+                                        <div className="flex items-center gap-2">
+                                            <TypeBadgeTrace type={c.Type} />
+                                            {crossCube && (
+                                                <span className="text-[10px] text-blue-400 font-medium">{c.Cube.Name}</span>
+                                            )}
+                                            <span className="ml-auto font-mono text-[11px] font-semibold tabular-nums">
+                                                {c.Value ?? '—'}
+                                            </span>
+                                            {drillable && !crossCube && (
+                                                <ChevronRight size={10} className="text-muted-foreground/50 shrink-0" />
+                                            )}
+                                        </div>
+                                        {tuple && (
+                                            <div className="font-mono text-[10px] text-muted-foreground break-all">{tuple}</div>
+                                        )}
+                                    </div>
+                                )
+                            })}
+                        </div>
+                    </div>
+                )}
+
+                {!busy && !error && stmts.length === 0 && comps.length === 0 && data && (
+                    <div className="text-muted-foreground">No detail available for this cell.</div>
+                )}
+            </div>
+        </div>
+    )
+}
+
 // ── Main ViewEditor ───────────────────────────────────────────────────────────
 
 export default function ViewEditor({ tab }) {
@@ -830,7 +1206,8 @@ export default function ViewEditor({ tab }) {
     const [logTuple,  setLogTuple]  = useState(null)   // null = whole cube, array = filtered cell
     const [dismissedId, setDismissedId]   = useState(null)
     const [saveConflict, setSaveConflict] = useState(null)
-    const [cellCtx, setCellCtx]           = useState(null)
+    const [cellCtx,  setCellCtx]  = useState(null)
+    const [traceCtx, setTraceCtx] = useState(null)
     const [checkingFeeders, setCheckingFeeders] = useState(false)
     const { openConflict, checkBeforeSave } = useConflictCheck(tab.server, 'view', tab.viewName)
     const { data: pawBookData, isFetching: loadingPawBooks, refetch: refetchPawBooks } = usePawBookUsage(tab.server, tab.cube, tab.viewName)
@@ -1927,17 +2304,14 @@ export default function ViewEditor({ tab }) {
         {cellCtx && (
             <CellContextMenu
                 ctx={cellCtx}
-                cubeDims={cubeDims}
                 onClose={() => setCellCtx(null)}
-                onWriteSuccess={() => { setCellCtx(null); handleExecute() }}
-                onOpenRules={() => {
-                    const { openTab } = useStore.getState()
-                    openTab({ type: 'rules', server: tab.server, cube: tab.cube, label: `${tab.cube} Rules` })
-                }}
-                onOpenDimension={(dim) => {
-                    const { openTab } = useStore.getState()
-                    openTab({ type: 'dimension', server: tab.server, objectName: dim, label: dim })
-                }}
+                onTrace={(ctx) => { setTraceCtx({ ...ctx, cubeDims }); setCellCtx(null) }}
+            />
+        )}
+        {traceCtx && (
+            <TraceSidePanel
+                ctx={traceCtx}
+                onClose={() => setTraceCtx(null)}
             />
         )}
         </div>

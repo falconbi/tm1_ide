@@ -359,6 +359,11 @@ export const useStore = create((set, get) => ({
     rulesVersions: { ...s.rulesVersions, [`${server}::${cube}`]: (s.rulesVersions[`${server}::${cube}`] ?? 0) + 1 },
   })),
 
+  formatVersions: {},
+  bumpFormatVersion: (server, dim) => set(s => ({
+    formatVersions: { ...s.formatVersions, [`${server}::${dim}`]: (s.formatVersions[`${server}::${dim}`] ?? 0) + 1 },
+  })),
+
   // ── Reveal in Explorer tree ────────────────────────────────────────────────
   /** @type {RevealTarget|null} */
   revealTarget: null,

@@ -296,12 +296,16 @@ export const useDeleteView = () => {
   })
 }
 
-export const useMultiFormatAttrs = (server, dims) => useQuery({
-  queryKey: ['format-attrs', server, ...(dims ?? []).slice().sort()],
-  queryFn:  () => get(`/api/dimensions/format-attrs?server=${enc(server)}&dims=${(dims ?? []).map(enc).join(',')}`),
-  enabled:  !!server && !!(dims?.length),
-  staleTime: 60_000,
-})
+export const useMultiFormatAttrs = (server, dims) => {
+  const formatVersions = useStore(s => s.formatVersions)
+  const versionKey = (dims ?? []).map(d => formatVersions[`${server}::${d}`] ?? 0).join(',')
+  return useQuery({
+    queryKey: ['format-attrs', server, ...(dims ?? []).slice().sort(), versionKey],
+    queryFn:  () => get(`/api/dimensions/format-attrs?server=${enc(server)}&dims=${(dims ?? []).map(enc).join(',')}`),
+    enabled:  !!server && !!(dims?.length),
+    staleTime: 60_000,
+  })
+}
 
 export const useElementsWithAttrs = (server, dim, hierarchy) => useQuery({
   queryKey: ['elements-attrs', server, dim, hierarchy],

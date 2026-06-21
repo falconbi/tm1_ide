@@ -834,15 +834,15 @@ app.get('/api/dimensions/format-attrs', async (req, res) => {
         const dimensions = dims ? dims.split(',').filter(Boolean) : []
         if (!dimensions.length) return res.json({})
         const client = makeClient(server, req.ideToken)
-        const maps = await Promise.all(dimensions.map(async dim => {
-            const mdxResult = await client.getAliasValues(dim, 'Format', dim).catch(() => null)
-            if (mdxResult && Object.keys(mdxResult).length > 0) {
-                return mdxResult
+        const result = {}
+        await Promise.all(dimensions.map(async dim => {
+            let map = await client.getAliasValues(dim, 'Format', dim).catch(() => null)
+            if (!map || !Object.keys(map).length) {
+                map = await client.getFormatAttrs(dim, dim).catch(() => ({}))
             }
-            const restResult = await client.getFormatAttrs(dim, dim).catch(() => ({}))
-            return restResult
+            if (Object.keys(map).length) result[dim] = map
         }))
-        res.json(Object.assign({}, ...maps))
+        res.json(result)
     } catch (e) {
         res.status(500).json({ error: e.message })
     }
