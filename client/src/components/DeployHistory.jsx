@@ -241,7 +241,7 @@ function ArchiveDetail({ id, approval, deployStats }) {
                           className="flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
                           title="View diff"
                         >
-                          <Diff size={10} className="text-muted-foreground hover:text-foreground" />
+                          <Diff size={10} className="text-emerald-500/70 hover:text-emerald-400" />
                         </button>
                       ) : <span />}
                     </div>
