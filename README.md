@@ -53,15 +53,15 @@ npm start                   # → http://localhost:8083
 
 | Rules Editor | TI Editor |
 |---|---|
-| ![Rules Editor](docs/images/1_screenshot.png) | ![TI Editor](docs/images/2_Screenshot.png) |
+| ![Rules Editor](docs/Images/1_screenshot.png) | ![TI Editor](docs/Images/2_screenshot.png) |
 
 | View Editor — Native | View Editor — MDX |
 |---|---|
-| ![View Editor Native](docs/images/3_screenshot.png) | ![View Editor MDX](docs/images/4_screenshot.png) |
+| ![View Editor Native](docs/Images/3_screenshot.png) | ![View Editor MDX](docs/Images/4_screenshot.png) |
 
 **Split pane — View + Rules (dark theme)**
 
-![Split pane dark theme](docs/images/5_screenshot.png)
+![Split pane dark theme](docs/Images/5_screenshot.png)
 
 ---
 
