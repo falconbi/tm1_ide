@@ -209,6 +209,57 @@ npm install
 
 ### 2. Configure
 
+#### Option A — Direct TM1 (no PAW required) ✅ Recommended for home lab / dev
+
+This is the simplest setup. The IDE connects directly to the TM1 admin server — no PAW needed.
+
+**Before you start — check your `tm1s.cfg`:**
+
+The IDE talks to TM1 over HTTP. You need `HTTPPortNumber` to be set in your server's `tm1s.cfg` file (usually found in the TM1 server's data directory). If it's not there, add it:
+
+```ini
+HTTPPortNumber=5895
+```
+
+Restart the TM1 server after adding it. You can use any free port — `5895` is the IBM default for the admin server.
+
+**Then edit `config/servers.json`:**
+
+```json
+{
+  "adminHosts": [
+    {
+      "name": "MyLab",
+      "url": "http://192.168.x.x:5895",
+      "adapter": "direct-v11",
+      "loginServer": "MyTM1Server",
+      "username": "admin",
+      "password": "your_password",
+      "servers": ["MyTM1Server", "AnotherServer"]
+    }
+  ]
+}
+```
+
+| Field | What to put here |
+|-------|-----------------|
+| `url` | IP address of the Windows machine running TM1, followed by the `HTTPPortNumber` |
+| `username` / `password` | A TM1 admin account (must be in the `ADMIN` group on the TM1 server) |
+| `loginServer` | The name of the TM1 server that the IDE uses to authenticate users — must be one of the names in `servers` |
+| `servers` | The names of all your TM1 servers as they appear in Cognos Configuration — these are what show up in the IDE's server selector |
+
+Create a minimal `.env` (only the port is needed):
+
+```env
+PORT=8083
+```
+
+---
+
+#### Option B — Via PAW (Planning Analytics Workspace)
+
+For environments where TM1 is accessed through PAW.
+
 ```bash
 cp .env.example .env
 ```
@@ -216,23 +267,17 @@ cp .env.example .env
 Edit `.env`:
 
 ```env
-# PAW connection
 PAW_HOST=http://192.168.x.x
 PAW_USERNAME=admin
 PAW_PASSWORD=your_password
-
-# The TM1 server PAW validates logins against
-# (PAW Admin Console → Configuration → TM1 Login Server URI)
 PAW_LOGIN_SERVER=Production
-
-# Server port (default: 8083)
 PORT=8083
 
 # Optional: AI-powered MDX generation
 ANTHROPIC_API_KEY=sk-ant-...
 ```
 
-Add your TM1 servers to `config/servers.json`. Simplest form — the IDE defaults to `paw-native` using `PAW_HOST`:
+Edit `config/servers.json`:
 
 ```json
 [
@@ -240,6 +285,8 @@ Add your TM1 servers to `config/servers.json`. Simplest form — the IDE default
   { "name": "Development" }
 ]
 ```
+
+> See [Multi-User Login](#-multi-user-login) for multi-host and advanced adapter setups.
 
 ### 3. Run
 
