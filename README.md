@@ -182,11 +182,12 @@ The `TI_CATALOG` was audited against the IBM Planning Analytics 2.0 function ref
 ### 1. Install
 
 ```bash
-git clone git@github.com:falconbi/tm1_ide.git
+git clone https://github.com/falconbi/tm1_ide.git
 cd tm1_ide
 npm install
-cd client && npm install && cd ..
 ```
+
+> The frontend is pre-built — no `client/` install or build step needed.
 
 ### 2. Configure
 
