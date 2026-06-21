@@ -18,6 +18,10 @@ All TM1 communication routes through **Planning Analytics Workspace (PAW)**, so 
 
 ---
 
+> [!WARNING]
+> **Pre-release — for initial testing only.**
+> This project is under active development and is not yet production-ready. Expect rough edges, breaking changes between commits, and features that are incomplete or unstable. Do not use in a production TM1 environment without understanding the risks.
+
 ## ⚡ Quick Start
 
 ```bash
