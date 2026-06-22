@@ -1590,8 +1590,15 @@ app.get('/api/paw/book-usage', async (req, res) => {
         const { server, cube, view } = req.query
         if (!server || !cube) return res.json({ books: [] })
 
-        const pawSession = await getCachedPawSession(req.ideToken)
-        const csrf = await getCSRF(pawSession)
+        if (!PAW_HOST) return res.json({ books: [], pawUnavailable: true })
+
+        let pawSession, csrf
+        try {
+            pawSession = await getCachedPawSession(req.ideToken)
+            csrf = await getCSRF(pawSession)
+        } catch {
+            return res.json({ books: [], pawUnavailable: true })
+        }
         const base = `${PAW_HOST}/pacontent/v1`
 
         // Recursively collect TM1 view references from PAW book content
@@ -1653,9 +1660,7 @@ app.get('/api/paw/book-usage', async (req, res) => {
                     if (item.type === 'folder') {
                         await walk(item.path)
                     } else if (item.type === 'dashboard' || item.type === 'workbench') {
-                        // Book — fetch with expanded content
-    console.log('[api/process] request:', req.query.server, req.query.name)
-    try {
+                        try {
                             const book = await pawSession.get(
                                 `${base}/Assets(path='${encodePath(item.path)}')?$expand=content`,
                                 { headers: { 'ba-sso-authenticity': csrf } }
