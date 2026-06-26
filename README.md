@@ -85,6 +85,90 @@ npm start                   # → http://localhost:8083
 | **Deploy Panel** | 5-step wizard: Diff → Package → Risk (drift check + BLOCKER/WARNING/INFO) → Approve → Deploy |
 | **Deploy History** | Permanent archive of every deployment — approval record, manifest, results, and pre/post target snapshots with inline diff viewer |
 
+### 🗓️ Period Builder
+
+A wizard that generates a fully structured, production-ready Period dimension — elements, hierarchy, all attributes, and the three TI processes that maintain it — without writing a single line of code.
+
+#### What it builds
+
+For any fiscal year configuration (calendar year, April start, July start, etc.) across any year range, it generates:
+
+#### Element structure
+
+| Element type | Example | Purpose |
+| --- | --- | --- |
+| Monthly leaf | `2025-04` | Source data and reporting periods |
+| FY consolidation | `FY2026` | 12-month fiscal year rollup |
+| OBL leaf | `2026 OBL` | Opening balance — separate from actuals |
+| YTD consolidation | `YTD FY2026 P06` | Jan–Jun accumulation for FY2026 |
+| YTG consolidation | `YTG FY2026 P06` | Jul–Mar remaining months for FY2026 |
+| LTD consolidation | `LTD FY2026 P06` | OBL + YTD P06 |
+| Umbrella C | `All Periods`, `All FY`, `All YTD` | Cross-FY aggregations |
+| Rolling (optional) | `Rolling 12`, `Rolling 6`, `Rolling 3` | Forward-rolling windows from current period |
+
+#### Attributes per month leaf — all computed, none entered manually
+
+| Attribute | Type | Example |
+| --- | --- | --- |
+| `Caption` | Alias | `Apr-25` |
+| `Long Name` | String | `April 2025` |
+| `Fin Year` | String | `FY2026` |
+| `First Period` | String | `2025-04` |
+| `Last Period` | String | `2026-03` |
+| `Previous Period` | String | `2025-03` |
+| `Next Period` | String | `2025-05` |
+| `Calendar Year` | Numeric | `2025` |
+| `Calendar Month` | Numeric | `4` |
+| `Days in Period` | Numeric | `30` |
+| `Period Start Serial` | Numeric | `45751` (Excel/TM1 serial) |
+| `Period End Serial` | Numeric | `45780` |
+| `Is Current Period` | String | `Y` / blank |
+| `YTD` | String | `YTD FY2026 P01` |
+| `YTG` | String | `YTG FY2026 P01` |
+| `LTD` | String | `LTD FY2026 P01` |
+| `Period Type` | String | `Month` / `OBL` |
+
+#### Three generated TI processes
+
+| Process | Parameters | What it does |
+| --- | --- | --- |
+| `{dim}.Build` | `pFirstFY`, `pLastFY`, `pFYStartM`, `pCurrentPeriod` | Creates (or extends) the dimension — elements, hierarchy, attributes. Idempotent — safe to re-run, only appends, never deletes. |
+| `{dim}.Refresh Subsets` | `pCurrentPeriod`, `pFYStartM` | Destroys and recreates all named public subsets relative to the current period. Run monthly from a chore after rollover. |
+| `{dim}.Rollover` | `pCurrentPeriod`, `pPeriod` (optional) | Advances `Is Current Period` one month forward (or jumps to a specific period if `pPeriod` is supplied), then calls `.Refresh Subsets`. |
+
+#### Wizard inputs
+
+- Dimension name, FY start month, first/last FY
+- Year format (`FY2026` / `FY2025` / `2026`), month format (`YYYY-MM` / `Mon-YY`), caption format, long name format
+- Include Total member, Include Is Current Period attribute
+- Subset selector — choose which of 16 named subsets to generate (All Periods, All FY, Current FY, YTD, YTG, LTD, Rolling 12/6/3, etc.)
+- Live FY boundary preview before generating — shows each FY label mapped to its calendar months
+
+#### Subset selector
+
+16 named subsets, each rebuilt by `.Refresh Subsets`. Eight are on by default:
+
+| Subset | Default | Requires current period |
+| --- | --- | --- |
+| All Periods | ✓ | |
+| All FY | ✓ | |
+| Current Period | ✓ | ✓ |
+| Current FY | ✓ | ✓ |
+| Prior FY | ✓ | ✓ |
+| YTD | ✓ | ✓ |
+| YTG | ✓ | ✓ |
+| LTD | ✓ | ✓ |
+| Prior Period | | ✓ |
+| Next FY | | ✓ |
+| Prior YTD / YTG / LTD | | ✓ |
+| Rolling 12 / 6 / 3 | | ✓ |
+
+Subsets that require `Is Current Period` grey out in the selector if that attribute is not included.
+
+> The dimension design is also available as a standalone reference — see [tm1_period_dimension](https://github.com/falconbi/tm1_period_dimension) for the Python builder and TI source files.
+
+---
+
 ### 🔍 Cell Trace — Right-Click → Trace
 
 Right-clicking any cell in a view opens a popup with the cube name and element strip. Clicking **Trace** opens a 440px right-side drawer:
