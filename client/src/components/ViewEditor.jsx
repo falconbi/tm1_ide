@@ -189,7 +189,7 @@ function cellsetToHierarchyData(cellset, formatMap = {}, pageMembers = [], suppr
             if (fmt && rawVal != null) {
                 display = applyTm1Format(rawVal, fmt)
             } else if (fv != null && fv !== '') {
-                display = fv
+                display = stripTm1TypePrefix(fv)
             } else {
                 display = rawVal ?? null
             }
@@ -278,8 +278,16 @@ function elementFromUniqueName(un) {
     return un?.match(/\[([^\]]+)\]$/)?.[1] ?? ''
 }
 
+// TM1 REST API sometimes prefixes FormattedValue with a single-char type indicator, e.g. "c:12345"
+function stripTm1TypePrefix(fv) {
+    if (typeof fv === 'string' && fv.length > 2 && fv[1] === ':') return fv.slice(2)
+    return fv
+}
+
 function applyTm1Format(value, fmt) {
     if (!fmt || fmt === 'General') return value != null ? String(value) : ''
+    if (typeof fmt !== 'string') return value != null ? String(value) : ''
+    if (/^[a-z]:/.test(fmt)) fmt = fmt.slice(2)  // TM1 single-letter type prefix (c:, b:, n: etc) — strip
     if (fmt.startsWith('@')) return String(value ?? '')
     if (typeof value !== 'number') return String(value ?? '')
     const parts = fmt.split(';')
@@ -330,7 +338,7 @@ function parseCellset(data, formatMap = {}, pageMembers = []) {
                 return v != null ? applyTm1Format(v, formatMap[fmtKey]) : ''
             }
             const fv = c.FormattedValue
-            if (fv !== '' && fv != null) return fv
+            if (fv !== '' && fv != null) return stripTm1TypePrefix(fv)
             const v = c.Value
             return v != null ? String(v) : ''
         })
