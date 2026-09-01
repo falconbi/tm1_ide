@@ -13,7 +13,7 @@ import ChoreEditor from '@/components/ChoreEditor'
 import GuidedMDXBuilder from '@/components/GuidedMDXBuilder'
 import CubeEditor from '@/components/CubeEditor'
 import { toast } from 'sonner'
-import { GitBranch, ChevronRight, ChevronDown, Loader2, ChevronsUpDown, ChevronsDownUp, ListTree, AlignLeft, Settings, Locate, Braces, Save, Map, Microscope, X, Plus, Trash2, History, ShieldCheck, Rss } from 'lucide-react'
+import { GitBranch, ChevronRight, ChevronDown, Loader2, ChevronsUpDown, ChevronsDownUp, ListTree, AlignLeft, Settings, Locate, Braces, Save, Map, Microscope, X, Plus, Trash2, History, ShieldCheck, Rss, AlertTriangle, AlertCircle, ChevronUp } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { loadSettings, saveSettings } from '@/lib/formatters/settings.js'
 import { formatRules } from '@/lib/formatters/rules-formatter.js'
@@ -285,6 +285,7 @@ function RulesEditor({ tab, onCursor }) {
   const [formatStruct, setFormatStruct] = useState(() => loadSettings().rules.expressionFormatter ?? null)
   const [checking, setChecking]             = useState(false)
   const [checkResult, setCheckResult]       = useState(null) // null | 'pass' | 'fail'
+  const [checkErrors, setCheckErrors]       = useState([])   // { severity, line, message }[]
   const [checkingFeeders, setCheckingFeeders] = useState(false)
 
   const openCube = useCallback((cube) => {
@@ -339,6 +340,10 @@ function RulesEditor({ tab, onCursor }) {
       ]
       monacoRef.current.editor.setModelMarkers(model, 'rules-check', markers)
       setCheckResult(markers.length === 0 ? 'pass' : 'fail')
+      setCheckErrors([
+        ...tm1Errors.map(e => ({ severity: 'error', line: e.LineNumber, message: e.Message })),
+        ...staticErrors.map(e => ({ severity: e.severity ?? 'error', line: e.line, message: e.message })),
+      ])
     } finally {
       setChecking(false)
     }
@@ -557,7 +562,8 @@ function RulesEditor({ tab, onCursor }) {
         <span className="text-xs text-muted-foreground">Rules</span>
       </div>
       <div className="flex flex-1 min-h-0 overflow-hidden">
-      <div className="flex-1 min-w-0 overflow-hidden relative">
+      <div className="flex-1 min-w-0 overflow-hidden flex flex-col">
+        <div className="relative flex-1 min-h-0 overflow-hidden">
         <div className="absolute top-2 right-2 z-10 flex items-center gap-1.5">
           <button
             onClick={() => setShowHistory(v => !v)}
@@ -791,6 +797,37 @@ function RulesEditor({ tab, onCursor }) {
             objectName={tab.cube}
             onClose={() => setShowHistory(false)}
           />
+        )}
+        </div>{/* end relative flex-1 editor wrapper */}
+        {checkErrors.length > 0 && (
+          <div className="shrink-0 border-t border-border bg-background max-h-40 overflow-y-auto">
+            <div className="flex items-center justify-between px-3 py-1.5 border-b border-border sticky top-0 bg-background z-10">
+              <span className="text-[11px] font-medium text-muted-foreground">
+                {checkErrors.filter(e => e.severity === 'error').length} error{checkErrors.filter(e => e.severity === 'error').length !== 1 ? 's' : ''}
+                {checkErrors.filter(e => e.severity === 'warning').length > 0 && ` · ${checkErrors.filter(e => e.severity === 'warning').length} warning${checkErrors.filter(e => e.severity === 'warning').length !== 1 ? 's' : ''}`}
+              </span>
+              <button onClick={() => setCheckErrors([])} className="text-muted-foreground hover:text-foreground transition-colors">
+                <X size={11} />
+              </button>
+            </div>
+            {checkErrors.map((e, i) => (
+              <button
+                key={i}
+                onClick={() => {
+                  editorRef.current?.revealLineInCenter(e.line)
+                  editorRef.current?.setPosition({ lineNumber: e.line, column: 1 })
+                  editorRef.current?.focus()
+                }}
+                className="w-full flex items-start gap-2.5 px-3 py-1.5 text-left hover:bg-muted/50 transition-colors group"
+              >
+                {e.severity === 'warning'
+                  ? <AlertTriangle size={11} className="text-amber-400 mt-0.5 shrink-0" />
+                  : <AlertCircle size={11} className="text-red-400 mt-0.5 shrink-0" />}
+                <span className="text-[10px] font-mono text-muted-foreground shrink-0 w-8 text-right">{e.line}</span>
+                <span className="text-[11px] text-foreground/80 group-hover:text-foreground transition-colors">{e.message}</span>
+              </button>
+            ))}
+          </div>
         )}
       </div>
       {showSnippets && (
