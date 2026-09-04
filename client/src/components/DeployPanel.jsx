@@ -318,7 +318,9 @@ function RiskGroup({ title, items, defaultOpen }) {
 function Screen2({ servers, currentServer, target, setTarget, packageData,
                    riskData, riskRunning, driftData, driftRunning,
                    notes, setNotes, username, onDeploy, deploying, baselineSeededAt }) {
-  const otherServers = (servers ?? []).filter(s => s.name !== currentServer)
+  const otherServers = (servers ?? [])
+    .map(s => (typeof s === 'string' ? s : s?.name))
+    .filter(name => name && name !== currentServer)
 
   const blockers = riskData?.blockers ?? []
   const warnings = riskData?.warnings ?? []
@@ -374,8 +376,8 @@ function Screen2({ servers, currentServer, target, setTarget, packageData,
           className="w-full bg-muted border border-border rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
         >
           <option value="">Select target server…</option>
-          {otherServers.map(s => (
-            <option key={s.name} value={s.name}>{s.name}</option>
+          {otherServers.map(name => (
+            <option key={name} value={name}>{name}</option>
           ))}
         </select>
       </div>
