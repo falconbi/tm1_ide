@@ -548,7 +548,8 @@ export const useDeployDriftCheck = () => useMutation({ mutationFn: (body) => pos
 export const useDeployRisk       = () => useMutation({ mutationFn: (body) => post('/api/deploy/risk',         body) })
 export const useDeployExecute  = () => useMutation({ mutationFn: (body) => post('/api/deploy/execute', body) })
 export const useDeployApprove  = () => useMutation({ mutationFn: (body) => post('/api/deploy/approve', body) })
-export const useDeployArchive  = () => useMutation({ mutationFn: (body) => post('/api/deploy/archive', body) })
+export const useDeployScopedSnapshot = () => useMutation({ mutationFn: (body) => post('/api/deploy/scoped-snapshot', body) })
+export const useDeployArchive  = () => { const qc = useQueryClient(); return useMutation({ mutationFn: (body) => post('/api/deploy/archive', body), onSuccess: () => qc.invalidateQueries({ queryKey: ['deploy-archives'] }) }) }
 export const useDeployArchives = () => useQuery({ queryKey: ['deploy-archives'], queryFn: () => get('/api/deploy/archives'), staleTime: 0 })
 
 // ── User management ───────────────────────────────────────────────────────────
