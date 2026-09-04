@@ -111,6 +111,24 @@ function getSessionLog(sessionId) {
     `).all(sessionId, sessionId).map(parseEntry)
 }
 
+// Every object touched on this server since `sinceIso` (typically the baseline's
+// seeded_at), collapsed to the latest entry per object+action — the union of all
+// change sets in a release window. Feeds the same diff/package path as
+// getSessionLog; diff.js dedups further by object identity across actions.
+function getEntriesSince(server, sinceIso) {
+    const since = sinceIso || '1970-01-01T00:00:00.000Z'
+    return db.prepare(`
+        SELECT * FROM log_entries
+        WHERE server = ? AND timestamp >= ?
+        AND id IN (
+            SELECT MAX(id) FROM log_entries
+            WHERE server = ? AND timestamp >= ?
+            GROUP BY object_type, object_name, action
+        )
+        ORDER BY timestamp ASC
+    `).all(server, since, server, since).map(parseEntry)
+}
+
 function getSessionLogVerbose(sessionId) {
     return db.prepare(`
         SELECT * FROM log_entries
@@ -183,4 +201,4 @@ function writeLog({ server, action, objectType, objectName, detail, beforeState,
 // SQLite doesn't add columns to existing tables via CREATE TABLE — migrate if needed
 try { db.exec(`ALTER TABLE sessions ADD COLUMN description TEXT`) } catch {}
 
-module.exports = { startSession, closeSession, resumeSession, updateSessionDescription, getActiveSession, getSessions, getAllSessions, getSessionLog, getSessionLogVerbose, getRecentLog, getObjectHistory, getEntryById, writeLog }
+module.exports = { startSession, closeSession, resumeSession, updateSessionDescription, getActiveSession, getSessions, getAllSessions, getSessionLog, getEntriesSince, getSessionLogVerbose, getRecentLog, getObjectHistory, getEntryById, writeLog }

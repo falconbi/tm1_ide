@@ -588,10 +588,18 @@ export default function DeployPanel({ tab }) {
   const username     = useStore(s => s.username)
   const { session, server } = tab
 
+  // 'session' — deploy one change set. 'release' — every object changed since the
+  // baseline was seeded (the union of all change sets in this release window).
+  const [mode,     setMode]     = useState(tab.release || !session ? 'release' : 'session')
   const [screen,   setScreen]   = useState(1)
   const [selected, setSelected] = useState(new Set())
   const [target,   setTarget]   = useState('')
   const [notes,    setNotes]    = useState('')
+
+  const isRelease   = mode === 'release'
+  const releaseName = `Release ${new Date().toISOString().slice(0, 10)}`
+  const packageName = isRelease ? releaseName : session?.name
+  const canSwitchToSession = !!session
 
   const { data: servers } = useServers()
   const diffMut     = useDeployDiff()
@@ -603,10 +611,12 @@ export default function DeployPanel({ tab }) {
   const snapshotMut = useDeployScopedSnapshot()
   const archiveMut  = useDeployArchive()
 
-  // Auto-run diff on mount
+  // Auto-run diff on mount and whenever the mode flips (screen 1 only)
   useEffect(() => {
-    diffMut.mutate({ server, sessionId: session.id })
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+    if (screen !== 1) return
+    setSelected(new Set())
+    diffMut.mutate({ server, sessionId: session?.id, release: isRelease })
+  }, [mode]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Pre-select MATCH + NEW when diff resolves
   useEffect(() => {
@@ -632,7 +642,7 @@ export default function DeployPanel({ tab }) {
     })
     try {
       await packageMut.mutateAsync({
-        server, sessionId: session.id, sessionName: session.name,
+        server, sessionId: session?.id, sessionName: packageName, release: isRelease,
         selectedObjects: selectedList,
         // any selected object that the diff classifies as DRIFT is only packaged
         // if it is also force-included; harmless for non-drift objects
@@ -654,7 +664,7 @@ export default function DeployPanel({ tab }) {
       // 2. Record the approval
       const approval = await approveMut.mutateAsync({
         source: server, target, approver: username || 'admin',
-        notes, packaged: session.name, session: session.id, packageDir: dir,
+        notes, packaged: packageName, session: isRelease ? null : session?.id, packageDir: dir,
       })
 
       // 3. Deploy
@@ -685,7 +695,7 @@ export default function DeployPanel({ tab }) {
     riskMut.reset()
     snapshotMut.reset()
     archiveMut.reset()
-    diffMut.mutate({ server, sessionId: session.id })
+    diffMut.mutate({ server, sessionId: session?.id, release: isRelease })
   }
 
   const anyError = packageMut.error || deployMut.error || approveMut.error
@@ -696,6 +706,30 @@ export default function DeployPanel({ tab }) {
 
       {screen === 1 && (
         <>
+          <div className="flex items-center gap-2 px-5 py-2 border-b border-border/50 shrink-0">
+            <div className="flex rounded border border-border overflow-hidden text-[11px]">
+              <button
+                onClick={() => canSwitchToSession && setMode('session')}
+                disabled={!canSwitchToSession}
+                className={cn('px-2.5 py-1 transition-colors',
+                  mode === 'session' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted disabled:opacity-40 disabled:hover:bg-transparent')}
+              >
+                This change set{session ? `: ${session.name}` : ''}
+              </button>
+              <button
+                onClick={() => setMode('release')}
+                className={cn('px-2.5 py-1 transition-colors border-l border-border',
+                  mode === 'release' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted')}
+              >
+                Release — all since baseline
+              </button>
+            </div>
+            {isRelease && (
+              <span className="text-[11px] text-muted-foreground">
+                every object changed on {server} since the baseline was seeded
+              </span>
+            )}
+          </div>
           <BaselineBanner diffData={diffMut.data} />
           <Screen1
             diffData={diffMut.data}

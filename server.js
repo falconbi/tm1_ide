@@ -2467,6 +2467,22 @@ app.post('/api/cells/write', async (req, res) => {
 
 // ── Deploy pipeline ───────────────────────────────────────────────────────────
 
+// When the baseline was last seeded — the start of the current release window.
+function baselineSeededAt() {
+    try {
+        if (!fs.existsSync(BASELINE_PATH)) return null
+        return JSON.parse(fs.readFileSync(BASELINE_PATH, 'utf8'))?._meta?.seeded_at ?? null
+    } catch { return null }
+}
+
+// Resolve the change-log entries a diff/package should work from:
+// one change set (sessionId), or every object touched since the baseline (release).
+function deployEntries({ server, sessionId, release }) {
+    return release
+        ? cl.getEntriesSince(server, baselineSeededAt())
+        : cl.getSessionLog(sessionId)
+}
+
 app.get('/api/deploy/object-diff', async (req, res) => {
     try {
         const { server, type, name, detail } = req.query
@@ -2532,8 +2548,8 @@ app.post('/api/deploy/seed', async (req, res) => {
 
 app.post('/api/deploy/diff', async (req, res) => {
     try {
-        const { server, sessionId } = req.body
-        const entries = cl.getSessionLog(sessionId)
+        const { server, sessionId, release } = req.body
+        const entries = deployEntries({ server, sessionId, release })
         const result  = await deployDiff(server, entries, undefined, req.ideToken)
         res.json(result)
     } catch (e) { res.status(500).json({ error: e.message }) }
@@ -2541,13 +2557,14 @@ app.post('/api/deploy/diff', async (req, res) => {
 
 app.post('/api/deploy/package', async (req, res) => {
     try {
-        const { server, sessionId, sessionName, forceInclude = [], selectedObjects } = req.body
-        let entries = cl.getSessionLog(sessionId)
+        const { server, sessionId, sessionName, release, forceInclude = [], selectedObjects } = req.body
+        let entries = deployEntries({ server, sessionId, release })
         if (selectedObjects?.length) {
             const sel = new Set(selectedObjects.map(o => `${o.object_type}::${o.object_name}::${o.detail ?? ''}`))
             entries = entries.filter(e => sel.has(`${e.object_type}::${e.object_name}::${e.detail ?? ''}`))
         }
-        const result  = await deployPack(server, entries, sessionName, { force: true, forceInclude }, req.ideToken)
+        const name = sessionName || (release ? `Release ${new Date().toISOString().slice(0, 10)}` : 'deploy')
+        const result = await deployPack(server, entries, name, { force: true, forceInclude }, req.ideToken)
         res.json(result)
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
