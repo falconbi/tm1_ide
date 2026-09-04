@@ -120,7 +120,6 @@ export default function App() {
   const [showPeriodBuilder, setShowPeriodBuilder] = useState(false)
   const [showUserMgmt, setShowUserMgmt]           = useState(false)
   const [showCatalog, setShowCatalog]             = useState(false)
-  const [catalogTab, setCatalogTab]               = useState('ti')
   const [sidebarWidth, setSidebarWidth]           = useState(280)
   const [findWidth, setFindWidth]                 = useState(320)
   const dragRef = useRef(null)
@@ -342,6 +341,7 @@ export default function App() {
               </PanelGroup>
             </div>
 
+
           </div>
 
           <StatusBar />
@@ -352,12 +352,11 @@ export default function App() {
           open={showPrefs}
           onClose={() => setShowPrefs(false)}
           onOpenPeriodBuilder={() => setShowPeriodBuilder(true)}
-          onOpenNamingDictionary={() => { setCatalogTab('naming'); setShowCatalog(true) }}
           onOpenFormatSettings={() => setFormatSettingsOpen(true)}
         />
         <FormatSettings open={formatSettingsOpen} onClose={() => setFormatSettingsOpen(false)} />
         {showUserMgmt && server && <UserManagement server={server} onClose={() => setShowUserMgmt(false)} />}
-        {showCatalog && <CatalogAdmin server={server} onClose={() => setShowCatalog(false)} initialTab={catalogTab} />}
+        {showCatalog && <CatalogAdmin server={server} onClose={() => setShowCatalog(false)} />}
         <PeriodBuilder open={showPeriodBuilder} onClose={() => setShowPeriodBuilder(false)} />
         <Toaster position="bottom-right" duration={3000} />
       </TooltipProvider>

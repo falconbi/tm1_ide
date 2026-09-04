@@ -1415,6 +1415,58 @@ Rules:
     }
 })
 
+app.post('/api/mdx/generate', async (req, res) => {
+    if (!process.env.ANTHROPIC_API_KEY) {
+        return res.status(400).json({ error: 'ANTHROPIC_API_KEY not set in .env' })
+    }
+    try {
+        const { server, cube, prompt } = req.body
+        const client = makeClient(server, req.ideToken)
+        const dims = await client.getCubeDimensions(cube)
+
+        // Fetch element samples for each dimension in parallel (max 60 per dim)
+        const dimSamples = await Promise.all(dims.map(async dim => {
+            try {
+                const elems = await client.getElements(dim)
+                const leaves = elems.filter(e => e.Type === 'N').slice(0, 30).map(e => e.Name)
+                const consol = elems.filter(e => e.Type === 'C').slice(0, 20).map(e => e.Name)
+                return { dim, leaves, consol, total: elems.length }
+            } catch { return { dim, leaves: [], consol: [], total: 0 } }
+        }))
+
+        const dimContext = dimSamples.map(({ dim, leaves, consol, total }) => {
+            const parts = []
+            if (consol.length) parts.push(`  Consolidated: ${consol.join(', ')}`)
+            if (leaves.length) parts.push(`  Leaf: ${leaves.join(', ')}`)
+            return `${dim} (${total} elements)\n${parts.join('\n')}`
+        }).join('\n\n')
+
+        const message = await anthropic.messages.create({
+            model: 'claude-sonnet-5',
+            max_tokens: 2048,
+            system: `You are a TM1 MDX expert. Generate a valid TM1 MDX SELECT query for the given cube.
+Rules:
+- Return ONLY the raw MDX — no markdown, no explanation, no code fences.
+- Use standard TM1 MDX syntax: SELECT ... ON COLUMNS, ... ON ROWS FROM [Cube] WHERE (...)
+- Reference members as [Dim].[Dim].[MemberName]
+- Sets must be wrapped in {}. Use NON EMPTY where appropriate.
+- The last dimension is typically the measures dimension and goes ON COLUMNS.
+- Common set functions: TM1FilterByLevel, TM1FilterByPattern, TM1Sort, TopCount, BottomCount, Filter, Children, Descendants, Members, CrossJoin.
+- Leaf members are level-0 numeric elements. Consolidated members are higher-level aggregations.
+- If only one dimension member is needed for a dimension, use it as a WHERE slicer, not ON an axis.
+- Keep it correct and executable. If uncertain about a member name, use a safe set like {[Dim].[Dim].Members}.`,
+            messages: [{
+                role: 'user',
+                content: `Cube: ${cube}\n\nDimensions and sample members:\n${dimContext}\n\nRequest: ${prompt}`,
+            }],
+        })
+
+        res.json({ mdx: message.content[0].text.trim() })
+    } catch (e) {
+        res.status(500).json({ error: e.message })
+    }
+})
+
 // ── View → axis config (execute view, return cellset + axis dim names) ───────
 // Extract member names from an inline Subset Expression like {[Dim].[Hier].[M1], [Dim].[Hier].[M2]}
 function extractMembersFromExpression(expr) {
@@ -1910,7 +1962,12 @@ app.post('/api/cube/check-feeders-for-rules', async (req, res) => {
         const { server, cube } = req.body
         await makeClient(server, req.ideToken).checkFeedersForRules(cube)
         res.json({ ok: true })
-    } catch (e) { res.status(500).json({ error: e.message }) }
+    } catch (e) {
+        if (e.response?.status === 404) {
+            return res.json({ unsupported: true, message: 'Feeder check is not supported on this TM1 server version' })
+        }
+        res.status(500).json({ error: e.message })
+    }
 })
 
 // ── Cell annotations ──────────────────────────────────────────────────────────
@@ -2484,8 +2541,12 @@ app.post('/api/deploy/diff', async (req, res) => {
 
 app.post('/api/deploy/package', async (req, res) => {
     try {
-        const { server, sessionId, sessionName, forceInclude = [] } = req.body
-        const entries = cl.getSessionLog(sessionId)
+        const { server, sessionId, sessionName, forceInclude = [], selectedObjects } = req.body
+        let entries = cl.getSessionLog(sessionId)
+        if (selectedObjects?.length) {
+            const sel = new Set(selectedObjects.map(o => `${o.object_type}::${o.object_name}::${o.detail ?? ''}`))
+            entries = entries.filter(e => sel.has(`${e.object_type}::${e.object_name}::${e.detail ?? ''}`))
+        }
         const result  = await deployPack(server, entries, sessionName, { force: true, forceInclude }, req.ideToken)
         res.json(result)
     } catch (e) { res.status(500).json({ error: e.message }) }
@@ -2655,6 +2716,76 @@ app.post('/api/admin/validate-ti-functions', async (req, res) => {
         res.status(500).json({ error: e.message })
     }
 })
+
+// ── Cube Map ──────────────────────────────────────────────────────────────────
+app.get('/api/cubemap/model', async (req, res) => {
+    try {
+        const client = makeClient(req.query.server, req.ideToken)
+        const allCubes = await client.getAllCubesWithRules()
+
+        // Parse DB() references from rules text
+        const DB_RE = /\bDB\s*\(\s*'([^']+)'/gi
+        function scanRefs(text) {
+            const refs = new Set()
+            let m
+            while ((m = DB_RE.exec(text)) !== null) refs.add(m[1])
+            DB_RE.lastIndex = 0
+            return [...refs]
+        }
+
+        // Fetch TI process code for write-ref analysis (best-effort — skip if slow/unavailable)
+        const tiWriteMap = {}
+        try {
+            const pd = await client.get('Processes', {
+                '$select': 'Name,PrologProcedure,MetadataProcedure,DataProcedure,EpilogProcedure',
+            })
+            const CELLPUT_RE = /\bCellPut[NS](?:Complete)?\s*\([^,]+,\s*'([^']+)'/gi
+            for (const p of (pd.value ?? []).filter(p => !p.Name.startsWith('}'))) {
+                const code = [p.PrologProcedure, p.MetadataProcedure, p.DataProcedure, p.EpilogProcedure]
+                    .filter(Boolean).join('\n')
+                CELLPUT_RE.lastIndex = 0
+                let m
+                while ((m = CELLPUT_RE.exec(code)) !== null) {
+                    const cn = m[1]
+                    if (!tiWriteMap[cn]) tiWriteMap[cn] = []
+                    if (!tiWriteMap[cn].includes(p.Name)) tiWriteMap[cn].push(p.Name)
+                }
+            }
+        } catch { /* TI refs unavailable — continue without them */ }
+
+        const cubeNames = new Set(allCubes.map(c => c.Name))
+        const cubes = {}
+
+        for (const c of allCubes) {
+            const rules = c.Rules ?? ''
+            const feederIdx = rules.search(/^FEEDERS\s*;/im)
+            const calcText   = feederIdx >= 0 ? rules.slice(0, feederIdx) : rules
+            const feederText = feederIdx >= 0 ? rules.slice(feederIdx) : ''
+
+            const calcRefs   = scanRefs(calcText).filter(n => cubeNames.has(n) && n !== c.Name)
+            const feederRefs = scanRefs(feederText).filter(n => cubeNames.has(n) && n !== c.Name)
+
+            // Non-blank, non-comment lines in the calc section
+            const ruleLoc = calcText.split('\n')
+                .filter(l => { const t = l.trim(); return t && !t.startsWith('#') && !t.startsWith('//') })
+                .length
+
+            cubes[c.Name] = {
+                dims:           (c.Dimensions ?? []).map(d => d.Name),
+                hasRules:       rules.trim().length > 0,
+                ruleCalcRefs:   calcRefs,
+                ruleFeederRefs: feederRefs,
+                ruleLoc,
+                tiWriters:      tiWriteMap[c.Name] ?? [],
+            }
+        }
+
+        res.json({ cubes })
+    } catch (e) {
+        res.status(500).json({ error: e.message })
+    }
+})
+
 
 app.get('/{*path}', (req, res) => {
     res.sendFile(path.join(__dirname, 'static', 'index.html'))
