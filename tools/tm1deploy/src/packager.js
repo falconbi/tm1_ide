@@ -289,6 +289,12 @@ async function pack(server, sessionEntries, sessionName, options = {}, ideToken)
 
     fs.writeFileSync(path.join(outputDir, 'manifest.json'), JSON.stringify(manifest, null, 2))
 
+    // Bundle the baseline so the package is self-contained — the receiving admin
+    // can run drift/risk on their side without a separately shipped baseline.
+    if (loadedBaseline) {
+        fs.writeFileSync(path.join(outputDir, 'baseline.json'), JSON.stringify(loadedBaseline, null, 2))
+    }
+
     return {
         packaged:   manifest.objects.length,
         skipped:    manifest.skipped.length,

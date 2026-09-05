@@ -2587,6 +2587,30 @@ app.get('/api/deploy/packages', (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
+// Stream a package folder as a .zip for handoff to an admin who will deploy it.
+app.get('/api/deploy/package-zip', (req, res) => {
+    try {
+        const dir = req.query.dir
+        if (!dir) return res.status(400).json({ error: 'dir required' })
+        const resolved      = path.resolve(dir)
+        const packagesRoot  = path.resolve(__dirname, 'packages')
+        if (resolved !== packagesRoot && !resolved.startsWith(packagesRoot + path.sep)) {
+            return res.status(403).json({ error: 'path outside packages directory' })
+        }
+        if (!fs.existsSync(path.join(resolved, 'manifest.json'))) {
+            return res.status(404).json({ error: 'not a package (no manifest.json)' })
+        }
+        const { ZipArchive } = require('archiver')
+        const name = path.basename(resolved)
+        res.attachment(`${name}.zip`)
+        const zip = new ZipArchive({ zlib: { level: 9 } })
+        zip.on('error', err => res.destroy(err))
+        zip.pipe(res)
+        zip.directory(resolved, name)
+        zip.finalize()
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
 app.post('/api/deploy/drift-check', async (req, res) => {
     try {
         const { packageDir, target } = req.body

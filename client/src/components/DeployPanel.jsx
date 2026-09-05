@@ -1,6 +1,7 @@
 import { useState, useEffect, Fragment } from 'react'
 import { Loader2, CheckCircle2, XCircle, AlertTriangle, Info,
-         ChevronRight, ChevronDown, Package, Rocket, ShieldCheck, ArrowRight, RefreshCw } from 'lucide-react'
+         ChevronRight, ChevronDown, Package, Rocket, ShieldCheck, ArrowRight, RefreshCw,
+         Download, FolderArchive } from 'lucide-react'
 import { useServers, useDeployDiff, useDeployPackage, useDeployDriftCheck,
          useDeployRisk, useDeployExecute, useDeployApprove,
          useDeployScopedSnapshot, useDeployArchive } from '@/hooks/useApi'
@@ -109,7 +110,7 @@ function DeltaLine({ o }) {
   return null
 }
 
-function Screen1({ diffData, diffRunning, diffError, selected, setSelected, server, openTab, onPrepare, packaging }) {
+function Screen1({ diffData, diffRunning, diffError, selected, setSelected, server, openTab, onPrepare, onPackageOnly, packaging }) {
   const groups = diffData ? [
     { key: 'packable',    label: 'To deploy', items: [
       ...(diffData.match ?? []).map(o => ({ ...o, outcome: 'MATCH' })),
@@ -261,24 +262,125 @@ function Screen1({ diffData, diffRunning, diffError, selected, setSelected, serv
       </div>
 
       {/* Footer */}
-      <div className="flex items-center justify-between px-5 py-3 border-t border-border bg-muted/10 shrink-0">
+      <div className="flex items-center justify-between px-5 py-3 border-t border-border bg-muted/10 shrink-0 gap-3">
         <span className="text-xs text-muted-foreground">
           {nSelected === 0 ? 'No objects selected'
             : `${nSelected} object${nSelected !== 1 ? 's' : ''} selected`}
         </span>
+        <div className="flex items-center gap-2">
+          <button
+            disabled={nSelected === 0 || packaging}
+            onClick={onPackageOnly}
+            title="Build the package folder and stop — for handing to an admin who has access to the target"
+            className={cn(
+              'flex items-center gap-2 px-3 py-1.5 rounded text-sm font-medium transition-colors border',
+              nSelected > 0 && !packaging
+                ? 'border-border text-foreground hover:bg-muted'
+                : 'border-border/50 text-muted-foreground cursor-not-allowed',
+            )}
+          >
+            <FolderArchive size={13} /> Package for handoff
+          </button>
+          <button
+            disabled={nSelected === 0 || packaging}
+            onClick={onPrepare}
+            className={cn(
+              'flex items-center gap-2 px-4 py-1.5 rounded text-sm font-medium transition-colors',
+              nSelected > 0 && !packaging
+                ? 'bg-primary text-primary-foreground hover:bg-primary/90'
+                : 'bg-muted text-muted-foreground cursor-not-allowed',
+            )}
+          >
+            {packaging
+              ? <><Loader2 size={13} className="animate-spin" /> Building…</>
+              : <><Package size={13} /> Prepare &amp; deploy <ArrowRight size={13} /></>}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Handoff: package built, hand the folder to an admin ───────────────────────
+
+function HandoffScreen({ packageData, server, isRelease, onReset }) {
+  const [downloading, setDownloading] = useState(false)
+  const [err, setErr] = useState(null)
+
+  const dir     = packageData?.outputDir
+  const objects = packageData?.manifest?.objects ?? []
+  const dirName = dir ? dir.split('/').pop() : ''
+
+  async function download() {
+    if (!dir) return
+    setDownloading(true); setErr(null)
+    try {
+      const r = await fetch(`/api/deploy/package-zip?dir=${encodeURIComponent(dir)}`, {
+        headers: { 'x-ide-token': localStorage.getItem('tm1-token') ?? '' },
+      })
+      if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || `HTTP ${r.status}`)
+      const blob = await r.blob()
+      const url  = URL.createObjectURL(blob)
+      const a    = document.createElement('a')
+      a.href = url; a.download = `${dirName}.zip`
+      document.body.appendChild(a); a.click(); a.remove()
+      URL.revokeObjectURL(url)
+    } catch (e) { setErr(e.message) }
+    finally { setDownloading(false) }
+  }
+
+  const cli = `tm1deploy risk   --package ./${dirName} --target <PROD>\ntm1deploy deploy --package ./${dirName} --target <PROD>`
+
+  return (
+    <div className="flex flex-col h-full overflow-auto">
+      <div className="px-5 py-4 border-b border-border/50 shrink-0">
+        <div className="flex items-center gap-2 text-emerald-400 text-sm font-medium">
+          <CheckCircle2 size={15} /> Package ready for handoff
+        </div>
+        <p className="text-xs text-muted-foreground mt-1">
+          {objects.length} object{objects.length !== 1 ? 's' : ''} from {isRelease ? 'the release window' : 'this change set'} on <span className="text-foreground">{server}</span>.
+          Self-contained — includes the baseline for drift checking on the target side.
+        </p>
+      </div>
+
+      <div className="px-5 py-4 border-b border-border/50 shrink-0">
+        <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground mb-1.5">Package location (on the server)</p>
+        <code className="block text-xs bg-muted rounded px-3 py-2 break-all">{dir}</code>
         <button
-          disabled={nSelected === 0 || packaging}
-          onClick={onPrepare}
-          className={cn(
-            'flex items-center gap-2 px-4 py-1.5 rounded text-sm font-medium transition-colors',
-            nSelected > 0 && !packaging
-              ? 'bg-primary text-primary-foreground hover:bg-primary/90'
-              : 'bg-muted text-muted-foreground cursor-not-allowed',
-          )}
+          onClick={download}
+          disabled={downloading}
+          className="mt-3 flex items-center gap-2 px-4 py-1.5 rounded text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
         >
-          {packaging
-            ? <><Loader2 size={13} className="animate-spin" /> Building…</>
-            : <><Package size={13} /> Prepare {nSelected > 0 ? nSelected : ''} selected <ArrowRight size={13} /></>}
+          {downloading ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />}
+          Download {dirName}.zip
+        </button>
+        {err && <p className="text-xs text-red-400 mt-2">{err}</p>}
+      </div>
+
+      <div className="px-5 py-4 border-b border-border/50 flex-1">
+        <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground mb-1.5">Contents</p>
+        <div className="rounded border border-border/50 divide-y divide-border/30 max-h-56 overflow-auto">
+          {objects.map((o, i) => (
+            <div key={i} className="flex items-center gap-2 px-2.5 py-1 text-[11px]">
+              <span className="font-mono text-muted-foreground w-20 shrink-0">{o.type}</span>
+              <span className="font-medium truncate">{o.name}</span>
+              {o.detail && <span className="font-mono text-muted-foreground/70 truncate">{o.detail}</span>}
+              <span className="ml-auto text-muted-foreground/70">{(o.outcome ?? '').toLowerCase()}</span>
+            </div>
+          ))}
+        </div>
+
+        <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground mt-4 mb-1.5">The admin runs</p>
+        <pre className="text-[11px] bg-muted rounded px-3 py-2 overflow-x-auto whitespace-pre">{cli}</pre>
+        <p className="text-[11px] text-muted-foreground/70 mt-1.5">
+          Standalone CLI — their credentials, their target. They review the risk report, then deploy.
+        </p>
+      </div>
+
+      <div className="flex justify-end px-5 py-3 border-t border-border bg-muted/10 shrink-0">
+        <button onClick={onReset}
+          className="flex items-center gap-2 px-4 py-1.5 rounded text-sm font-medium bg-muted hover:bg-muted/80 text-foreground transition-colors">
+          <RefreshCw size={13} /> Start over
         </button>
       </div>
     </div>
@@ -654,6 +756,21 @@ export default function DeployPanel({ tab }) {
     } catch { /* packageMut.error shown in banner */ }
   }
 
+  async function handlePackageOnly() {
+    const selectedList = [...selected].map(k => {
+      const [object_type, object_name, detail] = k.split('::')
+      return { object_type, object_name, detail: detail || undefined }
+    })
+    try {
+      await packageMut.mutateAsync({
+        server, sessionId: session?.id, sessionName: packageName, release: isRelease,
+        selectedObjects: selectedList,
+        forceInclude: selectedList,
+      })
+      setScreen('handoff')
+    } catch { /* packageMut.error shown in banner */ }
+  }
+
   async function handleDeploy() {
     const dir      = packageMut.data?.outputDir
     const manifest = packageMut.data?.manifest
@@ -704,7 +821,7 @@ export default function DeployPanel({ tab }) {
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
-      <ScreenHeader current={screen} />
+      {typeof screen === 'number' && <ScreenHeader current={screen} />}
 
       {screen === 1 && (
         <>
@@ -742,9 +859,19 @@ export default function DeployPanel({ tab }) {
             server={server}
             openTab={openTab}
             onPrepare={handlePrepare}
+            onPackageOnly={handlePackageOnly}
             packaging={packageMut.isPending}
           />
         </>
+      )}
+
+      {screen === 'handoff' && (
+        <HandoffScreen
+          packageData={packageMut.data}
+          server={server}
+          isRelease={isRelease}
+          onReset={handleReset}
+        />
       )}
 
       {screen === 2 && (
