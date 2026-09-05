@@ -2569,6 +2569,67 @@ app.post('/api/deploy/package', async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
+// Read an existing package's manifest — used both by the freshly-built package
+// (outputDir just returned from /api/deploy/package POST) and by an imported one.
+app.get('/api/deploy/package', (req, res) => {
+    try {
+        const dir = req.query.dir
+        if (!dir) return res.status(400).json({ error: 'dir required' })
+        const resolved     = path.resolve(dir)
+        const packagesRoot = path.resolve(__dirname, 'packages')
+        if (resolved !== packagesRoot && !resolved.startsWith(packagesRoot + path.sep)) {
+            return res.status(403).json({ error: 'path outside packages directory' })
+        }
+        const manifestPath = path.join(resolved, 'manifest.json')
+        if (!fs.existsSync(manifestPath)) return res.status(404).json({ error: 'manifest.json not found' })
+        const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'))
+        res.json({ outputDir: resolved, manifest })
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// Accept a package .zip (built by another IDE instance) and unpack it into
+// packages/, so the admin can review + deploy it here without ever running
+// the CLI or touching the source Dev server.
+app.post('/api/deploy/import-zip', express.raw({ type: '*/*', limit: '200mb' }), (req, res) => {
+    try {
+        if (!req.body?.length) return res.status(400).json({ error: 'Empty upload' })
+        const AdmZip   = require('adm-zip')
+        const zip      = new AdmZip(req.body)
+        const entries  = zip.getEntries().filter(e => !e.isDirectory)
+        if (!entries.length) return res.status(400).json({ error: 'Empty zip' })
+
+        // Packages are zipped as <name>/manifest.json, <name>/rules/..., etc. —
+        // strip that single common top-level folder on extract.
+        const topNames  = new Set(entries.map(e => e.entryName.split('/')[0]))
+        const zipTop    = topNames.size === 1 ? [...topNames][0] : null
+        const requested = (req.query.name || '').toString().trim()
+        let name = (requested || zipTop || `import-${new Date().toISOString().replace(/[:.]/g, '-')}`)
+            .replace(/[^a-zA-Z0-9_.-]/g, '_')
+
+        const packagesRoot = path.join(__dirname, 'packages')
+        let outDir = path.join(packagesRoot, name)
+        for (let n = 2; fs.existsSync(outDir); n++) outDir = path.join(packagesRoot, `${name}-${n}`)
+        fs.mkdirSync(outDir, { recursive: true })
+
+        for (const entry of entries) {
+            const rel = zipTop ? entry.entryName.slice(zipTop.length + 1) : entry.entryName
+            if (!rel) continue
+            const dest = path.join(outDir, rel)
+            if (!dest.startsWith(outDir + path.sep)) continue   // zip-slip guard
+            fs.mkdirSync(path.dirname(dest), { recursive: true })
+            fs.writeFileSync(dest, entry.getData())
+        }
+
+        const manifestPath = path.join(outDir, 'manifest.json')
+        if (!fs.existsSync(manifestPath)) {
+            fs.rmSync(outDir, { recursive: true, force: true })
+            return res.status(400).json({ error: 'Not a deploy package — no manifest.json found in the zip' })
+        }
+        const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'))
+        res.json({ dir: outDir, name: path.basename(outDir), manifest })
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
 app.get('/api/deploy/packages', (req, res) => {
     try {
         const dir = path.join(__dirname, 'packages')

@@ -4,7 +4,7 @@ import { Loader2, CheckCircle2, XCircle, AlertTriangle, Info,
          Download, FolderArchive } from 'lucide-react'
 import { useServers, useDeployDiff, useDeployPackage, useDeployDriftCheck,
          useDeployRisk, useDeployExecute, useDeployApprove,
-         useDeployScopedSnapshot, useDeployArchive } from '@/hooks/useApi'
+         useDeployScopedSnapshot, useDeployArchive, useDeployPackageInfo } from '@/hooks/useApi'
 import { cn } from '@/lib/utils'
 import { useStore } from '@/store'
 
@@ -45,10 +45,11 @@ const SCREENS = [
   { id: 3, label: 'Deploy',  Icon: Rocket     },
 ]
 
-function ScreenHeader({ current }) {
+function ScreenHeader({ current, skipSelect }) {
+  const screens = skipSelect ? SCREENS.filter(s => s.id !== 1) : SCREENS
   return (
     <div className="flex items-center gap-0 border-b border-border bg-muted/20 px-6 py-3 shrink-0">
-      {SCREENS.map((s, i) => (
+      {screens.map((s, i) => (
         <div key={s.id} className="flex items-center">
           <div className={cn(
             'flex items-center gap-1.5 px-3 py-1 rounded text-xs font-medium transition-colors',
@@ -59,7 +60,7 @@ function ScreenHeader({ current }) {
             {current > s.id ? <CheckCircle2 size={11} /> : <s.Icon size={11} />}
             {s.label}
           </div>
-          {i < SCREENS.length - 1 && (
+          {i < screens.length - 1 && (
             <ChevronRight size={12} className="text-muted-foreground/30 mx-1" />
           )}
         </div>
@@ -692,22 +693,26 @@ export default function DeployPanel({ tab }) {
   const username     = useStore(s => s.username)
   const { session, server } = tab
 
+  // An imported package (handed off from another IDE / consultant) skips straight
+  // to Approve — there's no local change log to diff against.
+  const isImport = !!tab.importDir
+
   // 'session' — deploy one change set. 'release' — every object changed since the
   // baseline was seeded (the union of all change sets in this release window).
   const [mode,     setMode]     = useState(tab.release || !session ? 'release' : 'session')
-  const [screen,   setScreen]   = useState(1)
+  const [screen,   setScreen]   = useState(isImport ? 2 : 1)
   const [selected, setSelected] = useState(new Set())
   const [target,   setTarget]   = useState('')
   const [notes,    setNotes]    = useState('')
 
   const isRelease   = mode === 'release'
   const releaseName = `Release ${new Date().toISOString().slice(0, 10)}`
-  const packageName = isRelease ? releaseName : session?.name
   const canSwitchToSession = !!session
 
   const { data: servers } = useServers()
   const diffMut     = useDeployDiff()
   const packageMut  = useDeployPackage()
+  const importQuery = useDeployPackageInfo(isImport ? tab.importDir : null)
   const driftMut    = useDeployDriftCheck()
   const riskMut     = useDeployRisk()
   const approveMut  = useDeployApprove()
@@ -715,9 +720,17 @@ export default function DeployPanel({ tab }) {
   const snapshotMut = useDeployScopedSnapshot()
   const archiveMut  = useDeployArchive()
 
+  // The built-or-imported package, whichever mode this tab is in.
+  const packageData   = isImport ? importQuery.data : packageMut.data
+  const packageDir    = isImport ? tab.importDir : packageMut.data?.outputDir
+  // Where the package actually came from — the source Dev server, not whatever
+  // server this IDE instance happens to be connected to (irrelevant for imports).
+  const originServer  = packageData?.manifest?._meta?.server ?? server
+  const packageName   = packageData?.manifest?._meta?.session ?? (isRelease ? releaseName : session?.name)
+
   // Auto-run diff on mount and whenever the mode flips (screen 1 only)
   useEffect(() => {
-    if (screen !== 1) return
+    if (isImport || screen !== 1) return
     setSelected(new Set())
     diffMut.mutate({ server, sessionId: session?.id, release: isRelease })
   }, [mode]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -733,11 +746,10 @@ export default function DeployPanel({ tab }) {
 
   // Auto-run drift + risk when target changes (screen 2)
   useEffect(() => {
-    const dir = packageMut.data?.outputDir
-    if (screen !== 2 || !target || !dir) return
-    driftMut.mutate({ packageDir: dir, target })
-    riskMut.mutate({ packageDir: dir, target })
-  }, [target, screen]) // eslint-disable-line react-hooks/exhaustive-deps
+    if (screen !== 2 || !target || !packageDir) return
+    driftMut.mutate({ packageDir, target })
+    riskMut.mutate({ packageDir, target })
+  }, [target, screen, packageDir]) // eslint-disable-line react-hooks/exhaustive-deps
 
   async function handlePrepare() {
     const selectedList = [...selected].map(k => {
@@ -772,8 +784,8 @@ export default function DeployPanel({ tab }) {
   }
 
   async function handleDeploy() {
-    const dir      = packageMut.data?.outputDir
-    const manifest = packageMut.data?.manifest
+    const dir      = packageDir
+    const manifest = packageData?.manifest
     if (!dir) return
     try {
       // 1. Snapshot the target as it stands, before we touch it (best effort)
@@ -782,8 +794,8 @@ export default function DeployPanel({ tab }) {
 
       // 2. Record the approval
       const approval = await approveMut.mutateAsync({
-        source: server, target, approver: username || 'admin',
-        notes, packaged: packageName, session: isRelease ? null : session?.id, packageDir: dir,
+        source: originServer, target, approver: username || 'admin',
+        notes, packaged: packageName, session: (isImport || isRelease) ? null : session?.id, packageDir: dir,
       })
 
       // 3. Deploy
@@ -796,7 +808,7 @@ export default function DeployPanel({ tab }) {
       try {
         await archiveMut.mutateAsync({
           approval, deployResult, manifest,
-          source: server, target, deployer: username || 'admin',
+          source: originServer, target, deployer: username || 'admin',
           preSnapshot, postSnapshot,
         })
       } catch { /* non-fatal — deploy already happened */ }
@@ -804,24 +816,25 @@ export default function DeployPanel({ tab }) {
   }
 
   function handleReset() {
-    setScreen(1)
-    setSelected(new Set())
     setTarget('')
     setNotes('')
-    packageMut.reset()
     deployMut.reset()
     driftMut.reset()
     riskMut.reset()
     snapshotMut.reset()
     archiveMut.reset()
+    if (isImport) { setScreen(2); return }
+    setScreen(1)
+    setSelected(new Set())
+    packageMut.reset()
     diffMut.mutate({ server, sessionId: session?.id, release: isRelease })
   }
 
-  const anyError = packageMut.error || deployMut.error || approveMut.error
+  const anyError = packageMut.error || deployMut.error || approveMut.error || (isImport ? importQuery.error : null)
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
-      {typeof screen === 'number' && <ScreenHeader current={screen} />}
+      {typeof screen === 'number' && <ScreenHeader current={screen} skipSelect={isImport} />}
 
       {screen === 1 && (
         <>
@@ -875,23 +888,32 @@ export default function DeployPanel({ tab }) {
       )}
 
       {screen === 2 && (
-        <Screen2
-          servers={servers}
-          currentServer={server}
-          target={target}
-          setTarget={setTarget}
-          packageData={packageMut.data}
-          riskData={riskMut.data}
-          riskRunning={riskMut.isPending}
-          driftData={driftMut.data}
-          driftRunning={driftMut.isPending}
-          notes={notes}
-          setNotes={setNotes}
-          username={username}
-          onDeploy={handleDeploy}
-          deploying={deployMut.isPending || approveMut.isPending || snapshotMut.isPending}
-          baselineSeededAt={diffMut.data?.baseline_seeded_at}
-        />
+        <>
+          {isImport && (
+            <div className="flex items-center gap-2 px-5 py-2 border-b border-border/50 shrink-0 text-[11px] text-muted-foreground">
+              <FolderArchive size={11} className="shrink-0" />
+              Imported package — from <span className="text-foreground">{originServer}</span>
+              {importQuery.isLoading && <Loader2 size={11} className="animate-spin ml-1" />}
+            </div>
+          )}
+          <Screen2
+            servers={servers}
+            currentServer={originServer}
+            target={target}
+            setTarget={setTarget}
+            packageData={packageData}
+            riskData={riskMut.data}
+            riskRunning={riskMut.isPending}
+            driftData={driftMut.data}
+            driftRunning={driftMut.isPending}
+            notes={notes}
+            setNotes={setNotes}
+            username={username}
+            onDeploy={handleDeploy}
+            deploying={deployMut.isPending || approveMut.isPending || snapshotMut.isPending}
+            baselineSeededAt={diffMut.data?.baseline_seeded_at}
+          />
+        </>
       )}
 
       {screen === 3 && (

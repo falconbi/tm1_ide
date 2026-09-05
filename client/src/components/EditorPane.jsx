@@ -27,6 +27,7 @@ import ObjectHistoryPanel from '@/components/ObjectHistoryPanel'
 import DiffTab from '@/components/DiffTab'
 import DeployPanel from '@/components/DeployPanel'
 import DeployHistory from '@/components/DeployHistory'
+import ImportPackagePanel from '@/components/ImportPackagePanel'
 import SessionReportTab from '@/components/SessionReportTab'
 import { ConflictBanner, ConflictSaveWarning } from '@/components/ConflictBanner'
 import CubeMapEditor from '@/components/CubeMapEditor'
@@ -993,6 +994,7 @@ export default function EditorPane({ groupId }) {
         {tab.type === 'diff'            && <DiffTab            key={tab.id} tab={tab} />}
         {tab.type === 'deploy'          && <DeployPanel        key={tab.id} tab={tab} />}
         {tab.type === 'deploy-history'  && <DeployHistory      key={tab.id} />}
+        {tab.type === 'import-package'  && <ImportPackagePanel key={tab.id} />}
         {tab.type === 'cubemap'         && <CubeMapEditor      key={tab.id} tab={tab} />}
         {tab.type === 'session-report'  && <SessionReportTab   key={tab.id} tab={tab} />}
         {tab.type === 'transactionlog'  && (

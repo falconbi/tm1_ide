@@ -550,6 +550,30 @@ export const useDeployExecute  = () => useMutation({ mutationFn: (body) => post(
 export const useDeployApprove  = () => useMutation({ mutationFn: (body) => post('/api/deploy/approve', body) })
 export const useDeployScopedSnapshot = () => useMutation({ mutationFn: (body) => post('/api/deploy/scoped-snapshot', body) })
 export const useDeployArchive  = () => { const qc = useQueryClient(); return useMutation({ mutationFn: (body) => post('/api/deploy/archive', body), onSuccess: () => qc.invalidateQueries({ queryKey: ['deploy-archives'] }) }) }
+
+// ── Import a handed-off package (admin side — no source server needed) ────────
+export const useDeployPackageInfo = (dir) => useQuery({
+  queryKey: ['deploy-package', dir],
+  queryFn:  () => get(`/api/deploy/package?dir=${encodeURIComponent(dir)}`),
+  enabled:  !!dir,
+})
+export const useDeployImportZip = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ bytes, name }) => {
+      const params = new URLSearchParams()
+      if (name) params.set('name', name)
+      const r = await fetch(`/api/deploy/import-zip?${params}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/zip', ...authHeader() },
+        body: bytes,
+      })
+      if (!r.ok) throw await extractError(r)
+      return r.json()
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['deploy-packages'] }),
+  })
+}
 export const useDeployArchives = () => useQuery({ queryKey: ['deploy-archives'], queryFn: () => get('/api/deploy/archives'), staleTime: 0 })
 
 // ── User management ───────────────────────────────────────────────────────────
