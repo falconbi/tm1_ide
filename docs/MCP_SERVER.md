@@ -42,11 +42,23 @@ start_change_set        → open a labelled change set ("AI: <model name>")
   build_process …       ┘
 get_change_set          → review what's been recorded
 diff_change_set         → diff vs the deployment baseline
-close_change_set        → done; review + deploy from the IDE Deploy panel
+close_change_set        → done
+package_change_set      → build the deployable folder under packages/ (add release:true
+                          for every object changed since the baseline, not just this set)
+check_deploy_risk       → risk analysis of the package against a target (read-only)
+check_target_drift      → has the target moved from the baseline? (read-only)
+                        → deploy itself is a human step in the IDE Deploy panel
 ```
 
 Writes attempted with no open change set are refused with a clear message.
-`read_*`, `run_process`, `check_rules_syntax`, and all diagnostics do **not** need a change set.
+`read_*`, `run_process`, `check_rules_syntax`, all diagnostics, and the
+`package_change_set` / `check_*` deploy tools do **not** need a change set.
+
+**The agent prepares and checks; a human approves the push.** `package_change_set`
+and the two `check_*` tools cover diff → package → risk → drift — the tedious 90%,
+including the fix loop (risk flags a bad rule → fix it → re-package → re-check).
+There is deliberately no `deploy_execute` tool: the actual write to a target goes
+through a person in the IDE (Deploy panel, or Import Package on another machine).
 
 Change sets are stored in `change_log.db` (shared with the IDE), attributed to user
 `ai-agent`. Because `getActiveSession` is keyed by server (not user), give the agent its own
@@ -149,7 +161,7 @@ worked example (e.g. an Excel); the tool just enforces them.
 
 ---
 
-## Tool catalog (53)
+## Tool catalog (56)
 
 ### Read — model context
 | Tool | Purpose |
@@ -172,6 +184,15 @@ worked example (e.g. an Excel); the tool just enforces them.
 | `close_change_set` | close when the build is done |
 | `get_change_set` | list recorded object changes |
 | `diff_change_set` | diff vs deployment baseline |
+
+### Deploy — prepare & check (no change set / no writes to target)
+| Tool | Purpose |
+|---|---|
+| `package_change_set` | build the deployable folder under `packages/` (`release:true` = everything since baseline) |
+| `check_deploy_risk` | risk analysis of a package vs a target — syntax on target, missing deps, chore conflicts |
+| `check_target_drift` | has the target changed from the baseline for the package's objects? |
+
+*(No `deploy_execute` — the push to a target is a human step in the IDE.)*
 
 ### Build — write (change set required)
 | Tool | Purpose |
