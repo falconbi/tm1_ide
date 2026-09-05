@@ -7,6 +7,9 @@ client (Claude Desktop, Claude Code, Cursor, Cline, …).
 It is **provider-neutral** — MCP is an open protocol; the server has no dependency on any
 particular model.
 
+**Building a model from a requirements doc?** Read [`BUILDING_MODELS.md`](BUILDING_MODELS.md)
+first (or call the `read_build_guide` tool) — it's the method; this file is the reference.
+
 ---
 
 ## Running it
@@ -161,7 +164,12 @@ worked example (e.g. an Excel); the tool just enforces them.
 
 ---
 
-## Tool catalog (56)
+## Tool catalog (57)
+
+### Orientation
+| Tool | Purpose |
+|---|---|
+| `read_build_guide` | returns `BUILDING_MODELS.md` — call first when building a model |
 
 ### Read — model context
 | Tool | Purpose |
