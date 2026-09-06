@@ -52,6 +52,46 @@ dropped and rebuilt.** Do not let build friction (an existing cube, a change-set
 already open) push you into adding elements to the wrong dimension. Rebuilding a
 cube is a 5-minute cost; a wrong grain is a rebuild of the whole model.
 
+### Fixed house dimension order
+
+Every cube uses the **same dimension order**, deliberately *not* re-tuned per cube
+for sparsity. There is a sparsity-optimal order for any given cube; we don't chase
+it. A predictable order across every cube is worth more — views and subsets line
+up, cross-cube reading is easier, and rules are easier to follow.
+
+```text
+Period, Version, Company, Cost Centre, Account, Type, <cube-specific dims>, Measure
+```
+
+- Use whichever of the leading dimensions the cube actually has, in that order.
+- Any dimensions unique to this cube go after `Type` and before the measure
+  dimension.
+- The measure dimension is always last (see below).
+
+### Every cube has a measure dimension, and it goes last
+
+No exceptions. The last dimension of every cube is its measures, named
+`<Prefix> <Cube distinctive name> Measure`:
+
+- `WFP Workforce Cost` → `WFP Workforce Cost Measure`
+- `WFP Headcount` → `WFP Headcount Measure`
+- Reference-data cubes too: `WFP FX Rates` → `WFP FX Rates Measure` (with a
+  `Rate` element); `WFP Tax Bands` → `WFP Tax Bands Measure` (`From`, `To`,
+  `Rate`, …).
+
+A dedicated per-cube measure dimension (not a shared one) keeps each cube's
+measures self-documenting, keeps rules unambiguous about which measure they
+target, and gives every cube an obvious axis for its default view.
+`build_cube` refuses a cube whose last dimension name doesn't end in
+`Measure`/`Measures`.
+
+**Default element format is `#,##0.00`** — numeric, thousands separator, 2 dp.
+Every measure dimension gets a `Format` element attribute and `build_dimension`
+sets each numeric element to `#,##0.00` automatically. Override per element where
+that's wrong: `0.00%` for ratios/percentages, `#,##0` for headcount/counts, more
+decimals for FX and unit rates. Pass the override as a `Format` attribute value
+in the same `build_dimension` call.
+
 ---
 
 ## Dimensions
@@ -233,3 +273,37 @@ iterations:
   builds a `Default` subset (all members) on each; a `Default` native view on
   each cube. `SubsetCreatebyMDX` silently no-opped on this engine — use
   `SubsetCreate` + a `SubsetElementInsert` loop.
+
+### Workforce Planning — Phase 1 rev D (Sep 2026) — house conventions retrofit
+
+Retrofit of three model-wide conventions onto a finished, assertion-green model:
+per-cube measure dimension last, fixed house dimension order, default `#,##0.00`
+element format. All six cubes dropped and rebuilt.
+
+- **A coordinate-only rewrite is safe if you keep every element name identical.**
+  Renaming the four "item" dims to `<Cube> Measure`, adding two new measure dims,
+  and reordering cube dimensions touched ~40 `DB()` calls and ~25 rule areas —
+  but because element names never changed, rule *areas* (`['Reporting', 'Base']`)
+  needed no edits at all; only positional `DB()` argument lists were remapped.
+  19/19 assertions green on the first `run_assertions` after the rewrite.
+- **Rule areas are matched by element name, not dimension position** — so a
+  single-element measure dim (`WFP Workforce Cost Measure` = just `Amount`) costs
+  nothing in the calc rules; every `['Base'] = N: …` still resolves to Base ×
+  Amount. Only `DB()` self-references have to carry the `'Amount'` coordinate.
+- **YTD prior-period self-references survive a dimension reorder** provided the
+  `ATTRS('WFP Period', !period, 'Prior Period')` term lands in the new Period
+  slot. Verified with a *sum-of-12-months = FY* assertion, which catches a
+  mis-placed self-ref coordinate that a single-period check would miss.
+- **Every cube gets a measures dimension, last — no exceptions.** This is
+  standard TM1 practice. A cube with one measure today (`WFP Workforce Cost
+  Measure` = `Amount`) still gets the dimension: it is the extension point for
+  the next measure, it keeps every cube's shape uniform, it gives the default
+  view an obvious axis, and `build_cube` enforces it. Don't skip it just because
+  the account dimension already carries the line structure.
+- Seed-TI rewrite is the fiddly part: every `CellPutN` argument list is
+  positional and has to be re-ordered to the new cube shape. Dims whose position
+  didn't change (Tax Bands: Jurisdiction, Tax Type, Band, Measure) needed no
+  edit.
+- Rebuild cost: 39 change-set objects (92 in the release package), one change
+  set, ~1 hour — cheaper than rev B because the logic was already correct and
+  only coordinates moved.

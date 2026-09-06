@@ -100,16 +100,24 @@ hierarchy on Position; validation cube; rounding convention.
 | E | **`WFP Jurisdiction` is a small dimension**, an axis on `WFP Tax Bands` only. Position carries a `Tax Jurisdiction` attribute. Phase 1 members: `UK`, `US-NY`, `NZ`. |
 | — | **Employer tax = one blended rate per jurisdiction, up to 4 bands, YTD-aware.** Separate SS / Medicare / FUTA / SUTA lines are a later refinement. |
 
-## Cubes (Phase 1 rev B)
+## Cubes (Phase 1 rev D — house conventions)
 
-| Cube | Dimensions |
+House dimension order on every cube: **Period, Version, Entity, Cost Centre,
+Account, Type, `<cube-specific>`, Measure** — measure dimension always last, named
+`<Cube> Measure`. (See `BUILDING_MODELS.md`.)
+
+| Cube | Dimensions (in order) |
 |---|---|
-| `WFP Pay Rates` | Grade × Job Family × Location × Period × Version × Rate Item |
-| `WFP Tax Bands` | Jurisdiction × Tax Band × Band Item |
-| `WFP FX Rates` | Currency × Period × Version × FX Rate Type |
-| `WFP Workforce Input` | Position × Period × Version × Input Item |
-| `WFP Workforce Cost` | Position × Period × Version × Entity × Cost Centre × Currency × Pay Component *(engine)* |
-| `WFP Headcount` | Position × Period × Version × Entity × Cost Centre × HC Measure |
+| `WFP Pay Rates` | Period × Version × Grade × Job Family × Location × **WFP Pay Rates Measure** |
+| `WFP Tax Bands` | Jurisdiction × Tax Type × Tax Band × **WFP Tax Bands Measure** |
+| `WFP FX Rates` | Period × Version × Currency × FX Rate Type × **WFP FX Rates Measure** |
+| `WFP Workforce Input` | Period × Version × Position × **WFP Workforce Input Measure** |
+| `WFP Workforce Cost` | Period × Version × Entity × Cost Centre × Pay Component × Currency × Position × **WFP Workforce Cost Measure** *(engine)* |
+| `WFP Headcount` | Period × Version × Entity × Cost Centre × Position × **WFP Headcount Measure** |
+
+`WFP Workforce Cost Measure` holds a single element `Amount` for now — the cube's
+line structure is `WFP Pay Component`, and the measures dimension is the standard
+last dimension every cube gets, ready for the next measure.
 
 - Engine computes in the position's **Salary Currency** (guard: `Currency = Salary
   Currency & Entity = Home Entity & Cost Centre = Cost Centre`).
@@ -133,12 +141,17 @@ hierarchy on Position; validation cube; rounding convention.
 | `WFP Location` | London, New York, Auckland |
 | `WFP Jurisdiction` | UK, US-NY, NZ |
 | `WFP Tax Band` | Band 1, Band 2, Band 3, Band 4 |
-| `WFP Band Item` | Threshold From, Threshold To, Rate |
-| `WFP Pay Component` | `Total Cost` (C) → Base, Employer Tax, Pension, Benefits; helper leaves `_Start Index _End Index _In Window _Start Frac _End Frac _Active Fraction _Annual Salary _Monthly Base Full _Taxable Earnings _Taxable Earnings YTD _Prior Tax YTD _Employer Tax YTD` |
-| `WFP Rate Item` | Salary Min, Salary Mid, Salary Max, Pension Pct, Benefits Annual |
+| `WFP Pay Component` | `Cost to Company` (C), `Employee Deductions` (C); leaves Base, Employer Payroll Tax, Employer Pension, Benefits, Gross Pay, Employee Income Tax, Employee Pension, Net Pay; engine helper leaves `_Start Index _End Index _In Window _Start Frac _End Frac _Active Fraction _Annual Salary _Monthly Base Full _Earnings YTD _Employer Tax YTD _Prior Employer Tax YTD _Employee Tax YTD _Prior Employee Tax YTD` |
 | `WFP FX Rate Type` | Average, Closing |
-| `WFP Input Item` | FTE, Base Salary |
-| `WFP HC Measure` | Headcount, FTE, Open Positions |
+| **`WFP Tax Bands Measure`** *(rev D, was `WFP Band Item`)* | Threshold From, Threshold To, Rate |
+| **`WFP Pay Rates Measure`** *(rev D, was `WFP Rate Item`)* | Salary Min, Salary Mid, Salary Max, Pension Pct, Benefits Annual, Employee Pension Pct |
+| **`WFP FX Rates Measure`** *(rev D, new)* | Rate |
+| **`WFP Workforce Input Measure`** *(rev D, was `WFP Input Item`)* | FTE, Base Salary |
+| **`WFP Workforce Cost Measure`** *(rev D, new)* | Amount |
+| **`WFP Headcount Measure`** *(rev D, was `WFP HC Measure`)* | Headcount, FTE, Open Positions, `_End Idx`, `_Active` |
+
+All measure dimensions carry a `Format` element attribute — default `#,##0.00`
+(`0.00%` for Pct/Rate elements, `#,##0` for headcount counts).
 
 ### Employer tax — the YTD-aware progressive calc
 
@@ -210,3 +223,18 @@ GBP 1.0, USD 0.79, NZD 0.47, Group 1.0.
   8 views + a `Default` view on every cube + a `Default` subset on every
   dimension. **`CubeProcessFeeders` must run after recreating a cube** — see
   BUILDING_MODELS.md.
+- *(2026-09-06)* **Phase 1 rev D — house conventions retrofit** (change set
+  `6debf5e0`, 39 objects / 92 in the release package, 19/19 assertions). Three
+  model-wide conventions applied: (1) every cube ends in a `<Cube> Measure`
+  dimension — four "item" dims renamed by rebuild, `WFP FX Rates Measure` and
+  `WFP Workforce Cost Measure` (single `Amount`) added; (2) fixed house dimension
+  order `Period, Version, Entity, Cost Centre, Account, Type, <specific>,
+  Measure` on all six cubes; (3) default `#,##0.00` element format on every
+  measure dim. All six cubes dropped and rebuilt; rules and seed TIs remapped to
+  the new coordinate order (element names unchanged, so rule *areas* were
+  untouched — only positional `DB()` / `CellPutN` argument lists moved). New
+  assertions: sum-of-12-months EIT = FY (YTD self-ref under reorder), monthly
+  Reporting-ccy FX translation. Old dims removed: `WFP Input Item`,
+  `WFP Rate Item`, `WFP Band Item`, `WFP HC Measure`. MCP `build_cube` /
+  `build_dimension` updated to enforce these going forward — see
+  `BUILDING_MODELS.md` and `MCP_SERVER.md`.
