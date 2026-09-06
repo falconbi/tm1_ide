@@ -89,45 +89,79 @@ hierarchy on Position; validation cube; rounding convention.
 
 ---
 
-## Revised cube structure (settled parts)
+## Decisions (2026-09-06)
 
-The first build's engine cube (`Position × Period × Version × Entity × Cost Centre
-× Pay Component` with a 1:1 guard) is the wrong shape. Split it:
-
-| Cube | Grain | Purpose |
-|---|---|---|
-| `WFP Pay Rates` | Grade [× Job Family?] × Location × Period × Version × Rate Item | comp bands + non-banded on-cost params |
-| `WFP Tax Bands` | Jurisdiction × Tax Component × Band × Band Item | progressive employer-tax brackets |
-| `WFP FX Rates` | Currency × Period × Version × Rate Type | exchange rates |
-| `WFP Position Assumptions` | Position × Period × Version × Assumption | **input** — FTE, Base Salary (later: bonus %, …) |
-| `WFP Workforce Cost` | Position × Period × Version × Currency × Pay Component | **engine** — local-currency cost + Headcount/FTE; YTD-aware tax |
-| `WFP Personnel Cost` | Entity × Cost Centre × Period × Version × Currency × Pay Component | reporting / allocated layer — fed from the engine via Position's entity + CC (P5: splits); local→reporting FX here |
-
-- Engine stays at **Position grain**; Entity and Cost Centre live in the reporting
-  layer where you slice by them.
-- Local → reporting currency is `Workforce Cost` → `Personnel Cost`.
-- Phase 5 allocation only changes how `Personnel Cost` is populated.
-
-## Dimensions (revised)
-
-| Dimension | Notes |
+| # | Decision |
 |---|---|
-| `WFP Version` | `Actual`, `Budget`, `Forecast`, `Working` + open-ended; `Version Type` attr |
-| `WFP Period` | multi-year, months → Q → H → FY; `Period Index`, `Days In Month`, `Prior Period`, `FY`; TI-built |
-| `WFP Position` | consolidation by Department; attrs: Cost Centre, Location, Grade, Job Family, **Employment Type**, **Salary Currency**, Home Entity, **Jurisdiction**, Position Status, Start/End Period+Day, Incumbent Name, seed FTE, seed Base Salary |
-| `WFP Entity` | `Group` (C) → UK Ltd, US Inc, NZ Ltd; attrs Local Currency, Primary Location |
-| `WFP Cost Centre` | Total → R&D / S&M / G&A → 11 leaves |
-| `WFP Currency` | GBP, USD, NZD (+ Group reporting currency) |
-| `WFP Grade` | G1–G5 |
-| `WFP Location` | London, New York, Auckland |
-| `WFP Jurisdiction` | *(decision E)* — UK, US-Federal, US-NY, NZ … or a Location attr |
-| `WFP Pay Component` | `Total Cost` (C) → Base, Employer Tax, Pension, Benefits (+ later Bonus, Commission, Equity, One-Time); helper leaves for the calc |
-| `WFP Rate Item` | Salary Min/Mid/Max, Pension Pct, Benefits Annual (tax → `WFP Tax Bands`) |
-| `WFP Tax Component` | Employer NI / SS / Medicare / FUTA / SUTA / ESCT |
-| `WFP Assumption` | FTE, Base Salary (later: Bonus Target %, …) |
+| A | **Job Family is on the bands.** `WFP Pay Rates` = Grade × Job Family × Location × Period × Version × Rate Item. Seeded: grade/location base × per-family index (Engineering 1.10, Product 1.08, Sales 1.05, Marketing 1.00, Customer Success 0.98, Finance 1.00, People 0.98, IT 1.00, Admin 0.92, Leadership 1.15). |
+| B | **`/12` flat base; partial months prorated by active calendar days ÷ days in month.** |
+| C | **Employee dimension deferred.** Incumbent stays a Position attribute; a country move = reassign to a position in that country. |
+| D | **Cost Centre 1:1 via Position attribute.** Entity + Cost Centre stay as dims on the engine cube (computed from attributes, guarded). Splits = Phase 5. |
+| E | **`WFP Jurisdiction` is a small dimension**, an axis on `WFP Tax Bands` only. Position carries a `Tax Jurisdiction` attribute. Phase 1 members: `UK`, `US-NY`, `NZ`. |
+| — | **Employer tax = one blended rate per jurisdiction, up to 4 bands, YTD-aware.** Separate SS / Medicare / FUTA / SUTA lines are a later refinement. |
 
-The full Phase 1 spec (member lists, seed tables, rules, assertions, build order)
-is rewritten once decisions A–E are settled.
+## Cubes (Phase 1 rev B)
+
+| Cube | Dimensions |
+|---|---|
+| `WFP Pay Rates` | Grade × Job Family × Location × Period × Version × Rate Item |
+| `WFP Tax Bands` | Jurisdiction × Tax Band × Band Item |
+| `WFP FX Rates` | Currency × Period × Version × FX Rate Type |
+| `WFP Workforce Input` | Position × Period × Version × Input Item |
+| `WFP Workforce Cost` | Position × Period × Version × Entity × Cost Centre × Currency × Pay Component *(engine)* |
+| `WFP Headcount` | Position × Period × Version × Entity × Cost Centre × HC Measure |
+
+- Engine computes in the position's **Salary Currency** (guard: `Currency = Salary
+  Currency & Entity = Home Entity & Cost Centre = Cost Centre`).
+- `Currency` member `Group` = translation: `[GBP]·fx + [USD]·fx + [NZD]·fx` (average rate).
+- Entity `Group` + Currency `Group` is the consolidated reporting number.
+- No separate reporting cube in Phase 1 — Entity/CC reporting is the engine's
+  own consolidations. Phase 5 adds `WFP Personnel Cost` for split allocation.
+
+## Dimensions (Phase 1 rev B)
+
+| Dimension | Members |
+|---|---|
+| `WFP Version` | `Actual`, `Budget`, `Forecast`, `Working`; attr `Version Type` (`Input`/`Calculated`/`Snapshot`) |
+| `WFP Period` | 2025 + 2026 + 2027, months → Q → H → FY; attrs `Period Index` (global 1..N), `Days In Month`, `Prior Period`, `FY` |
+| `WFP Position` | consolidation Total → R&D/S&M/G&A → Department → leaves. Attrs: Department, Cost Centre, Location, Grade, Job Family, **Employment Type** (`Permanent`/`Fixed-term`/`Contractor`/`Intern`), **Salary Currency**, Home Entity, **Tax Jurisdiction**, Position Status, Start/End Period+Day, Incumbent Name, `Seed FTE`, `Seed Base Salary` |
+| `WFP Entity` | `Group` (C) → UK Ltd, US Inc, NZ Ltd; attrs `Local Currency`, `Primary Location`, `Reporting Currency` (GBP) |
+| `WFP Cost Centre` | `Total Cost Centre` → R&D / S&M / G&A → 11 leaves; attrs `Function`, `CC Name` |
+| `WFP Currency` | `GBP`, `USD`, `NZD`, `Group` |
+| `WFP Grade` | G1–G5 |
+| `WFP Job Family` | Engineering, Product, Sales, Marketing, Customer Success, Finance, People, IT, Admin, Leadership; attr `Pay Index` |
+| `WFP Location` | London, New York, Auckland |
+| `WFP Jurisdiction` | UK, US-NY, NZ |
+| `WFP Tax Band` | Band 1, Band 2, Band 3, Band 4 |
+| `WFP Band Item` | Threshold From, Threshold To, Rate |
+| `WFP Pay Component` | `Total Cost` (C) → Base, Employer Tax, Pension, Benefits; helper leaves `_Start Index _End Index _In Window _Start Frac _End Frac _Active Fraction _Annual Salary _Monthly Base Full _Taxable Earnings _Taxable Earnings YTD _Prior Tax YTD _Employer Tax YTD` |
+| `WFP Rate Item` | Salary Min, Salary Mid, Salary Max, Pension Pct, Benefits Annual |
+| `WFP FX Rate Type` | Average, Closing |
+| `WFP Input Item` | FTE, Base Salary |
+| `WFP HC Measure` | Headcount, FTE, Open Positions |
+
+### Employer tax — the YTD-aware progressive calc
+
+```
+_Taxable Earnings       = Base                                  (Phase 1: base only)
+_Taxable Earnings YTD   = _Taxable Earnings + <prior period _Taxable Earnings YTD>
+_Employer Tax YTD       = Σ over Band 1..4 of
+                            MAX(0, MIN(_Taxable Earnings YTD, ThreshTo_b) - ThreshFrom_b) * Rate_b
+                          where ThreshTo/From/Rate_b = DB('WFP Tax Bands', jurisdiction, Band b, ·)
+_Prior Tax YTD          = IF(prior period = '', 0, <prior period _Employer Tax YTD>)
+Employer Tax  (month)   = _Employer Tax YTD - _Prior Tax YTD
+```
+
+Tax band seed (Phase 1):
+
+| Jurisdiction | Band 1 | Band 2 |
+|---|---|---|
+| UK | 0 → 9,100 @ 0.0 | 9,100 → 9,999,999 @ 0.138 |
+| US-NY | 0 → 168,600 @ 0.09 | 168,600 → 9,999,999 @ 0.0145 |
+| NZ | 0 → 139,384 @ 0.0139 | 139,384 → 9,999,999 @ 0.0 |
+
+FX seed (all periods, Budget + Working) — rate = 1 unit of row currency in GBP:
+GBP 1.0, USD 0.79, NZD 0.47, Group 1.0.
 
 ---
 
