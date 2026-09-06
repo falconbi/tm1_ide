@@ -118,6 +118,30 @@ async function deployDimension(obj, packageDir, client) {
             })
         }
     }
+
+    // Attribute VALUES — replayed ONLY when this deploy created the dimension.
+    // On a redeploy the target's own seed TIs own these (e.g. WFP Load Positions
+    // maintains WFP Position attributes), so replaying would clobber them.
+    // Definitions that a dimension needs but were built declaratively (Period
+    // index, Job Family Pay Index, measure-dim Format values) reach a new target
+    // this way instead of needing a per-model seed process.
+    if (!exists && data.attribute_values && Object.keys(data.attribute_values).length) {
+        const attrCube = `}ElementAttributes_${name}`
+        const updates = Object.entries(data.attribute_values).flatMap(([element, attrs]) =>
+            Object.entries(attrs).map(([attrName, value]) => ({
+                dimElemPairs: [
+                    { dim: name,     element },
+                    { dim: attrCube, element: attrName },
+                ],
+                value,
+            }))
+        )
+        if (updates.length) {
+            await client.updateCells(attrCube, updates).catch(e => {
+                console.warn(`  [warn] attribute values for ${name}: ${e.message}`)
+            })
+        }
+    }
 }
 
 async function deployPicklistCube(obj, packageDir, client) {

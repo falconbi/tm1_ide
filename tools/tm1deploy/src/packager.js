@@ -4,7 +4,7 @@ const fs   = require('fs')
 const path = require('path')
 const { makeClient } = require('./client')
 const { diff, loadBaseline } = require('./diff')
-const { fetchElementFormats, fetchPicklistCells } = require('./snapshot')
+const { fetchElementFormats, fetchAttributeValues, fetchPicklistCells } = require('./snapshot')
 
 const PACKAGES_DIR = path.resolve(__dirname, '../../../packages')
 
@@ -105,13 +105,16 @@ async function fetchDimension(name, client) {
     const exists = await client.getDimension(name).catch(() => null)
     if (!exists) throw new Error(`dimension "${name}" no longer exists on source — skipped`)
 
-    const [elements, edges, attributes, element_formats] = await Promise.all([
+    const [elements, edges, attributes, element_formats, attribute_values] = await Promise.all([
         client.getElements(name).catch(() => []),
         client.getEdges(name).catch(() => []),
         client.getElementAttributes(name).catch(() => []),
         fetchElementFormats(client, name, name),
+        fetchAttributeValues(client, name, name),
     ])
-    return { Name: name, elements, edges, attributes, element_formats }
+    // attribute_values (element x attribute cells from }ElementAttributes_<dim>)
+    // are replayed only when the deploy CREATES the dimension — see deployDimension.
+    return { Name: name, elements, edges, attributes, element_formats, attribute_values }
 }
 
 async function fetchCube(name, client) {

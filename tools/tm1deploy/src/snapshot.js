@@ -484,4 +484,4 @@ async function scopedSnapshot(manifest, targetServer, ideToken) {
     return result
 }
 
-module.exports = { seed, takeSnapshot, scopedSnapshot, fetchElementFormats, fetchPicklistCells, snapshotPicklistCubes }
+module.exports = { seed, takeSnapshot, scopedSnapshot, fetchElementFormats, fetchAttributeValues, fetchPicklistCells, snapshotPicklistCubes }
