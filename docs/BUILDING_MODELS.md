@@ -180,3 +180,27 @@ iterations:
   `['FTE'] => DB(..., ATTRS(pos,'Home Entity'), ATTRS(pos,'Cost Centre'), ...)`
   — acceptable here because the loader `ItemReject`s any position whose
   entity/CC don't resolve, so the attributes are never blank.
+
+### Workforce Planning — Phase 1 rev B (Sep 2026) — design review + rebuild
+
+- **First build passed 16/16 assertions but was still wrong.** A design review
+  found 7 foundational gaps (Version not Scenario, currency + FX, headcount as an
+  output, salary as input not attribute, employment type, multi-year period,
+  **progressive banded taxation**). Passing assertions ≠ a correct model — the
+  assertions only check what you thought to check. The reviewer (domain expert)
+  caught what the build missed.
+- **`Group` is ambiguous when it's a member of two dimensions** — Entity *and*
+  Currency both had `Group`. `['Group', 'Base'] = ...` → "Element name ambiguous".
+  Rules can't disambiguate by dimension in the area. Fix: rename one (currency
+  member → `Reporting`). → worth a lint check: flag an element name that exists
+  in more than one dimension used by the same cube.
+- **Progressive tax needs a YTD roll-forward even in "Phase 1".** Annual
+  thresholds/caps mean `tax[month] = f(cumulative_YTD) - f(cumulative_prior)`.
+  The 4-band walk is `Σ MAX(0, MIN(ytd, To_b) - From_b) * Rate_b` — flat, no IF
+  nesting, unused bands (To=From=Rate=0) contribute 0. YTD resets at the FY
+  boundary via `SUBST(!period, 6, 2) @= '01'`.
+- **Reporting-currency translation as a rule area**: `['Reporting', 'Base'] = N:
+  Σ DB(self, <ccy>, 'Base') * DB('FX Rates', <ccy>, ...)`. Place it *before* the
+  local-currency `['Base']` rule so the more-specific area wins.
+- Rebuild cost: ~70 objects, one change set, ~2 hours. Deleting + recreating was
+  cleaner than surgical edits given Period, Pay Component, and all cubes changed.

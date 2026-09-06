@@ -180,3 +180,22 @@ GBP 1.0, USD 0.79, NZD 0.47, Group 1.0.
 - ti-lint: `STR()` in TI is now a lint error (Rules function, fails at run time).
 - risk.js: no longer blocks a greenfield deploy on dimensions the package itself
   creates.
+- *(2026-09-06)* **Phase 1 rev B built on `TM1_Test_DEV` and verified — 15/15
+  assertions** (change set `48defb90`, 72 objects). 20 dimensions, 6 cubes,
+  4 processes, engine + Headcount + FX-translation rules, 5 subsets, 8 views.
+  Verified live:
+  - **Progressive YTD-aware employer tax** — ENG-002 UK: £0 Jan (under the
+    £9,100 Secondary Threshold), £630 Feb, £943/mo after; FY £10,060 vs £11,316
+    flat. US-NY flat 9% below the SS cap. NZ ACC 1.39%.
+  - **Contractor gate** — ITO-001 (Employment Type = Contractor): base only,
+    zero employer tax / pension / benefits.
+  - **Currency** — cost in each position's salary currency; `Reporting` member
+    translates GBP·1 + USD·0.79 + NZD·0.47; Group Reporting FY2026 = £1,700,147
+    (= UK £947,861 + US £614,833 + NZ £137,453).
+  - **Job-family pay bands** — ENG-005 open req costs G2 NY × Engineering index
+    1.10 = £6,600/mo.
+  - **Headcount cube** — June: 16 filled, FTE 16.5 (incl. 1 open req), 1 open;
+    Oct: 15 filled, 2 open.
+  - `WFP Version` replaces Scenario; multi-year Period (2025–2027).
+  - `Group` was ambiguous (member of both Entity and Currency) → the currency
+    member is `Reporting`.
