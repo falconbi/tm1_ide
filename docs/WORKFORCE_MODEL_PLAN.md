@@ -89,6 +89,62 @@ hierarchy on Position; validation cube; rounding convention.
 
 ---
 
+## Phase 2 — Versions & Assumptions
+
+Phase 1 built `WFP Version` but nothing uses it — `Budget` / `Working` /
+`Actual` / `Forecast` are empty parallel copies. Phase 2 makes versions
+mean something, and gives the model a home for planning drivers. One change
+set. Merit / bonus stay P3; a scenario walkthrough is a demo, not a build goal.
+
+**Task 0 — pipeline: package + replay element attribute values.** *(done —
+commit `dab54a9`.)* The packager now captures `}ElementAttributes_<dim>` cells
+and the deployer replays them greenfield-only. Needed because the
+`WFP Assumptions Measure` `Format` values are declarative and wouldn't otherwise
+deploy — the same gap Phase 1 hit with `WFP Period` / `WFP Job Family`.
+
+### 1. `WFP Assumptions` cube
+
+`WFP Period × WFP Version × WFP Entity × WFP Assumptions Measure` (house order).
+Entity so a driver can be set at `Group` and overridden per entity.
+
+| Measure element | Format | Use |
+|---|---|---|
+| `Merit Increase %` | `0.00%` | annual salary uplift at the review month (consumed in P3) |
+| `Promotion Budget %` | `0.00%` | extra comp pool (P3) |
+| `Inflation %` | `0.00%` | benefits / allowance escalation |
+| `Actuals Cutoff Index` | `#,##0` | period index; `≤` this = Actual, `>` = Working (the Forecast blend) |
+| `Vacancy Allowance %` | `0.00%` | haircut on open-req cost for expected slippage |
+| `Standard FTE Hours` | `#,##0.00` | hours base for utilisation / hourly cost |
+| `Bonus Pool %` | `0.00%` | % of base for the bonus accrual (P3) |
+| `Employer Oncost Fallback %` | `0.00%` | used when a jurisdiction has no `WFP Tax Bands` row |
+
+Seeded by **`WFP Seed Assumptions`** (delimited table, like the other seeds).
+
+### 2. Forecast = calculating version
+
+A rule area on `['Forecast']` in `WFP Workforce Input` (and it flows through the
+engine): read the `Actual` version where
+`ATTRN('WFP Period', !period, 'Period Index') <= DB('WFP Assumptions', !period,
+'Forecast', <entity>, 'Actuals Cutoff Index')`, else read `Working`. Cutoff
+comes from the assumptions cube so it can differ by entity (different close
+calendars). `Actual` and `Working` stay plain input versions.
+
+### 3. `WFP Copy Version` process
+
+Parameters `pSource`, `pTarget` (+ optional `pFromPeriod` / `pToPeriod`).
+Copies `WFP Workforce Input` (FTE + Base Salary) from source to target version.
+Use it to freeze `Working → Budget`, or spin a named scenario off `Actual`.
+Guard: refuse if `pTarget` `Version Type` is `Calculated` (don't overwrite a
+rule-driven version).
+
+### Assertions
+
+- Forecast at the cutoff boundary month = Actual; the month after = Working.
+- `WFP Copy Version` `Working → a scratch version` reproduces a spot FTE + salary.
+- Assumption read-through: an entity override beats the `Group` value.
+
+---
+
 ## Decisions (2026-09-06)
 
 | # | Decision |
