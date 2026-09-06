@@ -65,6 +65,12 @@ function lintSection(code, section) {
   for (const c of findCalls(code)) {
     const up = c.name.toUpperCase()
     if (CONTROL.has(up)) continue
+    // STR() is a Rules function — in TI it fails at run time ("invalid numeric
+    // expression"). TI uses NumberToString / NumberToStringEx.
+    if (up === 'STR') {
+      errors.push({ section, line: c.line, message: `STR() is a Rules function, not TI — it fails at run time. Use NumberToString(n) or NumberToStringEx(n, decimal, thousand, prefix).` })
+      continue
+    }
     // ItemReject is special: valid as `ItemReject;` or `ItemReject('reason');`
     if (up === 'ITEMREJECT') {
       if (c.argCount > 1) errors.push({ section, line: c.line, message: `ItemReject takes 0 or 1 argument (an optional reason string), got ${c.argCount}` })

@@ -332,4 +332,17 @@ package_change_set  →  check_deploy_risk / check_target_drift (TM1_Test_PROD)
 ## Changelog
 
 - *(2026-09-06)* Plan created. Phase 1 spec written (3 entities, 11 cost centres,
-  3 currencies, 18 positions), not yet built.
+  3 currencies, 18 positions).
+- *(2026-09-06)* **Phase 1 built on `TM1_Test_DEV` and verified — 16/16 assertions
+  passing.** 11 dimensions, 3 cubes, 2 processes (`WFP Load Positions`,
+  `WFP Seed Pay Rates`, `WFP Seed Workforce Input`), engine rules on
+  `WFP Workforce Cost`, feeder on `WFP Workforce Input`. Change set
+  `e4970b57`, 43 objects. All spot checks correct: band-for-vacant,
+  mid-month proration (22/31), end-of-window, entity guard, cost-centre
+  guard, location-specific on-cost rates, and Position/Entity/CC/Period
+  consolidations.
+  - `WFP Build Period Dim` TI hit a `STR()` syntax error on this engine
+    ("invalid numeric expression") — built `WFP Period` declaratively
+    instead. A parameterised period builder is Phase 2's job.
+  - `WFP Currency` dimension created as a placeholder (Entity `Local
+    Currency` attribute points at it); not wired into a cube until Phase 6.

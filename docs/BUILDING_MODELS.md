@@ -159,3 +159,24 @@ iterations:
   default recommendation.
 - ~175 tool calls, ~89 `read_cells` verifications. Checking was half the work and
   stayed manual.
+
+### Workforce Planning — Phase 1 (Sep 2026) — second MCP build
+
+- **Clean first pass — 16/16 assertions on the first `run_assertions`.** No
+  wrong-number iterations. Differences from OPX: dimensionality agreed and
+  written up in full (`WORKFORCE_MODEL_PLAN.md`) before any `build_cube`;
+  helper measures for the proration logic kept every rule ≤1 IF deep; guards
+  written as one compound `IF(cond1 & cond2, expr, 0)` not nested.
+- **`STR()` in TI fails on this engine** — `vYr = TRIM( STR( nYear, 12, 0 ) );`
+  → "invalid numeric expression". `STR` is a *rules* function; TI wants
+  `NumberToString` / `NumberToStringEx`. Worked around by building the small
+  fixed period dimension declaratively. → candidate ti-lint rule: flag `STR(`
+  in TI code.
+- **Parse-a-delimited-string-in-TI** works well for loading a roster / rate
+  table without a datasource file: `~`-delimited records, `;`-delimited fields,
+  repeated `SCAN`/`SUBST`. `DimensionElementInsertDirect` + immediate `AttrPutS`
+  in the Prolog (Direct commits, so no Prolog-timing problem).
+- The attribute-fed-feeder lint warning fired on
+  `['FTE'] => DB(..., ATTRS(pos,'Home Entity'), ATTRS(pos,'Cost Centre'), ...)`
+  — acceptable here because the loader `ItemReject`s any position whose
+  entity/CC don't resolve, so the attributes are never blank.
