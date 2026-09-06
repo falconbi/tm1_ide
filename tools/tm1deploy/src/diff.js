@@ -441,10 +441,11 @@ async function driftCheck(packageDir, targetServer, ideToken) {
     if (!fs.existsSync(manifestPath)) throw new Error('No manifest.json found')
 
     const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'))
-    // Prefer the baseline bundled in the package (handoff case), else the target
-    // server's own baseline.
-    const baseline = loadBaseline(path.join(packageDir, 'baseline.json'))
-        ?? loadBaseline(null, targetServer)
+    // The target's own baseline first (this is "has the target moved since we
+    // last synced it"), falling back to the one bundled in the package for the
+    // handoff case where the deployer has no baseline of their own.
+    const baseline = loadBaseline(null, targetServer)
+        ?? loadBaseline(path.join(packageDir, 'baseline.json'))
 
     if (!baseline) {
         return {
