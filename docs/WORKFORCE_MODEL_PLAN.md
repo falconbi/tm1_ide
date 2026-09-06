@@ -238,3 +238,17 @@ GBP 1.0, USD 0.79, NZD 0.47, Group 1.0.
   `WFP Rate Item`, `WFP Band Item`, `WFP HC Measure`. MCP `build_cube` /
   `build_dimension` updated to enforce these going forward — see
   `BUILDING_MODELS.md` and `MCP_SERVER.md`.
+- *(2026-09-07)* **Deployed to `TM1_Test_PROD`** (release package via the IDE,
+  after 9 `tools/tm1deploy` bug fixes — commit `fa3ec06`). 6 figures verified
+  against DEV to the cent (Group CtC FY2026 Reporting = 1,700,305.85; ENG-002
+  net £57,668; Group headcount 16). Two deploy gaps surfaced and were handled:
+  the change log only recorded 1 of 6 `Default` views (created the other 5 on
+  PROD by hand), and dimension attribute *values* aren't packaged. The latter
+  is now fixed at the model level by **`WFP Seed Dimension Attributes`** — an
+  idempotent process that sets `WFP Period` (Period Index / Days In Month /
+  Prior Period / FY, computed in a loop), `WFP Job Family` Pay Index, and the
+  `WFP Entity` / `WFP Version` / `WFP Cost Centre` label attributes. It replaces
+  the declarative `build_dimension` attribute values that never survived a
+  deploy. Run order on a fresh target: `WFP Load Positions`,
+  `WFP Seed Dimension Attributes`, then the four cube seeds, then
+  `WFP Reprocess Feeders`, `WFP Create Default Subsets`.
