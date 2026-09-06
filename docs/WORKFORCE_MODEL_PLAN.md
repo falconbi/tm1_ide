@@ -346,3 +346,9 @@ package_change_set  →  check_deploy_risk / check_target_drift (TM1_Test_PROD)
     instead. A parameterised period builder is Phase 2's job.
   - `WFP Currency` dimension created as a placeholder (Entity `Local
     Currency` attribute points at it); not wired into a cube until Phase 6.
+- *(2026-09-06)* Phase 1 views + subsets added (change set `371a8c0a`, 11 objects):
+  subsets `All Positions`, `Open Reqs` (MDX filter on Position Status),
+  `Months`, `Quarters + FY`, `Cost Lines`; native views `Cost by Position —
+  Monthly`, `Cost by Cost Centre`, `Pay Component Breakdown`, `Entity Summary`
+  (on `WFP Workforce Cost`), `Position Input` (`WFP Workforce Input`),
+  `Pay Bands` (`WFP Pay Rates`). All execute and reconcile to the verified totals.
