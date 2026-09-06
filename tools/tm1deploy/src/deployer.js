@@ -14,11 +14,21 @@ async function deployRules(obj, packageDir, client) {
 }
 
 async function deployProcess(obj, packageDir, client) {
-    const data   = JSON.parse(fs.readFileSync(path.join(packageDir, obj.file), 'utf8'))
-    const esc    = s => s.replace(/'/g, "''")
-    const exists = await client.getProcess(data.Name).catch(() => null)
-    if (exists) await client.patch(`Processes('${esc(data.Name)}')`, data)
-    else        await client.post('Processes', data)
+    const data = JSON.parse(fs.readFileSync(path.join(packageDir, obj.file), 'utf8'))
+    // The snapshot stores DataSources (plural, array) and MetaDataProcedure;
+    // v11 POST Processes wants DataSource (singular, object) and MetadataProcedure.
+    // createOrReplaceProcess builds the correct body and does create-or-PATCH.
+    await client.createOrReplaceProcess({
+        name:       data.Name,
+        prolog:     data.PrologProcedure   ?? '',
+        metadata:   data.MetaDataProcedure ?? data.MetadataProcedure ?? '',
+        data:       data.DataProcedure     ?? '',
+        epilog:     data.EpilogProcedure   ?? '',
+        parameters: data.Parameters ?? [],
+        datasource: Array.isArray(data.DataSources)
+            ? (data.DataSources[0] ?? { Type: 'None' })
+            : (data.DataSource ?? { Type: 'None' }),
+    })
 }
 
 async function deploySubset(obj, packageDir, client) {
@@ -49,30 +59,32 @@ async function deployDimension(obj, packageDir, client) {
     const data = JSON.parse(fs.readFileSync(path.join(packageDir, obj.file), 'utf8'))
     const name = obj.name
 
+    const ignore = e => { if (![400, 409].includes(e.response?.status)) throw e }
+    const rx     = /already (exists|in use)|duplicate/i
+
+    // Dimension shell + leaf hierarchy. Always ensure the hierarchy — a
+    // dimension left behind by a half-finished prior deploy can exist without
+    // it, and every element/edge write then 404s.
     const exists = await client.getDimension(name).catch(() => null)
-    if (!exists) {
-        await client.post('Dimensions', { Name: name })
-        await client.post(`Dimensions('${name}')/Hierarchies`, { Name: name, Dimension: { Name: name } })
+    if (!exists) await client.post('Dimensions', { Name: name }).catch(ignore)
+    await client.post(`Dimensions('${name}')/Hierarchies`, { Name: name, Dimension: { Name: name } }).catch(ignore)
+
+    // Elements — one POST each. The bulk tm1.AddElements action 404s on v11;
+    // client.addElement (POST .../Elements) is the path the build tools use.
+    for (const e of (data.elements ?? [])) {
+        const elName = e.Name ?? e.name
+        const elType = e.Type ?? e.type ?? 'N'
+        try { await client.addElement(name, elName, elType, name) }
+        catch (err) { if (!rx.test(err.response?.data?.error?.message ?? err.message ?? '')) throw err }
     }
 
-    // Upsert elements
-    if (data.elements?.length) {
-        const payload = data.elements.map(e => ({
-            Name:   e.Name   ?? e.name,
-            Type:   e.Type   ?? e.type   ?? 'Numeric',
-            Weight: e.Weight ?? e.weight ?? 1,
-        }))
-        await client.post(`Dimensions('${name}')/Hierarchies('${name}')/Elements/tm1.AddElements`, { Elements: payload })
-    }
-
-    // Upsert edges
-    if (data.edges?.length) {
-        const payload = data.edges.map(e => ({
-            ParentName: e.ParentName ?? e.parent,
-            ComponentName: e.ComponentName ?? e.child ?? e.component,
-            Weight: e.Weight ?? e.weight ?? 1,
-        }))
-        await client.post(`Dimensions('${name}')/Hierarchies('${name}')/Edges/tm1.AddEdges`, { Edges: payload })
+    // Edges — one POST each. tm1.AddEdges also 404s on v11.
+    for (const ed of (data.edges ?? [])) {
+        const parent = ed.ParentName ?? ed.parent
+        const child  = ed.ComponentName ?? ed.child ?? ed.component
+        const weight = ed.Weight ?? ed.weight ?? 1
+        try { await client.addEdge(name, parent, child, weight, name) }
+        catch (err) { if (!rx.test(err.response?.data?.error?.message ?? err.message ?? '')) throw err }
     }
 
     // Attribute definitions
@@ -133,7 +145,10 @@ async function deployCube(obj, packageDir, client) {
     const data  = JSON.parse(fs.readFileSync(path.join(packageDir, obj.file), 'utf8'))
     const exists = await client.getCube(data.Name).catch(() => null)
     if (exists) return  // cube already exists — skip silently (per risk check warning)
-    await client.post('Cubes', { Name: data.Name, Dimensions: data.Dimensions })
+    // v11 wants Dimensions@odata.bind, not an inline [{Name}] list (that 400s).
+    // client.createCube builds the bind form.
+    const dimNames = (data.Dimensions ?? []).map(d => d.Name ?? d)
+    await client.createCube(data.Name, dimNames)
 }
 
 async function deployAttribute(obj, packageDir, client) {
@@ -151,8 +166,13 @@ async function deployAttribute(obj, packageDir, client) {
 // ── Dependency ordering ───────────────────────────────────────────────────────
 // Deploy in this order so dependencies are satisfied before dependents
 
-// picklist-cube goes after cube (depends on cube existing) but before rules
-const DEPLOY_ORDER = ['attribute', 'dimension', 'cube', 'picklist-cube', 'rules', 'subset', 'view', 'process']
+// Dependency order:
+//  - dimension first (creates the dim + hierarchy + elements + its own attribute defs)
+//  - attribute next: a standalone attribute def POSTs to Dimensions('X')/Hierarchies('X')/
+//    ElementAttributes, which 404s if the dimension isn't there yet
+//  - cube needs its dimensions; picklist-cube + rules need the cube
+//  - subset needs its dimension; view needs the cube and any named subsets
+const DEPLOY_ORDER = ['dimension', 'attribute', 'cube', 'picklist-cube', 'rules', 'subset', 'view', 'process']
 
 // ── Main deploy ───────────────────────────────────────────────────────────────
 

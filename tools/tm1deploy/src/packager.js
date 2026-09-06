@@ -56,6 +56,25 @@ async function fetchView(cube, name, client) {
     // native — store structured axis definitions for saveNativeView
     const vs = await client.getViewWithSubsets(cube, name)
 
+    // getViewWithSubsets returns dimension:null for an axis that carries a NAMED
+    // subset (the placement API doesn't report the parent dim). saveNativeView
+    // then can't build the subset bind and the view 404s on deploy. Backfill the
+    // dimension by finding which of the cube's dimensions owns a subset by that name.
+    const cubeMeta = await client.getCube(cube).catch(() => null)
+    const cubeDims = (cubeMeta?.Dimensions ?? []).map(d => d.Name ?? d)
+    const resolveDim = async (subsetName) => {
+        for (const d of cubeDims) {
+            const s = await client.getSubset(d, subsetName).catch(() => null)
+            if (s) return d
+        }
+        return null
+    }
+    for (const axis of [...(vs._rows ?? []), ...(vs._columns ?? []), ...(vs._titles ?? [])]) {
+        if (axis.subset && !axis.dimension) {
+            axis.dimension = await resolveDim(axis.subset)
+        }
+    }
+
     // collect named subset references to warn the caller about
     const refs = new Set()
     for (const axis of [...(vs._rows ?? []), ...(vs._columns ?? []), ...(vs._titles ?? [])]) {
@@ -79,6 +98,13 @@ async function fetchView(cube, name, client) {
 }
 
 async function fetchDimension(name, client) {
+    // Release mode enumerates every object named in the change log since the
+    // baseline. If the dimension was later deleted from the source it is no
+    // longer packable — the sub-fetches below all swallow errors, so guard here
+    // or it ships as an empty zombie dimension.
+    const exists = await client.getDimension(name).catch(() => null)
+    if (!exists) throw new Error(`dimension "${name}" no longer exists on source — skipped`)
+
     const [elements, edges, attributes, element_formats] = await Promise.all([
         client.getElements(name).catch(() => []),
         client.getEdges(name).catch(() => []),
@@ -247,8 +273,8 @@ async function pack(server, sessionEntries, sessionName, options = {}, ideToken)
         }
     }
 
-    // Record drift/missing/unchanged in skipped too (with reason), excluding force-included
-    for (const item of [...diffResult.drift.filter(i => !forcedKeys.has(`${i.object_type}::${i.object_name}::${i.detail ?? ''}`)), ...diffResult.missing, ...diffResult.unchanged]) {
+    // Record drift/missing/deleted/unchanged in skipped too (with reason), excluding force-included
+    for (const item of [...diffResult.drift.filter(i => !forcedKeys.has(`${i.object_type}::${i.object_name}::${i.detail ?? ''}`)), ...diffResult.missing, ...(diffResult.deleted ?? []), ...diffResult.unchanged]) {
         manifest.skipped.push({
             type:   item.object_type,
             name:   item.object_name,
