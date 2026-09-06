@@ -365,16 +365,14 @@ server.tool(
     'not older drift. Overwrites any existing baseline.',
     {},
     async () => {
-        let seed, BASELINE_PATH
-        try {
-            ;({ seed } = require('../../tools/tm1deploy/src/snapshot'))
-            ;({ BASELINE_PATH } = require('../../tools/tm1deploy/src/diff'))
-        } catch (e) { return ok(`Deploy tooling not available: ${e.message}`) }
-        const result = await seed(SERVER, BASELINE_PATH, null)
+        let seed
+        try { ({ seed } = require('../../tools/tm1deploy/src/snapshot')) }
+        catch (e) { return ok(`Deploy tooling not available: ${e.message}`) }
+        const result = await seed(SERVER, null, null)   // → .tm1baseline/<server>.json
         const c = result?._meta?.counts ?? {}
         return ok(`Baseline seeded from "${SERVER}" at ${result?._meta?.seeded_at ?? 'now'} — ` +
             `${c.dimensions ?? '?'} dims, ${c.cubes ?? '?'} cubes, ${c.processes ?? '?'} processes captured. ` +
-            `diff_change_set and the IDE Deploy panel will now compare against this.`)
+            `This server's baseline only; diff_change_set and the IDE Deploy panel compare against it.`)
     }
 )
 
@@ -502,9 +500,9 @@ server.tool(
         const entries = cl.getSessionLog(s.id)
         let diffMod
         try { diffMod = require('../../tools/tm1deploy/src/diff') } catch { diffMod = null }
-        if (!diffMod || !fs.existsSync(diffMod.BASELINE_PATH)) {
+        if (!diffMod || !diffMod.loadBaseline(null, SERVER)) {
             return ok({
-                note: 'No deployment baseline seeded yet (seed one from the IDE Deploy panel for a full diff). Raw change set contents:',
+                note: `No baseline seeded for "${SERVER}" yet — call seed_baseline first for a full diff. Raw change set contents:`,
                 changes: entries.map(e => ({ type: e.object_type, action: e.action, name: e.object_name, detail: e.detail })),
             })
         }
@@ -532,8 +530,8 @@ server.tool(
         if (release) {
             let seededAt = null
             try {
-                const { BASELINE_PATH } = require('../../tools/tm1deploy/src/diff')
-                seededAt = JSON.parse(fs.readFileSync(BASELINE_PATH, 'utf8'))?._meta?.seeded_at ?? null
+                const { loadBaseline } = require('../../tools/tm1deploy/src/diff')
+                seededAt = loadBaseline(null, SERVER)?._meta?.seeded_at ?? null
             } catch { /* no baseline — getEntriesSince falls back to all-time */ }
             entries = cl.getEntriesSince(SERVER, seededAt)
             name = `Release ${new Date().toISOString().slice(0, 10)}`

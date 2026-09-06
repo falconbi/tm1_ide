@@ -37,8 +37,10 @@ the agent's work is captured exactly like a change made in the IDE, so it flows 
 `diff → package → risk → deploy` unchanged.
 
 ```
-seed_baseline           → snapshot the server as the deploy baseline (do this FIRST,
+seed_baseline           → snapshot the server as its deploy baseline (do this FIRST,
                           so the diff shows only what the agent builds, not older drift)
+                          Baselines are per-server — .tm1baseline/<server>.json — so
+                          several Dev→Prod loops run without colliding.
 start_change_set        → open a labelled change set ("AI: <model name>")
   build_dimension …     ┐
   build_cube …          ├─ each write logged to change_log.db against the open set

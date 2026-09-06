@@ -3,7 +3,7 @@
 const fs   = require('fs')
 const path = require('path')
 const { makeClient } = require('./client')
-const { diff, loadBaseline, BASELINE_PATH } = require('./diff')
+const { diff, loadBaseline } = require('./diff')
 const { fetchElementFormats, fetchPicklistCells } = require('./snapshot')
 
 const PACKAGES_DIR = path.resolve(__dirname, '../../../packages')
@@ -106,7 +106,7 @@ async function pack(server, sessionEntries, sessionName, options = {}, ideToken)
     const client = makeClient(server, ideToken)
 
     // Load baseline now for picklist comparison later (diff() also loads it internally)
-    const loadedBaseline = loadBaseline(baselinePath ?? BASELINE_PATH)
+    const loadedBaseline = loadBaseline(baselinePath, server)
 
     // Run diff to get packable objects
     const diffResult = await diff(server, sessionEntries, baselinePath, ideToken)

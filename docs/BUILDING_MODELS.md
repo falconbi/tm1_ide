@@ -102,6 +102,10 @@ cube is a 5-minute cost; a wrong grain is a rebuild of the whole model.
 
 ## Workflow
 
+Each model gets its own server (e.g. `DEV_A`). Baselines are per-server
+(`.tm1baseline/<server>.json`), so builds on different servers don't interfere.
+Seed once at the start; re-seed only after a deploy, when starting the next version.
+
 ```
 seed_baseline                     first — so the diff shows only what you build
 start_change_set  "AI: <model>"

@@ -30,7 +30,7 @@ const queryClient = new QueryClient({
 function SeedButton() {
   const currentServer = useStore(s => s.server)
   const { data: servers }  = useServers()
-  const { data: baseline } = useDeployBaseline()
+  const { data: baseline } = useDeployBaseline(currentServer)
   const seedMut = useDeploySeed()
   const [open,   setOpen]   = useState(false)
   const [target, setTarget] = useState('')

@@ -330,6 +330,8 @@ async function takeSnapshot(server, ideToken) {
 }
 
 async function seed(server, outputPath, ideToken) {
+    // Default to the per-server baseline path — .tm1baseline/<server>.json
+    outputPath = outputPath || require('./baseline-paths').baselinePathFor(server)
     const snapshot = await takeSnapshot(server, ideToken)
 
     const dir = path.dirname(outputPath)

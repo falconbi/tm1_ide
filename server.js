@@ -15,7 +15,7 @@ const { pack: deployPack }      = require('./tools/tm1deploy/src/packager')
 const { analyzeRisk }           = require('./tools/tm1deploy/src/risk')
 const { deploy: deployExecute } = require('./tools/tm1deploy/src/deployer')
 const { seed: deploySeed, scopedSnapshot: deployScopedSnapshot } = require('./tools/tm1deploy/src/snapshot')
-const { BASELINE_PATH }         = require('./tools/tm1deploy/src/diff')
+const { loadBaseline: deployLoadBaseline } = require('./tools/tm1deploy/src/diff')
 
 const FORGE_PATH = path.join(__dirname, 'config', 'forge.json')
 const PAW_LOGIN_SERVER = process.env.PAW_LOGIN_SERVER
@@ -2467,27 +2467,24 @@ app.post('/api/cells/write', async (req, res) => {
 
 // ── Deploy pipeline ───────────────────────────────────────────────────────────
 
-// When the baseline was last seeded — the start of the current release window.
-function baselineSeededAt() {
-    try {
-        if (!fs.existsSync(BASELINE_PATH)) return null
-        return JSON.parse(fs.readFileSync(BASELINE_PATH, 'utf8'))?._meta?.seeded_at ?? null
-    } catch { return null }
+// When this server's baseline was last seeded — the start of its release window.
+function baselineSeededAt(server) {
+    return deployLoadBaseline(null, server)?._meta?.seeded_at ?? null
 }
 
 // Resolve the change-log entries a diff/package should work from:
 // one change set (sessionId), or every object touched since the baseline (release).
 function deployEntries({ server, sessionId, release }) {
     return release
-        ? cl.getEntriesSince(server, baselineSeededAt())
+        ? cl.getEntriesSince(server, baselineSeededAt(server))
         : cl.getSessionLog(sessionId)
 }
 
 app.get('/api/deploy/object-diff', async (req, res) => {
     try {
         const { server, type, name, detail } = req.query
-        if (!fs.existsSync(BASELINE_PATH)) return res.status(404).json({ error: 'No baseline seeded' })
-        const snapshot = JSON.parse(fs.readFileSync(BASELINE_PATH, 'utf8'))
+        const snapshot = deployLoadBaseline(null, server)
+        if (!snapshot) return res.status(404).json({ error: 'No baseline seeded for this server' })
         const client = makeClient(server, req.ideToken)
         let before = null, after = null
 
@@ -2520,9 +2517,8 @@ app.get('/api/deploy/object-diff', async (req, res) => {
 
 app.get('/api/deploy/baseline', (req, res) => {
     try {
-        const fs = require('fs')
-        if (!fs.existsSync(BASELINE_PATH)) return res.json({ exists: false })
-        const snapshot = JSON.parse(fs.readFileSync(BASELINE_PATH, 'utf8'))
+        const snapshot = deployLoadBaseline(null, req.query.server)
+        if (!snapshot) return res.json({ exists: false })
         res.json({ exists: true, ...snapshot._meta })
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
@@ -2541,7 +2537,7 @@ app.post('/api/deploy/seed', async (req, res) => {
     try {
         const { server } = req.body
         if (!server) return res.status(400).json({ error: 'server required' })
-        const snapshot = await deploySeed(server, BASELINE_PATH, req.ideToken)
+        const snapshot = await deploySeed(server, null, req.ideToken)   // per-server baseline path
         res.json({ ok: true, server, seeded_at: snapshot._meta.seeded_at, counts: snapshot._meta.counts })
     } catch (e) { res.status(500).json({ error: e.message }) }
 })

@@ -540,7 +540,7 @@ export const useUpdateSessionDescription = () => { const qc = useQueryClient(); 
 export const usePreDeleteElementCheck = () => useMutation({ mutationFn: (body) => post('/api/deploy/pre-delete-check', body) })
 
 export const useDeployPackages = () => useQuery({ queryKey: ['deploy-packages'], queryFn: () => get('/api/deploy/packages'), staleTime: 0 })
-export const useDeployBaseline = () => useQuery({ queryKey: ['deploy-baseline'], queryFn: () => get('/api/deploy/baseline'), staleTime: 60_000 })
+export const useDeployBaseline = (server) => useQuery({ queryKey: ['deploy-baseline', server], queryFn: () => get(`/api/deploy/baseline?server=${encodeURIComponent(server ?? '')}`), staleTime: 60_000, enabled: !!server })
 export const useDeploySeed     = () => { const qc = useQueryClient(); return useMutation({ mutationFn: (body) => post('/api/deploy/seed', body), onSuccess: () => qc.invalidateQueries({ queryKey: ['deploy-baseline'] }) }) }
 export const useDeployDiff     = () => useMutation({ mutationFn: (body) => post('/api/deploy/diff',    body) })
 export const useDeployPackage  = () => { const qc = useQueryClient(); return useMutation({ mutationFn: (body) => post('/api/deploy/package', body), onSuccess: () => qc.invalidateQueries({ queryKey: ['deploy-packages'] }) }) }

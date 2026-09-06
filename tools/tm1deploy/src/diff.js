@@ -3,13 +3,29 @@
 const fs   = require('fs')
 const path = require('path')
 const { makeClient } = require('./client')
+const { baselinePathFor, LEGACY_BASELINE_PATH } = require('./baseline-paths')
 
-const BASELINE_PATH = path.resolve(__dirname, '../../../.tm1baseline/snapshot.json')
+// Back-compat export — the legacy single-file location. Prefer baselinePathFor(server).
+const BASELINE_PATH = LEGACY_BASELINE_PATH
 
-function loadBaseline(overridePath) {
-    const p = overridePath ?? BASELINE_PATH
-    if (!fs.existsSync(p)) return null
+function _readJson(p) {
     try { return JSON.parse(fs.readFileSync(p, 'utf8')) } catch { return null }
+}
+
+/**
+ * @param {string|null} overridePath  explicit file (package-bundled baseline, CLI --baseline) — wins
+ * @param {string|null} server        resolve `.tm1baseline/<server>.json`, falling back to the
+ *                                     legacy single file only when it was seeded from this server
+ */
+function loadBaseline(overridePath, server) {
+    if (overridePath) return fs.existsSync(overridePath) ? _readJson(overridePath) : null
+    if (server) {
+        const perServer = baselinePathFor(server)
+        if (fs.existsSync(perServer)) return _readJson(perServer)
+        const legacy = fs.existsSync(LEGACY_BASELINE_PATH) ? _readJson(LEGACY_BASELINE_PATH) : null
+        return legacy && legacy._meta?.server === server ? legacy : null
+    }
+    return fs.existsSync(LEGACY_BASELINE_PATH) ? _readJson(LEGACY_BASELINE_PATH) : null
 }
 
 // Deduplicate session entries — keep the latest action per (type, name, detail)
@@ -267,7 +283,7 @@ function outcome(result, entry, note, extra = {}) {
 
 async function diff(server, sessionEntries, baselinePath, ideToken) {
     const client   = makeClient(server, ideToken)
-    const baseline = loadBaseline(baselinePath)
+    const baseline = loadBaseline(baselinePath, server)
 
     // Annotate each entry with its last_action for deduplication
     const objects = uniqueObjects(sessionEntries.map(e => ({ ...e, last_action: e.action })))
@@ -425,9 +441,10 @@ async function driftCheck(packageDir, targetServer, ideToken) {
     if (!fs.existsSync(manifestPath)) throw new Error('No manifest.json found')
 
     const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'))
-    // Prefer the baseline bundled in the package (handoff case), fall back to the
-    // local repo baseline.
-    const baseline = loadBaseline(path.join(packageDir, 'baseline.json')) ?? loadBaseline()
+    // Prefer the baseline bundled in the package (handoff case), else the target
+    // server's own baseline.
+    const baseline = loadBaseline(path.join(packageDir, 'baseline.json'))
+        ?? loadBaseline(null, targetServer)
 
     if (!baseline) {
         return {
@@ -471,4 +488,4 @@ async function driftCheck(packageDir, targetServer, ideToken) {
     }
 }
 
-module.exports = { diff, driftCheck, loadBaseline, BASELINE_PATH }
+module.exports = { diff, driftCheck, loadBaseline, baselinePathFor, BASELINE_PATH }
