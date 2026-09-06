@@ -199,3 +199,14 @@ GBP 1.0, USD 0.79, NZD 0.47, Group 1.0.
   - `WFP Version` replaces Scenario; multi-year Period (2025–2027).
   - `Group` was ambiguous (member of both Entity and Currency) → the currency
     member is `Reporting`.
+- *(2026-09-06)* **Phase 1 rev C — employee income tax + gross-to-net** (change
+  set `e94be4be`, 23 objects, 17/17 assertions). `WFP Tax Type` dimension
+  (`Employer Payroll Tax` / `Employee Income Tax`); `WFP Tax Bands` = Jurisdiction
+  × Tax Type × Band (7) × Band Item; real progressive brackets (NZ 10.5/17.5/30/33/39,
+  UK 0/20/40/45, US-NY blended). Pay Component split: `Cost to Company` (C) +
+  `Employee Deductions` (C), `Gross Pay` and `Net Pay` leaves. `Employee Pension`
+  (UK 5% / US 6% / NZ 3% KiwiSaver). Verified: ENG-002 UK net £57,668 on £82k;
+  ENG-006 NZ income tax £34,427.50 (exact brackets); contractor net = gross.
+  8 views + a `Default` view on every cube + a `Default` subset on every
+  dimension. **`CubeProcessFeeders` must run after recreating a cube** — see
+  BUILDING_MODELS.md.

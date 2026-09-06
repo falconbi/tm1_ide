@@ -208,3 +208,28 @@ iterations:
   local-currency `['Base']` rule so the more-specific area wins.
 - Rebuild cost: ~70 objects, one change set, ~2 hours. Deleting + recreating was
   cleaner than surgical edits given Period, Pay Component, and all cubes changed.
+
+### Workforce Planning — Phase 1 rev C (Sep 2026) — employee income tax / gross-to-net
+
+- **Recreating a cube breaks the feeders from other cubes into it.** After
+  `delete_object` + `build_cube` on `WFP Workforce Cost`, every leaf computed
+  fine on a direct read but all consolidations returned 0 — the
+  `WFP Workforce Input ['FTE'] => DB(WFP Workforce Cost, …)` feeder was dead.
+  Re-applying the source cube's rules did **not** fix it. Fix: a TI running
+  `CubeProcessFeeders('WFP Workforce Cost')`. **Always run CubeProcessFeeders on
+  any cube you recreate, and on cubes that feed into it.** Keep a
+  `<prefix> Reprocess Feeders` process in the model.
+- **Progressive tax generalises cleanly**: one `WFP Tax Type` axis on the bands
+  cube (`Employer Payroll Tax` / `Employee Income Tax`), the same 7-band YTD walk
+  with the type as a parameter. Employee income tax verified against real
+  NZ/UK brackets to the cent.
+- Pay Component split into `Cost to Company` (C) and `Employee Deductions` (C),
+  with `Gross Pay` and `Net Pay` as computed leaves
+  (`Net Pay = Gross Pay − Employee Deductions`, referencing the consolidation
+  directly in the rule).
+- Contractor gate extends: no employer on-costs AND no employee PAYE / pension
+  (a contractor invoices gross), so Net = Gross for them.
+- **Default subset / view compliance** — a TI loops the model dimensions and
+  builds a `Default` subset (all members) on each; a `Default` native view on
+  each cube. `SubsetCreatebyMDX` silently no-opped on this engine — use
+  `SubsetCreate` + a `SubsetElementInsert` loop.
