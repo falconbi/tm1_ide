@@ -540,7 +540,7 @@ export const useUpdateSessionDescription = () => { const qc = useQueryClient(); 
 export const usePreDeleteElementCheck = () => useMutation({ mutationFn: (body) => post('/api/deploy/pre-delete-check', body) })
 
 export const useDeployPackages = () => useQuery({ queryKey: ['deploy-packages'], queryFn: () => get('/api/deploy/packages'), staleTime: 0 })
-export const useDeployBaseline = () => useQuery({ queryKey: ['deploy-baseline'], queryFn: () => get('/api/deploy/baseline'), staleTime: 60_000 })
+export const useDeployBaseline = (server) => useQuery({ queryKey: ['deploy-baseline', server], queryFn: () => get(`/api/deploy/baseline?server=${encodeURIComponent(server ?? '')}`), staleTime: 60_000, enabled: !!server })
 export const useDeploySeed     = () => { const qc = useQueryClient(); return useMutation({ mutationFn: (body) => post('/api/deploy/seed', body), onSuccess: () => qc.invalidateQueries({ queryKey: ['deploy-baseline'] }) }) }
 export const useDeployDiff     = () => useMutation({ mutationFn: (body) => post('/api/deploy/diff',    body) })
 export const useDeployPackage  = () => { const qc = useQueryClient(); return useMutation({ mutationFn: (body) => post('/api/deploy/package', body), onSuccess: () => qc.invalidateQueries({ queryKey: ['deploy-packages'] }) }) }
@@ -548,7 +548,32 @@ export const useDeployDriftCheck = () => useMutation({ mutationFn: (body) => pos
 export const useDeployRisk       = () => useMutation({ mutationFn: (body) => post('/api/deploy/risk',         body) })
 export const useDeployExecute  = () => useMutation({ mutationFn: (body) => post('/api/deploy/execute', body) })
 export const useDeployApprove  = () => useMutation({ mutationFn: (body) => post('/api/deploy/approve', body) })
-export const useDeployArchive  = () => useMutation({ mutationFn: (body) => post('/api/deploy/archive', body) })
+export const useDeployScopedSnapshot = () => useMutation({ mutationFn: (body) => post('/api/deploy/scoped-snapshot', body) })
+export const useDeployArchive  = () => { const qc = useQueryClient(); return useMutation({ mutationFn: (body) => post('/api/deploy/archive', body), onSuccess: () => qc.invalidateQueries({ queryKey: ['deploy-archives'] }) }) }
+
+// ── Import a handed-off package (admin side — no source server needed) ────────
+export const useDeployPackageInfo = (dir) => useQuery({
+  queryKey: ['deploy-package', dir],
+  queryFn:  () => get(`/api/deploy/package?dir=${encodeURIComponent(dir)}`),
+  enabled:  !!dir,
+})
+export const useDeployImportZip = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ bytes, name }) => {
+      const params = new URLSearchParams()
+      if (name) params.set('name', name)
+      const r = await fetch(`/api/deploy/import-zip?${params}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/zip', ...authHeader() },
+        body: bytes,
+      })
+      if (!r.ok) throw await extractError(r)
+      return r.json()
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['deploy-packages'] }),
+  })
+}
 export const useDeployArchives = () => useQuery({ queryKey: ['deploy-archives'], queryFn: () => get('/api/deploy/archives'), staleTime: 0 })
 
 // ── User management ───────────────────────────────────────────────────────────

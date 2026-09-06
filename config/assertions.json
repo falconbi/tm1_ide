@@ -1,0 +1,232 @@
+{
+  "TM1_Test_DEV": [
+    {
+      "id": "1740b6db",
+      "description": "ENG-002 employer tax Jan = 0 (YTD earnings under the UK 9,100 threshold)",
+      "mdx": "SELECT {[WFP Pay Component].[WFP Pay Component].[Employer Payroll Tax]} ON 0 FROM [WFP Workforce Cost] WHERE ([WFP Position].[WFP Position].[ENG-002],[WFP Period].[WFP Period].[2026-01],[WFP Version].[WFP Version].[Budget],[WFP Entity].[WFP Entity].[UK Ltd],[WFP Cost Centre].[WFP Cost Centre].[CC-ENG-PLT],[WFP Currency].[WFP Currency].[GBP])",
+      "expected": 0,
+      "tolerance": 0.01,
+      "tags": [
+        "phase1b",
+        "tax"
+      ],
+      "created": "2026-09-06T04:39:38.090Z"
+    },
+    {
+      "id": "b5148962",
+      "description": "ENG-002 employer tax FY2026 = progressive UK NI (0 + 630.20 + 943x10), 9,100 exempt",
+      "mdx": "SELECT {[WFP Pay Component].[WFP Pay Component].[Employer Payroll Tax]} ON 0 FROM [WFP Workforce Cost] WHERE ([WFP Position].[WFP Position].[ENG-002],[WFP Period].[WFP Period].[FY2026],[WFP Version].[WFP Version].[Budget],[WFP Entity].[WFP Entity].[UK Ltd],[WFP Cost Centre].[WFP Cost Centre].[CC-ENG-PLT],[WFP Currency].[WFP Currency].[GBP])",
+      "expected": 10060.2,
+      "tolerance": 0.05,
+      "tags": [
+        "phase1b",
+        "tax"
+      ],
+      "created": "2026-09-06T04:39:43.338Z"
+    },
+    {
+      "id": "39aeacf8",
+      "description": "ENG-005 open req June base = G2 NY Engineering band (72000 x 1.10 Eng index / 12)",
+      "mdx": "SELECT {[WFP Pay Component].[WFP Pay Component].[Base]} ON 0 FROM [WFP Workforce Cost] WHERE ([WFP Position].[WFP Position].[ENG-005],[WFP Period].[WFP Period].[2026-06],[WFP Version].[WFP Version].[Budget],[WFP Entity].[WFP Entity].[US Inc],[WFP Cost Centre].[WFP Cost Centre].[CC-ENG-APP],[WFP Currency].[WFP Currency].[USD])",
+      "expected": 6600,
+      "tolerance": 0.01,
+      "tags": [
+        "phase1b",
+        "jobfamily"
+      ],
+      "created": "2026-09-06T04:39:53.318Z"
+    },
+    {
+      "id": "d3ca0639",
+      "description": "ITO-001 contractor June employer tax = 0 (Employment Type gate)",
+      "mdx": "SELECT {[WFP Pay Component].[WFP Pay Component].[Employer Payroll Tax]} ON 0 FROM [WFP Workforce Cost] WHERE ([WFP Position].[WFP Position].[ITO-001],[WFP Period].[WFP Period].[2026-06],[WFP Version].[WFP Version].[Budget],[WFP Entity].[WFP Entity].[NZ Ltd],[WFP Cost Centre].[WFP Cost Centre].[CC-ITOPS],[WFP Currency].[WFP Currency].[NZD])",
+      "expected": 0,
+      "tolerance": 0.01,
+      "tags": [
+        "phase1b",
+        "contractor"
+      ],
+      "created": "2026-09-06T04:40:01.900Z"
+    },
+    {
+      "id": "a152d5d2",
+      "description": "ENG-004 employer tax June (USD) = US-NY 9% below the SS cap (11666.67 x 0.09)",
+      "mdx": "SELECT {[WFP Pay Component].[WFP Pay Component].[Employer Payroll Tax]} ON 0 FROM [WFP Workforce Cost] WHERE ([WFP Position].[WFP Position].[ENG-004],[WFP Period].[WFP Period].[2026-06],[WFP Version].[WFP Version].[Budget],[WFP Entity].[WFP Entity].[US Inc],[WFP Cost Centre].[WFP Cost Centre].[CC-ENG-APP],[WFP Currency].[WFP Currency].[USD])",
+      "expected": 1050,
+      "tolerance": 0.01,
+      "tags": [
+        "phase1b",
+        "tax"
+      ],
+      "created": "2026-09-06T04:40:07.533Z"
+    },
+    {
+      "id": "e0301b21",
+      "description": "ENG-003 base March = mid-month start proration (55000 x 1.0 Eng-index-in-band... actual salary used, 22/31)",
+      "mdx": "SELECT {[WFP Pay Component].[WFP Pay Component].[Base]} ON 0 FROM [WFP Workforce Cost] WHERE ([WFP Position].[WFP Position].[ENG-003],[WFP Period].[WFP Period].[2026-03],[WFP Version].[WFP Version].[Budget],[WFP Entity].[WFP Entity].[UK Ltd],[WFP Cost Centre].[WFP Cost Centre].[CC-ENG-APP],[WFP Currency].[WFP Currency].[GBP])",
+      "expected": 3252.69,
+      "tolerance": 0.01,
+      "tags": [
+        "phase1b"
+      ],
+      "created": "2026-09-06T04:40:22.225Z"
+    },
+    {
+      "id": "37db5346",
+      "description": "CS-002 base June (NZD) = 0.5 FTE x 70000/12 (part-time, actual salary)",
+      "mdx": "SELECT {[WFP Pay Component].[WFP Pay Component].[Base]} ON 0 FROM [WFP Workforce Cost] WHERE ([WFP Position].[WFP Position].[CS-002],[WFP Period].[WFP Period].[2026-06],[WFP Version].[WFP Version].[Budget],[WFP Entity].[WFP Entity].[NZ Ltd],[WFP Cost Centre].[WFP Cost Centre].[CC-CS],[WFP Currency].[WFP Currency].[NZD])",
+      "expected": 2916.67,
+      "tolerance": 0.01,
+      "tags": [
+        "phase1b"
+      ],
+      "created": "2026-09-06T04:40:41.771Z"
+    },
+    {
+      "id": "2dc480ce",
+      "description": "CS-002 base Oct (NZD) = 0 (position ended 30 Sep)",
+      "mdx": "SELECT {[WFP Pay Component].[WFP Pay Component].[Base]} ON 0 FROM [WFP Workforce Cost] WHERE ([WFP Position].[WFP Position].[CS-002],[WFP Period].[WFP Period].[2026-10],[WFP Version].[WFP Version].[Budget],[WFP Entity].[WFP Entity].[NZ Ltd],[WFP Cost Centre].[WFP Cost Centre].[CC-CS],[WFP Currency].[WFP Currency].[NZD])",
+      "expected": 0,
+      "tolerance": 0.01,
+      "tags": [
+        "phase1b"
+      ],
+      "created": "2026-09-06T04:40:46.415Z"
+    },
+    {
+      "id": "e747e00a",
+      "description": "ENG-002 employee income tax FY2026 (GBP) = UK progressive (37700 @20% + 31730 @40%)",
+      "mdx": "SELECT {[WFP Pay Component].[WFP Pay Component].[Employee Income Tax]} ON 0 FROM [WFP Workforce Cost] WHERE ([WFP Position].[WFP Position].[ENG-002],[WFP Period].[WFP Period].[FY2026],[WFP Version].[WFP Version].[Budget],[WFP Entity].[WFP Entity].[UK Ltd],[WFP Cost Centre].[WFP Cost Centre].[CC-ENG-PLT],[WFP Currency].[WFP Currency].[GBP])",
+      "expected": 20232,
+      "tolerance": 0.1,
+      "tags": [
+        "phase1c",
+        "paye"
+      ],
+      "created": "2026-09-06T05:07:35.515Z"
+    },
+    {
+      "id": "322bbcea",
+      "description": "ENG-002 net pay FY2026 (GBP) = gross 82000 - income tax 20232 - pension 4100",
+      "mdx": "SELECT {[WFP Pay Component].[WFP Pay Component].[Net Pay]} ON 0 FROM [WFP Workforce Cost] WHERE ([WFP Position].[WFP Position].[ENG-002],[WFP Period].[WFP Period].[FY2026],[WFP Version].[WFP Version].[Budget],[WFP Entity].[WFP Entity].[UK Ltd],[WFP Cost Centre].[WFP Cost Centre].[CC-ENG-PLT],[WFP Currency].[WFP Currency].[GBP])",
+      "expected": 57668,
+      "tolerance": 0.1,
+      "tags": [
+        "phase1c",
+        "paye"
+      ],
+      "created": "2026-09-06T05:07:40.684Z"
+    },
+    {
+      "id": "a3328331",
+      "description": "ENG-006 employee income tax FY2026 (NZD) = full NZ progressive brackets (10.5/17.5/30/33)",
+      "mdx": "SELECT {[WFP Pay Component].[WFP Pay Component].[Employee Income Tax]} ON 0 FROM [WFP Workforce Cost] WHERE ([WFP Position].[WFP Position].[ENG-006],[WFP Period].[WFP Period].[FY2026],[WFP Version].[WFP Version].[Budget],[WFP Entity].[WFP Entity].[NZ Ltd],[WFP Cost Centre].[WFP Cost Centre].[CC-ENG-PLT],[WFP Currency].[WFP Currency].[NZD])",
+      "expected": 34427.5,
+      "tolerance": 0.1,
+      "tags": [
+        "phase1c",
+        "paye"
+      ],
+      "created": "2026-09-06T05:07:45.927Z"
+    },
+    {
+      "id": "ebf2097c",
+      "description": "ITO-001 contractor net pay FY2026 (NZD) = gross 120000 (no PAYE, no deductions)",
+      "mdx": "SELECT {[WFP Pay Component].[WFP Pay Component].[Net Pay]} ON 0 FROM [WFP Workforce Cost] WHERE ([WFP Position].[WFP Position].[ITO-001],[WFP Period].[WFP Period].[FY2026],[WFP Version].[WFP Version].[Budget],[WFP Entity].[WFP Entity].[NZ Ltd],[WFP Cost Centre].[WFP Cost Centre].[CC-ITOPS],[WFP Currency].[WFP Currency].[NZD])",
+      "expected": 120000,
+      "tolerance": 0.01,
+      "tags": [
+        "phase1c",
+        "contractor"
+      ],
+      "created": "2026-09-06T05:07:50.247Z"
+    },
+    {
+      "id": "8a77a60c",
+      "description": "ENG-002 cost to company FY2026 (GBP) = base 82000 + ER tax 10060.20 + ER pension 4100 + benefits 2400",
+      "mdx": "SELECT {[WFP Pay Component].[WFP Pay Component].[Cost to Company]} ON 0 FROM [WFP Workforce Cost] WHERE ([WFP Position].[WFP Position].[ENG-002],[WFP Period].[WFP Period].[FY2026],[WFP Version].[WFP Version].[Budget],[WFP Entity].[WFP Entity].[UK Ltd],[WFP Cost Centre].[WFP Cost Centre].[CC-ENG-PLT],[WFP Currency].[WFP Currency].[GBP])",
+      "expected": 98560.2,
+      "tolerance": 0.1,
+      "tags": [
+        "phase1c"
+      ],
+      "created": "2026-09-06T08:32:53.432Z"
+    },
+    {
+      "id": "1a763376",
+      "description": "Group cost to company FY2026 (Reporting ccy) — consolidated Cost to Company across all entities",
+      "mdx": "SELECT {[WFP Pay Component].[WFP Pay Component].[Cost to Company]} ON 0 FROM [WFP Workforce Cost] WHERE ([WFP Position].[WFP Position].[Total Positions],[WFP Period].[WFP Period].[FY2026],[WFP Version].[WFP Version].[Budget],[WFP Entity].[WFP Entity].[Group],[WFP Cost Centre].[WFP Cost Centre].[Total Cost Centre],[WFP Currency].[WFP Currency].[Reporting])",
+      "expected": 1700305.85,
+      "tolerance": 1,
+      "tags": [
+        "phase1c",
+        "fx"
+      ],
+      "created": "2026-09-06T08:32:58.857Z"
+    },
+    {
+      "id": "ba31eaf7",
+      "description": "Group headcount June 2026 = 16 filled positions active",
+      "mdx": "SELECT {[WFP Headcount Measure].[WFP Headcount Measure].[Headcount]} ON 0 FROM [WFP Headcount] WHERE ([WFP Position].[WFP Position].[Total Positions],[WFP Period].[WFP Period].[2026-06],[WFP Version].[WFP Version].[Budget],[WFP Entity].[WFP Entity].[Group],[WFP Cost Centre].[WFP Cost Centre].[Total Cost Centre])",
+      "expected": 16,
+      "tolerance": 0.01,
+      "tags": [
+        "phase1b",
+        "headcount",
+        "revd"
+      ],
+      "created": "2026-09-06T09:40:57.812Z"
+    },
+    {
+      "id": "ffa9b90e",
+      "description": "Group FTE June 2026 = 16.5 (15 full-time filled + CS-002 0.5 + ENG-005 open 1.0)",
+      "mdx": "SELECT {[WFP Headcount Measure].[WFP Headcount Measure].[FTE]} ON 0 FROM [WFP Headcount] WHERE ([WFP Position].[WFP Position].[Total Positions],[WFP Period].[WFP Period].[2026-06],[WFP Version].[WFP Version].[Budget],[WFP Entity].[WFP Entity].[Group],[WFP Cost Centre].[WFP Cost Centre].[Total Cost Centre])",
+      "expected": 16.5,
+      "tolerance": 0.01,
+      "tags": [
+        "phase1b",
+        "headcount",
+        "revd"
+      ],
+      "created": "2026-09-06T09:40:59.016Z"
+    },
+    {
+      "id": "3ad5c622",
+      "description": "Group open positions Oct 2026 = 2 (ENG-005 + SLS-003 both active)",
+      "mdx": "SELECT {[WFP Headcount Measure].[WFP Headcount Measure].[Open Positions]} ON 0 FROM [WFP Headcount] WHERE ([WFP Position].[WFP Position].[Total Positions],[WFP Period].[WFP Period].[2026-10],[WFP Version].[WFP Version].[Budget],[WFP Entity].[WFP Entity].[Group],[WFP Cost Centre].[WFP Cost Centre].[Total Cost Centre])",
+      "expected": 2,
+      "tolerance": 0.01,
+      "tags": [
+        "phase1b",
+        "headcount",
+        "revd"
+      ],
+      "created": "2026-09-06T09:41:01.206Z"
+    },
+    {
+      "id": "ee3f0f40",
+      "description": "ENG-006 employee income tax — sum of 12 months = FY2026 (34427.50): YTD prior-period self-ref consistent under rev D dim order",
+      "mdx": "SELECT {[WFP Period].[WFP Period].[2026-01]:[WFP Period].[WFP Period].[2026-12]} ON 0 FROM [WFP Workforce Cost] WHERE ([WFP Version].[WFP Version].[Budget],[WFP Entity].[WFP Entity].[NZ Ltd],[WFP Cost Centre].[WFP Cost Centre].[CC-ENG-PLT],[WFP Pay Component].[WFP Pay Component].[Employee Income Tax],[WFP Currency].[WFP Currency].[NZD],[WFP Position].[WFP Position].[ENG-006],[WFP Workforce Cost Measure].[WFP Workforce Cost Measure].[Amount])",
+      "expected": 34427.5,
+      "tolerance": 0.1,
+      "tags": [
+        "revd",
+        "paye",
+        "ytd"
+      ],
+      "created": "2026-09-06T09:41:55.066Z"
+    },
+    {
+      "id": "d951f572",
+      "description": "ENG-004 base June Reporting ccy = 11666.67 USD x 0.79 FX = 9216.67 (rev D FX translation, per-cube measure dim)",
+      "mdx": "SELECT {[WFP Workforce Cost Measure].[WFP Workforce Cost Measure].[Amount]} ON 0 FROM [WFP Workforce Cost] WHERE ([WFP Period].[WFP Period].[2026-06],[WFP Version].[WFP Version].[Budget],[WFP Entity].[WFP Entity].[US Inc],[WFP Cost Centre].[WFP Cost Centre].[CC-ENG-APP],[WFP Pay Component].[WFP Pay Component].[Base],[WFP Currency].[WFP Currency].[Reporting],[WFP Position].[WFP Position].[ENG-004])",
+      "expected": 9216.67,
+      "tolerance": 0.01,
+      "tags": [
+        "revd",
+        "fx"
+      ],
+      "created": "2026-09-06T09:41:55.122Z"
+    }
+  ]
+}

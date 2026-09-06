@@ -115,8 +115,12 @@ class TM1Client {
     }
 
     async createDimension(name) {
+        const enc = encodeURIComponent(name)
         await this.post('Dimensions', { Name: name })
-        // TM1 auto-creates a default hierarchy with the same name
+        // TM1 does not reliably auto-create the leaf hierarchy on this version —
+        // ensure it exists (400/409 = already there).
+        await this.post(`Dimensions('${enc}')/Hierarchies`, { Name: name, Dimension: { Name: name } })
+            .catch(e => { if (![400, 409].includes(e.response?.status)) throw e })
     }
 
     async getEdges(dim, hierarchy = dim) {
@@ -412,6 +416,14 @@ class TM1Client {
         return (d.value ?? []).map(r => r.Name).filter(n => !n.startsWith('}'))
     }
 
+    async getAllCubesWithRules() {
+        const d = await this.get('ModelCubes()', {
+            '$select': 'Name,Rules',
+            '$expand': 'Dimensions($select=Name)',
+        })
+        return (d.value ?? [])
+    }
+
     async getModelCubes() {
         const d = await this.get('ModelCubes()', { '$select': 'Name' })
         return (d.value ?? []).map(r => r.Name)
@@ -453,7 +465,7 @@ class TM1Client {
             DataProcedure:      proc.data     ?? '',
             EpilogProcedure:    proc.epilog   ?? '',
             HasSecurityAccess:  false,
-            DataSource:         { Type: 'None' },
+            DataSource:         proc.datasource ?? { Type: 'None' },
             Parameters:         (proc.parameters ?? []).map(p => ({
                 Name:   p.Name,
                 Type:   p.Type ?? 'String',
@@ -482,8 +494,10 @@ class TM1Client {
     }
 
     async getChore(name) {
+        // TM1 v11: the navigation property is `Tasks` (not `Steps`); Parameters is an
+        // inline complex property so it must NOT be in $expand — only Process is a nav prop.
         return this.get(`Chores('${encodeURIComponent(name)}')`, {
-            '$expand': 'Steps($expand=Process,Parameters)'
+            '$expand': 'Tasks($expand=Process($select=Name))'
         })
     }
 
@@ -953,7 +967,8 @@ return (d.value ?? [])
     }
 
     async saveStaticSubset(dim, name, elements, hierarchy = dim) {
-        const bind = elements.map(el => `Dimensions('${dim}')/Hierarchies('${hierarchy}')/Elements('${el.replace(/'/g, "''")}')`        )
+        const e = s => String(s).replace(/'/g, "''")
+        const bind = elements.map(el => `Dimensions('${e(dim)}')/Hierarchies('${e(hierarchy)}')/Elements('${e(el)}')`)
         const body = {
             '@odata.type': '#ibm.tm1.api.v1.StaticSubset',
             Name: name,
@@ -961,12 +976,11 @@ return (d.value ?? [])
             'Elements@odata.bind': bind,
         }
         try {
-            await this.patch(`Cubes('${esc(cube)}')/Views('${esc(name)}')`, body)
-        } catch (e) {
-            if (e.response?.status === 404) {
-                console.error('[save-native-view] PATCH 404, trying POST')
-                await this.post(`Cubes('${esc(cube)}')/Views`, body)
-            } else throw e
+            await this.patch(`Dimensions('${e(dim)}')/Hierarchies('${e(hierarchy)}')/Subsets('${e(name)}')`, body)
+        } catch (err) {
+            if (err.response?.status === 404) {
+                await this.post(`Dimensions('${e(dim)}')/Hierarchies('${e(hierarchy)}')/Subsets`, body)
+            } else throw err
         }
     }
 
@@ -1310,26 +1324,46 @@ return (d.value ?? [])
     // ── Transaction log ───────────────────────────────────────────────────────
 
     // elements: array of element names in cube dimension order (nulls = unfiltered)
-    async getTransactionLog(cube, { top = 200, elements = null } = {}) {
-        const esc = s => String(s).replace(/'/g, "''")
-        let filter = `Cube eq '${esc(cube)}'`
-        if (Array.isArray(elements)) {
-            elements.forEach((el, i) => {
-                if (el != null && el !== '') filter += ` and Element${i + 1} eq '${esc(el)}'`
-            })
+    //
+    // TM1 v11's TransactionLogEntries collection rejects $filter, $orderby and $select
+    // ("Unsupported token") — only $top / $skip / $count work, and $top returns from the
+    // OLDEST entry. So: read the total count, page backwards from the newest entry in
+    // chunks, and match cube + tuple client-side. SCAN_CAP bounds how far back we look —
+    // on a busy server a cube with no recent writes may fall outside the window.
+    async getTransactionLog(cube, { top = 200, elements = null, maxScan = 200_000 } = {}) {
+        const cubeLc  = String(cube).toLowerCase()
+        const wantEls = Array.isArray(elements) ? elements : null
+
+        const tupleMatches = e =>
+            !wantEls || wantEls.every((el, i) => !el || (e.Tuple?.[i] ?? '') === el)
+        const keep = e => (e.Cube ?? '').toLowerCase() === cubeLc && tupleMatches(e)
+
+        // One big $top pulls the whole log fast (~3s for 70k rows) — far cheaper than
+        // $count (server counts everything) or high $skip values. Rows come oldest-first.
+        let rows = (await this.get('TransactionLogEntries', { '$top': maxScan })).value ?? []
+
+        // If we hit the cap, the log is bigger than maxScan and we only have the OLDEST
+        // rows — fall back to count + tail-window to get the most recent.
+        if (rows.length >= maxScan) {
+            try {
+                const total = (await this.get('TransactionLogEntries', { '$count': 'true', '$top': 1 }))['@odata.count']
+                if (total > maxScan) {
+                    rows = (await this.get('TransactionLogEntries', { '$skip': total - maxScan, '$top': maxScan })).value ?? []
+                }
+            } catch { /* keep the rows we have */ }
         }
-        const d = await this.get('TransactionLogEntries', {
-            '$filter':  filter,
-            '$top':     top,
-            '$orderby': 'TimeStamp desc',
-        })
-        return d.value ?? []
+
+        return rows
+            .filter(keep)
+            .sort((a, b) => String(b.TimeStamp).localeCompare(String(a.TimeStamp)))
+            .slice(0, top)
     }
 
     // ── Process error logs ────────────────────────────────────────────────────
 
     async getErrorLogFiles() {
-        const d = await this.get('ErrorLogFiles', { '$select': 'Filename,LastUpdated' })
+        // TM1 v11: `LastUpdated` is not a property of ErrorLogFile — only `Filename`.
+        const d = await this.get('ErrorLogFiles', { '$select': 'Filename' })
         return d.value ?? []
     }
 
@@ -1389,7 +1423,8 @@ return (d.value ?? [])
     }
 
     async getThreads() {
-        const d = await this.get('Threads', { '$expand': 'User,Session' })
+        // TM1 v11: `Thread` has no `User` navigation property — only `Session`.
+        const d = await this.get('Threads', { '$expand': 'Session' })
         return d.value ?? []
     }
 

@@ -293,17 +293,19 @@ function applyTm1Format(value, fmt) {
     const parts = fmt.split(';')
     const activeFmt = value < 0 && parts[1] ? parts[1] : parts[0]
     const absVal = Math.abs(value)
-    const pctDiv = activeFmt.includes('%/') // e.g. #,##0.0%/100 → divide value by 100 before % formatting
-    const isPct = activeFmt.includes('%')
+    const useParens = parts[1]?.includes('(') && value < 0
+    // Strip outer parens from negative section before extracting prefix/number pattern
+    const cleanFmt = useParens ? activeFmt.replace(/^\(/, '').replace(/\)$/, '') : activeFmt
+    const pctDiv = cleanFmt.includes('%/')
+    const isPct = cleanFmt.includes('%')
     const adjustedVal = isPct && pctDiv ? absVal / 100 : absVal
     const num = isPct ? adjustedVal * 100 : adjustedVal
-    const useGrouping = activeFmt.includes(',')
-    const decMatch = activeFmt.replace(/\[[^\]]*\]/g, '').match(/\.([0#]+)/)
+    const useGrouping = cleanFmt.includes(',')
+    const decMatch = cleanFmt.replace(/\[[^\]]*\]/g, '').match(/\.([0#]+)/)
     const dec = decMatch ? decMatch[1].length : 0
-    const prefixMatch = activeFmt.match(/^([^#0,.@%[\\]*)/)
+    const prefixMatch = cleanFmt.match(/^([^#0,.@%[\\]*)/)
     const prefix = prefixMatch?.[1] ?? ''
     const formatted = num.toLocaleString('en-US', { useGrouping, minimumFractionDigits: dec, maximumFractionDigits: dec })
-    const useParens = parts[1]?.includes('(') && value < 0
     let out = prefix + formatted + (isPct ? '%' : '')
     if (useParens) return '(' + out + ')'
     if (value < 0 && !parts[1]) return '-' + out
@@ -1338,11 +1340,22 @@ export default function ViewEditor({ tab }) {
                     let cols, rows, pages
 
                     if (viewMdx && vt?.includes('MDXView')) {
-                        // MDX view — parse the MDX to reconstruct axes
+                        // MDX view — axis PLACEMENT comes from the executed cellset (axisConfig),
+                        // which the server derives correctly for any MDX. parseMdxToAxes is only
+                        // best-effort enrichment (member lists / named subsets) and is skipped
+                        // per-axis when it can't resolve the dims the cellset actually returned.
                         const parsed = parseMdxToAxes(viewMdx)
-                        cols  = parsed.columns
-                        rows  = parsed.rows
-                        pages = parsed.pages
+                        const cfgDims = ord => (axisConfig.find(a => a.ordinal === ord)?.dimensions ?? [])
+                        const enrich  = (parsedAxis, ord) => {
+                            const dims = cfgDims(ord)
+                            if (!dims.length) return parsedAxis
+                            return dims.map(d => parsedAxis.find(p => p.dimension === d) ?? make(d))
+                        }
+                        cols  = enrich(parsed.columns, 0)
+                        rows  = enrich(parsed.rows, 1)
+                        pages = parsed.pages.length
+                            ? parsed.pages
+                            : (axisConfig.find(a => a.ordinal === 2)?.selectedMembers ?? []).map(({ dimension, member }) => make(dimension, null, member))
                     } else if (nativeConfig) {
                         // Native view — use native definition with actual subsets
                         cols  = nativeConfig.columns.map(c => make(c.dimension, c.subset, null, c.members ?? null, c.memberSet ?? null))
@@ -1983,13 +1996,15 @@ export default function ViewEditor({ tab }) {
                         setCheckingFeeders(true)
                         try {
                             const token = localStorage.getItem('tm1-token') ?? ''
-                            await fetch('/api/cube/check-feeders-for-rules', {
+                            const r = await fetch('/api/cube/check-feeders-for-rules', {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json', 'x-ide-token': token },
                                 body: JSON.stringify({ server: tab.server, cube: tab.cube }),
                             })
-                            toast.success('Feeder check complete — refreshing view')
-                            handleExecute()
+                            const d = await r.json()
+                            if (d.unsupported) toast.warning(d.message)
+                            else if (d.error) toast.error(`Feeder check failed: ${d.error}`)
+                            else { toast.success('Feeder check complete — refreshing view'); handleExecute() }
                         } catch { toast.error('Feeder check failed') }
                         finally { setCheckingFeeders(false) }
                     }}
@@ -1997,7 +2012,7 @@ export default function ViewEditor({ tab }) {
                     title="Run CheckFeedersForRules — recalculates feeder propagation for this cube. Zero rule cells highlight amber."
                     className="flex items-center gap-1 px-2 py-0.5 text-[10px] rounded border border-border text-muted-foreground hover:text-foreground hover:bg-muted disabled:opacity-40 transition-colors"
                 >
-                    {checkingFeeders ? <Loader2 size={10} className="animate-spin" /> : <Rss size={10} />} Feeders
+                    {checkingFeeders ? <Loader2 size={10} className="animate-spin" /> : <Rss size={10} />} Fire Feeders
                 </button>
 
                 <div className="flex-1" />

@@ -3,7 +3,7 @@ import { useCubes, useCubeDimensions, useDims, useDimAttributes, useAttributeVal
 import { useStore } from '@/store'
 import { registerTM1Theme } from '@/lib/tm1-functions'
 import { subsetApplyCallbacks } from '@/lib/subsetCallbacks'
-import { ArrowLeft, ArrowRight, Play, Loader2, Copy, X, Check, Code2, ExternalLink, HelpCircle, Save, Clock, Plus, Pencil, Trash2, ChevronDown, ChevronRight, GripHorizontal, WrapText } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Play, Loader2, Copy, X, Check, Code2, ExternalLink, HelpCircle, Save, Clock, Plus, Pencil, Trash2, ChevronDown, ChevronRight, GripHorizontal, WrapText, Sparkles } from 'lucide-react'
 import MonacoEditor from '@monaco-editor/react'
 import { cn } from '@/lib/utils'
 import { validateMDX } from '@/lib/mdx-validator'
@@ -602,6 +602,9 @@ function FilterBuilder({ dim, server, config, onChange, returnTabId }) {
   const { openTab } = useStore()
   const [advanced, setAdvanced] = useState(false)
   const filterMode   = config?.filterMode   || 'static'
+
+  // Auto-expand advanced panel when in expression mode so user can switch back
+  useEffect(() => { if (filterMode === 'expression') setAdvanced(true) }, [filterMode])
   const filterConfig = config?.filterConfig || {}
 
   // Picking a member always resets to static mode
@@ -628,7 +631,9 @@ function FilterBuilder({ dim, server, config, onChange, returnTabId }) {
           <div className="font-mono text-[9px] text-violet-400 bg-violet-400/10 border border-violet-400/20 px-1.5 py-0.5 rounded truncate flex-1" title={filterConfig.dynamicExpr}>
             {filterConfig.dynamicExpr}
           </div>
-          <button onClick={() => setMode('static')} className="text-[9px] text-muted-foreground hover:text-foreground shrink-0" title="Clear expression">×</button>
+          <button onClick={() => setMode('static')} className="text-[9px] px-1.5 py-0.5 rounded border border-border text-muted-foreground hover:text-foreground hover:bg-muted transition-colors shrink-0" title="Clear expression — return to member picker">
+            Clear
+          </button>
         </div>
       )}
 
@@ -755,6 +760,29 @@ export default function GuidedMDXBuilder({ tab, server: serverProp, onSwitchToRa
   }, [resultsHeight])
   const [viewMDX, setViewMDX] = useState(init.viewMDX ?? '')
   const [userEditedMDX, setUserEditedMDX] = useState(init.userEditedMDX ?? false)
+  const [aiPrompt, setAiPrompt]   = useState('')
+  const [aiLoading, setAiLoading] = useState(false)
+  const [showAiBar, setShowAiBar] = useState(false)
+
+  const generateWithAI = async () => {
+    if (!aiPrompt.trim() || !selectedCube) return
+    setAiLoading(true)
+    try {
+      const token = localStorage.getItem('tm1-token') ?? ''
+      const r = await fetch('/api/mdx/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-ide-token': token },
+        body: JSON.stringify({ server: tab.server, cube: selectedCube, prompt: aiPrompt }),
+      })
+      const d = await r.json()
+      if (d.error) throw new Error(d.error)
+      setViewMDX(d.mdx)
+      setUserEditedMDX(true)
+      setShowAiBar(false)
+    } catch (e) {
+      alert(`AI generation failed: ${e.message}`)
+    } finally { setAiLoading(false) }
+  }
   const prevGeneratedRef = useRef('')
   const [isFormatted, setIsFormatted] = useState(false)
   const [selectedMeasures, setSelectedMeasures] = useState(init.selectedMeasures ?? [])
@@ -1568,12 +1596,39 @@ export default function GuidedMDXBuilder({ tab, server: serverProp, onSwitchToRa
                     title="Format MDX">
                     <WrapText size={10} /> Format
                   </button>
+                  <button
+                    onClick={() => setShowAiBar(s => !s)}
+                    disabled={!selectedCube}
+                    className={cn('flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded hover:bg-muted transition-colors disabled:opacity-40',
+                      showAiBar ? 'text-violet-400' : 'text-muted-foreground hover:text-foreground')}
+                    title="Generate MDX with AI">
+                    <Sparkles size={10} /> AI
+                  </button>
                   <button onClick={runViewPreview} disabled={!activeMDX || previewLoading}
                     className="px-3 py-1 text-xs rounded bg-emerald-700 text-white hover:bg-emerald-600 flex items-center gap-1 disabled:opacity-40 transition-colors">
                     {previewLoading ? <Loader2 size={12} className="animate-spin" /> : <Play size={12} />} Execute
                   </button>
                 </div>
               </div>
+              {showAiBar && (
+                <div className="flex gap-1.5 mb-2">
+                  <input
+                    value={aiPrompt}
+                    onChange={e => setAiPrompt(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && generateWithAI()}
+                    placeholder={`Describe the query for ${selectedCube}… e.g. "Revenue by department for Q1 2024, leaf members only"`}
+                    className="flex-1 min-w-0 bg-muted border border-violet-500/40 rounded px-2 py-1 text-xs focus:outline-none focus:border-violet-400"
+                    autoFocus
+                  />
+                  <button
+                    onClick={generateWithAI}
+                    disabled={aiLoading || !aiPrompt.trim()}
+                    className="flex items-center gap-1 px-2 py-1 text-xs rounded bg-violet-600 text-white hover:bg-violet-500 disabled:opacity-40 transition-colors shrink-0">
+                    {aiLoading ? <Loader2 size={11} className="animate-spin" /> : <Sparkles size={11} />}
+                    {aiLoading ? 'Generating…' : 'Generate'}
+                  </button>
+                </div>
+              )}
               <div className="rounded overflow-hidden mb-3 flex-1 min-h-0">
                 <MonacoEditor
                   height="100%" language="tm1mdx"

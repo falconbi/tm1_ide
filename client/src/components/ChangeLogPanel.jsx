@@ -258,9 +258,13 @@ export default function ChangeLogPanel({ server, onClose, direction = 'up' }) {
             <span className="text-xs font-semibold">Change Sets</span>
             {isFetching && <Loader2 size={10} className="animate-spin text-muted-foreground" />}
           </div>
-          <div className="flex items-center gap-1 text-[10px] text-muted-foreground/60 mr-2">
-            <Diff size={9} /> diff &nbsp; <Rocket size={9} /> deploy
-          </div>
+          <button
+            onClick={() => openTab({ id: `deploy:${server}:release`, type: 'deploy', label: `Release: ${server}`, server, release: true })}
+            title="Deploy everything changed since the baseline was seeded"
+            className="flex items-center gap-1 px-2 py-1 rounded text-[10px] font-medium text-emerald-500 hover:text-emerald-400 hover:bg-muted transition-colors mr-1"
+          >
+            <Rocket size={10} /> Release
+          </button>
           <button onClick={onClose} className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors">
             <X size={12} />
           </button>

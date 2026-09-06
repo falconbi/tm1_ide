@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, Fragment } from 'react'
 import { useStore } from '@/store'
 import { cn } from '@/lib/utils'
 import { Toaster } from '@/components/ui/sonner'
-import { Search, PanelLeftClose, PanelLeftOpen, Keyboard, SlidersHorizontal, Database, Braces, HardDriveDownload, Loader2, CheckCircle2, Users, BookOpen, History } from 'lucide-react'
+import { Search, PanelLeftClose, PanelLeftOpen, Keyboard, SlidersHorizontal, Database, Braces, HardDriveDownload, Loader2, CheckCircle2, Users, BookOpen, History, FolderArchive } from 'lucide-react'
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels' // used for inner editor split groups only
 import ServerSelector from '@/components/ServerSelector'
 import Explorer from '@/components/Explorer'
@@ -30,7 +30,7 @@ const queryClient = new QueryClient({
 function SeedButton() {
   const currentServer = useStore(s => s.server)
   const { data: servers }  = useServers()
-  const { data: baseline } = useDeployBaseline()
+  const { data: baseline } = useDeployBaseline(currentServer)
   const seedMut = useDeploySeed()
   const [open,   setOpen]   = useState(false)
   const [target, setTarget] = useState('')
@@ -120,7 +120,6 @@ export default function App() {
   const [showPeriodBuilder, setShowPeriodBuilder] = useState(false)
   const [showUserMgmt, setShowUserMgmt]           = useState(false)
   const [showCatalog, setShowCatalog]             = useState(false)
-  const [catalogTab, setCatalogTab]               = useState('ti')
   const [sidebarWidth, setSidebarWidth]           = useState(280)
   const [findWidth, setFindWidth]                 = useState(320)
   const dragRef = useRef(null)
@@ -260,6 +259,13 @@ export default function App() {
               >
                 <History size={15} />
               </button>
+              <button
+                onClick={() => openTab({ id: 'import-package', type: 'import-package', label: 'Import Package' })}
+                className="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                title="Import Package — deploy a package handed off from another IDE"
+              >
+                <FolderArchive size={15} />
+              </button>
 
               {server && (
                 <button
@@ -342,6 +348,7 @@ export default function App() {
               </PanelGroup>
             </div>
 
+
           </div>
 
           <StatusBar />
@@ -352,12 +359,11 @@ export default function App() {
           open={showPrefs}
           onClose={() => setShowPrefs(false)}
           onOpenPeriodBuilder={() => setShowPeriodBuilder(true)}
-          onOpenNamingDictionary={() => { setCatalogTab('naming'); setShowCatalog(true) }}
           onOpenFormatSettings={() => setFormatSettingsOpen(true)}
         />
         <FormatSettings open={formatSettingsOpen} onClose={() => setFormatSettingsOpen(false)} />
         {showUserMgmt && server && <UserManagement server={server} onClose={() => setShowUserMgmt(false)} />}
-        {showCatalog && <CatalogAdmin server={server} onClose={() => setShowCatalog(false)} initialTab={catalogTab} />}
+        {showCatalog && <CatalogAdmin server={server} onClose={() => setShowCatalog(false)} />}
         <PeriodBuilder open={showPeriodBuilder} onClose={() => setShowPeriodBuilder(false)} />
         <Toaster position="bottom-right" duration={3000} />
       </TooltipProvider>

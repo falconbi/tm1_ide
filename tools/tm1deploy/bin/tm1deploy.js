@@ -13,7 +13,7 @@ const { deploy }      = require('../src/deployer')
 const { analyzeRisk } = require('../src/risk')
 const cl              = require('../../../core/change_log')
 
-const BASELINE_PATH = path.resolve(__dirname, '../../../.tm1baseline/snapshot.json')
+const { baselinePathFor } = require('../src/baseline-paths')
 const SERVERS_PATH  = path.resolve(__dirname, '../../../config/servers.json')
 
 function loadServers() {
@@ -42,7 +42,7 @@ function usage() {
 tm1deploy — TM1 IDE deployment tool
 
 Commands:
-  seed    --server <name>               Snapshot a TM1 server to .tm1baseline/snapshot.json
+  seed    --server <name>               Snapshot a TM1 server to .tm1baseline/<server>.json
   log     [--session <name>]            List sessions (or show entries for a session)
   diff    --server <name>
           --session <name>              Diff session log against server + baseline
@@ -101,7 +101,7 @@ async function cmdSeed(args) {
         process.exit(1)
     }
 
-    const outputPath = args.output ?? BASELINE_PATH
+    const outputPath = args.output ?? baselinePathFor(server)
 
     // Check if a baseline already exists and warn
     if (fs.existsSync(outputPath)) {
@@ -207,13 +207,13 @@ async function cmdDiff(args) {
     console.log(`  host     : ${process.env.PAW_HOST}`)
 
     const baselinePath = args.baseline ?? undefined
-    const { loadBaseline, BASELINE_PATH: DEFAULT_BP } = require('../src/diff')
-    const baseline = loadBaseline(baselinePath)
+    const { loadBaseline } = require('../src/diff')
+    const baseline = loadBaseline(baselinePath, server)
     if (baseline) {
         console.log(`  baseline : seeded ${baseline._meta?.seeded_at?.slice(0,10)} from ${baseline._meta?.server}`)
     } else {
-        console.log(`  baseline : ⚠ none found at ${baselinePath ?? DEFAULT_BP}`)
-        console.log(`             Run: npm run tm1deploy seed --server <prod-server>`)
+        console.log(`  baseline : ⚠ none found for ${server} at ${baselinePath ?? baselinePathFor(server)}`)
+        console.log(`             Run: npm run tm1deploy seed --server ${server}`)
     }
     console.log()
 

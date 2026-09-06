@@ -4,6 +4,7 @@ import { registerTM1Theme } from '@/lib/tm1-functions'
 
 function stateToText(state, objectType) {
   if (!state) return ''
+  if (typeof state === 'string') return state   // already-rendered text (e.g. snapshot diff)
   switch (objectType) {
     case 'rules':
       return state.text ?? ''

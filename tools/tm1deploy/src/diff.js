@@ -3,20 +3,45 @@
 const fs   = require('fs')
 const path = require('path')
 const { makeClient } = require('./client')
+const { baselinePathFor, LEGACY_BASELINE_PATH } = require('./baseline-paths')
 
-const BASELINE_PATH = path.resolve(__dirname, '../../../.tm1baseline/snapshot.json')
+// Back-compat export — the legacy single-file location. Prefer baselinePathFor(server).
+const BASELINE_PATH = LEGACY_BASELINE_PATH
 
-function loadBaseline(overridePath) {
-    const p = overridePath ?? BASELINE_PATH
-    if (!fs.existsSync(p)) return null
+function _readJson(p) {
     try { return JSON.parse(fs.readFileSync(p, 'utf8')) } catch { return null }
 }
 
-// Deduplicate session entries — keep the latest action per (type, name, detail)
+/**
+ * @param {string|null} overridePath  explicit file (package-bundled baseline, CLI --baseline) — wins
+ * @param {string|null} server        resolve `.tm1baseline/<server>.json`, falling back to the
+ *                                     legacy single file only when it was seeded from this server
+ */
+function loadBaseline(overridePath, server) {
+    if (overridePath) return fs.existsSync(overridePath) ? _readJson(overridePath) : null
+    if (server) {
+        const perServer = baselinePathFor(server)
+        if (fs.existsSync(perServer)) return _readJson(perServer)
+        const legacy = fs.existsSync(LEGACY_BASELINE_PATH) ? _readJson(LEGACY_BASELINE_PATH) : null
+        return legacy && legacy._meta?.server === server ? legacy : null
+    }
+    return fs.existsSync(LEGACY_BASELINE_PATH) ? _readJson(LEGACY_BASELINE_PATH) : null
+}
+
+// For subset/view/attribute, `detail` is the parent dimension/cube — part of the
+// object's identity. For dimension/cube/process/rules, `detail` is a free-text
+// change note ("2 elements, 0 edges", "element Group") — NOT identity; keying on
+// it splits one object into several rows (create + delete + element-add all
+// survive), which then package as duplicates and phantom "missing"/"drift" rows.
+const DETAIL_IS_IDENTITY = new Set(['subset', 'view', 'attribute'])
+
+// Deduplicate session entries — keep the latest entry per real object identity
 function uniqueObjects(entries) {
     const map = new Map()
     for (const e of entries) {
-        const key = `${e.object_type}::${e.object_name}::${e.detail ?? ''}`
+        const key = DETAIL_IS_IDENTITY.has(e.object_type)
+            ? `${e.object_type}::${e.object_name}::${e.detail ?? ''}`
+            : `${e.object_type}::${e.object_name}`
         const existing = map.get(key)
         if (!existing || e.timestamp > existing.timestamp) map.set(key, e)
     }
@@ -86,6 +111,13 @@ async function diffRules(entry, baseline, client) {
 
 async function diffProcess(entry, baseline, client) {
     const proc = await client.getProcess(entry.object_name).catch(() => null)
+
+    if (entry.last_action === 'PROCESS_DELETED') {
+        return proc
+            ? outcome('DRIFT',   entry, 'process still exists after delete')
+            : outcome('DELETED', entry, 'deleted from source — not packaged')
+    }
+
     if (!proc) return outcome('MISSING', entry, 'process not found on server')
 
     const inBase = !!(baseline?.processes?.[entry.object_name])
@@ -118,8 +150,8 @@ async function diffSubset(entry, baseline, client) {
 
     if (entry.last_action === 'SUBSET_DELETED') {
         return subset
-            ? outcome('DRIFT',  entry, 'subset still exists after delete')
-            : outcome('MATCH',  entry, 'deleted')
+            ? outcome('DRIFT',   entry, 'subset still exists after delete')
+            : outcome('DELETED', entry, 'deleted from source — not packaged')
     }
 
     if (!subset) return outcome('MISSING', entry, `subset not found in dimension ${dim}`)
@@ -142,8 +174,8 @@ async function diffView(entry, baseline, client) {
 
     if (entry.last_action === 'VIEW_DELETED') {
         return view
-            ? outcome('DRIFT', entry, 'view still exists after delete')
-            : outcome('MATCH', entry, 'deleted')
+            ? outcome('DRIFT',   entry, 'view still exists after delete')
+            : outcome('DELETED', entry, 'deleted from source — not packaged')
     }
 
     if (!view) return outcome('MISSING', entry, `view not found in cube ${cube}`)
@@ -183,8 +215,8 @@ async function diffDimension(entry, baseline, client) {
     if (entry.last_action === 'DIMENSION_DELETED') {
         const exists = await client.getDimension(entry.object_name).catch(() => null)
         return exists
-            ? outcome('DRIFT',  entry, 'dimension still exists after delete')
-            : outcome('MATCH',  entry, 'deleted')
+            ? outcome('DRIFT',   entry, 'dimension still exists after delete')
+            : outcome('DELETED', entry, 'deleted from source — not packaged')
     }
 
     const elements = await client.getElements(entry.object_name).catch(() => null)
@@ -216,8 +248,8 @@ async function diffAttribute(entry, baseline, client) {
     if (entry.last_action === 'ATTRIBUTE_DELETED') {
         const gone = !attrs || !attrs.some(a => a.Name === entry.object_name)
         return gone
-            ? outcome('MATCH', entry, `attribute removed from ${dim}`)
-            : outcome('DRIFT', entry, `attribute still exists after delete on ${dim}`)
+            ? outcome('DELETED', entry, `attribute removed from ${dim} — not packaged`)
+            : outcome('DRIFT',   entry, `attribute still exists after delete on ${dim}`)
     }
 
     if (!attrs) return outcome('MISSING', entry, `could not read attributes for ${dim}`)
@@ -235,8 +267,8 @@ async function diffCube(entry, baseline, client) {
     if (entry.last_action === 'CUBE_DELETED') {
         const c = await client.getCube(entry.object_name).catch(() => null)
         return c
-            ? outcome('DRIFT', entry, 'cube still exists after delete')
-            : outcome('MATCH', entry, 'deleted')
+            ? outcome('DRIFT',   entry, 'cube still exists after delete')
+            : outcome('DELETED', entry, 'deleted from source — not packaged')
     }
 
     const cube = await client.getCube(entry.object_name).catch(() => null)
@@ -267,7 +299,7 @@ function outcome(result, entry, note, extra = {}) {
 
 async function diff(server, sessionEntries, baselinePath, ideToken) {
     const client   = makeClient(server, ideToken)
-    const baseline = loadBaseline(baselinePath)
+    const baseline = loadBaseline(baselinePath, server)
 
     // Annotate each entry with its last_action for deduplication
     const objects = uniqueObjects(sessionEntries.map(e => ({ ...e, last_action: e.action })))
@@ -309,6 +341,7 @@ async function diff(server, sessionEntries, baselinePath, ideToken) {
         unchanged:          byOutcome('UNCHANGED'),
         drift:              byOutcome('DRIFT'),
         missing:            byOutcome('MISSING'),
+        deleted:            byOutcome('DELETED'),
         error:              byOutcome('ERROR'),
         results,
     }
@@ -425,7 +458,11 @@ async function driftCheck(packageDir, targetServer, ideToken) {
     if (!fs.existsSync(manifestPath)) throw new Error('No manifest.json found')
 
     const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'))
-    const baseline = loadBaseline()
+    // The target's own baseline first (this is "has the target moved since we
+    // last synced it"), falling back to the one bundled in the package for the
+    // handoff case where the deployer has no baseline of their own.
+    const baseline = loadBaseline(null, targetServer)
+        ?? loadBaseline(path.join(packageDir, 'baseline.json'))
 
     if (!baseline) {
         return {
@@ -469,4 +506,4 @@ async function driftCheck(packageDir, targetServer, ideToken) {
     }
 }
 
-module.exports = { diff, driftCheck, loadBaseline, BASELINE_PATH }
+module.exports = { diff, driftCheck, loadBaseline, baselinePathFor, BASELINE_PATH }

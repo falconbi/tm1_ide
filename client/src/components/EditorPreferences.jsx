@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useStore } from '@/store'
-import { X, CalendarDays, BookType, SlidersHorizontal } from 'lucide-react'
+import { X, CalendarDays, SlidersHorizontal } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { loadSettings, saveSettings } from '@/lib/formatters/settings.js'
 import { COLOUR_THEMES, applyColourTheme, loadColourSettings, saveColourSettings } from '@/lib/formatters/colours.js'
@@ -8,7 +8,7 @@ import { COLOUR_THEMES, applyColourTheme, loadColourSettings, saveColourSettings
 const DARK_THEMES  = COLOUR_THEMES.filter(t => t.id !== 'light')
 const LIGHT_THEMES = COLOUR_THEMES.filter(t => t.id === 'light')
 
-export default function EditorPreferences({ open, onClose, onOpenPeriodBuilder, onOpenNamingDictionary, onOpenFormatSettings }) {
+export default function EditorPreferences({ open, onClose, onOpenPeriodBuilder, onOpenFormatSettings }) {
   if (!open) return null
 
   const { dark, setDark, bumpThemeVersion } = useStore()
@@ -148,17 +148,6 @@ export default function EditorPreferences({ open, onClose, onOpenPeriodBuilder, 
           className="text-xs px-2 py-0.5 rounded border border-border hover:bg-muted flex items-center gap-1"
         >
           <CalendarDays size={12} />
-          Open
-        </button>
-      </div>
-
-      <div className="flex items-center justify-between py-1 gap-2">
-        <label className="text-xs shrink-0">Naming Dictionary</label>
-        <button
-          onClick={() => { onOpenNamingDictionary?.(); onClose?.() }}
-          className="text-xs px-2 py-0.5 rounded border border-border hover:bg-muted flex items-center gap-1"
-        >
-          <BookType size={12} />
           Open
         </button>
       </div>

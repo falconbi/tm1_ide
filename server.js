@@ -15,7 +15,7 @@ const { pack: deployPack }      = require('./tools/tm1deploy/src/packager')
 const { analyzeRisk }           = require('./tools/tm1deploy/src/risk')
 const { deploy: deployExecute } = require('./tools/tm1deploy/src/deployer')
 const { seed: deploySeed, scopedSnapshot: deployScopedSnapshot } = require('./tools/tm1deploy/src/snapshot')
-const { BASELINE_PATH }         = require('./tools/tm1deploy/src/diff')
+const { loadBaseline: deployLoadBaseline } = require('./tools/tm1deploy/src/diff')
 
 const FORGE_PATH = path.join(__dirname, 'config', 'forge.json')
 const PAW_LOGIN_SERVER = process.env.PAW_LOGIN_SERVER
@@ -1415,6 +1415,58 @@ Rules:
     }
 })
 
+app.post('/api/mdx/generate', async (req, res) => {
+    if (!process.env.ANTHROPIC_API_KEY) {
+        return res.status(400).json({ error: 'ANTHROPIC_API_KEY not set in .env' })
+    }
+    try {
+        const { server, cube, prompt } = req.body
+        const client = makeClient(server, req.ideToken)
+        const dims = await client.getCubeDimensions(cube)
+
+        // Fetch element samples for each dimension in parallel (max 60 per dim)
+        const dimSamples = await Promise.all(dims.map(async dim => {
+            try {
+                const elems = await client.getElements(dim)
+                const leaves = elems.filter(e => e.Type === 'N').slice(0, 30).map(e => e.Name)
+                const consol = elems.filter(e => e.Type === 'C').slice(0, 20).map(e => e.Name)
+                return { dim, leaves, consol, total: elems.length }
+            } catch { return { dim, leaves: [], consol: [], total: 0 } }
+        }))
+
+        const dimContext = dimSamples.map(({ dim, leaves, consol, total }) => {
+            const parts = []
+            if (consol.length) parts.push(`  Consolidated: ${consol.join(', ')}`)
+            if (leaves.length) parts.push(`  Leaf: ${leaves.join(', ')}`)
+            return `${dim} (${total} elements)\n${parts.join('\n')}`
+        }).join('\n\n')
+
+        const message = await anthropic.messages.create({
+            model: 'claude-sonnet-5',
+            max_tokens: 2048,
+            system: `You are a TM1 MDX expert. Generate a valid TM1 MDX SELECT query for the given cube.
+Rules:
+- Return ONLY the raw MDX — no markdown, no explanation, no code fences.
+- Use standard TM1 MDX syntax: SELECT ... ON COLUMNS, ... ON ROWS FROM [Cube] WHERE (...)
+- Reference members as [Dim].[Dim].[MemberName]
+- Sets must be wrapped in {}. Use NON EMPTY where appropriate.
+- The last dimension is typically the measures dimension and goes ON COLUMNS.
+- Common set functions: TM1FilterByLevel, TM1FilterByPattern, TM1Sort, TopCount, BottomCount, Filter, Children, Descendants, Members, CrossJoin.
+- Leaf members are level-0 numeric elements. Consolidated members are higher-level aggregations.
+- If only one dimension member is needed for a dimension, use it as a WHERE slicer, not ON an axis.
+- Keep it correct and executable. If uncertain about a member name, use a safe set like {[Dim].[Dim].Members}.`,
+            messages: [{
+                role: 'user',
+                content: `Cube: ${cube}\n\nDimensions and sample members:\n${dimContext}\n\nRequest: ${prompt}`,
+            }],
+        })
+
+        res.json({ mdx: message.content[0].text.trim() })
+    } catch (e) {
+        res.status(500).json({ error: e.message })
+    }
+})
+
 // ── View → axis config (execute view, return cellset + axis dim names) ───────
 // Extract member names from an inline Subset Expression like {[Dim].[Hier].[M1], [Dim].[Hier].[M2]}
 function extractMembersFromExpression(expr) {
@@ -1910,7 +1962,12 @@ app.post('/api/cube/check-feeders-for-rules', async (req, res) => {
         const { server, cube } = req.body
         await makeClient(server, req.ideToken).checkFeedersForRules(cube)
         res.json({ ok: true })
-    } catch (e) { res.status(500).json({ error: e.message }) }
+    } catch (e) {
+        if (e.response?.status === 404) {
+            return res.json({ unsupported: true, message: 'Feeder check is not supported on this TM1 server version' })
+        }
+        res.status(500).json({ error: e.message })
+    }
 })
 
 // ── Cell annotations ──────────────────────────────────────────────────────────
@@ -2410,11 +2467,24 @@ app.post('/api/cells/write', async (req, res) => {
 
 // ── Deploy pipeline ───────────────────────────────────────────────────────────
 
+// When this server's baseline was last seeded — the start of its release window.
+function baselineSeededAt(server) {
+    return deployLoadBaseline(null, server)?._meta?.seeded_at ?? null
+}
+
+// Resolve the change-log entries a diff/package should work from:
+// one change set (sessionId), or every object touched since the baseline (release).
+function deployEntries({ server, sessionId, release }) {
+    return release
+        ? cl.getEntriesSince(server, baselineSeededAt(server))
+        : cl.getSessionLog(sessionId)
+}
+
 app.get('/api/deploy/object-diff', async (req, res) => {
     try {
         const { server, type, name, detail } = req.query
-        if (!fs.existsSync(BASELINE_PATH)) return res.status(404).json({ error: 'No baseline seeded' })
-        const snapshot = JSON.parse(fs.readFileSync(BASELINE_PATH, 'utf8'))
+        const snapshot = deployLoadBaseline(null, server)
+        if (!snapshot) return res.status(404).json({ error: 'No baseline seeded for this server' })
         const client = makeClient(server, req.ideToken)
         let before = null, after = null
 
@@ -2447,9 +2517,8 @@ app.get('/api/deploy/object-diff', async (req, res) => {
 
 app.get('/api/deploy/baseline', (req, res) => {
     try {
-        const fs = require('fs')
-        if (!fs.existsSync(BASELINE_PATH)) return res.json({ exists: false })
-        const snapshot = JSON.parse(fs.readFileSync(BASELINE_PATH, 'utf8'))
+        const snapshot = deployLoadBaseline(null, req.query.server)
+        if (!snapshot) return res.json({ exists: false })
         res.json({ exists: true, ...snapshot._meta })
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
@@ -2468,15 +2537,15 @@ app.post('/api/deploy/seed', async (req, res) => {
     try {
         const { server } = req.body
         if (!server) return res.status(400).json({ error: 'server required' })
-        const snapshot = await deploySeed(server, BASELINE_PATH, req.ideToken)
+        const snapshot = await deploySeed(server, null, req.ideToken)   // per-server baseline path
         res.json({ ok: true, server, seeded_at: snapshot._meta.seeded_at, counts: snapshot._meta.counts })
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
 app.post('/api/deploy/diff', async (req, res) => {
     try {
-        const { server, sessionId } = req.body
-        const entries = cl.getSessionLog(sessionId)
+        const { server, sessionId, release } = req.body
+        const entries = deployEntries({ server, sessionId, release })
         const result  = await deployDiff(server, entries, undefined, req.ideToken)
         res.json(result)
     } catch (e) { res.status(500).json({ error: e.message }) }
@@ -2484,10 +2553,76 @@ app.post('/api/deploy/diff', async (req, res) => {
 
 app.post('/api/deploy/package', async (req, res) => {
     try {
-        const { server, sessionId, sessionName, forceInclude = [] } = req.body
-        const entries = cl.getSessionLog(sessionId)
-        const result  = await deployPack(server, entries, sessionName, { force: true, forceInclude }, req.ideToken)
+        const { server, sessionId, sessionName, release, forceInclude = [], selectedObjects } = req.body
+        let entries = deployEntries({ server, sessionId, release })
+        if (selectedObjects?.length) {
+            const sel = new Set(selectedObjects.map(o => `${o.object_type}::${o.object_name}::${o.detail ?? ''}`))
+            entries = entries.filter(e => sel.has(`${e.object_type}::${e.object_name}::${e.detail ?? ''}`))
+        }
+        const name = sessionName || (release ? `Release ${new Date().toISOString().slice(0, 10)}` : 'deploy')
+        const result = await deployPack(server, entries, name, { force: true, forceInclude }, req.ideToken)
         res.json(result)
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// Read an existing package's manifest — used both by the freshly-built package
+// (outputDir just returned from /api/deploy/package POST) and by an imported one.
+app.get('/api/deploy/package', (req, res) => {
+    try {
+        const dir = req.query.dir
+        if (!dir) return res.status(400).json({ error: 'dir required' })
+        const resolved     = path.resolve(dir)
+        const packagesRoot = path.resolve(__dirname, 'packages')
+        if (resolved !== packagesRoot && !resolved.startsWith(packagesRoot + path.sep)) {
+            return res.status(403).json({ error: 'path outside packages directory' })
+        }
+        const manifestPath = path.join(resolved, 'manifest.json')
+        if (!fs.existsSync(manifestPath)) return res.status(404).json({ error: 'manifest.json not found' })
+        const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'))
+        res.json({ outputDir: resolved, manifest })
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// Accept a package .zip (built by another IDE instance) and unpack it into
+// packages/, so the admin can review + deploy it here without ever running
+// the CLI or touching the source Dev server.
+app.post('/api/deploy/import-zip', express.raw({ type: '*/*', limit: '200mb' }), (req, res) => {
+    try {
+        if (!req.body?.length) return res.status(400).json({ error: 'Empty upload' })
+        const AdmZip   = require('adm-zip')
+        const zip      = new AdmZip(req.body)
+        const entries  = zip.getEntries().filter(e => !e.isDirectory)
+        if (!entries.length) return res.status(400).json({ error: 'Empty zip' })
+
+        // Packages are zipped as <name>/manifest.json, <name>/rules/..., etc. —
+        // strip that single common top-level folder on extract.
+        const topNames  = new Set(entries.map(e => e.entryName.split('/')[0]))
+        const zipTop    = topNames.size === 1 ? [...topNames][0] : null
+        const requested = (req.query.name || '').toString().trim()
+        let name = (requested || zipTop || `import-${new Date().toISOString().replace(/[:.]/g, '-')}`)
+            .replace(/[^a-zA-Z0-9_.-]/g, '_')
+
+        const packagesRoot = path.join(__dirname, 'packages')
+        let outDir = path.join(packagesRoot, name)
+        for (let n = 2; fs.existsSync(outDir); n++) outDir = path.join(packagesRoot, `${name}-${n}`)
+        fs.mkdirSync(outDir, { recursive: true })
+
+        for (const entry of entries) {
+            const rel = zipTop ? entry.entryName.slice(zipTop.length + 1) : entry.entryName
+            if (!rel) continue
+            const dest = path.join(outDir, rel)
+            if (!dest.startsWith(outDir + path.sep)) continue   // zip-slip guard
+            fs.mkdirSync(path.dirname(dest), { recursive: true })
+            fs.writeFileSync(dest, entry.getData())
+        }
+
+        const manifestPath = path.join(outDir, 'manifest.json')
+        if (!fs.existsSync(manifestPath)) {
+            fs.rmSync(outDir, { recursive: true, force: true })
+            return res.status(400).json({ error: 'Not a deploy package — no manifest.json found in the zip' })
+        }
+        const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'))
+        res.json({ dir: outDir, name: path.basename(outDir), manifest })
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
@@ -2506,6 +2641,30 @@ app.get('/api/deploy/packages', (req, res) => {
             .filter(Boolean)
             .sort((a, b) => (b.meta?.packaged_at ?? '').localeCompare(a.meta?.packaged_at ?? ''))
         res.json(items)
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// Stream a package folder as a .zip for handoff to an admin who will deploy it.
+app.get('/api/deploy/package-zip', (req, res) => {
+    try {
+        const dir = req.query.dir
+        if (!dir) return res.status(400).json({ error: 'dir required' })
+        const resolved      = path.resolve(dir)
+        const packagesRoot  = path.resolve(__dirname, 'packages')
+        if (resolved !== packagesRoot && !resolved.startsWith(packagesRoot + path.sep)) {
+            return res.status(403).json({ error: 'path outside packages directory' })
+        }
+        if (!fs.existsSync(path.join(resolved, 'manifest.json'))) {
+            return res.status(404).json({ error: 'not a package (no manifest.json)' })
+        }
+        const { ZipArchive } = require('archiver')
+        const name = path.basename(resolved)
+        res.attachment(`${name}.zip`)
+        const zip = new ZipArchive({ zlib: { level: 9 } })
+        zip.on('error', err => res.destroy(err))
+        zip.pipe(res)
+        zip.directory(resolved, name)
+        zip.finalize()
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
@@ -2655,6 +2814,76 @@ app.post('/api/admin/validate-ti-functions', async (req, res) => {
         res.status(500).json({ error: e.message })
     }
 })
+
+// ── Cube Map ──────────────────────────────────────────────────────────────────
+app.get('/api/cubemap/model', async (req, res) => {
+    try {
+        const client = makeClient(req.query.server, req.ideToken)
+        const allCubes = await client.getAllCubesWithRules()
+
+        // Parse DB() references from rules text
+        const DB_RE = /\bDB\s*\(\s*'([^']+)'/gi
+        function scanRefs(text) {
+            const refs = new Set()
+            let m
+            while ((m = DB_RE.exec(text)) !== null) refs.add(m[1])
+            DB_RE.lastIndex = 0
+            return [...refs]
+        }
+
+        // Fetch TI process code for write-ref analysis (best-effort — skip if slow/unavailable)
+        const tiWriteMap = {}
+        try {
+            const pd = await client.get('Processes', {
+                '$select': 'Name,PrologProcedure,MetadataProcedure,DataProcedure,EpilogProcedure',
+            })
+            const CELLPUT_RE = /\bCellPut[NS](?:Complete)?\s*\([^,]+,\s*'([^']+)'/gi
+            for (const p of (pd.value ?? []).filter(p => !p.Name.startsWith('}'))) {
+                const code = [p.PrologProcedure, p.MetadataProcedure, p.DataProcedure, p.EpilogProcedure]
+                    .filter(Boolean).join('\n')
+                CELLPUT_RE.lastIndex = 0
+                let m
+                while ((m = CELLPUT_RE.exec(code)) !== null) {
+                    const cn = m[1]
+                    if (!tiWriteMap[cn]) tiWriteMap[cn] = []
+                    if (!tiWriteMap[cn].includes(p.Name)) tiWriteMap[cn].push(p.Name)
+                }
+            }
+        } catch { /* TI refs unavailable — continue without them */ }
+
+        const cubeNames = new Set(allCubes.map(c => c.Name))
+        const cubes = {}
+
+        for (const c of allCubes) {
+            const rules = c.Rules ?? ''
+            const feederIdx = rules.search(/^FEEDERS\s*;/im)
+            const calcText   = feederIdx >= 0 ? rules.slice(0, feederIdx) : rules
+            const feederText = feederIdx >= 0 ? rules.slice(feederIdx) : ''
+
+            const calcRefs   = scanRefs(calcText).filter(n => cubeNames.has(n) && n !== c.Name)
+            const feederRefs = scanRefs(feederText).filter(n => cubeNames.has(n) && n !== c.Name)
+
+            // Non-blank, non-comment lines in the calc section
+            const ruleLoc = calcText.split('\n')
+                .filter(l => { const t = l.trim(); return t && !t.startsWith('#') && !t.startsWith('//') })
+                .length
+
+            cubes[c.Name] = {
+                dims:           (c.Dimensions ?? []).map(d => d.Name),
+                hasRules:       rules.trim().length > 0,
+                ruleCalcRefs:   calcRefs,
+                ruleFeederRefs: feederRefs,
+                ruleLoc,
+                tiWriters:      tiWriteMap[c.Name] ?? [],
+            }
+        }
+
+        res.json({ cubes })
+    } catch (e) {
+        res.status(500).json({ error: e.message })
+    }
+})
+
 
 app.get('/{*path}', (req, res) => {
     res.sendFile(path.join(__dirname, 'static', 'index.html'))

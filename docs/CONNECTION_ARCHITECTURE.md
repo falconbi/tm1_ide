@@ -466,6 +466,30 @@ Phase 1 compat migration (zero UX change):
 | Near term | Phase 2–3: server keys + multi-environment login UI |
 | Next wave | Phase 4: `paw-v12-oidc` — port from `tm1_cubemap` (`.env` ready at `192.168.1.223`) |
 | Future | IBM Cloud / OAuth adapters — separate phase when a client needs it |
+| Future | **`direct-v11` session-cookie auth** — see below |
+
+### `direct-v11` — stop holding the plaintext password (deferred, bundle with Docker packaging)
+
+**Problem:** `core/adapters/direct_v11.js` re-sends `Authorization: Basic base64(user:pass)` on
+every call, so `core/paw_connect.js` keeps the plaintext password in the in-memory `_sessions`
+Map for the whole IDE session (10-min TTL, not cleared on expiry, only on logout/restart).
+The `admin`/`apple` fallback also sits plaintext in `config/servers.json` (gitignored).
+`paw-native` / `paw-oauth2` already avoid this — they hold a session/cookie, not a password.
+
+**Target design:** on login, authenticate once with Basic, capture TM1's `TM1SessionId`
+cookie, **discard the password**, send the cookie on subsequent calls. Force re-login on 401
+rather than silent re-auth (silent re-auth is what forces keeping the password).
+
+**Trade-off:** users get bounced to the login screen when the TM1 session idles out
+(~20–60 min, server-configured) instead of a seamless refresh.
+
+**Before coding — empirical check (2 min):** confirm the lab v11 server returns a reusable
+`TM1SessionId` (or equivalent) cookie on Basic auth and accepts it on later requests without
+re-sending Basic. `curl -i` the login, then reuse the `Set-Cookie` value on a `/Cubes` call.
+
+**Priority:** hardening, not a bug — `direct-v11` works today. Do not start while the bug
+backlog is unstable. Bundle with the container-packaging work. Write up as a short plan and
+get sign-off before touching code.
 
 ---
 

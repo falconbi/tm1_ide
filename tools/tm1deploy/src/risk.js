@@ -59,12 +59,13 @@ async function checkProcessSyntax(obj, packageDir) {
 
 // ── 2. Dependencies ───────────────────────────────────────────────────────────
 
-async function checkCubeDependencies(obj, packageDir, client) {
+async function checkCubeDependencies(obj, packageDir, client, packaged) {
     let data
     try { data = JSON.parse(fs.readFileSync(path.join(packageDir, obj.file), 'utf8')) }
     catch { return [] }
 
-    const dims = data.Dimensions ?? []
+    // TM1 returns Dimensions as [{Name}] or ["Name"] depending on the call
+    const dims = (data.Dimensions ?? []).map(d => d?.Name ?? d).filter(Boolean)
     if (!dims.length) return [item('WARNING', 'dependency', 'cube', obj.name, 'Package has no dimension list for this cube')]
 
     const checks = await Promise.all(dims.map(async dim => {
@@ -72,45 +73,50 @@ async function checkCubeDependencies(obj, packageDir, client) {
         return { dim, exists: !!exists }
     }))
 
-    const missing = checks.filter(c => !c.exists)
-    const present = checks.filter(c => c.exists)
+    const missing   = checks.filter(c => !c.exists && !packaged.dimensions.has(c.dim))
+    const willCreate = checks.filter(c => !c.exists &&  packaged.dimensions.has(c.dim))
+    const present   = checks.filter(c => c.exists)
 
     const risks = []
     if (missing.length) {
         risks.push(item('BLOCKER', 'dependency', 'cube', obj.name,
-            `${missing.length} required dimension(s) missing on target: ${missing.map(c => c.dim).join(', ')}`,
+            `${missing.length} required dimension(s) neither on target nor in this package: ${missing.map(c => c.dim).join(', ')}`,
             null, { missing: missing.map(c => c.dim) }))
+    }
+    if (willCreate.length) {
+        risks.push(item('INFO', 'dependency', 'cube', obj.name,
+            `${willCreate.length} dimension(s) created by this deploy (ordered before the cube): ${willCreate.map(c => c.dim).join(', ')}`))
     }
     if (present.length) {
         risks.push(item('INFO', 'dependency', 'cube', obj.name,
-            `${present.length}/${dims.length} required dimensions present on target`))
+            `${present.length}/${dims.length} required dimensions already on target`))
     }
     return risks
 }
 
-async function checkSubsetDependency(obj, client) {
+async function checkSubsetDependency(obj, client, packaged) {
     const dim = obj.detail
     if (!dim) return [item('WARNING', 'dependency', 'subset', obj.name, 'No parent dimension recorded in manifest')]
     const exists = await client.getDimension(dim).catch(() => null)
-    if (!exists) return [item('BLOCKER', 'dependency', 'subset', obj.name,
-        `Parent dimension "${dim}" does not exist on target`, dim)]
-    return [item('INFO', 'dependency', 'subset', obj.name, `Parent dimension "${dim}" present ✓`, dim)]
+    if (exists) return [item('INFO', 'dependency', 'subset', obj.name, `Parent dimension "${dim}" present ✓`, dim)]
+    if (packaged.dimensions.has(dim)) return [item('INFO', 'dependency', 'subset', obj.name, `Parent dimension "${dim}" created by this deploy`, dim)]
+    return [item('BLOCKER', 'dependency', 'subset', obj.name, `Parent dimension "${dim}" neither on target nor in this package`, dim)]
 }
 
-async function checkViewDependency(obj, client) {
+async function checkViewDependency(obj, client, packaged) {
     const cube = obj.detail
     if (!cube) return [item('WARNING', 'dependency', 'view', obj.name, 'No parent cube recorded in manifest')]
     const exists = await client.getCube(cube).catch(() => null)
-    if (!exists) return [item('BLOCKER', 'dependency', 'view', obj.name,
-        `Parent cube "${cube}" does not exist on target`, cube)]
-    return [item('INFO', 'dependency', 'view', obj.name, `Parent cube "${cube}" present ✓`, cube)]
+    if (exists) return [item('INFO', 'dependency', 'view', obj.name, `Parent cube "${cube}" present ✓`, cube)]
+    if (packaged.cubes.has(cube)) return [item('INFO', 'dependency', 'view', obj.name, `Parent cube "${cube}" created by this deploy`, cube)]
+    return [item('BLOCKER', 'dependency', 'view', obj.name, `Parent cube "${cube}" neither on target nor in this package`, cube)]
 }
 
-async function checkRulesDependency(obj, client) {
+async function checkRulesDependency(obj, client, packaged) {
     const cube = await client.getCube(obj.name).catch(() => null)
-    if (!cube) return [item('WARNING', 'dependency', 'rules', obj.name,
-        `Cube "${obj.name}" does not exist on target — rules cannot be deployed`)]
-    return []
+    if (cube || packaged.cubes.has(obj.name)) return []
+    return [item('WARNING', 'dependency', 'rules', obj.name,
+        `Cube "${obj.name}" is neither on target nor in this package — rules cannot be deployed`)]
 }
 
 // ── 3. Chore conflicts ────────────────────────────────────────────────────────
@@ -347,27 +353,31 @@ async function analyzeRisk(packageDir, targetServer, ideToken) {
     const all = []
     const push = arr => all.push(...arr)
 
-    // Run checks in parallel per category, sequential between categories
-    // (dep checks can use results of earlier checks conceptually, but all run async here)
+    // What this package itself creates — a dependency that's missing on the
+    // target but present here is deployed first (see DEPLOY_ORDER), not a blocker.
+    const packaged = {
+        dimensions: new Set(objects.filter(o => o.type === 'dimension').map(o => o.name)),
+        cubes:      new Set(objects.filter(o => o.type === 'cube').map(o => o.name)),
+    }
 
     await Promise.all(objects.map(async obj => {
         try {
             if (obj.type === 'rules') {
                 push(await checkRulesSyntax(obj, packageDir, client))
-                push(await checkRulesDependency(obj, client))
+                push(await checkRulesDependency(obj, client, packaged))
                 push(await checkRulesOverwrite(obj, packageDir, client))
             }
             if (obj.type === 'process') {
                 push(await checkProcessSyntax(obj, packageDir))
                 push(await checkProcessOverwrite(obj, client))
             }
-            if (obj.type === 'cube')      push(await checkCubeDependencies(obj, packageDir, client))
+            if (obj.type === 'cube')      push(await checkCubeDependencies(obj, packageDir, client, packaged))
             if (obj.type === 'subset') {
-                push(await checkSubsetDependency(obj, client))
+                push(await checkSubsetDependency(obj, client, packaged))
                 push(await checkSubsetOverwrite(obj, client))
             }
             if (obj.type === 'view') {
-                push(await checkViewDependency(obj, client))
+                push(await checkViewDependency(obj, client, packaged))
                 push(await checkViewOverwrite(obj, client))
             }
             if (obj.type === 'dimension')     push(await checkDimensionImpact(obj, packageDir, client))

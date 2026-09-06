@@ -27,8 +27,10 @@ import ObjectHistoryPanel from '@/components/ObjectHistoryPanel'
 import DiffTab from '@/components/DiffTab'
 import DeployPanel from '@/components/DeployPanel'
 import DeployHistory from '@/components/DeployHistory'
+import ImportPackagePanel from '@/components/ImportPackagePanel'
 import SessionReportTab from '@/components/SessionReportTab'
 import { ConflictBanner, ConflictSaveWarning } from '@/components/ConflictBanner'
+import CubeMapEditor from '@/components/CubeMapEditor'
 
 // ── Lineage panel ─────────────────────────────────────────────────────────────
 
@@ -171,10 +173,92 @@ function TraceNode({ node, depth = 0, onShowHistory }) {
   )
 }
 
+function ElementPicker({ server, dim, value, onChange, onCommit }) {
+  const [open, setOpen]       = useState(false)
+  const [search, setSearch]   = useState(value)
+  const [elements, setElems]  = useState(null)   // null = not yet fetched
+  const [loading, setLoading] = useState(false)
+  const containerRef          = useRef(null)
+
+  useEffect(() => { setSearch(value) }, [value])
+
+  useEffect(() => {
+    if (!open) return
+    const handler = (e) => { if (!containerRef.current?.contains(e.target)) setOpen(false) }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [open])
+
+  const fetchElems = async () => {
+    if (elements !== null) return
+    setLoading(true)
+    try {
+      const token = localStorage.getItem('tm1-token') ?? ''
+      const r = await fetch(
+        `/api/elements?server=${encodeURIComponent(server)}&dimension=${encodeURIComponent(dim)}`,
+        { headers: { 'x-ide-token': token } }
+      )
+      const d = await r.json()
+      setElems(Array.isArray(d) ? d.map(e => e.Name ?? e) : [])
+    } catch { setElems([]) }
+    finally { setLoading(false) }
+  }
+
+  const filtered = (elements ?? [])
+    .filter(e => e.toLowerCase().includes(search.toLowerCase()))
+    .slice(0, 60)
+
+  const select = (name) => {
+    onChange(name)
+    setSearch(name)
+    setOpen(false)
+    onCommit?.()
+  }
+
+  return (
+    <div ref={containerRef} className="relative flex-1 min-w-0">
+      <input
+        value={search}
+        onChange={e => { setSearch(e.target.value); onChange(e.target.value) }}
+        onFocus={() => { fetchElems(); setOpen(true) }}
+        onKeyDown={e => {
+          if (e.key === 'Escape') setOpen(false)
+          if (e.key === 'Enter') { if (filtered.length === 1) select(filtered[0]); else onCommit?.(); setOpen(false) }
+        }}
+        placeholder="search…"
+        className="w-full bg-muted border border-border rounded px-1.5 py-0.5 text-xs font-mono focus:outline-none focus:border-primary"
+      />
+      {open && (
+        <div className="absolute left-0 top-full mt-0.5 w-full z-50 bg-popover border border-border rounded shadow-lg max-h-48 overflow-y-auto">
+          {loading && <div className="px-2 py-1.5 text-xs text-muted-foreground">Loading…</div>}
+          {!loading && filtered.length === 0 && <div className="px-2 py-1.5 text-xs text-muted-foreground italic">No matches</div>}
+          {filtered.map(name => (
+            <button
+              key={name}
+              onMouseDown={e => { e.preventDefault(); select(name) }}
+              className={cn(
+                'w-full text-left px-2 py-1 text-xs font-mono hover:bg-muted transition-colors truncate',
+                name === value ? 'bg-primary/10 text-primary' : 'text-foreground'
+              )}
+            >
+              {name}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function CellTracePanel({ server, cube, cubeDims, onClose }) {
   const [rows, setRows] = useState(() => (cubeDims ?? []).map(d => ({ dim: d, element: '' })))
   const trace = useTraceCellCalc()
   const { openTab } = useStore()
+
+  useEffect(() => {
+    if (!cubeDims?.length) return
+    setRows(prev => cubeDims.map((d, i) => ({ dim: d, element: prev[i]?.element ?? '' })))
+  }, [cubeDims])
 
   const setElement = (i, val) => setRows(r => r.map((row, j) => j === i ? { ...row, element: val } : row))
 
@@ -213,12 +297,12 @@ function CellTracePanel({ server, cube, cubeDims, onClose }) {
         {rows.map((row, i) => (
           <div key={i} className="flex items-center gap-1.5">
             <span className="text-[10px] text-muted-foreground w-24 truncate shrink-0" title={row.dim}>{row.dim}</span>
-            <input
+            <ElementPicker
+              server={server}
+              dim={row.dim}
               value={row.element}
-              onChange={e => setElement(i, e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && run()}
-              placeholder="element…"
-              className="flex-1 min-w-0 bg-muted border border-border rounded px-1.5 py-0.5 text-xs font-mono focus:outline-none focus:border-primary"
+              onChange={val => setElement(i, val)}
+              onCommit={i === rows.length - 1 ? run : undefined}
             />
           </div>
         ))}
@@ -275,7 +359,10 @@ function RulesEditor({ tab, onCursor }) {
 
   useEffect(() => {
     if (!showTrace || cubeDims !== null) return
-    fetch(`/api/cube/dimensions?server=${encodeURIComponent(tab.server)}&cube=${encodeURIComponent(tab.cube)}`)
+    const token = localStorage.getItem('tm1-token') ?? ''
+    fetch(`/api/cube/dimensions?server=${encodeURIComponent(tab.server)}&cube=${encodeURIComponent(tab.cube)}`, {
+      headers: { 'x-ide-token': token },
+    })
       .then(r => r.json()).then(d => setCubeDims(Array.isArray(d) ? d : []))
       .catch(() => setCubeDims([]))
   }, [showTrace])
@@ -614,7 +701,9 @@ function RulesEditor({ tab, onCursor }) {
                   body: JSON.stringify({ server: tab.server, cube: tab.cube }),
                 })
                 const d = await r.json()
-                d.error ? toast.error(`Feeder check failed: ${d.error}`) : toast.success('Feeder check complete — open a view to see highlighted zero cells')
+                if (d.unsupported) toast.warning(d.message)
+                else if (d.error) toast.error(`Feeder check failed: ${d.error}`)
+                else toast.success('Feeder check complete — open a view to see highlighted zero cells')
               } catch { toast.error('Feeder check failed') }
               finally { setCheckingFeeders(false) }
             }}
@@ -623,7 +712,7 @@ function RulesEditor({ tab, onCursor }) {
             title="CheckFeedersForRules — recalculates feeder propagation for this cube. Open a view after to see zero rule cells highlighted amber."
           >
             {checkingFeeders ? <Loader2 size={11} className="animate-spin" /> : <Rss size={11} />}
-            Feeders
+            Fire Feeders
           </button>
           <div ref={formatPopupRef} className="relative format-popup-container">
             <button
@@ -905,6 +994,8 @@ export default function EditorPane({ groupId }) {
         {tab.type === 'diff'            && <DiffTab            key={tab.id} tab={tab} />}
         {tab.type === 'deploy'          && <DeployPanel        key={tab.id} tab={tab} />}
         {tab.type === 'deploy-history'  && <DeployHistory      key={tab.id} />}
+        {tab.type === 'import-package'  && <ImportPackagePanel key={tab.id} />}
+        {tab.type === 'cubemap'         && <CubeMapEditor      key={tab.id} tab={tab} />}
         {tab.type === 'session-report'  && <SessionReportTab   key={tab.id} tab={tab} />}
         {tab.type === 'transactionlog'  && (
           <div key={tab.id} className="flex h-full min-h-0 bg-sidebar">

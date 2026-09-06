@@ -3,7 +3,7 @@ import { toast } from 'sonner'
 import { useCubes, useDims, useProcs, useChores, useSubsets, useViews, useCubeDimensions, useSaveView, useHierarchies, useCreateHierarchy, useControlObjects, useDeleteDimension, useDeleteCube, useDeleteProcess, useDeleteChore, useDeleteSubset, useDeleteView, useActiveWorkSession, useWorkSessionLog } from '@/hooks/useApi'
 import { useStore } from '@/store'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { ChevronRight, ChevronDown, Box, Layers, Cog, Clock, Loader2, List, Plus, Table2, Code2, Sigma, PencilLine, Search, X, Braces, Trash2, FileSearch, Database, Tag } from 'lucide-react'
+import { ChevronRight, ChevronDown, Box, Layers, Cog, Clock, Loader2, List, Plus, Table2, Code2, Sigma, PencilLine, Search, X, Braces, Trash2, FileSearch, Database, Tag, Network } from 'lucide-react'
 import GlobalSearch from '@/components/GlobalSearch'
 import { DeleteWarningModal } from '@/components/DeleteWarningModal'
 import { cn } from '@/lib/utils'
@@ -372,7 +372,7 @@ function CubeRow({ server, cube, onOpenRules, onOpenView, onOpenSubset, onOpenDi
   )
 }
 
-function CubeSection({ server, cubes, isLoading, onOpenRules, onOpenView, onOpenSubset, onOpenDim, onOpenViewer, onOpenCubeEditor }) {
+function CubeSection({ server, cubes, isLoading, onOpenRules, onOpenView, onOpenSubset, onOpenDim, onOpenViewer, onOpenCubeEditor, onOpenCubeMap }) {
   const [open, setOpen] = useState(false)
   const revealTarget = useStore(s => s.revealTarget)
   useEffect(() => {
@@ -389,10 +389,17 @@ function CubeSection({ server, cubes, isLoading, onOpenRules, onOpenView, onOpen
         <span>Cubes</span>
         {isLoading
           ? <Loader2 size={10} className="ml-auto animate-spin" />
-          : <span onClick={e => { e.stopPropagation(); onOpenCubeEditor(null) }}
-              title="New cube" role="button" tabIndex={0} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); onOpenCubeEditor(null) } }}
-              className="ml-auto p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors cursor-pointer">
-              <Plus size={11} />
+          : <span className="ml-auto flex items-center gap-0.5">
+              <span onClick={e => { e.stopPropagation(); onOpenCubeMap?.() }}
+                title="Open Cube Map" role="button" tabIndex={0} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); onOpenCubeMap?.() } }}
+                className="p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors cursor-pointer">
+                <Network size={11} />
+              </span>
+              <span onClick={e => { e.stopPropagation(); onOpenCubeEditor(null) }}
+                title="New cube" role="button" tabIndex={0} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); onOpenCubeEditor(null) } }}
+                className="p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors cursor-pointer">
+                <Plus size={11} />
+              </span>
             </span>
         }
       </button>
@@ -1038,6 +1045,13 @@ export default function Explorer() {
     hierarchy: dim ? (hierarchy ?? dim) : null,
   })
 
+  const openCubeMap = () => openTab({
+    id:    `cubemap:${server}`,
+    type:  'cubemap',
+    label: 'Cube Map',
+    server,
+  })
+
   const openCubeEditor = (cube) => openTab({
     id:     cube ? `cubeeditor:${server}:${cube}` : `cubeeditor:${server}:new:${Date.now()}`,
     type:   'cubeeditor',
@@ -1161,7 +1175,8 @@ export default function Explorer() {
               <CubeSection server={server} cubes={cubes} isLoading={loadingCubes}
                 onOpenRules={openRules} onOpenView={openView}
                 onOpenSubset={openSubset} onOpenDim={openDim}
-                onOpenViewer={openCubeViewer} onOpenCubeEditor={openCubeEditor} />
+                onOpenViewer={openCubeViewer} onOpenCubeEditor={openCubeEditor}
+                onOpenCubeMap={openCubeMap} />
               <DimSection server={server} dims={dims}    isLoading={loadingDims}   onOpenSubset={openSubset} onOpenDim={openDim} onCreateDim={() => openDim(null)} />
               <Section    icon={Cog}   label="Processes" items={procs}  isLoading={loadingProcs}  onSelect={openProcess} itemIcon={Cog}   sectionId="processes" locateIdPrefix="process" onDelete={handleDeleteProcess} onAdd={openNewProcess} csType="process" />
               <Section    icon={Clock} label="Chores"    items={chores} isLoading={loadingChores} onSelect={openChore}   itemIcon={Clock} sectionId="chores" locateIdPrefix="chore" onDelete={handleDeleteChore} onAdd={openNewChore} csType="chore" />
