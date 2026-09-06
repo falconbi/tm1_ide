@@ -613,7 +613,8 @@ server.tool(
 
 server.tool(
     'build_dimension',
-    'Create a dimension declaratively in one call — elements, consolidation edges, and element attributes. If the dimension exists, elements/edges/attributes are added to it. Use for small dimensions; drive large dimensions from a TI process (build_process) that loads from a datasource.',
+    'Create a dimension declaratively in one call — elements, consolidation edges, and element attributes. If the dimension exists, elements/edges/attributes are added to it. Use for small dimensions; drive large dimensions from a TI process (build_process) that loads from a datasource. ' +
+    'Measure dimensions (name ends in "Measure"/"Measures"): a "Format" attribute is auto-created and every numeric element defaults to "#,##0.00" (thousands separator, 2 dp). Pass a Format attribute_value per element to override — "0.00%" for ratios, "#,##0" for counts, more dp for rates.',
     {
         name:     z.string().describe('Dimension name'),
         elements: z.array(z.object({
@@ -672,6 +673,30 @@ server.tool(
             await c.writeElementAttribute(name, v.element, v.attribute, v.value, def?.type === 'Numeric' ? 'N' : 'S')
         }
 
+        // House rule: every measure dimension's numeric elements default to
+        // "#,##0.00" (thousands separator, 2 dp). Skip any element the caller
+        // gave an explicit Format for, and don't overwrite a Format already set.
+        let formatsApplied = 0
+        if (/\bMeasures?$/i.test(name) && elements.length) {
+            try { await c.createElementAttribute(name, 'Format', 'String') }
+            catch (e) { tolerate(e, /already exists/i) }
+            const explicitFormat = new Set(
+                attribute_values.filter(v => /^format$/i.test(v.attribute)).map(v => v.element)
+            )
+            for (const el of elements) {
+                const isNumeric = (el.type ?? 'N') === 'N'
+                if (!isNumeric || explicitFormat.has(el.name)) continue
+                let current = ''
+                try {
+                    const vals = await c.getElementAttributeValues(name, el.name)
+                    current = vals?.Format ?? vals?.format ?? ''
+                } catch { /* element attr row not readable yet — treat as unset */ }
+                if (current) continue
+                await c.writeElementAttribute(name, el.name, 'Format', '#,##0.00', 'S')
+                formatsApplied++
+            }
+        }
+
         for (const h of hierarchies) {
             try { await c.createHierarchy(name, h.name) }
             catch (e) { tolerate(e, /already exists|409|duplicate/i) }
@@ -685,7 +710,8 @@ server.tool(
         for (const a of attributes) logChange('ATTRIBUTE_CREATED', 'attribute', a.name, { detail: name })
 
         return ok(`Dimension "${name}" ${created ? 'created' : 'updated'}: ${elements.length} elements, ${edges.length} edges, ${attributes.length} attributes, ${attribute_values.length} attribute values` +
-            (hierarchies.length ? `, ${hierarchies.length} alternate hierarch${hierarchies.length === 1 ? 'y' : 'ies'} (${hierarchies.map(h => h.name).join(', ')})` : '') + '.')
+            (hierarchies.length ? `, ${hierarchies.length} alternate hierarch${hierarchies.length === 1 ? 'y' : 'ies'} (${hierarchies.map(h => h.name).join(', ')})` : '') +
+            (formatsApplied ? `. Applied default Format "#,##0.00" to ${formatsApplied} measure element(s) — override per element (e.g. "0.00%", "#,##0") where that's wrong` : '') + '.')
     }
 )
 
@@ -837,10 +863,10 @@ server.tool(
 
 server.tool(
     'build_cube',
-    'Create a cube over existing dimensions, optionally with rules. The last dimension is conventionally the measures dimension.',
+    'Create a cube over existing dimensions, optionally with rules. Use the fixed house dimension order (NOT per-cube sparsity tuning): Period, Version, Company, Cost Centre, Account, Type, then any cube-specific dimensions, then the measure dimension last. Every cube MUST have a measure dimension and it MUST be last. Name it "<Prefix> <Cube distinctive name> Measure" — e.g. cube "WFP Workforce Cost" -> "WFP Workforce Cost Measure". Reference-data cubes get one too ("WFP FX Rates" -> "WFP FX Rates Measure" with a "Rate" element). build_cube refuses if the last dimension name does not end in Measure/Measures (pass force:true to override).',
     {
         name:       z.string().describe('Cube name'),
-        dimensions: z.array(z.string()).describe('Dimension names in cube order (last = measures by convention)'),
+        dimensions: z.array(z.string()).describe('Dimension names in house order: Period, Version, Company, Cost Centre, Account, Type, <cube-specific dims>, Measure. The LAST must be a measure dimension named "<Prefix> <Cube name> Measure".'),
         rules:      z.string().optional().describe('Complete rules text. Static-linted then CheckRules-validated before it is written; lint errors abort the whole call (cube not created).'),
         force:      z.boolean().optional().describe('Create the cube and write rules even if the static lint found errors'),
     },
@@ -859,7 +885,25 @@ server.tool(
             }
         }
 
+        const lastDim = dimensions[dimensions.length - 1] ?? ''
+        const looksLikeMeasureDim = /\bMeasures?$/i.test(lastDim)
+
         const existingCube = await c.getCube(name).catch(() => null)
+
+        // Measure-dimension rule — only checked when we are actually creating the cube.
+        // An existing same-shape cube can't be fixed here, so don't block on it.
+        if (!existingCube && !looksLikeMeasureDim && !force) {
+            return ok({
+                refused: `Cube "${name}" — the last dimension "${lastDim}" is not a measure dimension. Every cube must have a measure dimension and it must be last. ` +
+                         `Create a dimension named "${name} Measure" (or "<Prefix> ${name.replace(/^[A-Z0-9]+\s+/, '')} Measure"), add it as the final dimension, and retry. Pass force:true only if this cube genuinely has no measures.`,
+                dimensions,
+            })
+        }
+        const canonicalMeasureDim = `${name} Measure`
+        const measureNote = (!existingCube && looksLikeMeasureDim && lastDim !== canonicalMeasureDim)
+            ? ` Note: measure dimension "${lastDim}" does not match the canonical name "${canonicalMeasureDim}" — consider renaming for consistency.`
+            : ''
+
         if (existingCube) {
             const existingDims = (existingCube.Dimensions ?? []).map(d => d.Name ?? d)
             if (existingDims.join(' ') !== dimensions.join(' ')) {
@@ -891,7 +935,7 @@ server.tool(
             }
         }
 
-        return ok(`Cube "${name}" ${existingCube ? 'already existed (same dimensions)' : `created over [${dimensions.join(', ')}]`}.${ruleNote}` +
+        return ok(`Cube "${name}" ${existingCube ? 'already existed (same dimensions)' : `created over [${dimensions.join(', ')}]`}.${ruleNote}${measureNote}` +
             (existingCube || rules ? ' If you recreated this cube or changed feeders, run reprocess_feeders on it (and on cubes that feed into it) — cross-cube feeders do not re-arm on their own.' : ''))
     }
 )
