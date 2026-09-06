@@ -891,7 +891,25 @@ server.tool(
             }
         }
 
-        return ok(`Cube "${name}" ${existingCube ? 'already existed (same dimensions)' : `created over [${dimensions.join(', ')}]`}.${ruleNote}`)
+        return ok(`Cube "${name}" ${existingCube ? 'already existed (same dimensions)' : `created over [${dimensions.join(', ')}]`}.${ruleNote}` +
+            (existingCube || rules ? ' If you recreated this cube or changed feeders, run reprocess_feeders on it (and on cubes that feed into it) — cross-cube feeders do not re-arm on their own.' : ''))
+    }
+)
+
+server.tool(
+    'reprocess_feeders',
+    'Reprocess the FEEDERS for one or more cubes (POST tm1.ProcessFeeders). Run this after recreating a cube or changing feeder rules — cross-cube feeders into a recreated cube stay dead until you do, and consolidations silently read as 0 while every leaf still computes on a direct read.',
+    {
+        cubes: z.array(z.string()).describe('Cube names to reprocess, e.g. the recreated cube plus any that feed into it'),
+    },
+    async ({ cubes }) => {
+        const c = client()
+        const done = [], failed = []
+        for (const name of cubes) {
+            try { await c.post(`Cubes('${esc(name)}')/tm1.ProcessFeeders`, {}); done.push(name) }
+            catch (e) { failed.push(`${name}: ${e.response?.data?.error?.message ?? e.message}`) }
+        }
+        return ok(failed.length ? { reprocessed: done, failed } : `Feeders reprocessed for ${done.join(', ')}.`)
     }
 )
 
