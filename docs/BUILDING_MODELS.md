@@ -84,6 +84,10 @@ cube is a 5-minute cost; a wrong grain is a rebuild of the whole model.
 
 ## Views
 
+- **Every cube gets a default view. Every dimension gets a default subset.** No
+  exceptions — a cube or dimension with nothing to open is not finished. Name
+  them `Default` (or set the cube's default view). Dimension default subset is
+  usually all leaves, or all members if the consolidations matter.
 - **Native for anything a human opens in the IDE** — input templates, standard
   reports, P&L layouts. The IDE's MDX-view axis parser is fragile with
   CROSSJOIN / ranges / filters; native views always render.
