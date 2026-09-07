@@ -308,3 +308,34 @@ GBP 1.0, USD 0.79, NZD 0.47, Group 1.0.
   deploy. Run order on a fresh target: `WFP Load Positions`,
   `WFP Seed Dimension Attributes`, then the four cube seeds, then
   `WFP Reprocess Feeders`, `WFP Create Default Subsets`.
+- *(2026-09-07)* **Phase 2 — versions & assumptions built + verified, 24/24
+  assertions** (change sets `0f907c3a` + `5b284d3f`, 14 object changes on
+  `TM1_Test_DEV`; not yet deployed). Delivered:
+  - **`WFP Assumptions` cube** (`Period × Version × Entity × WFP Assumptions
+    Measure`) + `WFP Seed Assumptions` — Merit / Promotion Budget / Inflation /
+    **Actuals Cutoff Index** / Vacancy Allowance / Standard FTE Hours / Bonus
+    Pool / Employer Oncost Fallback. Written at leaf entities only (`Group` is a
+    consolidation; rates don't sum) — rules read at the position's Home Entity.
+  - **Forecast = calculating version** — `['Forecast'] = N:` rule on
+    `WFP Workforce Input`: Actual where `Period Index ≤ Actuals Cutoff Index`
+    (per Home Entity), else Working. Flows through the whole engine because it is
+    parameterised on `!WFP Version`. Verified: EXEC-001 got a real Jan–Mar raise
+    (Actual 220k vs Working 210k) → Forecast Feb base £18,333 (Actual side),
+    Jun base £17,500 (Working side); Group Forecast FY2026 CtC £1,703,276 =
+    Working £1,700,306 + the raise delta.
+  - **`WFP Copy Version`** — parameterised source→target copy of Workforce Input
+    (FTE + Base Salary), refuses a `Calculated` target. `Downside` scenario
+    version added and populated by copy.
+  - **Feeder fix (change set `5b284d3f`)** — Forecast consolidations read 0 until
+    (a) `WFP Workforce Input` feeds the Forecast downstream cells explicitly from
+    the always-present `['Working','FTE']`, and (b) `WFP Seed FX Rates` /
+    `WFP Seed Pay Rates` seed **every** leaf version, not just Budget/Working —
+    the engine reads those reference cubes at `!WFP Version`. **Design smell:**
+    `WFP FX Rates` and `WFP Pay Rates` carry a `Version` dimension but hold
+    version-agnostic data; a future rev should drop `Version` from them or read
+    at a fixed version. Until then: re-run those two seeds after adding a version.
+
+  Fresh-target run order now: `WFP Load Positions`, `WFP Seed Dimension
+  Attributes`, `WFP Seed Tax Bands`, `WFP Seed FX Rates`, `WFP Seed Pay Rates`,
+  `WFP Seed Assumptions`, `WFP Seed Workforce Input`, `WFP Reprocess Feeders`,
+  `WFP Create Default Subsets`.

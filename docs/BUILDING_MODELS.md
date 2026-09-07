@@ -307,3 +307,29 @@ element format. All six cubes dropped and rebuilt.
 - Rebuild cost: 39 change-set objects (92 in the release package), one change
   set, ~1 hour — cheaper than rev B because the logic was already correct and
   only coordinates moved.
+
+### Workforce Planning — Phase 2 (Sep 2026) — versions & assumptions
+
+- **A calculating version needs its downstream cells fed explicitly.** A
+  `['Forecast'] = N: IF(cutoff, Actual, Working)` rule computes fine on a direct
+  leaf read, but every consolidation over it read 0. `!WFP Version` feeders
+  (`['FTE'] => DB(cube, !WFP Version, …)`) only ever fire for versions that have
+  an *input* FTE cell — Forecast never does. Fix: feed the Forecast targets from
+  a version that is always populated — `['Working', 'FTE'] => DB(cube, 'Forecast',
+  …)` — a literal target, not `!WFP Version`.
+- **Reference cubes that carry a `Version` dimension but hold version-agnostic
+  data are a trap.** `WFP FX Rates` and `WFP Pay Rates` are keyed by Version; the
+  engine reads them at `!WFP Version`. A new version (`Forecast`, a scenario)
+  reads blank there until the seed is re-run for it — and the symptom is a
+  silently-short consolidation, not an error. Either drop `Version` from the
+  cube, or read at a fixed version in the rules, or (stopgap) loop **all** leaf
+  versions in the seed (`DIMNM('<Version dim>', n)` not a hard-coded
+  `'Budget|Working|'`).
+- **Can't `CellPutN` to a consolidation.** `WFP Entity` has `Group` (C); seeding
+  assumptions looped `Group` → "Cell type is consolidated". Write leaf entities
+  only; rules read at a leaf (the position's Home Entity).
+- **Neither `tm1.CheckFeedersForRules` nor `tm1.CheckFeedersOfCell` exists on
+  this v11** — `check_feeders` / `trace_feeders` both fail. Only
+  `CubeProcessFeeders` (the TI function) works. Diagnose under-feeding by reading
+  the consolidation one level at a time (single position → position total →
+  entity total) to find where it drops to 0.
