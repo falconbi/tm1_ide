@@ -39,12 +39,17 @@ async function fetchProcess(name, client) {
 
 async function fetchSubset(dim, name, client) {
     const s = await client.getSubset(dim, name)
+    // getSubset only selects Name,Expression — a static subset's members come
+    // from getSubsetElements, or the package ships an empty subset.
+    const elements = s.Expression
+        ? []
+        : await client.getSubsetElements(dim, name).catch(() => [])
     return {
         Name:       s.Name,
         Dimension:  dim,
         Hierarchy:  dim,
         Expression: s.Expression ?? null,
-        Elements:   s.Elements   ?? [],
+        Elements:   elements,
         Type:       s.Expression ? 'MDX' : 'Static',
     }
 }
@@ -228,10 +233,11 @@ async function pack(server, sessionEntries, sessionName, options = {}, ideToken)
                         if (already) continue
                         const s = await client.getSubset(ref.dim, ref.name).catch(() => null)
                         if (!s) continue
+                        const els = s.Expression ? [] : await client.getSubsetElements(ref.dim, ref.name).catch(() => [])
                         const subDir2 = path.join(outputDir, 'subsets', safeFilename(ref.dim))
                         fs.mkdirSync(subDir2, { recursive: true })
                         const subPath = `subsets/${safeFilename(ref.dim)}/${safeFilename(ref.name)}.json`
-                        const subData = { Name: ref.name, Dimension: ref.dim, Hierarchy: ref.dim, Expression: s.Expression ?? null, Elements: s.Elements ?? [], Type: s.Expression ? 'MDX' : 'Static' }
+                        const subData = { Name: ref.name, Dimension: ref.dim, Hierarchy: ref.dim, Expression: s.Expression ?? null, Elements: els, Type: s.Expression ? 'MDX' : 'Static' }
                         fs.writeFileSync(path.join(outputDir, subPath), JSON.stringify(subData, null, 2))
                         manifest.objects.push({ type: 'subset', name: ref.name, detail: ref.dim, outcome: 'REFERENCED', file: subPath })
                     }
