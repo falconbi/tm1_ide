@@ -339,3 +339,27 @@ GBP 1.0, USD 0.79, NZD 0.47, Group 1.0.
   Attributes`, `WFP Seed Tax Bands`, `WFP Seed FX Rates`, `WFP Seed Pay Rates`,
   `WFP Seed Assumptions`, `WFP Seed Workforce Input`, `WFP Reprocess Feeders`,
   `WFP Create Default Subsets`.
+- *(2026-09-07)* **Phase 3 — compensation actions built + verified, 30/30
+  assertions** (change set `07d03d7b`, 8 object changes on `TM1_Test_DEV`; not
+  yet deployed). Delivered:
+  - **Merit + promotion uplift** — `WFP Seed Workforce Input` applies
+    `Merit Increase %` + `Promotion Budget %` to the **Working** salary from
+    `Merit Review Index` (a new Assumptions measure, seeded to 16 = 2026-04).
+    **Budget stays flat** — it is the approved/frozen plan, so every Phase 1/2
+    Budget-scoped assertion still holds. Verified: ENG-002 Working salary
+    82,000 → 85,280 (×1.04) at 2026-04; Budget unchanged.
+  - **Bonus accrual** — new `Bonus` pay component = `Base × Bonus Pool %`
+    (contractor-gated), accrued monthly. Reads Assumptions at `!WFP Entity`.
+  - **One-time payments** — new `One-Time Amount` input line on
+    `WFP Workforce Input` and a `One-Time` pay component that reads it at the
+    home intersection. Hits only the entered month (fed from `_Monthly Base
+    Full`; a payment in a month with no base — e.g. post-termination severance
+    — would be under-fed, noted for a later refinement). Sample: CS-001
+    retention 15,000 in 2026-06.
+  - **`Total Compensation` (C)** = `Cost to Company` + `Bonus` + `One-Time`.
+    `Cost to Company` unchanged (run-rate employer cost); `Total Compensation`
+    is the everything-in figure.
+  - Two Phase 2 Forecast assertions re-based for post-merit Working
+    (`ab2b4816`, `6e0e7232`); `Compensation Detail` view added.
+  - Deferred: individual promotions (per-position promo data), commission plans
+    (a plan-parameter cube), equity/RSU.
