@@ -360,19 +360,53 @@ server.tool(
 
 server.tool(
     'seed_baseline',
-    'Snapshot the current server state as the deployment baseline. Run this BEFORE a build so ' +
-    'diff_change_set (and the IDE Deploy panel) show only the objects you are about to create, ' +
-    'not older drift. Overwrites any existing baseline.',
-    {},
-    async () => {
+    'Snapshot the current server state as a new deployment baseline (append-only — nothing is overwritten). ' +
+    'Run this at the start of a release window and again AFTER a deploy. The snapshot is stamped with the ' +
+    'change-log position so releases window on change-set id, not a timestamp. Use list_baselines / ' +
+    'set_baseline_head to inspect history or roll the reference point back.',
+    {
+        label: z.string().optional().describe('Short label for this baseline, e.g. "post rev D" or "release 2026-09"'),
+    },
+    async ({ label }) => {
         let seed
         try { ({ seed } = require('../../tools/tm1deploy/src/snapshot')) }
         catch (e) { return ok(`Deploy tooling not available: ${e.message}`) }
-        const result = await seed(SERVER, null, null)   // → .tm1baseline/<server>.json
+        const extraMeta = { last_entry_id: cl.getMaxEntryId(SERVER) }
+        if (label) extraMeta.label = label
+        const result = await seed(SERVER, null, null, extraMeta)
         const c = result?._meta?.counts ?? {}
-        return ok(`Baseline seeded from "${SERVER}" at ${result?._meta?.seeded_at ?? 'now'} — ` +
-            `${c.dimensions ?? '?'} dims, ${c.cubes ?? '?'} cubes, ${c.processes ?? '?'} processes captured. ` +
-            `This server's baseline only; diff_change_set and the IDE Deploy panel compare against it.`)
+        return ok(`Baseline seeded from "${SERVER}" at ${result?._meta?.seeded_at ?? 'now'} ` +
+            `(change-log position ${result?._meta?.last_entry_id ?? '?'}${label ? `, "${label}"` : ''}) — ` +
+            `${c.dimensions ?? '?'} dims, ${c.cubes ?? '?'} cubes, ${c.processes ?? '?'} processes. Append-only; HEAD moved to it.`)
+    }
+)
+
+server.tool(
+    'list_baselines',
+    'List this server\'s append-only baseline history — timestamp, label, change-log position, object counts, and which one is HEAD.',
+    {},
+    async () => {
+        try {
+            const { listBaselines } = require('../../tools/tm1deploy/src/diff')
+            const rows = listBaselines(SERVER)
+            return rows.length ? ok(rows) : ok(`No baselines for "${SERVER}" yet — run seed_baseline.`)
+        } catch (e) { return ok(`list failed: ${e.message}`) }
+    }
+)
+
+server.tool(
+    'set_baseline_head',
+    'Move the baseline HEAD to an earlier snapshot from list_baselines. Reference-only — it does not touch the server, ' +
+    'it changes which baseline diff / release / drift compare against. Use it to recover from a mistimed seed_baseline.',
+    {
+        file: z.string().describe('Baseline file name from list_baselines, e.g. "2026-09-07T01-30-00-000Z.json"'),
+    },
+    async ({ file }) => {
+        try {
+            const { setBaselineHead } = require('../../tools/tm1deploy/src/diff')
+            const r = setBaselineHead(SERVER, file)
+            return ok(`HEAD for "${SERVER}" → ${r.head} (position ${r._meta?.last_entry_id ?? '?'}, seeded ${r._meta?.seeded_at ?? '?'}).`)
+        } catch (e) { return ok(`set failed: ${e.message}`) }
     }
 )
 
@@ -528,12 +562,15 @@ server.tool(
 
         let entries, name
         if (release) {
-            let seededAt = null
+            let base = null
             try {
                 const { loadBaseline } = require('../../tools/tm1deploy/src/diff')
-                seededAt = loadBaseline(null, SERVER)?._meta?.seeded_at ?? null
-            } catch { /* no baseline — getEntriesSince falls back to all-time */ }
-            entries = cl.getEntriesSince(SERVER, seededAt)
+                base = loadBaseline(null, SERVER)
+            } catch { /* no baseline — fall back to all-time */ }
+            const sinceId = base?._meta?.last_entry_id
+            entries = sinceId != null
+                ? cl.getEntriesSinceId(SERVER, sinceId)
+                : cl.getEntriesSince(SERVER, base?._meta?.seeded_at ?? null)
             name = `Release ${new Date().toISOString().slice(0, 10)}`
         } else {
             const s = cl.getActiveSession(SERVER)
@@ -544,7 +581,7 @@ server.tool(
         if (!entries.length) return ok(`Nothing to package — no recorded changes${release ? ' since the baseline' : ' in the open change set'}.`)
 
         try {
-            const result = await pack(SERVER, entries, name, { force: true }, null)
+            const result = await pack(SERVER, entries, name, {}, null)
             if (!result.packaged) {
                 return ok({ packaged: 0, outputDir: null, note: 'Every changed object already matches the baseline — nothing to deploy.' })
             }

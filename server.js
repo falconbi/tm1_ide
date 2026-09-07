@@ -15,7 +15,7 @@ const { pack: deployPack }      = require('./tools/tm1deploy/src/packager')
 const { analyzeRisk }           = require('./tools/tm1deploy/src/risk')
 const { deploy: deployExecute } = require('./tools/tm1deploy/src/deployer')
 const { seed: deploySeed, scopedSnapshot: deployScopedSnapshot } = require('./tools/tm1deploy/src/snapshot')
-const { loadBaseline: deployLoadBaseline } = require('./tools/tm1deploy/src/diff')
+const { loadBaseline: deployLoadBaseline, listBaselines: deployListBaselines, setBaselineHead: deploySetBaselineHead } = require('./tools/tm1deploy/src/diff')
 
 const FORGE_PATH = path.join(__dirname, 'config', 'forge.json')
 const PAW_LOGIN_SERVER = process.env.PAW_LOGIN_SERVER
@@ -2474,10 +2474,15 @@ function baselineSeededAt(server) {
 
 // Resolve the change-log entries a diff/package should work from:
 // one change set (sessionId), or every object touched since the baseline (release).
+// Release prefers the baseline's change-log position (deterministic); falls back
+// to the seeded_at timestamp for baselines seeded before positions were stamped.
 function deployEntries({ server, sessionId, release }) {
-    return release
-        ? cl.getEntriesSince(server, baselineSeededAt(server))
-        : cl.getSessionLog(sessionId)
+    if (!release) return cl.getSessionLog(sessionId)
+    const base    = deployLoadBaseline(null, server)
+    const sinceId = base?._meta?.last_entry_id
+    return sinceId != null
+        ? cl.getEntriesSinceId(server, sinceId)
+        : cl.getEntriesSince(server, baselineSeededAt(server))
 }
 
 app.get('/api/deploy/object-diff', async (req, res) => {
@@ -2535,10 +2540,29 @@ app.post('/api/deploy/pre-delete-check', async (req, res) => {
 
 app.post('/api/deploy/seed', async (req, res) => {
     try {
-        const { server } = req.body
+        const { server, label } = req.body
         if (!server) return res.status(400).json({ error: 'server required' })
-        const snapshot = await deploySeed(server, null, req.ideToken)   // per-server baseline path
-        res.json({ ok: true, server, seeded_at: snapshot._meta.seeded_at, counts: snapshot._meta.counts })
+        // stamp the change-log position so releases can window on id, not timestamp
+        const extraMeta = { last_entry_id: cl.getMaxEntryId(server) }
+        if (label) extraMeta.label = String(label)
+        const snapshot = await deploySeed(server, null, req.ideToken, extraMeta)
+        res.json({ ok: true, server, seeded_at: snapshot._meta.seeded_at, last_entry_id: snapshot._meta.last_entry_id, counts: snapshot._meta.counts })
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// Append-only baseline history for a server + move HEAD (recovery point).
+app.get('/api/deploy/baselines', (req, res) => {
+    try {
+        if (!req.query.server) return res.status(400).json({ error: 'server required' })
+        res.json(deployListBaselines(req.query.server))
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.post('/api/deploy/baseline/head', (req, res) => {
+    try {
+        const { server, file } = req.body
+        if (!server || !file) return res.status(400).json({ error: 'server and file required' })
+        res.json(deploySetBaselineHead(server, file))
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
@@ -2560,7 +2584,8 @@ app.post('/api/deploy/package', async (req, res) => {
             entries = entries.filter(e => sel.has(`${e.object_type}::${e.object_name}::${e.detail ?? ''}`))
         }
         const name = sessionName || (release ? `Release ${new Date().toISOString().slice(0, 10)}` : 'deploy')
-        const result = await deployPack(server, entries, name, { force: true, forceInclude }, req.ideToken)
+        // no force — packager auto-suffixes rather than overwriting a retained package
+        const result = await deployPack(server, entries, name, { forceInclude }, req.ideToken)
         res.json(result)
     } catch (e) { res.status(500).json({ error: e.message }) }
 })

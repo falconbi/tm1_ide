@@ -152,15 +152,22 @@ async function pack(server, sessionEntries, sessionName, options = {}, ideToken)
         return { packaged: 0, skipped: diffResult.total, outputDir: null, manifest: null, diffResult }
     }
 
-    // Create output directory
-    const dirName   = `${slug(sessionName)}-${new Date().toISOString().slice(0, 10)}`
-    const outputDir = overrideDir ?? path.join(PACKAGES_DIR, dirName)
+    // Create output directory. Packages are retained — never overwrite one.
+    // If the name is taken, suffix -2, -3, … so a repeat Release the same day
+    // can't destroy the earlier artifact. `force` (diagnostics / explicit
+    // overrideDir) still overwrites in place.
+    const dirName = `${slug(sessionName)}-${new Date().toISOString().slice(0, 10)}`
+    let outputDir = overrideDir ?? path.join(PACKAGES_DIR, dirName)
 
     if (fs.existsSync(outputDir)) {
         if (force) {
             fs.rmSync(outputDir, { recursive: true })
+        } else if (overrideDir) {
+            throw new Error(`Package directory already exists: ${outputDir}`)
         } else {
-            throw new Error(`Package directory already exists: ${outputDir}\nUse --force to overwrite.`)
+            let n = 2
+            while (fs.existsSync(path.join(PACKAGES_DIR, `${dirName}-${n}`))) n++
+            outputDir = path.join(PACKAGES_DIR, `${dirName}-${n}`)
         }
     }
 
@@ -170,12 +177,13 @@ async function pack(server, sessionEntries, sessionName, options = {}, ideToken)
 
     const manifest = {
         _meta: {
-            session:             sessionName,
-            server:              server,
-            packaged_at:         new Date().toISOString(),
-            baseline_server:     diffResult.baseline_server,
-            baseline_seeded_at:  diffResult.baseline_seeded_at,
-            has_baseline:        diffResult.has_baseline,
+            session:                sessionName,
+            server:                 server,
+            packaged_at:            new Date().toISOString(),
+            baseline_server:        diffResult.baseline_server,
+            baseline_seeded_at:     diffResult.baseline_seeded_at,
+            baseline_last_entry_id: diffResult.baseline_last_entry_id ?? null,
+            has_baseline:           diffResult.has_baseline,
         },
         objects: [],
         skipped: [],

@@ -129,6 +129,32 @@ function getEntriesSince(server, sinceIso) {
     `).all(server, since, server, since).map(parseEntry)
 }
 
+// Highest log_entries.id for a server — the monotonic "change-log position".
+// Stamped into a baseline at seed time so a release window can be defined by
+// id (deterministic) instead of a wall-clock timestamp (skew-prone).
+function getMaxEntryId(server) {
+    const r = db.prepare(`SELECT MAX(id) AS m FROM log_entries WHERE server = ?`).get(server)
+    return r?.m ?? 0
+}
+
+// Every object touched on this server AFTER change-log position `sinceId`,
+// collapsed to the latest entry per object+action. The id-based counterpart to
+// getEntriesSince — used for release packaging when the baseline carries a
+// last_entry_id.
+function getEntriesSinceId(server, sinceId) {
+    const since = sinceId || 0
+    return db.prepare(`
+        SELECT * FROM log_entries
+        WHERE server = ? AND id > ?
+        AND id IN (
+            SELECT MAX(id) FROM log_entries
+            WHERE server = ? AND id > ?
+            GROUP BY object_type, object_name, action
+        )
+        ORDER BY id ASC
+    `).all(server, since, server, since).map(parseEntry)
+}
+
 function getSessionLogVerbose(sessionId) {
     return db.prepare(`
         SELECT * FROM log_entries
@@ -201,4 +227,4 @@ function writeLog({ server, action, objectType, objectName, detail, beforeState,
 // SQLite doesn't add columns to existing tables via CREATE TABLE — migrate if needed
 try { db.exec(`ALTER TABLE sessions ADD COLUMN description TEXT`) } catch {}
 
-module.exports = { startSession, closeSession, resumeSession, updateSessionDescription, getActiveSession, getSessions, getAllSessions, getSessionLog, getEntriesSince, getSessionLogVerbose, getRecentLog, getObjectHistory, getEntryById, writeLog }
+module.exports = { startSession, closeSession, resumeSession, updateSessionDescription, getActiveSession, getSessions, getAllSessions, getSessionLog, getEntriesSince, getMaxEntryId, getEntriesSinceId, getSessionLogVerbose, getRecentLog, getObjectHistory, getEntryById, writeLog }

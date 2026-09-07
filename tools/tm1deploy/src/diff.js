@@ -3,13 +3,40 @@
 const fs   = require('fs')
 const path = require('path')
 const { makeClient } = require('./client')
-const { baselinePathFor, LEGACY_BASELINE_PATH } = require('./baseline-paths')
+const bp = require('./baseline-paths')
+const { baselinePathFor, LEGACY_BASELINE_PATH } = bp
 
 // Back-compat export — the legacy single-file location. Prefer baselinePathFor(server).
 const BASELINE_PATH = LEGACY_BASELINE_PATH
 
 function _readJson(p) {
     try { return JSON.parse(fs.readFileSync(p, 'utf8')) } catch { return null }
+}
+
+// History of a server's baselines, oldest → newest, with HEAD marked.
+function listBaselines(server) {
+    const head     = bp.readHead(server)
+    const headName = head ? path.basename(head) : null
+    return bp.listBaselineFiles(server).map(f => {
+        const meta = _readJson(path.join(bp.baselineDirFor(server), f))?._meta ?? {}
+        return {
+            file:          f,
+            seeded_at:     meta.seeded_at     ?? null,
+            seeded_by:     meta.seeded_by     ?? null,
+            counts:        meta.counts        ?? null,
+            last_entry_id: meta.last_entry_id ?? null,
+            label:         meta.label         ?? null,
+            is_head:       f === headName,
+        }
+    })
+}
+
+// Move HEAD to an existing historical baseline — reference-only, no re-fetch.
+function setBaselineHead(server, file) {
+    const full = path.join(bp.baselineDirFor(server), file)
+    if (!fs.existsSync(full)) throw new Error(`No baseline "${file}" for server "${server}"`)
+    bp.writeHead(server, full)
+    return { server, head: file, _meta: _readJson(full)?._meta ?? {} }
 }
 
 /**
@@ -20,8 +47,9 @@ function _readJson(p) {
 function loadBaseline(overridePath, server) {
     if (overridePath) return fs.existsSync(overridePath) ? _readJson(overridePath) : null
     if (server) {
-        const perServer = baselinePathFor(server)
-        if (fs.existsSync(perServer)) return _readJson(perServer)
+        // append-only HEAD → legacy single file → legacy snapshot.json (same server)
+        const current = bp.currentBaselinePath(server)
+        if (current) return _readJson(current)
         const legacy = fs.existsSync(LEGACY_BASELINE_PATH) ? _readJson(LEGACY_BASELINE_PATH) : null
         return legacy && legacy._meta?.server === server ? legacy : null
     }
@@ -331,9 +359,10 @@ async function diff(server, sessionEntries, baselinePath, ideToken) {
 
     return {
         server,
-        baseline_server:    baseline?._meta?.server     ?? null,
-        baseline_seeded_at: baseline?._meta?.seeded_at  ?? null,
-        has_baseline:       !!baseline,
+        baseline_server:        baseline?._meta?.server        ?? null,
+        baseline_seeded_at:     baseline?._meta?.seeded_at     ?? null,
+        baseline_last_entry_id: baseline?._meta?.last_entry_id ?? null,
+        has_baseline:           !!baseline,
         checked_at:         new Date().toISOString(),
         total:              results.length,
         match:              byOutcome('MATCH'),
@@ -506,4 +535,4 @@ async function driftCheck(packageDir, targetServer, ideToken) {
     }
 }
 
-module.exports = { diff, driftCheck, loadBaseline, baselinePathFor, BASELINE_PATH }
+module.exports = { diff, driftCheck, loadBaseline, listBaselines, setBaselineHead, baselinePathFor, BASELINE_PATH }

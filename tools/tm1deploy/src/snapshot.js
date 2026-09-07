@@ -329,18 +329,32 @@ async function takeSnapshot(server, ideToken) {
     }
 }
 
-async function seed(server, outputPath, ideToken) {
-    // Default to the per-server baseline path — .tm1baseline/<server>.json
-    outputPath = outputPath || require('./baseline-paths').baselinePathFor(server)
+async function seed(server, outputPath, ideToken, extraMeta = {}) {
+    const bp       = require('./baseline-paths')
     const snapshot = await takeSnapshot(server, ideToken)
+    if (extraMeta && Object.keys(extraMeta).length) Object.assign(snapshot._meta, extraMeta)
 
-    const dir = path.dirname(outputPath)
-    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true })
+    let target
+    if (outputPath) {
+        // explicit path (CLI --output, diagnostics) — write there, don't touch HEAD
+        target = outputPath
+        fs.mkdirSync(path.dirname(target), { recursive: true })
+        fs.writeFileSync(target, JSON.stringify(snapshot))
+    } else {
+        // append-only history: .tm1baseline/<server>/<iso>.json + move HEAD.
+        // Nothing is overwritten — a mistimed seed is recovered with set-head.
+        const dir = bp.baselineDirFor(server)
+        fs.mkdirSync(dir, { recursive: true })
+        const stamp = String(snapshot._meta.seeded_at).replace(/[:.]/g, '-')
+        target = path.join(dir, `${stamp}.json`)
+        fs.writeFileSync(target, JSON.stringify(snapshot))
+        bp.writeHead(server, target)
+        // keep the legacy single-file path current too, for any old reader
+        try { fs.writeFileSync(bp.baselinePathFor(server), JSON.stringify(snapshot)) } catch { /* non-fatal */ }
+    }
 
-    fs.writeFileSync(outputPath, JSON.stringify(snapshot))
-
-    const sizeKB = Math.round(fs.statSync(outputPath).size / 1024)
-    console.log(`\nBaseline written → ${outputPath} (${sizeKB} KB)`)
+    const sizeKB = Math.round(fs.statSync(target).size / 1024)
+    console.log(`\nBaseline written → ${target} (${sizeKB} KB)`)
 
     return snapshot
 }
