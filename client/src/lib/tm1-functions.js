@@ -996,9 +996,13 @@ const DIM_ELEMENT_FUNCS = new Set(['DIMIX', 'DTYPE', 'ELLEV', 'ELPAR', 'ELPARN',
 // Functions where param 0 = dimension only (no element params)
 const DIM_ONLY_FUNCS = new Set(['DIMSIZ', 'DIMENSIONEXISTS', 'DIMENSIONELEMENTCOUNT',
   'DIMENSIONELEMENTINSERT', 'DIMENSIONELEMENTADD', 'DIMENSIONELEMENTDELETE',
-  'ELEMENTEXISTS', 'ELEMENTINDEX', 'ELEMENTNAME',
-  'SUBSETCREATE', 'SUBSETCREATEBYMDX', 'SUBSETDELETE', 'SUBSETADDELEMENT',
-  'SUBSETEXISTS', 'SUBSETGETSIZE', 'SUBSETELEMENTNAME', 'SUBSETMDXGET', 'SUBSETMDXSET'])
+  'ELEMENTEXISTS', 'ELEMENTINDEX', 'ELEMENTNAME'])
+
+// Subset functions — TM1 signature is SubsetXxx(subset, dimension, ...):
+// param 0 = subset name (offered across all dims, labelled by dim), param 1 = dimension.
+const SUBSET_FUNCS = new Set(['SUBSETCREATE', 'SUBSETCREATEBYMDX', 'SUBSETDELETE',
+  'SUBSETADDELEMENT', 'SUBSETEXISTS', 'SUBSETGETSIZE', 'SUBSETELEMENTNAME',
+  'SUBSETMDXGET', 'SUBSETMDXSET'])
 
 // ── Monaco registration ───────────────────────────────────────────────────────
 
@@ -1333,10 +1337,39 @@ function registerTM1Completions(monaco, getServer) {
             }
           }
 
-          // Dimension-only params: DIMSIZ, SubsetCreate, ElementExists, etc.
+          // Dimension-only params: DIMSIZ, ElementExists, etc.
           if (DIM_ONLY_FUNCS.has(funcName) && paramIndex === 0) {
             const dims = await tm1Fetch(`/api/dimensions?server=${enc(server)}`)
             return { suggestions: dimensionItems(dims, range, mode) }
+          }
+
+          // Subset functions — SubsetXxx(subset, dimension, ...). Param 0 = subset
+          // name (dimension comes after, so offer subsets across all dims labelled
+          // by dim); param 1 = dimension.
+          if (SUBSET_FUNCS.has(funcName)) {
+            if (paramIndex === 1) {
+              const dims = await tm1Fetch(`/api/dimensions?server=${enc(server)}`)
+              return { suggestions: dimensionItems(dims, range, mode) }
+            }
+            if (paramIndex === 0) {
+              const dims = await tm1Fetch(`/api/dimensions?server=${enc(server)}`)
+              const groups = await Promise.all(dims.map(async dim => {
+                const subs = await tm1Fetch(
+                  `/api/subsets?server=${enc(server)}&dimension=${enc(dim)}`
+                )
+                return subs.filter(s => s.Name && !s.Name.startsWith('}'))
+                  .map(s => ({ ...s, _dim: dim }))
+              }))
+              return {
+                suggestions: groups.flat().map(s => ({
+                  label:      s.Name,
+                  kind:       13,
+                  detail:     `Subset — ${s._dim}${s.Expression ? ' (MDX)' : ''}`,
+                  insertText: quoted(s.Name, mode),
+                  range,
+                })),
+              }
+            }
           }
 
           // Cube name param: TABDIM, ViewCreate, ViewExists, CubeExists, etc.
@@ -1432,6 +1465,78 @@ function registerTM1Completions(monaco, getServer) {
         }
       },
     })
+  })
+
+  // ── TI variable completion — file-scope variables & parameters ─────────────
+  // Scans the TI source for `name = value` assignments plus the Parameters /
+  // Variables arrays in the #JSON_PROPERTIES block. Mirrors PA-Code's
+  // TM1VariableCompletionProvider. Registers a SEPARATE provider on tm1ti so it
+  // can't interfere with the function/arg provider above.
+  function collectVariables(text) {
+    const vars = new Map() // name → value (undefined if none)
+    // Skip the #JSON_PROPERTIES block when scanning assignment lines
+    const propsIdx = text.search(/#JSON_PROPERTIES/i)
+    const codePart = propsIdx >= 0 ? text.slice(0, propsIdx) : text
+
+    for (const line of codePart.split('\n')) {
+      if (line.trimStart().startsWith('#')) continue
+      // name = value ;   (avoid == comparisons and assignments inside strings)
+      const m = /^\s*([A-Za-z_]\w*)\s*=\s*(.*?)\s*;?\s*$/.exec(line)
+      if (m) {
+        const value = (m[2] ?? '').trim()
+        if (!vars.has(m[1])) vars.set(m[1], value || undefined)
+      }
+    }
+
+    // Parameters / Variables arrays from the #JSON_PROPERTIES block
+    if (propsIdx >= 0) {
+      try {
+        const props = JSON.parse(text.slice(propsIdx + '#JSON_PROPERTIES'.length).trim())
+        for (const arr of ['Parameters', 'Variables']) {
+          for (const p of props?.[arr] ?? []) {
+            if (p?.Name && !vars.has(p.Name)) vars.set(p.Name, undefined)
+          }
+        }
+      } catch { /* malformed JSON properties — ignore */ }
+    }
+    return [...vars.entries()].map(([name, value]) => ({ name, value }))
+  }
+
+  monaco.languages.registerCompletionItemProvider('tm1ti', {
+    triggerCharacters: [],
+    provideCompletionItems: (model, position) => {
+      const lineUpTo = model.getLineContent(position.lineNumber).slice(0, position.column - 1)
+      // skip inside a quoted string (odd number of quotes on the line so far)
+      if ((lineUpTo.match(/'/g) ?? []).length % 2 !== 0) return { suggestions: [] }
+      // skip on comment lines
+      if (lineUpTo.trimStart().startsWith('#')) return { suggestions: [] }
+      // only complete at a word boundary
+      const word = model.getWordUntilPosition(position)
+      const typed = word.word
+      const vars = collectVariables(model.getValue())
+      if (!vars.length || !typed) return { suggestions: [] }
+
+      const range = {
+        startLineNumber: position.lineNumber, endLineNumber: position.lineNumber,
+        startColumn: word.startColumn, endColumn: word.endColumn,
+      }
+      const lower = typed.toLowerCase()
+      return {
+        suggestions: vars
+          .filter(v => !lower || v.name.toLowerCase().includes(lower))
+          .map(v => ({
+            label:      v.name,
+            kind:       monaco.languages.CompletionItemKind.Variable,
+            detail:     v.value ? `= ${v.value}` : 'TI variable',
+            documentation: v.value
+              ? { value: `Process variable\n\n\`${v.name} = ${v.value}\`` }
+              : { value: 'Process variable / parameter' },
+            insertText: v.name,
+            sortText:   '0_' + v.name,
+            range,
+          })),
+      }
+    },
   })
 
   // ── Hover providers ────────────────────────────────────────────────────────

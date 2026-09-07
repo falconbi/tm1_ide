@@ -537,7 +537,7 @@ function RulesEditor({ tab, onCursor }) {
     monacoRef.current = monaco
     if (!registeredRef.current) {
       registerTM1Completions(monaco, () => server)
-      registerRulesCompletions(monaco, () => tab.server ?? server)
+      registerRulesCompletions(monaco, () => ({ server: tab.server ?? server, cube: tab.cube }))
       registerTM1Theme(monaco, dark)
       registeredRef.current = true
     }

@@ -407,6 +407,36 @@ function isInsideString(textBefore) {
   return inStr
 }
 
+// Returns true if the cursor is inside a rules area block — ['Elem', 'Elem'] = N:
+// Tracks [ / ] depth outside of quoted strings and # comments.
+function isInsideRulesArea(text) {
+  let inStr = false, strCh = null, depth = 0, inComment = false
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i]
+    if (inComment) { if (ch === '\n') inComment = false; continue }
+    if (inStr) {
+      if (ch === strCh) inStr = false
+      continue
+    }
+    if (ch === "'" || ch === '"') { inStr = true; strCh = ch; continue }
+    if (ch === '#') { inComment = true; continue }
+    if (ch === '[') depth++
+    else if (ch === ']') depth = Math.max(0, depth - 1)
+  }
+  return depth > 0
+}
+
+// Same quote-aware mode as the TI provider: 'close' if the opening quote is already
+// typed (insert name + closing quote), 'wrap' otherwise (insert 'name').
+function areaQuoteMode(model, position, word) {
+  if (word.startColumn <= 1) return 'wrap'
+  const prev = model.getValueInRange({
+    startLineNumber: position.lineNumber, startColumn: word.startColumn - 1,
+    endLineNumber:   position.lineNumber, endColumn:   word.startColumn,
+  })
+  return (prev === "'" || prev === '"') ? 'close' : 'wrap'
+}
+
 // Returns the string value of the Nth argument of the innermost unclosed call
 function extractStringArg(textBefore, argIndex) {
   const stack = []
@@ -454,14 +484,17 @@ const CUBE_FIRST_FNS = new Set([
 
 // ── Provider factory ─────────────────────────────────────────────────────────
 
-export function registerTM1Completions(monaco, language, catalog, keywords, getServer) {
+export function registerTM1Completions(monaco, language, catalog, keywords, getContext) {
   const CIK = monaco.languages.CompletionItemKind
 
   return monaco.languages.registerCompletionItemProvider(language, {
     triggerCharacters: ["'", '"', '(', ',', ' '],
 
     provideCompletionItems: async (model, position) => {
-      const server = getServer()
+      // getContext may return a bare server string (TI) or { server, cube } (rules)
+      const rawCtx  = typeof getContext === 'function' ? getContext() : null
+      const server  = typeof rawCtx === 'string' ? rawCtx : (rawCtx?.server ?? null)
+      const cube    = rawCtx && typeof rawCtx === 'object' ? (rawCtx.cube ?? null) : null
       if (!server) return { suggestions: [] }
 
       const textBefore = model.getValueInRange({
@@ -476,6 +509,53 @@ export function registerTM1Completions(monaco, language, catalog, keywords, getS
       }
 
       const ctx = getCallContext(textBefore)
+
+      // ── Rules area completion — typing element names inside ['Area', ...] ──
+      // Areas aren't inside a function call, so ctx is null here. TM1 matches area
+      // elements to cube dimensions BY NAME, not by position — order is the
+      // developer's choice, and dimensions you don't list are unconstrained (all
+      // elements). So we offer every element across all the cube's dims. If a name
+      // exists in more than one dimension (ambiguous — TM1 will reject it), we
+      // offer it as Dim:ElementName so it compiles.
+      if (language === 'tm1rules' && cube && !ctx && isInsideRulesArea(textBefore)) {
+        const dims = await fetchCubeDims(server, cube)
+        if (!dims.length) return { suggestions: [] }
+        const byName = new Map() // lowercased name → Set of dims it appears in
+        const elementsByDim = {}
+        for (const dim of dims) {
+          const elements = await fetchElements(server, dim)
+          elementsByDim[dim] = elements
+          for (const el of elements) {
+            const name = el.Name ?? el.name
+            if (!name || name.startsWith('}')) continue
+            const key = name.toLowerCase()
+            if (!byName.has(key)) byName.set(key, new Set())
+            byName.get(key).add(dim)
+          }
+        }
+        const mode = areaQuoteMode(model, position, word)
+        const suggestions = []
+        let count = 0
+        for (const dim of dims) {
+          for (const el of elementsByDim[dim] ?? []) {
+            const name = el.Name ?? el.name
+            if (!name || name.startsWith('}')) continue
+            const ambiguous = (byName.get(name.toLowerCase())?.size ?? 0) > 1
+            const label = ambiguous ? `${dim}:${name}` : name
+            suggestions.push({
+              label,
+              kind:       CIK.Value,
+              detail:     ambiguous ? `Element — ${dim} (ambiguous — prefixed)` : `Element — ${dim}`,
+              insertText: mode === 'close' ? `${label}'` : `'${label}'`,
+              range,
+              sortText:   name,
+            })
+            count++
+            if (count >= 250) return { suggestions }
+          }
+        }
+        return { suggestions }
+      }
 
       // ── Keyword/snippet suggestions (not inside a call) ───────────────────
       if (!ctx) {
@@ -606,8 +686,8 @@ export function registerTM1Completions(monaco, language, catalog, keywords, getS
 
 export { RULES_CATALOG, TI_CATALOG }
 
-export function registerRulesCompletions(monaco, getServer) {
-  return registerTM1Completions(monaco, 'tm1rules', RULES_CATALOG, RULES_KEYWORDS, getServer)
+export function registerRulesCompletions(monaco, getContext) {
+  return registerTM1Completions(monaco, 'tm1rules', RULES_CATALOG, RULES_KEYWORDS, getContext)
 }
 
 export function registerTICompletions(monaco, getServer) {
