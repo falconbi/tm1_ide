@@ -177,6 +177,14 @@ iterations:
 - TI Prolog element insert + attribute write in the same section
 - 3-deep nested `IF()` returns blank
 - element rename is not supported (`restructure_dimension` reports this honestly)
+- **static subset save APPENDS.** `PATCH .../Subsets('X')` with
+  `Elements@odata.bind` adds to the existing members, it doesn't replace them —
+  re-running a subset seed accumulates duplicates. Rebuild with
+  `SubsetDeleteAllElements` then `SubsetElementInsert` in a TI.
+- `SubsetCreatebyMDX` silently no-ops — use `SubsetCreate` + a
+  `SubsetElementInsert` loop.
+- `CubeProcessFeeders` is the only feeder-recalc that works — `tm1.CheckFeeders*`
+  / `tm1.CheckFeedersOfCell` (Architect "Check Feeders") 404 on this build.
 
 ---
 
