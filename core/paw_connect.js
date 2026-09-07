@@ -6,9 +6,15 @@ const { CookieJar } = require('tough-cookie')
 const { randomUUID } = require('crypto')
 
 const PAW_HOST   = process.env.PAW_HOST
-const SESSION_TTL = 600_000  // 10 minutes in ms
+const SESSION_TTL = 600_000  // 10 minutes — PAW session-cookie refresh interval (paw-native only)
 
-// Map<token, { username, password, session, expiry }>
+// Idle lifetime of an IDE token. Every authenticated /api request bumps lastSeen;
+// a token unused for this long is dropped and the user must log in again. This is
+// the only expiry that applies in direct-v11 mode (where SESSION_TTL/getCachedPawSession
+// never run). 12h keeps a normal working day seamless while killing a stale token overnight.
+const IDLE_TTL = 12 * 3_600_000
+
+// Map<token, { username, password, session, expiry, lastSeen }>
 const _sessions = new Map()
 
 async function _login(username, password) {
@@ -32,13 +38,13 @@ async function _login(username, password) {
 async function createSession(username, password) {
     const session = await _login(username, password)
     const token   = randomUUID()
-    _sessions.set(token, { username, password, session, expiry: Date.now() + SESSION_TTL })
+    _sessions.set(token, { username, password, session, expiry: Date.now() + SESSION_TTL, lastSeen: Date.now() })
     return token
 }
 
 async function createDirectSession(username, password) {
     const token = randomUUID()
-    _sessions.set(token, { username, password, session: null, expiry: Date.now() + SESSION_TTL })
+    _sessions.set(token, { username, password, session: null, expiry: Date.now() + SESSION_TTL, lastSeen: Date.now() })
     return token
 }
 
@@ -53,7 +59,19 @@ async function getCachedPawSession(token) {
 }
 
 function getSessionUser(token) {
-    return _sessions.get(token)?.username ?? null
+    const entry = _sessions.get(token)
+    if (!entry) return null
+    if (Date.now() - entry.lastSeen > IDLE_TTL) {
+        _sessions.delete(token)
+        return null
+    }
+    return entry.username
+}
+
+// Called on every authenticated request to keep an in-use session alive.
+function touchSession(token) {
+    const entry = _sessions.get(token)
+    if (entry) entry.lastSeen = Date.now()
 }
 
 function getSessionCredentials(token) {
@@ -71,4 +89,4 @@ async function getCSRF(session) {
     return cookies.find(c => c.key === 'ba-sso-csrf')?.value ?? ''
 }
 
-module.exports = { createSession, createDirectSession, getCachedPawSession, getSessionUser, getSessionCredentials, invalidateSession, getCSRF, PAW_HOST }
+module.exports = { createSession, createDirectSession, getCachedPawSession, getSessionUser, touchSession, getSessionCredentials, invalidateSession, getCSRF, PAW_HOST }

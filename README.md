@@ -501,6 +501,8 @@ Browser  ←→  Express (server.js)  ──Cookie+CSRF──▶  PAW  ──▶
 
 ## 🔐 Authentication — Complete Reference
 
+> **Security model:** TM1 IDE is a **local, single-user developer tool** — it binds `127.0.0.1` by default and trusts your OS user account. See **[SECURITY.md](SECURITY.md)** for the full model and what a shared-server deployment would require.
+
 This section documents everything about how authentication works in the IDE — the session layer that is common to all setups, the three adapter paths, TM1's own auth mechanics, and the one feature that requires PAW regardless of adapter.
 
 ---
@@ -511,13 +513,13 @@ The session system is adapter-agnostic at the frontend. The browser never talks 
 
 **Session lifecycle:**
 
-1. User submits username + password to `POST /api/auth/login`
-2. Server creates a session entry in an in-memory Map (in `core/paw_connect.js`): `Map<uuid-token, { username, password, session, expiry }>`
+1. User submits username + password to `POST /api/auth/login` (rate-limited: 10 attempts / 15 min / IP)
+2. Server creates a session entry in an in-memory Map (in `core/paw_connect.js`): `Map<uuid-token, { username, password, session, expiry, lastSeen }>`
 3. UUID token returned to browser → stored in `localStorage` as `tm1-token`
 4. Browser sends `x-ide-token: <uuid>` header on **every** subsequent API request
-5. Server middleware validates the token on every `/api/*` request (except `/api/auth/login` and `/api/auth/logout`)
-6. Sessions expire after **10 minutes** (configurable via `SESSION_TTL` in `paw_connect.js`)
-7. On expiry: the next request silently re-authenticates using the stored credentials and continues
+5. Server middleware validates the token on every `/api/*` request (except `/api/auth/login` and `/api/auth/logout`), bumping `lastSeen`
+6. **Token idle expiry:** a token unused for **12 hours** (`IDLE_TTL` in `paw_connect.js`) is dropped — the user must log in again. This is the only expiry that applies in `direct-v11` mode.
+7. **PAW cookie refresh (paw-native only):** the PAW SSO session behind the token is refreshed every **10 minutes** (`SESSION_TTL`) using the stored credentials — transparent to the user, independent of the idle expiry above
 
 What the `session` field contains differs by adapter:
 

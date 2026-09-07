@@ -8,7 +8,7 @@ const fs        = require('fs')
 const Anthropic = require('@anthropic-ai/sdk')
 const { makeClient, listServers, getDefaultAdapterType, getLoginServer } = require('./core/adapter_registry')
 const { loadConnections, saveConnections, getConnection, executeQuery, testConnection, getSchema, loadQueries, saveQueries } = require('./core/sql_client')
-const { createSession, createDirectSession, getSessionUser, invalidateSession, getCachedPawSession, getCSRF, PAW_HOST } = require('./core/paw_connect')
+const { createSession, createDirectSession, getSessionUser, touchSession, invalidateSession, getCachedPawSession, getCSRF, PAW_HOST } = require('./core/paw_connect')
 const cl = require('./core/change_log')
 const { diff: deployDiff, driftCheck: deployDriftCheck } = require('./tools/tm1deploy/src/diff')
 const { pack: deployPack }      = require('./tools/tm1deploy/src/packager')
@@ -24,6 +24,39 @@ const anthropic = new Anthropic.default({ apiKey: process.env.ANTHROPIC_API_KEY 
 
 const app  = express()
 const PORT = process.env.PORT || 8083
+// TM1 IDE is a local single-user developer tool — bind loopback only (see SECURITY.md).
+// Override with HOST=0.0.0.0 only if you deliberately need LAN access and understand
+// that the browser<->server leg is then plaintext HTTP with no transport security.
+const HOST = process.env.HOST || '127.0.0.1'
+
+// ── Login rate limit ──────────────────────────────────────────────────────────
+// Small in-memory per-IP throttle on the one unauthenticated endpoint. Defence in
+// depth for the local model; a real barrier if HOST is ever widened.
+const LOGIN_MAX_ATTEMPTS = 10
+const LOGIN_WINDOW_MS    = 15 * 60_000
+const _loginHits = new Map()  // ip -> { count, resetAt }
+
+function loginRateLimit(req, res, next) {
+    const ip  = req.ip || req.socket.remoteAddress || 'unknown'
+    const now = Date.now()
+    let rec = _loginHits.get(ip)
+    if (!rec || now >= rec.resetAt) {
+        rec = { count: 0, resetAt: now + LOGIN_WINDOW_MS }
+        _loginHits.set(ip, rec)
+    }
+    if (rec.count >= LOGIN_MAX_ATTEMPTS) {
+        res.setHeader('Retry-After', Math.ceil((rec.resetAt - now) / 1000))
+        return res.status(429).json({ error: 'Too many login attempts — try again later' })
+    }
+    rec.count++
+    next()
+}
+
+// opportunistic cleanup so the map can't grow unbounded
+setInterval(() => {
+    const now = Date.now()
+    for (const [ip, rec] of _loginHits) if (now >= rec.resetAt) _loginHits.delete(ip)
+}, LOGIN_WINDOW_MS).unref()
 
 app.use(express.json({ limit: '10mb' }))
 app.use(express.static(path.join(__dirname, 'static'), {
@@ -33,7 +66,8 @@ app.use(express.static(path.join(__dirname, 'static'), {
 }))
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
-app.post('/api/auth/login', async (req, res) => {
+app.post('/api/auth/login', loginRateLimit, async (req, res) => {
+    const clearHits = () => _loginHits.delete(req.ip || req.socket.remoteAddress || 'unknown')
     try {
         const { username, password } = req.body
         if (!username || !password) return res.status(400).json({ error: 'username and password required' })
@@ -43,6 +77,7 @@ app.post('/api/auth/login', async (req, res) => {
             try {
                 const cl = makeClient(getLoginServer(), token)
                 await cl.get('Configuration')
+                clearHits()
                 res.json({ token, username })
             } catch (e) {
                 invalidateSession(token)
@@ -50,6 +85,7 @@ app.post('/api/auth/login', async (req, res) => {
             }
         } else {
             const token = await createSession(username, password)
+            clearHits()
             res.json({ token, username })
         }
     } catch (e) { res.status(401).json({ error: 'Login failed' }) }
@@ -71,6 +107,7 @@ app.use('/api', (req, res, next) => {
     if (!token) return res.status(401).json({ error: 'Not authenticated' })
     const user = getSessionUser(token)
     if (!user) return res.status(401).json({ error: 'Session expired — please log in again' })
+    touchSession(token)
     req.ideToken = token
     req.user = user
     next()
@@ -2914,6 +2951,7 @@ app.get('/{*path}', (req, res) => {
     res.sendFile(path.join(__dirname, 'static', 'index.html'))
 })
 
-app.listen(PORT, () => {
-    console.log(`TM1 IDE running at http://localhost:${PORT}`)
+app.listen(PORT, HOST, () => {
+    const shown = HOST === '0.0.0.0' ? `all interfaces on :${PORT} (LAN-exposed — no TLS)` : `http://${HOST}:${PORT}`
+    console.log(`TM1 IDE running at ${shown}`)
 })
