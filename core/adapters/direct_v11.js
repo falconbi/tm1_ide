@@ -1,20 +1,52 @@
 'use strict'
 
 const axios = require('axios')
+const fs    = require('fs')
 const https = require('https')
 
-const _httpsAgent  = new https.Agent({ rejectUnauthorized: false, keepAlive: true })
+// ── TLS policy for the direct TM1 REST connection ─────────────────────────────
+// Default: verify the server certificate against the system trust store, which
+//   also includes anything in NODE_EXTRA_CA_CERTS. Public-CA and internal-CA
+//   (via the env var) certs work with no config.
+// tlsCaFile: additionally trust a specific CA bundle / self-signed cert file —
+//   still fully verified, just against that CA too. The per-server alternative
+//   to NODE_EXTRA_CA_CERTS.
+// tlsInsecure: skip verification entirely. Only for a throwaway self-signed lab
+//   box; must be set explicitly per server in servers.json ("tlsInsecure": true).
 const _httpClient  = axios.create({ timeout: 120_000 })
-const _httpsClient = axios.create({ timeout: 120_000, httpsAgent: _httpsAgent })
+const _agentCache  = new Map()   // key -> { agent, client }
+const _warned      = new Set()
+
+function httpsAgentFor({ insecure = false, caFile = null } = {}) {
+    const key = `${insecure ? 'insecure' : 'verify'}::${caFile ?? ''}`
+    let hit = _agentCache.get(key)
+    if (!hit) {
+        const opts = { keepAlive: true }
+        if (insecure) {
+            opts.rejectUnauthorized = false
+            if (!_warned.has(key)) {
+                console.warn('⚠  direct-v11: TLS certificate verification is DISABLED (tlsInsecure). Prefer tlsCaFile to trust a specific CA.')
+                _warned.add(key)
+            }
+        } else if (caFile) {
+            opts.ca = fs.readFileSync(caFile)
+        }
+        const agent = new https.Agent(opts)
+        hit = { agent, client: axios.create({ timeout: 120_000, httpsAgent: agent }) }
+        _agentCache.set(key, hit)
+    }
+    return hit
+}
 
 class DirectV11Adapter {
-    constructor({ urlResolver, url, serverName, username, password, camNamespace = '' }) {
+    constructor({ urlResolver, url, serverName, username, password, camNamespace = '', tls = {} }) {
         this._urlResolver  = urlResolver ?? null
         this._resolvedUrl  = url ? url.replace(/\/$/, '') : null
         this._serverName   = serverName
         this._username     = username
         this._password     = password
         this._camNamespace = camNamespace
+        this._tls          = tls   // { insecure?: boolean, caFile?: string }
     }
 
     async _base() {
@@ -25,7 +57,7 @@ class DirectV11Adapter {
     }
 
     _client(base) {
-        return base.startsWith('https') ? _httpsClient : _httpClient
+        return base.startsWith('https') ? httpsAgentFor(this._tls).client : _httpClient
     }
 
     _url(base, path) {
@@ -71,4 +103,4 @@ class DirectV11Adapter {
     }
 }
 
-module.exports = { DirectV11Adapter }
+module.exports = { DirectV11Adapter, httpsAgentFor }

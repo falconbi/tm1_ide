@@ -3,7 +3,7 @@
 const path  = require('path')
 const axios = require('axios')
 const { PawNativeAdapter }  = require('./adapters/paw_native')
-const { DirectV11Adapter }  = require('./adapters/direct_v11')
+const { DirectV11Adapter, httpsAgentFor }  = require('./adapters/direct_v11')
 const { PawOAuth2Adapter }  = require('./adapters/paw_oauth2')
 const { getSessionCredentials } = require('./paw_connect')
 
@@ -22,6 +22,14 @@ function _loadConfig() {
     return { adminHosts: cfg.adminHosts ?? [], connections: cfg.connections ?? [] }
 }
 
+// ── TLS ───────────────────────────────────────────────────────────────────────
+// Per-server TLS policy from servers.json: default verifies (system trust store
+// + NODE_EXTRA_CA_CERTS); "tlsCaFile" adds a specific CA/cert; "tlsInsecure": true
+// disables verification (explicit opt-out for a self-signed lab box only).
+function _tlsFor(cfg) {
+    return { insecure: cfg?.tlsInsecure === true, caFile: cfg?.tlsCaFile ?? null }
+}
+
 // ── Admin host URL resolution ─────────────────────────────────────────────────
 
 const _urlCache = new Map()  // `${adminHostUrl}::${serverNameLower}` → resolved base URL
@@ -30,7 +38,9 @@ async function _resolveServerUrl(adminHost, serverName) {
     const key = `${adminHost.url}::${serverName.toLowerCase()}`
     if (_urlCache.has(key)) return _urlCache.get(key)
 
-    const resp    = await axios.get(`${adminHost.url}/api/v1/Servers`, { timeout: 10_000 })
+    const reqOpts = { timeout: 10_000 }
+    if (adminHost.url?.startsWith('https')) reqOpts.httpsAgent = httpsAgentFor(_tlsFor(adminHost)).agent
+    const resp    = await axios.get(`${adminHost.url}/api/v1/Servers`, reqOpts)
     const servers = resp.data?.value ?? []
     const match   = servers.find(s => s.Name.toLowerCase() === serverName.toLowerCase())
     if (!match) throw new Error(`Server "${serverName}" not found on admin host ${adminHost.url}`)
@@ -77,6 +87,7 @@ function getAdapter(serverName, ideToken) {
             username:     creds.username,
             password:     creds.password,
             camNamespace: adminHost.camNamespace ?? '',
+            tls:          _tlsFor(adminHost),
         })
     }
 
@@ -95,6 +106,7 @@ function getAdapter(serverName, ideToken) {
             username:     creds.username,
             password:     creds.password,
             camNamespace: conn.camNamespace ?? '',
+            tls:          _tlsFor(conn),
         })
     }
 

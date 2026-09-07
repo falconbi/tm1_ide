@@ -71,9 +71,13 @@ Because the tool is local, the protections are lightweight and targeted:
   tool — check that the repo is not inside a synced folder.
 
 - **The IDE↔TM1 leg.** In `direct-v11` mode the adapter sends HTTP Basic auth on
-  every request. If that connection is plain HTTP over a network (e.g. a lab TM1
-  server on the LAN), those credentials cross the wire base64-encoded, not
-  encrypted. Only TM1-side SSL fixes this; it is outside TM1 IDE's control.
+  every request. If that connection is plain **HTTP** over a network (e.g. a lab
+  TM1 server on the LAN), those credentials cross the wire base64-encoded, not
+  encrypted — only putting TLS on the TM1 server fixes that. When the TM1 server
+  **does** use HTTPS, the adapter verifies its certificate against the system
+  trust store plus `NODE_EXTRA_CA_CERTS`; use `tlsCaFile` in `servers.json` to
+  trust an internal-CA or self-signed cert, or `tlsInsecure: true` to skip
+  verification for a throwaway lab box (logged, discouraged).
 
 - **Deploy pushes are a human step.** The deploy pipeline packages changes; a
   person deploys them. The "approval" record is a local log, not an access
