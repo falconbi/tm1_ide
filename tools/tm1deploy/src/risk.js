@@ -12,7 +12,7 @@ function item(level, check, type, name, message, detail = null, data = {}) {
 
 // ── 1. Syntax ─────────────────────────────────────────────────────────────────
 
-async function checkRulesSyntax(obj, packageDir, client) {
+async function checkRulesSyntax(obj, packageDir, client, packaged = { dimensions: new Set() }) {
     const rulesText = fs.readFileSync(path.join(packageDir, obj.file), 'utf8')
     if (!rulesText.trim()) return [item('INFO', 'syntax', 'rules', obj.name, 'Rules file is empty')]
 
@@ -21,14 +21,28 @@ async function checkRulesSyntax(obj, packageDir, client) {
         return [item('INFO', 'syntax', 'rules', obj.name, 'Cube not on target yet — syntax check deferred to deploy')]
     }
 
+    // Does this same package also change a dimension this cube uses? If so, an
+    // "element not found" from CheckRules is expected — the element is added by
+    // the dimension deploy, which runs BEFORE rules (see DEPLOY_ORDER). The real
+    // syntax check happens at deploy time, after the dimension changes apply.
+    const cubeDims = (cube.Dimensions ?? []).map(d => d?.Name ?? d)
+    const dimsChanging = cubeDims.some(d => packaged.dimensions.has(d))
+
     const esc = s => s.replace(/'/g, "''")
     try {
         const result = await client.post(`Cubes('${esc(obj.name)}')/tm1.CheckRules`, { Rules: rulesText })
         const errors = result?.value ?? []
         if (errors.length === 0) return [item('INFO', 'syntax', 'rules', obj.name, 'Rules syntax OK')]
-        return errors.map(e => item('BLOCKER', 'syntax', 'rules', obj.name,
-            `Syntax error line ${e.LineNumber ?? '?'}: ${e.Message ?? e.Description ?? JSON.stringify(e)}`
-        ))
+        return errors.map(e => {
+            const msg  = e.Message ?? e.Description ?? JSON.stringify(e)
+            const line = `Syntax error line ${e.LineNumber ?? '?'}: ${msg}`
+            const looksLikeMissingElement = /not found|does not exist|unknown element/i.test(msg)
+            if (dimsChanging && looksLikeMissingElement) {
+                return item('WARNING', 'syntax', 'rules', obj.name,
+                    `${line} — likely a new element added by this package's dimension changes; re-checked at deploy`)
+            }
+            return item('BLOCKER', 'syntax', 'rules', obj.name, line)
+        })
     } catch (e) {
         return [item('INFO', 'syntax', 'rules', obj.name, `CheckRules unavailable: ${e.message}`)]
     }
@@ -363,7 +377,7 @@ async function analyzeRisk(packageDir, targetServer, ideToken) {
     await Promise.all(objects.map(async obj => {
         try {
             if (obj.type === 'rules') {
-                push(await checkRulesSyntax(obj, packageDir, client))
+                push(await checkRulesSyntax(obj, packageDir, client, packaged))
                 push(await checkRulesDependency(obj, client, packaged))
                 push(await checkRulesOverwrite(obj, packageDir, client))
             }
