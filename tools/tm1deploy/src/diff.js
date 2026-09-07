@@ -127,8 +127,10 @@ async function diffRules(entry, baseline, client) {
 
     if (!inBase) return outcome('NEW', entry, 'not in baseline — new cube', { current })
 
-    if (entry.after_state) {
-        const logged = norm(entry.after_state.text)
+    // after_state shape differs by writer: the IDE logs { text }, the MCP { rules }
+    const loggedRaw = entry.after_state?.text ?? entry.after_state?.rules
+    if (loggedRaw != null) {
+        const logged = norm(loggedRaw)
         if (current !== logged) return outcome('DRIFT', entry, 'server rules differ from last IDE save', { logged, current })
     }
 

@@ -967,7 +967,7 @@ server.tool(
                            JSON.stringify(errors.map(e => ({ line: e.LineNumber, message: e.Message ?? e.Description })))
             } else {
                 await c.patch(`Cubes('${esc(name)}')`, { Rules: rules })
-                logChange('RULES_SAVED', 'rules', name, { after: { rules } })
+                logChange('RULES_SAVED', 'rules', name, { after: { text: rules } })
                 ruleNote = ' Rules validated and written.'
             }
         }
@@ -1273,7 +1273,7 @@ server.tool(
         const c    = client()
         const prev = await c.get(`Cubes('${esc(cube)}')`, { '$select': 'Rules' }).then(d => d.Rules ?? '').catch(() => '')
         await c.patch(`Cubes('${esc(cube)}')`, { Rules: rules })
-        logChange('RULES_SAVED', 'rules', cube, { before: { rules: prev }, after: { rules } })
+        logChange('RULES_SAVED', 'rules', cube, { before: { text: prev }, after: { text: rules } })
         const note = lint.warnings.length ? ` (lint warnings: ${lint.warnings.map(w => w.message).join(' | ')})` : ''
         return ok(`Rules updated for cube "${cube}".${note}`)
     }
