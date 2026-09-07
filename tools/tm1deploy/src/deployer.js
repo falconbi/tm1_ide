@@ -35,12 +35,41 @@ async function deploySubset(obj, packageDir, client) {
     const data = JSON.parse(fs.readFileSync(path.join(packageDir, obj.file), 'utf8'))
     const dim  = obj.detail
     const name = obj.name
-    // saveSubset / saveStaticSubset both PATCH-then-fallback-POST internally
+
+    // MDX subset — Expression is a scalar; PATCH replaces it cleanly, no append issue.
     if (data.Type === 'MDX' || data.Expression) {
         await client.saveSubset(dim, name, data.Expression)
-    } else {
-        await client.saveStaticSubset(dim, name, (data.Elements ?? []).map(e => e.Name ?? e))
+        return
     }
+
+    const elements = (data.Elements ?? [])
+        .map(e => e.Name ?? e.name ?? e)
+        .filter(Boolean)
+
+    const exists = await client.getSubset(dim, name).then(s => !!s?.Name).catch(() => false)
+
+    // New static subset — POST creates it fresh, nothing to append to.
+    if (!exists) {
+        await client.saveStaticSubset(dim, name, elements)
+        return
+    }
+
+    // Existing static subset — on this v11 engine a PATCH of Elements@odata.bind
+    // APPENDS, it never replaces, and REST offers no way to clear members
+    // (DELETE .../Elements → 400, per-element DELETE → unsupported, PATCH [] → no-op).
+    // Rebuild in place with a throwaway TI: SubsetDeleteAllElements then an ordered
+    // SubsetElementInsert loop. The subset object identity is preserved, so views
+    // that reference it by name keep working.
+    // NOTE: a very large subset (~1000+ elements) makes a long prolog string and
+    // TI procedure code has a size cap — chunk the inserts if that is ever hit.
+    const esc = s => String(s).replace(/'/g, "''")
+    const code = [
+        `SubsetDeleteAllElements('${esc(dim)}', '${esc(name)}');`,
+        ...elements.map((el, i) =>
+            `IF( DIMIX('${esc(dim)}', '${esc(el)}') > 0 );`
+            + ` SubsetElementInsert('${esc(dim)}', '${esc(name)}', '${esc(el)}', ${i + 1}); ENDIF;`),
+    ].join('\n')
+    await client._runTI(code)
 }
 
 async function deployView(obj, packageDir, client) {
@@ -268,4 +297,4 @@ async function deploy(packageDir, targetServer, options = {}, ideToken) {
     return { ...report, aborted: false }
 }
 
-module.exports = { deploy }
+module.exports = { deploy, deploySubset }
