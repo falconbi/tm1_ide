@@ -517,3 +517,36 @@ GBP 1.0, USD 0.79, NZD 0.47, Group 1.0.
     replaced with a `Downside` self-contained check, 2 new (Downside pressure,
     snapshot fidelity).
   - Fresh-target run order unchanged; `WFP Snapshot Version` runs only at close.
+- *(2026-09-08)* **Phase 3.5b — static-version guard (deployed to `TM1_Test_PROD`,
+  31/31 assertions).** The Phase 3.5 approach left `Actual` calculating and
+  snapshots "static only while inputs untouched". This makes them genuinely
+  static:
+  - **`WFP Version`** gains a `Non-Calculating` (C) roll-up; `Actual` (and every
+    snapshot) sits under it. `Calculated` versions (Budget/Forecast/Downside)
+    have no such parent.
+  - **Every cube rule file** (`WFP Workforce Cost`, `WFP Headcount`,
+    `WFP Workforce Input`) opens with one guard line:
+    `[] = N: IF(ELPAR('WFP Version', !WFP Version, 1) @= 'Non-Calculating', STET, CONTINUE);`
+    — non-calculating versions keep their stored value and skip all calc;
+    everything else falls through (`CONTINUE`) to the rules below.
+  - **`Actual` is now blank** in `WFP Workforce Cost` / `WFP Headcount` — it holds
+    only what is loaded (seeded `Base Salary` + `FTE` in `WFP Workforce Input`).
+    Real actuals land at Phase 7. `Forecast` closed months still work — that rule
+    reads `Actual`'s *input*, which is stored.
+  - **`WFP Snapshot Version`** rewritten: copies the input cubes **and** the
+    calculated output (`WFP Workforce Cost` leaf pay components + `WFP Headcount`,
+    per position, own currency + Reporting); parents the new member under
+    `Non-Calculating`; marks `Version Type = Static`. Copy runs in the **Epilog**
+    (the Prolog's `DimensionElementComponentAdd` only commits at Prolog end, so
+    the guard is not yet active for the new member during the Prolog).
+  - **`Version Type`** vocabulary → `Calculated` / `Static` (was `Frozen`).
+  - **`WFP Workforce Cost` Reporting rule** collapsed from 10 near-identical
+    `['Reporting', <component>]` rules to one `['Reporting']` using
+    `!WFP Pay Component`.
+  - Tested: `WFP Snapshot Version Forecast -> zz_snaptest` reproduced Forecast
+    Group CtC FY2026 1,750,289.55 and Total Compensation 1,903,457.08 exactly;
+    throwaway member deleted. The `FCST 2026-06` demo snapshot + its assertion
+    were removed (32 -> 31 assertions).
+  - The `Calculating` (C) roll-up from an early draft did not survive a change-set
+    collision (a second agent opened its own change set on the same server); it
+    is not needed — the guard only tests for the `Non-Calculating` parent.

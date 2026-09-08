@@ -360,18 +360,6 @@
       "created": "2026-09-08T04:56:57.839Z"
     },
     {
-      "id": "178300a6",
-      "description": "Snapshot fidelity — WFP Snapshot Version froze Forecast into FCST 2026-06; Group CtC FY2026 (Reporting) = 1,750,289.55, matching Forecast at snapshot time. Frozen: its inputs are copied, not referenced.",
-      "mdx": "SELECT {[WFP Pay Component].[WFP Pay Component].[Cost to Company]} ON 0 FROM [WFP Workforce Cost] WHERE ([WFP Position].[WFP Position].[Total Positions],[WFP Period].[WFP Period].[FY2026],[WFP Version].[WFP Version].[FCST 2026-06],[WFP Entity].[WFP Entity].[Group],[WFP Cost Centre].[WFP Cost Centre].[Total Cost Centre],[WFP Currency].[WFP Currency].[Reporting],[WFP Workforce Cost Measure].[WFP Workforce Cost Measure].[Amount])",
-      "expected": 1750289.55,
-      "tolerance": 1,
-      "tags": [
-        "phase3.5",
-        "snapshot"
-      ],
-      "created": "2026-09-08T04:57:17.168Z"
-    },
-    {
       "id": "d2118f82",
       "description": "Group Forecast Cost to Company FY2026 (Reporting) = 1,750,289.55 — Forecast's own merit-uplifted open months + Actual (EXEC raise) closed months; reproduces the pre-Phase-3.5 blend exactly",
       "mdx": "SELECT {[WFP Pay Component].[WFP Pay Component].[Cost to Company]} ON 0 FROM [WFP Workforce Cost] WHERE ([WFP Position].[WFP Position].[Total Positions],[WFP Period].[WFP Period].[FY2026],[WFP Version].[WFP Version].[Forecast],[WFP Entity].[WFP Entity].[Group],[WFP Cost Centre].[WFP Cost Centre].[Total Cost Centre],[WFP Currency].[WFP Currency].[Reporting],[WFP Workforce Cost Measure].[WFP Workforce Cost Measure].[Amount])",
