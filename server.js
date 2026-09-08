@@ -2622,7 +2622,7 @@ app.post('/api/deploy/package', async (req, res) => {
         }
         const name = sessionName || (release ? `Release ${new Date().toISOString().slice(0, 10)}` : 'deploy')
         // no force — packager auto-suffixes rather than overwriting a retained package
-        const result = await deployPack(server, entries, name, { forceInclude }, req.ideToken)
+        const result = await deployPack(server, entries, name, { forceInclude, sessionId }, req.ideToken)
         res.json(result)
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
@@ -2749,8 +2749,8 @@ app.post('/api/deploy/risk', async (req, res) => {
 
 app.post('/api/deploy/execute', async (req, res) => {
     try {
-        const { packageDir, target, dryRun } = req.body
-        const result = await deployExecute(packageDir, target, { dryRun, skipRiskCheck: true }, req.ideToken)
+        const { packageDir, target, dryRun, force } = req.body
+        const result = await deployExecute(packageDir, target, { dryRun, force, skipRiskCheck: true }, req.ideToken)
         res.json(result)
     } catch (e) { res.status(500).json({ error: e.message }) }
 })

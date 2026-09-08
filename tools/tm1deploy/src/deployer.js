@@ -226,7 +226,7 @@ const DEPLOY_ORDER = ['dimension', 'attribute', 'cube', 'picklist-cube', 'rules'
 // ── Main deploy ───────────────────────────────────────────────────────────────
 
 async function deploy(packageDir, targetServer, options = {}, ideToken) {
-    const { dryRun = false, skipRiskCheck = false, onProgress } = options
+    const { dryRun = false, skipRiskCheck = false, force = false, onProgress } = options
 
     const manifestPath = path.join(packageDir, 'manifest.json')
     if (!fs.existsSync(manifestPath)) throw new Error(`No manifest.json found in ${packageDir}`)
@@ -243,6 +243,28 @@ async function deploy(packageDir, targetServer, options = {}, ideToken) {
         dry_run:        dryRun,
         risk:           null,
         results:        [],
+    }
+
+    // ── Completeness gate ─────────────────────────────────────────────────────
+    // Every object the change set touched must be in the package (or DELETED).
+    // A gap = the package was built after a baseline reseed, or a diff bug, and
+    // deploying it leaves the target half-updated (WFP Phase 4: rules dropped).
+    const gaps = manifest._meta?.completeness?.gaps ?? []
+    // per-file sanity too: every packaged object must have its file on disk
+    const missingFiles = (manifest.objects ?? []).filter(o =>
+        o.file && !fs.existsSync(path.join(packageDir, o.file))
+    )
+    if ((gaps.length || missingFiles.length) && !force) {
+        return {
+            ...report,
+            aborted: true,
+            reason: [
+                gaps.length && `Package is missing ${gaps.length} object(s) the change set changed: ${gaps.map(g => `${g.type}/${g.name} (${g.outcome})`).join(', ')}`,
+                missingFiles.length && `${missingFiles.length} packaged object(s) have no file: ${missingFiles.map(o => o.file).join(', ')}`,
+                'Re-package (its diff was likely built against a moved baseline), or deploy with force to override.',
+            ].filter(Boolean).join(' — '),
+            completeness_gaps: gaps,
+        }
     }
 
     // ── Risk check ────────────────────────────────────────────────────────────

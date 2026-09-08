@@ -136,7 +136,7 @@ async function fetchAttribute(dim, attrName, client) {
 // ── Main packager ─────────────────────────────────────────────────────────────
 
 async function pack(server, sessionEntries, sessionName, options = {}, ideToken) {
-    const { baselinePath, outputDir: overrideDir, force = false, forceInclude = [] } = options
+    const { baselinePath, outputDir: overrideDir, force = false, forceInclude = [], sessionId = null } = options
     const client = makeClient(server, ideToken)
 
     // Load baseline now for picklist comparison later (diff() also loads it internally)
@@ -329,6 +329,25 @@ async function pack(server, sessionEntries, sessionName, options = {}, ideToken)
             manifest.objects.push({ type: 'picklist-cube', name: cubeName, detail: pkCubeName, outcome, file: relPath })
         } catch {}
     }))
+
+    // Completeness record — every object the change set touched should be in the
+    // package, or explicitly DELETED. Anything else (MISSING / ERROR / DRIFT not
+    // forced / an UNCHANGED that slipped through) is a gap the deployer must block
+    // on. WFP Phase 4 shipped without its rule changes because they were silently
+    // classified UNCHANGED; this makes that a hard stop.
+    {
+        const packagedKeys = new Set(manifest.objects.map(o => `${o.type}::${o.name}::${o.detail ?? ''}`))
+        const expected = diffResult.results.filter(r => r.outcome !== 'DELETED')
+        const gaps = expected
+            .filter(r => !packagedKeys.has(`${r.object_type}::${r.object_name}::${r.detail ?? ''}`))
+            .map(r => ({ type: r.object_type, name: r.object_name, detail: r.detail ?? null, outcome: r.outcome, note: r.note }))
+        manifest._meta.session_id  = sessionId
+        manifest._meta.completeness = {
+            change_set_objects: expected.length,
+            packaged:           manifest.objects.length,
+            gaps,
+        }
+    }
 
     fs.writeFileSync(path.join(outputDir, 'manifest.json'), JSON.stringify(manifest, null, 2))
 

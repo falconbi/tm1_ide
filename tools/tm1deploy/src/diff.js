@@ -134,7 +134,11 @@ async function diffRules(entry, baseline, client) {
         if (current !== logged) return outcome('DRIFT', entry, 'server rules differ from last IDE save', { logged, current })
     }
 
-    if (norm(baseVal) === current) return outcome('UNCHANGED', entry, 'rules unchanged from baseline — no delta to package', { current })
+    // An object in the change set ships even if it currently matches the baseline
+    // (the baseline may have been seeded AFTER the change, or the target has
+    // drifted). Deploying identical rules is a safe no-op; silently dropping them
+    // is not — WFP Phase 4 lost its rule changes exactly this way.
+    if (norm(baseVal) === current) return outcome('MATCH', entry, 'identical to baseline — shipping anyway (in change set)', { baseline: baseVal, current })
 
     return outcome('MATCH', entry, 'changed from baseline', { baseline: baseVal, current })
 }
@@ -231,7 +235,7 @@ async function diffView(entry, baseline, client) {
         if (vws) {
             const currentAxes = normAxes(vws)
             if (JSON.stringify(baseView.axes) === JSON.stringify(currentAxes)) {
-                return outcome('UNCHANGED', entry, 'native view unchanged from baseline — no delta to package')
+                return outcome('MATCH', entry, 'identical to baseline — shipping anyway (in change set)')
             }
             const note = axesDiffNote(baseView.axes, currentAxes)
             return outcome('MATCH', entry, `native view changed: ${note}`)
