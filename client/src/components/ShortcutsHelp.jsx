@@ -6,6 +6,7 @@ const SHORTCUTS = [
   {
     group: 'Global',
     items: [
+      { key: 'Ctrl + B', desc: 'Toggle sidebar' },
       { key: 'Ctrl + F', desc: 'Find & Replace' },
       { key: 'Ctrl + Shift + K', desc: 'Keyboard Shortcuts Help' },
       { key: 'F1', desc: 'Keyboard Shortcuts Help' },

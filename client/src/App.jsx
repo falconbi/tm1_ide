@@ -114,7 +114,9 @@ export default function App() {
   const revealTarget   = useStore(s => s.revealTarget)
 
   const [showFind, setShowFind]                   = useState(false)
-  const [showSidebar, setShowSidebar]             = useState(true)
+  const [showSidebar, setShowSidebar]             = useState(() => {
+    try { return localStorage.getItem('tm1-sidebar') !== '0' } catch { return true }
+  })
   const [showShortcuts, setShowShortcuts]         = useState(false)
   const [showPrefs, setShowPrefs]                 = useState(false)
   const [showPeriodBuilder, setShowPeriodBuilder] = useState(false)
@@ -151,12 +153,21 @@ export default function App() {
     if (revealTarget && !showSidebar) setShowSidebar(true)
   }, [revealTarget, showSidebar])
 
+  // Remember the sidebar's hidden/shown state across reloads
+  useEffect(() => {
+    try { localStorage.setItem('tm1-sidebar', showSidebar ? '1' : '0') } catch { /* ignore */ }
+  }, [showSidebar])
+
   useEffect(() => {
     const onKey = (e) => {
       const ctrl = e.ctrlKey || e.metaKey
       if (e.key === 'F1' || (ctrl && e.shiftKey && e.key.toLowerCase() === 'k')) {
         e.preventDefault()
         setShowShortcuts(true)
+      }
+      if (ctrl && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'b') {
+        e.preventDefault()
+        setShowSidebar(s => !s)
       }
       if (e.altKey && (e.key === ',' || e.key === '.' || e.key.toLowerCase() === 'w')) {
         const { groups, activeGroupId, closeTab, setActiveTab } = useStore.getState()
@@ -199,7 +210,7 @@ export default function App() {
             <button
               onClick={() => setShowSidebar(s => !s)}
               className="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
-              title={showSidebar ? 'Hide sidebar' : 'Show sidebar'}
+              title={showSidebar ? 'Hide sidebar (Ctrl+B)' : 'Show sidebar (Ctrl+B)'}
             >
               {showSidebar ? <PanelLeftClose size={15} /> : <PanelLeftOpen size={15} />}
             </button>
