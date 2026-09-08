@@ -484,8 +484,11 @@ GBP 1.0, USD 0.79, NZD 0.47, Group 1.0.
   - Deferred: individual promotions (per-position promo data), commission plans
     (a plan-parameter cube), equity/RSU.
 - *(2026-09-08)* **Phase 3.5 — version model correction built + verified, 32/32
-  assertions** (change set `f26a4810`, 9 object changes on `TM1_Test_DEV`; not yet
-  deployed). Encapsulated-version convention in `BUILDING_MODELS.md`. Delivered:
+  assertions** (change set `f26a4810`, 9 object changes on `TM1_Test_DEV`;
+  deployed to `TM1_Test_PROD` 2026-09-08, PROD totals verified — Budget
+  1,700,305.85 / Forecast 1,750,289.55 / Downside 1,773,796.40 / FCST 2026-06
+  1,750,289.55; DEV+PROD baselines advanced). Encapsulated-version convention in
+  `BUILDING_MODELS.md`. Delivered:
   - **`Working` removed.** `Forecast` is now the working current model. Its
     `WFP Workforce Input` rule shrank to a closed-month-only override:
     `IF(Period Index <= Forecast's own Actuals Cutoff Index, DB(Actual), STET)` —
