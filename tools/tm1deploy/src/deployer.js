@@ -116,6 +116,25 @@ async function deployDimension(obj, packageDir, client) {
         catch (err) { if (!rx.test(err.response?.data?.error?.message ?? err.message ?? '')) throw err }
     }
 
+    // Remove elements the package no longer carries — the target drifts toward
+    // the package's element set (e.g. a version dimension losing "Working").
+    // The pre-deploy risk check BLOCKS a large or consolidation-bearing removal;
+    // this cap is defence in depth for an incomplete package.
+    if (exists && (data.elements ?? []).length) {
+        const pkgNames  = new Set((data.elements ?? []).map(e => (e.Name ?? e.name ?? '').toLowerCase()))
+        const targetEls = await client.getElements(name).catch(() => [])
+        const toRemove  = targetEls.filter(e => !pkgNames.has((e.Name ?? '').toLowerCase()))
+        const cap = Math.max(10, Math.floor(targetEls.length * 0.5))
+        if (toRemove.length && toRemove.length <= cap) {
+            for (const e of toRemove) {
+                try { await client.deleteElement(name, e.Name, name) }
+                catch (err) { console.warn(`  [warn] ${name}: could not remove element ${e.Name}: ${err.message}`) }
+            }
+        } else if (toRemove.length) {
+            console.warn(`  [warn] ${name}: ${toRemove.length} target elements absent from package — NOT auto-removed (over cap ${cap}); remove manually`)
+        }
+    }
+
     // Attribute definitions
     if (data.attributes?.length) {
         for (const attr of data.attributes) {

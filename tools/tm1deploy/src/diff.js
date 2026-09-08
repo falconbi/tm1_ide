@@ -427,8 +427,15 @@ async function checkObjectDrift(obj, baseline, client) {
             if (!b) return null
             const sub = await client.getSubset(dim, obj.name).catch(() => null)
             if (!sub) return { drifted: true, note: 'Subset deleted from target since baseline' }
-            const tSig = sub.Expression ?? (sub.Elements ?? []).map(e => e.Name ?? e).sort().join(',')
-            const bSig = b.expression   ?? (b.elements   ?? []).sort().join(',')
+            // getSubset only $selects Name,Expression — for a static subset the
+            // members come from getSubsetElements, else tSig is always '' (false drift).
+            const tEls = sub.Expression
+                ? []
+                : await client.getSubsetElements(dim, obj.name)
+                    .then(a => a.map(e => e.name ?? e.Name ?? e))
+                    .catch(() => [])
+            const tSig = sub.Expression ?? tEls.sort().join(',')
+            const bSig = b.expression   ?? (b.elements ?? []).sort().join(',')
             if (tSig === bSig) return { drifted: false }
             return { drifted: true, note: 'Subset definition changed on target since baseline' }
         }
