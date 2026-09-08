@@ -641,6 +641,33 @@ function Screen3({ deployData, deployRunning, archiving, onReset }) {
         </span>
       </div>
 
+      {/* Post-deploy verification (source assertions against the target) */}
+      {deployData.verification && (
+        <div className={cn(
+          'flex items-center gap-2 px-5 py-2 text-xs border-b border-border/40',
+          deployData.verification.error ? 'text-amber-400'
+            : deployData.verification_failed ? 'text-red-400' : 'text-emerald-400'
+        )}>
+          {deployData.verification.error
+            ? <>Post-deploy verification could not run: {deployData.verification.error}</>
+            : <>
+                {deployData.verification_failed ? <XCircle size={13} /> : <CheckCircle2 size={13} />}
+                Verification: {deployData.verification.passed}/{deployData.verification.total} assertions pass on {deployData.target_server}
+                {deployData.verification_failed && ` — ${deployData.verification.failed.map(f => f.description).slice(0, 3).join('; ')}${deployData.verification.failed.length > 3 ? '…' : ''}`}
+              </>}
+        </div>
+      )}
+      {deployData.baselines_seeded && (
+        <div className="px-5 py-1.5 text-[11px] text-muted-foreground border-b border-border/40">
+          Baselines advanced: {Object.values(deployData.baselines_seeded).join(', ')}
+        </div>
+      )}
+      {deployData.baseline_error && (
+        <div className="px-5 py-1.5 text-[11px] text-amber-400 border-b border-border/40">
+          Baseline auto-seed failed: {deployData.baseline_error}
+        </div>
+      )}
+
       {/* Per-object results */}
       <div className="flex-1 overflow-auto">
         <table className="w-full text-xs">

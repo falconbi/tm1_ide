@@ -57,4 +57,35 @@ function remove(server, id) {
   return data[server] ? data[server].length < before : before > 0
 }
 
-module.exports = { list, add, remove, load, save, FILE }
+// Run the assertions stored under `sourceServer` (their MDX), executing each
+// against `targetServer` (default: the same). Used for post-deploy verification —
+// the source Dev server's assertions run against the target after a deploy.
+async function run(sourceServer, { targetServer, tags, ideToken } = {}) {
+    const { makeClient } = require('./adapter_registry')
+    const client = makeClient(targetServer ?? sourceServer, ideToken)
+    const set = list(sourceServer).filter(a => !tags?.length || (a.tags ?? []).some(t => tags.includes(t)))
+
+    const results = []
+    for (const a of set) {
+        let actual = null, error = null
+        try {
+            const r = await client.executeMDX(a.mdx, 5000)
+            actual = (r.Cells ?? []).reduce((s, x) => s + (x.Value ?? 0), 0)
+        } catch (e) {
+            error = e.response?.data?.error?.message ?? e.message
+        }
+        const tol  = a.tolerance ?? 0.01
+        const pass = error == null && Math.abs(actual - a.expected) <= tol
+        results.push({ id: a.id, description: a.description, expected: a.expected, actual, diff: error ? null : actual - a.expected, pass, error })
+    }
+    return {
+        source_server: sourceServer,
+        target_server: targetServer ?? sourceServer,
+        total:  results.length,
+        passed: results.filter(r => r.pass).length,
+        failed: results.filter(r => !r.pass),
+        results,
+    }
+}
+
+module.exports = { list, add, remove, load, save, run, FILE }

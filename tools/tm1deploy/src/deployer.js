@@ -226,7 +226,7 @@ const DEPLOY_ORDER = ['dimension', 'attribute', 'cube', 'picklist-cube', 'rules'
 // ── Main deploy ───────────────────────────────────────────────────────────────
 
 async function deploy(packageDir, targetServer, options = {}, ideToken) {
-    const { dryRun = false, skipRiskCheck = false, force = false, onProgress } = options
+    const { dryRun = false, skipRiskCheck = false, force = false, skipAutoBaseline = false, onProgress } = options
 
     const manifestPath = path.join(packageDir, 'manifest.json')
     if (!fs.existsSync(manifestPath)) throw new Error(`No manifest.json found in ${packageDir}`)
@@ -311,6 +311,46 @@ async function deploy(packageDir, targetServer, options = {}, ideToken) {
 
     report.deployed = report.results.filter(r => r.ok).length
     report.failed   = report.results.filter(r => !r.ok).length
+
+    // ── Post-deploy verification ──────────────────────────────────────────────
+    // Run the SOURCE server's stored assertions against the TARGET. This is the
+    // check that would have caught WFP Phase 4 landing without its rule changes
+    // (Forecast headcount 16 instead of 19). Advisory — the deploy already
+    // happened — but report.verification_failed flags a bad deploy loudly.
+    if (!dryRun && manifest._meta?.server) {
+        try {
+            onProgress?.('verify')
+            const assertions = require('../../../core/assertions')
+            const v = await assertions.run(manifest._meta.server, { targetServer, ideToken })
+            report.verification = v
+            report.verification_failed = v.total > 0 && v.failed.length > 0
+        } catch (e) {
+            report.verification = { error: e.message }
+        }
+    }
+
+    // ── Auto-seed baselines (B4) ──────────────────────────────────────────────
+    // Only after a clean deploy that also passed verification. Seeds BOTH the
+    // target (now = deployed state) and the source (its state is now deployed, so
+    // the next release window starts here). This is what owns baseline timing so
+    // it can't be done manually at the wrong moment — the WFP Phase 4 footgun.
+    const clean = !dryRun && report.failed === 0 && !report.verification_failed
+    if (clean && !skipAutoBaseline) {
+        try {
+            onProgress?.('baseline')
+            const { seed } = require('./snapshot')
+            const cl = require('../../../core/change_log')
+            const label = `post-deploy ${targetServer} ← ${manifest._meta.session ?? 'release'} (${report.deployed_at.slice(0, 10)})`
+            const seeded = {}
+            for (const srv of [targetServer, manifest._meta.server].filter((s, i, a) => s && a.indexOf(s) === i)) {
+                await seed(srv, null, ideToken, { last_entry_id: cl.getMaxEntryId(srv), label })
+                seeded[srv === targetServer ? 'target' : 'source'] = srv
+            }
+            report.baselines_seeded = seeded
+        } catch (e) {
+            report.baseline_error = e.message
+        }
+    }
 
     return { ...report, aborted: false }
 }
