@@ -151,6 +151,27 @@ Rules:
 - Feeders: don't feed a `DB()` whose target element is read from an attribute
   that might be blank — it feeds a non-existent element and fails at load.
 
+### House rules (from the Cubewise best-practice papers, still current)
+
+- **Update a dimension, never Recreate.** Recreate drops any element missing from
+  the new load *and its historical cube data*, silently and unlogged. Incremental
+  `add_elements` / `restructure_dimension` are Update-style — keep it that way; a
+  full rebuild only from a datasource that is authoritative for every element.
+- **Zero the target region before an accumulating write.** A load that adds to
+  the existing cell (`CellGetN` + add, or datasource "accumulate") double-counts
+  on re-run. Our seeds write absolute values, so this only bites if a process
+  ever switches to accumulate — clear the slice first (view + `ViewZeroOut`-style)
+  in the Prolog.
+- **Cube logging off during a bulk write must be guaranteed to come back on.**
+  `CubeSetLogChanges(cube, 0)` is the speed lever, but if a fatal error in Data
+  skips the Epilog the cube is left unlogged (crash = silent data loss until
+  someone notices). Restore in the Epilog *and* either run it as a 3-step chore
+  (off / load / on) or add a startup check that re-enables logging.
+- **TI data sources are process-specific temp views/subsets, built in the Prolog
+  and destroyed in the Epilog.** Never point a process at `Default` or a
+  reporting subset — someone will change it and the process silently reads the
+  wrong slice.
+
 ### Bespoke vs library (Bedrock)
 
 - **Model logic ships bespoke.** Snapshot / version copy / close / allocations /
