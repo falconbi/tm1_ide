@@ -331,6 +331,30 @@ async function deploy(packageDir, targetServer, options = {}, ideToken) {
     report.deployed = report.results.filter(r => r.ok).length
     report.failed   = report.results.filter(r => !r.ok).length
 
+    // ── Deletions ────────────────────────────────────────────────────────────
+    // Objects removed on the source since the baseline. Whole-object deletes
+    // only (process / view / subset / chore) — element/attribute removals are
+    // handled inside deployDimension. Cube/dimension deletes are deliberately
+    // NOT auto-applied (too destructive; flag for a human).
+    const dels = manifest.deleted ?? []
+    if (!dryRun && dels.length) {
+        report.deleted = []
+        for (const d of dels) {
+            try {
+                if      (d.type === 'process') await targetClient.deleteProcess(d.name)
+                else if (d.type === 'view')    await targetClient.deleteView(d.detail, d.name)
+                else if (d.type === 'subset')  await targetClient.deleteSubset(d.detail, d.name)
+                else if (d.type === 'chore')   await targetClient.deleteChore(d.name)
+                else { report.deleted.push({ ...d, ok: false, error: `${d.type} deletion not auto-applied — remove manually` }); continue }
+                report.deleted.push({ ...d, ok: true })
+            } catch (e) {
+                // already gone on the target is fine
+                const gone = /not\s*found|404|does not exist/i.test(e.message)
+                report.deleted.push({ ...d, ok: gone, error: gone ? undefined : e.message })
+            }
+        }
+    }
+
     // ── Post-deploy steps ─────────────────────────────────────────────────────
     // Structural finishers the package declares (manifest._meta.post_deploy) —
     // reprocess feeders, and anything else that "finishes making the model work

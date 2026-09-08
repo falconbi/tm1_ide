@@ -316,6 +316,15 @@ async function pack(server, sessionEntries, sessionName, options = {}, ideToken)
         }
     }
 
+    // Deletions are their own thing — the package is the declared state, and the
+    // declared state includes "these no longer exist". The deployer removes them
+    // from the target.
+    manifest.deleted = (diffResult.deleted ?? []).map(item => ({
+        type:   item.object_type,
+        name:   item.object_name,
+        detail: item.detail ?? null,
+    }))
+
     // Record drift/missing/deleted/unchanged in skipped too (with reason), excluding force-included
     for (const item of [...diffResult.drift.filter(i => !forcedKeys.has(`${i.object_type}::${i.object_name}::${i.detail ?? ''}`)), ...diffResult.missing, ...(diffResult.deleted ?? []), ...diffResult.unchanged]) {
         manifest.skipped.push({

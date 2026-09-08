@@ -676,6 +676,14 @@ function Screen3({ deployData, deployRunning, archiving, onReset }) {
           Structure gap: {deployData.structure_gaps.join('; ')}
         </div>
       )}
+      {deployData.deleted?.length > 0 && (
+        <div className={cn(
+          'px-5 py-1.5 text-[11px] border-b border-border/40',
+          deployData.deleted.some(d => !d.ok) ? 'text-amber-400' : 'text-muted-foreground'
+        )}>
+          Removed from target: {deployData.deleted.map(d => `${d.type}/${d.name}${d.ok ? '' : ` (${d.error})`}`).join(', ')}
+        </div>
+      )}
       {deployData.attribute_value_errors && Object.keys(deployData.attribute_value_errors).length > 0 && (
         <div className="px-5 py-1.5 text-[11px] text-amber-400 border-b border-border/40">
           Attribute values: {Object.entries(deployData.attribute_value_errors).map(([d, m]) => `${d} (${m})`).join('; ')}
