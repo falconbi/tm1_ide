@@ -151,6 +151,26 @@ Rules:
 - Feeders: don't feed a `DB()` whose target element is read from an attribute
   that might be blank — it feeds a non-existent element and fails at load.
 
+### Bespoke vs library (Bedrock)
+
+- **Model logic ships bespoke.** Snapshot / version copy / close / allocations /
+  recalc chains — anything scheduled, assertion-backed, or part of what the model
+  produces — is a short purpose-built process shaped to *this* model's known
+  cubes. It has to be reviewable in a change set, lintable, and testable. A
+  generic library process (Bedrock `}bedrock.cube.data.copy` is ~2,200 lines, 35
+  params, 27 dims hand-unrolled, and ships with a real copy-paste bug on the
+  `v24` line) is none of those things.
+- **Bedrock is a dev/admin toolbox**, not application code: ad-hoc region clears,
+  one-off copies, view→file exports, dimension surgery while building. Fine to
+  keep on the server; don't wire it into a chore.
+- **The reusable technique from Bedrock's copy:** a **cube-view datasource** for
+  the read (never nested `DIMNM`/`CellGetN` loops — those walk every empty
+  intersection) plus **`CubeSetLogChanges(cube, 0)` around the write** (restore in
+  Epilog). That combination is the speed, not the ASCII round-trip — exporting to
+  a flat file and re-importing only pays off for cross-server copies or
+  file-split parallelism. A view datasource also hands you `NValue` **and**
+  `SValue`, so numeric and string cells copy in one pass.
+
 ---
 
 ## Views
