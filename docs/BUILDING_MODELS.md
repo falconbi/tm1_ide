@@ -137,6 +137,33 @@ Rules:
   causes feeder traps and version-agnostic reference bugs, and makes a version
   impossible to reason about alone. Don't.
 
+### Variance as version members
+
+- **Variance is a version member, not a new cube or dimension.** Add a calculating
+  `Variance` folder (weight-0 edges so its total is inert) with members like
+  `Act vs Bud` = `DB(…,'Actual',…) − DB(…,'Budget',…)`, `Fcst vs Bud`,
+  `Var FX` / `Var Operational`. Every existing view/report then does variance by
+  picking the member — zero rework.
+- **Gate the actuals-only variance** (`Act vs Bud`) to closed periods — a
+  `WFP Period` "Actuals Closed" numeric attr set by the actuals load. Otherwise
+  open months read `0 − Budget` as a huge favourable swing, and it's wrong at FY.
+  Use `Fcst vs Bud` for the full-year outlook (Forecast already carries Actual in
+  closed months).
+- **Put the variance rules ABOVE the currency-translation rule.** The variance
+  members have no FX rate of their own, so the P5-style `['Reporting'] = Σ ccy ×
+  DB(FX, !Version, …)` returns 0 for them. First-match-wins → the variance rule
+  must be earlier so it computes `Actual/Reporting − Budget/Reporting` directly.
+- **FX vs operational split:** `Var FX` = Actual at actual rate − Actual at Budget
+  rate; `Var Operational` = Actual − Budget both at Budget FX. They sum to the
+  total variance because Budget's two currency views are equal by definition.
+- **Closed-month = Actual creates "zombies"** when the forecast roster isn't kept
+  current: someone who left shows present (actual) → gone (actual) → back (stale
+  plan for open months). That's realistic and exactly what the variance layer is
+  for — flag it, don't paper over it in the actuals load.
+- **Stock measures (Headcount, FTE) sum over YTD / quarter / FY rollups** — a YTD
+  headcount is headcount-months, not period-end. The *variance* is still correct
+  (−1 vs −1); the absolute needs a period-end aggregation rule if it matters.
+
 ---
 
 ## Rules and TI
@@ -150,6 +177,16 @@ Rules:
   inserts aren't committed until the Prolog ends).
 - Feeders: don't feed a `DB()` whose target element is read from an attribute
   that might be blank — it feeds a non-existent element and fails at load.
+- **A ratio KPI at a consolidation (cost per FTE, etc.) is painful under
+  SKIPCHECK.** The rule computes `Amount / FTE` at every level, but a rule cell
+  that *overrides* a consolidation needs that consolidated cell explicitly fed —
+  feeding the leaves doesn't help (and their sum is the wrong number anyway). An
+  over-feed for every entity/CC/department combo isn't worth it. Compute the ratio
+  in the view / reporting layer instead, or accept it only at leaf level.
+- **A one-off payment in a month with no base pay** (severance the month after a
+  leaver's last month) is missed if `One-Time` cost is fed only from the salary
+  driver (`_Monthly Base Full`, which is 0 that month). Feed the `One-Time` cost
+  cell directly from the `One-Time Amount` input.
 
 ### House rules (from the Cubewise best-practice papers, still current)
 

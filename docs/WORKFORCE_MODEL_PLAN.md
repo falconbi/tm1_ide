@@ -82,11 +82,14 @@ they can't be cheaply retrofitted, so they go into Phase 1.
 Merit / promotion / bonus / commission / equity / one-time (P3); hiring plan,
 TBH positions, recruiting lead time, attrition, backfill, headcount bridge (P4);
 GL account mapping, capitalised labour, constant-currency view — **done, P5**
-(GL rollup via alternate hierarchy, not a separate P&L cube). Split allocation /
-shared-services allocation — deferred (P7, structural). Payroll actuals load,
-rate/FTE/mix variance, cost per FTE, sensitivity (P6); contractor day-rate cube,
-recruiting funnel, productivity ramp, rolling forecast (P8); manager / org
-hierarchy on Position; validation cube; rounding convention.
+(GL rollup via alternate hierarchy, not a separate P&L cube). Payroll actuals
+load + variance (Act vs Bud / Fcst vs Bud / FX-vs-operational / YTD hierarchy) —
+**done, P6**. Split allocation / shared-services allocation — deferred (P7,
+structural). Bespoke `WFP Snapshot Version` rebuild + forecast-accuracy variance
+(`Act vs Prior Fcst`) — **P6b**. 3-way rate/FTE/mix decomposition, sensitivity —
+P6b/later. Contractor day-rate cube, recruiting funnel, productivity ramp,
+rolling forecast (P8); manager / org hierarchy on Position; validation cube;
+rounding convention; stock-measure period-end aggregation over time rollups.
 
 ---
 
@@ -645,3 +648,69 @@ GBP 1.0, USD 0.79, NZD 0.47, Group 1.0.
     `WFP Create Default Subsets` on the target (rebuilds every `Default` with all
     members, incl. the new ones). Full post-deploy order: `WFP Seed Dimension
     Attributes` → `WFP Create Default Subsets` → `WFP Reprocess Feeders`.
+
+- *(2026-09-09)* **P6 — actuals load + variance, built + verified, 51/51 assertions**
+  (change set `4aa79bd5`, 16-object package; not yet deployed). Actuals now
+  populate the `Actual` static version for closed months, and variance is a set
+  of calculating `WFP Version` members.
+  - **`WFP Load Actuals`** (new) — DEMO GENERATOR (swap the datasource to a real
+    payroll extract in production). Derives `Actual` from Forecast for the closed
+    window (period index 13–15 = 2026-01..03) plus deliberate deltas: ENG-006
+    (NZ) left end Feb 2026 with a 12,000 NZD severance in Mar (no base pay that
+    month); SLS-001 5,000 GBP discretionary bonus in Feb; USD ran at 0.77 vs the
+    0.79 plan rate. Writes `Actual` on `WFP Workforce Cost` (all pay components ×
+    position, salary currency + `Reporting` + `Reporting @ Budget FX`, Amount +
+    Capex + Opex — the TI does the FX translation and capex split), `WFP Workforce
+    Input` (FTE / Base Salary / One-Time), and `WFP Headcount` (full bridge). Sets
+    the `Actuals Closed` numeric attr on the loaded periods. Retires the synthetic
+    `Actual` block that used to live in `WFP Seed Workforce Input` — Load Actuals
+    is now authoritative for `Actual`.
+  - **Variance as `WFP Version` members** — new calculating `Variance` folder
+    (weight-0 edges, folder total is meaningless):
+    - `Act vs Bud` = `Actual − Budget`, gated to closed periods (`Actuals Closed`
+      attr); 0 elsewhere. Positive = overspend.
+    - `Fcst vs Bud` = `Forecast − Budget`, all periods — the rolling outlook vs
+      plan; use it at FY (`Act vs Bud` at FY only shows the YTD number, H2 Actual
+      is empty).
+    - `Var FX` = Actual at actual rate − Actual at Budget rate; `Var Operational`
+      = Actual − Budget both at Budget FX. Reporting currency only.
+      `Var FX + Var Operational = Act vs Bud`.
+    Rules + feeders on `WFP Workforce Cost` and `WFP Headcount` (headcount has no
+    FX split). The variance rules sit **above** the P5 currency/capex rules so
+    they win for `Reporting` (the variance versions have no FX rate of their own).
+  - **`YTD` alternate hierarchy on `WFP Period`** — `WFP Build YTD Hierarchy`
+    (new TI) creates `YTD 2026-01 … YTD 2026-12` (and 2025/2027), each summing
+    Jan→that month within its FY. Month / YTD / FY are now just a period-axis
+    choice on any variance member. New subset `WFP Period / 2026 YTD + FY`.
+  - **Severance under-feeding fix** — `WFP Workforce Input` feeders: `One-Time
+    Amount` now feeds the `One-Time` cost cell directly (local + Reporting +
+    Budget FX, Amount + Opex), so a payment in a month with no base pay (severance
+    after a leaver's last month) is visible in consolidations. Was previously fed
+    only via `_Monthly Base Full`, which is 0 that month.
+  - **Cost per FTE — cut.** Added as a measure + rule, then removed: a ratio at a
+    consolidation needs its consolidated cell explicitly fed under SKIPCHECK, and
+    an over-feed for every entity/CC/department combo isn't worth it. Compute
+    `Total Compensation Amount / Headcount FTE` in the view instead.
+  - **Views** — `Variance Bridge` (pay components × the `Variance` version subset,
+    YTD 2026-03) and `FX vs Operational` (cost centres × Act vs Bud / Var FX / Var
+    Operational). New subset `WFP Version / Variance`.
+  - **8 new assertions** (`P6` tag) + 2 Phase 4 assertions re-based (`66963df1`,
+    `af3e2673`): Forecast/Downside FY CtC dropped 5,648 because P6 actuals show
+    ENG-006 left in March and closed-month Forecast = Actual.
+  - **Known demo quirk — the "zombie":** the Forecast/Downside *rosters* still
+    carry ENG-006 for open months (Apr+), so ENG-006 reads present Jan–Feb (actual)
+    → gone Mar (actual) → back Apr–Dec (stale plan). This is realistic and the
+    point of variance reporting — a real close would update the forecast roster.
+  - **Known model gap (pre-existing, surfaced by P6):** Budget carries **no bonus
+    provision** (`Bonus Pool %` = 0 for Budget), so bonus shows as a large
+    unfavourable `Fcst/Act vs Bud`. Seed a Budget `Bonus Pool %` if that isn't
+    intended.
+  - **Stock-measure note:** `Headcount` / `FTE` sum over the YTD (and Q/H/FY)
+    rollups — `YTD 2026-03 Headcount` = headcount-months, not period-end. The
+    *variance* is still right (−1 vs −1). A future cleanup could make the stock
+    measures show period-end over time rollups.
+  - **Post-deploy order:** `WFP Seed Dimension Attributes` → `WFP Build YTD
+    Hierarchy` → `WFP Load Actuals` → `WFP Create Default Subsets` → `WFP Reprocess
+    Feeders`. Fresh-target run order gains `WFP Build YTD Hierarchy` (after the
+    period dim is built) and `WFP Load Actuals` (replaces the synthetic Actual
+    seed).
