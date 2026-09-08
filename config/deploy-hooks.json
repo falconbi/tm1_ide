@@ -13,6 +13,7 @@
   ],
   "TM1_Test_DEV": {
     "post_deploy": [
+      { "name": "WFP Build YTD Hierarchy", "note": "belt-and-braces for the YTD alt-hierarchy on WFP Period (idempotent); remove once the packager is trusted to carry it and the process is deleted" },
       { "name": "WFP Reprocess Feeders", "note": "feeders must be reprocessed after any rules change" }
     ]
   }
