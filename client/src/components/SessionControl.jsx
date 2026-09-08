@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Clock, Circle, X, History } from 'lucide-react'
+import { Clock, Circle, History, Check } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useStore } from '@/store'
 import { useActiveWorkSession, useStartWorkSession, useCloseWorkSession } from '@/hooks/useApi'
@@ -43,6 +43,7 @@ export default function SessionControl() {
   const { server } = useStore()
   const [showModal, setShowModal]     = useState(false)
   const [showLog,   setShowLog]       = useState(false)
+  const [confirmClose, setConfirmClose] = useState(false)
 
   const { data: activeSession } = useActiveWorkSession(server)
   const closeSession = useCloseWorkSession()
@@ -54,7 +55,7 @@ export default function SessionControl() {
       {activeSession ? (
         <div className="flex items-center gap-1">
           <button
-            onClick={() => { setShowLog(v => !v); setShowModal(false) }}
+            onClick={() => { setShowLog(v => !v); setShowModal(false); setConfirmClose(false) }}
             className={cn(
               'flex items-center gap-1.5 px-2 py-1 rounded text-xs transition-colors',
               showLog ? 'bg-muted text-foreground' : 'text-muted-foreground hover:text-foreground hover:bg-muted'
@@ -65,13 +66,32 @@ export default function SessionControl() {
             <Clock size={13} />
             <span className="font-medium max-w-[140px] truncate">{activeSession.name}</span>
           </button>
-          <button
-            onClick={() => closeSession.mutateAsync({ id: activeSession.id })}
-            title="Close change set"
-            className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-          >
-            <X size={12} />
-          </button>
+          {confirmClose ? (
+            <div className="flex items-center gap-1 pl-1">
+              <span className="text-[10px] text-muted-foreground whitespace-nowrap">Stop tracking changes into this set?</span>
+              <button
+                onClick={async () => { await closeSession.mutateAsync({ id: activeSession.id }); setConfirmClose(false) }}
+                disabled={closeSession.isPending}
+                className="px-1.5 py-0.5 text-[10px] rounded bg-red-600 text-white hover:bg-red-500 disabled:opacity-40"
+              >
+                Close set
+              </button>
+              <button
+                onClick={() => setConfirmClose(false)}
+                className="px-1.5 py-0.5 text-[10px] rounded border border-border text-muted-foreground hover:bg-muted"
+              >
+                Cancel
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={() => setConfirmClose(true)}
+              title="Close change set — stops tracking new changes into it. Reopen later with Resume."
+              className="p-1 rounded text-muted-foreground hover:text-red-500 hover:bg-muted transition-colors"
+            >
+              <Check size={12} />
+            </button>
+          )}
         </div>
       ) : (
         <div className="flex items-center gap-1">
