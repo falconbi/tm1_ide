@@ -106,6 +106,34 @@ in the same `build_dimension` call.
 - You cannot create an element attribute on a zero-element dimension. Insert
   elements first.
 
+### Version dimension — calculating vs frozen
+
+A version has one of two roles at any time, carried on a `Version Type` string
+attribute:
+
+| `Version Type` | Behaviour | Members |
+|---|---|---|
+| `Calculated` | live, fully rule-driven, carries **its own complete set of assumptions** | `Budget` (while being built), `Forecast` (the working current model), scenarios (`Downside`, …) |
+| `Frozen` | fixed, static; carries no rule; holds only what a snapshot process wrote | `Actual`, budget snapshots (`Budget FINAL`), monthly forecast snapshots (`FCST 2026-01`, …) |
+
+Rules:
+
+- **A snapshot is a new Version member** — not a separate dimension or cube. Every
+  existing view, subset and report then works on it unchanged, and analysis stays
+  in the same cube. At month-end close, a TI copies all `Forecast` leaf cells into
+  a new frozen member; `Forecast` itself rolls forward.
+- **Assumption encapsulation** — no `Calculated` version's rules read another
+  version's assumptions or drivers. The **only** permitted cross-version read is
+  **prior-period `Actual`** (closed-month values, or a driver keyed on actual
+  history), and it comes in as a rule (`['Forecast'] = N: IF(closed, DB(…Actual…),
+  STET)`), never a copy.
+- **Cube rules target `Calculated` members**, so `Frozen` members are never
+  overwritten by a recalculation. Either scope the rule area to those members
+  explicitly, or guard on `ATTRS('<Version dim>', !version, 'Version Type')`.
+- Cross-version coupling (e.g. "`Forecast` open months = the `Working` version")
+  causes feeder traps and version-agnostic reference bugs, and makes a version
+  impossible to reason about alone. Don't.
+
 ---
 
 ## Rules and TI

@@ -145,6 +145,120 @@ rule-driven version).
 
 ---
 
+## Phase 3.5 — Version model correction
+
+**Why now:** the version design James uses on every model is *encapsulated*
+versions — each calculating version carries its own complete assumption set and
+reads no other version except prior-period `Actual`. WFP currently violates this:
+`Forecast` is a rule blending `Actual` + the **`Working`** version, which is what
+caused every Phase 2 feeder trap (the `['Working','FTE'] =>` cross-feeds, the
+version-agnostic reference-cube bug). Phase 4 adds a lot of new driver logic;
+doing it on the blend structure means redoing it. Fix the version model first.
+(Standing convention now in `BUILDING_MODELS.md` → "Version dimension —
+calculating vs frozen".)
+
+### Target `WFP Version`
+
+| Member | `Version Type` | Role |
+|---|---|---|
+| `Actual` | `Frozen`¹ | loaded actuals (modelled until the Phase 7 payroll feed) |
+| `Budget` | `Calculated` | built from **its own** assumptions; snapshot at lock |
+| `Forecast` | `Calculated` | the working current model; closed months = `Actual` via rule, open months calc from **its own** assumptions |
+| `Downside` | `Calculated` | a self-contained scenario — own assumptions, own input seed (not a copy of another version) |
+| `Budget FINAL` | `Frozen` | snapshot of `Budget` at lock |
+| `FCST 2026-01`, … | `Frozen` | monthly snapshot of `Forecast` at close |
+
+`Working` is **removed** — `Forecast` takes its role. `Version Type` values change
+from `Input`/`Calculated`/`Snapshot` to **`Calculated`/`Frozen`**.
+
+¹ *Decision D1 — see below. Interim option: keep `Actual` `Calculated` until Phase 7.*
+
+### Changes
+
+1. **`WFP Workforce Input` rule.** Replace the `['Forecast'] = N: … Working …`
+   blend with a **closed-month-only** override:
+
+   ```tm1
+   ['Forecast'] = N:
+     IF( ATTRN('WFP Period', !WFP Period, 'Period Index')
+           <= DB('WFP Assumptions', !WFP Period, 'Forecast',
+                  ATTRS('WFP Position', !WFP Position, 'Home Entity'), 'Actuals Cutoff Index'),
+         DB('WFP Workforce Input', !WFP Period, 'Actual', !WFP Position, !WFP Workforce Input Measure),
+         STET );
+   ```
+
+   Open months fall through to `Forecast`'s **seeded** input (see 3).
+
+2. **Feeders simplify.** The `['Working','FTE'] => … 'Forecast' …` cross-feeds go
+   away. Each `Calculated` version feeds its own downstream cells from its own
+   `FTE`; `Forecast` open-month `FTE` is now a real seeded input so `!WFP Version`
+   feeding works normally. Closed-month `Forecast` still needs a feeder from
+   `['Actual','FTE']`.
+
+3. **`WFP Seed Workforce Input`** loops **every `Calculated` version**, each
+   reading *that version's* `Merit Review Index` / `Merit Increase %` /
+   `Promotion Budget %` / `One-Time Amount` from `WFP Assumptions`. Today it only
+   writes `Working`. `Budget` seed stays flat (its assumptions are all zero), so
+   every Budget-scoped Phase 1/2/3 assertion is unchanged.
+
+4. **`WFP Assumptions`** gets a full independent row set per `Calculated` version
+   (`Budget` all-zero-uplift, `Forecast` = today's `Working` assumptions,
+   `Downside` = stress set). `WFP Seed Assumptions` extended accordingly.
+
+5. **`WFP Workforce Cost` / `WFP Headcount` rules** gain a guard so `Frozen`
+   versions are never recalculated:
+   `IF( ATTRS('WFP Version', !WFP Version, 'Version Type') @= 'Frozen', STET, … )`
+   — or scope the calc areas to `Calculated` members. Needed before snapshots
+   exist.
+
+6. **New `WFP Snapshot Version`** TI — params `pSource` (`Forecast`|`Budget`),
+   `pTarget`. Creates `pTarget` if absent, sets `Version Type='Frozen'`, copies
+   **all leaf cells** of `WFP Workforce Cost` + `WFP Headcount` + `WFP Workforce
+   Input` for `pSource` → `pTarget`, then the guard in (5) keeps it frozen.
+
+7. **`WFP Copy Version`** kept for spinning a scenario off a base; its
+   `Calculated`-target guard stays (snapshots go through `WFP Snapshot Version`,
+   which sets the type *after* copying).
+
+8. **Reference-cube smell (Decision D3).** `WFP FX Rates` / `WFP Pay Rates` carry
+   a `Version` dim but hold version-agnostic data — the engine reads them at
+   `!WFP Version`, so every new version needs a re-seed. Options: (a) drop
+   `Version` from both cubes and read at a fixed point; (b) keep `Version`, read
+   at a literal `'Actual'`; (c) leave as-is, re-seed on version add. Fold the
+   chosen fix in here while the version model is open.
+
+### Decisions needed
+
+| # | Decision | Options |
+|---|---|---|
+| **D1** | `Actual` = `Frozen` now, or stay `Calculated` until the Phase 7 payroll load? | Frozen-now needs a `WFP Freeze Actual` (calc once → write → freeze). Simpler: defer to P7, note it. |
+| **D2** | Snapshot copies full **output** (Cost + Headcount + Input) — confirm, vs input-only + leave calculating (not truly frozen). | Full output (per the "fixed, static, frozen" requirement). |
+| **D3** | Reference-cube `Version` dim — drop it (a), pin to a literal (b), or status quo (c). | (a) is cleanest; (b) least disruptive; needs your call. |
+| **D4** | Snapshot member naming — `FCST 2026-01` / `Budget FINAL`, or a different scheme? | |
+
+### Assertions
+
+- **Budget-scoped (≈19)** — unchanged; `Budget` stays `Calculated` with flat
+  assumptions.
+- **`Working`-scoped (`c33d544f`, `30d59fd0`, `314caff7`, `9d970581`, `339b190a`,
+  `100f1252`)** — re-point to `Forecast`.
+- **`Forecast`-scoped (`44897784`, `ab2b4816`, `6e0e7232`, `1c052eb7`)** — rebase:
+  closed-month still = `Actual`; open-month now = `Forecast`'s own calc (same
+  numbers if `Forecast` assumptions == old `Working` assumptions).
+- **`100f1252` (copy fidelity)** — replace with a `Downside` self-contained-scenario
+  check (a stressed assumption produces the expected flexed number).
+- **New:** `WFP Snapshot Version Forecast → FCST 2026-XX` reproduces a spot
+  `Forecast` Cost-to-Company, and that value does **not** move after a
+  subsequent assumption change.
+
+### Deploy
+
+One change set. Fresh-target run order gains `WFP Snapshot Version` (only run at
+close, not on a fresh build). Then deploy DEV → PROD through the pipeline as with
+Phase 2/3.
+
+---
+
 ## Decisions (2026-09-06)
 
 | # | Decision |
@@ -310,7 +424,7 @@ GBP 1.0, USD 0.79, NZD 0.47, Group 1.0.
   `WFP Reprocess Feeders`, `WFP Create Default Subsets`.
 - *(2026-09-07)* **Phase 2 — versions & assumptions built + verified, 24/24
   assertions** (change sets `0f907c3a` + `5b284d3f`, 14 object changes on
-  `TM1_Test_DEV`; not yet deployed). Delivered:
+  `TM1_Test_DEV`; deployed to `TM1_Test_PROD` 2026-09-07). Delivered:
   - **`WFP Assumptions` cube** (`Period × Version × Entity × WFP Assumptions
     Measure`) + `WFP Seed Assumptions` — Merit / Promotion Budget / Inflation /
     **Actuals Cutoff Index** / Vacancy Allowance / Standard FTE Hours / Bonus
@@ -340,8 +454,9 @@ GBP 1.0, USD 0.79, NZD 0.47, Group 1.0.
   `WFP Seed Assumptions`, `WFP Seed Workforce Input`, `WFP Reprocess Feeders`,
   `WFP Create Default Subsets`.
 - *(2026-09-07)* **Phase 3 — compensation actions built + verified, 30/30
-  assertions** (change set `07d03d7b`, 8 object changes on `TM1_Test_DEV`; not
-  yet deployed). Delivered:
+  assertions** (change set `07d03d7b`, 8 object changes on `TM1_Test_DEV`;
+  deployed to `TM1_Test_PROD` 2026-09-07, 30/30 verified on PROD, DEV+PROD
+  baselines advanced). Delivered:
   - **Merit + promotion uplift** — `WFP Seed Workforce Input` applies
     `Merit Increase %` + `Promotion Budget %` to the **Working** salary from
     `Merit Review Index` (a new Assumptions measure, seeded to 16 = 2026-04).
@@ -363,3 +478,6 @@ GBP 1.0, USD 0.79, NZD 0.47, Group 1.0.
     (`ab2b4816`, `6e0e7232`); `Compensation Detail` view added.
   - Deferred: individual promotions (per-position promo data), commission plans
     (a plan-parameter cube), equity/RSU.
+- *(2026-09-08)* **Phase 3.5 — version model correction spec written** (this doc,
+  §"Phase 3.5"). Encapsulated-version convention added to `BUILDING_MODELS.md`.
+  Build pending James's calls on D1–D4. Lands before Phase 4.
