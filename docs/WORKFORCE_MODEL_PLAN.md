@@ -81,9 +81,10 @@ they can't be cheaply retrofitted, so they go into Phase 1.
 
 Merit / promotion / bonus / commission / equity / one-time (P3); hiring plan,
 TBH positions, recruiting lead time, attrition, backfill, headcount bridge (P4);
-GL account mapping, P&L cube, split allocation, shared-services allocation,
-capitalised labour (P5); constant-currency view (P6); payroll actuals load,
-rate/FTE/mix variance, cost per FTE, sensitivity (P7); contractor day-rate cube,
+GL account mapping, capitalised labour, constant-currency view — **done, P5**
+(GL rollup via alternate hierarchy, not a separate P&L cube). Split allocation /
+shared-services allocation — deferred (P7, structural). Payroll actuals load,
+rate/FTE/mix variance, cost per FTE, sensitivity (P6); contractor day-rate cube,
 recruiting funnel, productivity ramp, rolling forecast (P8); manager / org
 hierarchy on Position; validation cube; rounding convention.
 
@@ -595,3 +596,52 @@ GBP 1.0, USD 0.79, NZD 0.47, Group 1.0.
     13 structural objects. Fixed by hand-applying the rules + views from the
     reviewed package, then re-seeding the PROD baseline. **Seed the baseline
     AFTER the deploy, never before.**
+
+- *(2026-09-08)* **P5 — reporting restatement, built + verified, 43/43 assertions**
+  (change set `42cfd59c`, 15-object package
+  `ai--wfp-p5---reporting-restatement--gl-rollup--capex-opex--constant-currency--2026-09-08`;
+  not yet deployed). No engine change — every headcount/cost number is unchanged.
+  Delivered:
+  - **GL account rollup** — alternate roll-up on `WFP Pay Component`:
+    `GL: Personnel P&L` → `GL: Salaries & Wages` (Base, One-Time) /
+    `GL: Bonus & Incentives` (Bonus) / `GL: Employer Payroll Taxes` /
+    `GL: Employer Pension` / `GL: Benefits`. Employee deductions, Gross/Net Pay and
+    the `_` helpers are outside the GL tree. New string attr **`GL Account`** on
+    `WFP Pay Component` (leaf codes 6000/6010/6100/6200/6300/6400, employee
+    7100/7200; GL nodes carry the range). `GL: Personnel P&L` ties to
+    `Total Compensation`.
+  - **Capitalised labour** — new numeric attr **`Capex %`** on `WFP Cost Centre`
+    (`0.18` for `CC-ENG-PLT` / `CC-ENG-APP` / `CC-PROD`, `0` elsewhere). New
+    measures **`Amount Capex`** / **`Amount Opex`** on `WFP Workforce Cost Measure`
+    (`Amount` kept). Rule: `Amount Capex = Amount × Capex %` for Cost-to-Company
+    leaves only (Base, Employer Payroll Tax, Employer Pension, Benefits — *not*
+    Bonus / One-Time); `Amount Opex = Amount − Amount Capex`. Fires only at
+    all-leaf intersections; consolidations and Reporting currency roll up. Budget
+    2026-06: Group `Amount Capex` = 10,545 (R&D only), `Capex + Opex = Amount` at
+    every level.
+  - **Constant currency** — new `WFP Currency` member **`Reporting @ Budget FX`**;
+    same translation as `Reporting` but the FX rate is always taken from `Budget`,
+    so Forecast/Downside are comparable FX-neutral. `['Reporting']` and the new
+    rule are now **measure-aware** (`!WFP Workforce Cost Measure` instead of
+    hard-coded `'Amount'`) so capex/opex translate too — existing FX assertions
+    unchanged. With today's data (scenario FX = Budget FX, no Actual FX) it equals
+    `Reporting`; it diverges once real Actual FX or a scenario FX shock lands.
+  - **`WFP Snapshot Version`** — Epilog now copies `Amount` / `Amount Capex` /
+    `Amount Opex` at salary currency, `Reporting` and `Reporting @ Budget FX`.
+  - **`WFP Seed Dimension Attributes`** — two new blocks seed `GL Account` and
+    `Capex %`.
+  - **Views** — `GL P&L` (GL rollup × 2026 quarters+FY) and `Capitalised Labour`
+    (cost centres × Amount/Opex/Capex). New subset `WFP Pay Component / GL P&L`.
+  - **5 new assertions** (`P5` tag): GL rollup tie, capex+opex reconcile, capex on
+    R&D, no capex on S&M, constant-currency wired.
+  - **Rule-ordering lesson** — first build put the capex/opex rules *after* the
+    component rules; TM1 uses the *first* matching area, so every measure just
+    inherited the component value. Moved them above, gated to all-leaf, `CONTINUE`
+    otherwise. Recorded in `BUILDING_MODELS.md`.
+  - **Pipeline bug found** — the change-set subset log keys on subset *name* only,
+    not (dimension, name). Editing `Default` on `WFP Currency` and
+    `WFP Pay Component` didn't register (a `Default` for another dim was already
+    logged), so those two aren't in the package. **Post-deploy step:** run
+    `WFP Create Default Subsets` on the target (rebuilds every `Default` with all
+    members, incl. the new ones). Full post-deploy order: `WFP Seed Dimension
+    Attributes` → `WFP Create Default Subsets` → `WFP Reprocess Feeders`.

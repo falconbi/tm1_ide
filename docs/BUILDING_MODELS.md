@@ -106,7 +106,7 @@ in the same `build_dimension` call.
 - You cannot create an element attribute on a zero-element dimension. Insert
   elements first.
 
-### Version dimension — calculating vs frozen
+### Version dimension — calculating vs static
 
 A version has one of two roles at any time, carried on a `Version Type` string
 attribute:
@@ -114,22 +114,25 @@ attribute:
 | `Version Type` | Behaviour | Members |
 |---|---|---|
 | `Calculated` | live, fully rule-driven, carries **its own complete set of assumptions** | `Budget` (while being built), `Forecast` (the working current model), scenarios (`Downside`, …) |
-| `Frozen` | fixed, static; carries no rule; holds only what a snapshot process wrote | `Actual`, budget snapshots (`Budget FINAL`), monthly forecast snapshots (`FCST 2026-01`, …) |
+| `Static` | fixed; carries no rule; holds only what a snapshot process wrote | `Actual`, budget snapshots (`Budget FINAL`), monthly forecast snapshots (`FCST 2026-01`, …) |
+
+The static members sit under one consolidation parent (`Non-Calculating`) so a
+single rule guard can hold them — see the non-calculating landmine below.
 
 Rules:
 
 - **A snapshot is a new Version member** — not a separate dimension or cube. Every
   existing view, subset and report then works on it unchanged, and analysis stays
   in the same cube. At month-end close, a TI copies all `Forecast` leaf cells into
-  a new frozen member; `Forecast` itself rolls forward.
+  a new static member; `Forecast` itself rolls forward.
 - **Assumption encapsulation** — no `Calculated` version's rules read another
   version's assumptions or drivers. The **only** permitted cross-version read is
   **prior-period `Actual`** (closed-month values, or a driver keyed on actual
   history), and it comes in as a rule (`['Forecast'] = N: IF(closed, DB(…Actual…),
   STET)`), never a copy.
-- **Cube rules target `Calculated` members**, so `Frozen` members are never
+- **Cube rules target `Calculated` members**, so `Static` members are never
   overwritten by a recalculation. Either scope the rule area to those members
-  explicitly, or guard on `ATTRS('<Version dim>', !version, 'Version Type')`.
+  explicitly, or guard on the `Non-Calculating` parent (see the landmine below).
 - Cross-version coupling (e.g. "`Forecast` open months = the `Working` version")
   causes feeder traps and version-agnostic reference bugs, and makes a version
   impossible to reason about alone. Don't.
@@ -229,6 +232,20 @@ iterations:
 - **A parse-a-delimited-string loop (`WHILE(SCAN('~', v) > 1)`) skips the LAST
   record** if it has no trailing `~`. Always end the string with the delimiter.
   `WFP Load Positions` silently dropped its final roster row for months this way.
+- **First matching rule wins, not last.** When two rule areas overlap on a cell,
+  TM1 uses the one defined *earlier* in the file. So a broad component rule
+  (`['Base'] = N: …`, area = one Pay Component element, every measure) beats a
+  later measure rule (`['Amount Capex'] = N: …`, area = one Measure element, every
+  pay component) on the cell they share — the new measure just inherits the
+  component value. Fix: put the narrower/override rule **above** the broad one,
+  and have it `CONTINUE` for the cells it doesn't own. Verify by reading one
+  overlapping cell back — the symptom is "every measure returns the same number".
+- **A measure-only rule area (`['<measure>'] = N:`) fires at consolidated cells of
+  the *other* dimensions too**, silently replacing their natural roll-up. A
+  per-leaf calc (capex = amount × a cost-centre rate) must gate on
+  `ELLEV('<dim>', !<dim>) = 0` for every other dimension and `CONTINUE` otherwise,
+  or the consolidated totals come back wrong (e.g. capitalised only at the leaf,
+  zero at every parent).
 
 ---
 

@@ -474,6 +474,66 @@
         "hiring"
       ],
       "created": "2026-09-08T07:49:36.481Z"
+    },
+    {
+      "id": "dd61fa28",
+      "description": "P5 GL rollup ties to leaf sum: GL: Personnel P&L = Total Compensation (Budget, 2026-06, Group, Reporting)",
+      "mdx": "SELECT { [WFP Pay Component].[GL: Personnel P&L] } ON COLUMNS FROM [WFP Workforce Cost] WHERE ( [WFP Period].[2026-06], [WFP Version].[Budget], [WFP Entity].[Group], [WFP Cost Centre].[Total Cost Centre], [WFP Currency].[Reporting], [WFP Position].[Total Positions], [WFP Workforce Cost Measure].[Amount] )",
+      "expected": 153463.925,
+      "tolerance": 0.01,
+      "tags": [
+        "P5",
+        "wfp"
+      ],
+      "created": "2026-09-08T11:22:58.362Z"
+    },
+    {
+      "id": "22903e0c",
+      "description": "P5 capex + opex reconciles to Amount: Total Compensation Capex+Opex = Amount (Budget, 2026-06, Group, Reporting)",
+      "mdx": "SELECT { [WFP Workforce Cost Measure].[Amount Capex], [WFP Workforce Cost Measure].[Amount Opex] } ON COLUMNS FROM [WFP Workforce Cost] WHERE ( [WFP Period].[2026-06], [WFP Version].[Budget], [WFP Entity].[Group], [WFP Cost Centre].[Total Cost Centre], [WFP Pay Component].[Total Compensation], [WFP Currency].[Reporting], [WFP Position].[Total Positions] )",
+      "expected": 153463.925,
+      "tolerance": 0.01,
+      "tags": [
+        "P5",
+        "wfp"
+      ],
+      "created": "2026-09-08T11:23:02.460Z"
+    },
+    {
+      "id": "3d6ae764",
+      "description": "P5 capitalised labour lands on R&D only: R&D Cost to Company Amount Capex = 18% of R&D CtC (Budget, 2026-06, Group, Reporting)",
+      "mdx": "SELECT { [WFP Cost Centre].[R&D] } ON COLUMNS FROM [WFP Workforce Cost] WHERE ( [WFP Period].[2026-06], [WFP Version].[Budget], [WFP Entity].[Group], [WFP Pay Component].[Cost to Company], [WFP Currency].[Reporting], [WFP Position].[Total Positions], [WFP Workforce Cost Measure].[Amount Capex] )",
+      "expected": 10545.0285,
+      "tolerance": 0.01,
+      "tags": [
+        "P5",
+        "wfp"
+      ],
+      "created": "2026-09-08T11:23:06.237Z"
+    },
+    {
+      "id": "74e22e40",
+      "description": "P5 no capex outside R&D: S&M Cost to Company Amount Capex = 0 (Budget, 2026-06, Group, Reporting)",
+      "mdx": "SELECT { [WFP Cost Centre].[S&M] } ON COLUMNS FROM [WFP Workforce Cost] WHERE ( [WFP Period].[2026-06], [WFP Version].[Budget], [WFP Entity].[Group], [WFP Pay Component].[Cost to Company], [WFP Currency].[Reporting], [WFP Position].[Total Positions], [WFP Workforce Cost Measure].[Amount Capex] )",
+      "expected": 0,
+      "tolerance": 0.01,
+      "tags": [
+        "P5",
+        "wfp"
+      ],
+      "created": "2026-09-08T11:23:09.818Z"
+    },
+    {
+      "id": "486ea706",
+      "description": "P5 constant-currency lens wired: Forecast Total Compensation Reporting @ Budget FX (Budget FX today = same as Reporting) (2026-06, Group)",
+      "mdx": "SELECT { [WFP Currency].[Reporting @ Budget FX] } ON COLUMNS FROM [WFP Workforce Cost] WHERE ( [WFP Period].[2026-06], [WFP Version].[Forecast], [WFP Entity].[Group], [WFP Cost Centre].[Total Cost Centre], [WFP Pay Component].[Total Compensation], [WFP Position].[Total Positions], [WFP Workforce Cost Measure].[Amount] )",
+      "expected": 191072.8505,
+      "tolerance": 0.01,
+      "tags": [
+        "P5",
+        "wfp"
+      ],
+      "created": "2026-09-08T11:23:14.125Z"
     }
   ]
 }
