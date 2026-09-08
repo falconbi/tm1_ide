@@ -85,9 +85,9 @@ GL account mapping, capitalised labour, constant-currency view — **done, P5**
 (GL rollup via alternate hierarchy, not a separate P&L cube). Payroll actuals
 load + variance (Act vs Bud / Fcst vs Bud / FX-vs-operational / YTD hierarchy) —
 **done, P6**. Split allocation / shared-services allocation — deferred (P7,
-structural). Bespoke `WFP Snapshot Version` rebuild + forecast-accuracy variance
-(`Act vs Prior Fcst`) — **P6b**. 3-way rate/FTE/mix decomposition, sensitivity —
-P6b/later. Contractor day-rate cube, recruiting funnel, productivity ramp,
+structural). P6b = scar-tissue removal (done). Bespoke `WFP Snapshot Version`
+rebuild + forecast-accuracy variance (`Act vs Prior Fcst`), 3-way rate/FTE/mix
+decomposition, sensitivity — **P6c / later**. Contractor day-rate cube, recruiting funnel, productivity ramp,
 rolling forecast (P8); manager / org hierarchy on Position; validation cube;
 rounding convention; stock-measure period-end aggregation over time rollups.
 
@@ -714,3 +714,34 @@ GBP 1.0, USD 0.79, NZD 0.47, Group 1.0.
     Feeders`. Fresh-target run order gains `WFP Build YTD Hierarchy` (after the
     period dim is built) and `WFP Load Actuals` (replaces the synthetic Actual
     seed).
+
+- *(2026-09-09)* **P6 deployed to `TM1_Test_PROD`, 51/51.** First run of the
+  hardened pipeline (see `DEPLOY_PIPELINE_HARDENING.md`): 30 objects → deployer
+  auto-ran `WFP Build YTD Hierarchy` + `WFP Reprocess Feeders` → verify → both
+  baselines auto-seeded. Attribute values (`Capex %`, `Actuals Closed`, Period
+  Index) rode along as packaged data. Only manual step: `WFP Load Actuals` on
+  PROD (a data load, not a deploy concern), then 51/51.
+
+- *(2026-09-09)* **P6b — scar-tissue removed.** With the pipeline carrying the
+  state, three processes that only existed to reconstruct it on a target are
+  gone:
+  - **`WFP Seed Dimension Attributes` — deleted.** Attribute values now ship as
+    packaged data and are replayed on every deploy.
+  - **`WFP Build YTD Hierarchy` — deleted.** The packaged `WFP Period` dimension
+    carries the full YTD alternate hierarchy (93 elements); the deployer verifies
+    the element count on the target.
+  - **`WFP Create Default Subsets` — kept, reclassified GREENFIELD-ONLY.** The
+    change-log now keys subsets by dimension + name, so incremental `Default`
+    edits ship as first-class objects. This process is only for bootstrapping a
+    brand-new server (Default for all 22 dims at once).
+  Deleted from DEV + PROD; both baselines re-seeded, aligned. `deploy-hooks.json`
+  post-deploy list is now just `WFP Reprocess Feeders`.
+
+  **Fresh-target run order** (all model structure + rules + attribute values +
+  the touched subsets/views arrive via the deploy package; these are the seeds
+  the package can't carry):
+  `WFP Create Default Subsets` → `WFP Seed Assumptions` → `WFP Seed FX Rates` →
+  `WFP Seed Pay Rates` → `WFP Seed Tax Bands` → `WFP Load Positions` →
+  `WFP Seed Hiring Plan` → `WFP Seed Workforce Input` → `WFP Load Actuals` →
+  `WFP Reprocess Feeders`. `WFP Snapshot Version` / `WFP Copy Version` /
+  `WFP Rebuild Reporting Subsets` run on demand, not at bootstrap.
