@@ -915,15 +915,20 @@ return (d.value ?? [])
         }
         // Try expanding Subset within each placement collection (most reliable)
         try {
-            const [rowsRes, colsRes, titlesRes] = await Promise.all([
+            const [rowsRes, colsRes, titlesRes, base] = await Promise.all([
                 this.get(`Cubes('${cube}')/Views('${name}')/Rows?%24expand=Subset`),
                 this.get(`Cubes('${cube}')/Views('${name}')/Columns?%24expand=Subset`),
                 this.get(`Cubes('${cube}')/Views('${name}')/Titles?%24expand=Subset`),
+                this.getView(cube, name).catch(() => null),
             ])
             const rows    = getSubset(rowsRes.value)
             const columns = getSubset(colsRes.value)
             const titles  = getSubset(titlesRes.value)
-            return { _rows: rows, _columns: columns, _titles: titles, '@odata.type': 'NativeView' }
+            return {
+                _rows: rows, _columns: columns, _titles: titles, '@odata.type': 'NativeView',
+                SuppressEmptyRows:    base?.SuppressEmptyRows    ?? false,
+                SuppressEmptyColumns: base?.SuppressEmptyColumns ?? false,
+            }
         } catch (e) {
             console.log('[getViewWithSubsets] placement expand failed:', e.message)
         }
@@ -1031,7 +1036,7 @@ return (d.value ?? [])
 
     _esc(s) { return String(s).replace(/'/g, "''") }
 
-    async saveNativeView(cube, name, { rows, columns, titles }) {
+    async saveNativeView(cube, name, { rows, columns, titles, suppressEmptyRows, suppressEmptyColumns }) {
         const esc = s => String(s).replace(/'/g, "''")
         const hierBind = dim => `Dimensions('${esc(dim)}')/Hierarchies('${esc(dim)}')`
 
@@ -1091,6 +1096,8 @@ return (d.value ?? [])
         const postBody = {
             '@odata.type': '#ibm.tm1.api.v1.NativeView',
             Name: name,
+            SuppressEmptyRows:    !!suppressEmptyRows,
+            SuppressEmptyColumns: !!suppressEmptyColumns,
             ...patchBody,
         }
         // Delete existing view (regardless of type) then create fresh native view

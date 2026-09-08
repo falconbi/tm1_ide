@@ -1164,6 +1164,20 @@ export default function ViewEditor({ tab }) {
     const axesRef = useRef(axes); axesRef.current = axes
     useEffect(() => () => patchTab(tab.id, { savedAxes: axesRef.current }), [])
 
+    // Totals position — per-user IDE preference (classic native views have no
+    // "totals position" property, so this can't ride on the TM1 view itself)
+    const totalsPrefKey = `tm1-viewprefs:${tab.server}::${tab.cube}::${tab.viewName ?? '__new__'}`
+    useEffect(() => {
+        try {
+            const saved = JSON.parse(localStorage.getItem(totalsPrefKey) ?? '{}')
+            if (saved.totalsPosition)    setTotalsPosition(saved.totalsPosition)
+            if (saved.colTotalsPosition) setColTotalsPosition(saved.colTotalsPosition)
+        } catch {}
+    }, [totalsPrefKey])
+    useEffect(() => {
+        try { localStorage.setItem(totalsPrefKey, JSON.stringify({ totalsPosition, colTotalsPosition })) } catch {}
+    }, [totalsPrefKey, totalsPosition, colTotalsPosition])
+
     // MDX editor state — use savedMdx to survive remounts
     const [mdx, setMdx] = useState(tab.savedMdx ?? tab.initialMdx ?? '')
     const mdxRef = useRef(mdx); mdxRef.current = mdx
@@ -1361,6 +1375,13 @@ export default function ViewEditor({ tab }) {
                         cols  = nativeConfig.columns.map(c => make(c.dimension, c.subset, null, c.members ?? null, c.memberSet ?? null))
                         rows  = nativeConfig.rows.map(r => make(r.dimension, r.subset, null, r.members ?? null, r.memberSet ?? null))
                         pages = nativeConfig.titles.map(t => make(t.dimension, null, t.member))
+                        // Restore persisted suppression (real SuppressEmptyRows/Columns on the native view)
+                        setSuppressZeros(
+                            nativeConfig.suppressEmptyRows && nativeConfig.suppressEmptyColumns ? 'all'
+                            : nativeConfig.suppressEmptyRows    ? 'rows'
+                            : nativeConfig.suppressEmptyColumns ? 'columns'
+                            : 'none'
+                        )
                     } else {
                         // Fallback to cellset axes
                         cols  = (axisConfig.find(a => a.ordinal === 0)?.dimensions ?? []).map(d => make(d))
@@ -1589,10 +1610,14 @@ export default function ViewEditor({ tab }) {
 
     const buildSavePayload = useCallback(() => {
         if (mode === 'visual') {
-            return { nativeAxes: { rows: axes.rows, columns: axes.columns, titles: axes.pages } }
+            return { nativeAxes: {
+                rows: axes.rows, columns: axes.columns, titles: axes.pages,
+                suppressEmptyRows:    suppressZeros === 'rows'    || suppressZeros === 'all',
+                suppressEmptyColumns: suppressZeros === 'columns' || suppressZeros === 'all',
+            } }
         }
         return { mdx: mdx }
-    }, [mode, mdx, axes])
+    }, [mode, mdx, axes, suppressZeros])
 
     const executeSave = useCallback((name) => {
         if (isOriginallyNative && mode === 'mdx') {

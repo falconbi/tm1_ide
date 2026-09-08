@@ -1554,6 +1554,8 @@ app.get('/api/view/axes', async (req, res) => {
             rows:    (viewDef.Rows ?? []).length > 0 ? (viewDef.Rows ?? []).map(extractAxis) : (viewDef._rows ?? []),
             columns: (viewDef.Columns ?? []).length > 0 ? (viewDef.Columns ?? []).map(extractAxis) : (viewDef._columns ?? []),
             titles:  (viewDef.Titles ?? []).length > 0 ? (viewDef.Titles ?? []).map(extractTitle) : (viewDef._titles ?? []),
+            suppressEmptyRows:    !!viewDef.SuppressEmptyRows,
+            suppressEmptyColumns: !!viewDef.SuppressEmptyColumns,
         } : null
 
         // Rebuild nativeConfig using axisConfig (cellset) for correct axis placement
@@ -1575,6 +1577,8 @@ app.get('/api/view/axes', async (req, res) => {
                     dimension: t.dimension,
                     member:    t.member ?? rawNative.titles?.find(n => n.dimension === t.dimension)?.member ?? null,
                 })),
+                suppressEmptyRows:    rawNative.suppressEmptyRows,
+                suppressEmptyColumns: rawNative.suppressEmptyColumns,
             }
         }
 

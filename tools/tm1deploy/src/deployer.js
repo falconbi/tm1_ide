@@ -57,7 +57,10 @@ async function deployView(obj, packageDir, client) {
         // saveView PATCH-then-fallback-POST internally
         await client.saveView(cube, name, data.MDX)
     } else if (data.Type === 'Native') {
-        await client.saveNativeView(cube, name, { rows: data.rows, columns: data.columns, titles: data.titles })
+        await client.saveNativeView(cube, name, {
+            rows: data.rows, columns: data.columns, titles: data.titles,
+            suppressEmptyRows: data.suppressEmptyRows, suppressEmptyColumns: data.suppressEmptyColumns,
+        })
     }
 }
 

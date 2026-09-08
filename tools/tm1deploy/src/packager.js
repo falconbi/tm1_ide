@@ -123,6 +123,8 @@ async function fetchView(cube, name, client) {
         rows:    vs._rows    ?? [],
         columns: vs._columns ?? [],
         titles,
+        suppressEmptyRows:    !!vs.SuppressEmptyRows,
+        suppressEmptyColumns: !!vs.SuppressEmptyColumns,
         _subsetRefs: [...refs].map(r => JSON.parse(r)),
     }
 }
