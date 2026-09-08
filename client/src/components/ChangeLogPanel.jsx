@@ -244,6 +244,9 @@ export default function ChangeLogPanel({ server, onClose, direction = 'up' }) {
   const { openTab } = useStore()
   const { data: sessions = [], isFetching } = useWorkSessions(server)
 
+  // Opening a deploy/release tab should dismiss this panel — it's done its job.
+  const openTabAndClose = t => { openTab(t); if (t?.type === 'deploy') onClose?.() }
+
   const posClass = direction === 'down'
     ? 'absolute top-full right-0 mt-1'
     : 'absolute bottom-6 right-0'
@@ -259,7 +262,7 @@ export default function ChangeLogPanel({ server, onClose, direction = 'up' }) {
             {isFetching && <Loader2 size={10} className="animate-spin text-muted-foreground" />}
           </div>
           <button
-            onClick={() => openTab({ id: `deploy:${server}:release`, type: 'deploy', label: `Release: ${server}`, server, release: true })}
+            onClick={() => openTabAndClose({ id: `deploy:${server}:release`, type: 'deploy', label: `Release: ${server}`, server, release: true })}
             title="Deploy everything changed since the baseline was seeded"
             className="flex items-center gap-1 px-2 py-1 rounded text-[10px] font-medium text-emerald-500 hover:text-emerald-400 hover:bg-muted transition-colors mr-1"
           >
@@ -282,7 +285,7 @@ export default function ChangeLogPanel({ server, onClose, direction = 'up' }) {
               key={s.id}
               session={s}
               server={server}
-              openTab={openTab}
+              openTab={openTabAndClose}
             />
           ))}
         </div>
