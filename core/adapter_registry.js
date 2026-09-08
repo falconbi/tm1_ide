@@ -23,11 +23,13 @@ function _loadConfig() {
 }
 
 // ── TLS ───────────────────────────────────────────────────────────────────────
-// Per-server TLS policy from servers.json: default verifies (system trust store
-// + NODE_EXTRA_CA_CERTS); "tlsCaFile" adds a specific CA/cert; "tlsInsecure": true
-// disables verification (explicit opt-out for a self-signed lab box only).
+// Per-server TLS policy from servers.json:
+//   "tls": "verify" (default) | "chain-only" | "insecure"
+//   "tlsCaFile": <path>  — extra CA/cert to trust (verify + chain-only)
+// Legacy "tlsInsecure": true still maps to "insecure".
 function _tlsFor(cfg) {
-    return { insecure: cfg?.tlsInsecure === true, caFile: cfg?.tlsCaFile ?? null }
+    const mode = cfg?.tls ?? (cfg?.tlsInsecure === true ? 'insecure' : 'verify')
+    return { mode, caFile: cfg?.tlsCaFile ?? null }
 }
 
 // ── Admin host URL resolution ─────────────────────────────────────────────────

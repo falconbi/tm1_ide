@@ -348,8 +348,8 @@ Restart the TM1 server after adding it. You can use any free port — `5895` is 
 | `username` / `password` | A TM1 admin account (must be in the `ADMIN` group on the TM1 server) |
 | `loginServer` | The name of the TM1 server that the IDE uses to authenticate users — must be one of the names in `servers` |
 | `servers` | The names of all your TM1 servers as they appear in Cognos Configuration — these are what show up in the IDE's server selector |
-| `tlsCaFile` | *(optional)* Path to a CA / cert PEM file to trust for HTTPS connections to this TM1 server — for internal enterprise-CA or self-signed certs. The system trust store and `NODE_EXTRA_CA_CERTS` are always honoured; this adds to them. |
-| `tlsInsecure` | *(optional, discouraged)* `true` disables TLS certificate verification for this server entirely. Only for a throwaway self-signed lab box — prefer `tlsCaFile`. Logs a warning on startup. |
+| `tls` | *(optional)* TLS mode for HTTPS connections: `"verify"` (default — CA chain + hostname match), `"chain-only"` (verify the CA chain, skip the hostname match — for the stock IBM TM1 cert, which has no server name), or `"insecure"` (no verification — lab only, logs a warning). Covers both the Admin Server discovery call and the resolved model-server connections. |
+| `tlsCaFile` | *(optional)* Path to a CA / cert PEM file to add to the trust store — for an internal enterprise CA or a self-signed TM1 cert. Applies to `"verify"` and `"chain-only"`. The system trust store and `NODE_EXTRA_CA_CERTS` are always honoured too. |
 
 Create a minimal `.env` (only the port is needed):
 

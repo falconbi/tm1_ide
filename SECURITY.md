@@ -74,10 +74,12 @@ Because the tool is local, the protections are lightweight and targeted:
   every request. If that connection is plain **HTTP** over a network (e.g. a lab
   TM1 server on the LAN), those credentials cross the wire base64-encoded, not
   encrypted — only putting TLS on the TM1 server fixes that. When the TM1 server
-  **does** use HTTPS, the adapter verifies its certificate against the system
-  trust store plus `NODE_EXTRA_CA_CERTS`; use `tlsCaFile` in `servers.json` to
-  trust an internal-CA or self-signed cert, or `tlsInsecure: true` to skip
-  verification for a throwaway lab box (logged, discouraged).
+  **does** use HTTPS, the `tls` key in `servers.json` sets verification:
+  `"verify"` (default — CA chain + hostname), `"chain-only"` (CA chain only, for
+  the stock IBM cert which has no server name), or `"insecure"` (none — lab
+  only). `tlsCaFile` adds an internal-CA or self-signed cert to the trust store.
+  The setting covers the Admin Server discovery call and every resolved
+  model-server connection.
 
 - **Deploy pushes are a human step.** The deploy pipeline packages changes; a
   person deploys them. The "approval" record is a local log, not an access
