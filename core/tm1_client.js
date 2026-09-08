@@ -895,7 +895,7 @@ return (d.value ?? [])
                 // Handles: {[Dim].[Hier]...} and TM1SubsetAll([Dim].[Hier]...)
                 const dimFromExpr = expr ? (expr.match(/\[([^\]]+)\]/)?.[1] ?? null) : null
                 const hasNamedSubset = !!(p.SubsetName ?? (p.Subset?.Name || null))
-                return {
+                const axis = {
                     dimension: p.DimensionName ?? p.Name ?? dimFromExpr,
                     subset:    p.SubsetName ?? (p.Subset?.Name || null),
                     memberSet: !hasNamedSubset && /^TM1SubsetAll\(/i.test(expr ?? '') ? 'all'
@@ -903,6 +903,14 @@ return (d.value ?? [])
                              : null,
                     members:   !hasNamedSubset ? this._extractMembersFromExpression(expr) : null,
                 }
+                // An axis that resolved to nothing at all — no named subset, no
+                // memberSet, no member list, and (title check) no single member —
+                // means the read failed, NOT "all members". Flag it so the
+                // packager refuses to ship a view it couldn't read.
+                if (!axis.subset && !axis.memberSet && !(axis.members?.length) && !p.Members?.length && !p.Subset?.Expression) {
+                    axis._unresolved = true
+                }
+                return axis
             })
         }
         // Try expanding Subset within each placement collection (most reliable)

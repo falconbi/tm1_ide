@@ -98,6 +98,9 @@ function getAllSessions(limit = 200) {
     `).all(limit)
 }
 
+// `detail` is part of the object identity: it holds the dimension for a subset,
+// the cube for a view. Without it, "Default" on two dimensions collapse to one
+// entry and the packager only ever sees one of them.
 function getSessionLog(sessionId) {
     return db.prepare(`
         SELECT * FROM log_entries
@@ -105,7 +108,7 @@ function getSessionLog(sessionId) {
         AND id IN (
             SELECT MAX(id) FROM log_entries
             WHERE session_id = ?
-            GROUP BY object_type, object_name, action
+            GROUP BY object_type, object_name, action, IFNULL(detail, '')
         )
         ORDER BY timestamp ASC
     `).all(sessionId, sessionId).map(parseEntry)
@@ -123,7 +126,7 @@ function getEntriesSince(server, sinceIso) {
         AND id IN (
             SELECT MAX(id) FROM log_entries
             WHERE server = ? AND timestamp >= ?
-            GROUP BY object_type, object_name, action
+            GROUP BY object_type, object_name, action, IFNULL(detail, '')
         )
         ORDER BY timestamp ASC
     `).all(server, since, server, since).map(parseEntry)
@@ -149,7 +152,7 @@ function getEntriesSinceId(server, sinceId) {
         AND id IN (
             SELECT MAX(id) FROM log_entries
             WHERE server = ? AND id > ?
-            GROUP BY object_type, object_name, action
+            GROUP BY object_type, object_name, action, IFNULL(detail, '')
         )
         ORDER BY id ASC
     `).all(server, since, server, since).map(parseEntry)
@@ -197,8 +200,9 @@ function writeLog({ server, action, objectType, objectName, detail, beforeState,
         const existing = db.prepare(`
             SELECT id FROM log_entries
             WHERE session_id = ? AND object_type = ? AND object_name = ? AND action = ?
+              AND IFNULL(detail, '') = IFNULL(?, '')
             ORDER BY timestamp DESC LIMIT 1
-        `).get(session.id, objectType, objectName, action)
+        `).get(session.id, objectType, objectName, action, detail ?? null)
 
         if (existing) {
             db.prepare(`UPDATE log_entries SET after_state = ?, timestamp = ? WHERE id = ?`)

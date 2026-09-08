@@ -61,7 +61,7 @@ async function deployView(obj, packageDir, client) {
     }
 }
 
-async function deployDimension(obj, packageDir, client) {
+async function deployDimension(obj, packageDir, client, report = {}) {
     const data = JSON.parse(fs.readFileSync(path.join(packageDir, obj.file), 'utf8'))
     const name = obj.name
 
@@ -112,6 +112,20 @@ async function deployDimension(obj, packageDir, client) {
         }
     }
 
+    // Structural readback — the package IS the declared structure, so confirm the
+    // target now matches it. A shortfall means an add silently failed (or the
+    // v11 per-POST loop choked on a large hierarchy). Recorded loudly, not a
+    // console.warn — this is how you find out the package's dimension snapshot
+    // isn't being fully applied without a per-model rebuild process.
+    if ((data.elements ?? []).length) {
+        const pkgEl = (data.elements ?? []).length
+        const tgtEl = (await client.getElements(name).catch(() => [])).length
+        if (tgtEl < pkgEl) {
+            report.structure_gaps = report.structure_gaps ?? []
+            report.structure_gaps.push(`${name}: package has ${pkgEl} elements, target has ${tgtEl} after deploy`)
+        }
+    }
+
     // Attribute definitions
     if (data.attributes?.length) {
         for (const attr of data.attributes) {
@@ -144,26 +158,31 @@ async function deployDimension(obj, packageDir, client) {
         }
     }
 
-    // Attribute VALUES — replayed ONLY when this deploy created the dimension.
-    // On a redeploy the target's own seed TIs own these (e.g. WFP Load Positions
-    // maintains WFP Position attributes), so replaying would clobber them.
-    // Definitions that a dimension needs but were built declaratively (Period
-    // index, Job Family Pay Index, measure-dim Format values) reach a new target
-    // this way instead of needing a per-model seed process.
-    if (!exists && data.attribute_values && Object.keys(data.attribute_values).length) {
+    // Attribute VALUES ride along as packaged data and are replayed on EVERY
+    // deploy — the package is the declared state. Scope: only the (element,
+    // attribute) pairs the package captured; attributes the package doesn't know
+    // about are left alone. This is what lets a model drop its "seed the
+    // attribute values" workaround process.
+    if (data.attribute_values && Object.keys(data.attribute_values).length) {
         const attrCube = `}ElementAttributes_${name}`
         const updates = Object.entries(data.attribute_values).flatMap(([element, attrs]) =>
-            Object.entries(attrs).map(([attrName, value]) => ({
-                dimElemPairs: [
-                    { dim: name,     element },
-                    { dim: attrCube, element: attrName },
-                ],
-                value,
-            }))
+            Object.entries(attrs)
+                .filter(([, value]) => value !== null && value !== undefined && value !== '')
+                .map(([attrName, value]) => ({
+                    dimElemPairs: [
+                        { dim: name,     element },
+                        { dim: attrCube, element: attrName },
+                    ],
+                    value,
+                }))
         )
         if (updates.length) {
+            report.attribute_values = report.attribute_values ?? {}
+            report.attribute_values[name] = updates.length
             await client.updateCells(attrCube, updates).catch(e => {
                 console.warn(`  [warn] attribute values for ${name}: ${e.message}`)
+                report.attribute_value_errors = report.attribute_value_errors ?? {}
+                report.attribute_value_errors[name] = e.message
             })
         }
     }
@@ -296,7 +315,7 @@ async function deploy(packageDir, targetServer, options = {}, ideToken) {
                 case 'process':       await deployProcess(obj, packageDir, targetClient);       break
                 case 'subset':        await deploySubset(obj, packageDir, targetClient);        break
                 case 'view':          await deployView(obj, packageDir, targetClient);          break
-                case 'dimension':     await deployDimension(obj, packageDir, targetClient);     break
+                case 'dimension':     await deployDimension(obj, packageDir, targetClient, report); break
                 case 'cube':          await deployCube(obj, packageDir, targetClient);          break
                 case 'picklist-cube': await deployPicklistCube(obj, packageDir, targetClient);  break
                 case 'attribute':     await deployAttribute(obj, packageDir, targetClient);     break
@@ -312,11 +331,35 @@ async function deploy(packageDir, targetServer, options = {}, ideToken) {
     report.deployed = report.results.filter(r => r.ok).length
     report.failed   = report.results.filter(r => !r.ok).length
 
+    // ── Post-deploy steps ─────────────────────────────────────────────────────
+    // Structural finishers the package declares (manifest._meta.post_deploy) —
+    // reprocess feeders, and anything else that "finishes making the model work
+    // on this server". Run on the TARGET, in order, BEFORE verification so the
+    // assertions see a fully-built model. This is what replaces the manual
+    // "remember to run these 5 processes after every deploy" list.
+    const hooks = manifest._meta?.post_deploy ?? []
+    if (!dryRun && hooks.length && report.failed === 0) {
+        report.post_deploy = []
+        for (const h of hooks) {
+            const procName = typeof h === 'string' ? h : h.name
+            try {
+                onProgress?.('post-deploy', { name: procName })
+                const r = await targetClient.executeProcess(procName)
+                const status = r?.ProcessExecuteStatusCode
+                const okr = status === undefined || status === 0 || status === 'CompletedSuccessfully' || status === 'HasMinorErrors'
+                report.post_deploy.push({ name: procName, ok: okr, status: status ?? 'ok' })
+            } catch (e) {
+                report.post_deploy.push({ name: procName, ok: false, error: e.message })
+            }
+        }
+        report.post_deploy_failed = report.post_deploy.some(p => !p.ok)
+    }
+
     // ── Post-deploy verification ──────────────────────────────────────────────
-    // Run the SOURCE server's stored assertions against the TARGET. This is the
-    // check that would have caught WFP Phase 4 landing without its rule changes
-    // (Forecast headcount 16 instead of 19). Advisory — the deploy already
-    // happened — but report.verification_failed flags a bad deploy loudly.
+    // Run the SOURCE server's stored assertions against the TARGET (now built by
+    // the post-deploy steps above). Advisory — it does NOT gate the baseline
+    // (assertions can fail for data reasons unrelated to the deploy) — but
+    // report.verification_failed flags it loudly.
     if (!dryRun && manifest._meta?.server) {
         try {
             onProgress?.('verify')
@@ -329,21 +372,28 @@ async function deploy(packageDir, targetServer, options = {}, ideToken) {
         }
     }
 
-    // ── Auto-seed baselines (B4) ──────────────────────────────────────────────
-    // Only after a clean deploy that also passed verification. Seeds BOTH the
-    // target (now = deployed state) and the source (its state is now deployed, so
-    // the next release window starts here). This is what owns baseline timing so
-    // it can't be done manually at the wrong moment — the WFP Phase 4 footgun.
-    const clean = !dryRun && report.failed === 0 && !report.verification_failed
+    // ── Auto-seed baselines ───────────────────────────────────────────────────
+    // Owns baseline timing so it can't be done manually at the wrong moment.
+    // "Clean" = every object deployed AND every post-deploy step succeeded.
+    // Verification (assertions) is recorded as a warning on the baseline, NOT a
+    // gate — the old "verification failed because the seeds hadn't run yet, so
+    // B4 skipped and the operator had to seed by hand" trap. Seeds BOTH the
+    // target (now = deployed state) and the source (next release window starts
+    // here); also re-seeds the target baseline so drift-check has a fresh
+    // reference next time.
+    const clean = !dryRun && report.failed === 0 && !report.post_deploy_failed
     if (clean && !skipAutoBaseline) {
         try {
             onProgress?.('baseline')
             const { seed } = require('./snapshot')
             const cl = require('../../../core/change_log')
-            const label = `post-deploy ${targetServer} ← ${manifest._meta.session ?? 'release'} (${report.deployed_at.slice(0, 10)})`
+            const warn  = report.verification_failed
+                ? ` [UNVERIFIED: ${report.verification.failed.length}/${report.verification.total} assertions failing]`
+                : ''
+            const label = `post-deploy ${targetServer} ← ${manifest._meta.session ?? 'release'} (${report.deployed_at.slice(0, 10)})${warn}`
             const seeded = {}
             for (const srv of [targetServer, manifest._meta.server].filter((s, i, a) => s && a.indexOf(s) === i)) {
-                await seed(srv, null, ideToken, { last_entry_id: cl.getMaxEntryId(srv), label })
+                await seed(srv, null, ideToken, { last_entry_id: cl.getMaxEntryId(srv), label, verification_failed: !!report.verification_failed })
                 seeded[srv === targetServer ? 'target' : 'source'] = srv
             }
             report.baselines_seeded = seeded

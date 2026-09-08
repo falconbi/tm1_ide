@@ -7,6 +7,17 @@ const { diff, loadBaseline } = require('./diff')
 const { fetchElementFormats, fetchAttributeValues, fetchPicklistCells } = require('./snapshot')
 
 const PACKAGES_DIR = path.resolve(__dirname, '../../../packages')
+const DEPLOY_HOOKS_PATH = path.resolve(__dirname, '../../../config/deploy-hooks.json')
+
+// Post-deploy steps declared for this source server (config/deploy-hooks.json).
+// Copied into manifest._meta.post_deploy so the deployer runs them on the target.
+function loadPostDeployHooks(server) {
+    try {
+        const cfg = JSON.parse(fs.readFileSync(DEPLOY_HOOKS_PATH, 'utf8'))
+        const list = cfg[server]?.post_deploy ?? []
+        return list.map(h => (typeof h === 'string' ? { name: h } : h)).filter(h => h.name)
+    } catch { return [] }
+}
 
 function slug(session) {
     return session.replace(/[^a-zA-Z0-9_-]/g, '-').toLowerCase()
@@ -78,6 +89,20 @@ async function fetchView(cube, name, client) {
         if (axis.subset && !axis.dimension) {
             axis.dimension = await resolveDim(axis.subset)
         }
+    }
+
+    // Refuse to package a view whose axis we could not read — shipping a
+    // half-resolved definition silently corrupts the view on the target (this is
+    // how "Cost by Cost Centre" lost its column subset). The operator re-checks
+    // the view on the source and re-packages.
+    const broken = [...(vs._rows ?? []), ...(vs._columns ?? []), ...(vs._titles ?? [])].filter(a => a._unresolved)
+    if (broken.length) {
+        throw new Error(
+            `view "${name}" on ${cube}: ${broken.length} axis/axes could not be read ` +
+            `(${broken.map(a => a.dimension || '?').join(', ')}). The view may have been ` +
+            `rewritten by a dimension restructure — open it on the source, re-set the axis ` +
+            `to a named public subset, and re-package.`
+        )
     }
 
     // collect named subset references to warn the caller about
@@ -189,6 +214,7 @@ async function pack(server, sessionEntries, sessionName, options = {}, ideToken)
             baseline_seeded_at:     diffResult.baseline_seeded_at,
             baseline_last_entry_id: diffResult.baseline_last_entry_id ?? null,
             has_baseline:           diffResult.has_baseline,
+            post_deploy:            loadPostDeployHooks(server),
         },
         objects: [],
         skipped: [],

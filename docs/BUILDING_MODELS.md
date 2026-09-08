@@ -310,6 +310,13 @@ iterations:
 - **A parse-a-delimited-string loop (`WHILE(SCAN('~', v) > 1)`) skips the LAST
   record** if it has no trailing `~`. Always end the string with the delimiter.
   `WFP Load Positions` silently dropped its final roster row for months this way.
+- **Restructuring a dimension can rewrite views that reference it.** Adding ~230
+  members to `WFP Period` (the YTD hierarchy) silently degraded
+  `Cost by Cost Centre`'s column axis from the named subset `2026 Quarters + FY`
+  to an empty inline subset. Give every view axis a **named public subset**, not
+  an inline / dynamic one — named subsets survive a restructure; inline ones get
+  re-materialised. After a bulk dimension load, eyeball any view that used that
+  dimension.
 - **First matching rule wins, not last.** When two rule areas overlap on a cell,
   TM1 uses the one defined *earlier* in the file. So a broad component rule
   (`['Base'] = N: …`, area = one Pay Component element, every measure) beats a

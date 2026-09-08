@@ -1,0 +1,19 @@
+{
+  "_README": [
+    "Post-deploy steps, keyed by SOURCE server name. When a package is built from",
+    "that server, this list is copied into manifest._meta.post_deploy. The deployer",
+    "runs each named TI process on the TARGET, in order, after the objects deploy",
+    "and before verification — the 'finish making the model work on this server'",
+    "steps (feeder reprocessing, etc.).",
+    "",
+    "Only put STRUCTURAL finishers here. Data loads (e.g. WFP Load Actuals) are",
+    "operational and stay out of the deploy.",
+    "",
+    "Entry form: a bare process name string, or { \"name\": \"X\", \"note\": \"why\" }."
+  ],
+  "TM1_Test_DEV": {
+    "post_deploy": [
+      { "name": "WFP Reprocess Feeders", "note": "feeders must be reprocessed after any rules change" }
+    ]
+  }
+}

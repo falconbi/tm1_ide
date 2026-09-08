@@ -660,6 +660,28 @@ function Screen3({ deployData, deployRunning, archiving, onReset }) {
         </span>
       </div>
 
+      {/* Post-deploy steps (structural finishers declared in the package) */}
+      {deployData.post_deploy?.length > 0 && (
+        <div className={cn(
+          'flex items-center gap-2 px-5 py-2 text-xs border-b border-border/40',
+          deployData.post_deploy_failed ? 'text-red-400' : 'text-emerald-400'
+        )}>
+          {deployData.post_deploy_failed ? <XCircle size={13} /> : <CheckCircle2 size={13} />}
+          Post-deploy: {deployData.post_deploy.filter(p => p.ok).length}/{deployData.post_deploy.length} steps ok
+          {deployData.post_deploy_failed && ` — failed: ${deployData.post_deploy.filter(p => !p.ok).map(p => p.name).join(', ')}`}
+        </div>
+      )}
+      {deployData.structure_gaps?.length > 0 && (
+        <div className="px-5 py-1.5 text-[11px] text-red-400 border-b border-border/40">
+          Structure gap: {deployData.structure_gaps.join('; ')}
+        </div>
+      )}
+      {deployData.attribute_value_errors && Object.keys(deployData.attribute_value_errors).length > 0 && (
+        <div className="px-5 py-1.5 text-[11px] text-amber-400 border-b border-border/40">
+          Attribute values: {Object.entries(deployData.attribute_value_errors).map(([d, m]) => `${d} (${m})`).join('; ')}
+        </div>
+      )}
+
       {/* Post-deploy verification (source assertions against the target) */}
       {(deployData.verification || liveVerify) && (() => {
         const v = liveVerify ?? deployData.verification
