@@ -968,20 +968,36 @@ return (d.value ?? [])
 
     async saveStaticSubset(dim, name, elements, hierarchy = dim) {
         const e = s => String(s).replace(/'/g, "''")
-        const bind = elements.map(el => `Dimensions('${e(dim)}')/Hierarchies('${e(hierarchy)}')/Elements('${e(el)}')`)
-        const body = {
-            '@odata.type': '#ibm.tm1.api.v1.StaticSubset',
-            Name: name,
-            Hierarchy: { Name: hierarchy, Dimension: { Name: dim } },
-            'Elements@odata.bind': bind,
+        const els = (elements ?? []).map(x => x?.Name ?? x?.name ?? x).filter(Boolean)
+
+        // Does it already exist?
+        const existing = await this.get(
+            `Dimensions('${e(dim)}')/Hierarchies('${e(hierarchy)}')/Subsets('${e(name)}')`,
+            { '$select': 'Name' }
+        ).then(s => !!s?.Name).catch(() => false)
+
+        if (!existing) {
+            // Fresh POST — Elements@odata.bind on a new subset has nothing to append to.
+            await this.post(`Dimensions('${e(dim)}')/Hierarchies('${e(hierarchy)}')/Subsets`, {
+                '@odata.type': '#ibm.tm1.api.v1.StaticSubset',
+                Name: name,
+                Hierarchy: { Name: hierarchy, Dimension: { Name: dim } },
+                'Elements@odata.bind': els.map(el =>
+                    `Dimensions('${e(dim)}')/Hierarchies('${e(hierarchy)}')/Elements('${e(el)}')`),
+            })
+            return
         }
-        try {
-            await this.patch(`Dimensions('${e(dim)}')/Hierarchies('${e(hierarchy)}')/Subsets('${e(name)}')`, body)
-        } catch (err) {
-            if (err.response?.status === 404) {
-                await this.post(`Dimensions('${e(dim)}')/Hierarchies('${e(hierarchy)}')/Subsets`, body)
-            } else throw err
-        }
+
+        // Exists — on v11 a PATCH of Elements@odata.bind APPENDS, it never replaces.
+        // Rebuild in place via a TI (SubsetDeleteAllElements + ordered insert); the
+        // subset object identity is preserved so views referencing it keep working.
+        const code = [
+            `SubsetDeleteAllElements('${e(dim)}', '${e(name)}');`,
+            ...els.map((el, i) =>
+                `IF( DIMIX('${e(dim)}', '${e(el)}') > 0 );`
+                + ` SubsetElementInsert('${e(dim)}', '${e(name)}', '${e(el)}', ${i + 1}); ENDIF;`),
+        ].join('\n')
+        await this._runTI(code)
     }
 
     async saveView(cube, name, mdx) {
