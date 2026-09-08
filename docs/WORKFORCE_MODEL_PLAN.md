@@ -220,21 +220,23 @@ from `Input`/`Calculated`/`Snapshot` to **`Calculated`/`Frozen`**.
    `Calculated`-target guard stays (snapshots go through `WFP Snapshot Version`,
    which sets the type *after* copying).
 
-8. **Reference-cube smell (Decision D3).** `WFP FX Rates` / `WFP Pay Rates` carry
-   a `Version` dim but hold version-agnostic data — the engine reads them at
-   `!WFP Version`, so every new version needs a re-seed. Options: (a) drop
-   `Version` from both cubes and read at a fixed point; (b) keep `Version`, read
-   at a literal `'Actual'`; (c) leave as-is, re-seed on version add. Fold the
-   chosen fix in here while the version model is open.
+8. **Reference cubes keep `Version` (Decision D3 — resolved: keep).** `WFP FX
+   Rates` / `WFP Pay Rates` are legitimately version-specific — Budget uses
+   budget-rate assumptions, Forecast the latest spot/forward, Actual the realised
+   rates; salary bands likewise differ Budget vs Forecast. The engine reading
+   them at `!WFP Version` is correct. Consequence: `WFP Seed FX Rates` and
+   `WFP Seed Pay Rates` must seed **every `Calculated` version**, and
+   `WFP Snapshot Version` copies these two cubes too (freeze the rates the
+   snapshot used). No structural change.
 
 ### Decisions needed
 
 | # | Decision | Options |
 |---|---|---|
-| **D1** | `Actual` = `Frozen` now, or stay `Calculated` until the Phase 7 payroll load? | Frozen-now needs a `WFP Freeze Actual` (calc once → write → freeze). Simpler: defer to P7, note it. |
-| **D2** | Snapshot copies full **output** (Cost + Headcount + Input) — confirm, vs input-only + leave calculating (not truly frozen). | Full output (per the "fixed, static, frozen" requirement). |
-| **D3** | Reference-cube `Version` dim — drop it (a), pin to a literal (b), or status quo (c). | (a) is cleanest; (b) least disruptive; needs your call. |
-| **D4** | Snapshot member naming — `FCST 2026-01` / `Budget FINAL`, or a different scheme? | |
+| **D1** | *(resolved 2026-09-08 — DEFER to P7)* `Actual` stays `Calculated` (a modelled actual) until the Phase 7 payroll load, which loads real actuals at `Entity × Cost Centre × Pay Component` grain + position-grain FTE, derives effective-rate actuals into `WFP Assumptions[Actual]`, and calc-guards the cost rules for `Actual`. | — |
+| **D2** | *(resolved 2026-09-08 — FULL OUTPUT)* `WFP Snapshot Version` copies all leaf cells of `WFP Workforce Cost` + `WFP Headcount` + `WFP Workforce Input` + `WFP FX Rates` + `WFP Pay Rates` for the source version. | — |
+| **D3** | *(resolved 2026-09-08 — KEEP `Version`)* Reference cubes are legitimately version-specific; seeds populate every `Calculated` version, snapshot copies them. | — |
+| **D4** | *(resolved 2026-09-08)* `FCST YYYY-MM` monthly forecast snapshots; `Budget FINAL` for the budget lock. | — |
 
 ### Assertions
 
@@ -444,10 +446,11 @@ GBP 1.0, USD 0.79, NZD 0.47, Group 1.0.
     (a) `WFP Workforce Input` feeds the Forecast downstream cells explicitly from
     the always-present `['Working','FTE']`, and (b) `WFP Seed FX Rates` /
     `WFP Seed Pay Rates` seed **every** leaf version, not just Budget/Working —
-    the engine reads those reference cubes at `!WFP Version`. **Design smell:**
-    `WFP FX Rates` and `WFP Pay Rates` carry a `Version` dimension but hold
-    version-agnostic data; a future rev should drop `Version` from them or read
-    at a fixed version. Until then: re-run those two seeds after adding a version.
+    the engine reads those reference cubes at `!WFP Version`. *(The `['Working',
+    'FTE']` cross-feed and the "Forecast = Working" blend are removed in Phase
+    3.5. The `Version` dim on the reference cubes is **kept** — see Phase 3.5 D3:
+    FX and pay rates are legitimately version-specific; seeds populate every
+    `Calculated` version.)*
 
   Fresh-target run order now: `WFP Load Positions`, `WFP Seed Dimension
   Attributes`, `WFP Seed Tax Bands`, `WFP Seed FX Rates`, `WFP Seed Pay Rates`,
