@@ -205,16 +205,18 @@ from `Input`/`Calculated`/`Snapshot` to **`Calculated`/`Frozen`**.
    (`Budget` all-zero-uplift, `Forecast` = today's `Working` assumptions,
    `Downside` = stress set). `WFP Seed Assumptions` extended accordingly.
 
-5. **`WFP Workforce Cost` / `WFP Headcount` rules** gain a guard so `Frozen`
-   versions are never recalculated:
-   `IF( ATTRS('WFP Version', !WFP Version, 'Version Type') @= 'Frozen', STET, … )`
-   — or scope the calc areas to `Calculated` members. Needed before snapshots
-   exist.
+5. **No cube-rule guard needed.** *(built differently)* Rather than guard the
+   `WFP Workforce Cost` / `WFP Headcount` rules against `Frozen` versions, the
+   snapshot copies the **input layer** (see 6); Cost + Headcount then recalculate
+   for the frozen member to exactly the source picture and hold it while those
+   inputs are untouched. A snapshot moves only if a *rule* changes — which is a
+   governed change and shows as drift. Simpler, no ~25 rule edits.
 
 6. **New `WFP Snapshot Version`** TI — params `pSource` (`Forecast`|`Budget`),
-   `pTarget`. Creates `pTarget` if absent, sets `Version Type='Frozen'`, copies
-   **all leaf cells** of `WFP Workforce Cost` + `WFP Headcount` + `WFP Workforce
-   Input` for `pSource` → `pTarget`, then the guard in (5) keeps it frozen.
+   `pTarget`. Refuses a non-`Calculated` source; creates `pTarget` (via
+   `DimensionElementInsertDirect`) as a `Frozen` member; copies all leaf cells of
+   `WFP Workforce Input` + `WFP Assumptions` + `WFP FX Rates` + `WFP Pay Rates`
+   for `pSource` → `pTarget`. Run at close (`Forecast`) or budget lock (`Budget`).
 
 7. **`WFP Copy Version`** kept for spinning a scenario off a base; its
    `Calculated`-target guard stays (snapshots go through `WFP Snapshot Version`,
@@ -234,7 +236,7 @@ from `Input`/`Calculated`/`Snapshot` to **`Calculated`/`Frozen`**.
 | # | Decision | Options |
 |---|---|---|
 | **D1** | *(resolved 2026-09-08 — DEFER to P7)* `Actual` stays `Calculated` (a modelled actual) until the Phase 7 payroll load, which loads real actuals at `Entity × Cost Centre × Pay Component` grain + position-grain FTE, derives effective-rate actuals into `WFP Assumptions[Actual]`, and calc-guards the cost rules for `Actual`. | — |
-| **D2** | *(resolved 2026-09-08 — FULL OUTPUT)* `WFP Snapshot Version` copies all leaf cells of `WFP Workforce Cost` + `WFP Headcount` + `WFP Workforce Input` + `WFP FX Rates` + `WFP Pay Rates` for the source version. | — |
+| **D2** | *(resolved 2026-09-08 — INPUT LAYER)* `WFP Snapshot Version` copies the input layer (`WFP Workforce Input` + `WFP Assumptions` + `WFP FX Rates` + `WFP Pay Rates`); Cost + Headcount recalculate for the frozen member from those and hold. Avoids ~25 cube-rule guards. Trade-off: a *rule* change moves old snapshots (governed, shows as drift). | — |
 | **D3** | *(resolved 2026-09-08 — KEEP `Version`)* Reference cubes are legitimately version-specific; seeds populate every `Calculated` version, snapshot copies them. | — |
 | **D4** | *(resolved 2026-09-08)* `FCST YYYY-MM` monthly forecast snapshots; `Budget FINAL` for the budget lock. | — |
 
@@ -481,6 +483,34 @@ GBP 1.0, USD 0.79, NZD 0.47, Group 1.0.
     (`ab2b4816`, `6e0e7232`); `Compensation Detail` view added.
   - Deferred: individual promotions (per-position promo data), commission plans
     (a plan-parameter cube), equity/RSU.
-- *(2026-09-08)* **Phase 3.5 — version model correction spec written** (this doc,
-  §"Phase 3.5"). Encapsulated-version convention added to `BUILDING_MODELS.md`.
-  Build pending James's calls on D1–D4. Lands before Phase 4.
+- *(2026-09-08)* **Phase 3.5 — version model correction built + verified, 32/32
+  assertions** (change set `f26a4810`, 9 object changes on `TM1_Test_DEV`; not yet
+  deployed). Encapsulated-version convention in `BUILDING_MODELS.md`. Delivered:
+  - **`Working` removed.** `Forecast` is now the working current model. Its
+    `WFP Workforce Input` rule shrank to a closed-month-only override:
+    `IF(Period Index <= Forecast's own Actuals Cutoff Index, DB(Actual), STET)` —
+    open months fall through to Forecast's own seeded input. Same for `Downside`.
+  - **`WFP Seed Assumptions`** now writes a full independent set per calculated
+    version: `Budget` flat (0 merit/promo/bonus, cutoff 0), `Forecast` = the
+    old `Working` set (3%/1%/10%, cutoff 15), `Downside` = a cost-pressure
+    scenario (5% merit, 4% inflation, 12% bonus, 5% vacancy, cutoff 15).
+  - **`WFP Seed Workforce Input`** loops `Budget|Forecast|Downside`, each reading
+    its own assumptions, and writes only each version's OPEN months (closed
+    months are the rule's job — CellPutN to a ruled non-STET cell fails).
+  - **Feeders simplified** — the `['Working','FTE'] =>` cross-feeds are gone;
+    `['FTE'] => …!WFP Version…` feeds every version incl. snapshots, plus
+    `['Actual','FTE'] =>` feeds the closed-month side of Forecast / Downside.
+  - **`WFP Snapshot Version`** (new TI) — params `pSource` / `pTarget`; creates
+    the target as a `Frozen` member and copies the input layer (Workforce Input +
+    Assumptions + FX Rates + Pay Rates). Cost + Headcount then recalculate to the
+    frozen picture and stay there while the inputs are untouched. Demo:
+    `Forecast → FCST 2026-06`, Group CtC FY2026 1,750,289.55 (= Forecast).
+  - **`Version Type`** vocabulary → `Calculated` / `Frozen` (was
+    `Input`/`Calculated`/`Snapshot`). All four live versions `Calculated`;
+    `Actual` flips to `Frozen` at Phase 7.
+  - **Verified:** Forecast Group CtC FY2026 = 1,750,289.55 (reproduces the
+    pre-3.5 blend exactly); Budget unchanged at 1,700,305.85; Downside
+    1,773,796.40. 8 `Working`-scoped assertions re-pointed to `Forecast`, 1
+    replaced with a `Downside` self-contained check, 2 new (Downside pressure,
+    snapshot fidelity).
+  - Fresh-target run order unchanged; `WFP Snapshot Version` runs only at close.

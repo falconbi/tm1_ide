@@ -229,30 +229,6 @@
       "created": "2026-09-06T09:41:55.122Z"
     },
     {
-      "id": "44897784",
-      "description": "Forecast blend — closed month: EXEC-001 base cost Feb 2026 Forecast uses Actual (220000/12 = 18333.33), period index 14 ≤ cutoff 15",
-      "mdx": "SELECT {[WFP Workforce Cost Measure].[WFP Workforce Cost Measure].[Amount]} ON 0 FROM [WFP Workforce Cost] WHERE ([WFP Period].[WFP Period].[2026-02],[WFP Version].[WFP Version].[Forecast],[WFP Entity].[WFP Entity].[UK Ltd],[WFP Cost Centre].[WFP Cost Centre].[CC-EXEC],[WFP Pay Component].[WFP Pay Component].[Base],[WFP Currency].[WFP Currency].[GBP],[WFP Position].[WFP Position].[EXEC-001])",
-      "expected": 18333.33,
-      "tolerance": 0.01,
-      "tags": [
-        "phase2",
-        "forecast"
-      ],
-      "created": "2026-09-07T01:53:34.684Z"
-    },
-    {
-      "id": "100f1252",
-      "description": "WFP Copy Version fidelity — ENG-002 Base Salary Jun 2026 copied Working→Downside = 82000",
-      "mdx": "SELECT {[WFP Workforce Input Measure].[WFP Workforce Input Measure].[Base Salary]} ON 0 FROM [WFP Workforce Input] WHERE ([WFP Period].[WFP Period].[2026-06],[WFP Version].[WFP Version].[Downside],[WFP Position].[WFP Position].[ENG-002])",
-      "expected": 82000,
-      "tolerance": 0.01,
-      "tags": [
-        "phase2",
-        "copyversion"
-      ],
-      "created": "2026-09-07T01:53:44.432Z"
-    },
-    {
       "id": "1c052eb7",
       "description": "WFP Assumptions seeded — Actuals Cutoff Index, UK Ltd / Forecast / 2026-06 = 15",
       "mdx": "SELECT {[WFP Assumptions Measure].[WFP Assumptions Measure].[Actuals Cutoff Index]} ON 0 FROM [WFP Assumptions] WHERE ([WFP Period].[WFP Period].[2026-06],[WFP Version].[WFP Version].[Forecast],[WFP Entity].[WFP Entity].[UK Ltd])",
@@ -263,47 +239,6 @@
         "assumptions"
       ],
       "created": "2026-09-07T01:53:48.782Z"
-    },
-    {
-      "id": "ab2b4816",
-      "description": "Forecast blend — open month post-merit: EXEC-001 base cost Jun 2026 Forecast uses Working (210000 × 1.04 merit+promo / 12 = 18,200), period index 18 > cutoff 15",
-      "mdx": "SELECT {[WFP Workforce Cost Measure].[WFP Workforce Cost Measure].[Amount]} ON 0 FROM [WFP Workforce Cost] WHERE ([WFP Period].[WFP Period].[2026-06],[WFP Version].[WFP Version].[Forecast],[WFP Entity].[WFP Entity].[UK Ltd],[WFP Cost Centre].[WFP Cost Centre].[CC-EXEC],[WFP Pay Component].[WFP Pay Component].[Base],[WFP Currency].[WFP Currency].[GBP],[WFP Position].[WFP Position].[EXEC-001])",
-      "expected": 18200,
-      "tolerance": 0.01,
-      "tags": [
-        "phase2",
-        "phase3",
-        "forecast",
-        "merit"
-      ],
-      "created": "2026-09-07T06:34:48.556Z"
-    },
-    {
-      "id": "6e0e7232",
-      "description": "Group Forecast Cost to Company FY2026 (Reporting) with merit — Working salaries uplifted 4% from 2026-04, Forecast = Working after the cutoff",
-      "mdx": "SELECT {[WFP Pay Component].[WFP Pay Component].[Cost to Company]} ON 0 FROM [WFP Workforce Cost] WHERE ([WFP Position].[WFP Position].[Total Positions],[WFP Period].[WFP Period].[FY2026],[WFP Version].[WFP Version].[Forecast],[WFP Entity].[WFP Entity].[Group],[WFP Cost Centre].[WFP Cost Centre].[Total Cost Centre],[WFP Currency].[WFP Currency].[Reporting],[WFP Workforce Cost Measure].[WFP Workforce Cost Measure].[Amount])",
-      "expected": 1750289.55,
-      "tolerance": 1,
-      "tags": [
-        "phase2",
-        "phase3",
-        "forecast",
-        "merit",
-        "fx"
-      ],
-      "created": "2026-09-07T06:34:54.286Z"
-    },
-    {
-      "id": "c33d544f",
-      "description": "Merit step — ENG-002 Working Base Salary 2026-04 = 82,000 × (1 + 3% merit + 1% promo) = 85,280; Budget stays 82,000 (frozen)",
-      "mdx": "SELECT {[WFP Version].[WFP Version].[Working]} ON 0 FROM [WFP Workforce Input] WHERE ([WFP Period].[WFP Period].[2026-04],[WFP Position].[WFP Position].[ENG-002],[WFP Workforce Input Measure].[WFP Workforce Input Measure].[Base Salary])",
-      "expected": 85280,
-      "tolerance": 0.01,
-      "tags": [
-        "phase3",
-        "merit"
-      ],
-      "created": "2026-09-07T06:34:59.194Z"
     },
     {
       "id": "c6604eed",
@@ -318,53 +253,152 @@
       "created": "2026-09-07T06:35:01.509Z"
     },
     {
-      "id": "30d59fd0",
-      "description": "Bonus accrual — ENG-002 Working Bonus Jun 2026 = post-merit base 7,106.67 × 10% Bonus Pool = 710.67",
-      "mdx": "SELECT {[WFP Workforce Cost Measure].[WFP Workforce Cost Measure].[Amount]} ON 0 FROM [WFP Workforce Cost] WHERE ([WFP Period].[WFP Period].[2026-06],[WFP Version].[WFP Version].[Working],[WFP Entity].[WFP Entity].[UK Ltd],[WFP Cost Centre].[WFP Cost Centre].[CC-ENG-PLT],[WFP Pay Component].[WFP Pay Component].[Bonus],[WFP Currency].[WFP Currency].[GBP],[WFP Position].[WFP Position].[ENG-002])",
+      "id": "7dfe7593",
+      "description": "Merit step (Forecast) — ENG-002 Forecast Base Salary 2026-04 = 82,000 × (1 + 3% merit + 1% promo) = 85,280; Budget frozen at 82,000",
+      "mdx": "SELECT {[WFP Version].[WFP Version].[Forecast]} ON 0 FROM [WFP Workforce Input] WHERE ([WFP Period].[WFP Period].[2026-04],[WFP Position].[WFP Position].[ENG-002],[WFP Workforce Input Measure].[WFP Workforce Input Measure].[Base Salary])",
+      "expected": 85280,
+      "tolerance": 0.01,
+      "tags": [
+        "phase3",
+        "phase3.5",
+        "merit"
+      ],
+      "created": "2026-09-08T04:56:23.739Z"
+    },
+    {
+      "id": "78be451b",
+      "description": "Bonus accrual (Forecast) — ENG-002 Forecast Bonus Jun 2026 = post-merit base 7,106.67 × 10% Bonus Pool = 710.67",
+      "mdx": "SELECT {[WFP Workforce Cost Measure].[WFP Workforce Cost Measure].[Amount]} ON 0 FROM [WFP Workforce Cost] WHERE ([WFP Period].[WFP Period].[2026-06],[WFP Version].[WFP Version].[Forecast],[WFP Entity].[WFP Entity].[UK Ltd],[WFP Cost Centre].[WFP Cost Centre].[CC-ENG-PLT],[WFP Pay Component].[WFP Pay Component].[Bonus],[WFP Currency].[WFP Currency].[GBP],[WFP Position].[WFP Position].[ENG-002])",
       "expected": 710.67,
       "tolerance": 0.01,
       "tags": [
         "phase3",
+        "phase3.5",
         "bonus"
       ],
-      "created": "2026-09-07T06:35:06.552Z"
+      "created": "2026-09-08T04:56:28.737Z"
     },
     {
-      "id": "314caff7",
-      "description": "Contractor gets no bonus — ITO-001 Working Bonus Jun 2026 = 0",
-      "mdx": "SELECT {[WFP Workforce Cost Measure].[WFP Workforce Cost Measure].[Amount]} ON 0 FROM [WFP Workforce Cost] WHERE ([WFP Period].[WFP Period].[2026-06],[WFP Version].[WFP Version].[Working],[WFP Entity].[WFP Entity].[NZ Ltd],[WFP Cost Centre].[WFP Cost Centre].[CC-ITOPS],[WFP Pay Component].[WFP Pay Component].[Bonus],[WFP Currency].[WFP Currency].[NZD],[WFP Position].[WFP Position].[ITO-001])",
+      "id": "149b27e0",
+      "description": "Contractor gets no bonus (Forecast) — ITO-001 Forecast Bonus Jun 2026 = 0",
+      "mdx": "SELECT {[WFP Workforce Cost Measure].[WFP Workforce Cost Measure].[Amount]} ON 0 FROM [WFP Workforce Cost] WHERE ([WFP Period].[WFP Period].[2026-06],[WFP Version].[WFP Version].[Forecast],[WFP Entity].[WFP Entity].[NZ Ltd],[WFP Cost Centre].[WFP Cost Centre].[CC-ITOPS],[WFP Pay Component].[WFP Pay Component].[Bonus],[WFP Currency].[WFP Currency].[NZD],[WFP Position].[WFP Position].[ITO-001])",
       "expected": 0,
       "tolerance": 0.01,
       "tags": [
         "phase3",
+        "phase3.5",
         "bonus",
         "contractor"
       ],
-      "created": "2026-09-07T06:35:09.487Z"
+      "created": "2026-09-08T04:56:33.218Z"
     },
     {
-      "id": "9d970581",
-      "description": "One-Time payment hits only the entered month — CS-001 Working One-Time: May 2026 = 0, Jun 2026 = 15,000 (sum over both = 15,000)",
-      "mdx": "SELECT {[WFP Period].[WFP Period].[2026-05]:[WFP Period].[WFP Period].[2026-06]} ON 0 FROM [WFP Workforce Cost] WHERE ([WFP Version].[WFP Version].[Working],[WFP Entity].[WFP Entity].[US Inc],[WFP Cost Centre].[WFP Cost Centre].[CC-CS],[WFP Pay Component].[WFP Pay Component].[One-Time],[WFP Currency].[WFP Currency].[USD],[WFP Position].[WFP Position].[CS-001],[WFP Workforce Cost Measure].[WFP Workforce Cost Measure].[Amount])",
+      "id": "947e1c22",
+      "description": "One-Time payment hits only the entered month (Forecast) — CS-001 Forecast One-Time May 2026 = 0, Jun 2026 = 15,000 (USD, sum over both = 15,000)",
+      "mdx": "SELECT {[WFP Period].[WFP Period].[2026-05]:[WFP Period].[WFP Period].[2026-06]} ON 0 FROM [WFP Workforce Cost] WHERE ([WFP Version].[WFP Version].[Forecast],[WFP Entity].[WFP Entity].[US Inc],[WFP Cost Centre].[WFP Cost Centre].[CC-CS],[WFP Pay Component].[WFP Pay Component].[One-Time],[WFP Currency].[WFP Currency].[USD],[WFP Position].[WFP Position].[CS-001],[WFP Workforce Cost Measure].[WFP Workforce Cost Measure].[Amount])",
       "expected": 15000,
       "tolerance": 0.01,
       "tags": [
         "phase3",
+        "phase3.5",
         "onetime"
       ],
-      "created": "2026-09-07T06:35:15.150Z"
+      "created": "2026-09-08T04:56:38.324Z"
     },
     {
-      "id": "339b190a",
-      "description": "Total Compensation consolidation — ENG-002 Working Jun 2026 = Cost to Company 8,642.72 + Bonus 710.67 + One-Time 0 = 9,353.39",
-      "mdx": "SELECT {[WFP Workforce Cost Measure].[WFP Workforce Cost Measure].[Amount]} ON 0 FROM [WFP Workforce Cost] WHERE ([WFP Period].[WFP Period].[2026-06],[WFP Version].[WFP Version].[Working],[WFP Entity].[WFP Entity].[UK Ltd],[WFP Cost Centre].[WFP Cost Centre].[CC-ENG-PLT],[WFP Pay Component].[WFP Pay Component].[Total Compensation],[WFP Currency].[WFP Currency].[GBP],[WFP Position].[WFP Position].[ENG-002])",
+      "id": "f84e00b5",
+      "description": "Total Compensation consolidation (Forecast) — ENG-002 Forecast Jun 2026 = Cost to Company 8,642.72 + Bonus 710.67 + One-Time 0 = 9,353.39",
+      "mdx": "SELECT {[WFP Workforce Cost Measure].[WFP Workforce Cost Measure].[Amount]} ON 0 FROM [WFP Workforce Cost] WHERE ([WFP Period].[WFP Period].[2026-06],[WFP Version].[WFP Version].[Forecast],[WFP Entity].[WFP Entity].[UK Ltd],[WFP Cost Centre].[WFP Cost Centre].[CC-ENG-PLT],[WFP Pay Component].[WFP Pay Component].[Total Compensation],[WFP Currency].[WFP Currency].[GBP],[WFP Position].[WFP Position].[ENG-002])",
       "expected": 9353.39,
       "tolerance": 0.02,
       "tags": [
         "phase3",
+        "phase3.5",
         "totalcomp"
       ],
-      "created": "2026-09-07T06:35:18.422Z"
+      "created": "2026-09-08T04:56:43.459Z"
+    },
+    {
+      "id": "fc7149a8",
+      "description": "Forecast open month post-merit — EXEC-001 Forecast base Jun 2026 (period index 18 > cutoff 15) = own seed 210,000 × 1.04 / 12 = 18,200",
+      "mdx": "SELECT {[WFP Workforce Cost Measure].[WFP Workforce Cost Measure].[Amount]} ON 0 FROM [WFP Workforce Cost] WHERE ([WFP Period].[WFP Period].[2026-06],[WFP Version].[WFP Version].[Forecast],[WFP Entity].[WFP Entity].[UK Ltd],[WFP Cost Centre].[WFP Cost Centre].[CC-EXEC],[WFP Pay Component].[WFP Pay Component].[Base],[WFP Currency].[WFP Currency].[GBP],[WFP Position].[WFP Position].[EXEC-001])",
+      "expected": 18200,
+      "tolerance": 0.01,
+      "tags": [
+        "phase2",
+        "phase3.5",
+        "forecast",
+        "merit"
+      ],
+      "created": "2026-09-08T04:56:48.388Z"
+    },
+    {
+      "id": "c2f122f8",
+      "description": "Downside is a self-contained scenario — ENG-002 Downside Base Salary 2026-04 = 82,000 × (1 + 5% merit + 1% promo) = 86,920, flexed by its own steeper assumptions (not a copy of another version)",
+      "mdx": "SELECT {[WFP Version].[WFP Version].[Downside]} ON 0 FROM [WFP Workforce Input] WHERE ([WFP Period].[WFP Period].[2026-04],[WFP Position].[WFP Position].[ENG-002],[WFP Workforce Input Measure].[WFP Workforce Input Measure].[Base Salary])",
+      "expected": 86920,
+      "tolerance": 0.01,
+      "tags": [
+        "phase3.5",
+        "downside",
+        "scenario"
+      ],
+      "created": "2026-09-08T04:56:52.728Z"
+    },
+    {
+      "id": "ae3c3cb3",
+      "description": "Downside cost pressure — Group Downside Cost to Company FY2026 (Reporting) = 1,773,796.40, above Forecast 1,750,289.55 (steeper merit/inflation/bonus)",
+      "mdx": "SELECT {[WFP Pay Component].[WFP Pay Component].[Cost to Company]} ON 0 FROM [WFP Workforce Cost] WHERE ([WFP Position].[WFP Position].[Total Positions],[WFP Period].[WFP Period].[FY2026],[WFP Version].[WFP Version].[Downside],[WFP Entity].[WFP Entity].[Group],[WFP Cost Centre].[WFP Cost Centre].[Total Cost Centre],[WFP Currency].[WFP Currency].[Reporting],[WFP Workforce Cost Measure].[WFP Workforce Cost Measure].[Amount])",
+      "expected": 1773796.4,
+      "tolerance": 1,
+      "tags": [
+        "phase3.5",
+        "downside",
+        "scenario",
+        "fx"
+      ],
+      "created": "2026-09-08T04:56:57.839Z"
+    },
+    {
+      "id": "178300a6",
+      "description": "Snapshot fidelity — WFP Snapshot Version froze Forecast into FCST 2026-06; Group CtC FY2026 (Reporting) = 1,750,289.55, matching Forecast at snapshot time. Frozen: its inputs are copied, not referenced.",
+      "mdx": "SELECT {[WFP Pay Component].[WFP Pay Component].[Cost to Company]} ON 0 FROM [WFP Workforce Cost] WHERE ([WFP Position].[WFP Position].[Total Positions],[WFP Period].[WFP Period].[FY2026],[WFP Version].[WFP Version].[FCST 2026-06],[WFP Entity].[WFP Entity].[Group],[WFP Cost Centre].[WFP Cost Centre].[Total Cost Centre],[WFP Currency].[WFP Currency].[Reporting],[WFP Workforce Cost Measure].[WFP Workforce Cost Measure].[Amount])",
+      "expected": 1750289.55,
+      "tolerance": 1,
+      "tags": [
+        "phase3.5",
+        "snapshot"
+      ],
+      "created": "2026-09-08T04:57:17.168Z"
+    },
+    {
+      "id": "d2118f82",
+      "description": "Group Forecast Cost to Company FY2026 (Reporting) = 1,750,289.55 — Forecast's own merit-uplifted open months + Actual (EXEC raise) closed months; reproduces the pre-Phase-3.5 blend exactly",
+      "mdx": "SELECT {[WFP Pay Component].[WFP Pay Component].[Cost to Company]} ON 0 FROM [WFP Workforce Cost] WHERE ([WFP Position].[WFP Position].[Total Positions],[WFP Period].[WFP Period].[FY2026],[WFP Version].[WFP Version].[Forecast],[WFP Entity].[WFP Entity].[Group],[WFP Cost Centre].[WFP Cost Centre].[Total Cost Centre],[WFP Currency].[WFP Currency].[Reporting],[WFP Workforce Cost Measure].[WFP Workforce Cost Measure].[Amount])",
+      "expected": 1750289.55,
+      "tolerance": 1,
+      "tags": [
+        "phase2",
+        "phase3",
+        "phase3.5",
+        "forecast",
+        "merit",
+        "fx"
+      ],
+      "created": "2026-09-08T04:57:32.145Z"
+    },
+    {
+      "id": "fbfc76a2",
+      "description": "Forecast closed month = Actual — EXEC-001 base cost Feb 2026 Forecast (period index 14 ≤ Actuals Cutoff Index 15) resolves to the Actual version via rule = 220,000 / 12 = 18,333.33",
+      "mdx": "SELECT {[WFP Workforce Cost Measure].[WFP Workforce Cost Measure].[Amount]} ON 0 FROM [WFP Workforce Cost] WHERE ([WFP Period].[WFP Period].[2026-02],[WFP Version].[WFP Version].[Forecast],[WFP Entity].[WFP Entity].[UK Ltd],[WFP Cost Centre].[WFP Cost Centre].[CC-EXEC],[WFP Pay Component].[WFP Pay Component].[Base],[WFP Currency].[WFP Currency].[GBP],[WFP Position].[WFP Position].[EXEC-001])",
+      "expected": 18333.33,
+      "tolerance": 0.01,
+      "tags": [
+        "phase2",
+        "phase3.5",
+        "forecast"
+      ],
+      "created": "2026-09-08T04:57:39.299Z"
     }
   ]
 }
