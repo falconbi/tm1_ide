@@ -745,3 +745,29 @@ GBP 1.0, USD 0.79, NZD 0.47, Group 1.0.
   `WFP Seed Hiring Plan` → `WFP Seed Workforce Input` → `WFP Load Actuals` →
   `WFP Reprocess Feeders`. `WFP Snapshot Version` / `WFP Copy Version` /
   `WFP Rebuild Reporting Subsets` run on demand, not at bootstrap.
+
+- *(2026-09-09)* **P6c — forecast-accuracy variance, 55/55.** (change set
+  `656dc767`, 8-object package `release-2026-09-08-2026-09-08-17`.)
+  - **`FCST 2026-02`** — the Forecast as at the Feb close, a static member under
+    `Non-Calculating`. Created by **`WFP Seed Prior Forecast`** (new): runs
+    `WFP Snapshot Version` for Forecast → FCST 2026-02, then scales March cost
+    +2.5% ("the Feb forecast for March ran optimistic; actuals came in under") and
+    sets the `Prior Fcst Snapshot` attr. A documented demo fabrication — no time
+    machine for the real Feb forecast.
+  - **`Prior Fcst Snapshot`** string attr on `WFP Period` — each close month points
+    at its prior-month forecast snapshot (`2026-03 → FCST 2026-02`). The rule reads
+    the attr so it generalises as snapshots accumulate.
+  - **`Act vs Prior Fcst`** version member under `Variance` = `Actual − <prior
+    snapshot>`, gated to months with a `Prior Fcst Snapshot`. Rules + feeders on
+    `WFP Workforce Cost` + `WFP Headcount`. March: Group Total Comp −4,771
+    (actuals 3.2% under the Feb forecast); headcount −1 (ENG-006's unforeseen
+    departure).
+  - **Snapshot rebuild — dropped.** No string cells in any WFP cube, cubes are
+    small, the existing loops are position-scoped not full-space walks, and
+    cube-logging-off is wrong for a snapshot (you want it in the transaction log).
+    The MCP can't build a view-datasource TI anyway. Speculative polish, no payoff.
+  - **Post-deploy:** run `WFP Seed Prior Forecast` on the target (creates +
+    populates `FCST 2026-02`), same as `WFP Load Actuals` — a data step, not a
+    deploy concern. Then Re-verify.
+  - Minor: `Act vs Prior Fcst` has no `Version Type` attr (was set by the deleted
+    `WFP Seed Dimension Attributes`); cosmetic, the rule doesn't read it.

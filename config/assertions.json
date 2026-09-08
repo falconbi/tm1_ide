@@ -636,6 +636,55 @@
         "severance"
       ],
       "created": "2026-09-08T12:39:34.117Z"
+    },
+    {
+      "id": "c784cfeb",
+      "description": "P6c FCST 2026-02 snapshot copied Feb correctly: Group Total Comp Reporting 2026-02 = Forecast's Feb (144,463)",
+      "mdx": "SELECT {[WFP Version].[FCST 2026-02]} ON 0 FROM [WFP Workforce Cost] WHERE ([WFP Period].[2026-02],[WFP Entity].[Group],[WFP Cost Centre].[Total Cost Centre],[WFP Pay Component].[Total Compensation],[WFP Currency].[Reporting],[WFP Position].[Total Positions],[WFP Workforce Cost Measure].[Amount])",
+      "expected": 144463.01,
+      "tolerance": 1,
+      "tags": [
+        "P6c",
+        "snapshot"
+      ],
+      "created": "2026-09-08T23:12:55.613Z"
+    },
+    {
+      "id": "4a7704d2",
+      "description": "P6c forecast-accuracy variance: Actual came in under the Feb forecast for March — Group Act vs Prior Fcst Total Comp Reporting 2026-03 = −4,771 (Actual 143,098 − FCST 2026-02 147,869)",
+      "mdx": "SELECT {[WFP Version].[Act vs Prior Fcst]} ON 0 FROM [WFP Workforce Cost] WHERE ([WFP Period].[2026-03],[WFP Entity].[Group],[WFP Cost Centre].[Total Cost Centre],[WFP Pay Component].[Total Compensation],[WFP Currency].[Reporting],[WFP Position].[Total Positions],[WFP Workforce Cost Measure].[Amount])",
+      "expected": -4771.14,
+      "tolerance": 1,
+      "tags": [
+        "P6c",
+        "variance"
+      ],
+      "created": "2026-09-08T23:13:00.742Z"
+    },
+    {
+      "id": "e1e1a6b2",
+      "description": "P6c Act vs Prior Fcst is 0 for a month with no prior snapshot (2026-01) — gated on the Prior Fcst Snapshot attr",
+      "mdx": "SELECT {[WFP Version].[Act vs Prior Fcst]} ON 0 FROM [WFP Workforce Cost] WHERE ([WFP Period].[2026-01],[WFP Entity].[Group],[WFP Cost Centre].[Total Cost Centre],[WFP Pay Component].[Total Compensation],[WFP Currency].[Reporting],[WFP Position].[Total Positions],[WFP Workforce Cost Measure].[Amount])",
+      "expected": 0,
+      "tolerance": 0.01,
+      "tags": [
+        "P6c",
+        "variance"
+      ],
+      "created": "2026-09-08T23:13:06.218Z"
+    },
+    {
+      "id": "86bb7559",
+      "description": "P6c headcount forecast accuracy: Group Act vs Prior Fcst Headcount 2026-03 = -1 (ENG-006 left; Feb forecast still had them)",
+      "mdx": "SELECT {[WFP Headcount Measure].[Headcount]} ON 0 FROM [WFP Headcount] WHERE ([WFP Period].[2026-03],[WFP Version].[Act vs Prior Fcst],[WFP Entity].[Group],[WFP Cost Centre].[Total Cost Centre],[WFP Position].[Total Positions])",
+      "expected": -1,
+      "tolerance": 0.01,
+      "tags": [
+        "P6c",
+        "variance",
+        "headcount"
+      ],
+      "created": "2026-09-08T23:13:11.344Z"
     }
   ]
 }
