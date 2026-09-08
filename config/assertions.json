@@ -346,36 +346,6 @@
       "created": "2026-09-08T04:56:52.728Z"
     },
     {
-      "id": "ae3c3cb3",
-      "description": "Downside cost pressure — Group Downside Cost to Company FY2026 (Reporting) = 1,773,796.40, above Forecast 1,750,289.55 (steeper merit/inflation/bonus)",
-      "mdx": "SELECT {[WFP Pay Component].[WFP Pay Component].[Cost to Company]} ON 0 FROM [WFP Workforce Cost] WHERE ([WFP Position].[WFP Position].[Total Positions],[WFP Period].[WFP Period].[FY2026],[WFP Version].[WFP Version].[Downside],[WFP Entity].[WFP Entity].[Group],[WFP Cost Centre].[WFP Cost Centre].[Total Cost Centre],[WFP Currency].[WFP Currency].[Reporting],[WFP Workforce Cost Measure].[WFP Workforce Cost Measure].[Amount])",
-      "expected": 1773796.4,
-      "tolerance": 1,
-      "tags": [
-        "phase3.5",
-        "downside",
-        "scenario",
-        "fx"
-      ],
-      "created": "2026-09-08T04:56:57.839Z"
-    },
-    {
-      "id": "d2118f82",
-      "description": "Group Forecast Cost to Company FY2026 (Reporting) = 1,750,289.55 — Forecast's own merit-uplifted open months + Actual (EXEC raise) closed months; reproduces the pre-Phase-3.5 blend exactly",
-      "mdx": "SELECT {[WFP Pay Component].[WFP Pay Component].[Cost to Company]} ON 0 FROM [WFP Workforce Cost] WHERE ([WFP Position].[WFP Position].[Total Positions],[WFP Period].[WFP Period].[FY2026],[WFP Version].[WFP Version].[Forecast],[WFP Entity].[WFP Entity].[Group],[WFP Cost Centre].[WFP Cost Centre].[Total Cost Centre],[WFP Currency].[WFP Currency].[Reporting],[WFP Workforce Cost Measure].[WFP Workforce Cost Measure].[Amount])",
-      "expected": 1750289.55,
-      "tolerance": 1,
-      "tags": [
-        "phase2",
-        "phase3",
-        "phase3.5",
-        "forecast",
-        "merit",
-        "fx"
-      ],
-      "created": "2026-09-08T04:57:32.145Z"
-    },
-    {
       "id": "fbfc76a2",
       "description": "Forecast closed month = Actual — EXEC-001 base cost Feb 2026 Forecast (period index 14 ≤ Actuals Cutoff Index 15) resolves to the Actual version via rule = 220,000 / 12 = 18,333.33",
       "mdx": "SELECT {[WFP Workforce Cost Measure].[WFP Workforce Cost Measure].[Amount]} ON 0 FROM [WFP Workforce Cost] WHERE ([WFP Period].[WFP Period].[2026-02],[WFP Version].[WFP Version].[Forecast],[WFP Entity].[WFP Entity].[UK Ltd],[WFP Cost Centre].[WFP Cost Centre].[CC-EXEC],[WFP Pay Component].[WFP Pay Component].[Base],[WFP Currency].[WFP Currency].[GBP],[WFP Position].[WFP Position].[EXEC-001])",
@@ -387,6 +357,123 @@
         "forecast"
       ],
       "created": "2026-09-08T04:57:39.299Z"
+    },
+    {
+      "id": "b135c0f2",
+      "description": "Group Forecast Cost to Company FY2026 (Reporting) = 1,926,472 — Phase 3.5 base 1,750,290 + the 3 Phase 4 hires (ENG-007, SLS-004, ENG-005 filled) from 2026-04",
+      "mdx": "SELECT {[WFP Pay Component].[WFP Pay Component].[Cost to Company]} ON 0 FROM [WFP Workforce Cost] WHERE ([WFP Position].[WFP Position].[Total Positions],[WFP Period].[WFP Period].[FY2026],[WFP Version].[WFP Version].[Forecast],[WFP Entity].[WFP Entity].[Group],[WFP Cost Centre].[WFP Cost Centre].[Total Cost Centre],[WFP Currency].[WFP Currency].[Reporting],[WFP Workforce Cost Measure].[WFP Workforce Cost Measure].[Amount])",
+      "expected": 1926471.98,
+      "tolerance": 1,
+      "tags": [
+        "phase4",
+        "forecast",
+        "hiring",
+        "fx"
+      ],
+      "created": "2026-09-08T07:48:33.274Z"
+    },
+    {
+      "id": "0bb3f765",
+      "description": "Group Downside Cost to Company FY2026 (Reporting) = 1,701,974 — below Forecast: attrition (ENG-002 leaves 2026-04, ENG-006 leaves 2026-07) net of the ENG-008 backfill from 2026-08 outweighs the steeper Downside assumptions",
+      "mdx": "SELECT {[WFP Pay Component].[WFP Pay Component].[Cost to Company]} ON 0 FROM [WFP Workforce Cost] WHERE ([WFP Position].[WFP Position].[Total Positions],[WFP Period].[WFP Period].[FY2026],[WFP Version].[WFP Version].[Downside],[WFP Entity].[WFP Entity].[Group],[WFP Cost Centre].[WFP Cost Centre].[Total Cost Centre],[WFP Currency].[WFP Currency].[Reporting],[WFP Workforce Cost Measure].[WFP Workforce Cost Measure].[Amount])",
+      "expected": 1701974.46,
+      "tolerance": 1,
+      "tags": [
+        "phase4",
+        "downside",
+        "attrition",
+        "fx"
+      ],
+      "created": "2026-09-08T07:48:39.028Z"
+    },
+    {
+      "id": "7001dc75",
+      "description": "Phase 4 — Forecast Group headcount Jun 2026 = 19 (16 Budget + ENG-007 + SLS-004 hires + ENG-005 open req filled, all from 2026-04)",
+      "mdx": "SELECT {[WFP Headcount Measure].[WFP Headcount Measure].[Headcount]} ON 0 FROM [WFP Headcount] WHERE ([WFP Position].[WFP Position].[Total Positions],[WFP Period].[WFP Period].[2026-06],[WFP Version].[WFP Version].[Forecast],[WFP Entity].[WFP Entity].[Group],[WFP Cost Centre].[WFP Cost Centre].[Total Cost Centre])",
+      "expected": 19,
+      "tolerance": 0.01,
+      "tags": [
+        "phase4",
+        "headcount",
+        "hiring"
+      ],
+      "created": "2026-09-08T07:48:49.467Z"
+    },
+    {
+      "id": "5c7d7365",
+      "description": "Phase 4 — recruiting lead time: ENG-007 Forecast headcount 2026-03 = 0, 2026-04 = 1 (approve 2026-01 + 3-month lead = hire 2026-04); sum over Mar+Apr = 1",
+      "mdx": "SELECT {[WFP Period].[WFP Period].[2026-03]:[WFP Period].[WFP Period].[2026-04]} ON 0 FROM [WFP Headcount] WHERE ([WFP Position].[WFP Position].[ENG-007],[WFP Version].[WFP Version].[Forecast],[WFP Entity].[WFP Entity].[UK Ltd],[WFP Cost Centre].[WFP Cost Centre].[CC-ENG-PLT],[WFP Headcount Measure].[WFP Headcount Measure].[Headcount])",
+      "expected": 1,
+      "tolerance": 0.01,
+      "tags": [
+        "phase4",
+        "headcount",
+        "leadtime"
+      ],
+      "created": "2026-09-08T07:48:54.878Z"
+    },
+    {
+      "id": "7f49d5a3",
+      "description": "Phase 4 — Downside attrition: ENG-002 leaves 2026-04 (Attrition Month idx 16). ENG-002 Downside headcount Jun 2026 = 0",
+      "mdx": "SELECT {[WFP Headcount Measure].[WFP Headcount Measure].[Headcount]} ON 0 FROM [WFP Headcount] WHERE ([WFP Position].[WFP Position].[ENG-002],[WFP Period].[WFP Period].[2026-06],[WFP Version].[WFP Version].[Downside],[WFP Entity].[WFP Entity].[UK Ltd],[WFP Cost Centre].[WFP Cost Centre].[CC-ENG-PLT])",
+      "expected": 0,
+      "tolerance": 0.01,
+      "tags": [
+        "phase4",
+        "headcount",
+        "attrition"
+      ],
+      "created": "2026-09-08T07:48:59.653Z"
+    },
+    {
+      "id": "f54955db",
+      "description": "Phase 4 — Downside backfill with a vacancy gap: ENG-008 replaces ENG-002, hired 2026-08 (idx 20). ENG-008 Downside headcount: Jun 2026 = 0, Aug 2026 = 1; sum Jun+Aug = 1",
+      "mdx": "SELECT {[WFP Period].[WFP Period].[2026-06],[WFP Period].[WFP Period].[2026-08]} ON 0 FROM [WFP Headcount] WHERE ([WFP Position].[WFP Position].[ENG-008],[WFP Version].[WFP Version].[Downside],[WFP Entity].[WFP Entity].[UK Ltd],[WFP Cost Centre].[WFP Cost Centre].[CC-ENG-PLT],[WFP Headcount Measure].[WFP Headcount Measure].[Headcount])",
+      "expected": 1,
+      "tolerance": 0.01,
+      "tags": [
+        "phase4",
+        "headcount",
+        "backfill"
+      ],
+      "created": "2026-09-08T07:49:05.138Z"
+    },
+    {
+      "id": "a96807e4",
+      "description": "Phase 4 — no-backfill attrition: ENG-006 leaves 2026-07 (idx 19), not replaced. ENG-006 Downside headcount Oct 2026 = 0",
+      "mdx": "SELECT {[WFP Headcount Measure].[WFP Headcount Measure].[Headcount]} ON 0 FROM [WFP Headcount] WHERE ([WFP Position].[WFP Position].[ENG-006],[WFP Period].[WFP Period].[2026-10],[WFP Version].[WFP Version].[Downside],[WFP Entity].[WFP Entity].[NZ Ltd],[WFP Cost Centre].[WFP Cost Centre].[CC-ENG-PLT])",
+      "expected": 0,
+      "tolerance": 0.01,
+      "tags": [
+        "phase4",
+        "headcount",
+        "attrition"
+      ],
+      "created": "2026-09-08T07:49:09.912Z"
+    },
+    {
+      "id": "fdb0dc37",
+      "description": "Phase 4 — headcount bridge reconciles: Downside Group Closing Jul 2026 = Opening 15 + Hires 0 - Leavers 1 = 14, equal to Jul Headcount",
+      "mdx": "SELECT {[WFP Headcount Measure].[WFP Headcount Measure].[Closing]} ON 0 FROM [WFP Headcount] WHERE ([WFP Position].[WFP Position].[Total Positions],[WFP Period].[WFP Period].[2026-07],[WFP Version].[WFP Version].[Downside],[WFP Entity].[WFP Entity].[Group],[WFP Cost Centre].[WFP Cost Centre].[Total Cost Centre])",
+      "expected": 14,
+      "tolerance": 0.01,
+      "tags": [
+        "phase4",
+        "bridge"
+      ],
+      "created": "2026-09-08T07:49:31.942Z"
+    },
+    {
+      "id": "e5577b64",
+      "description": "Phase 4 — Forecast Group Hires 2026-04 = 3 (ENG-007, SLS-004, ENG-005 all hired that month)",
+      "mdx": "SELECT {[WFP Headcount Measure].[WFP Headcount Measure].[Hires]} ON 0 FROM [WFP Headcount] WHERE ([WFP Position].[WFP Position].[Total Positions],[WFP Period].[WFP Period].[2026-04],[WFP Version].[WFP Version].[Forecast],[WFP Entity].[WFP Entity].[Group],[WFP Cost Centre].[WFP Cost Centre].[Total Cost Centre])",
+      "expected": 3,
+      "tolerance": 0.01,
+      "tags": [
+        "phase4",
+        "hiring"
+      ],
+      "created": "2026-09-08T07:49:36.481Z"
     }
   ]
 }

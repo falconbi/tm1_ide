@@ -220,10 +220,15 @@ iterations:
   A rule *area* can't test a parent/attribute — only the RHS can. `CONTINUE` is a
   valid keyword. Put the non-calc versions under one consolidation parent.
 - **`DimensionElementComponentAdd` in a TI Prolog is not committed until the
-  Prolog ends.** A process that creates a member, parents it under a consolidation,
-  then writes its cells (where the parent's rule guard should permit the write)
-  must do the writes in the **Epilog**. `DimensionElementInsertDirect` commits
-  immediately; there is no `...ComponentAddDirect`.
+  Prolog ends** (the non-`Direct` form). A process that creates a member, parents
+  it with `DimensionElementComponentAdd`, then writes its cells (where the
+  parent's rule guard should permit the write) must do the writes in the
+  **Epilog**. Or use `DimensionElementComponentAddDirect` (v11 has it — see
+  `WFP Load Positions`), which commits immediately, same as
+  `DimensionElementInsertDirect`.
+- **A parse-a-delimited-string loop (`WHILE(SCAN('~', v) > 1)`) skips the LAST
+  record** if it has no trailing `~`. Always end the string with the delimiter.
+  `WFP Load Positions` silently dropped its final roster row for months this way.
 
 ---
 

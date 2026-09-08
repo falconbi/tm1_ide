@@ -550,3 +550,41 @@ GBP 1.0, USD 0.79, NZD 0.47, Group 1.0.
   - The `Calculating` (C) roll-up from an early draft did not survive a change-set
     collision (a second agent opened its own change set on the same server); it
     is not needed — the guard only tests for the `Non-Calculating` parent.
+- *(2026-09-08)* **Phase 4 — hiring plan, attrition, headcount bridge, built +
+  verified, 38/38 assertions** (change set `ca2942a5`, 18 object changes,
+  21-object release package `release-2026-09-08-2026-09-08-6`; not yet deployed).
+  Delivered:
+  - **`WFP Hiring Plan` cube** — `Version × Position × WFP Hiring Plan Measure`
+    (`Hire Month`, `Attrition Month`, period-index scalars; `Hire Month` already
+    folds in recruiting lead time = approve month + lead). `Non-Calculating` guard.
+    Seeded by **`WFP Seed Hiring Plan`**.
+  - **4 TBH positions** — `ENG-007`, `SLS-004`, `FIN-002` (new hires) and
+    `ENG-008` (Downside backfill of `ENG-002`). `Position Status = 'TBH'`,
+    `Seed Base Salary = 0` (band from `WFP Pay Rates`). Added to `WFP Load
+    Positions` — which also got a **trailing-`~` fix** (its record loop had always
+    silently dropped the last roster row).
+  - **Version-aware active window** — `WFP Headcount` and `WFP Workforce Cost`
+    now build the window from `WFP Hiring Plan` Hire/Attrition Month for the
+    version, falling back to `Start/End Period` attrs when the plan cell is 0.
+    A TBH with no plan hire for a version is never active. Plan hires get a full
+    first month (no day proration); attribute starts keep day proration.
+  - **Headcount bridge** — `WFP Headcount Measure` gains `Hires`, `Leavers`,
+    `Opening`, `Closing` (+ `_Start Idx` / `_Leave Idx` / `_Hire Idx` /
+    `_Filled Now` helpers). `Opening = prior-period Headcount`,
+    `Closing = Opening + Hires − Leavers`, reconciling to `Headcount`. A new
+    `Next Period` attribute on `WFP Period` (mirror of `Prior Period`) feeds
+    `Leavers`/`Closing` forward one month so the Group consolidation is right in
+    the leave month.
+  - **`WFP Seed Workforce Input`** — seeds FTE/Base Salary only inside each
+    calculated version's plan window; `Actual` seeded on the attribute window,
+    non-TBH only.
+  - **`WFP Snapshot Version`** — also copies `WFP Hiring Plan` + the bridge
+    measures.
+  - **Numbers:** Budget unchanged (flat plan) — Group HC Jun 16, CtC FY26
+    1,700,306. Forecast Group HC Jun 19 (3 hires from 2026-04), CtC FY26
+    1,926,472. Downside Group HC Jun 15 / Jul 14 (attrition), CtC FY26 1,701,974
+    (attrition net of backfill beats the steeper assumptions). 2 CtC assertions
+    re-based; 6 new Phase 4 assertions (headcount, lead time, attrition, backfill,
+    no-backfill, bridge, hires-in-month).
+  - Fresh-target run order gains `WFP Seed Hiring Plan` (after `WFP Load
+    Positions`, before `WFP Seed Workforce Input`).
