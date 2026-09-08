@@ -450,10 +450,19 @@ async function checkObjectDrift(obj, baseline, client) {
             if (!b) return null
             const v = await client.getView(cube, obj.name).catch(() => null)
             if (!v) return { drifted: true, note: 'View deleted from target since baseline' }
-            const tSig = v.MDX ?? JSON.stringify(v)
-            const bSig = b.MDX ?? JSON.stringify(b)
-            if (tSig === bSig) return { drifted: false }
-            return { drifted: true, note: 'View definition changed on target since baseline' }
+            // MDX — compare the query text.
+            if (b.type === 'mdx' || b.MDX) {
+                if (norm(v.MDX ?? '') === norm(b.MDX ?? '')) return { drifted: false }
+                return { drifted: true, note: 'View MDX changed on target since baseline' }
+            }
+            // Native — compare normalized axes (the baseline stores normAxes(vws),
+            // NOT the raw getView entity — comparing raw JSON always "drifts").
+            const vws = await client.getViewWithSubsets(cube, obj.name).catch(() => null)
+            if (vws && b.axes) {
+                if (JSON.stringify(normAxes(vws)) === JSON.stringify(b.axes)) return { drifted: false }
+                return { drifted: true, note: `View axes changed on target since baseline: ${axesDiffNote(b.axes, normAxes(vws))}` }
+            }
+            return { drifted: false }  // can't read comparably — don't cry drift
         }
         case 'cube': {
             const b = baseline.cubes?.[obj.name]
