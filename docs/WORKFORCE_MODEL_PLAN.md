@@ -588,3 +588,10 @@ GBP 1.0, USD 0.79, NZD 0.47, Group 1.0.
     no-backfill, bridge, hires-in-month).
   - Fresh-target run order gains `WFP Seed Hiring Plan` (after `WFP Load
     Positions`, before `WFP Seed Workforce Input`).
+  - **Deployed to `TM1_Test_PROD` 2026-09-08**, all Phase 4 numbers verified equal
+    to DEV. Pipeline snag: the source baseline was seeded *before* the deploy, so
+    the deployed package (re-built at deploy time) diffed the 3 rule changes + 2
+    views as "already in baseline" and skipped them — PROD initially got only the
+    13 structural objects. Fixed by hand-applying the rules + views from the
+    reviewed package, then re-seeding the PROD baseline. **Seed the baseline
+    AFTER the deploy, never before.**
