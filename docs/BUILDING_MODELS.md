@@ -213,6 +213,17 @@ iterations:
   `SubsetElementInsert` loop.
 - `CubeProcessFeeders` is the only feeder-recalc that works — `tm1.CheckFeeders*`
   / `tm1.CheckFeedersOfCell` (Architect "Check Feeders") 404 on this build.
+- **Stopping calc for a group of versions (non-calculating / static).** A bare
+  `['<consolidation>'] = N: STET;` does **not** hold — the calc rules below still
+  fire. The guard that works, first after `SKIPCHECK`:
+  `[] = N: IF(ELPAR('<Version dim>', !<Version dim>, 1) @= '<non-calc parent>', STET, CONTINUE);`
+  A rule *area* can't test a parent/attribute — only the RHS can. `CONTINUE` is a
+  valid keyword. Put the non-calc versions under one consolidation parent.
+- **`DimensionElementComponentAdd` in a TI Prolog is not committed until the
+  Prolog ends.** A process that creates a member, parents it under a consolidation,
+  then writes its cells (where the parent's rule guard should permit the write)
+  must do the writes in the **Epilog**. `DimensionElementInsertDirect` commits
+  immediately; there is no `...ComponentAddDirect`.
 
 ---
 
