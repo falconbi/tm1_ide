@@ -2755,6 +2755,19 @@ app.post('/api/deploy/execute', async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
+// Re-run a source server's stored assertions against any target, on demand.
+// Same check the deploy pipeline runs post-deploy (B3) — but standalone, so you
+// can re-verify after a post-deploy fix (seed processes, feeder reprocess, …)
+// without re-deploying.
+app.post('/api/deploy/verify', async (req, res) => {
+    try {
+        const { source, target, tags } = req.body
+        if (!source) return res.status(400).json({ error: 'source (server whose assertions to run) required' })
+        const result = await require('./core/assertions').run(source, { targetServer: target || source, tags, ideToken: req.ideToken })
+        res.json(result)
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
 app.post('/api/deploy/approve', (req, res) => {
     try {
         const { source, target, approver, notes, packaged, session, packageDir } = req.body

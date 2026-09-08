@@ -590,6 +590,25 @@ function Screen2({ servers, currentServer, target, setTarget, packageData,
 // ── Screen 3: Results ─────────────────────────────────────────────────────────
 
 function Screen3({ deployData, deployRunning, archiving, onReset }) {
+  const [liveVerify, setLiveVerify] = useState(null)
+  const [verifying, setVerifying]   = useState(false)
+  const [verifyErr, setVerifyErr]   = useState(null)
+
+  async function reVerify() {
+    setVerifying(true); setVerifyErr(null)
+    try {
+      const r = await fetch('/api/deploy/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-ide-token': localStorage.getItem('tm1-token') ?? '' },
+        body: JSON.stringify({ source: deployData.source_server, target: deployData.target_server }),
+      })
+      const j = await r.json()
+      if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`)
+      setLiveVerify(j)
+    } catch (e) { setVerifyErr(e.message) }
+    finally { setVerifying(false) }
+  }
+
   if (deployRunning) return (
     <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground py-16">
       <Loader2 size={14} className="animate-spin" /> Deploying objects…
@@ -642,20 +661,33 @@ function Screen3({ deployData, deployRunning, archiving, onReset }) {
       </div>
 
       {/* Post-deploy verification (source assertions against the target) */}
-      {deployData.verification && (
-        <div className={cn(
-          'flex items-center gap-2 px-5 py-2 text-xs border-b border-border/40',
-          deployData.verification.error ? 'text-amber-400'
-            : deployData.verification_failed ? 'text-red-400' : 'text-emerald-400'
-        )}>
-          {deployData.verification.error
-            ? <>Post-deploy verification could not run: {deployData.verification.error}</>
-            : <>
-                {deployData.verification_failed ? <XCircle size={13} /> : <CheckCircle2 size={13} />}
-                Verification: {deployData.verification.passed}/{deployData.verification.total} assertions pass on {deployData.target_server}
-                {deployData.verification_failed && ` — ${deployData.verification.failed.map(f => f.description).slice(0, 3).join('; ')}${deployData.verification.failed.length > 3 ? '…' : ''}`}
-              </>}
-        </div>
+      {(deployData.verification || liveVerify) && (() => {
+        const v = liveVerify ?? deployData.verification
+        const vErr    = v.error
+        const vFailed = liveVerify ? (v.failed?.length > 0) : deployData.verification_failed
+        const fails   = v.failed ?? []
+        return (
+          <div className={cn(
+            'flex items-center gap-2 px-5 py-2 text-xs border-b border-border/40',
+            vErr ? 'text-amber-400' : vFailed ? 'text-red-400' : 'text-emerald-400'
+          )}>
+            {vErr
+              ? <>Verification could not run: {vErr}</>
+              : <>
+                  {vFailed ? <XCircle size={13} /> : <CheckCircle2 size={13} />}
+                  Verification: {v.passed}/{v.total} assertions pass on {deployData.target_server}
+                  {vFailed && ` — ${fails.map(f => f.description).slice(0, 3).join('; ')}${fails.length > 3 ? '…' : ''}`}
+                </>}
+            <button onClick={reVerify} disabled={verifying}
+              className="ml-auto flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground disabled:opacity-50 transition-colors">
+              {verifying ? <Loader2 size={11} className="animate-spin" /> : <RefreshCw size={11} />}
+              {verifying ? 'Verifying…' : 'Re-verify'}
+            </button>
+          </div>
+        )
+      })()}
+      {verifyErr && (
+        <div className="px-5 py-1.5 text-[11px] text-amber-400 border-b border-border/40">Re-verify failed: {verifyErr}</div>
       )}
       {deployData.baselines_seeded && (
         <div className="px-5 py-1.5 text-[11px] text-muted-foreground border-b border-border/40">
