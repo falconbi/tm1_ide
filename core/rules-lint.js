@@ -187,6 +187,37 @@ function lintRules(rules) {
     })
   }
 
+  // CONTINUE inside an N: rule is almost always a bug. N: already means the rule
+  // fires only at leaf cells, so a CONTINUE in a false branch lets the NEXT
+  // matching rule (a component rule, or the currency-translation rule) supply the
+  // value instead of the intended 0 — silently corrupting the calc (e.g. the P5
+  // capex/opex split). CONTINUE only belongs in C: / unqualified rules. Exception:
+  // a global catch-all `[] = N:` guard (the non-calculating-version STET sentinel)
+  // legitimately CONTINUEs so calculating versions fall through to their own rules.
+  const rulesLines = rules.split('\n')
+  for (let li = 0; li < rulesLines.length; li++) {
+    const areaM = rulesLines[li].match(/^\s*(\[[^\n]*?\])\s*=\s*(N|C|S):/i)
+    if (!areaM || areaM[2].toUpperCase() !== 'N') continue
+    if (areaM[1].replace(/\s/g, '') === '[]') continue
+    // scan forward to the statement's terminating ';' (or a blank line / next area)
+    let body = rulesLines[li]
+    for (let j = li + 1; j < rulesLines.length; j++) {
+      const l = rulesLines[j]
+      if (/^\s*\[[^\n]*?\]\s*=\s*(N|C|S):/i.test(l)) break   // next rule area
+      body += '\n' + l
+      if (l.includes(';')) break
+    }
+    if (/\bCONTINUE\b/i.test(body)) {
+      warnings.push({
+        line: li + 1,
+        message: `Rule area ${areaM[1].trim()} is an N: rule but its expression contains CONTINUE. ` +
+                 `N: rules fire only at leaf cells — a CONTINUE in a false branch makes the next matching ` +
+                 `rule supply the value instead of 0. Use 0 for "this cell is genuinely zero"; CONTINUE ` +
+                 `only belongs in C: or unqualified rules.`,
+      })
+    }
+  }
+
   // Feeder section: a DB() feeder target whose element name comes from an attribute
   // read writes to whatever the attribute holds. If the attribute is blank for any
   // source element, the feeder targets a non-existent element and errors at load.

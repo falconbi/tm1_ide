@@ -325,12 +325,38 @@ iterations:
   component value. Fix: put the narrower/override rule **above** the broad one,
   and have it `CONTINUE` for the cells it doesn't own. Verify by reading one
   overlapping cell back — the symptom is "every measure returns the same number".
-- **A measure-only rule area (`['<measure>'] = N:`) fires at consolidated cells of
-  the *other* dimensions too**, silently replacing their natural roll-up. A
-  per-leaf calc (capex = amount × a cost-centre rate) must gate on
-  `ELLEV('<dim>', !<dim>) = 0` for every other dimension and `CONTINUE` otherwise,
-  or the consolidated totals come back wrong (e.g. capitalised only at the leaf,
-  zero at every parent).
+- **An `N:` rule is leaf-only — do NOT add `ELLEV(...) = 0` guards or `CONTINUE`
+  branches inside it.** The `N:` qualifier already means "fires only at leaf cells
+  of every dimension"; a consolidation never reaches an `N:` rule, it rolls up
+  from its leaves naturally. So a per-leaf calc (capex = amount × a cost-centre
+  rate) needs **no** leaf guard: write `['<measure>'] = N: IF(<gate>, expr, 0)`
+  and the consolidations aggregate the leaf values correctly on their own.
+  Adding `ELLEV(...) = 0` checks + `CONTINUE` is redundant noise that obscures the
+  logic and breeds bugs — a leftover `CONTINUE` in the false branch makes the
+  next matching rule (e.g. the component rule, or the Reporting translation)
+  supply the value instead of `0`, silently breaking the split. `CONTINUE` only
+  belongs in a rule that *does* fire at consolidations (a `C:` or unqualified
+  rule). Verified: the WFP capex/opex split runs with no guard and all
+  consolidations roll up correctly (55/55 assertions).
+- **Feed a rule's output from its TRUE input, not from a blanket root.** A
+  feeder section that says `['_Monthly Base Full'] => ['Base'], ['Gross Pay'],
+  ['Employer Payroll Tax'], ... ['Net Pay'], ['_Earnings YTD'], ...` is
+  inarticulate — it works but doesn't explain why. Each arrow should read as a
+  dependency statement: `['Base'] => ['Gross Pay']` because gross = base;
+  `['_Earnings YTD'] => ['_Employer Tax YTD']` because the tax is a function of
+  earnings, not of monthly base. Write the feeder section as a mirror of the
+  rule dependency graph, per-component.
+- **Never feed rule-read-only helper cells.** Feeding only matters for cells that
+  must appear in a *consolidation*. A helper that is a leaf and is only
+  referenced by other rules (`_Earnings YTD`, `_Employer Tax YTD`, the
+  `_Start/_End` index helpers) does NOT need feeding — a rule reads its value
+  directly. Blanket-feeding helpers is pure noise and hides the real structure.
+- **The currency/measure fan-out is irreducible under SKIPCHECK.** A rule-computed
+  Reporting / Budget-FX / Capex / Opex leaf must be individually fed to roll up
+  into a consolidation. So the translation-currency feeds can't be removed — but
+  organise them **per component from that component's own local driver**, not as
+  one mega-fan-out from a single source. (Verified: the WFP feeder rewrite cut
+  ~50 blanket targets to a per-component dependency map, 55/55 assertions green.)
 
 ---
 
@@ -487,3 +513,18 @@ element format. All six cubes dropped and rebuilt.
   `CubeProcessFeeders` (the TI function) works. Diagnose under-feeding by reading
   the consolidation one level at a time (single position → position total →
   entity total) to find where it drops to 0.
+
+### Workforce Planning — P5 simplification (Sep 2026)
+
+- **`ELLEV` guards + `CONTINUE` inside an `N:` rule are redundant — and harmful.**
+  The P5 capex/opex split was originally written with a five-way `ELLEV(...) = 0`
+  leaf guard and a `CONTINUE` fallthrough. But `N:` already means "leaf cells
+  only"; consolidations never reach the rule and roll up naturally (verified:
+  the R&D consolidation computes correct Capex/Opex with no guard). When the
+  guard was stripped, a leftover `CONTINUE` in the false branch made the next
+  matching rule (the component rule / Reporting translation) supply the value
+  instead of `0`, breaking `Capex + Opex = Amount` by exactly one component's
+  value (11,850). The fix was `CONTINUE` → `0`. See the "Rules and TI" section
+  for the full convention. Rule-reading discipline: when you edit a rule, re-read
+  an overlapping cell AND a consolidation to confirm both still behave — one
+  assertion (`capex + opex = Amount`) caught what a leaf-only read would miss.
