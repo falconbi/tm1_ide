@@ -43,10 +43,19 @@ export function validateRulesSyntax(code) {
   const errors = []
   if (!code) return errors
 
-  // ── Pre-scan: unclosed strings ────────────────────────────────────────────
+  // ── Pre-scan: unclosed strings (ignoring # comments) ─────────────────────
+  // Comments may contain apostrophes (e.g. "Budget's", "it's") which are not
+  // string delimiters — counting them naively toggles the string state and
+  // produces a false "Unclosed string" error on otherwise valid rules.
   let inStr = false
   let strStartLine = 0
+  let inComment = false
   for (let i = 0; i < code.length; i++) {
+    if (inComment) {
+      if (code[i] === '\n') inComment = false
+      continue
+    }
+    if (code[i] === '#') { inComment = true; continue }
     if (code[i] === "'") {
       if (i + 1 < code.length && code[i + 1] === "'") { i++; continue }
       inStr = !inStr

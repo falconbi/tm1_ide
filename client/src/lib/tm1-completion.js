@@ -314,15 +314,18 @@ export function getCallContext(textBefore) {
   const stack = []   // [{ fn, commas }]
   let inStr  = false
   let strCh  = null
+  let inComment = false
 
   for (let i = 0; i < textBefore.length; i++) {
     const ch = textBefore[i]
 
+    if (inComment) { if (ch === '\n') inComment = false; continue }
     if (inStr) {
       if (ch === strCh && textBefore[i - 1] !== '\\') inStr = false
       continue
     }
 
+    if (ch === '#') { inComment = true; continue }
     if (ch === "'" || ch === '"') { inStr = true; strCh = ch; continue }
 
     if (ch === '(') {
@@ -394,14 +397,17 @@ async function fetchElements(server, dim) {
 }
 
 // Returns true if textBefore ends inside an unclosed quoted string
+// (ignores # comments, which may contain apostrophes like "Budget's").
 function isInsideString(textBefore) {
-  let inStr = false, strCh = null
+  let inStr = false, strCh = null, inComment = false
   for (let i = 0; i < textBefore.length; i++) {
     const ch = textBefore[i]
+    if (inComment) { if (ch === '\n') inComment = false; continue }
     if (inStr) {
       if (ch === strCh && textBefore[i - 1] !== '\\') inStr = false
       continue
     }
+    if (ch === '#') { inComment = true; continue }
     if (ch === "'" || ch === '"') { inStr = true; strCh = ch; continue }
   }
   return inStr
@@ -438,15 +444,18 @@ function areaQuoteMode(model, position, word) {
 }
 
 // Returns the string value of the Nth argument of the innermost unclosed call
+// (ignores # comments, which may contain apostrophes like "Budget's").
 function extractStringArg(textBefore, argIndex) {
   const stack = []
-  let inStr = false, strCh = null
+  let inStr = false, strCh = null, inComment = false
   for (let i = 0; i < textBefore.length; i++) {
     const ch = textBefore[i]
+    if (inComment) { if (ch === '\n') inComment = false; continue }
     if (inStr) {
       if (ch === strCh && textBefore[i - 1] !== '\\') inStr = false
       continue
     }
+    if (ch === '#') { inComment = true; continue }
     if (ch === "'" || ch === '"') { inStr = true; strCh = ch; continue }
     if (ch === '(') stack.push(i)
     else if (ch === ')') stack.pop()
@@ -455,13 +464,15 @@ function extractStringArg(textBefore, argIndex) {
   const inside = textBefore.slice(stack[stack.length - 1] + 1)
 
   let args = [], current = '', depth = 0
-  inStr = false; strCh = null
+  inStr = false; strCh = null; inComment = false
   for (const ch of inside) {
+    if (inComment) { if (ch === '\n') inComment = false; current += ch; continue }
     if (inStr) {
       if (ch === strCh) inStr = false
       current += ch
       continue
     }
+    if (ch === '#') { inComment = true; current += ch; continue }
     if (ch === "'" || ch === '"') { inStr = true; strCh = ch; current += ch; continue }
     if (ch === '(' || ch === '[') { depth++; current += ch }
     else if ((ch === ')' || ch === ']') && depth > 0) { depth--; current += ch }
