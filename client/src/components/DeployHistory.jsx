@@ -29,7 +29,7 @@ function fmt(iso) {
   return new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
 }
 
-function ArchiveRow({ a }) {
+function ArchiveRow({ a, onOpenDiff }) {
   const [open, setOpen] = useState(false)
 
   const deployed = a.deployStats?.deployed ?? 0
@@ -77,16 +77,17 @@ function ArchiveRow({ a }) {
         </div>
       </button>
 
-      {open && <ArchiveDetail id={a.id} approval={a.approval} deployStats={a.deployStats} />}
+      {open && <ArchiveDetail id={a.id} approval={a.approval} deployStats={a.deployStats} onOpenDiff={onOpenDiff} />}
     </div>
   )
 }
 
-function ArchiveDetail({ id, approval, deployStats }) {
+function ArchiveDetail({ id, approval, deployStats, onOpenDiff }) {
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(false)
   const [err, setErr] = useState(null)
-  const openTab = useStore(s => s.openTab)
+  const storeOpenTab = useStore(s => s.openTab)
+  const openTab = onOpenDiff ?? storeOpenTab
 
   const load = async () => {
     if (data || loading) return
@@ -256,7 +257,7 @@ function ArchiveDetail({ id, approval, deployStats }) {
   )
 }
 
-export default function DeployHistory() {
+export default function DeployHistory({ onOpenDiff }) {
   const { data: archives, isLoading, error } = useDeployArchives()
 
   return (
@@ -287,7 +288,7 @@ export default function DeployHistory() {
               <span>RESULT</span>
               <span className="text-right">DEPLOYER</span>
             </div>
-            {archives.map(a => <ArchiveRow key={a.id} a={a} />)}
+            {archives.map(a => <ArchiveRow key={a.id} a={a} onOpenDiff={onOpenDiff} />)}
           </div>
         )}
       </div>

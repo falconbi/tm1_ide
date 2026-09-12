@@ -792,7 +792,7 @@ function Screen3({ deployData, deployRunning, archiving, onReset }) {
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 
-export default function DeployPanel({ tab }) {
+export default function DeployPanel({ tab, onOpenDiff }) {
   const { openTab }  = useStore()
   const username     = useStore(s => s.username)
   const { session, server } = tab
@@ -974,7 +974,7 @@ export default function DeployPanel({ tab }) {
             selected={selected}
             setSelected={setSelected}
             server={server}
-            openTab={openTab}
+            openTab={onOpenDiff ?? openTab}
             onPrepare={handlePrepare}
             onPackageOnly={handlePackageOnly}
             packaging={packageMut.isPending}

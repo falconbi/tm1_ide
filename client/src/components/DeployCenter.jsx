@@ -7,6 +7,7 @@ import { useServers, useDeployBaseline, useDeploySeed } from '@/hooks/useApi'
 import DeployPanel from '@/components/DeployPanel'
 import DeployHistory from '@/components/DeployHistory'
 import ImportPackagePanel from '@/components/ImportPackagePanel'
+import DiffTab from '@/components/DiffTab'
 
 // A full-screen takeover for everything deploy-related — not a tab. While
 // this is open, the entire normal IDE (sidebar, tab bar, every open editor)
@@ -83,6 +84,10 @@ function BaselinesView({ defaultServer }) {
 export default function DeployCenter() {
   const { deployCenter, closeDeployCenter, server: currentServer } = useStore()
   const [view, setView] = useState(deployCenter?.view ?? 'wizard')
+  // Diff views opened from inside the takeover (Package Contents row click,
+  // Target State snapshot diff) can't go through the normal tab system — that's
+  // hidden behind this overlay. Shown as a second overlay, above this one.
+  const [diffTab, setDiffTab] = useState(null)
 
   // A fresh openDeployCenter() call is a new object each time — use that to
   // reset which rail view is showing, per how this particular open was triggered.
@@ -132,13 +137,31 @@ export default function DeployCenter() {
         {/* Content */}
         <div className="flex-1 min-w-0 overflow-hidden flex justify-center">
           <div className="w-full max-w-4xl min-w-0 flex flex-col">
-            {view === 'wizard'    && <DeployPanel tab={deployCenter} />}
-            {view === 'history'   && <DeployHistory />}
+            {view === 'wizard'    && <DeployPanel tab={deployCenter} onOpenDiff={setDiffTab} />}
+            {view === 'history'   && <DeployHistory onOpenDiff={setDiffTab} />}
             {view === 'import'    && <ImportPackagePanel />}
             {view === 'baselines' && <BaselinesView defaultServer={deployCenter.server ?? currentServer} />}
           </div>
         </div>
       </div>
+
+      {diffTab && (
+        <div className="fixed inset-0 z-[110] flex flex-col bg-background text-foreground">
+          <div className="flex items-center justify-between px-5 py-2 border-b border-border shrink-0">
+            <span className="text-xs font-semibold">{diffTab.label ?? 'Diff'}</span>
+            <button
+              onClick={() => setDiffTab(null)}
+              className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+              title="Close diff"
+            >
+              <X size={14} />
+            </button>
+          </div>
+          <div className="flex-1 min-h-0">
+            <DiffTab tab={diffTab} />
+          </div>
+        </div>
+      )}
     </div>
   )
 }
