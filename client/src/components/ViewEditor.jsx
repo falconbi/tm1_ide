@@ -7,12 +7,23 @@ import { useStore } from '@/store'
 import { subsetApplyCallbacks } from '@/lib/subsetCallbacks'
 import { useCubeDimensions, useSubsets, useElementsTree, useViews, useExecuteMDX, useViewAxes, useSaveView, useSetDefaultView, usePawBookUsage, useDimAttributes, useViewUsage, useMultiFormatAttrs, useConflictCheck, useGenerateViewMDX, useConfig } from '@/hooks/useApi'
 import { toast } from 'sonner'
-import { RefreshCw, Loader2, Table2, GripVertical, GripHorizontal, X, LayoutGrid, Rows3, Columns3, Filter, ZapOff, Zap, ChevronLeft, ChevronRight, PencilLine, Save, Code2, Eye, ChevronDown, BookOpen, ChevronUp, Locate, MapPin, WrapText, Braces, History, AlertTriangle, Search, Cog, Box, FileSearch, Rss, Sparkles } from 'lucide-react'
+import { RefreshCw, Loader2, Table2, GripVertical, GripHorizontal, X, LayoutGrid, Rows3, Columns3, Filter, ZapOff, Zap, ChevronLeft, ChevronRight, PencilLine, Save, Code2, Eye, ChevronDown, BookOpen, ChevronUp, Locate, MapPin, WrapText, Braces, History, AlertTriangle, Search, Cog, Box, FileSearch, Rss, Sparkles, Clock, Check } from 'lucide-react'
 import TransactionLogPanel from '@/components/TransactionLogPanel'
 import CellContextMenu from '@/components/CellContextMenu'
 import { cn } from '@/lib/utils'
 
 ModuleRegistry.registerModules([AllCommunityModule])
+
+// Saved sessions — local drafts for experimenting before settling on the final
+// view. Same pattern as SubsetEditor's sessions: named snapshots in localStorage,
+// not saved to TM1, not shared with anyone else.
+const VIEW_SESSIONS_KEY = 'tm1-view-sessions'
+function loadViewSessions() { try { return JSON.parse(localStorage.getItem(VIEW_SESSIONS_KEY) || '[]') } catch { return [] } }
+function saveViewSessionEntry(entry) {
+    const list = loadViewSessions().filter(s => s.name !== entry.name)
+    list.unshift({ ...entry, time: Date.now() })
+    localStorage.setItem(VIEW_SESSIONS_KEY, JSON.stringify(list.slice(0, 30)))
+}
 
 const lightTheme = themeBalham.withPart(colorSchemeLight).withParams({ fontSize: 12, rowHeight: 24, headerHeight: 28 })
 const darkTheme  = themeBalham.withPart(colorSchemeDark).withParams({ fontSize: 12, rowHeight: 24, headerHeight: 28 })
@@ -1202,6 +1213,13 @@ export default function ViewEditor({ tab }) {
         })
     }, [aiPrompt, generateViewMDX, tab.server, tab.cube])
 
+    // Saved sessions — named local drafts, for experimenting before settling
+    // on the final view. State here; handlers live below once `mode` exists.
+    const [sessionsOpen, setSessionsOpen]     = useState(false)
+    const [sessionName, setSessionName]       = useState('')
+    const [sessions, setSessions]             = useState(loadViewSessions)
+    const [sessionSavedIndicator, setSessionSavedIndicator] = useState(false)
+
     const [dimAliases, setDimAliases]         = useState({})
     const [aliasValueMaps, setAliasValueMaps] = useState({})
     const handleAliasChange = useCallback(async (dim, attr) => {
@@ -1240,6 +1258,24 @@ export default function ViewEditor({ tab }) {
     const [mode, setMode] = useState(tab.mode ?? (tab.initialMdx ? 'mdx' : 'visual'))
     const [showSaveMenu, setShowSaveMenu] = useState(false)
     useEffect(() => { patchTab(tab.id, { mode }) }, [mode])
+
+    // Saved-session handlers — captures whatever's current (visual axes or MDX,
+    // whichever mode you're in) so restoring puts you back exactly where you left off.
+    const handleSaveSession = useCallback(() => {
+        if (!sessionName.trim()) return
+        saveViewSessionEntry({ name: sessionName.trim(), cube: tab.cube, mode, mdx, axes })
+        setSessions(loadViewSessions())
+        setSessionSavedIndicator(true)
+        setTimeout(() => setSessionSavedIndicator(false), 2000)
+        setSessionName('')
+    }, [sessionName, tab.cube, mode, mdx, axes])
+    const handleLoadSession = useCallback((s) => {
+        if (s.axes) setAxes(s.axes)
+        if (s.mdx != null) setMdx(s.mdx)
+        setMode(s.mode ?? 'visual')
+        setSessionsOpen(false)
+        toast.success(`Loaded "${s.name}"`)
+    }, [])
 
     // Used In panel
     const [showUsedIn, setShowUsedIn] = useState(false)
@@ -2021,6 +2057,38 @@ export default function ViewEditor({ tab }) {
                 >
                     <Braces size={10} /> Builder
                 </button>
+
+                {/* Saved sessions — named local drafts for experimenting */}
+                <div className="relative">
+                    <button onClick={() => setSessionsOpen(o => !o)}
+                        className="flex items-center gap-1 px-2 py-0.5 text-[10px] rounded border border-border text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                        title="Saved sessions — local drafts, not saved to TM1">
+                        <Clock size={10} /> Sessions
+                    </button>
+                    {sessionsOpen && (
+                        <div className="absolute top-full left-0 mt-1 bg-popover border border-border rounded shadow-lg z-50 w-64 py-1">
+                            <div className="flex items-center gap-1 px-2 py-1.5 border-b border-border">
+                                <input value={sessionName} onChange={e => setSessionName(e.target.value)} placeholder="Session name…"
+                                    className="flex-1 text-xs px-1.5 py-0.5 border rounded bg-background outline-none"
+                                    onKeyDown={e => e.key === 'Enter' && handleSaveSession()} />
+                                <button onClick={handleSaveSession} disabled={!sessionName.trim()}
+                                    className="px-2 py-0.5 text-xs rounded bg-primary text-primary-foreground disabled:opacity-40 flex items-center gap-1">
+                                    {sessionSavedIndicator ? <Check size={10} /> : <Save size={10} />}
+                                </button>
+                            </div>
+                            {sessions.length === 0
+                                ? <div className="px-3 py-2 text-xs text-muted-foreground">No saved sessions</div>
+                                : sessions.map((s, i) => (
+                                    <button key={i} onClick={() => handleLoadSession(s)}
+                                        className="w-full text-left px-3 py-1.5 text-xs hover:bg-muted flex items-center justify-between">
+                                        <span className="font-mono truncate flex-1 mr-2">{s.name}</span>
+                                        <span className="text-muted-foreground/60 shrink-0 text-[10px]">{new Date(s.time).toLocaleDateString()}</span>
+                                    </button>
+                                ))
+                            }
+                        </div>
+                    )}
+                </div>
 
                 <button
                     onClick={() => setShowLog(v => !v)}
