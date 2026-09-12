@@ -98,7 +98,7 @@ app.post('/api/auth/logout', (req, res) => {
 })
 
 app.get('/api/config', (req, res) => {
-    res.json({ loginServer: PAW_LOGIN_SERVER ?? null })
+    res.json({ loginServer: PAW_LOGIN_SERVER ?? null, hasAnthropicKey: !!process.env.ANTHROPIC_API_KEY })
 })
 
 app.use('/api', (req, res, next) => {

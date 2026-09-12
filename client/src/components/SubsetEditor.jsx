@@ -2,14 +2,14 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import MonacoEditor from '@monaco-editor/react'
 import { useQueryClient } from '@tanstack/react-query'
 import { useStore } from '@/store'
-import { useSubset, useSaveSubset, usePreviewMDX, useGenerateMDX, useElements, useSubsetUsage, useAttrGrid, useDimAttributes, useAliasValues, useConflictCheck } from '@/hooks/useApi'
+import { useSubset, useSaveSubset, usePreviewMDX, useGenerateMDX, useElements, useSubsetUsage, useAttrGrid, useDimAttributes, useAliasValues, useConflictCheck, useConfig } from '@/hooks/useApi'
 import { MDX_CATALOG, MDX_FUNCTIONS_FLAT } from '@/lib/tm1-mdx-catalog'
 import { validateMDX } from '@/lib/mdx-validator'
 import { MDX_PATTERN_CATEGORIES } from '@/lib/tm1-mdx-primer-patterns'
 import { subsetApplyCallbacks } from '@/lib/subsetCallbacks'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
-import { Play, Loader2, Sparkles, Copy, Search, ChevronDown, ChevronRight, ChevronLeft, Box, Cog, Locate, Clock, Save, AlignLeft, Check, X, GripHorizontal } from 'lucide-react'
+import { Play, Loader2, Sparkles, Search, ChevronDown, ChevronRight, ChevronLeft, Box, Cog, Locate, Clock, Save, AlignLeft, Check, X, GripHorizontal } from 'lucide-react'
 import SubsetVisualEditor from './SubsetVisualEditor'
 import { ConflictBanner, ConflictSaveWarning } from '@/components/ConflictBanner'
 
@@ -245,6 +245,8 @@ export default function SubsetEditor({ tab }) {
   const saveSubset  = useSaveSubset()
   const previewMDX  = usePreviewMDX()
   const generateMDX = useGenerateMDX()
+  const { data: config } = useConfig()
+  const hasAnthropicKey = !!config?.hasAnthropicKey
   const { data: elements } = useElements(tab.server, tab.dimension)
   const { data: usageData, isFetching: loadingUsage, refetch: refetchUsage } = useSubsetUsage(tab.server, tab.dimension, tab.subsetName)
 
@@ -281,7 +283,6 @@ export default function SubsetEditor({ tab }) {
   }, [resultsHeight])
   const [validating, setValidating] = useState(false)
   const [aiPrompt, setAiPrompt] = useState('')
-  const [copyingPrompt, setCopyingPrompt] = useState(false)
   const [saveAsOpen, setSaveAsOpen] = useState(false)
   const [saveAsName, setSaveAsName] = useState('')
   const saveAsRef = useRef(null)
@@ -468,17 +469,6 @@ export default function SubsetEditor({ tab }) {
       { onSuccess: (d) => { setMdx(d.mdx); setDirty(true); setMembers(null) }, onError: (e) => toast.error(e.message) })
   }
 
-  const handleCopyPrompt = async () => {
-    setCopyingPrompt(true)
-    try {
-      const enc = encodeURIComponent
-      const r = await fetch(`/api/elements?server=${enc(tab.server)}&dimension=${enc(tab.dimension)}`, { headers: { 'x-ide-token': localStorage.getItem('tm1-token') ?? '' } })
-      const els = await r.json()
-      const sample = els.slice(0, 200).map(e => `${e.Name} (${e.Type === 'N' ? 'leaf' : e.Type === 'C' ? 'consolidated' : 'string'}, level ${e.Level})`).join('\n')
-      await navigator.clipboard.writeText(`TM1 MDX expert. Generate a valid TM1 MDX set expression for dimension: ${tab.dimension}\n\nSample elements:\n${sample}\n\nRequest: ${aiPrompt || '(describe what you want)'}`)
-      toast.success('Prompt copied')
-    } catch (e) { toast.error('Copy failed: ' + e.message) } finally { setCopyingPrompt(false) }
-  }
 
   if (isLoading && mdx === null) {
     return <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm"><Loader2 size={16} className="animate-spin mr-2" />Loading…</div>
@@ -647,18 +637,20 @@ export default function SubsetEditor({ tab }) {
 
           {/* AI bar */}
           <div className="flex items-center gap-2 px-3 py-1.5 border-b border-border bg-muted/10 shrink-0">
-            <Sparkles size={11} className="shrink-0 text-violet-400" />
-            <input value={aiPrompt} onChange={e => setAiPrompt(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleGenerate()}
-              placeholder="Describe the members you want…"
-              className="flex-1 text-xs bg-transparent outline-none placeholder:text-muted-foreground/40" />
-            <button onClick={handleCopyPrompt} disabled={copyingPrompt}
-              className="flex items-center gap-1 px-2 py-0.5 text-xs rounded border border-border text-muted-foreground disabled:opacity-40 hover:bg-muted transition-colors shrink-0">
-              {copyingPrompt ? <Loader2 size={10} className="animate-spin" /> : <Copy size={10} />} Copy prompt
-            </button>
-            <button onClick={handleGenerate} disabled={!aiPrompt.trim() || generateMDX.isPending}
-              className="flex items-center gap-1 px-2 py-0.5 text-xs rounded bg-violet-700 text-white disabled:opacity-40 hover:bg-violet-600 transition-colors shrink-0">
-              {generateMDX.isPending ? <Loader2 size={10} className="animate-spin" /> : <Sparkles size={10} />} Generate
-            </button>
+            <Sparkles size={11} className={cn('shrink-0', hasAnthropicKey ? 'text-violet-400' : 'text-muted-foreground/40')} />
+            {hasAnthropicKey ? (
+              <>
+                <input value={aiPrompt} onChange={e => setAiPrompt(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleGenerate()}
+                  placeholder="Describe the members you want…"
+                  className="flex-1 text-xs bg-transparent outline-none placeholder:text-muted-foreground/40" />
+                <button onClick={handleGenerate} disabled={!aiPrompt.trim() || generateMDX.isPending}
+                  className="flex items-center gap-1 px-2 py-0.5 text-xs rounded bg-violet-700 text-white disabled:opacity-40 hover:bg-violet-600 transition-colors shrink-0">
+                  {generateMDX.isPending ? <Loader2 size={10} className="animate-spin" /> : <Sparkles size={10} />} Generate
+                </button>
+              </>
+            ) : (
+              <span className="flex-1 text-xs text-muted-foreground/40 italic">AI generation needs an Anthropic API key — not configured on this server</span>
+            )}
           </div>
 
           {/* Editor + Right panel */}
