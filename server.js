@@ -145,7 +145,15 @@ app.get('/api/sessions/active', (req, res) => {
 })
 
 app.get('/api/sessions', (req, res) => {
-    try { res.json(cl.getSessions(req.query.server)) }
+    try {
+        const sessions = cl.getSessions(req.query.server)
+        let deployedIds = new Set()
+        try {
+            const approvals = JSON.parse(fs.readFileSync(path.join(__dirname, 'config', 'deploy-approvals.json'), 'utf8'))
+            deployedIds = new Set(approvals.filter(a => a.session).map(a => a.session))
+        } catch { /* no approvals file yet */ }
+        res.json(sessions.map(s => ({ ...s, deployed: deployedIds.has(s.id) })))
+    }
     catch (e) { res.status(500).json({ error: e.message }) }
 })
 

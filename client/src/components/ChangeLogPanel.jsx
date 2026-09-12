@@ -153,6 +153,9 @@ function SessionRow({ session, server, openTab, onClose }) {
               <div className="flex items-center gap-1.5">
                 {isActive && <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0 animate-pulse" />}
                 <span className="text-xs font-medium truncate">{session.name}</span>
+                {session.deployed && (
+                  <span className="text-[9px] px-1 py-0.5 rounded bg-emerald-500/15 text-emerald-400 shrink-0">Deployed</span>
+                )}
               </div>
               <div className="text-[10px] text-muted-foreground/60">
                 {fmtDate(session.started_at)} · {session.entry_count} change{session.entry_count !== 1 ? 's' : ''}{session.user ? ` · ${session.user}` : ''}
@@ -243,7 +246,14 @@ function SessionRow({ session, server, openTab, onClose }) {
 
 export default function ChangeLogPanel({ server, onClose, direction = 'up' }) {
   const { openTab, openDeployCenter } = useStore()
-  const { data: sessions = [], isFetching } = useWorkSessions(server)
+  const { data: allSessions = [], isFetching } = useWorkSessions(server)
+  const [showDeployed, setShowDeployed] = useState(false)
+
+  // Once a change set has shipped it's not "in play" anymore -- its record
+  // lives properly in Deploy History now. Keep this list to what's still
+  // active or not yet deployed; deployed ones are one click away, not gone.
+  const deployedCount = allSessions.filter(s => s.deployed).length
+  const sessions = showDeployed ? allSessions : allSessions.filter(s => !s.deployed)
 
   const openReleaseAndClose = () => { openDeployCenter({ server, release: true }); onClose?.() }
 
@@ -277,7 +287,9 @@ export default function ChangeLogPanel({ server, onClose, direction = 'up' }) {
         <div className="overflow-auto flex-1">
           {sessions.length === 0 && !isFetching && (
             <p className="px-4 py-8 text-xs text-muted-foreground italic text-center">
-              No change sets yet. Start a change set to begin tracking changes.
+              {allSessions.length === 0
+                ? 'No change sets yet. Start a change set to begin tracking changes.'
+                : 'Nothing in play — every change set here has already been deployed.'}
             </p>
           )}
           {sessions.map(s => (
@@ -290,6 +302,15 @@ export default function ChangeLogPanel({ server, onClose, direction = 'up' }) {
             />
           ))}
         </div>
+
+        {deployedCount > 0 && (
+          <button
+            onClick={() => setShowDeployed(v => !v)}
+            className="shrink-0 px-3 py-1.5 text-[10px] text-muted-foreground hover:text-foreground hover:bg-muted transition-colors border-t border-border text-left"
+          >
+            {showDeployed ? 'Hide deployed' : `Show ${deployedCount} deployed`}
+          </button>
+        )}
       </div>
 
     </>
