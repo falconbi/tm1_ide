@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react'
-import { useCubes, useCubeDimensions, useDims, useDimAttributes, useAttributeValues, useElements, useSubsets } from '@/hooks/useApi'
+import { useCubes, useCubeDimensions, useDims, useDimAttributes, useAttributeValues, useElements, useSubsets, useConfig } from '@/hooks/useApi'
 import { useStore } from '@/store'
 import { registerTM1Theme } from '@/lib/tm1-functions'
 import { subsetApplyCallbacks } from '@/lib/subsetCallbacks'
@@ -763,6 +763,8 @@ export default function GuidedMDXBuilder({ tab, server: serverProp, onSwitchToRa
   const [aiPrompt, setAiPrompt]   = useState('')
   const [aiLoading, setAiLoading] = useState(false)
   const [showAiBar, setShowAiBar] = useState(false)
+  const { data: config } = useConfig()
+  const hasAnthropicKey = !!config?.hasAnthropicKey
 
   const generateWithAI = async () => {
     if (!aiPrompt.trim() || !selectedCube) return
@@ -1598,10 +1600,10 @@ export default function GuidedMDXBuilder({ tab, server: serverProp, onSwitchToRa
                   </button>
                   <button
                     onClick={() => setShowAiBar(s => !s)}
-                    disabled={!selectedCube}
+                    disabled={!selectedCube || !hasAnthropicKey}
                     className={cn('flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded hover:bg-muted transition-colors disabled:opacity-40',
                       showAiBar ? 'text-violet-400' : 'text-muted-foreground hover:text-foreground')}
-                    title="Generate MDX with AI">
+                    title={hasAnthropicKey ? 'Generate MDX with AI' : 'AI generation needs an Anthropic API key — not configured on this server'}>
                     <Sparkles size={10} /> AI
                   </button>
                   <button onClick={runViewPreview} disabled={!activeMDX || previewLoading}
