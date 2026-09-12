@@ -48,23 +48,34 @@ const SCREENS = [
 function ScreenHeader({ current, skipSelect }) {
   const screens = skipSelect ? SCREENS.filter(s => s.id !== 1) : SCREENS
   return (
-    <div className="flex items-center gap-0 border-b border-border bg-muted/20 px-6 py-3 shrink-0">
-      {screens.map((s, i) => (
-        <div key={s.id} className="flex items-center">
-          <div className={cn(
-            'flex items-center gap-1.5 px-3 py-1 rounded text-xs font-medium transition-colors',
-            current === s.id && 'text-foreground bg-muted',
-            current >  s.id && 'text-emerald-400',
-            current <  s.id && 'text-muted-foreground/50',
-          )}>
-            {current > s.id ? <CheckCircle2 size={11} /> : <s.Icon size={11} />}
-            {s.label}
-          </div>
-          {i < screens.length - 1 && (
-            <ChevronRight size={12} className="text-muted-foreground/30 mx-1" />
-          )}
-        </div>
-      ))}
+    <div className="flex justify-center border-b border-border bg-muted/10 px-8 py-5 shrink-0">
+      <div className="flex items-start">
+        {screens.map((s, i) => {
+          const done   = current > s.id
+          const active = current === s.id
+          return (
+            <Fragment key={s.id}>
+              <div className="flex flex-col items-center gap-1.5 w-24 shrink-0">
+                <div className={cn(
+                  'flex items-center justify-center w-8 h-8 rounded-full border-2 transition-colors',
+                  done   && 'bg-emerald-500 border-emerald-500 text-white',
+                  active && 'border-primary text-primary bg-primary/10',
+                  !done && !active && 'border-border text-muted-foreground/40',
+                )}>
+                  {done ? <CheckCircle2 size={16} /> : <s.Icon size={14} />}
+                </div>
+                <span className={cn('text-xs font-medium',
+                  active ? 'text-foreground' : done ? 'text-emerald-400' : 'text-muted-foreground/40')}>
+                  {s.label}
+                </span>
+              </div>
+              {i < screens.length - 1 && (
+                <div className={cn('flex-1 h-0.5 mt-4 min-w-8 transition-colors', done ? 'bg-emerald-500' : 'bg-border')} />
+              )}
+            </Fragment>
+          )
+        })}
+      </div>
     </div>
   )
 }
