@@ -27,6 +27,60 @@ function snapshotText(obj, type) {
   }
 }
 
+const DIFFABLE = new Set(['rules', 'process', 'subset', 'view', 'picklist-cube', 'dimension'])
+
+function mergeKey(o) {
+  return `${o.type}::${o.name}${o.detail ? `::${o.detail}` : ''}`
+}
+
+// Merge Package Contents (manifest.objects), Deploy Results, and the Target
+// State pre/post snapshot into one row per object -- packaged / deployed /
+// verified read together instead of three separate lists you cross-reference
+// by eye.
+function mergeArchiveRows(data) {
+  const manifestObjs = data?.manifest?.objects ?? []
+  const deployResults = data?.deploy?.results ?? []
+  const pre  = data?.preSnapshot?.objects  ?? {}
+  const post = data?.postSnapshot?.objects ?? {}
+  const snapshotAvailable = !!(data?.preSnapshot && data?.postSnapshot)
+
+  const rows = new Map()
+  const row = (key, seed) => { let r = rows.get(key); if (!r) { r = seed; rows.set(key, r) } return r }
+
+  for (const o of manifestObjs) {
+    const r = row(mergeKey(o), { key: mergeKey(o), type: o.type, name: o.name, detail: o.detail })
+    r.packaged = true
+    r.change = o.change
+    r.outcome = o.outcome
+    r.elementDelta = o.elementDelta
+  }
+  for (const d of deployResults) {
+    const r = row(mergeKey(d), { key: mergeKey(d), type: d.type, name: d.name, detail: d.detail })
+    r.deployed = true
+    r.deployOk = d.ok
+    r.deployError = d.error
+  }
+  if (snapshotAvailable) {
+    for (const key of new Set([...Object.keys(pre), ...Object.keys(post)])) {
+      const [type, name, detail] = key.split('::')
+      const r = row(key, { key, type, name, detail })
+      const beforeText = snapshotText(pre[key],  type)
+      const afterText  = snapshotText(post[key], type)
+      const changed = beforeText !== afterText
+      r.verified = true
+      r.verifyState = !pre[key] ? 'created' : !post[key] ? 'removed' : changed ? 'changed' : 'unchanged'
+      r.canDiff = DIFFABLE.has(type) && changed
+      r.beforeText = beforeText
+      r.afterText = afterText
+    }
+  }
+  return {
+    rows: [...rows.values()],
+    snapshotAvailable,
+    target: data?.preSnapshot?.target ?? data?.postSnapshot?.target,
+  }
+}
+
 function fmt(iso) {
   if (!iso) return '—'
   return new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
@@ -122,147 +176,96 @@ function ArchiveDetail({ id, approval, deployStats, onOpenDiff }) {
         )}
       </div>
 
-      {/* Manifest */}
+      {/* Merged: packaged / deployed / verified, one row per object */}
       {loading && (
         <div className="flex items-center gap-2 text-xs text-muted-foreground py-2">
           <Loader2 size={11} className="animate-spin" /> Loading…
         </div>
       )}
       {err && <div className="text-xs text-red-400">{err}</div>}
-      {data?.manifest && (
-        <div>
-          <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">Package Contents</div>
-          <div className="border border-border rounded overflow-hidden">
-            <div className="grid grid-cols-[70px_70px_1fr_100px] text-[10px] font-medium text-muted-foreground bg-muted/30 px-3 py-1.5 border-b border-border">
-              <span>CHANGE</span><span>TYPE</span><span>NAME</span><span>OUTCOME</span>
-            </div>
-            <div className="max-h-[240px] overflow-auto">
-              {(data.manifest.objects ?? []).map((o, i) => {
-                const delta    = o.type === 'dimension' ? o.elementDelta : null
-                const hasChips = !!(delta && (delta.added.length || delta.removed.length))
-                const MAX = 20
-                return (
-                  <Fragment key={i}>
-                    <div className={cn('grid grid-cols-[70px_70px_1fr_100px] px-3 py-1 text-[10px] hover:bg-muted/20', !hasChips && 'border-b border-border/40')}>
-                      <span className={cn(
-                        o.change === 'owns'     && 'text-blue-400',
-                        o.change === 'modifies' && 'text-emerald-400',
-                        o.change === 'ref'      && 'text-muted-foreground',
-                      )}>{o.change ?? '—'}</span>
-                      <span className="text-muted-foreground">{o.type}</span>
-                      {/* detail means "parent dimension/cube" for subset/view/attribute rows,
-                          but for a dimension row it's a change-log leftover (how many elements/
-                          edges that ONE logged write touched) -- not the real delta, which the
-                          chips below already show. Not meaningful to display, so suppressed here. */}
-                      <span className="font-mono truncate pr-2">{o.name}{o.detail && o.type !== 'dimension' ? ` [${o.detail}]` : ''}</span>
-                      <span className="text-muted-foreground">{o.outcome}</span>
-                    </div>
-                    {hasChips && (
-                      <div className="px-4 pb-1.5 pt-0.5 flex flex-wrap gap-1 border-b border-border/40">
-                        {delta.added.slice(0, MAX).map(n => (
-                          <span key={n} className="text-[9px] bg-emerald-500/15 text-emerald-400 px-1.5 py-0.5 rounded font-mono">+{n}</span>
-                        ))}
-                        {delta.added.length > MAX && (
-                          <span className="text-[9px] text-emerald-400/60 px-1 py-0.5">+{delta.added.length - MAX} more</span>
-                        )}
-                        {delta.removed.slice(0, MAX).map(n => (
-                          <span key={n} className="text-[9px] bg-red-500/15 text-red-400 px-1.5 py-0.5 rounded font-mono">-{n}</span>
-                        ))}
-                        {delta.removed.length > MAX && (
-                          <span className="text-[9px] text-red-400/60 px-1 py-0.5">+{delta.removed.length - MAX} more</span>
-                        )}
-                      </div>
-                    )}
-                  </Fragment>
-                )
-              })}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Deploy results */}
-      {data?.deploy?.results && (
-        <div>
-          <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">Deploy Results</div>
-          <div className="border border-border rounded overflow-hidden">
-            <div className="max-h-[200px] overflow-auto">
-              {data.deploy.results.map((r, i) => (
-                <div key={i} className="flex items-center gap-3 px-3 py-1 border-b border-border/40 last:border-0 text-[10px] hover:bg-muted/20">
-                  {r.ok
-                    ? <CheckCircle2 size={9} className="text-emerald-400 shrink-0" />
-                    : <XCircle      size={9} className="text-red-400 shrink-0" />}
-                  <span className="text-muted-foreground w-14 shrink-0">{r.type}</span>
-                  <span className="font-mono flex-1 truncate">{r.name}{r.detail ? ` [${r.detail}]` : ''}</span>
-                  {!r.ok && <span className="text-red-400/70 truncate">{r.error}</span>}
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Pre/Post snapshot diff */}
-      {data && !(data.preSnapshot && data.postSnapshot) && (
-        <div>
-          <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">
-            Target State — Pre/Post
-          </div>
-          <p className="text-[11px] text-muted-foreground italic">
-            Verification unavailable for this deploy — pre/post snapshot capture did not complete.
-          </p>
-        </div>
-      )}
-      {data?.preSnapshot && data?.postSnapshot && (() => {
-        const pre  = data.preSnapshot.objects  ?? {}
-        const post = data.postSnapshot.objects ?? {}
-        const DIFFABLE = new Set(['rules', 'process', 'subset', 'view', 'picklist-cube', 'dimension'])
-        const keys = [...new Set([...Object.keys(pre), ...Object.keys(post)])]
-        if (!keys.length) return null
+      {data && (() => {
+        const { rows, snapshotAvailable, target } = mergeArchiveRows(data)
+        if (!rows.length) return null
+        const GRID = 'grid-cols-[54px_1fr_64px_84px_84px_84px_28px]'
         return (
           <div>
-            <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">
-              Target State — Pre/Post
-            </div>
+            <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">Objects</div>
             <div className="text-[10px] text-muted-foreground/60 mb-1.5">
-              Captured from <span className="font-mono">{data.preSnapshot.target}</span> before and after deploy
+              {snapshotAvailable
+                ? <>Verified column captured from <span className="font-mono">{target}</span> before and after deploy</>
+                : <span className="italic">Verified unavailable for this deploy — pre/post snapshot capture did not complete</span>}
             </div>
             <div className="border border-border rounded overflow-hidden">
-              <div className="grid grid-cols-[70px_1fr_80px_28px] text-[10px] font-medium text-muted-foreground bg-muted/30 px-3 py-1.5 border-b border-border">
-                <span>TYPE</span><span>NAME</span><span>CHANGE</span><span />
+              <div className={cn('grid text-[10px] font-medium text-muted-foreground bg-muted/30 px-3 py-1.5 border-b border-border', GRID)}>
+                <span>TYPE</span><span>NAME</span><span>CHANGE</span><span>PACKAGED</span><span>DEPLOYED</span><span>VERIFIED</span><span />
               </div>
-              <div className="max-h-[240px] overflow-auto">
-                {keys.map((key, i) => {
-                  const [type, name, detail] = key.split('::')
-                  const beforeText = snapshotText(pre[key],  type)
-                  const afterText  = snapshotText(post[key], type)
-                  const changed    = beforeText !== afterText
-                  const canDiff    = DIFFABLE.has(type)
-                  const label      = name + (detail ? ` [${detail}]` : '')
+              <div className="max-h-[320px] overflow-auto">
+                {rows.map(r => {
+                  const delta    = r.type === 'dimension' ? r.elementDelta : null
+                  const hasChips = !!(delta && (delta.added.length || delta.removed.length))
+                  const MAX = 20
                   return (
-                    <div key={i} className="grid grid-cols-[70px_1fr_80px_28px] px-3 py-1.5 border-b border-border/40 last:border-0 text-[10px] hover:bg-muted/20 items-center group">
-                      <span className="text-muted-foreground">{type}</span>
-                      <span className="font-mono truncate pr-2">{label}</span>
-                      <span className={changed ? 'text-amber-400 font-medium' : 'text-emerald-400'}>
-                        {!pre[key] ? 'created' : !post[key] ? 'removed' : changed ? 'changed' : 'unchanged'}
-                      </span>
-                      {canDiff && changed ? (
-                        <button
-                          onClick={() => openTab({
-                            id:     `snap-diff:${id}:${key}`,
-                            type:   'diff',
-                            label:  `Δ ${name}`,
-                            server: data.source,
-                            before: beforeText,
-                            after:  afterText,
-                          })}
-                          className="flex items-center justify-center text-emerald-400 hover:text-emerald-300"
-                          title="View diff"
-                        >
-                          <Diff size={10} />
-                        </button>
-                      ) : <span />}
-                    </div>
+                    <Fragment key={r.key}>
+                      <div className={cn('grid items-center px-3 py-1 text-[10px] hover:bg-muted/20', GRID, !hasChips && 'border-b border-border/40')}>
+                        <span className="text-muted-foreground">{r.type}</span>
+                        {/* detail means "parent dimension/cube" for subset/view/attribute rows,
+                            but for a dimension row it's a change-log leftover (how many elements/
+                            edges that ONE logged write touched) -- not the real delta, which the
+                            chips below already show. Not meaningful to display, so suppressed here. */}
+                        <span className="font-mono truncate pr-2">{r.name}{r.detail && r.type !== 'dimension' ? ` [${r.detail}]` : ''}</span>
+                        <span className={cn(
+                          r.change === 'owns'     && 'text-blue-400',
+                          r.change === 'modifies' && 'text-emerald-400',
+                          r.change === 'ref'      && 'text-muted-foreground',
+                        )}>{r.change ?? '—'}</span>
+                        <span className="text-muted-foreground truncate" title={r.packaged ? r.outcome : undefined}>
+                          {r.packaged ? r.outcome : '—'}
+                        </span>
+                        <span className={cn('flex items-center gap-1 truncate', r.deployed && !r.deployOk && 'text-red-400')} title={r.deployError}>
+                          {r.deployed == null ? '—' : r.deployOk
+                            ? <><CheckCircle2 size={9} className="text-emerald-400 shrink-0" /> deployed</>
+                            : <><XCircle size={9} className="text-red-400 shrink-0" /> failed</>}
+                        </span>
+                        <span className={cn(
+                          !snapshotAvailable || r.verified == null ? 'text-muted-foreground' :
+                          r.verifyState === 'unchanged' ? 'text-emerald-400' : 'text-amber-400 font-medium',
+                        )}>
+                          {!snapshotAvailable || r.verified == null ? '—' : r.verifyState}
+                        </span>
+                        {r.canDiff ? (
+                          <button
+                            onClick={() => openTab({
+                              id:     `snap-diff:${id}:${r.key}`,
+                              type:   'diff',
+                              label:  `Δ ${r.name}`,
+                              server: data.source,
+                              before: r.beforeText,
+                              after:  r.afterText,
+                            })}
+                            className="flex items-center justify-center text-emerald-400 hover:text-emerald-300"
+                            title="View diff"
+                          >
+                            <Diff size={10} />
+                          </button>
+                        ) : <span />}
+                      </div>
+                      {hasChips && (
+                        <div className="px-4 pb-1.5 pt-0.5 flex flex-wrap gap-1 border-b border-border/40">
+                          {delta.added.slice(0, MAX).map(n => (
+                            <span key={n} className="text-[9px] bg-emerald-500/15 text-emerald-400 px-1.5 py-0.5 rounded font-mono">+{n}</span>
+                          ))}
+                          {delta.added.length > MAX && (
+                            <span className="text-[9px] text-emerald-400/60 px-1 py-0.5">+{delta.added.length - MAX} more</span>
+                          )}
+                          {delta.removed.slice(0, MAX).map(n => (
+                            <span key={n} className="text-[9px] bg-red-500/15 text-red-400 px-1.5 py-0.5 rounded font-mono">-{n}</span>
+                          ))}
+                          {delta.removed.length > MAX && (
+                            <span className="text-[9px] text-red-400/60 px-1 py-0.5">+{delta.removed.length - MAX} more</span>
+                          )}
+                        </div>
+                      )}
+                    </Fragment>
                   )
                 })}
               </div>
