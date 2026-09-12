@@ -467,7 +467,15 @@ async function scopedSnapshot(manifest, targetServer, ideToken) {
                         client.getElementsWithTree(obj.name, obj.name).catch(() => []),
                         client.getEdges(obj.name, obj.name).catch(() => []),
                     ])
-                    result.objects[key] = { elementCount: elements.length, edgeCount: edges.length }
+                    // A real structural signature, not just counts -- a re-parent or
+                    // weight change leaves the counts identical but changes these lists,
+                    // so "unchanged" only fires when the structure genuinely didn't move.
+                    result.objects[key] = {
+                        elementCount: elements.length,
+                        edgeCount:    edges.length,
+                        elements:     elements.map(e => `${e.Name}:${e.Type}`).sort(),
+                        edges:        edges.map(e => `${e.ParentName}>${e.ComponentName}=${e.Weight ?? 1}`).sort(),
+                    }
                     break
                 }
                 case 'attribute': {

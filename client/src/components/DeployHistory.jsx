@@ -17,7 +17,10 @@ function snapshotText(obj, type) {
     ].join('\n\n')
     case 'subset':    return obj.expression ?? (obj.elements ?? []).join('\n')
     case 'view':          return obj.MDX ?? JSON.stringify(obj.axes ?? {}, null, 2)
-    case 'dimension':     return `Elements: ${obj.elementCount ?? '?'}\nEdges: ${obj.edgeCount ?? '?'}`
+    case 'dimension':     return [
+      `Elements (${obj.elementCount ?? '?'}): ${(obj.elements ?? []).join(', ')}`,
+      `Edges (${obj.edgeCount ?? '?'}): ${(obj.edges ?? []).join(', ')}`,
+    ].join('\n')
     case 'attribute':     return `${obj.Name}: ${obj.Type}`
     case 'picklist-cube': return Object.entries(obj.cells ?? {}).map(([k, v]) => `${k} = ${v}`).join('\n')
     default:          return JSON.stringify(obj, null, 2)
@@ -136,7 +139,7 @@ function ArchiveDetail({ id, approval, deployStats, onOpenDiff }) {
             <div className="max-h-[240px] overflow-auto">
               {(data.manifest.objects ?? []).map((o, i) => {
                 const delta    = o.type === 'dimension' ? o.elementDelta : null
-                const hasChips = delta && (delta.added.length || delta.removed.length)
+                const hasChips = !!(delta && (delta.added.length || delta.removed.length))
                 const MAX = 20
                 return (
                   <Fragment key={i}>
@@ -147,7 +150,11 @@ function ArchiveDetail({ id, approval, deployStats, onOpenDiff }) {
                         o.change === 'ref'      && 'text-muted-foreground',
                       )}>{o.change ?? '—'}</span>
                       <span className="text-muted-foreground">{o.type}</span>
-                      <span className="font-mono truncate pr-2">{o.name}{o.detail ? ` [${o.detail}]` : ''}</span>
+                      {/* detail means "parent dimension/cube" for subset/view/attribute rows,
+                          but for a dimension row it's a change-log leftover (how many elements/
+                          edges that ONE logged write touched) -- not the real delta, which the
+                          chips below already show. Not meaningful to display, so suppressed here. */}
+                      <span className="font-mono truncate pr-2">{o.name}{o.detail && o.type !== 'dimension' ? ` [${o.detail}]` : ''}</span>
                       <span className="text-muted-foreground">{o.outcome}</span>
                     </div>
                     {hasChips && (
@@ -196,10 +203,20 @@ function ArchiveDetail({ id, approval, deployStats, onOpenDiff }) {
       )}
 
       {/* Pre/Post snapshot diff */}
+      {data && !(data.preSnapshot && data.postSnapshot) && (
+        <div>
+          <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">
+            Target State — Pre/Post
+          </div>
+          <p className="text-[11px] text-muted-foreground italic">
+            Verification unavailable for this deploy — pre/post snapshot capture did not complete.
+          </p>
+        </div>
+      )}
       {data?.preSnapshot && data?.postSnapshot && (() => {
         const pre  = data.preSnapshot.objects  ?? {}
         const post = data.postSnapshot.objects ?? {}
-        const DIFFABLE = new Set(['rules', 'process', 'subset', 'view', 'picklist-cube'])
+        const DIFFABLE = new Set(['rules', 'process', 'subset', 'view', 'picklist-cube', 'dimension'])
         const keys = [...new Set([...Object.keys(pre), ...Object.keys(post)])]
         if (!keys.length) return null
         return (
