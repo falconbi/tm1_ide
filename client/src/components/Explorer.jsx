@@ -751,6 +751,10 @@ const DIM_GROUPS = [
   { id: 'hierarchy', label: 'Hierarchy Dims',   match: n => n.startsWith('}Hierarchies_') },
   { id: 'other',     label: 'Other Dims',       match: () => true },
 ]
+const PROC_GROUPS = [
+  { id: 'bedrock', label: 'Bedrock',          match: n => n.startsWith('}bedrock.') },
+  { id: 'other',   label: 'Other Processes',  match: () => true },
+]
 
 function classify(items, groups) {
   const result = groups.map(g => ({ ...g, items: [] }))
@@ -834,6 +838,7 @@ function ControlSection({ server, onOpenViewer, onOpenDim, onOpenProcess, onOpen
 
   const cubeGroups = useMemo(() => classify(cubes, CUBE_GROUPS), [cubes])
   const dimGroups  = useMemo(() => classify(dims,  DIM_GROUPS),  [dims])
+  const procGroups = useMemo(() => classify(procs, PROC_GROUPS), [procs])
 
   const toggleGroup = id => setOpenGroups(prev => ({ ...prev, [id]: !prev[id] }))
 
@@ -894,12 +899,22 @@ function ControlSection({ server, onOpenViewer, onOpenDim, onOpenProcess, onOpen
           {procs.length > 0 && (
             <div>
               <GroupHeader id="procs-top" label={`Processes (${procs.length})`} count={null} />
-              {openGroups['procs-top'] && procs.map(name => (
-                <button key={name} onClick={() => onOpenProcess(name)}
-                  className="flex items-center gap-2 w-full px-9 py-0.5 text-xs text-sidebar-foreground hover:bg-sidebar-accent truncate">
-                  <Cog size={11} className="shrink-0 text-muted-foreground" />
-                  <span className="truncate">{name}</span>
-                </button>
+              {openGroups['procs-top'] && procGroups.map(g => (
+                <div key={g.id}>
+                  <button onClick={() => toggleGroup(`proc-${g.id}`)}
+                    className="flex items-center gap-1.5 w-full px-7 py-0.5 text-[10px] font-medium text-muted-foreground/60 hover:text-muted-foreground">
+                    {openGroups[`proc-${g.id}`] ? <ChevronDown size={8} /> : <ChevronRight size={8} />}
+                    <span>{g.label}</span>
+                    <span className="ml-1 text-muted-foreground/40">{g.items.length}</span>
+                  </button>
+                  {openGroups[`proc-${g.id}`] && g.items.map(name => (
+                    <button key={name} onClick={() => onOpenProcess(name)}
+                      className="flex items-center gap-2 w-full px-9 py-0.5 text-xs text-sidebar-foreground hover:bg-sidebar-accent truncate">
+                      <Cog size={11} className="shrink-0 text-muted-foreground" />
+                      <span className="truncate">{name}</span>
+                    </button>
+                  ))}
+                </div>
               ))}
             </div>
           )}
