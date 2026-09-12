@@ -2688,6 +2688,10 @@ app.post('/api/deploy/import-zip', express.raw({ type: '*/*', limit: '200mb' }),
             return res.status(400).json({ error: 'Not a deploy package — no manifest.json found in the zip' })
         }
         const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'))
+        // Tag as imported so /api/deploy/packages can tell it apart from a package
+        // this IDE built itself — Import Package should only ever list handoffs.
+        manifest._meta = { ...(manifest._meta ?? {}), imported: true, imported_at: new Date().toISOString() }
+        fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2))
         res.json({ dir: outDir, name: path.basename(outDir), manifest })
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
@@ -2696,6 +2700,7 @@ app.get('/api/deploy/packages', (req, res) => {
     try {
         const dir = path.join(__dirname, 'packages')
         if (!fs.existsSync(dir)) return res.json([])
+        const importedOnly = req.query.imported === '1'
         const items = fs.readdirSync(dir)
             .filter(n => fs.statSync(path.join(dir, n)).isDirectory())
             .map(n => {
@@ -2705,6 +2710,7 @@ app.get('/api/deploy/packages', (req, res) => {
                 return { dir: path.join(dir, n), name: n, meta: m._meta, objectCount: m.objects?.length ?? 0 }
             })
             .filter(Boolean)
+            .filter(p => !importedOnly || p.meta?.imported === true)
             .sort((a, b) => (b.meta?.packaged_at ?? '').localeCompare(a.meta?.packaged_at ?? ''))
         res.json(items)
     } catch (e) { res.status(500).json({ error: e.message }) }

@@ -14,7 +14,7 @@ function fmtDate(iso) {
 // it built. Lists what's already in packages/ and lets you drop in a new one.
 export default function ImportPackagePanel() {
   const { openDeployCenter } = useStore()
-  const { data: packages = [], isLoading, error, refetch } = useDeployPackages()
+  const { data: packages = [], isLoading, error, refetch } = useDeployPackages({ imported: true })
   const importMut = useDeployImportZip()
   const fileRef = useRef(null)
   const [uploadError, setUploadError] = useState(null)

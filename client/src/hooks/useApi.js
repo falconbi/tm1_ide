@@ -544,7 +544,11 @@ export const useUpdateSessionDescription = () => { const qc = useQueryClient(); 
 // ── Deploy pipeline ───────────────────────────────────────────────────────────
 export const usePreDeleteElementCheck = () => useMutation({ mutationFn: (body) => post('/api/deploy/pre-delete-check', body) })
 
-export const useDeployPackages = () => useQuery({ queryKey: ['deploy-packages'], queryFn: () => get('/api/deploy/packages'), staleTime: 0 })
+export const useDeployPackages = ({ imported } = {}) => useQuery({
+  queryKey: ['deploy-packages', imported ? 'imported' : 'all'],
+  queryFn:  () => get(`/api/deploy/packages${imported ? '?imported=1' : ''}`),
+  staleTime: 0,
+})
 export const useDeployBaseline = (server) => useQuery({ queryKey: ['deploy-baseline', server], queryFn: () => get(`/api/deploy/baseline?server=${encodeURIComponent(server ?? '')}`), staleTime: 60_000, enabled: !!server })
 export const useDeploySeed     = () => { const qc = useQueryClient(); return useMutation({ mutationFn: (body) => post('/api/deploy/seed', body), onSuccess: () => qc.invalidateQueries({ queryKey: ['deploy-baseline'] }) }) }
 export const useDeployDiff     = () => useMutation({ mutationFn: (body) => post('/api/deploy/diff',    body) })
