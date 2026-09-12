@@ -887,6 +887,39 @@ return (d.value ?? [])
     }
 
     async getViewWithSubsets(cube, name) {
+        const result = await this._getViewWithSubsetsRaw(cube, name)
+        if (result) await this._resolveAxisDimensions(cube, result)
+        return result
+    }
+
+    // A placement bound to a NAMED subset never reports its own parent dimension
+    // (the API omits it), and a STATIC named subset has no Expression to parse a
+    // dimension out of either -- so every consumer of getViewWithSubsets used to
+    // see dimension: null for these axes. That bug was silently baked into every
+    // baseline seeded for a view like this (dimension: null -> axesDiffNote's
+    // "[] -> [RealDim]") and made every future drift check on it a false positive.
+    // Resolve it once here, for every caller, instead of packager.js's one-off
+    // per-call workaround (removed — this replaces it).
+    async _resolveAxisDimensions(cube, vws) {
+        const axes = [...(vws._rows ?? []), ...(vws._columns ?? []), ...(vws._titles ?? [])]
+        const unresolved = axes.filter(a => a.subset && !a.dimension)
+        if (!unresolved.length) return
+        const cubeMeta = await this.getCube(cube).catch(() => null)
+        const cubeDims = (cubeMeta?.Dimensions ?? []).map(d => d.Name ?? d)
+        const cache = new Map()
+        for (const axis of unresolved) {
+            if (!cache.has(axis.subset)) {
+                let found = null
+                for (const d of cubeDims) {
+                    if (await this.getSubset(d, axis.subset).catch(() => null)) { found = d; break }
+                }
+                cache.set(axis.subset, found)
+            }
+            axis.dimension = cache.get(axis.subset)
+        }
+    }
+
+    async _getViewWithSubsetsRaw(cube, name) {
         const getSubset = (placements) => {
             if (!placements) return []
             return placements.map(p => {

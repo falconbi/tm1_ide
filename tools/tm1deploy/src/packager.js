@@ -69,27 +69,10 @@ async function fetchView(cube, name, client) {
     const v = await client.getView(cube, name)
     if (v?.MDX) return { Type: 'MDX', MDX: v.MDX }
 
-    // native — store structured axis definitions for saveNativeView
+    // native — store structured axis definitions for saveNativeView. Dimension
+    // resolution for a named-subset axis (the placement API doesn't report the
+    // parent dim) now happens inside getViewWithSubsets itself, for every caller.
     const vs = await client.getViewWithSubsets(cube, name)
-
-    // getViewWithSubsets returns dimension:null for an axis that carries a NAMED
-    // subset (the placement API doesn't report the parent dim). saveNativeView
-    // then can't build the subset bind and the view 404s on deploy. Backfill the
-    // dimension by finding which of the cube's dimensions owns a subset by that name.
-    const cubeMeta = await client.getCube(cube).catch(() => null)
-    const cubeDims = (cubeMeta?.Dimensions ?? []).map(d => d.Name ?? d)
-    const resolveDim = async (subsetName) => {
-        for (const d of cubeDims) {
-            const s = await client.getSubset(d, subsetName).catch(() => null)
-            if (s) return d
-        }
-        return null
-    }
-    for (const axis of [...(vs._rows ?? []), ...(vs._columns ?? []), ...(vs._titles ?? [])]) {
-        if (axis.subset && !axis.dimension) {
-            axis.dimension = await resolveDim(axis.subset)
-        }
-    }
 
     // Refuse to package a view whose axis we could not read — shipping a
     // half-resolved definition silently corrupts the view on the target (this is
