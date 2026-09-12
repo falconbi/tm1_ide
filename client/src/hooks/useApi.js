@@ -205,6 +205,11 @@ export const useGenerateMDX = () => useMutation({
     post(`/api/subset/generate`, { server, dimension, prompt }),
 })
 
+export const useGenerateViewMDX = () => useMutation({
+  mutationFn: ({ server, cube, prompt }) =>
+    post(`/api/mdx/generate`, { server, cube, prompt }),
+})
+
 export const useDimAttributes = (server, dimension) => useQuery({
   queryKey: ['dim-attributes', server, dimension],
   queryFn:  () => get(`/api/dimension/attributes?server=${enc(server)}&dimension=${enc(dimension)}`),

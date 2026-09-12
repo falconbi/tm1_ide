@@ -1428,7 +1428,7 @@ app.post('/api/subset/generate', async (req, res) => {
         const sample   = elements.slice(0, 200).map(e => `${e.Name} (${e.Type === 'N' ? 'leaf' : e.Type === 'C' ? 'consolidated' : 'string'}, level ${e.Level})`).join('\n')
 
         const message = await anthropic.messages.create({
-            model:      'claude-opus-4-7',
+            model:      'claude-sonnet-5',
             max_tokens: 1024,
             system: `You are a TM1 MDX expert. Generate a valid TM1 MDX set expression for the given dimension.
 Rules:

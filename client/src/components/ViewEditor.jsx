@@ -5,9 +5,9 @@ import { DndContext, DragOverlay, PointerSensor, useSensor, useSensors, useDropp
 import MonacoEditor from '@monaco-editor/react'
 import { useStore } from '@/store'
 import { subsetApplyCallbacks } from '@/lib/subsetCallbacks'
-import { useCubeDimensions, useSubsets, useElementsTree, useViews, useExecuteMDX, useViewAxes, useSaveView, useSetDefaultView, usePawBookUsage, useDimAttributes, useViewUsage, useMultiFormatAttrs, useConflictCheck } from '@/hooks/useApi'
+import { useCubeDimensions, useSubsets, useElementsTree, useViews, useExecuteMDX, useViewAxes, useSaveView, useSetDefaultView, usePawBookUsage, useDimAttributes, useViewUsage, useMultiFormatAttrs, useConflictCheck, useGenerateViewMDX } from '@/hooks/useApi'
 import { toast } from 'sonner'
-import { RefreshCw, Loader2, Table2, GripVertical, GripHorizontal, X, LayoutGrid, Rows3, Columns3, Filter, ZapOff, Zap, ChevronLeft, ChevronRight, PencilLine, Save, Code2, Eye, ChevronDown, BookOpen, ChevronUp, Locate, MapPin, WrapText, Braces, History, AlertTriangle, Search, Cog, Box, FileSearch, Rss } from 'lucide-react'
+import { RefreshCw, Loader2, Table2, GripVertical, GripHorizontal, X, LayoutGrid, Rows3, Columns3, Filter, ZapOff, Zap, ChevronLeft, ChevronRight, PencilLine, Save, Code2, Eye, ChevronDown, BookOpen, ChevronUp, Locate, MapPin, WrapText, Braces, History, AlertTriangle, Search, Cog, Box, FileSearch, Rss, Sparkles, Copy } from 'lucide-react'
 import TransactionLogPanel from '@/components/TransactionLogPanel'
 import CellContextMenu from '@/components/CellContextMenu'
 import { cn } from '@/lib/utils'
@@ -1150,6 +1150,7 @@ export default function ViewEditor({ tab }) {
     const loadViewAxes = useViewAxes()
     const saveView     = useSaveView()
     const setDefault   = useSetDefaultView()
+    const generateViewMDX = useGenerateViewMDX()
 
     // Visual builder state — seed from Builder handoff if provided
     // Use savedAxes to survive tab-switch remounts
@@ -1183,6 +1184,33 @@ export default function ViewEditor({ tab }) {
     const mdxRef = useRef(mdx); mdxRef.current = mdx
     useEffect(() => () => patchTab(tab.id, { savedMdx: mdxRef.current }), [])
     const [mdxDirty, setMdxDirty] = useState(false)
+
+    // AI generate — front door for building a view from a description
+    const [aiPrompt, setAiPrompt] = useState('')
+    const [copyingPrompt, setCopyingPrompt] = useState(false)
+    const handleGenerateAI = useCallback(() => {
+        if (!aiPrompt.trim() || generateViewMDX.isPending) return
+        generateViewMDX.mutate({ server: tab.server, cube: tab.cube, prompt: aiPrompt }, {
+            onSuccess: d => {
+                setMdx(d.mdx)
+                setMode('mdx')
+                setMdxDirty(true)
+                toast.success('MDX generated — review, then Save')
+            },
+            onError: e => toast.error(e.message),
+        })
+    }, [aiPrompt, generateViewMDX, tab.server, tab.cube])
+    const handleCopyPrompt = useCallback(async () => {
+        setCopyingPrompt(true)
+        try {
+            const dimList = cubeDims.join(', ')
+            await navigator.clipboard.writeText(
+                `TM1 MDX expert. Generate a valid TM1 MDX SELECT query for cube: ${tab.cube}\n\nDimensions: ${dimList}\n\nRequest: ${aiPrompt || '(describe what you want)'}`
+            )
+            toast.success('Prompt copied')
+        } catch (e) { toast.error('Copy failed: ' + e.message) } finally { setCopyingPrompt(false) }
+    }, [aiPrompt, cubeDims, tab.cube])
+
     const [dimAliases, setDimAliases]         = useState({})
     const [aliasValueMaps, setAliasValueMaps] = useState({})
     const handleAliasChange = useCallback(async (dim, attr) => {
@@ -2135,6 +2163,22 @@ export default function ViewEditor({ tab }) {
                     title="Execute / Refresh (Ctrl+Enter)"
                     className="flex items-center justify-center p-1.5 rounded text-emerald-500 hover:bg-muted transition-colors disabled:opacity-40">
                     {isExecuting ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
+                </button>
+            </div>
+
+            {/* AI bar — front door for building this view */}
+            <div className="flex items-center gap-2 px-3 py-1.5 border-b border-border bg-muted/10 shrink-0">
+                <Sparkles size={11} className="shrink-0 text-violet-400" />
+                <input value={aiPrompt} onChange={e => setAiPrompt(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleGenerateAI()}
+                    placeholder="Describe the view you want…"
+                    className="flex-1 text-xs bg-transparent outline-none placeholder:text-muted-foreground/40" />
+                <button onClick={handleCopyPrompt} disabled={copyingPrompt}
+                    className="flex items-center gap-1 px-2 py-0.5 text-xs rounded border border-border text-muted-foreground disabled:opacity-40 hover:bg-muted transition-colors shrink-0">
+                    {copyingPrompt ? <Loader2 size={10} className="animate-spin" /> : <Copy size={10} />} Copy prompt
+                </button>
+                <button onClick={handleGenerateAI} disabled={!aiPrompt.trim() || generateViewMDX.isPending}
+                    className="flex items-center gap-1 px-2 py-0.5 text-xs rounded bg-violet-700 text-white disabled:opacity-40 hover:bg-violet-600 transition-colors shrink-0">
+                    {generateViewMDX.isPending ? <Loader2 size={10} className="animate-spin" /> : <Sparkles size={10} />} Generate
                 </button>
             </div>
 
