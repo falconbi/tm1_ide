@@ -20,6 +20,7 @@ import SessionControl from '@/components/SessionControl'
 import LoginPage from '@/components/LoginPage'
 import UserManagement from '@/components/UserManagement'
 import CatalogAdmin from '@/components/CatalogAdmin'
+import DeployCenter from '@/components/DeployCenter'
 import { useDeploySeed, useDeployBaseline, useServers } from '@/hooks/useApi'
 import { toast } from 'sonner'
 
@@ -376,6 +377,7 @@ export default function App() {
         {showUserMgmt && server && <UserManagement server={server} onClose={() => setShowUserMgmt(false)} />}
         {showCatalog && <CatalogAdmin server={server} onClose={() => setShowCatalog(false)} />}
         <PeriodBuilder open={showPeriodBuilder} onClose={() => setShowPeriodBuilder(false)} />
+        <DeployCenter />
         <Toaster position="bottom-right" duration={3000} />
       </TooltipProvider>
     </QueryClientProvider>

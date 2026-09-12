@@ -25,7 +25,6 @@ import SnippetPanel from '@/components/SnippetPanel'
 import TransactionLogPanel from '@/components/TransactionLogPanel'
 import ObjectHistoryPanel from '@/components/ObjectHistoryPanel'
 import DiffTab from '@/components/DiffTab'
-import DeployPanel from '@/components/DeployPanel'
 import DeployHistory from '@/components/DeployHistory'
 import ImportPackagePanel from '@/components/ImportPackagePanel'
 import SessionReportTab from '@/components/SessionReportTab'
@@ -992,7 +991,6 @@ export default function EditorPane({ groupId }) {
         {tab.type === 'hierarchytest'   && <HierarchyGridTest  key={tab.id} />}
         {tab.type === 'cubeeditor'      && <CubeEditor         key={tab.id} tab={tab} />}
         {tab.type === 'diff'            && <DiffTab            key={tab.id} tab={tab} />}
-        {tab.type === 'deploy'          && <DeployPanel        key={tab.id} tab={tab} />}
         {tab.type === 'deploy-history'  && <DeployHistory      key={tab.id} />}
         {tab.type === 'import-package'  && <ImportPackagePanel key={tab.id} />}
         {tab.type === 'cubemap'         && <CubeMapEditor      key={tab.id} tab={tab} />}

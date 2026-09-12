@@ -115,7 +115,8 @@ function LogEntry({ entry, server, openTab }) {
   )
 }
 
-function SessionRow({ session, server, openTab }) {
+function SessionRow({ session, server, openTab, onClose }) {
+  const { openDeployCenter } = useStore()
   const [open, setOpen]           = useState(false)
   const [editingDesc, setEditingDesc] = useState(false)
   const [descValue, setDescValue]     = useState(session.description ?? '')
@@ -188,7 +189,7 @@ function SessionRow({ session, server, openTab }) {
                 <ScrollText size={11} />
               </button>
               <button
-                onClick={() => openTab({ id: `deploy:${server}:${session.id}`, type: 'deploy', label: `Deploy: ${session.name}`, server, session })}
+                onClick={() => { openDeployCenter({ server, session }); onClose?.() }}
                 title="Deploy this session"
                 className="p-2 rounded hover:bg-muted text-emerald-500 hover:text-emerald-400"
               >
@@ -241,11 +242,10 @@ function SessionRow({ session, server, openTab }) {
 }
 
 export default function ChangeLogPanel({ server, onClose, direction = 'up' }) {
-  const { openTab } = useStore()
+  const { openTab, openDeployCenter } = useStore()
   const { data: sessions = [], isFetching } = useWorkSessions(server)
 
-  // Opening a deploy/release tab should dismiss this panel — it's done its job.
-  const openTabAndClose = t => { openTab(t); if (t?.type === 'deploy') onClose?.() }
+  const openReleaseAndClose = () => { openDeployCenter({ server, release: true }); onClose?.() }
 
   const posClass = direction === 'down'
     ? 'absolute top-full right-0 mt-1'
@@ -262,7 +262,7 @@ export default function ChangeLogPanel({ server, onClose, direction = 'up' }) {
             {isFetching && <Loader2 size={10} className="animate-spin text-muted-foreground" />}
           </div>
           <button
-            onClick={() => openTabAndClose({ id: `deploy:${server}:release`, type: 'deploy', label: `Release: ${server}`, server, release: true })}
+            onClick={openReleaseAndClose}
             title="Deploy everything changed since the baseline was seeded"
             className="flex items-center gap-1 px-2 py-1 rounded text-[10px] font-medium text-emerald-500 hover:text-emerald-400 hover:bg-muted transition-colors mr-1"
           >
@@ -285,7 +285,8 @@ export default function ChangeLogPanel({ server, onClose, direction = 'up' }) {
               key={s.id}
               session={s}
               server={server}
-              openTab={openTabAndClose}
+              openTab={openTab}
+              onClose={onClose}
             />
           ))}
         </div>

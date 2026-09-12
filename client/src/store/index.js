@@ -370,4 +370,13 @@ export const useStore = create((set, get) => ({
   /** @param {RevealTarget} target */
   setRevealTarget: (target) => set({ revealTarget: { ...target, _ts: Date.now() } }),
   clearRevealTarget: () => set({ revealTarget: null }),
+
+  // ── Deploy Center ─────────────────────────────────────────────────────────
+  // A full-screen takeover, not a tab — the entire normal IDE (sidebar, tab
+  // bar, every open editor) is hidden while this is set. Closing it restores
+  // the IDE exactly as it was; tab/group state is untouched by this.
+  // Shape matches what DeployPanel already reads off a tab: { server, session?, release?, importDir? }
+  deployCenter: null,
+  openDeployCenter:  (config) => set({ deployCenter: config }),
+  closeDeployCenter: () => set({ deployCenter: null }),
 }))

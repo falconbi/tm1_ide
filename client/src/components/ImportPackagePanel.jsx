@@ -13,7 +13,7 @@ function fmtDate(iso) {
 // box) without needing a connection to that source server at all — just the .zip
 // it built. Lists what's already in packages/ and lets you drop in a new one.
 export default function ImportPackagePanel() {
-  const { openTab } = useStore()
+  const { openDeployCenter } = useStore()
   const { data: packages = [], isLoading, error, refetch } = useDeployPackages()
   const importMut = useDeployImportZip()
   const fileRef = useRef(null)
@@ -33,10 +33,7 @@ export default function ImportPackagePanel() {
   }
 
   function deployPackage(pkg) {
-    openTab({
-      id:     `deploy-import:${pkg.dir}`,
-      type:   'deploy',
-      label:  `Import: ${pkg.name}`,
+    openDeployCenter({
       server: pkg.meta?.server ?? '',
       importDir: pkg.dir,
     })
