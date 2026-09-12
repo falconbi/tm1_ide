@@ -146,13 +146,23 @@ app.get('/api/sessions/active', (req, res) => {
 
 app.get('/api/sessions', (req, res) => {
     try {
-        const sessions = cl.getSessions(req.query.server)
-        let deployedIds = new Set()
-        try {
-            const approvals = JSON.parse(fs.readFileSync(path.join(__dirname, 'config', 'deploy-approvals.json'), 'utf8'))
-            deployedIds = new Set(approvals.filter(a => a.session).map(a => a.session))
-        } catch { /* no approvals file yet */ }
-        res.json(sessions.map(s => ({ ...s, deployed: deployedIds.has(s.id) })))
+        const server   = req.query.server
+        const sessions = cl.getSessions(server)
+        // A session counts as "deployed" once this server's own baseline has
+        // advanced past its last entry -- deployer.js re-seeds BOTH the target's
+        // and the source's baseline (stamped with the source's exact change-log
+        // position) after every clean deploy, whether it was a specific-session
+        // deploy or a Release (which never records a session id at all, so
+        // matching deploy-approvals.json's `session` field alone missed almost
+        // every real deploy). A failed deploy never advances the baseline, so
+        // this also can't mark a session "deployed" when it actually wasn't.
+        let baselineEntryId = null
+        try { baselineEntryId = require('./tools/tm1deploy/src/diff').loadBaseline(null, server)?._meta?.last_entry_id ?? null }
+        catch { /* no baseline yet */ }
+        res.json(sessions.map(s => ({
+            ...s,
+            deployed: baselineEntryId != null && s.max_entry_id != null && s.max_entry_id <= baselineEntryId,
+        })))
     }
     catch (e) { res.status(500).json({ error: e.message }) }
 })

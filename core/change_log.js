@@ -77,7 +77,7 @@ function getActiveSession(server) {
 
 function getSessions(server, limit = 50) {
     return db.prepare(`
-        SELECT s.*, COUNT(l.id) as entry_count
+        SELECT s.*, COUNT(l.id) as entry_count, MAX(l.id) as max_entry_id
         FROM sessions s
         LEFT JOIN log_entries l ON l.session_id = s.id
         WHERE s.server = ?
