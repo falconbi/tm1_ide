@@ -660,75 +660,79 @@ function Screen3({ deployData, deployRunning, archiving, onReset }) {
         </span>
       </div>
 
-      {/* Post-deploy steps (structural finishers declared in the package) */}
-      {deployData.post_deploy?.length > 0 && (
-        <div className={cn(
-          'flex items-center gap-2 px-5 py-2 text-xs border-b border-border/40',
-          deployData.post_deploy_failed ? 'text-red-400' : 'text-emerald-400'
-        )}>
-          {deployData.post_deploy_failed ? <XCircle size={13} /> : <CheckCircle2 size={13} />}
-          Post-deploy: {deployData.post_deploy.filter(p => p.ok).length}/{deployData.post_deploy.length} steps ok
-          {deployData.post_deploy_failed && ` — failed: ${deployData.post_deploy.filter(p => !p.ok).map(p => p.name).join(', ')}`}
-        </div>
-      )}
-      {deployData.structure_gaps?.length > 0 && (
-        <div className="px-5 py-1.5 text-[11px] text-red-400 border-b border-border/40">
-          Structure gap: {deployData.structure_gaps.join('; ')}
-        </div>
-      )}
-      {deployData.deleted?.length > 0 && (
-        <div className={cn(
-          'px-5 py-1.5 text-[11px] border-b border-border/40',
-          deployData.deleted.some(d => !d.ok) ? 'text-amber-400' : 'text-muted-foreground'
-        )}>
-          Removed from target: {deployData.deleted.map(d => `${d.type}/${d.name}${d.ok ? '' : ` (${d.error})`}`).join(', ')}
-        </div>
-      )}
-      {deployData.attribute_value_errors && Object.keys(deployData.attribute_value_errors).length > 0 && (
-        <div className="px-5 py-1.5 text-[11px] text-amber-400 border-b border-border/40">
-          Attribute values: {Object.entries(deployData.attribute_value_errors).map(([d, m]) => `${d} (${m})`).join('; ')}
-        </div>
-      )}
+      {/* Post-deploy checklist — one consistent line per check that actually ran,
+          instead of a stack of differently-styled banners. */}
+      {(() => {
+        const checks = []
 
-      {/* Post-deploy verification (source assertions against the target) */}
-      {(deployData.verification || liveVerify) && (() => {
-        const v = liveVerify ?? deployData.verification
-        const vErr    = v.error
-        const vFailed = liveVerify ? (v.failed?.length > 0) : deployData.verification_failed
-        const fails   = v.failed ?? []
+        if (deployData.post_deploy?.length > 0) {
+          checks.push({
+            status: deployData.post_deploy_failed ? 'fail' : 'ok',
+            text: `Post-deploy: ${deployData.post_deploy.filter(p => p.ok).length}/${deployData.post_deploy.length} steps ok` +
+              (deployData.post_deploy_failed ? ` — failed: ${deployData.post_deploy.filter(p => !p.ok).map(p => p.name).join(', ')}` : ''),
+          })
+        }
+        if (deployData.structure_gaps?.length > 0) {
+          checks.push({ status: 'fail', text: `Structure gap: ${deployData.structure_gaps.join('; ')}` })
+        }
+        if (deployData.deleted?.length > 0) {
+          checks.push({
+            status: deployData.deleted.some(d => !d.ok) ? 'warn' : 'ok',
+            text: `Removed from target: ${deployData.deleted.map(d => `${d.type}/${d.name}${d.ok ? '' : ` (${d.error})`}`).join(', ')}`,
+          })
+        }
+        if (deployData.attribute_value_errors && Object.keys(deployData.attribute_value_errors).length > 0) {
+          checks.push({
+            status: 'warn',
+            text: `Attribute values: ${Object.entries(deployData.attribute_value_errors).map(([d, m]) => `${d} (${m})`).join('; ')}`,
+          })
+        }
+        if (deployData.verification || liveVerify) {
+          const v       = liveVerify ?? deployData.verification
+          const vErr    = v.error
+          const vFailed = liveVerify ? (v.failed?.length > 0) : deployData.verification_failed
+          const fails   = v.failed ?? []
+          checks.push({
+            status: vErr ? 'warn' : vFailed ? 'fail' : 'ok',
+            text: vErr
+              ? `Verification could not run: ${vErr}`
+              : `Verification: ${v.passed}/${v.total} assertions pass on ${deployData.target_server}` +
+                (vFailed ? ` — ${fails.map(f => f.description).slice(0, 3).join('; ')}${fails.length > 3 ? '…' : ''}` : ''),
+            action: (
+              <button onClick={reVerify} disabled={verifying}
+                className="ml-auto flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground disabled:opacity-50 transition-colors">
+                {verifying ? <Loader2 size={11} className="animate-spin" /> : <RefreshCw size={11} />}
+                {verifying ? 'Verifying…' : 'Re-verify'}
+              </button>
+            ),
+          })
+        }
+        if (verifyErr) {
+          checks.push({ status: 'warn', text: `Re-verify failed: ${verifyErr}` })
+        }
+        if (deployData.baselines_seeded) {
+          checks.push({ status: 'ok', text: `Baselines advanced: ${Object.values(deployData.baselines_seeded).join(', ')}` })
+        }
+        if (deployData.baseline_error) {
+          checks.push({ status: 'warn', text: `Baseline auto-seed failed: ${deployData.baseline_error}` })
+        }
+
+        if (!checks.length) return null
         return (
-          <div className={cn(
-            'flex items-center gap-2 px-5 py-2 text-xs border-b border-border/40',
-            vErr ? 'text-amber-400' : vFailed ? 'text-red-400' : 'text-emerald-400'
-          )}>
-            {vErr
-              ? <>Verification could not run: {vErr}</>
-              : <>
-                  {vFailed ? <XCircle size={13} /> : <CheckCircle2 size={13} />}
-                  Verification: {v.passed}/{v.total} assertions pass on {deployData.target_server}
-                  {vFailed && ` — ${fails.map(f => f.description).slice(0, 3).join('; ')}${fails.length > 3 ? '…' : ''}`}
-                </>}
-            <button onClick={reVerify} disabled={verifying}
-              className="ml-auto flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground disabled:opacity-50 transition-colors">
-              {verifying ? <Loader2 size={11} className="animate-spin" /> : <RefreshCw size={11} />}
-              {verifying ? 'Verifying…' : 'Re-verify'}
-            </button>
+          <div className="border-b border-border/50 divide-y divide-border/30 shrink-0">
+            {checks.map((c, i) => (
+              <div key={i} className={cn('flex items-center gap-2 px-5 py-1.5 text-xs',
+                c.status === 'fail' ? 'text-red-400' : c.status === 'warn' ? 'text-amber-400' : 'text-emerald-400')}>
+                {c.status === 'fail' ? <XCircle size={12} className="shrink-0" />
+                  : c.status === 'warn' ? <AlertTriangle size={12} className="shrink-0" />
+                  : <CheckCircle2 size={12} className="shrink-0" />}
+                <span className="flex-1">{c.text}</span>
+                {c.action}
+              </div>
+            ))}
           </div>
         )
       })()}
-      {verifyErr && (
-        <div className="px-5 py-1.5 text-[11px] text-amber-400 border-b border-border/40">Re-verify failed: {verifyErr}</div>
-      )}
-      {deployData.baselines_seeded && (
-        <div className="px-5 py-1.5 text-[11px] text-muted-foreground border-b border-border/40">
-          Baselines advanced: {Object.values(deployData.baselines_seeded).join(', ')}
-        </div>
-      )}
-      {deployData.baseline_error && (
-        <div className="px-5 py-1.5 text-[11px] text-amber-400 border-b border-border/40">
-          Baseline auto-seed failed: {deployData.baseline_error}
-        </div>
-      )}
 
       {/* Per-object results */}
       <div className="flex-1 overflow-auto">
