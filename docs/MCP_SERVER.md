@@ -1,8 +1,11 @@
 # tm1mcp — MCP Server for AI Agents
 
-`tools/tm1mcp/server.js` is a [Model Context Protocol](https://modelcontextprotocol.io) server
+`tools/tm1mcp/` is a [Model Context Protocol](https://modelcontextprotocol.io) server
 that exposes the TM1 model and a full set of build/diagnostic tools to any MCP-capable AI
-client (Claude Desktop, Claude Code, Cursor, Cline, …).
+client (Claude Desktop, Claude Code, Cursor, Cline, …). `server.js` is just the bootstrap
+(shared context + wiring); the 60 tools themselves live in `shared.js` (common helpers) and
+`tools/*.js`, one file per subject — `docs`, `introspect`, `changeset`, `assertions`,
+`deploy`, `build`, `develop`, `diagnostics`.
 
 It is **provider-neutral** — MCP is an open protocol; the server has no dependency on any
 particular model.
