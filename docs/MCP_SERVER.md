@@ -13,6 +13,18 @@ particular model.
 **Building a model from a requirements doc?** Read [`BUILDING_MODELS.md`](BUILDING_MODELS.md)
 first (or call the `read_build_guide` tool) — it's the method; this file is the reference.
 
+> ⚠️ **Status: early, needs more real-world testing.** The change-set gating and deploy-pipeline
+> integration below are the intended safety net, but the tool surface (60 tools) hasn't seen
+> heavy production use yet — treat it as a working build, not a hardened one.
+>
+> **Security note on external LLMs:** any MCP client you point at this server — including a
+> third-party/external LLM, not just Claude — gets real tool access to write to your TM1 model
+> (dimensions, cubes, rules, processes, cells) inside whatever change set is active, and the
+> `deploy` tools can read from and check drift against a live target server (e.g. Prod). Only
+> connect MCP clients and models you trust with that level of access, keep build work inside a
+> named change set (never against Release scope) so everything is diffed before it ships, and
+> review what an agent proposes before approving or deploying it.
+
 ---
 
 ## Running it

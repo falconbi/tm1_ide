@@ -65,6 +65,44 @@ npm start                   # → http://localhost:8083
 
 ---
 
+## 🎬 Video series
+
+A 24-short series walking through every main feature — edit, build, govern, then automate with AI. Each short is 30–60 seconds. *(Links to be added as videos are published.)*
+
+### A. Core editing
+1. The IDE in 30 seconds
+2. Rules editor — write, validate, format
+3. TI editor — code, run, debug
+4. IntelliSense & snippets
+5. Dimension editor
+6. Subset editor
+
+### B. Model & data
+7. Views — native & MDX
+8. Cell power — write, trace, log, notes
+9. Cube Map
+10. Lineage & impact analysis
+11. MDX sandbox + Guided builder
+12. Period Builder
+13. Calc Review views
+14. Search, SQL, chores
+
+### C. Deployment & governance
+15. Change sets & save conflicts
+16. Baselines & releases
+17. Diff, drift, risk
+18. Approve, deploy, verify
+19. Deploy history + handoff
+20. Object history, rollback, users
+
+### D. AI & MCP
+21. AI assistant
+22. MCP — the build loop
+23. Assertions & conventions
+24. Blank server → deployed model
+
+---
+
 ## ✨ Features
 
 ### Editors
@@ -84,6 +122,9 @@ npm start                   # → http://localhost:8083
 | **MDX Sandbox** | Ad-hoc MDX execution with result grid |
 | **Deploy Panel** | 5-step wizard: Diff → Package → Risk (drift check + BLOCKER/WARNING/INFO) → Approve → Deploy |
 | **Deploy History** | Permanent archive of every deployment — approval record, manifest, results, and pre/post target snapshots with inline diff viewer |
+| **AI & MCP** | Built-in MCP server (`tools/tm1mcp`, ~60 operations) exposes the TM1 model to AI agents — build dimensions, cubes, rules and processes by conversation, change-set gated. See [`docs/MCP_SERVER.md`](docs/MCP_SERVER.md). The IDE's AI assistant also generates views and subsets from a description (Anthropic API key) |
+
+> ⚠️ **MCP is still early and needs more real-world testing** before treating it as production-hardened. It's also a genuinely different trust boundary from the rest of the IDE: pointing it at an external/third-party LLM means that LLM gets tool access to write to your TM1 model (dimensions, cubes, rules, processes) inside whatever change set is active. Review what an agent proposes before approving/deploying it, keep MCP-driven work inside change sets (never Release mode) so it's diffed like anything else, and don't point it at a server you wouldn't want an unreviewed process run against.
 
 ### 🗓️ Period Builder
 
@@ -782,31 +823,34 @@ In this configuration, `Production` and `Development` route through PAW (`paw-na
 <details>
 <summary>Built-in CI/CD for promoting changes from Dev to Prod — click to expand</summary>
 
-Every save in the IDE is logged to a **Change Set** (named work session). The pipeline compares your changes against a baseline snapshot of **Prod** — not Dev — so only objects that have actually changed relative to Prod get packaged.
+Every save in the IDE is logged to a **Change Set** (named work session). The pipeline compares your changes against a **baseline snapshot** of the target server — not Dev — so only objects that have actually changed relative to the target get packaged.
+
+Baselines are **append-only per server** (`.tm1baseline/<server>/<iso>.json` + a `HEAD` pointer), stamped with the change-log position so a release windows on change-set id, not a timestamp. A mistimed seed is recoverable by moving HEAD back to an earlier snapshot.
 
 ### Flow
 
 ```
-  ① Seed baseline     ② Align Dev         ③ Work in Dev
-    from Prod    ──→    to match Prod  ──→   via change set
-    (snapshot)          (provision)          (IDE tracks)
+  ① Seed baseline     ② Work in Dev         ③ Diff & Package
+    on the target  ──→   via change set  ──→   vs the baseline
+    (snapshot)           (IDE tracks)          (release window)
                                                   │
                                                   ▼
-  ④ Diff Dev vs       ⑤ Drift re-check     ⑥ Risk + Deploy
-    Prod baseline ──→   Prod hasn't    ──→   to Prod
-    (package)           changed?
+  ④ Drift re-check     ⑤ Risk + Approve     ⑥ Deploy to target
+    target hasn't   ──→   syntax / deps /  ──→   then auto-verify
+    changed?              structural            + auto re-seed baseline
 ```
 
 ### Steps
 
-**① Seed** — snapshot Prod's object state into `.tm1baseline/snapshot.json`:
+**① Seed** — snapshot the target's object state into an append-only baseline (one per server):
 ```bash
-node tools/tm1deploy/bin/tm1deploy.js seed Production
+node tools/tm1deploy/bin/tm1deploy.js seed <prod-server>
 ```
+Use the **Deploy Center → Baselines** view (header icon) to seed, inspect history, and move HEAD.
 
 **② Work** — click the **Clock** icon → name the change set → **Start**. Green dots appear in the Explorer sidebar on every changed object.
 
-**③ Diff & Package** — hover the change set row in the Change Sets panel → click the green **Rocket**. The Deploy Panel opens:
+**③ Diff & Package** — from the Deploy Center, select the change set (or **Release** mode — everything changed since the baseline's change-log position) → **Package**. The diff outcomes:
 
 | Outcome | Meaning |
 |---------|---------|
@@ -817,12 +861,12 @@ node tools/tm1deploy/bin/tm1deploy.js seed Production
 | `MISSING` | In baseline but not found on Dev — possibly deleted |
 
 **④ Risk** — two phases run automatically:
-1. **Drift check** — fetches current state from Prod and compares to baseline. Any drift **blocks deployment** until you re-seed.
-2. **Risk analysis** (if Phase 1 is clean) — syntax, dependencies, structural impact → `BLOCKER` / `WARNING` / `INFO`
+1. **Drift check** — fetches current state from the target and compares to baseline. Any drift **blocks deployment** until you re-seed.
+2. **Risk analysis** (if drift is clean) — syntax, dependencies, structural impact → `BLOCKER` / `WARNING` / `INFO`
 
 **⑤ Approve** — a named approver signs off with optional notes. Required before deployment unlocks.
 
-**⑥ Deploy** — objects written in dependency order: attributes → dimensions → cubes → picklist cubes → rules → subsets → views → processes. Pre/post snapshots captured and stored in Deploy History.
+**⑥ Deploy** — objects written in dependency order: attributes → dimensions → cubes → picklist cubes → rules → subsets → views → processes. Post-deploy verification runs the source's assertions against the target, then **auto re-seeds the target baseline** — so the next release starts from the new state. Pre/post snapshots captured and stored in Deploy History.
 
 ### CLI (optional)
 
