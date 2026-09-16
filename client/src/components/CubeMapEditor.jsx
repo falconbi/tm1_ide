@@ -196,7 +196,28 @@ function GroupNode({ data }) {
   )
 }
 
-const nodeTypes = { cube: CubeNode, group: GroupNode }
+function ProcessNode({ data }) {
+  const { label } = data
+  return (
+    <div style={{
+      width: NODE_W, height: NODE_H, borderRadius: 8,
+      border: '1.5px dashed #10b981', background: 'rgba(16,185,129,0.07)',
+      display: 'flex', alignItems: 'center', gap: 8,
+      padding: '0 12px', cursor: 'pointer', overflow: 'hidden',
+      boxShadow: '0 1px 4px rgba(0,0,0,0.15)',
+    }}>
+      <Handle type="target" position={Position.Left} style={{ opacity: 0 }} />
+      <Workflow size={12} style={{ color: '#10b981', flexShrink: 0 }} />
+      <span style={{
+        fontSize: 11, fontWeight: 500, color: 'var(--cm-text)', fontFamily: 'monospace',
+        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1,
+      }}>{label}</span>
+      <Handle type="source" position={Position.Right} style={{ opacity: 0 }} />
+    </div>
+  )
+}
+
+const nodeTypes = { cube: CubeNode, group: GroupNode, process: ProcessNode }
 
 // ── Custom edges ──────────────────────────────────────────────────────────────
 
@@ -210,7 +231,17 @@ function RuleFeederEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition
   return <BaseEdge id={id} path={p} style={{ stroke: '#475569', strokeWidth: 1.5, strokeDasharray: '5 4', opacity: 0.6 }} markerEnd="url(#arrowFeeder)" />
 }
 
-const edgeTypes = { rule_calc: RuleCalcEdge, rule_feeder: RuleFeederEdge }
+function ProcessWriteEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition }) {
+  const [p] = getBezierPath({ sourceX, sourceY, sourcePosition, targetX, targetY, targetPosition })
+  return <BaseEdge id={id} path={p} style={{ stroke: '#10b981', strokeWidth: 1.5, opacity: 0.8 }} markerEnd="url(#arrowWrite)" />
+}
+
+function ProcessCallEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition }) {
+  const [p] = getBezierPath({ sourceX, sourceY, sourcePosition, targetX, targetY, targetPosition })
+  return <BaseEdge id={id} path={p} style={{ stroke: '#10b981', strokeWidth: 1.5, strokeDasharray: '3 3', opacity: 0.55 }} markerEnd="url(#arrowCall)" />
+}
+
+const edgeTypes = { rule_calc: RuleCalcEdge, rule_feeder: RuleFeederEdge, process_write: ProcessWriteEdge, process_call: ProcessCallEdge }
 
 function SvgMarkers() {
   return (
@@ -219,6 +250,8 @@ function SvgMarkers() {
         <marker id="arrowCalc"    markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#b45309" /></marker>
         <marker id="arrowCalcSel" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#fbbf24" /></marker>
         <marker id="arrowFeeder"  markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#475569" /></marker>
+        <marker id="arrowWrite"   markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#10b981" /></marker>
+        <marker id="arrowCall"    markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#10b981" /></marker>
       </defs>
     </svg>
   )
@@ -242,6 +275,8 @@ function Legend() {
         { el: <div style={{ width: 20, borderTop: '1.5px dashed #475569' }} />,                       label: 'Feeder reference'        },
         { el: <div style={{ width: 3, height: 10, background: '#f59e0b', borderRadius: 2 }} />,       label: 'Has rules (bar = LOC)'   },
         { el: <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#60a5fa' }} />,     label: 'Dim spotlight match'   },
+        { el: <div style={{ width: 20, height: 1.5, background: '#10b981' }} />,                       label: 'TI writes to cube'       },
+        { el: <div style={{ width: 20, borderTop: '1.5px dashed #10b981' }} />,                        label: 'Process calls process'  },
       ].map(({ el, label }) => (
         <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <div style={{ width: 22, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{el}</div>
@@ -335,6 +370,7 @@ function DetailPanel({
   cube, cubeData, reverseMap,
   onNavigate, onClose,
   onOpenRules, onOpenCube, onOpenProcess,
+  processCallers = {},
   onFilterDim, dimFilter,
   traceDepth, setTraceDepth, transitiveCount,
 }) {
@@ -429,11 +465,26 @@ function DetailPanel({
 
         {tiWriters.length > 0 && (
           <Section title="Written by (TI)" count={tiWriters.length} icon={<Zap size={9} style={{ color: 'var(--cm-text-muted)', opacity: 0.65 }} />}>
-            {tiWriters.map(p => (
-              <FlowItem key={p} label={p} onClick={() => onOpenProcess(p)}
-                icon={<Workflow size={10} style={{ flexShrink: 0, color: 'var(--cm-link)' }} />}
-              />
-            ))}
+            {tiWriters.map(p => {
+              const callers = processCallers[p] ?? []
+              return (
+                <div key={p}>
+                  <FlowItem label={p} onClick={() => onOpenProcess(p)}
+                    icon={<Workflow size={10} style={{ flexShrink: 0, color: 'var(--cm-link)' }} />}
+                  />
+                  {callers.length > 0 && (
+                    <div style={{ padding: '0 12px 0 30px', fontSize: 9, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--cm-text-muted)', opacity: 0.5 }}>
+                      called by
+                    </div>
+                  )}
+                  {callers.map(c => (
+                    <div key={c} style={{ paddingLeft: 18 }}>
+                      <FlowItem label={c} onClick={() => onOpenProcess(c)} color="var(--cm-text-muted)" />
+                    </div>
+                  ))}
+                </div>
+              )
+            })}
           </Section>
         )}
 
@@ -451,6 +502,7 @@ function CubeMapInner({ tab }) {
   const token = typeof localStorage !== 'undefined' ? (localStorage.getItem('tm1-token') ?? '') : ''
 
   const [cubeData,       setCubeData]       = useState(null)
+  const [processCallers, setProcessCallers] = useState({})
   const [loading,        setLoading]        = useState(false)
   const [error,          setError]          = useState(null)
 
@@ -468,6 +520,7 @@ function CubeMapInner({ tab }) {
   const [showLegend,     setShowLegend]     = useState(false)
   const [showClusters,   setShowClusters]   = useState(false)
   const [dimSpotlight,   setDimSpotlight]   = useState('')
+  const [showProcesses,  setShowProcesses]  = useState(true)
 
   const { fitView, setCenter, getNode } = useReactFlow()
 
@@ -481,6 +534,7 @@ function CubeMapInner({ tab }) {
       const d = await r.json()
       if (d.error) throw new Error(d.error)
       setCubeData(d.cubes)
+      setProcessCallers(d.processCallers ?? {})
     } catch (e) {
       setError(e.message)
       toast.error(`CubeMap: ${e.message}`)
@@ -545,11 +599,71 @@ function CubeMapInner({ tab }) {
     return getTransitiveSet(selectedCube, traceDepth, cubeData, reverseMap)
   }, [selectedCube, traceDepth, cubeData, reverseMap])
 
+  // ── Process satellite nodes (writers + their callers, focused-view only) ───────
+  // These are merged directly into the managed `nodes`/`edges` state (not a derived
+  // useMemo) so React Flow's own dimension-measurement settles on them across
+  // renders. Deriving them fresh from `nodes` every render (the first version of
+  // this) fed back into an infinite loop: unmeasured nodes trigger a dimension
+  // change -> node state updates -> re-derive -> fresh unmeasured nodes -> repeat.
+  useEffect(() => {
+    setNodes(prev => {
+      const cubeOnly = prev.filter(n => n.type !== 'process')
+      if (!selectedCube || !showProcesses || !cubeData || !transitiveSet) return cubeOnly
+
+      const laneOffset = NODE_W + 70
+      const placed = new Map()
+      const placeNode = (name, x, y) => {
+        if (placed.has(name)) return placed.get(name)
+        const node = { id: `proc:${name}`, type: 'process', data: { label: name }, position: { x, y } }
+        placed.set(name, node)
+        return node
+      }
+
+      for (const cubeName of transitiveSet) {
+        const cubeNode = cubeOnly.find(n => n.id === cubeName)
+        if (!cubeNode) continue
+        const writers = cubeData[cubeName]?.tiWriters ?? []
+        writers.forEach((writer, i) => {
+          const wx = cubeNode.position.x - laneOffset
+          const wy = cubeNode.position.y + (i - (writers.length - 1) / 2) * (NODE_H + 16)
+          const wNode = placeNode(writer, wx, wy)
+
+          const callers = processCallers[writer] ?? []
+          callers.forEach((caller, j) => {
+            const cx = wNode.position.x - laneOffset
+            const cy = wNode.position.y + (j - (callers.length - 1) / 2) * (NODE_H + 16)
+            placeNode(caller, cx, cy)
+          })
+        })
+      }
+
+      return [...cubeOnly, ...placed.values()]
+    })
+
+    setEdges(prev => {
+      const ruleOnly = prev.filter(e => e.type !== 'process_write' && e.type !== 'process_call')
+      if (!selectedCube || !showProcesses || !cubeData || !transitiveSet) return ruleOnly
+
+      const procEdges = []
+      for (const cubeName of transitiveSet) {
+        const writers = cubeData[cubeName]?.tiWriters ?? []
+        writers.forEach(writer => {
+          procEdges.push({ id: `write:${writer}:${cubeName}`, source: `proc:${writer}`, target: cubeName, type: 'process_write' })
+          const callers = processCallers[writer] ?? []
+          callers.forEach(caller => {
+            procEdges.push({ id: `call:${caller}:${writer}`, source: `proc:${caller}`, target: `proc:${writer}`, type: 'process_call' })
+          })
+        })
+      }
+      return [...ruleOnly, ...procEdges]
+    })
+  }, [selectedCube, showProcesses, cubeData, transitiveSet, processCallers, setNodes, setEdges])
+
   // ── Dimming ───────────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!selectedCube) { setDimmedIds(new Set()); return }
     const connected = transitiveSet ?? new Set([selectedCube])
-    setDimmedIds(new Set(nodes.map(n => n.id).filter(id => !connected.has(id))))
+    setDimmedIds(new Set(nodes.filter(n => n.type !== 'process').map(n => n.id).filter(id => !connected.has(id))))
   }, [transitiveSet, selectedCube, nodes])
 
   // ── Visual node/edge state ────────────────────────────────────────────────────
@@ -557,7 +671,7 @@ function CubeMapInner({ tab }) {
   const spotActive = !!spotQ && !selectedCube
 
   const visibleNodes = useMemo(() => nodes.map(n => {
-    if (n.type === 'group') return { ...n, selected: false }
+    if (n.type === 'group' || n.type === 'process') return { ...n, selected: false }
     const isSpotlit = spotActive && cubeData?.[n.id]?.dims?.some(d => d.toLowerCase().includes(spotQ))
     const isDimmed  = dimmedIds.has(n.id) || (spotActive && !isSpotlit)
     return {
@@ -568,26 +682,34 @@ function CubeMapInner({ tab }) {
     }
   }), [nodes, dimmedIds, selectedCube, spotActive, spotQ, cubeData])
 
-  const visibleEdges = useMemo(() => edges.map(e => ({
-    ...e,
-    style: {
-      ...e.style,
-      opacity: dimmedIds.size > 0 && dimmedIds.has(e.source) && dimmedIds.has(e.target) ? 0.05 : 1,
-      transition: 'opacity 0.2s',
-    },
-    selected: false,
-  })), [edges, dimmedIds])
+  const visibleEdges = useMemo(() => edges.map(e => {
+    if (e.type === 'process_write' || e.type === 'process_call') return { ...e, selected: false }
+    return {
+      ...e,
+      style: {
+        ...e.style,
+        opacity: dimmedIds.size > 0 && dimmedIds.has(e.source) && dimmedIds.has(e.target) ? 0.05 : 1,
+        transition: 'opacity 0.2s',
+      },
+      selected: false,
+    }
+  }), [edges, dimmedIds])
 
   // ── Interactions ──────────────────────────────────────────────────────────────
   const onNodeClick = useCallback((_, node) => {
     if (node.type === 'group') return
+    if (node.type === 'process') {
+      const name = node.id.slice('proc:'.length)
+      openTab({ id: `process:${srv}:${name}`, type: 'process', label: name, server: srv, name, content: null })
+      return
+    }
     setSelectedCube(node.id)
     const n = getNode(node.id)
     if (n) setCenter(n.position.x + NODE_W / 2, n.position.y + NODE_H / 2, { duration: 350, zoom: 1.2 })
-  }, [getNode, setCenter])
+  }, [getNode, setCenter, openTab, srv])
 
   const onNodeDoubleClick = useCallback((_, node) => {
-    if (node.type === 'group') return
+    if (node.type === 'group' || node.type === 'process') return
     const hasRules = cubeData?.[node.id]?.hasRules
     openTab(hasRules
       ? { id: `rules:${srv}:${node.id}`,      type: 'rules',      label: node.id, server: srv, cube: node.id }
@@ -720,10 +842,11 @@ function CubeMapInner({ tab }) {
           )}
 
           {/* Edge + cluster toggles */}
-          <div style={{ display: 'flex', gap: 4 }}>
-            <Toggle active={showCalc}     onClick={() => setShowCalc(v => !v)}     color="#b45309" label="Rules" />
-            <Toggle active={showFeeders}  onClick={() => setShowFeeders(v => !v)}  color="#475569" label="Feeders" dashed />
-            <Toggle active={showClusters} onClick={() => setShowClusters(v => !v)} color="#6366f1" label="Groups" />
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+            <Toggle active={showCalc}      onClick={() => setShowCalc(v => !v)}      color="#b45309" label="Rules" />
+            <Toggle active={showFeeders}   onClick={() => setShowFeeders(v => !v)}   color="#475569" label="Feeders" dashed />
+            <Toggle active={showClusters}  onClick={() => setShowClusters(v => !v)}  color="#6366f1" label="Groups" />
+            <Toggle active={showProcesses} onClick={() => setShowProcesses(v => !v)} color="#10b981" label="TI" />
           </div>
 
           {/* Layout */}
@@ -821,6 +944,7 @@ function CubeMapInner({ tab }) {
             onOpenRules={() => openRules(selectedCube)}
             onOpenCube={() => openCube(selectedCube)}
             onOpenProcess={openProcess}
+            processCallers={processCallers}
             onFilterDim={handleFilterDim}
             dimFilter={dimFilter}
             traceDepth={traceDepth}
