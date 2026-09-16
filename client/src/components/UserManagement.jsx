@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { X, Plus, Loader2, Eye, EyeOff, Trash2, Check, Shield, Users } from 'lucide-react'
+import { X, Plus, Loader2, Eye, EyeOff, Trash2, Check, Shield, Users, Info } from 'lucide-react'
 import { useStore } from '@/store'
 import { useConfig, useClients, useGroups, useClientGroups, useCreateClient, useUpdateClient, useDeleteClient, useAddClientToGroup, useRemoveClientFromGroup, useResetClientPassword } from '@/hooks/useApi'
 import { cn } from '@/lib/utils'
@@ -316,6 +316,19 @@ export default function UserManagement({ server, onClose }) {
               <X size={13} />
             </button>
           </div>
+        </div>
+
+        {/* Info */}
+        <div className="flex items-start gap-2 px-4 py-2 bg-muted/40 border-b border-border text-xs text-muted-foreground shrink-0">
+          <Info size={13} className="shrink-0 mt-0.5" />
+          <p>
+            This manages TM1 security (Clients / Groups) on <span className="font-mono">{loginServer}</span> specifically —
+            not whatever server you're currently browsing in the IDE. Each TM1 server keeps its own separate user list, so
+            one had to be picked as the place to manage identity from; this environment happens to use{' '}
+            <span className="font-mono">{loginServer}</span> because it's the server every session authenticates against
+            first (configurable as <span className="font-mono">loginServer</span> in <span className="font-mono">config/servers.json</span> —
+            it could be any accessible server, not something specific to this name). Changes made here do not affect users on other servers.
+          </p>
         </div>
 
         {/* Body */}
