@@ -1,8 +1,8 @@
 import { useState, useRef, useEffect } from 'react'
 import { useStore } from '@/store'
 import {
-  X, Box, Cog, XSquare, ChevronDown, ChevronUp, Table2, Sigma, Layers,
-  Columns2, Rows2, PanelRightClose, Database, Clock, Braces, Code2,
+  X, Box, Cog, XSquare, ChevronDown, ChevronUp, Sigma, Layers,
+  Columns2, Rows2, PanelRightClose, Clock, Braces,
   ArrowRight, ChevronsRight,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -10,21 +10,26 @@ import { cn } from '@/lib/utils'
 const TYPE_ICON = {
   rules:         Sigma,
   process:       Cog,
-  cubeview:      Table2,
-  view:          Table2,
   subset:        Layers,
   dimension:     Layers,
   chore:         Clock,
-  sql:           Database,
   guidedmdxview: Braces,
   cubeeditor:    Box,
 }
 
-const getTabIcon = (tab) => {
-  if ((tab.type === 'cubeview' || tab.type === 'view') && tab.viewType) {
-    return tab.viewType.includes('MDXView') ? Code2 : Table2
+const TYPE_MARK_TEXT = {
+  sql: 'SQL',
+}
+
+// For tab types with an easily-confused icon (MDX vs native view; SQL vs a
+// generic database glyph), show a short text mark instead — clearer at 10px
+// than telling icons apart.
+const getTabMark = (tab) => {
+  if (tab.type === 'cubeview' || tab.type === 'view') {
+    return { text: tab.viewType?.includes('MDXView') ? 'MDX' : 'NAT' }
   }
-  return TYPE_ICON[tab.type] ?? Box
+  if (TYPE_MARK_TEXT[tab.type]) return { text: TYPE_MARK_TEXT[tab.type] }
+  return { Icon: TYPE_ICON[tab.type] ?? Box }
 }
 
 // ── Context menu ──────────────────────────────────────────────────────────────
@@ -191,7 +196,7 @@ export default function TabBar({ groupId }) {
 
         <div className="flex items-center overflow-x-auto scrollbar-none flex-1 min-w-0">
           {groupTabs.map((tab, idx) => {
-            const Icon = getTabIcon(tab)
+            const mark = getTabMark(tab)
             const active = tab.id === activeTabId
             const isDragTarget = dragOver === idx && dragIdx.current !== idx
             return (
@@ -210,7 +215,9 @@ export default function TabBar({ groupId }) {
                   isDragTarget && 'border-l-2 border-l-primary',
                 )}
               >
-                <Icon size={10} className="shrink-0" />
+                {mark.text
+                  ? <span className="shrink-0 w-6 text-center font-mono text-[8px] font-bold tracking-tight text-muted-foreground/70">{mark.text}</span>
+                  : <mark.Icon size={10} className="shrink-0" />}
                 <span className="truncate">{tab.label}</span>
                 {tab.dirty && <span className="text-orange-400 text-[10px]">●</span>}
                 {multiGroup && (

@@ -234,9 +234,9 @@ function CubeDimRow({ server, dim, onOpenSubset, onOpenDim, cube }) {
                 className="flex items-center gap-2 flex-1 pl-20 pr-2 py-0.5 truncate min-w-0"
                 title={s.Expression ? 'MDX subset' : 'Static subset'}
               >
-                {s.Expression
-                  ? <Code2 size={10} className="shrink-0 text-muted-foreground" />
-                  : <List   size={10} className="shrink-0 text-muted-foreground" />}
+                <span className="shrink-0 w-6 text-center font-mono text-[8px] font-bold tracking-tight text-muted-foreground/70">
+                  {s.Expression ? 'MDX' : 'STA'}
+                </span>
                 {changedSet.has(`subset::${dim}::${s.Name}`) && <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0 mr-1" />}
                 <span className="truncate font-mono">{s.Name}</span>
               </button>
@@ -338,9 +338,9 @@ function CubeRow({ server, cube, onOpenRules, onOpenView, onOpenSubset, onOpenDi
                     data-locate-id={`view:${cube}:${v.name}`}
                     className="flex items-center gap-2 flex-1 min-w-0 px-12 py-0.5 text-xs text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
                     title={v.type === 'mdx' ? 'MDX view' : 'Native view'}>
-                    {v.type === 'mdx'
-                      ? <Code2 size={10} className="shrink-0 text-muted-foreground" />
-                      : <Table2 size={10} className="shrink-0 text-muted-foreground" />}
+                    <span className="shrink-0 w-6 text-center font-mono text-[8px] font-bold tracking-tight text-muted-foreground/70">
+                      {v.type === 'mdx' ? 'MDX' : 'NAT'}
+                    </span>
                     {changedSet.has(`view::${cube}::${v.name}`) && <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0 mr-1" />}
                     <span className={cn('truncate font-mono', activeId === `view:${cube}:${v.name}` && 'text-amber-400 dark:text-amber-300')}>{v.name}</span>
                   </button>
@@ -667,10 +667,9 @@ function DimRow({ server, dim, onOpenSubset, onOpenDim }) {
                 className="flex items-center gap-2 flex-1 pl-14 pr-2 py-0.5 truncate min-w-0"
                 title={s.Expression ? 'MDX subset' : 'Static subset'}
               >
-                {s.Expression
-                  ? <Code2 size={10} className="shrink-0 text-muted-foreground" />
-                  : <List   size={10} className="shrink-0 text-muted-foreground" />
-                }
+                <span className="shrink-0 w-6 text-center font-mono text-[8px] font-bold tracking-tight text-muted-foreground/70">
+                  {s.Expression ? 'MDX' : 'STA'}
+                </span>
                 {changedSet.has(`subset::${dim}::${s.Name}`) && <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0 mr-1" />}
                 <span className={cn('truncate font-mono', activeId === `subset:${dim}:${s.Name}` && 'text-amber-400 dark:text-amber-300')}>{s.Name}</span>
               </button>

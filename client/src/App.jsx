@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, Fragment } from 'react'
 import { useStore } from '@/store'
 import { cn } from '@/lib/utils'
 import { Toaster } from '@/components/ui/sonner'
-import { Search, PanelLeftClose, PanelLeftOpen, Keyboard, SlidersHorizontal, Database, Braces, Users, BookOpen, Rocket } from 'lucide-react'
+import { Search, PanelLeftClose, PanelLeftOpen, Keyboard, SlidersHorizontal, Users, BookOpen, Rocket, Settings, ExternalLink } from 'lucide-react'
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels' // used for inner editor split groups only
 import ServerSelector from '@/components/ServerSelector'
 import Explorer from '@/components/Explorer'
@@ -43,9 +43,22 @@ export default function App() {
   const [showPeriodBuilder, setShowPeriodBuilder] = useState(false)
   const [showUserMgmt, setShowUserMgmt]           = useState(false)
   const [showCatalog, setShowCatalog]             = useState(false)
+  const [showToolsMenu, setShowToolsMenu]         = useState(false)
   const [sidebarWidth, setSidebarWidth]           = useState(280)
   const [findWidth, setFindWidth]                 = useState(320)
   const dragRef = useRef(null)
+  const toolsMenuRef = useRef(null)
+
+  useEffect(() => {
+    if (!showToolsMenu) return
+    const handler = (e) => {
+      if (toolsMenuRef.current && !toolsMenuRef.current.contains(e.target)) setShowToolsMenu(false)
+    }
+    const onEsc = (e) => { if (e.key === 'Escape') setShowToolsMenu(false) }
+    document.addEventListener('mousedown', handler)
+    document.addEventListener('keydown', onEsc)
+    return () => { document.removeEventListener('mousedown', handler); document.removeEventListener('keydown', onEsc) }
+  }, [showToolsMenu])
 
   useEffect(() => {
     const onMove = (e) => {
@@ -136,21 +149,17 @@ export default function App() {
               {showSidebar ? <PanelLeftClose size={15} /> : <PanelLeftOpen size={15} />}
             </button>
             <span className="font-semibold text-sm tracking-tight">TM1 IDE</span>
+            <a
+              href="https://falconbi.github.io/articles/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+              title="Falcon BI Articles"
+            >
+              <ExternalLink size={11} />
+              Falcon BI Articles
+            </a>
             <div className="ml-auto flex items-center gap-1">
-              <button
-                onClick={() => openTab({ id: `guidedmdxview:${Date.now()}`, type: 'guidedmdxview', label: 'MDX Builder', server })}
-                className="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
-                title="Guided MDX View Builder"
-              >
-                <Braces size={15} />
-              </button>
-              <button
-                onClick={() => openTab({ id: `sql:${Date.now()}`, type: 'sql', label: 'SQL Editor' })}
-                className="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
-                title="SQL Editor"
-              >
-                <Database size={15} />
-              </button>
               <button
                 onClick={() => setShowFind(f => !f)}
                 className={cn('p-1.5 rounded text-muted-foreground hover:text-foreground transition-colors', showFind && 'bg-muted text-foreground')}
@@ -159,31 +168,55 @@ export default function App() {
                 <Search size={15} />
               </button>
               <button
-                onClick={() => setShowShortcuts(true)}
+                onClick={() => openTab({ id: `guidedmdxview:${Date.now()}`, type: 'guidedmdxview', label: 'MDX Builder', server })}
                 className="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
-                title="Keyboard Shortcuts (F1)"
+                title="Guided MDX View Builder"
               >
-                <Keyboard size={15} />
+                <span className="font-mono text-[10px] font-bold tracking-tight">MDX</span>
               </button>
-
               <button
-                data-prefs-trigger
-                onClick={() => setShowPrefs(p => !p)}
-                className={cn('p-1.5 rounded text-muted-foreground hover:text-foreground transition-colors', showPrefs && 'bg-muted text-foreground')}
-                title="Editor Preferences"
+                onClick={() => openTab({ id: `sql:${Date.now()}`, type: 'sql', label: 'SQL Editor' })}
+                className="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                title="SQL Editor"
               >
-                <SlidersHorizontal size={15} />
+                <span className="font-mono text-[10px] font-bold tracking-tight">SQL</span>
               </button>
-
-              <div className="w-px h-4 bg-border mx-1" />
-
-              <button
-                onClick={() => setShowCatalog(v => !v)}
-                className={cn('p-1.5 rounded text-muted-foreground hover:text-foreground transition-colors', showCatalog && 'bg-muted text-foreground')}
-                title="Function Catalog (Rules / TI / MDX)"
-              >
-                <BookOpen size={15} />
-              </button>
+              <div className="relative" ref={toolsMenuRef}>
+                <button
+                  data-prefs-trigger
+                  onClick={() => setShowToolsMenu(v => !v)}
+                  className={cn('p-1.5 rounded text-muted-foreground hover:text-foreground transition-colors', showToolsMenu && 'bg-muted text-foreground')}
+                  title="Tools"
+                >
+                  <Settings size={15} />
+                </button>
+                {showToolsMenu && (
+                  <div className="absolute right-0 top-full mt-1 w-52 rounded border border-border bg-card shadow-lg py-1 z-50">
+                    <button
+                      onClick={() => { setShowShortcuts(true); setShowToolsMenu(false) }}
+                      className="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-left text-foreground hover:bg-muted"
+                    >
+                      <Keyboard size={13} className="shrink-0 text-muted-foreground" />
+                      Keyboard Shortcuts
+                      <span className="ml-auto text-[10px] text-muted-foreground/60">F1</span>
+                    </button>
+                    <button
+                      onClick={() => { setShowPrefs(p => !p); setShowToolsMenu(false) }}
+                      className="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-left text-foreground hover:bg-muted"
+                    >
+                      <SlidersHorizontal size={13} className="shrink-0 text-muted-foreground" />
+                      Editor Preferences
+                    </button>
+                    <button
+                      onClick={() => { setShowCatalog(v => !v); setShowToolsMenu(false) }}
+                      className="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-left text-foreground hover:bg-muted"
+                    >
+                      <BookOpen size={13} className="shrink-0 text-muted-foreground" />
+                      Function Catalog
+                    </button>
+                  </div>
+                )}
+              </div>
               {server && (
                 <button
                   onClick={() => setShowUserMgmt(v => !v)}
