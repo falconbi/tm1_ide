@@ -27,6 +27,39 @@ first (or call the `read_build_guide` tool) — it's the method; this file is th
 
 ---
 
+## What's been tested (and what's still open)
+
+The MCP is the layer used to build the **Workforce Planning (WFP) model** end-to-end —
+see [`WORKFORCE_MODEL_PLAN.md`](WORKFORCE_MODEL_PLAN.md). That is the current real-world
+evidence, and it's still early.
+
+**Tested — a full model built through the external LLM:**
+- A blank test server (no dimensions, no TI library) built by conversation with an external
+  LLM over this MCP server — spec agreed interactively, replayed as requirements, then built
+  in **six iterative phases**, each building on the last.
+- Dimensions, cubes, rules, processes, subsets and views all created through the tools,
+  change-set gated throughout.
+- The build was verified against **expected results** (see `config/assertions.json`) — the
+  "does it compute the right number" layer on top of TM1's own rule checker.
+- Standards and conventions were taught to the LLM *during* the build; those conventions are
+  now codified in the lints (`core/rules-lint.js`, `core/ti-lint.js`) and
+  [`BUILDING_MODELS.md`](BUILDING_MODELS.md).
+- The IDE and the MCP write through the **same client and change log** — the agent's work
+  flows through `diff → package → risk → deploy` exactly like hand-built changes.
+
+**Still open / not yet hardened:**
+- The tool surface (~60 operations) has not seen heavy production use — a second model is the
+  next test.
+- **Security is the open question.** The MCP authenticates as the server's configured
+  identity (not a specific logged-in user), and access is gated by the change set rather than
+  fine-grained per-action permissions. What the agent may read, whose permissions apply, and
+  how every change is reviewed are being worked through — read-only mode, scoping, and
+  data-redaction are planned (the reads are the current gap; the writes are change-set gated).
+- Redaction of sensitive data before it leaves the MCP (cell values, process code, attributes)
+  is not yet implemented.
+
+---
+
 ## Running it
 
 ```bash

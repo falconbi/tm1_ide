@@ -79,7 +79,7 @@ npm start                   # → http://localhost:8083
 
 ## 🎬 Video series
 
-A 24-short series walking through every main feature — edit, build, govern, then automate with AI. Each short is 30–60 seconds. *(Links to be added as videos are published.)*
+A 24-short series walking through every main feature — edit, build, govern, then automate with AI. Each short is 30–60 seconds. *(Videos are in production — expected in a few weeks. Links to be added as they're published.)*
 
 ### A. Core editing
 1. The IDE in 30 seconds
@@ -108,8 +108,8 @@ A 24-short series walking through every main feature — edit, build, govern, th
 20. Object history, rollback, users
 
 ### D. AI & MCP
-21. AI assistant
-22. MCP — the build loop
+21. AI assistant (built-in) — describe a view/subset, it generates it
+22. MCP — connect an external LLM (e.g. Claude Code) and it builds
 23. Assertions & conventions
 24. Blank server → deployed model
 
@@ -135,7 +135,8 @@ A 24-short series walking through every main feature — edit, build, govern, th
 | **Cube Map** | Interactive dependency graph of the whole model — auto-laid-out (dagre) nodes for every cube, with edges for rule calc references, feeders, and TI process writes. Click a cube to highlight its full transitive dependency chain (upstream + downstream) with a count; layer toggles for Rules/Feeders/Groups/TI; auto-clusters related cubes into groups; shows the TI **writer** for a cube and, one hop further, what **calls** that writer — so a generic reusable process (e.g. a Bedrock copy utility) is correctly attributed wherever it's invoked. Open the cube, its rules, or the process straight from the node. Minimap + legend included |
 | **Deploy Panel** | 5-step wizard: Diff → Package → Risk (drift check + BLOCKER/WARNING/INFO) → Approve → Deploy |
 | **Deploy History** | Permanent archive of every deployment — approval record, manifest, results, and pre/post target snapshots with inline diff viewer |
-| **AI & MCP** | Built-in MCP server (`tools/tm1mcp`, ~60 operations) exposes the TM1 model to AI agents — build dimensions, cubes, rules and processes by conversation, change-set gated. See [`docs/MCP_SERVER.md`](docs/MCP_SERVER.md). The IDE's AI assistant also generates views and subsets from a description (Anthropic API key) |
+| **MCP server (external LLM)** | A standard Model Context Protocol server (`tools/tm1mcp`, ~60 operations) that **external LLM agents connect to** — Claude Code or any MCP-compatible client — to build dimensions, cubes, rules and processes by conversation, change-set gated. See [`docs/MCP_SERVER.md`](docs/MCP_SERVER.md) |
+| **AI assistant (built-in)** | The IDE's inline helper generates views and subsets from a description (Anthropic API key) |
 
 > ⚠️ **MCP is still early and needs more real-world testing** before treating it as production-hardened. It's also a genuinely different trust boundary from the rest of the IDE: pointing it at an external/third-party LLM means that LLM gets tool access to write to your TM1 model (dimensions, cubes, rules, processes) inside whatever change set is active. Review what an agent proposes before approving/deploying it, keep MCP-driven work inside change sets (never Release mode) so it's diffed like anything else, and don't point it at a server you wouldn't want an unreviewed process run against.
 
