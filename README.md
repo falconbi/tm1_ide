@@ -63,6 +63,18 @@ npm start                   # → http://localhost:8083
 
 ![Split pane dark theme](docs/images/5_screenshot.png)
 
+| Cube Map | Rules Editor — Minimap + Lineage |
+| --- | --- |
+| ![Cube Map](docs/images/6_screenshot_cubemap.png) | ![Rules Editor minimap and lineage](docs/images/8_screenshot_rules_lineage.png) |
+
+| Native View Builder | Deploy Center — History |
+| --- | --- |
+| ![Native View Builder](docs/images/7_screenshot_cubeview.png) | ![Deploy History](docs/images/9_screenshot_deploy_history.png) |
+
+**Deploy Center — Release, all changes since baseline**
+
+![Deploy Release wizard](docs/images/10_screenshot_deploy_release.png)
+
 ---
 
 ## 🎬 Video series
