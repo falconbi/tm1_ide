@@ -977,9 +977,26 @@ export default function ProcessEditor({ tab }) {
     if (monacoRef.current) registerTM1Theme(monacoRef.current, dark)
   }, [dark, themeVersion])
 
+  // Re-apply the user's font preferences when they change in the preferences panel
+  useEffect(() => {
+    const editorSettings = loadSettings().editor ?? {}
+    editorRef.current?.updateOptions({
+      fontFamily: editorSettings.fontFamily ?? undefined,
+      fontSize:   editorSettings.fontSize ?? undefined,
+      lineHeight: editorSettings.lineHeight ?? undefined,
+    })
+  }, [themeVersion])
+
   const handleMount = (editor, monaco) => {
     editorRef.current = editor
     monacoRef.current = monaco
+    // apply the user's editor font preferences (fontFamily / fontSize / lineHeight from settings)
+    const editorSettings = loadSettings().editor ?? {}
+    editor.updateOptions({
+      fontFamily: editorSettings.fontFamily ?? undefined,
+      fontSize:   editorSettings.fontSize ?? undefined,
+      lineHeight: editorSettings.lineHeight ?? undefined,
+    })
     if (!registeredRef.current) {
       registerTM1Completions(monaco, () => server)
       registerTICompletions(monaco, () => tab.server ?? server)
@@ -1846,7 +1863,9 @@ export default function ProcessEditor({ tab }) {
             onChange={v => setEdits(e => ({ ...e, [activeSection]: v }))}
             onMount={handleMount}
             options={{
-              fontSize: 13,
+              fontFamily: loadSettings().editor?.fontFamily ?? undefined,
+              fontSize: loadSettings().editor?.fontSize ?? undefined,
+              lineHeight: loadSettings().editor?.lineHeight ?? undefined,
               minimap: { enabled: showMinimap },
               wordWrap: 'on',
               scrollBeyondLastLine: false,

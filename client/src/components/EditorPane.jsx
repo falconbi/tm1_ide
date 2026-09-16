@@ -492,6 +492,18 @@ function RulesEditor({ tab, onCursor }) {
     if (monacoRef.current) registerTM1Theme(monacoRef.current, dark)
   }, [dark, themeVersion])
 
+  // Re-apply the user's font preferences when they change in the preferences panel
+  useEffect(() => {
+    const editorSettings = loadSettings().editor ?? {}
+    const opts = {
+      fontFamily: editorSettings.fontFamily ?? undefined,
+      fontSize:   editorSettings.fontSize ?? undefined,
+      lineHeight: editorSettings.lineHeight ?? undefined,
+    }
+    console.log('[font] applying', opts, 'to', editorRef.current ? 'editor' : 'no-editor')
+    editorRef.current?.updateOptions(opts)
+  }, [themeVersion])
+
   const doSave = () => {
     const editor = editorRef.current
     if (!editor) return
@@ -532,6 +544,13 @@ function RulesEditor({ tab, onCursor }) {
   const handleMount = (editor, monaco) => {
     editorRef.current = editor
     monacoRef.current = monaco
+    // apply the user's editor font preferences (fontFamily / fontSize / lineHeight from settings)
+    const editorSettings = loadSettings().editor ?? {}
+    editor.updateOptions({
+      fontFamily: editorSettings.fontFamily ?? undefined,
+      fontSize:   editorSettings.fontSize ?? undefined,
+      lineHeight: editorSettings.lineHeight ?? undefined,
+    })
     if (!registeredRef.current) {
       registerTM1Completions(monaco, () => server)
       registerRulesCompletions(monaco, () => ({ server: tab.server ?? server, cube: tab.cube }))
@@ -874,7 +893,7 @@ function RulesEditor({ tab, onCursor }) {
           beforeMount={monaco => registerTM1Theme(monaco, dark)}
           onChange={v => updateTabContent(tab.id, v)}
           onMount={handleMount}
-          options={{ fontSize: 13, minimap: { enabled: showMinimap }, wordWrap: 'on', scrollBeyondLastLine: false, fixedOverflowWidgets: true, folding: true, foldingStrategy: 'auto', glyphMargin: true }}
+          options={{ fontFamily: loadSettings().editor?.fontFamily ?? undefined, fontSize: loadSettings().editor?.fontSize ?? undefined, lineHeight: loadSettings().editor?.lineHeight ?? undefined, minimap: { enabled: showMinimap }, wordWrap: 'on', scrollBeyondLastLine: false, fixedOverflowWidgets: true, folding: true, foldingStrategy: 'auto', glyphMargin: true }}
         />
         {showHistory && (
           <ObjectHistoryPanel

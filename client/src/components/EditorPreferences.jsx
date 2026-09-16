@@ -5,8 +5,41 @@ import { cn } from '@/lib/utils'
 import { loadSettings, saveSettings } from '@/lib/formatters/settings.js'
 import { COLOUR_THEMES, applyColourTheme, loadColourSettings, saveColourSettings } from '@/lib/formatters/colours.js'
 
-const DARK_THEMES  = COLOUR_THEMES.filter(t => t.id !== 'light')
-const LIGHT_THEMES = COLOUR_THEMES.filter(t => t.id === 'light')
+const LIGHT_THEME_IDS = new Set(['light', 'solarized-light', 'github-light', 'one-light'])
+const DARK_THEMES  = COLOUR_THEMES.filter(t => !LIGHT_THEME_IDS.has(t.id))
+const LIGHT_THEMES = COLOUR_THEMES.filter(t => LIGHT_THEME_IDS.has(t.id))
+
+// Candidate monospace fonts. Detection uses canvas font measurement — the only
+// reliable way to tell if a font is actually installed (document.fonts.check()
+// is too lenient and returns true for fonts that would just fall back). We
+// render a test string in each candidate and compare its width against the
+// same string in the browser default; an installed font measures differently.
+const MONO_CANDIDATES = [
+  'Geist Mono', 'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'Cascadia Mono',
+  'Consolas', 'Menlo', 'Monaco', 'DejaVu Sans Mono', 'Liberation Mono',
+  'Noto Sans Mono', 'Ubuntu Mono', 'Source Code Pro', 'Courier New', 'Courier',
+]
+
+function installedMonoFonts() {
+  try {
+    const canvas = document.createElement('canvas')
+    const ctx = canvas.getContext('2d')
+    const probe = 'mmmmmmmmmmlli0O1'
+    // Baseline is a KNOWN-NOT-INSTALLED font, not 'monospace'. An installed font
+    // renders at its own metrics (width differs); a missing one falls back to
+    // the same default, so width is identical. Comparing against a bogus font
+    // makes the installed-vs-missing gap much wider and reliable.
+    ctx.font = '16px "__tm1_missing_probe__"'
+    const base = ctx.measureText(probe).width
+    const detected = MONO_CANDIDATES.filter(f => {
+      ctx.font = `16px "${f}", "__tm1_missing_probe__"`
+      return Math.abs(ctx.measureText(probe).width - base) > 0.5
+    })
+    return detected.length ? detected : ['DejaVu Sans Mono', 'Liberation Mono', 'Noto Sans Mono', 'Ubuntu Mono']
+  } catch {
+    return ['DejaVu Sans Mono', 'Liberation Mono', 'Noto Sans Mono', 'Ubuntu Mono']
+  }
+}
 
 export default function EditorPreferences({ open, onClose, onOpenPeriodBuilder, onOpenFormatSettings }) {
   if (!open) return null
@@ -14,6 +47,7 @@ export default function EditorPreferences({ open, onClose, onOpenPeriodBuilder, 
   const { dark, setDark, bumpThemeVersion } = useStore()
   const [settings, setSettings] = useState(() => loadSettings())
   const [colourTheme, setColourTheme] = useState(() => loadColourSettings().theme)
+  const [fontOptions] = useState(() => installedMonoFonts())
   const ref = useRef(null)
 
   useEffect(() => {
@@ -30,6 +64,7 @@ export default function EditorPreferences({ open, onClose, onOpenPeriodBuilder, 
     const next = { ...settings, editor: { ...settings.editor, [key]: val } }
     setSettings(next)
     saveSettings(next)
+    bumpThemeVersion()   // re-apply font/size to any open editors
   }
 
   const handleDarkToggle = () => {
@@ -110,7 +145,7 @@ export default function EditorPreferences({ open, onClose, onOpenPeriodBuilder, 
             onChange={e => update('fontFamily', e.target.value)}
             className="text-xs bg-background border border-border rounded px-1.5 py-0.5 outline-none flex-1 min-w-0"
           >
-            {['Geist Mono', 'Fira Code', 'JetBrains Mono', 'Cascadia Code', 'Consolas', 'Courier New'].map(f => (
+            {fontOptions.map(f => (
               <option key={f} value={f}>{f}</option>
             ))}
           </select>
