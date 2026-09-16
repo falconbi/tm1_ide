@@ -114,6 +114,41 @@ function getSessionLog(sessionId) {
     `).all(sessionId, sessionId).map(parseEntry)
 }
 
+// For each object this session touched, has any OTHER session also logged a
+// change to that exact object (same type + name + detail) since this session
+// started? Surfaces the "Sarah also touched Period dimension" case at
+// diff/package time — packaging captures live state, not a per-session field
+// diff, so this is the only signal a concurrent, unrelated edit exists before
+// it silently rides along in the deploy.
+function getCrossSessionTouches(server, sessionId, objects) {
+    const session = db.prepare(`SELECT * FROM sessions WHERE id = ?`).get(sessionId)
+    if (!session) return []
+
+    const seen = new Set()
+    const results = []
+    for (const { object_type, object_name, detail } of objects) {
+        const key = `${object_type}::${object_name}::${detail ?? ''}`
+        if (seen.has(key)) continue
+        seen.add(key)
+
+        const row = db.prepare(`
+            SELECT l.timestamp, s.id as session_id, s.name as session_name, s.user
+            FROM log_entries l
+            JOIN sessions s ON s.id = l.session_id
+            WHERE l.server = ? AND l.object_type = ? AND l.object_name = ? AND IFNULL(l.detail, '') = ?
+              AND l.session_id != ? AND l.timestamp > ?
+            ORDER BY l.timestamp DESC
+            LIMIT 1
+        `).get(server, object_type, object_name, detail ?? '', sessionId, session.started_at)
+
+        if (row) results.push({
+            object_type, object_name, detail: detail ?? null,
+            touchedBy: row.user, sessionName: row.session_name, sessionId: row.session_id, at: row.timestamp,
+        })
+    }
+    return results
+}
+
 // Every object touched on this server since `sinceIso` (typically the baseline's
 // seeded_at), collapsed to the latest entry per object+action — the union of all
 // change sets in a release window. Feeds the same diff/package path as
@@ -231,4 +266,4 @@ function writeLog({ server, action, objectType, objectName, detail, beforeState,
 // SQLite doesn't add columns to existing tables via CREATE TABLE — migrate if needed
 try { db.exec(`ALTER TABLE sessions ADD COLUMN description TEXT`) } catch {}
 
-module.exports = { startSession, closeSession, resumeSession, updateSessionDescription, getActiveSession, getSessions, getAllSessions, getSessionLog, getEntriesSince, getMaxEntryId, getEntriesSinceId, getSessionLogVerbose, getRecentLog, getObjectHistory, getEntryById, writeLog }
+module.exports = { startSession, closeSession, resumeSession, updateSessionDescription, getActiveSession, getSessions, getAllSessions, getSessionLog, getCrossSessionTouches, getEntriesSince, getMaxEntryId, getEntriesSinceId, getSessionLogVerbose, getRecentLog, getObjectHistory, getEntryById, writeLog }

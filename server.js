@@ -2630,7 +2630,11 @@ app.post('/api/deploy/diff', async (req, res) => {
         const { server, sessionId, release } = req.body
         const entries = deployEntries({ server, sessionId, release })
         const result  = await deployDiff(server, entries, undefined, req.ideToken)
-        res.json(result)
+        // Release mode already unions every session's changes since the last baseline —
+        // there's no "other session" boundary to warn about. Only a named, session-scoped
+        // deploy can bleed in someone else's unrelated edit to a shared object.
+        const crossSessionTouches = (!release && sessionId) ? cl.getCrossSessionTouches(server, sessionId, entries) : []
+        res.json({ ...result, crossSessionTouches })
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
@@ -2934,27 +2938,69 @@ app.get('/api/cubemap/model', async (req, res) => {
             return [...refs]
         }
 
-        // Fetch TI process code for write-ref analysis (best-effort — skip if slow/unavailable)
+        const cubeNames = new Set(allCubes.map(c => c.Name))
+
+        // Fetch TI process code for write-ref and call-chain analysis (best-effort — skip if slow/unavailable)
+        // Catches three patterns, not just a literal cube name in CellPutN:
+        //   1. CellPutN(value, 'Literal Cube', ...)              — direct literal
+        //   2. cCube = 'Literal Cube'; ... CellPutN(value, cCube, ...) — var assigned a literal earlier, then used
+        //   3. ExecuteProcess('GenericCopier', 'pCube', 'Literal Cube', ...) — a generic process (its own
+        //      CellPutN target is a parameter, unresolvable in isolation) attributed via the call site that
+        //      names the real cube — this is how Bedrock-style reusable copy processes get credited correctly.
         const tiWriteMap = {}
+        const processCallers = {} // calledProcess -> [callerProcess, ...] (reverse of ExecuteProcess/RunProcess)
         try {
             const pd = await client.get('Processes', {
                 '$select': 'Name,PrologProcedure,MetadataProcedure,DataProcedure,EpilogProcedure',
             })
-            const CELLPUT_RE = /\bCellPut[NS](?:Complete)?\s*\([^,]+,\s*'([^']+)'/gi
+            const ASSIGN_RE     = /\b([A-Za-z_]\w*)\s*=\s*'([^']*)'\s*;/g
+            const CELLPUT_RE    = /\bCellPut[NS](?:Complete)?\s*\(\s*[^,]+,\s*([^,]+),/gi
+            const EXEC_RE       = /\b(?:ExecuteProcess|RunProcess)\s*\(([\s\S]*?)\)\s*;/gi
+            const EXEC_NAME_RE  = /^\s*'([^']+)'/
+            const CUBE_PARAM_RE = /'([pP]\w*[Cc]ube\w*)'\s*,\s*'([^']+)'/g
+
+            const addWriter = (cube, proc) => {
+                if (!cubeNames.has(cube)) return
+                if (!tiWriteMap[cube]) tiWriteMap[cube] = []
+                if (!tiWriteMap[cube].includes(proc)) tiWriteMap[cube].push(proc)
+            }
+
             for (const p of (pd.value ?? []).filter(p => !p.Name.startsWith('}'))) {
                 const code = [p.PrologProcedure, p.MetadataProcedure, p.DataProcedure, p.EpilogProcedure]
                     .filter(Boolean).join('\n')
+
+                // Resolve simple `var = 'literal';` assignments so CellPutN(value, var, ...) can be traced
+                const varValues = {}
+                let am
+                ASSIGN_RE.lastIndex = 0
+                while ((am = ASSIGN_RE.exec(code)) !== null) varValues[am[1]] = am[2]
+
                 CELLPUT_RE.lastIndex = 0
                 let m
                 while ((m = CELLPUT_RE.exec(code)) !== null) {
-                    const cn = m[1]
-                    if (!tiWriteMap[cn]) tiWriteMap[cn] = []
-                    if (!tiWriteMap[cn].includes(p.Name)) tiWriteMap[cn].push(p.Name)
+                    const ref = m[1].trim()
+                    const lit = ref.match(/^'([^']+)'$/)
+                    const cubeName = lit ? lit[1] : varValues[ref]
+                    if (cubeName) addWriter(cubeName, p.Name)
+                }
+
+                EXEC_RE.lastIndex = 0
+                while ((m = EXEC_RE.exec(code)) !== null) {
+                    const argList = m[1]
+                    const nameM = EXEC_NAME_RE.exec(argList)
+                    if (!nameM) continue
+                    const called = nameM[1]
+                    if (called !== p.Name) {
+                        if (!processCallers[called]) processCallers[called] = []
+                        if (!processCallers[called].includes(p.Name)) processCallers[called].push(p.Name)
+                    }
+                    CUBE_PARAM_RE.lastIndex = 0
+                    let cm
+                    while ((cm = CUBE_PARAM_RE.exec(argList)) !== null) addWriter(cm[2], called)
                 }
             }
         } catch { /* TI refs unavailable — continue without them */ }
 
-        const cubeNames = new Set(allCubes.map(c => c.Name))
         const cubes = {}
 
         for (const c of allCubes) {
@@ -2981,7 +3027,7 @@ app.get('/api/cubemap/model', async (req, res) => {
             }
         }
 
-        res.json({ cubes })
+        res.json({ cubes, processCallers })
     } catch (e) {
         res.status(500).json({ error: e.message })
     }

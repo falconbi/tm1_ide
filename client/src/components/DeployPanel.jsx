@@ -105,6 +105,28 @@ function BaselineBanner({ diffData }) {
   )
 }
 
+function CrossSessionWarning({ diffData }) {
+  const touches = diffData?.crossSessionTouches
+  if (!touches?.length) return null
+  return (
+    <div className="flex items-start gap-2 px-5 py-2.5 bg-amber-500/8 border-b border-amber-500/20 text-xs text-amber-400 shrink-0">
+      <AlertTriangle size={12} className="mt-0.5 shrink-0" />
+      <div>
+        <div className="font-medium">
+          {touches.length} object{touches.length !== 1 ? 's' : ''} in this package {touches.length !== 1 ? 'were' : 'was'} also touched by someone else's session — your deploy will carry their change too, since packaging captures the object's current live state, not just your edit.
+        </div>
+        <ul className="mt-1 space-y-0.5">
+          {touches.map(t => (
+            <li key={`${t.object_type}::${t.object_name}::${t.detail ?? ''}`} className="font-mono text-amber-300/90">
+              {t.object_type}: {t.object_name}{t.detail ? ` (${t.detail})` : ''} — also changed by <span className="font-semibold">{t.touchedBy}</span> in "{t.sessionName}"
+            </li>
+          ))}
+        </ul>
+      </div>
+    </div>
+  )
+}
+
 // ── Screen 1: Select objects ──────────────────────────────────────────────────
 
 function DeltaLine({ o }) {
@@ -967,6 +989,7 @@ export default function DeployPanel({ tab, onOpenDiff }) {
             )}
           </div>
           <BaselineBanner diffData={diffMut.data} />
+          <CrossSessionWarning diffData={diffMut.data} />
           <Screen1
             diffData={diffMut.data}
             diffRunning={diffMut.isPending}
