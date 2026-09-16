@@ -120,11 +120,24 @@ A 24-short series walking through every main feature — edit, build, govern, th
 | **Cube Editor** | Create and delete cubes, dimension assignment |
 | **SQL Editor** | External database queries (SQL Server, PostgreSQL, MySQL, SQLite), schema browser, saved queries, post SQL as TI datasource |
 | **MDX Sandbox** | Ad-hoc MDX execution with result grid |
+| **Cube Map** | Interactive dependency graph of the whole model — auto-laid-out (dagre) nodes for every cube, with edges for rule calc references, feeders, and TI process writes. Click a cube to highlight its full transitive dependency chain (upstream + downstream) with a count; layer toggles for Rules/Feeders/Groups/TI; auto-clusters related cubes into groups; shows the TI **writer** for a cube and, one hop further, what **calls** that writer — so a generic reusable process (e.g. a Bedrock copy utility) is correctly attributed wherever it's invoked. Open the cube, its rules, or the process straight from the node. Minimap + legend included |
 | **Deploy Panel** | 5-step wizard: Diff → Package → Risk (drift check + BLOCKER/WARNING/INFO) → Approve → Deploy |
 | **Deploy History** | Permanent archive of every deployment — approval record, manifest, results, and pre/post target snapshots with inline diff viewer |
 | **AI & MCP** | Built-in MCP server (`tools/tm1mcp`, ~60 operations) exposes the TM1 model to AI agents — build dimensions, cubes, rules and processes by conversation, change-set gated. See [`docs/MCP_SERVER.md`](docs/MCP_SERVER.md). The IDE's AI assistant also generates views and subsets from a description (Anthropic API key) |
 
 > ⚠️ **MCP is still early and needs more real-world testing** before treating it as production-hardened. It's also a genuinely different trust boundary from the rest of the IDE: pointing it at an external/third-party LLM means that LLM gets tool access to write to your TM1 model (dimensions, cubes, rules, processes) inside whatever change set is active. Review what an agent proposes before approving/deploying it, keep MCP-driven work inside change sets (never Release mode) so it's diffed like anything else, and don't point it at a server you wouldn't want an unreviewed process run against.
+
+### Server & Operations
+
+| Tool | What it does |
+| --- | --- |
+| **Change Sets** | Popup (Clock icon) listing every change set for the server — active and deployed. Expand one to see its full change log grouped by action (rules saved, process created, element renamed, etc.), open any changed object directly, view a before/after diff inline, add a note, resume a closed change set, or hit **Release** to deploy everything changed since the last baseline in one go |
+| **File Manager** | Browses the TM1 server's own `Files` file space over the REST API — breadcrumb folder navigation, upload/download/delete — for managing TI datasource files without touching the OS filesystem directly |
+| **Naming Dictionary** | A tab inside Catalog Admin: an editable input→output identifier map the code formatter uses to capitalise Rules/TI/MDX function names (e.g. `subnm` → `SUBNM`). Ships with IBM's default casing, supports custom entries per language, search/filter, import/export as JSON, reset to defaults |
+| **Transaction Log** | Side panel showing a cube's real transaction log — timestamp, user, old value → new value — either for the whole cube or filtered to one cell intersection (e.g. from the cell right-click menu's Log tab) |
+| **Jobs Monitor** | Live list of TM1 background jobs/processes on the server with status (Running/Completed/Cancelled/Aborted), auto-refreshing every 4 seconds; cancel any running job in one click |
+| **Sessions Monitor** | Active TM1 sessions grouped by user, each expandable to its running threads (state + function), with per-thread cancel and per-session disconnect |
+| **Server Admin** | Status / Sessions / Configuration tabs — live server metrics (memory, threads, uptime, cells and feeders calculated, active session count), one-click maintenance-mode toggle, session disconnect, and a read-only tree view of the server's active configuration |
 
 ### 🗓️ Period Builder
 
