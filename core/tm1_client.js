@@ -469,10 +469,10 @@ class TM1Client {
             Parameters:         (proc.parameters ?? []).map(p => ({
                 Name:   p.Name,
                 Type:   p.Type ?? 'String',
-                Value:  String(p.Value ?? ''),
+                Value:  p.Type === 'Numeric' ? Number(p.Value ?? 0) : String(p.Value ?? ''),
                 Prompt: p.Prompt ?? '',
             })),
-            Variables: [],
+            Variables: proc.variables ?? [],
         }
         try {
             await this.post('Processes', body)
