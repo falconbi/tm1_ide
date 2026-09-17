@@ -337,7 +337,7 @@ function CellTracePanel({ server, cube, cubeDims, onClose }) {
 // ── Rules editor ─────────────────────────────────────────────────────────────
 
 function RulesEditor({ tab, onCursor }) {
-  const { initTabContent, updateTabContent, markTabSaved, clearScrollTo, openTab, server, dark, themeVersion, setFormatSettingsOpen, setRevealTarget, bumpRulesVersion } = useStore()
+  const { initTabContent, updateTabContent, markTabSaved, clearScrollTo, openTab, server, serverVersion, dark, themeVersion, setFormatSettingsOpen, setRevealTarget, bumpRulesVersion } = useStore()
   const { data, isLoading } = useRules(tab.server, tab.cube)
   const saveRules = useSaveRules()
   const registeredRef = useRef(false)
@@ -390,7 +390,7 @@ function RulesEditor({ tab, onCursor }) {
     if (!model || !monacoRef.current) return
     setChecking(true)
     try {
-      const staticErrors = validateRulesSyntax(content)
+      const staticErrors = validateRulesSyntax(content, { version: serverVersion })
       let tm1Errors = []
       try {
         const r = await fetch('/api/rules/check', {
@@ -552,8 +552,8 @@ function RulesEditor({ tab, onCursor }) {
       lineHeight: editorSettings.lineHeight ?? undefined,
     })
     if (!registeredRef.current) {
-      registerTM1Completions(monaco, () => server)
-      registerRulesCompletions(monaco, () => ({ server: tab.server ?? server, cube: tab.cube }))
+      registerTM1Completions(monaco, () => server, () => serverVersion)
+      registerRulesCompletions(monaco, () => ({ server: tab.server ?? server, cube: tab.cube, version: serverVersion }))
       registerTM1Theme(monaco, dark)
       registeredRef.current = true
     }

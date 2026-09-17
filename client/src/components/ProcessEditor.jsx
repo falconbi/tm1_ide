@@ -868,7 +868,7 @@ function DebugPanel({ watches, onWatchesChange, events, isDebugging, onRun, onJu
 }
 
 export default function ProcessEditor({ tab }) {
-  const { server, dark, themeVersion, updateTabContent, markTabSaved, clearScrollTo, openTab, patchTab, setRevealTarget } = useStore()
+  const { server, serverVersion, dark, themeVersion, updateTabContent, markTabSaved, clearScrollTo, openTab, patchTab, setRevealTarget } = useStore()
   const { data, isLoading } = useProcess(tab.server, tab.name)
   const saveProcess   = useSaveProcess()
   const runProcess    = useRunProcess()
@@ -998,8 +998,8 @@ export default function ProcessEditor({ tab }) {
       lineHeight: editorSettings.lineHeight ?? undefined,
     })
     if (!registeredRef.current) {
-      registerTM1Completions(monaco, () => server)
-      registerTICompletions(monaco, () => tab.server ?? server)
+      registerTM1Completions(monaco, () => server, () => serverVersion)
+      registerTICompletions(monaco, () => ({ server: tab.server ?? server, version: serverVersion }))
       registerTM1Theme(monaco, dark)
       registeredRef.current = true
     }
@@ -1282,7 +1282,7 @@ export default function ProcessEditor({ tab }) {
     CODE_TABS.forEach(({ key }) => {
       sections[key] = edits[key] ?? data?.[key] ?? ''
     })
-    const results = validateTICode(sections)
+    const results = validateTICode(sections, { version: serverVersion })
     setCheckResults(results)
     setShowCheck(true)
     if (results.length === 0) {
