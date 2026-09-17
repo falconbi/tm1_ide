@@ -124,6 +124,8 @@ export const useStore = create((set, get) => ({
   // ── Server ──────────────────────────────────────────────────────────────────
   server: null,
   setServer: (server) => { set({ server }); _saveForge({ ...get(), server }) },
+  serverVersion: null,
+  setServerVersion: (serverVersion) => set({ serverVersion }),
 
   // ── Tabs & Editor Groups ─────────────────────────────────────────────────────
   // tabs is flat; groups track which tabIds belong to each group and which is active.

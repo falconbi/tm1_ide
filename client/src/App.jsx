@@ -82,6 +82,16 @@ export default function App() {
 
   useEffect(() => { if (token) loadForge() }, [token])
 
+  // Load Catalog Admin overrides into the effective catalogs once, so edits made
+  // in the Function Catalog panel reach autocomplete / hover / validation.
+  useEffect(() => {
+    import('@/lib/tm1-completion').then(({ RULES_CATALOG, TI_CATALOG }) =>
+      import('@/lib/catalog-runtime').then(({ initEffectiveCatalogs }) =>
+        initEffectiveCatalogs({ rules: RULES_CATALOG, ti: TI_CATALOG })
+      )
+    )
+  }, [])
+
   // Auto-show sidebar when revealing an object in the Explorer tree
   useEffect(() => {
     if (revealTarget && !showSidebar) setShowSidebar(true)
