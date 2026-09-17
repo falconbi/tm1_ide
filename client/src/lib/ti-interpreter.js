@@ -173,7 +173,6 @@ const SIMULATED_FNS = {
 
   // ── Process control (simulated) ──────────────────────────────────────────
   getprocessname: ()                => 'SimulatedProcess',
-  getcurrentuser: ()                 => 'SimulatedUser',
   getprocesserrorfiledirectory: ()   => '/tmp',
   sleep:        (_, ms)             => null,
 
@@ -706,7 +705,7 @@ function guessType(expr, vars) {
   if (/^'.*'$/.test(t)) return 'string'
   if (t.includes('|')) return 'string'
   if (/^(CellGetN|DimSiz|DimIx|ElLev|ElCompN|ElWeight|Numbr|Str\b|Int|Round|Mod|Max|Min|Abs|Sign|Rand|Exp|Log|Ln|Sqrt|Month|Day|Year|DayNo|Long|Scan|Code|IsUnd|ProcessExitNormal|NewDateFormatter|ParseDate|Undef|GetJobStatus|HttpResponseGetStatusCode)\s*\(/i.test(t)) return 'number'
-  if (/^(CellGetS|DimNm|ElComp|UCase|LCase|Trim|SubSt|Fill|Char|NumberToString|TimSt|Now|Today|Date|Time|AttrS|AttrSL|GetProcessName|GetCurrentUser|TabDim|GetProcessErrorFileDirectory|Undef|HttpResponseGetBody|HttpResponseGetHeader)\s*\(/i.test(t)) return 'string'
+  if (/^(CellGetS|DimNm|ElComp|Upper|Lower|Trim|SubSt|Fill|Char|NumberToString|TimSt|Now|Today|Date|Time|AttrS|AttrL|GetProcessName|TabDim|GetProcessErrorFileDirectory|Undef|HttpResponseGetBody|HttpResponseGetHeader)\s*\(/i.test(t)) return 'string'
   if (/[&%~]/.test(t) && !t.includes('|')) return 'number'
   const firstWord = t.match(/^(\w[\w.]*)/)
   if (firstWord) {

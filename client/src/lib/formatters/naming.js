@@ -225,7 +225,6 @@ export const IBM_DEFAULTS = {
   'setpwd': 'SetPWD',
   // ── TI Process: Chore / server ──
   'choreerror': 'ChoreError',
-  'getcurrentuser': 'GetCurrentUser',
   'sleep': 'Sleep',
   'serverrename': 'ServerRename',
   'servershutdown': 'ServerShutdown',
@@ -376,7 +375,7 @@ export const IBM_TYPES = {
   'subsetcreate':'ti','subsetaliasgetsort':'ti','subsetaliasset':'ti','subsetdeleteallelements':'ti','subsetelementdelete':'ti','subsetelementinsert':'ti','subsetexists':'ti','subsetgetelement':'ti','subsetgetelementname':'ti','subsetgetsize':'ti','subsetmdxset':'ti','subsettomdx':'ti','subsetisallset':'ti','createtemporarysubsetbymdx':'ti',
   'viewcreate':'ti','viewdestroy':'ti','viewexists':'ti','viewconstruct':'ti','viewextract':'ti','publishview':'ti','unpublishview':'ti','refreshmdxview':'ti','viewcolumnsuppresszeroset':'ti','viewrowsuppresszeroset':'ti','viewextractskipcalcsset':'ti','viewextractskipconsolidatedstringset':'ti','viewextractskiprulevaluesset':'ti','viewextractskipzeroesset':'ti','viewsetdn':'ti','viewsetds':'ti','viewsubsetassign':'ti','viewtitlesubsetassign':'ti',
   'addclient':'ti','deleteclient':'ti','assignclienttogroup':'ti','removeclientfromgroup':'ti','addgroup':'ti','deletegroup':'ti','assigngrouptoroles':'ti','removegroupfromroles':'ti','securityrefresh':'ti','setpwd':'ti',
-  'choreerror':'ti','getcurrentuser':'ti','sleep':'ti','serverrename':'ti',
+  'choreerror':'ti','sleep':'ti','serverrename':'ti',
   'getusenamedtailors':'ti','setnamedtailor':'ti','setusenamedtailors':'ti','numberoftailors':'ti',
   'lock':'ti','lockname':'ti','periods':'ti','error':'ti','itemreject':'ti','itemskip':'ti','save':'ti',
   'tm1subsetall':'mdx','tm1subsettoset':'mdx','tm1elementlisttoset':'mdx','tm1filterbylevel':'mdx','tm1filterbypattern':'mdx','tm1member':'mdx','tm1sort':'mdx','tm1lastupdated':'mdx','tm1lastupdatedby':'mdx','tm1drilldownmember':'mdx',
