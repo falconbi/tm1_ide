@@ -7,8 +7,9 @@ export default defineConfig({
   plugins: [react(), tailwindcss()],
   resolve: {
     alias: {
-      '@':    path.resolve(__dirname, './src'),
-      '@core': path.resolve(__dirname, '../core'),
+      '@':      path.resolve(__dirname, './src'),
+      '@core':  path.resolve(__dirname, '../core'),
+      '@shared': path.resolve(__dirname, '../shared'),
     },
   },
   server: {
