@@ -38,8 +38,8 @@ const RULES = [
   S('db',       'DB() numeric',           'Read a numeric value from another cube',                    'DB References', 'rules',
     `DB('\${1:CubeName}', \${2:!dim1}, \${3:!dim2})`),
 
-  S('dbs',      'DBS() string',           'Read a string value from another cube',                     'DB References', 'rules',
-    `DBS('\${1:CubeName}', \${2:!dim1}, \${3:!dim2})`),
+  S('dbs',      'DB() string',            'Read a string cell from another cube (DB returns strings too)', 'DB References', 'rules',
+    `DB('\${1:CubeName}', \${2:!dim1}, \${3:!dim2})`),
 
   S('dbn',      'N: DB() rule',           'Numeric rule using DB reference',                           'DB References', 'rules',
     `N: ['\${1:Element}'] = DB('\${2:CubeName}', \${3:!dim1}, \${4:!dim2});\n\${0}`),
@@ -85,8 +85,8 @@ const RULES = [
   S('elispar',  'ELISPAR()',              'True if first element is parent of second',                 'Element Functions', 'rules',
     `ELISPAR('\${1:Dimension}', '\${2:ParentElement}', \${3:!ChildElement})`),
 
-  S('etype',    'ETYPE()',                'Type of element: N=numeric, C=consolidated, S=string',      'Element Functions', 'rules',
-    `ETYPE('\${1:Dimension}', \${2:!Element})`),
+  S('dtype',    'DTYPE()',                'Type of element: N=numeric, C=consolidated, S=string',      'Element Functions', 'rules',
+    `DTYPE('\${1:Dimension}', \${2:!Element})`),
 
   S('dimix',    'DIMIX()',                'Index position of an element in the dimension',             'Element Functions', 'rules',
     `DIMIX('\${1:Dimension}', \${2:!Element})`),
@@ -109,9 +109,6 @@ const RULES = [
 
   S('mod',      'MOD()',                  'Modulus (remainder after division)',                        'Math', 'rules',
     `MOD(\${1:value}, \${2:divisor})`),
-
-  S('power',    'POWER()',                'Raise a number to an exponent',                             'Math', 'rules',
-    `POWER(\${1:base}, \${2:exponent})`),
 
   S('abs',      'ABS()',                  'Absolute value',                                            'Math', 'rules',
     `ABS(\${1:value})`),
@@ -185,8 +182,8 @@ const TI = [
   S('eleminserts','DimensionElementInsert S','Insert a string element',                              'Dimension Operations', 'ti',
     `DimensionElementInsert('\${1:DimensionName}', '', '\${2:ElementName}', 'S');\n\${0}`),
 
-  S('elemcons','Insert consolidated element','Insert a C element and set one child weight',          'Dimension Operations', 'ti',
-    `DimensionElementInsert('\${1:DimensionName}', '', '\${2:ParentName}', 'C');\nElementConsolidationSet('\${1:DimensionName}', '\${2:ParentName}', '\${3:ChildName}', \${4:1});\n\${0}`),
+  S('elemcons','Insert consolidated element','Insert a C element and add one child',                 'Dimension Operations', 'ti',
+    `DimensionElementInsert('\${1:DimensionName}', '', '\${2:ParentName}', 'C');\nDimensionElementComponentAdd('\${1:DimensionName}', '\${2:ParentName}', '\${3:ChildName}', \${4:1});\n\${0}`),
 
   S('elemdelete','DimensionElementDelete','Delete an element from a dimension',                      'Dimension Operations', 'ti',
     `DimensionElementDelete('\${1:DimensionName}', '\${2:ElementName}');\n\${0}`),
@@ -205,7 +202,7 @@ const TI = [
     `IF(SubsetExists('\${1:DimensionName}', '\${2:SubsetName}') = 1);\n  SubsetDestroy('\${1:DimensionName}', '\${2:SubsetName}');\nENDIF;\nSubsetCreate('\${1:DimensionName}', '\${2:SubsetName}');\n\${0}`),
 
   S('submdx',   'SubsetCreateByMDX',       'Create a subset from an MDX expression',                'Subsets', 'ti',
-    `IF(SubsetExists('\${1:DimensionName}', '\${2:SubsetName}') = 1);\n  SubsetDestroy('\${1:DimensionName}', '\${2:SubsetName}');\nENDIF;\nSubsetCreateByMDX('\${2:SubsetName}', '\${3:MDX}', '\${1:DimensionName}');\n\${0}`),
+    `IF(SubsetExists('\${1:DimensionName}', '\${2:SubsetName}') = 1);\n  SubsetDestroy('\${1:DimensionName}', '\${2:SubsetName}');\nENDIF;\nSubsetCreateByMDX('\${2:SubsetName}', '\${3:MDX}');\n\${0}`),
 
   S('subinsert','SubsetElementInsert',     'Insert an element into a subset at a given position',   'Subsets', 'ti',
     `SubsetElementInsert('\${1:DimensionName}', '\${2:SubsetName}', '\${3:ElementName}', \${4:1});\n\${0}`),
@@ -217,20 +214,20 @@ const TI = [
     `ViewSubsetAssign('\${1:CubeName}', '\${2:ViewName}', '\${3:DimensionName}', '\${4:SubsetName}');\n\${0}`),
 
   // Attributes
-  S('attrcreate','ElementAttributeCreate S','Create a string attribute on a dimension',             'Attributes', 'ti',
-    `ElementAttributeCreate('\${1:DimensionName}', '\${2:AttributeName}', 'S');\n\${0}`),
+  S('attrcreate','AttrInsert S',           'Create a string attribute on a dimension',              'Attributes', 'ti',
+    `AttrInsert('\${1:DimensionName}', '', '\${2:AttributeName}', 'S');\n\${0}`),
 
-  S('attrcreatein','ElementAttributeCreate N','Create a numeric attribute on a dimension',          'Attributes', 'ti',
-    `ElementAttributeCreate('\${1:DimensionName}', '\${2:AttributeName}', 'N');\n\${0}`),
+  S('attrcreatein','AttrInsert N',         'Create a numeric attribute on a dimension',             'Attributes', 'ti',
+    `AttrInsert('\${1:DimensionName}', '', '\${2:AttributeName}', 'N');\n\${0}`),
 
-  S('attrputs', 'ElementAttrPutS',           'Set a string attribute value for an element',         'Attributes', 'ti',
-    `ElementAttrPutS('\${1:DimensionName}', '\${2:ElementName}', '\${3:AttributeName}', '\${4:Value}');\n\${0}`),
+  S('attrputs', 'AttrPutS',                'Set a string attribute value for an element',           'Attributes', 'ti',
+    `AttrPutS('\${1:Value}', '\${2:DimensionName}', '\${3:ElementName}', '\${4:AttributeName}');\n\${0}`),
 
-  S('attrputn', 'ElementAttrPutN',           'Set a numeric attribute value for an element',         'Attributes', 'ti',
-    `ElementAttrPutN('\${1:DimensionName}', '\${2:ElementName}', '\${3:AttributeName}', \${4:0});\n\${0}`),
+  S('attrputn', 'AttrPutN',                'Set a numeric attribute value for an element',          'Attributes', 'ti',
+    `AttrPutN(\${1:0}, '\${2:DimensionName}', '\${3:ElementName}', '\${4:AttributeName}');\n\${0}`),
 
-  S('attrdelete','ElementAttributeDelete','Delete an attribute from a dimension',                   'Attributes', 'ti',
-    `ElementAttributeDelete('\${1:DimensionName}', '\${2:AttributeName}');\n\${0}`),
+  S('attrdelete','AttrDelete',             'Delete an attribute from a dimension',                  'Attributes', 'ti',
+    `AttrDelete('\${1:DimensionName}', '\${2:AttributeName}');\n\${0}`),
 
   // Cube Operations
   S('cellputn', 'CellPutN',              'Write a numeric value into a cube',                        'Cube Operations', 'ti',
@@ -279,17 +276,11 @@ const TI = [
   S('asciiout', 'ASCIIOutput to file',   'Append a delimited line to an ASCII log file',            'Process Control', 'ti',
     `ASCIIOutput('\${1:logfile.txt}', \${2:sField1}, \${3:sField2});\n\${0}`),
 
-  S('setout',   'SetOutputDir + File',   'Set directory and filename for ASCIIOutput',              'Process Control', 'ti',
-    `SetOutputDir('\${1:C:\\\\Logs\\\\}');\nASCIIOutput('\${2:logfile.txt}', 'Header');\n\${0}`),
-
   S('sleep',    'Sleep()',               'Pause execution for N milliseconds',                       'Process Control', 'ti',
     `Sleep(\${1:1000});\n\${0}`),
 
   S('secrefresh','SecurityRefresh',      'Reload TM1 security after user/group changes',            'Process Control', 'ti',
     `SecurityRefresh;\n\${0}`),
-
-  S('getuser',  'GetCurrentUser',        'Get the name of the user running this process',           'Process Control', 'ti',
-    `sUser = GetCurrentUser;\n\${0}`),
 
   S('getdate',  'Get current date parts','Get today\'s year, month, and day into variables',        'Process Control', 'ti',
     `nYear  = Year(Today);\nnMonth = Month(Today);\nnDay   = DayNo(Today);\n\${0}`),

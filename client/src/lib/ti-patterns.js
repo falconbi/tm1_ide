@@ -290,7 +290,7 @@ export const PATTERN_CATEGORIES = [
               `    # Stage values in a temp String attribute, delete source, recreate as Alias`,
               `    vTempAttr = '__alias_tmp__';`,
               `    IF(DIMIX('}ElementAttributes_' | pDimension, vTempAttr) = 0);`,
-              `        AttrInsert(pDimension, vTempAttr, 'S');`,
+              `        AttrInsert(pDimension, '', vTempAttr, 'S');`,
               `    ENDIF;`,
               `    nIdx = 1;`,
               `    WHILE(nIdx <= nCount);`,
@@ -302,11 +302,13 @@ export const PATTERN_CATEGORIES = [
               `    END;`,
               `    AttrDelete(pDimension, pSourceAttr);`,
               `    IF(DIMIX('}ElementAttributes_' | pDimension, pSourceAttr) <> 0);`,
-              `        ProcessError(cProcName | ': AttrDelete failed for ' | pSourceAttr);`,
+              `        LogOutput('ERROR', cProcName | ': AttrDelete failed for ' | pSourceAttr);`,
+              `        ProcessError;`,
               `    ENDIF;`,
-              `    AttrInsert(pDimension, pAliasAttrName, 'A');`,
+              `    AttrInsert(pDimension, '', pAliasAttrName, 'A');`,
               `    IF(DIMIX('}ElementAttributes_' | pDimension, pAliasAttrName) = 0);`,
-              `        ProcessError(cProcName | ': AttrInsert failed for ' | pAliasAttrName);`,
+              `        LogOutput('ERROR', cProcName | ': AttrInsert failed for ' | pAliasAttrName);`,
+              `        ProcessError;`,
               `    ENDIF;`,
               `    nIdx = 1;`,
               `    WHILE(nIdx <= nCount);`,
@@ -319,7 +321,7 @@ export const PATTERN_CATEGORIES = [
           )
           const diffNameBranch = lines(
               `    IF(DIMIX('}ElementAttributes_' | pDimension, pAliasAttrName) = 0);`,
-              `        AttrInsert(pDimension, pAliasAttrName, 'A');`,
+              `        AttrInsert(pDimension, '', pAliasAttrName, 'A');`,
               `    ENDIF;`,
               `    nIdx = 1; nUpdated = 0; nSkipped = 0;`,
               `    WHILE(nIdx <= nCount);`,
@@ -499,7 +501,7 @@ export const PATTERN_CATEGORIES = [
       {
         id: 'date-serial',
         label: 'Date Serial (PA 2.0.8)',
-        description: 'Build an Excel-compatible date serial using ParseDate (NewDateFormatter API)',
+        description: 'Build an Excel-compatible date serial using ParseDate',
         fields: [
           { key: 'yearVar',  label: 'Year variable',   type: 'text', placeholder: 'nYear' },
           { key: 'monthVar', label: 'Month variable',  type: 'text', placeholder: 'nMonth' },
@@ -515,11 +517,10 @@ export const PATTERN_CATEGORIES = [
             PrologProcedure: lines(
               `# Excel date serial via PA 2.0.8 ParseDate`,
               `# TM1 epoch: Jan 1 1960 = 0; Excel serial for that date = 21916`,
-              `nDateFmt = NewDateFormatter('yyyyMMdd');`,
               `sDateStr = NumberToString(${y})`,
               `        | IF(${m} < 10, '0', '') | NumberToString(${m})`,
               `        | IF(${d} < 10, '0', '') | NumberToString(${d});`,
-              `${out} = ParseDate(nDateFmt, sDateStr) + 21916;`,
+              `${out} = ParseDate('yyyyMMdd', sDateStr) + 21916;`,
             ),
           }
         },

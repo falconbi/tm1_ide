@@ -128,8 +128,8 @@ const SIMULATED_FNS = {
   subst:       (_, s, start, len)   => (s ?? '').slice((start ?? 1) - 1, ((start ?? 1) - 1) + (len ?? 0)),
   long:        (_, s)               => (s ?? '').length,
   trim:        (_, s)               => (s ?? '').trim(),
-  ucase:       (_, s)               => (s ?? '').toUpperCase(),
-  lcase:       (_, s)               => (s ?? '').toLowerCase(),
+  upper:       (_, s)               => (s ?? '').toUpperCase(),
+  lower:       (_, s)               => (s ?? '').toLowerCase(),
   scan:        (_, needle, hay)     => (hay ?? '').indexOf(needle ?? '') + 1,
   fill:        (_, ch, len)         => (ch ?? ' ').repeat(len ?? 0),
   code:        (_, s)               => (s ?? ' ').charCodeAt(0),
@@ -159,7 +159,6 @@ const SIMULATED_FNS = {
   asin:        (_, n)               => Math.asin(n ?? 0),
   acos:        (_, n)               => Math.acos(n ?? 0),
   atan:        (_, n)               => Math.atan(n ?? 0),
-  power:       (_, b, e)            => Math.pow(b ?? 1, e ?? 1),
 
   // ── Date/Time ─────────────────────────────────────────────────────────────
   now:         ()                   => new Date().toISOString(),
@@ -187,7 +186,7 @@ const SIMULATED_FNS = {
   elcomp:       (_, dim, el, idx)   => `Child_${idx ?? 1}`,
   elisanc:      (_, dim, a, c)      => 0,
   elispar:      (_, dim, p, c)      => 0,
-  etype:        (_, dim, el)        => 'N',
+  dtype:        (_, dim, el)        => 'N',
   tabdim:       (_, cube, pos)      => 'Dimension',
   elweight:     (_, dim, p, c)      => 1,
 
@@ -199,7 +198,7 @@ const SIMULATED_FNS = {
   // ── DB lookups (mock) ─────────────────────────────────────────────────────
   attrs:        (_, dim, el, attr)  => `Attr_${attr ?? 'x'}`,
   attrn:        (_, dim, el, attr)  => 0,
-  attrsl:       (_, dim, el, attr, locale) => `Attr_${attr ?? 'x'}`,
+  attrl:        (_, dim, el, attr)  => `Attr_${attr ?? 'x'}`,
 
   // ── Existence checks ──────────────────────────────────────────────────────
   dimensionexists:  () => 1,
@@ -706,8 +705,8 @@ function guessType(expr, vars) {
   if (/^-?\d+(\.\d*)?$/.test(t)) return 'number'
   if (/^'.*'$/.test(t)) return 'string'
   if (t.includes('|')) return 'string'
-  if (/^(CellGetN|DimSiz|DimIx|ElLev|ElCompN|ElWeight|Numbr|Str\b|Int|Round|Mod|Max|Min|Abs|Sign|Rand|Exp|Log|Ln|Sqrt|Power|Month|Day|Year|DayNo|Long|Scan|Code|IsUnd|ProcessExitNormal|NewDateFormatter|ParseDate|Undef)\s*\(/i.test(t)) return 'number'
-  if (/^(CellGetS|DimNm|ElComp|UCase|LCase|Trim|SubSt|Fill|Char|NumberToString|TimSt|Now|Today|Date|Time|AttrS|AttrSL|GetProcessName|GetCurrentUser|TabDim|GetProcessErrorFileDirectory|Undef)\s*\(/i.test(t)) return 'string'
+  if (/^(CellGetN|DimSiz|DimIx|ElLev|ElCompN|ElWeight|Numbr|Str\b|Int|Round|Mod|Max|Min|Abs|Sign|Rand|Exp|Log|Ln|Sqrt|Month|Day|Year|DayNo|Long|Scan|Code|IsUnd|ProcessExitNormal|NewDateFormatter|ParseDate|Undef|GetJobStatus|HttpResponseGetStatusCode)\s*\(/i.test(t)) return 'number'
+  if (/^(CellGetS|DimNm|ElComp|UCase|LCase|Trim|SubSt|Fill|Char|NumberToString|TimSt|Now|Today|Date|Time|AttrS|AttrSL|GetProcessName|GetCurrentUser|TabDim|GetProcessErrorFileDirectory|Undef|HttpResponseGetBody|HttpResponseGetHeader)\s*\(/i.test(t)) return 'string'
   if (/[&%~]/.test(t) && !t.includes('|')) return 'number'
   const firstWord = t.match(/^(\w[\w.]*)/)
   if (firstWord) {
