@@ -815,7 +815,7 @@ function DropZone({ id, label, icon: Icon, dims, server, onRemove, onSubsetChang
 
 // ── Rule parsing helpers ──────────────────────────────────────────────────────
 
-const TRACKED_FUNCS = new Set(['DB', 'ATTRN', 'ATTRS', 'DIMIX', 'DIMSIZ', 'CELLGET', 'TABDIM', 'ELISANC', 'ELASIS'])
+const TRACKED_FUNCS = new Set(['DB', 'ATTRN', 'ATTRS', 'DIMIX', 'DIMSIZ', 'TABDIM', 'ELISANC'])
 
 function extractRuleCalls(stmt) {
     const calls = []
@@ -1257,6 +1257,7 @@ export default function ViewEditor({ tab }) {
     // View mode: 'visual' | 'mdx'
     const [mode, setMode] = useState(tab.mode ?? (tab.initialMdx ? 'mdx' : 'visual'))
     const [showSaveMenu, setShowSaveMenu] = useState(false)
+    const [builderCollapsed, setBuilderCollapsed] = useState(false)
     useEffect(() => { patchTab(tab.id, { mode }) }, [mode])
 
     // Saved-session handlers — captures whatever's current (visual axes or MDX,
@@ -2322,21 +2323,39 @@ export default function ViewEditor({ tab }) {
 
             {/* Visual builder */}
             {mode === 'visual' && (
-                <DndContext sensors={sensors} onDragStart={({ active }) => setActiveDrag(active.id)} onDragEnd={handleDragEnd}>
-                    <div className="shrink-0 px-3 py-2 border-b border-border bg-muted/10 grid grid-cols-4 gap-2">
-                        <DropZone id="rows"    label="Rows"    icon={Rows3}    dims={axes.rows}    server={tab.server} onRemove={removeDim} onSubsetChange={setSubset} onMemberChange={setMember} onMembersChange={setMembers} onMemberSetChange={setMemberSet} onReorder={(f,t) => reorderDim('rows',f,t)}    accent="text-muted-foreground" dimAliases={dimAliases} onAliasChange={handleAliasChange} onBuildSubset={handleBuildSubset} />
-                        <DropZone id="columns" label="Columns" icon={Columns3} dims={axes.columns} server={tab.server} onRemove={removeDim} onSubsetChange={setSubset} onMemberChange={setMember} onMembersChange={setMembers} onMemberSetChange={setMemberSet} onReorder={(f,t) => reorderDim('columns',f,t)} accent="text-muted-foreground" dimAliases={dimAliases} onAliasChange={handleAliasChange} onBuildSubset={handleBuildSubset} />
-                        <DropZone id="pages"   label="Filter"  icon={Filter}   dims={axes.pages}   server={tab.server} onRemove={removeDim} onSubsetChange={setSubset} onMemberChange={setMember} onMembersChange={setMembers} onReorder={(f,t) => reorderDim('pages',f,t)}   accent="text-muted-foreground" dimAliases={dimAliases} onAliasChange={handleAliasChange} onBuildSubset={handleBuildSubset} />
-                        <DropZone id="bench"   label="Bench"   icon={LayoutGrid} dims={bench}      server={tab.server} onRemove={() => {}}  onSubsetChange={() => {}}  onMemberChange={() => {}}  onMembersChange={() => {}}  onReorder={() => {}}                           accent="text-muted-foreground" />
-                    </div>
-                    <DragOverlay>
-                        {activeDim && (
-                            <div className="flex items-center gap-1 px-2 py-0.5 rounded border text-xs bg-muted border-primary shadow-lg">
-                                <GripVertical size={11} /><span className="font-mono">{activeDim.dimension}</span>
+                <div className="shrink-0 border-b border-border bg-muted/10">
+                    {!builderCollapsed && (
+                        <DndContext sensors={sensors} onDragStart={({ active }) => setActiveDrag(active.id)} onDragEnd={handleDragEnd}>
+                            <div className="px-3 py-2 grid grid-cols-4 gap-2">
+                                <DropZone id="rows"    label="Rows"    icon={Rows3}    dims={axes.rows}    server={tab.server} onRemove={removeDim} onSubsetChange={setSubset} onMemberChange={setMember} onMembersChange={setMembers} onMemberSetChange={setMemberSet} onReorder={(f,t) => reorderDim('rows',f,t)}    accent="text-muted-foreground" dimAliases={dimAliases} onAliasChange={handleAliasChange} onBuildSubset={handleBuildSubset} />
+                                <DropZone id="columns" label="Columns" icon={Columns3} dims={axes.columns} server={tab.server} onRemove={removeDim} onSubsetChange={setSubset} onMemberChange={setMember} onMembersChange={setMembers} onMemberSetChange={setMemberSet} onReorder={(f,t) => reorderDim('columns',f,t)} accent="text-muted-foreground" dimAliases={dimAliases} onAliasChange={handleAliasChange} onBuildSubset={handleBuildSubset} />
+                                <DropZone id="pages"   label="Filter"  icon={Filter}   dims={axes.pages}   server={tab.server} onRemove={removeDim} onSubsetChange={setSubset} onMemberChange={setMember} onMembersChange={setMembers} onReorder={(f,t) => reorderDim('pages',f,t)}   accent="text-muted-foreground" dimAliases={dimAliases} onAliasChange={handleAliasChange} onBuildSubset={handleBuildSubset} />
+                                <DropZone id="bench"   label="Bench"   icon={LayoutGrid} dims={bench}      server={tab.server} onRemove={() => {}}  onSubsetChange={() => {}}  onMemberChange={() => {}}  onMembersChange={() => {}}  onReorder={() => {}}                           accent="text-muted-foreground" />
                             </div>
+                            <DragOverlay>
+                                {activeDim && (
+                                    <div className="flex items-center gap-1 px-2 py-0.5 rounded border text-xs bg-muted border-primary shadow-lg">
+                                        <GripVertical size={11} /><span className="font-mono">{activeDim.dimension}</span>
+                                    </div>
+                                )}
+                            </DragOverlay>
+                        </DndContext>
+                    )}
+                    {/* Collapse / expand toggle for the whole builder row */}
+                    <div className="flex items-center gap-2 px-3 py-1">
+                        <button onClick={() => setBuilderCollapsed(c => !c)}
+                            className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground transition-colors py-0.5 rounded"
+                            title={builderCollapsed ? 'Expand view builder' : 'Collapse view builder'}>
+                            {builderCollapsed ? <ChevronDown size={10} /> : <ChevronUp size={10} />}
+                            <LayoutGrid size={10} /> View builder
+                        </button>
+                        {builderCollapsed && (
+                            <span className="text-[10px] text-muted-foreground/60 truncate">
+                                Rows {axes.rows.length} · Columns {axes.columns.length} · Filter {axes.pages.length} · Bench {bench.length}
+                            </span>
                         )}
-                    </DragOverlay>
-                </DndContext>
+                    </div>
+                </div>
             )}
 
             {/* MDX editor */}

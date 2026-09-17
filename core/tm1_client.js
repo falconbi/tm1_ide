@@ -1282,7 +1282,7 @@ return (d.value ?? [])
         const stripped = allCode.split('\n').map(l => l.replace(/#.*$/, '')).join('\n')
 
         // Cell functions — first arg is cube name
-        const cubeFnRx = /\b(?:CellPut[NS]|CellGet[NS]|CellIsEmpty|CellIncrement[NS]|CellValue|CellValueN|CellValueS|DB)\s*\(\s*['"]([^'"]+)['"]/gi
+        const cubeFnRx = /\b(?:CellPut[NS]|CellGet[NS]|CellIsUpdateable|CellIncrement[NS])\s*\(\s*['"]([^'"]+)['"]/gi
         // Dimension/element functions — first arg is dimension name
         const dimFnRx  = /\b(?:DimensionElement(?:Count|Index|Insert|ComponentAdd|PrincipalName|Type)?|DimensionSize|ElementAscend|ElementComponent(?:Count|Weight)?|ElementParent(?:Count|Name)?|ElementIndex|ElementIsAncestor|ElementIsParent|ElementIsLeaf|ElementFirstChild|ElementLastChild|ElementRoot|ElementLevel|ElementType|SubsetCreate|SubsetAll|SubsetGetSize|SubsetElementIndex|SubsetToMDX|ElementAttributeValue|AttributeElementSet|Dnlookup)\s*\(\s*['"]([^'"]+)['"]/gi
         // ProcessExecute — first arg is process name
@@ -1327,10 +1327,10 @@ return (d.value ?? [])
         // Strip comment lines so quoted strings in comments don't produce false positives
         const stripped = rulesText.split('\n').map(l => l.replace(/#.*$/, '')).join('\n')
 
-        // DB-family: first arg is a cube name
-        const cubeFnRx = /\b(?:DB|CELLVALUE|CELLINCREMENTN|CELLPUTN|CELLPUTNS|CELLVALUES|CELLISEMPTY)\s*\(\s*['"]([^'"]+)['"]/gi
+        // DB-family (Rules-only cube-read functions): first arg is a cube name
+        const cubeFnRx = /\b(?:DB|CELLVALUEN|CELLVALUES)\s*\(\s*['"]([^'"]+)['"]/gi
         // ATTR/DIM-family: first arg is a dimension name
-        const dimFnRx  = /\b(?:ATTRS|ATTRN|ATTRD|DIMIX|DIMNM|DIMENSIONELEMENTCOUNT|DIMENSIONELEMENT|DNLOOKUP)\s*\(\s*['"]([^'"]+)['"]/gi
+        const dimFnRx  = /\b(?:ATTRS|ATTRN|ATTRL|DIMIX|DIMNM|DNLOOKUP)\s*\(\s*['"]([^'"]+)['"]/gi
 
         const foundCubes = new Set()
         const foundDims  = new Set()
@@ -1505,6 +1505,12 @@ return (d.value ?? [])
 
     async getActiveConfiguration() {
         return this.get('ActiveConfiguration')
+    }
+
+    async getProductVersion() {
+        const r = await this.get('Configuration/ProductVersion')
+        if (typeof r === 'object' && r !== null) return r.value ?? r.ProductVersion ?? r.Version ?? ''
+        return String(r ?? '')
     }
 
     async patchStaticConfiguration(section, values) {
