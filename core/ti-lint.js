@@ -10,47 +10,25 @@
 //     (DimensionElementInsert isn't committed until the Prolog ends)
 //   • wrong argument counts on common TI functions
 //
-// Signatures are hand-built from actual TI behaviour, NOT from TI_CATALOG —
-// that catalog has errors (e.g. it lists AttrInsert as 3 args; it is 4:
-// AttrInsert(dimension, priorAttribute, name, type)).
+// Signatures are DERIVED from ../shared/tm1-function-catalog.json — the single
+// source of truth also used by the client catalogs. That catalog's ATTRINSERT
+// entry is the corrected 4-arg form (dimension, priorAttribute, name, type),
+// live-verified against a real TM1 server (Sep 2026) — the older 3-arg version
+// this file used to hand-correct independently is now fixed at the source.
 
 const { findCalls } = require('./rules-lint')
+
+const CATALOG = require('../shared/tm1-function-catalog.json')
 
 const f = n => ({ min: n, max: n })
 const v = n => ({ min: n, max: Infinity })
 
-const SIG = {
-  // cube cells
-  CELLPUTN: v(3), CELLPUTS: v(3), CELLINCREMENTN: v(3),
-  CELLGETN: v(2), CELLGETS: v(2), CELLISUPDATEABLE: v(2),
-  // dimension / element structure
-  DIMENSIONCREATE: f(1), DIMENSIONEXISTS: f(1), DIMENSIONDESTROY: f(1),
-  DIMENSIONDELETEALLELEMENTS: f(1),
-  DIMENSIONELEMENTINSERT: f(4), DIMENSIONELEMENTINSERTDIRECT: f(4),
-  DIMENSIONELEMENTDELETE: f(2), DIMENSIONELEMENTDELETEDIRECT: f(2),
-  DIMENSIONELEMENTCOMPONENTADD: f(4), DIMENSIONELEMENTCOMPONENTADDDIRECT: f(4),
-  DIMENSIONELEMENTCOMPONENTDELETE: f(3), DIMENSIONELEMENTPRINCIPALNAME: f(2),
-  DTYPE: f(2), DIMIX: f(2), DIMSIZ: f(1), DIMNM: f(2),
-  ELPAR: f(3), ELPARN: f(2), ELCOMP: f(3), ELCOMPN: f(2), ELLEV: f(2), ELWEIGHT: f(3),
-  // hierarchies
-  HIERARCHYEXISTS: f(2), HIERARCHYCREATE: f(2), HIERARCHYDELETEALLELEMENTS: f(2),
-  HIERARCHYELEMENTINSERT: f(5), HIERARCHYELEMENTINSERTDIRECT: f(5),
-  HIERARCHYELEMENTCOMPONENTADD: f(5),
-  // attributes
-  ATTRINSERT: f(4), ATTRDELETE: f(2),
-  ATTRPUTN: f(4), ATTRPUTS: f(4),
-  ATTRN: f(3), ATTRS: f(3), ATTRL: f(3),
-  ELEMENTATTRPUTN: f(5), ELEMENTATTRPUTS: f(5),
-  ELEMENTATTRN: f(4), ELEMENTATTRS: f(4),
-  // strings / numbers
-  NUMBR: f(1), STR: f(3), TRIM: f(1), LTRIM: f(1), RTRIM: f(1),
-  LONG: f(1), SUBST: f(3), SCAN: f(2), FILL: f(2), DELET: f(3), INSRT: f(3),
-  UPPER: f(1), LOWER: f(1), CAPIT: f(1),
-  // process / io
-  LOGOUTPUT: f(2), ASCIIOUTPUT: v(2), TEXTOUTPUT: v(2),
-  EXECUTEPROCESS: v(1), RUNPROCESS: v(1),
-  // pure statements — no args
-  ITEMSKIP: f(0), PROCESSQUIT: f(0), PROCESSBREAK: f(0), PROCESSERROR: f(0),
+const SIG = {}
+for (const [name, entry] of Object.entries(CATALOG)) {
+  if (entry.language === 'rules') continue   // ti-lint only checks TI-usable functions
+  const params = entry.params ?? []
+  const variadic = params.length > 0 && params[params.length - 1].endsWith('*')
+  SIG[name] = variadic ? v(entry.variadicMin ?? params.length) : f(params.length)
 }
 
 // control keywords — findCalls will see IF( / WHILE( / FOR( but they are not

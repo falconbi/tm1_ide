@@ -10,39 +10,25 @@
 //
 // The client-side Monaco validator (client/src/lib/rules-validator.js) already
 // does this in the editor. This is the CJS equivalent for the MCP path / any
-// server-side route. Arg counts are transcribed from RULES_CATALOG in
-// client/src/lib/tm1-completion.js — keep them in step when that changes.
+// server-side route.
+//
+// Arg counts are DERIVED from ../shared/tm1-function-catalog.json (the single
+// source of truth also used by the client catalogs) — not hand-transcribed.
+// A JSON entry with params ['a','b'] (no trailing '*') becomes a fixed arity
+// of 2; a trailing '*' on the last param (e.g. ['cubename','element*']) makes
+// it variadic with that same minimum.
 
-const f = n            => ({ min: n, max: n })          // fixed arity
-const v = n            => ({ min: n, max: Infinity })   // variadic (n or more)
+const CATALOG = require('../shared/tm1-function-catalog.json')
 
-const SIG = {
-  // cube data
-  DB: v(2), CELLVALUEN: v(2), CELLVALUES: v(2), DBS: v(2),
-  // dimension info
-  TABDIM: f(2), DIMSIZ: f(1), DIMIX: f(2), DNEXT: f(2), DNLEV: f(1), DTYPE: f(2),
-  // element info — classic (single hierarchy)
-  ELCOMP: f(3), ELCOMPN: f(2), ELLEV: f(2), ELPAR: f(3), ELPARN: f(2),
-  ELWEIGHT: f(3), ELISANC: f(3), ELISCOMP: f(3), ELISPAR: f(3),
-  // element info — hierarchy-aware
-  ELEMENTCOMPONENT: f(4), ELEMENTCOMPONENTCOUNT: f(3), ELEMENTCOUNT: f(2),
-  ELEMENTFIRST: f(2), ELEMENTINDEX: f(3), ELEMENTISANCESTOR: f(4),
-  ELEMENTISCOMPONENT: f(4), ELEMENTISPARENT: f(4), ELEMENTLEVEL: f(3),
-  ELEMENTNAME: f(3), ELEMENTNEXT: f(3), ELEMENTPARENT: f(4),
-  ELEMENTPARENTCOUNT: f(3), ELEMENTTYPE: f(3), ELEMENTWEIGHT: f(4),
-  // attribute read
-  ATTRN: f(3), ATTRS: f(3), ATTRL: f(3),
-  CUBEATTRN: f(2), CUBEATTRS: f(2), DIMENSIONATTRN: f(2), DIMENSIONATTRS: f(2),
-  ELEMENTATTRN: f(4), ELEMENTATTRS: f(4),
-  // conditional
-  IF: f(3),
-  // string
-  CAPIT: f(1), CHAR: f(1), CODE: f(2), CONT: f(2), DELET: f(3), FILL: f(2),
-  INSRT: f(3), LONG: f(1), LOWER: f(1), LTRIM: f(1), NUMBR: f(1), RTRIM: f(1),
-  SCAN: f(2), SCANR: f(2), STR: f(3), SUBST: f(3), TRIM: f(1), UPPER: f(1),
-  // math
-  ABS: f(1), EXP: f(1), INT: f(1), LOG: f(1), MAX: f(2), MIN: f(2), MOD: f(2),
-  POWER: f(2), RAND: f(0), ROUND: f(2), SIGN: f(1), SQRT: f(1),
+const f = n => ({ min: n, max: n })          // fixed arity
+const v = n => ({ min: n, max: Infinity })   // variadic (n or more)
+
+const SIG = {}
+for (const [name, entry] of Object.entries(CATALOG)) {
+  if (entry.language === 'ti') continue   // rules-lint only checks Rules-usable functions
+  const params = entry.params ?? []
+  const variadic = params.length > 0 && params[params.length - 1].endsWith('*')
+  SIG[name] = variadic ? v(entry.variadicMin ?? params.length) : f(params.length)
 }
 
 // ── scanner ──────────────────────────────────────────────────────────────────
