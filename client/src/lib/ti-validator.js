@@ -1,10 +1,12 @@
 // ── TI Process Code Validator ─────────────────────────────────────────────────
 // Static analysis: syntax errors, structural issues, best-practice warnings,
-// and function name/argument validation against TI_CATALOG + TM1_FUNCTIONS.
+// and function name/argument validation against TI_CATALOG (derived from the
+// single canonical shared/tm1-function-catalog.json).
 // Runs client-side against unsaved editor content across all four sections.
 
-import { TM1_FUNCTIONS } from '@/lib/tm1-functions.js'
 import { TI_CATALOG } from '@/lib/tm1-completion.js'
+import { catalogEntry } from '@/lib/catalog-runtime.js'
+import { compatWarning } from '@/lib/tm1-version.js'
 
 const TI_CONTROL_KEYWORDS = new Set(['IF', 'WHILE', 'ELSEIF'])
 
@@ -112,31 +114,30 @@ function findFunctionCalls(text) {
   return calls
 }
 
-// ── Arg info from TI_CATALOG or TM1_FUNCTIONS ─────────────────────────────────
+// ── Arg info from TI_CATALOG (the canonical catalog) ──────────────────────────
 // Mirrors the pattern from rules-validator.js.
 
 function getTIFunctionArgInfo(fnName) {
   const upper = fnName.toUpperCase()
-  const catEntry = TI_CATALOG[upper]
-  if (catEntry) {
-    const params = catEntry.params ?? []
-    const starCount = params.filter(p => p.endsWith('*')).length
-    const nonStarCount = params.length - starCount
-    const base = starCount > 0
-      ? { variadic: true,  min: nonStarCount + 1, max: Infinity }
-      : { variadic: false, min: params.length,     max: params.length }
-    return { ...base, deprecated: catEntry.deprecated ?? null, isStatement: catEntry.isStatement ?? false }
+  const catEntry = catalogEntry('ti', upper, TI_CATALOG)
+  if (!catEntry) return null
+  const params = catEntry.params ?? []
+  const starCount = params.filter(p => p.endsWith('*')).length
+  const nonStarCount = params.length - starCount
+  const base = starCount > 0
+    ? { variadic: true,  min: catEntry.variadicMin ?? (nonStarCount + 1), max: Infinity }
+    : { variadic: false, min: params.length,     max: params.length }
+  return {
+    ...base,
+    deprecated: catEntry.deprecated ?? null,
+    isStatement: catEntry.isStatement ?? false,
+    compat: catEntry.compat ?? 'both',
   }
-  const fnDef = TM1_FUNCTIONS[fnName] || TM1_FUNCTIONS[upper]
-  if (!fnDef || (fnDef.language !== 'ti' && fnDef.language !== 'both')) return null
-  const params = fnDef.params || []
-  const dotdotdot = params.filter(p => p.name === '...').length
-  if (fnDef.variadic && dotdotdot > 0) return { variadic: true, min: params.length - dotdotdot, max: Infinity }
-  if (fnDef.variadic) return { variadic: true, min: 1, max: Infinity }
-  return { variadic: false, min: params.length, max: params.length }
 }
 
 // ── Function name + argument count validation ──────────────────────────────────
+
+let ACTIVE_VERSION = null // set synchronously per validateTICode call
 
 function checkFunctions(rawCode, sectionLabel) {
   const errors = []
@@ -175,6 +176,15 @@ function checkFunctions(rawCode, sectionLabel) {
         severity: 'warning', section: sectionLabel, line: call.line,
         message: `${upper} is deprecated: ${catInfo.deprecated}`,
       })
+    }
+    if (catInfo?.compat) {
+      const compatMsg = compatWarning(catInfo.compat, ACTIVE_VERSION)
+      if (compatMsg) {
+        errors.push({
+          severity: 'warning', section: sectionLabel, line: call.line,
+          message: `${upper} ${compatMsg}`,
+        })
+      }
     }
   }
 
@@ -496,54 +506,15 @@ function assignedVarsForStatement(text) {
   return vars
 }
 
+// Pure control-flow/statement keywords that aren't functions in TI_CATALOG at
+// all (IF/WHILE/FOR are block syntax, not callable) but shouldn't trigger an
+// "unknown function" warning either.
+const CONTROL_KEYWORDS = new Set(['if', 'elseif', 'else', 'endif', 'while', 'end', 'for', 'next'])
+
 function isBuiltInTM1Function(name) {
-  const fns = new Set([
-    // Control flow / process lifecycle
-    'if', 'elseif', 'else', 'endif', 'while', 'end', 'for', 'next',
-    'processquit', 'processerror', 'processbreak',
-    'itemreject', 'itemskip',
-    // Logging / output
-    'asciioutput', 'textoutput', 'logoutput',
-    // Cell read/write
-    'cellgetn', 'cellgets', 'cellputn', 'cellputs', 'cellisupdateable',
-    'cellupdateable',
-    // Dimension / element
-    'dimensionelementinsert', 'dimensionelementdelete', 'dimensionexists',
-    'dimensioncreate', 'dimensiondestroy',
-    'dimensionelementattributecreate',   // valid — delete is NOT (use DimensionElementDelete on control dim)
-    'hierarchycreate',
-    'elementtype', 'elementlevel', 'elementweight',
-    'elementattrputn', 'elementattrputs', 'elementattrs', 'elementattrn',
-    'attrputn', 'attrputs', 'attrs', 'attrn', 'attrtype',
-    // Subsets
-    'subsetcreate', 'subsetdestroy', 'subsetexists', 'subsetelementinsert',
-    'subsetcreatebymdx', 'subsetalias', 'subsetcount', 'subsetelementname',
-    // Views
-    'viewcreate', 'viewdestroy', 'viewexists', 'viewzeroout',
-    'viewextractskiprulevaluesset', 'viewextractskipzerosset', 'viewextractskipzerovaluesset',
-    'viewcolumnsuppressset', 'viewrowsuppressset',
-    // Cubes
-    'cubecreate', 'cubedestroy', 'cubeexists',
-    // Processes
-    'executeprocess', 'sleep', 'securityrefresh',
-    'holdsecurity', 'unholdsecurity', 'savedataall', 'refreshmdxhierarchy',
-    // String / number
-    'numbertostring', 'stringtonumber', 'char', 'code', 'fill', 'scan',
-    'subst', 'long', 'trim', 'ucase', 'lcase', 'isundefined',
-    // Dimension navigation
-    'dimnm', 'dimix', 'dimsiz', 'ellevel', 'elcomp', 'elcompn',
-    'elnm', 'elix', 'elsiz', 'elcomp', 'elcompn', 'elcompweight',
-    'elparent', 'elparentcount', 'elisanc',
-    // Math
-    'abs', 'round', 'int', 'mod', 'max', 'min', 'sqrt', 'rand', 'exp', 'log', 'power',
-    // Date / time
-    'now', 'today', 'date', 'time', 'timst', 'day', 'month', 'year', 'dayno',
-    // Process metadata
-    'getprocessname', 'getcurrentuser', 'getprocesserrorfiledirectory',
-    'serverexists', 'serveractivetm1processcount',
-    'newdateformatter', 'parsedate',
-  ])
-  return fns.has(name.toLowerCase())
+  const lower = name.toLowerCase()
+  if (CONTROL_KEYWORDS.has(lower)) return true
+  return Object.prototype.hasOwnProperty.call(TI_CATALOG, name.toUpperCase())
 }
 
 // ── Semicolon-checking (statements that should end with ;) ─────────────────────
@@ -604,7 +575,9 @@ function checkSemicolons(rawCode, sectionLabel) {
  * @param {{ PrologProcedure:string, MetaDataProcedure:string, DataProcedure:string, EpilogProcedure:string }} sections
  * @returns {{ section: string, line: number, severity: 'error'|'warning', message: string }[]}
  */
-export function validateTICode(sections) {
+export function validateTICode(sections, options = {}) {
+  const { version } = options
+  ACTIVE_VERSION = version ?? null
   const results = []
   const allLabels = Object.keys(sections).map(k => sections[k])
 

@@ -1,8 +1,9 @@
 import { tokenize } from '@/lib/formatters/tokenizer.js'
 import { parseLogicalUnits } from '@/lib/formatters/tm1-structured.js'
 import { parseExpression } from '@/lib/formatters/tm1-expression-parser.js'
-import { TM1_FUNCTIONS } from '@/lib/tm1-functions.js'
-import { RULES_CATALOG } from '@/lib/tm1-completion.js'
+import { RULES_CATALOG, TI_CATALOG } from '@/lib/tm1-completion.js'
+import { catalogEntry } from '@/lib/catalog-runtime.js'
+import { compatWarning } from '@/lib/tm1-version.js'
 
 // ELSEIF / ELSE / ENDIF are TI block keywords — not valid in TM1 Rules (Rules use IF() function syntax)
 const VALID_KEYWORDS = new Set(['feeders', 'skipcheck', 'stet', 'continue', 'if'])
@@ -11,35 +12,25 @@ const VALID_KEYWORDS = new Set(['feeders', 'skipcheck', 'stet', 'continue', 'if'
 function getFunctionArgInfo(fnName) {
   const upper = fnName.toUpperCase()
 
-  // Try RULES_CATALOG first (more accurate arg info for rules functions)
-  const catEntry = RULES_CATALOG[upper]
-  if (catEntry) {
-    const params = catEntry.params ?? []
-    const starCount = params.filter(p => p.endsWith('*')).length
-    const nonStarCount = params.length - starCount
-    const base = starCount > 0
-      ? { variadic: true,  min: nonStarCount + 1, max: Infinity }
-      : { variadic: false, min: params.length,     max: params.length }
-    return { ...base, deprecated: catEntry.deprecated ?? null, isStatement: catEntry.isStatement ?? false }
+  const catEntry = catalogEntry('rules', upper, RULES_CATALOG)
+  if (!catEntry) return null
+  const params = catEntry.params ?? []
+  const starCount = params.filter(p => p.endsWith('*')).length
+  const nonStarCount = params.length - starCount
+  const base = starCount > 0
+    ? { variadic: true,  min: catEntry.variadicMin ?? (nonStarCount + 1), max: Infinity }
+    : { variadic: false, min: params.length,     max: params.length }
+  return {
+    ...base,
+    deprecated: catEntry.deprecated ?? null,
+    isStatement: catEntry.isStatement ?? false,
+    compat: catEntry.compat ?? 'both',
   }
-
-  // Fall back to TM1_FUNCTIONS
-  const fnDef = TM1_FUNCTIONS[upper]
-  if (!fnDef) return null
-
-  const params = fnDef.params || []
-  const dotdotdot = params.filter(p => p.name === '...').length
-
-  if (fnDef.variadic && dotdotdot > 0) {
-    return { variadic: true, min: params.length - dotdotdot, max: Infinity }
-  }
-  if (fnDef.variadic) {
-    return { variadic: true, min: 1, max: Infinity }
-  }
-  return { variadic: false, min: params.length, max: params.length }
 }
 
-export function validateRulesSyntax(code) {
+export function validateRulesSyntax(code, options = {}) {
+  const { version } = options
+  ACTIVE_VERSION = version ?? null
   const errors = []
   if (!code) return errors
 
@@ -370,6 +361,8 @@ function tryParseExpression(toks, text, code, errors, line) {
 }
 
 // ── AST validation ───────────────────────────────────────────────────────────
+let ACTIVE_VERSION = null // set synchronously per validateRulesSyntax call
+
 function validateAST(ast, code, line) {
   const issues = []
   if (!ast) return issues
@@ -381,8 +374,8 @@ function validateAST(ast, code, line) {
       const catInfo = getFunctionArgInfo(fnName)
 
       if (!catInfo) {
-        const fnDef = TM1_FUNCTIONS[fnName.toUpperCase()]
-        if (fnDef && fnDef.language === 'ti') {
+        const tiOnly = TI_CATALOG[fnName.toUpperCase()] && !RULES_CATALOG[fnName.toUpperCase()]
+        if (tiOnly) {
           issues.push({ severity: 'error', line, message: `${fnName} is a TI function — cannot be used in rules` })
         } else {
           issues.push({ severity: 'error', line, message: `Unknown function '${fnName}'` })
@@ -404,6 +397,10 @@ function validateAST(ast, code, line) {
         }
         if (catInfo.deprecated) {
           issues.push({ severity: 'warning', line, message: `${fnName} is deprecated: ${catInfo.deprecated}` })
+        }
+        const compatMsg = compatWarning(catInfo.compat, ACTIVE_VERSION)
+        if (compatMsg) {
+          issues.push({ severity: 'warning', line, message: `${fnName} ${compatMsg}` })
         }
       }
 
