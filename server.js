@@ -2168,6 +2168,16 @@ app.get('/api/admin/configuration', async (req, res) => {
     }
 })
 
+// ── Server version (drives function-catalog compat gating) ────────────────────
+app.get('/api/server/version', async (req, res) => {
+    try {
+        const client = makeClient(req.query.server, req.ideToken)
+        res.json({ version: await client.getProductVersion() })
+    } catch (e) {
+        res.status(500).json({ error: e.message })
+    }
+})
+
 app.patch('/api/admin/configuration', async (req, res) => {
     try {
         const { server, section = 'Administration', values } = req.body
@@ -2901,7 +2911,7 @@ app.post('/api/admin/validate-ti-functions', async (req, res) => {
                 await client.post('Processes', {
                     Name: procName,
                     PrologProcedure: code,
-                    MetaDataProcedure: '',
+                    MetadataProcedure: '',
                     DataProcedure: '',
                     EpilogProcedure: '',
                     Parameters: [],
