@@ -12,6 +12,7 @@ import { toast } from 'sonner'
 import { Play, Loader2, Sparkles, Search, ChevronDown, ChevronRight, ChevronLeft, Box, Cog, Locate, Clock, Save, AlignLeft, Check, X, GripHorizontal } from 'lucide-react'
 import SubsetVisualEditor from './SubsetVisualEditor'
 import { ConflictBanner, ConflictSaveWarning } from '@/components/ConflictBanner'
+import DiffViewerModal from '@/components/DiffViewerModal'
 
 const TYPE_ICON  = { N: '○', C: '◆', S: '"' }
 const TYPE_COLOR = { N: 'text-blue-400', C: 'text-amber-400', S: 'text-emerald-400' }
@@ -292,6 +293,7 @@ export default function SubsetEditor({ tab }) {
   const [savedIndicator, setSavedIndicator] = useState(false)
   const [dismissedId, setDismissedId]   = useState(null)
   const [saveConflict, setSaveConflict] = useState(null)
+  const [conflictDiff, setConflictDiff] = useState(null)
   const { openConflict, checkBeforeSave } = useConflictCheck(tab.server, 'subset', tab.subsetName)
 
   const editorRef     = useRef(null)
@@ -483,7 +485,24 @@ export default function SubsetEditor({ tab }) {
   return (
     <div className="flex flex-col h-full bg-background">
       <ConflictBanner conflict={openConflict?.id !== dismissedId ? openConflict : null} onDismiss={() => setDismissedId(openConflict?.id)} />
-      <ConflictSaveWarning conflict={saveConflict} onSaveAnyway={() => { setSaveConflict(null); doSave() }} onCancel={() => setSaveConflict(null)} />
+      <ConflictSaveWarning
+        conflict={saveConflict}
+        onSaveAnyway={() => { setSaveConflict(null); doSave() }}
+        onCancel={() => setSaveConflict(null)}
+        onShowDiff={() => {
+          setConflictDiff({
+            object_type: 'subset',
+            object_name: tab.subsetName,
+            detail:      tab.dimension,
+            timestamp:   saveConflict.timestamp,
+            action:      'CONFLICT',
+            session_name: null,
+            before_state: saveConflict.after_state ?? { expression: mdx ?? '' },
+            after_state:  { expression: mdx ?? '' },
+          })
+        }}
+      />
+      {conflictDiff && <DiffViewerModal entry={conflictDiff} onClose={() => setConflictDiff(null)} />}
 
       {/* ── Mode bar ─────────────────────────────────────────────────────────── */}
       <div className="flex items-center gap-2 px-3 py-1.5 border-b border-border bg-muted/40 shrink-0">

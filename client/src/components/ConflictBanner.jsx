@@ -18,7 +18,7 @@ export function ConflictBanner({ conflict, onDismiss }) {
   )
 }
 
-export function ConflictSaveWarning({ conflict, onSaveAnyway, onCancel }) {
+export function ConflictSaveWarning({ conflict, onSaveAnyway, onCancel, onShowDiff }) {
   if (!conflict) return null
   const when = conflict.timestamp
     ? new Date(conflict.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
@@ -40,6 +40,11 @@ export function ConflictSaveWarning({ conflict, onSaveAnyway, onCancel }) {
           <button onClick={onCancel} className="px-3 py-1.5 text-xs rounded border border-border text-muted-foreground hover:bg-muted">
             Cancel
           </button>
+          {onShowDiff && (
+            <button onClick={onShowDiff} className="px-3 py-1.5 text-xs rounded border border-border text-foreground hover:bg-muted">
+              Show Diff
+            </button>
+          )}
           <button onClick={onSaveAnyway} className="px-3 py-1.5 text-xs rounded bg-amber-600 text-white hover:bg-amber-500">
             Save anyway
           </button>

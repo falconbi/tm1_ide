@@ -27,6 +27,7 @@ import ObjectHistoryPanel from '@/components/ObjectHistoryPanel'
 import DiffTab from '@/components/DiffTab'
 import SessionReportTab from '@/components/SessionReportTab'
 import { ConflictBanner, ConflictSaveWarning } from '@/components/ConflictBanner'
+import DiffViewerModal from '@/components/DiffViewerModal'
 import CubeMapEditor from '@/components/CubeMapEditor'
 
 // ── Lineage panel ─────────────────────────────────────────────────────────────
@@ -352,6 +353,7 @@ function RulesEditor({ tab, onCursor }) {
   const [cubeDims, setCubeDims] = useState(null)
   const [dismissedId, setDismissedId] = useState(null)
   const [saveConflict, setSaveConflict] = useState(null)
+  const [conflictDiff, setConflictDiff] = useState(null)
   const { openConflict, checkBeforeSave } = useConflictCheck(tab.server, 'rules', tab.cube)
 
   useEffect(() => {
@@ -652,7 +654,23 @@ function RulesEditor({ tab, onCursor }) {
   return (
     <div className="flex flex-col h-full min-h-0 overflow-hidden">
       <ConflictBanner conflict={openConflict?.id !== dismissedId ? openConflict : null} onDismiss={() => setDismissedId(openConflict?.id)} />
-      <ConflictSaveWarning conflict={saveConflict} onSaveAnyway={() => { setSaveConflict(null); doSave() }} onCancel={() => setSaveConflict(null)} />
+      <ConflictSaveWarning
+        conflict={saveConflict}
+        onSaveAnyway={() => { setSaveConflict(null); doSave() }}
+        onCancel={() => setSaveConflict(null)}
+        onShowDiff={() => {
+          setConflictDiff({
+            object_type: 'rules',
+            object_name: tab.cube,
+            timestamp:   saveConflict.timestamp,
+            action:      'CONFLICT',
+            session_name: null,
+            before_state: saveConflict.after_state ?? { text: data?.rules ?? '' },
+            after_state:  { text: editorRef.current?.getValue() ?? '' },
+          })
+        }}
+      />
+      {conflictDiff && <DiffViewerModal entry={conflictDiff} onClose={() => setConflictDiff(null)} />}
       <div className="flex items-center gap-1.5 px-3 py-1 border-b border-border bg-muted/30 shrink-0">
         <span className="text-xs font-mono font-semibold text-foreground">{tab.cube}</span>
         <button

@@ -16,6 +16,7 @@ import { validateTICode } from '@/lib/ti-validator'
 import SnippetPanel from '@/components/SnippetPanel'
 import PatternDialog from '@/components/PatternDialog'
 import { ConflictBanner, ConflictSaveWarning } from '@/components/ConflictBanner'
+import DiffViewerModal from '@/components/DiffViewerModal'
 
 const CODE_TABS = [
   { key: 'PrologProcedure',    label: 'Prolog'   },
@@ -902,6 +903,7 @@ export default function ProcessEditor({ tab }) {
   const [showHistory, setShowHistory]   = useState(false)
   const [dismissedId, setDismissedId]   = useState(null)
   const [saveConflict, setSaveConflict] = useState(null)
+  const [conflictDiff, setConflictDiff] = useState(null)
   const { openConflict, checkBeforeSave } = useConflictCheck(tab.server, 'process', tab.name)
   const [runOutput, setRunOutput] = useState(null)
   const [logContent, setLogContent] = useState(null)
@@ -1406,7 +1408,25 @@ export default function ProcessEditor({ tab }) {
   return (
     <div className="flex flex-col h-full">
       <ConflictBanner conflict={openConflict?.id !== dismissedId ? openConflict : null} onDismiss={() => setDismissedId(openConflict?.id)} />
-      <ConflictSaveWarning conflict={saveConflict} onSaveAnyway={() => { setSaveConflict(null); doSave() }} onCancel={() => setSaveConflict(null)} />
+      <ConflictSaveWarning
+        conflict={saveConflict}
+        onSaveAnyway={() => { setSaveConflict(null); doSave() }}
+        onCancel={() => setSaveConflict(null)}
+        onShowDiff={() => {
+          const current = {}
+          CODE_TABS.forEach(({ key }) => { current[key] = edits[key] ?? data?.[key] ?? '' })
+          setConflictDiff({
+            object_type: 'process',
+            object_name: tab.name,
+            timestamp:   saveConflict.timestamp,
+            action:      'CONFLICT',
+            session_name: null,
+            before_state: saveConflict.after_state ?? { prolog: '', metadata: '', data: '', epilog: '' },
+            after_state:  current,
+          })
+        }}
+      />
+      {conflictDiff && <DiffViewerModal entry={conflictDiff} onClose={() => setConflictDiff(null)} />}
       {tab.name && (
         <div className="flex items-center gap-1.5 px-3 py-1 border-b border-border bg-muted/30 shrink-0">
           <span className="text-xs font-mono font-semibold text-foreground">{tab.name}</span>

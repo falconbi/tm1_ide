@@ -31,6 +31,7 @@ const darkTheme  = themeBalham.withPart(colorSchemeDark).withParams({ fontSize: 
 import { buildMDX } from '@core/mdxBuilder.js'
 import HierarchyGrid from '@/components/HierarchyGrid'
 import { ConflictBanner, ConflictSaveWarning } from '@/components/ConflictBanner'
+import DiffViewerModal from '@/components/DiffViewerModal'
 import { Component } from 'react'
 
 class GridErrorBoundary extends Component {
@@ -1286,6 +1287,7 @@ export default function ViewEditor({ tab }) {
     const [logTuple,  setLogTuple]  = useState(null)   // null = whole cube, array = filtered cell
     const [dismissedId, setDismissedId]   = useState(null)
     const [saveConflict, setSaveConflict] = useState(null)
+    const [conflictDiff, setConflictDiff] = useState(null)
     const [cellCtx,  setCellCtx]  = useState(null)
     const [traceCtx, setTraceCtx] = useState(null)
     const [checkingFeeders, setCheckingFeeders] = useState(false)
@@ -1982,7 +1984,25 @@ export default function ViewEditor({ tab }) {
         <div className="flex h-full min-h-0">
         <div className="flex flex-col flex-1 min-w-0 min-h-0">
             <ConflictBanner conflict={openConflict?.id !== dismissedId ? openConflict : null} onDismiss={() => setDismissedId(openConflict?.id)} />
-            <ConflictSaveWarning conflict={saveConflict} onSaveAnyway={() => { setSaveConflict(null); executeSave(tab.viewName) }} onCancel={() => setSaveConflict(null)} />
+            <ConflictSaveWarning
+              conflict={saveConflict}
+              onSaveAnyway={() => { setSaveConflict(null); executeSave(tab.viewName) }}
+              onCancel={() => setSaveConflict(null)}
+              onShowDiff={() => {
+                const payload = buildSavePayload()
+                setConflictDiff({
+                  object_type: 'view',
+                  object_name: tab.viewName,
+                  detail:      tab.cube,
+                  timestamp:   saveConflict.timestamp,
+                  action:      'CONFLICT',
+                  session_name: null,
+                  before_state: saveConflict.after_state ?? (payload.nativeAxes ? { type: 'native', definition: payload.nativeAxes } : { type: 'mdx', mdx: payload.mdx ?? '' }),
+                  after_state:  payload.nativeAxes ? { type: 'native', definition: payload.nativeAxes } : { type: 'mdx', mdx: payload.mdx ?? '' },
+                })
+              }}
+            />
+            {conflictDiff && <DiffViewerModal entry={conflictDiff} onClose={() => setConflictDiff(null)} />}
             {/* Toolbar */}
             <div className="flex items-center gap-2 px-3 py-1.5 border-b border-border bg-muted/30 shrink-0">
                 <span className="text-xs font-mono text-muted-foreground truncate">

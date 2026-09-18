@@ -510,6 +510,7 @@ function CubeMapInner({ tab }) {
   const [edges, setEdges, onEdgesChange] = useEdgesState([])
 
   const [selectedCube,   setSelectedCube]   = useState(null)
+  const [focused,        setFocused]        = useState(false)
   const [search,         setSearch]         = useState('')
   const [showFeeders,    setShowFeeders]     = useState(true)
   const [showCalc,       setShowCalc]        = useState(true)
@@ -548,13 +549,23 @@ function CubeMapInner({ tab }) {
   // Pre-computed reverse map (who references whom)
   const reverseMap = useMemo(() => cubeData ? buildReverseMap(cubeData) : {}, [cubeData])
 
+  // ── Transitive set ────────────────────────────────────────────────────────────
+  const transitiveSet = useMemo(() => {
+    if (!selectedCube || !cubeData) return null
+    return getTransitiveSet(selectedCube, traceDepth, cubeData, reverseMap)
+  }, [selectedCube, traceDepth, cubeData, reverseMap])
+
   // ── Build graph ───────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!cubeData) return
 
-    const visibleSet = dimFilter
-      ? new Set(Object.keys(cubeData).filter(n => cubeData[n].dims.includes(dimFilter)))
-      : new Set(Object.keys(cubeData))
+    // Focus mode: only the selected cube's transitive neighborhood (within traceDepth).
+    // Otherwise the whole model (optionally filtered by a dimension).
+    const visibleSet = (focused && selectedCube && transitiveSet)
+      ? new Set([...transitiveSet].filter(n => cubeData[n]))
+      : dimFilter
+        ? new Set(Object.keys(cubeData).filter(n => cubeData[n].dims.includes(dimFilter)))
+        : new Set(Object.keys(cubeData))
 
     const rawNodes = [...visibleSet].map(name => ({
       id: name, type: 'cube',
@@ -584,20 +595,13 @@ function CubeMapInner({ tab }) {
 
     setNodes(applyGrouping(applyDagreLayout(rawNodes, rawEdges, layout), showClusters))
     setEdges(rawEdges)
-    setSelectedCube(null)
-    setDimmedIds(new Set())
-  }, [cubeData, showCalc, showFeeders, layout, dimFilter, showClusters])
+    if (!focused) { setSelectedCube(null); setDimmedIds(new Set()) }
+  }, [cubeData, showCalc, showFeeders, layout, dimFilter, showClusters, focused, selectedCube, traceDepth, transitiveSet])
 
   // ── Fit view ──────────────────────────────────────────────────────────────────
   useEffect(() => {
     if (nodes.length) setTimeout(() => fitView({ padding: 0.12, duration: 400 }), 50)
-  }, [nodes.length, layout, dimFilter])
-
-  // ── Transitive set ────────────────────────────────────────────────────────────
-  const transitiveSet = useMemo(() => {
-    if (!selectedCube || !cubeData) return null
-    return getTransitiveSet(selectedCube, traceDepth, cubeData, reverseMap)
-  }, [selectedCube, traceDepth, cubeData, reverseMap])
+  }, [nodes.length, layout, dimFilter, focused, selectedCube])
 
   // ── Process satellite nodes (writers + their callers, focused-view only) ───────
   // These are merged directly into the managed `nodes`/`edges` state (not a derived
@@ -704,6 +708,7 @@ function CubeMapInner({ tab }) {
       return
     }
     setSelectedCube(node.id)
+    setFocused(true)
     const n = getNode(node.id)
     if (n) setCenter(n.position.x + NODE_W / 2, n.position.y + NODE_H / 2, { duration: 350, zoom: 1.2 })
   }, [getNode, setCenter, openTab, srv])
@@ -718,13 +723,18 @@ function CubeMapInner({ tab }) {
   }, [cubeData, openTab, srv])
 
   const onPaneClick = useCallback(() => {
-    setSelectedCube(null); setDimmedIds(new Set())
+    setSelectedCube(null); setDimmedIds(new Set()); setFocused(false)
+  }, [])
+
+  const exitFocus = useCallback(() => {
+    setSelectedCube(null); setDimmedIds(new Set()); setFocused(false)
   }, [])
 
   const navigateTo = useCallback((name) => {
     const found = nodes.find(n => n.id === name)
     if (!found) return
     setSelectedCube(name)
+    setFocused(true)
     setCenter(found.position.x + NODE_W / 2, found.position.y + NODE_H / 2, { duration: 400, zoom: 1.2 })
   }, [nodes, setCenter])
 
@@ -734,7 +744,7 @@ function CubeMapInner({ tab }) {
   const openProcess = (name)  => openTab({ id: `process:${srv}:${name}`,          type: 'process',    label: name,    server: srv, name, content: null })
 
   // ── Dim filter ────────────────────────────────────────────────────────────────
-  const handleFilterDim = (dim) => { setDimFilter(p => p === dim ? null : dim); setSelectedCube(null) }
+  const handleFilterDim = (dim) => { setDimFilter(p => p === dim ? null : dim); setSelectedCube(null); setFocused(false) }
 
   // ── Sidebar list ──────────────────────────────────────────────────────────────
   const filteredCubes = useMemo(() => {
@@ -930,6 +940,27 @@ function CubeMapInner({ tab }) {
           />
         </ReactFlow>
         {showLegend && <Legend />}
+        {focused && selectedCube && (
+          <div style={{
+            position: 'absolute', top: 10, left: 10, zIndex: 5,
+            background: 'var(--cm-panel-bg)', border: '1px solid var(--cm-border)',
+            borderRadius: 7, padding: '6px 10px', fontSize: 11, color: 'var(--cm-text)',
+            display: 'flex', alignItems: 'center', gap: 8,
+            boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
+          }}>
+            <GitBranch size={12} style={{ color: 'var(--cm-link)', flexShrink: 0 }} />
+            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              Focused on <b style={{ color: 'var(--cm-link)' }}>{selectedCube}</b>
+              {transitiveCount > 0 && <span style={{ color: 'var(--cm-text-muted)' }}> · {transitiveCount} connected</span>}
+            </span>
+            <button onClick={exitFocus} title="Exit focus — show full map" style={{
+              background: 'none', border: 'none', cursor: 'pointer', padding: 2,
+              color: 'var(--cm-icon)', borderRadius: 4, display: 'flex', alignItems: 'center',
+            }}>
+              <X size={12} />
+            </button>
+          </div>
+        )}
       </div>
 
       {/* ── Detail panel ───────────────────────────────────────────────────── */}
