@@ -1,0 +1,342 @@
+{
+  "archived_at": "2026-09-07T02:06:10.979Z",
+  "source": "TM1_Test_DEV",
+  "target": "TM1_Test_PROD",
+  "deployer": "admin",
+  "approval": {
+    "id": "2026-09-07T02:06:10.465Z",
+    "approved_at": "2026-09-07T02:06:10.465Z",
+    "approver": "admin",
+    "notes": "",
+    "source": "TM1_Test_DEV",
+    "target": "TM1_Test_PROD",
+    "packaged": "Release 2026-09-07",
+    "session": null,
+    "packageDir": "/home/jdlove/apps/tm1_ide/packages/release-2026-09-07-2026-09-07"
+  },
+  "deploy": {
+    "source_server": "TM1_Test_DEV",
+    "target_server": "TM1_Test_PROD",
+    "session": "Release 2026-09-07",
+    "packaged_at": "2026-09-07T02:05:59.713Z",
+    "deployed_at": "2026-09-07T02:06:10.479Z",
+    "dry_run": false,
+    "risk": null,
+    "results": [
+      {
+        "ok": true,
+        "type": "dimension",
+        "name": "WFP Version",
+        "detail": "1 elements, 0 edges"
+      },
+      {
+        "ok": true,
+        "type": "dimension",
+        "name": "WFP Assumptions Measure",
+        "detail": "8 elements, 0 edges"
+      },
+      {
+        "ok": true,
+        "type": "attribute",
+        "name": "Format",
+        "detail": "WFP Assumptions Measure"
+      },
+      {
+        "ok": true,
+        "type": "cube",
+        "name": "WFP Assumptions",
+        "detail": "WFP Period, WFP Version, WFP Entity, WFP Assumptions Measure"
+      },
+      {
+        "ok": true,
+        "type": "rules",
+        "name": "WFP Workforce Input",
+        "detail": null
+      },
+      {
+        "ok": true,
+        "type": "view",
+        "name": "Default",
+        "detail": "WFP Assumptions"
+      },
+      {
+        "ok": true,
+        "type": "process",
+        "name": "WFP Seed Workforce Input",
+        "detail": null
+      },
+      {
+        "ok": true,
+        "type": "process",
+        "name": "WFP Create Default Subsets",
+        "detail": null
+      },
+      {
+        "ok": true,
+        "type": "process",
+        "name": "WFP Seed FX Rates",
+        "detail": null
+      },
+      {
+        "ok": true,
+        "type": "process",
+        "name": "WFP Seed Pay Rates",
+        "detail": null
+      },
+      {
+        "ok": true,
+        "type": "process",
+        "name": "WFP Seed Assumptions",
+        "detail": null
+      },
+      {
+        "ok": true,
+        "type": "process",
+        "name": "WFP Copy Version",
+        "detail": null
+      }
+    ],
+    "deployed": 12,
+    "failed": 0,
+    "aborted": false
+  },
+  "manifest": {
+    "_meta": {
+      "session": "Release 2026-09-07",
+      "server": "TM1_Test_DEV",
+      "packaged_at": "2026-09-07T02:05:59.713Z",
+      "baseline_server": "TM1_Test_DEV",
+      "baseline_seeded_at": "2026-09-07T01:47:34.863Z",
+      "baseline_last_entry_id": 538,
+      "has_baseline": true
+    },
+    "objects": [
+      {
+        "type": "process",
+        "name": "WFP Seed Workforce Input",
+        "detail": null,
+        "outcome": "MATCH",
+        "file": "processes/WFP Seed Workforce Input.json"
+      },
+      {
+        "type": "dimension",
+        "name": "WFP Version",
+        "detail": "1 elements, 0 edges",
+        "outcome": "MATCH",
+        "file": "dimensions/WFP Version.json",
+        "elementDelta": {
+          "added": [
+            "Downside"
+          ],
+          "removed": []
+        }
+      },
+      {
+        "type": "process",
+        "name": "WFP Create Default Subsets",
+        "detail": null,
+        "outcome": "MATCH",
+        "file": "processes/WFP Create Default Subsets.json"
+      },
+      {
+        "type": "rules",
+        "name": "WFP Workforce Input",
+        "detail": null,
+        "outcome": "MATCH",
+        "file": "rules/WFP Workforce Input.rule"
+      },
+      {
+        "type": "process",
+        "name": "WFP Seed FX Rates",
+        "detail": null,
+        "outcome": "MATCH",
+        "file": "processes/WFP Seed FX Rates.json"
+      },
+      {
+        "type": "process",
+        "name": "WFP Seed Pay Rates",
+        "detail": null,
+        "outcome": "MATCH",
+        "file": "processes/WFP Seed Pay Rates.json"
+      },
+      {
+        "type": "dimension",
+        "name": "WFP Assumptions Measure",
+        "detail": "8 elements, 0 edges",
+        "outcome": "NEW",
+        "file": "dimensions/WFP Assumptions Measure.json"
+      },
+      {
+        "type": "attribute",
+        "name": "Format",
+        "detail": "WFP Assumptions Measure",
+        "outcome": "NEW",
+        "file": "attributes/WFP Assumptions Measure_Format.json"
+      },
+      {
+        "type": "cube",
+        "name": "WFP Assumptions",
+        "detail": "WFP Period, WFP Version, WFP Entity, WFP Assumptions Measure",
+        "outcome": "NEW",
+        "file": "cubes/WFP Assumptions.json"
+      },
+      {
+        "type": "process",
+        "name": "WFP Seed Assumptions",
+        "detail": null,
+        "outcome": "NEW",
+        "file": "processes/WFP Seed Assumptions.json"
+      },
+      {
+        "type": "process",
+        "name": "WFP Copy Version",
+        "detail": null,
+        "outcome": "NEW",
+        "file": "processes/WFP Copy Version.json"
+      },
+      {
+        "type": "view",
+        "name": "Default",
+        "detail": "WFP Assumptions",
+        "outcome": "NEW",
+        "file": "views/WFP Assumptions/Default.json"
+      }
+    ],
+    "skipped": []
+  },
+  "preSnapshot": {
+    "taken_at": "2026-09-07T02:06:10.395Z",
+    "target": "TM1_Test_PROD",
+    "objects": {
+      "process::WFP Seed Workforce Input": {
+        "PrologProcedure": "#Region Seed Workforce Input — FTE + Base Salary per active month (rev D dim order: Period, Version, Position, Measure)\r\ncCube = 'WFP Workforce Input';\r\ncPos  = 'WFP Position';\r\ncPer  = 'WFP Period';\r\n\r\nnPosCount = DIMSIZ( cPos );\r\nnPerCount = DIMSIZ( cPer );\r\n\r\nnI = 1;\r\nWHILE( nI <= nPosCount );\r\n   vPos = DIMNM( cPos, nI );\r\n   IF( DTYPE( cPos, vPos ) @= 'N' );\r\n      nFTE = ATTRN( cPos, vPos, 'FTE' );\r\n      nSal = ATTRN( cPos, vPos, 'Seed Base Salary' );\r\n      vStartPd = ATTRS( cPos, vPos, 'Start Period' );\r\n      vEndPd = ATTRS( cPos, vPos, 'End Period' );\r\n      nStartIdx = ATTRN( cPer, vStartPd, 'Period Index' );\r\n      nEndIdx = IF( vEndPd @= '', 999, ATTRN( cPer, vEndPd, 'Period Index' ) );\r\n\r\n      nP = 1;\r\n      WHILE( nP <= nPerCount );\r\n         vPer = DIMNM( cPer, nP );\r\n         IF( DTYPE( cPer, vPer ) @= 'N' );\r\n            nPidx = ATTRN( cPer, vPer, 'Period Index' );\r\n            IF( nPidx >= nStartIdx & nPidx <= nEndIdx );\r\n               CellPutN( nFTE, cCube, vPer, 'Budget',   vPos, 'FTE' );\r\n               CellPutN( nSal, cCube, vPer, 'Budget',   vPos, 'Base Salary' );\r\n               CellPutN( nFTE, cCube, vPer, 'Working',  vPos, 'FTE' );\r\n               CellPutN( nSal, cCube, vPer, 'Working',  vPos, 'Base Salary' );\r\n            ENDIF;\r\n         ENDIF;\r\n         nP = nP + 1;\r\n      END;\r\n   ENDIF;\r\n   nI = nI + 1;\r\nEND;",
+        "MetadataProcedure": "",
+        "DataProcedure": "",
+        "EpilogProcedure": ""
+      },
+      "rules::WFP Workforce Input": {
+        "rules": "SKIPCHECK;\nFEEDERS;\n\n# WFP Workforce Input dims: Period, Version, Position, Measure\n# WFP Workforce Cost dims: Period, Version, Entity, Cost Centre, Pay Component, Currency, Position, Measure\n['FTE'] => DB('WFP Workforce Cost', !WFP Period, !WFP Version,\n  ATTRS('WFP Position', !WFP Position, 'Home Entity'),\n  ATTRS('WFP Position', !WFP Position, 'Cost Centre'),\n  '_Monthly Base Full',\n  ATTRS('WFP Position', !WFP Position, 'Salary Currency'),\n  !WFP Position, 'Amount');\n\n# WFP Headcount dims: Period, Version, Entity, Cost Centre, Position, Measure\n['FTE'] => DB('WFP Headcount', !WFP Period, !WFP Version,\n  ATTRS('WFP Position', !WFP Position, 'Home Entity'),\n  ATTRS('WFP Position', !WFP Position, 'Cost Centre'),\n  !WFP Position, 'Headcount');"
+      },
+      "dimension::WFP Version::1 elements, 0 edges": {
+        "elementCount": 4,
+        "edgeCount": 0
+      },
+      "process::WFP Create Default Subsets": {
+        "PrologProcedure": "#Region Default subset on every WFP model dimension (rev D)\r\nvList = 'WFP Cost Centre~WFP Currency~WFP Entity~WFP FX Rate Type~WFP FX Rates Measure~WFP Grade~WFP Headcount Measure~WFP Job Family~WFP Jurisdiction~WFP Location~WFP Pay Component~WFP Pay Rates Measure~WFP Period~WFP Position~WFP Tax Band~WFP Tax Bands Measure~WFP Tax Type~WFP Version~WFP Workforce Cost Measure~WFP Workforce Input Measure~';\r\n\r\nWHILE( SCAN( '~', vList ) > 1 );\r\n   nS = SCAN( '~', vList );\r\n   vDim = SUBST( vList, 1, nS - 1 );\r\n   vList = SUBST( vList, nS + 1, LONG( vList ) - nS );\r\n\r\n   IF( SubsetExists( vDim, 'Default' ) = 0 );\r\n      SubsetCreate( vDim, 'Default' );\r\n   ELSE;\r\n      SubsetDeleteAllElements( vDim, 'Default' );\r\n   ENDIF;\r\n\r\n   nE = 1;\r\n   nEcount = DIMSIZ( vDim );\r\n   WHILE( nE <= nEcount );\r\n      SubsetElementInsert( vDim, 'Default', DIMNM( vDim, nE ), nE );\r\n      nE = nE + 1;\r\n   END;\r\nEND;",
+        "MetadataProcedure": "",
+        "DataProcedure": "",
+        "EpilogProcedure": ""
+      },
+      "process::WFP Seed FX Rates": {
+        "PrologProcedure": "#Region Seed FX rates — 1 unit of currency in the reporting currency (GBP). rev D order: Period, Version, Currency, FX Rate Type, Measure\r\ncCube = 'WFP FX Rates';\r\ncPer  = 'WFP Period';\r\nnPcount = DIMSIZ( cPer );\r\n\r\nvC = 'GBP;1~USD;0.79~NZD;0.47~Reporting;1~';\r\n\r\nWHILE( SCAN( '~', vC ) > 1 );\r\n   nS = SCAN( '~', vC );\r\n   vRec = SUBST( vC, 1, nS - 1 ) | ';';\r\n   vC = SUBST( vC, nS + 1, LONG( vC ) - nS );\r\n\r\n   nS = SCAN(';',vRec); vCur = SUBST(vRec,1,nS-1); vRec = SUBST(vRec,nS+1,LONG(vRec)-nS);\r\n   nS = SCAN(';',vRec); nRate = NUMBR(SUBST(vRec,1,nS-1));\r\n\r\n   nP = 1;\r\n   WHILE( nP <= nPcount );\r\n      vPer = DIMNM( cPer, nP );\r\n      IF( DTYPE( cPer, vPer ) @= 'N' );\r\n         vVl = 'Budget|Working|';\r\n         WHILE( SCAN( '|', vVl ) > 1 );\r\n            nS = SCAN( '|', vVl );\r\n            vVer = SUBST( vVl, 1, nS - 1 );\r\n            vVl = SUBST( vVl, nS + 1, LONG( vVl ) - nS );\r\n            CellPutN( nRate, cCube, vPer, vVer, vCur, 'Average', 'Rate' );\r\n            CellPutN( nRate, cCube, vPer, vVer, vCur, 'Closing', 'Rate' );\r\n         END;\r\n      ENDIF;\r\n      nP = nP + 1;\r\n   END;\r\nEND;",
+        "MetadataProcedure": "",
+        "DataProcedure": "",
+        "EpilogProcedure": ""
+      },
+      "cube::WFP Assumptions::WFP Period, WFP Version, WFP Entity, WFP Assumptions Measure": null,
+      "process::WFP Seed Pay Rates": {
+        "PrologProcedure": "#Region Seed Pay Rates — grade/location base x job-family pay index. rev D order: Period, Version, Grade, Job Family, Location, Measure\r\ncCube = 'WFP Pay Rates';\r\ncPer  = 'WFP Period';\r\nnPcount = DIMSIZ( cPer );\r\nnFcount = DIMSIZ( 'WFP Job Family' );\r\n\r\nvBase =\r\n'London;G1;28000;32000;36000;2400~' |\r\n'London;G2;42000;50000;58000;2400~' |\r\n'London;G3;66000;80000;94000;2400~' |\r\n'London;G4;100000;120000;140000;3600~' |\r\n'London;G5;160000;195000;235000;4800~' |\r\n'New York;G1;40000;46000;52000;6000~' |\r\n'New York;G2;60000;72000;84000;6000~' |\r\n'New York;G3;100000;122000;145000;6000~' |\r\n'New York;G4;150000;180000;215000;9000~' |\r\n'New York;G5;230000;285000;345000;12000~' |\r\n'Auckland;G1;55000;62000;70000;3000~' |\r\n'Auckland;G2;82000;95000;110000;3000~' |\r\n'Auckland;G3;120000;140000;165000;3000~' |\r\n'Auckland;G4;180000;210000;250000;4500~' |\r\n'Auckland;G5;270000;320000;390000;6000~';\r\n\r\nWHILE( SCAN( '~', vBase ) > 1 );\r\n   nS = SCAN( '~', vBase );\r\n   vRec = SUBST( vBase, 1, nS - 1 ) | ';';\r\n   vBase = SUBST( vBase, nS + 1, LONG( vBase ) - nS );\r\n\r\n   nS = SCAN(';',vRec); vLoc = SUBST(vRec,1,nS-1); vRec = SUBST(vRec,nS+1,LONG(vRec)-nS);\r\n   nS = SCAN(';',vRec); vGr  = SUBST(vRec,1,nS-1); vRec = SUBST(vRec,nS+1,LONG(vRec)-nS);\r\n   nS = SCAN(';',vRec); nMin = NUMBR(SUBST(vRec,1,nS-1)); vRec = SUBST(vRec,nS+1,LONG(vRec)-nS);\r\n   nS = SCAN(';',vRec); nMid = NUMBR(SUBST(vRec,1,nS-1)); vRec = SUBST(vRec,nS+1,LONG(vRec)-nS);\r\n   nS = SCAN(';',vRec); nMax = NUMBR(SUBST(vRec,1,nS-1)); vRec = SUBST(vRec,nS+1,LONG(vRec)-nS);\r\n   nS = SCAN(';',vRec); nBen = NUMBR(SUBST(vRec,1,nS-1));\r\n\r\n   nPen  = IF( vLoc @= 'London', 0.05, IF( vLoc @= 'New York', 0.06, 0.03 ) );\r\n   nEPen = IF( vLoc @= 'London', 0.05, IF( vLoc @= 'New York', 0.06, 0.03 ) );\r\n\r\n   nF = 1;\r\n   WHILE( nF <= nFcount );\r\n      vFam = DIMNM( 'WFP Job Family', nF );\r\n      nIdx = ATTRN( 'WFP Job Family', vFam, 'Pay Index' );\r\n\r\n      nP = 1;\r\n      WHILE( nP <= nPcount );\r\n         vPer = DIMNM( cPer, nP );\r\n         IF( DTYPE( cPer, vPer ) @= 'N' );\r\n            vVl = 'Budget|Working|';\r\n            WHILE( SCAN( '|', vVl ) > 1 );\r\n               nS = SCAN( '|', vVl );\r\n               vVer = SUBST( vVl, 1, nS - 1 );\r\n               vVl = SUBST( vVl, nS + 1, LONG( vVl ) - nS );\r\n\r\n               CellPutN( nMin * nIdx, cCube, vPer, vVer, vGr, vFam, vLoc, 'Salary Min' );\r\n               CellPutN( nMid * nIdx, cCube, vPer, vVer, vGr, vFam, vLoc, 'Salary Mid' );\r\n               CellPutN( nMax * nIdx, cCube, vPer, vVer, vGr, vFam, vLoc, 'Salary Max' );\r\n               CellPutN( nPen,  cCube, vPer, vVer, vGr, vFam, vLoc, 'Pension Pct' );\r\n               CellPutN( nEPen, cCube, vPer, vVer, vGr, vFam, vLoc, 'Employee Pension Pct' );\r\n               CellPutN( nBen,  cCube, vPer, vVer, vGr, vFam, vLoc, 'Benefits Annual' );\r\n            END;\r\n         ENDIF;\r\n         nP = nP + 1;\r\n      END;\r\n      nF = nF + 1;\r\n   END;\r\nEND;",
+        "MetadataProcedure": "",
+        "DataProcedure": "",
+        "EpilogProcedure": ""
+      },
+      "attribute::Format::WFP Assumptions Measure": null,
+      "process::WFP Seed Assumptions": null,
+      "dimension::WFP Assumptions Measure::8 elements, 0 edges": {
+        "elementCount": 0,
+        "edgeCount": 0
+      },
+      "process::WFP Copy Version": null,
+      "view::Default::WFP Assumptions": null
+    }
+  },
+  "postSnapshot": {
+    "taken_at": "2026-09-07T02:06:10.920Z",
+    "target": "TM1_Test_PROD",
+    "objects": {
+      "process::WFP Seed Workforce Input": {
+        "PrologProcedure": "#Region Seed Workforce Input — FTE + Base Salary per active month (Period, Version, Position, Measure)\r\n# Budget + Working = seed defaults. Actual = same as Working, EXCEPT a real\r\n# in-year raise: EXEC-001 to 220,000 for 2026-01..2026-03 (closed months) so the\r\n# Forecast blend (Actual for <= Actuals Cutoff Index, else Working) is visible.\r\ncCube = 'WFP Workforce Input';\r\ncPos  = 'WFP Position';\r\ncPer  = 'WFP Period';\r\n\r\nnPosCount = DIMSIZ( cPos );\r\nnPerCount = DIMSIZ( cPer );\r\n\r\nnI = 1;\r\nWHILE( nI <= nPosCount );\r\n   vPos = DIMNM( cPos, nI );\r\n   IF( DTYPE( cPos, vPos ) @= 'N' );\r\n      nFTE = ATTRN( cPos, vPos, 'FTE' );\r\n      nSal = ATTRN( cPos, vPos, 'Seed Base Salary' );\r\n      vStartPd = ATTRS( cPos, vPos, 'Start Period' );\r\n      vEndPd = ATTRS( cPos, vPos, 'End Period' );\r\n      nStartIdx = ATTRN( cPer, vStartPd, 'Period Index' );\r\n      nEndIdx = IF( vEndPd @= '', 999, ATTRN( cPer, vEndPd, 'Period Index' ) );\r\n\r\n      nP = 1;\r\n      WHILE( nP <= nPerCount );\r\n         vPer = DIMNM( cPer, nP );\r\n         IF( DTYPE( cPer, vPer ) @= 'N' );\r\n            nPidx = ATTRN( cPer, vPer, 'Period Index' );\r\n            IF( nPidx >= nStartIdx & nPidx <= nEndIdx );\r\n               CellPutN( nFTE, cCube, vPer, 'Budget',   vPos, 'FTE' );\r\n               CellPutN( nSal, cCube, vPer, 'Budget',   vPos, 'Base Salary' );\r\n               CellPutN( nFTE, cCube, vPer, 'Working',  vPos, 'FTE' );\r\n               CellPutN( nSal, cCube, vPer, 'Working',  vPos, 'Base Salary' );\r\n\r\n               # Actual: mirrors Working, with the EXEC-001 raise for closed months\r\n               nActSal = nSal;\r\n               IF( vPos @= 'EXEC-001' & nPidx >= 13 & nPidx <= 15 );\r\n                  nActSal = 220000;\r\n               ENDIF;\r\n               CellPutN( nFTE,    cCube, vPer, 'Actual', vPos, 'FTE' );\r\n               CellPutN( nActSal, cCube, vPer, 'Actual', vPos, 'Base Salary' );\r\n            ENDIF;\r\n         ENDIF;\r\n         nP = nP + 1;\r\n      END;\r\n   ENDIF;\r\n   nI = nI + 1;\r\nEND;",
+        "MetadataProcedure": "",
+        "DataProcedure": "",
+        "EpilogProcedure": ""
+      },
+      "dimension::WFP Version::1 elements, 0 edges": {
+        "elementCount": 5,
+        "edgeCount": 0
+      },
+      "process::WFP Create Default Subsets": {
+        "PrologProcedure": "#Region Default subset on every WFP model dimension\r\nvList = 'WFP Assumptions Measure~WFP Cost Centre~WFP Currency~WFP Entity~WFP FX Rate Type~WFP FX Rates Measure~WFP Grade~WFP Headcount Measure~WFP Job Family~WFP Jurisdiction~WFP Location~WFP Pay Component~WFP Pay Rates Measure~WFP Period~WFP Position~WFP Tax Band~WFP Tax Bands Measure~WFP Tax Type~WFP Version~WFP Workforce Cost Measure~WFP Workforce Input Measure~';\r\n\r\nWHILE( SCAN( '~', vList ) > 1 );\r\n   nS = SCAN( '~', vList );\r\n   vDim = SUBST( vList, 1, nS - 1 );\r\n   vList = SUBST( vList, nS + 1, LONG( vList ) - nS );\r\n\r\n   IF( SubsetExists( vDim, 'Default' ) = 0 );\r\n      SubsetCreate( vDim, 'Default' );\r\n   ELSE;\r\n      SubsetDeleteAllElements( vDim, 'Default' );\r\n   ENDIF;\r\n\r\n   nE = 1;\r\n   nEcount = DIMSIZ( vDim );\r\n   WHILE( nE <= nEcount );\r\n      SubsetElementInsert( vDim, 'Default', DIMNM( vDim, nE ), nE );\r\n      nE = nE + 1;\r\n   END;\r\nEND;",
+        "MetadataProcedure": "",
+        "DataProcedure": "",
+        "EpilogProcedure": ""
+      },
+      "process::WFP Seed FX Rates": {
+        "PrologProcedure": "#Region Seed FX rates — 1 unit of currency in the reporting currency (GBP). Order: Period, Version, Currency, FX Rate Type, Measure\r\n# Seeded for EVERY leaf version — FX is market data, not a planning assumption,\r\n# so all versions (incl. the calculated Forecast) share the same rates.\r\ncCube = 'WFP FX Rates';\r\ncPer  = 'WFP Period';\r\ncVer  = 'WFP Version';\r\nnPcount = DIMSIZ( cPer );\r\nnVcount = DIMSIZ( cVer );\r\n\r\nvC = 'GBP;1~USD;0.79~NZD;0.47~Reporting;1~';\r\n\r\nWHILE( SCAN( '~', vC ) > 1 );\r\n   nS = SCAN( '~', vC );\r\n   vRec = SUBST( vC, 1, nS - 1 ) | ';';\r\n   vC = SUBST( vC, nS + 1, LONG( vC ) - nS );\r\n\r\n   nS = SCAN(';',vRec); vCur = SUBST(vRec,1,nS-1); vRec = SUBST(vRec,nS+1,LONG(vRec)-nS);\r\n   nS = SCAN(';',vRec); nRate = NUMBR(SUBST(vRec,1,nS-1));\r\n\r\n   nP = 1;\r\n   WHILE( nP <= nPcount );\r\n      vPer = DIMNM( cPer, nP );\r\n      IF( DTYPE( cPer, vPer ) @= 'N' );\r\n         nV = 1;\r\n         WHILE( nV <= nVcount );\r\n            vVer = DIMNM( cVer, nV );\r\n            IF( DTYPE( cVer, vVer ) @= 'N' );\r\n               CellPutN( nRate, cCube, vPer, vVer, vCur, 'Average', 'Rate' );\r\n               CellPutN( nRate, cCube, vPer, vVer, vCur, 'Closing', 'Rate' );\r\n            ENDIF;\r\n            nV = nV + 1;\r\n         END;\r\n      ENDIF;\r\n      nP = nP + 1;\r\n   END;\r\nEND;",
+        "MetadataProcedure": "",
+        "DataProcedure": "",
+        "EpilogProcedure": ""
+      },
+      "rules::WFP Workforce Input": {
+        "rules": "SKIPCHECK;\n\n# Forecast = calculating version: Actual for periods <= the Actuals Cutoff Index\n# (read at the position's Home Entity), Working after. Actual/Working stay input.\n['Forecast'] = N:\n  IF( ATTRN('WFP Period', !WFP Period, 'Period Index')\n        <= DB('WFP Assumptions', !WFP Period, 'Forecast', ATTRS('WFP Position', !WFP Position, 'Home Entity'), 'Actuals Cutoff Index'),\n      DB('WFP Workforce Input', !WFP Period, 'Actual',  !WFP Position, !WFP Workforce Input Measure),\n      DB('WFP Workforce Input', !WFP Period, 'Working', !WFP Position, !WFP Workforce Input Measure) );\n\nFEEDERS;\n\n# Working FTE is always seeded for an active position — use it as the guaranteed\n# source that feeds every input version's downstream cells, including the\n# rule-driven Forecast (whose own FTE cell is never an input, so !WFP Version\n# alone would miss it).\n['Working', 'FTE'] => DB('WFP Workforce Cost', !WFP Period, !WFP Version,\n  ATTRS('WFP Position', !WFP Position, 'Home Entity'),\n  ATTRS('WFP Position', !WFP Position, 'Cost Centre'),\n  '_Monthly Base Full',\n  ATTRS('WFP Position', !WFP Position, 'Salary Currency'),\n  !WFP Position, 'Amount');\n\n['Working', 'FTE'] => DB('WFP Workforce Cost', !WFP Period, 'Forecast',\n  ATTRS('WFP Position', !WFP Position, 'Home Entity'),\n  ATTRS('WFP Position', !WFP Position, 'Cost Centre'),\n  '_Monthly Base Full',\n  ATTRS('WFP Position', !WFP Position, 'Salary Currency'),\n  !WFP Position, 'Amount');\n\n['Working', 'FTE'] => DB('WFP Headcount', !WFP Period, !WFP Version,\n  ATTRS('WFP Position', !WFP Position, 'Home Entity'),\n  ATTRS('WFP Position', !WFP Position, 'Cost Centre'),\n  !WFP Position, 'Headcount');\n\n['Working', 'FTE'] => DB('WFP Headcount', !WFP Period, 'Forecast',\n  ATTRS('WFP Position', !WFP Position, 'Home Entity'),\n  ATTRS('WFP Position', !WFP Position, 'Cost Centre'),\n  !WFP Position, 'Headcount');\n\n# Budget / Actual FTE feed their own version's downstream cells\n['Budget', 'FTE'] => DB('WFP Workforce Cost', !WFP Period, 'Budget',\n  ATTRS('WFP Position', !WFP Position, 'Home Entity'),\n  ATTRS('WFP Position', !WFP Position, 'Cost Centre'),\n  '_Monthly Base Full',\n  ATTRS('WFP Position', !WFP Position, 'Salary Currency'),\n  !WFP Position, 'Amount');\n\n['Budget', 'FTE'] => DB('WFP Headcount', !WFP Period, 'Budget',\n  ATTRS('WFP Position', !WFP Position, 'Home Entity'),\n  ATTRS('WFP Position', !WFP Position, 'Cost Centre'),\n  !WFP Position, 'Headcount');\n\n['Actual', 'FTE'] => DB('WFP Workforce Cost', !WFP Period, 'Actual',\n  ATTRS('WFP Position', !WFP Position, 'Home Entity'),\n  ATTRS('WFP Position', !WFP Position, 'Cost Centre'),\n  '_Monthly Base Full',\n  ATTRS('WFP Position', !WFP Position, 'Salary Currency'),\n  !WFP Position, 'Amount');\n\n['Actual', 'FTE'] => DB('WFP Headcount', !WFP Period, 'Actual',\n  ATTRS('WFP Position', !WFP Position, 'Home Entity'),\n  ATTRS('WFP Position', !WFP Position, 'Cost Centre'),\n  !WFP Position, 'Headcount');"
+      },
+      "cube::WFP Assumptions::WFP Period, WFP Version, WFP Entity, WFP Assumptions Measure": null,
+      "process::WFP Seed Pay Rates": {
+        "PrologProcedure": "#Region Seed Pay Rates — grade/location base x job-family pay index. Order: Period, Version, Grade, Job Family, Location, Measure\r\n# Seeded for EVERY leaf version — pay bands are reference data, not a planning\r\n# assumption. (Re-run this after adding a version.)\r\ncCube = 'WFP Pay Rates';\r\ncPer  = 'WFP Period';\r\ncVer  = 'WFP Version';\r\nnPcount = DIMSIZ( cPer );\r\nnVcount = DIMSIZ( cVer );\r\nnFcount = DIMSIZ( 'WFP Job Family' );\r\n\r\nvBase =\r\n'London;G1;28000;32000;36000;2400~' |\r\n'London;G2;42000;50000;58000;2400~' |\r\n'London;G3;66000;80000;94000;2400~' |\r\n'London;G4;100000;120000;140000;3600~' |\r\n'London;G5;160000;195000;235000;4800~' |\r\n'New York;G1;40000;46000;52000;6000~' |\r\n'New York;G2;60000;72000;84000;6000~' |\r\n'New York;G3;100000;122000;145000;6000~' |\r\n'New York;G4;150000;180000;215000;9000~' |\r\n'New York;G5;230000;285000;345000;12000~' |\r\n'Auckland;G1;55000;62000;70000;3000~' |\r\n'Auckland;G2;82000;95000;110000;3000~' |\r\n'Auckland;G3;120000;140000;165000;3000~' |\r\n'Auckland;G4;180000;210000;250000;4500~' |\r\n'Auckland;G5;270000;320000;390000;6000~';\r\n\r\nWHILE( SCAN( '~', vBase ) > 1 );\r\n   nS = SCAN( '~', vBase );\r\n   vRec = SUBST( vBase, 1, nS - 1 ) | ';';\r\n   vBase = SUBST( vBase, nS + 1, LONG( vBase ) - nS );\r\n\r\n   nS = SCAN(';',vRec); vLoc = SUBST(vRec,1,nS-1); vRec = SUBST(vRec,nS+1,LONG(vRec)-nS);\r\n   nS = SCAN(';',vRec); vGr  = SUBST(vRec,1,nS-1); vRec = SUBST(vRec,nS+1,LONG(vRec)-nS);\r\n   nS = SCAN(';',vRec); nMin = NUMBR(SUBST(vRec,1,nS-1)); vRec = SUBST(vRec,nS+1,LONG(vRec)-nS);\r\n   nS = SCAN(';',vRec); nMid = NUMBR(SUBST(vRec,1,nS-1)); vRec = SUBST(vRec,nS+1,LONG(vRec)-nS);\r\n   nS = SCAN(';',vRec); nMax = NUMBR(SUBST(vRec,1,nS-1)); vRec = SUBST(vRec,nS+1,LONG(vRec)-nS);\r\n   nS = SCAN(';',vRec); nBen = NUMBR(SUBST(vRec,1,nS-1));\r\n\r\n   nPen  = IF( vLoc @= 'London', 0.05, IF( vLoc @= 'New York', 0.06, 0.03 ) );\r\n   nEPen = IF( vLoc @= 'London', 0.05, IF( vLoc @= 'New York', 0.06, 0.03 ) );\r\n\r\n   nF = 1;\r\n   WHILE( nF <= nFcount );\r\n      vFam = DIMNM( 'WFP Job Family', nF );\r\n      nIdx = ATTRN( 'WFP Job Family', vFam, 'Pay Index' );\r\n\r\n      nP = 1;\r\n      WHILE( nP <= nPcount );\r\n         vPer = DIMNM( cPer, nP );\r\n         IF( DTYPE( cPer, vPer ) @= 'N' );\r\n            nV = 1;\r\n            WHILE( nV <= nVcount );\r\n               vVer = DIMNM( cVer, nV );\r\n               IF( DTYPE( cVer, vVer ) @= 'N' );\r\n                  CellPutN( nMin * nIdx, cCube, vPer, vVer, vGr, vFam, vLoc, 'Salary Min' );\r\n                  CellPutN( nMid * nIdx, cCube, vPer, vVer, vGr, vFam, vLoc, 'Salary Mid' );\r\n                  CellPutN( nMax * nIdx, cCube, vPer, vVer, vGr, vFam, vLoc, 'Salary Max' );\r\n                  CellPutN( nPen,  cCube, vPer, vVer, vGr, vFam, vLoc, 'Pension Pct' );\r\n                  CellPutN( nEPen, cCube, vPer, vVer, vGr, vFam, vLoc, 'Employee Pension Pct' );\r\n                  CellPutN( nBen,  cCube, vPer, vVer, vGr, vFam, vLoc, 'Benefits Annual' );\r\n               ENDIF;\r\n               nV = nV + 1;\r\n            END;\r\n         ENDIF;\r\n         nP = nP + 1;\r\n      END;\r\n      nF = nF + 1;\r\n   END;\r\nEND;",
+        "MetadataProcedure": "",
+        "DataProcedure": "",
+        "EpilogProcedure": ""
+      },
+      "dimension::WFP Assumptions Measure::8 elements, 0 edges": {
+        "elementCount": 8,
+        "edgeCount": 0
+      },
+      "attribute::Format::WFP Assumptions Measure": {
+        "Name": "Format",
+        "Type": "String"
+      },
+      "process::WFP Seed Assumptions": {
+        "PrologProcedure": "#Region Seed WFP Assumptions — global planning drivers, per Period x Version x Entity\r\n# Idempotent. Written at the LEAF entities only (Group is a consolidation and\r\n# rates don't sum); rules read assumptions at the position's Home Entity (a leaf).\r\n# Same values across all periods/versions/entities for now — edit per cell after\r\n# where a driver should vary (e.g. Merit % by year).\r\ncCube = 'WFP Assumptions';\r\ncPer  = 'WFP Period';\r\nnPcount = DIMSIZ( cPer );\r\n\r\n# measure ; value\r\nvM =\r\n'Merit Increase %;0.03~' |\r\n'Promotion Budget %;0.01~' |\r\n'Inflation %;0.025~' |\r\n'Actuals Cutoff Index;15~' |\r\n'Vacancy Allowance %;0.10~' |\r\n'Standard FTE Hours;160~' |\r\n'Bonus Pool %;0.10~' |\r\n'Employer Oncost Fallback %;0.15~';\r\n\r\nvVers = 'Budget|Working|Forecast|';\r\nvEnts = 'UK Ltd|US Inc|NZ Ltd|';\r\n\r\nnP = 1;\r\nWHILE( nP <= nPcount );\r\n   vPer = DIMNM( cPer, nP );\r\n   IF( DTYPE( cPer, vPer ) @= 'N' & LONG( vPer ) = 7 );\r\n      vVl = vVers;\r\n      WHILE( SCAN( '|', vVl ) > 1 );\r\n         nS = SCAN( '|', vVl ); vVer = SUBST( vVl, 1, nS - 1 ); vVl = SUBST( vVl, nS + 1, LONG( vVl ) - nS );\r\n         vEl = vEnts;\r\n         WHILE( SCAN( '|', vEl ) > 1 );\r\n            nS = SCAN( '|', vEl ); vEnt = SUBST( vEl, 1, nS - 1 ); vEl = SUBST( vEl, nS + 1, LONG( vEl ) - nS );\r\n            vRows = vM;\r\n            WHILE( SCAN( '~', vRows ) > 1 );\r\n               nS = SCAN( '~', vRows ); vRec = SUBST( vRows, 1, nS - 1 ) | ';'; vRows = SUBST( vRows, nS + 1, LONG( vRows ) - nS );\r\n               nS = SCAN( ';', vRec ); vMeas = SUBST( vRec, 1, nS - 1 ); vRec = SUBST( vRec, nS + 1, LONG( vRec ) - nS );\r\n               nS = SCAN( ';', vRec ); nVal  = NUMBR( SUBST( vRec, 1, nS - 1 ) );\r\n               CellPutN( nVal, cCube, vPer, vVer, vEnt, vMeas );\r\n            END;\r\n         END;\r\n      END;\r\n   ENDIF;\r\n   nP = nP + 1;\r\nEND;",
+        "MetadataProcedure": "",
+        "DataProcedure": "",
+        "EpilogProcedure": ""
+      },
+      "process::WFP Copy Version": {
+        "PrologProcedure": "#Region WFP Copy Version — copy Workforce Input (FTE + Base Salary) from one version to another\r\n# Use to freeze Working -> Budget, or spin a named scenario off Actual.\r\ncCube = 'WFP Workforce Input';\r\ncPos  = 'WFP Position';\r\ncPer  = 'WFP Period';\r\n\r\nnStop = 0;\r\nIF( DIMIX( 'WFP Version', pSource ) = 0 );\r\n   ASCIIOUTPUT( 'WFP_Copy_Version_error.txt', 'Source version not found: ' | pSource );\r\n   nStop = 1;\r\nENDIF;\r\nIF( DIMIX( 'WFP Version', pTarget ) = 0 );\r\n   ASCIIOUTPUT( 'WFP_Copy_Version_error.txt', 'Target version not found: ' | pTarget );\r\n   nStop = 1;\r\nENDIF;\r\nIF( nStop = 0 & ATTRS( 'WFP Version', pTarget, 'Version Type' ) @= 'Calculated' );\r\n   ASCIIOUTPUT( 'WFP_Copy_Version_error.txt', 'Refused: target \"' | pTarget | '\" is a calculated version (rule-driven).' );\r\n   nStop = 1;\r\nENDIF;\r\n\r\nIF( nStop = 0 );\r\n   nFromIdx = IF( pFromPeriod @= '', 0,    ATTRN( cPer, pFromPeriod, 'Period Index' ) );\r\n   nToIdx   = IF( pToPeriod   @= '', 9999, ATTRN( cPer, pToPeriod,   'Period Index' ) );\r\n\r\n   nPosCount = DIMSIZ( cPos );\r\n   nPerCount = DIMSIZ( cPer );\r\n   nCopied = 0;\r\n\r\n   nI = 1;\r\n   WHILE( nI <= nPosCount );\r\n      vPos = DIMNM( cPos, nI );\r\n      IF( DTYPE( cPos, vPos ) @= 'N' );\r\n         nP = 1;\r\n         WHILE( nP <= nPerCount );\r\n            vPer = DIMNM( cPer, nP );\r\n            IF( DTYPE( cPer, vPer ) @= 'N' & LONG( vPer ) = 7 );\r\n               nIdx = ATTRN( cPer, vPer, 'Period Index' );\r\n               IF( nIdx >= nFromIdx & nIdx <= nToIdx );\r\n                  CellPutN( CellGetN( cCube, vPer, pSource, vPos, 'FTE' ),         cCube, vPer, pTarget, vPos, 'FTE' );\r\n                  CellPutN( CellGetN( cCube, vPer, pSource, vPos, 'Base Salary' ), cCube, vPer, pTarget, vPos, 'Base Salary' );\r\n                  nCopied = nCopied + 2;\r\n               ENDIF;\r\n            ENDIF;\r\n            nP = nP + 1;\r\n         END;\r\n      ENDIF;\r\n      nI = nI + 1;\r\n   END;\r\n\r\n   ASCIIOUTPUT( 'WFP_Copy_Version_ok.txt', 'Copied ' | NUMBERTOSTRING( nCopied ) | ' cells from ' | pSource | ' to ' | pTarget );\r\nENDIF;",
+        "MetadataProcedure": "",
+        "DataProcedure": "",
+        "EpilogProcedure": ""
+      },
+      "view::Default::WFP Assumptions": {
+        "type": "native",
+        "axes": {
+          "rows": [
+            {
+              "dim": "WFP Assumptions Measure",
+              "subset": null,
+              "expr": null,
+              "all": "all"
+            }
+          ],
+          "cols": [
+            {
+              "dim": "WFP Entity",
+              "subset": null,
+              "expr": "NZ Ltd,UK Ltd,US Inc",
+              "all": null
+            }
+          ],
+          "titles": [
+            {
+              "dim": "WFP Period",
+              "member": null
+            },
+            {
+              "dim": "WFP Version",
+              "member": null
+            }
+          ]
+        }
+      }
+    }
+  }
+}

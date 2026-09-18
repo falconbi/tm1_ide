@@ -1,16 +1,27 @@
 {
   "server": "TM1_Test_DEV",
-  "tabs": [],
-  "activeTab": null,
+  "tabs": [
+    {
+      "id": "cubemap:TM1_Test_DEV",
+      "type": "cubemap",
+      "label": "Cube Map",
+      "server": "TM1_Test_DEV",
+      "scrollToLine": null,
+      "scrollToSection": null
+    }
+  ],
+  "activeTab": "cubemap:TM1_Test_DEV",
   "groups": [
     {
       "id": "g1",
-      "tabIds": [],
-      "activeTabId": null
+      "tabIds": [
+        "cubemap:TM1_Test_DEV"
+      ],
+      "activeTabId": "cubemap:TM1_Test_DEV"
     }
   ],
   "activeGroupId": "g1",
-  "splitDirection": "horizontal",
+  "splitDirection": "vertical",
   "panelSizes": [
     100
   ]

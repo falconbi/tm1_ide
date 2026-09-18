@@ -1,0 +1,1801 @@
+{
+  "archived_at": "2026-09-08T22:52:27.886Z",
+  "source": "TM1_Test_DEV",
+  "target": "TM1_Test_PROD",
+  "deployer": "admin",
+  "approval": {
+    "id": "2026-09-08T22:52:15.446Z",
+    "approved_at": "2026-09-08T22:52:15.446Z",
+    "approver": "admin",
+    "notes": "",
+    "source": "TM1_Test_DEV",
+    "target": "TM1_Test_PROD",
+    "packaged": "Release 2026-09-08",
+    "session": null,
+    "packageDir": "/home/jdlove/apps/tm1_ide/packages/release-2026-09-08-2026-09-08-15"
+  },
+  "deploy": {
+    "source_server": "TM1_Test_DEV",
+    "target_server": "TM1_Test_PROD",
+    "session": "Release 2026-09-08",
+    "packaged_at": "2026-09-08T22:52:04.036Z",
+    "deployed_at": "2026-09-08T22:52:15.453Z",
+    "dry_run": false,
+    "risk": null,
+    "results": [
+      {
+        "ok": true,
+        "type": "dimension",
+        "name": "WFP Pay Component",
+        "detail": "0 elements, 0 edges"
+      },
+      {
+        "ok": true,
+        "type": "dimension",
+        "name": "WFP Cost Centre",
+        "detail": "0 elements, 0 edges"
+      },
+      {
+        "ok": true,
+        "type": "dimension",
+        "name": "WFP Currency",
+        "detail": "1 elements, 0 edges"
+      },
+      {
+        "ok": true,
+        "type": "dimension",
+        "name": "WFP Version",
+        "detail": "5 elements, 4 edges"
+      },
+      {
+        "ok": true,
+        "type": "dimension",
+        "name": "WFP Period",
+        "detail": "0 elements, 0 edges"
+      },
+      {
+        "ok": true,
+        "type": "dimension",
+        "name": "WFP Workforce Cost Measure",
+        "detail": "element Cost per FTE"
+      },
+      {
+        "ok": true,
+        "type": "attribute",
+        "name": "GL Account",
+        "detail": "WFP Pay Component"
+      },
+      {
+        "ok": true,
+        "type": "attribute",
+        "name": "Capex %",
+        "detail": "WFP Cost Centre"
+      },
+      {
+        "ok": true,
+        "type": "attribute",
+        "name": "Actuals Closed",
+        "detail": "WFP Period"
+      },
+      {
+        "ok": true,
+        "type": "rules",
+        "name": "WFP Workforce Cost",
+        "detail": null
+      },
+      {
+        "ok": true,
+        "type": "rules",
+        "name": "WFP Workforce Input",
+        "detail": null
+      },
+      {
+        "ok": true,
+        "type": "rules",
+        "name": "WFP Headcount",
+        "detail": null
+      },
+      {
+        "ok": true,
+        "type": "subset",
+        "name": "2026 Quarters + FY",
+        "detail": "WFP Period"
+      },
+      {
+        "ok": true,
+        "type": "subset",
+        "name": "Variance",
+        "detail": "WFP Version"
+      },
+      {
+        "ok": true,
+        "type": "subset",
+        "name": "GL P&L",
+        "detail": "WFP Pay Component"
+      },
+      {
+        "ok": true,
+        "type": "subset",
+        "name": "Default",
+        "detail": "WFP Workforce Cost Measure"
+      },
+      {
+        "ok": true,
+        "type": "subset",
+        "name": "Default",
+        "detail": "WFP Currency"
+      },
+      {
+        "ok": true,
+        "type": "subset",
+        "name": "Default",
+        "detail": "WFP Pay Component"
+      },
+      {
+        "ok": true,
+        "type": "subset",
+        "name": "GL P&L",
+        "detail": "WFP Pay Component"
+      },
+      {
+        "ok": true,
+        "type": "subset",
+        "name": "Variance",
+        "detail": "WFP Version"
+      },
+      {
+        "ok": true,
+        "type": "subset",
+        "name": "2026 YTD + FY",
+        "detail": "WFP Period"
+      },
+      {
+        "ok": true,
+        "type": "view",
+        "name": "Cost by Cost Centre",
+        "detail": "WFP Workforce Cost"
+      },
+      {
+        "ok": true,
+        "type": "view",
+        "name": "GL P&L",
+        "detail": "WFP Workforce Cost"
+      },
+      {
+        "ok": true,
+        "type": "view",
+        "name": "Capitalised Labour",
+        "detail": "WFP Workforce Cost"
+      },
+      {
+        "ok": true,
+        "type": "view",
+        "name": "Variance Bridge",
+        "detail": "WFP Workforce Cost"
+      },
+      {
+        "ok": true,
+        "type": "view",
+        "name": "FX vs Operational",
+        "detail": "WFP Workforce Cost"
+      },
+      {
+        "ok": true,
+        "type": "process",
+        "name": "WFP Snapshot Version",
+        "detail": null
+      },
+      {
+        "ok": true,
+        "type": "process",
+        "name": "WFP Seed Dimension Attributes",
+        "detail": null
+      },
+      {
+        "ok": true,
+        "type": "process",
+        "name": "WFP Build YTD Hierarchy",
+        "detail": null
+      },
+      {
+        "ok": true,
+        "type": "process",
+        "name": "WFP Load Actuals",
+        "detail": null
+      }
+    ],
+    "attribute_values": {
+      "WFP Pay Component": 13,
+      "WFP Cost Centre": 25,
+      "WFP Version": 16,
+      "WFP Period": 182,
+      "WFP Workforce Cost Measure": 1
+    },
+    "deployed": 30,
+    "failed": 0,
+    "post_deploy": [
+      {
+        "name": "WFP Build YTD Hierarchy",
+        "ok": true,
+        "status": "CompletedSuccessfully"
+      },
+      {
+        "name": "WFP Reprocess Feeders",
+        "ok": true,
+        "status": "CompletedSuccessfully"
+      }
+    ],
+    "post_deploy_failed": false,
+    "verification": {
+      "source_server": "TM1_Test_DEV",
+      "target_server": "TM1_Test_PROD",
+      "total": 51,
+      "passed": 41,
+      "failed": [
+        {
+          "id": "66963df1",
+          "description": "Group Forecast Cost to Company FY2026 (Reporting) = 1,920,824 — Phase 4 base less ENG-006's March cost: P6 actuals show ENG-006 left end Feb, and closed-month Forecast = Actual (the open-month Forecast roster still carries ENG-006 — variance layer surfaces this)",
+          "expected": 1920823.76,
+          "actual": 1926471.9831989245,
+          "diff": 5648.2231989244465,
+          "pass": false,
+          "error": null
+        },
+        {
+          "id": "af3e2673",
+          "description": "Group Downside Cost to Company FY2026 (Reporting) = 1,696,326 — Phase 4 Downside less ENG-006's March cost (P6 actuals: ENG-006 left end Feb, closed-month Downside = Actual)",
+          "expected": 1696326.24,
+          "actual": 1701974.4646989247,
+          "diff": 5648.224698924692,
+          "pass": false,
+          "error": null
+        },
+        {
+          "id": "af38a6a7",
+          "description": "P6 Actual is loaded: Group Total Compensation FY-to-date (YTD 2026-03) Reporting = 412,166",
+          "expected": 412166.34,
+          "actual": 0,
+          "diff": -412166.34,
+          "pass": false,
+          "error": null
+        },
+        {
+          "id": "72f662d1",
+          "description": "P6 Act vs Bud ties: Group Total Compensation YTD 2026-03 Reporting = Actual − Budget = 35,269",
+          "expected": 35269.29,
+          "actual": -376897.0497311828,
+          "diff": -412166.3397311828,
+          "pass": false,
+          "error": null
+        },
+        {
+          "id": "f341664c",
+          "description": "P6 FX + operational split reconciles: Var FX + Var Operational = Act vs Bud (Group Total Comp YTD 2026-03 Reporting) = 35,269",
+          "expected": 35269.29,
+          "actual": -376897.0497311828,
+          "diff": -412166.3397311828,
+          "pass": false,
+          "error": null
+        },
+        {
+          "id": "3900505b",
+          "description": "P6 favourable FX: Group Total Comp Var FX YTD 2026-03 Reporting = −3,313 (USD ran at 0.77 vs the 0.79 plan rate)",
+          "expected": -3312.92,
+          "actual": 0,
+          "diff": 3312.92,
+          "pass": false,
+          "error": null
+        },
+        {
+          "id": "fb98b448",
+          "description": "P6 Fcst vs Bud at FY: Group Total Compensation FY2026 Reporting = Forecast − Budget = 386,658 (the rolling full-year outlook vs plan)",
+          "expected": 386658.02,
+          "actual": 382194.9979838713,
+          "diff": -4463.0220161287,
+          "pass": false,
+          "error": null
+        },
+        {
+          "id": "fbdbbc42",
+          "description": "P6 headcount variance: Group Act vs Bud Headcount 2026-03 = −1 (ENG-006 left end Feb, one fewer head than plan)",
+          "expected": -1,
+          "actual": -16,
+          "diff": -15,
+          "pass": false,
+          "error": null
+        },
+        {
+          "id": "1efd04a7",
+          "description": "P6 severance under-feeding fix: ENG-006 12,000 NZD severance in Mar 2026 (a month with zero base pay) is visible in the R&D consolidation — Forecast One-Time R&D Reporting 2026-03 = 5,640",
+          "expected": 5640,
+          "actual": 0,
+          "diff": -5640,
+          "pass": false,
+          "error": null
+        },
+        {
+          "id": "fa394632",
+          "description": "P6 Actual carries the severance: ENG-006 Actual Total Compensation Mar 2026 (NZD) = 12,000 (severance only — base pay is 0, the position ended in Feb)",
+          "expected": 12000,
+          "actual": 0,
+          "diff": -12000,
+          "pass": false,
+          "error": null
+        }
+      ],
+      "results": [
+        {
+          "id": "1740b6db",
+          "description": "ENG-002 employer tax Jan = 0 (YTD earnings under the UK 9,100 threshold)",
+          "expected": 0,
+          "actual": 0,
+          "diff": 0,
+          "pass": true,
+          "error": null
+        },
+        {
+          "id": "b5148962",
+          "description": "ENG-002 employer tax FY2026 = progressive UK NI (0 + 630.20 + 943x10), 9,100 exempt",
+          "expected": 10060.2,
+          "actual": 10060.2,
+          "diff": 0,
+          "pass": true,
+          "error": null
+        },
+        {
+          "id": "39aeacf8",
+          "description": "ENG-005 open req June base = G2 NY Engineering band (72000 x 1.10 Eng index / 12)",
+          "expected": 6600,
+          "actual": 6600,
+          "diff": 0,
+          "pass": true,
+          "error": null
+        },
+        {
+          "id": "d3ca0639",
+          "description": "ITO-001 contractor June employer tax = 0 (Employment Type gate)",
+          "expected": 0,
+          "actual": 0,
+          "diff": 0,
+          "pass": true,
+          "error": null
+        },
+        {
+          "id": "a152d5d2",
+          "description": "ENG-004 employer tax June (USD) = US-NY 9% below the SS cap (11666.67 x 0.09)",
+          "expected": 1050,
+          "actual": 1050.000000000001,
+          "diff": 9.094947017729282e-13,
+          "pass": true,
+          "error": null
+        },
+        {
+          "id": "e0301b21",
+          "description": "ENG-003 base March = mid-month start proration (55000 x 1.0 Eng-index-in-band... actual salary used, 22/31)",
+          "expected": 3252.69,
+          "actual": 3252.6881720430106,
+          "diff": -0.001827956989473023,
+          "pass": true,
+          "error": null
+        },
+        {
+          "id": "37db5346",
+          "description": "CS-002 base June (NZD) = 0.5 FTE x 70000/12 (part-time, actual salary)",
+          "expected": 2916.67,
+          "actual": 2916.6666666666665,
+          "diff": -0.0033333333335576754,
+          "pass": true,
+          "error": null
+        },
+        {
+          "id": "2dc480ce",
+          "description": "CS-002 base Oct (NZD) = 0 (position ended 30 Sep)",
+          "expected": 0,
+          "actual": 0,
+          "diff": 0,
+          "pass": true,
+          "error": null
+        },
+        {
+          "id": "e747e00a",
+          "description": "ENG-002 employee income tax FY2026 (GBP) = UK progressive (37700 @20% + 31730 @40%)",
+          "expected": 20232,
+          "actual": 20232,
+          "diff": 0,
+          "pass": true,
+          "error": null
+        },
+        {
+          "id": "322bbcea",
+          "description": "ENG-002 net pay FY2026 (GBP) = gross 82000 - income tax 20232 - pension 4100",
+          "expected": 57668,
+          "actual": 57668,
+          "diff": 0,
+          "pass": true,
+          "error": null
+        },
+        {
+          "id": "a3328331",
+          "description": "ENG-006 employee income tax FY2026 (NZD) = full NZ progressive brackets (10.5/17.5/30/33)",
+          "expected": 34427.5,
+          "actual": 34427.5,
+          "diff": 0,
+          "pass": true,
+          "error": null
+        },
+        {
+          "id": "ebf2097c",
+          "description": "ITO-001 contractor net pay FY2026 (NZD) = gross 120000 (no PAYE, no deductions)",
+          "expected": 120000,
+          "actual": 120000,
+          "diff": 0,
+          "pass": true,
+          "error": null
+        },
+        {
+          "id": "8a77a60c",
+          "description": "ENG-002 cost to company FY2026 (GBP) = base 82000 + ER tax 10060.20 + ER pension 4100 + benefits 2400",
+          "expected": 98560.2,
+          "actual": 98560.2,
+          "diff": 0,
+          "pass": true,
+          "error": null
+        },
+        {
+          "id": "1a763376",
+          "description": "Group cost to company FY2026 (Reporting ccy) — consolidated Cost to Company across all entities",
+          "expected": 1700305.85,
+          "actual": 1700305.8456989245,
+          "diff": -0.004301075590774417,
+          "pass": true,
+          "error": null
+        },
+        {
+          "id": "ba31eaf7",
+          "description": "Group headcount June 2026 = 16 filled positions active",
+          "expected": 16,
+          "actual": 16,
+          "diff": 0,
+          "pass": true,
+          "error": null
+        },
+        {
+          "id": "ffa9b90e",
+          "description": "Group FTE June 2026 = 16.5 (15 full-time filled + CS-002 0.5 + ENG-005 open 1.0)",
+          "expected": 16.5,
+          "actual": 16.5,
+          "diff": 0,
+          "pass": true,
+          "error": null
+        },
+        {
+          "id": "3ad5c622",
+          "description": "Group open positions Oct 2026 = 2 (ENG-005 + SLS-003 both active)",
+          "expected": 2,
+          "actual": 2,
+          "diff": 0,
+          "pass": true,
+          "error": null
+        },
+        {
+          "id": "ee3f0f40",
+          "description": "ENG-006 employee income tax — sum of 12 months = FY2026 (34427.50): YTD prior-period self-ref consistent under rev D dim order",
+          "expected": 34427.5,
+          "actual": 34427.5,
+          "diff": 0,
+          "pass": true,
+          "error": null
+        },
+        {
+          "id": "d951f572",
+          "description": "ENG-004 base June Reporting ccy = 11666.67 USD x 0.79 FX = 9216.67 (rev D FX translation, per-cube measure dim)",
+          "expected": 9216.67,
+          "actual": 9216.666666666666,
+          "diff": -0.0033333333340124227,
+          "pass": true,
+          "error": null
+        },
+        {
+          "id": "1c052eb7",
+          "description": "WFP Assumptions seeded — Actuals Cutoff Index, UK Ltd / Forecast / 2026-06 = 15",
+          "expected": 15,
+          "actual": 15,
+          "diff": 0,
+          "pass": true,
+          "error": null
+        },
+        {
+          "id": "c6604eed",
+          "description": "Merit NOT applied to Budget — ENG-002 Budget Base Salary 2026-04 = 82,000 (approved plan is frozen)",
+          "expected": 82000,
+          "actual": 82000,
+          "diff": 0,
+          "pass": true,
+          "error": null
+        },
+        {
+          "id": "7dfe7593",
+          "description": "Merit step (Forecast) — ENG-002 Forecast Base Salary 2026-04 = 82,000 × (1 + 3% merit + 1% promo) = 85,280; Budget frozen at 82,000",
+          "expected": 85280,
+          "actual": 85280,
+          "diff": 0,
+          "pass": true,
+          "error": null
+        },
+        {
+          "id": "78be451b",
+          "description": "Bonus accrual (Forecast) — ENG-002 Forecast Bonus Jun 2026 = post-merit base 7,106.67 × 10% Bonus Pool = 710.67",
+          "expected": 710.67,
+          "actual": 710.6666666666667,
+          "diff": -0.003333333333216615,
+          "pass": true,
+          "error": null
+        },
+        {
+          "id": "149b27e0",
+          "description": "Contractor gets no bonus (Forecast) — ITO-001 Forecast Bonus Jun 2026 = 0",
+          "expected": 0,
+          "actual": 0,
+          "diff": 0,
+          "pass": true,
+          "error": null
+        },
+        {
+          "id": "947e1c22",
+          "description": "One-Time payment hits only the entered month (Forecast) — CS-001 Forecast One-Time May 2026 = 0, Jun 2026 = 15,000 (USD, sum over both = 15,000)",
+          "expected": 15000,
+          "actual": 15000,
+          "diff": 0,
+          "pass": true,
+          "error": null
+        },
+        {
+          "id": "f84e00b5",
+          "description": "Total Compensation consolidation (Forecast) — ENG-002 Forecast Jun 2026 = Cost to Company 8,642.72 + Bonus 710.67 + One-Time 0 = 9,353.39",
+          "expected": 9353.39,
+          "actual": 9353.386666666667,
+          "diff": -0.0033333333321934333,
+          "pass": true,
+          "error": null
+        },
+        {
+          "id": "fc7149a8",
+          "description": "Forecast open month post-merit — EXEC-001 Forecast base Jun 2026 (period index 18 > cutoff 15) = own seed 210,000 × 1.04 / 12 = 18,200",
+          "expected": 18200,
+          "actual": 18200,
+          "diff": 0,
+          "pass": true,
+          "error": null
+        },
+        {
+          "id": "c2f122f8",
+          "description": "Downside is a self-contained scenario — ENG-002 Downside Base Salary 2026-04 = 82,000 × (1 + 5% merit + 1% promo) = 86,920, flexed by its own steeper assumptions (not a copy of another version)",
+          "expected": 86920,
+          "actual": 86920,
+          "diff": 0,
+          "pass": true,
+          "error": null
+        },
+        {
+          "id": "fbfc76a2",
+          "description": "Forecast closed month = Actual — EXEC-001 base cost Feb 2026 Forecast (period index 14 ≤ Actuals Cutoff Index 15) resolves to the Actual version via rule = 220,000 / 12 = 18,333.33",
+          "expected": 18333.33,
+          "actual": 18333.333333333332,
+          "diff": 0.003333333330374444,
+          "pass": true,
+          "error": null
+        },
+        {
+          "id": "7001dc75",
+          "description": "Phase 4 — Forecast Group headcount Jun 2026 = 19 (16 Budget + ENG-007 + SLS-004 hires + ENG-005 open req filled, all from 2026-04)",
+          "expected": 19,
+          "actual": 19,
+          "diff": 0,
+          "pass": true,
+          "error": null
+        },
+        {
+          "id": "5c7d7365",
+          "description": "Phase 4 — recruiting lead time: ENG-007 Forecast headcount 2026-03 = 0, 2026-04 = 1 (approve 2026-01 + 3-month lead = hire 2026-04); sum over Mar+Apr = 1",
+          "expected": 1,
+          "actual": 1,
+          "diff": 0,
+          "pass": true,
+          "error": null
+        },
+        {
+          "id": "7f49d5a3",
+          "description": "Phase 4 — Downside attrition: ENG-002 leaves 2026-04 (Attrition Month idx 16). ENG-002 Downside headcount Jun 2026 = 0",
+          "expected": 0,
+          "actual": 0,
+          "diff": 0,
+          "pass": true,
+          "error": null
+        },
+        {
+          "id": "f54955db",
+          "description": "Phase 4 — Downside backfill with a vacancy gap: ENG-008 replaces ENG-002, hired 2026-08 (idx 20). ENG-008 Downside headcount: Jun 2026 = 0, Aug 2026 = 1; sum Jun+Aug = 1",
+          "expected": 1,
+          "actual": 1,
+          "diff": 0,
+          "pass": true,
+          "error": null
+        },
+        {
+          "id": "a96807e4",
+          "description": "Phase 4 — no-backfill attrition: ENG-006 leaves 2026-07 (idx 19), not replaced. ENG-006 Downside headcount Oct 2026 = 0",
+          "expected": 0,
+          "actual": 0,
+          "diff": 0,
+          "pass": true,
+          "error": null
+        },
+        {
+          "id": "fdb0dc37",
+          "description": "Phase 4 — headcount bridge reconciles: Downside Group Closing Jul 2026 = Opening 15 + Hires 0 - Leavers 1 = 14, equal to Jul Headcount",
+          "expected": 14,
+          "actual": 14,
+          "diff": 0,
+          "pass": true,
+          "error": null
+        },
+        {
+          "id": "e5577b64",
+          "description": "Phase 4 — Forecast Group Hires 2026-04 = 3 (ENG-007, SLS-004, ENG-005 all hired that month)",
+          "expected": 3,
+          "actual": 3,
+          "diff": 0,
+          "pass": true,
+          "error": null
+        },
+        {
+          "id": "dd61fa28",
+          "description": "P5 GL rollup ties to leaf sum: GL: Personnel P&L = Total Compensation (Budget, 2026-06, Group, Reporting)",
+          "expected": 153463.925,
+          "actual": 153463.925,
+          "diff": 0,
+          "pass": true,
+          "error": null
+        },
+        {
+          "id": "22903e0c",
+          "description": "P5 capex + opex reconciles to Amount: Total Compensation Capex+Opex = Amount (Budget, 2026-06, Group, Reporting)",
+          "expected": 153463.925,
+          "actual": 153463.925,
+          "diff": 0,
+          "pass": true,
+          "error": null
+        },
+        {
+          "id": "3d6ae764",
+          "description": "P5 capitalised labour lands on R&D only: R&D Cost to Company Amount Capex = 18% of R&D CtC (Budget, 2026-06, Group, Reporting)",
+          "expected": 10545.0285,
+          "actual": 10545.028499999999,
+          "diff": -1.8189894035458565e-12,
+          "pass": true,
+          "error": null
+        },
+        {
+          "id": "74e22e40",
+          "description": "P5 no capex outside R&D: S&M Cost to Company Amount Capex = 0 (Budget, 2026-06, Group, Reporting)",
+          "expected": 0,
+          "actual": 0,
+          "diff": 0,
+          "pass": true,
+          "error": null
+        },
+        {
+          "id": "486ea706",
+          "description": "P5 constant-currency lens wired: Forecast Total Compensation Reporting @ Budget FX (Budget FX today = same as Reporting) (2026-06, Group)",
+          "expected": 191072.8505,
+          "actual": 191072.8505,
+          "diff": 0,
+          "pass": true,
+          "error": null
+        },
+        {
+          "id": "66963df1",
+          "description": "Group Forecast Cost to Company FY2026 (Reporting) = 1,920,824 — Phase 4 base less ENG-006's March cost: P6 actuals show ENG-006 left end Feb, and closed-month Forecast = Actual (the open-month Forecast roster still carries ENG-006 — variance layer surfaces this)",
+          "expected": 1920823.76,
+          "actual": 1926471.9831989245,
+          "diff": 5648.2231989244465,
+          "pass": false,
+          "error": null
+        },
+        {
+          "id": "af3e2673",
+          "description": "Group Downside Cost to Company FY2026 (Reporting) = 1,696,326 — Phase 4 Downside less ENG-006's March cost (P6 actuals: ENG-006 left end Feb, closed-month Downside = Actual)",
+          "expected": 1696326.24,
+          "actual": 1701974.4646989247,
+          "diff": 5648.224698924692,
+          "pass": false,
+          "error": null
+        },
+        {
+          "id": "af38a6a7",
+          "description": "P6 Actual is loaded: Group Total Compensation FY-to-date (YTD 2026-03) Reporting = 412,166",
+          "expected": 412166.34,
+          "actual": 0,
+          "diff": -412166.34,
+          "pass": false,
+          "error": null
+        },
+        {
+          "id": "72f662d1",
+          "description": "P6 Act vs Bud ties: Group Total Compensation YTD 2026-03 Reporting = Actual − Budget = 35,269",
+          "expected": 35269.29,
+          "actual": -376897.0497311828,
+          "diff": -412166.3397311828,
+          "pass": false,
+          "error": null
+        },
+        {
+          "id": "f341664c",
+          "description": "P6 FX + operational split reconciles: Var FX + Var Operational = Act vs Bud (Group Total Comp YTD 2026-03 Reporting) = 35,269",
+          "expected": 35269.29,
+          "actual": -376897.0497311828,
+          "diff": -412166.3397311828,
+          "pass": false,
+          "error": null
+        },
+        {
+          "id": "3900505b",
+          "description": "P6 favourable FX: Group Total Comp Var FX YTD 2026-03 Reporting = −3,313 (USD ran at 0.77 vs the 0.79 plan rate)",
+          "expected": -3312.92,
+          "actual": 0,
+          "diff": 3312.92,
+          "pass": false,
+          "error": null
+        },
+        {
+          "id": "fb98b448",
+          "description": "P6 Fcst vs Bud at FY: Group Total Compensation FY2026 Reporting = Forecast − Budget = 386,658 (the rolling full-year outlook vs plan)",
+          "expected": 386658.02,
+          "actual": 382194.9979838713,
+          "diff": -4463.0220161287,
+          "pass": false,
+          "error": null
+        },
+        {
+          "id": "fbdbbc42",
+          "description": "P6 headcount variance: Group Act vs Bud Headcount 2026-03 = −1 (ENG-006 left end Feb, one fewer head than plan)",
+          "expected": -1,
+          "actual": -16,
+          "diff": -15,
+          "pass": false,
+          "error": null
+        },
+        {
+          "id": "1efd04a7",
+          "description": "P6 severance under-feeding fix: ENG-006 12,000 NZD severance in Mar 2026 (a month with zero base pay) is visible in the R&D consolidation — Forecast One-Time R&D Reporting 2026-03 = 5,640",
+          "expected": 5640,
+          "actual": 0,
+          "diff": -5640,
+          "pass": false,
+          "error": null
+        },
+        {
+          "id": "fa394632",
+          "description": "P6 Actual carries the severance: ENG-006 Actual Total Compensation Mar 2026 (NZD) = 12,000 (severance only — base pay is 0, the position ended in Feb)",
+          "expected": 12000,
+          "actual": 0,
+          "diff": -12000,
+          "pass": false,
+          "error": null
+        }
+      ]
+    },
+    "verification_failed": true,
+    "baselines_seeded": {
+      "target": "TM1_Test_PROD",
+      "source": "TM1_Test_DEV"
+    },
+    "aborted": false
+  },
+  "manifest": {
+    "_meta": {
+      "session": "Release 2026-09-08",
+      "server": "TM1_Test_DEV",
+      "packaged_at": "2026-09-08T22:52:04.036Z",
+      "baseline_server": "TM1_Test_DEV",
+      "baseline_seeded_at": "2026-09-08T07:51:37.267Z",
+      "baseline_last_entry_id": 615,
+      "has_baseline": true,
+      "post_deploy": [
+        {
+          "name": "WFP Build YTD Hierarchy",
+          "note": "belt-and-braces for the YTD alt-hierarchy on WFP Period (idempotent); remove once the packager is trusted to carry it and the process is deleted"
+        },
+        {
+          "name": "WFP Reprocess Feeders",
+          "note": "feeders must be reprocessed after any rules change"
+        }
+      ],
+      "session_id": null,
+      "completeness": {
+        "change_set_objects": 27,
+        "packaged": 30,
+        "gaps": []
+      }
+    },
+    "objects": [
+      {
+        "type": "subset",
+        "name": "2026 Quarters + FY",
+        "detail": "WFP Period",
+        "outcome": "REFERENCED",
+        "file": "subsets/WFP Period/2026 Quarters _ FY.json"
+      },
+      {
+        "type": "subset",
+        "name": "Variance",
+        "detail": "WFP Version",
+        "outcome": "REFERENCED",
+        "file": "subsets/WFP Version/Variance.json"
+      },
+      {
+        "type": "subset",
+        "name": "GL P&L",
+        "detail": "WFP Pay Component",
+        "outcome": "REFERENCED",
+        "file": "subsets/WFP Pay Component/GL P_L.json"
+      },
+      {
+        "type": "process",
+        "name": "WFP Snapshot Version",
+        "detail": null,
+        "outcome": "MATCH",
+        "file": "processes/WFP Snapshot Version.json"
+      },
+      {
+        "type": "dimension",
+        "name": "WFP Pay Component",
+        "detail": "0 elements, 0 edges",
+        "outcome": "MATCH",
+        "file": "dimensions/WFP Pay Component.json",
+        "elementDelta": {
+          "added": [
+            "GL: Salaries & Wages",
+            "GL: Bonus & Incentives",
+            "GL: Employer Payroll Taxes",
+            "GL: Employer Pension",
+            "GL: Benefits",
+            "GL: Personnel P&L"
+          ],
+          "removed": []
+        }
+      },
+      {
+        "type": "dimension",
+        "name": "WFP Cost Centre",
+        "detail": "0 elements, 0 edges",
+        "outcome": "MATCH",
+        "file": "dimensions/WFP Cost Centre.json",
+        "elementDelta": {
+          "added": [],
+          "removed": []
+        }
+      },
+      {
+        "type": "dimension",
+        "name": "WFP Currency",
+        "detail": "1 elements, 0 edges",
+        "outcome": "MATCH",
+        "file": "dimensions/WFP Currency.json",
+        "elementDelta": {
+          "added": [
+            "Reporting @ Budget FX"
+          ],
+          "removed": []
+        }
+      },
+      {
+        "type": "subset",
+        "name": "Default",
+        "detail": "WFP Workforce Cost Measure",
+        "outcome": "MATCH",
+        "file": "subsets/WFP Workforce Cost Measure/Default.json"
+      },
+      {
+        "type": "dimension",
+        "name": "WFP Version",
+        "detail": "5 elements, 4 edges",
+        "outcome": "MATCH",
+        "file": "dimensions/WFP Version.json",
+        "elementDelta": {
+          "added": [
+            "Variance",
+            "Act vs Bud",
+            "Fcst vs Bud",
+            "Var FX",
+            "Var Operational"
+          ],
+          "removed": []
+        }
+      },
+      {
+        "type": "dimension",
+        "name": "WFP Period",
+        "detail": "0 elements, 0 edges",
+        "outcome": "MATCH",
+        "file": "dimensions/WFP Period.json",
+        "elementDelta": {
+          "added": [
+            "YTD 2025-01",
+            "YTD 2025-02",
+            "YTD 2025-03",
+            "YTD 2025-04",
+            "YTD 2025-05",
+            "YTD 2025-06",
+            "YTD 2025-07",
+            "YTD 2025-08",
+            "YTD 2025-09",
+            "YTD 2025-10",
+            "YTD 2025-11",
+            "YTD 2025-12",
+            "YTD 2026-01",
+            "YTD 2026-02",
+            "YTD 2026-03",
+            "YTD 2026-04",
+            "YTD 2026-05",
+            "YTD 2026-06",
+            "YTD 2026-07",
+            "YTD 2026-08",
+            "YTD 2026-09",
+            "YTD 2026-10",
+            "YTD 2026-11",
+            "YTD 2026-12",
+            "YTD 2027-01",
+            "YTD 2027-02",
+            "YTD 2027-03",
+            "YTD 2027-04",
+            "YTD 2027-05",
+            "YTD 2027-06",
+            "YTD 2027-07",
+            "YTD 2027-08",
+            "YTD 2027-09",
+            "YTD 2027-10",
+            "YTD 2027-11",
+            "YTD 2027-12"
+          ],
+          "removed": []
+        }
+      },
+      {
+        "type": "rules",
+        "name": "WFP Workforce Cost",
+        "detail": null,
+        "outcome": "MATCH",
+        "file": "rules/WFP Workforce Cost.rule"
+      },
+      {
+        "type": "rules",
+        "name": "WFP Workforce Input",
+        "detail": null,
+        "outcome": "MATCH",
+        "file": "rules/WFP Workforce Input.rule"
+      },
+      {
+        "type": "rules",
+        "name": "WFP Headcount",
+        "detail": null,
+        "outcome": "MATCH",
+        "file": "rules/WFP Headcount.rule"
+      },
+      {
+        "type": "process",
+        "name": "WFP Seed Dimension Attributes",
+        "detail": null,
+        "outcome": "MATCH",
+        "file": "processes/WFP Seed Dimension Attributes.json"
+      },
+      {
+        "type": "dimension",
+        "name": "WFP Workforce Cost Measure",
+        "detail": "element Cost per FTE",
+        "outcome": "MATCH",
+        "file": "dimensions/WFP Workforce Cost Measure.json",
+        "elementDelta": {
+          "added": [
+            "Amount Capex",
+            "Amount Opex"
+          ],
+          "removed": []
+        }
+      },
+      {
+        "type": "view",
+        "name": "Cost by Cost Centre",
+        "detail": "WFP Workforce Cost",
+        "outcome": "MATCH",
+        "file": "views/WFP Workforce Cost/Cost by Cost Centre.json"
+      },
+      {
+        "type": "subset",
+        "name": "Default",
+        "detail": "WFP Currency",
+        "outcome": "MATCH",
+        "file": "subsets/WFP Currency/Default.json"
+      },
+      {
+        "type": "subset",
+        "name": "Default",
+        "detail": "WFP Pay Component",
+        "outcome": "MATCH",
+        "file": "subsets/WFP Pay Component/Default.json"
+      },
+      {
+        "type": "attribute",
+        "name": "GL Account",
+        "detail": "WFP Pay Component",
+        "outcome": "NEW",
+        "file": "attributes/WFP Pay Component_GL Account.json"
+      },
+      {
+        "type": "attribute",
+        "name": "Capex %",
+        "detail": "WFP Cost Centre",
+        "outcome": "NEW",
+        "file": "attributes/WFP Cost Centre_Capex _.json"
+      },
+      {
+        "type": "subset",
+        "name": "GL P&L",
+        "detail": "WFP Pay Component",
+        "outcome": "NEW",
+        "file": "subsets/WFP Pay Component/GL P_L.json"
+      },
+      {
+        "type": "view",
+        "name": "GL P&L",
+        "detail": "WFP Workforce Cost",
+        "outcome": "NEW",
+        "file": "views/WFP Workforce Cost/GL P_L.json"
+      },
+      {
+        "type": "view",
+        "name": "Capitalised Labour",
+        "detail": "WFP Workforce Cost",
+        "outcome": "NEW",
+        "file": "views/WFP Workforce Cost/Capitalised Labour.json"
+      },
+      {
+        "type": "attribute",
+        "name": "Actuals Closed",
+        "detail": "WFP Period",
+        "outcome": "NEW",
+        "file": "attributes/WFP Period_Actuals Closed.json"
+      },
+      {
+        "type": "process",
+        "name": "WFP Build YTD Hierarchy",
+        "detail": null,
+        "outcome": "NEW",
+        "file": "processes/WFP Build YTD Hierarchy.json"
+      },
+      {
+        "type": "process",
+        "name": "WFP Load Actuals",
+        "detail": null,
+        "outcome": "NEW",
+        "file": "processes/WFP Load Actuals.json"
+      },
+      {
+        "type": "subset",
+        "name": "Variance",
+        "detail": "WFP Version",
+        "outcome": "NEW",
+        "file": "subsets/WFP Version/Variance.json"
+      },
+      {
+        "type": "subset",
+        "name": "2026 YTD + FY",
+        "detail": "WFP Period",
+        "outcome": "NEW",
+        "file": "subsets/WFP Period/2026 YTD _ FY.json"
+      },
+      {
+        "type": "view",
+        "name": "Variance Bridge",
+        "detail": "WFP Workforce Cost",
+        "outcome": "NEW",
+        "file": "views/WFP Workforce Cost/Variance Bridge.json"
+      },
+      {
+        "type": "view",
+        "name": "FX vs Operational",
+        "detail": "WFP Workforce Cost",
+        "outcome": "NEW",
+        "file": "views/WFP Workforce Cost/FX vs Operational.json"
+      }
+    ],
+    "skipped": []
+  },
+  "preSnapshot": {
+    "taken_at": "2026-09-08T22:52:15.325Z",
+    "target": "TM1_Test_PROD",
+    "objects": {
+      "subset::Variance::WFP Version": null,
+      "subset::2026 Quarters + FY::WFP Period": {
+        "elements": [
+          "2026-Q1",
+          "2026-Q2",
+          "2026-Q3",
+          "2026-Q4",
+          "FY2026"
+        ]
+      },
+      "subset::GL P&L::WFP Pay Component": {
+        "elements": [
+          "GL: Personnel P&L",
+          "GL: Salaries & Wages",
+          "GL: Bonus & Incentives",
+          "GL: Employer Payroll Taxes",
+          "GL: Employer Pension",
+          "GL: Benefits"
+        ]
+      },
+      "dimension::WFP Pay Component::0 elements, 0 edges": {
+        "elementCount": 32,
+        "edgeCount": 20
+      },
+      "process::WFP Snapshot Version": {
+        "PrologProcedure": "#Region WFP Snapshot Version — copy a calculating version into a static member\r\n# Prolog: validate, create pTarget, parent it under Non-Calculating, mark Static.\r\n# Epilog: copy the cells (runs AFTER the Prolog commits the parent edge, so the\r\n# [] STET/CONTINUE guard is active for pTarget and CellPutN is allowed).\r\ncVer = 'WFP Version';\r\n\r\nnStop = 0;\r\nIF( DIMIX( cVer, pSource ) = 0 );\r\n   ASCIIOUTPUT( 'WFP_Snapshot_error.txt', 'Source version not found: ' | pSource );\r\n   nStop = 1;\r\nENDIF;\r\nIF( nStop = 0 & ATTRS( cVer, pSource, 'Version Type' ) @<> 'Calculated' );\r\n   ASCIIOUTPUT( 'WFP_Snapshot_error.txt', 'Refused: source \"' | pSource | '\" is not a Calculated version.' );\r\n   nStop = 1;\r\nENDIF;\r\nIF( nStop = 0 & TRIM( pTarget ) @= '' );\r\n   ASCIIOUTPUT( 'WFP_Snapshot_error.txt', 'Target member name is blank.' );\r\n   nStop = 1;\r\nENDIF;\r\nIF( nStop = 0 & pTarget @= pSource );\r\n   ASCIIOUTPUT( 'WFP_Snapshot_error.txt', 'Target equals source.' );\r\n   nStop = 1;\r\nENDIF;\r\n\r\nIF( nStop = 0 );\r\n   IF( DIMIX( cVer, pTarget ) = 0 );\r\n      DimensionElementInsertDirect( cVer, '', pTarget, 'N' );\r\n   ENDIF;\r\n   AttrPutS( 'Static', cVer, pTarget, 'Version Type' );\r\n   AttrPutS( 'Snapshot of ' | pSource | ' - ' | TIMST( NOW, '\\Y-\\m-\\d' ), cVer, pTarget, 'Description' );\r\n   IF( ELISANC( cVer, 'Non-Calculating', pTarget ) = 0 );\r\n      DimensionElementComponentAdd( cVer, 'Non-Calculating', pTarget, 1 );\r\n   ENDIF;\r\nENDIF;",
+        "MetadataProcedure": "",
+        "DataProcedure": "",
+        "EpilogProcedure": "#Region WFP Snapshot Version — Epilog: copy cells (parent edge now committed)\r\nIF( nStop = 0 );\r\n   nCopied = 0;\r\n\r\n   # --- WFP Workforce Input : Period x Position x Measure ---\r\n   cWI = 'WFP Workforce Input';\r\n   nA = DIMSIZ( 'WFP Period' ); nB = DIMSIZ( 'WFP Position' ); nC = DIMSIZ( 'WFP Workforce Input Measure' );\r\n   nI = 1;\r\n   WHILE( nI <= nA );\r\n      vP = DIMNM( 'WFP Period', nI );\r\n      IF( DTYPE( 'WFP Period', vP ) @= 'N' & LONG( vP ) = 7 );\r\n         nJ = 1;\r\n         WHILE( nJ <= nB );\r\n            vPos = DIMNM( 'WFP Position', nJ );\r\n            IF( DTYPE( 'WFP Position', vPos ) @= 'N' );\r\n               nK = 1;\r\n               WHILE( nK <= nC );\r\n                  vM = DIMNM( 'WFP Workforce Input Measure', nK );\r\n                  IF( DTYPE( 'WFP Workforce Input Measure', vM ) @= 'N' );\r\n                     nVal = CellGetN( cWI, vP, pSource, vPos, vM );\r\n                     IF( nVal <> 0 ); CellPutN( nVal, cWI, vP, pTarget, vPos, vM ); nCopied = nCopied + 1; ENDIF;\r\n                  ENDIF;\r\n                  nK = nK + 1;\r\n               END;\r\n            ENDIF;\r\n            nJ = nJ + 1;\r\n         END;\r\n      ENDIF;\r\n      nI = nI + 1;\r\n   END;\r\n\r\n   # --- WFP Hiring Plan : Position x Measure (Version fixed) ---\r\n   cHP = 'WFP Hiring Plan';\r\n   nB = DIMSIZ( 'WFP Position' ); nC = DIMSIZ( 'WFP Hiring Plan Measure' );\r\n   nJ = 1;\r\n   WHILE( nJ <= nB );\r\n      vPos = DIMNM( 'WFP Position', nJ );\r\n      IF( DTYPE( 'WFP Position', vPos ) @= 'N' );\r\n         nK = 1;\r\n         WHILE( nK <= nC );\r\n            vM = DIMNM( 'WFP Hiring Plan Measure', nK );\r\n            IF( DTYPE( 'WFP Hiring Plan Measure', vM ) @= 'N' );\r\n               nVal = CellGetN( cHP, pSource, vPos, vM );\r\n               IF( nVal <> 0 ); CellPutN( nVal, cHP, pTarget, vPos, vM ); nCopied = nCopied + 1; ENDIF;\r\n            ENDIF;\r\n            nK = nK + 1;\r\n         END;\r\n      ENDIF;\r\n      nJ = nJ + 1;\r\n   END;\r\n\r\n   # --- WFP Assumptions : Period x Entity x Measure ---\r\n   cAS = 'WFP Assumptions';\r\n   nA = DIMSIZ( 'WFP Period' ); nB = DIMSIZ( 'WFP Entity' ); nC = DIMSIZ( 'WFP Assumptions Measure' );\r\n   nI = 1;\r\n   WHILE( nI <= nA );\r\n      vP = DIMNM( 'WFP Period', nI );\r\n      IF( DTYPE( 'WFP Period', vP ) @= 'N' & LONG( vP ) = 7 );\r\n         nJ = 1;\r\n         WHILE( nJ <= nB );\r\n            vEnt = DIMNM( 'WFP Entity', nJ );\r\n            IF( DTYPE( 'WFP Entity', vEnt ) @= 'N' );\r\n               nK = 1;\r\n               WHILE( nK <= nC );\r\n                  vM = DIMNM( 'WFP Assumptions Measure', nK );\r\n                  IF( DTYPE( 'WFP Assumptions Measure', vM ) @= 'N' );\r\n                     nVal = CellGetN( cAS, vP, pSource, vEnt, vM );\r\n                     IF( nVal <> 0 ); CellPutN( nVal, cAS, vP, pTarget, vEnt, vM ); nCopied = nCopied + 1; ENDIF;\r\n                  ENDIF;\r\n                  nK = nK + 1;\r\n               END;\r\n            ENDIF;\r\n            nJ = nJ + 1;\r\n         END;\r\n      ENDIF;\r\n      nI = nI + 1;\r\n   END;\r\n\r\n   # --- WFP FX Rates : Period x Currency x FX Rate Type x Measure ---\r\n   cFX = 'WFP FX Rates';\r\n   nA = DIMSIZ( 'WFP Period' ); nB = DIMSIZ( 'WFP Currency' ); nC = DIMSIZ( 'WFP FX Rate Type' ); nD = DIMSIZ( 'WFP FX Rates Measure' );\r\n   nI = 1;\r\n   WHILE( nI <= nA );\r\n      vP = DIMNM( 'WFP Period', nI );\r\n      IF( DTYPE( 'WFP Period', vP ) @= 'N' & LONG( vP ) = 7 );\r\n         nJ = 1;\r\n         WHILE( nJ <= nB );\r\n            vCur = DIMNM( 'WFP Currency', nJ );\r\n            IF( DTYPE( 'WFP Currency', vCur ) @= 'N' );\r\n               nK = 1;\r\n               WHILE( nK <= nC );\r\n                  vRt = DIMNM( 'WFP FX Rate Type', nK );\r\n                  IF( DTYPE( 'WFP FX Rate Type', vRt ) @= 'N' );\r\n                     nL = 1;\r\n                     WHILE( nL <= nD );\r\n                        vM = DIMNM( 'WFP FX Rates Measure', nL );\r\n                        IF( DTYPE( 'WFP FX Rates Measure', vM ) @= 'N' );\r\n                           nVal = CellGetN( cFX, vP, pSource, vCur, vRt, vM );\r\n                           IF( nVal <> 0 ); CellPutN( nVal, cFX, vP, pTarget, vCur, vRt, vM ); nCopied = nCopied + 1; ENDIF;\r\n                        ENDIF;\r\n                        nL = nL + 1;\r\n                     END;\r\n                  ENDIF;\r\n                  nK = nK + 1;\r\n               END;\r\n            ENDIF;\r\n            nJ = nJ + 1;\r\n         END;\r\n      ENDIF;\r\n      nI = nI + 1;\r\n   END;\r\n\r\n   # --- WFP Pay Rates : Period x Grade x Job Family x Location x Measure ---\r\n   cPR = 'WFP Pay Rates';\r\n   nA = DIMSIZ( 'WFP Period' ); nB = DIMSIZ( 'WFP Grade' ); nC = DIMSIZ( 'WFP Job Family' ); nD = DIMSIZ( 'WFP Location' ); nE = DIMSIZ( 'WFP Pay Rates Measure' );\r\n   nI = 1;\r\n   WHILE( nI <= nA );\r\n      vP = DIMNM( 'WFP Period', nI );\r\n      IF( DTYPE( 'WFP Period', vP ) @= 'N' & LONG( vP ) = 7 );\r\n         nJ = 1;\r\n         WHILE( nJ <= nB );\r\n            vG = DIMNM( 'WFP Grade', nJ );\r\n            IF( DTYPE( 'WFP Grade', vG ) @= 'N' );\r\n               nK = 1;\r\n               WHILE( nK <= nC );\r\n                  vJF = DIMNM( 'WFP Job Family', nK );\r\n                  IF( DTYPE( 'WFP Job Family', vJF ) @= 'N' );\r\n                     nL = 1;\r\n                     WHILE( nL <= nD );\r\n                        vLoc = DIMNM( 'WFP Location', nL );\r\n                        IF( DTYPE( 'WFP Location', vLoc ) @= 'N' );\r\n                           nMx = 1;\r\n                           WHILE( nMx <= nE );\r\n                              vM = DIMNM( 'WFP Pay Rates Measure', nMx );\r\n                              IF( DTYPE( 'WFP Pay Rates Measure', vM ) @= 'N' );\r\n                                 nVal = CellGetN( cPR, vP, pSource, vG, vJF, vLoc, vM );\r\n                                 IF( nVal <> 0 ); CellPutN( nVal, cPR, vP, pTarget, vG, vJF, vLoc, vM ); nCopied = nCopied + 1; ENDIF;\r\n                              ENDIF;\r\n                              nMx = nMx + 1;\r\n                           END;\r\n                        ENDIF;\r\n                        nL = nL + 1;\r\n                     END;\r\n                  ENDIF;\r\n                  nK = nK + 1;\r\n               END;\r\n            ENDIF;\r\n            nJ = nJ + 1;\r\n         END;\r\n      ENDIF;\r\n      nI = nI + 1;\r\n   END;\r\n\r\n   # --- WFP Workforce Cost + WFP Headcount OUTPUT : per position ---\r\n   # P5: copy Amount / Amount Capex / Amount Opex at salary currency, Reporting and\r\n   # Reporting @ Budget FX so the snapshot freezes the full restated P&L view.\r\n   cWC = 'WFP Workforce Cost'; cHC = 'WFP Headcount';\r\n   vPCs = 'Base|Employer Payroll Tax|Employer Pension|Benefits|Bonus|One-Time|Gross Pay|Employee Income Tax|Employee Pension|Net Pay|';\r\n   vHMs = 'Headcount|FTE|Open Positions|Hires|Leavers|Opening|Closing|';\r\n   nB = DIMSIZ( 'WFP Position' ); nA = DIMSIZ( 'WFP Period' );\r\n   nJ = 1;\r\n   WHILE( nJ <= nB );\r\n      vPos = DIMNM( 'WFP Position', nJ );\r\n      IF( DTYPE( 'WFP Position', vPos ) @= 'N' );\r\n         vEnt = ATTRS( 'WFP Position', vPos, 'Home Entity' );\r\n         vCC  = ATTRS( 'WFP Position', vPos, 'Cost Centre' );\r\n         vSC  = ATTRS( 'WFP Position', vPos, 'Salary Currency' );\r\n         nI = 1;\r\n         WHILE( nI <= nA );\r\n            vP = DIMNM( 'WFP Period', nI );\r\n            IF( DTYPE( 'WFP Period', vP ) @= 'N' & LONG( vP ) = 7 );\r\n               vL = vPCs;\r\n               WHILE( SCAN( '|', vL ) > 1 );\r\n                  nS = SCAN( '|', vL ); vPC = SUBST( vL, 1, nS - 1 ); vL = SUBST( vL, nS + 1, LONG( vL ) - nS );\r\n                  vCurL = vSC | '|Reporting|Reporting @ Budget FX|';\r\n                  WHILE( SCAN( '|', vCurL ) > 1 );\r\n                     nS = SCAN( '|', vCurL ); vCurX = SUBST( vCurL, 1, nS - 1 ); vCurL = SUBST( vCurL, nS + 1, LONG( vCurL ) - nS );\r\n                     vMeaL = 'Amount|Amount Capex|Amount Opex|';\r\n                     WHILE( SCAN( '|', vMeaL ) > 1 );\r\n                        nS = SCAN( '|', vMeaL ); vMeaX = SUBST( vMeaL, 1, nS - 1 ); vMeaL = SUBST( vMeaL, nS + 1, LONG( vMeaL ) - nS );\r\n                        nVal = CellGetN( cWC, vP, pSource, vEnt, vCC, vPC, vCurX, vPos, vMeaX );\r\n                        IF( nVal <> 0 ); CellPutN( nVal, cWC, vP, pTarget, vEnt, vCC, vPC, vCurX, vPos, vMeaX ); nCopied = nCopied + 1; ENDIF;\r\n                     END;\r\n                  END;\r\n               END;\r\n               vL = vHMs;\r\n               WHILE( SCAN( '|', vL ) > 1 );\r\n                  nS = SCAN( '|', vL ); vHM = SUBST( vL, 1, nS - 1 ); vL = SUBST( vL, nS + 1, LONG( vL ) - nS );\r\n                  nVal = CellGetN( cHC, vP, pSource, vEnt, vCC, vPos, vHM );\r\n                  IF( nVal <> 0 ); CellPutN( nVal, cHC, vP, pTarget, vEnt, vCC, vPos, vHM ); nCopied = nCopied + 1; ENDIF;\r\n               END;\r\n            ENDIF;\r\n            nI = nI + 1;\r\n         END;\r\n      ENDIF;\r\n      nJ = nJ + 1;\r\n   END;\r\n\r\n   ASCIIOUTPUT( 'WFP_Snapshot_ok.txt', 'Snapshot ' | pSource | ' -> ' | pTarget | ' : ' | NUMBERTOSTRING( nCopied ) | ' cells copied. ' | pTarget | ' is Static under Non-Calculating.' );\r\nENDIF;"
+      },
+      "dimension::WFP Cost Centre::0 elements, 0 edges": {
+        "elementCount": 15,
+        "edgeCount": 14
+      },
+      "dimension::WFP Currency::1 elements, 0 edges": {
+        "elementCount": 5,
+        "edgeCount": 0
+      },
+      "dimension::WFP Version::5 elements, 4 edges": {
+        "elementCount": 5,
+        "edgeCount": 1
+      },
+      "subset::Default::WFP Workforce Cost Measure": {
+        "elements": [
+          "Amount",
+          "Amount Capex",
+          "Amount Opex"
+        ]
+      },
+      "dimension::WFP Period::0 elements, 0 edges": {
+        "elementCount": 57,
+        "edgeCount": 54
+      },
+      "rules::WFP Workforce Input": {
+        "rules": "SKIPCHECK;\n\n# Phase 3.5 — encapsulated calculating versions.\n# Budget / Forecast / Downside each carry their OWN seeded input (FTE, Base\n# Salary, One-Time Amount) written by WFP Seed Workforce Input from that version's\n# own assumptions. The only cross-version read is prior-period Actual: for\n# Forecast and Downside, CLOSED months (Period Index <= that version's Actuals\n# Cutoff Index, read at the position's Home Entity) are overridden with the\n# Actual version. STET on the open side leaves the seeded input untouched.\n# Frozen snapshot versions (FCST YYYY-MM, Budget FINAL) have no rule here — their\n# input cells are written directly by WFP Snapshot Version.\n\n[] = N: IF(ELPAR('WFP Version', !WFP Version, 1) @= 'Non-Calculating', STET, CONTINUE);\n\n['Forecast'] = N:\n  IF( ATTRN('WFP Period', !WFP Period, 'Period Index')\n        <= DB('WFP Assumptions', !WFP Period, 'Forecast',\n               ATTRS('WFP Position', !WFP Position, 'Home Entity'), 'Actuals Cutoff Index'),\n      DB('WFP Workforce Input', !WFP Period, 'Actual', !WFP Position, !WFP Workforce Input Measure),\n      STET );\n\n['Downside'] = N:\n  IF( ATTRN('WFP Period', !WFP Period, 'Period Index')\n        <= DB('WFP Assumptions', !WFP Period, 'Downside',\n               ATTRS('WFP Position', !WFP Position, 'Home Entity'), 'Actuals Cutoff Index'),\n      DB('WFP Workforce Input', !WFP Period, 'Actual', !WFP Position, !WFP Workforce Input Measure),\n      STET );\n\nFEEDERS;\n\n# Every version whose FTE is a real cell (seeded Budget/Forecast/Downside/Actual,\n# or a snapshot copy) feeds its own Workforce Cost entry point + Headcount.\n['FTE'] => DB('WFP Workforce Cost', !WFP Period, !WFP Version,\n  ATTRS('WFP Position', !WFP Position, 'Home Entity'),\n  ATTRS('WFP Position', !WFP Position, 'Cost Centre'),\n  '_Monthly Base Full',\n  ATTRS('WFP Position', !WFP Position, 'Salary Currency'),\n  !WFP Position, 'Amount');\n['FTE'] => DB('WFP Headcount', !WFP Period, !WFP Version,\n  ATTRS('WFP Position', !WFP Position, 'Home Entity'),\n  ATTRS('WFP Position', !WFP Position, 'Cost Centre'),\n  !WFP Position, 'Headcount');\n\n# Closed-month Forecast / Downside resolve to Actual via the rule above, so\n# Actual's FTE also feeds those two versions' downstream cells.\n['Actual', 'FTE'] => DB('WFP Workforce Cost', !WFP Period, 'Forecast',\n  ATTRS('WFP Position', !WFP Position, 'Home Entity'),\n  ATTRS('WFP Position', !WFP Position, 'Cost Centre'),\n  '_Monthly Base Full',\n  ATTRS('WFP Position', !WFP Position, 'Salary Currency'),\n  !WFP Position, 'Amount');\n['Actual', 'FTE'] => DB('WFP Headcount', !WFP Period, 'Forecast',\n  ATTRS('WFP Position', !WFP Position, 'Home Entity'),\n  ATTRS('WFP Position', !WFP Position, 'Cost Centre'),\n  !WFP Position, 'Headcount');\n['Actual', 'FTE'] => DB('WFP Workforce Cost', !WFP Period, 'Downside',\n  ATTRS('WFP Position', !WFP Position, 'Home Entity'),\n  ATTRS('WFP Position', !WFP Position, 'Cost Centre'),\n  '_Monthly Base Full',\n  ATTRS('WFP Position', !WFP Position, 'Salary Currency'),\n  !WFP Position, 'Amount');\n['Actual', 'FTE'] => DB('WFP Headcount', !WFP Period, 'Downside',\n  ATTRS('WFP Position', !WFP Position, 'Home Entity'),\n  ATTRS('WFP Position', !WFP Position, 'Cost Centre'),\n  !WFP Position, 'Headcount');\n"
+      },
+      "rules::WFP Workforce Cost": {
+        "rules": "SKIPCHECK;\n\n# Non-calculating versions (Actual + snapshots) hold stored data — skip all calc.\n[] = N: IF(ELPAR('WFP Version', !WFP Version, 1) @= 'Non-Calculating', STET, CONTINUE);\n\n# ===== Capitalised labour (P5) — must precede the component + currency rules =====\n# Amount Capex / Amount Opex are a split of Amount by cost-centre Capex %.\n# Fire ONLY at all-leaf intersections; consolidations (incl. Reporting currency,\n# handled by the translation rule below) roll up naturally.\n['Amount Capex'] = N:\n  IF( ELLEV('WFP Period', !WFP Period) = 0 & ELLEV('WFP Entity', !WFP Entity) = 0 & ELLEV('WFP Cost Centre', !WFP Cost Centre) = 0 & ELLEV('WFP Pay Component', !WFP Pay Component) = 0 & ELLEV('WFP Position', !WFP Position) = 0,\n      IF( ELISANC('WFP Pay Component', 'Cost to Company', !WFP Pay Component) = 1,\n          ['Amount'] * ATTRN('WFP Cost Centre', !WFP Cost Centre, 'Capex %'), 0 ),\n      CONTINUE );\n\n['Amount Opex'] = N:\n  IF( ELLEV('WFP Period', !WFP Period) = 0 & ELLEV('WFP Entity', !WFP Entity) = 0 & ELLEV('WFP Cost Centre', !WFP Cost Centre) = 0 & ELLEV('WFP Pay Component', !WFP Pay Component) = 0 & ELLEV('WFP Position', !WFP Position) = 0,\n      ['Amount'] - ['Amount Capex'],\n      CONTINUE );\n\n# ===== Reporting-currency translation (measure-aware) =====\n# WFP Workforce Cost dims: Period, Version, Entity, Cost Centre, Pay Component, Currency, Position, Measure\n['Reporting'] = N:\n    DB('WFP Workforce Cost', !WFP Period, !WFP Version, !WFP Entity, !WFP Cost Centre, !WFP Pay Component, 'GBP', !WFP Position, !WFP Workforce Cost Measure) * DB('WFP FX Rates', !WFP Period, !WFP Version, 'GBP', 'Average', 'Rate')\n  + DB('WFP Workforce Cost', !WFP Period, !WFP Version, !WFP Entity, !WFP Cost Centre, !WFP Pay Component, 'USD', !WFP Position, !WFP Workforce Cost Measure) * DB('WFP FX Rates', !WFP Period, !WFP Version, 'USD', 'Average', 'Rate')\n  + DB('WFP Workforce Cost', !WFP Period, !WFP Version, !WFP Entity, !WFP Cost Centre, !WFP Pay Component, 'NZD', !WFP Position, !WFP Workforce Cost Measure) * DB('WFP FX Rates', !WFP Period, !WFP Version, 'NZD', 'Average', 'Rate');\n\n# ===== Constant currency (P5) =====\n# Same translation as Reporting, but every version is translated at BUDGET's average\n# rate — strips FX movement so Forecast/Downside are comparable to Budget.\n['Reporting @ Budget FX'] = N:\n    DB('WFP Workforce Cost', !WFP Period, !WFP Version, !WFP Entity, !WFP Cost Centre, !WFP Pay Component, 'GBP', !WFP Position, !WFP Workforce Cost Measure) * DB('WFP FX Rates', !WFP Period, 'Budget', 'GBP', 'Average', 'Rate')\n  + DB('WFP Workforce Cost', !WFP Period, !WFP Version, !WFP Entity, !WFP Cost Centre, !WFP Pay Component, 'USD', !WFP Position, !WFP Workforce Cost Measure) * DB('WFP FX Rates', !WFP Period, 'Budget', 'USD', 'Average', 'Rate')\n  + DB('WFP Workforce Cost', !WFP Period, !WFP Version, !WFP Entity, !WFP Cost Centre, !WFP Pay Component, 'NZD', !WFP Position, !WFP Workforce Cost Measure) * DB('WFP FX Rates', !WFP Period, 'Budget', 'NZD', 'Average', 'Rate');\n\n# ===== Helpers =====\n# Phase 4: active window is version-aware — WFP Hiring Plan Hire/Attrition Month\n# for the version, else Start/End Period attrs. TBH with no plan hire = never active.\n['_Start Index'] = N:\n  IF( DB('WFP Hiring Plan', !WFP Version, !WFP Position, 'Hire Month') > 0,\n      DB('WFP Hiring Plan', !WFP Version, !WFP Position, 'Hire Month'),\n      IF( ATTRS('WFP Position', !WFP Position, 'Position Status') @= 'TBH', 9999,\n          ATTRN('WFP Period', ATTRS('WFP Position', !WFP Position, 'Start Period'), 'Period Index') ) );\n\n['_End Index'] = N:\n  IF( DB('WFP Hiring Plan', !WFP Version, !WFP Position, 'Attrition Month') > 0,\n      DB('WFP Hiring Plan', !WFP Version, !WFP Position, 'Attrition Month') - 1,\n      IF( ATTRS('WFP Position', !WFP Position, 'End Period') @= '', 999,\n          ATTRN('WFP Period', ATTRS('WFP Position', !WFP Position, 'End Period'), 'Period Index') ) );\n\n['_In Window'] = N: IF(ATTRN('WFP Period', !WFP Period, 'Period Index') >= ['_Start Index'] & ATTRN('WFP Period', !WFP Period, 'Period Index') <= ['_End Index'], 1, 0);\n\n['_Start Frac'] = N:\n  IF(ATTRN('WFP Period', !WFP Period, 'Period Index') = ['_Start Index'],\n     IF( DB('WFP Hiring Plan', !WFP Version, !WFP Position, 'Hire Month') > 0, 1,\n         (ATTRN('WFP Period', !WFP Period, 'Days In Month') - ATTRN('WFP Position', !WFP Position, 'Start Day') + 1) / ATTRN('WFP Period', !WFP Period, 'Days In Month') ), 1);\n\n['_End Frac'] = N:\n  IF( DB('WFP Hiring Plan', !WFP Version, !WFP Position, 'Attrition Month') > 0\n      & ATTRN('WFP Period', !WFP Period, 'Period Index') = ['_End Index'], 1,\n  IF(ATTRS('WFP Position', !WFP Position, 'End Period') @<> '' & ATTRN('WFP Period', !WFP Period, 'Period Index') = ['_End Index'],\n     ATTRN('WFP Position', !WFP Position, 'End Day') / ATTRN('WFP Period', !WFP Period, 'Days In Month'), 1) );\n\n['_Active Fraction'] = N: ['_In Window'] * ['_Start Frac'] * ['_End Frac'];\n\n['_Annual Salary'] = N:\n  IF(ATTRS('WFP Position', !WFP Position, 'Position Status') @= 'Filled' & DB('WFP Workforce Input', !WFP Period, !WFP Version, !WFP Position, 'Base Salary') > 0,\n     DB('WFP Workforce Input', !WFP Period, !WFP Version, !WFP Position, 'Base Salary'),\n     DB('WFP Pay Rates', !WFP Period, !WFP Version, ATTRS('WFP Position', !WFP Position, 'Grade'), ATTRS('WFP Position', !WFP Position, 'Job Family'), ATTRS('WFP Position', !WFP Position, 'Location'), 'Salary Mid'));\n\n['_Monthly Base Full'] = N:\n  IF(!WFP Currency @= ATTRS('WFP Position', !WFP Position, 'Salary Currency') & !WFP Entity @= ATTRS('WFP Position', !WFP Position, 'Home Entity') & !WFP Cost Centre @= ATTRS('WFP Position', !WFP Position, 'Cost Centre'),\n     ['_Annual Salary'] / 12 * DB('WFP Workforce Input', !WFP Period, !WFP Version, !WFP Position, 'FTE'), 0);\n\n['_Earnings YTD'] = N:\n  ['Base']\n  + IF(SUBST(!WFP Period, 6, 2) @= '01', 0, DB('WFP Workforce Cost', ATTRS('WFP Period', !WFP Period, 'Prior Period'), !WFP Version, !WFP Entity, !WFP Cost Centre, '_Earnings YTD', !WFP Currency, !WFP Position, 'Amount'));\n\n['_Employer Tax YTD'] = N:\n  MAX(0, MIN(['_Earnings YTD'], DB('WFP Tax Bands', ATTRS('WFP Position', !WFP Position, 'Tax Jurisdiction'), 'Employer Payroll Tax', 'Band 1', 'Threshold To')) - DB('WFP Tax Bands', ATTRS('WFP Position', !WFP Position, 'Tax Jurisdiction'), 'Employer Payroll Tax', 'Band 1', 'Threshold From')) * DB('WFP Tax Bands', ATTRS('WFP Position', !WFP Position, 'Tax Jurisdiction'), 'Employer Payroll Tax', 'Band 1', 'Rate')\n  +\n  MAX(0, MIN(['_Earnings YTD'], DB('WFP Tax Bands', ATTRS('WFP Position', !WFP Position, 'Tax Jurisdiction'), 'Employer Payroll Tax', 'Band 2', 'Threshold To')) - DB('WFP Tax Bands', ATTRS('WFP Position', !WFP Position, 'Tax Jurisdiction'), 'Employer Payroll Tax', 'Band 2', 'Threshold From')) * DB('WFP Tax Bands', ATTRS('WFP Position', !WFP Position, 'Tax Jurisdiction'), 'Employer Payroll Tax', 'Band 2', 'Rate')\n  +\n  MAX(0, MIN(['_Earnings YTD'], DB('WFP Tax Bands', ATTRS('WFP Position', !WFP Position, 'Tax Jurisdiction'), 'Employer Payroll Tax', 'Band 3', 'Threshold To')) - DB('WFP Tax Bands', ATTRS('WFP Position', !WFP Position, 'Tax Jurisdiction'), 'Employer Payroll Tax', 'Band 3', 'Threshold From')) * DB('WFP Tax Bands', ATTRS('WFP Position', !WFP Position, 'Tax Jurisdiction'), 'Employer Payroll Tax', 'Band 3', 'Rate')\n  +\n  MAX(0, MIN(['_Earnings YTD'], DB('WFP Tax Bands', ATTRS('WFP Position', !WFP Position, 'Tax Jurisdiction'), 'Employer Payroll Tax', 'Band 4', 'Threshold To')) - DB('WFP Tax Bands', ATTRS('WFP Position', !WFP Position, 'Tax Jurisdiction'), 'Employer Payroll Tax', 'Band 4', 'Threshold From')) * DB('WFP Tax Bands', ATTRS('WFP Position', !WFP Position, 'Tax Jurisdiction'), 'Employer Payroll Tax', 'Band 4', 'Rate')\n  +\n  MAX(0, MIN(['_Earnings YTD'], DB('WFP Tax Bands', ATTRS('WFP Position', !WFP Position, 'Tax Jurisdiction'), 'Employer Payroll Tax', 'Band 5', 'Threshold To')) - DB('WFP Tax Bands', ATTRS('WFP Position', !WFP Position, 'Tax Jurisdiction'), 'Employer Payroll Tax', 'Band 5', 'Threshold From')) * DB('WFP Tax Bands', ATTRS('WFP Position', !WFP Position, 'Tax Jurisdiction'), 'Employer Payroll Tax', 'Band 5', 'Rate')\n  +\n  MAX(0, MIN(['_Earnings YTD'], DB('WFP Tax Bands', ATTRS('WFP Position', !WFP Position, 'Tax Jurisdiction'), 'Employer Payroll Tax', 'Band 6', 'Threshold To')) - DB('WFP Tax Bands', ATTRS('WFP Position', !WFP Position, 'Tax Jurisdiction'), 'Employer Payroll Tax', 'Band 6', 'Threshold From')) * DB('WFP Tax Bands', ATTRS('WFP Position', !WFP Position, 'Tax Jurisdiction'), 'Employer Payroll Tax', 'Band 6', 'Rate')\n  +\n  MAX(0, MIN(['_Earnings YTD'], DB('WFP Tax Bands', ATTRS('WFP Position', !WFP Position, 'Tax Jurisdiction'), 'Employer Payroll Tax', 'Band 7', 'Threshold To')) - DB('WFP Tax Bands', ATTRS('WFP Position', !WFP Position, 'Tax Jurisdiction'), 'Employer Payroll Tax', 'Band 7', 'Threshold From')) * DB('WFP Tax Bands', ATTRS('WFP Position', !WFP Position, 'Tax Jurisdiction'), 'Employer Payroll Tax', 'Band 7', 'Rate');\n\n['_Prior Employer Tax YTD'] = N: IF(SUBST(!WFP Period, 6, 2) @= '01', 0, DB('WFP Workforce Cost', ATTRS('WFP Period', !WFP Period, 'Prior Period'), !WFP Version, !WFP Entity, !WFP Cost Centre, '_Employer Tax YTD', !WFP Currency, !WFP Position, 'Amount'));\n\n['_Employee Tax YTD'] = N:\n  MAX(0, MIN(['_Earnings YTD'], DB('WFP Tax Bands', ATTRS('WFP Position', !WFP Position, 'Tax Jurisdiction'), 'Employee Income Tax', 'Band 1', 'Threshold To')) - DB('WFP Tax Bands', ATTRS('WFP Position', !WFP Position, 'Tax Jurisdiction'), 'Employee Income Tax', 'Band 1', 'Threshold From')) * DB('WFP Tax Bands', ATTRS('WFP Position', !WFP Position, 'Tax Jurisdiction'), 'Employee Income Tax', 'Band 1', 'Rate')\n  +\n  MAX(0, MIN(['_Earnings YTD'], DB('WFP Tax Bands', ATTRS('WFP Position', !WFP Position, 'Tax Jurisdiction'), 'Employee Income Tax', 'Band 2', 'Threshold To')) - DB('WFP Tax Bands', ATTRS('WFP Position', !WFP Position, 'Tax Jurisdiction'), 'Employee Income Tax', 'Band 2', 'Threshold From')) * DB('WFP Tax Bands', ATTRS('WFP Position', !WFP Position, 'Tax Jurisdiction'), 'Employee Income Tax', 'Band 2', 'Rate')\n  +\n  MAX(0, MIN(['_Earnings YTD'], DB('WFP Tax Bands', ATTRS('WFP Position', !WFP Position, 'Tax Jurisdiction'), 'Employee Income Tax', 'Band 3', 'Threshold To')) - DB('WFP Tax Bands', ATTRS('WFP Position', !WFP Position, 'Tax Jurisdiction'), 'Employee Income Tax', 'Band 3', 'Threshold From')) * DB('WFP Tax Bands', ATTRS('WFP Position', !WFP Position, 'Tax Jurisdiction'), 'Employee Income Tax', 'Band 3', 'Rate')\n  +\n  MAX(0, MIN(['_Earnings YTD'], DB('WFP Tax Bands', ATTRS('WFP Position', !WFP Position, 'Tax Jurisdiction'), 'Employee Income Tax', 'Band 4', 'Threshold To')) - DB('WFP Tax Bands', ATTRS('WFP Position', !WFP Position, 'Tax Jurisdiction'), 'Employee Income Tax', 'Band 4', 'Threshold From')) * DB('WFP Tax Bands', ATTRS('WFP Position', !WFP Position, 'Tax Jurisdiction'), 'Employee Income Tax', 'Band 4', 'Rate')\n  +\n  MAX(0, MIN(['_Earnings YTD'], DB('WFP Tax Bands', ATTRS('WFP Position', !WFP Position, 'Tax Jurisdiction'), 'Employee Income Tax', 'Band 5', 'Threshold To')) - DB('WFP Tax Bands', ATTRS('WFP Position', !WFP Position, 'Tax Jurisdiction'), 'Employee Income Tax', 'Band 5', 'Threshold From')) * DB('WFP Tax Bands', ATTRS('WFP Position', !WFP Position, 'Tax Jurisdiction'), 'Employee Income Tax', 'Band 5', 'Rate')\n  +\n  MAX(0, MIN(['_Earnings YTD'], DB('WFP Tax Bands', ATTRS('WFP Position', !WFP Position, 'Tax Jurisdiction'), 'Employee Income Tax', 'Band 6', 'Threshold To')) - DB('WFP Tax Bands', ATTRS('WFP Position', !WFP Position, 'Tax Jurisdiction'), 'Employee Income Tax', 'Band 6', 'Threshold From')) * DB('WFP Tax Bands', ATTRS('WFP Position', !WFP Position, 'Tax Jurisdiction'), 'Employee Income Tax', 'Band 6', 'Rate')\n  +\n  MAX(0, MIN(['_Earnings YTD'], DB('WFP Tax Bands', ATTRS('WFP Position', !WFP Position, 'Tax Jurisdiction'), 'Employee Income Tax', 'Band 7', 'Threshold To')) - DB('WFP Tax Bands', ATTRS('WFP Position', !WFP Position, 'Tax Jurisdiction'), 'Employee Income Tax', 'Band 7', 'Threshold From')) * DB('WFP Tax Bands', ATTRS('WFP Position', !WFP Position, 'Tax Jurisdiction'), 'Employee Income Tax', 'Band 7', 'Rate');\n\n['_Prior Employee Tax YTD'] = N: IF(SUBST(!WFP Period, 6, 2) @= '01', 0, DB('WFP Workforce Cost', ATTRS('WFP Period', !WFP Period, 'Prior Period'), !WFP Version, !WFP Entity, !WFP Cost Centre, '_Employee Tax YTD', !WFP Currency, !WFP Position, 'Amount'));\n\n# ===== Components (local currency) =====\n['Base'] = N: ['_Monthly Base Full'] * ['_Active Fraction'];\n\n['Gross Pay'] = N: ['Base'];\n\n['Employer Payroll Tax'] = N: IF(ATTRS('WFP Position', !WFP Position, 'Employment Type') @= 'Contractor', 0, ['_Employer Tax YTD'] - ['_Prior Employer Tax YTD']);\n\n['Employer Pension'] = N: IF(ATTRS('WFP Position', !WFP Position, 'Employment Type') @= 'Contractor', 0, ['Base'] * DB('WFP Pay Rates', !WFP Period, !WFP Version, ATTRS('WFP Position', !WFP Position, 'Grade'), ATTRS('WFP Position', !WFP Position, 'Job Family'), ATTRS('WFP Position', !WFP Position, 'Location'), 'Pension Pct'));\n\n['Employee Income Tax'] = N: IF(ATTRS('WFP Position', !WFP Position, 'Employment Type') @= 'Contractor', 0, ['_Employee Tax YTD'] - ['_Prior Employee Tax YTD']);\n\n['Employee Pension'] = N: IF(ATTRS('WFP Position', !WFP Position, 'Employment Type') @= 'Contractor', 0, ['Base'] * DB('WFP Pay Rates', !WFP Period, !WFP Version, ATTRS('WFP Position', !WFP Position, 'Grade'), ATTRS('WFP Position', !WFP Position, 'Job Family'), ATTRS('WFP Position', !WFP Position, 'Location'), 'Employee Pension Pct'));\n\n['Benefits'] = N:\n  IF(['_Monthly Base Full'] = 0, 0,\n  IF(ATTRS('WFP Position', !WFP Position, 'Employment Type') @= 'Contractor', 0,\n     DB('WFP Pay Rates', !WFP Period, !WFP Version, ATTRS('WFP Position', !WFP Position, 'Grade'), ATTRS('WFP Position', !WFP Position, 'Job Family'), ATTRS('WFP Position', !WFP Position, 'Location'), 'Benefits Annual') / 12 * DB('WFP Workforce Input', !WFP Period, !WFP Version, !WFP Position, 'FTE') * ['_Active Fraction']));\n\n['Bonus'] = N:\n  IF(ATTRS('WFP Position', !WFP Position, 'Employment Type') @= 'Contractor', 0,\n     ['Base'] * DB('WFP Assumptions', !WFP Period, !WFP Version, !WFP Entity, 'Bonus Pool %'));\n\n['One-Time'] = N:\n  IF(!WFP Currency @= ATTRS('WFP Position', !WFP Position, 'Salary Currency')\n     & !WFP Entity @= ATTRS('WFP Position', !WFP Position, 'Home Entity')\n     & !WFP Cost Centre @= ATTRS('WFP Position', !WFP Position, 'Cost Centre'),\n     DB('WFP Workforce Input', !WFP Period, !WFP Version, !WFP Position, 'One-Time Amount'), 0);\n\n['Net Pay'] = N: ['Gross Pay'] - ['Employee Deductions'];\n\nFEEDERS;\n\n['_Monthly Base Full'] => ['Base'], ['Gross Pay'], ['Employer Payroll Tax'], ['Employer Pension'], ['Benefits'], ['Bonus'], ['One-Time'],\n  ['Employee Income Tax'], ['Employee Pension'], ['Net Pay'],\n  ['_Earnings YTD'], ['_Employer Tax YTD'], ['_Prior Employer Tax YTD'], ['_Employee Tax YTD'], ['_Prior Employee Tax YTD'];\n\n['_Monthly Base Full'] =>\n  DB('WFP Workforce Cost', !WFP Period, !WFP Version, !WFP Entity, !WFP Cost Centre, 'Base', 'Reporting', !WFP Position, 'Amount'),\n  DB('WFP Workforce Cost', !WFP Period, !WFP Version, !WFP Entity, !WFP Cost Centre, 'Gross Pay', 'Reporting', !WFP Position, 'Amount'),\n  DB('WFP Workforce Cost', !WFP Period, !WFP Version, !WFP Entity, !WFP Cost Centre, 'Employer Payroll Tax', 'Reporting', !WFP Position, 'Amount'),\n  DB('WFP Workforce Cost', !WFP Period, !WFP Version, !WFP Entity, !WFP Cost Centre, 'Employer Pension', 'Reporting', !WFP Position, 'Amount'),\n  DB('WFP Workforce Cost', !WFP Period, !WFP Version, !WFP Entity, !WFP Cost Centre, 'Benefits', 'Reporting', !WFP Position, 'Amount'),\n  DB('WFP Workforce Cost', !WFP Period, !WFP Version, !WFP Entity, !WFP Cost Centre, 'Bonus', 'Reporting', !WFP Position, 'Amount'),\n  DB('WFP Workforce Cost', !WFP Period, !WFP Version, !WFP Entity, !WFP Cost Centre, 'One-Time', 'Reporting', !WFP Position, 'Amount'),\n  DB('WFP Workforce Cost', !WFP Period, !WFP Version, !WFP Entity, !WFP Cost Centre, 'Employee Income Tax', 'Reporting', !WFP Position, 'Amount'),\n  DB('WFP Workforce Cost', !WFP Period, !WFP Version, !WFP Entity, !WFP Cost Centre, 'Employee Pension', 'Reporting', !WFP Position, 'Amount'),\n  DB('WFP Workforce Cost', !WFP Period, !WFP Version, !WFP Entity, !WFP Cost Centre, 'Net Pay', 'Reporting', !WFP Position, 'Amount');\n\n# P5: constant-currency Amount feeders — mirror the Reporting block\n['_Monthly Base Full'] =>\n  DB('WFP Workforce Cost', !WFP Period, !WFP Version, !WFP Entity, !WFP Cost Centre, 'Base', 'Reporting @ Budget FX', !WFP Position, 'Amount'),\n  DB('WFP Workforce Cost', !WFP Period, !WFP Version, !WFP Entity, !WFP Cost Centre, 'Gross Pay', 'Reporting @ Budget FX', !WFP Position, 'Amount'),\n  DB('WFP Workforce Cost', !WFP Period, !WFP Version, !WFP Entity, !WFP Cost Centre, 'Employer Payroll Tax', 'Reporting @ Budget FX', !WFP Position, 'Amount'),\n  DB('WFP Workforce Cost', !WFP Period, !WFP Version, !WFP Entity, !WFP Cost Centre, 'Employer Pension', 'Reporting @ Budget FX', !WFP Position, 'Amount'),\n  DB('WFP Workforce Cost', !WFP Period, !WFP Version, !WFP Entity, !WFP Cost Centre, 'Benefits', 'Reporting @ Budget FX', !WFP Position, 'Amount'),\n  DB('WFP Workforce Cost', !WFP Period, !WFP Version, !WFP Entity, !WFP Cost Centre, 'Bonus', 'Reporting @ Budget FX', !WFP Position, 'Amount'),\n  DB('WFP Workforce Cost', !WFP Period, !WFP Version, !WFP Entity, !WFP Cost Centre, 'One-Time', 'Reporting @ Budget FX', !WFP Position, 'Amount'),\n  DB('WFP Workforce Cost', !WFP Period, !WFP Version, !WFP Entity, !WFP Cost Centre, 'Employee Income Tax', 'Reporting @ Budget FX', !WFP Position, 'Amount'),\n  DB('WFP Workforce Cost', !WFP Period, !WFP Version, !WFP Entity, !WFP Cost Centre, 'Employee Pension', 'Reporting @ Budget FX', !WFP Position, 'Amount'),\n  DB('WFP Workforce Cost', !WFP Period, !WFP Version, !WFP Entity, !WFP Cost Centre, 'Net Pay', 'Reporting @ Budget FX', !WFP Position, 'Amount');\n\n# P5: capex / opex split feeders — company-cost leaves x {local, Reporting, Budget FX}\n['_Monthly Base Full'] =>\n  DB('WFP Workforce Cost', !WFP Period, !WFP Version, !WFP Entity, !WFP Cost Centre, 'Base', !WFP Currency, !WFP Position, 'Amount Capex'),\n  DB('WFP Workforce Cost', !WFP Period, !WFP Version, !WFP Entity, !WFP Cost Centre, 'Base', !WFP Currency, !WFP Position, 'Amount Opex'),\n  DB('WFP Workforce Cost', !WFP Period, !WFP Version, !WFP Entity, !WFP Cost Centre, 'Employer Payroll Tax', !WFP Currency, !WFP Position, 'Amount Capex'),\n  DB('WFP Workforce Cost', !WFP Period, !WFP Version, !WFP Entity, !WFP Cost Centre, 'Employer Payroll Tax', !WFP Currency, !WFP Position, 'Amount Opex'),\n  DB('WFP Workforce Cost', !WFP Period, !WFP Version, !WFP Entity, !WFP Cost Centre, 'Employer Pension', !WFP Currency, !WFP Position, 'Amount Capex'),\n  DB('WFP Workforce Cost', !WFP Period, !WFP Version, !WFP Entity, !WFP Cost Centre, 'Employer Pension', !WFP Currency, !WFP Position, 'Amount Opex'),\n  DB('WFP Workforce Cost', !WFP Period, !WFP Version, !WFP Entity, !WFP Cost Centre, 'Benefits', !WFP Currency, !WFP Position, 'Amount Capex'),\n  DB('WFP Workforce Cost', !WFP Period, !WFP Version, !WFP Entity, !WFP Cost Centre, 'Benefits', !WFP Currency, !WFP Position, 'Amount Opex'),\n  DB('WFP Workforce Cost', !WFP Period, !WFP Version, !WFP Entity, !WFP Cost Centre, 'Bonus', !WFP Currency, !WFP Position, 'Amount Opex'),\n  DB('WFP Workforce Cost', !WFP Period, !WFP Version, !WFP Entity, !WFP Cost Centre, 'One-Time', !WFP Currency, !WFP Position, 'Amount Opex');\n\n['_Monthly Base Full'] =>\n  DB('WFP Workforce Cost', !WFP Period, !WFP Version, !WFP Entity, !WFP Cost Centre, 'Base', 'Reporting', !WFP Position, 'Amount Capex'),\n  DB('WFP Workforce Cost', !WFP Period, !WFP Version, !WFP Entity, !WFP Cost Centre, 'Base', 'Reporting', !WFP Position, 'Amount Opex'),\n  DB('WFP Workforce Cost', !WFP Period, !WFP Version, !WFP Entity, !WFP Cost Centre, 'Employer Payroll Tax', 'Reporting', !WFP Position, 'Amount Capex'),\n  DB('WFP Workforce Cost', !WFP Period, !WFP Version, !WFP Entity, !WFP Cost Centre, 'Employer Payroll Tax', 'Reporting', !WFP Position, 'Amount Opex'),\n  DB('WFP Workforce Cost', !WFP Period, !WFP Version, !WFP Entity, !WFP Cost Centre, 'Employer Pension', 'Reporting', !WFP Position, 'Amount Capex'),\n  DB('WFP Workforce Cost', !WFP Period, !WFP Version, !WFP Entity, !WFP Cost Centre, 'Employer Pension', 'Reporting', !WFP Position, 'Amount Opex'),\n  DB('WFP Workforce Cost', !WFP Period, !WFP Version, !WFP Entity, !WFP Cost Centre, 'Benefits', 'Reporting', !WFP Position, 'Amount Capex'),\n  DB('WFP Workforce Cost', !WFP Period, !WFP Version, !WFP Entity, !WFP Cost Centre, 'Benefits', 'Reporting', !WFP Position, 'Amount Opex'),\n  DB('WFP Workforce Cost', !WFP Period, !WFP Version, !WFP Entity, !WFP Cost Centre, 'Bonus', 'Reporting', !WFP Position, 'Amount Opex'),\n  DB('WFP Workforce Cost', !WFP Period, !WFP Version, !WFP Entity, !WFP Cost Centre, 'One-Time', 'Reporting', !WFP Position, 'Amount Opex');\n\n['_Monthly Base Full'] =>\n  DB('WFP Workforce Cost', !WFP Period, !WFP Version, !WFP Entity, !WFP Cost Centre, 'Base', 'Reporting @ Budget FX', !WFP Position, 'Amount Capex'),\n  DB('WFP Workforce Cost', !WFP Period, !WFP Version, !WFP Entity, !WFP Cost Centre, 'Base', 'Reporting @ Budget FX', !WFP Position, 'Amount Opex'),\n  DB('WFP Workforce Cost', !WFP Period, !WFP Version, !WFP Entity, !WFP Cost Centre, 'Employer Payroll Tax', 'Reporting @ Budget FX', !WFP Position, 'Amount Capex'),\n  DB('WFP Workforce Cost', !WFP Period, !WFP Version, !WFP Entity, !WFP Cost Centre, 'Employer Payroll Tax', 'Reporting @ Budget FX', !WFP Position, 'Amount Opex'),\n  DB('WFP Workforce Cost', !WFP Period, !WFP Version, !WFP Entity, !WFP Cost Centre, 'Employer Pension', 'Reporting @ Budget FX', !WFP Position, 'Amount Capex'),\n  DB('WFP Workforce Cost', !WFP Period, !WFP Version, !WFP Entity, !WFP Cost Centre, 'Employer Pension', 'Reporting @ Budget FX', !WFP Position, 'Amount Opex'),\n  DB('WFP Workforce Cost', !WFP Period, !WFP Version, !WFP Entity, !WFP Cost Centre, 'Benefits', 'Reporting @ Budget FX', !WFP Position, 'Amount Capex'),\n  DB('WFP Workforce Cost', !WFP Period, !WFP Version, !WFP Entity, !WFP Cost Centre, 'Benefits', 'Reporting @ Budget FX', !WFP Position, 'Amount Opex'),\n  DB('WFP Workforce Cost', !WFP Period, !WFP Version, !WFP Entity, !WFP Cost Centre, 'Bonus', 'Reporting @ Budget FX', !WFP Position, 'Amount Opex'),\n  DB('WFP Workforce Cost', !WFP Period, !WFP Version, !WFP Entity, !WFP Cost Centre, 'One-Time', 'Reporting @ Budget FX', !WFP Position, 'Amount Opex');"
+      },
+      "process::WFP Seed Dimension Attributes": {
+        "PrologProcedure": "#Region WFP Seed Dimension Attributes\r\n# Sets attribute VALUES that were built declaratively and do not survive a deploy.\r\n# Idempotent.\r\n\r\n# --- WFP Period: Period Index, Days In Month, Prior Period, Next Period, FY ---\r\ncPer   = 'WFP Period';\r\nnCount = DIMSIZ( cPer );\r\nnIdx   = 0;\r\nvPrev  = '';\r\nnE = 1;\r\nWHILE( nE <= nCount );\r\n   vPer = DIMNM( cPer, nE );\r\n   IF( DTYPE( cPer, vPer ) @= 'N' & LONG( vPer ) = 7 & SUBST( vPer, 5, 1 ) @= '-' );\r\n      nIdx = nIdx + 1;\r\n      nMon = NUMBR( SUBST( vPer, 6, 2 ) );\r\n      nDays = 31;\r\n      IF( nMon = 2 ); nDays = 28; ENDIF;\r\n      IF( nMon = 4 % nMon = 6 % nMon = 9 % nMon = 11 ); nDays = 30; ENDIF;\r\n      AttrPutN( nIdx,  cPer, vPer, 'Period Index' );\r\n      AttrPutN( nDays, cPer, vPer, 'Days In Month' );\r\n      AttrPutS( vPrev, cPer, vPer, 'Prior Period' );\r\n      AttrPutS( 'FY' | SUBST( vPer, 1, 4 ), cPer, vPer, 'FY' );\r\n      IF( vPrev @<> '' );\r\n         AttrPutS( vPer, cPer, vPrev, 'Next Period' );\r\n      ENDIF;\r\n      vPrev = vPer;\r\n   ENDIF;\r\n   nE = nE + 1;\r\nEND;\r\n# last period: Next Period points to itself (keeps the forward feeder valid)\r\nIF( vPrev @<> '' );\r\n   AttrPutS( vPrev, cPer, vPrev, 'Next Period' );\r\nENDIF;\r\n\r\n# --- WFP Job Family: Pay Index ---\r\nvJF = 'Engineering;1.1~Product;1.08~Sales;1.05~Marketing;1~Customer Success;0.98~Finance;1~People;0.98~IT;1~Admin;0.92~Leadership;1.15~';\r\nWHILE( SCAN( '~', vJF ) > 1 );\r\n   nS = SCAN( '~', vJF ); vRec = SUBST( vJF, 1, nS - 1 ) | ';'; vJF = SUBST( vJF, nS + 1, LONG( vJF ) - nS );\r\n   nS = SCAN( ';', vRec ); vFam = SUBST( vRec, 1, nS - 1 ); vRec = SUBST( vRec, nS + 1, LONG( vRec ) - nS );\r\n   nS = SCAN( ';', vRec ); nPi  = NUMBR( SUBST( vRec, 1, nS - 1 ) );\r\n   IF( DIMIX( 'WFP Job Family', vFam ) > 0 );\r\n      AttrPutN( nPi, 'WFP Job Family', vFam, 'Pay Index' );\r\n   ENDIF;\r\nEND;\r\n\r\n# --- WFP Entity: Local Currency, Primary Location, Reporting Currency ---\r\nvEn = 'Group;;;GBP~UK Ltd;GBP;London;GBP~US Inc;USD;New York;GBP~NZ Ltd;NZD;Auckland;GBP~';\r\nWHILE( SCAN( '~', vEn ) > 1 );\r\n   nS = SCAN( '~', vEn ); vRec = SUBST( vEn, 1, nS - 1 ) | ';'; vEn = SUBST( vEn, nS + 1, LONG( vEn ) - nS );\r\n   nS = SCAN( ';', vRec ); vEnt = SUBST( vRec, 1, nS - 1 ); vRec = SUBST( vRec, nS + 1, LONG( vRec ) - nS );\r\n   nS = SCAN( ';', vRec ); vLC  = SUBST( vRec, 1, nS - 1 ); vRec = SUBST( vRec, nS + 1, LONG( vRec ) - nS );\r\n   nS = SCAN( ';', vRec ); vPL  = SUBST( vRec, 1, nS - 1 ); vRec = SUBST( vRec, nS + 1, LONG( vRec ) - nS );\r\n   nS = SCAN( ';', vRec ); vRC  = SUBST( vRec, 1, nS - 1 );\r\n   IF( DIMIX( 'WFP Entity', vEnt ) > 0 );\r\n      IF( vLC @<> '' ); AttrPutS( vLC, 'WFP Entity', vEnt, 'Local Currency' ); ENDIF;\r\n      IF( vPL @<> '' ); AttrPutS( vPL, 'WFP Entity', vEnt, 'Primary Location' ); ENDIF;\r\n      AttrPutS( vRC, 'WFP Entity', vEnt, 'Reporting Currency' );\r\n   ENDIF;\r\nEND;\r\n\r\n# --- WFP Version: Version Type (Calculated | Static), Description ---\r\nvVr = 'Actual;Static;Actuals - non-calculating; populated by the payroll load (Phase 7)~Budget;Calculated;Approved plan being built~Forecast;Calculated;Working current model - closed months = Actual, open months own assumptions~Downside;Calculated;Self-contained downside (cost-pressure) scenario~';\r\nWHILE( SCAN( '~', vVr ) > 1 );\r\n   nS = SCAN( '~', vVr ); vRec = SUBST( vVr, 1, nS - 1 ) | ';'; vVr = SUBST( vVr, nS + 1, LONG( vVr ) - nS );\r\n   nS = SCAN( ';', vRec ); vVer = SUBST( vRec, 1, nS - 1 ); vRec = SUBST( vRec, nS + 1, LONG( vRec ) - nS );\r\n   nS = SCAN( ';', vRec ); vTyp = SUBST( vRec, 1, nS - 1 ); vRec = SUBST( vRec, nS + 1, LONG( vRec ) - nS );\r\n   nS = SCAN( ';', vRec ); vDsc = SUBST( vRec, 1, nS - 1 );\r\n   IF( DIMIX( 'WFP Version', vVer ) > 0 );\r\n      AttrPutS( vTyp, 'WFP Version', vVer, 'Version Type' );\r\n      AttrPutS( vDsc, 'WFP Version', vVer, 'Description' );\r\n   ENDIF;\r\nEND;\r\n\r\n# --- WFP Cost Centre: Function, CC Name ---\r\nvCC = 'CC-ENG-PLT;R&D;Engineering - Platform~CC-ENG-APP;R&D;Engineering - Application~CC-PROD;R&D;Product Management~CC-SALES;S&M;Sales~CC-SALESOPS;S&M;Sales Operations~CC-MKT;S&M;Marketing~CC-CS;S&M;Customer Success~CC-FIN;G&A;Finance~CC-PPL;G&A;People & HR~CC-ITOPS;G&A;IT & Operations~CC-EXEC;G&A;Executive~';\r\nWHILE( SCAN( '~', vCC ) > 1 );\r\n   nS = SCAN( '~', vCC ); vRec = SUBST( vCC, 1, nS - 1 ) | ';'; vCC = SUBST( vCC, nS + 1, LONG( vCC ) - nS );\r\n   nS = SCAN( ';', vRec ); vCtr = SUBST( vRec, 1, nS - 1 ); vRec = SUBST( vRec, nS + 1, LONG( vRec ) - nS );\r\n   nS = SCAN( ';', vRec ); vFun = SUBST( vRec, 1, nS - 1 ); vRec = SUBST( vRec, nS + 1, LONG( vRec ) - nS );\r\n   nS = SCAN( ';', vRec ); vNam = SUBST( vRec, 1, nS - 1 );\r\n   IF( DIMIX( 'WFP Cost Centre', vCtr ) > 0 );\r\n      AttrPutS( vFun, 'WFP Cost Centre', vCtr, 'Function' );\r\n      AttrPutS( vNam, 'WFP Cost Centre', vCtr, 'CC Name' );\r\n   ENDIF;\r\nEND;\r\n\r\n# --- WFP Pay Component: GL Account (P5 - P&L / GL mapping) ---\r\n# Leaf pay components -> GL account code. GL rollup nodes carry the code too.\r\nvPC = 'Base;6000~One-Time;6010~Bonus;6100~Employer Payroll Tax;6200~Employer Pension;6300~Benefits;6400~Employee Income Tax;7100~Employee Pension;7200~';\r\nWHILE( SCAN( '~', vPC ) > 1 );\r\n   nS = SCAN( '~', vPC ); vRec = SUBST( vPC, 1, nS - 1 ) | ';'; vPC = SUBST( vPC, nS + 1, LONG( vPC ) - nS );\r\n   nS = SCAN( ';', vRec ); vEl  = SUBST( vRec, 1, nS - 1 ); vRec = SUBST( vRec, nS + 1, LONG( vRec ) - nS );\r\n   nS = SCAN( ';', vRec ); vGL  = SUBST( vRec, 1, nS - 1 );\r\n   IF( DIMIX( 'WFP Pay Component', vEl ) > 0 );\r\n      AttrPutS( vGL, 'WFP Pay Component', vEl, 'GL Account' );\r\n   ENDIF;\r\nEND;\r\nIF( DIMIX( 'WFP Pay Component', 'GL: Salaries & Wages' ) > 0 );\r\n   AttrPutS( '6000', 'WFP Pay Component', 'GL: Salaries & Wages', 'GL Account' );\r\n   AttrPutS( '6100', 'WFP Pay Component', 'GL: Bonus & Incentives', 'GL Account' );\r\n   AttrPutS( '6200', 'WFP Pay Component', 'GL: Employer Payroll Taxes', 'GL Account' );\r\n   AttrPutS( '6300', 'WFP Pay Component', 'GL: Employer Pension', 'GL Account' );\r\n   AttrPutS( '6400', 'WFP Pay Component', 'GL: Benefits', 'GL Account' );\r\nENDIF;\r\n\r\n# --- WFP Cost Centre: Capex % (P5 - share of loaded Cost-to-Company capitalised) ---\r\n# R&D engineering / product cost centres capitalise 18% of CtC; everything else 0.\r\nvCX = 'CC-ENG-PLT;0.18~CC-ENG-APP;0.18~CC-PROD;0.18~CC-SALES;0~CC-SALESOPS;0~CC-MKT;0~CC-CS;0~CC-FIN;0~CC-PPL;0~CC-ITOPS;0~CC-EXEC;0~';\r\nWHILE( SCAN( '~', vCX ) > 1 );\r\n   nS = SCAN( '~', vCX ); vRec = SUBST( vCX, 1, nS - 1 ) | ';'; vCX = SUBST( vCX, nS + 1, LONG( vCX ) - nS );\r\n   nS = SCAN( ';', vRec ); vCtr = SUBST( vRec, 1, nS - 1 ); vRec = SUBST( vRec, nS + 1, LONG( vRec ) - nS );\r\n   nS = SCAN( ';', vRec ); nPct = NUMBR( SUBST( vRec, 1, nS - 1 ) );\r\n   IF( DIMIX( 'WFP Cost Centre', vCtr ) > 0 );\r\n      AttrPutN( nPct, 'WFP Cost Centre', vCtr, 'Capex %' );\r\n   ENDIF;\r\nEND;\r\n#EndRegion",
+        "MetadataProcedure": "",
+        "DataProcedure": "",
+        "EpilogProcedure": ""
+      },
+      "rules::WFP Headcount": {
+        "rules": "SKIPCHECK;\n\n# Non-calculating versions (Actual + snapshots) hold stored data.\n[] = N: IF(ELPAR('WFP Version', !WFP Version, 1) @= 'Non-Calculating', STET, CONTINUE);\n\n# WFP Headcount dims: Period, Version, Entity, Cost Centre, Position, Measure\n# Phase 4: active window is version-aware — WFP Hiring Plan Hire/Attrition Month\n# for the version, falling back to Start/End Period attrs when the plan cell is 0.\n# TBH positions with no plan hire are never active.\n\n['_Start Idx'] = N:\n  IF( DB('WFP Hiring Plan', !WFP Version, !WFP Position, 'Hire Month') > 0,\n      DB('WFP Hiring Plan', !WFP Version, !WFP Position, 'Hire Month'),\n      IF( ATTRS('WFP Position', !WFP Position, 'Position Status') @= 'TBH', 9999,\n          ATTRN('WFP Period', ATTRS('WFP Position', !WFP Position, 'Start Period'), 'Period Index') ) );\n\n['_Leave Idx'] = N:\n  IF( DB('WFP Hiring Plan', !WFP Version, !WFP Position, 'Attrition Month') > 0,\n      DB('WFP Hiring Plan', !WFP Version, !WFP Position, 'Attrition Month'),\n      IF( ATTRS('WFP Position', !WFP Position, 'End Period') @= '', 9999,\n          ATTRN('WFP Period', ATTRS('WFP Position', !WFP Position, 'End Period'), 'Period Index') + 1 ) );\n\n['_End Idx'] = N: ['_Leave Idx'] - 1;\n\n['_Hire Idx'] = N:\n  IF( ATTRS('WFP Position', !WFP Position, 'Position Status') @= 'Filled',\n      ATTRN('WFP Period', ATTRS('WFP Position', !WFP Position, 'Start Period'), 'Period Index'),\n      IF( DB('WFP Hiring Plan', !WFP Version, !WFP Position, 'Hire Month') > 0,\n          DB('WFP Hiring Plan', !WFP Version, !WFP Position, 'Hire Month'), 0 ) );\n\n['_Active'] = N:\n  IF( !WFP Entity @= ATTRS('WFP Position', !WFP Position, 'Home Entity')\n      & !WFP Cost Centre @= ATTRS('WFP Position', !WFP Position, 'Cost Centre')\n      & ATTRN('WFP Period', !WFP Period, 'Period Index') >= ['_Start Idx']\n      & ATTRN('WFP Period', !WFP Period, 'Period Index') <= ['_End Idx'],\n      1, 0 );\n\n['_Filled Now'] = N:\n  IF( ATTRS('WFP Position', !WFP Position, 'Position Status') @= 'Filled', 1,\n      IF( DB('WFP Hiring Plan', !WFP Version, !WFP Position, 'Hire Month') > 0\n          & ATTRN('WFP Period', !WFP Period, 'Period Index') >= DB('WFP Hiring Plan', !WFP Version, !WFP Position, 'Hire Month'), 1, 0 ) );\n\n['Headcount'] = N: ['_Active'] * ['_Filled Now'];\n\n['FTE'] = N:\n  ['_Active'] * ATTRN('WFP Position', !WFP Position, 'FTE')\n  * IF( ATTRS('WFP Position', !WFP Position, 'Position Status') @= 'TBH', ['_Filled Now'], 1 );\n\n['Open Positions'] = N:\n  ['_Active'] * IF( ATTRS('WFP Position', !WFP Position, 'Position Status') @= 'Open Req',\n                    IF( ['_Filled Now'] = 1, 0, 1 ), 0 );\n\n['Hires'] = N:\n  IF( ['_Hire Idx'] >= 13\n      & ATTRN('WFP Period', !WFP Period, 'Period Index') = ['_Hire Idx']\n      & ['_Active'] = 1, 1, 0 );\n\n['Leavers'] = N:\n  IF( ['_Leave Idx'] < 9999\n      & ATTRN('WFP Period', !WFP Period, 'Period Index') = ['_Leave Idx']\n      & !WFP Entity @= ATTRS('WFP Position', !WFP Position, 'Home Entity')\n      & !WFP Cost Centre @= ATTRS('WFP Position', !WFP Position, 'Cost Centre'), 1, 0 );\n\n['Opening'] = N:\n  IF( ATTRS('WFP Period', !WFP Period, 'Prior Period') @= '', 0,\n      DB('WFP Headcount', ATTRS('WFP Period', !WFP Period, 'Prior Period'), !WFP Version, !WFP Entity, !WFP Cost Centre, !WFP Position, 'Headcount') );\n\n['Closing'] = N: ['Opening'] + ['Hires'] - ['Leavers'];\n\nFEEDERS;\n\n['Headcount'] => ['FTE'], ['Open Positions'], ['Hires'], ['Opening'], ['Closing'];\n['FTE']       => ['Open Positions'], ['Opening'], ['Closing'];\n# Leavers fire the month AFTER headcount drops to 0 — feed forward via Next Period.\n['Headcount'] => DB('WFP Headcount', ATTRS('WFP Period', !WFP Period, 'Next Period'), !WFP Version, !WFP Entity, !WFP Cost Centre, !WFP Position, 'Leavers'),\n                 DB('WFP Headcount', ATTRS('WFP Period', !WFP Period, 'Next Period'), !WFP Version, !WFP Entity, !WFP Cost Centre, !WFP Position, 'Closing');\n"
+      },
+      "dimension::WFP Workforce Cost Measure::element Cost per FTE": {
+        "elementCount": 3,
+        "edgeCount": 0
+      },
+      "attribute::Capex %::WFP Cost Centre": {
+        "Name": "Capex %",
+        "Type": "Numeric"
+      },
+      "attribute::GL Account::WFP Pay Component": {
+        "Name": "GL Account",
+        "Type": "String"
+      },
+      "subset::Default::WFP Pay Component": {
+        "elements": [
+          "Cost to Company",
+          "Employee Deductions",
+          "Base",
+          "Employer Payroll Tax",
+          "Employer Pension",
+          "Benefits",
+          "Gross Pay",
+          "Employee Income Tax",
+          "Employee Pension",
+          "Net Pay",
+          "_Start Index",
+          "_End Index",
+          "_In Window",
+          "_Start Frac",
+          "_End Frac",
+          "_Active Fraction",
+          "_Annual Salary",
+          "_Monthly Base Full",
+          "_Earnings YTD",
+          "_Employer Tax YTD",
+          "_Prior Employer Tax YTD",
+          "_Employee Tax YTD",
+          "_Prior Employee Tax YTD",
+          "Bonus",
+          "One-Time",
+          "Total Compensation",
+          "GL: Salaries & Wages",
+          "GL: Bonus & Incentives",
+          "GL: Employer Payroll Taxes",
+          "GL: Employer Pension",
+          "GL: Benefits",
+          "GL: Personnel P&L"
+        ]
+      },
+      "view::Cost by Cost Centre::WFP Workforce Cost": {
+        "type": "native",
+        "axes": {
+          "rows": [
+            {
+              "dim": "WFP Cost Centre",
+              "subset": null,
+              "expr": null,
+              "all": "all"
+            }
+          ],
+          "cols": [
+            {
+              "dim": "WFP Period",
+              "subset": null,
+              "expr": null,
+              "all": "all"
+            }
+          ],
+          "titles": [
+            {
+              "dim": "WFP Position",
+              "member": null
+            },
+            {
+              "dim": "WFP Version",
+              "member": null
+            },
+            {
+              "dim": "WFP Entity",
+              "member": null
+            },
+            {
+              "dim": "WFP Currency",
+              "member": null
+            },
+            {
+              "dim": "WFP Pay Component",
+              "member": null
+            },
+            {
+              "dim": "WFP Workforce Cost Measure",
+              "member": null
+            }
+          ]
+        }
+      },
+      "subset::Default::WFP Currency": {
+        "elements": [
+          "GBP",
+          "USD",
+          "NZD",
+          "Reporting",
+          "Reporting @ Budget FX"
+        ]
+      },
+      "attribute::Actuals Closed::WFP Period": null,
+      "process::WFP Build YTD Hierarchy": null,
+      "view::GL P&L::WFP Workforce Cost": {
+        "type": "native",
+        "axes": {
+          "rows": [
+            {
+              "dim": "WFP Pay Component",
+              "subset": null,
+              "expr": null,
+              "all": "all"
+            }
+          ],
+          "cols": [
+            {
+              "dim": "WFP Period",
+              "subset": null,
+              "expr": null,
+              "all": "all"
+            }
+          ],
+          "titles": [
+            {
+              "dim": "WFP Version",
+              "member": null
+            },
+            {
+              "dim": "WFP Entity",
+              "member": null
+            },
+            {
+              "dim": "WFP Cost Centre",
+              "member": null
+            },
+            {
+              "dim": "WFP Currency",
+              "member": null
+            },
+            {
+              "dim": "WFP Position",
+              "member": null
+            },
+            {
+              "dim": "WFP Workforce Cost Measure",
+              "member": null
+            }
+          ]
+        }
+      },
+      "view::Capitalised Labour::WFP Workforce Cost": {
+        "type": "native",
+        "axes": {
+          "rows": [
+            {
+              "dim": "WFP Cost Centre",
+              "subset": null,
+              "expr": null,
+              "all": "all"
+            }
+          ],
+          "cols": [
+            {
+              "dim": "WFP Workforce Cost Measure",
+              "subset": null,
+              "expr": "Amount,Amount Capex,Amount Opex",
+              "all": null
+            }
+          ],
+          "titles": [
+            {
+              "dim": "WFP Period",
+              "member": null
+            },
+            {
+              "dim": "WFP Version",
+              "member": null
+            },
+            {
+              "dim": "WFP Entity",
+              "member": null
+            },
+            {
+              "dim": "WFP Pay Component",
+              "member": null
+            },
+            {
+              "dim": "WFP Currency",
+              "member": null
+            },
+            {
+              "dim": "WFP Position",
+              "member": null
+            }
+          ]
+        }
+      },
+      "process::WFP Load Actuals": null,
+      "subset::2026 YTD + FY::WFP Period": null,
+      "view::Variance Bridge::WFP Workforce Cost": null,
+      "view::FX vs Operational::WFP Workforce Cost": null
+    }
+  },
+  "postSnapshot": {
+    "taken_at": "2026-09-08T22:52:27.797Z",
+    "target": "TM1_Test_PROD",
+    "objects": {
+      "dimension::WFP Pay Component::0 elements, 0 edges": {
+        "elementCount": 32,
+        "edgeCount": 20
+      },
+      "process::WFP Snapshot Version": {
+        "PrologProcedure": "#Region WFP Snapshot Version — copy a calculating version into a static member\r\n# Prolog: validate, create pTarget, parent it under Non-Calculating, mark Static.\r\n# Epilog: copy the cells (runs AFTER the Prolog commits the parent edge, so the\r\n# [] STET/CONTINUE guard is active for pTarget and CellPutN is allowed).\r\ncVer = 'WFP Version';\r\n\r\nnStop = 0;\r\nIF( DIMIX( cVer, pSource ) = 0 );\r\n   ASCIIOUTPUT( 'WFP_Snapshot_error.txt', 'Source version not found: ' | pSource );\r\n   nStop = 1;\r\nENDIF;\r\nIF( nStop = 0 & ATTRS( cVer, pSource, 'Version Type' ) @<> 'Calculated' );\r\n   ASCIIOUTPUT( 'WFP_Snapshot_error.txt', 'Refused: source \"' | pSource | '\" is not a Calculated version.' );\r\n   nStop = 1;\r\nENDIF;\r\nIF( nStop = 0 & TRIM( pTarget ) @= '' );\r\n   ASCIIOUTPUT( 'WFP_Snapshot_error.txt', 'Target member name is blank.' );\r\n   nStop = 1;\r\nENDIF;\r\nIF( nStop = 0 & pTarget @= pSource );\r\n   ASCIIOUTPUT( 'WFP_Snapshot_error.txt', 'Target equals source.' );\r\n   nStop = 1;\r\nENDIF;\r\n\r\nIF( nStop = 0 );\r\n   IF( DIMIX( cVer, pTarget ) = 0 );\r\n      DimensionElementInsertDirect( cVer, '', pTarget, 'N' );\r\n   ENDIF;\r\n   AttrPutS( 'Static', cVer, pTarget, 'Version Type' );\r\n   AttrPutS( 'Snapshot of ' | pSource | ' - ' | TIMST( NOW, '\\Y-\\m-\\d' ), cVer, pTarget, 'Description' );\r\n   IF( ELISANC( cVer, 'Non-Calculating', pTarget ) = 0 );\r\n      DimensionElementComponentAdd( cVer, 'Non-Calculating', pTarget, 1 );\r\n   ENDIF;\r\nENDIF;",
+        "MetadataProcedure": "",
+        "DataProcedure": "",
+        "EpilogProcedure": "#Region WFP Snapshot Version — Epilog: copy cells (parent edge now committed)\r\nIF( nStop = 0 );\r\n   nCopied = 0;\r\n\r\n   # --- WFP Workforce Input : Period x Position x Measure ---\r\n   cWI = 'WFP Workforce Input';\r\n   nA = DIMSIZ( 'WFP Period' ); nB = DIMSIZ( 'WFP Position' ); nC = DIMSIZ( 'WFP Workforce Input Measure' );\r\n   nI = 1;\r\n   WHILE( nI <= nA );\r\n      vP = DIMNM( 'WFP Period', nI );\r\n      IF( DTYPE( 'WFP Period', vP ) @= 'N' & LONG( vP ) = 7 );\r\n         nJ = 1;\r\n         WHILE( nJ <= nB );\r\n            vPos = DIMNM( 'WFP Position', nJ );\r\n            IF( DTYPE( 'WFP Position', vPos ) @= 'N' );\r\n               nK = 1;\r\n               WHILE( nK <= nC );\r\n                  vM = DIMNM( 'WFP Workforce Input Measure', nK );\r\n                  IF( DTYPE( 'WFP Workforce Input Measure', vM ) @= 'N' );\r\n                     nVal = CellGetN( cWI, vP, pSource, vPos, vM );\r\n                     IF( nVal <> 0 ); CellPutN( nVal, cWI, vP, pTarget, vPos, vM ); nCopied = nCopied + 1; ENDIF;\r\n                  ENDIF;\r\n                  nK = nK + 1;\r\n               END;\r\n            ENDIF;\r\n            nJ = nJ + 1;\r\n         END;\r\n      ENDIF;\r\n      nI = nI + 1;\r\n   END;\r\n\r\n   # --- WFP Hiring Plan : Position x Measure (Version fixed) ---\r\n   cHP = 'WFP Hiring Plan';\r\n   nB = DIMSIZ( 'WFP Position' ); nC = DIMSIZ( 'WFP Hiring Plan Measure' );\r\n   nJ = 1;\r\n   WHILE( nJ <= nB );\r\n      vPos = DIMNM( 'WFP Position', nJ );\r\n      IF( DTYPE( 'WFP Position', vPos ) @= 'N' );\r\n         nK = 1;\r\n         WHILE( nK <= nC );\r\n            vM = DIMNM( 'WFP Hiring Plan Measure', nK );\r\n            IF( DTYPE( 'WFP Hiring Plan Measure', vM ) @= 'N' );\r\n               nVal = CellGetN( cHP, pSource, vPos, vM );\r\n               IF( nVal <> 0 ); CellPutN( nVal, cHP, pTarget, vPos, vM ); nCopied = nCopied + 1; ENDIF;\r\n            ENDIF;\r\n            nK = nK + 1;\r\n         END;\r\n      ENDIF;\r\n      nJ = nJ + 1;\r\n   END;\r\n\r\n   # --- WFP Assumptions : Period x Entity x Measure ---\r\n   cAS = 'WFP Assumptions';\r\n   nA = DIMSIZ( 'WFP Period' ); nB = DIMSIZ( 'WFP Entity' ); nC = DIMSIZ( 'WFP Assumptions Measure' );\r\n   nI = 1;\r\n   WHILE( nI <= nA );\r\n      vP = DIMNM( 'WFP Period', nI );\r\n      IF( DTYPE( 'WFP Period', vP ) @= 'N' & LONG( vP ) = 7 );\r\n         nJ = 1;\r\n         WHILE( nJ <= nB );\r\n            vEnt = DIMNM( 'WFP Entity', nJ );\r\n            IF( DTYPE( 'WFP Entity', vEnt ) @= 'N' );\r\n               nK = 1;\r\n               WHILE( nK <= nC );\r\n                  vM = DIMNM( 'WFP Assumptions Measure', nK );\r\n                  IF( DTYPE( 'WFP Assumptions Measure', vM ) @= 'N' );\r\n                     nVal = CellGetN( cAS, vP, pSource, vEnt, vM );\r\n                     IF( nVal <> 0 ); CellPutN( nVal, cAS, vP, pTarget, vEnt, vM ); nCopied = nCopied + 1; ENDIF;\r\n                  ENDIF;\r\n                  nK = nK + 1;\r\n               END;\r\n            ENDIF;\r\n            nJ = nJ + 1;\r\n         END;\r\n      ENDIF;\r\n      nI = nI + 1;\r\n   END;\r\n\r\n   # --- WFP FX Rates : Period x Currency x FX Rate Type x Measure ---\r\n   cFX = 'WFP FX Rates';\r\n   nA = DIMSIZ( 'WFP Period' ); nB = DIMSIZ( 'WFP Currency' ); nC = DIMSIZ( 'WFP FX Rate Type' ); nD = DIMSIZ( 'WFP FX Rates Measure' );\r\n   nI = 1;\r\n   WHILE( nI <= nA );\r\n      vP = DIMNM( 'WFP Period', nI );\r\n      IF( DTYPE( 'WFP Period', vP ) @= 'N' & LONG( vP ) = 7 );\r\n         nJ = 1;\r\n         WHILE( nJ <= nB );\r\n            vCur = DIMNM( 'WFP Currency', nJ );\r\n            IF( DTYPE( 'WFP Currency', vCur ) @= 'N' );\r\n               nK = 1;\r\n               WHILE( nK <= nC );\r\n                  vRt = DIMNM( 'WFP FX Rate Type', nK );\r\n                  IF( DTYPE( 'WFP FX Rate Type', vRt ) @= 'N' );\r\n                     nL = 1;\r\n                     WHILE( nL <= nD );\r\n                        vM = DIMNM( 'WFP FX Rates Measure', nL );\r\n                        IF( DTYPE( 'WFP FX Rates Measure', vM ) @= 'N' );\r\n                           nVal = CellGetN( cFX, vP, pSource, vCur, vRt, vM );\r\n                           IF( nVal <> 0 ); CellPutN( nVal, cFX, vP, pTarget, vCur, vRt, vM ); nCopied = nCopied + 1; ENDIF;\r\n                        ENDIF;\r\n                        nL = nL + 1;\r\n                     END;\r\n                  ENDIF;\r\n                  nK = nK + 1;\r\n               END;\r\n            ENDIF;\r\n            nJ = nJ + 1;\r\n         END;\r\n      ENDIF;\r\n      nI = nI + 1;\r\n   END;\r\n\r\n   # --- WFP Pay Rates : Period x Grade x Job Family x Location x Measure ---\r\n   cPR = 'WFP Pay Rates';\r\n   nA = DIMSIZ( 'WFP Period' ); nB = DIMSIZ( 'WFP Grade' ); nC = DIMSIZ( 'WFP Job Family' ); nD = DIMSIZ( 'WFP Location' ); nE = DIMSIZ( 'WFP Pay Rates Measure' );\r\n   nI = 1;\r\n   WHILE( nI <= nA );\r\n      vP = DIMNM( 'WFP Period', nI );\r\n      IF( DTYPE( 'WFP Period', vP ) @= 'N' & LONG( vP ) = 7 );\r\n         nJ = 1;\r\n         WHILE( nJ <= nB );\r\n            vG = DIMNM( 'WFP Grade', nJ );\r\n            IF( DTYPE( 'WFP Grade', vG ) @= 'N' );\r\n               nK = 1;\r\n               WHILE( nK <= nC );\r\n                  vJF = DIMNM( 'WFP Job Family', nK );\r\n                  IF( DTYPE( 'WFP Job Family', vJF ) @= 'N' );\r\n                     nL = 1;\r\n                     WHILE( nL <= nD );\r\n                        vLoc = DIMNM( 'WFP Location', nL );\r\n                        IF( DTYPE( 'WFP Location', vLoc ) @= 'N' );\r\n                           nMx = 1;\r\n                           WHILE( nMx <= nE );\r\n                              vM = DIMNM( 'WFP Pay Rates Measure', nMx );\r\n                              IF( DTYPE( 'WFP Pay Rates Measure', vM ) @= 'N' );\r\n                                 nVal = CellGetN( cPR, vP, pSource, vG, vJF, vLoc, vM );\r\n                                 IF( nVal <> 0 ); CellPutN( nVal, cPR, vP, pTarget, vG, vJF, vLoc, vM ); nCopied = nCopied + 1; ENDIF;\r\n                              ENDIF;\r\n                              nMx = nMx + 1;\r\n                           END;\r\n                        ENDIF;\r\n                        nL = nL + 1;\r\n                     END;\r\n                  ENDIF;\r\n                  nK = nK + 1;\r\n               END;\r\n            ENDIF;\r\n            nJ = nJ + 1;\r\n         END;\r\n      ENDIF;\r\n      nI = nI + 1;\r\n   END;\r\n\r\n   # --- WFP Workforce Cost + WFP Headcount OUTPUT : per position ---\r\n   # P5: copy Amount / Amount Capex / Amount Opex at salary currency, Reporting and\r\n   # Reporting @ Budget FX so the snapshot freezes the full restated P&L view.\r\n   cWC = 'WFP Workforce Cost'; cHC = 'WFP Headcount';\r\n   vPCs = 'Base|Employer Payroll Tax|Employer Pension|Benefits|Bonus|One-Time|Gross Pay|Employee Income Tax|Employee Pension|Net Pay|';\r\n   vHMs = 'Headcount|FTE|Open Positions|Hires|Leavers|Opening|Closing|';\r\n   nB = DIMSIZ( 'WFP Position' ); nA = DIMSIZ( 'WFP Period' );\r\n   nJ = 1;\r\n   WHILE( nJ <= nB );\r\n      vPos = DIMNM( 'WFP Position', nJ );\r\n      IF( DTYPE( 'WFP Position', vPos ) @= 'N' );\r\n         vEnt = ATTRS( 'WFP Position', vPos, 'Home Entity' );\r\n         vCC  = ATTRS( 'WFP Position', vPos, 'Cost Centre' );\r\n         vSC  = ATTRS( 'WFP Position', vPos, 'Salary Currency' );\r\n         nI = 1;\r\n         WHILE( nI <= nA );\r\n            vP = DIMNM( 'WFP Period', nI );\r\n            IF( DTYPE( 'WFP Period', vP ) @= 'N' & LONG( vP ) = 7 );\r\n               vL = vPCs;\r\n               WHILE( SCAN( '|', vL ) > 1 );\r\n                  nS = SCAN( '|', vL ); vPC = SUBST( vL, 1, nS - 1 ); vL = SUBST( vL, nS + 1, LONG( vL ) - nS );\r\n                  vCurL = vSC | '|Reporting|Reporting @ Budget FX|';\r\n                  WHILE( SCAN( '|', vCurL ) > 1 );\r\n                     nS = SCAN( '|', vCurL ); vCurX = SUBST( vCurL, 1, nS - 1 ); vCurL = SUBST( vCurL, nS + 1, LONG( vCurL ) - nS );\r\n                     vMeaL = 'Amount|Amount Capex|Amount Opex|';\r\n                     WHILE( SCAN( '|', vMeaL ) > 1 );\r\n                        nS = SCAN( '|', vMeaL ); vMeaX = SUBST( vMeaL, 1, nS - 1 ); vMeaL = SUBST( vMeaL, nS + 1, LONG( vMeaL ) - nS );\r\n                        nVal = CellGetN( cWC, vP, pSource, vEnt, vCC, vPC, vCurX, vPos, vMeaX );\r\n                        IF( nVal <> 0 ); CellPutN( nVal, cWC, vP, pTarget, vEnt, vCC, vPC, vCurX, vPos, vMeaX ); nCopied = nCopied + 1; ENDIF;\r\n                     END;\r\n                  END;\r\n               END;\r\n               vL = vHMs;\r\n               WHILE( SCAN( '|', vL ) > 1 );\r\n                  nS = SCAN( '|', vL ); vHM = SUBST( vL, 1, nS - 1 ); vL = SUBST( vL, nS + 1, LONG( vL ) - nS );\r\n                  nVal = CellGetN( cHC, vP, pSource, vEnt, vCC, vPos, vHM );\r\n                  IF( nVal <> 0 ); CellPutN( nVal, cHC, vP, pTarget, vEnt, vCC, vPos, vHM ); nCopied = nCopied + 1; ENDIF;\r\n               END;\r\n            ENDIF;\r\n            nI = nI + 1;\r\n         END;\r\n      ENDIF;\r\n      nJ = nJ + 1;\r\n   END;\r\n\r\n   ASCIIOUTPUT( 'WFP_Snapshot_ok.txt', 'Snapshot ' | pSource | ' -> ' | pTarget | ' : ' | NUMBERTOSTRING( nCopied ) | ' cells copied. ' | pTarget | ' is Static under Non-Calculating.' );\r\nENDIF;"
+      },
+      "subset::GL P&L::WFP Pay Component": {
+        "elements": [
+          "GL: Personnel P&L",
+          "GL: Salaries & Wages",
+          "GL: Bonus & Incentives",
+          "GL: Employer Payroll Taxes",
+          "GL: Employer Pension",
+          "GL: Benefits"
+        ]
+      },
+      "subset::2026 Quarters + FY::WFP Period": {
+        "elements": [
+          "2026-Q1",
+          "2026-Q2",
+          "2026-Q3",
+          "2026-Q4",
+          "FY2026"
+        ]
+      },
+      "subset::Variance::WFP Version": {
+        "elements": [
+          "Budget",
+          "Forecast",
+          "Actual",
+          "Act vs Bud",
+          "Fcst vs Bud",
+          "Var FX",
+          "Var Operational"
+        ]
+      },
+      "dimension::WFP Cost Centre::0 elements, 0 edges": {
+        "elementCount": 15,
+        "edgeCount": 14
+      },
+      "dimension::WFP Currency::1 elements, 0 edges": {
+        "elementCount": 5,
+        "edgeCount": 0
+      },
+      "dimension::WFP Version::5 elements, 4 edges": {
+        "elementCount": 10,
+        "edgeCount": 5
+      },
+      "subset::Default::WFP Workforce Cost Measure": {
+        "elements": [
+          "Amount",
+          "Amount Capex",
+          "Amount Opex"
+        ]
+      },
+      "dimension::WFP Period::0 elements, 0 edges": {
+        "elementCount": 93,
+        "edgeCount": 288
+      },
+      "rules::WFP Workforce Input": {
+        "rules": "SKIPCHECK;\n\n# Phase 3.5 — encapsulated calculating versions.\n# Budget / Forecast / Downside each carry their OWN seeded input (FTE, Base\n# Salary, One-Time Amount) written by WFP Seed Workforce Input from that version's\n# own assumptions. The only cross-version read is prior-period Actual: for\n# Forecast and Downside, CLOSED months (Period Index <= that version's Actuals\n# Cutoff Index, read at the position's Home Entity) are overridden with the\n# Actual version. STET on the open side leaves the seeded input untouched.\n# Static snapshot versions (FCST YYYY-MM, Budget FINAL) have no rule here — their\n# input cells are written directly by WFP Snapshot Version.\n\n[] = N: IF(ELPAR('WFP Version', !WFP Version, 1) @= 'Non-Calculating', STET, CONTINUE);\n\n['Forecast'] = N:\n  IF( ATTRN('WFP Period', !WFP Period, 'Period Index')\n        <= DB('WFP Assumptions', !WFP Period, 'Forecast',\n               ATTRS('WFP Position', !WFP Position, 'Home Entity'), 'Actuals Cutoff Index'),\n      DB('WFP Workforce Input', !WFP Period, 'Actual', !WFP Position, !WFP Workforce Input Measure),\n      STET );\n\n['Downside'] = N:\n  IF( ATTRN('WFP Period', !WFP Period, 'Period Index')\n        <= DB('WFP Assumptions', !WFP Period, 'Downside',\n               ATTRS('WFP Position', !WFP Position, 'Home Entity'), 'Actuals Cutoff Index'),\n      DB('WFP Workforce Input', !WFP Period, 'Actual', !WFP Position, !WFP Workforce Input Measure),\n      STET );\n\nFEEDERS;\n\n# Every version whose FTE is a real cell (seeded Budget/Forecast/Downside/Actual,\n# or a snapshot copy) feeds its own Workforce Cost entry point + Headcount.\n['FTE'] => DB('WFP Workforce Cost', !WFP Period, !WFP Version,\n  ATTRS('WFP Position', !WFP Position, 'Home Entity'),\n  ATTRS('WFP Position', !WFP Position, 'Cost Centre'),\n  '_Monthly Base Full',\n  ATTRS('WFP Position', !WFP Position, 'Salary Currency'),\n  !WFP Position, 'Amount');\n['FTE'] => DB('WFP Headcount', !WFP Period, !WFP Version,\n  ATTRS('WFP Position', !WFP Position, 'Home Entity'),\n  ATTRS('WFP Position', !WFP Position, 'Cost Centre'),\n  !WFP Position, 'Headcount');\n\n# Closed-month Forecast / Downside resolve to Actual via the rule above, so\n# Actual's FTE also feeds those two versions' downstream cells.\n['Actual', 'FTE'] => DB('WFP Workforce Cost', !WFP Period, 'Forecast',\n  ATTRS('WFP Position', !WFP Position, 'Home Entity'),\n  ATTRS('WFP Position', !WFP Position, 'Cost Centre'),\n  '_Monthly Base Full',\n  ATTRS('WFP Position', !WFP Position, 'Salary Currency'),\n  !WFP Position, 'Amount');\n['Actual', 'FTE'] => DB('WFP Headcount', !WFP Period, 'Forecast',\n  ATTRS('WFP Position', !WFP Position, 'Home Entity'),\n  ATTRS('WFP Position', !WFP Position, 'Cost Centre'),\n  !WFP Position, 'Headcount');\n['Actual', 'FTE'] => DB('WFP Workforce Cost', !WFP Period, 'Downside',\n  ATTRS('WFP Position', !WFP Position, 'Home Entity'),\n  ATTRS('WFP Position', !WFP Position, 'Cost Centre'),\n  '_Monthly Base Full',\n  ATTRS('WFP Position', !WFP Position, 'Salary Currency'),\n  !WFP Position, 'Amount');\n['Actual', 'FTE'] => DB('WFP Headcount', !WFP Period, 'Downside',\n  ATTRS('WFP Position', !WFP Position, 'Home Entity'),\n  ATTRS('WFP Position', !WFP Position, 'Cost Centre'),\n  !WFP Position, 'Headcount');\n\n# P6 — One-Time payments in a month with NO base pay (e.g. severance after a\n# leaver's last month) are not reached by the _Monthly Base Full feeder. Feed the\n# One-Time cost cell (local + Reporting + Budget FX, Amount + Opex) directly from\n# the One-Time Amount input.\n['One-Time Amount'] =>\n  DB('WFP Workforce Cost', !WFP Period, !WFP Version, ATTRS('WFP Position', !WFP Position, 'Home Entity'), ATTRS('WFP Position', !WFP Position, 'Cost Centre'), 'One-Time', ATTRS('WFP Position', !WFP Position, 'Salary Currency'), !WFP Position, 'Amount'),\n  DB('WFP Workforce Cost', !WFP Period, !WFP Version, ATTRS('WFP Position', !WFP Position, 'Home Entity'), ATTRS('WFP Position', !WFP Position, 'Cost Centre'), 'One-Time', ATTRS('WFP Position', !WFP Position, 'Salary Currency'), !WFP Position, 'Amount Opex'),\n  DB('WFP Workforce Cost', !WFP Period, !WFP Version, ATTRS('WFP Position', !WFP Position, 'Home Entity'), ATTRS('WFP Position', !WFP Position, 'Cost Centre'), 'One-Time', 'Reporting', !WFP Position, 'Amount'),\n  DB('WFP Workforce Cost', !WFP Period, !WFP Version, ATTRS('WFP Position', !WFP Position, 'Home Entity'), ATTRS('WFP Position', !WFP Position, 'Cost Centre'), 'One-Time', 'Reporting', !WFP Position, 'Amount Opex'),\n  DB('WFP Workforce Cost', !WFP Period, !WFP Version, ATTRS('WFP Position', !WFP Position, 'Home Entity'), ATTRS('WFP Position', !WFP Position, 'Cost Centre'), 'One-Time', 'Reporting @ Budget FX', !WFP Position, 'Amount'),\n  DB('WFP Workforce Cost', !WFP Period, !WFP Version, ATTRS('WFP Position', !WFP Position, 'Home Entity'), ATTRS('WFP Position', !WFP Position, 'Cost Centre'), 'One-Time', 'Reporting @ Budget FX', !WFP Position, 'Amount Opex');\n\n# Closed-month Forecast / Downside pull Actual's One-Time Amount via the rule above.\n['Actual', 'One-Time Amount'] =>\n  DB('WFP Workforce Cost', !WFP Period, 'Forecast', ATTRS('WFP Position', !WFP Position, 'Home Entity'), ATTRS('WFP Position', !WFP Position, 'Cost Centre'), 'One-Time', ATTRS('WFP Position', !WFP Position, 'Salary Currency'), !WFP Position, 'Amount'),\n  DB('WFP Workforce Cost', !WFP Period, 'Downside', ATTRS('WFP Position', !WFP Position, 'Home Entity'), ATTRS('WFP Position', !WFP Position, 'Cost Centre'), 'One-Time', ATTRS('WFP Position', !WFP Position, 'Salary Currency'), !WFP Position, 'Amount');\n"
+      },
+      "rules::WFP Workforce Cost": {
+        "rules": "SKIPCHECK;\n\n# Non-calculating versions (Actual + snapshots) hold stored data — skip all calc.\n[] = N: IF(ELPAR('WFP Version', !WFP Version, 1) @= 'Non-Calculating', STET, CONTINUE);\n\n# ===== Variance versions (P6) — the \"Variance\" parent is calculating =====\n# Act vs Bud: hard actuals variance, closed periods only (WFP Period \"Actuals\n# Closed\" attr, set by WFP Load Actuals). Positive = overspend.\n['Act vs Bud'] = N:\n  IF( ATTRN('WFP Period', !WFP Period, 'Actuals Closed') = 1,\n      DB('WFP Workforce Cost', !WFP Period, 'Actual', !WFP Entity, !WFP Cost Centre, !WFP Pay Component, !WFP Currency, !WFP Position, !WFP Workforce Cost Measure)\n    - DB('WFP Workforce Cost', !WFP Period, 'Budget', !WFP Entity, !WFP Cost Centre, !WFP Pay Component, !WFP Currency, !WFP Position, !WFP Workforce Cost Measure), 0 );\n\n# Fcst vs Bud: rolling outlook vs plan; all periods (Forecast carries Actual in\n# closed months, so at FY this is the expected full-year over/under-run).\n['Fcst vs Bud'] = N:\n      DB('WFP Workforce Cost', !WFP Period, 'Forecast', !WFP Entity, !WFP Cost Centre, !WFP Pay Component, !WFP Currency, !WFP Position, !WFP Workforce Cost Measure)\n    - DB('WFP Workforce Cost', !WFP Period, 'Budget', !WFP Entity, !WFP Cost Centre, !WFP Pay Component, !WFP Currency, !WFP Position, !WFP Workforce Cost Measure);\n\n# FX vs operational split of Act vs Bud — Reporting currency only.\n# Var FX + Var Operational = Act vs Bud (in Reporting), because Budget's Reporting\n# and Reporting @ Budget FX are equal by definition.\n['Var FX'] = N:\n  IF( !WFP Currency @= 'Reporting' & ATTRN('WFP Period', !WFP Period, 'Actuals Closed') = 1,\n      DB('WFP Workforce Cost', !WFP Period, 'Actual', !WFP Entity, !WFP Cost Centre, !WFP Pay Component, 'Reporting', !WFP Position, !WFP Workforce Cost Measure)\n    - DB('WFP Workforce Cost', !WFP Period, 'Actual', !WFP Entity, !WFP Cost Centre, !WFP Pay Component, 'Reporting @ Budget FX', !WFP Position, !WFP Workforce Cost Measure), 0 );\n\n['Var Operational'] = N:\n  IF( !WFP Currency @= 'Reporting' & ATTRN('WFP Period', !WFP Period, 'Actuals Closed') = 1,\n      DB('WFP Workforce Cost', !WFP Period, 'Actual', !WFP Entity, !WFP Cost Centre, !WFP Pay Component, 'Reporting @ Budget FX', !WFP Position, !WFP Workforce Cost Measure)\n    - DB('WFP Workforce Cost', !WFP Period, 'Budget', !WFP Entity, !WFP Cost Centre, !WFP Pay Component, 'Reporting @ Budget FX', !WFP Position, !WFP Workforce Cost Measure), 0 );\n\n# ===== Capitalised labour (P5) — must precede the component + currency rules =====\n# Amount Capex / Amount Opex are a split of Amount by cost-centre Capex %.\n# Fire ONLY at all-leaf intersections; consolidations (incl. Reporting currency,\n# handled by the translation rule below) roll up naturally.\n['Amount Capex'] = N:\n  IF( ELLEV('WFP Period', !WFP Period) = 0 & ELLEV('WFP Entity', !WFP Entity) = 0 & ELLEV('WFP Cost Centre', !WFP Cost Centre) = 0 & ELLEV('WFP Pay Component', !WFP Pay Component) = 0 & ELLEV('WFP Position', !WFP Position) = 0,\n      IF( ELISANC('WFP Pay Component', 'Cost to Company', !WFP Pay Component) = 1,\n          ['Amount'] * ATTRN('WFP Cost Centre', !WFP Cost Centre, 'Capex %'), 0 ),\n      CONTINUE );\n\n['Amount Opex'] = N:\n  IF( ELLEV('WFP Period', !WFP Period) = 0 & ELLEV('WFP Entity', !WFP Entity) = 0 & ELLEV('WFP Cost Centre', !WFP Cost Centre) = 0 & ELLEV('WFP Pay Component', !WFP Pay Component) = 0 & ELLEV('WFP Position', !WFP Position) = 0,\n      ['Amount'] - ['Amount Capex'],\n      CONTINUE );\n\n# ===== Reporting-currency translation (measure-aware) =====\n# WFP Workforce Cost dims: Period, Version, Entity, Cost Centre, Pay Component, Currency, Position, Measure\n['Reporting'] = N:\n    DB('WFP Workforce Cost', !WFP Period, !WFP Version, !WFP Entity, !WFP Cost Centre, !WFP Pay Component, 'GBP', !WFP Position, !WFP Workforce Cost Measure) * DB('WFP FX Rates', !WFP Period, !WFP Version, 'GBP', 'Average', 'Rate')\n  + DB('WFP Workforce Cost', !WFP Period, !WFP Version, !WFP Entity, !WFP Cost Centre, !WFP Pay Component, 'USD', !WFP Position, !WFP Workforce Cost Measure) * DB('WFP FX Rates', !WFP Period, !WFP Version, 'USD', 'Average', 'Rate')\n  + DB('WFP Workforce Cost', !WFP Period, !WFP Version, !WFP Entity, !WFP Cost Centre, !WFP Pay Component, 'NZD', !WFP Position, !WFP Workforce Cost Measure) * DB('WFP FX Rates', !WFP Period, !WFP Version, 'NZD', 'Average', 'Rate');\n\n# ===== Constant currency (P5) =====\n['Reporting @ Budget FX'] = N:\n    DB('WFP Workforce Cost', !WFP Period, !WFP Version, !WFP Entity, !WFP Cost Centre, !WFP Pay Component, 'GBP', !WFP Position, !WFP Workforce Cost Measure) * DB('WFP FX Rates', !WFP Period, 'Budget', 'GBP', 'Average', 'Rate')\n  + DB('WFP Workforce Cost', !WFP Period, !WFP Version, !WFP Entity, !WFP Cost Centre, !WFP Pay Component, 'USD', !WFP Position, !WFP Workforce Cost Measure) * DB('WFP FX Rates', !WFP Period, 'Budget', 'USD', 'Average', 'Rate')\n  + DB('WFP Workforce Cost', !WFP Period, !WFP Version, !WFP Entity, !WFP Cost Centre, !WFP Pay Component, 'NZD', !WFP Position, !WFP Workforce Cost Measure) * DB('WFP FX Rates', !WFP Period, 'Budget', 'NZD', 'Average', 'Rate');\n\n# ===== Helpers =====\n['_Start Index'] = N:\n  IF( DB('WFP Hiring Plan', !WFP Version, !WFP Position, 'Hire Month') > 0,\n      DB('WFP Hiring Plan', !WFP Version, !WFP Position, 'Hire Month'),\n      IF( ATTRS('WFP Position', !WFP Position, 'Position Status') @= 'TBH', 9999,\n          ATTRN('WFP Period', ATTRS('WFP Position', !WFP Position, 'Start Period'), 'Period Index') ) );\n\n['_End Index'] = N:\n  IF( DB('WFP Hiring Plan', !WFP Version, !WFP Position, 'Attrition Month') > 0,\n      DB('WFP Hiring Plan', !WFP Version, !WFP Position, 'Attrition Month') - 1,\n      IF( ATTRS('WFP Position', !WFP Position, 'End Period') @= '', 999,\n          ATTRN('WFP Period', ATTRS('WFP Position', !WFP Position, 'End Period'), 'Period Index') ) );\n\n['_In Window'] = N: IF(ATTRN('WFP Period', !WFP Period, 'Period Index') >= ['_Start Index'] & ATTRN('WFP Period', !WFP Period, 'Period Index') <= ['_End Index'], 1, 0);\n\n['_Start Frac'] = N:\n  IF(ATTRN('WFP Period', !WFP Period, 'Period Index') = ['_Start Index'],\n     IF( DB('WFP Hiring Plan', !WFP Version, !WFP Position, 'Hire Month') > 0, 1,\n         (ATTRN('WFP Period', !WFP Period, 'Days In Month') - ATTRN('WFP Position', !WFP Position, 'Start Day') + 1) / ATTRN('WFP Period', !WFP Period, 'Days In Month') ), 1);\n\n['_End Frac'] = N:\n  IF( DB('WFP Hiring Plan', !WFP Version, !WFP Position, 'Attrition Month') > 0\n      & ATTRN('WFP Period', !WFP Period, 'Period Index') = ['_End Index'], 1,\n  IF(ATTRS('WFP Position', !WFP Position, 'End Period') @<> '' & ATTRN('WFP Period', !WFP Period, 'Period Index') = ['_End Index'],\n     ATTRN('WFP Position', !WFP Position, 'End Day') / ATTRN('WFP Period', !WFP Period, 'Days In Month'), 1) );\n\n['_Active Fraction'] = N: ['_In Window'] * ['_Start Frac'] * ['_End Frac'];\n\n['_Annual Salary'] = N:\n  IF(ATTRS('WFP Position', !WFP Position, 'Position Status') @= 'Filled' & DB('WFP Workforce Input', !WFP Period, !WFP Version, !WFP Position, 'Base Salary') > 0,\n     DB('WFP Workforce Input', !WFP Period, !WFP Version, !WFP Position, 'Base Salary'),\n     DB('WFP Pay Rates', !WFP Period, !WFP Version, ATTRS('WFP Position', !WFP Position, 'Grade'), ATTRS('WFP Position', !WFP Position, 'Job Family'), ATTRS('WFP Position', !WFP Position, 'Location'), 'Salary Mid'));\n\n['_Monthly Base Full'] = N:\n  IF(!WFP Currency @= ATTRS('WFP Position', !WFP Position, 'Salary Currency') & !WFP Entity @= ATTRS('WFP Position', !WFP Position, 'Home Entity') & !WFP Cost Centre @= ATTRS('WFP Position', !WFP Position, 'Cost Centre'),\n     ['_Annual Salary'] / 12 * DB('WFP Workforce Input', !WFP Period, !WFP Version, !WFP Position, 'FTE'), 0);\n\n['_Earnings YTD'] = N:\n  ['Base']\n  + IF(SUBST(!WFP Period, 6, 2) @= '01', 0, DB('WFP Workforce Cost', ATTRS('WFP Period', !WFP Period, 'Prior Period'), !WFP Version, !WFP Entity, !WFP Cost Centre, '_Earnings YTD', !WFP Currency, !WFP Position, 'Amount'));\n\n['_Employer Tax YTD'] = N:\n  MAX(0, MIN(['_Earnings YTD'], DB('WFP Tax Bands', ATTRS('WFP Position', !WFP Position, 'Tax Jurisdiction'), 'Employer Payroll Tax', 'Band 1', 'Threshold To')) - DB('WFP Tax Bands', ATTRS('WFP Position', !WFP Position, 'Tax Jurisdiction'), 'Employer Payroll Tax', 'Band 1', 'Threshold From')) * DB('WFP Tax Bands', ATTRS('WFP Position', !WFP Position, 'Tax Jurisdiction'), 'Employer Payroll Tax', 'Band 1', 'Rate')\n  +\n  MAX(0, MIN(['_Earnings YTD'], DB('WFP Tax Bands', ATTRS('WFP Position', !WFP Position, 'Tax Jurisdiction'), 'Employer Payroll Tax', 'Band 2', 'Threshold To')) - DB('WFP Tax Bands', ATTRS('WFP Position', !WFP Position, 'Tax Jurisdiction'), 'Employer Payroll Tax', 'Band 2', 'Threshold From')) * DB('WFP Tax Bands', ATTRS('WFP Position', !WFP Position, 'Tax Jurisdiction'), 'Employer Payroll Tax', 'Band 2', 'Rate')\n  +\n  MAX(0, MIN(['_Earnings YTD'], DB('WFP Tax Bands', ATTRS('WFP Position', !WFP Position, 'Tax Jurisdiction'), 'Employer Payroll Tax', 'Band 3', 'Threshold To')) - DB('WFP Tax Bands', ATTRS('WFP Position', !WFP Position, 'Tax Jurisdiction'), 'Employer Payroll Tax', 'Band 3', 'Threshold From')) * DB('WFP Tax Bands', ATTRS('WFP Position', !WFP Position, 'Tax Jurisdiction'), 'Employer Payroll Tax', 'Band 3', 'Rate')\n  +\n  MAX(0, MIN(['_Earnings YTD'], DB('WFP Tax Bands', ATTRS('WFP Position', !WFP Position, 'Tax Jurisdiction'), 'Employer Payroll Tax', 'Band 4', 'Threshold To')) - DB('WFP Tax Bands', ATTRS('WFP Position', !WFP Position, 'Tax Jurisdiction'), 'Employer Payroll Tax', 'Band 4', 'Threshold From')) * DB('WFP Tax Bands', ATTRS('WFP Position', !WFP Position, 'Tax Jurisdiction'), 'Employer Payroll Tax', 'Band 4', 'Rate')\n  +\n  MAX(0, MIN(['_Earnings YTD'], DB('WFP Tax Bands', ATTRS('WFP Position', !WFP Position, 'Tax Jurisdiction'), 'Employer Payroll Tax', 'Band 5', 'Threshold To')) - DB('WFP Tax Bands', ATTRS('WFP Position', !WFP Position, 'Tax Jurisdiction'), 'Employer Payroll Tax', 'Band 5', 'Threshold From')) * DB('WFP Tax Bands', ATTRS('WFP Position', !WFP Position, 'Tax Jurisdiction'), 'Employer Payroll Tax', 'Band 5', 'Rate')\n  +\n  MAX(0, MIN(['_Earnings YTD'], DB('WFP Tax Bands', ATTRS('WFP Position', !WFP Position, 'Tax Jurisdiction'), 'Employer Payroll Tax', 'Band 6', 'Threshold To')) - DB('WFP Tax Bands', ATTRS('WFP Position', !WFP Position, 'Tax Jurisdiction'), 'Employer Payroll Tax', 'Band 6', 'Threshold From')) * DB('WFP Tax Bands', ATTRS('WFP Position', !WFP Position, 'Tax Jurisdiction'), 'Employer Payroll Tax', 'Band 6', 'Rate')\n  +\n  MAX(0, MIN(['_Earnings YTD'], DB('WFP Tax Bands', ATTRS('WFP Position', !WFP Position, 'Tax Jurisdiction'), 'Employer Payroll Tax', 'Band 7', 'Threshold To')) - DB('WFP Tax Bands', ATTRS('WFP Position', !WFP Position, 'Tax Jurisdiction'), 'Employer Payroll Tax', 'Band 7', 'Threshold From')) * DB('WFP Tax Bands', ATTRS('WFP Position', !WFP Position, 'Tax Jurisdiction'), 'Employer Payroll Tax', 'Band 7', 'Rate');\n\n['_Prior Employer Tax YTD'] = N: IF(SUBST(!WFP Period, 6, 2) @= '01', 0, DB('WFP Workforce Cost', ATTRS('WFP Period', !WFP Period, 'Prior Period'), !WFP Version, !WFP Entity, !WFP Cost Centre, '_Employer Tax YTD', !WFP Currency, !WFP Position, 'Amount'));\n\n['_Employee Tax YTD'] = N:\n  MAX(0, MIN(['_Earnings YTD'], DB('WFP Tax Bands', ATTRS('WFP Position', !WFP Position, 'Tax Jurisdiction'), 'Employee Income Tax', 'Band 1', 'Threshold To')) - DB('WFP Tax Bands', ATTRS('WFP Position', !WFP Position, 'Tax Jurisdiction'), 'Employee Income Tax', 'Band 1', 'Threshold From')) * DB('WFP Tax Bands', ATTRS('WFP Position', !WFP Position, 'Tax Jurisdiction'), 'Employee Income Tax', 'Band 1', 'Rate')\n  +\n  MAX(0, MIN(['_Earnings YTD'], DB('WFP Tax Bands', ATTRS('WFP Position', !WFP Position, 'Tax Jurisdiction'), 'Employee Income Tax', 'Band 2', 'Threshold To')) - DB('WFP Tax Bands', ATTRS('WFP Position', !WFP Position, 'Tax Jurisdiction'), 'Employee Income Tax', 'Band 2', 'Threshold From')) * DB('WFP Tax Bands', ATTRS('WFP Position', !WFP Position, 'Tax Jurisdiction'), 'Employee Income Tax', 'Band 2', 'Rate')\n  +\n  MAX(0, MIN(['_Earnings YTD'], DB('WFP Tax Bands', ATTRS('WFP Position', !WFP Position, 'Tax Jurisdiction'), 'Employee Income Tax', 'Band 3', 'Threshold To')) - DB('WFP Tax Bands', ATTRS('WFP Position', !WFP Position, 'Tax Jurisdiction'), 'Employee Income Tax', 'Band 3', 'Threshold From')) * DB('WFP Tax Bands', ATTRS('WFP Position', !WFP Position, 'Tax Jurisdiction'), 'Employee Income Tax', 'Band 3', 'Rate')\n  +\n  MAX(0, MIN(['_Earnings YTD'], DB('WFP Tax Bands', ATTRS('WFP Position', !WFP Position, 'Tax Jurisdiction'), 'Employee Income Tax', 'Band 4', 'Threshold To')) - DB('WFP Tax Bands', ATTRS('WFP Position', !WFP Position, 'Tax Jurisdiction'), 'Employee Income Tax', 'Band 4', 'Threshold From')) * DB('WFP Tax Bands', ATTRS('WFP Position', !WFP Position, 'Tax Jurisdiction'), 'Employee Income Tax', 'Band 4', 'Rate')\n  +\n  MAX(0, MIN(['_Earnings YTD'], DB('WFP Tax Bands', ATTRS('WFP Position', !WFP Position, 'Tax Jurisdiction'), 'Employee Income Tax', 'Band 5', 'Threshold To')) - DB('WFP Tax Bands', ATTRS('WFP Position', !WFP Position, 'Tax Jurisdiction'), 'Employee Income Tax', 'Band 5', 'Threshold From')) * DB('WFP Tax Bands', ATTRS('WFP Position', !WFP Position, 'Tax Jurisdiction'), 'Employee Income Tax', 'Band 5', 'Rate')\n  +\n  MAX(0, MIN(['_Earnings YTD'], DB('WFP Tax Bands', ATTRS('WFP Position', !WFP Position, 'Tax Jurisdiction'), 'Employee Income Tax', 'Band 6', 'Threshold To')) - DB('WFP Tax Bands', ATTRS('WFP Position', !WFP Position, 'Tax Jurisdiction'), 'Employee Income Tax', 'Band 6', 'Threshold From')) * DB('WFP Tax Bands', ATTRS('WFP Position', !WFP Position, 'Tax Jurisdiction'), 'Employee Income Tax', 'Band 6', 'Rate')\n  +\n  MAX(0, MIN(['_Earnings YTD'], DB('WFP Tax Bands', ATTRS('WFP Position', !WFP Position, 'Tax Jurisdiction'), 'Employee Income Tax', 'Band 7', 'Threshold To')) - DB('WFP Tax Bands', ATTRS('WFP Position', !WFP Position, 'Tax Jurisdiction'), 'Employee Income Tax', 'Band 7', 'Threshold From')) * DB('WFP Tax Bands', ATTRS('WFP Position', !WFP Position, 'Tax Jurisdiction'), 'Employee Income Tax', 'Band 7', 'Rate');\n\n['_Prior Employee Tax YTD'] = N: IF(SUBST(!WFP Period, 6, 2) @= '01', 0, DB('WFP Workforce Cost', ATTRS('WFP Period', !WFP Period, 'Prior Period'), !WFP Version, !WFP Entity, !WFP Cost Centre, '_Employee Tax YTD', !WFP Currency, !WFP Position, 'Amount'));\n\n# ===== Components (local currency) =====\n['Base'] = N: ['_Monthly Base Full'] * ['_Active Fraction'];\n\n['Gross Pay'] = N: ['Base'];\n\n['Employer Payroll Tax'] = N: IF(ATTRS('WFP Position', !WFP Position, 'Employment Type') @= 'Contractor', 0, ['_Employer Tax YTD'] - ['_Prior Employer Tax YTD']);\n\n['Employer Pension'] = N: IF(ATTRS('WFP Position', !WFP Position, 'Employment Type') @= 'Contractor', 0, ['Base'] * DB('WFP Pay Rates', !WFP Period, !WFP Version, ATTRS('WFP Position', !WFP Position, 'Grade'), ATTRS('WFP Position', !WFP Position, 'Job Family'), ATTRS('WFP Position', !WFP Position, 'Location'), 'Pension Pct'));\n\n['Employee Income Tax'] = N: IF(ATTRS('WFP Position', !WFP Position, 'Employment Type') @= 'Contractor', 0, ['_Employee Tax YTD'] - ['_Prior Employee Tax YTD']);\n\n['Employee Pension'] = N: IF(ATTRS('WFP Position', !WFP Position, 'Employment Type') @= 'Contractor', 0, ['Base'] * DB('WFP Pay Rates', !WFP Period, !WFP Version, ATTRS('WFP Position', !WFP Position, 'Grade'), ATTRS('WFP Position', !WFP Position, 'Job Family'), ATTRS('WFP Position', !WFP Position, 'Location'), 'Employee Pension Pct'));\n\n['Benefits'] = N:\n  IF(['_Monthly Base Full'] = 0, 0,\n  IF(ATTRS('WFP Position', !WFP Position, 'Employment Type') @= 'Contractor', 0,\n     DB('WFP Pay Rates', !WFP Period, !WFP Version, ATTRS('WFP Position', !WFP Position, 'Grade'), ATTRS('WFP Position', !WFP Position, 'Job Family'), ATTRS('WFP Position', !WFP Position, 'Location'), 'Benefits Annual') / 12 * DB('WFP Workforce Input', !WFP Period, !WFP Version, !WFP Position, 'FTE') * ['_Active Fraction']));\n\n['Bonus'] = N:\n  IF(ATTRS('WFP Position', !WFP Position, 'Employment Type') @= 'Contractor', 0,\n     ['Base'] * DB('WFP Assumptions', !WFP Period, !WFP Version, !WFP Entity, 'Bonus Pool %'));\n\n['One-Time'] = N:\n  IF(!WFP Currency @= ATTRS('WFP Position', !WFP Position, 'Salary Currency')\n     & !WFP Entity @= ATTRS('WFP Position', !WFP Position, 'Home Entity')\n     & !WFP Cost Centre @= ATTRS('WFP Position', !WFP Position, 'Cost Centre'),\n     DB('WFP Workforce Input', !WFP Period, !WFP Version, !WFP Position, 'One-Time Amount'), 0);\n\n['Net Pay'] = N: ['Gross Pay'] - ['Employee Deductions'];\n\nFEEDERS;\n\n['_Monthly Base Full'] => ['Base'], ['Gross Pay'], ['Employer Payroll Tax'], ['Employer Pension'], ['Benefits'], ['Bonus'], ['One-Time'],\n  ['Employee Income Tax'], ['Employee Pension'], ['Net Pay'],\n  ['_Earnings YTD'], ['_Employer Tax YTD'], ['_Prior Employer Tax YTD'], ['_Employee Tax YTD'], ['_Prior Employee Tax YTD'];\n\n['_Monthly Base Full'] =>\n  DB('WFP Workforce Cost', !WFP Period, !WFP Version, !WFP Entity, !WFP Cost Centre, 'Base', 'Reporting', !WFP Position, 'Amount'),\n  DB('WFP Workforce Cost', !WFP Period, !WFP Version, !WFP Entity, !WFP Cost Centre, 'Gross Pay', 'Reporting', !WFP Position, 'Amount'),\n  DB('WFP Workforce Cost', !WFP Period, !WFP Version, !WFP Entity, !WFP Cost Centre, 'Employer Payroll Tax', 'Reporting', !WFP Position, 'Amount'),\n  DB('WFP Workforce Cost', !WFP Period, !WFP Version, !WFP Entity, !WFP Cost Centre, 'Employer Pension', 'Reporting', !WFP Position, 'Amount'),\n  DB('WFP Workforce Cost', !WFP Period, !WFP Version, !WFP Entity, !WFP Cost Centre, 'Benefits', 'Reporting', !WFP Position, 'Amount'),\n  DB('WFP Workforce Cost', !WFP Period, !WFP Version, !WFP Entity, !WFP Cost Centre, 'Bonus', 'Reporting', !WFP Position, 'Amount'),\n  DB('WFP Workforce Cost', !WFP Period, !WFP Version, !WFP Entity, !WFP Cost Centre, 'One-Time', 'Reporting', !WFP Position, 'Amount'),\n  DB('WFP Workforce Cost', !WFP Period, !WFP Version, !WFP Entity, !WFP Cost Centre, 'Employee Income Tax', 'Reporting', !WFP Position, 'Amount'),\n  DB('WFP Workforce Cost', !WFP Period, !WFP Version, !WFP Entity, !WFP Cost Centre, 'Employee Pension', 'Reporting', !WFP Position, 'Amount'),\n  DB('WFP Workforce Cost', !WFP Period, !WFP Version, !WFP Entity, !WFP Cost Centre, 'Net Pay', 'Reporting', !WFP Position, 'Amount');\n\n['_Monthly Base Full'] =>\n  DB('WFP Workforce Cost', !WFP Period, !WFP Version, !WFP Entity, !WFP Cost Centre, 'Base', 'Reporting @ Budget FX', !WFP Position, 'Amount'),\n  DB('WFP Workforce Cost', !WFP Period, !WFP Version, !WFP Entity, !WFP Cost Centre, 'Gross Pay', 'Reporting @ Budget FX', !WFP Position, 'Amount'),\n  DB('WFP Workforce Cost', !WFP Period, !WFP Version, !WFP Entity, !WFP Cost Centre, 'Employer Payroll Tax', 'Reporting @ Budget FX', !WFP Position, 'Amount'),\n  DB('WFP Workforce Cost', !WFP Period, !WFP Version, !WFP Entity, !WFP Cost Centre, 'Employer Pension', 'Reporting @ Budget FX', !WFP Position, 'Amount'),\n  DB('WFP Workforce Cost', !WFP Period, !WFP Version, !WFP Entity, !WFP Cost Centre, 'Benefits', 'Reporting @ Budget FX', !WFP Position, 'Amount'),\n  DB('WFP Workforce Cost', !WFP Period, !WFP Version, !WFP Entity, !WFP Cost Centre, 'Bonus', 'Reporting @ Budget FX', !WFP Position, 'Amount'),\n  DB('WFP Workforce Cost', !WFP Period, !WFP Version, !WFP Entity, !WFP Cost Centre, 'One-Time', 'Reporting @ Budget FX', !WFP Position, 'Amount'),\n  DB('WFP Workforce Cost', !WFP Period, !WFP Version, !WFP Entity, !WFP Cost Centre, 'Employee Income Tax', 'Reporting @ Budget FX', !WFP Position, 'Amount'),\n  DB('WFP Workforce Cost', !WFP Period, !WFP Version, !WFP Entity, !WFP Cost Centre, 'Employee Pension', 'Reporting @ Budget FX', !WFP Position, 'Amount'),\n  DB('WFP Workforce Cost', !WFP Period, !WFP Version, !WFP Entity, !WFP Cost Centre, 'Net Pay', 'Reporting @ Budget FX', !WFP Position, 'Amount');\n\n['_Monthly Base Full'] =>\n  DB('WFP Workforce Cost', !WFP Period, !WFP Version, !WFP Entity, !WFP Cost Centre, 'Base', !WFP Currency, !WFP Position, 'Amount Capex'),\n  DB('WFP Workforce Cost', !WFP Period, !WFP Version, !WFP Entity, !WFP Cost Centre, 'Base', !WFP Currency, !WFP Position, 'Amount Opex'),\n  DB('WFP Workforce Cost', !WFP Period, !WFP Version, !WFP Entity, !WFP Cost Centre, 'Employer Payroll Tax', !WFP Currency, !WFP Position, 'Amount Capex'),\n  DB('WFP Workforce Cost', !WFP Period, !WFP Version, !WFP Entity, !WFP Cost Centre, 'Employer Payroll Tax', !WFP Currency, !WFP Position, 'Amount Opex'),\n  DB('WFP Workforce Cost', !WFP Period, !WFP Version, !WFP Entity, !WFP Cost Centre, 'Employer Pension', !WFP Currency, !WFP Position, 'Amount Capex'),\n  DB('WFP Workforce Cost', !WFP Period, !WFP Version, !WFP Entity, !WFP Cost Centre, 'Employer Pension', !WFP Currency, !WFP Position, 'Amount Opex'),\n  DB('WFP Workforce Cost', !WFP Period, !WFP Version, !WFP Entity, !WFP Cost Centre, 'Benefits', !WFP Currency, !WFP Position, 'Amount Capex'),\n  DB('WFP Workforce Cost', !WFP Period, !WFP Version, !WFP Entity, !WFP Cost Centre, 'Benefits', !WFP Currency, !WFP Position, 'Amount Opex'),\n  DB('WFP Workforce Cost', !WFP Period, !WFP Version, !WFP Entity, !WFP Cost Centre, 'Bonus', !WFP Currency, !WFP Position, 'Amount Opex'),\n  DB('WFP Workforce Cost', !WFP Period, !WFP Version, !WFP Entity, !WFP Cost Centre, 'One-Time', !WFP Currency, !WFP Position, 'Amount Opex');\n\n['_Monthly Base Full'] =>\n  DB('WFP Workforce Cost', !WFP Period, !WFP Version, !WFP Entity, !WFP Cost Centre, 'Base', 'Reporting', !WFP Position, 'Amount Capex'),\n  DB('WFP Workforce Cost', !WFP Period, !WFP Version, !WFP Entity, !WFP Cost Centre, 'Base', 'Reporting', !WFP Position, 'Amount Opex'),\n  DB('WFP Workforce Cost', !WFP Period, !WFP Version, !WFP Entity, !WFP Cost Centre, 'Employer Payroll Tax', 'Reporting', !WFP Position, 'Amount Capex'),\n  DB('WFP Workforce Cost', !WFP Period, !WFP Version, !WFP Entity, !WFP Cost Centre, 'Employer Payroll Tax', 'Reporting', !WFP Position, 'Amount Opex'),\n  DB('WFP Workforce Cost', !WFP Period, !WFP Version, !WFP Entity, !WFP Cost Centre, 'Employer Pension', 'Reporting', !WFP Position, 'Amount Capex'),\n  DB('WFP Workforce Cost', !WFP Period, !WFP Version, !WFP Entity, !WFP Cost Centre, 'Employer Pension', 'Reporting', !WFP Position, 'Amount Opex'),\n  DB('WFP Workforce Cost', !WFP Period, !WFP Version, !WFP Entity, !WFP Cost Centre, 'Benefits', 'Reporting', !WFP Position, 'Amount Capex'),\n  DB('WFP Workforce Cost', !WFP Period, !WFP Version, !WFP Entity, !WFP Cost Centre, 'Benefits', 'Reporting', !WFP Position, 'Amount Opex'),\n  DB('WFP Workforce Cost', !WFP Period, !WFP Version, !WFP Entity, !WFP Cost Centre, 'Bonus', 'Reporting', !WFP Position, 'Amount Opex'),\n  DB('WFP Workforce Cost', !WFP Period, !WFP Version, !WFP Entity, !WFP Cost Centre, 'One-Time', 'Reporting', !WFP Position, 'Amount Opex');\n\n['_Monthly Base Full'] =>\n  DB('WFP Workforce Cost', !WFP Period, !WFP Version, !WFP Entity, !WFP Cost Centre, 'Base', 'Reporting @ Budget FX', !WFP Position, 'Amount Capex'),\n  DB('WFP Workforce Cost', !WFP Period, !WFP Version, !WFP Entity, !WFP Cost Centre, 'Base', 'Reporting @ Budget FX', !WFP Position, 'Amount Opex'),\n  DB('WFP Workforce Cost', !WFP Period, !WFP Version, !WFP Entity, !WFP Cost Centre, 'Employer Payroll Tax', 'Reporting @ Budget FX', !WFP Position, 'Amount Capex'),\n  DB('WFP Workforce Cost', !WFP Period, !WFP Version, !WFP Entity, !WFP Cost Centre, 'Employer Payroll Tax', 'Reporting @ Budget FX', !WFP Position, 'Amount Opex'),\n  DB('WFP Workforce Cost', !WFP Period, !WFP Version, !WFP Entity, !WFP Cost Centre, 'Employer Pension', 'Reporting @ Budget FX', !WFP Position, 'Amount Capex'),\n  DB('WFP Workforce Cost', !WFP Period, !WFP Version, !WFP Entity, !WFP Cost Centre, 'Employer Pension', 'Reporting @ Budget FX', !WFP Position, 'Amount Opex'),\n  DB('WFP Workforce Cost', !WFP Period, !WFP Version, !WFP Entity, !WFP Cost Centre, 'Benefits', 'Reporting @ Budget FX', !WFP Position, 'Amount Capex'),\n  DB('WFP Workforce Cost', !WFP Period, !WFP Version, !WFP Entity, !WFP Cost Centre, 'Benefits', 'Reporting @ Budget FX', !WFP Position, 'Amount Opex'),\n  DB('WFP Workforce Cost', !WFP Period, !WFP Version, !WFP Entity, !WFP Cost Centre, 'Bonus', 'Reporting @ Budget FX', !WFP Position, 'Amount Opex'),\n  DB('WFP Workforce Cost', !WFP Period, !WFP Version, !WFP Entity, !WFP Cost Centre, 'One-Time', 'Reporting @ Budget FX', !WFP Position, 'Amount Opex');\n\n# ===== P6 — variance versions =====\n# Feed each variance member from both sides. Actual is a stored (static) version;\n# its populated cells are valid feeder sources.\n['Actual']   => ['Act vs Bud'], ['Var FX'], ['Var Operational'];\n['Budget']   => ['Act vs Bud'], ['Fcst vs Bud'], ['Var Operational'];\n['Forecast'] => ['Fcst vs Bud'];"
+      },
+      "process::WFP Seed Dimension Attributes": {
+        "PrologProcedure": "#Region WFP Seed Dimension Attributes\r\n# Sets attribute VALUES that were built declaratively and do not survive a deploy.\r\n# Idempotent.\r\n\r\n# --- WFP Period: Period Index, Days In Month, Prior Period, Next Period, FY ---\r\ncPer   = 'WFP Period';\r\nnCount = DIMSIZ( cPer );\r\nnIdx   = 0;\r\nvPrev  = '';\r\nnE = 1;\r\nWHILE( nE <= nCount );\r\n   vPer = DIMNM( cPer, nE );\r\n   IF( DTYPE( cPer, vPer ) @= 'N' & LONG( vPer ) = 7 & SUBST( vPer, 5, 1 ) @= '-' );\r\n      nIdx = nIdx + 1;\r\n      nMon = NUMBR( SUBST( vPer, 6, 2 ) );\r\n      nDays = 31;\r\n      IF( nMon = 2 ); nDays = 28; ENDIF;\r\n      IF( nMon = 4 % nMon = 6 % nMon = 9 % nMon = 11 ); nDays = 30; ENDIF;\r\n      AttrPutN( nIdx,  cPer, vPer, 'Period Index' );\r\n      AttrPutN( nDays, cPer, vPer, 'Days In Month' );\r\n      AttrPutS( vPrev, cPer, vPer, 'Prior Period' );\r\n      AttrPutS( 'FY' | SUBST( vPer, 1, 4 ), cPer, vPer, 'FY' );\r\n      IF( vPrev @<> '' );\r\n         AttrPutS( vPer, cPer, vPrev, 'Next Period' );\r\n      ENDIF;\r\n      vPrev = vPer;\r\n   ENDIF;\r\n   nE = nE + 1;\r\nEND;\r\n# last period: Next Period points to itself (keeps the forward feeder valid)\r\nIF( vPrev @<> '' );\r\n   AttrPutS( vPrev, cPer, vPrev, 'Next Period' );\r\nENDIF;\r\n\r\n# --- WFP Job Family: Pay Index ---\r\nvJF = 'Engineering;1.1~Product;1.08~Sales;1.05~Marketing;1~Customer Success;0.98~Finance;1~People;0.98~IT;1~Admin;0.92~Leadership;1.15~';\r\nWHILE( SCAN( '~', vJF ) > 1 );\r\n   nS = SCAN( '~', vJF ); vRec = SUBST( vJF, 1, nS - 1 ) | ';'; vJF = SUBST( vJF, nS + 1, LONG( vJF ) - nS );\r\n   nS = SCAN( ';', vRec ); vFam = SUBST( vRec, 1, nS - 1 ); vRec = SUBST( vRec, nS + 1, LONG( vRec ) - nS );\r\n   nS = SCAN( ';', vRec ); nPi  = NUMBR( SUBST( vRec, 1, nS - 1 ) );\r\n   IF( DIMIX( 'WFP Job Family', vFam ) > 0 );\r\n      AttrPutN( nPi, 'WFP Job Family', vFam, 'Pay Index' );\r\n   ENDIF;\r\nEND;\r\n\r\n# --- WFP Entity: Local Currency, Primary Location, Reporting Currency ---\r\nvEn = 'Group;;;GBP~UK Ltd;GBP;London;GBP~US Inc;USD;New York;GBP~NZ Ltd;NZD;Auckland;GBP~';\r\nWHILE( SCAN( '~', vEn ) > 1 );\r\n   nS = SCAN( '~', vEn ); vRec = SUBST( vEn, 1, nS - 1 ) | ';'; vEn = SUBST( vEn, nS + 1, LONG( vEn ) - nS );\r\n   nS = SCAN( ';', vRec ); vEnt = SUBST( vRec, 1, nS - 1 ); vRec = SUBST( vRec, nS + 1, LONG( vRec ) - nS );\r\n   nS = SCAN( ';', vRec ); vLC  = SUBST( vRec, 1, nS - 1 ); vRec = SUBST( vRec, nS + 1, LONG( vRec ) - nS );\r\n   nS = SCAN( ';', vRec ); vPL  = SUBST( vRec, 1, nS - 1 ); vRec = SUBST( vRec, nS + 1, LONG( vRec ) - nS );\r\n   nS = SCAN( ';', vRec ); vRC  = SUBST( vRec, 1, nS - 1 );\r\n   IF( DIMIX( 'WFP Entity', vEnt ) > 0 );\r\n      IF( vLC @<> '' ); AttrPutS( vLC, 'WFP Entity', vEnt, 'Local Currency' ); ENDIF;\r\n      IF( vPL @<> '' ); AttrPutS( vPL, 'WFP Entity', vEnt, 'Primary Location' ); ENDIF;\r\n      AttrPutS( vRC, 'WFP Entity', vEnt, 'Reporting Currency' );\r\n   ENDIF;\r\nEND;\r\n\r\n# --- WFP Version: Version Type (Calculated | Static), Description ---\r\nvVr = 'Actual;Static;Actuals - non-calculating; loaded by WFP Load Actuals for closed months~Budget;Calculated;Approved plan being built~Forecast;Calculated;Working current model - closed months = Actual, open months own assumptions~Downside;Calculated;Self-contained downside (cost-pressure) scenario~Act vs Bud;Calculated;Actual minus Budget, closed periods only (positive = overspend)~Fcst vs Bud;Calculated;Forecast minus Budget - rolling outlook vs plan (use at FY)~Var FX;Calculated;FX effect within Act vs Bud (Reporting currency only)~Var Operational;Calculated;Operational effect within Act vs Bud (Reporting currency only)~';\r\nWHILE( SCAN( '~', vVr ) > 1 );\r\n   nS = SCAN( '~', vVr ); vRec = SUBST( vVr, 1, nS - 1 ) | ';'; vVr = SUBST( vVr, nS + 1, LONG( vVr ) - nS );\r\n   nS = SCAN( ';', vRec ); vVer = SUBST( vRec, 1, nS - 1 ); vRec = SUBST( vRec, nS + 1, LONG( vRec ) - nS );\r\n   nS = SCAN( ';', vRec ); vTyp = SUBST( vRec, 1, nS - 1 ); vRec = SUBST( vRec, nS + 1, LONG( vRec ) - nS );\r\n   nS = SCAN( ';', vRec ); vDsc = SUBST( vRec, 1, nS - 1 );\r\n   IF( DIMIX( 'WFP Version', vVer ) > 0 );\r\n      AttrPutS( vTyp, 'WFP Version', vVer, 'Version Type' );\r\n      AttrPutS( vDsc, 'WFP Version', vVer, 'Description' );\r\n   ENDIF;\r\nEND;\r\n\r\n# --- WFP Cost Centre: Function, CC Name ---\r\nvCC = 'CC-ENG-PLT;R&D;Engineering - Platform~CC-ENG-APP;R&D;Engineering - Application~CC-PROD;R&D;Product Management~CC-SALES;S&M;Sales~CC-SALESOPS;S&M;Sales Operations~CC-MKT;S&M;Marketing~CC-CS;S&M;Customer Success~CC-FIN;G&A;Finance~CC-PPL;G&A;People & HR~CC-ITOPS;G&A;IT & Operations~CC-EXEC;G&A;Executive~';\r\nWHILE( SCAN( '~', vCC ) > 1 );\r\n   nS = SCAN( '~', vCC ); vRec = SUBST( vCC, 1, nS - 1 ) | ';'; vCC = SUBST( vCC, nS + 1, LONG( vCC ) - nS );\r\n   nS = SCAN( ';', vRec ); vCtr = SUBST( vRec, 1, nS - 1 ); vRec = SUBST( vRec, nS + 1, LONG( vRec ) - nS );\r\n   nS = SCAN( ';', vRec ); vFun = SUBST( vRec, 1, nS - 1 ); vRec = SUBST( vRec, nS + 1, LONG( vRec ) - nS );\r\n   nS = SCAN( ';', vRec ); vNam = SUBST( vRec, 1, nS - 1 );\r\n   IF( DIMIX( 'WFP Cost Centre', vCtr ) > 0 );\r\n      AttrPutS( vFun, 'WFP Cost Centre', vCtr, 'Function' );\r\n      AttrPutS( vNam, 'WFP Cost Centre', vCtr, 'CC Name' );\r\n   ENDIF;\r\nEND;\r\n\r\n# --- WFP Pay Component: GL Account (P5 - P&L / GL mapping) ---\r\n# Leaf pay components -> GL account code. GL rollup nodes carry the code too.\r\nvPC = 'Base;6000~One-Time;6010~Bonus;6100~Employer Payroll Tax;6200~Employer Pension;6300~Benefits;6400~Employee Income Tax;7100~Employee Pension;7200~';\r\nWHILE( SCAN( '~', vPC ) > 1 );\r\n   nS = SCAN( '~', vPC ); vRec = SUBST( vPC, 1, nS - 1 ) | ';'; vPC = SUBST( vPC, nS + 1, LONG( vPC ) - nS );\r\n   nS = SCAN( ';', vRec ); vEl  = SUBST( vRec, 1, nS - 1 ); vRec = SUBST( vRec, nS + 1, LONG( vRec ) - nS );\r\n   nS = SCAN( ';', vRec ); vGL  = SUBST( vRec, 1, nS - 1 );\r\n   IF( DIMIX( 'WFP Pay Component', vEl ) > 0 );\r\n      AttrPutS( vGL, 'WFP Pay Component', vEl, 'GL Account' );\r\n   ENDIF;\r\nEND;\r\nIF( DIMIX( 'WFP Pay Component', 'GL: Salaries & Wages' ) > 0 );\r\n   AttrPutS( '6000', 'WFP Pay Component', 'GL: Salaries & Wages', 'GL Account' );\r\n   AttrPutS( '6100', 'WFP Pay Component', 'GL: Bonus & Incentives', 'GL Account' );\r\n   AttrPutS( '6200', 'WFP Pay Component', 'GL: Employer Payroll Taxes', 'GL Account' );\r\n   AttrPutS( '6300', 'WFP Pay Component', 'GL: Employer Pension', 'GL Account' );\r\n   AttrPutS( '6400', 'WFP Pay Component', 'GL: Benefits', 'GL Account' );\r\nENDIF;\r\n\r\n# --- WFP Cost Centre: Capex % (P5 - share of loaded Cost-to-Company capitalised) ---\r\n# R&D engineering / product cost centres capitalise 18% of CtC; everything else 0.\r\nvCX = 'CC-ENG-PLT;0.18~CC-ENG-APP;0.18~CC-PROD;0.18~CC-SALES;0~CC-SALESOPS;0~CC-MKT;0~CC-CS;0~CC-FIN;0~CC-PPL;0~CC-ITOPS;0~CC-EXEC;0~';\r\nWHILE( SCAN( '~', vCX ) > 1 );\r\n   nS = SCAN( '~', vCX ); vRec = SUBST( vCX, 1, nS - 1 ) | ';'; vCX = SUBST( vCX, nS + 1, LONG( vCX ) - nS );\r\n   nS = SCAN( ';', vRec ); vCtr = SUBST( vRec, 1, nS - 1 ); vRec = SUBST( vRec, nS + 1, LONG( vRec ) - nS );\r\n   nS = SCAN( ';', vRec ); nPct = NUMBR( SUBST( vRec, 1, nS - 1 ) );\r\n   IF( DIMIX( 'WFP Cost Centre', vCtr ) > 0 );\r\n      AttrPutN( nPct, 'WFP Cost Centre', vCtr, 'Capex %' );\r\n   ENDIF;\r\nEND;\r\n#EndRegion",
+        "MetadataProcedure": "",
+        "DataProcedure": "",
+        "EpilogProcedure": ""
+      },
+      "rules::WFP Headcount": {
+        "rules": "SKIPCHECK;\n\n# Non-calculating versions (Actual + snapshots) hold stored data.\n[] = N: IF(ELPAR('WFP Version', !WFP Version, 1) @= 'Non-Calculating', STET, CONTINUE);\n\n# ===== Variance versions (P6) =====\n['Act vs Bud'] = N:\n  IF( ATTRN('WFP Period', !WFP Period, 'Actuals Closed') = 1,\n      DB('WFP Headcount', !WFP Period, 'Actual', !WFP Entity, !WFP Cost Centre, !WFP Position, !WFP Headcount Measure)\n    - DB('WFP Headcount', !WFP Period, 'Budget', !WFP Entity, !WFP Cost Centre, !WFP Position, !WFP Headcount Measure), 0 );\n\n['Fcst vs Bud'] = N:\n      DB('WFP Headcount', !WFP Period, 'Forecast', !WFP Entity, !WFP Cost Centre, !WFP Position, !WFP Headcount Measure)\n    - DB('WFP Headcount', !WFP Period, 'Budget', !WFP Entity, !WFP Cost Centre, !WFP Position, !WFP Headcount Measure);\n\n# WFP Headcount dims: Period, Version, Entity, Cost Centre, Position, Measure\n# Phase 4: active window is version-aware — WFP Hiring Plan Hire/Attrition Month\n# for the version, falling back to Start/End Period attrs when the plan cell is 0.\n# TBH positions with no plan hire are never active.\n\n['_Start Idx'] = N:\n  IF( DB('WFP Hiring Plan', !WFP Version, !WFP Position, 'Hire Month') > 0,\n      DB('WFP Hiring Plan', !WFP Version, !WFP Position, 'Hire Month'),\n      IF( ATTRS('WFP Position', !WFP Position, 'Position Status') @= 'TBH', 9999,\n          ATTRN('WFP Period', ATTRS('WFP Position', !WFP Position, 'Start Period'), 'Period Index') ) );\n\n['_Leave Idx'] = N:\n  IF( DB('WFP Hiring Plan', !WFP Version, !WFP Position, 'Attrition Month') > 0,\n      DB('WFP Hiring Plan', !WFP Version, !WFP Position, 'Attrition Month'),\n      IF( ATTRS('WFP Position', !WFP Position, 'End Period') @= '', 9999,\n          ATTRN('WFP Period', ATTRS('WFP Position', !WFP Position, 'End Period'), 'Period Index') + 1 ) );\n\n['_End Idx'] = N: ['_Leave Idx'] - 1;\n\n['_Hire Idx'] = N:\n  IF( ATTRS('WFP Position', !WFP Position, 'Position Status') @= 'Filled',\n      ATTRN('WFP Period', ATTRS('WFP Position', !WFP Position, 'Start Period'), 'Period Index'),\n      IF( DB('WFP Hiring Plan', !WFP Version, !WFP Position, 'Hire Month') > 0,\n          DB('WFP Hiring Plan', !WFP Version, !WFP Position, 'Hire Month'), 0 ) );\n\n['_Active'] = N:\n  IF( !WFP Entity @= ATTRS('WFP Position', !WFP Position, 'Home Entity')\n      & !WFP Cost Centre @= ATTRS('WFP Position', !WFP Position, 'Cost Centre')\n      & ATTRN('WFP Period', !WFP Period, 'Period Index') >= ['_Start Idx']\n      & ATTRN('WFP Period', !WFP Period, 'Period Index') <= ['_End Idx'],\n      1, 0 );\n\n['_Filled Now'] = N:\n  IF( ATTRS('WFP Position', !WFP Position, 'Position Status') @= 'Filled', 1,\n      IF( DB('WFP Hiring Plan', !WFP Version, !WFP Position, 'Hire Month') > 0\n          & ATTRN('WFP Period', !WFP Period, 'Period Index') >= DB('WFP Hiring Plan', !WFP Version, !WFP Position, 'Hire Month'), 1, 0 ) );\n\n['Headcount'] = N: ['_Active'] * ['_Filled Now'];\n\n['FTE'] = N:\n  ['_Active'] * ATTRN('WFP Position', !WFP Position, 'FTE')\n  * IF( ATTRS('WFP Position', !WFP Position, 'Position Status') @= 'TBH', ['_Filled Now'], 1 );\n\n['Open Positions'] = N:\n  ['_Active'] * IF( ATTRS('WFP Position', !WFP Position, 'Position Status') @= 'Open Req',\n                    IF( ['_Filled Now'] = 1, 0, 1 ), 0 );\n\n['Hires'] = N:\n  IF( ['_Hire Idx'] >= 13\n      & ATTRN('WFP Period', !WFP Period, 'Period Index') = ['_Hire Idx']\n      & ['_Active'] = 1, 1, 0 );\n\n['Leavers'] = N:\n  IF( ['_Leave Idx'] < 9999\n      & ATTRN('WFP Period', !WFP Period, 'Period Index') = ['_Leave Idx']\n      & !WFP Entity @= ATTRS('WFP Position', !WFP Position, 'Home Entity')\n      & !WFP Cost Centre @= ATTRS('WFP Position', !WFP Position, 'Cost Centre'), 1, 0 );\n\n['Opening'] = N:\n  IF( ATTRS('WFP Period', !WFP Period, 'Prior Period') @= '', 0,\n      DB('WFP Headcount', ATTRS('WFP Period', !WFP Period, 'Prior Period'), !WFP Version, !WFP Entity, !WFP Cost Centre, !WFP Position, 'Headcount') );\n\n['Closing'] = N: ['Opening'] + ['Hires'] - ['Leavers'];\n\nFEEDERS;\n\n['Headcount'] => ['FTE'], ['Open Positions'], ['Hires'], ['Opening'], ['Closing'];\n['FTE']       => ['Open Positions'], ['Opening'], ['Closing'];\n# Leavers fire the month AFTER headcount drops to 0 — feed forward via Next Period.\n['Headcount'] => DB('WFP Headcount', ATTRS('WFP Period', !WFP Period, 'Next Period'), !WFP Version, !WFP Entity, !WFP Cost Centre, !WFP Position, 'Leavers'),\n                 DB('WFP Headcount', ATTRS('WFP Period', !WFP Period, 'Next Period'), !WFP Version, !WFP Entity, !WFP Cost Centre, !WFP Position, 'Closing');\n\n# P6 — variance versions\n['Actual']   => ['Act vs Bud'];\n['Budget']   => ['Act vs Bud'], ['Fcst vs Bud'];\n['Forecast'] => ['Fcst vs Bud'];\n"
+      },
+      "dimension::WFP Workforce Cost Measure::element Cost per FTE": {
+        "elementCount": 3,
+        "edgeCount": 0
+      },
+      "attribute::Capex %::WFP Cost Centre": {
+        "Name": "Capex %",
+        "Type": "Numeric"
+      },
+      "attribute::GL Account::WFP Pay Component": {
+        "Name": "GL Account",
+        "Type": "String"
+      },
+      "subset::Default::WFP Currency": {
+        "elements": [
+          "GBP",
+          "USD",
+          "NZD",
+          "Reporting",
+          "Reporting @ Budget FX"
+        ]
+      },
+      "subset::Default::WFP Pay Component": {
+        "elements": [
+          "Total Compensation",
+          "Cost to Company",
+          "Base",
+          "Employer Payroll Tax",
+          "Employer Pension",
+          "Benefits",
+          "Bonus",
+          "One-Time",
+          "Employee Deductions",
+          "Gross Pay",
+          "Employee Income Tax",
+          "Employee Pension",
+          "Net Pay",
+          "GL: Personnel P&L",
+          "GL: Salaries & Wages",
+          "GL: Bonus & Incentives",
+          "GL: Employer Payroll Taxes",
+          "GL: Employer Pension",
+          "GL: Benefits",
+          "_Start Index",
+          "_End Index",
+          "_In Window",
+          "_Start Frac",
+          "_End Frac",
+          "_Active Fraction",
+          "_Annual Salary",
+          "_Monthly Base Full",
+          "_Earnings YTD",
+          "_Employer Tax YTD",
+          "_Prior Employer Tax YTD",
+          "_Employee Tax YTD",
+          "_Prior Employee Tax YTD"
+        ]
+      },
+      "view::Cost by Cost Centre::WFP Workforce Cost": {
+        "type": "native",
+        "axes": {
+          "rows": [
+            {
+              "dim": "WFP Cost Centre",
+              "subset": null,
+              "expr": null,
+              "all": "all"
+            }
+          ],
+          "cols": [
+            {
+              "dim": null,
+              "subset": "2026 Quarters + FY",
+              "expr": null,
+              "all": null
+            }
+          ],
+          "titles": [
+            {
+              "dim": "WFP Position",
+              "member": null
+            },
+            {
+              "dim": "WFP Version",
+              "member": null
+            },
+            {
+              "dim": "WFP Entity",
+              "member": null
+            },
+            {
+              "dim": "WFP Currency",
+              "member": null
+            },
+            {
+              "dim": "WFP Pay Component",
+              "member": null
+            },
+            {
+              "dim": "WFP Workforce Cost Measure",
+              "member": null
+            }
+          ]
+        }
+      },
+      "attribute::Actuals Closed::WFP Period": {
+        "Name": "Actuals Closed",
+        "Type": "Numeric"
+      },
+      "process::WFP Build YTD Hierarchy": {
+        "PrologProcedure": "#Region WFP Build YTD Hierarchy — alternate rollup on WFP Period\r\n# For each real month YYYY-MM creates a consolidation \"YTD YYYY-MM\" that sums\r\n# every month in the same fiscal year with Period Index <= this month's.\r\n# Idempotent — re-adding an element / edge is a no-op. Run after the period\r\n# dimension exists; safe to re-run any time.\r\ncPer = 'WFP Period';\r\nnCount = DIMSIZ( cPer );\r\n\r\n# Pass 1 — create the YTD consolidation members\r\nnI = 1;\r\nWHILE( nI <= nCount );\r\n   vP = DIMNM( cPer, nI );\r\n   IF( DTYPE( cPer, vP ) @= 'N' & LONG( vP ) = 7 & SUBST( vP, 5, 1 ) @= '-' );\r\n      DimensionElementInsertDirect( cPer, '', 'YTD ' | vP, 'C' );\r\n   ENDIF;\r\n   nI = nI + 1;\r\nEND;\r\n\r\n# Pass 2 — wire each month into every YTD member for its FY at or after it\r\nnI = 1;\r\nWHILE( nI <= nCount );\r\n   vP = DIMNM( cPer, nI );\r\n   IF( DTYPE( cPer, vP ) @= 'N' & LONG( vP ) = 7 & SUBST( vP, 5, 1 ) @= '-' );\r\n      vFY   = ATTRS( cPer, vP, 'FY' );\r\n      nIdx  = ATTRN( cPer, vP, 'Period Index' );\r\n      nJ = 1;\r\n      WHILE( nJ <= nCount );\r\n         vT = DIMNM( cPer, nJ );\r\n         IF( DTYPE( cPer, vT ) @= 'N' & LONG( vT ) = 7 & SUBST( vT, 5, 1 ) @= '-'\r\n             & ATTRS( cPer, vT, 'FY' ) @= vFY\r\n             & ATTRN( cPer, vT, 'Period Index' ) >= nIdx );\r\n            DimensionElementComponentAddDirect( cPer, 'YTD ' | vT, vP, 1 );\r\n         ENDIF;\r\n         nJ = nJ + 1;\r\n      END;\r\n   ENDIF;\r\n   nI = nI + 1;\r\nEND;\r\n",
+        "MetadataProcedure": "",
+        "DataProcedure": "",
+        "EpilogProcedure": ""
+      },
+      "view::GL P&L::WFP Workforce Cost": {
+        "type": "native",
+        "axes": {
+          "rows": [
+            {
+              "dim": null,
+              "subset": "GL P&L",
+              "expr": null,
+              "all": null
+            }
+          ],
+          "cols": [
+            {
+              "dim": null,
+              "subset": "2026 Quarters + FY",
+              "expr": null,
+              "all": null
+            }
+          ],
+          "titles": [
+            {
+              "dim": "WFP Version",
+              "member": null
+            },
+            {
+              "dim": "WFP Entity",
+              "member": null
+            },
+            {
+              "dim": "WFP Cost Centre",
+              "member": null
+            },
+            {
+              "dim": "WFP Currency",
+              "member": null
+            },
+            {
+              "dim": "WFP Position",
+              "member": null
+            },
+            {
+              "dim": "WFP Workforce Cost Measure",
+              "member": null
+            }
+          ]
+        }
+      },
+      "view::Capitalised Labour::WFP Workforce Cost": {
+        "type": "native",
+        "axes": {
+          "rows": [
+            {
+              "dim": "WFP Cost Centre",
+              "subset": null,
+              "expr": null,
+              "all": "all"
+            }
+          ],
+          "cols": [
+            {
+              "dim": "WFP Workforce Cost Measure",
+              "subset": null,
+              "expr": "Amount,Amount Capex,Amount Opex",
+              "all": null
+            }
+          ],
+          "titles": [
+            {
+              "dim": "WFP Period",
+              "member": null
+            },
+            {
+              "dim": "WFP Version",
+              "member": null
+            },
+            {
+              "dim": "WFP Entity",
+              "member": null
+            },
+            {
+              "dim": "WFP Pay Component",
+              "member": null
+            },
+            {
+              "dim": "WFP Currency",
+              "member": null
+            },
+            {
+              "dim": "WFP Position",
+              "member": null
+            }
+          ]
+        }
+      },
+      "process::WFP Load Actuals": {
+        "PrologProcedure": "#Region WFP Load Actuals — populate the Actual (static) version for closed months\r\n# DEMO GENERATOR. In production this process's datasource becomes the payroll\r\n# extract. Here Actual is derived from Forecast for the closed window (period\r\n# index 13..15 = 2026-01..03) plus deliberate deltas so the variance layer has\r\n# something to show:\r\n#   * ENG-006 (NZ) left end of Feb 2026 - unplanned early departure; 12,000 NZD\r\n#     severance paid in Mar (a month with no base pay).\r\n#   * SLS-001 (UK) 5,000 GBP discretionary bonus in Feb.\r\n#   * USD ran weaker than plan: 0.77 vs the 0.79 budget/forecast rate, Jan-Mar.\r\n# Idempotent - CellPutN writes absolute values; re-run overwrites.\r\n\r\ncWC  = 'WFP Workforce Cost';\r\ncWI  = 'WFP Workforce Input';\r\ncHC  = 'WFP Headcount';\r\ncFX  = 'WFP FX Rates';\r\ncPos = 'WFP Position';\r\ncPer = 'WFP Period';\r\ncCC  = 'WFP Cost Centre';\r\n\r\nnWinFrom = 13;\r\nnWinTo   = 15;\r\nnActUSD  = 0.77;\r\nnBudUSD  = 0.79;\r\nnRateNZD = 0.47;\r\nnRateGBP = 1;\r\n\r\nnPerCount = DIMSIZ( cPer );\r\nnPosCount = DIMSIZ( cPos );\r\n\r\n# ---- 1. Actual FX rates for the closed window ----\r\nnP = 1;\r\nWHILE( nP <= nPerCount );\r\n   vPer = DIMNM( cPer, nP );\r\n   IF( DTYPE( cPer, vPer ) @= 'N' & LONG( vPer ) = 7 & SUBST( vPer, 5, 1 ) @= '-' );\r\n      nIdx = ATTRN( cPer, vPer, 'Period Index' );\r\n      IF( nIdx >= nWinFrom & nIdx <= nWinTo );\r\n         CellPutN( nRateGBP, cFX, vPer, 'Actual', 'GBP',       'Average', 'Rate' );\r\n         CellPutN( nRateGBP, cFX, vPer, 'Actual', 'GBP',       'Closing', 'Rate' );\r\n         CellPutN( nActUSD,  cFX, vPer, 'Actual', 'USD',       'Average', 'Rate' );\r\n         CellPutN( nActUSD,  cFX, vPer, 'Actual', 'USD',       'Closing', 'Rate' );\r\n         CellPutN( nRateNZD, cFX, vPer, 'Actual', 'NZD',       'Average', 'Rate' );\r\n         CellPutN( nRateNZD, cFX, vPer, 'Actual', 'NZD',       'Closing', 'Rate' );\r\n         CellPutN( nRateGBP, cFX, vPer, 'Actual', 'Reporting', 'Average', 'Rate' );\r\n         CellPutN( nRateGBP, cFX, vPer, 'Actual', 'Reporting', 'Closing', 'Rate' );\r\n      ENDIF;\r\n   ENDIF;\r\n   nP = nP + 1;\r\nEND;\r\n\r\n# ---- 2. Copy Forecast -> Actual for the closed window ----\r\nvAllComps = 'Base|Employer Payroll Tax|Employer Pension|Benefits|Bonus|One-Time|Gross Pay|Employee Income Tax|Employee Pension|Net Pay|';\r\nvHcMeas   = 'Headcount|FTE|Open Positions|Hires|Leavers|Opening|Closing|';\r\n\r\nnI = 1;\r\nWHILE( nI <= nPosCount );\r\n   vPos = DIMNM( cPos, nI );\r\n   IF( DTYPE( cPos, vPos ) @= 'N' );\r\n      vHome = ATTRS( cPos, vPos, 'Home Entity' );\r\n      vCtr  = ATTRS( cPos, vPos, 'Cost Centre' );\r\n      vSC   = ATTRS( cPos, vPos, 'Salary Currency' );\r\n      nCapexPct = ATTRN( cCC, vCtr, 'Capex %' );\r\n      nRepRate    = IF( vSC @= 'USD', nActUSD, IF( vSC @= 'NZD', nRateNZD, nRateGBP ) );\r\n      nRepBudRate = IF( vSC @= 'USD', nBudUSD, IF( vSC @= 'NZD', nRateNZD, nRateGBP ) );\r\n\r\n      nP = 1;\r\n      WHILE( nP <= nPerCount );\r\n         vPer = DIMNM( cPer, nP );\r\n         IF( DTYPE( cPer, vPer ) @= 'N' & LONG( vPer ) = 7 & SUBST( vPer, 5, 1 ) @= '-' );\r\n            nIdx = ATTRN( cPer, vPer, 'Period Index' );\r\n            IF( nIdx >= nWinFrom & nIdx <= nWinTo );\r\n\r\n               nGone = IF( vPos @= 'ENG-006' & nIdx >= 15, 1, 0 );\r\n\r\n               vL = vAllComps;\r\n               WHILE( SCAN( '|', vL ) > 1 );\r\n                  nS = SCAN( '|', vL ); vPC = SUBST( vL, 1, nS - 1 ); vL = SUBST( vL, nS + 1, LONG( vL ) - nS );\r\n                  nLocal = IF( nGone = 1, 0, CellGetN( cWC, vPer, 'Forecast', vHome, vCtr, vPC, vSC, vPos, 'Amount' ) );\r\n                  nIsCtc = IF( vPC @= 'Base' % vPC @= 'Employer Payroll Tax' % vPC @= 'Employer Pension' % vPC @= 'Benefits', 1, 0 );\r\n                  nCapL  = nLocal * nCapexPct * nIsCtc;\r\n                  nRep    = nLocal * nRepRate;\r\n                  nRepBud = nLocal * nRepBudRate;\r\n                  CellPutN( nLocal,          cWC, vPer, 'Actual', vHome, vCtr, vPC, vSC,                     vPos, 'Amount' );\r\n                  CellPutN( nCapL,           cWC, vPer, 'Actual', vHome, vCtr, vPC, vSC,                     vPos, 'Amount Capex' );\r\n                  CellPutN( nLocal - nCapL,  cWC, vPer, 'Actual', vHome, vCtr, vPC, vSC,                     vPos, 'Amount Opex' );\r\n                  CellPutN( nRep,                     cWC, vPer, 'Actual', vHome, vCtr, vPC, 'Reporting',              vPos, 'Amount' );\r\n                  CellPutN( nRep * nCapexPct * nIsCtc,cWC, vPer, 'Actual', vHome, vCtr, vPC, 'Reporting',              vPos, 'Amount Capex' );\r\n                  CellPutN( nRep - nRep * nCapexPct * nIsCtc, cWC, vPer, 'Actual', vHome, vCtr, vPC, 'Reporting',      vPos, 'Amount Opex' );\r\n                  CellPutN( nRepBud,                        cWC, vPer, 'Actual', vHome, vCtr, vPC, 'Reporting @ Budget FX', vPos, 'Amount' );\r\n                  CellPutN( nRepBud * nCapexPct * nIsCtc,   cWC, vPer, 'Actual', vHome, vCtr, vPC, 'Reporting @ Budget FX', vPos, 'Amount Capex' );\r\n                  CellPutN( nRepBud - nRepBud * nCapexPct * nIsCtc, cWC, vPer, 'Actual', vHome, vCtr, vPC, 'Reporting @ Budget FX', vPos, 'Amount Opex' );\r\n               END;\r\n\r\n               CellPutN( IF( nGone = 1, 0, CellGetN( cWI, vPer, 'Forecast', vPos, 'FTE' ) ),         cWI, vPer, 'Actual', vPos, 'FTE' );\r\n               CellPutN( IF( nGone = 1, 0, CellGetN( cWI, vPer, 'Forecast', vPos, 'Base Salary' ) ), cWI, vPer, 'Actual', vPos, 'Base Salary' );\r\n\r\n               vL = vHcMeas;\r\n               WHILE( SCAN( '|', vL ) > 1 );\r\n                  nS = SCAN( '|', vL ); vHM = SUBST( vL, 1, nS - 1 ); vL = SUBST( vL, nS + 1, LONG( vL ) - nS );\r\n                  CellPutN( CellGetN( cHC, vPer, 'Forecast', vHome, vCtr, vPos, vHM ), cHC, vPer, 'Actual', vHome, vCtr, vPos, vHM );\r\n               END;\r\n            ENDIF;\r\n         ENDIF;\r\n         nP = nP + 1;\r\n      END;\r\n   ENDIF;\r\n   nI = nI + 1;\r\nEND;\r\n\r\n# ---- 3. Deltas ----\r\n# ENG-006 leaves end Feb: headcount bridge\r\nCellPutN( 0, cHC, '2026-03', 'Actual', 'NZ Ltd', 'CC-ENG-PLT', 'ENG-006', 'Headcount' );\r\nCellPutN( 0, cHC, '2026-03', 'Actual', 'NZ Ltd', 'CC-ENG-PLT', 'ENG-006', 'FTE' );\r\nCellPutN( 0, cHC, '2026-03', 'Actual', 'NZ Ltd', 'CC-ENG-PLT', 'ENG-006', 'Hires' );\r\nCellPutN( 1, cHC, '2026-03', 'Actual', 'NZ Ltd', 'CC-ENG-PLT', 'ENG-006', 'Leavers' );\r\nCellPutN( 1, cHC, '2026-03', 'Actual', 'NZ Ltd', 'CC-ENG-PLT', 'ENG-006', 'Opening' );\r\nCellPutN( 0, cHC, '2026-03', 'Actual', 'NZ Ltd', 'CC-ENG-PLT', 'ENG-006', 'Closing' );\r\nCellPutN( 1, cHC, '2026-02', 'Actual', 'NZ Ltd', 'CC-ENG-PLT', 'ENG-006', 'Closing' );\r\n\r\n# ENG-006 severance 12,000 NZD in Mar (no base pay that month)\r\nnSev = 12000;\r\nCellPutN( nSev,             cWI, '2026-03', 'Actual', 'ENG-006', 'One-Time Amount' );\r\nCellPutN( nSev,             cWC, '2026-03', 'Actual', 'NZ Ltd', 'CC-ENG-PLT', 'One-Time', 'NZD',                    'ENG-006', 'Amount' );\r\nCellPutN( nSev,             cWC, '2026-03', 'Actual', 'NZ Ltd', 'CC-ENG-PLT', 'One-Time', 'NZD',                    'ENG-006', 'Amount Opex' );\r\nCellPutN( nSev * nRateNZD,  cWC, '2026-03', 'Actual', 'NZ Ltd', 'CC-ENG-PLT', 'One-Time', 'Reporting',              'ENG-006', 'Amount' );\r\nCellPutN( nSev * nRateNZD,  cWC, '2026-03', 'Actual', 'NZ Ltd', 'CC-ENG-PLT', 'One-Time', 'Reporting',              'ENG-006', 'Amount Opex' );\r\nCellPutN( nSev * nRateNZD,  cWC, '2026-03', 'Actual', 'NZ Ltd', 'CC-ENG-PLT', 'One-Time', 'Reporting @ Budget FX',  'ENG-006', 'Amount' );\r\nCellPutN( nSev * nRateNZD,  cWC, '2026-03', 'Actual', 'NZ Ltd', 'CC-ENG-PLT', 'One-Time', 'Reporting @ Budget FX',  'ENG-006', 'Amount Opex' );\r\n\r\n# SLS-001 discretionary bonus 5,000 GBP in Feb\r\nnDisc = 5000;\r\nCellPutN( nDisc, cWI, '2026-02', 'Actual', 'SLS-001', 'One-Time Amount' );\r\nCellPutN( nDisc, cWC, '2026-02', 'Actual', 'UK Ltd', 'CC-SALES', 'One-Time', 'GBP',                    'SLS-001', 'Amount' );\r\nCellPutN( nDisc, cWC, '2026-02', 'Actual', 'UK Ltd', 'CC-SALES', 'One-Time', 'GBP',                    'SLS-001', 'Amount Opex' );\r\nCellPutN( nDisc, cWC, '2026-02', 'Actual', 'UK Ltd', 'CC-SALES', 'One-Time', 'Reporting',              'SLS-001', 'Amount' );\r\nCellPutN( nDisc, cWC, '2026-02', 'Actual', 'UK Ltd', 'CC-SALES', 'One-Time', 'Reporting',              'SLS-001', 'Amount Opex' );\r\nCellPutN( nDisc, cWC, '2026-02', 'Actual', 'UK Ltd', 'CC-SALES', 'One-Time', 'Reporting @ Budget FX',  'SLS-001', 'Amount' );\r\nCellPutN( nDisc, cWC, '2026-02', 'Actual', 'UK Ltd', 'CC-SALES', 'One-Time', 'Reporting @ Budget FX',  'SLS-001', 'Amount Opex' );\r\n\r\n# ---- 4. mark closed periods ----\r\nAttrPutN( 1, cPer, '2026-01', 'Actuals Closed' );\r\nAttrPutN( 1, cPer, '2026-02', 'Actuals Closed' );\r\nAttrPutN( 1, cPer, '2026-03', 'Actuals Closed' );\r\n",
+        "MetadataProcedure": "",
+        "DataProcedure": "",
+        "EpilogProcedure": ""
+      },
+      "subset::2026 YTD + FY::WFP Period": {
+        "elements": [
+          "YTD 2026-01",
+          "YTD 2026-02",
+          "YTD 2026-03",
+          "YTD 2026-04",
+          "YTD 2026-05",
+          "YTD 2026-06",
+          "YTD 2026-07",
+          "YTD 2026-08",
+          "YTD 2026-09",
+          "YTD 2026-10",
+          "YTD 2026-11",
+          "YTD 2026-12",
+          "FY2026"
+        ]
+      },
+      "view::FX vs Operational::WFP Workforce Cost": {
+        "type": "native",
+        "axes": {
+          "rows": [
+            {
+              "dim": "WFP Cost Centre",
+              "subset": null,
+              "expr": null,
+              "all": "all"
+            }
+          ],
+          "cols": [
+            {
+              "dim": "WFP Version",
+              "subset": null,
+              "expr": "Act vs Bud,Var FX,Var Operational",
+              "all": null
+            }
+          ],
+          "titles": [
+            {
+              "dim": "WFP Period",
+              "member": null
+            },
+            {
+              "dim": "WFP Entity",
+              "member": null
+            },
+            {
+              "dim": "WFP Pay Component",
+              "member": null
+            },
+            {
+              "dim": "WFP Currency",
+              "member": null
+            },
+            {
+              "dim": "WFP Position",
+              "member": null
+            },
+            {
+              "dim": "WFP Workforce Cost Measure",
+              "member": null
+            }
+          ]
+        }
+      },
+      "view::Variance Bridge::WFP Workforce Cost": {
+        "type": "native",
+        "axes": {
+          "rows": [
+            {
+              "dim": "WFP Pay Component",
+              "subset": null,
+              "expr": "Base,Benefits,Bonus,Cost to Company,Employer Payroll Tax,Employer Pension,One-Time,Total Compensation",
+              "all": null
+            }
+          ],
+          "cols": [
+            {
+              "dim": null,
+              "subset": "Variance",
+              "expr": null,
+              "all": null
+            }
+          ],
+          "titles": [
+            {
+              "dim": "WFP Period",
+              "member": null
+            },
+            {
+              "dim": "WFP Entity",
+              "member": null
+            },
+            {
+              "dim": "WFP Cost Centre",
+              "member": null
+            },
+            {
+              "dim": "WFP Currency",
+              "member": null
+            },
+            {
+              "dim": "WFP Position",
+              "member": null
+            },
+            {
+              "dim": "WFP Workforce Cost Measure",
+              "member": null
+            }
+          ]
+        }
+      }
+    }
+  }
+}

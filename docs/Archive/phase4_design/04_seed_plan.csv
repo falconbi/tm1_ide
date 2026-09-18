@@ -1,0 +1,14 @@
+version,position,approve_month,lead_time,hire_month,attrition_month,backfill,notes
+Budget,ENG-007,0,0,0,0,0,Budget flat - no new hires, no planned attrition
+Budget,SLS-004,0,0,0,0,0,
+Budget,FIN-002,0,0,0,0,0,
+Forecast,ENG-007,13,3,16,0,0,approve 2026-01 (idx 13) + lead 3 => hire 2026-04 (idx 16)
+Forecast,SLS-004,14,2,16,0,0,approve 2026-02 (idx 14) + lead 2 => hire 2026-04 (idx 16)
+Forecast,FIN-002,0,0,0,0,0,Forecast does not hire FIN-002 (deferred)
+Forecast,ENG-005,13,3,16,0,1,Open Req backfilled: approve 2026-01 + lead 3 => filled from 2026-04 (idx 16), backfill=1
+Downside,ENG-007,0,0,0,0,0,Downside does not hire (cost pressure)
+Downside,SLS-004,0,0,0,0,0,
+Downside,FIN-002,0,0,0,0,0,
+Downside,ENG-002,0,0,20,16,1,attrition: ENG-002 leaves 2026-04 (idx 16); backfilled with a vacancy gap - replacement hired idx 20 (2026-08)
+Downside,ENG-006,0,0,0,19,0,attrition: ENG-006 leaves 2026-07 (idx 19), NOT backfilled (seat stays vacant)
+Downside,CS-002,0,0,0,21,0,CS-002 leaves 2026-09 (idx 21) - matches existing attr End Period, kept explicit

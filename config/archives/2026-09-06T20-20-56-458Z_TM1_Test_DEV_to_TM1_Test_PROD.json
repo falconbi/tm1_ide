@@ -1,0 +1,1547 @@
+{
+  "archived_at": "2026-09-06T20:20:56.458Z",
+  "source": "TM1_Test_DEV",
+  "target": "TM1_Test_PROD",
+  "deployer": "admin",
+  "approval": {
+    "id": "2026-09-06T20:20:51.694Z",
+    "approved_at": "2026-09-06T20:20:51.694Z",
+    "approver": "admin",
+    "notes": "",
+    "source": "TM1_Test_DEV",
+    "target": "TM1_Test_PROD",
+    "packaged": "Release 2026-09-06",
+    "session": null,
+    "packageDir": "/home/jdlove/apps/tm1_ide/packages/release-2026-09-06-2026-09-06"
+  },
+  "deploy": {
+    "source_server": "TM1_Test_DEV",
+    "target_server": "TM1_Test_PROD",
+    "session": "Release 2026-09-06",
+    "packaged_at": "2026-09-06T20:20:41.220Z",
+    "deployed_at": "2026-09-06T20:20:51.710Z",
+    "dry_run": false,
+    "risk": null,
+    "results": [
+      {
+        "ok": true,
+        "type": "dimension",
+        "name": "WFP Grade",
+        "detail": "5 elements, 0 edges"
+      },
+      {
+        "ok": true,
+        "type": "dimension",
+        "name": "WFP Location",
+        "detail": "3 elements, 0 edges"
+      },
+      {
+        "ok": true,
+        "type": "dimension",
+        "name": "WFP Cost Centre",
+        "detail": "15 elements, 14 edges"
+      },
+      {
+        "ok": true,
+        "type": "dimension",
+        "name": "WFP Version",
+        "detail": "4 elements, 0 edges"
+      },
+      {
+        "ok": true,
+        "type": "dimension",
+        "name": "WFP Period",
+        "detail": "57 elements, 54 edges"
+      },
+      {
+        "ok": true,
+        "type": "dimension",
+        "name": "WFP Job Family",
+        "detail": "10 elements, 0 edges"
+      },
+      {
+        "ok": true,
+        "type": "dimension",
+        "name": "WFP Jurisdiction",
+        "detail": "3 elements, 0 edges"
+      },
+      {
+        "ok": true,
+        "type": "dimension",
+        "name": "WFP FX Rate Type",
+        "detail": "2 elements, 0 edges"
+      },
+      {
+        "ok": true,
+        "type": "dimension",
+        "name": "WFP Entity",
+        "detail": "0 elements, 0 edges"
+      },
+      {
+        "ok": true,
+        "type": "dimension",
+        "name": "WFP Position",
+        "detail": "0 elements, 0 edges"
+      },
+      {
+        "ok": true,
+        "type": "dimension",
+        "name": "WFP Currency",
+        "detail": "1 elements, 0 edges"
+      },
+      {
+        "ok": true,
+        "type": "dimension",
+        "name": "WFP Tax Band",
+        "detail": "3 elements, 0 edges"
+      },
+      {
+        "ok": true,
+        "type": "dimension",
+        "name": "WFP Tax Type",
+        "detail": "2 elements, 0 edges"
+      },
+      {
+        "ok": true,
+        "type": "dimension",
+        "name": "WFP Pay Component",
+        "detail": "23 elements, 6 edges"
+      },
+      {
+        "ok": true,
+        "type": "dimension",
+        "name": "WFP Workforce Input Measure",
+        "detail": "2 elements, 0 edges"
+      },
+      {
+        "ok": true,
+        "type": "dimension",
+        "name": "WFP Pay Rates Measure",
+        "detail": "6 elements, 0 edges"
+      },
+      {
+        "ok": true,
+        "type": "dimension",
+        "name": "WFP Tax Bands Measure",
+        "detail": "3 elements, 0 edges"
+      },
+      {
+        "ok": true,
+        "type": "dimension",
+        "name": "WFP Headcount Measure",
+        "detail": "5 elements, 0 edges"
+      },
+      {
+        "ok": true,
+        "type": "dimension",
+        "name": "WFP FX Rates Measure",
+        "detail": "1 elements, 0 edges"
+      },
+      {
+        "ok": true,
+        "type": "dimension",
+        "name": "WFP Workforce Cost Measure",
+        "detail": "1 elements, 0 edges"
+      },
+      {
+        "ok": true,
+        "type": "attribute",
+        "name": "Local Currency",
+        "detail": "WFP Entity"
+      },
+      {
+        "ok": true,
+        "type": "attribute",
+        "name": "Primary Location",
+        "detail": "WFP Entity"
+      },
+      {
+        "ok": true,
+        "type": "attribute",
+        "name": "Function",
+        "detail": "WFP Cost Centre"
+      },
+      {
+        "ok": true,
+        "type": "attribute",
+        "name": "CC Name",
+        "detail": "WFP Cost Centre"
+      },
+      {
+        "ok": true,
+        "type": "attribute",
+        "name": "Department",
+        "detail": "WFP Position"
+      },
+      {
+        "ok": true,
+        "type": "attribute",
+        "name": "Cost Centre",
+        "detail": "WFP Position"
+      },
+      {
+        "ok": true,
+        "type": "attribute",
+        "name": "Location",
+        "detail": "WFP Position"
+      },
+      {
+        "ok": true,
+        "type": "attribute",
+        "name": "Grade",
+        "detail": "WFP Position"
+      },
+      {
+        "ok": true,
+        "type": "attribute",
+        "name": "Job Family",
+        "detail": "WFP Position"
+      },
+      {
+        "ok": true,
+        "type": "attribute",
+        "name": "FTE",
+        "detail": "WFP Position"
+      },
+      {
+        "ok": true,
+        "type": "attribute",
+        "name": "Position Status",
+        "detail": "WFP Position"
+      },
+      {
+        "ok": true,
+        "type": "attribute",
+        "name": "Start Period",
+        "detail": "WFP Position"
+      },
+      {
+        "ok": true,
+        "type": "attribute",
+        "name": "Start Day",
+        "detail": "WFP Position"
+      },
+      {
+        "ok": true,
+        "type": "attribute",
+        "name": "End Period",
+        "detail": "WFP Position"
+      },
+      {
+        "ok": true,
+        "type": "attribute",
+        "name": "End Day",
+        "detail": "WFP Position"
+      },
+      {
+        "ok": true,
+        "type": "attribute",
+        "name": "Incumbent Name",
+        "detail": "WFP Position"
+      },
+      {
+        "ok": true,
+        "type": "attribute",
+        "name": "Home Entity",
+        "detail": "WFP Position"
+      },
+      {
+        "ok": true,
+        "type": "attribute",
+        "name": "Version Type",
+        "detail": "WFP Version"
+      },
+      {
+        "ok": true,
+        "type": "attribute",
+        "name": "Description",
+        "detail": "WFP Version"
+      },
+      {
+        "ok": true,
+        "type": "attribute",
+        "name": "Period Index",
+        "detail": "WFP Period"
+      },
+      {
+        "ok": true,
+        "type": "attribute",
+        "name": "Days In Month",
+        "detail": "WFP Period"
+      },
+      {
+        "ok": true,
+        "type": "attribute",
+        "name": "Prior Period",
+        "detail": "WFP Period"
+      },
+      {
+        "ok": true,
+        "type": "attribute",
+        "name": "FY",
+        "detail": "WFP Period"
+      },
+      {
+        "ok": true,
+        "type": "attribute",
+        "name": "Pay Index",
+        "detail": "WFP Job Family"
+      },
+      {
+        "ok": true,
+        "type": "attribute",
+        "name": "Reporting Currency",
+        "detail": "WFP Entity"
+      },
+      {
+        "ok": true,
+        "type": "attribute",
+        "name": "Employment Type",
+        "detail": "WFP Position"
+      },
+      {
+        "ok": true,
+        "type": "attribute",
+        "name": "Salary Currency",
+        "detail": "WFP Position"
+      },
+      {
+        "ok": true,
+        "type": "attribute",
+        "name": "Tax Jurisdiction",
+        "detail": "WFP Position"
+      },
+      {
+        "ok": true,
+        "type": "attribute",
+        "name": "Seed Base Salary",
+        "detail": "WFP Position"
+      },
+      {
+        "ok": true,
+        "type": "attribute",
+        "name": "Format",
+        "detail": "WFP Workforce Cost Measure"
+      },
+      {
+        "ok": false,
+        "type": "cube",
+        "name": "WFP Workforce Input",
+        "detail": "WFP Period, WFP Version, WFP Position, WFP Workforce Input Measure",
+        "error": "Request failed with status code 400"
+      },
+      {
+        "ok": false,
+        "type": "cube",
+        "name": "WFP Pay Rates",
+        "detail": "WFP Period, WFP Version, WFP Grade, WFP Job Family, WFP Location, WFP Pay Rates Measure",
+        "error": "Request failed with status code 400"
+      },
+      {
+        "ok": false,
+        "type": "cube",
+        "name": "WFP Tax Bands",
+        "detail": "WFP Jurisdiction, WFP Tax Type, WFP Tax Band, WFP Tax Bands Measure",
+        "error": "Request failed with status code 400"
+      },
+      {
+        "ok": false,
+        "type": "cube",
+        "name": "WFP FX Rates",
+        "detail": "WFP Period, WFP Version, WFP Currency, WFP FX Rate Type, WFP FX Rates Measure",
+        "error": "Request failed with status code 400"
+      },
+      {
+        "ok": false,
+        "type": "cube",
+        "name": "WFP Headcount",
+        "detail": "WFP Period, WFP Version, WFP Entity, WFP Cost Centre, WFP Position, WFP Headcount Measure",
+        "error": "Request failed with status code 400"
+      },
+      {
+        "ok": false,
+        "type": "cube",
+        "name": "WFP Workforce Cost",
+        "detail": "WFP Period, WFP Version, WFP Entity, WFP Cost Centre, WFP Pay Component, WFP Currency, WFP Position, WFP Workforce Cost Measure",
+        "error": "Request failed with status code 400"
+      },
+      {
+        "ok": false,
+        "type": "rules",
+        "name": "WFP Workforce Cost",
+        "detail": null,
+        "error": "Request failed with status code 404"
+      },
+      {
+        "ok": false,
+        "type": "rules",
+        "name": "WFP Workforce Input",
+        "detail": null,
+        "error": "Request failed with status code 404"
+      },
+      {
+        "ok": false,
+        "type": "rules",
+        "name": "WFP Headcount",
+        "detail": null,
+        "error": "Request failed with status code 404"
+      },
+      {
+        "ok": true,
+        "type": "subset",
+        "name": "All Positions",
+        "detail": "WFP Position"
+      },
+      {
+        "ok": true,
+        "type": "subset",
+        "name": "All Positions",
+        "detail": "WFP Position"
+      },
+      {
+        "ok": true,
+        "type": "subset",
+        "name": "All Positions",
+        "detail": "WFP Position"
+      },
+      {
+        "ok": true,
+        "type": "subset",
+        "name": "All Positions",
+        "detail": "WFP Position"
+      },
+      {
+        "ok": true,
+        "type": "subset",
+        "name": "Cost Lines",
+        "detail": "WFP Pay Component"
+      },
+      {
+        "ok": true,
+        "type": "subset",
+        "name": "All Positions",
+        "detail": "WFP Position"
+      },
+      {
+        "ok": true,
+        "type": "subset",
+        "name": "Open Reqs",
+        "detail": "WFP Position"
+      },
+      {
+        "ok": true,
+        "type": "subset",
+        "name": "2026 Months",
+        "detail": "WFP Period"
+      },
+      {
+        "ok": true,
+        "type": "subset",
+        "name": "2026 Quarters + FY",
+        "detail": "WFP Period"
+      },
+      {
+        "ok": false,
+        "type": "view",
+        "name": "Entity Summary — Reporting Ccy",
+        "detail": "WFP Workforce Cost",
+        "error": "Request failed with status code 404"
+      },
+      {
+        "ok": false,
+        "type": "view",
+        "name": "Take-Home by Position",
+        "detail": "WFP Workforce Cost",
+        "error": "Request failed with status code 404"
+      },
+      {
+        "ok": false,
+        "type": "view",
+        "name": "Cost by Cost Centre",
+        "detail": "WFP Workforce Cost",
+        "error": "Request failed with status code 404"
+      },
+      {
+        "ok": false,
+        "type": "view",
+        "name": "Cost by Position — Monthly",
+        "detail": "WFP Workforce Cost",
+        "error": "Request failed with status code 404"
+      },
+      {
+        "ok": false,
+        "type": "view",
+        "name": "Headcount by Cost Centre",
+        "detail": "WFP Headcount",
+        "error": "Request failed with status code 404"
+      },
+      {
+        "ok": false,
+        "type": "view",
+        "name": "Position Input",
+        "detail": "WFP Workforce Input",
+        "error": "Request failed with status code 404"
+      },
+      {
+        "ok": false,
+        "type": "view",
+        "name": "Default",
+        "detail": "WFP Workforce Cost",
+        "error": "Request failed with status code 404"
+      },
+      {
+        "ok": false,
+        "type": "view",
+        "name": "WFP FX Rates",
+        "detail": "WFP FX Rates",
+        "error": "Request failed with status code 404"
+      },
+      {
+        "ok": false,
+        "type": "process",
+        "name": "WFP Seed Pay Rates",
+        "detail": null,
+        "error": "Request failed with status code 400"
+      },
+      {
+        "ok": false,
+        "type": "process",
+        "name": "WFP Seed Workforce Input",
+        "detail": null,
+        "error": "Request failed with status code 400"
+      },
+      {
+        "ok": false,
+        "type": "process",
+        "name": "WFP Load Positions",
+        "detail": null,
+        "error": "Request failed with status code 400"
+      },
+      {
+        "ok": false,
+        "type": "process",
+        "name": "WFP Seed Tax Bands",
+        "detail": null,
+        "error": "Request failed with status code 400"
+      },
+      {
+        "ok": false,
+        "type": "process",
+        "name": "WFP Seed FX Rates",
+        "detail": null,
+        "error": "Request failed with status code 400"
+      },
+      {
+        "ok": false,
+        "type": "process",
+        "name": "WFP Reprocess Feeders",
+        "detail": null,
+        "error": "Request failed with status code 400"
+      },
+      {
+        "ok": false,
+        "type": "process",
+        "name": "WFP Create Default Subsets",
+        "detail": null,
+        "error": "Request failed with status code 400"
+      }
+    ],
+    "deployed": 59,
+    "failed": 24,
+    "aborted": false
+  },
+  "manifest": {
+    "_meta": {
+      "session": "Release 2026-09-06",
+      "server": "TM1_Test_DEV",
+      "packaged_at": "2026-09-06T20:20:41.220Z",
+      "baseline_server": "TM1_Test_DEV",
+      "baseline_seeded_at": "2026-09-06T02:56:00.350Z",
+      "has_baseline": true
+    },
+    "objects": [
+      {
+        "type": "subset",
+        "name": "All Positions",
+        "detail": "WFP Position",
+        "outcome": "REFERENCED",
+        "file": "subsets/WFP Position/All Positions.json"
+      },
+      {
+        "type": "subset",
+        "name": "All Positions",
+        "detail": "WFP Position",
+        "outcome": "REFERENCED",
+        "file": "subsets/WFP Position/All Positions.json"
+      },
+      {
+        "type": "subset",
+        "name": "All Positions",
+        "detail": "WFP Position",
+        "outcome": "REFERENCED",
+        "file": "subsets/WFP Position/All Positions.json"
+      },
+      {
+        "type": "subset",
+        "name": "All Positions",
+        "detail": "WFP Position",
+        "outcome": "REFERENCED",
+        "file": "subsets/WFP Position/All Positions.json"
+      },
+      {
+        "type": "dimension",
+        "name": "WFP Grade",
+        "detail": "5 elements, 0 edges",
+        "outcome": "NEW",
+        "file": "dimensions/WFP Grade.json"
+      },
+      {
+        "type": "dimension",
+        "name": "WFP Location",
+        "detail": "3 elements, 0 edges",
+        "outcome": "NEW",
+        "file": "dimensions/WFP Location.json"
+      },
+      {
+        "type": "attribute",
+        "name": "Local Currency",
+        "detail": "WFP Entity",
+        "outcome": "NEW",
+        "file": "attributes/WFP Entity_Local Currency.json"
+      },
+      {
+        "type": "attribute",
+        "name": "Primary Location",
+        "detail": "WFP Entity",
+        "outcome": "NEW",
+        "file": "attributes/WFP Entity_Primary Location.json"
+      },
+      {
+        "type": "dimension",
+        "name": "WFP Cost Centre",
+        "detail": "15 elements, 14 edges",
+        "outcome": "NEW",
+        "file": "dimensions/WFP Cost Centre.json"
+      },
+      {
+        "type": "attribute",
+        "name": "Function",
+        "detail": "WFP Cost Centre",
+        "outcome": "NEW",
+        "file": "attributes/WFP Cost Centre_Function.json"
+      },
+      {
+        "type": "attribute",
+        "name": "CC Name",
+        "detail": "WFP Cost Centre",
+        "outcome": "NEW",
+        "file": "attributes/WFP Cost Centre_CC Name.json"
+      },
+      {
+        "type": "attribute",
+        "name": "Department",
+        "detail": "WFP Position",
+        "outcome": "NEW",
+        "file": "attributes/WFP Position_Department.json"
+      },
+      {
+        "type": "attribute",
+        "name": "Cost Centre",
+        "detail": "WFP Position",
+        "outcome": "NEW",
+        "file": "attributes/WFP Position_Cost Centre.json"
+      },
+      {
+        "type": "attribute",
+        "name": "Location",
+        "detail": "WFP Position",
+        "outcome": "NEW",
+        "file": "attributes/WFP Position_Location.json"
+      },
+      {
+        "type": "attribute",
+        "name": "Grade",
+        "detail": "WFP Position",
+        "outcome": "NEW",
+        "file": "attributes/WFP Position_Grade.json"
+      },
+      {
+        "type": "attribute",
+        "name": "Job Family",
+        "detail": "WFP Position",
+        "outcome": "NEW",
+        "file": "attributes/WFP Position_Job Family.json"
+      },
+      {
+        "type": "attribute",
+        "name": "FTE",
+        "detail": "WFP Position",
+        "outcome": "NEW",
+        "file": "attributes/WFP Position_FTE.json"
+      },
+      {
+        "type": "attribute",
+        "name": "Position Status",
+        "detail": "WFP Position",
+        "outcome": "NEW",
+        "file": "attributes/WFP Position_Position Status.json"
+      },
+      {
+        "type": "attribute",
+        "name": "Start Period",
+        "detail": "WFP Position",
+        "outcome": "NEW",
+        "file": "attributes/WFP Position_Start Period.json"
+      },
+      {
+        "type": "attribute",
+        "name": "Start Day",
+        "detail": "WFP Position",
+        "outcome": "NEW",
+        "file": "attributes/WFP Position_Start Day.json"
+      },
+      {
+        "type": "attribute",
+        "name": "End Period",
+        "detail": "WFP Position",
+        "outcome": "NEW",
+        "file": "attributes/WFP Position_End Period.json"
+      },
+      {
+        "type": "attribute",
+        "name": "End Day",
+        "detail": "WFP Position",
+        "outcome": "NEW",
+        "file": "attributes/WFP Position_End Day.json"
+      },
+      {
+        "type": "attribute",
+        "name": "Incumbent Name",
+        "detail": "WFP Position",
+        "outcome": "NEW",
+        "file": "attributes/WFP Position_Incumbent Name.json"
+      },
+      {
+        "type": "attribute",
+        "name": "Home Entity",
+        "detail": "WFP Position",
+        "outcome": "NEW",
+        "file": "attributes/WFP Position_Home Entity.json"
+      },
+      {
+        "type": "process",
+        "name": "WFP Seed Pay Rates",
+        "detail": null,
+        "outcome": "NEW",
+        "file": "processes/WFP Seed Pay Rates.json"
+      },
+      {
+        "type": "process",
+        "name": "WFP Seed Workforce Input",
+        "detail": null,
+        "outcome": "NEW",
+        "file": "processes/WFP Seed Workforce Input.json"
+      },
+      {
+        "type": "process",
+        "name": "WFP Load Positions",
+        "detail": null,
+        "outcome": "NEW",
+        "file": "processes/WFP Load Positions.json"
+      },
+      {
+        "type": "subset",
+        "name": "Cost Lines",
+        "detail": "WFP Pay Component",
+        "outcome": "NEW",
+        "file": "subsets/WFP Pay Component/Cost Lines.json"
+      },
+      {
+        "type": "subset",
+        "name": "All Positions",
+        "detail": "WFP Position",
+        "outcome": "NEW",
+        "file": "subsets/WFP Position/All Positions.json"
+      },
+      {
+        "type": "subset",
+        "name": "Open Reqs",
+        "detail": "WFP Position",
+        "outcome": "NEW",
+        "file": "subsets/WFP Position/Open Reqs.json"
+      },
+      {
+        "type": "dimension",
+        "name": "WFP Version",
+        "detail": "4 elements, 0 edges",
+        "outcome": "NEW",
+        "file": "dimensions/WFP Version.json"
+      },
+      {
+        "type": "attribute",
+        "name": "Version Type",
+        "detail": "WFP Version",
+        "outcome": "NEW",
+        "file": "attributes/WFP Version_Version Type.json"
+      },
+      {
+        "type": "attribute",
+        "name": "Description",
+        "detail": "WFP Version",
+        "outcome": "NEW",
+        "file": "attributes/WFP Version_Description.json"
+      },
+      {
+        "type": "dimension",
+        "name": "WFP Period",
+        "detail": "57 elements, 54 edges",
+        "outcome": "NEW",
+        "file": "dimensions/WFP Period.json"
+      },
+      {
+        "type": "attribute",
+        "name": "Period Index",
+        "detail": "WFP Period",
+        "outcome": "NEW",
+        "file": "attributes/WFP Period_Period Index.json"
+      },
+      {
+        "type": "attribute",
+        "name": "Days In Month",
+        "detail": "WFP Period",
+        "outcome": "NEW",
+        "file": "attributes/WFP Period_Days In Month.json"
+      },
+      {
+        "type": "attribute",
+        "name": "Prior Period",
+        "detail": "WFP Period",
+        "outcome": "NEW",
+        "file": "attributes/WFP Period_Prior Period.json"
+      },
+      {
+        "type": "attribute",
+        "name": "FY",
+        "detail": "WFP Period",
+        "outcome": "NEW",
+        "file": "attributes/WFP Period_FY.json"
+      },
+      {
+        "type": "dimension",
+        "name": "WFP Job Family",
+        "detail": "10 elements, 0 edges",
+        "outcome": "NEW",
+        "file": "dimensions/WFP Job Family.json"
+      },
+      {
+        "type": "attribute",
+        "name": "Pay Index",
+        "detail": "WFP Job Family",
+        "outcome": "NEW",
+        "file": "attributes/WFP Job Family_Pay Index.json"
+      },
+      {
+        "type": "dimension",
+        "name": "WFP Jurisdiction",
+        "detail": "3 elements, 0 edges",
+        "outcome": "NEW",
+        "file": "dimensions/WFP Jurisdiction.json"
+      },
+      {
+        "type": "dimension",
+        "name": "WFP FX Rate Type",
+        "detail": "2 elements, 0 edges",
+        "outcome": "NEW",
+        "file": "dimensions/WFP FX Rate Type.json"
+      },
+      {
+        "type": "dimension",
+        "name": "WFP Entity",
+        "detail": "0 elements, 0 edges",
+        "outcome": "NEW",
+        "file": "dimensions/WFP Entity.json"
+      },
+      {
+        "type": "attribute",
+        "name": "Reporting Currency",
+        "detail": "WFP Entity",
+        "outcome": "NEW",
+        "file": "attributes/WFP Entity_Reporting Currency.json"
+      },
+      {
+        "type": "dimension",
+        "name": "WFP Position",
+        "detail": "0 elements, 0 edges",
+        "outcome": "NEW",
+        "file": "dimensions/WFP Position.json"
+      },
+      {
+        "type": "attribute",
+        "name": "Employment Type",
+        "detail": "WFP Position",
+        "outcome": "NEW",
+        "file": "attributes/WFP Position_Employment Type.json"
+      },
+      {
+        "type": "attribute",
+        "name": "Salary Currency",
+        "detail": "WFP Position",
+        "outcome": "NEW",
+        "file": "attributes/WFP Position_Salary Currency.json"
+      },
+      {
+        "type": "attribute",
+        "name": "Tax Jurisdiction",
+        "detail": "WFP Position",
+        "outcome": "NEW",
+        "file": "attributes/WFP Position_Tax Jurisdiction.json"
+      },
+      {
+        "type": "attribute",
+        "name": "Seed Base Salary",
+        "detail": "WFP Position",
+        "outcome": "NEW",
+        "file": "attributes/WFP Position_Seed Base Salary.json"
+      },
+      {
+        "type": "process",
+        "name": "WFP Seed Tax Bands",
+        "detail": null,
+        "outcome": "NEW",
+        "file": "processes/WFP Seed Tax Bands.json"
+      },
+      {
+        "type": "process",
+        "name": "WFP Seed FX Rates",
+        "detail": null,
+        "outcome": "NEW",
+        "file": "processes/WFP Seed FX Rates.json"
+      },
+      {
+        "type": "dimension",
+        "name": "WFP Currency",
+        "detail": "1 elements, 0 edges",
+        "outcome": "NEW",
+        "file": "dimensions/WFP Currency.json"
+      },
+      {
+        "type": "subset",
+        "name": "2026 Months",
+        "detail": "WFP Period",
+        "outcome": "NEW",
+        "file": "subsets/WFP Period/2026 Months.json"
+      },
+      {
+        "type": "subset",
+        "name": "2026 Quarters + FY",
+        "detail": "WFP Period",
+        "outcome": "NEW",
+        "file": "subsets/WFP Period/2026 Quarters _ FY.json"
+      },
+      {
+        "type": "dimension",
+        "name": "WFP Tax Band",
+        "detail": "3 elements, 0 edges",
+        "outcome": "NEW",
+        "file": "dimensions/WFP Tax Band.json"
+      },
+      {
+        "type": "dimension",
+        "name": "WFP Tax Type",
+        "detail": "2 elements, 0 edges",
+        "outcome": "NEW",
+        "file": "dimensions/WFP Tax Type.json"
+      },
+      {
+        "type": "dimension",
+        "name": "WFP Pay Component",
+        "detail": "23 elements, 6 edges",
+        "outcome": "NEW",
+        "file": "dimensions/WFP Pay Component.json"
+      },
+      {
+        "type": "process",
+        "name": "WFP Reprocess Feeders",
+        "detail": null,
+        "outcome": "NEW",
+        "file": "processes/WFP Reprocess Feeders.json"
+      },
+      {
+        "type": "process",
+        "name": "WFP Create Default Subsets",
+        "detail": null,
+        "outcome": "NEW",
+        "file": "processes/WFP Create Default Subsets.json"
+      },
+      {
+        "type": "dimension",
+        "name": "WFP Workforce Input Measure",
+        "detail": "2 elements, 0 edges",
+        "outcome": "NEW",
+        "file": "dimensions/WFP Workforce Input Measure.json"
+      },
+      {
+        "type": "dimension",
+        "name": "WFP Pay Rates Measure",
+        "detail": "6 elements, 0 edges",
+        "outcome": "NEW",
+        "file": "dimensions/WFP Pay Rates Measure.json"
+      },
+      {
+        "type": "dimension",
+        "name": "WFP Tax Bands Measure",
+        "detail": "3 elements, 0 edges",
+        "outcome": "NEW",
+        "file": "dimensions/WFP Tax Bands Measure.json"
+      },
+      {
+        "type": "dimension",
+        "name": "WFP Headcount Measure",
+        "detail": "5 elements, 0 edges",
+        "outcome": "NEW",
+        "file": "dimensions/WFP Headcount Measure.json"
+      },
+      {
+        "type": "dimension",
+        "name": "WFP FX Rates Measure",
+        "detail": "1 elements, 0 edges",
+        "outcome": "NEW",
+        "file": "dimensions/WFP FX Rates Measure.json"
+      },
+      {
+        "type": "dimension",
+        "name": "WFP Workforce Cost Measure",
+        "detail": "1 elements, 0 edges",
+        "outcome": "NEW",
+        "file": "dimensions/WFP Workforce Cost Measure.json"
+      },
+      {
+        "type": "attribute",
+        "name": "Format",
+        "detail": "WFP Workforce Cost Measure",
+        "outcome": "NEW",
+        "file": "attributes/WFP Workforce Cost Measure_Format.json"
+      },
+      {
+        "type": "cube",
+        "name": "WFP Workforce Input",
+        "detail": "WFP Period, WFP Version, WFP Position, WFP Workforce Input Measure",
+        "outcome": "NEW",
+        "file": "cubes/WFP Workforce Input.json"
+      },
+      {
+        "type": "cube",
+        "name": "WFP Pay Rates",
+        "detail": "WFP Period, WFP Version, WFP Grade, WFP Job Family, WFP Location, WFP Pay Rates Measure",
+        "outcome": "NEW",
+        "file": "cubes/WFP Pay Rates.json"
+      },
+      {
+        "type": "cube",
+        "name": "WFP Tax Bands",
+        "detail": "WFP Jurisdiction, WFP Tax Type, WFP Tax Band, WFP Tax Bands Measure",
+        "outcome": "NEW",
+        "file": "cubes/WFP Tax Bands.json"
+      },
+      {
+        "type": "cube",
+        "name": "WFP FX Rates",
+        "detail": "WFP Period, WFP Version, WFP Currency, WFP FX Rate Type, WFP FX Rates Measure",
+        "outcome": "NEW",
+        "file": "cubes/WFP FX Rates.json"
+      },
+      {
+        "type": "cube",
+        "name": "WFP Headcount",
+        "detail": "WFP Period, WFP Version, WFP Entity, WFP Cost Centre, WFP Position, WFP Headcount Measure",
+        "outcome": "NEW",
+        "file": "cubes/WFP Headcount.json"
+      },
+      {
+        "type": "cube",
+        "name": "WFP Workforce Cost",
+        "detail": "WFP Period, WFP Version, WFP Entity, WFP Cost Centre, WFP Pay Component, WFP Currency, WFP Position, WFP Workforce Cost Measure",
+        "outcome": "NEW",
+        "file": "cubes/WFP Workforce Cost.json"
+      },
+      {
+        "type": "rules",
+        "name": "WFP Workforce Cost",
+        "detail": null,
+        "outcome": "NEW",
+        "file": "rules/WFP Workforce Cost.rule"
+      },
+      {
+        "type": "rules",
+        "name": "WFP Workforce Input",
+        "detail": null,
+        "outcome": "NEW",
+        "file": "rules/WFP Workforce Input.rule"
+      },
+      {
+        "type": "rules",
+        "name": "WFP Headcount",
+        "detail": null,
+        "outcome": "NEW",
+        "file": "rules/WFP Headcount.rule"
+      },
+      {
+        "type": "view",
+        "name": "Entity Summary — Reporting Ccy",
+        "detail": "WFP Workforce Cost",
+        "outcome": "NEW",
+        "file": "views/WFP Workforce Cost/Entity Summary _ Reporting Ccy.json"
+      },
+      {
+        "type": "view",
+        "name": "Take-Home by Position",
+        "detail": "WFP Workforce Cost",
+        "outcome": "NEW",
+        "file": "views/WFP Workforce Cost/Take-Home by Position.json"
+      },
+      {
+        "type": "view",
+        "name": "Cost by Cost Centre",
+        "detail": "WFP Workforce Cost",
+        "outcome": "NEW",
+        "file": "views/WFP Workforce Cost/Cost by Cost Centre.json"
+      },
+      {
+        "type": "view",
+        "name": "Cost by Position — Monthly",
+        "detail": "WFP Workforce Cost",
+        "outcome": "NEW",
+        "file": "views/WFP Workforce Cost/Cost by Position _ Monthly.json"
+      },
+      {
+        "type": "view",
+        "name": "Headcount by Cost Centre",
+        "detail": "WFP Headcount",
+        "outcome": "NEW",
+        "file": "views/WFP Headcount/Headcount by Cost Centre.json"
+      },
+      {
+        "type": "view",
+        "name": "Position Input",
+        "detail": "WFP Workforce Input",
+        "outcome": "NEW",
+        "file": "views/WFP Workforce Input/Position Input.json"
+      },
+      {
+        "type": "view",
+        "name": "Default",
+        "detail": "WFP Workforce Cost",
+        "outcome": "NEW",
+        "file": "views/WFP Workforce Cost/Default.json"
+      },
+      {
+        "type": "view",
+        "name": "WFP FX Rates",
+        "detail": "WFP FX Rates",
+        "outcome": "NEW",
+        "file": "views/WFP FX Rates/WFP FX Rates.json"
+      }
+    ],
+    "skipped": []
+  },
+  "preSnapshot": {
+    "taken_at": "2026-09-06T20:20:51.533Z",
+    "target": "TM1_Test_PROD",
+    "objects": {
+      "subset::All Positions::WFP Position": {
+        "expression": "{TM1FILTERBYLEVEL({TM1SUBSETALL([WFP Position].[WFP Position])}, 0)}"
+      },
+      "dimension::WFP Grade::5 elements, 0 edges": {
+        "elementCount": 0,
+        "edgeCount": 0
+      },
+      "dimension::WFP Location::3 elements, 0 edges": {
+        "elementCount": 0,
+        "edgeCount": 0
+      },
+      "attribute::Local Currency::WFP Entity": null,
+      "dimension::WFP Cost Centre::15 elements, 14 edges": {
+        "elementCount": 0,
+        "edgeCount": 0
+      },
+      "attribute::Function::WFP Cost Centre": null,
+      "attribute::Primary Location::WFP Entity": null,
+      "attribute::CC Name::WFP Cost Centre": null,
+      "attribute::Department::WFP Position": null,
+      "attribute::Grade::WFP Position": null,
+      "attribute::Cost Centre::WFP Position": null,
+      "attribute::Location::WFP Position": null,
+      "attribute::Job Family::WFP Position": null,
+      "attribute::FTE::WFP Position": null,
+      "attribute::Position Status::WFP Position": null,
+      "attribute::Start Day::WFP Position": null,
+      "attribute::Start Period::WFP Position": null,
+      "attribute::End Period::WFP Position": null,
+      "attribute::End Day::WFP Position": null,
+      "attribute::Incumbent Name::WFP Position": null,
+      "attribute::Home Entity::WFP Position": null,
+      "process::WFP Seed Pay Rates": null,
+      "process::WFP Seed Workforce Input": null,
+      "process::WFP Load Positions": null,
+      "subset::Open Reqs::WFP Position": {
+        "expression": "{FILTER({TM1FILTERBYLEVEL({TM1SUBSETALL([WFP Position].[WFP Position])}, 0)}, [WFP Position].[WFP Position].CURRENTMEMBER.PROPERTIES(\"Position Status\") = \"Open Req\")}"
+      },
+      "subset::Cost Lines::WFP Pay Component": {
+        "elements": []
+      },
+      "dimension::WFP Version::4 elements, 0 edges": {
+        "elementCount": 0,
+        "edgeCount": 0
+      },
+      "attribute::Version Type::WFP Version": null,
+      "attribute::Description::WFP Version": null,
+      "dimension::WFP Period::57 elements, 54 edges": {
+        "elementCount": 0,
+        "edgeCount": 0
+      },
+      "attribute::Period Index::WFP Period": null,
+      "attribute::Prior Period::WFP Period": null,
+      "attribute::Days In Month::WFP Period": null,
+      "dimension::WFP Job Family::10 elements, 0 edges": {
+        "elementCount": 0,
+        "edgeCount": 0
+      },
+      "attribute::FY::WFP Period": null,
+      "attribute::Pay Index::WFP Job Family": null,
+      "dimension::WFP Jurisdiction::3 elements, 0 edges": {
+        "elementCount": 0,
+        "edgeCount": 0
+      },
+      "dimension::WFP FX Rate Type::2 elements, 0 edges": {
+        "elementCount": 0,
+        "edgeCount": 0
+      },
+      "attribute::Reporting Currency::WFP Entity": null,
+      "dimension::WFP Entity::0 elements, 0 edges": {
+        "elementCount": 0,
+        "edgeCount": 0
+      },
+      "dimension::WFP Position::0 elements, 0 edges": {
+        "elementCount": 0,
+        "edgeCount": 0
+      },
+      "attribute::Employment Type::WFP Position": null,
+      "attribute::Seed Base Salary::WFP Position": null,
+      "attribute::Salary Currency::WFP Position": null,
+      "attribute::Tax Jurisdiction::WFP Position": null,
+      "process::WFP Seed Tax Bands": null,
+      "process::WFP Seed FX Rates": null,
+      "dimension::WFP Currency::1 elements, 0 edges": {
+        "elementCount": 0,
+        "edgeCount": 0
+      },
+      "subset::2026 Months::WFP Period": {
+        "elements": []
+      },
+      "dimension::WFP Tax Band::3 elements, 0 edges": {
+        "elementCount": 0,
+        "edgeCount": 0
+      },
+      "subset::2026 Quarters + FY::WFP Period": {
+        "elements": []
+      },
+      "dimension::WFP Tax Type::2 elements, 0 edges": {
+        "elementCount": 0,
+        "edgeCount": 0
+      },
+      "process::WFP Reprocess Feeders": null,
+      "dimension::WFP Pay Component::23 elements, 6 edges": {
+        "elementCount": 0,
+        "edgeCount": 0
+      },
+      "process::WFP Create Default Subsets": null,
+      "dimension::WFP Workforce Input Measure::2 elements, 0 edges": {
+        "elementCount": 0,
+        "edgeCount": 0
+      },
+      "dimension::WFP Tax Bands Measure::3 elements, 0 edges": {
+        "elementCount": 0,
+        "edgeCount": 0
+      },
+      "dimension::WFP Pay Rates Measure::6 elements, 0 edges": {
+        "elementCount": 0,
+        "edgeCount": 0
+      },
+      "dimension::WFP Headcount Measure::5 elements, 0 edges": {
+        "elementCount": 0,
+        "edgeCount": 0
+      },
+      "dimension::WFP FX Rates Measure::1 elements, 0 edges": {
+        "elementCount": 0,
+        "edgeCount": 0
+      },
+      "dimension::WFP Workforce Cost Measure::1 elements, 0 edges": {
+        "elementCount": 0,
+        "edgeCount": 0
+      },
+      "cube::WFP Workforce Input::WFP Period, WFP Version, WFP Position, WFP Workforce Input Measure": null,
+      "cube::WFP Pay Rates::WFP Period, WFP Version, WFP Grade, WFP Job Family, WFP Location, WFP Pay Rates Measure": null,
+      "cube::WFP Tax Bands::WFP Jurisdiction, WFP Tax Type, WFP Tax Band, WFP Tax Bands Measure": null,
+      "cube::WFP FX Rates::WFP Period, WFP Version, WFP Currency, WFP FX Rate Type, WFP FX Rates Measure": null,
+      "attribute::Format::WFP Workforce Cost Measure": null,
+      "cube::WFP Headcount::WFP Period, WFP Version, WFP Entity, WFP Cost Centre, WFP Position, WFP Headcount Measure": null,
+      "cube::WFP Workforce Cost::WFP Period, WFP Version, WFP Entity, WFP Cost Centre, WFP Pay Component, WFP Currency, WFP Position, WFP Workforce Cost Measure": null,
+      "rules::WFP Workforce Cost": null,
+      "rules::WFP Headcount": null,
+      "rules::WFP Workforce Input": null,
+      "view::Take-Home by Position::WFP Workforce Cost": null,
+      "view::Entity Summary — Reporting Ccy::WFP Workforce Cost": null,
+      "view::Cost by Cost Centre::WFP Workforce Cost": null,
+      "view::Cost by Position — Monthly::WFP Workforce Cost": null,
+      "view::Headcount by Cost Centre::WFP Headcount": null,
+      "view::Default::WFP Workforce Cost": null,
+      "view::Position Input::WFP Workforce Input": null,
+      "view::WFP FX Rates::WFP FX Rates": null
+    }
+  },
+  "postSnapshot": {
+    "taken_at": "2026-09-06T20:20:56.309Z",
+    "target": "TM1_Test_PROD",
+    "objects": {
+      "subset::All Positions::WFP Position": {
+        "expression": "{TM1FILTERBYLEVEL({TM1SUBSETALL([WFP Position].[WFP Position])}, 0)}"
+      },
+      "dimension::WFP Grade::5 elements, 0 edges": {
+        "elementCount": 5,
+        "edgeCount": 0
+      },
+      "attribute::Local Currency::WFP Entity": {
+        "Name": "Local Currency",
+        "Type": "String"
+      },
+      "attribute::Primary Location::WFP Entity": {
+        "Name": "Primary Location",
+        "Type": "String"
+      },
+      "dimension::WFP Location::3 elements, 0 edges": {
+        "elementCount": 3,
+        "edgeCount": 0
+      },
+      "dimension::WFP Cost Centre::15 elements, 14 edges": {
+        "elementCount": 15,
+        "edgeCount": 14
+      },
+      "attribute::Function::WFP Cost Centre": {
+        "Name": "Function",
+        "Type": "String"
+      },
+      "attribute::Cost Centre::WFP Position": {
+        "Name": "Cost Centre",
+        "Type": "String"
+      },
+      "attribute::CC Name::WFP Cost Centre": {
+        "Name": "CC Name",
+        "Type": "String"
+      },
+      "attribute::Department::WFP Position": {
+        "Name": "Department",
+        "Type": "String"
+      },
+      "attribute::Grade::WFP Position": {
+        "Name": "Grade",
+        "Type": "String"
+      },
+      "attribute::Location::WFP Position": {
+        "Name": "Location",
+        "Type": "String"
+      },
+      "attribute::Start Day::WFP Position": {
+        "Name": "Start Day",
+        "Type": "Numeric"
+      },
+      "attribute::Job Family::WFP Position": {
+        "Name": "Job Family",
+        "Type": "String"
+      },
+      "attribute::Position Status::WFP Position": {
+        "Name": "Position Status",
+        "Type": "String"
+      },
+      "attribute::Start Period::WFP Position": {
+        "Name": "Start Period",
+        "Type": "String"
+      },
+      "attribute::FTE::WFP Position": {
+        "Name": "FTE",
+        "Type": "Numeric"
+      },
+      "attribute::Incumbent Name::WFP Position": {
+        "Name": "Incumbent Name",
+        "Type": "String"
+      },
+      "attribute::End Day::WFP Position": {
+        "Name": "End Day",
+        "Type": "Numeric"
+      },
+      "attribute::Home Entity::WFP Position": {
+        "Name": "Home Entity",
+        "Type": "String"
+      },
+      "attribute::End Period::WFP Position": {
+        "Name": "End Period",
+        "Type": "String"
+      },
+      "process::WFP Seed Pay Rates": null,
+      "process::WFP Seed Workforce Input": null,
+      "process::WFP Load Positions": null,
+      "subset::Open Reqs::WFP Position": {
+        "expression": "{FILTER({TM1FILTERBYLEVEL({TM1SUBSETALL([WFP Position].[WFP Position])}, 0)}, [WFP Position].[WFP Position].CURRENTMEMBER.PROPERTIES(\"Position Status\") = \"Open Req\")}"
+      },
+      "subset::Cost Lines::WFP Pay Component": {
+        "elements": []
+      },
+      "attribute::Description::WFP Version": {
+        "Name": "Description",
+        "Type": "String"
+      },
+      "dimension::WFP Period::57 elements, 54 edges": {
+        "elementCount": 57,
+        "edgeCount": 54
+      },
+      "dimension::WFP Version::4 elements, 0 edges": {
+        "elementCount": 4,
+        "edgeCount": 0
+      },
+      "attribute::Period Index::WFP Period": {
+        "Name": "Period Index",
+        "Type": "Numeric"
+      },
+      "attribute::Version Type::WFP Version": {
+        "Name": "Version Type",
+        "Type": "String"
+      },
+      "attribute::Prior Period::WFP Period": {
+        "Name": "Prior Period",
+        "Type": "String"
+      },
+      "attribute::Days In Month::WFP Period": {
+        "Name": "Days In Month",
+        "Type": "Numeric"
+      },
+      "attribute::FY::WFP Period": {
+        "Name": "FY",
+        "Type": "String"
+      },
+      "dimension::WFP Job Family::10 elements, 0 edges": {
+        "elementCount": 10,
+        "edgeCount": 0
+      },
+      "attribute::Pay Index::WFP Job Family": {
+        "Name": "Pay Index",
+        "Type": "Numeric"
+      },
+      "dimension::WFP FX Rate Type::2 elements, 0 edges": {
+        "elementCount": 2,
+        "edgeCount": 0
+      },
+      "dimension::WFP Entity::0 elements, 0 edges": {
+        "elementCount": 4,
+        "edgeCount": 3
+      },
+      "attribute::Reporting Currency::WFP Entity": {
+        "Name": "Reporting Currency",
+        "Type": "String"
+      },
+      "dimension::WFP Jurisdiction::3 elements, 0 edges": {
+        "elementCount": 3,
+        "edgeCount": 0
+      },
+      "dimension::WFP Position::0 elements, 0 edges": {
+        "elementCount": 32,
+        "edgeCount": 31
+      },
+      "attribute::Salary Currency::WFP Position": {
+        "Name": "Salary Currency",
+        "Type": "String"
+      },
+      "attribute::Employment Type::WFP Position": {
+        "Name": "Employment Type",
+        "Type": "String"
+      },
+      "attribute::Tax Jurisdiction::WFP Position": {
+        "Name": "Tax Jurisdiction",
+        "Type": "String"
+      },
+      "attribute::Seed Base Salary::WFP Position": {
+        "Name": "Seed Base Salary",
+        "Type": "Numeric"
+      },
+      "process::WFP Seed Tax Bands": null,
+      "process::WFP Seed FX Rates": null,
+      "dimension::WFP Currency::1 elements, 0 edges": {
+        "elementCount": 4,
+        "edgeCount": 0
+      },
+      "dimension::WFP Tax Band::3 elements, 0 edges": {
+        "elementCount": 7,
+        "edgeCount": 0
+      },
+      "subset::2026 Quarters + FY::WFP Period": {
+        "elements": []
+      },
+      "subset::2026 Months::WFP Period": {
+        "elements": []
+      },
+      "dimension::WFP Tax Type::2 elements, 0 edges": {
+        "elementCount": 2,
+        "edgeCount": 0
+      },
+      "dimension::WFP Pay Component::23 elements, 6 edges": {
+        "elementCount": 23,
+        "edgeCount": 6
+      },
+      "process::WFP Reprocess Feeders": null,
+      "process::WFP Create Default Subsets": null,
+      "dimension::WFP Workforce Input Measure::2 elements, 0 edges": {
+        "elementCount": 2,
+        "edgeCount": 0
+      },
+      "dimension::WFP Pay Rates Measure::6 elements, 0 edges": {
+        "elementCount": 6,
+        "edgeCount": 0
+      },
+      "dimension::WFP Tax Bands Measure::3 elements, 0 edges": {
+        "elementCount": 3,
+        "edgeCount": 0
+      },
+      "dimension::WFP FX Rates Measure::1 elements, 0 edges": {
+        "elementCount": 1,
+        "edgeCount": 0
+      },
+      "dimension::WFP Workforce Cost Measure::1 elements, 0 edges": {
+        "elementCount": 1,
+        "edgeCount": 0
+      },
+      "dimension::WFP Headcount Measure::5 elements, 0 edges": {
+        "elementCount": 5,
+        "edgeCount": 0
+      },
+      "cube::WFP Workforce Input::WFP Period, WFP Version, WFP Position, WFP Workforce Input Measure": null,
+      "cube::WFP Pay Rates::WFP Period, WFP Version, WFP Grade, WFP Job Family, WFP Location, WFP Pay Rates Measure": null,
+      "cube::WFP Tax Bands::WFP Jurisdiction, WFP Tax Type, WFP Tax Band, WFP Tax Bands Measure": null,
+      "cube::WFP FX Rates::WFP Period, WFP Version, WFP Currency, WFP FX Rate Type, WFP FX Rates Measure": null,
+      "attribute::Format::WFP Workforce Cost Measure": {
+        "Name": "Format",
+        "Type": "String"
+      },
+      "cube::WFP Headcount::WFP Period, WFP Version, WFP Entity, WFP Cost Centre, WFP Position, WFP Headcount Measure": null,
+      "cube::WFP Workforce Cost::WFP Period, WFP Version, WFP Entity, WFP Cost Centre, WFP Pay Component, WFP Currency, WFP Position, WFP Workforce Cost Measure": null,
+      "rules::WFP Workforce Cost": null,
+      "rules::WFP Workforce Input": null,
+      "rules::WFP Headcount": null,
+      "view::Entity Summary — Reporting Ccy::WFP Workforce Cost": null,
+      "view::Take-Home by Position::WFP Workforce Cost": null,
+      "view::Cost by Cost Centre::WFP Workforce Cost": null,
+      "view::Cost by Position — Monthly::WFP Workforce Cost": null,
+      "view::Headcount by Cost Centre::WFP Headcount": null,
+      "view::Position Input::WFP Workforce Input": null,
+      "view::Default::WFP Workforce Cost": null,
+      "view::WFP FX Rates::WFP FX Rates": null
+    }
+  }
+}

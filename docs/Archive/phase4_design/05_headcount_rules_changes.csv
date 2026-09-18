@@ -1,0 +1,13 @@
+cube,section,object,change,notes
+WFP Headcount,rules,Headcount,REWRITE,version-aware: effective window from WFP Hiring Plan (fallback to attributes); Headcount = window-active AND (Filled OR TBH with Hire Month <= current period index)
+WFP Headcount,rules,FTE,REWRITE,version-aware: window-active * FTE (from position attribute; hires use band FTE 1)
+WFP Headcount,rules,Open Positions,REWRITE,version-aware: window-active AND (Open Req OR TBH not yet hired)
+WFP Headcount,rules,_Active,REWRITE,window computed from WFP Hiring Plan Hire/Attrition Month for the version; falls back to Start/End Period attributes when plan = 0
+WFP Headcount,rules,Hires,NEW,1 in the hire month (window-active & Hire Month = current index); 0 otherwise
+WFP Headcount,rules,Leavers,NEW,1 in the attrition month (window-active & Attrition Month = current index); 0 otherwise
+WFP Headcount,rules,Opening,NEW,Headcount of the prior period (Prior Period attr) - or 0 at period 1
+WFP Headcount,rules,Closing,NEW,Opening + Hires - Leavers (bridge reconciliation)
+WFP Headcount,measure,WFP Headcount Measure,NEW ELEMENTS,Hires; Leavers; Opening; Closing (all Format #,##0)
+WFP Headcount,rules,FEEDERS,REWRITE,extend feeder chain to Hires/Leavers/Opening/Closing
+WFP Workforce Input,rules,(no change),NONE,FTE/Base Salary seeding now reads WFP Hiring Plan window per version
+WFP Workforce Cost,rules,(no change),NONE,engine unchanged - hires flow through FTE/Base Salary input automatically

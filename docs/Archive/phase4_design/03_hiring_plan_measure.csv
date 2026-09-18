@@ -1,0 +1,5 @@
+dimension,element,type,notes
+WFP Hiring Plan Measure,Hire Month,N,Period Index when the position becomes headcount (1..N). 0 = not hired in this version.
+WFP Hiring Plan Measure,Attrition Month,N,Period Index when the position leaves (planned leaver). 0 = no planned attrition.
+WFP Hiring Plan Measure,Backfill,N,1 = re-hire the vacated seat (backfill), 0 = leave vacant after attrition.
+WFP Hiring Plan Measure,Recruiting Lead Time,N,offer->start lag in months; applied to Hire Month target. 0 = no lag.

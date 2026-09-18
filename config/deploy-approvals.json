@@ -1,0 +1,145 @@
+[
+  {
+    "id": "2026-09-06T10:15:39.878Z",
+    "approved_at": "2026-09-06T10:15:39.878Z",
+    "approver": "admin",
+    "notes": "Phase 1 Test ",
+    "source": "TM1_Test_DEV",
+    "target": "TM1_Test_PROD",
+    "packaged": "Release 2026-09-06",
+    "session": null,
+    "packageDir": "/home/jdlove/apps/tm1_ide/packages/release-2026-09-06-2026-09-06"
+  },
+  {
+    "id": "2026-09-06T19:20:31.435Z",
+    "approved_at": "2026-09-06T19:20:31.435Z",
+    "approver": "admin",
+    "notes": "",
+    "source": "TM1_Test_DEV",
+    "target": "TM1_Test_PROD",
+    "packaged": "Release 2026-09-06",
+    "session": null,
+    "packageDir": "/home/jdlove/apps/tm1_ide/packages/release-2026-09-06-2026-09-06"
+  },
+  {
+    "id": "2026-09-06T20:20:51.694Z",
+    "approved_at": "2026-09-06T20:20:51.694Z",
+    "approver": "admin",
+    "notes": "",
+    "source": "TM1_Test_DEV",
+    "target": "TM1_Test_PROD",
+    "packaged": "Release 2026-09-06",
+    "session": null,
+    "packageDir": "/home/jdlove/apps/tm1_ide/packages/release-2026-09-06-2026-09-06"
+  },
+  {
+    "id": "2026-09-06T20:26:36.760Z",
+    "approved_at": "2026-09-06T20:26:36.760Z",
+    "approver": "admin",
+    "notes": "",
+    "source": "TM1_Test_DEV",
+    "target": "TM1_Test_PROD",
+    "packaged": "Release 2026-09-06",
+    "session": null,
+    "packageDir": "/home/jdlove/apps/tm1_ide/packages/release-2026-09-06-2026-09-06"
+  },
+  {
+    "id": "2026-09-07T02:06:10.465Z",
+    "approved_at": "2026-09-07T02:06:10.465Z",
+    "approver": "admin",
+    "notes": "",
+    "source": "TM1_Test_DEV",
+    "target": "TM1_Test_PROD",
+    "packaged": "Release 2026-09-07",
+    "session": null,
+    "packageDir": "/home/jdlove/apps/tm1_ide/packages/release-2026-09-07-2026-09-07"
+  },
+  {
+    "id": "2026-09-07T06:58:03.253Z",
+    "approved_at": "2026-09-07T06:58:03.253Z",
+    "approver": "admin",
+    "notes": "",
+    "source": "TM1_Test_DEV",
+    "target": "TM1_Test_PROD",
+    "packaged": "Release 2026-09-07",
+    "session": null,
+    "packageDir": "/home/jdlove/apps/tm1_ide/packages/release-2026-09-07-2026-09-07-3"
+  },
+  {
+    "id": "2026-09-08T05:05:53.476Z",
+    "approved_at": "2026-09-08T05:05:53.476Z",
+    "approver": "admin",
+    "notes": "",
+    "source": "TM1_Test_DEV",
+    "target": "TM1_Test_PROD",
+    "packaged": "Release 2026-09-08",
+    "session": null,
+    "packageDir": "/home/jdlove/apps/tm1_ide/packages/release-2026-09-08-2026-09-08-2"
+  },
+  {
+    "id": "2026-09-08T07:02:34.216Z",
+    "approved_at": "2026-09-08T07:02:34.216Z",
+    "approver": "admin",
+    "notes": "",
+    "source": "TM1_Test_DEV",
+    "target": "TM1_Test_PROD",
+    "packaged": "Release 2026-09-08",
+    "session": null,
+    "packageDir": "/home/jdlove/apps/tm1_ide/packages/release-2026-09-08-2026-09-08-4"
+  },
+  {
+    "id": "2026-09-08T07:58:52.201Z",
+    "approved_at": "2026-09-08T07:58:52.201Z",
+    "approver": "admin",
+    "notes": "",
+    "source": "TM1_Test_DEV",
+    "target": "TM1_Test_PROD",
+    "packaged": "AI: WFP Phase 4 — hiring plan, attrition, headcount bridge",
+    "session": "ca2942a5-41e8-4520-9e70-ffd3c8ebf93c",
+    "packageDir": "/home/jdlove/apps/tm1_ide/packages/ai--wfp-phase-4---hiring-plan--attrition--headcount-bridge-2026-09-08"
+  },
+  {
+    "id": "2026-09-08T11:29:34.159Z",
+    "approved_at": "2026-09-08T11:29:34.159Z",
+    "approver": "admin",
+    "notes": "",
+    "source": "TM1_Test_DEV",
+    "target": "TM1_Test_PROD",
+    "packaged": "Release 2026-09-08",
+    "session": null,
+    "packageDir": "/home/jdlove/apps/tm1_ide/packages/release-2026-09-08-2026-09-08-7"
+  },
+  {
+    "id": "2026-09-08T22:52:15.446Z",
+    "approved_at": "2026-09-08T22:52:15.446Z",
+    "approver": "admin",
+    "notes": "",
+    "source": "TM1_Test_DEV",
+    "target": "TM1_Test_PROD",
+    "packaged": "Release 2026-09-08",
+    "session": null,
+    "packageDir": "/home/jdlove/apps/tm1_ide/packages/release-2026-09-08-2026-09-08-15"
+  },
+  {
+    "id": "2026-09-12T20:02:06.583Z",
+    "approved_at": "2026-09-12T20:02:06.583Z",
+    "approver": "admin",
+    "notes": "",
+    "source": "TM1_Test_DEV",
+    "target": "TM1_Test_PROD",
+    "packaged": "Release 2026-09-12",
+    "session": null,
+    "packageDir": "/home/jdlove/apps/tm1_ide/packages/release-2026-09-12-2026-09-12-3"
+  },
+  {
+    "id": "2026-09-12T20:36:37.089Z",
+    "approved_at": "2026-09-12T20:36:37.089Z",
+    "approver": "admin",
+    "notes": "",
+    "source": "TM1_Test_DEV",
+    "target": "TM1_Test_PROD",
+    "packaged": "Release 2026-09-12",
+    "session": null,
+    "packageDir": "/home/jdlove/apps/tm1_ide/packages/release-2026-09-12-2026-09-12-4"
+  }
+]

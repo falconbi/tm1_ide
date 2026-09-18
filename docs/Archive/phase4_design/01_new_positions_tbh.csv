@@ -1,0 +1,55 @@
+dimension,element,type,level,parent,attribute,attribute_value,notes
+WFP Position,ENG-007,N,0,Engineering,Department,Engineering,TBH hire - G3 Engineer London
+WFP Position,ENG-007,N,0,Engineering,Cost Centre,CC-ENG-PLT,
+WFP Position,ENG-007,N,0,Engineering,Location,London,
+WFP Position,ENG-007,N,0,Engineering,Grade,G3,
+WFP Position,ENG-007,N,0,Engineering,Job Family,Engineering,
+WFP Position,ENG-007,N,0,Engineering,FTE,1,
+WFP Position,ENG-007,N,0,Engineering,Position Status,TBH,
+WFP Position,ENG-007,N,0,Engineering,Start Period,2026-01,
+WFP Position,ENG-007,N,0,Engineering,Start Day,1,
+WFP Position,ENG-007,N,0,Engineering,End Period,,
+WFP Position,ENG-007,N,0,Engineering,End Day,0,
+WFP Position,ENG-007,N,0,Engineering,Incumbent Name,,
+WFP Position,ENG-007,N,0,Engineering,Home Entity,UK Ltd,
+WFP Position,ENG-007,N,0,Engineering,Employment Type,Permanent,
+WFP Position,ENG-007,N,0,Engineering,Salary Currency,GBP,
+WFP Position,ENG-007,N,0,Engineering,Tax Jurisdiction,UK,
+WFP Position,ENG-007,N,0,Engineering,Seed Base Salary,0,pay band salary (G3 London Engineering)
+WFP Position,ENG-007,N,0,Engineering,Recruiting Lead Time,3,offer->start lag (months)
+WFP Position,SLS-004,N,0,Sales,Department,Sales,TBH hire - G3 Sales New York
+WFP Position,SLS-004,N,0,Sales,Cost Centre,CC-SALES,
+WFP Position,SLS-004,N,0,Sales,Location,New York,
+WFP Position,SLS-004,N,0,Sales,Grade,G3,
+WFP Position,SLS-004,N,0,Sales,Job Family,Sales,
+WFP Position,SLS-004,N,0,Sales,FTE,1,
+WFP Position,SLS-004,N,0,Sales,Position Status,TBH,
+WFP Position,SLS-004,N,0,Sales,Start Period,2026-01,
+WFP Position,SLS-004,N,0,Sales,Start Day,1,
+WFP Position,SLS-004,N,0,Sales,End Period,,
+WFP Position,SLS-004,N,0,Sales,End Day,0,
+WFP Position,SLS-004,N,0,Sales,Incumbent Name,,
+WFP Position,SLS-004,N,0,Sales,Home Entity,US Inc,
+WFP Position,SLS-004,N,0,Sales,Employment Type,Permanent,
+WFP Position,SLS-004,N,0,Sales,Salary Currency,USD,
+WFP Position,SLS-004,N,0,Sales,Tax Jurisdiction,US-NY,
+WFP Position,SLS-004,N,0,Sales,Seed Base Salary,0,pay band salary (G3 NY Sales)
+WFP Position,SLS-004,N,0,Sales,Recruiting Lead Time,2,offer->start lag (months)
+WFP Position,FIN-002,N,0,Finance,Department,Finance,TBH hire - G2 Finance London
+WFP Position,FIN-002,N,0,Finance,Cost Centre,CC-FIN,
+WFP Position,FIN-002,N,0,Finance,Location,London,
+WFP Position,FIN-002,N,0,Finance,Grade,G2,
+WFP Position,FIN-002,N,0,Finance,Job Family,Finance,
+WFP Position,FIN-002,N,0,Finance,FTE,1,
+WFP Position,FIN-002,N,0,Finance,Position Status,TBH,
+WFP Position,FIN-002,N,0,Finance,Start Period,2026-01,
+WFP Position,FIN-002,N,0,Finance,Start Day,1,
+WFP Position,FIN-002,N,0,Finance,End Period,,
+WFP Position,FIN-002,N,0,Finance,End Day,0,
+WFP Position,FIN-002,N,0,Finance,Incumbent Name,,
+WFP Position,FIN-002,N,0,Finance,Home Entity,UK Ltd,
+WFP Position,FIN-002,N,0,Finance,Employment Type,Permanent,
+WFP Position,FIN-002,N,0,Finance,Salary Currency,GBP,
+WFP Position,FIN-002,N,0,Finance,Tax Jurisdiction,UK,
+WFP Position,FIN-002,N,0,Finance,Seed Base Salary,0,pay band salary (G2 London Finance)
+WFP Position,FIN-002,N,0,Finance,Recruiting Lead Time,2,offer->start lag (months)

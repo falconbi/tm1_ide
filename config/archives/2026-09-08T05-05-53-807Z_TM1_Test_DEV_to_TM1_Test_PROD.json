@@ -1,0 +1,234 @@
+{
+  "archived_at": "2026-09-08T05:05:53.807Z",
+  "source": "TM1_Test_DEV",
+  "target": "TM1_Test_PROD",
+  "deployer": "admin",
+  "approval": {
+    "id": "2026-09-08T05:05:53.476Z",
+    "approved_at": "2026-09-08T05:05:53.476Z",
+    "approver": "admin",
+    "notes": "",
+    "source": "TM1_Test_DEV",
+    "target": "TM1_Test_PROD",
+    "packaged": "Release 2026-09-08",
+    "session": null,
+    "packageDir": "/home/jdlove/apps/tm1_ide/packages/release-2026-09-08-2026-09-08-2"
+  },
+  "deploy": {
+    "source_server": "TM1_Test_DEV",
+    "target_server": "TM1_Test_PROD",
+    "session": "Release 2026-09-08",
+    "packaged_at": "2026-09-08T05:05:42.730Z",
+    "deployed_at": "2026-09-08T05:05:53.490Z",
+    "dry_run": false,
+    "risk": null,
+    "results": [
+      {
+        "ok": true,
+        "type": "dimension",
+        "name": "WFP Version",
+        "detail": "element Working"
+      },
+      {
+        "ok": true,
+        "type": "rules",
+        "name": "WFP Workforce Input",
+        "detail": null
+      },
+      {
+        "ok": true,
+        "type": "subset",
+        "name": "Default",
+        "detail": "WFP Version"
+      },
+      {
+        "ok": true,
+        "type": "process",
+        "name": "WFP Seed Assumptions",
+        "detail": null
+      },
+      {
+        "ok": true,
+        "type": "process",
+        "name": "WFP Seed Workforce Input",
+        "detail": null
+      },
+      {
+        "ok": true,
+        "type": "process",
+        "name": "WFP Seed Dimension Attributes",
+        "detail": null
+      },
+      {
+        "ok": true,
+        "type": "process",
+        "name": "WFP Snapshot Version",
+        "detail": null
+      }
+    ],
+    "deployed": 7,
+    "failed": 0,
+    "aborted": false
+  },
+  "manifest": {
+    "_meta": {
+      "session": "Release 2026-09-08",
+      "server": "TM1_Test_DEV",
+      "packaged_at": "2026-09-08T05:05:42.730Z",
+      "baseline_server": "TM1_Test_DEV",
+      "baseline_seeded_at": "2026-09-07T08:18:01.420Z",
+      "baseline_last_entry_id": 563,
+      "has_baseline": true
+    },
+    "objects": [
+      {
+        "type": "rules",
+        "name": "WFP Workforce Input",
+        "detail": null,
+        "outcome": "MATCH",
+        "file": "rules/WFP Workforce Input.rule"
+      },
+      {
+        "type": "process",
+        "name": "WFP Seed Assumptions",
+        "detail": null,
+        "outcome": "MATCH",
+        "file": "processes/WFP Seed Assumptions.json"
+      },
+      {
+        "type": "process",
+        "name": "WFP Seed Workforce Input",
+        "detail": null,
+        "outcome": "MATCH",
+        "file": "processes/WFP Seed Workforce Input.json"
+      },
+      {
+        "type": "process",
+        "name": "WFP Seed Dimension Attributes",
+        "detail": null,
+        "outcome": "MATCH",
+        "file": "processes/WFP Seed Dimension Attributes.json"
+      },
+      {
+        "type": "subset",
+        "name": "Default",
+        "detail": "WFP Version",
+        "outcome": "MATCH",
+        "file": "subsets/WFP Version/Default.json"
+      },
+      {
+        "type": "dimension",
+        "name": "WFP Version",
+        "detail": "element Working",
+        "outcome": "MATCH",
+        "file": "dimensions/WFP Version.json",
+        "elementDelta": {
+          "added": [
+            "FCST 2026-06"
+          ],
+          "removed": [
+            "Working"
+          ]
+        }
+      },
+      {
+        "type": "process",
+        "name": "WFP Snapshot Version",
+        "detail": null,
+        "outcome": "NEW",
+        "file": "processes/WFP Snapshot Version.json"
+      }
+    ],
+    "skipped": []
+  },
+  "preSnapshot": {
+    "taken_at": "2026-09-08T05:05:53.430Z",
+    "target": "TM1_Test_PROD",
+    "objects": {
+      "rules::WFP Workforce Input": {
+        "rules": "SKIPCHECK;\n\n# Forecast = calculating version: Actual for periods <= the Actuals Cutoff Index\n# (read at the position's Home Entity), Working after. Actual/Working stay input.\n['Forecast'] = N:\n  IF( ATTRN('WFP Period', !WFP Period, 'Period Index')\n        <= DB('WFP Assumptions', !WFP Period, 'Forecast', ATTRS('WFP Position', !WFP Position, 'Home Entity'), 'Actuals Cutoff Index'),\n      DB('WFP Workforce Input', !WFP Period, 'Actual',  !WFP Position, !WFP Workforce Input Measure),\n      DB('WFP Workforce Input', !WFP Period, 'Working', !WFP Position, !WFP Workforce Input Measure) );\n\nFEEDERS;\n\n# Working FTE is always seeded for an active position — use it as the guaranteed\n# source that feeds every input version's downstream cells, including the\n# rule-driven Forecast (whose own FTE cell is never an input, so !WFP Version\n# alone would miss it).\n['Working', 'FTE'] => DB('WFP Workforce Cost', !WFP Period, !WFP Version,\n  ATTRS('WFP Position', !WFP Position, 'Home Entity'),\n  ATTRS('WFP Position', !WFP Position, 'Cost Centre'),\n  '_Monthly Base Full',\n  ATTRS('WFP Position', !WFP Position, 'Salary Currency'),\n  !WFP Position, 'Amount');\n\n['Working', 'FTE'] => DB('WFP Workforce Cost', !WFP Period, 'Forecast',\n  ATTRS('WFP Position', !WFP Position, 'Home Entity'),\n  ATTRS('WFP Position', !WFP Position, 'Cost Centre'),\n  '_Monthly Base Full',\n  ATTRS('WFP Position', !WFP Position, 'Salary Currency'),\n  !WFP Position, 'Amount');\n\n['Working', 'FTE'] => DB('WFP Headcount', !WFP Period, !WFP Version,\n  ATTRS('WFP Position', !WFP Position, 'Home Entity'),\n  ATTRS('WFP Position', !WFP Position, 'Cost Centre'),\n  !WFP Position, 'Headcount');\n\n['Working', 'FTE'] => DB('WFP Headcount', !WFP Period, 'Forecast',\n  ATTRS('WFP Position', !WFP Position, 'Home Entity'),\n  ATTRS('WFP Position', !WFP Position, 'Cost Centre'),\n  !WFP Position, 'Headcount');\n\n# Budget / Actual FTE feed their own version's downstream cells\n['Budget', 'FTE'] => DB('WFP Workforce Cost', !WFP Period, 'Budget',\n  ATTRS('WFP Position', !WFP Position, 'Home Entity'),\n  ATTRS('WFP Position', !WFP Position, 'Cost Centre'),\n  '_Monthly Base Full',\n  ATTRS('WFP Position', !WFP Position, 'Salary Currency'),\n  !WFP Position, 'Amount');\n\n['Budget', 'FTE'] => DB('WFP Headcount', !WFP Period, 'Budget',\n  ATTRS('WFP Position', !WFP Position, 'Home Entity'),\n  ATTRS('WFP Position', !WFP Position, 'Cost Centre'),\n  !WFP Position, 'Headcount');\n\n['Actual', 'FTE'] => DB('WFP Workforce Cost', !WFP Period, 'Actual',\n  ATTRS('WFP Position', !WFP Position, 'Home Entity'),\n  ATTRS('WFP Position', !WFP Position, 'Cost Centre'),\n  '_Monthly Base Full',\n  ATTRS('WFP Position', !WFP Position, 'Salary Currency'),\n  !WFP Position, 'Amount');\n\n['Actual', 'FTE'] => DB('WFP Headcount', !WFP Period, 'Actual',\n  ATTRS('WFP Position', !WFP Position, 'Home Entity'),\n  ATTRS('WFP Position', !WFP Position, 'Cost Centre'),\n  !WFP Position, 'Headcount');"
+      },
+      "process::WFP Seed Assumptions": {
+        "PrologProcedure": "#Region Seed WFP Assumptions — global planning drivers, per Period x Version x Entity\r\n# Idempotent. Written at leaf entities only (Group is a consolidation; rates\r\n# don't sum) — rules read at the position's Home Entity. Same values across all\r\n# periods/versions/entities for now — edit per cell after where a driver should\r\n# vary (e.g. Merit % by year).\r\ncCube = 'WFP Assumptions';\r\ncPer  = 'WFP Period';\r\nnPcount = DIMSIZ( cPer );\r\n\r\n# measure ; value\r\nvM =\r\n'Merit Increase %;0.03~' |\r\n'Promotion Budget %;0.01~' |\r\n'Inflation %;0.025~' |\r\n'Actuals Cutoff Index;15~' |\r\n'Merit Review Index;16~' |\r\n'Vacancy Allowance %;0.10~' |\r\n'Standard FTE Hours;160~' |\r\n'Bonus Pool %;0.10~' |\r\n'Employer Oncost Fallback %;0.15~';\r\n\r\nvVers = 'Budget|Working|Forecast|';\r\nvEnts = 'UK Ltd|US Inc|NZ Ltd|';\r\n\r\nnP = 1;\r\nWHILE( nP <= nPcount );\r\n   vPer = DIMNM( cPer, nP );\r\n   IF( DTYPE( cPer, vPer ) @= 'N' & LONG( vPer ) = 7 );\r\n      vVl = vVers;\r\n      WHILE( SCAN( '|', vVl ) > 1 );\r\n         nS = SCAN( '|', vVl ); vVer = SUBST( vVl, 1, nS - 1 ); vVl = SUBST( vVl, nS + 1, LONG( vVl ) - nS );\r\n         vEl = vEnts;\r\n         WHILE( SCAN( '|', vEl ) > 1 );\r\n            nS = SCAN( '|', vEl ); vEnt = SUBST( vEl, 1, nS - 1 ); vEl = SUBST( vEl, nS + 1, LONG( vEl ) - nS );\r\n            vRows = vM;\r\n            WHILE( SCAN( '~', vRows ) > 1 );\r\n               nS = SCAN( '~', vRows ); vRec = SUBST( vRows, 1, nS - 1 ) | ';'; vRows = SUBST( vRows, nS + 1, LONG( vRows ) - nS );\r\n               nS = SCAN( ';', vRec ); vMeas = SUBST( vRec, 1, nS - 1 ); vRec = SUBST( vRec, nS + 1, LONG( vRec ) - nS );\r\n               nS = SCAN( ';', vRec ); nVal  = NUMBR( SUBST( vRec, 1, nS - 1 ) );\r\n               CellPutN( nVal, cCube, vPer, vVer, vEnt, vMeas );\r\n            END;\r\n         END;\r\n      END;\r\n   ENDIF;\r\n   nP = nP + 1;\r\nEND;",
+        "MetadataProcedure": "",
+        "DataProcedure": "",
+        "EpilogProcedure": ""
+      },
+      "process::WFP Seed Workforce Input": {
+        "PrologProcedure": "#Region Seed Workforce Input — FTE + Base Salary + One-Time per active month\r\n# Budget = flat seed (the approved/frozen plan). Working = seed with the merit +\r\n# promotion uplift applied from Merit Review Index. Actual = flat, plus the real\r\n# EXEC-001 Jan-Mar raise. One-Time: a sample CS-001 retention payment in 2026-06.\r\ncCube = 'WFP Workforce Input';\r\ncPos  = 'WFP Position';\r\ncPer  = 'WFP Period';\r\ncAsm  = 'WFP Assumptions';\r\n\r\nnPosCount = DIMSIZ( cPos );\r\nnPerCount = DIMSIZ( cPer );\r\n\r\nnI = 1;\r\nWHILE( nI <= nPosCount );\r\n   vPos = DIMNM( cPos, nI );\r\n   IF( DTYPE( cPos, vPos ) @= 'N' );\r\n      nFTE = ATTRN( cPos, vPos, 'FTE' );\r\n      nSal = ATTRN( cPos, vPos, 'Seed Base Salary' );\r\n      vHome = ATTRS( cPos, vPos, 'Home Entity' );\r\n      vStartPd = ATTRS( cPos, vPos, 'Start Period' );\r\n      vEndPd = ATTRS( cPos, vPos, 'End Period' );\r\n      nStartIdx = ATTRN( cPer, vStartPd, 'Period Index' );\r\n      nEndIdx = IF( vEndPd @= '', 999, ATTRN( cPer, vEndPd, 'Period Index' ) );\r\n\r\n      # comp-action assumptions (flat across periods; read at the home entity)\r\n      nMeritIdx = CellGetN( cAsm, '2026-01', 'Working', vHome, 'Merit Review Index' );\r\n      nUplift   = CellGetN( cAsm, '2026-01', 'Working', vHome, 'Merit Increase %' )\r\n                + CellGetN( cAsm, '2026-01', 'Working', vHome, 'Promotion Budget %' );\r\n\r\n      nP = 1;\r\n      WHILE( nP <= nPerCount );\r\n         vPer = DIMNM( cPer, nP );\r\n         IF( DTYPE( cPer, vPer ) @= 'N' );\r\n            nPidx = ATTRN( cPer, vPer, 'Period Index' );\r\n            IF( nPidx >= nStartIdx & nPidx <= nEndIdx );\r\n               CellPutN( nFTE, cCube, vPer, 'Budget',  vPos, 'FTE' );\r\n               CellPutN( nSal, cCube, vPer, 'Budget',  vPos, 'Base Salary' );\r\n               CellPutN( nFTE, cCube, vPer, 'Working', vPos, 'FTE' );\r\n\r\n               # Working salary: flat until the review month, then uplifted\r\n               nWkSal = nSal;\r\n               IF( nPidx >= nMeritIdx );\r\n                  nWkSal = nSal * ( 1 + nUplift );\r\n               ENDIF;\r\n               CellPutN( nWkSal, cCube, vPer, 'Working', vPos, 'Base Salary' );\r\n\r\n               # Actual: mirrors flat seed, with the EXEC-001 raise for closed months\r\n               nActSal = nSal;\r\n               IF( vPos @= 'EXEC-001' & nPidx >= 13 & nPidx <= 15 );\r\n                  nActSal = 220000;\r\n               ENDIF;\r\n               CellPutN( nFTE,    cCube, vPer, 'Actual', vPos, 'FTE' );\r\n               CellPutN( nActSal, cCube, vPer, 'Actual', vPos, 'Base Salary' );\r\n            ENDIF;\r\n         ENDIF;\r\n         nP = nP + 1;\r\n      END;\r\n   ENDIF;\r\n   nI = nI + 1;\r\nEND;\r\n\r\n# Sample one-time payment: CS-001 retention, 15,000 in 2026-06 (Budget + Working)\r\nCellPutN( 15000, cCube, '2026-06', 'Budget',  'CS-001', 'One-Time Amount' );\r\nCellPutN( 15000, cCube, '2026-06', 'Working', 'CS-001', 'One-Time Amount' );",
+        "MetadataProcedure": "",
+        "DataProcedure": "",
+        "EpilogProcedure": ""
+      },
+      "process::WFP Seed Dimension Attributes": {
+        "PrologProcedure": "#Region WFP Seed Dimension Attributes\r\n# Sets the attribute VALUES that were originally built declaratively and so do not\r\n# survive a deploy: WFP Period (index/days/prior/FY), WFP Job Family (Pay Index),\r\n# WFP Entity, WFP Version, WFP Cost Centre. Idempotent — safe to re-run.\r\n\r\n# --- WFP Period: Period Index (chronological), Days In Month, Prior Period, FY ---\r\ncPer   = 'WFP Period';\r\nnCount = DIMSIZ( cPer );\r\nnIdx   = 0;\r\nvPrev  = '';\r\nnE = 1;\r\nWHILE( nE <= nCount );\r\n   vPer = DIMNM( cPer, nE );\r\n   # leaf months are numeric elements named YYYY-MM\r\n   IF( DTYPE( cPer, vPer ) @= 'N' & LONG( vPer ) = 7 & SUBST( vPer, 5, 1 ) @= '-' );\r\n      nIdx = nIdx + 1;\r\n      nMon = NUMBR( SUBST( vPer, 6, 2 ) );\r\n      nDays = 31;\r\n      IF( nMon = 2 );\r\n         nDays = 28;\r\n      ENDIF;\r\n      IF( nMon = 4 % nMon = 6 % nMon = 9 % nMon = 11 );\r\n         nDays = 30;\r\n      ENDIF;\r\n      AttrPutN( nIdx,  cPer, vPer, 'Period Index' );\r\n      AttrPutN( nDays, cPer, vPer, 'Days In Month' );\r\n      AttrPutS( vPrev, cPer, vPer, 'Prior Period' );\r\n      AttrPutS( 'FY' | SUBST( vPer, 1, 4 ), cPer, vPer, 'FY' );\r\n      vPrev = vPer;\r\n   ENDIF;\r\n   nE = nE + 1;\r\nEND;\r\n\r\n# --- WFP Job Family: Pay Index ---\r\nvJF = 'Engineering;1.1~Product;1.08~Sales;1.05~Marketing;1~Customer Success;0.98~Finance;1~People;0.98~IT;1~Admin;0.92~Leadership;1.15~';\r\nWHILE( SCAN( '~', vJF ) > 1 );\r\n   nS = SCAN( '~', vJF ); vRec = SUBST( vJF, 1, nS - 1 ) | ';'; vJF = SUBST( vJF, nS + 1, LONG( vJF ) - nS );\r\n   nS = SCAN( ';', vRec ); vFam = SUBST( vRec, 1, nS - 1 ); vRec = SUBST( vRec, nS + 1, LONG( vRec ) - nS );\r\n   nS = SCAN( ';', vRec ); nPi  = NUMBR( SUBST( vRec, 1, nS - 1 ) );\r\n   IF( DIMIX( 'WFP Job Family', vFam ) > 0 );\r\n      AttrPutN( nPi, 'WFP Job Family', vFam, 'Pay Index' );\r\n   ENDIF;\r\nEND;\r\n\r\n# --- WFP Entity: Local Currency, Primary Location, Reporting Currency ---\r\nvEn = 'Group;;;GBP~UK Ltd;GBP;London;GBP~US Inc;USD;New York;GBP~NZ Ltd;NZD;Auckland;GBP~';\r\nWHILE( SCAN( '~', vEn ) > 1 );\r\n   nS = SCAN( '~', vEn ); vRec = SUBST( vEn, 1, nS - 1 ) | ';'; vEn = SUBST( vEn, nS + 1, LONG( vEn ) - nS );\r\n   nS = SCAN( ';', vRec ); vEnt = SUBST( vRec, 1, nS - 1 ); vRec = SUBST( vRec, nS + 1, LONG( vRec ) - nS );\r\n   nS = SCAN( ';', vRec ); vLC  = SUBST( vRec, 1, nS - 1 ); vRec = SUBST( vRec, nS + 1, LONG( vRec ) - nS );\r\n   nS = SCAN( ';', vRec ); vPL  = SUBST( vRec, 1, nS - 1 ); vRec = SUBST( vRec, nS + 1, LONG( vRec ) - nS );\r\n   nS = SCAN( ';', vRec ); vRC  = SUBST( vRec, 1, nS - 1 );\r\n   IF( DIMIX( 'WFP Entity', vEnt ) > 0 );\r\n      IF( vLC @<> '' );\r\n         AttrPutS( vLC, 'WFP Entity', vEnt, 'Local Currency' );\r\n      ENDIF;\r\n      IF( vPL @<> '' );\r\n         AttrPutS( vPL, 'WFP Entity', vEnt, 'Primary Location' );\r\n      ENDIF;\r\n      AttrPutS( vRC, 'WFP Entity', vEnt, 'Reporting Currency' );\r\n   ENDIF;\r\nEND;\r\n\r\n# --- WFP Version: Version Type, Description ---\r\nvVr = 'Actual;Input;Loaded from payroll~Budget;Snapshot;Approved plan (frozen)~Forecast;Calculated;Actual for closed months + Working for open~Working;Input;Live editable working version~';\r\nWHILE( SCAN( '~', vVr ) > 1 );\r\n   nS = SCAN( '~', vVr ); vRec = SUBST( vVr, 1, nS - 1 ) | ';'; vVr = SUBST( vVr, nS + 1, LONG( vVr ) - nS );\r\n   nS = SCAN( ';', vRec ); vVer = SUBST( vRec, 1, nS - 1 ); vRec = SUBST( vRec, nS + 1, LONG( vRec ) - nS );\r\n   nS = SCAN( ';', vRec ); vTyp = SUBST( vRec, 1, nS - 1 ); vRec = SUBST( vRec, nS + 1, LONG( vRec ) - nS );\r\n   nS = SCAN( ';', vRec ); vDsc = SUBST( vRec, 1, nS - 1 );\r\n   IF( DIMIX( 'WFP Version', vVer ) > 0 );\r\n      AttrPutS( vTyp, 'WFP Version', vVer, 'Version Type' );\r\n      AttrPutS( vDsc, 'WFP Version', vVer, 'Description' );\r\n   ENDIF;\r\nEND;\r\n\r\n# --- WFP Cost Centre: Function, CC Name ---\r\nvCC = 'CC-ENG-PLT;R&D;Engineering - Platform~CC-ENG-APP;R&D;Engineering - Application~CC-PROD;R&D;Product Management~CC-SALES;S&M;Sales~CC-SALESOPS;S&M;Sales Operations~CC-MKT;S&M;Marketing~CC-CS;S&M;Customer Success~CC-FIN;G&A;Finance~CC-PPL;G&A;People & HR~CC-ITOPS;G&A;IT & Operations~CC-EXEC;G&A;Executive~';\r\nWHILE( SCAN( '~', vCC ) > 1 );\r\n   nS = SCAN( '~', vCC ); vRec = SUBST( vCC, 1, nS - 1 ) | ';'; vCC = SUBST( vCC, nS + 1, LONG( vCC ) - nS );\r\n   nS = SCAN( ';', vRec ); vCtr = SUBST( vRec, 1, nS - 1 ); vRec = SUBST( vRec, nS + 1, LONG( vRec ) - nS );\r\n   nS = SCAN( ';', vRec ); vFun = SUBST( vRec, 1, nS - 1 ); vRec = SUBST( vRec, nS + 1, LONG( vRec ) - nS );\r\n   nS = SCAN( ';', vRec ); vNam = SUBST( vRec, 1, nS - 1 );\r\n   IF( DIMIX( 'WFP Cost Centre', vCtr ) > 0 );\r\n      AttrPutS( vFun, 'WFP Cost Centre', vCtr, 'Function' );\r\n      AttrPutS( vNam, 'WFP Cost Centre', vCtr, 'CC Name' );\r\n   ENDIF;\r\nEND;",
+        "MetadataProcedure": "",
+        "DataProcedure": "",
+        "EpilogProcedure": ""
+      },
+      "subset::Default::WFP Version": {
+        "elements": [
+          "Actual",
+          "Budget",
+          "Forecast",
+          "Working",
+          "Downside"
+        ]
+      },
+      "dimension::WFP Version::element Working": {
+        "elementCount": 5,
+        "edgeCount": 0
+      },
+      "process::WFP Snapshot Version": null
+    }
+  },
+  "postSnapshot": {
+    "taken_at": "2026-09-08T05:05:53.772Z",
+    "target": "TM1_Test_PROD",
+    "objects": {
+      "rules::WFP Workforce Input": {
+        "rules": "SKIPCHECK;\n\n# Phase 3.5 — encapsulated calculating versions.\n# Budget / Forecast / Downside each carry their OWN seeded input (FTE, Base\n# Salary, One-Time Amount) written by WFP Seed Workforce Input from that version's\n# own assumptions. The only cross-version read is prior-period Actual: for\n# Forecast and Downside, CLOSED months (Period Index <= that version's Actuals\n# Cutoff Index, read at the position's Home Entity) are overridden with the\n# Actual version. STET on the open side leaves the seeded input untouched.\n# Frozen snapshot versions (FCST YYYY-MM, Budget FINAL) have no rule here — their\n# input cells are written directly by WFP Snapshot Version.\n\n['Forecast'] = N:\n  IF( ATTRN('WFP Period', !WFP Period, 'Period Index')\n        <= DB('WFP Assumptions', !WFP Period, 'Forecast',\n               ATTRS('WFP Position', !WFP Position, 'Home Entity'), 'Actuals Cutoff Index'),\n      DB('WFP Workforce Input', !WFP Period, 'Actual', !WFP Position, !WFP Workforce Input Measure),\n      STET );\n\n['Downside'] = N:\n  IF( ATTRN('WFP Period', !WFP Period, 'Period Index')\n        <= DB('WFP Assumptions', !WFP Period, 'Downside',\n               ATTRS('WFP Position', !WFP Position, 'Home Entity'), 'Actuals Cutoff Index'),\n      DB('WFP Workforce Input', !WFP Period, 'Actual', !WFP Position, !WFP Workforce Input Measure),\n      STET );\n\nFEEDERS;\n\n# Every version whose FTE is a real cell (seeded Budget/Forecast/Downside/Actual,\n# or a snapshot copy) feeds its own Workforce Cost entry point + Headcount.\n['FTE'] => DB('WFP Workforce Cost', !WFP Period, !WFP Version,\n  ATTRS('WFP Position', !WFP Position, 'Home Entity'),\n  ATTRS('WFP Position', !WFP Position, 'Cost Centre'),\n  '_Monthly Base Full',\n  ATTRS('WFP Position', !WFP Position, 'Salary Currency'),\n  !WFP Position, 'Amount');\n['FTE'] => DB('WFP Headcount', !WFP Period, !WFP Version,\n  ATTRS('WFP Position', !WFP Position, 'Home Entity'),\n  ATTRS('WFP Position', !WFP Position, 'Cost Centre'),\n  !WFP Position, 'Headcount');\n\n# Closed-month Forecast / Downside resolve to Actual via the rule above, so\n# Actual's FTE also feeds those two versions' downstream cells.\n['Actual', 'FTE'] => DB('WFP Workforce Cost', !WFP Period, 'Forecast',\n  ATTRS('WFP Position', !WFP Position, 'Home Entity'),\n  ATTRS('WFP Position', !WFP Position, 'Cost Centre'),\n  '_Monthly Base Full',\n  ATTRS('WFP Position', !WFP Position, 'Salary Currency'),\n  !WFP Position, 'Amount');\n['Actual', 'FTE'] => DB('WFP Headcount', !WFP Period, 'Forecast',\n  ATTRS('WFP Position', !WFP Position, 'Home Entity'),\n  ATTRS('WFP Position', !WFP Position, 'Cost Centre'),\n  !WFP Position, 'Headcount');\n['Actual', 'FTE'] => DB('WFP Workforce Cost', !WFP Period, 'Downside',\n  ATTRS('WFP Position', !WFP Position, 'Home Entity'),\n  ATTRS('WFP Position', !WFP Position, 'Cost Centre'),\n  '_Monthly Base Full',\n  ATTRS('WFP Position', !WFP Position, 'Salary Currency'),\n  !WFP Position, 'Amount');\n['Actual', 'FTE'] => DB('WFP Headcount', !WFP Period, 'Downside',\n  ATTRS('WFP Position', !WFP Position, 'Home Entity'),\n  ATTRS('WFP Position', !WFP Position, 'Cost Centre'),\n  !WFP Position, 'Headcount');\n"
+      },
+      "process::WFP Seed Assumptions": {
+        "PrologProcedure": "#Region Seed WFP Assumptions — planning drivers, per Period x Version x Entity\r\n# Phase 3.5: each CALCULATED version carries its OWN complete assumption set.\r\n#   Budget   = the approved/frozen plan: no merit, no promo, no bonus, no actuals\r\n#              blend (Actuals Cutoff Index 0). Preserves the Phase 1/2 Budget\r\n#              assertion suite.\r\n#   Forecast = the working current model: 3% merit + 1% promo from review index\r\n#              16, 10% bonus pool, actuals blend to index 15.\r\n#   Downside = a self-contained cost-pressure scenario: 5% merit, 4% inflation,\r\n#              12% bonus, faster fill (5% vacancy), actuals blend to index 15.\r\n# Idempotent. Written at leaf entities only (Group is a consolidation). Rules read\r\n# at the position's Home Entity. Edit per cell after where a driver varies by year.\r\ncCube = 'WFP Assumptions';\r\ncPer  = 'WFP Period';\r\nnPcount = DIMSIZ( cPer );\r\n\r\n# measure ; Budget ; Forecast ; Downside\r\nvM =\r\n'Merit Increase %;0;0.03;0.05~' |\r\n'Promotion Budget %;0;0.01;0.01~' |\r\n'Inflation %;0.025;0.025;0.04~' |\r\n'Actuals Cutoff Index;0;15;15~' |\r\n'Merit Review Index;0;16;16~' |\r\n'Vacancy Allowance %;0.10;0.10;0.05~' |\r\n'Standard FTE Hours;160;160;160~' |\r\n'Bonus Pool %;0;0.10;0.12~' |\r\n'Employer Oncost Fallback %;0.15;0.15;0.15~';\r\n\r\nvEnts = 'UK Ltd|US Inc|NZ Ltd|';\r\n\r\nnP = 1;\r\nWHILE( nP <= nPcount );\r\n   vPer = DIMNM( cPer, nP );\r\n   IF( DTYPE( cPer, vPer ) @= 'N' & LONG( vPer ) = 7 );\r\n      vEl = vEnts;\r\n      WHILE( SCAN( '|', vEl ) > 1 );\r\n         nS = SCAN( '|', vEl ); vEnt = SUBST( vEl, 1, nS - 1 ); vEl = SUBST( vEl, nS + 1, LONG( vEl ) - nS );\r\n         vRows = vM;\r\n         WHILE( SCAN( '~', vRows ) > 1 );\r\n            nS = SCAN( '~', vRows ); vRec = SUBST( vRows, 1, nS - 1 ) | ';'; vRows = SUBST( vRows, nS + 1, LONG( vRows ) - nS );\r\n            nS = SCAN( ';', vRec ); vMeas = SUBST( vRec, 1, nS - 1 ); vRec = SUBST( vRec, nS + 1, LONG( vRec ) - nS );\r\n            nS = SCAN( ';', vRec ); nBud  = NUMBR( SUBST( vRec, 1, nS - 1 ) ); vRec = SUBST( vRec, nS + 1, LONG( vRec ) - nS );\r\n            nS = SCAN( ';', vRec ); nFcst = NUMBR( SUBST( vRec, 1, nS - 1 ) ); vRec = SUBST( vRec, nS + 1, LONG( vRec ) - nS );\r\n            nS = SCAN( ';', vRec ); nDwn  = NUMBR( SUBST( vRec, 1, nS - 1 ) );\r\n            CellPutN( nBud,  cCube, vPer, 'Budget',   vEnt, vMeas );\r\n            CellPutN( nFcst, cCube, vPer, 'Forecast', vEnt, vMeas );\r\n            CellPutN( nDwn,  cCube, vPer, 'Downside', vEnt, vMeas );\r\n         END;\r\n      END;\r\n   ENDIF;\r\n   nP = nP + 1;\r\nEND;",
+        "MetadataProcedure": "",
+        "DataProcedure": "",
+        "EpilogProcedure": ""
+      },
+      "process::WFP Seed Workforce Input": {
+        "PrologProcedure": "#Region Seed Workforce Input — FTE + Base Salary + One-Time per active month\r\n# Phase 3.5: seed every CALCULATED version from ITS OWN assumptions.\r\n#   Budget   = flat (its Merit Review Index is 0, so no uplift; cutoff 0 so all\r\n#              active months are \"open\" and get seeded).\r\n#   Forecast = merit + promotion uplift from its own Merit Review Index / %.\r\n#   Downside = uplift from its own (steeper) assumptions.\r\n#   Actual   = flat seed, plus the real EXEC-001 Jan-Mar raise (a modelled actual\r\n#              until the Phase 7 payroll load).\r\n# Forecast / Downside CLOSED months (Period Index <= that version's Actuals Cutoff\r\n# Index) are provided by the WFP Workforce Input rule (= Actual) and MUST NOT be\r\n# written here — CellPutN to a ruled cell fails. This seed writes only their\r\n# open-month input.\r\ncCube = 'WFP Workforce Input';\r\ncPos  = 'WFP Position';\r\ncPer  = 'WFP Period';\r\ncAsm  = 'WFP Assumptions';\r\n\r\nnPosCount = DIMSIZ( cPos );\r\nnPerCount = DIMSIZ( cPer );\r\n\r\nvVers = 'Budget|Forecast|Downside|';\r\n\r\nnI = 1;\r\nWHILE( nI <= nPosCount );\r\n   vPos = DIMNM( cPos, nI );\r\n   IF( DTYPE( cPos, vPos ) @= 'N' );\r\n      nFTE  = ATTRN( cPos, vPos, 'FTE' );\r\n      nSal  = ATTRN( cPos, vPos, 'Seed Base Salary' );\r\n      vHome = ATTRS( cPos, vPos, 'Home Entity' );\r\n      vStartPd = ATTRS( cPos, vPos, 'Start Period' );\r\n      vEndPd   = ATTRS( cPos, vPos, 'End Period' );\r\n      nStartIdx = ATTRN( cPer, vStartPd, 'Period Index' );\r\n      nEndIdx   = IF( vEndPd @= '', 999, ATTRN( cPer, vEndPd, 'Period Index' ) );\r\n\r\n      nP = 1;\r\n      WHILE( nP <= nPerCount );\r\n         vPer = DIMNM( cPer, nP );\r\n         IF( DTYPE( cPer, vPer ) @= 'N' & LONG( vPer ) = 7 );\r\n            nPidx = ATTRN( cPer, vPer, 'Period Index' );\r\n            IF( nPidx >= nStartIdx & nPidx <= nEndIdx );\r\n\r\n               vVl = vVers;\r\n               WHILE( SCAN( '|', vVl ) > 1 );\r\n                  nS = SCAN( '|', vVl ); vVer = SUBST( vVl, 1, nS - 1 ); vVl = SUBST( vVl, nS + 1, LONG( vVl ) - nS );\r\n\r\n                  nCutoff   = CellGetN( cAsm, '2026-01', vVer, vHome, 'Actuals Cutoff Index' );\r\n                  nMeritIdx = CellGetN( cAsm, '2026-01', vVer, vHome, 'Merit Review Index' );\r\n                  nUplift   = CellGetN( cAsm, '2026-01', vVer, vHome, 'Merit Increase %' )\r\n                            + CellGetN( cAsm, '2026-01', vVer, vHome, 'Promotion Budget %' );\r\n\r\n                  # only OPEN months for this version (closed months come from the rule)\r\n                  IF( nPidx > nCutoff );\r\n                     nVerSal = nSal;\r\n                     IF( nMeritIdx > 0 & nPidx >= nMeritIdx );\r\n                        nVerSal = nSal * ( 1 + nUplift );\r\n                     ENDIF;\r\n                     CellPutN( nFTE,    cCube, vPer, vVer, vPos, 'FTE' );\r\n                     CellPutN( nVerSal, cCube, vPer, vVer, vPos, 'Base Salary' );\r\n                  ENDIF;\r\n               END;\r\n\r\n               nActSal = nSal;\r\n               IF( vPos @= 'EXEC-001' & nPidx >= 13 & nPidx <= 15 );\r\n                  nActSal = 220000;\r\n               ENDIF;\r\n               CellPutN( nFTE,    cCube, vPer, 'Actual', vPos, 'FTE' );\r\n               CellPutN( nActSal, cCube, vPer, 'Actual', vPos, 'Base Salary' );\r\n            ENDIF;\r\n         ENDIF;\r\n         nP = nP + 1;\r\n      END;\r\n   ENDIF;\r\n   nI = nI + 1;\r\nEND;\r\n\r\n# Sample one-time payment: CS-001 retention, 15,000 in 2026-06 (open month).\r\n# Forecast + Downside carry it; Budget is the frozen pre-comp-action plan.\r\nCellPutN( 15000, cCube, '2026-06', 'Forecast', 'CS-001', 'One-Time Amount' );\r\nCellPutN( 15000, cCube, '2026-06', 'Downside', 'CS-001', 'One-Time Amount' );",
+        "MetadataProcedure": "",
+        "DataProcedure": "",
+        "EpilogProcedure": ""
+      },
+      "process::WFP Seed Dimension Attributes": {
+        "PrologProcedure": "#Region WFP Seed Dimension Attributes\r\n# Sets the attribute VALUES that were originally built declaratively and so do not\r\n# survive a deploy: WFP Period (index/days/prior/FY), WFP Job Family (Pay Index),\r\n# WFP Entity, WFP Version, WFP Cost Centre. Idempotent — safe to re-run.\r\n\r\n# --- WFP Period: Period Index (chronological), Days In Month, Prior Period, FY ---\r\ncPer   = 'WFP Period';\r\nnCount = DIMSIZ( cPer );\r\nnIdx   = 0;\r\nvPrev  = '';\r\nnE = 1;\r\nWHILE( nE <= nCount );\r\n   vPer = DIMNM( cPer, nE );\r\n   # leaf months are numeric elements named YYYY-MM\r\n   IF( DTYPE( cPer, vPer ) @= 'N' & LONG( vPer ) = 7 & SUBST( vPer, 5, 1 ) @= '-' );\r\n      nIdx = nIdx + 1;\r\n      nMon = NUMBR( SUBST( vPer, 6, 2 ) );\r\n      nDays = 31;\r\n      IF( nMon = 2 );\r\n         nDays = 28;\r\n      ENDIF;\r\n      IF( nMon = 4 % nMon = 6 % nMon = 9 % nMon = 11 );\r\n         nDays = 30;\r\n      ENDIF;\r\n      AttrPutN( nIdx,  cPer, vPer, 'Period Index' );\r\n      AttrPutN( nDays, cPer, vPer, 'Days In Month' );\r\n      AttrPutS( vPrev, cPer, vPer, 'Prior Period' );\r\n      AttrPutS( 'FY' | SUBST( vPer, 1, 4 ), cPer, vPer, 'FY' );\r\n      vPrev = vPer;\r\n   ENDIF;\r\n   nE = nE + 1;\r\nEND;\r\n\r\n# --- WFP Job Family: Pay Index ---\r\nvJF = 'Engineering;1.1~Product;1.08~Sales;1.05~Marketing;1~Customer Success;0.98~Finance;1~People;0.98~IT;1~Admin;0.92~Leadership;1.15~';\r\nWHILE( SCAN( '~', vJF ) > 1 );\r\n   nS = SCAN( '~', vJF ); vRec = SUBST( vJF, 1, nS - 1 ) | ';'; vJF = SUBST( vJF, nS + 1, LONG( vJF ) - nS );\r\n   nS = SCAN( ';', vRec ); vFam = SUBST( vRec, 1, nS - 1 ); vRec = SUBST( vRec, nS + 1, LONG( vRec ) - nS );\r\n   nS = SCAN( ';', vRec ); nPi  = NUMBR( SUBST( vRec, 1, nS - 1 ) );\r\n   IF( DIMIX( 'WFP Job Family', vFam ) > 0 );\r\n      AttrPutN( nPi, 'WFP Job Family', vFam, 'Pay Index' );\r\n   ENDIF;\r\nEND;\r\n\r\n# --- WFP Entity: Local Currency, Primary Location, Reporting Currency ---\r\nvEn = 'Group;;;GBP~UK Ltd;GBP;London;GBP~US Inc;USD;New York;GBP~NZ Ltd;NZD;Auckland;GBP~';\r\nWHILE( SCAN( '~', vEn ) > 1 );\r\n   nS = SCAN( '~', vEn ); vRec = SUBST( vEn, 1, nS - 1 ) | ';'; vEn = SUBST( vEn, nS + 1, LONG( vEn ) - nS );\r\n   nS = SCAN( ';', vRec ); vEnt = SUBST( vRec, 1, nS - 1 ); vRec = SUBST( vRec, nS + 1, LONG( vRec ) - nS );\r\n   nS = SCAN( ';', vRec ); vLC  = SUBST( vRec, 1, nS - 1 ); vRec = SUBST( vRec, nS + 1, LONG( vRec ) - nS );\r\n   nS = SCAN( ';', vRec ); vPL  = SUBST( vRec, 1, nS - 1 ); vRec = SUBST( vRec, nS + 1, LONG( vRec ) - nS );\r\n   nS = SCAN( ';', vRec ); vRC  = SUBST( vRec, 1, nS - 1 );\r\n   IF( DIMIX( 'WFP Entity', vEnt ) > 0 );\r\n      IF( vLC @<> '' );\r\n         AttrPutS( vLC, 'WFP Entity', vEnt, 'Local Currency' );\r\n      ENDIF;\r\n      IF( vPL @<> '' );\r\n         AttrPutS( vPL, 'WFP Entity', vEnt, 'Primary Location' );\r\n      ENDIF;\r\n      AttrPutS( vRC, 'WFP Entity', vEnt, 'Reporting Currency' );\r\n   ENDIF;\r\nEND;\r\n\r\n# --- WFP Version: Version Type (Calculated | Frozen), Description ---\r\n# Phase 3.5: Working removed. Actual/Budget/Forecast/Downside are all Calculated\r\n# for now; Actual becomes Frozen at the Phase 7 payroll load. Snapshot members\r\n# (FCST YYYY-MM, Budget FINAL) are set to Frozen by WFP Snapshot Version.\r\nvVr = 'Actual;Calculated;Modelled actual — becomes Frozen at the Phase 7 payroll load~Budget;Calculated;Approved plan being built — snapshot to Budget FINAL at lock~Forecast;Calculated;Working current model — closed months = Actual, open months own assumptions~Downside;Calculated;Self-contained downside (cost-pressure) scenario~';\r\nWHILE( SCAN( '~', vVr ) > 1 );\r\n   nS = SCAN( '~', vVr ); vRec = SUBST( vVr, 1, nS - 1 ) | ';'; vVr = SUBST( vVr, nS + 1, LONG( vVr ) - nS );\r\n   nS = SCAN( ';', vRec ); vVer = SUBST( vRec, 1, nS - 1 ); vRec = SUBST( vRec, nS + 1, LONG( vRec ) - nS );\r\n   nS = SCAN( ';', vRec ); vTyp = SUBST( vRec, 1, nS - 1 ); vRec = SUBST( vRec, nS + 1, LONG( vRec ) - nS );\r\n   nS = SCAN( ';', vRec ); vDsc = SUBST( vRec, 1, nS - 1 );\r\n   IF( DIMIX( 'WFP Version', vVer ) > 0 );\r\n      AttrPutS( vTyp, 'WFP Version', vVer, 'Version Type' );\r\n      AttrPutS( vDsc, 'WFP Version', vVer, 'Description' );\r\n   ENDIF;\r\nEND;\r\n\r\n# --- WFP Cost Centre: Function, CC Name ---\r\nvCC = 'CC-ENG-PLT;R&D;Engineering - Platform~CC-ENG-APP;R&D;Engineering - Application~CC-PROD;R&D;Product Management~CC-SALES;S&M;Sales~CC-SALESOPS;S&M;Sales Operations~CC-MKT;S&M;Marketing~CC-CS;S&M;Customer Success~CC-FIN;G&A;Finance~CC-PPL;G&A;People & HR~CC-ITOPS;G&A;IT & Operations~CC-EXEC;G&A;Executive~';\r\nWHILE( SCAN( '~', vCC ) > 1 );\r\n   nS = SCAN( '~', vCC ); vRec = SUBST( vCC, 1, nS - 1 ) | ';'; vCC = SUBST( vCC, nS + 1, LONG( vCC ) - nS );\r\n   nS = SCAN( ';', vRec ); vCtr = SUBST( vRec, 1, nS - 1 ); vRec = SUBST( vRec, nS + 1, LONG( vRec ) - nS );\r\n   nS = SCAN( ';', vRec ); vFun = SUBST( vRec, 1, nS - 1 ); vRec = SUBST( vRec, nS + 1, LONG( vRec ) - nS );\r\n   nS = SCAN( ';', vRec ); vNam = SUBST( vRec, 1, nS - 1 );\r\n   IF( DIMIX( 'WFP Cost Centre', vCtr ) > 0 );\r\n      AttrPutS( vFun, 'WFP Cost Centre', vCtr, 'Function' );\r\n      AttrPutS( vNam, 'WFP Cost Centre', vCtr, 'CC Name' );\r\n   ENDIF;\r\nEND;",
+        "MetadataProcedure": "",
+        "DataProcedure": "",
+        "EpilogProcedure": ""
+      },
+      "subset::Default::WFP Version": {
+        "elements": [
+          "Actual",
+          "Budget",
+          "Forecast",
+          "Downside",
+          "Actual",
+          "Budget",
+          "Forecast",
+          "Downside"
+        ]
+      },
+      "dimension::WFP Version::element Working": {
+        "elementCount": 5,
+        "edgeCount": 0
+      },
+      "process::WFP Snapshot Version": {
+        "PrologProcedure": "#Region WFP Snapshot Version — freeze a calculating version into a Frozen member\r\n# Phase 3.5. Copies the INPUT layer (Workforce Input, Assumptions, FX Rates, Pay\r\n# Rates) of pSource into pTarget; Workforce Cost + Headcount then calculate for\r\n# pTarget to exactly the pSource picture and stay there while the inputs are\r\n# untouched. pTarget is created if absent and marked Version Type = Frozen.\r\n# Run at month-end close (pSource = Forecast) or budget lock (pSource = Budget).\r\ncVer = 'WFP Version';\r\n\r\nnStop = 0;\r\nIF( DIMIX( cVer, pSource ) = 0 );\r\n   ASCIIOUTPUT( 'WFP_Snapshot_error.txt', 'Source version not found: ' | pSource );\r\n   nStop = 1;\r\nENDIF;\r\nIF( nStop = 0 & ATTRS( cVer, pSource, 'Version Type' ) @<> 'Calculated' );\r\n   ASCIIOUTPUT( 'WFP_Snapshot_error.txt', 'Refused: source \"' | pSource | '\" is not a Calculated version.' );\r\n   nStop = 1;\r\nENDIF;\r\nIF( nStop = 0 & TRIM( pTarget ) @= '' );\r\n   ASCIIOUTPUT( 'WFP_Snapshot_error.txt', 'Target member name is blank.' );\r\n   nStop = 1;\r\nENDIF;\r\nIF( nStop = 0 & pTarget @= pSource );\r\n   ASCIIOUTPUT( 'WFP_Snapshot_error.txt', 'Target equals source.' );\r\n   nStop = 1;\r\nENDIF;\r\n\r\nIF( nStop = 0 );\r\n   # create the target member if needed (Direct = committed immediately), mark Frozen\r\n   IF( DIMIX( cVer, pTarget ) = 0 );\r\n      DimensionElementInsertDirect( cVer, '', pTarget, 'N' );\r\n   ENDIF;\r\n   AttrPutS( 'Frozen', cVer, pTarget, 'Version Type' );\r\n   AttrPutS( 'Snapshot of ' | pSource | ' — ' | TIMST( NOW, '\\Y-\\m-\\d' ), cVer, pTarget, 'Description' );\r\n\r\n   nCopied = 0;\r\n\r\n   # --- WFP Workforce Input : Period x Position x Measure ---\r\n   cWI = 'WFP Workforce Input';\r\n   nA = DIMSIZ( 'WFP Period' ); nB = DIMSIZ( 'WFP Position' ); nC = DIMSIZ( 'WFP Workforce Input Measure' );\r\n   nI = 1;\r\n   WHILE( nI <= nA );\r\n      vP = DIMNM( 'WFP Period', nI );\r\n      IF( DTYPE( 'WFP Period', vP ) @= 'N' & LONG( vP ) = 7 );\r\n         nJ = 1;\r\n         WHILE( nJ <= nB );\r\n            vPos = DIMNM( 'WFP Position', nJ );\r\n            IF( DTYPE( 'WFP Position', vPos ) @= 'N' );\r\n               nK = 1;\r\n               WHILE( nK <= nC );\r\n                  vM = DIMNM( 'WFP Workforce Input Measure', nK );\r\n                  IF( DTYPE( 'WFP Workforce Input Measure', vM ) @= 'N' );\r\n                     nVal = CellGetN( cWI, vP, pSource, vPos, vM );\r\n                     IF( nVal <> 0 );\r\n                        CellPutN( nVal, cWI, vP, pTarget, vPos, vM );\r\n                        nCopied = nCopied + 1;\r\n                     ENDIF;\r\n                  ENDIF;\r\n                  nK = nK + 1;\r\n               END;\r\n            ENDIF;\r\n            nJ = nJ + 1;\r\n         END;\r\n      ENDIF;\r\n      nI = nI + 1;\r\n   END;\r\n\r\n   # --- WFP Assumptions : Period x Entity x Measure ---\r\n   cAS = 'WFP Assumptions';\r\n   nA = DIMSIZ( 'WFP Period' ); nB = DIMSIZ( 'WFP Entity' ); nC = DIMSIZ( 'WFP Assumptions Measure' );\r\n   nI = 1;\r\n   WHILE( nI <= nA );\r\n      vP = DIMNM( 'WFP Period', nI );\r\n      IF( DTYPE( 'WFP Period', vP ) @= 'N' & LONG( vP ) = 7 );\r\n         nJ = 1;\r\n         WHILE( nJ <= nB );\r\n            vEnt = DIMNM( 'WFP Entity', nJ );\r\n            IF( DTYPE( 'WFP Entity', vEnt ) @= 'N' );\r\n               nK = 1;\r\n               WHILE( nK <= nC );\r\n                  vM = DIMNM( 'WFP Assumptions Measure', nK );\r\n                  IF( DTYPE( 'WFP Assumptions Measure', vM ) @= 'N' );\r\n                     nVal = CellGetN( cAS, vP, pSource, vEnt, vM );\r\n                     IF( nVal <> 0 );\r\n                        CellPutN( nVal, cAS, vP, pTarget, vEnt, vM );\r\n                        nCopied = nCopied + 1;\r\n                     ENDIF;\r\n                  ENDIF;\r\n                  nK = nK + 1;\r\n               END;\r\n            ENDIF;\r\n            nJ = nJ + 1;\r\n         END;\r\n      ENDIF;\r\n      nI = nI + 1;\r\n   END;\r\n\r\n   # --- WFP FX Rates : Period x Currency x FX Rate Type x Measure ---\r\n   cFX = 'WFP FX Rates';\r\n   nA = DIMSIZ( 'WFP Period' ); nB = DIMSIZ( 'WFP Currency' ); nC = DIMSIZ( 'WFP FX Rate Type' ); nD = DIMSIZ( 'WFP FX Rates Measure' );\r\n   nI = 1;\r\n   WHILE( nI <= nA );\r\n      vP = DIMNM( 'WFP Period', nI );\r\n      IF( DTYPE( 'WFP Period', vP ) @= 'N' & LONG( vP ) = 7 );\r\n         nJ = 1;\r\n         WHILE( nJ <= nB );\r\n            vCur = DIMNM( 'WFP Currency', nJ );\r\n            IF( DTYPE( 'WFP Currency', vCur ) @= 'N' );\r\n               nK = 1;\r\n               WHILE( nK <= nC );\r\n                  vRt = DIMNM( 'WFP FX Rate Type', nK );\r\n                  IF( DTYPE( 'WFP FX Rate Type', vRt ) @= 'N' );\r\n                     nL = 1;\r\n                     WHILE( nL <= nD );\r\n                        vM = DIMNM( 'WFP FX Rates Measure', nL );\r\n                        IF( DTYPE( 'WFP FX Rates Measure', vM ) @= 'N' );\r\n                           nVal = CellGetN( cFX, vP, pSource, vCur, vRt, vM );\r\n                           IF( nVal <> 0 );\r\n                              CellPutN( nVal, cFX, vP, pTarget, vCur, vRt, vM );\r\n                              nCopied = nCopied + 1;\r\n                           ENDIF;\r\n                        ENDIF;\r\n                        nL = nL + 1;\r\n                     END;\r\n                  ENDIF;\r\n                  nK = nK + 1;\r\n               END;\r\n            ENDIF;\r\n            nJ = nJ + 1;\r\n         END;\r\n      ENDIF;\r\n      nI = nI + 1;\r\n   END;\r\n\r\n   # --- WFP Pay Rates : Period x Grade x Job Family x Location x Measure ---\r\n   cPR = 'WFP Pay Rates';\r\n   nA = DIMSIZ( 'WFP Period' ); nB = DIMSIZ( 'WFP Grade' ); nC = DIMSIZ( 'WFP Job Family' ); nD = DIMSIZ( 'WFP Location' ); nE = DIMSIZ( 'WFP Pay Rates Measure' );\r\n   nI = 1;\r\n   WHILE( nI <= nA );\r\n      vP = DIMNM( 'WFP Period', nI );\r\n      IF( DTYPE( 'WFP Period', vP ) @= 'N' & LONG( vP ) = 7 );\r\n         nJ = 1;\r\n         WHILE( nJ <= nB );\r\n            vG = DIMNM( 'WFP Grade', nJ );\r\n            IF( DTYPE( 'WFP Grade', vG ) @= 'N' );\r\n               nK = 1;\r\n               WHILE( nK <= nC );\r\n                  vJF = DIMNM( 'WFP Job Family', nK );\r\n                  IF( DTYPE( 'WFP Job Family', vJF ) @= 'N' );\r\n                     nL = 1;\r\n                     WHILE( nL <= nD );\r\n                        vLoc = DIMNM( 'WFP Location', nL );\r\n                        IF( DTYPE( 'WFP Location', vLoc ) @= 'N' );\r\n                           nMx = 1;\r\n                           WHILE( nMx <= nE );\r\n                              vM = DIMNM( 'WFP Pay Rates Measure', nMx );\r\n                              IF( DTYPE( 'WFP Pay Rates Measure', vM ) @= 'N' );\r\n                                 nVal = CellGetN( cPR, vP, pSource, vG, vJF, vLoc, vM );\r\n                                 IF( nVal <> 0 );\r\n                                    CellPutN( nVal, cPR, vP, pTarget, vG, vJF, vLoc, vM );\r\n                                    nCopied = nCopied + 1;\r\n                                 ENDIF;\r\n                              ENDIF;\r\n                              nMx = nMx + 1;\r\n                           END;\r\n                        ENDIF;\r\n                        nL = nL + 1;\r\n                     END;\r\n                  ENDIF;\r\n                  nK = nK + 1;\r\n               END;\r\n            ENDIF;\r\n            nJ = nJ + 1;\r\n         END;\r\n      ENDIF;\r\n      nI = nI + 1;\r\n   END;\r\n\r\n   ASCIIOUTPUT( 'WFP_Snapshot_ok.txt', 'Snapshot ' | pSource | ' -> ' | pTarget | ' : ' | NUMBERTOSTRING( nCopied ) | ' input cells copied. Cost + Headcount recalculate for ' | pTarget | '.' );\r\nENDIF;",
+        "MetadataProcedure": "",
+        "DataProcedure": "",
+        "EpilogProcedure": ""
+      }
+    }
+  }
+}

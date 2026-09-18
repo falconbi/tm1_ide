@@ -1,0 +1,4 @@
+process,section,change,notes
+WFP Seed Hiring Plan,NEW,Creates and seeds the WFP Hiring Plan cube from a delimited table (version;position;approve_month;lead_time;attrition_month;backfill). Reads period-index math for hire month = approve + lead. Idempotent re-run.
+WFP Seed Workforce Input,MODIFY,For each calculated version, compute each position's effective window from WFP Hiring Plan (hire month / attrition month) falling back to position Start/End Period attributes when plan is 0. Writes FTE + Base Salary only within the version's effective window (open months only, as today). TBH hires get band salary from WFP Pay Rates via the engine (Seed Base Salary 0).
+WFP Reprocess Feeders,MODIFY,Add WFP Hiring Plan + WFP Headcount to the CubeProcessFeeders list after rules change.
