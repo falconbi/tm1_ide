@@ -1413,15 +1413,19 @@ export default function ProcessEditor({ tab }) {
         onSaveAnyway={() => { setSaveConflict(null); doSave() }}
         onCancel={() => setSaveConflict(null)}
         onShowDiff={() => {
-          const current = {}
-          CODE_TABS.forEach(({ key }) => { current[key] = edits[key] ?? data?.[key] ?? '' })
+          const current = {
+            prolog:   edits.PrologProcedure   ?? data?.PrologProcedure   ?? '',
+            metadata: edits.MetaDataProcedure ?? data?.MetaDataProcedure ?? '',
+            data:     edits.DataProcedure     ?? data?.DataProcedure     ?? '',
+            epilog:   edits.EpilogProcedure   ?? data?.EpilogProcedure   ?? '',
+          }
           setConflictDiff({
             object_type: 'process',
             object_name: tab.name,
             timestamp:   saveConflict.timestamp,
             action:      'CONFLICT',
             session_name: null,
-            before_state: saveConflict.after_state ?? { prolog: '', metadata: '', data: '', epilog: '' },
+            before_state: saveConflict.after_state ?? current,
             after_state:  current,
           })
         }}
@@ -1894,6 +1898,7 @@ export default function ProcessEditor({ tab }) {
               folding: true,
               foldingStrategy: 'auto',
               find: { seedSearchStringFromSelection: 'always', autoFindInSelection: 'never' },
+              wordBasedSuggestions: 'off',
             }}
           />
           {showHistory && tab.name && (

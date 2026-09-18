@@ -683,7 +683,7 @@ export default function SubsetEditor({ tab }) {
                 <MonacoEditor height="100%" language="tm1mdx" value={mdx ?? ''} theme={dark ? 'vs-dark' : 'vs'}
                   onChange={v => { setMdx(v); setDirty(true); setMembers(null) }}
                   onMount={handleMount}
-                  options={{ fontSize: 13, minimap: { enabled: false }, wordWrap: 'on', scrollBeyondLastLine: false, lineNumbers: 'off', suggestOnTriggerCharacters: true, quickSuggestions: true, parameterHints: { enabled: true } }} />
+                  options={{ fontSize: 13, minimap: { enabled: false }, wordWrap: 'on', scrollBeyondLastLine: false, lineNumbers: 'off', suggestOnTriggerCharacters: true, quickSuggestions: true, parameterHints: { enabled: true }, wordBasedSuggestions: 'off' }} />
               </div>
 
               {/* Results panel — below editor, shown after Execute */}

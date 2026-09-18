@@ -911,7 +911,7 @@ function RulesEditor({ tab, onCursor }) {
           beforeMount={monaco => registerTM1Theme(monaco, dark)}
           onChange={v => updateTabContent(tab.id, v)}
           onMount={handleMount}
-          options={{ fontFamily: loadSettings().editor?.fontFamily ?? undefined, fontSize: loadSettings().editor?.fontSize ?? undefined, lineHeight: loadSettings().editor?.lineHeight ?? undefined, minimap: { enabled: showMinimap }, wordWrap: 'on', scrollBeyondLastLine: false, fixedOverflowWidgets: true, folding: true, foldingStrategy: 'auto', glyphMargin: true }}
+          options={{ fontFamily: loadSettings().editor?.fontFamily ?? undefined, fontSize: loadSettings().editor?.fontSize ?? undefined, lineHeight: loadSettings().editor?.lineHeight ?? undefined, minimap: { enabled: showMinimap }, wordWrap: 'on', scrollBeyondLastLine: false, fixedOverflowWidgets: true, folding: true, foldingStrategy: 'auto', glyphMargin: true, wordBasedSuggestions: 'off' }}
         />
         {showHistory && (
           <ObjectHistoryPanel

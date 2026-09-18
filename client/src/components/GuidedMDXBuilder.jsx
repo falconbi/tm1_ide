@@ -1380,7 +1380,7 @@ export default function GuidedMDXBuilder({ tab, server: serverProp, onSwitchToRa
                     onChange={v => setCurrentMDX(v)}
                     beforeMount={monaco => registerTM1Theme(monaco, dark)}
                     onMount={handleEditorMount}
-                    options={{ fontSize: 11, minimap: { enabled: false }, wordWrap: 'on', scrollBeyondLastLine: false, lineNumbers: 'off', folding: false, renderLineHighlight: 'none', overviewRulerLanes: 0 }}
+                    options={{ fontSize: 11, minimap: { enabled: false }, wordWrap: 'on', scrollBeyondLastLine: false, lineNumbers: 'off', folding: false, renderLineHighlight: 'none', overviewRulerLanes: 0, wordBasedSuggestions: 'off' }}
                     theme="tm1-custom"
                   />
                 </div>
@@ -1638,7 +1638,7 @@ export default function GuidedMDXBuilder({ tab, server: serverProp, onSwitchToRa
                   onChange={v => { setViewMDX(v); setUserEditedMDX(true) }}
                   beforeMount={monaco => registerTM1Theme(monaco, dark)}
                   onMount={handleEditorMount}
-                  options={{ fontSize: 11, minimap: { enabled: false }, wordWrap: 'on', scrollBeyondLastLine: false, folding: false, renderLineHighlight: 'none', overviewRulerLanes: 0, lineNumbers: 'on' }}
+                  options={{ fontSize: 11, minimap: { enabled: false }, wordWrap: 'on', scrollBeyondLastLine: false, folding: false, renderLineHighlight: 'none', overviewRulerLanes: 0, lineNumbers: 'on', wordBasedSuggestions: 'off' }}
                   theme="tm1-custom"
                 />
               </div>

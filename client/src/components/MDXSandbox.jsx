@@ -136,7 +136,7 @@ export default function MDXSandbox({ tab }) {
                 value={rawMdx}
                 theme={dark ? 'vs-dark' : 'vs'}
                 onChange={v => setRawMdx(v ?? '')}
-                options={{ fontSize: 13, minimap: { enabled: false }, wordWrap: 'on', suggestOnTriggerCharacters: true }}
+                options={{ fontSize: 13, minimap: { enabled: false }, wordWrap: 'on', suggestOnTriggerCharacters: true, wordBasedSuggestions: 'off' }}
                 onMount={(editor, monaco) => {
                   rawEditorRef.current = editor
                   rawMonacoRef.current = monaco

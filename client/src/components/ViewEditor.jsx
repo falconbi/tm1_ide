@@ -2411,6 +2411,7 @@ export default function ViewEditor({ tab }) {
                             lineNumbers: 'on',
                             folding: false,
                             fixedOverflowWidgets: true,
+                            wordBasedSuggestions: 'off',
                         }}
                     />
                 </div>
