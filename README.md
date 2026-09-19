@@ -122,7 +122,7 @@ A 24-short series walking through every main feature — edit, build, govern, th
 | Editor | What it does |
 |--------|-------------|
 | **Rules Editor** | Monaco editor with TM1 rules syntax highlighting, live validation (CheckRules API) + static analysis (arg counts, keyword validity, line-accurate squiggles), **Check Now** button with green/red pass/fail glow, code formatter (3 structure presets), **#Region/#EndRegion folding**, lineage trace panel, **cell calculation trace** (shows full rule chain for any cell), snippet library, **Feeders** button (`tm1.CheckFeedersForRules`), **post-save reference check** (dead cube/dimension warnings as amber toasts) |
-| **TI Editor** | Four-tab editor (Prolog / Metadata / Data / Epilog), parameter editor, datasource editor with CSV file upload to TM1 server, run with output log, **error log viewer** (reads TM1 `.log` file inline after errors), static analysis (IF/WHILE/FOR/NEXT block structure, arg counts), **block folding**, debugger, snippets, pattern generators, **post-save reference check**, **Validate** toolbar button — tests every `TI_CATALOG` function against the live TM1 server |
+| **TI Editor** | Four-tab editor (Prolog / Metadata / Data / Epilog), parameter editor, datasource editor with CSV file upload to TM1 server, run with output log, **error log viewer** (reads TM1 `.log` file inline after errors), static analysis (IF/WHILE/FOR/NEXT block structure, arg counts), **block folding**, debugger, snippets, **post-save reference check**, **Validate** toolbar button — tests every `TI_CATALOG` function against the live TM1 server |
 | **TI Debugger** | Set breakpoints in any section, capture variable values at each breakpoint, watch panel, section-by-section execution |
 | **Dimension Editor** | Hierarchy tree with CRUD, attribute grid, element search, bulk CSV import. Per-column **→A** button converts String attributes to Alias in one click (values preserved). **Format picker** for the Format attribute with colour swatch support |
 | **Subset Editor** | MDX code view + visual element tree, static/MDX save, MDX preview |
@@ -529,7 +529,6 @@ tm1_ide/
 │           ├── mdx-validator.js       # Static analysis for MDX
 │           ├── ti-debugger.js         # Breakpoint injection + capture parsing
 │           ├── ti-interpreter.js      # Client-side TI execution simulator
-│           ├── ti-patterns.js         # TI code pattern generators
 │           ├── tm1-snippets.js        # TI and Rules snippet library
 │           └── formatters/            # Rules formatter: tokenizer, AST, presets
 ├── tools/
