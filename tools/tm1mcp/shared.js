@@ -88,4 +88,30 @@ function requireChangeSet() {
     return s
 }
 
-module.exports = { SERVER, AGENT_USER, client, ok, esc, logChange, runAssertions, requireChangeSet, cl, assertions, lintRules, lintTI }
+// ── Target allowlist for the read-only check tools ────────────────────────────
+// check_deploy_risk / check_target_drift accept any `target` name and would
+// otherwise open a read connection to whatever server the AI names — including
+// PROD. Refuse any target not in: the bound SERVER ∪ TM1_MCP_ALLOWED_TARGETS
+// (comma-separated env override) ∪ config/servers.json "mcpAllowTargets".
+function targetAllowlist() {
+    const set = new Set([SERVER])
+    const env = process.env.TM1_MCP_ALLOWED_TARGETS
+    if (env) env.split(',').map(s => s.trim()).filter(Boolean).forEach(t => set.add(t))
+    try {
+        const extra = require('../../config/servers.json')?.mcpAllowTargets
+        if (Array.isArray(extra)) extra.forEach(t => set.add(t))
+    } catch { /* config missing — bound server + env only */ }
+    return set
+}
+
+function assertTargetAllowed(target) {
+    const allowed = targetAllowlist()
+    if (!allowed.has(target)) {
+        throw new Error(
+            `Target server "${target}" is not in the MCP target allowlist. Allowed: ${[...allowed].join(', ')}. ` +
+            'Add it via TM1_MCP_ALLOWED_TARGETS (comma-separated env var) or the "mcpAllowTargets" key in config/servers.json.'
+        )
+    }
+}
+
+module.exports = { SERVER, AGENT_USER, client, ok, esc, logChange, runAssertions, requireChangeSet, assertTargetAllowed, targetAllowlist, cl, assertions, lintRules, lintTI }

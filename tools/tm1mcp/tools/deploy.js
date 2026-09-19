@@ -19,6 +19,8 @@ function register(server, { ok }) {
             try { ({ analyzeRisk } = require('../../../tools/tm1deploy/src/risk')) }
             catch (e) { return ok(`Deploy tooling not available: ${e.message}`) }
             try {
+                const { assertTargetAllowed } = require('../shared')
+                assertTargetAllowed(target)
                 const r = await analyzeRisk(packageDir, target, null)
                 return ok({
                     target,
@@ -43,6 +45,8 @@ function register(server, { ok }) {
             try { ({ driftCheck } = require('../../../tools/tm1deploy/src/diff')) }
             catch (e) { return ok(`Deploy tooling not available: ${e.message}`) }
             try {
+                const { assertTargetAllowed } = require('../shared')
+                assertTargetAllowed(target)
                 const r = await driftCheck(packageDir, target, null)
                 if (r.skipped) return ok({ target, note: r.reason ?? 'drift check skipped (no baseline in the package or repo)' })
                 return ok({
