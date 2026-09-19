@@ -46,6 +46,9 @@ Commands:
   log     [--session <name>]            List sessions (or show entries for a session)
   diff    --server <name>
           --session <name>              Diff session log against server + baseline
+  release-diff --server <name>
+          [--from <file>] [--to <file>] Diff a release window between two baselines
+                                        (default: the baseline before HEAD → HEAD)
   package --server <name>
           --session <name>              Build a deployment package from session changes
   risk    --package <path>
@@ -59,6 +62,8 @@ Options:
   --session <name>    Work session name (as created in the IDE)
   --package <path>    Path to a package directory (deploy only)
   --output  <path>    Override output path (seed/package)
+  --from    <file>    Baseline file for the start of a release window (release-diff)
+  --to      <file>    Baseline file for the end of a release window (release-diff)
   --force             Overwrite existing package directory
   --dry-run           Show what would be deployed without making changes
   --json              Output raw JSON (diff/deploy)
@@ -172,8 +177,6 @@ function cmdLog(args) {
 
 // ── diff command ──────────────────────────────────────────────────────────────
 
-const OUTCOME_SYMBOL = { MATCH: '✓', NEW: '+', UNCHANGED: '–', DRIFT: '✗', MISSING: '✗', ERROR: '!' }
-
 async function cmdDiff(args) {
     const server = args.server
     const sname  = args.session
@@ -219,12 +222,94 @@ async function cmdDiff(args) {
 
     const result = await diff(server, entries, baselinePath)
 
-    if (args.json) {
+    printDiffResult(server, result, {
+        json: !!args.json,
+        session: sname,
+        baselineNote: baseline ? `seeded ${baseline._meta?.seeded_at?.slice(0,10)} from ${baseline._meta?.server}` : '⚠ none found',
+        next: `package --session ${sname} --server ${server}`,
+    })
+}
+
+// ── release-diff command ──────────────────────────────────────────────────────
+// "What changed between baseline N and N+1" — a release-window diff. Reads the
+// change-log between two baselines' last_entry_id stamps and diffs the window's
+// objects against the FROM baseline. Defaults: from = baseline before HEAD,
+// to = HEAD.
+
+async function cmdReleaseDiff(args) {
+    const server = args.server
+    if (!server) { console.error('Error: --server is required\n'); usage(); process.exit(1) }
+    if (!process.env.PAW_HOST) {
+        console.error('Error: PAW_HOST environment variable is not set')
+        console.error('Make sure your .env file is present or env vars are exported.\n')
+        process.exit(1)
+    }
+
+    const { loadBaseline, listBaselines } = require('../src/diff')
+    const { baselineDirFor } = require('../src/baseline-paths')
+
+    const baselines = listBaselines(server)
+    if (baselines.length < 2) {
+        console.log(`\nNeed at least two baselines for ${server} to diff a release window.`)
+        console.log(`Found: ${baselines.length ? baselines.map(b => b.file).join(', ') : '(none)'}`)
+        console.log('Run: npm run tm1deploy seed --server ' + server)
+        return
+    }
+
+    const to = (args.to ? baselines.find(b => b.file === args.to) : null)
+            ?? baselines.find(b => b.is_head) ?? baselines[baselines.length - 1]
+
+    let from
+    if (args.from) {
+        from = baselines.find(b => b.file === args.from)
+        if (!from) { console.error(`Error: baseline "${args.from}" not found\n`); usage(); process.exit(1) }
+    } else {
+        const idx = baselines.indexOf(to)
+        from = idx > 0 ? baselines[idx - 1] : null
+    }
+    if (!from) {
+        console.log(`\nNo baseline before "${to.file}" — nothing to compare.\n`)
+        return
+    }
+
+    const fromPath = path.join(baselineDirFor(server), from.file)
+    const toPath   = path.join(baselineDirFor(server), to.file)
+    const fromBase = loadBaseline(fromPath, server)
+    const toBase   = loadBaseline(toPath, server)
+
+    const fromId = fromBase?._meta?.last_entry_id ?? 0
+    const toId   = toBase?._meta?.last_entry_id ?? Infinity
+
+    const entries = cl.getEntriesSinceId(server, fromId).filter(e => toId === Infinity || e.id <= toId)
+
+    console.log(`\ntm1deploy release-diff`)
+    console.log(`  server  : ${server}`)
+    console.log(`  window  : ${from.file} → ${to.file}`)
+    console.log(`  entries : ${entries.length} (change-log ${fromId} → ${toId === Infinity ? '∞' : toId})`)
+
+    if (entries.length === 0) {
+        console.log(`  Nothing changed in this window — the two baselines are adjacent.`)
+        return
+    }
+
+    const result = await diff(server, entries, fromPath)
+    printDiffResult(server, result, {
+        json: !!args.json,
+        window: `${from.file} → ${to.file}`,
+        next: 'package --session <name> --server ' + server + '  (or import via the IDE Deploy panel)',
+    })
+}
+
+// ── Shared diff table renderer ────────────────────────────────────────────────
+
+const OUTCOME_SYMBOL = { MATCH: '✓', NEW: '+', UNCHANGED: '–', DRIFT: '✗', MISSING: '✗', ERROR: '!' }
+
+function printDiffResult(server, result, { json, session, window, baselineNote, next }) {
+    if (json) {
         console.log(JSON.stringify(result, null, 2))
         return
     }
 
-    // ── Formatted output ──────────────────────────────────────────────────────
     const ORDER = ['DRIFT', 'MISSING', 'ERROR', 'MATCH', 'NEW', 'UNCHANGED']
     const sorted = [...result.results].sort((a, b) =>
         ORDER.indexOf(a.outcome) - ORDER.indexOf(b.outcome)
@@ -265,13 +350,13 @@ async function cmdDiff(args) {
     const packable = match.length + _new.length
 
     if (problems === 0 && packable === 0) {
-        console.log('  Nothing to package — all objects match baseline.')
+        console.log('  Nothing to package — all objects match the baseline.')
     } else if (problems > 0) {
         console.log(`  ⚠ ${problems} issue(s) found. Investigate drift/missing before packaging.`)
         if (packable > 0) console.log(`    ${packable} object(s) are ready to package.`)
     } else {
         console.log(`  ✓ All good — ${packable} object(s) ready to package.`)
-        console.log(`    Next: npm run tm1deploy package --session ${sname} --server ${server}`)
+        if (next) console.log(`    Next: npm run tm1deploy ${next}`)
     }
     console.log()
 }
@@ -546,6 +631,7 @@ async function main() {
         case 'seed':    return cmdSeed(args)
         case 'log':     return cmdLog(args)
         case 'diff':    return cmdDiff(args)
+        case 'release-diff': return cmdReleaseDiff(args)
         case 'package': return cmdPackage(args)
         case 'risk':    return cmdRisk(args)
         case 'deploy':  return cmdDeploy(args)

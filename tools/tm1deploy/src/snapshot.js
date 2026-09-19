@@ -333,6 +333,12 @@ async function seed(server, outputPath, ideToken, extraMeta = {}) {
     const bp       = require('./baseline-paths')
     const snapshot = await takeSnapshot(server, ideToken)
     if (extraMeta && Object.keys(extraMeta).length) Object.assign(snapshot._meta, extraMeta)
+    // Stamp the change-log position so every baseline is a release-window marker
+    // (enables the two-baseline / release-window diff). The deployer passes its
+    // own; a plain `seed` computes it here.
+    if (snapshot._meta.last_entry_id == null) {
+        try { snapshot._meta.last_entry_id = require('../../../core/change_log').getMaxEntryId(server) } catch { snapshot._meta.last_entry_id = null }
+    }
 
     let target
     if (outputPath) {
