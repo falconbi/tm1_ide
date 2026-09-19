@@ -589,6 +589,19 @@ function RulesEditor({ tab, onCursor }) {
         }
       }
     })
+    // Typing '(' right after a function name (e.g. DB() can leave Monaco's
+    // suggest widget showing stale results from the snippet-library provider
+    // (tm1-snippets.js) instead of cleanly re-querying every provider — both
+    // are registered on tm1rules, but only tm1-completion.js declares '(' as
+    // a trigger character, and Monaco doesn't reliably discard the other
+    // provider's already-rendered items on that kind of re-trigger. Force a
+    // full close + fresh re-open so it can't hold onto the wrong list.
+    editor.onDidType(text => {
+      if (text === '(') {
+        editor.trigger('tm1ide', 'hideSuggestWidget', {})
+        setTimeout(() => editor.trigger('tm1ide', 'editor.action.triggerSuggest', {}), 0)
+      }
+    })
     if (tab.scrollToLine) {
       editor.revealLineInCenter(tab.scrollToLine)
       editor.setPosition({ lineNumber: tab.scrollToLine, column: 1 })

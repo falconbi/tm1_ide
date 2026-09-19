@@ -6,7 +6,7 @@ import { registerTM1Completions, registerTM1Theme } from '@/lib/tm1-functions'
 import { registerTICompletions, TI_CATALOG } from '@/lib/tm1-completion'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
-import { ChevronRight, ChevronDown, Play, X, Braces, Wand2, CheckCircle2, XCircle, Database, Trash2, Plus, Loader2, Bug, Search, AlertTriangle, AlertCircle, Map, Upload, History, Locate, ShieldCheck } from 'lucide-react'
+import { ChevronRight, ChevronDown, Play, X, Braces, CheckCircle2, XCircle, Database, Trash2, Plus, Loader2, Bug, Search, AlertTriangle, AlertCircle, Map, Upload, History, Locate, ShieldCheck } from 'lucide-react'
 import ObjectHistoryPanel from '@/components/ObjectHistoryPanel'
 import { getSnippets } from '@/lib/tm1-snippets.js'
 import { loadSettings, saveSettings } from '@/lib/formatters/settings.js'
@@ -14,7 +14,6 @@ import { executeTI, scanVariables } from '@/lib/ti-interpreter'
 import { parseDebugLog } from '@/lib/ti-debugger'
 import { validateTICode } from '@/lib/ti-validator'
 import SnippetPanel from '@/components/SnippetPanel'
-import PatternDialog from '@/components/PatternDialog'
 import { ConflictBanner, ConflictSaveWarning } from '@/components/ConflictBanner'
 import DiffViewerModal from '@/components/DiffViewerModal'
 
@@ -898,7 +897,6 @@ export default function ProcessEditor({ tab }) {
   const [showRun, setShowRun] = useState(false)
   const [showDsInsert, setShowDsInsert] = useState(false)
   const [showSnippets, setShowSnippets] = useState(false)
-  const [showPatterns, setShowPatterns] = useState(false)
   const [showMinimap, setShowMinimap]   = useState(() => loadSettings().editor?.minimap?.ti ?? false)
   const [showHistory, setShowHistory]   = useState(false)
   const [dismissedId, setDismissedId]   = useState(null)
@@ -1042,6 +1040,20 @@ export default function ProcessEditor({ tab }) {
       }
     })
 
+    // Typing '(' right after a function name can leave Monaco's suggest
+    // widget showing stale results from the snippet-library provider
+    // (tm1-snippets.js) instead of cleanly re-querying every provider — both
+    // are registered on tm1ti, but only tm1-completion.js declares '(' as a
+    // trigger character, and Monaco doesn't reliably discard the other
+    // provider's already-rendered items on that kind of re-trigger. Force a
+    // full close + fresh re-open so it can't hold onto the wrong list.
+    editor.onDidType(text => {
+      if (text === '(') {
+        editor.trigger('tm1ide', 'hideSuggestWidget', {})
+        setTimeout(() => editor.trigger('tm1ide', 'editor.action.triggerSuggest', {}), 0)
+      }
+    })
+
     // Font zoom shortcuts (Ctrl++/Ctrl+-/Ctrl+0)
     editor.onKeyDown(e => {
       if (e.ctrlKey || e.metaKey) {
@@ -1079,21 +1091,6 @@ export default function ProcessEditor({ tab }) {
       editorRef.current.setPosition({ lineNumber: line, column: 1 })
       pendingLineRef.current = null
     }
-  }
-
-  const handleInsertPattern = (generated) => {
-    const keys = Object.keys(generated).filter(k => generated[k]?.trim())
-    if (!keys.length) return
-    setEdits(prev => {
-      const next = { ...prev }
-      for (const key of keys) {
-        const existing = (prev[key] ?? data?.[key] ?? '').trimEnd()
-        next[key] = existing ? existing + '\n\n' + generated[key] : generated[key]
-      }
-      return next
-    })
-    const firstKey = keys[0]
-    if (firstKey !== activeSection) setActiveSection(firstKey)
   }
 
   const handleRun = (values) => {
@@ -1464,14 +1461,6 @@ export default function ProcessEditor({ tab }) {
         />
       )}
 
-      {/* ── Pattern dialog ────────────────────────────────────────────── */}
-      {showPatterns && (
-        <PatternDialog
-          onInsert={handleInsertPattern}
-          onClose={() => setShowPatterns(false)}
-        />
-      )}
-
       {/* ── Run dialog ────────────────────────────────────────────────── */}
       {showRun && (
         <RunDialog
@@ -1608,14 +1597,6 @@ export default function ProcessEditor({ tab }) {
           >
             <Map size={11} />
             <span className="hidden sm:inline">Minimap</span>
-          </button>
-          <button
-            onClick={() => setShowPatterns(true)}
-            title="Patterns"
-            className="flex items-center gap-1.5 px-2.5 py-1 text-xs rounded border border-border text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-          >
-            <Wand2 size={11} />
-            <span className="hidden sm:inline">Patterns</span>
           </button>
           <button
             onClick={() => { setShowSnippets(s => !s); setShowDebug(false) }}
