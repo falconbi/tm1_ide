@@ -184,6 +184,13 @@ async function fetchElements(server, dim) {
   })
 }
 
+async function fetchAttributes(server, dim) {
+  return _cached(`attrs:${server}:${dim}`, 60_000, async () => {
+    const r = await authFetch(`/api/dimension/attributes?server=${enc(server)}&dimension=${enc(dim)}`)
+    return r.ok ? r.json() : []
+  })
+}
+
 // Returns true if textBefore ends inside an unclosed quoted string
 // (ignores # comments, which may contain apostrophes like "Budget's").
 function isInsideString(textBefore) {
@@ -302,7 +309,7 @@ export function registerTM1Completions(monaco, language, catalog, keywords, getC
   const CIK = monaco.languages.CompletionItemKind
 
   return monaco.languages.registerCompletionItemProvider(language, {
-    triggerCharacters: ["'", '"', '(', ',', ' '],
+    triggerCharacters: ["'", '"', '(', ',', ' ', '='],
 
     provideCompletionItems: async (model, position) => {
       // getContext may return a bare server string, or { server, cube?, version? }
@@ -373,6 +380,27 @@ export function registerTM1Completions(monaco, language, catalog, keywords, getC
         return { suggestions }
       }
 
+      // ── Area-type qualifier — right after ['Area'] = ───────────────────────
+      // TM1 rule areas always take one of exactly three type qualifiers
+      // (N: numeric, C: consolidated, S: string) — offer them as tab-selectable
+      // completions instead of requiring them to be typed out.
+      if (language === 'tm1rules' && !ctx && /\]\s+=\s+$/.test(textBefore)) {
+        const AREA_TYPES = [
+          { t: 'N', detail: 'Numeric' },
+          { t: 'C', detail: 'Consolidated' },
+          { t: 'S', detail: 'String' },
+        ]
+        return {
+          suggestions: AREA_TYPES.map(({ t, detail }) => ({
+            label:      `${t}:`,
+            kind:       CIK.EnumMember,
+            detail,
+            insertText: `${t}: `,
+            range,
+          })),
+        }
+      }
+
       // ── Keyword/snippet suggestions (not inside a call) ───────────────────
       // Two sources, merged: the hand-tuned `keywords` list (nicer placeholder
       // names for common functions) plus every OTHER function in the full
@@ -425,17 +453,22 @@ export function registerTM1Completions(monaco, language, catalog, keywords, getC
         ].includes(ctx.fn)
 
         if (isExpandable) {
+          // Full expansion must produce a syntactically complete call —
+          // opening quote (only if not already typed), the cube name,
+          // closing quote, every dimension as a tab-stop, and the closing ).
+          const inQuote = isInsideString(textBefore)
           const suggestions = await Promise.all(cubes.map(async cube => {
             const dims = await fetchCubeDims(server, cube)
             const dimStops = dims.map((d, i) => `\${${i + 1}:!${d}}`).join(', ')
             const detail = dims.length ? `${dims.length} dims: ${dims.join(', ')}` : 'No dimensions'
+            const cubePart = inQuote ? `${cube}'` : `'${cube}'`
 
             return {
               label:       { label: cube, description: detail },
               kind:        CIK.Module,
               detail,
               documentation: { value: `**${cube}**\n\nDimensions (in order):\n${dims.map((d, i) => `${i + 1}. ${d}`).join('\n')}` },
-              insertText:  dimStops ? `${cube}', ${dimStops}` : `${cube}'`,
+              insertText:  dimStops ? `${cubePart}, ${dimStops})` : `${cubePart})`,
               insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
               range,
               sortText:    cube,
@@ -500,7 +533,23 @@ export function registerTM1Completions(monaco, language, catalog, keywords, getC
           }
         }
 
-        // Not inside a quote — suggest !DimName element reference
+        // Not inside a quote — this is an expression position, so offer both
+        // the quick !DimName reference AND every catalog function (ATTRS,
+        // ELPAR, etc.) so a nested call can be composed here instead of a
+        // plain element name.
+        const typed = word.word.toUpperCase()
+        const fnSuggestions = Object.entries(catalogNow)
+          .filter(([name, entry]) => name.startsWith(typed) && compatAvailable(entry?.compat ?? 'both', version))
+          .map(([name, entry]) => ({
+            label:       name,
+            kind:        CIK.Function,
+            detail:      buildCatalogSignature(name, entry),
+            documentation: { value: entry.description ?? '' },
+            insertText:  buildCatalogSnippet(name, entry),
+            insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+            sortText:    `1_${name}`,
+            range,
+          }))
         return {
           suggestions: [{
             label:      `!${targetDim}`,
@@ -508,8 +557,28 @@ export function registerTM1Completions(monaco, language, catalog, keywords, getC
             detail:     `Current element — ${targetDim}`,
             insertText: `!${targetDim}`,
             range,
-            sortText:   '!',
-          }],
+            sortText:   '0_!',
+          }, ...fnSuggestions],
+        }
+      }
+
+      // ── Attribute name parameter ──────────────────────────────────────────
+      if (paramType === 'attribute') {
+        const entry  = catalogNow[ctx.fn]
+        const dimIdx = entry?.params?.findIndex(p => p.replace(/\*$/, '') === 'dimname') ?? -1
+        const targetDim = dimIdx >= 0 ? extractStringArg(textBefore, dimIdx) : null
+        if (!targetDim) return { suggestions: [] }
+
+        const inQuote = isInsideString(textBefore)
+        const attrs = await fetchAttributes(server, targetDim)
+        return {
+          suggestions: attrs.map(a => ({
+            label:      a.name,
+            kind:       CIK.Property,
+            detail:     a.type,
+            insertText: inQuote ? a.name : `'${a.name}'`,
+            range,
+          })),
         }
       }
 
