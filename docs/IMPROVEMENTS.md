@@ -162,9 +162,8 @@ effort estimate, and the reasoning.
 
 ## Top three to do first
 
-1. **1.1** — audit attribution gate (closes the anonymous-edit gap).
-2. **2.1** — dimension diff correctness (silently wrong today).
-3. **2.2** — line-level diffs in review (the difference between a verdict and a picture).
+> **Updated Sep 2026** — the original top three (1.1, 2.1, 2.2) and the flagged 6.1 are all **done**. Next priority order:
 
-> **Also flagged (needs doing):** **6.1** — MCP target allowlist gate so the AI's check tools can't
-> open read connections to PROD. Small effort, high security value.
+1. **5.1** — wire save → CheckRules → inline error feedback (the editor ergonomics win for AI-generated rules/TI).
+2. **3.1** — two-baseline / release-window diff (computable today, just not wired into any command or UI).
+3. **1.2 + 1.3** — `user` column on `log_entries` + surface the 200-row `getObjectHistory` cap (small audit-completeness wins).
