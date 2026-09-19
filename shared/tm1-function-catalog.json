@@ -2205,12 +2205,13 @@
   "SUBSETCREATE": {
     "compat": "both",
     "deprecated": null,
-    "description": "Creates an empty static subset on a dimension (dimension, subset name).",
+    "description": "Creates an empty static subset on a dimension (dimension, subset name, optional AsTemporary: 1=temporary, 0/omitted=permanent).",
     "isStatement": true,
     "language": "ti",
     "params": [
       "dimname",
-      "subset"
+      "subset",
+      "value?"
     ],
     "returnType": "void"
   },
@@ -2276,6 +2277,19 @@
       "subset"
     ],
     "returnType": "numeric"
+  },
+  "SUBSETGETELEMENTNAME": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Returns the element name at a given 1-based position in a subset.",
+    "isStatement": false,
+    "language": "ti",
+    "params": [
+      "dimname",
+      "subset",
+      "n"
+    ],
+    "returnType": "string"
   },
   "SUBSETGETSIZE": {
     "compat": "both",
@@ -2502,6 +2516,19 @@
       "value"
     ],
     "returnType": "numeric"
+  },
+  "VIEWEXTRACTSKIPCONSOLIDATEDSTRINGSSET": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Sets whether strings stored on consolidated values are excluded from a view extract (0=include/default, 1=exclude).",
+    "isStatement": true,
+    "language": "ti",
+    "params": [
+      "cubename",
+      "value",
+      "n"
+    ],
+    "returnType": "void"
   },
   "VIEWEXTRACTSKIPZEROESSET": {
     "compat": "both",

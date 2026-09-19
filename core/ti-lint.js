@@ -19,16 +19,12 @@
 const { findCalls } = require('./rules-lint')
 
 const CATALOG = require('../shared/tm1-function-catalog.json')
-
-const f = n => ({ min: n, max: n })
-const v = n => ({ min: n, max: Infinity })
+const { deriveArity } = require('./catalog-arity')
 
 const SIG = {}
 for (const [name, entry] of Object.entries(CATALOG)) {
   if (entry.language === 'rules') continue   // ti-lint only checks TI-usable functions
-  const params = entry.params ?? []
-  const variadic = params.length > 0 && params[params.length - 1].endsWith('*')
-  SIG[name] = variadic ? v(entry.variadicMin ?? params.length) : f(params.length)
+  SIG[name] = deriveArity(entry)
 }
 
 // control keywords — findCalls will see IF( / WHILE( / FOR( but they are not

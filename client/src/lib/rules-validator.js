@@ -15,10 +15,11 @@ function getFunctionArgInfo(fnName) {
   const catEntry = catalogEntry('rules', upper, RULES_CATALOG)
   if (!catEntry) return null
   const params = catEntry.params ?? []
-  const starCount = params.filter(p => p.endsWith('*')).length
-  const nonStarCount = params.length - starCount
-  const base = starCount > 0
-    ? { variadic: true,  min: catEntry.variadicMin ?? (nonStarCount + 1), max: Infinity }
+  const last = params[params.length - 1]
+  const base = last?.endsWith('*')
+    ? { variadic: true,  min: catEntry.variadicMin ?? params.length, max: Infinity }
+    : last?.endsWith('?')
+    ? { variadic: false, min: params.length - 1, max: params.length }
     : { variadic: false, min: params.length,     max: params.length }
   return {
     ...base,

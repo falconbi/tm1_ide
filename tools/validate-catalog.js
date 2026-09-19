@@ -53,7 +53,7 @@ function parseArgs(argv) {
 // That's a heuristic-quality issue, not a correctness bug — always read the
 // reported error message before concluding a function is fake.
 function testValue(tag, index) {
-    const bare = tag.replace(/\*$/, '')
+    const bare = tag.replace(/[*?]$/, '')
     if (bare === 'n') return String(index + 1)
     return `'x${index}'`
 }

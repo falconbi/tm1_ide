@@ -14,7 +14,9 @@ import TM1_CATALOG from '@shared/tm1-function-catalog.json'
 // language:    'rules'|'ti'|'both' — which language(s) this function is valid in
 // params:      string[] — param type tags for arg-count validation and context completions
 //              Types: 'cubename'|'dimname'|'element'|'attribute'|'subset'|'hiername'|'value'|'n'|'string'|...
-//              '*' suffix = repeating (variadic last arg)
+//              '*' suffix on the LAST tag = variadic (1-or-more repeats).
+//              '?' suffix on the LAST tag = optional (0-or-1 of that single arg,
+//              e.g. SubsetCreate's AsTemporary flag) — NOT variadic/unbounded.
 // returnType:  'numeric'|'string'|'void'|'any'
 // compat:      'both'|'v11'|'v12'   — v12 = TM1 Database 12 / PA 3+ only; v11 = classic TM1 11 only (removed in v12)
 // deprecated:  string | null         — shown as amber squiggle in editor; null = not deprecated
@@ -132,16 +134,21 @@ export function getCallContext(textBefore) {
 }
 
 // Resolve the parameter type for a given function + param index
+// Strips the trailing '*' (variadic) or '?' (optional single arg) marker so
+// callers get the plain type tag ('cubename', 'value', etc.) either way.
+function bareParamTag(t) {
+  return (t.endsWith('*') || t.endsWith('?')) ? t.slice(0, -1) : t
+}
+
 function resolveParamType(catalog, fn, paramIdx) {
   const entry = catalog[fn]
   if (!entry) return null
   const params = entry.params ?? []
-  if (paramIdx < params.length) {
-    const t = params[paramIdx]
-    return t.endsWith('*') ? t.slice(0, -1) : t
-  }
+  if (paramIdx < params.length) return bareParamTag(params[paramIdx])
   const last = params[params.length - 1]
-  return last?.endsWith('*') ? last.slice(0, -1) : null
+  // Past the declared params: only a variadic ('*') tail can extend further —
+  // an optional ('?') trailing arg is capped at exactly one occurrence.
+  return last?.endsWith('*') ? bareParamTag(last) : null
 }
 
 // ── In-memory cache (30s cubes/dims, 60s cube-dims) ─────────────────────────
@@ -306,7 +313,7 @@ function buildCatalogSignature(name, entry) {
 function buildCatalogSnippet(name, entry) {
   const params = entry.params ?? []
   if (!params.length) return `${name}()`
-  const stops = params.map((p, i) => `\${${i + 1}:${p.replace(/\*$/, '')}}`).join(', ')
+  const stops = params.map((p, i) => `\${${i + 1}:${bareParamTag(p)}}`).join(', ')
   return `${name}(${stops})`
 }
 
@@ -572,7 +579,7 @@ export function registerTM1Completions(monaco, language, catalog, keywords, getC
       // ── Attribute name parameter ──────────────────────────────────────────
       if (paramType === 'attribute') {
         const entry  = catalogNow[ctx.fn]
-        const dimIdx = entry?.params?.findIndex(p => p.replace(/\*$/, '') === 'dimname') ?? -1
+        const dimIdx = entry?.params?.findIndex(p => bareParamTag(p) === 'dimname') ?? -1
         const targetDim = dimIdx >= 0 ? extractStringArg(textBefore, dimIdx) : null
         if (!targetDim) return { suggestions: [] }
 
@@ -592,7 +599,7 @@ export function registerTM1Completions(monaco, language, catalog, keywords, getC
       // ── Subset name parameter ─────────────────────────────────────────────
       if (paramType === 'subset') {
         const entry  = catalogNow[ctx.fn]
-        const dimIdx = entry?.params?.findIndex(p => p.replace(/\*$/, '') === 'dimname') ?? -1
+        const dimIdx = entry?.params?.findIndex(p => bareParamTag(p) === 'dimname') ?? -1
         const targetDim = dimIdx >= 0 ? extractStringArg(textBefore, dimIdx) : null
         if (!targetDim) return { suggestions: [] }
 
@@ -637,7 +644,7 @@ export function registerTM1SignatureHelp(monaco, language, catalog) {
           signatures: [{
             label:         buildCatalogSignature(ctx.fn, entry),
             documentation: entry.description ?? '',
-            parameters:    entry.params.map(p => ({ label: p.replace(/\*$/, '') })),
+            parameters:    entry.params.map(p => ({ label: bareParamTag(p) })),
           }],
           activeSignature: 0,
           activeParameter: Math.min(ctx.paramIdx, entry.params.length - 1),
