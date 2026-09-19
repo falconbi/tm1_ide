@@ -2,22 +2,22 @@
   "server": "TM1_Test_DEV",
   "tabs": [
     {
-      "id": "cubemap:TM1_Test_DEV",
-      "type": "cubemap",
-      "label": "Cube Map",
+      "id": "process:TM1_Test_DEV:WFP Copy Version",
+      "type": "process",
+      "label": "WFP Copy Version",
       "server": "TM1_Test_DEV",
-      "scrollToLine": null,
-      "scrollToSection": null
+      "name": "WFP Copy Version",
+      "content": null
     }
   ],
-  "activeTab": "cubemap:TM1_Test_DEV",
+  "activeTab": "process:TM1_Test_DEV:WFP Copy Version",
   "groups": [
     {
       "id": "g1",
       "tabIds": [
-        "cubemap:TM1_Test_DEV"
+        "process:TM1_Test_DEV:WFP Copy Version"
       ],
-      "activeTabId": "cubemap:TM1_Test_DEV"
+      "activeTabId": "process:TM1_Test_DEV:WFP Copy Version"
     }
   ],
   "activeGroupId": "g1",
