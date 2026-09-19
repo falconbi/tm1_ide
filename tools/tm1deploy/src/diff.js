@@ -253,26 +253,55 @@ async function diffDimension(entry, baseline, client) {
             : outcome('DELETED', entry, 'deleted from source — not packaged')
     }
 
-    const elements = await client.getElements(entry.object_name).catch(() => null)
-    if (!elements) return outcome('MISSING', entry, 'dimension not found on server')
-
     const baseDim = baseline?.dimensions?.[entry.object_name]
     if (!baseDim) return outcome('NEW', entry, 'not in baseline — new dimension')
 
-    const baseEls   = baseDim.hierarchies?.[entry.object_name]?.elements ?? []
-    const baseNames = new Set(baseEls.map(e => (e.name ?? e.Name ?? '').toLowerCase()))
-    const currNames = elements.map(e => e.name ?? e.Name ?? '').filter(Boolean)
-    const currSet   = new Set(currNames.map(n => n.toLowerCase()))
+    // Structural signature (same shape as scopedSnapshot): element Name:Type and
+    // edge Parent>Child=Weight. Comparing names or counts alone misses re-parents,
+    // weight changes, and type flips — the signature catches all of them.
+    const [elements, edges] = await Promise.all([
+        client.getElementsWithTree(entry.object_name, entry.object_name).catch(() => null),
+        client.getEdges(entry.object_name, entry.object_name).catch(() => null),
+    ])
+    if (!elements) return outcome('MISSING', entry, 'dimension not found on server')
 
-    const added   = currNames.filter(n => !baseNames.has(n.toLowerCase()))
-    const removed = baseEls.map(e => e.name ?? e.Name ?? '').filter(n => n && !currSet.has(n.toLowerCase()))
+    const hier       = baseDim.hierarchies?.[entry.object_name] ?? {}
+    const elemToken  = e => `${e?.Name ?? e?.name ?? ''}:${e?.Type ?? e?.type ?? '?'}`
+    const edgeToken  = e => `${e?.ParentName ?? ''}>${e?.ComponentName ?? ''}=${e?.Weight ?? e?.weight ?? 1}`
+
+    const baseElems   = (hier.elements ?? []).map(elemToken).filter(Boolean)
+    const baseEdges   = (hier.edges ?? []).map(edgeToken).filter(Boolean)
+    const currElems   = elements.map(elemToken).filter(Boolean)
+    const currEdges   = (edges ?? []).map(edgeToken).filter(Boolean)
+    const baseElemSet = new Set(baseElems)
+    const currElemSet = new Set(currElems)
+    const baseEdgeSet = new Set(baseEdges)
+    const currEdgeSet = new Set(currEdges)
+
+    const addedElems   = currElems.filter(t => !baseElemSet.has(t))
+    const removedElems = baseElems.filter(t => !currElemSet.has(t))
+    const addedEdges   = currEdges.filter(t => !baseEdgeSet.has(t))
+    const removedEdges = baseEdges.filter(t => !currEdgeSet.has(t))
+
+    if (!addedElems.length && !removedElems.length && !addedEdges.length && !removedEdges.length) {
+        return outcome('MATCH', entry, 'structure identical to baseline')
+    }
+
+    const addedNames   = addedElems.map(t => t.split(':')[0])
+    const removedNames = removedElems.map(t => t.split(':')[0])
+    const nameList     = names => `(${names.slice(0, 8).join(', ')}${names.length > 8 ? '…' : ''})`
 
     const parts = []
-    if (added.length)   parts.push(`+${added.length} added`)
-    if (removed.length) parts.push(`-${removed.length} removed`)
-    const note = parts.length ? parts.join(', ') : 'element count unchanged'
+    if (addedNames.length)   parts.push(`+${addedNames.length} element${addedNames.length !== 1 ? 's' : ''} ${nameList(addedNames)}`)
+    if (removedNames.length) parts.push(`-${removedNames.length} element${removedNames.length !== 1 ? 's' : ''} ${nameList(removedNames)}`)
+    if (addedEdges.length)   parts.push(`${addedEdges.length} edge${addedEdges.length !== 1 ? 's' : ''} added/re-parented`)
+    if (removedEdges.length) parts.push(`${removedEdges.length} edge${removedEdges.length !== 1 ? 's' : ''} removed`)
+    const note = parts.join(', ')
 
-    return outcome('MATCH', entry, note, { elementDelta: { added, removed } })
+    return outcome('DRIFT', entry, `structure differs from baseline: ${note}`, {
+        elementDelta: { added: addedNames, removed: removedNames },
+        edgeDelta:    { added: addedEdges, removed: removedEdges },
+    })
 }
 
 async function diffAttribute(entry, baseline, client) {
