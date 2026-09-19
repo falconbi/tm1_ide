@@ -11,64 +11,6 @@ const S = (trigger, label, description, category, language, code) =>
 
 const RULES = [
 
-  // Structure
-  S('region',   '#Region block',          'Collapsible named code region',                             'Structure', 'rules',
-    `#Region \${1:RegionName}\n\n\${2:['Element'] = value}\n\n#EndRegion \${1:RegionName}`),
-
-  S('feeders',  'FEEDERS section',        'Start the feeders section of the rules file',               'Structure', 'rules',
-    `FEEDERS;\n\n\${0}`),
-
-  S('skip',     'SKIPCHECK',              'Disable consolidation check for this rules file',            'Structure', 'rules',
-    `SKIPCHECK;\n\${0}`),
-
-  S('comment',  'Comment block',          'Multi-line comment block',                                  'Structure', 'rules',
-    `#==============================================================\n# \${1:Section name}\n#==============================================================\n\${0}`),
-
-  // Conditionals
-  S('if',       'IF / ENDIF',             'Simple conditional block',                                  'Conditionals', 'rules',
-    `IF(\${1:condition});\n  \${2:['Element'] = value}\nENDIF;\n\${0}`),
-
-  S('ife',      'IF / ELSE / ENDIF',      'Conditional with else branch',                              'Conditionals', 'rules',
-    `IF(\${1:condition});\n  \${2:['Element'] = value1}\nELSE;\n  \${3:['Element'] = value2}\nENDIF;\n\${0}`),
-
-  S('ifei',     'IF / ELSEIF / ELSE',     'Multi-branch conditional',                                  'Conditionals', 'rules',
-    `IF(\${1:condition1});\n  \${2:['Element'] = value1}\nELSEIF(\${3:condition2});\n  \${4:['Element'] = value2}\nELSE;\n  \${5:['Element'] = value3}\nENDIF;\n\${0}`),
-
-  // DB References
-  S('db',       'DB() numeric',           'Read a numeric value from another cube',                    'DB References', 'rules',
-    `DB('\${1:CubeName}', \${2:!dim1}, \${3:!dim2})`),
-
-  S('dbs',      'DB() string',            'Read a string cell from another cube (DB returns strings too)', 'DB References', 'rules',
-    `DB('\${1:CubeName}', \${2:!dim1}, \${3:!dim2})`),
-
-  S('dbn',      'N: DB() rule',           'Numeric rule using DB reference',                           'DB References', 'rules',
-    `N: ['\${1:Element}'] = DB('\${2:CubeName}', \${3:!dim1}, \${4:!dim2});\n\${0}`),
-
-  S('dbc',      'C: DB() rule',           'Consolidated element rule using DB reference',              'DB References', 'rules',
-    `C: ['\${1:Element}'] = DB('\${2:CubeName}', \${3:!dim1}, \${4:!dim2});\n\${0}`),
-
-  S('attrs',    'ATTRS() string attr',    'Read a string attribute of an element',                     'DB References', 'rules',
-    `ATTRS('\${1:Dimension}', \${2:!Element}, '\${3:AttributeName}')`),
-
-  S('attrn',    'ATTRN() numeric attr',   'Read a numeric attribute of an element',                    'DB References', 'rules',
-    `ATTRN('\${1:Dimension}', \${2:!Element}, '\${3:AttributeName}')`),
-
-  S('attrl',    'ATTRL() locale attr',    'Read a locale-specific string attribute',                   'DB References', 'rules',
-    `ATTRL('\${1:Dimension}', \${2:!Element}, '\${3:AttributeName}', '\${4:locale}')`),
-
-  // FEEDERS
-  S('feed',     'Simple feeder',          'Feed a target element or cube intersection',                'FEEDERS', 'rules',
-    `['\${1:FeedingElement}'] => DB('\${2:FedCubeName}', \${3:!dim1}, \${4:!dim2});\n\${0}`),
-
-  S('feedif',   'Conditional feeder',     'Only feed when a condition is met',                         'FEEDERS', 'rules',
-    `IF(['\${1:Condition}'] <> 0);\n  ['\${2:FeedingElement}'] => DB('\${3:FedCube}', \${4:!dim1});\nENDIF;\n\${0}`),
-
-  S('stet',     'STET feeder',            'Element feeds itself (prevents zeroing)',                   'FEEDERS', 'rules',
-    `['\${1:Element}'] => STET;\n\${0}`),
-
-  S('feeddb',   'DB source feeder',       'Feed from a DB() call result',                              'FEEDERS', 'rules',
-    `DB('\${1:SourceCube}', \${2:!dim1}, \${3:!dim2}) => DB('\${4:TargetCube}', \${5:!dim1}, \${6:!dim2});\n\${0}`),
-
   // Element Functions
   S('ellev',    'ELLEV()',                'Level of an element in the hierarchy',                      'Element Functions', 'rules',
     `ELLEV('\${1:Dimension}', \${2:!Element})`),
@@ -99,19 +41,6 @@ const RULES = [
 
   S('tabdim',   'TABDIM()',               'Dimension name at a given position in a cube',              'Element Functions', 'rules',
     `TABDIM('\${1:CubeName}', \${2:position})`),
-
-  // Math
-  S('round',    'ROUND()',                'Round to N decimal places',                                 'Math', 'rules',
-    `ROUND(\${1:value}, \${2:2})`),
-
-  S('int',      'INT()',                  'Integer part of a number (truncate)',                       'Math', 'rules',
-    `INT(\${1:value})`),
-
-  S('mod',      'MOD()',                  'Modulus (remainder after division)',                        'Math', 'rules',
-    `MOD(\${1:value}, \${2:divisor})`),
-
-  S('abs',      'ABS()',                  'Absolute value',                                            'Math', 'rules',
-    `ABS(\${1:value})`),
 
   // Date
   S('today',    'TODAY()',                'Current date as a serial number',                           'Date', 'rules',
