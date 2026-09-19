@@ -78,6 +78,47 @@ function uniqueObjects(entries) {
 
 function norm(s) { return (s ?? '').replace(/\r\n/g, '\n').trim() }
 
+// Line-level diff of two code strings via LCS — { added, removed } line arrays,
+// so review shows *what* changed, not just "changed from baseline". For very
+// large inputs falls back to a cheap set-based approximation (no move detection).
+function lineDiff(a, b) {
+    const aLines = (a ?? '').split('\n')
+    const bLines = (b ?? '').split('\n')
+    if (aLines.length * bLines.length > 12_000_000) {
+        const bSet = new Set(bLines)
+        const aSet = new Set(aLines)
+        return {
+            added:   bLines.filter(l => !aSet.has(l)),
+            removed: aLines.filter(l => !bSet.has(l)),
+        }
+    }
+    const m = aLines.length, n = bLines.length
+    const dp = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0))
+    for (let i = m - 1; i >= 0; i--) {
+        for (let j = n - 1; j >= 0; j--) {
+            dp[i][j] = aLines[i] === bLines[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1])
+        }
+    }
+    const added = [], removed = []
+    let i = 0, j = 0
+    while (i < m && j < n) {
+        if (aLines[i] === bLines[j]) { i++; j++ }
+        else if (dp[i + 1][j] >= dp[i][j + 1]) { removed.push(aLines[i]); i++ }
+        else { added.push(bLines[j]); j++ }
+    }
+    while (i < m) removed.push(aLines[i++])
+    while (j < n) added.push(bLines[j++])
+    return { added, removed }
+}
+
+function lineDiffNote(d) {
+    if (!d) return ''
+    const parts = []
+    if (d.added.length)   parts.push(`+${d.added.length} line${d.added.length !== 1 ? 's' : ''}`)
+    if (d.removed.length) parts.push(`−${d.removed.length} line${d.removed.length !== 1 ? 's' : ''}`)
+    return parts.join(' / ')
+}
+
 function normAxes(vws) {
     const axis = (placements) => (placements ?? []).map(p => ({
         dim:    p.dimension,
@@ -131,7 +172,10 @@ async function diffRules(entry, baseline, client) {
     const loggedRaw = entry.after_state?.text ?? entry.after_state?.rules
     if (loggedRaw != null) {
         const logged = norm(loggedRaw)
-        if (current !== logged) return outcome('DRIFT', entry, 'server rules differ from last IDE save', { logged, current })
+        if (current !== logged) {
+            const ld = lineDiff(logged, current)
+            return outcome('DRIFT', entry, `server rules differ from last IDE save (${lineDiffNote(ld)})`, { logged, current, lineDiff: ld })
+        }
     }
 
     // An object in the change set ships even if it currently matches the baseline
@@ -140,7 +184,8 @@ async function diffRules(entry, baseline, client) {
     // is not — WFP Phase 4 lost its rule changes exactly this way.
     if (norm(baseVal) === current) return outcome('MATCH', entry, 'identical to baseline — shipping anyway (in change set)', { baseline: baseVal, current })
 
-    return outcome('MATCH', entry, 'changed from baseline', { baseline: baseVal, current })
+    const ld = lineDiff(norm(baseVal), current)
+    return outcome('MATCH', entry, `changed from baseline (${lineDiffNote(ld)})`, { baseline: baseVal, current, lineDiff: ld })
 }
 
 async function diffProcess(entry, baseline, client) {
@@ -171,7 +216,29 @@ async function diffProcess(entry, baseline, client) {
             entry.after_state.data     ?? '',
             entry.after_state.epilog   ?? '',
         ].join('\n'))
-        if (currentCode !== loggedCode) return outcome('DRIFT', entry, 'server process differs from last IDE save')
+        if (currentCode !== loggedCode) {
+            const ld = lineDiff(loggedCode, currentCode)
+            return outcome('DRIFT', entry, `server process differs from last IDE save (${lineDiffNote(ld)})`, { loggedCode, currentCode, lineDiff: ld })
+        }
+    }
+
+    const baseProc = baseline?.processes?.[entry.object_name]
+    const baseCode = baseProc ? norm([
+        baseProc.PrologProcedure                             ?? '',
+        baseProc.MetaDataProcedure ?? baseProc.MetadataProcedure ?? '',
+        baseProc.DataProcedure                               ?? '',
+        baseProc.EpilogProcedure                             ?? '',
+    ].join('\n')) : null
+    const currentCode = norm([
+        proc.PrologProcedure                             ?? '',
+        proc.MetaDataProcedure ?? proc.MetadataProcedure ?? '',
+        proc.DataProcedure                               ?? '',
+        proc.EpilogProcedure                             ?? '',
+    ].join('\n'))
+
+    if (baseCode !== null && baseCode !== currentCode) {
+        const ld = lineDiff(baseCode, currentCode)
+        return outcome('MATCH', entry, `changed from baseline (${lineDiffNote(ld)})`, { baseline: baseCode, current: currentCode, lineDiff: ld })
     }
 
     return outcome('MATCH', entry, 'changed from baseline')
@@ -586,4 +653,4 @@ async function driftCheck(packageDir, targetServer, ideToken) {
     }
 }
 
-module.exports = { diff, driftCheck, loadBaseline, listBaselines, setBaselineHead, baselinePathFor, BASELINE_PATH }
+module.exports = { diff, driftCheck, loadBaseline, listBaselines, setBaselineHead, baselinePathFor, BASELINE_PATH, lineDiff, lineDiffNote }

@@ -140,6 +140,16 @@ function DeltaLine({ o }) {
       </div>
     )
   }
+  if (o.lineDiff) {
+    const { added = [], removed = [] } = o.lineDiff
+    const sample = arr => arr.slice(0, 3).map(l => l.trim().slice(0, 60)).join(' | ')
+    return (
+      <div className="text-[11px] mt-0.5 space-y-0.5">
+        {added.length   > 0 && <div className="text-emerald-400/80">+{added.length} line{added.length !== 1 ? 's' : ''}: <span className="font-mono">{sample(added)}</span></div>}
+        {removed.length > 0 && <div className="text-red-400/80">−{removed.length} line{removed.length !== 1 ? 's' : ''}: <span className="font-mono">{sample(removed)}</span></div>}
+      </div>
+    )
+  }
   if (o.note) return <div className="text-[11px] text-muted-foreground/80 mt-0.5">{o.note}</div>
   return null
 }

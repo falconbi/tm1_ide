@@ -153,6 +153,7 @@ effort estimate, and the reasoning.
 - **1.1 — browser write-route session gate** — **done**. `server.js` now hard-gates all 22 logged model-mutation routes (plus edge add/weight and view set-default) with `gateSession()` — a 409 unless a change set is open for that server. Toggleable via `TM1_REQUIRE_SESSION=0` to revert to the old nudge-but-proceed behaviour. Same rule MCP already enforces via `requireChangeSet`.
 - **2.1 — `diffDimension` structural signature** — **done**. Now compares element `Name:Type` + edge `Parent>Child=Weight` token sets (same signature as `scopedSnapshot`), so re-parents, weight changes, and type flips report DRIFT instead of a false MATCH. Works against already-seeded baselines (they store raw elements + edges).
 - **6.1 — MCP target allowlist** — **done**. `check_deploy_risk` / `check_target_drift` now refuse any `target` not in the bound `SERVER` ∪ `TM1_MCP_ALLOWED_TARGETS` (env) ∪ `config/servers.json` `mcpAllowTargets` — before any connection opens.
+- **2.2 — line-level diffs in deploy review** — **done**. `diffRules`/`diffProcess` now attach an LCS `lineDiff` (added/removed lines, fallback to set-based for very large files) and surface it as "+N / −M lines" in the note, with sample lines rendered in the Deploy panel rows (`DeltaLine`).
 - CubeMap focus mode (click a cube to re-root the map around it) — **done**.
 - Run-stats overlay on lineage — **skipped** (eye candy; devs read logs directly).
 - Change-set collapse to first→last per object — **kept as-is** (intentional).
