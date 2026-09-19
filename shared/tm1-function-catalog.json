@@ -118,6 +118,19 @@
     ],
     "returnType": "numeric"
   },
+  "ATTRNL": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Returns a locale-aware numeric element attribute value (companion to ATTRN).",
+    "isStatement": false,
+    "language": "ti",
+    "params": [
+      "dimname",
+      "element",
+      "attribute"
+    ],
+    "returnType": "numeric"
+  },
   "ATTRPUTN": {
     "compat": "both",
     "deprecated": null,
@@ -152,6 +165,19 @@
     "description": "Returns a string element attribute value.",
     "isStatement": false,
     "language": "both",
+    "params": [
+      "dimname",
+      "element",
+      "attribute"
+    ],
+    "returnType": "string"
+  },
+  "ATTRSL": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Returns a locale-aware string element attribute value (companion to ATTRS).",
+    "isStatement": false,
+    "language": "ti",
     "params": [
       "dimname",
       "element",
@@ -234,6 +260,19 @@
     "compat": "both",
     "deprecated": null,
     "description": "Writes a numeric value to a cube cell.",
+    "isStatement": true,
+    "language": "ti",
+    "params": [
+      "value",
+      "cubename",
+      "element*"
+    ],
+    "returnType": "void"
+  },
+  "CELLPUTPROPORTIONALSPREAD": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Writes a value to a consolidated cell, spread proportionally across its existing leaf values. Confirmed live (compiles and runs clean); exact spread behavior against a non-zero baseline not yet independently verified.",
     "isStatement": true,
     "language": "ti",
     "params": [
@@ -424,6 +463,17 @@
     ],
     "returnType": "string"
   },
+  "CUBECLEARDATA": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Clears all data from a cube.",
+    "isStatement": true,
+    "language": "ti",
+    "params": [
+      "cubename"
+    ],
+    "returnType": "void"
+  },
   "CUBECREATE": {
     "compat": "both",
     "deprecated": null,
@@ -451,6 +501,17 @@
     "compat": "both",
     "deprecated": null,
     "description": "Returns 1 if the named cube exists.",
+    "isStatement": false,
+    "language": "ti",
+    "params": [
+      "cubename"
+    ],
+    "returnType": "numeric"
+  },
+  "CUBEGETLOGCHANGES": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Returns 1 if transaction logging is enabled for the cube, 0 otherwise.",
     "isStatement": false,
     "language": "ti",
     "params": [
@@ -1246,6 +1307,33 @@
     ],
     "returnType": "numeric"
   },
+  "ELEMENTSECURITYGET": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Returns the security access level an element has for the named security group (dimension, element, group name).",
+    "isStatement": false,
+    "language": "ti",
+    "params": [
+      "dimname",
+      "element",
+      "value"
+    ],
+    "returnType": "string"
+  },
+  "ELEMENTSECURITYPUT": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Sets the security access level for an element for a named security group (access value, dimension, element, group name).",
+    "isStatement": true,
+    "language": "ti",
+    "params": [
+      "value",
+      "dimname",
+      "element",
+      "value"
+    ],
+    "returnType": "void"
+  },
   "ELEMENTTYPE": {
     "compat": "both",
     "deprecated": null,
@@ -1470,6 +1558,17 @@
     "params": [
       "dimname",
       "hiername"
+    ],
+    "returnType": "numeric"
+  },
+  "HIERARCHYCOUNT": {
+    "compat": "v12",
+    "deprecated": null,
+    "description": "Returns the number of hierarchies on a dimension. Confirmed real and Rules-usable; confirmed NOT usable inside a TI process (rejected with \"not valid within a process\", a distinct error signature from the usual unknown-function pattern).",
+    "isStatement": false,
+    "language": "rules",
+    "params": [
+      "dimname"
     ],
     "returnType": "numeric"
   },
@@ -2012,6 +2111,20 @@
     "params": [],
     "returnType": "void"
   },
+  "PUBLISHVIEW": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Publishes a view (cube, view name, 2 numeric flags \u2014 exact meaning of the flags not yet determined). Confirmed live via a real object-lookup error; a follow-up test found it may require the view to already be public/committed in a way a throwaway view is not \u2014 verify further before relying on this in generated code.",
+    "isStatement": true,
+    "language": "ti",
+    "params": [
+      "cubename",
+      "value",
+      "n",
+      "n"
+    ],
+    "returnType": "void"
+  },
   "PV": {
     "compat": "both",
     "deprecated": null,
@@ -2202,6 +2315,19 @@
     ],
     "returnType": "numeric"
   },
+  "SUBSETALIASSET": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Sets the alias attribute used to display elements in a subset (dimension, subset, alias attribute name \u2014 the attribute must be Alias-typed, confirmed live via a real type-mismatch error).",
+    "isStatement": true,
+    "language": "ti",
+    "params": [
+      "dimname",
+      "subset",
+      "value"
+    ],
+    "returnType": "void"
+  },
   "SUBSETCREATE": {
     "compat": "both",
     "deprecated": null,
@@ -2224,6 +2350,18 @@
     "params": [
       "value",
       "value"
+    ],
+    "returnType": "void"
+  },
+  "SUBSETDELETEALLELEMENTS": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Removes every element from a static subset without destroying the subset itself. Confirmed live by re-reading the target subset afterward (went from 2 elements to empty).",
+    "isStatement": true,
+    "language": "ti",
+    "params": [
+      "dimname",
+      "subset"
     ],
     "returnType": "void"
   },
@@ -2469,6 +2607,20 @@
     ],
     "returnType": "string"
   },
+  "VIEWCOLUMNDIMENSIONSET": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Assigns a dimension to the column axis of a native view (cube, view, dimension, numeric flag). Confirmed live (compiles and runs clean); a read-back of the view afterward showed no visible axis change \u2014 may operate on a transient in-process view construct rather than the persisted object, or need a follow-up commit call. Verify further before relying on this to build a durable native view programmatically.",
+    "isStatement": true,
+    "language": "ti",
+    "params": [
+      "cubename",
+      "value",
+      "dimname",
+      "n"
+    ],
+    "returnType": "void"
+  },
   "VIEWCONSTRUCT": {
     "compat": "both",
     "deprecated": null,
@@ -2517,10 +2669,36 @@
     ],
     "returnType": "numeric"
   },
+  "VIEWEXTRACTSKIPCALCSSET": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Sets whether rule-calculated values are skipped when extracting a view (cube, view, 1=skip/0=include).",
+    "isStatement": true,
+    "language": "ti",
+    "params": [
+      "cubename",
+      "value",
+      "n"
+    ],
+    "returnType": "void"
+  },
   "VIEWEXTRACTSKIPCONSOLIDATEDSTRINGSSET": {
     "compat": "both",
     "deprecated": null,
     "description": "Sets whether strings stored on consolidated values are excluded from a view extract (0=include/default, 1=exclude).",
+    "isStatement": true,
+    "language": "ti",
+    "params": [
+      "cubename",
+      "value",
+      "n"
+    ],
+    "returnType": "void"
+  },
+  "VIEWEXTRACTSKIPRULEVALUESSET": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Sets whether rule-derived values are skipped when extracting a view (cube, view, 1=skip/0=include).",
     "isStatement": true,
     "language": "ti",
     "params": [
@@ -2543,6 +2721,20 @@
     ],
     "returnType": "void"
   },
+  "VIEWROWDIMENSIONSET": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Assigns a dimension to the row axis of a native view (cube, view, dimension, numeric flag). Same read-back caveat as ViewColumnDimensionSet \u2014 verify durability before relying on this.",
+    "isStatement": true,
+    "language": "ti",
+    "params": [
+      "cubename",
+      "value",
+      "dimname",
+      "n"
+    ],
+    "returnType": "void"
+  },
   "VIEWSUBSETASSIGN": {
     "compat": "both",
     "deprecated": null,
@@ -2554,6 +2746,33 @@
       "value",
       "dimname",
       "subset"
+    ],
+    "returnType": "void"
+  },
+  "VIEWTITLEDIMENSIONSET": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Assigns a dimension to the title axis of a native view (cube, view, dimension \u2014 no extra numeric flag, unlike Row/Column). Same read-back caveat as ViewColumnDimensionSet.",
+    "isStatement": true,
+    "language": "ti",
+    "params": [
+      "cubename",
+      "value",
+      "dimname"
+    ],
+    "returnType": "void"
+  },
+  "VIEWTITLEELEMENTSET": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Sets the title element for a native view (cube, view, dimension, 1-based numeric element position \u2014 confirmed the last argument must be numeric, not the element name string). Same read-back caveat as ViewColumnDimensionSet.",
+    "isStatement": true,
+    "language": "ti",
+    "params": [
+      "cubename",
+      "value",
+      "dimname",
+      "n"
     ],
     "returnType": "void"
   },
