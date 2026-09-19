@@ -158,7 +158,7 @@ export default function MDXSandbox({ tab }) {
             </div>
             <div className="shrink-0 border-t border-border" style={{ height: resultsHeight }}>
               {rawResult ? (
-                <ResultGrid axes={rawResult.Axes} cells={rawResult.Cells} truncated={rawResult.truncated} />
+                <ResultGrid axes={rawResult.Axes} cells={rawResult.Cells} truncated={rawResult.truncated} storageKey={`resultgrid::${tab.server}::mdx-sandbox`} />
               ) : (
                 <div className="h-full flex items-center justify-center text-[10px] text-muted-foreground">
                   Run a query (Ctrl+Enter) to see results here

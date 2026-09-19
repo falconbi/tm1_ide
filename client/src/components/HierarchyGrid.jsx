@@ -25,6 +25,7 @@ import { AgGridReact } from 'ag-grid-react'
 import { AllCommunityModule, ModuleRegistry, themeBalham, colorSchemeDark, colorSchemeLight } from 'ag-grid-community'
 import { ChevronRight, ChevronDown } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import GridToolbar from './GridToolbar'
 
 ModuleRegistry.registerModules([AllCommunityModule])
 
@@ -244,7 +245,15 @@ export default function HierarchyGrid({
 
     const [rowExpandedSets, setRowExpandedSets] = useState(() => initExpandedSets(hierarchies))
     const [colExpandedSets, setColExpandedSets] = useState(() => initExpandedSets(columnHierarchies))
+    const [quickFilter, setQuickFilter] = useState('')
+    const [freezeTop, setFreezeTop] = useState(false)
     const keepMode = keepModeProp
+
+    // Search filter + freeze-top interact — unfreeze when a filter is applied
+    const handleSearch = useCallback((text) => {
+        setQuickFilter(text)
+        if (text) setFreezeTop(false)
+    }, [])
 
     const rowKey = hierarchies.map(h => Object.keys(h.nodes ?? {}).length).join(',')
     const colKey = columnHierarchies.map(h => Object.keys(h.nodes ?? {}).length).join(',')
@@ -540,20 +549,15 @@ export default function HierarchyGrid({
 
     const theme = useMemo(() => makeTheme(dark, Math.max(1, columnHierarchies.length)), [dark, columnHierarchies.length])
 
-    // Ctrl+Shift+A — auto-size all columns
-    useEffect(() => {
-        const onKey = (e) => {
-            if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'a' || e.key === 'A')) {
-                gridRef.current?.api?.autoSizeAllColumns()
-                e.preventDefault()
-            }
-        }
-        window.addEventListener('keydown', onKey)
-        return () => window.removeEventListener('keydown', onKey)
-    }, [])
+    const handleResetWidths = useCallback(() => {
+        savedWidthsRef.current = {}
+        if (storageKey) { try { localStorage.removeItem(storageKey) } catch {} }
+        gridRef.current?.api?.resetColumnWidths?.()
+        gridRef.current?.api?.autoSizeAllColumns?.()
+    }, [storageKey])
 
-    const autoSizeAll = useCallback(() => {
-        gridRef.current?.api?.autoSizeAllColumns()
+    const handleFit = useCallback(() => {
+        gridRef.current?.api?.autoSizeAllColumns?.()
     }, [])
 
     if (!hierarchies.length) {
@@ -562,12 +566,22 @@ export default function HierarchyGrid({
 
     return (
         <div className="flex flex-col h-full min-h-0">
+            <GridToolbar
+                apiRef={gridRef}
+                onFit={handleFit}
+                onReset={handleResetWidths}
+                onSearch={handleSearch}
+                frozen={freezeTop}
+                onToggleFreeze={() => setFreezeTop(f => !f)}
+            />
             <div className="flex-1 min-h-0">
                 <AgGridReact
                     ref={gridRef}
                     theme={theme}
                     columnDefs={colDefs}
                     rowData={rowData}
+                    quickFilterText={quickFilter || undefined}
+                    pinnedTopRowData={freezeTop && rowData.length ? [rowData[0]] : null}
                     context={context}
                     getRowId={p => p.data.__tupleKey__}
                     suppressMovableColumns

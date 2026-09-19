@@ -1,10 +1,11 @@
-import { useRef, useMemo, useCallback, useEffect } from 'react'
+import { useRef, useMemo, useCallback, useEffect, useState } from 'react'
 import { useStore } from '@/store'
 import { useCubeDimensions } from '@/hooks/useApi'
 import { AgGridReact } from 'ag-grid-react'
 import { AllCommunityModule, ModuleRegistry, themeBalham, colorSchemeDark, colorSchemeLight } from 'ag-grid-community'
-import { Download } from 'lucide-react'
 import { toast } from 'sonner'
+import GridToolbar from '../GridToolbar'
+import { tm1NumericComparator } from '@/lib/utils'
 
 ModuleRegistry.registerModules([AllCommunityModule])
 
@@ -115,9 +116,10 @@ function buildGridData(parsed) {
       width: 110,
       minWidth: 60,
       resizable: true,
+      comparator: tm1NumericComparator,
       valueFormatter: p => (p.value === '' || p.value == null) ? '—' : String(p.value),
       cellStyle: p => {
-        const ri = p.node.rowIndex ?? 0
+        const ri = p.data?.__ri__ ?? p.node.rowIndex ?? 0
         const updatable = cellUpdateable?.[ri]?.[i]
         const isLocked = updatable === false || (updatable == null && (colIsConsolidated[i] || (rowIsConsolidated[ri] ?? false)))
         if (isLocked) return { color: '#9ca3af', background: 'rgba(100,100,100,0.06)', fontStyle: 'italic' }
@@ -128,7 +130,7 @@ function buildGridData(parsed) {
   ]
 
   const rowData = grid.map((row, ri) => {
-    const obj = {}
+    const obj = { __ri__: ri, __tupleKey__: (rows[ri] ?? []).join('::') }
     const members = rows[ri] ?? []
     Array.from({ length: rowDimCount }, (_, i) => { obj[`__row_${i}__`] = members[i] ?? '' })
     row.forEach((v, ci) => { obj[`c${ci}`] = v })
@@ -167,13 +169,53 @@ async function writeCell(server, cube, coords, slicerCoords, value, cubeDimOrder
   return d
 }
 
-export default function ResultGrid({ axes, cells, truncated, onReady, server, cube, slicerCoords, writable, dimOrder }) {
+export default function ResultGrid({ axes, cells, truncated, onReady, server, cube, slicerCoords, writable, dimOrder, storageKey }) {
   const { dark } = useStore()
   const gridRef = useRef(null)
   const gridWrapRef = useRef(null)
   const writeMode = !!writable && !!server && !!cube
+  const [quickFilter, setQuickFilter] = useState('')
+  const [freezeTop, setFreezeTop] = useState(false)
   const { data: fetched = [] } = useCubeDimensions(server, cube)
   const cubeDimOrder = useMemo(() => (dimOrder && dimOrder.length ? dimOrder : fetched) || [], [dimOrder, fetched])
+
+  // ── Column width persistence (session + localStorage) ────────────────────────
+
+  const savedWidthsRef = useRef(null)
+  if (savedWidthsRef.current === null) {
+    savedWidthsRef.current = storageKey
+      ? (() => { try { return JSON.parse(localStorage.getItem(storageKey) || '{}') } catch { return {} } })()
+      : {}
+  }
+
+  const persistWidths = useCallback(() => {
+    if (!storageKey) return
+    try { localStorage.setItem(storageKey, JSON.stringify(savedWidthsRef.current)) } catch { /* ignore quota/security errors */ }
+  }, [storageKey])
+
+  const onColumnResized = useCallback((e) => {
+    if (!e.finished || !e.column) return
+    const colId = e.column.getColId()
+    savedWidthsRef.current[colId] = e.column.getActualWidth()
+    persistWidths()
+  }, [persistWidths])
+
+  const handleResetWidths = useCallback(() => {
+    savedWidthsRef.current = {}
+    if (storageKey) { try { localStorage.removeItem(storageKey) } catch { /* ignore */ } }
+    gridRef.current?.api?.resetColumnWidths?.()
+    gridRef.current?.api?.autoSizeAllColumns?.()
+  }, [storageKey])
+
+  const handleFit = useCallback(() => {
+    gridRef.current?.api?.autoSizeAllColumns?.()
+  }, [])
+
+  // Search filter + freeze-top interact — unfreeze when a filter is applied
+  const handleSearch = useCallback((text) => {
+    setQuickFilter(text)
+    if (text) setFreezeTop(false)
+  }, [])
 
   const colAxis = axes?.find(a => a.Ordinal === 0)
   const rowAxis = axes?.find(a => a.Ordinal === 1)
@@ -235,21 +277,28 @@ export default function ResultGrid({ axes, cells, truncated, onReady, server, cu
   const canWrite = useMemo(() => writeMode && hasFullCoverage, [writeMode, hasFullCoverage])
 
   const colDefs = useMemo(() => {
-    if (!writeMode) return baseColDefs
-    return baseColDefs.map(cd => {
+    const savedWidths = storageKey
+      ? (() => { try { return JSON.parse(localStorage.getItem(storageKey) || '{}') } catch { return {} } })()
+      : {}
+    const base = baseColDefs.map(cd => {
+      const saved = savedWidths[cd.field]
+      return saved ? { ...cd, width: saved } : cd
+    })
+    if (!writeMode) return base
+    return base.map(cd => {
       if (cd.field?.startsWith('__row_')) return cd
       const ci = parseInt(cd.field?.slice(1) ?? '-1')
       return {
         ...cd,
         editable: (p) => {
-          const ri = p.node?.rowIndex ?? 0
+          const ri = p.data?.__ri__ ?? p.node?.rowIndex ?? 0
           return parsed?.cellUpdateable?.[ri]?.[ci] ?? false
         },
         singleClickEdit: true,
         cellEditor: 'agTextCellEditor',
         cellStyle: (p) => {
           const baseStyle = typeof cd.cellStyle === 'function' ? cd.cellStyle(p) : {};
-          const ri = p.node?.rowIndex ?? 0;
+          const ri = p.data?.__ri__ ?? p.node?.rowIndex ?? 0;
           const updatable = parsed?.cellUpdateable?.[ri]?.[ci] ?? false;
           if (writeMode && updatable && !hasFullCoverage) {
             return {
@@ -262,7 +311,7 @@ export default function ResultGrid({ axes, cells, truncated, onReady, server, cu
         },
       }
     })
-  }, [baseColDefs, writeMode, parsed, hasFullCoverage])
+  }, [baseColDefs, writeMode, parsed, hasFullCoverage, storageKey])
 
   const handleExportCSV = () => gridRef.current?.api?.exportDataAsCsv()
 
@@ -270,7 +319,7 @@ export default function ResultGrid({ axes, cells, truncated, onReady, server, cu
     if (!writeMode || !server || !cube) return
     const field = p.colDef?.field ?? ''
     const ci = field.startsWith('c') ? parseInt(field.slice(1)) : -1
-    const ri = p.node?.rowIndex ?? 0
+    const ri = p.data?.__ri__ ?? p.node?.rowIndex ?? 0
     if (ci < 0 || !parsed?.cellCoords?.[ri]?.[ci]) return
     const cellUpdatable = parsed.cellUpdateable?.[ri]?.[ci] ?? false
     if (!cellUpdatable) { toast.error('Cannot write to consolidated or rules-calculated cell'); return }
@@ -314,7 +363,8 @@ export default function ResultGrid({ axes, cells, truncated, onReady, server, cu
     const focusedCell = grid?.getFocusedCell()
     if (!focusedCell) return
 
-    const startRow = focusedCell.rowIndex ?? 0
+    const startNode = grid.getDisplayedRowAtIndex(focusedCell.rowIndex ?? 0)
+    const startRi = startNode?.data?.__ri__ ?? focusedCell.rowIndex ?? 0
     // Use colDef.field for consistency (colId may differ in some ag-grid configs)
     const startCol = focusedCell.column
     const startColDef = startCol?.getColDef ? startCol.getColDef() : (startCol?.colDef ?? {})
@@ -330,7 +380,7 @@ export default function ResultGrid({ axes, cells, truncated, onReady, server, cu
 
     for (let dr = 0; dr < pasteRows.length; dr++) {
       for (let dc = 0; dc < pasteRows[dr].length; dc++) {
-        const ri = startRow + dr
+        const ri = startRi + dr
         const ci = startColIdx + dc
         if (ri >= rowData.length || ci >= dataCols.length) continue
         const cellUpdatable = parsed.cellUpdateable?.[ri]?.[ci] ?? false
@@ -339,7 +389,9 @@ export default function ResultGrid({ axes, cells, truncated, onReady, server, cu
         if (!coords) continue
         const value = pasteRows[dr][dc]
         writes.push({ coords, value, ri, ci, field: dataCols[ci] })
-        updates.push({ rowIndex: ri, field: dataCols[ci], value })
+        // Optimistic update targets the node at the same display offset as the focused cell
+        const node = grid.getDisplayedRowAtIndex((focusedCell.rowIndex ?? 0) + dr)
+        updates.push({ node, field: dataCols[ci], value })
       }
     }
 
@@ -351,8 +403,7 @@ export default function ResultGrid({ axes, cells, truncated, onReady, server, cu
       await Promise.all(writes.map(w => writeCell(server, cube, w.coords, effectiveSlicers, w.value, cubeDimOrder)))
       // Update grid display
       updates.forEach(u => {
-        const node = grid.getDisplayedRowAtIndex(u.rowIndex)
-        if (node) { const d = { ...node.data, [u.field]: u.value }; node.setData(d) }
+        if (u.node) { const d = { ...u.node.data, [u.field]: u.value }; u.node.setData(d) }
       })
       toast.success(`${writes.length} cell(s) written`, { id: toastId })
     } catch (e) { toast.error(e.message, { id: toastId }) }
@@ -389,14 +440,18 @@ export default function ResultGrid({ axes, cells, truncated, onReady, server, cu
           {writable && hasFullCoverage && (
             <span className="text-[10px] text-muted-foreground/60">Grey cells are consolidated or rules — read only</span>
           )}
-          {colDefs.length > 0 && (
-            <button onClick={handleExportCSV}
-              className="flex items-center gap-1 px-2 py-0.5 text-[10px] rounded border border-border hover:bg-muted transition-colors">
-              <Download size={10} /> CSV
-            </button>
-          )}
         </div>
       </div>
+      <GridToolbar
+        apiRef={gridRef}
+        onFit={handleFit}
+        onReset={handleResetWidths}
+        onSearch={handleSearch}
+        frozen={freezeTop}
+        onToggleFreeze={() => setFreezeTop(f => !f)}
+        showCsv
+        onCsv={handleExportCSV}
+      />
       <div className="flex-1 min-h-0">
         {colDefs.length === 0 ? (
           <div className="flex h-full items-center justify-center text-muted-foreground text-xs select-none">No data returned</div>
@@ -406,14 +461,17 @@ export default function ResultGrid({ axes, cells, truncated, onReady, server, cu
             theme={dark ? darkTheme : lightTheme}
             columnDefs={colDefs}
             rowData={rowData}
+            quickFilterText={quickFilter || undefined}
+            pinnedTopRowData={freezeTop && rowData.length ? [rowData[0]] : null}
             suppressMovableColumns
             enableCellTextSelection={!writeMode}
             singleClickEdit={writeMode}
             suppressClipboardPaste={writeMode}
             stopEditingWhenCellsLoseFocus
-            defaultColDef={{ sortable: false }}
+            defaultColDef={{ sortable: true }}
             onCellValueChanged={handleCellValueChanged}
-            onFirstDataRendered={(p) => { p.api.autoSizeAllColumns(); onReady?.(p.api) }}
+            onColumnResized={onColumnResized}
+            onFirstDataRendered={(p) => { if (!Object.keys(savedWidthsRef.current).length) p.api.autoSizeAllColumns(); onReady?.(p.api) }}
           />
         )}
       </div>

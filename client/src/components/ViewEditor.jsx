@@ -10,7 +10,7 @@ import { toast } from 'sonner'
 import { RefreshCw, Loader2, Table2, GripVertical, GripHorizontal, X, LayoutGrid, Rows3, Columns3, Filter, ZapOff, Zap, ChevronLeft, ChevronRight, PencilLine, Save, Code2, Eye, ChevronDown, BookOpen, ChevronUp, Locate, MapPin, WrapText, Braces, History, AlertTriangle, Search, Cog, Box, FileSearch, Rss, Sparkles, Clock, Check } from 'lucide-react'
 import TransactionLogPanel from '@/components/TransactionLogPanel'
 import CellContextMenu from '@/components/CellContextMenu'
-import { cn } from '@/lib/utils'
+import { cn, tm1NumericComparator } from '@/lib/utils'
 
 ModuleRegistry.registerModules([AllCommunityModule])
 
@@ -30,6 +30,7 @@ const darkTheme  = themeBalham.withPart(colorSchemeDark).withParams({ fontSize: 
 
 import { buildMDX } from '@core/mdxBuilder.js'
 import HierarchyGrid from '@/components/HierarchyGrid'
+import GridToolbar from '@/components/GridToolbar'
 import { ConflictBanner, ConflictSaveWarning } from '@/components/ConflictBanner'
 import DiffViewerModal from '@/components/DiffViewerModal'
 import { Component } from 'react'
@@ -386,13 +387,14 @@ function buildGridData(parsed) {
         ...rowColDefs,
         ...cols.map((c, i) => ({
             field: `c${i}`, headerName: c, width: 110, minWidth: 60, resizable: true,
+            comparator: tm1NumericComparator,
             valueFormatter: p => (p.value === '' || p.value == null) ? '—' : String(p.value),
             cellStyle: p => (p.value === '' || p.value == null) ? { color: '#888' } : {},
         })),
     ]
 
     const rowData = grid.map((row, ri) => {
-        const obj = {}
+        const obj = { __ri__: ri, __tupleKey__: (rows[ri] ?? []).join('::') }
         const members = rows[ri] ?? []
         Array.from({ length: rowDimCount }, (_, i) => { obj[`__row_${i}__`] = members[i] ?? '' })
         row.forEach((v, ci) => { obj[`c${ci}`] = v })
@@ -1173,6 +1175,22 @@ export default function ViewEditor({ tab }) {
     const [colTotalsPosition, setColTotalsPosition] = useState('top')
     const [activeDrag, setActiveDrag] = useState(null)
 
+    // Flat (fallback) grid state — search + freeze + persisted widths
+    const flatGridRef = useRef(null)
+    const flatStorageKey = tab.server && tab.cube ? `ve-flat::${tab.server}::${tab.cube}::${tab.viewName || 'adhoc'}` : undefined
+    const [flatQuickFilter, setFlatQuickFilter] = useState('')
+    const [flatFreezeTop, setFlatFreezeTop] = useState(false)
+    const flatSavedWidthsRef = useRef(null)
+    if (flatSavedWidthsRef.current === null) {
+        flatSavedWidthsRef.current = flatStorageKey
+            ? (() => { try { return JSON.parse(localStorage.getItem(flatStorageKey) || '{}') } catch { return {} } })()
+            : {}
+    }
+    const handleFlatSearch = useCallback((text) => {
+        setFlatQuickFilter(text)
+        if (text) setFlatFreezeTop(false)
+    }, [])
+
     // Save axes to tab store on unmount so tab-switch preserves changes
     const axesRef = useRef(axes); axesRef.current = axes
     useEffect(() => () => patchTab(tab.id, { savedAxes: axesRef.current }), [])
@@ -1810,7 +1828,36 @@ export default function ViewEditor({ tab }) {
     const parsed = useMemo(() => {
         return displayResult ? parseCellset(displayResult, formatAttrs, pageMembers) : null
     }, [displayResult, formatAttrs, allAxesDims, pageMembers])
-    const { colDefs, rowData } = useMemo(() => buildGridData(parsed), [parsed])
+    const { colDefs: baseFlatColDefs, rowData } = useMemo(() => buildGridData(parsed), [parsed])
+
+    // Apply persisted widths to the flat fallback grid
+    const colDefs = useMemo(() => {
+        const savedWidths = flatStorageKey
+            ? (() => { try { return JSON.parse(localStorage.getItem(flatStorageKey) || '{}') } catch { return {} } })()
+            : {}
+        return baseFlatColDefs.map(cd => {
+            const saved = savedWidths[cd.field]
+            return saved ? { ...cd, width: saved } : cd
+        })
+    }, [baseFlatColDefs, flatStorageKey])
+
+    const persistFlatWidths = useCallback(() => {
+        if (!flatStorageKey) return
+        try { localStorage.setItem(flatStorageKey, JSON.stringify(flatSavedWidthsRef.current)) } catch { /* ignore */ }
+    }, [flatStorageKey])
+
+    const onFlatColumnResized = useCallback((e) => {
+        if (!e.finished || !e.column) return
+        flatSavedWidthsRef.current[e.column.getColId()] = e.column.getActualWidth()
+        persistFlatWidths()
+    }, [persistFlatWidths])
+
+    const handleFlatResetWidths = useCallback(() => {
+        flatSavedWidthsRef.current = {}
+        if (flatStorageKey) { try { localStorage.removeItem(flatStorageKey) } catch { /* ignore */ } }
+        flatGridRef.current?.api?.resetColumnWidths?.()
+        flatGridRef.current?.api?.autoSizeAllColumns?.()
+    }, [flatStorageKey])
 
     // ── HierarchyGrid data ────────────────────────────────────────────────────
     // Fixed 4-slot hooks per axis (React rules: no conditional/loop hooks)
@@ -2463,17 +2510,31 @@ export default function ViewEditor({ tab }) {
             ) : !parsed || parsed.grid.length === 0 ? (
                 <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm">No data returned</div>
             ) : (
-                <div className="flex-1 min-h-0">
-                    <AgGridReact
-                        theme={dark ? darkTheme : lightTheme}
-                        columnDefs={colDefs}
-                        rowData={rowData}
-                        suppressMovableColumns
-                        enableCellTextSelection
-                        defaultColDef={{ sortable: false }}
-                        onFirstDataRendered={p => p.api.autoSizeAllColumns()}
-                        onCellContextMenu={handleCellContextMenu}
+                <div className="flex flex-col flex-1 min-h-0">
+                    <GridToolbar
+                        apiRef={flatGridRef}
+                        onFit={() => flatGridRef.current?.api?.autoSizeAllColumns?.()}
+                        onReset={handleFlatResetWidths}
+                        onSearch={handleFlatSearch}
+                        frozen={flatFreezeTop}
+                        onToggleFreeze={() => setFlatFreezeTop(f => !f)}
                     />
+                    <div className="flex-1 min-h-0">
+                        <AgGridReact
+                            ref={flatGridRef}
+                            theme={dark ? darkTheme : lightTheme}
+                            columnDefs={colDefs}
+                            rowData={rowData}
+                            quickFilterText={flatQuickFilter || undefined}
+                            pinnedTopRowData={flatFreezeTop && rowData.length ? [rowData[0]] : null}
+                            suppressMovableColumns
+                            enableCellTextSelection
+                            defaultColDef={{ sortable: true }}
+                            onColumnResized={onFlatColumnResized}
+                            onFirstDataRendered={p => { if (!Object.keys(flatSavedWidthsRef.current).length) p.api.autoSizeAllColumns() }}
+                            onCellContextMenu={handleCellContextMenu}
+                        />
+                    </div>
                 </div>
             )}
         </div>

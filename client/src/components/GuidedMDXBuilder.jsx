@@ -1735,6 +1735,7 @@ export default function GuidedMDXBuilder({ tab, server: serverProp, onSwitchToRa
                   }
                   return []
                 })}
+                storageKey={`mdx-builder::${server}::${selectedCube || 'all'}`}
               /> :
               previewError ? <div className="text-xs text-red-400 p-2">{previewError}</div> :
               <div className="h-full flex items-center justify-center text-[11px] text-muted-foreground">Run preview to see results</div>

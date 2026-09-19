@@ -516,6 +516,7 @@ export default function CubeViewer({ tab }) {
                         writable
                         slicerCoords={slicerCoords}
                         dimOrder={cubeDims}
+                        storageKey={`cubeview::${tab.server}::${tab.cube}::${tab.viewName || 'adhoc'}`}
                     />
                 </div>
             )}
