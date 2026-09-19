@@ -13,7 +13,7 @@ import TM1_CATALOG from '@shared/tm1-function-catalog.json'
 // Each entry: { language, params, returnType, description, compat, deprecated, isStatement }
 // language:    'rules'|'ti'|'both' — which language(s) this function is valid in
 // params:      string[] — param type tags for arg-count validation and context completions
-//              Types: 'cubename'|'dimname'|'element'|'attribute'|'hiername'|'value'|'n'|'string'|...
+//              Types: 'cubename'|'dimname'|'element'|'attribute'|'subset'|'hiername'|'value'|'n'|'string'|...
 //              '*' suffix = repeating (variadic last arg)
 // returnType:  'numeric'|'string'|'void'|'any'
 // compat:      'both'|'v11'|'v12'   — v12 = TM1 Database 12 / PA 3+ only; v11 = classic TM1 11 only (removed in v12)
@@ -187,6 +187,13 @@ async function fetchElements(server, dim) {
 async function fetchAttributes(server, dim) {
   return _cached(`attrs:${server}:${dim}`, 60_000, async () => {
     const r = await authFetch(`/api/dimension/attributes?server=${enc(server)}&dimension=${enc(dim)}`)
+    return r.ok ? r.json() : []
+  })
+}
+
+async function fetchSubsets(server, dim) {
+  return _cached(`subsets:${server}:${dim}`, 30_000, async () => {
+    const r = await authFetch(`/api/subsets?server=${enc(server)}&dimension=${enc(dim)}`)
     return r.ok ? r.json() : []
   })
 }
@@ -577,6 +584,26 @@ export function registerTM1Completions(monaco, language, catalog, keywords, getC
             kind:       CIK.Property,
             detail:     a.type,
             insertText: inQuote ? a.name : `'${a.name}'`,
+            range,
+          })),
+        }
+      }
+
+      // ── Subset name parameter ─────────────────────────────────────────────
+      if (paramType === 'subset') {
+        const entry  = catalogNow[ctx.fn]
+        const dimIdx = entry?.params?.findIndex(p => p.replace(/\*$/, '') === 'dimname') ?? -1
+        const targetDim = dimIdx >= 0 ? extractStringArg(textBefore, dimIdx) : null
+        if (!targetDim) return { suggestions: [] }
+
+        const inQuote = isInsideString(textBefore)
+        const subsets = await fetchSubsets(server, targetDim)
+        return {
+          suggestions: subsets.map(s => ({
+            label:      s.Name,
+            kind:       CIK.Struct,
+            detail:     s.Expression ? 'MDX subset' : 'Static subset',
+            insertText: inQuote ? s.Name : `'${s.Name}'`,
             range,
           })),
         }

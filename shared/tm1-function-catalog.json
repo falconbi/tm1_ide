@@ -1,84 +1,88 @@
 {
   "ABS": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Returns the absolute value of a number.",
+    "isStatement": false,
+    "language": "both",
     "params": [
       "number"
     ],
-    "returnType": "numeric",
-    "description": "Returns the absolute value of a number.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": false,
-    "language": "both"
+    "returnType": "numeric"
   },
   "ACOS": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Returns the arc cosine of a number.",
+    "isStatement": false,
+    "language": "both",
     "params": [
       "number"
     ],
-    "returnType": "numeric",
-    "description": "Returns the arc cosine of a number.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": false,
-    "language": "both"
+    "returnType": "numeric"
   },
   "ASCIIDELETE": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Deletes a file from the TM1 server data directory.",
+    "isStatement": true,
     "language": "ti",
     "params": [
       "value"
     ],
-    "returnType": "void",
-    "description": "Deletes a file from the TM1 server data directory.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": true
+    "returnType": "void"
   },
   "ASCIIOUTPUT": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Appends a delimited line to an ASCII file (filename, value1, value2, ...).",
+    "isStatement": true,
     "language": "ti",
     "params": [
       "value",
       "value*"
     ],
-    "returnType": "void",
-    "description": "Appends a delimited line to an ASCII file (filename, value1, value2, ...).",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": true
+    "returnType": "void"
   },
   "ASIN": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Returns the arc sine of a number.",
+    "isStatement": false,
+    "language": "both",
     "params": [
       "number"
     ],
-    "returnType": "numeric",
-    "description": "Returns the arc sine of a number.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": false,
-    "language": "both"
+    "returnType": "numeric"
   },
   "ATAN": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Returns the arc tangent of a number.",
+    "isStatement": false,
+    "language": "both",
     "params": [
       "number"
     ],
-    "returnType": "numeric",
-    "description": "Returns the arc tangent of a number.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": false,
-    "language": "both"
+    "returnType": "numeric"
   },
   "ATTRDELETE": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Deletes a dimension attribute.",
+    "isStatement": true,
+    "language": "ti",
     "params": [
       "dimname",
       "attribute"
     ],
-    "returnType": "void",
-    "description": "Deletes a dimension attribute.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": true,
-    "language": "ti"
+    "returnType": "void"
   },
   "ATTRINSERT": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Creates a dimension attribute after priorAttribute (dimension, priorAttribute, newAttributeName, type: 'String'|'Numeric'|'Alias'). Pass '' as priorAttribute to insert first.",
+    "isStatement": true,
     "language": "ti",
     "params": [
       "dimname",
@@ -86,752 +90,753 @@
       "attribute",
       "value"
     ],
-    "returnType": "void",
-    "description": "Creates a dimension attribute after priorAttribute (dimension, priorAttribute, newAttributeName, type: 'String'|'Numeric'|'Alias'). Pass '' as priorAttribute to insert first.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": true
+    "returnType": "void"
   },
   "ATTRL": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Returns a locale-aware element attribute value.",
+    "isStatement": false,
+    "language": "both",
     "params": [
       "dimname",
       "element",
       "attribute"
     ],
-    "returnType": "string",
-    "description": "Returns a locale-aware element attribute value.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": false,
-    "language": "both"
+    "returnType": "string"
   },
   "ATTRN": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Returns a numeric element attribute value.",
+    "isStatement": false,
+    "language": "both",
     "params": [
       "dimname",
       "element",
       "attribute"
     ],
-    "returnType": "numeric",
-    "description": "Returns a numeric element attribute value.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": false,
-    "language": "both"
+    "returnType": "numeric"
   },
   "ATTRPUTN": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Writes a numeric value to a dimension element attribute.",
+    "isStatement": true,
+    "language": "ti",
     "params": [
       "value",
       "dimname",
       "element",
       "attribute"
     ],
-    "returnType": "void",
-    "description": "Writes a numeric value to a dimension element attribute.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": true,
-    "language": "ti"
+    "returnType": "void"
   },
   "ATTRPUTS": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Writes a string value to a dimension element attribute.",
+    "isStatement": true,
+    "language": "ti",
     "params": [
       "value",
       "dimname",
       "element",
       "attribute"
     ],
-    "returnType": "void",
-    "description": "Writes a string value to a dimension element attribute.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": true,
-    "language": "ti"
+    "returnType": "void"
   },
   "ATTRS": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Returns a string element attribute value.",
+    "isStatement": false,
+    "language": "both",
     "params": [
       "dimname",
       "element",
       "attribute"
     ],
-    "returnType": "string",
-    "description": "Returns a string element attribute value.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": false,
-    "language": "both"
+    "returnType": "string"
   },
   "CANCELJOBS": {
+    "compat": "v12",
+    "deprecated": null,
+    "description": "Cancels blocked asynchronous processes (lock wait / Sleep).",
+    "isStatement": true,
+    "language": "ti",
     "params": [
       "n*"
     ],
-    "returnType": "void",
-    "description": "Cancels blocked asynchronous processes (lock wait / Sleep).",
-    "compat": "v12",
-    "deprecated": null,
-    "isStatement": true,
-    "language": "ti"
+    "returnType": "void"
   },
   "CAPIT": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Capitalises the first letter of each word.",
+    "isStatement": false,
+    "language": "both",
     "params": [
       "string"
     ],
-    "returnType": "string",
-    "description": "Capitalises the first letter of each word.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": false,
-    "language": "both"
+    "returnType": "string"
   },
   "CELLGETN": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Returns a numeric value from a cube cell.",
+    "isStatement": false,
+    "language": "ti",
     "params": [
       "cubename",
       "element*"
     ],
-    "returnType": "numeric",
-    "description": "Returns a numeric value from a cube cell.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": false,
-    "language": "ti"
+    "returnType": "numeric"
   },
   "CELLGETS": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Returns a string value from a cube cell.",
+    "isStatement": false,
+    "language": "ti",
     "params": [
       "cubename",
       "element*"
     ],
-    "returnType": "string",
-    "description": "Returns a string value from a cube cell.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": false,
-    "language": "ti"
+    "returnType": "string"
   },
   "CELLINCREMENTN": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Increments a numeric cube cell value by the given amount.",
+    "isStatement": true,
+    "language": "ti",
     "params": [
       "value",
       "cubename",
       "element*"
     ],
-    "returnType": "void",
-    "description": "Increments a numeric cube cell value by the given amount.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": true,
-    "language": "ti"
+    "returnType": "void"
   },
   "CELLISUPDATEABLE": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Returns 1 if the cell is writeable by the current user.",
+    "isStatement": false,
+    "language": "ti",
     "params": [
       "cubename",
       "element*"
     ],
-    "returnType": "numeric",
-    "description": "Returns 1 if the cell is writeable by the current user.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": false,
-    "language": "ti"
+    "returnType": "numeric"
   },
   "CELLPUTN": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Writes a numeric value to a cube cell.",
+    "isStatement": true,
+    "language": "ti",
     "params": [
       "value",
       "cubename",
       "element*"
     ],
-    "returnType": "void",
-    "description": "Writes a numeric value to a cube cell.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": true,
-    "language": "ti"
+    "returnType": "void"
   },
   "CELLPUTS": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Writes a string value to a cube cell.",
+    "isStatement": true,
+    "language": "ti",
     "params": [
       "value",
       "cubename",
       "element*"
     ],
-    "returnType": "void",
-    "description": "Writes a string value to a cube cell.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": true,
-    "language": "ti"
+    "returnType": "void"
   },
   "CELLVALUEN": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Returns a numeric cube cell value (Rules alias for DB).",
+    "isStatement": false,
+    "language": "rules",
     "params": [
       "cubename",
       "element*"
     ],
-    "returnType": "numeric",
-    "description": "Returns a numeric cube cell value (Rules alias for DB).",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": false,
-    "language": "rules"
+    "returnType": "numeric"
   },
   "CELLVALUES": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Returns a string cube cell value.",
+    "isStatement": false,
+    "language": "rules",
     "params": [
       "cubename",
       "element*"
     ],
-    "returnType": "string",
-    "description": "Returns a string cube cell value.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": false,
-    "language": "rules"
+    "returnType": "string"
   },
   "CHAR": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Returns the character for an ASCII code value.",
+    "isStatement": false,
+    "language": "both",
     "params": [
       "code"
     ],
-    "returnType": "string",
-    "description": "Returns the character for an ASCII code value.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": false,
-    "language": "both"
+    "returnType": "string"
   },
   "CODE": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Returns the ASCII code of the character at the given position.",
+    "isStatement": false,
+    "language": "both",
     "params": [
       "string",
       "position"
     ],
-    "returnType": "numeric",
-    "description": "Returns the ASCII code of the character at the given position.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": false,
-    "language": "both"
+    "returnType": "numeric"
   },
   "CONSOLIDATECHILDREN": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Controls whether children of a consolidation are consolidated normally.",
+    "isStatement": false,
+    "language": "rules",
     "params": [
       "cubename",
       "element"
     ],
-    "returnType": "numeric",
-    "description": "Controls whether children of a consolidation are consolidated normally.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": false,
-    "language": "rules"
+    "returnType": "numeric"
   },
   "CONSOLIDATEDAVG": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Returns the average value in a consolidation.",
+    "isStatement": false,
+    "language": "rules",
     "params": [
       "value",
       "cubename",
       "element*"
     ],
-    "returnType": "numeric",
-    "description": "Returns the average value in a consolidation.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": false,
-    "language": "rules"
+    "returnType": "numeric"
   },
   "CONSOLIDATEDCOUNT": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Returns the count of values in a consolidation.",
+    "isStatement": false,
+    "language": "rules",
     "params": [
       "value",
       "cubename",
       "element*"
     ],
-    "returnType": "numeric",
-    "description": "Returns the count of values in a consolidation.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": false,
-    "language": "rules"
+    "returnType": "numeric"
   },
   "CONSOLIDATEDCOUNTUNIQUE": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Returns the count of unique values in a consolidation.",
+    "isStatement": false,
+    "language": "rules",
     "params": [
       "value",
       "cubename",
       "element*"
     ],
-    "returnType": "numeric",
-    "description": "Returns the count of unique values in a consolidation.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": false,
-    "language": "rules"
+    "returnType": "numeric"
   },
   "CONSOLIDATEDMAX": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Returns the maximum value in a consolidation.",
+    "isStatement": false,
+    "language": "rules",
     "params": [
       "value",
       "cubename",
       "element*"
     ],
-    "returnType": "numeric",
-    "description": "Returns the maximum value in a consolidation.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": false,
-    "language": "rules"
+    "returnType": "numeric"
   },
   "CONSOLIDATEDMIN": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Returns the minimum value in a consolidation (flag-value + cube + elements).",
+    "isStatement": false,
+    "language": "rules",
     "params": [
       "value",
       "cubename",
       "element*"
     ],
-    "returnType": "numeric",
-    "description": "Returns the minimum value in a consolidation (flag-value + cube + elements).",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": false,
-    "language": "rules"
+    "returnType": "numeric"
   },
   "CONTINUE": {
-    "params": [],
-    "returnType": "void",
-    "description": "Passes control to the next matching rule for this cell.",
     "compat": "both",
     "deprecated": null,
+    "description": "Passes control to the next matching rule for this cell.",
     "isStatement": true,
-    "language": "rules"
+    "language": "rules",
+    "params": [],
+    "returnType": "void"
   },
   "COS": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Returns the cosine of a number.",
+    "isStatement": false,
+    "language": "both",
     "params": [
       "number"
     ],
-    "returnType": "numeric",
-    "description": "Returns the cosine of a number.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": false,
-    "language": "both"
+    "returnType": "numeric"
   },
   "CUBEATTRN": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Returns a numeric cube attribute value.",
+    "isStatement": false,
+    "language": "both",
     "params": [
       "cubename",
       "attribute"
     ],
-    "returnType": "numeric",
-    "description": "Returns a numeric cube attribute value.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": false,
-    "language": "both"
+    "returnType": "numeric"
   },
   "CUBEATTRS": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Returns a string cube attribute value.",
+    "isStatement": false,
+    "language": "both",
     "params": [
       "cubename",
       "attribute"
     ],
-    "returnType": "string",
-    "description": "Returns a string cube attribute value.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": false,
-    "language": "both"
+    "returnType": "string"
   },
   "CUBECREATE": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Creates a new cube with the specified dimensions.",
+    "isStatement": true,
+    "language": "ti",
     "params": [
       "cubename",
       "dimname*"
     ],
-    "returnType": "void",
-    "description": "Creates a new cube with the specified dimensions.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": true,
-    "language": "ti"
+    "returnType": "void"
   },
   "CUBEDESTROY": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Deletes a cube and all its data permanently.",
+    "isStatement": true,
+    "language": "ti",
     "params": [
       "cubename"
     ],
-    "returnType": "void",
-    "description": "Deletes a cube and all its data permanently.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": true,
-    "language": "ti"
+    "returnType": "void"
   },
   "CUBEEXISTS": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Returns 1 if the named cube exists.",
+    "isStatement": false,
+    "language": "ti",
     "params": [
       "cubename"
     ],
-    "returnType": "numeric",
-    "description": "Returns 1 if the named cube exists.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": false,
-    "language": "ti"
+    "returnType": "numeric"
   },
   "CUBEPROCESSFEEDERS": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Reprocesses all feeders for a cube.",
+    "isStatement": true,
+    "language": "ti",
     "params": [
       "cubename"
     ],
-    "returnType": "void",
-    "description": "Reprocesses all feeders for a cube.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": true,
-    "language": "ti"
+    "returnType": "void"
   },
   "CUBERULEAPPEND": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Appends a rule string to a cube's existing rules.",
+    "isStatement": true,
+    "language": "ti",
     "params": [
       "cubename",
       "value",
       "value"
     ],
-    "returnType": "void",
-    "description": "Appends a rule string to a cube's existing rules.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": true,
-    "language": "ti"
+    "returnType": "void"
   },
   "CUBERULEDESTROY": {
-    "params": [
-      "cubename"
-    ],
-    "returnType": "void",
-    "description": "Deletes all rules from a cube.",
     "compat": "both",
     "deprecated": null,
+    "description": "Deletes all rules from a cube.",
     "isStatement": true,
-    "language": "ti"
-  },
-  "CUBESAVEDATA": {
+    "language": "ti",
     "params": [
       "cubename"
     ],
-    "returnType": "void",
-    "description": "Serialises cube data to disk immediately.",
+    "returnType": "void"
+  },
+  "CUBESAVEDATA": {
     "compat": "v11",
     "deprecated": null,
+    "description": "Serialises cube data to disk immediately.",
     "isStatement": true,
-    "language": "ti"
+    "language": "ti",
+    "params": [
+      "cubename"
+    ],
+    "returnType": "void"
   },
   "CUBESETLOGCHANGES": {
+    "compat": "v11",
+    "deprecated": null,
+    "description": "Enables (1) or disables (0) transaction logging for a cube.",
+    "isStatement": true,
+    "language": "ti",
     "params": [
       "cubename",
       "value"
     ],
-    "returnType": "void",
-    "description": "Enables (1) or disables (0) transaction logging for a cube.",
-    "compat": "v11",
-    "deprecated": null,
-    "isStatement": true,
-    "language": "ti"
+    "returnType": "void"
   },
   "CUBETIMELASTUPDATED": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Returns the timestamp when the cube data was last updated.",
+    "isStatement": false,
+    "language": "ti",
     "params": [
       "cubename"
     ],
-    "returnType": "string",
-    "description": "Returns the timestamp when the cube data was last updated.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": false,
-    "language": "ti"
+    "returnType": "string"
   },
   "CUBEUNLOAD": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Unloads a cube from server memory.",
+    "isStatement": true,
+    "language": "ti",
     "params": [
       "cubename"
     ],
-    "returnType": "void",
-    "description": "Unloads a cube from server memory.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": true,
-    "language": "ti"
+    "returnType": "void"
   },
   "DATE": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Returns a serial date number for a year, month and day.",
+    "isStatement": false,
+    "language": "both",
     "params": [
       "y",
       "m",
       "d"
     ],
-    "returnType": "numeric",
-    "description": "Returns a serial date number for a year, month and day.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": false,
-    "language": "both"
+    "returnType": "numeric"
   },
   "DATES": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Converts a serial date number to a date string.",
+    "isStatement": false,
+    "language": "both",
     "params": [
       "serial"
     ],
-    "returnType": "string",
-    "description": "Converts a serial date number to a date string.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": false,
-    "language": "both"
+    "returnType": "string"
   },
   "DAY": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Returns the day of the month from a serial date number.",
+    "isStatement": false,
+    "language": "both",
     "params": [
       "serial"
     ],
-    "returnType": "numeric",
-    "description": "Returns the day of the month from a serial date number.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": false,
-    "language": "both"
+    "returnType": "numeric"
   },
   "DAYNO": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Returns the day number (1-366) for a date string.",
+    "isStatement": false,
+    "language": "both",
     "params": [
       "date-string"
     ],
-    "returnType": "numeric",
-    "description": "Returns the day number (1-366) for a date string.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": false,
-    "language": "both"
+    "returnType": "numeric"
   },
   "DB": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Returns a numeric value from a cube using the current element context.",
+    "isStatement": false,
+    "language": "rules",
     "params": [
       "cubename",
       "element*"
     ],
-    "returnType": "numeric",
-    "description": "Returns a numeric value from a cube using the current element context.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": false,
-    "language": "rules"
+    "returnType": "numeric"
   },
   "DELET": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Deletes a substring from a string.",
+    "isStatement": false,
+    "language": "both",
     "params": [
       "string",
       "start",
       "length"
     ],
-    "returnType": "string",
-    "description": "Deletes a substring from a string.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": false,
-    "language": "both"
+    "returnType": "string"
   },
   "DIMENSIONATTRN": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Returns a numeric dimension attribute value.",
+    "isStatement": false,
+    "language": "both",
     "params": [
       "dimname",
       "attribute"
     ],
-    "returnType": "numeric",
-    "description": "Returns a numeric dimension attribute value.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": false,
-    "language": "both"
+    "returnType": "numeric"
   },
   "DIMENSIONATTRS": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Returns a string dimension attribute value.",
+    "isStatement": false,
+    "language": "both",
     "params": [
       "dimname",
       "attribute"
     ],
-    "returnType": "string",
-    "description": "Returns a string dimension attribute value.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": false,
-    "language": "both"
+    "returnType": "string"
   },
   "DIMENSIONCREATE": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Creates a new dimension.",
+    "isStatement": true,
+    "language": "ti",
     "params": [
       "dimname"
     ],
-    "returnType": "void",
-    "description": "Creates a new dimension.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": true,
-    "language": "ti"
+    "returnType": "void"
   },
   "DIMENSIONDELETEALLELEMENTS": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Deletes all elements from a dimension.",
+    "isStatement": true,
+    "language": "ti",
     "params": [
       "dimname"
     ],
-    "returnType": "void",
-    "description": "Deletes all elements from a dimension.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": true,
-    "language": "ti"
+    "returnType": "void"
   },
   "DIMENSIONDELETEELEMENTS": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Deletes elements matching a wildcard pattern from a dimension.",
+    "isStatement": true,
+    "language": "ti",
     "params": [
       "dimname",
       "value"
     ],
-    "returnType": "void",
-    "description": "Deletes elements matching a wildcard pattern from a dimension.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": true,
-    "language": "ti"
+    "returnType": "void"
   },
   "DIMENSIONDESTROY": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Deletes a dimension and all associated elements.",
+    "isStatement": true,
+    "language": "ti",
     "params": [
       "dimname"
     ],
-    "returnType": "void",
-    "description": "Deletes a dimension and all associated elements.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": true,
-    "language": "ti"
+    "returnType": "void"
   },
   "DIMENSIONELEMENTCOMPONENTADD": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Adds a child element to a consolidation.",
+    "isStatement": true,
+    "language": "ti",
     "params": [
       "dimname",
       "element",
       "element",
       "value"
     ],
-    "returnType": "void",
-    "description": "Adds a child element to a consolidation.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": true,
-    "language": "ti"
+    "returnType": "void"
   },
   "DIMENSIONELEMENTCOMPONENTADDDIRECT": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Adds a child to a consolidation directly without buffering.",
+    "isStatement": true,
+    "language": "ti",
     "params": [
       "dimname",
       "element",
       "element",
       "value"
     ],
-    "returnType": "void",
-    "description": "Adds a child to a consolidation directly without buffering.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": true,
-    "language": "ti"
+    "returnType": "void"
   },
   "DIMENSIONELEMENTCOMPONENTDELETE": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Removes a child from a consolidation.",
+    "isStatement": true,
+    "language": "ti",
     "params": [
       "dimname",
       "element",
       "element"
     ],
-    "returnType": "void",
-    "description": "Removes a child from a consolidation.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": true,
-    "language": "ti"
+    "returnType": "void"
   },
   "DIMENSIONELEMENTCOMPONENTDELETEDIRECT": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Removes a child from a consolidation directly without buffering.",
+    "isStatement": true,
+    "language": "ti",
     "params": [
       "dimname",
       "element",
       "element"
     ],
-    "returnType": "void",
-    "description": "Removes a child from a consolidation directly without buffering.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": true,
-    "language": "ti"
+    "returnType": "void"
   },
   "DIMENSIONELEMENTDELETE": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Deletes an element from a dimension.",
+    "isStatement": true,
+    "language": "ti",
     "params": [
       "dimname",
       "element"
     ],
-    "returnType": "void",
-    "description": "Deletes an element from a dimension.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": true,
-    "language": "ti"
+    "returnType": "void"
   },
   "DIMENSIONELEMENTDELETEDIRECT": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Deletes an element directly without buffering.",
+    "isStatement": true,
+    "language": "ti",
     "params": [
       "dimname",
       "element"
     ],
-    "returnType": "void",
-    "description": "Deletes an element directly without buffering.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": true,
-    "language": "ti"
+    "returnType": "void"
   },
   "DIMENSIONELEMENTEXISTS": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Returns 1 if the element exists in the dimension.",
+    "isStatement": false,
+    "language": "ti",
     "params": [
       "dimname",
       "element"
     ],
-    "returnType": "numeric",
-    "description": "Returns 1 if the element exists in the dimension.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": false,
-    "language": "ti"
+    "returnType": "numeric"
   },
   "DIMENSIONELEMENTINSERT": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Inserts an element into a dimension (Metadata procedure).",
+    "isStatement": true,
+    "language": "ti",
     "params": [
       "dimname",
       "element",
       "value",
       "value"
     ],
-    "returnType": "void",
-    "description": "Inserts an element into a dimension (Metadata procedure).",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": true,
-    "language": "ti"
+    "returnType": "void"
   },
   "DIMENSIONELEMENTINSERTDIRECT": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Inserts an element directly without buffering.",
+    "isStatement": true,
+    "language": "ti",
     "params": [
       "dimname",
       "element",
       "value",
       "value"
     ],
-    "returnType": "void",
-    "description": "Inserts an element directly without buffering.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": true,
-    "language": "ti"
+    "returnType": "void"
   },
   "DIMENSIONELEMENTPRINCIPALNAME": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Returns the principal (canonical) name of an element.",
+    "isStatement": false,
+    "language": "ti",
     "params": [
       "dimname",
       "element"
     ],
-    "returnType": "string",
-    "description": "Returns the principal (canonical) name of an element.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": false,
-    "language": "ti"
+    "returnType": "string"
   },
   "DIMENSIONEXISTS": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Returns 1 if the named dimension exists.",
+    "isStatement": false,
+    "language": "ti",
     "params": [
       "dimname"
     ],
-    "returnType": "numeric",
-    "description": "Returns 1 if the named dimension exists.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": false,
-    "language": "ti"
+    "returnType": "numeric"
   },
   "DIMENSIONHIERARCHYCREATE": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Creates an alternate hierarchy within a dimension.",
+    "isStatement": true,
+    "language": "ti",
     "params": [
       "dimname",
       "hiername"
     ],
-    "returnType": "void",
-    "description": "Creates an alternate hierarchy within a dimension.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": true,
-    "language": "ti"
+    "returnType": "void"
   },
   "DIMENSIONSORTORDER": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Sets the sort order for elements in a dimension.",
+    "isStatement": true,
+    "language": "ti",
     "params": [
       "dimname",
       "value",
@@ -839,198 +844,198 @@
       "value",
       "value"
     ],
-    "returnType": "void",
-    "description": "Sets the sort order for elements in a dimension.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": true,
-    "language": "ti"
+    "returnType": "void"
   },
   "DIMENSIONTIMELASTUPDATED": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Returns the timestamp when the dimension was last modified.",
+    "isStatement": false,
+    "language": "ti",
     "params": [
       "dimname"
     ],
-    "returnType": "string",
-    "description": "Returns the timestamp when the dimension was last modified.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": false,
-    "language": "ti"
+    "returnType": "string"
   },
   "DIMENSIONTOPELEMENTINSERT": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Inserts an element at the top level of a dimension.",
+    "isStatement": true,
+    "language": "ti",
     "params": [
       "dimname",
       "element",
       "value"
     ],
-    "returnType": "void",
-    "description": "Inserts an element at the top level of a dimension.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": true,
-    "language": "ti"
+    "returnType": "void"
   },
   "DIMENSIONTOPELEMENTINSERTDIRECT": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Inserts a top-level element directly without buffering.",
+    "isStatement": true,
+    "language": "ti",
     "params": [
       "dimname",
       "element",
       "value"
     ],
-    "returnType": "void",
-    "description": "Inserts a top-level element directly without buffering.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": true,
-    "language": "ti"
+    "returnType": "void"
   },
   "DIMENSIONUPDATEDIRECT": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Commits buffered dimension changes directly to the server.",
+    "isStatement": true,
+    "language": "ti",
     "params": [
       "dimname"
     ],
-    "returnType": "void",
-    "description": "Commits buffered dimension changes directly to the server.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": true,
-    "language": "ti"
+    "returnType": "void"
   },
   "DIMIX": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Returns the 1-based index of an element in a dimension.",
+    "isStatement": false,
+    "language": "both",
     "params": [
       "dimname",
       "element"
     ],
-    "returnType": "numeric",
-    "description": "Returns the 1-based index of an element in a dimension.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": false,
-    "language": "both"
+    "returnType": "numeric"
   },
   "DIMNM": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Returns the name of the Nth element in a dimension.",
+    "isStatement": false,
+    "language": "both",
     "params": [
       "dimname",
       "n"
     ],
-    "returnType": "string",
-    "description": "Returns the name of the Nth element in a dimension.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": false,
-    "language": "both"
+    "returnType": "string"
   },
   "DIMSIZ": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Returns the number of elements in a dimension.",
+    "isStatement": false,
+    "language": "both",
     "params": [
       "dimname"
     ],
-    "returnType": "numeric",
-    "description": "Returns the number of elements in a dimension.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": false,
-    "language": "both"
+    "returnType": "numeric"
   },
   "DNEXT": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Returns the next element name in a dimension.",
+    "isStatement": false,
+    "language": "both",
     "params": [
       "dimname",
       "element"
     ],
-    "returnType": "string",
-    "description": "Returns the next element name in a dimension.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": false,
-    "language": "both"
+    "returnType": "string"
   },
   "DNLEV": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Returns the number of levels in a dimension.",
+    "isStatement": false,
+    "language": "both",
     "params": [
       "dimname"
     ],
-    "returnType": "numeric",
-    "description": "Returns the number of levels in a dimension.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": false,
-    "language": "both"
+    "returnType": "numeric"
   },
   "DTYPE": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Returns the element type: 'N', 'S', or 'C'.",
+    "isStatement": false,
+    "language": "both",
     "params": [
       "dimname",
       "element"
     ],
-    "returnType": "string",
-    "description": "Returns the element type: 'N', 'S', or 'C'.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": false,
-    "language": "both"
+    "returnType": "string"
   },
   "ELCOMP": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Returns the Nth component of a consolidated element.",
+    "isStatement": false,
+    "language": "both",
     "params": [
       "dimname",
       "element",
       "n"
     ],
-    "returnType": "string",
-    "description": "Returns the Nth component of a consolidated element.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": false,
-    "language": "both"
+    "returnType": "string"
   },
   "ELCOMPN": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Returns the number of components of a consolidated element.",
+    "isStatement": false,
+    "language": "both",
     "params": [
       "dimname",
       "element"
     ],
-    "returnType": "numeric",
-    "description": "Returns the number of components of a consolidated element.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": false,
-    "language": "both"
+    "returnType": "numeric"
   },
   "ELEMENTATTRDELETE": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Deletes a hierarchy attribute (hierarchy-aware).",
+    "isStatement": true,
+    "language": "ti",
     "params": [
       "dimname",
       "hiername",
       "attribute"
     ],
-    "returnType": "void",
-    "description": "Deletes a hierarchy attribute (hierarchy-aware).",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": true,
-    "language": "ti"
+    "returnType": "void"
   },
   "ELEMENTATTRINSERT": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Creates a hierarchy attribute (hierarchy-aware).",
+    "isStatement": true,
+    "language": "ti",
     "params": [
       "dimname",
       "hiername",
       "attribute",
       "value"
     ],
-    "returnType": "void",
-    "description": "Creates a hierarchy attribute (hierarchy-aware).",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": true,
-    "language": "ti"
+    "returnType": "void"
   },
   "ELEMENTATTRN": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Returns a numeric element attribute value (hierarchy-aware).",
+    "isStatement": false,
+    "language": "both",
     "params": [
       "dimname",
       "hiername",
       "element",
       "attribute"
     ],
-    "returnType": "numeric",
-    "description": "Returns a numeric element attribute value (hierarchy-aware).",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": false,
-    "language": "both"
+    "returnType": "numeric"
   },
   "ELEMENTATTRPUTN": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Writes a numeric element attribute value (hierarchy-aware).",
+    "isStatement": true,
+    "language": "ti",
     "params": [
       "value",
       "dimname",
@@ -1038,14 +1043,14 @@
       "element",
       "attribute"
     ],
-    "returnType": "void",
-    "description": "Writes a numeric element attribute value (hierarchy-aware).",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": true,
-    "language": "ti"
+    "returnType": "void"
   },
   "ELEMENTATTRPUTS": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Writes a string element attribute value (hierarchy-aware).",
+    "isStatement": true,
+    "language": "ti",
     "params": [
       "value",
       "dimname",
@@ -1053,476 +1058,476 @@
       "element",
       "attribute"
     ],
-    "returnType": "void",
-    "description": "Writes a string element attribute value (hierarchy-aware).",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": true,
-    "language": "ti"
+    "returnType": "void"
   },
   "ELEMENTATTRS": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Returns a string element attribute value (hierarchy-aware).",
+    "isStatement": false,
+    "language": "both",
     "params": [
       "dimname",
       "hiername",
       "element",
       "attribute"
     ],
-    "returnType": "string",
-    "description": "Returns a string element attribute value (hierarchy-aware).",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": false,
-    "language": "both"
+    "returnType": "string"
   },
   "ELEMENTCOMPONENT": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Returns the Nth component of a consolidated element (hierarchy-aware).",
+    "isStatement": false,
+    "language": "both",
     "params": [
       "dimname",
       "hiername",
       "element",
       "n"
     ],
-    "returnType": "string",
-    "description": "Returns the Nth component of a consolidated element (hierarchy-aware).",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": false,
-    "language": "both"
+    "returnType": "string"
   },
   "ELEMENTCOMPONENTCOUNT": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Returns the number of components of a consolidated element.",
+    "isStatement": false,
+    "language": "both",
     "params": [
       "dimname",
       "hiername",
       "element"
     ],
-    "returnType": "numeric",
-    "description": "Returns the number of components of a consolidated element.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": false,
-    "language": "both"
+    "returnType": "numeric"
   },
   "ELEMENTCOUNT": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Returns the total number of elements in a hierarchy.",
+    "isStatement": false,
+    "language": "both",
     "params": [
       "dimname",
       "hiername"
     ],
-    "returnType": "numeric",
-    "description": "Returns the total number of elements in a hierarchy.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": false,
-    "language": "both"
+    "returnType": "numeric"
   },
   "ELEMENTFIRST": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Returns the first element name in a hierarchy.",
+    "isStatement": false,
+    "language": "both",
     "params": [
       "dimname",
       "hiername"
     ],
-    "returnType": "string",
-    "description": "Returns the first element name in a hierarchy.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": false,
-    "language": "both"
+    "returnType": "string"
   },
   "ELEMENTINDEX": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Returns the 1-based index of an element in a hierarchy.",
+    "isStatement": false,
+    "language": "both",
     "params": [
       "dimname",
       "hiername",
       "element"
     ],
-    "returnType": "numeric",
-    "description": "Returns the 1-based index of an element in a hierarchy.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": false,
-    "language": "both"
+    "returnType": "numeric"
   },
   "ELEMENTISANCESTOR": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Returns 1 if the first element is an ancestor of the second.",
+    "isStatement": false,
+    "language": "both",
     "params": [
       "dimname",
       "hiername",
       "element",
       "element"
     ],
-    "returnType": "numeric",
-    "description": "Returns 1 if the first element is an ancestor of the second.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": false,
-    "language": "both"
+    "returnType": "numeric"
   },
   "ELEMENTISCOMPONENT": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Returns 1 if the second element is a component of the first.",
+    "isStatement": false,
+    "language": "both",
     "params": [
       "dimname",
       "hiername",
       "element",
       "element"
     ],
-    "returnType": "numeric",
-    "description": "Returns 1 if the second element is a component of the first.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": false,
-    "language": "both"
+    "returnType": "numeric"
   },
   "ELEMENTISPARENT": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Returns 1 if the first element is a direct parent of the second.",
+    "isStatement": false,
+    "language": "both",
     "params": [
       "dimname",
       "hiername",
       "element",
       "element"
     ],
-    "returnType": "numeric",
-    "description": "Returns 1 if the first element is a direct parent of the second.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": false,
-    "language": "both"
+    "returnType": "numeric"
   },
   "ELEMENTLEVEL": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Returns the level of an element within a hierarchy (0 = leaf).",
+    "isStatement": false,
+    "language": "both",
     "params": [
       "dimname",
       "hiername",
       "element"
     ],
-    "returnType": "numeric",
-    "description": "Returns the level of an element within a hierarchy (0 = leaf).",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": false,
-    "language": "both"
+    "returnType": "numeric"
   },
   "ELEMENTNAME": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Returns the element name at position n in a hierarchy.",
+    "isStatement": false,
+    "language": "both",
     "params": [
       "dimname",
       "hiername",
       "n"
     ],
-    "returnType": "string",
-    "description": "Returns the element name at position n in a hierarchy.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": false,
-    "language": "both"
+    "returnType": "string"
   },
   "ELEMENTNEXT": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Returns the next element name in a hierarchy.",
+    "isStatement": false,
+    "language": "both",
     "params": [
       "dimname",
       "hiername",
       "element"
     ],
-    "returnType": "string",
-    "description": "Returns the next element name in a hierarchy.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": false,
-    "language": "both"
+    "returnType": "string"
   },
   "ELEMENTPARENT": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Returns the Nth parent of an element in a hierarchy.",
+    "isStatement": false,
+    "language": "both",
     "params": [
       "dimname",
       "hiername",
       "element",
       "n"
     ],
-    "returnType": "string",
-    "description": "Returns the Nth parent of an element in a hierarchy.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": false,
-    "language": "both"
+    "returnType": "string"
   },
   "ELEMENTPARENTCOUNT": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Returns the number of parents of an element.",
+    "isStatement": false,
+    "language": "both",
     "params": [
       "dimname",
       "hiername",
       "element"
     ],
-    "returnType": "numeric",
-    "description": "Returns the number of parents of an element.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": false,
-    "language": "both"
+    "returnType": "numeric"
   },
   "ELEMENTTYPE": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Returns the element type: 'N', 'S', or 'C'.",
+    "isStatement": false,
+    "language": "both",
     "params": [
       "dimname",
       "hiername",
       "element"
     ],
-    "returnType": "string",
-    "description": "Returns the element type: 'N', 'S', or 'C'.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": false,
-    "language": "both"
+    "returnType": "string"
   },
   "ELEMENTWEIGHT": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Returns the weight of a child element within a parent in a hierarchy.",
+    "isStatement": false,
+    "language": "both",
     "params": [
       "dimname",
       "hiername",
       "element",
       "element"
     ],
-    "returnType": "numeric",
-    "description": "Returns the weight of a child element within a parent in a hierarchy.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": false,
-    "language": "both"
+    "returnType": "numeric"
   },
   "ELISANC": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Returns 1 if the first element is an ancestor of the second.",
+    "isStatement": false,
+    "language": "both",
     "params": [
       "dimname",
       "element",
       "element"
     ],
-    "returnType": "numeric",
-    "description": "Returns 1 if the first element is an ancestor of the second.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": false,
-    "language": "both"
+    "returnType": "numeric"
   },
   "ELISCOMP": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Returns 1 if the second element is a component of the first.",
+    "isStatement": false,
+    "language": "both",
     "params": [
       "dimname",
       "element",
       "element"
     ],
-    "returnType": "numeric",
-    "description": "Returns 1 if the second element is a component of the first.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": false,
-    "language": "both"
+    "returnType": "numeric"
   },
   "ELISPAR": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Returns 1 if the first element is a direct parent of the second.",
+    "isStatement": false,
+    "language": "both",
     "params": [
       "dimname",
       "element",
       "element"
     ],
-    "returnType": "numeric",
-    "description": "Returns 1 if the first element is a direct parent of the second.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": false,
-    "language": "both"
+    "returnType": "numeric"
   },
   "ELLEV": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Returns the level of an element (0 = leaf).",
+    "isStatement": false,
+    "language": "both",
     "params": [
       "dimname",
       "element"
     ],
-    "returnType": "numeric",
-    "description": "Returns the level of an element (0 = leaf).",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": false,
-    "language": "both"
+    "returnType": "numeric"
   },
   "ELPAR": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Returns the Nth parent of an element.",
+    "isStatement": false,
+    "language": "both",
     "params": [
       "dimname",
       "element",
       "n"
     ],
-    "returnType": "string",
-    "description": "Returns the Nth parent of an element.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": false,
-    "language": "both"
+    "returnType": "string"
   },
   "ELPARN": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Returns the number of parents of an element.",
+    "isStatement": false,
+    "language": "both",
     "params": [
       "dimname",
       "element"
     ],
-    "returnType": "numeric",
-    "description": "Returns the number of parents of an element.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": false,
-    "language": "both"
+    "returnType": "numeric"
   },
   "ELWEIGHT": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Returns the weight of a child element within a parent.",
+    "isStatement": false,
+    "language": "both",
     "params": [
       "dimname",
       "element",
       "element"
     ],
-    "returnType": "numeric",
-    "description": "Returns the weight of a child element within a parent.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": false,
-    "language": "both"
+    "returnType": "numeric"
   },
   "EXECUTEHTTPREQUEST": {
+    "compat": "v12",
+    "deprecated": null,
+    "description": "Executes an HTTP request (method, URL, options\u2026) \u2014 response read via HttpResponseGet*.",
+    "isStatement": true,
+    "language": "ti",
     "params": [
       "string",
       "string*"
     ],
-    "returnType": "void",
-    "description": "Executes an HTTP request (method, URL, options…) — response read via HttpResponseGet*.",
-    "compat": "v12",
-    "deprecated": null,
-    "isStatement": true,
-    "language": "ti"
+    "returnType": "void"
   },
   "EXECUTEPROCESS": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Executes a TI process synchronously; returns 0 on success.",
+    "isStatement": false,
+    "language": "ti",
     "params": [
       "value",
       "value*"
     ],
     "returnType": "numeric",
-    "description": "Executes a TI process synchronously; returns 0 on success.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": false,
-    "language": "ti",
     "variadicMin": 1
   },
   "EXP": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Returns e raised to the power of number.",
+    "isStatement": false,
+    "language": "both",
     "params": [
       "number"
     ],
-    "returnType": "numeric",
-    "description": "Returns e raised to the power of number.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": false,
-    "language": "both"
+    "returnType": "numeric"
   },
   "FILL": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Repeats or truncates a string to the specified length.",
+    "isStatement": false,
+    "language": "both",
     "params": [
       "string",
       "length"
     ],
-    "returnType": "string",
-    "description": "Repeats or truncates a string to the specified length.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": false,
-    "language": "both"
+    "returnType": "string"
   },
   "FV": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Returns the future value of an annuity.",
+    "isStatement": false,
+    "language": "rules",
     "params": [
       "rate",
       "periods",
       "payment"
     ],
-    "returnType": "numeric",
-    "description": "Returns the future value of an annuity.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": false,
-    "language": "rules"
+    "returnType": "numeric"
   },
   "GETJOBSTATUS": {
+    "compat": "v12",
+    "deprecated": null,
+    "description": "Returns the status of an asynchronously launched process (job ID).",
+    "isStatement": false,
+    "language": "ti",
     "params": [
       "n"
     ],
-    "returnType": "numeric",
-    "description": "Returns the status of an asynchronously launched process (job ID).",
-    "compat": "v12",
-    "deprecated": null,
-    "isStatement": false,
-    "language": "ti"
+    "returnType": "numeric"
   },
   "GETPROCESSERRORFILEDIRECTORY": {
-    "language": "ti",
-    "params": [],
-    "returnType": "string",
-    "description": "Returns the server error-log directory path. Distinct from GetProcessErrorFilename (which returns the current process's specific error log filename).",
     "compat": "both",
     "deprecated": null,
-    "isStatement": false
+    "description": "Returns the server error-log directory path. Distinct from GetProcessErrorFilename (which returns the current process's specific error log filename).",
+    "isStatement": false,
+    "language": "ti",
+    "params": [],
+    "returnType": "string"
   },
   "GETPROCESSERRORFILENAME": {
-    "params": [],
-    "returnType": "string",
-    "description": "Returns the filename of the current process error log.",
     "compat": "both",
     "deprecated": null,
+    "description": "Returns the filename of the current process error log.",
     "isStatement": false,
-    "language": "ti"
+    "language": "ti",
+    "params": [],
+    "returnType": "string"
   },
   "GETPROCESSNAME": {
-    "params": [],
-    "returnType": "string",
-    "description": "Returns the name of the currently executing process.",
     "compat": "both",
     "deprecated": null,
+    "description": "Returns the name of the currently executing process.",
     "isStatement": false,
-    "language": "ti"
+    "language": "ti",
+    "params": [],
+    "returnType": "string"
   },
   "HIERARCHYCONTAINSALLLEAVES": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Returns 1 if every leaf in the default hierarchy is present.",
+    "isStatement": false,
+    "language": "ti",
     "params": [
       "dimname",
       "hiername"
     ],
-    "returnType": "numeric",
-    "description": "Returns 1 if every leaf in the default hierarchy is present.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": false,
-    "language": "ti"
+    "returnType": "numeric"
   },
   "HIERARCHYCREATE": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Creates an alternate hierarchy.",
+    "isStatement": true,
+    "language": "ti",
     "params": [
       "dimname",
       "hiername"
     ],
-    "returnType": "void",
-    "description": "Creates an alternate hierarchy.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": true,
-    "language": "ti"
+    "returnType": "void"
   },
   "HIERARCHYDELETEALLELEMENTS": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Deletes all elements from a hierarchy.",
+    "isStatement": true,
+    "language": "ti",
     "params": [
       "dimname",
       "hiername"
     ],
-    "returnType": "void",
-    "description": "Deletes all elements from a hierarchy.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": true,
-    "language": "ti"
+    "returnType": "void"
   },
   "HIERARCHYDELETEELEMENTS": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Deletes elements matching a pattern from a hierarchy.",
+    "isStatement": true,
+    "language": "ti",
     "params": [
       "dimname",
       "hiername",
       "value"
     ],
-    "returnType": "void",
-    "description": "Deletes elements matching a pattern from a hierarchy.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": true,
-    "language": "ti"
+    "returnType": "void"
   },
   "HIERARCHYDESTROY": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Deletes an alternate hierarchy.",
+    "isStatement": true,
+    "language": "ti",
     "params": [
       "dimname",
       "hiername"
     ],
-    "returnType": "void",
-    "description": "Deletes an alternate hierarchy.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": true,
-    "language": "ti"
+    "returnType": "void"
   },
   "HIERARCHYELEMENTCOMPONENTADD": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Adds a child to a consolidation in a specific hierarchy.",
+    "isStatement": true,
+    "language": "ti",
     "params": [
       "dimname",
       "hiername",
@@ -1530,14 +1535,14 @@
       "element",
       "value"
     ],
-    "returnType": "void",
-    "description": "Adds a child to a consolidation in a specific hierarchy.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": true,
-    "language": "ti"
+    "returnType": "void"
   },
   "HIERARCHYELEMENTCOMPONENTADDDIRECT": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Adds a child to a hierarchy consolidation directly.",
+    "isStatement": true,
+    "language": "ti",
     "params": [
       "dimname",
       "hiername",
@@ -1545,81 +1550,80 @@
       "element",
       "value"
     ],
-    "returnType": "void",
-    "description": "Adds a child to a hierarchy consolidation directly.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": true,
-    "language": "ti"
+    "returnType": "void"
   },
   "HIERARCHYELEMENTCOMPONENTDELETE": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Removes a child from a consolidation in a specific hierarchy.",
+    "isStatement": true,
+    "language": "ti",
     "params": [
       "dimname",
       "hiername",
       "element",
       "element"
     ],
-    "returnType": "void",
-    "description": "Removes a child from a consolidation in a specific hierarchy.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": true,
-    "language": "ti"
+    "returnType": "void"
   },
   "HIERARCHYELEMENTCOMPONENTDELETEDIRECT": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Removes a hierarchy consolidation child directly.",
+    "isStatement": true,
+    "language": "ti",
     "params": [
       "dimname",
       "hiername",
       "element",
       "element"
     ],
-    "returnType": "void",
-    "description": "Removes a hierarchy consolidation child directly.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": true,
-    "language": "ti"
+    "returnType": "void"
   },
   "HIERARCHYELEMENTDELETE": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Deletes an element from a specific hierarchy.",
+    "isStatement": true,
+    "language": "ti",
     "params": [
       "dimname",
       "hiername",
       "element"
     ],
-    "returnType": "void",
-    "description": "Deletes an element from a specific hierarchy.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": true,
-    "language": "ti"
+    "returnType": "void"
   },
   "HIERARCHYELEMENTDELETEDIRECT": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Deletes a hierarchy element directly without buffering.",
+    "isStatement": true,
+    "language": "ti",
     "params": [
       "dimname",
       "hiername",
       "element"
     ],
-    "returnType": "void",
-    "description": "Deletes a hierarchy element directly without buffering.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": true,
-    "language": "ti"
+    "returnType": "void"
   },
   "HIERARCHYELEMENTEXISTS": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Returns 1 if the element exists in the hierarchy.",
+    "isStatement": false,
+    "language": "ti",
     "params": [
       "dimname",
       "hiername",
       "element"
     ],
-    "returnType": "numeric",
-    "description": "Returns 1 if the element exists in the hierarchy.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": false,
-    "language": "ti"
+    "returnType": "numeric"
   },
   "HIERARCHYELEMENTINSERT": {
+    "compat": "v12",
+    "deprecated": null,
+    "description": "Inserts an element into a specific hierarchy under a parent with a given weight (dimension, hierarchy, parent, element, type).",
+    "isStatement": true,
     "language": "ti",
     "params": [
       "dimname",
@@ -1628,13 +1632,13 @@
       "value",
       "value"
     ],
-    "returnType": "void",
-    "description": "Inserts an element into a specific hierarchy under a parent with a given weight (dimension, hierarchy, parent, element, type).",
-    "compat": "v12",
-    "deprecated": null,
-    "isStatement": true
+    "returnType": "void"
   },
   "HIERARCHYELEMENTINSERTDIRECT": {
+    "compat": "v12",
+    "deprecated": null,
+    "description": "Inserts a hierarchy element directly without buffering (dimension, hierarchy, parent, element, type).",
+    "isStatement": true,
     "language": "ti",
     "params": [
       "dimname",
@@ -1643,945 +1647,941 @@
       "value",
       "value"
     ],
-    "returnType": "void",
-    "description": "Inserts a hierarchy element directly without buffering (dimension, hierarchy, parent, element, type).",
-    "compat": "v12",
-    "deprecated": null,
-    "isStatement": true
+    "returnType": "void"
   },
   "HIERARCHYEXISTS": {
+    "compat": "v12",
+    "deprecated": null,
+    "description": "Returns 1 if the named hierarchy exists on the dimension.",
+    "isStatement": false,
     "language": "ti",
     "params": [
       "dimname",
       "hiername"
     ],
-    "returnType": "numeric",
-    "description": "Returns 1 if the named hierarchy exists on the dimension.",
-    "compat": "v12",
-    "deprecated": null,
-    "isStatement": false
+    "returnType": "numeric"
   },
   "HTTPRESPONSEGETBODY": {
-    "params": [],
-    "returnType": "string",
-    "description": "Returns the body of the most recent HTTP response.",
     "compat": "v12",
     "deprecated": null,
+    "description": "Returns the body of the most recent HTTP response.",
     "isStatement": false,
-    "language": "ti"
+    "language": "ti",
+    "params": [],
+    "returnType": "string"
   },
   "HTTPRESPONSEGETHEADER": {
+    "compat": "v12",
+    "deprecated": null,
+    "description": "Returns a named header value from the most recent HTTP response.",
+    "isStatement": false,
+    "language": "ti",
     "params": [
       "string"
     ],
-    "returnType": "string",
-    "description": "Returns a named header value from the most recent HTTP response.",
-    "compat": "v12",
-    "deprecated": null,
-    "isStatement": false,
-    "language": "ti"
+    "returnType": "string"
   },
   "HTTPRESPONSEGETSTATUSCODE": {
-    "params": [],
-    "returnType": "numeric",
-    "description": "Returns the HTTP status code of the most recent HTTP response.",
     "compat": "v12",
     "deprecated": null,
+    "description": "Returns the HTTP status code of the most recent HTTP response.",
     "isStatement": false,
-    "language": "ti"
+    "language": "ti",
+    "params": [],
+    "returnType": "numeric"
   },
   "IF": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Returns true_value if condition is non-zero, else false_value.",
+    "isStatement": false,
+    "language": "rules",
     "params": [
       "condition",
       "true_value",
       "false_value"
     ],
-    "returnType": "any",
-    "description": "Returns true_value if condition is non-zero, else false_value.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": false,
-    "language": "rules"
+    "returnType": "any"
   },
   "INSRT": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Inserts a string into another string at a position.",
+    "isStatement": false,
+    "language": "both",
     "params": [
       "insert",
       "string",
       "position"
     ],
-    "returnType": "string",
-    "description": "Inserts a string into another string at a position.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": false,
-    "language": "both"
+    "returnType": "string"
   },
   "INT": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Returns the integer portion of a number (truncates toward zero).",
+    "isStatement": false,
+    "language": "both",
     "params": [
       "number"
     ],
-    "returnType": "numeric",
-    "description": "Returns the integer portion of a number (truncates toward zero).",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": false,
-    "language": "both"
+    "returnType": "numeric"
   },
   "ISLEAF": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Returns 1 if the cell intersection is a leaf cell.",
+    "isStatement": false,
+    "language": "rules",
     "params": [
       "cubename",
       "element*"
     ],
-    "returnType": "numeric",
-    "description": "Returns 1 if the cell intersection is a leaf cell.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": false,
-    "language": "rules"
+    "returnType": "numeric"
   },
   "ISUND": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Returns 1 if the value is undefined.",
+    "isStatement": false,
+    "language": "rules",
     "params": [
       "value"
     ],
-    "returnType": "numeric",
-    "description": "Returns 1 if the value is undefined.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": false,
-    "language": "rules"
+    "returnType": "numeric"
   },
   "ISUNDEFINEDCELLVALUE": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Returns 1 if the value is the undefined cell value marker.",
+    "isStatement": false,
+    "language": "rules",
     "params": [
       "value"
     ],
-    "returnType": "numeric",
-    "description": "Returns 1 if the value is the undefined cell value marker.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": false,
-    "language": "rules"
+    "returnType": "numeric"
   },
   "ITEMREJECT": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Rejects the current datasource record and logs a message (0 or 1 args \u2014 the reason string is optional).",
+    "isStatement": true,
     "language": "ti",
     "params": [
       "value"
     ],
-    "returnType": "void",
-    "description": "Rejects the current datasource record and logs a message (0 or 1 args — the reason string is optional).",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": true
+    "returnType": "void"
   },
   "ITEMSKIP": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Skips the current datasource record without logging.",
+    "isStatement": true,
     "language": "ti",
     "params": [],
-    "returnType": "void",
-    "description": "Skips the current datasource record without logging.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": true
+    "returnType": "void"
   },
   "LN": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Returns the natural logarithm of a number.",
+    "isStatement": false,
+    "language": "both",
     "params": [
       "number"
     ],
-    "returnType": "numeric",
-    "description": "Returns the natural logarithm of a number.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": false,
-    "language": "both"
+    "returnType": "numeric"
   },
   "LOG": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Returns the base-10 logarithm of a number.",
+    "isStatement": false,
+    "language": "both",
     "params": [
       "number"
     ],
-    "returnType": "numeric",
-    "description": "Returns the base-10 logarithm of a number.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": false,
-    "language": "both"
+    "returnType": "numeric"
   },
   "LOGOUTPUT": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Writes a message to the process log (severity, message).",
+    "isStatement": true,
+    "language": "ti",
     "params": [
       "value",
       "value"
     ],
-    "returnType": "void",
-    "description": "Writes a message to the process log (severity, message).",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": true,
-    "language": "ti"
+    "returnType": "void"
   },
   "LONG": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Returns the length of a string.",
+    "isStatement": false,
+    "language": "both",
     "params": [
       "string"
     ],
-    "returnType": "numeric",
-    "description": "Returns the length of a string.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": false,
-    "language": "both"
+    "returnType": "numeric"
   },
   "LOWER": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Converts a string to lowercase.",
+    "isStatement": false,
+    "language": "both",
     "params": [
       "string"
     ],
-    "returnType": "string",
-    "description": "Converts a string to lowercase.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": false,
-    "language": "both"
+    "returnType": "string"
   },
   "MAX": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Returns the larger of two numbers.",
+    "isStatement": false,
+    "language": "both",
     "params": [
       "number1",
       "number2"
     ],
-    "returnType": "numeric",
-    "description": "Returns the larger of two numbers.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": false,
-    "language": "both"
+    "returnType": "numeric"
   },
   "MIN": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Returns the smaller of two numbers.",
+    "isStatement": false,
+    "language": "both",
     "params": [
       "number1",
       "number2"
     ],
-    "returnType": "numeric",
-    "description": "Returns the smaller of two numbers.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": false,
-    "language": "both"
+    "returnType": "numeric"
   },
   "MOD": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Returns the remainder of number divided by divisor.",
+    "isStatement": false,
+    "language": "both",
     "params": [
       "number",
       "divisor"
     ],
-    "returnType": "numeric",
-    "description": "Returns the remainder of number divided by divisor.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": false,
-    "language": "both"
+    "returnType": "numeric"
   },
   "MONTH": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Returns the month from a serial date number.",
+    "isStatement": false,
+    "language": "both",
     "params": [
       "serial"
     ],
-    "returnType": "numeric",
-    "description": "Returns the month from a serial date number.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": false,
-    "language": "both"
+    "returnType": "numeric"
   },
   "NEWDATEFORMATTER": {
+    "compat": "v12",
+    "deprecated": null,
+    "description": "Creates a date-formatter handle from a format pattern (e.g. 'yyyyMMdd') for use with date-formatting functions. NOT consumed by ParseDate \u2014 ParseDate takes the format string directly.",
+    "isStatement": false,
     "language": "ti",
     "params": [
       "value"
     ],
-    "returnType": "numeric",
-    "description": "Creates a date-formatter handle from a format pattern (e.g. 'yyyyMMdd') for use with date-formatting functions. NOT consumed by ParseDate — ParseDate takes the format string directly.",
-    "compat": "v12",
-    "deprecated": null,
-    "isStatement": false
+    "returnType": "numeric"
   },
   "NOW": {
-    "params": [],
-    "returnType": "numeric",
-    "description": "Returns the current server date/time as a serial number.",
     "compat": "both",
     "deprecated": null,
+    "description": "Returns the current server date/time as a serial number.",
     "isStatement": false,
-    "language": "both"
+    "language": "both",
+    "params": [],
+    "returnType": "numeric"
   },
   "NUMBERTOSTREX": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Converts a number to a formatted string (value, length, decimals, separator).",
+    "isStatement": false,
+    "language": "ti",
     "params": [
       "value",
       "value",
       "value",
       "value"
     ],
-    "returnType": "string",
-    "description": "Converts a number to a formatted string (value, length, decimals, separator).",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": false,
-    "language": "ti"
+    "returnType": "string"
   },
   "NUMBERTOSTRING": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Converts a numeric value to a string.",
+    "isStatement": false,
+    "language": "ti",
     "params": [
       "value"
     ],
-    "returnType": "string",
-    "description": "Converts a numeric value to a string.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": false,
-    "language": "ti"
+    "returnType": "string"
   },
   "NUMBR": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Converts a string to a number.",
+    "isStatement": false,
+    "language": "both",
     "params": [
       "string"
     ],
-    "returnType": "numeric",
-    "description": "Converts a string to a number.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": false,
-    "language": "both"
+    "returnType": "numeric"
   },
   "PARSEDATE": {
+    "compat": "v12",
+    "deprecated": null,
+    "description": "Parses a date string into a TM1 serial date number (format pattern, date string) \u2014 e.g. ParseDate('yyyyMMdd', '20260101'). Both args are plain strings.",
+    "isStatement": false,
     "language": "ti",
     "params": [
       "value",
       "value"
     ],
-    "returnType": "numeric",
-    "description": "Parses a date string into a TM1 serial date number (format pattern, date string) — e.g. ParseDate('yyyyMMdd', '20260101'). Both args are plain strings.",
-    "compat": "v12",
-    "deprecated": null,
-    "isStatement": false
+    "returnType": "numeric"
   },
   "PAYMT": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Returns the payment for a loan.",
+    "isStatement": false,
+    "language": "rules",
     "params": [
       "rate",
       "periods",
       "principal"
     ],
-    "returnType": "numeric",
-    "description": "Returns the payment for a loan.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": false,
-    "language": "rules"
+    "returnType": "numeric"
   },
   "PROCESSBREAK": {
-    "language": "ti",
-    "params": [],
-    "returnType": "void",
-    "description": "Stops processing the current datasource record and moves to the Epilog.",
     "compat": "both",
     "deprecated": null,
-    "isStatement": true
+    "description": "Stops processing the current datasource record and moves to the Epilog.",
+    "isStatement": true,
+    "language": "ti",
+    "params": [],
+    "returnType": "void"
   },
   "PROCESSERROR": {
-    "language": "ti",
-    "params": [],
-    "returnType": "void",
-    "description": "Marks the process as errored and stops execution.",
     "compat": "both",
     "deprecated": null,
-    "isStatement": true
+    "description": "Marks the process as errored and stops execution.",
+    "isStatement": true,
+    "language": "ti",
+    "params": [],
+    "returnType": "void"
   },
   "PROCESSEXISTS": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Returns 1 if the named process exists.",
+    "isStatement": false,
+    "language": "ti",
     "params": [
       "value"
     ],
-    "returnType": "numeric",
-    "description": "Returns 1 if the named process exists.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": false,
-    "language": "ti"
+    "returnType": "numeric"
   },
   "PROCESSEXITNORMAL": {
-    "language": "ti",
-    "params": [],
-    "returnType": "numeric",
-    "description": "Returns the value ExecuteProcess returns on success (0) — compare against a captured ExecuteProcess result to check for failure.",
     "compat": "both",
     "deprecated": null,
-    "isStatement": false
+    "description": "Returns the value ExecuteProcess returns on success (0) \u2014 compare against a captured ExecuteProcess result to check for failure.",
+    "isStatement": false,
+    "language": "ti",
+    "params": [],
+    "returnType": "numeric"
   },
   "PROCESSQUIT": {
-    "language": "ti",
-    "params": [],
-    "returnType": "void",
-    "description": "Stops the process immediately without error.",
     "compat": "both",
     "deprecated": null,
-    "isStatement": true
+    "description": "Stops the process immediately without error.",
+    "isStatement": true,
+    "language": "ti",
+    "params": [],
+    "returnType": "void"
   },
   "PV": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Returns the present value of an annuity.",
+    "isStatement": false,
+    "language": "rules",
     "params": [
       "rate",
       "periods",
       "payment"
     ],
-    "returnType": "numeric",
-    "description": "Returns the present value of an annuity.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": false,
-    "language": "rules"
+    "returnType": "numeric"
   },
   "RAND": {
-    "params": [],
-    "returnType": "numeric",
-    "description": "Returns a random number between 0 and 1.",
     "compat": "both",
     "deprecated": null,
+    "description": "Returns a random number between 0 and 1.",
     "isStatement": false,
-    "language": "both"
+    "language": "both",
+    "params": [],
+    "returnType": "numeric"
   },
   "REFRESHMDXHIERARCHY": {
+    "compat": "v12",
+    "deprecated": null,
+    "description": "Refreshes a virtual (MDX-driven) hierarchy on a dimension.",
+    "isStatement": true,
     "language": "ti",
     "params": [
       "dimname"
     ],
-    "returnType": "void",
-    "description": "Refreshes a virtual (MDX-driven) hierarchy on a dimension.",
-    "compat": "v12",
-    "deprecated": null,
-    "isStatement": true
+    "returnType": "void"
   },
   "ROUND": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Rounds a number to the specified number of decimal places.",
+    "isStatement": false,
+    "language": "both",
     "params": [
       "number",
       "decimals"
     ],
-    "returnType": "numeric",
-    "description": "Rounds a number to the specified number of decimal places.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": false,
-    "language": "both"
+    "returnType": "numeric"
   },
   "ROUNDP": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Rounds a number to the specified precision (round-half-up).",
+    "isStatement": false,
+    "language": "both",
     "params": [
       "number",
       "decimals"
     ],
-    "returnType": "numeric",
-    "description": "Rounds a number to the specified precision (round-half-up).",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": false,
-    "language": "both"
+    "returnType": "numeric"
   },
   "RUNPROCESS": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Executes a TI process in parallel; returns the Job ID.",
+    "isStatement": false,
+    "language": "ti",
     "params": [
       "value",
       "value*"
     ],
     "returnType": "string",
-    "description": "Executes a TI process in parallel; returns the Job ID.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": false,
-    "language": "ti",
     "variadicMin": 1
   },
   "SAVEDATAALL": {
-    "language": "ti",
-    "params": [],
-    "returnType": "void",
-    "description": "Saves all cube data to disk immediately.",
     "compat": "both",
     "deprecated": null,
-    "isStatement": true
+    "description": "Saves all cube data to disk immediately.",
+    "isStatement": true,
+    "language": "ti",
+    "params": [],
+    "returnType": "void"
   },
   "SCAN": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Returns the position of the first occurrence of find within within (0 = not found).",
+    "isStatement": false,
+    "language": "both",
     "params": [
       "find",
       "within"
     ],
-    "returnType": "numeric",
-    "description": "Returns the position of the first occurrence of find within within (0 = not found).",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": false,
-    "language": "both"
+    "returnType": "numeric"
   },
   "SECURITYREFRESH": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Reloads TM1 security definitions after a user/group change.",
+    "isStatement": true,
     "language": "ti",
     "params": [],
-    "returnType": "void",
-    "description": "Reloads TM1 security definitions after a user/group change.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": true
+    "returnType": "void"
   },
   "SIGN": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Returns 1, 0, or -1 based on the sign of number.",
+    "isStatement": false,
+    "language": "both",
     "params": [
       "number"
     ],
-    "returnType": "numeric",
-    "description": "Returns 1, 0, or -1 based on the sign of number.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": false,
-    "language": "both"
+    "returnType": "numeric"
   },
   "SIN": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Returns the sine of a number.",
+    "isStatement": false,
+    "language": "both",
     "params": [
       "number"
     ],
-    "returnType": "numeric",
-    "description": "Returns the sine of a number.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": false,
-    "language": "both"
+    "returnType": "numeric"
   },
   "SLEEP": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Pauses process execution for the given number of milliseconds.",
+    "isStatement": true,
     "language": "ti",
     "params": [
       "n"
     ],
-    "returnType": "void",
-    "description": "Pauses process execution for the given number of milliseconds.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": true
+    "returnType": "void"
   },
   "SQRT": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Returns the square root of a number.",
+    "isStatement": false,
+    "language": "both",
     "params": [
       "number"
     ],
-    "returnType": "numeric",
-    "description": "Returns the square root of a number.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": false,
-    "language": "both"
+    "returnType": "numeric"
   },
   "STET": {
-    "params": [],
-    "returnType": "void",
-    "description": "Leaves the cell value unchanged; applies natural consolidation.",
     "compat": "both",
     "deprecated": null,
+    "description": "Leaves the cell value unchanged; applies natural consolidation.",
     "isStatement": true,
-    "language": "rules"
+    "language": "rules",
+    "params": [],
+    "returnType": "void"
   },
   "STR": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Formats a number as a fixed-width string with specified decimal places.",
+    "isStatement": false,
+    "language": "both",
     "params": [
       "number",
       "length",
       "decimals"
     ],
-    "returnType": "string",
-    "description": "Formats a number as a fixed-width string with specified decimal places.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": false,
-    "language": "both"
+    "returnType": "string"
   },
   "STRINGTONUMBER": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Converts a string to a numeric value.",
+    "isStatement": false,
+    "language": "ti",
     "params": [
       "value"
     ],
-    "returnType": "numeric",
-    "description": "Converts a string to a numeric value.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": false,
-    "language": "ti"
+    "returnType": "numeric"
   },
   "STRINGTONUMEX": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Converts a formatted string to a number (value, decimals, separator).",
+    "isStatement": false,
+    "language": "ti",
     "params": [
       "value",
       "value",
       "value"
     ],
-    "returnType": "numeric",
-    "description": "Converts a formatted string to a number (value, decimals, separator).",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": false,
-    "language": "ti"
+    "returnType": "numeric"
   },
   "SUBSETCREATE": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Creates an empty static subset on a dimension (dimension, subset name).",
+    "isStatement": true,
     "language": "ti",
     "params": [
       "dimname",
-      "value"
+      "subset"
     ],
-    "returnType": "void",
-    "description": "Creates an empty static subset on a dimension (dimension, subset name).",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": true
+    "returnType": "void"
   },
   "SUBSETCREATEBYMDX": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Creates a dynamic MDX subset (subset name, MDX expression). Unlike other Subset* functions there is no separate dimension argument \u2014 the dimension is embedded in the MDX.",
+    "isStatement": true,
     "language": "ti",
     "params": [
       "value",
       "value"
     ],
-    "returnType": "void",
-    "description": "Creates a dynamic MDX subset (subset name, MDX expression). Unlike other Subset* functions there is no separate dimension argument — the dimension is embedded in the MDX.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": true
+    "returnType": "void"
   },
   "SUBSETDESTROY": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Deletes a static or dynamic subset from a dimension (dimension, subset name).",
+    "isStatement": true,
     "language": "ti",
     "params": [
       "dimname",
-      "value"
+      "subset"
     ],
-    "returnType": "void",
-    "description": "Deletes a static or dynamic subset from a dimension (dimension, subset name).",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": true
+    "returnType": "void"
   },
   "SUBSETELEMENTDELETE": {
-    "language": "ti",
-    "params": [
-      "dimname",
-      "value",
-      "n"
-    ],
-    "returnType": "void",
-    "description": "Removes the element at a given 1-based position from a static subset (dimension, subset, position — NOT element name).",
     "compat": "both",
     "deprecated": null,
-    "isStatement": true
-  },
-  "SUBSETELEMENTINSERT": {
+    "description": "Removes the element at a given 1-based position from a static subset (dimension, subset, position \u2014 NOT element name).",
+    "isStatement": true,
     "language": "ti",
     "params": [
       "dimname",
-      "value",
+      "subset",
+      "n"
+    ],
+    "returnType": "void"
+  },
+  "SUBSETELEMENTINSERT": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Inserts an element into a static subset at a given position (dimension, subset, element, position).",
+    "isStatement": true,
+    "language": "ti",
+    "params": [
+      "dimname",
+      "subset",
       "element",
       "n"
     ],
-    "returnType": "void",
-    "description": "Inserts an element into a static subset at a given position (dimension, subset, element, position).",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": true
+    "returnType": "void"
   },
   "SUBSETEXISTS": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Returns 1 if the named subset exists on the dimension.",
+    "isStatement": false,
     "language": "ti",
     "params": [
       "dimname",
-      "value"
+      "subset"
     ],
-    "returnType": "numeric",
-    "description": "Returns 1 if the named subset exists on the dimension.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": false
+    "returnType": "numeric"
   },
   "SUBSETGETSIZE": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Returns the number of elements in a subset.",
+    "isStatement": false,
     "language": "ti",
     "params": [
       "dimname",
-      "value"
+      "subset"
     ],
-    "returnType": "numeric",
-    "description": "Returns the number of elements in a subset.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": false
+    "returnType": "numeric"
   },
   "SUBSETMDXGET": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Returns the MDX expression of a dynamic subset.",
+    "isStatement": false,
     "language": "ti",
     "params": [
       "dimname",
-      "value"
+      "subset"
     ],
-    "returnType": "string",
-    "description": "Returns the MDX expression of a dynamic subset.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": false
+    "returnType": "string"
   },
   "SUBSETMDXSET": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Sets the MDX expression of a dynamic subset (dimension, subset, MDX).",
+    "isStatement": true,
     "language": "ti",
     "params": [
       "dimname",
-      "value",
+      "subset",
       "value"
     ],
-    "returnType": "void",
-    "description": "Sets the MDX expression of a dynamic subset (dimension, subset, MDX).",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": true
+    "returnType": "void"
   },
   "SUBST": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Returns a substring starting at position start.",
+    "isStatement": false,
+    "language": "both",
     "params": [
       "string",
       "start",
       "length"
     ],
-    "returnType": "string",
-    "description": "Returns a substring starting at position start.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": false,
-    "language": "both"
+    "returnType": "string"
   },
   "TABDIM": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Returns the name of the Nth dimension of a cube.",
+    "isStatement": false,
+    "language": "both",
     "params": [
       "cubename",
       "n"
     ],
-    "returnType": "string",
-    "description": "Returns the name of the Nth dimension of a cube.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": false,
-    "language": "both"
+    "returnType": "string"
   },
   "TAN": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Returns the tangent of a number.",
+    "isStatement": false,
+    "language": "both",
     "params": [
       "number"
     ],
-    "returnType": "numeric",
-    "description": "Returns the tangent of a number.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": false,
-    "language": "both"
+    "returnType": "numeric"
   },
   "TEXTOUTPUT": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Appends a line to a text file (filename, value1, value2, ...).",
+    "isStatement": true,
     "language": "ti",
     "params": [
       "value",
       "value*"
     ],
-    "returnType": "void",
-    "description": "Appends a line to a text file (filename, value1, value2, ...).",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": true
+    "returnType": "void"
   },
   "TIME": {
-    "params": [],
-    "returnType": "numeric",
-    "description": "Returns the current server time as a serial number.",
     "compat": "both",
     "deprecated": null,
+    "description": "Returns the current server time as a serial number.",
     "isStatement": false,
-    "language": "both"
+    "language": "both",
+    "params": [],
+    "returnType": "numeric"
   },
   "TIMST": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Formats a serial time/date number using a format string.",
+    "isStatement": false,
+    "language": "both",
     "params": [
       "serial",
       "format"
     ],
-    "returnType": "string",
-    "description": "Formats a serial time/date number using a format string.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": false,
-    "language": "both"
+    "returnType": "string"
   },
   "TIMVL": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Returns a unit (year/month/day/hour/minute/second) from a serial number.",
+    "isStatement": false,
+    "language": "both",
     "params": [
       "serial",
       "unit"
     ],
-    "returnType": "numeric",
-    "description": "Returns a unit (year/month/day/hour/minute/second) from a serial number.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": false,
-    "language": "both"
+    "returnType": "numeric"
   },
   "TODAY": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Returns the current date as a serial number (optional day offset).",
+    "isStatement": false,
+    "language": "both",
     "params": [
       "offset"
     ],
-    "returnType": "numeric",
-    "description": "Returns the current date as a serial number (optional day offset).",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": false,
-    "language": "both"
+    "returnType": "numeric"
   },
   "TRIM": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Removes leading and trailing whitespace from a string.",
+    "isStatement": false,
+    "language": "both",
     "params": [
       "string"
     ],
-    "returnType": "string",
-    "description": "Removes leading and trailing whitespace from a string.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": false,
-    "language": "both"
+    "returnType": "string"
   },
   "UNDEF": {
-    "params": [],
-    "returnType": "numeric",
-    "description": "Returns an undefined numeric value.",
     "compat": "both",
     "deprecated": null,
+    "description": "Returns an undefined numeric value.",
     "isStatement": false,
-    "language": "rules"
+    "language": "rules",
+    "params": [],
+    "returnType": "numeric"
   },
   "UNDEFINEDCELLVALUE": {
-    "params": [],
-    "returnType": "numeric",
-    "description": "Returns the undefined cell value marker.",
     "compat": "both",
     "deprecated": null,
+    "description": "Returns the undefined cell value marker.",
     "isStatement": false,
-    "language": "rules"
+    "language": "rules",
+    "params": [],
+    "returnType": "numeric"
   },
   "UNDEFVALS": {
-    "params": [],
-    "returnType": "numeric",
-    "description": "Returns an undefined value, used with IF to leave a cell undefined.",
     "compat": "both",
     "deprecated": null,
+    "description": "Returns an undefined value, used with IF to leave a cell undefined.",
     "isStatement": false,
-    "language": "rules"
+    "language": "rules",
+    "params": [],
+    "returnType": "numeric"
   },
   "UPPER": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Converts a string to uppercase.",
+    "isStatement": false,
+    "language": "both",
     "params": [
       "string"
     ],
-    "returnType": "string",
-    "description": "Converts a string to uppercase.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": false,
-    "language": "both"
+    "returnType": "string"
   },
   "VIEWCONSTRUCT": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Rebuilds (recalculates) a saved view in memory.",
+    "isStatement": true,
     "language": "ti",
     "params": [
       "cubename",
       "value"
     ],
-    "returnType": "void",
-    "description": "Rebuilds (recalculates) a saved view in memory.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": true
+    "returnType": "void"
   },
   "VIEWCREATE": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Creates a new (empty) native view on a cube.",
+    "isStatement": true,
     "language": "ti",
     "params": [
       "cubename",
       "value"
     ],
-    "returnType": "void",
-    "description": "Creates a new (empty) native view on a cube.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": true
+    "returnType": "void"
   },
   "VIEWDESTROY": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Deletes a view from a cube.",
+    "isStatement": true,
     "language": "ti",
     "params": [
       "cubename",
       "value"
     ],
-    "returnType": "void",
-    "description": "Deletes a view from a cube.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": true
+    "returnType": "void"
   },
   "VIEWEXISTS": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Returns 1 if the named view exists on the cube.",
+    "isStatement": false,
     "language": "ti",
     "params": [
       "cubename",
       "value"
     ],
-    "returnType": "numeric",
-    "description": "Returns 1 if the named view exists on the cube.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": false
+    "returnType": "numeric"
   },
   "VIEWEXTRACTSKIPZEROESSET": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Sets whether zero values are skipped when extracting a view (1 = skip, 0 = include).",
+    "isStatement": true,
     "language": "ti",
     "params": [
       "cubename",
       "value",
       "n"
     ],
-    "returnType": "void",
-    "description": "Sets whether zero values are skipped when extracting a view (1 = skip, 0 = include).",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": true
+    "returnType": "void"
   },
   "VIEWSUBSETASSIGN": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Assigns a named subset to a dimension in a view (cube, view, dimension, subset) \u2014 no axis argument.",
+    "isStatement": true,
     "language": "ti",
     "params": [
       "cubename",
       "value",
       "dimname",
-      "value"
+      "subset"
     ],
-    "returnType": "void",
-    "description": "Assigns a named subset to a dimension in a view (cube, view, dimension, subset) — no axis argument.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": true
+    "returnType": "void"
   },
   "VIEWZEROOUT": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Sets every cell in a view to zero.",
+    "isStatement": true,
     "language": "ti",
     "params": [
       "cubename",
       "value"
     ],
-    "returnType": "void",
-    "description": "Sets every cell in a view to zero.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": true
+    "returnType": "void"
   },
   "WAITFORALLJOBS": {
+    "compat": "v12",
+    "deprecated": null,
+    "description": "Waits for all of the specified async jobs to complete.",
+    "isStatement": true,
+    "language": "ti",
     "params": [
       "n*"
     ],
-    "returnType": "void",
-    "description": "Waits for all of the specified async jobs to complete.",
-    "compat": "v12",
-    "deprecated": null,
-    "isStatement": true,
-    "language": "ti"
+    "returnType": "void"
   },
   "WAITFORANYJOBS": {
+    "compat": "v12",
+    "deprecated": null,
+    "description": "Waits for any of the specified async jobs to complete.",
+    "isStatement": true,
+    "language": "ti",
     "params": [
       "n*"
     ],
-    "returnType": "void",
-    "description": "Waits for any of the specified async jobs to complete.",
-    "compat": "v12",
-    "deprecated": null,
-    "isStatement": true,
-    "language": "ti"
+    "returnType": "void"
   },
   "WAITFORINTERNALJOBS": {
-    "params": [],
-    "returnType": "void",
-    "description": "Waits for all async jobs launched by the current process to complete.",
     "compat": "v12",
     "deprecated": null,
+    "description": "Waits for all async jobs launched by the current process to complete.",
     "isStatement": true,
-    "language": "ti"
+    "language": "ti",
+    "params": [],
+    "returnType": "void"
   },
   "YEAR": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Returns the year from a serial date number.",
+    "isStatement": false,
+    "language": "both",
     "params": [
       "serial"
     ],
-    "returnType": "numeric",
-    "description": "Returns the year from a serial date number.",
-    "compat": "both",
-    "deprecated": null,
-    "isStatement": false,
-    "language": "both"
+    "returnType": "numeric"
   }
 }
