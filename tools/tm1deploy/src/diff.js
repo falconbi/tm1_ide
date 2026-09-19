@@ -166,7 +166,17 @@ async function diffRules(entry, baseline, client) {
     const baseVal  = baseline?.cubes?.[entry.object_name]?.rules ?? null
     const inBase   = baseVal !== null
 
-    if (!inBase) return outcome('NEW', entry, 'not in baseline — new cube', { current })
+    if (!inBase) {
+        // New in this session — before_state (state at session start) makes a
+        // meaningful A → B even though there's no baseline to diff against.
+        const before = entry.before_state?.text ?? entry.before_state?.rules
+        const note = before != null ? 'not in baseline — new cube in this session' : 'not in baseline — new cube'
+        return outcome('NEW', entry, note, {
+            current,
+            sessionBefore: entry.before_state ?? null,
+            sessionAfter:  entry.after_state  ?? null,
+        })
+    }
 
     // after_state shape differs by writer: the IDE logs { text }, the MCP { rules }
     const loggedRaw = entry.after_state?.text ?? entry.after_state?.rules
@@ -201,7 +211,10 @@ async function diffProcess(entry, baseline, client) {
 
     const inBase = !!(baseline?.processes?.[entry.object_name])
 
-    if (!inBase) return outcome('NEW', entry, 'not in baseline — new process')
+    if (!inBase) return outcome('NEW', entry, 'not in baseline — new process', {
+        sessionBefore: entry.before_state ?? null,
+        sessionAfter:  entry.after_state  ?? null,
+    })
 
     if (entry.after_state) {
         const currentCode = norm([

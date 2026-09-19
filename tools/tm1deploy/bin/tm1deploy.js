@@ -175,6 +175,25 @@ function cmdLog(args) {
     console.log()
 }
 
+// ── baseline cadence warning ──────────────────────────────────────────────────
+
+function warnStaleBaseline(server) {
+    try {
+        const { listBaselines } = require('../src/diff')
+        const head  = listBaselines(server).find(b => b.is_head)
+        if (!head) return
+        const days    = head.seeded_at ? Math.floor((Date.now() - new Date(head.seeded_at)) / 86400000) : null
+        const maxId   = cl.getMaxEntryId(server)
+        const behind  = head.last_entry_id ? maxId - head.last_entry_id : null
+        const stale   = (days != null && days > 14) || (behind != null && behind > 50)
+        if (!stale) return
+        const parts = []
+        if (days != null && days > 14) parts.push(`seeded ${days} days ago`)
+        if (behind != null && behind > 50) parts.push(`${behind} change-log entries behind`)
+        console.log(`  ⚠ baseline is stale (${parts.join(', ')}). Re-seed to keep release windows and drift checks reliable: npm run tm1deploy seed --server ${server}`)
+    } catch {}
+}
+
 // ── diff command ──────────────────────────────────────────────────────────────
 
 async function cmdDiff(args) {
@@ -222,6 +241,7 @@ async function cmdDiff(args) {
 
     const result = await diff(server, entries, baselinePath)
 
+    warnStaleBaseline(server)
     printDiffResult(server, result, {
         json: !!args.json,
         session: sname,
@@ -293,6 +313,7 @@ async function cmdReleaseDiff(args) {
     }
 
     const result = await diff(server, entries, fromPath)
+    warnStaleBaseline(server)
     printDiffResult(server, result, {
         json: !!args.json,
         window: `${from.file} → ${to.file}`,
@@ -366,6 +387,8 @@ function printDiffResult(server, result, { json, session, window, baselineNote, 
 async function cmdPackage(args) {
     const server = args.server
     const sname  = args.session
+
+    warnStaleBaseline(server)
 
     if (!server) { console.error('Error: --server is required\n'); usage(); process.exit(1) }
     if (!sname)  { console.error('Error: --session is required\n'); usage(); process.exit(1) }
