@@ -156,6 +156,7 @@ effort estimate, and the reasoning.
 - **2.2 — line-level diffs in deploy review** — **done**. `diffRules`/`diffProcess` now attach an LCS `lineDiff` (added/removed lines, fallback to set-based for very large files) and surface it as "+N / −M lines" in the note, with sample lines rendered in the Deploy panel rows (`DeltaLine`).
 - **1.2 — `user` column on `log_entries`** — **done**. Schema migration (auto-applied on boot) + `writeLog` stamps the active session's user; per-entry attribution shows in Object History.
 - **1.3 — surface the 200-row `getObjectHistory` cap** — **done**. `getObjectHistory` now returns `{ entries, truncated }` (fetches 201 rows) and the panel shows an amber banner when history continues past the latest 200.
+- **5.1 — save → CheckRules inline feedback** — **done**. `update_cube_rules` (MCP) now runs live TM1 `CheckRules` *before* writing and refuses with the actual compiler errors (line + message) unless `force:true`. Previously it only ran the static lint, so syntax that static lint missed surfaced only at deploy time. `check_rules_syntax` already did both checks without writing; the browser editor already has live CheckRules.
 - CubeMap focus mode (click a cube to re-root the map around it) — **done**.
 - Run-stats overlay on lineage — **skipped** (eye candy; devs read logs directly).
 - Change-set collapse to first→last per object — **kept as-is** (intentional).

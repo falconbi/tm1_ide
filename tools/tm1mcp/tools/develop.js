@@ -10,11 +10,12 @@ function register(server, { client, ok, esc, logChange, requireChangeSet, lintRu
     server.tool(
         'update_cube_rules',
         'Write new rules to a cube. The full rules text replaces any existing rules. Requires an open change set. ' +
-        'A static lint runs first — errors block the write (pass force:true to override); warnings are reported but do not block.',
+        'A static lint runs first — errors block the write (pass force:true to override); warnings are reported but do not block. ' +
+        'The rules are then CheckRules-validated on the server before writing, so TM1 compiler errors surface here immediately instead of at deploy time.',
         {
             cube:  z.string().describe('Cube name'),
             rules: z.string().describe('Complete rules text to write'),
-            force: z.boolean().optional().describe('Write even if the static lint found errors'),
+            force: z.boolean().optional().describe('Write even if the static lint or CheckRules found errors'),
         },
         async ({ cube, rules, force }) => {
             requireChangeSet()
@@ -28,10 +29,34 @@ function register(server, { client, ok, esc, logChange, requireChangeSet, lintRu
             }
             const c    = client()
             const prev = await c.get(`Cubes('${esc(cube)}')`, { '$select': 'Rules' }).then(d => d.Rules ?? '').catch(() => '')
+
+            // Live TM1 compile check — the real safety net static lint can't provide.
+            const check  = await c.post(`Cubes('${esc(cube)}')/tm1.CheckRules`, { Rules: rules }).catch(e => ({ _error: e.message }))
+            const errors = check?.value ?? []
+            const details = errors.map(e => ({ line: e.LineNumber ?? null, message: e.Message ?? e.Description ?? String(e) }))
+
+            if (check?._error) {
+                return ok({
+                    refused: `rules NOT written — CheckRules could not run (${check._error}); no change made to "${cube}"`,
+                    errors:  [],
+                    lint_warnings: lint.warnings,
+                })
+            }
+            if (details.length && !force) {
+                return ok({
+                    refused: `rules NOT written — TM1 CheckRules found ${details.length} error(s) in "${cube}"; no change made. Fix them, or pass force:true to write anyway.`,
+                    errors:  details,
+                    lint_warnings: lint.warnings,
+                })
+            }
+
             await c.patch(`Cubes('${esc(cube)}')`, { Rules: rules })
             logChange('RULES_SAVED', 'rules', cube, { before: { text: prev }, after: { text: rules } })
-            const note = lint.warnings.length ? ` (lint warnings: ${lint.warnings.map(w => w.message).join(' | ')})` : ''
-            return ok(`Rules updated for cube "${cube}".${note}`)
+
+            const parts = []
+            if (lint.warnings.length) parts.push(`lint warnings: ${lint.warnings.map(w => w.message).join(' | ')}`)
+            if (details.length) parts.push(`NOTE: rules written despite ${details.length} CheckRules error(s): ${JSON.stringify(details.slice(0, 10))}`)
+            return ok(`Rules updated for cube "${cube}".${parts.length ? ` ${parts.join('. ')}` : ''}`)
         }
     )
 
