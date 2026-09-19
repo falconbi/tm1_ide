@@ -21,7 +21,9 @@ export default function ObjectHistoryPanel({ server, objectType, objectName, onC
   const [diffEntry,  setDiffEntry]  = useState(null)
   const [rollbackId, setRollbackId] = useState(null)
 
-  const { data: entries = [], isFetching, refetch } = useObjectHistory(server, objectType, objectName)
+  const { data, isFetching, refetch } = useObjectHistory(server, objectType, objectName)
+  const entries    = data?.entries ?? []
+  const truncated  = data?.truncated ?? false
   const rollback = useRollbackEntry()
 
   const handleRollback = async (entry) => {
@@ -56,6 +58,11 @@ export default function ObjectHistoryPanel({ server, objectType, objectName, onC
 
         {/* Entry list */}
         <div className="overflow-auto flex-1">
+          {truncated && (
+            <div className="px-3 py-1.5 text-[10px] text-amber-500 bg-amber-500/10 border-b border-amber-500/20">
+              Showing the latest 200 entries — history continues further back.
+            </div>
+          )}
           {entries.length === 0 && !isFetching && (
             <p className="px-4 py-8 text-xs text-muted-foreground italic text-center">
               No history yet. Save this object while a session is active to start tracking.
@@ -82,6 +89,9 @@ export default function ObjectHistoryPanel({ server, objectType, objectName, onC
                     <div className="text-[10px] text-muted-foreground mt-0.5">{fmtDateTime(entry.timestamp)}</div>
                     {entry.session_name && (
                       <div className="text-[10px] text-muted-foreground/50 font-mono truncate">{entry.session_name}</div>
+                    )}
+                    {entry.user && (
+                      <div className="text-[10px] text-muted-foreground/40">by {entry.user}</div>
                     )}
                   </div>
 

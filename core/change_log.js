@@ -26,6 +26,7 @@ db.exec(`
     detail       TEXT,
     before_state TEXT,
     after_state  TEXT,
+    user         TEXT,
     FOREIGN KEY (session_id) REFERENCES sessions(id)
   );
 
@@ -208,14 +209,16 @@ function getRecentLog(server, limit = 100) {
 // ── Object history ────────────────────────────────────────────────────────────
 
 function getObjectHistory(server, objectType, objectName) {
-    return db.prepare(`
+    // Fetch one extra row to detect truncation instead of silently hiding history.
+    const rows = db.prepare(`
         SELECT l.*, s.name as session_name
         FROM log_entries l
         LEFT JOIN sessions s ON s.id = l.session_id
         WHERE l.server = ? AND l.object_type = ? AND l.object_name = ?
         ORDER BY l.timestamp DESC
-        LIMIT 200
+        LIMIT 201
     `).all(server, objectType, objectName).map(parseEntry)
+    return { entries: rows.slice(0, 200), truncated: rows.length > 200 }
 }
 
 function getEntryById(id) {
@@ -247,8 +250,8 @@ function writeLog({ server, action, objectType, objectName, detail, beforeState,
     }
 
     db.prepare(`
-        INSERT INTO log_entries (session_id, timestamp, server, action, object_type, object_name, detail, before_state, after_state)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO log_entries (session_id, timestamp, server, action, object_type, object_name, detail, before_state, after_state, user)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
         session?.id ?? null,
         new Date().toISOString(),
@@ -258,12 +261,14 @@ function writeLog({ server, action, objectType, objectName, detail, beforeState,
         objectName,
         detail       ?? null,
         beforeState  ? JSON.stringify(beforeState)  : null,
-        afterState   ? JSON.stringify(afterState)   : null
+        afterState   ? JSON.stringify(afterState)   : null,
+        session?.user ?? null
     )
     return { hasSession: !!session }
 }
 
 // SQLite doesn't add columns to existing tables via CREATE TABLE — migrate if needed
 try { db.exec(`ALTER TABLE sessions ADD COLUMN description TEXT`) } catch {}
+try { db.exec(`ALTER TABLE log_entries ADD COLUMN user TEXT`) } catch {}
 
 module.exports = { startSession, closeSession, resumeSession, updateSessionDescription, getActiveSession, getSessions, getAllSessions, getSessionLog, getCrossSessionTouches, getEntriesSince, getMaxEntryId, getEntriesSinceId, getSessionLogVerbose, getRecentLog, getObjectHistory, getEntryById, writeLog }

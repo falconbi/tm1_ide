@@ -154,6 +154,8 @@ effort estimate, and the reasoning.
 - **2.1 — `diffDimension` structural signature** — **done**. Now compares element `Name:Type` + edge `Parent>Child=Weight` token sets (same signature as `scopedSnapshot`), so re-parents, weight changes, and type flips report DRIFT instead of a false MATCH. Works against already-seeded baselines (they store raw elements + edges).
 - **6.1 — MCP target allowlist** — **done**. `check_deploy_risk` / `check_target_drift` now refuse any `target` not in the bound `SERVER` ∪ `TM1_MCP_ALLOWED_TARGETS` (env) ∪ `config/servers.json` `mcpAllowTargets` — before any connection opens.
 - **2.2 — line-level diffs in deploy review** — **done**. `diffRules`/`diffProcess` now attach an LCS `lineDiff` (added/removed lines, fallback to set-based for very large files) and surface it as "+N / −M lines" in the note, with sample lines rendered in the Deploy panel rows (`DeltaLine`).
+- **1.2 — `user` column on `log_entries`** — **done**. Schema migration (auto-applied on boot) + `writeLog` stamps the active session's user; per-entry attribution shows in Object History.
+- **1.3 — surface the 200-row `getObjectHistory` cap** — **done**. `getObjectHistory` now returns `{ entries, truncated }` (fetches 201 rows) and the panel shows an amber banner when history continues past the latest 200.
 - CubeMap focus mode (click a cube to re-root the map around it) — **done**.
 - Run-stats overlay on lineage — **skipped** (eye candy; devs read logs directly).
 - Change-set collapse to first→last per object — **kept as-is** (intentional).
