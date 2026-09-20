@@ -175,13 +175,19 @@
 .monaco-editor-overlaymessage             { z-index: 2001 !important; }
 .overflowingContentWidgets                 { z-index: 2000 !important; }
 /* ── Grid header tint (row + column headings) ──────────────────────────────── */
-/* The theme's headerBackgroundColor tints the top header row; the pinned-left
-   row-dimension headers (corner + row headings) need this to match. The accent
-   is exposed as --grid-accent on the grid wrapper by useGridAppearance. */
+/* Tint the column headers AND the pinned-left row headings. The accent is
+   exposed as --grid-accent on the grid wrapper by useGridAppearance. */
 .grid-wrap-accent .ag-header-cell,
-.grid-wrap-accent .ag-pinned-left-header .ag-header-cell {
+.grid-wrap-accent .ag-pinned-left-header .ag-header-cell,
+.grid-wrap-accent .ag-pinned-left-header .ag-header-cell-resize {
   background: color-mix(in srgb, var(--grid-accent, #2563eb) 18%, transparent);
 }
 .grid-wrap-accent .ag-header-cell:hover {
   background: color-mix(in srgb, var(--grid-accent, #2563eb) 30%, transparent);
+}
+/* The pinned-left row label cells (member names down the left) act as row
+   headings in a TM1 grid — give them the same light wash so row and column
+   headings read consistently. */
+.grid-wrap-accent .ag-pinned-left-cols-container .ag-cell {
+  background: color-mix(in srgb, var(--grid-accent, #2563eb) 10%, transparent);
 }
