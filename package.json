@@ -7,7 +7,8 @@
     "start": "node server.js",
     "dev": "node --watch server.js",
     "tm1deploy": "node tools/tm1deploy/bin/tm1deploy.js",
-    "tm1mcp": "node tools/tm1mcp/server.js"
+    "tm1mcp": "node tools/tm1mcp/server.js",
+    "test": "node --test tests/"
   },
   "keywords": [],
   "author": "",
