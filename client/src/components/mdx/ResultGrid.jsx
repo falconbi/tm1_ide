@@ -447,7 +447,7 @@ export default function ResultGrid({ axes, cells, truncated, onReady, server, cu
   }, [writeMode, handlePaste])
 
   return (
-    <div ref={gridWrapRef} className={cn('flex flex-col h-full min-h-0', (app.settings.headerTint && 'grid-wrap-accent') || (app.settings.headerBold && 'grid-wrap-bold'))} style={app.wrapperStyle}>
+    <div ref={gridWrapRef} className={cn('flex flex-col h-full min-h-0', cn(app.settings.headerTint && 'grid-wrap-accent', app.settings.headerBold && 'grid-wrap-bold'))} style={app.wrapperStyle}>
       {truncated && (
         <div className="px-3 py-1 text-[10px] text-yellow-500 bg-yellow-500/10 border-b border-border shrink-0">
           Results capped at 50,000 cells — refine your query to see all data

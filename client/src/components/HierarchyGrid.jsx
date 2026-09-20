@@ -609,7 +609,7 @@ export default function HierarchyGrid({
     }
 
     return (
-        <div className={cn('flex flex-col h-full min-h-0', (app.settings.headerTint && 'grid-wrap-accent') || (app.settings.headerBold && 'grid-wrap-bold'))} style={app.wrapperStyle}>
+        <div className={cn('flex flex-col h-full min-h-0', cn(app.settings.headerTint && 'grid-wrap-accent', app.settings.headerBold && 'grid-wrap-bold'))} style={app.wrapperStyle}>
             <GridToolbar
                 apiRef={gridRef}
                 onFit={handleFit}
