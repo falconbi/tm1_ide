@@ -1,27 +1,16 @@
 {
-  "server": "TM1_Test_DEV",
-  "tabs": [
-    {
-      "id": "process:TM1_Test_DEV:WFP Copy Version",
-      "type": "process",
-      "label": "WFP Copy Version",
-      "server": "TM1_Test_DEV",
-      "name": "WFP Copy Version",
-      "content": null
-    }
-  ],
-  "activeTab": "process:TM1_Test_DEV:WFP Copy Version",
+  "server": null,
+  "tabs": [],
+  "activeTab": null,
   "groups": [
     {
       "id": "g1",
-      "tabIds": [
-        "process:TM1_Test_DEV:WFP Copy Version"
-      ],
-      "activeTabId": "process:TM1_Test_DEV:WFP Copy Version"
+      "tabIds": [],
+      "activeTabId": null
     }
   ],
   "activeGroupId": "g1",
-  "splitDirection": "vertical",
+  "splitDirection": "horizontal",
   "panelSizes": [
     100
   ]

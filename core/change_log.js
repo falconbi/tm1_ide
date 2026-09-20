@@ -267,8 +267,32 @@ function writeLog({ server, action, objectType, objectName, detail, beforeState,
     return { hasSession: !!session }
 }
 
+// ── Retention / archive ────────────────────────────────────────────────────
+
+// Entries eligible for archiving: older than `cutoffIso`, at or before
+// `floorId` (the caller's safety floor — e.g. the oldest baseline still on
+// disk's last_entry_id, so nothing a future release-window diff might still
+// need ever gets pruned), and not tied to a still-open session (an open
+// session's full history is needed for its eventual diff/package).
+function findArchivableEntries(server, cutoffIso, floorId = 0) {
+    return db.prepare(`
+        SELECT l.* FROM log_entries l
+        WHERE l.server = ? AND l.timestamp < ? AND l.id <= ?
+          AND (l.session_id IS NULL OR l.session_id NOT IN (
+              SELECT id FROM sessions WHERE server = ? AND closed_at IS NULL
+          ))
+        ORDER BY l.id ASC
+    `).all(server, cutoffIso, floorId, server).map(parseEntry)
+}
+
+function pruneEntries(ids) {
+    if (!ids.length) return 0
+    const placeholders = ids.map(() => '?').join(',')
+    return db.prepare(`DELETE FROM log_entries WHERE id IN (${placeholders})`).run(...ids).changes
+}
+
 // SQLite doesn't add columns to existing tables via CREATE TABLE — migrate if needed
 try { db.exec(`ALTER TABLE sessions ADD COLUMN description TEXT`) } catch {}
 try { db.exec(`ALTER TABLE log_entries ADD COLUMN user TEXT`) } catch {}
 
-module.exports = { startSession, closeSession, resumeSession, updateSessionDescription, getActiveSession, getSessions, getAllSessions, getSessionLog, getCrossSessionTouches, getEntriesSince, getMaxEntryId, getEntriesSinceId, getSessionLogVerbose, getRecentLog, getObjectHistory, getEntryById, writeLog }
+module.exports = { startSession, closeSession, resumeSession, updateSessionDescription, getActiveSession, getSessions, getAllSessions, getSessionLog, getCrossSessionTouches, getEntriesSince, getMaxEntryId, getEntriesSinceId, getSessionLogVerbose, getRecentLog, getObjectHistory, getEntryById, writeLog, findArchivableEntries, pruneEntries }

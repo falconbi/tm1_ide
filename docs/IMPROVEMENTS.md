@@ -33,13 +33,6 @@ effort estimate, and the reasoning.
 - **Fix:** Return `truncated: true` and show it in `ObjectHistoryPanel.jsx`.
 - **Effort:** Trivial.
 
-### 1.4 Retention / archive policy for `change_log.db`
-
-- **Why:** The SQLite DB only grows; there is no snapshot, archive, or prune story.
-- **Fix:** Decide a policy (archive to `config/archives/` on session close, or prune old
-  entries with an audit export).
-- **Effort:** Small–medium.
-
 ---
 
 ## 2. Deploy Diff
@@ -91,14 +84,6 @@ effort estimate, and the reasoning.
 ---
 
 ## 4. Recovery
-
-### 4.1 Cell-data capture option on baseline
-
-- **Why:** The one thing neither baselines nor a Git repo recover. Baselines are a
-  structural snapshot; only picklist cells are captured
-  (`tools/tm1deploy/src/snapshot.js:394`).
-- **Fix:** Optional data-level capture (split structural vs data baselines).
-- **Effort:** Medium–large.
 
 ### 4.2 Per-server read-only / no-pull posture
 
@@ -161,6 +146,8 @@ effort estimate, and the reasoning.
 - **2.3 — leverage `before_state` in the diff** — **done**. `diffRules`/`diffProcess` now read the captured `before_state`/`after_state`: NEW objects carry `sessionBefore`/`sessionAfter` so a session-scoped A → B is available even with no baseline, and the NEW note distinguishes "new cube in this session".
 - **3.2 — auto-suggest baseline cadence** — **done**. `diff` / `release-diff` / `package` warn when the HEAD baseline is stale (>14 days old or >50 change-log entries behind `getMaxEntryId`), with the re-seed command inline.
 - **4.2 — per-server read-only / no-pull posture** — **done**. Mark a server browse-only via `config/servers.json` `"readOnlyServers": [...]` (or `"readOnly": true` on a connection/adminHost). `server.js` refuses every write route on it — model mutations (same set as the session gate), cell writes, process run/debug, chore execute/activate/deactivate/create, annotations, file upload/delete, user/maintenance admin, period-builder, SQL→TI, rollback — with a 409. `/api/servers` now returns `[{name, readOnly}]`; the StatusBar shows a lock badge and the server selector marks read-only servers.
+- **1.4 — retention/archive policy for `change_log.db`** — **done**. New CLI command: `npm run tm1deploy archive-log --server <name> [--days <n>] [--dry-run]` (default retention: `$CHANGE_LOG_RETENTION_DAYS` or 365 days). Manual and opt-in only — nothing is ever pruned automatically. Export always happens before delete, and pruning never crosses the oldest baseline still on disk for that server (its `_meta.last_entry_id`) or touches a still-open session's entries, so a future release-window diff can never lose an entry it might need. `--dry-run` previews the count with zero footprint (no file written). Exports land in `config/archives/change-log/`, alongside the existing deploy-diff archives.
+- **4.1 — cell-data capture on baseline** — **declined**. This is a Dev→Prod pipeline and Dev cell data is intentionally never promoted to Prod, so there's no recovery scenario a data-level baseline would serve. Structural-only baselines (dimensions, cubes, rules, processes, views, and dimension **attribute values** — metadata, not transactional data) remain correct by design; revisit only if a concrete recovery scenario for actual cube data emerges.
 - CubeMap focus mode (click a cube to re-root the map around it) — **done**.
 - Run-stats overlay on lineage — **skipped** (eye candy; devs read logs directly).
 - Change-set collapse to first→last per object — **kept as-is** (intentional).
@@ -169,8 +156,4 @@ effort estimate, and the reasoning.
 
 ## Top three to do first
 
-> **Updated Sep 2026** — the original top three (1.1, 2.1, 2.2) and the flagged 6.1 are all **done**. Next priority order:
-
-1. **5.1** — wire save → CheckRules → inline error feedback (the editor ergonomics win for AI-generated rules/TI).
-2. **3.1** — two-baseline / release-window diff (computable today, just not wired into any command or UI).
-3. **1.2 + 1.3** — `user` column on `log_entries` + surface the 200-row `getObjectHistory` cap (small audit-completeness wins).
+> **Updated Sep 2026** — 1.1, 1.2, 1.3, 1.4, 2.1, 2.2, 2.3, 3.1, 3.2, 4.2, 5.1, and 6.1 are all **done**; 4.1 is declined by design. Remaining: **6.2** — ops choice (run a second, PROD-quarantined MCP instance), not code.

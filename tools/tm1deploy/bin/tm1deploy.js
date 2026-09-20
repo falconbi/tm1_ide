@@ -55,6 +55,11 @@ Commands:
           --target <server>             Full pre-deploy risk report (syntax, deps, chores, structural)
   deploy  --package <path>
           --target <server>             Deploy a package to a target server
+  archive-log --server <name>
+          [--days <n>] [--dry-run]      Export + prune change_log.db entries older than
+                                        --days (default: $CHANGE_LOG_RETENTION_DAYS or 365).
+                                        Never prunes past the oldest baseline still on disk,
+                                        or entries from a still-open session.
 
 Options:
   --server  <name>    Source TM1 server (Dev)
@@ -64,8 +69,9 @@ Options:
   --output  <path>    Override output path (seed/package)
   --from    <file>    Baseline file for the start of a release window (release-diff)
   --to      <file>    Baseline file for the end of a release window (release-diff)
+  --days    <n>       Retention window in days (archive-log)
   --force             Overwrite existing package directory
-  --dry-run           Show what would be deployed without making changes
+  --dry-run           Show what would be deployed / archived without making changes
   --json              Output raw JSON (diff/deploy)
 
 Environment variables required:
@@ -82,6 +88,8 @@ Examples:
   node tools/tm1deploy/bin/tm1deploy.js risk    --package packages/apportionment-v1-2026-06-12 --target PROD_TM1
   node tools/tm1deploy/bin/tm1deploy.js deploy  --package packages/apportionment-v1-2026-06-12 --target PROD_TM1
   node tools/tm1deploy/bin/tm1deploy.js deploy  --package packages/apportionment-v1-2026-06-12 --target PROD_TM1 --dry-run
+  node tools/tm1deploy/bin/tm1deploy.js archive-log --server TM1_Apportionment --dry-run
+  node tools/tm1deploy/bin/tm1deploy.js archive-log --server TM1_Apportionment --days 180
 `)
 }
 
@@ -319,6 +327,36 @@ async function cmdReleaseDiff(args) {
         window: `${from.file} → ${to.file}`,
         next: 'package --session <name> --server ' + server + '  (or import via the IDE Deploy panel)',
     })
+}
+
+// ── archive-log command ─────────────────────────────────────────────────────
+// Manual, opt-in retention for change_log.db (IMPROVEMENTS 1.4). Exports
+// eligible entries to config/archives/change-log/ before deleting anything;
+// see tools/tm1deploy/src/retention.js for the safety floor.
+
+async function cmdArchiveLog(args) {
+    const server = args.server
+    if (!server) { console.error('Error: --server is required\n'); usage(); process.exit(1) }
+
+    const { archiveChangeLog, DEFAULT_RETENTION_DAYS } = require('../src/retention')
+    const days   = args.days ? Number(args.days) : DEFAULT_RETENTION_DAYS
+    const dryRun = !!args['dry-run']
+
+    const result = archiveChangeLog(server, { olderThanDays: days, dryRun })
+
+    console.log(`\ntm1deploy archive-log`)
+    console.log(`  server     : ${server}`)
+    console.log(`  cutoff     : entries before ${result.cutoffIso} (${days} days)`)
+    console.log(`  keep-floor : change-log id <= ${result.floorId} (oldest baseline still on disk)`)
+
+    if (!result.archived) {
+        console.log(`  Nothing eligible to archive.`)
+        return
+    }
+
+    console.log(`  ${dryRun ? 'would archive' : 'archived'}  : ${result.archived} entries`)
+    if (result.file) console.log(`  file       : ${result.file}`)
+    if (dryRun) console.log(`  (dry run — no file written, nothing deleted; re-run without --dry-run to archive + prune)`)
 }
 
 // ── Shared diff table renderer ────────────────────────────────────────────────
@@ -658,6 +696,7 @@ async function main() {
         case 'package': return cmdPackage(args)
         case 'risk':    return cmdRisk(args)
         case 'deploy':  return cmdDeploy(args)
+        case 'archive-log': return cmdArchiveLog(args)
         default:
             console.error(args._cmd ? `Unknown command: ${args._cmd}\n` : '')
             usage()
