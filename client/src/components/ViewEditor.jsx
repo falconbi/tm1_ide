@@ -314,7 +314,11 @@ function applyTm1Format(value, fmt) {
     const useGrouping = cleanFmt.includes(',')
     const decMatch = cleanFmt.replace(/\[[^\]]*\]/g, '').match(/\.([0#]+)/)
     const dec = decMatch ? decMatch[1].length : 0
-    const prefixMatch = cleanFmt.match(/^([^#0,.@%[\\]*)/)
+    // Prefix = leading literal text that isn't part of the number pattern.
+    // Digits must NOT be treated as prefix — "1,000" is a grouping format
+    // (no decimals), not a literal "1" prefix; excluding digits prevents
+    // applyTm1Format(0, "1,000") from rendering "10".
+    const prefixMatch = cleanFmt.match(/^([^#,0-9.@%[\\]*)/)
     const prefix = prefixMatch?.[1] ?? ''
     const formatted = num.toLocaleString('en-US', { useGrouping, minimumFractionDigits: dec, maximumFractionDigits: dec })
     let out = prefix + formatted + (isPct ? '%' : '')
