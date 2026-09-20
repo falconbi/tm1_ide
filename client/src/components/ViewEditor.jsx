@@ -54,6 +54,27 @@ class GridErrorBoundary extends Component {
     }
 }
 
+class TraceErrorBoundary extends Component {
+    constructor(props) { super(props); this.state = { error: null } }
+    static getDerivedStateFromError(error) { return { error } }
+    render() {
+        if (this.state.error) {
+            return (
+                <div className="flex-1 flex flex-col items-center justify-center gap-2 text-xs text-muted-foreground p-6">
+                    <AlertTriangle size={16} className="text-amber-500" />
+                    <p className="font-medium text-foreground">Trace could not be rendered</p>
+                    <p className="text-center text-red-400 break-all">{String(this.state.error?.message ?? this.state.error)}</p>
+                    <button
+                        className="mt-1 px-3 py-1 rounded border text-[10px] hover:bg-muted"
+                        onClick={() => this.setState({ error: null })}
+                    >Retry</button>
+                </div>
+            )
+        }
+        return this.props.children
+    }
+}
+
 // MDX functions the visual builder cannot represent — triggers MDX-only lock
 const COMPLEX_MDX_PATTERNS = [
     ['STRTOMEMBER',    /\bSTRTOMEMBER\b/i],
@@ -1329,6 +1350,7 @@ function TraceSidePanel({ ctx, onClose }) {
             </div>
 
             {/* Body */}
+            <TraceErrorBoundary>
             <div className="flex-1 overflow-y-auto p-4 space-y-4 text-xs">
                 {busy && (
                     <div className="flex items-center gap-2 text-muted-foreground">
@@ -1393,6 +1415,7 @@ function TraceSidePanel({ ctx, onClose }) {
                     <div className="text-muted-foreground">No detail available for this cell.</div>
                 )}
             </div>
+            </TraceErrorBoundary>
         </div>
     )
 }
