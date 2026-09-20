@@ -191,3 +191,8 @@
 .grid-wrap-accent .ag-pinned-left-cols-container .ag-cell {
   background: color-mix(in srgb, var(--grid-accent, #2563eb) 10%, transparent);
 }
+/* Bold headers — same treatment for the row headings (pinned-left member cells). */
+.grid-wrap-bold .ag-pinned-left-cols-container .ag-cell,
+.grid-wrap-bold .ag-pinned-left-header .ag-header-cell {
+  font-weight: 600;
+}

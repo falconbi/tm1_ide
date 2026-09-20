@@ -2569,7 +2569,7 @@ export default function ViewEditor({ tab }) {
             ) : !parsed || parsed.grid.length === 0 ? (
                 <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm">No data returned</div>
             ) : (
-                <div className={cn('flex flex-col flex-1 min-h-0', app.settings.headerTint && 'grid-wrap-accent')} style={app.wrapperStyle}>
+                <div className={cn('flex flex-col flex-1 min-h-0', (app.settings.headerTint && 'grid-wrap-accent') || (app.settings.headerBold && 'grid-wrap-bold'))} style={app.wrapperStyle}>
                     <GridToolbar
                         apiRef={flatGridRef}
                         onFit={() => flatGridRef.current?.api?.autoSizeAllColumns?.()}
