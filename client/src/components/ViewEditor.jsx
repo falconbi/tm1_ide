@@ -934,6 +934,35 @@ function splitTopLevelOps(s) {
     return out
 }
 
+// RHS of a rule statement: after the assignment '=', with the N:/C:/S: area
+// qualifier and trailing ';' stripped, so the expression parser sees IF(...).
+function rhsOf(stmt) {
+    const eq = stmt.indexOf('=')
+    let rhs = eq >= 0 ? stmt.slice(eq + 1).trim() : stmt.trim()
+    rhs = rhs.replace(/^[NCS]\d*\s*:\s*/, '')
+    rhs = rhs.replace(/;\s*$/, '')
+    return rhs
+}
+
+// Split a comparison like `expr @= 'Contractor'` at depth 0 → [left, op, right].
+function splitComparison(s) {
+    let depth = 0, inStr = false, strChar = ''
+    for (let i = 0; i < s.length; i++) {
+        const c = s[i]
+        if (inStr) { if (c === strChar) inStr = false; continue }
+        if (c === "'" || c === '"') { inStr = true; strChar = c; continue }
+        if (c === '(') { depth++; continue }
+        if (c === ')') { depth--; continue }
+        if (depth !== 0) continue
+        const rest = s.slice(i)
+        const m = rest.match(/^(@=|<=|>=|=|<>|<|>)/)
+        if (m) {
+            return [s.slice(0, i).trim(), m[1], s.slice(i + m[1].length).trim()]
+        }
+    }
+    return null
+}
+
 // ── Rule breakdown component ──────────────────────────────────────────────────
 
 function RuleBreakdown({ server, statements, dimElemPairs, cube, cubeDims, onDrill }) {
@@ -1017,8 +1046,7 @@ function RuleBreakdown({ server, statements, dimElemPairs, cube, cubeDims, onDri
     const operandPlan = useMemo(() => {
         const plan = []
         for (const stmt of statements) {
-            const eq = stmt.indexOf('=')
-            const rhs = eq >= 0 ? stmt.slice(eq + 1).trim() : stmt.trim()
+            const rhs = rhsOf(stmt)
             // Collect DB(...) / ATTRS(...) / ['Elem'] operands that need a value
             const visit = (expr) => {
                 const s = expr.trim()
@@ -1175,6 +1203,17 @@ function RuleBreakdown({ server, statements, dimElemPairs, cube, cubeDims, onDri
                 </div>
             )
         }
+        // Comparison (e.g. ATTRS(...) @= 'Contractor') → show both sides
+        const cmp = splitComparison(s)
+        if (cmp) {
+            return (
+                <div className="flex items-center gap-2 flex-wrap">
+                    <div>{renderExpr(cmp[0])}</div>
+                    <span className="font-mono text-[11px] text-muted-foreground font-semibold">{cmp[1]}</span>
+                    <div>{renderOperand(cmp[2])}</div>
+                </div>
+            )
+        }
         const parts = splitTopLevelOps(s)
         if (parts.length === 1) return renderOperand(parts[0].value)
         return (
@@ -1189,22 +1228,17 @@ function RuleBreakdown({ server, statements, dimElemPairs, cube, cubeDims, onDri
 
     return (
         <div className="space-y-3">
-            {statements.map((s, i) => {
-                const eq = s.indexOf('=')
-                return (
-                    <div key={i} className="space-y-2">
-                        <div className="font-mono text-[11px] bg-muted/50 rounded px-3 py-2 break-all whitespace-pre-wrap leading-relaxed">
-                            {s}
-                        </div>
-                        {eq >= 0 && (
-                            <div className="pl-1">
-                                <div className="text-[10px] uppercase tracking-wide text-muted-foreground font-medium mb-1.5">Expression</div>
-                                {renderExpr(s.slice(eq + 1).trim())}
-                            </div>
-                        )}
+            {statements.map((s, i) => (
+                <div key={i} className="space-y-2">
+                    <div className="font-mono text-[11px] bg-muted/50 rounded px-3 py-2 break-all whitespace-pre-wrap leading-relaxed">
+                        {s}
                     </div>
-                )
-            })}
+                    <div className="pl-1">
+                        <div className="text-[10px] uppercase tracking-wide text-muted-foreground font-medium mb-1.5">Expression</div>
+                        {renderExpr(rhsOf(s))}
+                    </div>
+                </div>
+            ))}
         </div>
     )
 }
