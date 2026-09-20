@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useEffect, useRef } from 'react'
+import { useState, useMemo, useCallback, useEffect, useRef, useReducer } from 'react'
 import { AgGridReact } from 'ag-grid-react'
 import { AllCommunityModule, ModuleRegistry } from 'ag-grid-community'
 import { DndContext, DragOverlay, PointerSensor, useSensor, useSensors, useDroppable, useDraggable } from '@dnd-kit/core'
@@ -878,11 +878,47 @@ function resolveArg(arg, dimElemPairs) {
     return arg
 }
 
+// Index of the ')' that closes the '(' at openIdx (quote-aware).
+function matchingCloseParen(s, openIdx) {
+    let depth = 1, i = openIdx + 1, inStr = false, strChar = ''
+    while (i < s.length && depth > 0) {
+        const c = s[i]
+        if (inStr) { if (c === strChar) inStr = false }
+        else if (c === "'" || c === '"') { inStr = true; strChar = c }
+        else if (c === '(') depth++
+        else if (c === ')') depth--
+        i++
+    }
+    return i - 1
+}
+
+// Split an expression on + - * / \ at paren-depth 0, preserving order.
+// Returns [{ type: 'op', value } | { type: 'operand', value }].
+function splitTopLevelOps(s) {
+    const out = []
+    let cur = '', depth = 0, inStr = false, strChar = ''
+    for (const c of s) {
+        if (inStr) { cur += c; if (c === strChar) inStr = false }
+        else if (c === "'" || c === '"') { inStr = true; strChar = c; cur += c }
+        else if (c === '(') { depth++; cur += c }
+        else if (c === ')') { depth--; cur += c }
+        else if (depth === 0 && (c === '+' || c === '-' || c === '*' || c === '/' || c === '\\')) {
+            if (cur.trim()) out.push({ type: 'operand', value: cur.trim() })
+            out.push({ type: 'op', value: c })
+            cur = ''
+        }
+        else cur += c
+    }
+    if (cur.trim()) out.push({ type: 'operand', value: cur.trim() })
+    return out
+}
+
 // ── Rule breakdown component ──────────────────────────────────────────────────
 
-function RuleBreakdown({ server, statements, components, dimElemPairs, onDrill }) {
+function RuleBreakdown({ server, statements, dimElemPairs, cube, cubeDims, onDrill }) {
     const [attrValues,   setAttrValues]   = useState({})
     const [loadingAttrs, setLoadingAttrs] = useState(false)
+    const token = typeof window !== 'undefined' ? localStorage.getItem('tm1-token') ?? '' : ''
 
     const allCalls = useMemo(() => statements.flatMap(s => extractRuleCalls(s)), [statements])
 
@@ -900,7 +936,6 @@ function RuleBreakdown({ server, statements, components, dimElemPairs, onDrill }
         }
         if (!toFetch.size) return
         setLoadingAttrs(true)
-        const token = localStorage.getItem('tm1-token') ?? ''
         Promise.all([...toFetch.entries()].map(([key, { dim, elem }]) =>
             fetch(`/api/element/attributes?server=${encodeURIComponent(server)}&dimension=${encodeURIComponent(dim)}&element=${encodeURIComponent(elem)}`, {
                 headers: { 'x-ide-token': token },
@@ -914,8 +949,7 @@ function RuleBreakdown({ server, statements, components, dimElemPairs, onDrill }
     }, [allCalls, server, dimElemPairs]) // eslint-disable-line
 
     // Resolve an ATTRS('Dim', elem, 'Attr') expression to its fetched attribute
-    // value, so DB() coordinates that use attribute lookups become drillable.
-    // The element arg may be a quoted name or a !Dim reference (or another expr).
+    // value; element arg may be a quoted name, a !Dim ref, or another expr.
     const attrArgRx = /^ATTRS\(\s*'([^']+)'\s*,\s*([^,]+)\s*,\s*'([^']+)'\s*\)$/i
     const resolveAttrArg = (arg) => {
         const m = arg.match(attrArgRx)
@@ -925,90 +959,229 @@ function RuleBreakdown({ server, statements, components, dimElemPairs, onDrill }
         return value != null ? { value: String(value), source: arg } : null
     }
 
-    let dbIdx = 0
+    // Cache for fetched cell values (DB targets + relative refs) and cube dims.
+    const valCache = useRef({})
+    const dimCache = useRef({})
+    const [, bumpVal] = useReducer(x => x + 1, 0)
+
+    const fetchCellValue = useCallback(async (targetCube, pairs) => {
+        const key = `${targetCube}::${pairs.map(p => p.element).join('|')}`
+        if (valCache.current[key] !== undefined) return valCache.current[key]
+        try {
+            const res = await fetch('/api/cube/trace', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'x-ide-token': token },
+                body: JSON.stringify({ server, cube: targetCube, dimElemPairs: pairs }),
+            })
+            const d = await res.json()
+            valCache.current[key] = d?.Value
+            bumpVal()
+            return d?.Value
+        } catch { return undefined }
+    }, [server, token])
+
+    const getCubeDims = useCallback(async (cubeName) => {
+        if (dimCache.current[cubeName]) return dimCache.current[cubeName]
+        try {
+            const r = await fetch(`/api/cube/dimensions?server=${encodeURIComponent(server)}&cube=${encodeURIComponent(cubeName)}`, {
+                headers: { 'x-ide-token': token },
+            })
+            const dims = await r.json()
+            dimCache.current[cubeName] = dims
+            return dims
+        } catch { return [] }
+    }, [server, token])
+
+    // Re-parse statements into a fetchable operand list whenever they change.
+    const operandPlan = useMemo(() => {
+        const plan = []
+        for (const stmt of statements) {
+            const eq = stmt.indexOf('=')
+            const rhs = eq >= 0 ? stmt.slice(eq + 1).trim() : stmt.trim()
+            // Collect DB(...) / ATTRS(...) / ['Elem'] operands that need a value
+            const visit = (expr) => {
+                const s = expr.trim()
+                const ifm = s.match(/^IF\s*\(/i)
+                if (ifm) {
+                    const open = s.indexOf('(')
+                    const close = matchingCloseParen(s, open)
+                    for (const arg of splitArgs(s.slice(open + 1, close))) visit(arg)
+                    return
+                }
+                if (s.startsWith('[')) { plan.push({ kind: 'ref', element: (s.match(/\[['"]([^'"]+)['"]\]/) ?? [])[1] ?? s }); return }
+                if (/^DB\s*\(/i.test(s)) { plan.push({ kind: 'db', text: s }); return }
+                for (const t of splitTopLevelOps(s)) if (t.type === 'operand') visit(t.value)
+            }
+            visit(rhs)
+        }
+        return plan
+    }, [statements])
+
+    // Fetch the values for DB targets and relative refs.
+    useEffect(() => {
+        (async () => {
+            for (const op of operandPlan) {
+                if (op.kind === 'db') {
+                    const inner = op.text.slice(op.text.indexOf('(') + 1, op.text.lastIndexOf(')'))
+                    const args = splitArgs(inner)
+                    const cubeName = (args[0] ?? '').replace(/^['"]|['"]$/g, '')
+                    const coords = args.slice(1).map(a => resolveAttrArg(a) ?? resolveArg(a, dimElemPairs))
+                    const dims = await getCubeDims(cubeName)
+                    const pairs = dims.map((d, i) => ({ dim: d, element: coords[i] })).filter(p => p.element)
+                    await fetchCellValue(cubeName, pairs)
+                } else if (op.kind === 'ref') {
+                    // Relative ['Elem'] ref → same cube, measure element replaced
+                    const measureDim = cubeDims?.[cubeDims.length - 1]
+                    if (!measureDim) continue
+                    const pairs = dimElemPairs.map(p => p.dim === measureDim ? { dim: p.dim, element: op.element } : p)
+                    await fetchCellValue(cube, pairs)
+                }
+            }
+        })()
+    }, [operandPlan, getCubeDims, fetchCellValue]) // eslint-disable-line
+
+    // ── Rendering ──────────────────────────────────────────────────────────────
+
+    const renderOperand = (expr) => {
+        const s = expr.trim()
+        const dbm = s.match(/^DB\s*\(/i)
+        if (dbm) {
+            const inner = s.slice(s.indexOf('(') + 1, s.lastIndexOf(')'))
+            const args = splitArgs(inner)
+            const cubeName = (args[0] ?? '').replace(/^['"]|['"]$/g, '')
+            const resolvedOps = args.slice(1).map(a => {
+                const r = resolveAttrArg(a)
+                return r ? { value: r.value, source: r.source } : { value: resolveArg(a, dimElemPairs), source: null }
+            })
+            const coords   = resolvedOps.map(r => r.value)
+            const derived  = resolvedOps.map(r => r.source ? { value: r.value, source: r.source } : null)
+            const key = `${cubeName}::${coords.join('|')}`
+            const value = valCache.current[key]
+            const dims = dimCache.current[cubeName] ?? []
+            // Last dimension is the measure in this model — mark it
+            const measureIdx = dims.length - 1
+            const drillable = onDrill && coords.length > 0 && coords.every(c => c && !c.includes('('))
+            return (
+                <div
+                    onClick={drillable ? () => onDrill(cubeName, coords, derived) : undefined}
+                    className={cn('border border-amber-500/20 bg-amber-500/5 rounded px-3 py-2 space-y-1 transition-colors',
+                        drillable && 'cursor-pointer hover:bg-amber-500/10')}
+                >
+                    <div className="flex items-center gap-2 flex-wrap">
+                        <span className="badge bg-amber-500/20 text-amber-400 font-mono">DB</span>
+                        <span className="text-[11px] font-medium">{cubeName}</span>
+                        <span className="ml-auto font-mono text-[11px] font-semibold tabular-nums">{value ?? (valCache.current[key] === undefined ? '…' : '—')}</span>
+                        {drillable && <ChevronRight size={10} className="text-muted-foreground/50 shrink-0" />}
+                    </div>
+                    <div className="font-mono text-[10px] text-muted-foreground flex items-center gap-1 flex-wrap">
+                        {coords.map((c, i) => (
+                            <span key={i} className={cn(i === measureIdx && 'text-foreground font-semibold')}>
+                                {i > 0 && <span className="text-muted-foreground/50 mr-1">·</span>}{c}
+                            </span>
+                        ))}
+                        {measureIdx >= 0 && coords[measureIdx] && (
+                            <span className="badge bg-muted text-muted-foreground ml-1">measure</span>
+                        )}
+                    </div>
+                </div>
+            )
+        }
+        const am = s.match(/^ATTRS\s*\(/i)
+        if (am) {
+            const inner = s.slice(s.indexOf('(') + 1, s.lastIndexOf(')'))
+            const args = splitArgs(inner)
+            const dim  = resolveArg(args[0] ?? '', dimElemPairs)
+            const elem = resolveArg(args[1] ?? '', dimElemPairs)
+            const attr = (args[2] ?? '').replace(/^['"]|['"]$/g, '')
+            const value = attrValues[`${dim}::${elem}`]?.[attr] ?? (loadingAttrs ? '…' : '—')
+            return (
+                <div className="border border-blue-500/20 bg-blue-500/5 rounded px-3 py-2 space-y-1">
+                    <div className="flex items-center gap-2">
+                        <span className="badge bg-blue-500/20 text-blue-400 font-mono">ATTRS</span>
+                        <span className="text-[11px] font-medium">{dim}</span>
+                        <span className="ml-auto font-mono text-[11px] font-semibold tabular-nums">{value}</span>
+                    </div>
+                    <div className="font-mono text-[10px] text-muted-foreground">{elem} · {attr}</div>
+                </div>
+            )
+        }
+        const rm = s.match(/^\[['"]?([^'"\]]+)['"]?\]$/)
+        if (rm) {
+            const measureDim = cubeDims?.[cubeDims.length - 1]
+            const key = measureDim ? `${cube}::${dimElemPairs.map(p => p.dim === measureDim ? rm[1] : p.element).join('|')}` : ''
+            const value = key ? valCache.current[key] : undefined
+            return (
+                <div className="border border-border/50 bg-muted/20 rounded px-3 py-2">
+                    <div className="flex items-center gap-2">
+                        <span className="badge bg-muted text-muted-foreground font-mono text-[9px]">ref</span>
+                        <span className="font-mono text-[11px] font-medium">[{rm[1]}]</span>
+                        <span className="ml-auto font-mono text-[11px] font-semibold tabular-nums">{value ?? (valCache.current[key] === undefined ? '…' : '—')}</span>
+                    </div>
+                </div>
+            )
+        }
+        const num = Number(s.replace(/[(),]/g, ''))
+        if (!Number.isNaN(num) && s.trim() !== '') {
+            return <div className="border border-border/50 bg-muted/20 rounded px-3 py-2"><span className="font-mono text-[11px] font-semibold tabular-nums">{s.trim()}</span></div>
+        }
+        return <div className="border border-border/50 bg-muted/20 rounded px-3 py-2"><span className="font-mono text-[10px] text-muted-foreground">{s}</span></div>
+    }
+
+    const renderExpr = (expr) => {
+        const s = expr.trim()
+        const ifm = s.match(/^IF\s*\(/i)
+        if (ifm) {
+            const open = s.indexOf('(')
+            const close = matchingCloseParen(s, open)
+            const args = splitArgs(s.slice(open + 1, close))
+            return (
+                <div className="space-y-2">
+                    <div className="flex items-center gap-2">
+                        <span className="badge bg-amber-500/20 text-amber-400 font-mono text-[9px]">IF</span>
+                        <span className="text-[10px] text-muted-foreground">condition</span>
+                    </div>
+                    <div className="pl-3">{renderExpr(args[0] ?? '')}</div>
+                    <div className="flex items-center gap-2">
+                        <span className="badge bg-emerald-500/20 text-emerald-400 font-mono text-[9px]">THEN</span>
+                    </div>
+                    <div className="pl-3">{renderExpr(args[1] ?? '')}</div>
+                    <div className="flex items-center gap-2">
+                        <span className="badge bg-purple-500/20 text-purple-400 font-mono text-[9px]">ELSE</span>
+                    </div>
+                    <div className="pl-3">{renderExpr(args[2] ?? '')}</div>
+                </div>
+            )
+        }
+        const parts = splitTopLevelOps(s)
+        if (parts.length === 1) return renderOperand(parts[0].value)
+        return (
+            <div className="flex items-stretch gap-2 flex-wrap">
+                {parts.map((t, i) => t.type === 'op'
+                    ? <span key={i} className="self-center font-mono text-[12px] text-muted-foreground font-semibold">{t.value}</span>
+                    : <div key={i}>{renderOperand(t.value)}</div>
+                )}
+            </div>
+        )
+    }
 
     return (
         <div className="space-y-3">
-            <div>
-                <div className="text-[10px] uppercase tracking-wide text-muted-foreground font-medium mb-1">Rule</div>
-                {statements.map((s, i) => (
-                    <div key={i} className="font-mono text-[11px] bg-muted/50 rounded px-3 py-2 break-all whitespace-pre-wrap leading-relaxed">
-                        {s}
+            {statements.map((s, i) => {
+                const eq = s.indexOf('=')
+                return (
+                    <div key={i} className="space-y-2">
+                        <div className="font-mono text-[11px] bg-muted/50 rounded px-3 py-2 break-all whitespace-pre-wrap leading-relaxed">
+                            {s}
+                        </div>
+                        {eq >= 0 && (
+                            <div className="pl-1">
+                                <div className="text-[10px] uppercase tracking-wide text-muted-foreground font-medium mb-1.5">Expression</div>
+                                {renderExpr(s.slice(eq + 1).trim())}
+                            </div>
+                        )}
                     </div>
-                ))}
-            </div>
-            {allCalls.length > 0 && (
-                <div>
-                    <div className="text-[10px] uppercase tracking-wide text-muted-foreground font-medium mb-1.5">Function Calls</div>
-                    <div className="space-y-2">
-                        {allCalls.map((call, i) => {
-                            const args     = splitArgs(call.argsStr)
-                            const resolved = args.map(a => resolveArg(a, dimElemPairs))
-                            if (call.funcName === 'DB') {
-                                const comp     = components[dbIdx++]
-                                const cubeName = resolved[0] ?? '?'
-                                // Resolve ATTRS(...) args to their fetched attribute values so the
-                                // DB coordinates are real element names (drillable + readable),
-                                // while remembering which ones were attribute-derived (provenance).
-                                const resolvedElems = resolved.slice(1).map(a => {
-                                    const r = resolveAttrArg(a)
-                                    return r ? { value: r.value, source: r.source } : { value: a, source: null }
-                                })
-                                const elems    = resolvedElems.map(r => r.value)
-                                const derived  = resolvedElems.map(r => r.source ? { value: r.value, source: r.source } : null)
-                                const ctype    = comp?.Type?.toLowerCase() ?? ''
-                                const badge    = ctype.includes('rule')   ? <span className="badge bg-amber-500/20 text-amber-400">RULE</span>
-                                              : ctype.includes('consol') ? <span className="badge bg-purple-500/20 text-purple-400">C</span>
-                                              : ctype.includes('base')   ? <span className="badge bg-emerald-500/20 text-emerald-400">BASE</span>
-                                              : null
-                                const drillable = onDrill && elems.length > 0 && elems.every(a => a && !a.includes('('))
-                                return (
-                                    <div
-                                        key={i}
-                                        onClick={drillable ? () => onDrill(cubeName, elems, derived) : undefined}
-                                        className={cn('border border-amber-500/20 bg-amber-500/5 rounded px-3 py-2 space-y-1 transition-colors',
-                                            drillable && 'cursor-pointer hover:bg-amber-500/10')}
-                                    >
-                                        <div className="flex items-center gap-2">
-                                            <span className="badge bg-amber-500/20 text-amber-400 font-mono">DB</span>
-                                            <span className="text-[11px] font-medium">{cubeName}</span>
-                                            {badge}
-                                            <span className="ml-auto font-mono text-[11px] font-semibold tabular-nums">{comp?.Value ?? '—'}</span>
-                                            {drillable && <ChevronRight size={10} className="text-muted-foreground/50 shrink-0" />}
-                                        </div>
-                                        <div className="font-mono text-[10px] text-muted-foreground">[{elems.join(' · ')}]</div>
-                                    </div>
-                                )
-                            }
-                            if (call.funcName === 'ATTRN' || call.funcName === 'ATTRS') {
-                                const dim  = resolved[0] ?? '?'
-                                const elem = resolved[1] ?? '?'
-                                const attr = resolved[2] ?? '?'
-                                const key  = `${dim}::${elem}`
-                                const val  = attrValues[key]?.[attr] ?? (loadingAttrs ? '…' : '—')
-                                return (
-                                    <div key={i} className="border border-blue-500/20 bg-blue-500/5 rounded px-3 py-2 space-y-1">
-                                        <div className="flex items-center gap-2">
-                                            <span className="badge bg-blue-500/20 text-blue-400 font-mono">{call.funcName}</span>
-                                            <span className="text-[11px] font-medium">{dim}</span>
-                                            <span className="ml-auto font-mono text-[11px] font-semibold tabular-nums">{val}</span>
-                                        </div>
-                                        <div className="font-mono text-[10px] text-muted-foreground">{elem} · {attr}</div>
-                                    </div>
-                                )
-                            }
-                            return (
-                                <div key={i} className="border border-border/50 bg-muted/20 rounded px-3 py-2">
-                                    <div className="flex items-center gap-2">
-                                        <span className="badge bg-muted text-muted-foreground font-mono text-[9px]">{call.funcName}</span>
-                                        <span className="font-mono text-[10px] text-muted-foreground">{resolved.join(', ')}</span>
-                                    </div>
-                                </div>
-                            )
-                        })}
-                    </div>
-                </div>
-            )}
+                )
+            })}
         </div>
     )
 }
@@ -1168,8 +1341,9 @@ function TraceSidePanel({ ctx, onClose }) {
                     <RuleBreakdown
                         server={ctx.server}
                         statements={stmts}
-                        components={comps}
                         dimElemPairs={current.dimElemPairs}
+                        cube={current.cube}
+                        cubeDims={stackCubeDims}
                         onDrill={drillTo}
                     />
                 )}
