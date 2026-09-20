@@ -965,7 +965,7 @@ function splitComparison(s) {
 
 // ── Rule breakdown component ──────────────────────────────────────────────────
 
-function RuleBreakdown({ server, statements, dimElemPairs, cube, cubeDims, onDrill }) {
+function RuleBreakdown({ server, statements, dimElemPairs, cube, onDrill }) {
     const [attrValues,   setAttrValues]   = useState({})
     const [loadingAttrs, setLoadingAttrs] = useState(false)
     const token = typeof window !== 'undefined' ? localStorage.getItem('tm1-token') ?? '' : ''
@@ -1046,6 +1046,9 @@ function RuleBreakdown({ server, statements, dimElemPairs, cube, cubeDims, onDri
     const operandPlan = useMemo(() => {
         const plan = []
         for (const stmt of statements) {
+            // LHS element of the assignment (e.g. 'Employer Pension') — used to
+            // resolve relative ['Base'] refs (swap the same dim's element).
+            const lhs = stmt.match(/\[\s*['"]([^'"]+)['"]\s*\]\s*=/)?.[1] ?? null
             const rhs = rhsOf(stmt)
             // Collect DB(...) / ATTRS(...) / ['Elem'] operands that need a value
             const visit = (expr) => {
@@ -1057,8 +1060,8 @@ function RuleBreakdown({ server, statements, dimElemPairs, cube, cubeDims, onDri
                     for (const arg of splitArgs(s.slice(open + 1, close))) visit(arg)
                     return
                 }
-                if (s.startsWith('[')) { plan.push({ kind: 'ref', element: (s.match(/\[['"]([^'"]+)['"]\]/) ?? [])[1] ?? s }); return }
-                if (/^DB\s*\(/i.test(s)) { plan.push({ kind: 'db', text: s }); return }
+                if (s.startsWith('[')) { plan.push({ kind: 'ref', element: (s.match(/\[['"]([^'"]+)['"]\]/) ?? [])[1] ?? s, lhs }); return }
+                if (/^DB\s*\(/i.test(s)) { plan.push({ kind: 'db', text: s, lhs }); return }
                 const parts = splitTopLevelOps(s)
                 if (parts.length <= 1) return  // leaf — no operators to split, stop (else infinite recursion)
                 for (const t of parts) if (t.type === 'operand') visit(t.value)
@@ -1068,7 +1071,17 @@ function RuleBreakdown({ server, statements, dimElemPairs, cube, cubeDims, onDri
         return plan
     }, [statements])
 
-    // Fetch the values for DB targets and relative refs.
+    // Resolve a relative ['Elem'] ref: swap the element on the dimension that
+    // currently holds the LHS measure element (fallback: last dimension).
+    const relativeRefPairs = useCallback((refElement, lhsElement) => {
+        const idx = dimElemPairs.findIndex(p => p.element === lhsElement)
+        const target = idx >= 0 ? idx : dimElemPairs.length - 1
+        return dimElemPairs.map((p, i) => i === target ? { dim: p.dim, element: refElement } : p)
+    }, [dimElemPairs])
+
+    // Fetch the values for DB targets and relative refs. Re-runs when attribute
+    // values arrive so DB() coordinates that use ATTRS() resolve to real names
+    // (the first pass uses raw ATTRS text and its cache keys never match).
     useEffect(() => {
         (async () => {
             for (const op of operandPlan) {
@@ -1081,19 +1094,15 @@ function RuleBreakdown({ server, statements, dimElemPairs, cube, cubeDims, onDri
                     const pairs = dims.map((d, i) => ({ dim: d, element: coords[i] })).filter(p => p.element)
                     await fetchCellValue(cubeName, pairs)
                 } else if (op.kind === 'ref') {
-                    // Relative ['Elem'] ref → same cube, measure element replaced
-                    const measureDim = cubeDims?.[cubeDims.length - 1]
-                    if (!measureDim) continue
-                    const pairs = dimElemPairs.map(p => p.dim === measureDim ? { dim: p.dim, element: op.element } : p)
-                    await fetchCellValue(cube, pairs)
+                    await fetchCellValue(cube, relativeRefPairs(op.element, op.lhs))
                 }
             }
         })()
-    }, [operandPlan, getCubeDims, fetchCellValue]) // eslint-disable-line
+    }, [operandPlan, getCubeDims, fetchCellValue, relativeRefPairs, attrValues, loadingAttrs]) // eslint-disable-line
 
     // ── Rendering ──────────────────────────────────────────────────────────────
 
-    const renderOperand = (expr) => {
+    const renderOperand = (expr, lhs) => {
         const s = expr.trim()
         const dbm = s.match(/^DB\s*\(/i)
         if (dbm) {
@@ -1158,8 +1167,8 @@ function RuleBreakdown({ server, statements, dimElemPairs, cube, cubeDims, onDri
         }
         const rm = s.match(/^\[['"]?([^'"\]]+)['"]?\]$/)
         if (rm) {
-            const measureDim = cubeDims?.[cubeDims.length - 1]
-            const key = measureDim ? `${cube}::${dimElemPairs.map(p => p.dim === measureDim ? rm[1] : p.element).join('|')}` : ''
+            const pairs = relativeRefPairs(rm[1], lhs)
+            const key = `${cube}::${pairs.map(p => p.element).join('|')}`
             const value = key ? valCache.current[key] : undefined
             return (
                 <div className="border border-border/50 bg-muted/20 rounded px-3 py-2">
@@ -1178,7 +1187,7 @@ function RuleBreakdown({ server, statements, dimElemPairs, cube, cubeDims, onDri
         return <div className="border border-border/50 bg-muted/20 rounded px-3 py-2"><span className="font-mono text-[10px] text-muted-foreground">{s}</span></div>
     }
 
-    const renderExpr = (expr) => {
+    const renderExpr = (expr, lhs) => {
         const s = expr.trim()
         const ifm = s.match(/^IF\s*\(/i)
         if (ifm) {
@@ -1191,15 +1200,15 @@ function RuleBreakdown({ server, statements, dimElemPairs, cube, cubeDims, onDri
                         <span className="badge bg-amber-500/20 text-amber-400 font-mono text-[9px]">IF</span>
                         <span className="text-[10px] text-muted-foreground">condition</span>
                     </div>
-                    <div className="pl-3">{renderExpr(args[0] ?? '')}</div>
+                    <div className="pl-3">{renderExpr(args[0] ?? '', lhs)}</div>
                     <div className="flex items-center gap-2">
                         <span className="badge bg-emerald-500/20 text-emerald-400 font-mono text-[9px]">THEN</span>
                     </div>
-                    <div className="pl-3">{renderExpr(args[1] ?? '')}</div>
+                    <div className="pl-3">{renderExpr(args[1] ?? '', lhs)}</div>
                     <div className="flex items-center gap-2">
                         <span className="badge bg-purple-500/20 text-purple-400 font-mono text-[9px]">ELSE</span>
                     </div>
-                    <div className="pl-3">{renderExpr(args[2] ?? '')}</div>
+                    <div className="pl-3">{renderExpr(args[2] ?? '', lhs)}</div>
                 </div>
             )
         }
@@ -1208,19 +1217,19 @@ function RuleBreakdown({ server, statements, dimElemPairs, cube, cubeDims, onDri
         if (cmp) {
             return (
                 <div className="flex items-center gap-2 flex-wrap">
-                    <div>{renderExpr(cmp[0])}</div>
+                    <div>{renderExpr(cmp[0], lhs)}</div>
                     <span className="font-mono text-[11px] text-muted-foreground font-semibold">{cmp[1]}</span>
-                    <div>{renderOperand(cmp[2])}</div>
+                    <div>{renderOperand(cmp[2], lhs)}</div>
                 </div>
             )
         }
         const parts = splitTopLevelOps(s)
-        if (parts.length === 1) return renderOperand(parts[0].value)
+        if (parts.length === 1) return renderOperand(parts[0].value, lhs)
         return (
             <div className="flex items-stretch gap-2 flex-wrap">
                 {parts.map((t, i) => t.type === 'op'
                     ? <span key={i} className="self-center font-mono text-[12px] text-muted-foreground font-semibold">{t.value}</span>
-                    : <div key={i}>{renderOperand(t.value)}</div>
+                    : <div key={i}>{renderOperand(t.value, lhs)}</div>
                 )}
             </div>
         )
@@ -1235,7 +1244,7 @@ function RuleBreakdown({ server, statements, dimElemPairs, cube, cubeDims, onDri
                     </div>
                     <div className="pl-1">
                         <div className="text-[10px] uppercase tracking-wide text-muted-foreground font-medium mb-1.5">Expression</div>
-                        {renderExpr(rhsOf(s))}
+                        {renderExpr(rhsOf(s), (s.match(/\[\s*['"]([^'"]+)['"]\s*\]\s*=/) ?? [])[1] ?? null)}
                     </div>
                 </div>
             ))}
@@ -1401,7 +1410,6 @@ function TraceSidePanel({ ctx, onClose }) {
                         statements={stmts}
                         dimElemPairs={current.dimElemPairs}
                         cube={current.cube}
-                        cubeDims={stackCubeDims}
                         onDrill={drillTo}
                     />
                 )}
