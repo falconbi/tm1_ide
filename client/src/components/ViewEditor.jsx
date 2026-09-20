@@ -1180,6 +1180,7 @@ export default function ViewEditor({ tab }) {
     const flatStorageKey = tab.server && tab.cube ? `ve-flat::${tab.server}::${tab.cube}::${tab.viewName || 'adhoc'}` : undefined
     const [flatQuickFilter, setFlatQuickFilter] = useState('')
     const [flatFreezeTop, setFlatFreezeTop] = useState(false)
+    const [flatMode, setFlatMode] = useState(false)
     const flatSavedWidthsRef = useRef(null)
     if (flatSavedWidthsRef.current === null) {
         flatSavedWidthsRef.current = flatStorageKey
@@ -1981,7 +1982,7 @@ export default function ViewEditor({ tab }) {
         }
     }, [tab.server, tab.cube, axes, hierarchyData, cubeDims, handleExecute])
 
-    const useHierarchy  = !!(rowDims.length > 0 && constrainedHierarchies.length > 0 && hierarchyData && result)
+    const useHierarchy  = !flatMode && !!(rowDims.length > 0 && constrainedHierarchies.length > 0 && hierarchyData && result)
 
     // Build full tuple from a cell context-menu event — used to filter the Transaction Log
     const buildTupleFromCell = useCallback(({ tupleKey, colId }) => {
@@ -2196,6 +2197,15 @@ export default function ViewEditor({ tab }) {
                 </button>
 
                 <div className="flex-1" />
+
+                <button onClick={() => setFlatMode(v => !v)}
+                    title={flatMode
+                        ? 'Flat grid with sort-by-column — back to hierarchy view'
+                        : 'Flat grid with sort-by-column (click column headers to sort)'}
+                    className={cn('flex items-center justify-center px-2 py-1.5 rounded border border-border text-[10px] transition-colors',
+                        flatMode ? 'text-primary bg-primary/10 border-primary/40' : 'text-muted-foreground hover:bg-muted')}>
+                    <Table2 size={12} className="mr-1" /> Flat
+                </button>
 
                 <button onClick={() => {
                         const modes = ['none', 'rows', 'columns', 'all']
