@@ -666,4 +666,4 @@ async function driftCheck(packageDir, targetServer, ideToken) {
     }
 }
 
-module.exports = { diff, driftCheck, loadBaseline, listBaselines, setBaselineHead, baselinePathFor, BASELINE_PATH, lineDiff, lineDiffNote }
+module.exports = { diff, driftCheck, loadBaseline, listBaselines, setBaselineHead, baselinePathFor, BASELINE_PATH, lineDiff, lineDiffNote, uniqueObjects }
