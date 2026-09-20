@@ -1860,6 +1860,10 @@ export default function ViewEditor({ tab }) {
         flatGridRef.current?.api?.autoSizeAllColumns?.()
     }, [flatStorageKey])
 
+    const handleFlatExportCSV = useCallback(() => {
+        flatGridRef.current?.api?.exportDataAsCsv?.()
+    }, [])
+
     // Freeze top — set via the grid API (not a React prop) to avoid AG Grid's
     // re-render crash (issue #10278 / AG-14590). setTimeout defers past the
     // "cannot draw rows while drawing" render stage.
@@ -2548,6 +2552,8 @@ export default function ViewEditor({ tab }) {
                         onSearch={handleFlatSearch}
                         frozen={flatFreezeTop}
                         onToggleFreeze={() => setFlatFreezeTop(f => !f)}
+                        showCsv
+                        onCsv={handleFlatExportCSV}
                     />
                     <div className="flex-1 min-h-0">
                         <AgGridReact

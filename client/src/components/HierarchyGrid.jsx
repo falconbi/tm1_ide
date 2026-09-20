@@ -560,6 +560,27 @@ export default function HierarchyGrid({
         gridRef.current?.api?.autoSizeAllColumns?.()
     }, [])
 
+    // Export the current grid (respecting expand/collapse) to CSV. Row-dim
+    // columns export the member LABEL (not the internal node id); data columns
+    // export the raw value. Meta columns are excluded.
+    const handleExportCSV = useCallback(() => {
+        const api = gridRef.current?.api
+        if (!api) return
+        const rowDimCols = hierarchies.map((_, i) => `__d${i}__`)
+        const dataCols   = visibleColumns.map(c => c.id)
+        api.exportDataAsCsv({
+            columnKeys: [...rowDimCols, ...dataCols],
+            processCellCallback: (params) => {
+                const f = params.column?.getColDef?.()?.field ?? ''
+                if (f.startsWith('__d')) {
+                    const i = parseInt(f.slice(3), 10)
+                    return params.data?.[`__d${i}_label__`] ?? params.value ?? ''
+                }
+                return params.value ?? ''
+            },
+        })
+    }, [hierarchies, visibleColumns])
+
     // Freeze top — set via the grid API (not a React prop) to avoid AG Grid's
     // re-render crash (issue #10278 / AG-14590). setTimeout defers past the
     // "cannot draw rows while drawing" render stage.
@@ -585,6 +606,8 @@ export default function HierarchyGrid({
                 onSearch={handleSearch}
                 frozen={freezeTop}
                 onToggleFreeze={() => setFreezeTop(f => !f)}
+                showCsv
+                onCsv={handleExportCSV}
             />
             <div className="flex-1 min-h-0">
                 <AgGridReact
