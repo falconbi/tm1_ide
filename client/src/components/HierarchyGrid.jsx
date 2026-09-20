@@ -234,11 +234,14 @@ export default function HierarchyGrid({
     onCellEdit,
     onCellContextMenu,
     storageKey,         // optional: persisting column widths across sessions
+    appearance,         // optional: shared useGridAppearance instance (the View editor
+                        // must share its own so numFormat reaches the data pipeline)
 }) {
     const gridRef       = useRef(null)
     const prevColDefs   = useRef(null)
     const prevAppearanceRef = useRef('true')
-    const app           = useGridAppearance()
+    const internalApp   = useGridAppearance()
+    const app           = appearance ?? internalApp
 
     const [rowExpandedSets, setRowExpandedSets] = useState(() => initExpandedSets(hierarchies))
     const [colExpandedSets, setColExpandedSets] = useState(() => initExpandedSets(columnHierarchies))

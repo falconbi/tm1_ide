@@ -2577,6 +2577,7 @@ export default function ViewEditor({ tab }) {
                             onCellEdit={handleCellEdit}
                             onCellContextMenu={handleCellContextMenu}
                             storageKey={tab.server && tab.cube ? `hg::${tab.server}::${tab.cube}::${tab.viewName || 'adhoc'}` : undefined}
+                            appearance={app}
                         />
                     </GridErrorBoundary>
                 </div>
