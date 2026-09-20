@@ -5,7 +5,7 @@ import { AgGridReact } from 'ag-grid-react'
 import { AllCommunityModule, ModuleRegistry } from 'ag-grid-community'
 import { toast } from 'sonner'
 import GridToolbar from '../GridToolbar'
-import { tm1NumericComparator } from '@/lib/utils'
+import { cn, tm1NumericComparator } from '@/lib/utils'
 import { useGridAppearance } from '@/lib/grid-appearance'
 
 ModuleRegistry.registerModules([AllCommunityModule])
@@ -447,7 +447,7 @@ export default function ResultGrid({ axes, cells, truncated, onReady, server, cu
   }, [writeMode, handlePaste])
 
   return (
-    <div ref={gridWrapRef} className="flex flex-col h-full min-h-0">
+    <div ref={gridWrapRef} className={cn('flex flex-col h-full min-h-0', app.settings.headerTint && 'grid-wrap-accent')} style={app.wrapperStyle}>
       {truncated && (
         <div className="px-3 py-1 text-[10px] text-yellow-500 bg-yellow-500/10 border-b border-border shrink-0">
           Results capped at 50,000 cells — refine your query to see all data

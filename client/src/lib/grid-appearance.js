@@ -49,5 +49,11 @@ export function useGridAppearance() {
   // font size, accent) — AG Grid won't re-apply these by itself.
   const refreshKey = `${settings.rowHeight}-${settings.fontSize}-${settings.accent}-${settings.headerTint}-${settings.headerBold}`
 
-  return { settings, patch, makeTheme, refreshKey }
+  // CSS var + class for the pinned-left row headers so the tint matches the
+  // column headers (theme headerBackgroundColor doesn't reach them reliably).
+  const wrapperStyle = settings.headerTint && /^#[0-9a-fA-F]{6}$/.test(settings.accent)
+    ? { '--grid-accent': settings.accent }
+    : undefined
+
+  return { settings, patch, makeTheme, refreshKey, wrapperStyle }
 }

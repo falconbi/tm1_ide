@@ -174,3 +174,14 @@
 .context-view                              { z-index: 2001 !important; }
 .monaco-editor-overlaymessage             { z-index: 2001 !important; }
 .overflowingContentWidgets                 { z-index: 2000 !important; }
+/* ── Grid header tint (row + column headings) ──────────────────────────────── */
+/* The theme's headerBackgroundColor tints the top header row; the pinned-left
+   row-dimension headers (corner + row headings) need this to match. The accent
+   is exposed as --grid-accent on the grid wrapper by useGridAppearance. */
+.grid-wrap-accent .ag-header-cell,
+.grid-wrap-accent .ag-pinned-left-header .ag-header-cell {
+  background: color-mix(in srgb, var(--grid-accent, #2563eb) 18%, transparent);
+}
+.grid-wrap-accent .ag-header-cell:hover {
+  background: color-mix(in srgb, var(--grid-accent, #2563eb) 30%, transparent);
+}
