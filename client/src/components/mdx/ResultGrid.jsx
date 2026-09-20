@@ -488,7 +488,6 @@ export default function ResultGrid({ axes, cells, truncated, onReady, server, cu
             columnDefs={colDefs}
             rowData={rowData}
             quickFilterText={quickFilter || undefined}
-            getRowStyle={app.rowStyle}
             suppressMovableColumns
             enableCellTextSelection={!writeMode}
             singleClickEdit={writeMode}

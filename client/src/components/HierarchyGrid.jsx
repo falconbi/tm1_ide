@@ -630,7 +630,6 @@ export default function HierarchyGrid({
                     rowData={rowData}
                     quickFilterText={quickFilter || undefined}
                     context={context}
-                    getRowStyle={app.rowStyle}
                     suppressMovableColumns
                     enableCellTextSelection={!onCellEdit}
                     stopEditingWhenCellsLoseFocus

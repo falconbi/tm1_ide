@@ -40,17 +40,13 @@ export function useGridAppearance() {
       headerBackgroundColor: `${accent}1f`,
       inputFocusBorder: accent,
       selectedRowBackgroundColor: `${accent}26`,
+      oddRowBackgroundColor: settings.zebra ? 'rgba(127,127,127,0.07)' : 'transparent',
     })
-  }, [settings.rowHeight, settings.fontSize, settings.accent])
+  }, [settings.rowHeight, settings.fontSize, settings.accent, settings.zebra])
 
-  const rowStyle = useCallback((params) => {
-    if (!settings.zebra) return undefined
-    return (params.node?.rowIndex ?? 0) % 2 === 1 ? { background: 'rgba(127,127,127,0.07)' } : undefined
-  }, [settings.zebra])
+  // Bump when a visual setting that needs a grid redraw changes (row height,
+  // font size, accent) — AG Grid won't re-apply these by itself.
+  const refreshKey = `${settings.rowHeight}-${settings.fontSize}-${settings.accent}`
 
-  // Bump when a visual setting that needs a grid redraw changes (zebra, row
-  // height, font size) — AG Grid won't re-apply these by itself.
-  const refreshKey = `${settings.rowHeight}-${settings.fontSize}-${settings.zebra}-${settings.accent}`
-
-  return { settings, patch, makeTheme, rowStyle, refreshKey }
+  return { settings, patch, makeTheme, refreshKey }
 }

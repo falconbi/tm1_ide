@@ -2589,7 +2589,6 @@ export default function ViewEditor({ tab }) {
                             columnDefs={colDefs}
                             rowData={rowData}
                             quickFilterText={flatQuickFilter || undefined}
-                            getRowStyle={app.rowStyle}
                             suppressMovableColumns
                             enableCellTextSelection
                             defaultColDef={{ sortable: true }}
