@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react'
 import { toast } from 'sonner'
-import { Activity, FolderOpen, Users } from 'lucide-react'
+import { Activity, FolderOpen, Users, Lock } from 'lucide-react'
 import { useStore } from '@/store'
-import { useJobs, useFilesAvailable } from '@/hooks/useApi'
+import { useJobs, useFilesAvailable, useServers } from '@/hooks/useApi'
 import { cn } from '@/lib/utils'
 import JobsMonitor from '@/components/JobsMonitor'
 import FileManager from '@/components/FileManager'
@@ -12,6 +12,10 @@ export default function StatusBar() {
   const { server, tabs, activeTab } = useStore()
   const tab        = tabs.find(t => t.id === activeTab)
   const dirtyCount = tabs.filter(t => t.dirty).length
+
+  const { data: servers = [] } = useServers()
+  const activeServer = servers.find(s => (typeof s === 'string' ? s : s.name) === server)
+  const readOnly = server ? (typeof activeServer === 'string' ? false : !!activeServer?.readOnly) : false
 
   const [showJobs,     setShowJobs]     = useState(false)
   const [showFiles,    setShowFiles]    = useState(false)
@@ -32,7 +36,14 @@ export default function StatusBar() {
   return (
     <div className="relative">
       <div className="flex items-center gap-3 px-3 py-0.5 bg-primary text-primary-foreground text-xs shrink-0 select-none">
-        <span className="font-medium">{server ?? 'No server selected'}</span>
+        <span className="font-medium flex items-center gap-1">
+          {server ?? 'No server selected'}
+          {readOnly && (
+            <span title="This server is read-only — edits are blocked" className="inline-flex items-center gap-0.5 bg-white/20 text-primary-foreground px-1 py-px rounded text-[9px] font-semibold">
+              <Lock size={9} /> read-only
+            </span>
+          )}
+        </span>
 
         {tab && (
           <span className="opacity-60">

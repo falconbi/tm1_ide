@@ -15,11 +15,12 @@ function _loadConfig() {
     const cfg = require(SERVERS_PATH)
     if (Array.isArray(cfg)) {
         return {
-            adminHosts:  [],
-            connections: [{ name: 'default', adapter: 'paw-native', pawHost: process.env.PAW_HOST, servers: cfg.map(s => s.name) }],
+            adminHosts:      [],
+            connections:     [{ name: 'default', adapter: 'paw-native', pawHost: process.env.PAW_HOST, servers: cfg.map(s => s.name) }],
+            readOnlyServers: [],
         }
     }
-    return { adminHosts: cfg.adminHosts ?? [], connections: cfg.connections ?? [] }
+    return { adminHosts: cfg.adminHosts ?? [], connections: cfg.connections ?? [], readOnlyServers: cfg.readOnlyServers ?? [] }
 }
 
 // ── TLS ───────────────────────────────────────────────────────────────────────
@@ -156,4 +157,27 @@ function listServers() {
     } catch { return [] }
 }
 
-module.exports = { getAdapter, makeClient, listServers, getDefaultAdapterType, getLoginServer }
+// Read-only posture (IMPROVEMENTS 4.2): a server can be browse-only while DEV
+// stays writable. Marked via config/servers.json:
+//   "readOnlyServers": ["PROD_TM1", ...]      — explicit per-server list
+//   a connection/adminHost with "readOnly": true makes every server it owns read-only
+function isReadOnly(serverName) {
+    if (!serverName) return false
+    try {
+        const cfg = _loadConfig()
+        const explicit = cfg.readOnlyServers ?? []
+        if (explicit.some(s => String(s).toLowerCase() === serverName.toLowerCase())) return true
+        const inHost = _findAdminHost(serverName, cfg.adminHosts ?? [])
+        if (inHost?.readOnly === true) return true
+        const conn = _findConnection(serverName, cfg.connections ?? [])
+        if (conn?.readOnly === true) return true
+    } catch {}
+    return false
+}
+
+// Server list enriched with the read-only flag for the UI indicator.
+function listServersWithFlags() {
+    return listServers().map(name => ({ name, readOnly: isReadOnly(name) }))
+}
+
+module.exports = { getAdapter, makeClient, listServers, listServersWithFlags, isReadOnly, getDefaultAdapterType, getLoginServer }

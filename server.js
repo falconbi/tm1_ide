@@ -6,7 +6,7 @@ const express   = require('express')
 const path      = require('path')
 const fs        = require('fs')
 const Anthropic = require('@anthropic-ai/sdk')
-const { makeClient, listServers, getDefaultAdapterType, getLoginServer } = require('./core/adapter_registry')
+const { makeClient, listServers, listServersWithFlags, getDefaultAdapterType, getLoginServer, isReadOnly } = require('./core/adapter_registry')
 const { loadConnections, saveConnections, getConnection, executeQuery, testConnection, getSchema, loadQueries, saveQueries } = require('./core/sql_client')
 const { createSession, createDirectSession, getSessionUser, touchSession, invalidateSession, getCachedPawSession, getCSRF, PAW_HOST } = require('./core/paw_connect')
 const cl = require('./core/change_log')
@@ -22,7 +22,16 @@ function requireSession(server) {
     return !!cl.getActiveSession(server)
 }
 const NO_SESSION_ERROR = 'No change set is open for this server — start one first (Change Log → Start change set) so this change can be attributed and deployed.'
-function gateSession(res, server) {
+const READ_ONLY_ERROR  = 'This server is read-only (PROD posture) — no changes are allowed here. Switch to a writable server to edit.'
+function gateReadOnly(res, server) {
+    if (isReadOnly(server)) {
+        res.status(409).json({ error: READ_ONLY_ERROR })
+        return false
+    }
+    return true
+}
+function gateWrite(res, server) {
+    if (!gateReadOnly(res, server)) return false
     if (!requireSession(server)) {
         res.status(409).json({ error: NO_SESSION_ERROR })
         return false
@@ -214,6 +223,7 @@ app.get('/api/log/object', (req, res) => {
 app.post('/api/log/rollback', async (req, res) => {
     try {
         const { entryId, server } = req.body
+        if (!gateReadOnly(res, server)) return
         const entry = cl.getEntryById(entryId)
         if (!entry)              return res.status(404).json({ error: 'Entry not found' })
         if (!entry.before_state) return res.status(400).json({ error: 'No before state captured for this entry' })
@@ -250,7 +260,7 @@ app.post('/api/log/rollback', async (req, res) => {
 
 // ── Servers ───────────────────────────────────────────────────────────────────
 app.get('/api/servers', (req, res) => {
-    try { res.json(listServers()) }
+    try { res.json(listServersWithFlags()) }
     catch { res.json([]) }
 })
 
@@ -269,7 +279,7 @@ app.post('/api/dimension/create', async (req, res) => {
     try {
         const { server, name } = req.body
         if (!name?.trim() || !server) return res.status(400).json({ error: 'name and server required' })
-        if (!gateSession(res, server)) return
+        if (!gateWrite(res, server)) return
         const client = makeClient(server, req.ideToken)
         await makeClient(server, req.ideToken).createDimension(name)
         const { hasSession } = cl.writeLog({ server, action: 'DIMENSION_CREATED', objectType: 'dimension', objectName: name })
@@ -283,6 +293,7 @@ app.post('/api/dimension/create', async (req, res) => {
 app.post('/api/dimension/bulk-import', async (req, res) => {
     try {
         const { server, dimension, hierarchy = dimension, rows } = req.body
+        if (!gateWrite(res, server)) return
         const client = makeClient(server, req.ideToken)
         const errors = []
 
@@ -313,6 +324,7 @@ app.post('/api/dimension/bulk-import', async (req, res) => {
 app.post('/api/dimension/bulk-attr-import', async (req, res) => {
     try {
         const { server, dimension, hierarchy = dimension, rows } = req.body
+        if (!gateWrite(res, server)) return
         const client = makeClient(server, req.ideToken)
         const errors = []
         for (const row of rows) {
@@ -337,7 +349,7 @@ app.get('/api/dimensions', async (req, res) => {
 
 app.delete('/api/dimension', async (req, res) => {
     try {
-        if (!gateSession(res, req.query.server)) return
+        if (!gateWrite(res, req.query.server)) return
         const client = makeClient(req.query.server, req.ideToken)
         await client.deleteDimension(req.query.name)
         const { hasSession } = cl.writeLog({ server: req.query.server, action: 'DIMENSION_DELETED', objectType: 'dimension', objectName: req.query.name })
@@ -352,7 +364,7 @@ app.post('/api/cube', async (req, res) => {
         const { server, name, dims } = req.body
         if (!server || !name?.trim() || !Array.isArray(dims) || dims.length < 2)
             return res.status(400).json({ error: 'Name and at least 2 dimensions are required' })
-        if (!gateSession(res, server)) return
+        if (!gateWrite(res, server)) return
         const client = makeClient(server, req.ideToken)
         await client.createCube(name.trim(), dims)
         const { hasSession } = cl.writeLog({ server, action: 'CUBE_CREATED', objectType: 'cube', objectName: name.trim() })
@@ -366,7 +378,7 @@ app.post('/api/cube', async (req, res) => {
 
 app.delete('/api/cube', async (req, res) => {
     try {
-        if (!gateSession(res, req.query.server)) return
+        if (!gateWrite(res, req.query.server)) return
         const client = makeClient(req.query.server, req.ideToken)
         await client.deleteCube(req.query.name)
         const { hasSession } = cl.writeLog({ server: req.query.server, action: 'CUBE_DELETED', objectType: 'cube', objectName: req.query.name })
@@ -376,7 +388,7 @@ app.delete('/api/cube', async (req, res) => {
 
 app.delete('/api/subset', async (req, res) => {
     try {
-        if (!gateSession(res, req.query.server)) return
+        if (!gateWrite(res, req.query.server)) return
         const client = makeClient(req.query.server, req.ideToken)
         await client.deleteSubset(req.query.dimension, req.query.name, req.query.hierarchy)
         const { hasSession } = cl.writeLog({ server: req.query.server, action: 'SUBSET_DELETED', objectType: 'subset', objectName: req.query.name, detail: req.query.dimension })
@@ -403,7 +415,7 @@ app.get('/api/processes', async (req, res) => {
 
 app.delete('/api/process', async (req, res) => {
     try {
-        if (!gateSession(res, req.query.server)) return
+        if (!gateWrite(res, req.query.server)) return
         const client = makeClient(req.query.server, req.ideToken)
         await client.deleteProcess(req.query.name)
         const { hasSession } = cl.writeLog({ server: req.query.server, action: 'PROCESS_DELETED', objectType: 'process', objectName: req.query.name })
@@ -430,6 +442,7 @@ app.get('/api/chore', async (req, res) => {
 
 app.patch('/api/chore', async (req, res) => {
     try {
+        if (!gateReadOnly(res, req.query.server)) return
         const client = makeClient(req.query.server, req.ideToken)
         await client.updateChore(req.query.name, req.body)
         res.json({ ok: true })
@@ -438,6 +451,7 @@ app.patch('/api/chore', async (req, res) => {
 
 app.delete('/api/chore', async (req, res) => {
     try {
+        if (!gateReadOnly(res, req.query.server)) return
         const client = makeClient(req.query.server, req.ideToken)
         await client.deleteChore(req.query.name)
         res.json({ ok: true })
@@ -457,7 +471,7 @@ app.get('/api/rules', async (req, res) => {
 
 app.post('/api/rules', async (req, res) => {
     try {
-        if (!gateSession(res, req.query.server)) return
+        if (!gateWrite(res, req.query.server)) return
         const client = makeClient(req.query.server, req.ideToken)
         const beforeState = { text: current?.Rules ?? '' }
         await client.patch(`Cubes('${req.query.cube}')`, { Rules: req.body.rules })
@@ -526,6 +540,7 @@ function joinContinuations(code) {
 
 app.post('/api/process/debug', async (req, res) => {
     const { server, name, params, sections, watches, breakpoints } = req.body
+    if (!gateReadOnly(res, server)) return
     const client   = makeClient(server, req.ideToken)
     const tempName = `_IDE_Debug_${Date.now()}`
     let log = '', runError = null
@@ -736,7 +751,7 @@ app.get('/api/process/log', async (req, res) => {
 
 app.post('/api/process/create', async (req, res) => {
     try {
-        if (!gateSession(res, req.query.server)) return
+        if (!gateWrite(res, req.query.server)) return
         const client = makeClient(req.query.server, req.ideToken)
         await client.post('Processes', {
             Name: req.query.name,
@@ -754,7 +769,7 @@ app.post('/api/process/create', async (req, res) => {
 
 app.post('/api/process', async (req, res) => {
     try {
-        if (!gateSession(res, req.query.server)) return
+        if (!gateWrite(res, req.query.server)) return
         const client  = makeClient(req.query.server, req.ideToken)
         const current = await client.getProcess(req.query.name).catch(() => null)
         const beforeState = current ? {
@@ -784,6 +799,7 @@ app.post('/api/process', async (req, res) => {
 })
 
 app.post('/api/process/run', async (req, res) => {
+    if (!gateReadOnly(res, req.query.server)) return
     const client   = makeClient(req.query.server, req.ideToken)
     const procName = req.query.name
     const RUN_ATTR = '__RUN_LOG'
@@ -956,7 +972,7 @@ app.get('/api/dimension/attr-grid', async (req, res) => {
 app.post('/api/dimension/attribute-def', async (req, res) => {
     try {
         const { server, dimension, name, type, hierarchy } = req.body
-        if (!gateSession(res, server)) return
+        if (!gateWrite(res, server)) return
         await makeClient(server, req.ideToken).createElementAttribute(dimension, name, type, hierarchy)
         const { hasSession } = cl.writeLog({ server, action: 'ATTRIBUTE_CREATED', objectType: 'attribute', objectName: name, detail: dimension })
         res.json({ ok: true, noSession: !hasSession })
@@ -968,7 +984,7 @@ app.post('/api/dimension/attribute-def', async (req, res) => {
 app.delete('/api/dimension/attribute-def', async (req, res) => {
     try {
         const { server, dimension, name, hierarchy } = req.query
-        if (!gateSession(res, server)) return
+        if (!gateWrite(res, server)) return
         await makeClient(server, req.ideToken).deleteElementAttribute(dimension, name, hierarchy)
         const { hasSession } = cl.writeLog({ server, action: 'ATTRIBUTE_DELETED', objectType: 'attribute', objectName: name, detail: dimension })
         res.json({ ok: true, noSession: !hasSession })
@@ -980,7 +996,7 @@ app.delete('/api/dimension/attribute-def', async (req, res) => {
 app.post('/api/dimension/attribute/convert-to-alias', async (req, res) => {
     try {
         const { server, dimension, attribute, hierarchy = dimension } = req.body
-        if (!gateSession(res, server)) return
+        if (!gateWrite(res, server)) return
         const client = makeClient(server, req.ideToken)
         const elements = await client.getElements(dimension, hierarchy)
         const pairs = await Promise.all(
@@ -1009,6 +1025,7 @@ app.post('/api/dimension/attribute/convert-to-alias', async (req, res) => {
 app.post('/api/element/attribute', async (req, res) => {
     try {
         const { server, dimension, element, attribute, value, type, hierarchy } = req.body
+        if (!gateReadOnly(res, server)) return
         await makeClient(server, req.ideToken).writeElementAttribute(dimension, element, attribute, value, type, hierarchy)
         res.json({ ok: true })
     } catch (e) {
@@ -1048,7 +1065,7 @@ app.post('/api/view/save', async (req, res) => {
     try {
         const { server, cube, name } = req.query
         const { mdx, nativeAxes } = req.body
-        if (!gateSession(res, server)) return
+        if (!gateWrite(res, server)) return
         const client  = makeClient(server, req.ideToken)
         const current = await client.getView(cube, name).catch(() => null)
         const beforeState = current
@@ -1075,7 +1092,7 @@ app.post('/api/view/save', async (req, res) => {
 app.post('/api/view/set-default', async (req, res) => {
     try {
         const { server, cube, name } = req.query
-        if (!gateSession(res, server)) return
+        if (!gateWrite(res, server)) return
         const client = makeClient(server, req.ideToken)
         await client.setDefaultView(cube, name)
         res.json({ ok: true, noSession: false })
@@ -1087,7 +1104,7 @@ app.post('/api/view/set-default', async (req, res) => {
 
 app.delete('/api/view', async (req, res) => {
     try {
-        if (!gateSession(res, req.query.server)) return
+        if (!gateWrite(res, req.query.server)) return
         const client = makeClient(req.query.server, req.ideToken)
         await client.deleteView(req.query.cube, req.query.name)
         const { hasSession } = cl.writeLog({ server: req.query.server, action: 'VIEW_DELETED', objectType: 'view', objectName: req.query.name, detail: req.query.cube })
@@ -1186,6 +1203,7 @@ app.get('/api/debug/element-attrs', async (req, res) => {
 app.post('/api/test/attr-write', async (req, res) => {
     try {
         const { server, dimension } = req.body
+        if (!gateReadOnly(res, server)) return
         const client = makeClient(server, req.ideToken)
 
         // Get first element that has at least one attribute value set
@@ -1224,7 +1242,7 @@ app.post('/api/test/attr-write', async (req, res) => {
 app.post('/api/dimension/element', async (req, res) => {
     try {
         const { server, dimension, hierarchy } = req.query
-        if (!gateSession(res, server)) return
+        if (!gateWrite(res, server)) return
         const client = makeClient(server, req.ideToken)
         await client.addElement(dimension, req.body.name, req.body.type, hierarchy)
         cl.writeLog({ server, action: 'ELEMENT_ADDED', objectType: 'dimension', objectName: req.body.name, detail: dimension })
@@ -1235,7 +1253,7 @@ app.post('/api/dimension/element', async (req, res) => {
 app.delete('/api/dimension/element', async (req, res) => {
     try {
         const { server, dimension, name, hierarchy } = req.query
-        if (!gateSession(res, server)) return
+        if (!gateWrite(res, server)) return
         const client = makeClient(server, req.ideToken)
         await client.deleteElement(dimension, name, hierarchy)
         cl.writeLog({ server, action: 'ELEMENT_DELETED', objectType: 'dimension', objectName: name, detail: dimension })
@@ -1246,7 +1264,7 @@ app.delete('/api/dimension/element', async (req, res) => {
 app.patch('/api/dimension/element', async (req, res) => {
     try {
         const { server, dimension, name, hierarchy } = req.query
-        if (!gateSession(res, server)) return
+        if (!gateWrite(res, server)) return
         const client = makeClient(server, req.ideToken)
         await client.renameElement(dimension, name, req.body.newName, hierarchy)
         cl.writeLog({ server, action: 'ELEMENT_RENAMED', objectType: 'dimension', objectName: req.body.newName, detail: `${dimension} · was: ${name}` })
@@ -1256,7 +1274,7 @@ app.patch('/api/dimension/element', async (req, res) => {
 
 app.post('/api/dimension/edge', async (req, res) => {
     try {
-        if (!gateSession(res, req.query.server)) return
+        if (!gateWrite(res, req.query.server)) return
         const client = makeClient(req.query.server, req.ideToken)
         await client.addEdge(req.query.dimension, req.body.parent, req.body.child, req.body.weight ?? 1, req.query.hierarchy)
         res.json({ ok: true })
@@ -1265,7 +1283,7 @@ app.post('/api/dimension/edge', async (req, res) => {
 
 app.patch('/api/dimension/edge', async (req, res) => {
     try {
-        if (!gateSession(res, req.query.server)) return
+        if (!gateWrite(res, req.query.server)) return
         const client = makeClient(req.query.server, req.ideToken)
         await client.updateEdgeWeight(req.query.dimension, req.query.parent, req.query.child, req.body.weight, req.query.hierarchy)
         res.json({ ok: true })
@@ -1275,7 +1293,7 @@ app.patch('/api/dimension/edge', async (req, res) => {
 app.delete('/api/dimension/edge', async (req, res) => {
     try {
         const { server, dimension, parent, child, hierarchy } = req.query
-        if (!gateSession(res, server)) return
+        if (!gateWrite(res, server)) return
         const client = makeClient(server, req.ideToken)
         await client.deleteEdge(dimension, parent, child, hierarchy)
         cl.writeLog({ server, action: 'EDGE_REMOVED', objectType: 'dimension', objectName: child, detail: `${dimension} · removed from ${parent}` })
@@ -1328,7 +1346,7 @@ app.get('/api/process/usage', async (req, res) => {
 app.post('/api/dimension/hierarchy', async (req, res) => {
     try {
         const { server, dimension, name } = req.body
-        if (!gateSession(res, server)) return
+        if (!gateWrite(res, server)) return
         await makeClient(server, req.ideToken).createHierarchy(dimension, name)
         cl.writeLog({ server, action: 'HIERARCHY_CREATED', objectType: 'dimension', objectName: name, detail: dimension })
         res.json({ ok: true })
@@ -1338,7 +1356,7 @@ app.post('/api/dimension/hierarchy', async (req, res) => {
 app.delete('/api/dimension/hierarchy', async (req, res) => {
     try {
         const { server, dimension, name } = req.query
-        if (!gateSession(res, server)) return
+        if (!gateWrite(res, server)) return
         await makeClient(server, req.ideToken).deleteHierarchy(dimension, name)
         cl.writeLog({ server, action: 'HIERARCHY_DELETED', objectType: 'dimension', objectName: name, detail: dimension })
         res.json({ ok: true })
@@ -1395,7 +1413,7 @@ app.get('/api/subset', async (req, res) => {
 
 app.post('/api/subset', async (req, res) => {
     try {
-        if (!gateSession(res, req.query.server)) return
+        if (!gateWrite(res, req.query.server)) return
         const client      = makeClient(req.query.server, req.ideToken)
         const current     = await client.getSubset(req.query.dimension, req.query.name).catch(() => null)
         const beforeState = current ? { expression: current.Expression ?? '' } : null
@@ -1420,7 +1438,7 @@ app.get('/api/subset/elements', async (req, res) => {
 
 app.post('/api/subset/static', async (req, res) => {
     try {
-        if (!gateSession(res, req.query.server)) return
+        if (!gateWrite(res, req.query.server)) return
         const client      = makeClient(req.query.server, req.ideToken)
         const currentEls  = await client.getSubsetElements(req.query.dimension, req.query.name).catch(() => null)
         const beforeState = currentEls ? { elements: currentEls.map(e => e.name) } : null
@@ -1866,6 +1884,7 @@ app.get('/api/model/dimensions', async (req, res) => {
 // ── Chore execute / activate / deactivate / create ────────────────────────────
 app.post('/api/chore/execute', async (req, res) => {
     try {
+        if (!gateReadOnly(res, req.query.server)) return
         await makeClient(req.query.server, req.ideToken).executeChore(req.query.name)
         res.json({ ok: true })
     } catch (e) { res.status(500).json({ error: e.message }) }
@@ -1873,6 +1892,7 @@ app.post('/api/chore/execute', async (req, res) => {
 
 app.post('/api/chore/activate', async (req, res) => {
     try {
+        if (!gateReadOnly(res, req.query.server)) return
         await makeClient(req.query.server, req.ideToken).activateChore(req.query.name)
         res.json({ ok: true })
     } catch (e) { res.status(500).json({ error: e.message }) }
@@ -1880,6 +1900,7 @@ app.post('/api/chore/activate', async (req, res) => {
 
 app.post('/api/chore/deactivate', async (req, res) => {
     try {
+        if (!gateReadOnly(res, req.query.server)) return
         await makeClient(req.query.server, req.ideToken).deactivateChore(req.query.name)
         res.json({ ok: true })
     } catch (e) { res.status(500).json({ error: e.message }) }
@@ -1887,6 +1908,7 @@ app.post('/api/chore/deactivate', async (req, res) => {
 
 app.post('/api/chore', async (req, res) => {
     try {
+        if (!gateReadOnly(res, req.query.server)) return
         await makeClient(req.query.server, req.ideToken).createChore(req.body)
         res.json({ ok: true })
     } catch (e) { res.status(500).json({ error: e.message }) }
@@ -2085,6 +2107,7 @@ app.get('/api/cube/annotations', async (req, res) => {
 app.post('/api/cube/annotations', async (req, res) => {
     try {
         const { server, cube, dimElemPairs, text } = req.body
+        if (!gateReadOnly(res, server)) return
         res.json(await makeClient(server, req.ideToken).addAnnotation(cube, dimElemPairs, text))
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
@@ -2092,6 +2115,7 @@ app.post('/api/cube/annotations', async (req, res) => {
 app.delete('/api/cube/annotations/:id', async (req, res) => {
     try {
         const { server } = req.query
+        if (!gateReadOnly(res, server)) return
         res.json(await makeClient(server, req.ideToken).deleteAnnotation(req.params.id))
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
@@ -2141,6 +2165,7 @@ app.get('/api/files/content', async (req, res) => {
 app.post('/api/files/upload', express.raw({ type: '*/*', limit: '50mb' }), async (req, res) => {
     try {
         const { server, path: p, name } = req.query
+        if (!gateReadOnly(res, server)) return
         const pathParts = p ? JSON.parse(p) : ['Files']
         const client = makeClient(server, req.ideToken)
         // Create the document entry (ignore 409 if already exists)
@@ -2155,6 +2180,7 @@ app.post('/api/files/upload', express.raw({ type: '*/*', limit: '50mb' }), async
 app.delete('/api/files', async (req, res) => {
     try {
         const { server, path: p, name } = req.query
+        if (!gateReadOnly(res, server)) return
         const pathParts = p ? JSON.parse(p) : ['Files']
         await makeClient(server, req.ideToken).deleteFile(pathParts, name)
         res.json({ ok: true })
@@ -2226,18 +2252,21 @@ app.get('/api/server/version', async (req, res) => {
 app.patch('/api/admin/configuration', async (req, res) => {
     try {
         const { server, section = 'Administration', values } = req.body
+        if (!gateReadOnly(res, server)) return
         res.json(await makeClient(server, req.ideToken).patchStaticConfiguration(section, values))
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
 app.post('/api/admin/maintenance/enable', async (req, res) => {
     try {
+        if (!gateReadOnly(res, req.body.server)) return
         res.json(await makeClient(req.body.server, req.ideToken).enableMaintenanceMode())
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
 app.post('/api/admin/maintenance/disable', async (req, res) => {
     try {
+        if (!gateReadOnly(res, req.body.server)) return
         res.json(await makeClient(req.body.server, req.ideToken).disableMaintenanceMode())
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
@@ -2245,6 +2274,7 @@ app.post('/api/admin/maintenance/disable', async (req, res) => {
 // ── User management ───────────────────────────────────────────────────────────
 app.post('/api/users/provision', async (req, res) => {
     try {
+        if (!gateReadOnly(res, PAW_LOGIN_SERVER)) return
         const { name, password, groups = [], friendlyName = '' } = req.body
         const cl = makeClient(PAW_LOGIN_SERVER, req.ideToken)
         await cl.createClient(name, password, friendlyName)
@@ -2261,6 +2291,7 @@ app.post('/api/users/provision', async (req, res) => {
 
 app.post('/api/users/:name/password', async (req, res) => {
     try {
+        if (!gateReadOnly(res, PAW_LOGIN_SERVER)) return
         const { password } = req.body
         const cl = makeClient(PAW_LOGIN_SERVER, req.ideToken)
         await cl.resetClientPassword(req.params.name, password)
@@ -2280,6 +2311,7 @@ app.get('/api/users', async (req, res) => {
 
 app.post('/api/users', async (req, res) => {
     try {
+        if (!gateReadOnly(res, PAW_LOGIN_SERVER)) return
         const { name, password, friendlyName } = req.body
         const cl = makeClient(PAW_LOGIN_SERVER, req.ideToken)
         res.json(await cl.createClient(name, password, friendlyName))
@@ -2288,6 +2320,7 @@ app.post('/api/users', async (req, res) => {
 
 app.patch('/api/users/:name', async (req, res) => {
     try {
+        if (!gateReadOnly(res, PAW_LOGIN_SERVER)) return
         const { server: _s, ...patch } = req.body
         const cl = makeClient(PAW_LOGIN_SERVER, req.ideToken)
         await cl.updateClient(req.params.name, patch)
@@ -2297,6 +2330,7 @@ app.patch('/api/users/:name', async (req, res) => {
 
 app.delete('/api/users/:name', async (req, res) => {
     try {
+        if (!gateReadOnly(res, PAW_LOGIN_SERVER)) return
         const cl = makeClient(PAW_LOGIN_SERVER, req.ideToken)
         await cl.deleteClient(req.params.name)
         res.json({ ok: true })
@@ -2319,6 +2353,7 @@ app.get('/api/users/:name/groups', async (req, res) => {
 
 app.post('/api/users/:name/groups', async (req, res) => {
     try {
+        if (!gateReadOnly(res, PAW_LOGIN_SERVER)) return
         const { group } = req.body
         const cl = makeClient(PAW_LOGIN_SERVER, req.ideToken)
         await cl.addClientToGroup(req.params.name, group)
@@ -2332,6 +2367,7 @@ app.post('/api/users/:name/groups', async (req, res) => {
 
 app.delete('/api/users/:name/groups/:group', async (req, res) => {
     try {
+        if (!gateReadOnly(res, PAW_LOGIN_SERVER)) return
         const cl = makeClient(PAW_LOGIN_SERVER, req.ideToken)
         await cl.removeClientFromGroup(req.params.name, req.params.group)
         res.json({ ok: true })
@@ -2357,6 +2393,7 @@ app.post('/api/period-builder/run', async (req, res) => {
     if (!server || !Array.isArray(processes)) {
         return res.status(400).json({ ok: false, error: 'server and processes required' })
     }
+    if (!gateReadOnly(res, server)) return
     try {
         const client = makeClient(server, req.ideToken)
         for (const proc of processes) {
@@ -2446,6 +2483,7 @@ app.post('/api/sql/post-to-ti', async (req, res) => {
         const { connectionId, sql, server, processName, createNew = false } = req.body
         if (!connectionId || !sql || !server || !processName)
             return res.status(400).json({ error: 'connectionId, sql, server and processName are required' })
+        if (!gateReadOnly(res, server)) return
 
         const conn = getConnection(connectionId)
         if (!conn) return res.status(404).json({ error: 'Connection not found' })
@@ -2564,6 +2602,7 @@ app.get('/api/whoami', async (req, res) => {
 app.post('/api/cells/write', async (req, res) => {
     try {
         const { server, cube, dims, value } = req.body
+        if (!gateReadOnly(res, server)) return
         console.log('[cells/write] REQUEST BODY:', JSON.stringify({ server, cube, dims, value }))
         if (!server || !cube || !Array.isArray(dims) || dims.length === 0)
             return res.status(400).json({ error: 'server, cube, and dims are required' })
@@ -2946,6 +2985,7 @@ app.put('/api/admin/catalog-overrides', (req, res) => {
 app.post('/api/admin/validate-ti-functions', async (req, res) => {
     try {
         const { server, tests } = req.body
+        if (!gateReadOnly(res, server)) return
         const client = makeClient(server, req.ideToken)
         const results = []
         for (const { name, code } of tests) {

@@ -51,7 +51,11 @@ export default function ServerSelector() {
         className="w-full bg-sidebar text-sidebar-foreground text-sm rounded border border-sidebar-border px-2 py-1 focus:outline-none focus:ring-1 focus:ring-sidebar-ring"
       >
         <option value="">— select server —</option>
-        {servers.map(s => <option key={s} value={s}>{s}</option>)}
+        {servers.map(s => {
+          const name = typeof s === 'string' ? s : (s?.name ?? '')
+          const ro   = typeof s === 'string' ? false : !!s?.readOnly
+          return <option key={name} value={name}>{name}{ro ? '  (read-only)' : ''}</option>
+        })}
       </select>
     </div>
   )
