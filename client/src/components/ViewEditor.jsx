@@ -7,7 +7,7 @@ import { useStore } from '@/store'
 import { subsetApplyCallbacks } from '@/lib/subsetCallbacks'
 import { useCubeDimensions, useSubsets, useElementsTree, useViews, useExecuteMDX, useViewAxes, useSaveView, useSetDefaultView, usePawBookUsage, useDimAttributes, useViewUsage, useMultiFormatAttrs, useConflictCheck, useGenerateViewMDX, useConfig } from '@/hooks/useApi'
 import { toast } from 'sonner'
-import { RefreshCw, Loader2, Table2, GripVertical, GripHorizontal, X, LayoutGrid, Rows3, Columns3, Filter, ZapOff, Zap, ChevronLeft, ChevronRight, PencilLine, Save, Code2, Eye, ChevronDown, BookOpen, ChevronUp, Locate, MapPin, WrapText, Braces, History, AlertTriangle, Search, Cog, Box, FileSearch, Rss, Sparkles, Clock, Check } from 'lucide-react'
+import { RefreshCw, Loader2, Table2, GripVertical, GripHorizontal, X, LayoutGrid, Rows3, Columns3, Filter, ZapOff, Zap, ChevronLeft, ChevronRight, PencilLine, Save, Code2, Eye, ChevronDown, BookOpen, ChevronUp, Locate, MapPin, WrapText, Braces, History, AlertTriangle, Search, Cog, Box, FileSearch, Rss, Sparkles, Clock, Check, ArrowUpDown } from 'lucide-react'
 import TransactionLogPanel from '@/components/TransactionLogPanel'
 import CellContextMenu from '@/components/CellContextMenu'
 import { cn, tm1NumericComparator } from '@/lib/utils'
@@ -2499,6 +2499,14 @@ export default function ViewEditor({ tab }) {
                 <div className="shrink-0 px-3 py-1 bg-yellow-500/10 border-b border-yellow-500/30 text-yellow-600 dark:text-yellow-400 text-xs flex items-center gap-1.5">
                     <span>⚠</span>
                     <span>Result capped at 50,000 cells — add filters or subsets to narrow the view.</span>
+                </div>
+            )}
+
+            {/* Flat-mode hint */}
+            {flatMode && (
+                <div className="shrink-0 px-3 py-1 bg-sky-500/10 border-b border-sky-500/30 text-sky-600 dark:text-sky-400 text-xs flex items-center gap-1.5">
+                    <ArrowUpDown size={11} />
+                    <span>Flat view — click a column header to sort. Toggle <span className="font-medium">Flat</span> off to return to the hierarchy view.</span>
                 </div>
             )}
 
