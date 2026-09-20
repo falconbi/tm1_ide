@@ -2,15 +2,13 @@ import { useRef, useMemo, useCallback, useEffect, useState } from 'react'
 import { useStore } from '@/store'
 import { useCubeDimensions } from '@/hooks/useApi'
 import { AgGridReact } from 'ag-grid-react'
-import { AllCommunityModule, ModuleRegistry, themeBalham, colorSchemeDark, colorSchemeLight } from 'ag-grid-community'
+import { AllCommunityModule, ModuleRegistry } from 'ag-grid-community'
 import { toast } from 'sonner'
 import GridToolbar from '../GridToolbar'
 import { tm1NumericComparator } from '@/lib/utils'
+import { useGridAppearance } from '@/lib/grid-appearance'
 
 ModuleRegistry.registerModules([AllCommunityModule])
-
-const lightTheme = themeBalham.withPart(colorSchemeLight).withParams({ fontSize: 12, rowHeight: 24, headerHeight: 28 })
-const darkTheme  = themeBalham.withPart(colorSchemeDark).withParams({ fontSize: 12, rowHeight: 24, headerHeight: 28 })
 
 function parseDimFromUniqueName(un) {
   return un?.match(/^\[([^\]]+)\]/)?.[1] ?? ''
@@ -22,7 +20,7 @@ function isConsolidatedType(t) {
   return s === 'c' || s === '3' || s === 'consolidated' || s === 'cons' || t === 3 || t === '3' || (typeof t === 'string' && s.includes('cons'))
 }
 
-function parseCellset(data) {
+function parseCellset(data, useFormat = true) {
   if (!data?.Axes?.length) return null
   const colAx = data.Axes.find(a => a.Ordinal === 0)
   const rowAx = data.Axes.find(a => a.Ordinal === 1)
@@ -54,7 +52,9 @@ function parseCellset(data) {
   const grid = (rows.length ? rows : [[]]).map((_, ri) =>
     cols.map((_, ci) => {
       const c = cellMap[ri * numCols + ci]
-      return c ? (c.FormattedValue ?? c.Value ?? '') : ''
+      if (!c) return ''
+      // numFormat on → TM1's FormattedValue; off → the raw server Value
+      return useFormat ? (c.FormattedValue ?? c.Value ?? '') : (c.Value ?? c.FormattedValue ?? '')
     })
   )
 
@@ -86,7 +86,7 @@ function parseCellset(data) {
   return { cols, rows, rowDimNames, colDimNames, grid, cellCoords, cellUpdateable, colIsConsolidated, rowIsConsolidated }
 }
 
-function buildGridData(parsed) {
+function buildGridData(parsed, consEmphasis = false) {
   if (!parsed) return { colDefs: [], rowData: [] }
   const { cols, rows, rowDimNames, grid, colIsConsolidated, rowIsConsolidated, cellUpdateable } = parsed
   const rowDimCount = rowDimNames.length || 1
@@ -122,7 +122,7 @@ function buildGridData(parsed) {
         const ri = p.data?.__ri__ ?? p.node.rowIndex ?? 0
         const updatable = cellUpdateable?.[ri]?.[i]
         const isLocked = updatable === false || (updatable == null && (colIsConsolidated[i] || (rowIsConsolidated[ri] ?? false)))
-        if (isLocked) return { color: '#9ca3af', background: 'rgba(100,100,100,0.06)', fontStyle: 'italic' }
+        if (isLocked) return { color: '#9ca3af', background: consEmphasis ? 'rgba(59,130,246,0.10)' : 'rgba(100,100,100,0.06)', fontStyle: 'italic' }
         if (p.value === '' || p.value == null) return { color: '#888' }
         return {}
       },
@@ -171,6 +171,7 @@ async function writeCell(server, cube, coords, slicerCoords, value, cubeDimOrder
 
 export default function ResultGrid({ axes, cells, truncated, onReady, server, cube, slicerCoords, writable, dimOrder, storageKey }) {
   const { dark } = useStore()
+  const app = useGridAppearance()
   const gridRef = useRef(null)
   const gridWrapRef = useRef(null)
   const writeMode = !!writable && !!server && !!cube
@@ -224,10 +225,10 @@ export default function ResultGrid({ axes, cells, truncated, onReady, server, cu
 
   const parsed = useMemo(() => {
     if (!axes?.length || !cells) return null
-    return parseCellset({ Axes: axes, Cells: cells })
-  }, [axes, cells])
+    return parseCellset({ Axes: axes, Cells: cells }, app.settings.numFormat)
+  }, [axes, cells, app.settings.numFormat])
 
-  const { colDefs: baseColDefs, rowData } = useMemo(() => buildGridData(parsed), [parsed])
+  const { colDefs: baseColDefs, rowData } = useMemo(() => buildGridData(parsed, app.settings.consEmphasis), [parsed, app.settings.consEmphasis])
 
   // Freeze top — set via the grid API (not a React prop) to avoid AG Grid's
   // re-render crash (issue #10278 / AG-14590). setTimeout defers past the
@@ -463,6 +464,7 @@ export default function ResultGrid({ axes, cells, truncated, onReady, server, cu
         onToggleFreeze={() => setFreezeTop(f => !f)}
         showCsv
         onCsv={handleExportCSV}
+        appearance={app}
       />
       <div className="flex-1 min-h-0">
         {colDefs.length === 0 ? (
@@ -470,10 +472,11 @@ export default function ResultGrid({ axes, cells, truncated, onReady, server, cu
         ) : (
           <AgGridReact
             ref={gridRef}
-            theme={dark ? darkTheme : lightTheme}
+            theme={app.makeTheme(dark)}
             columnDefs={colDefs}
             rowData={rowData}
             quickFilterText={quickFilter || undefined}
+            getRowStyle={app.rowStyle}
             suppressMovableColumns
             enableCellTextSelection={!writeMode}
             singleClickEdit={writeMode}

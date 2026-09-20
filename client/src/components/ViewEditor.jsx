@@ -1,6 +1,6 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react'
 import { AgGridReact } from 'ag-grid-react'
-import { AllCommunityModule, ModuleRegistry, themeBalham, colorSchemeDark, colorSchemeLight } from 'ag-grid-community'
+import { AllCommunityModule, ModuleRegistry } from 'ag-grid-community'
 import { DndContext, DragOverlay, PointerSensor, useSensor, useSensors, useDroppable, useDraggable } from '@dnd-kit/core'
 import MonacoEditor from '@monaco-editor/react'
 import { useStore } from '@/store'
@@ -11,6 +11,7 @@ import { RefreshCw, Loader2, Table2, GripVertical, GripHorizontal, X, LayoutGrid
 import TransactionLogPanel from '@/components/TransactionLogPanel'
 import CellContextMenu from '@/components/CellContextMenu'
 import { cn, tm1NumericComparator } from '@/lib/utils'
+import { useGridAppearance } from '@/lib/grid-appearance'
 
 ModuleRegistry.registerModules([AllCommunityModule])
 
@@ -24,9 +25,6 @@ function saveViewSessionEntry(entry) {
     list.unshift({ ...entry, time: Date.now() })
     localStorage.setItem(VIEW_SESSIONS_KEY, JSON.stringify(list.slice(0, 30)))
 }
-
-const lightTheme = themeBalham.withPart(colorSchemeLight).withParams({ fontSize: 12, rowHeight: 24, headerHeight: 28 })
-const darkTheme  = themeBalham.withPart(colorSchemeDark).withParams({ fontSize: 12, rowHeight: 24, headerHeight: 28 })
 
 import { buildMDX } from '@core/mdxBuilder.js'
 import HierarchyGrid from '@/components/HierarchyGrid'
@@ -130,7 +128,7 @@ function lookupFormat(dim, elem, formatMap) {
     return null
 }
 
-function cellsetToHierarchyData(cellset, formatMap = {}, pageMembers = [], suppressZeros = 'none') {
+function cellsetToHierarchyData(cellset, formatMap = {}, pageMembers = [], suppressZeros = 'none', useFormat = true) {
     if (!cellset?.Axes?.length) return null
     const colAxis = cellset.Axes.find(a => a.Ordinal === 0)
     const rowAxis = cellset.Axes.find(a => a.Ordinal === 1)
@@ -200,8 +198,8 @@ function cellsetToHierarchyData(cellset, formatMap = {}, pageMembers = [], suppr
             const fv = cell?.FormattedValue
             let display
             if (fmt && rawVal != null) {
-                display = applyTm1Format(rawVal, fmt)
-            } else if (fv != null && fv !== '') {
+                display = useFormat ? applyTm1Format(rawVal, fmt) : String(rawVal)
+            } else if (useFormat && fv != null && fv !== '') {
                 display = stripTm1TypePrefix(fv)
             } else {
                 display = rawVal ?? null
@@ -325,7 +323,13 @@ function applyTm1Format(value, fmt) {
     return out
 }
 
-function parseCellset(data, formatMap = {}, pageMembers = []) {
+function isConsolidatedType(t) {
+    if (t == null) return false
+    const s = String(t).toLowerCase().trim()
+    return s === 'c' || s === '3' || s === 'consolidated' || s === 'cons' || t === 3 || t === '3' || (typeof t === 'string' && s.includes('cons'))
+}
+
+function parseCellset(data, formatMap = {}, pageMembers = [], useFormat = true) {
     if (!data?.Axes?.length) return null
     const colAx = data.Axes.find(a => a.Ordinal === 0)
     const rowAx = data.Axes.find(a => a.Ordinal === 1)
@@ -342,6 +346,9 @@ function parseCellset(data, formatMap = {}, pageMembers = []) {
     const cellMap = {}
     ;(data.Cells ?? []).forEach(c => { cellMap[c.Ordinal] = c })
 
+    const colIsConsolidated = colTuples.map(t => (t.Members ?? []).some(m => isConsolidatedType(m.Type)))
+    const rowIsConsolidated = rowTuples.map(t => (t.Members ?? []).some(m => isConsolidatedType(m.Type)))
+
     const grid = (rows.length ? rows : [[]]).map((_, ri) =>
         colTuples.map((tuple, ci) => {
             const c = cellMap[ri * numCols + ci]
@@ -350,21 +357,21 @@ function parseCellset(data, formatMap = {}, pageMembers = []) {
             const fmtKey = elemNames.find(n => formatMap[n]) || pageMembers.find(n => formatMap[n])
             if (fmtKey) {
                 const v = c.Value
-                return v != null ? applyTm1Format(v, formatMap[fmtKey]) : ''
+                return v != null ? (useFormat ? applyTm1Format(v, formatMap[fmtKey]) : String(v)) : ''
             }
             const fv = c.FormattedValue
-            if (fv !== '' && fv != null) return stripTm1TypePrefix(fv)
+            if (useFormat && fv !== '' && fv != null) return stripTm1TypePrefix(fv)
             const v = c.Value
             return v != null ? String(v) : ''
         })
     )
 
-    return { cols, rows, rowDimNames, grid }
+    return { cols, rows, rowDimNames, grid, colIsConsolidated, rowIsConsolidated }
 }
 
-function buildGridData(parsed) {
+function buildGridData(parsed, consEmphasis = false) {
     if (!parsed) return { colDefs: [], rowData: [] }
-    const { cols, rows, rowDimNames, grid } = parsed
+    const { cols, rows, rowDimNames, grid, colIsConsolidated, rowIsConsolidated } = parsed
     const rowDimCount = rowDimNames.length || 1
 
     const rowColDefs = Array.from({ length: rowDimCount }, (_, i) => ({
@@ -389,7 +396,13 @@ function buildGridData(parsed) {
             field: `c${i}`, headerName: c, width: 110, minWidth: 60, resizable: true,
             comparator: tm1NumericComparator,
             valueFormatter: p => (p.value === '' || p.value == null) ? '—' : String(p.value),
-            cellStyle: p => (p.value === '' || p.value == null) ? { color: '#888' } : {},
+            cellStyle: p => {
+                if (p.value === '' || p.value == null) return { color: '#888' }
+                if (consEmphasis && (colIsConsolidated?.[i] || rowIsConsolidated?.[p.data?.__ri__ ?? p.node?.rowIndex])) {
+                    return { background: 'rgba(59,130,246,0.10)' }
+                }
+                return {}
+            },
         })),
     ]
 
@@ -1157,6 +1170,7 @@ function TraceSidePanel({ ctx, onClose }) {
 
 export default function ViewEditor({ tab }) {
     const { dark, openTab, patchTab } = useStore()
+    const app = useGridAppearance()
     const rulesVersion = useStore(s => s.rulesVersions[`${tab.server}::${tab.cube}`] ?? 0)
     const { data: cubeDims = [] } = useCubeDimensions(tab.server, tab.cube)
     const { data: views    = [] } = useViews(tab.server, tab.cube)
@@ -1827,9 +1841,9 @@ export default function ViewEditor({ tab }) {
     const { data: formatAttrs = {} } = useMultiFormatAttrs(tab.server, allAxesDims)
     const pageMembers = useMemo(() => axes.pages.map(p => p.member).filter(Boolean), [axes.pages])
     const parsed = useMemo(() => {
-        return displayResult ? parseCellset(displayResult, formatAttrs, pageMembers) : null
-    }, [displayResult, formatAttrs, allAxesDims, pageMembers])
-    const { colDefs: baseFlatColDefs, rowData } = useMemo(() => buildGridData(parsed), [parsed])
+        return displayResult ? parseCellset(displayResult, formatAttrs, pageMembers, app.settings.numFormat) : null
+    }, [displayResult, formatAttrs, allAxesDims, pageMembers, app.settings.numFormat])
+    const { colDefs: baseFlatColDefs, rowData } = useMemo(() => buildGridData(parsed, app.settings.consEmphasis), [parsed, app.settings.consEmphasis])
 
     // Apply persisted widths to the flat fallback grid
     const colDefs = useMemo(() => {
@@ -1901,7 +1915,7 @@ export default function ViewEditor({ tab }) {
         return colDims.map((dim, i) => buildHierarchyFromElements(trees[i], dim)).filter(Boolean)
     }, [colDims, cTree0, cTree1, cTree2, cTree3])
 
-    const hierarchyData = useMemo(() => cellsetToHierarchyData(result, formatAttrs, pageMembers, suppressZeros), [result, formatAttrs, pageMembers, suppressZeros])
+    const hierarchyData = useMemo(() => cellsetToHierarchyData(result, formatAttrs, pageMembers, suppressZeros, app.settings.numFormat), [result, formatAttrs, pageMembers, suppressZeros, app.settings.numFormat])
 
     // Constrain hierarchies to only members the cellset actually returned
     const constrainedHierarchies = useMemo(() => {
@@ -2554,14 +2568,16 @@ export default function ViewEditor({ tab }) {
                         onToggleFreeze={() => setFlatFreezeTop(f => !f)}
                         showCsv
                         onCsv={handleFlatExportCSV}
+                        appearance={app}
                     />
                     <div className="flex-1 min-h-0">
                         <AgGridReact
                             ref={flatGridRef}
-                            theme={dark ? darkTheme : lightTheme}
+                            theme={app.makeTheme(dark)}
                             columnDefs={colDefs}
                             rowData={rowData}
                             quickFilterText={flatQuickFilter || undefined}
+                            getRowStyle={app.rowStyle}
                             suppressMovableColumns
                             enableCellTextSelection
                             defaultColDef={{ sortable: true }}

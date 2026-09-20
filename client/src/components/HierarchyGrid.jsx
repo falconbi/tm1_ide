@@ -22,20 +22,15 @@
 
 import { useState, useMemo, useCallback, useRef, useEffect } from 'react'
 import { AgGridReact } from 'ag-grid-react'
-import { AllCommunityModule, ModuleRegistry, themeBalham, colorSchemeDark, colorSchemeLight } from 'ag-grid-community'
+import { AllCommunityModule, ModuleRegistry } from 'ag-grid-community'
 import { ChevronRight, ChevronDown } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import GridToolbar from './GridToolbar'
+import { useGridAppearance } from '@/lib/grid-appearance'
 
 ModuleRegistry.registerModules([AllCommunityModule])
 
 const HDR_ROW_H = 28
-
-function makeTheme(dark, numColDims) {
-    const headerHeight = Math.max(HDR_ROW_H, numColDims * HDR_ROW_H)
-    const base = dark ? themeBalham.withPart(colorSchemeDark) : themeBalham.withPart(colorSchemeLight)
-    return base.withParams({ fontSize: 12, rowHeight: 26, headerHeight })
-}
 
 // ── Shared algorithms ─────────────────────────────────────────────────────────
 
@@ -242,6 +237,7 @@ export default function HierarchyGrid({
 }) {
     const gridRef       = useRef(null)
     const prevColDefs   = useRef(null)
+    const app           = useGridAppearance()
 
     const [rowExpandedSets, setRowExpandedSets] = useState(() => initExpandedSets(hierarchies))
     const [colExpandedSets, setColExpandedSets] = useState(() => initExpandedSets(columnHierarchies))
@@ -510,7 +506,11 @@ export default function HierarchyGrid({
                             cursor:     isWritable ? 'text' : 'default',
                             background: isZeroRule
                                 ? (dark ? 'rgba(245,158,11,0.15)' : 'rgba(245,158,11,0.12)')
-                                : isConsolidated ? (dark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)') : undefined,
+                                : isConsolidated
+                                    ? (app.settings.consEmphasis
+                                        ? 'rgba(59,130,246,0.10)'
+                                        : (dark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)'))
+                                    : undefined,
                             borderLeft: isZeroRule ? '2px solid rgba(245,158,11,0.6)' : undefined,
                         }
                     },
@@ -526,7 +526,7 @@ export default function HierarchyGrid({
         }
         prevColDefs.current = newDefs
         return newDefs
-    }, [hierarchies, visibleColumns, colNodeMap, columnHierarchies, multiCol, onCellEdit, dark])
+    }, [hierarchies, visibleColumns, colNodeMap, columnHierarchies, multiCol, onCellEdit, dark, app.settings.consEmphasis])
 
     // ── AG Grid context ───────────────────────────────────────────────────────
 
@@ -547,7 +547,7 @@ export default function HierarchyGrid({
         onCellEdit({ tupleKey: e.data.__tupleKey__, colId: e.colDef.field, value: e.newValue })
     }, [onCellEdit])
 
-    const theme = useMemo(() => makeTheme(dark, Math.max(1, columnHierarchies.length)), [dark, columnHierarchies.length])
+    const theme = useMemo(() => app.makeTheme(dark, Math.max(HDR_ROW_H, Math.max(1, columnHierarchies.length) * HDR_ROW_H)), [dark, columnHierarchies.length, app.makeTheme])
 
     const handleResetWidths = useCallback(() => {
         savedWidthsRef.current = {}
@@ -608,6 +608,7 @@ export default function HierarchyGrid({
                 onToggleFreeze={() => setFreezeTop(f => !f)}
                 showCsv
                 onCsv={handleExportCSV}
+                appearance={app}
             />
             <div className="flex-1 min-h-0">
                 <AgGridReact
@@ -617,6 +618,7 @@ export default function HierarchyGrid({
                     rowData={rowData}
                     quickFilterText={quickFilter || undefined}
                     context={context}
+                    getRowStyle={app.rowStyle}
                     suppressMovableColumns
                     enableCellTextSelection={!onCellEdit}
                     stopEditingWhenCellsLoseFocus
