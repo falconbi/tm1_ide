@@ -874,6 +874,7 @@ export default function ProcessEditor({ tab }) {
   const runProcess    = useRunProcess()
   const createProcess = useCreateProcess()
   const registeredRef    = useRef(false)
+  const disposablesRef   = useRef([])
   const decorationIdsRef = useRef({})
   const debugProcess     = useDebugProcess()
 
@@ -885,6 +886,14 @@ export default function ProcessEditor({ tab }) {
   const [showDebugRun, setShowDebugRun] = useState(false)
   const [checkResults, setCheckResults] = useState(null)
   const [showCheck, setShowCheck]       = useState(false)
+
+  // Dispose this tab's Monaco completion provider on unmount — Monaco registers
+  // providers globally, so without disposal every tab switch adds another copy
+  // and suggestions appear duplicated.
+  useEffect(() => () => {
+    disposablesRef.current.forEach(d => d?.dispose?.())
+    disposablesRef.current = []
+  }, [])
 
   const SECTION_TO_KEY = { Prolog: 'PrologProcedure', Metadata: 'MetaDataProcedure', Data: 'DataProcedure', Epilog: 'EpilogProcedure' }
 
@@ -995,8 +1004,10 @@ export default function ProcessEditor({ tab }) {
       lineHeight: editorSettings.lineHeight ?? undefined,
     })
     if (!registeredRef.current) {
-      registerTM1Completions(monaco, () => server, () => serverVersion)
-      registerTICompletions(monaco, () => ({ server: tab.server ?? server, version: serverVersion }))
+      const d1 = registerTM1Completions(monaco, () => server, () => serverVersion)
+      const d2 = registerTICompletions(monaco, () => ({ server: tab.server ?? server, version: serverVersion }))
+      if (d1) disposablesRef.current.push(d1)
+      if (d2) disposablesRef.current.push(d2)
       registerTM1Theme(monaco, dark)
       registeredRef.current = true
     }

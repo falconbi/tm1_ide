@@ -13,7 +13,7 @@ import ChoreEditor from '@/components/ChoreEditor'
 import GuidedMDXBuilder from '@/components/GuidedMDXBuilder'
 import CubeEditor from '@/components/CubeEditor'
 import { toast } from 'sonner'
-import { GitBranch, ChevronRight, ChevronDown, Loader2, ChevronsUpDown, ChevronsDownUp, ListTree, AlignLeft, Settings, Locate, Braces, Save, Map, Microscope, X, Plus, Trash2, History, ShieldCheck, Rss, AlertTriangle, AlertCircle, ChevronUp } from 'lucide-react'
+import { GitBranch, ChevronRight, ChevronDown, Loader2, ChevronsUpDown, ChevronsDownUp, ListTree, AlignLeft, Settings, Locate, Braces, Save, Map, Microscope, X, Plus, Trash2, History, ShieldCheck, Rss, AlertTriangle, AlertCircle, ChevronUp, HelpCircle } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { loadSettings, saveSettings } from '@/lib/formatters/settings.js'
 import { formatRules } from '@/lib/formatters/rules-formatter.js'
@@ -29,6 +29,7 @@ import SessionReportTab from '@/components/SessionReportTab'
 import { ConflictBanner, ConflictSaveWarning } from '@/components/ConflictBanner'
 import DiffViewerModal from '@/components/DiffViewerModal'
 import CubeMapEditor from '@/components/CubeMapEditor'
+import HelpPanel from '@/components/HelpPanel'
 
 // ── Lineage panel ─────────────────────────────────────────────────────────────
 
@@ -342,11 +343,13 @@ function RulesEditor({ tab, onCursor }) {
   const { data, isLoading } = useRules(tab.server, tab.cube)
   const saveRules = useSaveRules()
   const registeredRef = useRef(false)
+  const disposablesRef = useRef([])
   const editorRef = useRef(null)
   const monacoRef = useRef(null)
   const formatPopupRef = useRef(null)
   const [showLineage, setShowLineage] = useState(false)
   const [showSnippets, setShowSnippets] = useState(false)
+  const [showHelp, setShowHelp] = useState(false)
   const [showMinimap, setShowMinimap] = useState(() => loadSettings().editor?.minimap?.rules ?? false)
   const [showTrace, setShowTrace] = useState(false)
   const [showHistory, setShowHistory] = useState(false)
@@ -365,6 +368,14 @@ function RulesEditor({ tab, onCursor }) {
       .then(r => r.json()).then(d => setCubeDims(Array.isArray(d) ? d : []))
       .catch(() => setCubeDims([]))
   }, [showTrace])
+
+  // Dispose this tab's Monaco completion provider on unmount — Monaco registers
+  // providers globally, so without disposal every tab switch adds another copy
+  // and suggestions appear duplicated.
+  useEffect(() => () => {
+    disposablesRef.current.forEach(d => d?.dispose?.())
+    disposablesRef.current = []
+  }, [])
   const [regionsCollapsed, setRegionsCollapsed] = useState(false)
   const [showRegionMenu, setShowRegionMenu] = useState(false)
   const [showFormatPopup, setShowFormatPopup] = useState(false)
@@ -554,8 +565,10 @@ function RulesEditor({ tab, onCursor }) {
       lineHeight: editorSettings.lineHeight ?? undefined,
     })
     if (!registeredRef.current) {
-      registerTM1Completions(monaco, () => server, () => serverVersion)
-      registerRulesCompletions(monaco, () => ({ server: tab.server ?? server, cube: tab.cube, version: serverVersion }))
+      const d1 = registerTM1Completions(monaco, () => server, () => serverVersion)
+      const d2 = registerRulesCompletions(monaco, () => ({ server: tab.server ?? server, cube: tab.cube, version: serverVersion }))
+      if (d1) disposablesRef.current.push(d1)
+      if (d2) disposablesRef.current.push(d2)
       registerTM1Theme(monaco, dark)
       registeredRef.current = true
     }
@@ -915,7 +928,15 @@ function RulesEditor({ tab, onCursor }) {
             <GitBranch size={11} />
             Lineage
           </button>
+          <button
+            onClick={() => setShowHelp(true)}
+            className="flex items-center gap-1 px-2 py-1 rounded text-xs border bg-background/80 border-border text-muted-foreground hover:text-foreground transition-colors"
+            title="Help — Rules Editor"
+          >
+            <HelpCircle size={11} />
+          </button>
         </div>
+        <HelpPanel open={showHelp} onClose={() => setShowHelp(false)} area="rules" />
         <MonacoEditor
           height="100%"
           language="tm1rules"
