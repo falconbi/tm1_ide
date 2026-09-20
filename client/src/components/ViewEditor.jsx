@@ -921,7 +921,8 @@ function RuleBreakdown({ server, statements, components, dimElemPairs, onDrill }
         const m = arg.match(attrArgRx)
         if (!m) return null
         const elem = resolveArg(m[2].trim(), dimElemPairs)
-        return attrValues[`${m[1]}::${elem}`]?.[m[3]] ?? null
+        const value = attrValues[`${m[1]}::${elem}`]?.[m[3]]
+        return value != null ? { value: String(value), source: arg } : null
     }
 
     let dbIdx = 0
@@ -947,8 +948,14 @@ function RuleBreakdown({ server, statements, components, dimElemPairs, onDrill }
                                 const comp     = components[dbIdx++]
                                 const cubeName = resolved[0] ?? '?'
                                 // Resolve ATTRS(...) args to their fetched attribute values so the
-                                // DB coordinates are real element names (drillable + readable).
-                                const elems    = resolved.slice(1).map(a => resolveAttrArg(a) ?? a)
+                                // DB coordinates are real element names (drillable + readable),
+                                // while remembering which ones were attribute-derived (provenance).
+                                const resolvedElems = resolved.slice(1).map(a => {
+                                    const r = resolveAttrArg(a)
+                                    return r ? { value: r.value, source: r.source } : { value: a, source: null }
+                                })
+                                const elems    = resolvedElems.map(r => r.value)
+                                const derived  = resolvedElems.map(r => r.source ? { value: r.value, source: r.source } : null)
                                 const ctype    = comp?.Type?.toLowerCase() ?? ''
                                 const badge    = ctype.includes('rule')   ? <span className="badge bg-amber-500/20 text-amber-400">RULE</span>
                                               : ctype.includes('consol') ? <span className="badge bg-purple-500/20 text-purple-400">C</span>
@@ -958,7 +965,7 @@ function RuleBreakdown({ server, statements, components, dimElemPairs, onDrill }
                                 return (
                                     <div
                                         key={i}
-                                        onClick={drillable ? () => onDrill(cubeName, elems) : undefined}
+                                        onClick={drillable ? () => onDrill(cubeName, elems, derived) : undefined}
                                         className={cn('border border-amber-500/20 bg-amber-500/5 rounded px-3 py-2 space-y-1 transition-colors',
                                             drillable && 'cursor-pointer hover:bg-amber-500/10')}
                                     >
@@ -1063,7 +1070,9 @@ function TraceSidePanel({ ctx, onClose }) {
 
     // Drill to a cell in `targetCube` given its element coordinates (in the
     // cube's dimension order). Cross-cube cubes fetch their dimensions on demand.
-    const drillTo = async (targetCube, elements) => {
+    // `derived` (parallel to elements) records which coordinates were resolved
+    // from ATTRS() lookups, so the drilled frame shows their provenance.
+    const drillTo = async (targetCube, elements, derived = null) => {
         let dims
         if (targetCube === current.cube) {
             dims = stackCubeDims
@@ -1076,9 +1085,9 @@ function TraceSidePanel({ ctx, onClose }) {
             } catch { dims = [] }
         }
         if (!dims?.length) return
-        const newPairs = dims.map((d, i) => ({ dim: d, element: elements[i] })).filter(p => p.element)
+        const newPairs = dims.map((d, i) => ({ dim: d, element: elements[i], derived: derived?.[i] ?? null })).filter(p => p.element)
         if (!newPairs.length) return
-        setStack(s => [...s, { cube: targetCube, dimElemPairs: newPairs, label: elements.filter(Boolean).join(' · ') }])
+        setStack(s => [...s, { cube: targetCube, dimElemPairs: newPairs, derived: derived ?? [], label: elements.filter(Boolean).join(' · ') }])
     }
 
     const drillInto = (comp) => drillTo(comp.Cube?.Name ?? current.cube, (comp.Tuple ?? []).map(t => t.Name))
@@ -1128,6 +1137,21 @@ function TraceSidePanel({ ctx, onClose }) {
                     >
                         <ChevronLeft size={10} /> Back
                     </button>
+                )}
+                {/* Provenance: which coordinates were derived from ATTRS() lookups */}
+                {(current.derived ?? []).filter(Boolean).length > 0 && (
+                    <div className="space-y-0.5 pt-1 border-t border-border/40">
+                        <div className="text-[9px] uppercase tracking-wide text-muted-foreground/60 font-medium">
+                            Mapped from attributes
+                        </div>
+                        {(current.derived ?? []).filter(Boolean).map((d, i) => (
+                            <div key={i} className="font-mono text-[10px] text-muted-foreground">
+                                <span className="text-foreground font-medium">{d.value}</span>
+                                {' ← '}
+                                {d.source}
+                            </div>
+                        ))}
+                    </div>
                 )}
             </div>
 
