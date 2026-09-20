@@ -880,7 +880,7 @@ function resolveArg(arg, dimElemPairs) {
 
 // ── Rule breakdown component ──────────────────────────────────────────────────
 
-function RuleBreakdown({ server, statements, components, dimElemPairs }) {
+function RuleBreakdown({ server, statements, components, dimElemPairs, onDrill }) {
     const [attrValues,   setAttrValues]   = useState({})
     const [loadingAttrs, setLoadingAttrs] = useState(false)
 
@@ -941,13 +941,22 @@ function RuleBreakdown({ server, statements, components, dimElemPairs }) {
                                               : ctype.includes('consol') ? <span className="badge bg-purple-500/20 text-purple-400">C</span>
                                               : ctype.includes('base')   ? <span className="badge bg-emerald-500/20 text-emerald-400">BASE</span>
                                               : null
+                                // Drillable when every element arg resolved to a plain name
+                                // (ATTRS(...) expressions can't build a coordinate tuple).
+                                const drillable = onDrill && elems.length > 0 && elems.every(a => a && !a.includes('('))
                                 return (
-                                    <div key={i} className="border border-amber-500/20 bg-amber-500/5 rounded px-3 py-2 space-y-1">
+                                    <div
+                                        key={i}
+                                        onClick={drillable ? () => onDrill(cubeName, elems) : undefined}
+                                        className={cn('border border-amber-500/20 bg-amber-500/5 rounded px-3 py-2 space-y-1 transition-colors',
+                                            drillable && 'cursor-pointer hover:bg-amber-500/10')}
+                                    >
                                         <div className="flex items-center gap-2">
                                             <span className="badge bg-amber-500/20 text-amber-400 font-mono">DB</span>
                                             <span className="text-[11px] font-medium">{cubeName}</span>
                                             {badge}
                                             <span className="ml-auto font-mono text-[11px] font-semibold tabular-nums">{comp?.Value ?? '—'}</span>
+                                            {drillable && <ChevronRight size={10} className="text-muted-foreground/50 shrink-0" />}
                                         </div>
                                         <div className="font-mono text-[10px] text-muted-foreground">[{elems.join(' · ')}]</div>
                                     </div>
@@ -1041,16 +1050,13 @@ function TraceSidePanel({ ctx, onClose }) {
         return (comp.Tuple ?? []).length > 0 && (t.includes('consol') || t.includes('rule') || t.includes('base'))
     }
 
-    const drillInto = async (comp) => {
-        const targetCube = comp.Cube?.Name ?? current.cube
-        const tupleNames = (comp.Tuple ?? []).map(t => t.Name)
-
+    // Drill to a cell in `targetCube` given its element coordinates (in the
+    // cube's dimension order). Cross-cube cubes fetch their dimensions on demand.
+    const drillTo = async (targetCube, elements) => {
         let dims
         if (targetCube === current.cube) {
             dims = stackCubeDims
         } else {
-            // Cross-cube component — fetch the target cube's dimension order so
-            // we can rebuild the coordinate tuple and trace that cell too.
             try {
                 const res = await fetch(`/api/cube/dimensions?server=${encodeURIComponent(ctx.server)}&cube=${encodeURIComponent(targetCube)}`, {
                     headers: { 'x-ide-token': localStorage.getItem('tm1-token') ?? '' },
@@ -1059,10 +1065,12 @@ function TraceSidePanel({ ctx, onClose }) {
             } catch { dims = [] }
         }
         if (!dims?.length) return
-        const newPairs = dims.map((d, i) => ({ dim: d, element: tupleNames[i] })).filter(p => p.element)
+        const newPairs = dims.map((d, i) => ({ dim: d, element: elements[i] })).filter(p => p.element)
         if (!newPairs.length) return
-        setStack(s => [...s, { cube: targetCube, dimElemPairs: newPairs, label: tupleNames.filter(Boolean).join(' · ') }])
+        setStack(s => [...s, { cube: targetCube, dimElemPairs: newPairs, label: elements.filter(Boolean).join(' · ') }])
     }
+
+    const drillInto = (comp) => drillTo(comp.Cube?.Name ?? current.cube, (comp.Tuple ?? []).map(t => t.Name))
 
     const goBack = () => setStack(s => s.slice(0, -1))
 
@@ -1127,6 +1135,7 @@ function TraceSidePanel({ ctx, onClose }) {
                         statements={stmts}
                         components={comps}
                         dimElemPairs={current.dimElemPairs}
+                        onDrill={drillTo}
                     />
                 )}
 
