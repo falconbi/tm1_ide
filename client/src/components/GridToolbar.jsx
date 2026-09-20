@@ -59,6 +59,16 @@ function Toggle({ label, checked, onChange }) {
   )
 }
 
+const ACCENTS = [
+  { value: '#2563eb', label: 'Blue' },
+  { value: '#7c3aed', label: 'Violet' },
+  { value: '#059669', label: 'Green' },
+  { value: '#d97706', label: 'Amber' },
+  { value: '#e11d48', label: 'Rose' },
+  { value: '#0d9488', label: 'Teal' },
+  { value: '#475569', label: 'Slate' },
+]
+
 function AppearancePopover({ appearance }) {
   const { settings, patch } = appearance
   const [open, setOpen] = useState(false)
@@ -102,6 +112,33 @@ function AppearancePopover({ appearance }) {
           <Toggle label="Zebra striping" checked={settings.zebra} onChange={v => patch('zebra', v)} />
           <Toggle label="Number format (TM1 format strings)" checked={settings.numFormat} onChange={v => patch('numFormat', v)} />
           <Toggle label="Highlight consolidations" checked={settings.consEmphasis} onChange={v => patch('consEmphasis', v)} />
+          <div className="border-t border-border my-0.5" />
+          <span className="text-muted-foreground">Grid colour (headers / selection)</span>
+          <div className="flex items-center gap-1.5 flex-wrap">
+            {ACCENTS.map(a => (
+              <button
+                key={a.value}
+                onClick={() => patch('accent', a.value)}
+                title={a.label}
+                className={cn('w-4 h-4 rounded-full border transition-transform',
+                  settings.accent === a.value ? 'scale-110 ring-2 ring-foreground/40' : 'hover:scale-110')}
+                style={{ background: a.value }}
+              />
+            ))}
+            <label
+              className={cn('w-4 h-4 rounded-full border border-dashed border-foreground/40 flex items-center justify-center cursor-pointer text-muted-foreground hover:text-foreground overflow-hidden',
+                !ACCENTS.some(a => a.value === settings.accent) && 'ring-2 ring-foreground/40')}
+              title="Custom colour"
+            >
+              <span className="text-[8px] leading-none">+</span>
+              <input
+                type="color"
+                value={/^#[0-9a-fA-F]{6}$/.test(settings.accent) ? settings.accent : '#2563eb'}
+                onChange={e => patch('accent', e.target.value)}
+                className="w-0 h-0 opacity-0"
+              />
+            </label>
+          </div>
         </div>
       )}
     </div>
