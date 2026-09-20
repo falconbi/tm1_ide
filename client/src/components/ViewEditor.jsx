@@ -1029,21 +1029,36 @@ function TraceSidePanel({ ctx, onClose }) {
 
     const current = stack[stack.length - 1]
     const { data, error, busy } = useTraceData(ctx.server, current.cube, current.dimElemPairs)
+    // Dimension order for the CUBE CURRENTLY ON THE STACK (not just the original
+    // cube) — needed to build coordinates when drilling, including cross-cube.
+    const { data: stackCubeDims = [] } = useCubeDimensions(ctx.server, current.cube)
 
     const stmts = data?.Statements ?? []
     const comps = data?.Components ?? []
 
     const canDrill = (comp) => {
         const t = comp.Type?.toLowerCase() ?? ''
-        const sameCube = !comp.Cube?.Name || comp.Cube.Name === ctx.cube
-        return sameCube && (t.includes('consol') || t.includes('rule') || t.includes('base'))
+        return (comp.Tuple ?? []).length > 0 && (t.includes('consol') || t.includes('rule') || t.includes('base'))
     }
 
-    const drillInto = (comp) => {
+    const drillInto = async (comp) => {
         const targetCube = comp.Cube?.Name ?? current.cube
         const tupleNames = (comp.Tuple ?? []).map(t => t.Name)
-        const dims = targetCube === ctx.cube ? ctx.cubeDims : null
-        if (!dims) return
+
+        let dims
+        if (targetCube === current.cube) {
+            dims = stackCubeDims
+        } else {
+            // Cross-cube component — fetch the target cube's dimension order so
+            // we can rebuild the coordinate tuple and trace that cell too.
+            try {
+                const res = await fetch(`/api/cube/dimensions?server=${encodeURIComponent(ctx.server)}&cube=${encodeURIComponent(targetCube)}`, {
+                    headers: { 'x-ide-token': localStorage.getItem('tm1-token') ?? '' },
+                })
+                dims = await res.json()
+            } catch { dims = [] }
+        }
+        if (!dims?.length) return
         const newPairs = dims.map((d, i) => ({ dim: d, element: tupleNames[i] })).filter(p => p.element)
         if (!newPairs.length) return
         setStack(s => [...s, { cube: targetCube, dimElemPairs: newPairs, label: tupleNames.filter(Boolean).join(' · ') }])
@@ -1131,7 +1146,7 @@ function TraceSidePanel({ ctx, onClose }) {
                                         onClick={() => drillable && drillInto(c)}
                                         className={cn(
                                             'bg-muted/30 border border-border/50 rounded px-3 py-2 space-y-1 transition-colors',
-                                            drillable && !crossCube && 'cursor-pointer hover:bg-muted/60 hover:border-border'
+                                            drillable && 'cursor-pointer hover:bg-muted/60 hover:border-border'
                                         )}
                                     >
                                         <div className="flex items-center gap-2">
@@ -1142,7 +1157,7 @@ function TraceSidePanel({ ctx, onClose }) {
                                             <span className="ml-auto font-mono text-[11px] font-semibold tabular-nums">
                                                 {c.Value ?? '—'}
                                             </span>
-                                            {drillable && !crossCube && (
+                                            {drillable && (
                                                 <ChevronRight size={10} className="text-muted-foreground/50 shrink-0" />
                                             )}
                                         </div>
