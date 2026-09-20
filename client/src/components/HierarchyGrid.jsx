@@ -237,6 +237,7 @@ export default function HierarchyGrid({
 }) {
     const gridRef       = useRef(null)
     const prevColDefs   = useRef(null)
+    const prevAppearanceRef = useRef('true')
     const app           = useGridAppearance()
 
     const [rowExpandedSets, setRowExpandedSets] = useState(() => initExpandedSets(hierarchies))
@@ -518,13 +519,18 @@ export default function HierarchyGrid({
             }),
         ]  // end newDefs
         // Return same reference if columns are structurally unchanged — prevents AG Grid
-        // from seeing new columnDefs and resetting user-resized widths
+        // from seeing new columnDefs and resetting user-resized widths.
+        // Appearance-affecting cellStyle changes (consolidation emphasis) must NOT be
+        // short-circuited, otherwise the toggle silently keeps the stale cellStyle.
+        const appearanceSig = `${app.settings.consEmphasis}`
         const prev = prevColDefs.current
         if (prev && prev.length === newDefs.length &&
-            prev.every((c, i) => c.field === newDefs[i].field && c.headerName === newDefs[i].headerName && c.headerComponent === newDefs[i].headerComponent)) {
+            prev.every((c, i) => c.field === newDefs[i].field && c.headerName === newDefs[i].headerName && c.headerComponent === newDefs[i].headerComponent) &&
+            prevAppearanceRef.current === appearanceSig) {
             return prev
         }
         prevColDefs.current = newDefs
+        prevAppearanceRef.current = appearanceSig
         return newDefs
     }, [hierarchies, visibleColumns, colNodeMap, columnHierarchies, multiCol, onCellEdit, dark, app.settings.consEmphasis])
 
