@@ -196,9 +196,14 @@ function cellsetToHierarchyData(cellset, formatMap = {}, pageMembers = [], suppr
             }
             const rawVal = cell?.Value
             const fv = cell?.FormattedValue
+            // TM1 often returns Value:null with FormattedValue:"0.00" for zero cells —
+            // derive a number so the format string is still applied (else 0 shows "0.00").
+            const numVal = rawVal != null
+                ? rawVal
+                : (fv != null && fv !== '' && !Number.isNaN(Number(stripTm1TypePrefix(fv))) ? Number(stripTm1TypePrefix(fv)) : null)
             let display
-            if (fmt && rawVal != null) {
-                display = useFormat ? applyTm1Format(rawVal, fmt) : String(rawVal)
+            if (fmt && numVal != null) {
+                display = useFormat ? applyTm1Format(numVal, fmt) : String(numVal)
             } else if (useFormat && fv != null && fv !== '') {
                 display = stripTm1TypePrefix(fv)
             } else {
@@ -360,8 +365,12 @@ function parseCellset(data, formatMap = {}, pageMembers = [], useFormat = true) 
             const elemNames = (tuple.Members ?? []).map(m => elementFromUniqueName(m.UniqueName) || m.Name)
             const fmtKey = elemNames.find(n => formatMap[n]) || pageMembers.find(n => formatMap[n])
             if (fmtKey) {
-                const v = c.Value
-                return v != null ? (useFormat ? applyTm1Format(v, formatMap[fmtKey]) : String(v)) : ''
+                const fv = c.FormattedValue
+                // Value may be null with FormattedValue "0.00" for zero cells — derive a number
+                const num = c.Value != null
+                    ? c.Value
+                    : (fv != null && fv !== '' && !Number.isNaN(Number(stripTm1TypePrefix(fv))) ? Number(stripTm1TypePrefix(fv)) : c.Value)
+                return num != null ? (useFormat ? applyTm1Format(num, formatMap[fmtKey]) : String(num)) : ''
             }
             const fv = c.FormattedValue
             if (useFormat && fv !== '' && fv != null) return stripTm1TypePrefix(fv)
