@@ -325,6 +325,32 @@ async function diffView(entry, baseline, client) {
     return outcome('MATCH', entry, `changed from baseline in ${cube}`)
 }
 
+// Structural signature of a dimension hierarchy — element Name:Type and edge
+// Parent>Child=Weight token sets (same shape as scopedSnapshot). Comparing names
+// or counts alone misses re-parents, weight changes, and type flips.
+function dimensionSignature(elements, edges) {
+    const elemToken = e => `${e?.Name ?? e?.name ?? ''}:${e?.Type ?? e?.type ?? '?'}`
+    const edgeToken = e => `${e?.ParentName ?? ''}>${e?.ComponentName ?? ''}=${e?.Weight ?? e?.weight ?? 1}`
+    return {
+        elements: (elements ?? []).map(elemToken).filter(Boolean),
+        edges:    (edges ?? []).map(edgeToken).filter(Boolean),
+    }
+}
+
+// Compare two dimension signatures → added/removed element + edge tokens.
+function compareDimensionSignature(base, current) {
+    const baseElemSet = new Set(base.elements)
+    const currElemSet = new Set(current.elements)
+    const baseEdgeSet = new Set(base.edges)
+    const currEdgeSet = new Set(current.edges)
+    return {
+        addedElements:   current.elements.filter(t => !baseElemSet.has(t)),
+        removedElements: base.elements.filter(t => !currElemSet.has(t)),
+        addedEdges:      current.edges.filter(t => !baseEdgeSet.has(t)),
+        removedEdges:    base.edges.filter(t => !currEdgeSet.has(t)),
+    }
+}
+
 async function diffDimension(entry, baseline, client) {
     if (entry.last_action === 'DIMENSION_DELETED') {
         const exists = await client.getDimension(entry.object_name).catch(() => null)
@@ -336,32 +362,17 @@ async function diffDimension(entry, baseline, client) {
     const baseDim = baseline?.dimensions?.[entry.object_name]
     if (!baseDim) return outcome('NEW', entry, 'not in baseline — new dimension')
 
-    // Structural signature (same shape as scopedSnapshot): element Name:Type and
-    // edge Parent>Child=Weight. Comparing names or counts alone misses re-parents,
-    // weight changes, and type flips — the signature catches all of them.
     const [elements, edges] = await Promise.all([
         client.getElementsWithTree(entry.object_name, entry.object_name).catch(() => null),
         client.getEdges(entry.object_name, entry.object_name).catch(() => null),
     ])
     if (!elements) return outcome('MISSING', entry, 'dimension not found on server')
 
-    const hier       = baseDim.hierarchies?.[entry.object_name] ?? {}
-    const elemToken  = e => `${e?.Name ?? e?.name ?? ''}:${e?.Type ?? e?.type ?? '?'}`
-    const edgeToken  = e => `${e?.ParentName ?? ''}>${e?.ComponentName ?? ''}=${e?.Weight ?? e?.weight ?? 1}`
+    const base  = dimensionSignature(baseDim.hierarchies?.[entry.object_name]?.elements, baseDim.hierarchies?.[entry.object_name]?.edges)
+    const cur   = dimensionSignature(elements, edges)
+    const delta = compareDimensionSignature(base, cur)
 
-    const baseElems   = (hier.elements ?? []).map(elemToken).filter(Boolean)
-    const baseEdges   = (hier.edges ?? []).map(edgeToken).filter(Boolean)
-    const currElems   = elements.map(elemToken).filter(Boolean)
-    const currEdges   = (edges ?? []).map(edgeToken).filter(Boolean)
-    const baseElemSet = new Set(baseElems)
-    const currElemSet = new Set(currElems)
-    const baseEdgeSet = new Set(baseEdges)
-    const currEdgeSet = new Set(currEdges)
-
-    const addedElems   = currElems.filter(t => !baseElemSet.has(t))
-    const removedElems = baseElems.filter(t => !currElemSet.has(t))
-    const addedEdges   = currEdges.filter(t => !baseEdgeSet.has(t))
-    const removedEdges = baseEdges.filter(t => !currEdgeSet.has(t))
+    const { addedElems, removedElems, addedEdges, removedEdges } = delta
 
     if (!addedElems.length && !removedElems.length && !addedEdges.length && !removedEdges.length) {
         return outcome('MATCH', entry, 'structure identical to baseline')
@@ -666,4 +677,4 @@ async function driftCheck(packageDir, targetServer, ideToken) {
     }
 }
 
-module.exports = { diff, driftCheck, loadBaseline, listBaselines, setBaselineHead, baselinePathFor, BASELINE_PATH, lineDiff, lineDiffNote, uniqueObjects }
+module.exports = { diff, driftCheck, loadBaseline, listBaselines, setBaselineHead, baselinePathFor, BASELINE_PATH, lineDiff, lineDiffNote, uniqueObjects, dimensionSignature, compareDimensionSignature }
