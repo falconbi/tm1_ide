@@ -328,6 +328,36 @@ function buildCatalogSnippet(name, entry) {
   return `${name}(${stops})`
 }
 
+// Function + keyword name suggestions filtered by the typed prefix — used both at
+// statement level (!ctx) and inside generic argument positions (condition/value/n).
+function functionNameSuggestions({ typed, keywords, catalogNow, version, range, monaco, CIK }) {
+  const keywordNames = new Set(keywords.map(k => k.label.toUpperCase()))
+  const fromKeywords = keywords
+    .filter(k => k.label.toUpperCase().startsWith(typed))
+    .map(k => ({
+      label:       k.label,
+      kind:        CIK.Function,
+      detail:      k.detail,
+      insertText:  k.snippet,
+      insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+      range,
+    }))
+  const fromCatalog = Object.entries(catalogNow)
+    .filter(([name, entry]) =>
+      !keywordNames.has(name) && name.startsWith(typed) &&
+      compatAvailable(entry?.compat ?? 'both', version))
+    .map(([name, entry]) => ({
+      label:       name,
+      kind:        CIK.Function,
+      detail:      buildCatalogSignature(name, entry),
+      documentation: { value: entry.description ?? '' },
+      insertText:  buildCatalogSnippet(name, entry),
+      insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+      range,
+    }))
+  return [...fromKeywords, ...fromCatalog]
+}
+
 // ── Provider factory ─────────────────────────────────────────────────────────
 
 export function registerTM1Completions(monaco, language, catalog, keywords, getContext) {
@@ -434,34 +464,7 @@ export function registerTM1Completions(monaco, language, catalog, keywords, getC
       if (!ctx) {
         if (!word.word) return { suggestions: [] }
         const typed = word.word.toUpperCase()
-        const keywordNames = new Set(keywords.map(k => k.label.toUpperCase()))
-
-        const fromKeywords = keywords
-          .filter(k => k.label.toUpperCase().startsWith(typed))
-          .map(k => ({
-            label:       k.label,
-            kind:        CIK.Function,
-            detail:      k.detail,
-            insertText:  k.snippet,
-            insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
-            range,
-          }))
-
-        const fromCatalog = Object.entries(catalogNow)
-          .filter(([name, entry]) =>
-            !keywordNames.has(name) && name.startsWith(typed) &&
-            compatAvailable(entry?.compat ?? 'both', version))
-          .map(([name, entry]) => ({
-            label:       name,
-            kind:        CIK.Function,
-            detail:      buildCatalogSignature(name, entry),
-            documentation: { value: entry.description ?? '' },
-            insertText:  buildCatalogSnippet(name, entry),
-            insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
-            range,
-          }))
-
-        return { suggestions: [...fromKeywords, ...fromCatalog] }
+        return { suggestions: functionNameSuggestions({ typed, keywords, catalogNow, version, range, monaco, CIK }) }
       }
 
       const paramType = resolveParamType(catalogNow, ctx.fn, ctx.paramIdx)
@@ -631,6 +634,15 @@ export function registerTM1Completions(monaco, language, catalog, keywords, getC
             insertText: inQuote ? (hasClose ? s.Name : `${s.Name}'`) : `'${s.Name}'`,
             range,
           })),
+        }
+      }
+
+      // ── Generic parameter (condition / value / n / string / unknown) ──────
+      // Not inside a quoted string → this is an expression position, so offer
+      // function + keyword completions (e.g. typing ELPAR inside IF(ELPAR…)).
+      if (!isInsideString(textBefore)) {
+        if (word.word) {
+          return { suggestions: functionNameSuggestions({ typed: word.word.toUpperCase(), keywords, catalogNow, version, range, monaco, CIK }) }
         }
       }
 
