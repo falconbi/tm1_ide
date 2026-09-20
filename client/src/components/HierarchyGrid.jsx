@@ -560,6 +560,18 @@ export default function HierarchyGrid({
         gridRef.current?.api?.autoSizeAllColumns?.()
     }, [])
 
+    // Freeze top — set via the grid API (not a React prop) to avoid AG Grid's
+    // re-render crash (issue #10278 / AG-14590). setTimeout defers past the
+    // "cannot draw rows while drawing" render stage.
+    useEffect(() => {
+        const api = gridRef.current?.api
+        if (!api) return
+        const t = setTimeout(() => {
+            api.setGridOption('pinnedTopRowData', freezeTop && rowData.length ? [{ ...rowData[0] }] : null)
+        }, 0)
+        return () => clearTimeout(t)
+    }, [freezeTop, rowData])
+
     if (!hierarchies.length) {
         return <div className="flex h-full items-center justify-center text-xs text-muted-foreground">No hierarchy data</div>
     }
@@ -581,7 +593,6 @@ export default function HierarchyGrid({
                     columnDefs={colDefs}
                     rowData={rowData}
                     quickFilterText={quickFilter || undefined}
-                    pinnedTopRowData={freezeTop && rowData.length ? [{ ...rowData[0] }] : null}
                     context={context}
                     suppressMovableColumns
                     enableCellTextSelection={!onCellEdit}

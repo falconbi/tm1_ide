@@ -1860,6 +1860,18 @@ export default function ViewEditor({ tab }) {
         flatGridRef.current?.api?.autoSizeAllColumns?.()
     }, [flatStorageKey])
 
+    // Freeze top — set via the grid API (not a React prop) to avoid AG Grid's
+    // re-render crash (issue #10278 / AG-14590). setTimeout defers past the
+    // "cannot draw rows while drawing" render stage.
+    useEffect(() => {
+        const api = flatGridRef.current?.api
+        if (!api) return
+        const t = setTimeout(() => {
+            api.setGridOption('pinnedTopRowData', flatFreezeTop && rowData.length ? [{ ...rowData[0] }] : null)
+        }, 0)
+        return () => clearTimeout(t)
+    }, [flatFreezeTop, rowData])
+
     // ── HierarchyGrid data ────────────────────────────────────────────────────
     // Fixed 4-slot hooks per axis (React rules: no conditional/loop hooks)
     const rowDims = useMemo(() => axes.rows.map(d => d.dimension),    [axes.rows])
@@ -2536,7 +2548,6 @@ export default function ViewEditor({ tab }) {
                             columnDefs={colDefs}
                             rowData={rowData}
                             quickFilterText={flatQuickFilter || undefined}
-                            pinnedTopRowData={flatFreezeTop && rowData.length ? [{ ...rowData[0] }] : null}
                             suppressMovableColumns
                             enableCellTextSelection
                             defaultColDef={{ sortable: true }}

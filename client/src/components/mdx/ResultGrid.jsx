@@ -229,6 +229,18 @@ export default function ResultGrid({ axes, cells, truncated, onReady, server, cu
 
   const { colDefs: baseColDefs, rowData } = useMemo(() => buildGridData(parsed), [parsed])
 
+  // Freeze top — set via the grid API (not a React prop) to avoid AG Grid's
+  // re-render crash (issue #10278 / AG-14590). setTimeout defers past the
+  // "cannot draw rows while drawing" render stage.
+  useEffect(() => {
+    const api = gridRef.current?.api
+    if (!api) return
+    const t = setTimeout(() => {
+      api.setGridOption('pinnedTopRowData', freezeTop && rowData.length ? [{ ...rowData[0] }] : null)
+    }, 0)
+    return () => clearTimeout(t)
+  }, [freezeTop, rowData])
+
   // For loaded views (e.g. Default), the cellset may include title axes (Ordinal >1) with the fixed member.
   // Extract them as additional slicers so coverage and coords include them.
   const additionalSlicers = useMemo(() => {
@@ -462,7 +474,6 @@ export default function ResultGrid({ axes, cells, truncated, onReady, server, cu
             columnDefs={colDefs}
             rowData={rowData}
             quickFilterText={quickFilter || undefined}
-            pinnedTopRowData={freezeTop && rowData.length ? [{ ...rowData[0] }] : null}
             suppressMovableColumns
             enableCellTextSelection={!writeMode}
             singleClickEdit={writeMode}
