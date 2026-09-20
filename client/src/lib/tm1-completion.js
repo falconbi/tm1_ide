@@ -90,6 +90,7 @@ const TI_KEYWORDS = [
 const RULES_KEYWORDS = [
   { label: 'DB',      snippet: "DB('${1:cube}', ${2:elements})",                 detail: 'Get value from cube (Rules only)' },
   { label: 'SKIPCHECK', snippet: 'SKIPCHECK;',                                   detail: 'Skip zero-value feeders check' },
+  { label: 'FEEDERS', snippet: 'FEEDERS;',                                       detail: 'Marks the beginning of the FEEDERS section' },
   { label: 'UNDEFVALS', snippet: 'UNDEFVALS;',                                   detail: 'Enable undefined cell values' },
   { label: 'FEEDER',  snippet: '${1:source} => ${2:target};',                    detail: 'Define a feeder' },
   { label: 'IF',      snippet: 'IF(${1:condition}, ${2:true_value}, ${3:false_value})', detail: 'Conditional expression (Rules)' },
@@ -252,6 +253,16 @@ function areaQuoteMode(model, position, word) {
   return (prev === "'" || prev === '"') ? 'close' : 'wrap'
 }
 
+// True if there is already a closing quote right after the cursor — in that case
+// an in-quote completion must NOT append another one (e.g. editing 'Pension Pct').
+function quoteAfterCursor(model, position) {
+  const next = model.getValueInRange({
+    startLineNumber: position.lineNumber, startColumn: position.column,
+    endLineNumber:   position.lineNumber, endColumn:   position.column + 1,
+  })
+  return next === "'" || next === '"'
+}
+
 // Returns the string value of the Nth argument of the innermost unclosed call
 // (ignores # comments, which may contain apostrophes like "Budget's").
 function extractStringArg(textBefore, argIndex) {
@@ -306,13 +317,13 @@ const CUBE_FIRST_FNS = new Set([
 
 function buildCatalogSignature(name, entry) {
   const params = entry.params ?? []
-  if (!params.length) return `${name}()`
+  if (!params.length) return entry.isStatement ? `${name};` : `${name}()`
   return `${name}(${params.join(', ')})${entry.returnType && entry.returnType !== 'void' ? ' : ' + entry.returnType : ''}`
 }
 
 function buildCatalogSnippet(name, entry) {
   const params = entry.params ?? []
-  if (!params.length) return `${name}()`
+  if (!params.length) return entry.isStatement ? `${name};` : `${name}()`
   const stops = params.map((p, i) => `\${${i + 1}:${bareParamTag(p)}}`).join(', ')
   return `${name}(${stops})`
 }
@@ -491,11 +502,13 @@ export function registerTM1Completions(monaco, language, catalog, keywords, getC
           return { suggestions }
         }
 
+        const inQuoteCub = isInsideString(textBefore)
+        const hasCloseCub = quoteAfterCursor(model, position)
         return {
           suggestions: cubes.map(cube => ({
             label:      cube,
             kind:       CIK.Module,
-            insertText: cube,
+            insertText: inQuoteCub ? (hasCloseCub ? cube : `${cube}'`) : `'${cube}'`,
             range,
           })),
         }
@@ -504,12 +517,14 @@ export function registerTM1Completions(monaco, language, catalog, keywords, getC
       // ── Dimension name parameter ──────────────────────────────────────────
       if (paramType === 'dimname') {
         const dims = await fetchDims(server)
+        const inQuote = isInsideString(textBefore)
+        const hasClose = quoteAfterCursor(model, position)
         return {
           suggestions: dims.map(dim => ({
             label:      dim,
             kind:       CIK.Class,
             detail:     'Dimension',
-            insertText: dim,
+            insertText: inQuote ? (hasClose ? dim : `${dim}'`) : `'${dim}'`,
             range,
           })),
         }
@@ -536,12 +551,13 @@ export function registerTM1Completions(monaco, language, catalog, keywords, getC
         if (inQuote) {
           const ELEMENT_TYPE_LABEL = { N: 'Numeric', C: 'Consolidated', S: 'String' }
           const elements = await fetchElements(server, targetDim)
+          const hasClose = quoteAfterCursor(model, position)
           return {
             suggestions: elements.map(el => ({
               label:      el.Name,
               kind:       CIK.Value,
               detail:     ELEMENT_TYPE_LABEL[el.Type] ?? el.Type,
-              insertText: el.Name,
+              insertText: hasClose ? el.Name : `${el.Name}'`,
               range,
             })),
           }
@@ -585,12 +601,13 @@ export function registerTM1Completions(monaco, language, catalog, keywords, getC
 
         const inQuote = isInsideString(textBefore)
         const attrs = await fetchAttributes(server, targetDim)
+        const hasClose = quoteAfterCursor(model, position)
         return {
           suggestions: attrs.map(a => ({
             label:      a.name,
             kind:       CIK.Property,
             detail:     a.type,
-            insertText: inQuote ? a.name : `'${a.name}'`,
+            insertText: inQuote ? (hasClose ? a.name : `${a.name}'`) : `'${a.name}'`,
             range,
           })),
         }
@@ -605,12 +622,13 @@ export function registerTM1Completions(monaco, language, catalog, keywords, getC
 
         const inQuote = isInsideString(textBefore)
         const subsets = await fetchSubsets(server, targetDim)
+        const hasClose = quoteAfterCursor(model, position)
         return {
           suggestions: subsets.map(s => ({
             label:      s.Name,
             kind:       CIK.Struct,
             detail:     s.Expression ? 'MDX subset' : 'Static subset',
-            insertText: inQuote ? s.Name : `'${s.Name}'`,
+            insertText: inQuote ? (hasClose ? s.Name : `${s.Name}'`) : `'${s.Name}'`,
             range,
           })),
         }
