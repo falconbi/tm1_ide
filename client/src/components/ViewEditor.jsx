@@ -1031,7 +1031,9 @@ function RuleBreakdown({ server, statements, dimElemPairs, cube, cubeDims, onDri
                 }
                 if (s.startsWith('[')) { plan.push({ kind: 'ref', element: (s.match(/\[['"]([^'"]+)['"]\]/) ?? [])[1] ?? s }); return }
                 if (/^DB\s*\(/i.test(s)) { plan.push({ kind: 'db', text: s }); return }
-                for (const t of splitTopLevelOps(s)) if (t.type === 'operand') visit(t.value)
+                const parts = splitTopLevelOps(s)
+                if (parts.length <= 1) return  // leaf — no operators to split, stop (else infinite recursion)
+                for (const t of parts) if (t.type === 'operand') visit(t.value)
             }
             visit(rhs)
         }
