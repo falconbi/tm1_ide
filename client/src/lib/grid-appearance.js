@@ -37,7 +37,7 @@ export function useGridAppearance() {
       rowHeight,
       headerHeight,
       accentColor: accent,
-      ...(settings.headerTint ? { headerBackgroundColor: `${accent}1f` } : {}),
+      ...(settings.headerTint ? { headerBackgroundColor: `${accent}33` } : {}),
       ...(settings.headerBold ? { headerFontWeight: '600' } : {}),
       inputFocusBorder: accent,
       selectedRowBackgroundColor: `${accent}26`,
