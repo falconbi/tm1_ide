@@ -111,7 +111,10 @@ function AppearancePopover({ appearance }) {
           <div className="border-t border-border my-0.5" />
           <Toggle label="Zebra striping" checked={settings.zebra} onChange={v => patch('zebra', v)} />
           <Toggle label="Number format (TM1 format strings)" checked={settings.numFormat} onChange={v => patch('numFormat', v)} />
-          <Toggle label="Highlight consolidations" checked={settings.consEmphasis} onChange={v => patch('consEmphasis', v)} />
+          <div className="border-t border-border my-0.5" />
+          <span className="text-muted-foreground">Row &amp; column headings</span>
+          <Toggle label="Tint headers with grid colour" checked={settings.headerTint} onChange={v => patch('headerTint', v)} />
+          <Toggle label="Bold headers" checked={settings.headerBold} onChange={v => patch('headerBold', v)} />
           <div className="border-t border-border my-0.5" />
           <span className="text-muted-foreground">Grid colour (headers / selection)</span>
           <div className="flex items-center gap-1.5 flex-wrap">

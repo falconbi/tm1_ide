@@ -10,7 +10,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { themeBalham, colorSchemeDark, colorSchemeLight } from 'ag-grid-community'
 
 const KEY = 'tm1-grid-appearance'
-const DEFAULTS = { rowHeight: 'compact', fontSize: 12, zebra: true, numFormat: true, consEmphasis: true, accent: '#2563eb' }
+const DEFAULTS = { rowHeight: 'compact', fontSize: 12, zebra: true, numFormat: true, accent: '#2563eb', headerTint: true, headerBold: true }
 
 function load() {
   try { return { ...DEFAULTS, ...JSON.parse(localStorage.getItem(KEY) || '{}') } } catch { return { ...DEFAULTS } }
@@ -37,16 +37,17 @@ export function useGridAppearance() {
       rowHeight,
       headerHeight,
       accentColor: accent,
-      headerBackgroundColor: `${accent}1f`,
+      ...(settings.headerTint ? { headerBackgroundColor: `${accent}1f` } : {}),
+      ...(settings.headerBold ? { headerFontWeight: '600' } : {}),
       inputFocusBorder: accent,
       selectedRowBackgroundColor: `${accent}26`,
       oddRowBackgroundColor: settings.zebra ? 'rgba(127,127,127,0.07)' : 'transparent',
     })
-  }, [settings.rowHeight, settings.fontSize, settings.accent, settings.zebra])
+  }, [settings.rowHeight, settings.fontSize, settings.accent, settings.zebra, settings.headerTint, settings.headerBold])
 
   // Bump when a visual setting that needs a grid redraw changes (row height,
   // font size, accent) — AG Grid won't re-apply these by itself.
-  const refreshKey = `${settings.rowHeight}-${settings.fontSize}-${settings.accent}`
+  const refreshKey = `${settings.rowHeight}-${settings.fontSize}-${settings.accent}-${settings.headerTint}-${settings.headerBold}`
 
   return { settings, patch, makeTheme, refreshKey }
 }

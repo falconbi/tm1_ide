@@ -86,7 +86,7 @@ function parseCellset(data, useFormat = true) {
   return { cols, rows, rowDimNames, colDimNames, grid, cellCoords, cellUpdateable, colIsConsolidated, rowIsConsolidated }
 }
 
-function buildGridData(parsed, consEmphasis = false) {
+function buildGridData(parsed) {
   if (!parsed) return { colDefs: [], rowData: [] }
   const { cols, rows, rowDimNames, grid, colIsConsolidated, rowIsConsolidated, cellUpdateable } = parsed
   const rowDimCount = rowDimNames.length || 1
@@ -122,7 +122,7 @@ function buildGridData(parsed, consEmphasis = false) {
         const ri = p.data?.__ri__ ?? p.node.rowIndex ?? 0
         const updatable = cellUpdateable?.[ri]?.[i]
         const isLocked = updatable === false || (updatable == null && (colIsConsolidated[i] || (rowIsConsolidated[ri] ?? false)))
-        if (isLocked) return { color: '#9ca3af', background: consEmphasis ? 'rgba(59,130,246,0.10)' : 'rgba(100,100,100,0.06)', fontStyle: 'italic' }
+        if (isLocked) return { color: '#9ca3af', background: 'rgba(100,100,100,0.06)', fontStyle: 'italic' }
         if (p.value === '' || p.value == null) return { color: '#888' }
         return {}
       },
@@ -228,7 +228,7 @@ export default function ResultGrid({ axes, cells, truncated, onReady, server, cu
     return parseCellset({ Axes: axes, Cells: cells }, app.settings.numFormat)
   }, [axes, cells, app.settings.numFormat])
 
-  const { colDefs: baseColDefs, rowData } = useMemo(() => buildGridData(parsed, app.settings.consEmphasis), [parsed, app.settings.consEmphasis])
+  const { colDefs: baseColDefs, rowData } = useMemo(() => buildGridData(parsed), [parsed])
 
   // Freeze top — set via the grid API (not a React prop) to avoid AG Grid's
   // re-render crash (issue #10278 / AG-14590). setTimeout defers past the

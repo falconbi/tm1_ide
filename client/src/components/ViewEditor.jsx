@@ -332,12 +332,6 @@ function applyTm1Format(value, fmt) {
     return out
 }
 
-function isConsolidatedType(t) {
-    if (t == null) return false
-    const s = String(t).toLowerCase().trim()
-    return s === 'c' || s === '3' || s === 'consolidated' || s === 'cons' || t === 3 || t === '3' || (typeof t === 'string' && s.includes('cons'))
-}
-
 function parseCellset(data, formatMap = {}, pageMembers = [], useFormat = true) {
     if (!data?.Axes?.length) return null
     const colAx = data.Axes.find(a => a.Ordinal === 0)
@@ -354,9 +348,6 @@ function parseCellset(data, formatMap = {}, pageMembers = [], useFormat = true) 
     const numCols = cols.length
     const cellMap = {}
     ;(data.Cells ?? []).forEach(c => { cellMap[c.Ordinal] = c })
-
-    const colIsConsolidated = colTuples.map(t => (t.Members ?? []).some(m => isConsolidatedType(m.Type)))
-    const rowIsConsolidated = rowTuples.map(t => (t.Members ?? []).some(m => isConsolidatedType(m.Type)))
 
     const grid = (rows.length ? rows : [[]]).map((_, ri) =>
         colTuples.map((tuple, ci) => {
@@ -379,12 +370,12 @@ function parseCellset(data, formatMap = {}, pageMembers = [], useFormat = true) 
         })
     )
 
-    return { cols, rows, rowDimNames, grid, colIsConsolidated, rowIsConsolidated }
+    return { cols, rows, rowDimNames, grid }
 }
 
-function buildGridData(parsed, consEmphasis = false) {
+function buildGridData(parsed) {
     if (!parsed) return { colDefs: [], rowData: [] }
-    const { cols, rows, rowDimNames, grid, colIsConsolidated, rowIsConsolidated } = parsed
+    const { cols, rows, rowDimNames, grid } = parsed
     const rowDimCount = rowDimNames.length || 1
 
     const rowColDefs = Array.from({ length: rowDimCount }, (_, i) => ({
@@ -409,13 +400,7 @@ function buildGridData(parsed, consEmphasis = false) {
             field: `c${i}`, headerName: c, width: 110, minWidth: 60, resizable: true,
             comparator: tm1NumericComparator,
             valueFormatter: p => (p.value === '' || p.value == null) ? '—' : String(p.value),
-            cellStyle: p => {
-                if (p.value === '' || p.value == null) return { color: '#888' }
-                if (consEmphasis && (colIsConsolidated?.[i] || rowIsConsolidated?.[p.data?.__ri__ ?? p.node?.rowIndex])) {
-                    return { background: 'rgba(59,130,246,0.10)' }
-                }
-                return {}
-            },
+            cellStyle: p => (p.value === '' || p.value == null) ? { color: '#888' } : {},
         })),
     ]
 
@@ -1856,7 +1841,7 @@ export default function ViewEditor({ tab }) {
     const parsed = useMemo(() => {
         return displayResult ? parseCellset(displayResult, formatAttrs, pageMembers, app.settings.numFormat) : null
     }, [displayResult, formatAttrs, allAxesDims, pageMembers, app.settings.numFormat])
-    const { colDefs: baseFlatColDefs, rowData } = useMemo(() => buildGridData(parsed, app.settings.consEmphasis), [parsed, app.settings.consEmphasis])
+    const { colDefs: baseFlatColDefs, rowData } = useMemo(() => buildGridData(parsed), [parsed])
 
     // Apply persisted widths to the flat fallback grid
     const colDefs = useMemo(() => {

@@ -239,7 +239,6 @@ export default function HierarchyGrid({
 }) {
     const gridRef       = useRef(null)
     const prevColDefs   = useRef(null)
-    const prevAppearanceRef = useRef('true')
     const internalApp   = useGridAppearance()
     const app           = appearance ?? internalApp
 
@@ -510,11 +509,7 @@ export default function HierarchyGrid({
                             cursor:     isWritable ? 'text' : 'default',
                             background: isZeroRule
                                 ? (dark ? 'rgba(245,158,11,0.15)' : 'rgba(245,158,11,0.12)')
-                                : isConsolidated
-                                    ? (app.settings.consEmphasis
-                                        ? 'rgba(59,130,246,0.10)'
-                                        : (dark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)'))
-                                    : undefined,
+                                : isConsolidated ? (dark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)') : undefined,
                             borderLeft: isZeroRule ? '2px solid rgba(245,158,11,0.6)' : undefined,
                         }
                     },
@@ -523,19 +518,14 @@ export default function HierarchyGrid({
         ]  // end newDefs
         // Return same reference if columns are structurally unchanged — prevents AG Grid
         // from seeing new columnDefs and resetting user-resized widths.
-        // Appearance-affecting cellStyle changes (consolidation emphasis) must NOT be
-        // short-circuited, otherwise the toggle silently keeps the stale cellStyle.
-        const appearanceSig = `${app.settings.consEmphasis}`
         const prev = prevColDefs.current
         if (prev && prev.length === newDefs.length &&
-            prev.every((c, i) => c.field === newDefs[i].field && c.headerName === newDefs[i].headerName && c.headerComponent === newDefs[i].headerComponent) &&
-            prevAppearanceRef.current === appearanceSig) {
+            prev.every((c, i) => c.field === newDefs[i].field && c.headerName === newDefs[i].headerName && c.headerComponent === newDefs[i].headerComponent)) {
             return prev
         }
         prevColDefs.current = newDefs
-        prevAppearanceRef.current = appearanceSig
         return newDefs
-    }, [hierarchies, visibleColumns, colNodeMap, columnHierarchies, multiCol, onCellEdit, dark, app.settings.consEmphasis])
+    }, [hierarchies, visibleColumns, colNodeMap, columnHierarchies, multiCol, onCellEdit, dark])
 
     // ── AG Grid context ───────────────────────────────────────────────────────
 
@@ -556,7 +546,7 @@ export default function HierarchyGrid({
         onCellEdit({ tupleKey: e.data.__tupleKey__, colId: e.colDef.field, value: e.newValue })
     }, [onCellEdit])
 
-    const theme = useMemo(() => app.makeTheme(dark, Math.max(HDR_ROW_H, Math.max(1, columnHierarchies.length) * HDR_ROW_H)), [dark, columnHierarchies.length, app.makeTheme])
+    const theme = useMemo(() => app.makeTheme(dark, Math.max(HDR_ROW_H, Math.max(1, columnHierarchies.length) * HDR_ROW_H)), [dark, columnHierarchies.length, app])
 
     const handleResetWidths = useCallback(() => {
         savedWidthsRef.current = {}
