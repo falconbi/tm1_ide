@@ -581,9 +581,9 @@ export default function HierarchyGrid({
                     columnDefs={colDefs}
                     rowData={rowData}
                     quickFilterText={quickFilter || undefined}
-                    pinnedTopRowData={freezeTop && rowData.length ? [rowData[0]] : null}
+                    pinnedTopRowData={freezeTop && rowData.length ? [{ ...rowData[0] }] : null}
                     context={context}
-                    getRowId={p => p.data.__tupleKey__}
+                    getRowId={p => (p.rowPinned ? `pinned-${p.data.__tupleKey__}` : p.data.__tupleKey__)}
                     suppressMovableColumns
                     enableCellTextSelection={!onCellEdit}
                     stopEditingWhenCellsLoseFocus

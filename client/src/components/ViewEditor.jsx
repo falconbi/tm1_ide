@@ -2536,7 +2536,7 @@ export default function ViewEditor({ tab }) {
                             columnDefs={colDefs}
                             rowData={rowData}
                             quickFilterText={flatQuickFilter || undefined}
-                            pinnedTopRowData={flatFreezeTop && rowData.length ? [rowData[0]] : null}
+                            pinnedTopRowData={flatFreezeTop && rowData.length ? [{ ...rowData[0] }] : null}
                             suppressMovableColumns
                             enableCellTextSelection
                             defaultColDef={{ sortable: true }}

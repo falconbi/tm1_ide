@@ -462,7 +462,7 @@ export default function ResultGrid({ axes, cells, truncated, onReady, server, cu
             columnDefs={colDefs}
             rowData={rowData}
             quickFilterText={quickFilter || undefined}
-            pinnedTopRowData={freezeTop && rowData.length ? [rowData[0]] : null}
+            pinnedTopRowData={freezeTop && rowData.length ? [{ ...rowData[0] }] : null}
             suppressMovableColumns
             enableCellTextSelection={!writeMode}
             singleClickEdit={writeMode}
