@@ -1890,6 +1890,18 @@ export default function ViewEditor({ tab }) {
         return () => clearTimeout(t)
     }, [flatFreezeTop, rowData])
 
+    // Re-apply visual appearance settings (zebra, row height, font size) — AG
+    // Grid doesn't redraw rows when these change.
+    useEffect(() => {
+        const api = flatGridRef.current?.api
+        if (!api) return
+        const t = setTimeout(() => {
+            api.redrawRows()
+            api.refreshHeader?.()
+        }, 0)
+        return () => clearTimeout(t)
+    }, [app.refreshKey])
+
     // ── HierarchyGrid data ────────────────────────────────────────────────────
     // Fixed 4-slot hooks per axis (React rules: no conditional/loop hooks)
     const rowDims = useMemo(() => axes.rows.map(d => d.dimension),    [axes.rows])

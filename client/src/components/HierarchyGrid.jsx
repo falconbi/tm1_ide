@@ -560,6 +560,18 @@ export default function HierarchyGrid({
         gridRef.current?.api?.autoSizeAllColumns?.()
     }, [])
 
+    // Re-apply visual appearance settings (zebra, row height, font size) — AG
+    // Grid doesn't redraw rows when these change.
+    useEffect(() => {
+        const api = gridRef.current?.api
+        if (!api) return
+        const t = setTimeout(() => {
+            api.redrawRows()
+            api.refreshHeader?.()
+        }, 0)
+        return () => clearTimeout(t)
+    }, [app.refreshKey])
+
     // Export the current grid (respecting expand/collapse) to CSV. Row-dim
     // columns export the member LABEL (not the internal node id); data columns
     // export the raw value. Meta columns are excluded.

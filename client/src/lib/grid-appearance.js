@@ -38,5 +38,9 @@ export function useGridAppearance() {
     return (params.node?.rowIndex ?? 0) % 2 === 1 ? { background: 'rgba(127,127,127,0.07)' } : undefined
   }, [settings.zebra])
 
-  return { settings, patch, makeTheme, rowStyle }
+  // Bump when a visual setting that needs a grid redraw changes (zebra, row
+  // height, font size) — AG Grid won't re-apply these by itself.
+  const refreshKey = `${settings.rowHeight}-${settings.fontSize}-${settings.zebra}`
+
+  return { settings, patch, makeTheme, rowStyle, refreshKey }
 }

@@ -242,6 +242,18 @@ export default function ResultGrid({ axes, cells, truncated, onReady, server, cu
     return () => clearTimeout(t)
   }, [freezeTop, rowData])
 
+  // Re-apply visual appearance settings (zebra, row height, font size) — AG
+  // Grid doesn't redraw rows when these change.
+  useEffect(() => {
+    const api = gridRef.current?.api
+    if (!api) return
+    const t = setTimeout(() => {
+      api.redrawRows()
+      api.refreshHeader?.()
+    }, 0)
+    return () => clearTimeout(t)
+  }, [app.refreshKey])
+
   // For loaded views (e.g. Default), the cellset may include title axes (Ordinal >1) with the fixed member.
   // Extract them as additional slicers so coverage and coords include them.
   const additionalSlicers = useMemo(() => {
