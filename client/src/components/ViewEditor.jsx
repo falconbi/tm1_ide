@@ -913,6 +913,17 @@ function RuleBreakdown({ server, statements, components, dimElemPairs, onDrill }
         })
     }, [allCalls, server, dimElemPairs]) // eslint-disable-line
 
+    // Resolve an ATTRS('Dim', elem, 'Attr') expression to its fetched attribute
+    // value, so DB() coordinates that use attribute lookups become drillable.
+    // The element arg may be a quoted name or a !Dim reference (or another expr).
+    const attrArgRx = /^ATTRS\(\s*'([^']+)'\s*,\s*([^,]+)\s*,\s*'([^']+)'\s*\)$/i
+    const resolveAttrArg = (arg) => {
+        const m = arg.match(attrArgRx)
+        if (!m) return null
+        const elem = resolveArg(m[2].trim(), dimElemPairs)
+        return attrValues[`${m[1]}::${elem}`]?.[m[3]] ?? null
+    }
+
     let dbIdx = 0
 
     return (
@@ -935,14 +946,14 @@ function RuleBreakdown({ server, statements, components, dimElemPairs, onDrill }
                             if (call.funcName === 'DB') {
                                 const comp     = components[dbIdx++]
                                 const cubeName = resolved[0] ?? '?'
-                                const elems    = resolved.slice(1)
+                                // Resolve ATTRS(...) args to their fetched attribute values so the
+                                // DB coordinates are real element names (drillable + readable).
+                                const elems    = resolved.slice(1).map(a => resolveAttrArg(a) ?? a)
                                 const ctype    = comp?.Type?.toLowerCase() ?? ''
                                 const badge    = ctype.includes('rule')   ? <span className="badge bg-amber-500/20 text-amber-400">RULE</span>
                                               : ctype.includes('consol') ? <span className="badge bg-purple-500/20 text-purple-400">C</span>
                                               : ctype.includes('base')   ? <span className="badge bg-emerald-500/20 text-emerald-400">BASE</span>
                                               : null
-                                // Drillable when every element arg resolved to a plain name
-                                // (ATTRS(...) expressions can't build a coordinate tuple).
                                 const drillable = onDrill && elems.length > 0 && elems.every(a => a && !a.includes('('))
                                 return (
                                     <div
