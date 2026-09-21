@@ -3,6 +3,16 @@
 // The panel strips markers before insertion; autocomplete uses them as tab stops.
 
 import { loadCustomSnippets } from './custom-snippets'
+import TM1_CATALOG from '@shared/tm1-function-catalog.json'
+
+// Every catalog function already has an autocomplete entry (with signature +
+// snippet) via tm1-completion.js, so the snippet library must only supply
+// STRUCTURAL templates (loops, IF/ELSE, datasource setup, ...) — not bare
+// single-function calls like DIMIX() which would duplicate the autocomplete.
+const CATALOG_NAMES = new Set(Object.keys(TM1_CATALOG).map(n => n.toUpperCase()))
+const isCatalogFunction = (s) =>
+  CATALOG_NAMES.has(s.label.replace(/\(\)$/, '').trim().toUpperCase()) ||
+  CATALOG_NAMES.has(s.trigger.toUpperCase())
 
 const S = (trigger, label, description, category, language, code) =>
   ({ trigger, label, description, category, language, code })
@@ -299,7 +309,7 @@ export function registerTM1Snippets(monaco) {
         }
 
         const allForLang = [
-          ...ALL_SNIPPETS.filter(s => s.language === langKey || s.language === 'both'),
+          ...ALL_SNIPPETS.filter(s => (s.language === langKey || s.language === 'both') && !isCatalogFunction(s)),
           ...loadCustomSnippets().filter(s => s.language === langKey),
         ]
 
