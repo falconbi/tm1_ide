@@ -33,8 +33,8 @@ export const HELP_CONTENT = {
         body: 'Use `#Region Name` / `#EndRegion` to fold and organise sections. The **Regions** menu jumps to any region; **Collapse/Expand** toggles all of them at once.',
       },
       {
-        heading: 'Snippets',
-        body: 'The **Snippets** panel lists ready-to-insert templates for element functions, date, and string functions. Type a function name and press Tab to expand it inline.',
+        heading: 'Functions & autocomplete',
+        body: 'The **Ref** panel (toolbar) is a lookup reference of every TM1 function, grouped by family (Cell, Cube, Dimension, Element, Attribute, Subset, View, Process, Security, Text & Date, Math, ...) with each function\'s signature and description. Structural templates (loops, IF/ELSE, datasource setup) are ready to insert. As you type, **autocomplete** offers any function — select one to insert it; statements complete as `NAME;`. Select a block and press `Ctrl+/` to comment or uncomment it.',
       },
       {
         heading: 'Feeders',
@@ -69,6 +69,10 @@ export const HELP_CONTENT = {
       {
         heading: 'Validation',
         body: '**Check** runs the static validator (section structure, IF/WHILE/FOR block matching, argument counts) against the current buffer.',
+      },
+      {
+        heading: 'Functions & autocomplete',
+        body: 'The **Ref** panel (toolbar) is a lookup reference of every TM1 function grouped by family, plus ready-to-insert structural templates (loops, IF/ELSE, datasource setup). As you type, autocomplete offers any function or keyword — statements complete as `NAME;`. Select a block and press `Ctrl+/` to comment or uncomment it.',
       },
     ],
   },
