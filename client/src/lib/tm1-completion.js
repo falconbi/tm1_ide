@@ -95,6 +95,8 @@ const RULES_KEYWORDS = [
   { label: 'FEEDER',  snippet: '${1:source} => ${2:target};',                    detail: 'Define a feeder' },
   { label: 'IF',      snippet: 'IF(${1:condition}, ${2:true_value}, ${3:false_value})', detail: 'Conditional expression (Rules)' },
   { label: 'ISLEAF',  snippet: 'ISLEAF',                                         detail: 'Returns 1 if current cell is a leaf' },
+  { label: '#Region',    snippet: '#Region ${1:name}',                           detail: 'Collapsible region marker (folding)' },
+  { label: '#EndRegion', snippet: '#EndRegion',                                  detail: 'End of a region block' },
 ]
 
 // ── Context detector ──────────────────────────────────────────────────────────
@@ -263,6 +265,18 @@ function quoteAfterCursor(model, position) {
   return next === "'" || next === '"'
 }
 
+// Range extended back to cover a leading '#' if the typed word is preceded by one
+// (so '#Region' completions replace the '#' too, not just 'Region').
+function hashRangeFor(model, position, word, range) {
+  if (word.startColumn <= 1) return range
+  const prev = model.getValueInRange({
+    startLineNumber: position.lineNumber, startColumn: word.startColumn - 1,
+    endLineNumber:   position.lineNumber, endColumn:   word.startColumn,
+  })
+  if (prev === '#') return { ...range, startColumn: word.startColumn - 1 }
+  return range
+}
+
 // Returns the string value of the Nth argument of the innermost unclosed call
 // (ignores # comments, which may contain apostrophes like "Budget's").
 function extractStringArg(textBefore, argIndex) {
@@ -330,17 +344,19 @@ function buildCatalogSnippet(name, entry) {
 
 // Function + keyword name suggestions filtered by the typed prefix — used both at
 // statement level (!ctx) and inside generic argument positions (condition/value/n).
-function functionNameSuggestions({ typed, keywords, catalogNow, version, range, monaco, CIK }) {
+// `hashRange` (optional) covers a leading '#' before the word so '#Region' inserts
+// cleanly instead of producing '##Region'.
+function functionNameSuggestions({ typed, keywords, catalogNow, version, range, hashRange, monaco, CIK }) {
   const keywordNames = new Set(keywords.map(k => k.label.toUpperCase()))
   const fromKeywords = keywords
-    .filter(k => k.label.toUpperCase().startsWith(typed))
+    .filter(k => k.label.toUpperCase().replace(/^#/, '').startsWith(typed))
     .map(k => ({
       label:       k.label,
       kind:        CIK.Function,
       detail:      k.detail,
       insertText:  k.snippet,
       insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
-      range,
+      range:       k.label.startsWith('#') && hashRange ? hashRange : range,
     }))
   const fromCatalog = Object.entries(catalogNow)
     .filter(([name, entry]) =>
@@ -464,7 +480,7 @@ export function registerTM1Completions(monaco, language, catalog, keywords, getC
       if (!ctx) {
         if (!word.word) return { suggestions: [] }
         const typed = word.word.toUpperCase()
-        return { suggestions: functionNameSuggestions({ typed, keywords, catalogNow, version, range, monaco, CIK }) }
+        return { suggestions: functionNameSuggestions({ typed, keywords, catalogNow, version, range, hashRange: hashRangeFor(model, position, word, range), monaco, CIK }) }
       }
 
       const paramType = resolveParamType(catalogNow, ctx.fn, ctx.paramIdx)
@@ -642,7 +658,7 @@ export function registerTM1Completions(monaco, language, catalog, keywords, getC
       // function + keyword completions (e.g. typing ELPAR inside IF(ELPAR…)).
       if (!isInsideString(textBefore)) {
         if (word.word) {
-          return { suggestions: functionNameSuggestions({ typed: word.word.toUpperCase(), keywords, catalogNow, version, range, monaco, CIK }) }
+          return { suggestions: functionNameSuggestions({ typed: word.word.toUpperCase(), keywords, catalogNow, version, range, hashRange: hashRangeFor(model, position, word, range), monaco, CIK }) }
         }
       }
 
