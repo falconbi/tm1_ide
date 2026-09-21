@@ -9,6 +9,7 @@
 // script (tools/validate-catalog.js).
 import { getRulesCatalog, getTICatalog } from '@/lib/catalog-runtime'
 import { compatAvailable } from '@/lib/tm1-version.js'
+import { useStore } from '@/store'
 import TM1_CATALOG from '@shared/tm1-function-catalog.json'
 // Each entry: { language, params, returnType, description, compat, deprecated, isStatement }
 // language:    'rules'|'ti'|'both' — which language(s) this function is valid in
@@ -705,12 +706,41 @@ export function registerTM1SignatureHelp(monaco, language, catalog) {
 
 export { RULES_CATALOG, TI_CATALOG }
 
-export function registerRulesCompletions(monaco, getContext) {
-  registerTM1SignatureHelp(monaco, 'tm1rules', () => getRulesCatalog() ?? RULES_CATALOG)
-  return registerTM1Completions(monaco, 'tm1rules', () => getRulesCatalog() ?? RULES_CATALOG, RULES_KEYWORDS, getContext)
+// Monaco registers providers globally; registering on every editor mount (or tab
+// switch) accumulates copies and duplicates every suggestion. Each provider is
+// registered exactly ONCE app-wide; the context (server / cube / version) is read
+// from the store's active tab at query time, so it always matches the focused
+// editor.
+let _rulesRegistered = false
+let _tiRegistered = false
+let _rulesSigRegistered = false
+let _tiSigRegistered = false
+
+const activeTabContext = (withCube) => {
+  const s = useStore.getState()
+  const tab = s.tabs.find(t => t.id === s.activeTab)
+  if (!tab) return { server: s.server ?? null, version: s.serverVersion ?? null }
+  return withCube
+    ? { server: tab.server ?? s.server, cube: tab.cube, version: s.serverVersion ?? null }
+    : { server: tab.server ?? s.server, version: s.serverVersion ?? null }
 }
 
-export function registerTICompletions(monaco, getServer) {
-  registerTM1SignatureHelp(monaco, 'tm1ti', () => getTICatalog() ?? TI_CATALOG)
-  return registerTM1Completions(monaco, 'tm1ti', () => getTICatalog() ?? TI_CATALOG, TI_KEYWORDS, getServer)
+export function registerRulesCompletions(monaco) {
+  if (!_rulesSigRegistered) {
+    _rulesSigRegistered = true
+    registerTM1SignatureHelp(monaco, 'tm1rules', () => getRulesCatalog() ?? RULES_CATALOG)
+  }
+  if (_rulesRegistered) return
+  _rulesRegistered = true
+  return registerTM1Completions(monaco, 'tm1rules', () => getRulesCatalog() ?? RULES_CATALOG, RULES_KEYWORDS, () => activeTabContext(true))
+}
+
+export function registerTICompletions(monaco) {
+  if (!_tiSigRegistered) {
+    _tiSigRegistered = true
+    registerTM1SignatureHelp(monaco, 'tm1ti', () => getTICatalog() ?? TI_CATALOG)
+  }
+  if (_tiRegistered) return
+  _tiRegistered = true
+  return registerTM1Completions(monaco, 'tm1ti', () => getTICatalog() ?? TI_CATALOG, TI_KEYWORDS, () => activeTabContext(false))
 }

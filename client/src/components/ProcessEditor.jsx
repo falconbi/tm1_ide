@@ -998,7 +998,7 @@ export default function ProcessEditor({ tab }) {
     })
     if (!registeredRef.current) {
       registerTM1Completions(monaco, () => server, () => serverVersion)
-      registerTICompletions(monaco, () => ({ server: tab.server ?? server, version: serverVersion }))
+      registerTICompletions(monaco)
       registerTM1Theme(monaco, dark)
       registeredRef.current = true
     }

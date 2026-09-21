@@ -12,7 +12,13 @@ import { catalogEntry } from '@/lib/catalog-runtime.js'
 
 // getServer:  function that returns the currently connected server name or null
 // getVersion: function that returns the connected server's product version (optional)
+let _tm1LanguageRegistered = false
+
 function registerTM1Completions(monaco, getServer, getVersion) {
+  // Monaco registers providers globally — only register the language, tokenizer,
+  // folding and snippets once app-wide, or every editor mount accumulates copies.
+  if (_tm1LanguageRegistered) return
+  _tm1LanguageRegistered = true
   // ── Language registration + tokenizers ──────────────────────────────────────
   // Function-name highlighting is built from the real catalog (not a short
   // hand-picked list) so every Rules function gets the same 'type' token —
