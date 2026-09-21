@@ -225,10 +225,13 @@ export const useStore = create((set, get) => ({
     }))
   },
 
-  closeTab: (id) => {
+  closeTab: (id, groupId) => {
     const { tabs, layout, activeGroupId } = get()
-    const holder = findLeafByTab(layout, id)
-    if (!holder) { set({ tabs: tabs.filter(t => t.id !== id) }); return }
+    // groupId = the specific pane the close was requested in (a split mirrors a
+    // tab id into multiple panes, so we must remove it from THAT pane, not the
+    // first match).
+    const holder = groupId ? findLeaf(layout, groupId) : findLeafByTab(layout, id)
+    if (!holder || !holder.tabIds.includes(id)) { set({ tabs: tabs.filter(t => t.id !== id) }); return }
 
     const newTabIds = holder.tabIds.filter(tid => tid !== id)
     let newLayout

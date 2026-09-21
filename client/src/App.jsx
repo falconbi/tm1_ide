@@ -156,7 +156,7 @@ export default function App() {
         if (!group || !group.tabIds.length) return
         e.preventDefault()
         if (e.key.toLowerCase() === 'w') {
-          if (group.activeTabId) closeTab(group.activeTabId)
+          if (group.activeTabId) closeTab(group.activeTabId, group.id)
         } else {
           const idx = group.tabIds.indexOf(group.activeTabId)
           const len = group.tabIds.length

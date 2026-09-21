@@ -82,7 +82,7 @@ function ContextMenu({ tabId, groupId, x, y, onClose }) {
       {item(<ChevronsRight size={11} />, 'Close to the right', () => closeTabsToRight(tabId, groupId))}
       {item(<XSquare size={11} />, 'Close others', () => closeOtherTabsInGroup(tabId, groupId))}
       <div className="border-t border-border my-1" />
-      {item(<X size={11} />, 'Close', () => closeTab(tabId), true)}
+      {item(<X size={11} />, 'Close', () => closeTab(tabId, groupId), true)}
     </div>
   )
 }
@@ -230,7 +230,7 @@ export default function TabBar({ groupId }) {
                   </button>
                 )}
                 <button
-                  onClick={e => { e.stopPropagation(); closeTab(tab.id) }}
+                  onClick={e => { e.stopPropagation(); closeTab(tab.id, groupId) }}
                   className="ml-0.5 rounded opacity-0 group-hover:opacity-100 hover:bg-red-500/20 p-0.5 text-red-400 transition-opacity"
                 >
                   <X size={9} />
