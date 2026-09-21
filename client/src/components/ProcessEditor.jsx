@@ -1492,19 +1492,6 @@ export default function ProcessEditor({ tab }) {
         ))}
 
         <div className="ml-auto flex items-center gap-1 mr-2">
-          <div className="flex items-center rounded border border-border overflow-hidden shrink-0">
-            <button onClick={() => editorRef.current?.getAction('editor.action.fontZoomOut')?.run()}
-              className="px-1.5 py-1 text-[9px] font-bold text-muted-foreground hover:bg-muted hover:text-foreground transition-colors leading-none"
-              title="Decrease font size (Ctrl+-)">A</button>
-            <div className="w-px h-3 bg-border" />
-            <button onClick={() => editorRef.current?.getAction('editor.action.fontZoomReset')?.run()}
-              className="px-1.5 py-1 text-[11px] font-bold text-muted-foreground hover:bg-muted hover:text-foreground transition-colors leading-none"
-              title="Reset font size (Ctrl+0)">A</button>
-            <div className="w-px h-3 bg-border" />
-            <button onClick={() => editorRef.current?.getAction('editor.action.fontZoomIn')?.run()}
-              className="px-1.5 py-1 text-[13px] font-bold text-muted-foreground hover:bg-muted hover:text-foreground transition-colors leading-none"
-              title="Increase font size (Ctrl++)">A</button>
-          </div>
           <button
             onClick={toggleMinimap}
             title="Toggle minimap"
