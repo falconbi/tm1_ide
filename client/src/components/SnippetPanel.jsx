@@ -1,8 +1,8 @@
 import { useState, useMemo, useEffect } from 'react'
-import { ChevronDown, ChevronRight, Search, Plus, Download, Pencil, Trash2 } from 'lucide-react'
+import { ChevronDown, ChevronRight, Search, Plus, Pencil, Trash2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import {
-  loadCustomSnippets, addOrUpdateCustomSnippet, deleteCustomSnippet, exportSnippetsFile,
+  loadCustomSnippets, addOrUpdateCustomSnippet, deleteCustomSnippet,
 } from '@/lib/custom-snippets'
 
 function cleanInsert(code) {
@@ -148,11 +148,6 @@ export default function SnippetPanel({ snippets, language, onInsert }) {
     refreshCustom()
   }
 
-  const handleExport = () => {
-    if (custom.length === 0) { setMsg('No custom snippets to export yet.'); return }
-    exportSnippetsFile(language, custom)
-  }
-
   return (
     <div className="flex flex-col h-full">
 
@@ -169,11 +164,6 @@ export default function SnippetPanel({ snippets, language, onInsert }) {
               : 'text-muted-foreground hover:text-foreground hover:bg-muted'
           )}
         ><Plus size={11} /></button>
-        <button
-          onClick={handleExport}
-          title="Export custom snippets to JSON file"
-          className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-        ><Download size={11} /></button>
       </div>
 
       {/* Create / edit form */}
