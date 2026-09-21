@@ -227,9 +227,8 @@ export const useStore = create((set, get) => ({
 
   closeTab: (id) => {
     const { tabs, layout, activeGroupId } = get()
-    const newTabs = tabs.filter(t => t.id !== id)
     const holder = findLeafByTab(layout, id)
-    if (!holder) { set({ tabs: newTabs }); return }
+    if (!holder) { set({ tabs: tabs.filter(t => t.id !== id) }); return }
 
     const newTabIds = holder.tabIds.filter(tid => tid !== id)
     let newLayout
@@ -240,6 +239,11 @@ export const useStore = create((set, get) => ({
       const newActiveTabId = holder.activeTabId === id ? (newTabIds.at(-1) ?? null) : holder.activeTabId
       newLayout = mapLeaves(layout, l => l.id === holder.id ? { ...l, tabIds: newTabIds, activeTabId: newActiveTabId } : l)
     }
+
+    // A split mirrors the same tab into another pane — closing here must NOT
+    // destroy it there. Only delete the tab object if no leaf still references it.
+    const stillReferenced = collectLeaves(newLayout).some(l => l.tabIds.includes(id))
+    const newTabs = stillReferenced ? tabs : tabs.filter(t => t.id !== id)
 
     const groups = collectLeaves(newLayout)
     const newActiveGroupId = findLeaf(newLayout, activeGroupId) ? activeGroupId : (groups.at(-1)?.id ?? null)
