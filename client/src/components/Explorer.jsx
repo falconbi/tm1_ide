@@ -10,6 +10,14 @@ import { cn } from '@/lib/utils'
 
 // ── Reveal / locate helpers ───────────────────────────────────────────────────
 
+// Toggle open: clicking a tree object opens it; clicking it again (already open)
+// closes it. Reads the store fresh so any component can use it.
+const toggleOpenTab = (spec) => {
+  const { tabs, openTab, closeTab } = useStore.getState()
+  if (tabs.some(t => t.id === spec.id)) closeTab(spec.id)
+  else openTab(spec)
+}
+
 /** @param {string} sectionId @param {import('@/store').RevealTarget} target */
 function shouldAutoOpen(sectionId, target) {
   if (!target) return false
@@ -294,7 +302,7 @@ function CubeRow({ server, cube, onOpenRules, onOpenView, onOpenSubset, onOpenDi
   }
 
   const handleAddView = () => {
-    openTab({ id: `guidedmdxview:${server}:${cube}:${Date.now()}`, type: 'guidedmdxview', label: `Builder — ${cube}`, server, initialState: { selectedCube: cube, step: 1 } })
+    toggleOpenTab({ id: `guidedmdxview:${server}:${cube}:${Date.now()}`, type: 'guidedmdxview', label: `Builder — ${cube}`, server, initialState: { selectedCube: cube, step: 1 } })
   }
 
   const loading = loadingViews || loadingDims
@@ -316,7 +324,7 @@ function CubeRow({ server, cube, onOpenRules, onOpenView, onOpenSubset, onOpenDi
               className="flex items-center gap-0.5 px-1 py-0.5 rounded text-[10px] text-muted-foreground hover:text-foreground hover:bg-sidebar-accent">
               <PencilLine size={9} />
             </button>
-            <button onClick={e => { e.stopPropagation(); openTab({ id: `guidedmdxview:${server}:${cube}:${Date.now()}`, type: 'guidedmdxview', label: `Builder — ${cube}`, server, initialState: { selectedCube: cube, step: 1 } }) }} title="Build MDX View"
+            <button onClick={e => { e.stopPropagation(); toggleOpenTab({ id: `guidedmdxview:${server}:${cube}:${Date.now()}`, type: 'guidedmdxview', label: `Builder — ${cube}`, server, initialState: { selectedCube: cube, step: 1 } }) }} title="Build MDX View"
               className="flex items-center gap-0.5 px-1 py-0.5 rounded text-[10px] text-muted-foreground hover:text-foreground hover:bg-sidebar-accent">
               <Braces size={9} />
             </button>
@@ -956,7 +964,7 @@ export default function Explorer() {
   const deleteProcessMut  = useDeleteProcess()
   const deleteCoreMut     = useDeleteChore()
 
-  const openNewProcess = () => openTab({
+  const openNewProcess = () => toggleOpenTab({
     id: `process:${server}:new:${Date.now()}`,
     type: 'process',
     label: 'New Process',
@@ -964,7 +972,7 @@ export default function Explorer() {
     name: null,
   })
 
-  const openNewChore = () => openTab({
+  const openNewChore = () => toggleOpenTab({
     id: `chore:${server}:new:${Date.now()}`,
     type: 'chore',
     label: 'New Chore',
@@ -1005,7 +1013,7 @@ export default function Explorer() {
     ]
   }, [search, cubes, dims, procs, chores])
 
-  const openRules = (cube) => openTab({
+  const openRules = (cube) => toggleOpenTab({
     id:      `rules:${server}:${cube}`,
     type:    'rules',
     label:   cube,
@@ -1014,7 +1022,7 @@ export default function Explorer() {
     content: null,
   })
 
-  const openProcess = (name) => openTab({
+  const openProcess = (name) => toggleOpenTab({
     id:      `process:${server}:${name}`,
     type:    'process',
     label:   name,
@@ -1023,7 +1031,7 @@ export default function Explorer() {
     content: null,
   })
 
-  const openSubset = (dim, name) => openTab({
+  const openSubset = (dim, name) => toggleOpenTab({
     id:         name ? `subset:${server}:${dim}:${name}` : `subset:${server}:${dim}:new:${Date.now()}`,
     type:       'subset',
     label:      name ?? 'New Subset',
@@ -1032,7 +1040,7 @@ export default function Explorer() {
     subsetName: name ?? null,
   })
 
-  const openCubeViewer = (cube) => openTab({
+  const openCubeViewer = (cube) => toggleOpenTab({
     id:       `cubeview:${server}:${cube}`,
     type:     'cubeview',
     label:    `⊞ ${cube}`,
@@ -1041,7 +1049,7 @@ export default function Explorer() {
     viewName: 'Default',
   })
 
-  const openView = (cube, view) => openTab({
+  const openView = (cube, view) => toggleOpenTab({
     id:       `cubeview:${server}:${cube}:${view}`,
     type:     'cubeview',
     label:    view,
@@ -1050,7 +1058,7 @@ export default function Explorer() {
     viewName: view,
   })
 
-  const openDim = (dim, hierarchy) => openTab({
+  const openDim = (dim, hierarchy) => toggleOpenTab({
     id:        dim ? `dim:${server}:${dim}:${hierarchy ?? dim}` : `dim:${server}:new:${Date.now()}`,
     type:      'dimension',
     label:     dim ? (hierarchy && hierarchy !== dim ? `${dim} / ${hierarchy}` : dim) : 'New Dimension',
@@ -1064,11 +1072,11 @@ export default function Explorer() {
     if (tabs.some(t => t.id === tabId)) {
       useStore.getState().closeTab(tabId)
     } else {
-      openTab({ id: tabId, type: 'cubemap', label: 'Cube Map', server })
+      toggleOpenTab({ id: tabId, type: 'cubemap', label: 'Cube Map', server })
     }
   }
 
-  const openCubeEditor = (cube) => openTab({
+  const openCubeEditor = (cube) => toggleOpenTab({
     id:     cube ? `cubeeditor:${server}:${cube}` : `cubeeditor:${server}:new:${Date.now()}`,
     type:   'cubeeditor',
     label:  cube ?? 'New Cube',
@@ -1076,7 +1084,7 @@ export default function Explorer() {
     cube:   cube ?? null,
   })
 
-  const openChore = (name) => openTab({
+  const openChore = (name) => toggleOpenTab({
     id:     `chore:${server}:${name}`,
     type:   'chore',
     label:  name,
@@ -1084,10 +1092,10 @@ export default function Explorer() {
     name,
   })
 
-  const openProcessAtLine = useCallback((name, section, line) => openTab({
+  const openProcessAtLine = useCallback((name, section, line) => toggleOpenTab({
     id: `process:${server}:${name}`, type: 'process', label: name, server, name, content: null,
     ...(section && line ? { scrollToSection: section, scrollToLine: line } : {}),
-  }), [server, openTab])
+  }), [server])
 
   const openFromHistory = (h) => openTab({ ...h, content: null })
 
