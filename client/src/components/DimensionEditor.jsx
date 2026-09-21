@@ -8,7 +8,8 @@ import {
 import { AgGridReact } from 'ag-grid-react'
 import { AllCommunityModule, ModuleRegistry, themeBalham, colorSchemeDark, colorSchemeLight } from 'ag-grid-community'
 import { useStore } from '@/store'
-import { ChevronRight, ChevronDown, Loader2, List, GitBranch, Plus, Trash2, Check, X, ClipboardList, ChevronLeft, Table2, Search, ListOrdered, MapPin, Upload, Grid3x3, Cog, AlertTriangle, XCircle, CheckCircle2, RefreshCw } from 'lucide-react'
+import { ChevronRight, ChevronDown, Loader2, List, GitBranch, Plus, Trash2, Check, X, ClipboardList, ChevronLeft, Table2, Search, ListOrdered, MapPin, Upload, Grid3x3, Cog, AlertTriangle, XCircle, CheckCircle2, RefreshCw, HelpCircle } from 'lucide-react'
+import HelpPanel from '@/components/HelpPanel'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
 import PicklistBuilder from './PicklistBuilder'
@@ -1081,6 +1082,7 @@ function DimensionEditorCore({ tab }) {
   const [newHierarchyName, setNewHierarchyName] = useState('')
   const [deleteCheck, setDeleteCheck] = useState(null)
   const [deleteTarget, setDeleteTarget] = useState(null)
+  const [showHelp, setShowHelp] = useState(false)
 
   const { data: elements = [], isLoading: loadingEl, refetch: refetchEl } = useElements(tab.server, tab.dimension, selectedHierarchy)
   const { data: indexedEls = [] } = useElementsWithIndex(showIndex ? tab.server : null, tab.dimension, selectedHierarchy)
@@ -1331,8 +1333,15 @@ function DimensionEditorCore({ tab }) {
             className="flex items-center gap-1 px-2 py-0.5 text-xs rounded border border-border text-muted-foreground hover:bg-background hover:text-foreground transition-colors">
             <ListOrdered size={11} /> Picklists
           </button>
+          <span className="w-px h-4 bg-border mx-0.5" />
+          <button onClick={() => setShowHelp(true)}
+            className="flex items-center gap-1 px-2 py-0.5 text-xs rounded border border-border text-muted-foreground hover:bg-background hover:text-foreground transition-colors"
+            title="Help — Dimension Editor">
+            <HelpCircle size={11} />
+          </button>
         </div>
       </div>
+      <HelpPanel open={showHelp} onClose={() => setShowHelp(false)} area="dimension" />
 
       {/* Toolbar row 2 — used in + filters */}
       <div className="flex items-center gap-2 px-3 py-1 border-b border-border bg-muted/50 shrink-0 flex-wrap">

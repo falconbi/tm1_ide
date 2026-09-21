@@ -2,7 +2,8 @@ import { useState, useEffect } from 'react'
 import { useChore, useSaveChore, useCreateChore, useProcs, useProcess } from '@/hooks/useApi'
 import { useStore } from '@/store'
 import { toast } from 'sonner'
-import { Plus, Trash2, ChevronUp, ChevronDown, Clock, Loader2 } from 'lucide-react'
+import { Plus, Trash2, ChevronUp, ChevronDown, Clock, Loader2, HelpCircle } from 'lucide-react'
+import HelpPanel from '@/components/HelpPanel'
 import { cn } from '@/lib/utils'
 
 function parseFreq(f) {
@@ -111,6 +112,7 @@ export default function ChoreEditor({ tab }) {
   const [startTime, setStartTime] = useState('09:00')
   const [steps, setSteps] = useState([])
   const [dirty, setDirty] = useState(false)
+  const [showHelp, setShowHelp] = useState(false)
 
   useEffect(() => {
     if (!data || isNew) return
@@ -232,7 +234,13 @@ export default function ChoreEditor({ tab }) {
             {createChore.isPending ? <Loader2 size={11} className="animate-spin" /> : <Plus size={11} />} Create Chore
           </button>
         )}
+        <button onClick={() => setShowHelp(true)}
+          className="p-1.5 rounded border border-border text-muted-foreground hover:text-foreground hover:bg-background transition-colors"
+          title="Help — Chore Editor">
+          <HelpCircle size={12} />
+        </button>
       </div>
+      <HelpPanel open={showHelp} onClose={() => setShowHelp(false)} area="chore" />
 
       <div className="flex-1 overflow-y-auto p-4 space-y-5">
 

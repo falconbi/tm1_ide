@@ -7,7 +7,8 @@ import { useStore } from '@/store'
 import { subsetApplyCallbacks } from '@/lib/subsetCallbacks'
 import { useCubeDimensions, useSubsets, useElementsTree, useViews, useExecuteMDX, useViewAxes, useSaveView, useSetDefaultView, usePawBookUsage, useDimAttributes, useViewUsage, useMultiFormatAttrs, useConflictCheck, useGenerateViewMDX, useConfig } from '@/hooks/useApi'
 import { toast } from 'sonner'
-import { RefreshCw, Loader2, Table2, GripVertical, GripHorizontal, X, LayoutGrid, Rows3, Columns3, Filter, ZapOff, Zap, ChevronLeft, ChevronRight, PencilLine, Save, Code2, Eye, ChevronDown, BookOpen, ChevronUp, Locate, MapPin, WrapText, Braces, History, AlertTriangle, Search, Cog, Box, FileSearch, Rss, Sparkles, Clock, Check, ArrowUpDown } from 'lucide-react'
+import { RefreshCw, Loader2, Table2, GripVertical, GripHorizontal, X, LayoutGrid, Rows3, Columns3, Filter, ZapOff, Zap, ChevronLeft, ChevronRight, PencilLine, Save, Code2, Eye, ChevronDown, BookOpen, ChevronUp, Locate, MapPin, WrapText, Braces, History, AlertTriangle, Search, Cog, Box, FileSearch, Rss, Sparkles, Clock, Check, ArrowUpDown, HelpCircle } from 'lucide-react'
+import HelpPanel from '@/components/HelpPanel'
 import TransactionLogPanel from '@/components/TransactionLogPanel'
 import CellContextMenu from '@/components/CellContextMenu'
 import { cn } from '@/lib/utils'
@@ -1131,6 +1132,7 @@ export default function ViewEditor({ tab }) {
     const [totalsPosition,    setTotalsPosition]    = useState('top')
     const [colTotalsPosition, setColTotalsPosition] = useState('top')
     const [activeDrag, setActiveDrag] = useState(null)
+    const [showHelp, setShowHelp] = useState(false)
 
     // Flat (fallback) grid state — search + freeze + persisted widths
     const flatGridRef = useRef(null)
@@ -2286,7 +2288,13 @@ export default function ViewEditor({ tab }) {
                     className="flex items-center justify-center p-1.5 rounded text-emerald-500 hover:bg-muted transition-colors disabled:opacity-40">
                     {isExecuting ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
                 </button>
+                <button onClick={() => setShowHelp(true)}
+                    title="Help — View Editor"
+                    className="flex items-center justify-center p-1.5 rounded text-muted-foreground hover:bg-muted hover:text-foreground transition-colors">
+                    <HelpCircle size={12} />
+                </button>
             </div>
+            <HelpPanel open={showHelp} onClose={() => setShowHelp(false)} area="view" />
 
             {/* AI bar — front door for building this view */}
             <div className="flex items-center gap-2 px-3 py-1.5 border-b border-border bg-muted/10 shrink-0">

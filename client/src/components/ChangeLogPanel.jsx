@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
-import { X, ChevronRight, ChevronDown, Clock, Box, Layers, Cog, FileText, Table2, List, Tag, Loader2, Diff, Rocket, ScrollText, Pencil, RotateCcw } from 'lucide-react'
+import { X, ChevronRight, ChevronDown, Clock, Box, Layers, Cog, FileText, Table2, List, Tag, Loader2, Diff, Rocket, ScrollText, Pencil, RotateCcw, HelpCircle } from 'lucide-react'
+import HelpPanel from '@/components/HelpPanel'
 import { useWorkSessions, useWorkSessionLog, useUpdateSessionDescription, useResumeWorkSession } from '@/hooks/useApi'
 import { useStore } from '@/store'
 import { cn } from '@/lib/utils'
@@ -248,6 +249,7 @@ export default function ChangeLogPanel({ server, onClose, direction = 'up' }) {
   const { openTab, openDeployCenter } = useStore()
   const { data: allSessions = [], isFetching } = useWorkSessions(server)
   const [showDeployed, setShowDeployed] = useState(false)
+  const [showHelp, setShowHelp] = useState(false)
 
   // Once a change set has shipped it's not "in play" anymore -- its record
   // lives properly in Deploy History now. Keep this list to what's still
@@ -278,10 +280,14 @@ export default function ChangeLogPanel({ server, onClose, direction = 'up' }) {
           >
             <Rocket size={10} /> Release
           </button>
+          <button onClick={() => setShowHelp(true)} title="Help — Change Sets" className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors">
+            <HelpCircle size={12} />
+          </button>
           <button onClick={onClose} className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors">
             <X size={12} />
           </button>
         </div>
+        <HelpPanel open={showHelp} onClose={() => setShowHelp(false)} area="changesets" />
 
         {/* Sessions list */}
         <div className="overflow-auto flex-1">

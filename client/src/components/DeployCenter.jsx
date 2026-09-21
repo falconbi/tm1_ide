@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import { X, Rocket, History, FolderArchive, HardDriveDownload, Loader2, CheckCircle2 } from 'lucide-react'
+import { X, Rocket, History, FolderArchive, HardDriveDownload, Loader2, CheckCircle2, HelpCircle } from 'lucide-react'
+import HelpPanel from '@/components/HelpPanel'
 import { useStore } from '@/store'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
@@ -97,6 +98,7 @@ export default function DeployCenter() {
   // Target State snapshot diff) can't go through the normal tab system — that's
   // hidden behind this overlay. Shown as a second overlay, above this one.
   const [diffTab, setDiffTab] = useState(null)
+  const [showHelp, setShowHelp] = useState(false)
 
   // A fresh openDeployCenter() call is a new object each time — use that to
   // reset which rail view is showing, per how this particular open was triggered.
@@ -120,13 +122,21 @@ export default function DeployCenter() {
         <span className="text-xs text-muted-foreground">— {title}</span>
         {deployCenter.server && <span className="text-xs text-muted-foreground/60 ml-1">{deployCenter.server}</span>}
         <button
+          onClick={() => setShowHelp(true)}
+          className="ml-auto p-1.5 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+          title="Help — Deploy Pipeline"
+        >
+          <HelpCircle size={13} />
+        </button>
+        <button
           onClick={closeDeployCenter}
-          className="ml-auto flex items-center gap-1.5 px-2.5 py-1 rounded text-xs text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+          className="flex items-center gap-1.5 px-2.5 py-1 rounded text-xs text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
           title="Close — back to the IDE"
         >
           <X size={13} /> Close
         </button>
       </div>
+      <HelpPanel open={showHelp} onClose={() => setShowHelp(false)} area="deploy" />
 
       <div className="flex flex-1 min-h-0">
         {/* Rail */}

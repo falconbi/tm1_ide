@@ -9,7 +9,8 @@ import { MDX_PATTERN_CATEGORIES } from '@/lib/tm1-mdx-primer-patterns'
 import { subsetApplyCallbacks } from '@/lib/subsetCallbacks'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
-import { Play, Loader2, Sparkles, Search, ChevronDown, ChevronRight, ChevronLeft, Box, Cog, Locate, Clock, Save, AlignLeft, Check, X, GripHorizontal } from 'lucide-react'
+import { Play, Loader2, Sparkles, Search, ChevronDown, ChevronRight, ChevronLeft, Box, Cog, Locate, Clock, Save, AlignLeft, Check, X, GripHorizontal, HelpCircle } from 'lucide-react'
+import HelpPanel from '@/components/HelpPanel'
 import SubsetVisualEditor from './SubsetVisualEditor'
 import { ConflictBanner, ConflictSaveWarning } from '@/components/ConflictBanner'
 import DiffViewerModal from '@/components/DiffViewerModal'
@@ -258,6 +259,7 @@ export default function SubsetEditor({ tab }) {
   const visualMembersRef     = useRef([])
   const [mdx, setMdx]        = useState(null)
   const [members, setMembers] = useState(null)
+  const [showHelp, setShowHelp] = useState(false)
   const [dirty, setDirty]    = useState(false)
   const [showAttrs, setShowAttrs] = useState(false)
   const [activeAlias, setActiveAlias] = useState(null)
@@ -530,7 +532,12 @@ export default function SubsetEditor({ tab }) {
           className="p-1 rounded hover:bg-muted text-amber-400 hover:text-amber-300 transition-colors" title="Show in tree">
           <Locate size={11} />
         </button>
+        <button onClick={() => setShowHelp(true)}
+          className="ml-auto p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors" title="Help — Subset Editor">
+          <HelpCircle size={11} />
+        </button>
       </div>
+      <HelpPanel open={showHelp} onClose={() => setShowHelp(false)} area="subset" />
 
       {/* ── Visual mode ──────────────────────────────────────────────────────── */}
       {mode === 'visual' && (

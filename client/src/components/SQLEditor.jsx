@@ -3,7 +3,8 @@ import MonacoEditor from '@monaco-editor/react'
 import { useStore } from '@/store'
 import { useSQLConnections, useSaveSQLConn, useDeleteSQLConn, useTestSQLConn, useExecuteSQL, useSQLSchema, useSQLQueries, useSaveSQLQuery, useDeleteSQLQuery, usePostToTI, useODBCProcs } from '@/hooks/useApi'
 import { cn } from '@/lib/utils'
-import { Play, Plus, Trash2, ChevronDown, ChevronRight, Database, Settings, X, CheckCircle, AlertCircle, Loader2, Copy, Table, Save, BookOpen, Pencil, Send, Cog, Map } from 'lucide-react'
+import { Play, Plus, Trash2, ChevronDown, ChevronRight, Database, Settings, X, CheckCircle, AlertCircle, Loader2, Copy, Table, Save, BookOpen, Pencil, Send, Cog, Map, HelpCircle } from 'lucide-react'
+import HelpPanel from '@/components/HelpPanel'
 import { toast } from 'sonner'
 import { loadSettings, saveSettings } from '@/lib/formatters/settings.js'
 
@@ -239,6 +240,7 @@ export default function SQLEditor({ tab }) {
   const [sql, setSql]             = useState(tab.sql ?? '-- Write your SQL here\nSELECT 1')
   const [result, setResult]       = useState(null)
   const [queryError, setQueryError] = useState(null)
+  const [showHelp, setShowHelp]   = useState(false)
   const [duration, setDuration]   = useState(null)
   const [showConnForm, setShowConnForm] = useState(false)
   const [editingConn, setEditingConn]   = useState(null)
@@ -513,6 +515,11 @@ export default function SQLEditor({ tab }) {
         >
           <Map size={11} />
         </button>
+        <button onClick={() => setShowHelp(true)} title="Help — SQL Editor"
+          className="flex items-center gap-1 px-2 py-1.5 text-xs rounded border border-border text-muted-foreground hover:text-foreground hover:bg-muted transition-colors">
+          <HelpCircle size={11} />
+        </button>
+        <HelpPanel open={showHelp} onClose={() => setShowHelp(false)} area="sql" />
 
         {/* Save / Save As */}
         {connId && !showSaveInput && (

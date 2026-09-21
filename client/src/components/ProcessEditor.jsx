@@ -6,7 +6,8 @@ import { registerTM1Completions, registerTM1Theme } from '@/lib/tm1-functions'
 import { registerTICompletions } from '@/lib/tm1-completion'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
-import { ChevronRight, ChevronDown, Play, X, Braces, CheckCircle2, XCircle, Database, Trash2, Plus, Loader2, Bug, Search, AlertTriangle, AlertCircle, Map, Upload, History, Locate } from 'lucide-react'
+import { ChevronRight, ChevronDown, Play, X, Braces, CheckCircle2, XCircle, Database, Trash2, Plus, Loader2, Bug, Search, AlertTriangle, AlertCircle, Map, Upload, History, Locate, HelpCircle } from 'lucide-react'
+import HelpPanel from '@/components/HelpPanel'
 import ObjectHistoryPanel from '@/components/ObjectHistoryPanel'
 import { getSnippets } from '@/lib/tm1-snippets.js'
 import { loadSettings, saveSettings } from '@/lib/formatters/settings.js'
@@ -886,6 +887,7 @@ export default function ProcessEditor({ tab }) {
   const [showDebugRun, setShowDebugRun] = useState(false)
   const [checkResults, setCheckResults] = useState(null)
   const [showCheck, setShowCheck]       = useState(false)
+  const [showHelp, setShowHelp]         = useState(false)
 
   // Dispose this tab's Monaco completion provider on unmount — Monaco registers
   // providers globally, so without disposal every tab switch adds another copy
@@ -1417,8 +1419,16 @@ export default function ProcessEditor({ tab }) {
             <Locate size={11} />
           </button>
           <span className="text-xs text-muted-foreground">TI Process</span>
+          <button
+            onClick={() => setShowHelp(true)}
+            className="ml-auto flex items-center gap-1 px-2 py-1 rounded text-xs border bg-background/80 border-border text-muted-foreground hover:text-foreground transition-colors"
+            title="Help — TI Process Editor"
+          >
+            <HelpCircle size={11} />
+          </button>
         </div>
       )}
+      <HelpPanel open={showHelp} onClose={() => setShowHelp(false)} area="ti" />
 
       {/* ── Save As dialog ────────────────────────────────────────────── */}
       {showSaveAs && (
