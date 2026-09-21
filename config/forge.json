@@ -1,17 +1,12 @@
 {
-  "server": null,
+  "server": "TM1_Test_DEV",
   "tabs": [],
   "activeTab": null,
-  "groups": [
-    {
-      "id": "g1",
-      "tabIds": [],
-      "activeTabId": null
-    }
-  ],
-  "activeGroupId": "g1",
-  "splitDirection": "horizontal",
-  "panelSizes": [
-    100
-  ]
+  "layout": {
+    "type": "leaf",
+    "id": "g1789959226891",
+    "tabIds": [],
+    "activeTabId": null
+  },
+  "activeGroupId": "g1789959226891"
 }
