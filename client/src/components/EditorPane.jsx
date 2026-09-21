@@ -343,7 +343,6 @@ function RulesEditor({ tab, onCursor }) {
   const { data, isLoading } = useRules(tab.server, tab.cube)
   const saveRules = useSaveRules()
   const registeredRef = useRef(false)
-  const disposablesRef = useRef([])
   const editorRef = useRef(null)
   const monacoRef = useRef(null)
   const formatPopupRef = useRef(null)
@@ -368,14 +367,6 @@ function RulesEditor({ tab, onCursor }) {
       .then(r => r.json()).then(d => setCubeDims(Array.isArray(d) ? d : []))
       .catch(() => setCubeDims([]))
   }, [showTrace])
-
-  // Dispose this tab's Monaco completion provider on unmount — Monaco registers
-  // providers globally, so without disposal every tab switch adds another copy
-  // and suggestions appear duplicated.
-  useEffect(() => () => {
-    disposablesRef.current.forEach(d => d?.dispose?.())
-    disposablesRef.current = []
-  }, [])
   const [regionsCollapsed, setRegionsCollapsed] = useState(false)
   const [showRegionMenu, setShowRegionMenu] = useState(false)
   const [showFormatPopup, setShowFormatPopup] = useState(false)
@@ -565,10 +556,8 @@ function RulesEditor({ tab, onCursor }) {
       lineHeight: editorSettings.lineHeight ?? undefined,
     })
     if (!registeredRef.current) {
-      const d1 = registerTM1Completions(monaco, () => server, () => serverVersion)
-      const d2 = registerRulesCompletions(monaco, () => ({ server: tab.server ?? server, cube: tab.cube, version: serverVersion }))
-      if (d1) disposablesRef.current.push(d1)
-      if (d2) disposablesRef.current.push(d2)
+      registerTM1Completions(monaco, () => server, () => serverVersion)
+      registerRulesCompletions(monaco, () => ({ server: tab.server ?? server, cube: tab.cube, version: serverVersion }))
       registerTM1Theme(monaco, dark)
       registeredRef.current = true
     }
