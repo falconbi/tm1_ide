@@ -20,7 +20,8 @@ function registerTM1Completions(monaco, getServer, getVersion) {
   const rulesFnNames = Object.keys(RULES_CATALOG).sort((a, b) => b.length - a.length)
   const rulesFnPattern = new RegExp(`\\b(${rulesFnNames.join('|')})\\b`, 'i')
 
-  monaco.languages.register({ id: 'tm1rules', comments: { lineComment: '#' } })
+  monaco.languages.register({ id: 'tm1rules' })
+  monaco.languages.setLanguageConfiguration('tm1rules', { comments: { lineComment: '#' } })
   monaco.languages.setMonarchTokensProvider('tm1rules', {
     tokenizer: {
       root: [
@@ -145,7 +146,8 @@ function registerTM1Completions(monaco, getServer, getVersion) {
     }
   })
 
-  monaco.languages.register({ id: 'tm1ti', comments: { lineComment: '#' } })
+  monaco.languages.register({ id: 'tm1ti' })
+  monaco.languages.setLanguageConfiguration('tm1ti', { comments: { lineComment: '#' } })
   monaco.languages.setMonarchTokensProvider('tm1ti', {
     tokenizer: {
       root: [
