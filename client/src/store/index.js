@@ -227,6 +227,11 @@ export const useStore = create((set, get) => ({
 
   closeTab: (id, groupId) => {
     const { tabs, layout, activeGroupId } = get()
+    const closing = tabs.find(t => t.id === id)
+    if (closing?.dirty) {
+      const ok = window.confirm(`"${closing.label}" has unsaved changes. Close anyway?`)
+      if (!ok) return
+    }
     // groupId = the specific pane the close was requested in (a split mirrors a
     // tab id into multiple panes, so we must remove it from THAT pane, not the
     // first match).
