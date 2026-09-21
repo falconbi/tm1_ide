@@ -473,6 +473,7 @@ app.post('/api/rules', async (req, res) => {
     try {
         if (!gateWrite(res, req.query.server)) return
         const client = makeClient(req.query.server, req.ideToken)
+        const current = await client.getCube(req.query.cube).catch(() => null)
         const beforeState = { text: current?.Rules ?? '' }
         await client.patch(`Cubes('${req.query.cube}')`, { Rules: req.body.rules })
         const afterState  = { text: req.body.rules }
