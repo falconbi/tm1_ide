@@ -33,6 +33,57 @@ import { create } from 'zustand'
  */
 
 let _forgeTimer = null
+
+// ── Layout tree helpers (nested splits) ──────────────────────────────────────
+// A layout node is either:
+//   leaf:  { type:'leaf', id, tabIds[], activeTabId }
+//   split: { type:'split', id, direction:'horizontal'|'vertical', children:[n,n] }
+// The workspace root is a single node; splits nest recursively.
+function isLeaf(n) { return n?.type === 'leaf' }
+function collectLeaves(node) {
+  if (!node) return []
+  if (isLeaf(node)) return [node]
+  return [...collectLeaves(node.children[0]), ...collectLeaves(node.children[1])]
+}
+function leafCount(node) { return isLeaf(node) ? 1 : leafCount(node.children[0]) + leafCount(node.children[1]) }
+function findLeaf(node, id) {
+  if (!node) return null
+  if (isLeaf(node)) return node.id === id ? node : null
+  return findLeaf(node.children[0], id) || findLeaf(node.children[1], id)
+}
+function findLeafByTab(node, tabId) {
+  if (!node) return null
+  if (isLeaf(node)) return node.tabIds.includes(tabId) ? node : null
+  return findLeafByTab(node.children[0], tabId) || findLeafByTab(node.children[1], tabId)
+}
+function mapLeaves(node, fn) {
+  if (isLeaf(node)) return fn(node)
+  return { ...node, children: [mapLeaves(node.children[0], fn), mapLeaves(node.children[1], fn)] }
+}
+function replaceLeaf(node, leafId, replacement) {
+  if (isLeaf(node)) return node.id === leafId ? replacement : node
+  return { ...node, children: [replaceLeaf(node.children[0], leafId, replacement), replaceLeaf(node.children[1], leafId, replacement)] }
+}
+// Remove a leaf, collapsing a split that would drop to one child. null if empty.
+function removeLeaf(node, leafId) {
+  if (!node) return null
+  if (isLeaf(node)) return node.id === leafId ? null : node
+  const a = removeLeaf(node.children[0], leafId)
+  const b = removeLeaf(node.children[1], leafId)
+  if (!a) return b
+  if (!b) return a
+  return { ...node, children: [a, b] }
+}
+// Migrate the old flat groups[] (pre-nested-splits) into a layout tree.
+function migrateGroupsToLayout(oldGroups) {
+  if (!oldGroups?.length) return null
+  let tree = { type: 'leaf', ...oldGroups[0] }
+  for (const g of oldGroups.slice(1)) {
+    tree = { type: 'split', id: `s${Date.now()}`, direction: 'horizontal', children: [tree, { type: 'leaf', ...g }] }
+  }
+  return tree
+}
+
 const _saveForge = (state) => {
   clearTimeout(_forgeTimer)
   _forgeTimer = setTimeout(() => {
@@ -43,10 +94,8 @@ const _saveForge = (state) => {
         server: state.server,
         tabs: state.tabs,
         activeTab: state.activeTab,
-        groups: state.groups,
+        layout: state.layout,
         activeGroupId: state.activeGroupId,
-        splitDirection: state.splitDirection,
-        panelSizes: state.panelSizes,
       }),
     }).catch(() => {})
   }, 800)
@@ -91,17 +140,16 @@ export const useStore = create((set, get) => ({
       if (forge.tabs?.length) {
         patch.tabs = forge.tabs
         patch.activeTab = forge.activeTab ?? null
-        if (forge.groups?.length) {
-          patch.groups = forge.groups
-          patch.activeGroupId = forge.activeGroupId ?? forge.groups[0].id
-        } else {
-          // Migrate old single-group forge state
-          patch.groups = [{ id: 'g1', tabIds: forge.tabs.map(t => t.id), activeTabId: forge.activeTab ?? null }]
-          patch.activeGroupId = 'g1'
-        }
+        const layout = forge.layout
+          ? forge.layout
+          : migrateGroupsToLayout(forge.groups)
+          ?? { type: 'leaf', id: 'g1', tabIds: forge.tabs.map(t => t.id), activeTabId: forge.activeTab ?? null }
+        patch.layout = layout
+        patch.groups = collectLeaves(layout)
+        patch.activeGroupId = forge.activeGroupId && findLeaf(layout, forge.activeGroupId)
+          ? forge.activeGroupId
+          : (patch.groups[0]?.id ?? 'g1')
       }
-      if (forge.splitDirection) patch.splitDirection = forge.splitDirection
-      if (forge.panelSizes)    patch.panelSizes    = forge.panelSizes
       patch.forgeLoaded = true
       set(patch)
     } catch { set({ forgeLoaded: true }) }
@@ -127,38 +175,40 @@ export const useStore = create((set, get) => ({
   serverVersion: null,
   setServerVersion: (serverVersion) => set({ serverVersion }),
 
-  // ── Tabs & Editor Groups ─────────────────────────────────────────────────────
-  // tabs is flat; groups track which tabIds belong to each group and which is active.
+  // ── Tabs & Editor Groups (nested split layout) ──────────────────────────────
+  // tabs is flat; `layout` is the split tree; `groups` is the derived flat leaf
+  // list (kept in sync so existing consumers keep working).
   tabs: [],
   activeTab: null,
-  groups: [{ id: 'g1', tabIds: [], activeTabId: null }],
+  layout: { type: 'leaf', id: 'g1', tabIds: [], activeTabId: null },
+  groups: [{ type: 'leaf', id: 'g1', tabIds: [], activeTabId: null }],
   activeGroupId: 'g1',
-  splitDirection: 'horizontal',
-  setSplitDirection: (dir) => { set({ splitDirection: dir }); _saveForge(get()) },
-  panelSizes: null,
-  setPanelSizes: (sizes) => { set({ panelSizes: sizes }); _saveForge(get()) },
 
   /** @param {Tab} tab */
   openTab: (tab) => {
-    const { groups, activeGroupId } = get()
-    const existingGroup = groups.find(g => g.tabIds.includes(tab.id))
-    if (existingGroup) {
+    const { layout, activeGroupId } = get()
+    const holder = findLeafByTab(layout, tab.id)
+    if (holder) {
       // Already open somewhere — activate that group and tab
+      const newLayout = mapLeaves(layout, l => l.id === holder.id ? { ...l, activeTabId: tab.id } : l)
       set(s => ({
         tabs: s.tabs.map(t => t.id === tab.id
           ? { ...t, scrollToLine: tab.scrollToLine ?? null, scrollToSection: tab.scrollToSection ?? null }
           : t),
-        groups: s.groups.map(g => g.id === existingGroup.id ? { ...g, activeTabId: tab.id } : g),
-        activeGroupId: existingGroup.id,
+        layout: newLayout,
+        groups: collectLeaves(newLayout),
+        activeGroupId: holder.id,
         activeTab: tab.id,
       }))
     } else {
-      // New tab — add to active group
+      // New tab — add to active leaf group
+      const newLayout = mapLeaves(layout, l => l.id === activeGroupId
+        ? { ...l, tabIds: [...l.tabIds, tab.id], activeTabId: tab.id }
+        : l)
       set(s => ({
         tabs: [...s.tabs, tab],
-        groups: s.groups.map(g => g.id === activeGroupId
-          ? { ...g, tabIds: [...g.tabIds, tab.id], activeTabId: tab.id }
-          : g),
+        layout: newLayout,
+        groups: collectLeaves(newLayout),
         activeTab: tab.id,
       }))
     }
@@ -176,162 +226,159 @@ export const useStore = create((set, get) => ({
   },
 
   closeTab: (id) => {
-    const { tabs, groups, activeGroupId } = get()
+    const { tabs, layout, activeGroupId } = get()
     const newTabs = tabs.filter(t => t.id !== id)
-    const groupIdx = groups.findIndex(g => g.tabIds.includes(id))
-    if (groupIdx < 0) { set({ tabs: newTabs }); return }
+    const holder = findLeafByTab(layout, id)
+    if (!holder) { set({ tabs: newTabs }); return }
 
-    const group = groups[groupIdx]
-    const newTabIds = group.tabIds.filter(tid => tid !== id)
-    let newGroups, newActiveGroupId = activeGroupId
-
-    if (newTabIds.length === 0 && groups.length > 1) {
-      // Last tab in group and not the only group — remove the group
-      newGroups = groups.filter((_, i) => i !== groupIdx)
-      newActiveGroupId = newGroups[Math.max(0, groupIdx - 1)].id
+    const newTabIds = holder.tabIds.filter(tid => tid !== id)
+    let newLayout
+    if (newTabIds.length === 0 && leafCount(layout) > 1) {
+      // Last tab in a leaf that isn't the only one — collapse the split
+      newLayout = removeLeaf(layout, holder.id)
     } else {
-      const newActiveTabId = group.activeTabId === id ? (newTabIds.at(-1) ?? null) : group.activeTabId
-      newGroups = groups.map((g, i) => i === groupIdx ? { ...g, tabIds: newTabIds, activeTabId: newActiveTabId } : g)
+      const newActiveTabId = holder.activeTabId === id ? (newTabIds.at(-1) ?? null) : holder.activeTabId
+      newLayout = mapLeaves(layout, l => l.id === holder.id ? { ...l, tabIds: newTabIds, activeTabId: newActiveTabId } : l)
     }
 
-    const newActiveTab = newGroups.find(g => g.id === newActiveGroupId)?.activeTabId ?? null
-    set({ tabs: newTabs, groups: newGroups, activeGroupId: newActiveGroupId, activeTab: newActiveTab })
+    const groups = collectLeaves(newLayout)
+    const newActiveGroupId = findLeaf(newLayout, activeGroupId) ? activeGroupId : (groups.at(-1)?.id ?? null)
+    const newActiveTab = newActiveGroupId ? (findLeaf(newLayout, newActiveGroupId)?.activeTabId ?? null) : null
+    set({ tabs: newTabs, layout: newLayout, groups, activeGroupId: newActiveGroupId, activeTab: newActiveTab })
     _saveForge(get())
   },
 
   setActiveTab: (id) => {
-    const group = get().groups.find(g => g.tabIds.includes(id))
+    const { layout } = get()
+    const group = findLeafByTab(layout, id)
     if (!group) return
-    set(s => ({
+    const newLayout = mapLeaves(layout, l => l.id === group.id ? { ...l, activeTabId: id } : l)
+    set({
       activeTab: id,
       activeGroupId: group.id,
-      groups: s.groups.map(g => g.id === group.id ? { ...g, activeTabId: id } : g),
-    }))
+      layout: newLayout,
+      groups: collectLeaves(newLayout),
+    })
     _saveForge(get())
   },
 
   closeAllTabs: () => {
-    set({ tabs: [], activeTab: null, groups: [{ id: 'g1', tabIds: [], activeTabId: null }], activeGroupId: 'g1' })
+    const l = { type: 'leaf', id: 'g1', tabIds: [], activeTabId: null }
+    set({ tabs: [], activeTab: null, layout: l, groups: [l], activeGroupId: 'g1' })
     _saveForge(get())
   },
 
+  // Split the leaf containing `tabId` (or the active leaf) into a nested split.
   splitGroup: (direction, tabId) => {
-    const { activeTab } = get()
+    const { layout, activeGroupId, activeTab } = get()
     const id = tabId ?? activeTab
     if (!id) return
-    const newGroupId = `g${Date.now()}`
-    set(s => ({
-      groups: [...s.groups, { id: newGroupId, tabIds: [id], activeTabId: id }],
-      activeGroupId: newGroupId,
-      ...(direction ? { splitDirection: direction } : {}),
-    }))
+    const targetLeaf = tabId
+      ? (findLeafByTab(layout, tabId) ?? findLeaf(layout, activeGroupId))
+      : findLeaf(layout, activeGroupId)
+    if (!targetLeaf) return
+    const newGroup = { type: 'leaf', id: `g${Date.now()}`, tabIds: [id], activeTabId: id }
+    const split = { type: 'split', id: `s${Date.now()}`, direction, children: [targetLeaf, newGroup] }
+    const newLayout = replaceLeaf(layout, targetLeaf.id, split)
+    set({ layout: newLayout, groups: collectLeaves(newLayout), activeGroupId: newGroup.id, activeTab: id })
     _saveForge(get())
   },
 
   setActiveGroup: (groupId) => {
-    const group = get().groups.find(g => g.id === groupId)
+    const { layout } = get()
+    const group = findLeaf(layout, groupId)
     if (!group) return
     set({ activeGroupId: groupId, activeTab: group.activeTabId })
   },
 
   closeGroup: (groupId) => {
-    const { groups, tabs } = get()
-    if (groups.length <= 1) return
-    const groupIdx = groups.findIndex(g => g.id === groupId)
-    if (groupIdx < 0) return
-    const group = groups[groupIdx]
-    const newGroups = groups.filter(g => g.id !== groupId)
-    const newActiveGroupId = newGroups[Math.max(0, groupIdx - 1)].id
-    const otherTabIds = new Set(newGroups.flatMap(g => g.tabIds))
+    const { layout, tabs } = get()
+    if (leafCount(layout) <= 1) return
+    const group = findLeaf(layout, groupId)
+    if (!group) return
+    const newLayout = removeLeaf(layout, groupId)
+    const groups = collectLeaves(newLayout)
+    const otherTabIds = new Set(groups.flatMap(g => g.tabIds))
     const newTabs = tabs.filter(t => otherTabIds.has(t.id) || !group.tabIds.includes(t.id))
-    const newActiveTab = newGroups.find(g => g.id === newActiveGroupId)?.activeTabId ?? null
-    set({ groups: newGroups, activeGroupId: newActiveGroupId, tabs: newTabs, activeTab: newActiveTab })
+    const newActiveGroupId = groups.at(-1)?.id ?? null
+    const newActiveTab = newActiveGroupId ? (findLeaf(newLayout, newActiveGroupId)?.activeTabId ?? null) : null
+    set({ layout: newLayout, groups, activeGroupId: newActiveGroupId, tabs: newTabs, activeTab: newActiveTab })
     _saveForge(get())
   },
 
   reorderTabInGroup: (groupId, fromIdx, toIdx) => {
-    set(s => ({
-      groups: s.groups.map(g => {
-        if (g.id !== groupId) return g
-        const tabIds = [...g.tabIds]
-        const [moved] = tabIds.splice(fromIdx, 1)
-        tabIds.splice(toIdx, 0, moved)
-        return { ...g, tabIds }
-      }),
-    }))
+    const { layout } = get()
+    const newLayout = mapLeaves(layout, l => {
+      if (l.id !== groupId) return l
+      const tabIds = [...l.tabIds]
+      const [moved] = tabIds.splice(fromIdx, 1)
+      tabIds.splice(toIdx, 0, moved)
+      return { ...l, tabIds }
+    })
+    set({ layout: newLayout, groups: collectLeaves(newLayout) })
     _saveForge(get())
   },
 
   openTabInOtherGroup: (tabId) => {
-    const { groups, activeGroupId } = get()
-    const otherGroup = groups.find(g => g.id !== activeGroupId)
-    if (otherGroup) {
-      set(s => ({
-        groups: s.groups.map(g => g.id === otherGroup.id
-          ? { ...g, tabIds: g.tabIds.includes(tabId) ? g.tabIds : [...g.tabIds, tabId], activeTabId: tabId }
-          : g),
-        activeGroupId: otherGroup.id,
-        activeTab: tabId,
-      }))
+    const { layout, activeGroupId } = get()
+    const other = collectLeaves(layout).find(g => g.id !== activeGroupId)
+    if (other) {
+      const newLayout = mapLeaves(layout, l => l.id === other.id
+        ? { ...l, tabIds: l.tabIds.includes(tabId) ? l.tabIds : [...l.tabIds, tabId], activeTabId: tabId }
+        : l)
+      set({ layout: newLayout, groups: collectLeaves(newLayout), activeGroupId: other.id, activeTab: tabId })
     } else {
-      const newGroupId = `g${Date.now()}`
-      set(s => ({
-        groups: [...s.groups, { id: newGroupId, tabIds: [tabId], activeTabId: tabId }],
-        activeGroupId: newGroupId,
-        activeTab: tabId,
-      }))
+      // No other pane — split the active leaf
+      const activeLeaf = findLeaf(layout, activeGroupId)
+      if (!activeLeaf) return
+      const newGroup = { type: 'leaf', id: `g${Date.now()}`, tabIds: [tabId], activeTabId: tabId }
+      const split = { type: 'split', id: `s${Date.now()}`, direction: 'horizontal', children: [activeLeaf, newGroup] }
+      const newLayout = replaceLeaf(layout, activeLeaf.id, split)
+      set({ layout: newLayout, groups: collectLeaves(newLayout), activeGroupId: newGroup.id, activeTab: tabId })
     }
     _saveForge(get())
   },
 
   moveTabToGroup: (tabId, fromGroupId, toGroupId) => {
     if (fromGroupId === toGroupId) return
-    set(s => ({
-      groups: s.groups.map(g => {
-        if (g.id === fromGroupId) {
-          const newTabIds = g.tabIds.filter(id => id !== tabId)
-          return { ...g, tabIds: newTabIds, activeTabId: g.activeTabId === tabId ? (newTabIds.at(-1) ?? null) : g.activeTabId }
-        }
-        if (g.id === toGroupId) {
-          return g.tabIds.includes(tabId) ? { ...g, activeTabId: tabId } : { ...g, tabIds: [...g.tabIds, tabId], activeTabId: tabId }
-        }
-        return g
-      }),
-      activeGroupId: toGroupId,
-      activeTab: tabId,
-    }))
+    const { layout } = get()
+    const newLayout = mapLeaves(layout, l => {
+      if (l.id === fromGroupId) {
+        const newTabIds = l.tabIds.filter(id => id !== tabId)
+        return { ...l, tabIds: newTabIds, activeTabId: l.activeTabId === tabId ? (newTabIds.at(-1) ?? null) : l.activeTabId }
+      }
+      if (l.id === toGroupId) {
+        return l.tabIds.includes(tabId) ? { ...l, activeTabId: tabId } : { ...l, tabIds: [...l.tabIds, tabId], activeTabId: tabId }
+      }
+      return l
+    })
+    set({ layout: newLayout, groups: collectLeaves(newLayout), activeGroupId: toGroupId, activeTab: tabId })
     _saveForge(get())
   },
 
   closeOtherTabsInGroup: (tabId, groupId) => {
-    const { tabs, groups } = get()
-    const group = groups.find(g => g.id === groupId)
+    const { tabs, layout } = get()
+    const group = findLeaf(layout, groupId)
     if (!group) return
     const idsToRemove = group.tabIds.filter(id => id !== tabId)
-    const otherGroupTabIds = new Set(groups.filter(g => g.id !== groupId).flatMap(g => g.tabIds))
+    const otherGroupTabIds = new Set(collectLeaves(layout).filter(g => g.id !== groupId).flatMap(g => g.tabIds))
     const tabsToDelete = idsToRemove.filter(id => !otherGroupTabIds.has(id))
-    set(s => ({
-      tabs: s.tabs.filter(t => !tabsToDelete.includes(t.id)),
-      groups: s.groups.map(g => g.id === groupId ? { ...g, tabIds: [tabId], activeTabId: tabId } : g),
-      activeTab: tabId,
-    }))
+    const newLayout = mapLeaves(layout, l => l.id === groupId ? { ...l, tabIds: [tabId], activeTabId: tabId } : l)
+    set({ tabs: tabs.filter(t => !tabsToDelete.includes(t.id)), layout: newLayout, groups: collectLeaves(newLayout), activeTab: tabId })
     _saveForge(get())
   },
 
   closeTabsToRight: (tabId, groupId) => {
-    const { tabs, groups } = get()
-    const group = groups.find(g => g.id === groupId)
+    const { tabs, layout } = get()
+    const group = findLeaf(layout, groupId)
     if (!group) return
     const idx = group.tabIds.indexOf(tabId)
     if (idx < 0) return
     const idsToRemove = group.tabIds.slice(idx + 1)
-    const otherGroupTabIds = new Set(groups.filter(g => g.id !== groupId).flatMap(g => g.tabIds))
+    const otherGroupTabIds = new Set(collectLeaves(layout).filter(g => g.id !== groupId).flatMap(g => g.tabIds))
     const tabsToDelete = idsToRemove.filter(id => !otherGroupTabIds.has(id))
-    set(s => ({
-      tabs: s.tabs.filter(t => !tabsToDelete.includes(t.id)),
-      groups: s.groups.map(g => g.id === groupId ? { ...g, tabIds: g.tabIds.slice(0, idx + 1), activeTabId: tabId } : g),
-      activeTab: tabId,
-    }))
+    const newLayout = mapLeaves(layout, l => l.id === groupId ? { ...l, tabIds: l.tabIds.slice(0, idx + 1), activeTabId: tabId } : l)
+    set({ tabs: tabs.filter(t => !tabsToDelete.includes(t.id)), layout: newLayout, groups: collectLeaves(newLayout), activeTab: tabId })
     _saveForge(get())
   },
 

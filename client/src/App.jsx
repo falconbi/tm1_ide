@@ -28,11 +28,48 @@ const queryClient = new QueryClient({
 
 export default function App() {
   const { loadForge, formatSettingsOpen, setFormatSettingsOpen, openTab, openDeployCenter, server, token, clearAuth } = useStore()
-  const groups         = useStore(s => s.groups)
-  const splitDirection = useStore(s => s.splitDirection)
-  const panelSizes     = useStore(s => s.panelSizes)
-  const setPanelSizes  = useStore(s => s.setPanelSizes)
+  const layout         = useStore(s => s.layout)
   const revealTarget   = useStore(s => s.revealTarget)
+
+  // Recursive render of the nested-split layout tree.
+  const renderLayout = (node) => {
+    if (!node) return null
+    if (node.type === 'leaf') {
+      return (
+        <Fragment key={node.id}>
+          <EditorPane groupId={node.id} />
+          <TabBar groupId={node.id} />
+        </Fragment>
+      )
+    }
+    const horiz = node.direction === 'horizontal'
+    return (
+      <PanelGroup key={node.id} direction={node.direction} className="flex-1">
+        <Panel className="flex flex-col min-w-0" defaultSize={50}>
+          {renderLayout(node.children[0])}
+        </Panel>
+        <PanelResizeHandle className={horiz
+          ? 'group relative w-1.5 bg-border hover:bg-primary/40 data-[resize-handle-active]:bg-primary transition-colors cursor-col-resize flex items-center justify-center'
+          : 'group relative h-1.5 bg-border hover:bg-primary/40 data-[resize-handle-active]:bg-primary transition-colors cursor-row-resize flex items-center justify-center'
+        }>
+          <div className={horiz
+            ? 'absolute w-4 h-8 flex flex-col items-center justify-center gap-0.5'
+            : 'absolute h-4 w-8 flex flex-row items-center justify-center gap-0.5'
+          }>
+            {[0, 1, 2].map(d => (
+              <div key={d} className={horiz
+                ? 'w-0.5 h-0.5 rounded-full bg-border group-hover:bg-primary/60 transition-colors'
+                : 'h-0.5 w-0.5 rounded-full bg-border group-hover:bg-primary/60 transition-colors'
+              } />
+            ))}
+          </div>
+        </PanelResizeHandle>
+        <Panel className="flex flex-col min-w-0" defaultSize={50}>
+          {renderLayout(node.children[1])}
+        </Panel>
+      </PanelGroup>
+    )
+  }
 
   const [showFind, setShowFind]                   = useState(false)
   const [showSidebar, setShowSidebar]             = useState(() => {
@@ -282,36 +319,9 @@ export default function App() {
               </>
             )}
 
-            {/* Editor groups */}
+            {/* Editor groups — recursive nested-split layout */}
             <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
-              <PanelGroup direction={splitDirection} className="flex-1" onLayout={setPanelSizes}>
-                {groups.map((group, i) => (
-                  <Fragment key={group.id}>
-                    {i > 0 && (
-                      <PanelResizeHandle className={splitDirection === 'horizontal'
-                        ? 'group relative w-1.5 bg-border hover:bg-primary/40 data-[resize-handle-active]:bg-primary transition-colors cursor-col-resize flex items-center justify-center'
-                        : 'group relative h-1.5 bg-border hover:bg-primary/40 data-[resize-handle-active]:bg-primary transition-colors cursor-row-resize flex items-center justify-center'
-                      }>
-                        <div className={splitDirection === 'horizontal'
-                          ? 'absolute w-4 h-8 flex flex-col items-center justify-center gap-0.5'
-                          : 'absolute h-4 w-8 flex flex-row items-center justify-center gap-0.5'
-                        }>
-                          {[0,1,2].map(d => (
-                            <div key={d} className={splitDirection === 'horizontal'
-                              ? 'w-0.5 h-0.5 rounded-full bg-border group-hover:bg-primary/60 transition-colors'
-                              : 'h-0.5 w-0.5 rounded-full bg-border group-hover:bg-primary/60 transition-colors'
-                            } />
-                          ))}
-                        </div>
-                      </PanelResizeHandle>
-                    )}
-                    <Panel className="flex flex-col min-w-0" defaultSize={panelSizes?.[i] ?? (100 / groups.length)}>
-                      <EditorPane groupId={group.id} />
-                      <TabBar groupId={group.id} />
-                    </Panel>
-                  </Fragment>
-                ))}
-              </PanelGroup>
+              {renderLayout(layout)}
             </div>
 
 

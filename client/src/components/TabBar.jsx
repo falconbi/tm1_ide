@@ -93,7 +93,7 @@ export default function TabBar({ groupId }) {
     tabs, groups, activeGroupId,
     setActiveTab, closeTab, closeAllTabs, closeGroup, splitGroup,
     tabsVisible, toggleTabs,
-    reorderTabInGroup, openTabInOtherGroup, setSplitDirection, splitDirection,
+    reorderTabInGroup, openTabInOtherGroup,
   } = useStore()
 
   const group      = groups.find(g => g.id === groupId)
@@ -246,15 +246,6 @@ export default function TabBar({ groupId }) {
         <button onClick={() => splitGroup('vertical')} title="Split down" className="shrink-0 px-2 self-stretch text-muted-foreground hover:text-foreground hover:bg-muted transition-colors border-l border-border">
           <Rows2 size={11} />
         </button>
-        {multiGroup && (
-          <button
-            onClick={() => setSplitDirection(splitDirection === 'horizontal' ? 'vertical' : 'horizontal')}
-            title={`Switch to ${splitDirection === 'horizontal' ? 'vertical' : 'horizontal'} layout`}
-            className="shrink-0 px-2 self-stretch text-muted-foreground hover:text-foreground hover:bg-muted transition-colors border-l border-border"
-          >
-            {splitDirection === 'horizontal' ? <Rows2 size={11} className="text-primary/70" /> : <Columns2 size={11} className="text-primary/70" />}
-          </button>
-        )}
         {multiGroup && (
           <button onClick={() => closeGroup(groupId)} title="Close group" className="shrink-0 px-2 self-stretch text-red-400 hover:text-red-300 hover:bg-red-500/10 transition-colors border-l border-border">
             <PanelRightClose size={11} />
