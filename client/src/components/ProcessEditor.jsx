@@ -9,7 +9,7 @@ import { toast } from 'sonner'
 import { ChevronRight, ChevronDown, Play, X, Braces, CheckCircle2, XCircle, Database, Trash2, Plus, Loader2, Bug, Search, AlertTriangle, AlertCircle, Map, Upload, History, Locate, HelpCircle } from 'lucide-react'
 import HelpPanel from '@/components/HelpPanel'
 import ObjectHistoryPanel from '@/components/ObjectHistoryPanel'
-import { getSnippets } from '@/lib/tm1-snippets.js'
+import { getFunctionRef } from '@/lib/tm1-snippets.js'
 import { loadSettings, saveSettings } from '@/lib/formatters/settings.js'
 import { executeTI, scanVariables } from '@/lib/ti-interpreter'
 import { parseDebugLog } from '@/lib/ti-debugger'
@@ -1518,14 +1518,14 @@ export default function ProcessEditor({ tab }) {
           </button>
           <button
             onClick={() => { setShowSnippets(s => !s); setShowDebug(false) }}
-            title="Snippets"
+            title="Function reference"
             className={cn(
               'flex items-center gap-1.5 px-2.5 py-1 text-xs rounded border transition-colors',
               showSnippets ? 'bg-primary text-primary-foreground border-primary' : 'border-border text-muted-foreground hover:text-foreground hover:bg-muted'
             )}
           >
             <Braces size={11} />
-            <span className="hidden sm:inline">Snippets</span>
+            <span className="hidden sm:inline">Functions</span>
           </button>
           <button
             onClick={() => setShowDsInsert(true)}
@@ -1803,7 +1803,7 @@ export default function ProcessEditor({ tab }) {
         </div>
         {showSnippets && (
           <div className="w-72 shrink-0 border-l border-border flex flex-col bg-sidebar overflow-hidden">
-            <SnippetPanel snippets={getSnippets('ti')} language="ti" onInsert={insertSnippet} />
+            <SnippetPanel snippets={getFunctionRef('ti')} language="ti" onInsert={insertSnippet} />
           </div>
         )}
         {showDebug && (

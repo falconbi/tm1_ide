@@ -20,7 +20,7 @@ import { formatRules } from '@/lib/formatters/rules-formatter.js'
 import { getNamingMap } from '@/lib/formatters/naming.js'
 import { validateRulesSyntax } from '@/lib/rules-validator'
 import { registerRulesCompletions } from '@/lib/tm1-completion'
-import { getSnippets } from '@/lib/tm1-snippets.js'
+import { getFunctionRef } from '@/lib/tm1-snippets.js'
 import SnippetPanel from '@/components/SnippetPanel'
 import TransactionLogPanel from '@/components/TransactionLogPanel'
 import ObjectHistoryPanel from '@/components/ObjectHistoryPanel'
@@ -877,10 +877,10 @@ function RulesEditor({ tab, onCursor }) {
               'flex items-center gap-1 px-2 py-1 rounded text-xs border transition-colors',
               showSnippets ? 'bg-primary text-primary-foreground border-primary' : 'bg-background/80 border-border text-muted-foreground hover:text-foreground'
             )}
-            title="Toggle snippets panel"
+            title="Toggle function reference panel"
           >
             <Braces size={11} />
-            Snippets
+            Functions
           </button>
           <button
             onClick={() => setShowTrace(s => !s)}
@@ -989,7 +989,7 @@ function RulesEditor({ tab, onCursor }) {
       </div>
       {showSnippets && (
         <div className="w-72 shrink-0 border-l border-border flex flex-col bg-sidebar overflow-hidden">
-          <SnippetPanel snippets={getSnippets('rules')} language="rules" onInsert={insertSnippet} />
+          <SnippetPanel snippets={getFunctionRef('rules')} language="rules" onInsert={insertSnippet} />
         </div>
       )}
       {showTrace && (

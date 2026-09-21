@@ -1,9 +1,8 @@
-import { useState, useMemo, useRef, useEffect } from 'react'
-import { ChevronDown, ChevronRight, Search, Plus, Upload, Download, Pencil, Trash2 } from 'lucide-react'
+import { useState, useMemo, useEffect } from 'react'
+import { ChevronDown, ChevronRight, Search, Plus, Download, Pencil, Trash2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import {
-  loadCustomSnippets, addOrUpdateCustomSnippet, deleteCustomSnippet,
-  exportSnippetsFile, parseSnippetImport,
+  loadCustomSnippets, addOrUpdateCustomSnippet, deleteCustomSnippet, exportSnippetsFile,
 } from '@/lib/custom-snippets'
 
 function cleanInsert(code) {
@@ -98,7 +97,6 @@ export default function SnippetPanel({ snippets, language, onInsert }) {
   const [openCats, setOpenCats] = useState(() => new Set())
   const [query, setQuery] = useState('')
   const [msg, setMsg] = useState('')
-  const fileRef = useRef(null)
 
   useEffect(() => {
     if (!msg) return
@@ -155,30 +153,12 @@ export default function SnippetPanel({ snippets, language, onInsert }) {
     exportSnippetsFile(language, custom)
   }
 
-  const handleImport = async (e) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-    try {
-      const text = await file.text()
-      const incoming = parseSnippetImport(text)
-        .filter(s => s.language === language)
-        .map(s => ({ ...s, language, custom: true }))
-      // merge: incoming trigger wins over existing custom, built-ins unaffected
-      for (const s of incoming) addOrUpdateCustomSnippet(s)
-      refreshCustom()
-      setMsg(`Imported ${incoming.length} snippet(s).`)
-    } catch (err) {
-      setMsg(`Import failed: ${err.message}`)
-    }
-    e.target.value = ''
-  }
-
   return (
     <div className="flex flex-col h-full">
 
       {/* Header + toolbar */}
       <div className="px-3 py-1.5 border-b border-border shrink-0 flex items-center gap-1">
-        <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex-1">Snippets</span>
+        <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex-1">Functions</span>
         <button
           onClick={() => setEditing(editing === 'new' ? null : 'new')}
           title="New custom snippet"
@@ -190,16 +170,10 @@ export default function SnippetPanel({ snippets, language, onInsert }) {
           )}
         ><Plus size={11} /></button>
         <button
-          onClick={() => fileRef.current?.click()}
-          title="Import snippets from JSON file"
-          className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-        ><Upload size={11} /></button>
-        <button
           onClick={handleExport}
           title="Export custom snippets to JSON file"
           className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
         ><Download size={11} /></button>
-        <input ref={fileRef} type="file" accept=".json" onChange={handleImport} className="hidden" />
       </div>
 
       {/* Create / edit form */}
@@ -228,7 +202,7 @@ export default function SnippetPanel({ snippets, language, onInsert }) {
             type="text"
             value={query}
             onChange={e => setQuery(e.target.value)}
-            placeholder="Filter snippets…"
+            placeholder="Filter functions…"
             className="flex-1 bg-transparent text-xs outline-none placeholder:text-muted-foreground/60 min-w-0"
           />
         </div>
@@ -264,9 +238,9 @@ export default function SnippetPanel({ snippets, language, onInsert }) {
                             <span className="text-xs font-medium text-sidebar-foreground group-hover:text-sidebar-accent-foreground truncate">
                               {s.label}
                             </span>
-                            <kbd className="ml-auto text-[9px] px-1 py-0.5 rounded bg-muted border border-border text-muted-foreground font-mono shrink-0">
-                              {s.trigger}
-                            </kbd>
+                            <span className="ml-auto text-[9px] px-1 py-0.5 rounded bg-muted border border-border text-muted-foreground font-mono shrink-0 max-w-[45%] truncate">
+                              {s.isFunction ? s.signature : s.trigger}
+                            </span>
                           </div>
                           <div className="text-[10px] text-muted-foreground leading-tight mt-0.5">{s.description}</div>
                         </button>

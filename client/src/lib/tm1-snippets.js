@@ -14,6 +14,51 @@ const isCatalogFunction = (s) =>
   CATALOG_NAMES.has(s.label.replace(/\(\)$/, '').trim().toUpperCase()) ||
   CATALOG_NAMES.has(s.trigger.toUpperCase())
 
+// ── Function reference (lookup panel) ─────────────────────────────────────────
+// The panel is a technical reference of EVERY TM1 function, grouped by family,
+// plus the structural templates (which stay insertable).
+
+function categorizeFunction(name) {
+  const u = String(name).toUpperCase()
+  if (/^CELL/.test(u)) return 'Cell'
+  if (/^CUBE/.test(u)) return 'Cube'
+  if (/^DIM/.test(u)) return 'Dimension'
+  if (/^EL/.test(u)) return 'Element'
+  if (/^ATTR/.test(u)) return 'Attribute'
+  if (/^SUB/.test(u)) return 'Subset'
+  if (/^VIEW/.test(u)) return 'View'
+  if (/^PROCESS/.test(u)) return 'Process'
+  if (/^CHORE/.test(u)) return 'Chore'
+  if (/SECURITY/.test(u)) return 'Security'
+  if (/^ASCII|OUTPUT|INPUT|FILE|OPEN/.test(u)) return 'File I/O'
+  if (/^STR|^CHAR|^CODE|^SCAN|^SUBST|^UPPER|^LOWER|^LONG|^SHORT|^FILL|^NUMBER|^STRING|^DAY|^MONTH|^YEAR|^TODAY|^NOW|^TIMST|^DATE/.test(u)) return 'Text & Date'
+  if (/^ABS|^ROUND|^INT|^MOD|^SIGN|^SQRT|^MAX|^MIN|^LOG|^EXP|^POWER|^DIV/.test(u)) return 'Math'
+  if (/^PICKLIST/.test(u)) return 'Picklist'
+  return 'Other'
+}
+
+export function getFunctionRef(language) {
+  const funcs = []
+  for (const [name, entry] of Object.entries(TM1_CATALOG)) {
+    if (entry.language !== language && entry.language !== 'both') continue
+    const params = entry.params ?? []
+    funcs.push({
+      trigger:   name.toLowerCase(),
+      label:     name,
+      description: entry.description ?? '',
+      category:  categorizeFunction(name),
+      language,
+      signature: params.length ? `${name}(${params.join(', ')})` : `${name}()`,
+      code:      params.length
+        ? `${name}(${params.map((p, i) => `\${${i + 1}:${p.replace(/[*?]$/, '')}}`).join(', ')})`
+        : `${name}()`,
+      isFunction: true,
+    })
+  }
+  const templates = ALL_SNIPPETS.filter(s => (s.language === language || s.language === 'both') && !isCatalogFunction(s))
+  return [...funcs, ...templates]
+}
+
 const S = (trigger, label, description, category, language, code) =>
   ({ trigger, label, description, category, language, code })
 
