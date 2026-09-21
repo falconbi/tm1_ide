@@ -283,7 +283,9 @@ const SHARED = [
 export const ALL_SNIPPETS = [...RULES, ...TI, ...SHARED]
 
 export function getSnippets(language) {
-  return ALL_SNIPPETS.filter(s => (s.language === language || s.language === 'both') && !isCatalogFunction(s))
+  // Panel is a reference list — show everything (including single-function
+  // snippets). Only the autocomplete provider dedupes against the catalog.
+  return ALL_SNIPPETS.filter(s => s.language === language || s.language === 'both')
 }
 
 // ── Monaco registration ───────────────────────────────────────────────────────
