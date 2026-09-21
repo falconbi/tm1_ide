@@ -1,6 +1,5 @@
 import { useState, useMemo, useEffect } from 'react'
-import { ChevronDown, ChevronRight, Search, Plus, Pencil, Trash2 } from 'lucide-react'
-import { cn } from '@/lib/utils'
+import { ChevronDown, ChevronRight, Search, Pencil, Trash2 } from 'lucide-react'
 import {
   loadCustomSnippets, addOrUpdateCustomSnippet, deleteCustomSnippet,
 } from '@/lib/custom-snippets'
@@ -93,7 +92,7 @@ export default function SnippetPanel({ snippets, language, onInsert }) {
   const [custom, setCustom] = useState(() =>
     loadCustomSnippets().filter(s => s.language === language)
   )
-  const [editing, setEditing] = useState(null)   // null | 'new' | <snippet object>
+  const [editing, setEditing] = useState(null)   // <custom snippet object> | null
   const [openCats, setOpenCats] = useState(() => new Set())
   const [query, setQuery] = useState('')
   const [msg, setMsg] = useState('')
@@ -153,23 +152,13 @@ export default function SnippetPanel({ snippets, language, onInsert }) {
 
       {/* Header + toolbar */}
       <div className="px-3 py-1.5 border-b border-border shrink-0 flex items-center gap-1">
-        <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex-1">Functions</span>
-        <button
-          onClick={() => setEditing(editing === 'new' ? null : 'new')}
-          title="New custom snippet"
-          className={cn(
-            'p-1 rounded transition-colors',
-            editing === 'new'
-              ? 'bg-primary/20 text-primary'
-              : 'text-muted-foreground hover:text-foreground hover:bg-muted'
-          )}
-        ><Plus size={11} /></button>
+        <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex-1">Ref</span>
       </div>
 
       {/* Create / edit form */}
       {editing !== null && (
         <SnippetForm
-          initial={editing === 'new' ? null : editing}
+          initial={editing}
           language={language}
           categories={categories}
           onSave={handleSave}

@@ -880,7 +880,7 @@ function RulesEditor({ tab, onCursor }) {
             title="Toggle function reference panel"
           >
             <Braces size={11} />
-            Functions
+            Ref
           </button>
           <button
             onClick={() => setShowTrace(s => !s)}

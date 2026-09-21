@@ -1525,7 +1525,7 @@ export default function ProcessEditor({ tab }) {
             )}
           >
             <Braces size={11} />
-            <span className="hidden sm:inline">Functions</span>
+            <span className="hidden sm:inline">Ref</span>
           </button>
           <button
             onClick={() => setShowDsInsert(true)}
