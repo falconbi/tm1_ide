@@ -283,7 +283,7 @@ const SHARED = [
 export const ALL_SNIPPETS = [...RULES, ...TI, ...SHARED]
 
 export function getSnippets(language) {
-  return ALL_SNIPPETS.filter(s => s.language === language || s.language === 'both')
+  return ALL_SNIPPETS.filter(s => (s.language === language || s.language === 'both') && !isCatalogFunction(s))
 }
 
 // ── Monaco registration ───────────────────────────────────────────────────────
