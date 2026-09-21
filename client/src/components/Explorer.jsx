@@ -1059,12 +1059,14 @@ export default function Explorer() {
     hierarchy: dim ? (hierarchy ?? dim) : null,
   })
 
-  const openCubeMap = () => openTab({
-    id:    `cubemap:${server}`,
-    type:  'cubemap',
-    label: 'Cube Map',
-    server,
-  })
+  const openCubeMap = () => {
+    const tabId = `cubemap:${server}`
+    if (tabs.some(t => t.id === tabId)) {
+      useStore.getState().closeTab(tabId)
+    } else {
+      openTab({ id: tabId, type: 'cubemap', label: 'Cube Map', server })
+    }
+  }
 
   const openCubeEditor = (cube) => openTab({
     id:     cube ? `cubeeditor:${server}:${cube}` : `cubeeditor:${server}:new:${Date.now()}`,
