@@ -41,6 +41,9 @@ Thumbs.db
 .tm1baseline/
 packages/
 
+# ── Retention archives (change-log exports) ──
+config/archives/
+
 # ── Logs / Runtime ──
 *.log
 docs/Archive/writeback_debug_log.txt
