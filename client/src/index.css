@@ -177,6 +177,11 @@
 .suggest-widget                           { z-index: 9999 !important; }
 .overflowingContentWidgets                 { z-index: 9999 !important; }
 .monaco-editor .overflowingContentWidgets  { z-index: 9999 !important; }
+
+/* Split-pane panels set overflow:hidden inline, which clips Monaco's hover /
+   suggest / context widgets at the pane edge. Let widgets render beyond the
+   panel bounds; the z-index above keeps them on top. */
+[data-panel]                               { overflow: visible !important; }
 /* ── Grid header tint (row + column headings) ──────────────────────────────── */
 /* Tint the column headers AND the pinned-left row headings. The accent is
    exposed as --grid-accent on the grid wrapper by useGridAppearance. */
