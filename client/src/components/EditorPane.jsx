@@ -686,7 +686,7 @@ function RulesEditor({ tab, onCursor }) {
         }}
       />
       {conflictDiff && <DiffViewerModal entry={conflictDiff} onClose={() => setConflictDiff(null)} />}
-      <div className="flex items-center gap-1.5 px-3 py-1 border-b border-border bg-muted/30 shrink-0">
+      <div className="relative z-0 flex items-center gap-1.5 px-3 py-1 border-b border-border bg-muted/30 shrink-0">
         <span className="text-xs font-mono font-semibold text-foreground">{tab.cube}</span>
         <button
           onClick={() => setRevealTarget({ type: 'rules', server: tab.server, cube: tab.cube })}
@@ -697,7 +697,7 @@ function RulesEditor({ tab, onCursor }) {
         </button>
         <span className="text-xs text-muted-foreground">Rules</span>
       </div>
-      <div className="flex flex-1 min-h-0 overflow-hidden">
+      <div className="relative z-10 flex flex-1 min-h-0 overflow-hidden">
       <div className="flex-1 min-w-0 overflow-hidden flex flex-col">
         <div className="relative flex-1 min-h-0 overflow-hidden">
         <div className="absolute top-2 right-2 z-10 flex items-center gap-1.5">
@@ -921,7 +921,7 @@ function RulesEditor({ tab, onCursor }) {
           beforeMount={monaco => registerTM1Theme(monaco, dark)}
           onChange={v => updateTabContent(tab.id, v)}
           onMount={handleMount}
-          options={{ fontFamily: loadSettings().editor?.fontFamily ?? undefined, fontSize: loadSettings().editor?.fontSize ?? undefined, lineHeight: loadSettings().editor?.lineHeight ?? undefined, minimap: { enabled: showMinimap }, wordWrap: 'on', scrollBeyondLastLine: false, fixedOverflowWidgets: true, folding: true, foldingStrategy: 'auto', glyphMargin: true, wordBasedSuggestions: 'off' }}
+          options={{ overflowWidgetsDomNode: document.body, fontFamily: loadSettings().editor?.fontFamily ?? undefined, fontSize: loadSettings().editor?.fontSize ?? undefined, lineHeight: loadSettings().editor?.lineHeight ?? undefined, minimap: { enabled: showMinimap }, wordWrap: 'on', scrollBeyondLastLine: false, fixedOverflowWidgets: true, folding: true, foldingStrategy: 'auto', glyphMargin: true, wordBasedSuggestions: 'off' }}
         />
         {showHistory && (
           <ObjectHistoryPanel

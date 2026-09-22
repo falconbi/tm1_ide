@@ -1754,6 +1754,7 @@ export default function ProcessEditor({ tab }) {
             onChange={v => setEdits(e => ({ ...e, [activeSection]: v }))}
             onMount={handleMount}
             options={{
+              overflowWidgetsDomNode: document.body,
               fontFamily: loadSettings().editor?.fontFamily ?? undefined,
               fontSize: loadSettings().editor?.fontSize ?? undefined,
               lineHeight: loadSettings().editor?.lineHeight ?? undefined,
