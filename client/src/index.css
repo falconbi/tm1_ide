@@ -156,8 +156,9 @@
 }
 
 /* ── Monaco widget z-index overrides ─────────────────────────────────────── */
-/* Find widget, hover tooltips, and context menus must float above the editor
-   toolbar buttons (z-10) and any overflow-hidden stacking contexts.          */
+/* Find widget, hover tooltips, suggest popup, and context menus must float
+   above the editor toolbar buttons (z-10) and any overflow-hidden stacking
+   contexts. */
 .badge {
   display: inline-flex;
   align-items: center;
@@ -168,12 +169,14 @@
   letter-spacing: 0.05em;
 }
 
-.monaco-editor .find-widget                { z-index: 2000 !important; }
-.monaco-custom-hover                       { z-index: 2001 !important; }
-.monaco-hover                              { z-index: 2001 !important; }
-.context-view                              { z-index: 2001 !important; }
-.monaco-editor-overlaymessage             { z-index: 2001 !important; }
-.overflowingContentWidgets                 { z-index: 2000 !important; }
+.monaco-editor .find-widget                { z-index: 9999 !important; }
+.monaco-custom-hover                       { z-index: 9999 !important; }
+.monaco-hover                              { z-index: 9999 !important; }
+.context-view                              { z-index: 9999 !important; }
+.monaco-editor-overlaymessage             { z-index: 9999 !important; }
+.suggest-widget                           { z-index: 9999 !important; }
+.overflowingContentWidgets                 { z-index: 9999 !important; }
+.monaco-editor .overflowingContentWidgets  { z-index: 9999 !important; }
 /* ── Grid header tint (row + column headings) ──────────────────────────────── */
 /* Tint the column headers AND the pinned-left row headings. The accent is
    exposed as --grid-accent on the grid wrapper by useGridAppearance. */
