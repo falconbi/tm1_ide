@@ -1755,6 +1755,7 @@ export default function ProcessEditor({ tab }) {
             onMount={handleMount}
             options={{
               overflowWidgetsDomNode: document.body,
+              padding: { top: 48, bottom: 12 },
               fontFamily: loadSettings().editor?.fontFamily ?? undefined,
               fontSize: loadSettings().editor?.fontSize ?? undefined,
               lineHeight: loadSettings().editor?.lineHeight ?? undefined,
