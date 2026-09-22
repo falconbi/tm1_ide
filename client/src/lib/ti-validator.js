@@ -65,6 +65,9 @@ function findFunctionCalls(text) {
 
     if (/[a-zA-Z0-9_]/.test(ch)) {
       wordBuf += ch
+      // A word at the top frame's depth 1 is an argument (or the next function
+      // name) — mark hasArgs so bare-variable args like LONG(vRec) count.
+      if (stack.length && stack[stack.length - 1].depth === 1) stack[stack.length - 1].hasArgs = true
       continue
     }
 
@@ -207,49 +210,54 @@ function isBlankLine(trimmed) {
 function parseStatements(rawCode) {
   const rawLines = rawCode.split('\n')
   const statements = [] // { text, startLine, endLine }
-  let i = 0
+  let cur = ''          // accumulated logical statement (may span lines)
+  let startLine = 0
+  let depth = 0
+  let inStr = false
+  let inStmt = false
 
-  while (i < rawLines.length) {
-    const trimmed = rawLines[i].trim()
-    if (isBlankLine(trimmed) || isCommentLine(trimmed)) { i++; continue }
-
-    const parts = []
-    let inStr = false
-    let depth = 0
-    let complete = false
-    const startLine = i
-
-    while (i < rawLines.length && !complete) {
-      const lt = rawLines[i].trim()
-      if (!lt) break
-      if (parts.length > 0 && (lt.startsWith('//') || lt.startsWith('#'))) break
-
-      parts.push(lt)
-
-      for (let c = 0; c < lt.length; c++) {
-        const ch = lt[c]
-        if (ch === "'") {
-          if (!inStr) {
-            inStr = true
-          } else if (c + 1 < lt.length && lt[c + 1] === "'") {
-            c++
-          } else {
-            inStr = false
-          }
-          continue
-        }
-        if (inStr) continue
-        if (ch === '(' || ch === '[' || ch === '{') depth++
-        else if (ch === ')' || ch === ']' || ch === '}') depth--
-        else if (ch === ';' && depth === 0) { complete = true; break }
-      }
-      i++
-    }
-
-    if (parts.length) {
-      statements.push({ text: parts.join(' '), startLine: startLine + 1, endLine: i })
-    }
+  const flush = (endLine) => {
+    const t = cur.trim()
+    if (t) statements.push({ text: t, startLine: startLine + 1, endLine: endLine + 1 })
+    cur = ''
+    inStmt = false
   }
+
+  for (let i = 0; i < rawLines.length; i++) {
+    const line = rawLines[i]
+    const lt = line.trim()
+    if (!inStmt && (isBlankLine(lt) || isCommentLine(lt))) continue
+    // Standalone comment between continuation lines — don't fold into the statement
+    if (inStmt && isCommentLine(lt)) continue
+
+    if (!inStmt) startLine = i
+    inStmt = true
+
+    // Build the statement char-by-char so a ';' flushes exactly what precedes it
+    // (a single line may hold several statements: `IF(...); CellPutN(...); ENDIF;`).
+    if (cur) cur += '\n'
+    for (let c = 0; c < line.length; c++) {
+      const ch = line[c]
+      if (ch === "'") {
+        if (!inStr) inStr = true
+        else if (c + 1 < line.length && line[c + 1] === "'") { c++; cur += "''"; continue }
+        else inStr = false
+        cur += ch
+        continue
+      }
+      if (inStr) { cur += ch; continue }
+      if (ch === '(' || ch === '[' || ch === '{') { depth++; cur += ch; continue }
+      if (ch === ')' || ch === ']' || ch === '}') { depth--; cur += ch; continue }
+      if (ch === ';' && depth === 0) { flush(i); continue }
+      // First meaningful char of a fresh post-flush fragment resumes the statement
+      if (ch !== ' ' && ch !== '\t' && ch !== '\r') inStmt = true
+      cur += ch
+    }
+    // Trailing whitespace-only fragment after a final ';' (e.g. the CRLF '\r') is
+    // not a statement — clear it so the next line starts fresh.
+    if (cur && !cur.trim()) { cur = ''; inStmt = false }
+  }
+  flush(rawLines.length - 1)
 
   return statements
 }
@@ -556,6 +564,15 @@ function checkSemicolons(rawCode, sectionLabel) {
 
       // If depth > 0, it's a continuation line — skip
       if (depth > 0 || inStr) continue
+
+      // Trailing operator = multi-line continuation (e.g. the | string-concat
+      // pattern, or vB =<newline>'...'), not a missing semicolon.
+      if (/[|&+\-*/=]/.test(lastChar)) continue
+
+      // Line ends without a continuation operator but the NEXT line starts with
+      // one (e.g. `nUplift = CellGetN(...)` then `+ CellGetN(...);`) — continues.
+      const nextLine = rawLines.slice(i + 1).find(l => l.trim() !== '')
+      if (nextLine && /^[|&+\-*/=]/.test(nextLine.trim())) continue
 
       warnings.push({
         severity: 'warning',
