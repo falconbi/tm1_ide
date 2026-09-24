@@ -383,6 +383,21 @@ export function registerTM1Completions(monaco, language, catalog, keywords, getC
   return monaco.languages.registerCompletionItemProvider(language, {
     triggerCharacters: ["'", '"', '(', ',', ' ', '='],
 
+    // Fills in the expensive per-cube dimension snippet lazily — Monaco calls
+    // this for the currently-highlighted item (and again right before commit),
+    // not for every item up front. See the `_tm1Resolve` marker in the cubename
+    // branch below for why this exists.
+    resolveCompletionItem: async (item) => {
+      const r = item._tm1Resolve
+      if (!r) return item
+      const dims = await fetchCubeDims(r.server, r.cube)
+      const dimStops = dims.map((d, i) => `\${${i + 1}:!${d}}`).join(', ')
+      item.detail = dims.length ? `${dims.length} dims: ${dims.join(', ')}` : 'No dimensions'
+      item.documentation = { value: `**${r.cube}**\n\nDimensions (in order):\n${dims.map((d, i) => `${i + 1}. ${d}`).join('\n')}` }
+      item.insertText = dimStops ? `${r.cubePart}, ${dimStops})` : `${r.cubePart})`
+      return item
+    },
+
     provideCompletionItems: async (model, position) => {
       // getContext may return a bare server string, or { server, cube?, version? }
       const rawCtx  = typeof getContext === 'function' ? getContext() : null
@@ -498,27 +513,29 @@ export function registerTM1Completions(monaco, language, catalog, keywords, getC
         ].includes(ctx.fn)
 
         if (isExpandable) {
-          // Full expansion must produce a syntactically complete call —
-          // opening quote (only if not already typed), the cube name,
-          // closing quote, every dimension as a tab-stop, and the closing ).
+          // Show the cube list the instant /api/cubes resolves — don't block the
+          // whole widget on fetching every cube's dimensions first (that was a
+          // Promise.all across every cube in the model on every keystroke, and
+          // with the widget only rendering once ALL of them landed, it could
+          // lose the race against a re-trigger and never show at all on a model
+          // with more than a couple cubes). Each item's full dim-stop snippet is
+          // filled in lazily via resolveCompletionItem below, for just the one
+          // cube the user has highlighted — cheap, and it's the same fetchCubeDims
+          // cache either way.
           const inQuote = isInsideString(textBefore)
-          const suggestions = await Promise.all(cubes.map(async cube => {
-            const dims = await fetchCubeDims(server, cube)
-            const dimStops = dims.map((d, i) => `\${${i + 1}:!${d}}`).join(', ')
-            const detail = dims.length ? `${dims.length} dims: ${dims.join(', ')}` : 'No dimensions'
+          const suggestions = cubes.map(cube => {
             const cubePart = inQuote ? `${cube}'` : `'${cube}'`
-
             return {
-              label:       { label: cube, description: detail },
+              label:       cube,
               kind:        CIK.Module,
-              detail,
-              documentation: { value: `**${cube}**\n\nDimensions (in order):\n${dims.map((d, i) => `${i + 1}. ${d}`).join('\n')}` },
-              insertText:  dimStops ? `${cubePart}, ${dimStops})` : `${cubePart})`,
+              detail:      'Resolving dimensions…',
+              insertText:  `${cubePart})`,
               insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
               range,
               sortText:    cube,
+              _tm1Resolve: { server, cube, cubePart },
             }
-          }))
+          })
           return { suggestions }
         }
 

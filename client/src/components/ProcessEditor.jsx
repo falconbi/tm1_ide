@@ -1754,7 +1754,6 @@ export default function ProcessEditor({ tab }) {
             onChange={v => setEdits(e => ({ ...e, [activeSection]: v }))}
             onMount={handleMount}
             options={{
-              overflowWidgetsDomNode: document.body,
               padding: { top: 48, bottom: 12 },
               fontFamily: loadSettings().editor?.fontFamily ?? undefined,
               fontSize: loadSettings().editor?.fontSize ?? undefined,
@@ -1763,7 +1762,6 @@ export default function ProcessEditor({ tab }) {
               wordWrap: 'on',
               scrollBeyondLastLine: false,
               glyphMargin: true,
-              fixedOverflowWidgets: true,
               folding: true,
               foldingStrategy: 'auto',
               find: { seedSearchStringFromSelection: 'always', autoFindInSelection: 'never' },

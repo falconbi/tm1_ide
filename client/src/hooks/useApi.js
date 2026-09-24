@@ -87,8 +87,10 @@ export const useSaveRules = () => {
   return useMutation({
     mutationFn: ({ server, cube, rules }) =>
       post(`/api/rules?server=${enc(server)}&cube=${enc(cube)}`, { rules }),
-    onSuccess: (_, { server, cube }) =>
-      queryClient.invalidateQueries({ queryKey: ['rules', server, cube] }),
+    onSuccess: (_, { server, cube }) => {
+      queryClient.invalidateQueries({ queryKey: ['rules', server, cube] })
+      queryClient.invalidateQueries({ queryKey: ['object-history', server, 'rules', cube] })
+    },
   })
 }
 
