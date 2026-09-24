@@ -29,5 +29,8 @@
     "pg": "^8.21.0",
     "tough-cookie": "^6.0.1",
     "ws": "^8.20.1"
+  },
+  "devDependencies": {
+    "playwright": "^1.63.0"
   }
 }
