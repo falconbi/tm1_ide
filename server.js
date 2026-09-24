@@ -11,12 +11,13 @@ const { loadConnections, saveConnections, getConnection, executeQuery, testConne
 const { createSession, createDirectSession, getSessionUser, touchSession, invalidateSession, getCachedPawSession, getCSRF, PAW_HOST } = require('./core/paw_connect')
 const cl = require('./core/change_log')
 
-// Hard gate for browser model-mutation routes: refuse the write unless a change
-// set (session) is open for that server, so every browser edit gets user
-// attribution, session grouping, and rollback linkage — the same rule MCP
-// enforces via requireChangeSet(). Set TM1_REQUIRE_SESSION=0 to fall back to
-// the "nudge but proceed" behaviour (write still logs, just unsessioned).
-const SESSION_GATE_ENABLED = !['0', 'false', 'no'].includes(String(process.env.TM1_REQUIRE_SESSION ?? '1').toLowerCase())
+// Session (Change Set) is optional for using the IDE — it groups changes for
+// deployment, it is not a login and must never gate whether a save works.
+// User attribution is independent of session: every write always logs the
+// actual acting user (req.user / AGENT_USER), whether or not a session is
+// open. Set TM1_REQUIRE_SESSION=1 to opt back into hard-gating writes behind
+// an open session, for anyone who wants that stricter posture.
+const SESSION_GATE_ENABLED = ['1', 'true', 'yes'].includes(String(process.env.TM1_REQUIRE_SESSION ?? '0').toLowerCase())
 function requireSession(server) {
     if (!SESSION_GATE_ENABLED) return true
     return !!cl.getActiveSession(server)
@@ -251,7 +252,7 @@ app.post('/api/log/rollback', async (req, res) => {
             await client.saveView(entry.detail, entry.object_name, before.mdx)
         }
 
-        cl.writeLog({ server, action: 'ROLLED_BACK', objectType: entry.object_type, objectName: entry.object_name, detail: entry.detail })
+        cl.writeLog({ server, action: 'ROLLED_BACK', objectType: entry.object_type, objectName: entry.object_name, detail: entry.detail, user: req.user })
         res.json({ ok: true })
     } catch (e) {
         res.status(500).json({ error: e.message })
@@ -282,7 +283,7 @@ app.post('/api/dimension/create', async (req, res) => {
         if (!gateWrite(res, server)) return
         const client = makeClient(server, req.ideToken)
         await makeClient(server, req.ideToken).createDimension(name)
-        const { hasSession } = cl.writeLog({ server, action: 'DIMENSION_CREATED', objectType: 'dimension', objectName: name })
+        const { hasSession } = cl.writeLog({ server, action: 'DIMENSION_CREATED', objectType: 'dimension', objectName: name, user: req.user })
         res.json({ ok: true, noSession: !hasSession })
     } catch (e) {
         res.status(500).json({ error: e.message })
@@ -352,7 +353,7 @@ app.delete('/api/dimension', async (req, res) => {
         if (!gateWrite(res, req.query.server)) return
         const client = makeClient(req.query.server, req.ideToken)
         await client.deleteDimension(req.query.name)
-        const { hasSession } = cl.writeLog({ server: req.query.server, action: 'DIMENSION_DELETED', objectType: 'dimension', objectName: req.query.name })
+        const { hasSession } = cl.writeLog({ server: req.query.server, action: 'DIMENSION_DELETED', objectType: 'dimension', objectName: req.query.name, user: req.user })
         res.json({ ok: true, noSession: !hasSession })
     } catch (e) {
         res.status(500).json({ error: e.message })
@@ -367,7 +368,7 @@ app.post('/api/cube', async (req, res) => {
         if (!gateWrite(res, server)) return
         const client = makeClient(server, req.ideToken)
         await client.createCube(name.trim(), dims)
-        const { hasSession } = cl.writeLog({ server, action: 'CUBE_CREATED', objectType: 'cube', objectName: name.trim() })
+        const { hasSession } = cl.writeLog({ server, action: 'CUBE_CREATED', objectType: 'cube', objectName: name.trim(), user: req.user })
         res.json({ ok: true, noSession: !hasSession })
     } catch (e) {
         console.error('[view/save] error:', e.message, 'data:', JSON.stringify(e.response?.data).slice(0, 300))
@@ -381,7 +382,7 @@ app.delete('/api/cube', async (req, res) => {
         if (!gateWrite(res, req.query.server)) return
         const client = makeClient(req.query.server, req.ideToken)
         await client.deleteCube(req.query.name)
-        const { hasSession } = cl.writeLog({ server: req.query.server, action: 'CUBE_DELETED', objectType: 'cube', objectName: req.query.name })
+        const { hasSession } = cl.writeLog({ server: req.query.server, action: 'CUBE_DELETED', objectType: 'cube', objectName: req.query.name, user: req.user })
         res.json({ ok: true, noSession: !hasSession })
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
@@ -391,7 +392,7 @@ app.delete('/api/subset', async (req, res) => {
         if (!gateWrite(res, req.query.server)) return
         const client = makeClient(req.query.server, req.ideToken)
         await client.deleteSubset(req.query.dimension, req.query.name, req.query.hierarchy)
-        const { hasSession } = cl.writeLog({ server: req.query.server, action: 'SUBSET_DELETED', objectType: 'subset', objectName: req.query.name, detail: req.query.dimension })
+        const { hasSession } = cl.writeLog({ server: req.query.server, action: 'SUBSET_DELETED', objectType: 'subset', objectName: req.query.name, detail: req.query.dimension, user: req.user })
         res.json({ ok: true, noSession: !hasSession })
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
@@ -418,7 +419,7 @@ app.delete('/api/process', async (req, res) => {
         if (!gateWrite(res, req.query.server)) return
         const client = makeClient(req.query.server, req.ideToken)
         await client.deleteProcess(req.query.name)
-        const { hasSession } = cl.writeLog({ server: req.query.server, action: 'PROCESS_DELETED', objectType: 'process', objectName: req.query.name })
+        const { hasSession } = cl.writeLog({ server: req.query.server, action: 'PROCESS_DELETED', objectType: 'process', objectName: req.query.name, user: req.user })
         res.json({ ok: true, noSession: !hasSession })
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
@@ -477,7 +478,7 @@ app.post('/api/rules', async (req, res) => {
         const beforeState = { text: current?.Rules ?? '' }
         await client.patch(`Cubes('${req.query.cube}')`, { Rules: req.body.rules })
         const afterState  = { text: req.body.rules }
-        const { hasSession } = cl.writeLog({ server: req.query.server, action: 'RULES_SAVED', objectType: 'rules', objectName: req.query.cube, beforeState, afterState })
+        const { hasSession } = cl.writeLog({ server: req.query.server, action: 'RULES_SAVED', objectType: 'rules', objectName: req.query.cube, beforeState, afterState, user: req.user })
         res.json({ ok: true, noSession: !hasSession })
     } catch (e) {
         res.status(500).json({ error: e.message })
@@ -712,14 +713,14 @@ app.get('/api/processes/search', async (req, res) => {
         if (!q || q.length < 2) return res.json({ results: [] })
         const client = makeClient(server, req.ideToken)
         const data = await client.get('Processes', {
-            '$select': 'Name,PrologProcedure,MetaDataProcedure,DataProcedure,EpilogProcedure',
+            '$select': 'Name,PrologProcedure,MetadataProcedure,DataProcedure,EpilogProcedure',
         })
         const lower = q.toLowerCase()
         const sections = [
-            { key: 'PrologProcedure',   label: 'Prolog'   },
-            { key: 'MetaDataProcedure', label: 'Metadata' },
-            { key: 'DataProcedure',     label: 'Data'     },
-            { key: 'EpilogProcedure',   label: 'Epilog'   },
+            { key: 'PrologProcedure',    label: 'Prolog'   },
+            { key: 'MetadataProcedure',  label: 'Metadata' },
+            { key: 'DataProcedure',      label: 'Data'     },
+            { key: 'EpilogProcedure',    label: 'Epilog'   },
         ]
         const results = []
         for (const proc of (data.value ?? [])) {
@@ -761,7 +762,7 @@ app.post('/api/process/create', async (req, res) => {
             Parameters: [],
             Variables: [],
         })
-        const { hasSession } = cl.writeLog({ server: req.query.server, action: 'PROCESS_CREATED', objectType: 'process', objectName: req.query.name })
+        const { hasSession } = cl.writeLog({ server: req.query.server, action: 'PROCESS_CREATED', objectType: 'process', objectName: req.query.name, user: req.user })
         res.json({ ok: true, noSession: !hasSession })
     } catch (e) {
         res.status(500).json({ error: e.message })
@@ -791,7 +792,7 @@ app.post('/api/process', async (req, res) => {
             data:     req.body.DataProcedure                                         ?? beforeState?.data     ?? '',
             epilog:   req.body.EpilogProcedure                                       ?? beforeState?.epilog   ?? '',
         }
-        const { hasSession } = cl.writeLog({ server: req.query.server, action: 'PROCESS_SAVED', objectType: 'process', objectName: req.query.name, beforeState, afterState })
+        const { hasSession } = cl.writeLog({ server: req.query.server, action: 'PROCESS_SAVED', objectType: 'process', objectName: req.query.name, beforeState, afterState, user: req.user })
         res.json({ ok: true, noSession: !hasSession })
     } catch (e) {
         console.error('[api/process] SAVE failed:', e.response?.status, e.response?.data?.error?.message || e.message)
@@ -975,7 +976,7 @@ app.post('/api/dimension/attribute-def', async (req, res) => {
         const { server, dimension, name, type, hierarchy } = req.body
         if (!gateWrite(res, server)) return
         await makeClient(server, req.ideToken).createElementAttribute(dimension, name, type, hierarchy)
-        const { hasSession } = cl.writeLog({ server, action: 'ATTRIBUTE_CREATED', objectType: 'attribute', objectName: name, detail: dimension })
+        const { hasSession } = cl.writeLog({ server, action: 'ATTRIBUTE_CREATED', objectType: 'attribute', objectName: name, detail: dimension, user: req.user })
         res.json({ ok: true, noSession: !hasSession })
     } catch (e) {
         res.status(500).json({ error: e.message })
@@ -987,7 +988,7 @@ app.delete('/api/dimension/attribute-def', async (req, res) => {
         const { server, dimension, name, hierarchy } = req.query
         if (!gateWrite(res, server)) return
         await makeClient(server, req.ideToken).deleteElementAttribute(dimension, name, hierarchy)
-        const { hasSession } = cl.writeLog({ server, action: 'ATTRIBUTE_DELETED', objectType: 'attribute', objectName: name, detail: dimension })
+        const { hasSession } = cl.writeLog({ server, action: 'ATTRIBUTE_DELETED', objectType: 'attribute', objectName: name, detail: dimension, user: req.user })
         res.json({ ok: true, noSession: !hasSession })
     } catch (e) {
         res.status(500).json({ error: e.message })
@@ -1016,7 +1017,7 @@ app.post('/api/dimension/attribute/convert-to-alias', async (req, res) => {
                 client.writeElementAttribute(dimension, element, attribute, String(value), 'S', hierarchy).catch(() => {})
             )
         )
-        cl.writeLog({ server, action: 'ATTRIBUTE_CONVERTED', objectType: 'attribute', objectName: attribute, detail: `${dimension} → Alias` })
+        cl.writeLog({ server, action: 'ATTRIBUTE_CONVERTED', objectType: 'attribute', objectName: attribute, detail: `${dimension} → Alias`, user: req.user })
         res.json({ converted: toRewrite.length })
     } catch (e) {
         res.status(500).json({ error: e.message })
@@ -1082,7 +1083,7 @@ app.post('/api/view/save', async (req, res) => {
             await client.saveView(cube, name, mdx)
         }
         const afterState = nativeAxes ? { type: 'native', definition: nativeAxes } : { type: 'mdx', mdx: mdx ?? '' }
-        const { hasSession } = cl.writeLog({ server, action: 'VIEW_SAVED', objectType: 'view', objectName: name, detail: cube, beforeState, afterState })
+        const { hasSession } = cl.writeLog({ server, action: 'VIEW_SAVED', objectType: 'view', objectName: name, detail: cube, beforeState, afterState, user: req.user })
         res.json({ ok: true, noSession: !hasSession })
     } catch (e) {
         const detail = e.response?.data?.error?.message ?? e.response?.data ?? e.message
@@ -1108,7 +1109,7 @@ app.delete('/api/view', async (req, res) => {
         if (!gateWrite(res, req.query.server)) return
         const client = makeClient(req.query.server, req.ideToken)
         await client.deleteView(req.query.cube, req.query.name)
-        const { hasSession } = cl.writeLog({ server: req.query.server, action: 'VIEW_DELETED', objectType: 'view', objectName: req.query.name, detail: req.query.cube })
+        const { hasSession } = cl.writeLog({ server: req.query.server, action: 'VIEW_DELETED', objectType: 'view', objectName: req.query.name, detail: req.query.cube, user: req.user })
         res.json({ ok: true, noSession: !hasSession })
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
@@ -1246,7 +1247,7 @@ app.post('/api/dimension/element', async (req, res) => {
         if (!gateWrite(res, server)) return
         const client = makeClient(server, req.ideToken)
         await client.addElement(dimension, req.body.name, req.body.type, hierarchy)
-        cl.writeLog({ server, action: 'ELEMENT_ADDED', objectType: 'dimension', objectName: req.body.name, detail: dimension })
+        cl.writeLog({ server, action: 'ELEMENT_ADDED', objectType: 'dimension', objectName: req.body.name, detail: dimension, user: req.user })
         res.json({ ok: true })
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
@@ -1257,7 +1258,7 @@ app.delete('/api/dimension/element', async (req, res) => {
         if (!gateWrite(res, server)) return
         const client = makeClient(server, req.ideToken)
         await client.deleteElement(dimension, name, hierarchy)
-        cl.writeLog({ server, action: 'ELEMENT_DELETED', objectType: 'dimension', objectName: name, detail: dimension })
+        cl.writeLog({ server, action: 'ELEMENT_DELETED', objectType: 'dimension', objectName: name, detail: dimension, user: req.user })
         res.json({ ok: true })
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
@@ -1268,7 +1269,7 @@ app.patch('/api/dimension/element', async (req, res) => {
         if (!gateWrite(res, server)) return
         const client = makeClient(server, req.ideToken)
         await client.renameElement(dimension, name, req.body.newName, hierarchy)
-        cl.writeLog({ server, action: 'ELEMENT_RENAMED', objectType: 'dimension', objectName: req.body.newName, detail: `${dimension} · was: ${name}` })
+        cl.writeLog({ server, action: 'ELEMENT_RENAMED', objectType: 'dimension', objectName: req.body.newName, detail: `${dimension} · was: ${name}`, user: req.user })
         res.json({ ok: true })
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
@@ -1297,7 +1298,7 @@ app.delete('/api/dimension/edge', async (req, res) => {
         if (!gateWrite(res, server)) return
         const client = makeClient(server, req.ideToken)
         await client.deleteEdge(dimension, parent, child, hierarchy)
-        cl.writeLog({ server, action: 'EDGE_REMOVED', objectType: 'dimension', objectName: child, detail: `${dimension} · removed from ${parent}` })
+        cl.writeLog({ server, action: 'EDGE_REMOVED', objectType: 'dimension', objectName: child, detail: `${dimension} · removed from ${parent}`, user: req.user })
         res.json({ ok: true })
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
@@ -1349,7 +1350,7 @@ app.post('/api/dimension/hierarchy', async (req, res) => {
         const { server, dimension, name } = req.body
         if (!gateWrite(res, server)) return
         await makeClient(server, req.ideToken).createHierarchy(dimension, name)
-        cl.writeLog({ server, action: 'HIERARCHY_CREATED', objectType: 'dimension', objectName: name, detail: dimension })
+        cl.writeLog({ server, action: 'HIERARCHY_CREATED', objectType: 'dimension', objectName: name, detail: dimension, user: req.user })
         res.json({ ok: true })
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
@@ -1359,7 +1360,7 @@ app.delete('/api/dimension/hierarchy', async (req, res) => {
         const { server, dimension, name } = req.query
         if (!gateWrite(res, server)) return
         await makeClient(server, req.ideToken).deleteHierarchy(dimension, name)
-        cl.writeLog({ server, action: 'HIERARCHY_DELETED', objectType: 'dimension', objectName: name, detail: dimension })
+        cl.writeLog({ server, action: 'HIERARCHY_DELETED', objectType: 'dimension', objectName: name, detail: dimension, user: req.user })
         res.json({ ok: true })
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
@@ -1420,7 +1421,7 @@ app.post('/api/subset', async (req, res) => {
         const beforeState = current ? { expression: current.Expression ?? '' } : null
         await client.saveSubset(req.query.dimension, req.query.name, req.body.mdx)
         const afterState  = { expression: req.body.mdx }
-        const { hasSession } = cl.writeLog({ server: req.query.server, action: 'SUBSET_SAVED', objectType: 'subset', objectName: req.query.name, detail: req.query.dimension, beforeState, afterState })
+        const { hasSession } = cl.writeLog({ server: req.query.server, action: 'SUBSET_SAVED', objectType: 'subset', objectName: req.query.name, detail: req.query.dimension, beforeState, afterState, user: req.user })
         res.json({ ok: true, noSession: !hasSession })
     } catch (e) {
         const detail = e.response?.data?.error?.message ?? e.response?.data ?? e.message
@@ -1445,7 +1446,7 @@ app.post('/api/subset/static', async (req, res) => {
         const beforeState = currentEls ? { elements: currentEls.map(e => e.name) } : null
         await client.saveStaticSubset(req.query.dimension, req.query.name, req.body.elements)
         const afterState  = { elements: req.body.elements ?? [] }
-        const { hasSession } = cl.writeLog({ server: req.query.server, action: 'SUBSET_SAVED', objectType: 'subset', objectName: req.query.name, detail: req.query.dimension, beforeState, afterState })
+        const { hasSession } = cl.writeLog({ server: req.query.server, action: 'SUBSET_SAVED', objectType: 'subset', objectName: req.query.name, detail: req.query.dimension, beforeState, afterState, user: req.user })
         res.json({ ok: true, noSession: !hasSession })
     } catch (e) {
         const detail = e.response?.data?.error?.message ?? e.response?.data ?? e.message

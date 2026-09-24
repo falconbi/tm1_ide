@@ -227,27 +227,14 @@ function getEntryById(id) {
 
 // ── Log writer ────────────────────────────────────────────────────────────────
 
-// Save actions within the same session collapse into one entry per object:
-// before_state stays as the original seed; after_state is always the latest.
-const COLLAPSIBLE_ACTIONS = new Set(['RULES_SAVED', 'PROCESS_SAVED', 'SUBSET_SAVED', 'VIEW_SAVED'])
-
-function writeLog({ server, action, objectType, objectName, detail, beforeState, afterState }) {
+// History is independent of session — every save is its own row with its own
+// accurate before/after, full stop. (Previously, saves within the same session
+// collapsed into one row, freezing before_state at whenever the session
+// started and stamping every later save's user with the session's original
+// user — wrong on both counts, and wrong specifically *because* it made
+// history depend on session state, which it must never do.)
+function writeLog({ server, action, objectType, objectName, detail, beforeState, afterState, user }) {
     const session = getActiveSession(server)
-
-    if (session && COLLAPSIBLE_ACTIONS.has(action)) {
-        const existing = db.prepare(`
-            SELECT id FROM log_entries
-            WHERE session_id = ? AND object_type = ? AND object_name = ? AND action = ?
-              AND IFNULL(detail, '') = IFNULL(?, '')
-            ORDER BY timestamp DESC LIMIT 1
-        `).get(session.id, objectType, objectName, action, detail ?? null)
-
-        if (existing) {
-            db.prepare(`UPDATE log_entries SET after_state = ?, timestamp = ? WHERE id = ?`)
-              .run(afterState ? JSON.stringify(afterState) : null, new Date().toISOString(), existing.id)
-            return { hasSession: true }
-        }
-    }
 
     db.prepare(`
         INSERT INTO log_entries (session_id, timestamp, server, action, object_type, object_name, detail, before_state, after_state, user)
@@ -262,7 +249,7 @@ function writeLog({ server, action, objectType, objectName, detail, beforeState,
         detail       ?? null,
         beforeState  ? JSON.stringify(beforeState)  : null,
         afterState   ? JSON.stringify(afterState)   : null,
-        session?.user ?? null
+        user ?? null
     )
     return { hasSession: !!session }
 }

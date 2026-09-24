@@ -44,6 +44,7 @@ function logChange(action, objectType, objectName, opts = {}) {
         detail:      opts.detail ?? null,
         beforeState: opts.before ?? null,
         afterState:  opts.after  ?? null,
+        user:        AGENT_USER,
     })
 }
 
