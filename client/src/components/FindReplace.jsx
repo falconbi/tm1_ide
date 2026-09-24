@@ -14,6 +14,7 @@ function escapeRegex(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') }
 
 function searchIndex(index, term, useRegex, scope) {
   if (!term || !index) return []
+  if (!Array.isArray(index.rules) || !Array.isArray(index.processes)) return []
   let re
   try {
     re = new RegExp(useRegex ? term : escapeRegex(term), 'gi')
@@ -54,6 +55,7 @@ function searchIndex(index, term, useRegex, scope) {
 }
 
 function applyReplace(index, term, replacement, useRegex, scope) {
+  if (!index || !Array.isArray(index.rules) || !Array.isArray(index.processes)) return null
   let re
   try {
     re = new RegExp(useRegex ? term : escapeRegex(term), 'g')
@@ -135,7 +137,7 @@ export default function FindReplace({ onClose }) {
 
   const { data: index, isFetching, refetch } = useQuery({
     queryKey: ['search-index', server],
-    queryFn: () => fetch(`/api/search/index?server=${enc(server)}`).then(r => r.json()),
+    queryFn: () => fetch(`/api/search/index?server=${enc(server)}`, { headers: { 'x-ide-token': localStorage.getItem('tm1-token') ?? '' } }).then(r => r.json()),
     enabled: false,
     staleTime: 60_000,
   })
@@ -171,13 +173,13 @@ export default function FindReplace({ onClose }) {
       await Promise.all([
         ...rulesChanges.map(({ name, newRules }) =>
           fetch(`/api/rules?server=${enc(server)}&cube=${enc(name)}`, {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            method: 'POST', headers: { 'Content-Type': 'application/json', 'x-ide-token': localStorage.getItem('tm1-token') ?? '' },
             body: JSON.stringify({ rules: newRules }),
           })
         ),
         ...processChanges.map(({ name, updated }) =>
           fetch(`/api/process?server=${enc(server)}&name=${enc(name)}`, {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            method: 'POST', headers: { 'Content-Type': 'application/json', 'x-ide-token': localStorage.getItem('tm1-token') ?? '' },
             body: JSON.stringify({
               PrologProcedure:   updated.Prolog,
               MetaDataProcedure: updated.Metadata,
