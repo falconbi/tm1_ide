@@ -6,6 +6,7 @@ const express   = require('express')
 const path      = require('path')
 const fs        = require('fs')
 const ai        = require('./core/ai/registry')
+const obfuscate = require('./core/ai/obfuscate')
 const { makeClient, listServers, listServersWithFlags, getDefaultAdapterType, getLoginServer, isReadOnly } = require('./core/adapter_registry')
 const { loadConnections, saveConnections, getConnection, executeQuery, testConnection, getSchema, loadQueries, saveQueries } = require('./core/sql_client')
 const { createSession, createDirectSession, getSessionUser, touchSession, invalidateSession, getCachedPawSession, getCSRF, PAW_HOST } = require('./core/paw_connect')
@@ -1511,6 +1512,15 @@ app.post('/api/subset/generate', async (req, res) => {
         const { server, dimension, prompt } = req.body
         const client   = makeClient(server, req.ideToken)
         const elements = await client.getElements(dimension)
+
+        // Obfuscation (AI_OBFUSCATE_NAMES): swap every real name for an opaque
+        // token before the request leaves, restore it in the response.
+        const obf      = ai.shouldObfuscate()
+        const map      = obfuscate.makeMap([dimension, ...elements.slice(0, 200).map(e => e.Name)])
+        const hide     = obf ? t => obfuscate.obfuscateText(t, map.realToCode) : t => t
+        const show     = obf ? t => obfuscate.restoreText(t, map.codeToReal)      : t => t
+        const dimRef   = obf ? map.realToCode.get(dimension) : dimension
+
         const sample   = elements.slice(0, 200).map(e => `${e.Name} (${e.Type === 'N' ? 'leaf' : e.Type === 'C' ? 'consolidated' : 'string'}, level ${e.Level})`).join('\n')
 
         const mdx = await ai.complete({
@@ -1523,11 +1533,11 @@ Rules:
 - Reference members as [{dim}].[{dim}].[MemberName] or use set functions directly.
 - Common functions: TM1FilterByLevel, TM1FilterByPattern, TM1Sort, TopCount, BottomCount, Filter, CrossJoin, Descendants, Children, Ancestors, Members.
 - Leaf members are Type=N (level 0). Consolidated members are Type=C (level > 0).
-- Example: {TM1FilterByLevel({[{dim}].[{dim}].Members}, 0)}`.replaceAll('{dim}', dimension),
-            user: `Dimension: ${dimension}\n\nSample elements (up to 200):\n${sample}\n\nRequest: ${prompt}`,
+- Example: {TM1FilterByLevel({[{dim}].[{dim}].Members}, 0)}`.replaceAll('{dim}', dimRef),
+            user: hide(`Dimension: ${dimension}\n\nSample elements (up to 200):\n${sample}\n\nRequest: ${prompt}`),
         })
 
-        res.json({ mdx })
+        res.json({ mdx: show(mdx) })
     } catch (e) {
         res.status(500).json({ error: e.message })
     }
@@ -1540,7 +1550,8 @@ app.post('/api/mdx/generate', async (req, res) => {
     try {
         const { server, cube, prompt } = req.body
         const client = makeClient(server, req.ideToken)
-        const dims = await client.getCubeDimensions(cube)
+        const cubeMeta = await client.getCube(cube)
+        const dims = (cubeMeta?.Dimensions ?? []).map(d => d.Name)
 
         // Fetch element samples for each dimension in parallel (max 60 per dim)
         const dimSamples = await Promise.all(dims.map(async dim => {
@@ -1559,6 +1570,16 @@ app.post('/api/mdx/generate', async (req, res) => {
             return `${dim} (${total} elements)\n${parts.join('\n')}`
         }).join('\n\n')
 
+        // Obfuscation (AI_OBFUSCATE_NAMES): hide every real cube/dim/element name
+        // in what we send; the model still sees structure. Restore in response.
+        const obf = ai.shouldObfuscate()
+        const map = obfuscate.makeMap([
+            cube,
+            ...dimSamples.flatMap(d => [d.dim, ...d.leaves, ...d.consol]),
+        ])
+        const hide = obf ? t => obfuscate.obfuscateText(t, map.realToCode) : t => t
+        const show = obf ? t => obfuscate.restoreText(t, map.codeToReal)      : t => t
+
         const mdx = await ai.complete({
             maxTokens: 2048,
             system: `You are a TM1 MDX expert. Generate a valid TM1 MDX SELECT query for the given cube.
@@ -1572,10 +1593,10 @@ Rules:
 - Leaf members are level-0 numeric elements. Consolidated members are higher-level aggregations.
 - If only one dimension member is needed for a dimension, use it as a WHERE slicer, not ON an axis.
 - Keep it correct and executable. If uncertain about a member name, use a safe set like {[Dim].[Dim].Members}.`,
-            user: `Cube: ${cube}\n\nDimensions and sample members:\n${dimContext}\n\nRequest: ${prompt}`,
+            user: hide(`Cube: ${cube}\n\nDimensions and sample members:\n${dimContext}\n\nRequest: ${prompt}`),
         })
 
-        res.json({ mdx })
+        res.json({ mdx: show(mdx) })
     } catch (e) {
         res.status(500).json({ error: e.message })
     }

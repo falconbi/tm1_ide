@@ -44,10 +44,18 @@ function config() {
 
 function isConfigured() { return !!config() }
 
+// Name obfuscation is opt-in: set AI_OBFUSCATE_NAMES=true and every TM1 object
+// name sent to the provider is swapped for an opaque token (see ./obfuscate)
+// before the request leaves, then restored in the response. Enabled value
+// accepts true/1/yes.
+function shouldObfuscate() {
+    return ['1', 'true', 'yes'].includes(String(process.env.AI_OBFUSCATE_NAMES || '').toLowerCase())
+}
+
 async function complete({ system, user, maxTokens = 1024 }) {
     const c = config()
     if (!c) throw new Error('AI not configured — set AI_PROVIDER and AI_API_KEY in .env')
     return c.adapter.complete({ baseUrl: c.baseUrl, apiKey: c.apiKey, model: c.model, system, user, maxTokens })
 }
 
-module.exports = { complete, isConfigured }
+module.exports = { complete, isConfigured, shouldObfuscate }
