@@ -52,10 +52,25 @@ function shouldObfuscate() {
     return ['1', 'true', 'yes'].includes(String(process.env.AI_OBFUSCATE_NAMES || '').toLowerCase())
 }
 
-async function complete({ system, user, maxTokens = 1024 }) {
+async function complete({ system, user, maxTokens = 1024, label = 'ai', obfuscated = false }) {
     const c = config()
     if (!c) throw new Error('AI not configured — set AI_PROVIDER and AI_API_KEY in .env')
-    return c.adapter.complete({ baseUrl: c.baseUrl, apiKey: c.apiKey, model: c.model, system, user, maxTokens })
+    const t0 = Date.now()
+    try {
+        const out = await c.adapter.complete({ baseUrl: c.baseUrl, apiKey: c.apiKey, model: c.model, system, user, maxTokens })
+        audit({ label, provider: c.adapter.name, model: c.model, obfuscated, inChars: (user ?? '').length, outChars: out.length, ms: Date.now() - t0, ok: true })
+        return out
+    } catch (e) {
+        audit({ label, provider: c.adapter.name, model: c.model, obfuscated, inChars: (user ?? '').length, ms: Date.now() - t0, ok: false, error: e.message })
+        throw e
+    }
+}
+
+// Audit trail for AI calls — metadata only (provider, model, sizes, timing,
+// obfuscation state, outcome). Never the prompt or the response content, and
+// never the TM1 object names, so this log is safe even when obfuscation is off.
+function audit(entry) {
+    console.log('[ai]', JSON.stringify({ t: new Date().toISOString(), ...entry }))
 }
 
 module.exports = { complete, isConfigured, shouldObfuscate }

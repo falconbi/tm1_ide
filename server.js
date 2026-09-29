@@ -1524,6 +1524,7 @@ app.post('/api/subset/generate', async (req, res) => {
         const sample   = elements.slice(0, 200).map(e => `${e.Name} (${e.Type === 'N' ? 'leaf' : e.Type === 'C' ? 'consolidated' : 'string'}, level ${e.Level})`).join('\n')
 
         const mdx = await ai.complete({
+            label: 'subset-generate', obfuscated: obf,
             maxTokens: 1024,
             system: `You are a TM1 MDX expert. Generate a valid TM1 MDX set expression for the given dimension.
 Rules:
@@ -1581,6 +1582,7 @@ app.post('/api/mdx/generate', async (req, res) => {
         const show = obf ? t => obfuscate.restoreText(t, map.codeToReal)      : t => t
 
         const mdx = await ai.complete({
+            label: 'mdx-generate', obfuscated: obf,
             maxTokens: 2048,
             system: `You are a TM1 MDX expert. Generate a valid TM1 MDX SELECT query for the given cube.
 Rules:
