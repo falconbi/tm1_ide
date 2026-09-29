@@ -1177,7 +1177,7 @@ export default function ViewEditor({ tab }) {
 
     // AI generate — front door for building a view from a description
     const { data: config } = useConfig()
-    const hasAnthropicKey = !!config?.hasAnthropicKey
+    const hasAI = !!config?.hasAI
     const [aiPrompt, setAiPrompt] = useState('')
     const handleGenerateAI = useCallback(() => {
         if (!aiPrompt.trim() || generateViewMDX.isPending) return
@@ -2298,8 +2298,8 @@ export default function ViewEditor({ tab }) {
 
             {/* AI bar — front door for building this view */}
             <div className="flex items-center gap-2 px-3 py-1.5 border-b border-border bg-muted/10 shrink-0">
-                <Sparkles size={11} className={cn('shrink-0', hasAnthropicKey ? 'text-violet-400' : 'text-muted-foreground/40')} />
-                {hasAnthropicKey ? (
+                <Sparkles size={11} className={cn('shrink-0', hasAI ? 'text-violet-400' : 'text-muted-foreground/40')} />
+                {hasAI ? (
                     <>
                         <input value={aiPrompt} onChange={e => setAiPrompt(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleGenerateAI()}
                             placeholder="Describe the view you want…"
@@ -2310,7 +2310,7 @@ export default function ViewEditor({ tab }) {
                         </button>
                     </>
                 ) : (
-                    <span className="flex-1 text-xs text-muted-foreground/40 italic">AI generation needs an Anthropic API key — not configured on this server</span>
+                    <span className="flex-1 text-xs text-muted-foreground/40 italic">AI not configured — set AI_PROVIDER in .env</span>
                 )}
             </div>
 

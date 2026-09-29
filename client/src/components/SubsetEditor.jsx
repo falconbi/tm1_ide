@@ -248,7 +248,7 @@ export default function SubsetEditor({ tab }) {
   const previewMDX  = usePreviewMDX()
   const generateMDX = useGenerateMDX()
   const { data: config } = useConfig()
-  const hasAnthropicKey = !!config?.hasAnthropicKey
+  const hasAI = !!config?.hasAI
   const { data: elements } = useElements(tab.server, tab.dimension)
   const { data: usageData, isFetching: loadingUsage, refetch: refetchUsage } = useSubsetUsage(tab.server, tab.dimension, tab.subsetName)
 
@@ -663,8 +663,8 @@ export default function SubsetEditor({ tab }) {
 
           {/* AI bar */}
           <div className="flex items-center gap-2 px-3 py-1.5 border-b border-border bg-muted/10 shrink-0">
-            <Sparkles size={11} className={cn('shrink-0', hasAnthropicKey ? 'text-violet-400' : 'text-muted-foreground/40')} />
-            {hasAnthropicKey ? (
+            <Sparkles size={11} className={cn('shrink-0', hasAI ? 'text-violet-400' : 'text-muted-foreground/40')} />
+            {hasAI ? (
               <>
                 <input value={aiPrompt} onChange={e => setAiPrompt(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleGenerate()}
                   placeholder="Describe the members you want…"
@@ -675,7 +675,7 @@ export default function SubsetEditor({ tab }) {
                 </button>
               </>
             ) : (
-              <span className="flex-1 text-xs text-muted-foreground/40 italic">AI generation needs an Anthropic API key — not configured on this server</span>
+              <span className="flex-1 text-xs text-muted-foreground/40 italic">AI not configured — set AI_PROVIDER in .env</span>
             )}
           </div>
 

@@ -764,7 +764,7 @@ export default function GuidedMDXBuilder({ tab, server: serverProp, onSwitchToRa
   const [aiLoading, setAiLoading] = useState(false)
   const [showAiBar, setShowAiBar] = useState(false)
   const { data: config } = useConfig()
-  const hasAnthropicKey = !!config?.hasAnthropicKey
+  const hasAI = !!config?.hasAI
 
   const generateWithAI = async () => {
     if (!aiPrompt.trim() || !selectedCube) return
@@ -1600,10 +1600,10 @@ export default function GuidedMDXBuilder({ tab, server: serverProp, onSwitchToRa
                   </button>
                   <button
                     onClick={() => setShowAiBar(s => !s)}
-                    disabled={!selectedCube || !hasAnthropicKey}
+                    disabled={!selectedCube || !hasAI}
                     className={cn('flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded hover:bg-muted transition-colors disabled:opacity-40',
                       showAiBar ? 'text-violet-400' : 'text-muted-foreground hover:text-foreground')}
-                    title={hasAnthropicKey ? 'Generate MDX with AI' : 'AI generation needs an Anthropic API key — not configured on this server'}>
+                    title={hasAI ? 'Generate MDX with AI' : 'AI not configured — set AI_PROVIDER in .env'}>
                     <Sparkles size={10} /> AI
                   </button>
                   <button onClick={runViewPreview} disabled={!activeMDX || previewLoading}

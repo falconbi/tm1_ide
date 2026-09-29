@@ -5,7 +5,7 @@ require('dotenv').config({ path: require('path').join(__dirname, '.env') })
 const express   = require('express')
 const path      = require('path')
 const fs        = require('fs')
-const Anthropic = require('@anthropic-ai/sdk')
+const ai        = require('./core/ai/registry')
 const { makeClient, listServers, listServersWithFlags, getDefaultAdapterType, getLoginServer, isReadOnly } = require('./core/adapter_registry')
 const { loadConnections, saveConnections, getConnection, executeQuery, testConnection, getSchema, loadQueries, saveQueries } = require('./core/sql_client')
 const { createSession, createDirectSession, getSessionUser, touchSession, invalidateSession, getCachedPawSession, getCSRF, PAW_HOST } = require('./core/paw_connect')
@@ -49,7 +49,10 @@ const { loadBaseline: deployLoadBaseline, listBaselines: deployListBaselines, se
 const FORGE_PATH = path.join(__dirname, 'config', 'forge.json')
 const PAW_LOGIN_SERVER = process.env.PAW_LOGIN_SERVER
 
-const anthropic = new Anthropic.default({ apiKey: process.env.ANTHROPIC_API_KEY })
+// ── Provider-agnostic AI ──────────────────────────────────────────────────────
+// All AI features (MDX/subset generation) go through core/ai/registry — pick the
+// provider in .env (AI_PROVIDER + AI_API_KEY + optional AI_MODEL/AI_BASE_URL).
+// Legacy ANTHROPIC_API_KEY is still honoured so an existing .env keeps working.
 
 const app  = express()
 const PORT = process.env.PORT || 8083
@@ -127,7 +130,7 @@ app.post('/api/auth/logout', (req, res) => {
 })
 
 app.get('/api/config', (req, res) => {
-    res.json({ loginServer: PAW_LOGIN_SERVER ?? null, hasAnthropicKey: !!process.env.ANTHROPIC_API_KEY })
+    res.json({ loginServer: PAW_LOGIN_SERVER ?? null, hasAI: ai.isConfigured() })
 })
 
 app.use('/api', (req, res, next) => {
@@ -1501,8 +1504,8 @@ app.post('/api/subset/preview', async (req, res) => {
 })
 
 app.post('/api/subset/generate', async (req, res) => {
-    if (!process.env.ANTHROPIC_API_KEY) {
-        return res.status(400).json({ error: 'ANTHROPIC_API_KEY not set in .env' })
+    if (!ai.isConfigured()) {
+        return res.status(400).json({ error: 'AI not configured — set AI_PROVIDER and AI_API_KEY in .env' })
     }
     try {
         const { server, dimension, prompt } = req.body
@@ -1510,9 +1513,8 @@ app.post('/api/subset/generate', async (req, res) => {
         const elements = await client.getElements(dimension)
         const sample   = elements.slice(0, 200).map(e => `${e.Name} (${e.Type === 'N' ? 'leaf' : e.Type === 'C' ? 'consolidated' : 'string'}, level ${e.Level})`).join('\n')
 
-        const message = await anthropic.messages.create({
-            model:      'claude-sonnet-5',
-            max_tokens: 1024,
+        const mdx = await ai.complete({
+            maxTokens: 1024,
             system: `You are a TM1 MDX expert. Generate a valid TM1 MDX set expression for the given dimension.
 Rules:
 - Return ONLY the raw MDX expression — no markdown, no explanation, no code fences.
@@ -1522,13 +1524,9 @@ Rules:
 - Common functions: TM1FilterByLevel, TM1FilterByPattern, TM1Sort, TopCount, BottomCount, Filter, CrossJoin, Descendants, Children, Ancestors, Members.
 - Leaf members are Type=N (level 0). Consolidated members are Type=C (level > 0).
 - Example: {TM1FilterByLevel({[{dim}].[{dim}].Members}, 0)}`.replaceAll('{dim}', dimension),
-            messages: [{
-                role: 'user',
-                content: `Dimension: ${dimension}\n\nSample elements (up to 200):\n${sample}\n\nRequest: ${prompt}`,
-            }],
+            user: `Dimension: ${dimension}\n\nSample elements (up to 200):\n${sample}\n\nRequest: ${prompt}`,
         })
 
-        const mdx = message.content[0].text.trim()
         res.json({ mdx })
     } catch (e) {
         res.status(500).json({ error: e.message })
@@ -1536,8 +1534,8 @@ Rules:
 })
 
 app.post('/api/mdx/generate', async (req, res) => {
-    if (!process.env.ANTHROPIC_API_KEY) {
-        return res.status(400).json({ error: 'ANTHROPIC_API_KEY not set in .env' })
+    if (!ai.isConfigured()) {
+        return res.status(400).json({ error: 'AI not configured — set AI_PROVIDER and AI_API_KEY in .env' })
     }
     try {
         const { server, cube, prompt } = req.body
@@ -1561,9 +1559,8 @@ app.post('/api/mdx/generate', async (req, res) => {
             return `${dim} (${total} elements)\n${parts.join('\n')}`
         }).join('\n\n')
 
-        const message = await anthropic.messages.create({
-            model: 'claude-sonnet-5',
-            max_tokens: 2048,
+        const mdx = await ai.complete({
+            maxTokens: 2048,
             system: `You are a TM1 MDX expert. Generate a valid TM1 MDX SELECT query for the given cube.
 Rules:
 - Return ONLY the raw MDX — no markdown, no explanation, no code fences.
@@ -1575,13 +1572,10 @@ Rules:
 - Leaf members are level-0 numeric elements. Consolidated members are higher-level aggregations.
 - If only one dimension member is needed for a dimension, use it as a WHERE slicer, not ON an axis.
 - Keep it correct and executable. If uncertain about a member name, use a safe set like {[Dim].[Dim].Members}.`,
-            messages: [{
-                role: 'user',
-                content: `Cube: ${cube}\n\nDimensions and sample members:\n${dimContext}\n\nRequest: ${prompt}`,
-            }],
+            user: `Cube: ${cube}\n\nDimensions and sample members:\n${dimContext}\n\nRequest: ${prompt}`,
         })
 
-        res.json({ mdx: message.content[0].text.trim() })
+        res.json({ mdx })
     } catch (e) {
         res.status(500).json({ error: e.message })
     }
