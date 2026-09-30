@@ -477,10 +477,17 @@ class TM1Client {
         try {
             await this.post('Processes', body)
         } catch (e) {
-            if (e.response?.status === 409 || e.response?.status === 400) {
+            // TM1 v11 answers "already exists" with 400 (error code 278), not 409. Any OTHER 400 is a real
+            // rejection (e.g. code 178 "Failed to register object" for a Windows-reserved name like CON.xxx)
+            // and must surface as-is — falling through to PATCH turned it into a misleading 404.
+            const tm1Err  = e.response?.data?.error
+            const exists  = e.response?.status === 409 ||
+                (e.response?.status === 400 && (String(tm1Err?.code) === '278' || /already exists/i.test(tm1Err?.message ?? '')))
+            if (exists) {
                 // PATCH is atomic — no delete+recreate risk
                 await this.patch(`Processes('${encodeURIComponent(proc.name)}')`, body)
             } else {
+                if (tm1Err?.message) e.message = `TM1 rejected process "${proc.name}": ${tm1Err.message}`
                 throw e
             }
         }
@@ -499,6 +506,15 @@ class TM1Client {
         return this.get(`Chores('${encodeURIComponent(name)}')`, {
             '$expand': 'Tasks($expand=Process($select=Name))'
         })
+    }
+
+    // Every chore with its task order — one call, for the Cube Map's Show playback
+    async getChoresWithTasks() {
+        const d = await this.get('Chores', { '$select': 'Name,Active', '$expand': 'Tasks($expand=Process($select=Name))' })
+        return (d.value ?? []).filter(c => !c.Name.startsWith('}')).map(c => ({
+            name: c.Name, active: !!c.Active,
+            processes: (c.Tasks ?? []).map(t => t.Process?.Name).filter(Boolean),
+        }))
     }
 
     async updateChore(name, data) {

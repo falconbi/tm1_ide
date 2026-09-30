@@ -62,19 +62,86 @@ evidence, and it's still early.
 
 ## Running it
 
-```bash
-# one server, by name from config/servers.json
-node tools/tm1mcp/server.js --server 24Retail
+The MCP connects to **one TM1 server at a time**. The server name must match an
+entry in `config/servers.json` exactly (including capitals).
 
-# or via env var
-TM1_MCP_SERVER=24Retail node tools/tm1mcp/server.js
+### With Claude Code (the normal way)
 
-# register with Claude Code
-claude mcp add tm1 -- node /abs/path/tools/tm1mcp/server.js --server 24Retail
+The repo ships a project-level MCP config, `.mcp.json`, in the project root:
+
+```json
+{
+  "mcpServers": {
+    "tm1": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["tools/tm1mcp/server.js"],
+      "env": {
+        "TM1_MCP_SERVER": "${TM1_MCP_SERVER:-TM1_CONSOL}"
+      }
+    }
+  }
+}
 ```
 
-Auth: same as the IDE with no logged-in user — it uses the `makeClient(server, null)` path,
-so it authenticates with the adapter's fallback credentials from `config/servers.json`.
+- Claude Code picks it up automatically when you open this project. The first time,
+  it asks you to approve the `tm1` server. Say yes.
+- The path is relative, so it works for anyone who clones the repo, whatever their
+  home folder is.
+- The MCP is named `tm1`, so tools show up as `mcp__tm1__list_cubes` and so on. The
+  tool permissions in `.claude/settings.json` are keyed to that name, so keep it `tm1`.
+
+### Changing which TM1 server the MCP points at
+
+**Option 1: edit the default (simplest).**
+
+1. Open `.mcp.json`.
+2. On the `TM1_MCP_SERVER` line, change the name after `:-`. For example,
+   `"${TM1_MCP_SERVER:-TM1_Test_DEV}"`. Leave everything else alone.
+3. Save.
+4. Restart Claude Code. The MCP only reads its config at startup.
+
+**Option 2: environment variable (no file edit).** Set `TM1_MCP_SERVER` before
+starting Claude Code. It overrides the default in `.mcp.json`:
+
+```bash
+TM1_MCP_SERVER=TM1_Test_DEV claude
+```
+
+**Checking it worked:** after the restart, ask Claude to list the cubes (the
+`list_cubes` tool). The cube names tell you which server you're on.
+
+### Gotcha: a personal entry overrides the project one
+
+If you ever registered the MCP yourself (with `claude mcp add tm1 ...`), that entry
+lives in your personal `~/.claude.json` (`~` = your home folder, and the leading `.`
+makes it a hidden file). A personal entry with the **same name** (`tm1`) **wins over**
+`.mcp.json`, so editing `.mcp.json` appears to do nothing. Fix it by removing the
+personal one:
+
+```bash
+claude mcp remove tm1 -s local
+```
+
+### Running it by hand (testing / other MCP clients)
+
+```bash
+# by flag
+node tools/tm1mcp/server.js --server TM1_CONSOL
+
+# or by env var
+TM1_MCP_SERVER=TM1_CONSOL node tools/tm1mcp/server.js
+```
+
+On startup it prints `tm1mcp: connected to "<server>"` to stderr. `--server` beats
+`TM1_MCP_SERVER` if both are given.
+
+### Auth
+
+Same as the IDE with no logged-in user. It uses the `makeClient(server, null)` path,
+so it signs in with the adapter's fallback credentials from `config/servers.json`. A
+brand-new TM1 v11 server starts with `admin` / `apple`, and `tm1s.cfg` has no setting
+to change that. Change it after startup if needed (TI `AssignClientPassword`).
 
 ---
 

@@ -3053,6 +3053,7 @@ app.get('/api/cubemap/model', async (req, res) => {
         }
 
         const cubeNames = new Set(allCubes.map(c => c.Name))
+        const dimNames  = new Set(await client.getDimensions().catch(() => []))
 
         // Fetch TI process code for write-ref and call-chain analysis (best-effort — skip if slow/unavailable)
         // Catches three patterns, not just a literal cube name in CellPutN:
@@ -3062,51 +3063,156 @@ app.get('/api/cubemap/model', async (req, res) => {
         //      CellPutN target is a parameter, unresolvable in isolation) attributed via the call site that
         //      names the real cube — this is how Bedrock-style reusable copy processes get credited correctly.
         const tiWriteMap = {}
+        const tiReadMap  = {}
         const processCallers = {} // calledProcess -> [callerProcess, ...] (reverse of ExecuteProcess/RunProcess)
+        // Per-process view for the map's "All TI" mode and the Show playback. `steps` is every distinct
+        // read/write/call in code order (first occurrence), which is the order the playback walks.
+        const processes = {}
+        const procEntry = name => (processes[name] ??= { reads: [], writes: [], calls: [], dimWrites: [], steps: [] })
+        const dimWriteMap = {} // dim -> [process, ...]
+        // Dimension-changing TI calls, derived from the shared catalog (never hand-listed): a statement
+        // that takes a dimname and no cubename (View*/CubeCreate take a dimname but don't change it).
+        // Subset calls are excluded — the temp-view scaffolding every clear-and-rebuild process does
+        // (SubsetCreate/ElementInsert/Destroy) would link nearly every process to its cube's dimensions.
+        // The value is the dimname's argument position.
+        const DIM_WRITE_FNS = Object.fromEntries(Object.entries(require('./shared/tm1-function-catalog.json'))
+            .filter(([, f]) => f.language !== 'rules' && f.isStatement && (f.params ?? []).includes('dimname')
+                && !(f.params ?? []).some(x => x.startsWith('cubename') || x.startsWith('subset')))
+            .map(([name, f]) => [name, f.params.indexOf('dimname')]))
+        const DIM_CALL_RE = new RegExp(`\\b(${Object.keys(DIM_WRITE_FNS).join('|')})\\s*\\(`, 'gi')
+        // Top-level args of the call whose '(' is at openIdx — quote- and paren-aware
+        const splitArgs = (code, openIdx) => {
+            const args = []; let depth = 0, cur = '', inStr = false
+            for (let i = openIdx + 1; i < code.length; i++) {
+                const ch = code[i]
+                if (inStr) { cur += ch; if (ch === "'") inStr = false; continue }
+                if (ch === "'") { inStr = true; cur += ch; continue }
+                if (ch === '(') depth++
+                if (ch === ')') { if (depth === 0) { args.push(cur); break } depth-- }
+                if (ch === ',' && depth === 0) { args.push(cur); cur = ''; continue }
+                if (ch === ';' && depth === 0) break
+                cur += ch
+            }
+            return args
+        }
         try {
             const pd = await client.get('Processes', {
-                '$select': 'Name,PrologProcedure,MetadataProcedure,DataProcedure,EpilogProcedure',
+                '$select': 'Name,PrologProcedure,MetadataProcedure,DataProcedure,EpilogProcedure,DataSource,Parameters',
             })
             const ASSIGN_RE     = /\b([A-Za-z_]\w*)\s*=\s*'([^']*)'\s*;/g
-            const CELLPUT_RE    = /\bCellPut[NS](?:Complete)?\s*\(\s*[^,]+,\s*([^,]+),/gi
+            const VAR_ASSIGN_RE = /\b([A-Za-z_]\w*)\s*=\s*([A-Za-z_]\w*)\s*;/g
+            // cube is the 2nd arg: CellPutN/S, CellPutNComplete, CellIncrementN/S (accumulating write)
+            const CELLPUT_RE    = /\b(?:CellPut[NS](?:Complete)?|CellIncrement[NS])\s*\(\s*[^,]+,\s*([^,]+),/gi
+            // cube is the 1st arg: functions that change a cube's data without CellPut — clear-and-rebuild
+            // processes (ViewZeroOut then CellIncrementN) were invisible on the Cube Map without these
+            const CUBE_FIRST_RE = /\b(?:ViewZeroOut|CubeClearData|CubeProcessFeeders)\s*\(\s*([^,)]+)/gi
+            // reads: cube is the 1st arg
+            const CELLGET_RE    = /\bCellGet[NS]\s*\(\s*([^,)]+)/gi
             const EXEC_RE       = /\b(?:ExecuteProcess|RunProcess)\s*\(([\s\S]*?)\)\s*;/gi
-            const EXEC_NAME_RE  = /^\s*'([^']+)'/
             const CUBE_PARAM_RE = /'([pP]\w*[Cc]ube\w*)'\s*,\s*'([^']+)'/g
 
-            const addWriter = (cube, proc) => {
+            const addStep = (proc, kind, target, pos) => {
+                const e = procEntry(proc)
+                const list = { read: e.reads, write: e.writes, call: e.calls, dimwrite: e.dimWrites }[kind]
+                if (list.includes(target)) return
+                list.push(target)
+                e.steps.push({ kind, target, pos })
+            }
+            const addWriter = (cube, proc, pos = Infinity) => {
                 if (!cubeNames.has(cube)) return
                 if (!tiWriteMap[cube]) tiWriteMap[cube] = []
                 if (!tiWriteMap[cube].includes(proc)) tiWriteMap[cube].push(proc)
+                addStep(proc, 'write', cube, pos)
+            }
+            const addReader = (cube, proc, pos) => {
+                if (!cubeNames.has(cube)) return
+                if (!tiReadMap[cube]) tiReadMap[cube] = []
+                if (!tiReadMap[cube].includes(proc)) tiReadMap[cube].push(proc)
+                addStep(proc, 'read', cube, pos)
+            }
+            // An object-name expression -> its value: 'literal', a resolved variable, or a `|` concatenation
+            // of those (e.g. sDimension | '.Refresh Subsets'). Anything else is unresolvable -> undefined.
+            const resolveName = (ref, varValues) => {
+                const parts = []; let cur = '', inStr = false
+                for (const ch of ref) {
+                    if (ch === "'") inStr = !inStr
+                    if (ch === '|' && !inStr) { parts.push(cur); cur = '' } else cur += ch
+                }
+                parts.push(cur)
+                let out = ''
+                for (const part of parts.map(s => s.trim())) {
+                    const lit = part.match(/^'([^']*)'$/)
+                    const val = lit ? lit[1] : varValues[part]
+                    if (val === undefined) return undefined
+                    out += val
+                }
+                return out || undefined
             }
 
             for (const p of (pd.value ?? []).filter(p => !p.Name.startsWith('}'))) {
                 const code = [p.PrologProcedure, p.MetadataProcedure, p.DataProcedure, p.EpilogProcedure]
                     .filter(Boolean).join('\n')
 
-                // Resolve simple `var = 'literal';` assignments so CellPutN(value, var, ...) can be traced
+                // Resolve `var = 'literal';` assignments so CellPutN(value, var, ...) can be traced, seeded
+                // with parameter defaults and following `a = b;` chains (sDimension = pDimension). A default is
+                // what the process uses when run as-is, so it's the name the map attributes it to.
                 const varValues = {}
+                for (const prm of p.Parameters ?? []) {
+                    if (typeof prm.Value === 'string' && prm.Value) varValues[prm.Name] = prm.Value
+                }
                 let am
                 ASSIGN_RE.lastIndex = 0
                 while ((am = ASSIGN_RE.exec(code)) !== null) varValues[am[1]] = am[2]
+                for (let pass = 0; pass < 3; pass++) {
+                    VAR_ASSIGN_RE.lastIndex = 0
+                    while ((am = VAR_ASSIGN_RE.exec(code)) !== null) {
+                        if (varValues[am[1]] === undefined && varValues[am[2]] !== undefined) varValues[am[1]] = varValues[am[2]]
+                    }
+                }
 
                 CELLPUT_RE.lastIndex = 0
                 let m
                 while ((m = CELLPUT_RE.exec(code)) !== null) {
-                    const ref = m[1].trim()
-                    const lit = ref.match(/^'([^']+)'$/)
-                    const cubeName = lit ? lit[1] : varValues[ref]
-                    if (cubeName) addWriter(cubeName, p.Name)
+                    const cubeName = resolveName(m[1], varValues)
+                    if (cubeName) addWriter(cubeName, p.Name, m.index)
                 }
+
+                CUBE_FIRST_RE.lastIndex = 0
+                while ((m = CUBE_FIRST_RE.exec(code)) !== null) {
+                    const cubeName = resolveName(m[1], varValues)
+                    if (cubeName) addWriter(cubeName, p.Name, m.index)
+                }
+
+                CELLGET_RE.lastIndex = 0
+                while ((m = CELLGET_RE.exec(code)) !== null) {
+                    const cubeName = resolveName(m[1], varValues)
+                    if (cubeName) addReader(cubeName, p.Name, m.index)
+                }
+
+                DIM_CALL_RE.lastIndex = 0
+                while ((m = DIM_CALL_RE.exec(code)) !== null) {
+                    const ref = splitArgs(code, m.index + m[0].length - 1)[DIM_WRITE_FNS[m[1].toUpperCase()]]
+                    const dim = ref && resolveName(ref, varValues)
+                    if (!dim || !dimNames.has(dim)) continue
+                    if (!dimWriteMap[dim]) dimWriteMap[dim] = []
+                    if (!dimWriteMap[dim].includes(p.Name)) dimWriteMap[dim].push(p.Name)
+                    addStep(p.Name, 'dimwrite', dim, m.index)
+                }
+
+                // A cube-view datasource is a read of the whole view, before any code runs
+                const ds = p.DataSource
+                if (ds?.Type === 'TM1CubeView' && ds.dataSourceNameForServer) addReader(ds.dataSourceNameForServer, p.Name, -1)
 
                 EXEC_RE.lastIndex = 0
                 while ((m = EXEC_RE.exec(code)) !== null) {
                     const argList = m[1]
-                    const nameM = EXEC_NAME_RE.exec(argList)
-                    if (!nameM) continue
-                    const called = nameM[1]
+                    const nameRef = splitArgs(`(${argList})`, 0)[0]
+                    const called = nameRef && resolveName(nameRef, varValues)
+                    if (!called) continue
                     if (called !== p.Name) {
                         if (!processCallers[called]) processCallers[called] = []
                         if (!processCallers[called].includes(p.Name)) processCallers[called].push(p.Name)
+                        addStep(p.Name, 'call', called, m.index)
                     }
                     CUBE_PARAM_RE.lastIndex = 0
                     let cm
@@ -3138,10 +3244,21 @@ app.get('/api/cubemap/model', async (req, res) => {
                 ruleFeederRefs: feederRefs,
                 ruleLoc,
                 tiWriters:      tiWriteMap[c.Name] ?? [],
+                tiReaders:      tiReadMap[c.Name] ?? [],
             }
         }
 
-        res.json({ cubes, processCallers })
+        for (const e of Object.values(processes)) e.steps.sort((a, b) => a.pos - b.pos)
+
+        // Only dimensions some process changes — the map never draws every dimension (see IMPROVEMENTS 7.1)
+        const dims = Object.fromEntries(Object.entries(dimWriteMap).map(([d, procs]) => [d, {
+            writers: procs,
+            cubes:   allCubes.filter(c => (c.Dimensions ?? []).some(x => x.Name === d)).map(c => c.Name),
+        }]))
+
+        const chores = await client.getChoresWithTasks().catch(() => [])
+
+        res.json({ cubes, processCallers, processes, dims, chores })
     } catch (e) {
         res.status(500).json({ error: e.message })
     }

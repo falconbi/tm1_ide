@@ -133,6 +133,52 @@ effort estimate, and the reasoning.
 
 ---
 
+## 7. Cube Map — full TI data flow
+
+### 7.1 Show every TI process and its reads, not just writers of the focused cube
+
+- **Status (Oct 2026): built, awaiting James's check.** Scanner returns `processes` (reads/writes/calls + code-order `steps`) and `tiReaders`; reads = `CellGetN/S` + cube-view datasource; `CubeProcessFeeders` counts as a write. Map: "All TI" toggle, dashed-blue read edges, "Read by (TI)" panel section. **Dims** toggle: only dimensions a process *changes* (catalog-derived — statements taking a `dimname`, excluding subset/view/cube calls, since temp-view subset scaffolding would link every process); dim→cube links only in focus mode; attribute reads deliberately not drawn. Name resolution now seeds from parameter defaults, follows `a = b;` chains and `var | 'lit'` concatenations (Rollover's `sDimension | '.Refresh Subsets'`). **Show playback built too** (clapperboard button): entry = chore or uncalled process; walks code-order `steps` depth-first into `ExecuteProcess` callees; highlights the step's nodes/edges (amber glow, animated edge) with a trail; reads of a rule cube also light its DB()/feeder edges. Limits: designed order, loops play once, not a replay — a real-run replay from the message log is a possible follow-up.
+
+- **Why:** Found building FIN Consolidation (Sep 2026). The Cube Map only draws a process as a satellite
+  of the *focused* cube, and only when it **writes** to it. A process's inputs are invisible:
+  `CON Company Adjust Post` reads `CON Company Journal` and writes `CON Data`, but only the write edge
+  shows. The consolidation run (`CON Consolidate`) will read ~4 cubes and write 1 — its flow would be
+  mostly hidden. There's also no way to see all processes at once.
+- **Fix:** In the `/api/cubemap/model` scanner (`server.js`), add **read** detection alongside writes:
+  `CellGetN/S` (cube = 1st arg, literal or resolved `var = 'literal'`) and a process's cube-view
+  **datasource** (`DataSource.dataSourceNameForServer` when `Type = 'TM1CubeView'`). Return
+  `tiReaders` per cube. Frontend (`CubeMapEditor.jsx`): draw reads as a distinct edge
+  (dashed, "TI reads from cube"), and add an **"All TI"** mode that shows every process node with all its
+  read/write/call edges, not only the focused cube's writers.
+- **Note:** writer detection was already extended (Sep 2026) to `CellIncrementN/S` and
+  `ViewZeroOut`/`CubeClearData` — clear-and-rebuild processes were invisible before that.
+- **Effort:** Medium.
+
+---
+
+## 8. Period Builder
+
+### 8.1 `.Rollover` doesn't refresh the Rolling 3 / 6 / 12 consolidations
+
+- **Why:** Rolling N children are set only by `.Build` (from `pCurrentPeriod`). `.Rollover` advances
+  `Is Current Period` and rebuilds subsets, but the Rolling consolidations stay where Build left them,
+  so they go stale month by month.
+- **Fix:** Move the (now clear-then-populate) Rolling block into a shared routine that `.Rollover` also
+  runs, or have `.Rollover` call it. Decide whether Rolling is anchored to the current period (forward)
+  or trailing (backward) — current code rolls **forward** from the current period.
+- **Effort:** Small.
+
+### 8.2 Re-sync the `tm1_period_dimension` repo `.pro` files with the generator
+
+- **Why:** That repo's README says its `ti/*.pro` files are exactly what the Period Builder generates.
+  After the Sep 2026 fixes (FY/YTD/YTG/LTD reset before re-adding children; Rolling N cleared before
+  re-populating) they no longer match.
+- **Fix:** Regenerate the three processes from `client/src/components/PeriodBuilder/lib` and replace
+  the repo's `.pro` files.
+- **Effort:** Trivial.
+
+---
+
 ## Done / intentionally skipped
 
 - **1.1 — browser write-route session gate** — **reverted (Sep 2026)**. The hard 409-unless-a-change-set-is-open gate was shipped, then reversed: a session groups changes for deployment, it is not a login, and must never block a save from working. `TM1_REQUIRE_SESSION` now defaults to off (writes always succeed) — set `TM1_REQUIRE_SESSION=1` to opt back into the strict gate. The actual anonymous-edit gap this was meant to close is fixed properly instead, orthogonal to session state: every write always logs the real acting user (`req.user` browser-side, `AGENT_USER` for MCP) via `writeLog`'s new `user` parameter — including the save-collapsing path, which previously froze attribution on whoever started the session, even days later.

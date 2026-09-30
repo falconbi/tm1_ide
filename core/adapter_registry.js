@@ -1,5 +1,6 @@
 'use strict'
 
+const fs    = require('fs')
 const path  = require('path')
 const axios = require('axios')
 const { PawNativeAdapter }  = require('./adapters/paw_native')
@@ -11,8 +12,27 @@ const SERVERS_PATH = path.join(__dirname, '..', 'config', 'servers.json')
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
+// Re-read on change (not require(), which caches for the life of the process) so
+// edits to servers.json — a new server, a TLS setting — apply without a restart.
+// A file saved mid-edit with broken JSON keeps the last good config rather than
+// failing every request.
+let _cfgCache = { mtimeMs: -1, cfg: null }
+
+function _readServersJson() {
+    const { mtimeMs } = fs.statSync(SERVERS_PATH)
+    if (mtimeMs === _cfgCache.mtimeMs) return _cfgCache.cfg
+    try {
+        _cfgCache = { mtimeMs, cfg: JSON.parse(fs.readFileSync(SERVERS_PATH, 'utf8')) }
+    } catch (e) {
+        if (!_cfgCache.cfg) throw e
+        console.warn(`⚠  servers.json is not valid JSON (${e.message}) — keeping the last good config.`)
+        _cfgCache.mtimeMs = mtimeMs   // warn once per bad save, not on every request
+    }
+    return _cfgCache.cfg
+}
+
 function _loadConfig() {
-    const cfg = require(SERVERS_PATH)
+    const cfg = _readServersJson()
     if (Array.isArray(cfg)) {
         return {
             adminHosts:      [],
