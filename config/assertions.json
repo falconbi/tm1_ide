@@ -1842,6 +1842,523 @@
         "feeders"
       ],
       "created": "2026-09-30T20:00:06.042Z"
+    },
+    {
+      "id": "ce694f8a",
+      "description": "TC06Y2 year-end: months with no movement don't drift - retained earnings LTD FY2016 P11 = P04 (per-period FX locks post-acq history)",
+      "mdx": "WITH MEMBER [CON Period].[zDiff] AS [CON Period].[LTD FY2016 P11] - [CON Period].[LTD FY2016 P04] SELECT {[CON Period].[zDiff]} ON 0, {[CON Account].[Retained Earnings]} ON 1 FROM [CON Data] WHERE ([CON Version].[TC06Y2],[CON Entity].[All Entities],[CON Root].[BU],[CON Partner].[All Partners],[CON Stage].[Consolidated],[CON Data Measure].[Amount])",
+      "expected": 0,
+      "tolerance": 0.0001,
+      "tags": [
+        "FINCON",
+        "yearend"
+      ],
+      "created": "2026-10-01T00:12:04.011Z"
+    },
+    {
+      "id": "b2be9cfe",
+      "description": "TC06Y2 year-end: translation reserve doesn't drift in months with no movement - LTD FY2016 P11 = P04",
+      "mdx": "WITH MEMBER [CON Period].[zDiff] AS [CON Period].[LTD FY2016 P11] - [CON Period].[LTD FY2016 P04] SELECT {[CON Period].[zDiff]} ON 0, {[CON Account].[Translation Reserve]} ON 1 FROM [CON Data] WHERE ([CON Version].[TC06Y2],[CON Entity].[All Entities],[CON Root].[BU],[CON Partner].[All Partners],[CON Stage].[Consolidated],[CON Data Measure].[Amount])",
+      "expected": 0,
+      "tolerance": 0.0001,
+      "tags": [
+        "FINCON",
+        "yearend"
+      ],
+      "created": "2026-10-01T00:12:06.510Z"
+    },
+    {
+      "id": "2ca36c55",
+      "description": "TC06Y2 year-end: group equity opens FY2017 at the FY2016 P12 closing (2017 OBL - LTD FY2016 P12 = 0)",
+      "mdx": "WITH MEMBER [CON Period].[zDiff] AS [CON Period].[2017 OBL] - [CON Period].[LTD FY2016 P12] SELECT {[CON Period].[zDiff]} ON 0, {[CON Account].[Equity]} ON 1 FROM [CON Data] WHERE ([CON Version].[TC06Y2],[CON Entity].[All Entities],[CON Root].[BU],[CON Partner].[All Partners],[CON Stage].[Consolidated],[CON Data Measure].[Amount])",
+      "expected": 0,
+      "tolerance": 0.0001,
+      "tags": [
+        "FINCON",
+        "yearend"
+      ],
+      "created": "2026-10-01T00:12:09.168Z"
+    },
+    {
+      "id": "c718d768",
+      "description": "TC06Y2 year-end: RE Brought Forward opens at P12 retained earnings 246.7765 + owners profit 7.2 - dividend 3 = 250.9765",
+      "mdx": "SELECT {[CON Period].[2017 OBL]} ON 0, {[CON Account].[RE Brought Forward]} ON 1 FROM [CON Data] WHERE ([CON Version].[TC06Y2],[CON Entity].[All Entities],[CON Root].[BU],[CON Partner].[All Partners],[CON Stage].[Consolidated],[CON Data Measure].[Amount])",
+      "expected": 250.9765,
+      "tolerance": 0.0001,
+      "tags": [
+        "FINCON",
+        "yearend"
+      ],
+      "created": "2026-10-01T00:12:11.567Z"
+    },
+    {
+      "id": "ec614b82",
+      "description": "TC06Y2 year-end: P&L and dividends open FY2017 at zero - every root incl company books (Profit for Period + Dividends Paid at 2017 OBL = 0)",
+      "mdx": "SELECT {[CON Period].[2017 OBL]} ON 0, {[CON Account].[Profit for Period],[CON Account].[Dividends Paid]} * {[CON Root].[BU],[CON Root].[Entity Level]} ON 1 FROM [CON Data] WHERE ([CON Version].[TC06Y2],[CON Entity].[All Entities],[CON Partner].[All Partners],[CON Stage].[Consolidated],[CON Data Measure].[Amount])",
+      "expected": 0,
+      "tolerance": 0.0001,
+      "tags": [
+        "FINCON",
+        "yearend"
+      ],
+      "created": "2026-10-01T00:12:14.070Z"
+    },
+    {
+      "id": "474b12b6",
+      "description": "TC06Y2 year-end: company books roll forward - Entity Level equity at 2017 OBL = FY2016 P12 closing 994.4",
+      "mdx": "SELECT {[CON Period].[2017 OBL]} ON 0, {[CON Account].[Equity]} ON 1 FROM [CON Data] WHERE ([CON Version].[TC06Y2],[CON Entity].[All Entities],[CON Root].[Entity Level],[CON Partner].[All Partners],[CON Stage].[Consolidated],[CON Data Measure].[Amount])",
+      "expected": 994.4,
+      "tolerance": 0.0001,
+      "tags": [
+        "FINCON",
+        "yearend"
+      ],
+      "created": "2026-10-01T00:12:16.368Z"
+    },
+    {
+      "id": "f35fbddf",
+      "description": "TC06Y2 FY2017 P01: consolidated profit = Bubble 4 + Tyslar 19.5 dinars / 9.75 = 6.0",
+      "mdx": "SELECT {[CON Period].[LTD FY2017 P01]} ON 0, {[CON Account].[Profit for Period]} ON 1 FROM [CON Data] WHERE ([CON Version].[TC06Y2],[CON Entity].[All Entities],[CON Root].[BU],[CON Partner].[All Partners],[CON Stage].[Consolidated],[CON Data Measure].[Amount])",
+      "expected": 6,
+      "tolerance": 0.0001,
+      "tags": [
+        "FINCON",
+        "yearend"
+      ],
+      "created": "2026-10-01T00:12:18.673Z"
+    },
+    {
+      "id": "76ace3af",
+      "description": "TC06Y2 FY2017 P01: translation reserve movement = 60% x [504 x (1/10-1/9.5) + 19.5 x (1/10-1/9.75) + 96 x (1/10-1/9.5)] = -1.9247 (hand working)",
+      "mdx": "WITH MEMBER [CON Period].[zDiff] AS [CON Period].[LTD FY2017 P01] - [CON Period].[2017 OBL] SELECT {[CON Period].[zDiff]} ON 0, {[CON Account].[Translation Reserve]} ON 1 FROM [CON Data] WHERE ([CON Version].[TC06Y2],[CON Entity].[All Entities],[CON Root].[BU],[CON Partner].[All Partners],[CON Stage].[Consolidated],[CON Data Measure].[Amount])",
+      "expected": -1.9247,
+      "tolerance": 0.0005,
+      "tags": [
+        "FINCON",
+        "yearend"
+      ],
+      "created": "2026-10-01T00:12:21.570Z"
+    },
+    {
+      "id": "36da2d51",
+      "description": "TC06Y2 FY2017 P01: NCI movement = 40% x profit 2.0 - 40% x exchange difference 3.2079 = -0.4832 (hand working)",
+      "mdx": "WITH MEMBER [CON Period].[zDiff] AS [CON Period].[LTD FY2017 P01] - [CON Period].[2017 OBL] SELECT {[CON Period].[zDiff]} ON 0, {[CON Account].[NCI]} ON 1 FROM [CON Data] WHERE ([CON Version].[TC06Y2],[CON Entity].[All Entities],[CON Root].[BU],[CON Partner].[All Partners],[CON Stage].[Consolidated],[CON Data Measure].[Amount])",
+      "expected": -0.4832,
+      "tolerance": 0.0005,
+      "tags": [
+        "FINCON",
+        "yearend"
+      ],
+      "created": "2026-10-01T00:12:24.220Z"
+    },
+    {
+      "id": "8a084fa0",
+      "description": "TC06Y2 FY2017 P01: Tyslar goodwill 96m dinars retranslated 9.5 -> 10 = -0.5053",
+      "mdx": "WITH MEMBER [CON Period].[zDiff] AS [CON Period].[LTD FY2017 P01] - [CON Period].[2017 OBL] SELECT {[CON Period].[zDiff]} ON 0, {[CON Account].[Goodwill]} ON 1 FROM [CON Data] WHERE ([CON Version].[TC06Y2],[CON Entity].[All Entities],[CON Root].[BU],[CON Partner].[All Partners],[CON Stage].[Consolidated],[CON Data Measure].[Amount])",
+      "expected": -0.5053,
+      "tolerance": 0.0005,
+      "tags": [
+        "FINCON",
+        "yearend"
+      ],
+      "created": "2026-10-01T00:12:26.772Z"
+    },
+    {
+      "id": "da78f28a",
+      "description": "TC06Y2 consolidated balance sheet balances at P12, the FY2017 opening balance and P01",
+      "mdx": "SELECT {[CON Period].[LTD FY2016 P12],[CON Period].[2017 OBL],[CON Period].[LTD FY2017 P01]} ON 0, {[CON Account].[Balance Check]} ON 1 FROM [CON Data] WHERE ([CON Version].[TC06Y2],[CON Entity].[All Entities],[CON Root].[BU],[CON Partner].[All Partners],[CON Stage].[Consolidated],[CON Data Measure].[Amount])",
+      "expected": 0,
+      "tolerance": 0.0001,
+      "tags": [
+        "FINCON",
+        "yearend"
+      ],
+      "created": "2026-10-01T00:12:28.941Z"
+    },
+    {
+      "id": "2862ba57",
+      "description": "C of C TC01aC: B sub-group's own books from B's view - goodwill on D 22 + 20 - 23.2 = 18.8, NCI 20 + 40% x 6.8 = 22.72, RE 11.2 + 60% x 6.8 = 15.28 (sum 56.8)",
+      "mdx": "SELECT {[CON Account].[Goodwill],[CON Account].[NCI],[CON Account].[Retained Earnings]} ON 0 FROM [CON Data] WHERE ([CON Version].[TC01aC],[CON Period].[2008-12],[CON Entity].[All Entities],[CON Root].[B1],[CON Partner].[All Partners],[CON Stage].[Consolidated],[CON Data Measure].[Amount])",
+      "expected": 56.8,
+      "tolerance": 0.0001,
+      "tags": [
+        "FINCON",
+        "subgroup"
+      ],
+      "created": "2026-10-01T00:45:24.812Z"
+    },
+    {
+      "id": "b068501b",
+      "description": "C of C TC01cC: B sub-group's own books at B's acquisition date (1/1/07) - goodwill on D 22 + 18.9 - 21 = 19.9, NCI 18.9 + 40% x 9 = 22.5, RE 11.2 + 60% x 9 = 16.6 (sum 59.0)",
+      "mdx": "SELECT {[CON Account].[Goodwill],[CON Account].[NCI],[CON Account].[Retained Earnings]} ON 0 FROM [CON Data] WHERE ([CON Version].[TC01cC],[CON Period].[2008-12],[CON Entity].[All Entities],[CON Root].[B1],[CON Partner].[All Partners],[CON Stage].[Consolidated],[CON Data Measure].[Amount])",
+      "expected": 59,
+      "tolerance": 0.0001,
+      "tags": [
+        "FINCON",
+        "subgroup"
+      ],
+      "created": "2026-10-01T00:45:27.467Z"
+    },
+    {
+      "id": "e5ccff14",
+      "description": "C of C: both B sub-group books balance (TC01aC, TC01cC Balance Check = 0)",
+      "mdx": "SELECT {[CON Version].[TC01aC],[CON Version].[TC01cC]} ON 0 FROM [CON Data] WHERE ([CON Account].[Balance Check],[CON Period].[2008-12],[CON Entity].[All Entities],[CON Root].[B1],[CON Partner].[All Partners],[CON Stage].[Consolidated],[CON Data Measure].[Amount])",
+      "expected": 0,
+      "tolerance": 0.0001,
+      "tags": [
+        "FINCON",
+        "subgroup"
+      ],
+      "created": "2026-10-01T00:45:29.615Z"
+    },
+    {
+      "id": "ba962c2f",
+      "description": "C of C TC01aC: J group with a B sub-group still = ACCA TC01a - goodwill 22.4 + NCI 27.776 + RE 23.824 + total assets 91.6 = 165.6",
+      "mdx": "SELECT {[CON Account].[Goodwill],[CON Account].[NCI],[CON Account].[Retained Earnings],[CON Account].[Total Assets]} ON 0 FROM [CON Data] WHERE ([CON Version].[TC01aC],[CON Period].[2008-12],[CON Entity].[All Entities],[CON Root].[J1],[CON Partner].[All Partners],[CON Stage].[Consolidated],[CON Data Measure].[Amount])",
+      "expected": 165.6,
+      "tolerance": 0.0001,
+      "tags": [
+        "FINCON",
+        "subgroup"
+      ],
+      "created": "2026-10-01T00:45:32.220Z"
+    },
+    {
+      "id": "0e452df5",
+      "description": "C of C TC01cC: J group with a B sub-group still = ACCA TC01c - goodwill 15.2 + NCI 27.776 + RE 16.624 + total assets 84.4 = 144.0",
+      "mdx": "SELECT {[CON Account].[Goodwill],[CON Account].[NCI],[CON Account].[Retained Earnings],[CON Account].[Total Assets]} ON 0 FROM [CON Data] WHERE ([CON Version].[TC01cC],[CON Period].[2008-12],[CON Entity].[All Entities],[CON Root].[J1],[CON Partner].[All Partners],[CON Stage].[Consolidated],[CON Data Measure].[Amount])",
+      "expected": 144,
+      "tolerance": 0.0001,
+      "tags": [
+        "FINCON",
+        "subgroup"
+      ],
+      "created": "2026-10-01T00:45:34.764Z"
+    },
+    {
+      "id": "706c8db0",
+      "description": "C of C bridge TC01aC: D's goodwill, J view 14.4 - B group view 18.8 = -4.4 = indirect holding adjustment (J's 20% NCI in B takes no share of B's premium for D)",
+      "mdx": "WITH MEMBER [CON Root].[zAdj] AS [CON Root].[J1] - [CON Root].[B1] SELECT {[CON Root].[zAdj]} ON 0 FROM [CON Data] WHERE ([CON Version].[TC01aC],[CON Period].[2008-12],[CON Entity].[D1],[CON Account].[Goodwill],[CON Partner].[All Partners],[CON Stage].[Consolidated],[CON Data Measure].[Amount])",
+      "expected": -4.4,
+      "tolerance": 0.0001,
+      "tags": [
+        "FINCON",
+        "subgroup"
+      ],
+      "created": "2026-10-01T00:45:37.516Z"
+    },
+    {
+      "id": "03c84ace",
+      "description": "C of C bridge TC01cC (goodwill trap): D's goodwill, J view 14.4 - B group view 19.9 = -5.5 = -4.4 indirect holding adj - 1.1 remeasured at J's acquisition date (NCI FV 18.9->20, net assets 21->23.2)",
+      "mdx": "WITH MEMBER [CON Root].[zAdj] AS [CON Root].[J1] - [CON Root].[B1] SELECT {[CON Root].[zAdj]} ON 0 FROM [CON Data] WHERE ([CON Version].[TC01cC],[CON Period].[2008-12],[CON Entity].[D1],[CON Account].[Goodwill],[CON Partner].[All Partners],[CON Stage].[Consolidated],[CON Data Measure].[Amount])",
+      "expected": -5.5,
+      "tolerance": 0.0001,
+      "tags": [
+        "FINCON",
+        "subgroup"
+      ],
+      "created": "2026-10-01T00:45:40.169Z"
+    },
+    {
+      "id": "41463590",
+      "description": "TC07 three-currency DIRECT (D7 EUR->USD; foreign intermediate B7 holds D7): RE 124.9778 + translation reserve 39.7722 + NCI 75.5 + total assets 540.25 + profit 37.2222 = 817.7222 (hand working)",
+      "mdx": "SELECT {[CON Account].[Retained Earnings],[CON Account].[Translation Reserve],[CON Account].[NCI],[CON Account].[Total Assets],[CON Account].[Profit for Period]} ON 0 FROM [CON Data] WHERE ([CON Version].[TC07],[CON Period].[2009-12],[CON Entity].[All Entities],[CON Root].[J7],[CON Partner].[All Partners],[CON Stage].[Consolidated],[CON Data Measure].[Amount])",
+      "expected": 817.7222,
+      "tolerance": 0.001,
+      "tags": [
+        "FINCON",
+        "subgroup",
+        "fx3"
+      ],
+      "created": "2026-10-01T01:00:55.719Z"
+    },
+    {
+      "id": "dbdd49e1",
+      "description": "TC07S three-currency STEP-BY-STEP (IFRIC 16: D7 EUR->DIN->USD): RE 124.7343 + translation reserve 40.0157 + NCI 75.5 + total assets 540.25 + profit 36.715 = 817.215 (hand working)",
+      "mdx": "SELECT {[CON Account].[Retained Earnings],[CON Account].[Translation Reserve],[CON Account].[NCI],[CON Account].[Total Assets],[CON Account].[Profit for Period]} ON 0 FROM [CON Data] WHERE ([CON Version].[TC07S],[CON Period].[2009-12],[CON Entity].[All Entities],[CON Root].[J7],[CON Partner].[All Partners],[CON Stage].[Consolidated],[CON Data Measure].[Amount])",
+      "expected": 817.215,
+      "tolerance": 0.001,
+      "tags": [
+        "FINCON",
+        "subgroup",
+        "fx3"
+      ],
+      "created": "2026-10-01T01:00:58.563Z"
+    },
+    {
+      "id": "d8928c7e",
+      "description": "TC07 vs TC07S: step-by-step moves only the RE / translation reserve split (48% x -0.5072 = -0.2435) - total equity incl NCI identical (closing rates cross-consistent)",
+      "mdx": "WITH MEMBER [CON Version].[zDiff] AS [CON Version].[TC07S] - [CON Version].[TC07] SELECT {[CON Version].[zDiff]} ON 0, {[CON Account].[Equity],[CON Account].[Total Assets]} ON 1 FROM [CON Data] WHERE ([CON Period].[2009-12],[CON Entity].[All Entities],[CON Root].[J7],[CON Partner].[All Partners],[CON Stage].[Consolidated],[CON Data Measure].[Amount])",
+      "expected": 0,
+      "tolerance": 0.0001,
+      "tags": [
+        "FINCON",
+        "subgroup",
+        "fx3"
+      ],
+      "created": "2026-10-01T01:01:01.517Z"
+    },
+    {
+      "id": "fc79d8a5",
+      "description": "TC07S: D7's own translation reserve (100%, the IFRIC 16 per-operation amount) step-by-step = 31.2572 (direct would be 30.75)",
+      "mdx": "SELECT {[CON Account].[Translation Reserve]} ON 0 FROM [CON Data] WHERE ([CON Version].[TC07S],[CON Period].[2009-12],[CON Entity].[D7],[CON Root].[J7],[CON Partner].[All Partners],[CON Stage].[Translation],[CON Data Measure].[Amount])",
+      "expected": 31.2572,
+      "tolerance": 0.001,
+      "tags": [
+        "FINCON",
+        "subgroup",
+        "fx3"
+      ],
+      "created": "2026-10-01T01:01:03.771Z"
+    },
+    {
+      "id": "74e06374",
+      "description": "TC07 B7 sub-group (DIN): D goodwill 82.5 - 60% x 120 = 10.5 EUR at 0.2 = 52.5 + NCI 40% x 750 = 300 + total assets 1,070 + 750 + 52.5 = 1,872.5 -> 2,225",
+      "mdx": "SELECT {[CON Account].[Goodwill],[CON Account].[NCI],[CON Account].[Total Assets]} ON 0 FROM [CON Data] WHERE ([CON Version].[TC07],[CON Period].[2009-12],[CON Entity].[All Entities],[CON Root].[B7],[CON Partner].[All Partners],[CON Stage].[Consolidated],[CON Data Measure].[Amount])",
+      "expected": 2225,
+      "tolerance": 0.001,
+      "tags": [
+        "FINCON",
+        "subgroup",
+        "fx3"
+      ],
+      "created": "2026-10-01T01:01:06.617Z"
+    },
+    {
+      "id": "1a3d6244",
+      "description": "TC07 / TC07S consolidated balance sheets balance - J7 group and B7 sub-group, both versions",
+      "mdx": "SELECT {[CON Version].[TC07],[CON Version].[TC07S]} * {[CON Root].[J7],[CON Root].[B7]} ON 0 FROM [CON Data] WHERE ([CON Account].[Balance Check],[CON Period].[2009-12],[CON Entity].[All Entities],[CON Partner].[All Partners],[CON Stage].[Consolidated],[CON Data Measure].[Amount])",
+      "expected": 0,
+      "tolerance": 0.0001,
+      "tags": [
+        "FINCON",
+        "subgroup",
+        "fx3"
+      ],
+      "created": "2026-10-01T01:01:08.640Z"
+    },
+    {
+      "id": "90feea50",
+      "description": "TC03bY2: one-off remeasurement gain is P&L only in its own year - FY2010 P01 Gain on Remeasurement 0, RE b/f 4, equity unchanged 224 (no double count) -> 0 + 4 + 224 = 228",
+      "mdx": "SELECT {[CON Account].[Gain on Remeasurement],[CON Account].[RE Brought Forward],[CON Account].[Equity]} ON 0 FROM [CON Data] WHERE ([CON Version].[TC03bY2],[CON Period].[LTD FY2010 P01],[CON Entity].[All Entities],[CON Root].[SA],[CON Partner].[All Partners],[CON Stage].[Consolidated],[CON Data Measure].[Amount])",
+      "expected": 228,
+      "tolerance": 0.0001,
+      "tags": [
+        "FINCON",
+        "yearend"
+      ],
+      "created": "2026-10-01T01:13:35.974Z"
+    },
+    {
+      "id": "bdf09da3",
+      "description": "TC03bY2: FY2009 still shows the remeasurement gain 4 in P&L (LTD FY2009 P12) - routing only changes LATER years",
+      "mdx": "SELECT {[CON Account].[Gain on Remeasurement]} ON 0 FROM [CON Data] WHERE ([CON Version].[TC03bY2],[CON Period].[LTD FY2009 P12],[CON Entity].[All Entities],[CON Root].[SA],[CON Partner].[All Partners],[CON Stage].[Consolidated],[CON Data Measure].[Amount])",
+      "expected": 4,
+      "tolerance": 0.0001,
+      "tags": [
+        "FINCON",
+        "yearend"
+      ],
+      "created": "2026-10-01T01:13:38.315Z"
+    },
+    {
+      "id": "2351be94",
+      "description": "TC08 Holt (ACCA IAS 21 article, case study 2): group gain on disposal of 100% foreign sub = proceeds 30 - net assets 28 + translation reserve recycled 6 = 8 (parent books 5 + consolidation 3)",
+      "mdx": "SELECT {[CON Account].[Profit for Period]} ON 0 FROM [CON Data] WHERE ([CON Version].[TC08],[CON Period].[2008-12],[CON Entity].[P8],[CON Root].[P8],[CON Partner].[All Partners],[CON Stage].[Consolidated],[CON Data Measure].[Amount])",
+      "expected": 8,
+      "tolerance": 0.0001,
+      "tags": [
+        "FINCON",
+        "fxdisposal"
+      ],
+      "created": "2026-10-01T01:17:05.709Z"
+    },
+    {
+      "id": "40852bdf",
+      "description": "TC08 Holt: translation reserve 6 before disposal (Nov) is fully recycled - 0 after (Dec LTD); 6 + 0 = 6",
+      "mdx": "SELECT {[CON Period].[2008-11],[CON Period].[LTD FY2009 P06]} ON 0 FROM [CON Data] WHERE ([CON Version].[TC08],[CON Account].[Translation Reserve],[CON Entity].[All Entities],[CON Root].[P8],[CON Partner].[All Partners],[CON Stage].[Consolidated],[CON Data Measure].[Amount])",
+      "expected": 6,
+      "tolerance": 0.0001,
+      "tags": [
+        "FINCON",
+        "fxdisposal"
+      ],
+      "created": "2026-10-01T01:17:08.212Z"
+    },
+    {
+      "id": "51d793ac",
+      "description": "TC08 Holt after disposal: only cash left - total assets 105 = equity 105 (share capital 100 + RE 5), balance check 0 -> 105 + 105 + 0 = 210",
+      "mdx": "SELECT {[CON Account].[Total Assets],[CON Account].[Equity],[CON Account].[Balance Check]} ON 0 FROM [CON Data] WHERE ([CON Version].[TC08],[CON Period].[LTD FY2009 P06],[CON Entity].[All Entities],[CON Root].[P8],[CON Partner].[All Partners],[CON Stage].[Consolidated],[CON Data Measure].[Amount])",
+      "expected": 210,
+      "tolerance": 0.0001,
+      "tags": [
+        "FINCON",
+        "fxdisposal"
+      ],
+      "created": "2026-10-01T01:17:10.673Z"
+    },
+    {
+      "id": "9a090e6b",
+      "description": "TC08 classification: group P&L for the year of disposal = F8's results to disposal -3 + gain on disposal 8 = 5, nothing left in RE b/f (0) -> 5 + 0 = 5",
+      "mdx": "SELECT {[CON Account].[Profit for Period],[CON Account].[RE Brought Forward]} ON 0 FROM [CON Data] WHERE ([CON Version].[TC08],[CON Period].[LTD FY2009 P06],[CON Entity].[All Entities],[CON Root].[P8],[CON Partner].[All Partners],[CON Stage].[Consolidated],[CON Data Measure].[Amount])",
+      "expected": 5,
+      "tolerance": 0.0001,
+      "tags": [
+        "FINCON",
+        "fxdisposal"
+      ],
+      "created": "2026-10-01T01:23:22.683Z"
+    },
+    {
+      "id": "4c965fe4",
+      "description": "Ng Eng Juan Ex 1 (TC09a) group = book (both methods): sundry net assets 235 + share capital 100 + reserves 75 + MI 60 = 470",
+      "mdx": "SELECT {[CON Account].[Other Net Assets],[CON Account].[Share Capital],[CON Account].[Retained Earnings],[CON Account].[NCI]} ON 0 FROM [CON Data] WHERE ([CON Version].[TC09a],[CON Period].[2008-12],[CON Entity].[All Entities],[CON Root].[XA],[CON Partner].[All Partners],[CON Stage].[Consolidated],[CON Data Measure].[Amount])",
+      "expected": 470,
+      "tolerance": 0.0001,
+      "tags": [
+        "FINCON",
+        "ngengjuan"
+      ],
+      "created": "2026-10-01T09:16:29.611Z"
+    },
+    {
+      "id": "7a703033",
+      "description": "Ng Eng Juan Ex 2 (TC09b, B bought C before A bought B) group = book (both methods): 235 + 100 + 75 + 60 = 470 incl negative goodwill 2.25 in reserves",
+      "mdx": "SELECT {[CON Account].[Other Net Assets],[CON Account].[Share Capital],[CON Account].[Retained Earnings],[CON Account].[NCI]} ON 0 FROM [CON Data] WHERE ([CON Version].[TC09b],[CON Period].[2008-12],[CON Entity].[All Entities],[CON Root].[XA],[CON Partner].[All Partners],[CON Stage].[Consolidated],[CON Data Measure].[Amount])",
+      "expected": 470,
+      "tolerance": 0.0001,
+      "tags": [
+        "FINCON",
+        "ngengjuan"
+      ],
+      "created": "2026-10-01T09:16:32.260Z"
+    },
+    {
+      "id": "6fc173f8",
+      "description": "Ng Eng Juan Ex 1+2: B + C sub-group books = book step 1 (journals i-iii): net assets 150 + SC 60 + reserves 60 + MI 30 = 300 per example -> 600",
+      "mdx": "SELECT {[CON Version].[TC09a],[CON Version].[TC09b]} ON 0, {[CON Account].[Other Net Assets],[CON Account].[Share Capital],[CON Account].[Retained Earnings],[CON Account].[NCI]} ON 1 FROM [CON Data] WHERE ([CON Period].[2008-12],[CON Entity].[All Entities],[CON Root].[XB],[CON Partner].[All Partners],[CON Stage].[Consolidated],[CON Data Measure].[Amount])",
+      "expected": 600,
+      "tolerance": 0.0001,
+      "tags": [
+        "FINCON",
+        "ngengjuan",
+        "subgroup"
+      ],
+      "created": "2026-10-01T09:16:35.109Z"
+    },
+    {
+      "id": "2e17ac2c",
+      "description": "Ng Eng Juan Ex 2: C's Investment Elimination RE b/f = pre-acquisition reserves -15 (at A's 20X6 acquisition) + bargain purchase gain 2.25 (book 'negative goodwill', IFRS 3.34, in RE b/f by 20X8) = -12.75; goodwill 0",
+      "mdx": "SELECT {[CON Account].[RE Brought Forward],[CON Account].[Goodwill]} ON 0 FROM [CON Data] WHERE ([CON Version].[TC09b],[CON Period].[2008-12],[CON Entity].[XC],[CON Root].[XA],[CON Partner].[All Partners],[CON Stage].[Investment Elimination],[CON Data Measure].[Amount])",
+      "expected": -12.75,
+      "tolerance": 0.0001,
+      "tags": [
+        "FINCON",
+        "ngengjuan"
+      ],
+      "created": "2026-10-01T09:16:38.116Z"
+    },
+    {
+      "id": "513437e5",
+      "description": "Ng Eng Juan Ex 1+2 balance sheets balance - group XA and sub-group XB, both examples",
+      "mdx": "SELECT {[CON Version].[TC09a],[CON Version].[TC09b]} * {[CON Root].[XA],[CON Root].[XB]} ON 0 FROM [CON Data] WHERE ([CON Account].[Balance Check],[CON Period].[2008-12],[CON Entity].[All Entities],[CON Partner].[All Partners],[CON Stage].[Consolidated],[CON Data Measure].[Amount])",
+      "expected": 0,
+      "tolerance": 0.0001,
+      "tags": [
+        "FINCON",
+        "ngengjuan"
+      ],
+      "created": "2026-10-01T09:16:40.311Z"
+    },
+    {
+      "id": "7a06306d",
+      "description": "OPTION B (path encoding) Ng Eng Juan Ex 1+2: CC_XA group = book 235 + 100 + 75 + 60 = 470 per example -> 940",
+      "mdx": "SELECT {[CON Version].[TC09a],[CON Version].[TC09b]} ON 0, {[CON Account].[Other Net Assets],[CON Account].[Share Capital],[CON Account].[Retained Earnings],[CON Account].[NCI]} ON 1 FROM [PE Data] WHERE ([CON Period].[2008-12],[PE Entity].[CC_XA],[PE Stage].[Consolidated],[PE Data Measure].[Amount])",
+      "expected": 940,
+      "tolerance": 0.0001,
+      "tags": [
+        "FINCON",
+        "pathenc",
+        "ngengjuan"
+      ],
+      "created": "2026-10-01T09:34:14.527Z"
+    },
+    {
+      "id": "3a557a6c",
+      "description": "OPTION B Ng Eng Juan Ex 1+2: CG_XB sub-group = book B+C 150 + 60 + 60 + 30 = 300 per example -> 600",
+      "mdx": "SELECT {[CON Version].[TC09a],[CON Version].[TC09b]} ON 0, {[CON Account].[Other Net Assets],[CON Account].[Share Capital],[CON Account].[Retained Earnings],[CON Account].[NCI]} ON 1 FROM [PE Data] WHERE ([CON Period].[2008-12],[PE Entity].[CG_XB],[PE Stage].[Consolidated],[PE Data Measure].[Amount])",
+      "expected": 600,
+      "tolerance": 0.0001,
+      "tags": [
+        "FINCON",
+        "pathenc",
+        "ngengjuan"
+      ],
+      "created": "2026-10-01T09:34:17.028Z"
+    },
+    {
+      "id": "57bcdb1b",
+      "description": "OPTION B balances everywhere - CC_XA, CG_XB (TC09a/b) and CC_J1, CG_B1 (TC01aC/cC)",
+      "mdx": "SELECT {([CON Version].[TC09a],[PE Entity].[CC_XA]),([CON Version].[TC09a],[PE Entity].[CG_XB]),([CON Version].[TC09b],[PE Entity].[CC_XA]),([CON Version].[TC09b],[PE Entity].[CG_XB]),([CON Version].[TC01aC],[PE Entity].[CC_J1]),([CON Version].[TC01aC],[PE Entity].[CG_B1]),([CON Version].[TC01cC],[PE Entity].[CC_J1]),([CON Version].[TC01cC],[PE Entity].[CG_B1])} ON 0 FROM [PE Data] WHERE ([CON Period].[2008-12],[CON Account].[Balance Check],[PE Stage].[Consolidated],[PE Data Measure].[Amount])",
+      "expected": 0,
+      "tolerance": 0.0001,
+      "tags": [
+        "FINCON",
+        "pathenc"
+      ],
+      "created": "2026-10-01T09:34:20.334Z"
+    },
+    {
+      "id": "9d41ed4c",
+      "description": "OPTION B TC01aC: the Indirect Holding Adj stage on J1_B1 moves goodwill -4.4 and NCI -4.4 (plain C of C lets J's 20% NCI in B share B's premium for D: 20% x 22) -> -8.8; with it B = ACCA",
+      "mdx": "SELECT {[CON Account].[Goodwill],[CON Account].[NCI]} ON 0 FROM [PE Data] WHERE ([CON Version].[TC01aC],[CON Period].[2008-12],[PE Entity].[CC_J1],[PE Stage].[Indirect Holding Adj],[PE Data Measure].[Amount])",
+      "expected": -8.8,
+      "tolerance": 0.001,
+      "tags": [
+        "FINCON",
+        "pathenc",
+        "comparison"
+      ],
+      "created": "2026-10-01T09:34:23.691Z"
+    },
+    {
+      "id": "48715534",
+      "description": "OPTION B TC01cC (sub-group goodwill + B bought D before J bought B): Indirect Holding Adj -4.18 on goodwill and NCI (D +5.5 = 4.4 IHA + 1.1 not remeasured, less B -1.32) -> -8.36; with it B = ACCA",
+      "mdx": "SELECT {[CON Account].[Goodwill],[CON Account].[NCI]} ON 0 FROM [PE Data] WHERE ([CON Version].[TC01cC],[CON Period].[2008-12],[PE Entity].[CC_J1],[PE Stage].[Indirect Holding Adj],[PE Data Measure].[Amount])",
+      "expected": -8.36,
+      "tolerance": 0.001,
+      "tags": [
+        "FINCON",
+        "pathenc",
+        "comparison"
+      ],
+      "created": "2026-10-01T09:34:27.086Z"
+    },
+    {
+      "id": "b19a5fb9",
+      "description": "A vs B: owners' retained earnings identical in every case (only goodwill/NCI differ) - TC01aC 23.824 + TC01cC 16.624 = 40.448 in Option B",
+      "mdx": "SELECT {[CON Version].[TC01aC],[CON Version].[TC01cC]} ON 0 FROM [PE Data] WHERE ([CON Period].[2008-12],[CON Account].[Retained Earnings],[PE Entity].[CC_J1],[PE Stage].[Consolidated],[PE Data Measure].[Amount])",
+      "expected": 40.448,
+      "tolerance": 0.001,
+      "tags": [
+        "FINCON",
+        "pathenc",
+        "comparison"
+      ],
+      "created": "2026-10-01T09:34:29.281Z"
+    },
+    {
+      "id": "385e9841",
+      "description": "OPTION B = ACCA (= Option A) on J Group after the indirect holding adjustment: goodwill + NCI TC01aC 22.4 + 27.776 and TC01cC 15.2 + 27.776 -> 93.152",
+      "mdx": "SELECT {[CON Version].[TC01aC],[CON Version].[TC01cC]} ON 0, {[CON Account].[Goodwill],[CON Account].[NCI]} ON 1 FROM [PE Data] WHERE ([CON Period].[2008-12],[PE Entity].[CC_J1],[PE Stage].[Consolidated],[PE Data Measure].[Amount])",
+      "expected": 93.152,
+      "tolerance": 0.001,
+      "tags": [
+        "FINCON",
+        "pathenc",
+        "comparison"
+      ],
+      "created": "2026-10-01T21:12:06.851Z"
     }
   ]
 }

@@ -646,3 +646,96 @@ element format. All six cubes dropped and rebuilt.
   SUM(leaves) - [Owner].[All Owners]` → expected 0.
 - **MCP `reprocess_feeders` fails on this v11** (`tm1.ProcessFeeders` REST action not resolvable) —
   keep a `<prefix> Reprocess Feeders` TI with `CubeProcessFeeders` (source cube first) in every model.
+
+### FIN Consolidation v1 — year-end close + IAS 21 per-period translation (Oct 2026)
+
+- **Movements + an `yyyy OBL` leaf need a close, even for monthly Actuals.** `LTD FYyyyy Pnn = yyyy OBL + YTD`,
+  and nothing fills the OBL leaf by itself — without a close, P01 of a new year opens at zero (proven: TC06Y2
+  total assets collapsed to −56.87). `CON Year End Close (pVersion, pPeriod)` rebuilds the version's OBL from
+  the prior year's LTD P12 for every root and stage; P&L/dividend leaves close into RE Brought Forward
+  signed by their weight path up to `Retained Earnings` (ELPAR/ELWEIGHT walk — no hand-listed accounts).
+  `CON Consolidate` calls it when a month's OBL differs from the previous month's AND the previous month is
+  inside the version (a version that *starts* at P01 keeps its OBL as input).
+- **Find the OBL from the period dimension, not by name:** `ELCOMP('CON Period', ATTRS(month,'LTD'), 1)`.
+  At a year boundary the closing→movement conversion's "prior closing" must be the new OBL, not LTD P12 —
+  they differ by exactly the P&L that closed into RE b/f.
+- **One-off event gains (remeasurement, disposal) recomputed as closing positions double-count after a close**
+  — post them to P&L only in the event's financial year, to RE b/f afterwards.
+- **IAS 21: never retranslate history at the current average.** v1 translated all post-acquisition equity,
+  NCI's post-acq share and impairment at this month's average; months with NO movement drifted when the
+  average changed (−0.1969 post-acq + 0.1783 impairment = −0.0186, found by flat filler months — a cheap,
+  sharp test). Fix: chain equity (last month's translated closing + this month's movement / this month's
+  average), derive NCI post-acq from that translated equity, translate each impairment at its own month's
+  average. Net assets stay at closing; translation reserve stays the balancing figure.
+- **Testing a close without a published two-year answer:** anchor year 1 on a published case, construct
+  year 2, and assert invariants (no-movement months stable, OBL = P12 closing, P&L opens at 0, rerun from
+  P01 identical) plus hand-calculated ACCA-method P01 figures.
+
+### FIN Consolidation v1 — sub-groups / consolidation of consolidation (Oct 2026)
+
+- **v11: a data leaf can't be a consolidated node in an alternate hierarchy** — adding `J1` (a leaf in
+  `CON Root`) as a parent in a `Group Structure` hierarchy fails with `ElementLeafConsolidationConflict`
+  (and leaves an empty hierarchy behind — delete it). A structure-only tree over data leaves needs either
+  separate node elements or an attribute; we used a `Parent Group` string attribute on `CON Root`.
+- **Plain C of C does NOT reproduce the ACCA (direct + indirect holding adjustment) answer.** J→80% B→60% D,
+  full goodwill: building the B group first gives D goodwill 18.8 (B's cost 22); J's 20% NCI in B then
+  shares in it, so group goodwill and NCI are both 4.4 (= 20% × 22) higher than ACCA; owners' equity is
+  identical. Partial method differs too (20% × B-group goodwill). If B bought D before J bought B, D must also
+  be remeasured at J's date (−1.1 in TC01c). So group totals must come from the direct engine; the sub-group
+  keeps its own books (just another root) and the parent-level adjustment = parent minus sub-group for the
+  sub-group's members (bridge: −4.4 IHA, −5.5 with the trap). The members-only bridge doesn't balance on its
+  own — the investment-elimination half sits on the parent entity.
+- **Run order:** sub-groups before the groups they feed (CON Test Run All: deepest `Parent Group` first).
+  A new root must be a child of `All Roots` AND feeders reprocessed, or CON Feeder Check stops the run.
+- Where C of C legitimately changes numbers — FX sub-groups translated as a unit (IFRIC 16 step-by-step) —
+  is NOT built yet.
+- **Foreign intermediate holding a foreign sub (three currencies)** — the direct engine treated an owner's
+  investment balance as if it were already in the sub's currency. Fix: take it owner → group at the
+  acquisition date (`Acq FX Rate Owner` on the event) → sub's currency for goodwill (330 DIN = 82.5 EUR);
+  eliminate it at its *closing*-translated value (that's how the owner's asset arrives); the FX on the
+  eliminated investment sits in the owner's translation reserve — take it back out split owners/NCI by the
+  owner's interest. Entity currency is an attribute (not per version), so a currency test needs its own
+  entities (J7/B7/D7), not re-used TC01 codes.
+- **IFRIC 16 step-by-step = `FX Method` on CON Version** (`Direct` default | `Step`): a member of a foreign
+  sub-group is translated from the sub-group's books (already in the sub-group currency) instead of its own.
+  With cross-consistent closing/acquisition rates only average-rate items differ: TC07 vs TC07S moves profit
+  −0.5072 (RE −0.2435 / translation reserve +0.2435 owners), total equity identical; D's own reserve 30.75 → 31.2572.
+- **Disposal of a foreign subsidiary (IAS 21.48) — TC08, ACCA IAS 21 article (Holt) case study 2: gain 8.**
+  The domestic disposal logic broke three ways for a foreign sub (proven by a negative run): the gain was
+  computed in the sub's currency untranslated; the translation reserve just vanished instead of recycling;
+  and **Exclusion reversed the derived Translation stage that region 5 already clears** (net assets −28,
+  reserve −6 — double). Fixes: Exclusion reverses only the copied stages (Reported + Company Adj); a foreign
+  disposal takes carrying amounts (translated net assets, goodwill, NCI, owners' reserve) from the month-end
+  before the disposal, proceeds at the disposal-month closing rate, cost at the acquisition rate, and adds
+  the owners' reserve to the gain. The RE line is solved so the disposal lines balance.
+- **Results to disposal stay in group P&L (IFRS 10.B88)** — the exclusion takes a former sub's P&L out with
+  everything else, so its result for the year of disposal used to land in RE b/f. The disposal journal now puts
+  this year's P&L back (Disposal stage) and takes the same amount from RE b/f — equity unchanged. Only in the
+  disposal's own financial year (after the close it is already in RE b/f). TC08: group P&L −3 + 8 = 5.
+
+### TM1 only persists cube data on SaveDataAll or a clean shutdown (Oct 2026 — lost and restored TM1_CONSOL)
+
+- TM1_CONSOL went down uncleanly (a leftover `tm1sd.exe` kept `PortNumber` 17433, so the service's restarts died
+  with `E15) Server unable to listen on port 17433`; worked around by giving it `PortNumber=17434` — REST port
+  52229 unchanged, so IDE/MCP/PAW unaffected). On restart **all input cube data loaded via REST/TI since the last
+  save was gone** (CON Data, Holding, FX Rate, Company Journal); metadata, processes, rules and attribute values
+  survived. "Transaction log write-locked, recovery possible" is NOT replayed automatically for a service.
+- Recovered by reloading every test payload (kept as JSON in the session scratchpad — keep doing that) +
+  Reprocess Feeders + CON Test Run All → 119/119. Then `CON Save Data` (SaveDataAll).
+- **Rule now: SaveDataAll after every data load / build** (`CON Save Data`), and a scheduled save chore.
+  Keep test payloads as files, not only as one-off write_cells calls — they were the whole recovery.
+
+### Consolidation of consolidation — two options built side by side (Oct 2026)
+
+- Option A (roots + direct engine + bridge) and Option B (James's path-encoding article: `PE Entity` path
+  elements, `CC_`/`CG_` rollups, SUBST-pair ownership rules per depth, Grouped reversal rule) coexist on one
+  server: B uses its own `PE` objects and reads A's inputs read-only. Write-up:
+  `tm1_consolidation/design/option_a_vs_b_comparison.md`.
+- Ng Eng Juan Ex 1–2: both options = book. They diverge only when the **sub-group has goodwill** (TC01: B +4.4
+  goodwill/NCI = the indirect holding adjustment plain C of C omits); owners' equity always identical.
+- Rules: depth blocks chained with `CONTINUE` (`IF( LONG(!dim) = 8, …, CONTINUE );`) stay within TM1's 2-deep IF
+  limit and read exactly like "one block per depth". Guard `ELISPAR` on generated names with `DIMIX(…) = 0`
+  first. A rules-only cube read only at leaf level can be SKIPCHECK without feeders.
+- **IDE rules-lint bug (fixed Oct 2):** `IF( cond, - ['Base Data', 'Amount'], 0 )` was rejected as "IF() expects 3
+  arguments, got 4" — the server linter split on the comma inside an area reference. Fixed in `core/rules-lint.js`.
+- Option B now classifies by control and posts an `Indirect Holding Adj` stage → B = A = ACCA in all cases.
