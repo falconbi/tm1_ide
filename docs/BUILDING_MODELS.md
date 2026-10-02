@@ -739,3 +739,26 @@ element format. All six cubes dropped and rebuilt.
 - **IDE rules-lint bug (fixed Oct 2):** `IF( cond, - ['Base Data', 'Amount'], 0 )` was rejected as "IF() expects 3
   arguments, got 4" — the server linter split on the comma inside an area reference. Fixed in `core/rules-lint.js`.
 - Option B now classifies by control and posts an `Indirect Holding Adj` stage → B = A = ACCA in all cases.
+- **One goodwill per business combination (IFRS 3) — Option A bug found by comparing with Option B (TC11, Ng Eng
+  Juan Ex 4 under IFRS).** Measuring goodwill subsidiary by subsidiary split one combination (L buys M, which owns N,
+  and so gains control of N the same day) into goodwill 9 on M **plus** a bargain gain 2.25 on N. Region 4a of
+  `CON Consolidate` now nets a bargain against goodwill of subsidiaries with the same group acquisition date (same
+  currency; foreign pairs are logged, not netted) → goodwill 6.75, as IFRS 3 and Option B.
+- Other engine gaps closed by the Ng Eng Juan set: indirect holding adjustment on a **stated** consideration paid by
+  an intermediate (`Acquirer` ≠ root); NCI trades booked on the trade event's own `Acquirer`; Option B connecting
+  affiliate (direct stake into a sub-group's company) needs the `Y` override + its own journal.
+- `CON Test Run All` now runs > 2 minutes — longer than the MCP `run_process` timeout. The process still completes on
+  the server; poll `Threads` until idle before reading results or saving.
+- **Intragroup P&L (Ng Eng Juan Ex 6, TC13):** partner-tagged P&L lines (sales vs cost of sales, dividend income vs
+  dividends paid) and balances are eliminated by the existing per-group region 4d — group-specific membership means a
+  sub-group's own accounts keep sales to its parent as external. Unrealised profit in stock is a group-specific event
+  (`unrealised_profit`: Target seller, Counterparty buyer, Amount) posted as a closing position (reverses = realises
+  the next month with no event); the seller's NCI bears its share. Option B (no partner dim) reads partner detail from
+  CON Data and eliminates level by level, skipping pairs already inside the same sub-group.
+- Book Ex 6 goodwill "amortisation in previous years" maps to a prior-year impairment, and proposed dividends to
+  dividends declared before year end — book figures preserved under IFRS.
+- **Ng Eng Juan Ex 7 (TC14) — the workbook's worked answer was wrong;** corrected from first principles (cost of sales
+  must include the 15 opening-stock profit realised; total 3,428 balances) and both options reproduce the correction.
+  `unrealised_profit` now takes `Profit Account` / `Balance Account` (land: RE b/f + Other Net Assets; opening stock
+  realised: Cost of Sales + RE b/f with a negative amount); NCI shares it only when net assets change (balance account
+  an asset). Option B's connecting affiliate generalised to a path through a partly-owned intermediate.

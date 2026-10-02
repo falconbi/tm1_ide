@@ -2359,6 +2359,213 @@
         "comparison"
       ],
       "created": "2026-10-01T21:12:06.851Z"
+    },
+    {
+      "id": "6d03c4a7",
+      "description": "Ng Eng Juan Ex 3 connecting affiliate (TC10) OPTION A = book: L group SNA 258 + SC 100 + reserves 113 + MI 45 = 516",
+      "mdx": "SELECT {[CON Account].[Other Net Assets],[CON Account].[Share Capital],[CON Account].[Retained Earnings],[CON Account].[NCI]} ON 0 FROM [CON Data] WHERE ([CON Version].[TC10],[CON Period].[2008-12],[CON Entity].[All Entities],[CON Root].[YL],[CON Partner].[All Partners],[CON Stage].[Consolidated],[CON Data Measure].[Amount])",
+      "expected": 516,
+      "tolerance": 0.0001,
+      "tags": [
+        "FINCON",
+        "ngengjuan"
+      ],
+      "created": "2026-10-01T21:46:41.650Z"
+    },
+    {
+      "id": "2ca80735",
+      "description": "Ng Eng Juan Ex 3 (TC10) OPTION B = book: CC_YL 258 + 100 + 113 + 45 = 516, and M sub-group CG_YM 150 + 60 + 60 + 30 = 300 -> 816",
+      "mdx": "SELECT {[PE Entity].[CC_YL],[PE Entity].[CG_YM]} ON 0, {[CON Account].[Other Net Assets],[CON Account].[Share Capital],[CON Account].[Retained Earnings],[CON Account].[NCI]} ON 1 FROM [PE Data] WHERE ([CON Version].[TC10],[CON Period].[2008-12],[PE Stage].[Consolidated],[PE Data Measure].[Amount])",
+      "expected": 816,
+      "tolerance": 0.0001,
+      "tags": [
+        "FINCON",
+        "pathenc",
+        "ngengjuan"
+      ],
+      "created": "2026-10-01T21:46:44.071Z"
+    },
+    {
+      "id": "cff29a55",
+      "description": "Ex 3 OPTION B connecting affiliate path YL_YN (Grouped override Y): L's direct 20% releases NCI -15 (20% x N equity 75), investment -12, post-acq +3 to reserves -> -15 - 12 + 3 = -24",
+      "mdx": "SELECT {[CON Account].[NCI],[CON Account].[Investment in Subsidiary],[CON Account].[Retained Earnings]} ON 0 FROM [PE Data] WHERE ([CON Version].[TC10],[CON Period].[2008-12],[PE Entity].[YL_YN],[PE Stage].[Consolidated],[PE Data Measure].[Amount])",
+      "expected": -24,
+      "tolerance": 0.0001,
+      "tags": [
+        "FINCON",
+        "pathenc",
+        "ngengjuan"
+      ],
+      "created": "2026-10-01T21:46:46.730Z"
+    },
+    {
+      "id": "ed310466",
+      "description": "Ex 3 balance sheets balance - Option A roots YL / YM and Option B CC_YL / CG_YM",
+      "mdx": "WITH MEMBER [CON Account].[zB] AS ([CON Account].[Balance Check],[PE Entity].[CC_YL],[PE Stage].[Consolidated]) + ([CON Account].[Balance Check],[PE Entity].[CG_YM],[PE Stage].[Consolidated]) SELECT {[CON Account].[zB]} ON 0 FROM [PE Data] WHERE ([CON Version].[TC10],[CON Period].[2008-12],[PE Data Measure].[Amount])",
+      "expected": 0,
+      "tolerance": 0.0001,
+      "tags": [
+        "FINCON",
+        "pathenc",
+        "ngengjuan"
+      ],
+      "created": "2026-10-01T21:46:49.005Z"
+    },
+    {
+      "id": "06c09e0b",
+      "description": "Ng Eng Juan Ex 5 under IFRS 10 (TC12): later 20% of N is an NCI purchase (equity, no goodwill) - A and B both = book SNA 257 + SC 100 + reserves 112 + MI 45 = 514 each -> 1028",
+      "mdx": "WITH MEMBER [CON Account].[zA] AS ([CON Account].[Other Net Assets]) + ([CON Account].[Share Capital]) + ([CON Account].[Retained Earnings]) + ([CON Account].[NCI]) SELECT {[CON Account].[zA]} ON 0 FROM [CON Data] WHERE ([CON Version].[TC12],[CON Period].[2008-12],[CON Entity].[All Entities],[CON Root].[YL],[CON Partner].[All Partners],[CON Stage].[Consolidated],[CON Data Measure].[Amount])",
+      "expected": 514,
+      "tolerance": 0.0001,
+      "tags": [
+        "FINCON",
+        "ngengjuan"
+      ],
+      "created": "2026-10-01T22:04:32.841Z"
+    },
+    {
+      "id": "f8d7cda8",
+      "description": "Ng Eng Juan Ex 5 (TC12) OPTION B = book: CC_YL 257 + 100 + 112 + 45 = 514",
+      "mdx": "SELECT {[CON Account].[Other Net Assets],[CON Account].[Share Capital],[CON Account].[Retained Earnings],[CON Account].[NCI]} ON 0 FROM [PE Data] WHERE ([CON Version].[TC12],[CON Period].[2008-12],[PE Entity].[CC_YL],[PE Stage].[Consolidated],[PE Data Measure].[Amount])",
+      "expected": 514,
+      "tolerance": 0.0001,
+      "tags": [
+        "FINCON",
+        "pathenc",
+        "ngengjuan"
+      ],
+      "created": "2026-10-01T22:04:35.238Z"
+    },
+    {
+      "id": "ea4cd249",
+      "description": "Ng Eng Juan Ex 4 under IFRS 3 (TC11) OPTION B: one business combination (L acquires the M group, step-acquires N) - goodwill 6.75 (= 69 + FV of prior 20% 13 + NCI 33.75 - net assets 109), reserves 111.75 (book before its write-off) -> 6.75 + 111.75 = 118.5",
+      "mdx": "SELECT {[CON Account].[Goodwill],[CON Account].[Retained Earnings]} ON 0 FROM [PE Data] WHERE ([CON Version].[TC11],[CON Period].[2008-12],[PE Entity].[CC_YL],[PE Stage].[Consolidated],[PE Data Measure].[Amount])",
+      "expected": 118.5,
+      "tolerance": 0.0001,
+      "tags": [
+        "FINCON",
+        "pathenc",
+        "ngengjuan"
+      ],
+      "created": "2026-10-01T22:04:38.233Z"
+    },
+    {
+      "id": "53ddec92",
+      "description": "Ng Eng Juan Ex 4 (TC11) OPTION A: net assets 250 and MI 45 (= book) and balances (Balance Check 0) -> 250 + 45 + 0 = 295",
+      "mdx": "WITH MEMBER [CON Account].[zA] AS ([CON Account].[Other Net Assets],[CON Version].[TC11]) + ([CON Account].[NCI],[CON Version].[TC11]) + ([CON Account].[Balance Check],[CON Version].[TC11]) SELECT {[CON Account].[zA]} ON 0 FROM [CON Data] WHERE ([CON Period].[2008-12],[CON Entity].[All Entities],[CON Root].[YL],[CON Partner].[All Partners],[CON Stage].[Consolidated],[CON Data Measure].[Amount])",
+      "expected": 295,
+      "tolerance": 0.0001,
+      "tags": [
+        "FINCON",
+        "ngengjuan"
+      ],
+      "created": "2026-10-01T22:04:41.177Z"
+    },
+    {
+      "id": "f35b09b0",
+      "description": "Ng Eng Juan Ex 4 (TC11) OPTION A after the one-goodwill-per-combination fix: bargain 2.25 on N netted against goodwill on M -> goodwill 6.75 + reserves 111.75 = 118.5 (= Option B = IFRS 3 single combination = book before its write-off)",
+      "mdx": "SELECT {[CON Account].[Goodwill],[CON Account].[Retained Earnings]} ON 0 FROM [CON Data] WHERE ([CON Version].[TC11],[CON Period].[2008-12],[CON Entity].[All Entities],[CON Root].[YL],[CON Partner].[All Partners],[CON Stage].[Consolidated],[CON Data Measure].[Amount])",
+      "expected": 118.5,
+      "tolerance": 0.0001,
+      "tags": [
+        "FINCON",
+        "ngengjuan"
+      ],
+      "created": "2026-10-01T22:18:46.081Z"
+    },
+    {
+      "id": "1eec5acd",
+      "description": "Ng Eng Juan Ex 6 (TC13) OPTION A D group P&L = book: sales 1370 - cost of sales 510 - opex 350 - tax 190 = PAT 320 (intragroup sales 130, unrealised profit 40, intragroup dividends 140 eliminated) -> 1370 + 510 + 350 + 190 + 320 = 2740",
+      "mdx": "SELECT {[CON Account].[Sales],[CON Account].[Cost of Sales],[CON Account].[Operating Expenses],[CON Account].[Income Tax],[CON Account].[Profit for Period]} ON 0 FROM [CON Data] WHERE ([CON Version].[TC13],[CON Period].[2008-12],[CON Entity].[All Entities],[CON Root].[ZD],[CON Partner].[All Partners],[CON Stage].[Consolidated],[CON Data Measure].[Amount])",
+      "expected": 2740,
+      "tolerance": 0.0001,
+      "tags": [
+        "FINCON",
+        "ngengjuan",
+        "intragroup"
+      ],
+      "created": "2026-10-01T22:26:06.837Z"
+    },
+    {
+      "id": "d5ecd7c5",
+      "description": "Ng Eng Juan Ex 6 (TC13) OPTION A D group balance sheet = book: goodwill 8 + total assets 2068 + SC 600 + RE 392.5 + MI 213.5 + dividends payable 162 + other liabilities 700 = 4144",
+      "mdx": "SELECT {[CON Account].[Goodwill],[CON Account].[Total Assets],[CON Account].[Share Capital],[CON Account].[Retained Earnings],[CON Account].[NCI],[CON Account].[Current Liabilities],[CON Account].[Non-current Liabilities]} ON 0 FROM [CON Data] WHERE ([CON Version].[TC13],[CON Period].[2008-12],[CON Entity].[All Entities],[CON Root].[ZD],[CON Partner].[All Partners],[CON Stage].[Consolidated],[CON Data Measure].[Amount])",
+      "expected": 4144,
+      "tolerance": 0.0001,
+      "tags": [
+        "FINCON",
+        "ngengjuan",
+        "intragroup"
+      ],
+      "created": "2026-10-01T22:26:09.936Z"
+    },
+    {
+      "id": "5589752e",
+      "description": "Ng Eng Juan Ex 6 (TC13) OPTION A E sub-group = book step 'E + F' (only F->E sales/profit/dividends eliminated; E->D sales are external to E's group): PAT 214 + MI 82 + total assets 1190 = 1486",
+      "mdx": "WITH MEMBER [CON Account].[zA] AS ([CON Account].[Profit for Period]) + ([CON Account].[NCI]) + ([CON Account].[Total Assets]) SELECT {[CON Account].[zA]} ON 0 FROM [CON Data] WHERE ([CON Version].[TC13],[CON Period].[2008-12],[CON Entity].[All Entities],[CON Root].[ZE],[CON Partner].[All Partners],[CON Stage].[Consolidated],[CON Data Measure].[Amount])",
+      "expected": 1486,
+      "tolerance": 0.0001,
+      "tags": [
+        "FINCON",
+        "ngengjuan",
+        "intragroup",
+        "subgroup"
+      ],
+      "created": "2026-10-01T22:26:13.238Z"
+    },
+    {
+      "id": "d1d2a753",
+      "description": "Ng Eng Juan Ex 6 (TC13) OPTION B = book: CC_ZD PAT 320 + MI 213.5 + total assets 2068 = 2601.5, and CG_ZE PAT 214 + MI 82 + total assets 1190 = 1486 -> 4087.5",
+      "mdx": "SELECT {[PE Entity].[CC_ZD],[PE Entity].[CG_ZE]} ON 0, {[CON Account].[Profit for Period],[CON Account].[NCI],[CON Account].[Total Assets]} ON 1 FROM [PE Data] WHERE ([CON Version].[TC13],[CON Period].[2008-12],[PE Stage].[Consolidated],[PE Data Measure].[Amount])",
+      "expected": 4087.5,
+      "tolerance": 0.0001,
+      "tags": [
+        "FINCON",
+        "pathenc",
+        "ngengjuan",
+        "intragroup"
+      ],
+      "created": "2026-10-01T22:26:15.890Z"
+    },
+    {
+      "id": "76e77e73",
+      "description": "Ng Eng Juan Ex 7 CORRECTED (TC14) OPTION A: sales 1400 + cost of sales 647 (750 - 100 intragroup + 12 closing stock - 15 opening realised) + opex 210 + tax 184 + PAT 359 = 2800",
+      "mdx": "SELECT {[CON Account].[Sales],[CON Account].[Cost of Sales],[CON Account].[Operating Expenses],[CON Account].[Income Tax],[CON Account].[Profit for Period]} ON 0 FROM [CON Data] WHERE ([CON Version].[TC14],[CON Period].[2008-12],[CON Entity].[All Entities],[CON Root].[WX],[CON Partner].[All Partners],[CON Stage].[Consolidated],[CON Data Measure].[Amount])",
+      "expected": 2800,
+      "tolerance": 0.0001,
+      "tags": [
+        "FINCON",
+        "ngengjuan",
+        "intragroup"
+      ],
+      "created": "2026-10-01T22:48:21.559Z"
+    },
+    {
+      "id": "6dd4b209",
+      "description": "Ng Eng Juan Ex 7 CORRECTED (TC14) OPTION A balance sheet: total assets 3428 (3450 - stock profit 12 - land profit 10) + SC 1000 + RE 386 + NCI 147 + other liabilities 1895, balanced -> 6856",
+      "mdx": "SELECT {[CON Account].[Total Assets],[CON Account].[Share Capital],[CON Account].[Retained Earnings],[CON Account].[NCI],[CON Account].[Non-current Liabilities],[CON Account].[Balance Check]} ON 0 FROM [CON Data] WHERE ([CON Version].[TC14],[CON Period].[2008-12],[CON Entity].[All Entities],[CON Root].[WX],[CON Partner].[All Partners],[CON Stage].[Consolidated],[CON Data Measure].[Amount])",
+      "expected": 6856,
+      "tolerance": 0.0001,
+      "tags": [
+        "FINCON",
+        "ngengjuan",
+        "intragroup"
+      ],
+      "created": "2026-10-01T22:48:24.658Z"
+    },
+    {
+      "id": "c9f2db73",
+      "description": "Ng Eng Juan Ex 7 CORRECTED (TC14) OPTION B = A: CC_WX PAT 359 + RE 386 + NCI 147 + total assets 3428 + balance 0 = 4320 (Y's 40% of Z = connecting path WX_WY_WZ through an 80%-owned intermediate)",
+      "mdx": "SELECT {[CON Account].[Profit for Period],[CON Account].[Retained Earnings],[CON Account].[NCI],[CON Account].[Total Assets],[CON Account].[Balance Check]} ON 0 FROM [PE Data] WHERE ([CON Version].[TC14],[CON Period].[2008-12],[PE Entity].[CC_WX],[PE Stage].[Consolidated],[PE Data Measure].[Amount])",
+      "expected": 4320,
+      "tolerance": 0.0001,
+      "tags": [
+        "FINCON",
+        "pathenc",
+        "ngengjuan",
+        "intragroup"
+      ],
+      "created": "2026-10-01T22:48:27.565Z"
     }
   ]
 }
