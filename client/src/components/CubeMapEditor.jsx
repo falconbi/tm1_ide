@@ -529,7 +529,7 @@ function StatChip({ label, value }) {
 function DetailPanel({
   cube, cubeData, reverseMap,
   onNavigate, onClose,
-  onOpenRules, onOpenCube, onOpenProcess,
+  onOpenRules, onOpenCube,
   processCallers = {},
   onFilterDim, dimFilter,
   traceDepth, setTraceDepth, traceKinds, setTraceKinds, transitiveCount,
@@ -654,7 +654,7 @@ function DetailPanel({
               const callers = processCallers[p] ?? []
               return (
                 <div key={p}>
-                  <FlowItem label={p} onClick={() => onOpenProcess(p)}
+                  <FlowItem label={p} onClick={() => onNavigate(`proc:${p}`)}
                     icon={<Workflow size={10} style={{ flexShrink: 0, color: 'var(--cm-link)' }} />}
                   />
                   {callers.length > 0 && (
@@ -664,7 +664,7 @@ function DetailPanel({
                   )}
                   {callers.map(c => (
                     <div key={c} style={{ paddingLeft: 18 }}>
-                      <FlowItem label={c} onClick={() => onOpenProcess(c)} color="var(--cm-text-muted)" />
+                      <FlowItem label={c} onClick={() => onNavigate(`proc:${c}`)} color="var(--cm-text-muted)" />
                     </div>
                   ))}
                 </div>
@@ -676,7 +676,7 @@ function DetailPanel({
         {tiReaders.length > 0 && (
           <Section title="Read by (TI)" count={tiReaders.length} icon={<Zap size={9} style={{ color: 'var(--cm-text-muted)', opacity: 0.65 }} />}>
             {tiReaders.map(p => (
-              <FlowItem key={p} label={p} onClick={() => onOpenProcess(p)}
+              <FlowItem key={p} label={p} onClick={() => onNavigate(`proc:${p}`)}
                 icon={<Workflow size={10} style={{ flexShrink: 0, color: '#0ea5e9' }} />}
               />
             ))}
@@ -711,24 +711,30 @@ function CubeMapInner({ tab }) {
   const [nodes, setNodes, onNodesChange] = useNodesState([])
   const [edges, setEdges, onEdgesChange] = useEdgesState([])
 
+  // Per-server view prefs (layout, toggles, trace depth/kinds) persisted to localStorage.
+  const prefsKey = `tm1-cubemap-prefs:${srv}`
+  const prefs = useMemo(() => {
+    try { return JSON.parse(localStorage.getItem(prefsKey)) ?? {} } catch { return {} }
+  }, [prefsKey])
+
   const [selectedCube,   setSelectedCube]   = useState(null)
   const [moduleFocus,    setModuleFocus]    = useState(null)
   const [focused,        setFocused]        = useState(false)
-  const [traceKinds,     setTraceKinds]     = useState(TRACE_KIND_DEFAULTS)
+  const [traceKinds,     setTraceKinds]     = useState({ ...TRACE_KIND_DEFAULTS, ...(prefs.traceKinds ?? {}) })
   const [search,         setSearch]         = useState('')
-  const [showFeeders,    setShowFeeders]     = useState(true)
-  const [showCalc,       setShowCalc]        = useState(true)
-  const [layout,         setLayout]         = useState('LR')
+  const [showFeeders,    setShowFeeders]     = useState(prefs.showFeeders ?? true)
+  const [showCalc,       setShowCalc]        = useState(prefs.showCalc ?? true)
+  const [layout,         setLayout]         = useState(prefs.layout ?? 'LR')
   const [dimmedIds,      setDimmedIds]      = useState(new Set())
   const [dimFilter,      setDimFilter]      = useState(null)
-  const [traceDepth,     setTraceDepth]     = useState(1)
-  const [showLegend,     setShowLegend]     = useState(false)
-  const [showMiniMap,    setShowMiniMap]    = useState(true)
-  const [showClusters,   setShowClusters]   = useState(false)
+  const [traceDepth,     setTraceDepth]     = useState(prefs.traceDepth ?? 1)
+  const [showLegend,     setShowLegend]     = useState(prefs.showLegend ?? false)
+  const [showMiniMap,    setShowMiniMap]    = useState(prefs.showMiniMap ?? true)
+  const [showClusters,   setShowClusters]   = useState(prefs.showClusters ?? false)
   const [dimSpotlight,   setDimSpotlight]   = useState('')
-  const [showProcesses,  setShowProcesses]  = useState(true)
-  const [allTI,          setAllTI]          = useState(false)
-  const [showDims,       setShowDims]       = useState(true)
+  const [showProcesses,  setShowProcesses]  = useState(prefs.showProcesses ?? true)
+  const [allTI,          setAllTI]          = useState(prefs.allTI ?? false)
+  const [showDims,       setShowDims]       = useState(prefs.showDims ?? true)
   // Show playback
   const [showBar,        setShowBar]        = useState(false)
   const [runEntry,       setRunEntry]       = useState('')    // 'process:<name>' | 'chore:<name>'
@@ -764,6 +770,16 @@ function CubeMapInner({ tab }) {
   }, [srv, token])
 
   useEffect(() => { fetchModel() }, [fetchModel])
+
+  // Persist view prefs for this server
+  useEffect(() => {
+    try {
+      localStorage.setItem(prefsKey, JSON.stringify({
+        layout, showCalc, showFeeders, showClusters, showDims, showProcesses, allTI,
+        showMiniMap, showLegend, traceDepth, traceKinds,
+      }))
+    } catch {}
+  }, [prefsKey, layout, showCalc, showFeeders, showClusters, showDims, showProcesses, allTI, showMiniMap, showLegend, traceDepth, traceKinds])
 
   // Pre-computed reverse map (who references whom)
   const reverseMap = useMemo(() => cubeData ? buildReverseMap(cubeData) : {}, [cubeData])
@@ -1074,19 +1090,25 @@ function CubeMapInner({ tab }) {
     setModuleFocus(null); setSelectedCube(null); setDimmedIds(new Set()); setFocused(false)
   }, [])
 
+  // Esc exits focus / module view
+  useEffect(() => {
+    if (!focused) return
+    const onKey = (e) => { if (e.key === 'Escape') exitFocus() }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [focused, exitFocus])
+
   const navigateTo = useCallback((name) => {
-    const found = nodes.find(n => n.id === name)
-    if (!found) return
     setModuleFocus(null)
     setSelectedCube(name)
     setFocused(true)
-    setCenter(found.position.x + NODE_W / 2, found.position.y + NODE_H / 2, { duration: 400, zoom: 1.2 })
+    const found = nodes.find(n => n.id === name)
+    if (found) setCenter(found.position.x + NODE_W / 2, found.position.y + NODE_H / 2, { duration: 400, zoom: 1.2 })
   }, [nodes, setCenter])
 
   // ── Open tab actions ──────────────────────────────────────────────────────────
   const openRules   = (cube)  => openTab({ id: `rules:${srv}:${cube}`,           type: 'rules',      label: cube,    server: srv, cube })
   const openCube    = (cube)  => openTab({ id: `cubeeditor:${srv}:${cube}`,       type: 'cubeeditor', label: cube,    server: srv, cube })
-  const openProcess = (name)  => openTab({ id: `process:${srv}:${name}`,          type: 'process',    label: name,    server: srv, name, content: null })
 
   // ── Dim filter ────────────────────────────────────────────────────────────────
   const handleFilterDim = (dim) => { setDimFilter(p => p === dim ? null : dim); setModuleFocus(null); setSelectedCube(null); setFocused(false) }
@@ -1377,7 +1399,6 @@ function CubeMapInner({ tab }) {
             onClose={() => { setSelectedCube(null); setDimmedIds(new Set()) }}
             onOpenRules={() => openRules(selectedCube)}
             onOpenCube={() => openCube(selectedCube)}
-            onOpenProcess={openProcess}
             processCallers={processCallers}
             onFilterDim={handleFilterDim}
             dimFilter={dimFilter}
