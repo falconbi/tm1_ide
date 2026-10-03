@@ -205,6 +205,7 @@ function computePrefixGroups(nodeIds, regexSource) {
       if (idx > 1) key = id.slice(0, idx)
     }
     if (key == null || key === '') continue
+    key = key.toUpperCase()   // CON / Con / con are one module
     if (!groups[key]) groups[key] = []
     groups[key].push(id)
   }
