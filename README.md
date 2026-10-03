@@ -19,7 +19,7 @@ Connects to TM1 directly over the REST API or through PAW — your choice of ada
 ---
 
 > [!IMPORTANT]
-> **Major upgrade coming this week.** A large update is on its way: per-server logins, tests stored with the model, a slimmer README with full guides in `docs/`, and many editor improvements. Setup steps and configuration may change — if you're installing now, you may want to wait a few days, or pull again after the update lands.
+> **Major upgrade coming this week.** A large update is on its way: per-server logins, tests stored with the model, a slimmer README with full guides in `docs/`, and many editor improvements. Setup steps and configuration may change — if you're installing now, you may want to wait a few days, or pull again after the update lands. Every bug fix so far is listed in [docs/BUG_FIXES.md](docs/BUG_FIXES.md).
 
 > [!WARNING]
 > **Pre-release — for initial testing only.**
@@ -49,6 +49,7 @@ npm start                   # → http://localhost:8083
 - [Authentication](#-authentication--complete-reference)
 - [Deployment Pipeline](#-deployment-pipeline)
 - [IBM REST API Reference](#-ibm-rest-api-reference)
+- [Bug fixes](docs/BUG_FIXES.md) — every fix, by date
 
 ---
 
