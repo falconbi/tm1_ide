@@ -762,3 +762,15 @@ element format. All six cubes dropped and rebuilt.
   `unrealised_profit` now takes `Profit Account` / `Balance Account` (land: RE b/f + Other Net Assets; opening stock
   realised: Cost of Sales + RE b/f with a negative amount); NCI shares it only when net assets change (balance account
   an asset). Option B's connecting affiliate generalised to a path through a partly-owned intermediate.
+
+### Storing documents in TM1 v11 Applications (Oct 2026 — phase 0 of model-owned history)
+
+- `Contents('Files')` is v12-only; on v11.8 use `Contents('Applications')`.
+- Folder names **can't start with `}`** (POST 400) — Applications folders can't be hidden by naming.
+- A document named `X` gets ID **`X.blob`**; address it by ID. Content is at **`…/Contents('X.blob')/Document/Content`**
+  on v11 (`…/Contents('X')/Content` → 404 "'Content' resource can not be resolved on type 'DocumentReference'").
+- Deleting a folder deletes its documents. 5 MB writes fine (~0.3 s).
+- Documents survived a stuck shutdown + VM reboot with no SaveDataAll — unlike cube data (see the SaveDataAll entry).
+- A stuck shutdown ("Saving… The server is coming down… Deactivating chore", then nothing; REST refuses connections,
+  service won't stop, Task Manager can't kill it) needed a VM reboot. CON data came back intact (133/133).
+

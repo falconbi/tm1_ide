@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8" />
+<style>
+  :root { --ink:#0f172a; --mut:#64748b; --line:#e2e8f0; --bg:#0b1220; --card:#111a2e; --acc:#14b8a6; --alt:#38bdf8; }
+  * { box-sizing: border-box; }
+  body { font-family: "Segoe UI", system-ui, sans-serif; margin: 0; background: var(--bg); color: #e2e8f0; padding: 20px; }
+  .head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
+  h1 { font-size: 20px; margin: 0; letter-spacing: -0.01em; }
+  .sub { color: var(--mut); font-size: 12px; }
+  .controls { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  select, button { background: #1e293b; color: #e2e8f0; border: 1px solid #334155; border-radius: 8px; padding: 6px 10px; font-size: 12px; cursor: pointer; }
+  .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 14px; }
+  .kpi { background: var(--card); border: 1px solid #1e293b; border-radius: 12px; padding: 12px 14px; }
+  .kpi .label { font-size: 11px; color: var(--mut); text-transform: uppercase; letter-spacing: .06em; }
+  .kpi .value { font-size: 24px; font-weight: 700; margin-top: 4px; font-variant-numeric: tabular-nums; }
+  .kpi .spark { margin-top: 6px; }
+  .kpi .foot { font-size: 11px; color: var(--mut); margin-top: 2px; }
+  .pos { color: #34d399; } .neg { color: #f87171; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 14px; }
+  .grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 14px; }
+  .card { background: var(--card); border: 1px solid #1e293b; border-radius: 12px; padding: 14px 16px; }
+  .card h2 { font-size: 12px; margin: 0 0 8px; color: #94a3b8; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; }
+  table { border-collapse: collapse; width: 100%; font-size: 12px; }
+  th, td { border-bottom: 1px solid #1e293b; padding: 5px 9px; text-align: right; font-variant-numeric: tabular-nums; }
+  th:first-child, td:first-child { text-align: left; }
+  th { color: #94a3b8; font-weight: 600; }
+  .legend { display: flex; gap: 14px; font-size: 11px; color: var(--mut); flex-wrap: wrap; margin-top: 6px; }
+  .sw { width: 12px; height: 8px; border-radius: 2px; display: inline-block; }
+  svg text { font-family: "Segoe UI", system-ui, sans-serif; }
+  .badge { font-size: 10px; color: #64748b; border: 1px solid #334155; border-radius: 999px; padding: 2px 8px; }
+</style>
+</head>
+<body>
+  <div class="head">
+    <div>
+      <h1>Atlas Corp — Executive Performance Cockpit <span class="badge">sample data</span></h1>
+      <div class="sub">FY25 · Business units, channels, products · fictional dataset for demo</div>
+    </div>
+    <div class="controls">
+      <select id="scenario" onchange="render()"><option value="1">Actual</option><option value="0.94">Plan</option></select>
+      <select id="quarter" onchange="render()">
+        <option value="1">Full Year</option><option value="0.22">Q1</option><option value="0.24">Q2</option><option value="0.26">Q3</option><option value="0.28">Q4</option>
+      </select>
+      <button onclick="render()">Refresh</button>
+    </div>
+  </div>
+
+  <div class="kpis" id="kpis"></div>
+
+  <div class="grid3">
+    <div class="card"><h2>Revenue vs target — by business unit</h2><div id="bullets"></div></div>
+    <div class="card"><h2>Segment mix — nested donut</h2><div id="donut"></div></div>
+    <div class="card"><h2>Profit bridge — waterfall</h2><div id="fall"></div></div>
+  </div>
+
+  <div class="card" style="margin-bottom:14px"><h2>Revenue flow — BU → Channel → Product</h2><div id="sankey"></div></div>
+
+  <div class="grid3">
+    <div class="card"><h2>Net margin gauge</h2><div id="gauge"></div></div>
+    <div class="card"><h2>BU × Quarter — heatmap</h2><div id="heat"></div></div>
+    <div class="card"><h2>Regional capability — radar</h2><div id="radar"></div></div>
+  </div>
+
+  <div class="card"><h2>Business unit detail</h2><div id="table"></div></div>
+
+<script>
+  var BU = ['Compute', 'Cloud', 'Services', 'Devices', 'Data']
+  var BU_VAL = { Compute: 420, Cloud: 380, Services: 300, Devices: 240, Data: 180 }
+  var BU_TGT = { Compute: 400, Cloud: 350, Services: 320, Devices: 220, Data: 200 }
+  var Q_SHARE = { '1': 1, '0.22': 0.22, '0.24': 0.24, '0.26': 0.26, '0.28': 0.28 }
+  var BU_Q = { Compute: [95,105,110,110], Cloud: [80,90,100,110], Services: [65,72,80,83], Devices: [52,58,62,68], Data: [38,42,48,52] }
+  var SEG = [
+    { name: 'Compute', items: [['AI Cloud', 180], ['Compute Grid', 140], ['On-prem', 100]] },
+    { name: 'Cloud',   items: [['PaaS', 160], ['SaaS', 140], ['IaaS', 80]] },
+    { name: 'Services',items: [['Consulting', 130], ['Managed', 100], ['Support', 70]] },
+    { name: 'Devices', items: [['Laptops', 90], ['Phones', 80], ['Accessories', 70]] },
+    { name: 'Data',    items: [['Analytics', 80], ['Storage', 60], ['Integrations', 40]] }
+  ]
+  var CHANNELS = ['Direct', 'Partner', 'Online']
+  var BU2CH = {
+    Compute: [200,140,80], Cloud: [120,160,100], Services: [100,90,110], Devices: [140,70,30], Data: [60,50,70]
+  }
+  var CH2PROD = {
+    Direct: [['Software',200],['Hardware',250],['Subscriptions',90],['Services',80]],
+    Partner: [['Software',140],['Hardware',120],['Subscriptions',170],['Services',80]],
+    Online: [['Software',60],['Hardware',40],['Subscriptions',250],['Services',40]]
+  }
+  var FALL = [['Gross Revenue', 1520, '#38bdf8'], ['COGS', -570, '#f87171'], ['Gross Margin', 950, '#94a3b8'], ['Opex', -810, '#f87171'], ['Net Profit', 140, '#34d399']]
+  var REGIONS = ['NA', 'EMEA', 'APAC', 'LATAM']
+  var REGION_SCORE = { NA: [92,84,78,88,90], EMEA: [85,80,90,82,76], APAC: [74,70,95,78,70], LATAM: [62,58,85,70,62] }
+  var RADAR_DIMS = ['Revenue','Profit','Growth','Margin','Retention']
+
+  var fmt = function (v) {
+    if (v == null) return '—'
+    var abs = Math.abs(v)
+    var s = abs >= 1e6 ? (v/1e6).toFixed(1)+'M' : abs >= 1e3 ? (v/1e3).toFixed(1)+'K' : v.toFixed(0)
+    return (v < 0 ? '-' : '') + '$' + s
+  }
+  var cls = function (v) { return v == null ? '' : (v < 0 ? 'neg' : 'pos') }
+  var esc = function (s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') }
+
+  var scenario = 1, quarter = 1
+  var sc = function (v) { return Math.round(v * scenario * quarter) }
+
+  var spark = function (arr) {
+    var W = 120, H = 28, max = Math.max.apply(null, arr), min = Math.min.apply(null, arr)
+    var span = (max - min) || 1, px = function (i) { return (i / (arr.length - 1)) * W }, py = function (v) { return H - 3 - ((v - min) / span) * (H - 6) }
+    var d = arr.map(function (v, i) { return (i ? 'L' : 'M') + px(i).toFixed(1) + ',' + py(v).toFixed(1) }).join(' ')
+    return '<svg width="' + W + '" height="' + H + '" viewBox="0 0 ' + W + ' ' + H + '"><path d="' + d + '" fill="none" stroke="#14b8a6" stroke-width="2"/></svg>'
+  }
+
+  var drawBullets = function () {
+    var BW = 300, LEFT = 74, ROW = 34, trackH = 18
+    var scale = 0; BU.forEach(function (b) { var v = sc(BU_VAL[b]); if (v > scale) scale = v }); scale = scale * 1.12
+    var s = '<svg width="' + (LEFT + BW + 130) + '" height="' + (BU.length * ROW + 8) + '" viewBox="0 0 ' + (LEFT + BW + 130) + ' ' + (BU.length * ROW + 8) + '" style="max-width:100%">'
+    BU.forEach(function (b, i) {
+      var v = sc(BU_VAL[b]), t = sc(BU_TGT[b])
+      var y = i * ROW + 6
+      var hit = (v / t), st = hit >= 1 ? '#34d399' : hit >= 0.85 ? '#f59e0b' : '#f87171'
+      var gx = function (x) { return LEFT + (x / scale) * BW }
+      s += '<text x="0" y="' + (y + 13) + '" font-size="12" font-weight="600" fill="#e2e8f0">' + b + '</text>'
+      s += '<rect x="' + gx(0) + '" y="' + y + '" width="' + (gx(t*0.7)-gx(0)) + '" height="' + trackH + '" fill="#1e293b" rx="2"/>'
+      s += '<rect x="' + gx(t*0.7) + '" y="' + y + '" width="' + (gx(t*0.9)-gx(t*0.7)) + '" height="' + trackH + '" fill="#334155"/>'
+      s += '<rect x="' + gx(t*0.9) + '" y="' + y + '" width="' + (gx(t)-gx(t*0.9)) + '" height="' + trackH + '" fill="#475569"/>'
+      s += '<rect x="' + gx(t) + '" y="' + (y-2) + '" width="2" height="' + (trackH+4) + '" fill="#f87171"><title>target ' + fmt(t) + '</title></rect>'
+      var bw = Math.max(0, gx(v) - gx(0)), by = y + 3, bh = trackH - 6
+      s += '<polygon points="' + gx(0) + ',' + by + ' ' + (gx(0)+bw) + ',' + by + ' ' + (gx(0)+bw+3) + ',' + (by+bh) + ' ' + (gx(0)-3) + ',' + (by+bh) + '" fill="#14b8a6"><title>' + b + ' ' + fmt(v) + '</title></polygon>'
+      s += '<text x="' + (LEFT+BW+10) + '" y="' + (y+13) + '" font-size="12" font-weight="700" fill="#e2e8f0">' + fmt(v) + '</text>'
+      s += '<text x="' + (LEFT+BW+10) + '" y="' + (y+26) + '" font-size="10" font-weight="600" fill="' + st + '">' + (hit*100).toFixed(0) + '% of target</text>'
+    })
+    s += '</svg>'
+    document.getElementById('bullets').innerHTML = s
+  }
+
+  var drawDonut = function () {
+    var colors = ['#14b8a6', '#38bdf8', '#a78bfa', '#f59e0b', '#f87171']
+    var cx = 90, cy = 90, R1 = 58, R2 = 40, R3 = 26
+    var total = 0; SEG.forEach(function (seg) { total += sc(seg.items.reduce(function (a, it) { return a + it[1] }, 0)) })
+    var s = '<svg width="200" height="180" viewBox="0 0 180 180" style="max-width:100%">'
+    var a0 = -Math.PI / 2
+    SEG.forEach(function (seg, i) {
+      var v = sc(seg.items.reduce(function (a, it) { return a + it[1] }, 0))
+      var a1 = a0 + (v / total) * 2 * Math.PI
+      s += arc(cx, cy, R1, R2, a0, a1, colors[i % colors.length], seg.name + ' ' + fmt(v))
+      a0 = a1
+    })
+    a0 = -Math.PI / 2
+    SEG.forEach(function (seg, si) {
+      var v = sc(seg.items.reduce(function (a, it) { return a + it[1] }, 0))
+      var a1 = a0 + (v / total) * 2 * Math.PI
+      var sub = seg.items.map(function (it) { return sc(it[1]) })
+      var subT = sub.reduce(function (a, b) { return a + b }, 0) || 1
+      var b0 = a0
+      sub.forEach(function (sv, k) {
+        var b1 = b0 + (sv / subT) * (a1 - a0)
+        s += arc(cx, cy, R3, R2, b0, b1, shade2(colors[si % colors.length], k), seg.name + ' · ' + seg.items[k][0] + ' ' + fmt(sv))
+        b0 = b1
+      })
+      a0 = a1
+    })
+    s += '<text x="' + cx + '" y="' + (cy + 4) + '" text-anchor="middle" font-size="16" font-weight="700" fill="#e2e8f0">' + fmt(total) + '</text>'
+    s += '<text x="' + cx + '" y="' + (cy + 20) + '" text-anchor="middle" font-size="9" fill="#64748b">revenue</text>'
+    s += '</svg>'
+    var leg = '<div class="legend">' + SEG.map(function (seg, i) { return '<span><span class="sw" style="background:' + colors[i] + '"></span>' + seg.name + '</span>' }).join('') + '</div>'
+    document.getElementById('donut').innerHTML = s + leg
+  }
+  var arc = function (cx, cy, r0, r1, a0, a1, fill, title) {
+    var p = function (r, a) { return (cx + r * Math.cos(a)).toFixed(1) + ',' + (cy + r * Math.sin(a)).toFixed(1) }
+    var large = (a1 - a0) > Math.PI ? 1 : 0
+    return '<path d="M' + p(r1, a0) + ' L' + p(r0, a0) + ' A' + r0 + ',' + r0 + ' 0 ' + large + ' 1 ' + p(r0, a1) + ' L' + p(r1, a1) + ' A' + r1 + ',' + r1 + ' 0 ' + large + ' 0 ' + p(r1, a0) + ' Z" fill="' + fill + '"><title>' + title + '</title></path>'
+  }
+  var shade2 = function (hex, k) { var n = parseInt(hex.slice(1), 16), r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255; var f = 0.72 + 0.28 * k; return '#' + [r, g, b].map(function (c) { return Math.round(Math.min(255, c * f)).toString(16).padStart(2, '0') }).join('') }
+  var shade = function (hex, k) { var o = 0.45 + 0.15 * k; return hex.replace(')', '') + '' } // simple: reuse base color, sub-rings vary by opacity via stroke
+  // (shade above is a no-op; sub-rings distinguish via arc boundary strokes)
+
+  var drawFall = function () {
+    var steps = FALL.map(function (f) { return [f[0], sc(Math.abs(f[1])) * (f[1] < 0 ? -1 : 1), f[2]] })
+    var W = 320, H = 190, PAD = 30, base = H - PAD
+    var posMax = 0, negMax = 0; steps.forEach(function (st) { if (st[1] > 0) posMax = st[1]; })
+    var max = Math.max(posMax, 900)
+    var n = steps.length, bw = (W - PAD) / (n + 0.4), run = 0
+    var s = '<svg width="' + (W + 12) + '" height="' + H + '" viewBox="0 0 ' + (W + 12) + ' ' + H + '" style="max-width:100%">'
+    steps.forEach(function (st, i) {
+      var x = PAD + i * bw
+      var up = st[1] >= 0
+      var h = (Math.abs(st[1]) / max) * (H - PAD - 12)
+      var y = up ? base - run - h : base - run
+      var color = st[2]
+      s += '<rect x="' + x + '" y="' + y + '" width="' + (bw * 0.72) + '" height="' + (h || 2) + '" fill="' + color + '" rx="2"><title>' + st[0] + ' ' + fmt(st[1]) + '</title></rect>'
+      s += '<text x="' + (x + bw * 0.36) + '" y="' + (up ? y - 3 : y + 12) + '" text-anchor="middle" font-size="9" fill="#94a3b8">' + st[0] + '</text>'
+      run += st[1]
+    })
+    s += '<line x1="' + PAD + '" y1="' + base + '" x2="' + (PAD + n * bw) + '" y2="' + base + '" stroke="#334155"/>'
+    s += '</svg>'
+    document.getElementById('fall').innerHTML = s
+  }
+
+  var drawSankey = function () {
+    var l0 = BU.map(function (b) { return { name: b, value: sc(BU_VAL[b]) } })
+    var l1 = CHANNELS.map(function (c) { return { name: c, value: sc(BU.reduce(function (a, b) { return a + BU2CH[b][CHANNELS.indexOf(c)] }, 0)) } })
+    var l2 = ['Software', 'Hardware', 'Subscriptions', 'Services'].map(function (p) {
+      var v = 0; CHANNELS.forEach(function (c) { CH2PROD[c].forEach(function (pr) { if (pr[0] === p) v += pr[1] }) }); return { name: p, value: sc(v) }
+    })
+    var X = [70, 320, 560], NW = 16
+    var YU = 300 / Math.max(l0[0].value, l1[0].value, l2[0].value, 1), GAP = 10
+    var pos = function (items) { var y = 14; return items.map(function (it) { var h = Math.max(5, it.value * YU); var n = { name: it.name, y: y, h: h }; y += h + GAP; return n }) }
+    var p0 = pos(l0), p1 = pos(l1), p2 = pos(l2)
+    var H = p0[p0.length - 1].y + p0[p0.length - 1].h + 16
+    var colors = ['#14b8a6', '#38bdf8', '#a78bfa', '#f59e0b', '#f87171']
+    var s = '<svg width="100%" height="430" viewBox="0 0 700 ' + H + '" preserveAspectRatio="xMidYMid meet" style="max-width:100%">'
+    var ribbon = function (a, b, color, label) {
+      var dx = (X[1] - X[0]) * 0.5
+      return '<path d="M' + X[0] + ',' + a.y + ' C' + (X[0] + dx) + ',' + a.y + ' ' + (X[1] - dx) + ',' + b.y + ' ' + X[1] + ',' + b.y + ' L' + X[1] + ',' + (b.y + b.h) + ' C' + (X[1] - dx) + ',' + (b.y + b.h) + ' ' + (X[0] + dx) + ',' + (a.y + a.h) + ' ' + X[0] + ',' + (a.y + a.h) + ' Z" fill="' + color + '" opacity="0.38"><title>' + label + '</title></path>'
+    }
+    var off0 = BU.map(function () { return 0 }), off1In = CHANNELS.map(function () { return 0 })
+    BU.forEach(function (b, bi) {
+      CHANNELS.forEach(function (c, ci) {
+        var v = sc(BU2CH[b][ci]), ha = Math.max(2, (v / l0[bi].value) * p0[bi].h), hb = Math.max(2, (v / l1[ci].value) * p1[ci].h)
+        var na = { y: p0[bi].y + p0[bi].h - off0[bi] - ha, h: ha }; off0[bi] += ha
+        var nb = { y: p1[ci].y + p1[ci].h - off1In[ci] - hb, h: hb }; off1In[ci] += hb
+        s += ribbon(na, nb, colors[bi], b + ' → ' + c + ' ' + fmt(v))
+      })
+    })
+    var off1Out = CHANNELS.map(function () { return 0 }), off2 = l2.map(function () { return 0 })
+    CHANNELS.forEach(function (c, ci) {
+      CH2PROD[c].forEach(function (pr) {
+        var v = sc(pr[1]), pi = l2.map(function (x) { return x.name }).indexOf(pr[0])
+        var hb = Math.max(2, (v / l1[ci].value) * p1[ci].h), hc = Math.max(2, (v / l2[pi].value) * p2[pi].h)
+        var nb = { y: p1[ci].y + p1[ci].h - off1Out[ci] - hb, h: hb }; off1Out[ci] += hb
+        var nc = { y: p2[pi].y + p2[pi].h - off2[pi] - hc, h: hc }; off2[pi] += hc
+        s += ribbon(nb, nc, colors[ci], c + ' → ' + pr[0] + ' ' + fmt(v))
+      })
+    })
+    var node = function (x, n, fill) { s += '<rect x="' + x + '" y="' + n.y + '" width="' + NW + '" height="' + n.h + '" rx="2" fill="' + fill + '" opacity="0.9"/>' }
+    p0.forEach(function (n, i) { node(X[0], n, colors[i]) })
+    p1.forEach(function (n, i) { node(X[1], n, colors[(i + 1) % colors.length]) })
+    p2.forEach(function (n, i) { node(X[2], n, colors[(i + 2) % colors.length]) })
+    p0.forEach(function (n) { s += '<text x="' + (X[0] - 6) + '" y="' + (n.y + n.h / 2 + 4) + '" text-anchor="end" font-size="11" font-weight="600" fill="#e2e8f0">' + n.name + '</text>' })
+    p1.forEach(function (n) { s += '<text x="' + (X[1] + NW + 8) + '" y="' + (n.y + n.h / 2 + 4) + '" font-size="11" fill="#cbd5e1">' + n.name + ' · ' + fmt(n.value) + '</text>' })
+    p2.forEach(function (n) { s += '<text x="' + (X[2] + NW + 8) + '" y="' + (n.y + n.h / 2 + 4) + '" font-size="11" fill="#cbd5e1">' + n.name + '</text>' })
+    s += '</svg>'
+    document.getElementById('sankey').innerHTML = s
+  }
+
+var drawGauge = function () {
+    var ratio = 0.92, R = 54, cx = 74, cy = 76
+    var s = '<svg width="160" height="150" viewBox="0 0 148 148" style="max-width:100%">'
+    s += '<circle cx="' + cx + '" cy="' + cy + '" r="' + R + '" fill="none" stroke="#1e293b" stroke-width="14"/>'
+    var circ = 2 * Math.PI * R
+    s += '<circle cx="' + cx + '" cy="' + cy + '" r="' + R + '" fill="none" stroke="#14b8a6" stroke-width="14" stroke-linecap="round" stroke-dasharray="' + (circ * ratio) + ' ' + circ + '" transform="rotate(-90 ' + cx + ' ' + cy + ')"/>'
+    s += '<text x="' + cx + '" y="' + (cy + 4) + '" text-anchor="middle" font-size="20" font-weight="700" fill="#e2e8f0">' + (ratio * 100).toFixed(0) + '%</text>'
+    s += '<text x="' + cx + '" y="' + (cy + 21) + '" text-anchor="middle" font-size="9" fill="#64748b">net margin vs target</text>'
+    s += '</svg>'
+    document.getElementById('gauge').innerHTML = s
+  }
+
+  var drawHeat = function () {
+    var max = 0; BU.forEach(function (b) { BU_Q[b].forEach(function (v) { if (v > max) max = v }) })
+    var t = '<table class="heat"><thead><tr><th>BU</th>' + ['Q1','Q2','Q3','Q4'].map(function (q) { return '<th>' + q + '</th>' }).join('') + '</tr></thead><tbody>'
+    BU.forEach(function (b) {
+      t += '<tr><th>' + b + '</th>'
+      BU_Q[b].forEach(function (v) {
+        var a = v / max
+        t += '<td style="background:rgba(20,184,166,' + (0.1 + 0.85 * a).toFixed(2) + ');color:' + (a > 0.6 ? '#062521' : '#94a3b8') + '">' + fmt(sc(v * 1000)) + '</td>'
+      })
+      t += '</tr>'
+    })
+    t += '</tbody></table>'
+    document.getElementById('heat').innerHTML = t
+  }
+
+  var drawRadar = function () {
+    var cx = 90, cy = 90, R = 62, n = RADAR_DIMS.length
+    var pt = function (i, r) { var a = -Math.PI / 2 + (i / n) * 2 * Math.PI; return (cx + r * Math.cos(a)).toFixed(1) + ',' + (cy + r * Math.sin(a)).toFixed(1) }
+    var s = '<svg width="200" height="180" viewBox="0 0 180 180" style="max-width:100%">'
+    for (var ring = 1; ring <= 4; ring++) {
+      s += '<polygon points="' + Array.apply(null, Array(n)).map(function (_, i) { return pt(i, R * ring / 4) }).join(' ') + '" fill="none" stroke="#1e293b"/>'
+    }
+    RADAR_DIMS.forEach(function (d, i) { var p = pt(i, R + 14).split(','); s += '<text x="' + p[0] + '" y="' + p[1] + '" text-anchor="middle" font-size="9" fill="#94a3b8">' + d + '</text>' })
+    var colors = ['#14b8a6', '#38bdf8', '#a78bfa', '#f59e0b']
+    REGIONS.forEach(function (r, ri) {
+      s += '<polygon points="' + REGION_SCORE[r].map(function (v, i) { return pt(i, R * v / 100) }).join(' ') + '" fill="' + colors[ri] + '" opacity="0.22" stroke="' + colors[ri] + '" stroke-width="1.5"/>'
+    })
+    s += '</svg>'
+    var leg = '<div class="legend">' + REGIONS.map(function (r, i) { return '<span><span class="sw" style="background:' + colors[i] + '"></span>' + r + '</span>' }).join('') + '</div>'
+    document.getElementById('radar').innerHTML = s + leg
+  }
+
+  var drawTable = function () {
+    var t = '<table><thead><tr><th>Business unit</th><th>Revenue</th><th>Target</th><th>% target</th><th>Q1</th><th>Q2</th><th>Q3</th><th>Q4</th></tr></thead><tbody>'
+    BU.forEach(function (b) {
+      var v = sc(BU_VAL[b]), tg = sc(BU_TGT[b]), hit = v / tg
+      t += '<tr><th>' + b + '</th><td>' + fmt(v) + '</td><td>' + fmt(tg) + '</td><td class="' + cls(hit - 1) + '">' + (hit * 100).toFixed(0) + '%</td>' + BU_Q[b].map(function (q) { return '<td>' + fmt(sc(q * 1000)) + '</td>' }).join('') + '</tr>'
+    })
+    t += '</tbody></table>'
+    document.getElementById('table').innerHTML = t
+  }
+
+  var drawKpis = function () {
+    var rev = BU.reduce(function (a, b) { return a + sc(BU_VAL[b]) }, 0)
+    var tgt = BU.reduce(function (a, b) { return a + sc(BU_TGT[b]) }, 0)
+    var margin = 140, opex = 810
+    var cards = [
+      ['Revenue', fmt(rev), 'vs target ' + fmt(tgt), BU.map(function (b) { return BU_Q[b].reduce(function (a, q) { return a + q }, 0) })],
+      ['Target hit', (rev / tgt * 100).toFixed(1) + '%', 'portfolio', [92, 96, 94, 99, 101, 103, 104]],
+      ['Net margin', (margin / rev * 100).toFixed(1) + '%', 'after opex ' + fmt(opex), [6.2, 6.8, 7.4, 8.1, 8.6, 9.2, 9.2]],
+      ['Top BU', 'Cloud', fmt(sc(BU_VAL.Cloud)), BU_Q.Cloud]
+    ]
+    var h = '<div class="kpis">'
+    cards.forEach(function (c) {
+      h += '<div class="kpi"><div class="label">' + c[0] + '</div><div class="value">' + c[1] + '</div><div class="spark">' + spark(c[3]) + '</div><div class="foot">' + c[2] + '</div></div>'
+    })
+    h += '</div>'
+    document.getElementById('kpis').innerHTML = h
+  }
+
+  var render = function () {
+    scenario = parseFloat(document.getElementById('scenario').value)
+    quarter = parseFloat(document.getElementById('quarter').value)
+    drawKpis(); drawBullets(); drawDonut(); drawFall(); drawSankey(); drawGauge(); drawHeat(); drawRadar(); drawTable()
+  }
+  render()
+</script>
+</body>
+</html>

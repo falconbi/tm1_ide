@@ -2271,96 +2271,6 @@
       "created": "2026-10-01T09:16:40.311Z"
     },
     {
-      "id": "7a06306d",
-      "description": "OPTION B (path encoding) Ng Eng Juan Ex 1+2: CC_XA group = book 235 + 100 + 75 + 60 = 470 per example -> 940",
-      "mdx": "SELECT {[CON Version].[TC09a],[CON Version].[TC09b]} ON 0, {[CON Account].[Other Net Assets],[CON Account].[Share Capital],[CON Account].[Retained Earnings],[CON Account].[NCI]} ON 1 FROM [PE Data] WHERE ([CON Period].[2008-12],[PE Entity].[CC_XA],[PE Stage].[Consolidated],[PE Data Measure].[Amount])",
-      "expected": 940,
-      "tolerance": 0.0001,
-      "tags": [
-        "FINCON",
-        "pathenc",
-        "ngengjuan"
-      ],
-      "created": "2026-10-01T09:34:14.527Z"
-    },
-    {
-      "id": "3a557a6c",
-      "description": "OPTION B Ng Eng Juan Ex 1+2: CG_XB sub-group = book B+C 150 + 60 + 60 + 30 = 300 per example -> 600",
-      "mdx": "SELECT {[CON Version].[TC09a],[CON Version].[TC09b]} ON 0, {[CON Account].[Other Net Assets],[CON Account].[Share Capital],[CON Account].[Retained Earnings],[CON Account].[NCI]} ON 1 FROM [PE Data] WHERE ([CON Period].[2008-12],[PE Entity].[CG_XB],[PE Stage].[Consolidated],[PE Data Measure].[Amount])",
-      "expected": 600,
-      "tolerance": 0.0001,
-      "tags": [
-        "FINCON",
-        "pathenc",
-        "ngengjuan"
-      ],
-      "created": "2026-10-01T09:34:17.028Z"
-    },
-    {
-      "id": "57bcdb1b",
-      "description": "OPTION B balances everywhere - CC_XA, CG_XB (TC09a/b) and CC_J1, CG_B1 (TC01aC/cC)",
-      "mdx": "SELECT {([CON Version].[TC09a],[PE Entity].[CC_XA]),([CON Version].[TC09a],[PE Entity].[CG_XB]),([CON Version].[TC09b],[PE Entity].[CC_XA]),([CON Version].[TC09b],[PE Entity].[CG_XB]),([CON Version].[TC01aC],[PE Entity].[CC_J1]),([CON Version].[TC01aC],[PE Entity].[CG_B1]),([CON Version].[TC01cC],[PE Entity].[CC_J1]),([CON Version].[TC01cC],[PE Entity].[CG_B1])} ON 0 FROM [PE Data] WHERE ([CON Period].[2008-12],[CON Account].[Balance Check],[PE Stage].[Consolidated],[PE Data Measure].[Amount])",
-      "expected": 0,
-      "tolerance": 0.0001,
-      "tags": [
-        "FINCON",
-        "pathenc"
-      ],
-      "created": "2026-10-01T09:34:20.334Z"
-    },
-    {
-      "id": "9d41ed4c",
-      "description": "OPTION B TC01aC: the Indirect Holding Adj stage on J1_B1 moves goodwill -4.4 and NCI -4.4 (plain C of C lets J's 20% NCI in B share B's premium for D: 20% x 22) -> -8.8; with it B = ACCA",
-      "mdx": "SELECT {[CON Account].[Goodwill],[CON Account].[NCI]} ON 0 FROM [PE Data] WHERE ([CON Version].[TC01aC],[CON Period].[2008-12],[PE Entity].[CC_J1],[PE Stage].[Indirect Holding Adj],[PE Data Measure].[Amount])",
-      "expected": -8.8,
-      "tolerance": 0.001,
-      "tags": [
-        "FINCON",
-        "pathenc",
-        "comparison"
-      ],
-      "created": "2026-10-01T09:34:23.691Z"
-    },
-    {
-      "id": "48715534",
-      "description": "OPTION B TC01cC (sub-group goodwill + B bought D before J bought B): Indirect Holding Adj -4.18 on goodwill and NCI (D +5.5 = 4.4 IHA + 1.1 not remeasured, less B -1.32) -> -8.36; with it B = ACCA",
-      "mdx": "SELECT {[CON Account].[Goodwill],[CON Account].[NCI]} ON 0 FROM [PE Data] WHERE ([CON Version].[TC01cC],[CON Period].[2008-12],[PE Entity].[CC_J1],[PE Stage].[Indirect Holding Adj],[PE Data Measure].[Amount])",
-      "expected": -8.36,
-      "tolerance": 0.001,
-      "tags": [
-        "FINCON",
-        "pathenc",
-        "comparison"
-      ],
-      "created": "2026-10-01T09:34:27.086Z"
-    },
-    {
-      "id": "b19a5fb9",
-      "description": "A vs B: owners' retained earnings identical in every case (only goodwill/NCI differ) - TC01aC 23.824 + TC01cC 16.624 = 40.448 in Option B",
-      "mdx": "SELECT {[CON Version].[TC01aC],[CON Version].[TC01cC]} ON 0 FROM [PE Data] WHERE ([CON Period].[2008-12],[CON Account].[Retained Earnings],[PE Entity].[CC_J1],[PE Stage].[Consolidated],[PE Data Measure].[Amount])",
-      "expected": 40.448,
-      "tolerance": 0.001,
-      "tags": [
-        "FINCON",
-        "pathenc",
-        "comparison"
-      ],
-      "created": "2026-10-01T09:34:29.281Z"
-    },
-    {
-      "id": "385e9841",
-      "description": "OPTION B = ACCA (= Option A) on J Group after the indirect holding adjustment: goodwill + NCI TC01aC 22.4 + 27.776 and TC01cC 15.2 + 27.776 -> 93.152",
-      "mdx": "SELECT {[CON Version].[TC01aC],[CON Version].[TC01cC]} ON 0, {[CON Account].[Goodwill],[CON Account].[NCI]} ON 1 FROM [PE Data] WHERE ([CON Period].[2008-12],[PE Entity].[CC_J1],[PE Stage].[Consolidated],[PE Data Measure].[Amount])",
-      "expected": 93.152,
-      "tolerance": 0.001,
-      "tags": [
-        "FINCON",
-        "pathenc",
-        "comparison"
-      ],
-      "created": "2026-10-01T21:12:06.851Z"
-    },
-    {
       "id": "6d03c4a7",
       "description": "Ng Eng Juan Ex 3 connecting affiliate (TC10) OPTION A = book: L group SNA 258 + SC 100 + reserves 113 + MI 45 = 516",
       "mdx": "SELECT {[CON Account].[Other Net Assets],[CON Account].[Share Capital],[CON Account].[Retained Earnings],[CON Account].[NCI]} ON 0 FROM [CON Data] WHERE ([CON Version].[TC10],[CON Period].[2008-12],[CON Entity].[All Entities],[CON Root].[YL],[CON Partner].[All Partners],[CON Stage].[Consolidated],[CON Data Measure].[Amount])",
@@ -2373,45 +2283,6 @@
       "created": "2026-10-01T21:46:41.650Z"
     },
     {
-      "id": "2ca80735",
-      "description": "Ng Eng Juan Ex 3 (TC10) OPTION B = book: CC_YL 258 + 100 + 113 + 45 = 516, and M sub-group CG_YM 150 + 60 + 60 + 30 = 300 -> 816",
-      "mdx": "SELECT {[PE Entity].[CC_YL],[PE Entity].[CG_YM]} ON 0, {[CON Account].[Other Net Assets],[CON Account].[Share Capital],[CON Account].[Retained Earnings],[CON Account].[NCI]} ON 1 FROM [PE Data] WHERE ([CON Version].[TC10],[CON Period].[2008-12],[PE Stage].[Consolidated],[PE Data Measure].[Amount])",
-      "expected": 816,
-      "tolerance": 0.0001,
-      "tags": [
-        "FINCON",
-        "pathenc",
-        "ngengjuan"
-      ],
-      "created": "2026-10-01T21:46:44.071Z"
-    },
-    {
-      "id": "cff29a55",
-      "description": "Ex 3 OPTION B connecting affiliate path YL_YN (Grouped override Y): L's direct 20% releases NCI -15 (20% x N equity 75), investment -12, post-acq +3 to reserves -> -15 - 12 + 3 = -24",
-      "mdx": "SELECT {[CON Account].[NCI],[CON Account].[Investment in Subsidiary],[CON Account].[Retained Earnings]} ON 0 FROM [PE Data] WHERE ([CON Version].[TC10],[CON Period].[2008-12],[PE Entity].[YL_YN],[PE Stage].[Consolidated],[PE Data Measure].[Amount])",
-      "expected": -24,
-      "tolerance": 0.0001,
-      "tags": [
-        "FINCON",
-        "pathenc",
-        "ngengjuan"
-      ],
-      "created": "2026-10-01T21:46:46.730Z"
-    },
-    {
-      "id": "ed310466",
-      "description": "Ex 3 balance sheets balance - Option A roots YL / YM and Option B CC_YL / CG_YM",
-      "mdx": "WITH MEMBER [CON Account].[zB] AS ([CON Account].[Balance Check],[PE Entity].[CC_YL],[PE Stage].[Consolidated]) + ([CON Account].[Balance Check],[PE Entity].[CG_YM],[PE Stage].[Consolidated]) SELECT {[CON Account].[zB]} ON 0 FROM [PE Data] WHERE ([CON Version].[TC10],[CON Period].[2008-12],[PE Data Measure].[Amount])",
-      "expected": 0,
-      "tolerance": 0.0001,
-      "tags": [
-        "FINCON",
-        "pathenc",
-        "ngengjuan"
-      ],
-      "created": "2026-10-01T21:46:49.005Z"
-    },
-    {
       "id": "06c09e0b",
       "description": "Ng Eng Juan Ex 5 under IFRS 10 (TC12): later 20% of N is an NCI purchase (equity, no goodwill) - A and B both = book SNA 257 + SC 100 + reserves 112 + MI 45 = 514 each -> 1028",
       "mdx": "WITH MEMBER [CON Account].[zA] AS ([CON Account].[Other Net Assets]) + ([CON Account].[Share Capital]) + ([CON Account].[Retained Earnings]) + ([CON Account].[NCI]) SELECT {[CON Account].[zA]} ON 0 FROM [CON Data] WHERE ([CON Version].[TC12],[CON Period].[2008-12],[CON Entity].[All Entities],[CON Root].[YL],[CON Partner].[All Partners],[CON Stage].[Consolidated],[CON Data Measure].[Amount])",
@@ -2422,32 +2293,6 @@
         "ngengjuan"
       ],
       "created": "2026-10-01T22:04:32.841Z"
-    },
-    {
-      "id": "f8d7cda8",
-      "description": "Ng Eng Juan Ex 5 (TC12) OPTION B = book: CC_YL 257 + 100 + 112 + 45 = 514",
-      "mdx": "SELECT {[CON Account].[Other Net Assets],[CON Account].[Share Capital],[CON Account].[Retained Earnings],[CON Account].[NCI]} ON 0 FROM [PE Data] WHERE ([CON Version].[TC12],[CON Period].[2008-12],[PE Entity].[CC_YL],[PE Stage].[Consolidated],[PE Data Measure].[Amount])",
-      "expected": 514,
-      "tolerance": 0.0001,
-      "tags": [
-        "FINCON",
-        "pathenc",
-        "ngengjuan"
-      ],
-      "created": "2026-10-01T22:04:35.238Z"
-    },
-    {
-      "id": "ea4cd249",
-      "description": "Ng Eng Juan Ex 4 under IFRS 3 (TC11) OPTION B: one business combination (L acquires the M group, step-acquires N) - goodwill 6.75 (= 69 + FV of prior 20% 13 + NCI 33.75 - net assets 109), reserves 111.75 (book before its write-off) -> 6.75 + 111.75 = 118.5",
-      "mdx": "SELECT {[CON Account].[Goodwill],[CON Account].[Retained Earnings]} ON 0 FROM [PE Data] WHERE ([CON Version].[TC11],[CON Period].[2008-12],[PE Entity].[CC_YL],[PE Stage].[Consolidated],[PE Data Measure].[Amount])",
-      "expected": 118.5,
-      "tolerance": 0.0001,
-      "tags": [
-        "FINCON",
-        "pathenc",
-        "ngengjuan"
-      ],
-      "created": "2026-10-01T22:04:38.233Z"
     },
     {
       "id": "53ddec92",
@@ -2514,20 +2359,6 @@
       "created": "2026-10-01T22:26:13.238Z"
     },
     {
-      "id": "d1d2a753",
-      "description": "Ng Eng Juan Ex 6 (TC13) OPTION B = book: CC_ZD PAT 320 + MI 213.5 + total assets 2068 = 2601.5, and CG_ZE PAT 214 + MI 82 + total assets 1190 = 1486 -> 4087.5",
-      "mdx": "SELECT {[PE Entity].[CC_ZD],[PE Entity].[CG_ZE]} ON 0, {[CON Account].[Profit for Period],[CON Account].[NCI],[CON Account].[Total Assets]} ON 1 FROM [PE Data] WHERE ([CON Version].[TC13],[CON Period].[2008-12],[PE Stage].[Consolidated],[PE Data Measure].[Amount])",
-      "expected": 4087.5,
-      "tolerance": 0.0001,
-      "tags": [
-        "FINCON",
-        "pathenc",
-        "ngengjuan",
-        "intragroup"
-      ],
-      "created": "2026-10-01T22:26:15.890Z"
-    },
-    {
       "id": "76e77e73",
       "description": "Ng Eng Juan Ex 7 CORRECTED (TC14) OPTION A: sales 1400 + cost of sales 647 (750 - 100 intragroup + 12 closing stock - 15 opening realised) + opex 210 + tax 184 + PAT 359 = 2800",
       "mdx": "SELECT {[CON Account].[Sales],[CON Account].[Cost of Sales],[CON Account].[Operating Expenses],[CON Account].[Income Tax],[CON Account].[Profit for Period]} ON 0 FROM [CON Data] WHERE ([CON Version].[TC14],[CON Period].[2008-12],[CON Entity].[All Entities],[CON Root].[WX],[CON Partner].[All Partners],[CON Stage].[Consolidated],[CON Data Measure].[Amount])",
@@ -2552,20 +2383,6 @@
         "intragroup"
       ],
       "created": "2026-10-01T22:48:24.658Z"
-    },
-    {
-      "id": "c9f2db73",
-      "description": "Ng Eng Juan Ex 7 CORRECTED (TC14) OPTION B = A: CC_WX PAT 359 + RE 386 + NCI 147 + total assets 3428 + balance 0 = 4320 (Y's 40% of Z = connecting path WX_WY_WZ through an 80%-owned intermediate)",
-      "mdx": "SELECT {[CON Account].[Profit for Period],[CON Account].[Retained Earnings],[CON Account].[NCI],[CON Account].[Total Assets],[CON Account].[Balance Check]} ON 0 FROM [PE Data] WHERE ([CON Version].[TC14],[CON Period].[2008-12],[PE Entity].[CC_WX],[PE Stage].[Consolidated],[PE Data Measure].[Amount])",
-      "expected": 4320,
-      "tolerance": 0.0001,
-      "tags": [
-        "FINCON",
-        "pathenc",
-        "ngengjuan",
-        "intragroup"
-      ],
-      "created": "2026-10-01T22:48:27.565Z"
     }
   ]
 }

@@ -204,3 +204,96 @@ effort estimate, and the reasoning.
 ## Top three to do first
 
 > **Updated Sep 2026** — 1.1, 1.2, 1.3, 1.4, 2.1, 2.2, 2.3, 3.1, 3.2, 4.2, 5.1, and 6.1 are all **done**; 4.1 is declined by design. Remaining: **6.2** — ops choice (run a second, PROD-quarantined MCP instance), not code.
+
+
+### Rules lint: commas inside area references counted as argument separators
+
+- **Status: FIXED Oct 2 2026** — `core/rules-lint.js` `countArgs` now tracks `[ ]` / `{ }` depth; genuine wrong
+  arg counts still caught. The client validator (`rules-validator.js`, AST-based) never had the bug. Needs an IDE
+  server restart and a Claude Code restart (MCP) to load.
+
+- **Found:** Oct 2026 building `PE Data` — `IF( cond, - ['Base Data', 'Amount'], 0 )` refused by build_cube /
+  update_cube_rules static lint ("IF() expects 3 arguments, got 4"); TM1 itself accepts it.
+- **Fix:** the arg splitter in the rules validator / `core/rules-lint.js` must treat `[ … ]` as a bracketed group
+  (like parentheses and quotes) when counting top-level commas.
+
+---
+
+## 7. Capability candidates (generic, logged Oct 2026)
+
+Standard OData/REST capabilities and common engineering patterns, logged as roadmap
+candidates from first principles (no external implementation referenced).
+
+### 7.1 Bulk REST folding via OData `$batch`
+
+- **What:** Fold many TM1 REST calls into one `$batch` round-trip (rules for every cube,
+  code for every process, metadata sweeps) for the MCP tools and the lens bridge; fall
+  back per-request when a server lacks it. Batch is non-atomic — keep first pass replay-safe.
+- **Effort:** Medium.
+
+### 7.2 Unbound compile as a cheaper pre-save gate
+
+- **What:** Validate TI code / cube rules via the server compile/check endpoints *without
+  saving* — a fast review-time gate before the full save+validate path.
+- **Effort:** Small.
+
+### 7.3 Pre-write coordinate check (leaf + rule-overlap)
+
+- **What:** Before any cell write (grid or lens input form), verify the target is an
+  N-level element and flag rule/consolidation overlap — the silent no-op of writing to a
+  calculated cell. The exact guard input forms need in Stage 3.
+- **Effort:** Small.
+
+### 7.4 Feeder audit (static heuristics + `}StatsByCube`)
+
+- **What:** Whole-model scan for overfeeding (wildcard brackets, feeders into
+  consolidations) plus runtime feeder-efficiency evidence where available.
+- **Effort:** Medium.
+
+### 7.5 Per-process `.pro` / git two-file round-trip
+
+- **What:** Export any TI process to `.pro` or the diff-friendly git layout
+  (`{name}.json` + `{name}.ti`) and re-import/bundle-install — individual-process
+  version control, separate from full-model deploy packaging.
+- **Effort:** Medium.
+
+### 7.6 Confirm guards on destructive MCP tools
+
+- **What:** `confirm` argument repeating the target name on every destructive MCP tool
+  (delete/clear/execute/write).
+- **Effort:** Trivial.
+
+### 7.7 Model audit suite
+
+- **What:** One-call bulk scans for naming-convention violations, TI/rule complexity
+  (LOC, nesting, score), orphan dimensions, and v12-readiness gaps.
+- **Effort:** Medium.
+
+### 7.8 Chore dependency graph
+
+- **What:** Downstream call graph for every chore task, surfaced in the cube map / chore
+  editor — impact analysis before changing or deactivating a chore.
+- **Effort:** Small–Medium.
+
+### 7.9 Explicit v11/v12 REST version branches
+
+- **What:** Central numeric-major version branching in the TM1 client (fields/endpoints
+  that differ between 11.x and 12.x), replacing ad-hoc v12 handling.
+- **Effort:** Medium.
+
+### 7.10 Bulk source fetch for search & analysis
+
+- **What:** Pull every process's code and every cube's rules in one sweep, then
+  regex-search with caps — generalises the cube-map scanner's partial bulk read.
+- **Effort:** Medium.
+
+## 9. Documentation overhaul (logged Oct 2026)
+
+### 9.1 Rewrite the IDE docs against the current code
+
+- **What:** The docs predate most of what the IDE now is — deploy pipeline, MCP server
+  (60 tools), function catalog rebuild, cube map / TI scanner, Lenses, TI regions,
+  multi-user adapters. README, CLAUDE.md feature list and `docs/` need a rewrite, not a patch.
+- **How:** First an audit — every doc checked against the code, with a list of what's stale,
+  missing or wrong — approved before any rewriting starts.
+- **Effort:** Medium–Large.

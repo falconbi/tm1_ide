@@ -30,6 +30,7 @@ import { ConflictBanner, ConflictSaveWarning } from '@/components/ConflictBanner
 import DiffViewerModal from '@/components/DiffViewerModal'
 import CubeMapEditor from '@/components/CubeMapEditor'
 import HelpPanel from '@/components/HelpPanel'
+import LensEditor from '@/components/LensEditor'
 
 // ── Lineage panel ─────────────────────────────────────────────────────────────
 
@@ -369,8 +370,8 @@ function RulesEditor({ tab, onCursor }) {
   }, [showTrace])
   const [regionsCollapsed, setRegionsCollapsed] = useState(false)
   const [showRegionMenu, setShowRegionMenu] = useState(false)
-  const [showFormatPopup, setShowFormatPopup] = useState(false)
   const [regionList, setRegionList] = useState([])   // scanned when the menu opens
+  const [showFormatPopup, setShowFormatPopup] = useState(false)
   const [formatStruct, setFormatStruct] = useState(() => loadSettings().rules.expressionFormatter ?? null)
   const [checking, setChecking]             = useState(false)
   const [checkResult, setCheckResult]       = useState(null) // null | 'pass' | 'fail'
@@ -1039,6 +1040,7 @@ export default function EditorPane({ groupId }) {
         {tab.type === 'diff'            && <DiffTab            key={tab.id} tab={tab} />}
         {tab.type === 'cubemap'         && <CubeMapEditor      key={tab.id} tab={tab} />}
         {tab.type === 'session-report'  && <SessionReportTab   key={tab.id} tab={tab} />}
+        {tab.type === 'lens'           && <LensEditor        key={tab.id} tab={tab} />}
         {tab.type === 'transactionlog'  && (
           <div key={tab.id} className="flex h-full min-h-0 bg-sidebar">
             <TransactionLogPanel

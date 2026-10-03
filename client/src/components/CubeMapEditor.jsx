@@ -11,9 +11,10 @@ import { useStore } from '../store'
 import {
   Network, ChevronRight, Search, X, RefreshCw, ArrowRight, Layers,
   Code2, Workflow, Filter, GitBranch, Zap, BookOpen,
-  Box, Eye, Play, Pause, StepBack, StepForward, SkipBack, Clapperboard,
+  Box, Eye, Play, Pause, StepBack, StepForward, SkipBack, Clapperboard, Map as MapIcon,
 } from 'lucide-react'
 import { toast } from 'sonner'
+import { loadSettings } from '@/lib/formatters/settings.js'
 
 // ── Layout ────────────────────────────────────────────────────────────────────
 
@@ -143,23 +144,36 @@ const GROUP_COLORS = [
 
 const CLUSTER_PAD = 22
 
-function computePrefixGroups(nodeIds) {
+function safeRegex(source) {
+  try { return new RegExp(source) } catch { return null }
+}
+
+// Group cube ids by a configurable key. With a regex the group key is the first
+// capture group (or the whole match if there are no groups); without one it
+// falls back to the prefix before the first underscore.
+function computePrefixGroups(nodeIds, regexSource) {
   const groups = {}
+  const re = regexSource ? safeRegex(regexSource) : null
   for (const id of nodeIds) {
     if (id.startsWith('proc:') || id.startsWith('dim:')) continue
-    const idx = id.indexOf('_')
-    if (idx > 1) {
-      const prefix = id.slice(0, idx)
-      if (!groups[prefix]) groups[prefix] = []
-      groups[prefix].push(id)
+    let key = null
+    if (re) {
+      const m = id.match(re)
+      if (m) key = m[1] ?? m[0]
+    } else {
+      const idx = id.indexOf('_')
+      if (idx > 1) key = id.slice(0, idx)
     }
+    if (key == null || key === '') continue
+    if (!groups[key]) groups[key] = []
+    groups[key].push(id)
   }
   return Object.fromEntries(Object.entries(groups).filter(([, v]) => v.length >= 2))
 }
 
-function applyGrouping(laidOut, showClusters) {
+function applyGrouping(laidOut, showClusters, regexSource) {
   if (!showClusters) return laidOut
-  const groups = computePrefixGroups(laidOut.map(n => n.id))
+  const groups = computePrefixGroups(laidOut.map(n => n.id), regexSource)
   if (!Object.keys(groups).length) return laidOut
 
   const memberIds  = new Set(Object.values(groups).flat())
@@ -515,9 +529,9 @@ function DetailPanel({
 
       {/* Trace depth */}
       <div style={{ padding: '8px 12px', borderBottom: '1px solid var(--cm-border)' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 5 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 5 }} title="Depth of rule-based links followed (DB() references and feeders). TI read/write connections are not included — the process nodes shown are added separately.">
           <GitBranch size={10} style={{ color: 'var(--cm-text-muted)' }} />
-          <span style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--cm-text-muted)', opacity: 0.65 }}>Trace depth</span>
+          <span style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--cm-text-muted)', opacity: 0.65 }}>Rule trace depth</span>
         </div>
         <div style={{ display: 'flex', gap: 3 }}>
           {[1, 2, 3, 4].map(d => (
@@ -613,8 +627,12 @@ function DetailPanel({
 function CubeMapInner({ tab }) {
   const { server: storeServer, openTab } = useStore()
   const dark = useStore(s => s.dark)
+  const themeVersion = useStore(s => s.themeVersion)
   const srv  = tab?.server ?? storeServer
   const token = typeof localStorage !== 'undefined' ? (localStorage.getItem('tm1-token') ?? '') : ''
+
+  // Configurable cube grouping key (regex) — reloads whenever settings are saved.
+  const groupRegex = useMemo(() => loadSettings().cubeMap?.groupRegex ?? '', [themeVersion])
 
   const [cubeData,       setCubeData]       = useState(null)
   const [processCallers, setProcessCallers] = useState({})
@@ -637,6 +655,7 @@ function CubeMapInner({ tab }) {
   const [dimFilter,      setDimFilter]      = useState(null)
   const [traceDepth,     setTraceDepth]     = useState(1)
   const [showLegend,     setShowLegend]     = useState(false)
+  const [showMiniMap,    setShowMiniMap]    = useState(true)
   const [showClusters,   setShowClusters]   = useState(false)
   const [dimSpotlight,   setDimSpotlight]   = useState('')
   const [showProcesses,  setShowProcesses]  = useState(true)
@@ -767,10 +786,10 @@ function CubeMapInner({ tab }) {
       }
     }
 
-    setNodes(applyGrouping(applyDagreLayout(rawNodes, rawEdges, layout), showClusters))
+    setNodes(applyGrouping(applyDagreLayout(rawNodes, rawEdges, layout), showClusters, groupRegex))
     setEdges(rawEdges)
     if (!focused) { setSelectedCube(null); setDimmedIds(new Set()) }
-  }, [cubeData, processData, dimData, allTI, showDims, showProcesses, showCalc, showFeeders, layout, dimFilter, showClusters, focused, selectedCube, traceDepth, transitiveSet])
+  }, [cubeData, processData, dimData, allTI, showDims, showProcesses, showCalc, showFeeders, layout, dimFilter, showClusters, groupRegex, focused, selectedCube, traceDepth, transitiveSet])
 
   // ── Fit view ──────────────────────────────────────────────────────────────────
   // (not while Show is running — the camera holds still there; startShow does one fit itself)
@@ -1071,6 +1090,9 @@ function CubeMapInner({ tab }) {
             <button onClick={() => setShowLegend(v => !v)} title="Legend" style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 3, color: showLegend ? 'var(--cm-link)' : 'var(--cm-icon)', borderRadius: 4, display: 'flex', alignItems: 'center' }}>
               <BookOpen size={12} />
             </button>
+            <button onClick={() => setShowMiniMap(v => !v)} title="Overview map" style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 3, color: showMiniMap ? 'var(--cm-link)' : 'var(--cm-icon)', borderRadius: 4, display: 'flex', alignItems: 'center' }}>
+              <MapIcon size={12} />
+            </button>
             <button onClick={fetchModel} disabled={loading} title="Refresh" style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 3, color: 'var(--cm-icon)', borderRadius: 4, display: 'flex', alignItems: 'center' }}>
               <RefreshCw size={13} style={{ animation: loading ? 'cm-spin 1s linear infinite' : 'none' }} />
             </button>
@@ -1127,7 +1149,7 @@ function CubeMapInner({ tab }) {
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
             <Toggle active={showCalc}      onClick={() => setShowCalc(v => !v)}      color="#b45309" label="Rules" />
             <Toggle active={showFeeders}   onClick={() => setShowFeeders(v => !v)}   color="#475569" label="Feeders" dashed />
-            <Toggle active={showClusters}  onClick={() => setShowClusters(v => !v)}  color="#6366f1" label="Groups" />
+            <Toggle active={showClusters}  onClick={() => setShowClusters(v => !v)}  color="#6366f1" label="Groups" title={groupRegex ? `Group by regex: ${groupRegex}` : 'Group by prefix before first underscore'} />
             <Toggle active={showProcesses} onClick={() => setShowProcesses(v => !v)} color="#10b981" label="TI" />
             <Toggle active={allTI && showProcesses} onClick={() => { setAllTI(v => !v); setShowProcesses(true) }} color="#0ea5e9" label="All TI" />
             {allTI && showProcesses && <Toggle active={showDims} onClick={() => setShowDims(v => !v)} color="#8b5cf6" label="Dims" />}
@@ -1205,14 +1227,16 @@ function CubeMapInner({ tab }) {
         >
           <Background color={dark ? '#1e1e30' : '#cbd5e1'} gap={24} size={1} />
           <Controls />
-          <MiniMap
-            nodeColor={n => {
-              if (n.type === 'group') return 'transparent'
-              if (n.data?.hasRules) return dark ? '#78350f' : '#fde68a'
-              return dark ? '#1e2a3a' : '#dbeafe'
-            }}
-            maskColor={dark ? 'rgba(8,8,16,0.72)' : 'rgba(241,245,249,0.72)'}
-          />
+          {showMiniMap && (
+            <MiniMap
+              nodeColor={n => {
+                if (n.type === 'group') return 'transparent'
+                if (n.data?.hasRules) return dark ? '#78350f' : '#fde68a'
+                return dark ? '#1e2a3a' : '#dbeafe'
+              }}
+              maskColor={dark ? 'rgba(8,8,16,0.72)' : 'rgba(241,245,249,0.72)'}
+            />
+          )}
         </ReactFlow>
         {showLegend && <Legend />}
         {showBar && (
@@ -1333,9 +1357,9 @@ function ShowBar({ entries, entry, onEntry, seq, idx, step, playing, onPlay, onP
 
 // ── Toggle helper ─────────────────────────────────────────────────────────────
 
-function Toggle({ active, onClick, color, label, dashed }) {
+function Toggle({ active, onClick, color, label, dashed, title }) {
   return (
-    <button onClick={onClick} style={{
+    <button onClick={onClick} title={title} style={{
       flex: 1, display: 'flex', alignItems: 'center', gap: 4,
       padding: '3px 6px', fontSize: 10, borderRadius: 4, cursor: 'pointer',
       border: `1px solid ${active ? color : 'var(--cm-border)'}`,

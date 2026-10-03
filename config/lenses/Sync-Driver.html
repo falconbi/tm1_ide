@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8" />
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: system-ui, sans-serif; margin: 0; background: #0b1220; color: #e2e8f0; padding: 20px; }
+  h1 { font-size: 16px; margin: 0 0 4px; }
+  .sub { color: #64748b; font-size: 12px; margin-bottom: 14px; }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 14px; }
+  label { font-size: 11px; color: #94a3b8; text-transform: uppercase; }
+  select { background: #1e293b; color: #e2e8f0; border: 1px solid #334155; border-radius: 8px; padding: 6px 10px; font-size: 13px; }
+  .ctx { background: #111a2e; border: 1px solid #1e293b; border-radius: 10px; padding: 12px 14px; font-size: 12px; }
+  .ctx b { color: #38bdf8; }
+  .val { font-size: 28px; font-weight: 700; margin-top: 8px; }
+</style>
+</head>
+<body>
+  <h1>Sync Driver</h1>
+  <div class="sub">Broadcasts region + period to every other lens via shared context</div>
+  <div class="row">
+    <div><label>Region</label><br/><select id="region"></select></div>
+    <div><label>Period</label><br/><select id="period">
+      <option value="Y1">Y1</option><option value="Y2" selected>Y2</option>
+    </select></div>
+  </div>
+  <div class="ctx">context: <b id="ctxview">(loading)</b></div>
+  <div class="val" id="val">…</div>
+<script>
+  var REGIONS = ['Total Company', '100', '200', '300', '400']
+  var sel = document.getElementById('region')
+  REGIONS.forEach(function (r) { var o = document.createElement('option'); o.value = r; o.textContent = r; sel.appendChild(o) })
+  sel.value = 'Total Company'
+
+  var render = function (ctx) {
+    document.getElementById('ctxview').textContent = JSON.stringify(ctx)
+    window.lensBridge.call('readCell', { cube: 'Revenue', coordinates: { organization: ctx.region || 'Total Company', Channel: 'Channel Total', product: 'Product Total', Month: 'Year', Year: ctx.period || 'Y2', Version: 'Version 1', Revenue: 'Units Sold' } })
+      .then(function (v) { document.getElementById('val').textContent = (v == null ? '—' : Math.round(v).toLocaleString()) })
+      .catch(function (e) { document.getElementById('val').textContent = 'err: ' + e.message })
+  }
+  var push = function () {
+    window.lensBridge.setContext({ region: sel.value, period: document.getElementById('period').value }).then(render)
+  }
+  sel.onchange = push
+  document.getElementById('period').onchange = push
+  window.lensBridge.onContext(render)
+  window.lensBridge.getContext().then(function (ctx) { render(ctx) })
+</script>
+</body>
+</html>

@@ -1542,6 +1542,7 @@ export default function ProcessEditor({ tab }) {
         <div className="ml-auto flex items-center gap-1 mr-2">
           <div className="relative region-menu-container shrink-0">
             <button
+              ref={regionBtnRef}
               onClick={openRegionMenu}
               title="Go to region"
               className={cn(
@@ -1584,7 +1585,7 @@ export default function ProcessEditor({ tab }) {
             )}
           >
             {regionsCollapsed ? <ChevronsDownUp size={11} /> : <ChevronsUpDown size={11} />}
-            <span className="hidden sm:inline">{regionsCollapsed ? 'Expand' : 'Collapse'}</span>
+            {regionsCollapsed ? 'Expand' : 'Collapse'}
           </button>
           <button
             onClick={toggleMinimap}

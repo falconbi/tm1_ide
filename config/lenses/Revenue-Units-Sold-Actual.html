@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8" />
+<style>
+  :root { --ink:#0f172a; --mut:#64748b; --line:#e2e8f0; --bg:#f1f5f9; --card:#ffffff; }
+  * { box-sizing: border-box; }
+  body { font-family: "Segoe UI", system-ui, sans-serif; margin: 0; background: var(--bg); color: var(--ink); padding: 20px; }
+  .head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 16px; }
+  h1 { font-size: 20px; margin: 0; letter-spacing: -0.01em; }
+  .sub { color: var(--mut); font-size: 12px; }
+  button { border: 1px solid var(--line); background: var(--card); border-radius: 8px; padding: 6px 12px; cursor: pointer; font-size: 12px; }
+  .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 16px; }
+  .kpi { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; }
+  .kpi .label { font-size: 11px; color: var(--mut); text-transform: uppercase; letter-spacing: .06em; }
+  .kpi .value { font-size: 24px; font-weight: 700; margin-top: 6px; font-variant-numeric: tabular-nums; }
+  .kpi .foot { font-size: 11px; color: var(--mut); margin-top: 4px; }
+  .pos { color: #047857; } .neg { color: #b91c1c; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px; margin-bottom: 16px; }
+  .card h2 { font-size: 13px; margin: 0 0 10px; color: var(--mut); font-weight: 600; text-transform: uppercase; letter-spacing: .05em; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  th, td { border-bottom: 1px solid var(--line); padding: 6px 10px; text-align: right; font-variant-numeric: tabular-nums; }
+  th:first-child, td:first-child { text-align: left; }
+  th { color: var(--mut); font-weight: 600; }
+  .err { color: #b91c1c; }
+  .loader { color: var(--mut); font-size: 13px; }
+  .legend { display: flex; gap: 16px; font-size: 11px; color: var(--mut); margin-bottom: 6px; }
+  .legend span { display: inline-flex; align-items: center; gap: 5px; }
+  .sw { width: 14px; height: 8px; border-radius: 2px; display: inline-block; }
+  svg .bar { transform-origin: 50px 50%; animation: grow .8s cubic-bezier(.2,.8,.2,1) backwards; }
+  @keyframes grow { from { transform: scaleX(0); } }
+</style>
+</head>
+<body>
+  <div class="head">
+    <div>
+      <h1>Units Sold — Actual (Version 1)</h1>
+      <div class="sub">24Retail · Total Company / regions · Version 1 · Y1 vs Y2</div>
+    </div>
+    <button onclick="load()">Refresh</button>
+  </div>
+  <div class="kpis" id="kpis"><div class="kpi"><div class="label">Y2 Total</div><div class="value loader">…</div></div><div class="kpi"><div class="label">Y1 Total</div><div class="value loader">…</div></div><div class="kpi"><div class="label">YoY Growth</div><div class="value loader">…</div></div><div class="kpi"><div class="label">Latest Month (Dec)</div><div class="value loader">…</div></div></div>
+  <div class="card">
+    <h2>Units Sold by region — Y2 bar vs Y1 target</h2>
+    <div class="legend"><span><span class="sw" style="background:#e2e8f0"></span>below 70% target</span><span><span class="sw" style="background:#cbd5e1"></span>70–90%</span><span><span class="sw" style="background:#94a3b8"></span>90–100%</span><span><span class="sw" style="background:#0f766e"></span>Y2 (measure)</span><span><span class="sw" style="background:#dc2626;width:2px"></span>Y1 (target)</span></div>
+    <div id="bullet" class="loader">Loading…</div>
+  </div>
+  <div class="card"><h2>Units sold by month — Y1 vs Y2</h2><div id="chart" class="loader">Loading…</div></div>
+  <div class="card"><h2>Monthly detail</h2><div id="grid" class="loader">Loading…</div></div>
+
+<script>
+  var num = function (v) { var n = Number(v); return isNaN(n) ? null : n }
+  var fmt = function (v) {
+    v = num(v)
+    if (v == null) return '—'
+    var abs = Math.abs(v)
+    var s = abs >= 1e6 ? (v / 1e6).toFixed(1) + 'M' : abs >= 1e3 ? (v / 1e3).toFixed(1) + 'K' : v.toFixed(0)
+    return (v < 0 ? '-' : '') + s
+  }
+  var cls = function (v) { v = num(v); return v == null ? '' : (v < 0 ? 'neg' : 'pos') }
+
+  var drawBullets = function (res) {
+    var regions = (res.Axes[1] && res.Axes[1].Tuples || []).map(function (t) { return t.Members.map(function (m) { return m.Name }).join('') })
+    var series  = (res.Axes[0] && res.Axes[0].Tuples || []).map(function (t) { return t.Members.map(function (m) { return m.Name }).join('') })
+    var cells = {}; res.Cells.forEach(function (c) { cells[c.Ordinal] = num(c.Value) })
+    var scale = 0; res.Cells.forEach(function (c) { var v = num(c.Value); if (v != null && v > scale) scale = v })
+    scale = scale * 1.15
+    var BW = 360, LEFT = 64, ROW = 30, trackH = 20
+    var s = '<svg width="' + (LEFT + BW + 170) + '" height="' + (regions.length * ROW + 10) + '" viewBox="0 0 ' + (LEFT + BW + 170) + ' ' + (regions.length * ROW + 10) + '" style="max-width:100%">'
+    regions.forEach(function (reg, ri) {
+      var y1 = cells[ri * 2 + 0], y2 = cells[ri * 2 + 1]
+      var y = ri * ROW + 6
+      var grow = (y1 != null && y1 !== 0) ? (y2 - y1) / y1 : null
+      var status = grow >= 0.25 ? '#059669' : grow >= 0.10 ? '#d97706' : '#dc2626'
+      var gx = function (v) { return LEFT + (v / scale) * BW }
+      s += '<text x="0" y="' + (y + 14) + '" font-size="12" font-weight="600" fill="#0f172a">' + reg + '</text>'
+      s += '<rect x="' + gx(0) + '" y="' + y + '" width="' + (gx(y1 * 0.7) - gx(0)) + '" height="' + trackH + '" fill="#e2e8f0" rx="2"/>'
+      s += '<rect x="' + gx(y1 * 0.7) + '" y="' + y + '" width="' + (gx(y1 * 0.9) - gx(y1 * 0.7)) + '" height="' + trackH + '" fill="#cbd5e1"/>'
+      s += '<rect x="' + gx(y1 * 0.9) + '" y="' + y + '" width="' + (gx(y1) - gx(y1 * 0.9)) + '" height="' + trackH + '" fill="#94a3b8"/>'
+      s += '<rect x="' + gx(y1) + '" y="' + (y - 2) + '" width="2" height="' + (trackH + 4) + '" fill="#dc2626"><title>target Y1 ' + fmt(y1) + '</title></rect>'
+      var by = y + 3, bh = trackH - 6, bx = gx(0), bw = Math.max(0, gx(y2) - gx(0))
+      s += '<g class="bar" style="animation-delay:' + (ri * 120) + 'ms"><polygon points="' + bx + ',' + by + ' ' + (bx + bw) + ',' + by + ' ' + (bx + bw + 4) + ',' + (by + bh) + ' ' + (bx - 4) + ',' + (by + bh) + '" fill="#0f766e"><title>' + reg + ' Y2 ' + fmt(y2) + '</title></polygon></g>'
+      s += '<text x="' + (LEFT + BW + 12) + '" y="' + (y + 14) + '" font-size="12" font-weight="700" fill="#0f172a">' + fmt(y2) + '</text>'
+      s += '<text x="' + (LEFT + BW + 12) + '" y="' + (y + 27) + '" font-size="10" font-weight="600" fill="' + status + '">' + (grow == null ? '—' : ((grow * 100).toFixed(0) + '% YoY')) + '</text>'
+    })
+    s += '</svg>'
+    document.getElementById('bullet').innerHTML = s
+  }
+
+  var load = function () {
+    Promise.all([
+      window.lensBridge.call('readCell', { cube: 'Revenue', coordinates: { organization: 'Total Company', Channel: 'Channel Total', product: 'Product Total', Month: 'Year', Year: 'Y2', Version: 'Version 1', Revenue: 'Units Sold' } }),
+      window.lensBridge.call('readCell', { cube: 'Revenue', coordinates: { organization: 'Total Company', Channel: 'Channel Total', product: 'Product Total', Month: 'Year', Year: 'Y1', Version: 'Version 1', Revenue: 'Units Sold' } }),
+      window.lensBridge.call('readCell', { cube: 'Revenue', coordinates: { organization: 'Total Company', Channel: 'Channel Total', product: 'Product Total', Month: 'Dec', Year: 'Y2', Version: 'Version 1', Revenue: 'Units Sold' } }),
+      window.lensBridge.call('execMDX', { mdx: "SELECT {[Year].[Year].[Y1],[Year].[Year].[Y2]} ON 0, {[organization].[organization].[100],[organization].[organization].[200],[organization].[organization].[300],[organization].[organization].[400]} ON 1 FROM [Revenue] WHERE ([Channel].[Channel].[Channel Total],[product].[product].[Product Total],[Month].[Month].[Year],[Version].[Version].[Version 1],[Revenue].[Revenue].[Units Sold])" }),
+      window.lensBridge.call('execMDX', { mdx: "SELECT {[Year].[Year].[Y1],[Year].[Year].[Y2]} ON 0, {[Month].[Month].[Jan],[Month].[Month].[Feb],[Month].[Month].[Mar],[Month].[Month].[Apr],[Month].[Month].[May],[Month].[Month].[Jun],[Month].[Month].[Jul],[Month].[Month].[Aug],[Month].[Month].[Sep],[Month].[Month].[Oct],[Month].[Month].[Nov],[Month].[Month].[Dec]} ON 1 FROM [Revenue] WHERE ([organization].[organization].[Total Company],[Channel].[Channel].[Channel Total],[product].[product].[Product Total],[Version].[Version].[Version 1],[Revenue].[Revenue].[Units Sold])" })
+    ]).then(function (r) {
+      var y2 = num(r[0]), y1 = num(r[1]), dec = num(r[2]), regionRes = r[3], res = r[4]
+      var g = (y1 && y1 !== 0) ? ((y2 - y1) / y1) : null
+      var k = document.getElementById('kpis')
+      var card = function (label, v, foot) {
+        return '<div class="kpi"><div class="label">' + label + '</div><div class="value ' + cls(v) + '">' + fmt(v) + '</div>' + (foot ? '<div class="foot">' + foot + '</div>' : '') + '</div>'
+      }
+      k.innerHTML = card('Y2 Total', y2, 'Month = Year') + card('Y1 Total', y1, 'Month = Year') + card('YoY Growth', g, null) + card('Latest Month (Dec)', dec, 'Y2')
+      drawBullets(regionRes)
+
+      var months = (res.Axes[1] && res.Axes[1].Tuples || []).map(function (t) { return t.Members.map(function (m) { return m.Name }).join(' / ') })
+      var series = (res.Axes[0] && res.Axes[0].Tuples || []).map(function (t) { return t.Members.map(function (m) { return m.Name }).join(' / ') })
+      var cells = {}; res.Cells.forEach(function (c) { cells[c.Ordinal] = num(c.Value) })
+      var max = 0; res.Cells.forEach(function (c) { var vv = num(c.Value); if (vv != null && vv > max) max = vv })
+      var W = 860, H = 220, PAD = 26, base = H - PAD
+      var gw = (W - 2 * PAD) / months.length, bw = Math.min(16, gw / 3)
+      var s = '<svg width="' + W + '" height="' + H + '" viewBox="0 0 ' + W + ' ' + H + '" style="max-width:100%">'
+      for (var mi = 0; mi < months.length; mi++) {
+        var x = PAD + mi * gw
+        s += '<text x="' + (x + gw / 2) + '" y="' + (H - 6) + '" text-anchor="middle" font-size="10" fill="#64748b">' + months[mi] + '</text>'
+        for (var si = 0; si < series.length; si++) {
+          var vv = cells[mi * series.length + si]
+          var h = (vv != null) ? (vv / max) * (H - PAD - 8) : 0
+          var bx = x + gw / 2 - bw + si * bw
+          s += '<rect x="' + bx + '" y="' + (base - h) + '" width="' + bw + '" height="' + h + '" rx="2" fill="' + (si === 0 ? '#cbd5e1' : '#0f766e') + '"><title>' + months[mi] + ' · ' + series[si] + ' · ' + fmt(vv) + '</title></rect>'
+        }
+      }
+      s += '</svg>'
+      document.getElementById('chart').innerHTML = s
+
+      var tbl = '<table><thead><tr><th>Month</th>' + series.map(function (x) { return '<th>' + x + '</th>' }).join('') + '<th>Growth %</th></tr></thead><tbody>'
+      months.forEach(function (m, mi) {
+        var a = cells[mi * series.length + 0], b = cells[mi * series.length + 1]
+        var gp = (a != null && a !== 0) ? ((b - a) / a) : null
+        tbl += '<tr><td>' + m + '</td><td>' + fmt(a) + '</td><td>' + fmt(b) + '</td>' +
+          '<td class="' + cls(gp) + '">' + (gp == null ? '—' : (gp * 100).toFixed(1) + '%') + '</td></tr>'
+      })
+      tbl += '</tbody></table>'
+      document.getElementById('grid').innerHTML = tbl
+    }).catch(function (e) {
+      document.getElementById('kpis').innerHTML = '<div class="kpi"><div class="value err">Bridge error: ' + e.message + '</div></div>'
+    })
+  }
+  load()
+</script>
+</body>
+</html>

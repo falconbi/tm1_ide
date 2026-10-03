@@ -11,6 +11,8 @@ const { makeClient, listServers, listServersWithFlags, getDefaultAdapterType, ge
 const { loadConnections, saveConnections, getConnection, executeQuery, testConnection, getSchema, loadQueries, saveQueries } = require('./core/sql_client')
 const { createSession, createDirectSession, getSessionUser, touchSession, invalidateSession, getCachedPawSession, getCSRF, PAW_HOST } = require('./core/paw_connect')
 const cl = require('./core/change_log')
+const lensStore = require('./core/lens_store')
+const lensBridge = require('./core/lens_bridge')
 
 // Session (Change Set) is optional for using the IDE — it groups changes for
 // deployment, it is not a login and must never gate whether a save works.
@@ -143,6 +145,13 @@ app.use('/api', (req, res, next) => {
     touchSession(token)
     req.ideToken = token
     req.user = user
+    next()
+})
+
+// No API response may be cached by the browser — the IDE serves live model state
+// and lens HTML; a heuristic-cached GET would show stale content after an edit.
+app.use('/api', (req, res, next) => {
+    res.setHeader('Cache-Control', 'no-store')
     next()
 })
 
@@ -3265,6 +3274,164 @@ app.get('/api/cubemap/model', async (req, res) => {
 })
 
 
+// ── Lenses ────────────────────────────────────────────────────────────────────
+// Lens HTML lives in config/lenses/*.html (git-versioned). Metadata lives ONLY
+// in the }Lenses control cube — never a second copy in JSON files. The bridge
+// runs as the viewing user (req.ideToken), never the MCP admin path.
+
+app.get('/api/lenses', async (req, res) => {
+    try {
+        const client = makeClient(req.query.server, req.ideToken)
+        const lenses = lensStore.listFiles()
+        const enriched = await Promise.all(lenses.map(async f => {
+            try { return { ...f, ...(await lensStore.readMeta(client, f.name)) } }
+            catch { return { ...f } }
+        }))
+        res.json(enriched)
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.get('/api/lenses/:name', async (req, res) => {
+    try {
+        const client = makeClient(req.query.server, req.ideToken)
+        const lens = lensStore.readLens(req.params.name)
+        const meta = await lensStore.readMeta(client, req.params.name).catch(() => ({}))
+        res.json({ ...lens, meta })
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.post('/api/lenses/:name', async (req, res) => {
+    try {
+        const client = makeClient(req.query.server, req.ideToken)
+        const { html, description, publish, force } = req.body
+        if (typeof html !== 'string' || !html.trim()) return res.status(400).json({ error: 'html is required' })
+        const errors = await lensBridge.validateLens(client, html)
+        if (errors.length && !force) {
+            return res.status(400).json({ error: `Lens validation failed (${errors.length}):`, validation: errors })
+        }
+        const saved = lensStore.saveLens(client, req.params.name, html, req.user, { publish: !!publish, description })
+        res.json({ ...saved, validation: errors })
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.delete('/api/lenses/:name', (req, res) => {
+    try {
+        lensStore.deleteLens(req.params.name)
+        res.json({ ok: true })
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.post('/api/lenses/generate', async (req, res) => {
+    try {
+        const { server, cube, description } = req.body
+        if (!description?.trim()) return res.status(400).json({ error: 'description is required' })
+        const client = makeClient(server, req.ideToken)
+        const meta = await lensBridge.getMeta(client, cube)
+
+        // No AI key → return a model-aware starter lens so the editor always works.
+        if (!ai.isConfigured()) {
+            return res.json({ html: lensBridge.buildStarterLens(meta, cube), mode: 'starter' })
+        }
+
+        const obf = ai.shouldObfuscate()
+        const names = [
+            ...(meta.cubes ?? []), ...(meta.dimensions ?? []), ...(meta.cubeDims ?? []),
+            ...Object.values(meta.elements ?? {}).flat(),
+        ]
+        const map = obfuscate.makeMap(names)
+        const hide = obf ? t => obfuscate.obfuscateText(t, map.realToCode) : t => t
+        const show = obf ? t => obfuscate.restoreText(t, map.codeToReal) : t => t
+
+        let html
+        try {
+            html = await ai.complete({
+                label: 'lens-generate', obfuscated: obf, maxTokens: 8000,
+                system: `You are a front-end developer building an executive dashboard that runs inside a sandboxed iframe and reads live IBM Planning Analytics (TM1) data.
+
+The ONLY way to get data is the bridge API below. There is NO network access, no fetch to any other URL, no external libraries, no CDN, no external fonts or images.
+
+Bridge API (always available):
+  window.lensBridge.call('execMDX', { mdx: '<MDX SELECT>' }) -> Promise<{ Axes, Cells }>
+      Cells: [{ Ordinal, Value, FormattedValue }] — Value is a number or null.
+  window.lensBridge.call('readCell', { cube: '<cube>', coordinates: { '<dim>': '<elem>', ... } }) -> Promise<number|string|null>
+      coordinates must name EVERY dimension of the cube.
+  window.lensBridge.call('getMeta', { cube: '<cube>' }) -> Promise<{ cubes, dimensions, cubeDims, elements }>
+
+Rules:
+- Return a SINGLE complete HTML document (html, head, style, body, script). No markdown, no code fences, no explanation.
+- Draw all charts with inline SVG or canvas and vanilla JS. Everything inline. No external anything.
+- Style it as a polished executive dashboard: card layout, clear hierarchy, good typography, whitespace, a coherent color scheme. Add a small refresh button that re-runs the data calls.
+- All numbers must come from the bridge at runtime — never hard-code values.
+- Use EXACT cube/dimension/element names from the model context. In MDX reference members as [Dim].[Dim].[Member].
+- Prefer readCell for single values and execMDX for series/sets. Keep MDX simple and correct. The Measures dimension is typically the last one — put it on columns.
+- Render loading states and handle null/empty values gracefully (show '—').`,
+                user: hide(`Model context:\n${JSON.stringify(meta)}\n\nBuild a lens described as: ${description}`),
+            })
+        } catch (e) {
+            return res.json({ html: lensBridge.buildStarterLens(meta, cube), mode: 'starter', note: `AI call failed (${e.message}) — returned a starter lens instead.` })
+        }
+
+        res.json({ html: show(html), mode: 'ai' })
+    } catch (e) {
+        res.status(500).json({ error: e.message })
+    }
+})
+
+// ── Lens bridge (read-only, runs as the viewing user) ────────────────────────
+
+app.post('/api/lens/exec-mdx', async (req, res) => {
+    try {
+        const client = makeClient(req.query.server, req.ideToken)
+        res.json(await lensBridge.execMDX(client, req.body?.mdx))
+    } catch (e) {
+        const detail = e.response?.data?.error?.message ?? e.response?.data ?? e.message
+        res.status(500).json({ error: typeof detail === 'string' ? detail : JSON.stringify(detail) })
+    }
+})
+
+app.post('/api/lens/read-cell', async (req, res) => {
+    try {
+        const client = makeClient(req.query.server, req.ideToken)
+        const { cube, coordinates } = req.body
+        res.json({ value: await lensBridge.readCell(client, cube, coordinates) })
+    } catch (e) {
+        const detail = e.response?.data?.error?.message ?? e.response?.data ?? e.message
+        res.status(500).json({ error: typeof detail === 'string' ? detail : JSON.stringify(detail) })
+    }
+})
+
+app.get('/api/lens/meta', async (req, res) => {
+    try {
+        const client = makeClient(req.query.server, req.ideToken)
+        res.json(await lensBridge.getMeta(client, req.query.cube))
+    } catch (e) {
+        const detail = e.response?.data?.error?.message ?? e.response?.data ?? e.message
+        res.status(500).json({ error: typeof detail === 'string' ? detail : JSON.stringify(detail) })
+    }
+})
+
+// Sandboxed frame render. The CSP `sandbox` directive is the security boundary —
+// it applies even when the URL is opened directly in a tab (the iframe sandbox
+// attribute alone would not). The frame has no same-origin and no network, so AI
+// script cannot read localStorage['tm1-token'] or exfiltrate anything. Never add
+// allow-same-origin here. Live data only flows through the IDE host page bridge.
+
+const LENS_CSP = "sandbox allow-scripts; default-src 'none'; script-src 'unsafe-inline' 'self'; style-src 'unsafe-inline' 'self'; connect-src 'none'"
+const LENS_BRIDGE_STUB = "<script>window.lensBridge={call(){return Promise.reject(new Error('Lens opened standalone — live data requires the IDE session'))}}<\/script>"
+
+app.get('/lenses/:server/:name', (req, res) => {
+    try {
+const lens = lensStore.readLens(req.params.name)
+        res.setHeader('Content-Security-Policy', LENS_CSP)
+        res.setHeader('X-Content-Type-Options', 'nosniff')
+        res.setHeader('Cache-Control', 'no-store')
+        res.type('html').send(LENS_BRIDGE_STUB + lens.html)
+    } catch {
+        res.status(404).send('Lens not found')
+    }
+})
+
+
 app.get('/{*path}', (req, res) => {
     res.sendFile(path.join(__dirname, 'static', 'index.html'))
 })
@@ -3273,3 +3440,18 @@ app.listen(PORT, HOST, () => {
     const shown = HOST === '0.0.0.0' ? `all interfaces on :${PORT} (LAN-exposed — no TLS)` : `http://${HOST}:${PORT}`
     console.log(`TM1 IDE running at ${shown}`)
 })
+
+// HTTPS listener for embedding lenses in HTTPS hosts (e.g. PAW over HTTPS): a
+// self-signed cert in config/certs/ide-{cert,key}.pem. Same app, so /lenses/...
+// is served on both ports. Browsers must be told to trust the cert once.
+const HTTPS_PORT = parseInt(process.env.HTTPS_PORT || '8443', 10)
+try {
+    const https = require('https')
+    const key  = fs.readFileSync(path.join(__dirname, 'config', 'certs', 'ide-key.pem'))
+    const cert = fs.readFileSync(path.join(__dirname, 'config', 'certs', 'ide-cert.pem'))
+    https.createServer({ key, cert }, app).listen(HTTPS_PORT, HOST, () => {
+        console.log(`TM1 IDE HTTPS (self-signed) at https://${HOST}:${HTTPS_PORT} — /lenses/... for PAW embedding`)
+    })
+} catch (e) {
+    console.warn(`HTTPS listener not started: ${e.message} — generate config/certs/ide-{cert,key}.pem to enable`)
+}
