@@ -13,7 +13,7 @@ import ChoreEditor from '@/components/ChoreEditor'
 import GuidedMDXBuilder from '@/components/GuidedMDXBuilder'
 import CubeEditor from '@/components/CubeEditor'
 import { toast } from 'sonner'
-import { GitBranch, ChevronRight, ChevronDown, Loader2, ChevronsUpDown, ChevronsDownUp, ListTree, AlignLeft, Settings, Locate, Braces, Save, Map, Microscope, X, Plus, Trash2, History, ShieldCheck, Rss, AlertTriangle, AlertCircle, ChevronUp, HelpCircle } from 'lucide-react'
+import { GitBranch, ChevronRight, ChevronDown, Loader2, ChevronsUpDown, ChevronsDownUp, ListTree, AlignLeft, Settings, Locate, Braces, Save, Map, Microscope, X, History, ShieldCheck, Rss, AlertTriangle, AlertCircle, HelpCircle } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { loadSettings, saveSettings } from '@/lib/formatters/settings.js'
 import { formatRules } from '@/lib/formatters/rules-formatter.js'
@@ -370,6 +370,7 @@ function RulesEditor({ tab, onCursor }) {
   const [regionsCollapsed, setRegionsCollapsed] = useState(false)
   const [showRegionMenu, setShowRegionMenu] = useState(false)
   const [showFormatPopup, setShowFormatPopup] = useState(false)
+  const [regionList, setRegionList] = useState([])   // scanned when the menu opens
   const [formatStruct, setFormatStruct] = useState(() => loadSettings().rules.expressionFormatter ?? null)
   const [checking, setChecking]             = useState(false)
   const [checkResult, setCheckResult]       = useState(null) // null | 'pass' | 'fail'
@@ -566,7 +567,7 @@ function RulesEditor({ tab, onCursor }) {
     })
 
     // Prevent browser's Ctrl+S "Save Page" dialog and trigger save instead
-    const keyDownDisposable = editor.onKeyDown(e => {
+    editor.onKeyDown(e => {
       if (e.keyCode === monaco.KeyCode.KeyS && (e.ctrlKey || e.metaKey) && !e.shiftKey) {
         e.browserEvent.preventDefault()
         e.browserEvent.stopPropagation()
@@ -615,10 +616,10 @@ function RulesEditor({ tab, onCursor }) {
     const editor = editorRef.current
     if (!editor) return
     if (regionsCollapsed) {
-      editor.trigger('fold', 'editor.unfoldAll')
+      editor.trigger('fold', 'editor.unfoldAllMarkerRegions')
       setRegionsCollapsed(false)
     } else {
-      editor.trigger('fold', 'editor.foldAll')
+      editor.trigger('fold', 'editor.foldAllMarkerRegions')
       setRegionsCollapsed(true)
     }
   }
@@ -630,7 +631,7 @@ function RulesEditor({ tab, onCursor }) {
     const lineCount = editor.getModel().getLineCount()
     for (let line = 1; line <= lineCount; line++) {
       const text = editor.getModel().getLineContent(line).trim()
-      const match = text.match(/^#Region\s+(.*)$/i)
+      const match = text.match(/^#Region\b\s*(.*)$/i)
       if (match) {
         regions.push({ line, name: match[1].trim() || 'Region' })
       }
@@ -819,7 +820,7 @@ function RulesEditor({ tab, onCursor }) {
           </div>
           <div className="relative region-menu-container">
             <button
-              onClick={() => setShowRegionMenu(v => !v)}
+              onClick={() => { if (!showRegionMenu) setRegionList(getRegions()); setShowRegionMenu(v => !v) }}
               className={cn(
                 'flex items-center gap-1 px-2 py-1 rounded text-xs border transition-colors',
                 showRegionMenu ? 'bg-primary text-primary-foreground border-primary' : 'bg-background/80 border-border text-muted-foreground hover:text-foreground'
@@ -831,10 +832,10 @@ function RulesEditor({ tab, onCursor }) {
             </button>
             {showRegionMenu && (
               <div className="absolute right-0 top-full mt-1 w-56 bg-popover border border-border rounded shadow-lg z-50 max-h-64 overflow-auto text-xs">
-                {getRegions().length === 0 ? (
+                {regionList.length === 0 ? (
                   <div className="px-3 py-1.5 text-muted-foreground italic">No regions found</div>
                 ) : (
-                  getRegions().map(r => (
+                  regionList.map(r => (
                     <button
                       key={r.line}
                       onClick={() => goToRegion(r.line)}
