@@ -3053,10 +3053,35 @@ app.get('/api/cubemap/model', async (req, res) => {
 
         // Parse DB() references from rules text
         const DB_RE = /\bDB\s*\(\s*'([^']+)'/gi
+        // Remove `#` / `//` comments (quote-aware, newlines preserved so nothing
+        // else that depends on line structure breaks). Stops a comment like
+        // `# CellPutN(v, 'Budget', ...)` from creating a phantom edge.
+        function stripComments(code) {
+            let out = ''
+            let i = 0
+            const n = code.length
+            while (i < n) {
+                const ch = code[i]
+                if (ch === "'") {
+                    out += "'"; i++
+                    while (i < n && code[i] !== "'") { out += code[i]; i++ }
+                    if (i < n) { out += "'"; i++ }
+                    continue
+                }
+                if (ch === '#' || (ch === '/' && code[i + 1] === '/')) {
+                    while (i < n && code[i] !== '\n') i++
+                    continue
+                }
+                out += ch
+                i++
+            }
+            return out
+        }
         function scanRefs(text) {
+            const clean = stripComments(text)
             const refs = new Set()
             let m
-            while ((m = DB_RE.exec(text)) !== null) refs.add(m[1])
+            while ((m = DB_RE.exec(clean)) !== null) refs.add(m[1])
             DB_RE.lastIndex = 0
             return [...refs]
         }
@@ -3159,8 +3184,8 @@ app.get('/api/cubemap/model', async (req, res) => {
             }
 
             for (const p of (pd.value ?? []).filter(p => !p.Name.startsWith('}'))) {
-                const code = [p.PrologProcedure, p.MetadataProcedure, p.DataProcedure, p.EpilogProcedure]
-                    .filter(Boolean).join('\n')
+                const code = stripComments([p.PrologProcedure, p.MetadataProcedure, p.DataProcedure, p.EpilogProcedure]
+                    .filter(Boolean).join('\n'))
 
                 // Resolve `var = 'literal';` assignments so CellPutN(value, var, ...) can be traced, seeded
                 // with parameter defaults and following `a = b;` chains (sDimension = pDimension). A default is
