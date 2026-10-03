@@ -18,6 +18,9 @@ Connects to TM1 directly over the REST API or through PAW — your choice of ada
 
 ---
 
+> [!IMPORTANT]
+> **Major upgrade coming this week.** A large update is on its way: per-server logins, tests stored with the model, a slimmer README with full guides in `docs/`, and many editor improvements. Setup steps and configuration may change — if you're installing now, you may want to wait a few days, or pull again after the update lands.
+
 > [!WARNING]
 > **Pre-release — for initial testing only.**
 > This project is under active development and is not yet production-ready. Expect rough edges, breaking changes between commits, and features that are incomplete or unstable. Do not use in a production TM1 environment without understanding the risks.
