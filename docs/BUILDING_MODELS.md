@@ -528,3 +528,96 @@ element format. All six cubes dropped and rebuilt.
   for the full convention. Rule-reading discipline: when you edit a rule, re-read
   an overlapping cell AND a consolidation to confirm both still behave — one
   assertion (`capex + opex = Amount`) caught what a leaf-only read would miss.
+
+### Financial consolidation build (Sep–Oct 2026) — Windows v11, test-first
+
+A statutory group consolidation (ownership, goodwill, NCI, currency translation, intragroup, disposals,
+sub-groups, year-end close) built through the MCP and proven against published worked answers.
+
+**TM1 / v11 platform**
+- **Windows reserved device names.** TM1 saves every object as a file, so on a Windows server a name whose part
+  before the first dot is `CON`/`PRN`/`AUX`/`NUL`/`COM1-9`/`LPT1-9` can't be created (400 code 178 "Failed to
+  register object"). Names with spaces (`CON Data`) are fine; `CON.Something` is not.
+- **v11 returns 400 code 278 ("already exists"), not 409, for a duplicate POST.** Create-or-replace must PATCH
+  only on 409 or 400/278 and rethrow anything else (fixed in `tm1_client.createOrReplaceProcess`).
+- **A data leaf can't be a consolidated node in an alternate hierarchy** (`ElementLeafConsolidationConflict`,
+  and the failed call leaves an empty hierarchy behind). For a structure-only tree over data leaves, use separate
+  node elements or a parent attribute.
+- **`tm1.ProcessFeeders` (MCP `reprocess_feeders`) isn't resolvable on this v11** — keep a
+  `<prefix> Reprocess Feeders` TI with `CubeProcessFeeders` in every model.
+- **TM1 returns process code with `\r\n` line endings** — regex edits of fetched TI must allow `\r?\n`.
+
+**TI patterns**
+- **`ProcessError` rolls back everything the process wrote, including its own log lines.** End validation
+  failures with `ProcessQuit` (writes persist, status `QuitCalled`) and have callers test
+  `ExecuteProcess(...) <> ProcessExitNormal()`.
+- **No end-of-line comments in TI:** `nX = 1;  # note` is a syntax error, and it only shows at run time.
+- **`LogOutput` goes to tm1server.log, not the process error file** — write validation messages to a run-log
+  cube the run can be read back from.
+- **Clear + `CellIncrementN` = idempotent re-runs** when two postings can hit the same cell.
+- **In a Prolog, `ELCOMP` reads the committed structure** — delete children by counting down from a fixed
+  `ELCOMPN`; a "while children > 0" loop never ends.
+- **Long processes outlive the MCP `run_process` timeout** — the process still completes; poll `Threads` until
+  idle before reading results.
+
+**Rules and feeders**
+- **Under SKIPCHECK an under-fed classification cube doesn't give a slightly wrong number — it silently drops
+  rows** (a subsidiary read as 0% control, no error). Feed only the leaf cells that roll into a consolidation;
+  values read with `DB()` always evaluate.
+- **Self-checking feeders:** a direct read of one leaf always evaluates the rule, a consolidation adds only fed
+  leaves — so Σ(leaf reads) − consolidated total ≠ 0 means under-fed. Run it as a TI inside every run and as an
+  MDX assertion (`WITH MEMBER [Dim].[Feed Gap] AS SUM(leaves) - [Dim].[Total]` → 0).
+- **Recursive ownership as live rules:** recursion that runs downward only resolves any depth with no
+  per-depth blocks; keep IF-nesting ≤ 2 with helper measures, or chain depth blocks with `CONTINUE`.
+
+**Data design**
+- **Store movements; get balances from the period dimension** (`yyyy OBL` + `LTD FYyyyy Pnn` = OBL + YTD).
+  Point-in-time stocks (ownership %) are read at month leaves only.
+- **Movements + an OBL leaf need a year-end close**, even for monthly actuals — nothing fills the OBL by itself,
+  so P01 of a new year opens at zero. Find the OBL from the period dimension, not by name.
+- **Journals as closing positions, stored as movements** (movement = closing − prior LTD): re-runs and
+  multi-month runs never double-count. One-off gains computed as closing positions must go to P&L only in their
+  own year, to retained earnings b/f after the close.
+- **Mid-run reads of a derived layer see the closing target, not the movement** — read copied layers at LTD and
+  derived layers at the current month cell.
+- **Currency without a currency dimension:** data stays in the entity's currency (an attribute); translation is a
+  derived layer. Never retranslate history at the current average rate — chain it month by month, or months with
+  no movement drift when the rate changes (flat filler months are a cheap, sharp test for this).
+
+**Testing method**
+- **Hand-work every expected figure into test cases before writing any TI.** The consolidation run matched the
+  published answers on its first run because of this.
+- **Prove the design numerically first** — a 30-line script reproducing the published answer with the proposed
+  journals found a missing split before any TI existed.
+- **Re-run the whole regression set before every new case**; a rewrite that changes nothing for earlier cases is
+  the evidence it's safe.
+- **Published answers can be wrong** — one worked example was; corrected from first principles and documented.
+- **Where no published answer exists** (e.g. a second year), anchor on a published year and assert invariants
+  (no-movement months stable, opening = prior closing, rerun identical) plus hand calculations.
+- **Keep test payloads as files** — after an unclean stop they were the whole recovery (see the SaveDataAll entry).
+
+**IDE fixes from this build:** Cube Map writer scan now sees `CellIncrementN/S`, `ViewZeroOut`, `CubeClearData`;
+Period Builder rebuilds FY/YTD/rolling children instead of appending; catalog `ParseDate` corrected and `TM1User`
+added (both live-verified); rules-lint no longer splits on commas inside area references.
+
+### TM1 only persists cube data on SaveDataAll or a clean shutdown (Oct 2026)
+
+- A Windows v11 server went down uncleanly (a leftover `tm1sd.exe` held `PortNumber`, so the service's restarts
+  died with `E15) Server unable to listen on port …`; worked around with a new `PortNumber` — the REST port is
+  separate, so IDE/MCP/PAW were unaffected). On restart **all input cube data loaded via REST/TI since the last
+  save was gone**; metadata, processes, rules and attribute values survived. "Transaction log write-locked, recovery possible" is NOT replayed automatically for a service.
+- Recovered by reloading every test payload (kept as JSON files) + reprocess feeders + the full test run → all
+  green. Then SaveDataAll.
+- **Rule now: SaveDataAll after every data load / build** (a `<prefix> Save Data` TI), and a scheduled save chore.
+  Keep test payloads as files, not only as one-off write_cells calls — they were the whole recovery.
+
+### Storing documents in TM1 v11 Applications (Oct 2026 — phase 0 of model-owned history)
+
+- `Contents('Files')` is v12-only; on v11.8 use `Contents('Applications')`.
+- Folder names **can't start with `}`** (POST 400) — Applications folders can't be hidden by naming.
+- A document named `X` gets ID **`X.blob`**; address it by ID. Content is at **`…/Contents('X.blob')/Document/Content`**
+  on v11 (`…/Contents('X')/Content` → 404 "'Content' resource can not be resolved on type 'DocumentReference'").
+- Deleting a folder deletes its documents. 5 MB writes fine (~0.3 s).
+- Documents survived a stuck shutdown + VM reboot with no SaveDataAll — unlike cube data (see the SaveDataAll entry).
+- A stuck shutdown ("Saving… The server is coming down… Deactivating chore", then nothing; REST refuses connections,
+  service won't stop, Task Manager can't kill it) needed a VM reboot. Cube data came back intact (full assertion set green).

@@ -1,4 +1,70 @@
-# TM1 IDE — Deployment Architecture
+# TM1 IDE — Deployment Pipeline
+
+← [Back to README](../README.md)
+
+## Using the pipeline
+
+Built-in CI/CD for promoting changes from Dev to Prod.
+
+Every save in the IDE is logged to a **Change Set** (named work session). The pipeline compares your changes against a **baseline snapshot** of the target server — not Dev — so only objects that have actually changed relative to the target get packaged.
+
+Baselines are **append-only per server** (`.tm1baseline/<server>/<iso>.json` + a `HEAD` pointer), stamped with the change-log position so a release windows on change-set id, not a timestamp. A mistimed seed is recoverable by moving HEAD back to an earlier snapshot.
+
+### Flow
+
+```
+  ① Seed baseline     ② Work in Dev         ③ Diff & Package
+    on the target  ──→   via change set  ──→   vs the baseline
+    (snapshot)           (IDE tracks)          (release window)
+                                                  │
+                                                  ▼
+  ④ Drift re-check     ⑤ Risk + Approve     ⑥ Deploy to target
+    target hasn't   ──→   syntax / deps /  ──→   then auto-verify
+    changed?              structural            + auto re-seed baseline
+```
+
+### Steps
+
+**① Seed** — snapshot the target's object state into an append-only baseline (one per server):
+```bash
+node tools/tm1deploy/bin/tm1deploy.js seed <prod-server>
+```
+Use the **Deploy Center → Baselines** view (header icon) to seed, inspect history, and move HEAD.
+
+**② Work** — click the **Clock** icon → name the change set → **Start**. Green dots appear in the Explorer sidebar on every changed object.
+
+**③ Diff & Package** — from the Deploy Center, select the change set (or **Release** mode — everything changed since the baseline's change-log position) → **Package**. The diff outcomes:
+
+| Outcome | Meaning |
+|---------|---------|
+| `MATCH` | Changed in Dev, verified against baseline — ready to deploy |
+| `NEW` | Object exists on Dev but not in baseline |
+| `DRIFT` | Dev's current state differs from the last IDE save |
+| `UNCHANGED` | Same as baseline — nothing to deploy |
+| `MISSING` | In baseline but not found on Dev — possibly deleted |
+
+**④ Risk** — two phases run automatically:
+1. **Drift check** — fetches current state from the target and compares to baseline. Any drift **blocks deployment** until you re-seed.
+2. **Risk analysis** (if drift is clean) — syntax, dependencies, structural impact → `BLOCKER` / `WARNING` / `INFO`
+
+**⑤ Approve** — a named approver signs off with optional notes. Required before deployment unlocks.
+
+**⑥ Deploy** — objects written in dependency order: attributes → dimensions → cubes → picklist cubes → rules → subsets → views → processes. Post-deploy verification runs the source's assertions against the target, then **auto re-seeds the target baseline** — so the next release starts from the new state. Pre/post snapshots captured and stored in Deploy History.
+
+### CLI (optional)
+
+```bash
+node tools/tm1deploy/bin/tm1deploy.js seed <prod-server>
+node tools/tm1deploy/bin/tm1deploy.js diff <session-name>
+node tools/tm1deploy/bin/tm1deploy.js package <session-name>
+node tools/tm1deploy/bin/tm1deploy.js risk <package-dir> <target-server>
+node tools/tm1deploy/bin/tm1deploy.js deploy <package-dir> <target-server>
+```
+
+
+---
+
+# Design and internals
 
 ## Core Philosophy
 
