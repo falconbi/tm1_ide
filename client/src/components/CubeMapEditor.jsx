@@ -299,12 +299,14 @@ function GroupNode({ data }) {
       width: '100%', height: '100%', borderRadius: 10,
       border: `1.5px solid ${data.color}55`,
       background: data.bg,
-      pointerEvents: 'none',
-    }}>
+      pointerEvents: 'auto',
+      cursor: 'pointer',
+      transition: 'border-color 0.15s',
+    }} title={`Focus module ${data.label}`}>
       <div style={{
         position: 'absolute', top: 6, left: 10,
         fontSize: 9, fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase',
-        color: data.color, display: 'flex', alignItems: 'center', gap: 5,
+        color: data.color, display: 'flex', alignItems: 'center', gap: 5, pointerEvents: 'none',
       }}>
         {data.label}
         <span style={{ fontWeight: 400, opacity: 0.55, fontVariantNumeric: 'tabular-nums' }}>{data.count}</span>
@@ -710,6 +712,7 @@ function CubeMapInner({ tab }) {
   const [edges, setEdges, onEdgesChange] = useEdgesState([])
 
   const [selectedCube,   setSelectedCube]   = useState(null)
+  const [moduleFocus,    setModuleFocus]    = useState(null)
   const [focused,        setFocused]        = useState(false)
   const [traceKinds,     setTraceKinds]     = useState(TRACE_KIND_DEFAULTS)
   const [search,         setSearch]         = useState('')
@@ -766,22 +769,32 @@ function CubeMapInner({ tab }) {
   const reverseMap = useMemo(() => cubeData ? buildReverseMap(cubeData) : {}, [cubeData])
 
   // ── Reachable set (focus) ─────────────────────────────────────────────────────
-  // Anything reachable from the focused node through the selected edge kinds,
-  // depth-limited. Node ids may be cubes, `proc:<name>` or `dim:<name>`.
+  // Anything reachable from the focused node (or module) through the selected
+  // edge kinds, depth-limited. Node ids may be cubes, `proc:<name>` or `dim:<name>`.
   const selectedType = selectedCube?.startsWith('proc:') ? 'process' : selectedCube?.startsWith('dim:') ? 'dim' : 'cube'
+  // Modules = cubes sharing a group key (from the configured regex, or the
+  // underscore-prefix fallback). Used for the module lens.
+  const modulesMap = useMemo(() => cubeData ? computePrefixGroups(Object.keys(cubeData), groupRegex) : {}, [cubeData, groupRegex])
+  const modules = useMemo(() => Object.keys(modulesMap).sort(), [modulesMap])
   const reachableSet = useMemo(() => {
-    if (!selectedCube || !cubeData) return null
+    if (!cubeData) return null
     const ctx = { cubeData, processData, dimData, reverseMap, processCallers }
+    if (moduleFocus) {
+      const seeds = modulesMap[moduleFocus] ?? []
+      if (!seeds.length) return null
+      return getReachable(seeds, traceDepth, traceKinds, ctx)
+    }
+    if (!selectedCube) return null
     return getReachable([selectedCube], traceDepth, traceKinds, ctx)
-  }, [selectedCube, traceDepth, cubeData, processData, dimData, reverseMap, processCallers, traceKinds])
+  }, [moduleFocus, selectedCube, traceDepth, traceKinds, cubeData, processData, dimData, reverseMap, processCallers, modulesMap])
 
   // ── Build graph ───────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!cubeData) return
 
     // Focus mode: the reachable subgraph (cubes + processes + dims) around the
-    // selected node, through the chosen edge kinds, laid out together.
-    if (focused && selectedCube && reachableSet) {
+    // selected node or module, through the chosen edge kinds, laid out together.
+    if (focused && reachableSet) {
       const inSet = new Set(reachableSet)
       const isP = id => id.startsWith('proc:') && processData[id.slice(5)]
       const isD = id => id.startsWith('dim:') && dimData[id.slice(4)]
@@ -916,7 +929,7 @@ function CubeMapInner({ tab }) {
     const seq = buildRunSequence({ kind, name: rest.join(':') }, processData, cubeData, chores)
       .filter(it => showDims || !it.nodes.some(n => n.startsWith('dim:')) || it.edges.length === 0)
     // the playback needs every process on the map
-    setAllTI(true); setShowProcesses(true); setFocused(false); setSelectedCube(null); setDimFilter(null)
+    setAllTI(true); setShowProcesses(true); setFocused(false); setSelectedCube(null); setModuleFocus(null); setDimFilter(null)
     setRunEntry(key); setRunSeq(seq); setRunIdx(0); setPlaying(true)
     showRunningRef.current = true
     // one fit once the All TI layout has rendered, then the camera stays where the user puts it
@@ -1014,13 +1027,24 @@ function CubeMapInner({ tab }) {
   }), [edges, dimmedIds, runHighlight])
 
   // ── Interactions ──────────────────────────────────────────────────────────────
+  const focusModule = useCallback((key) => {
+    if (!key) return
+    setModuleFocus(key)
+    setSelectedCube(null)
+    setFocused(true)
+    setDimmedIds(new Set())
+    const n = getNode(`__group__${key}`)
+    if (n) setCenter(n.position.x + n.style?.width / 2, n.position.y + (n.style?.height ?? 0) / 2, { duration: 350, zoom: 1.1 })
+  }, [getNode, setCenter])
+
   const onNodeClick = useCallback((_, node) => {
-    if (node.type === 'group') return
+    if (node.type === 'group') { focusModule(node.data.label); return }
     setSelectedCube(node.id)
+    setModuleFocus(null)
     setFocused(true)
     const n = getNode(node.id)
     if (n) setCenter(n.position.x + NODE_W / 2, n.position.y + NODE_H / 2, { duration: 350, zoom: 1.2 })
-  }, [getNode, setCenter])
+  }, [getNode, setCenter, focusModule])
 
   const onNodeDoubleClick = useCallback((_, node) => {
     if (node.type === 'cube') {
@@ -1043,16 +1067,17 @@ function CubeMapInner({ tab }) {
   }, [cubeData, openTab, srv])
 
   const onPaneClick = useCallback(() => {
-    setSelectedCube(null); setDimmedIds(new Set()); setFocused(false)
+    setModuleFocus(null); setSelectedCube(null); setDimmedIds(new Set()); setFocused(false)
   }, [])
 
   const exitFocus = useCallback(() => {
-    setSelectedCube(null); setDimmedIds(new Set()); setFocused(false)
+    setModuleFocus(null); setSelectedCube(null); setDimmedIds(new Set()); setFocused(false)
   }, [])
 
   const navigateTo = useCallback((name) => {
     const found = nodes.find(n => n.id === name)
     if (!found) return
+    setModuleFocus(null)
     setSelectedCube(name)
     setFocused(true)
     setCenter(found.position.x + NODE_W / 2, found.position.y + NODE_H / 2, { duration: 400, zoom: 1.2 })
@@ -1064,7 +1089,7 @@ function CubeMapInner({ tab }) {
   const openProcess = (name)  => openTab({ id: `process:${srv}:${name}`,          type: 'process',    label: name,    server: srv, name, content: null })
 
   // ── Dim filter ────────────────────────────────────────────────────────────────
-  const handleFilterDim = (dim) => { setDimFilter(p => p === dim ? null : dim); setSelectedCube(null); setFocused(false) }
+  const handleFilterDim = (dim) => { setDimFilter(p => p === dim ? null : dim); setModuleFocus(null); setSelectedCube(null); setFocused(false) }
 
   // ── Sidebar list ──────────────────────────────────────────────────────────────
   const filteredCubes = useMemo(() => {
@@ -1075,7 +1100,7 @@ function CubeMapInner({ tab }) {
 
   const transitiveCount = reachableSet ? reachableSet.size - 1 : 0
   const reachableCapped = reachableSet ? reachableSet.size >= MAX_FOCUS_NODES : false
-  const focusLabel = selectedCube?.replace(/^(proc|dim):/, '') ?? ''
+  const focusLabel = moduleFocus ? `module ${moduleFocus}` : (selectedCube?.replace(/^(proc|dim):/, '') ?? '')
 
   const spotlitCount = useMemo(() => {
     if (!spotQ || !cubeData) return 0
@@ -1194,6 +1219,17 @@ function CubeMapInner({ tab }) {
             <Toggle active={showCalc}      onClick={() => setShowCalc(v => !v)}      color="#b45309" label="Rules" />
             <Toggle active={showFeeders}   onClick={() => setShowFeeders(v => !v)}   color="#475569" label="Feeders" dashed />
             <Toggle active={showClusters}  onClick={() => setShowClusters(v => !v)}  color="#6366f1" label="Groups" title={groupRegex ? `Group by regex: ${groupRegex}` : 'Group by prefix before first underscore'} />
+            {modules.length > 0 && (
+              <select
+                value={moduleFocus ?? ''}
+                onChange={e => e.target.value ? focusModule(e.target.value) : exitFocus()}
+                title="Focus a module — cubes sharing a group key"
+                style={{ fontSize: 10, padding: '2px 4px', background: 'var(--cm-node-bg)', color: 'var(--cm-text)', border: `1px solid ${moduleFocus ? 'var(--cm-link)' : 'var(--cm-border)'}`, borderRadius: 4, cursor: 'pointer', maxWidth: 130 }}
+              >
+                <option value="">Module…</option>
+                {modules.map(m => <option key={m} value={m}>{m}</option>)}
+              </select>
+            )}
             <Toggle active={showProcesses} onClick={() => setShowProcesses(v => !v)} color="#10b981" label="TI" />
             <Toggle active={allTI && showProcesses} onClick={() => { setAllTI(v => !v); setShowProcesses(true) }} color="#0ea5e9" label="All TI" />
             {allTI && showProcesses && <Toggle active={showDims} onClick={() => setShowDims(v => !v)} color="#8b5cf6" label="Dims" />}
@@ -1295,7 +1331,7 @@ function CubeMapInner({ tab }) {
             onClose={stopShow}
           />
         )}
-        {focused && selectedCube && (
+        {focused && (selectedCube || moduleFocus) && (
           <div style={{
             position: 'absolute', top: 10, left: 10, zIndex: 5,
             background: 'var(--cm-panel-bg)', border: '1px solid var(--cm-border)',
@@ -1308,6 +1344,18 @@ function CubeMapInner({ tab }) {
               Focused on <b style={{ color: 'var(--cm-link)' }}>{focusLabel}</b>
               {transitiveCount > 0 && <span style={{ color: 'var(--cm-text-muted)' }}> · {transitiveCount} connected{reachableCapped ? ' (capped)' : ''}</span>}
             </span>
+            {moduleFocus && (
+              <div style={{ display: 'flex', gap: 2 }} title="How many hops to follow through the selected edge kinds">
+                {[1, 2, 3, 4].map(d => (
+                  <button key={d} onClick={() => setTraceDepth(d)} style={{
+                    padding: '1px 5px', fontSize: 10, borderRadius: 3, cursor: 'pointer',
+                    background: d === traceDepth ? 'var(--cm-sel-bg)' : 'none',
+                    border: `1px solid ${d === traceDepth ? 'var(--cm-link)' : 'var(--cm-border)'}`,
+                    color: d === traceDepth ? 'var(--cm-link)' : 'var(--cm-text-muted)',
+                  }}>{d}</button>
+                ))}
+              </div>
+            )}
             <button onClick={exitFocus} title="Exit focus — show full map" style={{
               background: 'none', border: 'none', cursor: 'pointer', padding: 2,
               color: 'var(--cm-icon)', borderRadius: 4, display: 'flex', alignItems: 'center',
