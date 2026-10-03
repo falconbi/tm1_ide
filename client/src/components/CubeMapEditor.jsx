@@ -48,21 +48,61 @@ function buildReverseMap(cubeData) {
   return rev
 }
 
-function getTransitiveSet(name, depth, cubeData, reverseMap) {
-  const result = new Set([name])
-  let frontier = [name]
-  for (let d = 0; d < depth; d++) {
-    const next = []
-    for (const n of frontier) {
-      for (const ref of [...(cubeData[n]?.ruleCalcRefs ?? []), ...(cubeData[n]?.ruleFeederRefs ?? [])]) {
-        if (!result.has(ref) && cubeData[ref]) { result.add(ref); next.push(ref) }
-      }
-      for (const ref of (reverseMap[n] ?? [])) {
-        if (!result.has(ref) && cubeData[ref]) { result.add(ref); next.push(ref) }
+// ── Typed adjacency (P1): reachability through rules AND TI edges ─────────────
+// A node id is a cube name, `proc:<name>` or `dim:<name>`. `kinds` selects which
+// edge types the traversal follows, so "graph from here" can walk the process
+// network (reads/writes/calls/dim changes) as well as rule links.
+const MAX_FOCUS_NODES = 250
+
+const TRACE_KIND_DEFAULTS = { rule: true, feeder: true, read: true, write: true, dimwrite: true, call: true, dimuse: true }
+
+function getNeighbors(id, ctx, kinds) {
+  const { cubeData, processData, dimData, reverseMap, processCallers } = ctx
+  const n = []
+  const add = (x) => n.push(x)
+  if (id.startsWith('proc:')) {
+    const p = processData[id.slice(5)]
+    if (!p) return n
+    if (kinds.read) p.reads.forEach(add)
+    if (kinds.write) p.writes.forEach(add)
+    if (kinds.dimwrite) (p.dimWrites ?? []).forEach(d => add(`dim:${d}`))
+    if (kinds.call) {
+      p.calls.forEach(c => add(`proc:${c}`))
+      ;(processCallers[id.slice(5)] ?? []).forEach(c => add(`proc:${c}`))
+    }
+  } else if (id.startsWith('dim:')) {
+    const name = id.slice(4)
+    if (kinds.dimwrite) {
+      for (const [pn, p] of Object.entries(processData)) {
+        if ((p.dimWrites ?? []).includes(name)) add(`proc:${pn}`)
       }
     }
+    if (kinds.dimuse && dimData?.[name]) dimData[name].cubes.forEach(add)
+  } else {
+    const d = cubeData[id]
+    if (!d) return n
+    if (kinds.rule) { (d.ruleCalcRefs ?? []).forEach(add); (reverseMap[id] ?? []).forEach(add) }
+    if (kinds.feeder) (d.ruleFeederRefs ?? []).forEach(add)
+    if (kinds.read) (d.tiReaders ?? []).forEach(pn => add(`proc:${pn}`))
+    if (kinds.write) (d.tiWriters ?? []).forEach(pn => add(`proc:${pn}`))
+  }
+  return n
+}
+
+function getReachable(startIds, depth, kinds, ctx) {
+  const result = new Set(startIds)
+  let frontier = [...startIds]
+  for (let d = 0; d < depth; d++) {
+    const next = []
+    for (const id of frontier) {
+      for (const nid of getNeighbors(id, ctx, kinds)) {
+        if (result.size >= MAX_FOCUS_NODES) break
+        if (!result.has(nid)) { result.add(nid); next.push(nid) }
+      }
+      if (result.size >= MAX_FOCUS_NODES) break
+    }
     frontier = next
-    if (!next.length) break
+    if (!next.length || result.size >= MAX_FOCUS_NODES) break
   }
   return result
 }
@@ -490,7 +530,7 @@ function DetailPanel({
   onOpenRules, onOpenCube, onOpenProcess,
   processCallers = {},
   onFilterDim, dimFilter,
-  traceDepth, setTraceDepth, transitiveCount,
+  traceDepth, setTraceDepth, traceKinds, setTraceKinds, transitiveCount,
 }) {
   if (!cube || !cubeData) return null
   const { dims, hasRules, ruleCalcRefs, ruleFeederRefs, tiWriters = [], tiReaders = [], ruleLoc = 0 } = cubeData
@@ -529,9 +569,9 @@ function DetailPanel({
 
       {/* Trace depth */}
       <div style={{ padding: '8px 12px', borderBottom: '1px solid var(--cm-border)' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 5 }} title="Depth of rule-based links followed (DB() references and feeders). TI read/write connections are not included — the process nodes shown are added separately.">
+        <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 5 }} title="How many hops to follow from this cube through the edge kinds selected below (rules AND TI reads/writes/calls/dimension usage).">
           <GitBranch size={10} style={{ color: 'var(--cm-text-muted)' }} />
-          <span style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--cm-text-muted)', opacity: 0.65 }}>Rule trace depth</span>
+          <span style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--cm-text-muted)', opacity: 0.65 }}>Trace depth</span>
         </div>
         <div style={{ display: 'flex', gap: 3 }}>
           {[1, 2, 3, 4].map(d => (
@@ -543,6 +583,30 @@ function DetailPanel({
               color: d === traceDepth ? 'var(--cm-link)' : 'var(--cm-text-muted)',
               transition: 'all 0.1s',
             }}>{d}</button>
+          ))}
+        </div>
+      </div>
+
+      {/* Follow kinds */}
+      <div style={{ padding: '8px 12px', borderBottom: '1px solid var(--cm-border)' }} title="Edge kinds the trace follows. Untick to cut whole relationship types out of the reachable graph.">
+        <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 5 }}>
+          <Zap size={10} style={{ color: 'var(--cm-text-muted)' }} />
+          <span style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--cm-text-muted)', opacity: 0.65 }}>Follow</span>
+        </div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+          {[
+            { k: 'rule',     label: 'Rules' },
+            { k: 'feeder',   label: 'Feeders' },
+            { k: 'read',     label: 'TI reads' },
+            { k: 'write',    label: 'TI writes' },
+            { k: 'call',     label: 'Calls' },
+            { k: 'dimwrite', label: 'Dim changes' },
+            { k: 'dimuse',   label: 'Dim usage' },
+          ].map(o => (
+            <label key={o.k} style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 10, color: 'var(--cm-text-muted)', cursor: 'pointer' }}>
+              <input type="checkbox" checked={!!traceKinds[o.k]} onChange={() => setTraceKinds({ ...traceKinds, [o.k]: !traceKinds[o.k] })} />
+              {o.label}
+            </label>
           ))}
         </div>
       </div>
@@ -647,6 +711,7 @@ function CubeMapInner({ tab }) {
 
   const [selectedCube,   setSelectedCube]   = useState(null)
   const [focused,        setFocused]        = useState(false)
+  const [traceKinds,     setTraceKinds]     = useState(TRACE_KIND_DEFAULTS)
   const [search,         setSearch]         = useState('')
   const [showFeeders,    setShowFeeders]     = useState(true)
   const [showCalc,       setShowCalc]        = useState(true)
@@ -700,23 +765,60 @@ function CubeMapInner({ tab }) {
   // Pre-computed reverse map (who references whom)
   const reverseMap = useMemo(() => cubeData ? buildReverseMap(cubeData) : {}, [cubeData])
 
-  // ── Transitive set ────────────────────────────────────────────────────────────
-  const transitiveSet = useMemo(() => {
+  // ── Reachable set (focus) ─────────────────────────────────────────────────────
+  // Anything reachable from the focused node through the selected edge kinds,
+  // depth-limited. Node ids may be cubes, `proc:<name>` or `dim:<name>`.
+  const selectedType = selectedCube?.startsWith('proc:') ? 'process' : selectedCube?.startsWith('dim:') ? 'dim' : 'cube'
+  const reachableSet = useMemo(() => {
     if (!selectedCube || !cubeData) return null
-    return getTransitiveSet(selectedCube, traceDepth, cubeData, reverseMap)
-  }, [selectedCube, traceDepth, cubeData, reverseMap])
+    const ctx = { cubeData, processData, dimData, reverseMap, processCallers }
+    return getReachable([selectedCube], traceDepth, traceKinds, ctx)
+  }, [selectedCube, traceDepth, cubeData, processData, dimData, reverseMap, processCallers, traceKinds])
 
   // ── Build graph ───────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!cubeData) return
 
-    // Focus mode: only the selected cube's transitive neighborhood (within traceDepth).
-    // Otherwise the whole model (optionally filtered by a dimension).
-    const visibleSet = (focused && selectedCube && transitiveSet)
-      ? new Set([...transitiveSet].filter(n => cubeData[n]))
-      : dimFilter
-        ? new Set(Object.keys(cubeData).filter(n => cubeData[n].dims.includes(dimFilter)))
-        : new Set(Object.keys(cubeData))
+    // Focus mode: the reachable subgraph (cubes + processes + dims) around the
+    // selected node, through the chosen edge kinds, laid out together.
+    if (focused && selectedCube && reachableSet) {
+      const inSet = new Set(reachableSet)
+      const isP = id => id.startsWith('proc:') && processData[id.slice(5)]
+      const isD = id => id.startsWith('dim:') && dimData[id.slice(4)]
+      const rawNodes = [...reachableSet].map(id => {
+        if (isP(id)) return { id, type: 'process', data: { label: id.slice(5) }, position: { x: 0, y: 0 } }
+        if (isD(id)) return { id, type: 'dim', data: { label: id.slice(4) }, position: { x: 0, y: 0 } }
+        const d = cubeData[id]
+        return { id, type: 'cube', data: { label: id, hasRules: d?.hasRules, ruleLoc: d?.ruleLoc ?? 0, dimCount: d?.dims.length ?? 0 }, position: { x: 0, y: 0 } }
+      })
+      const rawEdges = []
+      const addEdge = (type, source, target) => {
+        if (inSet.has(source) && inSet.has(target)) rawEdges.push({ id: `${type}:${source}:${target}`, source, target, type })
+      }
+      for (const id of reachableSet) {
+        if (isP(id)) {
+          const name = id.slice(5), p = processData[name]
+          p.reads.forEach(c => addEdge('process_read', c, id))
+          p.writes.forEach(c => addEdge('process_write', id, c))
+          ;(p.dimWrites ?? []).forEach(d => addEdge('process_dimwrite', id, `dim:${d}`))
+          p.calls.forEach(c => addEdge('process_call', id, `proc:${c}`))
+        } else if (isD(id)) {
+          const name = id.slice(4)
+          ;(dimData[name]?.cubes ?? []).forEach(c => addEdge('dim_used_by', id, c))
+        } else {
+          const d = cubeData[id]
+          if (showCalc) (d?.ruleCalcRefs ?? []).forEach(t => addEdge('rule_calc', id, t))
+          if (showFeeders) (d?.ruleFeederRefs ?? []).forEach(t => addEdge('rule_feeder', id, t))
+        }
+      }
+      setNodes(applyGrouping(applyDagreLayout(rawNodes, rawEdges, layout), showClusters, groupRegex))
+      setEdges(rawEdges)
+      return
+    }
+
+    const visibleSet = dimFilter
+      ? new Set(Object.keys(cubeData).filter(n => cubeData[n].dims.includes(dimFilter)))
+      : new Set(Object.keys(cubeData))
 
     const rawNodes = [...visibleSet].map(name => ({
       id: name, type: 'cube',
@@ -789,7 +891,7 @@ function CubeMapInner({ tab }) {
     setNodes(applyGrouping(applyDagreLayout(rawNodes, rawEdges, layout), showClusters, groupRegex))
     setEdges(rawEdges)
     if (!focused) { setSelectedCube(null); setDimmedIds(new Set()) }
-  }, [cubeData, processData, dimData, allTI, showDims, showProcesses, showCalc, showFeeders, layout, dimFilter, showClusters, groupRegex, focused, selectedCube, traceDepth, transitiveSet])
+  }, [cubeData, processData, dimData, allTI, showDims, showProcesses, showCalc, showFeeders, layout, dimFilter, showClusters, groupRegex, focused, selectedCube, traceDepth, traceKinds, reachableSet])
 
   // ── Fit view ──────────────────────────────────────────────────────────────────
   // (not while Show is running — the camera holds still there; startShow does one fit itself)
@@ -860,73 +962,12 @@ function CubeMapInner({ tab }) {
     return { nodes: new Set(runStep.nodes), edges: new Set(runStep.edges), trailNodes, trailEdges }
   }, [runSeq, runStep, runIdx])
 
-  // ── Process satellite nodes (writers + their callers, focused-view only) ───────
-  // These are merged directly into the managed `nodes`/`edges` state (not a derived
-  // useMemo) so React Flow's own dimension-measurement settles on them across
-  // renders. Deriving them fresh from `nodes` every render (the first version of
-  // this) fed back into an infinite loop: unmeasured nodes trigger a dimension
-  // change -> node state updates -> re-derive -> fresh unmeasured nodes -> repeat.
-  useEffect(() => {
-    if (allTI) return
-    setNodes(prev => {
-      const cubeOnly = prev.filter(n => n.type !== 'process')
-      if (!selectedCube || !showProcesses || !cubeData || !transitiveSet) return cubeOnly
-
-      const laneOffset = NODE_W + 70
-      const placed = new Map()
-      const placeNode = (name, x, y) => {
-        if (placed.has(name)) return placed.get(name)
-        const node = { id: `proc:${name}`, type: 'process', data: { label: name }, position: { x, y } }
-        placed.set(name, node)
-        return node
-      }
-
-      for (const cubeName of transitiveSet) {
-        const cubeNode = cubeOnly.find(n => n.id === cubeName)
-        if (!cubeNode) continue
-        const writers = cubeData[cubeName]?.tiWriters ?? []
-        writers.forEach((writer, i) => {
-          const wx = cubeNode.position.x - laneOffset
-          const wy = cubeNode.position.y + (i - (writers.length - 1) / 2) * (NODE_H + 16)
-          const wNode = placeNode(writer, wx, wy)
-
-          const callers = processCallers[writer] ?? []
-          callers.forEach((caller, j) => {
-            const cx = wNode.position.x - laneOffset
-            const cy = wNode.position.y + (j - (callers.length - 1) / 2) * (NODE_H + 16)
-            placeNode(caller, cx, cy)
-          })
-        })
-      }
-
-      return [...cubeOnly, ...placed.values()]
-    })
-
-    setEdges(prev => {
-      const ruleOnly = prev.filter(e => !PROCESS_EDGE_TYPES.has(e.type))
-      if (!selectedCube || !showProcesses || !cubeData || !transitiveSet) return ruleOnly
-
-      const procEdges = []
-      for (const cubeName of transitiveSet) {
-        const writers = cubeData[cubeName]?.tiWriters ?? []
-        writers.forEach(writer => {
-          procEdges.push({ id: `write:${writer}:${cubeName}`, source: `proc:${writer}`, target: cubeName, type: 'process_write' })
-          const callers = processCallers[writer] ?? []
-          callers.forEach(caller => {
-            procEdges.push({ id: `call:${caller}:${writer}`, source: `proc:${caller}`, target: `proc:${writer}`, type: 'process_call' })
-          })
-        })
-      }
-      return [...ruleOnly, ...procEdges]
-    })
-  }, [allTI, selectedCube, showProcesses, cubeData, transitiveSet, processCallers, setNodes, setEdges])
-
   // ── Dimming ───────────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!selectedCube) { setDimmedIds(new Set()); return }
-    const connected = transitiveSet ?? new Set([selectedCube])
+    const connected = reachableSet ?? new Set([selectedCube])
     setDimmedIds(new Set(nodes.filter(n => n.type === 'cube').map(n => n.id).filter(id => !connected.has(id))))
-  }, [transitiveSet, selectedCube, nodes])
+  }, [reachableSet, selectedCube, nodes])
 
   // ── Visual node/edge state ────────────────────────────────────────────────────
   const spotQ = dimSpotlight.trim().toLowerCase()
@@ -975,6 +1016,21 @@ function CubeMapInner({ tab }) {
   // ── Interactions ──────────────────────────────────────────────────────────────
   const onNodeClick = useCallback((_, node) => {
     if (node.type === 'group') return
+    setSelectedCube(node.id)
+    setFocused(true)
+    const n = getNode(node.id)
+    if (n) setCenter(n.position.x + NODE_W / 2, n.position.y + NODE_H / 2, { duration: 350, zoom: 1.2 })
+  }, [getNode, setCenter])
+
+  const onNodeDoubleClick = useCallback((_, node) => {
+    if (node.type === 'cube') {
+      const hasRules = cubeData?.[node.id]?.hasRules
+      openTab(hasRules
+        ? { id: `rules:${srv}:${node.id}`,      type: 'rules',      label: node.id, server: srv, cube: node.id }
+        : { id: `cubeeditor:${srv}:${node.id}`, type: 'cubeeditor', label: node.id, server: srv, cube: node.id }
+      )
+      return
+    }
     if (node.type === 'process') {
       const name = node.id.slice('proc:'.length)
       openTab({ id: `process:${srv}:${name}`, type: 'process', label: name, server: srv, name, content: null })
@@ -983,21 +1039,7 @@ function CubeMapInner({ tab }) {
     if (node.type === 'dim') {
       const dim = node.id.slice('dim:'.length)
       openTab({ id: `dimension:${srv}:${dim}`, type: 'dimension', label: dim, server: srv, dimension: dim })
-      return
     }
-    setSelectedCube(node.id)
-    setFocused(true)
-    const n = getNode(node.id)
-    if (n) setCenter(n.position.x + NODE_W / 2, n.position.y + NODE_H / 2, { duration: 350, zoom: 1.2 })
-  }, [getNode, setCenter, openTab, srv])
-
-  const onNodeDoubleClick = useCallback((_, node) => {
-    if (node.type !== 'cube') return
-    const hasRules = cubeData?.[node.id]?.hasRules
-    openTab(hasRules
-      ? { id: `rules:${srv}:${node.id}`,      type: 'rules',      label: node.id, server: srv, cube: node.id }
-      : { id: `cubeeditor:${srv}:${node.id}`, type: 'cubeeditor', label: node.id, server: srv, cube: node.id }
-    )
   }, [cubeData, openTab, srv])
 
   const onPaneClick = useCallback(() => {
@@ -1031,7 +1073,9 @@ function CubeMapInner({ tab }) {
     return Object.keys(cubeData).filter(n => !q || n.toLowerCase().includes(q)).sort()
   }, [cubeData, search])
 
-  const transitiveCount = transitiveSet ? transitiveSet.size - 1 : 0
+  const transitiveCount = reachableSet ? reachableSet.size - 1 : 0
+  const reachableCapped = reachableSet ? reachableSet.size >= MAX_FOCUS_NODES : false
+  const focusLabel = selectedCube?.replace(/^(proc|dim):/, '') ?? ''
 
   const spotlitCount = useMemo(() => {
     if (!spotQ || !cubeData) return 0
@@ -1261,8 +1305,8 @@ function CubeMapInner({ tab }) {
           }}>
             <GitBranch size={12} style={{ color: 'var(--cm-link)', flexShrink: 0 }} />
             <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              Focused on <b style={{ color: 'var(--cm-link)' }}>{selectedCube}</b>
-              {transitiveCount > 0 && <span style={{ color: 'var(--cm-text-muted)' }}> · {transitiveCount} connected</span>}
+              Focused on <b style={{ color: 'var(--cm-link)' }}>{focusLabel}</b>
+              {transitiveCount > 0 && <span style={{ color: 'var(--cm-text-muted)' }}> · {transitiveCount} connected{reachableCapped ? ' (capped)' : ''}</span>}
             </span>
             <button onClick={exitFocus} title="Exit focus — show full map" style={{
               background: 'none', border: 'none', cursor: 'pointer', padding: 2,
@@ -1275,7 +1319,7 @@ function CubeMapInner({ tab }) {
       </div>
 
       {/* ── Detail panel ───────────────────────────────────────────────────── */}
-      {selectedCube && cubeData?.[selectedCube] && (
+      {selectedCube && selectedType === 'cube' && cubeData?.[selectedCube] && (
         <div className="cubemap-root">
           <DetailPanel
             cube={selectedCube}
@@ -1291,6 +1335,8 @@ function CubeMapInner({ tab }) {
             dimFilter={dimFilter}
             traceDepth={traceDepth}
             setTraceDepth={setTraceDepth}
+            traceKinds={traceKinds}
+            setTraceKinds={setTraceKinds}
             transitiveCount={transitiveCount}
           />
         </div>
