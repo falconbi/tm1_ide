@@ -821,11 +821,25 @@ function CubeMapInner({ tab }) {
         const d = cubeData[id]
         return { id, type: 'cube', data: { label: id, hasRules: d?.hasRules, ruleLoc: d?.ruleLoc ?? 0, dimCount: d?.dims.length ?? 0 }, position: { x: 0, y: 0 } }
       })
+      // Context dimensions: the dims the visible cubes use, shown even when no TI
+      // changes them. Informative only — never used to pull in more cubes.
+      if (traceKinds.dimuse) {
+        for (const id of reachableSet) {
+          if (isP(id) || isD(id)) continue
+          for (const dimName of cubeData[id]?.dims ?? []) {
+            const dimId = `dim:${dimName}`
+            if (!inSet.has(dimId)) {
+              inSet.add(dimId)
+              rawNodes.push({ id: dimId, type: 'dim', data: { label: dimName }, position: { x: 0, y: 0 } })
+            }
+          }
+        }
+      }
       const rawEdges = []
       const addEdge = (type, source, target) => {
         if (inSet.has(source) && inSet.has(target)) rawEdges.push({ id: `${type}:${source}:${target}`, source, target, type })
       }
-      for (const id of reachableSet) {
+      for (const id of inSet) {
         if (isP(id)) {
           const name = id.slice(5), p = processData[name]
           p.reads.forEach(c => addEdge('process_read', c, id))
