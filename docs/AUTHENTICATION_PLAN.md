@@ -34,8 +34,8 @@ either tested on a real server or plainly labelled untested, and the IDE never l
 | 1.9 | **Detect the method:** one request *without credentials*; read TM1's `WWW-Authenticate` (Basic, CAMNamespace, CAMPassport + gateway, Negotiate). No login attempt, so no lockout risk | **Tested ✅** |
 | 1.10 | **Adaptive sign-in dialog:** native/LDAP → user + password; CAM → + namespace | **Tested ✅** |
 | 1.11 | **CAM credentials** — header matched step by step to TM1py's implementation; labelled **untested** | **Built** — identical to TM1py; untested (no CAM lab) |
-| 1.12 | Remember method + username + namespace per server (never the password) | **Built** — awaiting test |
-| 1.13 | **"Test connection"** diagnostic in the dialog — shows what the server accepts and what the IDE would do, no credentials needed; safe to screenshot for remote testers | **Built** — awaiting test |
+| 1.12 | Remember method + username + namespace per server (never the password) | **Tested ✅** |
+| 1.13 | **"Test connection"** diagnostic in the dialog — shows what the server accepts and what the IDE would do, no credentials needed; safe to screenshot for remote testers | **Tested ✅** |
 | 1.14 | **Brand-new server on the network sign-in page** — "set the admin password" path (one blank-admin attempt, password must be set before continuing) | **Built** — awaiting test |
 | 1.15 | **Sample-password warning** — signing in as `admin` with IBM's well-known sample password shows "change it before sharing this IDE" | **Tested ✅** |
 
