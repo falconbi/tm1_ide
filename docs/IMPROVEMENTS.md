@@ -333,3 +333,22 @@ our own transport stays only as a fallback for sites that block git access from 
 - **Known risks:** whole-model granularity; TM1 server needs git access + token; documented quirks (tm1project.json,
   big dimensions, odd names). Keep our transport as a fallback for sites that block git from TM1.
 - **Open:** git host for the lab test — private GitHub repo vs a small lab git server (e.g. Gitea).
+
+### 10.2 Git readiness check — must pass before any push (logged 5 Oct 2026)
+
+- **Why:** TM1 tolerates stale references at runtime but its Git import does not. In the evaluation, one view whose
+  title pointed at a deleted version member ("Working") exported with `Selected: null`, PROD's pull rejected it, and
+  because a pull plan is all-or-nothing **one stale view blocked the whole deployment**. Every long-lived model collects
+  leftovers like this, and `tm1project` Ignore can't exclude a single view (only whole cubes/dimensions/processes).
+- **What it checks (each finding names the object, the reason and the fix):**
+  1. View titles with no selected member (`Selected` null) — incl. ones saved by the IDE's member-less title bug
+  2. Views and subsets that reference members which no longer exist (title/row/column members, static subset elements,
+     MDX expressions naming missing members)
+  3. Names TM1 Git is known not to round-trip (e.g. a comma in a subset name)
+  4. Anything in `tm1project` Ignore — reported, so nobody is surprised it isn't deployed
+- **Where it runs:** as a **BLOCKER in the deploy pipeline's risk check before every push**; on demand from a model
+  health screen; and in a read-only scan across servers.
+- **Prevention at save time:** the IDE always sets a resolved `Selected` title member when saving a view, and warns when
+  a view or subset being saved references a member that doesn't exist.
+- **Also for the community guide (TM1 Git):** "clean up stale references before adopting TM1 Git".
+
