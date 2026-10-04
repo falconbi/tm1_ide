@@ -297,3 +297,10 @@ candidates from first principles (no external implementation referenced).
 - **How:** First an audit — every doc checked against the code, with a list of what's stale,
   missing or wrong — approved before any rewriting starts.
 - **Effort:** Medium–Large.
+
+### 9.2 MCP `build_dimension`: Format values on a brand-new measure dimension fail (logged 4 Oct 2026)
+
+- **Bug:** creating a new `… Measure` dimension with `attribute_values` for `Format` in the same call fails with
+  "'}ElementAttributes_<dim>' can not be found" — the elements are created, the attribute (and its control cube) is not.
+- **Workaround:** call again with `attributes: [{ name: "Format" }]` declared explicitly, then the values apply.
+- **Fix:** create the `Format` attribute (and wait for its `}ElementAttributes_` cube) before writing values.
