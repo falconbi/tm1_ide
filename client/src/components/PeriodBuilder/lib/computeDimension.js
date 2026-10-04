@@ -218,6 +218,33 @@ export function generateBuildDimensionProlog(params, selectedSubsets = []) {
   out.push(`    ENDIF;`)
   out.push(``)
   out.push(`    # ─────────────────────────────────────────────`)
+  out.push(`    # Reset this FY's roll-ups before re-adding children, so a CHANGED FY start`)
+  out.push(`    # month can't leave stale months behind (without this, re-running July -> April`)
+  out.push(`    # gave FY2010 15 months). Clears children of FY + 36 YTD/YTG/LTD P01-P12 elements.`)
+  out.push(`    # Month and OBL leaves and all cube data are untouched - only consolidation edges.`)
+  out.push(`    # ELCOMP reads the COMMITTED structure in a Prolog, so count down from a fixed`)
+  out.push(`    # ELCOMPN - a "while children > 0" loop would never end.`)
+  out.push(`    # ─────────────────────────────────────────────`)
+  out.push(`    nReset = 0;`)
+  out.push(`    WHILE(nReset <= 36);`)
+  out.push(`        IF(nReset = 0);`)
+  out.push(`            sResetEl = sFY;`)
+  out.push(`        ELSE;`)
+  out.push(`            nResetP = MOD(nReset - 1, 12) + 1;`)
+  out.push(`            nResetT = INT((nReset - 1) / 12);`)
+  out.push(`            sResetEl = SUBST('YTDYTGLTD', nResetT * 3 + 1, 3) | ' FY' | NumberToString(nFY) | ' P' | IF(nResetP < 10, '0' | NumberToString(nResetP), NumberToString(nResetP));`)
+  out.push(`        ENDIF;`)
+  out.push(`        IF(DIMIX(cDimension, sResetEl) > 0);`)
+  out.push(`            nResetKids = ELCOMPN(cDimension, sResetEl);`)
+  out.push(`            WHILE(nResetKids > 0);`)
+  out.push(`                DimensionElementComponentDelete(cDimension, sResetEl, ELCOMP(cDimension, sResetEl, nResetKids));`)
+  out.push(`                nResetKids = nResetKids - 1;`)
+  out.push(`            END;`)
+  out.push(`        ENDIF;`)
+  out.push(`        nReset = nReset + 1;`)
+  out.push(`    END;`)
+  out.push(``)
+  out.push(`    # ─────────────────────────────────────────────`)
   out.push(`    # Create OBL leaf (e.g. 2025 OBL)`)
   out.push(`    # ─────────────────────────────────────────────`)
   out.push(`    sOBL = NumberToString(nFY) | ' OBL';`)
@@ -500,6 +527,22 @@ export function generateBuildDimensionEpilog(params, selectedSubsets = []) {
     `# =============================================`,
     `# 5. POPULATE ROLLING CONSOLIDATIONS (using Next Period chain)`,
     `# =============================================`,
+    `# Clear each Rolling N first - re-running Build with a later current period`,
+    `# otherwise leaves the old months in place (Rolling 3 would grow to 4, 5, ...).`,
+    `# Direct delete commits immediately, so count down from a fixed ELCOMPN.`,
+    `nRoll = 1;`,
+    `WHILE(nRoll <= 3);`,
+    `    sRoll = 'Rolling ' | SUBST('3 6 12', nRoll * 2 - 1, IF(nRoll = 3, 2, 1));`,
+    `    IF(DIMIX(cDimension, sRoll) > 0);`,
+    `        nRollKids = ELCOMPN(cDimension, sRoll);`,
+    `        WHILE(nRollKids > 0);`,
+    `            DimensionElementComponentDeleteDirect(cDimension, sRoll, ELCOMP(cDimension, sRoll, nRollKids));`,
+    `            nRollKids = nRollKids - 1;`,
+    `        END;`,
+    `    ENDIF;`,
+    `    nRoll = nRoll + 1;`,
+    `END;`,
+    ``,
     `IF(sCurrentPeriod @<> '');`,
     `    IF(DIMIX(cDimension, 'Rolling 3') > 0);`,
     `        sM = sCurrentPeriod;`,

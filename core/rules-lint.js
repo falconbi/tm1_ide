@@ -57,6 +57,7 @@ function skipString(text, i) {
 function countArgs(text, openParen) {
   let i = openParen + 1
   let depth = 1
+  let brackets = 0   // inside an area reference ['A', 'B'] or a {set} — its commas separate elements, not arguments
   let commas = 0
   let sawContent = false
   const n = text.length
@@ -66,7 +67,9 @@ function countArgs(text, openParen) {
     if (ch === '#') { while (i < n && text[i] !== '\n') i++; continue }
     if (ch === '(') { depth++; sawContent = true; i++; continue }
     if (ch === ')') { depth--; i++; continue }
-    if (ch === ',' && depth === 1) { commas++; i++; continue }
+    if (ch === '[' || ch === '{') { brackets++; sawContent = true; i++; continue }
+    if ((ch === ']' || ch === '}') && brackets > 0) { brackets--; i++; continue }
+    if (ch === ',' && depth === 1 && brackets === 0) { commas++; i++; continue }
     if (!/\s/.test(ch)) sawContent = true
     i++
   }

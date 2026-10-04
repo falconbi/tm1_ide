@@ -43,6 +43,9 @@ export const DEFAULT_SETTINGS = {
     uiAccent: 'blue',
     minimap: { rules: false, ti: false, sql: false },
   },
+  cubeMap: {
+    groupRegex: '',
+  },
 }
 
 /**

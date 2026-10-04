@@ -17,9 +17,6 @@ No TM1 Architect, no Perspectives, nothing to install on the server.
 
 ---
 
-> [!IMPORTANT]
-> **Major upgrade coming this week.** A large update is on its way: per-server logins, tests stored with the model, a slimmer README with full guides in `docs/`, and many editor improvements. Setup steps and configuration may change — if you're installing now, you may want to wait a few days, or pull again after the update lands. Every bug fix so far is listed in [docs/BUG_FIXES.md](docs/BUG_FIXES.md).
-
 > [!WARNING]
 > **Pre-release — for initial testing only.**
 > This project is under active development and is not yet production-ready. Expect rough edges, breaking changes between commits, and features that are incomplete or unstable. Do not use in a production TM1 environment without understanding the risks.
@@ -81,7 +78,8 @@ The frontend is pre-built — no build step needed. Full instructions: [Setup](d
 |---|---|
 | [Features](docs/FEATURES.md) | Every editor and tool, with screenshots |
 | [Setup](docs/SETUP.md) | Install, configure servers, run, development mode |
-| [Authentication](docs/AUTHENTICATION.md) | How the IDE signs in — direct, PAW, OAuth2 |
+| [Authentication](docs/AUTHENTICATION.md) | How the IDE signs in — per-server login, what's supported and tested |
+| [TM1 Authentication Guide](docs/TM1_AUTHENTICATION_GUIDE.md) | How every TM1 sign-in method works, in plain English — for anyone in TM1 |
 | [Architecture](docs/ARCHITECTURE.md) | How the pieces fit, project structure |
 | [Deployment pipeline](docs/DEPLOYMENT.md) | Change sets → diff → package → risk → deploy |
 | [MCP server](docs/MCP_SERVER.md) | Connecting an AI agent to build and test models |

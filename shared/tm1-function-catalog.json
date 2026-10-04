@@ -2040,14 +2040,15 @@
     "returnType": "numeric"
   },
   "PARSEDATE": {
-    "compat": "v12",
+    "compat": "both",
     "deprecated": null,
-    "description": "Parses a date string into a TM1 serial date number (format pattern, date string) \u2014 e.g. ParseDate('yyyyMMdd', '20260101'). Both args are plain strings.",
+    "description": "Parses a date string into a TM1 serial date number (days since 1960-01-01) \u2014 (date string, format pattern, optional UseLocaleDate 0/1) \u2014 e.g. ParseDate('2026-07-01', 'yyyy-MM-dd') = 24288. Add 21916 for an Excel serial. Live-verified on TM1 v11 (Sep 2026), 2 and 3 args.",
     "isStatement": false,
     "language": "ti",
     "params": [
       "value",
-      "value"
+      "value",
+      "value?"
     ],
     "returnType": "numeric"
   },
@@ -2546,6 +2547,15 @@
       "unit"
     ],
     "returnType": "numeric"
+  },
+  "TM1USER": {
+    "compat": "both",
+    "deprecated": null,
+    "description": "Returns the name of the user running the process (or the rule/session context). Live-verified on TM1 v11 (Sep 2026): TM1User() in TI returned 'Admin'.",
+    "isStatement": false,
+    "language": "ti",
+    "params": [],
+    "returnType": "string"
   },
   "TODAY": {
     "compat": "both",

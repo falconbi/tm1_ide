@@ -14,7 +14,7 @@ import { catalogEntry } from '@/lib/catalog-runtime.js'
 // getVersion: function that returns the connected server's product version (optional)
 let _tm1LanguageRegistered = false
 
-function registerTM1Completions(monaco, getServer, getVersion) {
+function registerTM1Completions(monaco, _getServer, _getVersion) {
   // Monaco registers providers globally — only register the language, tokenizer,
   // folding and snippets once app-wide, or every editor mount accumulates copies.
   if (_tm1LanguageRegistered) return
@@ -73,7 +73,7 @@ function registerTM1Completions(monaco, getServer, getVersion) {
       const stack = []
       for (let line = 1; line <= lineCount; line++) {
         const text = model.getLineContent(line).trim()
-        const match = text.match(/^#Region\s+(.*)$/i)
+        const match = text.match(/^#Region\b\s*(.*)$/i)
         if (match) {
           const name = match[1].trim() || 'Region'
           stack.push({ name, line })
@@ -126,15 +126,19 @@ function registerTM1Completions(monaco, getServer, getVersion) {
     }
   })
 
-  // Folding: IF/ENDIF, WHILE/END, FOR/NEXT blocks in TI
+  // Folding: #Region / #EndRegion blocks (PAW-style) + IF/ENDIF, WHILE/END, FOR/NEXT blocks in TI
   monaco.languages.registerFoldingRangeProvider('tm1ti', {
     provideFoldingRanges(model, _context, _token) {
       const ranges = []
       const lineCount = model.getLineCount()
-      const stack = [] // { type: 'if'|'while'|'for', line }
+      const stack = [] // { type: 'region'|'if'|'while'|'for', line }
       for (let line = 1; line <= lineCount; line++) {
         const text = model.getLineContent(line).trim()
-        if (/^IF\s*\(/i.test(text))          stack.push({ type: 'if',    line })
+        if (/^#Region\b/i.test(text))          stack.push({ type: 'region', line })
+        else if (/^#EndRegion\b/i.test(text)) {
+          const open = [...stack].reverse().find(s => s.type === 'region')
+          if (open) { stack.splice(stack.lastIndexOf(open), 1); ranges.push({ start: open.line, end: line, kind: monaco.languages.FoldingRangeKind.Region }) }
+        } else if (/^IF\s*\(/i.test(text))          stack.push({ type: 'if',    line })
         else if (/^WHILE\s*\(/i.test(text))  stack.push({ type: 'while', line })
         else if (/^FOR\s+\w/i.test(text))    stack.push({ type: 'for',   line })
         else if (/^ENDIF\s*;?\s*$/i.test(text)) {
@@ -149,6 +153,46 @@ function registerTM1Completions(monaco, getServer, getVersion) {
         }
       }
       return ranges
+    }
+  })
+
+  // Go to Symbol: #Region blocks appear in Ctrl+Shift+O outline (same as Rules)
+  monaco.languages.registerDocumentSymbolProvider('tm1ti', {
+    provideDocumentSymbols(model, _token) {
+      const symbols = []
+      const lineCount = model.getLineCount()
+      const stack = []
+      for (let line = 1; line <= lineCount; line++) {
+        const text = model.getLineContent(line).trim()
+        const match = text.match(/^#Region\b\s*(.*)$/i)
+        if (match) {
+          const name = match[1].trim() || 'Region'
+          stack.push({ name, line })
+        } else if (/^#EndRegion\b/i.test(text)) {
+          const region = stack.pop()
+          if (region) {
+            symbols.push({
+              name: region.name,
+              kind: monaco.languages.SymbolKind.Namespace,
+              range: new monaco.Range(region.line, 1, line, model.getLineMaxColumn(line)),
+              selectionRange: new monaco.Range(region.line, 1, region.line, model.getLineMaxColumn(region.line)),
+              children: [],
+            })
+          }
+        }
+      }
+      // Close any unclosed regions at end of file
+      while (stack.length) {
+        const region = stack.pop()
+        symbols.push({
+          name: region.name,
+          kind: monaco.languages.SymbolKind.Namespace,
+          range: new monaco.Range(region.line, 1, lineCount, model.getLineMaxColumn(lineCount)),
+          selectionRange: new monaco.Range(region.line, 1, region.line, model.getLineMaxColumn(region.line)),
+          children: [],
+        })
+      }
+      return symbols
     }
   })
 
@@ -181,7 +225,7 @@ function registerTM1Completions(monaco, getServer, getVersion) {
         [/\b(TM1FILTERBYLEVEL|TM1FILTERBYPATTERN|TM1SORT|TM1MEMBER|TM1DRILLDOWNMEMBER|TM1DRILLDOWNLEVEL)\b/i, 'type'],
         [/\b(CURRENTMEMBER|PROPERTIES|CHILDREN|ANCESTORS|PARENT|NEXTMEMBER|PREVMEMBER|SIBLINGS|MEMBERS|ALLMEMBERS|DEFAULTMEMBER|FIRSTCHILD|LASTCHILD)\b/i, 'type'],
         [/[0-9]+(\.[0-9]+)?/, 'number'],
-        [/[{}()\[\],.]/, 'operator'],
+        [/[{}()[\],.]/, 'operator'],
       ]
     }
   })

@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { toast } from 'sonner'
 import { Activity, FolderOpen, Users, Lock } from 'lucide-react'
 import { useStore } from '@/store'
-import { useJobs, useFilesAvailable, useServers } from '@/hooks/useApi'
+import { useJobs, useFilesAvailable, useServers, useConfig } from '@/hooks/useApi'
 import { cn } from '@/lib/utils'
 import JobsMonitor from '@/components/JobsMonitor'
 import FileManager from '@/components/FileManager'
@@ -36,6 +36,7 @@ export default function StatusBar() {
   return (
     <div className="relative">
       <div className="flex items-center gap-3 px-3 py-0.5 bg-primary text-primary-foreground text-xs shrink-0 select-none">
+        <AccessBadge />
         <span className="font-medium flex items-center gap-1">
           {server ?? 'No server selected'}
           {readOnly && (
@@ -107,5 +108,23 @@ export default function StatusBar() {
       {showFiles      && server && <FileManager      server={server} onClose={() => setShowFiles(false)}      />}
       {showSessions   && server && <SessionsMonitor  server={server} onClose={() => setShowSessions(false)}   />}
     </div>
+  )
+}
+
+// Who can reach this IDE: "Local only" (this machine, no IDE sign-in) or
+// "Network" (reachable from other machines — IDE sign-in required).
+function AccessBadge() {
+  const { data: cfg } = useConfig()
+  if (!cfg?.access) return null
+  const network = cfg.access === 'network'
+  return (
+    <span
+      title={network
+        ? 'This IDE is reachable from other machines on the network (HOST in .env) — an IDE sign-in is required'
+        : 'This IDE only accepts connections from this machine — no IDE sign-in; you sign in to each server'}
+      className={cn('inline-flex items-center gap-0.5 px-1 py-px rounded text-[9px] font-semibold',
+        network ? 'bg-amber-500/30' : 'bg-white/15')}>
+      {network ? 'Network' : 'Local only'}
+    </span>
   )
 }

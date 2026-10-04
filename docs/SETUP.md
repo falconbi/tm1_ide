@@ -61,7 +61,8 @@ Restart the TM1 server after adding it. You can use any free port — `5895` is 
 |-------|-----------------|
 | `url` | IP address of the Windows machine running TM1, followed by the `HTTPPortNumber` |
 | `username` / `password` | A TM1 admin account (must be in the `ADMIN` group on the TM1 server) |
-| `loginServer` | The name of the TM1 server that the IDE uses to authenticate users — must be one of the names in `servers` |
+| `loginServer` | *Optional.* The server pre-selected on the sign-in page when the IDE is reachable from the network. Not needed for a local-only IDE — there you sign in to each server as you use it (see [Authentication](AUTHENTICATION.md#signing-in-to-the-ide)). |
+| `serverCredentials` | *Optional, top level.* Per-server service logins for the MCP and background jobs: `{ "MyServer": { "username": "…", "password": "…" } }`. Falls back to the admin host's `username`/`password`. Plain text — keep `servers.json` private (it is git-ignored). |
 | `servers` | The names of all your TM1 servers as they appear in Cognos Configuration — these are what show up in the IDE's server selector |
 | `tls` | *(optional)* TLS mode for HTTPS connections: `"verify"` (default — CA chain + hostname match), `"chain-only"` (verify the CA chain, skip the hostname match — for the stock IBM TM1 cert, which has no server name), or `"insecure"` (no verification — lab only, logs a warning). Covers both the Admin Server discovery call and the resolved model-server connections. |
 | `tlsCaFile` | *(optional)* Path to a CA / cert PEM file to add to the trust store — for an internal enterprise CA or a self-signed TM1 cert. Applies to `"verify"` and `"chain-only"`. The system trust store and `NODE_EXTRA_CA_CERTS` are always honoured too. |

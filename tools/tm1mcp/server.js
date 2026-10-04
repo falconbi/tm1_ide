@@ -54,6 +54,7 @@ require('./tools/deploy').register(server, ctx)          // check_deploy_risk, c
 require('./tools/build').register(server, ctx)           // build_*/add_elements/create_*/set_attribute_values/write_cells/read_cells/delete_object
 require('./tools/develop').register(server, ctx)         // update_cube_rules/update_process/run_process/check_rules_syntax/check_feeders/trace_feeders
 require('./tools/diagnostics').register(server, ctx)     // logs, threads, transaction log, usage-finders, search_ti_code
+require('./tools/lenses').register(server, ctx)          // list/get/save/delete_lens — governed HTML dashboards
 
 // ── Start ─────────────────────────────────────────────────────────────────────
 

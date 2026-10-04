@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8" />
+<style>
+  :root { --ink:#0f172a; --mut:#64748b; --line:#e2e8f0; --bg:#f1f5f9; --card:#fff; }
+  * { box-sizing: border-box; }
+  body { font-family: "Segoe UI", system-ui, sans-serif; margin: 0; background: var(--bg); color: var(--ink); padding: 20px; }
+  .head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
+  h1 { font-size: 20px; margin: 0; letter-spacing: -0.01em; }
+  .sub { color: var(--mut); font-size: 12px; }
+  .controls { display: flex; align-items: center; gap: 8px; }
+  select, button { border: 1px solid var(--line); background: var(--card); border-radius: 8px; padding: 6px 10px; font-size: 12px; cursor: pointer; }
+  select { font-weight: 600; }
+  .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 16px; }
+  .kpi { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; }
+  .kpi .label { font-size: 11px; color: var(--mut); text-transform: uppercase; letter-spacing: .06em; }
+  .kpi .value { font-size: 24px; font-weight: 700; margin-top: 6px; font-variant-numeric: tabular-nums; }
+  .kpi .foot { font-size: 11px; color: var(--mut); margin-top: 4px; }
+  .pos { color: #047857; } .neg { color: #b91c1c; }
+  .grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 16px; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; }
+  .card h2 { font-size: 12px; margin: 0 0 8px; color: var(--mut); font-weight: 600; text-transform: uppercase; letter-spacing: .05em; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  th, td { border-bottom: 1px solid var(--line); padding: 5px 9px; text-align: right; font-variant-numeric: tabular-nums; }
+  th:first-child, td:first-child { text-align: left; }
+  th { color: var(--mut); font-weight: 600; }
+  .err { color: #b91c1c; }
+  .loader { color: var(--mut); font-size: 13px; }
+  .heat td { text-align: center; font-size: 11px; }
+  .legend { display: flex; gap: 14px; font-size: 11px; color: var(--mut); flex-wrap: wrap; }
+  .sw { width: 12px; height: 8px; border-radius: 2px; display: inline-block; vertical-align: middle; }
+</style>
+</head>
+<body>
+  <div class="head">
+    <div>
+      <h1>Units Sold — Executive Dashboard</h1>
+      <div class="sub">24Retail · Version 1 · Units Sold</div>
+    </div>
+    <div class="controls">
+      <select id="region" onchange="load()">
+        <option value="Total Company">Total Company</option>
+        <option value="100">Region 100</option>
+        <option value="200">Region 200</option>
+        <option value="300">Region 300</option>
+        <option value="400">Region 400</option>
+      </select>
+      <button onclick="load()">Refresh</button>
+    </div>
+  </div>
+
+  <div class="kpis" id="kpis"><div class="kpi"><div class="label">Y2 Total</div><div class="value loader">…</div></div><div class="kpi"><div class="label">Y1 Total</div><div class="value loader">…</div></div><div class="kpi"><div class="label">YoY Growth</div><div class="value loader">…</div></div><div class="kpi"><div class="label">Channels</div><div class="value loader">…</div></div></div>
+
+  <div class="grid3">
+    <div class="card"><h2>Y2 vs Y1 — gauge</h2><div id="gauge" class="loader">Loading…</div></div>
+    <div class="card"><h2>Channel mix — Y2</h2><div id="donut" class="loader">Loading…</div></div>
+    <div class="card"><h2>Region contribution — Y2</h2><div id="fall" class="loader">Loading…</div></div>
+  </div>
+
+  <div class="card" style="margin-bottom:16px"><h2>Region × Month heatmap — Y2 Units Sold</h2><div id="heat" class="loader">Loading…</div></div>
+
+  <div class="grid2">
+    <div class="card"><h2>Monthly trend — Y1 vs Y2</h2><div id="area" class="loader">Loading…</div></div>
+    <div class="card"><h2>Monthly detail</h2><div id="grid" class="loader">Loading…</div></div>
+  </div>
+
+<script>
+  var num = function (v) { var n = Number(v); return isNaN(n) ? null : n }
+  var fmt = function (v) {
+    v = num(v)
+    if (v == null) return '—'
+    var abs = Math.abs(v)
+    var s = abs >= 1e6 ? (v / 1e6).toFixed(1) + 'M' : abs >= 1e3 ? (v / 1e3).toFixed(1) + 'K' : v.toFixed(0)
+    return (v < 0 ? '-' : '') + s
+  }
+  var cls = function (v) { v = num(v); return v == null ? '' : (v < 0 ? 'neg' : 'pos') }
+    var catVals = function (d) { if (d.cols.length >= 2) return d.cols.map(function (_, ci) { return d.cells[ci] || 0 }); return d.rows.map(function (_, ri) { return d.cells[ri * d.cols.length] || 0 }) }
+  var gx = function (res) { return { rows: (res.Axes[1]||{}).Tuples||[], cols: (res.Axes[0]||{}).Tuples||[] , cells: (function(){ var m={}; (res.Cells||[]).forEach(function(c){ m[c.Ordinal]=num(c.Value) }); return m })() } }
+
+  var drawGauge = function (el, y2, y1) {
+    var ratio = (y1 && y1 !== 0) ? y2 / y1 : 0
+    var frac = Math.min(ratio / 1.5, 1), R = 56, cx = 70, cy = 70
+    var s = '<svg width="150" height="140" viewBox="0 0 140 140" style="max-width:100%">'
+    s += '<circle cx="' + cx + '" cy="' + cy + '" r="' + R + '" fill="none" stroke="#e2e8f0" stroke-width="16"/>'
+    var circ = 2 * Math.PI * R
+    s += '<circle cx="' + cx + '" cy="' + cy + '" r="' + R + '" fill="none" stroke="#0f766e" stroke-width="16" stroke-linecap="round" stroke-dasharray="' + (circ * frac) + ' ' + circ + '" transform="rotate(-90 ' + cx + ' ' + cy + ')"/>'
+    s += '<text x="' + cx + '" y="' + (cy + 5) + '" text-anchor="middle" font-size="22" font-weight="700" fill="#0f172a">' + (ratio == null ? '—' : (ratio * 100).toFixed(0) + '%') + '</text>'
+    s += '<text x="' + cx + '" y="' + (cy + 22) + '" text-anchor="middle" font-size="10" fill="#64748b">Y2 vs Y1</text>'
+    s += '</svg>'
+    el.innerHTML = s
+  }
+
+  var drawDonut = function (el, res) {
+    var d = gx(res), labels = d.cols.map(function (t) { return t.Members[0].Name }), vals = catVals(d)
+    var total = vals.reduce(function (a, b) { return a + b }, 0) || 1
+    var colors = ['#0f766e', '#0ea5e9', '#f59e0b', '#8b5cf6', '#ef4444']
+    var cx = 60, cy = 60, R = 46, rr = 26
+    var s = '<svg width="170" height="120" viewBox="0 0 170 120" style="max-width:100%">'
+    var a0 = -Math.PI / 2
+    vals.forEach(function (v, i) {
+      var a1 = a0 + (v / total) * 2 * Math.PI
+      var large = (a1 - a0) > Math.PI ? 1 : 0
+      var x0 = cx + R * Math.cos(a0), y0 = cy + R * Math.sin(a0)
+      var x1 = cx + R * Math.cos(a1), y1 = cy + R * Math.sin(a1)
+      var x0r = cx + rr * Math.cos(a0), y0r = cy + rr * Math.sin(a0)
+      var x1r = cx + rr * Math.cos(a1), y1r = cy + rr * Math.sin(a1)
+      s += '<path d="M' + x0r + ',' + y0r + ' L' + x0 + ',' + y0 + ' A' + R + ',' + R + ' 0 ' + large + ' 1 ' + x1 + ',' + y1 + ' L' + x1r + ',' + y1r + ' A' + rr + ',' + rr + ' 0 ' + large + ' 0 ' + x0r + ',' + y0r + ' Z" fill="' + colors[i % colors.length] + '"><title>' + labels[i] + ' ' + fmt(v) + ' (' + (v / total * 100).toFixed(1) + '%)</title></path>'
+      a0 = a1
+    })
+    s += '<text x="' + cx + '" y="' + (cy + 4) + '" text-anchor="middle" font-size="15" font-weight="700" fill="#0f172a">' + fmt(total) + '</text>'
+    s += '</svg>'
+    labels.forEach(function (l, i) { s = s + '' })
+    var leg = '<div class="legend" style="margin-top:6px">' + labels.map(function (l, i) { return '<span><span class="sw" style="background:' + colors[i % colors.length] + '"></span>' + l + ' (' + (vals[i] / total * 100).toFixed(0) + '%)</span>' }).join('') + '</div>'
+    el.innerHTML = s + leg
+  }
+
+  var drawFall = function (el, res) {
+    var d = gx(res), labels = d.cols.map(function (t) { return t.Members[0].Name }), vals = catVals(d)
+    var colors = ['#0f766e', '#0ea5e9', '#f59e0b', '#8b5cf6']
+    var W = 300, H = 150, PAD = 26, base = H - PAD
+    var max = vals.reduce(function (a, b) { return a + b }, 0) || 1
+    var bw = (W - PAD) / (vals.length + 0.5), run = 0
+    var s = '<svg width="' + (W + 10) + '" height="' + H + '" viewBox="0 0 ' + (W + 10) + ' ' + H + '" style="max-width:100%">'
+    vals.forEach(function (v, i) {
+      var x = PAD + i * bw, h = (v / max) * (H - PAD - 10), y = base - h
+      s += '<rect x="' + x + '" y="' + y + '" width="' + (bw * 0.7) + '" height="' + h + '" fill="' + colors[i % colors.length] + '" rx="2"><title>' + labels[i] + ' ' + fmt(v) + '</title></rect>'
+      s += '<text x="' + (x + bw * 0.35) + '" y="' + (y - 3) + '" text-anchor="middle" font-size="9" fill="#64748b">' + labels[i] + '</text>'
+      run += v
+    })
+    s += '</svg>'
+    el.innerHTML = s
+  }
+
+  var drawHeat = function (el, res) {
+    var d = gx(res)
+    var months = d.cols.map(function (t) { return t.Members[0].Name })
+    var regions = d.rows.map(function (t) { return t.Members[0].Name })
+    var max = 0; Object.keys(d.cells).forEach(function (k) { var v = d.cells[k]; if (v != null && v > max) max = v })
+    var t = '<table class="heat"><thead><tr><th>Region</th>' + months.map(function (m) { return '<th>' + m + '</th>' }).join('') + '</tr></thead><tbody>'
+    regions.forEach(function (r, ri) {
+      t += '<tr><th>' + r + '</th>'
+      months.forEach(function (_, ci) {
+        var v = d.cells[ri * months.length + ci]
+        var a = v == null ? 0 : v / max
+        var bg = v == null ? '#fff' : 'rgba(15,118,110,' + (0.08 + 0.9 * a).toFixed(2) + ')'
+        t += '<td style="background:' + bg + '">' + (v == null ? '—' : fmt(v)) + '</td>'
+      })
+      t += '</tr>'
+    })
+    t += '</tbody></table>'
+    el.innerHTML = t
+  }
+
+  var drawArea = function (el, res) {
+    var d = gx(res)
+    var months = d.cols.length ? d.cols.map(function (t) { return t.Members[0].Name }) : (d.rows.map(function (t) { return t.Members[0].Name }))
+    var series = d.cols.length ? d.cols.map(function (t) { return t.Members[0].Name }) : []
+    var isTransposed = d.cols.length < 2
+    var n = months.length
+    var W = 520, H = 200, PAD = 30, top = 12, base = H - PAD
+    var max = 0; Object.keys(d.cells).forEach(function (k) { var v = d.cells[k]; if (v != null && v > max) max = v })
+    var y = function (v) { return base - (v / max) * (H - PAD - top) }
+    var x = function (i) { return PAD + (i / (n - 1)) * (W - PAD - 20) }
+    var path = function (idx) {
+      var pts = []
+      for (var i = 0; i < n; i++) pts.push(x(i) + ',' + y(d.cells[i * series.length + idx] || 0))
+      return pts.join(' L ')
+    }
+    var areaPath = function (idx) { return 'M' + x(0) + ',' + base + ' L' + path(idx).replace(/ /g, ' L ') + ' L' + x(n - 1) + ',' + base + ' Z' }
+    var s = '<svg width="' + W + '" height="' + H + '" viewBox="0 0 ' + W + ' ' + H + '" style="max-width:100%">'
+    var cols = ['#cbd5e1', '#0f766e']
+    if (series.length) series.forEach(function (_, si) {
+      s += '<path d="' + areaPath(si) + '" fill="' + cols[si] + '" opacity="' + (si === 0 ? 0.55 : 0.35) + '"/>'
+    })
+    if (series.length) series.forEach(function (_, si) {
+      s += '<path d="M' + path(si) + '" fill="none" stroke="' + cols[si] + '" stroke-width="2.5"/>'
+    })
+    months.forEach(function (m, i) { s += '<text x="' + x(i) + '" y="' + H + '" text-anchor="middle" font-size="9" fill="#64748b">' + m + '</text>' })
+    s += '</svg>'
+    var leg = '<div class="legend">' + (series.length ? series.map(function (s2, si) { return '<span><span class="sw" style="background:' + cols[si] + '"></span>' + s2 + '</span>' }).join('') : '') + '</div>'
+    el.innerHTML = s + leg
+  }
+
+  var load = function () {
+    var R = document.getElementById('region').value
+    var regionMdx = "SELECT {[Year].[Year].[Y1],[Year].[Year].[Y2]} ON 0, {[Month].[Month].[Jan],[Month].[Month].[Feb],[Month].[Month].[Mar],[Month].[Month].[Apr],[Month].[Month].[May],[Month].[Month].[Jun],[Month].[Month].[Jul],[Month].[Month].[Aug],[Month].[Month].[Sep],[Month].[Month].[Oct],[Month].[Month].[Nov],[Month].[Month].[Dec]} ON 1 FROM [Revenue] WHERE ([organization].[organization].[R],[Channel].[Channel].[Channel Total],[product].[product].[Product Total],[Version].[Version].[Version 1],[Revenue].[Revenue].[Units Sold])".replace('[organization].[organization].[R]', '[organization].[organization].[' + R + ']')
+    var channelMdx = "SELECT {[Channel].[Channel].[10],[Channel].[Channel].[20],[Channel].[Channel].[30]} ON 0, {[Revenue].[Revenue].[Units Sold]} ON 1 FROM [Revenue] WHERE ([organization].[organization].[R],[product].[product].[Product Total],[Month].[Month].[Year],[Year].[Year].[Y2],[Version].[Version].[Version 1])".replace('[organization].[organization].[R]', '[organization].[organization].[' + R + ']')
+    Promise.all([
+      window.lensBridge.call('readCell', { cube: 'Revenue', coordinates: { organization: R, Channel: 'Channel Total', product: 'Product Total', Month: 'Year', Year: 'Y2', Version: 'Version 1', Revenue: 'Units Sold' } }),
+      window.lensBridge.call('readCell', { cube: 'Revenue', coordinates: { organization: R, Channel: 'Channel Total', product: 'Product Total', Month: 'Year', Year: 'Y1', Version: 'Version 1', Revenue: 'Units Sold' } }),
+      window.lensBridge.call('execMDX', { mdx: channelMdx }),
+      window.lensBridge.call('execMDX', { mdx: regionMdx }),
+      window.lensBridge.call('execMDX', { mdx: "SELECT {[Month].[Month].[Jan],[Month].[Month].[Feb],[Month].[Month].[Mar],[Month].[Month].[Apr],[Month].[Month].[May],[Month].[Month].[Jun],[Month].[Month].[Jul],[Month].[Month].[Aug],[Month].[Month].[Sep],[Month].[Month].[Oct],[Month].[Month].[Nov],[Month].[Month].[Dec]} ON 0, {[organization].[organization].[100],[organization].[organization].[200],[organization].[organization].[300],[organization].[organization].[400]} ON 1 FROM [Revenue] WHERE ([Channel].[Channel].[Channel Total],[product].[product].[Product Total],[Year].[Year].[Y2],[Version].[Version].[Version 1],[Revenue].[Revenue].[Units Sold])" }),
+      window.lensBridge.call('execMDX', { mdx: "SELECT {[organization].[organization].[100],[organization].[organization].[200],[organization].[organization].[300],[organization].[organization].[400]} ON 0, {[Revenue].[Revenue].[Units Sold]} ON 1 FROM [Revenue] WHERE ([Channel].[Channel].[Channel Total],[product].[product].[Product Total],[Month].[Month].[Year],[Year].[Year].[Y2],[Version].[Version].[Version 1])" })
+    ]).then(function (r) {
+      var y2 = num(r[0]), y1 = num(r[1]), chan = r[2], reg = r[3], heat = r[4], fall = r[5]
+      var g = (y1 && y1 !== 0) ? (y2 - y1) / y1 : null
+      var k = document.getElementById('kpis')
+      var card = function (label, v, foot) { return '<div class="kpi"><div class="label">' + label + '</div><div class="value ' + cls(v) + '">' + fmt(v) + '</div>' + (foot ? '<div class="foot">' + foot + '</div>' : '') + '</div>' }
+      var chans = gx(chan), chanTotal = 0; Object.keys(chans.cells).forEach(function (kk) { chanTotal += chans.cells[kk] || 0 })
+      k.innerHTML = card('Y2 Total', y2, R) + card('Y1 Total', y1, R) + card('YoY Growth', g, null) + card('Channel units', chanTotal, '10+20+30')
+      drawGauge(document.getElementById('gauge'), y2, y1)
+      drawDonut(document.getElementById('donut'), chan)
+      drawFall(document.getElementById('fall'), fall)
+      drawHeat(document.getElementById('heat'), heat)
+      drawArea(document.getElementById('area'), reg)
+      drawTable(document.getElementById('grid'), reg)
+    }).catch(function (e) {
+      document.getElementById('kpis').innerHTML = '<div class="kpi"><div class="value err">Bridge error: ' + e.message + '</div></div>'
+    })
+  }
+  var drawTable = function (el, res) {
+    var d = gx(res)
+    var months = d.cols.length > 1 ? d.rows.map(function (t) { return t.Members[0].Name }) : []
+    var series = d.cols.map(function (t) { return t.Members[0].Name })
+    var t = '<table><thead><tr><th>Month</th>' + series.map(function (x) { return '<th>' + x + '</th>' }).join('') + '<th>Growth %</th></tr></thead><tbody>'
+    months.forEach(function (m, mi) {
+      var a = d.cells[mi * series.length + 0], b = d.cells[mi * series.length + 1]
+      var gp = (a != null && a !== 0) ? ((b - a) / a) : null
+      t += '<tr><td>' + m + '</td><td>' + fmt(a) + '</td><td>' + fmt(b) + '</td><td class="' + cls(gp) + '">' + (gp == null ? '—' : (gp * 100).toFixed(1) + '%') + '</td></tr>'
+    })
+    t += '</tbody></table>'
+    el.innerHTML = t
+  }
+  load()
+</script>
+</body>
+</html>

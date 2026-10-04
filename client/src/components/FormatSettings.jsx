@@ -250,6 +250,10 @@ export default function FormatSettings({ open, onClose }) {
     setSettings(prev => ({ ...prev, ti: { ...prev.ti, [key]: value } }))
   }, [])
 
+  const updateCubeMapSetting = useCallback((key, value) => {
+    setSettings(prev => ({ ...prev, cubeMap: { ...(prev.cubeMap ?? {}), [key]: value } }))
+  }, [])
+
   const handleSave = () => {
     saveSettings(settings)
     saveColourSettings(colourSettings)
@@ -288,7 +292,7 @@ export default function FormatSettings({ open, onClose }) {
           {/* Left: Tabs + Settings */}
           <div className="w-[340px] flex flex-col border-r border-border">
             <div className="flex border-b border-border shrink-0">
-              {[{ id: 'rules', label: 'Rules' }, { id: 'ti', label: 'TI Process' }].map(t => (
+              {[{ id: 'rules', label: 'Rules' }, { id: 'ti', label: 'TI Process' }, { id: 'cubemap', label: 'Cube Map' }].map(t => (
                 <button
                   key={t.id}
                   onClick={() => setTab(t.id)}
@@ -364,6 +368,48 @@ export default function FormatSettings({ open, onClose }) {
                 </div>
               )}
 
+              {tab === 'cubemap' && (
+                <div>
+                  <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">Cube grouping</div>
+                  <p className="text-[10px] text-muted-foreground mb-2 leading-relaxed">
+                    When the Groups toggle is on, cubes whose names share a key are wrapped in a coloured group box.
+                    The key is the first capture group of the regex (or the whole match if it has no groups).
+                    At least two cubes must share a key for a group to appear.
+                  </p>
+                  <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mt-3 mb-1">Presets</div>
+                  <div className="flex flex-wrap gap-1.5 mb-2">
+                    {[
+                      { id: '^(.{3})',      label: 'First 3 chars' },
+                      { id: '^(\\S+)',      label: 'First word' },
+                      { id: '^([A-Za-z]+)', label: 'Leading letters' },
+                      { id: '',             label: 'Default (underscore prefix)' },
+                    ].map(opt => (
+                      <button
+                        key={opt.id}
+                        onClick={() => updateCubeMapSetting('groupRegex', opt.id)}
+                        className={cn('px-2 py-1 text-[10px] rounded border transition-colors',
+                          (settings.cubeMap?.groupRegex ?? '') === opt.id
+                            ? 'bg-primary text-primary-foreground border-primary'
+                            : 'bg-background text-muted-foreground border-border hover:text-foreground'
+                        )}
+                      >{opt.label}</button>
+                    ))}
+                  </div>
+                  <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mt-3 mb-1">Regex</div>
+                  <input
+                    value={settings.cubeMap?.groupRegex ?? ''}
+                    onChange={e => updateCubeMapSetting('groupRegex', e.target.value)}
+                    placeholder="^(.{3})"
+                    spellCheck={false}
+                    className="w-full text-xs bg-background border border-border rounded px-2 py-1 outline-none focus:border-primary font-mono"
+                  />
+                  <div className="text-[10px] text-muted-foreground mt-2 leading-relaxed">
+                    Examples: <code className="font-mono">^(.{3})</code> groups by the first 3 characters;{' '}
+                    <code className="font-mono">^(.*?)_</code> emulates the old underscore-prefix rule.
+                  </div>
+                </div>
+              )}
+
             </div>
           </div>
 
@@ -371,7 +417,15 @@ export default function FormatSettings({ open, onClose }) {
           <div className="flex-1 p-3">
             {tab === 'rules'
               ? <RulesPreview settings={settings} colourSettings={colourSettings} namingMap={namingData.map} dark={dark} />
-              : <TIPreview sampleCode={SAMPLE_TI} colourSettings={colourSettings} dark={dark} />
+              : tab === 'ti'
+                ? <TIPreview sampleCode={SAMPLE_TI} colourSettings={colourSettings} dark={dark} />
+                : (
+                  <div className="text-xs text-muted-foreground space-y-3">
+                    <p>Cube Map grouping wraps cubes that share a key in a coloured group box when the <b>Groups</b> toggle is on.</p>
+                    <p>The key is derived from each cube name using the configured regex. If the pattern has a capture group, its content is the key; otherwise the whole match is used.</p>
+                    <p>Leave the field empty to use the original rule — the prefix before the first underscore.</p>
+                  </div>
+                )
             }
           </div>
         </div>

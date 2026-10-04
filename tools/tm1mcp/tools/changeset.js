@@ -87,9 +87,10 @@ function register(server, { SERVER, AGENT_USER, cl, assertions, runAssertions, o
             const entries = cl.getSessionLog(s.id)
 
             let assertLine = ''
-            if (assertions.list(SERVER).length) {
+            const { assertions: storedAssertions } = await assertions.list(SERVER)
+            if (storedAssertions.length) {
                 const a = await runAssertions()
-                assertLine = `\nAssertions: ${a.passed}/${a.total} passing.`
+                assertLine = `\nAssertions (from ${a.source}): ${a.passed}/${a.total} passing.`
                 if (a.failed.length) {
                     assertLine += ' FAILING — ' + a.failed.map(f =>
                         `${f.description || f.id}: ${f.error ? `error (${f.error})` : `expected ${f.expected}, got ${f.actual}`}`

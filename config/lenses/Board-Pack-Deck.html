@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8" />
+<style>
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body { font-family: "Segoe UI", system-ui, sans-serif; margin: 0; background: #0b1220; color: #e2e8f0; overflow: hidden; }
+  .deck { height: 100vh; position: relative; }
+  .slide { position: absolute; inset: 0; padding: 34px 52px 78px; opacity: 0; pointer-events: none; transition: opacity .25s; overflow: auto; }
+  .slide.active { opacity: 1; pointer-events: auto; }
+  .cover { background: linear-gradient(135deg, #0f172a, #134e4a); display: flex; flex-direction: column; justify-content: center; }
+  .cover .kicker { color: #38bdf8; font-size: 12px; text-transform: uppercase; letter-spacing: .18em; margin-bottom: 16px; }
+  .cover h1 { font-size: 44px; margin: 0 0 10px; letter-spacing: -0.02em; }
+  .cover .sub { color: #94a3b8; font-size: 16px; margin-bottom: 40px; }
+  .cover .contents { color: #64748b; font-size: 13px; line-height: 2; }
+  .cover .meta { position: absolute; bottom: 34px; left: 52px; right: 52px; display: flex; justify-content: space-between; color: #94a3b8; font-size: 12px; }
+  .slide .kicker { color: #38bdf8; font-size: 11px; text-transform: uppercase; letter-spacing: .14em; margin-bottom: 14px; }
+  .slide h1 { font-size: 28px; margin: 0 0 16px; letter-spacing: -0.01em; }
+  .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 18px; }
+  .kpi { background: #111a2e; border: 1px solid #1e293b; border-radius: 12px; padding: 14px 16px; }
+  .kpi .label { font-size: 10px; color: #94a3b8; text-transform: uppercase; letter-spacing: .07em; }
+  .kpi .value { font-size: 24px; font-weight: 700; margin-top: 4px; font-variant-numeric: tabular-nums; }
+  .kpi .delta { font-size: 11px; font-weight: 600; margin-top: 2px; }
+  .kpi .spark { margin-top: 6px; }
+  .fav { color: #34d399; } .unfav { color: #f87171; }
+  .summary { background: #111a2e; border: 1px solid #1e293b; border-left: 4px solid #14b8a6; border-radius: 10px; padding: 16px 20px; font-size: 15px; line-height: 1.7; color: #cbd5e1; margin-bottom: 18px; }
+  .summary b { color: #e2e8f0; }
+  .chips { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
+  .chip { font-size: 11px; font-weight: 600; border-radius: 999px; padding: 4px 12px; }
+  .chip.good { background: rgba(52,211,153,.15); color: #34d399; } .chip.bad { background: rgba(248,113,113,.15); color: #f87171; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .card { background: #111a2e; border: 1px solid #1e293b; border-radius: 12px; padding: 16px 18px; }
+  .card h2 { font-size: 12px; margin: 0 0 12px; color: #94a3b8; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  th, td { border-bottom: 1px solid #1e293b; padding: 7px 11px; text-align: right; font-variant-numeric: tabular-nums; }
+  th:first-child, td:first-child { text-align: left; }
+  th { color: #94a3b8; font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
+  tr.sub td { border-top: 1.5px solid #334155; font-weight: 700; background: rgba(30,41,59,.5); }
+  tr.grand td { border-top: 2px solid #475569; font-weight: 800; background: rgba(30,41,59,.7); }
+  tr.item td { padding-left: 26px; }
+  .pill { display: inline-block; font-size: 10px; font-weight: 600; border-radius: 999px; padding: 1px 8px; }
+  .pill.fav { background: rgba(52,211,153,.18); color: #34d399; } .pill.unfav { background: rgba(248,113,113,.18); color: #f87171; } .pill.flat { background: #1e293b; color: #64748b; }
+  .legend2 { font-size: 11px; color: #64748b; margin-top: 8px; }
+  .explain { background: #111a2e; border: 1px solid #1e293b; border-radius: 10px; padding: 12px 16px; font-size: 13px; color: #cbd5e1; line-height: 1.7; margin-top: 14px; }
+  .explain b { color: #e2e8f0; }
+  sup { color: #38bdf8; font-size: 9px; margin-left: 2px; }
+  svg .bar { transform-origin: left center; animation: grow .7s cubic-bezier(.2,.8,.2,1) backwards; }
+  @keyframes grow { from { transform: scaleX(0); } }
+  .controls { position: absolute; bottom: 0; left: 0; right: 0; display: flex; align-items: center; gap: 14px; padding: 13px 24px; background: #0f172a; border-top: 1px solid #1e293b; }
+  .controls button { background: #1e293b; color: #e2e8f0; border: 1px solid #334155; border-radius: 8px; padding: 8px 18px; cursor: pointer; font-size: 14px; }
+  .controls button:disabled { opacity: .35; cursor: default; }
+  .controls input[type=range] { flex: 1; }
+  .dots { display: flex; gap: 6px; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: #334155; cursor: pointer; }
+  .dot.on { background: #38bdf8; }
+  .count { font-size: 12px; color: #64748b; min-width: 34px; text-align: center; }
+  .foot { font-size: 11px; color: #64748b; margin-top: 12px; text-align: center; }
+</style>
+</head>
+<body>
+  <div class="deck">
+
+    <section class="slide cover active" data-i="0">
+      <div class="kicker">Board Pack · FY25</div>
+      <h1>Management P&amp;L — Variance</h1>
+      <div class="sub">Consolidated · Actual vs Budget · USD $'000</div>
+      <div class="contents">
+        1 · Executive summary<br/>2 · Actual vs budget — detailed bullets<br/>3 · Profit bridge — waterfall<br/>4 · Spend by category<br/>5 · Line-item variance<br/>6 · Notes &amp; assumptions
+      </div>
+      <div class="meta"><span>Prepared for the Finance Committee</span><span>Prepared · 02 Oct 2026</span></div>
+    </section>
+
+    <section class="slide" data-i="1">
+      <div class="kicker">Executive summary</div>
+      <h1>Headline performance</h1>
+      <div class="summary" id="summary"></div>
+      <div class="chips" id="chips"></div>
+      <div class="kpis" id="kpis"></div>
+    </section>
+
+    <section class="slide" data-i="2">
+      <div class="kicker">Actual vs budget</div>
+      <h1>Detailed bullet chart</h1>
+      <div class="card"><div id="bullets" class="loader">Loading…</div></div>
+      <div class="explain" id="explainBullets"></div>
+    </section>
+
+    <section class="slide" data-i="3">
+      <div class="kicker">Profit bridge</div>
+      <h1>Revenue to net profit — waterfall</h1>
+      <div class="card"><div id="fall" class="loader">Loading…</div></div>
+      <div class="explain" id="explainFall"></div>
+    </section>
+
+    <section class="slide" data-i="4">
+      <div class="kicker">Cost structure</div>
+      <h1>Spend by category</h1>
+      <div class="card"><div id="donut" class="loader">Loading…</div></div>
+      <div class="explain" id="explainDonut"></div>
+    </section>
+
+    <section class="slide" data-i="5">
+      <div class="kicker">Line items</div>
+      <h1>Variance detail</h1>
+      <div class="card"><div id="tbl" class="loader">Loading…</div></div>
+    </section>
+
+    <section class="slide" data-i="6">
+      <div class="kicker">Notes to the P&amp;L</div>
+      <h1>Notes &amp; basis of preparation</h1>
+      <div class="summary" style="border-left:4px solid #38bdf8">
+        <b>Notes to the P&amp;L</b> — FY25<br/><br/>
+        <b>1 · Revenue.</b> Revenue of $1,400k was +4.1% favourable to budget of $1,345k. Product revenue (+4.5%) and service revenue (+7.9%) were ahead of plan; other revenue was $15k unfavourable (−17.6%), reflecting the run-off of discontinued ancillary income. Revenue is recognised at point of delivery.<br/><br/>
+        <b>2 · Cost of goods sold.</b> COGS of $560k was $20k favourable to budget (40.0% of revenue). Materials were 2.9% favourable on procurement savings; direct labour 6.7% favourable; freight in line with plan.<br/><br/>
+        <b>3 · Operating expenses.</b> Operating expenses of $565k were $35k unfavourable to budget, driven by sales &amp; marketing (+7.7%) on campaign timing and research &amp; development (+9.4%) on product investment. Depreciation was flat. EBITDA of $275k represents a 19.6% margin.<br/><br/>
+        <b>4 · Interest &amp; tax.</b> Interest was flat at $35k. Tax of $55k reflects an effective rate of 22.9% on profit before tax of $240k, slightly above budget on the mix of earnings.
+      </div>
+      <div class="summary">
+        <b>Basis of preparation.</b> Consolidated, FY25, USD $'000. Favourable variance is green; unfavourable red. For expense lines, spending less than budget is favourable. Figures are sample data; the pack is generated, so numbers refresh from the model.
+      </div>
+          </section>
+
+    <div class="controls">
+      <button id="prev">◀ Back</button>
+      <span class="count" id="count">1 / 7</span>
+      <input type="range" id="range" min="0" max="6" value="0" />
+      <div class="dots" id="dots"></div>
+      <button id="next">Next ▶</button>
+    </div>
+  </div>
+
+<script>
+  var Q = { '1': 1 }
+  var GROUPS = [
+    { name: 'Revenue', rev: true, items: [['Product revenue', 920, 880], ['Service revenue', 410, 380], ['Other revenue', 70, 85]] },
+    { name: 'Cost of goods sold', exp: true, items: [['Materials', 340, 350], ['Direct labour', 140, 150], ['Freight', 80, 80]] },
+    { name: 'Gross margin', rev: true, computed: true },
+    { name: 'Operating expenses', exp: true, items: [['Sales &amp; marketing', 210, 195], ['Research &amp; development', 175, 160], ['General &amp; admin', 120, 115], ['Depreciation', 60, 60]] },
+    { name: 'EBITDA', rev: true, computed: true },
+    { name: 'Interest &amp; tax', exp: true, items: [['Interest', 35, 35], ['Tax', 55, 50]] },
+    { name: 'Net profit', rev: true, computed: true, grand: true }
+  ]
+  var money = function (v) { if (v == null) return '—'; return (v < 0 ? '-' : '') + '$' + Math.abs(Math.round(v)).toLocaleString() }
+  var pct = function (v) { if (v == null) return '—'; return (v >= 0 ? '+' : '') + (v * 100).toFixed(1) + '%' }
+  var num = function (v) { var n = Number(v); return isNaN(n) ? null : n }
+
+  function build() {
+    var rows = [], rev = 0, revB = 0, cogs = 0, cogsB = 0, opex = 0, opexB = 0, intax = 0, intaxB = 0
+    GROUPS.forEach(function (g) {
+      if (g.items) {
+        var ga = 0, gb = 0
+        g.items.forEach(function (it) { var a = it[1], b = it[2]; ga += a; gb += b; rows.push({ label: it[0], a: a, b: b, item: true, rev: !g.exp }) })
+        if (g.name === 'Revenue') { rev = ga; revB = gb; rows.push({ label: 'Revenue', a: ga, b: gb, sub: true, rev: true }) }
+        else if (g.name === 'Cost of goods sold') { cogs = ga; cogsB = gb; rows.push({ label: 'Cost of goods sold', a: ga, b: gb, sub: true, exp: true }) }
+        else if (g.name === 'Operating expenses') { opex = ga; opexB = gb; rows.push({ label: 'Operating expenses', a: ga, b: gb, sub: true, exp: true }) }
+        else if (g.name === 'Interest &amp; tax') { intax = ga; intaxB = gb; rows.push({ label: 'Interest &amp; tax', a: ga, b: gb, sub: true, exp: true }) }
+      } else if (g.computed) {
+        if (g.name === 'Gross margin') rows.push({ label: 'Gross margin', a: rev - cogs, b: revB - cogsB, sub: true, rev: true })
+        else if (g.name === 'EBITDA') rows.push({ label: 'EBITDA', a: rev - cogs - opex, b: revB - cogsB - opexB, sub: true, rev: true })
+        else if (g.name === 'Net profit') rows.push({ label: 'Net profit', a: rev - cogs - opex - intax, b: revB - cogsB - opexB - intaxB, sub: true, rev: true, grand: true })
+      }
+    })
+    var find = function (l) { return rows.filter(function (r) { return r.label === l }).pop() }
+    var revT = find('Revenue'), gm = find('Gross margin'), ebitT = find('EBITDA'), netT = find('Net profit'), cogsT = find('Cost of goods sold'), opexT = find('Operating expenses'), iatT = find('Interest &amp; tax')
+
+    // KPI sparklines
+    var spark = function (arr) { var W = 120, H = 30, mx = Math.max.apply(null, arr), mn = Math.min.apply(null, arr), sp = (mx - mn) || 1, px = function (i) { return (i / (arr.length - 1)) * W }, py = function (v) { return H - 4 - ((v - mn) / sp) * (H - 8) }, d = arr.map(function (v, i) { return (i ? 'L' : 'M') + px(i).toFixed(1) + ',' + py(v).toFixed(1) }).join(' '); return '<svg width="' + W + '" height="' + H + '" viewBox="0 0 ' + W + ' ' + H + '"><path d="' + d + '" fill="none" stroke="#14b8a6" stroke-width="2" stroke-linecap="round"/></svg>' }
+    var gmp = gm.a / revT.a * 100
+    var rV = (revT.a - revT.b) / revT.b, nV = (netT.a - netT.b) / netT.b
+    document.getElementById('summary').innerHTML = 'Consolidated revenue of <b>' + money(revT.a) + 'k</b> was <b class="' + (rV >= 0 ? 'fav' : 'unfav') + '">' + pct(rV) + '</b> versus a budget of ' + money(revT.b) + 'k, with product and service lines ahead of plan and other revenue soft. Gross margin of <b>' + money(gm.a) + 'k</b> represents <b>' + gmp.toFixed(1) + '%</b> of revenue — the highest in the year. Operating costs tracked close to budget, delivering <b>EBITDA of ' + money(ebitT.a) + 'k</b> and net profit of <b>' + money(netT.a) + 'k</b>, <b class="' + (nV >= 0 ? 'fav' : 'unfav') + '">' + pct(nV) + '</b> favourable to plan.'
+    var c = function (l, g) { return '<span class="chip ' + (g ? 'good' : 'bad') + '">' + l + '</span>' }
+    document.getElementById('chips').innerHTML = c('Revenue ' + pct(rV), rV >= 0) + c('Gross margin ' + gmp.toFixed(1) + '%', (gm.a - gm.b) >= 0) + c('EBITDA ' + pct((ebitT.a - ebitT.b) / ebitT.b), (ebitT.a - ebitT.b) >= 0) + c('Net profit ' + pct(nV), nV >= 0)
+    var k = document.getElementById('kpis'), card = function (l, v, d2, f) { return '<div class="kpi"><div class="label">' + l + '</div><div class="value ' + (d2 >= 0 ? 'fav' : 'unfav') + '">' + v + '</div><div class="delta ' + (d2 >= 0 ? 'fav' : 'unfav') + '">' + pct(d2) + ' vs budget</div><div class="spark">' + spark(f) + '</div></div>' }
+    k.innerHTML = card('Revenue', money(revT.a), rV, [0.90, 0.95, 0.98, 1.0, 1.04]) + card('Gross margin', gmp.toFixed(1) + '%', (gm.a - gm.b) / gm.b, [56, 58, 59, 60, 60]) + card('EBITDA', money(ebitT.a), (ebitT.a - ebitT.b) / ebitT.b, [13, 15, 16, 17, 17]) + card('Net profit', money(netT.a), nV, [18, 20, 22, 23, 23])
+
+    // bullets
+    var lines = rows.filter(function (r) { return r.sub })
+    var scale = 0; lines.forEach(function (r) { var v = Math.max(Math.abs(r.a), Math.abs(r.b)) * 1.08; if (v > scale) scale = v }); scale = scale || 1
+    var BW = 460, LEFT = 150, RLAB = 160, ROW = 50, track = 20, top = 40, W2 = LEFT + BW + RLAB, H2 = top + lines.length * ROW + 30
+    var s = '<svg width="100%" height="' + H2 + '" viewBox="0 0 ' + W2 + ' ' + H2 + '" style="max-width:100%"><defs><linearGradient id="barG" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#14b8a6"/><stop offset="100%" stop-color="#0f766e"/></linearGradient><linearGradient id="bandG" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stop-color="#fbbf24"/><stop offset="100%" stop-color="#f59e0b"/></linearGradient></defs>'
+    var base = top + lines.length * ROW
+    for (var t = 0; t <= 4; t++) { var tx = LEFT + (t / 4) * BW; s += '<line x1="' + tx + '" y1="' + (top - 6) + '" x2="' + tx + '" y2="' + base + '" stroke="#e2e8f0" stroke-opacity="0.07"/><text x="' + tx + '" y="' + (base + 16) + '" text-anchor="middle" font-size="9" fill="#64748b">' + (t * 25) + '%</text>' }
+    lines.forEach(function (r, i) {
+      var A = Math.abs(r.a), B = Math.abs(r.b), y = top + i * ROW, gx = function (v) { return LEFT + (v / scale) * BW }
+      var hit = B ? A / B : null, good = r.rev ? (r.a - r.b) >= 0 : (r.a - r.b) <= 0
+      var perf = hit == null ? 'flat' : (r.rev ? (hit >= 1 ? 'good' : hit >= 0.85 ? 'warn' : 'bad') : (hit <= 1 ? 'good' : hit <= 1.15 ? 'warn' : 'bad'))
+      var stc = perf === 'good' ? '#34d399' : perf === 'warn' ? '#f59e0b' : '#f87171', stretch = r.rev ? B * 1.05 : B * 0.95
+      s += '<text x="0" y="' + (y + 14) + '" font-size="12.5" font-weight="600" fill="#e2e8f0">' + r.label + '</text><text x="0" y="' + (y + 27) + '" font-size="10" fill="' + (good ? '#34d399' : '#f87171') + '">' + (good ? 'favourable' : 'unfavourable') + '</text>'
+      s += '<rect x="' + gx(0) + '" y="' + y + '" width="' + (gx(B * 0.7) - gx(0)) + '" height="' + track + '" fill="url(#bandG)" opacity="0.25" rx="3"/><rect x="' + gx(B * 0.7) + '" y="' + y + '" width="' + (gx(B * 0.9) - gx(B * 0.7)) + '" height="' + track + '" fill="url(#bandG)" opacity="0.5"/><rect x="' + gx(B * 0.9) + '" y="' + y + '" width="' + (gx(B) - gx(B * 0.9)) + '" height="' + track + '" fill="url(#bandG)" opacity="0.85"/><rect x="' + gx(B) + '" y="' + y + '" width="' + (gx(B * 1.08) - gx(B)) + '" height="' + track + '" fill="#1e293b" opacity="0.9"/>'
+      s += '<line x1="' + gx(B) + '" y1="' + (y - 3) + '" x2="' + gx(B) + '" y2="' + (y + track + 3) + '" stroke="#e2e8f0" stroke-opacity="0.5"/>'
+      var sx = gx(stretch), syc = y + track / 2; s += '<path d="M' + sx + ',' + (syc - 4) + ' L' + (sx + 4) + ',' + syc + ' L' + sx + ',' + (syc + 4) + ' L' + (sx - 4) + ',' + syc + ' Z" fill="#a78bfa"><title>stretch ' + money(stretch) + '</title></path>'
+      var bw = Math.max(0, gx(A) - gx(0)), by = y + 3, bh = track - 6
+      s += '<g class="bar" style="animation-delay:' + (i * 90) + 'ms"><polygon points="' + gx(0) + ',' + by + ' ' + (gx(0) + bw) + ',' + by + ' ' + (gx(0) + bw + 5) + ',' + (by + bh) + ' ' + (gx(0) - 5) + ',' + (by + bh) + '" fill="url(#barG)" opacity="0.92"><title>' + r.label + ' actual ' + money(A) + ' · ' + (hit == null ? '—' : (hit * 100).toFixed(1) + '%') + '</title></polygon></g>'
+      s += '<text x="' + (LEFT + BW + 10) + '" y="' + (y + 14) + '" font-size="13" font-weight="700" fill="' + stc + '">' + money(r.a) + '</text><text x="' + (LEFT + BW + 10) + '" y="' + (y + 27) + '" font-size="10" fill="#64748b">vs ' + money(r.b) + '</text><text x="' + (LEFT + BW + 10) + '" y="' + (y + 39) + '" font-size="11" font-weight="700" fill="' + stc + '">' + (hit == null ? '—' : (hit * 100).toFixed(1) + '%') + '</text>'
+    })
+    s += '</svg><div class="legend2">teal bar = actual · light grid = budget · purple ◆ = stretch · amber bands = poor / ok / good</div>'
+    document.getElementById('explainBullets').innerHTML = 'Each row compares actual against budget. The <b>teal tapered bar</b> is actual, the <b>light grid line</b> is budget, the <b>purple ◆</b> is a stretch target (105% of budget for revenue lines, 95% for costs), and the <b>amber bands</b> show poor / ok / good ranges relative to budget. Lines are <b>green when favourable</b> and <b>red when unfavourable</b> — for expense lines, spending less than budget is favourable.'
+    document.getElementById('bullets').innerHTML = s
+
+    // waterfall
+    var steps = [['Revenue', revT.a, '#14b8a6'], ['COGS', -cogsT.a, '#f87171'], ['Gross margin', gm.a, '#94a3b8'], ['Opex', -opexT.a, '#f87171'], ['Int &amp; tax', -iatT.a, '#f87171'], ['Net profit', netT.a, '#34d399']]
+    var Ww = 500, Hw = 230, Pd = 36, bx = Hw - Pd, n = steps.length, bwt = (Ww - Pd) / (n + 0.3), run = 0, mx = 0
+    steps.forEach(function (st) { mx = Math.max(mx, Math.abs(st[1])) }); mx = mx * 1.15
+    var w = '<svg width="100%" height="' + Hw + '" viewBox="0 0 ' + Ww + ' ' + Hw + '" style="max-width:100%">'
+    steps.forEach(function (st, i) {
+      var x = Pd + i * bwt, up = st[1] >= 0, h = (Math.abs(st[1]) / mx) * (Hw - Pd - 14), y = up ? bx - run - h : bx - run
+      w += '<g class="bar" style="animation-delay:' + (i * 110) + 'ms"><rect x="' + x + '" y="' + y + '" width="' + (bwt * 0.7) + '" height="' + Math.max(2, h) + '" rx="3" fill="' + st[2] + '"><title>' + st[0] + ' ' + money(st[1]) + '</title></rect></g>'
+      w += '<text x="' + (x + bwt * 0.35) + '" y="' + (up ? y - 5 : y + h + 15) + '" text-anchor="middle" font-size="9" fill="#64748b">' + st[0] + '</text><text x="' + (x + bwt * 0.35) + '" y="' + (up ? y - 16 : y + h + 26) + '" text-anchor="middle" font-size="10" font-weight="700" fill="#cbd5e1">' + money(st[1]) + '</text>'
+      run += st[1]
+    })
+    w += '<line x1="' + Pd + '" y1="' + bx + '" x2="' + (Pd + n * bwt) + '" y2="' + bx + '" stroke="#334155"/></svg>'
+    document.getElementById('explainFall').innerHTML = 'Revenue of <b>$1,400k</b> flows down through cost of goods sold (<b>$560k</b>), operating expenses (<b>$565k</b>) and interest &amp; tax (<b>$90k</b>) to net profit of <b>$185k</b>. Gross margin of <b>$840k</b> is retained after COGS; <b>EBITDA of $275k (19.6% of revenue)</b> is struck before interest and tax.'
+    document.getElementById('fall').innerHTML = w
+
+    // donut
+    var spend = [['Materials', 340], ['Labour', 140], ['Freight', 80], ['Sales &amp; mkt', 210], ['R&amp;D', 175], ['G&amp;A', 120], ['Depreciation', 60], ['Interest', 35], ['Tax', 55]]
+    var colors = ['#0f766e', '#14b8a6', '#0ea5e9', '#8b5cf6', '#f59e0b', '#f97316', '#ef4444', '#64748b', '#94a3b8']
+    var total = spend.reduce(function (a, b) { return a + b[1] }, 0) || 1
+    var cx = 120, cy = 120, R = 88, rr = 48
+    var d = '<svg width="260" height="240" viewBox="0 0 240 240" style="max-width:100%">'
+    var a0 = -Math.PI / 2
+    spend.forEach(function (sp, i) {
+      var a1 = a0 + (sp[1] / total) * 2 * Math.PI, large = (a1 - a0) > Math.PI ? 1 : 0
+      var p = function (r, a) { return (cx + r * Math.cos(a)).toFixed(1) + ',' + (cy + r * Math.sin(a)).toFixed(1) }
+      d += '<path d="M' + p(rr, a0) + ' L' + p(R, a0) + ' A' + R + ',' + R + ' 0 ' + large + ' 1 ' + p(R, a1) + ' L' + p(rr, a1) + ' A' + rr + ',' + rr + ' 0 ' + large + ' 0 ' + p(rr, a0) + ' Z" fill="' + colors[i % colors.length] + '" opacity="0.9"><title>' + sp[0] + ' ' + money(sp[1]) + ' (' + (sp[1] / total * 100).toFixed(1) + '%)</title></path>'
+      a0 = a1
+    })
+    d += '<text x="' + cx + '" y="' + (cy + 4) + '" text-anchor="middle" font-size="18" font-weight="700" fill="#e2e8f0">' + money(total) + '</text><text x="' + cx + '" y="' + (cy + 21) + '" text-anchor="middle" font-size="9" fill="#64748b">total spend</text></svg>'
+    d += '<div class="legend2" style="margin-top:8px">' + spend.map(function (sp, i) { return '<span style="display:inline-flex;align-items:center;gap:5px;margin-right:10px"><span style="width:10px;height:10px;border-radius:2px;background:' + colors[i % colors.length] + ';display:inline-block"></span>' + sp[0] + '</span>' }).join('') + '</div>'
+    document.getElementById('explainDonut').innerHTML = 'Total spend of <b>$1,300k</b> by category. Cost of goods sold (<b>$560k</b>) and operating expenses (<b>$565k</b>) together account for <b>86.5%</b> of spend; interest and tax are the remaining <b>$90k</b>. Sales &amp; marketing and research &amp; development are the two largest opex categories.'
+    document.getElementById('donut').innerHTML = d
+
+    // table
+    var NOTE_MAP = { 'Revenue': 1, 'Cost of goods sold': 2, 'Operating expenses': 3, 'Interest &amp; tax': 4 }
+    var h = '<table><thead><tr><th>Line item</th><th>Actual</th><th>Budget</th><th>Variance $</th><th>Variance %</th><th>Status</th></tr></thead><tbody>'
+    rows.forEach(function (r) {
+      var vd = r.a - r.b, vp = r.b ? vd / r.b : null, good = r.rev ? vd >= 0 : vd <= 0, cls = good ? 'fav' : 'unfav'
+      var rowCls = r.grand ? 'grand' : (r.sub ? 'sub' : 'item')
+      var pill = Math.abs(vd) < 0.5 ? '<span class="pill flat">Flat</span>' : '<span class="pill ' + (good ? 'fav' : 'unfav') + '">' + (good ? 'Fav' : 'Unfav') + '</span>'
+      h += '<tr class="' + rowCls + '"><td>' + r.label + (r.sub && NOTE_MAP[r.label] ? '<sup>' + NOTE_MAP[r.label] + '</sup>' : '') + '</td><td>' + money(r.a) + '</td><td>' + money(r.b) + '</td><td class="' + cls + '">' + money(vd) + '</td><td class="' + cls + '">' + pct(vp) + '</td><td>' + pill + '</td></tr>'
+    })
+    h += '</tbody></table>'
+    document.getElementById('tbl').innerHTML = h
+  }
+
+  build()
+
+  var slides = document.querySelectorAll('.slide'), current = 0, SLIDE_COUNT = slides.length
+  var range = document.getElementById('range'), dots = document.getElementById('dots')
+  for (var i = 0; i < SLIDE_COUNT; i++) { var dd = document.createElement('div'); dd.className = 'dot' + (i === 0 ? ' on' : ''); dd.onclick = (function (n) { return function () { show(n) } })(i); dots.appendChild(dd) }
+  function show(n) {
+    if (n < 0) n = 0; if (n >= SLIDE_COUNT) n = SLIDE_COUNT - 1
+    current = n
+    slides.forEach(function (s, i) { s.classList.toggle('active', i === n) })
+    range.value = n
+    document.getElementById('count').textContent = (n + 1) + ' / ' + SLIDE_COUNT
+    Array.prototype.forEach.call(dots.children, function (d, i) { d.className = 'dot' + (i === n ? ' on' : '') })
+    document.getElementById('prev').disabled = n === 0
+    document.getElementById('next').disabled = n === SLIDE_COUNT - 1
+  }
+  document.getElementById('next').onclick = function () { show(current + 1) }
+  document.getElementById('prev').onclick = function () { show(current - 1) }
+  range.oninput = function () { show(parseInt(range.value, 10)) }
+  window.addEventListener('keydown', function (e) {
+    if (e.key === 'ArrowRight' || e.key === 'PageDown' || e.key === ' ') show(current + 1)
+    else if (e.key === 'ArrowLeft' || e.key === 'PageUp') show(current - 1)
+  })
+  show(0)
+</script>
+</body>
+</html>

@@ -3,7 +3,7 @@ import { toast } from 'sonner'
 import { useCubes, useDims, useProcs, useChores, useSubsets, useViews, useCubeDimensions, useSaveView, useHierarchies, useCreateHierarchy, useControlObjects, useDeleteDimension, useDeleteCube, useDeleteProcess, useDeleteChore, useDeleteSubset, useDeleteView, useActiveWorkSession, useWorkSessionLog } from '@/hooks/useApi'
 import { useStore } from '@/store'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { ChevronRight, ChevronDown, Box, Layers, Cog, Clock, Loader2, List, Plus, Table2, Code2, Sigma, PencilLine, Search, X, Braces, Trash2, FileSearch, Database, Tag, Network } from 'lucide-react'
+import { ChevronRight, ChevronDown, Box, Layers, Cog, Clock, Loader2, List, Plus, Table2, Code2, Sigma, PencilLine, Search, X, Braces, Trash2, FileSearch, Database, Tag, Network, LayoutDashboard } from 'lucide-react'
 import GlobalSearch from '@/components/GlobalSearch'
 import { DeleteWarningModal } from '@/components/DeleteWarningModal'
 import { cn } from '@/lib/utils'
@@ -465,6 +465,64 @@ function RulesSection({ server, cubes, isLoading, onOpenRules }) {
               <span className={cn('truncate font-mono', activeId === `rules:${cube}` && 'text-amber-400 dark:text-amber-300')}>{cube}</span>
               {changedSet.has(`rules::${cube}`) && <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0 ml-auto" title="Changed in active change set" />}
               <span className="hidden group-hover:inline text-[10px] text-muted-foreground ml-auto">Rules</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function LensesSection({ server, onOpen, onNew }) {
+  const [open, setOpen] = useState(false)
+  const [lenses, setLenses] = useState([])
+  const [loading, setLoading] = useState(false)
+  const load = useCallback(() => {
+    setLoading(true)
+    fetch(`/api/lenses?server=${encodeURIComponent(server)}&_=${Date.now()}`, { headers: { 'x-ide-token': localStorage.getItem('tm1-token') ?? '' } })
+      .then(r => r.json())
+      .then(d => setLenses(Array.isArray(d) ? d : []))
+      .catch(() => setLenses([]))
+      .finally(() => setLoading(false))
+  }, [server])
+  useEffect(() => { if (open) load() }, [open, load])
+  return (
+    <div data-section="lenses">
+      <div className="flex items-center w-full px-3 py-1 group">
+        <button
+          onClick={() => setOpen(o => !o)}
+          className="flex items-center gap-1.5 flex-1 text-xs font-semibold text-muted-foreground hover:text-foreground uppercase tracking-wider min-w-0"
+        >
+          {open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+          <LayoutDashboard size={12} className="shrink-0" />
+          <span>Lenses</span>
+        </button>
+        {loading && <Loader2 size={10} className="animate-spin text-muted-foreground shrink-0 ml-1" />}
+        <button
+          onClick={() => { setOpen(true); onNew() }}
+          title="New Lens"
+          className="hidden group-hover:flex items-center ml-1 text-muted-foreground hover:text-foreground shrink-0"
+        >
+          <Plus size={11} />
+        </button>
+      </div>
+      {open && (
+        <div className="pb-1">
+          {!loading && lenses.length === 0 && (
+            <p className="px-6 py-0.5 text-xs text-muted-foreground/50 italic">No lenses yet</p>
+          )}
+          {lenses.map(f => (
+            <button
+              key={f.name}
+              onClick={() => onOpen(f.name)}
+              className="flex items-center gap-2 w-full px-6 py-0.5 text-xs text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground group"
+              title={`Open lens ${f.name}`}
+            >
+              <LayoutDashboard size={10} className="shrink-0 text-muted-foreground" />
+              <span className="truncate">{f.name}</span>
+              {f.Status && (
+                <span className="text-[10px] text-muted-foreground shrink-0">{f.Status}</span>
+              )}
             </button>
           ))}
         </div>
@@ -1092,6 +1150,22 @@ export default function Explorer() {
     name,
   })
 
+  const openLens = (name) => toggleOpenTab({
+    id:     `lens:${server}:${name}`,
+    type:   'lens',
+    label:  name,
+    server,
+    name,
+  })
+
+  const openNewLens = () => toggleOpenTab({
+    id:     `lens:${server}:new:${Date.now()}`,
+    type:   'lens',
+    label:  'New Lens',
+    server,
+    name:   null,
+  })
+
   const openProcessAtLine = useCallback((name, section, line) => toggleOpenTab({
     id: `process:${server}:${name}`, type: 'process', label: name, server, name, content: null,
     ...(section && line ? { scrollToSection: section, scrollToLine: line } : {}),
@@ -1204,6 +1278,7 @@ export default function Explorer() {
               <DimSection server={server} dims={dims}    isLoading={loadingDims}   onOpenSubset={openSubset} onOpenDim={openDim} onCreateDim={() => openDim(null)} />
               <Section    icon={Cog}   label="Processes" items={procs}  isLoading={loadingProcs}  onSelect={openProcess} itemIcon={Cog}   sectionId="processes" locateIdPrefix="process" onDelete={handleDeleteProcess} onAdd={openNewProcess} csType="process" />
               <Section    icon={Clock} label="Chores"    items={chores} isLoading={loadingChores} onSelect={openChore}   itemIcon={Clock} sectionId="chores" locateIdPrefix="chore" onDelete={handleDeleteChore} onAdd={openNewChore} csType="chore" />
+              <LensesSection server={server} onOpen={openLens} onNew={openNewLens} />
               <ControlSection
                 server={server}
                 onOpenViewer={openCubeViewer}

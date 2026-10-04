@@ -133,6 +133,52 @@ effort estimate, and the reasoning.
 
 ---
 
+## 7. Cube Map — full TI data flow
+
+### 7.1 Show every TI process and its reads, not just writers of the focused cube
+
+- **Status (Oct 2026): built, awaiting James's check.** Scanner returns `processes` (reads/writes/calls + code-order `steps`) and `tiReaders`; reads = `CellGetN/S` + cube-view datasource; `CubeProcessFeeders` counts as a write. Map: "All TI" toggle, dashed-blue read edges, "Read by (TI)" panel section. **Dims** toggle: only dimensions a process *changes* (catalog-derived — statements taking a `dimname`, excluding subset/view/cube calls, since temp-view subset scaffolding would link every process); dim→cube links only in focus mode; attribute reads deliberately not drawn. Name resolution now seeds from parameter defaults, follows `a = b;` chains and `var | 'lit'` concatenations (Rollover's `sDimension | '.Refresh Subsets'`). **Show playback built too** (clapperboard button): entry = chore or uncalled process; walks code-order `steps` depth-first into `ExecuteProcess` callees; highlights the step's nodes/edges (amber glow, animated edge) with a trail; reads of a rule cube also light its DB()/feeder edges. Limits: designed order, loops play once, not a replay — a real-run replay from the message log is a possible follow-up.
+
+- **Why:** Found building FIN Consolidation (Sep 2026). The Cube Map only draws a process as a satellite
+  of the *focused* cube, and only when it **writes** to it. A process's inputs are invisible:
+  a posting process reads a journal cube and writes a data cube, but only the write edge
+  shows. A large consolidation run will read ~4 cubes and write 1 — its flow would be
+  mostly hidden. There's also no way to see all processes at once.
+- **Fix:** In the `/api/cubemap/model` scanner (`server.js`), add **read** detection alongside writes:
+  `CellGetN/S` (cube = 1st arg, literal or resolved `var = 'literal'`) and a process's cube-view
+  **datasource** (`DataSource.dataSourceNameForServer` when `Type = 'TM1CubeView'`). Return
+  `tiReaders` per cube. Frontend (`CubeMapEditor.jsx`): draw reads as a distinct edge
+  (dashed, "TI reads from cube"), and add an **"All TI"** mode that shows every process node with all its
+  read/write/call edges, not only the focused cube's writers.
+- **Note:** writer detection was already extended (Sep 2026) to `CellIncrementN/S` and
+  `ViewZeroOut`/`CubeClearData` — clear-and-rebuild processes were invisible before that.
+- **Effort:** Medium.
+
+---
+
+## 8. Period Builder
+
+### 8.1 `.Rollover` doesn't refresh the Rolling 3 / 6 / 12 consolidations
+
+- **Why:** Rolling N children are set only by `.Build` (from `pCurrentPeriod`). `.Rollover` advances
+  `Is Current Period` and rebuilds subsets, but the Rolling consolidations stay where Build left them,
+  so they go stale month by month.
+- **Fix:** Move the (now clear-then-populate) Rolling block into a shared routine that `.Rollover` also
+  runs, or have `.Rollover` call it. Decide whether Rolling is anchored to the current period (forward)
+  or trailing (backward) — current code rolls **forward** from the current period.
+- **Effort:** Small.
+
+### 8.2 Re-sync the `tm1_period_dimension` repo `.pro` files with the generator
+
+- **Why:** That repo's README says its `ti/*.pro` files are exactly what the Period Builder generates.
+  After the Sep 2026 fixes (FY/YTD/YTG/LTD reset before re-adding children; Rolling N cleared before
+  re-populating) they no longer match.
+- **Fix:** Regenerate the three processes from `client/src/components/PeriodBuilder/lib` and replace
+  the repo's `.pro` files.
+- **Effort:** Trivial.
+
+---
+
 ## Done / intentionally skipped
 
 - **1.1 — browser write-route session gate** — **reverted (Sep 2026)**. The hard 409-unless-a-change-set-is-open gate was shipped, then reversed: a session groups changes for deployment, it is not a login, and must never block a save from working. `TM1_REQUIRE_SESSION` now defaults to off (writes always succeed) — set `TM1_REQUIRE_SESSION=1` to opt back into the strict gate. The actual anonymous-edit gap this was meant to close is fixed properly instead, orthogonal to session state: every write always logs the real acting user (`req.user` browser-side, `AGENT_USER` for MCP) via `writeLog`'s new `user` parameter — including the save-collapsing path, which previously froze attribution on whoever started the session, even days later.
@@ -158,3 +204,96 @@ effort estimate, and the reasoning.
 ## Top three to do first
 
 > **Updated Sep 2026** — 1.1, 1.2, 1.3, 1.4, 2.1, 2.2, 2.3, 3.1, 3.2, 4.2, 5.1, and 6.1 are all **done**; 4.1 is declined by design. Remaining: **6.2** — ops choice (run a second, PROD-quarantined MCP instance), not code.
+
+
+### Rules lint: commas inside area references counted as argument separators
+
+- **Status: FIXED Oct 2 2026** — `core/rules-lint.js` `countArgs` now tracks `[ ]` / `{ }` depth; genuine wrong
+  arg counts still caught. The client validator (`rules-validator.js`, AST-based) never had the bug. Needs an IDE
+  server restart and a Claude Code restart (MCP) to load.
+
+- **Found:** Oct 2026 building `PE Data` — `IF( cond, - ['Base Data', 'Amount'], 0 )` refused by build_cube /
+  update_cube_rules static lint ("IF() expects 3 arguments, got 4"); TM1 itself accepts it.
+- **Fix:** the arg splitter in the rules validator / `core/rules-lint.js` must treat `[ … ]` as a bracketed group
+  (like parentheses and quotes) when counting top-level commas.
+
+---
+
+## 7. Capability candidates (generic, logged Oct 2026)
+
+Standard OData/REST capabilities and common engineering patterns, logged as roadmap
+candidates from first principles (no external implementation referenced).
+
+### 7.1 Bulk REST folding via OData `$batch`
+
+- **What:** Fold many TM1 REST calls into one `$batch` round-trip (rules for every cube,
+  code for every process, metadata sweeps) for the MCP tools and the lens bridge; fall
+  back per-request when a server lacks it. Batch is non-atomic — keep first pass replay-safe.
+- **Effort:** Medium.
+
+### 7.2 Unbound compile as a cheaper pre-save gate
+
+- **What:** Validate TI code / cube rules via the server compile/check endpoints *without
+  saving* — a fast review-time gate before the full save+validate path.
+- **Effort:** Small.
+
+### 7.3 Pre-write coordinate check (leaf + rule-overlap)
+
+- **What:** Before any cell write (grid or lens input form), verify the target is an
+  N-level element and flag rule/consolidation overlap — the silent no-op of writing to a
+  calculated cell. The exact guard input forms need in Stage 3.
+- **Effort:** Small.
+
+### 7.4 Feeder audit (static heuristics + `}StatsByCube`)
+
+- **What:** Whole-model scan for overfeeding (wildcard brackets, feeders into
+  consolidations) plus runtime feeder-efficiency evidence where available.
+- **Effort:** Medium.
+
+### 7.5 Per-process `.pro` / git two-file round-trip
+
+- **What:** Export any TI process to `.pro` or the diff-friendly git layout
+  (`{name}.json` + `{name}.ti`) and re-import/bundle-install — individual-process
+  version control, separate from full-model deploy packaging.
+- **Effort:** Medium.
+
+### 7.6 Confirm guards on destructive MCP tools
+
+- **What:** `confirm` argument repeating the target name on every destructive MCP tool
+  (delete/clear/execute/write).
+- **Effort:** Trivial.
+
+### 7.7 Model audit suite
+
+- **What:** One-call bulk scans for naming-convention violations, TI/rule complexity
+  (LOC, nesting, score), orphan dimensions, and v12-readiness gaps.
+- **Effort:** Medium.
+
+### 7.8 Chore dependency graph
+
+- **What:** Downstream call graph for every chore task, surfaced in the cube map / chore
+  editor — impact analysis before changing or deactivating a chore.
+- **Effort:** Small–Medium.
+
+### 7.9 Explicit v11/v12 REST version branches
+
+- **What:** Central numeric-major version branching in the TM1 client (fields/endpoints
+  that differ between 11.x and 12.x), replacing ad-hoc v12 handling.
+- **Effort:** Medium.
+
+### 7.10 Bulk source fetch for search & analysis
+
+- **What:** Pull every process's code and every cube's rules in one sweep, then
+  regex-search with caps — generalises the cube-map scanner's partial bulk read.
+- **Effort:** Medium.
+
+## 9. Documentation overhaul (logged Oct 2026)
+
+### 9.1 Rewrite the IDE docs against the current code
+
+- **What:** The docs predate most of what the IDE now is — deploy pipeline, MCP server
+  (60 tools), function catalog rebuild, cube map / TI scanner, Lenses, TI regions,
+  multi-user adapters. README, CLAUDE.md feature list and `docs/` need a rewrite, not a patch.
+- **How:** First an audit — every doc checked against the code, with a list of what's stale,
+  missing or wrong — approved before any rewriting starts.
+- **Effort:** Medium–Large.

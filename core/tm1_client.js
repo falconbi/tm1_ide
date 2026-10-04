@@ -477,10 +477,17 @@ class TM1Client {
         try {
             await this.post('Processes', body)
         } catch (e) {
-            if (e.response?.status === 409 || e.response?.status === 400) {
+            // TM1 v11 answers "already exists" with 400 (error code 278), not 409. Any OTHER 400 is a real
+            // rejection (e.g. code 178 "Failed to register object" for a Windows-reserved name like CON.xxx)
+            // and must surface as-is — falling through to PATCH turned it into a misleading 404.
+            const tm1Err  = e.response?.data?.error
+            const exists  = e.response?.status === 409 ||
+                (e.response?.status === 400 && (String(tm1Err?.code) === '278' || /already exists/i.test(tm1Err?.message ?? '')))
+            if (exists) {
                 // PATCH is atomic — no delete+recreate risk
                 await this.patch(`Processes('${encodeURIComponent(proc.name)}')`, body)
             } else {
+                if (tm1Err?.message) e.message = `TM1 rejected process "${proc.name}": ${tm1Err.message}`
                 throw e
             }
         }
@@ -499,6 +506,15 @@ class TM1Client {
         return this.get(`Chores('${encodeURIComponent(name)}')`, {
             '$expand': 'Tasks($expand=Process($select=Name))'
         })
+    }
+
+    // Every chore with its task order — one call, for the Cube Map's Show playback
+    async getChoresWithTasks() {
+        const d = await this.get('Chores', { '$select': 'Name,Active', '$expand': 'Tasks($expand=Process($select=Name))' })
+        return (d.value ?? []).filter(c => !c.Name.startsWith('}')).map(c => ({
+            name: c.Name, active: !!c.Active,
+            processes: (c.Tasks ?? []).map(t => t.Process?.Name).filter(Boolean),
+        }))
     }
 
     async updateChore(name, data) {
@@ -1438,9 +1454,39 @@ return (d.value ?? [])
 
     // ── File management ───────────────────────────────────────────────────────
 
-    // pathParts: ['Files'] for root, ['Files','data'] for a subfolder
+    // pathParts: ['Files'] for root, ['Files','data'] for a subfolder (v12), or
+    // ['Applications','Governance','Tests'] under the v11 Applications container.
+    // v11 addresses documents by their '<name>.blob' id and reads/writes content
+    // via /Document/Content; v12 addresses by name with /Content (see
+    // docs/MODEL_OWNED_HISTORY_PLAN.md §7 for the live-verified v11 facts).
     _contentsPath(pathParts) {
         return pathParts.map(p => `Contents('${encodeURIComponent(p)}')`).join('/')
+    }
+
+    // Cached per client. Unknown/empty versions default to the v12 shape so
+    // nothing changes for servers we can't identify.
+    async _isV11() {
+        if (this._v11 === undefined) {
+            const v = await this.getProductVersion()
+            const major = parseInt((String(v).trim().match(/^(\d+)/) ?? [])[1] ?? '', 10)
+            this._v11 = major >= 11 && major < 12
+        }
+        return this._v11
+    }
+
+    // Address of a document entity: v11 = '<name>.blob' (the id is the name plus
+    // a .blob suffix — it must sit inside the OData quotes), v12 = '<name>'.
+    async _fileAddress(pathParts, name) {
+        if (await this._isV11()) {
+            return `${this._contentsPath(pathParts)}/Contents('${encodeURIComponent(name)}.blob')`
+        }
+        return `${this._contentsPath(pathParts)}/Contents('${encodeURIComponent(name)}')`
+    }
+
+    // Content endpoint of a document: v11 /Document/Content, v12 /Content.
+    async _fileContentUrl(pathParts, name) {
+        const addr = await this._fileAddress(pathParts, name)
+        return (await this._isV11()) ? `${addr}/Document/Content` : `${addr}/Content`
     }
 
     async listFiles(pathParts = ['Files']) {
@@ -1453,7 +1499,7 @@ return (d.value ?? [])
     }
 
     async getFileContent(pathParts, name) {
-        return this.get(`${this._contentsPath(pathParts)}/Contents('${encodeURIComponent(name)}')/Content`)
+        return this.get(await this._fileContentUrl(pathParts, name))
     }
 
     async createFileDocument(pathParts, name) {
@@ -1465,14 +1511,36 @@ return (d.value ?? [])
 
     async putFileContent(pathParts, name, buffer) {
         return this.put(
-            `${this._contentsPath(pathParts)}/Contents('${encodeURIComponent(name)}')/Content`,
+            await this._fileContentUrl(pathParts, name),
             buffer,
             'application/octet-stream'
         )
     }
 
     async deleteFile(pathParts, name) {
-        return this.delete(`${this._contentsPath(pathParts)}/Contents('${encodeURIComponent(name)}')`)
+        return this.delete(await this._fileAddress(pathParts, name))
+    }
+
+    // Ensure a nested folder path exists, creating missing folders top-down.
+    // pathParts e.g. ['Applications','Governance','Tests'] — the first element is
+    // the existing container root ('Applications' on v11, 'Files' on v12) and is
+    // never created. Folder names must not start with '}' (400 on v11).
+    async ensureFolderPath(pathParts) {
+        if (!pathParts?.length) return
+        const walk = []
+        for (const part of pathParts.slice(1)) {
+            walk.push(part)
+            const parent = [pathParts[0], ...walk.slice(0, -1)]
+            const d = await this.get(`${this._contentsPath(parent)}/Contents`)
+            const exists = (d.value ?? []).some(i =>
+                i['@odata.type']?.includes('Folder') && i.Name === part)
+            if (!exists) {
+                await this.post(`${this._contentsPath(parent)}/Contents`, {
+                    '@odata.type': '#ibm.tm1.api.v1.Folder',
+                    Name: part,
+                })
+            }
+        }
     }
 
     // ── Sessions ──────────────────────────────────────────────────────────────

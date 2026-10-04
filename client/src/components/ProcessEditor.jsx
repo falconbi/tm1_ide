@@ -6,12 +6,12 @@ import { registerTM1Completions, registerTM1Theme } from '@/lib/tm1-functions'
 import { registerTICompletions } from '@/lib/tm1-completion'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
-import { ChevronRight, ChevronDown, Play, X, Braces, CheckCircle2, XCircle, Database, Trash2, Plus, Loader2, Bug, Search, AlertTriangle, AlertCircle, Map, Upload, History, Locate, HelpCircle } from 'lucide-react'
+import { ChevronRight, ChevronDown, Play, X, Braces, CheckCircle2, XCircle, Database, Trash2, Plus, Loader2, Bug, Search, AlertTriangle, AlertCircle, Map, Upload, History, Locate, HelpCircle, ListTree, ChevronsUpDown, ChevronsDownUp } from 'lucide-react'
 import HelpPanel from '@/components/HelpPanel'
 import ObjectHistoryPanel from '@/components/ObjectHistoryPanel'
 import { getFunctionRef } from '@/lib/tm1-snippets.js'
 import { loadSettings, saveSettings } from '@/lib/formatters/settings.js'
-import { executeTI, scanVariables } from '@/lib/ti-interpreter'
+import { scanVariables } from '@/lib/ti-interpreter'
 import { parseDebugLog } from '@/lib/ti-debugger'
 import { validateTICode } from '@/lib/ti-validator'
 import SnippetPanel from '@/components/SnippetPanel'
@@ -912,6 +912,11 @@ export default function ProcessEditor({ tab }) {
   const editorRef = useRef(null)
   const monacoRef = useRef(null)
   const pendingLineRef = useRef(null)
+  const [regionsCollapsed, setRegionsCollapsed] = useState(false)
+  const [showRegionMenu, setShowRegionMenu] = useState(false)
+  const [regionRect, setRegionRect] = useState(null)
+  const [regionList, setRegionList] = useState([])   // scanned when the menu opens
+  const regionBtnRef = useRef(null)
 
   // Local edits keyed by section; null = no changes
   const [edits, setEdits]           = useState({})
@@ -959,6 +964,60 @@ export default function ProcessEditor({ tab }) {
     editorRef.current?.updateOptions({ minimap: { enabled: next } })
     const s = loadSettings()
     saveSettings({ ...s, editor: { ...s.editor, minimap: { ...(s.editor.minimap ?? {}), ti: next } } })
+  }
+
+  useEffect(() => {
+    if (!showRegionMenu) return
+    const handler = (e) => {
+      if (!e.target.closest('.region-menu-container')) setShowRegionMenu(false)
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [showRegionMenu])
+
+  const toggleRegions = () => {
+    const editor = editorRef.current
+    if (!editor) return
+    if (regionsCollapsed) {
+      editor.trigger('fold', 'editor.unfoldAllMarkerRegions')
+      setRegionsCollapsed(false)
+    } else {
+      editor.trigger('fold', 'editor.foldAllMarkerRegions')
+      setRegionsCollapsed(true)
+    }
+  }
+
+  const getRegions = () => {
+    const editor = editorRef.current
+    if (!editor) return []
+    const regions = []
+    const lineCount = editor.getModel().getLineCount()
+    for (let line = 1; line <= lineCount; line++) {
+      const text = editor.getModel().getLineContent(line).trim()
+      const match = text.match(/^#Region\b\s*(.*)$/i)
+      if (match) {
+        regions.push({ line, name: match[1].trim() || 'Region' })
+      }
+    }
+    return regions
+  }
+
+  const goToRegion = (line) => {
+    const editor = editorRef.current
+    if (!editor) return
+    editor.revealLineInCenter(line)
+    editor.setPosition({ lineNumber: line, column: 1 })
+    setShowRegionMenu(false)
+  }
+
+  const openRegionMenu = () => {
+    const next = !showRegionMenu
+    setShowRegionMenu(next)
+    if (next) setRegionList(getRegions())
+    if (next && regionBtnRef.current) {
+      const r = regionBtnRef.current.getBoundingClientRect()
+      setRegionRect({ top: r.bottom + 4, right: window.innerWidth - r.right })
+    }
   }
 
   const handleInsertDs = (code) => {
@@ -1481,6 +1540,53 @@ export default function ProcessEditor({ tab }) {
         ))}
 
         <div className="ml-auto flex items-center gap-1 mr-2">
+          <div className="relative region-menu-container shrink-0">
+            <button
+              ref={regionBtnRef}
+              onClick={openRegionMenu}
+              title="Go to region"
+              className={cn(
+                'flex items-center gap-1.5 px-2.5 py-1 text-xs rounded border transition-colors',
+                showRegionMenu ? 'bg-primary text-primary-foreground border-primary' : 'border-border text-muted-foreground hover:text-foreground hover:bg-muted'
+              )}
+            >
+              <ListTree size={11} />
+              <span className="hidden sm:inline">Regions</span>
+            </button>
+            {showRegionMenu && regionRect && (
+              <div
+                className="fixed w-56 bg-popover border border-border rounded shadow-lg max-h-64 overflow-auto text-xs"
+                style={{ top: regionRect.top, right: regionRect.right, zIndex: 9999 }}
+              >
+                {regionList.length === 0 ? (
+                  <div className="px-3 py-1.5 text-muted-foreground italic">No regions found</div>
+                ) : (
+                  regionList.map(r => (
+                    <button
+                      key={r.line}
+                      onClick={() => goToRegion(r.line)}
+                      className="flex items-center gap-1.5 w-full px-3 py-1 text-left hover:bg-muted text-sidebar-foreground truncate"
+                      title={`Line ${r.line}`}
+                    >
+                      <span className="text-muted-foreground/50 font-mono text-[10px] shrink-0">{r.line}</span>
+                      <span className="truncate">{r.name}</span>
+                    </button>
+                  ))
+                )}
+              </div>
+            )}
+          </div>
+          <button
+            onClick={toggleRegions}
+            title={regionsCollapsed ? 'Expand all regions' : 'Collapse all regions'}
+            className={cn(
+              'flex items-center gap-1.5 px-2.5 py-1 text-xs rounded border transition-colors',
+              regionsCollapsed ? 'bg-primary text-primary-foreground border-primary' : 'border-border text-muted-foreground hover:text-foreground hover:bg-muted'
+            )}
+          >
+            {regionsCollapsed ? <ChevronsDownUp size={11} /> : <ChevronsUpDown size={11} />}
+            {regionsCollapsed ? 'Expand' : 'Collapse'}
+          </button>
           <button
             onClick={toggleMinimap}
             title="Toggle minimap"

@@ -7,10 +7,12 @@ const path      = require('path')
 const fs        = require('fs')
 const ai        = require('./core/ai/registry')
 const obfuscate = require('./core/ai/obfuscate')
-const { makeClient, listServers, listServersWithFlags, getDefaultAdapterType, getLoginServer, isReadOnly } = require('./core/adapter_registry')
+const { makeClient, makeClientWithCredentials, needsServerLogin, isDirectServer, isPawNativeServer, probeAuthMethod, listServers, listServersWithFlags, getDefaultAdapterType, getLoginServer, isReadOnly } = require('./core/adapter_registry')
 const { loadConnections, saveConnections, getConnection, executeQuery, testConnection, getSchema, loadQueries, saveQueries } = require('./core/sql_client')
-const { createSession, createDirectSession, getSessionUser, touchSession, invalidateSession, getCachedPawSession, getCSRF, PAW_HOST } = require('./core/paw_connect')
+const { createSession, createDirectSession, createLocalSession, attachPawSession, getSessionUser, touchSession, invalidateSession, getCachedPawSession, getCSRF, PAW_HOST, setServerCredentials, getServerCredentials, clearServerCredentials, getServerStatus, listServerEntries, getSessionCredentials } = require('./core/paw_connect')
 const cl = require('./core/change_log')
+const lensStore = require('./core/lens_store')
+const lensBridge = require('./core/lens_bridge')
 
 // Session (Change Set) is optional for using the IDE — it groups changes for
 // deployment, it is not a login and must never gate whether a save works.
@@ -62,6 +64,18 @@ const PORT = process.env.PORT || 8083
 // that the browser<->server leg is then plaintext HTTP with no transport security.
 const HOST = process.env.HOST || '127.0.0.1'
 
+// ── IDE sign-in (Architect model) ─────────────────────────────────────────────
+// IDE_LOGIN=auto (default): no IDE login when the IDE listens on this machine only
+//   — open it, pick a server, sign in to that server. When HOST exposes it to the
+//   network, an IDE sign-in (through any server) is required: otherwise anyone on
+//   the network could reach stored SQL logins, the AI key and change history.
+// IDE_LOGIN=always: require the IDE sign-in even when local (e.g. a shared PC).
+// There is deliberately no "never" for a network-exposed IDE.
+const IDE_LOGIN    = String(process.env.IDE_LOGIN || 'auto').toLowerCase()
+const LOCAL_ONLY   = ['127.0.0.1', 'localhost', '::1'].includes(HOST)
+const LOGIN_REQUIRED = IDE_LOGIN === 'always' || !LOCAL_ONLY
+const isLoopbackReq = (req) => ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(req.socket.remoteAddress)
+
 // ── Login rate limit ──────────────────────────────────────────────────────────
 // Small in-memory per-IP throttle on the one unauthenticated endpoint. Defence in
 // depth for the local model; a real barrier if HOST is ever widened.
@@ -104,14 +118,19 @@ app.post('/api/auth/login', loginRateLimit, async (req, res) => {
     try {
         const { username, password } = req.body
         if (!username || !password) return res.status(400).json({ error: 'username and password required' })
+        // Sign in through any server you have an account on (default: the configured login server).
+        const via = req.body.server || getLoginServer()
 
-        if (getDefaultAdapterType() === 'direct-v11') {
+        if (via && isDirectServer(via)) {
             const token = await createDirectSession(username, password)
             try {
-                const cl = makeClient(getLoginServer(), token)
+                // These credentials belong to that server only — every other
+                // server gets its own login (per-server login).
+                setServerCredentials(token, via, { username, password })
+                const cl = makeClient(via, token)
                 await cl.get('Configuration')
                 clearHits()
-                res.json({ token, username })
+                res.json({ token, username, ...(isSampleLogin(username, password) ? { warning: SAMPLE_PASSWORD_WARNING } : {}) })
             } catch (e) {
                 invalidateSession(token)
                 res.status(401).json({ error: 'Login failed — check your TM1 credentials' })
@@ -124,18 +143,61 @@ app.post('/api/auth/login', loginRateLimit, async (req, res) => {
     } catch (e) { res.status(401).json({ error: 'Login failed' }) }
 })
 
-app.post('/api/auth/logout', (req, res) => {
+// End a server's TM1 session for this user (best effort) so it doesn't linger.
+async function closeServerSession(server, entry) {
+    if (!entry?.state?.cookie) return
+    const cl = makeClientWithCredentials(server, { username: entry.username, password: entry.password ?? '' }, entry.state)
+    await cl?._adapter?.closeSession?.()
+}
+
+app.post('/api/auth/logout', async (req, res) => {
     const token = req.headers['x-ide-token']
-    if (token) invalidateSession(token)
+    if (token) {
+        await Promise.all(listServerEntries(token).map(([server, entry]) => closeServerSession(server, entry)))
+        invalidateSession(token)
+    }
     res.json({ ok: true })
 })
 
 app.get('/api/config', (req, res) => {
-    res.json({ loginServer: PAW_LOGIN_SERVER ?? null, hasAI: ai.isConfigured() })
+    res.json({
+        loginServer: getLoginServer() ?? PAW_LOGIN_SERVER ?? null,
+        hasAI: ai.isConfigured(),
+        loginRequired: LOGIN_REQUIRED,
+        access: LOCAL_ONLY ? 'local' : 'network',
+        // Server names for the sign-in page (only when a sign-in is required).
+        servers: LOGIN_REQUIRED ? listServers() : [],
+    })
+})
+
+// Sign-in page: "Brand-new server?" — set its first admin password and sign in to
+// the IDE through it (the IDE's fallback for what Architect used to be needed for).
+app.post('/api/auth/setup-login', loginRateLimit, async (req, res) => {
+    try {
+        const { server, newPassword } = req.body ?? {}
+        const { state } = await setupBlankAdmin(server, newPassword)
+        const token = await createDirectSession('admin', newPassword)
+        setServerCredentials(token, server, { username: 'admin', password: newPassword }, state)
+        _loginHits.delete(req.ip || req.socket.remoteAddress || 'unknown')
+        res.json({ token, username: 'admin', server })
+    } catch (e) { sendSetupError(res, e) }
+})
+
+// IBM's sample servers ship with admin / apple — fine in a lab, an open door anywhere shared.
+const SAMPLE_PASSWORD_WARNING = 'This server still uses IBM\'s published sample password (admin / apple) — change it before anyone else can reach it.'
+const isSampleLogin = (u, p) => String(u ?? '').toLowerCase() === 'admin' && p === 'apple'
+
+// Architect model: a local-only IDE needs no IDE login. The browser gets a session
+// that holds per-server logins only. Refused when an IDE sign-in is required, or
+// when the request doesn't come from this machine.
+app.post('/api/auth/local-session', async (req, res) => {
+    if (LOGIN_REQUIRED || !isLoopbackReq(req)) return res.status(403).json({ error: 'Sign in required' })
+    const token = await createLocalSession()
+    res.json({ token, username: 'local' })
 })
 
 app.use('/api', (req, res, next) => {
-    if (req.path === '/auth/login' || req.path === '/auth/logout') return next()
+    if (['/auth/login', '/auth/logout', '/auth/local-session', '/auth/setup-login'].includes(req.path)) return next()
     const token = req.headers['x-ide-token']
     if (!token) return res.status(401).json({ error: 'Not authenticated' })
     const user = getSessionUser(token)
@@ -143,6 +205,157 @@ app.use('/api', (req, res, next) => {
     touchSession(token)
     req.ideToken = token
     req.user = user
+    next()
+})
+
+// ── Per-server login ──────────────────────────────────────────────────────────
+// A request for a server this user hasn't signed in to is answered here — before
+// any call reaches TM1 — with 401 { needsServerLogin }. The browser shows a login
+// for that server. No stored password is ever tried against another server, and a
+// rejected one is never retried (TM1's MaximumLoginAttempts would lock the account).
+const NEEDS_LOGIN_RE = /^(?:Sign in to server "(.+)" to use it|TM1 rejected the login for server "(.+)" — sign in to it again)$/
+
+app.use('/api', (req, res, next) => {
+    if (req.path.startsWith('/auth/') || req.path === '/servers/setup') return next()
+    const server = req.query?.server ?? req.body?.server
+    if (server && needsServerLogin(String(server), req.ideToken)) {
+        const rejected = getServerStatus(req.ideToken, String(server)) === 'rejected'
+        return res.status(401).json({
+            needsServerLogin: String(server), rejected,
+            error: rejected
+                ? `TM1 rejected the login for server "${server}" — sign in to it again`
+                : `Sign in to server "${server}" to use it`,
+        })
+    }
+    // Change sets record who changed what: use the identity signed in to THIS server.
+    if (server) {
+        const who = getServerCredentials(req.ideToken, String(server))?.username
+        if (who) req.user = who
+    }
+    // Routes report errors as { error: message }; turn a login failure raised
+    // mid-request into the same 401 { needsServerLogin } the check above sends.
+    const json = res.json.bind(res)
+    res.json = (body) => {
+        const m = res.statusCode >= 400 && typeof body?.error === 'string' ? NEEDS_LOGIN_RE.exec(body.error) : null
+        if (m) {
+            res.status(401)
+            return json({ ...body, needsServerLogin: m[1] ?? m[2], rejected: !!m[2] })
+        }
+        return json(body)
+    }
+    next()
+})
+
+// Which servers this user is signed in to.
+//   status: 'signed-in' | 'needs-login' | 'rejected' | 'paw' (PAW owns the login)
+app.get('/api/auth/servers', (req, res) => {
+    res.json(listServers().map(name => {
+        if (!isDirectServer(name)) return { name, status: 'paw' }
+        const st = getServerStatus(req.ideToken, name)
+        return { name, status: st === 'ok' ? 'signed-in' : st === 'rejected' ? 'rejected' : 'needs-login', username: getServerCredentials(req.ideToken, name)?.username ?? null }
+    }))
+})
+
+// Sign in to one server. One test call; stores the login only if TM1 accepts it.
+// useCurrent: try the credentials you signed in to the IDE with (one attempt).
+app.post('/api/auth/server-login', loginRateLimit, async (req, res) => {
+    try {
+        const { server, username, password, useCurrent, namespace } = req.body ?? {}
+        if (!server) return res.status(400).json({ error: 'server required' })
+        const creds = useCurrent ? getSessionCredentials(req.ideToken) : { username, password: password ?? '', namespace: namespace || null }
+        if (useCurrent && !creds) return res.status(400).json({ error: 'No current login to reuse — enter a username and password' })
+        if (!creds?.username) return res.status(400).json({ error: 'username required' })
+        if (isPawNativeServer(server)) {
+            // One PAW sign-in covers every server behind that PAW.
+            try { await attachPawSession(req.ideToken, creds.username, creds.password) }
+            catch { return res.status(403).json({ rejected: true, error: `PAW rejected the login for "${server}" — check the username and password` }) }
+            _loginHits.delete(req.ip || req.socket.remoteAddress || 'unknown')
+            return res.json({ ok: true, server, username: creds.username, paw: true })
+        }
+        const state = {}
+        const cl = makeClientWithCredentials(server, creds, state)
+        if (!cl) return res.json({ ok: true })   // machine-credential connection — nothing to sign in to
+        try {
+            await cl.get('ActiveUser', { '$select': 'Name' })
+        } catch (e) {
+            if (e.code === 'TM1_AUTH_REJECTED') {
+                return res.status(403).json({ rejected: true, error: `TM1 rejected the login for "${server}" — check the username and password` })
+            }
+            throw e
+        }
+        setServerCredentials(req.ideToken, server, { username: creds.username, password: creds.password, namespace: creds.namespace ?? null }, state)
+        _loginHits.delete(req.ip || req.socket.remoteAddress || 'unknown')
+        res.json({ ok: true, server, username: creds.username, ...(isSampleLogin(creds.username, creds.password) ? { warning: SAMPLE_PASSWORD_WARNING } : {}) })
+    } catch (e) { res.status(500).json({ error: `Could not reach "${req.body?.server}": ${e.message}` }) }
+})
+
+// How does this server want to be signed in to? Asked without credentials —
+// never counts as a failed login. Also the "Test connection" details.
+app.get('/api/auth/method', async (req, res) => {
+    try {
+        if (!req.query.server) return res.status(400).json({ error: 'server required' })
+        res.json(await probeAuthMethod(String(req.query.server)))
+    } catch (e) { res.status(502).json({ server: req.query.server, method: 'unreachable', error: e.message }) }
+})
+
+// Sign out of one server (ends its TM1 session).
+app.post('/api/auth/server-logout', async (req, res) => {
+    const { server } = req.body ?? {}
+    if (!server) return res.status(400).json({ error: 'server required' })
+    await closeServerSession(server, clearServerCredentials(req.ideToken, server))
+    res.json({ ok: true })
+})
+
+// "Set up new server" — set the first admin password on a fresh TM1 server
+// (native security: a new server has user admin with a blank password).
+// Exactly one attempt with the blank password; never repeated. The password must
+// be set before anything else — nobody is left signed in on a blank password.
+// Returns { state } (the TM1 session signed in with the new password) or throws
+// an Error with .status/.body for the route to send.
+async function setupBlankAdmin(server, newPassword) {
+    const fail = (status, body) => Object.assign(new Error(body.error), { status, body })
+    if (!server) throw fail(400, { error: 'server required' })
+    if (!newPassword) throw fail(400, { error: 'newPassword required' })
+    if (!isDirectServer(server)) throw fail(400, { error: `"${server}" is reached through PAW — set its password there` })
+    const blank = makeClientWithCredentials(server, { username: 'admin', password: '' }, {})
+    try {
+        await blank.get('ActiveUser', { '$select': 'Name' })
+    } catch (e) {
+        if (e.code !== 'TM1_AUTH_REJECTED') throw e
+        const w = String(e.wwwAuthenticate ?? '').toLowerCase()
+        const mode = /cam/.test(w) ? 'cam' : /negotiate|ntlm/.test(w) ? 'integrated' : 'native'
+        throw fail(409, {
+            mode, alreadyHasPassword: mode === 'native',
+            error: mode === 'native'
+                ? `"${server}" already has an admin password — sign in to it normally`
+                : `"${server}" uses ${mode === 'cam' ? 'CAM (Cognos)' : 'Windows'} security — passwords are managed in the directory, not TM1`,
+        })
+    }
+    await blank.patch("Users('admin')", { Password: newPassword })
+    await blank._adapter.closeSession()
+    const state = {}
+    await makeClientWithCredentials(server, { username: 'admin', password: newPassword }, state).get('ActiveUser', { '$select': 'Name' })
+    return { state }
+}
+
+const sendSetupError = (res, e) => e.status
+    ? res.status(e.status).json(e.body)
+    : res.status(500).json({ error: e.response?.data?.error?.message ?? e.message })
+
+// Already in the IDE: set up a new server and sign in to it.
+app.post('/api/servers/setup', loginRateLimit, async (req, res) => {
+    try {
+        const { server, newPassword } = req.body ?? {}
+        const { state } = await setupBlankAdmin(server, newPassword)
+        setServerCredentials(req.ideToken, server, { username: 'admin', password: newPassword }, state)
+        res.json({ ok: true, server, username: 'admin' })
+    } catch (e) { sendSetupError(res, e) }
+})
+
+// No API response may be cached by the browser — the IDE serves live model state
+// and lens HTML; a heuristic-cached GET would show stale content after an edit.
+app.use('/api', (req, res, next) => {
+    res.setHeader('Cache-Control', 'no-store')
     next()
 })
 
@@ -2291,11 +2504,14 @@ app.post('/api/admin/maintenance/disable', async (req, res) => {
 })
 
 // ── User management ───────────────────────────────────────────────────────────
+// Acts on the server selected in the UI (?server= / body.server); the login
+// server only when none is given.
+const userServer = (req) => req.query?.server ?? req.body?.server ?? PAW_LOGIN_SERVER
 app.post('/api/users/provision', async (req, res) => {
     try {
-        if (!gateReadOnly(res, PAW_LOGIN_SERVER)) return
+        if (!gateReadOnly(res, userServer(req))) return
         const { name, password, groups = [], friendlyName = '' } = req.body
-        const cl = makeClient(PAW_LOGIN_SERVER, req.ideToken)
+        const cl = makeClient(userServer(req), req.ideToken)
         await cl.createClient(name, password, friendlyName)
         for (const g of groups) {
             try { await cl.addClientToGroup(name, g) } catch {}
@@ -2310,10 +2526,15 @@ app.post('/api/users/provision', async (req, res) => {
 
 app.post('/api/users/:name/password', async (req, res) => {
     try {
-        if (!gateReadOnly(res, PAW_LOGIN_SERVER)) return
+        if (!gateReadOnly(res, userServer(req))) return
         const { password } = req.body
-        const cl = makeClient(PAW_LOGIN_SERVER, req.ideToken)
+        const cl = makeClient(userServer(req), req.ideToken)
         await cl.resetClientPassword(req.params.name, password)
+        // Reset your own login on this server → keep the IDE signed in with the new one.
+        const mine = getServerCredentials(req.ideToken, userServer(req))
+        if (mine && mine.username.toLowerCase() === req.params.name.toLowerCase()) {
+            setServerCredentials(req.ideToken, userServer(req), { username: mine.username, password }, mine.state)
+        }
         res.json({ ok: true })
     } catch (e) {
         const detail = e.response?.data ?? e.message
@@ -2323,25 +2544,25 @@ app.post('/api/users/:name/password', async (req, res) => {
 
 app.get('/api/users', async (req, res) => {
     try {
-        const cl = makeClient(PAW_LOGIN_SERVER, req.ideToken)
+        const cl = makeClient(userServer(req), req.ideToken)
         res.json(await cl.getClients())
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
 app.post('/api/users', async (req, res) => {
     try {
-        if (!gateReadOnly(res, PAW_LOGIN_SERVER)) return
+        if (!gateReadOnly(res, userServer(req))) return
         const { name, password, friendlyName } = req.body
-        const cl = makeClient(PAW_LOGIN_SERVER, req.ideToken)
+        const cl = makeClient(userServer(req), req.ideToken)
         res.json(await cl.createClient(name, password, friendlyName))
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
 app.patch('/api/users/:name', async (req, res) => {
     try {
-        if (!gateReadOnly(res, PAW_LOGIN_SERVER)) return
+        if (!gateReadOnly(res, userServer(req))) return
         const { server: _s, ...patch } = req.body
-        const cl = makeClient(PAW_LOGIN_SERVER, req.ideToken)
+        const cl = makeClient(userServer(req), req.ideToken)
         await cl.updateClient(req.params.name, patch)
         res.json({ ok: true })
     } catch (e) { res.status(500).json({ error: e.message }) }
@@ -2349,8 +2570,8 @@ app.patch('/api/users/:name', async (req, res) => {
 
 app.delete('/api/users/:name', async (req, res) => {
     try {
-        if (!gateReadOnly(res, PAW_LOGIN_SERVER)) return
-        const cl = makeClient(PAW_LOGIN_SERVER, req.ideToken)
+        if (!gateReadOnly(res, userServer(req))) return
+        const cl = makeClient(userServer(req), req.ideToken)
         await cl.deleteClient(req.params.name)
         res.json({ ok: true })
     } catch (e) { res.status(500).json({ error: e.message }) }
@@ -2358,23 +2579,23 @@ app.delete('/api/users/:name', async (req, res) => {
 
 app.get('/api/groups', async (req, res) => {
     try {
-        const cl = makeClient(PAW_LOGIN_SERVER, req.ideToken)
+        const cl = makeClient(userServer(req), req.ideToken)
         res.json(await cl.getGroups())
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
 app.get('/api/users/:name/groups', async (req, res) => {
     try {
-        const cl = makeClient(PAW_LOGIN_SERVER, req.ideToken)
+        const cl = makeClient(userServer(req), req.ideToken)
         res.json(await cl.getClientGroups(req.params.name))
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
 app.post('/api/users/:name/groups', async (req, res) => {
     try {
-        if (!gateReadOnly(res, PAW_LOGIN_SERVER)) return
+        if (!gateReadOnly(res, userServer(req))) return
         const { group } = req.body
-        const cl = makeClient(PAW_LOGIN_SERVER, req.ideToken)
+        const cl = makeClient(userServer(req), req.ideToken)
         await cl.addClientToGroup(req.params.name, group)
         res.json({ ok: true })
     } catch (e) {
@@ -2386,8 +2607,8 @@ app.post('/api/users/:name/groups', async (req, res) => {
 
 app.delete('/api/users/:name/groups/:group', async (req, res) => {
     try {
-        if (!gateReadOnly(res, PAW_LOGIN_SERVER)) return
-        const cl = makeClient(PAW_LOGIN_SERVER, req.ideToken)
+        if (!gateReadOnly(res, userServer(req))) return
+        const cl = makeClient(userServer(req), req.ideToken)
         await cl.removeClientFromGroup(req.params.name, req.params.group)
         res.json({ ok: true })
     } catch (e) { res.status(500).json({ error: e.message }) }
@@ -3044,15 +3265,41 @@ app.get('/api/cubemap/model', async (req, res) => {
 
         // Parse DB() references from rules text
         const DB_RE = /\bDB\s*\(\s*'([^']+)'/gi
+        // Remove `#` / `//` comments (quote-aware, newlines preserved so nothing
+        // else that depends on line structure breaks). Stops a comment like
+        // `# CellPutN(v, 'Budget', ...)` from creating a phantom edge.
+        function stripComments(code) {
+            let out = ''
+            let i = 0
+            const n = code.length
+            while (i < n) {
+                const ch = code[i]
+                if (ch === "'") {
+                    out += "'"; i++
+                    while (i < n && code[i] !== "'") { out += code[i]; i++ }
+                    if (i < n) { out += "'"; i++ }
+                    continue
+                }
+                if (ch === '#' || (ch === '/' && code[i + 1] === '/')) {
+                    while (i < n && code[i] !== '\n') i++
+                    continue
+                }
+                out += ch
+                i++
+            }
+            return out
+        }
         function scanRefs(text) {
+            const clean = stripComments(text)
             const refs = new Set()
             let m
-            while ((m = DB_RE.exec(text)) !== null) refs.add(m[1])
+            while ((m = DB_RE.exec(clean)) !== null) refs.add(m[1])
             DB_RE.lastIndex = 0
             return [...refs]
         }
 
         const cubeNames = new Set(allCubes.map(c => c.Name))
+        const dimNames  = new Set(await client.getDimensions().catch(() => []))
 
         // Fetch TI process code for write-ref and call-chain analysis (best-effort — skip if slow/unavailable)
         // Catches three patterns, not just a literal cube name in CellPutN:
@@ -3062,51 +3309,156 @@ app.get('/api/cubemap/model', async (req, res) => {
         //      CellPutN target is a parameter, unresolvable in isolation) attributed via the call site that
         //      names the real cube — this is how Bedrock-style reusable copy processes get credited correctly.
         const tiWriteMap = {}
+        const tiReadMap  = {}
         const processCallers = {} // calledProcess -> [callerProcess, ...] (reverse of ExecuteProcess/RunProcess)
+        // Per-process view for the map's "All TI" mode and the Show playback. `steps` is every distinct
+        // read/write/call in code order (first occurrence), which is the order the playback walks.
+        const processes = {}
+        const procEntry = name => (processes[name] ??= { reads: [], writes: [], calls: [], dimWrites: [], steps: [] })
+        const dimWriteMap = {} // dim -> [process, ...]
+        // Dimension-changing TI calls, derived from the shared catalog (never hand-listed): a statement
+        // that takes a dimname and no cubename (View*/CubeCreate take a dimname but don't change it).
+        // Subset calls are excluded — the temp-view scaffolding every clear-and-rebuild process does
+        // (SubsetCreate/ElementInsert/Destroy) would link nearly every process to its cube's dimensions.
+        // The value is the dimname's argument position.
+        const DIM_WRITE_FNS = Object.fromEntries(Object.entries(require('./shared/tm1-function-catalog.json'))
+            .filter(([, f]) => f.language !== 'rules' && f.isStatement && (f.params ?? []).includes('dimname')
+                && !(f.params ?? []).some(x => x.startsWith('cubename') || x.startsWith('subset')))
+            .map(([name, f]) => [name, f.params.indexOf('dimname')]))
+        const DIM_CALL_RE = new RegExp(`\\b(${Object.keys(DIM_WRITE_FNS).join('|')})\\s*\\(`, 'gi')
+        // Top-level args of the call whose '(' is at openIdx — quote- and paren-aware
+        const splitArgs = (code, openIdx) => {
+            const args = []; let depth = 0, cur = '', inStr = false
+            for (let i = openIdx + 1; i < code.length; i++) {
+                const ch = code[i]
+                if (inStr) { cur += ch; if (ch === "'") inStr = false; continue }
+                if (ch === "'") { inStr = true; cur += ch; continue }
+                if (ch === '(') depth++
+                if (ch === ')') { if (depth === 0) { args.push(cur); break } depth-- }
+                if (ch === ',' && depth === 0) { args.push(cur); cur = ''; continue }
+                if (ch === ';' && depth === 0) break
+                cur += ch
+            }
+            return args
+        }
         try {
             const pd = await client.get('Processes', {
-                '$select': 'Name,PrologProcedure,MetadataProcedure,DataProcedure,EpilogProcedure',
+                '$select': 'Name,PrologProcedure,MetadataProcedure,DataProcedure,EpilogProcedure,DataSource,Parameters',
             })
             const ASSIGN_RE     = /\b([A-Za-z_]\w*)\s*=\s*'([^']*)'\s*;/g
-            const CELLPUT_RE    = /\bCellPut[NS](?:Complete)?\s*\(\s*[^,]+,\s*([^,]+),/gi
+            const VAR_ASSIGN_RE = /\b([A-Za-z_]\w*)\s*=\s*([A-Za-z_]\w*)\s*;/g
+            // cube is the 2nd arg: CellPutN/S, CellPutNComplete, CellIncrementN/S (accumulating write)
+            const CELLPUT_RE    = /\b(?:CellPut[NS](?:Complete)?|CellIncrement[NS])\s*\(\s*[^,]+,\s*([^,]+),/gi
+            // cube is the 1st arg: functions that change a cube's data without CellPut — clear-and-rebuild
+            // processes (ViewZeroOut then CellIncrementN) were invisible on the Cube Map without these
+            const CUBE_FIRST_RE = /\b(?:ViewZeroOut|CubeClearData|CubeProcessFeeders)\s*\(\s*([^,)]+)/gi
+            // reads: cube is the 1st arg
+            const CELLGET_RE    = /\bCellGet[NS]\s*\(\s*([^,)]+)/gi
             const EXEC_RE       = /\b(?:ExecuteProcess|RunProcess)\s*\(([\s\S]*?)\)\s*;/gi
-            const EXEC_NAME_RE  = /^\s*'([^']+)'/
             const CUBE_PARAM_RE = /'([pP]\w*[Cc]ube\w*)'\s*,\s*'([^']+)'/g
 
-            const addWriter = (cube, proc) => {
+            const addStep = (proc, kind, target, pos) => {
+                const e = procEntry(proc)
+                const list = { read: e.reads, write: e.writes, call: e.calls, dimwrite: e.dimWrites }[kind]
+                if (list.includes(target)) return
+                list.push(target)
+                e.steps.push({ kind, target, pos })
+            }
+            const addWriter = (cube, proc, pos = Infinity) => {
                 if (!cubeNames.has(cube)) return
                 if (!tiWriteMap[cube]) tiWriteMap[cube] = []
                 if (!tiWriteMap[cube].includes(proc)) tiWriteMap[cube].push(proc)
+                addStep(proc, 'write', cube, pos)
+            }
+            const addReader = (cube, proc, pos) => {
+                if (!cubeNames.has(cube)) return
+                if (!tiReadMap[cube]) tiReadMap[cube] = []
+                if (!tiReadMap[cube].includes(proc)) tiReadMap[cube].push(proc)
+                addStep(proc, 'read', cube, pos)
+            }
+            // An object-name expression -> its value: 'literal', a resolved variable, or a `|` concatenation
+            // of those (e.g. sDimension | '.Refresh Subsets'). Anything else is unresolvable -> undefined.
+            const resolveName = (ref, varValues) => {
+                const parts = []; let cur = '', inStr = false
+                for (const ch of ref) {
+                    if (ch === "'") inStr = !inStr
+                    if (ch === '|' && !inStr) { parts.push(cur); cur = '' } else cur += ch
+                }
+                parts.push(cur)
+                let out = ''
+                for (const part of parts.map(s => s.trim())) {
+                    const lit = part.match(/^'([^']*)'$/)
+                    const val = lit ? lit[1] : varValues[part]
+                    if (val === undefined) return undefined
+                    out += val
+                }
+                return out || undefined
             }
 
             for (const p of (pd.value ?? []).filter(p => !p.Name.startsWith('}'))) {
-                const code = [p.PrologProcedure, p.MetadataProcedure, p.DataProcedure, p.EpilogProcedure]
-                    .filter(Boolean).join('\n')
+                const code = stripComments([p.PrologProcedure, p.MetadataProcedure, p.DataProcedure, p.EpilogProcedure]
+                    .filter(Boolean).join('\n'))
 
-                // Resolve simple `var = 'literal';` assignments so CellPutN(value, var, ...) can be traced
+                // Resolve `var = 'literal';` assignments so CellPutN(value, var, ...) can be traced, seeded
+                // with parameter defaults and following `a = b;` chains (sDimension = pDimension). A default is
+                // what the process uses when run as-is, so it's the name the map attributes it to.
                 const varValues = {}
+                for (const prm of p.Parameters ?? []) {
+                    if (typeof prm.Value === 'string' && prm.Value) varValues[prm.Name] = prm.Value
+                }
                 let am
                 ASSIGN_RE.lastIndex = 0
                 while ((am = ASSIGN_RE.exec(code)) !== null) varValues[am[1]] = am[2]
+                for (let pass = 0; pass < 3; pass++) {
+                    VAR_ASSIGN_RE.lastIndex = 0
+                    while ((am = VAR_ASSIGN_RE.exec(code)) !== null) {
+                        if (varValues[am[1]] === undefined && varValues[am[2]] !== undefined) varValues[am[1]] = varValues[am[2]]
+                    }
+                }
 
                 CELLPUT_RE.lastIndex = 0
                 let m
                 while ((m = CELLPUT_RE.exec(code)) !== null) {
-                    const ref = m[1].trim()
-                    const lit = ref.match(/^'([^']+)'$/)
-                    const cubeName = lit ? lit[1] : varValues[ref]
-                    if (cubeName) addWriter(cubeName, p.Name)
+                    const cubeName = resolveName(m[1], varValues)
+                    if (cubeName) addWriter(cubeName, p.Name, m.index)
                 }
+
+                CUBE_FIRST_RE.lastIndex = 0
+                while ((m = CUBE_FIRST_RE.exec(code)) !== null) {
+                    const cubeName = resolveName(m[1], varValues)
+                    if (cubeName) addWriter(cubeName, p.Name, m.index)
+                }
+
+                CELLGET_RE.lastIndex = 0
+                while ((m = CELLGET_RE.exec(code)) !== null) {
+                    const cubeName = resolveName(m[1], varValues)
+                    if (cubeName) addReader(cubeName, p.Name, m.index)
+                }
+
+                DIM_CALL_RE.lastIndex = 0
+                while ((m = DIM_CALL_RE.exec(code)) !== null) {
+                    const ref = splitArgs(code, m.index + m[0].length - 1)[DIM_WRITE_FNS[m[1].toUpperCase()]]
+                    const dim = ref && resolveName(ref, varValues)
+                    if (!dim || !dimNames.has(dim)) continue
+                    if (!dimWriteMap[dim]) dimWriteMap[dim] = []
+                    if (!dimWriteMap[dim].includes(p.Name)) dimWriteMap[dim].push(p.Name)
+                    addStep(p.Name, 'dimwrite', dim, m.index)
+                }
+
+                // A cube-view datasource is a read of the whole view, before any code runs
+                const ds = p.DataSource
+                if (ds?.Type === 'TM1CubeView' && ds.dataSourceNameForServer) addReader(ds.dataSourceNameForServer, p.Name, -1)
 
                 EXEC_RE.lastIndex = 0
                 while ((m = EXEC_RE.exec(code)) !== null) {
                     const argList = m[1]
-                    const nameM = EXEC_NAME_RE.exec(argList)
-                    if (!nameM) continue
-                    const called = nameM[1]
+                    const nameRef = splitArgs(`(${argList})`, 0)[0]
+                    const called = nameRef && resolveName(nameRef, varValues)
+                    if (!called) continue
                     if (called !== p.Name) {
                         if (!processCallers[called]) processCallers[called] = []
                         if (!processCallers[called].includes(p.Name)) processCallers[called].push(p.Name)
+                        addStep(p.Name, 'call', called, m.index)
                     }
                     CUBE_PARAM_RE.lastIndex = 0
                     let cm
@@ -3138,12 +3490,181 @@ app.get('/api/cubemap/model', async (req, res) => {
                 ruleFeederRefs: feederRefs,
                 ruleLoc,
                 tiWriters:      tiWriteMap[c.Name] ?? [],
+                tiReaders:      tiReadMap[c.Name] ?? [],
             }
         }
 
-        res.json({ cubes, processCallers })
+        for (const e of Object.values(processes)) e.steps.sort((a, b) => a.pos - b.pos)
+
+        // Only dimensions some process changes — the map never draws every dimension (see IMPROVEMENTS 7.1)
+        const dims = Object.fromEntries(Object.entries(dimWriteMap).map(([d, procs]) => [d, {
+            writers: procs,
+            cubes:   allCubes.filter(c => (c.Dimensions ?? []).some(x => x.Name === d)).map(c => c.Name),
+        }]))
+
+        const chores = await client.getChoresWithTasks().catch(() => [])
+
+        res.json({ cubes, processCallers, processes, dims, chores })
     } catch (e) {
         res.status(500).json({ error: e.message })
+    }
+})
+
+
+// ── Lenses ────────────────────────────────────────────────────────────────────
+// Lens HTML lives in config/lenses/*.html (git-versioned). Metadata lives ONLY
+// in the }Lenses control cube — never a second copy in JSON files. The bridge
+// runs as the viewing user (req.ideToken), never the MCP admin path.
+
+app.get('/api/lenses', async (req, res) => {
+    try {
+        const client = makeClient(req.query.server, req.ideToken)
+        const lenses = lensStore.listFiles()
+        const enriched = await Promise.all(lenses.map(async f => {
+            try { return { ...f, ...(await lensStore.readMeta(client, f.name)) } }
+            catch { return { ...f } }
+        }))
+        res.json(enriched)
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.get('/api/lenses/:name', async (req, res) => {
+    try {
+        const client = makeClient(req.query.server, req.ideToken)
+        const lens = lensStore.readLens(req.params.name)
+        const meta = await lensStore.readMeta(client, req.params.name).catch(() => ({}))
+        res.json({ ...lens, meta })
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.post('/api/lenses/:name', async (req, res) => {
+    try {
+        const client = makeClient(req.query.server, req.ideToken)
+        const { html, description, publish, force } = req.body
+        if (typeof html !== 'string' || !html.trim()) return res.status(400).json({ error: 'html is required' })
+        const errors = await lensBridge.validateLens(client, html)
+        if (errors.length && !force) {
+            return res.status(400).json({ error: `Lens validation failed (${errors.length}):`, validation: errors })
+        }
+        const saved = lensStore.saveLens(client, req.params.name, html, req.user, { publish: !!publish, description })
+        res.json({ ...saved, validation: errors })
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.delete('/api/lenses/:name', (req, res) => {
+    try {
+        lensStore.deleteLens(req.params.name)
+        res.json({ ok: true })
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.post('/api/lenses/generate', async (req, res) => {
+    try {
+        const { server, cube, description } = req.body
+        if (!description?.trim()) return res.status(400).json({ error: 'description is required' })
+        const client = makeClient(server, req.ideToken)
+        const meta = await lensBridge.getMeta(client, cube)
+
+        // No AI key → return a model-aware starter lens so the editor always works.
+        if (!ai.isConfigured()) {
+            return res.json({ html: lensBridge.buildStarterLens(meta, cube), mode: 'starter' })
+        }
+
+        const obf = ai.shouldObfuscate()
+        const names = [
+            ...(meta.cubes ?? []), ...(meta.dimensions ?? []), ...(meta.cubeDims ?? []),
+            ...Object.values(meta.elements ?? {}).flat(),
+        ]
+        const map = obfuscate.makeMap(names)
+        const hide = obf ? t => obfuscate.obfuscateText(t, map.realToCode) : t => t
+        const show = obf ? t => obfuscate.restoreText(t, map.codeToReal) : t => t
+
+        let html
+        try {
+            html = await ai.complete({
+                label: 'lens-generate', obfuscated: obf, maxTokens: 8000,
+                system: `You are a front-end developer building an executive dashboard that runs inside a sandboxed iframe and reads live IBM Planning Analytics (TM1) data.
+
+The ONLY way to get data is the bridge API below. There is NO network access, no fetch to any other URL, no external libraries, no CDN, no external fonts or images.
+
+Bridge API (always available):
+  window.lensBridge.call('execMDX', { mdx: '<MDX SELECT>' }) -> Promise<{ Axes, Cells }>
+      Cells: [{ Ordinal, Value, FormattedValue }] — Value is a number or null.
+  window.lensBridge.call('readCell', { cube: '<cube>', coordinates: { '<dim>': '<elem>', ... } }) -> Promise<number|string|null>
+      coordinates must name EVERY dimension of the cube.
+  window.lensBridge.call('getMeta', { cube: '<cube>' }) -> Promise<{ cubes, dimensions, cubeDims, elements }>
+
+Rules:
+- Return a SINGLE complete HTML document (html, head, style, body, script). No markdown, no code fences, no explanation.
+- Draw all charts with inline SVG or canvas and vanilla JS. Everything inline. No external anything.
+- Style it as a polished executive dashboard: card layout, clear hierarchy, good typography, whitespace, a coherent color scheme. Add a small refresh button that re-runs the data calls.
+- All numbers must come from the bridge at runtime — never hard-code values.
+- Use EXACT cube/dimension/element names from the model context. In MDX reference members as [Dim].[Dim].[Member].
+- Prefer readCell for single values and execMDX for series/sets. Keep MDX simple and correct. The Measures dimension is typically the last one — put it on columns.
+- Render loading states and handle null/empty values gracefully (show '—').`,
+                user: hide(`Model context:\n${JSON.stringify(meta)}\n\nBuild a lens described as: ${description}`),
+            })
+        } catch (e) {
+            return res.json({ html: lensBridge.buildStarterLens(meta, cube), mode: 'starter', note: `AI call failed (${e.message}) — returned a starter lens instead.` })
+        }
+
+        res.json({ html: show(html), mode: 'ai' })
+    } catch (e) {
+        res.status(500).json({ error: e.message })
+    }
+})
+
+// ── Lens bridge (read-only, runs as the viewing user) ────────────────────────
+
+app.post('/api/lens/exec-mdx', async (req, res) => {
+    try {
+        const client = makeClient(req.query.server, req.ideToken)
+        res.json(await lensBridge.execMDX(client, req.body?.mdx))
+    } catch (e) {
+        const detail = e.response?.data?.error?.message ?? e.response?.data ?? e.message
+        res.status(500).json({ error: typeof detail === 'string' ? detail : JSON.stringify(detail) })
+    }
+})
+
+app.post('/api/lens/read-cell', async (req, res) => {
+    try {
+        const client = makeClient(req.query.server, req.ideToken)
+        const { cube, coordinates } = req.body
+        res.json({ value: await lensBridge.readCell(client, cube, coordinates) })
+    } catch (e) {
+        const detail = e.response?.data?.error?.message ?? e.response?.data ?? e.message
+        res.status(500).json({ error: typeof detail === 'string' ? detail : JSON.stringify(detail) })
+    }
+})
+
+app.get('/api/lens/meta', async (req, res) => {
+    try {
+        const client = makeClient(req.query.server, req.ideToken)
+        res.json(await lensBridge.getMeta(client, req.query.cube))
+    } catch (e) {
+        const detail = e.response?.data?.error?.message ?? e.response?.data ?? e.message
+        res.status(500).json({ error: typeof detail === 'string' ? detail : JSON.stringify(detail) })
+    }
+})
+
+// Sandboxed frame render. The CSP `sandbox` directive is the security boundary —
+// it applies even when the URL is opened directly in a tab (the iframe sandbox
+// attribute alone would not). The frame has no same-origin and no network, so AI
+// script cannot read localStorage['tm1-token'] or exfiltrate anything. Never add
+// allow-same-origin here. Live data only flows through the IDE host page bridge.
+
+const LENS_CSP = "sandbox allow-scripts; default-src 'none'; script-src 'unsafe-inline' 'self'; style-src 'unsafe-inline' 'self'; connect-src 'none'"
+const LENS_BRIDGE_STUB = "<script>window.lensBridge={call(){return Promise.reject(new Error('Lens opened standalone — live data requires the IDE session'))}}<\/script>"
+
+app.get('/lenses/:server/:name', (req, res) => {
+    try {
+const lens = lensStore.readLens(req.params.name)
+        res.setHeader('Content-Security-Policy', LENS_CSP)
+        res.setHeader('X-Content-Type-Options', 'nosniff')
+        res.setHeader('Cache-Control', 'no-store')
+        res.type('html').send(LENS_BRIDGE_STUB + lens.html)
+    } catch {
+        res.status(404).send('Lens not found')
     }
 })
 
@@ -3153,6 +3674,22 @@ app.get('/{*path}', (req, res) => {
 })
 
 app.listen(PORT, HOST, () => {
-    const shown = HOST === '0.0.0.0' ? `all interfaces on :${PORT} (LAN-exposed — no TLS)` : `http://${HOST}:${PORT}`
+    const shown = (HOST === '0.0.0.0' ? `all interfaces on :${PORT} (LAN-exposed — no TLS)` : `http://${HOST}:${PORT}`)
+        + (LOGIN_REQUIRED ? ' · IDE sign-in required' : ' · local only, no IDE sign-in (sign in per server)')
     console.log(`TM1 IDE running at ${shown}`)
 })
+
+// HTTPS listener for embedding lenses in HTTPS hosts (e.g. PAW over HTTPS): a
+// self-signed cert in config/certs/ide-{cert,key}.pem. Same app, so /lenses/...
+// is served on both ports. Browsers must be told to trust the cert once.
+const HTTPS_PORT = parseInt(process.env.HTTPS_PORT || '8443', 10)
+try {
+    const https = require('https')
+    const key  = fs.readFileSync(path.join(__dirname, 'config', 'certs', 'ide-key.pem'))
+    const cert = fs.readFileSync(path.join(__dirname, 'config', 'certs', 'ide-cert.pem'))
+    https.createServer({ key, cert }, app).listen(HTTPS_PORT, HOST, () => {
+        console.log(`TM1 IDE HTTPS (self-signed) at https://${HOST}:${HTTPS_PORT} — /lenses/... for PAW embedding`)
+    })
+} catch (e) {
+    console.warn(`HTTPS listener not started: ${e.message} — generate config/certs/ide-{cert,key}.pem to enable`)
+}
