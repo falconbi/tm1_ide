@@ -693,7 +693,7 @@ class TM1Client {
         for (const choreName of chores) {
             try {
                 const chore = await this.getChore(choreName)
-                if ((chore.Steps ?? []).some(s => s.Process?.Name === processName)) {
+                if ((chore.Tasks ?? chore.Steps ?? []).some(s => s.Process?.Name === processName)) {
                     choreUsage.push({ chore: choreName })
                 }
             } catch { /* skip */ }
@@ -1561,7 +1561,8 @@ return (d.value ?? [])
     }
 
     async cancelThread(id) {
-        return this.post(`Threads('${encodeURIComponent(id)}')/tm1.Cancel`, {})
+        // Threads use tm1.CancelOperation (tm1.Cancel is the Jobs action — 404 on a Thread).
+        return this.post(`Threads('${encodeURIComponent(id)}')/tm1.CancelOperation`, {})
     }
 
     // ── Server admin ──────────────────────────────────────────────────────────
