@@ -351,10 +351,12 @@ and all **governance** (change sets, risk check, approval, assertions, Deploy Ce
   4. Anything in `tm1project` Ignore — reported, so nobody is surprised it isn't deployed
 - **Where it runs:** as a **BLOCKER in the deploy pipeline's risk check before every push**; on demand from a model
   health screen; and in a read-only scan across servers.
-- **Proposed simplification — drift through Git (evaluation check #8, to test):** PROD pushes its live state to its own
-  branch (`prod-live`); `git diff` against the commit PROD last received shows out-of-band changes per object. If it
-  works: drift, deploy and history all run through git, and the IDE's **baseline snapshots retire**. Open points: PROD
-  needs write access limited to that branch; commit noise; attribute-value drift stays an IDE check.
+- **Drift through Git — DECIDED 5 Oct 2026 (evaluation check #8 passed):** before a deploy, PROD pushes its live state
+  to its own branch (`prod-live`); `git diff <commit PROD last received>..prod-live` is the drift check — per object,
+  readable, with a history of every check. **The IDE's baseline snapshots retire**; drift, deploy and history all run
+  through git. Objects that exist only on PROD show up on every check until reconciled (brought into DEV/git, or removed
+  from PROD) — that's intended. Attribute-value drift stays an IDE check (values don't travel). In real use PROD pushes
+  with a **separate machine-user account and token limited to `prod-live`** (GitHub branch protection is per account).
 - **First-pull safety analysis (populated targets):** TM1 Git has **no "adopt current state" / baseline action** — a
   site that already runs a model and switches to TM1 Git gets a **full overwrite on its first pull** (a never-pulled
   target plans an Update/Create for every object it manages). Before a first pull onto a populated target, the
