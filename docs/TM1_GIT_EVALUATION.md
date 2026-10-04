@@ -138,7 +138,7 @@ This is a **good outcome for the IDE's value**: TM1 Git makes the transport and 
 | 5 | Element attribute values — do they travel with the dimension? | ❌ **Values do NOT travel.** Changed `WFP Version → Budget → Description` ("Approved plan being built" → test string) on DEV and pushed. The push produced an **empty commit** (0 files) — the value never entered the repo — and PROD's pull plan had nothing about it. TM1 Git carries attribute *definitions* (structure) but the *values* are cube data (`}ElementAttributes_<dim>`), which isn't pushed. Restored: DEV back to the original (verified); **PROD was never affected** (verified read-only — it always had the original value). **Gap:** attribute values (aliases, captions, config) won't deploy via TM1 Git — the community workaround is a `tm1project` PrePush/PostPull task exporting/importing values to flat files |
 | 6 | Delete an object on DEV — does the pull remove it on PROD? | ❌ **Deletes do NOT propagate.** Created throwaway process `ZZ Git Eval` on DEV → pushed → pulled to PROD (it existed on both). Deleted it on DEV → pushed (repo commit removed the files) → PROD's pull plan was **43 × Skip with zero Delete operations** — it never mentions the removed process, and PROD still has it. **Major finding:** TM1 Git pushes the *new state* of the repo but does **not** delete objects from the target on pull. The IDE cannot rely on TM1 Git to remove objects — deletes must be handled separately (reconcile step / IDE delete path) or documented as a hard limitation. Cleanup of the throwaway on PROD is manual |
 | 7 | Change PROD behind git's back — does the pull plan catch it (drift)? | ❌ **Drift is NOT detected.** Added a comment directly to `WFP Copy Version` on PROD (out-of-band) and asked for a pull plan: it was **43 × Skip** — the changed process was not flagged. **The pull plan is a git-commit diff (deployed commit → target branch), not a live-state comparison.** It tells you what the repo would apply, not what's drifted on the target. The plan's earlier assumption that "the pull plan replaces our drift check" is **wrong** — the IDE's own drift check stays necessary. Restored PROD (marker removed, verified) |
-| 8 | **Drift through Git** — PROD pushes its live state to its own branch (`prod-live`); `git diff` against the commit PROD last received shows out-of-band changes? | ⏳ to test (proposed 5 Oct) |
+| 8 | **Drift through Git** — PROD pushes its live state to its own branch (`prod-live`); `git diff` against the commit PROD last received shows out-of-band changes? | ✅ **works, but the diff is broader than expected.** PROD pushed its live state to `prod-live`; `git diff <deployed commit>..prod-live` showed the injected drift comment **and** PROD's two repo-absent processes. So drift is visible via git, but the diff surfaces **everything** on PROD different from the last received commit — including legitimately PROD-only objects (persistent until reconciled). See section below |
 
 _Log: 2026-10-04 — DEV + PROD `GitInit`'ed (no Force). Token per-call confirmed (GitStatus no-creds = Connected false).
 Next: base push on DEV, then inspect the repo._
@@ -156,4 +156,23 @@ plan first) → git diff against PROD's deployed commit → expect exactly that 
 **Also find out:** (1) PROD needs write access to the repo — can it be limited to `prod-live` only (branch protection /
 token scope), so PROD can never touch `dev`/release branches? (2) does each check add a commit, or can TM1 overwrite the
 branch (noise)? (3) attribute values still won't appear (data) — value drift stays an IDE check.
+
+**Result (tested 5 Oct):** injected a comment into `WFP Copy Version` directly on PROD → pushed PROD's live state to a
+new branch `prod-live` (parent = PROD's deployed commit `d6c94a7c`) → `git diff d6c94a7c..prod-live` showed:
+- `WFP Copy Version.ti` — the injected drift comment (exactly what was changed out-of-band) ✅
+- `WFP Seed Prior Forecast` and `WFP Snapshot Version` — PROD's two processes that were never in the repo, surfacing
+  as additions (they exist on PROD's live state but not in the last received commit).
+
+So **drift is detectable through Git**, but the diff shows **everything on PROD different from the last received
+commit**, not just out-of-band edits — objects on PROD that were never in the repo appear on every check until
+reconciled. That's useful (full drift visibility) but means "expect exactly that one process" only holds when PROD's
+live state == the deployed commit apart from the drift. Restored the process afterwards (verified).
+
+**Answers to the "also find out" items:** (1) **write-scope is GitHub-side, not TM1-side** — TM1's `GitPush` takes any
+branch; limiting PROD to `prod-live` only is done with GitHub **branch protection**. Caveat for real sites: branch
+protection applies per **account** — if PROD pushes with the same account as the developers (here `falconbi`), an
+admin/dev account may not be stopped. The clean setup is a **separate machine-user account for PROD** with its own
+token that can only write `prod-live`, never the developers' account. (2) **each push adds a commit** (dev and
+`prod-live` both accumulated commits); whether `Force` on `GitPush` can overwrite/reset a branch instead is untested.
+(3) attribute values still won't appear (data) — value drift stays an IDE check.
 
