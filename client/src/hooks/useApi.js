@@ -2,8 +2,38 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useRef, useEffect, useMemo, useCallback } from 'react'
 import { useStore } from '@/store'
 
+// ── Global /api fetch wrapper ─────────────────────────────────────────────────
+// 1. Attaches the IDE token to every same-origin /api call that lacks one (some
+//    components call fetch() directly).
+// 2. Spots the server's "sign in to this TM1 server" answer (401 + needsServerLogin)
+//    from ANY fetch and raises 'tm1-server-login' — ServerLoginDialog handles it.
+if (typeof window !== 'undefined' && !window.__tm1FetchWrapped) {
+  const nativeFetch = window.fetch.bind(window)
+  window.fetch = async (input, init = {}) => {
+    const url = typeof input === 'string' ? input : input?.url ?? ''
+    if (url.startsWith('/api/')) {
+      const headers = new Headers(init.headers ?? (typeof input !== 'string' ? input.headers : undefined))
+      if (!headers.has('x-ide-token')) headers.set('x-ide-token', localStorage.getItem('tm1-token') ?? '')
+      init = { ...init, headers }
+    }
+    const r = await nativeFetch(input, init)
+    if (r.status === 401 && url.startsWith('/api/')) {
+      r.clone().json().then(d => {
+        if (d?.needsServerLogin) window.dispatchEvent(new CustomEvent('tm1-server-login', { detail: { server: d.needsServerLogin, rejected: !!d.rejected } }))
+      }).catch(() => {})
+    }
+    return r
+  }
+  window.__tm1FetchWrapped = true
+}
+
 const extractError = async (r) => {
-  if (r.status === 401) window.dispatchEvent(new CustomEvent('tm1-unauthorized'))
+  // A 401 means "your IDE session ended" — except a rejected sign-in (the login
+  // page must show its error, not reset itself) and a per-server login request.
+  if (r.status === 401 && !/\/api\/auth\/login$/.test(new URL(r.url, location.href).pathname)) {
+    const d = await r.clone().json().catch(() => null)
+    if (!d?.needsServerLogin) window.dispatchEvent(new CustomEvent('tm1-unauthorized'))
+  }
   try {
     const d = await r.json()
     const err = new Error(d.error || d.message || r.statusText)
@@ -17,7 +47,7 @@ const post  = (url, body) => fetch(url, { method: 'POST',   headers: { 'Content-
 const del   = (url)       => fetch(url, { method: 'DELETE', headers: authHeader() }).then(async r => { if (!r.ok) throw await extractError(r); return r.json() })
 const patch = (url, body) => fetch(url, { method: 'PATCH',  headers: { 'Content-Type': 'application/json', ...authHeader() }, body: JSON.stringify(body) }).then(async r => { if (!r.ok) throw await extractError(r); return r.json() })
 
-export const useLogin  = () => useMutation({ mutationFn: ({ username, password }) => fetch('/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username, password }) }).then(async r => { if (!r.ok) throw await extractError(r); return r.json() }) })
+export const useLogin  = () => useMutation({ mutationFn: ({ username, password, server }) => fetch('/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username, password, server }) }).then(async r => { if (!r.ok) throw await extractError(r); return r.json() }) })
 export const useLogout = () => useMutation({ mutationFn: () => fetch('/api/auth/logout', { method: 'POST', headers: authHeader() }).then(r => r.json()) })
 
 const enc = encodeURIComponent
@@ -610,3 +640,9 @@ export const useFilesAvailable = (server) => useQuery({
   staleTime: Infinity,
   retry:     false,
 })
+
+// ── Per-server login ──────────────────────────────────────────────────────────
+export const useServerLogins = () => useQuery({ queryKey: ['server-logins'], queryFn: () => get('/api/auth/servers'), staleTime: 10_000 })
+export const serverLogin  = (body) => post('/api/auth/server-login', body)
+export const serverLogout = (server) => post('/api/auth/server-logout', { server })
+export const setupServer  = (body) => post('/api/servers/setup', body)

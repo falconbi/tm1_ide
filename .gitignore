@@ -63,3 +63,7 @@ CLAUDE.md
 
 # ── Bedrock / TI ──
 /Bedrock
+
+# Local secrets / backups — never commit
+config/certs/
+config/servers.json.bak*

@@ -7,9 +7,9 @@ const path      = require('path')
 const fs        = require('fs')
 const ai        = require('./core/ai/registry')
 const obfuscate = require('./core/ai/obfuscate')
-const { makeClient, listServers, listServersWithFlags, getDefaultAdapterType, getLoginServer, isReadOnly } = require('./core/adapter_registry')
+const { makeClient, makeClientWithCredentials, needsServerLogin, isDirectServer, isPawNativeServer, probeAuthMethod, listServers, listServersWithFlags, getDefaultAdapterType, getLoginServer, isReadOnly } = require('./core/adapter_registry')
 const { loadConnections, saveConnections, getConnection, executeQuery, testConnection, getSchema, loadQueries, saveQueries } = require('./core/sql_client')
-const { createSession, createDirectSession, getSessionUser, touchSession, invalidateSession, getCachedPawSession, getCSRF, PAW_HOST } = require('./core/paw_connect')
+const { createSession, createDirectSession, createLocalSession, attachPawSession, getSessionUser, touchSession, invalidateSession, getCachedPawSession, getCSRF, PAW_HOST, setServerCredentials, getServerCredentials, clearServerCredentials, getServerStatus, listServerEntries, getSessionCredentials } = require('./core/paw_connect')
 const cl = require('./core/change_log')
 const lensStore = require('./core/lens_store')
 const lensBridge = require('./core/lens_bridge')
@@ -64,6 +64,18 @@ const PORT = process.env.PORT || 8083
 // that the browser<->server leg is then plaintext HTTP with no transport security.
 const HOST = process.env.HOST || '127.0.0.1'
 
+// ── IDE sign-in (Architect model) ─────────────────────────────────────────────
+// IDE_LOGIN=auto (default): no IDE login when the IDE listens on this machine only
+//   — open it, pick a server, sign in to that server. When HOST exposes it to the
+//   network, an IDE sign-in (through any server) is required: otherwise anyone on
+//   the network could reach stored SQL logins, the AI key and change history.
+// IDE_LOGIN=always: require the IDE sign-in even when local (e.g. a shared PC).
+// There is deliberately no "never" for a network-exposed IDE.
+const IDE_LOGIN    = String(process.env.IDE_LOGIN || 'auto').toLowerCase()
+const LOCAL_ONLY   = ['127.0.0.1', 'localhost', '::1'].includes(HOST)
+const LOGIN_REQUIRED = IDE_LOGIN === 'always' || !LOCAL_ONLY
+const isLoopbackReq = (req) => ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(req.socket.remoteAddress)
+
 // ── Login rate limit ──────────────────────────────────────────────────────────
 // Small in-memory per-IP throttle on the one unauthenticated endpoint. Defence in
 // depth for the local model; a real barrier if HOST is ever widened.
@@ -106,14 +118,19 @@ app.post('/api/auth/login', loginRateLimit, async (req, res) => {
     try {
         const { username, password } = req.body
         if (!username || !password) return res.status(400).json({ error: 'username and password required' })
+        // Sign in through any server you have an account on (default: the configured login server).
+        const via = req.body.server || getLoginServer()
 
-        if (getDefaultAdapterType() === 'direct-v11') {
+        if (via && isDirectServer(via)) {
             const token = await createDirectSession(username, password)
             try {
-                const cl = makeClient(getLoginServer(), token)
+                // These credentials belong to that server only — every other
+                // server gets its own login (per-server login).
+                setServerCredentials(token, via, { username, password })
+                const cl = makeClient(via, token)
                 await cl.get('Configuration')
                 clearHits()
-                res.json({ token, username })
+                res.json({ token, username, ...(isSampleLogin(username, password) ? { warning: SAMPLE_PASSWORD_WARNING } : {}) })
             } catch (e) {
                 invalidateSession(token)
                 res.status(401).json({ error: 'Login failed — check your TM1 credentials' })
@@ -126,18 +143,61 @@ app.post('/api/auth/login', loginRateLimit, async (req, res) => {
     } catch (e) { res.status(401).json({ error: 'Login failed' }) }
 })
 
-app.post('/api/auth/logout', (req, res) => {
+// End a server's TM1 session for this user (best effort) so it doesn't linger.
+async function closeServerSession(server, entry) {
+    if (!entry?.state?.cookie) return
+    const cl = makeClientWithCredentials(server, { username: entry.username, password: entry.password ?? '' }, entry.state)
+    await cl?._adapter?.closeSession?.()
+}
+
+app.post('/api/auth/logout', async (req, res) => {
     const token = req.headers['x-ide-token']
-    if (token) invalidateSession(token)
+    if (token) {
+        await Promise.all(listServerEntries(token).map(([server, entry]) => closeServerSession(server, entry)))
+        invalidateSession(token)
+    }
     res.json({ ok: true })
 })
 
 app.get('/api/config', (req, res) => {
-    res.json({ loginServer: PAW_LOGIN_SERVER ?? null, hasAI: ai.isConfigured() })
+    res.json({
+        loginServer: getLoginServer() ?? PAW_LOGIN_SERVER ?? null,
+        hasAI: ai.isConfigured(),
+        loginRequired: LOGIN_REQUIRED,
+        access: LOCAL_ONLY ? 'local' : 'network',
+        // Server names for the sign-in page (only when a sign-in is required).
+        servers: LOGIN_REQUIRED ? listServers() : [],
+    })
+})
+
+// Sign-in page: "Brand-new server?" — set its first admin password and sign in to
+// the IDE through it (the IDE's fallback for what Architect used to be needed for).
+app.post('/api/auth/setup-login', loginRateLimit, async (req, res) => {
+    try {
+        const { server, newPassword } = req.body ?? {}
+        const { state } = await setupBlankAdmin(server, newPassword)
+        const token = await createDirectSession('admin', newPassword)
+        setServerCredentials(token, server, { username: 'admin', password: newPassword }, state)
+        _loginHits.delete(req.ip || req.socket.remoteAddress || 'unknown')
+        res.json({ token, username: 'admin', server })
+    } catch (e) { sendSetupError(res, e) }
+})
+
+// IBM's sample servers ship with admin / apple — fine in a lab, an open door anywhere shared.
+const SAMPLE_PASSWORD_WARNING = 'This server still uses IBM\'s published sample password (admin / apple) — change it before anyone else can reach it.'
+const isSampleLogin = (u, p) => String(u ?? '').toLowerCase() === 'admin' && p === 'apple'
+
+// Architect model: a local-only IDE needs no IDE login. The browser gets a session
+// that holds per-server logins only. Refused when an IDE sign-in is required, or
+// when the request doesn't come from this machine.
+app.post('/api/auth/local-session', async (req, res) => {
+    if (LOGIN_REQUIRED || !isLoopbackReq(req)) return res.status(403).json({ error: 'Sign in required' })
+    const token = await createLocalSession()
+    res.json({ token, username: 'local' })
 })
 
 app.use('/api', (req, res, next) => {
-    if (req.path === '/auth/login' || req.path === '/auth/logout') return next()
+    if (['/auth/login', '/auth/logout', '/auth/local-session', '/auth/setup-login'].includes(req.path)) return next()
     const token = req.headers['x-ide-token']
     if (!token) return res.status(401).json({ error: 'Not authenticated' })
     const user = getSessionUser(token)
@@ -146,6 +206,150 @@ app.use('/api', (req, res, next) => {
     req.ideToken = token
     req.user = user
     next()
+})
+
+// ── Per-server login ──────────────────────────────────────────────────────────
+// A request for a server this user hasn't signed in to is answered here — before
+// any call reaches TM1 — with 401 { needsServerLogin }. The browser shows a login
+// for that server. No stored password is ever tried against another server, and a
+// rejected one is never retried (TM1's MaximumLoginAttempts would lock the account).
+const NEEDS_LOGIN_RE = /^(?:Sign in to server "(.+)" to use it|TM1 rejected the login for server "(.+)" — sign in to it again)$/
+
+app.use('/api', (req, res, next) => {
+    if (req.path.startsWith('/auth/') || req.path === '/servers/setup') return next()
+    const server = req.query?.server ?? req.body?.server
+    if (server && needsServerLogin(String(server), req.ideToken)) {
+        const rejected = getServerStatus(req.ideToken, String(server)) === 'rejected'
+        return res.status(401).json({
+            needsServerLogin: String(server), rejected,
+            error: rejected
+                ? `TM1 rejected the login for server "${server}" — sign in to it again`
+                : `Sign in to server "${server}" to use it`,
+        })
+    }
+    // Change sets record who changed what: use the identity signed in to THIS server.
+    if (server) {
+        const who = getServerCredentials(req.ideToken, String(server))?.username
+        if (who) req.user = who
+    }
+    // Routes report errors as { error: message }; turn a login failure raised
+    // mid-request into the same 401 { needsServerLogin } the check above sends.
+    const json = res.json.bind(res)
+    res.json = (body) => {
+        const m = res.statusCode >= 400 && typeof body?.error === 'string' ? NEEDS_LOGIN_RE.exec(body.error) : null
+        if (m) {
+            res.status(401)
+            return json({ ...body, needsServerLogin: m[1] ?? m[2], rejected: !!m[2] })
+        }
+        return json(body)
+    }
+    next()
+})
+
+// Which servers this user is signed in to.
+//   status: 'signed-in' | 'needs-login' | 'rejected' | 'paw' (PAW owns the login)
+app.get('/api/auth/servers', (req, res) => {
+    res.json(listServers().map(name => {
+        if (!isDirectServer(name)) return { name, status: 'paw' }
+        const st = getServerStatus(req.ideToken, name)
+        return { name, status: st === 'ok' ? 'signed-in' : st === 'rejected' ? 'rejected' : 'needs-login', username: getServerCredentials(req.ideToken, name)?.username ?? null }
+    }))
+})
+
+// Sign in to one server. One test call; stores the login only if TM1 accepts it.
+// useCurrent: try the credentials you signed in to the IDE with (one attempt).
+app.post('/api/auth/server-login', loginRateLimit, async (req, res) => {
+    try {
+        const { server, username, password, useCurrent, namespace } = req.body ?? {}
+        if (!server) return res.status(400).json({ error: 'server required' })
+        const creds = useCurrent ? getSessionCredentials(req.ideToken) : { username, password: password ?? '', namespace: namespace || null }
+        if (useCurrent && !creds) return res.status(400).json({ error: 'No current login to reuse — enter a username and password' })
+        if (!creds?.username) return res.status(400).json({ error: 'username required' })
+        if (isPawNativeServer(server)) {
+            // One PAW sign-in covers every server behind that PAW.
+            try { await attachPawSession(req.ideToken, creds.username, creds.password) }
+            catch { return res.status(403).json({ rejected: true, error: `PAW rejected the login for "${server}" — check the username and password` }) }
+            _loginHits.delete(req.ip || req.socket.remoteAddress || 'unknown')
+            return res.json({ ok: true, server, username: creds.username, paw: true })
+        }
+        const state = {}
+        const cl = makeClientWithCredentials(server, creds, state)
+        if (!cl) return res.json({ ok: true })   // machine-credential connection — nothing to sign in to
+        try {
+            await cl.get('ActiveUser', { '$select': 'Name' })
+        } catch (e) {
+            if (e.code === 'TM1_AUTH_REJECTED') {
+                return res.status(403).json({ rejected: true, error: `TM1 rejected the login for "${server}" — check the username and password` })
+            }
+            throw e
+        }
+        setServerCredentials(req.ideToken, server, { username: creds.username, password: creds.password, namespace: creds.namespace ?? null }, state)
+        _loginHits.delete(req.ip || req.socket.remoteAddress || 'unknown')
+        res.json({ ok: true, server, username: creds.username, ...(isSampleLogin(creds.username, creds.password) ? { warning: SAMPLE_PASSWORD_WARNING } : {}) })
+    } catch (e) { res.status(500).json({ error: `Could not reach "${req.body?.server}": ${e.message}` }) }
+})
+
+// How does this server want to be signed in to? Asked without credentials —
+// never counts as a failed login. Also the "Test connection" details.
+app.get('/api/auth/method', async (req, res) => {
+    try {
+        if (!req.query.server) return res.status(400).json({ error: 'server required' })
+        res.json(await probeAuthMethod(String(req.query.server)))
+    } catch (e) { res.status(502).json({ server: req.query.server, method: 'unreachable', error: e.message }) }
+})
+
+// Sign out of one server (ends its TM1 session).
+app.post('/api/auth/server-logout', async (req, res) => {
+    const { server } = req.body ?? {}
+    if (!server) return res.status(400).json({ error: 'server required' })
+    await closeServerSession(server, clearServerCredentials(req.ideToken, server))
+    res.json({ ok: true })
+})
+
+// "Set up new server" — set the first admin password on a fresh TM1 server
+// (native security: a new server has user admin with a blank password).
+// Exactly one attempt with the blank password; never repeated. The password must
+// be set before anything else — nobody is left signed in on a blank password.
+// Returns { state } (the TM1 session signed in with the new password) or throws
+// an Error with .status/.body for the route to send.
+async function setupBlankAdmin(server, newPassword) {
+    const fail = (status, body) => Object.assign(new Error(body.error), { status, body })
+    if (!server) throw fail(400, { error: 'server required' })
+    if (!newPassword) throw fail(400, { error: 'newPassword required' })
+    if (!isDirectServer(server)) throw fail(400, { error: `"${server}" is reached through PAW — set its password there` })
+    const blank = makeClientWithCredentials(server, { username: 'admin', password: '' }, {})
+    try {
+        await blank.get('ActiveUser', { '$select': 'Name' })
+    } catch (e) {
+        if (e.code !== 'TM1_AUTH_REJECTED') throw e
+        const w = String(e.wwwAuthenticate ?? '').toLowerCase()
+        const mode = /cam/.test(w) ? 'cam' : /negotiate|ntlm/.test(w) ? 'integrated' : 'native'
+        throw fail(409, {
+            mode, alreadyHasPassword: mode === 'native',
+            error: mode === 'native'
+                ? `"${server}" already has an admin password — sign in to it normally`
+                : `"${server}" uses ${mode === 'cam' ? 'CAM (Cognos)' : 'Windows'} security — passwords are managed in the directory, not TM1`,
+        })
+    }
+    await blank.patch("Users('admin')", { Password: newPassword })
+    await blank._adapter.closeSession()
+    const state = {}
+    await makeClientWithCredentials(server, { username: 'admin', password: newPassword }, state).get('ActiveUser', { '$select': 'Name' })
+    return { state }
+}
+
+const sendSetupError = (res, e) => e.status
+    ? res.status(e.status).json(e.body)
+    : res.status(500).json({ error: e.response?.data?.error?.message ?? e.message })
+
+// Already in the IDE: set up a new server and sign in to it.
+app.post('/api/servers/setup', loginRateLimit, async (req, res) => {
+    try {
+        const { server, newPassword } = req.body ?? {}
+        const { state } = await setupBlankAdmin(server, newPassword)
+        setServerCredentials(req.ideToken, server, { username: 'admin', password: newPassword }, state)
+        res.json({ ok: true, server, username: 'admin' })
+    } catch (e) { sendSetupError(res, e) }
 })
 
 // No API response may be cached by the browser — the IDE serves live model state
@@ -2300,11 +2504,14 @@ app.post('/api/admin/maintenance/disable', async (req, res) => {
 })
 
 // ── User management ───────────────────────────────────────────────────────────
+// Acts on the server selected in the UI (?server= / body.server); the login
+// server only when none is given.
+const userServer = (req) => req.query?.server ?? req.body?.server ?? PAW_LOGIN_SERVER
 app.post('/api/users/provision', async (req, res) => {
     try {
-        if (!gateReadOnly(res, PAW_LOGIN_SERVER)) return
+        if (!gateReadOnly(res, userServer(req))) return
         const { name, password, groups = [], friendlyName = '' } = req.body
-        const cl = makeClient(PAW_LOGIN_SERVER, req.ideToken)
+        const cl = makeClient(userServer(req), req.ideToken)
         await cl.createClient(name, password, friendlyName)
         for (const g of groups) {
             try { await cl.addClientToGroup(name, g) } catch {}
@@ -2319,10 +2526,15 @@ app.post('/api/users/provision', async (req, res) => {
 
 app.post('/api/users/:name/password', async (req, res) => {
     try {
-        if (!gateReadOnly(res, PAW_LOGIN_SERVER)) return
+        if (!gateReadOnly(res, userServer(req))) return
         const { password } = req.body
-        const cl = makeClient(PAW_LOGIN_SERVER, req.ideToken)
+        const cl = makeClient(userServer(req), req.ideToken)
         await cl.resetClientPassword(req.params.name, password)
+        // Reset your own login on this server → keep the IDE signed in with the new one.
+        const mine = getServerCredentials(req.ideToken, userServer(req))
+        if (mine && mine.username.toLowerCase() === req.params.name.toLowerCase()) {
+            setServerCredentials(req.ideToken, userServer(req), { username: mine.username, password }, mine.state)
+        }
         res.json({ ok: true })
     } catch (e) {
         const detail = e.response?.data ?? e.message
@@ -2332,25 +2544,25 @@ app.post('/api/users/:name/password', async (req, res) => {
 
 app.get('/api/users', async (req, res) => {
     try {
-        const cl = makeClient(PAW_LOGIN_SERVER, req.ideToken)
+        const cl = makeClient(userServer(req), req.ideToken)
         res.json(await cl.getClients())
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
 app.post('/api/users', async (req, res) => {
     try {
-        if (!gateReadOnly(res, PAW_LOGIN_SERVER)) return
+        if (!gateReadOnly(res, userServer(req))) return
         const { name, password, friendlyName } = req.body
-        const cl = makeClient(PAW_LOGIN_SERVER, req.ideToken)
+        const cl = makeClient(userServer(req), req.ideToken)
         res.json(await cl.createClient(name, password, friendlyName))
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
 app.patch('/api/users/:name', async (req, res) => {
     try {
-        if (!gateReadOnly(res, PAW_LOGIN_SERVER)) return
+        if (!gateReadOnly(res, userServer(req))) return
         const { server: _s, ...patch } = req.body
-        const cl = makeClient(PAW_LOGIN_SERVER, req.ideToken)
+        const cl = makeClient(userServer(req), req.ideToken)
         await cl.updateClient(req.params.name, patch)
         res.json({ ok: true })
     } catch (e) { res.status(500).json({ error: e.message }) }
@@ -2358,8 +2570,8 @@ app.patch('/api/users/:name', async (req, res) => {
 
 app.delete('/api/users/:name', async (req, res) => {
     try {
-        if (!gateReadOnly(res, PAW_LOGIN_SERVER)) return
-        const cl = makeClient(PAW_LOGIN_SERVER, req.ideToken)
+        if (!gateReadOnly(res, userServer(req))) return
+        const cl = makeClient(userServer(req), req.ideToken)
         await cl.deleteClient(req.params.name)
         res.json({ ok: true })
     } catch (e) { res.status(500).json({ error: e.message }) }
@@ -2367,23 +2579,23 @@ app.delete('/api/users/:name', async (req, res) => {
 
 app.get('/api/groups', async (req, res) => {
     try {
-        const cl = makeClient(PAW_LOGIN_SERVER, req.ideToken)
+        const cl = makeClient(userServer(req), req.ideToken)
         res.json(await cl.getGroups())
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
 app.get('/api/users/:name/groups', async (req, res) => {
     try {
-        const cl = makeClient(PAW_LOGIN_SERVER, req.ideToken)
+        const cl = makeClient(userServer(req), req.ideToken)
         res.json(await cl.getClientGroups(req.params.name))
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
 app.post('/api/users/:name/groups', async (req, res) => {
     try {
-        if (!gateReadOnly(res, PAW_LOGIN_SERVER)) return
+        if (!gateReadOnly(res, userServer(req))) return
         const { group } = req.body
-        const cl = makeClient(PAW_LOGIN_SERVER, req.ideToken)
+        const cl = makeClient(userServer(req), req.ideToken)
         await cl.addClientToGroup(req.params.name, group)
         res.json({ ok: true })
     } catch (e) {
@@ -2395,8 +2607,8 @@ app.post('/api/users/:name/groups', async (req, res) => {
 
 app.delete('/api/users/:name/groups/:group', async (req, res) => {
     try {
-        if (!gateReadOnly(res, PAW_LOGIN_SERVER)) return
-        const cl = makeClient(PAW_LOGIN_SERVER, req.ideToken)
+        if (!gateReadOnly(res, userServer(req))) return
+        const cl = makeClient(userServer(req), req.ideToken)
         await cl.removeClientFromGroup(req.params.name, req.params.group)
         res.json({ ok: true })
     } catch (e) { res.status(500).json({ error: e.message }) }
@@ -3462,7 +3674,8 @@ app.get('/{*path}', (req, res) => {
 })
 
 app.listen(PORT, HOST, () => {
-    const shown = HOST === '0.0.0.0' ? `all interfaces on :${PORT} (LAN-exposed — no TLS)` : `http://${HOST}:${PORT}`
+    const shown = (HOST === '0.0.0.0' ? `all interfaces on :${PORT} (LAN-exposed — no TLS)` : `http://${HOST}:${PORT}`)
+        + (LOGIN_REQUIRED ? ' · IDE sign-in required' : ' · local only, no IDE sign-in (sign in per server)')
     console.log(`TM1 IDE running at ${shown}`)
 })
 

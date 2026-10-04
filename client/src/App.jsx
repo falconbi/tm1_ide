@@ -19,6 +19,7 @@ import PeriodBuilder from '@/components/PeriodBuilder'
 import SessionControl from '@/components/SessionControl'
 import LoginPage from '@/components/LoginPage'
 import UserManagement from '@/components/UserManagement'
+import ServerLoginDialog from '@/components/ServerLoginDialog'
 import CatalogAdmin from '@/components/CatalogAdmin'
 import DeployCenter from '@/components/DeployCenter'
 
@@ -342,6 +343,7 @@ export default function App() {
         {showCatalog && <CatalogAdmin server={server} onClose={() => setShowCatalog(false)} />}
         <PeriodBuilder open={showPeriodBuilder} onClose={() => setShowPeriodBuilder(false)} />
         <DeployCenter />
+        <ServerLoginDialog />
         <Toaster position="bottom-right" duration={3000} />
       </TooltipProvider>
     </QueryClientProvider>

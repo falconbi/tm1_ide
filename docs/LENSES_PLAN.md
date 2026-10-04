@@ -58,3 +58,22 @@ The change-set pipeline only packages TM1 objects. Files in `config/lenses/` wil
 
 - Per-user sessions already exist end-to-end on the route path (`makeClient(server, req.ideToken)`), for both paw-native and direct-v11. The bridge must follow the standard route pattern and never pass a `null` token.
 - The MCP (`tools/tm1mcp/shared.js` `client()`) runs as admin/agent — it is the builder identity and must stay separate from the lens render path.
+## Publishing a Lens into a PAW book — authentication (agreed 4 Oct 2026)
+
+A Lens embedded in a PAW book (URL/web widget, HTTPS only) has no IDE page around it, so the bridge has no host and
+no IDE token exists. Browsers also block cross-site cookies/storage, so a Lens on another server can't reuse the
+viewer's PAW login.
+
+**Principle: a published Lens runs as the viewer — never as the author, never as a shared account.** TM1 security
+decides what each viewer sees, exactly as for the book around it.
+
+| Option | Use |
+|---|---|
+| **A. Same origin as PAW** — publish the Lens as static files under PAW's HTTPS address (reverse-proxy path, e.g. `https://paw.company.com/lens/…`); the Lens calls PAW's TM1 API with the viewer's PAW session cookies + CSRF header. IDE not needed at runtime. | Preferred for v11 / on-prem PAW. Feasibility to check on the PAW lab (.37). |
+| **B. OAuth authorization code** — Lens registered as a PAW "authorized application"; viewer signs in, token carries their identity (IBM-supported, interactive only). | Preferred for v12 / PAW cloud. |
+| **C. Login inside the frame** — the Lens runtime shows its own sign-in; session token held in the frame's (partitioned) storage. | **Agreed fallback**, acceptable in some cases (other origins, quick deployments). Must never retry a rejected password (lockout). |
+| D. Token in the URL | ❌ Never — leaks to logs, history, shared links. |
+| E. Shared service account | ❌ Bypasses TM1 security — only for genuinely public data, labelled as such. |
+
+Needed whichever option: a standalone **Lens runtime** (does the calls itself instead of via the IDE page), an HTTPS
+certificate, and `Content-Security-Policy: frame-ancestors <PAW origin>` on the Lens page.

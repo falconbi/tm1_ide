@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { X, Plus, Loader2, Eye, EyeOff, Trash2, Check, Shield, Users, Info } from 'lucide-react'
 import { useStore } from '@/store'
-import { useConfig, useClients, useGroups, useClientGroups, useCreateClient, useUpdateClient, useDeleteClient, useAddClientToGroup, useRemoveClientFromGroup, useResetClientPassword } from '@/hooks/useApi'
+import { useClients, useGroups, useClientGroups, useCreateClient, useUpdateClient, useDeleteClient, useAddClientToGroup, useRemoveClientFromGroup, useResetClientPassword } from '@/hooks/useApi'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
 
@@ -285,9 +285,12 @@ function CreateUserForm({ server, allGroups, onCreated, onCancel }) {
 }
 
 export default function UserManagement({ server, onClose }) {
-  const { data: config }                              = useConfig()
-  const loginServer                                   = config?.loginServer ?? server
-  const { data: clients = [], isLoading, isFetching } = useClients(loginServer)
+  // Every TM1 server keeps its own users — manage the server selected in the IDE.
+  const loginServer                                   = server
+  const { data: clients = [], isLoading, isFetching, error: clientsError } = useClients(loginServer)
+  // Signed out of this server → say so (and offer Sign in) instead of an empty list.
+  // The sign-in dialog reloads all queries on success, so the list then appears.
+  const needsLogin = !!clientsError?.data?.needsServerLogin
   const { data: groups  = [] }                        = useGroups(loginServer)
   const [selectedName, setSelectedName] = useState(null)
   const [creating, setCreating]         = useState(false)
@@ -322,12 +325,9 @@ export default function UserManagement({ server, onClose }) {
         <div className="flex items-start gap-2 px-4 py-2 bg-muted/40 border-b border-border text-xs text-muted-foreground shrink-0">
           <Info size={13} className="shrink-0 mt-0.5" />
           <p>
-            This manages TM1 security (Clients / Groups) on <span className="font-mono">{loginServer}</span> specifically —
-            not whatever server you're currently browsing in the IDE. Each TM1 server keeps its own separate user list, so
-            one had to be picked as the place to manage identity from; this environment happens to use{' '}
-            <span className="font-mono">{loginServer}</span> because it's the server every session authenticates against
-            first (configurable as <span className="font-mono">loginServer</span> in <span className="font-mono">config/servers.json</span> —
-            it could be any accessible server, not something specific to this name). Changes made here do not affect users on other servers.
+            Users and groups on <span className="font-mono font-semibold text-foreground">{loginServer}</span> — the server
+            selected in the IDE. Each TM1 server keeps its own separate user list; changes here don't affect any other server.
+            To manage another server's users, select it first.
           </p>
         </div>
 
@@ -340,6 +340,19 @@ export default function UserManagement({ server, onClose }) {
               <div className="flex items-center justify-center gap-1.5 py-8 text-muted-foreground text-xs">
                 <Loader2 size={11} className="animate-spin" /> Loading…
               </div>
+            )}
+            {needsLogin && (
+              <div className="flex flex-col items-center gap-2 px-3 py-8 text-center text-xs text-muted-foreground">
+                <span>You're not signed in to <span className="font-mono text-foreground">{loginServer}</span>.</span>
+                <button
+                  onClick={() => window.dispatchEvent(new CustomEvent('tm1-server-login', { detail: { server: loginServer, force: true } }))}
+                  className="px-2.5 py-1 rounded border border-border text-foreground hover:bg-muted">
+                  Sign in to {loginServer}
+                </button>
+              </div>
+            )}
+            {clientsError && !needsLogin && (
+              <div className="px-3 py-8 text-center text-xs text-red-400">Couldn't load users: {clientsError.message}</div>
             )}
             {sorted.map(c => (
               <button

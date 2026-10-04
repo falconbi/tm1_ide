@@ -1,8 +1,8 @@
-import { useServers } from '@/hooks/useApi'
+import { useServers, useServerLogins, serverLogout } from '@/hooks/useApi'
 import { useStore } from '@/store'
 import { useQueryClient } from '@tanstack/react-query'
 import { useEffect } from 'react'
-import { Database, RefreshCw } from 'lucide-react'
+import { Database, RefreshCw, KeyRound, LogOut } from 'lucide-react'
 import { serverLabel } from '@/lib/tm1-version'
 
 export default function ServerSelector() {
@@ -57,6 +57,45 @@ export default function ServerSelector() {
           return <option key={name} value={name}>{name}{ro ? '  (read-only)' : ''}</option>
         })}
       </select>
+      {server && <ServerLoginState server={server} />}
     </div>
+  )
+}
+
+// Sign-in state of the selected server, with Sign in / Sign out.
+function ServerLoginState({ server }) {
+  const { data: logins = [], refetch } = useServerLogins()
+  const queryClient = useQueryClient()
+  // Re-check after any sign-in dialog success or failure.
+  useEffect(() => {
+    const t = setInterval(() => refetch(), 15_000)
+    return () => clearInterval(t)
+  }, [refetch])
+  const st = logins.find(l => l.name?.toLowerCase() === server.toLowerCase())
+  if (!st) return null
+  const signIn = () => window.dispatchEvent(new CustomEvent('tm1-server-login', { detail: { server, force: true, rejected: st.status === 'rejected' } }))
+  const signOut = async () => { await serverLogout(server); refetch(); queryClient.invalidateQueries() }
+
+  if (st.status === 'paw') return null
+  if (st.status === 'signed-in') {
+    return (
+      <div className="mt-1 flex items-center gap-1 text-[10px] text-muted-foreground">
+        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+        <span className="truncate">Signed in as <span className="font-mono">{st.username}</span></span>
+        <button onClick={signOut} className="ml-auto p-0.5 rounded hover:bg-sidebar-accent hover:text-foreground" title={`Sign out of ${server}`}>
+          <LogOut size={10} />
+        </button>
+      </div>
+    )
+  }
+  return (
+    <button onClick={signIn}
+      className={'mt-1 w-full flex items-center justify-center gap-1 rounded border px-2 py-0.5 text-[10px] transition-colors ' +
+        (st.status === 'rejected'
+          ? 'border-amber-500/40 text-amber-500 hover:bg-amber-500/10'
+          : 'border-sidebar-border text-muted-foreground hover:text-foreground hover:bg-sidebar-accent')}>
+      <KeyRound size={10} />
+      {st.status === 'rejected' ? 'Login rejected — sign in again' : `Sign in to ${server}`}
+    </button>
   )
 }
