@@ -113,7 +113,7 @@ class NeedsServerLogin extends Error {
 
 // Service logins (no user session — the MCP, internal jobs): per-server
 // credentials from servers.json, falling back to the admin host / connection.
-//   "serverCredentials": { "TM1_CONSOL": { "username": "...", "password": "..." } }
+//   "serverCredentials": { "MyServer": { "username": "...", "password": "..." } }
 // One TM1 session per service login; a rejected one fails fast until the
 // credentials in servers.json change (never retried against TM1).
 const _serviceState = new Map()   // `${serverLower}::${username}::${password}` → { cookie, rejected }

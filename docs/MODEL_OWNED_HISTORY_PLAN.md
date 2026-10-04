@@ -4,7 +4,7 @@
 `Applications/Governance/Tests/assertions.json` on the server itself, read/written by the IDE and MCP,
 with `config/assertions.json` as the fallback for unmigrated servers. Migration is a manual, per-server
 CLI (`node tools/migrate-assertions.js --server <name> [--dry-run] [--force]`). Awaiting James's sign-off
-on the TM1_CONSOL 133/133 run before removing TM1_CONSOL from the central file.
+on the lab server's 133/133 run before removing that server from the central file.
 
 ## 1. Why
 
@@ -30,7 +30,7 @@ handing a model to someone else hands over no history or tests; a second IDE ins
 Everything above is stored **in the TM1 server it describes**. The IDE is a **cache**: on connect it loads the
 model's governance data, and every change is written through to the server.
 
-Storage (v11.8 verified read-only on TM1_CONSOL: `Contents('Applications')` available, `Contents('Files')` is v12-only):
+Storage (v11.8 verified read-only on a lab server: `Contents('Applications')` available, `Contents('Files')` is v12-only):
 
 | Item | Stored as | Location in the model |
 |---|---|---|
@@ -69,13 +69,13 @@ keyed by it, so a renamed or moved server keeps its history.
 
 One-time, per server, opt-in: export `change_log.db` sessions/entries, `.tm1baseline/<server>/`,
 `config/archives/*` and the server's assertions into that server's governance store. Local copies stay as a
-read-only backup until James signs off. Servers in scope today: TM1_CONSOL, TM1_Test_DEV, TM1_Test_PROD.
+read-only backup until James signs off. Servers in scope today: the lab servers.
 
 ## 5. Phases (each needs James's approval before it starts)
 
 | # | Phase | Proves / delivers |
 |---|---|---|
-| 0 | **Capability checks** on TM1_CONSOL: write/read/delete a test document; document size limit; control-cube create; whether Applications documents survive restart without SaveDataAll | the storage works on v11.8 |
+| 0 | **Capability checks** on a lab server: write/read/delete a test document; document size limit; control-cube create; whether Applications documents survive restart without SaveDataAll | the storage works on v11.8 |
 | 1 | **Tests first** (smallest, self-contained): assertions + test cases + payloads into TM1_CONSOL; `}TestResults` cube; IDE reads/writes there, central file as fallback | first slice end-to-end — **assertions done Oct 2026** (server document read/write, config fallback, `tools/migrate-assertions.js` CLI); `}TestResults` cube, test cases + payloads still later phases |
 | 2 | **Identity + change sets**: `}Governance`, `}ChangeSets`, change-set documents; IDE cache keyed by Server ID | history travels with the model |
 | 3 | **Baselines** | drift/diff source in the model |

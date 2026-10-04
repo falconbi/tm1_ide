@@ -13,9 +13,9 @@
 // and prints the count the server actually holds.
 //
 // Usage:
-//   node tools/migrate-assertions.js --server TM1_CONSOL --dry-run   # what would move
-//   node tools/migrate-assertions.js --server TM1_CONSOL             # does it
-//   node tools/migrate-assertions.js --server TM1_CONSOL --force     # overwrite existing
+//   node tools/migrate-assertions.js --server MyServer --dry-run   # what would move
+//   node tools/migrate-assertions.js --server MyServer             # does it
+//   node tools/migrate-assertions.js --server MyServer --force     # overwrite existing
 
 require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') })
 

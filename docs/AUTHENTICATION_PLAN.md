@@ -40,7 +40,7 @@ either tested on a real server or plainly labelled untested, and the IDE never l
 | 1.15 | **Sample-password warning** — signing in as `admin` with IBM's well-known sample password shows "change it before sharing this IDE" | **Tested ✅** |
 
 **Testing (Phase 1):** the 8 cases below on a lab server given a different password just before the test, plus
-1.9's detection on TM1_CONSOL (native). CAM: no lab — shipped as untested.
+1.9's detection on a native-security lab server. CAM: no lab — shipped as untested.
 
 1. Open a server → sign-in appears; correct password → works; 1–2 TM1 sessions, not one per click
 2. Wrong password → one failure, no retries, account not locked
