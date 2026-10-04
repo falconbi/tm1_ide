@@ -73,7 +73,7 @@ function _targetPath() {
 function _isExistsError(e) {
   const status = e.response?.status
   const code = e.response?.data?.error?.code
-  return status === 409 || (status === 400 && String(code) === '278')
+  return status === 409 || (status === 400 && ['278', '226'].includes(String(code)))
 }
 
 // Read the model's assertion array, or null when the server has no such
@@ -103,11 +103,18 @@ async function _readModel(client) {
 
 async function _writeModel(client, records) {
   await client.ensureFolderPath(GOVERNANCE_PATH)
-  try {
-    await client.createFileDocument(GOVERNANCE_PATH, MODEL_DOC_NAME)
-  } catch (e) {
-    // Only swallow "already exists"; anything else is a real failure.
-    if (!_isExistsError(e)) throw e
+  // Create the document only when it isn't there. Checking first is more reliable than
+  // matching TM1's "already exists" error: v11 answers a duplicate create with 400 code 226
+  // ("Failed to add document into folder"), not 278/409 — which made every add fail once
+  // a server's document existed.
+  const files = await client.listFiles(GOVERNANCE_PATH)
+  if (!files.some(f => f.name === MODEL_DOC_NAME && !f.isFolder)) {
+    try {
+      await client.createFileDocument(GOVERNANCE_PATH, MODEL_DOC_NAME)
+    } catch (e) {
+      // Only swallow "already exists" (a concurrent create); anything else is a real failure.
+      if (!_isExistsError(e)) throw e
+    }
   }
   await client.putFileContent(GOVERNANCE_PATH, MODEL_DOC_NAME, JSON.stringify(records, null, 2))
 }

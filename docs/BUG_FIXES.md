@@ -3,7 +3,7 @@
 Every bug-fix commit, newest first, by the date it was committed. Generated from the git history;
 commits that mixed a fix into a feature are included too. New features are not listed here.
 
-125 fixes from 2026-05-20 to 2026-10-04.
+126 fixes from 2026-05-20 to 2026-10-04.
 
 ← [Back to README](../README.md)
 
@@ -23,6 +23,7 @@ commits that mixed a fix into a feature are included too. New features are not l
 - **assertions** — Reading and writing documents in a v11 server's Applications area failed (v11 needs the `.blob` id and `/Document/Content`)
 - **assertions** — An empty or damaged stored assertions file was treated as "no assertions", so change-set and deploy checks passed silently; it now fails loudly
 - **assertions** — Errors creating the stored assertions file were swallowed and resurfaced as a misleading "not found"
+- **assertions** — Adding or removing an assertion on a server whose tests live in the model always failed: v11 answers "document already exists" with error 226, which wasn't recognised. The document is now checked for before creating it
 - **cube-map** — Show contextual dimensions in module/cube focus graphs
 
 ### 2026-10-03
