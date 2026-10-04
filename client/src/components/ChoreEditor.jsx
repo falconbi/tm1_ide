@@ -20,8 +20,18 @@ function formatStartTime(iso) {
 }
 
 function buildStartTime(date, time) {
-  return `${date}T${time}:00`
+  // Edm.DateTimeOffset — must carry a timezone designator (Z = UTC).
+  return `${date}T${time}:00Z`
 }
+
+// Edm.Duration is an ISO-8601 duration STRING ("P1DT00H00M00S"), not an object.
+// TM1 rejects a zero duration (SystemValueInvalid) — the total must be at least 1s.
+function buildFreq(days, hours, minutes, seconds) {
+  const p = (n, w = 2) => String(n ?? 0).padStart(w, '0')
+  return `P${p(days, 1)}DT${p(hours)}H${p(minutes)}M${p(seconds)}S`
+}
+
+const freqTotal = (d, h, m, s) => (+d || 0) + (+h || 0) + (+m || 0) + (+s || 0)
 
 function StepRow({ step, index, total, server, procs, onChange, onRemove, onMoveUp, onMoveDown }) {
   const base = 'w-full bg-muted border border-border rounded px-2 py-1 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-ring'
@@ -126,7 +136,7 @@ export default function ChoreEditor({ tab }) {
     const { date, time } = formatStartTime(data.StartTime)
     setStartDate(date)
     setStartTime(time || '09:00')
-    setSteps((data.Steps ?? []).slice().sort((a, b) => a.Ordinal - b.Ordinal))
+    setSteps(((data.Tasks ?? data.Steps) ?? []).slice().sort((a, b) => a.Ordinal - b.Ordinal))
     setDirty(false)
   }, [data, isNew])
 
@@ -144,18 +154,22 @@ export default function ChoreEditor({ tab }) {
 
   const buildBody = () => ({
     Active:        active,
+    DSTSensitive:  false,
     ExecutionMode: execMode,
     StartTime:     buildStartTime(startDate, startTime),
-    Frequency:     { Days: +freqDays, Hours: +freqHrs, Minutes: +freqMins, Seconds: +freqSecs },
-    Steps: steps.map((st, i) => ({
-      Ordinal:    i,
-      'Process@odata.bind': `Processes('${encodeURIComponent(st.Process?.Name ?? '')}')`,
+    Frequency:     buildFreq(freqDays, freqHrs, freqMins, freqSecs),
+    // v11 (and v12) chore steps live under `Tasks`, not `Steps` — the read side uses
+    // the same property (see getChore's $expand=Tasks). Sending `Steps` is rejected.
+    // v11 also rejects an `Ordinal` property on ChoreTask — order follows array position.
+    Tasks: steps.map((st, i) => ({
+      'Process@odata.bind': `Processes('${(st.Process?.Name ?? '').replace(/'/g, "''")}')`,
       Parameters: (st.Parameters ?? []).map(p => ({ Name: p.Name, Value: String(p.Value ?? '') })),
     })),
   })
 
   const handleCreate = () => {
     if (!choreName.trim()) { toast.error('Enter a chore name'); return }
+    if (freqTotal(freqDays, freqHrs, freqMins, freqSecs) === 0) { toast.error('Set how often the chore repeats — frequency can\'t be zero'); return }
     const name = choreName.trim()
     const id = toast.loading(`Creating chore "${name}"…`)
     createChore.mutate({ server, name, body: buildBody() }, {
@@ -169,6 +183,7 @@ export default function ChoreEditor({ tab }) {
   }
 
   const handleSave = () => {
+    if (freqTotal(freqDays, freqHrs, freqMins, freqSecs) === 0) { toast.error('Set how often the chore repeats — frequency can\'t be zero'); return }
     const body = buildBody()
     const id = toast.loading('Saving chore…')
     saveChore.mutate({ server, name: tab.name, body }, {

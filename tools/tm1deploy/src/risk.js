@@ -151,7 +151,7 @@ async function checkChoreConflicts(processObjects, client) {
     )
 
     for (const chore of chores.filter(Boolean)) {
-        const steps = chore.Steps ?? []
+        const steps = chore.Tasks ?? chore.Steps ?? []
         for (const step of steps) {
             const procName = step.Process?.Name
             if (!procName || !processNames.has(procName)) continue
