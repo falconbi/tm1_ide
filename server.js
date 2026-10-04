@@ -2931,6 +2931,27 @@ app.post('/api/deploy/pre-delete-check', async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
+// ── Git readiness check (IMPROVEMENTS 10.2) ─────────────────────────────────
+// On demand, single server or cross-server. Also run as a blocker in the deploy
+// risk check before every push. Findings: member-less view titles, stale member
+// references in views/subsets, names TM1 Git won't round-trip, tm1project Ignore.
+app.get('/api/git-readiness', async (req, res) => {
+    try {
+        const { scan } = require('./core/git-readiness')
+        const { listServers } = require('./core/adapter_registry')
+        if (req.query.all === '1') {
+            const results = []
+            for (const s of listServers()) {
+                try { results.push(await scan(s, { ideToken: req.ideToken })) }
+                catch (e) { results.push({ server: s, error: e.message }) }
+            }
+            return res.json({ results })
+        }
+        if (!req.query.server) return res.status(400).json({ error: 'server or all=1 required' })
+        res.json(await scan(req.query.server, { ideToken: req.ideToken }))
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
 app.post('/api/deploy/seed', async (req, res) => {
     try {
         const { server, label } = req.body
