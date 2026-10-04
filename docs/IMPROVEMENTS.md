@@ -307,11 +307,14 @@ candidates from first principles (no external implementation referenced).
 
 ## 10. Deploy pipeline on TM1's built-in Git integration (logged 4 Oct 2026)
 
-### 10.1 Move the deploy pipeline onto TM1's built-in Git integration — **DECIDED 4 Oct 2026**
+### 10.1 Move the deploy pipeline onto TM1's built-in Git integration — **DECIDED 5 Oct 2026: hybrid**
 
-**Decision:** the IDE moves to TM1's Git integration for model history and deployment transport, with the IDE's
-governance on top. The lab tests below now decide *how* (scope, deletes, attribute values, credentials), not *whether*;
-our own transport stays only as a fallback for sites that block git access from the TM1 server.
+**Decision (after the lab evaluation — evidence in `docs/TM1_GIT_EVALUATION.md`):** the deploy pipeline moves to a
+**hybrid**. **TM1 Git is the transport and history for object structure** (cubes, dimensions, processes, rules,
+views, subsets — IBM's standard format, clean per-change git commits, customer-owned repo). The **IDE keeps** what
+TM1 Git cannot do — **attribute values** (don't travel: check #5), **deletes** (don't propagate: check #6),
+**drift** (the pull plan is a commit diff, not a live-state check: check #7), plus the **readiness check** (10.2)
+and all **governance** (change sets, risk check, approval, assertions, Deploy Center, history UI).
 
 - **What:** TM1 (Planning Analytics 2.0.7+ / TM1 11.4+, and v12) can push its own model to any git repository and pull it
   back with a preview ("plan") first — REST `GitInit`, push plan / pull plan, execute. Files are IBM's standard JSON per
@@ -319,20 +322,20 @@ our own transport stays only as a fallback for sites that block git access from 
   controls scope.
 - **Proposed shape:** the IDE keeps the governance (change sets, risk check, approval, assertions, Deploy Center,
   history UI); TM1's Git feature does the transport — the package becomes a git commit, the deploy becomes executing the
-  pull plan (TM1 applies changes in its own order; the pull plan compares against the target's live state, replacing the
-  drift check).
+  pull plan (TM1 applies changes in its own order). The pull plan shows only the change **once the target has a
+  baseline** (first pull on a never-pulled target is a full overwrite — there is no "adopt current state" action).
 - **Why:** less of our own code doing the riskiest step (the first real deploy found 9 deployer bugs); a standard format
   understood by PAW / TM1py / community tools instead of our undocumented one; no lock-in for users (their models and
   history work without the IDE); aligned with v12. Adoption/marketing angle: "the IDE governs, TM1 itself deploys".
-- **Evaluate first (TM1_Test_DEV → TM1_Test_PROD):** git host reachable from the TM1 box + where credentials live;
-  repo layout readable/diffable; pull plan shows only the change; **can a deploy be limited to a change set's objects**;
-  attribute values travel with dimensions; deletes propagate; out-of-band changes on PROD caught by the pull plan.
-- **Decision rule:** adopt as transport only if change-set scope, deletes and attribute values work; otherwise keep our
-  transport but still adopt IBM's file format for model repos (tm1_consolidation, tm1_apportionment) — replacing the
-  current unplanned, hand-made export.
-- **Known risks:** whole-model granularity; TM1 server needs git access + token; documented quirks (tm1project.json,
-  big dimensions, odd names). Keep our transport as a fallback for sites that block git from TM1.
-- **Open:** git host for the lab test — private GitHub repo vs a small lab git server (e.g. Gitea).
+- **Evaluation results (TM1_Test_DEV → TM1_Test_PROD, 5 Oct):** ✅ connect/credentials (per-call token, not stored);
+  ✅ repo layout readable/diffable, plain-text rules/TI; ✅ pull plan shows only the change after a baseline;
+  ⚠️ object scoping (branch-scoped, object-granular; "branch per change set" untested); ❌ **attribute values don't
+  travel**; ❌ **deletes don't propagate**; ❌ **drift not detected** (pull plan is a commit diff, not live-state).
+  Also: GitPlans are ephemeral (create+execute atomically); a view with a member-less title breaks the pull (→ 10.2);
+  `tm1project` Ignore only supports top-level objects.
+- **Operational:** credentials are per-call (the IDE keeps the token, e.g. in `.env`); first pull on a populated target
+  is a full overwrite — the IDE must warn and run a first-pull safety analysis (see 10.2); keep our own transport as a
+  fallback for sites that block git from the TM1 server, and for the three gaps (values, deletes, drift).
 
 ### 10.2 Git readiness check — must pass before any push (logged 5 Oct 2026)
 
@@ -348,6 +351,12 @@ our own transport stays only as a fallback for sites that block git access from 
   4. Anything in `tm1project` Ignore — reported, so nobody is surprised it isn't deployed
 - **Where it runs:** as a **BLOCKER in the deploy pipeline's risk check before every push**; on demand from a model
   health screen; and in a read-only scan across servers.
+- **First-pull safety analysis (populated targets):** TM1 Git has **no "adopt current state" / baseline action** — a
+  site that already runs a model and switches to TM1 Git gets a **full overwrite on its first pull** (a never-pulled
+  target plans an Update/Create for every object it manages). Before a first pull onto a populated target, the
+  readiness check must additionally compare the target against the repo: which objects differ, anything that would be
+  **deleted**, and **elements on the target missing from the repo** (those are removed, with their data). Only proceed
+  when that analysis is clean.
 - **Prevention at save time:** the IDE always sets a resolved `Selected` title member when saving a view, and warns when
   a view or subset being saved references a member that doesn't exist.
 - **Also for the community guide (TM1 Git):** "clean up stale references before adopting TM1 Git".
