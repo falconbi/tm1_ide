@@ -39,7 +39,8 @@ evidence, and it's still early.
   in **six iterative phases**, each building on the last.
 - Dimensions, cubes, rules, processes, subsets and views all created through the tools,
   change-set gated throughout.
-- The build was verified against **expected results** (see `config/assertions.json`) — the
+- The build was verified against **expected results** (see the model's `Applications/Governance/Tests/assertions.json` —
+  `config/assertions.json` is the fallback for unmigrated servers) — the
   "does it compute the right number" layer on top of TM1's own rule checker.
 - Standards and conventions were taught to the LLM *during* the build; those conventions are
   now codified in the lints (`core/rules-lint.js`, `core/ti-lint.js`) and
@@ -77,7 +78,7 @@ The repo ships a project-level MCP config, `.mcp.json`, in the project root:
       "command": "node",
       "args": ["tools/tm1mcp/server.js"],
       "env": {
-        "TM1_MCP_SERVER": "${TM1_MCP_SERVER:-TM1_CONSOL}"
+        "TM1_MCP_SERVER": "${TM1_MCP_SERVER:-MyServer}"
       }
     }
   }
@@ -127,10 +128,10 @@ claude mcp remove tm1 -s local
 
 ```bash
 # by flag
-node tools/tm1mcp/server.js --server TM1_CONSOL
+node tools/tm1mcp/server.js --server MyServer
 
 # or by env var
-TM1_MCP_SERVER=TM1_CONSOL node tools/tm1mcp/server.js
+TM1_MCP_SERVER=MyServer node tools/tm1mcp/server.js
 ```
 
 On startup it prints `tm1mcp: connected to "<server>"` to stderr. `--server` beats
@@ -260,8 +261,10 @@ The rules lint checks that a rule is *written* correctly. Assertions check that 
 
 An assertion is an MDX query plus the number it should return. `run_assertions` executes each,
 **sums the returned cells**, and compares to `expected` within an absolute `tolerance`
-(default 0.01). Stored as `config/assertions.json`, keyed by server, plain JSON so it can be
-hand-edited and version-controlled as part of the model spec.
+(default 0.01). Stored in the model's `Applications/Governance/Tests/assertions.json` on migrated
+servers (fallback: `config/assertions.json`, keyed by server, plain JSON so it can be hand-edited
+and version-controlled). `list_assertions` and `run_assertions` report `source: "model" | "config"`
+so it's always clear which store the assertions were read from.
 
 | Tool | |
 |---|---|

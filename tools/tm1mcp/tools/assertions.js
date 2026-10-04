@@ -10,7 +10,8 @@ function register(server, { client, assertions, runAssertions, ok, SERVER }) {
     server.tool(
         'add_assertion',
         'Record an expected result for this model — an MDX query and the number it should return. ' +
-        'The assertion is stored (config/assertions.json) and run on every close_change_set, plus on demand via run_assertions. ' +
+        'Stored in the model\'s governance store (Applications/Governance/Tests/assertions.json on migrated servers; ' +
+        'config/assertions.json otherwise) and run on every close_change_set, plus on demand via run_assertions. ' +
         'It is executed once immediately so you know the query and expected value are right.',
         {
             description: z.string().describe('What this checks, in words — e.g. "IT pool clears: total DR = pool"'),
@@ -20,7 +21,7 @@ function register(server, { client, assertions, runAssertions, ok, SERVER }) {
             tags:        z.array(z.string()).optional().describe('Labels for running a subset later'),
         },
         async ({ description, mdx, expected, tolerance, tags }) => {
-            const rec = assertions.add(SERVER, { description, mdx, expected, tolerance, tags })
+            const rec = await assertions.add(SERVER, { description, mdx, expected, tolerance, tags })
             let actual = null, error = null
             try {
                 const r = await client().executeMDX(mdx, 5000)
@@ -36,16 +37,17 @@ function register(server, { client, assertions, runAssertions, ok, SERVER }) {
 
     server.tool(
         'list_assertions',
-        'List the stored assertions for this server',
+        'List the stored assertions for this server — with `source`: "model" when read from the server\'s own ' +
+        'Applications/Governance/Tests/assertions.json, "config" when falling back to config/assertions.json',
         {},
-        async () => ok(assertions.list(SERVER))
+        async () => ok(await assertions.list(SERVER))
     )
 
     server.tool(
         'remove_assertion',
         'Delete a stored assertion by id',
         { id: z.string().describe('Assertion id (from add_assertion or list_assertions)') },
-        async ({ id }) => ok(assertions.remove(SERVER, id) ? `Removed assertion ${id}.` : `No assertion ${id} for "${SERVER}".`)
+        async ({ id }) => ok(await assertions.remove(SERVER, id) ? `Removed assertion ${id}.` : `No assertion ${id} for "${SERVER}".`)
     )
 
     server.tool(
@@ -56,8 +58,8 @@ function register(server, { client, assertions, runAssertions, ok, SERVER }) {
             tags: z.array(z.string()).optional().describe('Run only assertions with one of these tags'),
         },
         async ({ tags }) => {
-            const set = assertions.list(SERVER)
-            if (!set.length) return ok(`No assertions stored for "${SERVER}". Add them with add_assertion.`)
+            const { source, assertions: set } = await assertions.list(SERVER)
+            if (!set.length) return ok(`No assertions stored for "${SERVER}" (source: ${source}). Add them with add_assertion.`)
             return ok(await runAssertions(tags))
         }
     )

@@ -51,7 +51,8 @@ function logChange(action, objectType, objectName, opts = {}) {
 // Run the server's stored assertions: execute each MDX, sum the returned cells,
 // compare to the expected value within tolerance.
 async function runAssertions(tags) {
-    const set = assertions.list(SERVER).filter(a => !tags?.length || a.tags.some(t => tags.includes(t)))
+    const { source, assertions: stored } = await assertions.list(SERVER)
+    const set = stored.filter(a => !tags?.length || a.tags.some(t => tags.includes(t)))
     const c = client()
     const results = []
     for (const a of set) {
@@ -70,6 +71,7 @@ async function runAssertions(tags) {
         })
     }
     return {
+        source,
         total:  results.length,
         passed: results.filter(r => r.pass).length,
         failed: results.filter(r => !r.pass),

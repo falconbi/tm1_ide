@@ -1,7 +1,10 @@
 # Plan — the model owns its history (Option B)
 
-**Status:** DRAFT for James's review — nothing built. Decision taken 2 Oct 2026: *"it all belongs with the
-model — the IDE sucks it in when it initialises with the model."*
+**Status:** Phase 1 (assertions) implemented — assertions for a migrated server now live in
+`Applications/Governance/Tests/assertions.json` on the server itself, read/written by the IDE and MCP,
+with `config/assertions.json` as the fallback for unmigrated servers. Migration is a manual, per-server
+CLI (`node tools/migrate-assertions.js --server <name> [--dry-run] [--force]`). Awaiting James's sign-off
+on the TM1_CONSOL 133/133 run before removing TM1_CONSOL from the central file.
 
 ## 1. Why
 
@@ -73,7 +76,7 @@ read-only backup until James signs off. Servers in scope today: TM1_CONSOL, TM1_
 | # | Phase | Proves / delivers |
 |---|---|---|
 | 0 | **Capability checks** on TM1_CONSOL: write/read/delete a test document; document size limit; control-cube create; whether Applications documents survive restart without SaveDataAll | the storage works on v11.8 |
-| 1 | **Tests first** (smallest, self-contained): assertions + test cases + payloads into TM1_CONSOL; `}TestResults` cube; IDE reads/writes there, central file as fallback | first slice end-to-end |
+| 1 | **Tests first** (smallest, self-contained): assertions + test cases + payloads into TM1_CONSOL; `}TestResults` cube; IDE reads/writes there, central file as fallback | first slice end-to-end — **assertions done Oct 2026** (server document read/write, config fallback, `tools/migrate-assertions.js` CLI); `}TestResults` cube, test cases + payloads still later phases |
 | 2 | **Identity + change sets**: `}Governance`, `}ChangeSets`, change-set documents; IDE cache keyed by Server ID | history travels with the model |
 | 3 | **Baselines** | drift/diff source in the model |
 | 4 | **Deploy history, approvals, hooks**; packager/deployer carry governance documents with per-target rules | full pipeline model-owned |
