@@ -141,8 +141,8 @@ effort estimate, and the reasoning.
 
 - **Why:** Found building FIN Consolidation (Sep 2026). The Cube Map only draws a process as a satellite
   of the *focused* cube, and only when it **writes** to it. A process's inputs are invisible:
-  `CON Company Adjust Post` reads `CON Company Journal` and writes `CON Data`, but only the write edge
-  shows. The consolidation run (`CON Consolidate`) will read ~4 cubes and write 1 — its flow would be
+  a posting process reads a journal cube and writes a data cube, but only the write edge
+  shows. A large consolidation run will read ~4 cubes and write 1 — its flow would be
   mostly hidden. There's also no way to see all processes at once.
 - **Fix:** In the `/api/cubemap/model` scanner (`server.js`), add **read** detection alongside writes:
   `CellGetN/S` (cube = 1st arg, literal or resolved `var = 'literal'`) and a process's cube-view
