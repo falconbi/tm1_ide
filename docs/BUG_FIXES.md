@@ -3,7 +3,7 @@
 Every bug-fix commit, newest first, by the date it was committed. Generated from the git history;
 commits that mixed a fix into a feature are included too. New features are not listed here.
 
-114 fixes from 2026-05-20 to 2026-10-04.
+125 fixes from 2026-05-20 to 2026-10-04.
 
 ← [Back to README](../README.md)
 
@@ -12,6 +12,17 @@ commits that mixed a fix into a feature are included too. New features are not l
 
 ### 2026-10-04
 
+- **auth** — One login was reused for every TM1 server; a server with a different password rejected it and repeated rejections could lock the account (`MaximumLoginAttempts`). Each server now has its own login and a rejected password is never retried
+- **auth** — Every request opened a new TM1 session (538 found left open on one server); sessions are now reused per server and closed on sign-out
+- **auth** — Direct CAM sign-in sent the namespace in a non-standard header; now IBM's documented `CAMNamespace` format (as TM1py)
+- **auth** — A failed IDE sign-in reset the page and wiped the error message, so it looked like nothing happened
+- **auth** — Some screens called the API without the session token (e.g. the server version badge never appeared)
+- **auth** — The first request after signing out of a server could fail with "socket hang up" (closed connection reused)
+- **user-management** — Acted on the login server instead of the server selected in the IDE (a password reset could hit the wrong server)
+- **user-management** — Showed an empty list when not signed in to the server; now says so, with a Sign in button
+- **assertions** — Reading and writing documents in a v11 server's Applications area failed (v11 needs the `.blob` id and `/Document/Content`)
+- **assertions** — An empty or damaged stored assertions file was treated as "no assertions", so change-set and deploy checks passed silently; it now fails loudly
+- **assertions** — Errors creating the stored assertions file were swallowed and resurfaced as a misleading "not found"
 - **cube-map** — Show contextual dimensions in module/cube focus graphs
 
 ### 2026-10-03
