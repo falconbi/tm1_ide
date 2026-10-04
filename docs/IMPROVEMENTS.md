@@ -304,3 +304,28 @@ candidates from first principles (no external implementation referenced).
   "'}ElementAttributes_<dim>' can not be found" — the elements are created, the attribute (and its control cube) is not.
 - **Workaround:** call again with `attributes: [{ name: "Format" }]` declared explicitly, then the values apply.
 - **Fix:** create the `Format` attribute (and wait for its `}ElementAttributes_` cube) before writing values.
+
+## 10. Deploy pipeline on TM1's built-in Git integration (logged 4 Oct 2026)
+
+### 10.1 Evaluate TM1 Git integration as the pipeline's transport and the standard model-repo format
+
+- **What:** TM1 (Planning Analytics 2.0.7+ / TM1 11.4+, and v12) can push its own model to any git repository and pull it
+  back with a preview ("plan") first — REST `GitInit`, push plan / pull plan, execute. Files are IBM's standard JSON per
+  object (cubes incl. rules and views, dimensions incl. subsets, processes incl. TI); no cube data; `tm1project.json`
+  controls scope.
+- **Proposed shape:** the IDE keeps the governance (change sets, risk check, approval, assertions, Deploy Center,
+  history UI); TM1's Git feature does the transport — the package becomes a git commit, the deploy becomes executing the
+  pull plan (TM1 applies changes in its own order; the pull plan compares against the target's live state, replacing the
+  drift check).
+- **Why:** less of our own code doing the riskiest step (the first real deploy found 9 deployer bugs); a standard format
+  understood by PAW / TM1py / community tools instead of our undocumented one; no lock-in for users (their models and
+  history work without the IDE); aligned with v12. Adoption/marketing angle: "the IDE governs, TM1 itself deploys".
+- **Evaluate first (TM1_Test_DEV → TM1_Test_PROD):** git host reachable from the TM1 box + where credentials live;
+  repo layout readable/diffable; pull plan shows only the change; **can a deploy be limited to a change set's objects**;
+  attribute values travel with dimensions; deletes propagate; out-of-band changes on PROD caught by the pull plan.
+- **Decision rule:** adopt as transport only if change-set scope, deletes and attribute values work; otherwise keep our
+  transport but still adopt IBM's file format for model repos (tm1_consolidation, tm1_apportionment) — replacing the
+  current unplanned, hand-made export.
+- **Known risks:** whole-model granularity; TM1 server needs git access + token; documented quirks (tm1project.json,
+  big dimensions, odd names). Keep our transport as a fallback for sites that block git from TM1.
+- **Open:** git host for the lab test — private GitHub repo vs a small lab git server (e.g. Gitea).
