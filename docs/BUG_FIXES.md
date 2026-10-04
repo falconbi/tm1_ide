@@ -12,6 +12,13 @@ commits that mixed a fix into a feature are included too. New features are not l
 
 ### 2026-10-04
 
+- **chore** — The editor read/wrote `Steps`, but TM1 stores chore steps as `Tasks` — an existing chore opened with no usable step and every save was rejected
+- **chore** — A task `Ordinal` property is rejected on v11 ("Unrecognized ChoreTask property"); task order now follows array position
+- **chore** — Frequency was sent as an object; TM1 expects an ISO duration string, and a zero duration is invalid (`SystemValueInvalid`) — the editor now requires a repeat frequency
+- **chore** — `StartTime` lacked the UTC `Z` (it's an `Edm.DateTimeOffset`) and the required `DSTSensitive` was omitted
+- **chore** — Process binds used `encodeURIComponent`, so a spaced name like "CON Save All" saved as `Processes('CON%20Save%20All')` and could hang the save indefinitely
+- **chore** — `cancelThread` used the Jobs action `tm1.Cancel`; threads need `tm1.CancelOperation`
+- **chore** — The process-usage scan and the deploy risk check read `Steps`, so they silently missed every chore step on v11
 - **auth** — One login was reused for every TM1 server; a server with a different password rejected it and repeated rejections could lock the account (`MaximumLoginAttempts`). Each server now has its own login and a rejected password is never retried
 - **auth** — Every request opened a new TM1 session (538 found left open on one server); sessions are now reused per server and closed on sign-out
 - **auth** — Direct CAM sign-in sent the namespace in a non-standard header; now IBM's documented `CAMNamespace` format (as TM1py)
@@ -25,13 +32,6 @@ commits that mixed a fix into a feature are included too. New features are not l
 - **assertions** — Errors creating the stored assertions file were swallowed and resurfaced as a misleading "not found"
 - **assertions** — Adding or removing an assertion on a server whose tests live in the model always failed: v11 answers "document already exists" with error 226, which wasn't recognised. The document is now checked for before creating it
 - **cube-map** — Show contextual dimensions in module/cube focus graphs
-- **chore** — The editor read/wrote `Steps`, but TM1 stores chore steps as `Tasks` — an existing chore opened with no usable step and every save was rejected
-- **chore** — A task `Ordinal` property is rejected on v11 ("Unrecognized ChoreTask property"); task order now follows array position
-- **chore** — Frequency was sent as an object; TM1 expects an ISO duration string, and a zero duration is invalid (`SystemValueInvalid`) — the editor now requires a repeat frequency
-- **chore** — `StartTime` lacked the UTC `Z` (it's an `Edm.DateTimeOffset`) and the required `DSTSensitive` was omitted
-- **chore** — Process binds used `encodeURIComponent`, so a spaced name like "CON Save All" saved as `Processes('CON%20Save%20All')` and could hang the save indefinitely
-- **chore** — `cancelThread` used the Jobs action `tm1.Cancel`; threads need `tm1.CancelOperation`
-- **chore** — The process-usage scan and the deploy risk check read `Steps`, so they silently missed every chore step on v11
 
 ### 2026-10-03
 
