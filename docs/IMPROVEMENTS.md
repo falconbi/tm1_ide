@@ -307,7 +307,11 @@ candidates from first principles (no external implementation referenced).
 
 ## 10. Deploy pipeline on TM1's built-in Git integration (logged 4 Oct 2026)
 
-### 10.1 Evaluate TM1 Git integration as the pipeline's transport and the standard model-repo format
+### 10.1 Move the deploy pipeline onto TM1's built-in Git integration — **DECIDED 4 Oct 2026**
+
+**Decision:** the IDE moves to TM1's Git integration for model history and deployment transport, with the IDE's
+governance on top. The lab tests below now decide *how* (scope, deletes, attribute values, credentials), not *whether*;
+our own transport stays only as a fallback for sites that block git access from the TM1 server.
 
 - **What:** TM1 (Planning Analytics 2.0.7+ / TM1 11.4+, and v12) can push its own model to any git repository and pull it
   back with a preview ("plan") first — REST `GitInit`, push plan / pull plan, execute. Files are IBM's standard JSON per
