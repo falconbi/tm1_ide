@@ -76,7 +76,7 @@ read-only backup until James signs off. Servers in scope today: the lab servers.
 | # | Phase | Proves / delivers |
 |---|---|---|
 | 0 | **Capability checks** on a lab server: write/read/delete a test document; document size limit; control-cube create; whether Applications documents survive restart without SaveDataAll | the storage works on v11.8 |
-| 1 | **Tests first** (smallest, self-contained): assertions + test cases + payloads into TM1_CONSOL; `}TestResults` cube; IDE reads/writes there, central file as fallback | first slice end-to-end — **assertions done Oct 2026** (server document read/write, config fallback, `tools/migrate-assertions.js` CLI); `}TestResults` cube, test cases + payloads still later phases |
+| 1 | **Tests first** (smallest, self-contained): assertions + test cases + payloads into a lab server; `}TestResults` cube; IDE reads/writes there, central file as fallback | first slice end-to-end — **assertions done Oct 2026** (server document read/write, config fallback, `tools/migrate-assertions.js` CLI); `}TestResults` cube, test cases + payloads still later phases |
 | 2 | **Identity + change sets**: `}Governance`, `}ChangeSets`, change-set documents; IDE cache keyed by Server ID | history travels with the model |
 | 3 | **Baselines** | drift/diff source in the model |
 | 4 | **Deploy history, approvals, hooks**; packager/deployer carry governance documents with per-target rules | full pipeline model-owned |
@@ -95,7 +95,7 @@ read-only backup until James signs off. Servers in scope today: the lab servers.
 6. **Retention** — keep everything in the model forever, or archive old change sets after N months (today's
    `retention.js`), and where the archive goes.
 
-## 7. Phase 0 results (3 Oct 2026, TM1_CONSOL v11.8)
+## 7. Phase 0 results (3 Oct 2026, lab server, v11.8)
 
 | Check | Result |
 |---|---|
