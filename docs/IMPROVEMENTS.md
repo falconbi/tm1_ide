@@ -336,6 +336,10 @@ and all **governance** (change sets, risk check, approval, assertions, Deploy Ce
 - **Operational:** credentials are per-call (the IDE keeps the token, e.g. in `.env`); first pull on a populated target
   is a full overwrite — the IDE must warn and run a first-pull safety analysis (see 10.2); keep our own transport as a
   fallback for sites that block git from the TM1 server, and for the three gaps (values, deletes, drift).
+- **Governance documents in git — DECIDED 5 Oct:** `tm1project Files` does not carry Application-managed documents
+  (tests, change sets, deploy records, Lenses under `Applications/Governance/`). The IDE **mirrors** them into the
+  model's repo — on push, commit `Applications/Governance` into a `governance/` folder; on deploy, write them to the
+  target with a per-target rule (PROD gets health checks only, never test payloads). The server stays the runtime truth.
 
 ### 10.2 Git readiness check — must pass before any push (logged 5 Oct 2026)
 

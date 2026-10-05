@@ -70,7 +70,16 @@ A blocker before any push: member-less view titles, stale member references in v
 - **On the IDE only:** connections (`servers.json`), secrets, preferences (`forge.json`), and a **disposable cache** (rebuildable; losing it loses nothing).
 - Missing model data must **fail loudly** (the migrated-marker pattern) — never silently start fresh.
 
+## Governance documents in git — **DECIDED 5 Oct: the IDE mirrors them into the repo**
+
+`tm1project Files` does **not** carry Application-managed documents (tested — see `TM1_GIT_EVALUATION.md`), so tests,
+change sets, deploy records and Lenses under `Applications/Governance/` don't travel through TM1 Git. **Decision:**
+the IDE mirrors the governance documents into the model's repo — on push it commits `Applications/Governance` content
+into a `governance/` folder in the same repo (git history and review for tests, and later change sets, deploy records
+and Lenses). On deploy, the IDE writes them to the target with a **per-target rule** (e.g. PROD gets health checks
+only, never test payloads). **The server stays the runtime truth**; the repo is the history/review layer.
+
 ## Out of scope / later phases
 
 - `}TestResults` run history (phase 2), change-set documents in the model (phase 2), deploy history/approvals/hooks into the model (phase 4), migration of existing RIG history (phase 5).
-- Open question: whether `tm1project Files` can carry the Applications documents (tests) through TM1 Git — to verify.
+- The mirror of `Applications/Governance` into the repo (the decided mechanism above) — to implement with the deploy work.

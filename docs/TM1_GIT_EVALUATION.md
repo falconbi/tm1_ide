@@ -176,3 +176,12 @@ token that can only write `prod-live`, never the developers' account. (2) **each
 `prod-live` both accumulated commits); whether `Force` on `GitPush` can overwrite/reset a branch instead is untested.
 (3) attribute values still won't appear (data) — value drift stays an IDE check.
 
+> **Finding — `tm1project Files` does NOT carry Application-managed documents (tested 5 Oct).** Added
+> `Files: ["Applications/Governance/Tests/assertions.json"]` to `tm1project` and pushed: the doc did **not** land in
+> the repo (push plan = 140 files, model + tm1project only). A wildcard (`Applications/Governance/Tests/*.json`) also
+> failed. `tm1project Files` covers loose files in the data folder (the community's `git_source_files/`), **not**
+> Application-managed documents. So the assertions doc — and by extension change-set documents, deploy records, lenses
+> in `Applications/Governance/` — **do not travel through TM1 Git**. To give tests git history, the IDE must **mirror
+> the Applications documents into the repo** (commit them as files), or accept that tests are model-owned on the
+> server but not versioned in git.
+
