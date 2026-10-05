@@ -3,12 +3,17 @@
 Every bug-fix commit, newest first, by the date it was committed. Generated from the git history;
 commits that mixed a fix into a feature are included too. New features are not listed here.
 
-133 fixes from 2026-05-20 to 2026-10-04.
+135 fixes from 2026-05-20 to 2026-10-05.
 
 ← [Back to README](../README.md)
 
 
 ## October 2026
+
+### 2026-10-05
+
+- **view** — Saving a native view with a title that had no selected member stored `Selected: null`, which TM1 Git can't pull back in (the pull rejects the view). The save now picks the hierarchy's default member as the selection, leaves the title's subset exactly as set, and stops the save if no member can be found
+- **git-drift** — The drift check compared PROD against the wrong commit: TM1's `DeployedCommit` is overwritten by every git operation, including PROD's own push to `prod-live`, so the check compared `prod-live` against itself. The IDE now records the commit it actually deployed for each server and checks drift against that
 
 ### 2026-10-04
 
