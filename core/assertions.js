@@ -272,7 +272,7 @@ async function run(sourceServer, { targetServer, tags, ideToken, client: injecte
         }
         const tol  = a.tolerance ?? 0.01
         const pass = error == null && Math.abs(actual - a.expected) <= tol
-        results.push({ id: a.id, description: a.description, expected: a.expected, actual, diff: error ? null : actual - a.expected, pass, error })
+        results.push({ id: a.id, description: a.description, mdx: a.mdx, tags: a.tags ?? [], expected: a.expected, actual, diff: error ? null : actual - a.expected, pass, error })
     }
     return {
         source_server: sourceServer,
@@ -285,4 +285,54 @@ async function run(sourceServer, { targetServer, tags, ideToken, client: injecte
     }
 }
 
-module.exports = { list, add, remove, load, save, run, migrate, isModelStored, FILE, GOVERNANCE_PATH, MODEL_DOC_NAME }
+module.exports = { list, add, update, remove, run, runOne, load, save, migrate, isModelStored, FILE, GOVERNANCE_PATH, MODEL_DOC_NAME }
+
+// Update an assertion's fields (description, mdx, expected, tolerance, tags) by id.
+// Model store on migrated servers, config file otherwise.
+function _cleanPatch(patch = {}) {
+    const out = {}
+    if (patch.description !== undefined) out.description = String(patch.description).trim()
+    if (patch.mdx !== undefined)        out.mdx        = String(patch.mdx).trim()
+    if (patch.expected !== undefined)   out.expected   = Number(patch.expected)
+    if (patch.tolerance !== undefined)  out.tolerance  = Number(patch.tolerance)
+    if (patch.tags !== undefined)       out.tags       = Array.isArray(patch.tags) ? patch.tags : []
+    return out
+}
+
+async function update(server, id, patch = {}, opts = {}) {
+    const rec = _cleanPatch(patch)
+    const client = _clientFor(server, opts)
+    const model = await _readModel(client)
+    if (model) {
+        const idx = model.findIndex(a => a.id === id)
+        if (idx === -1) return null
+        model[idx] = { ...model[idx], ...rec }
+        await _writeModel(client, model)
+        return model[idx]
+    }
+    if (_isMigratedMarker(_configEntry(server))) throw _missingModelError(server)
+    const data = load()
+    const arr = data[server] ?? []
+    const idx = arr.findIndex(a => a.id === id)
+    if (idx === -1) return null
+    arr[idx] = { ...arr[idx], ...rec }
+    save(data)
+    return arr[idx]
+}
+
+// Run a single assertion (by id) on the same server — for the assertions screen.
+async function runOne(server, id, opts = {}) {
+    const { source, assertions: stored } = await list(server, opts)
+    const a = stored.find(x => x.id === id)
+    if (!a) return { source, error: `No assertion ${id} for "${server}".` }
+    const client = _clientFor(server, opts)
+    let actual = null, error = null
+    try {
+        const r = await client.executeMDX(a.mdx, 5000)
+        actual = (r.Cells ?? []).reduce((s, x) => s + (x.Value ?? 0), 0)
+    } catch (e) {
+        error = e.response?.data?.error?.message ?? e.message
+    }
+    const pass = error == null && Math.abs(actual - a.expected) <= (a.tolerance ?? 0.01)
+    return { source, id: a.id, description: a.description, mdx: a.mdx, tags: a.tags ?? [], expected: a.expected, actual, pass, error }
+}

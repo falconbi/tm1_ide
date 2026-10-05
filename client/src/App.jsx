@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, Fragment } from 'react'
 import { useStore } from '@/store'
 import { cn } from '@/lib/utils'
 import { Toaster } from '@/components/ui/sonner'
-import { Search, PanelLeftClose, PanelLeftOpen, Keyboard, SlidersHorizontal, Users, BookOpen, Rocket, Settings, ExternalLink } from 'lucide-react'
+import { Search, PanelLeftClose, PanelLeftOpen, Keyboard, SlidersHorizontal, Users, BookOpen, Rocket, Settings, ExternalLink, Activity, ListChecks } from 'lucide-react'
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels' // used for inner editor split groups only
 import ServerSelector from '@/components/ServerSelector'
 import Explorer from '@/components/Explorer'
@@ -21,6 +21,8 @@ import LoginPage from '@/components/LoginPage'
 import UserManagement from '@/components/UserManagement'
 import ServerLoginDialog from '@/components/ServerLoginDialog'
 import CatalogAdmin from '@/components/CatalogAdmin'
+import ModelHealth from '@/components/ModelHealth'
+import AssertionsManager from '@/components/AssertionsManager'
 import DeployCenter from '@/components/DeployCenter'
 
 const queryClient = new QueryClient({
@@ -80,7 +82,9 @@ export default function App() {
   const [showPrefs, setShowPrefs]                 = useState(false)
   const [showPeriodBuilder, setShowPeriodBuilder] = useState(false)
   const [showUserMgmt, setShowUserMgmt]           = useState(false)
-  const [showCatalog, setShowCatalog]             = useState(false)
+const [showCatalog, setShowCatalog]           = useState(false)
+  const [showModelHealth, setShowModelHealth]   = useState(false)
+  const [showAssertions, setShowAssertions]     = useState(false)
   const [showToolsMenu, setShowToolsMenu]         = useState(false)
   const [sidebarWidth, setSidebarWidth]           = useState(280)
   const [findWidth, setFindWidth]                 = useState(320)
@@ -284,6 +288,24 @@ export default function App() {
                 <Rocket size={15} />
               </button>
 
+              {/* Model health — assertions, Git readiness, house standards */}
+              <button
+                onClick={() => setShowModelHealth(true)}
+                className={cn('p-1.5 rounded text-muted-foreground hover:text-foreground transition-colors', showModelHealth && 'bg-muted text-foreground')}
+                title="Model Health"
+              >
+                <Activity size={15} />
+              </button>
+
+              {/* Assertions — browse / add / edit / remove / run the model's tests */}
+              <button
+                onClick={() => setShowAssertions(true)}
+                className={cn('p-1.5 rounded text-muted-foreground hover:text-foreground transition-colors', showAssertions && 'bg-muted text-foreground')}
+                title="Assertions"
+              >
+                <ListChecks size={15} />
+              </button>
+
               <div className="w-px h-4 bg-border mx-1" />
               <SessionControl />
 
@@ -341,6 +363,8 @@ export default function App() {
         <FormatSettings open={formatSettingsOpen} onClose={() => setFormatSettingsOpen(false)} />
         {showUserMgmt && server && <UserManagement server={server} onClose={() => setShowUserMgmt(false)} />}
         {showCatalog && <CatalogAdmin server={server} onClose={() => setShowCatalog(false)} />}
+        {showModelHealth && <ModelHealth server={server} onClose={() => setShowModelHealth(false)} />}
+        {showAssertions && <AssertionsManager server={server} onClose={() => setShowAssertions(false)} />}
         <PeriodBuilder open={showPeriodBuilder} onClose={() => setShowPeriodBuilder(false)} />
         <DeployCenter />
         <ServerLoginDialog />

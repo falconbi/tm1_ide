@@ -2952,6 +2952,61 @@ app.get('/api/git-readiness', async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
+// ── Model health (v1) ───────────────────────────────────────────────────────
+// "Does the model compute right, would TM1 Git accept it, does it meet house
+// standards". POST: it runs assertions (MDX) + the full scan. Button-triggered.
+app.post('/api/model-health', async (req, res) => {
+    try {
+        const server = req.query.server ?? req.body?.server
+        if (!server) return res.status(400).json({ error: 'server required' })
+        const { check } = require('./core/model-health')
+        res.json(await check(server, { ideToken: req.ideToken }))
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// ── Assertions management ───────────────────────────────────────────────────
+// List, add, update, remove and run the model's stored assertions. Writes are
+// gated on read-only posture like other model edits.
+app.get('/api/assertions', async (req, res) => {
+    try {
+        const { list } = require('./core/assertions')
+        if (!req.query.server) return res.status(400).json({ error: 'server required' })
+        res.json(await list(req.query.server, { ideToken: req.ideToken }))
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+app.post('/api/assertions', async (req, res) => {
+    try {
+        if (!gateReadOnly(res, req.query.server)) return
+        const { add } = require('./core/assertions')
+        res.json(await add(req.query.server, req.body, { ideToken: req.ideToken }))
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+app.patch('/api/assertions/:id', async (req, res) => {
+    try {
+        if (!gateReadOnly(res, req.query.server)) return
+        const { update } = require('./core/assertions')
+        const r = await update(req.query.server, req.params.id, req.body, { ideToken: req.ideToken })
+        if (!r) return res.status(404).json({ error: `No assertion ${req.params.id}` })
+        res.json(r)
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+app.delete('/api/assertions/:id', async (req, res) => {
+    try {
+        if (!gateReadOnly(res, req.query.server)) return
+        const { remove } = require('./core/assertions')
+        const ok = await remove(req.query.server, req.params.id, { ideToken: req.ideToken })
+        res.json({ ok })
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+app.post('/api/assertions/run', async (req, res) => {
+    try {
+        const { run, runOne } = require('./core/assertions')
+        if (!req.query.server) return res.status(400).json({ error: 'server required' })
+        if (req.body?.id) return res.json(await runOne(req.query.server, req.body.id, { ideToken: req.ideToken }))
+        res.json(await run(req.query.server, { ideToken: req.ideToken }))
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
 app.post('/api/deploy/seed', async (req, res) => {
     try {
         const { server, label } = req.body
