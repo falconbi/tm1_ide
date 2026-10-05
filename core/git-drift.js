@@ -26,8 +26,16 @@ function authUrl(url, user, token) {
 async function driftCheck(server, { token, gitUser = 'falconbi', ideToken } = {}) {
     const c = makeClient(server, ideToken)
     const st = await c.post('GitStatus', { Username: gitUser, Password: token })
-    const deployed = st?.DeployedCommit?.ID
     const repoUrl = st?.URL
+    // Reference: what the server last RECEIVED. TM1's DeployedCommit is the last
+    // git operation's target (a prod-live push clobbers it), so prefer the IDE's
+    // recorded deploy commit, falling back to DeployedCommit.
+    let deployed = null
+    try {
+        const { lastDeployed } = require('./git-state')
+        deployed = lastDeployed(server)?.lastDeployedCommit ?? null
+    } catch { /* ignore */ }
+    deployed = deployed ?? st?.DeployedCommit?.ID ?? null
     if (!deployed) return { server, drift: null, note: 'no deployed commit — the target has never pulled' }
     if (!repoUrl) return { server, drift: null, note: 'no repo URL' }
 

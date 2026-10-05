@@ -55,6 +55,12 @@ async function execute(target, { branch = 'dev', token, gitUser = 'falconbi', id
         await c.post(`GitPlans('${encodeURIComponent(plan.ID)}')/tm1.Execute`, {})
         out.executed     = true
         out.targetCommit = plan.Commit?.ID ?? null
+        // Record what we actually deployed — TM1's DeployedCommit isn't reliable
+        // as "last received" (a prod-live push clobbers it).
+        try {
+            const { recordDeploy } = require('./git-state')
+            recordDeploy(target, out.targetCommit, plan.Commit?.Summary ?? null)
+        } catch { /* state is best-effort */ }
     } catch (e) {
         out.executed = false
         out.error = `Pull failed: ${e.response?.data?.error?.message ?? e.message}`
