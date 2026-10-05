@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, Fragment } from 'react'
 import { useStore } from '@/store'
 import { cn } from '@/lib/utils'
 import { Toaster } from '@/components/ui/sonner'
-import { Search, PanelLeftClose, PanelLeftOpen, Keyboard, SlidersHorizontal, Users, BookOpen, Rocket, Settings, ExternalLink, Activity, ListChecks } from 'lucide-react'
+import { Search, PanelLeftClose, PanelLeftOpen, Keyboard, SlidersHorizontal, Users, BookOpen, Rocket, Settings, ExternalLink, Activity, ListChecks, GitBranch, GitCompare } from 'lucide-react'
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels' // used for inner editor split groups only
 import ServerSelector from '@/components/ServerSelector'
 import Explorer from '@/components/Explorer'
@@ -23,6 +23,8 @@ import ServerLoginDialog from '@/components/ServerLoginDialog'
 import CatalogAdmin from '@/components/CatalogAdmin'
 import ModelHealth from '@/components/ModelHealth'
 import AssertionsManager from '@/components/AssertionsManager'
+import GitDeploy from '@/components/GitDeploy'
+import GitDrift from '@/components/GitDrift'
 import DeployCenter from '@/components/DeployCenter'
 
 const queryClient = new QueryClient({
@@ -85,6 +87,8 @@ export default function App() {
 const [showCatalog, setShowCatalog]           = useState(false)
   const [showModelHealth, setShowModelHealth]   = useState(false)
   const [showAssertions, setShowAssertions]     = useState(false)
+  const [showGitDeploy, setShowGitDeploy]       = useState(false)
+  const [showGitDrift, setShowGitDrift]         = useState(false)
   const [showToolsMenu, setShowToolsMenu]         = useState(false)
   const [sidebarWidth, setSidebarWidth]           = useState(280)
   const [findWidth, setFindWidth]                 = useState(320)
@@ -288,6 +292,24 @@ const [showCatalog, setShowCatalog]           = useState(false)
                 <Rocket size={15} />
               </button>
 
+              {/* Git deploy — prepare (baseline + pull plan) then deploy (pull + control checks) */}
+              <button
+                onClick={() => setShowGitDeploy(true)}
+                className={cn('p-1.5 rounded text-muted-foreground hover:text-foreground transition-colors', showGitDeploy && 'bg-muted text-foreground')}
+                title="Git Deploy"
+              >
+                <GitBranch size={15} />
+              </button>
+
+              {/* Drift — what PROD has that it shouldn't (prod-live diff) */}
+              <button
+                onClick={() => setShowGitDrift(true)}
+                className={cn('p-1.5 rounded text-muted-foreground hover:text-foreground transition-colors', showGitDrift && 'bg-muted text-foreground')}
+                title="Drift"
+              >
+                <GitCompare size={15} />
+              </button>
+
               {/* Model health — assertions, Git readiness, house standards */}
               <button
                 onClick={() => setShowModelHealth(true)}
@@ -365,6 +387,8 @@ const [showCatalog, setShowCatalog]           = useState(false)
         {showCatalog && <CatalogAdmin server={server} onClose={() => setShowCatalog(false)} />}
         {showModelHealth && <ModelHealth server={server} onClose={() => setShowModelHealth(false)} />}
         {showAssertions && <AssertionsManager server={server} onClose={() => setShowAssertions(false)} />}
+        {showGitDeploy && <GitDeploy server={server} onClose={() => setShowGitDeploy(false)} />}
+        {showGitDrift && <GitDrift server={server} onClose={() => setShowGitDrift(false)} />}
         <PeriodBuilder open={showPeriodBuilder} onClose={() => setShowPeriodBuilder(false)} />
         <DeployCenter />
         <ServerLoginDialog />

@@ -3003,7 +3003,94 @@ app.post('/api/assertions/run', async (req, res) => {
         const { run, runOne } = require('./core/assertions')
         if (!req.query.server) return res.status(400).json({ error: 'server required' })
         if (req.body?.id) return res.json(await runOne(req.query.server, req.body.id, { ideToken: req.ideToken }))
-        res.json(await run(req.query.server, { ideToken: req.ideToken }))
+        res.json(await run(req.query.server, { kind: req.body?.kind, severity: req.body?.severity, tags: req.body?.tags, ideToken: req.ideToken }))
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+app.get('/api/assertions/history', async (req, res) => {
+    try {
+        const { makeClient } = require('./core/adapter_registry')
+        const { recentRuns } = require('./core/test-results')
+        if (!req.query.server) return res.status(400).json({ error: 'server required' })
+        const client = makeClient(req.query.server, req.ideToken)
+        res.json(await recentRuns(client, { assertionId: req.query.id, limit: Number(req.query.limit) || 10 }))
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// ── Git deploy (IMPROVEMENTS 10.1 hybrid) ───────────────────────────────────
+// Prepare = target baseline + pull plan preview (read-only). Execute = atomic
+// pull + control checks on the target (a real deploy — gated by the UI/approval).
+app.post('/api/deploy/git/prepare', async (req, res) => {
+    try {
+        const { prepare } = require('./core/git-deploy')
+        const { source, target, branch } = req.body
+        if (!source || !target) return res.status(400).json({ error: 'source and target required' })
+        res.json(await prepare(source, target, { branch, token: process.env.TM1_GIT_TOKEN, ideToken: req.ideToken }))
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+app.post('/api/deploy/git/execute', async (req, res) => {
+    try {
+        if (!gateReadOnly(res, req.body?.target)) return
+        const { execute } = require('./core/git-deploy')
+        const { target, branch, source } = req.body
+        if (!target) return res.status(400).json({ error: 'target required' })
+        res.json(await execute(target, { branch, token: process.env.TM1_GIT_TOKEN, ideToken: req.ideToken, source }))
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// ── Drift (#3): PROD pushes prod-live; diff vs its deployed commit. ─────────
+app.post('/api/git/drift', async (req, res) => {
+    try {
+        const { driftCheck } = require('./core/git-drift')
+        const server = req.body?.server ?? req.query.server
+        if (!server) return res.status(400).json({ error: 'server required' })
+        res.json(await driftCheck(server, { token: process.env.TM1_GIT_TOKEN, ideToken: req.ideToken }))
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+app.post('/api/git/drift/revert', async (req, res) => {
+    try {
+        if (!gateReadOnly(res, req.body?.target)) return
+        const { revert } = require('./core/git-drift')
+        const { target, branch, source } = req.body
+        if (!target) return res.status(400).json({ error: 'target required' })
+        res.json(await revert(target, { branch, token: process.env.TM1_GIT_TOKEN, ideToken: req.ideToken, source }))
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+app.post('/api/git/drift/promote', async (req, res) => {
+    try {
+        const { promote } = require('./core/git-drift')
+        const { target, source } = req.body
+        if (!target) return res.status(400).json({ error: 'target required' })
+        res.json(await promote(target, { token: process.env.TM1_GIT_TOKEN, ideToken: req.ideToken, source }))
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// ── Governance mirror (#4): Applications/Governance ⇄ governance/ in the repo ──
+app.post('/api/git/governance/mirror', async (req, res) => {
+    try {
+        const { mirrorToRepo } = require('./core/governance-mirror')
+        const { server, branch } = req.body
+        if (!server) return res.status(400).json({ error: 'server required' })
+        res.json(await mirrorToRepo(server, { branch, token: process.env.TM1_GIT_TOKEN, ideToken: req.ideToken }))
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+app.post('/api/git/governance/apply', async (req, res) => {
+    try {
+        if (!gateReadOnly(res, req.body?.server)) return
+        const { applyFromRepo } = require('./core/governance-mirror')
+        const { server, branch, allow } = req.body
+        if (!server) return res.status(400).json({ error: 'server required' })
+        res.json(await applyFromRepo(server, { branch, allow, token: process.env.TM1_GIT_TOKEN, ideToken: req.ideToken }))
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// ── Git reconcile (#6): deletes + attribute values the pull won't cover ──────
+app.post('/api/deploy/git/reconcile', async (req, res) => {
+    try {
+        if (!gateReadOnly(res, req.body?.target)) return
+        const { reconcile } = require('./core/git-reconcile')
+        const { source, target, dims } = req.body
+        if (!source || !target) return res.status(400).json({ error: 'source and target required' })
+        res.json(await reconcile(source, target, { ideToken: req.ideToken, dims }))
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
