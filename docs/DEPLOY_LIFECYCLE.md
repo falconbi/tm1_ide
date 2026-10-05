@@ -13,6 +13,23 @@ Plain-English record of the agreed end-to-end deployment model. Source decisions
 | TM1 Git | structure + history + the deploy + the drift check | the model's repo (customer-owned, IBM format) |
 | The IDE | governance (change sets, risk, approval, readiness, Model Health) + the three gaps | no model data — connections, secrets, preferences, cache only |
 
+## Proven end to end (5 Oct 2026)
+
+The full single-developer loop was exercised on the lab WFP pair (TM1_Test_DEV → TM1_Test_PROD),
+unaided, with one attribute value and one delete (the two parts TM1 Git doesn't do):
+
+1. **Build** — change set on DEV (process comment + attribute value + a created-then-deleted process); closed; behaviour+control ran (2 pre-existing forecast failures recorded, non-blocking).
+2. **Push** — DEV → repo (`dev`); comment verified in the committed `.ti`, throwaway absent.
+3. **Deploy-pull + reconcile** — PROD pulled; the attribute value was applied by `syncAttributeValues`, and the delete round proved **airtight**: the pull leaves the orphan on PROD, `reconcileDeletes` removes it.
+4. **Verify** — control set 2/2 on PROD, recorded to `}TestResults`.
+5. **Approve** — recorded (the deploy gate).
+6. **Drift** — `prod-live` diff **clean (0 entries)**.
+
+Two real bugs surfaced and fixed:
+
+- **`execute()` ordering** — control checks ran *before* reconcile, contradicting the loop (pull → apply values/deletes → assertions). Reconcile now runs first.
+- **`driftCheck` never executed its push** — it created the `prod-live` push plan but plans expire in seconds, so `prod-live` stayed stale and the diff false-positived on a clean-but-changed PROD. It now creates **and executes** the plan atomically.
+
 ## The model's tests (two layers, environment-aware)
 
 Every model is built with two kinds of checks, stored in the model
