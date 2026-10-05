@@ -1,9 +1,18 @@
-# Multi-developer — parked for review (no code yet)
+# Multi-developer — parked for review (partial: change sets per person built)
 
 Single-developer is the priority: prove the whole loop (DEV → repo → TEST → PROD → `prod-live` drift)
 working end to end first. Multi-developer is mostly the same pieces run per developer, plus an
 integration server — so it's far easier to add once the basic loop is proven. This doc records the
 design and the review points for when it's picked up.
+
+## Built already (5 Oct) — change sets per person on a shared DEV
+
+The change-set machinery now key by **(server, user)**: one open change set per person per server,
+every save lands in the saver's own change set, and `getCrossSessionTouches` warns on overlap at
+close/deploy ("object X also changed in Bob's open change set — its DEV state includes his edits").
+The agent's identity passes through to the MCP (`TM1_MCP_USER`, default `ai-agent`). This covers a
+small team (≤3) sharing one DEV server with no collisions. The rule: **separate change sets, warn on
+overlap, and agree on the shared objects.** This resolves review points #3 and #4 below.
 
 ## The principle that makes it work
 
@@ -48,5 +57,9 @@ layer (connections, secrets, prefs, cache).
 Local DEV (person A) ──push──▶ repo (branch A) ──merge/review──▶ integration ──approve──▶ central PROD
 Local DEV (person B) ──push──▶ repo (branch B) ──┘
 ```
+
+Already working subset (built): one shared DEV, one change set per person, overlap warnings on
+close/deploy. Still parked: per-developer DEV servers (review point #2) and the integration branch
+(#5).
 
 Status: **parked.** Single-developer loop is the active priority.

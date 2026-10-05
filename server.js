@@ -21,9 +21,9 @@ const lensBridge = require('./core/lens_bridge')
 // open. Set TM1_REQUIRE_SESSION=1 to opt back into hard-gating writes behind
 // an open session, for anyone who wants that stricter posture.
 const SESSION_GATE_ENABLED = ['1', 'true', 'yes'].includes(String(process.env.TM1_REQUIRE_SESSION ?? '0').toLowerCase())
-function requireSession(server) {
+function requireSession(server, user) {
     if (!SESSION_GATE_ENABLED) return true
-    return !!cl.getActiveSession(server)
+    return !!cl.getActiveSession(server, user)
 }
 const NO_SESSION_ERROR = 'No change set is open for this server — start one first (Change Log → Start change set) so this change can be attributed and deployed.'
 const READ_ONLY_ERROR  = 'This server is read-only (PROD posture) — no changes are allowed here. Switch to a writable server to edit.'
@@ -36,7 +36,9 @@ function gateReadOnly(res, server) {
 }
 function gateWrite(res, server) {
     if (!gateReadOnly(res, server)) return false
-    if (!requireSession(server)) {
+    // Key the session gate by the acting user, so each person's saves are
+    // attributed to their own change set on a shared DEV.
+    if (!requireSession(server, res.req?.user)) {
         res.status(409).json({ error: NO_SESSION_ERROR })
         return false
     }
@@ -386,7 +388,7 @@ app.post('/api/sessions/resume', (req, res) => {
 })
 
 app.get('/api/sessions/active', (req, res) => {
-    try { res.json(cl.getActiveSession(req.query.server) ?? null) }
+    try { res.json(cl.getActiveSession(req.query.server, req.user) ?? null) }
     catch (e) { res.status(500).json({ error: e.message }) }
 })
 

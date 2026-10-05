@@ -72,7 +72,14 @@ function updateSessionDescription(id, description) {
     return db.prepare(`SELECT * FROM sessions WHERE id = ?`).get(id)
 }
 
-function getActiveSession(server) {
+function getActiveSession(server, user = null) {
+    // One open change set per person per server — a save goes into the saver's
+    // own change set (keyed by server+user). With no user, falls back to the
+    // newest open on the server (legacy single-developer behaviour).
+    if (user) {
+        return db.prepare(`SELECT * FROM sessions WHERE server = ? AND user = ? AND closed_at IS NULL ORDER BY started_at DESC LIMIT 1`)
+            .get(server, user) ?? null
+    }
     return db.prepare(`SELECT * FROM sessions WHERE server = ? AND closed_at IS NULL ORDER BY started_at DESC LIMIT 1`).get(server) ?? null
 }
 
@@ -234,7 +241,9 @@ function getEntryById(id) {
 // user — wrong on both counts, and wrong specifically *because* it made
 // history depend on session state, which it must never do.)
 function writeLog({ server, action, objectType, objectName, detail, beforeState, afterState, user }) {
-    const session = getActiveSession(server)
+    // Keyed by the saver's own open change set (server+user), so per-person
+    // change sets on a shared DEV stay separate.
+    const session = getActiveSession(server, user)
 
     db.prepare(`
         INSERT INTO log_entries (session_id, timestamp, server, action, object_type, object_name, detail, before_state, after_state, user)
