@@ -3,7 +3,7 @@
 Every bug-fix commit, newest first, by the date it was committed. Generated from the git history;
 commits that mixed a fix into a feature are included too. New features are not listed here.
 
-126 fixes from 2026-05-20 to 2026-10-04.
+133 fixes from 2026-05-20 to 2026-10-04.
 
 ← [Back to README](../README.md)
 
@@ -12,6 +12,13 @@ commits that mixed a fix into a feature are included too. New features are not l
 
 ### 2026-10-04
 
+- **chore** — The editor read/wrote `Steps`, but TM1 stores chore steps as `Tasks` — an existing chore opened with no usable step and every save was rejected
+- **chore** — A task `Ordinal` property is rejected on v11 ("Unrecognized ChoreTask property"); task order now follows array position
+- **chore** — Frequency was sent as an object; TM1 expects an ISO duration string, and a zero duration is invalid (`SystemValueInvalid`) — the editor now requires a repeat frequency
+- **chore** — `StartTime` lacked the UTC `Z` (it's an `Edm.DateTimeOffset`) and the required `DSTSensitive` was omitted
+- **chore** — Process binds used `encodeURIComponent`, so a spaced name like "CON Save All" saved as `Processes('CON%20Save%20All')` and could hang the save indefinitely
+- **chore** — `cancelThread` used the Jobs action `tm1.Cancel`; threads need `tm1.CancelOperation`
+- **chore** — The process-usage scan and the deploy risk check read `Steps`, so they silently missed every chore step on v11
 - **auth** — One login was reused for every TM1 server; a server with a different password rejected it and repeated rejections could lock the account (`MaximumLoginAttempts`). Each server now has its own login and a rejected password is never retried
 - **auth** — Every request opened a new TM1 session (538 found left open on one server); sessions are now reused per server and closed on sign-out
 - **auth** — Direct CAM sign-in sent the namespace in a non-standard header; now IBM's documented `CAMNamespace` format (as TM1py)
