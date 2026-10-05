@@ -47,11 +47,18 @@ async function check(server, opts = {}) {
     // Assertions (from the model store; config fallback). Run, don't just list.
     try {
         const a = await assertions.run(server, { ideToken })
+        const byKind = { behaviour: { total: 0, passed: 0, failed: 0 }, control: { total: 0, passed: 0, failed: 0 } }
+        for (const r of a.results ?? []) {
+            const k = (r.kind ?? 'behaviour') === 'control' ? 'control' : 'behaviour'
+            byKind[k].total++
+            if (r.pass) byKind[k].passed++; else byKind[k].failed++
+        }
         results.sections.assertions = {
             ok: a.failed.length === 0,
             source: a.source,
             total: a.total, passed: a.passed, failed: a.failed.length,
-            failures: a.failed.map(f => ({ id: f.id, description: f.description, mdx: f.mdx ?? '', tags: f.tags ?? [], expected: f.expected, actual: f.actual, error: f.error ?? null })),
+            by_kind: byKind,
+            failures: a.failed.map(f => ({ id: f.id, description: f.description, mdx: f.mdx ?? '', tags: f.tags ?? [], kind: f.kind ?? 'behaviour', severity: f.severity ?? 'block', expected: f.expected, actual: f.actual, error: f.error ?? null })),
         }
         if (!results.sections.assertions.ok) results.ok = false
     } catch (e) {

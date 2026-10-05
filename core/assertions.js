@@ -147,7 +147,7 @@ async function list(server, opts = {}) {
   return { source: 'config', assertions: entry ?? [] }
 }
 
-async function add(server, { description, mdx, expected, tolerance, tags }, opts = {}) {
+async function add(server, { description, mdx, expected, tolerance, tags, kind, severity }, opts = {}) {
   const rec = {
     id:          randomUUID().slice(0, 8),
     description: String(description ?? '').trim(),
@@ -155,6 +155,8 @@ async function add(server, { description, mdx, expected, tolerance, tags }, opts
     expected:    Number(expected),
     tolerance:   tolerance == null ? 0.01 : Number(tolerance),
     tags:        Array.isArray(tags) ? tags : [],
+    kind:        kind === 'control' ? 'control' : 'behaviour',
+    severity:    severity === 'warn' ? 'warn' : 'block',
     created:     new Date().toISOString(),
   }
   const client = _clientFor(server, opts)
@@ -254,12 +256,16 @@ async function migrate(server, { dryRun = false, force = false, ideToken, client
 // against `targetServer` (default: the same). Used for post-deploy verification —
 // the source Dev server's assertions run against the target after a deploy.
 // Reports which store the assertions came from (source: 'model' | 'config').
-async function run(sourceServer, { targetServer, tags, ideToken, client: injected } = {}) {
+async function run(sourceServer, { targetServer, tags, kind, severity, ideToken, client: injected } = {}) {
     const { makeClient } = require('./adapter_registry')
     const target = targetServer ?? sourceServer
     const client = injected ?? makeClient(target, ideToken)
     const { source, assertions: stored } = await list(sourceServer, target === sourceServer ? { client, ideToken } : { ideToken })
-    const set = stored.filter(a => !tags?.length || (a.tags ?? []).some(t => tags.includes(t)))
+    const set = stored.filter(a =>
+        (!tags?.length || (a.tags ?? []).some(t => tags.includes(t))) &&
+        (!kind || (a.kind ?? 'behaviour') === kind) &&
+        (!severity || (a.severity ?? 'block') === severity)
+    )
 
     const results = []
     for (const a of set) {
@@ -272,9 +278,9 @@ async function run(sourceServer, { targetServer, tags, ideToken, client: injecte
         }
         const tol  = a.tolerance ?? 0.01
         const pass = error == null && Math.abs(actual - a.expected) <= tol
-        results.push({ id: a.id, description: a.description, mdx: a.mdx, tags: a.tags ?? [], expected: a.expected, actual, diff: error ? null : actual - a.expected, pass, error })
+        results.push({ id: a.id, description: a.description, mdx: a.mdx, tags: a.tags ?? [], kind: a.kind ?? 'behaviour', severity: a.severity ?? 'block', expected: a.expected, actual, diff: error ? null : actual - a.expected, pass, error })
     }
-    return {
+    const result = {
         source_server: sourceServer,
         target_server: target,
         source,
@@ -283,6 +289,12 @@ async function run(sourceServer, { targetServer, tags, ideToken, client: injecte
         failed: results.filter(r => !r.pass),
         results,
     }
+    // Record run history to the target's }TestResults — best-effort, never fails a run.
+    try {
+        const { recordRun } = require('./test-results')
+        await recordRun(client, result)
+    } catch { /* history is best-effort */ }
+    return result
 }
 
 module.exports = { list, add, update, remove, run, runOne, load, save, migrate, isModelStored, FILE, GOVERNANCE_PATH, MODEL_DOC_NAME }
@@ -296,6 +308,8 @@ function _cleanPatch(patch = {}) {
     if (patch.expected !== undefined)   out.expected   = Number(patch.expected)
     if (patch.tolerance !== undefined)  out.tolerance  = Number(patch.tolerance)
     if (patch.tags !== undefined)       out.tags       = Array.isArray(patch.tags) ? patch.tags : []
+    if (patch.kind !== undefined)       out.kind       = patch.kind === 'control' ? 'control' : 'behaviour'
+    if (patch.severity !== undefined)   out.severity   = patch.severity === 'warn' ? 'warn' : 'block'
     return out
 }
 
@@ -334,5 +348,5 @@ async function runOne(server, id, opts = {}) {
         error = e.response?.data?.error?.message ?? e.message
     }
     const pass = error == null && Math.abs(actual - a.expected) <= (a.tolerance ?? 0.01)
-    return { source, id: a.id, description: a.description, mdx: a.mdx, tags: a.tags ?? [], expected: a.expected, actual, pass, error }
+    return { source, id: a.id, description: a.description, mdx: a.mdx, tags: a.tags ?? [], kind: a.kind ?? 'behaviour', severity: a.severity ?? 'block', expected: a.expected, actual, pass, error }
 }

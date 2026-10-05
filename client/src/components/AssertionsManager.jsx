@@ -6,7 +6,7 @@ import { cn } from '@/lib/utils'
 // assertions. List loads on open (cheap GET); runs are button-triggered.
 const authHeader = () => ({ 'x-ide-token': localStorage.getItem('tm1-token') ?? '' })
 
-const emptyForm = () => ({ description: '', mdx: '', expected: '', tolerance: '0.01', tags: '' })
+const emptyForm = () => ({ description: '', mdx: '', expected: '', tolerance: '0.01', tags: '', kind: 'behaviour', severity: 'block' })
 
 export default function AssertionsManager({ server, onClose }) {
   const [list,    setList]    = useState(null)
@@ -31,7 +31,7 @@ export default function AssertionsManager({ server, onClose }) {
 
   const beginAdd = () => { setForm(emptyForm()); setEditId(null); setAdding(true) }
   const beginEdit = a => {
-    setForm({ description: a.description ?? '', mdx: a.mdx ?? '', expected: String(a.expected ?? ''), tolerance: String(a.tolerance ?? '0.01'), tags: (a.tags ?? []).join(', ') })
+    setForm({ description: a.description ?? '', mdx: a.mdx ?? '', expected: String(a.expected ?? ''), tolerance: String(a.tolerance ?? '0.01'), tags: (a.tags ?? []).join(', '), kind: a.kind ?? 'behaviour', severity: a.severity ?? 'block' })
     setEditId(a.id); setAdding(false)
   }
   const cancelForm = () => { setForm(emptyForm()); setAdding(false); setEditId(null) }
@@ -43,6 +43,8 @@ export default function AssertionsManager({ server, onClose }) {
       description: form.description, mdx: form.mdx,
       expected: Number(form.expected), tolerance: Number(form.tolerance || '0.01'),
       tags: form.tags.split(',').map(t => t.trim()).filter(Boolean),
+      kind: form.kind === 'control' ? 'control' : 'behaviour',
+      severity: form.severity === 'warn' ? 'warn' : 'block',
     }
     try {
       const url = `/api/assertions${editId ? `/${encodeURIComponent(editId)}` : ''}?server=${encodeURIComponent(server)}`
@@ -130,7 +132,17 @@ export default function AssertionsManager({ server, onClose }) {
                 <input value={form.expected} onChange={e => setForm(f => ({ ...f, expected: e.target.value }))} placeholder="0" className={cn(input, 'w-28')} />
                 <label className="text-[10px] text-muted-foreground w-20 shrink-0 ml-2">Tolerance</label>
                 <input value={form.tolerance} onChange={e => setForm(f => ({ ...f, tolerance: e.target.value }))} placeholder="0.01" className={cn(input, 'w-24')} />
-                <label className="text-[10px] text-muted-foreground w-10 shrink-0 ml-2">Tags</label>
+                <label className="text-[10px] text-muted-foreground w-8 shrink-0 ml-2">Kind</label>
+                <select value={form.kind} onChange={e => setForm(f => ({ ...f, kind: e.target.value }))} className={cn(input, 'w-24')}>
+                  <option value="behaviour">behaviour</option>
+                  <option value="control">control</option>
+                </select>
+                <label className="text-[10px] text-muted-foreground w-14 shrink-0 ml-2">Severity</label>
+                <select value={form.severity} onChange={e => setForm(f => ({ ...f, severity: e.target.value }))} className={cn(input, 'w-20')}>
+                  <option value="block">block</option>
+                  <option value="warn">warn</option>
+                </select>
+                <label className="text-[10px] text-muted-foreground w-8 shrink-0 ml-2">Tags</label>
                 <input value={form.tags} onChange={e => setForm(f => ({ ...f, tags: e.target.value }))} placeholder="comma, separated" className={cn(input, 'flex-1')} />
               </div>
               <div className="flex items-center gap-2">
@@ -151,7 +163,9 @@ export default function AssertionsManager({ server, onClose }) {
                   <span className="flex-1">
                     <span className="block text-xs">{a.description}</span>
                     <span className="block text-[10px] text-muted-foreground mt-0.5">
-                      expected {a.expected}{a.tolerance != null ? ` ± ${a.tolerance}` : ''}
+                      <span className={cn('font-semibold', (a.kind ?? 'behaviour') === 'control' ? 'text-amber-600' : 'text-foreground/70')}>{a.kind ?? 'behaviour'}</span>
+                      <span className={cn('ml-1', (a.severity ?? 'block') === 'warn' ? 'text-amber-600' : 'text-foreground/70')}>· {(a.severity ?? 'block')}</span>
+                      {` · expected ${a.expected}${a.tolerance != null ? ` ± ${a.tolerance}` : ''}`}
                       {a.tags?.length > 0 && ` · ${a.tags.map(t => `# ${t}`).join('  ')}`}
                     </span>
                     {res && (
@@ -174,6 +188,14 @@ export default function AssertionsManager({ server, onClose }) {
                     <div className="flex items-center gap-2">
                       <input value={form.expected} onChange={e => setForm(f => ({ ...f, expected: e.target.value }))} className={cn(input, 'w-28')} />
                       <input value={form.tolerance} onChange={e => setForm(f => ({ ...f, tolerance: e.target.value }))} className={cn(input, 'w-24')} />
+                      <select value={form.kind} onChange={e => setForm(f => ({ ...f, kind: e.target.value }))} className={cn(input, 'w-24')}>
+                        <option value="behaviour">behaviour</option>
+                        <option value="control">control</option>
+                      </select>
+                      <select value={form.severity} onChange={e => setForm(f => ({ ...f, severity: e.target.value }))} className={cn(input, 'w-20')}>
+                        <option value="block">block</option>
+                        <option value="warn">warn</option>
+                      </select>
                       <input value={form.tags} onChange={e => setForm(f => ({ ...f, tags: e.target.value }))} className={cn(input, 'flex-1')} />
                       <button onClick={submit} className="flex items-center gap-1 px-2 py-1 text-xs rounded bg-primary text-primary-foreground hover:opacity-90"><Check size={11} /> Save</button>
                       <button onClick={cancelForm} className="px-2 py-1 text-xs rounded border border-border text-muted-foreground hover:bg-muted">Cancel</button>

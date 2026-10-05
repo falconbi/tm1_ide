@@ -42,6 +42,19 @@ export default function ModelHealth({ server, onClose }) {
   const [error,   setError]   = useState(null)
   const [expanded, setExpanded] = useState(null)
   const [copied,  setCopied]  = useState(null)
+  const [assertKind, setAssertKind] = useState('all')
+  const [histories, setHistories] = useState({})
+  const [openHist,  setOpenHist]  = useState(null)
+
+  const loadHistory = async f => {
+    if (histories[f.id]) return
+    try {
+      const r = await fetch(`/api/assertions/history?server=${encodeURIComponent(server)}&id=${encodeURIComponent(f.id)}`, { headers: { 'x-ide-token': localStorage.getItem('tm1-token') ?? '' } })
+      const d = await r.json()
+      if (!r.ok) throw new Error(d.error || r.statusText)
+      setHistories(h => ({ ...h, [f.id]: d }))
+    } catch { setHistories(h => ({ ...h, [f.id]: [] })) }
+  }
 
   const run = async () => {
     setRunning(true); setError(null)
@@ -103,9 +116,24 @@ export default function ModelHealth({ server, onClose }) {
               {a?.error && <p className="text-xs text-red-600">{a.error}</p>}
               {a && !a.error && (
                 <>
-                  <p className="text-xs text-muted-foreground">{a.passed}/{a.total} passing{!a.ok && ` · ${a.failed} failing`}</p>
-                  {a.failures.length === 0 && empty}
-                  {a.failures.map(f => {
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <p className="text-xs text-muted-foreground">{a.passed}/{a.total} passing{!a.ok && ` · ${a.failed} failing`}</p>
+                    {a.by_kind && (
+                      <span className="text-[10px] text-muted-foreground">
+                        · behaviour {a.by_kind.behaviour.passed}/{a.by_kind.behaviour.total} · control {a.by_kind.control.passed}/{a.by_kind.control.total}
+                      </span>
+                    )}
+                    <div className="flex items-center gap-1 ml-auto">
+                      {['all', 'behaviour', 'control'].map(k => (
+                        <button key={k} onClick={() => setAssertKind(k)}
+                          className={cn('px-2 py-0.5 text-[10px] rounded border transition-colors', assertKind === k ? 'bg-muted text-foreground border-border' : 'border-border/50 text-muted-foreground hover:text-foreground')}>
+                          {k}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  {a.failures.filter(f => assertKind === 'all' || (f.kind ?? 'behaviour') === assertKind).length === 0 && empty}
+                  {a.failures.filter(f => assertKind === 'all' || (f.kind ?? 'behaviour') === assertKind).map(f => {
                     const s = summarizeMdx(f.mdx)
                     return (
                       <div key={f.id} className="border border-red-600/30 rounded px-2 py-1.5">
@@ -130,6 +158,10 @@ export default function ModelHealth({ server, onClose }) {
                           )}
                           <p className="text-[10px] text-muted-foreground/80"><span className="text-amber-600/80">Check:</span> {suggestHints(f.tags)}</p>
                           <div className="flex items-center gap-2 flex-wrap">
+                            <button onClick={() => { setOpenHist(openHist === f.id ? null : f.id); loadHistory(f) }}
+                              className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] rounded border border-border text-foreground hover:bg-muted transition-colors" title="Show run history">
+                              <ChevronDown size={10} className={cn('transition-transform', openHist === f.id && 'rotate-180')} /> History
+                            </button>
                             {s.cube && (
                               <>
                                 <button onClick={() => openTab({ id: `rules:${server}:${s.cube}`, type: 'rules', label: s.cube, server, cube: s.cube, content: null })}
@@ -143,6 +175,18 @@ export default function ModelHealth({ server, onClose }) {
                               </>
                             )}
                           </div>
+                          {openHist === f.id && histories[f.id] && (
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="text-[10px] text-muted-foreground">Last runs:</span>
+                              {histories[f.id].length === 0 && <span className="text-[10px] text-muted-foreground italic">no history recorded yet</span>}
+                              {histories[f.id].map((h, i) => (
+                                <span key={h.run} className={cn('text-[10px] px-1.5 py-0.5 rounded border', h.pass === 1 ? 'border-emerald-600/30 text-emerald-600' : 'border-red-600/30 text-red-600')}
+                                  title={`${h.run} — expected ${h.expected}, actual ${h.actual}`}>
+                                  {h.run.slice(4, 12)} {h.pass === 1 ? 'P' : 'F'}
+                                </span>
+                              ))}
+                            </div>
+                          )}
                           {expanded === f.id && f.mdx && (
                             <div className="flex items-start gap-2">
                               <pre className="flex-1 text-[10px] font-mono text-muted-foreground bg-muted/40 rounded px-2 py-1.5 whitespace-pre-wrap break-all">{f.mdx}</pre>
