@@ -96,7 +96,26 @@ into a `governance/` folder in the same repo (git history and review for tests, 
 and Lenses). On deploy, the IDE writes them to the target with a **per-target rule** (e.g. PROD gets health checks
 only, never test payloads). **The server stays the runtime truth**; the repo is the history/review layer.
 
+## First-time setup (once per model) — GAP, to build
+
+Before any of this can run, a model has to be linked to GitHub. **Today nothing detects that or explains it** — the
+wizard assumes the repo is already set up, so a new user is stuck with no clue, and it's not obvious who should do it.
+
+**Who:** an admin / lead, once per model. They need a GitHub account (a token) and TM1 admin rights.
+
+**What's needed:** when you open a server that isn't linked to a repo, the tool should say so and walk through it:
+
+1. **Choose the GitHub repo** — create one, or paste its address.
+2. **Link this server** — say whether it is DEV or PROD (its deployment).
+3. **Add a GitHub token** — so the server can read and write the repo.
+
+Link **both** servers to the **same** repo — one as DEV, one as PROD. After that, the normal process works.
+
+**Where it shows:** on opening an unlinked server ("this model isn't backed by GitHub yet — set it up"), and in Model
+Health as a readiness flag. Plus a short one-page setup guide.
+
 ## Out of scope / later phases
 
 - `}TestResults` run history (phase 2), change-set documents in the model (phase 2), deploy history/approvals/hooks into the model (phase 4), migration of existing RIG history (phase 5).
 - The mirror of `Applications/Governance` into the repo (the decided mechanism above) — to implement with the deploy work.
+- The first-time GitHub setup flow above (admin, once per model).
