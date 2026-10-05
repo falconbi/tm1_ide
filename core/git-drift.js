@@ -41,13 +41,18 @@ async function driftCheck(server, { token, gitUser = 'falconbi', ideToken } = {}
 
     // Push the target's live state to prod-live (a drift report — does not change its deployed commit).
     // NewBranch on first push; Branch on subsequent pushes (the branch then exists).
+    // Plans are ephemeral (expire in seconds), so create AND execute atomically —
+    // the push must actually land for prod-live to reflect the live state; a
+    // created-but-unexecuted plan leaves prod-live stale and the diff below a
+    // false positive.
     const branches = st?.Remote?.Branches ?? []
     const hasLive = branches.includes('prod-live')
     let pushed
     try {
-        await c.post('GitPush', hasLive
+        const plan = await c.post('GitPush', hasLive
             ? { Branch: 'prod-live', NewBranch: '', Force: false, Message: 'drift check: PROD live state', Author: gitUser, Email: `${gitUser}@users.noreply.github.com`, Username: gitUser, Password: token }
             : { Branch: '', NewBranch: 'prod-live', Force: false, Message: 'drift check: PROD live state', Author: gitUser, Email: `${gitUser}@users.noreply.github.com`, Username: gitUser, Password: token })
+        await c.post(`GitPlans('${encodeURIComponent(plan.ID)}')/tm1.Execute`, {})
         pushed = true
     } catch (e) {
         return { server, drift: null, error: `Push to prod-live failed: ${e.response?.data?.error?.message ?? e.message}` }

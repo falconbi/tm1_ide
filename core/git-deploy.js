@@ -67,6 +67,18 @@ async function execute(target, { branch = 'dev', token, gitUser = 'falconbi', id
         return out
     }
 
+    // Reconcile the gaps TM1 Git won't cover FIRST — deletes + attribute values
+    // (#6) — so the control checks below run against the fully-applied state.
+    // Matches the loop: TEST pulls → apply values+deletes → assertions run.
+    if (source) {
+        try {
+            const { reconcile } = require('./git-reconcile')
+            out.reconcile = await reconcile(source, target, { ideToken })
+        } catch (e) {
+            out.reconcile = { error: e.message }
+        }
+    }
+
     // Control checks on the target — invariant tests, valid on any data.
     if (source) {
         try {
@@ -79,16 +91,6 @@ async function execute(target, { branch = 'dev', token, gitUser = 'falconbi', id
         } catch (e) {
             out.verification = { error: e.message }
             out.controlOk = false
-        }
-    }
-
-    // Reconcile the gaps TM1 Git won't cover — deletes + attribute values (#6).
-    if (source) {
-        try {
-            const { reconcile } = require('./git-reconcile')
-            out.reconcile = await reconcile(source, target, { ideToken })
-        } catch (e) {
-            out.reconcile = { error: e.message }
         }
     }
     return out

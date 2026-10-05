@@ -141,5 +141,16 @@
     "packaged": "Release 2026-09-12",
     "session": null,
     "packageDir": "/home/jdlove/apps/tm1_ide/packages/release-2026-09-12-2026-09-12-4"
+  },
+  {
+    "id": "2026-10-05T04:09:52.386Z",
+    "approved_at": "2026-10-05T04:09:52.386Z",
+    "approver": "admin",
+    "notes": "Proof: single-developer loop end to end — DEV change set db97f3f6 deployed to PROD (process comment, attribute value, delete reconcile #6). Control assertions passed on PROD. Approved end-to-end test.",
+    "source": "TM1_Test_DEV",
+    "target": "TM1_Test_PROD",
+    "packaged": "Proof: single-developer loop",
+    "session": "db97f3f6-8622-43a2-acc3-ff8def021f44",
+    "packageDir": null
   }
 ]
