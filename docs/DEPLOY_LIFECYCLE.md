@@ -30,6 +30,36 @@ Two real bugs surfaced and fixed:
 - **`execute()` ordering** — control checks ran *before* reconcile, contradicting the loop (pull → apply values/deletes → assertions). Reconcile now runs first.
 - **`driftCheck` never executed its push** — it created the `prod-live` push plan but plans expire in seconds, so `prod-live` stayed stale and the diff false-positived on a clean-but-changed PROD. It now creates **and executes** the plan atomically.
 
+## Gates enforced — proven (6 Oct 2026)
+
+The approval and close gates are **server-side and non-optional**; a client cannot bypass them. Both were re-proven
+after the fix, at two levels:
+
+**Engine level** (core modules driven directly):
+| Check | Result |
+|---|---|
+| Deploy without an approval | **refused** (`executed:false, refused:true`) |
+| Deploy after a recorded approval | **succeeds** (records `approvedBy`) |
+| Drift after the deploy | **clean (0 entries)** |
+| Revert after DEV moved on (new unapproved commit) | **refused** — "DEV has moved on since the last deploy — reverting would ship unapproved changes…" |
+| Revert with an approved commit (genuine revert) | **proceeds** — a genuine revert passes the normal gate |
+| Git identity | from `TM1_GIT_USER` / `TM1_GIT_EMAIL` env (no hardcoded identity) |
+
+**Route level** (HTTP routes, authenticated):
+| Check | Result |
+|---|---|
+| `POST /api/deploy/git/execute` without an approval for the exact commit | **refused** (`refused:true`, message names the commit) |
+| `POST /api/sessions/close` while a `block`-severity assertion is failing | **409 refused** — message names the failing assertion(s) |
+| Close after the block failure is resolved | **succeeds** |
+
+Notes:
+- The approval is bound to **(target, exact commit)** — a new commit invalidates the old approval; `execute()`
+  re-creates the plan and checks `plan.Commit.ID`. There is **no `requireApproval` escape hatch**.
+- `/api/sessions/close` **never trusts client-sent test results** — it runs the assertions server-side and refuses to
+  close on a failing block-severity assertion.
+- `config/deploy-approvals.json` and `config/git-deploy-state.json` are **local runtime state — gitignored and
+  untracked**.
+
 ## The model's tests (two layers, environment-aware)
 
 Every model is built with two kinds of checks, stored in the model
