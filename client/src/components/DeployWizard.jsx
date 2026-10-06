@@ -118,8 +118,7 @@ export default function DeployWizard({ server, onClose, onOpenTests }) {
   }
   const closeChangeSet = async () => {
     if (!active) return
-    const testsSummary = tests ? { passed: tests.passed, total: tests.total, blocking: tests.results.filter(r => !r.pass && (r.severity ?? 'block') === 'block').length } : null
-    const d = await run('close', { id: active.id, tests: testsSummary }, '/api/sessions/close')
+    const d = await run('close', { id: active.id }, '/api/sessions/close')
     if (d) { setActive(null); setStep(4) }
   }
   const doPush = async () => {
@@ -127,11 +126,11 @@ export default function DeployWizard({ server, onClose, onOpenTests }) {
     if (d) { setPushed(d); setStep(5) }
   }
   const doPrepare = async () => {
-    const d = await run('prepare', { source: server, target, branch }, '/api/deploy/git/prepare')
+    const d = await run('prepare', { source: server, target, branch, session: sessionId }, '/api/deploy/git/prepare')
     if (d) { setPrep(d); setDiffs(null); setApproval(null); if (d.ready) setStep(6) }
   }
   const doReview = async () => {
-    const d = await run('review', { source: server, target, branch }, '/api/deploy/git/review')
+    const d = await run('review', { source: server, target, branch, session: sessionId }, '/api/deploy/git/review')
     if (d) setDiffs(d)
   }
   const doApprove = async () => {
@@ -350,6 +349,15 @@ export default function DeployWizard({ server, onClose, onOpenTests }) {
                           </div>
                         )}
 
+                        {diffs?.manifest?.deletes?.length > 0 && (
+                          <p className="text-[11px] text-amber-600">Also deletes: {diffs.manifest.deletes.map(d => `${d.type} ${d.name}`).join(', ')} (TM1 Git cannot propagate deletes — the deploy removes these from the target).</p>
+                        )}
+                        {diffs?.outOfChangeSet?.length > 0 && (
+                          <p className="text-[11px] text-amber-600">Outside this change set: {diffs.outOfChangeSet.join(', ')} — from the repo, not this change set. Check these before deploying.</p>
+                        )}
+                        {diffs?.firstDeploy && (
+                          <p className="text-[11px] text-amber-600">First deploy — this target has never received one. Everything it will get is listed above.</p>
+                        )}
                         <div className="flex items-center gap-2 pt-1">
                           <button onClick={() => setStep(4)} className={textBtn}>Back to Commit</button>
                           <button onClick={() => setStep(6)} disabled={!prep.ready} className={primaryBtn}>Continue to Approve</button>
@@ -423,8 +431,11 @@ export default function DeployWizard({ server, onClose, onOpenTests }) {
                     {res.reconcile && (
                       <div className="space-y-1 text-[11px] text-muted-foreground pt-1">
                         {res.reconcile.attributeValues && <p>Also applied: attribute values across {res.reconcile.attributeValues.dims?.length ?? 0} dimensions (TM1 Git does not carry these).</p>}
+                        {(res.reconcile.attributeValues?.errors?.length > 0) && <p className="text-amber-600">Attribute sync: {res.reconcile.attributeValues.errors.map(e => `${e.dim} — ${e.error}`).join('; ')}</p>}
+                        {(res.reconcile.attributeValues?.flagged?.length > 0) && <p className="text-amber-600">Attribute sync skipped: {res.reconcile.attributeValues.flagged.map(e => `${e.dim} — ${e.error}`).join('; ')}</p>}
                         {res.reconcile.deletes?.deleted?.length > 0 && <p>Deleted on {target}: {res.reconcile.deletes.deleted.map(d => `${d.type} ${d.name}`).join(', ')} (TM1 Git does not propagate deletes).</p>}
-                        {res.reconcile.deletes && !res.reconcile.deletes?.deleted?.length && <p>No objects needed deleting.</p>}
+                        {(res.reconcile.deletes?.flagged?.length > 0) && <p className="text-amber-600">Delete skipped: {res.reconcile.deletes.flagged.map(d => `${d.type} ${d.name} — ${d.error}`).join('; ')}</p>}
+                        {res.reconcile.deletes && !res.reconcile.deletes?.deleted?.length && !res.reconcile.deletes?.flagged?.length && <p>No objects needed deleting.</p>}
                         {res.reconcile.error && <p className="text-red-600">{res.reconcile.error}</p>}
                       </div>
                     )}
@@ -477,6 +488,7 @@ export default function DeployWizard({ server, onClose, onOpenTests }) {
           <div className="border border-border rounded-md">
             <div className="px-3 py-2 border-b border-border bg-muted/20 text-xs font-semibold">If something goes wrong</div>
             <div className="px-3 py-2 space-y-1.5 text-[11px] text-muted-foreground leading-relaxed">
+              <p>· <span className="text-foreground">No rollback.</span> A deploy cannot be automatically undone — if it breaks, you <span className="text-foreground">fix forward</span>: correct on {server}, commit, and deploy again. The repo keeps every version, so the target can always be rebuilt.</p>
               <p>· <span className="text-foreground">Bad deploy?</span> Fix it forward: make the correction on {server}, commit it to the GitHub repo, and deploy again. The repo keeps every version, so the target can always be rebuilt.</p>
               <p>· <span className="text-foreground">PROD changed since the last deploy (drift)?</span> Use Revert (put it back to what the repo says) or Promote (keep the change by bringing it back to {server}). Both are in Verify, step 8.</p>
               <p>· <span className="text-foreground">Lost a server?</span> The repo has everything — a fresh server can pull the whole model back from it.</p>

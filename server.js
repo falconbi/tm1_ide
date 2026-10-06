@@ -3043,9 +3043,9 @@ app.get('/api/assertions/history', async (req, res) => {
 app.post('/api/deploy/git/prepare', async (req, res) => {
     try {
         const { prepare } = require('./core/git-deploy')
-        const { source, target, branch } = req.body
+        const { source, target, branch, session } = req.body
         if (!source || !target) return res.status(400).json({ error: 'source and target required' })
-        res.json(await prepare(source, target, { branch, token: process.env.TM1_GIT_TOKEN, ideToken: req.ideToken }))
+        res.json(await prepare(source, target, { branch, token: process.env.TM1_GIT_TOKEN, ideToken: req.ideToken, session }))
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 app.post('/api/deploy/git/execute', async (req, res) => {
@@ -3054,8 +3054,8 @@ app.post('/api/deploy/git/execute', async (req, res) => {
         const { execute } = require('./core/git-deploy')
         const { target, branch, source, session } = req.body
         if (!target) return res.status(400).json({ error: 'target required' })
-        const result = await execute(target, { branch, token: process.env.TM1_GIT_TOKEN, ideToken: req.ideToken, source })
-        if (session && result?.executed) try { cl.markSessionDeployed(session, target) } catch { /* link is best-effort */ }
+        const result = await execute(target, { branch, token: process.env.TM1_GIT_TOKEN, ideToken: req.ideToken, source, session })
+        if (session && result?.executed && result?.controlOk) try { cl.markSessionDeployed(session, target) } catch { /* link is best-effort */ }
         res.json(result)
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
@@ -3088,11 +3088,21 @@ app.post('/api/deploy/git/approve', (req, res) => {
     try {
         const { source, target, commit, note } = req.body
         if (!target || !commit) return res.status(400).json({ error: 'target and commit required' })
+        // The commit must be linked to a CLOSED change set whose tests passed.
+        const linkedSession = cl.getAllSessions(500).find(x => x.commit_ref === commit && x.closed_at != null)
+        if (!linkedSession) {
+            return res.status(409).json({ error: `Refused: commit ${commit} is not linked to a closed change set. Close the change set and commit it first.` })
+        }
+        let tests = null
+        try { tests = linkedSession.close_tests ? JSON.parse(linkedSession.close_tests) : null } catch { tests = null }
+        if (!tests || tests.blocking > 0) {
+            return res.status(409).json({ error: `Refused: the change set for commit ${commit} has failing block-severity tests. Fix and re-close before approving.` })
+        }
         const approvals = require('./core/git-approvals')
         const rec = approvals.append({
             id: new Date().toISOString(), approved_at: new Date().toISOString(),
             approver: req.user ?? 'unknown', notes: note ?? '',
-            source: source ?? null, target, commit, session: null, packageDir: null,
+            source: source ?? null, target, commit, session: linkedSession.id, packageDir: null,
         })
         res.json(rec)
     } catch (e) { res.status(500).json({ error: e.message }) }
@@ -3107,9 +3117,9 @@ app.get('/api/deploy/git/approval', (req, res) => {
 app.post('/api/deploy/git/review', async (req, res) => {
     try {
         const { review } = require('./core/git-review')
-        const { source, target, branch } = req.body
+        const { source, target, branch, session } = req.body
         if (!target) return res.status(400).json({ error: 'target required' })
-        res.json(await review(source, target, { branch, token: process.env.TM1_GIT_TOKEN, ideToken: req.ideToken }))
+        res.json(await review(source, target, { branch, token: process.env.TM1_GIT_TOKEN, ideToken: req.ideToken, session }))
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
@@ -3160,16 +3170,6 @@ app.post('/api/git/governance/apply', async (req, res) => {
 })
 
 // ── Git reconcile (#6): deletes + attribute values the pull won't cover ──────
-app.post('/api/deploy/git/reconcile', async (req, res) => {
-    try {
-        if (!gateReadOnly(res, req.body?.target)) return
-        const { reconcile } = require('./core/git-reconcile')
-        const { source, target, dims } = req.body
-        if (!source || !target) return res.status(400).json({ error: 'source and target required' })
-        res.json(await reconcile(source, target, { ideToken: req.ideToken, dims }))
-    } catch (e) { res.status(500).json({ error: e.message }) }
-})
-
 app.post('/api/deploy/seed', async (req, res) => {
     try {
         const { server, label } = req.body
@@ -3355,6 +3355,13 @@ app.post('/api/deploy/risk', async (req, res) => {
 app.post('/api/deploy/execute', async (req, res) => {
     try {
         const { packageDir, target, dryRun, force } = req.body
+        if (!gateReadOnly(res, target)) return
+        // Legacy package path: cannot bind to a specific commit, so it requires any
+        // recorded approval for the target — not a silent bypass of the git gate.
+        const approvals = require('./core/git-approvals')
+        if (!approvals.has(target)) {
+            return res.status(403).json({ error: `Refused: no approval on record for ${target}. Deploy through the step-by-step wizard (it records an approval against the commit).` })
+        }
         const result = await deployExecute(packageDir, target, { dryRun, force, skipRiskCheck: true }, req.ideToken)
         res.json(result)
     } catch (e) { res.status(500).json({ error: e.message }) }

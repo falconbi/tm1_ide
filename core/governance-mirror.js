@@ -6,23 +6,16 @@
 // change sets, deploy records, Lenses), and applies them to targets on deploy
 // with per-target rules. The server stays the runtime truth.
 
-const { execFileSync } = require('child_process')
 const fs = require('fs')
 const os = require('os')
 const path = require('path')
 const { makeClient } = require('./adapter_registry')
 const gitIdentity = require('./git-identity')
+const { git, authUrl, sanitize } = require('./git-repo')
 
 const GOVERNANCE = ['Applications', 'Governance']
 const GIT_FOLDER = 'governance'
 const EXT = new Set(['.json', '.html', '.txt', '.md'])
-
-function git(cwd, ...args) {
-    return execFileSync('git', ['-C', cwd, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
-}
-function authUrl(url, user, token) {
-    return url.replace(/^https:\/\//i, `https://${user}:${token}@`)
-}
 
 // Walk Applications/Governance → [{ rel: 'Tests/assertions.json', content }]
 async function readGovernance(client) {
@@ -75,7 +68,7 @@ async function mirrorToRepo(server, { token, gitUser = gitIdentity.user(), ideTo
         git(work, 'push', 'origin', `${branch}:${branch}`)
         return { ok: true, changed: docs.length, files: docs.map(d => d.rel) }
     } catch (e) {
-        return { ok: false, error: `mirror failed: ${e.message}` }
+        return { ok: false, error: `mirror failed: ${sanitize(e.message, token)}` }
     } finally {
         fs.rmSync(work, { recursive: true, force: true })
     }
@@ -113,7 +106,7 @@ async function applyFromRepo(server, { token, gitUser = gitIdentity.user(), ideT
         }
         return { ok: true, applied }
     } catch (e) {
-        return { ok: false, error: `apply failed: ${e.message}` }
+        return { ok: false, error: `apply failed: ${sanitize(e.message, token)}` }
     } finally {
         fs.rmSync(work, { recursive: true, force: true })
     }

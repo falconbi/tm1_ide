@@ -2,91 +2,97 @@
 
 // ── Git reconcile (#6) — after a git pull ───────────────────────────────────
 // TM1 Git doesn't propagate deletes or attribute values, so after the pull the
-// IDE reconciles them, reusing the existing deployer's approach (safe-type
-// whole-object deletes; attribute values written to }ElementAttributes_<dim>).
-// Cube/dimension deletes are never auto-applied (too destructive — flagged).
+// IDE reconciles them. **Scoped strictly to the change set's manifest** — the
+// manifest (change_log.getSessionManifest) says what was deleted and which
+// dimensions' values changed. Nothing is inferred from the whole source, so a
+// deploy can never delete a PROD-only object or clobber a PROD-maintained
+// attribute that the change set didn't touch.
 
 const { makeClient } = require('./adapter_registry')
 
 const esc = s => String(s).replace(/'/g, "''")
-const SAFE_DELETE_TYPES = { process: 'process', view: 'view', subset: 'subset', chore: 'chore' }
 
-// Delete target objects that no longer exist on the source (safe types only).
-async function reconcileDeletes(source, target, { ideToken } = {}) {
-    const sc = makeClient(source, ideToken)
+// Delete exactly the objects the change set deleted (`deletes` = [{type,name}]),
+// and only if they are still present on the target. Safe types only; anything
+// needing cube/dim context is flagged, never guessed.
+async function reconcileDeletes(source, target, { ideToken, deletes = [] } = {}) {
     const tc = makeClient(target, ideToken)
     const out = { deleted: [], flagged: [] }
-
-    const srcProcesses = new Set(await sc.getProcesses())
-    const tgtProcesses = new Set(await tc.getProcesses())
-    for (const p of tgtProcesses) {
-        if (!srcProcesses.has(p) && !p.startsWith('}')) {
-            try { await tc.deleteProcess(p); out.deleted.push({ type: 'process', name: p }) }
-            catch (e) { if (!/not\s*found|404|does not exist/i.test(e.message)) out.flagged.push({ type: 'process', name: p, error: e.message }) }
+    if (!deletes?.length) return out
+    try {
+        const tgtProcs = new Set(await tc.getProcesses())
+        for (const d of deletes) {
+            if (d.type !== 'process') {
+                out.flagged.push({ type: d.type, name: d.name, error: 'not auto-applied — needs cube/dimension context' })
+                continue
+            }
+            if (!tgtProcs.has(d.name)) {
+                out.flagged.push({ type: d.type, name: d.name, error: 'not present on target (already gone)' })
+                continue
+            }
+            try { await tc.deleteProcess(d.name); out.deleted.push({ type: d.type, name: d.name }) }
+            catch (e) { out.flagged.push({ type: d.type, name: d.name, error: e.message }) }
         }
-    }
-
-    // Views, subsets, chores need cube/dim context — flag rather than guess, for v1.
-    out.flagged.push({ type: 'note', error: 'view/subset/chore deletes need their cube/dimension context — wired with the change-set manifest in the deploy flow' })
-
+    } catch (e) { out.error = e.message }
     return out
 }
 
-// Copy element attribute values from source to target for the given dimensions
-// (all cube/dim attribute cubes on the source by default). Reuses the same
-// updateCells(}ElementAttributes_<dim>) write the existing deployer uses.
-async function syncAttributeValues(source, target, { ideToken, dims = null } = {}) {
+// Copy attribute values ONLY for the given dimensions (the change set's touched
+// dims; default: nothing). Respects numeric vs string attribute types.
+async function syncAttributeValues(source, target, { ideToken, dims = [] } = {}) {
     const sc = makeClient(source, ideToken)
     const tc = makeClient(target, ideToken)
-    const out = { dims: [], errors: [] }
+    const out = { dims: [], errors: [], flagged: [] }
+    if (!dims?.length) return out
 
-    let targetDims = dims
-    if (!targetDims) {
-        const d = await sc.get('Dimensions', { '$select': 'Name' })
-        targetDims = (d.value ?? []).map(x => x.Name).filter(n => !n.startsWith('}'))
-    }
-
-    for (const dim of targetDims) {
+    for (const dim of dims) {
         const attrDim = `}ElementAttributes_${dim}`
-        // Attribute names = elements of the }ElementAttributes_<dim> dimension
-        let attrNames = []
-        try { attrNames = ((await sc.get(`Dimensions('${esc(attrDim)}')/Hierarchies('${esc(attrDim)}')/Elements?$select=Name`)).value ?? []).map(e => e.Name) } catch { continue }
-        if (!attrNames.length) continue
-        // Elements = elements of the dimension
-        let els = []
-        try { els = ((await sc.get(`Dimensions('${esc(dim)}')/Hierarchies('${esc(dim)}')/Elements?$select=Name`)).value ?? []).map(e => e.Name) } catch { continue }
-        if (!els.length) continue
-        // Read each element's attributes from source
-        const updates = []
-        for (const el of els) {
+        try {
+            // attribute name → type (numeric | string)
+            let attrTypes = {}
             try {
-                const attrs = await sc.getElementAttributeValues(dim, el)
-                for (const attrName of attrNames) {
-                    if (attrs[attrName] != null && typeof attrs[attrName] !== 'object') {
+                const a = await sc.getElementAttributes(dim)
+                for (const x of a) attrTypes[x.Name] = x.Type === 'Numeric' ? 'N' : 'S'
+            } catch { attrTypes = {} }
+            const attrNames = Object.keys(attrTypes)
+            if (!attrNames.length) { out.flagged.push({ dim, error: 'no attributes on source' }); continue }
+            const els = ((await sc.get(`Dimensions('${esc(dim)}')/Hierarchies('${esc(dim)}')/Elements?$select=Name`)).value ?? []).map(e => e.Name)
+            if (!els.length) { out.flagged.push({ dim, error: 'no elements on source' }); continue }
+
+            const updates = []
+            for (const el of els) {
+                try {
+                    const attrs = await sc.getElementAttributeValues(dim, el)
+                    for (const attrName of attrNames) {
+                        const v = attrs[attrName]
+                        if (v == null || typeof v === 'object') continue
                         updates.push({
                             dimElemPairs: [
                                 { dim: attrDim, element: attrName },
                                 { dim, element: el },
                             ],
-                            value: String(attrs[attrName]),
+                            value: attrTypes[attrName] === 'N' ? Number(v) : String(v),
                         })
                     }
-                }
-            } catch { /* skip unreadable element */ }
-        }
-        if (updates.length) {
-            try { await tc.updateCells(attrDim, updates); out.dims.push(dim) }
-            catch (e) { out.errors.push({ dim, error: e.message }) }
-        }
+                } catch { /* skip unreadable element */ }
+            }
+            if (updates.length) {
+                await tc.updateCells(attrDim, updates)
+                out.dims.push(dim)
+            }
+        } catch (e) { out.errors.push({ dim, error: e.message }) }
     }
     return out
 }
 
-// Full reconcile after a git pull: deletes + attribute values.
-async function reconcile(source, target, { ideToken, dims = null } = {}) {
+// Full reconcile after a git pull: deletes + attribute values, both scoped to
+// the change set's manifest.
+async function reconcile(source, target, { ideToken, deletes = [], dims = [] } = {}) {
     const out = {}
-    try { out.deletes = await reconcileDeletes(source, target, { ideToken }) } catch (e) { out.deletes = { error: e.message } }
-    try { out.attributeValues = await syncAttributeValues(source, target, { ideToken, dims }) } catch (e) { out.attributeValues = { error: e.message } }
+    try { out.deletes = await reconcileDeletes(source, target, { ideToken, deletes }) }
+    catch (e) { out.deletes = { error: e.message } }
+    try { out.attributeValues = await syncAttributeValues(source, target, { ideToken, dims }) }
+    catch (e) { out.attributeValues = { error: e.message } }
     return out
 }
 

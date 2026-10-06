@@ -143,8 +143,7 @@ function SessionRow({ session, server, openTab, onClose }) {
   const closeSet = async () => {
     setClosing(true)
     try {
-      const tests = (testResult && testResult !== 'running') ? { passed: testResult.passed, total: testResult.total, blocking: blockingFails.length } : null
-      await fetch('/api/sessions/close', { method: 'POST', headers: authHeader(), body: JSON.stringify({ id: session.id, tests }) }).then(r => r.json())
+      await fetch('/api/sessions/close', { method: 'POST', headers: authHeader(), body: JSON.stringify({ id: session.id }) }).then(r => r.json())
       qc.invalidateQueries({ queryKey: ['work-sessions', server] })
       qc.invalidateQueries({ queryKey: ['work-session-active', server] })
     } finally { setClosing(false) }

@@ -8,21 +8,13 @@
 //   revert(server)      → redeploy the repo state to the target (overwrite the drift)
 //   promote(server)     → merge prod-live into dev, then the source server pulls it
 
-const { execFileSync } = require('child_process')
 const fs = require('fs')
 const os = require('os')
 const path = require('path')
 const { makeClient } = require('./adapter_registry')
 const gitIdentity = require('./git-identity')
 const assertions = require('./assertions')
-
-function git(cwd, ...args) {
-    return execFileSync('git', ['-C', cwd, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
-}
-
-function authUrl(url, user, token) {
-    return url.replace(/^https:\/\//i, `https://${user}:${token}@`)
-}
+const { git, authUrl, sanitize } = require('./git-repo')
 
 async function driftCheck(server, { token, gitUser = gitIdentity.user(), ideToken } = {}) {
     const c = makeClient(server, ideToken)
@@ -51,12 +43,12 @@ async function driftCheck(server, { token, gitUser = gitIdentity.user(), ideToke
     let pushed
     try {
         const plan = await c.post('GitPush', hasLive
-            ? { Branch: 'prod-live', NewBranch: '', Force: false, Message: 'drift check: PROD live state', Author: gitUser, Email: `${gitUser}@users.noreply.github.com`, Username: gitUser, Password: token }
-            : { Branch: '', NewBranch: 'prod-live', Force: false, Message: 'drift check: PROD live state', Author: gitUser, Email: `${gitUser}@users.noreply.github.com`, Username: gitUser, Password: token })
+            ? { Branch: 'prod-live', NewBranch: '', Force: false, Message: 'drift check: PROD live state', Author: gitUser, Email: gitIdentity.email(), Username: gitUser, Password: token }
+            : { Branch: '', NewBranch: 'prod-live', Force: false, Message: 'drift check: PROD live state', Author: gitUser, Email: gitIdentity.email(), Username: gitUser, Password: token })
         await c.post(`GitPlans('${encodeURIComponent(plan.ID)}')/tm1.Execute`, {})
         pushed = true
     } catch (e) {
-        return { server, drift: null, error: `Push to prod-live failed: ${e.response?.data?.error?.message ?? e.message}` }
+        return { server, drift: null, error: `Push to prod-live failed: ${sanitize(e.response?.data?.error?.message ?? e.message, token)}` }
     }
 
     // Diff via git CLI in a throwaway checkout.
@@ -88,7 +80,7 @@ async function driftCheck(server, { token, gitUser = gitIdentity.user(), ideToke
         }
         return { server, deployed, prodLive: 'origin/prod-live', pushed, entries }
     } catch (e) {
-        return { server, deployed, drift: null, error: `git diff failed: ${e.message}` }
+        return { server, deployed, drift: null, error: `git diff failed: ${sanitize(e.message, token)}` }
     } finally {
         fs.rmSync(work, { recursive: true, force: true })
     }
@@ -114,9 +106,16 @@ async function promote(server, { token, gitUser = gitIdentity.user(), ideToken, 
         git(work, 'init', '-q')
         git(work, 'remote', 'add', 'origin', authUrl(repoUrl, gitUser, token))
         git(work, 'fetch', '-q', 'origin', 'dev', 'prod-live')
-        // merge prod-live into a local dev checkout of origin/dev
+        // merge prod-live into a local dev checkout of origin/dev, with our identity
         git(work, 'checkout', '-q', '-b', 'dev', 'origin/dev')
-        git(work, 'merge', '--no-edit', 'origin/prod-live')
+        try {
+            git(work, '-c', `user.name=${gitIdentity.user()}`, '-c', `user.email=${gitIdentity.email()}`, 'merge', '--no-edit', 'origin/prod-live')
+        } catch (mergeErr) {
+            // Merge conflict — report the files by name.
+            let files = []
+            try { files = git(work, 'diff', '--name-only', '--diff-filter=U').trim().split('\n').filter(Boolean) } catch { /* none */ }
+            return { ok: false, conflicts: files, error: `Merge conflict: ${files.length} file(s) need resolution. ${sanitize(mergeErr.message, token)}` }
+        }
         git(work, 'push', 'origin', 'dev:dev')
         // source server pulls the merged state to apply it
         if (source) {
@@ -126,7 +125,7 @@ async function promote(server, { token, gitUser = gitIdentity.user(), ideToken, 
         }
         return { ok: true, note: 'prod-live merged into dev; source pulled the merged state' }
     } catch (e) {
-        return { ok: false, error: `promote failed: ${e.message}` }
+        return { ok: false, error: `promote failed: ${sanitize(e.message, token)}` }
     } finally {
         fs.rmSync(work, { recursive: true, force: true })
     }

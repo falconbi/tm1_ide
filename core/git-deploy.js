@@ -2,10 +2,9 @@
 
 // ── Git deploy flow (IMPROVEMENTS 10.1 hybrid) ──────────────────────────────
 // Deploying through TM1 Git: prepare (baseline status + pull plan preview) then
-// execute (atomic pull + control checks on the target). The pull plan is
-// ephemeral, so execute re-creates it and runs immediately. The drift gate
-// (prod-live diff) needs repo access — wired with the drift view (#3); until
-// then prepare reports drift as unverified.
+// execute (atomic pull + reconcile + control checks on the target). The pull
+// plan is ephemeral, so execute re-creates it and runs immediately. The approval
+// gate is enforced inside execute — it cannot be bypassed by any caller.
 
 const { makeClient } = require('./adapter_registry')
 const assertions = require('./assertions')
@@ -13,7 +12,7 @@ const gitIdentity = require('./git-identity')
 const approvals = require('./git-approvals')
 
 // Preview: target baseline + what the pull would change. Read-only (plan only).
-async function prepare(source, target, { branch = 'dev', token, gitUser = gitIdentity.user(), ideToken } = {}) {
+async function prepare(source, target, { branch = 'dev', token, gitUser = gitIdentity.user(), ideToken, session = null } = {}) {
     const c = makeClient(target, ideToken)
     const out = { source, target, branch, ready: false, drift: 'unverified' }
 
@@ -42,6 +41,11 @@ async function prepare(source, target, { branch = 'dev', token, gitUser = gitIde
         return out
     }
 
+    // Change-set manifest (deletes + attribute dims) for the plan display.
+    if (session) {
+        try { out.manifest = require('./change_log').getSessionManifest(session) } catch { /* none */ }
+    }
+
     out.ready = true
     return out
 }
@@ -49,7 +53,7 @@ async function prepare(source, target, { branch = 'dev', token, gitUser = gitIde
 // Apply the approved state to the target and verify with control checks.
 // The pull plan is re-created atomically (it expires in seconds).
 // The approval gate is non-optional: it cannot be switched off by any caller.
-async function execute(target, { branch = 'dev', token, gitUser = gitIdentity.user(), ideToken, source, purpose = 'deploy' } = {}) {
+async function execute(target, { branch = 'dev', token, gitUser = gitIdentity.user(), ideToken, source, purpose = 'deploy', session = null } = {}) {
     const c = makeClient(target, ideToken)
     const out = { target, branch }
 
@@ -97,10 +101,16 @@ async function execute(target, { branch = 'dev', token, gitUser = gitIdentity.us
     // Reconcile the gaps TM1 Git won't cover FIRST — deletes + attribute values
     // (#6) — so the control checks below run against the fully-applied state.
     // Matches the loop: TEST pulls → apply values+deletes → assertions run.
+    // Scoped strictly to the change set's manifest (never inferred from source).
     if (source) {
+        let manifest = { deletes: [], dims: [] }
+        if (session) {
+            try { manifest = require('./change_log').getSessionManifest(session) || manifest } catch { /* no manifest */ }
+        }
+        out.manifest = manifest
         try {
             const { reconcile } = require('./git-reconcile')
-            out.reconcile = await reconcile(source, target, { ideToken })
+            out.reconcile = await reconcile(source, target, { ideToken, deletes: manifest.deletes, dims: manifest.dims })
         } catch (e) {
             out.reconcile = { error: e.message }
         }

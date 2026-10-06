@@ -68,7 +68,7 @@ Every model is built with two kinds of checks, stored in the model
 | Layer | Tag | What it proves | Runs where |
 |---|---|---|---|
 | Known-behaviour | `behaviour` | the calcs produce the expected numbers on the build data | **DEV** (change-set close + risk check) |
-| Control | `control` | the model reconciles — invariants hold under **any** data (balance = 0, ties, YTD = sum of periods, cross-cube) | **DEV and PROD** (post-deploy + on a schedule) |
+| Control | `control` | the model reconciles — invariants hold under **any** data (balance = 0, ties, YTD = sum of periods, cross-cube) | **DEV and PROD** (post-deploy; scheduled runs are a plan, not built) |
 
 - Run history goes to a `}TestResults` control cube per server (newly-failing vs always-failing).
 - **DEV** runs `behaviour` + `control`. **PROD** runs `control` only (its data differs, so fixed-number checks are meaningless there).
@@ -76,8 +76,8 @@ Every model is built with two kinds of checks, stored in the model
 ## Lifecycle — blank server start
 
 1. **Setup** — GitInit DEV to a repo; build the model (house standards: Default view per cube, Default subset per dim; behaviour + control checks built in).
-2. **First deploy (blank → blank target)** — gate on DEV (readiness + behaviour + control) → push → **first pull on PROD is a full overwrite** (nothing to lose on blank; the readiness first-pull safety analysis confirms) → PostPull tasks → **control checks on PROD** → baseline established.
-3. **Second deploy** — change set → gate on DEV → push (one commit, only the change) → **pull plan shows only the change** (baseline exists) → execute → control on PROD → reconcile deletes / attribute values if in the change set.
+2. **First deploy (blank → blank target)** — gate on DEV (readiness + behaviour + control) → push → **first pull on PROD is a full overwrite** (nothing to lose on blank; readiness first-pull safety analysis confirms) → reconcile the change set's deletes/values → **control checks on PROD** → baseline established.
+3. **Second deploy** — change set → gate on DEV → push (one commit, only the change) → **pull plan shows only the change** (baseline exists) → execute → control on PROD → reconcile scoped to the change set's deletes / attribute dims.
 
 ## Lifecycle — template start
 
@@ -85,15 +85,17 @@ Same shape, two differences:
 - The new server **inherits the template's tests** (behaviour + control) and repo — the control layer comes built in.
 - A **populated** target's first pull is where control checks earn their keep: they prove the model holds together on **real data the model has never seen**.
 
-## The deploy sequence (the push-then-pull)
+## The deploy sequence (as implemented)
 
-At every deploy, in order:
+A deploy is `execute()` on the target, and it runs, in order:
 
-1. **Drift-push (the check)** — PROD pushes its live state to `prod-live`; `git diff <PROD deployed commit>..prod-live` = what's drifted on PROD (out-of-band edits, PROD-only objects).
-2. **Decide** — if PROD is clean, proceed. If drifted, **reconcile first** (promote `prod-live` → DEV, or revert the drifted object) — never deploy onto a drifted PROD.
-3. **Deploy-pull (the action)** — PROD pulls the approved `dev` state and applies it.
+1. **Plan** — create the pull plan; check the exact commit is **approved** for the target (non-optional gate; refuses otherwise).
+2. **Pull** — apply the approved `dev` commit.
+3. **Reconcile (change-set-scoped)** — only what the change set's manifest says: its recorded deletes and the attribute values for the dimensions it touched. A PROD-only object or a PROD-maintained attribute the change set didn't touch survives.
 4. **Verify** — control checks on PROD; record to `}TestResults`.
-5. **New anchor** — PROD's deployed commit advances, so the next drift check compares against the fresh baseline.
+5. **Anchor** — the received commit is recorded (the next drift check compares against it).
+
+**Drift is not a pre-step of every deploy** — it is the Verify step of the wizard and its own standalone check. You run it to decide whether the target is safe to deploy onto and to confirm after.
 
 ## The drift loop (over time)
 

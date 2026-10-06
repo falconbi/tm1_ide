@@ -107,6 +107,33 @@ function getSession(id) {
     return db.prepare(`SELECT * FROM sessions WHERE id = ?`).get(id) ?? null
 }
 
+// The deploy manifest for a change set: what it deleted and which dimensions'
+// attribute values it touched. This is what scopes the reconcile — deletes and
+// value syncs are NEVER inferred from the whole source, only from what the
+// change set actually did.
+function getSessionManifest(sessionId) {
+    const entries = getSessionLog(sessionId)
+    const created = new Set()
+    for (const e of entries) {
+        if (/_CREATED$/.test(e.action ?? '')) created.add(`${e.object_type}:${e.object_name}`)
+    }
+    const deletes = []
+    for (const e of entries) {
+        // Objects deleted here that were NOT created inside the session pre-existed
+        // it — deleting them on the target is this change set's doing. Something
+        // created then deleted within the session never existed before, so it is not
+        // a change-set delete (the pull already reflects its absence).
+        if (/^(PROCESS|DIMENSION|CUBE)_DELETED$/.test(e.action ?? '') && !created.has(`${e.object_type}:${e.object_name}`)) {
+            deletes.push({ type: e.object_type, name: e.object_name })
+        }
+    }
+    const dims = [...new Set(entries
+        .filter(e => (e.action ?? '').startsWith('ATTRIBUTE') || e.object_type === 'elementAttribute')
+        .map(e => e.object_name)
+        .filter(Boolean))]
+    return { deletes, dims }
+}
+
 function getSessions(server, limit = 50) {
     return db.prepare(`
         SELECT s.*, COUNT(l.id) as entry_count, MAX(l.id) as max_entry_id
@@ -315,4 +342,4 @@ function pruneEntries(ids) {
 try { db.exec(`ALTER TABLE sessions ADD COLUMN description TEXT`) } catch {}
 try { db.exec(`ALTER TABLE log_entries ADD COLUMN user TEXT`) } catch {}
 
-module.exports = { startSession, getSession, closeSession, resumeSession, updateSessionDescription, setSessionCommit, markSessionDeployed, getActiveSession, getSessions, getAllSessions, getSessionLog, getCrossSessionTouches, getEntriesSince, getMaxEntryId, getEntriesSinceId, getSessionLogVerbose, getRecentLog, getObjectHistory, getEntryById, writeLog, findArchivableEntries, pruneEntries }
+module.exports = { startSession, getSession, getSessionManifest, closeSession, resumeSession, updateSessionDescription, setSessionCommit, markSessionDeployed, getActiveSession, getSessions, getAllSessions, getSessionLog, getCrossSessionTouches, getEntriesSince, getMaxEntryId, getEntriesSinceId, getSessionLogVerbose, getRecentLog, getObjectHistory, getEntryById, writeLog, findArchivableEntries, pruneEntries }
