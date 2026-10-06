@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
-import { useActiveWorkSession, useStartWorkSession, useCloseWorkSession, useResumeWorkSession } from '@/hooks/useApi'
+import { useActiveWorkSession, useCloseWorkSession } from '@/hooks/useApi'
+import { humanizeFile } from '@/lib/tm1-terms'
 
 // Deploy wizard — the deploy journey in one guided screen:
 //   Test → Close → Commit → Review → Approve → Deploy → Verify
@@ -8,7 +9,6 @@ import { useActiveWorkSession, useStartWorkSession, useCloseWorkSession, useResu
 // no outside-click close (only the Close button), and Deploy does not auto-jump
 // to Verify — the result stays until you click Continue.
 const authHeader = () => ({ 'x-ide-token': localStorage.getItem('tm1-token') ?? '' })
-const username = () => localStorage.getItem('tm1-username') ?? 'unknown'
 
 function parseOps(ops) {
   return (ops ?? [])
@@ -42,6 +42,7 @@ function TestList({ title, meaning, results }) {
       {results.map(a => (
         <div key={a.id} className="flex items-baseline gap-2 text-[11px] px-2 py-1 rounded bg-background border border-border">
           <span className={a.pass ? 'text-emerald-700' : (a.kind === 'control' ? 'text-red-600' : 'text-amber-600')}>{a.pass ? 'passed' : (a.kind === 'control' ? 'failed' : 'changed')}</span>
+          <span className={(a.severity ?? 'block') === 'block' ? 'text-muted-foreground/60' : 'text-amber-600/80'}>{a.severity ?? 'block'}</span>
           <span className="text-muted-foreground flex-1">{a.description}</span>
           <span className="text-muted-foreground/70">{a.pass ? `expected ${a.expected} · actual ${a.actual}` : `was ${a.expected}, now ${a.actual}`}</span>
         </div>
@@ -69,9 +70,8 @@ export default function DeployWizard({ server, onClose, onOpenTests }) {
   const [addedTests, setAddedTests] = useState(0)
 
   const { data: activeSession, refetch: refetchActive } = useActiveWorkSession(server)
-  const startSession   = useStartWorkSession()
+  
   const closeSession   = useCloseWorkSession()
-  const resumeSession  = useResumeWorkSession()
 
   useEffect(() => { if (activeSession?.id) setSessionId(activeSession.id) }, [activeSession?.id])
 
@@ -102,13 +102,6 @@ export default function DeployWizard({ server, onClose, onOpenTests }) {
     } catch (e) { setError(e.message); return null }
     finally { setBusy('') }
   }
-
-  const onStartFromStatus = async () => {
-    if (!startName) return
-    const d = await startSession.mutateAsync({ name: startName.trim(), server, user: username() }).catch(() => null)
-    if (d) { setSessionId(d.id); setStartName('') }
-  }
-  const [startName, setStartName] = useState('')
 
   const closeChangeSet = async () => {
     if (!activeSession) return
@@ -223,7 +216,6 @@ export default function DeployWizard({ server, onClose, onOpenTests }) {
             </div>
           )}
 
-          {!activeSession && startNamePrompt()}
 
           {/* Step 2 — Close (the gate) */}
           {step === 2 && (
@@ -263,6 +255,9 @@ export default function DeployWizard({ server, onClose, onOpenTests }) {
                   <button onClick={doPush} disabled={busy === 'push'} className={primaryBtn}>Commit {server} to the GitHub repo</button>
                   {busy === 'push' && <span className="text-xs text-muted-foreground">Committing…</span>}
                 </div>
+                <p className="text-[10px] text-muted-foreground/70 border-t border-border pt-2">
+                  This sends the whole server's state to the GitHub repo — including changes made by anyone else. Only commit when {server} is the state you want to ship.
+                </p>
                 {pushed && (
                   <div className="border border-border rounded-md p-3 bg-muted/20">
                     <p className="text-xs">Committed. {server} is filed in the GitHub repo as <span className="font-mono">{pushed.commit}</span>.</p>
@@ -319,9 +314,9 @@ export default function DeployWizard({ server, onClose, onOpenTests }) {
                                 {diffs.entries.map((e, i) => (
                                   <details key={i} open={i === 0} className="border border-border rounded-md">
                                     <summary className="px-2 py-1 text-[11px] cursor-pointer select-none">
-                                      <span className="text-muted-foreground mr-1.5">{e.status}</span>
-                                      <span className="font-mono">{e.file}</span>
-                                    </summary>
+                              <span className="text-muted-foreground mr-1.5">{e.status}</span>
+                              <span className="text-foreground">{humanizeFile(e.file)}</span>
+                            </summary>
                                     <div className="mt-0.5 px-2 py-1.5 bg-muted/40 border-t border-border overflow-x-auto">
                                       {(e.diff || '(no content change)').split('\n').map((ln, j) => (
                                         <div key={j} className={'text-[10px] font-mono whitespace-pre ' + (ln.startsWith('+') ? 'text-emerald-700' : ln.startsWith('-') ? 'text-red-600' : ln.startsWith('@@') ? 'text-muted-foreground/60' : 'text-muted-foreground')}>{ln || ' '}</div>
@@ -331,15 +326,15 @@ export default function DeployWizard({ server, onClose, onOpenTests }) {
                                 ))}
                               </div>
                             )}
-                            {diffs?.manifest?.deletes?.length > 0 && (
-                              <p className="text-[11px] text-amber-600">Also deletes: {diffs.manifest.deletes.map(d => `${d.type} ${d.name}`).join(', ')} (TM1 Git cannot propagate deletes — the deploy removes these from the target).</p>
-                            )}
-                            {diffs?.manifest?.wholesaleDims?.length > 0 && (
-                              <p className="text-[11px] text-amber-600">Will copy attribute values wholesale for: {diffs.manifest.wholesaleDims.join(', ')} — the change set recorded only the dimension, not specific values.</p>
-                            )}
-                            {diffs?.outOfChangeSet?.length > 0 && (
-                              <p className="text-[11px] text-amber-600">Outside this change set: {diffs.outOfChangeSet.join(', ')} — from the repo, not this change set. Check these before deploying.</p>
-                            )}
+{diffs?.manifest?.deletes?.length > 0 && (
+                          <p className="text-[11px] text-amber-600">Also deletes: {diffs.manifest.deletes.map(d => `${d.type} ${d.name}`).join(', ')} (TM1 Git cannot propagate deletes — the deploy removes these from the target).</p>
+                        )}
+                        {diffs?.manifest?.wholesaleDims?.length > 0 && (
+                          <p className="text-[11px] text-amber-600">Will copy attribute values wholesale for: {diffs.manifest.wholesaleDims.join(', ')} — the change set recorded only the dimension, not specific values.</p>
+                        )}
+                        {diffs?.outOfChangeSet?.length > 0 && (
+                          <p className="text-[11px] text-amber-600">Outside this change set: {diffs.outOfChangeSet.map(humanizeFile).join(', ')} — from the repo, not this change set. Check these before deploying.</p>
+                        )}
                             {diffs?.firstDeploy && (
                               <p className="text-[11px] text-amber-600">First deploy — this target has never received one. Everything it will get is listed above.</p>
                             )}
@@ -367,6 +362,13 @@ export default function DeployWizard({ server, onClose, onOpenTests }) {
                 ) : (
                   <>
                     <p className="text-xs">Approve <span className="font-mono">{prep.plan.targetCommit}</span> for <span className="font-semibold">{target}</span>.</p>
+                    <div className="border border-border rounded-md p-3 text-xs space-y-1 bg-muted/20">
+                      <p><span className="text-muted-foreground">Change set:</span> {activeSession?.name ?? sessionId ? `(closed ${String(sessionId).slice(0, 8)})` : '—'}</p>
+                      <p><span className="text-muted-foreground">Changes:</span> {changed.length ? changed.map(o => `${o.name} (${o.action.toLowerCase()})`).join(', ') : 'none'}{diffs?.outOfChangeSet?.length ? ` — plus ${diffs.outOfChangeSet.length} from outside the change set (highlighted in Review)` : ''}</p>
+                      {tests && <p><span className="text-muted-foreground">Tests:</span> {tests.passed}/{tests.total} passing{blockFails.length ? `, ${blockFails.length} blocking` : ''}</p>}
+                      <p><span className="text-muted-foreground">Commit:</span> <span className="font-mono">{prep.plan.targetCommit}</span></p>
+                      <p className="text-[10px] text-muted-foreground/70 pt-2 border-t border-border mt-1">Approving records who approved, when, and this exact commit. On a solo model this is self-approval — it is still recorded.</p>
+                    </div>
                     <div className="flex items-center gap-2">
                       <label className="text-xs text-muted-foreground w-16">Note</label>
                       <input value={approvalNote} onChange={e => setApprovalNote(e.target.value)} placeholder="optional reason / reference" className={inputCls + ' flex-1'} />
@@ -459,7 +461,7 @@ export default function DeployWizard({ server, onClose, onOpenTests }) {
                         {drift.entries.map((e, i) => (
                           <div key={i} className="flex items-baseline gap-2 text-[11px] px-2 py-1 rounded bg-muted/30">
                             <span className="text-muted-foreground">{e.status}</span>
-                            <span className="font-mono">{e.file}</span>
+                            <span className="text-foreground">{humanizeFile(e.file)}</span>
                           </div>
                         ))}
                         <div className="flex items-center gap-2 pt-1">

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { X, GitCompare, RefreshCw, ChevronDown, ChevronRight, AlertTriangle, CheckCircle2, HelpCircle } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import HelpPanel from '@/components/HelpPanel'
+import { humanizeFile } from '@/lib/tm1-terms'
 
 // Drift view (#3): PROD pushes its live state to prod-live; the diff vs its
 // deployed commit shows what's drifted on PROD (out-of-band edits, PROD-only
@@ -102,7 +103,7 @@ export default function GitDrift({ server, onClose }) {
                   <div key={i} className="border border-border/60 rounded px-2 py-1.5">
                     <button className="w-full flex items-center gap-2 text-left" onClick={() => setOpenDiff(openDiff === `${e.status}:${e.file}` ? null : `${e.status}:${e.file}`)}>
                       <span className={cn('text-[10px] font-mono w-5 shrink-0', e.status === 'A' ? 'text-emerald-600' : e.status === 'D' ? 'text-red-600' : 'text-amber-600')}>{e.status}</span>
-                      <span className="flex-1 text-xs font-mono truncate">{e.file}</span>
+                      <span className="flex-1 text-xs text-foreground truncate">{humanizeFile(e.file)}</span>
                       {e.diff && <span className="text-muted-foreground">{openDiff === `${e.status}:${e.file}` ? <ChevronDown size={11} /> : <ChevronRight size={11} />}</span>}
                     </button>
                     {openDiff === `${e.status}:${e.file}` && e.diff && (
