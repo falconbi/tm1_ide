@@ -63,7 +63,10 @@ Notes:
 ## Reconcile is change-set-scoped — proven (6 Oct 2026)
 
 The reconcile never infers deletes or values from the whole source — only from the change set's manifest
-(`change_log.getSessionManifest`: what it deleted, and which dimensions it touched). Proven on the lab pair:
+(`change_log.getSessionManifest`: what it deleted, the element/attribute pairs it changed, and which dimensions it
+touched). The manifest is taken **from the approval's recorded change set, server-side** — a client cannot supply a
+different session to skip or misapply the reconcile; a missing session is reported, never silently skipped.
+Proven on the lab pair:
 
 | Check | Result |
 |---|---|
@@ -71,6 +74,13 @@ The reconcile never infers deletes or values from the whole source — only from
 | A **PROD-only process** (never in a change set, never in the manifest) **survives a deploy** | **still present** after deploy |
 | A **PROD-maintained attribute** (dimension the change set did not touch) is **untouched** | **unchanged** after deploy (value sync is scoped to the manifest's dims; numeric vs string respected) |
 | **Revert after a drift** (a direct PROD edit) | restore: the drifted object comes back to the repo state |
+
+Notes:
+- Attribute sync copies **only the recorded element/attribute pairs** when the change log has them; a dimension
+  known only by name is copied **wholesale and surfaced** (Review warning + "Copied wholesale" in the result) — scoping
+  is never silent.
+- The **legacy `/api/deploy/execute` and `/api/deploy/approve` routes are retired** — the step-by-step wizard is the
+  only deploy path. The classic DeployPanel refuses with a plain "retired" note.
 
 The second drift-check reading in the revert proof briefly showed entries — those were the proof's own PROD-only
 test process, cleaned up immediately; with it removed, drift is **clean** and the drifted object is confirmed restored.
