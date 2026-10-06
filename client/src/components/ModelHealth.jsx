@@ -116,6 +116,7 @@ export default function ModelHealth({ server, onClose }) {
               {a?.error && <p className="text-xs text-red-600">{a.error}</p>}
               {a && !a.error && (
                 <>
+                  <p className="text-[10px] text-muted-foreground/80">Behaviour = a specific number on DEV. Control = a rule that must hold on any data (DEV and PROD).</p>
                   <div className="flex items-center gap-2 flex-wrap">
                     <p className="text-xs text-muted-foreground">{a.passed}/{a.total} passing{!a.ok && ` · ${a.failed} failing`}</p>
                     {a.by_kind && (

@@ -118,6 +118,9 @@ export default function AssertionsManager({ server, onClose }) {
         </div>
 
         <div className="flex-1 overflow-y-auto p-4 space-y-2">
+          <p className="text-[11px] text-muted-foreground leading-relaxed border border-border rounded-md px-3 py-2 bg-muted/20">
+            Assertions check the model's numbers. <span className="text-foreground">Behaviour</span> checks a specific value (runs on DEV, where the data is known). <span className="text-foreground">Control</span> checks a rule that must hold on any data (runs on DEV and PROD). Severity <span className="text-foreground">block</span> stops the Close / fails the deploy check; <span className="text-foreground">warn</span> just flags it.
+          </p>
           {error && <p className="text-xs text-red-600 border border-red-600/40 rounded px-3 py-2">{error}</p>}
           {!list && <p className="text-xs text-muted-foreground italic">Loading…</p>}
 
@@ -144,6 +147,9 @@ export default function AssertionsManager({ server, onClose }) {
                 </select>
                 <label className="text-[10px] text-muted-foreground w-8 shrink-0 ml-2">Tags</label>
                 <input value={form.tags} onChange={e => setForm(f => ({ ...f, tags: e.target.value }))} placeholder="comma, separated" className={cn(input, 'flex-1')} />
+              </div>
+              <div className="text-[10px] text-muted-foreground leading-relaxed">
+                <span className="text-foreground">Kind</span> — behaviour: a specific value on DEV. control: a rule that must always hold (DEV + PROD). &nbsp; <span className="text-foreground">Severity</span> — block: stops the flow. warn: just flags.
               </div>
               <div className="flex items-center gap-2">
                 <button onClick={submit} className="flex items-center gap-1 px-3 py-1 text-xs rounded bg-primary text-primary-foreground hover:opacity-90 transition-opacity"><Check size={12} /> Save</button>
