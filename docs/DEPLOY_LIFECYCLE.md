@@ -97,6 +97,25 @@ Notes:
 The second drift-check reading in the revert proof briefly showed entries — those were the proof's own PROD-only
 test process, cleaned up immediately; with it removed, drift is **clean** and the drifted object is confirmed restored.
 
+## Part 2 — model-owned governance + deploy lock — proven (7 Oct)
+
+**What moved and where** (all live on the TM1 server; the IDE is a window):
+- **Change sets** → `Applications/Governance/ChangeSets/<id>.json` (mirrored on write).
+- **Approvals** → `Applications/Governance/Deployments/approvals.json`.
+- **Deploy history** → `Applications/Governance/Deployments/state.json`.
+- **Deploy lock** → `Applications/Governance/Deployments/_lock-<server>.json` (ephemeral coordination).
+
+One storage layer — the same Application-document mechanism assertions use (v11 `.blob` / `/Document/Content`, the 226/278/409 "already exists" handling). On a migrated server the model is the truth; a missing document **throws** (the migrated-marker pattern — never a silent gap). The local files stay as the read fallback until the migration is proven, then retire.
+
+**The deploy lock:** one deploy at a time per target, held in the target's own model, acquired before the pull, released on finish or failure, and shown to everyone in the wizard ("TM1_Test_PROD is being deployed by admin since HH:MM"). A second deploy to the same target is refused. The lock is also the model-writability gate — if the target's model can't be written, the deploy stops with a clear message.
+
+**Proof (round 2, plain English):**
+- A change set that deleted the dummy **"Test Process"** → committed → **deploy without approval refused** → approved (recorded in the model) → deployed → **Test Process deleted on PROD** by the change-set-scoped reconcile.
+- A **subset drifted** on PROD (a member removed) → **Revert restored it** (93 members, drift clean) from the approved commit.
+- **Deploy record survives** (read back from the model on a fresh session) and the approvals/deploy state are readable by any IDE pointed at the same server — a fresh install sees the same records.
+
+**Honest limitation:** Revert restores **subsets** (proven) and flags processes/"apply manually" — full process (and dimension/view/rules) restore from the commit is not implemented yet; that stays a surfaced skip, never a silent one.
+
 ## The model's tests (two layers, environment-aware)
 
 Every model is built with two kinds of checks, stored in the model
