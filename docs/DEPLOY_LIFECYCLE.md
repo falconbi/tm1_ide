@@ -60,6 +60,21 @@ Notes:
 - `config/deploy-approvals.json` and `config/git-deploy-state.json` are **local runtime state — gitignored and
   untracked**.
 
+## Reconcile is change-set-scoped — proven (6 Oct 2026)
+
+The reconcile never infers deletes or values from the whole source — only from the change set's manifest
+(`change_log.getSessionManifest`: what it deleted, and which dimensions it touched). Proven on the lab pair:
+
+| Check | Result |
+|---|---|
+| A **change-set delete** reaches PROD (its own delete, in the manifest) | **deleted on PROD** |
+| A **PROD-only process** (never in a change set, never in the manifest) **survives a deploy** | **still present** after deploy |
+| A **PROD-maintained attribute** (dimension the change set did not touch) is **untouched** | **unchanged** after deploy (value sync is scoped to the manifest's dims; numeric vs string respected) |
+| **Revert after a drift** (a direct PROD edit) | restore: the drifted object comes back to the repo state |
+
+The second drift-check reading in the revert proof briefly showed entries — those were the proof's own PROD-only
+test process, cleaned up immediately; with it removed, drift is **clean** and the drifted object is confirmed restored.
+
 ## The model's tests (two layers, environment-aware)
 
 Every model is built with two kinds of checks, stored in the model
