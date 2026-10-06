@@ -3,7 +3,7 @@ import { Loader2, CheckCircle2, XCircle, AlertTriangle, Info,
          ChevronRight, ChevronDown, Package, Rocket, ShieldCheck, ArrowRight, RefreshCw,
          Download, FolderArchive } from 'lucide-react'
 import { useServers, useDeployDiff, useDeployPackage, useDeployDriftCheck,
-         useDeployRisk, useDeployExecute, useDeployApprove,
+         useDeployRisk,
          useDeployScopedSnapshot, useDeployArchive, useDeployPackageInfo } from '@/hooks/useApi'
 import { cn } from '@/lib/utils'
 import { useStore } from '@/store'
@@ -852,8 +852,6 @@ export default function DeployPanel({ tab, onOpenDiff }) {
   const importQuery = useDeployPackageInfo(isImport ? tab.importDir : null)
   const driftMut    = useDeployDriftCheck()
   const riskMut     = useDeployRisk()
-  const approveMut  = useDeployApprove()
-  const deployMut   = useDeployExecute()
   const snapshotMut = useDeployScopedSnapshot()
   const archiveMut  = useDeployArchive()
 
@@ -931,7 +929,6 @@ export default function DeployPanel({ tab, onOpenDiff }) {
   function handleReset() {
     setTarget('')
     setNotes('')
-    deployMut.reset()
     driftMut.reset()
     riskMut.reset()
     snapshotMut.reset()
@@ -943,7 +940,7 @@ export default function DeployPanel({ tab, onOpenDiff }) {
     diffMut.mutate({ server, sessionId: session?.id, release: isRelease })
   }
 
-  const anyError = packageMut.error || deployMut.error || approveMut.error || (isImport ? importQuery.error : null)
+  const anyError = packageMut.error || (isImport ? importQuery.error : null)
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -1024,7 +1021,7 @@ export default function DeployPanel({ tab, onOpenDiff }) {
             setNotes={setNotes}
             username={username}
             onDeploy={handleDeploy}
-            deploying={deployMut.isPending || approveMut.isPending || snapshotMut.isPending}
+            deploying={snapshotMut.isPending}
             baselineSeededAt={diffMut.data?.baseline_seeded_at}
           />
         </>
@@ -1032,8 +1029,8 @@ export default function DeployPanel({ tab, onOpenDiff }) {
 
       {screen === 3 && (
         <Screen3
-          deployData={deployMut.data}
-          deployRunning={deployMut.isPending}
+          
+          
           archiving={snapshotMut.isPending || archiveMut.isPending}
           onReset={handleReset}
         />

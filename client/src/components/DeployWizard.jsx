@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useActiveWorkSession, useCloseWorkSession, useWorkSessions } from '@/hooks/useApi'
 import { humanizeFile } from '@/lib/tm1-terms'
 
@@ -81,6 +81,20 @@ export default function DeployWizard({ server, onClose, onOpenTests }) {
   const deployCtx = activeSession ?? latestClosed
 
   useEffect(() => { if (deployCtx?.id) setSessionId(deployCtx.id) }, [deployCtx?.id])
+
+  // Reopen at the step the change set's real state implies (once per change set).
+  const positionedFor = useRef(null)
+  useEffect(() => {
+    if (!deployCtx?.id || positionedFor.current === deployCtx.id) return
+    positionedFor.current = deployCtx.id
+    if (!deployCtx.closed_at) { setStep(1); return }          // open — test first
+    if (!deployCtx.commit_ref) { setStep(3); return }          // closed, not committed
+    if (deployCtx.deployed_target) { setStep(7); return }      // already shipped — verify
+    fetch(`/api/deploy/git/approval?target=${encodeURIComponent(target)}&commit=${encodeURIComponent(deployCtx.commit_ref)}`, { headers: authHeader() })
+      .then(r => r.json())
+      .then(a => setStep(a ? 6 : 4))                            // approved → deploy; else review
+      .catch(() => setStep(4))
+  }, [deployCtx?.id, deployCtx?.commit_ref, deployCtx?.deployed_target, target])
 
   // How many assertions this change set has added, and which ones (provenance).
   useEffect(() => {
@@ -293,7 +307,7 @@ export default function DeployWizard({ server, onClose, onOpenTests }) {
                   {busy === 'push' && <span className="text-xs text-muted-foreground">Committing…</span>}
                 </div>
                 <p className="text-[10px] text-muted-foreground/70 border-t border-border pt-2">
-                  This sends the whole server's state to the GitHub repo — including changes made by anyone else. Only commit when {server} is the state you want to ship.
+                  Change set {deployCtx ? <span className="font-mono text-foreground/80">"{deployCtx.name}"</span> : ''} — this sends <span className="text-foreground">everything on {server}</span> to GitHub, not just this change set; other people's changes go too (Review shows exactly what). Only commit when {server} is the state you want to ship.
                 </p>
                 {pushed && (
                   <div className="border border-border rounded-md p-3 bg-muted/20">

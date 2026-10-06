@@ -81,6 +81,8 @@ Notes:
   is never silent.
 - The **legacy `/api/deploy/execute` and `/api/deploy/approve` routes are retired** — the step-by-step wizard is the
   only deploy path. The classic DeployPanel refuses with a plain "retired" note.
+- The **`tm1deploy` CLI's `deploy` command** writes to a target **outside** the IDE's approval gate and change-set
+  reconcile scope — treat it as **admin-only** (run a drift check after).
 - **Static-subset hazard (7 Oct):** PROD's `WFP Period` Default subset lost its 36 YTD members while the dimension
   stayed intact. Pulls never touched WFP Period (always "Skip"; dev = 93), so **no deploy caused it** — the prod-live
   diff for the window shows other out-of-band PROD activity (a new "Test Process", a `WFP Tax Type` dimension change,

@@ -406,8 +406,11 @@ app.post('/api/sessions/resume', (req, res) => {
 })
 
 app.get('/api/sessions/active', (req, res) => {
-    try { res.json(cl.getActiveSession(req.query.server, req.user) ?? null) }
-    catch (e) { res.status(500).json({ error: e.message }) }
+    try {
+        const s = cl.getActiveSession(req.query.server, req.user)
+        if (!s) return res.json(null)
+        res.json({ ...s, entry_count: (() => { try { return cl.getSessionLog(s.id).length } catch { return 0 } })() })
+    } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
 app.get('/api/sessions', (req, res) => {

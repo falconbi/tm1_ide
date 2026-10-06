@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { Clock, Circle, History, Check } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useStore } from '@/store'
@@ -45,8 +46,19 @@ export default function SessionControl() {
   const [showLog,   setShowLog]       = useState(false)
   const [confirmClose, setConfirmClose] = useState(false)
 
+  const qc = useQueryClient()
   const { data: activeSession } = useActiveWorkSession(server)
   const closeSession = useCloseWorkSession()
+
+  // A first-save may auto-start a change set (api wrapper) — keep the bar fresh.
+  useEffect(() => {
+    const refresh = () => {
+      qc.invalidateQueries({ queryKey: ['work-session-active'] })
+      qc.invalidateQueries({ queryKey: ['work-sessions'] })
+    }
+    window.addEventListener('tm1-sessions-changed', refresh)
+    return () => window.removeEventListener('tm1-sessions-changed', refresh)
+  }, [qc])
 
   if (!server) return null
 
@@ -64,7 +76,7 @@ export default function SessionControl() {
           >
             <Circle size={7} className="fill-emerald-500 text-emerald-500 animate-pulse" />
             <Clock size={13} />
-            <span className="font-medium max-w-[140px] truncate">{activeSession.name}</span>
+            <span className="font-medium max-w-[180px] truncate">Change set: {activeSession.name} · {activeSession.entry_count ?? 0} changes</span>
           </button>
           {confirmClose ? (
             <div className="flex items-center gap-1 pl-1">
