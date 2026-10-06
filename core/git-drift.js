@@ -86,12 +86,12 @@ async function driftCheck(server, { token, gitUser = gitIdentity.user(), ideToke
     }
 }
 
-// Revert drift on the target — RESTORES the drifted objects from the source
-// (the approved state), per object, rather than re-pulling (a pull of the
-// already-deployed commit is a no-op for objects the plan considers unchanged,
-// so it cannot repair drift). Goes through the normal approval gate on the
-// incoming commit; unapproved dev-head is refused.
-async function revert(server, { branch = 'dev', token, gitUser = gitIdentity.user(), ideToken, source, entries = [] } = {}) {
+// Revert drift on the target — RESTORES the drifted objects from the APPROVED
+// commit's repo file (never from DEV's live state, so uncommitted DEV edits can
+// not ship). The drifted objects are derived HERE from the drift check — the
+// client cannot supply an arbitrary list to copy to PROD. Goes through the
+// normal approval gate on the incoming commit.
+async function revert(server, { branch = 'dev', token, gitUser = gitIdentity.user(), ideToken } = {}) {
     const approvals = require('./git-approvals')
     const c = makeClient(server, ideToken)
     let plan
@@ -105,14 +105,18 @@ async function revert(server, { branch = 'dev', token, gitUser = gitIdentity.use
     if (!approval) {
         return { ok: false, refused: true, error: `Refused: DEV has moved on since the last deploy — reverting would ship unapproved changes (${commit}). Approve the new commit first, or redeploy the approved one.` }
     }
-    if (!source) return { ok: false, error: 'revert needs a source server to copy the approved state from' }
-    if (!entries?.length) return { ok: true, note: 'no drifted objects to restore', commit, approvedBy: approval.approver }
-    const { restoreObjects } = require('./git-restore')
-    const res = await restoreObjects(source, server, entries, { ideToken })
-    res.ok = !res.errors.length
+
+    // Derive the drifted objects server-side; never trust a client-supplied list.
+    const d = await driftCheck(server, { token, gitUser, ideToken })
+    const entries = d?.entries ?? []
+    if (d?.error) return { ok: false, refused: true, error: d.error }
+    if (!entries.length) return { ok: true, note: 'no drift to restore', commit, approvedBy: approval.approver }
+
+    const { restoreFromCommit } = require('./git-restore')
+    const res = await restoreFromCommit(server, commit, entries, { branch, token, gitUser, ideToken })
     res.commit = commit
     res.approvedBy = approval.approver
-    res.note = `Restored ${res.restored.length} object(s) from ${source}${res.unsupported.length ? ` · ${res.unsupported.length} unsupported (apply manually): ${res.unsupported.map(u => u.file).join(', ')}` : ''}${res.errors.length ? ` · ${res.errors.length} failed by ${res.errors[0].error}` : ''}.`
+    res.note = `Restored ${res.restored.length} object(s) from commit ${commit}${res.skipped.length ? ` · ${res.skipped.length} skipped (apply manually): ${res.skipped.map(s => s.file).slice(0, 5).join(', ')}` : ''}${res.errors.length ? ` · ${res.errors.length} failed by ${res.errors[0].error}` : ''}.`
     return res
 }
 

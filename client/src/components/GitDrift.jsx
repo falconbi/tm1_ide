@@ -42,7 +42,7 @@ export default function GitDrift({ server, onClose }) {
     if (!window.confirm(label)) return
     setBusy(action); setError(null); setActionResult(null)
     try {
-      const r = await fetch(`/api/git/drift/${action}`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeader() }, body: JSON.stringify({ target, source: server, branch: 'dev', entries: action === 'revert' ? (drift?.entries ?? []) : undefined }) })
+      const r = await fetch(`/api/git/drift/${action}`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeader() }, body: JSON.stringify({ target, source: server, branch: 'dev' }) })
       const d = await r.json()
       if (!r.ok) throw new Error(d.error || r.statusText)
       setActionResult({ action, ...d })

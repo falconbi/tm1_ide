@@ -3135,9 +3135,9 @@ app.post('/api/git/drift/revert', async (req, res) => {
     try {
         if (!gateReadOnly(res, req.body?.target)) return
         const { revert } = require('./core/git-drift')
-        const { target, branch, source, entries } = req.body
+        const { target, branch } = req.body
         if (!target) return res.status(400).json({ error: 'target required' })
-        res.json(await revert(target, { branch, token: process.env.TM1_GIT_TOKEN, ideToken: req.ideToken, source, entries }))
+        res.json(await revert(target, { branch, token: process.env.TM1_GIT_TOKEN, ideToken: req.ideToken }))
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 app.post('/api/git/drift/promote', async (req, res) => {

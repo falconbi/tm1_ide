@@ -1,9 +1,12 @@
 import { useState, useEffect } from 'react'
+import { useActiveWorkSession, useStartWorkSession, useCloseWorkSession, useResumeWorkSession } from '@/hooks/useApi'
 
-// Deploy wizard — the whole journey in one guided screen:
-//   Build → Test → Close → Commit → Review → Deploy → Verify
-// Plain language, no icons, one sentence per step, one main button, a recovery
-// box. Branch is fixed by the server's TM1 deployment, so it is never asked for.
+// Deploy wizard — the deploy journey in one guided screen:
+//   Test → Close → Commit → Review → Approve → Deploy → Verify
+// Change sets are started in the IDE (the status bar / first save), not here.
+// One sentence per step, one main button, a recovery box on Deploy/Verify. Has
+// no outside-click close (only the Close button), and Deploy does not auto-jump
+// to Verify — the result stays until you click Continue.
 const authHeader = () => ({ 'x-ide-token': localStorage.getItem('tm1-token') ?? '' })
 const username = () => localStorage.getItem('tm1-username') ?? 'unknown'
 
@@ -16,16 +19,15 @@ function parseOps(ops) {
     .filter(o => o.action !== 'Skip')
 }
 
-const STEP_TITLES = ['Build', 'Test', 'Close', 'Commit', 'Review', 'Approve', 'Deploy', 'Verify']
+const STEP_TITLES = ['Test', 'Close', 'Commit', 'Review', 'Approve', 'Deploy', 'Verify']
 const STEPS = {
-  1: { explain: 'A change set is a labelled basket. While it is open, every change you make on this server is recorded in it, so the whole batch can be reviewed and shipped as one unit.' },
-  2: { explain: 'Add the tests that cover what this change set changed, then run them. Behaviour checks the numbers are right (DEV only). Control checks the model holds together (DEV and PROD). A change is not done until it has the tests that prove it.' },
-  3: { explain: 'Close the change set when you have finished building. Closing records the test result and is the gate \u2014 it starts the deploy journey. Blocking failures must be fixed first.' },
-  4: { explain: 'This commits the current state of this server to the model\u2019s GitHub repo. Nothing on the target server changes yet \u2014 it is just filed, with a reference.' },
-  5: { explain: 'Before we touch the target server, look at exactly what would change on it. Confirm it is only what you intended.' },
-  6: { explain: 'Approve this exact commit for the target, and record who approved and when. Approval is bound to the commit \u2014 if the commit changes, you must approve again. Deploy cannot proceed without it.' },
-  7: { explain: 'This applies the reviewed change to the target server, then runs safety checks to make sure nothing is broken.' },
-  8: { explain: 'The target server saves a copy of itself and we compare it to the last deploy. Same = clean. Different = drift.' },
+  1: { explain: 'Add the tests that cover what this change set changed, then run them. Behaviour checks the numbers are right (DEV only). Control checks the model holds together (DEV and PROD). A change is not done until it has the tests that prove it.' },
+  2: { explain: 'Close the change set when you have finished building. Closing records the test result and is the gate \u2014 it starts the deploy journey. Blocking failures must be fixed first.' },
+  3: { explain: 'This commits the current state of this server to the model\u2019s GitHub repo. Nothing on the target server changes yet \u2014 it is just filed, with a reference.' },
+  4: { explain: 'Before we touch the target server, look at exactly what would change on it. Confirm it is only what you intended.' },
+  5: { explain: 'Approve this exact commit for the target, and record who approved and when. Approval is bound to the commit \u2014 if the commit changes, you must approve again. Deploy cannot proceed without it.' },
+  6: { explain: 'This applies the reviewed change to the target server, then runs safety checks to make sure nothing is broken.' },
+  7: { explain: 'The target server saves a copy of itself and we compare it to the last deploy. Same = clean. Different = drift.' },
 }
 
 const textBtn = 'px-3 py-1.5 text-xs rounded border border-border text-foreground hover:bg-muted transition-colors disabled:opacity-40'
@@ -50,13 +52,10 @@ function TestList({ title, meaning, results }) {
 
 export default function DeployWizard({ server, onClose, onOpenTests }) {
   const [step,      setStep]      = useState(1)
-  const [branch]                  = useState('dev')   // fixed by the server's TM1 deployment
   const [message,   setMessage]   = useState(`Deploy from ${server}`)
   const [servers,   setServers]   = useState([])
   const [target,    setTarget]    = useState('')
-  const [active,    setActive]    = useState(null)
   const [sessionId, setSessionId] = useState(null)
-  const [startName, setStartName] = useState('')
   const [tests,     setTests]     = useState(null)
   const [pushed,    setPushed]    = useState(null)
   const [prep,      setPrep]      = useState(null)
@@ -69,6 +68,13 @@ export default function DeployWizard({ server, onClose, onOpenTests }) {
   const [error,     setError]     = useState(null)
   const [addedTests, setAddedTests] = useState(0)
 
+  const { data: activeSession, refetch: refetchActive } = useActiveWorkSession(server)
+  const startSession   = useStartWorkSession()
+  const closeSession   = useCloseWorkSession()
+  const resumeSession  = useResumeWorkSession()
+
+  useEffect(() => { if (activeSession?.id) setSessionId(activeSession.id) }, [activeSession?.id])
+
   // How many assertions this change set has added (provenance link).
   useEffect(() => {
     if (!sessionId) { setAddedTests(0); return }
@@ -78,11 +84,6 @@ export default function DeployWizard({ server, onClose, onOpenTests }) {
       .catch(() => {})
   }, [sessionId, server, tests])
 
-  const loadActive = () => {
-    fetch(`/api/sessions/active?server=${encodeURIComponent(server)}`, { headers: authHeader() })
-      .then(r => r.json()).then(d => { setActive(d); if (d?.id) setSessionId(d.id) }).catch(() => {})
-  }
-  useEffect(loadActive, [server])
   useEffect(() => {
     fetch('/api/servers', { headers: authHeader() }).then(r => r.json()).then(d => {
       const others = (d ?? []).map(s => s?.name).filter(n => n && n !== server)
@@ -102,10 +103,17 @@ export default function DeployWizard({ server, onClose, onOpenTests }) {
     finally { setBusy('') }
   }
 
-  const startChangeSet = async () => {
-    if (!startName.trim()) return
-    const d = await run('start', { name: startName.trim(), server, user: username() }, '/api/sessions/start')
-    if (d) { setActive(d); setSessionId(d.id); setStartName('') }
+  const onStartFromStatus = async () => {
+    if (!startName) return
+    const d = await startSession.mutateAsync({ name: startName.trim(), server, user: username() }).catch(() => null)
+    if (d) { setSessionId(d.id); setStartName('') }
+  }
+  const [startName, setStartName] = useState('')
+
+  const closeChangeSet = async () => {
+    if (!activeSession) return
+    const d = await closeSession.mutateAsync({ id: activeSession.id }).catch(() => null)
+    if (d) { setStep(3); setSessionId(activeSession.id) }
   }
   const runTests = async () => {
     setBusy('test'); setError(null)
@@ -116,33 +124,28 @@ export default function DeployWizard({ server, onClose, onOpenTests }) {
     } catch (e) { setError(e.message) }
     finally { setBusy('') }
   }
-  const closeChangeSet = async () => {
-    if (!active) return
-    const d = await run('close', { id: active.id }, '/api/sessions/close')
-    if (d) { setActive(null); setStep(4) }
-  }
   const doPush = async () => {
-    const d = await run('push', { source: server, branch, message, session: sessionId }, '/api/deploy/git/push')
-    if (d) { setPushed(d); setStep(5) }
+    const d = await run('push', { source: server, message, session: sessionId }, '/api/deploy/git/push')
+    if (d) { setPushed(d); setStep(4) }
   }
   const doPrepare = async () => {
-    const d = await run('prepare', { source: server, target, branch, session: sessionId }, '/api/deploy/git/prepare')
-    if (d) { setPrep(d); setDiffs(null); setApproval(null); if (d.ready) setStep(6) }
+    const d = await run('prepare', { source: server, target, session: sessionId }, '/api/deploy/git/prepare')
+    if (d) { setPrep(d); setDiffs(null); setApproval(null); if (d.ready) setStep(5) }
   }
   const doReview = async () => {
-    const d = await run('review', { source: server, target, branch, session: sessionId }, '/api/deploy/git/review')
+    const d = await run('review', { source: server, target, session: sessionId }, '/api/deploy/git/review')
     if (d) setDiffs(d)
   }
   const doApprove = async () => {
     const commit = prep?.plan?.targetCommit
     if (!commit) return
     const d = await run('approve', { source: server, target, commit, note: approvalNote }, '/api/deploy/git/approve')
-    if (d) { setApproval(d); setStep(7) }
+    if (d) { setApproval(d); setStep(6) }
   }
   const doDeploy = async () => {
     if (!window.confirm(`Deploy to ${target}? This applies the change and runs safety checks on it.`)) return
-    const d = await run('deploy', { source: server, target, branch, session: sessionId }, '/api/deploy/git/execute')
-    if (d) { setRes(d); setStep(8) }
+    const d = await run('deploy', { source: server, target }, '/api/deploy/git/execute')
+    if (d) setRes(d)   // stays on Deploy — the result is shown until Continue
   }
   const doDrift = async () => {
     const d = await run('drift', { server: target }, '/api/git/drift')
@@ -150,10 +153,10 @@ export default function DeployWizard({ server, onClose, onOpenTests }) {
   }
   const doDriftAction = async (action) => {
     const label = action === 'revert'
-      ? 'Put the target back to exactly what the repo says (this overwrites the drifted change)?'
+      ? 'Put the target back to the approved state (restores the drifted objects)?'
       : 'Bring the target\u2019s change back into the build stream instead of overwriting it?'
     if (!window.confirm(label)) return
-    const d = await run(action, { target, source: server, branch, entries: action === 'revert' ? (drift?.entries ?? []) : undefined }, `/api/git/drift/${action}`)
+    const d = await run(action, { target, source: server, branch: 'dev' }, `/api/git/drift/${action}`)
     if (d) setDrift(prev => ({ ...prev, actionResult: d }))
   }
 
@@ -163,11 +166,14 @@ export default function DeployWizard({ server, onClose, onOpenTests }) {
   const blockFails = tests?.results?.filter(r => !r.pass && (r.severity ?? 'block') === 'block') ?? []
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={onClose}>
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
       <div className="w-[680px] max-h-[90vh] flex flex-col bg-background border border-border rounded-lg shadow-xl" onClick={e => e.stopPropagation()}>
         <div className="flex items-center gap-3 px-4 py-3 border-b border-border">
           <span className="text-sm font-semibold">Deploy step by step</span>
           <span className="text-xs text-muted-foreground">from {server}</span>
+          {activeSession
+            ? <span className="text-[10px] text-muted-foreground/80">· change set <span className="font-mono text-foreground/80">{activeSession.name}</span></span>
+            : <span className="text-[10px] text-amber-600/90">· no change set open — start one in the status bar (or on your first save)</span>}
           <div className="flex-1" />
           <button onClick={onClose} className="text-xs text-muted-foreground hover:text-foreground">Close</button>
         </div>
@@ -189,33 +195,10 @@ export default function DeployWizard({ server, onClose, onOpenTests }) {
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
           {error && <p className="text-xs text-red-600 border border-red-600/40 rounded px-3 py-2">{error}</p>}
 
-          {/* Step 1 — Build */}
+          {/* Step 1 — Test */}
           {step === 1 && (
             <div className="space-y-3">
               <p className="text-xs text-muted-foreground leading-relaxed">{STEPS[1].explain}</p>
-              {active ? (
-                <div className="border border-border rounded-md p-3 space-y-2">
-                  <p className="text-xs">Change set open: <span className="font-semibold">{active.name}</span> — recording your changes.</p>
-                  <p className="text-[11px] text-muted-foreground">Make your edits now. Everything you change here is going into this basket.</p>
-                  <button onClick={() => setStep(2)} className={primaryBtn}>I&apos;ve finished building — Continue</button>
-                </div>
-              ) : (
-                <div className="border border-border rounded-md p-3 space-y-2">
-                  <p className="text-xs text-muted-foreground">No change set is open. Start one so your changes are tracked and shippable as a unit:</p>
-                  <div className="flex items-center gap-2">
-                    <input value={startName} onChange={e => setStartName(e.target.value)} onKeyDown={e => e.key === 'Enter' && startChangeSet()} placeholder="name for this batch of work" className={inputCls + ' flex-1'} />
-                    <button onClick={startChangeSet} disabled={busy === 'start' || !startName.trim()} className={primaryBtn}>Start change set</button>
-                  </div>
-                  <p className="text-[11px] text-muted-foreground">Make your edits on this server, then run the tests.</p>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Step 2 — Test */}
-          {step === 2 && (
-            <div className="space-y-3">
-              <p className="text-xs text-muted-foreground leading-relaxed">{STEPS[2].explain}</p>
               <div className="border border-border rounded-md p-3 space-y-3">
                 <div className="flex items-center gap-2">
                   <button onClick={runTests} disabled={busy === 'test'} className={primaryBtn}>{tests ? 'Run tests again' : 'Run tests'}</button>
@@ -233,20 +216,22 @@ export default function DeployWizard({ server, onClose, onOpenTests }) {
                     </p>
                     <TestList title="Behaviour" meaning="the numbers are right (DEV only)" results={behaviour} />
                     <TestList title="Control" meaning="the model holds together (DEV and PROD)" results={control} />
-                    <button onClick={() => setStep(3)} className={textBtn}>Continue to Close</button>
+                    <button onClick={() => setStep(2)} className={textBtn}>Continue to Close</button>
                   </div>
                 )}
               </div>
             </div>
           )}
 
-          {/* Step 3 — Close (the gate) */}
-          {step === 3 && (
+          {!activeSession && startNamePrompt()}
+
+          {/* Step 2 — Close (the gate) */}
+          {step === 2 && (
             <div className="space-y-3">
-              <p className="text-xs text-muted-foreground leading-relaxed">{STEPS[3].explain}</p>
+              <p className="text-xs text-muted-foreground leading-relaxed">{STEPS[2].explain}</p>
               <div className="border border-border rounded-md p-3 space-y-3">
-                {active ? <p className="text-xs">Change set to close: <span className="font-semibold">{active.name}</span></p> : <p className="text-xs text-muted-foreground">No change set is open — nothing to close. You can continue.</p>}
-                {!tests && <p className="text-xs text-amber-600">Run the tests first (step 2) so the close records a result.</p>}
+                {activeSession ? <p className="text-xs">Change set to close: <span className="font-semibold">{activeSession.name}</span></p> : <p className="text-xs text-muted-foreground">No change set is open — nothing to close. You can continue.</p>}
+                {!tests && <p className="text-xs text-amber-600">Run the tests first (step 1) so the close records a result.</p>}
                 {tests && blockFails.length > 0 && (
                   <div className="border border-red-600/40 rounded-md p-2 space-y-1">
                     <p className="text-xs text-red-600">{blockFails.length} blocking test{blockFails.length !== 1 ? 's are' : ' is'} failing — fix on this server, then re-run the tests.</p>
@@ -254,21 +239,21 @@ export default function DeployWizard({ server, onClose, onOpenTests }) {
                   </div>
                 )}
                 {tests && blockFails.length === 0 && <p className="text-xs text-emerald-700">No blocking failures.</p>}
-                {active && addedTests === 0 && (
-                  <p className="text-xs text-amber-600">No assertions were added in this change set. If this change has logic worth testing, add coverage first (step 2, Test). You can still close.</p>
+                {activeSession && addedTests === 0 && (
+                  <p className="text-xs text-amber-600">No assertions were added in this change set. If this change has logic worth testing, add coverage first (step 1, Test). You can still close.</p>
                 )}
                 <div className="flex items-center gap-2">
-                  <button onClick={closeChangeSet} disabled={busy === 'close' || !active || !tests || blockFails.length > 0} className={primaryBtn}>Close change set</button>
-                  {!active && <button onClick={() => setStep(4)} className={textBtn}>Continue</button>}
+                  <button onClick={closeChangeSet} disabled={closeSession.isPending || !activeSession || !tests || blockFails.length > 0} className={primaryBtn}>Close change set</button>
+                  {!activeSession && <button onClick={() => setStep(3)} className={textBtn}>Continue</button>}
                 </div>
               </div>
             </div>
           )}
 
-          {/* Step 4 — Commit */}
-          {step === 4 && (
+          {/* Step 3 — Commit */}
+          {step === 3 && (
             <div className="space-y-3">
-              <p className="text-xs text-muted-foreground leading-relaxed">{STEPS[4].explain}</p>
+              <p className="text-xs text-muted-foreground leading-relaxed">{STEPS[3].explain}</p>
               <div className="border border-border rounded-md p-3 space-y-3">
                 <div className="flex items-center gap-2">
                   <label className="text-xs text-muted-foreground w-16">Note</label>
@@ -282,17 +267,17 @@ export default function DeployWizard({ server, onClose, onOpenTests }) {
                   <div className="border border-border rounded-md p-3 bg-muted/20">
                     <p className="text-xs">Committed. {server} is filed in the GitHub repo as <span className="font-mono">{pushed.commit}</span>.</p>
                     <p className="text-[11px] text-muted-foreground mt-1">Nothing on the target server changed. Next: review exactly what would change on it.</p>
-                    <button onClick={() => setStep(5)} className={textBtn + ' mt-2'}>Continue to Review</button>
+                    <button onClick={() => setStep(4)} className={textBtn + ' mt-2'}>Continue to Review</button>
                   </div>
                 )}
               </div>
             </div>
           )}
 
-          {/* Step 5 — Review */}
-          {step === 5 && (
+          {/* Step 4 — Review */}
+          {step === 4 && (
             <div className="space-y-3">
-              <p className="text-xs text-muted-foreground leading-relaxed">{STEPS[5].explain}</p>
+              <p className="text-xs text-muted-foreground leading-relaxed">{STEPS[4].explain}</p>
               <div className="border border-border rounded-md p-3 space-y-3">
                 <div className="flex items-center gap-2">
                   <label className="text-xs text-muted-foreground w-16">Target</label>
@@ -346,24 +331,23 @@ export default function DeployWizard({ server, onClose, onOpenTests }) {
                                 ))}
                               </div>
                             )}
+                            {diffs?.manifest?.deletes?.length > 0 && (
+                              <p className="text-[11px] text-amber-600">Also deletes: {diffs.manifest.deletes.map(d => `${d.type} ${d.name}`).join(', ')} (TM1 Git cannot propagate deletes — the deploy removes these from the target).</p>
+                            )}
+                            {diffs?.manifest?.wholesaleDims?.length > 0 && (
+                              <p className="text-[11px] text-amber-600">Will copy attribute values wholesale for: {diffs.manifest.wholesaleDims.join(', ')} — the change set recorded only the dimension, not specific values.</p>
+                            )}
+                            {diffs?.outOfChangeSet?.length > 0 && (
+                              <p className="text-[11px] text-amber-600">Outside this change set: {diffs.outOfChangeSet.join(', ')} — from the repo, not this change set. Check these before deploying.</p>
+                            )}
+                            {diffs?.firstDeploy && (
+                              <p className="text-[11px] text-amber-600">First deploy — this target has never received one. Everything it will get is listed above.</p>
+                            )}
                           </div>
                         )}
-
-                        {diffs?.manifest?.deletes?.length > 0 && (
-                          <p className="text-[11px] text-amber-600">Also deletes: {diffs.manifest.deletes.map(d => `${d.type} ${d.name}`).join(', ')} (TM1 Git cannot propagate deletes — the deploy removes these from the target).</p>
-                        )}
-                        {diffs?.manifest?.wholesaleDims?.length > 0 && (
-                          <p className="text-[11px] text-amber-600">Will copy attribute values wholesale for: {diffs.manifest.wholesaleDims.join(', ')} — the change set recorded only the dimension, not specific values.</p>
-                        )}
-                        {diffs?.outOfChangeSet?.length > 0 && (
-                          <p className="text-[11px] text-amber-600">Outside this change set: {diffs.outOfChangeSet.join(', ')} — from the repo, not this change set. Check these before deploying.</p>
-                        )}
-                        {diffs?.firstDeploy && (
-                          <p className="text-[11px] text-amber-600">First deploy — this target has never received one. Everything it will get is listed above.</p>
-                        )}
                         <div className="flex items-center gap-2 pt-1">
-                          <button onClick={() => setStep(4)} className={textBtn}>Back to Commit</button>
-                          <button onClick={() => setStep(6)} disabled={!prep.ready} className={primaryBtn}>Continue to Approve</button>
+                          <button onClick={() => setStep(3)} className={textBtn}>Back to Commit</button>
+                          <button onClick={() => setStep(5)} disabled={!prep.ready} className={primaryBtn}>Continue to Approve</button>
                         </div>
                       </>
                     )}
@@ -373,10 +357,10 @@ export default function DeployWizard({ server, onClose, onOpenTests }) {
             </div>
           )}
 
-          {/* Step 6 — Approve */}
-          {step === 6 && (
+          {/* Step 5 — Approve */}
+          {step === 5 && (
             <div className="space-y-3">
-              <p className="text-xs text-muted-foreground leading-relaxed">{STEPS[6].explain}</p>
+              <p className="text-xs text-muted-foreground leading-relaxed">{STEPS[5].explain}</p>
               <div className="border border-border rounded-md p-3 space-y-3">
                 {!prep?.plan?.targetCommit ? (
                   <p className="text-xs text-muted-foreground">Go back to Review and show what will change first — we need the commit to approve.</p>
@@ -394,7 +378,7 @@ export default function DeployWizard({ server, onClose, onOpenTests }) {
                     {approval && (
                       <div className="border border-border rounded-md p-3 bg-muted/20">
                         <p className="text-xs">Approved by <span className="font-semibold">{approval.approver}</span> at {new Date(approval.approved_at).toLocaleTimeString()}.</p>
-                        <button onClick={() => setStep(7)} className={textBtn + ' mt-2'}>Continue to Deploy</button>
+                        <button onClick={() => setStep(6)} className={textBtn + ' mt-2'}>Continue to Deploy</button>
                       </div>
                     )}
                   </>
@@ -403,13 +387,13 @@ export default function DeployWizard({ server, onClose, onOpenTests }) {
             </div>
           )}
 
-          {/* Step 7 — Deploy */}
-          {step === 7 && (
+          {/* Step 6 — Deploy */}
+          {step === 6 && (
             <div className="space-y-3">
-              <p className="text-xs text-muted-foreground leading-relaxed">{STEPS[7].explain}</p>
+              <p className="text-xs text-muted-foreground leading-relaxed">{STEPS[6].explain}</p>
               <div className="border border-border rounded-md p-3 space-y-3">
                 {!prep?.ready && <p className="text-xs text-muted-foreground">Go back to Review and show what will change first — we need to confirm the plan before deploying.</p>}
-                {prep?.ready && !approval && <p className="text-xs text-amber-600">Not approved yet — go back to Approve (step 6) to record the decision.</p>}
+                {prep?.ready && !approval && <p className="text-xs text-amber-600">Not approved yet — go back to Approve (step 5) to record the decision.</p>}
                 <div className="flex items-center gap-2">
                   <button onClick={doDeploy} disabled={busy === 'deploy' || !prep?.ready || !approval} className={primaryBtn}>Deploy to {target}</button>
                   {busy === 'deploy' && <span className="text-xs text-muted-foreground">Applying…</span>}
@@ -446,17 +430,17 @@ export default function DeployWizard({ server, onClose, onOpenTests }) {
                         {res.reconcile.error && <p className="text-red-600">{res.reconcile.error}</p>}
                       </div>
                     )}
-                    <button onClick={() => setStep(8)} className={textBtn + " mt-1"}>Continue to Verify</button>
+                    <button onClick={() => setStep(7)} className={textBtn + ' mt-1'}>Continue to Verify</button>
                   </div>
                 )}
               </div>
             </div>
           )}
 
-          {/* Step 8 — Verify */}
-          {step === 8 && (
+          {/* Step 7 — Verify */}
+          {step === 7 && (
             <div className="space-y-3">
-              <p className="text-xs text-muted-foreground leading-relaxed">{STEPS[8].explain}</p>
+              <p className="text-xs text-muted-foreground leading-relaxed">{STEPS[7].explain}</p>
               <div className="border border-border rounded-md p-3 space-y-3">
                 <div className="flex items-center gap-2">
                   <label className="text-xs text-muted-foreground w-16">Target</label>
@@ -479,12 +463,14 @@ export default function DeployWizard({ server, onClose, onOpenTests }) {
                           </div>
                         ))}
                         <div className="flex items-center gap-2 pt-1">
-                          <button onClick={() => doDriftAction('revert')} disabled={busy === 'revert'} className={textBtn}>Revert — put the target back to what the repo says</button>
-                          <button onClick={() => doDriftAction('promote')} disabled={busy === 'promote'} className={textBtn}>Promote — keep it by bringing it back to DEV</button>
+                          <button onClick={() => doDriftAction('revert')} disabled={busy === 'revert'} className={textBtn}>Revert — restore the drifted objects</button>
+                          <button onClick={() => doDriftAction('promote')} disabled={busy === 'promote'} className={textBtn}>Promote — bring them back to DEV</button>
                         </div>
                       </div>
                     )}
-                    {drift.actionResult && <p className="text-[11px] text-muted-foreground">{drift.actionResult.note ?? drift.actionResult.error ?? 'Done.'} Re-check to confirm.</p>}
+                    {drift.actionResult && (
+                      <p className="text-[11px] text-muted-foreground">{drift.actionResult.note ?? drift.actionResult.error ?? 'Done.'} Re-check to confirm.</p>
+                    )}
                   </div>
                 )}
               </div>
@@ -492,12 +478,12 @@ export default function DeployWizard({ server, onClose, onOpenTests }) {
           )}
 
           {/* Recovery — only on Deploy and Verify */}
-          {(step === 7 || step === 8) && (
+          {(step === 6 || step === 7) && (
             <div className="border border-border rounded-md">
               <div className="px-3 py-2 border-b border-border bg-muted/20 text-xs font-semibold">If something goes wrong</div>
               <div className="px-3 py-2 space-y-1.5 text-[11px] text-muted-foreground leading-relaxed">
                 <p>· <span className="text-foreground">No rollback.</span> A deploy cannot be automatically undone — if it breaks, <span className="text-foreground">fix forward</span>: correct on {server}, commit, and deploy again.</p>
-                <p>· <span className="text-foreground">PROD changed since the last deploy?</span> Use Revert (step 8) to put the drifted objects back, or Promote to bring them into {server}.</p>
+                <p>· <span className="text-foreground">PROD changed since the last deploy?</span> Use Revert (step 7) to put the drifted objects back, or Promote to bring them into {server}.</p>
               </div>
             </div>
           )}
