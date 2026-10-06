@@ -129,7 +129,7 @@ export default function DeployWizard({ server, onClose, onOpenTests }) {
   }
   const doPrepare = async () => {
     const d = await run('prepare', { source: server, target, session: sessionId }, '/api/deploy/git/prepare')
-    if (d) { setPrep(d); setDiffs(null); setApproval(null); if (d.ready) setStep(5) }
+    if (d) { setPrep(d); setDiffs(null); setApproval(null) }   // stays on Review — Continue to Approve advances
   }
   const doReview = async () => {
     const d = await run('review', { source: server, target, session: sessionId }, '/api/deploy/git/review')
