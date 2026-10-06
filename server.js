@@ -3058,6 +3058,34 @@ app.post('/api/deploy/git/push', async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
+// ── Approval — the recorded human decision that gates a deploy. ─────────────
+// Bound to a specific commit + target: a new commit invalidates the old approval.
+const APPROVALS_FILE = path.join(__dirname, 'config', 'deploy-approvals.json')
+function readApprovals() { try { return JSON.parse(require('fs').readFileSync(APPROVALS_FILE, 'utf8')) } catch { return [] } }
+app.post('/api/deploy/git/approve', (req, res) => {
+    try {
+        const { source, target, commit, note } = req.body
+        if (!target || !commit) return res.status(400).json({ error: 'target and commit required' })
+        const arr = readApprovals()
+        const rec = {
+            id: new Date().toISOString(), approved_at: new Date().toISOString(),
+            approver: req.user ?? 'unknown', notes: note ?? '',
+            source: source ?? null, target, commit, session: null, packageDir: null,
+        }
+        arr.push(rec)
+        require('fs').writeFileSync(APPROVALS_FILE, JSON.stringify(arr, null, 2))
+        res.json(rec)
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+app.get('/api/deploy/git/approval', (req, res) => {
+    try {
+        const { target, commit } = req.query
+        const arr = readApprovals()
+        const rec = [...arr].reverse().find(a => a.target === target && a.commit === commit) ?? null
+        res.json(rec)
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
 // ── Drift (#3): PROD pushes prod-live; diff vs its deployed commit. ─────────
 app.post('/api/git/drift', async (req, res) => {
     try {

@@ -16,15 +16,16 @@ function parseOps(ops) {
     .filter(o => o.action !== 'Skip')
 }
 
-const STEP_TITLES = ['Build', 'Test', 'Close', 'Commit', 'Review', 'Deploy', 'Verify']
+const STEP_TITLES = ['Build', 'Test', 'Close', 'Commit', 'Review', 'Approve', 'Deploy', 'Verify']
 const STEPS = {
   1: { explain: 'A change set is a labelled basket. While it is open, every change you make on this server is recorded in it, so the whole batch can be reviewed and shipped as one unit.' },
   2: { explain: 'Run the model\u2019s tests. Behaviour tests check the numbers are right (DEV only). Control tests check the model holds together (DEV and PROD). Fix and re-run as needed.' },
   3: { explain: 'Close the change set when you have finished building. Closing records the test result and is the gate \u2014 it starts the deploy journey. Blocking failures must be fixed first.' },
   4: { explain: 'This commits the current state of this server to the model\u2019s GitHub repo. Nothing on the target server changes yet \u2014 it is just filed, with a reference.' },
   5: { explain: 'Before we touch the target server, look at exactly what would change on it. Confirm it is only what you intended.' },
-  6: { explain: 'This applies the reviewed change to the target server, then runs safety checks to make sure nothing is broken.' },
-  7: { explain: 'The target server saves a copy of itself and we compare it to the last deploy. Same = clean. Different = drift.' },
+  6: { explain: 'Approve this exact commit for the target, and record who approved and when. Approval is bound to the commit \u2014 if the commit changes, you must approve again. Deploy cannot proceed without it.' },
+  7: { explain: 'This applies the reviewed change to the target server, then runs safety checks to make sure nothing is broken.' },
+  8: { explain: 'The target server saves a copy of itself and we compare it to the last deploy. Same = clean. Different = drift.' },
 }
 
 const textBtn = 'px-3 py-1.5 text-xs rounded border border-border text-foreground hover:bg-muted transition-colors disabled:opacity-40'
@@ -59,6 +60,8 @@ export default function DeployWizard({ server, onClose }) {
   const [pushed,    setPushed]    = useState(null)
   const [prep,      setPrep]      = useState(null)
   const [res,       setRes]       = useState(null)
+  const [approval,  setApproval]  = useState(null)
+  const [approvalNote, setApprovalNote] = useState('')
   const [drift,     setDrift]     = useState(null)
   const [busy,      setBusy]      = useState('')
   const [error,     setError]     = useState(null)
@@ -112,12 +115,18 @@ export default function DeployWizard({ server, onClose }) {
   }
   const doPrepare = async () => {
     const d = await run('prepare', { source: server, target, branch }, '/api/deploy/git/prepare')
-    if (d) { setPrep(d); if (d.ready) setStep(6) }
+    if (d) { setPrep(d); setApproval(null); if (d.ready) setStep(6) }
+  }
+  const doApprove = async () => {
+    const commit = prep?.plan?.targetCommit
+    if (!commit) return
+    const d = await run('approve', { source: server, target, commit, note: approvalNote }, '/api/deploy/git/approve')
+    if (d) { setApproval(d); setStep(7) }
   }
   const doDeploy = async () => {
     if (!window.confirm(`Deploy to ${target}? This applies the change and runs safety checks on it.`)) return
     const d = await run('deploy', { source: server, target, branch }, '/api/deploy/git/execute')
-    if (d) { setRes(d); setStep(7) }
+    if (d) { setRes(d); setStep(8) }
   }
   const doDrift = async () => {
     const d = await run('drift', { server: target }, '/api/git/drift')
@@ -293,7 +302,7 @@ export default function DeployWizard({ server, onClose }) {
                         {changed.length === 0 && prep.plan && <p className="text-xs">Nothing would change — the target already matches the repo.</p>}
                         <div className="flex items-center gap-2 pt-1">
                           <button onClick={() => setStep(4)} className={textBtn}>Back to Commit</button>
-                          <button onClick={() => setStep(6)} disabled={!prep.ready} className={primaryBtn}>Continue to Deploy</button>
+                          <button onClick={() => setStep(6)} disabled={!prep.ready} className={primaryBtn}>Continue to Approve</button>
                         </div>
                       </>
                     )}
@@ -303,14 +312,45 @@ export default function DeployWizard({ server, onClose }) {
             </div>
           )}
 
-          {/* Step 6 — Deploy */}
+          {/* Step 6 — Approve */}
           {step === 6 && (
             <div className="space-y-3">
               <p className="text-xs text-muted-foreground leading-relaxed">{STEPS[6].explain}</p>
               <div className="border border-border rounded-md p-3 space-y-3">
+                {!prep?.plan?.targetCommit ? (
+                  <p className="text-xs text-muted-foreground">Go back to Review and show what will change first — we need the commit to approve.</p>
+                ) : (
+                  <>
+                    <p className="text-xs">Approve <span className="font-mono">{prep.plan.targetCommit}</span> for <span className="font-semibold">{target}</span>.</p>
+                    <div className="flex items-center gap-2">
+                      <label className="text-xs text-muted-foreground w-16">Note</label>
+                      <input value={approvalNote} onChange={e => setApprovalNote(e.target.value)} placeholder="optional reason / reference" className={inputCls + ' flex-1'} />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button onClick={doApprove} disabled={busy === 'approve'} className={primaryBtn}>Approve this commit</button>
+                      {busy === 'approve' && <span className="text-xs text-muted-foreground">Recording…</span>}
+                    </div>
+                    {approval && (
+                      <div className="border border-border rounded-md p-3 bg-muted/20">
+                        <p className="text-xs">Approved by <span className="font-semibold">{approval.approver}</span> at {new Date(approval.approved_at).toLocaleTimeString()}.</p>
+                        <button onClick={() => setStep(7)} className={textBtn + ' mt-2'}>Continue to Deploy</button>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Step 7 — Deploy */}
+          {step === 7 && (
+            <div className="space-y-3">
+              <p className="text-xs text-muted-foreground leading-relaxed">{STEPS[7].explain}</p>
+              <div className="border border-border rounded-md p-3 space-y-3">
                 {!prep?.ready && <p className="text-xs text-muted-foreground">Go back to Review and show what will change first — we need to confirm the plan before deploying.</p>}
+                {prep?.ready && !approval && <p className="text-xs text-amber-600">Not approved yet — go back to Approve (step 6) to record the decision.</p>}
                 <div className="flex items-center gap-2">
-                  <button onClick={doDeploy} disabled={busy === 'deploy' || !prep?.ready} className={primaryBtn}>Deploy to {target}</button>
+                  <button onClick={doDeploy} disabled={busy === 'deploy' || !prep?.ready || !approval} className={primaryBtn}>Deploy to {target}</button>
                   {busy === 'deploy' && <span className="text-xs text-muted-foreground">Applying…</span>}
                 </div>
                 {changed.length > 0 && <p className="text-[11px] text-muted-foreground">This applies {changed.length} change{changed.length !== 1 ? 's' : ''} ({changed.map(o => o.name).join(', ')}) to {target}.</p>}
@@ -338,17 +378,17 @@ export default function DeployWizard({ server, onClose }) {
                         {res.reconcile.error && <p className="text-red-600">{res.reconcile.error}</p>}
                       </div>
                     )}
-                    <button onClick={() => setStep(7)} className={textBtn + ' mt-1'}>Continue to Verify</button>
+                    <button onClick={() => setStep(8)} className={textBtn + " mt-1"}>Continue to Verify</button>
                   </div>
                 )}
               </div>
             </div>
           )}
 
-          {/* Step 7 — Verify */}
-          {step === 7 && (
+          {/* Step 8 — Verify */}
+          {step === 8 && (
             <div className="space-y-3">
-              <p className="text-xs text-muted-foreground leading-relaxed">{STEPS[7].explain}</p>
+              <p className="text-xs text-muted-foreground leading-relaxed">{STEPS[8].explain}</p>
               <div className="border border-border rounded-md p-3 space-y-3">
                 <div className="flex items-center gap-2">
                   <label className="text-xs text-muted-foreground w-16">Target</label>
@@ -388,7 +428,7 @@ export default function DeployWizard({ server, onClose }) {
             <div className="px-3 py-2 border-b border-border bg-muted/20 text-xs font-semibold">If something goes wrong</div>
             <div className="px-3 py-2 space-y-1.5 text-[11px] text-muted-foreground leading-relaxed">
               <p>· <span className="text-foreground">Bad deploy?</span> Fix it forward: make the correction on {server}, commit it to the GitHub repo, and deploy again. The repo keeps every version, so the target can always be rebuilt.</p>
-              <p>· <span className="text-foreground">PROD changed since the last deploy (drift)?</span> Use Revert (put it back to what the repo says) or Promote (keep the change by bringing it back to {server}). Both are in Verify, step 7.</p>
+              <p>· <span className="text-foreground">PROD changed since the last deploy (drift)?</span> Use Revert (put it back to what the repo says) or Promote (keep the change by bringing it back to {server}). Both are in Verify, step 8.</p>
               <p>· <span className="text-foreground">Lost a server?</span> The repo has everything — a fresh server can pull the whole model back from it.</p>
             </div>
           </div>
