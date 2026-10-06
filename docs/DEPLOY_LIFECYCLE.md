@@ -81,6 +81,16 @@ Notes:
   is never silent.
 - The **legacy `/api/deploy/execute` and `/api/deploy/approve` routes are retired** — the step-by-step wizard is the
   only deploy path. The classic DeployPanel refuses with a plain "retired" note.
+- **Static-subset hazard (7 Oct):** PROD's `WFP Period` Default subset lost its 36 YTD members while the dimension
+  stayed intact. Pulls never touched WFP Period (always "Skip"; dev = 93), so **no deploy caused it** — the prod-live
+  diff for the window shows other out-of-band PROD activity (a new "Test Process", a `WFP Tax Type` dimension change,
+  a `Position Input` view change), i.e. **direct model edits/rebuild on PROD during the walkthrough**. TM1 drops
+  members from a **static** subset when its elements are removed and does not restore them on re-add. Any rebuild of a
+  dimension on a target has this effect; nothing in the deploy pipeline did it here.
+- **Revert restores from the approved commit's repo file** (`git show <commit>:<file>`), never from DEV's live state —
+  proven: with DEV holding an **uncommitted** subset edit, Revert still put PROD back to the committed 93 members and
+  the DEV edit did **not** ship. The drifted-object list is derived server-side from the drift check, never supplied
+  by the client.
 
 The second drift-check reading in the revert proof briefly showed entries — those were the proof's own PROD-only
 test process, cleaned up immediately; with it removed, drift is **clean** and the drifted object is confirmed restored.
