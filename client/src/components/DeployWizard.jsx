@@ -375,9 +375,18 @@ export default function DeployWizard({ server, onClose, onOpenTests }) {
                         {setAssertions.length > 0 && (
                         <div className="border border-border rounded-md p-2 text-[11px] space-y-1">
                           <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Tests in this change set</p>
-                          {setAssertions.map(a => (
-                            <p key={a.description}><span className={a.severity === 'warn' ? 'text-amber-600' : 'text-muted-foreground'}>{a.severity}</span> · <span className="text-muted-foreground">{a.kind}</span> — <span className="text-foreground">{a.description}</span></p>
-                          ))}
+                          {(() => {
+                            const run = Object.fromEntries((tests?.results ?? []).map(r => [r.id, r]))
+                            return setAssertions.map(a => {
+                              const r = run[a.id]
+                              return (
+                                <p key={a.id}>
+                                  <span className={a.severity === 'warn' ? 'text-amber-600' : 'text-muted-foreground'}>{a.severity}</span> · <span className="text-muted-foreground">{a.kind}</span> — <span className="text-foreground">{a.description}</span>
+                                  {r && <span className="ml-1.5 text-[10px]">· <span className={r.pass ? 'text-emerald-700' : 'text-red-600'}>{r.pass ? 'passed' : (r.kind === 'control' ? 'failed' : 'changed')}</span></span>}
+                                </p>
+                              )
+                            })
+                          })()}
                         </div>
                       )}
                         <div className="flex items-center gap-2 pt-1">
