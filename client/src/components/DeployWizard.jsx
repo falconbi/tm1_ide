@@ -85,7 +85,7 @@ export default function DeployWizard({ server, onClose, onOpenTests }) {
       .then(d => {
         const mine = (d.assertions ?? []).filter(a => a.changeSet === sessionId)
         setAddedTests(mine.length)
-        setSetAssertions(mine.map(a => ({ description: a.description, kind: a.kind ?? 'behaviour', severity: a.severity ?? 'block' })))
+        setSetAssertions(mine.map(a => ({ id: a.id, description: a.description, kind: a.kind ?? 'behaviour', severity: a.severity ?? 'block' })))
       })
       .catch(() => {})
   }, [sessionId, server, tests])
@@ -207,17 +207,34 @@ export default function DeployWizard({ server, onClose, onOpenTests }) {
                   <span className="text-xs text-muted-foreground">{addedTests} assertion{addedTests !== 1 ? 's' : ''} added in this change set</span>
                   <button onClick={onOpenTests} className={textBtn}>Add tests for this change</button>
                 </div>
-                {tests && (
+                {tests && (() => {
+                    const setIds = new Set(setAssertions.map(a => a.id))
+                    const setRun = (tests.results ?? []).filter(r => setIds.has(r.id))
+                    return (
                   <div className="border border-border rounded-md p-3 space-y-3 bg-muted/20">
                     <p className="text-xs">
-                      <span className={blockFails.length ? 'text-red-600' : 'text-emerald-700'}>{tests.passed} of {tests.total} passed</span>
+                      All model tests: <span className={blockFails.length ? 'text-red-600' : 'text-emerald-700'}>{tests.passed} of {tests.total} passed</span>
                       {blockFails.length ? ` — ${blockFails.length} blocking failure${blockFails.length !== 1 ? 's' : ''}.` : '.'}
                     </p>
+                    {setRun.length > 0 && (
+                      <div className="space-y-1">
+                        <p className="text-[10px] text-muted-foreground uppercase tracking-wide">This change set's tests</p>
+                        {setRun.map(r => (
+                          <div key={r.id} className="flex items-baseline gap-2 text-[11px] px-2 py-1 rounded bg-background border border-border">
+                            <span className={r.pass ? 'text-emerald-700' : (r.kind === 'control' ? 'text-red-600' : 'text-amber-600')}>{r.pass ? 'passed' : (r.kind === 'control' ? 'failed' : 'changed')}</span>
+                            <span className={(r.severity ?? 'block') === 'block' ? 'text-muted-foreground/60' : 'text-amber-600/80'}>{r.severity ?? 'block'}</span>
+                            <span className="text-muted-foreground flex-1">{r.description}</span>
+                            <span className="text-muted-foreground/70">{r.pass ? `expected ${r.expected} · actual ${Math.round(r.actual * 100) / 100}` : `was ${r.expected}, now ${Math.round(r.actual * 100) / 100}`}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                     <TestList title="Behaviour" meaning="the numbers are right (DEV only)" results={behaviour} />
                     <TestList title="Control" meaning="the model holds together (DEV and PROD)" results={control} />
                     <button onClick={() => setStep(2)} className={textBtn}>Continue to Close</button>
                   </div>
-                )}
+                    )
+                  })()}
               </div>
             </div>
           )}

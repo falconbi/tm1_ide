@@ -715,6 +715,34 @@
       "kind": "control",
       "severity": "block",
       "created": "2026-10-05T04:08:01.657Z"
+    },
+    {
+      "id": "9cdd95e8",
+      "description": "CONTROL: ENG-002 employer tax Jan 2026 = 0 (below UK 9,100 threshold)",
+      "why": "Employer tax is zero under the UK threshold — an invariant",
+      "mdx": "SELECT {[WFP Pay Component].[WFP Pay Component].[Employer Payroll Tax]} ON 0 FROM [WFP Workforce Cost] WHERE ([WFP Position].[WFP Position].[ENG-002],[WFP Period].[WFP Period].[2026-01],[WFP Version].[WFP Version].[Budget],[WFP Entity].[WFP Entity].[UK Ltd],[WFP Cost Centre].[WFP Cost Centre].[CC-ENG-PLT],[WFP Currency].[WFP Currency].[GBP])",
+      "expected": 0,
+      "tolerance": 0.01,
+      "tags": [],
+      "kind": "control",
+      "severity": "block",
+      "author": "admin",
+      "changeSet": "8de716a5-a7a1-4bc4-813b-2a72cbbd55ab",
+      "created": "2026-10-06T21:46:10.173Z"
+    },
+    {
+      "id": "7e937d87",
+      "description": "BEHAV: ENG-005 open-req June base pay = 6600",
+      "why": "Pins the computed open-requisition base for the group",
+      "mdx": "SELECT {[WFP Pay Component].[WFP Pay Component].[Base]} ON 0 FROM [WFP Workforce Cost] WHERE ([WFP Position].[WFP Position].[ENG-005],[WFP Period].[WFP Period].[2026-06],[WFP Version].[WFP Version].[Budget],[WFP Entity].[WFP Entity].[US Inc],[WFP Cost Centre].[WFP Cost Centre].[CC-ENG-APP],[WFP Currency].[WFP Currency].[USD])",
+      "expected": 6600,
+      "tolerance": 0.01,
+      "tags": [],
+      "kind": "behaviour",
+      "severity": "block",
+      "author": "admin",
+      "changeSet": "8de716a5-a7a1-4bc4-813b-2a72cbbd55ab",
+      "created": "2026-10-06T21:46:10.180Z"
     }
   ],
   "TM1_CONSOL": {
