@@ -118,7 +118,14 @@ export default function ModelHealth({ server, onClose }) {
                 <>
                   <p className="text-[10px] text-muted-foreground/80">Behaviour = a specific number on DEV. Control = a rule that must hold on any data (DEV and PROD).</p>
                   <div className="flex items-center gap-2 flex-wrap">
-                    <p className="text-xs text-muted-foreground">{a.passed}/{a.total} passing{!a.ok && ` · ${a.failed} failing`}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {a.passed}/{a.total} passing
+                      {a.failed > 0 && (() => {
+                        const beh = a.failures.filter(f => (f.kind ?? 'behaviour') !== 'control').length
+                        const ctl = a.failures.filter(f => f.kind === 'control').length
+                        return <> · {beh > 0 && <span className="text-amber-600">{beh} changed</span>}{beh > 0 && ctl > 0 && ' · '}{ctl > 0 && <span className="text-red-600">{ctl} failed</span>}</>
+                      })()}
+                    </p>
                     {a.by_kind && (
                       <span className="text-[10px] text-muted-foreground">
                         · behaviour {a.by_kind.behaviour.passed}/{a.by_kind.behaviour.total} · control {a.by_kind.control.passed}/{a.by_kind.control.total}
@@ -136,12 +143,16 @@ export default function ModelHealth({ server, onClose }) {
                   {a.failures.filter(f => assertKind === 'all' || (f.kind ?? 'behaviour') === assertKind).length === 0 && empty}
                   {a.failures.filter(f => assertKind === 'all' || (f.kind ?? 'behaviour') === assertKind).map(f => {
                     const s = summarizeMdx(f.mdx)
+                    const isControl = (f.kind ?? 'behaviour') === 'control'
+                    const controlsOk = a.by_kind?.control ? a.by_kind.control.passed === a.by_kind.control.total : true
+                    const label = isControl ? 'failed' : 'changed'
+                    const tone = isControl ? 'text-red-600' : 'text-amber-600'
                     return (
-                      <div key={f.id} className="border border-red-600/30 rounded px-2 py-1.5">
+                      <div key={f.id} className={cn('border rounded px-2 py-1.5', isControl ? 'border-red-600/30' : 'border-amber-600/30')}>
                         <button className="w-full flex items-start gap-2 text-left" onClick={() => setExpanded(expanded === f.id ? null : f.id)}>
-                          <span className="text-red-600 mt-0.5 shrink-0">{expanded === f.id ? <ChevronDown size={12} /> : <ChevronRight size={12} />}</span>
+                          <span className={cn('mt-0.5 shrink-0', tone)}>{expanded === f.id ? <ChevronDown size={12} /> : <ChevronRight size={12} />}</span>
                           <span className="flex-1">
-                            <span className="block text-xs">{f.description}</span>
+                            <span className="block text-xs"><span className={cn('font-medium mr-1.5', tone)}>{label}</span>{f.description}</span>
                             {f.tags?.length > 0 && (
                               <span className="block text-[10px] text-muted-foreground mt-0.5">{f.tags.map(t => `# ${t}`).join('  ')}</span>
                             )}
@@ -157,6 +168,13 @@ export default function ModelHealth({ server, onClose }) {
                               {s.filters.length > 0 && <> — {s.filters.map(r => `${r.dim}: ${r.member}`).join(' · ')}</>}
                             </p>
                           )}
+                          <p className="text-[10px] text-muted-foreground/80">
+                            {isControl
+                              ? <><span className="text-red-600/80">What to do:</span> the model is broken — a rule no longer holds. Fix the logic; do not change the expected.</>
+                              : controlsOk
+                                ? <><span className="text-amber-600/80">What to do:</span> the model still holds together, so this is most likely the data moving. Confirm the new number is right, then update the expected (the test was out of date).</>
+                                : <><span className="text-amber-600/80">What to do:</span> control checks are failing too — look at the logic, not just the data.</>}
+                          </p>
                           <p className="text-[10px] text-muted-foreground/80"><span className="text-amber-600/80">Check:</span> {suggestHints(f.tags)}</p>
                           <div className="flex items-center gap-2 flex-wrap">
                             <button onClick={() => { setOpenHist(openHist === f.id ? null : f.id); loadHistory(f) }}

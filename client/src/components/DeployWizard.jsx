@@ -39,9 +39,9 @@ function TestList({ title, meaning, results }) {
       <p className="text-xs font-semibold">{title} <span className="font-normal text-muted-foreground">— {meaning}</span></p>
       {results.map(a => (
         <div key={a.id} className="flex items-baseline gap-2 text-[11px] px-2 py-1 rounded bg-background border border-border">
-          <span className={a.pass ? 'text-emerald-700' : 'text-red-600'}>{a.pass ? 'passed' : 'failed'}</span>
+          <span className={a.pass ? 'text-emerald-700' : (a.kind === 'control' ? 'text-red-600' : 'text-amber-600')}>{a.pass ? 'passed' : (a.kind === 'control' ? 'failed' : 'changed')}</span>
           <span className="text-muted-foreground flex-1">{a.description}</span>
-          <span className="text-muted-foreground/70">{a.pass ? `expected ${a.expected} · actual ${a.actual}` : `expected ${a.expected}, got ${a.actual}`}</span>
+          <span className="text-muted-foreground/70">{a.pass ? `expected ${a.expected} · actual ${a.actual}` : `was ${a.expected}, now ${a.actual}`}</span>
         </div>
       ))}
     </div>

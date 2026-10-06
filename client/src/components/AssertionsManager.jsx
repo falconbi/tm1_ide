@@ -163,8 +163,9 @@ export default function AssertionsManager({ server, onClose }) {
           {rows.map(a => {
             const res = results[a.id]
             const editing = editId === a.id
-            return (
-              <div key={a.id} className={cn('border rounded-md px-3 py-2', res && (res.pass ? 'border-emerald-600/30' : 'border-red-600/30'), !res && 'border-border')}>
+              const isControl = (a.kind ?? 'behaviour') === 'control'
+              return (
+              <div key={a.id} className={cn('border rounded-md px-3 py-2', res && (res.pass ? 'border-emerald-600/30' : isControl ? 'border-red-600/30' : 'border-amber-600/30'), !res && 'border-border')}>
                 <div className="flex items-start gap-2">
                   <span className="flex-1">
                     <span className="block text-xs">{a.description}</span>
@@ -175,8 +176,11 @@ export default function AssertionsManager({ server, onClose }) {
                       {a.tags?.length > 0 && ` · ${a.tags.map(t => `# ${t}`).join('  ')}`}
                     </span>
                     {res && (
-                      <span className={cn('block text-[10px] mt-0.5', res.pass ? 'text-emerald-600' : 'text-red-600')}>
-                        {res.error ? `error: ${res.error}` : res.pass ? `pass — actual ${res.actual}` : `fail — expected ${res.expected}, got ${res.actual}`}
+                      <span className={cn('block text-[10px] mt-0.5', res.pass ? 'text-emerald-600' : isControl ? 'text-red-600' : 'text-amber-600')}>
+                        {res.error ? `error: ${res.error}`
+                          : res.pass ? `pass — actual ${res.actual}`
+                          : isControl ? `failed — the model is broken (expected ${res.expected}, got ${res.actual})`
+                          : `changed — data moved, or a rule (was ${res.expected}, now ${res.actual})`}
                       </span>
                     )}
                   </span>
