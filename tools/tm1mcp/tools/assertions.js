@@ -6,7 +6,7 @@ const { z } = require('zod')
 // ASSERTIONS
 // ══════════════════════════════════════════════════════════════════════════════
 
-function register(server, { client, assertions, runAssertions, ok, SERVER }) {
+function register(server, { client, assertions, runAssertions, ok, SERVER, AGENT_USER }) {
     server.tool(
         'add_assertion',
         'Record an expected result for this model — an MDX query and the number it should return. ' +
@@ -27,8 +27,8 @@ function register(server, { client, assertions, runAssertions, ok, SERVER }) {
         },
         async ({ description, mdx, expected, tolerance, tags, kind, severity, why }) => {
             const cl = require('../../../core/change_log')
-            const sess = cl.getActiveSession(SERVER)
-            const rec = await assertions.add(SERVER, { description, mdx, expected, tolerance, tags, kind, severity, why, author: sess?.user ?? 'ai-agent', changeSet: sess?.id ?? null })
+            const sess = cl.getActiveSession(SERVER, AGENT_USER)
+            const rec = await assertions.add(SERVER, { description, mdx, expected, tolerance, tags, kind, severity, why, author: AGENT_USER, changeSet: sess?.id ?? null })
             let actual = null, error = null
             try {
                 const r = await client().executeMDX(mdx, 5000)

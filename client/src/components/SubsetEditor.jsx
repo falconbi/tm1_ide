@@ -521,6 +521,12 @@ export default function SubsetEditor({ tab }) {
         {tab.subsetName && <>
           <span className="text-muted-foreground/40">·</span>
           <span className="text-xs font-mono">{tab.subsetName}</span>
+          {members && (
+            <>
+              <span className="text-muted-foreground/40">·</span>
+              <span className="text-[10px] text-muted-foreground/80">{members.length} member{members.length !== 1 ? 's' : ''}</span>
+            </>
+          )}
         </>}
         <button onClick={() => {
           const { setRevealTarget } = useStore.getState()

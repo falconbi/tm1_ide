@@ -153,7 +153,7 @@ export default function DeployWizard({ server, onClose, onOpenTests }) {
       ? 'Put the target back to exactly what the repo says (this overwrites the drifted change)?'
       : 'Bring the target\u2019s change back into the build stream instead of overwriting it?'
     if (!window.confirm(label)) return
-    const d = await run(action, { target, source: server, branch }, `/api/git/drift/${action}`)
+    const d = await run(action, { target, source: server, branch, entries: action === 'revert' ? (drift?.entries ?? []) : undefined }, `/api/git/drift/${action}`)
     if (d) setDrift(prev => ({ ...prev, actionResult: d }))
   }
 
@@ -434,7 +434,9 @@ export default function DeployWizard({ server, onClose, onOpenTests }) {
                     {res.reconcile && (
                       <div className="space-y-1 text-[11px] text-muted-foreground pt-1">
                         {res.reconcileWarning && <p className="text-amber-600">{res.reconcileWarning}</p>}
-                        {res.reconcile.attributeValues && <p>Also applied: attribute values across {res.reconcile.attributeValues.dims?.length ?? 0} dimensions (TM1 Git does not carry these).</p>}
+                        {res.reconcile.attributeValues && (res.reconcile.attributeValues.dims?.length
+                          ? <p>Also applied: attribute values across {res.reconcile.attributeValues.dims?.length ?? 0} dimensions (TM1 Git does not carry these).</p>
+                          : <p>No attribute values to copy.</p>)}
                         {(res.reconcile.attributeValues?.wholesale?.length > 0) && <p className="text-amber-600">Copied wholesale: {res.reconcile.attributeValues.wholesale.join(', ')}.</p>}
                         {(res.reconcile.attributeValues?.errors?.length > 0) && <p className="text-amber-600">Attribute sync: {res.reconcile.attributeValues.errors.map(e => `${e.dim} — ${e.error}`).join('; ')}</p>}
                         {(res.reconcile.attributeValues?.flagged?.length > 0) && <p className="text-amber-600">Attribute sync skipped: {res.reconcile.attributeValues.flagged.map(e => `${e.dim} — ${e.error}`).join('; ')}</p>}
@@ -489,16 +491,16 @@ export default function DeployWizard({ server, onClose, onOpenTests }) {
             </div>
           )}
 
-          {/* Recovery */}
-          <div className="border border-border rounded-md">
-            <div className="px-3 py-2 border-b border-border bg-muted/20 text-xs font-semibold">If something goes wrong</div>
-            <div className="px-3 py-2 space-y-1.5 text-[11px] text-muted-foreground leading-relaxed">
-              <p>· <span className="text-foreground">No rollback.</span> A deploy cannot be automatically undone — if it breaks, you <span className="text-foreground">fix forward</span>: correct on {server}, commit, and deploy again. The repo keeps every version, so the target can always be rebuilt.</p>
-              <p>· <span className="text-foreground">Bad deploy?</span> Fix it forward: make the correction on {server}, commit it to the GitHub repo, and deploy again. The repo keeps every version, so the target can always be rebuilt.</p>
-              <p>· <span className="text-foreground">PROD changed since the last deploy (drift)?</span> Use Revert (put it back to what the repo says) or Promote (keep the change by bringing it back to {server}). Both are in Verify, step 8.</p>
-              <p>· <span className="text-foreground">Lost a server?</span> The repo has everything — a fresh server can pull the whole model back from it.</p>
+          {/* Recovery — only on Deploy and Verify */}
+          {(step === 7 || step === 8) && (
+            <div className="border border-border rounded-md">
+              <div className="px-3 py-2 border-b border-border bg-muted/20 text-xs font-semibold">If something goes wrong</div>
+              <div className="px-3 py-2 space-y-1.5 text-[11px] text-muted-foreground leading-relaxed">
+                <p>· <span className="text-foreground">No rollback.</span> A deploy cannot be automatically undone — if it breaks, <span className="text-foreground">fix forward</span>: correct on {server}, commit, and deploy again.</p>
+                <p>· <span className="text-foreground">PROD changed since the last deploy?</span> Use Revert (step 8) to put the drifted objects back, or Promote to bring them into {server}.</p>
+              </div>
             </div>
-          </div>
+          )}
         </div>
       </div>
     </div>

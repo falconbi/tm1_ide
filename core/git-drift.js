@@ -86,12 +86,34 @@ async function driftCheck(server, { token, gitUser = gitIdentity.user(), ideToke
     }
 }
 
-// Revert drift on the target — redeploy the repo state (PROD pulls dev, overwriting the drifted object).
-// Goes through the normal approval gate: a genuine revert (dev == the approved last deploy) passes it;
-// if DEV has moved on, the gate refuses so unapproved changes never ship to PROD.
-async function revert(server, { branch = 'dev', token, gitUser, ideToken, source } = {}) {
-    const { execute } = require('./git-deploy')
-    return execute(server, { branch, token, gitUser, ideToken, source, purpose: 'revert' })
+// Revert drift on the target — RESTORES the drifted objects from the source
+// (the approved state), per object, rather than re-pulling (a pull of the
+// already-deployed commit is a no-op for objects the plan considers unchanged,
+// so it cannot repair drift). Goes through the normal approval gate on the
+// incoming commit; unapproved dev-head is refused.
+async function revert(server, { branch = 'dev', token, gitUser = gitIdentity.user(), ideToken, source, entries = [] } = {}) {
+    const approvals = require('./git-approvals')
+    const c = makeClient(server, ideToken)
+    let plan
+    try {
+        plan = await c.post('GitPull', { Branch: branch, ExecutionMode: 'SingleCommit', Force: false, Username: gitUser, Password: token })
+    } catch (e) {
+        return { ok: false, refused: true, error: `Pull plan failed: ${sanitize(e.response?.data?.error?.message ?? e.message, token)}` }
+    }
+    const commit = plan.Commit?.ID ?? null
+    const approval = commit ? approvals.find(server, commit) : null
+    if (!approval) {
+        return { ok: false, refused: true, error: `Refused: DEV has moved on since the last deploy — reverting would ship unapproved changes (${commit}). Approve the new commit first, or redeploy the approved one.` }
+    }
+    if (!source) return { ok: false, error: 'revert needs a source server to copy the approved state from' }
+    if (!entries?.length) return { ok: true, note: 'no drifted objects to restore', commit, approvedBy: approval.approver }
+    const { restoreObjects } = require('./git-restore')
+    const res = await restoreObjects(source, server, entries, { ideToken })
+    res.ok = !res.errors.length
+    res.commit = commit
+    res.approvedBy = approval.approver
+    res.note = `Restored ${res.restored.length} object(s) from ${source}${res.unsupported.length ? ` · ${res.unsupported.length} unsupported (apply manually): ${res.unsupported.map(u => u.file).join(', ')}` : ''}${res.errors.length ? ` · ${res.errors.length} failed by ${res.errors[0].error}` : ''}.`
+    return res
 }
 
 // Promote PROD's live state into dev: merge prod-live → dev, then the source server pulls it.

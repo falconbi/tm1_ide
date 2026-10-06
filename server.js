@@ -1484,7 +1484,7 @@ app.post('/api/dimension/element', async (req, res) => {
         if (!gateWrite(res, server)) return
         const client = makeClient(server, req.ideToken)
         await client.addElement(dimension, req.body.name, req.body.type, hierarchy)
-        cl.writeLog({ server, action: 'ELEMENT_ADDED', objectType: 'dimension', objectName: req.body.name, detail: dimension, user: req.user })
+        cl.writeLog({ server, action: 'ELEMENT_ADDED', objectType: 'dimension', objectName: dimension, detail: req.body.name, user: req.user })
         res.json({ ok: true })
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
@@ -1495,7 +1495,7 @@ app.delete('/api/dimension/element', async (req, res) => {
         if (!gateWrite(res, server)) return
         const client = makeClient(server, req.ideToken)
         await client.deleteElement(dimension, name, hierarchy)
-        cl.writeLog({ server, action: 'ELEMENT_DELETED', objectType: 'dimension', objectName: name, detail: dimension, user: req.user })
+        cl.writeLog({ server, action: 'ELEMENT_DELETED', objectType: 'dimension', objectName: dimension, detail: name, user: req.user })
         res.json({ ok: true })
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
@@ -1506,7 +1506,7 @@ app.patch('/api/dimension/element', async (req, res) => {
         if (!gateWrite(res, server)) return
         const client = makeClient(server, req.ideToken)
         await client.renameElement(dimension, name, req.body.newName, hierarchy)
-        cl.writeLog({ server, action: 'ELEMENT_RENAMED', objectType: 'dimension', objectName: req.body.newName, detail: `${dimension} · was: ${name}`, user: req.user })
+        cl.writeLog({ server, action: 'ELEMENT_RENAMED', objectType: 'dimension', objectName: dimension, detail: `${name} → ${req.body.newName}`, user: req.user })
         res.json({ ok: true })
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
@@ -1535,7 +1535,7 @@ app.delete('/api/dimension/edge', async (req, res) => {
         if (!gateWrite(res, server)) return
         const client = makeClient(server, req.ideToken)
         await client.deleteEdge(dimension, parent, child, hierarchy)
-        cl.writeLog({ server, action: 'EDGE_REMOVED', objectType: 'dimension', objectName: child, detail: `${dimension} · removed from ${parent}`, user: req.user })
+        cl.writeLog({ server, action: 'EDGE_REMOVED', objectType: 'dimension', objectName: dimension, detail: `${parent} · removed ${child}`, user: req.user })
         res.json({ ok: true })
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
@@ -3135,9 +3135,9 @@ app.post('/api/git/drift/revert', async (req, res) => {
     try {
         if (!gateReadOnly(res, req.body?.target)) return
         const { revert } = require('./core/git-drift')
-        const { target, branch, source } = req.body
+        const { target, branch, source, entries } = req.body
         if (!target) return res.status(400).json({ error: 'target required' })
-        res.json(await revert(target, { branch, token: process.env.TM1_GIT_TOKEN, ideToken: req.ideToken, source }))
+        res.json(await revert(target, { branch, token: process.env.TM1_GIT_TOKEN, ideToken: req.ideToken, source, entries }))
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 app.post('/api/git/drift/promote', async (req, res) => {
