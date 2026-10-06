@@ -53,7 +53,9 @@ async function prepare(source, target, { branch = 'dev', token, gitUser = gitIde
 // Apply the approved state to the target and verify with control checks.
 // The pull plan is re-created atomically (it expires in seconds).
 // The approval gate is non-optional: it cannot be switched off by any caller.
-async function execute(target, { branch = 'dev', token, gitUser = gitIdentity.user(), ideToken, source, purpose = 'deploy', session = null } = {}) {
+// The reconcile scope comes from the APPROVAL's recorded change set — never from
+// the client — so a missing or wrong session cannot silently skip or misapply it.
+async function execute(target, { branch = 'dev', token, gitUser = gitIdentity.user(), ideToken, source, purpose = 'deploy' } = {}) {
     const c = makeClient(target, ideToken)
     const out = { target, branch }
 
@@ -69,19 +71,19 @@ async function execute(target, { branch = 'dev', token, gitUser = gitIdentity.us
     // Governance gate: the exact commit must be approved for this target.
     // Enforced here, server-side, so it cannot be bypassed by the client.
     out.targetCommit = plan.Commit?.ID ?? null
-    {
-        const approval = out.targetCommit ? approvals.find(target, out.targetCommit) : null
-        if (!approval) {
-            out.executed = false
-            out.refused = true
-            out.error = purpose === 'revert'
-                ? `Refused: DEV has moved on since the last deploy — reverting would ship unapproved changes (${out.targetCommit}). Approve the new commit first, or redeploy the approved one.`
-                : `Refused: commit ${out.targetCommit ?? '(none)'} is not approved for ${target}. Record an approval first (the Approve step), then deploy.`
-            return out
-        }
-        out.approvedBy  = approval.approver
-        out.approvedAt  = approval.approved_at
+    let approval = null
+    approval = out.targetCommit ? approvals.find(target, out.targetCommit) : null
+    if (!approval) {
+        out.executed = false
+        out.refused = true
+        out.error = purpose === 'revert'
+            ? `Refused: DEV has moved on since the last deploy — reverting would ship unapproved changes (${out.targetCommit}). Approve the new commit first, or redeploy the approved one.`
+            : `Refused: commit ${out.targetCommit ?? '(none)'} is not approved for ${target}. Record an approval first (the Approve step), then deploy.`
+        return out
     }
+    out.approvedBy  = approval.approver
+    out.approvedAt  = approval.approved_at
+    out.approvalSession = approval.session ?? null
 
     try {
         await c.post(`GitPlans('${encodeURIComponent(plan.ID)}')/tm1.Execute`, {})
@@ -101,16 +103,19 @@ async function execute(target, { branch = 'dev', token, gitUser = gitIdentity.us
     // Reconcile the gaps TM1 Git won't cover FIRST — deletes + attribute values
     // (#6) — so the control checks below run against the fully-applied state.
     // Matches the loop: TEST pulls → apply values+deletes → assertions run.
-    // Scoped strictly to the change set's manifest (never inferred from source).
+    // Scoped strictly to the change set linked to this approval (never from the
+    // request body; a missing session is reported, never silently skipped).
     if (source) {
-        let manifest = { deletes: [], dims: [] }
-        if (session) {
-            try { manifest = require('./change_log').getSessionManifest(session) || manifest } catch { /* no manifest */ }
+        let manifest = { deletes: [], dims: [], attrElements: [], wholesaleDims: [] }
+        if (approval.session) {
+            try { manifest = require('./change_log').getSessionManifest(approval.session) || manifest } catch { /* no manifest */ }
+        } else {
+            out.reconcileWarning = 'This approval has no linked change set — reconcile scope is unknown and was skipped (not silently).'
         }
         out.manifest = manifest
         try {
             const { reconcile } = require('./git-reconcile')
-            out.reconcile = await reconcile(source, target, { ideToken, deletes: manifest.deletes, dims: manifest.dims })
+            out.reconcile = await reconcile(source, target, { ideToken, deletes: manifest.deletes, dims: manifest.dims, attrElements: manifest.attrElements })
         } catch (e) {
             out.reconcile = { error: e.message }
         }

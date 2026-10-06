@@ -47,7 +47,6 @@ function gateWrite(res, server) {
 const { diff: deployDiff, driftCheck: deployDriftCheck } = require('./tools/tm1deploy/src/diff')
 const { pack: deployPack }      = require('./tools/tm1deploy/src/packager')
 const { analyzeRisk }           = require('./tools/tm1deploy/src/risk')
-const { deploy: deployExecute } = require('./tools/tm1deploy/src/deployer')
 const { seed: deploySeed, scopedSnapshot: deployScopedSnapshot } = require('./tools/tm1deploy/src/snapshot')
 const { loadBaseline: deployLoadBaseline, listBaselines: deployListBaselines, setBaselineHead: deploySetBaselineHead } = require('./tools/tm1deploy/src/diff')
 
@@ -3052,10 +3051,10 @@ app.post('/api/deploy/git/execute', async (req, res) => {
     try {
         if (!gateReadOnly(res, req.body?.target)) return
         const { execute } = require('./core/git-deploy')
-        const { target, branch, source, session } = req.body
+        const { target, branch, source } = req.body
         if (!target) return res.status(400).json({ error: 'target required' })
-        const result = await execute(target, { branch, token: process.env.TM1_GIT_TOKEN, ideToken: req.ideToken, source, session })
-        if (session && result?.executed && result?.controlOk) try { cl.markSessionDeployed(session, target) } catch { /* link is best-effort */ }
+        const result = await execute(target, { branch, token: process.env.TM1_GIT_TOKEN, ideToken: req.ideToken, source })
+        if (result?.approvalSession && result?.executed && result?.controlOk) try { cl.markSessionDeployed(result.approvalSession, target) } catch { /* link is best-effort */ }
         res.json(result)
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
@@ -3352,44 +3351,12 @@ app.post('/api/deploy/risk', async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
-app.post('/api/deploy/execute', async (req, res) => {
-    try {
-        const { packageDir, target, dryRun, force } = req.body
-        if (!gateReadOnly(res, target)) return
-        // Legacy package path: cannot bind to a specific commit, so it requires any
-        // recorded approval for the target — not a silent bypass of the git gate.
-        const approvals = require('./core/git-approvals')
-        if (!approvals.has(target)) {
-            return res.status(403).json({ error: `Refused: no approval on record for ${target}. Deploy through the step-by-step wizard (it records an approval against the commit).` })
-        }
-        const result = await deployExecute(packageDir, target, { dryRun, force, skipRiskCheck: true }, req.ideToken)
-        res.json(result)
-    } catch (e) { res.status(500).json({ error: e.message }) }
-})
-
-// Re-run a source server's stored assertions against any target, on demand.
-// Same check the deploy pipeline runs post-deploy (B3) — but standalone, so you
-// can re-verify after a post-deploy fix (seed processes, feeder reprocess, …)
-// without re-deploying.
 app.post('/api/deploy/verify', async (req, res) => {
     try {
         const { source, target, tags } = req.body
         if (!source) return res.status(400).json({ error: 'source (server whose assertions to run) required' })
         const result = await require('./core/assertions').run(source, { targetServer: target || source, tags, ideToken: req.ideToken })
         res.json(result)
-    } catch (e) { res.status(500).json({ error: e.message }) }
-})
-
-app.post('/api/deploy/approve', (req, res) => {
-    try {
-        const { source, target, approver, notes, packaged, session, packageDir } = req.body
-        const id = new Date().toISOString()
-        const record = { id, approved_at: id, approver, notes: notes ?? '', source, target, packaged, session, packageDir }
-        const file = path.join(__dirname, 'config', 'deploy-approvals.json')
-        const existing = fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, 'utf8')) : []
-        existing.push(record)
-        fs.writeFileSync(file, JSON.stringify(existing, null, 2))
-        res.json(record)
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 

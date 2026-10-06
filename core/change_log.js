@@ -107,8 +107,9 @@ function getSession(id) {
     return db.prepare(`SELECT * FROM sessions WHERE id = ?`).get(id) ?? null
 }
 
-// The deploy manifest for a change set: what it deleted and which dimensions'
-// attribute values it touched. This is what scopes the reconcile — deletes and
+// The deploy manifest for a change set: what it deleted, which dimensions'
+// attribute values it touched, and — when the log records them — the specific
+// element/attribute pairs. This is what scopes the reconcile — deletes and
 // value syncs are NEVER inferred from the whole source, only from what the
 // change set actually did.
 function getSessionManifest(sessionId) {
@@ -118,20 +119,30 @@ function getSessionManifest(sessionId) {
         if (/_CREATED$/.test(e.action ?? '')) created.add(`${e.object_type}:${e.object_name}`)
     }
     const deletes = []
+    const attrElements = []
+    const dimSet = new Set()
     for (const e of entries) {
         // Objects deleted here that were NOT created inside the session pre-existed
-        // it — deleting them on the target is this change set's doing. Something
-        // created then deleted within the session never existed before, so it is not
-        // a change-set delete (the pull already reflects its absence).
+        // it — deleting them on the target is this change set's doing.
         if (/^(PROCESS|DIMENSION|CUBE)_DELETED$/.test(e.action ?? '') && !created.has(`${e.object_type}:${e.object_name}`)) {
             deletes.push({ type: e.object_type, name: e.object_name })
         }
+        // Attribute writes: the dimension is object_name; the element+attribute may
+        // be in detail (e.g. "Budget.Description"). Record the pair when we can.
+        if ((e.action ?? '').startsWith('ATTRIBUTE') || e.object_type === 'elementAttribute') {
+            const dim = e.object_name
+            if (dim) {
+                dimSet.add(dim)
+                const m = typeof e.detail === 'string' ? e.detail.split('.') : []
+                if (m.length >= 2) attrElements.push({ dim, element: m[0], attribute: m[m.length - 1] })
+            }
+        }
     }
-    const dims = [...new Set(entries
-        .filter(e => (e.action ?? '').startsWith('ATTRIBUTE') || e.object_type === 'elementAttribute')
-        .map(e => e.object_name)
-        .filter(Boolean))]
-    return { deletes, dims }
+    const dims = [...dimSet]
+    // Dimensions we only know by name (no element/attribute recorded) will be
+    // copied wholesale — surfaced in Review so it is never silent.
+    const wholesaleDims = dims.filter(d => !attrElements.some(p => p.dim === d))
+    return { deletes, dims, attrElements, wholesaleDims }
 }
 
 function getSessions(server, limit = 50) {

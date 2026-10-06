@@ -17,11 +17,6 @@ function read() {
 function find(target, commit) {
     return [...read()].reverse().find(a => a.target === target && a.commit === commit) ?? null
 }
-// Any approval on record for a target (used to gate legacy deploy paths that
-// cannot bind to a specific commit).
-function has(target) {
-    return read().some(a => a.target === target)
-}
 function append(rec) {
     const arr = read()
     arr.push(rec)
@@ -29,4 +24,4 @@ function append(rec) {
     return rec
 }
 
-module.exports = { read, find, has, append, FILE }
+module.exports = { read, find, append, FILE }

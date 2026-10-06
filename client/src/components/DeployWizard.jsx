@@ -352,6 +352,9 @@ export default function DeployWizard({ server, onClose, onOpenTests }) {
                         {diffs?.manifest?.deletes?.length > 0 && (
                           <p className="text-[11px] text-amber-600">Also deletes: {diffs.manifest.deletes.map(d => `${d.type} ${d.name}`).join(', ')} (TM1 Git cannot propagate deletes — the deploy removes these from the target).</p>
                         )}
+                        {diffs?.manifest?.wholesaleDims?.length > 0 && (
+                          <p className="text-[11px] text-amber-600">Will copy attribute values wholesale for: {diffs.manifest.wholesaleDims.join(', ')} — the change set recorded only the dimension, not specific values.</p>
+                        )}
                         {diffs?.outOfChangeSet?.length > 0 && (
                           <p className="text-[11px] text-amber-600">Outside this change set: {diffs.outOfChangeSet.join(', ')} — from the repo, not this change set. Check these before deploying.</p>
                         )}
@@ -430,7 +433,9 @@ export default function DeployWizard({ server, onClose, onOpenTests }) {
                     )}
                     {res.reconcile && (
                       <div className="space-y-1 text-[11px] text-muted-foreground pt-1">
+                        {res.reconcileWarning && <p className="text-amber-600">{res.reconcileWarning}</p>}
                         {res.reconcile.attributeValues && <p>Also applied: attribute values across {res.reconcile.attributeValues.dims?.length ?? 0} dimensions (TM1 Git does not carry these).</p>}
+                        {(res.reconcile.attributeValues?.wholesale?.length > 0) && <p className="text-amber-600">Copied wholesale: {res.reconcile.attributeValues.wholesale.join(', ')}.</p>}
                         {(res.reconcile.attributeValues?.errors?.length > 0) && <p className="text-amber-600">Attribute sync: {res.reconcile.attributeValues.errors.map(e => `${e.dim} — ${e.error}`).join('; ')}</p>}
                         {(res.reconcile.attributeValues?.flagged?.length > 0) && <p className="text-amber-600">Attribute sync skipped: {res.reconcile.attributeValues.flagged.map(e => `${e.dim} — ${e.error}`).join('; ')}</p>}
                         {res.reconcile.deletes?.deleted?.length > 0 && <p>Deleted on {target}: {res.reconcile.deletes.deleted.map(d => `${d.type} ${d.name}`).join(', ')} (TM1 Git does not propagate deletes).</p>}

@@ -37,28 +37,56 @@ async function reconcileDeletes(source, target, { ideToken, deletes = [] } = {})
     return out
 }
 
-// Copy attribute values ONLY for the given dimensions (the change set's touched
-// dims; default: nothing). Respects numeric vs string attribute types.
-async function syncAttributeValues(source, target, { ideToken, dims = [] } = {}) {
+// Copy attribute values ONLY for the dimensions the change set touched, and
+// where the log records the specific element/attribute, ONLY those pairs.
+// A dimension the log only knows by name is copied wholesale and reported in
+// `wholesale` (never silent). Respects numeric vs string attribute types.
+async function syncAttributeValues(source, target, { ideToken, dims = [], attrElements = [] } = {}) {
     const sc = makeClient(source, ideToken)
     const tc = makeClient(target, ideToken)
-    const out = { dims: [], errors: [], flagged: [] }
+    const out = { dims: [], wholesale: [], errors: [], flagged: [] }
     if (!dims?.length) return out
+
+    const typeMap = async (dim) => {
+        try {
+            const a = await sc.getElementAttributes(dim)
+            const m = {}
+            for (const x of a) m[x.Name] = x.Type === 'Numeric' ? 'N' : 'S'
+            return m
+        } catch { return {} }
+    }
+    const push = (dim, element, attribute, value, attrTypes) =>
+        ({ dimElemPairs: [
+            { dim: `}ElementAttributes_${dim}`, element: attribute },
+            { dim, element },
+        ], value: attrTypes[attribute] === 'N' ? Number(value) : String(value) })
 
     for (const dim of dims) {
         const attrDim = `}ElementAttributes_${dim}`
         try {
-            // attribute name → type (numeric | string)
-            let attrTypes = {}
-            try {
-                const a = await sc.getElementAttributes(dim)
-                for (const x of a) attrTypes[x.Name] = x.Type === 'Numeric' ? 'N' : 'S'
-            } catch { attrTypes = {} }
+            const attrTypes = await typeMap(dim)
+            const pairs = (attrElements ?? []).filter(p => p.dim === dim)
+            if (pairs.length) {
+                // Scoped: only the recorded element/attribute pairs.
+                const updates = []
+                for (const p of pairs) {
+                    if (attrTypes[p.attribute] === undefined) continue
+                    try {
+                        const attrs = await sc.getElementAttributeValues(dim, p.element)
+                        if (attrs[p.attribute] != null && typeof attrs[p.attribute] !== 'object') {
+                            updates.push(push(dim, p.element, p.attribute, attrs[p.attribute], attrTypes))
+                        }
+                    } catch { /* skip unreadable */ }
+                }
+                if (updates.length) { await tc.updateCells(attrDim, updates); out.dims.push(dim) }
+                continue
+            }
+            // Wholesale (the log only knew the dimension) — copied in full and reported.
+            out.wholesale.push(dim)
             const attrNames = Object.keys(attrTypes)
             if (!attrNames.length) { out.flagged.push({ dim, error: 'no attributes on source' }); continue }
             const els = ((await sc.get(`Dimensions('${esc(dim)}')/Hierarchies('${esc(dim)}')/Elements?$select=Name`)).value ?? []).map(e => e.Name)
             if (!els.length) { out.flagged.push({ dim, error: 'no elements on source' }); continue }
-
             const updates = []
             for (const el of els) {
                 try {
@@ -66,20 +94,11 @@ async function syncAttributeValues(source, target, { ideToken, dims = [] } = {})
                     for (const attrName of attrNames) {
                         const v = attrs[attrName]
                         if (v == null || typeof v === 'object') continue
-                        updates.push({
-                            dimElemPairs: [
-                                { dim: attrDim, element: attrName },
-                                { dim, element: el },
-                            ],
-                            value: attrTypes[attrName] === 'N' ? Number(v) : String(v),
-                        })
+                        updates.push(push(dim, el, attrName, v, attrTypes))
                     }
                 } catch { /* skip unreadable element */ }
             }
-            if (updates.length) {
-                await tc.updateCells(attrDim, updates)
-                out.dims.push(dim)
-            }
+            if (updates.length) { await tc.updateCells(attrDim, updates); out.dims.push(dim) }
         } catch (e) { out.errors.push({ dim, error: e.message }) }
     }
     return out
@@ -87,11 +106,11 @@ async function syncAttributeValues(source, target, { ideToken, dims = [] } = {})
 
 // Full reconcile after a git pull: deletes + attribute values, both scoped to
 // the change set's manifest.
-async function reconcile(source, target, { ideToken, deletes = [], dims = [] } = {}) {
+async function reconcile(source, target, { ideToken, deletes = [], dims = [], attrElements = [] } = {}) {
     const out = {}
     try { out.deletes = await reconcileDeletes(source, target, { ideToken, deletes }) }
     catch (e) { out.deletes = { error: e.message } }
-    try { out.attributeValues = await syncAttributeValues(source, target, { ideToken, dims }) }
+    try { out.attributeValues = await syncAttributeValues(source, target, { ideToken, dims, attrElements }) }
     catch (e) { out.attributeValues = { error: e.message } }
     return out
 }

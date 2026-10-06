@@ -840,6 +840,7 @@ export default function DeployPanel({ tab, onOpenDiff }) {
   const [selected, setSelected] = useState(new Set())
   const [target,   setTarget]   = useState('')
   const [notes,    setNotes]    = useState('')
+  const [retiredNote, setRetiredNote] = useState(null)
 
   const isRelease   = mode === 'release'
   const releaseName = `Release ${new Date().toISOString().slice(0, 10)}`
@@ -920,35 +921,11 @@ export default function DeployPanel({ tab, onOpenDiff }) {
   }
 
   async function handleDeploy() {
-    const dir      = packageDir
-    const manifest = packageData?.manifest
-    if (!dir) return
-    try {
-      // 1. Snapshot the target as it stands, before we touch it (best effort)
-      let preSnapshot = null
-      try { preSnapshot = await snapshotMut.mutateAsync({ packageDir: dir, target }) } catch { /* non-fatal */ }
-
-      // 2. Record the approval
-      const approval = await approveMut.mutateAsync({
-        source: originServer, target, approver: username || 'admin',
-        notes, packaged: packageName, session: (isImport || isRelease) ? null : session?.id, packageDir: dir,
-      })
-
-      // 3. Deploy
-      const deployResult = await deployMut.mutateAsync({ packageDir: dir, target })
-      setScreen(3)
-
-      // 4. Snapshot the target again + write the history archive (best effort)
-      let postSnapshot = null
-      try { postSnapshot = await snapshotMut.mutateAsync({ packageDir: dir, target }) } catch { /* non-fatal */ }
-      try {
-        await archiveMut.mutateAsync({
-          approval, deployResult, manifest,
-          source: originServer, target, deployer: username || 'admin',
-          preSnapshot, postSnapshot,
-        })
-      } catch { /* non-fatal — deploy already happened */ }
-    } catch { /* deployMut / approveMut error shown in banner */ }
+    // The classic package deploy is retired — the git step-by-step wizard is the
+    // deploy path, because it records an approval against the exact commit. No
+    // silent bypass: this path refuses with a clear message.
+    setRetiredNote('The classic package deploy is retired. Use Deploy (top bar) → step by step — it records an approval against the exact commit and runs the scoped reconcile.')
+    setScreen(3)
   }
 
   function handleReset() {
@@ -1062,6 +1039,11 @@ export default function DeployPanel({ tab, onOpenDiff }) {
         />
       )}
 
+      {retiredNote && (
+        <div className="text-xs text-amber-600 border border-amber-600/40 rounded px-3 py-2">
+          {retiredNote}
+        </div>
+      )}
       {anyError && (
         <div className="shrink-0 px-5 py-2 bg-red-500/10 border-t border-red-500/20 text-xs text-red-400">
           {anyError.message}
