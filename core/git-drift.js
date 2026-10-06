@@ -95,10 +95,11 @@ async function driftCheck(server, { token, gitUser = gitIdentity.user(), ideToke
 }
 
 // Revert drift on the target — redeploy the repo state (PROD pulls dev, overwriting the drifted object).
-// Recovery action: does not require a deploy approval.
+// Goes through the normal approval gate: a genuine revert (dev == the approved last deploy) passes it;
+// if DEV has moved on, the gate refuses so unapproved changes never ship to PROD.
 async function revert(server, { branch = 'dev', token, gitUser, ideToken, source } = {}) {
     const { execute } = require('./git-deploy')
-    return execute(server, { branch, token, gitUser, ideToken, source, requireApproval: false })
+    return execute(server, { branch, token, gitUser, ideToken, source, purpose: 'revert' })
 }
 
 // Promote PROD's live state into dev: merge prod-live → dev, then the source server pulls it.

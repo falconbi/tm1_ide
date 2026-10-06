@@ -48,7 +48,7 @@ async function prepare(source, target, { branch = 'dev', token, gitUser = gitIde
 
 // Apply the approved state to the target and verify with control checks.
 // The pull plan is re-created atomically (it expires in seconds).
-async function execute(target, { branch = 'dev', token, gitUser = gitIdentity.user(), ideToken, source, requireApproval = true } = {}) {
+async function execute(target, { branch = 'dev', token, gitUser = gitIdentity.user(), ideToken, source, requireApproval = true, purpose = 'deploy' } = {}) {
     const c = makeClient(target, ideToken)
     const out = { target, branch }
 
@@ -69,7 +69,9 @@ async function execute(target, { branch = 'dev', token, gitUser = gitIdentity.us
         if (!approval) {
             out.executed = false
             out.refused = true
-            out.error = `Refused: commit ${out.targetCommit ?? '(none)'} is not approved for ${target}. Record an approval first (the Approve step), then deploy.`
+            out.error = purpose === 'revert'
+                ? `Refused: DEV has moved on since the last deploy — reverting would ship unapproved changes (${out.targetCommit}). Approve the new commit first, or redeploy the approved one.`
+                : `Refused: commit ${out.targetCommit ?? '(none)'} is not approved for ${target}. Record an approval first (the Approve step), then deploy.`
             return out
         }
         out.approvedBy  = approval.approver
