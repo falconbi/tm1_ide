@@ -1,9 +1,12 @@
 import { useState, useRef, useEffect } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { X, ChevronRight, ChevronDown, Clock, Box, Layers, Cog, FileText, Table2, List, Tag, Loader2, Diff, Rocket, ScrollText, Pencil, RotateCcw, HelpCircle } from 'lucide-react'
 import HelpPanel from '@/components/HelpPanel'
 import { useWorkSessions, useWorkSessionLog, useUpdateSessionDescription, useResumeWorkSession } from '@/hooks/useApi'
 import { useStore } from '@/store'
 import { cn } from '@/lib/utils'
+
+const authHeader = () => ({ 'Content-Type': 'application/json', 'x-ide-token': localStorage.getItem('tm1-token') ?? '' })
 
 export function autoDescription(action, objectName, detail) {
   switch (action) {
@@ -124,6 +127,28 @@ function SessionRow({ session, server, openTab, onClose }) {
   const descRef = useRef(null)
   const updateDesc = useUpdateSessionDescription()
   const resume     = useResumeWorkSession()
+  const qc         = useQueryClient()
+  const [testResult, setTestResult] = useState(null)
+  const [closing, setClosing]       = useState(false)
+
+  const blockingFails = testResult?.results?.filter(x => !x.pass && (x.severity ?? 'block') === 'block') ?? []
+  const runTests = async () => {
+    setTestResult('running')
+    try {
+      const r = await fetch(`/api/assertions/run?server=${encodeURIComponent(server)}`, { method: 'POST', headers: authHeader(), body: '{}' }).then(r => r.json())
+      if (r.error) throw new Error(r.error)
+      setTestResult(r)
+    } catch (e) { setTestResult({ error: e.message }) }
+  }
+  const closeSet = async () => {
+    setClosing(true)
+    try {
+      const tests = (testResult && testResult !== 'running') ? { passed: testResult.passed, total: testResult.total, blocking: blockingFails.length } : null
+      await fetch('/api/sessions/close', { method: 'POST', headers: authHeader(), body: JSON.stringify({ id: session.id, tests }) }).then(r => r.json())
+      qc.invalidateQueries({ queryKey: ['work-sessions', server] })
+      qc.invalidateQueries({ queryKey: ['work-session-active', server] })
+    } finally { setClosing(false) }
+  }
 
   useEffect(() => {
     if (!editingDesc) setDescValue(session.description ?? '')
@@ -176,6 +201,13 @@ function SessionRow({ session, server, openTab, onClose }) {
                 ? <div className="text-[10px] text-muted-foreground/80 truncate mt-0.5 italic">{descValue}</div>
                 : <div className="text-[10px] text-muted-foreground/30 truncate mt-0.5 italic">Add a note…</div>
               )}
+              {isActive && testResult && testResult !== 'running' && (
+                <div className="text-[10px] mt-0.5 text-muted-foreground/80">
+                  {testResult.error
+                    ? `tests: ${testResult.error}`
+                    : `tests ${testResult.passed}/${testResult.total}${blockingFails.length ? ` — ${blockingFails.length} blocking` : ' — no blocking failures'}`}
+                </div>
+              )}
             </div>
           </button>
           {!isActive && (
@@ -186,6 +218,25 @@ function SessionRow({ session, server, openTab, onClose }) {
             >
               <RotateCcw size={10} />
             </button>
+          )}
+          {isActive && (
+            <div className="flex items-center gap-0.5 mr-1 shrink-0">
+              <button
+                onClick={e => { e.stopPropagation(); runTests() }}
+                title="Run the model's tests"
+                className="px-1.5 py-0.5 text-[10px] rounded hover:bg-muted text-muted-foreground hover:text-foreground"
+              >
+                {testResult === 'running' ? '…' : 'Test'}
+              </button>
+              <button
+                onClick={e => { e.stopPropagation(); closeSet() }}
+                disabled={closing || blockingFails.length > 0}
+                title={blockingFails.length ? `${blockingFails.length} blocking test(s) are failing` : 'Close this change set'}
+                className="px-1.5 py-0.5 text-[10px] rounded hover:bg-muted text-muted-foreground hover:text-foreground disabled:opacity-40"
+              >
+                Close
+              </button>
+            </div>
           )}
           <button
             onClick={e => { e.stopPropagation(); setEditingDesc(v => !v) }}
