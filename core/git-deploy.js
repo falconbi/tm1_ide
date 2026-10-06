@@ -55,88 +55,131 @@ async function prepare(source, target, { branch = 'dev', token, gitUser = gitIde
 // The approval gate is non-optional: it cannot be switched off by any caller.
 // The reconcile scope comes from the APPROVAL's recorded change set — never from
 // the client — so a missing or wrong session cannot silently skip or misapply it.
-async function execute(target, { branch = 'dev', token, gitUser = gitIdentity.user(), ideToken, source, purpose = 'deploy' } = {}) {
+async function execute(target, { branch = 'dev', token, gitUser = gitIdentity.user(), ideToken, source, purpose = 'deploy', by } = {}) {
     const c = makeClient(target, ideToken)
     const out = { target, branch }
+    const lockMod = require('./git-lock')
 
-    let plan
-    try {
-        plan = await c.post('GitPull', { Branch: branch, ExecutionMode: 'SingleCommit', Force: false, Username: gitUser, Password: token })
-    } catch (e) {
-        out.executed = false
-        out.error = `Pull plan failed: ${e.response?.data?.error?.message ?? e.message}`
-        return out
+    // The incoming commit is the branch head. Determine it from the SOURCE's own
+    // Git state (the target's pull plan would expire while we do the governance
+    // round-trips below) — then verify the plan matches before executing.
+    let incomingCommit = null
+    if (source) {
+        try {
+            const sc = makeClient(source, ideToken)
+            const sst = await sc.post('GitStatus', { Username: gitUser, Password: token })
+            incomingCommit = sst?.LocalCommit?.ID ?? sst?.DeployedCommit?.ID ?? null
+        } catch (e) {
+            out.executed = false
+            out.error = `Could not determine the incoming commit from ${source}: ${e.message}`
+            return out
+        }
     }
 
-    // Governance gate: the exact commit must be approved for this target.
+    // Governance gate: the exact incoming commit must be approved for this target.
     // Enforced here, server-side, so it cannot be bypassed by the client.
-    out.targetCommit = plan.Commit?.ID ?? null
+    out.targetCommit = incomingCommit
     let approval = null
-    approval = out.targetCommit ? approvals.find(target, out.targetCommit) : null
+    approval = incomingCommit ? await approvals.find(target, incomingCommit, { ideToken }) : null
     if (!approval) {
         out.executed = false
         out.refused = true
         out.error = purpose === 'revert'
-            ? `Refused: DEV has moved on since the last deploy — reverting would ship unapproved changes (${out.targetCommit}). Approve the new commit first, or redeploy the approved one.`
-            : `Refused: commit ${out.targetCommit ?? '(none)'} is not approved for ${target}. Record an approval first (the Approve step), then deploy.`
+            ? `Refused: DEV has moved on since the last deploy — reverting would ship unapproved changes (${incomingCommit}). Approve the new commit first, or redeploy the approved one.`
+            : `Refused: commit ${incomingCommit ?? '(none)'} is not approved for ${target}. Record an approval first (the Approve step), then deploy.`
         return out
     }
     out.approvedBy  = approval.approver
     out.approvedAt  = approval.approved_at
     out.approvalSession = approval.session ?? null
 
+    // Deploy lock — one deploy at a time on this target, held in the target's own
+    // model. This is also the model-writability gate: if the target's model cannot
+    // be written, the deploy stops here with a clear message (never silent).
     try {
-        await c.post(`GitPlans('${encodeURIComponent(plan.ID)}')/tm1.Execute`, {})
-        out.executed = true
-        // Record what we actually deployed — TM1's DeployedCommit isn't reliable
-        // as "last received" (a prod-live push clobbers it).
-        try {
-            const { recordDeploy } = require('./git-state')
-            recordDeploy(target, out.targetCommit, plan.Commit?.Summary ?? null)
-        } catch { /* state is best-effort */ }
+        await lockMod.acquire(target, { by: by ?? approval.approver ?? 'unknown', ideToken })
+        out.locked = { by: by ?? approval.approver ?? 'unknown', at: new Date().toISOString() }
     } catch (e) {
         out.executed = false
-        out.error = `Pull failed: ${e.response?.data?.error?.message ?? e.message}`
+        out.refused = e.refused
+        out.error = e.message
         return out
     }
 
-    // Reconcile the gaps TM1 Git won't cover FIRST — deletes + attribute values
-    // (#6) — so the control checks below run against the fully-applied state.
-    // Matches the loop: TEST pulls → apply values+deletes → assertions run.
-    // Scoped strictly to the change set linked to this approval (never from the
-    // request body; a missing session is reported, never silently skipped).
-    if (source) {
-        let manifest = { deletes: [], dims: [], attrElements: [], wholesaleDims: [] }
-        if (approval.session) {
-            try { manifest = require('./change_log').getSessionManifest(approval.session) || manifest } catch { /* no manifest */ }
-        } else {
-            out.reconcileWarning = 'This approval has no linked change set — reconcile scope is unknown and was skipped (not silently).'
-        }
-        out.manifest = manifest
+    try {
+        let plan
         try {
-            const { reconcile } = require('./git-reconcile')
-            out.reconcile = await reconcile(source, target, { ideToken, deletes: manifest.deletes, dims: manifest.dims, attrElements: manifest.attrElements })
+            plan = await c.post('GitPull', { Branch: branch, ExecutionMode: 'SingleCommit', Force: false, Username: gitUser, Password: token })
         } catch (e) {
-            out.reconcile = { error: e.message }
+            out.executed = false
+            out.error = `Pull plan failed: ${e.response?.data?.error?.message ?? e.message}`
+            return out
         }
-    }
-
-    // Control checks on the target — invariant tests, valid on any data.
-    if (source) {
+        out.targetCommit = plan.Commit?.ID ?? null
+        if (incomingCommit && out.targetCommit && incomingCommit !== out.targetCommit) {
+            out.executed = false
+            out.error = `Refused: the incoming commit moved (approved ${incomingCommit}, branch head is now ${out.targetCommit}). Approve the new commit before deploying.`
+            return out
+        }
         try {
-            const v = await assertions.run(source, { targetServer: target, kind: 'control', ideToken })
-            out.verification = {
-                source, total: v.total, passed: v.passed, failed: v.failed.length,
-                failures: v.failed.map(f => ({ id: f.id, description: f.description, expected: f.expected, actual: f.actual, error: f.error ?? null })),
-                results: v.results.map(r => ({ id: r.id, description: r.description, expected: r.expected, actual: r.actual, pass: r.pass, error: r.error ?? null })),
+            await c.post(`GitPlans('${encodeURIComponent(plan.ID)}')/tm1.Execute`, {})
+            out.executed = true
+            // Record what we actually deployed — TM1's DeployedCommit isn't reliable
+            // as "last received" (a prod-live push clobbers it). Loud: if the model
+            // record cannot be written, that is reported, never best-effort.
+            try {
+                const { recordDeploy } = require('./git-state')
+                out.deployRecord = await recordDeploy(target, out.targetCommit, plan.Commit?.Summary ?? null, { ideToken })
+            } catch (e) {
+                out.executed = true
+                out.recorded = false
+                out.error = `Deploy applied, but the deploy record could not be written: ${e.message}. Investigate before the next deploy.`
             }
-            out.controlOk = v.failed.length === 0
         } catch (e) {
-            out.verification = { error: e.message }
-            out.controlOk = false
+            out.executed = false
+            out.error = `Pull failed: ${e.response?.data?.error?.message ?? e.message}`
+            return out
         }
+
+        // Reconcile the gaps TM1 Git won't cover FIRST — deletes + attribute values
+        // (#6) — so the control checks below run against the fully-applied state.
+        // Scoped strictly to the change set linked to this approval (never from the
+        // request body; a missing session is reported, never silently skipped).
+        if (source) {
+            let manifest = { deletes: [], dims: [], attrElements: [], wholesaleDims: [] }
+            if (approval.session) {
+                try { manifest = require('./change_log').getSessionManifest(approval.session) || manifest } catch { /* no manifest */ }
+            } else {
+                out.reconcileWarning = 'This approval has no linked change set — reconcile scope is unknown and was skipped (not silently).'
+            }
+            out.manifest = manifest
+            try {
+                const { reconcile } = require('./git-reconcile')
+                out.reconcile = await reconcile(source, target, { ideToken, deletes: manifest.deletes, dims: manifest.dims, attrElements: manifest.attrElements })
+            } catch (e) {
+                out.reconcile = { error: e.message }
+            }
+        }
+
+        // Control checks on the target — invariant tests, valid on any data.
+        if (source) {
+            try {
+                const v = await assertions.run(source, { targetServer: target, kind: 'control', ideToken })
+                out.verification = {
+                    source, total: v.total, passed: v.passed, failed: v.failed.length,
+                    failures: v.failed.map(f => ({ id: f.id, description: f.description, expected: f.expected, actual: f.actual, error: f.error ?? null })),
+                    results: v.results.map(r => ({ id: r.id, description: r.description, expected: r.expected, actual: r.actual, pass: r.pass, error: r.error ?? null })),
+                }
+                out.controlOk = v.failed.length === 0
+            } catch (e) {
+                out.verification = { error: e.message }
+                out.controlOk = false
+            }
+        }
+        return out
+    } finally {
+        try { await lockMod.release(target, { ideToken }) } catch { /* release is best-effort — see git-lock */ }
     }
-    return out
 }
 
 module.exports = { prepare, execute }

@@ -361,12 +361,15 @@ app.use('/api', (req, res, next) => {
 })
 
 // ── Change log / Sessions ─────────────────────────────────────────────────────
-app.post('/api/sessions/start', (req, res) => {
+app.post('/api/sessions/start', async (req, res) => {
     try {
         const { name, server } = req.body
         if (!name?.trim() || !server) return res.status(400).json({ error: 'name and server required' })
         const session = cl.startSession(name.trim(), server, req.user)
-        res.json(session)
+        let modelMirrorError = null
+        try { await require('./core/change-set-model').mirrorSession(server, session, { ideToken: req.ideToken }) }
+        catch (e) { modelMirrorError = e.message }
+        res.json({ ...session, modelMirrorError })
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
@@ -393,7 +396,11 @@ app.post('/api/sessions/close', async (req, res) => {
         } catch (e) {
             return res.status(500).json({ error: `Could not run tests to close: ${e.message}` })
         }
-        res.json(cl.closeSession(id, { user: req.user, tests }))
+        const closed = cl.closeSession(id, { user: req.user, tests })
+        let modelMirrorError = null
+        try { await require('./core/change-set-model').mirrorSession(closed.server, closed, { ideToken: req.ideToken }) }
+        catch (e) { modelMirrorError = e.message }
+        res.json({ ...closed, modelMirrorError })
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
@@ -413,10 +420,11 @@ app.get('/api/sessions/active', (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
-app.get('/api/sessions', (req, res) => {
+app.get('/api/sessions', async (req, res) => {
     try {
         const server   = req.query.server
-        const sessions = cl.getSessions(server)
+        const modelSessions = await require('./core/change-set-model').listSessions(server, { ideToken: req.ideToken })
+        const sessions = modelSessions ?? cl.getSessions(server)
         // A session counts as "deployed" once this server's own baseline has
         // advanced past its last entry -- deployer.js re-seeds BOTH the target's
         // and the source's baseline (stamped with the source's exact change-log
@@ -3056,8 +3064,12 @@ app.post('/api/deploy/git/execute', async (req, res) => {
         const { execute } = require('./core/git-deploy')
         const { target, branch, source } = req.body
         if (!target) return res.status(400).json({ error: 'target required' })
-        const result = await execute(target, { branch, token: process.env.TM1_GIT_TOKEN, ideToken: req.ideToken, source })
+        const result = await execute(target, { branch, token: process.env.TM1_GIT_TOKEN, ideToken: req.ideToken, source, by: req.user })
         if (result?.approvalSession && result?.executed && result?.controlOk) try { cl.markSessionDeployed(result.approvalSession, target) } catch { /* link is best-effort */ }
+        try {
+            const s = result?.approvalSession ? cl.getSession(result.approvalSession) : null
+            if (s) await require('./core/change-set-model').mirrorSession(s.server, s, { ideToken: req.ideToken })
+        } catch (e) { result.modelMirrorError = e.message }
         res.json(result)
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
@@ -3079,14 +3091,19 @@ app.post('/api/deploy/git/push', async (req, res) => {
         })
         await c.post(`GitPlans('${encodeURIComponent(plan.ID)}')/tm1.Execute`, {})
         if (session) try { cl.setSessionCommit(session, plan.NewCommit?.ID ?? null) } catch { /* link is best-effort */ }
-        res.json({ pushed: true, commit: plan.NewCommit?.ID ?? null, summary: plan.NewCommit?.Summary ?? null })
+        try {
+            const s = session ? cl.getSession(session) : null
+            if (s) await require('./core/change-set-model').mirrorSession(s.server, s, { ideToken: req.ideToken })
+        } catch (e) { await Promise.resolve(); }
+        const ok = { pushed: true, commit: plan.NewCommit?.ID ?? null, summary: plan.NewCommit?.Summary ?? null }
+        res.json(ok)
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
 // ── Approval — the recorded human decision that gates a deploy. ─────────────
 // Bound to a specific commit + target: a new commit invalidates the old approval.
 // Stored locally (gitignored) via core/git-approvals.
-app.post('/api/deploy/git/approve', (req, res) => {
+app.post('/api/deploy/git/approve', async (req, res) => {
     try {
         const { source, target, commit, note } = req.body
         if (!target || !commit) return res.status(400).json({ error: 'target and commit required' })
@@ -3101,18 +3118,18 @@ app.post('/api/deploy/git/approve', (req, res) => {
             return res.status(409).json({ error: `Refused: the change set for commit ${commit} has failing block-severity tests. Fix and re-close before approving.` })
         }
         const approvals = require('./core/git-approvals')
-        const rec = approvals.append({
+        const rec = await approvals.append({
             id: new Date().toISOString(), approved_at: new Date().toISOString(),
             approver: req.user ?? 'unknown', notes: note ?? '',
             source: source ?? null, target, commit, session: linkedSession.id, packageDir: null,
-        })
+        }, { ideToken: req.ideToken })
         res.json(rec)
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
-app.get('/api/deploy/git/approval', (req, res) => {
+app.get('/api/deploy/git/approval', async (req, res) => {
     try {
         const approvals = require('./core/git-approvals')
-        res.json(approvals.find(req.query.target, req.query.commit))
+        res.json(await approvals.find(req.query.target, req.query.commit, { ideToken: req.ideToken }))
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 // Review — the actual content diff the target will receive (read-only).
@@ -3149,6 +3166,15 @@ app.post('/api/git/drift/promote', async (req, res) => {
         const { target, source } = req.body
         if (!target) return res.status(400).json({ error: 'target required' })
         res.json(await promote(target, { token: process.env.TM1_GIT_TOKEN, ideToken: req.ideToken, source }))
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+// Deploy lock — is anything deploying to a target right now?
+app.get('/api/git/lock', async (req, res) => {
+    try {
+        const { current } = require('./core/git-lock')
+        const server = req.query?.server
+        if (!server) return res.status(400).json({ error: 'server required' })
+        res.json(await current(server, { ideToken: req.ideToken }))
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 

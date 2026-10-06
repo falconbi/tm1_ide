@@ -101,7 +101,7 @@ async function revert(server, { branch = 'dev', token, gitUser = gitIdentity.use
         return { ok: false, refused: true, error: `Pull plan failed: ${sanitize(e.response?.data?.error?.message ?? e.message, token)}` }
     }
     const commit = plan.Commit?.ID ?? null
-    const approval = commit ? approvals.find(server, commit) : null
+    const approval = commit ? await approvals.find(server, commit, { ideToken }) : null
     if (!approval) {
         return { ok: false, refused: true, error: `Refused: DEV has moved on since the last deploy — reverting would ship unapproved changes (${commit}). Approve the new commit first, or redeploy the approved one.` }
     }

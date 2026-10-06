@@ -6,6 +6,7 @@ config/servers.json
 
 # ── Local runtime state (per-install; not version controlled) ──
 config/deploy-approvals.json
+config/model-migration.json
 config/git-deploy-state.json
 
 # ── Node / npm ──
