@@ -147,16 +147,19 @@ async function list(server, opts = {}) {
   return { source: 'config', assertions: entry ?? [] }
 }
 
-async function add(server, { description, mdx, expected, tolerance, tags, kind, severity }, opts = {}) {
+async function add(server, { description, mdx, expected, tolerance, tags, kind, severity, why, author, changeSet }, opts = {}) {
   const rec = {
     id:          randomUUID().slice(0, 8),
     description: String(description ?? '').trim(),
+    why:         why ? String(why).trim() : null,
     mdx:         String(mdx).trim(),
     expected:    Number(expected),
     tolerance:   tolerance == null ? 0.01 : Number(tolerance),
     tags:        Array.isArray(tags) ? tags : [],
     kind:        kind === 'control' ? 'control' : 'behaviour',
     severity:    severity === 'warn' ? 'warn' : 'block',
+    author:      author ? String(author).trim() : null,
+    changeSet:   changeSet ?? null,
     created:     new Date().toISOString(),
   }
   const client = _clientFor(server, opts)
@@ -304,6 +307,7 @@ module.exports = { list, add, update, remove, run, runOne, load, save, migrate, 
 function _cleanPatch(patch = {}) {
     const out = {}
     if (patch.description !== undefined) out.description = String(patch.description).trim()
+    if (patch.why !== undefined)        out.why         = patch.why ? String(patch.why).trim() : null
     if (patch.mdx !== undefined)        out.mdx        = String(patch.mdx).trim()
     if (patch.expected !== undefined)   out.expected   = Number(patch.expected)
     if (patch.tolerance !== undefined)  out.tolerance  = Number(patch.tolerance)
@@ -313,6 +317,18 @@ function _cleanPatch(patch = {}) {
     return out
 }
 
+// Append an expected-value change to the record's history (who/when/from→to/why).
+function _noteExpectedChange(prev, rec, by) {
+    if (rec.expected === undefined || Number(prev.expected) === Number(rec.expected)) return null
+    return {
+        at: new Date().toISOString(),
+        by: by ?? null,
+        from: Number(prev.expected),
+        to: Number(rec.expected),
+        why: rec.why ?? prev.why ?? null,
+    }
+}
+
 async function update(server, id, patch = {}, opts = {}) {
     const rec = _cleanPatch(patch)
     const client = _clientFor(server, opts)
@@ -320,7 +336,9 @@ async function update(server, id, patch = {}, opts = {}) {
     if (model) {
         const idx = model.findIndex(a => a.id === id)
         if (idx === -1) return null
+        const hist = _noteExpectedChange(model[idx], rec, opts.by)
         model[idx] = { ...model[idx], ...rec }
+        if (hist) model[idx].history = [...(model[idx].history ?? []), hist]
         await _writeModel(client, model)
         return model[idx]
     }
@@ -329,7 +347,9 @@ async function update(server, id, patch = {}, opts = {}) {
     const arr = data[server] ?? []
     const idx = arr.findIndex(a => a.id === id)
     if (idx === -1) return null
+    const hist = _noteExpectedChange(arr[idx], rec, opts.by)
     arr[idx] = { ...arr[idx], ...rec }
+    if (hist) arr[idx].history = [...(arr[idx].history ?? []), hist]
     save(data)
     return arr[idx]
 }

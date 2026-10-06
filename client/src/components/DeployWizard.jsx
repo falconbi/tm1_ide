@@ -19,7 +19,7 @@ function parseOps(ops) {
 const STEP_TITLES = ['Build', 'Test', 'Close', 'Commit', 'Review', 'Approve', 'Deploy', 'Verify']
 const STEPS = {
   1: { explain: 'A change set is a labelled basket. While it is open, every change you make on this server is recorded in it, so the whole batch can be reviewed and shipped as one unit.' },
-  2: { explain: 'Run the model\u2019s tests. Behaviour tests check the numbers are right (DEV only). Control tests check the model holds together (DEV and PROD). Fix and re-run as needed.' },
+  2: { explain: 'Add the tests that cover what this change set changed, then run them. Behaviour checks the numbers are right (DEV only). Control checks the model holds together (DEV and PROD). A change is not done until it has the tests that prove it.' },
   3: { explain: 'Close the change set when you have finished building. Closing records the test result and is the gate \u2014 it starts the deploy journey. Blocking failures must be fixed first.' },
   4: { explain: 'This commits the current state of this server to the model\u2019s GitHub repo. Nothing on the target server changes yet \u2014 it is just filed, with a reference.' },
   5: { explain: 'Before we touch the target server, look at exactly what would change on it. Confirm it is only what you intended.' },
@@ -48,7 +48,7 @@ function TestList({ title, meaning, results }) {
   )
 }
 
-export default function DeployWizard({ server, onClose }) {
+export default function DeployWizard({ server, onClose, onOpenTests }) {
   const [step,      setStep]      = useState(1)
   const [branch]                  = useState('dev')   // fixed by the server's TM1 deployment
   const [message,   setMessage]   = useState(`Deploy from ${server}`)
@@ -67,6 +67,16 @@ export default function DeployWizard({ server, onClose }) {
   const [drift,     setDrift]     = useState(null)
   const [busy,      setBusy]      = useState('')
   const [error,     setError]     = useState(null)
+  const [addedTests, setAddedTests] = useState(0)
+
+  // How many assertions this change set has added (provenance link).
+  useEffect(() => {
+    if (!sessionId) { setAddedTests(0); return }
+    fetch(`/api/assertions?server=${encodeURIComponent(server)}`, { headers: authHeader() })
+      .then(r => r.json())
+      .then(d => setAddedTests((d.assertions ?? []).filter(a => a.changeSet === sessionId).length))
+      .catch(() => {})
+  }, [sessionId, server, tests])
 
   const loadActive = () => {
     fetch(`/api/sessions/active?server=${encodeURIComponent(server)}`, { headers: authHeader() })
@@ -212,6 +222,10 @@ export default function DeployWizard({ server, onClose }) {
                   <button onClick={runTests} disabled={busy === 'test'} className={primaryBtn}>{tests ? 'Run tests again' : 'Run tests'}</button>
                   {busy === 'test' && <span className="text-xs text-muted-foreground">Running…</span>}
                 </div>
+                <div className="flex items-center gap-2 pt-1 border-t border-border">
+                  <span className="text-xs text-muted-foreground">{addedTests} assertion{addedTests !== 1 ? 's' : ''} added in this change set</span>
+                  <button onClick={onOpenTests} className={textBtn}>Add tests for this change</button>
+                </div>
                 {tests && (
                   <div className="border border-border rounded-md p-3 space-y-3 bg-muted/20">
                     <p className="text-xs">
@@ -241,6 +255,9 @@ export default function DeployWizard({ server, onClose }) {
                   </div>
                 )}
                 {tests && blockFails.length === 0 && <p className="text-xs text-emerald-700">No blocking failures.</p>}
+                {active && addedTests === 0 && (
+                  <p className="text-xs text-amber-600">No assertions were added in this change set. If this change has logic worth testing, add coverage first (step 2, Test). You can still close.</p>
+                )}
                 <div className="flex items-center gap-2">
                   <button onClick={closeChangeSet} disabled={busy === 'close' || !active || !tests || blockFails.length > 0} className={primaryBtn}>Close change set</button>
                   {!active && <button onClick={() => setStep(4)} className={textBtn}>Continue</button>}

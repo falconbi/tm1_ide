@@ -405,7 +405,7 @@ const [showCatalog, setShowCatalog]           = useState(false)
         {showCatalog && <CatalogAdmin server={server} onClose={() => setShowCatalog(false)} />}
         {showModelHealth && <ModelHealth server={server} onClose={() => setShowModelHealth(false)} />}
         {showAssertions && <AssertionsManager server={server} onClose={() => setShowAssertions(false)} />}
-        {showGitDeploy && <DeployWizard server={server} onClose={() => setShowGitDeploy(false)} />}
+        {showGitDeploy && <DeployWizard server={server} onClose={() => setShowGitDeploy(false)} onOpenTests={() => { setShowAssertions(true); setShowGitDeploy(false) }} />}
         {showGitDrift && <GitDrift server={server} onClose={() => setShowGitDrift(false)} />}
         <PeriodBuilder open={showPeriodBuilder} onClose={() => setShowPeriodBuilder(false)} />
         <DeployCenter />

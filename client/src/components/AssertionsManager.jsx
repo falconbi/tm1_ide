@@ -6,7 +6,7 @@ import { cn } from '@/lib/utils'
 // assertions. List loads on open (cheap GET); runs are button-triggered.
 const authHeader = () => ({ 'x-ide-token': localStorage.getItem('tm1-token') ?? '' })
 
-const emptyForm = () => ({ description: '', mdx: '', expected: '', tolerance: '0.01', tags: '', kind: 'behaviour', severity: 'block' })
+const emptyForm = () => ({ description: '', why: '', mdx: '', expected: '', tolerance: '0.01', tags: '', kind: 'behaviour', severity: 'block' })
 
 export default function AssertionsManager({ server, onClose }) {
   const [list,    setList]    = useState(null)
@@ -17,6 +17,7 @@ export default function AssertionsManager({ server, onClose }) {
   const [running, setRunning] = useState(null)
   const [results, setResults] = useState({})
   const [error,   setError]   = useState(null)
+  const [activeSessionId, setActiveSessionId] = useState(null)
 
   const load = async () => {
     setError(null)
@@ -28,10 +29,14 @@ export default function AssertionsManager({ server, onClose }) {
     } catch (e) { setError(e.message) }
   }
   useEffect(() => { load() }, [server])
+  useEffect(() => {
+    fetch(`/api/sessions/active?server=${encodeURIComponent(server)}`, { headers: authHeader() })
+      .then(r => r.json()).then(d => setActiveSessionId(d?.id ?? null)).catch(() => {})
+  }, [server])
 
   const beginAdd = () => { setForm(emptyForm()); setEditId(null); setAdding(true) }
   const beginEdit = a => {
-    setForm({ description: a.description ?? '', mdx: a.mdx ?? '', expected: String(a.expected ?? ''), tolerance: String(a.tolerance ?? '0.01'), tags: (a.tags ?? []).join(', '), kind: a.kind ?? 'behaviour', severity: a.severity ?? 'block' })
+    setForm({ description: a.description ?? '', why: a.why ?? '', mdx: a.mdx ?? '', expected: String(a.expected ?? ''), tolerance: String(a.tolerance ?? '0.01'), tags: (a.tags ?? []).join(', '), kind: a.kind ?? 'behaviour', severity: a.severity ?? 'block' })
     setEditId(a.id); setAdding(false)
   }
   const cancelForm = () => { setForm(emptyForm()); setAdding(false); setEditId(null) }
@@ -40,11 +45,12 @@ export default function AssertionsManager({ server, onClose }) {
     setError(null)
     if (!form.description.trim() || !form.mdx.trim() || form.expected === '') { setError('Description, MDX and expected value are required.'); return }
     const body = {
-      description: form.description, mdx: form.mdx,
+      description: form.description, why: form.why, mdx: form.mdx,
       expected: Number(form.expected), tolerance: Number(form.tolerance || '0.01'),
       tags: form.tags.split(',').map(t => t.trim()).filter(Boolean),
       kind: form.kind === 'control' ? 'control' : 'behaviour',
       severity: form.severity === 'warn' ? 'warn' : 'block',
+      changeSet: editId ? undefined : activeSessionId,
     }
     try {
       const url = `/api/assertions${editId ? `/${encodeURIComponent(editId)}` : ''}?server=${encodeURIComponent(server)}`
@@ -119,7 +125,7 @@ export default function AssertionsManager({ server, onClose }) {
 
         <div className="flex-1 overflow-y-auto p-4 space-y-2">
           <p className="text-[11px] text-muted-foreground leading-relaxed border border-border rounded-md px-3 py-2 bg-muted/20">
-            Assertions check the model's numbers. <span className="text-foreground">Behaviour</span> checks a specific value (runs on DEV, where the data is known). <span className="text-foreground">Control</span> checks a rule that must hold on any data (runs on DEV and PROD). Severity <span className="text-foreground">block</span> stops the Close / fails the deploy check; <span className="text-foreground">warn</span> just flags it.
+            Assertions check the model's numbers. <span className="text-foreground">Behaviour</span> checks a specific value (runs on DEV, where the data is known). <span className="text-foreground">Control</span> checks a rule that must hold on any data (runs on DEV and PROD). Severity <span className="text-foreground">block</span> stops the Close / fails the deploy check; <span className="text-foreground">warn</span> just flags it. The AI writes these as it builds the model; a human overrides or deletes. Ground rules: <span className="font-mono">docs/ASSERTIONS.md</span>.
           </p>
           {error && <p className="text-xs text-red-600 border border-red-600/40 rounded px-3 py-2">{error}</p>}
           {!list && <p className="text-xs text-muted-foreground italic">Loading…</p>}
@@ -129,6 +135,7 @@ export default function AssertionsManager({ server, onClose }) {
             <div className="border border-primary/40 rounded-md p-3 space-y-2">
               <div className="text-xs font-semibold">{editId ? 'Edit assertion' : 'New assertion'}</div>
               <input value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} placeholder="What this checks, in words…" className={inputText} />
+              <input value={form.why} onChange={e => setForm(f => ({ ...f, why: e.target.value }))} placeholder="Why — the rule / intent this protects (optional)" className={inputText} />
               <textarea value={form.mdx} onChange={e => setForm(f => ({ ...f, mdx: e.target.value }))} placeholder="MDX SELECT…" rows={3} className={cn(input, 'resize-y')} />
               <div className="flex items-center gap-2">
                 <label className="text-[10px] text-muted-foreground w-20 shrink-0">Expected</label>
@@ -175,6 +182,16 @@ export default function AssertionsManager({ server, onClose }) {
                       {` · expected ${a.expected}${a.tolerance != null ? ` ± ${a.tolerance}` : ''}`}
                       {a.tags?.length > 0 && ` · ${a.tags.map(t => `# ${t}`).join('  ')}`}
                     </span>
+                    {a.why && <span className="block text-[10px] text-muted-foreground/80 mt-0.5 italic">{a.why}</span>}
+                    {(a.author || a.changeSet || a.history?.length > 0) && (
+                      <span className="block text-[10px] text-muted-foreground/60 mt-0.5">
+                        {[
+                          a.author && `by ${a.author}`,
+                          a.changeSet && `change set ${String(a.changeSet).slice(0, 8)}`,
+                          a.history?.length > 0 && `expected moved ${a.history.length}×`,
+                        ].filter(Boolean).join(' · ')}
+                      </span>
+                    )}
                     {res && (
                       <span className={cn('block text-[10px] mt-0.5', res.pass ? 'text-emerald-600' : isControl ? 'text-red-600' : 'text-amber-600')}>
                         {res.error ? `error: ${res.error}`
