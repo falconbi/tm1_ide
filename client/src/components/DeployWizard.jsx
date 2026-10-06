@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useActiveWorkSession, useCloseWorkSession } from '@/hooks/useApi'
+import { useActiveWorkSession, useCloseWorkSession, useWorkSessions } from '@/hooks/useApi'
 import { humanizeFile } from '@/lib/tm1-terms'
 
 // Deploy wizard — the deploy journey in one guided screen:
@@ -72,10 +72,15 @@ export default function DeployWizard({ server, onClose, onOpenTests }) {
   const [setAssertions, setSetAssertions] = useState([])
 
   const { data: activeSession, refetch: refetchActive } = useActiveWorkSession(server)
-  
-  const closeSession   = useCloseWorkSession()
+  const { data: sessions } = useWorkSessions(server)
+  const closeSession = useCloseWorkSession()
 
-  useEffect(() => { if (activeSession?.id) setSessionId(activeSession.id) }, [activeSession?.id])
+  // Deploy opens on the change set being shipped: the open one, or the most
+  // recent finished (closed) one — never "none" when there is a set in play.
+  const latestClosed = (sessions ?? []).filter(s => s.closed_at && !s.deployed).sort((a, b) => (a.closed_at < b.closed_at ? 1 : -1))[0] ?? null
+  const deployCtx = activeSession ?? latestClosed
+
+  useEffect(() => { if (deployCtx?.id) setSessionId(deployCtx.id) }, [deployCtx?.id])
 
   // How many assertions this change set has added, and which ones (provenance).
   useEffect(() => {
@@ -170,9 +175,9 @@ export default function DeployWizard({ server, onClose, onOpenTests }) {
         <div className="flex items-center gap-3 px-4 py-3 border-b border-border">
           <span className="text-sm font-semibold">Deploy step by step</span>
           <span className="text-xs text-muted-foreground">from {server}</span>
-          {activeSession
-            ? <span className="text-[10px] text-muted-foreground/80">· change set <span className="font-mono text-foreground/80">{activeSession.name}</span></span>
-            : <span className="text-[10px] text-amber-600/90">· no change set open — start one in the status bar (or on your first save)</span>}
+          {deployCtx
+            ? <span className="text-[10px] text-muted-foreground/80">· change set <span className="font-mono text-foreground/80">{deployCtx.name}</span>{deployCtx.closed_at && !activeSession ? <span className="text-muted-foreground/60"> (closed — ready to ship)</span> : ''}</span>
+            : <span className="text-[10px] text-amber-600/90">· no change set — start one in the status bar (or on your first save)</span>}
           <div className="flex-1" />
           <button onClick={onClose} className="text-xs text-muted-foreground hover:text-foreground">Close</button>
         </div>
@@ -245,7 +250,7 @@ export default function DeployWizard({ server, onClose, onOpenTests }) {
             <div className="space-y-3">
               <p className="text-xs text-muted-foreground leading-relaxed">{STEPS[2].explain}</p>
               <div className="border border-border rounded-md p-3 space-y-3">
-                {activeSession ? <p className="text-xs">Change set to close: <span className="font-semibold">{activeSession.name}</span></p> : <p className="text-xs text-muted-foreground">No change set is open — nothing to close. You can continue.</p>}
+                {activeSession ? <p className="text-xs">Change set to close: <span className="font-semibold">{activeSession.name}</span></p> : deployCtx ? <p className="text-xs">Change set <span className="font-semibold">{deployCtx.name}</span> is already closed — continue to Commit.</p> : <p className="text-xs text-muted-foreground">No change set — start one in the status bar first.</p>}
                 {!tests && <p className="text-xs text-amber-600">Run the tests first (step 1) so the close records a result.</p>}
                 {tests && blockFails.length > 0 && (
                   <div className="border border-red-600/40 rounded-md p-2 space-y-1">
