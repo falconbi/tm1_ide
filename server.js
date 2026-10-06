@@ -371,10 +371,29 @@ app.post('/api/sessions/start', (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
-app.post('/api/sessions/close', (req, res) => {
+app.post('/api/sessions/close', async (req, res) => {
     try {
-        const { id, tests } = req.body
+        const { id } = req.body
         if (!id) return res.status(400).json({ error: 'id required' })
+        const sess = cl.getSession(id)
+        if (!sess) return res.status(404).json({ error: `No change set ${id}` })
+        // Run the tests server-side — do not trust the client's results. Refuse to
+        // close while any block-severity assertion is failing.
+        let tests = null
+        try {
+            const { run } = require('./core/assertions')
+            const r = await run(sess.server, { ideToken: req.ideToken })
+            const blocking = r.results.filter(x => !x.pass && (x.severity ?? 'block') === 'block')
+            if (blocking.length) {
+                return res.status(409).json({
+                    error: `Cannot close: ${blocking.length} block-severity assertion${blocking.length !== 1 ? 's' : ''} failing. Fix them, or set severity to warn.`,
+                    blocking: blocking.map(b => ({ id: b.id, description: b.description, expected: b.expected, actual: b.actual, error: b.error ?? null })),
+                })
+            }
+            tests = { passed: r.passed, total: r.total, blocking: 0 }
+        } catch (e) {
+            return res.status(500).json({ error: `Could not run tests to close: ${e.message}` })
+        }
         res.json(cl.closeSession(id, { user: req.user, tests }))
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
@@ -3049,11 +3068,12 @@ app.post('/api/deploy/git/push', async (req, res) => {
         const { source, branch = 'dev', message, session } = req.body
         if (!source) return res.status(400).json({ error: 'source required' })
         const c = makeClient(source, req.ideToken)
-        const creds = { Username: 'falconbi', Password: process.env.TM1_GIT_TOKEN }
+        const gi = require('./core/git-identity')
+        const creds = { Username: gi.user(), Password: process.env.TM1_GIT_TOKEN }
         const plan = await c.post('GitPush', {
             Branch: branch, NewBranch: '', Force: false,
             Message: message || `Deploy from ${source}`,
-            Author: req.user ?? 'ide', Email: `${req.user ?? 'ide'}@lab.local`, ...creds,
+            Author: req.user ?? gi.user(), Email: gi.email(), ...creds,
         })
         await c.post(`GitPlans('${encodeURIComponent(plan.ID)}')/tm1.Execute`, {})
         if (session) try { cl.setSessionCommit(session, plan.NewCommit?.ID ?? null) } catch { /* link is best-effort */ }
@@ -3063,29 +3083,24 @@ app.post('/api/deploy/git/push', async (req, res) => {
 
 // ── Approval — the recorded human decision that gates a deploy. ─────────────
 // Bound to a specific commit + target: a new commit invalidates the old approval.
-const APPROVALS_FILE = path.join(__dirname, 'config', 'deploy-approvals.json')
-function readApprovals() { try { return JSON.parse(require('fs').readFileSync(APPROVALS_FILE, 'utf8')) } catch { return [] } }
+// Stored locally (gitignored) via core/git-approvals.
 app.post('/api/deploy/git/approve', (req, res) => {
     try {
         const { source, target, commit, note } = req.body
         if (!target || !commit) return res.status(400).json({ error: 'target and commit required' })
-        const arr = readApprovals()
-        const rec = {
+        const approvals = require('./core/git-approvals')
+        const rec = approvals.append({
             id: new Date().toISOString(), approved_at: new Date().toISOString(),
             approver: req.user ?? 'unknown', notes: note ?? '',
             source: source ?? null, target, commit, session: null, packageDir: null,
-        }
-        arr.push(rec)
-        require('fs').writeFileSync(APPROVALS_FILE, JSON.stringify(arr, null, 2))
+        })
         res.json(rec)
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 app.get('/api/deploy/git/approval', (req, res) => {
     try {
-        const { target, commit } = req.query
-        const arr = readApprovals()
-        const rec = [...arr].reverse().find(a => a.target === target && a.commit === commit) ?? null
-        res.json(rec)
+        const approvals = require('./core/git-approvals')
+        res.json(approvals.find(req.query.target, req.query.commit))
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 // Review — the actual content diff the target will receive (read-only).

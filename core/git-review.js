@@ -10,6 +10,7 @@ const fs = require('fs')
 const os = require('os')
 const path = require('path')
 const { makeClient } = require('./adapter_registry')
+const gitIdentity = require('./git-identity')
 const { lastDeployed } = require('./git-state')
 
 function git(cwd, ...args) {
@@ -19,7 +20,7 @@ function authUrl(url, user, token) {
     return url.replace(/^https:\/\//i, `https://${user}:${token}@`)
 }
 
-async function review(source, target, { branch = 'dev', token, gitUser = 'falconbi', ideToken } = {}) {
+async function review(source, target, { branch = 'dev', token, gitUser = gitIdentity.user(), ideToken } = {}) {
     const c = makeClient(target, ideToken)
     const st = await c.post('GitStatus', { Username: gitUser, Password: token })
     const repoUrl = st?.URL

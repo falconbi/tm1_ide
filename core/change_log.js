@@ -103,6 +103,10 @@ function getActiveSession(server, user = null) {
     return db.prepare(`SELECT * FROM sessions WHERE server = ? AND closed_at IS NULL ORDER BY started_at DESC LIMIT 1`).get(server) ?? null
 }
 
+function getSession(id) {
+    return db.prepare(`SELECT * FROM sessions WHERE id = ?`).get(id) ?? null
+}
+
 function getSessions(server, limit = 50) {
     return db.prepare(`
         SELECT s.*, COUNT(l.id) as entry_count, MAX(l.id) as max_entry_id
@@ -311,4 +315,4 @@ function pruneEntries(ids) {
 try { db.exec(`ALTER TABLE sessions ADD COLUMN description TEXT`) } catch {}
 try { db.exec(`ALTER TABLE log_entries ADD COLUMN user TEXT`) } catch {}
 
-module.exports = { startSession, closeSession, resumeSession, updateSessionDescription, setSessionCommit, markSessionDeployed, getActiveSession, getSessions, getAllSessions, getSessionLog, getCrossSessionTouches, getEntriesSince, getMaxEntryId, getEntriesSinceId, getSessionLogVerbose, getRecentLog, getObjectHistory, getEntryById, writeLog, findArchivableEntries, pruneEntries }
+module.exports = { startSession, getSession, closeSession, resumeSession, updateSessionDescription, setSessionCommit, markSessionDeployed, getActiveSession, getSessions, getAllSessions, getSessionLog, getCrossSessionTouches, getEntriesSince, getMaxEntryId, getEntriesSinceId, getSessionLogVerbose, getRecentLog, getObjectHistory, getEntryById, writeLog, findArchivableEntries, pruneEntries }

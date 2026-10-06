@@ -11,6 +11,7 @@ const fs = require('fs')
 const os = require('os')
 const path = require('path')
 const { makeClient } = require('./adapter_registry')
+const gitIdentity = require('./git-identity')
 
 const GOVERNANCE = ['Applications', 'Governance']
 const GIT_FOLDER = 'governance'
@@ -44,7 +45,7 @@ async function readGovernance(client) {
 }
 
 // Mirror the server's governance documents into the repo's governance/ folder (branch dev by default).
-async function mirrorToRepo(server, { token, gitUser = 'falconbi', ideToken, branch = 'dev', repoUrl } = {}) {
+async function mirrorToRepo(server, { token, gitUser = gitIdentity.user(), ideToken, branch = 'dev', repoUrl } = {}) {
     const c = makeClient(server, ideToken)
     if (!repoUrl) {
         try { repoUrl = (await c.post('GitStatus', { Username: gitUser, Password: token }))?.URL } catch {}
@@ -81,7 +82,7 @@ async function mirrorToRepo(server, { token, gitUser = 'falconbi', ideToken, bra
 }
 
 // Apply governance/ from the repo to the server's Applications (per-target `allow` prefix filter).
-async function applyFromRepo(server, { token, gitUser = 'falconbi', ideToken, branch = 'dev', repoUrl, allow = [] } = {}) {
+async function applyFromRepo(server, { token, gitUser = gitIdentity.user(), ideToken, branch = 'dev', repoUrl, allow = [] } = {}) {
     const c = makeClient(server, ideToken)
     if (!repoUrl) {
         try { repoUrl = (await c.post('GitStatus', { Username: gitUser, Password: token }))?.URL } catch {}

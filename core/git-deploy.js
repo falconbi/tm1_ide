@@ -9,9 +9,11 @@
 
 const { makeClient } = require('./adapter_registry')
 const assertions = require('./assertions')
+const gitIdentity = require('./git-identity')
+const approvals = require('./git-approvals')
 
 // Preview: target baseline + what the pull would change. Read-only (plan only).
-async function prepare(source, target, { branch = 'dev', token, gitUser = 'falconbi', ideToken } = {}) {
+async function prepare(source, target, { branch = 'dev', token, gitUser = gitIdentity.user(), ideToken } = {}) {
     const c = makeClient(target, ideToken)
     const out = { source, target, branch, ready: false, drift: 'unverified' }
 
@@ -46,15 +48,37 @@ async function prepare(source, target, { branch = 'dev', token, gitUser = 'falco
 
 // Apply the approved state to the target and verify with control checks.
 // The pull plan is re-created atomically (it expires in seconds).
-async function execute(target, { branch = 'dev', token, gitUser = 'falconbi', ideToken, source } = {}) {
+async function execute(target, { branch = 'dev', token, gitUser = gitIdentity.user(), ideToken, source, requireApproval = true } = {}) {
     const c = makeClient(target, ideToken)
     const out = { target, branch }
 
+    let plan
     try {
-        const plan = await c.post('GitPull', { Branch: branch, ExecutionMode: 'SingleCommit', Force: false, Username: gitUser, Password: token })
+        plan = await c.post('GitPull', { Branch: branch, ExecutionMode: 'SingleCommit', Force: false, Username: gitUser, Password: token })
+    } catch (e) {
+        out.executed = false
+        out.error = `Pull plan failed: ${e.response?.data?.error?.message ?? e.message}`
+        return out
+    }
+
+    // Governance gate: the exact commit must be approved for this target.
+    // Enforced here, server-side, so it cannot be bypassed by the client.
+    out.targetCommit = plan.Commit?.ID ?? null
+    if (requireApproval) {
+        const approval = out.targetCommit ? approvals.find(target, out.targetCommit) : null
+        if (!approval) {
+            out.executed = false
+            out.refused = true
+            out.error = `Refused: commit ${out.targetCommit ?? '(none)'} is not approved for ${target}. Record an approval first (the Approve step), then deploy.`
+            return out
+        }
+        out.approvedBy  = approval.approver
+        out.approvedAt  = approval.approved_at
+    }
+
+    try {
         await c.post(`GitPlans('${encodeURIComponent(plan.ID)}')/tm1.Execute`, {})
-        out.executed     = true
-        out.targetCommit = plan.Commit?.ID ?? null
+        out.executed = true
         // Record what we actually deployed — TM1's DeployedCommit isn't reliable
         // as "last received" (a prod-live push clobbers it).
         try {

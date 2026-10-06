@@ -11,6 +11,7 @@
 //                                 (+ element-loss comparison when repoDir given)
 
 const { makeClient } = require('./adapter_registry')
+const gitIdentity = require('./git-identity')
 
 const esc = s => String(s).replace(/'/g, "''")
 
@@ -165,7 +166,7 @@ async function firstPullAnalysis(server, opts = {}) {
     const out = { server, warnings: [], notes: [], ok: true }
 
     let status
-    try { status = await c.post('GitStatus', { Username: opts.gitUser ?? 'falconbi', Password: token }) }
+    try { status = await c.post('GitStatus', { Username: opts.gitUser ?? gitIdentity.user(), Password: token }) }
     catch (e) { out.warnings.push(`GitStatus failed: ${e.response?.data?.error?.message ?? e.message}`); return out }
 
     const deployed = status?.DeployedCommit
@@ -177,7 +178,7 @@ async function firstPullAnalysis(server, opts = {}) {
 
     const branch = opts.branch ?? 'dev'
     let plan
-    try { plan = await c.post('GitPull', { Branch: branch, ExecutionMode: 'SingleCommit', Force: false, Username: opts.gitUser ?? 'falconbi', Password: token }) }
+    try { plan = await c.post('GitPull', { Branch: branch, ExecutionMode: 'SingleCommit', Force: false, Username: opts.gitUser ?? gitIdentity.user(), Password: token }) }
     catch (e) { out.warnings.push(`GitPull plan failed: ${e.response?.data?.error?.message ?? e.message} (the repo may not be initialized, or a view in the source breaks the pull — run the readiness scan).`); return out }
 
     const ops = plan.Operations ?? []

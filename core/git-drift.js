@@ -13,6 +13,7 @@ const fs = require('fs')
 const os = require('os')
 const path = require('path')
 const { makeClient } = require('./adapter_registry')
+const gitIdentity = require('./git-identity')
 const assertions = require('./assertions')
 
 function git(cwd, ...args) {
@@ -23,7 +24,7 @@ function authUrl(url, user, token) {
     return url.replace(/^https:\/\//i, `https://${user}:${token}@`)
 }
 
-async function driftCheck(server, { token, gitUser = 'falconbi', ideToken } = {}) {
+async function driftCheck(server, { token, gitUser = gitIdentity.user(), ideToken } = {}) {
     const c = makeClient(server, ideToken)
     const st = await c.post('GitStatus', { Username: gitUser, Password: token })
     const repoUrl = st?.URL
@@ -94,13 +95,14 @@ async function driftCheck(server, { token, gitUser = 'falconbi', ideToken } = {}
 }
 
 // Revert drift on the target — redeploy the repo state (PROD pulls dev, overwriting the drifted object).
+// Recovery action: does not require a deploy approval.
 async function revert(server, { branch = 'dev', token, gitUser, ideToken, source } = {}) {
     const { execute } = require('./git-deploy')
-    return execute(server, { branch, token, gitUser, ideToken, source })
+    return execute(server, { branch, token, gitUser, ideToken, source, requireApproval: false })
 }
 
 // Promote PROD's live state into dev: merge prod-live → dev, then the source server pulls it.
-async function promote(server, { token, gitUser = 'falconbi', ideToken, source } = {}) {
+async function promote(server, { token, gitUser = gitIdentity.user(), ideToken, source } = {}) {
     const c = makeClient(server, ideToken)
     const st = await c.post('GitStatus', { Username: gitUser, Password: token })
     const repoUrl = st?.URL
