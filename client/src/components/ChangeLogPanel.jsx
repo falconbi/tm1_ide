@@ -161,6 +161,17 @@ function SessionRow({ session, server, openTab, onClose }) {
               <div className="text-[10px] text-muted-foreground/60">
                 {fmtDate(session.started_at)} · {session.entry_count} change{session.entry_count !== 1 ? 's' : ''}{session.user ? ` · ${session.user}` : ''}
               </div>
+              {(session.commit_ref || session.deployed_target || session.close_tests) && (() => {
+                let t = null
+                try { t = session.close_tests ? JSON.parse(session.close_tests) : null } catch { t = null }
+                return (
+                  <div className="text-[10px] text-muted-foreground/60 mt-0.5">
+                    {session.commit_ref && <span>commit {session.commit_ref}</span>}
+                    {t && <span>{session.commit_ref ? ' · ' : ''}tests at close {t.passed}/{t.total}{t.blocking ? ` (${t.blocking} blocking)` : ''}</span>}
+                    {session.deployed_target && <span>{session.commit_ref || t ? ' · ' : ''}shipped to {session.deployed_target}</span>}
+                  </div>
+                )
+              })()}
               {!editingDesc && (descValue
                 ? <div className="text-[10px] text-muted-foreground/80 truncate mt-0.5 italic">{descValue}</div>
                 : <div className="text-[10px] text-muted-foreground/30 truncate mt-0.5 italic">Add a note…</div>

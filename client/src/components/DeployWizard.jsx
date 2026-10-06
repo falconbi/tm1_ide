@@ -55,6 +55,7 @@ export default function DeployWizard({ server, onClose }) {
   const [servers,   setServers]   = useState([])
   const [target,    setTarget]    = useState('')
   const [active,    setActive]    = useState(null)
+  const [sessionId, setSessionId] = useState(null)
   const [startName, setStartName] = useState('')
   const [tests,     setTests]     = useState(null)
   const [pushed,    setPushed]    = useState(null)
@@ -69,7 +70,7 @@ export default function DeployWizard({ server, onClose }) {
 
   const loadActive = () => {
     fetch(`/api/sessions/active?server=${encodeURIComponent(server)}`, { headers: authHeader() })
-      .then(r => r.json()).then(d => setActive(d)).catch(() => {})
+      .then(r => r.json()).then(d => { setActive(d); if (d?.id) setSessionId(d.id) }).catch(() => {})
   }
   useEffect(loadActive, [server])
   useEffect(() => {
@@ -94,7 +95,7 @@ export default function DeployWizard({ server, onClose }) {
   const startChangeSet = async () => {
     if (!startName.trim()) return
     const d = await run('start', { name: startName.trim(), server, user: username() }, '/api/sessions/start')
-    if (d) { setActive(d); setStartName('') }
+    if (d) { setActive(d); setSessionId(d.id); setStartName('') }
   }
   const runTests = async () => {
     setBusy('test'); setError(null)
@@ -107,11 +108,12 @@ export default function DeployWizard({ server, onClose }) {
   }
   const closeChangeSet = async () => {
     if (!active) return
-    const d = await run('close', { id: active.id }, '/api/sessions/close')
+    const testsSummary = tests ? { passed: tests.passed, total: tests.total, blocking: tests.results.filter(r => !r.pass && (r.severity ?? 'block') === 'block').length } : null
+    const d = await run('close', { id: active.id, tests: testsSummary }, '/api/sessions/close')
     if (d) { setActive(null); setStep(4) }
   }
   const doPush = async () => {
-    const d = await run('push', { source: server, branch, message }, '/api/deploy/git/push')
+    const d = await run('push', { source: server, branch, message, session: sessionId }, '/api/deploy/git/push')
     if (d) { setPushed(d); setStep(5) }
   }
   const doPrepare = async () => {
@@ -130,7 +132,7 @@ export default function DeployWizard({ server, onClose }) {
   }
   const doDeploy = async () => {
     if (!window.confirm(`Deploy to ${target}? This applies the change and runs safety checks on it.`)) return
-    const d = await run('deploy', { source: server, target, branch }, '/api/deploy/git/execute')
+    const d = await run('deploy', { source: server, target, branch, session: sessionId }, '/api/deploy/git/execute')
     if (d) { setRes(d); setStep(8) }
   }
   const doDrift = async () => {

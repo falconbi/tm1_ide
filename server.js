@@ -373,9 +373,9 @@ app.post('/api/sessions/start', (req, res) => {
 
 app.post('/api/sessions/close', (req, res) => {
     try {
-        const { id } = req.body
+        const { id, tests } = req.body
         if (!id) return res.status(400).json({ error: 'id required' })
-        res.json(cl.closeSession(id))
+        res.json(cl.closeSession(id, { user: req.user, tests }))
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
@@ -3033,9 +3033,11 @@ app.post('/api/deploy/git/execute', async (req, res) => {
     try {
         if (!gateReadOnly(res, req.body?.target)) return
         const { execute } = require('./core/git-deploy')
-        const { target, branch, source } = req.body
+        const { target, branch, source, session } = req.body
         if (!target) return res.status(400).json({ error: 'target required' })
-        res.json(await execute(target, { branch, token: process.env.TM1_GIT_TOKEN, ideToken: req.ideToken, source }))
+        const result = await execute(target, { branch, token: process.env.TM1_GIT_TOKEN, ideToken: req.ideToken, source })
+        if (session && result?.executed) try { cl.markSessionDeployed(session, target) } catch { /* link is best-effort */ }
+        res.json(result)
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 // Push the source server's live state to the repo (step 2 of the deploy flow).
@@ -3044,7 +3046,7 @@ app.post('/api/deploy/git/execute', async (req, res) => {
 app.post('/api/deploy/git/push', async (req, res) => {
     try {
         if (!gateReadOnly(res, req.body?.source)) return
-        const { source, branch = 'dev', message } = req.body
+        const { source, branch = 'dev', message, session } = req.body
         if (!source) return res.status(400).json({ error: 'source required' })
         const c = makeClient(source, req.ideToken)
         const creds = { Username: 'falconbi', Password: process.env.TM1_GIT_TOKEN }
@@ -3054,6 +3056,7 @@ app.post('/api/deploy/git/push', async (req, res) => {
             Author: req.user ?? 'ide', Email: `${req.user ?? 'ide'}@lab.local`, ...creds,
         })
         await c.post(`GitPlans('${encodeURIComponent(plan.ID)}')/tm1.Execute`, {})
+        if (session) try { cl.setSessionCommit(session, plan.NewCommit?.ID ?? null) } catch { /* link is best-effort */ }
         res.json({ pushed: true, commit: plan.NewCommit?.ID ?? null, summary: plan.NewCommit?.Summary ?? null })
     } catch (e) { res.status(500).json({ error: e.message }) }
 })

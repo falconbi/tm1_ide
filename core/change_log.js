@@ -36,6 +36,17 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_log_object    ON log_entries(server, object_type, object_name);
 `)
 
+// Lifecycle columns (added after the fact — ignore "duplicate column" on existing DBs).
+for (const [col, type] of [
+    ['closed_by',       'TEXT'],
+    ['close_tests',     'TEXT'],
+    ['commit_ref',      'TEXT'],
+    ['deployed_target', 'TEXT'],
+    ['deployed_at',     'TEXT'],
+]) {
+    try { db.exec(`ALTER TABLE sessions ADD COLUMN ${col} ${type}`) } catch { /* already exists */ }
+}
+
 // ── Internal helpers ──────────────────────────────────────────────────────────
 
 function parseEntry(e) {
@@ -57,14 +68,23 @@ function startSession(name, server, user) {
     return db.prepare(`SELECT * FROM sessions WHERE id = ?`).get(id)
 }
 
-function closeSession(id) {
-    db.prepare(`UPDATE sessions SET closed_at = ? WHERE id = ?`).run(new Date().toISOString(), id)
+function closeSession(id, { user, tests } = {}) {
+    db.prepare(`UPDATE sessions SET closed_at = ?, closed_by = ?, close_tests = ? WHERE id = ?`)
+        .run(new Date().toISOString(), user ?? null, tests ? JSON.stringify(tests) : null, id)
     return db.prepare(`SELECT * FROM sessions WHERE id = ?`).get(id)
 }
 
 function resumeSession(id) {
     db.prepare(`UPDATE sessions SET closed_at = NULL WHERE id = ?`).run(id)
     return db.prepare(`SELECT * FROM sessions WHERE id = ?`).get(id)
+}
+
+// Link a change set to the commit it was filed as, and to the target it shipped to.
+function setSessionCommit(id, commit) {
+    db.prepare(`UPDATE sessions SET commit_ref = ? WHERE id = ?`).run(commit ?? null, id)
+}
+function markSessionDeployed(id, target) {
+    db.prepare(`UPDATE sessions SET deployed_target = ?, deployed_at = ? WHERE id = ?`).run(target ?? null, new Date().toISOString(), id)
 }
 
 function updateSessionDescription(id, description) {
@@ -291,4 +311,4 @@ function pruneEntries(ids) {
 try { db.exec(`ALTER TABLE sessions ADD COLUMN description TEXT`) } catch {}
 try { db.exec(`ALTER TABLE log_entries ADD COLUMN user TEXT`) } catch {}
 
-module.exports = { startSession, closeSession, resumeSession, updateSessionDescription, getActiveSession, getSessions, getAllSessions, getSessionLog, getCrossSessionTouches, getEntriesSince, getMaxEntryId, getEntriesSinceId, getSessionLogVerbose, getRecentLog, getObjectHistory, getEntryById, writeLog, findArchivableEntries, pruneEntries }
+module.exports = { startSession, closeSession, resumeSession, updateSessionDescription, setSessionCommit, markSessionDeployed, getActiveSession, getSessions, getAllSessions, getSessionLog, getCrossSessionTouches, getEntriesSince, getMaxEntryId, getEntriesSinceId, getSessionLogVerbose, getRecentLog, getObjectHistory, getEntryById, writeLog, findArchivableEntries, pruneEntries }
