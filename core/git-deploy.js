@@ -48,7 +48,8 @@ async function prepare(source, target, { branch = 'dev', token, gitUser = gitIde
 
 // Apply the approved state to the target and verify with control checks.
 // The pull plan is re-created atomically (it expires in seconds).
-async function execute(target, { branch = 'dev', token, gitUser = gitIdentity.user(), ideToken, source, requireApproval = true, purpose = 'deploy' } = {}) {
+// The approval gate is non-optional: it cannot be switched off by any caller.
+async function execute(target, { branch = 'dev', token, gitUser = gitIdentity.user(), ideToken, source, purpose = 'deploy' } = {}) {
     const c = makeClient(target, ideToken)
     const out = { target, branch }
 
@@ -64,7 +65,7 @@ async function execute(target, { branch = 'dev', token, gitUser = gitIdentity.us
     // Governance gate: the exact commit must be approved for this target.
     // Enforced here, server-side, so it cannot be bypassed by the client.
     out.targetCommit = plan.Commit?.ID ?? null
-    if (requireApproval) {
+    {
         const approval = out.targetCommit ? approvals.find(target, out.targetCommit) : null
         if (!approval) {
             out.executed = false
