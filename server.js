@@ -3038,6 +3038,25 @@ app.post('/api/deploy/git/execute', async (req, res) => {
         res.json(await execute(target, { branch, token: process.env.TM1_GIT_TOKEN, ideToken: req.ideToken, source }))
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
+// Push the source server's live state to the repo (step 2 of the deploy flow).
+// TM1 Git commits the whole model; the plan is ephemeral, so create AND execute
+// atomically. Does not touch the target.
+app.post('/api/deploy/git/push', async (req, res) => {
+    try {
+        if (!gateReadOnly(res, req.body?.source)) return
+        const { source, branch = 'dev', message } = req.body
+        if (!source) return res.status(400).json({ error: 'source required' })
+        const c = makeClient(source, req.ideToken)
+        const creds = { Username: 'falconbi', Password: process.env.TM1_GIT_TOKEN }
+        const plan = await c.post('GitPush', {
+            Branch: branch, NewBranch: '', Force: false,
+            Message: message || `Deploy from ${source}`,
+            Author: req.user ?? 'ide', Email: `${req.user ?? 'ide'}@lab.local`, ...creds,
+        })
+        await c.post(`GitPlans('${encodeURIComponent(plan.ID)}')/tm1.Execute`, {})
+        res.json({ pushed: true, commit: plan.NewCommit?.ID ?? null, summary: plan.NewCommit?.Summary ?? null })
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
 
 // ── Drift (#3): PROD pushes prod-live; diff vs its deployed commit. ─────────
 app.post('/api/git/drift', async (req, res) => {

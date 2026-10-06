@@ -1,0 +1,399 @@
+import { useState, useEffect } from 'react'
+
+// Deploy wizard — the whole journey in one guided screen:
+//   Build → Test → Close → Commit → Review → Deploy → Verify
+// Plain language, no icons, one sentence per step, one main button, a recovery
+// box. Branch is fixed by the server's TM1 deployment, so it is never asked for.
+const authHeader = () => ({ 'x-ide-token': localStorage.getItem('tm1-token') ?? '' })
+const username = () => localStorage.getItem('tm1-username') ?? 'unknown'
+
+function parseOps(ops) {
+  return (ops ?? [])
+    .map(op => {
+      const m = String(op).match(/^(Create|Update|Delete|Skip)\s+([^(']+)\(?['"]?([^'")]*)['"]?\)?$/)
+      return m ? { action: m[1], type: m[2], name: m[3] || 'project settings' } : { action: 'Other', type: '', name: String(op) }
+    })
+    .filter(o => o.action !== 'Skip')
+}
+
+const STEP_TITLES = ['Build', 'Test', 'Close', 'Commit', 'Review', 'Deploy', 'Verify']
+const STEPS = {
+  1: { explain: 'A change set is a labelled basket. While it is open, every change you make on this server is recorded in it, so the whole batch can be reviewed and shipped as one unit.' },
+  2: { explain: 'Run the model\u2019s tests. Behaviour tests check the numbers are right (DEV only). Control tests check the model holds together (DEV and PROD). Fix and re-run as needed.' },
+  3: { explain: 'Close the change set when you have finished building. Closing records the test result and is the gate \u2014 it starts the deploy journey. Blocking failures must be fixed first.' },
+  4: { explain: 'This commits the current state of this server to the model\u2019s GitHub repo. Nothing on the target server changes yet \u2014 it is just filed, with a reference.' },
+  5: { explain: 'Before we touch the target server, look at exactly what would change on it. Confirm it is only what you intended.' },
+  6: { explain: 'This applies the reviewed change to the target server, then runs safety checks to make sure nothing is broken.' },
+  7: { explain: 'The target server saves a copy of itself and we compare it to the last deploy. Same = clean. Different = drift.' },
+}
+
+const textBtn = 'px-3 py-1.5 text-xs rounded border border-border text-foreground hover:bg-muted transition-colors disabled:opacity-40'
+const primaryBtn = 'px-3 py-1.5 text-xs rounded bg-emerald-700 text-white hover:bg-emerald-600 transition-colors disabled:opacity-40'
+const inputCls = 'bg-muted border border-border rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-ring'
+
+function TestList({ title, meaning, results }) {
+  if (!results?.length) return null
+  return (
+    <div className="space-y-1">
+      <p className="text-xs font-semibold">{title} <span className="font-normal text-muted-foreground">— {meaning}</span></p>
+      {results.map(a => (
+        <div key={a.id} className="flex items-baseline gap-2 text-[11px] px-2 py-1 rounded bg-background border border-border">
+          <span className={a.pass ? 'text-emerald-700' : 'text-red-600'}>{a.pass ? 'passed' : 'failed'}</span>
+          <span className="text-muted-foreground flex-1">{a.description}</span>
+          <span className="text-muted-foreground/70">{a.pass ? `expected ${a.expected} · actual ${a.actual}` : `expected ${a.expected}, got ${a.actual}`}</span>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+export default function DeployWizard({ server, onClose }) {
+  const [step,      setStep]      = useState(1)
+  const [branch]                  = useState('dev')   // fixed by the server's TM1 deployment
+  const [message,   setMessage]   = useState(`Deploy from ${server}`)
+  const [servers,   setServers]   = useState([])
+  const [target,    setTarget]    = useState('')
+  const [active,    setActive]    = useState(null)
+  const [startName, setStartName] = useState('')
+  const [tests,     setTests]     = useState(null)
+  const [pushed,    setPushed]    = useState(null)
+  const [prep,      setPrep]      = useState(null)
+  const [res,       setRes]       = useState(null)
+  const [drift,     setDrift]     = useState(null)
+  const [busy,      setBusy]      = useState('')
+  const [error,     setError]     = useState(null)
+
+  const loadActive = () => {
+    fetch(`/api/sessions/active?server=${encodeURIComponent(server)}`, { headers: authHeader() })
+      .then(r => r.json()).then(d => setActive(d)).catch(() => {})
+  }
+  useEffect(loadActive, [server])
+  useEffect(() => {
+    fetch('/api/servers', { headers: authHeader() }).then(r => r.json()).then(d => {
+      const others = (d ?? []).map(s => s?.name).filter(n => n && n !== server)
+      setServers(others)
+      setTarget(t => t || (others[0] ?? ''))
+    }).catch(() => {})
+  }, [server])
+
+  const run = async (action, body, route) => {
+    setBusy(action); setError(null)
+    try {
+      const r = await fetch(route, { method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeader() }, body: JSON.stringify(body) })
+      const d = await r.json()
+      if (!r.ok) throw new Error(d.error || r.statusText)
+      return d
+    } catch (e) { setError(e.message); return null }
+    finally { setBusy('') }
+  }
+
+  const startChangeSet = async () => {
+    if (!startName.trim()) return
+    const d = await run('start', { name: startName.trim(), server, user: username() }, '/api/sessions/start')
+    if (d) { setActive(d); setStartName('') }
+  }
+  const runTests = async () => {
+    setBusy('test'); setError(null)
+    try {
+      const t = await fetch(`/api/assertions/run?server=${encodeURIComponent(server)}`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeader() }, body: '{}' }).then(r => r.json())
+      if (t.error) throw new Error(t.error)
+      setTests(t)
+    } catch (e) { setError(e.message) }
+    finally { setBusy('') }
+  }
+  const closeChangeSet = async () => {
+    if (!active) return
+    const d = await run('close', { id: active.id }, '/api/sessions/close')
+    if (d) { setActive(null); setStep(4) }
+  }
+  const doPush = async () => {
+    const d = await run('push', { source: server, branch, message }, '/api/deploy/git/push')
+    if (d) { setPushed(d); setStep(5) }
+  }
+  const doPrepare = async () => {
+    const d = await run('prepare', { source: server, target, branch }, '/api/deploy/git/prepare')
+    if (d) { setPrep(d); if (d.ready) setStep(6) }
+  }
+  const doDeploy = async () => {
+    if (!window.confirm(`Deploy to ${target}? This applies the change and runs safety checks on it.`)) return
+    const d = await run('deploy', { source: server, target, branch }, '/api/deploy/git/execute')
+    if (d) { setRes(d); setStep(7) }
+  }
+  const doDrift = async () => {
+    const d = await run('drift', { server: target }, '/api/git/drift')
+    if (d) setDrift(d)
+  }
+  const doDriftAction = async (action) => {
+    const label = action === 'revert'
+      ? 'Put the target back to exactly what the repo says (this overwrites the drifted change)?'
+      : 'Bring the target\u2019s change back into the build stream instead of overwriting it?'
+    if (!window.confirm(label)) return
+    const d = await run(action, { target, source: server, branch }, `/api/git/drift/${action}`)
+    if (d) setDrift(prev => ({ ...prev, actionResult: d }))
+  }
+
+  const changed = parseOps(prep?.plan?.ops)
+  const behaviour = tests?.results?.filter(r => (r.kind ?? 'behaviour') === 'behaviour') ?? []
+  const control   = tests?.results?.filter(r => r.kind === 'control') ?? []
+  const blockFails = tests?.results?.filter(r => !r.pass && (r.severity ?? 'block') === 'block') ?? []
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={onClose}>
+      <div className="w-[680px] max-h-[90vh] flex flex-col bg-background border border-border rounded-lg shadow-xl" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center gap-3 px-4 py-3 border-b border-border">
+          <span className="text-sm font-semibold">Deploy step by step</span>
+          <span className="text-xs text-muted-foreground">from {server}</span>
+          <div className="flex-1" />
+          <button onClick={onClose} className="text-xs text-muted-foreground hover:text-foreground">Close</button>
+        </div>
+
+        <div className="flex items-center gap-1 px-4 py-2.5 border-b border-border bg-muted/20 flex-wrap">
+          {STEP_TITLES.map((t, i) => (
+            <span key={t} className="flex items-center gap-1">
+              {i > 0 && <span className="text-muted-foreground/40 mx-0.5">→</span>}
+              <button
+                onClick={() => setStep(i + 1)}
+                className={i + 1 === step ? 'text-xs font-semibold text-foreground underline underline-offset-4' : 'text-xs text-muted-foreground hover:text-foreground'}
+              >
+                {i + 1} {t}
+              </button>
+            </span>
+          ))}
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+          {error && <p className="text-xs text-red-600 border border-red-600/40 rounded px-3 py-2">{error}</p>}
+
+          {/* Step 1 — Build */}
+          {step === 1 && (
+            <div className="space-y-3">
+              <p className="text-xs text-muted-foreground leading-relaxed">{STEPS[1].explain}</p>
+              {active ? (
+                <div className="border border-border rounded-md p-3 space-y-2">
+                  <p className="text-xs">Change set open: <span className="font-semibold">{active.name}</span> — recording your changes.</p>
+                  <p className="text-[11px] text-muted-foreground">Make your edits now. Everything you change here is going into this basket.</p>
+                  <button onClick={() => setStep(2)} className={primaryBtn}>I&apos;ve finished building — Continue</button>
+                </div>
+              ) : (
+                <div className="border border-border rounded-md p-3 space-y-2">
+                  <p className="text-xs text-muted-foreground">No change set is open. Start one so your changes are tracked and shippable as a unit:</p>
+                  <div className="flex items-center gap-2">
+                    <input value={startName} onChange={e => setStartName(e.target.value)} onKeyDown={e => e.key === 'Enter' && startChangeSet()} placeholder="name for this batch of work" className={inputCls + ' flex-1'} />
+                    <button onClick={startChangeSet} disabled={busy === 'start' || !startName.trim()} className={primaryBtn}>Start change set</button>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground">Make your edits on this server, then run the tests.</p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Step 2 — Test */}
+          {step === 2 && (
+            <div className="space-y-3">
+              <p className="text-xs text-muted-foreground leading-relaxed">{STEPS[2].explain}</p>
+              <div className="border border-border rounded-md p-3 space-y-3">
+                <div className="flex items-center gap-2">
+                  <button onClick={runTests} disabled={busy === 'test'} className={primaryBtn}>{tests ? 'Run tests again' : 'Run tests'}</button>
+                  {busy === 'test' && <span className="text-xs text-muted-foreground">Running…</span>}
+                </div>
+                {tests && (
+                  <div className="border border-border rounded-md p-3 space-y-3 bg-muted/20">
+                    <p className="text-xs">
+                      <span className={blockFails.length ? 'text-red-600' : 'text-emerald-700'}>{tests.passed} of {tests.total} passed</span>
+                      {blockFails.length ? ` — ${blockFails.length} blocking failure${blockFails.length !== 1 ? 's' : ''}.` : '.'}
+                    </p>
+                    <TestList title="Behaviour" meaning="the numbers are right (DEV only)" results={behaviour} />
+                    <TestList title="Control" meaning="the model holds together (DEV and PROD)" results={control} />
+                    <button onClick={() => setStep(3)} className={textBtn}>Continue to Close</button>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Step 3 — Close (the gate) */}
+          {step === 3 && (
+            <div className="space-y-3">
+              <p className="text-xs text-muted-foreground leading-relaxed">{STEPS[3].explain}</p>
+              <div className="border border-border rounded-md p-3 space-y-3">
+                {active ? <p className="text-xs">Change set to close: <span className="font-semibold">{active.name}</span></p> : <p className="text-xs text-muted-foreground">No change set is open — nothing to close. You can continue.</p>}
+                {!tests && <p className="text-xs text-amber-600">Run the tests first (step 2) so the close records a result.</p>}
+                {tests && blockFails.length > 0 && (
+                  <div className="border border-red-600/40 rounded-md p-2 space-y-1">
+                    <p className="text-xs text-red-600">{blockFails.length} blocking test{blockFails.length !== 1 ? 's are' : ' is'} failing — fix on this server, then re-run the tests.</p>
+                    {blockFails.map(f => <p key={f.id} className="text-[11px] text-muted-foreground">· {f.description}</p>)}
+                  </div>
+                )}
+                {tests && blockFails.length === 0 && <p className="text-xs text-emerald-700">No blocking failures.</p>}
+                <div className="flex items-center gap-2">
+                  <button onClick={closeChangeSet} disabled={busy === 'close' || !active || !tests || blockFails.length > 0} className={primaryBtn}>Close change set</button>
+                  {!active && <button onClick={() => setStep(4)} className={textBtn}>Continue</button>}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Step 4 — Commit */}
+          {step === 4 && (
+            <div className="space-y-3">
+              <p className="text-xs text-muted-foreground leading-relaxed">{STEPS[4].explain}</p>
+              <div className="border border-border rounded-md p-3 space-y-3">
+                <div className="flex items-center gap-2">
+                  <label className="text-xs text-muted-foreground w-16">Note</label>
+                  <input value={message} onChange={e => setMessage(e.target.value)} className={inputCls + ' flex-1'} />
+                </div>
+                <div className="flex items-center gap-2">
+                  <button onClick={doPush} disabled={busy === 'push'} className={primaryBtn}>Commit {server} to the GitHub repo</button>
+                  {busy === 'push' && <span className="text-xs text-muted-foreground">Committing…</span>}
+                </div>
+                {pushed && (
+                  <div className="border border-border rounded-md p-3 bg-muted/20">
+                    <p className="text-xs">Committed. {server} is filed in the GitHub repo as <span className="font-mono">{pushed.commit}</span>.</p>
+                    <p className="text-[11px] text-muted-foreground mt-1">Nothing on the target server changed. Next: review exactly what would change on it.</p>
+                    <button onClick={() => setStep(5)} className={textBtn + ' mt-2'}>Continue to Review</button>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Step 5 — Review */}
+          {step === 5 && (
+            <div className="space-y-3">
+              <p className="text-xs text-muted-foreground leading-relaxed">{STEPS[5].explain}</p>
+              <div className="border border-border rounded-md p-3 space-y-3">
+                <div className="flex items-center gap-2">
+                  <label className="text-xs text-muted-foreground w-16">Target</label>
+                  <select value={target} onChange={e => setTarget(e.target.value)} className={inputCls}>
+                    {servers.map(s => <option key={s} value={s} className="bg-background">{s}</option>)}
+                    {servers.length === 0 && <option value="">(no other servers)</option>}
+                  </select>
+                  <button onClick={doPrepare} disabled={busy === 'prepare' || !target} className={primaryBtn}>Show what will change</button>
+                </div>
+                {prep && (
+                  <div className="border border-border rounded-md p-3 space-y-2">
+                    {prep.fullOverwrite ? (
+                      <p className="text-xs text-amber-600">The target has never received a deploy before. Its first pull replaces every object on it — this needs a careful, separate review. Do not continue casually.</p>
+                    ) : (
+                      <>
+                        <p className="text-xs">On <span className="font-semibold">{target}</span>: <span className="font-semibold">{changed.length}</span> object{changed.length !== 1 ? 's' : ''} will change{prep.plan ? `, and it would move to ${prep.plan.targetCommit}.` : '.'}</p>
+                        <p className="text-[11px] text-muted-foreground">The target is currently at {prep.deployedCommit} (what it last received).</p>
+                        {changed.length > 0 && (
+                          <div className="space-y-1 pt-1">
+                            {changed.map((o, i) => (
+                              <div key={i} className="flex items-baseline gap-2 text-xs px-2 py-1 rounded bg-muted/30">
+                                <span className="text-muted-foreground">{o.action.toLowerCase()}</span>
+                                <span className="text-muted-foreground/60">{o.type}</span>
+                                <span className="font-mono">{o.name}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        {prep.plan && (prep.planByType.Skip ?? 0) > 0 && <p className="text-[11px] text-muted-foreground">{prep.planByType.Skip} objects are unchanged — nothing to do for them.</p>}
+                        {changed.length === 0 && prep.plan && <p className="text-xs">Nothing would change — the target already matches the repo.</p>}
+                        <div className="flex items-center gap-2 pt-1">
+                          <button onClick={() => setStep(4)} className={textBtn}>Back to Commit</button>
+                          <button onClick={() => setStep(6)} disabled={!prep.ready} className={primaryBtn}>Continue to Deploy</button>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Step 6 — Deploy */}
+          {step === 6 && (
+            <div className="space-y-3">
+              <p className="text-xs text-muted-foreground leading-relaxed">{STEPS[6].explain}</p>
+              <div className="border border-border rounded-md p-3 space-y-3">
+                {!prep?.ready && <p className="text-xs text-muted-foreground">Go back to Review and show what will change first — we need to confirm the plan before deploying.</p>}
+                <div className="flex items-center gap-2">
+                  <button onClick={doDeploy} disabled={busy === 'deploy' || !prep?.ready} className={primaryBtn}>Deploy to {target}</button>
+                  {busy === 'deploy' && <span className="text-xs text-muted-foreground">Applying…</span>}
+                </div>
+                {changed.length > 0 && <p className="text-[11px] text-muted-foreground">This applies {changed.length} change{changed.length !== 1 ? 's' : ''} ({changed.map(o => o.name).join(', ')}) to {target}.</p>}
+                {res && (
+                  <div className="border border-border rounded-md p-3 space-y-2 bg-muted/20">
+                    {res.error && <p className="text-xs text-red-600">{res.error}</p>}
+                    {res.executed && <p className="text-xs">Applied. {target} is now at <span className="font-mono">{res.targetCommit}</span>.</p>}
+                    {res.verification?.results?.length > 0 && (
+                      <div className="space-y-1.5 pt-1">
+                        <p className="text-xs">Safety checks: <span className={res.controlOk ? 'text-emerald-700' : 'text-red-600'}>{res.verification.passed} of {res.verification.total} passed</span></p>
+                        {res.verification.results.map(a => (
+                          <div key={a.id} className="flex items-baseline gap-2 text-[11px] px-2 py-1 rounded bg-background border border-border">
+                            <span className={a.pass ? 'text-emerald-700' : 'text-red-600'}>{a.pass ? 'passed' : 'failed'}</span>
+                            <span className="text-muted-foreground flex-1">{a.description}</span>
+                            <span className="text-muted-foreground/70">{a.pass ? `expected ${a.expected} · actual ${a.actual}` : `expected ${a.expected}, got ${a.actual}`}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {res.reconcile && (
+                      <div className="space-y-1 text-[11px] text-muted-foreground pt-1">
+                        {res.reconcile.attributeValues && <p>Also applied: attribute values across {res.reconcile.attributeValues.dims?.length ?? 0} dimensions (TM1 Git does not carry these).</p>}
+                        {res.reconcile.deletes?.deleted?.length > 0 && <p>Deleted on {target}: {res.reconcile.deletes.deleted.map(d => `${d.type} ${d.name}`).join(', ')} (TM1 Git does not propagate deletes).</p>}
+                        {res.reconcile.deletes && !res.reconcile.deletes?.deleted?.length && <p>No objects needed deleting.</p>}
+                        {res.reconcile.error && <p className="text-red-600">{res.reconcile.error}</p>}
+                      </div>
+                    )}
+                    <button onClick={() => setStep(7)} className={textBtn + ' mt-1'}>Continue to Verify</button>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Step 7 — Verify */}
+          {step === 7 && (
+            <div className="space-y-3">
+              <p className="text-xs text-muted-foreground leading-relaxed">{STEPS[7].explain}</p>
+              <div className="border border-border rounded-md p-3 space-y-3">
+                <div className="flex items-center gap-2">
+                  <label className="text-xs text-muted-foreground w-16">Target</label>
+                  <select value={target} onChange={e => setTarget(e.target.value)} className={inputCls}>
+                    {servers.map(s => <option key={s} value={s} className="bg-background">{s}</option>)}
+                  </select>
+                  <button onClick={doDrift} disabled={busy === 'drift'} className={primaryBtn}>Check for drift</button>
+                </div>
+                {drift && (
+                  <div className="border border-border rounded-md p-3 space-y-2">
+                    {drift.error && <p className="text-xs text-red-600">{drift.error}</p>}
+                    {drift.entries && drift.entries.length === 0 && <p className="text-xs"><span className="font-semibold">No drift.</span> {target} matches exactly what it was given.</p>}
+                    {drift.entries && drift.entries.length > 0 && (
+                      <div className="space-y-2">
+                        <p className="text-xs text-amber-600">{target} has {drift.entries.length} thing{drift.entries.length !== 1 ? 's' : ''} that changed:</p>
+                        {drift.entries.map((e, i) => (
+                          <div key={i} className="flex items-baseline gap-2 text-[11px] px-2 py-1 rounded bg-muted/30">
+                            <span className="text-muted-foreground">{e.status}</span>
+                            <span className="font-mono">{e.file}</span>
+                          </div>
+                        ))}
+                        <div className="flex items-center gap-2 pt-1">
+                          <button onClick={() => doDriftAction('revert')} disabled={busy === 'revert'} className={textBtn}>Revert — put the target back to what the repo says</button>
+                          <button onClick={() => doDriftAction('promote')} disabled={busy === 'promote'} className={textBtn}>Promote — keep it by bringing it back to DEV</button>
+                        </div>
+                      </div>
+                    )}
+                    {drift.actionResult && <p className="text-[11px] text-muted-foreground">{drift.actionResult.note ?? drift.actionResult.error ?? 'Done.'} Re-check to confirm.</p>}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Recovery */}
+          <div className="border border-border rounded-md">
+            <div className="px-3 py-2 border-b border-border bg-muted/20 text-xs font-semibold">If something goes wrong</div>
+            <div className="px-3 py-2 space-y-1.5 text-[11px] text-muted-foreground leading-relaxed">
+              <p>· <span className="text-foreground">Bad deploy?</span> Fix it forward: make the correction on {server}, commit it to the GitHub repo, and deploy again. The repo keeps every version, so the target can always be rebuilt.</p>
+              <p>· <span className="text-foreground">PROD changed since the last deploy (drift)?</span> Use Revert (put it back to what the repo says) or Promote (keep the change by bringing it back to {server}). Both are in Verify, step 7.</p>
+              <p>· <span className="text-foreground">Lost a server?</span> The repo has everything — a fresh server can pull the whole model back from it.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}

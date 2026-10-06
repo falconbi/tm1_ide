@@ -659,7 +659,8 @@
         "P6c",
         "variance"
       ],
-      "created": "2026-09-08T23:13:00.742Z"
+      "created": "2026-09-08T23:13:00.742Z",
+      "severity": "warn"
     },
     {
       "id": "e1e1a6b2",
@@ -684,7 +685,8 @@
         "variance",
         "headcount"
       ],
-      "created": "2026-09-08T23:13:11.344Z"
+      "created": "2026-09-08T23:13:11.344Z",
+      "severity": "warn"
     },
     {
       "id": "958ed167",

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
-import { X, GitCompare, RefreshCw, ChevronDown, ChevronRight, AlertTriangle, CheckCircle2 } from 'lucide-react'
+import { X, GitCompare, RefreshCw, ChevronDown, ChevronRight, AlertTriangle, CheckCircle2, HelpCircle } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import HelpPanel from '@/components/HelpPanel'
 
 // Drift view (#3): PROD pushes its live state to prod-live; the diff vs its
 // deployed commit shows what's drifted on PROD (out-of-band edits, PROD-only
@@ -15,10 +16,11 @@ export default function GitDrift({ server, onClose }) {
   const [error,   setError]   = useState(null)
   const [openDiff, setOpenDiff] = useState(null)
   const [actionResult, setActionResult] = useState(null)
+  const [showHelp, setShowHelp] = useState(false)
 
   useEffect(() => {
     fetch('/api/servers', { headers: authHeader() }).then(r => r.json()).then(d => {
-      const others = (d ?? []).filter(s => s && s !== server)
+      const others = (d ?? []).map(s => s?.name).filter(n => n && n !== server)
       setServers(others)
       setTarget(t => t || (others[0] ?? ''))
     }).catch(() => {})
@@ -56,12 +58,18 @@ export default function GitDrift({ server, onClose }) {
       <div className="w-[680px] max-h-[85vh] flex flex-col bg-background border border-border rounded-lg shadow-xl" onClick={e => e.stopPropagation()}>
         <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border">
           <GitCompare size={14} className="text-muted-foreground" />
-          <span className="text-sm font-semibold">Drift — what PROD has that it shouldn't</span>
+          <span className="text-sm font-semibold">Drift — PROD now vs DEV at the last deploy</span>
           <div className="flex-1" />
+          <button onClick={() => setShowHelp(true)} className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors" title="Help — Git drift"><HelpCircle size={14} /></button>
           <button onClick={onClose} className="p-1 text-muted-foreground hover:text-foreground transition-colors" title="Close"><X size={14} /></button>
         </div>
+        <HelpPanel open={showHelp} onClose={() => setShowHelp(false)} area="gitdrift" />
 
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
+          <p className="text-xs text-muted-foreground leading-relaxed">
+            Has PROD changed since we last deployed to it? PROD saves a copy of itself; we compare it to the last deploy.
+            Same = clean. Different = drift.
+          </p>
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-xs text-muted-foreground">Target</span>
             <select value={target} onChange={e => setTarget(e.target.value)} className="bg-muted border border-border rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-ring">

@@ -86,6 +86,7 @@ async function execute(target, { branch = 'dev', token, gitUser = 'falconbi', id
             out.verification = {
                 source, total: v.total, passed: v.passed, failed: v.failed.length,
                 failures: v.failed.map(f => ({ id: f.id, description: f.description, expected: f.expected, actual: f.actual, error: f.error ?? null })),
+                results: v.results.map(r => ({ id: r.id, description: r.description, expected: r.expected, actual: r.actual, pass: r.pass, error: r.error ?? null })),
             }
             out.controlOk = v.failed.length === 0
         } catch (e) {
