@@ -60,6 +60,7 @@ export default function DeployWizard({ server, onClose }) {
   const [pushed,    setPushed]    = useState(null)
   const [prep,      setPrep]      = useState(null)
   const [res,       setRes]       = useState(null)
+  const [diffs,     setDiffs]     = useState(null)
   const [approval,  setApproval]  = useState(null)
   const [approvalNote, setApprovalNote] = useState('')
   const [drift,     setDrift]     = useState(null)
@@ -115,7 +116,11 @@ export default function DeployWizard({ server, onClose }) {
   }
   const doPrepare = async () => {
     const d = await run('prepare', { source: server, target, branch }, '/api/deploy/git/prepare')
-    if (d) { setPrep(d); setApproval(null); if (d.ready) setStep(6) }
+    if (d) { setPrep(d); setDiffs(null); setApproval(null); if (d.ready) setStep(6) }
+  }
+  const doReview = async () => {
+    const d = await run('review', { source: server, target, branch }, '/api/deploy/git/review')
+    if (d) setDiffs(d)
   }
   const doApprove = async () => {
     const commit = prep?.plan?.targetCommit
@@ -300,6 +305,32 @@ export default function DeployWizard({ server, onClose }) {
                         )}
                         {prep.plan && (prep.planByType.Skip ?? 0) > 0 && <p className="text-[11px] text-muted-foreground">{prep.planByType.Skip} objects are unchanged — nothing to do for them.</p>}
                         {changed.length === 0 && prep.plan && <p className="text-xs">Nothing would change — the target already matches the repo.</p>}
+
+                        {changed.length > 0 && (
+                          <div className="space-y-2 pt-1">
+                            <button onClick={doReview} disabled={busy === 'review'} className={textBtn}>{diffs ? 'Refresh the changes' : 'Show the actual changes'}</button>
+                            {busy === 'review' && <span className="text-xs text-muted-foreground ml-2">Reading the diff…</span>}
+                            {diffs?.error && <p className="text-xs text-red-600">{diffs.error}</p>}
+                            {diffs?.entries?.length > 0 && (
+                              <div className="space-y-1.5">
+                                {diffs.entries.map((e, i) => (
+                                  <details key={i} open={i === 0} className="border border-border rounded-md">
+                                    <summary className="px-2 py-1 text-[11px] cursor-pointer select-none">
+                                      <span className="text-muted-foreground mr-1.5">{e.status}</span>
+                                      <span className="font-mono">{e.file}</span>
+                                    </summary>
+                                    <div className="mt-0.5 px-2 py-1.5 bg-muted/40 border-t border-border overflow-x-auto">
+                                      {(e.diff || '(no content change)').split('\n').map((ln, j) => (
+                                        <div key={j} className={'text-[10px] font-mono whitespace-pre ' + (ln.startsWith('+') ? 'text-emerald-700' : ln.startsWith('-') ? 'text-red-600' : ln.startsWith('@@') ? 'text-muted-foreground/60' : 'text-muted-foreground')}>{ln || ' '}</div>
+                                      ))}
+                                    </div>
+                                  </details>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        )}
+
                         <div className="flex items-center gap-2 pt-1">
                           <button onClick={() => setStep(4)} className={textBtn}>Back to Commit</button>
                           <button onClick={() => setStep(6)} disabled={!prep.ready} className={primaryBtn}>Continue to Approve</button>

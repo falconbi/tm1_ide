@@ -3085,6 +3085,15 @@ app.get('/api/deploy/git/approval', (req, res) => {
         res.json(rec)
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
+// Review — the actual content diff the target will receive (read-only).
+app.post('/api/deploy/git/review', async (req, res) => {
+    try {
+        const { review } = require('./core/git-review')
+        const { source, target, branch } = req.body
+        if (!target) return res.status(400).json({ error: 'target required' })
+        res.json(await review(source, target, { branch, token: process.env.TM1_GIT_TOKEN, ideToken: req.ideToken }))
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
 
 // ── Drift (#3): PROD pushes prod-live; diff vs its deployed commit. ─────────
 app.post('/api/git/drift', async (req, res) => {
