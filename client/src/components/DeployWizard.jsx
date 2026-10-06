@@ -9,6 +9,7 @@ import { humanizeFile } from '@/lib/tm1-terms'
 // no outside-click close (only the Close button), and Deploy does not auto-jump
 // to Verify — the result stays until you click Continue.
 const authHeader = () => ({ 'x-ide-token': localStorage.getItem('tm1-token') ?? '' })
+const username = () => localStorage.getItem('tm1-username') ?? 'unknown'
 
 function parseOps(ops) {
   return (ops ?? [])
@@ -68,6 +69,7 @@ export default function DeployWizard({ server, onClose, onOpenTests }) {
   const [busy,      setBusy]      = useState('')
   const [error,     setError]     = useState(null)
   const [addedTests, setAddedTests] = useState(0)
+  const [setAssertions, setSetAssertions] = useState([])
 
   const { data: activeSession, refetch: refetchActive } = useActiveWorkSession(server)
   
@@ -75,12 +77,16 @@ export default function DeployWizard({ server, onClose, onOpenTests }) {
 
   useEffect(() => { if (activeSession?.id) setSessionId(activeSession.id) }, [activeSession?.id])
 
-  // How many assertions this change set has added (provenance link).
+  // How many assertions this change set has added, and which ones (provenance).
   useEffect(() => {
-    if (!sessionId) { setAddedTests(0); return }
+    if (!sessionId) { setAddedTests(0); setSetAssertions([]); return }
     fetch(`/api/assertions?server=${encodeURIComponent(server)}`, { headers: authHeader() })
       .then(r => r.json())
-      .then(d => setAddedTests((d.assertions ?? []).filter(a => a.changeSet === sessionId).length))
+      .then(d => {
+        const mine = (d.assertions ?? []).filter(a => a.changeSet === sessionId)
+        setAddedTests(mine.length)
+        setSetAssertions(mine.map(a => ({ description: a.description, kind: a.kind ?? 'behaviour', severity: a.severity ?? 'block' })))
+      })
       .catch(() => {})
   }, [sessionId, server, tests])
 
@@ -231,6 +237,15 @@ export default function DeployWizard({ server, onClose, onOpenTests }) {
                   </div>
                 )}
                 {tests && blockFails.length === 0 && <p className="text-xs text-emerald-700">No blocking failures.</p>}
+                {tests && (
+                  <div className="border border-border rounded-md p-2 text-[11px] space-y-1 bg-muted/20">
+                    <p className="text-[10px] text-muted-foreground uppercase tracking-wide">On close, this change set records</p>
+                    <p>· tests {tests.passed}/{tests.total} passing</p>
+                    <p>· {blockFails.length} blocking failure(s)</p>
+                    <p>· {(tests.results ?? []).filter(r => !r.pass && r.severity === 'warn').length} warning(s)</p>
+                    <p>· closed by {username()}</p>
+                  </div>
+                )}
                 {activeSession && addedTests === 0 && (
                   <p className="text-xs text-amber-600">No assertions were added in this change set. If this change has logic worth testing, add coverage first (step 1, Test). You can still close.</p>
                 )}
@@ -340,6 +355,14 @@ export default function DeployWizard({ server, onClose, onOpenTests }) {
                             )}
                           </div>
                         )}
+                        {setAssertions.length > 0 && (
+                        <div className="border border-border rounded-md p-2 text-[11px] space-y-1">
+                          <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Tests in this change set</p>
+                          {setAssertions.map(a => (
+                            <p key={a.description}><span className={a.severity === 'warn' ? 'text-amber-600' : 'text-muted-foreground'}>{a.severity}</span> · <span className="text-muted-foreground">{a.kind}</span> — <span className="text-foreground">{a.description}</span></p>
+                          ))}
+                        </div>
+                      )}
                         <div className="flex items-center gap-2 pt-1">
                           <button onClick={() => setStep(3)} className={textBtn}>Back to Commit</button>
                           <button onClick={() => setStep(5)} disabled={!prep.ready} className={primaryBtn}>Continue to Approve</button>
