@@ -189,6 +189,22 @@ export default function DeployWizard({ server, onClose, onOpenTests }) {
     return () => clearInterval(t)
   }, [step, target])
 
+  // The change set's state → where to resume (informational; the wizard still
+  // opens at step 1 and this is only a gentle "you were here" hint).
+  const resume = (() => {
+    if (!deployCtx) return null
+    if (!deployCtx.closed_at) return { label: 'open — continue building', step: 1 }
+    if (!deployCtx.commit_ref) return { label: 'closed — ready to commit', step: 3 }
+    if (deployCtx.deployed_target) return { label: 'shipped', step: 7 }
+    return { label: 'committed — review + approve + deploy', step: 4 }
+  })()
+
+  // Closing while a deploy is running must warn: the deploy finishes server-side.
+  const handleClose = () => {
+    if (busy === 'deploy' && !window.confirm('A deploy to ' + target + ' is in progress. It will finish on the server — re-open after it completes to see the result. Close anyway?')) return
+    onClose()
+  }
+
   const changed = parseOps(prep?.plan?.ops)
   const behaviour = tests?.results?.filter(r => (r.kind ?? 'behaviour') === 'behaviour') ?? []
   const control   = tests?.results?.filter(r => r.kind === 'control') ?? []
@@ -201,10 +217,11 @@ export default function DeployWizard({ server, onClose, onOpenTests }) {
           <span className="text-sm font-semibold">Deploy step by step</span>
           <span className="text-xs text-muted-foreground">from {server}</span>
           {deployCtx
-            ? <span className="text-[10px] text-muted-foreground/80">· change set <span className="font-mono text-foreground/80">{deployCtx.name}</span>{deployCtx.closed_at && !activeSession ? <span className="text-muted-foreground/60"> (closed — ready to ship)</span> : ''}</span>
+            ? <span className="text-[10px] text-muted-foreground/80">· change set <span className="font-mono text-foreground/80">{deployCtx.name}</span>
+              {resume && resume.step > 1 ? <><span className="text-muted-foreground/60"> · {resume.label}</span> <button onClick={() => setStep(resume.step)} className="ml-1 underline underline-offset-2 text-foreground/80 hover:text-foreground">resume</button></> : null}</span>
             : <span className="text-[10px] text-amber-600/90">· no change set — start one in the status bar (or on your first save)</span>}
           <div className="flex-1" />
-          <button onClick={onClose} className="text-xs text-muted-foreground hover:text-foreground">Close</button>
+          <button onClick={handleClose} className="text-xs text-muted-foreground hover:text-foreground">Close</button>
         </div>
 
         <div className="flex items-center gap-1 px-4 py-2.5 border-b border-border bg-muted/20 flex-wrap">
