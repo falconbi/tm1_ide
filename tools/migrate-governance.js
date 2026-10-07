@@ -12,6 +12,7 @@ const cl = require('../core/change_log')
 const store = require('../core/model-store')
 const gitApprovals = require('../core/git-approvals')
 const gitState = require('../core/git-state')
+const csm = require('../core/change-set-model')
 
 async function main() {
     const servers = process.argv.slice(2)
@@ -19,14 +20,17 @@ async function main() {
 
     for (const server of servers) {
         console.log(`── ${server} ──`)
-        // change sets
+        // change sets — CLOSED ones become immutable light-audit records; open ones stay local.
         const sessions = cl.getSessions(server, 1000)
+        let closed = 0
         for (const s of sessions) {
-            const rec = { ...s, entry_count: (() => { try { return cl.getSessionLog(s.id).length } catch { return 0 } })() }
+            if (!s.closed_at) continue
+            const rec = csm.buildClosedRecord(s, { closedBy: s.closed_by, audit: csm.lightAudit(s.id) })
             await store.writeDoc(server, 'changeSets', `${s.id}.json`, rec)
+            closed++
         }
         store.markMigrated(server, 'changeSets')
-        console.log(`  change sets: ${sessions.length} → Applications/Governance/ChangeSets/`)
+        console.log(`  change sets: ${closed} closed → Applications/Governance/ChangeSets/ (light audit)`)
 
         // approvals for this target
         const local = gitApprovals.readLocal()

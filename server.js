@@ -361,15 +361,11 @@ app.use('/api', (req, res, next) => {
 })
 
 // ── Change log / Sessions ─────────────────────────────────────────────────────
-app.post('/api/sessions/start', async (req, res) => {
+app.post('/api/sessions/start', (req, res) => {
     try {
         const { name, server } = req.body
         if (!name?.trim() || !server) return res.status(400).json({ error: 'name and server required' })
-        const session = cl.startSession(name.trim(), server, req.user)
-        let modelMirrorError = null
-        try { await require('./core/change-set-model').mirrorSession(server, session, { ideToken: req.ideToken }) }
-        catch (e) { modelMirrorError = e.message }
-        res.json({ ...session, modelMirrorError })
+        res.json(cl.startSession(name.trim(), server, req.user))
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
@@ -396,11 +392,13 @@ app.post('/api/sessions/close', async (req, res) => {
         } catch (e) {
             return res.status(500).json({ error: `Could not run tests to close: ${e.message}` })
         }
+        // Write the immutable closed record to the model (loud on a migrated server —
+        // a write failure fails the close, and the change set stays open). Open
+        // change sets stay in the local log until this moment.
+        const csm = require('./core/change-set-model')
+        await csm.closeAndPersist(sess.server, sess, { closedBy: req.user, tests, ideToken: req.ideToken })
         const closed = cl.closeSession(id, { user: req.user, tests })
-        let modelMirrorError = null
-        try { await require('./core/change-set-model').mirrorSession(closed.server, closed, { ideToken: req.ideToken }) }
-        catch (e) { modelMirrorError = e.message }
-        res.json({ ...closed, modelMirrorError })
+        res.json(closed)
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
@@ -420,11 +418,10 @@ app.get('/api/sessions/active', (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
-app.get('/api/sessions', async (req, res) => {
+app.get('/api/sessions', (req, res) => {
     try {
         const server   = req.query.server
-        const modelSessions = await require('./core/change-set-model').listSessions(server, { ideToken: req.ideToken })
-        const sessions = modelSessions ?? cl.getSessions(server)
+        const sessions = cl.getSessions(server)
         // A session counts as "deployed" once this server's own baseline has
         // advanced past its last entry -- deployer.js re-seeds BOTH the target's
         // and the source's baseline (stamped with the source's exact change-log
@@ -3066,10 +3063,6 @@ app.post('/api/deploy/git/execute', async (req, res) => {
         if (!target) return res.status(400).json({ error: 'target required' })
         const result = await execute(target, { branch, token: process.env.TM1_GIT_TOKEN, ideToken: req.ideToken, source, by: req.user })
         if (result?.approvalSession && result?.executed && result?.controlOk) try { cl.markSessionDeployed(result.approvalSession, target) } catch { /* link is best-effort */ }
-        try {
-            const s = result?.approvalSession ? cl.getSession(result.approvalSession) : null
-            if (s) await require('./core/change-set-model').mirrorSession(s.server, s, { ideToken: req.ideToken })
-        } catch (e) { result.modelMirrorError = e.message }
         res.json(result)
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
@@ -3091,12 +3084,7 @@ app.post('/api/deploy/git/push', async (req, res) => {
         })
         await c.post(`GitPlans('${encodeURIComponent(plan.ID)}')/tm1.Execute`, {})
         if (session) try { cl.setSessionCommit(session, plan.NewCommit?.ID ?? null) } catch { /* link is best-effort */ }
-        try {
-            const s = session ? cl.getSession(session) : null
-            if (s) await require('./core/change-set-model').mirrorSession(s.server, s, { ideToken: req.ideToken })
-        } catch (e) { await Promise.resolve(); }
-        const ok = { pushed: true, commit: plan.NewCommit?.ID ?? null, summary: plan.NewCommit?.Summary ?? null }
-        res.json(ok)
+        res.json({ pushed: true, commit: plan.NewCommit?.ID ?? null, summary: plan.NewCommit?.Summary ?? null })
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
