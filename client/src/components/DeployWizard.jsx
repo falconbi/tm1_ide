@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import { useActiveWorkSession, useCloseWorkSession, useWorkSessions } from '@/hooks/useApi'
 import { humanizeFile } from '@/lib/tm1-terms'
 
@@ -86,21 +86,9 @@ export default function DeployWizard({ server, onClose, onOpenTests }) {
 
   useEffect(() => { if (deployCtx?.id) setSessionId(deployCtx.id) }, [deployCtx?.id])
 
-  // Reopen at the step the change set's real state implies — ONCE per wizard open.
-  // (Not per change set: after a deploy the just-deployed set drops out of the
-  // list and deployCtx changes, which must not yank the user to Verify.)
-  const positioned = useRef(false)
-  useEffect(() => {
-    if (positioned.current || !deployCtx?.id) return
-    positioned.current = true
-    if (!deployCtx.closed_at) { setStep(1); return }          // open — test first
-    if (!deployCtx.commit_ref) { setStep(3); return }          // closed, not committed
-    if (deployCtx.deployed_target) { setStep(7); return }      // already shipped — verify
-    fetch(`/api/deploy/git/approval?target=${encodeURIComponent(target)}&commit=${encodeURIComponent(deployCtx.commit_ref)}`, { headers: authHeader() })
-      .then(r => r.json())
-      .then(a => setStep(a ? 6 : 4))                            // approved → deploy; else review
-      .catch(() => setStep(4))
-  }, [deployCtx?.id, deployCtx?.commit_ref, deployCtx?.deployed_target, target])
+  // Always open at step 1 (Test) — predictable. The tracker lets you jump to any
+  // step, and the header shows the change set in play, but the wizard does not
+  // hijack the starting step based on a previous set's state.
 
   // How many assertions this change set has added, and which ones (provenance).
   useEffect(() => {
