@@ -83,11 +83,13 @@ export default function DeployWizard({ server, onClose, onOpenTests }) {
 
   useEffect(() => { if (deployCtx?.id) setSessionId(deployCtx.id) }, [deployCtx?.id])
 
-  // Reopen at the step the change set's real state implies (once per change set).
-  const positionedFor = useRef(null)
+  // Reopen at the step the change set's real state implies — ONCE per wizard open.
+  // (Not per change set: after a deploy the just-deployed set drops out of the
+  // list and deployCtx changes, which must not yank the user to Verify.)
+  const positioned = useRef(false)
   useEffect(() => {
-    if (!deployCtx?.id || positionedFor.current === deployCtx.id) return
-    positionedFor.current = deployCtx.id
+    if (positioned.current || !deployCtx?.id) return
+    positioned.current = true
     if (!deployCtx.closed_at) { setStep(1); return }          // open — test first
     if (!deployCtx.commit_ref) { setStep(3); return }          // closed, not committed
     if (deployCtx.deployed_target) { setStep(7); return }      // already shipped — verify
