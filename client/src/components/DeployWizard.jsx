@@ -76,11 +76,12 @@ export default function DeployWizard({ server, onClose, onOpenTests }) {
   const { data: sessions } = useWorkSessions(server)
   const closeSession = useCloseWorkSession()
 
-  // Deploy opens on the change set being shipped: the open one, or the most
-  // recent FINISHED one that has NOT already shipped. A change set that has
-  // already deployed must not be reopened into (that landed users on Verify).
+  // Deploy opens on the change set in flight: the OPEN one, or — only when one is
+  // genuinely mid-deploy — a CLOSED set that has been COMMITTED but not yet
+  // shipped (a closed-but-never-committed set isn't in progress; it just wasn't
+  // started). No guessing from arbitrary old sets.
   const latestClosed = (sessions ?? [])
-    .filter(s => s.closed_at && !s.deployed_target && !s.deployed)
+    .filter(s => s.closed_at && !s.deployed_target && !s.deployed && s.commit_ref)
     .sort((a, b) => (a.closed_at < b.closed_at ? 1 : -1))[0] ?? null
   const deployCtx = activeSession ?? latestClosed
 
