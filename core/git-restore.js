@@ -23,7 +23,7 @@ function parseObjectFile(file) {
     let m
     m = f.match(/^dimensions\/(.+)\.hierarchies\/(.+)\.subsets\/([^/]+)\.json$/)
     if (m) return { type: 'subset', dim: m[1], hierarchy: m[2], name: m[3] }
-    m = f.match(/^processes\/(.+)\.json$/)
+    m = f.match(/^processes\/(.+)\.(json|ti)$/)
     if (m) return { type: 'process', name: m[1] }
     if (/^dimensions\//.test(f) && /\.json$/.test(f)) return { type: 'dimension', name: f }
     m = f.match(/^cubes\/(.+)\.views\/([^/]+)\.json$/)
@@ -42,6 +42,17 @@ function subsetMemberName(el, dim, hier) {
     return null
 }
 
+// TM1 Git exports a process as one .ti file with #region Prolog / Metadata /
+// Data / Epilog blocks. Split them back into the four procedures.
+function splitTi(text) {
+    const grab = (key) => {
+        const m = String(text ?? '').match(new RegExp(`#region\\s+${key}\\s*\\r?\\n([\\s\\S]*?)#endregion`, 'i'))
+        return m ? m[1].replace(/\r/g, '').trimEnd() : ''
+    }
+    if (!/#region\s+Prolog/i.test(String(text ?? ''))) return null
+    return { prolog: grab('Prolog'), metadata: grab('Metadata'), data: grab('Data'), epilog: grab('Epilog') }
+}
+
 // Restore each drifted object from the approved commit's repo file.
 async function restoreFromCommit(target, commit, entries, { branch = 'dev', token, gitUser, ideToken } = {}) {
     const c = makeClient(target, ideToken)
@@ -56,11 +67,16 @@ async function restoreFromCommit(target, commit, entries, { branch = 'dev', toke
         git(work, 'remote', 'add', 'origin', authUrl(repoUrl, gitUser, token))
         git(work, 'fetch', '-q', 'origin', branch)
         const tm1 = new TM1Client(target, c)
+        // dedupe by object (a process is two repo files: <name>.json and <name>.ti)
+        const seen = new Set()
         for (const e of entries ?? []) {
             const file = e?.file
             if (!file) continue
             const det = parseObjectFile(file)
             if (!det) { out.skipped.push({ file, error: 'unrecognised file type' }); continue }
+            const key = `${det.type}::${String(det.name).toLowerCase()}`
+            if (seen.has(key)) continue
+            seen.add(key)
             try {
                 if (det.type === 'subset') {
                     const content = git(work, 'show', `${commit}:${file}`)
@@ -68,6 +84,29 @@ async function restoreFromCommit(target, commit, entries, { branch = 'dev', toke
                     const members = (sub.Elements ?? []).map(el => subsetMemberName(el, det.dim, det.hierarchy)).filter(Boolean)
                     await tm1.saveStaticSubset(det.dim, det.name, members, det.hierarchy)
                     out.restored.push({ type: 'subset', name: `${det.name} (${det.dim})`, n: members.length })
+                } else if (det.type === 'process') {
+                    const tiText = git(work, 'show', `${commit}:processes/${det.name}.ti`)
+                    const parts = splitTi(tiText)
+                    if (!parts) {
+                        out.skipped.push({ file, error: 'process .ti has no Prolog/Metadata/Data/Epilog regions — cannot split; apply manually' })
+                        continue
+                    }
+                    const json = JSON.parse(git(work, 'show', `${commit}:processes/${det.name}.json`))
+                    const params = (json.Parameters ?? []).map(p => ({
+                        Name: p.Name, Type: p.Type ?? 'String',
+                        Value: p.Type === 'Numeric' ? Number(p.Value ?? 0) : String(p.Value ?? ''),
+                        Prompt: p.Prompt ?? '',
+                    }))
+                    await tm1.createOrReplaceProcess({
+                        name: det.name, prolog: parts.prolog, metadata: parts.metadata,
+                        data: parts.data, epilog: parts.epilog,
+                        parameters: params, datasource: json.DataSource ?? { Type: 'None' }, variables: json.Variables ?? [],
+                    })
+                    out.restored.push({ type: 'process', name: det.name })
+                } else if (det.type === 'rules') {
+                    const text = git(work, 'show', `${commit}:${file}`)
+                    await c.patch(`Cubes('${esc(det.cube)}')`, { Rules: text })
+                    out.restored.push({ type: 'rules', name: det.cube })
                 } else {
                     out.skipped.push({ file, error: `revert for ${det.type} not implemented yet — apply manually` })
                 }
@@ -84,4 +123,4 @@ async function restoreFromCommit(target, commit, entries, { branch = 'dev', toke
     }
 }
 
-module.exports = { restoreFromCommit, parseObjectFile }
+module.exports = { restoreFromCommit, parseObjectFile, splitTi }
