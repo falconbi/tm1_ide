@@ -66,6 +66,7 @@ export default function DeployWizard({ server, onClose, onOpenTests }) {
   const [approval,  setApproval]  = useState(null)
   const [approvalNote, setApprovalNote] = useState('')
   const [drift,     setDrift]     = useState(null)
+  const [lock,      setLock]      = useState(null)
   const [busy,      setBusy]      = useState('')
   const [error,     setError]     = useState(null)
   const [addedTests, setAddedTests] = useState(0)
@@ -165,6 +166,11 @@ export default function DeployWizard({ server, onClose, onOpenTests }) {
     const d = await run('deploy', { source: server, target }, '/api/deploy/git/execute')
     if (d) setRes(d)   // stays on Deploy — the result is shown until Continue
   }
+  const doClearLock = async () => {
+    if (!window.confirm(`Clear the stale deploy lock on ${target}? A deploy that died left it behind. This records who cleared it and when.`)) return
+    const d = await run('clear', { server: target }, '/api/git/lock/clear')
+    if (d?.ok) setLock(null)
+  }
   const doDrift = async () => {
     const d = await run('drift', { server: target }, '/api/git/drift')
     if (d) setDrift(d)
@@ -177,6 +183,18 @@ export default function DeployWizard({ server, onClose, onOpenTests }) {
     const d = await run(action, { target, source: server, branch: 'dev' }, `/api/git/drift/${action}`)
     if (d) setDrift(prev => ({ ...prev, actionResult: d }))
   }
+
+  // Deploy lock: show who is deploying to the target (polled on Deploy/Verify).
+  useEffect(() => {
+    if (step !== 6 && step !== 7) return setLock(null)
+    const t = setInterval(async () => {
+      try {
+        const r = await fetch(`/api/git/lock?server=${encodeURIComponent(target)}`, { headers: authHeader() })
+        setLock(await r.json())
+      } catch { /* banner is best-effort */ }
+    }, 3000)
+    return () => clearInterval(t)
+  }, [step, target])
 
   const changed = parseOps(prep?.plan?.ops)
   const behaviour = tests?.results?.filter(r => (r.kind ?? 'behaviour') === 'behaviour') ?? []
@@ -212,6 +230,16 @@ export default function DeployWizard({ server, onClose, onOpenTests }) {
 
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
           {error && <p className="text-xs text-red-600 border border-red-600/40 rounded px-3 py-2">{error}</p>}
+          {lock && (step === 6 || step === 7) && (
+            <div className={'text-xs border rounded px-3 py-2 ' + (lock.stale ? 'border-red-600/40 text-red-600' : 'border-amber-600/40 text-amber-600')}>
+              {lock.stale
+                ? <span className="flex items-center gap-2 flex-wrap">
+                    <span>A deploy on {target} by <span className="font-semibold">{lock.by}</span> since {new Date(lock.at).toLocaleTimeString()} didn't finish — the lock is stale.</span>
+                    <button onClick={doClearLock} disabled={busy === 'clear'} className="px-2 py-0.5 rounded border border-red-600/40 text-red-600 hover:bg-red-500/10 text-[10px]">Clear lock</button>
+                  </span>
+                : <span>{target} is being deployed by <span className="font-semibold">{lock.by}</span> since {new Date(lock.at).toLocaleTimeString()} — a deploy in progress is refused until it finishes.</span>}
+            </div>
+          )}
 
           {/* Step 1 — Test */}
           {step === 1 && (

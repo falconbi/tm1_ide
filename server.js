@@ -3177,6 +3177,19 @@ app.get('/api/git/lock', async (req, res) => {
         res.json(await current(server, { ideToken: req.ideToken }))
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
+// Clear a STALE deploy lock (one a deploy that died left behind). Refuses to
+// clear a live lock; records who/when in the deploy history.
+app.post('/api/git/lock/clear', async (req, res) => {
+    try {
+        const { clear } = require('./core/git-lock')
+        const server = req.body?.server
+        if (!server) return res.status(400).json({ error: 'server required' })
+        const result = await clear(server, { by: req.user, ideToken: req.ideToken })
+        res.json(result)
+    } catch (e) {
+        res.status(e.refused ? 409 : 500).json({ error: e.message })
+    }
+})
 
 // ── Governance mirror (#4): Applications/Governance ⇄ governance/ in the repo ──
 app.post('/api/git/governance/mirror', async (req, res) => {

@@ -178,7 +178,10 @@ async function execute(target, { branch = 'dev', token, gitUser = gitIdentity.us
         }
         return out
     } finally {
-        try { await lockMod.release(target, { ideToken }) } catch { /* release is best-effort — see git-lock */ }
+        try {
+            const rel = await lockMod.release(target, { ideToken })
+            if (rel && rel.ok === false) out.lockReleaseError = rel.error   // surfaced, never silent
+        } catch (e) { out.lockReleaseError = e.message }
     }
 }
 
