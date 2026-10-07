@@ -83,6 +83,25 @@ export default function GitSetup({ server, onClose }) {
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
           {error && <p className="text-xs text-red-600 border border-red-600/40 rounded px-3 py-2">{error}</p>}
 
+          {!status?.linked && (
+            <details className="border border-border rounded-md bg-muted/20">
+              <summary className="px-3 py-2 text-xs font-semibold cursor-pointer select-none">Full steps — how this works</summary>
+              <div className="px-3 pb-3 pt-1 space-y-2 text-[11px] text-muted-foreground leading-relaxed">
+                <p><span className="text-foreground">Before you start, have:</span></p>
+                <p>· An existing empty GitHub repo for THIS model (one repo per model — its DEV, TEST and PROD servers all link to the same repo, as different deployments). The tool links existing repos; it can't create one.</p>
+                <p>· A GitHub <span className="text-foreground">fine-grained personal access token</span> with <span className="text-foreground">Contents: Read &amp; write</span> on that repo (Settings → Developer settings → Fine-grained tokens).</p>
+                <p className="text-foreground">Then, in order:</p>
+                <p>1. <span className="text-foreground">Repository</span> — paste the repo's <span className="font-mono">…/your-for-model.git</span> URL.</p>
+                <p>2. <span className="text-foreground">What is this server</span> — DEV (builds &amp; pushes to the repo) · TEST or PROD (receives deploys; the first pull replaces every object, so it needs an explicit typed confirmation).</p>
+                <p>3. <span className="text-foreground">Token</span> — paste it. It is stored only on this server — never shown, logged or sent back. You'll see <span className="text-emerald-700">token set ✓</span>.</p>
+                <p>4. <span className="text-foreground">Check readiness</span> — must pass before linking (view/set/member-name problems would break the pull).</p>
+                <p>5. <span className="text-foreground">Link to repo (GitInit)</span> — ties this server to the repo as its deployment.</p>
+                <p>6. <span className="text-foreground">First move</span> — DEV/TEST: <span className="text-foreground">commit this server to the repo</span>. PROD: <span className="text-foreground">show what the first pull will replace</span>, review the list, then type exactly <span className="font-mono">I understand this overwrites {server}</span> to apply it.</p>
+                <p>Already-linked servers (like DEV/PROD here) skip all of this — this screen just shows their link.</p>
+              </div>
+            </details>
+          )}
+
           {status?.linked ? (
             <div className="border border-border rounded-md p-3 text-xs space-y-1">
               <p className="text-emerald-700">Already linked — nothing to do.</p>
