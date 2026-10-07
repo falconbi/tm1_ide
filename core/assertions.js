@@ -204,9 +204,11 @@ async function isModelStored(server, opts = {}) {
 }
 
 // Copy a server's config/assertions.json entries into its model document.
-// Copy only — config/assertions.json is left untouched. Refuses to overwrite an
-// existing model document unless `force`. After writing, reads the document back
-// so the caller sees the count the server actually holds.
+// Copy the config assertions into the model, then mark the server model-owned
+// (config entry → "migrated" marker) so a lost model document throws instead of
+// silently falling back. Refuses to overwrite an existing model document unless
+// `force`. After writing, reads the document back so the caller sees the count
+// the server actually holds.
 async function migrate(server, { dryRun = false, force = false, ideToken, client: injected } = {}) {
   const client = injected ?? _clientFor(server, { ideToken })
   const target = `${GOVERNANCE_PATH.join('/')}/${MODEL_DOC_NAME}`
@@ -243,6 +245,11 @@ async function migrate(server, { dryRun = false, force = false, ideToken, client
     }
   }
   await _writeModel(client, entries)
+  // Mark the server model-owned: the config entry becomes the "migrated" marker,
+  // so a lost model document THROWS (never a silent fall back to config).
+  const data = load()
+  data[server] = { migrated: 'model', at: new Date().toISOString() }
+  save(data)
   const readBack = await _readModel(client)
   return {
     server,
