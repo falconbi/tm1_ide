@@ -77,8 +77,11 @@ export default function DeployWizard({ server, onClose, onOpenTests }) {
   const closeSession = useCloseWorkSession()
 
   // Deploy opens on the change set being shipped: the open one, or the most
-  // recent finished (closed) one — never "none" when there is a set in play.
-  const latestClosed = (sessions ?? []).filter(s => s.closed_at && !s.deployed).sort((a, b) => (a.closed_at < b.closed_at ? 1 : -1))[0] ?? null
+  // recent FINISHED one that has NOT already shipped. A change set that has
+  // already deployed must not be reopened into (that landed users on Verify).
+  const latestClosed = (sessions ?? [])
+    .filter(s => s.closed_at && !s.deployed_target && !s.deployed)
+    .sort((a, b) => (a.closed_at < b.closed_at ? 1 : -1))[0] ?? null
   const deployCtx = activeSession ?? latestClosed
 
   useEffect(() => { if (deployCtx?.id) setSessionId(deployCtx.id) }, [deployCtx?.id])
