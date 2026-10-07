@@ -64,6 +64,14 @@ export default function GitSetup({ server, onClose }) {
     const d = await run('push', { server }, '/api/git/setup/first-push')
     if (d) setFirst(d)
   }
+  // Direct 'commit current state' — no change set. For realigning a server
+  // whose contents were replaced/copied, so the repo matches reality. Only for
+  // non-PROD servers (a PROD commit would push the wrong thing to the working branch).
+  const commitCurrent = async () => {
+    if (!window.confirm('This commits the entire current state of ' + server + ' to the repo, NOT in a change set. Use this when the server was replaced/copied and the repo needs to match. Continue?')) return
+    const d = await run('commit', { source: server, message: `Commit current state of ${server}` }, '/api/deploy/git/push')
+    if (d) setFirst(d)
+  }
   const doFirstPull = async () => {
     const d = await run('pull', { server, confirm }, '/api/git/setup/first-pull')
     if (d) setFirst(d)
@@ -103,13 +111,23 @@ export default function GitSetup({ server, onClose }) {
           )}
 
           {status?.linked ? (
-            <div className="border border-border rounded-md p-3 text-xs space-y-1">
-              <p className="text-emerald-700">Already linked — nothing to do.</p>
-              <p><span className="text-muted-foreground">Repo:</span> <span className="font-mono">{status.repoUrl}</span></p>
-              <p><span className="text-muted-foreground">Deployment:</span> {status.deployment} · <span className="text-muted-foreground">Connected:</span> {status.connected ? 'yes' : 'no'}</p>
-              {String(status.deployment ?? '').toUpperCase() === 'PROD'
-                ? <p className="text-amber-600">Its first pull is still a full overwrite — use Deploy → Review to see the object list before confirming.</p>
-                : <p className="text-muted-foreground">Ready to build and commit.</p>}
+            <div className="space-y-4">
+              <div className="border border-border rounded-md p-3 text-xs space-y-1">
+                <p className="text-emerald-700">Already linked — nothing to do.</p>
+                <p><span className="text-muted-foreground">Repo:</span> <span className="font-mono">{status.repoUrl}</span></p>
+                <p><span className="text-muted-foreground">Deployment:</span> {status.deployment} · <span className="text-muted-foreground">Connected:</span> {status.connected ? 'yes' : 'no'}</p>
+                {String(status.deployment ?? '').toUpperCase() === 'PROD'
+                  ? <p className="text-amber-600">Its first pull is still a full overwrite — use Deploy → Review to see the object list before confirming.</p>
+                  : <p className="text-muted-foreground">Ready to build and commit.</p>}
+              </div>
+              {String(status.deployment ?? '').toUpperCase() !== 'PROD' && (
+                <div className="border border-border rounded-md p-3 space-y-2">
+                  <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Commit current state (no change set)</p>
+                  <p className="text-[10px] text-muted-foreground/70">Commits the whole current state of {server} to the repo as-is, NOT in a change set — for when the server was replaced/copied and the repo needs to match (e.g. a PROD copy). Later reviews will mark this as &apos;outside any change set&apos;.</p>
+                  <button onClick={commitCurrent} disabled={busy === 'commit'} className={primary}>{busy === 'commit' ? 'Committing…' : 'Commit current state to the repo'}</button>
+                  {first && <p className="text-xs text-emerald-700">Committed <span className="font-mono">{first.commit}</span>.</p>}
+                </div>
+              )}
             </div>
           ) : (
             <>
