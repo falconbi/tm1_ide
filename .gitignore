@@ -8,6 +8,7 @@ config/servers.json
 config/deploy-approvals.json
 config/model-migration.json
 config/git-deploy-state.json
+config/git-secrets.json
 
 # ── Node / npm ──
 node_modules/

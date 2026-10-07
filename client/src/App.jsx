@@ -24,6 +24,7 @@ import CatalogAdmin from '@/components/CatalogAdmin'
 import ModelHealth from '@/components/ModelHealth'
 import AssertionsManager from '@/components/AssertionsManager'
 import DeployWizard from '@/components/DeployWizard'
+import GitSetup from '@/components/GitSetup'
 import GitDrift from '@/components/GitDrift'
 import DeployCenter from '@/components/DeployCenter'
 
@@ -88,6 +89,7 @@ const [showCatalog, setShowCatalog]           = useState(false)
   const [showModelHealth, setShowModelHealth]   = useState(false)
   const [showAssertions, setShowAssertions]     = useState(false)
   const [showGitDeploy, setShowGitDeploy]       = useState(false)
+  const [showGitSetup, setShowGitSetup]         = useState(false)
   const [showGitDrift, setShowGitDrift]         = useState(false)
   const [showToolsMenu, setShowToolsMenu]         = useState(false)
   const [showDeployMenu, setShowDeployMenu]       = useState(false)
@@ -342,6 +344,13 @@ const [showCatalog, setShowCatalog]           = useState(false)
                       <ListChecks size={13} className="shrink-0 text-muted-foreground" />
                       Tests (assertions)
                     </button>
+                    <button
+                      onClick={() => { setShowGitSetup(true); setShowDeployMenu(false) }}
+                      className="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-left text-foreground hover:bg-muted"
+                    >
+                      <GitBranch size={13} className="shrink-0 text-muted-foreground" />
+                      GitHub setup
+                    </button>
                   </div>
                 )}
               </div>
@@ -406,6 +415,7 @@ const [showCatalog, setShowCatalog]           = useState(false)
         {showModelHealth && <ModelHealth server={server} onClose={() => setShowModelHealth(false)} />}
         {showAssertions && <AssertionsManager server={server} onClose={() => setShowAssertions(false)} />}
         {showGitDeploy && <DeployWizard server={server} onClose={() => setShowGitDeploy(false)} onOpenTests={() => { setShowAssertions(true); setShowGitDeploy(false) }} />}
+        {showGitSetup && <GitSetup server={server} onClose={() => setShowGitSetup(false)} />}
         {showGitDrift && <GitDrift server={server} onClose={() => setShowGitDrift(false)} />}
         <PeriodBuilder open={showPeriodBuilder} onClose={() => setShowPeriodBuilder(false)} />
         <DeployCenter />

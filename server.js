@@ -11,6 +11,9 @@ const { makeClient, makeClientWithCredentials, needsServerLogin, isDirectServer,
 const { loadConnections, saveConnections, getConnection, executeQuery, testConnection, getSchema, loadQueries, saveQueries } = require('./core/sql_client')
 const { createSession, createDirectSession, createLocalSession, attachPawSession, getSessionUser, touchSession, invalidateSession, getCachedPawSession, getCSRF, PAW_HOST, setServerCredentials, getServerCredentials, clearServerCredentials, getServerStatus, listServerEntries, getSessionCredentials } = require('./core/paw_connect')
 const cl = require('./core/change_log')
+// Persisted Git token (never returned to the client) — env wins, else the secrets file.
+const gitSecrets = require('./core/git-secrets')
+if (!process.env.TM1_GIT_TOKEN && gitSecrets.getToken()) process.env.TM1_GIT_TOKEN = gitSecrets.getToken()
 const lensStore = require('./core/lens_store')
 const lensBridge = require('./core/lens_bridge')
 
@@ -3177,6 +3180,82 @@ app.post('/api/git/lock/clear', async (req, res) => {
     } catch (e) {
         res.status(e.refused ? 409 : 500).json({ error: e.message })
     }
+})
+
+// ── Git connection setup (first-time, guarded) ───────────────────────────────
+// Link an EXISTING repo only — creating one needs a broader GitHub token, so the
+// UI gives instructions instead. The token is never shown, logged or returned.
+// Already-initialised servers report their link and are never re-initialised.
+// Guardrails: no silent failures — every step reports, and a failure stops.
+const _GI = () => require('./core/git-identity')
+const _GITOK = () => process.env.TM1_GIT_TOKEN || ''
+
+app.get('/api/git/setup/status', async (req, res) => {
+    try {
+        const server = req.query?.server
+        if (!server) return res.status(400).json({ error: 'server required' })
+        const st = await makeClient(server, req.ideToken).post('GitStatus', { Username: _GI().user(), Password: _GITOK() })
+        res.json({ linked: !!st?.URL, repoUrl: st?.URL ?? null, deployment: st?.Deployment ?? null, connected: st?.Remote?.Connected ?? false })
+    } catch (e) { res.status(500).json({ error: e.response?.data?.error?.message ?? e.message }) }
+})
+
+app.post('/api/git/setup/token', (req, res) => {
+    try {
+        gitSecrets.setToken(req.body?.token)
+        res.json({ ok: true, note: 'token set ✓' })   // never the token itself
+    } catch (e) { res.status(400).json({ error: e.message }) }
+})
+
+app.get('/api/git/setup/readiness', async (req, res) => {
+    try {
+        const { server } = req.query
+        if (!server) return res.status(400).json({ error: 'server required' })
+        const { scan } = require('./core/git-readiness')
+        res.json(await scan(server, { gitUser: _GI().user(), token: _GITOK(), ideToken: req.ideToken }))
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.post('/api/git/setup/init', async (req, res) => {
+    try {
+        const { server, repo, deployment, force } = req.body
+        if (!server || !repo || !deployment) return res.status(400).json({ error: 'server, repo and deployment required' })
+        if (!/^(DEV|TEST|PROD)$/i.test(deployment)) return res.status(400).json({ error: 'deployment should be DEV, TEST or PROD' })
+        const c = makeClient(server, req.ideToken)
+        const st = await c.post('GitStatus', { Username: _GI().user(), Password: _GITOK() })
+        if (st?.URL && !force) return res.status(409).json({ error: `${server} is already linked to ${st.URL} (deployment ${st.Deployment}). Not re-running GitInit.` })
+        const plan = await c.post('GitInit', { URL: repo, Deployment: String(deployment).toUpperCase(), Force: !!force, Username: _GI().user(), Password: _GITOK() })
+        if (plan?.ID) await c.post(`GitPlans('${encodeURIComponent(plan.ID)}')/tm1.Execute`, {})
+        const after = await c.post('GitStatus', { Username: _GI().user(), Password: _GITOK() })
+        res.json({ ok: true, server, repo: after?.URL ?? repo, deployment: after?.Deployment ?? String(deployment).toUpperCase(), note: 'GitInit complete.' })
+    } catch (e) { res.status(500).json({ error: e.response?.data?.error?.message ?? e.message }) }
+})
+
+// DEV first push — the initial commit.
+app.post('/api/git/setup/first-push', async (req, res) => {
+    try {
+        const { server, message } = req.body
+        if (!server) return res.status(400).json({ error: 'server required' })
+        const c = makeClient(server, req.ideToken)
+        const plan = await c.post('GitPush', { Branch: 'dev', NewBranch: '', Force: false, Message: message || `Initial state of ${server}`, Author: req.user ?? _GI().user(), Email: _GI().email(), Username: _GI().user(), Password: _GITOK() })
+        await c.post(`GitPlans('${encodeURIComponent(plan.ID)}')/tm1.Execute`, {})
+        res.json({ ok: true, commit: plan.NewCommit?.ID ?? null, note: `First commit of ${server} pushed to the repo.` })
+    } catch (e) { res.status(500).json({ error: e.response?.data?.error?.message ?? e.message }) }
+})
+
+// PROD first pull — full overwrite; requires the typed confirmation. The object
+// list is shown first via the normal prepare route (fullOverwrite flag).
+app.post('/api/git/setup/first-pull', async (req, res) => {
+    try {
+        const { server, branch = 'dev', confirm } = req.body
+        if (!server) return res.status(400).json({ error: 'server required' })
+        const expected = `I understand this overwrites ${server}`
+        if (String(confirm ?? '').trim() !== expected) return res.status(400).json({ error: `Type exactly: ${expected}` })
+        const c = makeClient(server, req.ideToken)
+        const plan = await c.post('GitPull', { Branch: branch, ExecutionMode: 'SingleCommit', Force: false, Username: _GI().user(), Password: _GITOK() })
+        const n = (plan.Operations ?? []).length
+        await c.post(`GitPlans('${encodeURIComponent(plan.ID)}')/tm1.Execute`, {})
+        res.json({ ok: true, overwritten: n, note: `First pull applied — every object on ${server} was replaced by the repo state (${n} operations).` })
+    } catch (e) { res.status(500).json({ error: e.response?.data?.error?.message ?? e.message }) }
 })
 
 // ── Governance mirror (#4): Applications/Governance ⇄ governance/ in the repo ──
