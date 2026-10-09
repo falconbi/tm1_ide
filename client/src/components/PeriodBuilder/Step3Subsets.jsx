@@ -6,7 +6,7 @@ import { Maximize2, Minimize2, Copy } from 'lucide-react'
 
 export default function Step3Subsets({
   params,
-  computed,
+  _computed,
   selectedSubsets,
   onSubsetsChange,
   subsetPrefix,
