@@ -60,7 +60,7 @@ product.
   [how it was built](https://falconbi.github.io/articles/consolidation-built-by-ai/).
 
 Also: dimension, subset, view, chore and cube editors, view grid with writeback, sessions and jobs monitors,
-server admin, file manager, SQL editor, MDX sandbox and a Period Builder. Connects to TM1 directly over the REST
+server admin, file manager, SQL editor, MDX builder and a Period Builder. Connects to TM1 directly over the REST
 API or through PAW (v11 and v12). [See all features](docs/FEATURES.md).
 
 ## Quick start
