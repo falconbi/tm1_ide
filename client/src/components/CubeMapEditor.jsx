@@ -779,7 +779,7 @@ function CubeMapInner({ tab }) {
         layout, showCalc, showFeeders, showClusters, showDims, showProcesses, allTI,
         showMiniMap, showLegend, traceDepth, traceKinds,
       }))
-    } catch {}
+    } catch { /* prefs read failed — defaults apply */ }
   }, [prefsKey, layout, showCalc, showFeeders, showClusters, showDims, showProcesses, allTI, showMiniMap, showLegend, traceDepth, traceKinds])
 
   // Pre-computed reverse map (who references whom)
