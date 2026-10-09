@@ -254,7 +254,6 @@ export default function SQLEditor({ tab }) {
   const [showSaveInput,    setShowSaveInput]     = useState(false)
   const [saveInputName,    setSaveInputName]     = useState('')
   const [resultHeight,     setResultHeight]      = useState(220)
-  const dragRef = useRef(null)
   const [showPostToTI, setShowPostToTI]   = useState(false)
   const [processSearch, setProcessSearch] = useState('')
   const [newProcName, setNewProcName]     = useState('')
