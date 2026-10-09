@@ -1,6 +1,0 @@
-cube: revenue
-dimensions:
-  - entity
-  - time
-  - measure
-rules: rules/revenue.rules

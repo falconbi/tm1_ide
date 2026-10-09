@@ -1,5 +1,0 @@
-flask
-flask-compress
-python-dotenv
-requests
-pyyaml

@@ -5,7 +5,6 @@ import { useRules, useSaveRules, useLineage, useLineageConsumers, useTraceCellCa
 import { registerTM1Completions, registerTM1Theme } from '@/lib/tm1-functions'
 import ProcessEditor from '@/components/ProcessEditor'
 import SQLEditor from '@/components/SQLEditor'
-import HierarchyGridTest from '@/components/HierarchyGridTest'
 import SubsetEditor from '@/components/SubsetEditor'
 import DimensionEditor from '@/components/DimensionEditor'
 import ViewEditor from '@/components/ViewEditor'
@@ -1035,7 +1034,6 @@ export default function EditorPane({ groupId }) {
         {tab.type === 'chore'      && <ChoreEditor    key={tab.id} tab={tab} />}
         {tab.type === 'guidedmdxview'   && <GuidedMDXBuilder  key={tab.id} tab={tab} />}
         {tab.type === 'sql'             && <SQLEditor          key={tab.id} tab={tab} />}
-        {tab.type === 'hierarchytest'   && <HierarchyGridTest  key={tab.id} />}
         {tab.type === 'cubeeditor'      && <CubeEditor         key={tab.id} tab={tab} />}
         {tab.type === 'diff'            && <DiffTab            key={tab.id} tab={tab} />}
         {tab.type === 'cubemap'         && <CubeMapEditor      key={tab.id} tab={tab} />}

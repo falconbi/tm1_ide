@@ -90,40 +90,6 @@ function Toggle({ label, checked, onChange }) {
   )
 }
 
-function PresetButtons({ active, onSelect }) {
-  const presets = listPresets()
-  return (
-    <div className="flex gap-1.5 mb-3">
-      {presets.map(p => (
-        <button
-          key={p.id}
-          onClick={() => onSelect(p.id)}
-          className={cn(
-            'px-2.5 py-1 text-[10px] rounded border transition-colors',
-            active === p.id
-              ? 'bg-primary text-primary-foreground border-primary'
-              : 'bg-background text-muted-foreground border-border hover:text-foreground'
-          )}
-          title={p.description}
-        >
-          {p.name}
-        </button>
-      ))}
-      <button
-        onClick={() => onSelect('custom')}
-        className={cn(
-          'px-2.5 py-1 text-[10px] rounded border transition-colors',
-          active === 'custom'
-            ? 'bg-primary text-primary-foreground border-primary'
-            : 'bg-background text-muted-foreground border-border hover:text-foreground'
-        )}
-      >
-        Custom
-      </button>
-    </div>
-  )
-}
-
 function Section({ label, open, onToggle, children }) {
   return (
     <div className="mt-2">

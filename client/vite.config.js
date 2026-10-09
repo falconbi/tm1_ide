@@ -12,6 +12,12 @@ export default defineConfig({
       '@shared': path.resolve(__dirname, '../shared'),
     },
   },
+  // Build straight into the folder the server serves, clearing it first —
+  // copying bundles in by hand left every old build behind.
+  build: {
+    outDir: '../static',
+    emptyOutDir: true,
+  },
   server: {
     proxy: {
       '/api': 'http://localhost:8083',

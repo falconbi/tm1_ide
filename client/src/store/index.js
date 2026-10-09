@@ -1,7 +1,8 @@
 import { create } from 'zustand'
 
 /**
- * @typedef {'rules'|'process'|'subset'|'dimension'|'cubeview'} TabType
+ * @typedef {'rules'|'process'|'subset'|'dimension'|'view'|'cubeview'|'chore'|'cubeeditor'|'cubemap'|
+ *           'guidedmdxview'|'sql'|'diff'|'lens'|'session-report'|'transactionlog'} TabType
  *
  * @typedef {Object} Tab
  * @property {string}   id
