@@ -5,7 +5,7 @@
 **A browser-based IDE for IBM Planning Analytics (TM1)**
 
 [![Node.js](https://img.shields.io/badge/Node.js-20+-339933?logo=node.js&logoColor=white)](https://nodejs.org)
-[![License: ISC](https://img.shields.io/badge/License-ISC-blue.svg)](https://opensource.org/licenses/ISC)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![PAW](https://img.shields.io/badge/PAW-V11%20%7C%20V12-0062B1?logo=ibm&logoColor=white)](https://www.ibm.com/products/planning-analytics)
 [![Monaco](https://img.shields.io/badge/Editor-Monaco-646CFF)](https://microsoft.github.io/monaco-editor/)
 
