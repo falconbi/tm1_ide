@@ -257,7 +257,7 @@ function fmtStatement(raw, baseLevel, settings, namingMap, preset) {
     const exprFmt = fmtExpr(expr, baseLevel, settings, namingMap, preset)
     return prefixStr + exprFmt + semi
 
-  } catch (_) {
+  } catch {
     return raw.trim()
   }
 }
