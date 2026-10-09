@@ -38,7 +38,7 @@ export function compatAvailable(compat, version) {
 // Warning message when a function's compat conflicts with the connected server.
 export function compatWarning(compat, version) {
   if (!compat || compat === 'both') return null
-  const { known, isV12, isV11 } = parseTM1Version(version)
+  const { known, isV12 } = parseTM1Version(version)
   if (!known) return null
   if (compat === 'v12' && !isV12)
     return `only available on TM1 Database 12 (PA 3+) — this server is ${serverLabel(version)}`
