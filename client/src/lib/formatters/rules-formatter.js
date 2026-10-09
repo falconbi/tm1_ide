@@ -16,7 +16,7 @@ function getIndent(level, settings) {
 /**
  * Determine spacing (number of spaces) between two tokens based on settings and context.
  */
-function spacingBetween(prev, curr, settings, ctx) {
+function spacingBetween(prev, curr, settings, _ctx) {
   if (!prev) return 0
 
   const p = prev.type
@@ -247,7 +247,7 @@ export function formatRules(text, settings, namingMap) {
  * Align = signs within #Region blocks.
  * Only aligns consecutive assignment lines (lines with ['...'] = ... or N: ... = ...).
  */
-function alignEqualsInRegions(lines, settings) {
+function alignEqualsInRegions(lines, _settings) {
   // This is a Phase 1.5 / Phase 2 enhancement.
   // For now, return as-is.
   return lines.join('\n')
