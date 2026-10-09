@@ -241,8 +241,8 @@ function registerMDXLanguage(monaco, dimension, getElements) {
 
 // ── Main Component ────────────────────────────────────────────────────────────
 export default function SubsetEditor({ tab }) {
-  const { server, dark, markTabSaved, bumpSubsetVersion, closeTab, openTab, setActiveTab } = useStore()
-  const queryClient = useQueryClient()
+  const { dark, markTabSaved, bumpSubsetVersion, closeTab, openTab, setActiveTab } = useStore()
+  useQueryClient()
   const { data, isLoading } = useSubset(tab.server, tab.dimension, tab.subsetName)
   const saveSubset  = useSaveSubset()
   const previewMDX  = usePreviewMDX()
@@ -270,7 +270,6 @@ export default function SubsetEditor({ tab }) {
   const { data: attrGrid } = useAttrGrid(showAttrs || activeAlias ? tab.server : null, tab.dimension, tab.dimension)
   const [rightWidth, setRightWidth] = useState(400)
   const [rightCollapsed, setRightCollapsed] = useState(false)
-  const dragRef = useRef(null)
   const [resultsHeight, setResultsHeight] = useState(224)
   const startResultsResize = useCallback((e) => {
     e.preventDefault()
@@ -362,7 +361,7 @@ export default function SubsetEditor({ tab }) {
             endLineNumber: sl, endColumn: sc + 1,
           })
         }
-      } catch {} finally { setValidating(false) }
+      } catch { /* validation error survives to the markers set below */ } finally { setValidating(false) }
 
       monaco.editor.setModelMarkers(model, 'mdx-validate', markers)
     }, 800)
