@@ -5,7 +5,7 @@
 // a change, formatting a response, running stored assertions, gating on an
 // open change set). One place, no duplication across tools/*.js.
 
-const { makeClient } = require('../../core/adapter_registry')
+const { makeClient, isReadOnly } = require('../../core/adapter_registry')
 const cl              = require('../../core/change_log')
 const { lintRules }   = require('../../core/rules-lint')
 const { lintTI }      = require('../../core/ti-lint')
@@ -79,8 +79,17 @@ async function runAssertions(tags) {
     }
 }
 
+// A server marked read-only (PROD posture) in config/servers.json takes no writes
+// from an agent — the same rule the IDE's own write routes enforce.
+function requireWritable() {
+    if (isReadOnly(SERVER)) {
+        throw new Error(`"${SERVER}" is read-only (PROD posture) — no changes are allowed here. Bind the MCP server to a writable server to build.`)
+    }
+}
+
 // Metadata writes are refused unless a change set is open — this is the workflow gate.
 function requireChangeSet() {
+    requireWritable()
     const s = cl.getActiveSession(SERVER)
     if (!s) {
         throw new Error(
@@ -117,4 +126,4 @@ function assertTargetAllowed(target) {
     }
 }
 
-module.exports = { SERVER, AGENT_USER, client, ok, esc, logChange, runAssertions, requireChangeSet, assertTargetAllowed, targetAllowlist, cl, assertions, lintRules, lintTI }
+module.exports = { SERVER, AGENT_USER, client, ok, esc, logChange, runAssertions, requireWritable, requireChangeSet, assertTargetAllowed, targetAllowlist, cl, assertions, lintRules, lintTI }

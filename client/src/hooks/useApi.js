@@ -525,7 +525,7 @@ export const usePatchConfiguration   = () => useMutation({ mutationFn: ({ server
 export const useMaintenanceMode      = () => useMutation({ mutationFn: ({ server, enable }) => post(`/api/admin/maintenance/${enable ? 'enable' : 'disable'}`, { server }) })
 
 // ── TM1 Sessions (who is connected) ──────────────────────────────────────────
-export const useSessions          = (server, opts = {}) => useQuery({ queryKey: ['sessions', server], queryFn: () => get(`/api/sessions?server=${enc(server)}`), enabled: !!server, staleTime: 0, ...opts })
+export const useSessions          = (server, opts = {}) => useQuery({ queryKey: ['sessions', server], queryFn: () => get(`/api/tm1-sessions?server=${enc(server)}`), enabled: !!server, staleTime: 0, ...opts })
 export const useDisconnectSession = () => useMutation({ mutationFn: ({ server, id }) => del(`/api/session?server=${enc(server)}&id=${enc(id)}`) })
 export const useThreads           = (server, opts = {}) => useQuery({ queryKey: ['threads', server], queryFn: () => get(`/api/threads?server=${enc(server)}`), enabled: !!server, staleTime: 0, ...opts })
 export const useCancelThread      = () => useMutation({ mutationFn: ({ server, id }) => post(`/api/thread/cancel?server=${enc(server)}&id=${enc(id)}`, {}) })

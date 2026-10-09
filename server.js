@@ -2419,8 +2419,8 @@ app.delete('/api/files', async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
-// ── Sessions ──────────────────────────────────────────────────────────────────
-app.get('/api/sessions', async (req, res) => {
+// ── TM1 sessions ──────────────────────────────────────────────────────────────
+app.get('/api/tm1-sessions', async (req, res) => {
     try {
         const client = makeClient(req.query.server, req.ideToken)
         const sessions = await client.getSessions()
@@ -2666,8 +2666,10 @@ app.post('/api/forge', (req, res) => {
 
 // ── SQL Editor ───────────────────────────────────────────────────────────────
 
+const SQL_PASSWORD_MASK = '••••••••'
+
 app.get('/api/sql/connections', (req, res) => {
-    res.json(loadConnections().map(c => ({ ...c, password: c.password ? '••••••••' : '' })))
+    res.json(loadConnections().map(c => ({ ...c, password: c.password ? SQL_PASSWORD_MASK : '' })))
 })
 
 app.post('/api/sql/connections', (req, res) => {
@@ -2675,6 +2677,9 @@ app.post('/api/sql/connections', (req, res) => {
         const conns = loadConnections()
         const conn  = { ...req.body, id: req.body.id || `sql-${Date.now()}` }
         const idx   = conns.findIndex(c => c.id === conn.id)
+        // The edit form starts from the masked list entry — an untouched password
+        // field comes back as the mask, which means "keep the stored one".
+        if (conn.password === SQL_PASSWORD_MASK) conn.password = idx >= 0 ? conns[idx].password : ''
         if (idx >= 0) conns[idx] = conn; else conns.push(conn)
         saveConnections(conns)
         res.json({ ok: true, id: conn.id })
