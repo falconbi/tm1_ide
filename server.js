@@ -2993,7 +2993,8 @@ app.post('/api/deploy/git/prepare', async (req, res) => {
 })
 app.post('/api/deploy/git/execute', async (req, res) => {
     try {
-        if (!gateReadOnly(res, req.body?.target)) return
+        // Not gated by read-only: a recorded approval (enforced inside execute(),
+        // non-optionally) is what authorises shipping to a PROD-posture target.
         const { execute } = require('./core/git-deploy')
         const { target, branch, source } = req.body
         if (!target) return res.status(400).json({ error: 'target required' })
@@ -3077,7 +3078,8 @@ app.post('/api/git/drift', async (req, res) => {
 })
 app.post('/api/git/drift/revert', async (req, res) => {
     try {
-        if (!gateReadOnly(res, req.body?.target)) return
+        // Not gated by read-only: restoring a drifted target to its approved commit
+        // is an approved action (the approval gate lives inside revert()).
         const { revert } = require('./core/git-drift')
         const { target, branch } = req.body
         if (!target) return res.status(400).json({ error: 'target required' })
