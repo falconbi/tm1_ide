@@ -1,9 +1,7 @@
 import { useState, useMemo, useEffect } from 'react'
-import { useQuery } from '@tanstack/react-query'
 import { useAttrGrid, useCreateAttrDef, useWriteElementAttribute, useDimAttributes, useSubsets } from '@/hooks/useApi'
 import { toast } from 'sonner'
 import { Search, X, Loader2, Save, Check } from 'lucide-react'
-import { cn } from '@/lib/utils'
 
 const enc = encodeURIComponent
 const get = url => fetch(url).then(r => { if (!r.ok) throw new Error(r.statusText); return r.json() })
@@ -85,7 +83,7 @@ export default function PicklistBuilder({ server, dim, onClose }) {
       try {
         await createAttr.mutateAsync({ server, dimension: dim, name: 'Picklist', type: 'String' })
         toast.success('Picklist attribute created')
-      } catch (e) {
+      } catch {
         toast.error('Failed to create Picklist attribute'); return
       }
     }
