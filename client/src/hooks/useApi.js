@@ -598,6 +598,9 @@ export const useFilesAvailable = (server) => useQuery({
 })
 
 // ── Per-server login ──────────────────────────────────────────────────────────
+// Refetched after a server sign-in (the login dialog invalidates every query), so
+// a server opened before signing in still gets its version.
+export const useServerVersion = (server) => useQuery({ queryKey: ['server-version', server], queryFn: () => get(`/api/server/version?server=${enc(server)}`), enabled: !!server, staleTime: Infinity, retry: false })
 export const useServerLogins = () => useQuery({ queryKey: ['server-logins'], queryFn: () => get('/api/auth/servers'), staleTime: 10_000 })
 export const serverLogin  = (body) => post('/api/auth/server-login', body)
 export const serverLogout = (server) => post('/api/auth/server-logout', { server })

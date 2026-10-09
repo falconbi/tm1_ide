@@ -1,4 +1,4 @@
-import { useServers, useServerLogins, serverLogout } from '@/hooks/useApi'
+import { useServers, useServerLogins, useServerVersion, serverLogout } from '@/hooks/useApi'
 import { useStore } from '@/store'
 import { useQueryClient } from '@tanstack/react-query'
 import { useEffect } from 'react'
@@ -10,15 +10,9 @@ export default function ServerSelector() {
   const { server, setServer, serverVersion, setServerVersion } = useStore()
   const queryClient = useQueryClient()
 
-  useEffect(() => {
-    if (!server) return
-    let cancelled = false
-    fetch(`/api/server/version?server=${encodeURIComponent(server)}`)
-      .then(r => r.ok ? r.json() : null)
-      .then(d => { if (!cancelled) setServerVersion(d?.version ?? null) })
-      .catch(() => { if (!cancelled) setServerVersion(null) })
-    return () => { cancelled = true }
-  }, [server, setServerVersion])
+  const { data: versionData } = useServerVersion(server)
+  const version = versionData?.version ?? null
+  useEffect(() => { setServerVersion(version) }, [version, setServerVersion])
 
   const refresh = () => {
     if (!server) return
@@ -31,7 +25,7 @@ export default function ServerSelector() {
         <Database size={12} />
         <span>SERVER</span>
         {serverVersion && (
-          <span className="ml-auto text-[9px] font-semibold border rounded px-1 py-0.5 text-violet-400 border-violet-500/20 bg-violet-500/10">
+          <span title={`TM1 ${serverVersion}`} className="ml-auto text-[9px] font-semibold border rounded px-1 py-0.5 text-violet-400 border-violet-500/20 bg-violet-500/10">
             {serverLabel(serverVersion)}
           </span>
         )}

@@ -2410,18 +2410,25 @@ app.patch('/api/admin/configuration', async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
+// tm1s.Enable/DisableMaintenanceMode arrived in TM1 12.6 — older servers 404.
+function sendMaintenanceError(res, e) {
+    const is404 = e.response?.status === 404 || e.message?.includes('404')
+    if (is404) return res.status(404).json({ error: 'Maintenance mode is not available on this server — it needs TM1 12.6 or later.' })
+    res.status(500).json({ error: e.message })
+}
+
 app.post('/api/admin/maintenance/enable', async (req, res) => {
     try {
         if (!gateReadOnly(res, req.body.server)) return
         res.json(await makeClient(req.body.server, req.ideToken).enableMaintenanceMode())
-    } catch (e) { res.status(500).json({ error: e.message }) }
+    } catch (e) { sendMaintenanceError(res, e) }
 })
 
 app.post('/api/admin/maintenance/disable', async (req, res) => {
     try {
         if (!gateReadOnly(res, req.body.server)) return
         res.json(await makeClient(req.body.server, req.ideToken).disableMaintenanceMode())
-    } catch (e) { res.status(500).json({ error: e.message }) }
+    } catch (e) { sendMaintenanceError(res, e) }
 })
 
 // ── User management ───────────────────────────────────────────────────────────

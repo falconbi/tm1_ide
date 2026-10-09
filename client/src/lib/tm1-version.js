@@ -17,12 +17,12 @@ export function parseTM1Version(value) {
   }
 }
 
+// "V12 · 12.5.8" / "V11 · 11.8.01300" — the release, not just the major version:
+// 12.x ships roughly monthly and features arrive mid-line (maintenance mode: 12.6).
 export function serverLabel(value) {
-  const { known, isV12, isV11, major } = parseTM1Version(value)
+  const { raw, known, major } = parseTM1Version(value)
   if (!known) return 'unknown'
-  if (isV12) return `V12 (TM1 ${major})`
-  if (isV11) return `V11 (TM1 ${major})`
-  return `V${major}`
+  return `V${major} · ${raw.split('.').slice(0, 3).join('.')}`
 }
 
 // A function with this compat is available on a server of this version.
@@ -45,4 +45,17 @@ export function compatWarning(compat, version) {
   if (compat === 'v11' && isV12)
     return 'removed in TM1 Database 12 (PA 3) — V11 classic only'
   return null
+}
+
+// Server features that only exist on some versions — the one place the UI asks
+// "does this server have X?" so every feature shows, hides or explains itself the
+// same way. Checked per server (a migration can mean V11 PROD next to a V12 DEV).
+// Unknown version → everything on, and the call itself reports what's missing.
+export function serverCapabilities(version) {
+  const { known, isV12 } = parseTM1Version(version)
+  const v12 = !known || isV12
+  return {
+    jobs:    v12,  // Jobs (background work) — V12 REST only
+    metrics: v12,  // Metrics() — V12 database API; Server Admin's Status tab (maintenance mode, 12.6+, lives there too)
+  }
 }

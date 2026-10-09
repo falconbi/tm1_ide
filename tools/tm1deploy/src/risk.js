@@ -3,6 +3,8 @@
 const fs   = require('fs')
 const path = require('path')
 const { makeClient } = require('./client')
+const { findCalls }  = require('../../../core/rules-lint')
+const CATALOG        = require('../../../shared/tm1-function-catalog.json')
 
 // ── Result builder ────────────────────────────────────────────────────────────
 
@@ -347,6 +349,48 @@ async function checkViewOverwrite(obj, client) {
 
 // ── Main analyzer ─────────────────────────────────────────────────────────────
 
+// ── 7. Version compatibility ──────────────────────────────────────────────────
+//
+// Some functions exist only on V11 or only on V12 (the shared catalog's `compat`).
+// Deploying across versions — e.g. V11 PROD next to a V12 DEV during a migration —
+// carries them to a server that doesn't have them. TI is only compiled when the
+// deploy writes it, so a mismatch otherwise surfaces mid-deploy; rules hit
+// CheckRules above, but not when the cube is new on the target.
+
+function targetMajor(version) {
+    const m = /^(\d+)/.exec(String(version ?? '').trim())
+    return m ? parseInt(m[1], 10) : null
+}
+
+function checkVersionCompat(obj, packageDir, major) {
+    const wrong = major >= 12 ? 'v11' : 'v12'
+    const why   = wrong === 'v11' ? 'is V11-only — removed in TM1 Database 12' : 'is V12-only — not available on V11'
+    let sections
+    if (obj.type === 'rules') {
+        sections = [['rules', fs.readFileSync(path.join(packageDir, obj.file), 'utf8')]]
+    } else {
+        let data
+        try { data = JSON.parse(fs.readFileSync(path.join(packageDir, obj.file), 'utf8')) }
+        catch { return [] }   // checkProcessSyntax already reports an unreadable file
+        sections = [['Prolog', data.PrologProcedure], ['Metadata', data.MetaDataProcedure],
+                    ['Data', data.DataProcedure], ['Epilog', data.EpilogProcedure]]
+    }
+    const risks = []
+    for (const [section, code] of sections) {
+        if (typeof code !== 'string') continue
+        const seen = new Set()
+        for (const c of findCalls(code)) {
+            const up = c.name.toUpperCase()
+            if (CATALOG[up]?.compat !== wrong || seen.has(up)) continue
+            seen.add(up)
+            const where = obj.type === 'rules' ? `line ${c.line}` : `${section} line ${c.line}`
+            risks.push(item('WARNING', 'version', obj.type, obj.name,
+                `${c.name}() ${why}, but the target is V${major} (${where})`))
+        }
+    }
+    return risks
+}
+
 async function analyzeRisk(packageDir, targetServer, ideToken) {
     const manifestPath = path.join(packageDir, 'manifest.json')
     if (!fs.existsSync(manifestPath)) throw new Error(`No manifest.json found in ${packageDir}`)
@@ -374,8 +418,15 @@ async function analyzeRisk(packageDir, targetServer, ideToken) {
         cubes:      new Set(objects.filter(o => o.type === 'cube').map(o => o.name)),
     }
 
+    const major = targetMajor(await client.getProductVersion().catch(() => null))
+    if (major == null) all.push(item('INFO', 'version', 'server', targetServer,
+        'Target version unknown — V11/V12-only functions not checked'))
+
     await Promise.all(objects.map(async obj => {
         try {
+            if (major != null && (obj.type === 'rules' || obj.type === 'process')) {
+                push(checkVersionCompat(obj, packageDir, major))
+            }
             if (obj.type === 'rules') {
                 push(await checkRulesSyntax(obj, packageDir, client, packaged))
                 push(await checkRulesDependency(obj, client, packaged))
