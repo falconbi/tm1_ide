@@ -1,0 +1,11 @@
+[
+  {
+    "id": "sql-example",
+    "name": "Example SQLite",
+    "driver": "sqlite",
+    "file": "/path/to/database.db",
+    "server": "", "port": "", "database": "",
+    "auth": "sql", "username": "", "password": "",
+    "encrypt": false
+  }
+]

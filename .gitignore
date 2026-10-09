@@ -72,3 +72,10 @@ CLAUDE.md
 # Local secrets / backups — never commit
 config/certs/
 config/servers.json.bak*
+
+# ── Per-machine files — each install has its own (examples are committed) ──
+config/forge.json
+config/sql-connections.json
+config/assertions.json
+config/model-migration.json
+opencode.jsonc
