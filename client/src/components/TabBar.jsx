@@ -34,7 +34,7 @@ const getTabMark = (tab) => {
 
 // ── Context menu ──────────────────────────────────────────────────────────────
 function ContextMenu({ tabId, groupId, x, y, onClose }) {
-  const { closeTab, closeOtherTabsInGroup, closeTabsToRight, openTabInOtherGroup, moveTabToGroup, splitGroup, groups } = useStore()
+  const { closeTab, closeOtherTabsInGroup, closeTabsToRight, moveTabToGroup, splitGroup, groups } = useStore()
   const ref = useRef(null)
   const multiGroup = groups.length > 1
   const otherGroup = groups.find(g => g.id !== groupId)
