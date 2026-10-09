@@ -18,7 +18,7 @@ No TM1 Architect, no Perspectives, nothing to install on the server.
 ---
 
 > [!IMPORTANT]
-> **Deployment and model storage are being reworked.** The deploy pipeline is moving onto TM1's built-in Git integration (TM1 itself moves the model; the IDE keeps the governance — change sets, risk checks, approval, tests, history), and everything about a model — tests, change sets, baselines, deploy history, Lenses — is moving out of the IDE's own folders and into the model itself. Expect changes to how change sets, baselines and deployments are stored and run. Please don't rely on the current deploy pipeline for production deployments until this lands; the rest of the IDE is unaffected.
+> **Deployment now runs on TM1's built-in Git (preview).** Step-by-step deploy with approvals, drift checks and model-owned history. Tested in the lab, not yet production-proven — use it on test servers and tell us what you find.
 
 > [!WARNING]
 > **Pre-release — for initial testing only.**
