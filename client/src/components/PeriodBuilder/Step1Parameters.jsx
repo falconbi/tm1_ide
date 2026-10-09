@@ -66,7 +66,6 @@ function Toggle({ checked, onChange, label }) {
 
 export default function Step1Parameters({ params, onChange }) {
   const set = (key) => (val) => onChange({ ...params, [key]: val })
-  const currentYear = new Date().getFullYear()
 
   const periodOptions = useMemo(() => {
     const opts = [{ value: '', label: '— select —' }]
