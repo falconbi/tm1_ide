@@ -484,7 +484,7 @@ export const usePostToTI            = () => useMutation({ mutationFn: (body) => 
 export const usePreviewDatasource   = () => useMutation({ mutationFn: (body) => post('/api/sql/preview-datasource', body) })
 export const useSQLQueries     = (connectionId) => useQuery({ queryKey: ['sql-queries', connectionId], queryFn: () => get(`/api/sql/queries${connectionId ? `?connectionId=${enc(connectionId)}` : ''}`), staleTime: 0 })
 export const useSaveSQLQuery   = () => { const qc = useQueryClient(); return useMutation({ mutationFn: (q) => post('/api/sql/queries', q), onSuccess: (_, v) => qc.invalidateQueries({ queryKey: ['sql-queries', v.connectionId] }) }) }
-export const useDeleteSQLQuery = () => { const qc = useQueryClient(); return useMutation({ mutationFn: ({ id, connectionId }) => del(`/api/sql/queries/${enc(id)}`), onSuccess: (_, v) => qc.invalidateQueries({ queryKey: ['sql-queries', v.connectionId] }) }) }
+export const useDeleteSQLQuery = () => { const qc = useQueryClient(); return useMutation({ mutationFn: ({ id }) => del(`/api/sql/queries/${enc(id)}`), onSuccess: (_, v) => qc.invalidateQueries({ queryKey: ['sql-queries', v.connectionId] }) }) }
 
 export const useCreateDimension  = () => {
   const queryClient = useQueryClient()
@@ -523,8 +523,8 @@ export const useWorkSessions       = (server) => useQuery({ queryKey: ['work-ses
 export const useWorkSessionLog     = (sessionId) => useQuery({ queryKey: ['work-session-log', sessionId], queryFn: () => get(`/api/sessions/${enc(sessionId)}/log`), enabled: !!sessionId, staleTime: 0 })
 export const useWorkSessionLogVerbose = (sessionId) => useQuery({ queryKey: ['work-session-log-verbose', sessionId], queryFn: () => get(`/api/sessions/${enc(sessionId)}/log/verbose`), enabled: !!sessionId, staleTime: 0 })
 export const useStartWorkSession   = () => { const qc = useQueryClient(); return useMutation({ mutationFn: (body) => post('/api/sessions/start', body), onSuccess: (_, v) => { qc.invalidateQueries({ queryKey: ['work-session-active', v.server] }); qc.invalidateQueries({ queryKey: ['work-sessions', v.server] }) } }) }
-export const useCloseWorkSession   = () => { const qc = useQueryClient(); return useMutation({ mutationFn: (body) => post('/api/sessions/close', body), onSuccess: (_, v) => { qc.invalidateQueries({ queryKey: ['work-session-active'] }); qc.invalidateQueries({ queryKey: ['work-sessions'] }) } }) }
-export const useResumeWorkSession  = () => { const qc = useQueryClient(); return useMutation({ mutationFn: (body) => post('/api/sessions/resume', body), onSuccess: (_, v) => { qc.invalidateQueries({ queryKey: ['work-session-active'] }); qc.invalidateQueries({ queryKey: ['work-sessions'] }) } }) }
+export const useCloseWorkSession   = () => { const qc = useQueryClient(); return useMutation({ mutationFn: (body) => post('/api/sessions/close', body), onSuccess: (_, _v) => { qc.invalidateQueries({ queryKey: ['work-session-active'] }); qc.invalidateQueries({ queryKey: ['work-sessions'] }) } }) }
+export const useResumeWorkSession  = () => { const qc = useQueryClient(); return useMutation({ mutationFn: (body) => post('/api/sessions/resume', body), onSuccess: (_, _v) => { qc.invalidateQueries({ queryKey: ['work-session-active'] }); qc.invalidateQueries({ queryKey: ['work-sessions'] }) } }) }
 export const useObjectHistory      = (server, type, name) => useQuery({ queryKey: ['object-history', server, type, name], queryFn: () => get(`/api/log/object?server=${enc(server)}&type=${enc(type)}&name=${enc(name)}`), enabled: !!(server && type && name), staleTime: 0 })
 
 export function useConflictCheck(server, type, name) {
