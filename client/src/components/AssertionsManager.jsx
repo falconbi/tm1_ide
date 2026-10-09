@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { X, Plus, Trash2, Pencil, Check, XCircle, Play, RefreshCw, ListChecks, ChevronDown, ChevronRight } from 'lucide-react'
+import { X, Plus, Trash2, Pencil, Check, Play, RefreshCw, ListChecks } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 // Assertions manager — list, add, edit, remove and run the model's stored
