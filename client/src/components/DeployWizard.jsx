@@ -72,7 +72,7 @@ export default function DeployWizard({ server, onClose, onOpenTests }) {
   const [addedTests, setAddedTests] = useState(0)
   const [setAssertions, setSetAssertions] = useState([])
 
-  const { data: activeSession, refetch: refetchActive } = useActiveWorkSession(server)
+  const { data: activeSession } = useActiveWorkSession(server)
   const { data: sessions } = useWorkSessions(server)
   const closeSession = useCloseWorkSession()
 
