@@ -28,12 +28,17 @@ const _server = new McpServer({
     version: '2.0.0',
 })
 
+// Tools that change the bound server without going through requireChangeSet()
+// (which already refuses on a read-only server) — checked here instead.
+const UNGATED_WRITE_TOOLS = new Set(['start_change_set', 'run_process', 'reprocess_feeders', 'add_assertion', 'remove_assertion'])
+
 // Wrap every tool handler so TM1/OData error detail reaches the agent instead of
 // the opaque "Request failed with status code 400".
 const server = {
     tool(name, description, schema, handler) {
         return _server.tool(name, description, schema, async (args) => {
             try {
+                if (UNGATED_WRITE_TOOLS.has(name)) ctx.requireWritable()
                 return await handler(args)
             } catch (e) {
                 const d = e.response?.data?.error?.message ?? e.response?.data?.error ?? e.response?.data

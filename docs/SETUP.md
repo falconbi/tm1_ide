@@ -132,9 +132,8 @@ After making client changes, rebuild for production:
 
 ```bash
 cd client && npm run build
-cp dist/assets/index-*.js ../static/assets/
-cp dist/assets/index-*.css ../static/assets/
-cp dist/index.html ../static/index.html
 ```
+
+This builds straight into `static/` (what the server serves), replacing the previous build.
 
 </details>

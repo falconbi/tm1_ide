@@ -1378,85 +1378,6 @@ app.get('/api/edges', async (req, res) => {
     }
 })
 
-// ── Attribute debug — try multiple approaches to see what PAW returns ─────────
-app.get('/api/debug/element-attrs', async (req, res) => {
-    const { server, dimension } = req.query
-    const client = makeClient(server, req.ideToken)
-    const results = {}
-
-    // Approach A: $expand=Attributes on elements collection
-    try {
-        results.expandOnCollection = await client.get(
-            `Dimensions('${dimension}')/Hierarchies('${dimension}')/Elements`,
-            { '$expand': 'Attributes', '$top': '2' }
-        )
-    } catch (e) { results.expandOnCollection = { error: e.message, status: e.response?.status } }
-
-    // Approach B: fetch first element's /Attributes sub-resource directly
-    try {
-        const els = await client.get(
-            `Dimensions('${dimension}')/Hierarchies('${dimension}')/Elements`,
-            { '$select': 'Name', '$top': '1' }
-        )
-        const firstName = els.value?.[0]?.Name
-        if (firstName) {
-            results.firstElementName = firstName
-            results.directSubResource = await client.get(
-                `Dimensions('${dimension}')/Hierarchies('${dimension}')/Elements('${firstName}')/Attributes`
-            )
-        }
-    } catch (e) { results.directSubResource = { error: e.message, status: e.response?.status } }
-
-    // Approach C: ElementAttributes (attribute definitions)
-    try {
-        results.attrDefinitions = await client.get(
-            `Dimensions('${dimension}')/Hierarchies('${dimension}')/ElementAttributes`,
-            { '$select': 'Name,Type', '$top': '10' }
-        )
-    } catch (e) { results.attrDefinitions = { error: e.message, status: e.response?.status } }
-
-    res.json(results)
-})
-
-// ── Attribute write probe ─────────────────────────────────────────────────────
-app.post('/api/test/attr-write', async (req, res) => {
-    try {
-        const { server, dimension } = req.body
-        if (!gateReadOnly(res, server)) return
-        const client = makeClient(server, req.ideToken)
-
-        // Get first element that has at least one attribute value set
-        const els = await client.get(
-            `Dimensions('${dimension}')/Hierarchies('${dimension}')/Elements`,
-            { '$select': 'Name', '$top': '20' }
-        )
-        let candidate = null
-        let attrName = null
-        let attrValue = null
-        for (const el of (els.value ?? [])) {
-            const attrs = await client.getElementAttributeValues(dimension, el.Name)
-            const entry = Object.entries(attrs).find(([, v]) => v !== null && v !== '' && v !== 0)
-            if (entry) {
-                candidate = el.Name
-                ;[attrName, attrValue] = entry
-                break
-            }
-        }
-        if (!candidate) {
-            return res.json({ skipped: true, reason: 'No element with a non-empty attribute value found. Set at least one attribute value first.' })
-        }
-
-        console.log(`[attr-write-probe] dim=${dimension} element=${candidate} attr=${attrName} value=${JSON.stringify(attrValue)}`)
-        const [r1, r2] = await Promise.all([
-            client.probeAttributeValueWrite(dimension, candidate, attrName, attrValue),
-            client.probeAttributeWrite(dimension, candidate, attrName, attrValue),
-        ])
-        res.json({ element: candidate, attribute: attrName, value: attrValue, ...r1, ...r2 })
-    } catch (e) {
-        res.status(500).json({ error: e.message })
-    }
-})
-
 // ── Dimension element + edge write ───────────────────────────────────────────
 app.post('/api/dimension/element', async (req, res) => {
     try {
@@ -2419,8 +2340,8 @@ app.delete('/api/files', async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
-// ── Sessions ──────────────────────────────────────────────────────────────────
-app.get('/api/sessions', async (req, res) => {
+// ── TM1 sessions ──────────────────────────────────────────────────────────────
+app.get('/api/tm1-sessions', async (req, res) => {
     try {
         const client = makeClient(req.query.server, req.ideToken)
         const sessions = await client.getSessions()
@@ -2666,8 +2587,10 @@ app.post('/api/forge', (req, res) => {
 
 // ── SQL Editor ───────────────────────────────────────────────────────────────
 
+const SQL_PASSWORD_MASK = '••••••••'
+
 app.get('/api/sql/connections', (req, res) => {
-    res.json(loadConnections().map(c => ({ ...c, password: c.password ? '••••••••' : '' })))
+    res.json(loadConnections().map(c => ({ ...c, password: c.password ? SQL_PASSWORD_MASK : '' })))
 })
 
 app.post('/api/sql/connections', (req, res) => {
@@ -2675,6 +2598,9 @@ app.post('/api/sql/connections', (req, res) => {
         const conns = loadConnections()
         const conn  = { ...req.body, id: req.body.id || `sql-${Date.now()}` }
         const idx   = conns.findIndex(c => c.id === conn.id)
+        // The edit form starts from the masked list entry — an untouched password
+        // field comes back as the mask, which means "keep the stored one".
+        if (conn.password === SQL_PASSWORD_MASK) conn.password = idx >= 0 ? conns[idx].password : ''
         if (idx >= 0) conns[idx] = conn; else conns.push(conn)
         saveConnections(conns)
         res.json({ ok: true, id: conn.id })

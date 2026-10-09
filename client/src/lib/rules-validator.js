@@ -124,8 +124,18 @@ export function validateRulesSyntax(code, options = {}) {
     // ── Statement-level bracket analysis ───────────────────────────────────
     let stmtBracketDepth = 0
     let depth = 0
+    const openers = []
     for (const t of toks) {
-      if (t.value === '(' || t.value === '[' || t.value === '{') {
+      if (t.value === ')' && openers[openers.length - 1] === '[') {
+        // ) closing a [...] — the feeder bracket typo; treat it as the ] it was meant to be
+        errors.push({ severity: 'error', line: stmtLine, message: `Unexpected ')' inside brackets — did you mean ']'?` })
+        openers.pop()
+        depth--
+        stmtBracketDepth--
+        fileBracketDepth--
+        if (fileBracketDepth === 0) fileBracketStartLine = -1
+      } else if (t.value === '(' || t.value === '[' || t.value === '{') {
+        openers.push(t.value)
         depth++
         if (t.value === '[') {
           stmtBracketDepth++
@@ -133,6 +143,7 @@ export function validateRulesSyntax(code, options = {}) {
           if (fileBracketStartLine === -1) fileBracketStartLine = lineOf(text, t, code)
         }
       } else if (t.value === ')' || t.value === ']' || t.value === '}') {
+        openers.pop()
         depth--
         if (t.value === ']') {
           stmtBracketDepth--
@@ -143,10 +154,6 @@ export function validateRulesSyntax(code, options = {}) {
           errors.push({ severity: 'error', line: stmtLine, message: `Unexpected '${t.value}' — no matching opener` })
           depth = 0
         }
-      } else if (t.value === ')' && fileBracketDepth > 0) {
-        // ) inside [...] — the feeder bracket typo
-        errors.push({ severity: 'error', line: stmtLine, message: `Unexpected ')' inside brackets — did you mean ']'?` })
-        fileBracketDepth--
       }
     }
 

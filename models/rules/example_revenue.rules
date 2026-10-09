@@ -1,7 +1,0 @@
-SKIPCHECK;
-
-['Profit'] = N: ['Revenue'] - ['Cost'];
-
-FEEDERS;
-['Revenue'] => ['Profit'];
-['Cost']    => ['Profit'];

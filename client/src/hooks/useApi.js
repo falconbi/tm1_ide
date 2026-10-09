@@ -48,7 +48,6 @@ const del   = (url)       => fetch(url, { method: 'DELETE', headers: authHeader(
 const patch = (url, body) => fetch(url, { method: 'PATCH',  headers: { 'Content-Type': 'application/json', ...authHeader() }, body: JSON.stringify(body) }).then(async r => { if (!r.ok) throw await extractError(r); return r.json() })
 
 export const useLogin  = () => useMutation({ mutationFn: ({ username, password, server }) => fetch('/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username, password, server }) }).then(async r => { if (!r.ok) throw await extractError(r); return r.json() }) })
-export const useLogout = () => useMutation({ mutationFn: () => fetch('/api/auth/logout', { method: 'POST', headers: authHeader() }).then(r => r.json()) })
 
 const enc = encodeURIComponent
 
@@ -141,11 +140,6 @@ export const useDebugProcess = () => useMutation({
 export const useSearchProcesses = () => useMutation({
   mutationFn: ({ server, q }) =>
     get(`/api/processes/search?server=${enc(server)}&q=${enc(q)}`),
-})
-
-export const useFetchProcessLog = () => useMutation({
-  mutationFn: ({ server, name }) =>
-    get(`/api/process/log?server=${enc(server)}&name=${enc(name)}`),
 })
 
 export const useCreateProcess = () => {
@@ -275,17 +269,6 @@ export const useCubeDimensions = (server, cube) => useQuery({
   staleTime: 60_000,
 })
 
-export const useView = (server, cube, name) => useQuery({
-  queryKey: ['view', server, cube, name],
-  queryFn:  () => get(`/api/view?server=${enc(server)}&cube=${enc(cube)}&name=${enc(name)}`),
-  enabled:  !!server && !!cube && !!name,
-})
-
-export const useExecuteView = () => useMutation({
-  mutationFn: ({ server, cube, view }) =>
-    post(`/api/view/execute?server=${enc(server)}&cube=${enc(cube)}&view=${enc(view)}`, {}),
-})
-
 export const useViewAxes = () => useMutation({
   mutationFn: ({ server, cube, view }) =>
     get(`/api/view/axes?server=${enc(server)}&cube=${enc(cube)}&view=${enc(view)}`),
@@ -294,11 +277,6 @@ export const useViewAxes = () => useMutation({
 export const useExecuteMDX = () => useMutation({
   mutationFn: ({ server, mdx }) =>
     post(`/api/mdx/execute?server=${enc(server)}`, { mdx }),
-})
-
-export const useExecuteViewSuppressed = () => useMutation({
-  mutationFn: ({ server, cube, view, suppressZeros }) =>
-    post(`/api/view/execute-suppressed?server=${enc(server)}&cube=${enc(cube)}&view=${enc(view)}`, { suppressZeros }),
 })
 
 export const useSaveView = () => {
@@ -344,13 +322,6 @@ export const useMultiFormatAttrs = (server, dims) => {
   })
 }
 
-export const useElementsWithAttrs = (server, dim, hierarchy) => useQuery({
-  queryKey: ['elements-attrs', server, dim, hierarchy],
-  queryFn:  () => get(`/api/elements/attributes?server=${enc(server)}&dimension=${enc(dim)}${hierarchy ? `&hierarchy=${enc(hierarchy)}` : ''}`),
-  enabled:  !!server && !!dim,
-  staleTime: 30_000,
-})
-
 export const useElementAttrValues = (server, dim, element, hierarchy) => useQuery({
   queryKey: ['element-attrs', server, dim, element, hierarchy],
   queryFn:  () => get(`/api/element/attributes?server=${enc(server)}&dimension=${enc(dim)}&element=${enc(element)}${hierarchy ? `&hierarchy=${enc(hierarchy)}` : ''}`),
@@ -373,11 +344,6 @@ export const useAddElement = () => useMutation({
 export const useDeleteElement = () => useMutation({
   mutationFn: ({ server, dimension, name, hierarchy }) =>
     del(`/api/dimension/element?server=${enc(server)}&dimension=${enc(dimension)}&name=${enc(name)}${hierarchy ? `&hierarchy=${enc(hierarchy)}` : ''}`),
-})
-
-export const useRenameElement = () => useMutation({
-  mutationFn: ({ server, dimension, name, newName, hierarchy }) =>
-    patch(`/api/dimension/element?server=${enc(server)}&dimension=${enc(dimension)}&name=${enc(name)}${hierarchy ? `&hierarchy=${enc(hierarchy)}` : ''}`, { newName }),
 })
 
 export const useAddEdge = () => useMutation({
@@ -470,11 +436,6 @@ export const useCreateHierarchy = () => useMutation({
     post('/api/dimension/hierarchy', { server, dimension, name }),
 })
 
-export const useDeleteHierarchy = () => useMutation({
-  mutationFn: ({ server, dimension, name }) =>
-    del(`/api/dimension/hierarchy?server=${enc(server)}&dimension=${enc(dimension)}&name=${enc(name)}`),
-})
-
 export const usePawBookUsage = (server, cube, view) => useQuery({
   queryKey: ['paw-book-usage', server, cube, view],
   queryFn:  () => get(`/api/paw/book-usage?server=${enc(server)}&cube=${enc(cube)}${view ? `&view=${enc(view)}` : ''}`),
@@ -495,8 +456,6 @@ export const useSQLQueries     = (connectionId) => useQuery({ queryKey: ['sql-qu
 export const useSaveSQLQuery   = () => { const qc = useQueryClient(); return useMutation({ mutationFn: (q) => post('/api/sql/queries', q), onSuccess: (_, v) => qc.invalidateQueries({ queryKey: ['sql-queries', v.connectionId] }) }) }
 export const useDeleteSQLQuery = () => { const qc = useQueryClient(); return useMutation({ mutationFn: ({ id, connectionId }) => del(`/api/sql/queries/${enc(id)}`), onSuccess: (_, v) => qc.invalidateQueries({ queryKey: ['sql-queries', v.connectionId] }) }) }
 
-export const useCurrentUser      = (server) => useQuery({ queryKey: ['whoami', server], queryFn: () => get(`/api/whoami?server=${enc(server)}`), enabled: !!server, staleTime: 300_000 })
-export const useWriteCell        = () => useMutation({ mutationFn: (body) => post('/api/cells/write', body) })
 export const useCreateDimension  = () => {
   const queryClient = useQueryClient()
   return useMutation({
@@ -516,16 +475,14 @@ export const useTransactionLog   = () => useMutation({
 })
 export const useJobs             = (server, opts = {}) => useQuery({ queryKey: ['jobs', server], queryFn: () => get(`/api/jobs?server=${enc(server)}`), enabled: !!server, staleTime: 0, ...opts })
 export const useCancelJob        = () => useMutation({ mutationFn: ({ server, id }) => post(`/api/job/cancel?server=${enc(server)}&id=${enc(id)}`, {}) })
-export const useChoreActions     = () => useMutation({ mutationFn: ({ action, server, name }) => post(`/api/chore/${action}?server=${enc(server)}&name=${enc(name)}`, {}) })
 
 // ── Server admin ──────────────────────────────────────────────────────────────
 export const useServerMetrics        = (server, opts = {}) => useQuery({ queryKey: ['metrics', server], queryFn: () => get(`/api/admin/metrics?server=${enc(server)}`), enabled: !!server, staleTime: 15_000, ...opts })
 export const useActiveConfiguration  = (server, opts = {}) => useQuery({ queryKey: ['config', server],  queryFn: () => get(`/api/admin/configuration?server=${enc(server)}`), enabled: !!server, staleTime: 30_000, ...opts })
-export const usePatchConfiguration   = () => useMutation({ mutationFn: ({ server, section, values }) => patch('/api/admin/configuration', { server, section, values }) })
 export const useMaintenanceMode      = () => useMutation({ mutationFn: ({ server, enable }) => post(`/api/admin/maintenance/${enable ? 'enable' : 'disable'}`, { server }) })
 
 // ── TM1 Sessions (who is connected) ──────────────────────────────────────────
-export const useSessions          = (server, opts = {}) => useQuery({ queryKey: ['sessions', server], queryFn: () => get(`/api/sessions?server=${enc(server)}`), enabled: !!server, staleTime: 0, ...opts })
+export const useSessions          = (server, opts = {}) => useQuery({ queryKey: ['sessions', server], queryFn: () => get(`/api/tm1-sessions?server=${enc(server)}`), enabled: !!server, staleTime: 0, ...opts })
 export const useDisconnectSession = () => useMutation({ mutationFn: ({ server, id }) => del(`/api/session?server=${enc(server)}&id=${enc(id)}`) })
 export const useThreads           = (server, opts = {}) => useQuery({ queryKey: ['threads', server], queryFn: () => get(`/api/threads?server=${enc(server)}`), enabled: !!server, staleTime: 0, ...opts })
 export const useCancelThread      = () => useMutation({ mutationFn: ({ server, id }) => post(`/api/thread/cancel?server=${enc(server)}&id=${enc(id)}`, {}) })
@@ -535,7 +492,6 @@ export const useActiveWorkSession  = (server) => useQuery({ queryKey: ['work-ses
 export const useWorkSessions       = (server) => useQuery({ queryKey: ['work-sessions', server], queryFn: () => get(`/api/sessions?server=${enc(server)}`), enabled: !!server, staleTime: 0 })
 export const useWorkSessionLog     = (sessionId) => useQuery({ queryKey: ['work-session-log', sessionId], queryFn: () => get(`/api/sessions/${enc(sessionId)}/log`), enabled: !!sessionId, staleTime: 0 })
 export const useWorkSessionLogVerbose = (sessionId) => useQuery({ queryKey: ['work-session-log-verbose', sessionId], queryFn: () => get(`/api/sessions/${enc(sessionId)}/log/verbose`), enabled: !!sessionId, staleTime: 0 })
-export const useRecentLog          = (server) => useQuery({ queryKey: ['recent-log', server], queryFn: () => get(`/api/log/recent?server=${enc(server)}`), enabled: !!server, staleTime: 0 })
 export const useStartWorkSession   = () => { const qc = useQueryClient(); return useMutation({ mutationFn: (body) => post('/api/sessions/start', body), onSuccess: (_, v) => { qc.invalidateQueries({ queryKey: ['work-session-active', v.server] }); qc.invalidateQueries({ queryKey: ['work-sessions', v.server] }) } }) }
 export const useCloseWorkSession   = () => { const qc = useQueryClient(); return useMutation({ mutationFn: (body) => post('/api/sessions/close', body), onSuccess: (_, v) => { qc.invalidateQueries({ queryKey: ['work-session-active'] }); qc.invalidateQueries({ queryKey: ['work-sessions'] }) } }) }
 export const useResumeWorkSession  = () => { const qc = useQueryClient(); return useMutation({ mutationFn: (body) => post('/api/sessions/resume', body), onSuccess: (_, v) => { qc.invalidateQueries({ queryKey: ['work-session-active'] }); qc.invalidateQueries({ queryKey: ['work-sessions'] }) } }) }
