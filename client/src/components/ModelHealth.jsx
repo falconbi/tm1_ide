@@ -9,7 +9,7 @@ function summarizeMdx(mdx) {
   if (!mdx) return { cube: '', filters: [] }
   const cube = mdx.match(/FROM\s+\[([^\]]+)\]/i)?.[1] ?? ''
   const refs = []
-  const re = /\[([^\]\[]+)\]\.\[([^\]\[]+)\]\.\[([^\]\[]+)\]/g
+  const re = /\[([^\][]+)\]\.\[([^\][]+)\]\.\[([^\][]+)\]/g
   let m
   while ((m = re.exec(mdx))) refs.push({ dim: m[1], member: m[3] })
   const seen = new Set()
@@ -35,6 +35,13 @@ function suggestHints(tags = []) {
 // accept it (readiness), and does it meet house standards (Default view/subset).
 // Runs on the button only — nothing happens on open. Monochrome; colour only for
 // pass/fail.
+// Status pill used by the health panes — top level so it isn't recreated each render.
+function Status({ ok }) {
+  return ok
+    ? <span className="inline-flex items-center gap-1 text-xs text-emerald-600"><CheckCircle2 size={13} /> OK</span>
+    : <span className="inline-flex items-center gap-1 text-xs text-red-600"><XCircle size={13} /> Issues</span>
+}
+
 export default function ModelHealth({ server, onClose }) {
   const { openTab } = useStore()
   const [result,  setResult]  = useState(null)
@@ -73,10 +80,6 @@ export default function ModelHealth({ server, onClose }) {
   const copy = async (text, id) => {
     try { await navigator.clipboard.writeText(text); setCopied(id); setTimeout(() => setCopied(null), 1500) } catch { /* ignore */ }
   }
-
-  const Status = ({ ok }) => ok
-    ? <span className="inline-flex items-center gap-1 text-xs text-emerald-600"><CheckCircle2 size={13} /> OK</span>
-    : <span className="inline-flex items-center gap-1 text-xs text-red-600"><XCircle size={13} /> Issues</span>
 
   const empty = <p className="text-xs text-muted-foreground italic">Clean — nothing to report.</p>
 
@@ -198,7 +201,7 @@ export default function ModelHealth({ server, onClose }) {
                             <div className="flex items-center gap-1.5 flex-wrap">
                               <span className="text-[10px] text-muted-foreground">Last runs:</span>
                               {histories[f.id].length === 0 && <span className="text-[10px] text-muted-foreground italic">no history recorded yet</span>}
-                              {histories[f.id].map((h, i) => (
+                              {histories[f.id].map((h, _i) => (
                                 <span key={h.run} className={cn('text-[10px] px-1.5 py-0.5 rounded border', h.pass === 1 ? 'border-emerald-600/30 text-emerald-600' : 'border-red-600/30 text-red-600')}
                                   title={`${h.run} — expected ${h.expected}, actual ${h.actual}`}>
                                   {h.run.slice(4, 12)} {h.pass === 1 ? 'P' : 'F'}
