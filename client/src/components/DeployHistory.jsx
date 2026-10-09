@@ -139,7 +139,7 @@ function ArchiveRow({ a, onOpenDiff }) {
   )
 }
 
-function ArchiveDetail({ id, approval, deployStats, onOpenDiff }) {
+function ArchiveDetail({ id, approval, _deployStats, onOpenDiff }) {
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(false)
   const [err, setErr] = useState(null)
