@@ -30,8 +30,6 @@ const ELSEIF_KW = /^\s*ELSEIF\s*\(/i
 const FOR_KW    = /^\s*FOR\s+\w/i
 const NEXT_KW   = /^\s*NEXT\s*(\(|\s*;)/i
 
-const SECTION_ORDER = ['Prolog', 'Metadata', 'Data', 'Epilog']
-
 // ── Function call extraction ───────────────────────────────────────────────────
 // Walks text char-by-charm tracking strings + paren depth to find every
 // identifier(…) call. Returns [{ fn, argCount, line }].
@@ -260,12 +258,6 @@ function parseStatements(rawCode) {
   flush(rawLines.length - 1)
 
   return statements
-}
-
-function countChar(s, ch) {
-  let n = 0
-  for (let i = 0; i < s.length; i++) if (s[i] === ch) n++
-  return n
 }
 
 // ── Quote-checking across raw lines ────────────────────────────────────────────
@@ -597,7 +589,6 @@ export function validateTICode(sections, options = {}) {
   const { version } = options
   ACTIVE_VERSION = version ?? null
   const results = []
-  const allLabels = Object.keys(sections).map(k => sections[k])
 
   for (const [key, code] of Object.entries(sections)) {
     const label = SECTION_LABELS[key] ?? key
