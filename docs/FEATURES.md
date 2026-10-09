@@ -51,7 +51,7 @@ A 24-short series walking through every main feature — edit, build, govern, th
 8. Cell power — write, trace, log, notes
 9. Cube Map
 10. Lineage & impact analysis
-11. MDX sandbox + Guided builder
+11. Guided MDX builder
 12. Period Builder
 13. Calc Review views
 14. Search, SQL, chores
@@ -84,11 +84,10 @@ A 24-short series walking through every main feature — edit, build, govern, th
 | **Dimension Editor** | Hierarchy tree with CRUD, attribute grid, element search, bulk CSV import. Per-column **→A** button converts String attributes to Alias in one click (values preserved). **Format picker** for the Format attribute with colour swatch support |
 | **Subset Editor** | MDX code view + visual element tree, static/MDX save, MDX preview |
 | **View Editor** | Native and MDX view builder, cell grid with inline writeback, **auto-refreshes when rules for the same cube are saved**, Feeders check, **cell right-click → Trace** side drawer |
-| **Guided MDX Builder** | Axis-by-axis view builder, subset filter builder, MDX execution |
+| **Guided MDX Builder** | Axis-by-axis view builder, subset filter builder, and an MDX editor for ad-hoc queries with a result grid — the **MDX** icon in the toolbar |
 | **Chore Editor** | Schedule editor, step list, activate/deactivate/execute on demand |
 | **Cube Editor** | Create and delete cubes, dimension assignment |
 | **SQL Editor** | External database queries (SQL Server, PostgreSQL, MySQL, SQLite), schema browser, saved queries, post SQL as TI datasource |
-| **MDX Sandbox** | Ad-hoc MDX execution with result grid |
 | **Cube Map** | Interactive dependency graph of the whole model — auto-laid-out (dagre) nodes for every cube, with edges for rule calc references, feeders, and TI process writes. Click a cube to highlight its full transitive dependency chain (upstream + downstream) with a count; layer toggles for Rules/Feeders/Groups/TI; auto-clusters related cubes into groups; shows the TI **writer** for a cube and, one hop further, what **calls** that writer — so a generic reusable process (e.g. a Bedrock copy utility) is correctly attributed wherever it's invoked. Open the cube, its rules, or the process straight from the node. Minimap + legend included |
 | **Deploy Panel** | 5-step wizard: Diff → Package → Risk (drift check + BLOCKER/WARNING/INFO) → Approve → Deploy |
 | **Deploy History** | Permanent archive of every deployment — approval record, manifest, results, and pre/post target snapshots with inline diff viewer |
