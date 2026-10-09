@@ -41,9 +41,7 @@ function installedMonoFonts() {
   }
 }
 
-export default function EditorPreferences({ open, onClose, onOpenPeriodBuilder, onOpenFormatSettings }) {
-  if (!open) return null
-
+export default function EditorPreferences({ onClose, onOpenPeriodBuilder, onOpenFormatSettings }) {
   const { dark, setDark, bumpThemeVersion } = useStore()
   const [settings, setSettings] = useState(() => loadSettings())
   const [colourTheme, setColourTheme] = useState(() => loadColourSettings().theme)

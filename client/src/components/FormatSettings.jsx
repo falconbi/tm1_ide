@@ -1,12 +1,12 @@
 import { useState, useMemo, useCallback } from 'react'
 import { useStore } from '@/store'
-import { X, RotateCcw, Save, Download, Upload, ChevronDown, ChevronRight } from 'lucide-react'
+import { X, RotateCcw, Save, ChevronDown, ChevronRight } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { loadSettings, saveSettings, resetAllSettings } from '@/lib/formatters/settings.js'
 import { getNamingMap } from '@/lib/formatters/naming.js'
 import { formatRules } from '@/lib/formatters/rules-formatter.js'
 import { tokenize } from '@/lib/formatters/tokenizer.js'
-import { loadColourSettings, saveColourSettings, resetColourSettings, exportColourSettings, importColourSettings, DEFAULT_COLOURS, COLOUR_THEMES, applyColourTheme } from '@/lib/formatters/colours.js'
+import { loadColourSettings, saveColourSettings } from '@/lib/formatters/colours.js'
 
 // ── Sample code for preview ───────────────────────────────────────────────────
 
@@ -194,13 +194,11 @@ function TIPreview({ colourSettings, sampleCode, dark }) {
 
 // ── Main Settings Modal ──────────────────────────────────────────────────────
 
-export default function FormatSettings({ open, onClose }) {
-  if (!open) return null
-
+export default function FormatSettings({ onClose }) {
   const { bumpThemeVersion, dark } = useStore()
   const [settings, setSettings]           = useState(() => loadSettings())
   const [tab, setTab]                     = useState('rules')
-  const [colourSettings, setColourSettings] = useState(() => loadColourSettings())
+  const [colourSettings] = useState(() => loadColourSettings())
   const [rulesSpacingOpen, setRulesSpacingOpen] = useState(true)
   const [rulesLayoutOpen, setRulesLayoutOpen]   = useState(true)
   const [tiSpacingOpen, setTiSpacingOpen]       = useState(true)
