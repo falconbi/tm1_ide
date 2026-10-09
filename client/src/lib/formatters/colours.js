@@ -451,7 +451,7 @@ export function loadColourSettings() {
       const parsed = JSON.parse(raw)
       return deepMerge(DEFAULT_COLOURS, parsed)
     }
-  } catch {}
+  } catch { /* malformed local data or storage unavailable — best-effort */ }
   return structuredClone(DEFAULT_COLOURS)
 }
 
@@ -462,7 +462,7 @@ export function loadColourSettings() {
 export function saveColourSettings(colours) {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(colours))
-  } catch {}
+  } catch { /* malformed local data or storage unavailable — best-effort */ }
 }
 
 /**
@@ -494,7 +494,7 @@ export function importColourSettings(json) {
       saveColourSettings(parsed)
       return true
     }
-  } catch {}
+  } catch { /* malformed local data or storage unavailable — best-effort */ }
   return false
 }
 
