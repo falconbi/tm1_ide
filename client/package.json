@@ -7,6 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint .",
+    "lint:count": "eslint . --format json | node -e \"let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{const r=JSON.parse(d);console.log('lint problems:', r.reduce((a,f)=>a+f.messages.length,0))})\"",
     "preview": "vite preview"
   },
   "imports": {
