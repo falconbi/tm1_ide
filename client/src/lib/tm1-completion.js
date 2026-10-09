@@ -27,7 +27,7 @@ function filterCatalog(lang) {
   const out = {}
   for (const [name, entry] of Object.entries(TM1_CATALOG)) {
     if (entry.language === lang || entry.language === 'both') {
-      const { language, ...rest } = entry
+      const { language: _language, ...rest } = entry
       out[name] = rest
     }
   }
