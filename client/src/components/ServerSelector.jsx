@@ -25,7 +25,7 @@ export default function ServerSelector() {
         <Database size={12} />
         <span>SERVER</span>
         {serverVersion && (
-          <span className="ml-auto text-[9px] font-semibold border rounded px-1 py-0.5 text-violet-400 border-violet-500/20 bg-violet-500/10">
+          <span title={`TM1 ${serverVersion}`} className="ml-auto text-[9px] font-semibold border rounded px-1 py-0.5 text-violet-400 border-violet-500/20 bg-violet-500/10">
             {serverLabel(serverVersion)}
           </span>
         )}
