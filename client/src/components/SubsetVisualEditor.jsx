@@ -2,7 +2,7 @@ import { useState, useMemo, useCallback, useRef, useEffect } from 'react'
 import { useStore } from '@/store'
 import { useElements, useEdges, useSubsets, useSubsetElements, useSaveStaticSubset, useDimAttributes } from '@/hooks/useApi'
 import { toast } from 'sonner'
-import { ChevronRight, ChevronDown, Loader2, Search, ArrowUp, ArrowDown, Trash2, Settings2, X, PanelLeftClose, PanelLeftOpen } from 'lucide-react'
+import { ChevronRight, ChevronDown, Loader2, Search, ArrowUp, ArrowDown, Trash2, X, PanelLeftClose, PanelLeftOpen } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 const TYPE_ICON  = { N: '○', C: '◆', S: '"' }
@@ -678,7 +678,7 @@ export default function SubsetVisualEditor({ tab, onMdxConvert, onVisualDirty, o
         )
     }
 
-    const handleConvertMDX = () => {
+    const _handleConvertMDX = () => {
         const names = (members ?? []).map(m => `[${tab.dimension}].[${tab.dimension}].[${m.name}]`)
         onMdxConvert(names.length ? `{${names.join(', ')}}` : '{}')
     }
