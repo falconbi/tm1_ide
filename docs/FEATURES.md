@@ -106,7 +106,7 @@ A 24-short series walking through every main feature — edit, build, govern, th
 | **Transaction Log** | Side panel showing a cube's real transaction log — timestamp, user, old value → new value — either for the whole cube or filtered to one cell intersection (e.g. from the cell right-click menu's Log tab) |
 | **Jobs Monitor** | Live list of TM1 background jobs/processes on the server with status (Running/Completed/Cancelled/Aborted), auto-refreshing every 4 seconds; cancel any running job in one click |
 | **Sessions Monitor** | Active TM1 sessions grouped by user, each expandable to its running threads (state + function), with per-thread cancel and per-session disconnect |
-| **Server Admin** | Status / Sessions / Configuration tabs — live server metrics (memory, threads, uptime, cells and feeders calculated, active session count), one-click maintenance-mode toggle, session disconnect, and a read-only tree view of the server's active configuration |
+| **Server Admin** | **Admin** in the status bar. Sessions (with disconnect) and a read-only tree of the server's active configuration on every version; on V12 also a Status tab — live server metrics and the maintenance-mode toggle (TM1 12.6+). Tabs a server's version doesn't support are hidden |
 
 ### 🗓️ Period Builder
 

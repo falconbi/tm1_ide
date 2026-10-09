@@ -1,4 +1,4 @@
-import { useServers, useServerLogins, serverLogout } from '@/hooks/useApi'
+import { useServers, useServerLogins, useServerVersion, serverLogout } from '@/hooks/useApi'
 import { useStore } from '@/store'
 import { useQueryClient } from '@tanstack/react-query'
 import { useEffect } from 'react'
@@ -10,15 +10,9 @@ export default function ServerSelector() {
   const { server, setServer, serverVersion, setServerVersion } = useStore()
   const queryClient = useQueryClient()
 
-  useEffect(() => {
-    if (!server) return
-    let cancelled = false
-    fetch(`/api/server/version?server=${encodeURIComponent(server)}`)
-      .then(r => r.ok ? r.json() : null)
-      .then(d => { if (!cancelled) setServerVersion(d?.version ?? null) })
-      .catch(() => { if (!cancelled) setServerVersion(null) })
-    return () => { cancelled = true }
-  }, [server, setServerVersion])
+  const { data: versionData } = useServerVersion(server)
+  const version = versionData?.version ?? null
+  useEffect(() => { setServerVersion(version) }, [version, setServerVersion])
 
   const refresh = () => {
     if (!server) return
