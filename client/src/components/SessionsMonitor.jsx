@@ -127,7 +127,7 @@ export default function SessionsMonitor({ server, onClose }) {
                         )}
                       </td>
                     </tr>
-                    {isExpanded && u.sessions.map((s, i) => {
+                    {isExpanded && u.sessions.map((s, _i) => {
                       const sessionThreads = threadBySessionId[s.Name] ?? []
                       return (
                         <tr key={s.Name} className="border-b border-border/30 bg-muted/10">
