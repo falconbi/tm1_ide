@@ -213,7 +213,7 @@ export const useStore = create((set, get) => ({
         activeTab: tab.id,
       }))
     }
-    const { content, dirty, ...meta } = tab
+    const { content: _content, dirty: _dirty, ...meta } = tab
     const history = [meta, ...get().tabHistory.filter(h => h.id !== tab.id)].slice(0, 10)
     localStorage.setItem('tm1-tab-history', JSON.stringify(history))
     set({ tabHistory: history })
