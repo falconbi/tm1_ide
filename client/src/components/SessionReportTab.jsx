@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react'
-import { Copy, ScrollText, Loader2, ChevronRight, ChevronDown, Box, Layers, Cog, Table2, List, Sigma, FileText, Tag, Diff } from 'lucide-react'
+import { Copy, ScrollText, Loader2, ChevronRight, ChevronDown, Box, Layers, Cog, Table2, List, Sigma, Tag, Diff } from 'lucide-react'
 import { useWorkSessions, useWorkSessionLog, useWorkSessionLogVerbose } from '@/hooks/useApi'
 import { autoDescription } from '@/components/ChangeLogPanel'
 import { useStore } from '@/store'
