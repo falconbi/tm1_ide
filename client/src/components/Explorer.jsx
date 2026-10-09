@@ -3,7 +3,7 @@ import { toast } from 'sonner'
 import { useCubes, useDims, useProcs, useChores, useSubsets, useViews, useCubeDimensions, useSaveView, useHierarchies, useCreateHierarchy, useControlObjects, useDeleteDimension, useDeleteCube, useDeleteProcess, useDeleteChore, useDeleteSubset, useDeleteView, useActiveWorkSession, useWorkSessionLog } from '@/hooks/useApi'
 import { useStore } from '@/store'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { ChevronRight, ChevronDown, Box, Layers, Cog, Clock, Loader2, List, Plus, Table2, Code2, Sigma, PencilLine, Search, X, Braces, Trash2, FileSearch, Database, Tag, Network, LayoutDashboard } from 'lucide-react'
+import { ChevronRight, ChevronDown, Box, Layers, Cog, Clock, Loader2, List, Plus, Table2, Code2, Sigma, PencilLine, Search, X, Braces, Trash2, FileSearch, Database, Network, LayoutDashboard } from 'lucide-react'
 import GlobalSearch from '@/components/GlobalSearch'
 import { DeleteWarningModal } from '@/components/DeleteWarningModal'
 import { cn } from '@/lib/utils'
@@ -76,28 +76,6 @@ function getLocateIdFromTab(tab) {
 
 const ActiveLocateCtx = createContext('')
 const ChangedCtx      = createContext(new Set())
-
-function NamePopover({ open, onCommit, onCancel, placeholder = 'name…' }) {
-  const inputRef = useRef(null)
-  const [value, setValue] = useState('')
-  useEffect(() => { if (open) { setValue(''); setTimeout(() => inputRef.current?.focus(), 0) } }, [open])
-  if (!open) return null
-  const commit = () => { const n = value.trim(); if (n) onCommit(n); else onCancel() }
-  return (
-    <div className="absolute right-0 top-full mt-0.5 z-50 w-52 rounded-md border border-border bg-popover p-2 shadow-lg flex flex-col gap-1.5">
-      <input ref={inputRef} value={value} onChange={e => setValue(e.target.value)}
-        onKeyDown={e => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') onCancel() }}
-        placeholder={placeholder}
-        className="text-xs bg-transparent border-b border-primary outline-none font-mono py-px w-full" />
-      <div className="flex gap-1 justify-end pt-0.5">
-        <button onClick={onCancel}
-          className="text-[10px] px-2 py-0.5 rounded hover:bg-muted text-muted-foreground">Cancel</button>
-        <button onClick={commit}
-          className="text-[10px] px-2 py-0.5 rounded bg-primary text-primary-foreground hover:bg-primary/90">Create</button>
-      </div>
-    </div>
-  )
-}
 
 function Section({ icon: Icon, label, items, isLoading, onSelect, itemIcon: ItemIcon, sectionId, locateIdPrefix, onDelete, onAdd, csType }) {
   const [open, setOpen] = useState(false)
@@ -279,7 +257,7 @@ function CubeRow({ server, cube, onOpenRules, onOpenView, onOpenSubset, onOpenDi
 
   const [deleteModal, setDeleteModal] = useState(false)
   const [viewDeleteModal, setViewDeleteModal] = useState(null)
-  const saveView = useSaveView()
+  useSaveView()
   const deleteCubeMut = useDeleteCube()
   const deleteViewMut = useDeleteView()
 
@@ -428,7 +406,7 @@ function CubeSection({ server, cubes, isLoading, onOpenRules, onOpenView, onOpen
 // ── Rules Section ────────────────────────────────────────────────────────────
 // Quick-access list of all cubes — clicking opens the rules editor directly.
 
-function RulesSection({ server, cubes, isLoading, onOpenRules }) {
+function RulesSection({ _server, cubes, isLoading, onOpenRules }) {
   const [open, setOpen] = useState(false)
   const activeId   = useContext(ActiveLocateCtx)
   const changedSet = useContext(ChangedCtx)
@@ -892,6 +870,18 @@ function CtrlDimRow({ server, name, onOpenDim, onOpenSubset }) {
   )
 }
 
+// Group header for the Control Objects pane — top level so it isn't recreated on render.
+function GroupHeader({ id, label, count, isOpen, onToggle }) {
+  return (
+    <button onClick={() => onToggle(id)}
+      className="flex items-center gap-1.5 w-full px-5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70 hover:text-muted-foreground">
+      {isOpen ? <ChevronDown size={9} /> : <ChevronRight size={9} />}
+      <span>{label}</span>
+      <span className="ml-1 text-muted-foreground/40">{count}</span>
+    </button>
+  )
+}
+
 function ControlSection({ server, onOpenViewer, onOpenDim, onOpenProcess, onOpenView, onOpenSubset }) {
   const [open, setOpen] = useState(false)
   const [openGroups, setOpenGroups] = useState({})
@@ -907,15 +897,6 @@ function ControlSection({ server, onOpenViewer, onOpenDim, onOpenProcess, onOpen
 
   const toggleGroup = id => setOpenGroups(prev => ({ ...prev, [id]: !prev[id] }))
 
-  const GroupHeader = ({ id, label, count }) => (
-    <button onClick={() => toggleGroup(id)}
-      className="flex items-center gap-1.5 w-full px-5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70 hover:text-muted-foreground">
-      {openGroups[id] ? <ChevronDown size={9} /> : <ChevronRight size={9} />}
-      <span>{label}</span>
-      <span className="ml-1 text-muted-foreground/40">{count}</span>
-    </button>
-  )
-
   return (
     <div>
       <button onClick={() => setOpen(o => !o)}
@@ -929,7 +910,7 @@ function ControlSection({ server, onOpenViewer, onOpenDim, onOpenProcess, onOpen
       {open && (
         <div className="pb-1">
           {/* ── Cubes ── */}
-          <GroupHeader id="cubes-top" label={`Cubes (${cubes.length})`} count={null} />
+          <GroupHeader id="cubes-top" label={`Cubes (${cubes.length})`} count={null} isOpen={openGroups['cubes-top']} onToggle={toggleGroup} />
           {openGroups['cubes-top'] && cubeGroups.map(g => (
             <div key={g.id}>
               <button onClick={() => toggleGroup(`cube-${g.id}`)}
@@ -945,7 +926,7 @@ function ControlSection({ server, onOpenViewer, onOpenDim, onOpenProcess, onOpen
           ))}
 
           {/* ── Dimensions ── */}
-          <GroupHeader id="dims-top" label={`Dimensions (${dims.length})`} count={null} />
+          <GroupHeader id="dims-top" label={`Dimensions (${dims.length})`} count={null} isOpen={openGroups['dims-top']} onToggle={toggleGroup} />
           {openGroups['dims-top'] && dimGroups.map(g => (
             <div key={g.id}>
               <button onClick={() => toggleGroup(`dim-${g.id}`)}
@@ -963,7 +944,7 @@ function ControlSection({ server, onOpenViewer, onOpenDim, onOpenProcess, onOpen
           {/* ── Processes ── */}
           {procs.length > 0 && (
             <div>
-              <GroupHeader id="procs-top" label={`Processes (${procs.length})`} count={null} />
+              <GroupHeader id="procs-top" label={`Processes (${procs.length})`} count={null} isOpen={openGroups['procs-top']} onToggle={toggleGroup} />
               {openGroups['procs-top'] && procGroups.map(g => (
                 <div key={g.id}>
                   <button onClick={() => toggleGroup(`proc-${g.id}`)}
