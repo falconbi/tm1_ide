@@ -7,7 +7,7 @@ import { useStore } from '@/store'
 import { subsetApplyCallbacks } from '@/lib/subsetCallbacks'
 import { useCubeDimensions, useSubsets, useElementsTree, useViews, useExecuteMDX, useViewAxes, useSaveView, useSetDefaultView, usePawBookUsage, useDimAttributes, useViewUsage, useMultiFormatAttrs, useConflictCheck, useGenerateViewMDX, useConfig } from '@/hooks/useApi'
 import { toast } from 'sonner'
-import { RefreshCw, Loader2, Table2, GripVertical, GripHorizontal, X, LayoutGrid, Rows3, Columns3, Filter, ZapOff, Zap, ChevronLeft, ChevronRight, PencilLine, Save, Code2, Eye, ChevronDown, BookOpen, ChevronUp, Locate, MapPin, WrapText, Braces, History, AlertTriangle, Search, Cog, Box, FileSearch, Rss, Sparkles, Clock, Check, ArrowUpDown, HelpCircle } from 'lucide-react'
+import { RefreshCw, Loader2, Table2, GripVertical, GripHorizontal, X, LayoutGrid, Rows3, Columns3, Filter, ZapOff, Zap, ChevronLeft, ChevronRight, PencilLine, Save, Code2, Eye, ChevronDown, BookOpen, ChevronUp, MapPin, WrapText, Braces, History, AlertTriangle, Cog, FileSearch, Rss, Sparkles, Clock, Check, ArrowUpDown, HelpCircle } from 'lucide-react'
 import HelpPanel from '@/components/HelpPanel'
 import TransactionLogPanel from '@/components/TransactionLogPanel'
 import CellContextMenu from '@/components/CellContextMenu'
@@ -1163,10 +1163,10 @@ export default function ViewEditor({ tab }) {
             const saved = JSON.parse(localStorage.getItem(totalsPrefKey) ?? '{}')
             if (saved.totalsPosition)    setTotalsPosition(saved.totalsPosition)
             if (saved.colTotalsPosition) setColTotalsPosition(saved.colTotalsPosition)
-        } catch {}
+        } catch { /* prefs absent/corrupt — defaults stand */ }
     }, [totalsPrefKey])
     useEffect(() => {
-        try { localStorage.setItem(totalsPrefKey, JSON.stringify({ totalsPosition, colTotalsPosition })) } catch {}
+        try { localStorage.setItem(totalsPrefKey, JSON.stringify({ totalsPosition, colTotalsPosition })) } catch { /* storage denied — view prefs just don't persist */ }
     }, [totalsPrefKey, totalsPosition, colTotalsPosition])
 
     // MDX editor state — use savedMdx to survive remounts
@@ -1209,7 +1209,7 @@ export default function ViewEditor({ tab }) {
         try {
             const r = await fetch(`/api/dimension/alias-values?server=${encodeURIComponent(tab.server)}&dimension=${encodeURIComponent(dim)}&alias=${encodeURIComponent(attr)}`, { headers: { 'x-ide-token': localStorage.getItem('tm1-token') ?? '' } })
             if (r.ok) { const map = await r.json(); setAliasValueMaps(prev => ({ ...prev, [key]: map })) }
-        } catch {}
+        } catch { /* alias fetch failed — alias display just stays plain */ }
     }, [tab.server, aliasValueMaps])
 
     const [mdxEditorHeight, setMdxEditorHeight] = useState(224)
@@ -1918,23 +1918,6 @@ export default function ViewEditor({ tab }) {
             return { ...col, label: aliased.join(' / '), members: aliased }
         })
     }, [hierarchyData?.columns, colDims, dimAliases, aliasValueMaps])
-    const displayAxes = useMemo(() => {
-        if (!result?.Axes || !aliasActive) return result?.Axes
-        return result.Axes.map(axis => ({
-            ...axis,
-            Tuples: axis.Tuples.map(tuple => ({
-                ...tuple,
-                Members: tuple.Members.map(m => {
-                    const dim = m.UniqueName?.match(/^\[([^\]]+)\]/)?.[1]
-                    const attr = dim ? dimAliases[dim] : null
-                    if (!attr) return m
-                    const v = aliasValueMaps[`${dim}:${attr}`]?.[m.Name]
-                    return v ? { ...m, Name: v } : m
-                })
-            }))
-        }))
-    }, [result?.Axes, dimAliases, aliasValueMaps])
-
     const handleCellEdit = useCallback(async ({ tupleKey, colId, value }) => {
         if (!tab.server || !tab.cube) return
         const rowMembers = tupleKey.split('::')
@@ -1970,18 +1953,6 @@ export default function ViewEditor({ tab }) {
     }, [tab.server, tab.cube, axes, hierarchyData, cubeDims, handleExecute])
 
     const useHierarchy  = !flatMode && !!(rowDims.length > 0 && constrainedHierarchies.length > 0 && hierarchyData && result)
-
-    // Build full tuple from a cell context-menu event — used to filter the Transaction Log
-    const buildTupleFromCell = useCallback(({ tupleKey, colId }) => {
-        const rowMembers = (tupleKey ?? '').split('::')
-        const rowCoords  = axes.rows.map((d, i) => ({ dim: d.dimension, element: rowMembers[i] }))
-        const col        = hierarchyData?.columns?.find(c => c.id === colId)
-        const colMembers = col?.members ?? (col?.label ? [col.label] : [])
-        const colCoords  = axes.columns.map((d, i) => ({ dim: d.dimension, element: colMembers[i] }))
-        const pageCoords = axes.pages.filter(p => p.member).map(p => ({ dim: p.dimension, element: p.member }))
-        const coordMap   = new Map([...rowCoords, ...colCoords, ...pageCoords].map(c => [c.dim, c.element]))
-        return cubeDims.map(d => coordMap.get(d) ?? null)
-    }, [axes, hierarchyData, cubeDims])
 
     const handleCellContextMenu = useCallback((e) => {
         e.event?.preventDefault?.()
