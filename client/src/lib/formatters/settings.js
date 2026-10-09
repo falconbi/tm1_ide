@@ -59,7 +59,7 @@ export function loadSettings() {
       const parsed = JSON.parse(raw)
       return deepMerge(DEFAULT_SETTINGS, parsed)
     }
-  } catch {}
+  } catch { /* malformed local data or storage unavailable — best-effort */ }
   return structuredClone(DEFAULT_SETTINGS)
 }
 
@@ -70,7 +70,7 @@ export function loadSettings() {
 export function saveSettings(settings) {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(settings))
-  } catch {}
+  } catch { /* malformed local data or storage unavailable — best-effort */ }
 }
 
 /**
