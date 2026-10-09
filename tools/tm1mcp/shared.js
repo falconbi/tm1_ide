@@ -22,7 +22,10 @@ if (!SERVER) {
     process.exit(1)
 }
 
-const AGENT_USER = 'ai-agent'
+// The developer's identity. Override with TM1_MCP_USER so an agent's changes land
+// in that developer's own change set (per-person change sets on a shared DEV),
+// instead of all landing under a fixed 'ai-agent'.
+const AGENT_USER = process.env.TM1_MCP_USER || 'ai-agent'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -90,7 +93,7 @@ function requireWritable() {
 // Metadata writes are refused unless a change set is open — this is the workflow gate.
 function requireChangeSet() {
     requireWritable()
-    const s = cl.getActiveSession(SERVER)
+    const s = cl.getActiveSession(SERVER, AGENT_USER)
     if (!s) {
         throw new Error(
             'No change set is open for this server. Call start_change_set first — every model ' +

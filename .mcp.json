@@ -3,9 +3,7 @@
     "tm1": {
       "type": "stdio",
       "command": "node",
-      "args": [
-        "tools/tm1mcp/server.js"
-      ],
+      "args": ["tools/tm1mcp/server.js"],
       "env": {
         "TM1_MCP_SERVER": "${TM1_MCP_SERVER:-MyServer}"
       }

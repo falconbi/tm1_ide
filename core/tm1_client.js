@@ -1130,16 +1130,36 @@ return (d.value ?? [])
         }
 
         const buildAxis = dims => dims.map(buildSubsetRef)
-        const buildTitle = a => ({
-            ...buildSubsetRef(a),
-            ...(a.member ? { 'Selected@odata.bind': `${hierBind(a.dimension ?? a)}/Elements('${esc(a.member)}')` } : {}),
-        })
+        // A title MUST carry a resolved Selected member — a member-less title exports
+        // "Selected": null and breaks TM1's Git round-trip (pull rejects the view).
+        // When no member was given, resolve the hierarchy's default member for the
+        // Selected ONLY — the title's subset stays exactly as the user set it (e.g.
+        // TM1SubsetAll for "all members"), so the title dropdown keeps every member.
+        // Block the save if it can't be resolved rather than create a view that
+        // breaks the pull.
+        const buildTitle = async a => {
+            const dim = a.dimension ?? a
+            let member = a.member
+            if (!member) {
+                member = await this._defaultMember(dim)
+                if (!member) {
+                    throw new Error(
+                        `Cannot save view: title on dimension "${dim}" has no selected member and its default member could not be resolved. ` +
+                        `Give the title an explicit member, or fix the dimension's default member.`
+                    )
+                }
+            }
+            return {
+                ...buildSubsetRef(a),
+                'Selected@odata.bind': `${hierBind(dim)}/Elements('${esc(member)}')`,
+            }
+        }
 
         // PATCH — only axis payload, no odata.type or Name
         const patchBody = {
             Columns: buildAxis(columns),
             Rows:    buildAxis(rows),
-            Titles:  titles.map(buildTitle),
+            Titles:  await Promise.all(titles.map(buildTitle)),
         }
         // POST — full NativeView payload with odata.type and Name
         const postBody = {

@@ -1,0 +1,14 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+
+  // Copy to opencode.jsonc and edit. One MCP entry per TM1 server (it binds to one via --server).
+  // Use absolute paths so it works from any directory. Point agents at DEV; mark PROD read-only
+  // in config/servers.json ("readOnlyServers") so the MCP refuses changes there.
+  "mcp": {
+    "tm1-dev": {
+      "type": "local",
+      "command": ["node", "/path/to/tm1_ide/tools/tm1mcp/server.js", "--server", "MyServer_DEV"],
+      "enabled": true
+    }
+  }
+}

@@ -297,3 +297,77 @@ candidates from first principles (no external implementation referenced).
 - **How:** First an audit — every doc checked against the code, with a list of what's stale,
   missing or wrong — approved before any rewriting starts.
 - **Effort:** Medium–Large.
+
+### 9.2 MCP `build_dimension`: Format values on a brand-new measure dimension fail (logged 4 Oct 2026)
+
+- **Bug:** creating a new `… Measure` dimension with `attribute_values` for `Format` in the same call fails with
+  "'}ElementAttributes_<dim>' can not be found" — the elements are created, the attribute (and its control cube) is not.
+- **Workaround:** call again with `attributes: [{ name: "Format" }]` declared explicitly, then the values apply.
+- **Fix:** create the `Format` attribute (and wait for its `}ElementAttributes_` cube) before writing values.
+
+## 10. Deploy pipeline on TM1's built-in Git integration (logged 4 Oct 2026)
+
+### 10.1 Move the deploy pipeline onto TM1's built-in Git integration — **DECIDED 5 Oct 2026: hybrid**
+
+**Decision (after the lab evaluation — evidence in `docs/TM1_GIT_EVALUATION.md`):** the deploy pipeline moves to a
+**hybrid**. **TM1 Git is the transport and history for object structure** (cubes, dimensions, processes, rules,
+views, subsets — IBM's standard format, clean per-change git commits, customer-owned repo). The **IDE keeps** what
+TM1 Git cannot do — **attribute values** (don't travel: check #5), **deletes** (don't propagate: check #6),
+**drift** (the pull plan is a commit diff, not a live-state check: check #7), plus the **readiness check** (10.2)
+and all **governance** (change sets, risk check, approval, assertions, Deploy Center, history UI).
+
+- **What:** TM1 (Planning Analytics 2.0.7+ / TM1 11.4+, and v12) can push its own model to any git repository and pull it
+  back with a preview ("plan") first — REST `GitInit`, push plan / pull plan, execute. Files are IBM's standard JSON per
+  object (cubes incl. rules and views, dimensions incl. subsets, processes incl. TI); no cube data; `tm1project.json`
+  controls scope.
+- **Proposed shape:** the IDE keeps the governance (change sets, risk check, approval, assertions, Deploy Center,
+  history UI); TM1's Git feature does the transport — the package becomes a git commit, the deploy becomes executing the
+  pull plan (TM1 applies changes in its own order). The pull plan shows only the change **once the target has a
+  baseline** (first pull on a never-pulled target is a full overwrite — there is no "adopt current state" action).
+- **Why:** less of our own code doing the riskiest step (the first real deploy found 9 deployer bugs); a standard format
+  understood by PAW / TM1py / community tools instead of our undocumented one; no lock-in for users (their models and
+  history work without the IDE); aligned with v12. Adoption/marketing angle: "the IDE governs, TM1 itself deploys".
+- **Evaluation results (TM1_Test_DEV → TM1_Test_PROD, 5 Oct):** ✅ connect/credentials (per-call token, not stored);
+  ✅ repo layout readable/diffable, plain-text rules/TI; ✅ pull plan shows only the change after a baseline;
+  ⚠️ object scoping (branch-scoped, object-granular; "branch per change set" untested); ❌ **attribute values don't
+  travel**; ❌ **deletes don't propagate**; ❌ **drift not detected** (pull plan is a commit diff, not live-state).
+  Also: GitPlans are ephemeral (create+execute atomically); a view with a member-less title breaks the pull (→ 10.2);
+  `tm1project` Ignore only supports top-level objects.
+- **Operational:** credentials are per-call (the IDE keeps the token, e.g. in `.env`); first pull on a populated target
+  is a full overwrite — the IDE must warn and run a first-pull safety analysis (see 10.2); keep our own transport as a
+  fallback for sites that block git from the TM1 server, and for the three gaps (values, deletes, drift).
+- **Governance documents in git — DECIDED 5 Oct:** `tm1project Files` does not carry Application-managed documents
+  (tests, change sets, deploy records, Lenses under `Applications/Governance/`). The IDE **mirrors** them into the
+  model's repo — on push, commit `Applications/Governance` into a `governance/` folder; on deploy, write them to the
+  target with a per-target rule (PROD gets health checks only, never test payloads). The server stays the runtime truth.
+
+### 10.2 Git readiness check — must pass before any push (logged 5 Oct 2026)
+
+- **Why:** TM1 tolerates stale references at runtime but its Git import does not. In the evaluation, one view whose
+  title pointed at a deleted version member ("Working") exported with `Selected: null`, PROD's pull rejected it, and
+  because a pull plan is all-or-nothing **one stale view blocked the whole deployment**. Every long-lived model collects
+  leftovers like this, and `tm1project` Ignore can't exclude a single view (only whole cubes/dimensions/processes).
+- **What it checks (each finding names the object, the reason and the fix):**
+  1. View titles with no selected member (`Selected` null) — incl. ones saved by the IDE's member-less title bug
+  2. Views and subsets that reference members which no longer exist (title/row/column members, static subset elements,
+     MDX expressions naming missing members)
+  3. Names TM1 Git is known not to round-trip (e.g. a comma in a subset name)
+  4. Anything in `tm1project` Ignore — reported, so nobody is surprised it isn't deployed
+- **Where it runs:** as a **BLOCKER in the deploy pipeline's risk check before every push**; on demand from a model
+  health screen; and in a read-only scan across servers.
+- **Drift through Git — DECIDED 5 Oct 2026 (evaluation check #8 passed):** before a deploy, PROD pushes its live state
+  to its own branch (`prod-live`); `git diff <commit PROD last received>..prod-live` is the drift check — per object,
+  readable, with a history of every check. **The IDE's baseline snapshots retire**; drift, deploy and history all run
+  through git. Objects that exist only on PROD show up on every check until reconciled (brought into DEV/git, or removed
+  from PROD) — that's intended. Attribute-value drift stays an IDE check (values don't travel). In real use PROD pushes
+  with a **separate machine-user account and token limited to `prod-live`** (GitHub branch protection is per account).
+- **First-pull safety analysis (populated targets):** TM1 Git has **no "adopt current state" / baseline action** — a
+  site that already runs a model and switches to TM1 Git gets a **full overwrite on its first pull** (a never-pulled
+  target plans an Update/Create for every object it manages). Before a first pull onto a populated target, the
+  readiness check must additionally compare the target against the repo: which objects differ, anything that would be
+  **deleted**, and **elements on the target missing from the repo** (those are removed, with their data). Only proceed
+  when that analysis is clean.
+- **Prevention at save time:** the IDE always sets a resolved `Selected` title member when saving a view, and warns when
+  a view or subset being saved references a member that doesn't exist.
+- **Also for the community guide (TM1 Git):** "clean up stale references before adopting TM1 Git".
+

@@ -27,6 +27,12 @@ handing a model to someone else hands over no history or tests; a second IDE ins
 
 ## 2. Target
 
+**End goal (decided 4 Oct 2026): no per-model folders in the IDE.** The IDE is a tool, not a store: it keeps only what
+belongs to the installation or the user — connections (`servers.json`), secrets, personal preferences and a local
+cache. Everything about a model (tests, change sets, baselines, deploy history, Lenses) comes from the model. Object
+history goes to the model's git repository through TM1's built-in Git integration (see IMPROVEMENTS 10.1).
+
+
 Everything above is stored **in the TM1 server it describes**. The IDE is a **cache**: on connect it loads the
 model's governance data, and every change is written through to the server.
 

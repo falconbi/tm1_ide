@@ -60,8 +60,16 @@ node tools/tm1deploy/bin/tm1deploy.js seed <prod-server>
 node tools/tm1deploy/bin/tm1deploy.js diff <session-name>
 node tools/tm1deploy/bin/tm1deploy.js package <session-name>
 node tools/tm1deploy/bin/tm1deploy.js risk <package-dir> <target-server>
-node tools/tm1deploy/bin/tm1deploy.js deploy <package-dir> <target-server>
+node tools/tm1deploy/bin/tm1deploy.js deploy <package-dir> <target-server>   # ADMIN-ONLY — see below
 ```
+
+> **`tm1deploy deploy` is admin-only and SKIPS the approval gate.** It writes the package
+> straight to the target with no recorded approval — the same work the IDE's Deploy panel
+> does, minus the review → approve → deploy governance. Use it only as a deliberate
+> break-glass/admin action. The governed path is the **Deploy panel** (or the git-deploy
+> flow), where a human approval on the exact commit is required before anything reaches
+> the target. A target marked read-only (PROD posture) still blocks direct edits; an
+> approved deploy is the intended way to change it.
 
 
 ---

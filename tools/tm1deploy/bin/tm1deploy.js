@@ -54,7 +54,11 @@ Commands:
   risk    --package <path>
           --target <server>             Full pre-deploy risk report (syntax, deps, chores, structural)
   deploy  --package <path>
-          --target <server>             Deploy a package to a target server
+          --target <server>             Deploy a package to a target server.
+                                        ADMIN-ONLY — writes straight to the target and
+                                        SKIPS the approval gate. Use only as a
+                                        break-glass/admin action; the governed path is
+                                        the IDE Deploy panel (review → approve → deploy).
   archive-log --server <name>
           [--days <n>] [--dry-run]      Export + prune change_log.db entries older than
                                         --days (default: $CHANGE_LOG_RETENTION_DAYS or 365).
@@ -608,6 +612,11 @@ async function cmdDeploy(args) {
     console.log(`  target   : ${targetName}`)
     console.log(`  packaged : ${manifest.objects.length} objects`)
     console.log(`  host     : ${process.env.PAW_HOST}`)
+    console.log()
+    console.log('  ADMIN-ONLY: tm1deploy deploy writes straight to the target and SKIPS the')
+    console.log('  approval gate. The governed path is the IDE Deploy panel (review -> approve')
+    console.log('  -> deploy) or the git-deploy flow, where a recorded approval authorises the')
+    console.log('  change. Use this command only for a deliberate break-glass/admin deploy.')
     console.log()
 
     if (!dryRun) {

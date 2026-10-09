@@ -28,8 +28,17 @@ const _server = new McpServer({
     version: '2.0.0',
 })
 
-// Tools that change the bound server without going through requireChangeSet()
-// (which already refuses on a read-only server) — checked here instead.
+// Every local tool that changes the BOUND server must refuse on a read-only
+// (PROD-posture) server. Most writes go through requireChangeSet(), which already
+// calls requireWritable(). The ones below change the server WITHOUT opening a
+// change set, so the read-only check is applied here instead:
+//   start_change_set   — opening a build session against a read-only server is refused too
+//   run_process, reprocess_feeders — execute TI; no change-set entry of their own
+//   add_assertion, remove_assertion — write the model's assertions document
+// Deliberately NOT listed: deploy / revert tools. They change only an approved
+// target and are gated by a recorded human approval (approvals.find inside
+// core/git-deploy.execute / core/git-drift.revert), so read-only must not block
+// the approved path. Read-only tools (list_/get_/find_/check_*) need no check.
 const UNGATED_WRITE_TOOLS = new Set(['start_change_set', 'run_process', 'reprocess_feeders', 'add_assertion', 'remove_assertion'])
 
 // Wrap every tool handler so TM1/OData error detail reaches the agent instead of

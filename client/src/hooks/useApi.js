@@ -9,11 +9,41 @@ import { useStore } from '@/store'
 //    from ANY fetch and raises 'tm1-server-login' — ServerLoginDialog handles it.
 if (typeof window !== 'undefined' && !window.__tm1FetchWrapped) {
   const nativeFetch = window.fetch.bind(window)
+  const enc = encodeURIComponent
+  const WRITE = new Set(['POST', 'PATCH', 'DELETE'])
+  const EXCLUDED = ['/api/auth/', '/api/sessions/', '/api/assertions', '/api/deploy', '/api/git', '/api/servers', '/api/config', '/api/catalog', '/api/explorer', '/api/log', '/api/model-health', '/api/git-readiness', '/api/readiness', '/api/admin', '/api/files', '/api/sql', '/api/jobs', '/api/maintenance', '/api/users', '/api/notebooks', '/api/period', '/api/search', '/api/mcp', '/api/function-catalog', '/api/subset/preview', '/api/mdx']
+  const tok = () => localStorage.getItem('tm1-token') ?? ''
+  // First save with no open change set → prompt for a name and start one.
+  const ensureChangeSet = async (server) => {
+    try {
+      const r = await nativeFetch(`/api/sessions/active?server=${enc(server)}`, { headers: { 'x-ide-token': tok() } })
+      const s = await r.json().catch(() => null)
+      if (s?.id) return
+      const name = window.prompt(`No change set is open on ${server}. Name a change set to record this change:`, '')
+      if (!name || !name.trim()) return
+      await nativeFetch('/api/sessions/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-ide-token': tok() },
+        body: JSON.stringify({ name: name.trim(), server, user: localStorage.getItem('tm1-username') || 'unknown' }),
+      })
+      window.dispatchEvent(new CustomEvent('tm1-sessions-changed'))
+    } catch { /* prompts are best-effort — never block a save */ }
+  }
   window.fetch = async (input, init = {}) => {
     const url = typeof input === 'string' ? input : input?.url ?? ''
-    if (url.startsWith('/api/')) {
+    const method = (init?.method ?? (typeof input !== 'string' ? input?.method : undefined) ?? 'GET').toUpperCase()
+    if (url.startsWith('/api/') && WRITE.has(method)) {
       const headers = new Headers(init.headers ?? (typeof input !== 'string' ? input.headers : undefined))
-      if (!headers.has('x-ide-token')) headers.set('x-ide-token', localStorage.getItem('tm1-token') ?? '')
+      if (!headers.has('x-ide-token')) headers.set('x-ide-token', tok())
+      init = { ...init, headers }
+      const q = (url.split('?')[1] ?? '')
+      const server = new URLSearchParams(q).get('server')
+      if (server && !EXCLUDED.some(p => url.startsWith(p))) {
+        await ensureChangeSet(server)
+      }
+    } else if (url.startsWith('/api/')) {
+      const headers = new Headers(init.headers ?? (typeof input !== 'string' ? input.headers : undefined))
+      if (!headers.has('x-ide-token')) headers.set('x-ide-token', tok())
       init = { ...init, headers }
     }
     const r = await nativeFetch(input, init)
@@ -543,8 +573,6 @@ export const useDeployDiff     = () => useMutation({ mutationFn: (body) => post(
 export const useDeployPackage  = () => { const qc = useQueryClient(); return useMutation({ mutationFn: (body) => post('/api/deploy/package', body), onSuccess: () => qc.invalidateQueries({ queryKey: ['deploy-packages'] }) }) }
 export const useDeployDriftCheck = () => useMutation({ mutationFn: (body) => post('/api/deploy/drift-check', body) })
 export const useDeployRisk       = () => useMutation({ mutationFn: (body) => post('/api/deploy/risk',         body) })
-export const useDeployExecute  = () => useMutation({ mutationFn: (body) => post('/api/deploy/execute', body) })
-export const useDeployApprove  = () => useMutation({ mutationFn: (body) => post('/api/deploy/approve', body) })
 export const useDeployScopedSnapshot = () => useMutation({ mutationFn: (body) => post('/api/deploy/scoped-snapshot', body) })
 export const useDeployArchive  = () => { const qc = useQueryClient(); return useMutation({ mutationFn: (body) => post('/api/deploy/archive', body), onSuccess: () => qc.invalidateQueries({ queryKey: ['deploy-archives'] }) }) }
 

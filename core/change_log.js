@@ -36,6 +36,17 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_log_object    ON log_entries(server, object_type, object_name);
 `)
 
+// Lifecycle columns (added after the fact — ignore "duplicate column" on existing DBs).
+for (const [col, type] of [
+    ['closed_by',       'TEXT'],
+    ['close_tests',     'TEXT'],
+    ['commit_ref',      'TEXT'],
+    ['deployed_target', 'TEXT'],
+    ['deployed_at',     'TEXT'],
+]) {
+    try { db.exec(`ALTER TABLE sessions ADD COLUMN ${col} ${type}`) } catch { /* already exists */ }
+}
+
 // ── Internal helpers ──────────────────────────────────────────────────────────
 
 function parseEntry(e) {
@@ -57,8 +68,9 @@ function startSession(name, server, user) {
     return db.prepare(`SELECT * FROM sessions WHERE id = ?`).get(id)
 }
 
-function closeSession(id) {
-    db.prepare(`UPDATE sessions SET closed_at = ? WHERE id = ?`).run(new Date().toISOString(), id)
+function closeSession(id, { user, tests } = {}) {
+    db.prepare(`UPDATE sessions SET closed_at = ?, closed_by = ?, close_tests = ? WHERE id = ?`)
+        .run(new Date().toISOString(), user ?? null, tests ? JSON.stringify(tests) : null, id)
     return db.prepare(`SELECT * FROM sessions WHERE id = ?`).get(id)
 }
 
@@ -67,13 +79,70 @@ function resumeSession(id) {
     return db.prepare(`SELECT * FROM sessions WHERE id = ?`).get(id)
 }
 
+// Link a change set to the commit it was filed as, and to the target it shipped to.
+function setSessionCommit(id, commit) {
+    db.prepare(`UPDATE sessions SET commit_ref = ? WHERE id = ?`).run(commit ?? null, id)
+}
+function markSessionDeployed(id, target) {
+    db.prepare(`UPDATE sessions SET deployed_target = ?, deployed_at = ? WHERE id = ?`).run(target ?? null, new Date().toISOString(), id)
+}
+
 function updateSessionDescription(id, description) {
     db.prepare(`UPDATE sessions SET description = ? WHERE id = ?`).run(description ?? null, id)
     return db.prepare(`SELECT * FROM sessions WHERE id = ?`).get(id)
 }
 
-function getActiveSession(server) {
+function getActiveSession(server, user = null) {
+    // One open change set per person per server — a save goes into the saver's
+    // own change set (keyed by server+user). With no user, falls back to the
+    // newest open on the server (legacy single-developer behaviour).
+    if (user) {
+        return db.prepare(`SELECT * FROM sessions WHERE server = ? AND user = ? AND closed_at IS NULL ORDER BY started_at DESC LIMIT 1`)
+            .get(server, user) ?? null
+    }
     return db.prepare(`SELECT * FROM sessions WHERE server = ? AND closed_at IS NULL ORDER BY started_at DESC LIMIT 1`).get(server) ?? null
+}
+
+function getSession(id) {
+    return db.prepare(`SELECT * FROM sessions WHERE id = ?`).get(id) ?? null
+}
+
+// The deploy manifest for a change set: what it deleted, which dimensions'
+// attribute values it touched, and — when the log records them — the specific
+// element/attribute pairs. This is what scopes the reconcile — deletes and
+// value syncs are NEVER inferred from the whole source, only from what the
+// change set actually did.
+function getSessionManifest(sessionId) {
+    const entries = getSessionLog(sessionId)
+    const created = new Set()
+    for (const e of entries) {
+        if (/_CREATED$/.test(e.action ?? '')) created.add(`${e.object_type}:${e.object_name}`)
+    }
+    const deletes = []
+    const attrElements = []
+    const dimSet = new Set()
+    for (const e of entries) {
+        // Objects deleted here that were NOT created inside the session pre-existed
+        // it — deleting them on the target is this change set's doing.
+        if (/^(PROCESS|DIMENSION|CUBE)_DELETED$/.test(e.action ?? '') && !created.has(`${e.object_type}:${e.object_name}`)) {
+            deletes.push({ type: e.object_type, name: e.object_name })
+        }
+        // Attribute writes: the dimension is object_name; the element+attribute may
+        // be in detail (e.g. "Budget.Description"). Record the pair when we can.
+        if ((e.action ?? '').startsWith('ATTRIBUTE') || e.object_type === 'elementAttribute') {
+            const dim = e.object_name
+            if (dim) {
+                dimSet.add(dim)
+                const m = typeof e.detail === 'string' ? e.detail.split('.') : []
+                if (m.length >= 2) attrElements.push({ dim, element: m[0], attribute: m[m.length - 1] })
+            }
+        }
+    }
+    const dims = [...dimSet]
+    // Dimensions we only know by name (no element/attribute recorded) will be
+    // copied wholesale — surfaced in Review so it is never silent.
+    const wholesaleDims = dims.filter(d => !attrElements.some(p => p.dim === d))
+    return { deletes, dims, attrElements, wholesaleDims }
 }
 
 function getSessions(server, limit = 50) {
@@ -234,7 +303,9 @@ function getEntryById(id) {
 // user — wrong on both counts, and wrong specifically *because* it made
 // history depend on session state, which it must never do.)
 function writeLog({ server, action, objectType, objectName, detail, beforeState, afterState, user }) {
-    const session = getActiveSession(server)
+    // Keyed by the saver's own open change set (server+user), so per-person
+    // change sets on a shared DEV stay separate.
+    const session = getActiveSession(server, user)
 
     db.prepare(`
         INSERT INTO log_entries (session_id, timestamp, server, action, object_type, object_name, detail, before_state, after_state, user)
@@ -282,4 +353,4 @@ function pruneEntries(ids) {
 try { db.exec(`ALTER TABLE sessions ADD COLUMN description TEXT`) } catch {}
 try { db.exec(`ALTER TABLE log_entries ADD COLUMN user TEXT`) } catch {}
 
-module.exports = { startSession, closeSession, resumeSession, updateSessionDescription, getActiveSession, getSessions, getAllSessions, getSessionLog, getCrossSessionTouches, getEntriesSince, getMaxEntryId, getEntriesSinceId, getSessionLogVerbose, getRecentLog, getObjectHistory, getEntryById, writeLog, findArchivableEntries, pruneEntries }
+module.exports = { startSession, getSession, getSessionManifest, closeSession, resumeSession, updateSessionDescription, setSessionCommit, markSessionDeployed, getActiveSession, getSessions, getAllSessions, getSessionLog, getCrossSessionTouches, getEntriesSince, getMaxEntryId, getEntriesSinceId, getSessionLogVerbose, getRecentLog, getObjectHistory, getEntryById, writeLog, findArchivableEntries, pruneEntries }

@@ -66,9 +66,9 @@ function register(server, { SERVER, AGENT_USER, cl, assertions, runAssertions, o
             name: z.string().describe('Change set name — e.g. "AI: Working Capital model". Prefix with "AI:" so it is identifiable in the IDE.'),
         },
         async ({ name }) => {
-            const existing = cl.getActiveSession(SERVER)
+            const existing = cl.getActiveSession(SERVER, AGENT_USER)
             if (existing) {
-                return ok(`A change set is already open on "${SERVER}": "${existing.name}" (id ${existing.id}, started ${existing.started_at}). Close it first, or continue using it.`)
+                return ok(`A change set is already open on "${SERVER}" for ${AGENT_USER}: "${existing.name}" (id ${existing.id}, started ${existing.started_at}). Close it first, or continue using it.`)
             }
             const s = cl.startSession(name, SERVER, AGENT_USER)
             return ok(`Change set opened: "${s.name}" (id ${s.id}) on server "${SERVER}". All subsequent model changes will be recorded here.`)
@@ -81,8 +81,8 @@ function register(server, { SERVER, AGENT_USER, cl, assertions, runAssertions, o
         'If the server has stored assertions, they are run and the result is included.',
         {},
         async () => {
-            const s = cl.getActiveSession(SERVER)
-            if (!s) return ok(`No change set is open on "${SERVER}".`)
+            const s = cl.getActiveSession(SERVER, AGENT_USER)
+            if (!s) return ok(`No change set is open on "${SERVER}" for ${AGENT_USER}.`)
             cl.closeSession(s.id)
             const entries = cl.getSessionLog(s.id)
 
@@ -98,7 +98,18 @@ function register(server, { SERVER, AGENT_USER, cl, assertions, runAssertions, o
                 }
             }
 
-            return ok(`Change set "${s.name}" (id ${s.id}) closed with ${entries.length} object change(s).${assertLine}\n` +
+            // Overlap warning: another open change set touched the same objects.
+            let overlapLine = ''
+            try {
+                const touches = cl.getCrossSessionTouches(SERVER, s.id, entries)
+                if (touches.length) {
+                    overlapLine = '\n⚠ OVERLAP — these objects were also touched in another change set (its edits are on DEV now and will ride along): ' +
+                        touches.map(t => `${t.object_type} "${t.object_name}" (${t.touchedBy} in "${t.sessionName}")`).join(' | ') +
+                        '\nDecide: ship both together, or coordinate so the shared objects are consistent.'
+                }
+            } catch { /* overlap is advisory */ }
+
+            return ok(`Change set "${s.name}" (id ${s.id}) closed with ${entries.length} object change(s).${assertLine}${overlapLine}\n` +
                 `Next: package_change_set to build the deployable, then check_deploy_risk / check_target_drift against a target. Deploy is a human step (IDE Deploy panel).`)
         }
     )
@@ -108,8 +119,8 @@ function register(server, { SERVER, AGENT_USER, cl, assertions, runAssertions, o
         'Show the open change set and every object change recorded in it so far',
         {},
         async () => {
-            const s = cl.getActiveSession(SERVER)
-            if (!s) return ok(`No change set is open on "${SERVER}". Call start_change_set to begin.`)
+            const s = cl.getActiveSession(SERVER, AGENT_USER)
+            if (!s) return ok(`No change set is open on "${SERVER}" for ${AGENT_USER}. Call start_change_set to begin.`)
             const entries = cl.getSessionLog(s.id)
             const grouped = {}
             for (const e of entries) {
@@ -124,8 +135,8 @@ function register(server, { SERVER, AGENT_USER, cl, assertions, runAssertions, o
         'Diff the open change set against the deployment baseline (if one has been seeded in the IDE). Use this to self-review before handing the model off for deployment.',
         {},
         async () => {
-            const s = cl.getActiveSession(SERVER)
-            if (!s) return ok(`No change set is open on "${SERVER}".`)
+            const s = cl.getActiveSession(SERVER, AGENT_USER)
+            if (!s) return ok(`No change set is open on "${SERVER}" for ${AGENT_USER}.`)
             const entries = cl.getSessionLog(s.id)
             let diffMod
             try { diffMod = require('../../../tools/tm1deploy/src/diff') } catch { diffMod = null }
@@ -168,8 +179,8 @@ function register(server, { SERVER, AGENT_USER, cl, assertions, runAssertions, o
                     : cl.getEntriesSince(SERVER, base?._meta?.seeded_at ?? null)
                 name = `Release ${new Date().toISOString().slice(0, 10)}`
             } else {
-                const s = cl.getActiveSession(SERVER)
-                if (!s) return ok(`No change set is open on "${SERVER}". Open one, or call with release:true.`)
+                const s = cl.getActiveSession(SERVER, AGENT_USER)
+                if (!s) return ok(`No change set is open on "${SERVER}" for ${AGENT_USER}. Open one, or call with release:true.`)
                 entries = cl.getSessionLog(s.id)
                 name = s.name
             }

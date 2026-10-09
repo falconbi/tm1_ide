@@ -230,4 +230,48 @@ export const HELP_CONTENT = {
       },
     ],
   },
+
+  gitdeploy: {
+    title: 'Git Deploy (TM1 Git)',
+    sections: [
+      {
+        heading: 'What this is',
+        body: 'Deploys the model through **TM1\'s own Git integration**, not the classic package pipeline. This screen is the *receive* side: a target server pulls the approved state from the model\'s git repo and applies it. Build + push happen first — build in a Change Set, then push the source server to the repo.',
+      },
+      {
+        heading: 'Target / Branch',
+        body: '**Target** is the server receiving the deploy (e.g. PROD). **Branch** is the git branch to pull — `dev` is the working branch; `prod-live` is the drift branch and is not used for deploys.',
+      },
+      {
+        heading: 'Prepare',
+        body: 'Read-only preview. Shows the target\'s **deployed commit** (what it last received), the **pull plan** (exactly what will change — counts by Create/Update/Delete/Skip), and the commit the target would move to. **Full overwrite** means the target has no deployed commit yet — its first pull replaces every object; that needs a reviewed first-pull, done separately.',
+      },
+      {
+        heading: 'Deploy',
+        body: 'Applies the pull to the target, then **control checks** (invariant assertions that must hold on any data) and **reconciles the two gaps TM1 Git can\'t do**: attribute values and object deletes. Expect **Applied — target now at <commit>** and **Control OK**. Deploying is the human approval step — make sure the plan and the Change Set match what was approved.',
+      },
+    ],
+  },
+
+  gitdrift: {
+    title: 'Git Drift (prod-live)',
+    sections: [
+      {
+        heading: 'What this is',
+        body: 'Has PROD changed since we last deployed to it? PROD saves a copy of itself, and we compare that to the last deploy. Same = clean, different = drift.',
+      },
+      {
+        heading: 'What you see',
+        body: '**Deployed** is the copy PROD was given at the last deploy. **prod-live** is the copy PROD just saved of itself. Any object that differs between them is drift.',
+      },
+      {
+        heading: 'Revert',
+        body: 'Put PROD back to exactly what the last deploy gave it — the drifted change is overwritten.',
+      },
+      {
+        heading: 'Promote',
+        body: 'Keep the drifted change by bringing it back into DEV, so it can be reviewed and shipped properly instead of being overwritten.',
+      },
+    ],
+  },
 }

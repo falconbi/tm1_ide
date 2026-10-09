@@ -11,6 +11,9 @@ const { makeClient, makeClientWithCredentials, needsServerLogin, isDirectServer,
 const { loadConnections, saveConnections, getConnection, executeQuery, testConnection, getSchema, loadQueries, saveQueries } = require('./core/sql_client')
 const { createSession, createDirectSession, createLocalSession, attachPawSession, getSessionUser, touchSession, invalidateSession, getCachedPawSession, getCSRF, PAW_HOST, setServerCredentials, getServerCredentials, clearServerCredentials, getServerStatus, listServerEntries, getSessionCredentials } = require('./core/paw_connect')
 const cl = require('./core/change_log')
+// Persisted Git token (never returned to the client) — env wins, else the secrets file.
+const gitSecrets = require('./core/git-secrets')
+if (!process.env.TM1_GIT_TOKEN && gitSecrets.getToken()) process.env.TM1_GIT_TOKEN = gitSecrets.getToken()
 const lensStore = require('./core/lens_store')
 const lensBridge = require('./core/lens_bridge')
 
@@ -21,9 +24,9 @@ const lensBridge = require('./core/lens_bridge')
 // open. Set TM1_REQUIRE_SESSION=1 to opt back into hard-gating writes behind
 // an open session, for anyone who wants that stricter posture.
 const SESSION_GATE_ENABLED = ['1', 'true', 'yes'].includes(String(process.env.TM1_REQUIRE_SESSION ?? '0').toLowerCase())
-function requireSession(server) {
+function requireSession(server, user) {
     if (!SESSION_GATE_ENABLED) return true
-    return !!cl.getActiveSession(server)
+    return !!cl.getActiveSession(server, user)
 }
 const NO_SESSION_ERROR = 'No change set is open for this server — start one first (Change Log → Start change set) so this change can be attributed and deployed.'
 const READ_ONLY_ERROR  = 'This server is read-only (PROD posture) — no changes are allowed here. Switch to a writable server to edit.'
@@ -36,7 +39,9 @@ function gateReadOnly(res, server) {
 }
 function gateWrite(res, server) {
     if (!gateReadOnly(res, server)) return false
-    if (!requireSession(server)) {
+    // Key the session gate by the acting user, so each person's saves are
+    // attributed to their own change set on a shared DEV.
+    if (!requireSession(server, res.req?.user)) {
         res.status(409).json({ error: NO_SESSION_ERROR })
         return false
     }
@@ -45,7 +50,6 @@ function gateWrite(res, server) {
 const { diff: deployDiff, driftCheck: deployDriftCheck } = require('./tools/tm1deploy/src/diff')
 const { pack: deployPack }      = require('./tools/tm1deploy/src/packager')
 const { analyzeRisk }           = require('./tools/tm1deploy/src/risk')
-const { deploy: deployExecute } = require('./tools/tm1deploy/src/deployer')
 const { seed: deploySeed, scopedSnapshot: deployScopedSnapshot } = require('./tools/tm1deploy/src/snapshot')
 const { loadBaseline: deployLoadBaseline, listBaselines: deployListBaselines, setBaselineHead: deploySetBaselineHead } = require('./tools/tm1deploy/src/diff')
 
@@ -364,16 +368,40 @@ app.post('/api/sessions/start', (req, res) => {
     try {
         const { name, server } = req.body
         if (!name?.trim() || !server) return res.status(400).json({ error: 'name and server required' })
-        const session = cl.startSession(name.trim(), server, req.user)
-        res.json(session)
+        res.json(cl.startSession(name.trim(), server, req.user))
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
-app.post('/api/sessions/close', (req, res) => {
+app.post('/api/sessions/close', async (req, res) => {
     try {
         const { id } = req.body
         if (!id) return res.status(400).json({ error: 'id required' })
-        res.json(cl.closeSession(id))
+        const sess = cl.getSession(id)
+        if (!sess) return res.status(404).json({ error: `No change set ${id}` })
+        // Run the tests server-side — do not trust the client's results. Refuse to
+        // close while any block-severity assertion is failing.
+        let tests = null
+        try {
+            const { run } = require('./core/assertions')
+            const r = await run(sess.server, { ideToken: req.ideToken })
+            const blocking = r.results.filter(x => !x.pass && (x.severity ?? 'block') === 'block')
+            if (blocking.length) {
+                return res.status(409).json({
+                    error: `Cannot close: ${blocking.length} block-severity assertion${blocking.length !== 1 ? 's' : ''} failing. Fix them, or set severity to warn.`,
+                    blocking: blocking.map(b => ({ id: b.id, description: b.description, expected: b.expected, actual: b.actual, error: b.error ?? null })),
+                })
+            }
+            tests = { passed: r.passed, total: r.total, blocking: 0 }
+        } catch (e) {
+            return res.status(500).json({ error: `Could not run tests to close: ${e.message}` })
+        }
+        // Write the immutable closed record to the model (loud on a migrated server —
+        // a write failure fails the close, and the change set stays open). Open
+        // change sets stay in the local log until this moment.
+        const csm = require('./core/change-set-model')
+        await csm.closeAndPersist(sess.server, sess, { closedBy: req.user, tests, ideToken: req.ideToken })
+        const closed = cl.closeSession(id, { user: req.user, tests })
+        res.json(closed)
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
@@ -386,8 +414,11 @@ app.post('/api/sessions/resume', (req, res) => {
 })
 
 app.get('/api/sessions/active', (req, res) => {
-    try { res.json(cl.getActiveSession(req.query.server) ?? null) }
-    catch (e) { res.status(500).json({ error: e.message }) }
+    try {
+        const s = cl.getActiveSession(req.query.server, req.user)
+        if (!s) return res.json(null)
+        res.json({ ...s, entry_count: (() => { try { return cl.getSessionLog(s.id).length } catch { return 0 } })() })
+    } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
 app.get('/api/sessions', (req, res) => {
@@ -1385,7 +1416,7 @@ app.post('/api/dimension/element', async (req, res) => {
         if (!gateWrite(res, server)) return
         const client = makeClient(server, req.ideToken)
         await client.addElement(dimension, req.body.name, req.body.type, hierarchy)
-        cl.writeLog({ server, action: 'ELEMENT_ADDED', objectType: 'dimension', objectName: req.body.name, detail: dimension, user: req.user })
+        cl.writeLog({ server, action: 'ELEMENT_ADDED', objectType: 'dimension', objectName: dimension, detail: req.body.name, user: req.user })
         res.json({ ok: true })
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
@@ -1396,7 +1427,7 @@ app.delete('/api/dimension/element', async (req, res) => {
         if (!gateWrite(res, server)) return
         const client = makeClient(server, req.ideToken)
         await client.deleteElement(dimension, name, hierarchy)
-        cl.writeLog({ server, action: 'ELEMENT_DELETED', objectType: 'dimension', objectName: name, detail: dimension, user: req.user })
+        cl.writeLog({ server, action: 'ELEMENT_DELETED', objectType: 'dimension', objectName: dimension, detail: name, user: req.user })
         res.json({ ok: true })
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
@@ -1407,7 +1438,7 @@ app.patch('/api/dimension/element', async (req, res) => {
         if (!gateWrite(res, server)) return
         const client = makeClient(server, req.ideToken)
         await client.renameElement(dimension, name, req.body.newName, hierarchy)
-        cl.writeLog({ server, action: 'ELEMENT_RENAMED', objectType: 'dimension', objectName: req.body.newName, detail: `${dimension} · was: ${name}`, user: req.user })
+        cl.writeLog({ server, action: 'ELEMENT_RENAMED', objectType: 'dimension', objectName: dimension, detail: `${name} → ${req.body.newName}`, user: req.user })
         res.json({ ok: true })
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
@@ -1436,7 +1467,7 @@ app.delete('/api/dimension/edge', async (req, res) => {
         if (!gateWrite(res, server)) return
         const client = makeClient(server, req.ideToken)
         await client.deleteEdge(dimension, parent, child, hierarchy)
-        cl.writeLog({ server, action: 'EDGE_REMOVED', objectType: 'dimension', objectName: child, detail: `${dimension} · removed from ${parent}`, user: req.user })
+        cl.writeLog({ server, action: 'EDGE_REMOVED', objectType: 'dimension', objectName: dimension, detail: `${parent} · removed ${child}`, user: req.user })
         res.json({ ok: true })
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
@@ -2864,6 +2895,324 @@ app.post('/api/deploy/pre-delete-check', async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
+// ── Git readiness check (IMPROVEMENTS 10.2) ─────────────────────────────────
+// On demand, single server or cross-server. Also run as a blocker in the deploy
+// risk check before every push. Findings: member-less view titles, stale member
+// references in views/subsets, names TM1 Git won't round-trip, tm1project Ignore.
+app.get('/api/git-readiness', async (req, res) => {
+    try {
+        const { scan } = require('./core/git-readiness')
+        const { listServers } = require('./core/adapter_registry')
+        if (req.query.all === '1') {
+            const results = []
+            for (const s of listServers()) {
+                try { results.push(await scan(s, { ideToken: req.ideToken })) }
+                catch (e) { results.push({ server: s, error: e.message }) }
+            }
+            return res.json({ results })
+        }
+        if (!req.query.server) return res.status(400).json({ error: 'server or all=1 required' })
+        res.json(await scan(req.query.server, { ideToken: req.ideToken }))
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// ── Model health (v1) ───────────────────────────────────────────────────────
+// "Does the model compute right, would TM1 Git accept it, does it meet house
+// standards". POST: it runs assertions (MDX) + the full scan. Button-triggered.
+app.post('/api/model-health', async (req, res) => {
+    try {
+        const server = req.query.server ?? req.body?.server
+        if (!server) return res.status(400).json({ error: 'server required' })
+        const { check } = require('./core/model-health')
+        res.json(await check(server, { ideToken: req.ideToken }))
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// ── Assertions management ───────────────────────────────────────────────────
+// List, add, update, remove and run the model's stored assertions. Writes are
+// gated on read-only posture like other model edits.
+app.get('/api/assertions', async (req, res) => {
+    try {
+        const { list } = require('./core/assertions')
+        if (!req.query.server) return res.status(400).json({ error: 'server required' })
+        res.json(await list(req.query.server, { ideToken: req.ideToken }))
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+app.post('/api/assertions', async (req, res) => {
+    try {
+        if (!gateReadOnly(res, req.query.server)) return
+        const { add } = require('./core/assertions')
+        res.json(await add(req.query.server, { ...req.body, author: req.body.author ?? req.user }, { ideToken: req.ideToken }))
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+app.patch('/api/assertions/:id', async (req, res) => {
+    try {
+        if (!gateReadOnly(res, req.query.server)) return
+        const { update } = require('./core/assertions')
+        const r = await update(req.query.server, req.params.id, req.body, { ideToken: req.ideToken, by: req.user })
+        if (!r) return res.status(404).json({ error: `No assertion ${req.params.id}` })
+        res.json(r)
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+app.delete('/api/assertions/:id', async (req, res) => {
+    try {
+        if (!gateReadOnly(res, req.query.server)) return
+        const { remove } = require('./core/assertions')
+        const ok = await remove(req.query.server, req.params.id, { ideToken: req.ideToken })
+        res.json({ ok })
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+app.post('/api/assertions/run', async (req, res) => {
+    try {
+        const { run, runOne } = require('./core/assertions')
+        if (!req.query.server) return res.status(400).json({ error: 'server required' })
+        if (req.body?.id) return res.json(await runOne(req.query.server, req.body.id, { ideToken: req.ideToken }))
+        res.json(await run(req.query.server, { kind: req.body?.kind, severity: req.body?.severity, tags: req.body?.tags, ideToken: req.ideToken }))
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+app.get('/api/assertions/history', async (req, res) => {
+    try {
+        const { makeClient } = require('./core/adapter_registry')
+        const { recentRuns } = require('./core/test-results')
+        if (!req.query.server) return res.status(400).json({ error: 'server required' })
+        const client = makeClient(req.query.server, req.ideToken)
+        res.json(await recentRuns(client, { assertionId: req.query.id, limit: Number(req.query.limit) || 10 }))
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// ── Git deploy (IMPROVEMENTS 10.1 hybrid) ───────────────────────────────────
+// Prepare = target baseline + pull plan preview (read-only). Execute = atomic
+// pull + control checks on the target (a real deploy — gated by the UI/approval).
+app.post('/api/deploy/git/prepare', async (req, res) => {
+    try {
+        const { prepare } = require('./core/git-deploy')
+        const { source, target, branch, session } = req.body
+        if (!source || !target) return res.status(400).json({ error: 'source and target required' })
+        res.json(await prepare(source, target, { branch, token: process.env.TM1_GIT_TOKEN, ideToken: req.ideToken, session }))
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+app.post('/api/deploy/git/execute', async (req, res) => {
+    try {
+        // Not gated by read-only: a recorded approval (enforced inside execute(),
+        // non-optionally) is what authorises shipping to a PROD-posture target.
+        const { execute } = require('./core/git-deploy')
+        const { target, branch, source } = req.body
+        if (!target) return res.status(400).json({ error: 'target required' })
+        const result = await execute(target, { branch, token: process.env.TM1_GIT_TOKEN, ideToken: req.ideToken, source, by: req.user })
+        if (result?.approvalSession && result?.executed && result?.controlOk) try { cl.markSessionDeployed(result.approvalSession, target) } catch { /* link is best-effort */ }
+        res.json(result)
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+// Push the source server's live state to the repo (step 2 of the deploy flow).
+// TM1 Git commits the whole model; the plan is ephemeral, so create AND execute
+// atomically. Does not touch the target.
+app.post('/api/deploy/git/push', async (req, res) => {
+    try {
+        if (!gateReadOnly(res, req.body?.source)) return
+        const { source, branch = 'dev', message, session } = req.body
+        if (!source) return res.status(400).json({ error: 'source required' })
+        const c = makeClient(source, req.ideToken)
+        const gi = require('./core/git-identity')
+        const creds = { Username: gi.user(), Password: process.env.TM1_GIT_TOKEN }
+        const plan = await c.post('GitPush', {
+            Branch: branch, NewBranch: '', Force: false,
+            Message: message || `Deploy from ${source}`,
+            Author: req.user ?? gi.user(), Email: gi.email(), ...creds,
+        })
+        await c.post(`GitPlans('${encodeURIComponent(plan.ID)}')/tm1.Execute`, {})
+        if (session) try { cl.setSessionCommit(session, plan.NewCommit?.ID ?? null) } catch { /* link is best-effort */ }
+        res.json({ pushed: true, commit: plan.NewCommit?.ID ?? null, summary: plan.NewCommit?.Summary ?? null })
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// ── Approval — the recorded human decision that gates a deploy. ─────────────
+// Bound to a specific commit + target: a new commit invalidates the old approval.
+// Stored locally (gitignored) via core/git-approvals.
+app.post('/api/deploy/git/approve', async (req, res) => {
+    try {
+        const { source, target, commit, note } = req.body
+        if (!target || !commit) return res.status(400).json({ error: 'target and commit required' })
+        // The commit must be linked to a CLOSED change set whose tests passed.
+        const linkedSession = cl.getAllSessions(500).find(x => x.commit_ref === commit && x.closed_at != null)
+        if (!linkedSession) {
+            return res.status(409).json({ error: `Refused: commit ${commit} is not linked to a closed change set. Close the change set and commit it first.` })
+        }
+        let tests = null
+        try { tests = linkedSession.close_tests ? JSON.parse(linkedSession.close_tests) : null } catch { tests = null }
+        if (!tests || tests.blocking > 0) {
+            return res.status(409).json({ error: `Refused: the change set for commit ${commit} has failing block-severity tests. Fix and re-close before approving.` })
+        }
+        const approvals = require('./core/git-approvals')
+        const rec = await approvals.append({
+            id: new Date().toISOString(), approved_at: new Date().toISOString(),
+            approver: req.user ?? 'unknown', notes: note ?? '',
+            source: source ?? null, target, commit, session: linkedSession.id, packageDir: null,
+        }, { ideToken: req.ideToken })
+        res.json(rec)
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+app.get('/api/deploy/git/approval', async (req, res) => {
+    try {
+        const approvals = require('./core/git-approvals')
+        res.json(await approvals.find(req.query.target, req.query.commit, { ideToken: req.ideToken }))
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+// Review — the actual content diff the target will receive (read-only).
+app.post('/api/deploy/git/review', async (req, res) => {
+    try {
+        const { review } = require('./core/git-review')
+        const { source, target, branch, session } = req.body
+        if (!target) return res.status(400).json({ error: 'target required' })
+        res.json(await review(source, target, { branch, token: process.env.TM1_GIT_TOKEN, ideToken: req.ideToken, session }))
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// ── Drift (#3): PROD pushes prod-live; diff vs its deployed commit. ─────────
+app.post('/api/git/drift', async (req, res) => {
+    try {
+        const { driftCheck } = require('./core/git-drift')
+        const server = req.body?.server ?? req.query.server
+        if (!server) return res.status(400).json({ error: 'server required' })
+        res.json(await driftCheck(server, { token: process.env.TM1_GIT_TOKEN, ideToken: req.ideToken }))
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+app.post('/api/git/drift/revert', async (req, res) => {
+    try {
+        // Not gated by read-only: restoring a drifted target to its approved commit
+        // is an approved action (the approval gate lives inside revert()).
+        const { revert } = require('./core/git-drift')
+        const { target, branch } = req.body
+        if (!target) return res.status(400).json({ error: 'target required' })
+        res.json(await revert(target, { branch, token: process.env.TM1_GIT_TOKEN, ideToken: req.ideToken }))
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+app.post('/api/git/drift/promote', async (req, res) => {
+    try {
+        const { promote } = require('./core/git-drift')
+        const { target, source } = req.body
+        if (!target) return res.status(400).json({ error: 'target required' })
+        res.json(await promote(target, { token: process.env.TM1_GIT_TOKEN, ideToken: req.ideToken, source }))
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+// Deploy lock — is anything deploying to a target right now?
+app.get('/api/git/lock', async (req, res) => {
+    try {
+        const { current } = require('./core/git-lock')
+        const server = req.query?.server
+        if (!server) return res.status(400).json({ error: 'server required' })
+        res.json(await current(server, { ideToken: req.ideToken }))
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+// Clear a STALE deploy lock (one a deploy that died left behind). Refuses to
+// clear a live lock; records who/when in the deploy history.
+app.post('/api/git/lock/clear', async (req, res) => {
+    try {
+        const { clear } = require('./core/git-lock')
+        const server = req.body?.server
+        if (!server) return res.status(400).json({ error: 'server required' })
+        const result = await clear(server, { by: req.user, ideToken: req.ideToken })
+        res.json(result)
+    } catch (e) {
+        res.status(e.refused ? 409 : 500).json({ error: e.message })
+    }
+})
+
+// ── Git connection setup (first-time, guarded) ───────────────────────────────
+// Link an EXISTING repo only — creating one needs a broader GitHub token, so the
+// UI gives instructions instead. The token is never shown, logged or returned.
+// Already-initialised servers report their link and are never re-initialised.
+// Guardrails: no silent failures — every step reports, and a failure stops.
+const _GI = () => require('./core/git-identity')
+const _GITOK = () => process.env.TM1_GIT_TOKEN || ''
+
+app.get('/api/git/setup/status', async (req, res) => {
+    try {
+        const server = req.query?.server
+        if (!server) return res.status(400).json({ error: 'server required' })
+        const st = await makeClient(server, req.ideToken).post('GitStatus', { Username: _GI().user(), Password: _GITOK() })
+        res.json({ linked: !!st?.URL, repoUrl: st?.URL ?? null, deployment: st?.Deployment ?? null, connected: st?.Remote?.Connected ?? false })
+    } catch (e) { res.status(500).json({ error: e.response?.data?.error?.message ?? e.message }) }
+})
+
+app.post('/api/git/setup/token', (req, res) => {
+    try {
+        gitSecrets.setToken(req.body?.token)
+        res.json({ ok: true, note: 'token set ✓' })   // never the token itself
+    } catch (e) { res.status(400).json({ error: e.message }) }
+})
+
+app.get('/api/git/setup/readiness', async (req, res) => {
+    try {
+        const { server } = req.query
+        if (!server) return res.status(400).json({ error: 'server required' })
+        const { scan } = require('./core/git-readiness')
+        res.json(await scan(server, { gitUser: _GI().user(), token: _GITOK(), ideToken: req.ideToken }))
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.post('/api/git/setup/init', async (req, res) => {
+    try {
+        const { server, repo, deployment, force } = req.body
+        if (!server || !repo || !deployment) return res.status(400).json({ error: 'server, repo and deployment required' })
+        if (!/^(DEV|TEST|PROD)$/i.test(deployment)) return res.status(400).json({ error: 'deployment should be DEV, TEST or PROD' })
+        const c = makeClient(server, req.ideToken)
+        const st = await c.post('GitStatus', { Username: _GI().user(), Password: _GITOK() })
+        if (st?.URL && !force) return res.status(409).json({ error: `${server} is already linked to ${st.URL} (deployment ${st.Deployment}). Not re-running GitInit.` })
+        const plan = await c.post('GitInit', { URL: repo, Deployment: String(deployment).toUpperCase(), Force: !!force, Username: _GI().user(), Password: _GITOK() })
+        if (plan?.ID) await c.post(`GitPlans('${encodeURIComponent(plan.ID)}')/tm1.Execute`, {})
+        const after = await c.post('GitStatus', { Username: _GI().user(), Password: _GITOK() })
+        res.json({ ok: true, server, repo: after?.URL ?? repo, deployment: after?.Deployment ?? String(deployment).toUpperCase(), note: 'GitInit complete.' })
+    } catch (e) { res.status(500).json({ error: e.response?.data?.error?.message ?? e.message }) }
+})
+
+// DEV first push — the initial commit.
+app.post('/api/git/setup/first-push', async (req, res) => {
+    try {
+        const { server, message } = req.body
+        if (!server) return res.status(400).json({ error: 'server required' })
+        const c = makeClient(server, req.ideToken)
+        const plan = await c.post('GitPush', { Branch: 'dev', NewBranch: '', Force: false, Message: message || `Initial state of ${server}`, Author: req.user ?? _GI().user(), Email: _GI().email(), Username: _GI().user(), Password: _GITOK() })
+        await c.post(`GitPlans('${encodeURIComponent(plan.ID)}')/tm1.Execute`, {})
+        res.json({ ok: true, commit: plan.NewCommit?.ID ?? null, note: `First commit of ${server} pushed to the repo.` })
+    } catch (e) { res.status(500).json({ error: e.response?.data?.error?.message ?? e.message }) }
+})
+
+// PROD first pull — full overwrite; requires the typed confirmation. The object
+// list is shown first via the normal prepare route (fullOverwrite flag).
+app.post('/api/git/setup/first-pull', async (req, res) => {
+    try {
+        const { server, branch = 'dev', confirm } = req.body
+        if (!server) return res.status(400).json({ error: 'server required' })
+        const expected = `I understand this overwrites ${server}`
+        if (String(confirm ?? '').trim() !== expected) return res.status(400).json({ error: `Type exactly: ${expected}` })
+        const c = makeClient(server, req.ideToken)
+        const plan = await c.post('GitPull', { Branch: branch, ExecutionMode: 'SingleCommit', Force: false, Username: _GI().user(), Password: _GITOK() })
+        const n = (plan.Operations ?? []).length
+        await c.post(`GitPlans('${encodeURIComponent(plan.ID)}')/tm1.Execute`, {})
+        res.json({ ok: true, overwritten: n, note: `First pull applied — every object on ${server} was replaced by the repo state (${n} operations).` })
+    } catch (e) { res.status(500).json({ error: e.response?.data?.error?.message ?? e.message }) }
+})
+
+// ── Governance mirror (#4): Applications/Governance ⇄ governance/ in the repo ──
+app.post('/api/git/governance/mirror', async (req, res) => {
+    try {
+        const { mirrorToRepo } = require('./core/governance-mirror')
+        const { server, branch } = req.body
+        if (!server) return res.status(400).json({ error: 'server required' })
+        res.json(await mirrorToRepo(server, { branch, token: process.env.TM1_GIT_TOKEN, ideToken: req.ideToken }))
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+app.post('/api/git/governance/apply', async (req, res) => {
+    try {
+        if (!gateReadOnly(res, req.body?.server)) return
+        const { applyFromRepo } = require('./core/governance-mirror')
+        const { server, branch, allow } = req.body
+        if (!server) return res.status(400).json({ error: 'server required' })
+        res.json(await applyFromRepo(server, { branch, allow, token: process.env.TM1_GIT_TOKEN, ideToken: req.ideToken }))
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// ── Git reconcile (#6): deletes + attribute values the pull won't cover ──────
 app.post('/api/deploy/seed', async (req, res) => {
     try {
         const { server, label } = req.body
@@ -3046,37 +3395,12 @@ app.post('/api/deploy/risk', async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
-app.post('/api/deploy/execute', async (req, res) => {
-    try {
-        const { packageDir, target, dryRun, force } = req.body
-        const result = await deployExecute(packageDir, target, { dryRun, force, skipRiskCheck: true }, req.ideToken)
-        res.json(result)
-    } catch (e) { res.status(500).json({ error: e.message }) }
-})
-
-// Re-run a source server's stored assertions against any target, on demand.
-// Same check the deploy pipeline runs post-deploy (B3) — but standalone, so you
-// can re-verify after a post-deploy fix (seed processes, feeder reprocess, …)
-// without re-deploying.
 app.post('/api/deploy/verify', async (req, res) => {
     try {
         const { source, target, tags } = req.body
         if (!source) return res.status(400).json({ error: 'source (server whose assertions to run) required' })
         const result = await require('./core/assertions').run(source, { targetServer: target || source, tags, ideToken: req.ideToken })
         res.json(result)
-    } catch (e) { res.status(500).json({ error: e.message }) }
-})
-
-app.post('/api/deploy/approve', (req, res) => {
-    try {
-        const { source, target, approver, notes, packaged, session, packageDir } = req.body
-        const id = new Date().toISOString()
-        const record = { id, approved_at: id, approver, notes: notes ?? '', source, target, packaged, session, packageDir }
-        const file = path.join(__dirname, 'config', 'deploy-approvals.json')
-        const existing = fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, 'utf8')) : []
-        existing.push(record)
-        fs.writeFileSync(file, JSON.stringify(existing, null, 2))
-        res.json(record)
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 

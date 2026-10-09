@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, Fragment } from 'react'
 import { useStore } from '@/store'
 import { cn } from '@/lib/utils'
 import { Toaster } from '@/components/ui/sonner'
-import { Search, PanelLeftClose, PanelLeftOpen, Keyboard, SlidersHorizontal, Users, BookOpen, Rocket, Settings, ExternalLink } from 'lucide-react'
+import { Search, PanelLeftClose, PanelLeftOpen, Keyboard, SlidersHorizontal, Users, BookOpen, Rocket, Settings, ExternalLink, Activity, ListChecks, GitBranch, GitCompare, History } from 'lucide-react'
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels' // used for inner editor split groups only
 import ServerSelector from '@/components/ServerSelector'
 import Explorer from '@/components/Explorer'
@@ -21,6 +21,11 @@ import LoginPage from '@/components/LoginPage'
 import UserManagement from '@/components/UserManagement'
 import ServerLoginDialog from '@/components/ServerLoginDialog'
 import CatalogAdmin from '@/components/CatalogAdmin'
+import ModelHealth from '@/components/ModelHealth'
+import AssertionsManager from '@/components/AssertionsManager'
+import DeployWizard from '@/components/DeployWizard'
+import GitSetup from '@/components/GitSetup'
+import GitDrift from '@/components/GitDrift'
 import DeployCenter from '@/components/DeployCenter'
 
 const queryClient = new QueryClient({
@@ -80,12 +85,19 @@ export default function App() {
   const [showPrefs, setShowPrefs]                 = useState(false)
   const [showPeriodBuilder, setShowPeriodBuilder] = useState(false)
   const [showUserMgmt, setShowUserMgmt]           = useState(false)
-  const [showCatalog, setShowCatalog]             = useState(false)
+const [showCatalog, setShowCatalog]           = useState(false)
+  const [showModelHealth, setShowModelHealth]   = useState(false)
+  const [showAssertions, setShowAssertions]     = useState(false)
+  const [showGitDeploy, setShowGitDeploy]       = useState(false)
+  const [showGitSetup, setShowGitSetup]         = useState(false)
+  const [showGitDrift, setShowGitDrift]         = useState(false)
   const [showToolsMenu, setShowToolsMenu]         = useState(false)
+  const [showDeployMenu, setShowDeployMenu]       = useState(false)
   const [sidebarWidth, setSidebarWidth]           = useState(280)
   const [findWidth, setFindWidth]                 = useState(320)
   const dragRef = useRef(null)
   const toolsMenuRef = useRef(null)
+  const deployMenuRef = useRef(null)
 
   useEffect(() => {
     if (!showToolsMenu) return
@@ -97,6 +109,17 @@ export default function App() {
     document.addEventListener('keydown', onEsc)
     return () => { document.removeEventListener('mousedown', handler); document.removeEventListener('keydown', onEsc) }
   }, [showToolsMenu])
+
+  useEffect(() => {
+    if (!showDeployMenu) return
+    const handler = (e) => {
+      if (deployMenuRef.current && !deployMenuRef.current.contains(e.target)) setShowDeployMenu(false)
+    }
+    const onEsc = (e) => { if (e.key === 'Escape') setShowDeployMenu(false) }
+    document.addEventListener('mousedown', handler)
+    document.addEventListener('keydown', onEsc)
+    return () => { document.removeEventListener('mousedown', handler); document.removeEventListener('keydown', onEsc) }
+  }, [showDeployMenu])
 
   useEffect(() => {
     const onMove = (e) => {
@@ -275,14 +298,62 @@ export default function App() {
                 </button>
               )}
 
-              {/* Deploy — full-screen takeover: new deploy, history, import, baselines */}
-              <button
-                onClick={() => openDeployCenter({ server, view: 'history' })}
-                className="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
-                title="Deploy"
-              >
-                <Rocket size={15} />
-              </button>
+              {/* Deploy — one contextual icon; opens the deploy components */}
+              <div className="relative" ref={deployMenuRef}>
+                <button
+                  onClick={() => setShowDeployMenu(v => !v)}
+                  className={cn('p-1.5 rounded text-muted-foreground hover:text-foreground transition-colors', (showDeployMenu || showGitDeploy || showGitDrift || showModelHealth || showAssertions) && 'bg-muted text-foreground')}
+                  title="Deploy"
+                >
+                  <Rocket size={15} />
+                </button>
+                {showDeployMenu && (
+                  <div className="absolute right-0 top-full mt-1 w-52 rounded border border-border bg-card shadow-lg py-1 z-50">
+                    <button
+                      onClick={() => { setShowGitDeploy(true); setShowDeployMenu(false) }}
+                      className="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-left text-foreground hover:bg-muted"
+                    >
+                      <GitBranch size={13} className="shrink-0 text-muted-foreground" />
+                      Deploy step by step
+                    </button>
+                    <button
+                      onClick={() => { setShowGitDrift(true); setShowDeployMenu(false) }}
+                      className="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-left text-foreground hover:bg-muted"
+                    >
+                      <GitCompare size={13} className="shrink-0 text-muted-foreground" />
+                      Drift
+                    </button>
+                    <button
+                      onClick={() => { openDeployCenter({ server, view: 'history' }); setShowDeployMenu(false) }}
+                      className="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-left text-foreground hover:bg-muted"
+                    >
+                      <History size={13} className="shrink-0 text-muted-foreground" />
+                      History &amp; baselines
+                    </button>
+                    <button
+                      onClick={() => { setShowModelHealth(true); setShowDeployMenu(false) }}
+                      className="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-left text-foreground hover:bg-muted"
+                    >
+                      <Activity size={13} className="shrink-0 text-muted-foreground" />
+                      Model health
+                    </button>
+                    <button
+                      onClick={() => { setShowAssertions(true); setShowDeployMenu(false) }}
+                      className="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-left text-foreground hover:bg-muted"
+                    >
+                      <ListChecks size={13} className="shrink-0 text-muted-foreground" />
+                      Tests (assertions)
+                    </button>
+                    <button
+                      onClick={() => { setShowGitSetup(true); setShowDeployMenu(false) }}
+                      className="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-left text-foreground hover:bg-muted"
+                    >
+                      <GitBranch size={13} className="shrink-0 text-muted-foreground" />
+                      GitHub setup
+                    </button>
+                  </div>
+                )}
+              </div>
 
               <div className="w-px h-4 bg-border mx-1" />
               <SessionControl />
@@ -341,6 +412,11 @@ export default function App() {
         <FormatSettings open={formatSettingsOpen} onClose={() => setFormatSettingsOpen(false)} />
         {showUserMgmt && server && <UserManagement server={server} onClose={() => setShowUserMgmt(false)} />}
         {showCatalog && <CatalogAdmin server={server} onClose={() => setShowCatalog(false)} />}
+        {showModelHealth && <ModelHealth server={server} onClose={() => setShowModelHealth(false)} />}
+        {showAssertions && <AssertionsManager server={server} onClose={() => setShowAssertions(false)} />}
+        {showGitDeploy && <DeployWizard server={server} onClose={() => setShowGitDeploy(false)} onOpenTests={() => { setShowAssertions(true); setShowGitDeploy(false) }} />}
+        {showGitSetup && <GitSetup server={server} onClose={() => setShowGitSetup(false)} />}
+        {showGitDrift && <GitDrift server={server} onClose={() => setShowGitDrift(false)} />}
         <PeriodBuilder open={showPeriodBuilder} onClose={() => setShowPeriodBuilder(false)} />
         <DeployCenter />
         <ServerLoginDialog />

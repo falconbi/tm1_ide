@@ -455,6 +455,27 @@ async function analyzeRisk(packageDir, targetServer, ideToken) {
     // Chore conflict check — single pass across all process objects
     push(await checkChoreConflicts(objects.filter(o => o.type === 'process'), client))
 
+// Git readiness check (IMPROVEMENTS 10.2) — runs before any push. Scans the SOURCE
+// server (where the push originates) for member-less view titles, stale member
+// references and names TM1 Git won't round-trip.
+// Level: today's deploys do NOT use TM1 Git, and our own transport doesn't care
+// about "Selected": null — so findings are WARNINGs, not blockers. When the Git
+// transport deploy path exists, set `gitTransport = true` and they become BLOCKERs
+// (a single stale view would otherwise reject the target's pull).
+const gitTransport = false // flip when the TM1 Git deploy path is wired
+const sourceServer = manifest._meta?.server
+if (sourceServer && sourceServer !== targetServer) {
+    try {
+        const { scan } = require('../../../core/git-readiness')
+        const r = await scan(sourceServer, { ideToken })
+        const level = gitTransport ? 'BLOCKER' : 'WARNING'
+        for (const b of r.blockers) push(item(level, 'git-readiness', 'model', sourceServer, b))
+        if (!r.ok) push(item('INFO', 'git-readiness', 'model', sourceServer, `Readiness scan of ${sourceServer} found issues (would block a TM1 Git push once wired).`))
+    } catch (e) {
+        push(item('WARNING', 'git-readiness', 'model', sourceServer, `Git readiness scan failed: ${e.message}`))
+    }
+}
+
     const blockers = all.filter(r => r.level === 'BLOCKER')
     const warnings = all.filter(r => r.level === 'WARNING')
     const infos    = all.filter(r => r.level === 'INFO')
