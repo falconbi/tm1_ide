@@ -161,7 +161,7 @@ export default function ChoreEditor({ tab }) {
     // v11 (and v12) chore steps live under `Tasks`, not `Steps` — the read side uses
     // the same property (see getChore's $expand=Tasks). Sending `Steps` is rejected.
     // v11 also rejects an `Ordinal` property on ChoreTask — order follows array position.
-    Tasks: steps.map((st, i) => ({
+    Tasks: steps.map((st, _i) => ({
       'Process@odata.bind': `Processes('${(st.Process?.Name ?? '').replace(/'/g, "''")}')`,
       Parameters: (st.Parameters ?? []).map(p => ({ Name: p.Name, Value: String(p.Value ?? '') })),
     })),
