@@ -89,7 +89,7 @@ export function computeDimension(params) {
 
 export function generateBuildDimensionProlog(params, selectedSubsets = []) {
   const {
-    dimensionName, includeTotal, replaceDimension,
+    dimensionName, replaceDimension,
   } = params
 
   const out = []
@@ -377,7 +377,7 @@ export function generateBuildDimensionProlog(params, selectedSubsets = []) {
   return out.join('\n')
 }
 
-export function generateBuildDimensionData(params) {
+export function generateBuildDimensionData(_params) {
   return ''
 }
 
@@ -385,8 +385,7 @@ function yyyymmPad(yVar, mVar) {
   return `NumberToString(${yVar}) | '-' | IF(${mVar} < 10, '0' | NumberToString(${mVar}), NumberToString(${mVar}))`
 }
 
-export function generateBuildDimensionEpilog(params, selectedSubsets = []) {
-  const { includeCurrentPeriodAttr, fyStartMonth } = params
+export function generateBuildDimensionEpilog(params, _selectedSubsets = []) {
 
   const attrLines = []
   attrLines.push(`# =============================================`)
