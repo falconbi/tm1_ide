@@ -54,7 +54,7 @@ export function generateBuildDimensionTI(params, selectedSubsets = []) {
 // ═══════════════════════════════════════════════════════════════════════
 
 function buildRefreshProlog(params, selectedSubsets, subsetPrefix) {
-  const { dimensionName, fyStartMonth } = params
+  const { dimensionName } = params
   const pfx = subsetPrefix ? subsetPrefix + ' ' : ''
   const needsCurrent = selectedSubsets.some(id => {
     const def = SUBSET_DEFS.find(d => d.id === id)
@@ -355,7 +355,7 @@ export function generateRefreshSubsetsTI(params, selectedSubsets, subsetPrefix) 
 //  ROLLOVER TI
 // ═══════════════════════════════════════════════════════════════════════
 
-function buildRolloverProlog(dimensionName, fyStartMonth = 1) {
+function buildRolloverProlog(dimensionName, _fyStartMonth = 1) {
   const out = []
   out.push(`# ═══════════════════════════════════════════════════════════════`)
   out.push(`# ${dimensionName}.Rollover`)
