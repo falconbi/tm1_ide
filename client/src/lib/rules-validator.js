@@ -122,7 +122,6 @@ export function validateRulesSyntax(code, options = {}) {
     }
 
     // ── Statement-level bracket analysis ───────────────────────────────────
-    let stmtBracketDepth = 0
     let depth = 0
     const openers = []
     for (const t of toks) {
@@ -131,14 +130,12 @@ export function validateRulesSyntax(code, options = {}) {
         errors.push({ severity: 'error', line: stmtLine, message: `Unexpected ')' inside brackets — did you mean ']'?` })
         openers.pop()
         depth--
-        stmtBracketDepth--
         fileBracketDepth--
         if (fileBracketDepth === 0) fileBracketStartLine = -1
       } else if (t.value === '(' || t.value === '[' || t.value === '{') {
         openers.push(t.value)
         depth++
         if (t.value === '[') {
-          stmtBracketDepth++
           fileBracketDepth++
           if (fileBracketStartLine === -1) fileBracketStartLine = lineOf(text, t, code)
         }
@@ -146,7 +143,6 @@ export function validateRulesSyntax(code, options = {}) {
         openers.pop()
         depth--
         if (t.value === ']') {
-          stmtBracketDepth--
           fileBracketDepth--
           if (fileBracketDepth === 0) fileBracketStartLine = -1
         }
@@ -250,11 +246,7 @@ function validateStatement(toks, text, code, errors, baseLine) {
 
   // Check for area prefix at start (N:, C:, S:)
   let from = 0
-  let areaPrefix = null
-  if (first.type === 'area_prefix') {
-    areaPrefix = first.value
-    from = 1
-  }
+  if (first.type === 'area_prefix') from = 1
 
   // Locate = and ; at bracket depth 0
   let assignIdx = -1
@@ -279,15 +271,10 @@ function validateStatement(toks, text, code, errors, baseLine) {
   // ── Assignment: LHS = RHS ────────────────────────────────────────────────
   if (assignIdx !== -1) {
     const lhsToks = toks.slice(from, assignIdx)
-    const eqTok = toks[assignIdx]
     let rhsFrom = assignIdx + 1
-    let rhsPrefix = null
 
     // Check for area prefix after =
-    if (toks[rhsFrom]?.type === 'area_prefix') {
-      rhsPrefix = toks[rhsFrom].value
-      rhsFrom++
-    }
+    if (toks[rhsFrom]?.type === 'area_prefix') rhsFrom++
 
     // LHS validation
     if (lhsToks.length === 0) {
@@ -314,7 +301,6 @@ function validateStatement(toks, text, code, errors, baseLine) {
   // ── Feeder: Source => Target(s) ───────────────────────────────────────────
   if (feederIdx !== -1) {
     const srcToks = toks.slice(from, feederIdx)
-    const arrowTok = toks[feederIdx]
     const tgtToks = toks.slice(feederIdx + 1, endIdx)
 
     // Source validation
