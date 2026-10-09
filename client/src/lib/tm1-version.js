@@ -46,3 +46,16 @@ export function compatWarning(compat, version) {
     return 'removed in TM1 Database 12 (PA 3) — V11 classic only'
   return null
 }
+
+// Server features that only exist on some versions — the one place the UI asks
+// "does this server have X?" so every feature shows, hides or explains itself the
+// same way. Checked per server (a migration can mean V11 PROD next to a V12 DEV).
+// Unknown version → everything on, and the call itself reports what's missing.
+export function serverCapabilities(version) {
+  const { known, isV12 } = parseTM1Version(version)
+  const v12 = !known || isV12
+  return {
+    jobs:    v12,  // Jobs (background work) — V12 REST only
+    metrics: v12,  // Metrics() — V12 database API; Server Admin's Status tab (maintenance mode, 12.6+, lives there too)
+  }
+}

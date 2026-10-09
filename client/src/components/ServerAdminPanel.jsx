@@ -3,6 +3,8 @@ import { X, RefreshCw, Loader2, ShieldAlert, ShieldCheck, Server, Settings, BarC
 import { useServerMetrics, useActiveConfiguration, useMaintenanceMode, useSessions, useDisconnectSession } from '@/hooks/useApi'
 import { useQueryClient } from '@tanstack/react-query'
 import { cn } from '@/lib/utils'
+import { useStore } from '@/store'
+import { serverCapabilities } from '@/lib/tm1-version'
 import { toast } from 'sonner'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -66,9 +68,14 @@ const TABS = [
 // ── Panel ─────────────────────────────────────────────────────────────────────
 
 export default function ServerAdminPanel({ server, onClose }) {
-  const [tab, setTab]         = useState('status')
+  const { serverVersion }     = useStore()
+  const caps                  = serverCapabilities(serverVersion)
+  // Status = Metrics() + maintenance mode, both V12-only; V11 gets Sessions + Configuration.
+  const tabs                  = TABS.filter(t => t.id !== 'status' || caps.metrics)
+  const [picked, setTab]      = useState(null)
+  const tab                   = tabs.some(t => t.id === picked) ? picked : tabs[0].id
   const qc                    = useQueryClient()
-  const metrics               = useServerMetrics(server, { refetchInterval: 30_000 })
+  const metrics               = useServerMetrics(server, { refetchInterval: 30_000, enabled: !!server && caps.metrics })
   const config                = useActiveConfiguration(server)
   const maintenance           = useMaintenanceMode()
   const sessions              = useSessions(server, { refetchInterval: tab === 'sessions' ? 10_000 : false })
@@ -135,7 +142,7 @@ export default function ServerAdminPanel({ server, onClose }) {
 
         {/* Tab bar */}
         <div className="flex border-b border-border shrink-0 px-4 gap-1 pt-1">
-          {TABS.map(t => (
+          {tabs.map(t => (
             <button
               key={t.id}
               onClick={() => setTab(t.id)}
@@ -248,7 +255,8 @@ export default function ServerAdminPanel({ server, onClose }) {
                     <tbody>
                       {sessions.data.map((s, i) => {
                         const id       = s.ID ?? s.SessionID ?? i
-                        const user     = s.UserName ?? s.User ?? '—'
+                        // $expand=User gives an object ({ Name, FriendlyName, … }) — rendering it as-is crashed the app
+                        const user     = s.UserName ?? (typeof s.User === 'object' ? (s.User?.FriendlyName || s.User?.Name) : s.User) ?? '—'
                         const ip       = s.IPAddress ?? s.ClientIPAddress ?? '—'
                         const client   = s.ClientType ?? s.ApplicationName ?? '—'
                         const connAt   = s.ConnectedAt ?? s.LoginAt ?? s.CreatedAt

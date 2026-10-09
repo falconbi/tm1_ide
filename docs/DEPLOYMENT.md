@@ -45,7 +45,9 @@ Use the **Deploy Center → Baselines** view (header icon) to seed, inspect hist
 
 **④ Risk** — two phases run automatically:
 1. **Drift check** — fetches current state from the target and compares to baseline. Any drift **blocks deployment** until you re-seed.
-2. **Risk analysis** (if drift is clean) — syntax, dependencies, structural impact → `BLOCKER` / `WARNING` / `INFO`
+2. **Risk analysis** (if drift is clean) — syntax, dependencies, structural impact, version compatibility → `BLOCKER` / `WARNING` / `INFO`.
+   Version compatibility flags any V11-only or V12-only function (per the shared function catalog) in the rules
+   and TI being deployed when the target is the other version — e.g. during a V11 → V12 migration.
 
 **⑤ Approve** — a named approver signs off with optional notes. Required before deployment unlocks.
 

@@ -1,15 +1,18 @@
 import { useState, useEffect } from 'react'
 import { toast } from 'sonner'
-import { Activity, FolderOpen, Users, Lock } from 'lucide-react'
+import { Activity, FolderOpen, Users, Lock, Server } from 'lucide-react'
 import { useStore } from '@/store'
 import { useJobs, useFilesAvailable, useServers, useConfig } from '@/hooks/useApi'
 import { cn } from '@/lib/utils'
+import { serverCapabilities } from '@/lib/tm1-version'
 import JobsMonitor from '@/components/JobsMonitor'
 import FileManager from '@/components/FileManager'
 import SessionsMonitor from '@/components/SessionsMonitor'
+import ServerAdminPanel from '@/components/ServerAdminPanel'
 
 export default function StatusBar() {
-  const { server, tabs, activeTab } = useStore()
+  const { server, serverVersion, tabs, activeTab } = useStore()
+  const caps       = serverCapabilities(serverVersion)
   const tab        = tabs.find(t => t.id === activeTab)
   const dirtyCount = tabs.filter(t => t.dirty).length
 
@@ -20,8 +23,10 @@ export default function StatusBar() {
   const [showJobs,     setShowJobs]     = useState(false)
   const [showFiles,    setShowFiles]    = useState(false)
   const [showSessions, setShowSessions] = useState(false)
+  const [showAdmin,    setShowAdmin]    = useState(false)
 
-  const jobs    = useJobs(server, { refetchInterval: 10_000 })
+  // V11 has no Jobs endpoint — don't poll it every 10s just to get a 404.
+  const jobs    = useJobs(server, { refetchInterval: 10_000, enabled: !!server && caps.jobs })
   const entries = (jobs.data?.items ?? jobs.data) ?? []
   const running = Array.isArray(entries) ? entries.filter(j => (j.Status ?? j.StatusMessage ?? '').toLowerCase() === 'running') : []
   const v12only = jobs.data?.v12only
@@ -72,8 +77,23 @@ export default function StatusBar() {
           </button>
         )}
 
+        {/* Server Admin */}
+        {server && (
+          <button
+            onClick={() => setShowAdmin(v => !v)}
+            title="Server Admin — configuration and sessions; status and maintenance mode on V12"
+            className={cn(
+              'flex items-center gap-1 px-1.5 py-0.5 rounded transition-colors',
+              showAdmin ? 'text-primary-foreground bg-white/20' : 'text-primary-foreground/40 hover:text-primary-foreground/70 hover:bg-white/10'
+            )}
+          >
+            <Server size={10} />
+            <span>Admin</span>
+          </button>
+        )}
+
         {/* Jobs */}
-        {server && !v12only && (
+        {server && caps.jobs && !v12only && (
           <button
             onClick={() => setShowJobs(v => !v)}
             title="Jobs Monitor"
@@ -107,6 +127,7 @@ export default function StatusBar() {
       {showJobs     && server && <JobsMonitor     server={server} onClose={() => setShowJobs(false)}     />}
       {showFiles      && server && <FileManager      server={server} onClose={() => setShowFiles(false)}      />}
       {showSessions   && server && <SessionsMonitor  server={server} onClose={() => setShowSessions(false)}   />}
+      {showAdmin      && server && <ServerAdminPanel server={server} onClose={() => setShowAdmin(false)}      />}
     </div>
   )
 }
