@@ -107,6 +107,15 @@ async function buildRelease(changeSet, target, { token, gitUser = gitIdentity.us
     const devCommit = session?.commit_ref
     if (!devCommit) return { ok: false, refused: true, error: `Change set "${session?.name ?? session?.id}" has not been pushed — commit it to the repo first.` }
 
+    // Subsets and views cannot be released: the lab proved TM1 Git's pull plan has
+    // no operation for them, so they never land on the target. Refuse loudly —
+    // before touching the repo — rather than ship a release that silently drops them.
+    const logEntries = session?.id ? cl.getSessionLog(session.id) : []
+    const unsupported = (logEntries ?? []).find(e => e.object_type === 'subset' || e.object_type === 'view')
+    if (unsupported) {
+        return { ok: false, refused: true, error: `Subsets and views can't be released through TM1 Git yet — the pull doesn't apply them (this change set touches ${unsupported.object_type} "${unsupported.object_name}").` }
+    }
+
     if (!repoUrl) {
         try {
             const st = await makeClient(target, ideToken).post('GitStatus', { Username: gitUser, Password: token })
@@ -137,7 +146,6 @@ async function buildRelease(changeSet, target, { token, gitUser = gitIdentity.us
         }
 
         const changed = changedFilesBetween(work, base, devCommit)
-        const logEntries = changeSet?.id ? cl.getSessionLog(changeSet.id) : []
         const csetObjectKeys = new Set(logEntries
             .filter(e => ENTRY_TO_OBJECT[e.object_type])
             .map(e => objectKey(
