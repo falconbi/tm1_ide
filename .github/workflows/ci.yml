@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  test-and-build:
+    runs-on: ubuntu-latest
+    env:
+      PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node 22 (cache for both lockfiles)
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            client/package-lock.json
+
+      - name: Install (root)
+        run: npm ci
+
+      - name: Install (client) — two .mjs tests import client code (clsx)
+        working-directory: client
+        run: npm ci
+
+      - name: Test
+        run: npm test
+
+      - name: Build client (proves it compiles)
+        working-directory: client
+        run: npm run build
+
+      - name: Lint ratchet (baseline 133 — must only go down)
+        working-directory: client
+        env:
+          LINT_BASELINE: 133
+        run: |
+          COUNT=$(npm run lint:count 2>&1 | grep -oE '[0-9]+' | tail -1)
+          echo "lint problems: ${COUNT} (baseline ${LINT_BASELINE})"
+          if [ -z "$COUNT" ]; then
+            echo "Could not read the lint problem count — inspect npm run lint:count."
+            exit 1
+          fi
+          if [ "$COUNT" -gt "$LINT_BASELINE" ]; then
+            echo "Lint regressed: ${COUNT} > ${LINT_BASELINE}. Lower the baseline in docs/LINT.md AND here in .github/workflows/ci.yml together, only when lint improves."
+            exit 1
+          fi

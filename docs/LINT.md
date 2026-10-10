@@ -47,3 +47,14 @@ the mechanical baseline above:
 
 When fixing phase 2, commit file by file (as phase 1 did) and lower the "After
 phase 1" row above to the new total.
+
+## CI
+
+The **133** baseline is enforced in CI (`.github/workflows/ci.yml`, lint ratchet
+step): `npm run lint:count` must not report more than 133 problems or the build
+fails — the count is printed either way.
+
+When lint improves, the number must be lowered in **both** places together:
+
+1. the "After phase 1" row in the Baseline table above, and
+2. `LINT_BASELINE` in `.github/workflows/ci.yml`.
