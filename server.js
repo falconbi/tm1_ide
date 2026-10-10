@@ -3159,7 +3159,6 @@ app.post('/api/git/setup/init', async (req, res) => {
         const { server, repo, deployment, force } = req.body
         if (!server || !repo || !deployment) return res.status(400).json({ error: 'server, repo and deployment required' })
         if (!/^(DEV|TEST|PROD)$/i.test(deployment)) return res.status(400).json({ error: 'deployment should be DEV, TEST or PROD' })
-        if (!gateReadOnly(res, server)) return
         const { init } = require('./core/git-setup')
         const r = await init(server, { repo, deployment, force, gitUser: _GI().user(), token: _GITOK(), ideToken: req.ideToken })
         if (r.refused) return res.status(409).json({ error: r.error })
@@ -3185,7 +3184,6 @@ app.post('/api/git/setup/first-pull', async (req, res) => {
     try {
         const { server, branch = 'dev', confirm } = req.body
         if (!server) return res.status(400).json({ error: 'server required' })
-        if (!gateReadOnly(res, server)) return
         const { firstPull } = require('./core/git-setup')
         const r = await firstPull(server, { branch, confirm, gitUser: _GI().user(), token: _GITOK(), ideToken: req.ideToken })
         if (r.refused) return res.status(409).json({ error: r.error })
