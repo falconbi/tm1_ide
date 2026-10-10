@@ -247,6 +247,9 @@ async function execute(target, { branch = 'dev', token, gitUser = gitIdentity.us
         try {
             await c.post(`GitPlans('${encodeURIComponent(plan.ID)}')/tm1.Execute`, {})
             out.executed = true
+            // The base for apply/verify is what the target HAD before this deploy —
+            // capture it before recordDeploy rewrites lastDeployed.
+            const preDeployBase = require('./git-state').lastDeployed(target)?.lastDeployedCommit ?? null
             // Record what we actually deployed — TM1's DeployedCommit isn't reliable
             // as "last received" (a prod-live push clobbers it). Loud: if the model
             // record cannot be written, that is reported, never best-effort.
@@ -258,14 +261,16 @@ async function execute(target, { branch = 'dev', token, gitUser = gitIdentity.us
                 out.recorded = false
                 out.error = `Deploy applied, but the deploy record could not be written: ${e.message}. Investigate before the next deploy.`
             }
-            // Verify every included object actually landed on the target with the
-            // release's content — a TM1 Git skip must never look like a clean deploy.
+            // Apply subsets/views over REST (TM1 Git's pull never applies them), then
+            // verify every included object actually landed on the target — a skip must
+            // never look like a clean deploy.
             if (releaseCommit) {
                 try {
-                    const { verifyRelease } = require('./git-release')
+                    const { applyReleaseComplement, verifyRelease } = require('./git-release')
                     const repoUrl = (await c.post('GitStatus', { Username: gitUser, Password: token }))?.URL
-                    const base = require('./git-state').lastDeployed(target)?.lastDeployedCommit ?? null
-                    out.incomplete = await verifyRelease(target, { base, releaseCommit, repoUrl, token, gitUser, ideToken })
+                    const applied = await applyReleaseComplement(target, { base: preDeployBase, releaseCommit, repoUrl, token, gitUser, ideToken })
+                    out.subsetsViews = applied
+                    out.incomplete = await verifyRelease(target, { base: preDeployBase, releaseCommit, repoUrl, token, gitUser, ideToken })
                 } catch (e) {
                     out.incompleteCheckError = e.message
                     out.incomplete = []
@@ -311,6 +316,12 @@ async function execute(target, { branch = 'dev', token, gitUser = gitIdentity.us
                 out.verification = { error: e.message }
                 out.controlOk = false
             }
+        }
+        // A deploy's own signals override the assertion verdict: a subset/view apply
+        // that failed, an object that did not land, or an errored verification is
+        // never a "control ok" deploy, even if every invariant still passed.
+        if ((out.subsetsViews?.errors?.length ?? 0) > 0 || (out.incomplete?.length ?? 0) > 0 || out.incompleteCheckError) {
+            out.controlOk = false
         }
         return out
     } finally {

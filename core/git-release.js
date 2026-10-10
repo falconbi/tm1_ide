@@ -13,6 +13,7 @@ const fs = require('fs')
 const os = require('os')
 const path = require('path')
 const { makeClient } = require('./adapter_registry')
+const { TM1Client } = require('./tm1_client')
 const { lastDeployed } = require('./git-state')
 const { git, authUrl, sanitize } = require('./git-repo')
 const gitIdentity = require('./git-identity')
@@ -83,6 +84,8 @@ const objectKey = (type, name, parent) => {
     return `${type}::${n}`
 }
 
+const subsetNameFromId = (el) => el?.Name ?? String(el?.['@id'] ?? '').match(/Elements\('([^']+)'\)/)?.[1] ?? null
+
 // Best-effort owner of an object: another change-log session (on the change set's
 // server) whose log touched the same object. Null when unknown.
 function ownerOf(logsBySession, obj) {
@@ -107,14 +110,7 @@ async function buildRelease(changeSet, target, { token, gitUser = gitIdentity.us
     const devCommit = session?.commit_ref
     if (!devCommit) return { ok: false, refused: true, error: `Change set "${session?.name ?? session?.id}" has not been pushed — commit it to the repo first.` }
 
-    // Subsets and views cannot be released: the lab proved TM1 Git's pull plan has
-    // no operation for them, so they never land on the target. Refuse loudly —
-    // before touching the repo — rather than ship a release that silently drops them.
     const logEntries = session?.id ? cl.getSessionLog(session.id) : []
-    const unsupported = (logEntries ?? []).find(e => e.object_type === 'subset' || e.object_type === 'view')
-    if (unsupported) {
-        return { ok: false, refused: true, error: `Subsets and views can't be released through TM1 Git yet — the pull doesn't apply them (this change set touches ${unsupported.object_type} "${unsupported.object_name}").` }
-    }
 
     if (!repoUrl) {
         try {
@@ -190,7 +186,15 @@ async function buildRelease(changeSet, target, { token, gitUser = gitIdentity.us
         git(work, 'checkout', '-q', base)
         for (const inc of included) {
             if (inc.action === 'D') git(work, 'rm', '--quiet', '--', inc.file)
-            else git(work, 'checkout', devCommit, '--', inc.file)
+            else {
+                git(work, 'checkout', devCommit, '--', inc.file)
+                // An MDX view carries its expression in a sibling .mdx file — include
+                // it so the release can apply (and verify) the actual MDX.
+                if (inc.type === 'view' && /\.views\/.+\.json$/.test(inc.file)) {
+                    const mdx = inc.file.replace(/\.json$/, '.mdx')
+                    try { git(work, 'checkout', devCommit, '--', mdx) } catch { /* native view — no MDX */ }
+                }
+            }
         }
         git(work, 'add', '-A')
         git(work, '-c', `user.name=${gitUser}`, '-c', `user.email=${gitIdentity.email()}`, 'commit', '-q', '-m', `Release ${changeSet?.name ?? 'change set'} → ${target}`)
@@ -218,7 +222,45 @@ async function buildRelease(changeSet, target, { token, gitUser = gitIdentity.us
     }
 }
 
-module.exports = { buildRelease, objectFromFile, parseNameStatus, ENTRY_TO_OBJECT, objectKey, NO_BASE_ERROR, changedObjects, checkDependencies, splitTi, verifyRelease }
+module.exports = { buildRelease, objectFromFile, parseNameStatus, ENTRY_TO_OBJECT, objectKey, NO_BASE_ERROR, changedObjects, checkDependencies, splitTi, verifyRelease, applyReleaseComplement }
+
+// TM1 Git's pull plan has no operation for subsets or views, so a release pull
+// never applies them. After the pull, apply every included subset and view to the
+// target over REST from the release commit's files — MDX subsets keep their
+// expression, static subsets their element list, views as MDX or native.
+async function applyReleaseComplement(target, { base, releaseCommit, repoUrl, token, gitUser = gitIdentity.user(), ideToken } = {}) {
+    if (!repoUrl || !base || !releaseCommit) return { applied: [], errors: [] }
+    const { applySubset, applyView } = require('./git-restore')
+    const work = fs.mkdtempSync(path.join(os.tmpdir(), 'tm1apply-'))
+    const applied = []
+    const errors = []
+    try {
+        git(work, 'init', '-q')
+        git(work, 'remote', 'add', 'origin', authUrl(repoUrl, gitUser, token))
+        git(work, 'fetch', '-q', 'origin', '+refs/heads/*:refs/remotes/origin/*')
+        const changed = changedFilesBetween(work, base, releaseCommit)
+        const tm1 = new TM1Client(target, makeClient(target, ideToken))
+        for (const ch of changed) {
+            if (ch.action === 'D') continue
+            const obj = objectFromFile(ch.file)
+            if (!obj || (obj.type !== 'subset' && obj.type !== 'view')) continue
+            const content = git(work, 'show', `${releaseCommit}:${ch.file}`)
+            try {
+                if (obj.type === 'subset') applied.push(await applySubset(tm1, { dim: obj.parent, hierarchy: obj.parent, name: obj.name }, content))
+                else {
+                    let vmdx = null
+                    try { vmdx = git(work, 'show', `${releaseCommit}:${ch.file.replace(/\.json$/, '.mdx')}`) } catch { /* no MDX sibling */ }
+                    applied.push(await applyView(tm1, { cube: obj.parent, name: obj.name, mdx: vmdx }, content))
+                }
+            } catch (e) {
+                errors.push({ type: obj.type, name: obj.name, error: e.message })
+            }
+        }
+        return { applied, errors }
+    } finally {
+        fs.rmSync(work, { recursive: true, force: true })
+    }
+}
 
 // After a deploy has pulled a release, check that every included object actually
 // landed on the target with the release's content. rules are compared exactly
@@ -245,11 +287,36 @@ async function verifyRelease(target, { base, releaseCommit, repoUrl, token, gitU
                     const releaseText = git(work, 'show', `${releaseCommit}:${ch.file}`)
                     const r = await c.get(`Cubes('${encodeURIComponent(obj.name)}')`, { $select: 'Rules' })
                     ok = String(r?.Rules ?? '') === String(releaseText ?? '').replace(/\r\n/g, '\n')
+                } else if (obj.type === 'subset') {
+                    const sub = JSON.parse(git(work, 'show', `${releaseCommit}:${ch.file}`))
+                    const path = `Dimensions('${encodeURIComponent(obj.parent)}')/Hierarchies('${encodeURIComponent(obj.parent)}')/Subsets('${encodeURIComponent(obj.name)}')`
+                    if (sub.Expression) {
+                        const t = await c.get(path, { $select: 'Expression' })
+                        ok = String(t?.Expression ?? '') === String(sub.Expression)
+                    } else {
+                        const want = (sub.Elements ?? []).map(el => el?.Name ?? subsetNameFromId(el)).filter(Boolean)
+                        const els = (await c.get(`${path}/Elements`, { $select: 'Name' })).value ?? []
+                        ok = want.length === els.length && want.every(n => els.some(e => String(e.Name) === n))
+                    }
+                } else if (obj.type === 'view') {
+                    const view = JSON.parse(git(work, 'show', `${releaseCommit}:${ch.file}`))
+                    const vpath = `Cubes('${encodeURIComponent(obj.parent)}')/Views('${encodeURIComponent(obj.name)}')`
+                    if (view['@type'] === 'MDXView' || view['MDX@Code.link']) {
+                        let want = view.MDX ?? null
+                        if (want === null) { try { want = git(work, 'show', `${releaseCommit}:${ch.file.replace(/\.json$/, '.mdx')}`) } catch { want = null } }
+                        if (want === null) { ok = false }
+                        else {
+                            const t = await c.get(vpath, { $select: 'MDX' })
+                            ok = String(t?.MDX ?? '').trim() === String(want).trim().replace(/\n$/, '')
+                        }
+                    } else {
+                        await c.get(vpath, { $select: 'Name' })
+                        ok = true
+                    }
                 } else {
-                    const url = obj.type === 'subset' ? `Dimensions('${encodeURIComponent(obj.parent)}')/Hierarchies('${encodeURIComponent(obj.parent)}')/Subsets('${encodeURIComponent(obj.name)}')`
-                        : obj.type === 'view'     ? `Cubes('${encodeURIComponent(obj.parent)}')/Views('${encodeURIComponent(obj.name)}')`
-                        : obj.type === 'dimension' ? `Dimensions('${encodeURIComponent(obj.name)}')`
-                        : obj.type === 'cube'     ? `Cubes('${encodeURIComponent(obj.name)}')`
+                    const url = obj.type === 'dimension' ? `Dimensions('${encodeURIComponent(obj.name)}')`
+                        : obj.type === 'cube' ? `Cubes('${encodeURIComponent(obj.name)}')`
+                        : obj.type === 'chore' ? `Chores('${encodeURIComponent(obj.name)}')`
                         : `Processes('${encodeURIComponent(obj.name)}')`
                     await c.get(url, { $select: 'Name' })
                     ok = true
