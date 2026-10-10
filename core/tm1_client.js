@@ -173,14 +173,26 @@ class TM1Client {
         // Some TM1 versions NO-OP a rename (PATCH returns 200 but the name never
         // changes). Verify it actually took before callers report it — otherwise a
         // rename that didn't happen is reported as success and logged as a change.
-        // One shared check here, so the IDE route and the MCP both get it.
         const check = await this.get(
             `Dimensions('${odataKey(dim)}')/Hierarchies('${odataKey(hierarchy)}')/Elements('${odataKey(newName)}')`,
             { '$select': 'Name' }
         ).catch(() => null)
-        if (!check || String(check.Name) !== String(newName)) {
+        const renameFailed = () => {
             throw new Error("Element rename isn't supported on this TM1 version — create the new element and move its data instead")
         }
+        if (!check || String(check.Name) !== String(newName)) return renameFailed()
+        // Case/space-only renames refer to the SAME TM1 element (TM1 treats them as
+        // one) — its old name can never disappear, so those skip the old-gone check
+        // and keep the exact new-name comparison above. Everything else must prove
+        // the old name is gone too: renaming A → B when an element B already exists
+        // would otherwise pass the new-name check even though nothing was renamed.
+        const norm = s => String(s).replace(/\s+/g, '').toLowerCase()
+        if (norm(name) === norm(newName)) return true
+        const oldCheck = await this.get(
+            `Dimensions('${odataKey(dim)}')/Hierarchies('${odataKey(hierarchy)}')/Elements('${odataKey(name)}')`,
+            { '$select': 'Name' }
+        ).catch(() => null)
+        if (oldCheck && norm(String(oldCheck.Name)) === norm(name)) return renameFailed()
         return true
     }
 

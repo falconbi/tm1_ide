@@ -18,19 +18,22 @@ function clientWith(adapter) {
   })
 }
 
-test('renameElement resolves when the rename actually took (verifies the new name exists)', async () => {
+test('renameElement resolves when the rename actually took (verifies the new name exists, old name gone)', async () => {
   const seen = { patch: [], get: [] }
   const c = clientWith({
     async patch(route) { seen.patch.push(String(route)); return {} },
     async get(route) {
       seen.get.push(String(route))
-      assert.ok(/Elements\(/.test(String(route)), 're-reads the element entity')
-      return { Name: `New's Name` }
+      // The NEW name resolves to the renamed element…
+      if (String(route).includes(odataKey(`New's Name`))) return { Name: `New's Name` }
+      // …and the OLD name is gone — otherwise the rename didn't really take.
+      throw { response: { status: 404 } }
     },
   })
   await c.renameElement('Dim', `Old's Name`, `New's Name`)
   assert.equal(seen.patch[0], `Dimensions('${odataKey('Dim')}')/Hierarchies('${odataKey('Dim')}')/Elements('${odataKey(`Old's Name`)}')`)
   assert.equal(seen.get[0], `Dimensions('${odataKey('Dim')}')/Hierarchies('${odataKey('Dim')}')/Elements('${odataKey(`New's Name`)}')`)
+  assert.equal(seen.get[1], `Dimensions('${odataKey('Dim')}')/Hierarchies('${odataKey('Dim')}')/Elements('${odataKey(`Old's Name`)}')`)
 })
 
 test('renameElement throws a clear error when TM1 no-ops the rename', async () => {
@@ -41,6 +44,43 @@ test('renameElement throws a clear error when TM1 no-ops the rename', async () =
   await assert.rejects(
     () => c.renameElement('Dim', 'Old', 'New'),
     /isn't supported on this TM1 version — create the new element and move its data instead/
+  )
+})
+
+test('renameElement throws when renaming onto an existing element name (old name never disappears)', async () => {
+  // A → B where B ALREADY exists: the new-name read finds B, but the old A is
+  // still there too — nothing was actually renamed.
+  const c = clientWith({
+    async patch() { return {} },
+    async get(route) {
+      const r = String(route)
+      if (r.includes(odataKey('New'))) return { Name: 'New' }   // B pre-existed
+      if (r.includes(odataKey('Old'))) return { Name: 'Old' }   // A still present
+      throw { response: { status: 404 } }
+    },
+  })
+  let successBranchReached = false
+  try {
+    await c.renameElement('Dim', 'Old', 'New')
+    successBranchReached = true                 // the caller's "renamed + log" path
+  } catch (e) {
+    assert.match(String(e.message), /isn't supported on this TM1 version/)
+  }
+  assert.equal(successBranchReached, false, 'a rename onto an existing element never reports success / logs')
+})
+
+test('renameElement skips the old-name check for case/space-only renames', async () => {
+  // TM1 treats "Men's Wear" and "men'swear" as the same element — the exact
+  // new-name comparison decides; the old name is never expected to disappear.
+  await assert.rejects(
+    () => clientWith({
+      async patch() { return {} },
+      async get(route) {
+        if (String(route).includes(odataKey('MEN\'S'))) return { Name: `Men's Wear` }  // stored casing preserved
+        throw { response: { status: 404 } }
+      },
+    }).renameElement('Dim', `Men's Wear`, `MEN'S WEAR`),
+    /isn't supported on this TM1 version/
   )
 })
 
