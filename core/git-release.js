@@ -1,0 +1,186 @@
+'use strict'
+
+// ── Change-set-scoped releases ───────────────────────────────────────────────
+// A release is a hand-built commit on branch release/<target>: the TARGET's last
+// deployed commit (the IDE-recorded one, never TM1's DeployedCommit) plus ONLY
+// the files whose objects this change set touched. Deploying it ships exactly
+// that change set — nothing else that happens to be on DEV rides along.
+//
+// The lab proved TM1 Git accepts such a commit: PROD's pull plan listed only the
+// one object and skipped the rest. This builds that commit in a throwaway clone.
+
+const fs = require('fs')
+const os = require('os')
+const path = require('path')
+const { makeClient } = require('./adapter_registry')
+const { lastDeployed } = require('./git-state')
+const { git, authUrl, sanitize } = require('./git-repo')
+const gitIdentity = require('./git-identity')
+const cl = require('./change_log')
+
+const NO_BASE_ERROR = (target) => `${target} has no recorded deployed commit — set it up first (init + first pull), then release against it.`
+
+// Map a TM1-rest parseObjectFile 'object_type' (the change-log vocabulary) to the
+// TM1 object the plan/tree refers to. rules→cube, attribute→dimension, etc.
+const ENTRY_TO_OBJECT = {
+    rules: 'cube', cube: 'cube',
+    dimension: 'dimension', attribute: 'dimension',
+    subset: 'subset', view: 'view',
+    process: 'process', chore: 'chore',
+}
+
+// Map a repo file path to the top-level TM1 object it belongs to (the granularity
+// both the change-log entries and the GitPull plan use). Mirrors the path rules
+// in git-restore.js parseObjectFile, extended for cubes and dimension files.
+function objectFromFile(file) {
+    const f = String(file ?? '')
+    let m
+    m = f.match(/^dimensions\/([^/]+)\.hierarchies\/([^/]+)\.subsets\/([^/]+)\.json$/)
+    if (m) return { type: 'subset', name: m[3], dim: m[1] }
+    m = f.match(/^dimensions\/([^/]+)\.hierarchies\/([^/]+)\.json$/)
+    if (m) return { type: 'dimension', name: m[1], kind: 'dimension' }
+    m = f.match(/^dimensions\/([^/]+)\.json$/)
+    if (m) return { type: 'dimension', name: m[1], kind: 'dimension' }
+    m = f.match(/^processes\/(.+)\.(json|ti)$/)
+    if (m) return { type: 'process', name: m[1], kind: 'process' }
+    m = f.match(/^cubes\/([^/]+)\.views\/([^/]+)\.json$/)
+    if (m) return { type: 'view', name: m[2], cube: m[1] }
+    m = f.match(/^cubes\/(.+)\.rules$/)
+    if (m) return { type: 'cube', name: m[1], kind: 'rules' }
+    m = f.match(/^cubes\/([^/]+)\.json$/)
+    if (m) return { type: 'cube', name: m[1], kind: 'cube' }
+    m = f.match(/^chores\/(.+)\.(json|ti)$/)
+    if (m) return { type: 'chore', name: m[1], kind: 'chore' }
+    return null
+}
+
+// Parse `git diff --name-status` output into [{ status, action, file }].
+function parseNameStatus(text) {
+    return String(text ?? '')
+        .split('\n').filter(Boolean)
+        .map(line => {
+            const [status, ...rest] = line.split('\t')
+            const file = rest[rest.length - 1]      // renames: 'R100 old new' → new
+            const verb = String(status)[0]           // A, M, D (R = rename → treat as add)
+            return { status, action: verb === 'D' ? 'D' : 'A', file }
+        })
+}
+
+// All changed files (and the objects they belong to) between two commits in the repo.
+function changedFilesBetween(work, from, to) {
+    return parseNameStatus(git(work, 'diff', '--name-status', from, to))
+}
+
+// Which OBJECTS (type ⦂ name, change-set granularity) each change-left-in-list is.
+const objectKey = (type, name) => `${type}::${String(name ?? '').toLowerCase()}`
+
+// Best-effort owner of an object: another change-log session (on the change set's
+// server) whose log touched the same object. Null when unknown.
+function ownerOf(logsBySession, obj) {
+    for (const s of logsBySession) {
+        for (const e of s.entries) {
+            if (ENTRY_TO_OBJECT[e.object_type] && ENTRY_TO_OBJECT[e.object_type] === obj.type &&
+                String(e.object_name).toLowerCase() === String(obj.name).toLowerCase()) {
+                return { sessionName: s.name, user: s.user ?? null }
+            }
+        }
+    }
+    return null
+}
+
+// Build the release commit for one change set against the target's recorded base.
+// Returns { ok, ... } — never throws past here.
+async function buildRelease(changeSet, target, { token, gitUser = gitIdentity.user(), repoUrl, ideToken } = {}) {
+    // Re-read the session so commit_ref / release fields are the live DB values.
+    const session = changeSet?.id ? (cl.getSession(changeSet.id) ?? changeSet) : changeSet
+    const base = lastDeployed(target)?.lastDeployedCommit
+    if (!base) return { ok: false, refused: true, error: NO_BASE_ERROR(target) }
+    const devCommit = session?.commit_ref
+    if (!devCommit) return { ok: false, refused: true, error: `Change set "${session?.name ?? session?.id}" has not been pushed — commit it to the repo first.` }
+
+    if (!repoUrl) {
+        try {
+            const st = await makeClient(target, ideToken).post('GitStatus', { Username: gitUser, Password: token })
+            repoUrl = st?.URL
+        } catch (e) { return { ok: false, error: sanitize(e.response?.data?.error?.message ?? e.message, token) } }
+        if (!repoUrl) return { ok: false, refused: true, error: `${target} is not linked to a repo.` }
+    }
+
+    const work = fs.mkdtempSync(path.join(os.tmpdir(), 'tm1release-'))
+    try {
+        git(work, 'init', '-q')
+        git(work, 'remote', 'add', 'origin', authUrl(repoUrl, gitUser, token))
+        git(work, 'fetch', '-q', 'origin', '+refs/heads/*:refs/remotes/origin/*')
+
+        const relRef = `refs/remotes/origin/release/${target}`
+        let existing = null
+        try { existing = (git(work, 'rev-parse', '--verify', '--quiet', relRef).trim() || null) } catch { existing = null }
+        if (existing && existing !== base) {
+            return { ok: false, refused: true, error: `release/${target} has moved to ${existing} — someone else released since. Rebuild against the current base.` }
+        }
+
+        const changed = changedFilesBetween(work, base, devCommit)
+        const logEntries = changeSet?.id ? cl.getSessionLog(changeSet.id) : []
+        const csetObjectKeys = new Set(logEntries
+            .filter(e => ENTRY_TO_OBJECT[e.object_type])
+            .map(e => objectKey(ENTRY_TO_OBJECT[e.object_type], e.object_name)))
+
+        // Other sessions on the same server, for the "left on DEV" owners.
+        const allSessions = cl.getAllSessions(500)
+        const otherLogs = (session?.server ? allSessions : [])
+            .filter(s => s.id !== session?.id)
+            .map(s => ({ name: s.name, user: s.user ?? null, entries: (() => { try { return cl.getSessionLog(s.id) } catch { return [] } })() }))
+
+        const included = []
+        const excluded = []
+        for (const c of changed) {
+            const obj = objectFromFile(c.file)
+            if (!obj) { excluded.push({ type: 'other', name: c.file, files: [c.file] }); continue }
+            if (csetObjectKeys.has(objectKey(obj.type, obj.name))) {
+                included.push({ ...obj, file: c.file, action: c.action })
+            } else {
+                excluded.push({ ...obj, files: [c.file], file: c.file, owner: ownerOf(otherLogs, obj) })
+            }
+        }
+
+        // Objects in the change set that produced no file change (e.g. only an attribute value).
+        const noFile = []
+        for (const e of logEntries) {
+            const o = ENTRY_TO_OBJECT[e.object_type]
+            if (!o) continue
+            const key = objectKey(o, e.object_name)
+            if (!included.some(i => objectKey(i.type, i.name) === key)) noFile.push({ type: o, name: e.object_name })
+        }
+
+        // Nothing to ship?
+        if (included.length === 0) {
+            return { ok: false, refused: true, error: `Nothing from change set "${changeSet?.name ?? ''}" changed files between the base and the pushed commit — nothing to release.` }
+        }
+
+        // Apply: base + only this change set's files.
+        git(work, 'checkout', '-q', base)
+        for (const inc of included) {
+            if (inc.action === 'D') git(work, 'rm', '--quiet', '--', inc.file)
+            else git(work, 'checkout', devCommit, '--', inc.file)
+        }
+        git(work, 'add', '-A')
+        git(work, '-c', `user.name=${gitUser}`, '-c', `user.email=${gitIdentity.email()}`, 'commit', '-q', '-m', `Release ${changeSet?.name ?? 'change set'} → ${target}`)
+        const releaseCommit = git(work, 'rev-parse', 'HEAD').trim()
+
+        git(work, 'push', '-q', 'origin', `HEAD:refs/heads/release/${target}`)
+
+        return {
+            ok: true, target, base, devCommit, releaseCommit,
+            changeSet: { id: changeSet?.id ?? null, name: changeSet?.name ?? null, server: changeSet?.server ?? null },
+            included: included.map(i => ({ type: i.type, name: i.name, file: i.file, action: i.action })),
+            excluded: excluded.map(x => ({ type: x.type, name: x.name, file: x.file, owner: x.owner ?? null })),
+            noFile,
+        }
+    } catch (e) {
+        return { ok: false, error: sanitize(e.message, token) }
+    } finally {
+        fs.rmSync(work, { recursive: true, force: true })
+    }
+}
+
+module.exports = { buildRelease, objectFromFile, parseNameStatus, ENTRY_TO_OBJECT, objectKey, NO_BASE_ERROR }

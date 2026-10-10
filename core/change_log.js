@@ -43,6 +43,8 @@ for (const [col, type] of [
     ['commit_ref',      'TEXT'],
     ['deployed_target', 'TEXT'],
     ['deployed_at',     'TEXT'],
+    ['release_commit',  'TEXT'],
+    ['release_target',  'TEXT'],
 ]) {
     try { db.exec(`ALTER TABLE sessions ADD COLUMN ${col} ${type}`) } catch { /* already exists */ }
 }
@@ -82,6 +84,11 @@ function resumeSession(id) {
 // Link a change set to the commit it was filed as, and to the target it shipped to.
 function setSessionCommit(id, commit) {
     db.prepare(`UPDATE sessions SET commit_ref = ? WHERE id = ?`).run(commit ?? null, id)
+}
+// Link a change set to its build release commit (branch release/<target>).
+function setSessionRelease(id, commit, target) {
+    db.prepare(`UPDATE sessions SET release_commit = ?, release_target = ? WHERE id = ?`).run(commit ?? null, target ?? null, id)
+    return db.prepare(`SELECT * FROM sessions WHERE id = ?`).get(id)
 }
 function markSessionDeployed(id, target) {
     db.prepare(`UPDATE sessions SET deployed_target = ?, deployed_at = ? WHERE id = ?`).run(target ?? null, new Date().toISOString(), id)
@@ -356,4 +363,4 @@ function pruneEntries(ids) {
 try { db.exec(`ALTER TABLE sessions ADD COLUMN description TEXT`) } catch {}
 try { db.exec(`ALTER TABLE log_entries ADD COLUMN user TEXT`) } catch {}
 
-module.exports = { startSession, getSession, getSessionManifest, closeSession, resumeSession, updateSessionDescription, setSessionCommit, markSessionDeployed, getActiveSession, getSessions, getAllSessions, getSessionLog, getCrossSessionTouches, getEntriesSince, getMaxEntryId, getEntriesSinceId, getSessionLogVerbose, getRecentLog, getObjectHistory, getEntryById, writeLog, findArchivableEntries, pruneEntries }
+module.exports = { startSession, getSession, getSessionManifest, closeSession, resumeSession, updateSessionDescription, setSessionCommit, setSessionRelease, markSessionDeployed, getActiveSession, getSessions, getAllSessions, getSessionLog, getCrossSessionTouches, getEntriesSince, getMaxEntryId, getEntriesSinceId, getSessionLogVerbose, getRecentLog, getObjectHistory, getEntryById, writeLog, findArchivableEntries, pruneEntries }
