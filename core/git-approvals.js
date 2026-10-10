@@ -33,9 +33,20 @@ async function readFor(target, { ideToken } = {}) {
     return readLocal().filter(a => a.target === target)
 }
 
-// Latest approval for this exact target + commit, or null.
+// Git's own convention: commit IDs are stored/displayed truncated. Match an exact
+// ID, or a prefix match where the shorter side is at least 7 characters (the
+// default abbreviation length) — a shorter prefix is too ambiguous to be a match.
+function sameCommit(a, b) {
+    if (a === b) return true
+    if (!a || !b) return false
+    const short = a.length <= b.length ? a : b
+    const long  = a.length <= b.length ? b : a
+    return short.length >= 7 && long.startsWith(short)
+}
+
+// Latest approval for this exact target + commit (short or full), or null.
 async function find(target, commit, { ideToken } = {}) {
-    return [...(await readFor(target, { ideToken }))].reverse().find(a => a.target === target && a.commit === commit) ?? null
+    return [...(await readFor(target, { ideToken }))].reverse().find(a => a.target === target && sameCommit(a.commit, commit)) ?? null
 }
 
 async function append(rec, { ideToken } = {}) {
@@ -53,4 +64,4 @@ async function append(rec, { ideToken } = {}) {
     return rec
 }
 
-module.exports = { readFor, find, append, readLocal, FILE }
+module.exports = { readFor, find, append, readLocal, sameCommit, FILE }
