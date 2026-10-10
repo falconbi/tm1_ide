@@ -113,11 +113,19 @@ async function buildRelease(changeSet, target, { token, gitUser = gitIdentity.us
         git(work, 'remote', 'add', 'origin', authUrl(repoUrl, gitUser, token))
         git(work, 'fetch', '-q', 'origin', '+refs/heads/*:refs/remotes/origin/*')
 
+        // The base is ALWAYS the target's recorded deployed commit. A branch tip
+        // that already sits on that base is a release built but not yet deployed —
+        // replacing it is normal (rebuild). Only refuse when the tip does NOT build
+        // on the recorded base (it descends from a commit the target hasn't got).
         const relRef = `refs/remotes/origin/release-${target}`
         let existing = null
         try { existing = (git(work, 'rev-parse', '--verify', '--quiet', relRef).trim() || null) } catch { existing = null }
         if (existing && existing !== base) {
-            return { ok: false, refused: true, error: `release-${target} has moved to ${existing} — someone else released since. Rebuild against the current base.` }
+            let parent = null
+            try { parent = (git(work, 'rev-parse', '--verify', '--quiet', `${existing}^`).trim() || null) } catch { parent = null }
+            if (parent !== base) {
+                return { ok: false, refused: true, error: `release-${target} has moved to ${existing}, which does not build on ${target}'s recorded commit (${base}) — someone else released or the target moved on. Investigate before rebuilding.` }
+            }
         }
 
         const changed = changedFilesBetween(work, base, devCommit)
@@ -168,7 +176,13 @@ async function buildRelease(changeSet, target, { token, gitUser = gitIdentity.us
         git(work, '-c', `user.name=${gitUser}`, '-c', `user.email=${gitIdentity.email()}`, 'commit', '-q', '-m', `Release ${changeSet?.name ?? 'change set'} → ${target}`)
         const releaseCommit = git(work, 'rev-parse', 'HEAD').trim()
 
-        git(work, 'push', '-q', 'origin', `HEAD:refs/heads/release-${target}`)
+        // Replace an undeployed release on the same base — force-with-lease so we
+        // never clobber a branch that changed since our fetch.
+        if (existing) {
+            git(work, 'push', '-q', `--force-with-lease=refs/heads/release-${target}:${existing}`, 'origin', `HEAD:refs/heads/release-${target}`)
+        } else {
+            git(work, 'push', '-q', 'origin', `HEAD:refs/heads/release-${target}`)
+        }
 
         return {
             ok: true, target, base, devCommit, releaseCommit,
