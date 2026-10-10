@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react'
 import { toast } from 'sonner'
-import { Activity, FolderOpen, Users, Lock, Server } from 'lucide-react'
+import { Activity, FolderOpen, Users, Lock, Server, LogOut } from 'lucide-react'
+import { useQueryClient } from '@tanstack/react-query'
 import { useStore } from '@/store'
-import { useJobs, useFilesAvailable, useServers, useConfig, useServerLogins, useActiveWorkSession } from '@/hooks/useApi'
+import { useJobs, useFilesAvailable, useServers, useConfig, useServerLogins, useActiveWorkSession, serverLogout } from '@/hooks/useApi'
 import { cn } from '@/lib/utils'
 import { serverCapabilities } from '@/lib/tm1-version'
 import JobsMonitor from '@/components/JobsMonitor'
@@ -25,6 +26,7 @@ export default function StatusBar() {
   const { data: logins = [] } = useServerLogins()
   const serverUser = logins.find(l => String(l?.name ?? '').toLowerCase() === String(server ?? '').toLowerCase())?.username ?? null
   const { data: activeSession } = useActiveWorkSession(server)
+  const qc = useQueryClient()
 
   const [showJobs,     setShowJobs]     = useState(false)
   const [showFiles,    setShowFiles]    = useState(false)
@@ -55,6 +57,15 @@ export default function StatusBar() {
           )}
           {activeSession && (
             <span title={`Open change set: ${activeSession.name}`} className="opacity-70 text-[10px] font-normal">· set: {activeSession.name}</span>
+          )}
+          {serverUser && (
+            <button
+              onClick={() => serverLogout(server).then(() => qc.invalidateQueries()).catch(() => {})}
+              title={`Sign out of ${server}`}
+              className="opacity-60 hover:opacity-100 hover:text-white transition-opacity p-0.5 rounded hover:bg-white/15"
+            >
+              <LogOut size={10} />
+            </button>
           )}
           {readOnly && (
             <span title="This server is read-only — edits are blocked" className="inline-flex items-center gap-0.5 bg-white/20 text-primary-foreground px-1 py-px rounded text-[9px] font-semibold">
