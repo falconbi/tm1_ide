@@ -7,9 +7,9 @@
 // deployed commit — a first pull overwrites the whole server, so it must only
 // ever run on a fresh one.
 //
-// The routes call these after their own gateReadOnly() check; the isReadOnly()
-// checks here are the same predicate, kept so the guard is enforced even if a
-// caller goes around the HTTP layer (and testable without an HTTP server).
+// The routes delegate straight to these — the isReadOnly() check here is the
+// only read-only guard for init and first-pull, so the user gets its actionable
+// message (and it stays enforced, and testable, without the HTTP layer).
 
 const { makeClient, isReadOnly } = require('./adapter_registry')
 const { lastDeployed } = require('./git-state')
