@@ -258,6 +258,19 @@ async function execute(target, { branch = 'dev', token, gitUser = gitIdentity.us
                 out.recorded = false
                 out.error = `Deploy applied, but the deploy record could not be written: ${e.message}. Investigate before the next deploy.`
             }
+            // Verify every included object actually landed on the target with the
+            // release's content — a TM1 Git skip must never look like a clean deploy.
+            if (releaseCommit) {
+                try {
+                    const { verifyRelease } = require('./git-release')
+                    const repoUrl = (await c.post('GitStatus', { Username: gitUser, Password: token }))?.URL
+                    const base = require('./git-state').lastDeployed(target)?.lastDeployedCommit ?? null
+                    out.incomplete = await verifyRelease(target, { base, releaseCommit, repoUrl, token, gitUser, ideToken })
+                } catch (e) {
+                    out.incompleteCheckError = e.message
+                    out.incomplete = []
+                }
+            }
         } catch (e) {
             out.executed = false
             out.error = `Pull failed: ${e.response?.data?.error?.message ?? e.message}`
