@@ -10,6 +10,49 @@ const { makeClient } = require('./adapter_registry')
 const assertions = require('./assertions')
 const gitIdentity = require('./git-identity')
 const approvals = require('./git-approvals')
+const { driftCheck } = require('./git-drift')
+
+// Refresh the target's live snapshot (pushes prod-live) and compare it against
+// what the target last RECEIVED. Any difference is drift — deploys onto a drifted
+// target get refused at Review AND at Deploy.
+async function targetDrift(target, { token, gitUser = gitIdentity.user(), ideToken } = {}) {
+    try {
+        const d = await driftCheck(target, { token, gitUser, ideToken })
+        if (d?.error) return { clean: false, entries: [], error: d.error }
+        const entries = d?.entries ?? []
+        return { clean: entries.length === 0, entries, deployed: d?.deployed ?? null }
+    } catch (e) {
+        return { clean: false, entries: [], error: e.message }
+    }
+}
+
+// Policy: a drifted target is not reverted or promoted ad hoc. The fix is to
+// re-apply the change on DEV in a change set and release it; deploys stay paused
+// until drift is clean.
+const driftRefusal = (target, drift) => {
+    const objects = (drift.entries ?? []).map(e => `${e.status} ${e.file}`).join('; ')
+    if (objects) {
+        return `PROD has drifted: ${objects}. Re-apply the change on DEV in a change set, then release it. Deploys to this server are paused until drift is clean.`
+    }
+    return `PROD drift could not be checked (${drift.error ?? 'unknown error'}). Deploys to this server are paused until drift is clean.`
+}
+
+// Parse a GitPull plan operation ("Update Cubes('WFP Workforce Cost')",
+// "Replace Dimensions('WFP Version')", "Skip Processes('X')", …) into the TM1
+// object it refers to, so it can be checked against a release's objects.
+// Skip operations are NOT changes — a Skip carries no object to verify.
+const PLAN_TYPE = { cubes: 'cube', dimensions: 'dimension', processes: 'process', chores: 'chore', subsets: 'subset', views: 'view' }
+function parsePlanOp(op) {
+    const m = String(op ?? '').match(/^([A-Za-z]+)\s+([A-Za-z]+)\(['"]?([^'")]*)['"]?(?:\s*,\s*['"]?([^'")]*)['"]?)?\)?/)
+    if (!m) return null
+    if (m[1].toLowerCase() === 'skip') return null   // Skip = unchanged, not a change
+    const type = PLAN_TYPE[m[2].toLowerCase()]
+    if (!type) return null
+    // Subsets are keyed by their dimension, views by their cube — the parent is the
+    // op's second argument when present.
+    const parent = (type === 'subset' || type === 'view') ? (m[4] ?? null) : undefined
+    return { type, name: m[3], parent }
+}
 
 // Preview: target baseline + what the pull would change. Read-only (plan only).
 async function prepare(source, target, { branch = 'dev', token, gitUser = gitIdentity.user(), ideToken, session = null } = {}) {
@@ -18,10 +61,27 @@ async function prepare(source, target, { branch = 'dev', token, gitUser = gitIde
 
     try {
         const st = await c.post('GitStatus', { Username: gitUser, Password: token })
-        out.deployedCommit  = st?.DeployedCommit?.ID ?? null
+        // The IDE-recorded deploy commit is what the target actually last received;
+        // TM1's own DeployedCommit is the last git op's target (a prod-live push
+        // clobbers it). Prefer the record, fall back only if there is none.
+        let recorded = null
+        try { recorded = require('./git-state').lastDeployed(target)?.lastDeployedCommit ?? null } catch { /* none */ }
+        out.deployedCommit  = recorded ?? st?.DeployedCommit?.ID ?? null
+        out.deployedIsRecorded = !!recorded
         out.deployedSummary = st?.DeployedCommit?.Summary ?? null
         out.connected       = st?.Remote?.Connected ?? false
         out.fullOverwrite   = !out.deployedCommit
+
+        // Refresh the target's live snapshot and refuse Review if it has drifted
+        // from what it last received.
+        const drift = await targetDrift(target, { token, gitUser, ideToken })
+        out.drift = drift.clean ? 'clean' : 'drifted'
+        out.driftEntries = drift.entries ?? []
+        if (!drift.clean) {
+            out.ready = false
+            out.error = driftRefusal(target, drift)
+            return out
+        }
     } catch (e) {
         out.error = `GitStatus failed: ${e.response?.data?.error?.message ?? e.message}`
         return out
@@ -55,16 +115,32 @@ async function prepare(source, target, { branch = 'dev', token, gitUser = gitIde
 // The approval gate is non-optional: it cannot be switched off by any caller.
 // The reconcile scope comes from the APPROVAL's recorded change set — never from
 // the client — so a missing or wrong session cannot silently skip or misapply it.
-async function execute(target, { branch = 'dev', token, gitUser = gitIdentity.user(), ideToken, source, purpose = 'deploy', by } = {}) {
+async function execute(target, { branch = 'dev', token, gitUser = gitIdentity.user(), ideToken, source, purpose = 'deploy', by, session: sessionId } = {}) {
     const c = makeClient(target, ideToken)
     const out = { target, branch }
     const lockMod = require('./git-lock')
+    const cl = require('./change_log')
+
+    // Release mode: this change set has a built release for this target. Deploy
+    // branch release-<target> and gate on the RELEASE commit, not DEV's head.
+    const session = sessionId ? cl.getSession(sessionId) : null
+    const releaseCommit = (session?.release_commit && (!session.release_target || session.release_target === target)) ? session.release_commit : null
+    if (releaseCommit) { branch = `release-${target}`; out.branch = branch; out.release = true; out.releaseCommit = releaseCommit }
+    // Rule 1 on the server: a deploy always ships a built release — never whatever
+    // happens to be on DEV. The first-time setup (first-pull) is the only
+    // whole-model path.
+    if (!releaseCommit) {
+        out.executed = false
+        out.refused = true
+        out.error = `Build a release first — deploys ship only a change set\u2019s objects. First-time setup (first-pull) is the only whole-model path.`
+        return out
+    }
 
     // The incoming commit is the branch head. Determine it from the SOURCE's own
     // Git state (the target's pull plan would expire while we do the governance
     // round-trips below) — then verify the plan matches before executing.
-    let incomingCommit = null
-    if (source) {
+    let incomingCommit = releaseCommit
+    if (!incomingCommit && source) {
         try {
             const sc = makeClient(source, ideToken)
             const sst = await sc.post('GitStatus', { Username: gitUser, Password: token })
@@ -107,6 +183,19 @@ async function execute(target, { branch = 'dev', token, gitUser = gitIdentity.us
     }
 
     try {
+        // Refresh the target's live snapshot and refuse if it has drifted from what
+        // it last received — never deploy onto a drifted target. The lock is
+        // released by the finally below either way.
+        const drift = await targetDrift(target, { token, gitUser, ideToken })
+        out.drift = drift.clean ? 'clean' : 'drifted'
+        out.driftEntries = drift.entries ?? []
+        if (!drift.clean) {
+            out.executed = false
+            out.refused = true
+            out.error = driftRefusal(target, drift)
+            return out
+        }
+
         let plan
         try {
             plan = await c.post('GitPull', { Branch: branch, ExecutionMode: 'SingleCommit', Force: false, Username: gitUser, Password: token })
@@ -124,11 +213,36 @@ async function execute(target, { branch = 'dev', token, gitUser = gitIdentity.us
             out.error = `Refused: cannot verify the commit being deployed (approved-incoming ${incomingCommit ?? '(none)'}, plan commit ${out.targetCommit ?? '(no commit on this pull)'}). Approve a specific commit and retry.`
             return out
         }
-        if (incomingCommit !== out.targetCommit) {
+        if (!approvals.sameCommit(incomingCommit, out.targetCommit)) {
             out.executed = false
             out.refused = true
             out.error = `Refused: the incoming commit moved (approved ${incomingCommit}, branch head is now ${out.targetCommit}). Approve the new commit before deploying.`
             return out
+        }
+        // Release mode: every non-Skip operation the pull will apply must be one of
+        // the release's objects. Anything else means the branch carries objects the
+        // approval never saw — refuse and name them.
+        if (releaseCommit) {
+            try {
+                const repoUrl = (await c.post('GitStatus', { Username: gitUser, Password: token }))?.URL
+                const base = require('./git-state').lastDeployed(target)?.lastDeployedCommit ?? null
+                const { changedObjects, objectKey } = require('./git-release')
+                const expected = await changedObjects({ from: base, to: releaseCommit, repoUrl, token, gitUser })
+                const expectedKeys = new Set(expected.map(o => objectKey(o.type, o.name, o.parent)))
+                const unexpected = (plan.Operations ?? []).map(parsePlanOp).filter(Boolean)
+                    .filter(o => !expectedKeys.has(objectKey(o.type, o.name, o.parent)))
+                if (unexpected.length) {
+                    out.executed = false
+                    out.refused = true
+                    out.error = `Refused: the pull plan contains ${unexpected.length} object(s) not in this release — ${unexpected.map(o => `${o.type} ${o.name}`).join(', ')}. Rebuild the release; it must carry only the change set's objects.`
+                    return out
+                }
+            } catch (e) {
+                out.executed = false
+                out.refused = true
+                out.error = `Refused: could not verify the release's objects against the pull plan (${e.message}).`
+                return out
+            }
         }
         try {
             await c.post(`GitPlans('${encodeURIComponent(plan.ID)}')/tm1.Execute`, {})
@@ -143,6 +257,19 @@ async function execute(target, { branch = 'dev', token, gitUser = gitIdentity.us
                 out.executed = true
                 out.recorded = false
                 out.error = `Deploy applied, but the deploy record could not be written: ${e.message}. Investigate before the next deploy.`
+            }
+            // Verify every included object actually landed on the target with the
+            // release's content — a TM1 Git skip must never look like a clean deploy.
+            if (releaseCommit) {
+                try {
+                    const { verifyRelease } = require('./git-release')
+                    const repoUrl = (await c.post('GitStatus', { Username: gitUser, Password: token }))?.URL
+                    const base = require('./git-state').lastDeployed(target)?.lastDeployedCommit ?? null
+                    out.incomplete = await verifyRelease(target, { base, releaseCommit, repoUrl, token, gitUser, ideToken })
+                } catch (e) {
+                    out.incompleteCheckError = e.message
+                    out.incomplete = []
+                }
             }
         } catch (e) {
             out.executed = false

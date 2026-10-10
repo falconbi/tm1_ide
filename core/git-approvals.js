@@ -49,6 +49,16 @@ async function find(target, commit, { ideToken } = {}) {
     return [...(await readFor(target, { ideToken }))].reverse().find(a => a.target === target && sameCommit(a.commit, commit)) ?? null
 }
 
+// The CLOSED change set whose RELEASE commit this is, for this exact target.
+// Rule 1: an approval can only be linked through a built release (release_commit) —
+// not a raw DEV commit_ref — and the release must have been built for this target.
+function linkedChangeSet(commit, target) {
+    const cl = require('./change_log')
+    return cl.getAllSessions(500).find(x => x.closed_at != null &&
+        x.release_commit && sameCommit(x.release_commit, commit) &&
+        (!x.release_target || x.release_target === target)) ?? null
+}
+
 async function append(rec, { ideToken } = {}) {
     const store = require('./model-store')
     if (store.isMigrated(rec.target, 'approvals')) {
@@ -64,4 +74,4 @@ async function append(rec, { ideToken } = {}) {
     return rec
 }
 
-module.exports = { readFor, find, append, readLocal, sameCommit, FILE }
+module.exports = { readFor, find, append, readLocal, sameCommit, linkedChangeSet, FILE }

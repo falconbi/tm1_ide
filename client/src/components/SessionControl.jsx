@@ -3,7 +3,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { Clock, Circle, History, Check } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useStore } from '@/store'
-import { useActiveWorkSession, useStartWorkSession, useCloseWorkSession } from '@/hooks/useApi'
+import { useActiveWorkSession, useStartWorkSession, useCloseWorkSession, useServerLogins } from '@/hooks/useApi'
 import ChangeLogPanel from '@/components/ChangeLogPanel'
 
 function StartModal({ server, onClose, onStart }) {
@@ -48,6 +48,9 @@ export default function SessionControl() {
 
   const qc = useQueryClient()
   const { data: activeSession } = useActiveWorkSession(server)
+  // Ownership display — the TM1 user signed in to this server (case-insensitive).
+  const { data: logins = [] } = useServerLogins()
+  const serverUser = logins.find(l => String(l?.name ?? '').toLowerCase() === String(server ?? '').toLowerCase())?.username ?? null
   const closeSession = useCloseWorkSession()
 
   // A first-save may auto-start a change set (api wrapper) — keep the bar fresh.
@@ -76,7 +79,7 @@ export default function SessionControl() {
           >
             <Circle size={7} className="fill-emerald-500 text-emerald-500 animate-pulse" />
             <Clock size={13} />
-            <span className="font-medium max-w-[180px] truncate">Change set: {activeSession.name} · {activeSession.entry_count ?? 0} changes</span>
+            <span className="font-medium max-w-[180px] truncate">Change set: {activeSession.name} · {activeSession.entry_count ?? 0} changes · as {serverUser ?? '?'} on {server}</span>
           </button>
           {confirmClose ? (
             <div className="flex items-center gap-1 pl-1">

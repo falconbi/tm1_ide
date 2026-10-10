@@ -3000,9 +3000,9 @@ app.post('/api/deploy/git/execute', async (req, res) => {
         // Not gated by read-only: a recorded approval (enforced inside execute(),
         // non-optionally) is what authorises shipping to a PROD-posture target.
         const { execute } = require('./core/git-deploy')
-        const { target, branch, source } = req.body
+        const { target, branch, source, session } = req.body
         if (!target) return res.status(400).json({ error: 'target required' })
-        const result = await execute(target, { branch, token: process.env.TM1_GIT_TOKEN, ideToken: req.ideToken, source, by: req.user })
+        const result = await execute(target, { branch, token: process.env.TM1_GIT_TOKEN, ideToken: req.ideToken, source, by: req.user, session })
         if (result?.approvalSession && result?.executed && result?.controlOk) try { cl.markSessionDeployed(result.approvalSession, target) } catch { /* link is best-effort */ }
         res.json(result)
     } catch (e) { res.status(500).json({ error: e.message }) }
@@ -3029,6 +3029,24 @@ app.post('/api/deploy/git/push', async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
+// ── Change-set-scoped release ─────────────────────────────────────────────────
+// Build branch release-<target> = the target's recorded deployed commit + only
+// this change set's files. Deploying it ships exactly this change set.
+app.post('/api/deploy/git/release', async (req, res) => {
+    try {
+        const { target, session } = req.body
+        if (!target) return res.status(400).json({ error: 'target required' })
+        const changeSet = session ? cl.getSession(session) : null
+        if (!changeSet) return res.status(400).json({ error: 'a change set (session) is required' })
+        const { buildRelease } = require('./core/git-release')
+        const r = await buildRelease(changeSet, target, { token: process.env.TM1_GIT_TOKEN, gitUser: _GI().user(), ideToken: req.ideToken })
+        if (r.refused) return res.status(409).json({ error: r.error })
+        if (r.ok === false) return res.status(500).json({ error: r.error })
+        cl.setSessionRelease(changeSet.id, r.releaseCommit, target)
+        res.json(r)
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
 // ── Approval — the recorded human decision that gates a deploy. ─────────────
 // Bound to a specific commit + target: a new commit invalidates the old approval.
 // Stored locally (gitignored) via core/git-approvals.
@@ -3036,17 +3054,29 @@ app.post('/api/deploy/git/approve', async (req, res) => {
     try {
         const { source, target, commit, note } = req.body
         if (!target || !commit) return res.status(400).json({ error: 'target and commit required' })
-        // The commit must be linked to a CLOSED change set whose tests passed.
-        const linkedSession = cl.getAllSessions(500).find(x => x.commit_ref === commit && x.closed_at != null)
+        const approvals = require('./core/git-approvals')
+        // Rule 1: only a BUILT RELEASE links to an approval (release_commit, built
+        // for this exact target) — never a raw DEV commit_ref, and never a release
+        // built for a different target. linkedChangeSet enforces both.
+        const linkedSession = approvals.linkedChangeSet(commit, target)
         if (!linkedSession) {
-            return res.status(409).json({ error: `Refused: commit ${commit} is not linked to a closed change set. Close the change set and commit it first.` })
+            return res.status(409).json({ error: `Refused: commit ${commit} is not a release built for ${target}. Build the release first, then approve it.` })
         }
         let tests = null
         try { tests = linkedSession.close_tests ? JSON.parse(linkedSession.close_tests) : null } catch { tests = null }
         if (!tests || tests.blocking > 0) {
             return res.status(409).json({ error: `Refused: the change set for commit ${commit} has failing block-severity tests. Fix and re-close before approving.` })
         }
-        const approvals = require('./core/git-approvals')
+        // Dependency check before approval: rules must CheckRules clean on the target
+        // and processes must pass TI lint — a failed reference may belong to another
+        // change set (ship it too, or build a combined release).
+        if (linkedSession.release_commit) {
+            const { checkDependencies } = require('./core/git-release')
+            const dep = await checkDependencies(linkedSession.release_commit, target, { token: process.env.TM1_GIT_TOKEN, gitUser: _GI().user(), ideToken: req.ideToken })
+            if (!dep.ok) {
+                return res.status(409).json({ error: `Refused: the release has failing dependencies — ${(dep.blockers ?? []).map(b => `${b.object}: ${b.message}`).join(' | ') || dep.error}`, blockers: dep.blockers ?? [] })
+            }
+        }
         const rec = await approvals.append({
             id: new Date().toISOString(), approved_at: new Date().toISOString(),
             approver: req.user ?? 'unknown', notes: note ?? '',

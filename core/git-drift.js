@@ -57,7 +57,10 @@ async function driftCheck(server, { token, gitUser = gitIdentity.user(), ideToke
         git(work, 'init', '-q')
         git(work, 'remote', 'add', 'origin', authUrl(repoUrl, gitUser, token))
         // the deployed commit lives on dev — fetch dev + prod-live, diff locally
-        git(work, 'fetch', '-q', 'origin', 'dev', 'prod-live')
+        // Fetch every branch, not just dev+prod-live: the recorded deployed commit
+        // can live on a release-* branch (a release deployment), and the diff below
+        // must be able to resolve it.
+        git(work, 'fetch', '-q', 'origin', '+refs/heads/*:refs/remotes/origin/*')
         const nameStatus = git(work, 'diff', '--name-status', `${deployed}..origin/prod-live`).trim()
         const entries = []
         if (nameStatus) {
