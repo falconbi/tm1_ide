@@ -141,16 +141,19 @@ test('build refuses when the change set has not been pushed', async () => {
   } finally { fs.rmSync(repo.bare, { recursive: true, force: true }); fs.rmSync(repo.w, { recursive: true, force: true }) }
 })
 
-test('build refuses when release-<target> has moved (someone else released)', async () => {
+test('build refuses when release-<target> descends from a commit the target has not recorded', async () => {
   const repo = setupRepo()
   try {
     fakeBase = repo.base
-    // Move release-TG1 to a different commit.
+    // Move release-TG1 to a commit whose parent is NOT the base (a descendant the
+    // target never received) — e.g. one commit on top of dev.
     const mv = W()
     try {
       g(mv, 'init', '-q'); g(mv, 'remote', 'add', 'origin', repo.bare)
       g(mv, 'fetch', '-q', 'origin', 'dev:dev')
       g(mv, 'checkout', '-q', '-b', 'release-TG1', 'dev')
+      fs.writeFileSync(path.join(mv, 'extra.txt'), 'x\n')
+      g(mv, 'add', '-A'); g(mv, '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '-m', 'not on base')
       g(mv, 'push', '-q', 'origin', 'release-TG1:release-TG1')
     } finally { fs.rmSync(mv, { recursive: true, force: true }) }
 
@@ -160,6 +163,40 @@ test('build refuses when release-<target> has moved (someone else released)', as
     const r = await buildRelease(a, 'TG1', { token: 'x', gitUser: 't', repoUrl: repo.bare })
     assert.equal(r.ok, false)
     assert.equal(r.refused, true)
-    assert.match(r.error, /has moved/i)
+    assert.match(r.error, /does not build on/i)
+  } finally { fs.rmSync(repo.bare, { recursive: true, force: true }); fs.rmSync(repo.w, { recursive: true, force: true }) }
+})
+
+test('rebuilding a release before it is deployed succeeds (replaces the undeployed tip)', async () => {
+  const repo = setupRepo()
+  try {
+    fakeBase = repo.base
+    // Two differently-named change sets on the same DEV commit → the release
+    // commit message differs, so the rebuild is a genuinely different commit
+    // (a sibling of the first, both children of base).
+    const a = cl.startSession('Rebuild A', 'DEV1', 'admin')
+    cl.setSessionCommit(a.id, repo.devCommit)
+    cl.writeLog({ server: 'DEV1', action: 'RULES_UPDATED', objectType: 'rules', objectName: 'WFP Workforce Cost', user: 'admin' })
+    const a2 = cl.startSession('Rebuild B', 'DEV1', 'admin')
+    cl.setSessionCommit(a2.id, repo.devCommit)
+    cl.writeLog({ server: 'DEV1', action: 'RULES_UPDATED', objectType: 'rules', objectName: 'WFP Workforce Cost', user: 'admin' })
+
+    const first = await buildRelease(a, 'TG1', { token: 'x', gitUser: 't', repoUrl: repo.bare })
+    assert.equal(first.ok, true, JSON.stringify(first))
+    const firstCommit = first.releaseCommit
+
+    // No deploy happened — the branch tip is an undeployed release built on base.
+    const second = await buildRelease(a2, 'TG1', { token: 'x', gitUser: 't', repoUrl: repo.bare })
+    assert.equal(second.ok, true, JSON.stringify(second))
+    assert.notEqual(second.releaseCommit, firstCommit, 'the branch was replaced')
+
+    // Remote branch tip is now the second release.
+    const vw = W()
+    try {
+      g(vw, 'init', '-q'); g(vw, 'remote', 'add', 'origin', repo.bare)
+      g(vw, 'fetch', '-q', 'origin', 'refs/heads/release-TG1:rel')
+      assert.equal(g(vw, 'rev-parse', 'rel').trim(), second.releaseCommit)
+      assert.equal(g(vw, 'rev-parse', 'rel^').trim().slice(0, 7), repo.base.slice(0, 7), 'still built on the recorded base')
+    } finally { fs.rmSync(vw, { recursive: true, force: true }) }
   } finally { fs.rmSync(repo.bare, { recursive: true, force: true }); fs.rmSync(repo.w, { recursive: true, force: true }) }
 })
