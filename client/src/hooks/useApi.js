@@ -559,8 +559,16 @@ export const useThreads           = (server, opts = {}) => useQuery({ queryKey: 
 export const useCancelThread      = () => useMutation({ mutationFn: ({ server, id }) => post(`/api/thread/cancel?server=${enc(server)}&id=${enc(id)}`, {}) })
 
 // ── Change log / Work sessions ────────────────────────────────────────────────
-export const useActiveWorkSession  = (server) => useQuery({ queryKey: ['work-session-active', server], queryFn: () => get(`/api/sessions/active?server=${enc(server)}`), enabled: !!server, staleTime: 0, refetchInterval: 0 })
-export const useWorkSessions       = (server) => useQuery({ queryKey: ['work-sessions', server], queryFn: () => get(`/api/sessions?server=${enc(server)}`), enabled: !!server, staleTime: 0 })
+// The TM1 user signed in to a server — the identity that owns change sets on it
+// (names are matched case-insensitively). Change-set queries carry it in their
+// key so one browser switching users never shows the previous user's set.
+function useServerUser(server) {
+  const { data: logins = [] } = useServerLogins()
+  const name = String(server ?? '').toLowerCase()
+  return logins.find(l => String(l?.name ?? '').toLowerCase() === name)?.username ?? null
+}
+export const useActiveWorkSession  = (server) => { const user = useServerUser(server); return useQuery({ queryKey: ['work-session-active', server, user], queryFn: () => get(`/api/sessions/active?server=${enc(server)}`), enabled: !!server, staleTime: 0, refetchInterval: 0 }) }
+export const useWorkSessions       = (server) => { const user = useServerUser(server); return useQuery({ queryKey: ['work-sessions', server, user], queryFn: () => get(`/api/sessions?server=${enc(server)}`), enabled: !!server, staleTime: 0 }) }
 export const useWorkSessionLog     = (sessionId) => useQuery({ queryKey: ['work-session-log', sessionId], queryFn: () => get(`/api/sessions/${enc(sessionId)}/log`), enabled: !!sessionId, staleTime: 0 })
 export const useWorkSessionLogVerbose = (sessionId) => useQuery({ queryKey: ['work-session-log-verbose', sessionId], queryFn: () => get(`/api/sessions/${enc(sessionId)}/log/verbose`), enabled: !!sessionId, staleTime: 0 })
 export const useStartWorkSession   = () => { const qc = useQueryClient(); return useMutation({ mutationFn: (body) => post('/api/sessions/start', body), onSuccess: (_, v) => { qc.invalidateQueries({ queryKey: ['work-session-active', v.server] }); qc.invalidateQueries({ queryKey: ['work-sessions', v.server] }) } }) }

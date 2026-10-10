@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { toast } from 'sonner'
 import { Activity, FolderOpen, Users, Lock, Server } from 'lucide-react'
 import { useStore } from '@/store'
-import { useJobs, useFilesAvailable, useServers, useConfig } from '@/hooks/useApi'
+import { useJobs, useFilesAvailable, useServers, useConfig, useServerLogins, useActiveWorkSession } from '@/hooks/useApi'
 import { cn } from '@/lib/utils'
 import { serverCapabilities } from '@/lib/tm1-version'
 import JobsMonitor from '@/components/JobsMonitor'
@@ -19,6 +19,12 @@ export default function StatusBar() {
   const { data: servers = [] } = useServers()
   const activeServer = servers.find(s => (typeof s === 'string' ? s : s.name) === server)
   const readOnly = server ? (typeof activeServer === 'string' ? false : !!activeServer?.readOnly) : false
+
+  // The identity that owns change sets on this server (case-insensitive name match) —
+  // show it so edits are always attributable to the person signed in to the server.
+  const { data: logins = [] } = useServerLogins()
+  const serverUser = logins.find(l => String(l?.name ?? '').toLowerCase() === String(server ?? '').toLowerCase())?.username ?? null
+  const { data: activeSession } = useActiveWorkSession(server)
 
   const [showJobs,     setShowJobs]     = useState(false)
   const [showFiles,    setShowFiles]    = useState(false)
@@ -44,6 +50,12 @@ export default function StatusBar() {
         <AccessBadge />
         <span className="font-medium flex items-center gap-1">
           {server ?? 'No server selected'}
+          {serverUser && (
+            <span title={`Signed in to ${server} as ${serverUser}`} className="opacity-70 text-[10px] font-normal">· as {serverUser}</span>
+          )}
+          {activeSession && (
+            <span title={`Open change set: ${activeSession.name}`} className="opacity-70 text-[10px] font-normal">· set: {activeSession.name}</span>
+          )}
           {readOnly && (
             <span title="This server is read-only — edits are blocked" className="inline-flex items-center gap-0.5 bg-white/20 text-primary-foreground px-1 py-px rounded text-[9px] font-semibold">
               <Lock size={9} /> read-only

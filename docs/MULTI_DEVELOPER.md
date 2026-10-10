@@ -14,6 +14,38 @@ The agent's identity passes through to the MCP (`TM1_MCP_USER`, default `ai-agen
 small team (≤3) sharing one DEV server with no collisions. The rule: **separate change sets, warn on
 overlap, and agree on the shared objects.** This resolves review points #3 and #4 below.
 
+## Change set ownership — the rule
+
+A change set belongs to **(server, TM1 user signed in to that server)** — the person TM1 says made
+the change, not the IDE sign-in. The rule, in full:
+
+1. **One clear identity per server.** The owner is the TM1 user signed in to the server. Names
+   match regardless of capitals: "JDLove" and "jdlove" are the same person. The screen always shows
+   it — "Change set: X · as JDLove on TM1_Test_DEV".
+2. **The screen follows the person.** Signing in or out of a server immediately refreshes the
+   change-set display — no leftovers from the previous user. One browser means one person per
+   server; a second person uses another browser or a private window.
+3. **The AI is a person too.** Changes the AI makes through the MCP are recorded under its own
+   name (or the developer it's working for), never silently in another person's change set.
+4. **Who can do what with someone else's change set.** Everyone can see every change set on a
+   server (the overlap warning depends on it); only the owner adds to or closes their own set;
+   approving is a separate role, ideally someone other than the builder.
+5. **Housekeeping.** Open change sets left open for days get flagged stale so they can be closed or
+   discarded.
+
+Implemented against the rule:
+- **Case-insensitive ownership** — `change_log.getActiveSession` matches `user` case-insensitively,
+  so a set started as `JDLove` is found when the server identity is `jdlove` (and vice versa).
+- **Identity in the change-set cache + refresh on sign-in/out** — the change-set queries
+  (`work-session-active`, `work-sessions`) are keyed by (server, signed-in user) and are
+  invalidated on server sign-in/out, so one browser switching users never shows the previous
+  user's set.
+- **Identity on screen** — the status bar shows the signed-in user per server, and the Change Set
+  pill reads "Change set: X · as {user} on {server}".
+
+Enforcement still parked (the rule states it; enable when multi-developer is un-parked): only-the-
+owner-closes, approval by a separate user, stale-set flagging.
+
 ## The principle that makes it work
 
 **The IDE stores no model data.** Tests, change sets, approvals, audit and deploy history live in the
