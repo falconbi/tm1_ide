@@ -3,12 +3,52 @@
 Every bug-fix commit, newest first, by the date it was committed. Generated from the git history;
 commits that mixed a fix into a feature are included too. New features are not listed here.
 
-135 fixes from 2026-05-20 to 2026-10-05.
+166 fixes from 2026-05-20 to 2026-10-10.
 
 ← [Back to README](../README.md)
 
 
 ## October 2026
+
+### 2026-10-10
+
+- **change-sets** — After signing in to a server as a different user, the change-set bar kept showing the previous user's change set and hid "start a change set"; it now follows whoever is signed in to that server
+- **change-sets** — User names were matched case-sensitively ("JDLove" vs "jdlove"), so one person's change sets could split; matching is now case-insensitive and the bar shows who you are on that server
+- **read-only** — Saving on a read-only server first asked for a change set, then failed with no message; it now refuses straight away with a clear read-only message
+- **read-only** — The IDE let you start a change set on a read-only server (the MCP already refused); now refused
+- **read-only** — The list of read-only servers loaded only once at page load (before sign-in), and a failed load was reused; it now loads when needed and retries
+- **read-only** — Marking PROD read-only also blocked approved deploys; read-only now means no direct edits, while approved deploys still go through
+- **deploy** — A deploy shipped everything on DEV, not just the change set; a release now contains exactly the change set's objects, enforced on the server
+- **deploy** — The approval check could pass for a different commit from the one being pulled; the approved and incoming commits are now compared, and the deploy refuses if they can't be
+- **deploy** — Approvals are stored under short commit IDs, so a lookup with a full ID missed them; short and full IDs now match (7+ characters)
+- **deploy** — First-time setup could run against a read-only or already-deployed server, and Promote could write to a read-only server or to itself; both refused
+- **deploy** — The GitHub token was masked only at its first occurrence in error messages; every occurrence is now masked
+- **deploy** — A server error showed in the deploy screen as a confusing "not JSON" failure; the real message is now shown
+- **release** — Subsets and views never reached PROD (TM1 Git's pull has no operation for them); they are now applied from the release after the pull and checked
+- **release** — MDX views lost their query in a release; the query file now travels with the view and is checked on arrival
+- **release** — Subsets with the same name on different dimensions (and views on different cubes) could be confused; they are now identified by their parent
+- **release** — After a deploy, chores were checked as if they were processes; they are now checked as chores
+- **release** — A subset or view that failed to apply, or an object that didn't arrive, still showed the deploy as OK; it is now marked failed
+- **release** — TM1 refuses branch names containing `/` (`release/PROD`); releases now use `release-<target>`, and Approve is blocked when the pull plan fails
+- **release** — "Skip" lines in the pull plan were counted as changes, wrongly refusing a valid release; they are now ignored
+
+### 2026-10-09
+
+- **sessions** — The Sessions Monitor showed change sets instead of TM1 sessions (two routes shared one address); TM1 sessions now have their own
+- **sql** — Saving an edited SQL connection without retyping the password stored the `••••••••` mask as the password; the mask now means "keep the stored one"
+- **rules** — The "`)` inside brackets — did you mean `]`?" check never fired; it now reports a `)` that closes a `[`
+- **mcp** — The MCP could change servers marked read-only; writes there are now refused, as the IDE already did
+- **tests** — `npm test` failed on Node 22; fixed
+
+### 2026-10-07
+
+- **change-sets** — Adding an element was recorded under the element's name instead of its dimension, so later steps listed a "dimension" that didn't exist
+- **change-sets** — Starting a change set from the deploy screen didn't refresh the Change Sets panel
+- **change-sets** — Review flagged the change set's own objects as "outside this change set"
+- **change-sets** — Tests added through the MCP were linked to the newest open change set on the server instead of the author's own
+- **deploy** — The deploy screen closed on a stray click outside it, and jumped past the deploy result before you could read it
+- **subset editor** — Showed no member count, which hid that a subset on PROD had lost 36 members; the count is now shown
+- **deploy** — Hardening before the TM1 Git deploy was released (several fixes, 6–7 Oct): the approval gate is enforced on the server and bound to the exact commit; Revert needs an approval and restores from the approved commit, not live DEV; deletes and attribute values are limited to the change set (PROD-only objects and PROD-maintained attributes are left alone); the old unprotected deploy routes are retired; Close runs its tests on the server; a stuck deploy lock can be cleared
 
 ### 2026-10-05
 
