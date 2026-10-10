@@ -1,6 +1,13 @@
-# TM1 IDE — Deployment Pipeline
+# TM1 IDE — Deployment Pipeline (earlier REST pipeline)
 
 ← [Back to README](../README.md)
+
+> **This is the earlier deploy method, kept for history.** It describes the original REST package pipeline
+> (baselines → diff → package → risk → deploy), which now survives only as the admin-only `tm1deploy` CLI.
+> **The current deploy** ships each change set as a release through TM1's built-in Git — see
+> [Deploy lifecycle](DEPLOY_LIFECYCLE.md), and the article
+> [Governed TM1 deploys: from change sets to TM1 Git](https://falconbi.github.io/articles/governed-tm1-deploys/)
+> for how and why it changed.
 
 ## Using the pipeline
 

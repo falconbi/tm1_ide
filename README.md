@@ -52,8 +52,9 @@ product.
   TI writes). Right-click any cell to trace the rule chain behind its value.
 - **Prove the numbers** — assertions hold the answers you know are right and run after every build and deploy.
   TM1 will happily return a confident wrong number; this catches it.
-- **Ship with confidence** — every save is tracked in a change set; deploys go diff → drift check → risk check →
-  approval → deploy → verify, with a full history.
+- **Ship with confidence** — every save is tracked in a change set, and a release ships exactly that change set
+  through TM1's built-in Git: test → close → build release → review → approve → deploy → verify, with a full
+  history. [How and why it works](https://falconbi.github.io/articles/governed-tm1-deploys/).
 - **Build with AI** — an MCP server lets an AI agent (e.g. Claude Code) build dimensions, cubes, rules and
   processes, inside change sets and checked by the same tests. A full financial consolidation engine was built
   this way, test-first, and passes every one of its test cases — most of them published worked answers —
@@ -84,7 +85,9 @@ The frontend is pre-built — no build step needed. Full instructions: [Setup](d
 | [Authentication](docs/AUTHENTICATION.md) | How the IDE signs in — per-server login, what's supported and tested |
 | [TM1 Authentication Guide](docs/TM1_AUTHENTICATION_GUIDE.md) | How every TM1 sign-in method works, in plain English — for anyone in TM1 |
 | [Architecture](docs/ARCHITECTURE.md) | How the pieces fit, project structure |
-| [Deployment pipeline](docs/DEPLOYMENT.md) | Change sets → diff → package → risk → deploy |
+| [Deploy lifecycle](docs/DEPLOY_LIFECYCLE.md) | The current deploy — change-set releases through TM1 Git, approvals, drift, verification |
+| [Governed TM1 deploys](https://falconbi.github.io/articles/governed-tm1-deploys/) | Article: how and why the deploy works, with diagrams — a good first read |
+| [Earlier REST pipeline](docs/DEPLOYMENT.md) | The original diff → package → risk → deploy pipeline, kept for history and the admin-only CLI |
 | [MCP server](docs/MCP_SERVER.md) | Connecting an AI agent to build and test models |
 | [Building models](docs/BUILDING_MODELS.md) | Lessons and TM1 quirks from real model builds |
 | [Bug fixes](docs/BUG_FIXES.md) | Every bug fix, by date committed |
