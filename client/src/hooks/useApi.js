@@ -18,19 +18,33 @@ if (typeof window !== 'undefined' && !window.__tm1FetchWrapped) {
   // cached once per page load. Used to skip the change-set prompt and to name
   // the write-refused toast.
   const readOnlyServers = new Set()
+  let readOnlyLoaded = false
+  let readOnlyLoadPromise = null
+  // Loaded only by a 2xx response carrying an array — a 401/500/non-array (e.g.
+  // before a token exists) leaves readOnlyLoaded false so a later save retries.
   const loadReadOnlyServers = () => {
-    nativeFetch('/api/servers', { headers: { 'x-ide-token': tok() } })
-      .then(r => r.json().catch(() => null))
+    readOnlyLoadPromise = nativeFetch('/api/servers', { headers: { 'x-ide-token': tok() } })
+      .then(r => (r.ok ? r.json().catch(() => null) : null))
       .then(list => {
         if (!Array.isArray(list)) return
+        readOnlyLoaded = true
         readOnlyServers.clear()
         for (const s of list) if (s?.readOnly) readOnlyServers.add(String(s?.name ?? '').toLowerCase())
       })
-      .catch(() => {})
+      .catch(() => { /* auth/network hiccup — not loaded; the next save attempts again */ })
+    return readOnlyLoadPromise
   }
-  loadReadOnlyServers()
+  loadReadOnlyServers() // page-load warmth only, not relied upon — a backend restart
+                        // or a first visit has no token, and sign-in doesn't reload.
   // First save with no open change set → prompt for a name and start one.
   const ensureChangeSet = async (server) => {
+    // Lazy: if the read-only flags aren't loaded yet, await one load attempt
+    // before deciding whether to prompt.
+    if (!readOnlyLoaded) {
+      if (!readOnlyLoadPromise) loadReadOnlyServers()
+      try { await readOnlyLoadPromise } catch { /* fall through to the prompt */ }
+      if (!readOnlyLoaded) readOnlyLoadPromise = null   // allow a fresh attempt next save
+    }
     if (readOnlyServers.has(String(server ?? '').toLowerCase())) return
     try {
       const r = await nativeFetch(`/api/sessions/active?server=${enc(server)}`, { headers: { 'x-ide-token': tok() } })
