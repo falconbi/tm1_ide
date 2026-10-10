@@ -11,6 +11,17 @@ const assertions = require('./assertions')
 const gitIdentity = require('./git-identity')
 const approvals = require('./git-approvals')
 
+// Parse a GitPull plan operation ("Update Cubes('WFP Workforce Cost')") into the
+// TM1 object it refers to, so it can be checked against a release's objects.
+const PLAN_TYPE = { cubes: 'cube', dimensions: 'dimension', processes: 'process', chores: 'chore', subsets: 'subset', views: 'view' }
+function parsePlanOp(op) {
+    const m = String(op ?? '').match(/^(?:Create|Update|Delete|Skip)\s+([A-Za-z]+)\(['"]?([^'")]*)['"]?\)?/)
+    if (!m) return null
+    const type = PLAN_TYPE[m[1].toLowerCase()]
+    if (!type) return null
+    return { type, name: m[2] }
+}
+
 // Preview: target baseline + what the pull would change. Read-only (plan only).
 async function prepare(source, target, { branch = 'dev', token, gitUser = gitIdentity.user(), ideToken, session = null } = {}) {
     const c = makeClient(target, ideToken)
@@ -55,16 +66,23 @@ async function prepare(source, target, { branch = 'dev', token, gitUser = gitIde
 // The approval gate is non-optional: it cannot be switched off by any caller.
 // The reconcile scope comes from the APPROVAL's recorded change set — never from
 // the client — so a missing or wrong session cannot silently skip or misapply it.
-async function execute(target, { branch = 'dev', token, gitUser = gitIdentity.user(), ideToken, source, purpose = 'deploy', by } = {}) {
+async function execute(target, { branch = 'dev', token, gitUser = gitIdentity.user(), ideToken, source, purpose = 'deploy', by, session: sessionId } = {}) {
     const c = makeClient(target, ideToken)
     const out = { target, branch }
     const lockMod = require('./git-lock')
+    const cl = require('./change_log')
+
+    // Release mode: this change set has a built release for this target. Deploy
+    // branch release/<target> and gate on the RELEASE commit, not DEV's head.
+    const session = sessionId ? cl.getSession(sessionId) : null
+    const releaseCommit = (session?.release_commit && (!session.release_target || session.release_target === target)) ? session.release_commit : null
+    if (releaseCommit) { branch = `release/${target}`; out.branch = branch; out.release = true; out.releaseCommit = releaseCommit }
 
     // The incoming commit is the branch head. Determine it from the SOURCE's own
     // Git state (the target's pull plan would expire while we do the governance
     // round-trips below) — then verify the plan matches before executing.
-    let incomingCommit = null
-    if (source) {
+    let incomingCommit = releaseCommit
+    if (!incomingCommit && source) {
         try {
             const sc = makeClient(source, ideToken)
             const sst = await sc.post('GitStatus', { Username: gitUser, Password: token })
@@ -129,6 +147,31 @@ async function execute(target, { branch = 'dev', token, gitUser = gitIdentity.us
             out.refused = true
             out.error = `Refused: the incoming commit moved (approved ${incomingCommit}, branch head is now ${out.targetCommit}). Approve the new commit before deploying.`
             return out
+        }
+        // Release mode: every non-Skip operation the pull will apply must be one of
+        // the release's objects. Anything else means the branch carries objects the
+        // approval never saw — refuse and name them.
+        if (releaseCommit) {
+            try {
+                const repoUrl = (await c.post('GitStatus', { Username: gitUser, Password: token }))?.URL
+                const base = require('./git-state').lastDeployed(target)?.lastDeployedCommit ?? null
+                const { changedObjects } = require('./git-release')
+                const expected = await changedObjects({ from: base, to: releaseCommit, repoUrl, token, gitUser })
+                const expectedKeys = new Set(expected.map(o => `${o.type}::${String(o.name).toLowerCase()}`))
+                const unexpected = (plan.Operations ?? []).map(parsePlanOp).filter(Boolean)
+                    .filter(o => !expectedKeys.has(`${o.type}::${String(o.name).toLowerCase()}`))
+                if (unexpected.length) {
+                    out.executed = false
+                    out.refused = true
+                    out.error = `Refused: the pull plan contains ${unexpected.length} object(s) not in this release — ${unexpected.map(o => `${o.type} ${o.name}`).join(', ')}. Rebuild the release; it must carry only the change set's objects.`
+                    return out
+                }
+            } catch (e) {
+                out.executed = false
+                out.refused = true
+                out.error = `Refused: could not verify the release's objects against the pull plan (${e.message}).`
+                return out
+            }
         }
         try {
             await c.post(`GitPlans('${encodeURIComponent(plan.ID)}')/tm1.Execute`, {})

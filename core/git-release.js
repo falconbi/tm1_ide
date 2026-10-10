@@ -183,4 +183,23 @@ async function buildRelease(changeSet, target, { token, gitUser = gitIdentity.us
     }
 }
 
-module.exports = { buildRelease, objectFromFile, parseNameStatus, ENTRY_TO_OBJECT, objectKey, NO_BASE_ERROR }
+module.exports = { buildRelease, objectFromFile, parseNameStatus, ENTRY_TO_OBJECT, objectKey, NO_BASE_ERROR, changedObjects }
+
+// The objects changed between two commits in the repo (used to check a pull plan
+// against the release's included list). Returns [{ type, name, file, action }].
+async function changedObjects({ from, to, repoUrl, token, gitUser = gitIdentity.user() }) {
+    if (!repoUrl || !from || !to) return []
+    const work = fs.mkdtempSync(path.join(os.tmpdir(), 'tm1release-'))
+    try {
+        git(work, 'init', '-q')
+        git(work, 'remote', 'add', 'origin', authUrl(repoUrl, gitUser, token))
+        git(work, 'fetch', '-q', 'origin', '+refs/heads/*:refs/remotes/origin/*')
+        return changedFilesBetween(work, from, to)
+            .map(c => ({ ...objectFromFile(c.file), file: c.file, action: c.action }))
+            .filter(o => o.type)
+    } catch {
+        return []
+    } finally {
+        fs.rmSync(work, { recursive: true, force: true })
+    }
+}
