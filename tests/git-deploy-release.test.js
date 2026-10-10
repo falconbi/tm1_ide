@@ -41,7 +41,15 @@ function fakeClient() {
       if (route === 'GitPull') return { ID: 'PLAN1', Commit: { ID: ctx.planCommit ?? ctx.releaseCommit }, Operations: ctx.ops }
       return {}
     },
-    async get() { return {} }, async patch() { return {} }, async delete() { return {} },
+    async get(route) {
+      const r = String(route)
+      if (/Cubes\('A'\)/.test(r)) {
+        if (ctx?.missingCube) throw { response: { status: 404 } }
+        return { Rules: ctx.releaseRules ?? '# base (A)\n' }
+      }
+      if (/Cubes\(|Dimensions\(|Processes\(/.test(r)) return { Name: 'x' }
+      return {}
+    }, async patch() { return {} }, async delete() { return {} },
   }
 }
 const arReal = require(resolve('core/adapter_registry'))
@@ -116,6 +124,21 @@ test('a full approved ID matches a short plan ID (sameCommit) → deploys', asyn
     const out = await execute('TG1', { session: s.id, token: 'x', gitUser: 't' })
     assert.equal(out.executed, true, JSON.stringify(out))
     assert.ok(!out.refused)
+    assert.deepEqual(out.incomplete, [], 'everything that shipped is verified on the target')
+  } finally { fs.rmSync(r.bare, { recursive: true, force: true }); fs.rmSync(r.w, { recursive: true, force: true }) }
+})
+
+test('an included object that did not land is reported as incomplete (not a clean success)', async () => {
+  const r = repo()
+  try {
+    baseCommit = r.base
+    const s = cl.startSession('Incomplete', 'DEV1', 'admin')
+    cl.setSessionCommit(s.id, r.releaseCommit)
+    cl.setSessionRelease(s.id, r.releaseCommit, 'TG1')
+    ctx = { bare: r.bare, releaseCommit: r.releaseCommit, sessionId: s.id, ops: ["Update Cubes('A')"], missingCube: true }
+    const out = await execute('TG1', { session: s.id, token: 'x', gitUser: 't' })
+    assert.equal(out.executed, true, JSON.stringify(out))   // still "executed"...
+    assert.deepEqual(out.incomplete, ['cube A'])             // ...but never a clean success
   } finally { fs.rmSync(r.bare, { recursive: true, force: true }); fs.rmSync(r.w, { recursive: true, force: true }) }
 })
 

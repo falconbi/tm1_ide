@@ -218,7 +218,50 @@ async function buildRelease(changeSet, target, { token, gitUser = gitIdentity.us
     }
 }
 
-module.exports = { buildRelease, objectFromFile, parseNameStatus, ENTRY_TO_OBJECT, objectKey, NO_BASE_ERROR, changedObjects, checkDependencies, splitTi }
+module.exports = { buildRelease, objectFromFile, parseNameStatus, ENTRY_TO_OBJECT, objectKey, NO_BASE_ERROR, changedObjects, checkDependencies, splitTi, verifyRelease }
+
+// After a deploy has pulled a release, check that every included object actually
+// landed on the target with the release's content. rules are compared exactly
+// (the pulled text vs the release's file); other objects by existence. Returns the
+// list of objects that did not land — so a deploy is never reported as clean when
+// TM1 Git silently skipped something.
+async function verifyRelease(target, { base, releaseCommit, repoUrl, token, gitUser = gitIdentity.user(), ideToken } = {}) {
+    if (!repoUrl || !base || !releaseCommit) return []
+    const work = fs.mkdtempSync(path.join(os.tmpdir(), 'tm1verify-'))
+    const incomplete = []
+    try {
+        git(work, 'init', '-q')
+        git(work, 'remote', 'add', 'origin', authUrl(repoUrl, gitUser, token))
+        git(work, 'fetch', '-q', 'origin', '+refs/heads/*:refs/remotes/origin/*')
+        const changed = changedFilesBetween(work, base, releaseCommit)
+        const c = makeClient(target, ideToken)
+        for (const ch of changed) {
+            if (ch.action === 'D') continue      // a deletion removes — nothing to verify
+            const obj = objectFromFile(ch.file)
+            if (!obj) continue
+            let ok = false
+            try {
+                if (obj.kind === 'rules') {
+                    const releaseText = git(work, 'show', `${releaseCommit}:${ch.file}`)
+                    const r = await c.get(`Cubes('${encodeURIComponent(obj.name)}')`, { $select: 'Rules' })
+                    ok = String(r?.Rules ?? '') === String(releaseText ?? '').replace(/\r\n/g, '\n')
+                } else {
+                    const url = obj.type === 'subset' ? `Dimensions('${encodeURIComponent(obj.parent)}')/Hierarchies('${encodeURIComponent(obj.parent)}')/Subsets('${encodeURIComponent(obj.name)}')`
+                        : obj.type === 'view'     ? `Cubes('${encodeURIComponent(obj.parent)}')/Views('${encodeURIComponent(obj.name)}')`
+                        : obj.type === 'dimension' ? `Dimensions('${encodeURIComponent(obj.name)}')`
+                        : obj.type === 'cube'     ? `Cubes('${encodeURIComponent(obj.name)}')`
+                        : `Processes('${encodeURIComponent(obj.name)}')`
+                    await c.get(url, { $select: 'Name' })
+                    ok = true
+                }
+            } catch { ok = false }
+            if (!ok) incomplete.push(`${obj.type} ${obj.name}${obj.parent ? ` (${obj.parent})` : ''}`)
+        }
+        return incomplete
+    } finally {
+        fs.rmSync(work, { recursive: true, force: true })
+    }
+}
 
 // Split a TM1 Git .ti file into its four section bodies (for TI lint).
 function splitTi(text) {
