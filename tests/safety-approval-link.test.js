@@ -38,3 +38,17 @@ test('an open (unclosed) change set is never linkable', () => {
   cl.setSessionRelease(open.id, 'cafe1234cafe1234cafe1234cafe1234cafe1234', 'TG1')   // not closed
   assert.equal(linkedChangeSet('cafe1234', 'TG1'), null)
 })
+
+test('a release built for another target never approves a deploy here (release_target)', () => {
+  const sTG = cl.startSession('For-TG1', 'DEV1', 'admin')
+  cl.closeSession(sTG.id, { user: 'admin' })
+  cl.setSessionRelease(sTG.id, '1111aaaa1111aaaa1111aaaa1111aaaa1111aaaa', 'TG1')
+  const sOther = cl.startSession('For-OTHER', 'DEV1', 'admin')
+  cl.closeSession(sOther.id, { user: 'admin' })
+  cl.setSessionRelease(sOther.id, 'bbbbccccbbbbccccbbbbccccbbbbccccbbbbcccc', 'OTHER')
+
+  assert.equal(linkedChangeSet('bbbbcccc', 'TG1'), null, "a release built for OTHER must not approve a TG1 deploy")
+  assert.equal(linkedChangeSet('1111aaaa', 'TG1')?.id, sTG.id)
+  assert.equal(linkedChangeSet('1111aaaa', 'OTHER'), null, "a release built for TG1 must not approve an OTHER deploy")
+  assert.equal(linkedChangeSet('bbbbcccc', 'OTHER')?.id, sOther.id)
+})

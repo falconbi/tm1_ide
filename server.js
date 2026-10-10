@@ -3056,7 +3056,8 @@ app.post('/api/deploy/git/approve', async (req, res) => {
         if (!target || !commit) return res.status(400).json({ error: 'target and commit required' })
         const approvals = require('./core/git-approvals')
         // Rule 1: only a BUILT RELEASE links to an approval (release_commit, built
-        // for this exact target) — never a raw DEV commit_ref.
+        // for this exact target) — never a raw DEV commit_ref, and never a release
+        // built for a different target. linkedChangeSet enforces both.
         const linkedSession = approvals.linkedChangeSet(commit, target)
         if (!linkedSession) {
             return res.status(409).json({ error: `Refused: commit ${commit} is not a release built for ${target}. Build the release first, then approve it.` })
