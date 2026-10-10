@@ -200,3 +200,24 @@ test('rebuilding a release before it is deployed succeeds (replaces the undeploy
     } finally { fs.rmSync(vw, { recursive: true, force: true }) }
   } finally { fs.rmSync(repo.bare, { recursive: true, force: true }); fs.rmSync(repo.w, { recursive: true, force: true }) }
 })
+
+test('rebuild matches a SHORT recorded base against the FULL parent commit', async () => {
+  const repo = setupRepo()
+  try {
+    fakeBase = repo.base.slice(0, 8)   // recorded commit is SHORT (git reads resolve it)
+    const a = cl.startSession('Short-base A', 'DEV1', 'admin')
+    cl.setSessionCommit(a.id, repo.devCommit)
+    cl.writeLog({ server: 'DEV1', action: 'RULES_UPDATED', objectType: 'rules', objectName: 'WFP Workforce Cost', user: 'admin' })
+    const a2 = cl.startSession('Short-base B', 'DEV1', 'admin')
+    cl.setSessionCommit(a2.id, repo.devCommit)
+    cl.writeLog({ server: 'DEV1', action: 'RULES_UPDATED', objectType: 'rules', objectName: 'WFP Workforce Cost', user: 'admin' })
+
+    const first = await buildRelease(a, 'TG1', { token: 'x', gitUser: 't', repoUrl: repo.bare })
+    assert.equal(first.ok, true, JSON.stringify(first))
+
+    // The tip's parent is the FULL base, the record is the SHORT base — must match.
+    const second = await buildRelease(a2, 'TG1', { token: 'x', gitUser: 't', repoUrl: repo.bare })
+    assert.equal(second.ok, true, JSON.stringify(second))
+    assert.notEqual(second.releaseCommit, first.releaseCommit)
+  } finally { fs.rmSync(repo.bare, { recursive: true, force: true }); fs.rmSync(repo.w, { recursive: true, force: true }) }
+})

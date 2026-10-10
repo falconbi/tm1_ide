@@ -18,6 +18,7 @@ const { git, authUrl, sanitize } = require('./git-repo')
 const gitIdentity = require('./git-identity')
 const cl = require('./change_log')
 const { lintTI } = require('./ti-lint')
+const { sameCommit } = require('./git-approvals')
 
 const NO_BASE_ERROR = (target) => `${target} has no recorded deployed commit — set it up first (init + first pull), then release against it.`
 
@@ -120,10 +121,10 @@ async function buildRelease(changeSet, target, { token, gitUser = gitIdentity.us
         const relRef = `refs/remotes/origin/release-${target}`
         let existing = null
         try { existing = (git(work, 'rev-parse', '--verify', '--quiet', relRef).trim() || null) } catch { existing = null }
-        if (existing && existing !== base) {
+        if (existing && !sameCommit(existing, base)) {
             let parent = null
             try { parent = (git(work, 'rev-parse', '--verify', '--quiet', `${existing}^`).trim() || null) } catch { parent = null }
-            if (parent !== base) {
+            if (!sameCommit(parent, base)) {
                 return { ok: false, refused: true, error: `release-${target} has moved to ${existing}, which does not build on ${target}'s recorded commit (${base}) — someone else released or the target moved on. Investigate before rebuilding.` }
             }
         }
