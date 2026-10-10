@@ -128,3 +128,45 @@ test('a genuinely different plan commit is refused as moved', async () => {
     assert.match(out.error, /commit moved/i)
   } finally { fs.rmSync(r.bare, { recursive: true, force: true }); fs.rmSync(r.w, { recursive: true, force: true }) }
 })
+
+test('Skip operations (real TM1 format) are not counted as changes', async () => {
+  const r = repo()
+  try {
+    baseCommit = r.base
+    const s = cl.startSession('Real-format', 'DEV1', 'admin')
+    cl.setSessionCommit(s.id, r.releaseCommit)
+    cl.setSessionRelease(s.id, r.releaseCommit, 'TG1')
+    // The exact strings TM1 returns: 41 Skips + the release's own Update.
+    const ops = [
+      "Skip Dimensions('WFP Assumptions Measure')",
+      "Skip Dimensions('WFP Cost Centre')",
+      "Skip Processes('WFP Copy Version')",
+      "Skip Cubes('WFP Workforce Input')",
+      "Update Cubes('A')",
+    ]
+    ctx = { bare: r.bare, releaseCommit: r.releaseCommit, sessionId: s.id, ops }
+    const out = await execute('TG1', { session: s.id, token: 'x', gitUser: 't' })
+    assert.equal(out.executed, true, JSON.stringify(out))
+    assert.ok(!out.refused, 'Skips must not flip the release to \'unexpected\'')
+  } finally { fs.rmSync(r.bare, { recursive: true, force: true }); fs.rmSync(r.w, { recursive: true, force: true }) }
+})
+
+test('a Replace/Update of an object not in the release is still refused', async () => {
+  const r = repo()
+  try {
+    baseCommit = r.base
+    const s = cl.startSession('Real-format-refuse', 'DEV1', 'admin')
+    cl.setSessionCommit(s.id, r.releaseCommit)
+    cl.setSessionRelease(s.id, r.releaseCommit, 'TG1')
+    ctx = { bare: r.bare, releaseCommit: r.releaseCommit, sessionId: s.id, ops: [
+      "Skip Dimensions('WFP Assumptions Measure')",
+      "Replace Dimensions('WFP Version')",
+      "Update Cubes('Sneaky')",
+    ] }
+    const out = await execute('TG1', { session: s.id, token: 'x', gitUser: 't' })
+    assert.equal(out.refused, true)
+    assert.match(out.error, /not in this release/i)
+    assert.match(out.error, /Sneaky/)
+    assert.ok(!/WFP Assumptions Measure/.test(out.error), 'Skip objects are not in the refusal list')
+  } finally { fs.rmSync(r.bare, { recursive: true, force: true }); fs.rmSync(r.w, { recursive: true, force: true }) }
+})
