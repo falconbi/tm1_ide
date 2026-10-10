@@ -83,12 +83,15 @@ async function applySubset(tm1, det, content) {
     return { type: 'subset', name: `${det.name} (${det.dim})`, mode: 'static', n: members.length }
 }
 
-// Apply a view from its repo file: MDX views keep their MDX; native views are
-// rebuilt from the exported Rows / Columns / Titles placements.
+// Apply a view from its repo file: an MDX view (exported @type MDXView, its MDX in
+// the sibling .mdx file) keeps its MDX; a native view is rebuilt from the exported
+// Rows / Columns / Titles placements.
 async function applyView(tm1, det, content) {
     const view = JSON.parse(content)
-    if (view.MDX && !Array.isArray(view.Rows)) {
-        await tm1.saveView(det.cube, det.name, view.MDX)
+    if (view['@type'] === 'MDXView' || (view['MDX@Code.link'] && !Array.isArray(view.Rows))) {
+        const mdx = view.MDX ?? det.mdx
+        if (!mdx) throw new Error('MDX view has no MDX text (missing .mdx sibling)')
+        await tm1.saveView(det.cube, det.name, mdx)
         return { type: 'view', name: `${det.name} (${det.cube})`, mode: 'mdx' }
     }
     await tm1.saveNativeView(det.cube, det.name, {
@@ -133,7 +136,9 @@ async function restoreFromCommit(target, commit, entries, { branch = 'dev', toke
                     out.restored.push(await applySubset(tm1, det, content))
                 } else if (det.type === 'view') {
                     const content = git(work, 'show', `${commit}:${file}`)
-                    out.restored.push(await applyView(tm1, det, content))
+                    let mdx = null
+                    try { mdx = git(work, 'show', `${commit}:${file.replace(/\.json$/, '.mdx')}`) } catch { /* no MDX sibling */ }
+                    out.restored.push(await applyView(tm1, { ...det, mdx }, content))
                 } else if (det.type === 'process') {
                     const tiText = git(work, 'show', `${commit}:processes/${det.name}.ti`)
                     const parts = splitTi(tiText)

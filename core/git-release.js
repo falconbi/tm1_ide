@@ -186,7 +186,15 @@ async function buildRelease(changeSet, target, { token, gitUser = gitIdentity.us
         git(work, 'checkout', '-q', base)
         for (const inc of included) {
             if (inc.action === 'D') git(work, 'rm', '--quiet', '--', inc.file)
-            else git(work, 'checkout', devCommit, '--', inc.file)
+            else {
+                git(work, 'checkout', devCommit, '--', inc.file)
+                // An MDX view carries its expression in a sibling .mdx file — include
+                // it so the release can apply (and verify) the actual MDX.
+                if (inc.type === 'view' && /\.views\/.+\.json$/.test(inc.file)) {
+                    const mdx = inc.file.replace(/\.json$/, '.mdx')
+                    try { git(work, 'checkout', devCommit, '--', mdx) } catch { /* native view — no MDX */ }
+                }
+            }
         }
         git(work, 'add', '-A')
         git(work, '-c', `user.name=${gitUser}`, '-c', `user.email=${gitIdentity.email()}`, 'commit', '-q', '-m', `Release ${changeSet?.name ?? 'change set'} → ${target}`)
@@ -239,7 +247,11 @@ async function applyReleaseComplement(target, { base, releaseCommit, repoUrl, to
             const content = git(work, 'show', `${releaseCommit}:${ch.file}`)
             try {
                 if (obj.type === 'subset') applied.push(await applySubset(tm1, { dim: obj.parent, hierarchy: obj.parent, name: obj.name }, content))
-                else applied.push(await applyView(tm1, { cube: obj.parent, name: obj.name }, content))
+                else {
+                    let vmdx = null
+                    try { vmdx = git(work, 'show', `${releaseCommit}:${ch.file.replace(/\.json$/, '.mdx')}`) } catch { /* no MDX sibling */ }
+                    applied.push(await applyView(tm1, { cube: obj.parent, name: obj.name, mdx: vmdx }, content))
+                }
             } catch (e) {
                 errors.push({ type: obj.type, name: obj.name, error: e.message })
             }
@@ -289,9 +301,14 @@ async function verifyRelease(target, { base, releaseCommit, repoUrl, token, gitU
                 } else if (obj.type === 'view') {
                     const view = JSON.parse(git(work, 'show', `${releaseCommit}:${ch.file}`))
                     const vpath = `Cubes('${encodeURIComponent(obj.parent)}')/Views('${encodeURIComponent(obj.name)}')`
-                    if (view.MDX && !Array.isArray(view.Rows)) {
-                        const t = await c.get(vpath, { $select: 'MDX' })
-                        ok = String(t?.MDX ?? '') === String(view.MDX)
+                    if (view['@type'] === 'MDXView' || view['MDX@Code.link']) {
+                        let want = view.MDX ?? null
+                        if (want === null) { try { want = git(work, 'show', `${releaseCommit}:${ch.file.replace(/\.json$/, '.mdx')}`) } catch { want = null } }
+                        if (want === null) { ok = false }
+                        else {
+                            const t = await c.get(vpath, { $select: 'MDX' })
+                            ok = String(t?.MDX ?? '').trim() === String(want).trim().replace(/\n$/, '')
+                        }
                     } else {
                         await c.get(vpath, { $select: 'Name' })
                         ok = true
