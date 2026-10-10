@@ -43,12 +43,15 @@ const driftRefusal = (target, drift) => {
 // Skip operations are NOT changes — a Skip carries no object to verify.
 const PLAN_TYPE = { cubes: 'cube', dimensions: 'dimension', processes: 'process', chores: 'chore', subsets: 'subset', views: 'view' }
 function parsePlanOp(op) {
-    const m = String(op ?? '').match(/^([A-Za-z]+)\s+([A-Za-z]+)\(['"]?([^'")]*)['"]?\)?/)
+    const m = String(op ?? '').match(/^([A-Za-z]+)\s+([A-Za-z]+)\(['"]?([^'")]*)['"]?(?:\s*,\s*['"]?([^'")]*)['"]?)?\)?/)
     if (!m) return null
     if (m[1].toLowerCase() === 'skip') return null   // Skip = unchanged, not a change
     const type = PLAN_TYPE[m[2].toLowerCase()]
     if (!type) return null
-    return { type, name: m[3] }
+    // Subsets are keyed by their dimension, views by their cube — the parent is the
+    // op's second argument when present.
+    const parent = (type === 'subset' || type === 'view') ? (m[4] ?? null) : undefined
+    return { type, name: m[3], parent }
 }
 
 // Preview: target baseline + what the pull would change. Read-only (plan only).
@@ -223,11 +226,11 @@ async function execute(target, { branch = 'dev', token, gitUser = gitIdentity.us
             try {
                 const repoUrl = (await c.post('GitStatus', { Username: gitUser, Password: token }))?.URL
                 const base = require('./git-state').lastDeployed(target)?.lastDeployedCommit ?? null
-                const { changedObjects } = require('./git-release')
+                const { changedObjects, objectKey } = require('./git-release')
                 const expected = await changedObjects({ from: base, to: releaseCommit, repoUrl, token, gitUser })
-                const expectedKeys = new Set(expected.map(o => `${o.type}::${String(o.name).toLowerCase()}`))
+                const expectedKeys = new Set(expected.map(o => objectKey(o.type, o.name, o.parent)))
                 const unexpected = (plan.Operations ?? []).map(parsePlanOp).filter(Boolean)
-                    .filter(o => !expectedKeys.has(`${o.type}::${String(o.name).toLowerCase()}`))
+                    .filter(o => !expectedKeys.has(objectKey(o.type, o.name, o.parent)))
                 if (unexpected.length) {
                     out.executed = false
                     out.refused = true
