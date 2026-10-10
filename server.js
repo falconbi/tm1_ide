@@ -3000,9 +3000,9 @@ app.post('/api/deploy/git/execute', async (req, res) => {
         // Not gated by read-only: a recorded approval (enforced inside execute(),
         // non-optionally) is what authorises shipping to a PROD-posture target.
         const { execute } = require('./core/git-deploy')
-        const { target, branch, source } = req.body
+        const { target, branch, source, session } = req.body
         if (!target) return res.status(400).json({ error: 'target required' })
-        const result = await execute(target, { branch, token: process.env.TM1_GIT_TOKEN, ideToken: req.ideToken, source, by: req.user })
+        const result = await execute(target, { branch, token: process.env.TM1_GIT_TOKEN, ideToken: req.ideToken, source, by: req.user, session })
         if (result?.approvalSession && result?.executed && result?.controlOk) try { cl.markSessionDeployed(result.approvalSession, target) } catch { /* link is best-effort */ }
         res.json(result)
     } catch (e) { res.status(500).json({ error: e.message }) }
@@ -3054,17 +3054,21 @@ app.post('/api/deploy/git/approve', async (req, res) => {
     try {
         const { source, target, commit, note } = req.body
         if (!target || !commit) return res.status(400).json({ error: 'target and commit required' })
-        // The commit must be linked to a CLOSED change set whose tests passed.
-        const linkedSession = cl.getAllSessions(500).find(x => x.commit_ref === commit && x.closed_at != null)
+        const approvals = require('./core/git-approvals')
+        // The commit must be linked to a CLOSED change set whose tests passed. It is
+        // either the change set's release commit (release_commit) or its pushed DEV
+        // commit (commit_ref) — matched short-or-full (sameCommit).
+        const linkedSession = cl.getAllSessions(500).find(x => x.closed_at != null &&
+            ((x.release_commit && approvals.sameCommit(x.release_commit, commit)) ||
+             (x.commit_ref && approvals.sameCommit(x.commit_ref, commit))))
         if (!linkedSession) {
-            return res.status(409).json({ error: `Refused: commit ${commit} is not linked to a closed change set. Close the change set and commit it first.` })
+            return res.status(409).json({ error: `Refused: commit ${commit} is not linked to a closed change set's release or commit. Close the change set, commit/release it first.` })
         }
         let tests = null
         try { tests = linkedSession.close_tests ? JSON.parse(linkedSession.close_tests) : null } catch { tests = null }
         if (!tests || tests.blocking > 0) {
             return res.status(409).json({ error: `Refused: the change set for commit ${commit} has failing block-severity tests. Fix and re-close before approving.` })
         }
-        const approvals = require('./core/git-approvals')
         const rec = await approvals.append({
             id: new Date().toISOString(), approved_at: new Date().toISOString(),
             approver: req.user ?? 'unknown', notes: note ?? '',
