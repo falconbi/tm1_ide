@@ -148,7 +148,7 @@ async function execute(target, { branch = 'dev', token, gitUser = gitIdentity.us
             out.error = `Refused: cannot verify the commit being deployed (approved-incoming ${incomingCommit ?? '(none)'}, plan commit ${out.targetCommit ?? '(no commit on this pull)'}). Approve a specific commit and retry.`
             return out
         }
-        if (incomingCommit !== out.targetCommit) {
+        if (!approvals.sameCommit(incomingCommit, out.targetCommit)) {
             out.executed = false
             out.refused = true
             out.error = `Refused: the incoming commit moved (approved ${incomingCommit}, branch head is now ${out.targetCommit}). Approve the new commit before deploying.`
