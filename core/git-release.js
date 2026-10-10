@@ -38,7 +38,7 @@ function objectFromFile(file) {
     const f = String(file ?? '')
     let m
     m = f.match(/^dimensions\/([^/]+)\.hierarchies\/([^/]+)\.subsets\/([^/]+)\.json$/)
-    if (m) return { type: 'subset', name: m[3], dim: m[1] }
+    if (m) return { type: 'subset', name: m[3], parent: m[1] }
     m = f.match(/^dimensions\/([^/]+)\.hierarchies\/([^/]+)\.json$/)
     if (m) return { type: 'dimension', name: m[1], kind: 'dimension' }
     m = f.match(/^dimensions\/([^/]+)\.json$/)
@@ -46,7 +46,7 @@ function objectFromFile(file) {
     m = f.match(/^processes\/(.+)\.(json|ti)$/)
     if (m) return { type: 'process', name: m[1], kind: 'process' }
     m = f.match(/^cubes\/([^/]+)\.views\/([^/]+)\.json$/)
-    if (m) return { type: 'view', name: m[2], cube: m[1] }
+    if (m) return { type: 'view', name: m[2], parent: m[1] }
     m = f.match(/^cubes\/(.+)\.rules$/)
     if (m) return { type: 'cube', name: m[1], kind: 'rules' }
     m = f.match(/^cubes\/([^/]+)\.json$/)
@@ -74,7 +74,14 @@ function changedFilesBetween(work, from, to) {
 }
 
 // Which OBJECTS (type ⦂ name, change-set granularity) each change-left-in-list is.
-const objectKey = (type, name) => `${type}::${String(name ?? '').toLowerCase()}`
+// Key an object for change-set matching / plan checking. Subsets belong to a
+// DIMENSION and views to a CUBE — the parent is part of the identity, so a
+// 'Default' subset on two dimensions is two different objects.
+const objectKey = (type, name, parent) => {
+    const n = String(name ?? '').toLowerCase()
+    if (type === 'subset' || type === 'view') return `${type}::${String(parent ?? '').toLowerCase()}::${n}`
+    return `${type}::${n}`
+}
 
 // Best-effort owner of an object: another change-log session (on the change set's
 // server) whose log touched the same object. Null when unknown.
@@ -133,7 +140,10 @@ async function buildRelease(changeSet, target, { token, gitUser = gitIdentity.us
         const logEntries = changeSet?.id ? cl.getSessionLog(changeSet.id) : []
         const csetObjectKeys = new Set(logEntries
             .filter(e => ENTRY_TO_OBJECT[e.object_type])
-            .map(e => objectKey(ENTRY_TO_OBJECT[e.object_type], e.object_name)))
+            .map(e => objectKey(
+                ENTRY_TO_OBJECT[e.object_type],
+                e.object_name,
+                (e.object_type === 'subset' || e.object_type === 'view') ? e.detail : null)))
 
         // Other sessions on the same server, for the "left on DEV" owners.
         const allSessions = cl.getAllSessions(500)
@@ -146,7 +156,7 @@ async function buildRelease(changeSet, target, { token, gitUser = gitIdentity.us
         for (const c of changed) {
             const obj = objectFromFile(c.file)
             if (!obj) { excluded.push({ type: 'other', name: c.file, files: [c.file] }); continue }
-            if (csetObjectKeys.has(objectKey(obj.type, obj.name))) {
+            if (csetObjectKeys.has(objectKey(obj.type, obj.name, obj.parent))) {
                 included.push({ ...obj, file: c.file, action: c.action })
             } else {
                 excluded.push({ ...obj, files: [c.file], file: c.file, owner: ownerOf(otherLogs, obj) })
@@ -158,8 +168,9 @@ async function buildRelease(changeSet, target, { token, gitUser = gitIdentity.us
         for (const e of logEntries) {
             const o = ENTRY_TO_OBJECT[e.object_type]
             if (!o) continue
-            const key = objectKey(o, e.object_name)
-            if (!included.some(i => objectKey(i.type, i.name) === key)) noFile.push({ type: o, name: e.object_name })
+            const parent = (e.object_type === 'subset' || e.object_type === 'view') ? e.detail : null
+            const key = objectKey(o, e.object_name, parent)
+            if (!included.some(i => objectKey(i.type, i.name, i.parent) === key)) noFile.push({ type: o, name: e.object_name, parent: parent ?? undefined })
         }
 
         // Nothing to ship?
@@ -188,8 +199,8 @@ async function buildRelease(changeSet, target, { token, gitUser = gitIdentity.us
         return {
             ok: true, target, base, devCommit, releaseCommit,
             changeSet: { id: changeSet?.id ?? null, name: changeSet?.name ?? null, server: changeSet?.server ?? null },
-            included: included.map(i => ({ type: i.type, name: i.name, file: i.file, action: i.action })),
-            excluded: excluded.map(x => ({ type: x.type, name: x.name, file: x.file, owner: x.owner ?? null })),
+            included: included.map(i => ({ type: i.type, name: i.name, parent: i.parent, file: i.file, action: i.action })),
+            excluded: excluded.map(x => ({ type: x.type, name: x.name, parent: x.parent, file: x.file, owner: x.owner ?? null })),
             noFile,
         }
     } catch (e) {

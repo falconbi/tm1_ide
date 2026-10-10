@@ -221,3 +221,30 @@ test('rebuild matches a SHORT recorded base against the FULL parent commit', asy
     assert.notEqual(second.releaseCommit, first.releaseCommit)
   } finally { fs.rmSync(repo.bare, { recursive: true, force: true }); fs.rmSync(repo.w, { recursive: true, force: true }) }
 })
+
+test('a Default subset on two dimensions — only the one the change set touched ships', async () => {
+  const bare = bareInit(BARE())
+  const w = W()
+  g(w, 'init', '-q'); g(w, 'remote', 'add', 'origin', bare)
+  write(w, 'dimensions/DimA.hierarchies/DimA.subsets/Default.json', '[A-base]')
+  write(w, 'dimensions/DimB.hierarchies/DimB.subsets/Default.json', '[B-base]')
+  const base = commitAll(w, 'base')
+  write(w, 'dimensions/DimA.hierarchies/DimA.subsets/Default.json', '[A-dev]')
+  write(w, 'dimensions/DimB.hierarchies/DimB.subsets/Default.json', '[B-dev]')
+  const devCommit = commitAll(w, 'dev')
+  g(w, 'branch', '-M', 'dev')
+  g(w, 'push', '-q', 'origin', 'dev:dev')
+  try {
+    fakeBase = base
+    const a = cl.startSession('SubA', 'DEV1', 'admin')
+    cl.setSessionCommit(a.id, devCommit)
+    // The change set touched ONLY DimA's Default (the parent dimension is in detail).
+    cl.writeLog({ server: 'DEV1', action: 'SUBSET_UPDATED', objectType: 'subset', objectName: 'Default', detail: 'DimA', user: 'admin' })
+    const r = await buildRelease(a, 'TG1', { token: 'x', gitUser: 't', repoUrl: bare })
+    assert.equal(r.ok, true, JSON.stringify(r))
+    const inc = r.included.map(i => `${i.type}:${i.name}:${i.parent}`)
+    assert.deepEqual(inc, ['subset:Default:DimA'], 'only DimA\'s Default is in the release')
+    const ex = r.excluded.find(x => x.type === 'subset')
+    assert.ok(ex && ex.parent === 'DimB', 'DimB\'s Default is left on DEV')
+  } finally { fs.rmSync(bare, { recursive: true, force: true }); fs.rmSync(w, { recursive: true, force: true }) }
+})
