@@ -38,7 +38,7 @@ let fakeBase = null
 require.cache[gitStatePath] = { id: gitStatePath, filename: gitStatePath, loaded: true, exports: { lastDeployed: () => (fakeBase ? { lastDeployedCommit: fakeBase } : null), recordDeploy: async () => ({ ok: true }), load: () => ({}), FILE: '' } }
 
 const cl = require(path.join(__dirname, '..', 'core', 'change_log'))
-const { buildRelease } = require(path.join(__dirname, '..', 'core', 'git-release'))
+const { buildRelease, objectKey } = require(path.join(__dirname, '..', 'core', 'git-release'))
 
 const BASE_CONTENT = {
   'cubes/WFP Workforce Cost.rules': '# base rule\n[] = N:1;\n',
@@ -222,29 +222,34 @@ test('rebuild matches a SHORT recorded base against the FULL parent commit', asy
   } finally { fs.rmSync(repo.bare, { recursive: true, force: true }); fs.rmSync(repo.w, { recursive: true, force: true }) }
 })
 
-test('a Default subset on two dimensions — only the one the change set touched ships', async () => {
+test('objectKey disambiguates subsets by parent dimension and views by cube', () => {
+  // A 'Default' subset on two dimensions is two different objects.
+  assert.notEqual(objectKey('subset', 'Default', 'DimA'), objectKey('subset', 'Default', 'DimB'))
+  assert.equal(objectKey('subset', 'Default', 'DimA'), 'subset::dima::default')
+  assert.equal(objectKey('view', 'Default', 'WFP Cost'), 'view::wfp cost::default')
+  assert.notEqual(objectKey('view', 'Default', 'CubeA'), objectKey('view', 'Default', 'CubeB'))
+  // Other objects are keyed type::name (no parent).
+  assert.equal(objectKey('cube', 'A'), 'cube::a')
+})
+
+test('buildRelease refuses when the change set contains a subset or view (TM1 Git won\'t apply them)', async () => {
   const bare = bareInit(BARE())
   const w = W()
   g(w, 'init', '-q'); g(w, 'remote', 'add', 'origin', bare)
-  write(w, 'dimensions/DimA.hierarchies/DimA.subsets/Default.json', '[A-base]')
-  write(w, 'dimensions/DimB.hierarchies/DimB.subsets/Default.json', '[B-base]')
+  write(w, 'cubes/A.rules', '# base\n')
   const base = commitAll(w, 'base')
-  write(w, 'dimensions/DimA.hierarchies/DimA.subsets/Default.json', '[A-dev]')
-  write(w, 'dimensions/DimB.hierarchies/DimB.subsets/Default.json', '[B-dev]')
+  write(w, 'cubes/A.rules', '# base (A)\n')
   const devCommit = commitAll(w, 'dev')
   g(w, 'branch', '-M', 'dev')
   g(w, 'push', '-q', 'origin', 'dev:dev')
   try {
     fakeBase = base
-    const a = cl.startSession('SubA', 'DEV1', 'admin')
+    const a = cl.startSession('HasSubset', 'DEV1', 'admin')
     cl.setSessionCommit(a.id, devCommit)
-    // The change set touched ONLY DimA's Default (the parent dimension is in detail).
     cl.writeLog({ server: 'DEV1', action: 'SUBSET_UPDATED', objectType: 'subset', objectName: 'Default', detail: 'DimA', user: 'admin' })
     const r = await buildRelease(a, 'TG1', { token: 'x', gitUser: 't', repoUrl: bare })
-    assert.equal(r.ok, true, JSON.stringify(r))
-    const inc = r.included.map(i => `${i.type}:${i.name}:${i.parent}`)
-    assert.deepEqual(inc, ['subset:Default:DimA'], 'only DimA\'s Default is in the release')
-    const ex = r.excluded.find(x => x.type === 'subset')
-    assert.ok(ex && ex.parent === 'DimB', 'DimB\'s Default is left on DEV')
+    assert.equal(r.ok, false)
+    assert.equal(r.refused, true)
+    assert.match(r.error, /Subsets and views can't be released through TM1 Git yet/i)
   } finally { fs.rmSync(bare, { recursive: true, force: true }); fs.rmSync(w, { recursive: true, force: true }) }
 })
