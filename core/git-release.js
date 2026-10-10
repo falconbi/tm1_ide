@@ -17,6 +17,7 @@ const { lastDeployed } = require('./git-state')
 const { git, authUrl, sanitize } = require('./git-repo')
 const gitIdentity = require('./git-identity')
 const cl = require('./change_log')
+const { lintTI } = require('./ti-lint')
 
 const NO_BASE_ERROR = (target) => `${target} has no recorded deployed commit — set it up first (init + first pull), then release against it.`
 
@@ -183,7 +184,65 @@ async function buildRelease(changeSet, target, { token, gitUser = gitIdentity.us
     }
 }
 
-module.exports = { buildRelease, objectFromFile, parseNameStatus, ENTRY_TO_OBJECT, objectKey, NO_BASE_ERROR, changedObjects }
+module.exports = { buildRelease, objectFromFile, parseNameStatus, ENTRY_TO_OBJECT, objectKey, NO_BASE_ERROR, changedObjects, checkDependencies, splitTi }
+
+// Split a TM1 Git .ti file into its four section bodies (for TI lint).
+function splitTi(text) {
+    const grab = (key) => {
+        const m = String(text ?? '').match(new RegExp(`#region\\s+${key}\\s*\\r?\\n([\\s\\S]*?)#endregion`, 'i'))
+        return m ? m[1].replace(/\r/g, '').trimEnd() : ''
+    }
+    if (!/#region\s+Prolog/i.test(String(text ?? ''))) return null
+    return { prolog: grab('Prolog'), metadata: grab('Metadata'), data: grab('Data'), epilog: grab('Epilog') }
+}
+
+// Dependency check BEFORE approval: run TM1 CheckRules on the target for every
+// included rule (a wrong reference can mean it belongs to another change set),
+// and TI lint for every included process. Blocks on any failure.
+async function checkDependencies(releaseCommit, target, { token, gitUser = gitIdentity.user(), repoUrl, ideToken } = {}) {
+    if (!repoUrl) {
+        try { repoUrl = (await makeClient(target, ideToken).post('GitStatus', { Username: gitUser, Password: token }))?.URL } catch { /* below */ }
+    }
+    const base = lastDeployed(target)?.lastDeployedCommit
+    if (!repoUrl || !base) return { ok: false, error: 'cannot read the release from the repo (need a repo URL and a recorded base)' }
+
+    const work = fs.mkdtempSync(path.join(os.tmpdir(), 'tm1release-'))
+    const blockers = []
+    try {
+        git(work, 'init', '-q')
+        git(work, 'remote', 'add', 'origin', authUrl(repoUrl, gitUser, token))
+        git(work, 'fetch', '-q', 'origin', '+refs/heads/*:refs/remotes/origin/*')
+        const changed = changedFilesBetween(work, base, releaseCommit)
+        const c = makeClient(target, ideToken)
+        for (const ch of changed) {
+            const obj = objectFromFile(ch.file)
+            if (!obj || ch.action === 'D') continue   // a deletion needs no dependency check
+            const text = git(work, 'show', `${releaseCommit}:${ch.file}`)
+            if (obj.kind === 'rules') {
+                try {
+                    const r = await c.post(`Cubes('${encodeURIComponent(obj.name)}')/tm1.CheckRules`, { Rules: text })
+                    const errs = r?.value ?? []
+                    if (errs.length) blockers.push({
+                        object: `rules ${obj.name}`,
+                        message: errs.map(e => `line ${e.LineNumber ?? '?'}: ${e.Message ?? e.Description ?? JSON.stringify(e)}`).join('; ') +
+                            ' — if this reference belongs to another change set, ship that change set too (or build a combined release).',
+                    })
+                } catch (e) { blockers.push({ object: `rules ${obj.name}`, message: `CheckRules could not run on ${target}: ${e.response?.data?.error?.message ?? e.message}` }) }
+            } else if (obj.kind === 'process') {
+                const sections = splitTi(text)
+                if (sections) {
+                    const r = lintTI(sections)
+                    if ((r.errors ?? []).length) blockers.push({ object: `process ${obj.name}`, message: (r.errors ?? []).map(e => e.message ?? JSON.stringify(e)).join('; ') })
+                }
+            }
+        }
+        return { ok: blockers.length === 0, blockers }
+    } catch (e) {
+        return { ok: false, error: sanitize(e.message, token) }
+    } finally {
+        fs.rmSync(work, { recursive: true, force: true })
+    }
+}
 
 // The objects changed between two commits in the repo (used to check a pull plan
 // against the release's included list). Returns [{ type, name, file, action }].
