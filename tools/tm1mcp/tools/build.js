@@ -6,7 +6,7 @@ const { z } = require('zod')
 // MODEL BUILD — WRITE (all require an open change set)
 // ══════════════════════════════════════════════════════════════════════════════
 
-function register(server, { client, ok, esc, logChange, requireChangeSet, lintRules, lintTI }) {
+function register(server, { client, ok, logChange, requireChangeSet, lintRules, lintTI }) {
     server.tool(
         'build_dimension',
         'Create a dimension declaratively in one call — elements, consolidation edges, and element attributes. If the dimension exists, elements/edges/attributes are added to it. Use for small dimensions; drive large dimensions from a TI process (build_process) that loads from a datasource. ' +
@@ -202,14 +202,14 @@ function register(server, { client, ok, esc, logChange, requireChangeSet, lintRu
             const failed = []
 
             for (const r of rename) {
-                await c.renameElement(dimension, r.from, r.to, h).catch(() => {})
-                const names = (await c.get(`Dimensions('${esc(dimension)}')/Hierarchies('${esc(h)}')/Elements`, { $select: 'Name' })
-                    ).value.map(x => x.Name)
-                if (names.includes(r.to) && !names.includes(r.from)) {
+                try {
+                    // renameElement verifies after the PATCH and throws a clear error
+                    // when the rename didn't take (TM1 no-ops it on some versions).
+                    await c.renameElement(dimension, r.from, r.to, h)
                     logChange('ELEMENT_RENAMED', 'dimension', dimension, { detail: `${r.from} -> ${r.to}${hierarchy ? ` (${hierarchy})` : ''}` })
                     done.push(`renamed ${r.from} -> ${r.to}`)
-                } else {
-                    failed.push(`rename ${r.from} -> ${r.to} did not take (element rename is unsupported on this TM1 version — recreate the element instead)`)
+                } catch (e) {
+                    failed.push(e.message)
                 }
             }
             for (const m of reparent) {

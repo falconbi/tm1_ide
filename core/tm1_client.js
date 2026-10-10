@@ -166,10 +166,22 @@ class TM1Client {
     }
 
     async renameElement(dim, name, newName, hierarchy = dim) {
-        return this.patch(
+        await this.patch(
             `Dimensions('${odataKey(dim)}')/Hierarchies('${odataKey(hierarchy)}')/Elements('${odataKey(name)}')`,
             { Name: newName }
         )
+        // Some TM1 versions NO-OP a rename (PATCH returns 200 but the name never
+        // changes). Verify it actually took before callers report it — otherwise a
+        // rename that didn't happen is reported as success and logged as a change.
+        // One shared check here, so the IDE route and the MCP both get it.
+        const check = await this.get(
+            `Dimensions('${odataKey(dim)}')/Hierarchies('${odataKey(hierarchy)}')/Elements('${odataKey(newName)}')`,
+            { '$select': 'Name' }
+        ).catch(() => null)
+        if (!check || String(check.Name) !== String(newName)) {
+            throw new Error("Element rename isn't supported on this TM1 version — create the new element and move its data instead")
+        }
+        return true
     }
 
     async addEdge(dim, parent, child, weight = 1, hierarchy = dim) {
