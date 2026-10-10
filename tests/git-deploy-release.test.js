@@ -52,6 +52,9 @@ stub('core/git-lock', { acquire: async () => { acquired++; return { by: 't', at:
 let baseCommit = null
 stub('core/git-state', { lastDeployed: () => (baseCommit ? { lastDeployedCommit: baseCommit } : null), recordDeploy: async () => ({ ok: true }), load: () => ({}), FILE: '' })
 stub('core/git-reconcile', { reconcile: async () => ({ restored: [], skipped: [], errors: [] }) })
+// Drift guard: clean by default; a test flips driftEntries to force the refusal.
+let driftEntries = []
+stub('core/git-drift', { driftCheck: async () => ({ entries: driftEntries, deployed: baseCommit }), revert: async () => ({}), promote: async () => ({ ok: true }) })
 // Approval exists for the release commit, linked to the change set. Keep the REAL
 // sameCommit (the thing under test); stub only find/append.
 const realApprovals = require(resolve('core/git-approvals'))
@@ -169,4 +172,22 @@ test('a Replace/Update of an object not in the release is still refused', async 
     assert.match(out.error, /Sneaky/)
     assert.ok(!/WFP Assumptions Measure/.test(out.error), 'Skip objects are not in the refusal list')
   } finally { fs.rmSync(r.bare, { recursive: true, force: true }); fs.rmSync(r.w, { recursive: true, force: true }) }
+})
+
+test('deploy is refused when the target has drifted (snapshot refreshed first)', async () => {
+  const r = repo()
+  try {
+    baseCommit = r.base
+    const s = cl.startSession('Drift', 'DEV1', 'admin')
+    cl.setSessionCommit(s.id, r.releaseCommit)
+    cl.setSessionRelease(s.id, r.releaseCommit, 'TG1')
+    driftEntries = [{ status: 'M', file: 'dimensions/WFP Version.hierarchies/WFP Version.json' }]
+    ctx = { bare: r.bare, releaseCommit: r.releaseCommit, sessionId: s.id, ops: ["Update Cubes('A')"] }
+    const out = await execute('TG1', { session: s.id, token: 'x', gitUser: 't' })
+    assert.equal(out.refused, true)
+    assert.equal(out.executed, false)
+    assert.equal(out.drift, 'drifted')
+    assert.match(out.error, /drifted/i)
+    assert.match(out.error, /Reconcile/)
+  } finally { driftEntries = []; fs.rmSync(r.bare, { recursive: true, force: true }); fs.rmSync(r.w, { recursive: true, force: true }) }
 })
