@@ -97,7 +97,10 @@ function getActiveSession(server, user = null) {
     // own change set (keyed by server+user). With no user, falls back to the
     // newest open on the server (legacy single-developer behaviour).
     if (user) {
-        return db.prepare(`SELECT * FROM sessions WHERE server = ? AND user = ? AND closed_at IS NULL ORDER BY started_at DESC LIMIT 1`)
+        // Case-insensitive ownership: "JDLove" and "jdlove" are the same person (the
+        // TM1 user identity a change set was started under must match the identity
+        // signed in to the server now, regardless of capitalisation).
+        return db.prepare(`SELECT * FROM sessions WHERE server = ? AND LOWER(user) = LOWER(?) AND closed_at IS NULL ORDER BY started_at DESC LIMIT 1`)
             .get(server, user) ?? null
     }
     return db.prepare(`SELECT * FROM sessions WHERE server = ? AND closed_at IS NULL ORDER BY started_at DESC LIMIT 1`).get(server) ?? null
