@@ -316,6 +316,7 @@ async function verifyRelease(target, { base, releaseCommit, repoUrl, token, gitU
                 } else {
                     const url = obj.type === 'dimension' ? `Dimensions('${encodeURIComponent(obj.name)}')`
                         : obj.type === 'cube' ? `Cubes('${encodeURIComponent(obj.name)}')`
+                        : obj.type === 'chore' ? `Chores('${encodeURIComponent(obj.name)}')`
                         : `Processes('${encodeURIComponent(obj.name)}')`
                     await c.get(url, { $select: 'Name' })
                     ok = true
