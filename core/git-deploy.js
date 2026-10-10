@@ -123,6 +123,15 @@ async function execute(target, { branch = 'dev', token, gitUser = gitIdentity.us
     const session = sessionId ? cl.getSession(sessionId) : null
     const releaseCommit = (session?.release_commit && (!session.release_target || session.release_target === target)) ? session.release_commit : null
     if (releaseCommit) { branch = `release-${target}`; out.branch = branch; out.release = true; out.releaseCommit = releaseCommit }
+    // Rule 1 on the server: a deploy always ships a built release — never whatever
+    // happens to be on DEV. The first-time setup (first-pull) is the only
+    // whole-model path.
+    if (!releaseCommit) {
+        out.executed = false
+        out.refused = true
+        out.error = `Build a release first — deploys ship only a change set\u2019s objects. First-time setup (first-pull) is the only whole-model path.`
+        return out
+    }
 
     // The incoming commit is the branch head. Determine it from the SOURCE's own
     // Git state (the target's pull plan would expire while we do the governance

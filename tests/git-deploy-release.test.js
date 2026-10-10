@@ -192,3 +192,16 @@ test('deploy is refused when the target has drifted (snapshot refreshed first)',
     assert.match(out.error, /paused until drift is clean/)
   } finally { driftEntries = []; fs.rmSync(r.bare, { recursive: true, force: true }); fs.rmSync(r.w, { recursive: true, force: true }) }
 })
+
+test('execute refuses any deploy that is not a built release', async () => {
+  const r = repo()
+  try {
+    baseCommit = r.base
+    ctx = { bare: r.bare, releaseCommit: r.releaseCommit, ops: [] }
+    // No session → no release → rule 1 refusal.
+    const out = await execute('TG1', { source: 'DEV1', token: 'x', gitUser: 't' })
+    assert.equal(out.refused, true)
+    assert.equal(out.executed, false)
+    assert.match(out.error, /Build a release first/i)
+  } finally { fs.rmSync(r.bare, { recursive: true, force: true }); fs.rmSync(r.w, { recursive: true, force: true }) }
+})

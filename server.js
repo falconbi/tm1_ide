@@ -3055,14 +3055,11 @@ app.post('/api/deploy/git/approve', async (req, res) => {
         const { source, target, commit, note } = req.body
         if (!target || !commit) return res.status(400).json({ error: 'target and commit required' })
         const approvals = require('./core/git-approvals')
-        // The commit must be linked to a CLOSED change set whose tests passed. It is
-        // either the change set's release commit (release_commit) or its pushed DEV
-        // commit (commit_ref) — matched short-or-full (sameCommit).
-        const linkedSession = cl.getAllSessions(500).find(x => x.closed_at != null &&
-            ((x.release_commit && approvals.sameCommit(x.release_commit, commit)) ||
-             (x.commit_ref && approvals.sameCommit(x.commit_ref, commit))))
+        // Rule 1: only a BUILT RELEASE links to an approval (release_commit, built
+        // for this exact target) — never a raw DEV commit_ref.
+        const linkedSession = approvals.linkedChangeSet(commit, target)
         if (!linkedSession) {
-            return res.status(409).json({ error: `Refused: commit ${commit} is not linked to a closed change set's release or commit. Close the change set, commit/release it first.` })
+            return res.status(409).json({ error: `Refused: commit ${commit} is not a release built for ${target}. Build the release first, then approve it.` })
         }
         let tests = null
         try { tests = linkedSession.close_tests ? JSON.parse(linkedSession.close_tests) : null } catch { tests = null }
