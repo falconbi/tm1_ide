@@ -168,14 +168,6 @@ export default function DeployWizard({ server, onClose, onOpenTests }) {
     const d = await run('drift', { server: target }, '/api/git/drift')
     if (d) setDrift(d)
   }
-  const doDriftAction = async (action) => {
-    const label = action === 'revert'
-      ? 'Put the target back to the approved state (restores the drifted objects)?'
-      : 'Bring the target\u2019s change back into the build stream instead of overwriting it?'
-    if (!window.confirm(label)) return
-    const d = await run(action, { target, source: server, branch: 'dev' }, `/api/git/drift/${action}`)
-    if (d) setDrift(prev => ({ ...prev, actionResult: d }))
-  }
 
   useEffect(() => {
     if (step !== 7 && step !== 8) return setLock(null)
@@ -549,14 +541,8 @@ export default function DeployWizard({ server, onClose, onOpenTests }) {
                             <span className="text-foreground">{humanizeFile(e.file)}</span>
                           </div>
                         ))}
-                        <div className="flex items-center gap-2 pt-1">
-                          <button onClick={() => doDriftAction('revert')} disabled={busy === 'revert'} className={textBtn}>Revert — restore the drifted objects</button>
-                          <button onClick={() => doDriftAction('promote')} disabled={busy === 'promote'} className={textBtn}>Promote — bring them back to DEV</button>
-                        </div>
+                        <p className="text-[11px] text-muted-foreground pt-1">Deploys to {target} stay paused. Re-apply the change on DEV in a change set, then release it.</p>
                       </div>
-                    )}
-                    {drift.actionResult && (
-                      <p className="text-[11px] text-muted-foreground">{drift.actionResult.note ?? drift.actionResult.error ?? 'Done.'} Re-check to confirm.</p>
                     )}
                   </div>
                 )}
