@@ -7,7 +7,7 @@ const path      = require('path')
 const fs        = require('fs')
 const ai        = require('./core/ai/registry')
 const obfuscate = require('./core/ai/obfuscate')
-const { makeClient, makeClientWithCredentials, needsServerLogin, isDirectServer, isPawNativeServer, probeAuthMethod, listServers, listServersWithFlags, getDefaultAdapterType, getLoginServer, isReadOnly } = require('./core/adapter_registry')
+const { makeClient, makeClientWithCredentials, needsServerLogin, isDirectServer, isPawNativeServer, probeAuthMethod, listServers, listServersWithFlags, getDefaultAdapterType, getLoginServer } = require('./core/adapter_registry')
 const { loadConnections, saveConnections, getConnection, executeQuery, testConnection, getSchema, loadQueries, saveQueries } = require('./core/sql_client')
 const { createSession, createDirectSession, createLocalSession, attachPawSession, getSessionUser, touchSession, invalidateSession, getCachedPawSession, getCSRF, PAW_HOST, setServerCredentials, getServerCredentials, clearServerCredentials, getServerStatus, listServerEntries, getSessionCredentials } = require('./core/paw_connect')
 const cl = require('./core/change_log')
@@ -16,6 +16,7 @@ const gitSecrets = require('./core/git-secrets')
 if (!process.env.TM1_GIT_TOKEN && gitSecrets.getToken()) process.env.TM1_GIT_TOKEN = gitSecrets.getToken()
 const lensStore = require('./core/lens_store')
 const lensBridge = require('./core/lens_bridge')
+const { readOnlyRefusal } = require('./core/readonly')
 
 // Session (Change Set) is optional for using the IDE — it groups changes for
 // deployment, it is not a login and must never gate whether a save works.
@@ -29,10 +30,10 @@ function requireSession(server, user) {
     return !!cl.getActiveSession(server, user)
 }
 const NO_SESSION_ERROR = 'No change set is open for this server — start one first (Change Log → Start change set) so this change can be attributed and deployed.'
-const READ_ONLY_ERROR  = 'This server is read-only (PROD posture) — no changes are allowed here. Switch to a writable server to edit.'
 function gateReadOnly(res, server) {
-    if (isReadOnly(server)) {
-        res.status(409).json({ error: READ_ONLY_ERROR })
+    const refusal = readOnlyRefusal(server)
+    if (refusal) {
+        res.status(409).json(refusal)
         return false
     }
     return true
@@ -368,6 +369,9 @@ app.post('/api/sessions/start', (req, res) => {
     try {
         const { name, server } = req.body
         if (!name?.trim() || !server) return res.status(400).json({ error: 'name and server required' })
+        // Read-only (PROD posture) servers don't take change sets — same refusal the
+        // MCP's start_change_set gives, with readOnly: true so the client can react.
+        if (!gateReadOnly(res, server)) return
         res.json(cl.startSession(name.trim(), server, req.user))
     } catch (e) { res.status(500).json({ error: e.message }) }
 })

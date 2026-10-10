@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useRef, useEffect, useMemo, useCallback } from 'react'
 import { useStore } from '@/store'
+import { toast } from 'sonner'
 
 // ── Global /api fetch wrapper ─────────────────────────────────────────────────
 // 1. Attaches the IDE token to every same-origin /api call that lacks one (some
@@ -13,8 +14,24 @@ if (typeof window !== 'undefined' && !window.__tm1FetchWrapped) {
   const WRITE = new Set(['POST', 'PATCH', 'DELETE'])
   const EXCLUDED = ['/api/auth/', '/api/sessions/', '/api/assertions', '/api/deploy', '/api/git', '/api/servers', '/api/config', '/api/catalog', '/api/explorer', '/api/log', '/api/model-health', '/api/git-readiness', '/api/readiness', '/api/admin', '/api/files', '/api/sql', '/api/jobs', '/api/maintenance', '/api/users', '/api/notebooks', '/api/period', '/api/search', '/api/mcp', '/api/function-catalog', '/api/subset/preview', '/api/mdx']
   const tok = () => localStorage.getItem('tm1-token') ?? ''
+  // Read-only (PROD-posture) servers, from /api/servers (listServersWithFlags),
+  // cached once per page load. Used to skip the change-set prompt and to name
+  // the write-refused toast.
+  const readOnlyServers = new Set()
+  const loadReadOnlyServers = () => {
+    nativeFetch('/api/servers', { headers: { 'x-ide-token': tok() } })
+      .then(r => r.json().catch(() => null))
+      .then(list => {
+        if (!Array.isArray(list)) return
+        readOnlyServers.clear()
+        for (const s of list) if (s?.readOnly) readOnlyServers.add(String(s?.name ?? '').toLowerCase())
+      })
+      .catch(() => {})
+  }
+  loadReadOnlyServers()
   // First save with no open change set → prompt for a name and start one.
   const ensureChangeSet = async (server) => {
+    if (readOnlyServers.has(String(server ?? '').toLowerCase())) return
     try {
       const r = await nativeFetch(`/api/sessions/active?server=${enc(server)}`, { headers: { 'x-ide-token': tok() } })
       const s = await r.json().catch(() => null)
@@ -47,6 +64,15 @@ if (typeof window !== 'undefined' && !window.__tm1FetchWrapped) {
       init = { ...init, headers }
     }
     const r = await nativeFetch(input, init)
+    // A write refused on a read-only (PROD-posture) server — one toast, fixed id
+    // so it never duplicates while the user keeps trying.
+    if (r.status === 409 && url.startsWith('/api/')) {
+      r.clone().json().then(d => {
+        if (d?.readOnly && d?.server) {
+          toast.warning(`${d.server} is read-only — changes are only allowed through an approved deploy.`, { id: 'tm1-readonly-toast', duration: 8000 })
+        }
+      }).catch(() => {})
+    }
     if (r.status === 401 && url.startsWith('/api/')) {
       r.clone().json().then(d => {
         if (d?.needsServerLogin) window.dispatchEvent(new CustomEvent('tm1-server-login', { detail: { server: d.needsServerLogin, rejected: !!d.rejected } }))
