@@ -406,7 +406,7 @@ function loadUserConfig() {
         disabledDefaults: parsed.disabledDefaults ?? [],
       }
     }
-  } catch {}
+  } catch { /* malformed local data or storage unavailable — best-effort */ }
   return { customEntries: {}, disabledDefaults: [] }
 }
 
@@ -422,7 +422,7 @@ function saveUserConfig(customEntries, disabledDefaults) {
       customEntries,
       disabledDefaults,
     }))
-  } catch {}
+  } catch { /* malformed local data or storage unavailable — best-effort */ }
 }
 
 /**
@@ -490,6 +490,6 @@ export function importNamingDictionary(json) {
       saveUserConfig(parsed.customEntries, parsed.disabledDefaults)
       return true
     }
-  } catch {}
+  } catch { /* malformed local data or storage unavailable — best-effort */ }
   return false
 }

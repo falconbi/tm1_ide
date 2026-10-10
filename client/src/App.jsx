@@ -126,8 +126,8 @@ const [showCatalog, setShowCatalog]           = useState(false)
       if (!dragRef.current) return
       const { target, startX, startW } = dragRef.current
       const delta = e.clientX - startX
-      if (target === 'sidebar') setSidebarWidth(w => Math.min(500, Math.max(160, startW + delta)))
-      else setFindWidth(w => Math.min(600, Math.max(240, startW + delta)))
+      if (target === 'sidebar') setSidebarWidth(_w => Math.min(500, Math.max(160, startW + delta)))
+      else setFindWidth(_w => Math.min(600, Math.max(240, startW + delta)))
     }
     const onUp = () => { dragRef.current = null; document.body.style.cursor = '' }
     window.addEventListener('mousemove', onMove)
@@ -403,13 +403,14 @@ const [showCatalog, setShowCatalog]           = useState(false)
 
         </div>
         <ShortcutsHelp open={showShortcuts} onClose={() => setShowShortcuts(false)} />
-        <EditorPreferences
-          open={showPrefs}
-          onClose={() => setShowPrefs(false)}
-          onOpenPeriodBuilder={() => setShowPeriodBuilder(true)}
-          onOpenFormatSettings={() => setFormatSettingsOpen(true)}
-        />
-        <FormatSettings open={formatSettingsOpen} onClose={() => setFormatSettingsOpen(false)} />
+        {showPrefs && (
+          <EditorPreferences
+            onClose={() => setShowPrefs(false)}
+            onOpenPeriodBuilder={() => setShowPeriodBuilder(true)}
+            onOpenFormatSettings={() => setFormatSettingsOpen(true)}
+          />
+        )}
+        {formatSettingsOpen && <FormatSettings onClose={() => setFormatSettingsOpen(false)} />}
         {showUserMgmt && server && <UserManagement server={server} onClose={() => setShowUserMgmt(false)} />}
         {showCatalog && <CatalogAdmin server={server} onClose={() => setShowCatalog(false)} />}
         {showModelHealth && <ModelHealth server={server} onClose={() => setShowModelHealth(false)} />}

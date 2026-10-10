@@ -186,7 +186,7 @@ function SessionRow({ session, server, openTab, onClose }) {
                 {fmtDate(session.started_at)} · {session.entry_count} change{session.entry_count !== 1 ? 's' : ''}{session.user ? ` · ${session.user}` : ''}
               </div>
               {(session.commit_ref || session.deployed_target || session.close_tests) && (() => {
-                let t = null
+                let t
                 try { t = session.close_tests ? JSON.parse(session.close_tests) : null } catch { t = null }
                 return (
                   <div className="text-[10px] text-muted-foreground/60 mt-0.5">

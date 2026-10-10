@@ -76,7 +76,7 @@ function tokenizeLine(line) {
 
     if (/\d/.test(ch) || (ch === '.' && i + 1 < len && /\d/.test(line[i + 1]))) {
       let val = ''
-      while (i < len && /[\d.eE+\-]/.test(line[i])) val += line[i++]
+      while (i < len && /[\d.eE+-]/.test(line[i])) val += line[i++]
       tokens.push({ type: 'number', value: parseFloat(val), pos: start })
       continue
     }
@@ -165,29 +165,29 @@ const SIMULATED_FNS = {
   today:       ()                   => new Date().toISOString().slice(0, 10),
   date:        (_, y, m, d)         => `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`,
   time:        ()                   => new Date().toTimeString().slice(0, 8),
-  timst:       (_, d, fmt)          => new Date().toISOString(),
-  day:         (_, d)               => new Date().getDate(),
-  month:       (_, d)               => new Date().getMonth() + 1,
-  year:        (_, d)               => new Date().getFullYear(),
-  dayno:       (_, d)               => new Date().getDate(),
+  timst:       (_, _d, _fmt)         => new Date().toISOString(),
+  day:         (_, _d)               => new Date().getDate(),
+  month:       (_, _d)               => new Date().getMonth() + 1,
+  year:        (_, _d)               => new Date().getFullYear(),
+  dayno:       (_, _d)               => new Date().getDate(),
 
   // ── Process control (simulated) ──────────────────────────────────────────
   getprocessname: ()                => 'SimulatedProcess',
   getprocesserrorfiledirectory: ()   => '/tmp',
-  sleep:        (_, ms)             => null,
+  sleep:        (_, _ms)             => null,
 
   // ── Dimension / element (mock) ────────────────────────────────────────────
-  dimsiz:       (_, dim)            => 10,
-  dimnm:        (_, dim, idx)       => `Element_${idx ?? 1}`,
-  dimix:        (_, dim, el)        => 1,
-  ellev:        (_, dim, el)        => 0,
-  elcompn:      (_, dim, el)        => 3,
-  elcomp:       (_, dim, el, idx)   => `Child_${idx ?? 1}`,
-  elisanc:      (_, dim, a, c)      => 0,
-  elispar:      (_, dim, p, c)      => 0,
-  dtype:        (_, dim, el)        => 'N',
-  tabdim:       (_, cube, pos)      => 'Dimension',
-  elweight:     (_, dim, p, c)      => 1,
+  dimsiz:       (_, _dim)            => 10,
+  dimnm:        (_, dim, idx)        => `Element_${idx ?? 1}`,
+  dimix:        (_, _dim, _el)       => 1,
+  ellev:        (_, _dim, _el)       => 0,
+  elcompn:      (_, _dim, _el)       => 3,
+  elcomp:       (_, dim, el, idx)    => `Child_${idx ?? 1}`,
+  elisanc:      (_, _dim, _a, _c)    => 0,
+  elispar:      (_, _dim, _p, _c)    => 0,
+  dtype:        (_, _dim, _el)       => 'N',
+  tabdim:       (_, _cube, _pos)     => 'Dimension',
+  elweight:     (_, _dim, _p, _c)    => 1,
 
   // ── Cube operations (mock — return null sentinel) ────────────────────────
   cellgetn:     ()                  => null,
@@ -196,7 +196,7 @@ const SIMULATED_FNS = {
 
   // ── DB lookups (mock) ─────────────────────────────────────────────────────
   attrs:        (_, dim, el, attr)  => `Attr_${attr ?? 'x'}`,
-  attrn:        (_, dim, el, attr)  => 0,
+  attrn:        (_, _dim, _el, _attr) => 0,
   attrl:        (_, dim, el, attr)  => `Attr_${attr ?? 'x'}`,
 
   // ── Existence checks ──────────────────────────────────────────────────────
@@ -210,8 +210,8 @@ const SIMULATED_FNS = {
   undef:        ()                  => '',
 
   // ── PAW newer functions ──────────────────────────────────────────────────
-  newdateformatter: (_, fmt) => null,
-  parsedate:     (_, fmt, str)      => 0,
+  newdateformatter: (_, _fmt) => null,
+  parsedate:     (_, _fmt, _str)    => 0,
 }
 
 function evaluateExpression(stream, vars) {
@@ -585,10 +585,12 @@ function executeBlocks(blocks, ctx, bpLines, watches, initialVars = {}) {
         case 'quit':
           return { action: 'quit' }
         case 'error':
-          const errToks = tokenizeLine(stmt.errorMsg ?? '')
-          const errStream = new ParseStream(errToks)
-          const errMsg = evaluateExpression(errStream, vars)
-          return { action: 'error', message: String(errMsg ?? 'ProcessError') }
+          {
+            const errToks = tokenizeLine(stmt.errorMsg ?? '')
+            const errStream = new ParseStream(errToks)
+            const errMsg = evaluateExpression(errStream, vars)
+            return { action: 'error', message: String(errMsg ?? 'ProcessError') }
+          }
         case 'break':
           return { action: 'break' }
         case 'reject':

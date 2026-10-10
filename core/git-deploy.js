@@ -116,8 +116,17 @@ async function execute(target, { branch = 'dev', token, gitUser = gitIdentity.us
             return out
         }
         out.targetCommit = plan.Commit?.ID ?? null
-        if (incomingCommit && out.targetCommit && incomingCommit !== out.targetCommit) {
+        // Fail CLOSED: if we cannot tie the approved commit to what the pull will
+        // apply (either side missing), refuse — never deploy an unverifiable state.
+        if (!incomingCommit || !out.targetCommit) {
             out.executed = false
+            out.refused = true
+            out.error = `Refused: cannot verify the commit being deployed (approved-incoming ${incomingCommit ?? '(none)'}, plan commit ${out.targetCommit ?? '(no commit on this pull)'}). Approve a specific commit and retry.`
+            return out
+        }
+        if (incomingCommit !== out.targetCommit) {
+            out.executed = false
+            out.refused = true
             out.error = `Refused: the incoming commit moved (approved ${incomingCommit}, branch head is now ${out.targetCommit}). Approve the new commit before deploying.`
             return out
         }

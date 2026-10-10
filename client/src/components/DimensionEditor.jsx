@@ -2,7 +2,7 @@ import { useMemo, useState, useCallback, useRef, useEffect, forwardRef, useImper
 import {
   useElements, useElementsWithIndex, useEdges, useElementAttrValues, useHierarchies,
   useAddElement, useDeleteElement, useAddEdge, useDeleteEdge, useUpdateEdgeWeight,
-  useAttrGrid, useWriteElementAttribute, useCreateAttrDef, useDeleteAttrDef, useSubsets, useSubsetElements, useDimCubes,
+  useAttrGrid, useWriteElementAttribute, useCreateAttrDef, useDeleteAttrDef, useSubsets, useSubsetElements,
   useDimensionUsage, useCreateHierarchy, useBulkDimImport, useBulkAttrImport, useCreateDimension, usePreDeleteElementCheck,
 } from '@/hooks/useApi'
 import { AgGridReact } from 'ag-grid-react'
@@ -619,7 +619,7 @@ function AttrGrid({ tab, elements, edges, hierarchy }) {
           {p.value || <span className="opacity-30 italic">click to set</span>}
         </button>
       )} : {}),
-      headerComponent: p => (
+      headerComponent: _p => (
         <div className="flex items-center gap-1 w-full group">
           <span className="flex-1 truncate">{attr.Name}</span>
           <span className={cn('text-[8px] font-bold shrink-0',

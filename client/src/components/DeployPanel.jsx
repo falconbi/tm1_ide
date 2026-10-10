@@ -463,7 +463,7 @@ function RiskGroup({ title, items, defaultOpen }) {
 
 function Screen2({ servers, currentServer, target, setTarget, packageData,
                    riskData, riskRunning, driftData, driftRunning,
-                   notes, setNotes, username, onDeploy, deploying, baselineSeededAt }) {
+                   notes, setNotes, username, onDeploy, deploying, _baselineSeededAt }) {
   const otherServers = (servers ?? [])
     .map(s => (typeof s === 'string' ? s : s?.name))
     .filter(name => name && name !== currentServer)

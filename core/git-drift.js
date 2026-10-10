@@ -11,7 +11,7 @@
 const fs = require('fs')
 const os = require('os')
 const path = require('path')
-const { makeClient } = require('./adapter_registry')
+const { makeClient, isReadOnly } = require('./adapter_registry')
 const gitIdentity = require('./git-identity')
 const assertions = require('./assertions')
 const { git, authUrl, sanitize } = require('./git-repo')
@@ -122,6 +122,15 @@ async function revert(server, { branch = 'dev', token, gitUser = gitIdentity.use
 
 // Promote PROD's live state into dev: merge prod-live → dev, then the source server pulls it.
 async function promote(server, { token, gitUser = gitIdentity.user(), ideToken, source } = {}) {
+    // Promote merges prod-live into dev and the SOURCE pulls the merge — so the
+    // source is the server that gets written. Refuse a self-promote and a
+    // read-only source before anything touches a server.
+    if (source === server) {
+        return { ok: false, refused: true, error: `Refused: source and target are the same server ("${server}"). Promote merges prod-live into dev and pulls the merge — self-promote is a no-op.` }
+    }
+    if (source && isReadOnly(source)) {
+        return { ok: false, refused: true, error: `"${source}" is read-only (PROD posture) — no changes are allowed here.` }
+    }
     const c = makeClient(server, ideToken)
     const st = await c.post('GitStatus', { Username: gitUser, Password: token })
     const repoUrl = st?.URL

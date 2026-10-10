@@ -3,7 +3,7 @@ import { useCubes, useCubeDimensions, useDims, useDimAttributes, useAttributeVal
 import { useStore } from '@/store'
 import { registerTM1Theme } from '@/lib/tm1-functions'
 import { subsetApplyCallbacks } from '@/lib/subsetCallbacks'
-import { ArrowLeft, ArrowRight, Play, Loader2, Copy, X, Check, Code2, ExternalLink, HelpCircle, Save, Clock, Plus, Pencil, Trash2, ChevronDown, ChevronRight, GripHorizontal, WrapText, Sparkles } from 'lucide-react'
+import { ArrowLeft, Play, Loader2, Copy, X, Check, ExternalLink, HelpCircle, Save, Clock, Plus, Pencil, Trash2, ChevronDown, ChevronRight, GripHorizontal, WrapText, Sparkles } from 'lucide-react'
 import MonacoEditor from '@monaco-editor/react'
 import { cn } from '@/lib/utils'
 import { validateMDX } from '@/lib/mdx-validator'
@@ -19,7 +19,7 @@ function saveRecent(entry) {
   localStorage.setItem(RECENT_KEY, JSON.stringify(recent.slice(0, 30)))
 }
 function loadPersistedState(tabId) { try { return JSON.parse(localStorage.getItem(PERSIST_KEY(tabId)) || 'null') } catch { return null } }
-function savePersistedState(tabId, state) { try { localStorage.setItem(PERSIST_KEY(tabId), JSON.stringify(state)) } catch {} }
+function savePersistedState(tabId, state) { try { localStorage.setItem(PERSIST_KEY(tabId), JSON.stringify(state)) } catch { /* storage full/unavailable — skipping persistence is safe */ } }
 
 function formatMDX(mdx) {
   if (!mdx?.trim()) return mdx
@@ -55,7 +55,7 @@ function formatMDX(mdx) {
 }
 
 const WRAPPERS = {
-  'all':         (dim, inner) => `{TM1SUBSETALL([${dim}].[${dim}])}`,
+  'all':         (dim, _inner) => `{TM1SUBSETALL([${dim}].[${dim}])}`,
   'leaf':        (dim, inner) => `{TM1FILTERBYLEVEL(${inner}, 0)}`,
   'consol':      (dim, inner) => `{TM1FILTERBYLEVEL(${inner}, 1)}`,
   'sort-asc':    (dim, inner) => `{TM1SORT(${inner}, ASC)}`,
@@ -78,14 +78,14 @@ const WRAPPERS = {
   'numeric-attr':(dim, inner) => `{FILTER(${inner}, VAL([${dim}].[${dim}].CURRENTMEMBER.PROPERTIES("Attr") + "0") = 42)}`,
   'val-filter':  (dim, inner) => `{FILTER(${inner}, VAL([${dim}].[${dim}].CURRENTMEMBER.PROPERTIES("Attr") + "0") = 42)}`,
   'except-attr': (dim, inner) => `{EXCEPT(${inner}, {FILTER(${inner}, [${dim}].[Attr] = "Skip")})}`,
-  'children':    (dim, inner) => `{[${dim}].[Member].CHILDREN}`,
-  'descendants': (dim, inner) => `{TM1DRILLDOWNMEMBER({[${dim}].[Member]}, ALL, RECURSIVE)}`,
+  'children':    (dim, _inner) => `{[${dim}].[Member].CHILDREN}`,
+  'descendants': (dim, _inner) => `{TM1DRILLDOWNMEMBER({[${dim}].[Member]}, ALL, RECURSIVE)}`,
   'filter-desc': (dim, inner) => `{DESCENDANTS(${inner})}`,
-  'ancestors':   (dim, inner) => `{[${dim}].[Member].ANCESTORS}`,
-  'parent':      (dim, inner) => `{[${dim}].[Member].PARENT}`,
-  'range':       (dim, inner) => `{[${dim}].[Start]:[${dim}].[End]}`,
-  'last12':      (dim, inner) => `{LASTPERIODS(12, [${dim}].[CURRENTMEMBER])}`,
-  'next':        (dim, inner) => `{[${dim}].[Member].NEXTMEMBER}`,
+  'ancestors':   (dim, _inner) => `{[${dim}].[Member].ANCESTORS}`,
+  'parent':      (dim, _inner) => `{[${dim}].[Member].PARENT}`,
+  'range':       (dim, _inner) => `{[${dim}].[Start]:[${dim}].[End]}`,
+  'last12':      (dim, _inner) => `{LASTPERIODS(12, [${dim}].[CURRENTMEMBER])}`,
+  'next':        (dim, _inner) => `{[${dim}].[Member].NEXTMEMBER}`,
   'union':       (dim, inner) => `{UNION(${inner}, {[${dim}].[Member]})}`,
   'intersect':   (dim, inner) => `{INTERSECT(${inner}, {[${dim}].[Member]})}`,
   'except':      (dim, inner) => `{EXCEPT(${inner}, {[${dim}].[Member]})}`,
@@ -569,35 +569,6 @@ function WhereMemberPicker({ dim, server, fc, setFc }) {
   )
 }
 
-function DynamicFilter({ dim, fc, setFc }) {
-  const snippets = [
-    ['USERNAME',             'USERNAME'],
-    ['[Cube].(tuple)',       `[CubeName].([${dim}].[${dim}].CURRENTMEMBER, [Measures].[Measures].[Value])`],
-    ['ELEMENTCOMPONENTOF()', `ELEMENTCOMPONENTOF("}GroupName", USERNAME, 1)`],
-  ]
-  const expr = fc.dynamicExpr ?? `STRTOMEMBER("[${dim}].[${dim}].[" + USERNAME + "]")`
-
-  return (
-    <div className="space-y-1.5">
-      <div className="text-[9px] text-amber-400/80 flex items-center gap-1">
-        ⚡ Resolved at runtime — preview unavailable
-      </div>
-      <textarea value={expr}
-        onChange={e => setFc({ ...fc, dynamicExpr: e.target.value })}
-        rows={3}
-        className="w-full font-mono text-[10px] px-1.5 py-1 border rounded bg-background resize-none" />
-      <div className="flex flex-wrap gap-1">
-        {snippets.map(([label, val]) => (
-          <button key={label} onClick={() => setFc({ ...fc, dynamicExpr: expr + ' + ' + val })}
-            className="text-[9px] px-1.5 py-0.5 rounded border border-border hover:bg-muted font-mono">
-            + {label}
-          </button>
-        ))}
-      </div>
-    </div>
-  )
-}
-
 function FilterBuilder({ dim, server, config, onChange, returnTabId }) {
   const { openTab } = useStore()
   const [advanced, setAdvanced] = useState(false)
@@ -681,7 +652,7 @@ function FilterBuilder({ dim, server, config, onChange, returnTabId }) {
   )
 }
 
-export default function GuidedMDXBuilder({ tab, server: serverProp, onSwitchToRaw }) {
+export default function GuidedMDXBuilder({ tab, server: serverProp, _onSwitchToRaw }) {
   const server = serverProp || tab?.server
   const mode = tab?.type === 'guidedmdxsubset' ? 'subset' : 'view'
   const isSubsetMode = mode === 'subset'
@@ -695,7 +666,6 @@ export default function GuidedMDXBuilder({ tab, server: serverProp, onSwitchToRa
   const [currentMDX, setCurrentMDX] = useState('')
   const [buildHistory, setBuildHistory] = useState([])
   const [expandedCat, setExpandedCat] = useState(null)
-  const [hoveredPattern, setHoveredPattern] = useState(null)
   const [helpOpen, setHelpOpen] = useState(false)
   const [helpSearch, setHelpSearch] = useState('')
   const [helpDetail, setHelpDetail] = useState(null)
@@ -743,7 +713,7 @@ export default function GuidedMDXBuilder({ tab, server: serverProp, onSwitchToRa
     setStep(1)
     setShowRecent(false)
   }
-  const [selectedAttr, setSelectedAttr] = useState('')
+  const [selectedAttr] = useState('')
   const [previewMembers, setPreviewMembers] = useState(null)
   const [previewResult, setPreviewResult] = useState(init.previewResult ?? null)
   const [previewError, setPreviewError] = useState(init.previewError ?? null)
@@ -790,13 +760,12 @@ export default function GuidedMDXBuilder({ tab, server: serverProp, onSwitchToRa
   const [selectedMeasures, setSelectedMeasures] = useState(init.selectedMeasures ?? [])
   const [measuresMode, setMeasuresMode]         = useState(init.measuresMode ?? 'select')
   const [measuresSubset, setMeasuresSubset]     = useState(init.measuresSubset ?? '')
-  const [intent, setIntent] = useState('Freeform')
-  const [secondCube, setSecondCube] = useState(null)
-  const [timeDim, setTimeDim] = useState(null)
-  const [timeDim2, setTimeDim2] = useState(null)
-  const [timeExpr1, setTimeExpr1] = useState('')
-  const [timeExpr2, setTimeExpr2] = useState('')
-  const [timeShowPatterns, setTimeShowPatterns] = useState(false)
+  const [intent] = useState('Freeform')
+  const [secondCube] = useState(null)
+  const [timeDim] = useState(null)
+  const [timeDim2] = useState(null)
+  const [timeExpr1] = useState('')
+  const [timeExpr2] = useState('')
 
   // Helper: pick a cube button click also runs intent-specific setup
   const handleCubePick = (cube) => {
@@ -847,7 +816,7 @@ export default function GuidedMDXBuilder({ tab, server: serverProp, onSwitchToRa
   const { data: measureSubsets  = [] } = useSubsets(server, measuresDim)
   const { data: dims = [] } = useDims(server)
   const { data: dimAttrs = [] } = useDimAttributes(server, selectedDim)
-  const { data: attrValues = { values: [] } } = useAttributeValues(server, selectedDim, selectedAttr)
+  useAttributeValues(server, selectedDim, selectedAttr)
   const { openTab, dark } = useStore()
   const editorRef = useRef(null)
   const monacoRef = useRef(null)
@@ -1035,7 +1004,7 @@ export default function GuidedMDXBuilder({ tab, server: serverProp, onSwitchToRa
     } catch (e) { setCurrentMDX(`# ERROR: ${e.message}`) }
   }
 
-  const copyMDX = async () => { if (generatedMDX) try { await navigator.clipboard.writeText(generatedMDX) } catch {} }
+  const copyMDX = async () => { if (generatedMDX) try { await navigator.clipboard.writeText(generatedMDX) } catch { /* clipboard denied — nothing to surface */ } }
 
   const toggleFormat = () => {
     let mdx = currentMDX
@@ -1046,7 +1015,7 @@ export default function GuidedMDXBuilder({ tab, server: serverProp, onSwitchToRa
       mdx = mdx.replace(/\s+/g, ' ').trim()
       mdx = mdx.replace(/\{FILTER\(([^,]+),\s*([^}]+)\)\}/g, (_, inner, cond) =>
         `{\n  FILTER(\n    ${inner.trim()},\n    ${cond.trim()}\n  )\n}`)
-      mdx = mdx.replace(/\,\s*\)\}$/g, '\n  )\n}')
+      mdx = mdx.replace(/,\s*\)\}$/g, '\n  )\n}')
       setIsFormatted(true)
     }
     setCurrentMDX(mdx)
@@ -1066,7 +1035,7 @@ export default function GuidedMDXBuilder({ tab, server: serverProp, onSwitchToRa
       ? `VAL([${selectedDim}].[${selectedDim}].CURRENTMEMBER.PROPERTIES("${attrKey}") + "0") = 0`
       : `[${selectedDim}].[${selectedDim}].CURRENTMEMBER.PROPERTIES("${attrKey}") = "Val"`
     if (/FILTER\(/.test(currentMDX)) {
-      setCurrentMDX(prev => prev.replace(/,\s*[^\}]+(?=\)\s*\}$)/s, `, ${newExpr}`))
+      setCurrentMDX(prev => prev.replace(/,\s*[^}]+(?=\)\s*\}$)/s, `, ${newExpr}`))
     } else {
       setCurrentMDX(prev => `{FILTER(${prev.replace(/^\{(.+)\}$/s, '$1')}, ${newExpr})}`)
     }

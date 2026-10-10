@@ -134,6 +134,7 @@ Every model is built with two kinds of checks, stored in the model
 1. **Setup** — GitInit DEV to a repo; build the model (house standards: Default view per cube, Default subset per dim; behaviour + control checks built in).
 2. **First deploy (blank → blank target)** — gate on DEV (readiness + behaviour + control) → push → **first pull on PROD is a full overwrite** (nothing to lose on blank; readiness first-pull safety analysis confirms) → reconcile the change set's deletes/values → **control checks on PROD** → baseline established.
 3. **Second deploy** — change set → gate on DEV → push (one commit, only the change) → **pull plan shows only the change** (baseline exists) → execute → control on PROD → reconcile scoped to the change set's deletes / attribute dims.
+4. **Mark PROD read-only last** — a server must be linked and first-pulled **while writable**: `init` and `first-pull` refuse on read-only servers. Mark it read-only only after the first pull (or temporarily remove it from `readOnlyServers`, set it up, then add it back).
 
 ## Lifecycle — template start
 
@@ -196,6 +197,7 @@ wizard assumes the repo is already set up, so a new user is stuck with no clue, 
 1. **Choose the GitHub repo** — create one, or paste its address.
 2. **Link this server** — say whether it is DEV or PROD (its deployment).
 3. **Add a GitHub token** — so the server can read and write the repo.
+4. **Defer read-only** — link and run the first pull while the server is still writable, then mark PROD read-only (`init` and `first-pull` refuse on read-only servers).
 
 Link **both** servers to the **same** repo — one as DEV, one as PROD. After that, the normal process works.
 

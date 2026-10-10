@@ -434,7 +434,7 @@ export default function HierarchyGrid({
 
     const persistWidths = useCallback(() => {
         if (!storageKey) return
-        try { localStorage.setItem(storageKey, JSON.stringify(savedWidthsRef.current)) } catch {}
+        try { localStorage.setItem(storageKey, JSON.stringify(savedWidthsRef.current)) } catch { /* storage denied — widths just don't persist */ }
     }, [storageKey])
 
     const onColumnResized = useCallback((e) => {
@@ -550,7 +550,7 @@ export default function HierarchyGrid({
 
     const handleResetWidths = useCallback(() => {
         savedWidthsRef.current = {}
-        if (storageKey) { try { localStorage.removeItem(storageKey) } catch {} }
+        if (storageKey) { try { localStorage.removeItem(storageKey) } catch { /* storage denied — old widths stay; they'll be rewritten next save */ } }
         gridRef.current?.api?.resetColumnWidths?.()
         gridRef.current?.api?.autoSizeAllColumns?.()
     }, [storageKey])
