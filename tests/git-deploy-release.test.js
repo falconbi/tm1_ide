@@ -38,7 +38,7 @@ function fakeClient() {
   return {
     async post(route) {
       if (route === 'GitStatus') return { URL: ctx.bare, DeployedCommit: { ID: 'x' } }
-      if (route === 'GitPull') return { ID: 'PLAN1', Commit: { ID: ctx.releaseCommit }, Operations: ctx.ops }
+      if (route === 'GitPull') return { ID: 'PLAN1', Commit: { ID: ctx.planCommit ?? ctx.releaseCommit }, Operations: ctx.ops }
       return {}
     },
     async get() { return {} }, async patch() { return {} }, async delete() { return {} },
@@ -52,8 +52,14 @@ stub('core/git-lock', { acquire: async () => { acquired++; return { by: 't', at:
 let baseCommit = null
 stub('core/git-state', { lastDeployed: () => (baseCommit ? { lastDeployedCommit: baseCommit } : null), recordDeploy: async () => ({ ok: true }), load: () => ({}), FILE: '' })
 stub('core/git-reconcile', { reconcile: async () => ({ restored: [], skipped: [], errors: [] }) })
-// Approval exists for the release commit, linked to the change set.
-stub('core/git-approvals', { find: async () => ({ target: 'TG1', commit: ctx?.releaseCommit, approver: 'u', approved_at: 'now', session: ctx?.sessionId }), append: async (r) => r, sameCommit: (a, b) => a === b })
+// Approval exists for the release commit, linked to the change set. Keep the REAL
+// sameCommit (the thing under test); stub only find/append.
+const realApprovals = require(resolve('core/git-approvals'))
+stub('core/git-approvals', {
+  ...realApprovals,
+  find: async () => ({ target: 'TG1', commit: ctx?.releaseCommit, approver: 'u', approved_at: 'now', session: ctx?.sessionId }),
+  append: async (r) => r,
+})
 
 const { execute } = require(path.join(__dirname, '..', 'core', 'git-deploy'))
 
@@ -92,5 +98,33 @@ test('release deploy proceeds when the plan contains only the release objects', 
     assert.equal(out.release, true)
     assert.equal(out.releaseCommit, r.releaseCommit)
     assert.equal(released, 1)
+  } finally { fs.rmSync(r.bare, { recursive: true, force: true }); fs.rmSync(r.w, { recursive: true, force: true }) }
+})
+
+test('a full approved ID matches a short plan ID (sameCommit) → deploys', async () => {
+  const r = repo()
+  try {
+    baseCommit = r.base
+    const s = cl.startSession('Rel-short', 'DEV1', 'admin')
+    cl.setSessionCommit(s.id, r.releaseCommit)
+    cl.setSessionRelease(s.id, r.releaseCommit, 'TG1')   // stored full
+    // The pull plan reports the SHORT id — same commit, not a move.
+    ctx = { bare: r.bare, releaseCommit: r.releaseCommit, planCommit: r.releaseCommit.slice(0, 8), sessionId: s.id, ops: ["Update Cubes('A')"] }
+    const out = await execute('TG1', { session: s.id, token: 'x', gitUser: 't' })
+    assert.equal(out.executed, true, JSON.stringify(out))
+    assert.ok(!out.refused)
+  } finally { fs.rmSync(r.bare, { recursive: true, force: true }); fs.rmSync(r.w, { recursive: true, force: true }) }
+})
+
+test('a genuinely different plan commit is refused as moved', async () => {
+  const r = repo()
+  try {
+    baseCommit = r.base
+    const s = cl.startSession('Rel-moved', 'DEV1', 'admin')
+    cl.setSessionRelease(s.id, r.releaseCommit, 'TG1')
+    ctx = { bare: r.bare, releaseCommit: r.releaseCommit, planCommit: '0000000000000000000000000000000000000000', sessionId: s.id, ops: [] }
+    const out = await execute('TG1', { session: s.id, token: 'x', gitUser: 't' })
+    assert.equal(out.refused, true)
+    assert.match(out.error, /commit moved/i)
   } finally { fs.rmSync(r.bare, { recursive: true, force: true }); fs.rmSync(r.w, { recursive: true, force: true }) }
 })
