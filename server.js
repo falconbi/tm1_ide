@@ -3183,13 +3183,12 @@ app.post('/api/git/setup/first-pull', async (req, res) => {
     try {
         const { server, branch = 'dev', confirm } = req.body
         if (!server) return res.status(400).json({ error: 'server required' })
-        const expected = `I understand this overwrites ${server}`
-        if (String(confirm ?? '').trim() !== expected) return res.status(400).json({ error: `Type exactly: ${expected}` })
-        const c = makeClient(server, req.ideToken)
-        const plan = await c.post('GitPull', { Branch: branch, ExecutionMode: 'SingleCommit', Force: false, Username: _GI().user(), Password: _GITOK() })
-        const n = (plan.Operations ?? []).length
-        await c.post(`GitPlans('${encodeURIComponent(plan.ID)}')/tm1.Execute`, {})
-        res.json({ ok: true, overwritten: n, note: `First pull applied — every object on ${server} was replaced by the repo state (${n} operations).` })
+        if (!gateReadOnly(res, server)) return
+        const { firstPull } = require('./core/git-setup')
+        const r = await firstPull(server, { branch, confirm, gitUser: _GI().user(), token: _GITOK(), ideToken: req.ideToken })
+        if (r.refused) return res.status(409).json({ error: r.error })
+        if (r.ok === false) return res.status(400).json({ error: r.error })
+        res.json(r)
     } catch (e) { res.status(500).json({ error: e.response?.data?.error?.message ?? e.message }) }
 })
 
