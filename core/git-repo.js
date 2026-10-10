@@ -13,7 +13,9 @@ function authUrl(url, user, token) {
     return url.replace(/^https:\/\//i, `https://${user}:${token}@`)
 }
 function sanitize(text, token) {
-    return token ? String(text ?? '').replace(token, '***') : String(text ?? '')
+    // Mask EVERY occurrence, not just the first — a URL or error can carry the
+    // token more than once. .split().join() replaces all; .replace(token, …) only one.
+    return token ? String(text ?? '').split(token).join('***') : String(text ?? '')
 }
 
 module.exports = { git, authUrl, sanitize }
