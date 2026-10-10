@@ -3091,7 +3091,11 @@ app.post('/api/git/drift/promote', async (req, res) => {
         const { promote } = require('./core/git-drift')
         const { target, source } = req.body
         if (!target) return res.status(400).json({ error: 'target required' })
-        res.json(await promote(target, { token: process.env.TM1_GIT_TOKEN, ideToken: req.ideToken, source }))
+        // The source is the server that pulls the merged state — so it must be writable.
+        if (source && !gateReadOnly(res, source)) return
+        const r = await promote(target, { token: process.env.TM1_GIT_TOKEN, ideToken: req.ideToken, source })
+        if (r.refused) return res.status(409).json({ error: r.error })
+        res.json(r)
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 // Deploy lock — is anything deploying to a target right now?
