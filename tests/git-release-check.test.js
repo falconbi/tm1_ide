@@ -25,7 +25,7 @@ function repo({ processBody = '' } = {}) {
   fs.writeFileSync(path.join(w, 'processes', 'P.ti'), `#region Prolog\n${processBody}\n#endregion\n#region Metadata\n#endregion\n#region Data\n#endregion\n#region Epilog\n#endregion\n`)
   g(w, 'add', '-A'); g(w, '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '-m', 'release')
   const releaseCommit = g(w, 'rev-parse', 'HEAD').trim()
-  g(w, 'push', '-q', 'origin', 'HEAD:refs/heads/release/TG1')
+  g(w, 'push', '-q', 'origin', 'HEAD:refs/heads/release-TG1')
   return { bare, base, releaseCommit, w }
 }
 

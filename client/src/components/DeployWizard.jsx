@@ -145,8 +145,8 @@ export default function DeployWizard({ server, onClose, onOpenTests }) {
     if (d) { setRelease(d); setPrep(null); setApproval(null) }
   }
   const doPrepare = async () => {
-    const d = await run('prepare', { source: server, target, session: sessionId, branch: `release/${target}` }, '/api/deploy/git/prepare')
-    if (d) setPrep(d)
+    const d = await run('prepare', { source: server, target, session: sessionId, branch: `release-${target}` }, '/api/deploy/git/prepare')
+    if (d) setPrep(d); else setPrep(null)   // a failed plan clears the preview → Approve stays blocked
   }
   const doApprove = async () => {
     const commit = release?.releaseCommit
@@ -423,9 +423,10 @@ export default function DeployWizard({ server, onClose, onOpenTests }) {
                     )}
                     {prep.plan && (prep.planByType?.Skip ?? 0) > 0 && <p className="text-[11px] text-muted-foreground">{prep.planByType.Skip} objects are unchanged — nothing to do for them.</p>}
                     {changed.length === 0 && prep.plan && <p className="text-xs">Nothing would change — the target already matches the release.</p>}
+                    {prep.error && <p className="text-xs text-red-600">The pull plan failed — cannot continue to Approve. {prep.error}</p>}
                     <div className="flex items-center gap-2 pt-1">
                       <button onClick={() => setStep(4)} className={textBtn}>Back to Build release</button>
-                      <button onClick={() => setStep(6)} disabled={!prep.ready} className={primaryBtn}>Continue to Approve</button>
+                      <button onClick={() => setStep(6)} disabled={!prep.ready || !!prep.error} className={primaryBtn} title={prep.error ? 'The pull plan failed — fix it, then re-show what will change' : ''}>Continue to Approve</button>
                     </div>
                   </div>
                 )}

@@ -102,7 +102,7 @@ test('release contains only the change set\'s objects; deleted object removed; e
     const vw = W()
     try {
       g(vw, 'init', '-q'); g(vw, 'remote', 'add', 'origin', repo.bare)
-      g(vw, 'fetch', '-q', 'origin', 'refs/heads/release/TG1:rel')
+      g(vw, 'fetch', '-q', 'origin', 'refs/heads/release-TG1:rel')
       const parent = g(vw, 'rev-parse', 'rel^').trim().slice(0, 7)
       const baseShort = repo.base.slice(0, 7)
       assert.equal(parent, baseShort, 'release parents to the recorded base')
@@ -141,17 +141,17 @@ test('build refuses when the change set has not been pushed', async () => {
   } finally { fs.rmSync(repo.bare, { recursive: true, force: true }); fs.rmSync(repo.w, { recursive: true, force: true }) }
 })
 
-test('build refuses when release/<target> has moved (someone else released)', async () => {
+test('build refuses when release-<target> has moved (someone else released)', async () => {
   const repo = setupRepo()
   try {
     fakeBase = repo.base
-    // Move release/TG1 to a different commit.
+    // Move release-TG1 to a different commit.
     const mv = W()
     try {
       g(mv, 'init', '-q'); g(mv, 'remote', 'add', 'origin', repo.bare)
       g(mv, 'fetch', '-q', 'origin', 'dev:dev')
-      g(mv, 'checkout', '-q', '-b', 'release/TG1', 'dev')
-      g(mv, 'push', '-q', 'origin', 'release/TG1:release/TG1')
+      g(mv, 'checkout', '-q', '-b', 'release-TG1', 'dev')
+      g(mv, 'push', '-q', 'origin', 'release-TG1:release-TG1')
     } finally { fs.rmSync(mv, { recursive: true, force: true }) }
 
     const a = cl.startSession('Moved release', 'DEV1', 'admin')

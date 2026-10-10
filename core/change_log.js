@@ -85,7 +85,7 @@ function resumeSession(id) {
 function setSessionCommit(id, commit) {
     db.prepare(`UPDATE sessions SET commit_ref = ? WHERE id = ?`).run(commit ?? null, id)
 }
-// Link a change set to its build release commit (branch release/<target>).
+// Link a change set to its build release commit (branch release-<target>).
 function setSessionRelease(id, commit, target) {
     db.prepare(`UPDATE sessions SET release_commit = ?, release_target = ? WHERE id = ?`).run(commit ?? null, target ?? null, id)
     return db.prepare(`SELECT * FROM sessions WHERE id = ?`).get(id)

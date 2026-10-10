@@ -1,7 +1,7 @@
 'use strict'
 
 // ── Change-set-scoped releases ───────────────────────────────────────────────
-// A release is a hand-built commit on branch release/<target>: the TARGET's last
+// A release is a hand-built commit on branch release-<target>: the TARGET's last
 // deployed commit (the IDE-recorded one, never TM1's DeployedCommit) plus ONLY
 // the files whose objects this change set touched. Deploying it ships exactly
 // that change set — nothing else that happens to be on DEV rides along.
@@ -113,11 +113,11 @@ async function buildRelease(changeSet, target, { token, gitUser = gitIdentity.us
         git(work, 'remote', 'add', 'origin', authUrl(repoUrl, gitUser, token))
         git(work, 'fetch', '-q', 'origin', '+refs/heads/*:refs/remotes/origin/*')
 
-        const relRef = `refs/remotes/origin/release/${target}`
+        const relRef = `refs/remotes/origin/release-${target}`
         let existing = null
         try { existing = (git(work, 'rev-parse', '--verify', '--quiet', relRef).trim() || null) } catch { existing = null }
         if (existing && existing !== base) {
-            return { ok: false, refused: true, error: `release/${target} has moved to ${existing} — someone else released since. Rebuild against the current base.` }
+            return { ok: false, refused: true, error: `release-${target} has moved to ${existing} — someone else released since. Rebuild against the current base.` }
         }
 
         const changed = changedFilesBetween(work, base, devCommit)
@@ -168,7 +168,7 @@ async function buildRelease(changeSet, target, { token, gitUser = gitIdentity.us
         git(work, '-c', `user.name=${gitUser}`, '-c', `user.email=${gitIdentity.email()}`, 'commit', '-q', '-m', `Release ${changeSet?.name ?? 'change set'} → ${target}`)
         const releaseCommit = git(work, 'rev-parse', 'HEAD').trim()
 
-        git(work, 'push', '-q', 'origin', `HEAD:refs/heads/release/${target}`)
+        git(work, 'push', '-q', 'origin', `HEAD:refs/heads/release-${target}`)
 
         return {
             ok: true, target, base, devCommit, releaseCommit,
