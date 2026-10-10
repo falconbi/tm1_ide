@@ -10,6 +10,10 @@ Every save in the IDE is logged to a **Change Set** (named work session). The pi
 
 Baselines are **append-only per server** (`.tm1baseline/<server>/<iso>.json` + a `HEAD` pointer), stamped with the change-log position so a release windows on change-set id, not a timestamp. A mistimed seed is recoverable by moving HEAD back to an earlier snapshot.
 
+> **Set up a server (init + first pull) before marking it read-only** — both now refuse
+> on read-only servers. For a new PROD: link it with `init`, run the first pull, then
+> mark it read-only; marking it read-only first locks you out of setting it up.
+
 ### Flow
 
 ```
