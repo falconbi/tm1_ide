@@ -106,8 +106,17 @@ export default function DeployWizard({ server, onClose, onOpenTests }) {
     setBusy(action); setError(null)
     try {
       const r = await fetch(route, { method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeader() }, body: JSON.stringify(body) })
-      const d = await r.json()
-      if (!r.ok) throw new Error(d.error || r.statusText)
+      const txt = await r.text()
+      let d = null
+      try { d = txt ? JSON.parse(txt) : null } catch { d = null }
+      if (d === null) {
+        // A non-JSON body is almost always the SPA/404 page — the backend is
+        // out of date or the route is missing. Say that, not "Unexpected token '<'".
+        throw new Error(/^\s*</.test(txt)
+          ? `${route} returned a web page, not JSON (HTTP ${r.status}) — the backend is probably out of date. Restart the server and try again.`
+          : `Request failed (${r.status} ${r.statusText || ''})`.trim())
+      }
+      if (!r.ok) throw new Error(d.error || `Request failed (${r.status})`)
       return d
     } catch (e) { setError(e.message); return null }
     finally { setBusy('') }
