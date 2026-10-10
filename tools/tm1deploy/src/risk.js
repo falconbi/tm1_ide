@@ -30,9 +30,9 @@ async function checkRulesSyntax(obj, packageDir, client, packaged = { dimensions
     const cubeDims = (cube.Dimensions ?? []).map(d => d?.Name ?? d)
     const dimsChanging = cubeDims.some(d => packaged.dimensions.has(d))
 
-    const esc = s => s.replace(/'/g, "''")
+    const { odataKey } = require('../../../core/odata-key')
     try {
-        const result = await client.post(`Cubes('${esc(obj.name)}')/tm1.CheckRules`, { Rules: rulesText })
+        const result = await client.post(`Cubes('${odataKey(obj.name)}')/tm1.CheckRules`, { Rules: rulesText })
         const errors = result?.value ?? []
         if (errors.length === 0) return [item('INFO', 'syntax', 'rules', obj.name, 'Rules syntax OK')]
         return errors.map(e => {

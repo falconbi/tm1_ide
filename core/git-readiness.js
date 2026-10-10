@@ -12,8 +12,7 @@
 
 const { makeClient } = require('./adapter_registry')
 const gitIdentity = require('./git-identity')
-
-const esc = s => String(s).replace(/'/g, "''")
+const { odataKey } = require('./odata-key')
 
 // Names TM1 Git is known not to round-trip (check #3): a comma in a subset/view name.
 function roundTripProblem(name) {
@@ -52,14 +51,14 @@ async function scan(server, opts = {}) {
     for (const dim of dims) {
         const els = new Set()
         try {
-            const r = await c.get(`Dimensions('${esc(dim)}')/Hierarchies('${esc(dim)}')/Elements?$select=Name`)
+            const r = await c.get(`Dimensions('${odataKey(dim)}')/Hierarchies('${odataKey(dim)}')/Elements?$select=Name`)
             ;(r.value ?? []).forEach(e => els.add(e.Name))
         } catch { /* hierarchy may not match dim name */ }
         dimElements.set(dim, els)
 
         const subs = new Set()
         try {
-            const r = await c.get(`Dimensions('${esc(dim)}')/Hierarchies('${esc(dim)}')/Subsets?$select=Name,Expression`)
+            const r = await c.get(`Dimensions('${odataKey(dim)}')/Hierarchies('${odataKey(dim)}')/Subsets?$select=Name,Expression`)
             ;(r.value ?? []).forEach(s => subs.add({ name: s.Name, expression: s.Expression ?? null }))
         } catch { /* none */ }
         dimSubsets.set(dim, subs)
@@ -79,7 +78,7 @@ async function scan(server, opts = {}) {
                 continue
             }
             try {
-                const r = await c.get(`Dimensions('${esc(dim)}')/Hierarchies('${esc(dim)}')/Subsets('${esc(s.name)}')/Elements?$select=Name`)
+                const r = await c.get(`Dimensions('${odataKey(dim)}')/Hierarchies('${odataKey(dim)}')/Subsets('${odataKey(s.name)}')/Elements?$select=Name`)
                 for (const e of r.value ?? []) if (!els.has(e.Name)) out.staleSubsetElements.push({ dim, subset: s.name, element: e.Name })
             } catch { /* ignore */ }
         }
@@ -89,16 +88,16 @@ async function scan(server, opts = {}) {
     const cubes = ((await c.get('Cubes', { '$select': 'Name' })).value ?? []).map(x => x.Name)
     for (const cube of cubes) {
         let views = []
-        try { views = ((await c.get(`Cubes('${esc(cube)}')/Views?$select=Name`)).value ?? []).map(v => v.Name) } catch { continue }
+        try { views = ((await c.get(`Cubes('${odataKey(cube)}')/Views?$select=Name`)).value ?? []).map(v => v.Name) } catch { continue }
         for (const view of views) {
             const bad = roundTripProblem(view)
             if (bad) out.roundTripNames.push({ kind: 'view', name: view, cube, problem: bad })
             let rows = [], cols = [], titles = []
             try {
                 const [rr, cc, tt] = await Promise.all([
-                    c.get(`Cubes('${esc(cube)}')/Views('${esc(view)}')/Rows?$expand=Subset`),
-                    c.get(`Cubes('${esc(cube)}')/Views('${esc(view)}')/Columns?$expand=Subset`),
-                    c.get(`Cubes('${esc(cube)}')/Views('${esc(view)}')/Titles?$expand=Subset,Selected`),
+                    c.get(`Cubes('${odataKey(cube)}')/Views('${odataKey(view)}')/Rows?$expand=Subset`),
+                    c.get(`Cubes('${odataKey(cube)}')/Views('${odataKey(view)}')/Columns?$expand=Subset`),
+                    c.get(`Cubes('${odataKey(cube)}')/Views('${odataKey(view)}')/Titles?$expand=Subset,Selected`),
                 ])
                 rows = rr.value ?? []; cols = cc.value ?? []; titles = tt.value ?? []
             } catch { continue }
@@ -204,7 +203,7 @@ async function firstPullAnalysis(server, opts = {}) {
             let repoEls = []
             try { repoEls = JSON.parse(fs.readFileSync(path.join(repoDir, 'dimensions', dim, `${dim}.hierarchies`, `${dim}.json`))).Elements.map(e => e.Name) } catch { continue }
             let targetEls = []
-            try { targetEls = (await c.get(`Dimensions('${esc(dim)}')/Hierarchies('${esc(dim)}')/Elements?$select=Name`)).value.map(e => e.Name) } catch { continue }
+            try { targetEls = (await c.get(`Dimensions('${odataKey(dim)}')/Hierarchies('${odataKey(dim)}')/Elements?$select=Name`)).value.map(e => e.Name) } catch { continue }
             const missing = targetEls.filter(e => !repoEls.includes(e))
             if (missing.length) lost.push({ dim, count: missing.length, sample: missing.slice(0, 8) })
         }

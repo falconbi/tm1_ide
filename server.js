@@ -13,6 +13,7 @@ const { createSession, createDirectSession, createLocalSession, attachPawSession
 const cl = require('./core/change_log')
 // Persisted Git token (never returned to the client) — env wins, else the secrets file.
 const gitSecrets = require('./core/git-secrets')
+const { odataKey } = require('./core/odata-key')
 if (!process.env.TM1_GIT_TOKEN && gitSecrets.getToken()) process.env.TM1_GIT_TOKEN = gitSecrets.getToken()
 const lensStore = require('./core/lens_store')
 const lensBridge = require('./core/lens_bridge')
@@ -483,12 +484,11 @@ app.post('/api/log/rollback', async (req, res) => {
 
         const before = entry.before_state
         const client = makeClient(server, req.ideToken)
-        const enc    = encodeURIComponent
 
         if (entry.object_type === 'rules') {
-            await client.patch(`Cubes('${enc(entry.object_name)}')`, { Rules: before.text ?? '' })
+            await client.patch(`Cubes('${odataKey(entry.object_name)}')`, { Rules: before.text ?? '' })
         } else if (entry.object_type === 'process') {
-            await client.patch(`Processes('${enc(entry.object_name)}')`, {
+            await client.patch(`Processes('${odataKey(entry.object_name)}')`, {
                 PrologProcedure:   before.prolog   ?? '',
                 MetadataProcedure: before.metadata ?? '',
                 DataProcedure:     before.data     ?? '',
@@ -728,7 +728,7 @@ app.post('/api/rules', async (req, res) => {
         const client = makeClient(req.query.server, req.ideToken)
         const current = await client.getCube(req.query.cube).catch(() => null)
         const beforeState = { text: current?.Rules ?? '' }
-        await client.patch(`Cubes('${req.query.cube}')`, { Rules: req.body.rules })
+        await client.patch(`Cubes('${odataKey(req.query.cube)}')`, { Rules: req.body.rules })
         const afterState  = { text: req.body.rules }
         const { hasSession } = cl.writeLog({ server: req.query.server, action: 'RULES_SAVED', objectType: 'rules', objectName: req.query.cube, beforeState, afterState, user: req.user })
         res.json({ ok: true, noSession: !hasSession })
@@ -741,8 +741,7 @@ app.post('/api/rules/check', async (req, res) => {
     try {
         const { server, cube, rules } = req.body
         const client = makeClient(server, req.ideToken)
-        const enc = encodeURIComponent
-        const result = await client.post(`Cubes('${enc(cube)}')/tm1.CheckRules`, { Rules: rules })
+        const result = await client.post(`Cubes('${odataKey(cube)}')/tm1.CheckRules`, { Rules: rules })
         res.json({ errors: result.value ?? [] })
     } catch (e) {
         const detail = e.response?.data?.error?.message ?? e.message
@@ -802,7 +801,7 @@ app.post('/api/process/debug', async (req, res) => {
     // ── 1. Fetch source process metadata ─────────────────────────────────────
     let proc
     try {
-        proc = await client.get(`Processes('${encodeURIComponent(name)}')`)
+        proc = await client.get(`Processes('${odataKey(name)}')`)
     } catch (e) {
         return res.status(500).json({ error: `Failed to create debug process: ${e.message}` })
     }
@@ -995,7 +994,7 @@ app.get('/api/processes/search', async (req, res) => {
 app.get('/api/process/log', async (req, res) => {
     try {
         const client = makeClient(req.query.server, req.ideToken)
-        const result = await client.get(`Processes('${encodeURIComponent(req.query.name)}')/ErrorLog`)
+        const result = await client.get(`Processes('${odataKey(req.query.name)}')/ErrorLog`)
         const log = typeof result === 'string' ? result : (result?.value ?? '')
         res.json({ log })
     } catch (e) {
@@ -1037,7 +1036,7 @@ app.post('/api/process', async (req, res) => {
             body.MetadataProcedure = body.MetaDataProcedure
             delete body.MetaDataProcedure
         }
-        await client.patch(`Processes('${req.query.name}')`, body)
+        await client.patch(`Processes('${odataKey(req.query.name)}')`, body)
         const afterState = {
             prolog:   req.body.PrologProcedure                                       ?? beforeState?.prolog   ?? '',
             metadata: req.body.MetaDataProcedure ?? req.body.MetadataProcedure       ?? beforeState?.metadata ?? '',
@@ -1116,7 +1115,7 @@ app.post('/api/process/run', async (req, res) => {
     if (!runLog && runError) {
         console.log('[process/run] __RUN_LOG empty, trying ErrorLog fallback')
         try {
-            const errLog = await client.get(`Processes('${encodeURIComponent(procName)}')/ErrorLog`)
+            const errLog = await client.get(`Processes('${odataKey(procName)}')/ErrorLog`)
             runLog = typeof errLog === 'string' ? errLog : (errLog?.value ?? '')
             console.log(`[process/run] ErrorLog result: "${String(runLog).slice(0, 200)}"`)
         } catch (e) {
@@ -2341,7 +2340,7 @@ app.get('/api/files/content', async (req, res) => {
         // Get raw content — stream back as download (binary, must bypass the JSON-returning adapter.get)
         const session = await getCachedPawSession(req.ideToken)
         const csrf    = await getCSRF(session)
-        const apiPath = `${client._contentsPath(pathParts)}/Contents('${encodeURIComponent(name)}')/Content`
+        const apiPath = `${client._contentsPath(pathParts)}/Contents('${odataKey(name)}')/Content`
         const url     = `${PAW_HOST}/api/v0/tm1/${server}/api/v1/${apiPath}`
         const r = await session.get(url, { headers: { 'ba-sso-authenticity': csrf }, responseType: 'arraybuffer' })
         res.setHeader('Content-Disposition', `attachment; filename="${name}"`)
@@ -2742,7 +2741,7 @@ app.post('/api/sql/post-to-ti', async (req, res) => {
             .map(t => ({ Name: t, Type: 'String', Value: '', Prompt: '' }))
         const parameters = [...(proc.Parameters ?? []), ...newParams]
 
-        await client.patch(`Processes('${processName}')`, {
+        await client.patch(`Processes('${odataKey(processName)}')`, {
             ...odbcProps,
             Parameters: parameters,
         })

@@ -35,7 +35,11 @@ function ok(data) {
     return { content: [{ type: 'text', text: typeof data === 'string' ? data : JSON.stringify(data, null, 2) }] }
 }
 
-const esc = s => encodeURIComponent(s)
+const { odataKey } = require('../../core/odata-key')
+
+// Every TM1 path in the MCP tools goes through this one encoder — it doubles a
+// `'` for the OData key literal and percent-encodes the rest (% # ? & + space).
+const esc = odataKey
 
 // Every metadata write goes through here so it lands in the active change set.
 function logChange(action, objectType, objectName, opts = {}) {
