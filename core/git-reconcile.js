@@ -9,8 +9,7 @@
 // attribute that the change set didn't touch.
 
 const { makeClient } = require('./adapter_registry')
-
-const esc = s => String(s).replace(/'/g, "''")
+const { odataKey } = require('./odata-key')
 
 // Delete exactly the objects the change set deleted (`deletes` = [{type,name}]),
 // and only if they are still present on the target. Safe types only; anything
@@ -85,7 +84,7 @@ async function syncAttributeValues(source, target, { ideToken, dims = [], attrEl
             out.wholesale.push(dim)
             const attrNames = Object.keys(attrTypes)
             if (!attrNames.length) { out.flagged.push({ dim, error: 'no attributes on source' }); continue }
-            const els = ((await sc.get(`Dimensions('${esc(dim)}')/Hierarchies('${esc(dim)}')/Elements?$select=Name`)).value ?? []).map(e => e.Name)
+            const els = ((await sc.get(`Dimensions('${odataKey(dim)}')/Hierarchies('${odataKey(dim)}')/Elements?$select=Name`)).value ?? []).map(e => e.Name)
             if (!els.length) { out.flagged.push({ dim, error: 'no elements on source' }); continue }
             const updates = []
             for (const el of els) {

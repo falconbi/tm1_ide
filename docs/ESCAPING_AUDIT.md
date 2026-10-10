@@ -329,3 +329,27 @@ would be either un-encoded or double-encoded.
 | 3 — processes & chores | process + chore `zz_esc_Test's #1 %` | create/open/edit/save/run(process)/delete | run + log path resolve; chore step bound to the process by name survives |
 
 Cleanup: prefix `zz_esc_` → delete everything at the end of each batch and confirm zero left.
+
+---
+
+## Status (applied)
+
+**Implemented:** `core/odata-key.js` (`odataKey` = double `'` then `encodeURIComponent`;
+`odataLit` = `''`-doubling only). Every TM1 **path** / `@odata.bind` site in the table
+above now uses `odataKey` (`core/tm1_client.js`, `server.js`, `core/git-readiness.js`,
+`core/git-reconcile.js`, `core/git-restore.js`, `core/model-health.js`,
+`tools/tm1mcp/shared.js` `esc` now delegates to it, `tools/tm1mcp/tools/*`,
+`tools/tm1deploy/src/{deployer,risk}.js`). `$filter` literals use `odataLit` and travel
+URL-encoded via the adapters. Old per-file helpers (`enc`/`safe`/`e`/`esc`, `_esc`) were
+deleted once unused; the regex `esc`s in `tm1_client.js` (RegExp builders) and the HTML
+`esc` in `lens_bridge.js` are untouched (not TM1). Unit tests: `tests/odata-key.test.js`.
+
+**Lab finding (TM1_Test_DEV):** TM1 itself **rejects `' ? , ; | \` in object names**
+(`TM1ObjectEx::Register`, code 54 / `ObjectNameInvalid`), so the audit's exact lab names
+(`zz_esc_Test's #1 %`, element `zz_esc_Q?1 's #% & +`) cannot be created on a real
+server — the apostrophe-doubling in `odataKey` therefore cannot be exercised by any
+stored object (and `'` names never reach the URL layer). The characters TM1 **does**
+allow that need segmentation — `% # & +` and space — were proven end-to-end
+(`tmp/lab_esc_valid.js`): a process, a dimension with an element (+ attribute write),
+a subset and an MDX view named `zz_esc_%1 # & +` were all created, read, saved and
+deleted through the `odataKey` paths, with zero `zz_esc_*` objects left after cleanup.
