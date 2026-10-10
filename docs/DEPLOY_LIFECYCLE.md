@@ -3,6 +3,19 @@
 Plain-English record of the agreed end-to-end deployment model. Source decisions:
 `docs/TM1_GIT_EVALUATION.md`, `docs/IMPROVEMENTS.md` 10.1 (hybrid) + 10.2 (readiness).
 
+## The rules
+
+1. **A release ships exactly its change set's objects.** A deploy never carries
+   whatever else happens to be on DEV. The release is a commit built on the
+   target's last deployed state plus ONLY the change set's files; the target's
+   pull plan lists those objects and skips the rest. If the plan shows anything
+   else, the deploy refuses.
+2. Nothing reaches a target without a recorded **approval** bound to the exact
+   commit — non-optional, enforced server-side.
+3. Every deploy runs **control checks** on the target and records the result.
+4. **Drift** is measured against what the target last received (the IDE-recorded
+   commit), never TM1's own `DeployedCommit`.
+
 ## The architecture in one line
 
 **TM1's own Git integration moves and versions the model; the IDE governs it and handles the three things TM1 Git can't (attribute values, deletes, drift). The model owns all of its data — the IDE stores none of it.**
