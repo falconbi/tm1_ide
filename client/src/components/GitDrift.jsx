@@ -6,7 +6,8 @@ import { humanizeFile } from '@/lib/tm1-terms'
 
 // Drift view (#3): PROD pushes its live state to prod-live; the diff vs its
 // deployed commit shows what's drifted on PROD (out-of-band edits, PROD-only
-// objects). Actions: revert (redeploy the repo state) or promote (merge into dev).
+// objects). Drift pauses deploys — there is no automated Revert/Promote (retired);
+// the fix is to re-apply the change on DEV in a change set and release it.
 const authHeader = () => ({ 'x-ide-token': localStorage.getItem('tm1-token') ?? '' })
 
 export default function GitDrift({ server, onClose }) {
@@ -16,7 +17,6 @@ export default function GitDrift({ server, onClose }) {
   const [busy,    setBusy]    = useState('')
   const [error,   setError]   = useState(null)
   const [openDiff, setOpenDiff] = useState(null)
-  const [actionResult, setActionResult] = useState(null)
   const [showHelp, setShowHelp] = useState(false)
 
   useEffect(() => {
@@ -28,26 +28,12 @@ export default function GitDrift({ server, onClose }) {
   }, [server])
 
   const check = async () => {
-    setBusy('check'); setError(null); setActionResult(null)
+    setBusy('check'); setError(null)
     try {
       const r = await fetch('/api/git/drift', { method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeader() }, body: JSON.stringify({ server: target }) })
       const d = await r.json()
       if (!r.ok) throw new Error(d.error || r.statusText)
       setDrift(d)
-    } catch (e) { setError(e.message) }
-    finally { setBusy('') }
-  }
-
-  const act = async (action) => {
-    const label = action === 'revert' ? 'Revert drift on the target (redeploy the repo state)?' : 'Promote the target\'s live state into dev (merge prod-live → dev)?'
-    if (!window.confirm(label)) return
-    setBusy(action); setError(null); setActionResult(null)
-    try {
-      const r = await fetch(`/api/git/drift/${action}`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeader() }, body: JSON.stringify({ target, source: server, branch: 'dev' }) })
-      const d = await r.json()
-      if (!r.ok) throw new Error(d.error || r.statusText)
-      setActionResult({ action, ...d })
-      if (action === 'revert') check()
     } catch (e) { setError(e.message) }
     finally { setBusy('') }
   }
@@ -112,19 +98,9 @@ export default function GitDrift({ server, onClose }) {
                   </div>
                 ))}
                 {(drift.entries?.length ?? 0) > 0 && (
-                  <div className="flex items-center gap-2 pt-1">
-                    <button onClick={() => act('revert')} disabled={busy} className="flex items-center gap-1.5 px-3 py-1 text-xs rounded bg-red-700 text-white hover:bg-red-600 disabled:opacity-40 transition-colors">
-                      {busy === 'revert' ? <RefreshCw size={12} className="animate-spin" /> : <RefreshCw size={12} />} Revert on target
-                    </button>
-                    <button onClick={() => act('promote')} disabled={busy} className="flex items-center gap-1.5 px-3 py-1 text-xs rounded bg-emerald-700 text-white hover:bg-emerald-600 disabled:opacity-40 transition-colors">
-                      {busy === 'promote' ? <RefreshCw size={12} className="animate-spin" /> : <RefreshCw size={12} />} Promote to dev
-                    </button>
-                    <span className="text-[10px] text-muted-foreground">Revert redeploys the repo state; promote merges PROD's live state into dev.</span>
-                  </div>
-                )}
-                {actionResult && (
-                  <p className={cn('text-xs', actionResult.ok ? 'text-emerald-600' : 'text-red-600')}>
-                    {actionResult.ok ? actionResult.note ?? `${actionResult.action} done` : actionResult.error ?? `${actionResult.action} failed`}
+                  <p className="text-[11px] text-muted-foreground pt-1">
+                    Deploys to {drift.server} are paused while it has drift. Re-apply the change on DEV in a change
+                    set, then release it.
                   </p>
                 )}
               </div>

@@ -41,7 +41,7 @@ stub('core/git-lock', {
 stub('core/git-state',   { recordDeploy: async () => ({ ok: true }), lastDeployed: () => null, load: () => ({}), FILE: '' })
 stub('core/git-reconcile', { reconcile: async () => ({ restored: [], skipped: [], errors: [] }) })
 // No repo URL → driftCheck returns "no deployed commit" clean; never a blocker here.
-stub('core/git-drift', { driftCheck: async () => ({ entries: [] }), revert: async () => ({}), promote: async () => ({ ok: true }) })
+stub('core/git-drift', { driftCheck: async () => ({ entries: [] }) })
 
 const approvals = require(resolve('core/git-approvals'))
 approvals.find = async () => ({ target: 'TM1_Test_PROD', commit: incomingCommit, approver: 'reviewer', approved_at: 'now', session: ctx?.sessionId })

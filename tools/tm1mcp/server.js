@@ -35,10 +35,11 @@ const _server = new McpServer({
 //   start_change_set   — opening a build session against a read-only server is refused too
 //   run_process, reprocess_feeders — execute TI; no change-set entry of their own
 //   add_assertion, remove_assertion — write the model's assertions document
-// Deliberately NOT listed: deploy / revert tools. They change only an approved
-// target and are gated by a recorded human approval (approvals.find inside
-// core/git-deploy.execute / core/git-drift.revert), so read-only must not block
-// the approved path. Read-only tools (list_/get_/find_/check_*) need no check.
+// Deliberately NOT listed: deploy tools. They change only an approved target and
+// are gated by a recorded human approval (approvals.find inside
+// core/git-deploy.execute), so read-only must not block the approved path.
+// (The old drift revert/promote tools were retired — drift pauses deploys.)
+// Read-only tools (list_/get_/find_/check_*) need no check.
 const UNGATED_WRITE_TOOLS = new Set(['start_change_set', 'run_process', 'reprocess_feeders', 'add_assertion', 'remove_assertion'])
 
 // Wrap every tool handler so TM1/OData error detail reaches the agent instead of

@@ -99,7 +99,7 @@ stub('core/git-state', { lastDeployed: () => (baseCommit ? { lastDeployedCommit:
 stub('core/git-reconcile', { reconcile: async () => ({ restored: [], skipped: [], errors: [] }) })
 // Drift guard: clean by default; a test flips driftEntries to force the refusal.
 let driftEntries = []
-stub('core/git-drift', { driftCheck: async () => ({ entries: driftEntries, deployed: baseCommit }), revert: async () => ({}), promote: async () => ({ ok: true }) })
+stub('core/git-drift', { driftCheck: async () => ({ entries: driftEntries, deployed: baseCommit }) })
 // Approval exists for the release commit, linked to the change set. Keep the REAL
 // sameCommit (the thing under test); stub only find/append.
 const realApprovals = require(resolve('core/git-approvals'))

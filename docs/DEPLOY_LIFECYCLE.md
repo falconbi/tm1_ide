@@ -15,6 +15,11 @@ Plain-English record of the agreed end-to-end deployment model. Source decisions
 3. Every deploy runs **control checks** on the target and records the result.
 4. **Drift** is measured against what the target last received (the IDE-recorded
    commit), never TM1's own `DeployedCommit`.
+5. **Drift pauses deploys** — the fix is to **re-apply the change on DEV in a change
+   set and release it**. There is **no automated Revert or Promote** anymore (both
+   were retired 10 Oct 2026): the wizard no longer offers them, the routes and
+   `git-drift.revert` / `git-drift.promote` are gone, and the drift **check** + the
+   deploy pause stay.
 
 ## The architecture in one line
 
@@ -54,8 +59,8 @@ after the fix, at two levels:
 | Deploy without an approval | **refused** (`executed:false, refused:true`) |
 | Deploy after a recorded approval | **succeeds** (records `approvedBy`) |
 | Drift after the deploy | **clean (0 entries)** |
-| Revert after DEV moved on (new unapproved commit) | **refused** — "DEV has moved on since the last deploy — reverting would ship unapproved changes…" |
-| Revert with an approved commit (genuine revert) | **proceeds** — a genuine revert passes the normal gate |
+| Revert after DEV moved on (new unapproved commit) | **refused** — "DEV has moved on since the last deploy — reverting would ship unapproved changes…" *(retired 10 Oct 2026)* |
+| Revert with an approved commit (genuine revert) | **proceeds** — a genuine revert passes the normal gate *(retired 10 Oct 2026)* |
 | Git identity | from `TM1_GIT_USER` / `TM1_GIT_EMAIL` env (no hardcoded identity) |
 
 **Route level** (HTTP routes, authenticated):
@@ -86,7 +91,7 @@ Proven on the lab pair:
 | A **change-set delete** reaches PROD (its own delete, in the manifest) | **deleted on PROD** |
 | A **PROD-only process** (never in a change set, never in the manifest) **survives a deploy** | **still present** after deploy |
 | A **PROD-maintained attribute** (dimension the change set did not touch) is **untouched** | **unchanged** after deploy (value sync is scoped to the manifest's dims; numeric vs string respected) |
-| **Revert after a drift** (a direct PROD edit) | restore: the drifted object comes back to the repo state |
+| **Revert after a drift** (a direct PROD edit) | restore: the drifted object comes back to the repo state *(retired 10 Oct 2026 — drift now just pauses deploys)* |
 
 Notes:
 - Attribute sync copies **only the recorded element/attribute pairs** when the change log has them; a dimension
@@ -102,10 +107,11 @@ Notes:
   a `Position Input` view change), i.e. **direct model edits/rebuild on PROD during the walkthrough**. TM1 drops
   members from a **static** subset when its elements are removed and does not restore them on re-add. Any rebuild of a
   dimension on a target has this effect; nothing in the deploy pipeline did it here.
-- **Revert restores from the approved commit's repo file** (`git show <commit>:<file>`), never from DEV's live state —
-  proven: with DEV holding an **uncommitted** subset edit, Revert still put PROD back to the committed 93 members and
-  the DEV edit did **not** ship. The drifted-object list is derived server-side from the drift check, never supplied
-  by the client.
+- **Revert/Promote retired (10 Oct 2026):** the drift Revert (restore from the approved commit's repo file) and
+  Promote (merge `prod-live` → dev) features below are **no longer available** — the buttons, routes
+  (`/api/git/drift/revert`, `/api/git/drift/promote`) and `git-drift.revert` / `git-drift.promote` are removed.
+  **Drift pauses deploys**; the fix is to re-apply the change on DEV in a change set and release it. The drift
+  **check** (`prod-live` diff, IDE-recorded base) stays.
 
 The second drift-check reading in the revert proof briefly showed entries — those were the proof's own PROD-only
 test process, cleaned up immediately; with it removed, drift is **clean** and the drifted object is confirmed restored.
@@ -124,7 +130,7 @@ One storage layer — the same Application-document mechanism assertions use (v1
 
 **Proof (round 2, plain English):**
 - A change set that deleted the dummy **"Test Process"** → committed → **deploy without approval refused** → approved (recorded in the model) → deployed → **Test Process deleted on PROD** by the change-set-scoped reconcile.
-- A **subset drifted** on PROD (a member removed) → **Revert restored it** (93 members, drift clean) from the approved commit.
+- A **subset drifted** on PROD (a member removed) → **Revert restored it** (93 members, drift clean) from the approved commit *(revert path since retired 10 Oct 2026)*.
 - **Deploy record survives** (read back from the model on a fresh session) and the approvals/deploy state are readable by any IDE pointed at the same server — a fresh install sees the same records.
 
 **Honest limitation:** Revert restores **subsets** (proven) and flags processes/"apply manually" — full process (and dimension/view/rules) restore from the commit is not implemented yet; that stays a surfaced skip, never a silent one.
@@ -169,7 +175,7 @@ A deploy is `execute()` on the target, and it runs, in order:
 
 ## The drift loop (over time)
 
-Auto-deploy doesn't keep DEV and PROD converged over months — a **recurring drift check + reconcile cadence** does. The drift diff surfaces DEV-ahead (pending deploy), PROD-only objects (promote or remove), and out-of-band PROD edits (reapply to DEV or revert). Each is a deliberate decision; the pair converges over time.
+Auto-deploy doesn't keep DEV and PROD converged over months — a **recurring drift check + reconcile cadence** does. The drift diff surfaces DEV-ahead (pending deploy) and out-of-band PROD edits. **Drift pauses deploys**; the fix is to re-apply the change on DEV in a change set and release it (there is no automated Revert/Promote anymore). Each drift is a deliberate decision; the pair converges over time.
 
 ## The three gaps (what the IDE keeps)
 

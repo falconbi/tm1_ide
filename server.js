@@ -3109,28 +3109,6 @@ app.post('/api/git/drift', async (req, res) => {
         res.json(await driftCheck(server, { token: process.env.TM1_GIT_TOKEN, ideToken: req.ideToken }))
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
-app.post('/api/git/drift/revert', async (req, res) => {
-    try {
-        // Not gated by read-only: restoring a drifted target to its approved commit
-        // is an approved action (the approval gate lives inside revert()).
-        const { revert } = require('./core/git-drift')
-        const { target, branch } = req.body
-        if (!target) return res.status(400).json({ error: 'target required' })
-        res.json(await revert(target, { branch, token: process.env.TM1_GIT_TOKEN, ideToken: req.ideToken }))
-    } catch (e) { res.status(500).json({ error: e.message }) }
-})
-app.post('/api/git/drift/promote', async (req, res) => {
-    try {
-        const { promote } = require('./core/git-drift')
-        const { target, source } = req.body
-        if (!target) return res.status(400).json({ error: 'target required' })
-        // The source is the server that pulls the merged state — so it must be writable.
-        if (source && !gateReadOnly(res, source)) return
-        const r = await promote(target, { token: process.env.TM1_GIT_TOKEN, ideToken: req.ideToken, source })
-        if (r.refused) return res.status(409).json({ error: r.error })
-        res.json(r)
-    } catch (e) { res.status(500).json({ error: e.message }) }
-})
 // Deploy lock — is anything deploying to a target right now?
 app.get('/api/git/lock', async (req, res) => {
     try {

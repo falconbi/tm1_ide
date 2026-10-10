@@ -265,12 +265,8 @@ export const HELP_CONTENT = {
         body: '**Deployed** is the copy PROD was given at the last deploy. **prod-live** is the copy PROD just saved of itself. Any object that differs between them is drift.',
       },
       {
-        heading: 'Revert',
-        body: 'Put PROD back to exactly what the last deploy gave it — the drifted change is overwritten.',
-      },
-      {
-        heading: 'Promote',
-        body: 'Keep the drifted change by bringing it back into DEV, so it can be reviewed and shipped properly instead of being overwritten.',
+        heading: 'When PROD has drifted',
+        body: 'Deploys to the target are **paused** while it has drift. There is no automated revert or promote (retired) — re-apply the change on DEV in a change set, then release it.',
       },
     ],
   },
