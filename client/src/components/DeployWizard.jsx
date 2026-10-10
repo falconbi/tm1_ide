@@ -561,7 +561,7 @@ export default function DeployWizard({ server, onClose, onOpenTests }) {
               <div className="px-3 py-2 border-b border-border bg-muted/20 text-xs font-semibold">If something goes wrong</div>
               <div className="px-3 py-2 space-y-1.5 text-[11px] text-muted-foreground leading-relaxed">
                 <p>· <span className="text-foreground">No rollback.</span> A deploy cannot be automatically undone — if it breaks, <span className="text-foreground">fix forward</span>: correct on {server}, commit, rebuild the release, and deploy again.</p>
-                <p>· <span className="text-foreground">PROD changed since the last deploy?</span> Use Revert (step 8) to put the drifted objects back, or Promote to bring them into {server}.</p>
+                <p>· <span className="text-foreground">PROD has drifted?</span> Re-apply the change on DEV in a change set, then release it — deploys to this server are paused until drift is clean.</p>
               </div>
             </div>
           )}

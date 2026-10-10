@@ -188,6 +188,7 @@ test('deploy is refused when the target has drifted (snapshot refreshed first)',
     assert.equal(out.executed, false)
     assert.equal(out.drift, 'drifted')
     assert.match(out.error, /drifted/i)
-    assert.match(out.error, /Reconcile/)
+    assert.match(out.error, /Re-apply the change on DEV/i)
+    assert.match(out.error, /paused until drift is clean/)
   } finally { driftEntries = []; fs.rmSync(r.bare, { recursive: true, force: true }); fs.rmSync(r.w, { recursive: true, force: true }) }
 })

@@ -26,11 +26,16 @@ async function targetDrift(target, { token, gitUser = gitIdentity.user(), ideTok
     }
 }
 
-const driftRefusal = (target, drift) =>
-    `Refused: ${target} has drifted from what it last received (${drift.deployed ?? '?'}) — ` +
-    (drift.entries?.length ? drift.entries.map(e => `${e.status} ${e.file}`).join('; ') : '') +
-    (drift.error ? (drift.entries?.length ? ' · ' : '') + drift.error : '') +
-    `. Reconcile it first (Revert to the approved state, or Promote the changes back).`
+// Policy: a drifted target is not reverted or promoted ad hoc. The fix is to
+// re-apply the change on DEV in a change set and release it; deploys stay paused
+// until drift is clean.
+const driftRefusal = (target, drift) => {
+    const objects = (drift.entries ?? []).map(e => `${e.status} ${e.file}`).join('; ')
+    if (objects) {
+        return `PROD has drifted: ${objects}. Re-apply the change on DEV in a change set, then release it. Deploys to this server are paused until drift is clean.`
+    }
+    return `PROD drift could not be checked (${drift.error ?? 'unknown error'}). Deploys to this server are paused until drift is clean.`
+}
 
 // Parse a GitPull plan operation ("Update Cubes('WFP Workforce Cost')",
 // "Replace Dimensions('WFP Version')", "Skip Processes('X')", …) into the TM1
