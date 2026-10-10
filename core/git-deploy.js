@@ -247,6 +247,9 @@ async function execute(target, { branch = 'dev', token, gitUser = gitIdentity.us
         try {
             await c.post(`GitPlans('${encodeURIComponent(plan.ID)}')/tm1.Execute`, {})
             out.executed = true
+            // The base for apply/verify is what the target HAD before this deploy —
+            // capture it before recordDeploy rewrites lastDeployed.
+            const preDeployBase = require('./git-state').lastDeployed(target)?.lastDeployedCommit ?? null
             // Record what we actually deployed — TM1's DeployedCommit isn't reliable
             // as "last received" (a prod-live push clobbers it). Loud: if the model
             // record cannot be written, that is reported, never best-effort.
@@ -265,10 +268,9 @@ async function execute(target, { branch = 'dev', token, gitUser = gitIdentity.us
                 try {
                     const { applyReleaseComplement, verifyRelease } = require('./git-release')
                     const repoUrl = (await c.post('GitStatus', { Username: gitUser, Password: token }))?.URL
-                    const base = require('./git-state').lastDeployed(target)?.lastDeployedCommit ?? null
-                    const applied = await applyReleaseComplement(target, { base, releaseCommit, repoUrl, token, gitUser, ideToken })
+                    const applied = await applyReleaseComplement(target, { base: preDeployBase, releaseCommit, repoUrl, token, gitUser, ideToken })
                     out.subsetsViews = applied
-                    out.incomplete = await verifyRelease(target, { base, releaseCommit, repoUrl, token, gitUser, ideToken })
+                    out.incomplete = await verifyRelease(target, { base: preDeployBase, releaseCommit, repoUrl, token, gitUser, ideToken })
                 } catch (e) {
                     out.incompleteCheckError = e.message
                     out.incomplete = []

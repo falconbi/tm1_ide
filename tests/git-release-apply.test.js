@@ -27,7 +27,8 @@ test('applySubset keeps the MDX for a dynamic subset, elements for a static one'
 
 test('applyView keeps MDX for MDX views and rebuilds native views from placements', async () => {
   calls.length = 0
-  await applyView(tm1, { cube: 'CubeA', name: 'MDXView' }, JSON.stringify({ '@type': 'MDXView', MDX: 'SELECT {[X].[X].[M]} ON COLUMNS FROM [CubeA]' }))
+  // MDX view export: @type MDXView, MDX@Code.link — the MDX text is the sibling .mdx (det.mdx).
+  await applyView(tm1, { cube: 'CubeA', name: 'MDXView', mdx: 'SELECT {[X].[X].[M]} ON COLUMNS FROM [CubeA]' }, JSON.stringify({ '@type': 'MDXView', Name: 'MDXView', 'MDX@Code.link': 'MDXView.mdx' }))
   await applyView(tm1, { cube: 'CubeA', name: 'NatView' }, JSON.stringify({
     '@type': 'NativeView',
     Columns: [{ Subset: { '@id': "Dimensions('D1')/Hierarchies('D1')/Subsets('S1')" } }],
