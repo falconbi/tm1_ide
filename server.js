@@ -3155,13 +3155,11 @@ app.post('/api/git/setup/init', async (req, res) => {
         const { server, repo, deployment, force } = req.body
         if (!server || !repo || !deployment) return res.status(400).json({ error: 'server, repo and deployment required' })
         if (!/^(DEV|TEST|PROD)$/i.test(deployment)) return res.status(400).json({ error: 'deployment should be DEV, TEST or PROD' })
-        const c = makeClient(server, req.ideToken)
-        const st = await c.post('GitStatus', { Username: _GI().user(), Password: _GITOK() })
-        if (st?.URL && !force) return res.status(409).json({ error: `${server} is already linked to ${st.URL} (deployment ${st.Deployment}). Not re-running GitInit.` })
-        const plan = await c.post('GitInit', { URL: repo, Deployment: String(deployment).toUpperCase(), Force: !!force, Username: _GI().user(), Password: _GITOK() })
-        if (plan?.ID) await c.post(`GitPlans('${encodeURIComponent(plan.ID)}')/tm1.Execute`, {})
-        const after = await c.post('GitStatus', { Username: _GI().user(), Password: _GITOK() })
-        res.json({ ok: true, server, repo: after?.URL ?? repo, deployment: after?.Deployment ?? String(deployment).toUpperCase(), note: 'GitInit complete.' })
+        if (!gateReadOnly(res, server)) return
+        const { init } = require('./core/git-setup')
+        const r = await init(server, { repo, deployment, force, gitUser: _GI().user(), token: _GITOK(), ideToken: req.ideToken })
+        if (r.refused) return res.status(409).json({ error: r.error })
+        res.json(r)
     } catch (e) { res.status(500).json({ error: e.response?.data?.error?.message ?? e.message }) }
 })
 
