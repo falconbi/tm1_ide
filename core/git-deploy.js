@@ -10,6 +10,27 @@ const { makeClient } = require('./adapter_registry')
 const assertions = require('./assertions')
 const gitIdentity = require('./git-identity')
 const approvals = require('./git-approvals')
+const { driftCheck } = require('./git-drift')
+
+// Refresh the target's live snapshot (pushes prod-live) and compare it against
+// what the target last RECEIVED. Any difference is drift — deploys onto a drifted
+// target get refused at Review AND at Deploy.
+async function targetDrift(target, { token, gitUser = gitIdentity.user(), ideToken } = {}) {
+    try {
+        const d = await driftCheck(target, { token, gitUser, ideToken })
+        if (d?.error) return { clean: false, entries: [], error: d.error }
+        const entries = d?.entries ?? []
+        return { clean: entries.length === 0, entries, deployed: d?.deployed ?? null }
+    } catch (e) {
+        return { clean: false, entries: [], error: e.message }
+    }
+}
+
+const driftRefusal = (target, drift) =>
+    `Refused: ${target} has drifted from what it last received (${drift.deployed ?? '?'}) — ` +
+    (drift.entries?.length ? drift.entries.map(e => `${e.status} ${e.file}`).join('; ') : '') +
+    (drift.error ? (drift.entries?.length ? ' · ' : '') + drift.error : '') +
+    `. Reconcile it first (Revert to the approved state, or Promote the changes back).`
 
 // Parse a GitPull plan operation ("Update Cubes('WFP Workforce Cost')",
 // "Replace Dimensions('WFP Version')", "Skip Processes('X')", …) into the TM1
@@ -42,6 +63,17 @@ async function prepare(source, target, { branch = 'dev', token, gitUser = gitIde
         out.deployedSummary = st?.DeployedCommit?.Summary ?? null
         out.connected       = st?.Remote?.Connected ?? false
         out.fullOverwrite   = !out.deployedCommit
+
+        // Refresh the target's live snapshot and refuse Review if it has drifted
+        // from what it last received.
+        const drift = await targetDrift(target, { token, gitUser, ideToken })
+        out.drift = drift.clean ? 'clean' : 'drifted'
+        out.driftEntries = drift.entries ?? []
+        if (!drift.clean) {
+            out.ready = false
+            out.error = driftRefusal(target, drift)
+            return out
+        }
     } catch (e) {
         out.error = `GitStatus failed: ${e.response?.data?.error?.message ?? e.message}`
         return out
@@ -134,6 +166,19 @@ async function execute(target, { branch = 'dev', token, gitUser = gitIdentity.us
     }
 
     try {
+        // Refresh the target's live snapshot and refuse if it has drifted from what
+        // it last received — never deploy onto a drifted target. The lock is
+        // released by the finally below either way.
+        const drift = await targetDrift(target, { token, gitUser, ideToken })
+        out.drift = drift.clean ? 'clean' : 'drifted'
+        out.driftEntries = drift.entries ?? []
+        if (!drift.clean) {
+            out.executed = false
+            out.refused = true
+            out.error = driftRefusal(target, drift)
+            return out
+        }
+
         let plan
         try {
             plan = await c.post('GitPull', { Branch: branch, ExecutionMode: 'SingleCommit', Force: false, Username: gitUser, Password: token })
