@@ -317,6 +317,12 @@ async function execute(target, { branch = 'dev', token, gitUser = gitIdentity.us
                 out.controlOk = false
             }
         }
+        // A deploy's own signals override the assertion verdict: a subset/view apply
+        // that failed, an object that did not land, or an errored verification is
+        // never a "control ok" deploy, even if every invariant still passed.
+        if ((out.subsetsViews?.errors?.length ?? 0) > 0 || (out.incomplete?.length ?? 0) > 0 || out.incompleteCheckError) {
+            out.controlOk = false
+        }
         return out
     } finally {
         try {

@@ -488,6 +488,15 @@ export default function DeployWizard({ server, onClose, onOpenTests }) {
                     {res.error && <p className="text-xs text-red-600">{res.error}</p>}
                     {res.refused && !res.error && <p className="text-xs text-red-600">Refused.</p>}
                     {res.executed && <p className="text-xs">Applied. {target} is now at <span className="font-mono">{res.targetCommit}</span>.</p>}
+                    {res.subsetsViews?.errors?.length > 0 && (
+                      <p className="text-xs text-red-600">Release apply failures: {res.subsetsViews.errors.map(e => `${e.type} ${e.name} — ${e.error}`).join('; ')}</p>
+                    )}
+                    {res.incomplete?.length > 0 && (
+                      <p className="text-xs text-red-600">Not verified on {target}: {res.incomplete.join(', ')}</p>
+                    )}
+                    {res.incompleteCheckError && (
+                      <p className="text-xs text-red-600">Post-deploy verification error: {res.incompleteCheckError}</p>
+                    )}
                     {res.verification?.results?.length > 0 && (
                       <div className="space-y-1.5 pt-1">
                         <p className="text-xs">Safety checks: <span className={res.controlOk ? 'text-emerald-700' : 'text-red-600'}>{res.verification.passed} of {res.verification.total} passed</span></p>
