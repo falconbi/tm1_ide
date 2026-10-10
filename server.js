@@ -3069,6 +3069,16 @@ app.post('/api/deploy/git/approve', async (req, res) => {
         if (!tests || tests.blocking > 0) {
             return res.status(409).json({ error: `Refused: the change set for commit ${commit} has failing block-severity tests. Fix and re-close before approving.` })
         }
+        // Dependency check before approval: rules must CheckRules clean on the target
+        // and processes must pass TI lint — a failed reference may belong to another
+        // change set (ship it too, or build a combined release).
+        if (linkedSession.release_commit) {
+            const { checkDependencies } = require('./core/git-release')
+            const dep = await checkDependencies(linkedSession.release_commit, target, { token: process.env.TM1_GIT_TOKEN, gitUser: _GI().user(), ideToken: req.ideToken })
+            if (!dep.ok) {
+                return res.status(409).json({ error: `Refused: the release has failing dependencies — ${(dep.blockers ?? []).map(b => `${b.object}: ${b.message}`).join(' | ') || dep.error}`, blockers: dep.blockers ?? [] })
+            }
+        }
         const rec = await approvals.append({
             id: new Date().toISOString(), approved_at: new Date().toISOString(),
             approver: req.user ?? 'unknown', notes: note ?? '',
