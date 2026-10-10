@@ -14,8 +14,7 @@ const path = require('path')
 const { makeClient } = require('./adapter_registry')
 const { TM1Client } = require('./tm1_client')
 const { git, authUrl, sanitize } = require('./git-repo')
-
-const esc = s => String(s).replace(/'/g, "''")
+const { odataKey } = require('./odata-key')
 
 // Map a repo file path to an object descriptor. Returns null when unsupported.
 function parseObjectFile(file) {
@@ -160,7 +159,7 @@ async function restoreFromCommit(target, commit, entries, { branch = 'dev', toke
                     out.restored.push({ type: 'process', name: det.name })
                 } else if (det.type === 'rules') {
                     const text = git(work, 'show', `${commit}:${file}`)
-                    await c.patch(`Cubes('${esc(det.cube)}')`, { Rules: text })
+                    await c.patch(`Cubes('${odataKey(det.cube)}')`, { Rules: text })
                     out.restored.push({ type: 'rules', name: det.cube })
                 } else {
                     out.skipped.push({ file, error: `revert for ${det.type} not implemented yet — apply manually` })

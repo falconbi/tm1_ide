@@ -1,5 +1,7 @@
 'use strict'
 
+const { odataKey, odataLit } = require('./odata-key')
+
 class TM1Client {
     constructor(server, adapter) {
         this.server = server
@@ -29,32 +31,32 @@ class TM1Client {
     // ── Dimensions ────────────────────────────────────────────────────────────
 
     async deleteDimension(name) {
-        return this.delete(`Dimensions('${encodeURIComponent(name)}')`)
+        return this.delete(`Dimensions('${odataKey(name)}')`)
     }
 
     async deleteCube(name) {
-        return this.delete(`Cubes('${encodeURIComponent(name)}')`)
+        return this.delete(`Cubes('${odataKey(name)}')`)
     }
 
     async deleteProcess(name) {
-        return this.delete(`Processes('${encodeURIComponent(name)}')`)
+        return this.delete(`Processes('${odataKey(name)}')`)
     }
 
     async deleteChore(name) {
-        return this.delete(`Chores('${encodeURIComponent(name)}')`)
+        return this.delete(`Chores('${odataKey(name)}')`)
     }
 
     async deleteSubset(dim, name, hierarchy = dim) {
-        return this.delete(`Dimensions('${encodeURIComponent(dim)}')/Hierarchies('${encodeURIComponent(hierarchy)}')/Subsets('${encodeURIComponent(name)}')`)
+        return this.delete(`Dimensions('${odataKey(dim)}')/Hierarchies('${odataKey(hierarchy)}')/Subsets('${odataKey(name)}')`)
     }
 
     async deleteView(cube, name) {
-        return this.delete(`Cubes('${encodeURIComponent(cube)}')/Views('${encodeURIComponent(name)}')`)
+        return this.delete(`Cubes('${odataKey(cube)}')/Views('${odataKey(name)}')`)
     }
 
     async getDimension(name) {
         try {
-            return await this.get(`Dimensions('${name}')`, { '$select': 'Name' })
+            return await this.get(`Dimensions('${odataKey(name)}')`, { '$select': 'Name' })
         } catch (e) {
             if (e.response?.status === 404) return null
             throw e
@@ -64,7 +66,8 @@ class TM1Client {
     async getElements(dim, hierarchy = dim, includeIndex = false) {
         const TYPE = { Numeric: 'N', Consolidated: 'C', String: 'S', N: 'N', C: 'C', S: 'S', 1: 'N', 2: 'S', 3: 'C' }
         const d = await this.get(
-            `Dimensions('${dim}')/Hierarchies('${hierarchy}')/Elements`,
+            `Dimensions('${odataKey(dim)}')/Hierarchies('${odataKey(hierarchy)}')/Elements`,
+
             { '$select': includeIndex ? 'Name,Type,Level,Index' : 'Name,Type,Level' }
         )
         return (d.value ?? []).map(e => ({ ...e, Type: TYPE[e.Type] ?? e.Type }))
@@ -74,7 +77,7 @@ class TM1Client {
         const TYPE = { Numeric: 'N', Consolidated: 'C', String: 'S', N: 'N', C: 'C', S: 'S', 1: 'N', 2: 'S', 3: 'C' }
         try {
             const d = await this.get(
-                `Dimensions('${dim}')/Hierarchies('${hierarchy}')/Elements`,
+                `Dimensions('${odataKey(dim)}')/Hierarchies('${odataKey(hierarchy)}')/Elements`,
                 { '$select': 'Name,Type,Level', '$expand': 'Components($select=Name)' }
             )
             return (d.value ?? []).map(e => ({
@@ -94,7 +97,7 @@ class TM1Client {
         // Return elements with empty attributes — callers that need values use getElementAttributeValues per element.
         const TYPE = { Numeric: 'N', Consolidated: 'C', String: 'S', N: 'N', C: 'C', S: 'S' }
         const d = await this.get(
-            `Dimensions('${dim}')/Hierarchies('${hierarchy}')/Elements`,
+            `Dimensions('${odataKey(dim)}')/Hierarchies('${odataKey(hierarchy)}')/Elements`,
             { '$select': 'Name,Type,Level' }
         )
         return (d.value ?? []).map(e => ({
@@ -109,33 +112,31 @@ class TM1Client {
         // Returns flat object: { Caption: "...", signswitch: 0, ... }
         // Filters out @odata.* metadata keys.
         const raw = await this.get(
-            `Dimensions('${dim}')/Hierarchies('${hierarchy}')/Elements('${element}')/Attributes`
+            `Dimensions('${odataKey(dim)}')/Hierarchies('${odataKey(hierarchy)}')/Elements('${odataKey(element)}')/Attributes`
         )
         return Object.fromEntries(Object.entries(raw).filter(([k]) => !k.startsWith('@')))
     }
 
     async createDimension(name) {
-        const enc = encodeURIComponent(name)
         await this.post('Dimensions', { Name: name })
         // TM1 does not reliably auto-create the leaf hierarchy on this version —
         // ensure it exists (400/409 = already there).
-        await this.post(`Dimensions('${enc}')/Hierarchies`, { Name: name, Dimension: { Name: name } })
+        await this.post(`Dimensions('${odataKey(name)}')/Hierarchies`, { Name: name, Dimension: { Name: name } })
             .catch(e => { if (![400, 409].includes(e.response?.status)) throw e })
     }
 
     async getEdges(dim, hierarchy = dim) {
         const d = await this.get(
-            `Dimensions('${dim}')/Hierarchies('${hierarchy}')/Edges`,
+            `Dimensions('${odataKey(dim)}')/Hierarchies('${odataKey(hierarchy)}')/Edges`,
             { '$select': 'ParentName,ComponentName,Weight' }
         )
         return d.value ?? []
     }
 
     async getElementChildren(dim, elemName, hierarchy = dim) {
-        const safe = elemName.replace(/'/g, "''")
         const d = await this.get(
-            `Dimensions('${dim}')/Hierarchies('${hierarchy}')/Edges`,
-            { '$filter': `ParentName eq '${safe}'`, '$select': 'ComponentName,Weight' }
+            `Dimensions('${odataKey(dim)}')/Hierarchies('${odataKey(hierarchy)}')/Edges`,
+            { '$filter': `ParentName eq '${odataLit(elemName)}'`, '$select': 'ComponentName,Weight' }
         )
         return (d.value ?? []).map(e => ({ name: e.ComponentName, weight: e.Weight ?? 1 }))
     }
@@ -143,7 +144,7 @@ class TM1Client {
     async addElement(dim, name, type, hierarchy = dim) {
         const TYPE_MAP = { N: 'Numeric', C: 'Consolidated', S: 'String' }
         return this.post(
-            `Dimensions('${dim}')/Hierarchies('${hierarchy}')/Elements`,
+            `Dimensions('${odataKey(dim)}')/Hierarchies('${odataKey(hierarchy)}')/Elements`,
             { Name: name, Type: TYPE_MAP[type] ?? type }
         )
     }
@@ -155,53 +156,53 @@ class TM1Client {
             Element: { Name: name, Type: TYPE_MAP[type] ?? type ?? 'Numeric' },
         }))
         return this.post(
-            `Dimensions('${encodeURIComponent(dim)}')/Hierarchies('${encodeURIComponent(hierarchy)}')/tm1.SetElement`,
+            `Dimensions('${odataKey(dim)}')/Hierarchies('${odataKey(hierarchy)}')/tm1.SetElement`,
             body
         )
     }
 
     async deleteElement(dim, name, hierarchy = dim) {
-        return this.delete(`Dimensions('${dim}')/Hierarchies('${hierarchy}')/Elements('${name}')`)
+        return this.delete(`Dimensions('${odataKey(dim)}')/Hierarchies('${odataKey(hierarchy)}')/Elements('${odataKey(name)}')`)
     }
 
     async renameElement(dim, name, newName, hierarchy = dim) {
         return this.patch(
-            `Dimensions('${dim}')/Hierarchies('${hierarchy}')/Elements('${name}')`,
+            `Dimensions('${odataKey(dim)}')/Hierarchies('${odataKey(hierarchy)}')/Elements('${odataKey(name)}')`,
             { Name: newName }
         )
     }
 
     async addEdge(dim, parent, child, weight = 1, hierarchy = dim) {
         return this.post(
-            `Dimensions('${dim}')/Hierarchies('${hierarchy}')/Edges`,
+            `Dimensions('${odataKey(dim)}')/Hierarchies('${odataKey(hierarchy)}')/Edges`,
             { ParentName: parent, ComponentName: child, Weight: weight }
         )
     }
 
     async deleteEdge(dim, parent, child, hierarchy = dim) {
         return this.delete(
-            `Dimensions('${dim}')/Hierarchies('${hierarchy}')/Edges(ParentName='${parent}',ComponentName='${child}')`
+            `Dimensions('${odataKey(dim)}')/Hierarchies('${odataKey(hierarchy)}')/Edges(ParentName='${odataKey(parent)}',ComponentName='${odataKey(child)}')`
         )
     }
 
     async updateEdgeWeight(dim, parent, child, weight, hierarchy = dim) {
         return this.patch(
-            `Dimensions('${dim}')/Hierarchies('${hierarchy}')/Edges(ParentName='${parent}',ComponentName='${child}')`,
+            `Dimensions('${odataKey(dim)}')/Hierarchies('${odataKey(hierarchy)}')/Edges(ParentName='${odataKey(parent)}',ComponentName='${odataKey(child)}')`,
             { Weight: weight }
         )
     }
 
     async getHierarchies(dim) {
-        const d = await this.get(`Dimensions('${dim}')/Hierarchies`, { '$select': 'Name' })
+        const d = await this.get(`Dimensions('${odataKey(dim)}')/Hierarchies`, { '$select': 'Name' })
         return (d.value ?? []).map(h => h.Name)
     }
 
     async createHierarchy(dim, name) {
-        return this.post(`Dimensions('${dim}')/Hierarchies`, { Name: name })
+        return this.post(`Dimensions('${odataKey(dim)}')/Hierarchies`, { Name: name })
     }
 
     async deleteHierarchy(dim, name) {
-        return this.delete(`Dimensions('${dim}')/Hierarchies('${name}')`)
+        return this.delete(`Dimensions('${odataKey(dim)}')/Hierarchies('${odataKey(name)}')`)
     }
 
     // ── Attribute value write probe ───────────────────────────────────────────
@@ -210,7 +211,7 @@ class TM1Client {
     // Tries two body formats: flat object and array.
     async probeAttributeValueWrite(dim, element, attribute, value, hierarchy = dim) {
         const results = {}
-        const base = `Dimensions('${dim}')/Hierarchies('${hierarchy}')/Elements('${element}')/Attributes`
+        const base = `Dimensions('${odataKey(dim)}')/Hierarchies('${odataKey(hierarchy)}')/Elements('${odataKey(element)}')/Attributes`
 
         // Format A: flat object { attrName: value } — mirrors what GET returns
         try {
@@ -242,17 +243,16 @@ class TM1Client {
     // ── Attribute write probe (TM1py-derived approaches) ─────────────────────
     async probeAttributeWrite(dim, element, attribute, value) {
         const results = {}
-        const enc = s => String(s).replace(/'/g, "''").replace(/%/g, '%25').replace(/#/g, '%23')
         const attrDim = `}ElementAttributes_${dim}`
         const elemDim = `}Elements_${dim}`
 
         // Method A: tm1.Update on the }ElementAttributes cube (TM1py write_value pattern)
         try {
-            await this.post(`Cubes('${enc(attrDim)}')/tm1.Update`, {
+            await this.post(`Cubes('${odataKey(attrDim)}')/tm1.Update`, {
                 Cells: [{
                     'Tuple@odata.bind': [
-                        `Dimensions('${enc(attrDim)}')/Hierarchies('${enc(attrDim)}')/Elements('${enc(attribute)}')`,
-                        `Dimensions('${enc(elemDim)}')/Hierarchies('${enc(elemDim)}')/Elements('${enc(element)}')`,
+                        `Dimensions('${odataKey(attrDim)}')/Hierarchies('${odataKey(attrDim)}')/Elements('${odataKey(attribute)}')`,
+                        `Dimensions('${odataKey(elemDim)}')/Hierarchies('${odataKey(elemDim)}')/Elements('${odataKey(element)}')`,
                     ]
                 }],
                 Value: String(value),
@@ -265,12 +265,12 @@ class TM1Client {
 
         // Method B: ExecuteProcessWithReturn — inline TI, no create/delete needed (TM1py pattern)
         const isNumeric = typeof value === 'number'
-        const safeVal = isNumeric ? value : `'${String(value).replace(/'/g, "''")}'`
-        const safeElem = String(element).replace(/'/g, "''")
-        const safeAttr = String(attribute).replace(/'/g, "''")
+        const safeVal = isNumeric ? value : `'${odataLit(value)}'`
+        const safeElem = odataLit(element)
+        const safeAttr = odataLit(attribute)
         const tiCode = isNumeric
-            ? `ElementAttrPutN(${safeVal}, '${enc(dim)}', '${safeElem}', '${safeAttr}');`
-            : `ElementAttrPutS(${safeVal}, '${enc(dim)}', '${safeElem}', '${safeAttr}');`
+            ? `ElementAttrPutN(${safeVal}, '${odataLit(String(dim))}', '${safeElem}', '${safeAttr}');`
+            : `ElementAttrPutS(${safeVal}, '${odataLit(String(dim))}', '${safeElem}', '${safeAttr}');`
         try {
             await this.post('ExecuteProcessWithReturn?$expand=*', {
                 Process: {
@@ -297,23 +297,22 @@ class TM1Client {
     async createElementAttribute(dim, name, type, hierarchy = dim) {
         // type: 'String' | 'Numeric' | 'Alias'
         return this.post(
-            `Dimensions('${dim}')/Hierarchies('${hierarchy}')/ElementAttributes`,
+            `Dimensions('${odataKey(dim)}')/Hierarchies('${odataKey(hierarchy)}')/ElementAttributes`,
             { Name: name, Type: type }
         )
     }
 
     async deleteElementAttribute(dim, name, hierarchy = dim) {
-        return this.delete(`Dimensions('${dim}')/Hierarchies('${hierarchy}')/ElementAttributes('${name}')`)
+        return this.delete(`Dimensions('${odataKey(dim)}')/Hierarchies('${odataKey(hierarchy)}')/ElementAttributes('${odataKey(name)}')`)
     }
 
     async writeElementAttribute(dim, element, attribute, value, attrType = 'S', hierarchy = dim) {
-        const safe = s => String(s).replace(/'/g, "''")
         const attrCube = `}ElementAttributes_${dim}`
-        return this.post(`Cubes('${safe(attrCube)}')/tm1.Update`, {
+        return this.post(`Cubes('${odataKey(attrCube)}')/tm1.Update`, {
             Cells: [{
                 'Tuple@odata.bind': [
-                    `Dimensions('${safe(attrCube)}')/Hierarchies('${safe(attrCube)}')/Elements('${safe(attribute)}')`,
-                    `Dimensions('${safe(dim)}')/Hierarchies('${safe(dim)}')/Elements('${safe(element)}')`,
+                    `Dimensions('${odataKey(attrCube)}')/Hierarchies('${odataKey(attrCube)}')/Elements('${odataKey(attribute)}')`,
+                    `Dimensions('${odataKey(dim)}')/Hierarchies('${odataKey(dim)}')/Elements('${odataKey(element)}')`,
                 ]
             }],
             Value: attrType === 'N' ? Number(value) : String(value),
@@ -322,7 +321,7 @@ class TM1Client {
 
     async getElementAttributes(dim, hierarchy = dim) {
         const d = await this.get(
-            `Dimensions('${dim}')/Hierarchies('${hierarchy}')/ElementAttributes`,
+            `Dimensions('${odataKey(dim)}')/Hierarchies('${odataKey(hierarchy)}')/ElementAttributes`,
             { '$select': 'Name,Type' }
         )
         return d.value ?? []
@@ -393,7 +392,7 @@ class TM1Client {
 
     async getCube(name) {
         try {
-            return await this.get(`Cubes('${name}')`, {
+            return await this.get(`Cubes('${odataKey(name)}')`, {
                 '$select': 'Name,Rules',
                 '$expand': 'Dimensions($select=Name)'
             })
@@ -442,7 +441,7 @@ class TM1Client {
     }
 
     async getProcess(name) {
-        return this.get(`Processes('${name}')`)
+        return this.get(`Processes('${odataKey(name)}')`)
     }
 
     async executeProcess(name, params = {}) {
@@ -451,7 +450,7 @@ class TM1Client {
             : Object.entries(params).map(([Name, Value]) => ({ Name, Value: String(Value) }))
         // ExecuteWithReturn returns status + ErrorLogFile reference inline — better than tm1.Execute
         return this.post(
-            `Processes('${encodeURIComponent(name)}')/tm1.ExecuteWithReturn?$expand=ErrorLogFile`,
+            `Processes('${odataKey(name)}')/tm1.ExecuteWithReturn?$expand=ErrorLogFile`,
             { Parameters: paramArray }
         )
     }
@@ -485,7 +484,7 @@ class TM1Client {
                 (e.response?.status === 400 && (String(tm1Err?.code) === '278' || /already exists/i.test(tm1Err?.message ?? '')))
             if (exists) {
                 // PATCH is atomic — no delete+recreate risk
-                await this.patch(`Processes('${encodeURIComponent(proc.name)}')`, body)
+                await this.patch(`Processes('${odataKey(proc.name)}')`, body)
             } else {
                 if (tm1Err?.message) e.message = `TM1 rejected process "${proc.name}": ${tm1Err.message}`
                 throw e
@@ -503,7 +502,7 @@ class TM1Client {
     async getChore(name) {
         // TM1 v11: the navigation property is `Tasks` (not `Steps`); Parameters is an
         // inline complex property so it must NOT be in $expand — only Process is a nav prop.
-        return this.get(`Chores('${encodeURIComponent(name)}')`, {
+        return this.get(`Chores('${odataKey(name)}')`, {
             '$expand': 'Tasks($expand=Process($select=Name))'
         })
     }
@@ -518,7 +517,7 @@ class TM1Client {
     }
 
     async updateChore(name, data) {
-        return this.patch(`Chores('${encodeURIComponent(name)}')`, data)
+        return this.patch(`Chores('${odataKey(name)}')`, data)
     }
 
     async createChore(data) {
@@ -526,15 +525,15 @@ class TM1Client {
     }
 
     async executeChore(name) {
-        return this.post(`Chores('${encodeURIComponent(name)}')/tm1.Execute`, {})
+        return this.post(`Chores('${odataKey(name)}')/tm1.Execute`, {})
     }
 
     async activateChore(name) {
-        return this.patch(`Chores('${encodeURIComponent(name)}')`, { Active: true })
+        return this.patch(`Chores('${odataKey(name)}')`, { Active: true })
     }
 
     async deactivateChore(name) {
-        return this.patch(`Chores('${encodeURIComponent(name)}')`, { Active: false })
+        return this.patch(`Chores('${odataKey(name)}')`, { Active: false })
     }
 
     // ── Subset usage scan ─────────────────────────────────────────────────────
@@ -827,7 +826,7 @@ class TM1Client {
 
     async getSubsets(dim, hierarchy = dim) {
         const d = await this.get(
-            `Dimensions('${dim}')/Hierarchies('${hierarchy}')/Subsets`,
+            `Dimensions('${odataKey(dim)}')/Hierarchies('${odataKey(hierarchy)}')/Subsets`,
             { '$select': 'Name,Expression' }
         )
         return (d.value ?? []).filter(s => !s.Name.startsWith('}'))
@@ -835,7 +834,7 @@ class TM1Client {
 
     async getSubset(dim, name, hierarchy = dim) {
         return this.get(
-            `Dimensions('${dim}')/Hierarchies('${hierarchy}')/Subsets('${name}')`,
+            `Dimensions('${odataKey(dim)}')/Hierarchies('${odataKey(hierarchy)}')/Subsets('${odataKey(name)}')`,
             { '$select': 'Name,Expression' }
         )
     }
@@ -844,18 +843,17 @@ class TM1Client {
         const body = { '@odata.type': '#ibm.tm1.api.v1.MDXSubset', Name: name, Expression: mdx, Hierarchy: { Name: hierarchy, Dimension: { Name: dim } } }
         try {
             await this.patch(
-                `Dimensions('${dim}')/Hierarchies('${hierarchy}')/Subsets('${name}')`,
+                `Dimensions('${odataKey(dim)}')/Hierarchies('${odataKey(hierarchy)}')/Subsets('${odataKey(name)}')`,
                 body
             )
         } catch (e) {
             if (e.response?.status === 404) {
-                await this.post(`Dimensions('${dim}')/Hierarchies('${hierarchy}')/Subsets`, body)
+                await this.post(`Dimensions('${odataKey(dim)}')/Hierarchies('${odataKey(hierarchy)}')/Subsets`, body)
             } else throw e
         }
     }
 
     async previewMDX(dim, mdx, limit = 100, hierarchy = dim) {
-        const enc = encodeURIComponent
         // Primary: ExecuteMDXSetExpression — single call, no subset created
         try {
             const expand = `Tuples($expand=Members($select=Name,Type);$top=${limit})`
@@ -868,13 +866,13 @@ class TM1Client {
         } catch {
             // Fallback: session subset (auto-expires, no cleanup risk)
             const created = await this.post(
-                `Dimensions('${enc(dim)}')/Hierarchies('${enc(hierarchy)}')/tm1.CreateSessionSubset`,
+                `Dimensions('${odataKey(dim)}')/Hierarchies('${odataKey(hierarchy)}')/tm1.CreateSessionSubset`,
                 { Subset: { Expression: mdx } }
             )
             const id = created?.Name ?? created?.ID
             if (!id) throw new Error('Session subset creation returned no ID')
             const d = await this.get(
-                `Dimensions('${enc(dim)}')/Hierarchies('${enc(hierarchy)}')/SessionSubsets('${enc(id)}')/Elements`,
+                `Dimensions('${odataKey(dim)}')/Hierarchies('${odataKey(hierarchy)}')/SessionSubsets('${odataKey(id)}')/Elements`,
                 { '$select': 'Name,Type', '$top': limit }
             )
             return (d.value ?? []).map(e => ({ name: e.Name, type: e.Type }))
@@ -884,7 +882,7 @@ class TM1Client {
     // ── Views ─────────────────────────────────────────────────────────────────
 
     async getViews(cube) {
-        const d = await this.get(`Cubes('${cube}')/Views`)
+        const d = await this.get(`Cubes('${odataKey(cube)}')/Views`)
 return (d.value ?? [])
             .filter(r => !r.Name.startsWith('}'))
             .map(r => ({
@@ -895,7 +893,7 @@ return (d.value ?? [])
 
     async getView(cube, name) {
         try {
-            return await this.get(`Cubes('${cube}')/Views('${name}')`)
+            return await this.get(`Cubes('${odataKey(cube)}')/Views('${odataKey(name)}')`)
         } catch (e) {
             if (e.response?.status === 404) return null
             throw e
@@ -965,9 +963,9 @@ return (d.value ?? [])
         // Try expanding Subset within each placement collection (most reliable)
         try {
             const [rowsRes, colsRes, titlesRes, base] = await Promise.all([
-                this.get(`Cubes('${cube}')/Views('${name}')/Rows?%24expand=Subset`),
-                this.get(`Cubes('${cube}')/Views('${name}')/Columns?%24expand=Subset`),
-                this.get(`Cubes('${cube}')/Views('${name}')/Titles?%24expand=Subset`),
+                this.get(`Cubes('${odataKey(cube)}')/Views('${odataKey(name)}')/Rows?%24expand=Subset`),
+                this.get(`Cubes('${odataKey(cube)}')/Views('${odataKey(name)}')/Columns?%24expand=Subset`),
+                this.get(`Cubes('${odataKey(cube)}')/Views('${odataKey(name)}')/Titles?%24expand=Subset`),
                 this.getView(cube, name).catch(() => null),
             ])
             const rows    = getSubset(rowsRes.value)
@@ -983,14 +981,14 @@ return (d.value ?? [])
         }
         // Try direct entity with $expand
         try {
-            const view = await this.get(`Cubes('${cube}')/Views('${name}')`, { '$expand': 'Rows,Columns,Titles' })
+            const view = await this.get(`Cubes('${odataKey(cube)}')/Views('${odataKey(name)}')`, { '$expand': 'Rows,Columns,Titles' })
             if (view) {
                 return { ...view, _rows: getSubset(view.Rows), _columns: getSubset(view.Columns), _titles: getSubset(view.Titles) }
             }
         } catch (e) {}
         // Try collection endpoint with $expand
         try {
-            const d = await this.get(`Cubes('${cube}')/Views`, { '$expand': 'Rows,Columns,Titles' })
+            const d = await this.get(`Cubes('${odataKey(cube)}')/Views`, { '$expand': 'Rows,Columns,Titles' })
             const view = (d.value ?? []).find(v => v.Name === name)
             if (view) {
                 return { ...view, _rows: getSubset(view.Rows), _columns: getSubset(view.Columns), _titles: getSubset(view.Titles) }
@@ -1002,8 +1000,8 @@ return (d.value ?? [])
             // Try fetching placements separately (may not have Subset expanded)
             try {
                 const [rr, cr] = await Promise.all([
-                    this.get(`Cubes('${cube}')/Views('${name}')/Rows`),
-                    this.get(`Cubes('${cube}')/Views('${name}')/Columns`),
+                    this.get(`Cubes('${odataKey(cube)}')/Views('${odataKey(name)}')/Rows`),
+                    this.get(`Cubes('${odataKey(cube)}')/Views('${odataKey(name)}')/Columns`),
                 ])
                 return { ...basic, _rows: getSubset(rr.value), _columns: getSubset(cr.value), _titles: [] }
             } catch (e2) {}
@@ -1022,7 +1020,7 @@ return (d.value ?? [])
     async getSubsetElements(dim, name, hierarchy = dim) {
         const TYPE = { Numeric: 'N', Consolidated: 'C', String: 'S', N: 'N', C: 'C', S: 'S', 1: 'N', 2: 'S', 3: 'C' }
         const d = await this.get(
-            `Dimensions('${dim}')/Hierarchies('${hierarchy}')/Subsets('${name}')/Elements`,
+            `Dimensions('${odataKey(dim)}')/Hierarchies('${odataKey(hierarchy)}')/Subsets('${odataKey(name)}')/Elements`,
             { '$select': 'Name,Type,Level' }
         )
         return (d.value ?? []).map(e => ({ name: e.Name, type: TYPE[e.Type] ?? e.Type, level: e.Level }))
@@ -1034,18 +1032,18 @@ return (d.value ?? [])
 
         // Does it already exist?
         const existing = await this.get(
-            `Dimensions('${e(dim)}')/Hierarchies('${e(hierarchy)}')/Subsets('${e(name)}')`,
+            `Dimensions('${odataKey(dim)}')/Hierarchies('${odataKey(hierarchy)}')/Subsets('${odataKey(name)}')`,
             { '$select': 'Name' }
         ).then(s => !!s?.Name).catch(() => false)
 
         if (!existing) {
             // Fresh POST — Elements@odata.bind on a new subset has nothing to append to.
-            await this.post(`Dimensions('${e(dim)}')/Hierarchies('${e(hierarchy)}')/Subsets`, {
+            await this.post(`Dimensions('${odataKey(dim)}')/Hierarchies('${odataKey(hierarchy)}')/Subsets`, {
                 '@odata.type': '#ibm.tm1.api.v1.StaticSubset',
                 Name: name,
                 Hierarchy: { Name: hierarchy, Dimension: { Name: dim } },
                 'Elements@odata.bind': els.map(el =>
-                    `Dimensions('${e(dim)}')/Hierarchies('${e(hierarchy)}')/Elements('${e(el)}')`),
+                    `Dimensions('${odataKey(dim)}')/Hierarchies('${odataKey(hierarchy)}')/Elements('${odataKey(el)}')`),
             })
             return
         }
@@ -1063,13 +1061,12 @@ return (d.value ?? [])
     }
 
     async saveView(cube, name, mdx) {
-        const esc = s => s.replace(/'/g, "''")
         const body = { MDX: mdx }
         try {
-            await this.patch(`Cubes('${esc(cube)}')/Views('${esc(name)}')`, body)
+            await this.patch(`Cubes('${odataKey(cube)}')/Views('${odataKey(name)}')`, body)
         } catch (e) {
             if (e.response?.status === 404) {
-                await this.post(`Cubes('${esc(cube)}')/Views`, {
+                await this.post(`Cubes('${odataKey(cube)}')/Views`, {
                     '@odata.type': '#ibm.tm1.api.v1.MDXView',
                     Name: name,
                     MDX: mdx,
@@ -1079,15 +1076,13 @@ return (d.value ?? [])
     }
 
     async _defaultMember(dim) {
-        const d = await this.get(`Dimensions('${dim}')/Hierarchies('${dim}')/DefaultMember`, { '$select': 'Name' })
+        const d = await this.get(`Dimensions('${odataKey(dim)}')/Hierarchies('${odataKey(dim)}')/DefaultMember`, { '$select': 'Name' })
         return d?.Name
     }
 
-    _esc(s) { return String(s).replace(/'/g, "''") }
-
     async saveNativeView(cube, name, { rows, columns, titles, suppressEmptyRows, suppressEmptyColumns }) {
         const esc = s => String(s).replace(/'/g, "''")
-        const hierBind = dim => `Dimensions('${esc(dim)}')/Hierarchies('${esc(dim)}')`
+        const hierBind = dim => `Dimensions('${odataKey(dim)}')/Hierarchies('${odataKey(dim)}')`
 
         // Ensure all cube dimensions are placed on an axis
         const cubeInfo = await this.getCube(cube)
@@ -1104,7 +1099,7 @@ return (d.value ?? [])
         const buildSubsetRef = a => {
             const dim = a.dimension ?? a
             if (a.subset) {
-                return { 'Subset@odata.bind': `${hierBind(dim)}/Subsets('${esc(a.subset)}')` }
+                return { 'Subset@odata.bind': `${hierBind(dim)}/Subsets('${odataKey(a.subset)}')` }
             }
             const hier = `[${dim}].[${dim}]`
             let expression
@@ -1151,7 +1146,7 @@ return (d.value ?? [])
             }
             return {
                 ...buildSubsetRef(a),
-                'Selected@odata.bind': `${hierBind(dim)}/Elements('${esc(member)}')`,
+                'Selected@odata.bind': `${hierBind(dim)}/Elements('${odataKey(member)}')`,
             }
         }
 
@@ -1171,7 +1166,7 @@ return (d.value ?? [])
         }
         // Delete existing view (regardless of type) then create fresh native view
         try { await this.deleteView(cube, name) } catch {}
-        await this.post(`Cubes('${esc(cube)}')/Views`, postBody)
+        await this.post(`Cubes('${odataKey(cube)}')/Views`, postBody)
     }
 
     async executeMDX(mdx, maxCells = 50_000) {
@@ -1186,13 +1181,13 @@ return (d.value ?? [])
     }
 
     async executeViewWithSuppression(cube, view, suppressZeros, maxCells = 50_000) {
-        await this.patch(`Cubes('${cube}')/Views('${view}')`, { SuppressEmptyRows: suppressZeros })
+        await this.patch(`Cubes('${odataKey(cube)}')/Views('${odataKey(view)}')`, { SuppressEmptyRows: suppressZeros })
         return this.executeView(cube, view, maxCells)
     }
 
     async executeView(cube, view, maxCells = 50_000) {
-        const viewDef = await this.get(`Cubes('${cube}')/Views('${view}')`)
-        const { ID }  = await this.post(`Cubes('${cube}')/Views('${view}')/tm1.Execute`, {})
+        const viewDef = await this.get(`Cubes('${odataKey(cube)}')/Views('${odataKey(view)}')`)
+        const { ID }  = await this.post(`Cubes('${odataKey(cube)}')/Views('${odataKey(view)}')/tm1.Execute`, {})
         const [axisData, cellData] = await Promise.all([
             this.get(`Cellsets('${ID}')/Axes`, { '$expand': 'Tuples($expand=Members($select=Name,UniqueName,Type))' }),
             this.get(`Cellsets('${ID}')/Cells`, { '$select': 'Ordinal,Value,FormattedValue,Updateable', '$top': maxCells }),
@@ -1211,24 +1206,21 @@ return (d.value ?? [])
 
     // dimElemPairs: [{ dim, element }, ...] — one entry per cube dimension, in order
     async writeCellValue(cube, dimElemPairs, value) {
-        const enc = encodeURIComponent
-        const esc = s => s.replace(/'/g, "''")
         const body = {
             Cells: [{
                 'Tuple@odata.bind': dimElemPairs.map(({ dim, element }) =>
-                    `Dimensions('${esc(dim)}')/Hierarchies('${esc(dim)}')/Elements('${esc(element)}')`
+                    `Dimensions('${odataKey(dim)}')/Hierarchies('${odataKey(dim)}')/Elements('${odataKey(element)}')`
                 ),
             }],
             Value: value,
         }
-        return this.post(`Cubes('${enc(cube)}')/tm1.Update`, body)
+        return this.post(`Cubes('${odataKey(cube)}')/tm1.Update`, body)
     }
 
     // ── Cell annotations ──────────────────────────────────────────────────────
 
     async getAnnotations(cube) {
-        const enc = encodeURIComponent
-        const d = await this.get(`Cubes('${enc(cube)}')/Annotations`, {
+        const d = await this.get(`Cubes('${odataKey(cube)}')/Annotations`, {
             '$select':  'ID,Text,TimeStamp,Author',
             '$expand':  'Tuple($select=Name;$expand=Hierarchy($select=Name;$expand=Dimension($select=Name)))',
             '$orderby': 'TimeStamp desc',
@@ -1238,12 +1230,10 @@ return (d.value ?? [])
     }
 
     async addAnnotation(cube, dimElemPairs, text) {
-        const esc = s => s.replace(/'/g, "''")
-        const enc = encodeURIComponent
-        return this.post(`Cubes('${enc(cube)}')/Annotations`, {
+        return this.post(`Cubes('${odataKey(cube)}')/Annotations`, {
             Text: text,
             'Tuple@odata.bind': dimElemPairs.map(({ dim, element }) =>
-                `Dimensions('${esc(dim)}')/Hierarchies('${esc(dim)}')/Elements('${esc(element)}')`
+                `Dimensions('${odataKey(dim)}')/Hierarchies('${odataKey(dim)}')/Elements('${odataKey(element)}')`
             ),
         })
     }
@@ -1253,10 +1243,9 @@ return (d.value ?? [])
     }
 
     async createCube(name, dims) {
-        const esc = s => s.replace(/'/g, "''")
         return this.post('Cubes', {
             Name: name,
-            'Dimensions@odata.bind': dims.map(d => `Dimensions('${esc(d)}')`),
+            'Dimensions@odata.bind': dims.map(d => `Dimensions('${odataKey(d)}')`),
         })
     }
 
@@ -1275,25 +1264,21 @@ return (d.value ?? [])
 
     // updates: [{ dimElemPairs: [{dim, element}, ...], value }, ...]
     async updateCells(cube, updates) {
-        const esc = s => s.replace(/'/g, "''")
-        const enc = encodeURIComponent
         const body = {
             Updates: updates.map(u => ({
                 'Tuple@odata.bind': u.dimElemPairs.map(({ dim, element }) =>
-                    `Dimensions('${esc(dim)}')/Hierarchies('${esc(dim)}')/Elements('${esc(element)}')`
+                    `Dimensions('${odataKey(dim)}')/Hierarchies('${odataKey(dim)}')/Elements('${odataKey(element)}')`
                 ),
                 Value: u.value,
             })),
         }
-        return this.post(`Cubes('${enc(cube)}')/tm1.UpdateCells`, body)
+        return this.post(`Cubes('${odataKey(cube)}')/tm1.UpdateCells`, body)
     }
 
     // ── Cell calculation trace ────────────────────────────────────────────────
 
     // dimElemPairs: [{ dim, element }, ...] — one per cube dimension in order
     async traceCellCalculation(cube, dimElemPairs) {
-        const esc = s => s.replace(/'/g, "''")
-        const enc = encodeURIComponent
         const select = 'Type,Value,Statements,Components/Type,Components/Value,Components/Statements,Components/Components/Value'
         const expand = [
             'Components/Cube($select=Name)',
@@ -1301,10 +1286,10 @@ return (d.value ?? [])
             'Tuple($select=Name,Type,UniqueName;$expand=Hierarchy($expand=Dimension))',
         ].join(',')
         return this.post(
-            `Cubes('${enc(cube)}')/tm1.TraceCellCalculation?$select=${select}&$expand=${expand}`,
+            `Cubes('${odataKey(cube)}')/tm1.TraceCellCalculation?$select=${select}&$expand=${expand}`,
             {
                 'Tuple@odata.bind': dimElemPairs.map(({ dim, element }) =>
-                    `Dimensions('${esc(dim)}')/Hierarchies('${esc(dim)}')/Elements('${esc(element)}')`
+                    `Dimensions('${odataKey(dim)}')/Hierarchies('${odataKey(dim)}')/Elements('${odataKey(element)}')`
                 ),
             }
         )
@@ -1398,23 +1383,20 @@ return (d.value ?? [])
 
     // Recalculates feeder propagation for all rules in the cube (equivalent to Architect "Check Feeders")
     async checkFeedersForRules(cube) {
-        const enc = encodeURIComponent
-        return this.post(`Cubes('${enc(cube)}')/tm1.CheckFeedersForRules`, {})
+        return this.post(`Cubes('${odataKey(cube)}')/tm1.CheckFeedersForRules`, {})
     }
 
     // dimElemPairs: [{ dim, element }, ...] — returns list of cells feeding this intersection
     async checkFeedersOfCell(cube, dimElemPairs) {
-        const esc = s => s.replace(/'/g, "''")
-        const enc = encodeURIComponent
         const expand = [
             'Cube($select=Name)',
             'Tuple($select=Name;$expand=Hierarchy($select=Name;$expand=Dimension($select=Name)))',
         ].join(',')
         const d = await this.post(
-            `Cubes('${enc(cube)}')/tm1.CheckFeedersOfCell?$expand=${expand}`,
+            `Cubes('${odataKey(cube)}')/tm1.CheckFeedersOfCell?$expand=${expand}`,
             {
                 'Tuple@odata.bind': dimElemPairs.map(({ dim, element }) =>
-                    `Dimensions('${esc(dim)}')/Hierarchies('${esc(dim)}')/Elements('${esc(element)}')`
+                    `Dimensions('${odataKey(dim)}')/Hierarchies('${odataKey(dim)}')/Elements('${odataKey(element)}')`
                 ),
             }
         )
@@ -1468,7 +1450,7 @@ return (d.value ?? [])
     }
 
     async getErrorLogContent(filename) {
-        const d = await this.get(`ErrorLogFiles('${encodeURIComponent(filename)}')/Content`)
+        const d = await this.get(`ErrorLogFiles('${odataKey(filename)}')/Content`)
         return typeof d === 'string' ? d : (d?.value ?? '')
     }
 
@@ -1480,7 +1462,7 @@ return (d.value ?? [])
     // via /Document/Content; v12 addresses by name with /Content (see
     // docs/MODEL_OWNED_HISTORY_PLAN.md §7 for the live-verified v11 facts).
     _contentsPath(pathParts) {
-        return pathParts.map(p => `Contents('${encodeURIComponent(p)}')`).join('/')
+        return pathParts.map(p => `Contents('${odataKey(p)}')`).join('/')
     }
 
     // Cached per client. Unknown/empty versions default to the v12 shape so
@@ -1498,9 +1480,9 @@ return (d.value ?? [])
     // a .blob suffix — it must sit inside the OData quotes), v12 = '<name>'.
     async _fileAddress(pathParts, name) {
         if (await this._isV11()) {
-            return `${this._contentsPath(pathParts)}/Contents('${encodeURIComponent(name)}.blob')`
+            return `${this._contentsPath(pathParts)}/Contents('${odataKey(name)}.blob')`
         }
-        return `${this._contentsPath(pathParts)}/Contents('${encodeURIComponent(name)}')`
+        return `${this._contentsPath(pathParts)}/Contents('${odataKey(name)}')`
     }
 
     // Content endpoint of a document: v11 /Document/Content, v12 /Content.
@@ -1588,7 +1570,7 @@ return (d.value ?? [])
     // ── Server admin ──────────────────────────────────────────────────────────
 
     async getMetrics(cube = null) {
-        const params = cube ? { '$filter': `CubeName eq '${cube}'` } : { '$filter': '(CubeName eq null)' }
+        const params = cube ? { '$filter': `CubeName eq '${odataLit(cube)}'` } : { '$filter': '(CubeName eq null)' }
         return this.get('Metrics()', params)
     }
 
@@ -1666,11 +1648,11 @@ return (d.value ?? [])
     }
 
     async updateClient(name, patch) {
-        return this.patch(`Users('${encodeURIComponent(name)}')`, patch)
+        return this.patch(`Users('${odataKey(name)}')`, patch)
     }
 
     async deleteClient(name) {
-        return this.delete(`Users('${encodeURIComponent(name)}')`)
+        return this.delete(`Users('${odataKey(name)}')`)
     }
 
     async getGroups() {
@@ -1679,7 +1661,7 @@ return (d.value ?? [])
     }
 
     async getClientGroups(clientName) {
-        const data = await this.get(`Users('${encodeURIComponent(clientName)}')/Groups?$select=Name`)
+        const data = await this.get(`Users('${odataKey(clientName)}')/Groups?$select=Name`)
         return (data.value ?? []).map(g => g.Name)
     }
 
@@ -1705,14 +1687,14 @@ return (d.value ?? [])
     async addClientToGroup(clientName, groupName) {
         const current = await this.getClientGroups(clientName)
         if (current.includes(groupName)) return
-        const groups = [...current, groupName].map(g => ({ '@odata.id': `Groups('${encodeURIComponent(g)}')` }))
-        return this.patch(`Users('${encodeURIComponent(clientName)}')`, { Groups: groups })
+        const groups = [...current, groupName].map(g => ({ '@odata.id': `Groups('${odataKey(g)}')` }))
+        return this.patch(`Users('${odataKey(clientName)}')`, { Groups: groups })
     }
 
     async removeClientFromGroup(clientName, groupName) {
         const current = await this.getClientGroups(clientName)
-        const groups = current.filter(g => g !== groupName).map(g => ({ '@odata.id': `Groups('${encodeURIComponent(g)}')` }))
-        return this.patch(`Users('${encodeURIComponent(clientName)}')`, { Groups: groups })
+        const groups = current.filter(g => g !== groupName).map(g => ({ '@odata.id': `Groups('${odataKey(g)}')` }))
+        return this.patch(`Users('${odataKey(clientName)}')`, { Groups: groups })
     }
 }
 

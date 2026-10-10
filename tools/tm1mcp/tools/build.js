@@ -533,7 +533,7 @@ function register(server, { client, ok, esc, logChange, requireChangeSet, lintRu
                 Frequency:     frequency ?? 'P1DT00H00M00S',
                 Tasks: steps.map((s, i) => ({
                     Step: i,
-                    'Process@odata.bind': `Processes('${s.process.replace(/'/g, "''")}')`,
+                    'Process@odata.bind': `Processes('${esc(s.process)}')`,
                     Parameters: s.parameters ?? [],
                 })),
             })

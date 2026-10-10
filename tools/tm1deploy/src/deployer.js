@@ -4,13 +4,13 @@ const fs   = require('fs')
 const path = require('path')
 const { makeClient }  = require('./client')
 const { analyzeRisk } = require('./risk')
+const { odataKey } = require('../../../core/odata-key')
 
 // ── Per-type deployers ────────────────────────────────────────────────────────
 
 async function deployRules(obj, packageDir, client) {
     const text = fs.readFileSync(path.join(packageDir, obj.file), 'utf8')
-    const esc  = s => s.replace(/'/g, "''")
-    await client.patch(`Cubes('${esc(obj.name)}')`, { Rules: text })
+    await client.patch(`Cubes('${odataKey(obj.name)}')`, { Rules: text })
 }
 
 async function deployProcess(obj, packageDir, client) {
@@ -76,7 +76,7 @@ async function deployDimension(obj, packageDir, client, report = {}) {
     // it, and every element/edge write then 404s.
     const exists = await client.getDimension(name).catch(() => null)
     if (!exists) await client.post('Dimensions', { Name: name }).catch(ignore)
-    await client.post(`Dimensions('${name}')/Hierarchies`, { Name: name, Dimension: { Name: name } }).catch(ignore)
+    await client.post(`Dimensions('${odataKey(name)}')/Hierarchies`, { Name: name, Dimension: { Name: name } }).catch(ignore)
 
     // Elements — one POST each. The bulk tm1.AddElements action 404s on v11;
     // client.addElement (POST .../Elements) is the path the build tools use.
@@ -135,7 +135,7 @@ async function deployDimension(obj, packageDir, client, report = {}) {
             const existing = await client.getElementAttributes(name).catch(() => [])
             if (!existing.some(a => a.Name === attr.Name)) {
                 await client.post(
-                    `Dimensions('${name}')/Hierarchies('${name}')/ElementAttributes`,
+                    `Dimensions('${odataKey(name)}')/Hierarchies('${odataKey(name)}')/ElementAttributes`,
                     { Name: attr.Name, Type: attr.Type ?? 'String' }
                 )
             }
@@ -228,7 +228,7 @@ async function deployAttribute(obj, packageDir, client) {
     const existing = await client.getElementAttributes(dim).catch(() => [])
     if (!existing.some(a => a.Name === data.Attribute)) {
         await client.post(
-            `Dimensions('${dim}')/Hierarchies('${dim}')/ElementAttributes`,
+            `Dimensions('${odataKey(dim)}')/Hierarchies('${odataKey(dim)}')/ElementAttributes`,
             { Name: data.Attribute, Type: data.Type ?? 'String' }
         )
     }
