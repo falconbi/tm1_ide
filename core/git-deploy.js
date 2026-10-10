@@ -11,15 +11,18 @@ const assertions = require('./assertions')
 const gitIdentity = require('./git-identity')
 const approvals = require('./git-approvals')
 
-// Parse a GitPull plan operation ("Update Cubes('WFP Workforce Cost')") into the
-// TM1 object it refers to, so it can be checked against a release's objects.
+// Parse a GitPull plan operation ("Update Cubes('WFP Workforce Cost')",
+// "Replace Dimensions('WFP Version')", "Skip Processes('X')", …) into the TM1
+// object it refers to, so it can be checked against a release's objects.
+// Skip operations are NOT changes — a Skip carries no object to verify.
 const PLAN_TYPE = { cubes: 'cube', dimensions: 'dimension', processes: 'process', chores: 'chore', subsets: 'subset', views: 'view' }
 function parsePlanOp(op) {
-    const m = String(op ?? '').match(/^(?:Create|Update|Delete|Skip)\s+([A-Za-z]+)\(['"]?([^'")]*)['"]?\)?/)
+    const m = String(op ?? '').match(/^([A-Za-z]+)\s+([A-Za-z]+)\(['"]?([^'")]*)['"]?\)?/)
     if (!m) return null
-    const type = PLAN_TYPE[m[1].toLowerCase()]
+    if (m[1].toLowerCase() === 'skip') return null   // Skip = unchanged, not a change
+    const type = PLAN_TYPE[m[2].toLowerCase()]
     if (!type) return null
-    return { type, name: m[2] }
+    return { type, name: m[3] }
 }
 
 // Preview: target baseline + what the pull would change. Read-only (plan only).
