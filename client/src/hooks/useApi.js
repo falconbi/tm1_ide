@@ -32,6 +32,7 @@ if (typeof window !== 'undefined' && !window.__tm1FetchWrapped) {
         for (const s of list) if (s?.readOnly) readOnlyServers.add(String(s?.name ?? '').toLowerCase())
       })
       .catch(() => { /* auth/network hiccup — not loaded; the next save attempts again */ })
+      .finally(() => { if (!readOnlyLoaded) readOnlyLoadPromise = null })   // never reuse a failed attempt
     return readOnlyLoadPromise
   }
   loadReadOnlyServers() // page-load warmth only, not relied upon — a backend restart
