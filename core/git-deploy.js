@@ -29,7 +29,13 @@ async function prepare(source, target, { branch = 'dev', token, gitUser = gitIde
 
     try {
         const st = await c.post('GitStatus', { Username: gitUser, Password: token })
-        out.deployedCommit  = st?.DeployedCommit?.ID ?? null
+        // The IDE-recorded deploy commit is what the target actually last received;
+        // TM1's own DeployedCommit is the last git op's target (a prod-live push
+        // clobbers it). Prefer the record, fall back only if there is none.
+        let recorded = null
+        try { recorded = require('./git-state').lastDeployed(target)?.lastDeployedCommit ?? null } catch { /* none */ }
+        out.deployedCommit  = recorded ?? st?.DeployedCommit?.ID ?? null
+        out.deployedIsRecorded = !!recorded
         out.deployedSummary = st?.DeployedCommit?.Summary ?? null
         out.connected       = st?.Remote?.Connected ?? false
         out.fullOverwrite   = !out.deployedCommit
@@ -73,10 +79,10 @@ async function execute(target, { branch = 'dev', token, gitUser = gitIdentity.us
     const cl = require('./change_log')
 
     // Release mode: this change set has a built release for this target. Deploy
-    // branch release/<target> and gate on the RELEASE commit, not DEV's head.
+    // branch release-<target> and gate on the RELEASE commit, not DEV's head.
     const session = sessionId ? cl.getSession(sessionId) : null
     const releaseCommit = (session?.release_commit && (!session.release_target || session.release_target === target)) ? session.release_commit : null
-    if (releaseCommit) { branch = `release/${target}`; out.branch = branch; out.release = true; out.releaseCommit = releaseCommit }
+    if (releaseCommit) { branch = `release-${target}`; out.branch = branch; out.release = true; out.releaseCommit = releaseCommit }
 
     // The incoming commit is the branch head. Determine it from the SOURCE's own
     // Git state (the target's pull plan would expire while we do the governance

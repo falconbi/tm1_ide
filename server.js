@@ -3030,7 +3030,7 @@ app.post('/api/deploy/git/push', async (req, res) => {
 })
 
 // ── Change-set-scoped release ─────────────────────────────────────────────────
-// Build branch release/<target> = the target's recorded deployed commit + only
+// Build branch release-<target> = the target's recorded deployed commit + only
 // this change set's files. Deploying it ships exactly this change set.
 app.post('/api/deploy/git/release', async (req, res) => {
     try {

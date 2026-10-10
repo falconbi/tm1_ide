@@ -23,7 +23,7 @@ function repo() {
   fs.writeFileSync(path.join(w, 'cubes', 'A.rules'), '# base (A)\n')
   g(w, 'add', '-A'); g(w, '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '-m', 'release')
   const releaseCommit = g(w, 'rev-parse', 'HEAD').trim()
-  g(w, 'push', '-q', 'origin', 'HEAD:refs/heads/release/TG1')
+  g(w, 'push', '-q', 'origin', 'HEAD:refs/heads/release-TG1')
   return { bare, base, releaseCommit, w }
 }
 
