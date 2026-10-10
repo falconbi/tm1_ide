@@ -3029,6 +3029,24 @@ app.post('/api/deploy/git/push', async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
+// ── Change-set-scoped release ─────────────────────────────────────────────────
+// Build branch release/<target> = the target's recorded deployed commit + only
+// this change set's files. Deploying it ships exactly this change set.
+app.post('/api/deploy/git/release', async (req, res) => {
+    try {
+        const { target, session } = req.body
+        if (!target) return res.status(400).json({ error: 'target required' })
+        const changeSet = session ? cl.getSession(session) : null
+        if (!changeSet) return res.status(400).json({ error: 'a change set (session) is required' })
+        const { buildRelease } = require('./core/git-release')
+        const r = await buildRelease(changeSet, target, { token: process.env.TM1_GIT_TOKEN, gitUser: _GI().user(), ideToken: req.ideToken })
+        if (r.refused) return res.status(409).json({ error: r.error })
+        if (r.ok === false) return res.status(500).json({ error: r.error })
+        cl.setSessionRelease(changeSet.id, r.releaseCommit, target)
+        res.json(r)
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
 // ── Approval — the recorded human decision that gates a deploy. ─────────────
 // Bound to a specific commit + target: a new commit invalidates the old approval.
 // Stored locally (gitignored) via core/git-approvals.
