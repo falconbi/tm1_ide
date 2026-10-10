@@ -14,7 +14,9 @@
 const { makeClient, isReadOnly } = require('./adapter_registry')
 const { lastDeployed } = require('./git-state')
 
-const READ_ONLY_ERROR = (server) => `"${server}" is read-only (PROD posture) — no changes are allowed here.`
+// Tells the caller how to get unblocked: init and first-pull only run on a
+// writable server, so setup must happen BEFORE marking the server read-only.
+const READ_ONLY_ERROR = (server) => `Refused: ${server} is read-only. Set it up (init + first pull) before marking it read-only — or temporarily remove it from readOnlyServers, set it up, then add it back.`
 
 // Has this server already been deployed to? A real DeployedCommit on the server,
 // or a deploy the IDE recorded (git-deploy-state), both mean first-pull must refuse.
