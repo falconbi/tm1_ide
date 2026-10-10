@@ -27,6 +27,21 @@ function repo() {
   return { bare, base, releaseCommit, w }
 }
 
+// Real temp repo: base then a release that adds a chore file only.
+function choreRepo() {
+  const bare = fs.mkdtempSync(path.join(os.tmpdir(), 'dep-bare-'))
+  execFileSync('git', ['init', '-q', '--bare', bare])
+  const w = W(); g(w, 'init', '-q'); g(w, 'remote', 'add', 'origin', bare)
+  g(w, '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '--allow-empty', '-m', 'base')
+  const base = g(w, 'rev-parse', 'HEAD').trim()
+  fs.mkdirSync(path.join(w, 'chores'), { recursive: true })
+  fs.writeFileSync(path.join(w, 'chores', 'My Chore.json'), JSON.stringify({ Name: 'My Chore' }))
+  g(w, 'add', '-A'); g(w, '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '-m', 'release')
+  const releaseCommit = g(w, 'rev-parse', 'HEAD').trim()
+  g(w, 'push', '-q', 'origin', 'HEAD:refs/heads/release-TG1')
+  return { bare, base, releaseCommit, w }
+}
+
 // In-memory change_log
 const realBsq = require('better-sqlite3')
 const bsqPath = require.resolve('better-sqlite3')
@@ -43,6 +58,7 @@ function fakeClient() {
     },
     async get(route) {
       const r = String(route)
+      if (ctx?.seenRoutes) ctx.seenRoutes.push(r)
       if (/Cubes\('A'\)/.test(r)) {
         if (ctx?.missingCube) throw { response: { status: 404 } }
         return { Rules: ctx.releaseRules ?? '# base (A)\n' }
@@ -73,6 +89,7 @@ stub('core/git-approvals', {
 })
 
 const { execute } = require(path.join(__dirname, '..', 'core', 'git-deploy'))
+const { verifyRelease } = require(path.join(__dirname, '..', 'core', 'git-release'))
 
 test('release deploy refuses when the pull plan carries an object not in the release', async () => {
   const r = repo()
@@ -227,4 +244,18 @@ test('execute refuses any deploy that is not a built release', async () => {
     assert.equal(out.executed, false)
     assert.match(out.error, /Build a release first/i)
   } finally { fs.rmSync(r.bare, { recursive: true, force: true }); fs.rmSync(r.w, { recursive: true, force: true }) }
+})
+
+test('verifyRelease checks a chore against Chores(...), not Processes(...)', async () => {
+  const r = choreRepo()
+  try {
+    ctx = { bare: r.bare, seenRoutes: [] }
+    const incomplete = await verifyRelease('TG1', { base: r.base, releaseCommit: r.releaseCommit, repoUrl: r.bare, token: 'x', gitUser: 't' })
+    assert.deepEqual(incomplete, [], 'chore landed → verified, nothing reported incomplete')
+    const choreCalls = ctx.seenRoutes.filter(x => /Chores\('/.test(x))
+    const procCalls = ctx.seenRoutes.filter(x => /Processes\('/.test(x))
+    assert.equal(choreCalls.length, 1, `exactly one GET to Chores('My Chore') — saw ${JSON.stringify(ctx.seenRoutes)}`)
+    assert.match(choreCalls[0], /^Chores\('My%20Chore'\)/)
+    assert.equal(procCalls.length, 0, 'a chore is never probed as a Process')
+  } finally { ctx = null; fs.rmSync(r.bare, { recursive: true, force: true }); fs.rmSync(r.w, { recursive: true, force: true }) }
 })
