@@ -42,6 +42,22 @@ function choreRepo() {
   return { bare, base, releaseCommit, w }
 }
 
+// Real temp repo: base then a release that adds a subset file only.
+function subsetRepo() {
+  const bare = fs.mkdtempSync(path.join(os.tmpdir(), 'dep-bare-'))
+  execFileSync('git', ['init', '-q', '--bare', bare])
+  const w = W(); g(w, 'init', '-q'); g(w, 'remote', 'add', 'origin', bare)
+  g(w, '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '--allow-empty', '-m', 'base')
+  const base = g(w, 'rev-parse', 'HEAD').trim()
+  const dir = path.join(w, 'dimensions', 'WFP Cost Centre.hierarchies', 'WFP Cost Centre.subsets')
+  fs.mkdirSync(dir, { recursive: true })
+  fs.writeFileSync(path.join(dir, 'Test Subset.json'), JSON.stringify({ Name: 'Test Subset', Expression: '{TM1SUBSETALL( [WFP Cost Centre] )}' }))
+  g(w, 'add', '-A'); g(w, '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '-m', 'release')
+  const releaseCommit = g(w, 'rev-parse', 'HEAD').trim()
+  g(w, 'push', '-q', 'origin', 'HEAD:refs/heads/release-TG1')
+  return { bare, base, releaseCommit, w }
+}
+
 // In-memory change_log
 const realBsq = require('better-sqlite3')
 const bsqPath = require.resolve('better-sqlite3')
@@ -54,6 +70,7 @@ function fakeClient() {
     async post(route) {
       if (route === 'GitStatus') return { URL: ctx.bare, DeployedCommit: { ID: 'x' } }
       if (route === 'GitPull') return { ID: 'PLAN1', Commit: { ID: ctx.planCommit ?? ctx.releaseCommit }, Operations: ctx.ops }
+      if (/Subsets/.test(String(route)) && ctx?.subsetApplyFail) throw new Error('subset apply failed: boom')
       return {}
     },
     async get(route) {
@@ -65,7 +82,11 @@ function fakeClient() {
       }
       if (/Cubes\(|Dimensions\(|Processes\(/.test(r)) return { Name: 'x' }
       return {}
-    }, async patch() { return {} }, async delete() { return {} },
+    },
+    async patch(route) {
+      if (/Subsets/.test(String(route)) && ctx?.subsetApplyFail) throw new Error('subset apply failed: boom')
+      return {}
+    }, async delete() { return {} },
   }
 }
 const arReal = require(resolve('core/adapter_registry'))
@@ -257,5 +278,26 @@ test('verifyRelease checks a chore against Chores(...), not Processes(...)', asy
     assert.equal(choreCalls.length, 1, `exactly one GET to Chores('My Chore') — saw ${JSON.stringify(ctx.seenRoutes)}`)
     assert.match(choreCalls[0], /^Chores\('My%20Chore'\)/)
     assert.equal(procCalls.length, 0, 'a chore is never probed as a Process')
+  } finally { ctx = null; fs.rmSync(r.bare, { recursive: true, force: true }); fs.rmSync(r.w, { recursive: true, force: true }) }
+})
+
+test('a subset apply failure drives controlOk to false', async () => {
+  const r = subsetRepo()
+  try {
+    baseCommit = r.base
+    const s = cl.startSession('SubFail', 'DEV1', 'admin')
+    cl.setSessionCommit(s.id, r.releaseCommit)
+    cl.setSessionRelease(s.id, r.releaseCommit, 'TG1')
+    cl.writeLog({ server: 'DEV1', action: 'SUBSET_CREATED', objectType: 'subset', objectName: 'Test Subset', detail: 'WFP Cost Centre', user: 'admin' })
+
+    ctx = {
+      bare: r.bare, releaseCommit: r.releaseCommit, planCommit: r.releaseCommit, sessionId: s.id,
+      ops: [`Create Subsets('Test Subset','WFP Cost Centre')`], subsetApplyFail: true,
+    }
+    const out = await execute('TG1', { session: s.id, source: 'DEV1', token: 'x', gitUser: 't' })
+    assert.equal(out.executed, true, JSON.stringify(out))
+    assert.equal(out.subsetsViews.errors.length, 1, 'the subset apply failure is surfaced')
+    assert.match(out.subsetsViews.errors[0].error, /subset apply failed/)
+    assert.equal(out.controlOk, false, 'a failed subset apply is never control-ok')
   } finally { ctx = null; fs.rmSync(r.bare, { recursive: true, force: true }); fs.rmSync(r.w, { recursive: true, force: true }) }
 })
