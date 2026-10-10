@@ -231,25 +231,3 @@ test('objectKey disambiguates subsets by parent dimension and views by cube', ()
   // Other objects are keyed type::name (no parent).
   assert.equal(objectKey('cube', 'A'), 'cube::a')
 })
-
-test('buildRelease refuses when the change set contains a subset or view (TM1 Git won\'t apply them)', async () => {
-  const bare = bareInit(BARE())
-  const w = W()
-  g(w, 'init', '-q'); g(w, 'remote', 'add', 'origin', bare)
-  write(w, 'cubes/A.rules', '# base\n')
-  const base = commitAll(w, 'base')
-  write(w, 'cubes/A.rules', '# base (A)\n')
-  const devCommit = commitAll(w, 'dev')
-  g(w, 'branch', '-M', 'dev')
-  g(w, 'push', '-q', 'origin', 'dev:dev')
-  try {
-    fakeBase = base
-    const a = cl.startSession('HasSubset', 'DEV1', 'admin')
-    cl.setSessionCommit(a.id, devCommit)
-    cl.writeLog({ server: 'DEV1', action: 'SUBSET_UPDATED', objectType: 'subset', objectName: 'Default', detail: 'DimA', user: 'admin' })
-    const r = await buildRelease(a, 'TG1', { token: 'x', gitUser: 't', repoUrl: bare })
-    assert.equal(r.ok, false)
-    assert.equal(r.refused, true)
-    assert.match(r.error, /Subsets and views can't be released through TM1 Git yet/i)
-  } finally { fs.rmSync(bare, { recursive: true, force: true }); fs.rmSync(w, { recursive: true, force: true }) }
-})

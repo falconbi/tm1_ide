@@ -53,6 +53,54 @@ function splitTi(text) {
     return { prolog: grab('Prolog'), metadata: grab('Metadata'), data: grab('Data'), epilog: grab('Epilog') }
 }
 
+// A view placement from a repo export: either a NAMED subset
+// ({ Subset: { @id: '…/Subsets(\'NAME\')' } }) or an inline expression
+// ({ Subset: { Hierarchy: {@id}, Expression }, Selected: {@id} }).
+function parseViewPlacement(p) {
+    const subId = String(p?.Subset?.['@id'] ?? '')
+    const named = subId.match(/Subsets\('([^']+)'\)/)?.[1] ?? null
+    const dim = named
+        ? String(subId).match(/Dimensions\('([^']+)'\)/)?.[1]
+        : String(p?.Subset?.Hierarchy?.['@id'] ?? '').match(/Dimensions\('([^']+)'\)/)?.[1]
+    if (named) return { dimension: dim, subset: named }
+    const out = { dimension: dim, customExpr: p?.Subset?.Expression ?? null }
+    const member = String(p?.Selected?.['@id'] ?? '').match(/Elements\('([^']+)'\)/)?.[1] ?? null
+    if (member) out.member = member
+    return out
+}
+
+// Apply a subset from its repo file: a DYNAMIC subset keeps its MDX Expression;
+// a STATIC subset is applied by its element list. (This is the fix for treating
+// every exported subset as static.)
+async function applySubset(tm1, det, content) {
+    const sub = JSON.parse(content)
+    if (sub.Expression) {
+        await tm1.saveSubset(det.dim, det.name, sub.Expression, det.hierarchy ?? det.dim)
+        return { type: 'subset', name: `${det.name} (${det.dim})`, mode: 'mdx' }
+    }
+    const members = (sub.Elements ?? []).map(el => subsetMemberName(el, det.dim, det.hierarchy ?? det.dim)).filter(Boolean)
+    await tm1.saveStaticSubset(det.dim, det.name, members, det.hierarchy ?? det.dim)
+    return { type: 'subset', name: `${det.name} (${det.dim})`, mode: 'static', n: members.length }
+}
+
+// Apply a view from its repo file: MDX views keep their MDX; native views are
+// rebuilt from the exported Rows / Columns / Titles placements.
+async function applyView(tm1, det, content) {
+    const view = JSON.parse(content)
+    if (view.MDX && !Array.isArray(view.Rows)) {
+        await tm1.saveView(det.cube, det.name, view.MDX)
+        return { type: 'view', name: `${det.name} (${det.cube})`, mode: 'mdx' }
+    }
+    await tm1.saveNativeView(det.cube, det.name, {
+        rows: (view.Rows ?? []).map(parseViewPlacement),
+        columns: (view.Columns ?? []).map(parseViewPlacement),
+        titles: (view.Titles ?? []).map(parseViewPlacement),
+        suppressEmptyRows: view.SuppressEmptyRows,
+        suppressEmptyColumns: view.SuppressEmptyColumns,
+    })
+    return { type: 'view', name: `${det.name} (${det.cube})`, mode: 'native' }
+}
+
 // Restore each drifted object from the approved commit's repo file.
 async function restoreFromCommit(target, commit, entries, { branch = 'dev', token, gitUser, ideToken } = {}) {
     const c = makeClient(target, ideToken)
@@ -80,10 +128,12 @@ async function restoreFromCommit(target, commit, entries, { branch = 'dev', toke
             try {
                 if (det.type === 'subset') {
                     const content = git(work, 'show', `${commit}:${file}`)
-                    const sub = JSON.parse(content)
-                    const members = (sub.Elements ?? []).map(el => subsetMemberName(el, det.dim, det.hierarchy)).filter(Boolean)
-                    await tm1.saveStaticSubset(det.dim, det.name, members, det.hierarchy)
-                    out.restored.push({ type: 'subset', name: `${det.name} (${det.dim})`, n: members.length })
+                    // MDX-aware: dynamic subsets keep their Expression (this fixes the
+                    // old behaviour that turned every exported subset into an empty static one).
+                    out.restored.push(await applySubset(tm1, det, content))
+                } else if (det.type === 'view') {
+                    const content = git(work, 'show', `${commit}:${file}`)
+                    out.restored.push(await applyView(tm1, det, content))
                 } else if (det.type === 'process') {
                     const tiText = git(work, 'show', `${commit}:processes/${det.name}.ti`)
                     const parts = splitTi(tiText)
@@ -123,4 +173,4 @@ async function restoreFromCommit(target, commit, entries, { branch = 'dev', toke
     }
 }
 
-module.exports = { restoreFromCommit, parseObjectFile, splitTi }
+module.exports = { restoreFromCommit, parseObjectFile, splitTi, subsetMemberName, parseViewPlacement, applySubset, applyView }
