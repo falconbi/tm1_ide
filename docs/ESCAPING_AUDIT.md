@@ -20,15 +20,38 @@ read the surrounding call and the escaping helper in scope.
 
 | Tag | Meaning | Fix on the lab test set |
 |---|---|---|
-| `PATH-RAW` | name in an OData **path** segment, zero encoding | url-encode whole segment incl `'` → `%27` |
-| `PATH-ENC` | `encodeURIComponent()` in a path — fixes `% # ? & + /` but **leaves `'` ever** | add `'` → `%27` after encode |
-| `PATH-APOS` | apostrophe-doubling helper (`esc`/`safe`/`e`/line-245 `enc`) in a **path** — `''` is not valid in a URL segment | replace with segment encoder |
+| `PATH-RAW` | name in an OData **path** segment, zero encoding | `odataKey()` |
+| `PATH-ENC` | `encodeURIComponent()` in a path — fixes `% # ? & + /` but **leaves `'` ever** | `odataKey()` |
+| `PATH-APOS` | apostrophe-doubling helper (`esc`/`safe`/`e`/line-245 `enc`) in a **path** — `''` is not valid in a URL segment | `odataKey()` |
 | `FILTER-RAW` | name inside `$filter` string **without** `''` doubling | double `'` (`eq 'Test''s'`) + send filter URL-encoded |
 | `FILTER-OK` | `$filter` string with `''` doubling — fine for `'` | verify transport URL-encodes the param (axios params do; raw `?…` strings don't) → `+`/space |
 | `TI-STR` | name in a **generated TI/Rules string literal** — `''` doubling is correct here | nothing |
 | `GUID` | value is a system id (session/thread/cellset/plan id) that structurally cannot contain `' % #` | nothing |
-| `URI-REF` | name in an `@odata.id`/`@odata.bind` **URI reference** inside JSON | same as PATH (encode incl `'`) |
+| `URI-REF` | name in an `@odata.id`/`@odata.bind` **URI reference** inside JSON | `odataKey()` |
 | `SAFE` | message/log/RegExp-building/JSON body value/console | nothing |
+
+## Helper definitions — classify by definition, never by name
+
+Two files share the name `esc` with opposite meanings; the audit below is keyed
+to the actual definition in scope at each site.
+
+| helper | where | definition | bucket on the lab set |
+|---|---|---|---|
+| `esc` | `tools/tm1mcp/shared.js:38` | `s => encodeURIComponent(s)` | **PATH-ENC** |
+| `esc` | `core/git-*.js` (`git-readiness:16`, `git-reconcile:13`, `git-restore:18`), `core/model-health.js:16`, `tools/tm1deploy/src/deployer.js`, `risk.js`, `core/tm1_client.js` ~1066–1610 | doubles `'` (`s.replace(/'/g, "''")`) | PATH-APOS |
+| `esc` | `core/tm1_client.js` ~570, 614, 710 | regex-escapes `.*+?^${}()|[\]\\` for `new RegExp(...)` — not TM1 | **EXCLUDE — never touch** |
+| `enc` | `core/tm1_client.js` 858, 1214, 1230, 1242, 1279, 1296, 1401, 1408; `server.js` ~482, 487, 740 | `encodeURIComponent` | PATH-ENC |
+| `enc` | `core/tm1_client.js:118` | `encodeURIComponent(name)` pre-computed once | check each use site (line 122 → PATH-ENC) |
+| `encodePath` | `server.js:2008` | PAW Assets API, deliberately double-encoded | **EXCLUDE** |
+
+**Rule for the fix pass: no search-and-replace on helper names.** Every TM1 path
+site moves to one shared helper:
+
+```js
+const odataKey = name => encodeURIComponent(String(name).replace(/'/g, "''"))
+```
+
+Old local helpers are deleted only once nothing uses them.
 
 ---
 
@@ -207,18 +230,18 @@ git-readiness.js: 152  message → SAFE
 
 ## `tools/tm1mcp/**`
 
-Mostly call `core/tm1_client.js` methods (so they fix when the client does). The
-ones that build URLs inline use the same `esc`-apostrophe-double in paths:
+`esc` in `tools/tm1mcp/shared.js:38` is `encodeURIComponent` (encode-only), so every
+MCP tool that builds a path inline is **PATH-ENC**, not PATH-APOS. Applying the
+PATH-APOS rule here would double-encode and break names that work today.
 
 ```
-tools/build.js:      232  c.get(`Dimensions('${esc(dimension)}')/…Elements`)   PATH-APOS
-build.js: 240/243     Cubes('${esc(name)}')… CheckRules / ProcessFeeders          PATH-APOS
-build.js: 250         'Process@odata.bind': `Processes('${s.process.replace(/'/g,"''")}')` → URI-REF (ok-ish, '' in URI)
-build.js: 253         delete `Chores('${esc(name)}')`                            PATH-APOS
-build.js: 328/349     patch/post `Cubes('${esc(name)}')`                          PATH-APOS
-develop.js: 31/34/53/78/95/128   `esc()` in Cubes/Processes paths                 PATH-APOS
-introspect.js: 25/36/100/118/132/148/164/168   `esc()` in paths                    PATH-APOS
-diagnostics.js / assertions.js / changeset.js   messages/ok()                      SAFE
+build.js: 206    c.get(`Dimensions('${esc(dimension)}')/…/Elements`)
+build.js: 320/328/349   Cubes('${esc(name)}')… CheckRules / patch / ProcessFeeders   5× PATH-ENC
+build.js: 603    delete `Chores('${esc(name)}')`
+build.js: 536    'Process@odata.bind': `Processes('${s.process.replace(/'/g,"''")}')` → URI-REF
+develop.js: 31/34/53/78/95/128   `esc()` in Cubes/Processes paths                    6× PATH-ENC
+introspect.js: 25/36/100/118/132/148/164/168   `esc()` in paths                       8× PATH-ENC
+diagnostics.js / assertions.js / changeset.js / lenses.js   messages/ok()             SAFE
 ```
 
 ---
@@ -274,26 +297,26 @@ risk.js/diff.js/packager.js   per-type messages → SAFE
    both must also travel URL-encoded (`+`/space). The client/axios path already encodes
    params; any site that raw-concatenates a `?…` string must not.
 6. The `enc` helper at `tm1_client.js:245` is the odd one — it doubled `'` and encoded `%#`
-   but not `& + space`. Treat as PATH-APOS (replace with the shared segment encoder).
+   but not `& + space`. Treat as PATH-APOS (replace with `odataKey`).
 
 ---
 
-## One shared fix (proposal, not applied)
+## One shared fix (planned, not applied)
 
-Introduce a single shared segment encoder (e.g. in `core/tm1_client.js`):
+**No search-and-replace on helper names.** Every TM1 **path** site moves to one
+shared helper, `odataKey(name) = encodeURIComponent(String(name).replace(/'/g, "''"))`
+(doubles `'` as OData expects, then URL-encodes everything else `% # ? & + space`).
+Old local helpers (`enc`/`safe`/`e`/`esc`/line-245 `enc`) are deleted **only once
+nothing uses them** — otherwise a PATH-ENC-only name like `zz_esc_Test's #1 %`
+would be either un-encoded or double-encoded.
 
-```js
-const seg = v => encodeURIComponent(String(v ?? '')).replace(/'/g, '%27')
-```
-
-- **Every OData path segment** (`Dimensions('${seg(dim)}')`, `Edges(ParentName='${seg(p)}')`, …)
-  uses `seg`. This is the URL-path = "full treatment" rule.
-- **`$filter` string values** keep `'`→`''` doubling **and** the whole filter travels as a
-  URL-encoded query param.
+- **Every OData path segment** (`Dimensions('${odataKey(dim)}')`,
+  `Edges(ParentName='${odataKey(p)}', …)`, `Cubes('${odataKey(cube)}')/Views`, …) uses `odataKey`.
+- **`$filter` string values** keep `'`→`''` doubling (already correct for the string
+  literal) **and** the whole filter travels as a URL-encoded query param.
 - **Generated TI string literals** keep `''` doubling (no change).
-
-That collapses the five coexisting styles into two rules: *path → `seg()`,
-TM1-string → `''`-double*.
+- **MCP `esc` (encodeURIComponent)**, the regex `esc`s, and `encodePath` are left
+  alone/extended per the helper table above — never re-bucketed by name.
 
 ---
 
