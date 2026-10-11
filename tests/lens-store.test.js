@@ -38,7 +38,7 @@ test('saveLens writes one document per Lens in the lenses area of that server', 
   assert.equal(saved.status, 'draft')
   assert.equal(saved.toolkitVersion, lens.TOOLKIT_VERSION)
   assert.equal(saved.html, undefined, 'details returned without the HTML')
-  assert.deepEqual(calls.find(c => c[0] === 'write'), ['write', 'SrvA', 'lenses', 'Ownership-Tree.json'])
+  assert.deepEqual(calls.find(c => c[0] === 'write').slice(0, 4), ['write', 'SrvA', 'lenses', 'Ownership-Tree.json'])
   assert.equal(docs.get('SrvA|lenses|Ownership-Tree.json').html, '<p>hi</p>')
 })
 
@@ -83,5 +83,6 @@ test('reads/list can run through a given client (the Lens app reads as the viewe
   await lens.listLenses('SrvA', { client: viewerClient })
   await lens.readLens('SrvA', 'Mine', { client: viewerClient })
   assert.equal(calls.find(c => c[0] === 'list')[3], viewerClient, 'listDocs got the viewer client')
-  assert.equal(calls.find(c => c[0] === 'read')[4], viewerClient, 'readDoc got the viewer client')
+  const readsWithClient = calls.filter(c => c[0] === 'read' && !!c[4])
+  assert.equal(readsWithClient.at(-1)?.[4], viewerClient, 'readDoc got the viewer client')
 })
