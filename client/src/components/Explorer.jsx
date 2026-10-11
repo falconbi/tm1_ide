@@ -471,7 +471,8 @@ function LensesSection({ server, onOpen, onNew }) {
   useEffect(() => {
     const onChange = e => { if (open && (!e.detail?.server || e.detail.server === server)) load() }
     window.addEventListener('tm1-lenses-changed', onChange)
-    return () => window.removeEventListener('tm1-lenses-changed', onChange)
+    window.addEventListener('tm1-server-signed-in', onChange)
+    return () => { window.removeEventListener('tm1-lenses-changed', onChange); window.removeEventListener('tm1-server-signed-in', onChange) }
   }, [open, server, load])
   const remove = async (name) => {
     if (!window.confirm(`Delete Lens "${name}" from ${server}? This removes it from the model.`)) return
@@ -503,7 +504,15 @@ function LensesSection({ server, onOpen, onNew }) {
       {open && (
         <div className="pb-1">
           {error && (
-            <p className="px-6 py-0.5 text-xs text-red-600" title={error}>Couldn't load Lenses: {error}</p>
+            <div className="px-6 py-0.5 text-xs text-red-600" title={error}>
+              Couldn't load Lenses: {error}
+              {/^Sign in to server|rejected the login/.test(error) && (
+                <button
+                  onClick={() => window.dispatchEvent(new CustomEvent('tm1-server-login', { detail: { server, force: true } }))}
+                  className="ml-1 underline hover:text-foreground"
+                >Sign in</button>
+              )}
+            </div>
           )}
           {!loading && !error && lenses.length === 0 && (
             <p className="px-6 py-0.5 text-xs text-muted-foreground/50 italic">No lenses yet</p>

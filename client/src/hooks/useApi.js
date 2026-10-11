@@ -61,6 +61,8 @@ if (typeof window !== 'undefined' && !window.__tm1FetchWrapped) {
       window.dispatchEvent(new CustomEvent('tm1-sessions-changed'))
     } catch { /* prompts are best-effort — never block a save */ }
   }
+  // Sign-in calls answer 401 for a rejected password — that must not end the session.
+  const SIGN_IN_ROUTES = ['/api/auth/login', '/api/auth/server-login', '/api/auth/setup-login', '/api/auth/local-session']
   window.fetch = async (input, init = {}) => {
     const url = typeof input === 'string' ? input : input?.url ?? ''
     const method = (init?.method ?? (typeof input !== 'string' ? input?.method : undefined) ?? 'GET').toUpperCase()
@@ -90,7 +92,14 @@ if (typeof window !== 'undefined' && !window.__tm1FetchWrapped) {
     }
     if (r.status === 401 && url.startsWith('/api/')) {
       r.clone().json().then(d => {
-        if (d?.needsServerLogin) window.dispatchEvent(new CustomEvent('tm1-server-login', { detail: { server: d.needsServerLogin, rejected: !!d.rejected } }))
+        if (d?.needsServerLogin) {
+          window.dispatchEvent(new CustomEvent('tm1-server-login', { detail: { server: d.needsServerLogin, rejected: !!d.rejected } }))
+        } else if (!SIGN_IN_ROUTES.some(p => url.startsWith(p)) && tok()) {
+          // The IDE session itself has ended (e.g. the backend restarted). Every
+          // screen goes back to the sign-in page at once, instead of half-working
+          // until a page refresh. Once only: clearAuth removes the token.
+          window.dispatchEvent(new CustomEvent('tm1-unauthorized', { detail: { reason: d?.error ?? 'session ended' } }))
+        }
       }).catch(() => {})
     }
     return r
