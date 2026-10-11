@@ -4,6 +4,33 @@ Status: **agreed direction, not started** · 11 Oct 2026 · replaces [LENSES_PLA
 
 ← [Back to README](../README.md)
 
+## The goal and how we prove it
+
+**Live screens with input and workflow** — Tableau-quality visuals on live TM1 data, with data entry and a planning
+workflow built in. **Not** a Tableau replacement: no self-service drag-and-drop authoring, subscriptions, PDF
+publishing or ad-hoc exploration (PAW covers ad hoc).
+
+**The proof demo (24Retail):** a region manager signs in to the Lens app, sees only their region's P&L, enters next
+quarter's forecast and submits it; finance sees what's waiting, approves, and the group dashboard updates. Every screen
+built by AI, every change governed, everything run on TM1 as each person.
+
+| # | Build | Proves | Status |
+|---|---|---|---|
+| 1 | Lens storage + IDE plumbing | Lenses live in the model, governed, private | done |
+| 2 | PnL-Dashboard (24Retail Income Statement) | AI builds a good, correct finance screen quickly | done |
+| 3 | Lens app, read-only — own server, sign-in, home page, open a Lens outside the IDE | Business users use Lenses without the IDE | next |
+| 4 | Toolkit v1 — ECharts, AG Grid, React Flow + dagre, Alpine bundled in the Lens app (and IDE preview); `Lens.kpis/trend/waterfall/bars/grid/flow`; component catalogue | Rich, consistent visuals with far less code; AI builds faster and more reliably | |
+| 5 | Rebuild PnL-Dashboard on the toolkit and compare | The toolkit is worth it — measured | |
+| 6 | Security test — East vs Canada test users | Each user sees only what TM1 allows | |
+| 7 | Forecast input form (AG Grid) on a **copy** of 24Retail | Safe data entry: checked, written as the user, logged | |
+| 8 | Action buttons — seed forecast, spread a total | Lenses run processes safely | |
+| 9 | Submit / approve workflow (24Retail Task Workflow cube) | A real planning process runs through Lenses | |
+| 10 | Release DEV → PROD through the deploy | Governed like everything else | |
+
+The TM1_CONSOL ownership Lenses (network, timeline) are a showcase of visuals PAW can't do, not on the main path.
+Notes: 24Retail's Revenue cube is empty on the lab server — use the Income Statement; account 6699 (allocations)
+holds junk sample values, so screens stop at Net Profit.
+
 ## 1. What it is
 
 A **separate, simple web app for business users** — planners, managers, the board — that shows Lenses: purpose-built
