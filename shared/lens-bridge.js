@@ -1,14 +1,22 @@
-// Lens bridge — the postMessage contract between a sandboxed frame and the IDE.
+'use strict'
+
+// ── Shared Lens bridge (ONE copy, used by the IDE and the Lens app) ───────────
+// The postMessage contract between a sandboxed Lens frame and its host page.
 //
 // The frame NEVER holds the token and NEVER talks to the network. It only posts
-// { __lensBridge, id, method, payload } to its parent; the IDE host page (the
-// LensEditor) validates the sender, attaches the token, calls the /api/lens/*
-// routes as the viewing user, and posts the result back.
+// { __lensBridge:1, id, chan, method, payload } to its parent; the host page
+// (IDE LensEditor or the Lens app viewer) validates the sender, performs the
+// call as the signed-in viewer, and posts the result back. The host takes the
+// SERVER from its configuration — never from the message.
 //
-// The bridge script below is injected into the frame's document by the host, so
-// generated frame code just calls window.lensBridge.call('execMDX', {...}).
+// Usable three ways from the SAME file (no copies):
+//   • Node (server):          const { LENS_BRIDGE_SCRIPT } = require('shared/lens-bridge')
+//   • IDE client (Vite/ESM):  import { installLensHost } from '@shared/lens-bridge'
+//   • Lens app browser page:  <script src="/bridge.js">  →  window.LensBridge.*
+// The per-page channel fix (a reply for an earlier page is never taken by this
+// one) lives here too — one fix, both apps.
 
-export const LENS_BRIDGE_SCRIPT = `
+const LENS_BRIDGE_SCRIPT = `
 (function () {
   if (window.__fbInstalled) return
   window.__fbInstalled = true
@@ -58,12 +66,13 @@ function writeCtx(patch) {
   return next
 }
 
-// Host side: install on the LensEditor window. `getServer` is read from the tab
-// (never from the message). `getToken` reads the IDE session token. Only messages
-// whose source is the exact iframe's contentWindow are answered. Context sync:
-// lenses on the same origin share a localStorage-backed context, so selecting in
-// one lens updates every other lens hosting frame (across IDE tabs and PAW tabs).
-export function installLensHost(getLensWindow, { getServer, getToken }) {
+// Host side: install on the host page window. `getLensWindow` returns the exact
+// iframe's contentWindow (only messages from that source are answered).
+// `getServer` is read from the host app's configuration — the IDE uses the tab's
+// server, the Lens app uses its settings file; NEVER from the message.
+// `getToken` is the IDE's session token (the Lens app has none — its session
+// rides in the HttpOnly cookie, so page scripts cannot read it).
+function installLensHost(getLensWindow, { getServer, getToken }) {
   const pushCtx = () => {
     getLensWindow()?.postMessage({ __lensBridge: 1, ctx: true, context: readCtx() }, '*')
   }
@@ -89,10 +98,10 @@ export function installLensHost(getLensWindow, { getServer, getToken }) {
         return
       }
       const server = getServer()
-      const token = getToken()
-      if (!server) throw new Error('no server selected')
+      const token = getToken ? getToken() : null
+      if (!server) throw new Error('no server configured')
       const enc = encodeURIComponent
-      const headers = { 'x-ide-token': token, 'Content-Type': 'application/json' }
+      const headers = { 'x-ide-token': token ?? '', 'Content-Type': 'application/json' }
       let url, init
       if (d.method === 'execMDX') {
         url = `/api/lens/exec-mdx?server=${enc(server)}`
@@ -124,6 +133,14 @@ export function installLensHost(getLensWindow, { getServer, getToken }) {
 
 // A tiny, static render of a frame for the preview pane: sandboxed iframe with
 // the bridge script prepended. Callers control srcDoc refresh via a key change.
-export function lensSrcDoc(html) {
+// The Lens app prepends its CSP (connect-src 'none') before calling this.
+function lensSrcDoc(html) {
   return `<script>${LENS_BRIDGE_SCRIPT}</script>` + (html ?? '')
 }
+
+const api = { LENS_BRIDGE_SCRIPT, installLensHost, lensSrcDoc }
+
+// CommonJS (IDE server + tests) / ESM-interop (IDE client via Vite) / classic
+// browser script (Lens app viewer -> window.LensBridge): the same module.
+if (typeof module !== 'undefined' && module.exports) module.exports = api
+else if (typeof window !== 'undefined') window.LensBridge = api
