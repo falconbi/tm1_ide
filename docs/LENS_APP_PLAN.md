@@ -27,6 +27,8 @@ built by AI, every change governed, everything run on TM1 as each person.
 | 9 | Submit / approve workflow (24Retail Task Workflow cube) | A real planning process runs through Lenses | |
 | 10 | Release DEV → PROD through the deploy | Governed like everything else | |
 
+**Later (after the proof):** board packs and PDF export of Lenses.
+
 The TM1_CONSOL ownership Lenses (network, timeline) are a showcase of visuals PAW can't do, not on the main path.
 Notes: 24Retail's Revenue cube is empty on the lab server — use the Income Statement; account 6699 (allocations)
 holds junk sample values, so screens stop at Net Profit.
