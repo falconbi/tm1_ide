@@ -63,7 +63,27 @@ heavier frameworks inside Lenses.
 - **The MCP is not used by the Lens app.** The MCP is the builder's tool (builder-level access); it creates and saves
   Lenses into the model. The Lens app only reads them.
 
-## 3. Security — non-negotiable
+## 3. Authentication
+
+Users sign in **as themselves**, with the identity they use for TM1 and PAW — that is what makes "runs as the viewer"
+work. Simpler than the IDE: one server only (the PROD it sits beside).
+
+1. Sign-in page; the app **detects TM1's sign-in method** (existing detection) and asks for the right details —
+   username + password (TM1 security / LDAP), or username + password + namespace (CAM).
+2. The app signs in to TM1 **as that user** and holds **one TM1 session per user**; every Lens, read, save and process
+   run uses it, so TM1 security decides what they see and change.
+3. Sign-out closes the TM1 session; idle sessions time out.
+
+Protections (reused from the IDE's per-server login): a rejected password is **never retried** (no lockouts); **no
+password stored** — only the TM1 session; the app's own session in an **HttpOnly, Secure cookie** that page scripts and
+Lenses cannot read; **HTTPS only**.
+
+Later — single sign-on: **CAM SSO** (Windows / Active Directory) on v11; the **company sign-in (OIDC)** on v12, as PAW
+v12 does.
+
+Licensing: every Lens user is a named TM1 user and needs a TM1 licence, as for PAW.
+
+## 4. Security — non-negotiable
 
 Carried over from Stage 1 and extended:
 
@@ -78,7 +98,7 @@ Carried over from Stage 1 and extended:
 6. **Read-only PROD posture** means no *model* changes; **data entry through a Lens is normal planning and allowed**.
    Lens editing happens only on DEV.
 
-## 4. How Lenses are built
+## 5. How Lenses are built
 
 ### Three design levels
 
@@ -122,7 +142,7 @@ Like `shared/tm1-function-catalog.json`: one file describes every component — 
 interactions, good uses. It drives the AI's choices, the validator, the editor palette and the docs. A new component,
 once reviewed, joins the catalogue and is immediately available to the AI.
 
-## 5. AI — from charts to whole apps
+## 6. AI — from charts to whole apps
 
 | Level | When | What |
 |---|---|---|
@@ -145,7 +165,7 @@ configurable per client, totals not raw data, and a privately hosted model is an
 **Iterating** is built into the editor: "change this…" edits the Lens with the change highlighted and the live preview
 updated; every version kept; checks run on save. (No copying code out to another tool.)
 
-## 6. Stages
+## 7. Stages
 
 Each stage is proven in the lab before the next.
 
@@ -180,7 +200,7 @@ Each stage is proven in the lab before the next.
 SSO (CAM SSO on v11, company sign-in on v12); Lenses embedded in PAW books (same-origin / OAuth / sign-in-in-frame,
 see LENSES_PLAN.md); v12 container deployment; AI levels 3–4; AI-designed apps from the model profile + Cube Map.
 
-## 7. Test model — TM1_Sales_Demo (v11 lab)
+## 8. Test model — TM1_Sales_Demo (v11 lab)
 
 A new, public-safe **Sales & Margin Planning** model, built by AI through the MCP, test-first:
 
@@ -195,7 +215,7 @@ It exercises every stage: map, revenue race on a timeline, price-volume-mix brid
 (2); seed and spread buttons (3); submit / approve per region (4). TM1_CONSOL (ownership over time) and WFP (input
 forms) follow as real-model tests.
 
-## 8. Open questions
+## 9. Open questions
 
 1. First users: internal users at one client site, or a public showcase first?
 2. Where the first install runs: PAW host or TM1 host on the Windows lab?
