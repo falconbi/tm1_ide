@@ -13,11 +13,16 @@ export const LENS_BRIDGE_SCRIPT = `
   if (window.__fbInstalled) return
   window.__fbInstalled = true
   var seq = 0
+  // A private channel per page. The preview frame is reused when its content
+  // changes, so a reply meant for an earlier page (same id numbers) must never be
+  // taken by this one — only replies echoing this page's channel are accepted.
+  var chan = Math.random().toString(36).slice(2) + Date.now().toString(36)
   var ctxCbs = []
   var onMsg = function (ev) {
     var d = ev.data
     if (!d || d.__lensBridge !== 1) return
     if (d.ctx === true) { for (var i = 0; i < ctxCbs.length; i++) ctxCbs[i](d.context || {}); return }
+    if (d.chan !== chan) return
     var h = null
     for (var j = 0; j < seqListeners.length; j++) if (seqListeners[j].id === d.id) { h = seqListeners[j]; break }
     if (!h) return
@@ -32,7 +37,7 @@ export const LENS_BRIDGE_SCRIPT = `
       return new Promise(function (resolve, reject) {
         var id = ++seq
         seqListeners.push({ id: id, resolve: resolve, reject: reject })
-        window.parent.postMessage({ __lensBridge: 1, id: id, method: method, payload: payload }, '*')
+        window.parent.postMessage({ __lensBridge: 1, id: id, chan: chan, method: method, payload: payload }, '*')
       })
     },
     getContext: function () { return window.lensBridge.call('getContext', {}) },
@@ -70,7 +75,7 @@ export function installLensHost(getLensWindow, { getServer, getToken }) {
     if (!d || d.__lensBridge !== 1) return
     if (ev.source !== getLensWindow()) return
     const respond = (id, result, error) => {
-      getLensWindow()?.postMessage({ __lensBridge: 1, id, ok: !error, result, error }, '*')
+      getLensWindow()?.postMessage({ __lensBridge: 1, id, chan: d.chan, ok: !error, result, error }, '*')
     }
     try {
       if (d.method === 'getContext') {
