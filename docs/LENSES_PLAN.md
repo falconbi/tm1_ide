@@ -1,5 +1,8 @@
 # Lenses — Stage 1 build plan
 
+> **History.** This was the Stage 1 plan for Lenses inside the IDE (built). The agreed direction is now a separate
+> Lens app for business users — see [LENS_APP_PLAN.md](LENS_APP_PLAN.md).
+
 Branch: `lenses` (off the cube-map commit `8b2c4ec`).
 
 Goal: **describe a screen → AI generates hand-rolled HTML → preview it live on real TM1 data in the IDE → save as a governed lens.** Read-only; no write-back in Stage 1.
