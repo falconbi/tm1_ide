@@ -24,11 +24,11 @@ function safeName(name) {
 const docName = name => `${safeName(name)}.json`
 
 // Details only (no HTML) for every Lens in this server's model, sorted by name.
-async function listLenses(server, { ideToken } = {}) {
-    const names = (await store.listDocs(server, AREA, { ideToken })).filter(n => n.endsWith('.json'))
+async function listLenses(server, { ideToken, client } = {}) {
+    const names = (await store.listDocs(server, AREA, { ideToken, client })).filter(n => n.endsWith('.json'))
     const out = []
     for (const n of names) {
-        const doc = await store.readDoc(server, AREA, n, { ideToken })
+        const doc = await store.readDoc(server, AREA, n, { ideToken, client })
         if (!doc) continue
         const { html: _html, ...details } = doc
         out.push(details)
@@ -37,17 +37,17 @@ async function listLenses(server, { ideToken } = {}) {
 }
 
 // One Lens, HTML included. Missing is an error.
-async function readLens(server, name, { ideToken } = {}) {
-    const doc = await store.readDoc(server, AREA, docName(name), { ideToken })
+async function readLens(server, name, { ideToken, client } = {}) {
+    const doc = await store.readDoc(server, AREA, docName(name), { ideToken, client })
     if (!doc) throw new Error(`Lens "${safeName(name)}" not found on ${server}`)
     return doc
 }
 
 // Create or update a Lens. The version counts up on every save; created/createdBy
 // are kept from the first save. Throws if the model can't be written.
-async function saveLens(server, name, html, owner, { publish = false, description, ideToken } = {}) {
+async function saveLens(server, name, html, owner, { publish = false, description, ideToken, client } = {}) {
     const safe = safeName(name)
-    const existing = await store.readDoc(server, AREA, docName(safe), { ideToken })
+    const existing = await store.readDoc(server, AREA, docName(safe), { ideToken, client })
     const now = new Date().toISOString()
     const doc = {
         name:           safe,
@@ -61,13 +61,13 @@ async function saveLens(server, name, html, owner, { publish = false, descriptio
         toolkitVersion: TOOLKIT_VERSION,
         html,
     }
-    await store.writeDoc(server, AREA, docName(safe), doc, { ideToken })
+    await store.writeDoc(server, AREA, docName(safe), doc, { ideToken, client })
     const { html: _html, ...details } = doc
     return details
 }
 
-async function deleteLens(server, name, { ideToken } = {}) {
-    await store.deleteDoc(server, AREA, docName(name), { ideToken })
+async function deleteLens(server, name, { ideToken, client } = {}) {
+    await store.deleteDoc(server, AREA, docName(name), { ideToken, client })
 }
 
 module.exports = { safeName, listLenses, readLens, saveLens, deleteLens, TOOLKIT_VERSION }
