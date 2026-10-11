@@ -179,11 +179,13 @@ updated; every version kept; checks run on save. (No copying code out to another
 Each stage is proven in the lab before the next.
 
 ### Stage 0 — Foundations (in the IDE)
-- Lenses stored **in the model** (`Applications/Governance/Lenses/`, reusing `core/model-store.js`); migrate the existing
-  ones; local folder kept as fallback until proven.
+- **A Lens is saved in the model** — `Applications/Governance/Lenses/`, reusing `core/model-store.js` — and appears in
+  the IDE's **model tree** under its server, alongside cubes, dimensions and processes. No local `config/lenses/`
+  storage: a private model's Lenses stay private with the model.
+- The 10 early demo Lenses are **removed** (experiments; kept in git history) — nothing to migrate.
 - Saving a Lens is recorded in the change set; **releases carry Lenses** DEV → PROD with approval.
 - `core/` ready for a second entry point (`lens-server.js`); toolkit version stamp on every Lens.
-- Health check of the 10 existing demo Lenses against today's code.
+- First real Lenses built on **TM1_CONSOL** (private): ownership network, then ownership over time (timeline).
 
 ### Stage 1 — Read-only Lens app
 - Sign-in (per-server TM1/CAM/LDAP login, already built); home page listing the user's Lenses; the sandboxed viewer.
