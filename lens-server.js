@@ -323,17 +323,19 @@ function createApp({ config = loadConfig(), deps = {} } = {}) {
                 res.set('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'; img-src 'self' data:")
                 return res.status(200).send(layout(doc.name, body))
             }
-            // CSP on the SRCDOC frame: same as the IDE's sandbox contract, made
-            // explicit — no same-origin, no network (connect-src 'none').
-            const frameCsp = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src 'none'; font-src 'none'">`
-            const srcDoc = frameCsp + sharedBridge.lensSrcDoc(doc.html ?? '')
+            // The Lens renders in a REAL same-origin frame URL, not srcdoc:
+            // srcdoc is blocked by the parent's frame-src (and children inherit
+            // the parent's CSP, which must not allow network). This frame document
+            // is served with its own strict CSP (connect-src 'none') and stays an
+            // opaque origin under the sandbox — same contract, plus it actually
+            // renders in every browser.
             const body = `
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
     <div><a href="/" style="margin-right:10px">&larr; Lenses</a><span style="font-weight:600">${esc(doc.name)}</span> ${esc(doc.description || '') ? `<span class="desc" style="margin-left:6px">— ${esc(doc.description)}</span>` : ''}</div>
     <form method="post" action="/auth/signout" style="margin:0"><button class="btn">Sign out</button></form>
   </div>
   <div class="card" style="padding:0;overflow:hidden">
-    <iframe id="lensFrame" sandbox="allow-scripts" title="Lens" style="width:100%;height:82vh;border:0;display:block" srcDoc=${JSON.stringify(srcDoc)}></iframe>
+    <iframe id="lensFrame" sandbox="allow-scripts" title="Lens" style="width:100%;height:82vh;border:0;display:block" src="/lens-frame/${encodeURIComponent(doc.name)}"></iframe>
   </div>
   <script src="/bridge.js"></script>
   <script>
@@ -345,11 +347,29 @@ function createApp({ config = loadConfig(), deps = {} } = {}) {
       })
     })()
   </script>`
-            res.set('Content-Security-Policy', "default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-src 'none'")
+            res.set('Content-Security-Policy', "default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-src 'self'")
             res.send(layout(doc.name, body))
         } catch (e) {
             res.status(404).send(layout('Lens', `<p class="err">${esc(e.message)}</p>`))
         }
+    })
+
+    // The frame document itself: the Lens HTML with the bridge script prepended,
+    // served with its own CSP — no network in the frame (connect-src 'none'),
+    // scripts only inline, and the sandbox (no allow-same-origin) keeps it an
+    // opaque origin. Same contract as the IDE's preview frame.
+    app.get('/lens-frame/:name', requireSession, async (req, res) => {
+        try {
+            const doc = await readLens(cfg.server, req.params.name, { client: req.lens.client })
+            const want = Number(doc.toolkitVersion) || 1
+            if (want > supported) {
+                res.set('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'")
+                return res.status(200).send(`<!DOCTYPE html><html><body style="font-family:system-ui;padding:24px"><p style="color:#b91c1c">This Lens needs toolkit version ${want}; this Lens app supports up to ${supported}.</p></body></html>`)
+            }
+            res.set('Content-Security-Policy', "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src 'none'; font-src 'none'")
+            res.type('html')
+            res.send(sharedBridge.lensSrcDoc(doc.html ?? ''))
+        } catch (e) { res.status(404).send('Lens not found') }
     })
 
     // The shared bridge host script, served as a classic <script> (it exposes
