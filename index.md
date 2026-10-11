@@ -171,3 +171,7 @@ What went wrong in the process: instructions passed between agents and the perso
 - Escaping object names in REST paths (names with a `'` are not yet safe everywhere).
 - Retire the automated drift Revert and Promote paths.
 - Split the 4,000-line `server.js` into route modules.
+
+## More reading
+
+- **[How signing in to TM1 works — plain-English guide](authentication.html)** — every way a person or a program can sign in to Planning Analytics/TM1, from native and LDAP to CAM and OIDC: what each is, how it works, and what goes wrong.
