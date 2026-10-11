@@ -79,3 +79,6 @@ config/sql-connections.json
 config/assertions.json
 config/model-migration.json
 opencode.jsonc
+
+# ── Lenses live in the model (Applications/Governance/Lenses), never here ──
+config/lenses/

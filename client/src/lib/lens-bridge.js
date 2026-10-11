@@ -122,7 +122,3 @@ export function installLensHost(getLensWindow, { getServer, getToken }) {
 export function lensSrcDoc(html) {
   return `<script>${LENS_BRIDGE_SCRIPT}</script>` + (html ?? '')
 }
-
-export function lensPreviewUrl(server, name) {
-  return `/lenses/${encodeURIComponent(server)}/${encodeURIComponent(name)}`
-}
