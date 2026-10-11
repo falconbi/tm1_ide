@@ -96,7 +96,8 @@ Carried over from Stage 1 and extended:
    access, write-back, sign-in and process runs stay governed by the app.
 5. Writes and process runs are **logged** (who, what, when).
 6. **Read-only PROD posture** means no *model* changes; **data entry through a Lens is normal planning and allowed**.
-7. **Where Lenses are authored — two paths:**
+7. **Where Lenses are authored.** **DEV can build every kind of Lens. PROD additionally allows drafting read-only
+   Lenses** (reports, dashboards, analysis) — nothing that changes data. In detail:
    - **Display Lenses** (charts, dashboards, board packs — read-only): **draft → review → publish on PROD**, with real
      data. A draft is visible only to its author and chosen reviewers; publishing keeps the previous version
      (one-click rollback); who drafted, reviewed and published is recorded with the Lens. Only named authors (a TM1
