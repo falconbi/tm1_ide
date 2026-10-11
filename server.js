@@ -83,33 +83,9 @@ const LOGIN_REQUIRED = IDE_LOGIN === 'always' || !LOCAL_ONLY
 const isLoopbackReq = (req) => ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(req.socket.remoteAddress)
 
 // ── Login rate limit ──────────────────────────────────────────────────────────
-// Small in-memory per-IP throttle on the one unauthenticated endpoint. Defence in
-// depth for the local model; a real barrier if HOST is ever widened.
-const LOGIN_MAX_ATTEMPTS = 10
-const LOGIN_WINDOW_MS    = 15 * 60_000
-const _loginHits = new Map()  // ip -> { count, resetAt }
-
-function loginRateLimit(req, res, next) {
-    const ip  = req.ip || req.socket.remoteAddress || 'unknown'
-    const now = Date.now()
-    let rec = _loginHits.get(ip)
-    if (!rec || now >= rec.resetAt) {
-        rec = { count: 0, resetAt: now + LOGIN_WINDOW_MS }
-        _loginHits.set(ip, rec)
-    }
-    if (rec.count >= LOGIN_MAX_ATTEMPTS) {
-        res.setHeader('Retry-After', Math.ceil((rec.resetAt - now) / 1000))
-        return res.status(429).json({ error: 'Too many login attempts — try again later' })
-    }
-    rec.count++
-    next()
-}
-
-// opportunistic cleanup so the map can't grow unbounded
-setInterval(() => {
-    const now = Date.now()
-    for (const [ip, rec] of _loginHits) if (now >= rec.resetAt) _loginHits.delete(ip)
-}, LOGIN_WINDOW_MS).unref()
+// Small in-memory per-IP throttle on the unauthenticated sign-in endpoints
+// (shared with the Lens app: core/login-rate-limit.js).
+const loginRateLimit = require('./core/login-rate-limit').createIpLimiter({ max: 10, windowMs: 15 * 60_000 })
 
 app.use(express.json({ limit: '10mb' }))
 app.use(express.static(path.join(__dirname, 'static'), {
@@ -120,7 +96,7 @@ app.use(express.static(path.join(__dirname, 'static'), {
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
 app.post('/api/auth/login', loginRateLimit, async (req, res) => {
-    const clearHits = () => _loginHits.delete(req.ip || req.socket.remoteAddress || 'unknown')
+    const clearHits = () => loginRateLimit.clear(req)
     try {
         const { username, password } = req.body
         if (!username || !password) return res.status(400).json({ error: 'username and password required' })
@@ -184,7 +160,7 @@ app.post('/api/auth/setup-login', loginRateLimit, async (req, res) => {
         const { state } = await setupBlankAdmin(server, newPassword)
         const token = await createDirectSession('admin', newPassword)
         setServerCredentials(token, server, { username: 'admin', password: newPassword }, state)
-        _loginHits.delete(req.ip || req.socket.remoteAddress || 'unknown')
+        loginRateLimit.clear(req)
         res.json({ token, username: 'admin', server })
     } catch (e) { sendSetupError(res, e) }
 })
@@ -275,7 +251,7 @@ app.post('/api/auth/server-login', loginRateLimit, async (req, res) => {
             // One PAW sign-in covers every server behind that PAW.
             try { await attachPawSession(req.ideToken, creds.username, creds.password) }
             catch { return res.status(403).json({ rejected: true, error: `PAW rejected the login for "${server}" — check the username and password` }) }
-            _loginHits.delete(req.ip || req.socket.remoteAddress || 'unknown')
+            loginRateLimit.clear(req)
             return res.json({ ok: true, server, username: creds.username, paw: true })
         }
         const state = {}
@@ -290,7 +266,7 @@ app.post('/api/auth/server-login', loginRateLimit, async (req, res) => {
             throw e
         }
         setServerCredentials(req.ideToken, server, { username: creds.username, password: creds.password, namespace: creds.namespace ?? null }, state)
-        _loginHits.delete(req.ip || req.socket.remoteAddress || 'unknown')
+        loginRateLimit.clear(req)
         res.json({ ok: true, server, username: creds.username, ...(isSampleLogin(creds.username, creds.password) ? { warning: SAMPLE_PASSWORD_WARNING } : {}) })
     } catch (e) { res.status(500).json({ error: `Could not reach "${req.body?.server}": ${e.message}` }) }
 })

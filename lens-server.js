@@ -26,6 +26,7 @@ const { probeAuthMethod, makeClientWithCredentials } = require('./core/adapter_r
 const lensStore = require('./core/lens_store')
 const lensBridge = require('./core/lens_bridge')
 const sharedBridge = require('./shared/lens-bridge')
+const { createIpLimiter, createFailureGuard } = require('./core/login-rate-limit')
 
 const CONFIG_PATH = path.join(__dirname, 'config', 'lens-app.json')
 const EXAMPLE_PATH = path.join(__dirname, 'config', 'lens-app.example.json')
@@ -161,6 +162,11 @@ function createApp({ config = loadConfig(), deps = {} } = {}) {
     if (!cfg.server) throw new Error('config/lens-app.json must set "server" — the one TM1 server this Lens app serves')
 
     const store = createSessionStore({ idleMs: cfg.idleMinutes * 60_000 })
+    // Sign-in throttles: per address, and at most 2 rejected passwords per username
+    // in 15 minutes — TM1 locks an account on the 3rd, so this app can never be
+    // what locks a real user out (deps can override for tests).
+    const ipLimit = deps.ipLimiter ?? createIpLimiter({ max: 10, windowMs: 15 * 60_000 })
+    const failures = deps.failureGuard ?? createFailureGuard({ maxFailures: 2, windowMs: 15 * 60_000 })
     const app = express()
     app.set('case sensitive routing', true)
     app.use(express.json({ limit: '1mb' }))
@@ -225,7 +231,7 @@ function createApp({ config = loadConfig(), deps = {} } = {}) {
         namespace: document.getElementById('namespace').value || null
       }) }).then(function (r) { return r.json().then(function (d) { return { r: r, d: d } }) }).then(function (o) {
         if (o.r.ok) { window.location.href = '/' }
-        else { err.textContent = o.d.error || o.d.rejected === true ? 'TM1 rejected the login — check your username and password.' : (o.d.error || 'Sign-in failed') }
+        else { err.textContent = o.d.rejected === true ? 'TM1 rejected the login — check your username and password.' : (o.d.error || 'Sign-in failed') }
       }).catch(function () { err.textContent = 'Could not reach the Lens app.' })
     })
   </script>`
@@ -241,40 +247,53 @@ function createApp({ config = loadConfig(), deps = {} } = {}) {
         }
     })
 
-    app.post('/auth/signin', async (req, res) => {
+    app.post('/auth/signin', ipLimit, async (req, res) => {
         const { username, password, namespace } = req.body ?? {}
         if (!username) return res.status(400).json({ error: 'username required' })
+        const name = String(username).trim()
+        const user = `${cfg.server}::${name}`
+        const waitMin = failures.blockedFor(user.toLowerCase())
+        if (waitMin) return res.status(429).json({ error: `Too many failed sign-ins for "${name}" — wait ${waitMin} minute${waitMin === 1 ? '' : 's'} before trying again (protects the account from TM1's lock-out).` })
         let method
         try { method = (await probe(cfg.server)).method } catch (e) { return res.status(502).json({ error: `Could not reach "${cfg.server}": ${e.message}` }) }
         if (!['native', 'cam'].includes(method)) {
             return res.status(400).json({ error: `Sign-in method "${method}" on ${cfg.server} is not supported by the Lens app yet` })
         }
-        const user = `${cfg.server}::${String(username).trim()}`
-        const existing = store.existing(user)
-        let client = existing?.client
-        if (!existing) {
-            const state = {}
-            let cl
-            try { cl = signIn(cfg.server, { username, password: password ?? '', namespace: namespace || null }, state) } catch { /* unreachable handled below */ }
-            if (!cl) return res.status(400).json({ error: `"${cfg.server}" is not reachable as a direct TM1 server` })
-            try { await cl.get('ActiveUser', { '$select': 'Name' }) }
-            catch (e) {
-                if (e.code === 'TM1_AUTH_REJECTED' || (e.response?.status === 401)) {
-                    return res.status(403).json({ rejected: true, error: `TM1 rejected the login for "${cfg.server}" — check your username and password` })
-                }
-                return res.status(502).json({ error: e.message })
+        // ALWAYS check the password with TM1 — even when this user already has a
+        // session. Only a verified sign-in may share (or start) the TM1 session.
+        const state = {}
+        let cl
+        try { cl = signIn(cfg.server, { username: name, password: password ?? '', namespace: namespace || null }, state) } catch { /* unreachable handled below */ }
+        if (!cl) return res.status(400).json({ error: `"${cfg.server}" is not reachable as a direct TM1 server` })
+        try { await cl.get('ActiveUser', { '$select': 'Name' }) }
+        catch (e) {
+            if (e.code === 'TM1_AUTH_REJECTED' || (e.response?.status === 401)) {
+                failures.recordFailure(user.toLowerCase())
+                return res.status(403).json({ rejected: true, error: `TM1 rejected the login for "${cfg.server}" — check your username and password` })
             }
-            store.adoptTm1Session(user, { client: cl, state, refs: new Set() })
-            client = cl
+            return res.status(502).json({ error: e.message })
         }
-        const sid = store.addWebSession(user, String(username).trim())
+        failures.clear(user.toLowerCase())
+        ipLimit.clear?.(req)
+        if (store.existing(user)) {
+            // Verified, and the user already has a TM1 session: reuse it and close
+            // the one just opened for the check (one TM1 session per user).
+            try { cl?._adapter?.closeSession?.() } catch { /* best effort */ }
+        } else {
+            store.adoptTm1Session(user, { client: cl, state, refs: new Set() })
+        }
+        const sid = store.addWebSession(user, name)
         res.cookie(COOKIE, sid, cookieOptions(cfg))
-        res.json({ ok: true, server: cfg.server, username: String(username).trim() })
+        res.json({ ok: true, server: cfg.server, username: name })
     })
 
-    app.post('/auth/signout', requireSession, (req, res) => {
-        store.dropWebSession(req.lens.sid)
+    app.post('/auth/signout', (req, res) => {
+        const sid = parseCookies(req)[COOKIE]
+        if (sid) store.dropWebSession(sid)
         res.clearCookie(COOKIE, cookieOptions(cfg))
+        // The page's Sign out button is a form post: send the person back to
+        // sign-in. A script asking for JSON gets JSON.
+        if (req.accepts(['html', 'json']) === 'html') return res.redirect(303, '/signin')
         res.json({ ok: true })
     })
 
@@ -363,10 +382,10 @@ function createApp({ config = loadConfig(), deps = {} } = {}) {
             const doc = await readLens(cfg.server, req.params.name, { client: req.lens.client })
             const want = Number(doc.toolkitVersion) || 1
             if (want > supported) {
-                res.set('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'")
+                res.set('Content-Security-Policy', "sandbox; default-src 'none'; style-src 'unsafe-inline'")
                 return res.status(200).send(`<!DOCTYPE html><html><body style="font-family:system-ui;padding:24px"><p style="color:#b91c1c">This Lens needs toolkit version ${want}; this Lens app supports up to ${supported}.</p></body></html>`)
             }
-            res.set('Content-Security-Policy', "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src 'none'; font-src 'none'")
+            res.set('Content-Security-Policy', "sandbox allow-scripts; default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src 'none'; font-src 'none'")
             res.type('html')
             res.send(sharedBridge.lensSrcDoc(doc.html ?? ''))
         } catch (e) { res.status(404).send('Lens not found') }
