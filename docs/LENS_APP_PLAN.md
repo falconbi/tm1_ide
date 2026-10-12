@@ -22,9 +22,9 @@ built by AI, every change governed, everything run on TM1 as each person.
 | 4 | Toolkit v1 — ECharts, AG Grid, React Flow + dagre, Alpine bundled in the Lens app (and IDE preview); `Lens.kpis/trend/waterfall/bars/grid/flow`; component catalogue | Rich, consistent visuals with far less code; AI builds faster and more reliably | done |
 | 5 | Rebuild PnL-Dashboard on the toolkit and compare | The toolkit is worth it — measured | done — same dashboard in 119 lines vs 250 (script 64 vs 146), plus tooltips, legends, sortable grid |
 | 6 | Security test — East vs Canada test users | Each user sees only what TM1 allows | done — on a copy of the model, each regional manager signs in to the Lens app as themselves and sees only their region; the dashboard opens at the highest level the user may see |
-| 7 | Forecast input form (AG Grid) on a **copy** of 24Retail | Safe data entry: checked, written as the user, logged | next |
-| 8 | Action buttons — seed forecast, spread a total | Lenses run processes safely | |
-| 9 | Submit / approve workflow (24Retail Task Workflow cube) | A real planning process runs through Lenses | |
+| 7 | Input form (AG Grid) on a **copy** of 24Retail | Safe data entry: checked, written as the user, logged | done — simple test: Target-Input Lens (24Retail's Forecast is all rule-calculated, so Target was used; a proper model is needed for the full forecast story). Toolkit v3: editable `Lens.grid` + `Lens.save`; a Lens changes only cubes it declares; numbers only, no calculated cells, stale saves refused, TM1 security has the final say, every save logged. Data reservation was switched off on the copy — the Lens app doesn't take reservations yet (step 9) |
+| 8 | Action buttons — seed forecast, spread a total | Lenses run processes safely | next |
+| 9 | Submit / approve workflow (24Retail Task Workflow cube) | A real planning process runs through Lenses — incl. taking/releasing TM1 data reservations where a cube requires them | |
 | 10 | Release DEV → PROD through the deploy | Governed like everything else | |
 
 **Later (after the proof):** board packs and PDF export of Lenses.

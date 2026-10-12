@@ -297,6 +297,14 @@ iterations:
   (`}CellSecurity_<cube>`). Attribute cubes (`}ElementAttributes_<dim>`) count
   as cubes — a regional user usually has no access to them, so a screen that
   reads captions should fall back to element names rather than fail.
+- **Writing needs WRITE in the same four places** (cube, elements of every
+  dimension in the cell, cell security) — READ there gives
+  `CubeCellWriteStatusCubeNoWriteAccess`.
+- **Data reservation blocks every write without a reservation.** A cube used by
+  TM1 Applications usually has `}CubeProperties` `DATARESERVATIONMODE` =
+  `REQUIREDSHARED`: any REST/TI write from someone not holding a reservation on
+  that slice fails with `CubeCellWriteStatusNoReservation`. Either take a
+  reservation first or set the mode to `OFF` (only where Applications isn't used).
 - New client password: `AssignClientPassword` in the same procedure as
   `AddClient` silently does nothing (the client isn't committed until the
   procedure ends) — run them as two separate processes.
