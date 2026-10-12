@@ -108,6 +108,7 @@ test('a wrong password is refused once and never retried or stored', async () =>
 test('no route works without a session — pages redirect, the API refuses', async () => {
   assert.equal((await get('/')).status, 302)
   assert.equal((await get('/lens/PnL-Dashboard')).status, 302)
+  assert.equal((await get('/lens-frame/PnL-Dashboard')).status, 401)
   assert.equal((await get('/api/lenses')).status, 401)
   assert.equal((await get('/api/lens/meta')).status, 401)
   const r = await post('/api/lens/exec-mdx', { mdx: 'S' })
@@ -188,6 +189,23 @@ test('a Lens with a newer toolkitVersion is refused with a clear message', async
   const html = await page.text()
   assert.match(html, /can\S+t open here/)
   assert.ok(!html.includes('<div>hello lens</div>'), 'the incompatible Lens body is never shown')
+  const frame = await get('/lens-frame/Future', cookie)
+  assert.equal(frame.status, 200)
+  assert.match(await frame.text(), /needs toolkit version 5/)
+})
+
+test('the Lens frame is its own strict-CSP document, served with the bridge', async () => {
+  const { cookie } = await signIn()
+  const frame = await get('/lens-frame/PnL-Dashboard', cookie)
+  assert.equal(frame.status, 200)
+  const csp = frame.headers.get('content-security-policy') ?? ''
+  assert.match(csp, /connect-src 'none'/, 'the frame can never reach the network')
+  assert.match(csp, /script-src 'unsafe-inline'/, 'inline Lens scripts run')
+  assert.ok(!/allow-same-origin/.test(csp), 'no same-origin escape')
+  const html = await frame.text()
+  assert.ok(html.startsWith('<script>'), 'bridge script prepended')
+  assert.ok(html.includes('window.lensBridge'), 'the frame gets window.lensBridge')
+  assert.ok(html.includes('<div>hello lens</div>'))
 })
 
 test('idle sessions time out and are dropped', async () => {
