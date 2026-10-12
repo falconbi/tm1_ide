@@ -66,7 +66,9 @@ async function validateLens(client, html) {
     const errors = []
     const seenMdx = new Set()
 
-    const mdxRe = /mdx\s*:\s*'((?:[^'\\]|\\.)*)'/g
+    // Only complete literals: a string that is followed by `+` is the start of a
+    // query built in pieces at runtime — running that fragment would fail falsely.
+    const mdxRe = /mdx\s*:\s*'((?:[^'\\]|\\.)*)'(?!\s*\+)/g
     let m
     while ((m = mdxRe.exec(String(html))) !== null) {
         const mdx = m[1].replace(/\\'/g, "'").trim()
