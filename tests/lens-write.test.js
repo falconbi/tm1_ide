@@ -71,6 +71,12 @@ test('a clean save writes every cell in one call and reports old and new values'
   assert.deepEqual(c.calls.updates[0].updates[1], { dimElemPairs: [{ dim: 'A', element: 'x' }, { dim: 'B', element: '2' }], value: 6 })
 })
 
+test('a TM1 refusal comes back in plain English, with the TM1 code kept', async () => {
+  const c = stubClient()
+  c.updateCells = async () => { const e = new Error('500'); e.response = { data: { error: { message: 'CubeCellWriteStatusCubeNoWriteAccess' } } }; throw e }
+  await assert.rejects(writeCells(c, { ...ok, cells: [cell('x', '1', 5)] }), /^Error: You don't have permission to change these cells in Plan .*\(TM1: CubeCellWriteStatusCubeNoWriteAccess\)\. Nothing was saved\.$/)
+})
+
 // Through the Lens app: the declared cubes come from the SAVED Lens, the save
 // runs as the signed-in user, and it is logged.
 test('Lens app: writes are checked against the saved Lens, run as the user, and logged', async () => {

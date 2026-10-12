@@ -220,6 +220,17 @@ function declaredWriteCubes(html) {
 
 const num = v => (typeof v === 'number' && Number.isFinite(v) ? v : Number(v) || 0)
 
+// TM1's write refusals are internal codes (CubeCellWriteStatus…); say what they
+// mean to the person typing, keeping the code for whoever administers security.
+function plainWriteRefusal(code, cube) {
+    const why = [
+        [/NoWriteAccess|WriteAccess|ObjectSecurity|SecurityNo/i, `You don't have permission to change these cells in ${cube} — ask your TM1 administrator for write access`],
+        [/ElementIsLocked|Locked|Reserved/i, 'Some of these cells are locked or reserved by someone else'],
+        [/RuleApplies|Consolidat/i, 'Some of these cells are calculated by TM1'],
+    ].find(([re]) => re.test(code))
+    return why ? `${why[1]} (TM1: ${code}).` : `TM1 refused the save: ${code}.`
+}
+
 // Write numbers as the signed-in user. Every cell is checked first: full
 // coordinates, a plain number, not calculated (rule or consolidation), and —
 // when the Lens sends what it showed (`expect`) — not changed by someone else
@@ -278,7 +289,12 @@ async function writeCells(client, { cube, cells, allowedCubes = [] } = {}) {
         throw e
     }
 
-    await client.updateCells(cube, norm.map(n => ({ dimElemPairs: dims.map((d, k) => ({ dim: d, element: n.elems[k] })), value: n.value })))
+    try {
+        await client.updateCells(cube, norm.map(n => ({ dimElemPairs: dims.map((d, k) => ({ dim: d, element: n.elems[k] })), value: n.value })))
+    } catch (e) {
+        const code = String(e.response?.data?.error?.message ?? e.message)
+        throw new Error(`${plainWriteRefusal(code, cube)} Nothing was saved.`)
+    }
     return {
         written: norm.length,
         changes: norm.map((n, i) => ({ coordinates: Object.fromEntries(dims.map((d, k) => [d, n.elems[k]])), old: num(byOrd.get(i)?.Value), value: n.value })),
