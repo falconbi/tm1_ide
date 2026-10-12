@@ -29,7 +29,7 @@ built by AI, every change governed, everything run on TM1 as each person.
 
 **Later (after the proof):** board packs and PDF export of Lenses.
 
-The TM1_CONSOL ownership Lenses (network, timeline) are a showcase of visuals PAW can't do, not on the main path.
+The ownership Lenses on a private consolidation model (network, timeline) are a showcase of visuals PAW can't do, not on the main path.
 Notes: 24Retail's Revenue cube is empty on the lab server — use the Income Statement; account 6699 (allocations)
 holds junk sample values, so screens stop at Net Profit.
 
@@ -214,7 +214,7 @@ Each stage is proven in the lab before the next.
 - The 10 early demo Lenses are **removed** (experiments; kept in git history) — nothing to migrate.
 - Saving a Lens is recorded in the change set; **releases carry Lenses** DEV → PROD with approval.
 - `core/` ready for a second entry point (`lens-server.js`); toolkit version stamp on every Lens.
-- First real Lenses built on **TM1_CONSOL** (private): ownership network, then ownership over time (timeline).
+- First real Lenses built on a **private consolidation model**: ownership network, then ownership over time (timeline).
 
 ### Stage 1 — Read-only Lens app
 - Sign-in (per-server TM1/CAM/LDAP login, already built); home page listing the user's Lenses; the sandboxed viewer.
@@ -252,7 +252,7 @@ A new, public-safe **Sales & Margin Planning** model, built by AI through the MC
 - Security: `north_mgr`, `south_mgr` (own area only), `finance` (all, approves) — to prove "runs as the viewer".
 
 It exercises every stage: map, revenue race on a timeline, price-volume-mix bridge, heatmap (1); unit and price input
-(2); seed and spread buttons (3); submit / approve per region (4). TM1_CONSOL (ownership over time) and WFP (input
+(2); seed and spread buttons (3); submit / approve per region (4). A consolidation model (ownership over time) and WFP (input
 forms) follow as real-model tests.
 
 ## 9. Open questions
