@@ -1,7 +1,8 @@
 {
-  "_about": "The Lens toolkit's building blocks (window.Lens, toolkit version 2). One entry per component — the AI reads this to choose and use them; a test checks it matches the toolkit exactly. Load the toolkit in a Lens with <script src=\"/lens-kit/lens-kit.js\"></script>. Data always comes from window.lensBridge.call('execMDX', { mdx }) and is turned into rows with Lens.rows(result).",
+  "_about": "The Lens toolkit's building blocks (window.Lens, toolkit version 3). One entry per component — the AI reads this to choose and use them; a test checks it matches the toolkit exactly. Load the toolkit in a Lens with <script src=\"/lens-kit/lens-kit.js\"></script>. Data always comes from window.lensBridge.call('execMDX', { mdx }) and is turned into rows with Lens.rows(result).",
   "helpers": {
-    "Lens.rows(cellset)": "Turn an execMDX result into tidy rows: one object per row tuple with _label, _members, one property per row dimension (its member name), and one property per column labelled by its member names joined with ' / '. Missing cells are null.",
+    "Lens.rows(cellset)": "Turn an execMDX result into tidy rows: one object per row tuple with _label, _members, one property per row dimension (its member name), and one property per column labelled by its member names joined with ' / '. Missing cells are null. Each row also has _input: { [column label]: true when TM1 does not calculate that cell (it can be typed into) }.",
+    "Lens.save(cube, cells)": "Write numbers to TM1 as the signed-in user. cells: [{ coordinates: { <every cube dimension>: element }, value, expect }] — expect is the value the screen showed (null counts as 0), so a cell changed by someone else since is caught. The Lens MUST declare the cube in its head: <meta name=\"lens-writes\" content=\"Cube Name\">. Resolves { written }; rejects with a plain reason and saves nothing (calculated cell, changed by someone else, no TM1 write access). Only numbers; at most 500 cells per save.",
     "Lens.format(value, kind)": "Format a number: 'k$' ($ thousands), '$', '%' (0.12 → 12.0%), 'number'. Null/blank → '—'.",
     "Lens.theme.colors": "The shared palette (light/dark): ink, soft, faint, rule, panel, bg, accent, compare, good, bad, amber, series[].",
     "Security": "Every query runs as the signed-in user, so TM1 security may hide members or refuse a cube. Never hard-code a top member such as 'Total Company' — find the highest level the user can see (e.g. TM1FILTERBYLEVEL on levels 2, 1, 0 and take the first non-empty set). Treat attribute cubes (}ElementAttributes_<dim>) as optional: if reading captions fails, show element names instead of failing the whole Lens.",
@@ -44,12 +45,12 @@
     "example": "Lens.bars('#regions', { rows: [{ key: '100', label: 'East Region', value: -1302, compare: 28 }], format: 'k$', onClick: k => drillInto(k) })"
   },
   "grid": {
-    "purpose": "A spreadsheet-style table — sorting, filtering, resizing, fast scrolling. Read-only in toolkit version 2 (editing comes with write-back).",
-    "call": "Lens.grid(element, { columns, rows, height })",
-    "data": "columns: [{ field, headerName, type?: 'number' | 'text', format? }]; rows: array of objects (e.g. from Lens.rows).",
-    "options": { "height": "CSS height; defaults to fit the rows (max 480px)." },
-    "interactions": "Click a header to sort; column filters; resize columns.",
-    "goodFor": ["Detail tables", "Expense lines with variances", "Lists to scan and sort"],
+    "purpose": "A spreadsheet-style table — sorting, filtering, resizing, fast scrolling — and input forms: editable columns take typed numbers where TM1 allows input.",
+    "call": "const g = Lens.grid(element, { columns, rows, height, onEdit }) → { api, changes(), undo(), saved() }",
+    "data": "columns: [{ field, headerName, type?: 'number' | 'text', format?, editable? }]; rows: array of objects (e.g. from Lens.rows — their _input flags keep calculated cells read-only).",
+    "options": { "height": "CSS height; defaults to fit the rows (max 480px).", "onEdit": "function (changes) — called after each edit with [{ row, field, value, old }] (enable a Save button)." },
+    "interactions": "Click a header to sort; column filters; resize columns. Editable columns: input cells are tinted, click to type, typed values highlighted until saved. g.changes() lists them; g.undo() puts them back; after Lens.save succeeds call g.saved().",
+    "goodFor": ["Detail tables", "Expense lines with variances", "Input forms (budget / forecast / target entry)"],
     "example": "Lens.grid('#tbl', { columns: [{ field: 'line', headerName: 'Line' }, { field: 'actual', headerName: 'Actual', type: 'number', format: 'k$' }], rows: [{ line: 'Payroll', actual: 7159000 }] })"
   },
   "flow": {

@@ -30,6 +30,14 @@ test('rows: a one-axis result is a single row; missing cells are null; empty is 
   assert.deepEqual(rows(null), [])
 })
 
+test('rows: _input marks the cells TM1 does not calculate (only when the result says)', () => {
+  const c = cs([['Jan'], ['Feb']], [[['Account', '6100']]], [1, 2])
+  c.Cells[0].RuleDerived = false; c.Cells[0].Consolidated = false
+  c.Cells[1].RuleDerived = true; c.Cells[1].Consolidated = false
+  assert.deepEqual(rows(c)[0]._input, { Jan: true, Feb: false })
+  assert.equal(rows(cs([['A']], null, [5]))[0]._input, undefined)
+})
+
 test('format and better', () => {
   assert.equal(format(71566000, 'k$'), '$71,566k')
   assert.equal(format(-1302000, 'k$'), '−$1,302k')

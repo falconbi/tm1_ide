@@ -1197,7 +1197,7 @@ return (d.value ?? [])
         const { ID } = await this.post('ExecuteMDX', { MDX: mdx })
         const [axisData, cellData] = await Promise.all([
             this.get(`Cellsets('${ID}')/Axes`, { '$expand': 'Tuples($expand=Members($select=Name,UniqueName,Type))' }),
-            this.get(`Cellsets('${ID}')/Cells`, { '$select': 'Ordinal,Value,FormattedValue,Updateable', '$top': maxCells }),
+            this.get(`Cellsets('${ID}')/Cells`, { '$select': 'Ordinal,Value,FormattedValue,Updateable,RuleDerived,Consolidated', '$top': maxCells }),
         ])
         try { await this.delete(`Cellsets('${ID}')`) } catch {}
         const cells = cellData.value

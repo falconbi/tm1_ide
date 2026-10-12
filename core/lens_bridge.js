@@ -201,4 +201,88 @@ function buildStarterLens(meta, cube) {
 </html>`
 }
 
-module.exports = { execMDX, readCell, getMeta, validateLens, buildStarterLens, validateMdx }
+// ── Write-back ────────────────────────────────────────────────────────────────
+// A Lens may change only the cubes it declares in its own HTML:
+//   <meta name="lens-writes" content="Income Statement, Other Cube">
+// The host reads the SAVED Lens (by the name the host opened — never a name
+// from the message), so a Lens can't widen its own rights at runtime.
+const MAX_WRITE_CELLS = 500
+
+function declaredWriteCubes(html) {
+    const out = []
+    for (const tag of String(html ?? '').match(/<meta\b[^>]*>/gi) ?? []) {
+        if (!/\bname\s*=\s*["']lens-writes["']/i.test(tag)) continue
+        const m = /\bcontent\s*=\s*["']([^"']*)["']/i.exec(tag)
+        if (m) out.push(...m[1].split(',').map(x => x.trim()).filter(Boolean))
+    }
+    return out
+}
+
+const num = v => (typeof v === 'number' && Number.isFinite(v) ? v : Number(v) || 0)
+
+// Write numbers as the signed-in user. Every cell is checked first: full
+// coordinates, a plain number, not calculated (rule or consolidation), and —
+// when the Lens sends what it showed (`expect`) — not changed by someone else
+// since. Any failure refuses the WHOLE save; nothing is half-written. TM1
+// security still decides the rest (a cell the user can't write is refused by
+// TM1 itself).
+async function writeCells(client, { cube, cells, allowedCubes = [] } = {}) {
+    if (!cube || typeof cube !== 'string') throw new Error('cube is required')
+    if (!allowedCubes.some(c => c.toLowerCase() === cube.toLowerCase())) {
+        throw new Error(`This Lens hasn't declared that it changes "${cube}" — add <meta name="lens-writes" content="${cube}"> to it and save it`)
+    }
+    if (!Array.isArray(cells) || !cells.length) throw new Error('nothing to save')
+    if (cells.length > MAX_WRITE_CELLS) throw new Error(`too many cells in one save (${cells.length}; the limit is ${MAX_WRITE_CELLS})`)
+    const cubeMeta = await client.getCube(cube)
+    if (!cubeMeta) throw new Error(`Cube "${cube}" not found (or no access)`)
+    const dims = (cubeMeta.Dimensions ?? []).map(d => d.Name)
+
+    const seen = new Set()
+    const norm = cells.map((c, i) => {
+        const at = `cell ${i + 1}`
+        const coords = c?.coordinates
+        if (!coords || typeof coords !== 'object' || Array.isArray(coords)) throw new Error(`${at}: coordinates must be { dimension: element }`)
+        const missing = dims.filter(d => coords[d] === undefined || coords[d] === null || coords[d] === '')
+        if (missing.length) throw new Error(`${at}: missing ${missing.join(', ')}`)
+        const extra = Object.keys(coords).filter(k => !dims.includes(k))
+        if (extra.length) throw new Error(`${at}: "${extra[0]}" is not a dimension of ${cube}`)
+        if (typeof c.value !== 'number' || !Number.isFinite(c.value)) throw new Error(`${at}: the value must be a number`)
+        if ('expect' in c && c.expect !== null && (typeof c.expect !== 'number' || !Number.isFinite(c.expect))) throw new Error(`${at}: expect must be a number`)
+        const elems = dims.map(d => String(coords[d]))
+        const key = elems.join('\u0001').toLowerCase()
+        if (seen.has(key)) throw new Error(`${at}: the same cell appears twice`)
+        seen.add(key)
+        return { elems, value: c.value, check: 'expect' in c, expect: num(c.expect) }
+    })
+
+    // Read every target cell as the user: its value now, and whether TM1
+    // calculates it.
+    const member = (d, e) => `${escMember(d)}.${escMember(d)}.${escMember(e)}`
+    const tuple = n => '(' + n.elems.map((e, k) => member(dims[k], e)).join(',') + ')'
+    const r = await client.post('ExecuteMDX?$expand=Cells($select=Ordinal,Value,RuleDerived,Consolidated)',
+        { MDX: `SELECT {${norm.map(tuple).join(',')}} ON 0 FROM ${escMember(cube)}` })
+    const cs = r?.data ?? r
+    if (cs?.ID) { try { await client.delete(`Cellsets('${cs.ID}')`) } catch { /* cleanup only */ } }
+    const byOrd = new Map((cs?.Cells ?? []).map(c => [c.Ordinal, c]))
+    const label = n => n.elems.join(' · ')
+
+    const calc = norm.filter((n, i) => byOrd.get(i)?.RuleDerived || byOrd.get(i)?.Consolidated)
+    if (calc.length) {
+        throw new Error(`${calc.length} cell${calc.length > 1 ? 's are' : ' is'} calculated by TM1 and can't be typed into (${calc.slice(0, 3).map(label).join('; ')}${calc.length > 3 ? '; …' : ''}). Nothing was saved.`)
+    }
+    const conflicts = norm.map((n, i) => ({ n, now: num(byOrd.get(i)?.Value) }))
+        .filter(x => x.n.check && Math.abs(x.now - x.n.expect) > 1e-9)
+    if (conflicts.length) {
+        const e = new Error(`${conflicts.length} cell${conflicts.length > 1 ? 's were' : ' was'} changed by someone else since this screen loaded (${conflicts.slice(0, 3).map(x => label(x.n)).join('; ')}${conflicts.length > 3 ? '; …' : ''}). Nothing was saved — reload to see the new numbers.`)
+        e.conflicts = conflicts.map(x => ({ coordinates: Object.fromEntries(dims.map((d, k) => [d, x.n.elems[k]])), now: x.now, expected: x.n.expect }))
+        throw e
+    }
+
+    await client.updateCells(cube, norm.map(n => ({ dimElemPairs: dims.map((d, k) => ({ dim: d, element: n.elems[k] })), value: n.value })))
+    return {
+        written: norm.length,
+        changes: norm.map((n, i) => ({ coordinates: Object.fromEntries(dims.map((d, k) => [d, n.elems[k]])), old: num(byOrd.get(i)?.Value), value: n.value })),
+    }
+}
+
+module.exports = { execMDX, readCell, getMeta, validateLens, buildStarterLens, validateMdx, declaredWriteCubes, writeCells, MAX_WRITE_CELLS }

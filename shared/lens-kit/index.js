@@ -141,21 +141,77 @@ function bars(el, { rows: data = [], format: fmt = 'number', cost = false, onCli
 }
 
 // ── grid ──────────────────────────────────────────────────────────────────────
-// columns: [{ field, headerName, type: 'number' | 'text', format }]; read-only in toolkit v2
-function grid(el, { columns = [], rows: data = [], height } = {}) {
-  const node = host(el)
+// columns: [{ field, headerName, type: 'number' | 'text', format, editable }]
+// An `editable` column takes input only where the row allows it: a row from
+// Lens.rows carries _input (false = TM1 calculates that cell), so calculated
+// cells stay read-only. Input cells are tinted; typed values are highlighted
+// until saved. Returns { api, changes(), undo(), saved() }.
+function grid(el, { columns = [], rows: data = [], height, onEdit } = {}) {
+  const t = theme.colors, node = host(el)
   node.innerHTML = ''
   node.style.height = height || node.style.height || Math.min(480, 44 + data.length * 36) + 'px'
   const gridTheme = dark() ? themeQuartz.withPart(colorSchemeDark) : themeQuartz
-  return createGrid(node, {
+  const orig = new Map()                       // 'rowIndex|field' -> value before typing
+  const keyOf = (row, field) => data.indexOf(row) + '|' + field
+  const canEdit = (c, row) => !!c.editable && !(row && row._input && row._input[c.field] === false)
+  const tint = (hex, a) => hex + Math.round(a * 255).toString(16).padStart(2, '0')
+  let api = null
+  const changes = () => [...orig.keys()].map(k => {
+    const [i, field] = [Number(k.slice(0, k.indexOf('|'))), k.slice(k.indexOf('|') + 1)]
+    return { row: data[i], field, value: data[i][field], old: orig.get(k) }
+  })
+  const refresh = () => api && api.refreshCells({ force: true })
+  api = createGrid(node, {
     theme: gridTheme,
     rowData: data,
+    singleClickEdit: true,
+    stopEditingWhenCellsLoseFocus: true,
     defaultColDef: { sortable: true, resizable: true, filter: true, editable: false },
-    columnDefs: columns.map(c => c.type === 'number'
-      ? { ...c, type: 'rightAligned', valueFormatter: p => format(p.value, c.format || 'number') }
-      : c),
+    columnDefs: columns.map(c => {
+      const def = c.type === 'number'
+        ? { ...c, type: 'rightAligned', valueFormatter: p => format(p.value, c.format || 'number') }
+        : { ...c }
+      if (!c.editable) return def
+      def.editable = p => canEdit(c, p.data)
+      if (c.type === 'number') {
+        def.valueParser = p => {
+          const v = Number(String(p.newValue ?? '').replace(/[,$\s]/g, ''))
+          return String(p.newValue ?? '').trim() === '' ? 0 : (Number.isFinite(v) ? v : p.oldValue)
+        }
+      }
+      def.cellStyle = p => orig.has(keyOf(p.data, c.field))
+        ? { background: tint(t.amber, 0.22), fontWeight: 600 }
+        : canEdit(c, p.data) ? { background: tint(t.accent, 0.08) } : { color: t.faint }
+      return def
+    }),
+    onCellValueChanged: p => {
+      const k = keyOf(p.data, p.colDef.field)
+      if (!orig.has(k)) orig.set(k, p.oldValue)
+      if (Number(orig.get(k) ?? 0) === Number(p.newValue ?? 0)) orig.delete(k)
+      refresh()
+      if (onEdit) onEdit(changes())
+    },
     autoSizeStrategy: { type: 'fitGridWidth' },
   })
+  return {
+    api,
+    changes,
+    // put every typed value back
+    undo() { for (const ch of changes()) ch.row[ch.field] = ch.old; orig.clear(); api.setGridOption('rowData', data); if (onEdit) onEdit([]) },
+    // the typed values are now in TM1: stop highlighting them
+    saved() { orig.clear(); refresh(); if (onEdit) onEdit([]) },
+  }
+}
+
+// ── save ──────────────────────────────────────────────────────────────────────
+// Write numbers to TM1 as the signed-in user, through the host (the Lens has no
+// network). cells: [{ coordinates: { dim: element, … }, value, expect }] —
+// `expect` is the value the screen showed, so a cell someone else changed since
+// is caught. The Lens must declare the cube: <meta name="lens-writes" content="Cube">.
+// Resolves { written }; rejects with the reason (nothing is half-saved).
+function save(cube, cells) {
+  if (!window.lensBridge) return Promise.reject(new Error('saving needs the Lens app or the IDE preview'))
+  return window.lensBridge.call('writeCells', { cube, cells })
 }
 
 // ── flow ──────────────────────────────────────────────────────────────────────
@@ -202,7 +258,7 @@ function flow(el, { nodes = [], edges = [], direction = 'TB', onClick } = {}) {
 
 function esc(s) { return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;') }
 
-const Lens = { version: TOOLKIT_VERSION, components: COMPONENTS.slice(), rows, format, theme, kpis, trend, waterfall, bars, grid, flow, echarts }
+const Lens = { version: TOOLKIT_VERSION, components: COMPONENTS.slice(), rows, format, theme, kpis, trend, waterfall, bars, grid, flow, save, echarts }
 const missing = COMPONENTS.filter(n => typeof Lens[n] !== 'function')
 if (missing.length) throw new Error('Lens toolkit is missing: ' + missing.join(', '))
 

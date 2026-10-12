@@ -73,10 +73,10 @@ export default function LensEditor({ tab }) {
   useEffect(() => {
     const off = installLensHost(
       () => iframeRef.current?.contentWindow,
-      { getServer: () => tab.server, getToken: token },
+      { getServer: () => tab.server, getToken: token, getLens: () => tab.name },
     )
     return off
-  }, [tab.server])
+  }, [tab.server, tab.name])
 
   useEffect(() => {
     if (!dirtyPreview) return

@@ -16,6 +16,7 @@ const gitSecrets = require('./core/git-secrets')
 const { odataKey } = require('./core/odata-key')
 if (!process.env.TM1_GIT_TOKEN && gitSecrets.getToken()) process.env.TM1_GIT_TOKEN = gitSecrets.getToken()
 const lensStore = require('./core/lens_store')
+const { logLensWrite } = require('./core/lens_write_log')
 const lensBridge = require('./core/lens_bridge')
 const { readOnlyRefusal } = require('./core/readonly')
 
@@ -3841,7 +3842,7 @@ The ONLY way to get data is the bridge API below. There is NO network access, no
 
 Bridge API (always available):
   window.lensBridge.call('execMDX', { mdx: '<MDX SELECT>' }) -> Promise<{ Axes, Cells }>
-      Cells: [{ Ordinal, Value, FormattedValue }] — Value is a number or null.
+      Cells: [{ Ordinal, Value, FormattedValue, RuleDerived, Consolidated }] — Value is a number or null.
   window.lensBridge.call('readCell', { cube: '<cube>', coordinates: { '<dim>': '<elem>', ... } }) -> Promise<number|string|null>
       coordinates must name EVERY dimension of the cube.
   window.lensBridge.call('getMeta', { cube: '<cube>' }) -> Promise<{ cubes, dimensions, cubeDims, elements }>
@@ -3854,6 +3855,7 @@ Lens toolkit catalogue:
 ${LENS_CATALOGUE}
 - Style it as a polished executive dashboard: card layout, clear hierarchy, good typography, whitespace, a coherent color scheme. Add a small refresh button that re-runs the data calls.
 - All numbers must come from the bridge at runtime — never hard-code values.
+- Only build input (write-back) when the request asks for it: an editable Lens.grid plus Lens.save, and declare the cube in the head with <meta name="lens-writes" content="Cube Name">.
 - Use EXACT cube/dimension/element names from the model context. In MDX reference members as [Dim].[Dim].[Member].
 - Prefer readCell for single values and execMDX for series/sets. Keep MDX simple and correct. The Measures dimension is typically the last one — put it on columns.
 - Render loading states and handle null/empty values gracefully (show '—').`,
@@ -3869,7 +3871,7 @@ ${LENS_CATALOGUE}
     }
 })
 
-// ── Lens bridge (read-only, runs as the viewing user) ────────────────────────
+// ── Lens bridge (runs as the viewing user) ───────────────────────────────────
 
 app.post('/api/lens/exec-mdx', async (req, res) => {
     try {
@@ -3889,6 +3891,27 @@ app.post('/api/lens/read-cell', async (req, res) => {
     } catch (e) {
         const detail = e.response?.data?.error?.message ?? e.response?.data ?? e.message
         res.status(500).json({ error: typeof detail === 'string' ? detail : JSON.stringify(detail) })
+    }
+})
+
+// Write-back from a Lens preview — same checks as the Lens app (declared cubes,
+// numbers only, no calculated cells, nothing changed since it loaded), as the
+// IDE user. Data entry, not a model change, so no change set is needed; a
+// read-only (PROD-posture) server refuses it here.
+app.post('/api/lens/write-cells', async (req, res) => {
+    try {
+        const server = req.query.server
+        if (!gateReadOnly(res, server)) return
+        const client = makeClient(server, req.ideToken)
+        const name = req.body?.lens
+        if (!name || typeof name !== 'string') throw new Error('lens is required')
+        const doc = await lensStore.readLens(server, name, { ideToken: req.ideToken })
+        const result = await lensBridge.writeCells(client, { cube: req.body?.cube, cells: req.body?.cells, allowedCubes: lensBridge.declaredWriteCubes(doc.html) })
+        logLensWrite({ server, app: 'ide', user: req.user, lens: doc.name, cube: req.body.cube, changes: result.changes })
+        res.json({ written: result.written })
+    } catch (e) {
+        const detail = e.response?.data?.error?.message ?? e.message
+        res.status(e.conflicts ? 409 : 400).json({ error: typeof detail === 'string' ? detail : JSON.stringify(detail), conflicts: e.conflicts })
     }
 })
 

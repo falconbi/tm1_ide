@@ -5,7 +5,9 @@
 //   { _label: 'East Region', _members: ['East Region'], organization: 'East Region',
 //     'Y2 / Actual': 123, ... }
 // Columns are labelled by their member names joined with ' / '. A one-axis
-// result becomes a single row. Missing cells are null.
+// result becomes a single row. Missing cells are null. When the result says
+// which cells TM1 calculates (rule or consolidation), each row also carries
+// _input: { [column label]: true when the cell can be typed into }.
 
 // '[organization].[organization].[100]' → 'organization'
 function dimOf(member, i) {
@@ -23,19 +25,27 @@ export function rows(cellset) {
   const nCols = colLabels.length
   const byOrdinal = new Map(cells.map(c => [c.Ordinal, c.Value === undefined ? null : c.Value]))
   const valueAt = ord => (byOrdinal.has(ord) ? byOrdinal.get(ord) : null)
+  const flags = cells.some(c => 'RuleDerived' in c || 'Consolidated' in c)
+    ? new Map(cells.map(c => [c.Ordinal, !(c.RuleDerived || c.Consolidated)])) : null
+  const addInput = (row, base) => {
+    if (!flags) return row
+    row._input = {}
+    colLabels.forEach((label, c) => { row._input[label] = flags.get(base + c) === true })
+    return row
+  }
 
   if (!rowTuples.length) {
     if (!nCols) return []
     const one = { _label: '', _members: [] }
     colLabels.forEach((label, c) => { one[label] = valueAt(c) })
-    return [one]
+    return [addInput(one, 0)]
   }
   return rowTuples.map((t, r) => {
     const members = t.Members || []
     const row = { _label: members.map(m => m.Name).join(' / '), _members: members.map(m => m.Name) }
     members.forEach((m, i) => { row[dimOf(m, i)] = m.Name })
     colLabels.forEach((label, c) => { row[label] = valueAt(r * nCols + c) })
-    return row
+    return addInput(row, r * nCols)
   })
 }
 

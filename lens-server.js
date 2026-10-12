@@ -26,6 +26,7 @@ const { probeAuthMethod, makeClientWithCredentials } = require('./core/adapter_r
 const lensStore = require('./core/lens_store')
 const lensBridge = require('./core/lens_bridge')
 const sharedBridge = require('./shared/lens-bridge')
+const { logLensWrite } = require('./core/lens_write_log')
 const { createIpLimiter, createFailureGuard } = require('./core/login-rate-limit')
 
 const CONFIG_PATH = path.join(__dirname, 'config', 'lens-app.json')
@@ -155,6 +156,8 @@ function createApp({ config = loadConfig(), deps = {} } = {}) {
     const execMdx   = deps.execMdx  ?? ((client, mdx) => lensBridge.execMDX(client, mdx))
     const readCell  = deps.readCell ?? ((client, cube, coords) => lensBridge.readCell(client, cube, coords))
     const getMeta   = deps.getMeta  ?? ((client, cube) => lensBridge.getMeta(client, cube))
+    const writeCells = deps.writeCells ?? ((client, args) => lensBridge.writeCells(client, args))
+    const logWrite   = deps.logLensWrite ?? logLensWrite
     const listLenses = deps.listLenses ?? ((server, opts) => lensStore.listLenses(server, opts))
     const readLens   = deps.readLens   ?? ((server, name, opts) => lensStore.readLens(server, name, opts))
     const supported  = deps.toolkitVersion ?? lensStore.TOOLKIT_VERSION
@@ -362,7 +365,8 @@ function createApp({ config = loadConfig(), deps = {} } = {}) {
       var frame = document.getElementById('lensFrame')
       window.LensBridge.installLensHost(function () { return frame.contentWindow }, {
         getServer: function () { return ${JSON.stringify(cfg.server)} },
-        getToken: function () { return null }
+        getToken: function () { return null },
+        getLens: function () { return ${JSON.stringify(doc.name).replace(/</g, '\\u003c')} }
       })
     })()
   </script>`
@@ -405,7 +409,7 @@ function createApp({ config = loadConfig(), deps = {} } = {}) {
         res.send(fs.readFileSync(path.join(__dirname, 'shared', 'lens-bridge.js'), 'utf8'))
     })
 
-    // ── Read-only API (server from settings; runs as the signed-in user) ──────
+    // ── API (server from settings; runs as the signed-in user) ────────────────
     app.get('/api/lenses', requireSession, async (req, res) => {
         const lens = await listLenses(cfg.server, { client: req.lens.client })
         const visible = lens.filter(l => l.status === 'published' || (cfg.showDrafts && l.status === 'draft'))
@@ -422,6 +426,22 @@ function createApp({ config = loadConfig(), deps = {} } = {}) {
     app.post('/api/lens/read-cell', requireSession, serverGate, async (req, res) => {
         try { res.json({ value: await readCell(req.lens.client, req.body?.cube, req.body?.coordinates) }) }
         catch (e) { res.status(400).json({ error: e.response?.data?.error?.message ?? e.message }) }
+    })
+
+    // Write-back: numbers only, into the cubes the SAVED Lens declares, as the
+    // signed-in user (TM1 security decides the rest), every save logged.
+    app.post('/api/lens/write-cells', requireSession, serverGate, async (req, res) => {
+        try {
+            const name = req.body?.lens
+            if (!name || typeof name !== 'string') throw new Error('lens is required')
+            const doc = await readLens(cfg.server, name, { client: req.lens.client })
+            if (!(doc.status === 'published' || (cfg.showDrafts && doc.status === 'draft'))) throw new Error(`Lens "${name}" is not available here`)
+            const result = await writeCells(req.lens.client, { cube: req.body?.cube, cells: req.body?.cells, allowedCubes: lensBridge.declaredWriteCubes(doc.html) })
+            logWrite({ server: cfg.server, app: 'lens', user: req.lens.display, lens: doc.name, cube: req.body.cube, changes: result.changes })
+            res.json({ written: result.written })
+        } catch (e) {
+            res.status(e.conflicts ? 409 : 400).json({ error: e.response?.data?.error?.message ?? e.message, conflicts: e.conflicts })
+        }
     })
 
     app.get('/api/lens/meta', requireSession, serverGate, async (req, res) => {

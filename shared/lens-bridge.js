@@ -72,7 +72,9 @@ function writeCtx(patch) {
 // server, the Lens app uses its settings file; NEVER from the message.
 // `getToken` is the IDE's session token (the Lens app has none — its session
 // rides in the HttpOnly cookie, so page scripts cannot read it).
-function installLensHost(getLensWindow, { getServer, getToken }) {
+// `getLens` names the Lens this host opened — a write is checked against THAT
+// saved Lens's declared cubes, never a name taken from the message.
+function installLensHost(getLensWindow, { getServer, getToken, getLens }) {
   const pushCtx = () => {
     getLensWindow()?.postMessage({ __lensBridge: 1, ctx: true, context: readCtx() }, '*')
   }
@@ -109,6 +111,11 @@ function installLensHost(getLensWindow, { getServer, getToken }) {
       } else if (d.method === 'readCell') {
         url = `/api/lens/read-cell?server=${enc(server)}`
         init = { method: 'POST', headers, body: JSON.stringify({ cube: d.payload?.cube, coordinates: d.payload?.coordinates }) }
+      } else if (d.method === 'writeCells') {
+        const lens = getLens ? getLens() : null
+        if (!lens) throw new Error('save the Lens first — changes are checked against the saved Lens')
+        url = `/api/lens/write-cells?server=${enc(server)}`
+        init = { method: 'POST', headers, body: JSON.stringify({ lens, cube: d.payload?.cube, cells: d.payload?.cells }) }
       } else if (d.method === 'getMeta') {
         url = `/api/lens/meta?server=${enc(server)}${d.payload?.cube ? `&cube=${enc(d.payload.cube)}` : ''}`
         init = { method: 'GET', headers }
