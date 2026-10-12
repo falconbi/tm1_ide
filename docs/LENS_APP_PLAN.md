@@ -21,8 +21,8 @@ built by AI, every change governed, everything run on TM1 as each person.
 | 3 | Lens app, read-only — own server, sign-in, home page, open a Lens outside the IDE | Business users use Lenses without the IDE | done |
 | 4 | Toolkit v1 — ECharts, AG Grid, React Flow + dagre, Alpine bundled in the Lens app (and IDE preview); `Lens.kpis/trend/waterfall/bars/grid/flow`; component catalogue | Rich, consistent visuals with far less code; AI builds faster and more reliably | done |
 | 5 | Rebuild PnL-Dashboard on the toolkit and compare | The toolkit is worth it — measured | done — same dashboard in 119 lines vs 250 (script 64 vs 146), plus tooltips, legends, sortable grid |
-| 6 | Security test — East vs Canada test users | Each user sees only what TM1 allows | next |
-| 7 | Forecast input form (AG Grid) on a **copy** of 24Retail | Safe data entry: checked, written as the user, logged | |
+| 6 | Security test — East vs Canada test users | Each user sees only what TM1 allows | done — on a copy of the model, each regional manager signs in to the Lens app as themselves and sees only their region; the dashboard opens at the highest level the user may see |
+| 7 | Forecast input form (AG Grid) on a **copy** of 24Retail | Safe data entry: checked, written as the user, logged | next |
 | 8 | Action buttons — seed forecast, spread a total | Lenses run processes safely | |
 | 9 | Submit / approve workflow (24Retail Task Workflow cube) | A real planning process runs through Lenses | |
 | 10 | Release DEV → PROD through the deploy | Governed like everything else | |

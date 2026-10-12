@@ -290,6 +290,16 @@ iterations:
   `Elements@odata.bind` adds to the existing members, it doesn't replace them —
   re-running a subset seed accumulates duplicates. Rebuild with
   `SubsetDeleteAllElements` then `SubsetElementInsert` in a TI.
+- **A user needs four kinds of READ to query a cube**, and a missing one gives the
+  same bare `ObjectSecurityNoReadRights`: the cube (`}CubeSecurity`), every one
+  of its dimensions (`}DimensionSecurity` — no entry is *not* READ), the
+  elements (`}ElementSecurity_<dim>`), and any cell security
+  (`}CellSecurity_<cube>`). Attribute cubes (`}ElementAttributes_<dim>`) count
+  as cubes — a regional user usually has no access to them, so a screen that
+  reads captions should fall back to element names rather than fail.
+- New client password: `AssignClientPassword` in the same procedure as
+  `AddClient` silently does nothing (the client isn't committed until the
+  procedure ends) — run them as two separate processes.
 - `SubsetCreatebyMDX` silently no-ops — use `SubsetCreate` + a
   `SubsetElementInsert` loop.
 - `CubeProcessFeeders` is the only feeder-recalc that works — `tm1.CheckFeeders*`
