@@ -16,7 +16,7 @@ const gitSecrets = require('./core/git-secrets')
 const { odataKey } = require('./core/odata-key')
 if (!process.env.TM1_GIT_TOKEN && gitSecrets.getToken()) process.env.TM1_GIT_TOKEN = gitSecrets.getToken()
 const lensStore = require('./core/lens_store')
-const { logLensWrite } = require('./core/lens_write_log')
+const { logLensWrite, logLensRun } = require('./core/lens_activity_log')
 const lensBridge = require('./core/lens_bridge')
 const { readOnlyRefusal } = require('./core/readonly')
 
@@ -3856,6 +3856,7 @@ ${LENS_CATALOGUE}
 - Style it as a polished executive dashboard: card layout, clear hierarchy, good typography, whitespace, a coherent color scheme. Add a small refresh button that re-runs the data calls.
 - All numbers must come from the bridge at runtime — never hard-code values.
 - Only build input (write-back) when the request asks for it: an editable Lens.grid plus Lens.save, and declare the cube in the head with <meta name="lens-writes" content="Cube Name">.
+- Only add action buttons when asked: Lens.run('Process', { params }), declared with <meta name="lens-runs" content="Process Name">.
 - Use EXACT cube/dimension/element names from the model context. In MDX reference members as [Dim].[Dim].[Member].
 - Prefer readCell for single values and execMDX for series/sets. Keep MDX simple and correct. The Measures dimension is typically the last one — put it on columns.
 - Render loading states and handle null/empty values gracefully (show '—').`,
@@ -3912,6 +3913,24 @@ app.post('/api/lens/write-cells', async (req, res) => {
     } catch (e) {
         const detail = e.response?.data?.error?.message ?? e.message
         res.status(e.conflicts ? 409 : 400).json({ error: typeof detail === 'string' ? detail : JSON.stringify(detail), conflicts: e.conflicts })
+    }
+})
+
+// Action buttons from a Lens preview — the process must be declared by the
+// saved Lens; parameters checked; runs as the IDE user; logged.
+app.post('/api/lens/run-process', async (req, res) => {
+    const server = req.query.server, name = req.body?.lens, process = req.body?.process, params = req.body?.params ?? {}
+    try {
+        if (!gateReadOnly(res, server)) return
+        if (!name || typeof name !== 'string') throw new Error('lens is required')
+        const doc = await lensStore.readLens(server, name, { ideToken: req.ideToken })
+        const result = await lensBridge.runProcess(makeClient(server, req.ideToken), { process, params, allowedProcesses: lensBridge.declaredRunProcesses(doc.html), user: req.user })
+        logLensRun({ server, app: 'ide', user: req.user, lens: doc.name, process, params, status: result.status, message: result.message })
+        res.json(result)
+    } catch (e) {
+        if (e.status) logLensRun({ server, app: 'ide', user: req.user, lens: name, process, params, status: e.status, message: e.message })
+        const detail = e.response?.data?.error?.message ?? e.message
+        res.status(e.status ? 422 : 400).json({ error: typeof detail === 'string' ? detail : JSON.stringify(detail), status: e.status })
     }
 })
 

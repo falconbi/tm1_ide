@@ -208,10 +208,14 @@ function buildStarterLens(meta, cube) {
 // from the message), so a Lens can't widen its own rights at runtime.
 const MAX_WRITE_CELLS = 500
 
-function declaredWriteCubes(html) {
+function declaredWriteCubes(html) { return metaList(html, 'lens-writes') }
+
+// <meta name="<name>" content="A, B"> → ['A', 'B'] (all such tags, any attribute order)
+function metaList(html, name) {
     const out = []
+    const named = new RegExp(`\\bname\\s*=\\s*["']${name}["']`, 'i')
     for (const tag of String(html ?? '').match(/<meta\b[^>]*>/gi) ?? []) {
-        if (!/\bname\s*=\s*["']lens-writes["']/i.test(tag)) continue
+        if (!named.test(tag)) continue
         const m = /\bcontent\s*=\s*["']([^"']*)["']/i.exec(tag)
         if (m) out.push(...m[1].split(',').map(x => x.trim()).filter(Boolean))
     }
@@ -301,4 +305,59 @@ async function writeCells(client, { cube, cells, allowedCubes = [] } = {}) {
     }
 }
 
-module.exports = { execMDX, readCell, getMeta, validateLens, buildStarterLens, validateMdx, declaredWriteCubes, writeCells, MAX_WRITE_CELLS }
+// ── Action buttons: run a TI process ──────────────────────────────────────────
+// A Lens may run only the processes it declares:
+//   <meta name="lens-runs" content="Process A, Process B">
+// read from the SAVED Lens, like lens-writes. Parameters must be ones the
+// process has: text for a String parameter, a number for a Numeric one.
+// A running process is not limited by the caller's cell security, so it must
+// check the caller itself; it leaves its outcome for the caller in the
+// 'Lens Messages' cube (}Clients × Process / Time / Message), because only
+// admins can read TM1's error logs.
+const MSG_CUBE = 'Lens Messages'
+
+function declaredRunProcesses(html) { return metaList(html, 'lens-runs') }
+
+async function readLensMessage(client, user, process) {
+    try {
+        const r = await client.executeMDX(`SELECT {[Lens Message].[Lens Message].Members} ON 0, {[}Clients].[}Clients].${escMember(user)}} ON 1 FROM ${escMember(MSG_CUBE)}`, 10)
+        const names = (r.Axes?.[0]?.Tuples ?? []).map(t => t.Members?.[0]?.Name)
+        const at = name => r.Cells?.[names.indexOf(name)]?.Value ?? ''
+        // Only a message this process left — never a stale one from another.
+        return String(at('Process')).toLowerCase() === String(process).toLowerCase() ? String(at('Message') || '') : ''
+    } catch { return '' }  // the model has no Lens Messages cube, or the user can't read it
+}
+
+async function runProcess(client, { process, params = {}, allowedProcesses = [], user } = {}) {
+    if (!process || typeof process !== 'string') throw new Error('process is required')
+    if (!allowedProcesses.some(p => p.toLowerCase() === process.toLowerCase())) {
+        throw new Error(`This Lens hasn't declared that it runs "${process}" — add <meta name="lens-runs" content="${process}"> to it and save it`)
+    }
+    if (!params || typeof params !== 'object' || Array.isArray(params)) throw new Error('params must be an object of { parameter: value }')
+    const def = await client.getProcess(process).catch(() => null)
+    if (!def) throw new Error(`Process "${process}" not found, or you are not allowed to run it`)
+    const types = new Map((def.Parameters ?? []).map(p => [p.Name.toLowerCase(), p]))
+    const list = Object.entries(params).map(([name, value]) => {
+        const p = types.get(name.toLowerCase())
+        if (!p) throw new Error(`"${process}" has no parameter "${name}"`)
+        if (p.Type === 'Numeric') {
+            if (typeof value !== 'number' || !Number.isFinite(value)) throw new Error(`${p.Name} must be a number`)
+        } else if (typeof value !== 'string' || value.length > 1000) {
+            throw new Error(`${p.Name} must be text (at most 1000 characters)`)
+        }
+        return { Name: p.Name, Value: String(value) }
+    })
+    const started = Date.now()
+    const r = await client.executeProcess(process, list)
+    const status = r?.ProcessExecuteStatusCode ?? 'Unknown'
+    const seconds = Math.round((Date.now() - started) / 100) / 10
+    const message = user ? await readLensMessage(client, user, process) : ''
+    if (status !== 'CompletedSuccessfully') {
+        const e = new Error(message || `"${process}" did not complete (${status}) — your TM1 administrator can see why in its error log`)
+        e.status = status
+        throw e
+    }
+    return { status, seconds, message }
+}
+
+module.exports = { execMDX, readCell, getMeta, validateLens, buildStarterLens, validateMdx, declaredWriteCubes, writeCells, MAX_WRITE_CELLS, declaredRunProcesses, runProcess }

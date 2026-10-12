@@ -86,5 +86,5 @@ config/lenses/
 # Lens app settings (per install — the example is committed)
 config/lens-app.json
 
-# ── Lens write log (who changed which cells through a Lens) ──
-data/lens-writes.jsonl
+# ── Lens activity log (cells saved and processes run through Lenses) ──
+data/lens-activity.jsonl

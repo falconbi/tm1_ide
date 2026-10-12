@@ -26,7 +26,7 @@ const { probeAuthMethod, makeClientWithCredentials } = require('./core/adapter_r
 const lensStore = require('./core/lens_store')
 const lensBridge = require('./core/lens_bridge')
 const sharedBridge = require('./shared/lens-bridge')
-const { logLensWrite } = require('./core/lens_write_log')
+const { logLensWrite, logLensRun } = require('./core/lens_activity_log')
 const { createIpLimiter, createFailureGuard } = require('./core/login-rate-limit')
 
 const CONFIG_PATH = path.join(__dirname, 'config', 'lens-app.json')
@@ -158,6 +158,8 @@ function createApp({ config = loadConfig(), deps = {} } = {}) {
     const getMeta   = deps.getMeta  ?? ((client, cube) => lensBridge.getMeta(client, cube))
     const writeCells = deps.writeCells ?? ((client, args) => lensBridge.writeCells(client, args))
     const logWrite   = deps.logLensWrite ?? logLensWrite
+    const runProcess = deps.runProcess ?? ((client, args) => lensBridge.runProcess(client, args))
+    const logRun     = deps.logLensRun ?? logLensRun
     const listLenses = deps.listLenses ?? ((server, opts) => lensStore.listLenses(server, opts))
     const readLens   = deps.readLens   ?? ((server, name, opts) => lensStore.readLens(server, name, opts))
     const supported  = deps.toolkitVersion ?? lensStore.TOOLKIT_VERSION
@@ -441,6 +443,23 @@ function createApp({ config = loadConfig(), deps = {} } = {}) {
             res.json({ written: result.written })
         } catch (e) {
             res.status(e.conflicts ? 409 : 400).json({ error: e.response?.data?.error?.message ?? e.message, conflicts: e.conflicts })
+        }
+    })
+
+    // Action buttons: run a process the SAVED Lens declares, as the signed-in
+    // user, with parameters checked against the process; every run logged.
+    app.post('/api/lens/run-process', requireSession, serverGate, async (req, res) => {
+        const name = req.body?.lens, process = req.body?.process, params = req.body?.params ?? {}
+        try {
+            if (!name || typeof name !== 'string') throw new Error('lens is required')
+            const doc = await readLens(cfg.server, name, { client: req.lens.client })
+            if (!(doc.status === 'published' || (cfg.showDrafts && doc.status === 'draft'))) throw new Error(`Lens "${name}" is not available here`)
+            const result = await runProcess(req.lens.client, { process, params, allowedProcesses: lensBridge.declaredRunProcesses(doc.html), user: req.lens.display })
+            logRun({ server: cfg.server, app: 'lens', user: req.lens.display, lens: doc.name, process, params, status: result.status, message: result.message })
+            res.json(result)
+        } catch (e) {
+            if (e.status) logRun({ server: cfg.server, app: 'lens', user: req.lens.display, lens: name, process, params, status: e.status, message: e.message })
+            res.status(e.status ? 422 : 400).json({ error: e.response?.data?.error?.message ?? e.message, status: e.status })
         }
     })
 

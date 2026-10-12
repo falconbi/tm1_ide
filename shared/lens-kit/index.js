@@ -258,7 +258,17 @@ function flow(el, { nodes = [], edges = [], direction = 'TB', onClick } = {}) {
 
 function esc(s) { return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;') }
 
-const Lens = { version: TOOLKIT_VERSION, components: COMPONENTS.slice(), rows, format, theme, kpis, trend, waterfall, bars, grid, flow, save, echarts }
+// ── run ───────────────────────────────────────────────────────────────────────
+// Run a TI process as the signed-in user (an action button). params: { pName:
+// 'text' | number } — only parameters the process has. The Lens must declare
+// it: <meta name="lens-runs" content="Process">. Resolves { status, seconds,
+// message } (message: what the process reported); rejects with the reason.
+function run(process, params) {
+  if (!window.lensBridge) return Promise.reject(new Error('running a process needs the Lens app or the IDE preview'))
+  return window.lensBridge.call('runProcess', { process, params: params || {} })
+}
+
+const Lens = { version: TOOLKIT_VERSION, components: COMPONENTS.slice(), rows, format, theme, kpis, trend, waterfall, bars, grid, flow, save, run, echarts }
 const missing = COMPONENTS.filter(n => typeof Lens[n] !== 'function')
 if (missing.length) throw new Error('Lens toolkit is missing: ' + missing.join(', '))
 

@@ -115,3 +115,51 @@ test('Lens app: writes are checked against the saved Lens, run as the user, and 
     assert.equal(signedOut.status, 401)
   } finally { srv.close(); close() }
 })
+
+// ── Action buttons: Lens.run → a declared process, checked parameters ─────────
+const { declaredRunProcesses, runProcess } = require('../core/lens_bridge')
+
+function procClient({ status = 'CompletedSuccessfully', message = { Process: 'Spread', Message: 'Spread 1200.' } } = {}) {
+  const calls = { runs: [] }
+  return {
+    calls,
+    async getProcess(name) { return name === 'Spread' ? { Name: 'Spread', Parameters: [{ Name: 'pOrg', Type: 'String' }, { Name: 'pTotal', Type: 'Numeric' }] } : null },
+    async executeProcess(name, params) { calls.runs.push({ name, params }); return { ProcessExecuteStatusCode: status } },
+    async executeMDX() {
+      const names = ['Process', 'Time', 'Message']
+      return { Axes: [{ Tuples: names.map(n => ({ Members: [{ Name: n }] })) }], Cells: names.map(n => ({ Value: message[n] ?? '' })) }
+    },
+  }
+}
+const run = { process: 'Spread', allowedProcesses: ['Spread'], user: 'east_mgr' }
+
+test('declaredRunProcesses reads <meta name="lens-runs">', () => {
+  assert.deepEqual(declaredRunProcesses('<meta name="lens-runs" content="Spread, Seed">'), ['Spread', 'Seed'])
+  assert.deepEqual(declaredRunProcesses('<meta name="lens-writes" content="Plan">'), [])
+})
+
+test('a process the Lens did not declare is refused before TM1 is asked', async () => {
+  const c = procClient()
+  await assert.rejects(runProcess(c, { ...run, process: 'Delete Everything' }), /hasn't declared that it runs "Delete Everything"/)
+  assert.equal(c.calls.runs.length, 0)
+})
+
+test('parameters must be the process own, with the right types', async () => {
+  const c = procClient()
+  await assert.rejects(runProcess(c, { ...run, params: { pEvil: 'x' } }), /has no parameter "pEvil"/)
+  await assert.rejects(runProcess(c, { ...run, params: { pTotal: '1200' } }), /pTotal must be a number/)
+  await assert.rejects(runProcess(c, { ...run, params: { pOrg: 101 } }), /pOrg must be text/)
+  assert.equal(c.calls.runs.length, 0)
+})
+
+test('a successful run returns the message the process left', async () => {
+  const c = procClient()
+  const r = await runProcess(c, { ...run, params: { pOrg: '101', pTotal: 1200 } })
+  assert.equal(r.status, 'CompletedSuccessfully'); assert.equal(r.message, 'Spread 1200.')
+  assert.deepEqual(c.calls.runs[0].params, [{ Name: 'pOrg', Value: '101' }, { Name: 'pTotal', Value: '1200' }])
+})
+
+test('a refused run rejects with the process\'s own reason — never a stale message from another process', async () => {
+  await assert.rejects(runProcess(procClient({ status: 'CompletedWithMessages', message: { Process: 'Spread', Message: 'You may not change store "401".' } }), { ...run, params: { pOrg: '401' } }), /^Error: You may not change store "401"\.$/)
+  await assert.rejects(runProcess(procClient({ status: 'Aborted', message: { Process: 'Other', Message: 'old news' } }), run), /did not complete \(Aborted\)/)
+})
