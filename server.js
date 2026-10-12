@@ -3809,6 +3809,7 @@ app.delete('/api/lenses/:name', async (req, res) => {
     } catch (e) { res.status(/not found/.test(e.message) ? 404 : 500).json({ error: e.message }) }
 })
 
+const LENS_CATALOGUE = JSON.stringify(require('./shared/lens-components.json'), null, 1)
 app.post('/api/lenses/generate', async (req, res) => {
     try {
         const { server, cube, description } = req.body
@@ -3836,7 +3837,7 @@ app.post('/api/lenses/generate', async (req, res) => {
                 label: 'lens-generate', obfuscated: obf, maxTokens: 8000,
                 system: `You are a front-end developer building an executive dashboard that runs inside a sandboxed iframe and reads live IBM Planning Analytics (TM1) data.
 
-The ONLY way to get data is the bridge API below. There is NO network access, no fetch to any other URL, no external libraries, no CDN, no external fonts or images.
+The ONLY way to get data is the bridge API below. There is NO network access, no fetch to any other URL, no CDN, no external fonts or images. The ONLY library is the Lens toolkit, served by the app: include <script src="/lens-kit/lens-kit.js"></script> before your own script.
 
 Bridge API (always available):
   window.lensBridge.call('execMDX', { mdx: '<MDX SELECT>' }) -> Promise<{ Axes, Cells }>
@@ -3847,7 +3848,10 @@ Bridge API (always available):
 
 Rules:
 - Return a SINGLE complete HTML document (html, head, style, body, script). No markdown, no code fences, no explanation.
-- Draw all charts with inline SVG or canvas and vanilla JS. Everything inline. No external anything.
+- Use the Lens toolkit (window.Lens) for charts, tables and networks wherever a component fits — it is described in the catalogue below. Turn every execMDX result into rows with Lens.rows(result). Write your own SVG/canvas only for a visual no component covers. No other external anything.
+
+Lens toolkit catalogue:
+${LENS_CATALOGUE}
 - Style it as a polished executive dashboard: card layout, clear hierarchy, good typography, whitespace, a coherent color scheme. Add a small refresh button that re-runs the data calls.
 - All numbers must come from the bridge at runtime — never hard-code values.
 - Use EXACT cube/dimension/element names from the model context. In MDX reference members as [Dim].[Dim].[Member].

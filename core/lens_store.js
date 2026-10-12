@@ -13,7 +13,7 @@ const AREA = 'lenses'
 
 // Bumped when the bridge/toolkit contract changes, so the Lens app can refuse a
 // Lens it can't run (LENS_APP_PLAN.md — version check).
-const TOOLKIT_VERSION = 1
+const TOOLKIT_VERSION = 2   // 2 = the Lens toolkit (window.Lens) is available — shared/lens-kit
 
 function safeName(name) {
     const n = String(name ?? '').trim()
