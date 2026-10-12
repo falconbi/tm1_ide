@@ -122,7 +122,8 @@ export default function LensEditor({ tab }) {
         if (Array.isArray(data.validation)) setValidation(data.validation)
         throw new Error(data.error || res.statusText)
       }
-      setMessage({ kind: 'ok', text: `Saved "${data.name}" (${data.status})${data.validation?.length ? ` — ${data.validation.length} validation warnings` : ''}` })
+      setMessage({ kind: 'ok', text: `Saved "${data.name}" to ${tab.server}'s model (${data.status}, version ${data.version})${data.validation?.length ? ` — ${data.validation.length} validation warnings` : ''}` })
+      window.dispatchEvent(new CustomEvent('tm1-lenses-changed', { detail: { server: tab.server } }))
     } catch (e) {
       setMessage({ kind: 'error', text: e.message })
     } finally {

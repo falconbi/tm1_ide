@@ -3779,50 +3779,58 @@ app.get('/api/cubemap/model', async (req, res) => {
 
 
 // ── Lenses ────────────────────────────────────────────────────────────────────
-// Lens HTML lives in config/lenses/*.html (git-versioned). Metadata lives ONLY
-// in the }Lenses control cube — never a second copy in JSON files. The bridge
-// runs as the viewing user (req.ideToken), never the MCP admin path.
+// A Lens lives in the model it belongs to: one document per Lens under
+// Applications/Governance/Lenses (core/lens_store.js → core/model-store.js),
+// holding the HTML and its details. Nothing is stored locally. Every call runs as
+// the signed-in user (req.ideToken), never the MCP's builder path. Saves and
+// deletes are model changes: they need a writable server and an open change set,
+// and are recorded in it.
 
 app.get('/api/lenses', async (req, res) => {
     try {
-        const client = makeClient(req.query.server, req.ideToken)
-        const lenses = lensStore.listFiles()
-        const enriched = await Promise.all(lenses.map(async f => {
-            try { return { ...f, ...(await lensStore.readMeta(client, f.name)) } }
-            catch { return { ...f } }
-        }))
-        res.json(enriched)
+        const server = req.query.server
+        if (!server) return res.status(400).json({ error: 'server required' })
+        res.json(await lensStore.listLenses(server, { ideToken: req.ideToken }))
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
 app.get('/api/lenses/:name', async (req, res) => {
     try {
-        const client = makeClient(req.query.server, req.ideToken)
-        const lens = lensStore.readLens(req.params.name)
-        const meta = await lensStore.readMeta(client, req.params.name).catch(() => ({}))
-        res.json({ ...lens, meta })
-    } catch (e) { res.status(500).json({ error: e.message }) }
+        const server = req.query.server
+        if (!server) return res.status(400).json({ error: 'server required' })
+        const { html, ...meta } = await lensStore.readLens(server, req.params.name, { ideToken: req.ideToken })
+        res.json({ name: meta.name, html, meta })
+    } catch (e) { res.status(/not found/.test(e.message) ? 404 : 500).json({ error: e.message }) }
 })
 
 app.post('/api/lenses/:name', async (req, res) => {
     try {
-        const client = makeClient(req.query.server, req.ideToken)
+        const server = req.query.server
+        if (!server) return res.status(400).json({ error: 'server required' })
+        if (!gateWrite(res, server)) return
+        const client = makeClient(server, req.ideToken)
         const { html, description, publish, force } = req.body
         if (typeof html !== 'string' || !html.trim()) return res.status(400).json({ error: 'html is required' })
         const errors = await lensBridge.validateLens(client, html)
         if (errors.length && !force) {
             return res.status(400).json({ error: `Lens validation failed (${errors.length}):`, validation: errors })
         }
-        const saved = lensStore.saveLens(client, req.params.name, html, req.user, { publish: !!publish, description })
+        const saved = await lensStore.saveLens(server, req.params.name, html, req.user, { publish: !!publish, description, ideToken: req.ideToken })
+        cl.writeLog({ server, action: publish ? 'LENS_PUBLISHED' : 'LENS_SAVED', objectType: 'lens', objectName: saved.name,
+            detail: `version ${saved.version}${description ? ` — ${description}` : ''}`, user: req.user })
         res.json({ ...saved, validation: errors })
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
-app.delete('/api/lenses/:name', (req, res) => {
+app.delete('/api/lenses/:name', async (req, res) => {
     try {
-        lensStore.deleteLens(req.params.name)
+        const server = req.query.server
+        if (!server) return res.status(400).json({ error: 'server required' })
+        if (!gateWrite(res, server)) return
+        await lensStore.deleteLens(server, req.params.name, { ideToken: req.ideToken })
+        cl.writeLog({ server, action: 'LENS_DELETED', objectType: 'lens', objectName: req.params.name, user: req.user })
         res.json({ ok: true })
-    } catch (e) { res.status(500).json({ error: e.message }) }
+    } catch (e) { res.status(/not found/.test(e.message) ? 404 : 500).json({ error: e.message }) }
 })
 
 app.post('/api/lenses/generate', async (req, res) => {
@@ -3914,26 +3922,6 @@ app.get('/api/lens/meta', async (req, res) => {
     }
 })
 
-// Sandboxed frame render. The CSP `sandbox` directive is the security boundary —
-// it applies even when the URL is opened directly in a tab (the iframe sandbox
-// attribute alone would not). The frame has no same-origin and no network, so AI
-// script cannot read localStorage['tm1-token'] or exfiltrate anything. Never add
-// allow-same-origin here. Live data only flows through the IDE host page bridge.
-
-const LENS_CSP = "sandbox allow-scripts; default-src 'none'; script-src 'unsafe-inline' 'self'; style-src 'unsafe-inline' 'self'; connect-src 'none'"
-const LENS_BRIDGE_STUB = "<script>window.lensBridge={call(){return Promise.reject(new Error('Lens opened standalone — live data requires the IDE session'))}}<\/script>"
-
-app.get('/lenses/:server/:name', (req, res) => {
-    try {
-const lens = lensStore.readLens(req.params.name)
-        res.setHeader('Content-Security-Policy', LENS_CSP)
-        res.setHeader('X-Content-Type-Options', 'nosniff')
-        res.setHeader('Cache-Control', 'no-store')
-        res.type('html').send(LENS_BRIDGE_STUB + lens.html)
-    } catch {
-        res.status(404).send('Lens not found')
-    }
-})
 
 
 app.get('/{*path}', (req, res) => {

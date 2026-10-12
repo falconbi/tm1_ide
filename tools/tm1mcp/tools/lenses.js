@@ -13,34 +13,27 @@ const BRIDGE_CONTRACT = `The generated HTML runs inside a sandboxed iframe with 
 Return a SINGLE complete HTML document (html, head, style, body, script). No external libraries, CDN, fonts, images or network — draw charts with inline SVG/canvas and vanilla JS. Style it as a polished executive dashboard: card layout, clear hierarchy, good typography, coherent colors, a refresh button. Use EXACT cube/dimension/element names — verify them against the model first (list_cubes / get_* tools). In MDX reference members as [Dim].[Dim].[Member]. Prefer readCell for single values, execMDX for sets. Handle null/empty values gracefully (show '—'). Never hard-code numbers.`
 
 function register(server, { SERVER, AGENT_USER, cl, ok, requireChangeSet }) {
+    // Lenses live in the model (Applications/Governance/Lenses on the bound server).
+    // The MCP is the builder: it reads and writes with the builder identity.
     server.tool(
         'list_lenses',
-        'List the lenses (hand-rolled HTML dashboards on live TM1 data) stored for this server — name, status, version, updated, description.',
+        'List the lenses (hand-rolled HTML dashboards on live TM1 data) stored in this server\'s model — name, status, version, owner, updated, description.',
         {},
         async () => {
-            const files = lensStore.listFiles()
-            if (!files.length) return ok('No lenses yet.')
-            const client = (require('../../../core/adapter_registry').makeClient)(SERVER, null)
-            const rows = await Promise.all(files.map(async f => {
-                try {
-                    const meta = await lensStore.readMeta(client, f.name)
-                    return { name: f.name, ...meta, modified: f.modified }
-                } catch { return { name: f.name, modified: f.modified } }
-            }))
-            return ok(rows)
+            const rows = await lensStore.listLenses(SERVER)
+            return ok(rows.length ? rows : 'No lenses yet.')
         }
     )
 
     server.tool(
         'get_lens',
-        'Get a lens\'s full HTML so you can review or extend it.',
+        'Get a lens\'s full HTML and details so you can review or extend it.',
         {
             name: z.string().describe('Lens name'),
         },
         async ({ name }) => {
             try {
-                const lens = lensStore.readLens(name)
-                return ok({ name: lens.name, html: lens.html })
+                return ok(await lensStore.readLens(SERVER, name))
             } catch (e) {
                 return ok({ error: e.message })
             }
@@ -49,7 +42,7 @@ function register(server, { SERVER, AGENT_USER, cl, ok, requireChangeSet }) {
 
     server.tool(
         'save_lens',
-        `Save a lens — a hand-rolled HTML dashboard that reads live TM1 data through the lensBridge API and is stored as a governed, change-set-tracked artifact. You (the agent) write the HTML following the contract below, then call this tool. The queries are TEST-RUN against the live model at save, so bad cube/member names are rejected immediately.
+        `Save a lens — a hand-rolled HTML dashboard that reads live TM1 data through the lensBridge API — into this server's model (Applications/Governance/Lenses), recorded on the open change set. You (the agent) write the HTML following the contract below, then call this tool. The queries are TEST-RUN against the live model at save, so bad cube/member names are rejected immediately.
 
 ${BRIDGE_CONTRACT}`,
         {
@@ -66,31 +59,31 @@ ${BRIDGE_CONTRACT}`,
             if (errors.length && !force) {
                 return ok({ blocked: true, reason: `Lens validation failed (${errors.length}) — fix these and retry, or pass force:true:`, errors })
             }
-            const saved = lensStore.saveLens(client, name, html, AGENT_USER, { publish: !!publish, description })
+            const saved = await lensStore.saveLens(SERVER, name, html, AGENT_USER, { publish: !!publish, description })
             cl.writeLog({
                 server: SERVER, action: publish ? 'LENS_PUBLISHED' : 'LENS_SAVED',
-                objectType: 'lens', objectName: name,
-                detail: description ?? null,
+                objectType: 'lens', objectName: saved.name,
+                detail: `version ${saved.version}${description ? ` — ${description}` : ''}`,
                 user: AGENT_USER,
             })
-            return ok({ saved, validation: errors, next: `Lens "${name}" is on the change set. It renders in the IDE Lenses section and at /lenses/<server>/${name}.` })
+            return ok({ saved, validation: errors, next: `Lens "${saved.name}" is saved in ${SERVER}'s model and on the change set. It shows in the IDE model tree under Lenses.` })
         }
     )
 
     server.tool(
         'delete_lens',
-        'Delete a lens (removes the file; the }Lenses metadata row is left as a tombstone). Requires an open change set.',
+        'Delete a lens from this server\'s model. Requires an open change set.',
         {
             name: z.string().describe('Lens name'),
         },
         async ({ name }) => {
             requireChangeSet()
-            lensStore.deleteLens(name)
+            await lensStore.deleteLens(SERVER, name)
             cl.writeLog({
                 server: SERVER, action: 'LENS_DELETED', objectType: 'lens', objectName: name,
                 user: AGENT_USER,
             })
-            return ok(`Lens "${name}" deleted.`)
+            return ok(`Lens "${name}" deleted from ${SERVER}'s model.`)
         }
     )
 }
