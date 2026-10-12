@@ -82,3 +82,6 @@ opencode.jsonc
 
 # ── Lenses live in the model (Applications/Governance/Lenses), never here ──
 config/lenses/
+
+# Lens app settings (per install — the example is committed)
+config/lens-app.json

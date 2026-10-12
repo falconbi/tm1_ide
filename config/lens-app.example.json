@@ -1,0 +1,11 @@
+{
+  "server": "24Retail",
+  "port": 8090,
+  "showDrafts": false,
+  "idleMinutes": 30,
+  "https": {
+    "enabled": false,
+    "key": "",
+    "cert": ""
+  }
+}
