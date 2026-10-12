@@ -3,7 +3,7 @@ import MonacoEditor from '@monaco-editor/react'
 import { useStore } from '@/store'
 import { Sparkles, Save, RefreshCw, Loader2, Eye, Pencil } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { lensSrcDoc, installLensHost } from '@/lib/lens-bridge'
+import { lensSrcDoc, installLensHost } from '@shared/lens-bridge'
 
 const token = () => localStorage.getItem('tm1-token') ?? ''
 
