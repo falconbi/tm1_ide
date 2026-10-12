@@ -4,13 +4,17 @@ const { z } = require('zod')
 const lensStore = require('../../../core/lens_store')
 const lensBridge = require('../../../core/lens_bridge')
 
+const CATALOGUE = JSON.stringify(require('../../../shared/lens-components.json'), null, 1)
 const BRIDGE_CONTRACT = `The generated HTML runs inside a sandboxed iframe with NO network access. Data comes ONLY from the lensBridge API:
   window.lensBridge.call('execMDX', { mdx: '<MDX SELECT>' }) -> Promise<{ Axes, Cells }>
       Cells: [{ Ordinal, Value, FormattedValue }] — Value is a number or null.
   window.lensBridge.call('readCell', { cube: '<cube>', coordinates: { '<dim>': '<elem>', ... } }) -> Promise<number|string|null>
       coordinates must name EVERY dimension of the cube.
   window.lensBridge.call('getMeta', { cube: '<cube>' }) -> Promise<{ cubes, dimensions, cubeDims, elements }>
-Return a SINGLE complete HTML document (html, head, style, body, script). No external libraries, CDN, fonts, images or network — draw charts with inline SVG/canvas and vanilla JS. Style it as a polished executive dashboard: card layout, clear hierarchy, good typography, coherent colors, a refresh button. Use EXACT cube/dimension/element names — verify them against the model first (list_cubes / get_* tools). In MDX reference members as [Dim].[Dim].[Member]. Prefer readCell for single values, execMDX for sets. Handle null/empty values gracefully (show '—'). Never hard-code numbers.`
+Return a SINGLE complete HTML document (html, head, style, body, script). The ONLY library is the Lens toolkit, served by the app: include <script src="/lens-kit/lens-kit.js"></script> before your own script, turn each execMDX result into rows with Lens.rows(result), and use its components (Lens.kpis, trend, waterfall, bars, grid, flow — catalogue below) wherever one fits; hand-draw SVG/canvas only for a visual no component covers. No CDN, fonts, images or network. Style it as a polished dashboard: clear hierarchy, good typography, coherent colors (Lens.theme.colors), a refresh button. Use EXACT cube/dimension/element names — verify them against the model first (list_cubes / get_* tools). In MDX reference members as [Dim].[Dim].[Member]. Handle null/empty values gracefully (show '—'). Never hard-code numbers.
+
+Lens toolkit catalogue:
+${CATALOGUE}`
 
 function register(server, { SERVER, AGENT_USER, cl, ok, requireChangeSet }) {
     // Lenses live in the model (Applications/Governance/Lenses on the bound server).

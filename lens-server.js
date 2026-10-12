@@ -385,11 +385,18 @@ function createApp({ config = loadConfig(), deps = {} } = {}) {
                 res.set('Content-Security-Policy', "sandbox; default-src 'none'; style-src 'unsafe-inline'")
                 return res.status(200).send(`<!DOCTYPE html><html><body style="font-family:system-ui;padding:24px"><p style="color:#b91c1c">This Lens needs toolkit version ${want}; this Lens app supports up to ${supported}.</p></body></html>`)
             }
-            res.set('Content-Security-Policy', "sandbox allow-scripts; default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src 'none'; font-src 'none'")
+            // The sandboxed frame has an opaque origin, so 'self' can't be relied on:
+            // allow exactly this app's toolkit path, nothing else. No network.
+            const kit = `${req.protocol}://${req.get('host')}/lens-kit/`
+            res.set('Content-Security-Policy', `sandbox allow-scripts; default-src 'none'; script-src 'unsafe-inline' ${kit}; style-src 'unsafe-inline'; img-src data:; connect-src 'none'; font-src 'none'`)
             res.type('html')
             res.send(sharedBridge.lensSrcDoc(doc.html ?? ''))
         } catch (e) { res.status(404).send('Lens not found') }
     })
+
+    // The Lens toolkit (window.Lens): one self-contained bundle built into
+    // static/lens-kit/ — served from this app, never from the internet.
+    app.use('/lens-kit', express.static(path.join(__dirname, 'static', 'lens-kit'), { maxAge: '1h', fallthrough: false }))
 
     // The shared bridge host script, served as a classic <script> (it exposes
     // window.LensBridge when not loaded as a module).

@@ -1,0 +1,63 @@
+{
+  "_about": "The Lens toolkit's building blocks (window.Lens, toolkit version 2). One entry per component — the AI reads this to choose and use them; a test checks it matches the toolkit exactly. Load the toolkit in a Lens with <script src=\"/lens-kit/lens-kit.js\"></script>. Data always comes from window.lensBridge.call('execMDX', { mdx }) and is turned into rows with Lens.rows(result).",
+  "helpers": {
+    "Lens.rows(cellset)": "Turn an execMDX result into tidy rows: one object per row tuple with _label, _members, one property per row dimension (its member name), and one property per column labelled by its member names joined with ' / '. Missing cells are null.",
+    "Lens.format(value, kind)": "Format a number: 'k$' ($ thousands), '$', '%' (0.12 → 12.0%), 'number'. Null/blank → '—'.",
+    "Lens.theme.colors": "The shared palette (light/dark): ink, soft, faint, rule, panel, bg, accent, compare, good, bad, amber, series[].",
+    "Alpine (CSP build)": "For simple interactivity (tabs, toggles). No inline code expressions: register behaviour with Alpine.data('name', () => ({ ... })) and reference it from x-data=\"name\" and @click=\"methodName\"."
+  },
+  "kpis": {
+    "purpose": "A row of headline figures, each compared with a target, forecast or prior year, with the variance coloured better/worse.",
+    "call": "Lens.kpis(element, items, { compareLabel })",
+    "data": "items: [{ label, value, compare?, format?, cost?, note?, compareLabel? }] — cost: true for expense lines (lower is better).",
+    "options": { "compareLabel": "Name of the comparison, e.g. 'Target'." },
+    "interactions": "None (static tiles).",
+    "goodFor": ["Revenue / margin / profit headlines", "Plan vs actual summaries", "Dashboard first row"],
+    "example": "Lens.kpis('#kpis', [{ label: 'Revenue', value: 71566000, compare: 41583000, format: 'k$' }, { label: 'Operating expense', value: 13540000, compare: 4709000, format: 'k$', cost: true }], { compareLabel: 'Target' })"
+  },
+  "trend": {
+    "purpose": "A time series — bars or lines by period — optionally against a comparison line; bars turn red where they are worse than the comparison.",
+    "call": "Lens.trend(element, { categories, series, format, cost })",
+    "data": "categories: ['Jan', …]; series: [{ name, values: [n…], type: 'bar' | 'line', compare?: true }] — mark the comparison series with compare: true.",
+    "options": { "format": "Number format for axis and tooltip.", "cost": "true when lower is better." },
+    "interactions": "Hover tooltips; click a legend entry to hide a series.",
+    "goodFor": ["Monthly actual vs target", "Revenue / profit trends", "Headcount over time"],
+    "example": "Lens.trend('#trend', { categories: ['Jan','Feb','Mar'], series: [{ name: 'Actual', values: [10,12,9] }, { name: 'Target', values: [11,11,11], compare: true }], format: 'k$' })"
+  },
+  "waterfall": {
+    "purpose": "A bridge from one total to another, step by step — what moved the result.",
+    "call": "Lens.waterfall(element, { steps, format })",
+    "data": "steps: [{ label, value, total: true }, { label, value }, …, { label, value, total: true }] — first and last are totals; steps in between are signed changes (positive adds, negative takes away).",
+    "options": { "format": "Number format." },
+    "interactions": "Hover tooltips.",
+    "goodFor": ["Target → actual profit bridge", "Price / volume / mix", "Cash movements"],
+    "example": "Lens.waterfall('#bridge', { steps: [{ label: 'Target', value: 14094, total: true }, { label: 'Revenue', value: 29983 }, { label: 'Cost of sales', value: -21783 }, { label: 'Actual', value: 22294, total: true }], format: 'k$' })"
+  },
+  "bars": {
+    "purpose": "Horizontal bars by item (region, product, cost centre), each with a comparison marker and the variance; click a bar to drill in.",
+    "call": "Lens.bars(element, { rows, format, cost, onClick })",
+    "data": "rows: [{ key, label, value, compare? }] — key is passed to onClick (defaults to label).",
+    "options": { "format": "Number format.", "cost": "true when lower is better.", "onClick": "function (key) — e.g. drill into that region." },
+    "interactions": "Hover tooltips; click a bar → onClick(key).",
+    "goodFor": ["Region / product comparison", "Drill-down navigation", "Ranking"],
+    "example": "Lens.bars('#regions', { rows: [{ key: '100', label: 'East Region', value: -1302, compare: 28 }], format: 'k$', onClick: k => drillInto(k) })"
+  },
+  "grid": {
+    "purpose": "A spreadsheet-style table — sorting, filtering, resizing, fast scrolling. Read-only in toolkit version 2 (editing comes with write-back).",
+    "call": "Lens.grid(element, { columns, rows, height })",
+    "data": "columns: [{ field, headerName, type?: 'number' | 'text', format? }]; rows: array of objects (e.g. from Lens.rows).",
+    "options": { "height": "CSS height; defaults to fit the rows (max 480px)." },
+    "interactions": "Click a header to sort; column filters; resize columns.",
+    "goodFor": ["Detail tables", "Expense lines with variances", "Lists to scan and sort"],
+    "example": "Lens.grid('#tbl', { columns: [{ field: 'line', headerName: 'Line' }, { field: 'actual', headerName: 'Actual', type: 'number', format: 'k$' }], rows: [{ line: 'Payroll', actual: 7159000 }] })"
+  },
+  "flow": {
+    "purpose": "A network or tree with automatic layout — boxes and arrows you can zoom and drag.",
+    "call": "Lens.flow(element, { nodes, edges, direction, onClick })",
+    "data": "nodes: [{ id, label, sub?, kind?: 'root' | 'good' | 'bad' | 'neutral' }]; edges: [{ source, target, label? }].",
+    "options": { "direction": "'TB' top-to-bottom (default) or 'LR' left-to-right.", "onClick": "function (nodeId)." },
+    "interactions": "Zoom, pan, drag boxes; click a box → onClick(id).",
+    "goodFor": ["Ownership structures", "Organisation / cost-centre hierarchies", "Allocation or process flows"],
+    "example": "Lens.flow('#org', { nodes: [{ id: 'TC', label: 'Total Company', kind: 'root' }, { id: '100', label: 'East Region', kind: 'bad' }], edges: [{ source: 'TC', target: '100' }] })"
+  }
+}
