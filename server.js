@@ -83,33 +83,9 @@ const LOGIN_REQUIRED = IDE_LOGIN === 'always' || !LOCAL_ONLY
 const isLoopbackReq = (req) => ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(req.socket.remoteAddress)
 
 // ── Login rate limit ──────────────────────────────────────────────────────────
-// Small in-memory per-IP throttle on the one unauthenticated endpoint. Defence in
-// depth for the local model; a real barrier if HOST is ever widened.
-const LOGIN_MAX_ATTEMPTS = 10
-const LOGIN_WINDOW_MS    = 15 * 60_000
-const _loginHits = new Map()  // ip -> { count, resetAt }
-
-function loginRateLimit(req, res, next) {
-    const ip  = req.ip || req.socket.remoteAddress || 'unknown'
-    const now = Date.now()
-    let rec = _loginHits.get(ip)
-    if (!rec || now >= rec.resetAt) {
-        rec = { count: 0, resetAt: now + LOGIN_WINDOW_MS }
-        _loginHits.set(ip, rec)
-    }
-    if (rec.count >= LOGIN_MAX_ATTEMPTS) {
-        res.setHeader('Retry-After', Math.ceil((rec.resetAt - now) / 1000))
-        return res.status(429).json({ error: 'Too many login attempts — try again later' })
-    }
-    rec.count++
-    next()
-}
-
-// opportunistic cleanup so the map can't grow unbounded
-setInterval(() => {
-    const now = Date.now()
-    for (const [ip, rec] of _loginHits) if (now >= rec.resetAt) _loginHits.delete(ip)
-}, LOGIN_WINDOW_MS).unref()
+// Small in-memory per-IP throttle on the unauthenticated sign-in endpoints
+// (shared with the Lens app: core/login-rate-limit.js).
+const loginRateLimit = require('./core/login-rate-limit').createIpLimiter({ max: 10, windowMs: 15 * 60_000 })
 
 app.use(express.json({ limit: '10mb' }))
 app.use(express.static(path.join(__dirname, 'static'), {
@@ -120,7 +96,7 @@ app.use(express.static(path.join(__dirname, 'static'), {
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
 app.post('/api/auth/login', loginRateLimit, async (req, res) => {
-    const clearHits = () => _loginHits.delete(req.ip || req.socket.remoteAddress || 'unknown')
+    const clearHits = () => loginRateLimit.clear(req)
     try {
         const { username, password } = req.body
         if (!username || !password) return res.status(400).json({ error: 'username and password required' })
@@ -184,7 +160,7 @@ app.post('/api/auth/setup-login', loginRateLimit, async (req, res) => {
         const { state } = await setupBlankAdmin(server, newPassword)
         const token = await createDirectSession('admin', newPassword)
         setServerCredentials(token, server, { username: 'admin', password: newPassword }, state)
-        _loginHits.delete(req.ip || req.socket.remoteAddress || 'unknown')
+        loginRateLimit.clear(req)
         res.json({ token, username: 'admin', server })
     } catch (e) { sendSetupError(res, e) }
 })
@@ -275,7 +251,7 @@ app.post('/api/auth/server-login', loginRateLimit, async (req, res) => {
             // One PAW sign-in covers every server behind that PAW.
             try { await attachPawSession(req.ideToken, creds.username, creds.password) }
             catch { return res.status(403).json({ rejected: true, error: `PAW rejected the login for "${server}" — check the username and password` }) }
-            _loginHits.delete(req.ip || req.socket.remoteAddress || 'unknown')
+            loginRateLimit.clear(req)
             return res.json({ ok: true, server, username: creds.username, paw: true })
         }
         const state = {}
@@ -290,7 +266,7 @@ app.post('/api/auth/server-login', loginRateLimit, async (req, res) => {
             throw e
         }
         setServerCredentials(req.ideToken, server, { username: creds.username, password: creds.password, namespace: creds.namespace ?? null }, state)
-        _loginHits.delete(req.ip || req.socket.remoteAddress || 'unknown')
+        loginRateLimit.clear(req)
         res.json({ ok: true, server, username: creds.username, ...(isSampleLogin(creds.username, creds.password) ? { warning: SAMPLE_PASSWORD_WARNING } : {}) })
     } catch (e) { res.status(500).json({ error: `Could not reach "${req.body?.server}": ${e.message}` }) }
 })
@@ -3779,52 +3755,61 @@ app.get('/api/cubemap/model', async (req, res) => {
 
 
 // ── Lenses ────────────────────────────────────────────────────────────────────
-// Lens HTML lives in config/lenses/*.html (git-versioned). Metadata lives ONLY
-// in the }Lenses control cube — never a second copy in JSON files. The bridge
-// runs as the viewing user (req.ideToken), never the MCP admin path.
+// A Lens lives in the model it belongs to: one document per Lens under
+// Applications/Governance/Lenses (core/lens_store.js → core/model-store.js),
+// holding the HTML and its details. Nothing is stored locally. Every call runs as
+// the signed-in user (req.ideToken), never the MCP's builder path. Saves and
+// deletes are model changes: they need a writable server and an open change set,
+// and are recorded in it.
 
 app.get('/api/lenses', async (req, res) => {
     try {
-        const client = makeClient(req.query.server, req.ideToken)
-        const lenses = lensStore.listFiles()
-        const enriched = await Promise.all(lenses.map(async f => {
-            try { return { ...f, ...(await lensStore.readMeta(client, f.name)) } }
-            catch { return { ...f } }
-        }))
-        res.json(enriched)
+        const server = req.query.server
+        if (!server) return res.status(400).json({ error: 'server required' })
+        res.json(await lensStore.listLenses(server, { ideToken: req.ideToken }))
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
 app.get('/api/lenses/:name', async (req, res) => {
     try {
-        const client = makeClient(req.query.server, req.ideToken)
-        const lens = lensStore.readLens(req.params.name)
-        const meta = await lensStore.readMeta(client, req.params.name).catch(() => ({}))
-        res.json({ ...lens, meta })
-    } catch (e) { res.status(500).json({ error: e.message }) }
+        const server = req.query.server
+        if (!server) return res.status(400).json({ error: 'server required' })
+        const { html, ...meta } = await lensStore.readLens(server, req.params.name, { ideToken: req.ideToken })
+        res.json({ name: meta.name, html, meta })
+    } catch (e) { res.status(/not found/.test(e.message) ? 404 : 500).json({ error: e.message }) }
 })
 
 app.post('/api/lenses/:name', async (req, res) => {
     try {
-        const client = makeClient(req.query.server, req.ideToken)
+        const server = req.query.server
+        if (!server) return res.status(400).json({ error: 'server required' })
+        if (!gateWrite(res, server)) return
+        const client = makeClient(server, req.ideToken)
         const { html, description, publish, force } = req.body
         if (typeof html !== 'string' || !html.trim()) return res.status(400).json({ error: 'html is required' })
         const errors = await lensBridge.validateLens(client, html)
         if (errors.length && !force) {
             return res.status(400).json({ error: `Lens validation failed (${errors.length}):`, validation: errors })
         }
-        const saved = lensStore.saveLens(client, req.params.name, html, req.user, { publish: !!publish, description })
+        const saved = await lensStore.saveLens(server, req.params.name, html, req.user, { publish: !!publish, description, ideToken: req.ideToken })
+        cl.writeLog({ server, action: publish ? 'LENS_PUBLISHED' : 'LENS_SAVED', objectType: 'lens', objectName: saved.name,
+            detail: `version ${saved.version}${description ? ` — ${description}` : ''}`, user: req.user })
         res.json({ ...saved, validation: errors })
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
-app.delete('/api/lenses/:name', (req, res) => {
+app.delete('/api/lenses/:name', async (req, res) => {
     try {
-        lensStore.deleteLens(req.params.name)
+        const server = req.query.server
+        if (!server) return res.status(400).json({ error: 'server required' })
+        if (!gateWrite(res, server)) return
+        await lensStore.deleteLens(server, req.params.name, { ideToken: req.ideToken })
+        cl.writeLog({ server, action: 'LENS_DELETED', objectType: 'lens', objectName: req.params.name, user: req.user })
         res.json({ ok: true })
-    } catch (e) { res.status(500).json({ error: e.message }) }
+    } catch (e) { res.status(/not found/.test(e.message) ? 404 : 500).json({ error: e.message }) }
 })
 
+const LENS_CATALOGUE = JSON.stringify(require('./shared/lens-components.json'), null, 1)
 app.post('/api/lenses/generate', async (req, res) => {
     try {
         const { server, cube, description } = req.body
@@ -3852,7 +3837,7 @@ app.post('/api/lenses/generate', async (req, res) => {
                 label: 'lens-generate', obfuscated: obf, maxTokens: 8000,
                 system: `You are a front-end developer building an executive dashboard that runs inside a sandboxed iframe and reads live IBM Planning Analytics (TM1) data.
 
-The ONLY way to get data is the bridge API below. There is NO network access, no fetch to any other URL, no external libraries, no CDN, no external fonts or images.
+The ONLY way to get data is the bridge API below. There is NO network access, no fetch to any other URL, no CDN, no external fonts or images. The ONLY library is the Lens toolkit, served by the app: include <script src="/lens-kit/lens-kit.js"></script> before your own script.
 
 Bridge API (always available):
   window.lensBridge.call('execMDX', { mdx: '<MDX SELECT>' }) -> Promise<{ Axes, Cells }>
@@ -3863,7 +3848,10 @@ Bridge API (always available):
 
 Rules:
 - Return a SINGLE complete HTML document (html, head, style, body, script). No markdown, no code fences, no explanation.
-- Draw all charts with inline SVG or canvas and vanilla JS. Everything inline. No external anything.
+- Use the Lens toolkit (window.Lens) for charts, tables and networks wherever a component fits — it is described in the catalogue below. Turn every execMDX result into rows with Lens.rows(result). Write your own SVG/canvas only for a visual no component covers. No other external anything.
+
+Lens toolkit catalogue:
+${LENS_CATALOGUE}
 - Style it as a polished executive dashboard: card layout, clear hierarchy, good typography, whitespace, a coherent color scheme. Add a small refresh button that re-runs the data calls.
 - All numbers must come from the bridge at runtime — never hard-code values.
 - Use EXACT cube/dimension/element names from the model context. In MDX reference members as [Dim].[Dim].[Member].
@@ -3914,26 +3902,6 @@ app.get('/api/lens/meta', async (req, res) => {
     }
 })
 
-// Sandboxed frame render. The CSP `sandbox` directive is the security boundary —
-// it applies even when the URL is opened directly in a tab (the iframe sandbox
-// attribute alone would not). The frame has no same-origin and no network, so AI
-// script cannot read localStorage['tm1-token'] or exfiltrate anything. Never add
-// allow-same-origin here. Live data only flows through the IDE host page bridge.
-
-const LENS_CSP = "sandbox allow-scripts; default-src 'none'; script-src 'unsafe-inline' 'self'; style-src 'unsafe-inline' 'self'; connect-src 'none'"
-const LENS_BRIDGE_STUB = "<script>window.lensBridge={call(){return Promise.reject(new Error('Lens opened standalone — live data requires the IDE session'))}}<\/script>"
-
-app.get('/lenses/:server/:name', (req, res) => {
-    try {
-const lens = lensStore.readLens(req.params.name)
-        res.setHeader('Content-Security-Policy', LENS_CSP)
-        res.setHeader('X-Content-Type-Options', 'nosniff')
-        res.setHeader('Cache-Control', 'no-store')
-        res.type('html').send(LENS_BRIDGE_STUB + lens.html)
-    } catch {
-        res.status(404).send('Lens not found')
-    }
-})
 
 
 app.get('/{*path}', (req, res) => {

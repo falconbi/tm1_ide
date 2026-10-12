@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { useState, useEffect, useRef, Fragment } from 'react'
 import { useStore } from '@/store'
+import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import { Toaster } from '@/components/ui/sonner'
 import { Search, PanelLeftClose, PanelLeftOpen, Keyboard, SlidersHorizontal, Users, BookOpen, Rocket, Settings, ExternalLink, Activity, ListChecks, GitBranch, GitCompare, History } from 'lucide-react'
@@ -136,7 +137,11 @@ const [showCatalog, setShowCatalog]           = useState(false)
   }, [])
 
   useEffect(() => {
-    const handler = () => clearAuth()
+    const handler = () => {
+      if (!useStore.getState().token) return
+      clearAuth()
+      toast.info('Your IDE session ended (the server may have restarted). Please sign in again.', { id: 'tm1-session-ended', duration: 8000 })
+    }
     window.addEventListener('tm1-unauthorized', handler)
     return () => window.removeEventListener('tm1-unauthorized', handler)
   }, [])

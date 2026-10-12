@@ -455,15 +455,32 @@ function LensesSection({ server, onOpen, onNew }) {
   const [open, setOpen] = useState(false)
   const [lenses, setLenses] = useState([])
   const [loading, setLoading] = useState(false)
+  const [error, setError] = useState(null)
+  const headers = () => ({ 'x-ide-token': localStorage.getItem('tm1-token') ?? '' })
   const load = useCallback(() => {
-    setLoading(true)
-    fetch(`/api/lenses?server=${encodeURIComponent(server)}&_=${Date.now()}`, { headers: { 'x-ide-token': localStorage.getItem('tm1-token') ?? '' } })
-      .then(r => r.json())
+    setLoading(true); setError(null)
+    // Lenses live in this server's model — a failed read is shown, never treated as "no lenses".
+    fetch(`/api/lenses?server=${encodeURIComponent(server)}&_=${Date.now()}`, { headers: headers() })
+      .then(async r => { const d = await r.json().catch(() => ({})); if (!r.ok) throw new Error(d.error || r.statusText); return d })
       .then(d => setLenses(Array.isArray(d) ? d : []))
-      .catch(() => setLenses([]))
+      .catch(e => { setLenses([]); setError(e.message) })
       .finally(() => setLoading(false))
   }, [server])
   useEffect(() => { if (open) load() }, [open, load])
+  // Refresh when a Lens is saved or deleted elsewhere (e.g. the Lens editor).
+  useEffect(() => {
+    const onChange = e => { if (open && (!e.detail?.server || e.detail.server === server)) load() }
+    window.addEventListener('tm1-lenses-changed', onChange)
+    window.addEventListener('tm1-server-signed-in', onChange)
+    return () => { window.removeEventListener('tm1-lenses-changed', onChange); window.removeEventListener('tm1-server-signed-in', onChange) }
+  }, [open, server, load])
+  const remove = async (name) => {
+    if (!window.confirm(`Delete Lens "${name}" from ${server}? This removes it from the model.`)) return
+    const r = await fetch(`/api/lenses/${encodeURIComponent(name)}?server=${encodeURIComponent(server)}`, { method: 'DELETE', headers: headers() })
+    const d = await r.json().catch(() => ({}))
+    if (!r.ok) { setError(d.error || r.statusText); return }
+    load()
+  }
   return (
     <div data-section="lenses">
       <div className="flex items-center w-full px-3 py-1 group">
@@ -486,22 +503,41 @@ function LensesSection({ server, onOpen, onNew }) {
       </div>
       {open && (
         <div className="pb-1">
-          {!loading && lenses.length === 0 && (
+          {error && (
+            <div className="px-6 py-0.5 text-xs text-red-600" title={error}>
+              Couldn't load Lenses: {error}
+              {/^Sign in to server|rejected the login/.test(error) && (
+                <button
+                  onClick={() => window.dispatchEvent(new CustomEvent('tm1-server-login', { detail: { server, force: true } }))}
+                  className="ml-1 underline hover:text-foreground"
+                >Sign in</button>
+              )}
+            </div>
+          )}
+          {!loading && !error && lenses.length === 0 && (
             <p className="px-6 py-0.5 text-xs text-muted-foreground/50 italic">No lenses yet</p>
           )}
           {lenses.map(f => (
-            <button
-              key={f.name}
-              onClick={() => onOpen(f.name)}
-              className="flex items-center gap-2 w-full px-6 py-0.5 text-xs text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground group"
-              title={`Open lens ${f.name}`}
-            >
-              <LayoutDashboard size={10} className="shrink-0 text-muted-foreground" />
-              <span className="truncate">{f.name}</span>
-              {f.Status && (
-                <span className="text-[10px] text-muted-foreground shrink-0">{f.Status}</span>
-              )}
-            </button>
+            <div key={f.name} className="flex items-center w-full px-6 py-0.5 text-xs text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground group/lens">
+              <button
+                onClick={() => onOpen(f.name)}
+                className="flex items-center gap-2 flex-1 min-w-0 text-left"
+                title={`Open lens ${f.name}${f.description ? ` — ${f.description}` : ''}`}
+              >
+                <LayoutDashboard size={10} className="shrink-0 text-muted-foreground" />
+                <span className="truncate">{f.name}</span>
+                {f.status && (
+                  <span className="text-[10px] text-muted-foreground shrink-0">{f.status}{f.version ? ` · v${f.version}` : ''}</span>
+                )}
+              </button>
+              <button
+                onClick={() => remove(f.name)}
+                title={`Delete lens ${f.name}`}
+                className="hidden group-hover/lens:flex items-center ml-1 text-muted-foreground hover:text-red-600 shrink-0"
+              >
+                <Trash2 size={10} />
+              </button>
+            </div>
           ))}
         </div>
       )}

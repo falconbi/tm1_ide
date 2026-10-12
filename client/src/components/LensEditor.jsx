@@ -3,7 +3,7 @@ import MonacoEditor from '@monaco-editor/react'
 import { useStore } from '@/store'
 import { Sparkles, Save, RefreshCw, Loader2, Eye, Pencil } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { lensSrcDoc, installLensHost } from '@/lib/lens-bridge'
+import { lensSrcDoc, installLensHost } from '@shared/lens-bridge'
 
 const token = () => localStorage.getItem('tm1-token') ?? ''
 
@@ -36,13 +36,17 @@ const DEFAULT_LENS = `<!DOCTYPE html>
 </body>
 </html>`
 
+const LOADING_LENS = '<!doctype html><html><body style="font:14px system-ui,sans-serif;color:#85908f;padding:24px">Loading…</body></html>'
+
 export default function LensEditor({ tab }) {
   const { dark } = useStore()
   const [name, setName] = useState(tab.name ?? '')
   const [description, setDescription] = useState('')
   const [cube, setCube] = useState(tab.cube ?? '')
   const [cubes, setCubes] = useState([])
-  const [html, setHtml] = useState(DEFAULT_LENS)
+  // A saved Lens starts on a plain placeholder (no bridge calls) until it loads —
+  // never on the example Lens, whose requests would race the real one.
+  const [html, setHtml] = useState(tab.name ? LOADING_LENS : DEFAULT_LENS)
   const [generating, setGenerating] = useState(false)
   const [saving, setSaving] = useState(false)
   const [validation, setValidation] = useState([])
@@ -61,8 +65,8 @@ export default function LensEditor({ tab }) {
     if (tab.name) {
       fetch(`/api/lenses/${encodeURIComponent(tab.name)}?server=${encodeURIComponent(tab.server)}&_=${Date.now()}`, { headers: { 'x-ide-token': token() } })
         .then(r => r.json())
-        .then(d => { if (d.html) setHtml(d.html) })
-        .catch(() => {})
+        .then(d => { if (d.html) setHtml(d.html); else if (d.error) setMessage({ kind: 'error', text: `Couldn't load the Lens: ${d.error}` }) })
+        .catch(e => setMessage({ kind: 'error', text: `Couldn't load the Lens: ${e.message}` }))
     }
   }, [tab.server, tab.name])
 
@@ -122,7 +126,8 @@ export default function LensEditor({ tab }) {
         if (Array.isArray(data.validation)) setValidation(data.validation)
         throw new Error(data.error || res.statusText)
       }
-      setMessage({ kind: 'ok', text: `Saved "${data.name}" (${data.status})${data.validation?.length ? ` — ${data.validation.length} validation warnings` : ''}` })
+      setMessage({ kind: 'ok', text: `Saved "${data.name}" to ${tab.server}'s model (${data.status}, version ${data.version})${data.validation?.length ? ` — ${data.validation.length} validation warnings` : ''}` })
+      window.dispatchEvent(new CustomEvent('tm1-lenses-changed', { detail: { server: tab.server } }))
     } catch (e) {
       setMessage({ kind: 'error', text: e.message })
     } finally {

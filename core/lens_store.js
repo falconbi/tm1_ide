@@ -1,13 +1,19 @@
 'use strict'
 
-const fs   = require('fs')
-const path = require('path')
+// ── Lens store — Lenses live in the model ─────────────────────────────────────
+// One JSON document per Lens under Applications/Governance/Lenses/<name>.json,
+// holding the HTML and its details together (one source of truth — no second
+// metadata copy). Reuses core/model-store.js, the same storage as tests, change
+// sets and approvals. There is no local storage: a private model's Lenses stay
+// with the model and can never land in the IDE's (public) repo.
 
-const LENSES_DIR = path.join(__dirname, '..', 'config', 'lenses')
-const LENSES_CUBE    = '}Lenses'
-const LENSES_NAME_DIM  = '}Lenses_Name'
-const LENSES_FIELD_DIM = '}Lenses_Field'
-const FIELDS = ['Status', 'Owner', 'Version', 'Updated', 'Description']
+const store = require('./model-store')
+
+const AREA = 'lenses'
+
+// Bumped when the bridge/toolkit contract changes, so the Lens app can refuse a
+// Lens it can't run (LENS_APP_PLAN.md — version check).
+const TOOLKIT_VERSION = 2   // 2 = the Lens toolkit (window.Lens) is available — shared/lens-kit
 
 function safeName(name) {
     const n = String(name ?? '').trim()
@@ -15,88 +21,53 @@ function safeName(name) {
     return n
 }
 
-function lensPath(name) {
-    return path.join(LENSES_DIR, `${safeName(name)}.html`)
-}
+const docName = name => `${safeName(name)}.json`
 
-function listFiles() {
-    fs.mkdirSync(LENSES_DIR, { recursive: true })
-    return fs.readdirSync(LENSES_DIR)
-        .filter(f => f.endsWith('.html'))
-        .map(f => {
-            const stat = fs.statSync(path.join(LENSES_DIR, f))
-            return { name: f.slice(0, -5), file: f, modified: stat.mtime.toISOString(), size: stat.size }
-        })
-        .sort((a, b) => a.name.localeCompare(b.name))
-}
-
-function readLens(name) {
-    const p = lensPath(name)
-    if (!fs.existsSync(p)) throw new Error(`Lens "${name}" not found`)
-    return { name, html: fs.readFileSync(p, 'utf8') }
-}
-
-async function ensureLensesCube(client) {
-    try {
-        await client.getCube(LENSES_CUBE)
-        return
-    } catch {}
-    try { await client.createDimension(LENSES_NAME_DIM) } catch {}
-    try { await client.createDimension(LENSES_FIELD_DIM) } catch {}
-    await client.bulkSetElements(LENSES_FIELD_DIM, FIELDS.map(f => ({ name: f, type: 'S' }))).catch(() => {})
-}
-
-async function writeMeta(client, name, updates) {
-    try {
-        await ensureLensesCube(client)
-        await client.bulkSetElements(LENSES_NAME_DIM, [{ name, type: 'N' }]).catch(() => {})
-        for (const [field, value] of Object.entries(updates)) {
-            await client.writeCellValue(LENSES_CUBE, [
-                { dim: LENSES_NAME_DIM, element: name },
-                { dim: LENSES_FIELD_DIM, element: field },
-            ], String(value)).catch(() => {})
-        }
-    } catch {}
-}
-
-async function readMeta(client, name) {
-    const meta = {}
-    try {
-        await ensureLensesCube(client)
-        const mdx = `SELECT {${FIELDS.map(f => `[${LENSES_FIELD_DIM}].[${f}]`).join(',')}} ON 0, {[${LENSES_NAME_DIM}].[${name}]} ON 1 FROM [${LENSES_CUBE}]`
-        const r = await client.executeMDX(mdx, 100)
-        const cols = (r.Axes?.[0]?.Tuples ?? []).map(t => t.Members?.[0]?.Name)
-        const rows = (r.Axes?.[1]?.Tuples ?? []).map(t => t.Members?.[0]?.Name)
-        const nCols = cols.length
-        for (const c of r.Cells ?? []) {
-            const col = cols[c.Ordinal % nCols]
-            if (col) meta[col] = c.Value
-        }
-    } catch {}
-    return meta
-}
-
-function saveLens(client, name, html, owner, opts = {}) {
-    const safe = safeName(name)
-    fs.mkdirSync(LENSES_DIR, { recursive: true })
-    fs.writeFileSync(lensPath(safe), html)
-    const status = opts.publish ? 'published' : 'draft'
-    const version = String(parseInt(String(opts.version ?? '1')) || 1)
-    if (client) {
-        writeMeta(client, safe, {
-            Status: status,
-            Owner: owner ?? 'unknown',
-            Version: version,
-            Updated: new Date().toISOString(),
-            Description: opts.description ?? '',
-        })
+// Details only (no HTML) for every Lens in this server's model, sorted by name.
+async function listLenses(server, { ideToken, client } = {}) {
+    const names = (await store.listDocs(server, AREA, { ideToken, client })).filter(n => n.endsWith('.json'))
+    const out = []
+    for (const n of names) {
+        const doc = await store.readDoc(server, AREA, n, { ideToken, client })
+        if (!doc) continue
+        const { html: _html, ...details } = doc
+        out.push(details)
     }
-    return { name: safe, status, version }
+    return out.sort((a, b) => String(a.name).localeCompare(String(b.name)))
 }
 
-function deleteLens(name) {
-    const p = lensPath(name)
-    if (fs.existsSync(p)) fs.unlinkSync(p)
+// One Lens, HTML included. Missing is an error.
+async function readLens(server, name, { ideToken, client } = {}) {
+    const doc = await store.readDoc(server, AREA, docName(name), { ideToken, client })
+    if (!doc) throw new Error(`Lens "${safeName(name)}" not found on ${server}`)
+    return doc
 }
 
-module.exports = { LENSES_DIR, safeName, listFiles, readLens, saveLens, deleteLens, readMeta, writeMeta, ensureLensesCube, LENSES_CUBE }
+// Create or update a Lens. The version counts up on every save; created/createdBy
+// are kept from the first save. Throws if the model can't be written.
+async function saveLens(server, name, html, owner, { publish = false, description, ideToken, client } = {}) {
+    const safe = safeName(name)
+    const existing = await store.readDoc(server, AREA, docName(safe), { ideToken, client })
+    const now = new Date().toISOString()
+    const doc = {
+        name:           safe,
+        status:         publish ? 'published' : 'draft',
+        owner:          owner ?? 'unknown',
+        version:        (Number(existing?.version) || 0) + 1,
+        updated:        now,
+        description:    description ?? existing?.description ?? '',
+        created:        existing?.created ?? now,
+        createdBy:      existing?.createdBy ?? owner ?? 'unknown',
+        toolkitVersion: TOOLKIT_VERSION,
+        html,
+    }
+    await store.writeDoc(server, AREA, docName(safe), doc, { ideToken, client })
+    const { html: _html, ...details } = doc
+    return details
+}
+
+async function deleteLens(server, name, { ideToken, client } = {}) {
+    await store.deleteDoc(server, AREA, docName(name), { ideToken, client })
+}
+
+module.exports = { safeName, listLenses, readLens, saveLens, deleteLens, TOOLKIT_VERSION }

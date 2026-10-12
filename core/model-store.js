@@ -21,6 +21,7 @@ const AREAS = {
     approvals:   { folder: 'Deployments', doc: 'approvals.json' },
     deployState: { folder: 'Deployments', doc: 'state.json' },
     lock:        { folder: 'Deployments' },
+    lenses:      { folder: 'Lenses' },
 }
 
 const MARKER_FILE = path.join(__dirname, '..', 'config', 'model-migration.json')
@@ -121,4 +122,17 @@ async function readOptional(server, area, name, { ideToken } = {}) {
     } catch { return null }
 }
 
-module.exports = { listDocs, readDoc, readOptional, writeDoc, isMigrated, markMigrated, AREAS, GOVERNANCE }
+// Delete one governance document. Missing is an error (the caller asked to delete
+// something that isn't there) — never a silent no-op.
+async function deleteDoc(server, area, name, { ideToken } = {}) {
+    const c = _clientFor(server, { ideToken })
+    const folder = folderFor(area)
+    const doc = docNameFor(area, name)
+    const files = await c.listFiles(folder).catch(e => (e.response?.status === 404 ? [] : (() => { throw e })()))
+    if (!files.some(f => f.name === doc && !f.isFolder)) {
+        throw new Error(`${folder.join('/')}/${doc} not found on ${server}`)
+    }
+    await c.deleteFile(folder, doc)
+}
+
+module.exports = { listDocs, readDoc, readOptional, writeDoc, deleteDoc, isMigrated, markMigrated, AREAS, GOVERNANCE }
