@@ -12,13 +12,14 @@ const calls = []
 require.cache[require.resolve(storePath)] = {
   id: storePath, filename: storePath, loaded: true,
   exports: {
-    async listDocs(server, area) {
-      calls.push(['list', server, area])
+    async listDocs(server, area, opts) {
+      calls.push(['list', server, area, opts?.client])
       return [...docs.keys()].filter(k => k.startsWith(`${server}|${area}|`)).map(k => k.split('|')[2])
     },
-    async readDoc(server, area, name) { return docs.get(`${server}|${area}|${name}`) ?? null },
-    async writeDoc(server, area, name, data) { calls.push(['write', server, area, name]); docs.set(`${server}|${area}|${name}`, data); return data },
-    async deleteDoc(server, area, name) {
+    async readDoc(server, area, name, opts) { calls.push(['read', server, area, name, opts?.client]); return docs.get(`${server}|${area}|${name}`) ?? null },
+    async writeDoc(server, area, name, data, opts) { calls.push(['write', server, area, name, opts?.client]); docs.set(`${server}|${area}|${name}`, data); return data },
+    async deleteDoc(server, area, name, opts) {
+      calls.push(['delete', server, area, name, opts?.client])
       const k = `${server}|${area}|${name}`
       if (!docs.has(k)) throw new Error(`Applications/Governance/Lenses/${name} not found on ${server}`)
       docs.delete(k)
@@ -74,4 +75,13 @@ test('deleteLens removes it; deleting a missing Lens is an error', async () => {
 test('names with anything but letters, digits, - or _ are refused', async () => {
   await assert.rejects(() => lens.saveLens('SrvA', '../escape', '<p/>', 'a'), /Invalid lens name/)
   await assert.rejects(() => lens.readLens('SrvA', 'a b'), /Invalid lens name/)
+})
+
+test('reads/list can run through a given client (the Lens app reads as the viewer)', async () => {
+  await lens.saveLens('SrvA', 'Mine', '<p>1</p>', 'a')
+  const viewerClient = { fake: true }
+  await lens.listLenses('SrvA', { client: viewerClient })
+  await lens.readLens('SrvA', 'Mine', { client: viewerClient })
+  assert.equal(calls.find(c => c[0] === 'list')[3], viewerClient, 'listDocs got the viewer client')
+  assert.equal(calls.find(c => c[0] === 'read')[4], viewerClient, 'readDoc got the viewer client')
 })
