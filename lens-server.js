@@ -33,7 +33,7 @@ const COOKIE = 'lens_session'
 const DEFAULT_IDLE_MINUTES = 30
 
 // ── Settings ──────────────────────────────────────────────────────────────────
-function loadConfig({ configPath = CONFIG_PATH } = {}) {
+function loadConfig({ configPath = process.env.LENS_CONFIG || CONFIG_PATH } = {}) {
     let cfg = null
     try { cfg = JSON.parse(fs.readFileSync(configPath, 'utf8')) } catch (e) {
         try {
@@ -366,18 +366,8 @@ function createApp({ config = loadConfig(), deps = {} } = {}) {
         res.json(visible)
     })
 
-    app.get('/api/lens/:name', requireSession, async (req, res) => {
-        try {
-            const doc = await readLens(cfg.server, req.params.name, { client: req.lens.client })
-            const want = Number(doc.toolkitVersion) || 1
-            if (want > supported) {
-                return res.status(417).json({ error: `This Lens needs toolkit version ${want}; this Lens app supports up to ${supported}.`, name: doc.name })
-            }
-            const { html, ...meta } = doc
-            res.json({ html, meta })
-        } catch (e) { res.status(404).json({ error: e.message }) }
-    })
-
+    // Static read-only bridge routes FIRST — `/api/lens/meta` must win over the
+    // generic `/api/lens/:name` (express routes match in registration order).
     app.post('/api/lens/exec-mdx', requireSession, serverGate, async (req, res) => {
         try { res.json(await execMdx(req.lens.client, req.body?.mdx)) }
         catch (e) { res.status(400).json({ error: e.response?.data?.error?.message ?? e.message }) }
@@ -391,6 +381,18 @@ function createApp({ config = loadConfig(), deps = {} } = {}) {
     app.get('/api/lens/meta', requireSession, serverGate, async (req, res) => {
         try { res.json(await getMeta(req.lens.client, req.query?.cube)) }
         catch (e) { res.status(400).json({ error: e.response?.data?.error?.message ?? e.message }) }
+    })
+
+    app.get('/api/lens/:name', requireSession, async (req, res) => {
+        try {
+            const doc = await readLens(cfg.server, req.params.name, { client: req.lens.client })
+            const want = Number(doc.toolkitVersion) || 1
+            if (want > supported) {
+                return res.status(417).json({ error: `This Lens needs toolkit version ${want}; this Lens app supports up to ${supported}.`, name: doc.name })
+            }
+            const { html, ...meta } = doc
+            res.json({ html, meta })
+        } catch (e) { res.status(404).json({ error: e.message }) }
     })
 
     // Idle sweep

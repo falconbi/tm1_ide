@@ -120,6 +120,14 @@ test('bridge reads run AS the signed-in user', async () => {
   assert.equal(r.status, 200)
   const body = await r.json()
   assert.equal(body.executedAs, 'reviewer')
+  // The static /api/lens/meta + /api/lens/:name routes both exist and resolve
+  // to their own handler (not each other): /api/lens/meta is NOT a lens named "meta".
+  const meta = await get('/api/lens/meta?cube=Sales', cookie)
+  assert.equal(meta.status, 200)
+  assert.deepEqual(await meta.json(), { metaFor: 'reviewer', cube: 'Sales' })
+  const lens = await get('/api/lens/PnL-Dashboard', cookie)
+  assert.equal(lens.status, 200)
+  assert.equal((await lens.json()).meta.name, 'PnL-Dashboard')
 })
 
 test('the server always comes from settings — a request naming another is refused', async () => {
