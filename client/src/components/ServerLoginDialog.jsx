@@ -67,6 +67,8 @@ export default function ServerLoginDialog() {
     openRef.current = null
     setServer(null)
     qc.invalidateQueries()
+    // Screens that load their own data (e.g. the model tree's Lenses) reload too.
+    window.dispatchEvent(new CustomEvent('tm1-server-signed-in', { detail: { server } }))
   }
 
   const run = async (fn) => {
