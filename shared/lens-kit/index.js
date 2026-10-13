@@ -176,6 +176,21 @@ function grid(el, { columns = [], rows: data = [], height, onEdit, onFocus } = {
       const def = c.type === 'number'
         ? { ...c, type: 'rightAligned', valueFormatter: p => format(p.value, c.format || 'number') }
         : { ...c }
+      // Styling on every column, editable or not: a watcher's grid is read-only
+      // but must still show someone else's cursor and unsaved typing.
+      // Every key, every time: the grid only ADDS styles on refresh, so a style
+      // left out (e.g. someone's outline that moved on) would stick.
+      const plain = { background: '', fontWeight: '', color: '', boxShadow: 'none', fontStyle: '' }
+      def.cellStyle = p => {
+        const k = keyOf(p.data, c.field), r = remote.get(k), other = typed.get(k)
+        const base = orig.has(k) ? Object.assign({}, plain, { background: tint(t.amber, 0.22), fontWeight: '600' })
+          : other ? Object.assign({}, plain, { background: other + '2e', fontWeight: '600', fontStyle: 'italic' })
+          : !c.editable ? plain
+          : canEdit(c, p.data) ? Object.assign({}, plain, { background: tint(t.accent, 0.08) })
+          : Object.assign({}, plain, { color: t.faint })
+        return r ? Object.assign({}, base, { boxShadow: 'inset 0 0 0 2px ' + r.color, background: r.color + '26', fontWeight: '700' }) : base
+      }
+      def.tooltipValueGetter = p => { const k = keyOf(p.data, c.field), r = remote.get(k); return r ? r.label : typed.has(k) ? 'Typed by someone else — not saved yet' : null }
       if (!c.editable) return def
       def.editable = p => canEdit(c, p.data)
       if (c.type === 'number') {
@@ -184,18 +199,6 @@ function grid(el, { columns = [], rows: data = [], height, onEdit, onFocus } = {
           return String(p.newValue ?? '').trim() === '' ? 0 : (Number.isFinite(v) ? v : p.oldValue)
         }
       }
-      // Every key, every time: the grid only ADDS styles on refresh, so a style
-      // left out (e.g. someone's outline that moved on) would stick.
-      def.cellStyle = p => {
-        const r = remote.get(keyOf(p.data, c.field)), other = typed.get(keyOf(p.data, c.field))
-        const base = orig.has(keyOf(p.data, c.field))
-          ? { background: tint(t.amber, 0.22), fontWeight: '600', color: '', boxShadow: 'none', fontStyle: '' }
-          : other ? { background: other + '2e', fontWeight: '600', color: '', boxShadow: 'none', fontStyle: 'italic' }
-          : canEdit(c, p.data) ? { background: tint(t.accent, 0.08), fontWeight: '', color: '', boxShadow: 'none', fontStyle: '' }
-          : { background: '', fontWeight: '', color: t.faint, boxShadow: 'none', fontStyle: '' }
-        return r ? Object.assign({}, base, { boxShadow: 'inset 0 0 0 2px ' + r.color, background: r.color + '26', fontWeight: '700' }) : base
-      }
-      def.tooltipValueGetter = p => { const r = remote.get(keyOf(p.data, c.field)); return r ? r.label : typed.has(keyOf(p.data, c.field)) ? 'Typed by someone else — not saved yet' : null }
       return def
     }),
     onCellFocused: p => {
