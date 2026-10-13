@@ -232,6 +232,22 @@ function grid(el, { columns = [], rows: data = [], height, onEdit, onFocus } = {
       refresh()
     },
     unmark(who) { for (const [k, v] of remote) if (v.who === who) remote.delete(k); refresh() },
+    // Flash the cells whose values differ from `before` (a snapshot() taken
+    // earlier) — e.g. after someone else saved or spread, so the eye goes there.
+    snapshot() { return data.map(r => Object.assign({}, r)) },
+    // key(row) identifies a row in both (default: its Lens.rows label).
+    flashChanges(before, { key = r => r._label, fields } = {}) {
+      const cols = fields || columns.filter(c => c.type === 'number').map(c => c.field)
+      const same = (a, b) => (a == null ? 0 : Number(a)) === (b == null ? 0 : Number(b))
+      const was = new Map(before.map(r => [key(r), r]))
+      api.forEachNode(node => {
+        const old = was.get(key(node.data))
+        if (!old) return
+        const changed = cols.filter(f => !same(old[f], node.data[f]))
+        if (changed.length) api.flashCells({ rowNodes: [node], columns: changed, flashDuration: 2200, fadeDuration: 1400 })
+      })
+    },
+
     // color: show it as someone else's unsaved number (tinted in their colour
     // until they save — a fresh grid after the save clears it).
     setValue(match, field, value, color) {
