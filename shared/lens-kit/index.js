@@ -143,6 +143,8 @@ function bars(el, { rows: data = [], format: fmt = 'number', cost = false, onCli
 }
 
 // ── grid ──────────────────────────────────────────────────────────────────────
+const PENDING = '#2b7de9'   // saved, not yet handed in — the same blue in both themes
+theme.pending = PENDING   // for a Lens's own legend
 // columns: [{ field, headerName, type: 'number' | 'text', format, editable }]
 // An `editable` column takes input only where the row allows it: a row from
 // Lens.rows carries _input (false = TM1 calculates that cell), so calculated
@@ -157,6 +159,7 @@ function grid(el, { columns = [], rows: data = [], height, onEdit, onFocus } = {
   const orig = new Map()                       // 'rowIndex|field' -> value before typing
   const remote = new Map()                     // 'rowIndex|field' -> { color, label } — someone else's cursor
   const typed = new Map()                      // 'rowIndex|field' -> colour — someone else's unsaved value
+  const pending = new Map()                    // 'rowIndex|field' -> label — saved, not yet handed in (e.g. submitted)
   const keyOf = (row, field) => data.indexOf(row) + '|' + field
   const canEdit = (c, row) => !!c.editable && !(row && row._input && row._input[c.field] === false)
   const tint = (hex, a) => hex + Math.round(a * 255).toString(16).padStart(2, '0')
@@ -185,12 +188,13 @@ function grid(el, { columns = [], rows: data = [], height, onEdit, onFocus } = {
         const k = keyOf(p.data, c.field), r = remote.get(k), other = typed.get(k)
         const base = orig.has(k) ? Object.assign({}, plain, { background: tint(t.amber, 0.22), fontWeight: '600' })
           : other ? Object.assign({}, plain, { background: other + '2e', fontWeight: '600', fontStyle: 'italic' })
+          : pending.has(k) ? Object.assign({}, plain, { background: tint(PENDING, 0.16) })
           : !c.editable ? plain
           : canEdit(c, p.data) ? Object.assign({}, plain, { background: tint(t.accent, 0.08) })
           : Object.assign({}, plain, { color: t.faint })
         return r ? Object.assign({}, base, { boxShadow: 'inset 0 0 0 2px ' + r.color, background: r.color + '26', fontWeight: '700' }) : base
       }
-      def.tooltipValueGetter = p => { const k = keyOf(p.data, c.field), r = remote.get(k); return r ? r.label : typed.has(k) ? 'Typed by someone else — not saved yet' : null }
+      def.tooltipValueGetter = p => { const k = keyOf(p.data, c.field), r = remote.get(k); return r ? r.label : typed.has(k) ? 'Typed by someone else — not saved yet' : pending.get(k) || null }
       if (!c.editable) return def
       def.editable = p => canEdit(c, p.data)
       if (c.type === 'number') {
@@ -232,6 +236,13 @@ function grid(el, { columns = [], rows: data = [], height, onEdit, onFocus } = {
       refresh()
     },
     unmark(who) { for (const [k, v] of remote) if (v.who === who) remote.delete(k); refresh() },
+    // Mark cells saved but not yet handed in (e.g. since the last Submit):
+    // [{ match, field, label }] replaces the set; label shows on hover.
+    setPending(list) {
+      pending.clear()
+      for (const p of list || []) { const i = data.findIndex(p.match); if (i >= 0) pending.set(i + '|' + p.field, p.label || 'Changed — not submitted yet') }
+      refresh()
+    },
     // Flash the cells whose values differ from `before` (a snapshot() taken
     // earlier) — e.g. after someone else saved or spread, so the eye goes there.
     snapshot() { return data.map(r => Object.assign({}, r)) },

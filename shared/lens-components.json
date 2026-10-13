@@ -53,7 +53,7 @@
     "call": "const g = Lens.grid(element, { columns, rows, height, onEdit }) → { api, changes(), undo(), saved() }",
     "data": "columns: [{ field, headerName, type?: 'number' | 'text', format?, editable? }]; rows: array of objects (e.g. from Lens.rows — their _input flags keep calculated cells read-only).",
     "options": { "height": "CSS height; defaults to fit the rows (max 480px).", "onEdit": "function (changes) — called after each edit with [{ row, field, value, old }] (enable a Save button)." },
-    "interactions": "Click a header to sort; column filters; resize columns. Editable columns: input cells are tinted, click to type, typed values highlighted until saved. g.changes() lists them; g.undo() puts them back; after Lens.save succeeds call g.saved().",
+    "interactions": "Click a header to sort; column filters; resize columns. Editable columns: input cells are tinted, click to type, typed values highlighted until saved. g.changes() lists them; g.undo() puts them back; after Lens.save succeeds call g.saved(). Working together / review: g.setPending([{ match, field, label }]) marks cells saved but not yet handed in (light blue, label on hover); g.snapshot() + g.flashChanges(before, { key }) flashes what someone else just changed.",
     "goodFor": ["Detail tables", "Expense lines with variances", "Input forms (budget / forecast / target entry)"],
     "example": "Lens.grid('#tbl', { columns: [{ field: 'line', headerName: 'Line' }, { field: 'actual', headerName: 'Actual', type: 'number', format: 'k$' }], rows: [{ line: 'Payroll', actual: 7159000 }] })"
   },
