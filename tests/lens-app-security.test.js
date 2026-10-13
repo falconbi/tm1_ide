@@ -22,7 +22,7 @@ async function withApp(fn, depsOverride = {}) {
     readLens: async (s, name) => ({ name, toolkitVersion: 1, html: '<p>lens</p>' }),
     ...depsOverride,
   }
-  const { app, close } = createApp({ config: { server: 'S1', port: 0, showDrafts: true }, deps })
+  const { app, close } = createApp({ config: { server: 'S1', port: 0, showDrafts: true, endSessionProcesses: [] }, deps })
   const srv = await new Promise(r => { const s = app.listen(0, () => r(s)) })
   const base = `http://127.0.0.1:${srv.address().port}`
   const signin = (username, password) => fetch(`${base}/auth/signin`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username, password }) })

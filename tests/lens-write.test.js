@@ -92,7 +92,7 @@ test('Lens app: writes are checked against the saved Lens, run as the user, and 
     readLens: async (s, name) => ({ name, status: 'draft', toolkitVersion: 3, html: name === 'Input' ? '<meta name="lens-writes" content="Plan">' : '<p>read only</p>' }),
     logLensWrite: e => logged.push(e),
   }
-  const { app, close } = createApp({ config: { server: 'S1', port: 0, showDrafts: true }, deps })
+  const { app, close } = createApp({ config: { server: 'S1', port: 0, showDrafts: true, endSessionProcesses: [] }, deps })
   const srv = await new Promise(r => { const s = app.listen(0, () => r(s)) })
   const base = `http://127.0.0.1:${srv.address().port}`
   try {
@@ -167,4 +167,35 @@ test('a run returns the short Result the process left (e.g. a data reservation s
 test('a refused run rejects with the process\'s own reason — never a stale message from another process', async () => {
   await assert.rejects(runProcess(procClient({ status: 'CompletedWithMessages', message: { Process: 'Spread', Message: 'You may not change store "401".' } }), { ...run, params: { pOrg: '401' } }), /^Error: You may not change store "401"\.$/)
   await assert.rejects(runProcess(procClient({ status: 'Aborted', message: { Process: 'Other', Message: 'old news' } }), run), /did not complete \(Aborted\)/)
+})
+
+// ── End of session: hand back what the person was holding ───────────────────
+test('Lens app: signing out runs the end-of-session processes as that user, then closes their TM1 session', async () => {
+  const ran = [], logged = []
+  let closed = 0
+  const deps = {
+    probeAuthMethod: async () => ({ method: 'native' }),
+    makeClientWithCredentials(server, creds) {
+      return {
+        _adapter: { closeSession() { closed++ } },
+        async get() { return { Name: creds.username } },
+        async executeProcess(name, params) { ran.push({ user: creds.username, name, params, closedBefore: closed }); return { ProcessExecuteStatusCode: 'CompletedSuccessfully' } },
+      }
+    },
+    listLenses: async () => [],
+    logLensRun: e => logged.push(e),
+  }
+  const { app, close } = createApp({ config: { server: 'S1', port: 0, endSessionProcesses: [{ process: 'Lens Reserve', params: { pAction: 'ReleaseAll' } }] }, deps })
+  const srv = await new Promise(r => { const s = app.listen(0, () => r(s)) })
+  const base = `http://127.0.0.1:${srv.address().port}`
+  try {
+    const si = await fetch(`${base}/auth/signin`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: 'east_mgr', password: 'pw' }) })
+    const cookie = (si.headers.get('set-cookie') || '').split(';')[0]
+    await fetch(`${base}/auth/signout`, { method: 'POST', headers: { cookie, accept: 'application/json' } })
+    for (let i = 0; i < 20 && !closed; i++) await new Promise(r => setTimeout(r, 10))
+    assert.deepEqual(ran.map(r => [r.user, r.name, r.params]), [['east_mgr', 'Lens Reserve', [{ Name: 'pAction', Value: 'ReleaseAll' }]]])
+    assert.equal(ran[0].closedBefore, 0, 'ran before the TM1 session was closed')
+    assert.equal(closed, 1)
+    assert.equal(logged[0].lens, '(session end)'); assert.equal(logged[0].user, 'east_mgr')
+  } finally { srv.close(); close() }
 })

@@ -49,6 +49,11 @@ function loadConfig({ configPath = process.env.LENS_CONFIG || CONFIG_PATH } = {}
         showDrafts:   !!cfg.showDrafts,
         idleMinutes:  Number(cfg.idleMinutes) || DEFAULT_IDLE_MINUTES,
         https:        { enabled: !!cfg.https?.enabled, key: cfg.https?.key ?? '', cert: cfg.https?.cert ?? '' },
+        // Processes run as the person when their session ends (sign out or idle
+        // timeout) — e.g. hand back the data reservations they took through Lenses.
+        endSessionProcesses: Array.isArray(cfg.endSessionProcesses)
+            ? cfg.endSessionProcesses.filter(s => s && typeof s.process === 'string')
+            : [],
     }
 }
 
@@ -56,16 +61,20 @@ function loadConfig({ configPath = process.env.LENS_CONFIG || CONFIG_PATH } = {}
 // web:  sid -> { user (key), display, lastSeen }
 // tm1:  user -> { client, state, refs:Set<sid> }   (one TM1 session shared by the
 //        user's browser sessions; closed when the last one signs out / times out)
-function createSessionStore({ idleMs }) {
+// beforeClose(client, display): runs on the person's TM1 session just before
+// it is closed (their last browser session signed out or timed out).
+function createSessionStore({ idleMs, beforeClose = null }) {
     const web = new Map()
     const tm1 = new Map()
     const userKey = (server, username) => `${server}::${username}`
 
-    function releaseUser(user) {
+    function releaseUser(user, display) {
         const entry = tm1.get(user)
         if (!entry || entry.refs.size) return
         tm1.delete(user)
-        try { entry.client?._adapter?.closeSession?.() } catch { /* best effort */ }
+        const close = () => { try { entry.client?._adapter?.closeSession?.() } catch { /* best effort */ } }
+        if (!beforeClose) return close()
+        Promise.resolve().then(() => beforeClose(entry.client, display)).catch(() => {}).finally(close)
     }
 
     return {
@@ -92,7 +101,7 @@ function createSessionStore({ idleMs }) {
         dropWebSession(sid) {
             const s = web.get(sid)
             web.delete(sid)
-            if (s) { const e = tm1.get(s.user); if (e) { e.refs.delete(sid); releaseUser(s.user) } }
+            if (s) { const e = tm1.get(s.user); if (e) { e.refs.delete(sid); releaseUser(s.user, s.display) } }
         },
         sweep(now = Date.now()) {
             const stale = []
@@ -166,7 +175,20 @@ function createApp({ config = loadConfig(), deps = {} } = {}) {
 
     if (!cfg.server) throw new Error('config/lens-app.json must set "server" — the one TM1 server this Lens app serves')
 
-    const store = createSessionStore({ idleMs: cfg.idleMinutes * 60_000 })
+    // When someone's session ends, run the configured end-of-session processes
+    // as them (each logged) before their TM1 session is closed.
+    const endSession = deps.endSession ?? (async (client, display) => {
+        for (const step of cfg.endSessionProcesses) {
+            const params = Object.entries(step.params ?? {}).map(([Name, Value]) => ({ Name, Value: String(Value) }))
+            try {
+                const r = await client.executeProcess(step.process, params)
+                logRun({ server: cfg.server, app: 'lens', user: display, lens: '(session end)', process: step.process, params: step.params ?? {}, status: r?.ProcessExecuteStatusCode })
+            } catch (e) {
+                logRun({ server: cfg.server, app: 'lens', user: display, lens: '(session end)', process: step.process, params: step.params ?? {}, status: 'Failed', message: e.response?.data?.error?.message ?? e.message })
+            }
+        }
+    })
+    const store = createSessionStore({ idleMs: cfg.idleMinutes * 60_000, beforeClose: cfg.endSessionProcesses.length || deps.endSession ? endSession : null })
     // Sign-in throttles: per address, and at most 2 rejected passwords per username
     // in 15 minutes — TM1 locks an account on the 3rd, so this app can never be
     // what locks a real user out (deps can override for tests).
