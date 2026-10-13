@@ -258,6 +258,124 @@ function flow(el, { nodes = [], edges = [], direction = 'TB', onClick } = {}) {
 
 function esc(s) { return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;') }
 
+// ── editing ───────────────────────────────────────────────────────────────────
+// Start / Finish editing with TM1 data reservations, for an input Lens. Shows
+// who is editing (times in the viewer's zone), takes and hands back the
+// reservation through a reservation process, hands it back when the Lens
+// switches to another slice, and asks "Still editing?" after a quiet spell.
+//
+// When it applies — <meta name="lens-reservations" content="auto|always|off">
+// (or option `mode`): auto (default) = only when the cube REQUIRES reservations;
+// always = whenever TM1 allows them; off = never. With no reservation needed
+// the bar hides itself and state is 'open'.
+//
+// The reservation process (declared in lens-runs) takes the target's params
+// plus pAction = Take | Release | Check | ReleaseAll, and leaves in Lens
+// Messages: Result free | mine | taken, Message, Since (UTC), Detail (the
+// cube's DATARESERVATIONMODE). See the Lens Reserve process for an example.
+function metaContent(name) {
+  const m = document.querySelector('meta[name="' + name + '"]')
+  return m ? String(m.getAttribute('content') || '').trim().toLowerCase() : ''
+}
+
+function editing(el, { process = 'Lens Reserve', target, mode, idleMinutes = 20, graceMinutes = 5, hasChanges = () => false, save, onChange } = {}) {
+  const t = theme.colors, node = host(el)
+  mode = (mode || metaContent('lens-reservations') || 'auto').toLowerCase()
+  const btn = primary => 'font:inherit;font-size:13px;padding:5px 10px;border-radius:7px;cursor:pointer;border:1px solid ' + (primary ? t.accent : t.rule) + ';background:' + (primary ? t.accent : t.panel) + ';color:' + (primary ? '#fff' : t.ink) + (primary ? ';font-weight:600' : '')
+  node.innerHTML =
+    '<div data-bar style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:8px 10px;border-radius:8px;border:1px solid ' + t.rule + ';background:' + t.bg + '">' +
+    '<span data-who style="font-size:13px;font-weight:600;color:' + t.ink + '">Checking who is editing…</span>' +
+    '<button data-start hidden style="' + btn(true) + '">Start editing</button>' +
+    '<button data-finish hidden style="' + btn(false) + '">Finish editing</button>' +
+    '<span data-note style="font-size:12.5px;color:' + t.bad + '"></span></div>' +
+    '<div data-idle hidden style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 12px;margin-top:8px;border-radius:8px;border:1.5px solid ' + t.amber + ';background:' + t.panel + ';color:' + t.ink + '">' +
+    '<b data-q style="font-size:14px">Still editing?</b><span style="font-size:13px">Others can\'t change this while you have it.</span>' +
+    '<button data-keep style="' + btn(true) + '">Keep editing</button><button data-done style="' + btn(false) + '">Finish editing</button>' +
+    '<span data-count style="font-size:12.5px;color:' + t.faint + ';font-variant-numeric:tabular-nums"></span></div>'
+  const q = s => node.querySelector(s)
+  const key = p => JSON.stringify(p || {})
+  let state = 'free', held = null, lastActive = Date.now(), deadline = 0
+  const note = text => { q('[data-note]').textContent = text || '' }
+  const call = (action, params) => run(process, Object.assign({}, params, { pAction: action }))
+
+  function apply(r, params) {
+    const tm1Mode = String(r.detail || '').toUpperCase()
+    const needed = mode === 'off' ? false
+      : mode === 'always' ? (tm1Mode !== '' && tm1Mode !== 'OFF')
+      : /^REQUIRED/.test(tm1Mode)
+    if (!needed) { state = 'open'; held = null; node.hidden = true; return state }
+    node.hidden = false
+    state = r.result === 'mine' || r.result === 'taken' ? r.result : 'free'
+    if (state === 'mine') held = params
+    else if (held && key(held) === key(params)) held = null
+    q('[data-who]').textContent = r.since ? String(r.message || '').replace(/\.$/, '') + ' since ' + localTime(r.since) + '.' : (r.message || '')
+    q('[data-bar]').style.borderColor = state === 'mine' ? t.accent : state === 'taken' ? t.amber : t.rule
+    q('[data-start]').hidden = state !== 'free'
+    q('[data-finish]').hidden = state !== 'mine'
+    note('')
+    return state
+  }
+  const changed = why => { if (onChange) onChange(state, why) }
+
+  const api = {
+    get state() { return state },
+    // Cells may take input: no reservation needed, or I hold it.
+    get canEdit() { return state === 'open' || state === 'mine' },
+    check() {
+      if (mode === 'off') { state = 'open'; node.hidden = true; return Promise.resolve(state) }
+      const p = target()
+      return call('Check', p).then(r => apply(r, p))
+    },
+    // The Lens now shows another slice: hand back the one I held, then check.
+    refresh() {
+      const prev = held
+      return (prev && key(prev) !== key(target()) ? call('Release', prev).then(() => { held = null }) : Promise.resolve()).then(api.check)
+    },
+    take() {
+      const p = target()
+      return call('Take', p).then(r => { apply(r, p); lastActive = Date.now(); changed('take'); return state })
+    },
+    release(why) {
+      const p = held || target()
+      return call('Release', p).then(r => { apply(r, target()); changed(why || 'release'); return state })
+    },
+  }
+
+  q('[data-start]').onclick = () => { q('[data-start]').disabled = true; api.take().catch(e => note(e.message)).then(() => { q('[data-start]').disabled = false }) }
+  q('[data-finish]').onclick = () => {
+    if (hasChanges()) return note('Save or undo your changes before you finish editing.')
+    q('[data-finish]').disabled = true
+    api.release().catch(e => note(e.message)).then(() => { q('[data-finish]').disabled = false })
+  }
+
+  // "Still editing?" — after idleMinutes without typing or clicking, ask; after
+  // graceMinutes more, finish automatically (typed numbers stay on screen).
+  const hideIdle = () => { deadline = 0; q('[data-idle]').hidden = true; lastActive = Date.now() }
+  ;['keydown', 'mousedown', 'wheel', 'touchstart'].forEach(ev => document.addEventListener(ev, () => { if (!deadline) lastActive = Date.now() }, true))
+  q('[data-keep]').onclick = hideIdle
+  q('[data-done]').onclick = () => {
+    hideIdle()
+    const first = hasChanges() && save ? Promise.resolve(save()) : Promise.resolve()
+    first.then(() => { if (hasChanges()) throw new Error('Not saved, so you are still editing — your changes are on screen.') ; return api.release() })
+      .catch(e => note(e.message))
+  }
+  setInterval(() => {
+    if (state !== 'mine') { if (deadline) hideIdle(); return }
+    const now = Date.now()
+    if (!deadline && now - lastActive > idleMinutes * 60000) {
+      deadline = now + graceMinutes * 60000
+      q('[data-done]').textContent = hasChanges() && save ? 'Save and finish' : 'Finish editing'
+      q('[data-idle]').hidden = false
+    }
+    if (deadline) {
+      const left = Math.max(0, deadline - now)
+      q('[data-count]').textContent = 'finishing automatically in ' + Math.floor(left / 60000) + ':' + String(Math.floor(left / 1000) % 60).padStart(2, '0')
+      if (!left) { hideIdle(); api.release('timeout').catch(e => note(e.message)) }
+    }
+  }, 1000)
+  return api
+}
+
 // ── run ───────────────────────────────────────────────────────────────────────
 // Run a TI process as the signed-in user (an action button). params: { pName:
 // 'text' | number } — only parameters the process has. The Lens must declare
@@ -270,7 +388,7 @@ function run(process, params) {
   return window.lensBridge.call('runProcess', { process, params: params || {} })
 }
 
-const Lens = { version: TOOLKIT_VERSION, components: COMPONENTS.slice(), rows, format, localTime, theme, kpis, trend, waterfall, bars, grid, flow, save, run, echarts }
+const Lens = { version: TOOLKIT_VERSION, components: COMPONENTS.slice(), rows, format, localTime, theme, kpis, trend, waterfall, bars, grid, flow, editing, save, run, echarts }
 const missing = COMPONENTS.filter(n => typeof Lens[n] !== 'function')
 if (missing.length) throw new Error('Lens toolkit is missing: ' + missing.join(', '))
 

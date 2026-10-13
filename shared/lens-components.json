@@ -1,5 +1,5 @@
 {
-  "_about": "The Lens toolkit's building blocks (window.Lens, toolkit version 5). One entry per component — the AI reads this to choose and use them; a test checks it matches the toolkit exactly. Load the toolkit in a Lens with <script src=\"/lens-kit/lens-kit.js\"></script>. Data always comes from window.lensBridge.call('execMDX', { mdx }) and is turned into rows with Lens.rows(result).",
+  "_about": "The Lens toolkit's building blocks (window.Lens, toolkit version 6). One entry per component — the AI reads this to choose and use them; a test checks it matches the toolkit exactly. Load the toolkit in a Lens with <script src=\"/lens-kit/lens-kit.js\"></script>. Data always comes from window.lensBridge.call('execMDX', { mdx }) and is turned into rows with Lens.rows(result).",
   "helpers": {
     "Lens.rows(cellset)": "Turn an execMDX result into tidy rows: one object per row tuple with _label, _members, one property per row dimension (its member name), and one property per column labelled by its member names joined with ' / '. Missing cells are null. Each row also has _input: { [column label]: true when TM1 does not calculate that cell (it can be typed into) }.",
     "Lens.save(cube, cells)": "Write numbers to TM1 as the signed-in user. cells: [{ coordinates: { <every cube dimension>: element }, value, expect }] — expect is the value the screen showed (null counts as 0), so a cell changed by someone else since is caught. The Lens MUST declare the cube in its head: <meta name=\"lens-writes\" content=\"Cube Name\">. Resolves { written }; rejects with a plain reason and saves nothing (calculated cell, changed by someone else, no TM1 write access). Only numbers; at most 500 cells per save.",
@@ -63,5 +63,14 @@
     "interactions": "Zoom, pan, drag boxes; click a box → onClick(id).",
     "goodFor": ["Ownership structures", "Organisation / cost-centre hierarchies", "Allocation or process flows"],
     "example": "Lens.flow('#org', { nodes: [{ id: 'TC', label: 'Total Company', kind: 'root' }, { id: '100', label: 'East Region', kind: 'bad' }], edges: [{ source: 'TC', target: '100' }] })"
+  },
+  "editing": {
+    "purpose": "Start / Finish editing with TM1 data reservations for an input Lens: shows who is editing (in the viewer's time zone), takes and hands back the reservation, hands it back when the Lens switches slice, and asks 'Still editing?' after a quiet spell (finishing automatically if nobody answers).",
+    "call": "const ed = Lens.editing(element, { process, target, mode, idleMinutes, graceMinutes, hasChanges, save, onChange }) → { state, canEdit, check(), refresh(), take(), release() }",
+    "data": "process: the reservation process (default 'Lens Reserve', declared in lens-runs); target: function returning that process's params for the slice on screen, e.g. () => ({ pOrg: org, pYear: year }).",
+    "options": { "mode": "auto (default: only when the cube REQUIRES reservations) | always (whenever TM1 allows them) | off — or set <meta name=\"lens-reservations\" content=\"auto\">.", "idleMinutes": "Quiet time before asking (default 20).", "graceMinutes": "Countdown before finishing automatically (default 5).", "hasChanges": "function → true while typed numbers are unsaved.", "save": "function → Promise: saves typed numbers (offered as 'Save and finish').", "onChange": "function (state, why) — why is take | release | timeout; reload the grid so cells follow ed.canEdit." },
+    "interactions": "Start editing / Finish editing buttons; the 'Still editing?' prompt with Keep editing / Finish editing. Call ed.check() before first drawing the grid, ed.refresh() when the slice changes; build editable columns only when ed.canEdit.",
+    "goodFor": ["Input forms on cubes that require data reservations (TM1 Applications models)", "Stopping two people editing the same slice", "Budget / forecast entry by store, cost centre or entity"],
+    "example": "const ed = Lens.editing('#editing', { target: () => ({ pOrg: org.value, pYear: year.value }), hasChanges: () => g.changes().length > 0, save: saveTyped, onChange: () => drawGrid() }); ed.check().then(drawGrid)"
   }
 }

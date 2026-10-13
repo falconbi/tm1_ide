@@ -313,10 +313,11 @@ async function writeCells(client, { cube, cells, allowedCubes = [] } = {}) {
 // process has: text for a String parameter, a number for a Numeric one.
 // A running process is not limited by the caller's cell security, so it must
 // check the caller itself; it leaves its outcome for the caller in the
-// 'Lens Messages' cube (}Clients × Process / Message / Result / Since), because
-// only admins can read TM1's error logs. Result is a short machine-readable
-// outcome (e.g. free / mine / taken) a Lens can act on; Since is a UTC time
-// (yyyy-mm-ddThh:mm:ssZ) the Lens shows in the viewer's own time zone.
+// 'Lens Messages' cube (}Clients × Process / Message / Result / Since /
+// Detail), because only admins can read TM1's error logs. Result is a short
+// machine-readable outcome (e.g. free / mine / taken) a Lens can act on; Since
+// is a UTC time (yyyy-mm-ddThh:mm:ssZ) the Lens shows in the viewer's own time
+// zone; Detail is any extra machine-readable fact (e.g. a reservation mode).
 const MSG_CUBE = 'Lens Messages'
 
 function declaredRunProcesses(html) { return metaList(html, 'lens-runs') }
@@ -327,9 +328,10 @@ async function readLensMessage(client, user, process) {
         const names = (r.Axes?.[0]?.Tuples ?? []).map(t => t.Members?.[0]?.Name)
         const at = name => (names.includes(name) ? r.Cells?.[names.indexOf(name)]?.Value ?? '' : '')
         // Only a message this process left — never a stale one from another.
-        if (String(at('Process')).toLowerCase() !== String(process).toLowerCase()) return { message: '', result: '', since: '' }
-        return { message: String(at('Message') || ''), result: String(at('Result') || ''), since: String(at('Since') || '') }
-    } catch { return { message: '', result: '', since: '' } }  // no Lens Messages cube, or the user can't read it
+        const empty = { message: '', result: '', since: '', detail: '' }
+        if (String(at('Process')).toLowerCase() !== String(process).toLowerCase()) return empty
+        return { message: String(at('Message') || ''), result: String(at('Result') || ''), since: String(at('Since') || ''), detail: String(at('Detail') || '') }
+    } catch { return { message: '', result: '', since: '', detail: '' } }  // no Lens Messages cube, or the user can't read it
 }
 
 async function runProcess(client, { process, params = {}, allowedProcesses = [], user } = {}) {
@@ -355,13 +357,13 @@ async function runProcess(client, { process, params = {}, allowedProcesses = [],
     const r = await client.executeProcess(process, list)
     const status = r?.ProcessExecuteStatusCode ?? 'Unknown'
     const seconds = Math.round((Date.now() - started) / 100) / 10
-    const { message, result, since } = user ? await readLensMessage(client, user, process) : { message: '', result: '', since: '' }
+    const { message, result, since, detail } = user ? await readLensMessage(client, user, process) : { message: '', result: '', since: '', detail: '' }
     if (status !== 'CompletedSuccessfully') {
         const e = new Error(message || `"${process}" did not complete (${status}) — your TM1 administrator can see why in its error log`)
         e.status = status
         throw e
     }
-    return { status, seconds, message, result, since }
+    return { status, seconds, message, result, since, detail }
 }
 
 module.exports = { execMDX, readCell, getMeta, validateLens, buildStarterLens, validateMdx, declaredWriteCubes, writeCells, MAX_WRITE_CELLS, declaredRunProcesses, runProcess }
