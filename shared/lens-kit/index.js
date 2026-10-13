@@ -262,7 +262,8 @@ function esc(s) { return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&
 // Run a TI process as the signed-in user (an action button). params: { pName:
 // 'text' | number } — only parameters the process has. The Lens must declare
 // it: <meta name="lens-runs" content="Process">. Resolves { status, seconds,
-// message } (message: what the process reported); rejects with the reason.
+// message, result } (what the process reported; result is a short outcome
+// such as free / mine / taken); rejects with the reason.
 function run(process, params) {
   if (!window.lensBridge) return Promise.reject(new Error('running a process needs the Lens app or the IDE preview'))
   return window.lensBridge.call('runProcess', { process, params: params || {} })
