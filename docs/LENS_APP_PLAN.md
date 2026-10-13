@@ -29,6 +29,8 @@ built by AI, every change governed, everything run on TM1 as each person.
 
 **Later (after the proof):** board packs and PDF export of Lenses.
 
+**The Lens app speaks in business processes, not models** (James, Oct 13): people think "Target setting → enter → approve → results", never cubes. Lenses carry a folder (the process) and a title in people's words, with a leading number for the step. Later: a folder becomes a **process page** — the steps in order, each with its live status from the workflow ("Step 2: 3 of 10 stores waiting for approval"). Also later: sign-in through the same CAM / Planning Analytics login as PAW (single sign-on), and folder access by TM1 group.
+
 The ownership Lenses on a private consolidation model (network, timeline) are a showcase of visuals PAW can't do, not on the main path.
 Notes: 24Retail's Revenue cube is empty on the lab server — use the Income Statement; account 6699 (allocations)
 holds junk sample values, so screens stop at Net Profit.
