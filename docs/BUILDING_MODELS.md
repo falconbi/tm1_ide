@@ -313,6 +313,20 @@ iterations:
   a Target payroll cell was rule-derived while `CellIsUpdateable` said input
   (the rule only applies to budget-type versions) — and the reported flag
   changed with the stored value. Trust `CellIsUpdateable` in TI.
+- **Data reservations from TI (v11.8 has no REST calls for them).** Signatures
+  (wrong ones parse on save and only fail when the line runs):
+  `CubeDataReservationAcquire(Cube, User, bForce, Address, Delim)`,
+  `…Release(Cube, User, Address, Delim)`, `…ReleaseAll(Cube, UserFilter, Address, Delim)`,
+  `…Get(Index, Cube, User, Delim)`, `…GetConflicts(Index, Cube, User, Address, Delim)`.
+  Address = one element per cube dimension, blank = whole dimension. Get returns
+  `yyyymmddhhmmss|user|'Hier':'Elem'|…`. A user needs the **ManageDataReservation**
+  capability (`}Capabilities`, EXECUTE = Grant) — often granted only to a CAMID
+  group. Check for **old whole-cube reservations** (24Retail had Admin's from 2019
+  blocking everyone). A reservation taken by a process in the user's name does
+  let that user's REST writes through.
+- **Reservation stamps are UTC; TI's `NOW` is server-local.** Measure ages on the
+  reservation clock (take and drop a probe reservation, read its stamp); store
+  times in UTC and convert only for display.
 - New client password: `AssignClientPassword` in the same procedure as
   `AddClient` silently does nothing (the client isn't committed until the
   procedure ends) — run them as two separate processes.
