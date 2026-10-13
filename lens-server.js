@@ -424,7 +424,9 @@ function createApp({ config = loadConfig(), deps = {} } = {}) {
 
     // The Lens toolkit (window.Lens): one self-contained bundle built into
     // static/lens-kit/ — served from this app, never from the internet.
-    app.use('/lens-kit', express.static(path.join(__dirname, 'static', 'lens-kit'), { maxAge: '1h', fallthrough: false }))
+    // No long caching: browsers re-check (a cheap 304 when unchanged), so a
+    // toolkit update reaches every Lens on its next load.
+    app.use('/lens-kit', express.static(path.join(__dirname, 'static', 'lens-kit'), { maxAge: 0, fallthrough: false }))
 
     // The shared bridge host script, served as a classic <script> (it exposes
     // window.LensBridge when not loaded as a module).

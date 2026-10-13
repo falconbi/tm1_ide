@@ -321,15 +321,25 @@ function editing(el, { process = 'Lens Reserve', target, mode, idleMinutes = 20,
     get state() { return state },
     // Cells may take input: no reservation needed, or I hold it.
     get canEdit() { return state === 'open' || state === 'mine' },
+    // Never rejects: if the check itself fails (e.g. this person may not run
+    // the reservation process), state is 'unavailable' — the Lens still shows
+    // its numbers, read-only, and the bar says why.
     check() {
       if (mode === 'off') { state = 'open'; node.hidden = true; return Promise.resolve(state) }
       const p = target()
-      return call('Check', p).then(r => apply(r, p))
+      return call('Check', p).then(r => apply(r, p), e => {
+        state = 'unavailable'; held = null; node.hidden = false
+        q('[data-who]').textContent = 'Editing isn\'t available: ' + (e && e.message ? e.message : e)
+        q('[data-bar]').style.borderColor = t.rule
+        q('[data-start]').hidden = q('[data-finish]').hidden = true
+        return state
+      })
     },
     // The Lens now shows another slice: hand back the one I held, then check.
     refresh() {
       const prev = held
-      return (prev && key(prev) !== key(target()) ? call('Release', prev).then(() => { held = null }) : Promise.resolve()).then(api.check)
+      // Best effort: the timeout layers hand it back anyway if this fails.
+      return (prev && key(prev) !== key(target()) ? call('Release', prev).then(() => { held = null }, () => { held = null }) : Promise.resolve()).then(api.check)
     },
     take() {
       const p = target()
