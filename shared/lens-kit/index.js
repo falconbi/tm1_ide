@@ -16,7 +16,7 @@ import { ReactFlow, Background, Controls, MarkerType } from '@xyflow/react'
 import flowCss from '@xyflow/react/dist/style.css?inline'
 import dagre from '@dagrejs/dagre'
 import Alpine from '@alpinejs/csp'
-import { rows, format, better } from './rows.js'
+import { rows, format, better, localTime } from './rows.js'
 import { COMPONENTS, TOOLKIT_VERSION } from './components.js'
 
 echarts.use([BarChart, LineChart, ScatterChart, PieChart, HeatmapChart, SankeyChart, TreeChart, GaugeChart,
@@ -262,14 +262,15 @@ function esc(s) { return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&
 // Run a TI process as the signed-in user (an action button). params: { pName:
 // 'text' | number } — only parameters the process has. The Lens must declare
 // it: <meta name="lens-runs" content="Process">. Resolves { status, seconds,
-// message, result } (what the process reported; result is a short outcome
-// such as free / mine / taken); rejects with the reason.
+// message, result, since } (what the process reported; result is a short
+// outcome such as free / mine / taken; since a UTC time for Lens.localTime);
+// rejects with the reason.
 function run(process, params) {
   if (!window.lensBridge) return Promise.reject(new Error('running a process needs the Lens app or the IDE preview'))
   return window.lensBridge.call('runProcess', { process, params: params || {} })
 }
 
-const Lens = { version: TOOLKIT_VERSION, components: COMPONENTS.slice(), rows, format, theme, kpis, trend, waterfall, bars, grid, flow, save, run, echarts }
+const Lens = { version: TOOLKIT_VERSION, components: COMPONENTS.slice(), rows, format, localTime, theme, kpis, trend, waterfall, bars, grid, flow, save, run, echarts }
 const missing = COMPONENTS.filter(n => typeof Lens[n] !== 'function')
 if (missing.length) throw new Error('Lens toolkit is missing: ' + missing.join(', '))
 

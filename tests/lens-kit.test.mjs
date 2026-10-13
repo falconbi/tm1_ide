@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
-import { rows, format, better } from '../shared/lens-kit/rows.js'
+import { rows, format, better, localTime } from '../shared/lens-kit/rows.js'
 import { COMPONENTS, TOOLKIT_VERSION } from '../shared/lens-kit/components.js'
 import { createRequire } from 'node:module'
 const require = createRequire(import.meta.url)
@@ -36,6 +36,13 @@ test('rows: _input marks the cells TM1 does not calculate (only when the result 
   c.Cells[1].RuleDerived = true; c.Cells[1].Consolidated = false
   assert.deepEqual(rows(c)[0]._input, { Jan: true, Feb: false })
   assert.equal(rows(cs([['A']], null, [5]))[0]._input, undefined)
+})
+
+test('localTime: a UTC time from TM1 in the viewer\'s time zone; blank or junk is empty', () => {
+  const utc = '2026-10-13T01:33:00Z', d = new Date(utc)
+  assert.equal(localTime(utc, d), d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }))
+  assert.match(localTime(utc, new Date('2026-12-25T12:00:00Z')), /, /)
+  assert.equal(localTime(''), ''); assert.equal(localTime('not a time'), '')
 })
 
 test('format and better', () => {

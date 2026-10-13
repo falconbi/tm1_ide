@@ -69,3 +69,12 @@ export function better(actual, compare, { cost = false } = {}) {
   const d = Number(actual) - Number(compare)
   return cost ? d <= 0 : d >= 0
 }
+
+// A UTC time from TM1 ('2026-10-13T01:33:00Z') in the viewer's own time zone:
+// today → '2:33 pm', another day → '13 Oct, 2:33 pm'. Blank or unreadable → ''.
+export function localTime(utc, now = new Date()) {
+  const d = new Date(String(utc || ''))
+  if (!utc || Number.isNaN(d.getTime())) return ''
+  const time = d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
+  return d.toDateString() === now.toDateString() ? time : d.toLocaleDateString(undefined, { day: 'numeric', month: 'short' }) + ', ' + time
+}

@@ -126,7 +126,7 @@ function procClient({ status = 'CompletedSuccessfully', message = { Process: 'Sp
     async getProcess(name) { return name === 'Spread' ? { Name: 'Spread', Parameters: [{ Name: 'pOrg', Type: 'String' }, { Name: 'pTotal', Type: 'Numeric' }] } : null },
     async executeProcess(name, params) { calls.runs.push({ name, params }); return { ProcessExecuteStatusCode: status } },
     async executeMDX() {
-      const names = ['Process', 'Time', 'Message', 'Result']
+      const names = ['Process', 'Message', 'Result', 'Since']
       return { Axes: [{ Tuples: names.map(n => ({ Members: [{ Name: n }] })) }], Cells: names.map(n => ({ Value: message[n] ?? '' })) }
     },
   }
@@ -160,8 +160,8 @@ test('a successful run returns the message the process left', async () => {
 })
 
 test('a run returns the short Result the process left (e.g. a data reservation state)', async () => {
-  const r = await runProcess(procClient({ message: { Process: 'Spread', Message: 'Store 101 is being edited by east_mgr.', Result: 'taken' } }), run)
-  assert.equal(r.result, 'taken'); assert.match(r.message, /being edited by east_mgr/)
+  const r = await runProcess(procClient({ message: { Process: 'Spread', Message: 'Store 101 is being edited by east_mgr.', Result: 'taken', Since: '2026-10-13T01:33:00Z' } }), run)
+  assert.equal(r.result, 'taken'); assert.match(r.message, /being edited by east_mgr/); assert.equal(r.since, '2026-10-13T01:33:00Z')
 })
 
 test('a refused run rejects with the process\'s own reason — never a stale message from another process', async () => {
