@@ -305,6 +305,14 @@ iterations:
   `REQUIREDSHARED`: any REST/TI write from someone not holding a reservation on
   that slice fails with `CubeCellWriteStatusNoReservation`. Either take a
   reservation first or set the mode to `OFF` (only where Applications isn't used).
+- **Only admins can read process error logs** (`ErrorLogFiles`) — a non-admin
+  who runs a process can't see why it failed. If users run a process, have it
+  leave its outcome somewhere they can read (we use a small `Lens Messages`
+  cube: `}Clients` × Process / Time / Message).
+- **The rule-derived flag can mislead with IF … CONTINUE rules.** A cellset said
+  a Target payroll cell was rule-derived while `CellIsUpdateable` said input
+  (the rule only applies to budget-type versions) — and the reported flag
+  changed with the stored value. Trust `CellIsUpdateable` in TI.
 - New client password: `AssignClientPassword` in the same procedure as
   `AddClient` silently does nothing (the client isn't committed until the
   procedure ends) — run them as two separate processes.
