@@ -183,12 +183,15 @@ function grid(el, { columns = [], rows: data = [], height, onEdit, onFocus } = {
           return String(p.newValue ?? '').trim() === '' ? 0 : (Number.isFinite(v) ? v : p.oldValue)
         }
       }
+      // Every key, every time: the grid only ADDS styles on refresh, so a style
+      // left out (e.g. someone's outline that moved on) would stick.
       def.cellStyle = p => {
         const r = remote.get(keyOf(p.data, c.field))
         const base = orig.has(keyOf(p.data, c.field))
-          ? { background: tint(t.amber, 0.22), fontWeight: 600 }
-          : canEdit(c, p.data) ? { background: tint(t.accent, 0.08) } : { color: t.faint }
-        return r ? Object.assign({}, base, { boxShadow: 'inset 0 0 0 2px ' + r.color, background: r.color + '26', fontWeight: 700 }) : base
+          ? { background: tint(t.amber, 0.22), fontWeight: '600', color: '', boxShadow: 'none' }
+          : canEdit(c, p.data) ? { background: tint(t.accent, 0.08), fontWeight: '', color: '', boxShadow: 'none' }
+          : { background: '', fontWeight: '', color: t.faint, boxShadow: 'none' }
+        return r ? Object.assign({}, base, { boxShadow: 'inset 0 0 0 2px ' + r.color, background: r.color + '26', fontWeight: '700' }) : base
       }
       def.tooltipValueGetter = p => { const r = remote.get(keyOf(p.data, c.field)); return r ? r.label : null }
       return def
