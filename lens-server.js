@@ -145,6 +145,28 @@ function layout(title, body, { narrow = false, wide = false } = {}) {
 <main${narrow ? ' style="max-width:420px"' : wide ? ' style="max-width:none;padding:14px 18px"' : ''}>${body}</main></body></html>`
 }
 
+// ── Lens tiles: an icon on a colour, or the Lens's own image ──────────────────
+const LENS_ICONS = require('./shared/lens-icons.json')
+const TILE_COLORS = ['#0f766e', '#2563eb', '#7c3aed', '#c2410c', '#be123c', '#0e7490', '#4d7c0f', '#a16207']
+const svgOf = (name, stroke = '#fff') => `<svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="${stroke}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${
+    (LENS_ICONS[name] ?? []).map(([tag, attrs]) => `<${tag} ${Object.entries(attrs).map(([k, v]) => `${k}="${esc(v)}"`).join(' ')}/>`).join('')}</svg>`
+// No icon chosen: guess from what the Lens is for.
+function defaultIcon(l) {
+    const w = `${l.title ?? ''} ${l.name ?? ''} ${l.description ?? ''}`.toLowerCase()
+    return /approv|review|sign.?off/.test(w) ? 'circle-check'
+        : /enter|input|form|target/.test(w) ? 'pencil-line'
+        : /flow|ownership|network|process/.test(w) ? 'workflow'
+        : /dashboard|centre|center|p&l|pnl|report|kpi/.test(w) ? 'chart-column'
+        : /demo|example|toolkit|building/.test(w) ? 'sparkles' : 'layers'
+}
+function tileOf(l) {
+    if (l.image) return `<span class="tile"><img src="${esc(l.image)}" alt=""></span>`
+    let h = 0
+    for (const ch of String(l.name)) h = (h * 31 + ch.charCodeAt(0)) >>> 0
+    const color = l.color || TILE_COLORS[h % TILE_COLORS.length]
+    return `<span class="tile" style="background:linear-gradient(135deg, ${esc(color)}, ${esc(color)}bb)">${svgOf(l.icon && LENS_ICONS[l.icon] ? l.icon : defaultIcon(l))}</span>`
+}
+
 // A Lens's place in its folder: a leading number in its title is the step
 // ("1 Enter targets" → step 1, "Enter targets"); no title → its name.
 function stepOf(l) {
@@ -376,6 +398,7 @@ function createApp({ config = loadConfig(), deps = {} } = {}) {
                 const words = [label, l.description, l.folder].join(' ').toLowerCase()
                 return `
       <a class="lcard" href="/lens/${encodeURIComponent(l.name)}" data-words="${esc(words)}">
+        ${tileOf(l)}
         ${step ? `<span class="step">${esc(step)}</span>` : ''}
         <span class="lbody"><b>${esc(label)}</b>${l.description ? `<span class="desc">${esc(l.description)}</span>` : ''}
         ${l.status === 'draft' ? '<span class="badge draft">draft</span>' : ''}</span>
@@ -399,7 +422,10 @@ function createApp({ config = loadConfig(), deps = {} } = {}) {
     .lgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px;margin-top:6px}
     .lcard{display:flex;gap:12px;align-items:flex-start;background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:12px 14px;text-decoration:none;color:#0f172a;transition:border-color .15s,box-shadow .15s}
     .lcard:hover{border-color:#0f766e;box-shadow:0 2px 10px rgba(15,118,110,.12)}
-    .lcard .step{flex:none;width:26px;height:26px;border-radius:50%;background:#0f766e;color:#fff;font-weight:700;font-size:13px;display:grid;place-items:center}
+    .lcard{align-items:center;position:relative}
+    .lcard .tile{flex:none;width:52px;height:52px;border-radius:14px;display:grid;place-items:center;overflow:hidden;box-shadow:0 4px 14px rgba(15,23,42,.14)}
+    .lcard .tile img{width:100%;height:100%;object-fit:cover}
+    .lcard .step{position:absolute;top:8px;left:8px;width:20px;height:20px;border-radius:50%;background:#0f172a;color:#fff;font-weight:700;font-size:11px;display:grid;place-items:center;border:2px solid #fff}
     .lcard .lbody{display:grid;gap:3px;min-width:0}
     .lcard .desc{margin:0;font-size:12.5px;color:#64748b}
     .lcard .badge{justify-self:start;margin-top:2px}

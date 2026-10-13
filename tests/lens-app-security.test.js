@@ -139,3 +139,31 @@ test('the home page shows titles and folders, never a raw cube or server name', 
     assert.ok(!home.includes('Lenses on S1'), 'no server name heading')
   }, { listLenses: async () => [{ name: 'Target-Input', title: '1 Enter targets', folder: 'Target setting 2027', status: 'published' }] })
 })
+
+// ── Home-page tiles: an icon on a colour, or the Lens's own image ────────────
+test('Lens icon, colour and image are checked before they are stored', () => {
+  const s = require('../core/lens_store')
+  assert.equal(s.cleanIcon('target'), 'target')
+  assert.throws(() => s.cleanIcon('skull'), /Unknown icon/)
+  assert.equal(s.cleanColor('#0F766E'), '#0F766E')
+  assert.throws(() => s.cleanColor('red; background:url(x)'), /#0f766e/)
+  assert.equal(s.cleanImage(''), '')
+  assert.ok(s.cleanImage('data:image/png;base64,iVBORw0KGgo='))
+  assert.throws(() => s.cleanImage('javascript:alert(1)'), /PNG, JPEG, WebP or SVG/)
+  assert.throws(() => s.cleanImage('data:text/html;base64,PGI+'), /PNG, JPEG, WebP or SVG/)
+  assert.throws(() => s.cleanImage('data:image/png;base64,' + 'A'.repeat(300 * 1024)), /too large/)
+})
+
+test('the home page draws each Lens as a tile: its icon, or a guessed one, or its image', async () => {
+  await withApp(async ({ base, signin }) => {
+    const c = cookieOf(await signin('admin', 'apple'))
+    const home = await (await fetch(`${base}/`, { headers: { cookie: c } })).text()
+    assert.match(home, /<span class="tile" style="background:linear-gradient\(135deg, #7c3aed/)
+    assert.match(home, /<span class="tile"><img src="data:image\/png;base64,iVBOR/)
+    assert.equal((home.match(/<svg viewBox="0 0 24 24"/g) || []).length, 2, 'icon tiles for the two Lenses without an image')
+  }, { listLenses: async () => [
+    { name: 'A', title: 'Approve targets', status: 'published', icon: 'circle-check', color: '#7c3aed' },
+    { name: 'B', title: 'Enter targets', status: 'published' },
+    { name: 'C', title: 'Brand', status: 'published', image: 'data:image/png;base64,iVBORw0KGgo=' },
+  ] })
+})

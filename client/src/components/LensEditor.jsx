@@ -4,6 +4,81 @@ import { useStore } from '@/store'
 import { Sparkles, Save, RefreshCw, Loader2, Eye, Pencil } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { lensSrcDoc, installLensHost } from '@shared/lens-bridge'
+import LENS_ICONS from '@shared/lens-icons.json'
+
+const ICON_NAMES = Object.keys(LENS_ICONS).filter(k => !k.startsWith('_'))
+const TILE_COLORS = ['#0f766e', '#2563eb', '#7c3aed', '#c2410c', '#be123c', '#0e7490', '#4d7c0f', '#a16207']
+
+// One Lens icon (shared/lens-icons.json — the same set the Lens app draws).
+function LensIcon({ name, size = 18, stroke = 'currentColor' }) {
+  return (
+    <svg viewBox="0 0 24 24" width={size} height={size} fill="none" stroke={stroke} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      {(LENS_ICONS[name] ?? []).map(([Tag, attrs], i) => <Tag key={i} {...attrs} />)}
+    </svg>
+  )
+}
+
+// The Lens's tile on the Lens app home page: its image, or its icon on a colour.
+function LensTile({ icon, color, image, size = 28 }) {
+  if (image) return <img src={image} alt="" style={{ width: size, height: size, borderRadius: size / 4, objectFit: 'cover' }} />
+  return (
+    <span style={{ width: size, height: size, borderRadius: size / 4, display: 'inline-grid', placeItems: 'center', background: `linear-gradient(135deg, ${color || '#0f766e'}, ${color || '#0f766e'}bb)` }}>
+      <LensIcon name={icon || 'layers'} size={size * 0.56} stroke="#fff" />
+    </span>
+  )
+}
+
+// Pick the icon, its colour, or upload your own image (≤ 200 KB) for the Lens app home page.
+function IconPicker({ icon, color, image, onChange }) {
+  const [open, setOpen] = useState(false)
+  const [error, setError] = useState('')
+  const fileRef = useRef(null)
+  const upload = (file) => {
+    setError('')
+    if (!file) return
+    if (!/^image\/(png|jpeg|webp|svg\+xml)$/.test(file.type)) { setError('Use a PNG, JPEG, WebP or SVG picture'); return }
+    if (file.size > 200 * 1024) { setError('That picture is over 200 KB — use a smaller one'); return }
+    const reader = new FileReader()
+    reader.onload = () => onChange({ image: String(reader.result) })
+    reader.readAsDataURL(file)
+  }
+  return (
+    <div className="relative">
+      <button onClick={() => setOpen(o => !o)} className="inline-flex items-center gap-1.5 rounded border border-border px-2 py-1 text-sm hover:bg-accent" title="Icon on the Lens app home page">
+        <LensTile icon={icon} color={color} image={image} size={20} /> Icon
+      </button>
+      {open && (
+        <div className="absolute left-0 top-full z-50 mt-1 w-[300px] rounded-md border border-border bg-background p-3 shadow-lg">
+          <div className="mb-2 flex items-center gap-2">
+            <LensTile icon={icon} color={color} image={image} size={44} />
+            <div className="text-xs text-muted-foreground">How this Lens looks on the Lens app home page</div>
+          </div>
+          <div className="grid grid-cols-8 gap-1">
+            {ICON_NAMES.map(n => (
+              <button key={n} title={n} onClick={() => onChange({ icon: n, image: '' })}
+                className={cn('grid h-8 w-8 place-items-center rounded hover:bg-accent', !image && icon === n && 'bg-primary text-primary-foreground')}>
+                <LensIcon name={n} />
+              </button>
+            ))}
+          </div>
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {TILE_COLORS.map(c => (
+              <button key={c} title={c} onClick={() => onChange({ color: c, image: '' })}
+                className={cn('h-6 w-6 rounded-full border-2', color === c ? 'border-foreground' : 'border-transparent')} style={{ background: c }} />
+            ))}
+          </div>
+          <div className="mt-3 flex items-center gap-2 border-t border-border pt-2">
+            <button onClick={() => fileRef.current?.click()} className="rounded border border-border px-2 py-1 text-xs hover:bg-accent">Use my own image…</button>
+            {image && <button onClick={() => onChange({ image: '' })} className="rounded border border-border px-2 py-1 text-xs hover:bg-accent">Remove image</button>}
+            <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" hidden onChange={e => { upload(e.target.files?.[0]); e.target.value = '' }} />
+          </div>
+          {error && <div className="mt-1 text-xs text-red-600">{error}</div>}
+          <div className="mt-2 text-right"><button onClick={() => setOpen(false)} className="text-xs text-muted-foreground hover:underline">Done</button></div>
+        </div>
+      )}
+    </div>
+  )
+}
 
 const token = () => localStorage.getItem('tm1-token') ?? ''
 
@@ -46,6 +121,7 @@ export default function LensEditor({ tab }) {
   const [description, setDescription] = useState('')
   const [folder, setFolder] = useState('')
   const [title, setTitle] = useState('')
+  const [look, setLook] = useState({ icon: '', color: '', image: '' })
   const [folders, setFolders] = useState([])
   const [cube, setCube] = useState(tab.cube ?? '')
   const [cubes, setCubes] = useState([])
@@ -76,7 +152,7 @@ export default function LensEditor({ tab }) {
       fetch(`/api/lenses/${encodeURIComponent(tab.name)}?server=${encodeURIComponent(tab.server)}&_=${Date.now()}`, { headers: { 'x-ide-token': token() } })
         .then(r => r.json())
         .then(d => {
-          if (d.html) { setHtml(d.html); setDescription(d.meta?.description ?? ''); setFolder(d.meta?.folder ?? ''); setTitle(d.meta?.title ?? '') }
+          if (d.html) { setHtml(d.html); setDescription(d.meta?.description ?? ''); setFolder(d.meta?.folder ?? ''); setTitle(d.meta?.title ?? ''); setLook({ icon: d.meta?.icon ?? '', color: d.meta?.color ?? '', image: d.meta?.image ?? '' }) }
           else if (d.error) setMessage({ kind: 'error', text: `Couldn't load the Lens: ${d.error}` })
         })
         .catch(e => setMessage({ kind: 'error', text: `Couldn't load the Lens: ${e.message}` }))
@@ -132,7 +208,7 @@ export default function LensEditor({ tab }) {
       const res = await fetch(`/api/lenses/${encodeURIComponent(name.trim())}?server=${encodeURIComponent(tab.server)}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-ide-token': token() },
-        body: JSON.stringify({ html, description, folder, title, publish, force }),
+        body: JSON.stringify({ html, description, folder, title, icon: look.icon, color: look.color, image: look.image, publish, force }),
       })
       const data = await res.json()
       if (!res.ok) {
@@ -237,6 +313,7 @@ export default function LensEditor({ tab }) {
         )}
       </div>
       <div className="flex flex-wrap items-center gap-2 border-b border-border px-3 py-1.5">
+        <IconPicker {...look} onChange={patch => setLook(l => ({ ...l, ...patch }))} />
         <span className="text-xs text-muted-foreground">Title</span>
         <input
           className="w-48 rounded border border-border bg-background px-2 py-1 text-sm"
