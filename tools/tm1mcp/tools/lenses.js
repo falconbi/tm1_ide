@@ -7,11 +7,11 @@ const lensBridge = require('../../../core/lens_bridge')
 const CATALOGUE = JSON.stringify(require('../../../shared/lens-components.json'), null, 1)
 const BRIDGE_CONTRACT = `The generated HTML runs inside a sandboxed iframe with NO network access. Data comes ONLY from the lensBridge API:
   window.lensBridge.call('execMDX', { mdx: '<MDX SELECT>' }) -> Promise<{ Axes, Cells }>
-      Cells: [{ Ordinal, Value, FormattedValue }] — Value is a number or null.
+      Cells: [{ Ordinal, Value, FormattedValue, RuleDerived, Consolidated }] — Value is a number or null.
   window.lensBridge.call('readCell', { cube: '<cube>', coordinates: { '<dim>': '<elem>', ... } }) -> Promise<number|string|null>
       coordinates must name EVERY dimension of the cube.
   window.lensBridge.call('getMeta', { cube: '<cube>' }) -> Promise<{ cubes, dimensions, cubeDims, elements }>
-Return a SINGLE complete HTML document (html, head, style, body, script). The ONLY library is the Lens toolkit, served by the app: include <script src="/lens-kit/lens-kit.js"></script> before your own script, turn each execMDX result into rows with Lens.rows(result), and use its components (Lens.kpis, trend, waterfall, bars, grid, flow — catalogue below) wherever one fits; hand-draw SVG/canvas only for a visual no component covers. No CDN, fonts, images or network. Style it as a polished dashboard: clear hierarchy, good typography, coherent colors (Lens.theme.colors), a refresh button. Use EXACT cube/dimension/element names — verify them against the model first (list_cubes / get_* tools). In MDX reference members as [Dim].[Dim].[Member]. Handle null/empty values gracefully (show '—'). Never hard-code numbers.
+Return a SINGLE complete HTML document (html, head, style, body, script). The ONLY library is the Lens toolkit, served by the app: include <script src="/lens-kit/lens-kit.js"></script> before your own script, turn each execMDX result into rows with Lens.rows(result), and use its components (Lens.kpis, trend, waterfall, bars, grid, flow — catalogue below) wherever one fits; hand-draw SVG/canvas only for a visual no component covers. No CDN, fonts, images or network. Style it as a polished dashboard: clear hierarchy, good typography, coherent colors (Lens.theme.colors), a refresh button. Use EXACT cube/dimension/element names — verify them against the model first (list_cubes / get_* tools). In MDX reference members as [Dim].[Dim].[Member]. Handle null/empty values gracefully (show '—'). Never hard-code numbers. Only build input (write-back) when asked: an editable Lens.grid plus Lens.save, with the cube declared in the head as <meta name="lens-writes" content="Cube Name">. Action buttons likewise only when asked: Lens.run('Process', { params }), declared as <meta name="lens-runs" content="Process Name">.
 
 Lens toolkit catalogue:
 ${CATALOGUE}`
@@ -53,17 +53,21 @@ ${BRIDGE_CONTRACT}`,
             name:        z.string().describe('Lens name — letters, digits, - or _'),
             html:        z.string().describe('Complete HTML document for the lens (see contract)'),
             description: z.string().optional().describe('What the lens shows, in words'),
+            icon:        z.string().optional().describe('Home-page icon, one of: ' + require('../../../core/lens_store').ICON_NAMES.join(', ')),
+            color:       z.string().optional().describe("Home-page tile colour, '#rrggbb'"),
+            title:       z.string().optional().describe("What people see in the Lens app, in business words (e.g. '1 Enter targets'); a leading number orders steps in a folder. Omit to keep the current one"),
+            folder:      z.string().optional().describe("Folder on the Lens app home page, e.g. 'Finance' or 'Planning/Forecast' ('/' = sub-folder); omit to keep the current one"),
             publish:     z.boolean().optional().describe('Set status to published (default draft)'),
             force:       z.boolean().optional().describe('Save despite validation failures'),
         },
-        async ({ name, html, description, publish, force }) => {
+        async ({ name, html, description, folder, title, icon, color, publish, force }) => {
             requireChangeSet()
             const client = (require('../../../core/adapter_registry').makeClient)(SERVER, null)
             const errors = await lensBridge.validateLens(client, html)
             if (errors.length && !force) {
                 return ok({ blocked: true, reason: `Lens validation failed (${errors.length}) — fix these and retry, or pass force:true:`, errors })
             }
-            const saved = await lensStore.saveLens(SERVER, name, html, AGENT_USER, { publish: !!publish, description })
+            const saved = await lensStore.saveLens(SERVER, name, html, AGENT_USER, { publish: !!publish, description, folder, title, icon, color })
             cl.writeLog({
                 server: SERVER, action: publish ? 'LENS_PUBLISHED' : 'LENS_SAVED',
                 objectType: 'lens', objectName: saved.name,

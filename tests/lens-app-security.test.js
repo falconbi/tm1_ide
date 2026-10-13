@@ -22,7 +22,7 @@ async function withApp(fn, depsOverride = {}) {
     readLens: async (s, name) => ({ name, toolkitVersion: 1, html: '<p>lens</p>' }),
     ...depsOverride,
   }
-  const { app, close } = createApp({ config: { server: 'S1', port: 0, showDrafts: true }, deps })
+  const { app, close } = createApp({ config: { server: 'S1', port: 0, showDrafts: true, endSessionProcesses: [] }, deps })
   const srv = await new Promise(r => { const s = app.listen(0, () => r(s)) })
   const base = `http://127.0.0.1:${srv.address().port}`
   const signin = (username, password) => fetch(`${base}/auth/signin`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username, password }) })
@@ -99,4 +99,82 @@ test('the sign-in page only says "TM1 rejected the login" when TM1 actually reje
     assert.match(html, /o\.d\.rejected === true \? 'TM1 rejected the login/)
     assert.doesNotMatch(html, /o\.d\.error \|\| o\.d\.rejected === true \?/)
   })
+})
+
+test('every page says who is signed in, next to Sign out', async () => {
+  await withApp(async ({ base, signin }) => {
+    const c = cookieOf(await signin('admin', 'apple'))
+    const home = await (await fetch(`${base}/`, { headers: { cookie: c } })).text()
+    assert.match(home, /Signed in as <b[^>]*>admin<\/b>/)
+    const lens = await (await fetch(`${base}/lens/PnL-Dashboard`, { headers: { cookie: c } })).text()
+    assert.match(lens, /Signed in as <b[^>]*>admin<\/b>/)
+  })
+})
+
+// ── Home page: business processes, ordered steps, friendly titles ────────────
+const { groupLenses, stepOf } = require('../lens-server')
+
+test('home page groups Lenses by folder (no folder last) with numbered steps in order', () => {
+  const g = groupLenses([
+    { name: 'Command-Centre', title: '3 Results', folder: 'Target setting 2027' },
+    { name: 'Target-Input', title: '1 Enter targets', folder: 'Target setting 2027' },
+    { name: 'Approvals', title: '2 Approve targets', folder: 'Target setting 2027' },
+    { name: 'Notes', title: 'Read me first', folder: 'Target setting 2027' },
+    { name: 'Loose', folder: '' },
+    { name: 'PnL', title: 'P&L dashboard', folder: 'Monthly reporting' },
+  ])
+  assert.deepEqual(g.map(x => x.folder), ['Monthly reporting', 'Target setting 2027', ''])
+  assert.deepEqual(g[1].items.map(l => l.name), ['Target-Input', 'Approvals', 'Command-Centre', 'Notes'])
+  assert.deepEqual(stepOf({ title: '1. Enter targets' }), { step: '1', label: 'Enter targets' })
+  assert.deepEqual(stepOf({ name: 'Target-Input' }), { step: '', label: 'Target-Input' })
+})
+
+test('the home page shows titles and folders, never a raw cube or server name', async () => {
+  await withApp(async ({ base, signin }) => {
+    const c = cookieOf(await signin('admin', 'apple'))
+    const home = await (await fetch(`${base}/`, { headers: { cookie: c } })).text()
+    assert.match(home, /Target setting 2027/)
+    assert.match(home, /<span class="step">1<\/span>/)
+    assert.match(home, /<b>Enter targets<\/b>/)
+    assert.ok(!home.includes('Lenses on S1'), 'no server name heading')
+  }, { listLenses: async () => [{ name: 'Target-Input', title: '1 Enter targets', folder: 'Target setting 2027', status: 'published' }] })
+})
+
+// ── Home-page tiles: an icon on a colour, or the Lens's own image ────────────
+test('Lens icon, colour and image are checked before they are stored', () => {
+  const s = require('../core/lens_store')
+  assert.equal(s.cleanIcon('target'), 'target')
+  assert.throws(() => s.cleanIcon('skull'), /Unknown icon/)
+  assert.equal(s.cleanColor('#0F766E'), '#0F766E')
+  assert.throws(() => s.cleanColor('red; background:url(x)'), /#0f766e/)
+  assert.equal(s.cleanImage(''), '')
+  assert.ok(s.cleanImage('data:image/png;base64,iVBORw0KGgo='))
+  assert.throws(() => s.cleanImage('javascript:alert(1)'), /PNG, JPEG, WebP or SVG/)
+  assert.throws(() => s.cleanImage('data:text/html;base64,PGI+'), /PNG, JPEG, WebP or SVG/)
+  assert.throws(() => s.cleanImage('data:image/png;base64,' + 'A'.repeat(300 * 1024)), /too large/)
+})
+
+test('the home page draws each Lens as a tile: its icon, or a guessed one, or its image', async () => {
+  await withApp(async ({ base, signin }) => {
+    const c = cookieOf(await signin('admin', 'apple'))
+    const home = await (await fetch(`${base}/`, { headers: { cookie: c } })).text()
+    assert.match(home, /<span class="tile" style="background:linear-gradient\(135deg, #7c3aed/)
+    assert.match(home, /<span class="tile"><img src="data:image\/png;base64,iVBOR/)
+    assert.equal((home.match(/<svg viewBox="0 0 24 24"/g) || []).length, 2, 'icon tiles for the two Lenses without an image')
+  }, { listLenses: async () => [
+    { name: 'A', title: 'Approve targets', status: 'published', icon: 'circle-check', color: '#7c3aed' },
+    { name: 'B', title: 'Enter targets', status: 'published' },
+    { name: 'C', title: 'Brand', status: 'published', image: 'data:image/png;base64,iVBORw0KGgo=' },
+  ] })
+})
+
+test('every script on the home page parses (a template-literal escape slip once broke the hover preview)', async () => {
+  const vm = require('node:vm')
+  await withApp(async ({ base, signin }) => {
+    const c = cookieOf(await signin('admin', 'apple'))
+    const home = await (await fetch(`${base}/`, { headers: { cookie: c } })).text()
+    const scripts = [...home.matchAll(/<script>([\s\S]*?)<\/script>/g)].map(m => m[1])
+    assert.ok(scripts.length >= 2)
+    for (const code of scripts) assert.doesNotThrow(() => new vm.Script(code), code.slice(0, 80))
+  }, { listLenses: async () => [{ name: 'Command-Centre', title: 'Command centre', status: 'published' }] })
 })

@@ -34,7 +34,7 @@ async function setup(stubOverrides = {}) {
       { name: 'Private-Draft', status: 'draft', version: 2, toolkitVersion: 1 },
     ]),
     readLens: async (server, name, opts) => {
-      if (name === 'Future') return { name: 'Future', toolkitVersion: 5, html: '<p>future</p>' }
+      if (name === 'Future') return { name: 'Future', toolkitVersion: 99, html: '<p>future</p>' }
       return { name, status: 'published', version: 1, toolkitVersion: 1, html: '<div>hello lens</div>' }
     },
     ...stubOverrides,
@@ -183,7 +183,7 @@ test('a Lens with a newer toolkitVersion is refused with a clear message', async
   const r = await get('/api/lens/Future', cookie)
   assert.equal(r.status, 417)
   const body = await r.json()
-  assert.match(body.error, /needs toolkit version 5/)
+  assert.match(body.error, /needs toolkit version 99/)
   const page = await get('/lens/Future', cookie)
   assert.equal(page.status, 200)
   const html = await page.text()
@@ -191,7 +191,7 @@ test('a Lens with a newer toolkitVersion is refused with a clear message', async
   assert.ok(!html.includes('<div>hello lens</div>'), 'the incompatible Lens body is never shown')
   const frame = await get('/lens-frame/Future', cookie)
   assert.equal(frame.status, 200)
-  assert.match(await frame.text(), /needs toolkit version 5/)
+  assert.match(await frame.text(), /needs toolkit version 99/)
 })
 
 test('the Lens frame is its own strict-CSP document, served with the bridge', async () => {

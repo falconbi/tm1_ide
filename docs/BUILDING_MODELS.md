@@ -290,6 +290,46 @@ iterations:
   `Elements@odata.bind` adds to the existing members, it doesn't replace them —
   re-running a subset seed accumulates duplicates. Rebuild with
   `SubsetDeleteAllElements` then `SubsetElementInsert` in a TI.
+- **A user needs four kinds of READ to query a cube**, and a missing one gives the
+  same bare `ObjectSecurityNoReadRights`: the cube (`}CubeSecurity`), every one
+  of its dimensions (`}DimensionSecurity` — no entry is *not* READ), the
+  elements (`}ElementSecurity_<dim>`), and any cell security
+  (`}CellSecurity_<cube>`). Attribute cubes (`}ElementAttributes_<dim>`) count
+  as cubes — a regional user usually has no access to them, so a screen that
+  reads captions should fall back to element names rather than fail.
+- **Writing needs WRITE in the same four places** (cube, elements of every
+  dimension in the cell, cell security) — READ there gives
+  `CubeCellWriteStatusCubeNoWriteAccess`.
+- **Data reservation blocks every write without a reservation.** A cube used by
+  TM1 Applications usually has `}CubeProperties` `DATARESERVATIONMODE` =
+  `REQUIREDSHARED`: any REST/TI write from someone not holding a reservation on
+  that slice fails with `CubeCellWriteStatusNoReservation`. Either take a
+  reservation first or set the mode to `OFF` (only where Applications isn't used).
+- **Only admins can read process error logs** (`ErrorLogFiles`) — a non-admin
+  who runs a process can't see why it failed. If users run a process, have it
+  leave its outcome somewhere they can read (we use a small `Lens Messages`
+  cube: `}Clients` × Process / Time / Message).
+- **The rule-derived flag can mislead with IF … CONTINUE rules.** A cellset said
+  a Target payroll cell was rule-derived while `CellIsUpdateable` said input
+  (the rule only applies to budget-type versions) — and the reported flag
+  changed with the stored value. Trust `CellIsUpdateable` in TI.
+- **Data reservations from TI (v11.8 has no REST calls for them).** Signatures
+  (wrong ones parse on save and only fail when the line runs):
+  `CubeDataReservationAcquire(Cube, User, bForce, Address, Delim)`,
+  `…Release(Cube, User, Address, Delim)`, `…ReleaseAll(Cube, UserFilter, Address, Delim)`,
+  `…Get(Index, Cube, User, Delim)`, `…GetConflicts(Index, Cube, User, Address, Delim)`.
+  Address = one element per cube dimension, blank = whole dimension. Get returns
+  `yyyymmddhhmmss|user|'Hier':'Elem'|…`. A user needs the **ManageDataReservation**
+  capability (`}Capabilities`, EXECUTE = Grant) — often granted only to a CAMID
+  group. Check for **old whole-cube reservations** (24Retail had Admin's from 2019
+  blocking everyone). A reservation taken by a process in the user's name does
+  let that user's REST writes through.
+- **Reservation stamps are UTC; TI's `NOW` is server-local.** Measure ages on the
+  reservation clock (take and drop a probe reservation, read its stamp); store
+  times in UTC and convert only for display.
+- New client password: `AssignClientPassword` in the same procedure as
+  `AddClient` silently does nothing (the client isn't committed until the
+  procedure ends) — run them as two separate processes.
 - `SubsetCreatebyMDX` silently no-ops — use `SubsetCreate` + a
   `SubsetElementInsert` loop.
 - `CubeProcessFeeders` is the only feeder-recalc that works — `tm1.CheckFeeders*`

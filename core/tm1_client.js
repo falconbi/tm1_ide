@@ -1197,7 +1197,7 @@ return (d.value ?? [])
         const { ID } = await this.post('ExecuteMDX', { MDX: mdx })
         const [axisData, cellData] = await Promise.all([
             this.get(`Cellsets('${ID}')/Axes`, { '$expand': 'Tuples($expand=Members($select=Name,UniqueName,Type))' }),
-            this.get(`Cellsets('${ID}')/Cells`, { '$select': 'Ordinal,Value,FormattedValue,Updateable', '$top': maxCells }),
+            this.get(`Cellsets('${ID}')/Cells`, { '$select': 'Ordinal,Value,FormattedValue,Updateable,RuleDerived,Consolidated', '$top': maxCells }),
         ])
         try { await this.delete(`Cellsets('${ID}')`) } catch {}
         const cells = cellData.value
@@ -1691,10 +1691,11 @@ return (d.value ?? [])
 
     async provisionUser(clientName, password, groups = [], friendlyName = '') {
         const s = v => `'${v.replace(/'/g, "''")}'`
-        await this._runTI([
-            `AddClient(${s(clientName)});`,
-            `AssignClientPassword(${s(clientName)}, ${s(password)});`,
-        ].join('\n'))
+        // Two separate runs: TM1 only commits a new client at the end of the
+        // procedure that added it, so AssignClientPassword in the same Prolog has
+        // nothing to apply to — the user was created with NO password (silently).
+        await this._runTI(`AddClient(${s(clientName)});`)
+        await this._runTI(`AssignClientPassword(${s(clientName)}, ${s(password)});`)
         for (const g of groups) {
             try { await this.addClientToGroup(clientName, g) } catch {}
         }

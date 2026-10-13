@@ -7,5 +7,7 @@
     "enabled": false,
     "key": "",
     "cert": ""
-  }
+  },
+  "endSessionProcesses": [],
+  "_endSessionProcesses": "Processes run as the person when their session ends (sign out or idle timeout), e.g. [{ \"process\": \"Lens Reserve\", \"params\": { \"pAction\": \"ReleaseAll\" } }] to hand back data reservations taken through Lenses."
 }

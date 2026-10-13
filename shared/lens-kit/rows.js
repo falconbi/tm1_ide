@@ -5,7 +5,10 @@
 //   { _label: 'East Region', _members: ['East Region'], organization: 'East Region',
 //     'Y2 / Actual': 123, ... }
 // Columns are labelled by their member names joined with ' / '. A one-axis
-// result becomes a single row. Missing cells are null.
+// result becomes a single row. Missing cells are null. When the result says
+// which cells TM1 calculates (rule or consolidation), each row also carries
+// _input: { [column label]: true when the cell can be typed into }, and _kind:
+// { [column label]: 'input' | 'calc' (a rule) | 'total' (a consolidation) }.
 
 // '[organization].[organization].[100]' → 'organization'
 function dimOf(member, i) {
@@ -23,19 +26,28 @@ export function rows(cellset) {
   const nCols = colLabels.length
   const byOrdinal = new Map(cells.map(c => [c.Ordinal, c.Value === undefined ? null : c.Value]))
   const valueAt = ord => (byOrdinal.has(ord) ? byOrdinal.get(ord) : null)
+  const flags = cells.some(c => 'RuleDerived' in c || 'Consolidated' in c)
+    ? new Map(cells.map(c => [c.Ordinal, c.Consolidated ? 'total' : c.RuleDerived ? 'calc' : 'input'])) : null
+  const addInput = (row, base) => {
+    if (!flags) return row
+    row._input = {}
+    row._kind = {}
+    colLabels.forEach((label, c) => { const k = flags.get(base + c) || 'input'; row._kind[label] = k; row._input[label] = k === 'input' })
+    return row
+  }
 
   if (!rowTuples.length) {
     if (!nCols) return []
     const one = { _label: '', _members: [] }
     colLabels.forEach((label, c) => { one[label] = valueAt(c) })
-    return [one]
+    return [addInput(one, 0)]
   }
   return rowTuples.map((t, r) => {
     const members = t.Members || []
     const row = { _label: members.map(m => m.Name).join(' / '), _members: members.map(m => m.Name) }
     members.forEach((m, i) => { row[dimOf(m, i)] = m.Name })
     colLabels.forEach((label, c) => { row[label] = valueAt(r * nCols + c) })
-    return row
+    return addInput(row, r * nCols)
   })
 }
 
@@ -58,4 +70,13 @@ export function format(value, kind = 'number') {
 export function better(actual, compare, { cost = false } = {}) {
   const d = Number(actual) - Number(compare)
   return cost ? d <= 0 : d >= 0
+}
+
+// A UTC time from TM1 ('2026-10-13T01:33:00Z') in the viewer's own time zone:
+// today → '2:33 pm', another day → '13 Oct, 2:33 pm'. Blank or unreadable → ''.
+export function localTime(utc, now = new Date()) {
+  const d = new Date(String(utc || ''))
+  if (!utc || Number.isNaN(d.getTime())) return ''
+  const time = d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
+  return d.toDateString() === now.toDateString() ? time : d.toLocaleDateString(undefined, { day: 'numeric', month: 'short' }) + ', ' + time
 }

@@ -13,7 +13,7 @@ const AREA = 'lenses'
 
 // Bumped when the bridge/toolkit contract changes, so the Lens app can refuse a
 // Lens it can't run (LENS_APP_PLAN.md — version check).
-const TOOLKIT_VERSION = 2   // 2 = the Lens toolkit (window.Lens) is available — shared/lens-kit
+const TOOLKIT_VERSION = 8   // 2 = the Lens toolkit (window.Lens) is available — shared/lens-kit
 
 function safeName(name) {
     const n = String(name ?? '').trim()
@@ -22,6 +22,17 @@ function safeName(name) {
 }
 
 const docName = name => `${safeName(name)}.json`
+
+// A Lens's folder on the Lens app home page: 'Finance' or 'Planning/Forecast'
+// ('/' makes a sub-folder). Just a label stored with the Lens — the file stays
+// where it is, so moving a Lens is changing one field. '' = no folder.
+function cleanFolder(folder) {
+    const parts = String(folder ?? '').split('/').map(p => p.trim().replace(/\s+/g, ' ')).filter(Boolean)
+    const f = parts.join('/')
+    if (f.length > 120) throw new Error('Folder name too long (120 characters at most)')
+    if (/[<>"\\]/.test(f)) throw new Error('Folder names can\'t contain < > " or \\')
+    return f
+}
 
 // Details only (no HTML) for every Lens in this server's model, sorted by name.
 async function listLenses(server, { ideToken, client } = {}) {
@@ -45,7 +56,32 @@ async function readLens(server, name, { ideToken, client } = {}) {
 
 // Create or update a Lens. The version counts up on every save; created/createdBy
 // are kept from the first save. Throws if the model can't be written.
-async function saveLens(server, name, html, owner, { publish = false, description, ideToken, client } = {}) {
+// title: what people see in the Lens app ("Enter targets"); the name stays the
+// Lens's id (Target-Input). A leading number in the title ("1 Enter targets")
+// orders the steps of a process folder; '' = show the name.
+// icon: one of shared/lens-icons.json; color: '#rrggbb' for its tile; image: a
+// data: URL (PNG / JPEG / WebP / SVG, at most 200 KB) used instead of the icon —
+// '' clears it. All three keep their current value when left out.
+const ICON_NAMES = Object.keys(require('../shared/lens-icons.json')).filter(k => !k.startsWith('_'))
+function cleanIcon(icon) {
+    const i = String(icon ?? '').trim()
+    if (i && !ICON_NAMES.includes(i)) throw new Error(`Unknown icon "${i}"`)
+    return i
+}
+function cleanColor(color) {
+    const c = String(color ?? '').trim()
+    if (c && !/^#[0-9a-fA-F]{6}$/.test(c)) throw new Error('Tile colour must look like #0f766e')
+    return c
+}
+function cleanImage(image) {
+    const v = String(image ?? '')
+    if (!v) return ''
+    if (!/^data:image\/(png|jpeg|webp|svg\+xml);base64,[A-Za-z0-9+/=]+$/.test(v)) throw new Error('The image must be a PNG, JPEG, WebP or SVG picture')
+    if (v.length > 200 * 1024 * 4 / 3 + 100) throw new Error('The image is too large (200 KB at most)')
+    return v
+}
+
+async function saveLens(server, name, html, owner, { publish = false, description, folder, title, icon, color, image, ideToken, client } = {}) {
     const safe = safeName(name)
     const existing = await store.readDoc(server, AREA, docName(safe), { ideToken, client })
     const now = new Date().toISOString()
@@ -56,6 +92,11 @@ async function saveLens(server, name, html, owner, { publish = false, descriptio
         version:        (Number(existing?.version) || 0) + 1,
         updated:        now,
         description:    description ?? existing?.description ?? '',
+        folder:         folder === undefined || folder === null ? (existing?.folder ?? '') : cleanFolder(folder),
+        title:          title === undefined || title === null ? (existing?.title ?? '') : String(title).trim().slice(0, 120),
+        icon:           icon === undefined || icon === null ? (existing?.icon ?? '') : cleanIcon(icon),
+        color:          color === undefined || color === null ? (existing?.color ?? '') : cleanColor(color),
+        image:          image === undefined || image === null ? (existing?.image ?? '') : cleanImage(image),
         created:        existing?.created ?? now,
         createdBy:      existing?.createdBy ?? owner ?? 'unknown',
         toolkitVersion: TOOLKIT_VERSION,
@@ -70,4 +111,4 @@ async function deleteLens(server, name, { ideToken, client } = {}) {
     await store.deleteDoc(server, AREA, docName(name), { ideToken, client })
 }
 
-module.exports = { safeName, listLenses, readLens, saveLens, deleteLens, TOOLKIT_VERSION }
+module.exports = { safeName, cleanFolder, cleanIcon, cleanColor, cleanImage, ICON_NAMES, listLenses, readLens, saveLens, deleteLens, TOOLKIT_VERSION }

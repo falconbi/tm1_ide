@@ -25,11 +25,12 @@ const LENS_BRIDGE_SCRIPT = `
   // changes, so a reply meant for an earlier page (same id numbers) must never be
   // taken by this one — only replies echoing this page's channel are accepted.
   var chan = Math.random().toString(36).slice(2) + Date.now().toString(36)
-  var ctxCbs = []
+  var ctxCbs = [], liveCbs = []
   var onMsg = function (ev) {
     var d = ev.data
     if (!d || d.__lensBridge !== 1) return
     if (d.ctx === true) { for (var i = 0; i < ctxCbs.length; i++) ctxCbs[i](d.context || {}); return }
+    if (d.live === true) { for (var k = 0; k < liveCbs.length; k++) liveCbs[k](d.event || {}); return }
     if (d.chan !== chan) return
     var h = null
     for (var j = 0; j < seqListeners.length; j++) if (seqListeners[j].id === d.id) { h = seqListeners[j]; break }
@@ -50,7 +51,9 @@ const LENS_BRIDGE_SCRIPT = `
     },
     getContext: function () { return window.lensBridge.call('getContext', {}) },
     setContext: function (patch) { return window.lensBridge.call('setContext', { patch: patch || {} }) },
-    onContext: function (cb) { ctxCbs.push(cb) }
+    onContext: function (cb) { ctxCbs.push(cb) },
+    // Working together (Lens app only): events from others on the same channel.
+    onLive: function (cb) { liveCbs.push(cb) }
   }
 })()
 `
@@ -72,7 +75,11 @@ function writeCtx(patch) {
 // server, the Lens app uses its settings file; NEVER from the message.
 // `getToken` is the IDE's session token (the Lens app has none — its session
 // rides in the HttpOnly cookie, so page scripts cannot read it).
-function installLensHost(getLensWindow, { getServer, getToken }) {
+// `getLens` names the Lens this host opened — a write is checked against THAT
+// saved Lens's declared cubes, never a name taken from the message.
+// `live` (Lens app only): relay the working-together stream into the frame.
+function installLensHost(getLensWindow, { getServer, getToken, getLens, live = false }) {
+  let stream = null, liveChannel = '', liveConn = ''
   const pushCtx = () => {
     getLensWindow()?.postMessage({ __lensBridge: 1, ctx: true, context: readCtx() }, '*')
   }
@@ -97,6 +104,37 @@ function installLensHost(getLensWindow, { getServer, getToken }) {
         respond(d.id, readCtx())
         return
       }
+      if (d.method === 'liveJoin' || d.method === 'liveSend' || d.method === 'history') {
+        const lens = getLens ? getLens() : null
+        if (!live || !lens) throw new Error('working together needs the Lens app')
+        const base = `/api/live/${encodeURIComponent(lens)}`
+        if (d.method === 'liveJoin') {
+          if (stream) stream.close()
+          liveChannel = String(d.payload?.channel ?? ''); liveConn = ''
+          stream = new EventSource(`${base}?channel=${encodeURIComponent(liveChannel)}`)
+          stream.onmessage = (m) => {
+            let ev = null
+            try { ev = JSON.parse(m.data) } catch { return }
+            if (ev.type === 'hello') liveConn = ev.you?.id ?? ''
+            getLensWindow()?.postMessage({ __lensBridge: 1, live: true, event: ev }, '*')
+          }
+          respond(d.id, { channel: liveChannel })
+          return
+        }
+        if (d.method === 'liveSend') {
+          if (!liveConn) { respond(d.id, { skipped: true }); return }   // not connected yet
+          const res = await fetch(base, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ channel: liveChannel, conn: liveConn, event: d.payload?.event }) })
+          const data = await res.json().catch(() => ({}))
+          if (!res.ok) throw new Error(data.error || res.statusText)
+          respond(d.id, data)
+          return
+        }
+        const res = await fetch(`/api/lens/${encodeURIComponent(lens)}/history?match=${encodeURIComponent(JSON.stringify(d.payload?.match ?? {}))}&limit=${encodeURIComponent(d.payload?.limit ?? 30)}&skip=${encodeURIComponent((d.payload?.skip ?? []).join(','))}`)
+        const data = await res.json().catch(() => ({}))
+        if (!res.ok) throw new Error(data.error || res.statusText)
+        respond(d.id, data)
+        return
+      }
       const server = getServer()
       const token = getToken ? getToken() : null
       if (!server) throw new Error('no server configured')
@@ -109,6 +147,16 @@ function installLensHost(getLensWindow, { getServer, getToken }) {
       } else if (d.method === 'readCell') {
         url = `/api/lens/read-cell?server=${enc(server)}`
         init = { method: 'POST', headers, body: JSON.stringify({ cube: d.payload?.cube, coordinates: d.payload?.coordinates }) }
+      } else if (d.method === 'writeCells') {
+        const lens = getLens ? getLens() : null
+        if (!lens) throw new Error('save the Lens first — changes are checked against the saved Lens')
+        url = `/api/lens/write-cells?server=${enc(server)}`
+        init = { method: 'POST', headers, body: JSON.stringify({ lens, cube: d.payload?.cube, cells: d.payload?.cells }) }
+      } else if (d.method === 'runProcess') {
+        const lens = getLens ? getLens() : null
+        if (!lens) throw new Error('save the Lens first — processes are checked against the saved Lens')
+        url = `/api/lens/run-process?server=${enc(server)}`
+        init = { method: 'POST', headers, body: JSON.stringify({ lens, process: d.payload?.process, params: d.payload?.params ?? {} }) }
       } else if (d.method === 'getMeta') {
         url = `/api/lens/meta?server=${enc(server)}${d.payload?.cube ? `&cube=${enc(d.payload.cube)}` : ''}`
         init = { method: 'GET', headers }
@@ -126,6 +174,7 @@ function installLensHost(getLensWindow, { getServer, getToken }) {
   window.addEventListener('message', onMessage)
   window.addEventListener('storage', onStorage)
   return () => {
+    if (stream) stream.close()
     window.removeEventListener('message', onMessage)
     window.removeEventListener('storage', onStorage)
   }

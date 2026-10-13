@@ -26,6 +26,8 @@ const { probeAuthMethod, makeClientWithCredentials } = require('./core/adapter_r
 const lensStore = require('./core/lens_store')
 const lensBridge = require('./core/lens_bridge')
 const sharedBridge = require('./shared/lens-bridge')
+const { logLensWrite, logLensRun, readLensActivity } = require('./core/lens_activity_log')
+const { createLiveHub } = require('./core/lens_live')
 const { createIpLimiter, createFailureGuard } = require('./core/login-rate-limit')
 
 const CONFIG_PATH = path.join(__dirname, 'config', 'lens-app.json')
@@ -48,6 +50,11 @@ function loadConfig({ configPath = process.env.LENS_CONFIG || CONFIG_PATH } = {}
         showDrafts:   !!cfg.showDrafts,
         idleMinutes:  Number(cfg.idleMinutes) || DEFAULT_IDLE_MINUTES,
         https:        { enabled: !!cfg.https?.enabled, key: cfg.https?.key ?? '', cert: cfg.https?.cert ?? '' },
+        // Processes run as the person when their session ends (sign out or idle
+        // timeout) — e.g. hand back the data reservations they took through Lenses.
+        endSessionProcesses: Array.isArray(cfg.endSessionProcesses)
+            ? cfg.endSessionProcesses.filter(s => s && typeof s.process === 'string')
+            : [],
     }
 }
 
@@ -55,16 +62,20 @@ function loadConfig({ configPath = process.env.LENS_CONFIG || CONFIG_PATH } = {}
 // web:  sid -> { user (key), display, lastSeen }
 // tm1:  user -> { client, state, refs:Set<sid> }   (one TM1 session shared by the
 //        user's browser sessions; closed when the last one signs out / times out)
-function createSessionStore({ idleMs }) {
+// beforeClose(client, display): runs on the person's TM1 session just before
+// it is closed (their last browser session signed out or timed out).
+function createSessionStore({ idleMs, beforeClose = null }) {
     const web = new Map()
     const tm1 = new Map()
     const userKey = (server, username) => `${server}::${username}`
 
-    function releaseUser(user) {
+    function releaseUser(user, display) {
         const entry = tm1.get(user)
         if (!entry || entry.refs.size) return
         tm1.delete(user)
-        try { entry.client?._adapter?.closeSession?.() } catch { /* best effort */ }
+        const close = () => { try { entry.client?._adapter?.closeSession?.() } catch { /* best effort */ } }
+        if (!beforeClose) return close()
+        Promise.resolve().then(() => beforeClose(entry.client, display)).catch(() => {}).finally(close)
     }
 
     return {
@@ -91,7 +102,7 @@ function createSessionStore({ idleMs }) {
         dropWebSession(sid) {
             const s = web.get(sid)
             web.delete(sid)
-            if (s) { const e = tm1.get(s.user); if (e) { e.refs.delete(sid); releaseUser(s.user) } }
+            if (s) { const e = tm1.get(s.user); if (e) { e.refs.delete(sid); releaseUser(s.user, s.display) } }
         },
         sweep(now = Date.now()) {
             const stale = []
@@ -126,11 +137,67 @@ const PAGE_CSS = `
   a{color:#0f172a}
 `
 
-function layout(title, body, { narrow = false } = {}) {
+// narrow: sign-in; wide: a Lens page — a dashboard gets the whole browser width.
+function layout(title, body, { narrow = false, wide = false } = {}) {
     return `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${esc(title)} — Lenses</title><style>${PAGE_CSS}</style></head>
 <body><header><span class="brand">Lenses</span><span class="sub">${esc(title)}</span></header>
-<main${narrow ? ' style="max-width:420px"' : ''}>${body}</main></body></html>`
+<main${narrow ? ' style="max-width:420px"' : wide ? ' style="max-width:none;padding:14px 18px"' : ''}>${body}</main></body></html>`
+}
+
+// ── Lens tiles: an icon on a colour, or the Lens's own image ──────────────────
+const LENS_ICONS = require('./shared/lens-icons.json')
+const TILE_COLORS = ['#0f766e', '#2563eb', '#7c3aed', '#c2410c', '#be123c', '#0e7490', '#4d7c0f', '#a16207']
+const svgOf = (name, stroke = '#fff') => `<svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="${stroke}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${
+    (LENS_ICONS[name] ?? []).map(([tag, attrs]) => `<${tag} ${Object.entries(attrs).map(([k, v]) => `${k}="${esc(v)}"`).join(' ')}/>`).join('')}</svg>`
+// No icon chosen: guess from what the Lens is for.
+function defaultIcon(l) {
+    const w = `${l.title ?? ''} ${l.name ?? ''} ${l.description ?? ''}`.toLowerCase()
+    return /approv|review|sign.?off/.test(w) ? 'circle-check'
+        : /enter|input|form|target/.test(w) ? 'pencil-line'
+        : /flow|ownership|network|process/.test(w) ? 'workflow'
+        : /dashboard|centre|center|p&l|pnl|report|kpi/.test(w) ? 'chart-column'
+        : /demo|example|toolkit|building/.test(w) ? 'sparkles' : 'layers'
+}
+function tileOf(l) {
+    if (l.image) return `<span class="tile"><img src="${esc(l.image)}" alt=""></span>`
+    let h = 0
+    for (const ch of String(l.name)) h = (h * 31 + ch.charCodeAt(0)) >>> 0
+    const color = l.color || TILE_COLORS[h % TILE_COLORS.length]
+    return `<span class="tile" style="background:linear-gradient(135deg, ${esc(color)}, ${esc(color)}bb)">${svgOf(l.icon && LENS_ICONS[l.icon] ? l.icon : defaultIcon(l))}</span>`
+}
+
+// A Lens's place in its folder: a leading number in its title is the step
+// ("1 Enter targets" → step 1, "Enter targets"); no title → its name.
+function stepOf(l) {
+    const t = String(l.title || l.name || '').trim()
+    const m = /^(\d+)[.)]?\s+(.+)$/.exec(t)
+    return m ? { step: m[1], label: m[2] } : { step: '', label: t }
+}
+
+// Folders A→Z (no folder last, as 'Other'); inside each, numbered steps first
+// in order, then the rest by title.
+function groupLenses(lenses) {
+    const by = new Map()
+    for (const l of lenses) {
+        const f = String(l.folder || '')
+        if (!by.has(f)) by.set(f, [])
+        by.get(f).push(l)
+    }
+    const order = (a, b) => {
+        const sa = stepOf(a), sb = stepOf(b)
+        if (sa.step && sb.step) return Number(sa.step) - Number(sb.step)
+        if (sa.step || sb.step) return sa.step ? -1 : 1
+        return sa.label.localeCompare(sb.label)
+    }
+    return [...by.keys()].sort((a, b) => (a === '') - (b === '') || a.localeCompare(b))
+        .map(folder => ({ folder, items: by.get(folder).sort(order) }))
+}
+
+// Who is signed in, next to Sign out — on every page, so nobody wonders which
+// account they are looking through.
+function signOutBar(display) {
+    return `<div style="display:flex;align-items:center;gap:10px"><span style="font-size:13px;color:#475569">Signed in as <b style="color:#0f172a">${esc(display)}</b></span><form method="post" action="/auth/signout" style="margin:0"><button class="btn" style="margin-top:0">Sign out</button></form></div>`
 }
 
 function cookieOptions(cfg) {
@@ -155,13 +222,30 @@ function createApp({ config = loadConfig(), deps = {} } = {}) {
     const execMdx   = deps.execMdx  ?? ((client, mdx) => lensBridge.execMDX(client, mdx))
     const readCell  = deps.readCell ?? ((client, cube, coords) => lensBridge.readCell(client, cube, coords))
     const getMeta   = deps.getMeta  ?? ((client, cube) => lensBridge.getMeta(client, cube))
+    const writeCells = deps.writeCells ?? ((client, args) => lensBridge.writeCells(client, args))
+    const logWrite   = deps.logLensWrite ?? logLensWrite
+    const runProcess = deps.runProcess ?? ((client, args) => lensBridge.runProcess(client, args))
+    const logRun     = deps.logLensRun ?? logLensRun
     const listLenses = deps.listLenses ?? ((server, opts) => lensStore.listLenses(server, opts))
     const readLens   = deps.readLens   ?? ((server, name, opts) => lensStore.readLens(server, name, opts))
     const supported  = deps.toolkitVersion ?? lensStore.TOOLKIT_VERSION
 
     if (!cfg.server) throw new Error('config/lens-app.json must set "server" — the one TM1 server this Lens app serves')
 
-    const store = createSessionStore({ idleMs: cfg.idleMinutes * 60_000 })
+    // When someone's session ends, run the configured end-of-session processes
+    // as them (each logged) before their TM1 session is closed.
+    const endSession = deps.endSession ?? (async (client, display) => {
+        for (const step of cfg.endSessionProcesses) {
+            const params = Object.entries(step.params ?? {}).map(([Name, Value]) => ({ Name, Value: String(Value) }))
+            try {
+                const r = await client.executeProcess(step.process, params)
+                logRun({ server: cfg.server, app: 'lens', user: display, lens: '(session end)', process: step.process, params: step.params ?? {}, status: r?.ProcessExecuteStatusCode })
+            } catch (e) {
+                logRun({ server: cfg.server, app: 'lens', user: display, lens: '(session end)', process: step.process, params: step.params ?? {}, status: 'Failed', message: e.response?.data?.error?.message ?? e.message })
+            }
+        }
+    })
+    const store = createSessionStore({ idleMs: cfg.idleMinutes * 60_000, beforeClose: cfg.endSessionProcesses.length || deps.endSession ? endSession : null })
     // Sign-in throttles: per address, and at most 2 rejected passwords per username
     // in 15 minutes — TM1 locks an account on the 3rd, so this app can never be
     // what locks a real user out (deps can override for tests).
@@ -192,6 +276,8 @@ function createApp({ config = loadConfig(), deps = {} } = {}) {
         req.lens = { sid, user: sess.user, display: sess.display, client }
         next()
     }
+
+    const who = req => store.get(parseCookies(req)[COOKIE])?.display ?? ''
 
     function requireSessionPage(req, res, next) {
         const sid = parseCookies(req)[COOKIE]
@@ -303,23 +389,125 @@ function createApp({ config = loadConfig(), deps = {} } = {}) {
     app.get('/', requireSessionPage, async (req, res) => {
         try {
             const lens = await listLenses(cfg.server, { client: store.clientFor(parseCookies(req)[COOKIE]) })
-            const visible = lens
-                .filter(l => l.status === 'published' || (cfg.showDrafts && l.status === 'draft'))
-                .sort((a, b) => String(a.name).localeCompare(String(b.name)))
-            const cards = visible.length
-                ? visible.map(l => `
-      <div class="card">
-        <h3><a href="/lens/${encodeURIComponent(l.name)}">${esc(l.name)}</a></h3>
-        ${esc(l.description || '') ? `<p class="desc">${esc(l.description)}</p>` : ''}
-        <p class="meta"><span class="badge ${esc(l.status)}">${esc(l.status)}</span>updated ${esc(String(l.updated ?? '').slice(0, 10))} · v${esc(l.version ?? 1)}</p>
-      </div>`).join('\n')
-                : '<p class="desc">No Lenses yet' + (cfg.showDrafts ? '' : ' (and drafts are hidden — set showDrafts to see them)') + '.</p>'
+            const visible = lens.filter(l => l.status === 'published' || (cfg.showDrafts && l.status === 'draft'))
+            // Grouped by business process (folder), steps in order, in people's
+            // words (title) — no cube or model names on this page.
+            const groups = groupLenses(visible)
+            const card = l => {
+                const { step, label } = stepOf(l)
+                const words = [label, l.description, l.folder].join(' ').toLowerCase()
+                return `
+      <a class="lcard" href="/lens/${encodeURIComponent(l.name)}" data-words="${esc(words)}">
+        ${tileOf(l)}
+        ${step ? `<span class="step">${esc(step)}</span>` : ''}
+        <span class="lbody"><b>${esc(label)}</b>${l.description ? `<span class="desc">${esc(l.description)}</span>` : ''}
+        ${l.status === 'draft' ? '<span class="badge draft">draft</span>' : ''}</span>
+      </a>`
+            }
+            const sections = groups.map(g => `
+    <details class="folder" open>
+      <summary>${esc(g.folder ? g.folder.split('/').join(' › ') : 'Other')} <span class="count">${g.items.length}</span></summary>
+      <div class="lgrid">${g.items.map(card).join('')}</div>
+    </details>`).join('\n')
             const body = `
-  <div style="display:flex;justify-content:space-between;align-items:center">
-    <h2 style="margin:0 0 12px">Lenses on ${esc(cfg.server)}${cfg.showDrafts ? ' <span style="color:#94a3b8;font-weight:400;font-size:13px">(incl. drafts)</span>' : ''}</h2>
-    <form method="post" action="/auth/signout" style="margin:0"><button class="btn">Sign out</button></form>
+  <style>
+    .top{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+    .search{flex:1;min-width:220px;max-width:420px;margin:0}
+    details.folder{margin:0 0 14px}
+    details.folder summary{cursor:pointer;font-weight:700;font-size:15px;padding:6px 0;list-style:none;display:flex;align-items:center;gap:8px}
+    details.folder summary::-webkit-details-marker{display:none}
+    details.folder summary:before{content:'▸';color:#94a3b8;transition:transform .15s}
+    details.folder[open] summary:before{transform:rotate(90deg)}
+    .count{font-size:11px;font-weight:600;color:#64748b;background:#e2e8f0;border-radius:999px;padding:1px 8px}
+    .lgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px;margin-top:6px}
+    .lcard{display:flex;gap:12px;align-items:flex-start;background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:12px 14px;text-decoration:none;color:#0f172a;transition:border-color .15s,box-shadow .15s}
+    .lcard:hover{border-color:#0f766e;box-shadow:0 2px 10px rgba(15,118,110,.12)}
+    .lcard{align-items:center;position:relative}
+    .lcard .tile{flex:none;width:52px;height:52px;border-radius:14px;display:grid;place-items:center;overflow:hidden;box-shadow:0 4px 14px rgba(15,23,42,.14)}
+    .lcard .tile img{width:100%;height:100%;object-fit:cover}
+    .lcard .step{position:absolute;top:8px;left:8px;width:20px;height:20px;border-radius:50%;background:#0f172a;color:#fff;font-weight:700;font-size:11px;display:grid;place-items:center;border:2px solid #fff}
+    .lcard .lbody{display:grid;gap:3px;min-width:0}
+    .lcard .desc{margin:0;font-size:12.5px;color:#64748b}
+    .lcard .badge{justify-self:start;margin-top:2px}
+    .none{color:#64748b;font-size:13px}
+    .peek{position:fixed;z-index:20;width:560px;height:350px;border-radius:14px;overflow:hidden;background:#fff;border:1px solid #cbd5e1;box-shadow:0 18px 50px rgba(15,23,42,.28);pointer-events:none;opacity:0;transform:translateY(6px) scale(.98);transition:opacity .18s,transform .18s}
+    .peek.on{opacity:1;transform:none}
+    .peek iframe{width:1120px;height:700px;border:0;transform:scale(.5);transform-origin:0 0;display:none}
+    .peek .wait{position:absolute;inset:0;display:grid;place-items:center;color:#94a3b8;font-size:12px;letter-spacing:.12em;text-transform:uppercase}
+    @media (hover:none),(max-width:900px){.peek{display:none}}
+  </style>
+  <div class="top">
+    <h2 style="margin:0">Your workspace</h2>
+    <input id="q" class="search" type="search" placeholder="Search…" autocomplete="off">
+    ${signOutBar(who(req))}
   </div>
-  ${cards}`
+  ${visible.length ? sections : '<p class="none">Nothing here yet' + (cfg.showDrafts ? '' : ' (drafts are hidden)') + '.</p>'}
+  <p class="none" id="nomatch" hidden>Nothing matches your search.</p>
+  <div class="peek" id="peek"><div class="wait" id="peekWait">Loading preview…</div></div>
+  <script src="/bridge.js"></script>
+  <script>
+    // Hover a Lens for half a second: a live, scaled-down preview of it, with
+    // your own data (the same sandboxed frame and checks as opening it). One
+    // preview loads at a time; a preview once loaded is kept.
+    (function () {
+      var peek = document.getElementById('peek'), wait = document.getElementById('peekWait')
+      var frames = {}, timer = null, current = null
+      function frameFor(name) {
+        if (frames[name]) return frames[name]
+        var f = document.createElement('iframe')
+        f.setAttribute('sandbox', 'allow-scripts')
+        f.setAttribute('tabindex', '-1')
+        f.title = 'Preview'
+        f.onload = function () { if (current === name) { wait.style.display = 'none'; f.style.display = 'block' } f.dataset.loaded = '1' }
+        f.src = '/lens-frame/' + encodeURIComponent(name)
+        window.LensBridge.installLensHost(function () { return f.contentWindow }, {
+          getServer: function () { return ${JSON.stringify(cfg.server).replace(/</g, '\\u003c')} },
+          getToken: function () { return null },
+          getLens: function () { return name },
+          live: false
+        })
+        peek.appendChild(f)
+        frames[name] = f
+        return f
+      }
+      function show(card) {
+        var name = decodeURIComponent(card.getAttribute('href').slice('/lens/'.length))
+        current = name
+        Object.keys(frames).forEach(function (k) { frames[k].style.display = 'none' })
+        var f = frameFor(name)
+        wait.style.display = f.dataset.loaded ? 'none' : 'grid'
+        if (f.dataset.loaded) f.style.display = 'block'
+        var r = card.getBoundingClientRect(), w = 560, h = 350
+        var left = r.right + 12 + w > window.innerWidth ? Math.max(8, r.left - w - 12) : r.right + 12
+        var top = Math.min(Math.max(8, r.top - 40), window.innerHeight - h - 8)
+        peek.style.left = left + 'px'; peek.style.top = top + 'px'
+        peek.classList.add('on')
+      }
+      function hide() { clearTimeout(timer); current = null; peek.classList.remove('on') }
+      Array.prototype.forEach.call(document.querySelectorAll('.lcard'), function (card) {
+        card.addEventListener('mouseenter', function () { clearTimeout(timer); timer = setTimeout(function () { show(card) }, 450) })
+        card.addEventListener('mouseleave', hide)
+      })
+      window.addEventListener('scroll', hide, { passive: true })
+    })()
+  </script>
+  <script>
+    (function () {
+      var q = document.getElementById('q')
+      q.addEventListener('input', function () {
+        var t = q.value.trim().toLowerCase(), any = false
+        Array.prototype.forEach.call(document.querySelectorAll('details.folder'), function (d) {
+          var shown = 0
+          Array.prototype.forEach.call(d.querySelectorAll('.lcard'), function (c) {
+            var hit = !t || c.getAttribute('data-words').indexOf(t) >= 0
+            c.style.display = hit ? '' : 'none'; if (hit) shown++
+          })
+          d.style.display = shown ? '' : 'none'; if (shown) { any = true; if (t) d.open = true }
+        })
+        document.getElementById('nomatch').hidden = any || !t
+      })
+    })()
+  </script>`
             res.send(layout('Home', body))
         } catch (e) {
             res.status(500).send(layout('Home', `<p class="err">Could not load Lenses: ${esc(e.message)}</p>`))
@@ -351,10 +539,10 @@ function createApp({ config = loadConfig(), deps = {} } = {}) {
             const body = `
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
     <div><a href="/" style="margin-right:10px">&larr; Lenses</a><span style="font-weight:600">${esc(doc.name)}</span> ${esc(doc.description || '') ? `<span class="desc" style="margin-left:6px">— ${esc(doc.description)}</span>` : ''}</div>
-    <form method="post" action="/auth/signout" style="margin:0"><button class="btn">Sign out</button></form>
+    ${signOutBar(who(req))}
   </div>
   <div class="card" style="padding:0;overflow:hidden">
-    <iframe id="lensFrame" sandbox="allow-scripts" title="Lens" style="width:100%;height:82vh;border:0;display:block" src="/lens-frame/${encodeURIComponent(doc.name)}"></iframe>
+    <iframe id="lensFrame" sandbox="allow-scripts" title="Lens" style="width:100%;height:calc(100vh - 128px);min-height:480px;border:0;display:block" src="/lens-frame/${encodeURIComponent(doc.name)}"></iframe>
   </div>
   <script src="/bridge.js"></script>
   <script>
@@ -362,12 +550,14 @@ function createApp({ config = loadConfig(), deps = {} } = {}) {
       var frame = document.getElementById('lensFrame')
       window.LensBridge.installLensHost(function () { return frame.contentWindow }, {
         getServer: function () { return ${JSON.stringify(cfg.server)} },
-        getToken: function () { return null }
+        getToken: function () { return null },
+        getLens: function () { return ${JSON.stringify(doc.name).replace(/</g, '\\u003c')} },
+        live: true
       })
     })()
   </script>`
             res.set('Content-Security-Policy', "default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-src 'self'")
-            res.send(layout(doc.name, body))
+            res.send(layout(doc.name, body, { wide: true }))
         } catch (e) {
             res.status(404).send(layout('Lens', `<p class="err">${esc(e.message)}</p>`))
         }
@@ -396,7 +586,9 @@ function createApp({ config = loadConfig(), deps = {} } = {}) {
 
     // The Lens toolkit (window.Lens): one self-contained bundle built into
     // static/lens-kit/ — served from this app, never from the internet.
-    app.use('/lens-kit', express.static(path.join(__dirname, 'static', 'lens-kit'), { maxAge: '1h', fallthrough: false }))
+    // No long caching: browsers re-check (a cheap 304 when unchanged), so a
+    // toolkit update reaches every Lens on its next load.
+    app.use('/lens-kit', express.static(path.join(__dirname, 'static', 'lens-kit'), { maxAge: 0, fallthrough: false }))
 
     // The shared bridge host script, served as a classic <script> (it exposes
     // window.LensBridge when not loaded as a module).
@@ -405,7 +597,7 @@ function createApp({ config = loadConfig(), deps = {} } = {}) {
         res.send(fs.readFileSync(path.join(__dirname, 'shared', 'lens-bridge.js'), 'utf8'))
     })
 
-    // ── Read-only API (server from settings; runs as the signed-in user) ──────
+    // ── API (server from settings; runs as the signed-in user) ────────────────
     app.get('/api/lenses', requireSession, async (req, res) => {
         const lens = await listLenses(cfg.server, { client: req.lens.client })
         const visible = lens.filter(l => l.status === 'published' || (cfg.showDrafts && l.status === 'draft'))
@@ -424,9 +616,94 @@ function createApp({ config = loadConfig(), deps = {} } = {}) {
         catch (e) { res.status(400).json({ error: e.response?.data?.error?.message ?? e.message }) }
     })
 
+    // Write-back: numbers only, into the cubes the SAVED Lens declares, as the
+    // signed-in user (TM1 security decides the rest), every save logged.
+    app.post('/api/lens/write-cells', requireSession, serverGate, async (req, res) => {
+        try {
+            const name = req.body?.lens
+            if (!name || typeof name !== 'string') throw new Error('lens is required')
+            const doc = await readLens(cfg.server, name, { client: req.lens.client })
+            if (!(doc.status === 'published' || (cfg.showDrafts && doc.status === 'draft'))) throw new Error(`Lens "${name}" is not available here`)
+            const result = await writeCells(req.lens.client, { cube: req.body?.cube, cells: req.body?.cells, allowedCubes: lensBridge.declaredWriteCubes(doc.html) })
+            logWrite({ server: cfg.server, app: 'lens', user: req.lens.display, lens: doc.name, cube: req.body.cube, changes: result.changes })
+            res.json({ written: result.written })
+        } catch (e) {
+            res.status(e.conflicts ? 409 : 400).json({ error: e.response?.data?.error?.message ?? e.message, conflicts: e.conflicts })
+        }
+    })
+
+    // Action buttons: run a process the SAVED Lens declares, as the signed-in
+    // user, with parameters checked against the process; every run logged.
+    app.post('/api/lens/run-process', requireSession, serverGate, async (req, res) => {
+        const name = req.body?.lens, process = req.body?.process, params = req.body?.params ?? {}
+        try {
+            if (!name || typeof name !== 'string') throw new Error('lens is required')
+            const doc = await readLens(cfg.server, name, { client: req.lens.client })
+            if (!(doc.status === 'published' || (cfg.showDrafts && doc.status === 'draft'))) throw new Error(`Lens "${name}" is not available here`)
+            const result = await runProcess(req.lens.client, { process, params, allowedProcesses: lensBridge.declaredRunProcesses(doc.html), user: req.lens.display })
+            logRun({ server: cfg.server, app: 'lens', user: req.lens.display, lens: doc.name, process, params, status: result.status, message: result.message })
+            res.json(result)
+        } catch (e) {
+            if (e.status) logRun({ server: cfg.server, app: 'lens', user: req.lens.display, lens: name, process, params, status: e.status, message: e.message })
+            res.status(e.status ? 422 : 400).json({ error: e.response?.data?.error?.message ?? e.message, status: e.status })
+        }
+    })
+
     app.get('/api/lens/meta', requireSession, serverGate, async (req, res) => {
         try { res.json(await getMeta(req.lens.client, req.query?.cube)) }
         catch (e) { res.status(400).json({ error: e.response?.data?.error?.message ?? e.message }) }
+    })
+
+    // ── Working together: live channel + history ──────────────────────────────
+    const hub = deps.liveHub ?? createLiveHub()
+    const readActivity = deps.readLensActivity ?? readLensActivity
+    const visibleLens = async (req, name) => {
+        const doc = await readLens(cfg.server, name, { client: req.lens.client })
+        if (!(doc.status === 'published' || (cfg.showDrafts && doc.status === 'draft'))) throw new Error(`Lens "${name}" is not available here`)
+        return doc
+    }
+    const channelOf = v => String(v ?? '').slice(0, 200)
+
+    // One stream per open Lens: who else is here, and what they do (Server-Sent
+    // Events). The host page relays it into the Lens frame.
+    app.get('/api/live/:name', requireSession, async (req, res) => {
+        try { await visibleLens(req, req.params.name) } catch (e) { return res.status(404).json({ error: e.message }) }
+        res.set({ 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache, no-transform', Connection: 'keep-alive' })
+        res.flushHeaders?.()
+        const me = hub.join(req.params.name, channelOf(req.query.channel), req.lens.display, ev => res.write(`data: ${JSON.stringify(ev)}\n\n`))
+        // A short beat, so a connection that died without saying goodbye is
+        // noticed (and its ghost leaves the room) within seconds.
+        const beat = setInterval(() => { try { if (!res.write(': keep-alive\n\n') && res.destroyed) me.leave() } catch { me.leave() } }, 10_000)
+        res.on('error', () => me.leave())
+        req.on('close', () => { clearInterval(beat); me.leave() })
+    })
+
+    app.post('/api/live/:name', requireSession, (req, res) => {
+        try {
+            const out = hub.publish(req.params.name, channelOf(req.body?.channel), req.lens.display, String(req.body?.conn ?? ''), req.body?.event)
+            res.json({ ok: true, at: out.at })
+        } catch (e) { res.status(400).json({ error: e.message }) }
+    })
+
+    // History: recent saves and runs through this Lens, for one slice the person
+    // can see (match = { dimension: element }, checked as them against the
+    // Lens's own cube before anything is returned).
+    app.get('/api/lens/:name/history', requireSession, async (req, res) => {
+        try {
+            const doc = await visibleLens(req, req.params.name)
+            let match = {}
+            try { match = JSON.parse(String(req.query.match ?? '{}')) } catch { throw new Error('match must be JSON') }
+            if (!match || typeof match !== 'object' || Array.isArray(match)) throw new Error('match must be { dimension: element }')
+            const cube = lensBridge.declaredWriteCubes(doc.html)[0]
+            if (!cube) throw new Error('history is for Lenses that change data (lens-writes)')
+            for (const [dim, el] of Object.entries(match)) {
+                // Fails for a member this person may not see — then nothing is returned.
+                await execMdx(req.lens.client, `SELECT {} ON 0, {[${String(dim).replace(/]/g, ']]')}].[${String(dim).replace(/]/g, ']]')}].[${String(el).replace(/]/g, ']]')}]} ON 1 FROM [${cube.replace(/]/g, ']]')}]`)
+                    .catch(() => { throw new Error(`you can't see ${dim} "${el}"`) })
+            }
+            const skip = String(req.query.skip ?? '').split(',').map(x => x.trim()).filter(Boolean).slice(0, 20)
+            res.json(readActivity({ server: cfg.server, lens: doc.name, match, skip, limit: Math.min(Number(req.query.limit) || 30, 100) }))
+        } catch (e) { res.status(400).json({ error: e.message }) }
     })
 
     app.get('/api/lens/:name', requireSession, async (req, res) => {
@@ -463,4 +740,4 @@ if (require.main === module) {
     start(loadConfig())
 }
 
-module.exports = { createApp, loadConfig, createSessionStore, start }
+module.exports = { createApp, loadConfig, createSessionStore, start, groupLenses, stepOf }

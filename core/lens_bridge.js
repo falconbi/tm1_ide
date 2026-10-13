@@ -201,4 +201,169 @@ function buildStarterLens(meta, cube) {
 </html>`
 }
 
-module.exports = { execMDX, readCell, getMeta, validateLens, buildStarterLens, validateMdx }
+// ── Write-back ────────────────────────────────────────────────────────────────
+// A Lens may change only the cubes it declares in its own HTML:
+//   <meta name="lens-writes" content="Income Statement, Other Cube">
+// The host reads the SAVED Lens (by the name the host opened — never a name
+// from the message), so a Lens can't widen its own rights at runtime.
+const MAX_WRITE_CELLS = 500
+
+function declaredWriteCubes(html) { return metaList(html, 'lens-writes') }
+
+// <meta name="<name>" content="A, B"> → ['A', 'B'] (all such tags, any attribute order)
+function metaList(html, name) {
+    const out = []
+    const named = new RegExp(`\\bname\\s*=\\s*["']${name}["']`, 'i')
+    for (const tag of String(html ?? '').match(/<meta\b[^>]*>/gi) ?? []) {
+        if (!named.test(tag)) continue
+        const m = /\bcontent\s*=\s*["']([^"']*)["']/i.exec(tag)
+        if (m) out.push(...m[1].split(',').map(x => x.trim()).filter(Boolean))
+    }
+    return out
+}
+
+const num = v => (typeof v === 'number' && Number.isFinite(v) ? v : Number(v) || 0)
+
+// TM1's write refusals are internal codes (CubeCellWriteStatus…); say what they
+// mean to the person typing, keeping the code for whoever administers security.
+function plainWriteRefusal(code, cube) {
+    const why = [
+        [/NoWriteAccess|WriteAccess|ObjectSecurity|SecurityNo/i, `You don't have permission to change these cells in ${cube} — ask your TM1 administrator for write access`],
+        [/NoReservation/i, `Someone else is editing these cells, or you haven't started editing — TM1 needs a data reservation to change ${cube}`],
+        [/ElementIsLocked|Locked|Reserved/i, 'Some of these cells are locked or reserved by someone else'],
+        [/RuleApplies|Consolidat/i, 'Some of these cells are calculated by TM1'],
+    ].find(([re]) => re.test(code))
+    return why ? `${why[1]} (TM1: ${code}).` : `TM1 refused the save: ${code}.`
+}
+
+// Write numbers as the signed-in user. Every cell is checked first: full
+// coordinates, a plain number, not calculated (rule or consolidation), and —
+// when the Lens sends what it showed (`expect`) — not changed by someone else
+// since. Any failure refuses the WHOLE save; nothing is half-written. TM1
+// security still decides the rest (a cell the user can't write is refused by
+// TM1 itself).
+async function writeCells(client, { cube, cells, allowedCubes = [] } = {}) {
+    if (!cube || typeof cube !== 'string') throw new Error('cube is required')
+    if (!allowedCubes.some(c => c.toLowerCase() === cube.toLowerCase())) {
+        throw new Error(`This Lens hasn't declared that it changes "${cube}" — add <meta name="lens-writes" content="${cube}"> to it and save it`)
+    }
+    if (!Array.isArray(cells) || !cells.length) throw new Error('nothing to save')
+    if (cells.length > MAX_WRITE_CELLS) throw new Error(`too many cells in one save (${cells.length}; the limit is ${MAX_WRITE_CELLS})`)
+    const cubeMeta = await client.getCube(cube)
+    if (!cubeMeta) throw new Error(`Cube "${cube}" not found (or no access)`)
+    const dims = (cubeMeta.Dimensions ?? []).map(d => d.Name)
+
+    const seen = new Set()
+    const norm = cells.map((c, i) => {
+        const at = `cell ${i + 1}`
+        const coords = c?.coordinates
+        if (!coords || typeof coords !== 'object' || Array.isArray(coords)) throw new Error(`${at}: coordinates must be { dimension: element }`)
+        const missing = dims.filter(d => coords[d] === undefined || coords[d] === null || coords[d] === '')
+        if (missing.length) throw new Error(`${at}: missing ${missing.join(', ')}`)
+        const extra = Object.keys(coords).filter(k => !dims.includes(k))
+        if (extra.length) throw new Error(`${at}: "${extra[0]}" is not a dimension of ${cube}`)
+        if (typeof c.value !== 'number' || !Number.isFinite(c.value)) throw new Error(`${at}: the value must be a number`)
+        if ('expect' in c && c.expect !== null && (typeof c.expect !== 'number' || !Number.isFinite(c.expect))) throw new Error(`${at}: expect must be a number`)
+        const elems = dims.map(d => String(coords[d]))
+        const key = elems.join('\u0001').toLowerCase()
+        if (seen.has(key)) throw new Error(`${at}: the same cell appears twice`)
+        seen.add(key)
+        return { elems, value: c.value, check: 'expect' in c, expect: num(c.expect) }
+    })
+
+    // Read every target cell as the user: its value now, and whether TM1
+    // calculates it.
+    const member = (d, e) => `${escMember(d)}.${escMember(d)}.${escMember(e)}`
+    const tuple = n => '(' + n.elems.map((e, k) => member(dims[k], e)).join(',') + ')'
+    const r = await client.post('ExecuteMDX?$expand=Cells($select=Ordinal,Value,RuleDerived,Consolidated)',
+        { MDX: `SELECT {${norm.map(tuple).join(',')}} ON 0 FROM ${escMember(cube)}` })
+    const cs = r?.data ?? r
+    if (cs?.ID) { try { await client.delete(`Cellsets('${cs.ID}')`) } catch { /* cleanup only */ } }
+    const byOrd = new Map((cs?.Cells ?? []).map(c => [c.Ordinal, c]))
+    const label = n => n.elems.join(' · ')
+
+    const calc = norm.filter((n, i) => byOrd.get(i)?.RuleDerived || byOrd.get(i)?.Consolidated)
+    if (calc.length) {
+        throw new Error(`${calc.length} cell${calc.length > 1 ? 's are' : ' is'} calculated by TM1 and can't be typed into (${calc.slice(0, 3).map(label).join('; ')}${calc.length > 3 ? '; …' : ''}). Nothing was saved.`)
+    }
+    const conflicts = norm.map((n, i) => ({ n, now: num(byOrd.get(i)?.Value) }))
+        .filter(x => x.n.check && Math.abs(x.now - x.n.expect) > 1e-9)
+    if (conflicts.length) {
+        const e = new Error(`${conflicts.length} cell${conflicts.length > 1 ? 's were' : ' was'} changed by someone else since this screen loaded (${conflicts.slice(0, 3).map(x => label(x.n)).join('; ')}${conflicts.length > 3 ? '; …' : ''}). Nothing was saved — reload to see the new numbers.`)
+        e.conflicts = conflicts.map(x => ({ coordinates: Object.fromEntries(dims.map((d, k) => [d, x.n.elems[k]])), now: x.now, expected: x.n.expect }))
+        throw e
+    }
+
+    try {
+        await client.updateCells(cube, norm.map(n => ({ dimElemPairs: dims.map((d, k) => ({ dim: d, element: n.elems[k] })), value: n.value })))
+    } catch (e) {
+        const code = String(e.response?.data?.error?.message ?? e.message)
+        throw new Error(`${plainWriteRefusal(code, cube)} Nothing was saved.`)
+    }
+    return {
+        written: norm.length,
+        changes: norm.map((n, i) => ({ coordinates: Object.fromEntries(dims.map((d, k) => [d, n.elems[k]])), old: num(byOrd.get(i)?.Value), value: n.value })),
+    }
+}
+
+// ── Action buttons: run a TI process ──────────────────────────────────────────
+// A Lens may run only the processes it declares:
+//   <meta name="lens-runs" content="Process A, Process B">
+// read from the SAVED Lens, like lens-writes. Parameters must be ones the
+// process has: text for a String parameter, a number for a Numeric one.
+// A running process is not limited by the caller's cell security, so it must
+// check the caller itself; it leaves its outcome for the caller in the
+// 'Lens Messages' cube (}Clients × Process / Message / Result / Since /
+// Detail), because only admins can read TM1's error logs. Result is a short
+// machine-readable outcome (e.g. free / mine / taken) a Lens can act on; Since
+// is a UTC time (yyyy-mm-ddThh:mm:ssZ) the Lens shows in the viewer's own time
+// zone; Detail is any extra machine-readable fact (e.g. a reservation mode).
+const MSG_CUBE = 'Lens Messages'
+
+function declaredRunProcesses(html) { return metaList(html, 'lens-runs') }
+
+async function readLensMessage(client, user, process) {
+    try {
+        const r = await client.executeMDX(`SELECT {[Lens Message].[Lens Message].Members} ON 0, {[}Clients].[}Clients].${escMember(user)}} ON 1 FROM ${escMember(MSG_CUBE)}`, 10)
+        const names = (r.Axes?.[0]?.Tuples ?? []).map(t => t.Members?.[0]?.Name)
+        const at = name => (names.includes(name) ? r.Cells?.[names.indexOf(name)]?.Value ?? '' : '')
+        // Only a message this process left — never a stale one from another.
+        const empty = { message: '', result: '', since: '', detail: '' }
+        if (String(at('Process')).toLowerCase() !== String(process).toLowerCase()) return empty
+        return { message: String(at('Message') || ''), result: String(at('Result') || ''), since: String(at('Since') || ''), detail: String(at('Detail') || '') }
+    } catch { return { message: '', result: '', since: '', detail: '' } }  // no Lens Messages cube, or the user can't read it
+}
+
+async function runProcess(client, { process, params = {}, allowedProcesses = [], user } = {}) {
+    if (!process || typeof process !== 'string') throw new Error('process is required')
+    if (!allowedProcesses.some(p => p.toLowerCase() === process.toLowerCase())) {
+        throw new Error(`This Lens hasn't declared that it runs "${process}" — add <meta name="lens-runs" content="${process}"> to it and save it`)
+    }
+    if (!params || typeof params !== 'object' || Array.isArray(params)) throw new Error('params must be an object of { parameter: value }')
+    const def = await client.getProcess(process).catch(() => null)
+    if (!def) throw new Error(`Process "${process}" not found, or you are not allowed to run it`)
+    const types = new Map((def.Parameters ?? []).map(p => [p.Name.toLowerCase(), p]))
+    const list = Object.entries(params).map(([name, value]) => {
+        const p = types.get(name.toLowerCase())
+        if (!p) throw new Error(`"${process}" has no parameter "${name}"`)
+        if (p.Type === 'Numeric') {
+            if (typeof value !== 'number' || !Number.isFinite(value)) throw new Error(`${p.Name} must be a number`)
+        } else if (typeof value !== 'string' || value.length > 1000) {
+            throw new Error(`${p.Name} must be text (at most 1000 characters)`)
+        }
+        return { Name: p.Name, Value: String(value) }
+    })
+    const started = Date.now()
+    const r = await client.executeProcess(process, list)
+    const status = r?.ProcessExecuteStatusCode ?? 'Unknown'
+    const seconds = Math.round((Date.now() - started) / 100) / 10
+    const { message, result, since, detail } = user ? await readLensMessage(client, user, process) : { message: '', result: '', since: '', detail: '' }
+    if (status !== 'CompletedSuccessfully') {
+        const e = new Error(message || `"${process}" did not complete (${status}) — your TM1 administrator can see why in its error log`)
+        e.status = status
+        throw e
+    }
+    return { status, seconds, message, result, since, detail }
+}
+
+module.exports = { execMDX, readCell, getMeta, validateLens, buildStarterLens, validateMdx, declaredWriteCubes, writeCells, MAX_WRITE_CELLS, declaredRunProcesses, runProcess }
