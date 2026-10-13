@@ -430,6 +430,11 @@ function createApp({ config = loadConfig(), deps = {} } = {}) {
     .lcard .desc{margin:0;font-size:12.5px;color:#64748b}
     .lcard .badge{justify-self:start;margin-top:2px}
     .none{color:#64748b;font-size:13px}
+    .peek{position:fixed;z-index:20;width:560px;height:350px;border-radius:14px;overflow:hidden;background:#fff;border:1px solid #cbd5e1;box-shadow:0 18px 50px rgba(15,23,42,.28);pointer-events:none;opacity:0;transform:translateY(6px) scale(.98);transition:opacity .18s,transform .18s}
+    .peek.on{opacity:1;transform:none}
+    .peek iframe{width:1120px;height:700px;border:0;transform:scale(.5);transform-origin:0 0;display:none}
+    .peek .wait{position:absolute;inset:0;display:grid;place-items:center;color:#94a3b8;font-size:12px;letter-spacing:.12em;text-transform:uppercase}
+    @media (hover:none),(max-width:900px){.peek{display:none}}
   </style>
   <div class="top">
     <h2 style="margin:0">Your workspace</h2>
@@ -438,6 +443,54 @@ function createApp({ config = loadConfig(), deps = {} } = {}) {
   </div>
   ${visible.length ? sections : '<p class="none">Nothing here yet' + (cfg.showDrafts ? '' : ' (drafts are hidden)') + '.</p>'}
   <p class="none" id="nomatch" hidden>Nothing matches your search.</p>
+  <div class="peek" id="peek"><div class="wait" id="peekWait">Loading preview…</div></div>
+  <script src="/bridge.js"></script>
+  <script>
+    // Hover a Lens for half a second: a live, scaled-down preview of it, with
+    // your own data (the same sandboxed frame and checks as opening it). One
+    // preview loads at a time; a preview once loaded is kept.
+    (function () {
+      var peek = document.getElementById('peek'), wait = document.getElementById('peekWait')
+      var frames = {}, timer = null, current = null
+      function frameFor(name) {
+        if (frames[name]) return frames[name]
+        var f = document.createElement('iframe')
+        f.setAttribute('sandbox', 'allow-scripts')
+        f.setAttribute('tabindex', '-1')
+        f.title = 'Preview'
+        f.onload = function () { if (current === name) { wait.style.display = 'none'; f.style.display = 'block' } f.dataset.loaded = '1' }
+        f.src = '/lens-frame/' + encodeURIComponent(name)
+        window.LensBridge.installLensHost(function () { return f.contentWindow }, {
+          getServer: function () { return ${JSON.stringify(cfg.server).replace(/</g, '\\u003c')} },
+          getToken: function () { return null },
+          getLens: function () { return name },
+          live: false
+        })
+        peek.appendChild(f)
+        frames[name] = f
+        return f
+      }
+      function show(card) {
+        var name = decodeURIComponent(card.getAttribute('href').replace(/^\/lens\//, ''))
+        current = name
+        Object.keys(frames).forEach(function (k) { frames[k].style.display = 'none' })
+        var f = frameFor(name)
+        wait.style.display = f.dataset.loaded ? 'none' : 'grid'
+        if (f.dataset.loaded) f.style.display = 'block'
+        var r = card.getBoundingClientRect(), w = 560, h = 350
+        var left = r.right + 12 + w > window.innerWidth ? Math.max(8, r.left - w - 12) : r.right + 12
+        var top = Math.min(Math.max(8, r.top - 40), window.innerHeight - h - 8)
+        peek.style.left = left + 'px'; peek.style.top = top + 'px'
+        peek.classList.add('on')
+      }
+      function hide() { clearTimeout(timer); current = null; peek.classList.remove('on') }
+      Array.prototype.forEach.call(document.querySelectorAll('.lcard'), function (card) {
+        card.addEventListener('mouseenter', function () { clearTimeout(timer); timer = setTimeout(function () { show(card) }, 450) })
+        card.addEventListener('mouseleave', hide)
+      })
+      window.addEventListener('scroll', hide, { passive: true })
+    })()
+  </script>
   <script>
     (function () {
       var q = document.getElementById('q')
