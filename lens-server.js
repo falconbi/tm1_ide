@@ -136,11 +136,12 @@ const PAGE_CSS = `
   a{color:#0f172a}
 `
 
-function layout(title, body, { narrow = false } = {}) {
+// narrow: sign-in; wide: a Lens page — a dashboard gets the whole browser width.
+function layout(title, body, { narrow = false, wide = false } = {}) {
     return `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${esc(title)} — Lenses</title><style>${PAGE_CSS}</style></head>
 <body><header><span class="brand">Lenses</span><span class="sub">${esc(title)}</span></header>
-<main${narrow ? ' style="max-width:420px"' : ''}>${body}</main></body></html>`
+<main${narrow ? ' style="max-width:420px"' : wide ? ' style="max-width:none;padding:14px 18px"' : ''}>${body}</main></body></html>`
 }
 
 // Who is signed in, next to Sign out — on every page, so nobody wonders which
@@ -389,7 +390,7 @@ function createApp({ config = loadConfig(), deps = {} } = {}) {
     ${signOutBar(who(req))}
   </div>
   <div class="card" style="padding:0;overflow:hidden">
-    <iframe id="lensFrame" sandbox="allow-scripts" title="Lens" style="width:100%;height:82vh;border:0;display:block" src="/lens-frame/${encodeURIComponent(doc.name)}"></iframe>
+    <iframe id="lensFrame" sandbox="allow-scripts" title="Lens" style="width:100%;height:calc(100vh - 128px);min-height:480px;border:0;display:block" src="/lens-frame/${encodeURIComponent(doc.name)}"></iframe>
   </div>
   <script src="/bridge.js"></script>
   <script>
@@ -403,7 +404,7 @@ function createApp({ config = loadConfig(), deps = {} } = {}) {
     })()
   </script>`
             res.set('Content-Security-Policy', "default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-src 'self'")
-            res.send(layout(doc.name, body))
+            res.send(layout(doc.name, body, { wide: true }))
         } catch (e) {
             res.status(404).send(layout('Lens', `<p class="err">${esc(e.message)}</p>`))
         }
