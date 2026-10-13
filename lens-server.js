@@ -26,7 +26,8 @@ const { probeAuthMethod, makeClientWithCredentials } = require('./core/adapter_r
 const lensStore = require('./core/lens_store')
 const lensBridge = require('./core/lens_bridge')
 const sharedBridge = require('./shared/lens-bridge')
-const { logLensWrite, logLensRun } = require('./core/lens_activity_log')
+const { logLensWrite, logLensRun, readLensActivity } = require('./core/lens_activity_log')
+const { createLiveHub } = require('./core/lens_live')
 const { createIpLimiter, createFailureGuard } = require('./core/login-rate-limit')
 
 const CONFIG_PATH = path.join(__dirname, 'config', 'lens-app.json')
@@ -471,7 +472,8 @@ function createApp({ config = loadConfig(), deps = {} } = {}) {
       window.LensBridge.installLensHost(function () { return frame.contentWindow }, {
         getServer: function () { return ${JSON.stringify(cfg.server)} },
         getToken: function () { return null },
-        getLens: function () { return ${JSON.stringify(doc.name).replace(/</g, '\\u003c')} }
+        getLens: function () { return ${JSON.stringify(doc.name).replace(/</g, '\\u003c')} },
+        live: true
       })
     })()
   </script>`
@@ -571,6 +573,55 @@ function createApp({ config = loadConfig(), deps = {} } = {}) {
     app.get('/api/lens/meta', requireSession, serverGate, async (req, res) => {
         try { res.json(await getMeta(req.lens.client, req.query?.cube)) }
         catch (e) { res.status(400).json({ error: e.response?.data?.error?.message ?? e.message }) }
+    })
+
+    // ── Working together: live channel + history ──────────────────────────────
+    const hub = deps.liveHub ?? createLiveHub()
+    const readActivity = deps.readLensActivity ?? readLensActivity
+    const visibleLens = async (req, name) => {
+        const doc = await readLens(cfg.server, name, { client: req.lens.client })
+        if (!(doc.status === 'published' || (cfg.showDrafts && doc.status === 'draft'))) throw new Error(`Lens "${name}" is not available here`)
+        return doc
+    }
+    const channelOf = v => String(v ?? '').slice(0, 200)
+
+    // One stream per open Lens: who else is here, and what they do (Server-Sent
+    // Events). The host page relays it into the Lens frame.
+    app.get('/api/live/:name', requireSession, async (req, res) => {
+        try { await visibleLens(req, req.params.name) } catch (e) { return res.status(404).json({ error: e.message }) }
+        res.set({ 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache, no-transform', Connection: 'keep-alive' })
+        res.flushHeaders?.()
+        const me = hub.join(req.params.name, channelOf(req.query.channel), req.lens.display, ev => res.write(`data: ${JSON.stringify(ev)}\n\n`))
+        const beat = setInterval(() => { try { res.write(': keep-alive\n\n') } catch { /* closed */ } }, 25_000)
+        req.on('close', () => { clearInterval(beat); me.leave() })
+    })
+
+    app.post('/api/live/:name', requireSession, (req, res) => {
+        try {
+            const out = hub.publish(req.params.name, channelOf(req.body?.channel), req.lens.display, String(req.body?.conn ?? ''), req.body?.event)
+            res.json({ ok: true, at: out.at })
+        } catch (e) { res.status(400).json({ error: e.message }) }
+    })
+
+    // History: recent saves and runs through this Lens, for one slice the person
+    // can see (match = { dimension: element }, checked as them against the
+    // Lens's own cube before anything is returned).
+    app.get('/api/lens/:name/history', requireSession, async (req, res) => {
+        try {
+            const doc = await visibleLens(req, req.params.name)
+            let match = {}
+            try { match = JSON.parse(String(req.query.match ?? '{}')) } catch { throw new Error('match must be JSON') }
+            if (!match || typeof match !== 'object' || Array.isArray(match)) throw new Error('match must be { dimension: element }')
+            const cube = lensBridge.declaredWriteCubes(doc.html)[0]
+            if (!cube) throw new Error('history is for Lenses that change data (lens-writes)')
+            for (const [dim, el] of Object.entries(match)) {
+                // Fails for a member this person may not see — then nothing is returned.
+                await execMdx(req.lens.client, `SELECT {} ON 0, {[${String(dim).replace(/]/g, ']]')}].[${String(dim).replace(/]/g, ']]')}].[${String(el).replace(/]/g, ']]')}]} ON 1 FROM [${cube.replace(/]/g, ']]')}]`)
+                    .catch(() => { throw new Error(`you can't see ${dim} "${el}"`) })
+            }
+            const skip = String(req.query.skip ?? '').split(',').map(x => x.trim()).filter(Boolean).slice(0, 20)
+            res.json(readActivity({ server: cfg.server, lens: doc.name, match, skip, limit: Math.min(Number(req.query.limit) || 30, 100) }))
+        } catch (e) { res.status(400).json({ error: e.message }) }
     })
 
     app.get('/api/lens/:name', requireSession, async (req, res) => {

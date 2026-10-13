@@ -147,13 +147,15 @@ function bars(el, { rows: data = [], format: fmt = 'number', cost = false, onCli
 // An `editable` column takes input only where the row allows it: a row from
 // Lens.rows carries _input (false = TM1 calculates that cell), so calculated
 // cells stay read-only. Input cells are tinted; typed values are highlighted
-// until saved. Returns { api, changes(), undo(), saved() }.
-function grid(el, { columns = [], rows: data = [], height, onEdit } = {}) {
+// until saved. Returns { api, changes(), undo(), saved(), mark(), setValue(),
+// unmark() } — mark/setValue show what someone else is doing (working together).
+function grid(el, { columns = [], rows: data = [], height, onEdit, onFocus } = {}) {
   const t = theme.colors, node = host(el)
   node.innerHTML = ''
   node.style.height = height || node.style.height || Math.min(480, 44 + data.length * 36) + 'px'
   const gridTheme = dark() ? themeQuartz.withPart(colorSchemeDark) : themeQuartz
   const orig = new Map()                       // 'rowIndex|field' -> value before typing
+  const remote = new Map()                     // 'rowIndex|field' -> { color, label } — someone else's cursor
   const keyOf = (row, field) => data.indexOf(row) + '|' + field
   const canEdit = (c, row) => !!c.editable && !(row && row._input && row._input[c.field] === false)
   const tint = (hex, a) => hex + Math.round(a * 255).toString(16).padStart(2, '0')
@@ -181,11 +183,22 @@ function grid(el, { columns = [], rows: data = [], height, onEdit } = {}) {
           return String(p.newValue ?? '').trim() === '' ? 0 : (Number.isFinite(v) ? v : p.oldValue)
         }
       }
-      def.cellStyle = p => orig.has(keyOf(p.data, c.field))
-        ? { background: tint(t.amber, 0.22), fontWeight: 600 }
-        : canEdit(c, p.data) ? { background: tint(t.accent, 0.08) } : { color: t.faint }
+      def.cellStyle = p => {
+        const r = remote.get(keyOf(p.data, c.field))
+        const base = orig.has(keyOf(p.data, c.field))
+          ? { background: tint(t.amber, 0.22), fontWeight: 600 }
+          : canEdit(c, p.data) ? { background: tint(t.accent, 0.08) } : { color: t.faint }
+        return r ? Object.assign({}, base, { boxShadow: 'inset 0 0 0 2px ' + r.color, background: r.color + '26', fontWeight: 700 }) : base
+      }
+      def.tooltipValueGetter = p => { const r = remote.get(keyOf(p.data, c.field)); return r ? r.label : null }
       return def
     }),
+    onCellFocused: p => {
+      if (!onFocus || p.rowIndex == null || !p.column) return
+      const node = api && api.getDisplayedRowAtIndex(p.rowIndex)
+      if (node) onFocus(node.data, p.column.getColId ? p.column.getColId() : p.column)
+    },
+    tooltipShowDelay: 0,
     onCellValueChanged: p => {
       const k = keyOf(p.data, p.colDef.field)
       if (!orig.has(k)) orig.set(k, p.oldValue)
@@ -202,6 +215,21 @@ function grid(el, { columns = [], rows: data = [], height, onEdit } = {}) {
     undo() { for (const ch of changes()) ch.row[ch.field] = ch.old; orig.clear(); api.setGridOption('rowData', data); if (onEdit) onEdit([]) },
     // the typed values are now in TM1: stop highlighting them
     saved() { orig.clear(); refresh(); if (onEdit) onEdit([]) },
+    // Working together: outline the cell someone else is on (one per person —
+    // `who` keys it), and show a value they typed (never over my own typing).
+    mark(match, field, who, { color, label } = {}) {
+      for (const [k, v] of remote) if (v.who === who) remote.delete(k)
+      const i = data.findIndex(match)
+      if (i >= 0 && field) remote.set(i + '|' + field, { who, color, label })
+      refresh()
+    },
+    unmark(who) { for (const [k, v] of remote) if (v.who === who) remote.delete(k); refresh() },
+    setValue(match, field, value) {
+      const i = data.findIndex(match)
+      if (i < 0 || orig.has(i + '|' + field)) return
+      data[i][field] = value
+      refresh()
+    },
   }
 }
 
@@ -388,6 +416,53 @@ function editing(el, { process = 'Lens Reserve', target, mode, idleMinutes = 20,
   return api
 }
 
+// ── live (working together, Lens app only) ────────────────────────────────────
+// Who else has this Lens open on the same channel (a row of coloured initials),
+// and a way to send and hear events. The server stamps every event with the
+// real sender: ev.from = { id, user, color }.
+//   const tg = Lens.live('#people', { onEvent: ev => … })
+//   tg.join('store:101|Y2'); tg.send('typing', { account, month, value })
+function live(el, { onEvent } = {}) {
+  const t = theme.colors, node = host(el)
+  let me = null, members = [], channel = null
+  const initials = u => String(u || '?').replace(/[^A-Za-z0-9]+/g, ' ').trim().split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()
+  function paint() {
+    const others = members.filter(m => !me || m.id !== me.id)
+    node.innerHTML = '<div style="display:flex;align-items:center;gap:6px;font-size:12.5px;color:' + t.faint + '">' +
+      members.map(m => '<span title="' + esc(m.user + (me && m.id === me.id ? ' (you)' : '')) + '" style="width:26px;height:26px;border-radius:50%;display:inline-grid;place-items:center;font-size:11px;font-weight:700;color:#fff;background:' + m.color + ';box-shadow:0 0 0 2px ' + t.panel + (me && m.id === me.id ? ',0 0 0 3px ' + m.color : '') + '">' + esc(initials(m.user)) + '</span>').join('') +
+      '<span style="margin-left:4px">' + (!members.length ? 'Connecting…' : others.length ? esc(others.map(m => m.user).join(', ')) + (others.length === 1 ? ' is' : ' are') + ' here too' : 'Only you here') + '</span></div>'
+  }
+  paint()
+  if (window.lensBridge && window.lensBridge.onLive) {
+    window.lensBridge.onLive(ev => {
+      if (ev.type === 'hello') { me = ev.you; members = ev.members || [] }
+      else if (ev.type === 'join') { if (!members.some(m => m.id === ev.member.id)) members.push(ev.member) }
+      else if (ev.type === 'leave') { members = members.filter(m => m.id !== ev.id) }
+      else { if (onEvent) onEvent(ev); return }
+      paint()
+      if (onEvent && (ev.type === 'join' || ev.type === 'leave')) onEvent(ev)
+    })
+  }
+  return {
+    get me() { return me },
+    get members() { return members.slice() },
+    join(ch) {
+      if (ch === channel) return Promise.resolve()
+      channel = ch; me = null; members = []; paint()
+      return window.lensBridge.call('liveJoin', { channel: ch }).catch(() => { node.hidden = true })
+    },
+    send(type, data) { return window.lensBridge.call('liveSend', { event: Object.assign({}, data, { type }) }).catch(() => {}) },
+  }
+}
+
+// ── history (Lens app only) ───────────────────────────────────────────────────
+// Recent saves and runs through this Lens for one slice the person can see,
+// newest first: Lens.history({ organization: '101', Year: 'Y2' }, { limit, skip:
+// ['Lens Reserve'] }) — skip leaves out processes that would only be noise.
+function history(match, { limit = 30, skip = [] } = {}) {
+  return window.lensBridge.call('history', { match: match || {}, limit, skip })
+}
+
 // ── run ───────────────────────────────────────────────────────────────────────
 // Run a TI process as the signed-in user (an action button). params: { pName:
 // 'text' | number } — only parameters the process has. The Lens must declare
@@ -400,7 +475,7 @@ function run(process, params) {
   return window.lensBridge.call('runProcess', { process, params: params || {} })
 }
 
-const Lens = { version: TOOLKIT_VERSION, components: COMPONENTS.slice(), rows, format, localTime, theme, kpis, trend, waterfall, bars, grid, flow, editing, save, run, echarts }
+const Lens = { version: TOOLKIT_VERSION, components: COMPONENTS.slice(), rows, format, localTime, theme, kpis, trend, waterfall, bars, grid, flow, editing, live, history, save, run, echarts }
 const missing = COMPONENTS.filter(n => typeof Lens[n] !== 'function')
 if (missing.length) throw new Error('Lens toolkit is missing: ' + missing.join(', '))
 
