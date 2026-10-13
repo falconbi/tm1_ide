@@ -528,6 +528,67 @@ function history(match, { limit = 30, skip = [] } = {}) {
   return window.lensBridge.call('history', { match: match || {}, limit, skip })
 }
 
+// ── historyPanel ──────────────────────────────────────────────────────────────
+// A History button (with a count of what's new since you last looked) that
+// opens a side panel: search, All / Changes / Actions, newest first, times in
+// the viewer's zone. Feed it Lens.history results with set(list); describe(e)
+// turns an entry into words (default: a plain description).
+//   const hp = Lens.historyPanel('#historyBtn', { describe: e => '…' }); hp.set(list)
+function historyPanel(el, { describe, title = 'History' } = {}) {
+  const t = theme.colors, btnHost = host(el)
+  let list = [], seenTop = null, open = false, filter = 'all'
+  const say = e => describe ? describe(e) : e.kind === 'write'
+    ? 'changed ' + (e.changes || []).length + ' cell' + ((e.changes || []).length === 1 ? '' : 's')
+    : 'ran ' + e.process + (e.status && e.status !== 'CompletedSuccessfully' ? ' — refused' : '')
+  btnHost.innerHTML = '<button type="button" data-h style="font:inherit;font-size:13px;padding:5px 10px;border-radius:7px;cursor:pointer;border:1px solid ' + t.rule + ';background:' + t.panel + ';color:' + t.ink + '">🕘 ' + esc(title) + ' <span data-n style="display:none;margin-left:4px;font-size:11px;font-weight:700;color:#fff;background:' + t.accent + ';border-radius:999px;padding:1px 7px"></span></button>'
+  const panel = document.createElement('div')
+  panel.style.cssText = 'position:fixed;top:0;right:0;height:100%;width:400px;max-width:92vw;background:' + t.panel + ';color:' + t.ink + ';border-left:1px solid ' + t.rule + ';box-shadow:-12px 0 32px rgba(0,0,0,.18);z-index:50;display:none;flex-direction:column;font-size:13px'
+  const chip = (k, l) => '<button type="button" data-f="' + k + '" style="font:inherit;font-size:12px;padding:3px 10px;border-radius:999px;cursor:pointer;border:1px solid ' + t.rule + ';background:transparent;color:' + t.soft + '">' + l + '</button>'
+  panel.innerHTML = '<div style="padding:12px 14px;border-bottom:1px solid ' + t.rule + ';display:grid;gap:8px">' +
+    '<div style="display:flex;align-items:center;gap:8px"><b style="font-size:15px">' + esc(title) + '</b><span data-sub style="color:' + t.faint + ';font-size:12px"></span>' +
+    '<button type="button" data-x title="Close" style="margin-left:auto;font:inherit;font-size:18px;line-height:1;border:0;background:transparent;color:' + t.faint + ';cursor:pointer">×</button></div>' +
+    '<input data-q type="search" placeholder="Search — who, account, month, note…" style="font:inherit;font-size:13px;padding:6px 9px;border:1px solid ' + t.rule + ';border-radius:7px;background:' + t.bg + ';color:' + t.ink + '">' +
+    '<div style="display:flex;gap:6px">' + chip('all', 'All') + chip('write', 'Changes') + chip('run', 'Actions') + '</div></div>' +
+    '<div data-list style="overflow:auto;flex:1;padding:4px 14px 14px"></div>'
+  document.body.appendChild(panel)
+  const q = s => panel.querySelector(s)
+  function paint() {
+    const text = q('[data-q]').value.trim().toLowerCase()
+    panel.querySelectorAll('[data-f]').forEach(b => { const on = b.getAttribute('data-f') === filter; b.style.background = on ? t.accent : 'transparent'; b.style.color = on ? '#fff' : t.soft; b.style.borderColor = on ? t.accent : t.rule })
+    const shown = list.filter(e => (filter === 'all' || e.kind === filter) && (!text || (e.user + ' ' + say(e)).toLowerCase().includes(text)))
+    q('[data-sub]').textContent = shown.length + (shown.length === list.length ? '' : ' of ' + list.length)
+    q('[data-list]').innerHTML = shown.length ? shown.map(e => '<div style="padding:9px 0;border-bottom:1px solid ' + t.rule + '">' +
+      '<div style="display:flex;gap:8px;align-items:baseline"><b>' + esc(e.user) + '</b><span style="margin-left:auto;color:' + t.faint + ';font-size:11.5px;white-space:nowrap">' + esc(localTime(e.at)) + '</span></div>' +
+      '<div style="color:' + t.soft + ';margin-top:2px">' + esc(say(e)) + '</div></div>').join('')
+      : '<p style="color:' + t.faint + '">' + (list.length ? 'Nothing matches.' : 'Nothing yet.') + '</p>'
+  }
+  function badge() {
+    const n = open || seenTop === null ? 0 : list.findIndex(e => e.at === seenTop)
+    const count = n < 0 ? list.length : n
+    const b = btnHost.querySelector('[data-n]')
+    b.style.display = count ? 'inline' : 'none'; b.textContent = count
+  }
+  const show = v => { open = v; panel.style.display = v ? 'flex' : 'none'; if (v) { seenTop = list[0] ? list[0].at : seenTop; paint(); q('[data-q]').focus() } badge() }
+  btnHost.querySelector('[data-h]').onclick = () => show(!open)
+  q('[data-x]').onclick = () => show(false)
+  q('[data-q]').oninput = paint
+  panel.querySelectorAll('[data-f]').forEach(b => { b.onclick = () => { filter = b.getAttribute('data-f'); paint() } })
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && open) show(false) })
+  return {
+    // New entries (newest first). The first set() counts as seen.
+    set(entries) {
+      list = entries || []
+      if (seenTop === null) seenTop = list[0] ? list[0].at : ''
+      if (open) { seenTop = list[0] ? list[0].at : seenTop; paint() }
+      badge()
+    },
+    open() { show(true) },
+    close() { show(false) },
+    // A different slice (e.g. another store): its history starts as seen.
+    reset() { seenTop = null; list = []; badge(); if (open) paint() },
+  }
+}
+
 // ── run ───────────────────────────────────────────────────────────────────────
 // Run a TI process as the signed-in user (an action button). params: { pName:
 // 'text' | number } — only parameters the process has. The Lens must declare
@@ -540,7 +601,7 @@ function run(process, params) {
   return window.lensBridge.call('runProcess', { process, params: params || {} })
 }
 
-const Lens = { version: TOOLKIT_VERSION, components: COMPONENTS.slice(), rows, format, localTime, theme, kpis, trend, waterfall, bars, grid, flow, editing, live, history, legend, save, run, echarts }
+const Lens = { version: TOOLKIT_VERSION, components: COMPONENTS.slice(), rows, format, localTime, theme, kpis, trend, waterfall, bars, grid, flow, editing, live, history, historyPanel, legend, save, run, echarts }
 const missing = COMPONENTS.filter(n => typeof Lens[n] !== 'function')
 if (missing.length) throw new Error('Lens toolkit is missing: ' + missing.join(', '))
 
