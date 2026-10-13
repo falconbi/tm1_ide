@@ -6,8 +6,8 @@
 // AG Grid Community, React Flow + dagre, Alpine.js (MIT). See THIRD_PARTY_LICENSES.
 
 import * as echarts from 'echarts/core'
-import { BarChart, LineChart, ScatterChart, PieChart, HeatmapChart, SankeyChart, TreeChart, GaugeChart } from 'echarts/charts'
-import { GridComponent, TooltipComponent, LegendComponent, DataZoomComponent, MarkLineComponent, VisualMapComponent, TitleComponent } from 'echarts/components'
+import { BarChart, LineChart, ScatterChart, PieChart, HeatmapChart, SankeyChart, TreeChart, GaugeChart, SunburstChart, TreemapChart, RadarChart, FunnelChart } from 'echarts/charts'
+import { GridComponent, TooltipComponent, LegendComponent, DataZoomComponent, MarkLineComponent, VisualMapComponent, TitleComponent, RadarComponent, GraphicComponent, MarkPointComponent } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
 import { createGrid, ModuleRegistry, AllCommunityModule, themeQuartz, colorSchemeDark } from 'ag-grid-community'
 import React from 'react'
@@ -20,7 +20,9 @@ import { rows, format, better, localTime } from './rows.js'
 import { COMPONENTS, TOOLKIT_VERSION } from './components.js'
 
 echarts.use([BarChart, LineChart, ScatterChart, PieChart, HeatmapChart, SankeyChart, TreeChart, GaugeChart,
-  GridComponent, TooltipComponent, LegendComponent, DataZoomComponent, MarkLineComponent, VisualMapComponent, TitleComponent, CanvasRenderer])
+  SunburstChart, TreemapChart, RadarChart, FunnelChart,
+  GridComponent, TooltipComponent, LegendComponent, DataZoomComponent, MarkLineComponent, VisualMapComponent, TitleComponent,
+  RadarComponent, GraphicComponent, MarkPointComponent, CanvasRenderer])
 ModuleRegistry.registerModules([AllCommunityModule])
 
 // ── Theme ──────────────────────────────────────────────────────────────────────
