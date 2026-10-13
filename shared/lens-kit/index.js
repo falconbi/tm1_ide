@@ -318,7 +318,7 @@ function editing(el, { process = 'Lens Reserve', target, mode, idleMinutes = 20,
     '<button data-start hidden style="' + btn(true) + '">Start editing</button>' +
     '<button data-finish hidden style="' + btn(false) + '">Finish editing</button>' +
     '<span data-note style="font-size:12.5px;color:' + t.bad + '"></span></div>' +
-    '<div data-idle hidden style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 12px;margin-top:8px;border-radius:8px;border:1.5px solid ' + t.amber + ';background:' + t.panel + ';color:' + t.ink + '">' +
+    '<div data-idle style="display:none;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 12px;margin-top:8px;border-radius:8px;border:1.5px solid ' + t.amber + ';background:' + t.panel + ';color:' + t.ink + '">' +
     '<b data-q style="font-size:14px">Still editing?</b><span style="font-size:13px">Others can\'t change this while you have it.</span>' +
     '<button data-keep style="' + btn(true) + '">Keep editing</button><button data-done style="' + btn(false) + '">Finish editing</button>' +
     '<span data-count style="font-size:12.5px;color:' + t.faint + ';font-variant-numeric:tabular-nums"></span></div>'
@@ -390,7 +390,8 @@ function editing(el, { process = 'Lens Reserve', target, mode, idleMinutes = 20,
 
   // "Still editing?" — after idleMinutes without typing or clicking, ask; after
   // graceMinutes more, finish automatically (typed numbers stay on screen).
-  const hideIdle = () => { deadline = 0; q('[data-idle]').hidden = true; lastActive = Date.now() }
+  // display, not the hidden attribute: an inline display would override it.
+  const hideIdle = () => { deadline = 0; q('[data-idle]').style.display = 'none'; lastActive = Date.now() }
   ;['keydown', 'mousedown', 'wheel', 'touchstart'].forEach(ev => document.addEventListener(ev, () => { if (!deadline) lastActive = Date.now() }, true))
   q('[data-keep]').onclick = hideIdle
   q('[data-done]').onclick = () => {
@@ -405,7 +406,7 @@ function editing(el, { process = 'Lens Reserve', target, mode, idleMinutes = 20,
     if (!deadline && now - lastActive > idleMinutes * 60000) {
       deadline = now + graceMinutes * 60000
       q('[data-done]').textContent = hasChanges() && save ? 'Save and finish' : 'Finish editing'
-      q('[data-idle]').hidden = false
+      q('[data-idle]').style.display = 'flex'
     }
     if (deadline) {
       const left = Math.max(0, deadline - now)
