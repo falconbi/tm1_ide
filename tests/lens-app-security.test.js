@@ -110,3 +110,32 @@ test('every page says who is signed in, next to Sign out', async () => {
     assert.match(lens, /Signed in as <b[^>]*>admin<\/b>/)
   })
 })
+
+// ── Home page: business processes, ordered steps, friendly titles ────────────
+const { groupLenses, stepOf } = require('../lens-server')
+
+test('home page groups Lenses by folder (no folder last) with numbered steps in order', () => {
+  const g = groupLenses([
+    { name: 'Command-Centre', title: '3 Results', folder: 'Target setting 2027' },
+    { name: 'Target-Input', title: '1 Enter targets', folder: 'Target setting 2027' },
+    { name: 'Approvals', title: '2 Approve targets', folder: 'Target setting 2027' },
+    { name: 'Notes', title: 'Read me first', folder: 'Target setting 2027' },
+    { name: 'Loose', folder: '' },
+    { name: 'PnL', title: 'P&L dashboard', folder: 'Monthly reporting' },
+  ])
+  assert.deepEqual(g.map(x => x.folder), ['Monthly reporting', 'Target setting 2027', ''])
+  assert.deepEqual(g[1].items.map(l => l.name), ['Target-Input', 'Approvals', 'Command-Centre', 'Notes'])
+  assert.deepEqual(stepOf({ title: '1. Enter targets' }), { step: '1', label: 'Enter targets' })
+  assert.deepEqual(stepOf({ name: 'Target-Input' }), { step: '', label: 'Target-Input' })
+})
+
+test('the home page shows titles and folders, never a raw cube or server name', async () => {
+  await withApp(async ({ base, signin }) => {
+    const c = cookieOf(await signin('admin', 'apple'))
+    const home = await (await fetch(`${base}/`, { headers: { cookie: c } })).text()
+    assert.match(home, /Target setting 2027/)
+    assert.match(home, /<span class="step">1<\/span>/)
+    assert.match(home, /<b>Enter targets<\/b>/)
+    assert.ok(!home.includes('Lenses on S1'), 'no server name heading')
+  }, { listLenses: async () => [{ name: 'Target-Input', title: '1 Enter targets', folder: 'Target setting 2027', status: 'published' }] })
+})

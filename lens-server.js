@@ -144,6 +144,33 @@ function layout(title, body, { narrow = false, wide = false } = {}) {
 <main${narrow ? ' style="max-width:420px"' : wide ? ' style="max-width:none;padding:14px 18px"' : ''}>${body}</main></body></html>`
 }
 
+// A Lens's place in its folder: a leading number in its title is the step
+// ("1 Enter targets" → step 1, "Enter targets"); no title → its name.
+function stepOf(l) {
+    const t = String(l.title || l.name || '').trim()
+    const m = /^(\d+)[.)]?\s+(.+)$/.exec(t)
+    return m ? { step: m[1], label: m[2] } : { step: '', label: t }
+}
+
+// Folders A→Z (no folder last, as 'Other'); inside each, numbered steps first
+// in order, then the rest by title.
+function groupLenses(lenses) {
+    const by = new Map()
+    for (const l of lenses) {
+        const f = String(l.folder || '')
+        if (!by.has(f)) by.set(f, [])
+        by.get(f).push(l)
+    }
+    const order = (a, b) => {
+        const sa = stepOf(a), sb = stepOf(b)
+        if (sa.step && sb.step) return Number(sa.step) - Number(sb.step)
+        if (sa.step || sb.step) return sa.step ? -1 : 1
+        return sa.label.localeCompare(sb.label)
+    }
+    return [...by.keys()].sort((a, b) => (a === '') - (b === '') || a.localeCompare(b))
+        .map(folder => ({ folder, items: by.get(folder).sort(order) }))
+}
+
 // Who is signed in, next to Sign out — on every page, so nobody wonders which
 // account they are looking through.
 function signOutBar(display) {
@@ -339,23 +366,68 @@ function createApp({ config = loadConfig(), deps = {} } = {}) {
     app.get('/', requireSessionPage, async (req, res) => {
         try {
             const lens = await listLenses(cfg.server, { client: store.clientFor(parseCookies(req)[COOKIE]) })
-            const visible = lens
-                .filter(l => l.status === 'published' || (cfg.showDrafts && l.status === 'draft'))
-                .sort((a, b) => String(a.name).localeCompare(String(b.name)))
-            const cards = visible.length
-                ? visible.map(l => `
-      <div class="card">
-        <h3><a href="/lens/${encodeURIComponent(l.name)}">${esc(l.name)}</a></h3>
-        ${esc(l.description || '') ? `<p class="desc">${esc(l.description)}</p>` : ''}
-        <p class="meta"><span class="badge ${esc(l.status)}">${esc(l.status)}</span>updated ${esc(String(l.updated ?? '').slice(0, 10))} · v${esc(l.version ?? 1)}</p>
-      </div>`).join('\n')
-                : '<p class="desc">No Lenses yet' + (cfg.showDrafts ? '' : ' (and drafts are hidden — set showDrafts to see them)') + '.</p>'
+            const visible = lens.filter(l => l.status === 'published' || (cfg.showDrafts && l.status === 'draft'))
+            // Grouped by business process (folder), steps in order, in people's
+            // words (title) — no cube or model names on this page.
+            const groups = groupLenses(visible)
+            const card = l => {
+                const { step, label } = stepOf(l)
+                const words = [label, l.description, l.folder].join(' ').toLowerCase()
+                return `
+      <a class="lcard" href="/lens/${encodeURIComponent(l.name)}" data-words="${esc(words)}">
+        ${step ? `<span class="step">${esc(step)}</span>` : ''}
+        <span class="lbody"><b>${esc(label)}</b>${l.description ? `<span class="desc">${esc(l.description)}</span>` : ''}
+        ${l.status === 'draft' ? '<span class="badge draft">draft</span>' : ''}</span>
+      </a>`
+            }
+            const sections = groups.map(g => `
+    <details class="folder" open>
+      <summary>${esc(g.folder ? g.folder.split('/').join(' › ') : 'Other')} <span class="count">${g.items.length}</span></summary>
+      <div class="lgrid">${g.items.map(card).join('')}</div>
+    </details>`).join('\n')
             const body = `
-  <div style="display:flex;justify-content:space-between;align-items:center">
-    <h2 style="margin:0 0 12px">Lenses on ${esc(cfg.server)}${cfg.showDrafts ? ' <span style="color:#94a3b8;font-weight:400;font-size:13px">(incl. drafts)</span>' : ''}</h2>
+  <style>
+    .top{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+    .search{flex:1;min-width:220px;max-width:420px;margin:0}
+    details.folder{margin:0 0 14px}
+    details.folder summary{cursor:pointer;font-weight:700;font-size:15px;padding:6px 0;list-style:none;display:flex;align-items:center;gap:8px}
+    details.folder summary::-webkit-details-marker{display:none}
+    details.folder summary:before{content:'▸';color:#94a3b8;transition:transform .15s}
+    details.folder[open] summary:before{transform:rotate(90deg)}
+    .count{font-size:11px;font-weight:600;color:#64748b;background:#e2e8f0;border-radius:999px;padding:1px 8px}
+    .lgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px;margin-top:6px}
+    .lcard{display:flex;gap:12px;align-items:flex-start;background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:12px 14px;text-decoration:none;color:#0f172a;transition:border-color .15s,box-shadow .15s}
+    .lcard:hover{border-color:#0f766e;box-shadow:0 2px 10px rgba(15,118,110,.12)}
+    .lcard .step{flex:none;width:26px;height:26px;border-radius:50%;background:#0f766e;color:#fff;font-weight:700;font-size:13px;display:grid;place-items:center}
+    .lcard .lbody{display:grid;gap:3px;min-width:0}
+    .lcard .desc{margin:0;font-size:12.5px;color:#64748b}
+    .lcard .badge{justify-self:start;margin-top:2px}
+    .none{color:#64748b;font-size:13px}
+  </style>
+  <div class="top">
+    <h2 style="margin:0">Your workspace</h2>
+    <input id="q" class="search" type="search" placeholder="Search…" autocomplete="off">
     ${signOutBar(who(req))}
   </div>
-  ${cards}`
+  ${visible.length ? sections : '<p class="none">Nothing here yet' + (cfg.showDrafts ? '' : ' (drafts are hidden)') + '.</p>'}
+  <p class="none" id="nomatch" hidden>Nothing matches your search.</p>
+  <script>
+    (function () {
+      var q = document.getElementById('q')
+      q.addEventListener('input', function () {
+        var t = q.value.trim().toLowerCase(), any = false
+        Array.prototype.forEach.call(document.querySelectorAll('details.folder'), function (d) {
+          var shown = 0
+          Array.prototype.forEach.call(d.querySelectorAll('.lcard'), function (c) {
+            var hit = !t || c.getAttribute('data-words').indexOf(t) >= 0
+            c.style.display = hit ? '' : 'none'; if (hit) shown++
+          })
+          d.style.display = shown ? '' : 'none'; if (shown) { any = true; if (t) d.open = true }
+        })
+        document.getElementById('nomatch').hidden = any || !t
+      })
+    })()
+  </script>`
             res.send(layout('Home', body))
         } catch (e) {
             res.status(500).send(layout('Home', `<p class="err">Could not load Lenses: ${esc(e.message)}</p>`))
@@ -535,4 +607,4 @@ if (require.main === module) {
     start(loadConfig())
 }
 
-module.exports = { createApp, loadConfig, createSessionStore, start }
+module.exports = { createApp, loadConfig, createSessionStore, start, groupLenses, stepOf }

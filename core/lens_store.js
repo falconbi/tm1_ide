@@ -23,6 +23,17 @@ function safeName(name) {
 
 const docName = name => `${safeName(name)}.json`
 
+// A Lens's folder on the Lens app home page: 'Finance' or 'Planning/Forecast'
+// ('/' makes a sub-folder). Just a label stored with the Lens — the file stays
+// where it is, so moving a Lens is changing one field. '' = no folder.
+function cleanFolder(folder) {
+    const parts = String(folder ?? '').split('/').map(p => p.trim().replace(/\s+/g, ' ')).filter(Boolean)
+    const f = parts.join('/')
+    if (f.length > 120) throw new Error('Folder name too long (120 characters at most)')
+    if (/[<>"\\]/.test(f)) throw new Error('Folder names can\'t contain < > " or \\')
+    return f
+}
+
 // Details only (no HTML) for every Lens in this server's model, sorted by name.
 async function listLenses(server, { ideToken, client } = {}) {
     const names = (await store.listDocs(server, AREA, { ideToken, client })).filter(n => n.endsWith('.json'))
@@ -45,7 +56,10 @@ async function readLens(server, name, { ideToken, client } = {}) {
 
 // Create or update a Lens. The version counts up on every save; created/createdBy
 // are kept from the first save. Throws if the model can't be written.
-async function saveLens(server, name, html, owner, { publish = false, description, ideToken, client } = {}) {
+// title: what people see in the Lens app ("Enter targets"); the name stays the
+// Lens's id (Target-Input). A leading number in the title ("1 Enter targets")
+// orders the steps of a process folder; '' = show the name.
+async function saveLens(server, name, html, owner, { publish = false, description, folder, title, ideToken, client } = {}) {
     const safe = safeName(name)
     const existing = await store.readDoc(server, AREA, docName(safe), { ideToken, client })
     const now = new Date().toISOString()
@@ -56,6 +70,8 @@ async function saveLens(server, name, html, owner, { publish = false, descriptio
         version:        (Number(existing?.version) || 0) + 1,
         updated:        now,
         description:    description ?? existing?.description ?? '',
+        folder:         folder === undefined || folder === null ? (existing?.folder ?? '') : cleanFolder(folder),
+        title:          title === undefined || title === null ? (existing?.title ?? '') : String(title).trim().slice(0, 120),
         created:        existing?.created ?? now,
         createdBy:      existing?.createdBy ?? owner ?? 'unknown',
         toolkitVersion: TOOLKIT_VERSION,
@@ -70,4 +86,4 @@ async function deleteLens(server, name, { ideToken, client } = {}) {
     await store.deleteDoc(server, AREA, docName(name), { ideToken, client })
 }
 
-module.exports = { safeName, listLenses, readLens, saveLens, deleteLens, TOOLKIT_VERSION }
+module.exports = { safeName, cleanFolder, listLenses, readLens, saveLens, deleteLens, TOOLKIT_VERSION }

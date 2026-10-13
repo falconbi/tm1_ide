@@ -41,7 +41,12 @@ const LOADING_LENS = '<!doctype html><html><body style="font:14px system-ui,sans
 export default function LensEditor({ tab }) {
   const { dark } = useStore()
   const [name, setName] = useState(tab.name ?? '')
+  const [prompt, setPrompt] = useState('')
+  // Stored with the Lens (shown in the Lens app): loaded on open, kept on save.
   const [description, setDescription] = useState('')
+  const [folder, setFolder] = useState('')
+  const [title, setTitle] = useState('')
+  const [folders, setFolders] = useState([])
   const [cube, setCube] = useState(tab.cube ?? '')
   const [cubes, setCubes] = useState([])
   // A saved Lens starts on a plain placeholder (no bridge calls) until it loads —
@@ -62,10 +67,18 @@ export default function LensEditor({ tab }) {
       .then(r => r.json())
       .then(d => setCubes(Array.isArray(d) ? d : []))
       .catch(() => {})
+    // Folders already in use, offered as suggestions.
+    fetch(`/api/lenses?server=${encodeURIComponent(tab.server)}`, { headers: { 'x-ide-token': token() } })
+      .then(r => r.json())
+      .then(d => setFolders(Array.isArray(d) ? [...new Set(d.map(l => l.folder).filter(Boolean))].sort() : []))
+      .catch(() => {})
     if (tab.name) {
       fetch(`/api/lenses/${encodeURIComponent(tab.name)}?server=${encodeURIComponent(tab.server)}&_=${Date.now()}`, { headers: { 'x-ide-token': token() } })
         .then(r => r.json())
-        .then(d => { if (d.html) setHtml(d.html); else if (d.error) setMessage({ kind: 'error', text: `Couldn't load the Lens: ${d.error}` }) })
+        .then(d => {
+          if (d.html) { setHtml(d.html); setDescription(d.meta?.description ?? ''); setFolder(d.meta?.folder ?? ''); setTitle(d.meta?.title ?? '') }
+          else if (d.error) setMessage({ kind: 'error', text: `Couldn't load the Lens: ${d.error}` })
+        })
         .catch(e => setMessage({ kind: 'error', text: `Couldn't load the Lens: ${e.message}` }))
     }
   }, [tab.server, tab.name])
@@ -86,14 +99,14 @@ export default function LensEditor({ tab }) {
   }, [html, dirtyPreview])
 
   const generate = async () => {
-    if (!description.trim()) { setMessage({ kind: 'error', text: 'Describe the lens you want first' }); return }
+    if (!prompt.trim()) { setMessage({ kind: 'error', text: 'Describe the lens you want first' }); return }
     setGenerating(true)
     setMessage(null)
     try {
       const res = await fetch('/api/lenses/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-ide-token': token() },
-        body: JSON.stringify({ server: tab.server, cube: cube || undefined, description }),
+        body: JSON.stringify({ server: tab.server, cube: cube || undefined, description: prompt }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || res.statusText)
@@ -119,7 +132,7 @@ export default function LensEditor({ tab }) {
       const res = await fetch(`/api/lenses/${encodeURIComponent(name.trim())}?server=${encodeURIComponent(tab.server)}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-ide-token': token() },
-        body: JSON.stringify({ html, description, publish, force }),
+        body: JSON.stringify({ html, description, folder, title, publish, force }),
       })
       const data = await res.json()
       if (!res.ok) {
@@ -162,8 +175,8 @@ export default function LensEditor({ tab }) {
         <input
           className="min-w-[220px] flex-1 rounded border border-border bg-background px-2 py-1 text-sm"
           placeholder="Describe the dashboard, e.g. revenue vs budget by region with a variance table"
-          value={description}
-          onChange={e => setDescription(e.target.value)}
+          value={prompt}
+          onChange={e => setPrompt(e.target.value)}
           onKeyDown={e => { if (e.key === 'Enter') generate() }}
         />
         <button
@@ -222,6 +235,33 @@ export default function LensEditor({ tab }) {
             Save anyway
           </button>
         )}
+      </div>
+      <div className="flex flex-wrap items-center gap-2 border-b border-border px-3 py-1.5">
+        <span className="text-xs text-muted-foreground">Title</span>
+        <input
+          className="w-48 rounded border border-border bg-background px-2 py-1 text-sm"
+          placeholder="e.g. 1 Enter targets"
+          value={title}
+          onChange={e => setTitle(e.target.value)}
+          title="What people see in the Lens app — business words, not cube names. A leading number orders the steps in a folder"
+        />
+        <span className="text-xs text-muted-foreground">Folder</span>
+        <input
+          className="w-52 rounded border border-border bg-background px-2 py-1 text-sm"
+          placeholder="e.g. Target setting 2027"
+          list={`lens-folders-${tab.id}`}
+          value={folder}
+          onChange={e => setFolder(e.target.value)}
+          title="The business process this Lens belongs to, as people know it — '/' makes a sub-folder"
+        />
+        <datalist id={`lens-folders-${tab.id}`}>{folders.map(f => <option key={f} value={f} />)}</datalist>
+        <span className="text-xs text-muted-foreground">Description</span>
+        <input
+          className="min-w-[220px] flex-1 rounded border border-border bg-background px-2 py-1 text-sm"
+          placeholder="What this Lens shows — people see this in the Lens app"
+          value={description}
+          onChange={e => setDescription(e.target.value)}
+        />
       </div>
       {message && (
         <div className={cn('px-3 py-1.5 text-xs border-b', message.kind === 'error' ? 'text-red-600 border-red-200 bg-red-50' : 'text-emerald-700 border-emerald-200 bg-emerald-50')}>
