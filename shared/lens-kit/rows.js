@@ -7,7 +7,8 @@
 // Columns are labelled by their member names joined with ' / '. A one-axis
 // result becomes a single row. Missing cells are null. When the result says
 // which cells TM1 calculates (rule or consolidation), each row also carries
-// _input: { [column label]: true when the cell can be typed into }.
+// _input: { [column label]: true when the cell can be typed into }, and _kind:
+// { [column label]: 'input' | 'calc' (a rule) | 'total' (a consolidation) }.
 
 // '[organization].[organization].[100]' → 'organization'
 function dimOf(member, i) {
@@ -26,11 +27,12 @@ export function rows(cellset) {
   const byOrdinal = new Map(cells.map(c => [c.Ordinal, c.Value === undefined ? null : c.Value]))
   const valueAt = ord => (byOrdinal.has(ord) ? byOrdinal.get(ord) : null)
   const flags = cells.some(c => 'RuleDerived' in c || 'Consolidated' in c)
-    ? new Map(cells.map(c => [c.Ordinal, !(c.RuleDerived || c.Consolidated)])) : null
+    ? new Map(cells.map(c => [c.Ordinal, c.Consolidated ? 'total' : c.RuleDerived ? 'calc' : 'input'])) : null
   const addInput = (row, base) => {
     if (!flags) return row
     row._input = {}
-    colLabels.forEach((label, c) => { row._input[label] = flags.get(base + c) === true })
+    row._kind = {}
+    colLabels.forEach((label, c) => { const k = flags.get(base + c) || 'input'; row._kind[label] = k; row._input[label] = k === 'input' })
     return row
   }
 

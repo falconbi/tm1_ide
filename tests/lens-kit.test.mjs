@@ -35,6 +35,7 @@ test('rows: _input marks the cells TM1 does not calculate (only when the result 
   c.Cells[0].RuleDerived = false; c.Cells[0].Consolidated = false
   c.Cells[1].RuleDerived = true; c.Cells[1].Consolidated = false
   assert.deepEqual(rows(c)[0]._input, { Jan: true, Feb: false })
+  assert.deepEqual(rows(c)[0]._kind, { Jan: 'input', Feb: 'calc' })
   assert.equal(rows(cs([['A']], null, [5]))[0]._input, undefined)
 })
 

@@ -28,8 +28,8 @@ ModuleRegistry.registerModules([AllCommunityModule])
 // ── Theme ──────────────────────────────────────────────────────────────────────
 const dark = () => !!(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches)
 const PALETTE = {
-  light: { ink: '#16201f', soft: '#4b5756', faint: '#85908f', rule: '#dfe4e3', panel: '#ffffff', bg: '#f6f7f7', accent: '#0f766e', compare: '#16201f', good: '#1d7a46', bad: '#b4372d', amber: '#a86a12', series: ['#0f766e', '#2b5ea7', '#a86a12', '#7c3aed', '#b4372d', '#475569'] },
-  dark:  { ink: '#e6ecea', soft: '#b2bdbb', faint: '#7d8987', rule: '#26302f', panel: '#161e1d', bg: '#0f1514', accent: '#3fb8aa', compare: '#e6ecea', good: '#4cc27f', bad: '#ef7d70', amber: '#e2a64a', series: ['#3fb8aa', '#7aa7e8', '#e2a64a', '#a78bfa', '#ef7d70', '#94a3b8'] },
+  light: { calcBg: '#eef1f1', totalBg: '#dde3e3', ink: '#16201f', soft: '#4b5756', faint: '#85908f', rule: '#dfe4e3', panel: '#ffffff', bg: '#f6f7f7', accent: '#0f766e', compare: '#16201f', good: '#1d7a46', bad: '#b4372d', amber: '#a86a12', series: ['#0f766e', '#2b5ea7', '#a86a12', '#7c3aed', '#b4372d', '#475569'] },
+  dark:  { calcBg: '#1e2827', totalBg: '#2a3534', ink: '#e6ecea', soft: '#b2bdbb', faint: '#7d8987', rule: '#26302f', panel: '#161e1d', bg: '#0f1514', accent: '#3fb8aa', compare: '#e6ecea', good: '#4cc27f', bad: '#ef7d70', amber: '#e2a64a', series: ['#3fb8aa', '#7aa7e8', '#e2a64a', '#a78bfa', '#ef7d70', '#94a3b8'] },
 }
 const theme = { get colors() { return dark() ? PALETTE.dark : PALETTE.light }, format, better }
 
@@ -143,8 +143,8 @@ function bars(el, { rows: data = [], format: fmt = 'number', cost = false, onCli
 }
 
 // ── grid ──────────────────────────────────────────────────────────────────────
-const PENDING = '#2b7de9'   // saved, not yet handed in — the same blue in both themes
-theme.pending = PENDING   // for a Lens's own legend
+const BLUE = '#2b7de9'   // typed-not-saved fill/border and the saved-not-submitted corner, both themes
+theme.blue = BLUE         // for a Lens's own legend (Lens.legend draws the standard one)
 // columns: [{ field, headerName, type: 'number' | 'text', format, editable }]
 // An `editable` column takes input only where the row allows it: a row from
 // Lens.rows carries _input (false = TM1 calculates that cell), so calculated
@@ -179,22 +179,29 @@ function grid(el, { columns = [], rows: data = [], height, onEdit, onFocus } = {
       const def = c.type === 'number'
         ? { ...c, type: 'rightAligned', valueFormatter: p => format(p.value, c.format || 'number') }
         : { ...c }
-      // Styling on every column, editable or not: a watcher's grid is read-only
-      // but must still show someone else's cursor and unsaved typing.
+      // One scheme for every Lens and every viewer (the editor and anyone
+      // watching see the same): blue fill + blue border = typed, not saved
+      // (mine or someone else's); blue corner = saved, not yet submitted;
+      // grey = calculated by a rule; darker grey = a total; white = input.
+      // Someone else's cursor: a thin outline in their colour.
       // Every key, every time: the grid only ADDS styles on refresh, so a style
-      // left out (e.g. someone's outline that moved on) would stick.
-      const plain = { background: '', fontWeight: '', color: '', boxShadow: 'none', fontStyle: '' }
+      // left out (e.g. an outline that moved on) would stick.
+      const plain = { background: '', backgroundImage: 'none', fontWeight: '', color: '', boxShadow: 'none', fontStyle: '' }
       def.cellStyle = p => {
-        const k = keyOf(p.data, c.field), r = remote.get(k), other = typed.get(k)
-        const base = orig.has(k) ? Object.assign({}, plain, { background: tint(t.amber, 0.22), fontWeight: '600' })
-          : other ? Object.assign({}, plain, { background: other + '2e', fontWeight: '600', fontStyle: 'italic' })
-          : pending.has(k) ? Object.assign({}, plain, { background: tint(PENDING, 0.16) })
-          : !c.editable ? plain
-          : canEdit(c, p.data) ? Object.assign({}, plain, { background: tint(t.accent, 0.08) })
-          : Object.assign({}, plain, { color: t.faint })
-        return r ? Object.assign({}, base, { boxShadow: 'inset 0 0 0 2px ' + r.color, background: r.color + '26', fontWeight: '700' }) : base
+        const k = keyOf(p.data, c.field), r = remote.get(k)
+        const kind = p.data && p.data._kind ? p.data._kind[c.field] : null
+        let st = Object.assign({}, plain)
+        if (kind === 'total') st.background = t.totalBg
+        else if (kind === 'calc') st.background = t.calcBg
+        if (orig.has(k) || typed.has(k)) Object.assign(st, { background: tint(BLUE, 0.16), boxShadow: 'inset 0 0 0 1.5px ' + BLUE, fontWeight: '600' })
+        else if (pending.has(k)) st.backgroundImage = 'linear-gradient(225deg, ' + BLUE + ' 0, ' + BLUE + ' 7px, transparent 7px)'
+        if (r) st.boxShadow = 'inset 0 0 0 2px ' + r.color
+        return st
       }
-      def.tooltipValueGetter = p => { const k = keyOf(p.data, c.field), r = remote.get(k); return r ? r.label : typed.has(k) ? 'Typed by someone else — not saved yet' : pending.get(k) || null }
+      def.tooltipValueGetter = p => {
+        const k = keyOf(p.data, c.field), r = remote.get(k)
+        return r ? r.label : typed.has(k) ? 'Typed by ' + typed.get(k) + ' — not saved yet' : pending.get(k) || null
+      }
       if (!c.editable) return def
       def.editable = p => canEdit(c, p.data)
       if (c.type === 'number') {
@@ -259,16 +266,32 @@ function grid(el, { columns = [], rows: data = [], height, onEdit, onFocus } = {
       })
     },
 
-    // color: show it as someone else's unsaved number (tinted in their colour
-    // until they save — a fresh grid after the save clears it).
-    setValue(match, field, value, color) {
+    // by: show it as someone else's unsaved number (blue, "Typed by <by> — not
+    // saved yet" on hover) until they save — a fresh grid after the save clears it.
+    setValue(match, field, value, by) {
       const i = data.findIndex(match)
       if (i < 0 || orig.has(i + '|' + field)) return
       data[i][field] = value
-      if (color) typed.set(i + '|' + field, color)
+      if (by) typed.set(i + '|' + field, by)
       refresh()
     },
   }
+}
+
+// ── legend ────────────────────────────────────────────────────────────────────
+// The standard key for Lens.grid's colours — the same words everywhere.
+// show: any of 'typed', 'pending', 'calc', 'total' (default: all four).
+function legend(el, { show = ['typed', 'pending', 'calc', 'total'] } = {}) {
+  const t = theme.colors, node = host(el)
+  const sw = style => '<span style="display:inline-block;width:14px;height:14px;border-radius:3px;vertical-align:-2px;margin-right:6px;border:1px solid ' + t.rule + ';' + style + '"></span>'
+  const items = {
+    typed: sw('background:' + BLUE + '29;box-shadow:inset 0 0 0 1.5px ' + BLUE) + 'typed, not saved',
+    pending: sw('background:' + t.panel + ' linear-gradient(225deg,' + BLUE + ' 0,' + BLUE + ' 6px,transparent 6px)') + 'saved, not submitted',
+    calc: sw('background:' + t.calcBg) + 'calculated',
+    total: sw('background:' + t.totalBg) + 'total',
+  }
+  node.innerHTML = '<span style="display:inline-flex;gap:14px;flex-wrap:wrap;font-size:12px;color:' + t.faint + '">' + show.filter(k => items[k]).map(k => '<span>' + items[k] + '</span>').join('') + '</span>'
+  return node
 }
 
 // ── save ──────────────────────────────────────────────────────────────────────
@@ -517,7 +540,7 @@ function run(process, params) {
   return window.lensBridge.call('runProcess', { process, params: params || {} })
 }
 
-const Lens = { version: TOOLKIT_VERSION, components: COMPONENTS.slice(), rows, format, localTime, theme, kpis, trend, waterfall, bars, grid, flow, editing, live, history, save, run, echarts }
+const Lens = { version: TOOLKIT_VERSION, components: COMPONENTS.slice(), rows, format, localTime, theme, kpis, trend, waterfall, bars, grid, flow, editing, live, history, legend, save, run, echarts }
 const missing = COMPONENTS.filter(n => typeof Lens[n] !== 'function')
 if (missing.length) throw new Error('Lens toolkit is missing: ' + missing.join(', '))
 
