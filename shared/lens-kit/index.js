@@ -156,6 +156,7 @@ function grid(el, { columns = [], rows: data = [], height, onEdit, onFocus } = {
   const gridTheme = dark() ? themeQuartz.withPart(colorSchemeDark) : themeQuartz
   const orig = new Map()                       // 'rowIndex|field' -> value before typing
   const remote = new Map()                     // 'rowIndex|field' -> { color, label } — someone else's cursor
+  const typed = new Map()                      // 'rowIndex|field' -> colour — someone else's unsaved value
   const keyOf = (row, field) => data.indexOf(row) + '|' + field
   const canEdit = (c, row) => !!c.editable && !(row && row._input && row._input[c.field] === false)
   const tint = (hex, a) => hex + Math.round(a * 255).toString(16).padStart(2, '0')
@@ -186,14 +187,15 @@ function grid(el, { columns = [], rows: data = [], height, onEdit, onFocus } = {
       // Every key, every time: the grid only ADDS styles on refresh, so a style
       // left out (e.g. someone's outline that moved on) would stick.
       def.cellStyle = p => {
-        const r = remote.get(keyOf(p.data, c.field))
+        const r = remote.get(keyOf(p.data, c.field)), other = typed.get(keyOf(p.data, c.field))
         const base = orig.has(keyOf(p.data, c.field))
-          ? { background: tint(t.amber, 0.22), fontWeight: '600', color: '', boxShadow: 'none' }
-          : canEdit(c, p.data) ? { background: tint(t.accent, 0.08), fontWeight: '', color: '', boxShadow: 'none' }
-          : { background: '', fontWeight: '', color: t.faint, boxShadow: 'none' }
+          ? { background: tint(t.amber, 0.22), fontWeight: '600', color: '', boxShadow: 'none', fontStyle: '' }
+          : other ? { background: other + '2e', fontWeight: '600', color: '', boxShadow: 'none', fontStyle: 'italic' }
+          : canEdit(c, p.data) ? { background: tint(t.accent, 0.08), fontWeight: '', color: '', boxShadow: 'none', fontStyle: '' }
+          : { background: '', fontWeight: '', color: t.faint, boxShadow: 'none', fontStyle: '' }
         return r ? Object.assign({}, base, { boxShadow: 'inset 0 0 0 2px ' + r.color, background: r.color + '26', fontWeight: '700' }) : base
       }
-      def.tooltipValueGetter = p => { const r = remote.get(keyOf(p.data, c.field)); return r ? r.label : null }
+      def.tooltipValueGetter = p => { const r = remote.get(keyOf(p.data, c.field)); return r ? r.label : typed.has(keyOf(p.data, c.field)) ? 'Typed by someone else — not saved yet' : null }
       return def
     }),
     onCellFocused: p => {
@@ -227,10 +229,13 @@ function grid(el, { columns = [], rows: data = [], height, onEdit, onFocus } = {
       refresh()
     },
     unmark(who) { for (const [k, v] of remote) if (v.who === who) remote.delete(k); refresh() },
-    setValue(match, field, value) {
+    // color: show it as someone else's unsaved number (tinted in their colour
+    // until they save — a fresh grid after the save clears it).
+    setValue(match, field, value, color) {
       const i = data.findIndex(match)
       if (i < 0 || orig.has(i + '|' + field)) return
       data[i][field] = value
+      if (color) typed.set(i + '|' + field, color)
       refresh()
     },
   }
@@ -431,9 +436,12 @@ function live(el, { onEvent } = {}) {
   let me = null, members = [], channel = null
   const initials = u => String(u || '?').replace(/[^A-Za-z0-9]+/g, ' ').trim().split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()
   function paint() {
-    const others = members.filter(m => !me || m.id !== me.id)
+    // Each person once, however many tabs or connections they have.
+    const people = []
+    for (const m of members) if (!people.some(p => p.user === m.user)) people.push(me && m.user === me.user ? me : m)
+    const others = people.filter(m => !me || m.user !== me.user)
     node.innerHTML = '<div style="display:flex;align-items:center;gap:6px;font-size:12.5px;color:' + t.faint + '">' +
-      members.map(m => '<span title="' + esc(m.user + (me && m.id === me.id ? ' (you)' : '')) + '" style="width:26px;height:26px;border-radius:50%;display:inline-grid;place-items:center;font-size:11px;font-weight:700;color:#fff;background:' + m.color + ';box-shadow:0 0 0 2px ' + t.panel + (me && m.id === me.id ? ',0 0 0 3px ' + m.color : '') + '">' + esc(initials(m.user)) + '</span>').join('') +
+      people.map(m => '<span title="' + esc(m.user + (me && m.id === me.id ? ' (you)' : '')) + '" style="width:26px;height:26px;border-radius:50%;display:inline-grid;place-items:center;font-size:11px;font-weight:700;color:#fff;background:' + m.color + ';box-shadow:0 0 0 2px ' + t.panel + (me && m.id === me.id ? ',0 0 0 3px ' + m.color : '') + '">' + esc(initials(m.user)) + '</span>').join('') +
       '<span style="margin-left:4px">' + (!members.length ? 'Connecting…' : others.length ? esc(others.map(m => m.user).join(', ')) + (others.length === 1 ? ' is' : ' are') + ' here too' : 'Only you here') + '</span></div>'
   }
   paint()

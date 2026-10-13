@@ -80,7 +80,7 @@
     "call": "const tg = Lens.live(element, { onEvent }) → { me, members, join(channel), send(type, data) }",
     "data": "channel: a string naming what people share, e.g. 'store:101|Y2' — only people on the same channel hear each other. Event types: cursor, typing, saved, reservation, state, present, history. Every event arrives with from = { id, user, color } stamped by the server.",
     "options": { "onEvent": "function (ev) — someone else's event (also join / leave)." },
-    "interactions": "Shows who is here; pair with grid.mark(match, field, ev.from.id, { color, label }) / grid.setValue(...) to show another person's cursor and typing, and re-read data on 'saved'.",
+    "interactions": "Shows who is here; pair with grid.mark(match, field, ev.from.id, { color, label }) for another person's cursor and grid.setValue(match, field, value, ev.from.color) for their unsaved typing (tinted in their colour until they save), and re-read data on 'saved'.",
     "goodFor": ["Watching a colleague enter numbers live", "Meeting mode: everyone follows the presenter", "Live activity feeds"],
     "example": "const tg = Lens.live('#people', { onEvent: ev => { if (ev.type === 'typing') g.setValue(r => r.Account === ev.account, ev.month, ev.value) } }); tg.join('store:' + org + '|' + year)"
   }

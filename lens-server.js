@@ -592,7 +592,10 @@ function createApp({ config = loadConfig(), deps = {} } = {}) {
         res.set({ 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache, no-transform', Connection: 'keep-alive' })
         res.flushHeaders?.()
         const me = hub.join(req.params.name, channelOf(req.query.channel), req.lens.display, ev => res.write(`data: ${JSON.stringify(ev)}\n\n`))
-        const beat = setInterval(() => { try { res.write(': keep-alive\n\n') } catch { /* closed */ } }, 25_000)
+        // A short beat, so a connection that died without saying goodbye is
+        // noticed (and its ghost leaves the room) within seconds.
+        const beat = setInterval(() => { try { if (!res.write(': keep-alive\n\n') && res.destroyed) me.leave() } catch { me.leave() } }, 10_000)
+        res.on('error', () => me.leave())
         req.on('close', () => { clearInterval(beat); me.leave() })
     })
 
