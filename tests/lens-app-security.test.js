@@ -167,3 +167,14 @@ test('the home page draws each Lens as a tile: its icon, or a guessed one, or it
     { name: 'C', title: 'Brand', status: 'published', image: 'data:image/png;base64,iVBORw0KGgo=' },
   ] })
 })
+
+test('every script on the home page parses (a template-literal escape slip once broke the hover preview)', async () => {
+  const vm = require('node:vm')
+  await withApp(async ({ base, signin }) => {
+    const c = cookieOf(await signin('admin', 'apple'))
+    const home = await (await fetch(`${base}/`, { headers: { cookie: c } })).text()
+    const scripts = [...home.matchAll(/<script>([\s\S]*?)<\/script>/g)].map(m => m[1])
+    assert.ok(scripts.length >= 2)
+    for (const code of scripts) assert.doesNotThrow(() => new vm.Script(code), code.slice(0, 80))
+  }, { listLenses: async () => [{ name: 'Command-Centre', title: 'Command centre', status: 'published' }] })
+})

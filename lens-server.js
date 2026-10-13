@@ -471,7 +471,7 @@ function createApp({ config = loadConfig(), deps = {} } = {}) {
         return f
       }
       function show(card) {
-        var name = decodeURIComponent(card.getAttribute('href').replace(/^\/lens\//, ''))
+        var name = decodeURIComponent(card.getAttribute('href').slice('/lens/'.length))
         current = name
         Object.keys(frames).forEach(function (k) { frames[k].style.display = 'none' })
         var f = frameFor(name)
