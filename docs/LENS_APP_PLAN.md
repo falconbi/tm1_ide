@@ -37,6 +37,18 @@ built by AI, every change governed, everything run on TM1 as each person.
 3. **Viewfinder** — the template gallery: proven starting points (dashboard, input form, approvals, process page) that people and the AI build new Lenses from. "New Lens → Blank or From Viewfinder…".
 AI features (commentary, ask-a-question) stay optional — switch-on extras where a site has a key, never required.
 
+**Lens configuration — the idea that ties it together (James, Oct 13: "like a configuration file with the Lens"):**
+a Lens = reusable **code** (often from Viewfinder) + a small **config** saved next to it in the model. The config names the
+bindings and behaviour — title, folder, cube, version, the *unit* that is submitted/locked (stores, cost centres…), rows,
+columns, editing (reservations auto/always/off), workflow, actions. So "budget by cost centre" is the same Input form with a
+different config, not new code; Viewfinder = pick a template + fill its config form; the AI writes a config (reliable)
+rather than code; a business admin can change version/year/approver without touching code; deploys carry a small file.
+**Configurable workflow** is one part of it: a workflow definition (cube, version, unit, steps Open → Submitted → Approved
+with Returned back to Open, who may submit/approve by TM1 group, which states lock, editing mode) read by ONE generic set of
+TI processes and a `Lens.workflow` toolkit piece (status bar, Submit / Approve / Return, history); an IDE form edits it,
+recorded in change sets. Process pages fall out of it — the definition already knows the steps. Today's test workflow
+(Income Statement / Target / organization, group "Lens Finance") is hard-wired and becomes the first definition.
+
 The ownership Lenses on a private consolidation model (network, timeline) are a showcase of visuals PAW can't do, not on the main path.
 Notes: 24Retail's Revenue cube is empty on the lab server — use the Income Statement; account 6699 (allocations)
 holds junk sample values, so screens stop at Net Profit.
