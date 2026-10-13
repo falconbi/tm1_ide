@@ -143,6 +143,12 @@ function layout(title, body, { narrow = false } = {}) {
 <main${narrow ? ' style="max-width:420px"' : ''}>${body}</main></body></html>`
 }
 
+// Who is signed in, next to Sign out — on every page, so nobody wonders which
+// account they are looking through.
+function signOutBar(display) {
+    return `<div style="display:flex;align-items:center;gap:10px"><span style="font-size:13px;color:#475569">Signed in as <b style="color:#0f172a">${esc(display)}</b></span><form method="post" action="/auth/signout" style="margin:0"><button class="btn" style="margin-top:0">Sign out</button></form></div>`
+}
+
 function cookieOptions(cfg) {
     return { httpOnly: true, sameSite: 'strict', secure: !!cfg.https?.enabled, path: '/' }
 }
@@ -219,6 +225,8 @@ function createApp({ config = loadConfig(), deps = {} } = {}) {
         req.lens = { sid, user: sess.user, display: sess.display, client }
         next()
     }
+
+    const who = req => store.get(parseCookies(req)[COOKIE])?.display ?? ''
 
     function requireSessionPage(req, res, next) {
         const sid = parseCookies(req)[COOKIE]
@@ -344,7 +352,7 @@ function createApp({ config = loadConfig(), deps = {} } = {}) {
             const body = `
   <div style="display:flex;justify-content:space-between;align-items:center">
     <h2 style="margin:0 0 12px">Lenses on ${esc(cfg.server)}${cfg.showDrafts ? ' <span style="color:#94a3b8;font-weight:400;font-size:13px">(incl. drafts)</span>' : ''}</h2>
-    <form method="post" action="/auth/signout" style="margin:0"><button class="btn">Sign out</button></form>
+    ${signOutBar(who(req))}
   </div>
   ${cards}`
             res.send(layout('Home', body))
@@ -378,7 +386,7 @@ function createApp({ config = loadConfig(), deps = {} } = {}) {
             const body = `
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
     <div><a href="/" style="margin-right:10px">&larr; Lenses</a><span style="font-weight:600">${esc(doc.name)}</span> ${esc(doc.description || '') ? `<span class="desc" style="margin-left:6px">— ${esc(doc.description)}</span>` : ''}</div>
-    <form method="post" action="/auth/signout" style="margin:0"><button class="btn">Sign out</button></form>
+    ${signOutBar(who(req))}
   </div>
   <div class="card" style="padding:0;overflow:hidden">
     <iframe id="lensFrame" sandbox="allow-scripts" title="Lens" style="width:100%;height:82vh;border:0;display:block" src="/lens-frame/${encodeURIComponent(doc.name)}"></iframe>

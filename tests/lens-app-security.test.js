@@ -100,3 +100,13 @@ test('the sign-in page only says "TM1 rejected the login" when TM1 actually reje
     assert.doesNotMatch(html, /o\.d\.error \|\| o\.d\.rejected === true \?/)
   })
 })
+
+test('every page says who is signed in, next to Sign out', async () => {
+  await withApp(async ({ base, signin }) => {
+    const c = cookieOf(await signin('admin', 'apple'))
+    const home = await (await fetch(`${base}/`, { headers: { cookie: c } })).text()
+    assert.match(home, /Signed in as <b[^>]*>admin<\/b>/)
+    const lens = await (await fetch(`${base}/lens/PnL-Dashboard`, { headers: { cookie: c } })).text()
+    assert.match(lens, /Signed in as <b[^>]*>admin<\/b>/)
+  })
+})
