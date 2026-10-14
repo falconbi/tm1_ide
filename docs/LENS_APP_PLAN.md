@@ -61,6 +61,8 @@ recorded in change sets. Process pages fall out of it — the definition already
 - **Period close stays the admin month-end process** (lock, snapshot as a static version, open the next period) — at most an admin Lens with a "Run month-end" action button. No user-facing freeze.
 - The node workflow built in step 9 (Lens Workflow cube, Submit / Review processes, Approvals Lens) stays on the lab copy as a proven example of TM1-enforced locking, but is **not** the design going forward and won't be generalised.
 - So the Lens config's approval part is small: which lines, the flag, the approver group, what locks, how totals treat pending lines. Next: design the line-item side with a workforce example.
+- **Approval is an optional feature of line-item Lenses, not a platform-wide workflow.** Most planning is dimensional (nobody approves a cell — security + the month-end version lock suffice). Line approval fits *request-style* items: **workforce** (hires, leavers, transfers, promotions — the main case), **capex** (assets / projects), **large opex contracts** (leases, outsourcing, agencies — with **value thresholds**: e.g. under 50k none, to 500k cost-centre manager, above finance), and **manual journals / adjustments** in consolidation. Approver group can be chosen by the line's value.
+- Idea for later: a **modern sample model** (workforce with line approval, the version model, clean conventions) as a better showcase than IBM's 24Retail.
 
 The ownership Lenses on a private consolidation model (network, timeline) are a showcase of visuals PAW can't do, not on the main path.
 Notes: 24Retail's Revenue cube is empty on the lab server — use the Income Statement; account 6699 (allocations)
