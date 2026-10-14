@@ -128,13 +128,16 @@ async function saveLens(server, name, html, owner, { publish = false, descriptio
         color:          color === undefined || color === null ? (existing?.color ?? '') : cleanColor(color),
         image:          image === undefined || image === null ? (existing?.image ?? '') : cleanImage(image),
         config:         config === undefined || config === null ? (existing?.config ?? {}) : cleanConfig(config),
-        template:       template === undefined || template === null ? (existing?.template ?? '') : cleanTemplate(template),
+        template:       template === undefined || template === null ? (existing?.template ?? '') : String(template).trim(),
         created:        existing?.created ?? now,
         createdBy:      existing?.createdBy ?? owner ?? 'unknown',
         toolkitVersion: TOOLKIT_VERSION,
         html,
     }
-    if (doc.template) doc.html = ''   // its code is the template's — never a stale copy
+    if (doc.template) {
+        await require('./viewfinder').findTemplate(server, doc.template, { ideToken, client })   // throws for an unknown template
+        doc.html = ''   // its code is the template's — never a stale copy
+    }
     await store.writeDoc(server, AREA, docName(safe), doc, { ideToken, client })
     const { html: _html, ...details } = doc
     return details
@@ -142,12 +145,6 @@ async function saveLens(server, name, html, owner, { publish = false, descriptio
 
 async function deleteLens(server, name, { ideToken, client } = {}) {
     await store.deleteDoc(server, AREA, docName(name), { ideToken, client })
-}
-
-function cleanTemplate(t) {
-    const name = String(t ?? '').trim()
-    if (name) require('./viewfinder').readTemplate(name)   // throws for an unknown template
-    return name
 }
 
 // May this person open the Lens? config.access lists TM1 groups; empty = everyone.
