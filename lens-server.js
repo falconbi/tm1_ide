@@ -122,10 +122,16 @@ const esc = s => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').re
 // CSS variables (core/lens_prefs.js themeCss) ahead of this.
 const PAGE_CSS = `
   body{font-family:system-ui,sans-serif;margin:0;background:var(--app-bg);color:var(--app-ink)}
-  header{background:var(--app-head);color:var(--app-head-ink);padding:14px 24px;display:flex;align-items:center;gap:12px;border-bottom:1px solid var(--app-rule)}
-  header .brand{font-weight:600;font-size:15px}
-  header .sub{color:var(--app-faint);font-size:12px}
+  header{height:52px;box-sizing:border-box;background:var(--app-panel);color:var(--app-ink);padding:0 16px;display:flex;align-items:center;gap:14px;border-bottom:1px solid var(--app-rule);position:relative;z-index:10}
+  header .hl{display:flex;align-items:center;gap:10px;flex:none}
+  header .hm{flex:1;display:flex;justify-content:center;min-width:0}
+  header .hr{flex:none}
+  header .brand{font-weight:700;font-size:15px;letter-spacing:-.01em}
+  header a.back{color:var(--app-soft);text-decoration:none;font-size:13.5px;padding:6px 10px;border-radius:8px}
+  header a.back:hover{background:var(--app-bg);color:var(--app-ink)}
+  header .search{width:100%;max-width:420px;margin:0;padding:7px 12px;font-size:13.5px}
   main{max-width:920px;margin:0 auto;padding:24px}
+  main.full{max-width:none;padding:0}
   .card{background:var(--app-panel);border:1px solid var(--app-rule);border-radius:12px;padding:16px 18px;margin-bottom:12px}
   .card h3{margin:0 0 4px;font-size:16px}
   .card .desc{color:var(--app-soft);font-size:13px;margin:0 0 8px}
@@ -158,11 +164,14 @@ const PAGE_CSS = `
 `
 
 // narrow: sign-in; wide: a Lens page — a dashboard gets the whole browser width.
-function layout(title, body, { narrow = false, wide = false, theme } = {}) {
+// One slim bar on every page — left (brand or ← Workspace), middle (e.g.
+// search), right (the account button) — and nothing stacked under it: a Lens
+// carries its own title. full: the Lens fills everything below the bar.
+function layout(title, body, { narrow = false, full = false, theme, left, middle = '', right = '' } = {}) {
     return `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${esc(title)} — Lenses</title><style>${themeCss(theme)}${PAGE_CSS}</style></head>
-<body><header><span class="brand">Lenses</span><span class="sub">${esc(title)}</span></header>
-<main${narrow ? ' style="max-width:420px"' : wide ? ' style="max-width:none;padding:14px 18px"' : ''}>${body}</main></body></html>`
+<body><header><div class="hl">${left ?? '<span class="brand">Lenses</span>'}</div><div class="hm">${middle}</div><div class="hr">${right}</div></header>
+<main${narrow ? ' style="max-width:420px"' : full ? ' class="full"' : ''}>${body}</main></body></html>`
 }
 
 // ── Lens tiles: an icon on a colour, or the Lens's own image ──────────────────
@@ -489,7 +498,6 @@ function createApp({ config = loadConfig(), deps = {} } = {}) {
     </details>`).join('\n')
             const body = `
   <style>
-    .top{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px}
     .search{flex:1;min-width:220px;max-width:420px;margin:0}
     details.folder{margin:0 0 14px}
     details.folder summary{cursor:pointer;font-weight:700;font-size:15px;padding:6px 0;list-style:none;display:flex;align-items:center;gap:8px}
@@ -514,11 +522,6 @@ function createApp({ config = loadConfig(), deps = {} } = {}) {
     .peek .wait{position:absolute;inset:0;display:grid;place-items:center;color:var(--app-faint);font-size:12px;letter-spacing:.12em;text-transform:uppercase}
     @media (hover:none),(max-width:900px){.peek{display:none}}
   </style>
-  <div class="top">
-    <h2 style="margin:0">Your workspace</h2>
-    <input id="q" class="search" type="search" placeholder="Search…" autocomplete="off">
-    ${signOutBar(who(req), prefsOf(req))}
-  </div>
   ${visible.length ? sections : '<p class="none">Nothing here yet' + (cfg.showDrafts ? '' : ' (drafts are hidden)') + '.</p>'}
   <p class="none" id="nomatch" hidden>Nothing matches your search.</p>
   <div class="peek" id="peek"><div class="wait" id="peekWait">Loading preview…</div></div>
@@ -586,7 +589,9 @@ function createApp({ config = loadConfig(), deps = {} } = {}) {
       })
     })()
   </script>`
-            res.send(layout('Home', body, { theme: prefsOf(req) }))
+            res.send(layout('Workspace', body, { theme: prefsOf(req),
+                middle: '<input id="q" class="search" type="search" placeholder="Search Lenses…" autocomplete="off">',
+                right: signOutBar(who(req), prefsOf(req)) }))
         } catch (e) {
             res.status(500).send(layout('Home', `<p class="err">Could not load Lenses: ${esc(e.message)}</p>`))
         }
@@ -615,13 +620,7 @@ function createApp({ config = loadConfig(), deps = {} } = {}) {
             // opaque origin under the sandbox — same contract, plus it actually
             // renders in every browser.
             const body = `
-  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
-    <div><a href="/" style="margin-right:10px">&larr; Lenses</a><span style="font-weight:600">${esc(doc.name)}</span> ${esc(doc.description || '') ? `<span class="desc" style="margin-left:6px">— ${esc(doc.description)}</span>` : ''}</div>
-    ${signOutBar(who(req), prefsOf(req))}
-  </div>
-  <div class="card" style="padding:0;overflow:hidden">
-    <iframe id="lensFrame" sandbox="allow-scripts" title="Lens" style="width:100%;height:calc(100vh - 128px);min-height:480px;border:0;display:block" src="/lens-frame/${encodeURIComponent(doc.name)}"></iframe>
-  </div>
+  <iframe id="lensFrame" sandbox="allow-scripts" title="${esc(stepOf(doc).label)}" style="width:100%;height:calc(100vh - 52px);border:0;display:block" src="/lens-frame/${encodeURIComponent(doc.name)}"></iframe>
   <script src="/bridge.js"></script>
   <script>
     (function () {
@@ -635,7 +634,9 @@ function createApp({ config = loadConfig(), deps = {} } = {}) {
     })()
   </script>`
             res.set('Content-Security-Policy', "default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-src 'self'")
-            res.send(layout(doc.name, body, { wide: true, theme: prefsOf(req) }))
+            res.send(layout(stepOf(doc).label, body, { full: true, theme: prefsOf(req),
+                left: '<a class="back" href="/" title="Back to your workspace">&larr; Workspace</a>',
+                right: signOutBar(who(req), prefsOf(req)) }))
         } catch (e) {
             res.status(404).send(layout('Lens', `<p class="err">${esc(e.message)}</p>`))
         }
