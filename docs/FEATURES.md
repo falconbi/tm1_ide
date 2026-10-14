@@ -36,39 +36,46 @@ Everything the IDE does, editor by editor, with screenshots.
 
 ## 🎬 Video series
 
-A 24-short series walking through every main feature — edit, build, govern, then automate with AI. Each short is 30–60 seconds. *(Videos are in production — expected in a few weeks. Links to be added as they're published.)*
+Five playlists, one theme each — build with AI, everyday development, governed change, Lenses, and running it. Each short is 30–60 seconds. *(Videos are in production. Links will be added beside each short as it is published.)*
 
-### A. Core editing
-1. The IDE in 30 seconds
-2. Rules editor — write, validate, format
-3. TI editor — code, run, debug
-4. IntelliSense & snippets
-5. Dimension editor
-6. Subset editor
+### 1. Build with AI
+1. The IDE in 30 seconds — everything in one sweep, ending on "and AI can drive all of it"
+2. An agent builds a model — cube, dimensions, rules and loading processes by conversation, inside a change set (MCP)
+3. Blank server → working model — the same build, start to finish, condensed
+4. No made-up functions — the function catalogue, checked against the live server, keeps AI-written TI and rules honest
+5. Model health check by AI — point an agent at a model and get a report
+6. The built-in assistant — describe a view or subset, it builds it
 
-### B. Model & data
-7. Views — native & MDX
-8. Cell power — write, trace, log, notes
-9. Cube Map
-10. Lineage & impact analysis
-11. Guided MDX builder
-12. Period Builder
-13. Calc Review views
-14. Search, SQL, chores
+### 2. The developer's IDE
+7. Rules editor — write, live checks, format, fold regions, check feeders
+8. Trace any cell — right-click: the rule chain, the transaction log, the notes
+9. TI editor & debugger — breakpoints and watched variables
+10. Smart completion & snippets — cube, dimension and element names as you type
+11. Dimensions & subsets — hierarchies, attributes, MDX subsets
+12. Views — native and MDX, write-back, auto-refresh when rules change
+13. Cube Map — the whole model as a living diagram, including which process writes where
+14. Find anything — search across rules and TI, and the guided MDX builder
+15. Period Builder — a complete period dimension and its processes from a wizard
 
-### C. Deployment & governance
-15. Change sets & save conflicts
-16. Baselines & releases
-17. Diff, drift, risk
-18. Approve, deploy, verify
-19. Deploy history + handoff
-20. Object history, rollback, users
+### 3. Governed change
+16. Change sets — every save recorded, before/after for each object
+17. Tests that live in the model — assertions stored in the TM1 server, run before release
+18. From change set to release — a release commit holding exactly one change set (TM1 Git)
+19. Approve & deploy — approval tied to that exact commit, then deploy and verify
+20. Drift & read-only PROD — spotting hand changes; why PROD refuses edits
+21. History & rollback — deploy history, object history, putting things back
 
-### D. AI & MCP
-21. AI assistant (built-in) — describe a view/subset, it generates it
-22. MCP — connect an external LLM (e.g. Claude Code) and it builds
-23. Assertions & conventions
-24. Blank server → deployed model
+### 4. Lenses
+22. Command Centre — a live executive dashboard on TM1; click a region and everything follows
+23. Working together — two screens: watch someone type, see saves flash, the History panel
+24. Meeting mode — present, and everyone follows, each within their own security
+25. Requests with line approval — capex as cards; finance approves; TM1 locks the line
+26. Viewfinder — forms as model objects: change a board and every screen built from it improves
+
+### 5. Running it
+27. Sign-in per server, and users — creating users and groups the right way
+28. Security without Architect — cube, element, cell and process security from the IDE
+29. Server admin — sessions, jobs, configuration, maintenance mode
 
 ---
 
@@ -91,7 +98,7 @@ A 24-short series walking through every main feature — edit, build, govern, th
 | **Cube Map** | Interactive dependency graph of the whole model — auto-laid-out (dagre) nodes for every cube, with edges for rule calc references, feeders, and TI process writes. Click a cube to highlight its full transitive dependency chain (upstream + downstream) with a count; layer toggles for Rules/Feeders/Groups/TI; auto-clusters related cubes into groups; shows the TI **writer** for a cube and, one hop further, what **calls** that writer — so a generic reusable process (e.g. a Bedrock copy utility) is correctly attributed wherever it's invoked. Open the cube, its rules, or the process straight from the node. Minimap + legend included |
 | **Deploy Panel** | 5-step wizard: Diff → Package → Risk (drift check + BLOCKER/WARNING/INFO) → Approve → Deploy |
 | **Deploy History** | Permanent archive of every deployment — approval record, manifest, results, and pre/post target snapshots with inline diff viewer |
-| **MCP server (external LLM)** | A standard Model Context Protocol server (`tools/tm1mcp`, ~60 operations) that **external LLM agents connect to** — Claude Code or any MCP-compatible client — to build dimensions, cubes, rules and processes by conversation, change-set gated. See [`docs/MCP_SERVER.md`](MCP_SERVER.md) |
+| **MCP server (external LLM)** | A standard Model Context Protocol server (`tools/tm1mcp`, ~65 operations) that **external LLM agents connect to** — Claude Code or any MCP-compatible client — to build dimensions, cubes, rules and processes by conversation, change-set gated. See [`docs/MCP_SERVER.md`](MCP_SERVER.md) |
 | **AI assistant (built-in)** | The IDE's inline helper generates views and subsets from a description (Anthropic API key) |
 
 > ⚠️ **MCP is still early and needs more real-world testing** before treating it as production-hardened. It's also a genuinely different trust boundary from the rest of the IDE: pointing it at an external/third-party LLM means that LLM gets tool access to write to your TM1 model (dimensions, cubes, rules, processes) inside whatever change set is active. Review what an agent proposes before approving/deploying it, keep MCP-driven work inside change sets (never Release mode) so it's diffed like anything else, and don't point it at a server you wouldn't want an unreviewed process run against.
