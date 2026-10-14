@@ -53,6 +53,7 @@ ${BRIDGE_CONTRACT}`,
             name:        z.string().describe('Lens name — letters, digits, - or _'),
             html:        z.string().describe('Complete HTML document for the lens (see contract)'),
             description: z.string().optional().describe('What the lens shows, in words'),
+            config:      z.record(z.any()).optional().describe("The Lens's settings, read in the Lens with Lens.config(): bindings (cube, version, rows…) and behaviour; access: [TM1 groups] limits who can open it in the Lens app; theme: 'fixed'. Omit to keep the current config"),
             icon:        z.string().optional().describe('Home-page icon, one of: ' + require('../../../core/lens_store').ICON_NAMES.join(', ')),
             color:       z.string().optional().describe("Home-page tile colour, '#rrggbb'"),
             title:       z.string().optional().describe("What people see in the Lens app, in business words (e.g. '1 Enter targets'); a leading number orders steps in a folder. Omit to keep the current one"),
@@ -60,14 +61,14 @@ ${BRIDGE_CONTRACT}`,
             publish:     z.boolean().optional().describe('Set status to published (default draft)'),
             force:       z.boolean().optional().describe('Save despite validation failures'),
         },
-        async ({ name, html, description, folder, title, icon, color, publish, force }) => {
+        async ({ name, html, description, folder, title, icon, color, config, publish, force }) => {
             requireChangeSet()
             const client = (require('../../../core/adapter_registry').makeClient)(SERVER, null)
             const errors = await lensBridge.validateLens(client, html)
             if (errors.length && !force) {
                 return ok({ blocked: true, reason: `Lens validation failed (${errors.length}) — fix these and retry, or pass force:true:`, errors })
             }
-            const saved = await lensStore.saveLens(SERVER, name, html, AGENT_USER, { publish: !!publish, description, folder, title, icon, color })
+            const saved = await lensStore.saveLens(SERVER, name, html, AGENT_USER, { publish: !!publish, description, folder, title, icon, color, config })
             cl.writeLog({
                 server: SERVER, action: publish ? 'LENS_PUBLISHED' : 'LENS_SAVED',
                 objectType: 'lens', objectName: saved.name,

@@ -178,3 +178,55 @@ test('every script on the home page parses (a template-literal escape slip once 
     for (const code of scripts) assert.doesNotThrow(() => new vm.Script(code), code.slice(0, 80))
   }, { listLenses: async () => [{ name: 'Command-Centre', title: 'Command centre', status: 'published' }] })
 })
+
+// ── Lens access: config.access (TM1 groups) is enforced on every route ───────
+test('a Lens limited to Finance is invisible and refused for others, open for Finance and ADMIN', async () => {
+  const lenses = {
+    Approvals: { name: 'Approvals', status: 'published', toolkitVersion: 1, html: '<meta name="lens-writes" content="Plan"><meta name="lens-runs" content="P"><p>approve</p>', config: { access: ['Finance'], cube: 'Plan' } },
+    Open: { name: 'Open', status: 'published', toolkitVersion: 1, html: '<p>open</p>', config: {} },
+  }
+  const groupsOf = { east_mgr: ['Lens East'], finance_mgr: ['finance'], boss: ['ADMIN'] }
+  let wrote = 0
+  const deps = {
+    probeAuthMethod: async () => ({ method: 'native' }),
+    makeClientWithCredentials(server, creds) { return { _who: creds.username, _adapter: { closeSession() {} }, async get() { return { Name: creds.username } } } },
+    groupsOf: async client => groupsOf[client._who] ?? [],
+    listLenses: async () => Object.values(lenses).map(({ html, ...m }) => m),
+    readLens: async (s, name) => { if (!lenses[name]) throw new Error('not found'); return lenses[name] },
+    writeCells: async () => { wrote++; return { written: 1, changes: [] } },
+    logLensWrite: () => {},
+  }
+  const { createApp } = require('../lens-server')
+  const { app, close } = createApp({ config: { server: 'S1', port: 0, showDrafts: true, endSessionProcesses: [] }, deps })
+  const srv = await new Promise(r => { const s = app.listen(0, () => r(s)) })
+  const base = `http://127.0.0.1:${srv.address().port}`
+  const as = async user => {
+    const si = await fetch(`${base}/auth/signin`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: user, password: 'pw' }) })
+    const cookie = (si.headers.get('set-cookie') || '').split(';')[0]
+    const get = p => fetch(base + p, { headers: { cookie } })
+    return {
+      home: async () => (await get('/')).text(),
+      list: async () => (await (await get('/api/lenses')).json()).map(l => l.name),
+      page: async () => (await get('/lens/Approvals')).text(),
+      frame: async () => { const r = await get('/lens-frame/Approvals'); return { status: r.status, text: await r.text() } },
+      api: async () => (await get('/api/lens/Approvals')).status,
+      write: async () => (await fetch(`${base}/api/lens/write-cells`, { method: 'POST', headers: { 'Content-Type': 'application/json', cookie }, body: JSON.stringify({ lens: 'Approvals', cube: 'Plan', cells: [] }) })).status,
+    }
+  }
+  try {
+    const east = await as('east_mgr')
+    assert.deepEqual(await east.list(), ['Open'])
+    assert.ok(!(await east.home()).includes('/lens/Approvals'), 'not on the home page')
+    assert.match(await east.page(), /not available to you/)
+    assert.equal((await east.frame()).status, 404)
+    assert.equal(await east.api(), 404)
+    assert.equal(await east.write(), 400); assert.equal(wrote, 0, 'no write through a Lens you may not open')
+
+    const fin = await as('finance_mgr')
+    assert.deepEqual((await fin.list()).sort(), ['Approvals', 'Open'], 'group names match whatever their case')
+    const fr = await fin.frame()
+    assert.equal(fr.status, 200)
+    assert.match(fr.text, /window\.__lensConfig = \{"access":\["Finance"\],"cube":"Plan"\}/, 'the config reaches the Lens')
+    assert.equal(await (await as('boss')).api(), 200, 'ADMIN may open anything')
+  } finally { srv.close(); close() }
+})

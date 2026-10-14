@@ -1,7 +1,7 @@
-import { useState, useRef, useCallback, useEffect } from 'react'
+import { useState, useRef, useCallback, useEffect, useMemo } from 'react'
 import MonacoEditor from '@monaco-editor/react'
 import { useStore } from '@/store'
-import { Sparkles, Save, RefreshCw, Loader2, Eye, Pencil } from 'lucide-react'
+import { Sparkles, Save, RefreshCw, Loader2, Eye, Pencil, SlidersHorizontal } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { lensSrcDoc, installLensHost } from '@shared/lens-bridge'
 import LENS_ICONS from '@shared/lens-icons.json'
@@ -122,6 +122,22 @@ export default function LensEditor({ tab }) {
   const [folder, setFolder] = useState('')
   const [title, setTitle] = useState('')
   const [look, setLook] = useState({ icon: '', color: '', image: '' })
+  // The Lens's config (Config tab): JSON the Lens reads with Lens.config(). The
+  // preview always runs with the last config that parsed.
+  const [configText, setConfigText] = useState('{\n}\n')
+  const [goodConfig, setGoodConfig] = useState({})
+  const parseConfig = text => {
+    try {
+      const c = JSON.parse(text || '{}')
+      return c && typeof c === 'object' && !Array.isArray(c) ? { config: c } : { error: 'The config must be a JSON object { … }' }
+    } catch (e) { return { error: e.message } }
+  }
+  const configError = useMemo(() => parseConfig(configText).error ?? '', [configText])
+  const editConfig = text => {
+    setConfigText(text)
+    const p = parseConfig(text)
+    if (p.config) setGoodConfig(p.config)
+  }
   const [folders, setFolders] = useState([])
   const [cube, setCube] = useState(tab.cube ?? '')
   const [cubes, setCubes] = useState([])
@@ -152,7 +168,7 @@ export default function LensEditor({ tab }) {
       fetch(`/api/lenses/${encodeURIComponent(tab.name)}?server=${encodeURIComponent(tab.server)}&_=${Date.now()}`, { headers: { 'x-ide-token': token() } })
         .then(r => r.json())
         .then(d => {
-          if (d.html) { setHtml(d.html); setDescription(d.meta?.description ?? ''); setFolder(d.meta?.folder ?? ''); setTitle(d.meta?.title ?? ''); setLook({ icon: d.meta?.icon ?? '', color: d.meta?.color ?? '', image: d.meta?.image ?? '' }) }
+          if (d.html) { setHtml(d.html); setDescription(d.meta?.description ?? ''); setFolder(d.meta?.folder ?? ''); setTitle(d.meta?.title ?? ''); setLook({ icon: d.meta?.icon ?? '', color: d.meta?.color ?? '', image: d.meta?.image ?? '' }); setConfigText(JSON.stringify(d.meta?.config ?? {}, null, 2) + '\n'); setGoodConfig(d.meta?.config ?? {}) }
           else if (d.error) setMessage({ kind: 'error', text: `Couldn't load the Lens: ${d.error}` })
         })
         .catch(e => setMessage({ kind: 'error', text: `Couldn't load the Lens: ${e.message}` }))
@@ -201,6 +217,7 @@ export default function LensEditor({ tab }) {
 
   const save = async (publish = false, force = false) => {
     if (!name.trim()) { setMessage({ kind: 'error', text: 'Give the lens a name' }); return }
+    if (configError) { setMode('config'); setMessage({ kind: 'error', text: `Fix the config first: ${configError}` }); return }
     setSaving(true)
     setMessage(null)
     setValidation([])
@@ -208,7 +225,7 @@ export default function LensEditor({ tab }) {
       const res = await fetch(`/api/lenses/${encodeURIComponent(name.trim())}?server=${encodeURIComponent(tab.server)}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-ide-token': token() },
-        body: JSON.stringify({ html, description, folder, title, icon: look.icon, color: look.color, image: look.image, publish, force }),
+        body: JSON.stringify({ html, description, folder, title, icon: look.icon, color: look.color, image: look.image, config: goodConfig, publish, force }),
       })
       const data = await res.json()
       if (!res.ok) {
@@ -270,6 +287,13 @@ export default function LensEditor({ tab }) {
             title="Edit HTML"
           >
             <Pencil className="h-3.5 w-3.5" /> Code
+          </button>
+          <button
+            onClick={() => setMode('config')}
+            className={cn('inline-flex items-center gap-1 px-2.5 py-1.5 text-sm', mode === 'config' && 'bg-primary text-primary-foreground')}
+            title="The Lens's settings (Lens.config()) — with the preview beside it"
+          >
+            <SlidersHorizontal className="h-3.5 w-3.5" /> Config
           </button>
           <button
             onClick={() => setMode('preview')}
@@ -352,7 +376,21 @@ export default function LensEditor({ tab }) {
         </div>
       )}
       <div className="flex-1 min-h-0 flex">
-        <div className={cn('flex-1 min-h-0', mode === 'preview' && 'hidden')}>
+        <div className={cn('flex-1 min-h-0 flex flex-col', mode !== 'config' && 'hidden')}>
+          <div className={cn('px-3 py-1 text-xs border-b', configError ? 'text-red-600 bg-red-50 border-red-200' : 'text-muted-foreground border-border')}>
+            {configError ? `Not valid yet: ${configError} — the preview keeps the last good config` : 'Settings the Lens reads with Lens.config() — e.g. "cube", "version", rows. "access": ["Finance"] limits who can open it in the Lens app; "theme": "fixed" keeps its own look.'}
+          </div>
+          <div className="flex-1 min-h-0">
+            <MonacoEditor
+              language="json"
+              theme={dark ? 'vs-dark' : 'vs'}
+              value={configText}
+              onChange={v => { editConfig(v ?? ''); setDirtyPreview(true) }}
+              options={{ fixedOverflowWidgets: true, minimap: { enabled: false }, fontSize: 13, automaticLayout: true, tabSize: 2 }}
+            />
+          </div>
+        </div>
+        <div className={cn('flex-1 min-h-0', mode !== 'design' && 'hidden')}>
           <MonacoEditor
             language="html"
             theme={dark ? 'vs-dark' : 'vs'}
@@ -361,13 +399,13 @@ export default function LensEditor({ tab }) {
             options={{ fixedOverflowWidgets: true, minimap: { enabled: false }, fontSize: 13, wordWrap: 'on', automaticLayout: true }}
           />
         </div>
-        <div className={cn('flex-1 min-h-0', mode === 'design' && 'hidden')}>
+        <div className={cn('flex-1 min-h-0', mode === 'design' && 'hidden', mode === 'config' && 'border-l border-border')}>
           <iframe
             key={previewKey}
             ref={iframeRef}
             sandbox="allow-scripts"
             title="Lens preview"
-            srcDoc={lensSrcDoc(html)}
+            srcDoc={lensSrcDoc(html, { config: goodConfig })}
             className="w-full h-full bg-white"
           />
         </div>

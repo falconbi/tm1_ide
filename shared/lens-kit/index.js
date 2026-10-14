@@ -589,6 +589,17 @@ function historyPanel(el, { describe, title = 'History' } = {}) {
   }
 }
 
+// ── config ────────────────────────────────────────────────────────────────────
+// The Lens's settings (its config, edited in the IDE's Config tab) — bindings
+// and behaviour, so the same code can serve different cubes, versions, rows.
+//   const cfg = Lens.config()            // { cube: 'Income Statement', … }
+//   const cube = Lens.config('cube', 'Income Statement')   // one key, with a default
+function config(key, fallback) {
+  const all = (typeof window !== 'undefined' && window.__lensConfig) || {}
+  if (key === undefined) return JSON.parse(JSON.stringify(all))
+  return all[key] === undefined ? fallback : JSON.parse(JSON.stringify(all[key]))
+}
+
 // ── run ───────────────────────────────────────────────────────────────────────
 // Run a TI process as the signed-in user (an action button). params: { pName:
 // 'text' | number } — only parameters the process has. The Lens must declare
@@ -601,7 +612,7 @@ function run(process, params) {
   return window.lensBridge.call('runProcess', { process, params: params || {} })
 }
 
-const Lens = { version: TOOLKIT_VERSION, components: COMPONENTS.slice(), rows, format, localTime, theme, kpis, trend, waterfall, bars, grid, flow, editing, live, history, historyPanel, legend, save, run, echarts }
+const Lens = { version: TOOLKIT_VERSION, components: COMPONENTS.slice(), rows, format, localTime, theme, kpis, trend, waterfall, bars, grid, flow, editing, live, history, historyPanel, legend, config, save, run, echarts }
 const missing = COMPONENTS.filter(n => typeof Lens[n] !== 'function')
 if (missing.length) throw new Error('Lens toolkit is missing: ' + missing.join(', '))
 

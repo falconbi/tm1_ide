@@ -81,7 +81,28 @@ function cleanImage(image) {
     return v
 }
 
-async function saveLens(server, name, html, owner, { publish = false, description, folder, title, icon, color, image, ideToken, client } = {}) {
+// config: the Lens's settings — its bindings and behaviour, read by its code
+// through Lens.config(). Free-form for the Lens, except the keys the platform
+// itself acts on: access (TM1 groups allowed to open it; empty = everyone) and
+// theme ('fixed' keeps the Lens's own look). A plain JSON object, at most 64 KB.
+const CONFIG_THEMES = ['', 'fixed']
+function cleanConfig(config) {
+    if (config === '' ) return {}
+    if (!config || typeof config !== 'object' || Array.isArray(config)) throw new Error('The config must be a JSON object, e.g. { "access": ["Finance"] }')
+    const text = JSON.stringify(config)
+    if (text.length > 64 * 1024) throw new Error('The config is too large (64 KB at most)')
+    const out = JSON.parse(text)
+    if (out.access !== undefined) {
+        if (!Array.isArray(out.access) || out.access.some(g => typeof g !== 'string' || !g.trim() || g.length > 100) || out.access.length > 50) {
+            throw new Error('config.access must be a list of TM1 group names, e.g. ["Finance", "HR Approvers"]')
+        }
+        out.access = [...new Set(out.access.map(g => g.trim()))]
+    }
+    if (out.theme !== undefined && !CONFIG_THEMES.includes(out.theme)) throw new Error('config.theme can only be "fixed" (keep the Lens\'s own look)')
+    return out
+}
+
+async function saveLens(server, name, html, owner, { publish = false, description, folder, title, icon, color, image, config, ideToken, client } = {}) {
     const safe = safeName(name)
     const existing = await store.readDoc(server, AREA, docName(safe), { ideToken, client })
     const now = new Date().toISOString()
@@ -97,6 +118,7 @@ async function saveLens(server, name, html, owner, { publish = false, descriptio
         icon:           icon === undefined || icon === null ? (existing?.icon ?? '') : cleanIcon(icon),
         color:          color === undefined || color === null ? (existing?.color ?? '') : cleanColor(color),
         image:          image === undefined || image === null ? (existing?.image ?? '') : cleanImage(image),
+        config:         config === undefined || config === null ? (existing?.config ?? {}) : cleanConfig(config),
         created:        existing?.created ?? now,
         createdBy:      existing?.createdBy ?? owner ?? 'unknown',
         toolkitVersion: TOOLKIT_VERSION,
@@ -111,4 +133,13 @@ async function deleteLens(server, name, { ideToken, client } = {}) {
     await store.deleteDoc(server, AREA, docName(name), { ideToken, client })
 }
 
-module.exports = { safeName, cleanFolder, cleanIcon, cleanColor, cleanImage, ICON_NAMES, listLenses, readLens, saveLens, deleteLens, TOOLKIT_VERSION }
+// May this person open the Lens? config.access lists TM1 groups; empty = everyone.
+// ADMIN always may. groups: the person's TM1 group names.
+function canOpenLens(doc, groups = []) {
+    const allowed = Array.isArray(doc?.config?.access) ? doc.config.access : []
+    if (!allowed.length) return true
+    const mine = new Set(groups.map(g => String(g).toLowerCase()))
+    return mine.has('admin') || allowed.some(g => mine.has(String(g).toLowerCase()))
+}
+
+module.exports = { safeName, cleanFolder, cleanIcon, cleanColor, cleanImage, cleanConfig, canOpenLens, ICON_NAMES, listLenses, readLens, saveLens, deleteLens, TOOLKIT_VERSION }

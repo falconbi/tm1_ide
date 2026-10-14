@@ -183,8 +183,11 @@ function installLensHost(getLensWindow, { getServer, getToken, getLens, live = f
 // A tiny, static render of a frame for the preview pane: sandboxed iframe with
 // the bridge script prepended. Callers control srcDoc refresh via a key change.
 // The Lens app prepends its CSP (connect-src 'none') before calling this.
-function lensSrcDoc(html) {
-  return `<script>${LENS_BRIDGE_SCRIPT}</script>` + (html ?? '')
+// config: the Lens's settings, handed over before any of its code runs —
+// read with Lens.config() (or window.__lensConfig without the toolkit).
+function lensSrcDoc(html, { config } = {}) {
+  const cfg = JSON.stringify(config && typeof config === 'object' ? config : {}).replace(/</g, '\\u003c')
+  return `<script>${LENS_BRIDGE_SCRIPT}\nwindow.__lensConfig = ${cfg};</script>` + (html ?? '')
 }
 
 const api = { LENS_BRIDGE_SCRIPT, installLensHost, lensSrcDoc }

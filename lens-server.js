@@ -279,6 +279,33 @@ function createApp({ config = loadConfig(), deps = {} } = {}) {
 
     const who = req => store.get(parseCookies(req)[COOKIE])?.display ?? ''
 
+    // ── Lens access: config.access lists the TM1 groups that may open a Lens.
+    // The person's groups are asked of TM1 as them and kept for 5 minutes; if
+    // TM1 can't say, they count as in no group (restricted Lenses stay shut).
+    const groupCache = new Map()
+    const fetchGroups = deps.groupsOf ?? (async client => {
+        const d = await client.get('ActiveUser', { '$expand': 'Groups($select=Name)' })
+        return (d?.Groups ?? []).map(g => g.Name)
+    })
+    async function groupsFor(sid) {
+        const sess = sid ? store.get(sid) : null, client = sid ? store.clientFor(sid) : null
+        if (!sess || !client) return []
+        const hit = groupCache.get(sess.user)
+        if (hit && Date.now() - hit.at < 5 * 60_000) return hit.groups
+        let groups = []
+        try { groups = await fetchGroups(client) } catch { /* none */ }
+        groupCache.set(sess.user, { groups, at: Date.now() })
+        return groups
+    }
+    async function openable(sid, doc) {
+        if (!lensStore.canOpenLens(doc, await groupsFor(sid))) {
+            const e = new Error(`Lens "${doc.name}" is not available to you`)
+            e.status = 403
+            throw e
+        }
+        return doc
+    }
+
     function requireSessionPage(req, res, next) {
         const sid = parseCookies(req)[COOKIE]
         const sess = sid ? store.get(sid) : null
@@ -388,8 +415,10 @@ function createApp({ config = loadConfig(), deps = {} } = {}) {
 
     app.get('/', requireSessionPage, async (req, res) => {
         try {
-            const lens = await listLenses(cfg.server, { client: store.clientFor(parseCookies(req)[COOKIE]) })
-            const visible = lens.filter(l => l.status === 'published' || (cfg.showDrafts && l.status === 'draft'))
+            const sid = parseCookies(req)[COOKIE]
+            const lens = await listLenses(cfg.server, { client: store.clientFor(sid) })
+            const myGroups = await groupsFor(sid)
+            const visible = lens.filter(l => (l.status === 'published' || (cfg.showDrafts && l.status === 'draft')) && lensStore.canOpenLens(l, myGroups))
             // Grouped by business process (folder), steps in order, in people's
             // words (title) — no cube or model names on this page.
             const groups = groupLenses(visible)
@@ -517,7 +546,7 @@ function createApp({ config = loadConfig(), deps = {} } = {}) {
     // ── Lens viewer (sandboxed, read-only) ─────────────────────────────────────
     app.get('/lens/:name', requireSessionPage, async (req, res) => {
         try {
-            const doc = await readLens(cfg.server, req.params.name, { client: store.clientFor(parseCookies(req)[COOKIE]) })
+            const doc = await openable(parseCookies(req)[COOKIE], await readLens(cfg.server, req.params.name, { client: store.clientFor(parseCookies(req)[COOKIE]) }))
             const want = Number(doc.toolkitVersion) || 1
             if (want > supported) {
                 const body = `
@@ -569,7 +598,7 @@ function createApp({ config = loadConfig(), deps = {} } = {}) {
     // opaque origin. Same contract as the IDE's preview frame.
     app.get('/lens-frame/:name', requireSession, async (req, res) => {
         try {
-            const doc = await readLens(cfg.server, req.params.name, { client: req.lens.client })
+            const doc = await openable(req.lens.sid, await readLens(cfg.server, req.params.name, { client: req.lens.client }))
             const want = Number(doc.toolkitVersion) || 1
             if (want > supported) {
                 res.set('Content-Security-Policy', "sandbox; default-src 'none'; style-src 'unsafe-inline'")
@@ -580,7 +609,7 @@ function createApp({ config = loadConfig(), deps = {} } = {}) {
             const kit = `${req.protocol}://${req.get('host')}/lens-kit/`
             res.set('Content-Security-Policy', `sandbox allow-scripts; default-src 'none'; script-src 'unsafe-inline' ${kit}; style-src 'unsafe-inline'; img-src data:; connect-src 'none'; font-src 'none'`)
             res.type('html')
-            res.send(sharedBridge.lensSrcDoc(doc.html ?? ''))
+            res.send(sharedBridge.lensSrcDoc(doc.html ?? '', { config: doc.config }))
         } catch (e) { res.status(404).send('Lens not found') }
     })
 
@@ -600,7 +629,8 @@ function createApp({ config = loadConfig(), deps = {} } = {}) {
     // ── API (server from settings; runs as the signed-in user) ────────────────
     app.get('/api/lenses', requireSession, async (req, res) => {
         const lens = await listLenses(cfg.server, { client: req.lens.client })
-        const visible = lens.filter(l => l.status === 'published' || (cfg.showDrafts && l.status === 'draft'))
+        const groups = await groupsFor(req.lens.sid)
+        const visible = lens.filter(l => (l.status === 'published' || (cfg.showDrafts && l.status === 'draft')) && lensStore.canOpenLens(l, groups))
         res.json(visible)
     })
 
@@ -622,8 +652,7 @@ function createApp({ config = loadConfig(), deps = {} } = {}) {
         try {
             const name = req.body?.lens
             if (!name || typeof name !== 'string') throw new Error('lens is required')
-            const doc = await readLens(cfg.server, name, { client: req.lens.client })
-            if (!(doc.status === 'published' || (cfg.showDrafts && doc.status === 'draft'))) throw new Error(`Lens "${name}" is not available here`)
+            const doc = await visibleLens(req, name)
             const result = await writeCells(req.lens.client, { cube: req.body?.cube, cells: req.body?.cells, allowedCubes: lensBridge.declaredWriteCubes(doc.html) })
             logWrite({ server: cfg.server, app: 'lens', user: req.lens.display, lens: doc.name, cube: req.body.cube, changes: result.changes })
             res.json({ written: result.written })
@@ -638,8 +667,7 @@ function createApp({ config = loadConfig(), deps = {} } = {}) {
         const name = req.body?.lens, process = req.body?.process, params = req.body?.params ?? {}
         try {
             if (!name || typeof name !== 'string') throw new Error('lens is required')
-            const doc = await readLens(cfg.server, name, { client: req.lens.client })
-            if (!(doc.status === 'published' || (cfg.showDrafts && doc.status === 'draft'))) throw new Error(`Lens "${name}" is not available here`)
+            const doc = await visibleLens(req, name)
             const result = await runProcess(req.lens.client, { process, params, allowedProcesses: lensBridge.declaredRunProcesses(doc.html), user: req.lens.display })
             logRun({ server: cfg.server, app: 'lens', user: req.lens.display, lens: doc.name, process, params, status: result.status, message: result.message })
             res.json(result)
@@ -660,7 +688,7 @@ function createApp({ config = loadConfig(), deps = {} } = {}) {
     const visibleLens = async (req, name) => {
         const doc = await readLens(cfg.server, name, { client: req.lens.client })
         if (!(doc.status === 'published' || (cfg.showDrafts && doc.status === 'draft'))) throw new Error(`Lens "${name}" is not available here`)
-        return doc
+        return openable(req.lens.sid, doc)
     }
     const channelOf = v => String(v ?? '').slice(0, 200)
 
@@ -708,7 +736,7 @@ function createApp({ config = loadConfig(), deps = {} } = {}) {
 
     app.get('/api/lens/:name', requireSession, async (req, res) => {
         try {
-            const doc = await readLens(cfg.server, req.params.name, { client: req.lens.client })
+            const doc = await openable(req.lens.sid, await readLens(cfg.server, req.params.name, { client: req.lens.client }))
             const want = Number(doc.toolkitVersion) || 1
             if (want > supported) {
                 return res.status(417).json({ error: `This Lens needs toolkit version ${want}; this Lens app supports up to ${supported}.`, name: doc.name })
