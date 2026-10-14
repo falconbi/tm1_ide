@@ -515,14 +515,18 @@ function live(el, { onEvent } = {}) {
   let me = null, members = [], channel = null
   const initials = u => String(u || '?').replace(/[^A-Za-z0-9]+/g, ' ').trim().split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()
   function paint() {
-    // Each person once, however many tabs or connections they have.
+    // Quiet by design: nothing when you're alone; otherwise small overlapping
+    // initials of the others (not you), muted, name on hover. Each person once,
+    // however many tabs or connections they have.
     const people = []
-    for (const m of members) if (!people.some(p => p.user === m.user)) people.push(me && m.user === me.user ? me : m)
+    for (const m of members) if (!people.some(p => p.user === m.user)) people.push(m)
     const others = people.filter(m => !me || m.user !== me.user)
-    node.innerHTML = '<div style="display:flex;align-items:center;gap:6px;font-size:12.5px;color:' + t.faint + '">' +
-      people.map(m => '<span title="' + esc(m.user + (me && m.id === me.id ? ' (you)' : '')) + '" style="width:26px;height:26px;border-radius:50%;display:inline-grid;place-items:center;font-size:11px;font-weight:700;color:#fff;background:' + m.color + ';box-shadow:0 0 0 2px ' + t.panel + (me && m.id === me.id ? ',0 0 0 3px ' + m.color : '') + '">' + esc(initials(m.user)) + '</span>').join('') +
-      '<span style="margin-left:4px">' + (!members.length ? 'Connecting…' : others.length ? esc(others.map(m => m.user).join(', ')) + (others.length === 1 ? ' is' : ' are') + ' here too' : 'Only you here') + '</span></div>'
+    if (!others.length) { node.innerHTML = ''; return }
+    node.innerHTML = '<span style="display:inline-flex;align-items:center;gap:6px;font-size:11.5px;color:' + t.faint + '" title="' + esc(others.map(m => m.user).join(', ') + ' — here too') + '">' +
+      '<span style="display:inline-flex">' + others.slice(0, 4).map((m, i) => '<span style="width:20px;height:20px;border-radius:50%;display:inline-grid;place-items:center;font-size:9.5px;font-weight:700;color:#fff;background:' + m.color + ';opacity:.85;box-shadow:0 0 0 2px ' + t.panel + ';margin-left:' + (i ? '-6px' : '0') + '">' + esc(initials(m.user)) + '</span>').join('') + '</span>' +
+      '<span>' + (others.length === 1 ? esc(others[0].user) : others.length + ' others') + ' here too</span></span>'
   }
+
   paint()
   if (window.lensBridge && window.lensBridge.onLive) {
     window.lensBridge.onLive(ev => {
