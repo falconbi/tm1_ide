@@ -29,7 +29,7 @@ const sharedBridge = require('./shared/lens-bridge')
 const { logLensWrite, logLensRun, readLensActivity } = require('./core/lens_activity_log')
 const { createLiveHub } = require('./core/lens_live')
 const { readPrefs, savePrefs, themeCss } = require('./core/lens_prefs')
-const { lensHtml } = require('./core/viewfinder')
+const viewfinder = require('./core/viewfinder')
 const THEMES = require('./shared/lens-themes.json')
 const { createIpLimiter, createFailureGuard } = require('./core/login-rate-limit')
 
@@ -660,7 +660,7 @@ function createApp({ config = loadConfig(), deps = {} } = {}) {
             const kit = `${req.protocol}://${req.get('host')}/lens-kit/`
             res.set('Content-Security-Policy', `sandbox allow-scripts; default-src 'none'; script-src 'unsafe-inline' ${kit}; style-src 'unsafe-inline'; img-src data:; connect-src 'none'; font-src 'none'`)
             res.type('html')
-            res.send(sharedBridge.lensSrcDoc(lensHtml(doc), { config: doc.config, theme: prefsOf(req) }))
+            res.send(sharedBridge.lensSrcDoc(await viewfinder.codeOf(cfg.server, doc, { client: req.lens.client }), { config: doc.config, theme: prefsOf(req) }))
         } catch (e) { res.status(404).send('Lens not found') }
     })
 
@@ -746,7 +746,10 @@ function createApp({ config = loadConfig(), deps = {} } = {}) {
     const visibleLens = async (req, name) => {
         const doc = await readLens(cfg.server, name, { client: req.lens.client })
         if (!(doc.status === 'published' || (cfg.showDrafts && doc.status === 'draft'))) throw new Error(`Lens "${name}" is not available here`)
-        return openable(req.lens.sid, doc)
+        await openable(req.lens.sid, doc)
+        // Its code — a template's, looked up once — for what it declares.
+        doc._code = await viewfinder.codeOf(cfg.server, doc, { client: req.lens.client })
+        return doc
     }
     const channelOf = v => String(v ?? '').slice(0, 200)
 
@@ -800,7 +803,7 @@ function createApp({ config = loadConfig(), deps = {} } = {}) {
                 return res.status(417).json({ error: `This Lens needs toolkit version ${want}; this Lens app supports up to ${supported}.`, name: doc.name })
             }
             const { html: _own, ...meta } = doc
-            res.json({ html: lensHtml(doc), meta })
+            res.json({ html: await viewfinder.codeOf(cfg.server, doc, { client: req.lens.client }), meta })
         } catch (e) { res.status(404).json({ error: e.message }) }
     })
 

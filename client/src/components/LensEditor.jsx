@@ -19,7 +19,7 @@ function LensIcon({ name, size = 18, stroke = 'currentColor' }) {
 }
 
 // The Lens's tile on the Lens app home page: its image, or its icon on a colour.
-function LensTile({ icon, color, image, size = 28 }) {
+export function LensTile({ icon, color, image, size = 28 }) {
   if (image) return <img src={image} alt="" style={{ width: size, height: size, borderRadius: size / 4, objectFit: 'cover' }} />
   return (
     <span style={{ width: size, height: size, borderRadius: size / 4, display: 'inline-grid', placeItems: 'center', background: `linear-gradient(135deg, ${color || '#0f766e'}, ${color || '#0f766e'}bb)` }}>
@@ -162,7 +162,7 @@ export default function LensEditor({ tab }) {
       .then(r => r.json())
       .then(d => setCubes(Array.isArray(d) ? d : []))
       .catch(() => {})
-    fetch('/api/viewfinder', { headers: { 'x-ide-token': token() } })
+    fetch(`/api/viewfinder?server=${encodeURIComponent(tab.server)}`, { headers: { 'x-ide-token': token() } })
       .then(r => r.json()).then(d => setTemplates(Array.isArray(d) ? d : [])).catch(() => {})
     // Folders already in use, offered as suggestions.
     fetch(`/api/lenses?server=${encodeURIComponent(tab.server)}`, { headers: { 'x-ide-token': token() } })
@@ -264,6 +264,25 @@ export default function LensEditor({ tab }) {
     setMessage({ kind: 'ok', text: 'This Lens now has its own copy of the code — template improvements no longer reach it.' })
   }
   const templateInfo = templates.find(t => t.name === template)
+
+  // Save as template: this Lens's code becomes a template in the model (its
+  // settings become the example), and the Lens switches to use it.
+  const saveAsTemplate = async () => {
+    const name = window.prompt('Template name (lower-case letters, digits and -), e.g. pnl-review:', (name0 => name0 ? name0.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') : '')(tab.name || ''))
+    if (!name) return
+    try {
+      const r = await fetch(`/api/viewfinder/${encodeURIComponent(name.trim())}?server=${encodeURIComponent(tab.server)}`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'x-ide-token': token() },
+        body: JSON.stringify({ html, title: title || name, description, icon: look.icon, color: look.color, settings: {}, example: goodConfig }),
+      })
+      const d = await r.json()
+      if (!r.ok) throw new Error(d.error || r.statusText)
+      setTemplate(d.name)
+      setTemplates(ts => [...ts.filter(t => t.name !== d.name), { ...d, html, source: 'model', usedBy: [] }])
+      window.dispatchEvent(new CustomEvent('tm1-viewfinder-changed', { detail: { server: tab.server } }))
+      setMessage({ kind: 'ok', text: `Saved as the template "${d.title}" — save this Lens to switch it to the template.` })
+    } catch (e) { setMessage({ kind: 'error', text: e.message }) }
+  }
 
   const handleEditorChange = useCallback((value) => {
     setHtml(value ?? '')
@@ -402,6 +421,12 @@ export default function LensEditor({ tab }) {
         <div className="flex flex-wrap items-center gap-2 border-b border-border bg-muted/40 px-3 py-1.5 text-xs">
           <span>Built from the Viewfinder template <b>{templateInfo?.title ?? template}</b> — its code is shared; change this Lens through its <b>Config</b>.</span>
           <button onClick={detach} className="ml-auto rounded border border-border px-2 py-0.5 hover:bg-accent" title="Give this Lens its own copy of the code to change freely">Make my own copy</button>
+        </div>
+      )}
+      {!template && tab.name && (
+        <div className="flex items-center gap-2 border-b border-border px-3 py-1 text-xs text-muted-foreground">
+          <span>This Lens has its own code.</span>
+          <button onClick={saveAsTemplate} className="rounded border border-border px-2 py-0.5 hover:bg-accent hover:text-foreground" title="Turn this Lens into a template others can be built from">Save as template</button>
         </div>
       )}
       {message && (

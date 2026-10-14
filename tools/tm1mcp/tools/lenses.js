@@ -23,7 +23,7 @@ function register(server, { SERVER, AGENT_USER, cl, ok, requireChangeSet }) {
         'list_viewfinder',
         'List the Viewfinder templates — proven Lens code (e.g. an input form) that a Lens can use with just a config. Shows what each setting means and an example config. Prefer a template + config (save_lens with template) over writing a Lens from scratch.',
         {},
-        async () => ok(require('../../../core/viewfinder').listTemplates())
+        async () => ok((await require('../../../core/viewfinder').listAll(SERVER)).map(({ html: _h, ...t }) => t))
     )
 
     // Lenses live in the model (Applications/Governance/Lenses on the bound server).

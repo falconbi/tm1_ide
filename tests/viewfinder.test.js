@@ -39,3 +39,27 @@ test('saving a template Lens keeps no copy of the code; an unknown template is r
     await assert.rejects(ls.saveLens('S', 'X', '', 'me', { template: 'nope' }), /Unknown Viewfinder template/)
   } finally { Object.assign(store, orig) }
 })
+
+test('model templates: saved in the model, listed after the built-ins, found by name; built-in names refused', async () => {
+  const store = require('../core/model-store')
+  const vf = require('../core/viewfinder')
+  const docs = {}
+  const orig = { listDocs: store.listDocs, readDoc: store.readDoc, writeDoc: store.writeDoc, deleteDoc: store.deleteDoc }
+  store.listDocs = async () => Object.keys(docs)
+  store.readDoc = async (s, a, n) => docs[n] ?? null
+  store.writeDoc = async (s, a, n, d) => { docs[n] = d }
+  store.deleteDoc = async (s, a, n) => { delete docs[n] }
+  try {
+    const saved = await vf.saveModelTemplate('S', 'pnl-review', { html: '<p>pnl</p>', title: 'P&L review', example: { cube: 'IS' } }, 'me')
+    assert.equal(saved.version, 1)
+    const all = await vf.listAll('S')
+    assert.deepEqual(all.map(t => [t.name, t.source]), [['input-form', 'built-in'], ['pnl-review', 'model']])
+    assert.equal((await vf.findTemplate('S', 'pnl-review')).html, '<p>pnl</p>')
+    assert.equal(await vf.codeOf('S', { template: 'pnl-review' }), '<p>pnl</p>')
+    await assert.rejects(vf.saveModelTemplate('S', 'input-form', { html: 'x' }), /built-in template/)
+    await assert.rejects(vf.saveModelTemplate('S', 'Bad Name', { html: 'x' }), /lower-case/)
+    await assert.rejects(vf.deleteModelTemplate('S', 'input-form'), /can't be deleted/)
+    await vf.deleteModelTemplate('S', 'pnl-review')
+    await assert.rejects(vf.findTemplate('S', 'pnl-review'), /Unknown Viewfinder template/)
+  } finally { Object.assign(store, orig) }
+})
