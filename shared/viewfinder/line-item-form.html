@@ -91,7 +91,8 @@ button:disabled{opacity:.45;cursor:default}
   var unitNames = {}, groupNames = {}, g = null, data = [], who = { user: '', groups: [] }, selected = null
   var unitOf = function () { return $('unit').value }, periodOf = function () { return period ? $('period').value : '' }
   var keyOf = function (r) { return r.__line + '|' + (r.__group || '') }
-  var label = function (r) { return '#' + r.__line + (groupCfg ? ' · ' + (groupNames[r.__group] || r.__group) : '') }
+  var groupName = function (g0) { var n = groupNames[g0] || g0; return n.indexOf(g0 + ' ') === 0 ? n.slice(g0.length + 1) : n }
+  var label = function (r) { return (groupCfg ? groupName(r.__group) + ' ' : '') + '#' + r.__line }
   var isApproved = function (r) { return approval && String(r[approval.flag] || '') === 'Y' }
   function coords(r, field) {
     var c = Object.assign({}, C.fixed || {})
@@ -209,7 +210,9 @@ button:disabled{opacity:.45;cursor:default}
         x.line = label(x)
         return x
       })
-      data = all.filter(function (x) { return fields.some(function (f) { var v = x[f.member]; return v !== '' && v !== null && v !== 0 }) })
+      // A line is there when something TYPED is filled in — fields TM1
+      // calculates (e.g. an asset's life from its type) don't count.
+      data = all.filter(function (x) { return fields.some(function (f) { var v = x[f.member]; return (!x._input || x._input[f.member] !== false) && v !== '' && v !== null && v !== 0 }) })
       data.__all = all
       draw()
       loadHistory()
@@ -217,7 +220,8 @@ button:disabled{opacity:.45;cursor:default}
   }
   function draw() {
     selected = null
-    var cols = [{ field: 'line', headerName: C.lines.label || 'Line', pinned: 'left', minWidth: 120 }]
+    var cols = (groupCfg ? [{ field: '__groupName', headerName: groupCfg.label || groupCfg.dimension, pinned: 'left', minWidth: 130, valueGetter: function (p) { return groupName(p.data.__group) } }] : [])
+      .concat([{ field: '__line', headerName: '#', pinned: 'left', width: 56, minWidth: 56 }])
       .concat(fields.map(function (f) {
         return { field: f.member, headerName: f.label || f.member, type: f.type === 'number' ? 'number' : 'text', format: f.format, editable: true, options: f.options, minWidth: f.width || (f.type === 'number' ? 100 : 140) }
       }))
