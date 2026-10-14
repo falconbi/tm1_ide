@@ -24,6 +24,28 @@ button:disabled{opacity:.45;cursor:default}
 .status.ok{color:var(--good)} .status.err{color:var(--bad)} .status.busy{color:var(--faint)}
 .totals{font-size:12.5px;color:var(--soft);margin-left:auto}
 .totals b{color:var(--ink)}
+.lcards{display:grid;gap:10px}
+.lc{border:1px solid var(--rule);border-radius:12px;background:var(--panel);transition:box-shadow .2s}
+.lc.new{border-style:dashed;border-color:var(--accent)}
+.lc-h{display:flex;align-items:center;gap:10px;padding:11px 14px;cursor:pointer}
+.lc-h:hover{background:var(--bg);border-radius:12px}
+.chip{font-size:11px;font-weight:600;padding:2px 9px;border-radius:999px;background:var(--bg);color:var(--soft);border:1px solid var(--rule);white-space:nowrap}
+.lc-t{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}
+.lc-t.empty{color:var(--faint);font-weight:400}
+.lc-amt{font-variant-numeric:tabular-nums;font-weight:600}
+.lc-st{font-size:12px;color:var(--faint);white-space:nowrap}
+.lc.approved .lc-st{color:var(--good)}
+.lc-car{color:var(--faint);font-size:12px}
+.lc-b{border-top:1px solid var(--rule);padding:14px;display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:12px 16px}
+.lc-b .wide{grid-column:1/-1}
+.lc-b input,.lc-b select,.lc-b textarea{width:100%;box-sizing:border-box;font:inherit;font-size:13.5px;padding:7px 9px;border:1px solid var(--rule);border-radius:8px;background:var(--bg);color:var(--ink);text-transform:none;letter-spacing:0}
+.lc-b textarea{min-height:64px;resize:vertical}
+.lc-b input:disabled,.lc-b select:disabled,.lc-b textarea:disabled{opacity:.7}
+.lc-b .ro{font-size:13.5px;color:var(--soft);padding:7px 0;text-transform:none;letter-spacing:0}
+.lc-a{grid-column:1/-1;display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding-top:2px}
+.lc-a .msg{font-size:12.5px}
+.lc.flash{animation:cflash 1.8s ease-out}
+@keyframes cflash{from{box-shadow:0 0 0 3px var(--accent)}to{box-shadow:0 0 0 0 transparent}}
 .need{padding:18px;border:1px dashed var(--rule);border-radius:10px;color:var(--faint);font-size:13px}
 .need code{color:var(--ink)}
 </style>
@@ -81,6 +103,9 @@ button:disabled{opacity:.45;cursor:default}
   var cube = C.cube, unitDim = C.unit.dimension, lineDim = C.lines.dimension, groupCfg = C.group || null, fieldDim = C.fieldsDimension
   var period = C.period || null, version = C.version || null, approval = C.approval || null
   var fields = C.fields
+  // Layout: 'grid' (rows, like a spreadsheet) or 'cards' (one form per line,
+  // like an online form — better for requests with text).
+  var CARDS = C.layout === 'cards'
   var required = fields.filter(function (f) { return f.required }).map(function (f) { return f.member })
   $('heading').textContent = C.heading || 'Line items'
   $('subtitle').textContent = C.subtitle || ''
@@ -138,6 +163,14 @@ button:disabled{opacity:.45;cursor:default}
   var tell = function (type, d) { if (tg) tg.send(type, d || {}) }
   function onLive(ev) {
     var f = ev.from || {}
+    if (CARDS) {
+      // Cards refresh when someone saves; anything I'm typing stays put.
+      if ((ev.type === 'saved' || ev.type === 'history') && f.id) {
+        if (ev.type === 'saved') say(f.user + ' ' + (ev.note || 'saved changes') + '.', 'ok')
+        if (!Object.keys(drafts).length) { var before = snapshotCards(); load().then(function () { flashCards(before) }).catch(fail) } else loadHistory()
+      }
+      return
+    }
     if (ev.type === 'leave') { if (g) { g.unmark(ev.id); if (!g.changes().length) load().catch(fail) } return }
     if (!g || !f.id) return
     if (ev.type === 'cursor') g.mark(byKey(ev.key), ev.field, f.id, { color: f.color, label: f.user + ' is here' })
@@ -214,7 +247,7 @@ button:disabled{opacity:.45;cursor:default}
       // calculates (e.g. an asset's life from its type) don't count.
       data = all.filter(function (x) { return fields.some(function (f) { var v = x[f.member]; return (!x._input || x._input[f.member] !== false) && v !== '' && v !== null && v !== 0 }) })
       data.__all = all
-      draw()
+      if (CARDS) drawCards(); else draw()
       loadHistory()
     })
   }
@@ -249,6 +282,95 @@ button:disabled{opacity:.45;cursor:default}
     totals(); paintApprove(); say('')
   }
 
+  // ── Cards: one form per line ──
+  var openKey = null, drafts = {}
+  var valueOf = function (r, m) { var d = drafts[keyOf(r)]; return d && m in d ? d[m] : r[m] }
+  var calcField = function (r, f) { return r._input && r._input[f.member] === false }
+  function snapshotCards() { var s = {}; data.forEach(function (r) { s[keyOf(r)] = JSON.stringify(fields.map(function (f) { return r[f.member] }).concat(approval ? [r[approval.flag]] : [])) }); return s }
+  function flashCards(before) {
+    data.forEach(function (r) {
+      var k = keyOf(r), now = JSON.stringify(fields.map(function (f) { return r[f.member] }).concat(approval ? [r[approval.flag]] : []))
+      if (before[k] !== now) { var el = document.querySelector('.lc[data-k="' + CSS.escape(k) + '"]'); if (el) { el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash') } }
+    })
+  }
+  function fieldInput(r, f, locked) {
+    var v = valueOf(r, f.member), id = 'f_' + f.member.replace(/\W/g, '_')
+    if (calcField(r, f)) return '<label>' + esc(f.label || f.member) + '<div class="ro">' + esc(fmt(f, v)) + ' <span class="sub">(calculated)</span></div></label>'
+    var dis = locked ? ' disabled' : ''
+    var input = f.options
+      ? '<select data-f="' + esc(f.member) + '"' + dis + '><option value=""></option>' + f.options.map(function (o) { return '<option' + (String(v) === String(o) ? ' selected' : '') + '>' + esc(o) + '</option>' }).join('') + '</select>'
+      : (f.type !== 'number' && (f.long || (f.width || 0) >= 240))
+        ? '<textarea data-f="' + esc(f.member) + '"' + dis + '>' + esc(v || '') + '</textarea>'
+        : '<input data-f="' + esc(f.member) + '"' + (f.type === 'number' ? ' inputmode="decimal"' : '') + ' value="' + esc(f.type === 'number' ? (v ? v : '') : (v || '')) + '"' + dis + '>'
+    return '<label class="' + ((f.type !== 'number' && (f.long || (f.width || 0) >= 240)) ? 'wide' : '') + '"' + ' for="' + id + '">' + esc(f.label || f.member) + (f.required ? ' *' : '') + input + '</label>'
+  }
+  function drawCards() {
+    var titleField = fields.find(function (f) { return f.type !== 'number' }) || fields[0]
+    var amtField = C.totalField ? fields.find(function (f) { return f.member === C.totalField }) : null
+    var can = approval && Lens.whoami.inGroup(who, approval.approvers || [])
+    $('grid').innerHTML = '<div class="lcards">' + (data.length ? data.map(function (r) {
+      var k = keyOf(r), open = openKey === k, appr = isApproved(r)
+      var t = valueOf(r, titleField.member)
+      var st = r.__new ? 'New — not saved' : appr ? '✓ Approved' + (r[approval.by] ? ' · ' + r[approval.by] : '') + (r[approval.at] ? ' · ' + Lens.localTime(r[approval.at]) : '') : approval ? 'Not approved yet' : ''
+      return '<div class="lc' + (open ? ' open' : '') + (appr ? ' approved' : '') + (r.__new ? ' new' : '') + '" data-k="' + esc(k) + '">' +
+        '<div class="lc-h" data-toggle>' + (groupCfg ? '<span class="chip">' + esc(groupName(r.__group)) + '</span>' : '') +
+        '<span class="lc-t' + (t ? '' : ' empty') + '">' + esc(t || 'Untitled') + '</span>' +
+        (amtField ? '<span class="lc-amt">' + esc(fmt(amtField, valueOf(r, amtField.member))) + '</span>' : '') +
+        '<span class="lc-st">' + esc(st) + '</span><span class="lc-car">' + (open ? '▴' : '▾') + '</span></div>' +
+        (open ? '<div class="lc-b">' + fields.map(function (f) { return fieldInput(r, f, appr) }).join('') +
+          '<div class="lc-a">' + (appr ? '<span class="sub">Approved requests are locked' + (can ? ' — reopen it to change it' : '') + '.</span>'
+            : '<button class="primary" data-act="save">Save</button><button data-act="cancel">' + (r.__new ? 'Discard' : 'Close') + '</button>') +
+          (can && !r.__new ? (appr ? '<button data-act="unapprove">Reopen</button>' : '<button data-act="approve">✓ Approve</button>') : '') +
+          '<span class="msg status"></span></div></div>' : '') + '</div>'
+    }).join('') : '<div class="need">Nothing here yet — press <b>+ New ' + esc((C.itemLabel || 'request').toLowerCase()) + '</b> to add one.</div>') + '</div>'
+    totals()
+  }
+  function cardRow(el) { var k = el.closest('.lc').getAttribute('data-k'); return data.find(byKey(k)) }
+  function cardMsg(el, text, kind) { var m = el.closest('.lc').querySelector('.msg'); if (m) { m.textContent = text || ''; m.className = 'msg status ' + (kind || '') } }
+  $('grid').addEventListener('click', function (e) {
+    if (!CARDS) return
+    var tog = e.target.closest('[data-toggle]')
+    if (tog) { var k = tog.closest('.lc').getAttribute('data-k'); openKey = openKey === k ? null : k; drawCards(); return }
+    var act = e.target.closest('[data-act]')
+    if (!act) return
+    var r = cardRow(act), a = act.getAttribute('data-act')
+    if (a === 'cancel') { delete drafts[keyOf(r)]; if (r.__new) data = withAll(data.filter(function (x) { return x !== r })); openKey = null; drawCards() }
+    else if (a === 'save') saveCard(r, act)
+    else if (a === 'approve' || a === 'unapprove') { selected = r; approveAction(a === 'approve' ? 'Approve' : 'Unapprove') }
+  })
+  $('grid').addEventListener('input', function (e) {
+    var el = e.target.closest('[data-f]')
+    if (!CARDS || !el) return
+    var r = cardRow(el), m = el.getAttribute('data-f'), f = fields.find(function (x) { return x.member === m })
+    var v = f.type === 'number' ? (Number(String(el.value).replace(/[,$\s]/g, '')) || 0) : el.value
+    var k = keyOf(r)
+    drafts[k] = drafts[k] || {}
+    drafts[k][m] = v
+    if (f.member === C.totalField || f === fields.find(function (x) { return x.type !== 'number' })) {
+      var card = el.closest('.lc'), amt = card.querySelector('.lc-amt'), tt = card.querySelector('.lc-t')
+      if (amt && f.member === C.totalField) amt.textContent = fmt(f, v)
+      if (tt && f.type !== 'number') { tt.textContent = v || 'Untitled'; tt.classList.toggle('empty', !v) }
+    }
+  })
+  var withAll = function (arr) { arr.__all = data.__all; return arr }
+  function saveCard(r, btn) {
+    var d = drafts[keyOf(r)] || {}
+    var miss = required.filter(function (m) { var v = m in d ? d[m] : r[m]; return v === '' || v === null || v === 0 || v === undefined })
+    if (miss.length) return cardMsg(btn, 'Fill in ' + miss.map(function (m) { var f = fields.find(function (x) { return x.member === m }); return f.label || m }).join(' and ') + ' first.', 'err')
+    var cells = Object.keys(d).filter(function (m) { return d[m] !== r[m] }).map(function (m) {
+      var f = fields.find(function (x) { return x.member === m }) || {}, text = f.type !== 'number'
+      return { coordinates: coords(r, m), value: text ? String(d[m] == null ? '' : d[m]) : (Number(d[m]) || 0), expect: text ? String(r[m] == null ? '' : r[m]) : (Number(r[m]) || 0) }
+    })
+    if (!cells.length) { delete drafts[keyOf(r)]; openKey = null; return drawCards() }
+    cardMsg(btn, 'Saving…', 'busy')
+    Lens.save(cube, cells).then(function () {
+      delete drafts[keyOf(r)]
+      openKey = null
+      tell('saved', { note: (r.__new ? 'added ' : 'updated ') + (d[(fields.find(function (x) { return x.type !== 'number' }) || {}).member] || r[(fields.find(function (x) { return x.type !== 'number' }) || {}).member] || label(r)) })
+      return load().then(function () { say('Saved ' + label(r) + '.', 'ok') })
+    }).catch(function (e) { cardMsg(btn, 'Not saved: ' + (e && e.message ? e.message : e), 'err') })
+  }
+
   // A new line: the next free line (for the chosen group).
   function add() {
     var group = groupCfg ? $('addGroup').value : ''
@@ -256,6 +378,16 @@ button:disabled{opacity:.45;cursor:default}
     data.forEach(function (r) { taken[keyOf(r)] = 1 })
     var free = (data.__all || []).find(function (r) { return (!groupCfg || r.__group === group) && !taken[keyOf(r)] })
     if (!free) return say('No free lines left' + (groupCfg ? ' for ' + (groupNames[group] || group) : '') + '.', 'err')
+    if (CARDS) {
+      // Start from TM1's own row for that line, so calculated fields (e.g. an
+      // asset's life) show straight away.
+      var nr = Object.assign({}, free, { __new: true })
+      data = withAll([nr].concat(data))
+      openKey = keyOf(nr)
+      drawCards()
+      var first = document.querySelector('.lc.open [data-f]'); if (first) first.focus()
+      return
+    }
     g.addRow(blankRow(free.__line, group))
     say('Added line ' + label(free) + ' — fill it in, then Save.', 'ok')
   }
@@ -288,7 +420,7 @@ button:disabled{opacity:.45;cursor:default}
 
   // ── Approval: only shown to approvers; the process checks again and stamps who and when ──
   function paintApprove() {
-    if (!approval) return
+    if (!approval || CARDS) return
     var can = Lens.whoami.inGroup(who, approval.approvers || [])
     $('approveBox').hidden = !can
     var real = selected && !selected.__new
@@ -303,7 +435,7 @@ button:disabled{opacity:.45;cursor:default}
     p[pr.line] = selected.__line; if (pr.group) p[pr.group] = selected.__group; p[pr.action] = action
     say(action === 'Approve' ? 'Approving…' : 'Reopening…', 'busy')
     Lens.run(approval.process, p)
-      .then(function (r) { tell('saved', { note: (action === 'Approve' ? 'approved ' : 'reopened ') + label(selected) }); return load().then(function () { say(r.message || 'Done.', 'ok') }) })
+      .then(function (r) { tell('saved', { note: (action === 'Approve' ? 'approved ' : 'reopened ') + label(selected) }); openKey = null; return load().then(function () { say(r.message || 'Done.', 'ok') }) })
       .catch(function (e) { say('Not done: ' + (e && e.message ? e.message : e), 'err') })
   }
 
@@ -316,6 +448,12 @@ button:disabled{opacity:.45;cursor:default}
     var dropped = g && g.changes().length
     if (hp) hp.reset()
     load().then(function () { if (dropped) say('Your unsaved changes were dropped when you switched.', 'err') }).catch(fail)
+  }
+  if (CARDS) {
+    // Cards save one at a time — no grid-wide Save / Undo.
+    $('save').hidden = $('undo').hidden = true
+    document.querySelector('.bar .sep').hidden = true
+    $('add').textContent = '+ New ' + (C.itemLabel || 'request').toLowerCase()
   }
   hp = Lens.historyPanel('#historyBtn', { describe: describe, title: 'History' })
   tg = Lens.live('#people', { onEvent: onLive })
