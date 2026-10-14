@@ -49,6 +49,13 @@ TI processes and a `Lens.workflow` toolkit piece (status bar, Submit / Approve /
 recorded in change sets. Process pages fall out of it — the definition already knows the steps. Today's test workflow
 (Income Statement / Target / organization, group "Lens Finance") is hard-wired and becomes the first definition.
 
+**Design agreed (Oct 14):**
+- **Sharing:** code (shared, e.g. one Input form from Viewfinder) + workflow (shared by every Lens in a process — Enter / Approve / Results agree on each node's state) + config (each Lens's own: title, icon, folder, cube, version, rows, columns).
+- **Unit = one node on a hierarchy** (store, cost centre, entity, project — any level). Two-dimensional units later if a model needs them.
+- **Approval follows the hierarchy:** a node is reviewed by the owner of the node above it — stores submit, the region owner approves or returns each; when all of a region's children are approved the region can be submitted up; finance (top node) gives the final sign-off. Built for many levels; switched on one level first.
+- **Ownership = a TM1 group per node**, set in the workflow definition, so rights stay in TM1 security.
+- **Configs and workflow definitions are edited in the IDE only for now** (governed, in change sets); a business-admin screen in the Lens app (e.g. changing a node's owner mid-cycle) later.
+
 The ownership Lenses on a private consolidation model (network, timeline) are a showcase of visuals PAW can't do, not on the main path.
 Notes: 24Retail's Revenue cube is empty on the lab server — use the Income Statement; account 6699 (allocations)
 holds junk sample values, so screens stop at Net Profit.
