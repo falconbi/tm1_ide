@@ -3964,6 +3964,14 @@ app.post('/api/lens/write-cells', async (req, res) => {
     }
 })
 
+// Who the IDE user is on this server, and their TM1 groups (Lens.whoami()).
+app.get('/api/lens/whoami', async (req, res) => {
+    try {
+        const d = await makeClient(req.query.server, req.ideToken).get('ActiveUser', { '$expand': 'Groups($select=Name)' })
+        res.json({ user: d?.Name ?? req.user, groups: (d?.Groups ?? []).map(g => g.Name) })
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
 // Action buttons from a Lens preview — the process must be declared by the
 // saved Lens; parameters checked; runs as the IDE user; logged.
 app.post('/api/lens/run-process', async (req, res) => {

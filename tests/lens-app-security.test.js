@@ -255,3 +255,10 @@ test('each person\'s theme is remembered and reaches their Lenses — unless a L
     readLens: async (s, name) => ({ name, status: 'published', toolkitVersion: 1, html: '<p>x</p>', config: name === 'Fixed' ? { theme: 'fixed' } : {} }),
   })
 })
+
+test('whoami tells a Lens who is signed in and their TM1 groups', async () => {
+  await withApp(async ({ base, signin }) => {
+    const c = cookieOf(await signin('admin', 'apple'))
+    assert.deepEqual(await (await fetch(`${base}/api/lens/whoami`, { headers: { cookie: c } })).json(), { user: 'admin', groups: ['Lens Finance'] })
+  }, { groupsOf: async () => ['Lens Finance'] })
+})

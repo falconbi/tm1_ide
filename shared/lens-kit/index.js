@@ -177,7 +177,10 @@ theme.blue = BLUE         // for a Lens's own legend (Lens.legend draws the stan
 // cells stay read-only. Input cells are tinted; typed values are highlighted
 // until saved. Returns { api, changes(), undo(), saved(), mark(), setValue(),
 // unmark() } — mark/setValue show what someone else is doing (working together).
-function grid(el, { columns = [], rows: data = [], height, onEdit, onFocus } = {}) {
+// More: rowEditable(row) → false locks a whole row (e.g. an approved line);
+// onSelect(row) — a click selects a row; a column with options: [...] edits by
+// a drop-down; g.addRow(row) adds a row (e.g. a new request).
+function grid(el, { columns = [], rows: data = [], height, onEdit, onFocus, onSelect, rowEditable } = {}) {
   const t = theme.colors, node = host(el)
   node.innerHTML = ''
   node.style.height = height || node.style.height || Math.min(480, 44 + data.length * 36) + 'px'
@@ -187,7 +190,7 @@ function grid(el, { columns = [], rows: data = [], height, onEdit, onFocus } = {
   const typed = new Map()                      // 'rowIndex|field' -> colour — someone else's unsaved value
   const pending = new Map()                    // 'rowIndex|field' -> label — saved, not yet handed in (e.g. submitted)
   const keyOf = (row, field) => data.indexOf(row) + '|' + field
-  const canEdit = (c, row) => !!c.editable && !(row && row._input && row._input[c.field] === false)
+  const canEdit = (c, row) => !!c.editable && !(row && row._input && row._input[c.field] === false) && !(rowEditable && row && rowEditable(row) === false)
   const tint = (hex, a) => hex + Math.round(a * 255).toString(16).padStart(2, '0')
   let api = null
   const changes = () => [...orig.keys()].map(k => {
@@ -230,6 +233,7 @@ function grid(el, { columns = [], rows: data = [], height, onEdit, onFocus } = {
       }
       if (!c.editable) return def
       def.editable = p => canEdit(c, p.data)
+      if (c.options) { def.cellEditor = 'agSelectCellEditor'; def.cellEditorParams = { values: c.options } }
       if (c.type === 'number') {
         def.valueParser = p => {
           const v = Number(String(p.newValue ?? '').replace(/[,$\s]/g, ''))
@@ -244,6 +248,8 @@ function grid(el, { columns = [], rows: data = [], height, onEdit, onFocus } = {
       if (node) onFocus(node.data, p.column.getColId ? p.column.getColId() : p.column)
     },
     tooltipShowDelay: 0,
+    rowSelection: onSelect ? { mode: 'singleRow', checkboxes: false, enableClickSelection: true } : undefined,
+    onSelectionChanged: onSelect ? () => { const r = api.getSelectedRows(); onSelect(r[0] || null) } : undefined,
     onCellValueChanged: p => {
       const k = keyOf(p.data, p.colDef.field)
       if (!orig.has(k)) orig.set(k, p.oldValue)
@@ -279,6 +285,7 @@ function grid(el, { columns = [], rows: data = [], height, onEdit, onFocus } = {
     // Flash the cells whose values differ from `before` (a snapshot() taken
     // earlier) — e.g. after someone else saved or spread, so the eye goes there.
     snapshot() { return data.map(r => Object.assign({}, r)) },
+    addRow(row) { data.push(row); api.applyTransaction({ add: [row] }); return row },
     // key(row) identifies a row in both (default: its Lens.rows label).
     flashChanges(before, { key = r => r._label, fields } = {}) {
       const cols = fields || columns.filter(c => c.type === 'number').map(c => c.field)
@@ -619,6 +626,20 @@ function historyPanel(el, { describe, title = 'History' } = {}) {
   }
 }
 
+// ── whoami ────────────────────────────────────────────────────────────────────
+// The signed-in person and their TM1 groups: Lens.whoami() → { user, groups } —
+// e.g. show Approve only to approvers. Never security on its own: the server
+// and TM1 still enforce every save and every process.
+let whoCache = null
+function whoami() {
+  if (!whoCache) whoCache = window.lensBridge.call('whoami', {}).catch(() => ({ user: '', groups: [] }))
+  return whoCache
+}
+whoami.inGroup = (who, groups) => {
+  const mine = new Set((who && who.groups || []).map(g => String(g).toLowerCase()))
+  return mine.has('admin') || (groups || []).some(g => mine.has(String(g).toLowerCase()))
+}
+
 // ── config ────────────────────────────────────────────────────────────────────
 // The Lens's settings (its config, edited in the IDE's Config tab) — bindings
 // and behaviour, so the same code can serve different cubes, versions, rows.
@@ -642,7 +663,7 @@ function run(process, params) {
   return window.lensBridge.call('runProcess', { process, params: params || {} })
 }
 
-const Lens = { version: TOOLKIT_VERSION, components: COMPONENTS.slice(), rows, format, localTime, theme, kpis, trend, waterfall, bars, grid, flow, editing, live, history, historyPanel, legend, config, save, run, echarts }
+const Lens = { version: TOOLKIT_VERSION, components: COMPONENTS.slice(), rows, format, localTime, theme, kpis, trend, waterfall, bars, grid, flow, editing, live, history, historyPanel, legend, config, whoami, save, run, echarts }
 const missing = COMPONENTS.filter(n => typeof Lens[n] !== 'function')
 if (missing.length) throw new Error('Lens toolkit is missing: ' + missing.join(', '))
 

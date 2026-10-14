@@ -1,0 +1,42 @@
+{
+  "name": "line-item-form",
+  "title": "Line-item form",
+  "description": "Requests or items as lines — capex requests, hires, contracts — one unit at a time, with text and number fields, Add, and optional line approval (approvers tick a line; TM1 then keeps it read-only).",
+  "icon": "file-text",
+  "color": "#7c3aed",
+  "settings": {
+    "heading": "The title at the top of the screen",
+    "subtitle": "One line under the title",
+    "cube": "The cube that holds the lines",
+    "version": "{ dimension, member } — the version (optional)",
+    "fixed": "{ dimension: member } — other dimensions held at one member",
+    "unit": "{ dimension, level, label } — what people pick (e.g. stores)",
+    "period": "{ dimension, members, label } — e.g. years (optional)",
+    "lines": "{ dimension, level, label } — the numbered line slots (e.g. CapitalList)",
+    "group": "{ dimension, level, label } — optional second line dimension chosen when adding (e.g. asset type)",
+    "fieldsDimension": "The dimension whose elements are the fields (e.g. Capital)",
+    "fields": "[{ member, label, type: 'text' | 'number', format, options: [...], required, width }] — the columns",
+    "totalField": "A number field to total at the top right (optional)",
+    "approval": "{ flag, by, at, process, approvers: [TM1 groups], params: { unit, period, version, line, group, action } } — optional line approval",
+    "writes": "The cubes it may change — normally just the cube",
+    "runs": "The processes it may run — the approval process, if any"
+  },
+  "example": {
+    "heading": "Capex requests",
+    "subtitle": "One line per request · approved lines are locked",
+    "cube": "Capital",
+    "version": { "dimension": "Version", "member": "Target" },
+    "unit": { "dimension": "organization", "level": 0, "label": "Store" },
+    "period": { "dimension": "Year", "members": ["Y2", "Y3"], "label": "Year" },
+    "lines": { "dimension": "CapitalList", "level": 0, "label": "Request" },
+    "group": { "dimension": "Asset Types", "level": 0, "label": "Asset type" },
+    "fieldsDimension": "Capital",
+    "fields": [
+      { "member": "Description", "label": "What", "type": "text", "required": true, "width": 220 },
+      { "member": "Purchase Cost", "label": "Cost", "type": "number", "format": "$", "required": true }
+    ],
+    "totalField": "Purchase Cost",
+    "writes": ["Capital"],
+    "runs": []
+  }
+}

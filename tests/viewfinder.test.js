@@ -53,7 +53,7 @@ test('model templates: saved in the model, listed after the built-ins, found by 
     const saved = await vf.saveModelTemplate('S', 'pnl-review', { html: '<p>pnl</p>', title: 'P&L review', example: { cube: 'IS' } }, 'me')
     assert.equal(saved.version, 1)
     const all = await vf.listAll('S')
-    assert.deepEqual(all.map(t => [t.name, t.source]), [['input-form', 'built-in'], ['pnl-review', 'model']])
+    assert.deepEqual(all.map(t => [t.name, t.source]), [['input-form', 'built-in'], ['line-item-form', 'built-in'], ['pnl-review', 'model']])
     assert.equal((await vf.findTemplate('S', 'pnl-review')).html, '<p>pnl</p>')
     assert.equal(await vf.codeOf('S', { template: 'pnl-review' }), '<p>pnl</p>')
     await assert.rejects(vf.saveModelTemplate('S', 'input-form', { html: 'x' }), /built-in template/)

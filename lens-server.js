@@ -678,6 +678,12 @@ function createApp({ config = loadConfig(), deps = {} } = {}) {
     })
 
     // ── API (server from settings; runs as the signed-in user) ────────────────
+    // Who the person is and their TM1 groups — so a Lens can show, say, Approve
+    // only to approvers (the processes still enforce it either way).
+    app.get('/api/lens/whoami', requireSession, async (req, res) => {
+        res.json({ user: req.lens.display, groups: await groupsFor(req.lens.sid) })
+    })
+
     // The person's preferences (their theme): read, and change (remembered).
     app.get('/api/prefs', requireSession, (req, res) => res.json(prefsOf(req)))
     app.post('/api/prefs', requireSession, (req, res) => {

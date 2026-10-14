@@ -157,6 +157,9 @@ function installLensHost(getLensWindow, { getServer, getToken, getLens, live = f
         if (!lens) throw new Error('save the Lens first — processes are checked against the saved Lens')
         url = `/api/lens/run-process?server=${enc(server)}`
         init = { method: 'POST', headers, body: JSON.stringify({ lens, process: d.payload?.process, params: d.payload?.params ?? {} }) }
+      } else if (d.method === 'whoami') {
+        url = `/api/lens/whoami?server=${enc(server)}`
+        init = { method: 'GET', headers }
       } else if (d.method === 'getMeta') {
         url = `/api/lens/meta?server=${enc(server)}${d.payload?.cube ? `&cube=${enc(d.payload.cube)}` : ''}`
         init = { method: 'GET', headers }
