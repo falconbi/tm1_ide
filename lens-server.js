@@ -140,9 +140,21 @@ const PAGE_CSS = `
   label{font-size:12px;color:var(--app-soft)}
   .err{color:#b91c1c;font-size:13px;margin:8px 0}
   a{color:var(--app-ink)}
-  .me{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-  .me .who{font-size:13px;color:var(--app-soft)} .me .who b{color:var(--app-ink)}
-  .me select{padding:5px 8px;font-size:12.5px}
+  details.acct{position:relative}
+  details.acct summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:8px;padding:3px 10px 3px 3px;border-radius:999px;border:1px solid var(--app-rule);background:var(--app-panel)}
+  details.acct summary::-webkit-details-marker{display:none}
+  details.acct .av{width:28px;height:28px;border-radius:50%;display:grid;place-items:center;background:var(--app-accent);color:#fff;font-size:11.5px;font-weight:700}
+  details.acct .nm{font-size:13px;color:var(--app-ink)}
+  details.acct .pop{position:absolute;right:0;top:calc(100% + 8px);z-index:30;width:240px;padding:12px;border-radius:12px;border:1px solid var(--app-rule);background:var(--app-panel);box-shadow:0 12px 32px rgba(0,0,0,.18)}
+  details.acct .who{font-size:12.5px;color:var(--app-soft);margin-bottom:10px} details.acct .who b{color:var(--app-ink)}
+  details.acct .lbl{font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--app-faint);margin-bottom:6px}
+  details.acct .seg{display:flex;border:1px solid var(--app-rule);border-radius:8px;overflow:hidden}
+  details.acct .seg button{flex:1;border:0;background:transparent;color:var(--app-soft);font:inherit;font-size:12.5px;padding:6px 0;cursor:pointer}
+  details.acct .seg button.on{background:var(--app-accent);color:#fff;font-weight:600}
+  details.acct .sws{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
+  details.acct .sw{width:26px;height:26px;border-radius:50%;border:2px solid var(--app-rule);cursor:pointer;padding:0}
+  details.acct .sw.on{border-color:var(--app-ink);box-shadow:0 0 0 2px var(--app-panel) inset}
+  details.acct .palname{font-size:12px;color:var(--app-faint);margin-top:6px}
 `
 
 // narrow: sign-in; wide: a Lens page — a dashboard gets the whole browser width.
@@ -202,21 +214,35 @@ function groupLenses(lenses) {
         .map(folder => ({ folder, items: by.get(folder).sort(order) }))
 }
 
-// Who is signed in, their theme, and Sign out — on every page, so nobody
-// wonders which account they are looking through, and each person can make
-// the app look the way they like (remembered for their login).
+// Who is signed in — one small account button (initials + name). Clicking it
+// opens a panel with Appearance (light / dark / match my computer and the
+// colour themes, remembered for the login) and Sign out. Minimal on purpose.
 function signOutBar(display, prefs = { mode: 'system', palette: THEMES.default }) {
-    const opt = (v, l, cur) => `<option value="${esc(v)}"${v === cur ? ' selected' : ''}>${esc(l)}</option>`
-    return `<div class="me"><span class="who">Signed in as <b>${esc(display)}</b></span>
-  <select id="thMode" title="Light or dark" aria-label="Light or dark">${opt('system', 'Match my computer', prefs.mode)}${opt('light', 'Light', prefs.mode)}${opt('dark', 'Dark', prefs.mode)}</select>
-  <select id="thPal" title="Colour theme" aria-label="Colour theme">${Object.entries(THEMES.themes).map(([k, t]) => opt(k, t.label, prefs.palette)).join('')}</select>
-  <form method="post" action="/auth/signout" style="margin:0"><button class="btn" style="margin-top:0">Sign out</button></form></div>
-  <script>(function () {
-    function save() {
-      fetch('/api/prefs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode: document.getElementById('thMode').value, palette: document.getElementById('thPal').value }) })
-        .then(function () { location.reload() })
+    const initials = String(display || '?').replace(/[^A-Za-z0-9]+/g, ' ').trim().split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()
+    const modeBtn = (v, l) => `<button type="button" data-mode="${v}" class="${prefs.mode === v ? 'on' : ''}">${l}</button>`
+    const swatch = ([k, t]) => {
+        const c = Object.assign({}, THEMES.base.light, t.light)
+        return `<button type="button" data-pal="${esc(k)}" title="${esc(t.label)}" class="sw${prefs.palette === k ? ' on' : ''}" style="background:linear-gradient(135deg, ${esc(c.accent)} 50%, ${esc(c.bg)} 50%)"></button>`
     }
-    document.getElementById('thMode').onchange = document.getElementById('thPal').onchange = save
+    return `<details class="acct"><summary title="Your account and appearance"><span class="av">${esc(initials)}</span><span class="nm">${esc(display)}</span></summary>
+  <div class="pop">
+    <div class="who">Signed in as <b>${esc(display)}</b></div>
+    <div class="lbl">Appearance</div>
+    <div class="seg">${modeBtn('system', 'Auto')}${modeBtn('light', 'Light')}${modeBtn('dark', 'Dark')}</div>
+    <div class="sws">${Object.entries(THEMES.themes).map(swatch).join('')}</div>
+    <div class="palname">${esc((THEMES.themes[prefs.palette] ?? THEMES.themes[THEMES.default]).label)}</div>
+    <form method="post" action="/auth/signout" style="margin:10px 0 0"><button class="btn" style="margin:0;width:100%">Sign out</button></form>
+  </div></details>
+  <script>(function () {
+    var box = document.querySelector('details.acct'), cur = ${JSON.stringify({ mode: prefs.mode, palette: prefs.palette }).replace(/</g, '\\u003c')}
+    function save(patch) {
+      for (var k in patch) cur[k] = patch[k]
+      fetch('/api/prefs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(cur) }).then(function () { location.reload() })
+    }
+    box.querySelectorAll('[data-mode]').forEach(function (b) { b.onclick = function () { save({ mode: b.getAttribute('data-mode') }) } })
+    box.querySelectorAll('[data-pal]').forEach(function (b) { b.onclick = function () { save({ palette: b.getAttribute('data-pal') }) } })
+    document.addEventListener('click', function (e) { if (box.open && !box.contains(e.target)) box.open = false })
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape') box.open = false })
   })()</script>`
 }
 
