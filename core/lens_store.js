@@ -109,7 +109,9 @@ function cleanConfig(config) {
     return out
 }
 
-async function saveLens(server, name, html, owner, { publish = false, description, folder, title, icon, color, image, config, ideToken, client } = {}) {
+// template: a Viewfinder template name — the Lens then stores no code of its
+// own (its code is the template's); '' detaches it (the Lens keeps html).
+async function saveLens(server, name, html, owner, { publish = false, description, folder, title, icon, color, image, config, template, ideToken, client } = {}) {
     const safe = safeName(name)
     const existing = await store.readDoc(server, AREA, docName(safe), { ideToken, client })
     const now = new Date().toISOString()
@@ -126,11 +128,13 @@ async function saveLens(server, name, html, owner, { publish = false, descriptio
         color:          color === undefined || color === null ? (existing?.color ?? '') : cleanColor(color),
         image:          image === undefined || image === null ? (existing?.image ?? '') : cleanImage(image),
         config:         config === undefined || config === null ? (existing?.config ?? {}) : cleanConfig(config),
+        template:       template === undefined || template === null ? (existing?.template ?? '') : cleanTemplate(template),
         created:        existing?.created ?? now,
         createdBy:      existing?.createdBy ?? owner ?? 'unknown',
         toolkitVersion: TOOLKIT_VERSION,
         html,
     }
+    if (doc.template) doc.html = ''   // its code is the template's — never a stale copy
     await store.writeDoc(server, AREA, docName(safe), doc, { ideToken, client })
     const { html: _html, ...details } = doc
     return details
@@ -138,6 +142,12 @@ async function saveLens(server, name, html, owner, { publish = false, descriptio
 
 async function deleteLens(server, name, { ideToken, client } = {}) {
     await store.deleteDoc(server, AREA, docName(name), { ideToken, client })
+}
+
+function cleanTemplate(t) {
+    const name = String(t ?? '').trim()
+    if (name) require('./viewfinder').readTemplate(name)   // throws for an unknown template
+    return name
 }
 
 // May this person open the Lens? config.access lists TM1 groups; empty = everyone.

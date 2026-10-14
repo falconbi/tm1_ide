@@ -16,6 +16,7 @@ const gitSecrets = require('./core/git-secrets')
 const { odataKey } = require('./core/odata-key')
 if (!process.env.TM1_GIT_TOKEN && gitSecrets.getToken()) process.env.TM1_GIT_TOKEN = gitSecrets.getToken()
 const lensStore = require('./core/lens_store')
+const viewfinder = require('./core/viewfinder')
 const { logLensWrite, logLensRun } = require('./core/lens_activity_log')
 const lensBridge = require('./core/lens_bridge')
 const { readOnlyRefusal } = require('./core/readonly')
@@ -3771,12 +3772,17 @@ app.get('/api/lenses', async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
+// Viewfinder: the Lens templates (code shared by many Lenses), with what each
+// setting means and an example config to start from.
+app.get('/api/viewfinder', (_req, res) => res.json(viewfinder.listTemplates().map(t => ({ ...t, html: viewfinder.readTemplate(t.name) }))))
+
 app.get('/api/lenses/:name', async (req, res) => {
     try {
         const server = req.query.server
         if (!server) return res.status(400).json({ error: 'server required' })
-        const { html, ...meta } = await lensStore.readLens(server, req.params.name, { ideToken: req.ideToken })
-        res.json({ name: meta.name, html, meta })
+        const doc = await lensStore.readLens(server, req.params.name, { ideToken: req.ideToken })
+        const { html: _own, ...meta } = doc
+        res.json({ name: meta.name, html: viewfinder.lensHtml(doc), meta })
     } catch (e) { res.status(/not found/.test(e.message) ? 404 : 500).json({ error: e.message }) }
 })
 
@@ -3786,13 +3792,13 @@ app.post('/api/lenses/:name', async (req, res) => {
         if (!server) return res.status(400).json({ error: 'server required' })
         if (!gateWrite(res, server)) return
         const client = makeClient(server, req.ideToken)
-        const { html, description, folder, title, icon, color, image, config, publish, force } = req.body
-        if (typeof html !== 'string' || !html.trim()) return res.status(400).json({ error: 'html is required' })
-        const errors = await lensBridge.validateLens(client, html)
+        const { html, description, folder, title, icon, color, image, config, template, publish, force } = req.body
+        if (!template && (typeof html !== 'string' || !html.trim())) return res.status(400).json({ error: 'html is required' })
+        const errors = await lensBridge.validateLens(client, template ? viewfinder.readTemplate(template) : html)
         if (errors.length && !force) {
             return res.status(400).json({ error: `Lens validation failed (${errors.length}):`, validation: errors })
         }
-        const saved = await lensStore.saveLens(server, req.params.name, html, req.user, { publish: !!publish, description, folder, title, icon, color, image, config, ideToken: req.ideToken })
+        const saved = await lensStore.saveLens(server, req.params.name, html, req.user, { publish: !!publish, description, folder, title, icon, color, image, config, template, ideToken: req.ideToken })
         cl.writeLog({ server, action: publish ? 'LENS_PUBLISHED' : 'LENS_SAVED', objectType: 'lens', objectName: saved.name,
             detail: `version ${saved.version}${description ? ` — ${description}` : ''}`, user: req.user })
         res.json({ ...saved, validation: errors })

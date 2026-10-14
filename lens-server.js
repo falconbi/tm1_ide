@@ -29,6 +29,7 @@ const sharedBridge = require('./shared/lens-bridge')
 const { logLensWrite, logLensRun, readLensActivity } = require('./core/lens_activity_log')
 const { createLiveHub } = require('./core/lens_live')
 const { readPrefs, savePrefs, themeCss } = require('./core/lens_prefs')
+const { lensHtml } = require('./core/viewfinder')
 const THEMES = require('./shared/lens-themes.json')
 const { createIpLimiter, createFailureGuard } = require('./core/login-rate-limit')
 
@@ -659,7 +660,7 @@ function createApp({ config = loadConfig(), deps = {} } = {}) {
             const kit = `${req.protocol}://${req.get('host')}/lens-kit/`
             res.set('Content-Security-Policy', `sandbox allow-scripts; default-src 'none'; script-src 'unsafe-inline' ${kit}; style-src 'unsafe-inline'; img-src data:; connect-src 'none'; font-src 'none'`)
             res.type('html')
-            res.send(sharedBridge.lensSrcDoc(doc.html ?? '', { config: doc.config, theme: prefsOf(req) }))
+            res.send(sharedBridge.lensSrcDoc(lensHtml(doc), { config: doc.config, theme: prefsOf(req) }))
         } catch (e) { res.status(404).send('Lens not found') }
     })
 
@@ -798,8 +799,8 @@ function createApp({ config = loadConfig(), deps = {} } = {}) {
             if (want > supported) {
                 return res.status(417).json({ error: `This Lens needs toolkit version ${want}; this Lens app supports up to ${supported}.`, name: doc.name })
             }
-            const { html, ...meta } = doc
-            res.json({ html, meta })
+            const { html: _own, ...meta } = doc
+            res.json({ html: lensHtml(doc), meta })
         } catch (e) { res.status(404).json({ error: e.message }) }
     })
 
