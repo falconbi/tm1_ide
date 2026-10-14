@@ -228,6 +228,7 @@ const num = v => (typeof v === 'number' && Number.isFinite(v) ? v : Number(v) ||
 // mean to the person typing, keeping the code for whoever administers security.
 function plainWriteRefusal(code, cube) {
     const why = [
+        [/StringCellUpdateError/i, `TM1 wouldn't change these text cells in ${cube} — usually you don't have permission to (ask your TM1 administrator)`],
         [/NoWriteAccess|WriteAccess|ObjectSecurity|SecurityNo/i, `You don't have permission to change these cells in ${cube} — ask your TM1 administrator for write access`],
         [/NoReservation/i, `Someone else is editing these cells, or you haven't started editing — TM1 needs a data reservation to change ${cube}`],
         [/ElementIsLocked|Locked|Reserved/i, 'Some of these cells are locked or reserved by someone else'],
@@ -262,13 +263,14 @@ async function writeCells(client, { cube, cells, allowedCubes = [] } = {}) {
         if (missing.length) throw new Error(`${at}: missing ${missing.join(', ')}`)
         const extra = Object.keys(coords).filter(k => !dims.includes(k))
         if (extra.length) throw new Error(`${at}: "${extra[0]}" is not a dimension of ${cube}`)
-        if (typeof c.value !== 'number' || !Number.isFinite(c.value)) throw new Error(`${at}: the value must be a number`)
-        if ('expect' in c && c.expect !== null && (typeof c.expect !== 'number' || !Number.isFinite(c.expect))) throw new Error(`${at}: expect must be a number`)
+        const text = typeof c.value === 'string'
+        if (text ? c.value.length > 1000 : (typeof c.value !== 'number' || !Number.isFinite(c.value))) throw new Error(`${at}: the value must be a number, or text of at most 1000 characters`)
+        if ('expect' in c && c.expect !== null && typeof c.expect !== (text ? 'string' : 'number')) throw new Error(`${at}: expect must be ${text ? 'text' : 'a number'} like the value`)
         const elems = dims.map(d => String(coords[d]))
         const key = elems.join('\u0001').toLowerCase()
         if (seen.has(key)) throw new Error(`${at}: the same cell appears twice`)
         seen.add(key)
-        return { elems, value: c.value, check: 'expect' in c, expect: num(c.expect) }
+        return { elems, value: c.value, text, check: 'expect' in c, expect: text ? String(c.expect ?? '') : num(c.expect) }
     })
 
     // Read every target cell as the user: its value now, and whether TM1
@@ -282,12 +284,18 @@ async function writeCells(client, { cube, cells, allowedCubes = [] } = {}) {
     const byOrd = new Map((cs?.Cells ?? []).map(c => [c.Ordinal, c]))
     const label = n => n.elems.join(' · ')
 
+    // Text only into text cells, numbers only into number cells (TM1 reports a
+    // text cell's value as a string).
+    const wrongKind = norm.filter((n, i) => n.text !== (typeof byOrd.get(i)?.Value === 'string'))
+    if (wrongKind.length) {
+        throw new Error(`${wrongKind.length} cell${wrongKind.length > 1 ? 's' : ''} got the wrong kind of value — text into a number cell, or a number into a text cell (${wrongKind.slice(0, 3).map(n => n.elems.join(' · ')).join('; ')}). Nothing was saved.`)
+    }
     const calc = norm.filter((n, i) => byOrd.get(i)?.RuleDerived || byOrd.get(i)?.Consolidated)
     if (calc.length) {
         throw new Error(`${calc.length} cell${calc.length > 1 ? 's are' : ' is'} calculated by TM1 and can't be typed into (${calc.slice(0, 3).map(label).join('; ')}${calc.length > 3 ? '; …' : ''}). Nothing was saved.`)
     }
-    const conflicts = norm.map((n, i) => ({ n, now: num(byOrd.get(i)?.Value) }))
-        .filter(x => x.n.check && Math.abs(x.now - x.n.expect) > 1e-9)
+    const conflicts = norm.map((n, i) => ({ n, now: n.text ? String(byOrd.get(i)?.Value ?? '') : num(byOrd.get(i)?.Value) }))
+        .filter(x => x.n.check && (x.n.text ? x.now !== x.n.expect : Math.abs(x.now - x.n.expect) > 1e-9))
     if (conflicts.length) {
         const e = new Error(`${conflicts.length} cell${conflicts.length > 1 ? 's were' : ' was'} changed by someone else since this screen loaded (${conflicts.slice(0, 3).map(x => label(x.n)).join('; ')}${conflicts.length > 3 ? '; …' : ''}). Nothing was saved — reload to see the new numbers.`)
         e.conflicts = conflicts.map(x => ({ coordinates: Object.fromEntries(dims.map((d, k) => [d, x.n.elems[k]])), now: x.now, expected: x.n.expect }))
@@ -302,7 +310,7 @@ async function writeCells(client, { cube, cells, allowedCubes = [] } = {}) {
     }
     return {
         written: norm.length,
-        changes: norm.map((n, i) => ({ coordinates: Object.fromEntries(dims.map((d, k) => [d, n.elems[k]])), old: num(byOrd.get(i)?.Value), value: n.value })),
+        changes: norm.map((n, i) => ({ coordinates: Object.fromEntries(dims.map((d, k) => [d, n.elems[k]])), old: n.text ? String(byOrd.get(i)?.Value ?? '') : num(byOrd.get(i)?.Value), value: n.value })),
     }
 }
 
@@ -321,6 +329,14 @@ async function writeCells(client, { cube, cells, allowedCubes = [] } = {}) {
 const MSG_CUBE = 'Lens Messages'
 
 function declaredRunProcesses(html) { return metaList(html, 'lens-runs') }
+
+// What a saved Lens may change and run: its <meta> tags plus its config's
+// writes / runs lists — so reusable code can be pointed at another cube by its
+// config (saved, versioned and governed exactly like the code).
+const { lensHtml } = require('./viewfinder')
+function lensWrites(doc) { return [...new Set([...declaredWriteCubes(lensHtml(doc)), ...listOf(doc?.config?.writes)])] }
+function lensRuns(doc) { return [...new Set([...declaredRunProcesses(lensHtml(doc)), ...listOf(doc?.config?.runs)])] }
+const listOf = v => (Array.isArray(v) ? v.filter(x => typeof x === 'string' && x.trim()).map(x => x.trim()) : [])
 
 async function readLensMessage(client, user, process) {
     try {
@@ -366,4 +382,4 @@ async function runProcess(client, { process, params = {}, allowedProcesses = [],
     return { status, seconds, message, result, since, detail }
 }
 
-module.exports = { execMDX, readCell, getMeta, validateLens, buildStarterLens, validateMdx, declaredWriteCubes, writeCells, MAX_WRITE_CELLS, declaredRunProcesses, runProcess }
+module.exports = { execMDX, readCell, getMeta, validateLens, buildStarterLens, validateMdx, declaredWriteCubes, writeCells, MAX_WRITE_CELLS, declaredRunProcesses, runProcess, lensWrites, lensRuns }

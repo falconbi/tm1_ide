@@ -18,6 +18,7 @@ import dagre from '@dagrejs/dagre'
 import Alpine from '@alpinejs/csp'
 import { rows, format, better, localTime } from './rows.js'
 import { COMPONENTS, TOOLKIT_VERSION } from './components.js'
+import THEMES from '../lens-themes.json'
 
 echarts.use([BarChart, LineChart, ScatterChart, PieChart, HeatmapChart, SankeyChart, TreeChart, GaugeChart,
   SunburstChart, TreemapChart, RadarChart, FunnelChart,
@@ -26,12 +27,37 @@ echarts.use([BarChart, LineChart, ScatterChart, PieChart, HeatmapChart, SankeyCh
 ModuleRegistry.registerModules([AllCommunityModule])
 
 // ── Theme ──────────────────────────────────────────────────────────────────────
-const dark = () => !!(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches)
-const PALETTE = {
-  light: { calcBg: '#eef1f1', totalBg: '#dde3e3', ink: '#16201f', soft: '#4b5756', faint: '#85908f', rule: '#dfe4e3', panel: '#ffffff', bg: '#f6f7f7', accent: '#0f766e', compare: '#16201f', good: '#1d7a46', bad: '#b4372d', amber: '#a86a12', series: ['#0f766e', '#2b5ea7', '#a86a12', '#7c3aed', '#b4372d', '#475569'] },
-  dark:  { calcBg: '#1e2827', totalBg: '#2a3534', ink: '#e6ecea', soft: '#b2bdbb', faint: '#7d8987', rule: '#26302f', panel: '#161e1d', bg: '#0f1514', accent: '#3fb8aa', compare: '#e6ecea', good: '#4cc27f', bad: '#ef7d70', amber: '#e2a64a', series: ['#3fb8aa', '#7aa7e8', '#e2a64a', '#a78bfa', '#ef7d70', '#94a3b8'] },
+// The viewer's own choice (the Lens app hands it over as window.__lensTheme =
+// { mode: 'light' | 'dark' | 'system', palette: 'teal' | 'ocean' | … }); with
+// none — or a Lens whose config says theme: 'fixed' — it follows the computer.
+const chosen = () => (typeof window !== 'undefined' && window.__lensTheme) || {}
+const systemDark = () => !!(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches)
+const dark = () => chosen().mode === 'dark' || (chosen().mode !== 'light' && systemDark())
+function paletteFor(name, isDark) {
+  const t = THEMES.themes[name] || THEMES.themes[THEMES.default]
+  return Object.assign({}, THEMES.base[isDark ? 'dark' : 'light'], t[isDark ? 'dark' : 'light'])
 }
-const theme = { get colors() { return dark() ? PALETTE.dark : PALETTE.light }, format, better }
+const theme = {
+  get colors() { return paletteFor(chosen().palette, dark()) },
+  get mode() { return dark() ? 'dark' : 'light' },
+  get name() { return THEMES.themes[chosen().palette] ? chosen().palette : THEMES.default },
+  format, better,
+}
+// The colours as CSS variables, so a Lens styles itself with the viewer's
+// theme: background: var(--lens-bg); color: var(--lens-ink); … (and
+// color-scheme, so form controls and scrollbars match).
+const VAR_KEYS = ['bg', 'panel', 'ink', 'soft', 'faint', 'rule', 'accent', 'good', 'bad', 'amber', 'calcBg', 'totalBg']
+function applyThemeVars() {
+  if (typeof document === 'undefined') return
+  const c = theme.colors, root = document.documentElement
+  for (const k of VAR_KEYS) root.style.setProperty('--lens-' + k.replace(/[A-Z]/g, m => '-' + m.toLowerCase()), c[k])
+  root.style.colorScheme = theme.mode
+  root.setAttribute('data-lens-theme', theme.name + ' ' + theme.mode)
+}
+applyThemeVars()
+if (typeof window !== 'undefined' && window.matchMedia) {
+  try { window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', applyThemeVars) } catch { /* older browsers */ }
+}
 
 function host(el) {
   const node = typeof el === 'string' ? document.querySelector(el) : el
@@ -151,7 +177,10 @@ theme.blue = BLUE         // for a Lens's own legend (Lens.legend draws the stan
 // cells stay read-only. Input cells are tinted; typed values are highlighted
 // until saved. Returns { api, changes(), undo(), saved(), mark(), setValue(),
 // unmark() } — mark/setValue show what someone else is doing (working together).
-function grid(el, { columns = [], rows: data = [], height, onEdit, onFocus } = {}) {
+// More: rowEditable(row) → false locks a whole row (e.g. an approved line);
+// onSelect(row) — a click selects a row; a column with options: [...] edits by
+// a drop-down; g.addRow(row) adds a row (e.g. a new request).
+function grid(el, { columns = [], rows: data = [], height, onEdit, onFocus, onSelect, rowEditable } = {}) {
   const t = theme.colors, node = host(el)
   node.innerHTML = ''
   node.style.height = height || node.style.height || Math.min(480, 44 + data.length * 36) + 'px'
@@ -161,7 +190,7 @@ function grid(el, { columns = [], rows: data = [], height, onEdit, onFocus } = {
   const typed = new Map()                      // 'rowIndex|field' -> colour — someone else's unsaved value
   const pending = new Map()                    // 'rowIndex|field' -> label — saved, not yet handed in (e.g. submitted)
   const keyOf = (row, field) => data.indexOf(row) + '|' + field
-  const canEdit = (c, row) => !!c.editable && !(row && row._input && row._input[c.field] === false)
+  const canEdit = (c, row) => !!c.editable && !(row && row._input && row._input[c.field] === false) && !(rowEditable && row && rowEditable(row) === false)
   const tint = (hex, a) => hex + Math.round(a * 255).toString(16).padStart(2, '0')
   let api = null
   const changes = () => [...orig.keys()].map(k => {
@@ -204,6 +233,7 @@ function grid(el, { columns = [], rows: data = [], height, onEdit, onFocus } = {
       }
       if (!c.editable) return def
       def.editable = p => canEdit(c, p.data)
+      if (c.options) { def.cellEditor = 'agSelectCellEditor'; def.cellEditorParams = { values: c.options } }
       if (c.type === 'number') {
         def.valueParser = p => {
           const v = Number(String(p.newValue ?? '').replace(/[,$\s]/g, ''))
@@ -218,6 +248,8 @@ function grid(el, { columns = [], rows: data = [], height, onEdit, onFocus } = {
       if (node) onFocus(node.data, p.column.getColId ? p.column.getColId() : p.column)
     },
     tooltipShowDelay: 0,
+    rowSelection: onSelect ? { mode: 'singleRow', checkboxes: false, enableClickSelection: true } : undefined,
+    onSelectionChanged: onSelect ? () => { const r = api.getSelectedRows(); onSelect(r[0] || null) } : undefined,
     onCellValueChanged: p => {
       const k = keyOf(p.data, p.colDef.field)
       if (!orig.has(k)) orig.set(k, p.oldValue)
@@ -253,6 +285,7 @@ function grid(el, { columns = [], rows: data = [], height, onEdit, onFocus } = {
     // Flash the cells whose values differ from `before` (a snapshot() taken
     // earlier) — e.g. after someone else saved or spread, so the eye goes there.
     snapshot() { return data.map(r => Object.assign({}, r)) },
+    addRow(row) { data.push(row); api.applyTransaction({ add: [row] }); return row },
     // key(row) identifies a row in both (default: its Lens.rows label).
     flashChanges(before, { key = r => r._label, fields } = {}) {
       const cols = fields || columns.filter(c => c.type === 'number').map(c => c.field)
@@ -489,14 +522,18 @@ function live(el, { onEvent } = {}) {
   let me = null, members = [], channel = null
   const initials = u => String(u || '?').replace(/[^A-Za-z0-9]+/g, ' ').trim().split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()
   function paint() {
-    // Each person once, however many tabs or connections they have.
+    // Quiet by design: nothing when you're alone; otherwise small overlapping
+    // initials of the others (not you), muted, name on hover. Each person once,
+    // however many tabs or connections they have.
     const people = []
-    for (const m of members) if (!people.some(p => p.user === m.user)) people.push(me && m.user === me.user ? me : m)
+    for (const m of members) if (!people.some(p => p.user === m.user)) people.push(m)
     const others = people.filter(m => !me || m.user !== me.user)
-    node.innerHTML = '<div style="display:flex;align-items:center;gap:6px;font-size:12.5px;color:' + t.faint + '">' +
-      people.map(m => '<span title="' + esc(m.user + (me && m.id === me.id ? ' (you)' : '')) + '" style="width:26px;height:26px;border-radius:50%;display:inline-grid;place-items:center;font-size:11px;font-weight:700;color:#fff;background:' + m.color + ';box-shadow:0 0 0 2px ' + t.panel + (me && m.id === me.id ? ',0 0 0 3px ' + m.color : '') + '">' + esc(initials(m.user)) + '</span>').join('') +
-      '<span style="margin-left:4px">' + (!members.length ? 'Connecting…' : others.length ? esc(others.map(m => m.user).join(', ')) + (others.length === 1 ? ' is' : ' are') + ' here too' : 'Only you here') + '</span></div>'
+    if (!others.length) { node.innerHTML = ''; return }
+    node.innerHTML = '<span style="display:inline-flex;align-items:center;gap:6px;font-size:11.5px;color:' + t.faint + '" title="' + esc(others.map(m => m.user).join(', ') + ' — here too') + '">' +
+      '<span style="display:inline-flex">' + others.slice(0, 4).map((m, i) => '<span style="width:20px;height:20px;border-radius:50%;display:inline-grid;place-items:center;font-size:9.5px;font-weight:700;color:#fff;background:' + m.color + ';opacity:.85;box-shadow:0 0 0 2px ' + t.panel + ';margin-left:' + (i ? '-6px' : '0') + '">' + esc(initials(m.user)) + '</span>').join('') + '</span>' +
+      '<span>' + (others.length === 1 ? esc(others[0].user) : others.length + ' others') + ' here too</span></span>'
   }
+
   paint()
   if (window.lensBridge && window.lensBridge.onLive) {
     window.lensBridge.onLive(ev => {
@@ -589,6 +626,31 @@ function historyPanel(el, { describe, title = 'History' } = {}) {
   }
 }
 
+// ── whoami ────────────────────────────────────────────────────────────────────
+// The signed-in person and their TM1 groups: Lens.whoami() → { user, groups } —
+// e.g. show Approve only to approvers. Never security on its own: the server
+// and TM1 still enforce every save and every process.
+let whoCache = null
+function whoami() {
+  if (!whoCache) whoCache = window.lensBridge.call('whoami', {}).catch(() => ({ user: '', groups: [] }))
+  return whoCache
+}
+whoami.inGroup = (who, groups) => {
+  const mine = new Set((who && who.groups || []).map(g => String(g).toLowerCase()))
+  return mine.has('admin') || (groups || []).some(g => mine.has(String(g).toLowerCase()))
+}
+
+// ── config ────────────────────────────────────────────────────────────────────
+// The Lens's settings (its config, edited in the IDE's Config tab) — bindings
+// and behaviour, so the same code can serve different cubes, versions, rows.
+//   const cfg = Lens.config()            // { cube: 'Income Statement', … }
+//   const cube = Lens.config('cube', 'Income Statement')   // one key, with a default
+function config(key, fallback) {
+  const all = (typeof window !== 'undefined' && window.__lensConfig) || {}
+  if (key === undefined) return JSON.parse(JSON.stringify(all))
+  return all[key] === undefined ? fallback : JSON.parse(JSON.stringify(all[key]))
+}
+
 // ── run ───────────────────────────────────────────────────────────────────────
 // Run a TI process as the signed-in user (an action button). params: { pName:
 // 'text' | number } — only parameters the process has. The Lens must declare
@@ -601,7 +663,7 @@ function run(process, params) {
   return window.lensBridge.call('runProcess', { process, params: params || {} })
 }
 
-const Lens = { version: TOOLKIT_VERSION, components: COMPONENTS.slice(), rows, format, localTime, theme, kpis, trend, waterfall, bars, grid, flow, editing, live, history, historyPanel, legend, save, run, echarts }
+const Lens = { version: TOOLKIT_VERSION, components: COMPONENTS.slice(), rows, format, localTime, theme, kpis, trend, waterfall, bars, grid, flow, editing, live, history, historyPanel, legend, config, whoami, save, run, echarts }
 const missing = COMPONENTS.filter(n => typeof Lens[n] !== 'function')
 if (missing.length) throw new Error('Lens toolkit is missing: ' + missing.join(', '))
 

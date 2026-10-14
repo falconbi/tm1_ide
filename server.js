@@ -16,6 +16,7 @@ const gitSecrets = require('./core/git-secrets')
 const { odataKey } = require('./core/odata-key')
 if (!process.env.TM1_GIT_TOKEN && gitSecrets.getToken()) process.env.TM1_GIT_TOKEN = gitSecrets.getToken()
 const lensStore = require('./core/lens_store')
+const viewfinder = require('./core/viewfinder')
 const { logLensWrite, logLensRun } = require('./core/lens_activity_log')
 const lensBridge = require('./core/lens_bridge')
 const { readOnlyRefusal } = require('./core/readonly')
@@ -3771,12 +3772,58 @@ app.get('/api/lenses', async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
+// Viewfinder: the Lens templates (code shared by many Lenses), with what each
+// setting means and an example config to start from.
+// With a server: the built-ins plus that model's own templates, each with the
+// Lenses that use it ("used by") — so you know what a change will affect.
+app.get('/api/viewfinder', async (req, res) => {
+    try {
+        const server = req.query.server
+        if (!server) return res.json(viewfinder.listTemplates().map(t => ({ ...t, source: 'built-in', html: viewfinder.readTemplate(t.name), usedBy: [] })))
+        const [all, lenses] = await Promise.all([
+            viewfinder.listAll(server, { ideToken: req.ideToken }),
+            lensStore.listLenses(server, { ideToken: req.ideToken }).catch(() => []),
+        ])
+        res.json(all.map(t => ({ ...t, usedBy: lenses.filter(l => l.template === t.name).map(l => ({ name: l.name, title: l.title || l.name })) })))
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// Save a model template (a site's own — the code plus its title, settings
+// help and example). Recorded in the change set like a Lens.
+app.post('/api/viewfinder/:name', async (req, res) => {
+    try {
+        const server = req.query.server
+        if (!server) return res.status(400).json({ error: 'server required' })
+        if (!gateWrite(res, server)) return
+        const { html, title, description, icon, color, settings, example } = req.body ?? {}
+        const errors = await lensBridge.validateLens(makeClient(server, req.ideToken), String(html ?? ''))
+        const saved = await viewfinder.saveModelTemplate(server, req.params.name, { html, title, description, icon, color, settings, example }, req.user, { ideToken: req.ideToken })
+        cl.writeLog({ server, action: 'LENS_TEMPLATE_SAVED', objectType: 'lens-template', objectName: saved.name, detail: `version ${saved.version}`, user: req.user })
+        res.json({ ...saved, validation: errors })
+    } catch (e) { res.status(400).json({ error: e.message }) }
+})
+
+// Delete a model template — refused while any Lens still uses it.
+app.delete('/api/viewfinder/:name', async (req, res) => {
+    try {
+        const server = req.query.server
+        if (!server) return res.status(400).json({ error: 'server required' })
+        if (!gateWrite(res, server)) return
+        const users = (await lensStore.listLenses(server, { ideToken: req.ideToken })).filter(l => l.template === req.params.name)
+        if (users.length) return res.status(409).json({ error: `Still used by ${users.map(l => l.title || l.name).join(', ')} — point those Lenses elsewhere first` })
+        await viewfinder.deleteModelTemplate(server, req.params.name, { ideToken: req.ideToken })
+        cl.writeLog({ server, action: 'LENS_TEMPLATE_DELETED', objectType: 'lens-template', objectName: req.params.name, user: req.user })
+        res.json({ ok: true })
+    } catch (e) { res.status(400).json({ error: e.message }) }
+})
+
 app.get('/api/lenses/:name', async (req, res) => {
     try {
         const server = req.query.server
         if (!server) return res.status(400).json({ error: 'server required' })
-        const { html, ...meta } = await lensStore.readLens(server, req.params.name, { ideToken: req.ideToken })
-        res.json({ name: meta.name, html, meta })
+        const doc = await lensStore.readLens(server, req.params.name, { ideToken: req.ideToken })
+        const { html: _own, ...meta } = doc
+        res.json({ name: meta.name, html: await viewfinder.codeOf(server, doc, { ideToken: req.ideToken }), meta })
     } catch (e) { res.status(/not found/.test(e.message) ? 404 : 500).json({ error: e.message }) }
 })
 
@@ -3786,13 +3833,13 @@ app.post('/api/lenses/:name', async (req, res) => {
         if (!server) return res.status(400).json({ error: 'server required' })
         if (!gateWrite(res, server)) return
         const client = makeClient(server, req.ideToken)
-        const { html, description, folder, title, icon, color, image, publish, force } = req.body
-        if (typeof html !== 'string' || !html.trim()) return res.status(400).json({ error: 'html is required' })
-        const errors = await lensBridge.validateLens(client, html)
+        const { html, description, folder, title, icon, color, image, config, template, publish, force } = req.body
+        if (!template && (typeof html !== 'string' || !html.trim())) return res.status(400).json({ error: 'html is required' })
+        const errors = await lensBridge.validateLens(client, template ? (await viewfinder.findTemplate(server, template, { ideToken: req.ideToken })).html : html)
         if (errors.length && !force) {
             return res.status(400).json({ error: `Lens validation failed (${errors.length}):`, validation: errors })
         }
-        const saved = await lensStore.saveLens(server, req.params.name, html, req.user, { publish: !!publish, description, folder, title, icon, color, image, ideToken: req.ideToken })
+        const saved = await lensStore.saveLens(server, req.params.name, html, req.user, { publish: !!publish, description, folder, title, icon, color, image, config, template, ideToken: req.ideToken })
         cl.writeLog({ server, action: publish ? 'LENS_PUBLISHED' : 'LENS_SAVED', objectType: 'lens', objectName: saved.name,
             detail: `version ${saved.version}${description ? ` — ${description}` : ''}`, user: req.user })
         res.json({ ...saved, validation: errors })
@@ -3907,13 +3954,22 @@ app.post('/api/lens/write-cells', async (req, res) => {
         const name = req.body?.lens
         if (!name || typeof name !== 'string') throw new Error('lens is required')
         const doc = await lensStore.readLens(server, name, { ideToken: req.ideToken })
-        const result = await lensBridge.writeCells(client, { cube: req.body?.cube, cells: req.body?.cells, allowedCubes: lensBridge.declaredWriteCubes(doc.html) })
+        doc._code = await viewfinder.codeOf(server, doc, { ideToken: req.ideToken })
+        const result = await lensBridge.writeCells(client, { cube: req.body?.cube, cells: req.body?.cells, allowedCubes: lensBridge.lensWrites(doc) })
         logLensWrite({ server, app: 'ide', user: req.user, lens: doc.name, cube: req.body.cube, changes: result.changes })
         res.json({ written: result.written })
     } catch (e) {
         const detail = e.response?.data?.error?.message ?? e.message
         res.status(e.conflicts ? 409 : 400).json({ error: typeof detail === 'string' ? detail : JSON.stringify(detail), conflicts: e.conflicts })
     }
+})
+
+// Who the IDE user is on this server, and their TM1 groups (Lens.whoami()).
+app.get('/api/lens/whoami', async (req, res) => {
+    try {
+        const d = await makeClient(req.query.server, req.ideToken).get('ActiveUser', { '$expand': 'Groups($select=Name)' })
+        res.json({ user: d?.Name ?? req.user, groups: (d?.Groups ?? []).map(g => g.Name) })
+    } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
 // Action buttons from a Lens preview — the process must be declared by the
@@ -3924,7 +3980,8 @@ app.post('/api/lens/run-process', async (req, res) => {
         if (!gateReadOnly(res, server)) return
         if (!name || typeof name !== 'string') throw new Error('lens is required')
         const doc = await lensStore.readLens(server, name, { ideToken: req.ideToken })
-        const result = await lensBridge.runProcess(makeClient(server, req.ideToken), { process, params, allowedProcesses: lensBridge.declaredRunProcesses(doc.html), user: req.user })
+        doc._code = await viewfinder.codeOf(server, doc, { ideToken: req.ideToken })
+        const result = await lensBridge.runProcess(makeClient(server, req.ideToken), { process, params, allowedProcesses: lensBridge.lensRuns(doc), user: req.user })
         logLensRun({ server, app: 'ide', user: req.user, lens: doc.name, process, params, status: result.status, message: result.message })
         res.json(result)
     } catch (e) {

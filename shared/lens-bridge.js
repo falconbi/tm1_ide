@@ -157,6 +157,9 @@ function installLensHost(getLensWindow, { getServer, getToken, getLens, live = f
         if (!lens) throw new Error('save the Lens first — processes are checked against the saved Lens')
         url = `/api/lens/run-process?server=${enc(server)}`
         init = { method: 'POST', headers, body: JSON.stringify({ lens, process: d.payload?.process, params: d.payload?.params ?? {} }) }
+      } else if (d.method === 'whoami') {
+        url = `/api/lens/whoami?server=${enc(server)}`
+        init = { method: 'GET', headers }
       } else if (d.method === 'getMeta') {
         url = `/api/lens/meta?server=${enc(server)}${d.payload?.cube ? `&cube=${enc(d.payload.cube)}` : ''}`
         init = { method: 'GET', headers }
@@ -183,8 +186,15 @@ function installLensHost(getLensWindow, { getServer, getToken, getLens, live = f
 // A tiny, static render of a frame for the preview pane: sandboxed iframe with
 // the bridge script prepended. Callers control srcDoc refresh via a key change.
 // The Lens app prepends its CSP (connect-src 'none') before calling this.
-function lensSrcDoc(html) {
-  return `<script>${LENS_BRIDGE_SCRIPT}</script>` + (html ?? '')
+// config: the Lens's settings, handed over before any of its code runs —
+// read with Lens.config() (or window.__lensConfig without the toolkit).
+// theme: the viewer's { mode, palette } — not handed over when the Lens's
+// config says theme: 'fixed' (it keeps its own designed look).
+function lensSrcDoc(html, { config, theme } = {}) {
+  const c = config && typeof config === 'object' ? config : {}
+  const cfg = JSON.stringify(c).replace(/</g, '\\u003c')
+  const th = theme && c.theme !== 'fixed' ? JSON.stringify({ mode: String(theme.mode || 'system'), palette: String(theme.palette || '') }).replace(/</g, '\\u003c') : 'null'
+  return `<script>${LENS_BRIDGE_SCRIPT}\nwindow.__lensConfig = ${cfg};\nwindow.__lensTheme = ${th};</script>` + (html ?? '')
 }
 
 const api = { LENS_BRIDGE_SCRIPT, installLensHost, lensSrcDoc }

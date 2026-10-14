@@ -17,6 +17,15 @@ Lens toolkit catalogue:
 ${CATALOGUE}`
 
 function register(server, { SERVER, AGENT_USER, cl, ok, requireChangeSet }) {
+    // Viewfinder: proven Lens code to build from — prefer a template + config
+    // over writing a Lens from scratch.
+    server.tool(
+        'list_viewfinder',
+        'List the Viewfinder templates — proven Lens code (e.g. an input form) that a Lens can use with just a config. Shows what each setting means and an example config. Prefer a template + config (save_lens with template) over writing a Lens from scratch.',
+        {},
+        async () => ok((await require('../../../core/viewfinder').listAll(SERVER)).map(({ html: _h, ...t }) => t))
+    )
+
     // Lenses live in the model (Applications/Governance/Lenses on the bound server).
     // The MCP is the builder: it reads and writes with the builder identity.
     server.tool(
@@ -51,8 +60,10 @@ function register(server, { SERVER, AGENT_USER, cl, ok, requireChangeSet }) {
 ${BRIDGE_CONTRACT}`,
         {
             name:        z.string().describe('Lens name — letters, digits, - or _'),
-            html:        z.string().describe('Complete HTML document for the lens (see contract)'),
+            html:        z.string().optional().describe('Complete HTML document for the lens (see contract) — omit when using a Viewfinder template'),
+            template:    z.string().optional().describe("Build from a Viewfinder template (see list_viewfinder) instead of writing code: the Lens stores only the template name + its config. '' detaches it."),
             description: z.string().optional().describe('What the lens shows, in words'),
+            config:      z.record(z.any()).optional().describe("The Lens's settings, read in the Lens with Lens.config(): bindings (cube, version, rows…) and behaviour; access: [TM1 groups] limits who can open it in the Lens app; theme: 'fixed'. Omit to keep the current config"),
             icon:        z.string().optional().describe('Home-page icon, one of: ' + require('../../../core/lens_store').ICON_NAMES.join(', ')),
             color:       z.string().optional().describe("Home-page tile colour, '#rrggbb'"),
             title:       z.string().optional().describe("What people see in the Lens app, in business words (e.g. '1 Enter targets'); a leading number orders steps in a folder. Omit to keep the current one"),
@@ -60,14 +71,15 @@ ${BRIDGE_CONTRACT}`,
             publish:     z.boolean().optional().describe('Set status to published (default draft)'),
             force:       z.boolean().optional().describe('Save despite validation failures'),
         },
-        async ({ name, html, description, folder, title, icon, color, publish, force }) => {
+        async ({ name, html, description, folder, title, icon, color, config, template, publish, force }) => {
             requireChangeSet()
+            if (!template && !html) return ok({ blocked: true, reason: 'Give the Lens either html or a Viewfinder template' })
             const client = (require('../../../core/adapter_registry').makeClient)(SERVER, null)
-            const errors = await lensBridge.validateLens(client, html)
+            const errors = await lensBridge.validateLens(client, template ? require('../../../core/viewfinder').readTemplate(template) : html)
             if (errors.length && !force) {
                 return ok({ blocked: true, reason: `Lens validation failed (${errors.length}) — fix these and retry, or pass force:true:`, errors })
             }
-            const saved = await lensStore.saveLens(SERVER, name, html, AGENT_USER, { publish: !!publish, description, folder, title, icon, color })
+            const saved = await lensStore.saveLens(SERVER, name, html, AGENT_USER, { publish: !!publish, description, folder, title, icon, color, config, template })
             cl.writeLog({
                 server: SERVER, action: publish ? 'LENS_PUBLISHED' : 'LENS_SAVED',
                 objectType: 'lens', objectName: saved.name,

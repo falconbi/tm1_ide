@@ -88,3 +88,6 @@ config/lens-app.json
 
 # ── Lens activity log (cells saved and processes run through Lenses) ──
 data/lens-activity.jsonl
+
+# ── Lens app preferences (each person's theme) ──
+data/lens-prefs.json

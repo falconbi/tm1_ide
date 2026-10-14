@@ -1,0 +1,467 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Line-item form</title>
+<style>
+/* colours follow each person's theme (Lens.theme) */
+:root{--bg:var(--lens-bg,#f6f7f7);--ink:var(--lens-ink,#16201f);--soft:var(--lens-soft,#4b5756);--faint:var(--lens-faint,#85908f);--rule:var(--lens-rule,#dfe4e3);--panel:var(--lens-panel,#fff);--accent:var(--lens-accent,#0f766e);--bad:var(--lens-bad,#b4372d);--good:var(--lens-good,#1d7a46)}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}
+.wrap{padding:16px 18px 24px;display:grid;gap:12px}
+header{display:flex;flex-wrap:wrap;align-items:end;gap:12px 18px}
+h1{font-size:20px;margin:0}
+.sub{font-size:12.5px;color:var(--faint)}
+.controls{display:flex;gap:10px;margin-left:auto;align-items:end;flex-wrap:wrap}
+label{display:grid;gap:3px;font-size:11px;color:var(--faint);text-transform:uppercase;letter-spacing:.06em}
+select,button{font:inherit;font-size:13px;padding:5px 10px;border:1px solid var(--rule);border-radius:7px;background:var(--panel);color:var(--ink)}
+button{cursor:pointer}
+button.primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+button:disabled{opacity:.45;cursor:default}
+.card{background:var(--panel);border:1px solid var(--rule);border-radius:10px;padding:12px;min-width:0}
+.bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px}
+.sep{width:1px;height:22px;background:var(--rule)}
+.status{font-size:13px}
+.status.ok{color:var(--good)} .status.err{color:var(--bad)} .status.busy{color:var(--faint)}
+.totals{font-size:12.5px;color:var(--soft);margin-left:auto}
+.totals b{color:var(--ink)}
+.lcards{display:grid;gap:10px}
+.lc{border:1px solid var(--rule);border-radius:12px;background:var(--panel);transition:box-shadow .2s}
+.lc.new{border-style:dashed;border-color:var(--accent)}
+.lc-h{display:flex;align-items:center;gap:10px;padding:11px 14px;cursor:pointer}
+.lc-h:hover{background:var(--bg);border-radius:12px}
+.chip{font-size:11px;font-weight:600;padding:2px 9px;border-radius:999px;background:var(--bg);color:var(--soft);border:1px solid var(--rule);white-space:nowrap}
+.lc-t{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}
+.lc-t.empty{color:var(--faint);font-weight:400}
+.lc-amt{font-variant-numeric:tabular-nums;font-weight:600}
+.lc-st{font-size:12px;color:var(--faint);white-space:nowrap}
+.lc.approved .lc-st{color:var(--good)}
+.lc-car{color:var(--faint);font-size:12px}
+.lc-b{border-top:1px solid var(--rule);padding:14px;display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:12px 16px}
+.lc-b .wide{grid-column:1/-1}
+.lc-b input,.lc-b select,.lc-b textarea{width:100%;box-sizing:border-box;font:inherit;font-size:13.5px;padding:7px 9px;border:1px solid var(--rule);border-radius:8px;background:var(--bg);color:var(--ink);text-transform:none;letter-spacing:0}
+.lc-b textarea{min-height:64px;resize:vertical}
+.lc-b input:disabled,.lc-b select:disabled,.lc-b textarea:disabled{opacity:.7}
+.lc-b .ro{font-size:13.5px;color:var(--soft);padding:7px 0;text-transform:none;letter-spacing:0}
+.lc-a{grid-column:1/-1;display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding-top:2px}
+.lc-a .msg{font-size:12.5px}
+.lc.flash{animation:cflash 1.8s ease-out}
+@keyframes cflash{from{box-shadow:0 0 0 3px var(--accent)}to{box-shadow:0 0 0 0 transparent}}
+.need{padding:18px;border:1px dashed var(--rule);border-radius:10px;color:var(--faint);font-size:13px}
+.need code{color:var(--ink)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div><h1 id="heading">Line items</h1><div class="sub" id="subtitle"></div></div>
+    <div class="controls">
+      <div id="people" style="align-self:center"></div>
+      <label><span id="unitLabel">Unit</span><select id="unit"></select></label>
+      <label id="periodWrap"><span id="periodLabel">Period</span><select id="period"></select></label>
+    </div>
+  </header>
+  <div class="card">
+    <div class="bar">
+      <button id="save" class="primary" disabled>Save</button>
+      <button id="undo" disabled>Undo</button>
+      <span class="sep"></span>
+      <select id="addGroup" hidden title="What kind of line to add"></select>
+      <button id="add">+ Add</button>
+      <span id="approveBox" hidden><span class="sep" style="display:inline-block;vertical-align:middle;margin-right:10px"></span><button id="approve" disabled>✓ Approve</button> <button id="unapprove" disabled>Reopen</button></span>
+      <span id="historyBtn"></span>
+      <span id="status" class="status"></span>
+      <span id="totals" class="totals"></span>
+    </div>
+    <div id="grid"></div>
+  </div>
+</div>
+<script src="/lens-kit/lens-kit.js"></script>
+<script>
+// ── Line-item form (Viewfinder template) ─────────────────────────────────────
+// Requests or items as lines — a capex request, a hire, a contract — one unit
+// at a time (a store, a cost centre…). The lines are the leaves of a line
+// dimension (and optionally of a group dimension, e.g. asset type, chosen when
+// a line is added); the fields across come from the config. Optional approval:
+// approvers tick a line Approved through a process that stamps who and when,
+// and TM1 (a cell-security rule) then keeps the line read-only.
+(function () {
+  var $ = function (id) { return document.getElementById(id) }
+  var esc = function (v) { return String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;') }
+  var M = function (d, e) { return '[' + d + '].[' + d + '].[' + String(e).replace(/]/g, ']]') + ']' }
+  var call = function (mdx) { return window.lensBridge.call('execMDX', { mdx: mdx }) }
+  var say = function (text, kind) { $('status').textContent = text || ''; $('status').className = 'status ' + (kind || '') }
+  function fail(e) { say((e && e.message ? e.message : e), 'err') }
+  if (!window.Lens) return fail(new Error('the Lens toolkit did not load'))
+
+  // ── The config ──
+  var C = Lens.config()
+  var missing = ['cube', 'unit', 'lines', 'fieldsDimension', 'fields'].filter(function (k) { return !C[k] })
+  if (missing.length) {
+    $('grid').innerHTML = '<div class="need">This line-item form needs its settings — add <code>' + missing.join('</code>, <code>') + '</code> to its config (IDE → Config tab).</div>'
+    return
+  }
+  var cube = C.cube, unitDim = C.unit.dimension, lineDim = C.lines.dimension, groupCfg = C.group || null, fieldDim = C.fieldsDimension
+  var period = C.period || null, version = C.version || null, approval = C.approval || null
+  var fields = C.fields
+  // Layout: 'grid' (rows, like a spreadsheet) or 'cards' (one form per line,
+  // like an online form — better for requests with text).
+  var CARDS = C.layout === 'cards'
+  var required = fields.filter(function (f) { return f.required }).map(function (f) { return f.member })
+  $('heading').textContent = C.heading || 'Line items'
+  $('subtitle').textContent = C.subtitle || ''
+  $('unitLabel').textContent = C.unit.label || unitDim
+  if (period) { $('periodLabel').textContent = period.label || period.dimension; $('period').innerHTML = (period.members || []).map(function (p) { return '<option>' + esc(p) + '</option>' }).join('') }
+  else $('periodWrap').hidden = true
+
+  var unitNames = {}, groupNames = {}, g = null, data = [], who = { user: '', groups: [] }, selected = null
+  var unitOf = function () { return $('unit').value }, periodOf = function () { return period ? $('period').value : '' }
+  var keyOf = function (r) { return r.__line + '|' + (r.__group || '') }
+  var groupName = function (g0) { var n = groupNames[g0] || g0; return n.indexOf(g0 + ' ') === 0 ? n.slice(g0.length + 1) : n }
+  var label = function (r) { return (groupCfg ? groupName(r.__group) + ' ' : '') + '#' + r.__line }
+  var isApproved = function (r) { return approval && String(r[approval.flag] || '') === 'Y' }
+  function coords(r, field) {
+    var c = Object.assign({}, C.fixed || {})
+    if (version) c[version.dimension] = version.member
+    c[unitDim] = unitOf()
+    if (period) c[period.dimension] = periodOf()
+    c[lineDim] = r.__line
+    if (groupCfg) c[groupCfg.dimension] = r.__group
+    c[fieldDim] = field
+    return c
+  }
+  function slice() {
+    var w = Object.keys(C.fixed || {}).map(function (d) { return M(d, C.fixed[d]) })
+    if (version) w.push(M(version.dimension, version.member))
+    w.push(M(unitDim, unitOf()))
+    if (period) w.push(M(period.dimension, periodOf()))
+    return ' WHERE (' + w.join(',') + ')'
+  }
+  function names(dim, into) {
+    return call('SELECT {[}ElementAttributes_' + dim + '].[}ElementAttributes_' + dim + '].[Caption_Default]} ON 0, {TM1SUBSETALL([' + dim + '].[' + dim + '])} ON 1 FROM [}ElementAttributes_' + dim + ']')
+      .then(function (r) { Lens.rows(r).forEach(function (x) { if (x.Caption_Default) into[x[dim]] = x.Caption_Default }) }, function () {})
+  }
+  function units() {
+    return call('SELECT {} ON 0, {TM1FILTERBYLEVEL({TM1SUBSETALL([' + unitDim + '].[' + unitDim + '])}, ' + (C.unit.level || 0) + ')} ON 1 FROM [' + cube + ']').then(function (r) {
+      var list = Lens.rows(r).map(function (x) { return x[unitDim] })
+      if (!list.length) throw new Error('you have no access to any ' + (C.unit.label || unitDim).toLowerCase() + ' here')
+      $('unit').innerHTML = list.map(function (o) { return '<option value="' + esc(o) + '">' + esc(unitNames[o] ? unitNames[o] + ' (' + o + ')' : o) + '</option>' }).join('')
+    })
+  }
+  function groups() {
+    if (!groupCfg) return Promise.resolve()
+    return call('SELECT {} ON 0, {TM1FILTERBYLEVEL({TM1SUBSETALL([' + groupCfg.dimension + '].[' + groupCfg.dimension + '])}, ' + (groupCfg.level || 0) + ')} ON 1 FROM [' + cube + ']').then(function (r) {
+      var list = Lens.rows(r).map(function (x) { return x[groupCfg.dimension] })
+      $('addGroup').innerHTML = list.map(function (o) { return '<option value="' + esc(o) + '">' + esc(groupNames[o] || o) + '</option>' }).join('')
+      $('addGroup').hidden = false
+    })
+  }
+
+  // ── Working together ──
+  var tg = null, sent = {}, hp = null
+  var channel = function () { return 'lines:' + unitOf() + '|' + periodOf() }
+  var byKey = function (k) { return function (r) { return keyOf(r) === k } }
+  var tell = function (type, d) { if (tg) tg.send(type, d || {}) }
+  function onLive(ev) {
+    var f = ev.from || {}
+    if (CARDS) {
+      // Cards refresh when someone saves; anything I'm typing stays put.
+      if ((ev.type === 'saved' || ev.type === 'history') && f.id) {
+        if (ev.type === 'saved') say(f.user + ' ' + (ev.note || 'saved changes') + '.', 'ok')
+        if (!Object.keys(drafts).length) { var before = snapshotCards(); load().then(function () { flashCards(before) }).catch(fail) } else loadHistory()
+      }
+      return
+    }
+    if (ev.type === 'leave') { if (g) { g.unmark(ev.id); if (!g.changes().length) load().catch(fail) } return }
+    if (!g || !f.id) return
+    if (ev.type === 'cursor') g.mark(byKey(ev.key), ev.field, f.id, { color: f.color, label: f.user + ' is here' })
+    else if (ev.type === 'typing') {
+      if (!data.some(byKey(ev.key)) && ev.line) g.addRow(blankRow(ev.line, ev.group))
+      g.setValue(byKey(ev.key), ev.field, ev.value, f.user)
+      g.mark(byKey(ev.key), ev.field, f.id, { color: f.color, label: f.user + ' typed' })
+    } else if (ev.type === 'saved' || ev.type === 'history') {
+      if (ev.type === 'saved') say(f.user + ' ' + (ev.note || 'saved changes') + '.', 'ok')
+      var before = g.snapshot()
+      if (!g.changes().length) load().then(function () { if (g) g.flashChanges(before, { key: keyOf }) }).catch(fail)
+      else loadHistory()
+    }
+  }
+
+  // ── History, in words ──
+  function describe(e) {
+    var lineOf = function (c) { return '#' + c[lineDim] + (groupCfg ? ' ' + (groupNames[c[groupCfg.dimension]] || c[groupCfg.dimension]) : '') }
+    if (e.kind === 'write') {
+      var ch = e.changes || [], byLine = {}
+      ch.forEach(function (x) { var k = lineOf(x.coordinates); (byLine[k] = byLine[k] || []).push(x) })
+      return Object.keys(byLine).map(function (k) {
+        return k + ': ' + byLine[k].slice(0, 3).map(function (x) {
+          var fd = fields.find(function (ff) { return ff.member === x.coordinates[fieldDim] }) || { label: x.coordinates[fieldDim] }
+          return (fd.label || fd.member) + ' ' + (x.old === '' || x.old === 0 ? '' : fmt(fd, x.old) + ' → ') + fmt(fd, x.value)
+        }).join(', ')
+      }).join(' · ')
+    }
+    if (approval && e.process === approval.process) {
+      var p = e.params || {}, pr = approval.params || {}
+      return (p[pr.action] === 'Approve' ? 'approved ' : 'reopened ') + '#' + p[pr.line] + (e.status && e.status !== 'CompletedSuccessfully' ? ' — refused' : '')
+    }
+    return 'ran ' + e.process
+  }
+  function loadHistory() {
+    var match = {}
+    match[unitDim] = unitOf()
+    if (period) match[period.dimension] = periodOf()
+    return Lens.history(match, { limit: 100 }).then(function (list) { if (hp) hp.set(list) }, function () {})
+  }
+
+  var fmt = function (f, v) { return f.type === 'number' ? Lens.format(v, f.format || 'number') : (v === '' || v == null ? '—' : String(v)) }
+  function blankRow(line, group) {
+    var r = { __line: line, __group: group || '', __new: true }
+    fields.forEach(function (f) { r[f.member] = f.type === 'number' ? 0 : '' })
+    if (approval) { r[approval.flag] = ''; r[approval.by] = ''; r[approval.at] = '' }
+    r.line = label(r)
+    return r
+  }
+  function totals() {
+    var cost = C.totalField, shown = data.filter(function (r) { return !r.__new || fields.some(function (f) { return r[f.member] && r[f.member] !== 0 }) })
+    if (!cost) { $('totals').textContent = shown.length + ' line' + (shown.length === 1 ? '' : 's'); return }
+    var f = fields.find(function (x) { return x.member === cost }) || { type: 'number' }
+    var sum = function (rs) { return rs.reduce(function (t, r) { return t + (Number(r[cost]) || 0) }, 0) }
+    var appr = data.filter(isApproved)
+    $('totals').innerHTML = '<b>' + shown.length + '</b> line' + (shown.length === 1 ? '' : 's') + ' · <b>' + esc(fmt(f, sum(shown))) + '</b>' + (approval ? ' · approved <b>' + esc(fmt(f, sum(appr))) + '</b>' : '')
+  }
+
+  // ── The grid ──
+  function load() {
+    if (tg) tg.join(channel())
+    say('Loading…', 'busy')
+    var members = fields.map(function (f) { return f.member }).concat(approval ? [approval.flag, approval.by, approval.at] : [])
+    var rowsSet = '{TM1FILTERBYLEVEL({TM1SUBSETALL([' + lineDim + '].[' + lineDim + '])}, ' + (C.lines.level || 0) + ')}' +
+      (groupCfg ? ' * {TM1FILTERBYLEVEL({TM1SUBSETALL([' + groupCfg.dimension + '].[' + groupCfg.dimension + '])}, ' + (groupCfg.level || 0) + ')}' : '')
+    var q = 'SELECT {' + members.map(function (m) { return M(fieldDim, m) }).join(',') + '} ON 0, ' + rowsSet + ' ON 1 FROM [' + cube + ']' + slice()
+    return call(q).then(function (r) {
+      var all = Lens.rows(r).map(function (x) {
+        x.__line = x[lineDim]; x.__group = groupCfg ? x[groupCfg.dimension] : ''
+        x.line = label(x)
+        return x
+      })
+      // A line is there when something TYPED is filled in — fields TM1
+      // calculates (e.g. an asset's life from its type) don't count.
+      data = all.filter(function (x) { return fields.some(function (f) { var v = x[f.member]; return (!x._input || x._input[f.member] !== false) && v !== '' && v !== null && v !== 0 }) })
+      data.__all = all
+      if (CARDS) drawCards(); else draw()
+      loadHistory()
+    })
+  }
+  function draw() {
+    selected = null
+    var cols = (groupCfg ? [{ field: '__groupName', headerName: groupCfg.label || groupCfg.dimension, pinned: 'left', minWidth: 130, valueGetter: function (p) { return groupName(p.data.__group) } }] : [])
+      .concat([{ field: '__line', headerName: '#', pinned: 'left', width: 56, minWidth: 56 }])
+      .concat(fields.map(function (f) {
+        return { field: f.member, headerName: f.label || f.member, type: f.type === 'number' ? 'number' : 'text', format: f.format, editable: true, options: f.options, minWidth: f.width || (f.type === 'number' ? 100 : 140) }
+      }))
+    if (approval) cols.push({ field: '__approved', headerName: 'Approved', minWidth: 160,
+      valueGetter: function (p) { return isApproved(p.data) ? '✓ ' + (p.data[approval.by] || '') + (p.data[approval.at] ? ' · ' + Lens.localTime(p.data[approval.at]) : '') : '' } })
+    g = Lens.grid('#grid', {
+      height: C.height || '480px',
+      columns: cols,
+      rows: data,
+      rowEditable: function (row) { return !isApproved(row) },
+      onSelect: function (row) { selected = row; paintApprove() },
+      onEdit: function (ch) {
+        $('save').disabled = $('undo').disabled = !ch.length
+        say(ch.length ? ch.length + ' change' + (ch.length > 1 ? 's' : '') + ' not saved' : '')
+        ch.forEach(function (c) {
+          var k = keyOf(c.row) + '|' + c.field
+          if (sent[k] !== c.value) { sent[k] = c.value; tell('typing', { key: keyOf(c.row), line: c.row.__line, group: c.row.__group, field: c.field, value: c.value }) }
+        })
+        totals()
+      },
+      onFocus: function (row, field) { tell('cursor', { key: keyOf(row), field: field }) }
+    })
+    sent = {}
+    $('save').disabled = $('undo').disabled = true
+    totals(); paintApprove(); say('')
+  }
+
+  // ── Cards: one form per line ──
+  var openKey = null, drafts = {}
+  var valueOf = function (r, m) { var d = drafts[keyOf(r)]; return d && m in d ? d[m] : r[m] }
+  var calcField = function (r, f) { return r._input && r._input[f.member] === false }
+  function snapshotCards() { var s = {}; data.forEach(function (r) { s[keyOf(r)] = JSON.stringify(fields.map(function (f) { return r[f.member] }).concat(approval ? [r[approval.flag]] : [])) }); return s }
+  function flashCards(before) {
+    data.forEach(function (r) {
+      var k = keyOf(r), now = JSON.stringify(fields.map(function (f) { return r[f.member] }).concat(approval ? [r[approval.flag]] : []))
+      if (before[k] !== now) { var el = document.querySelector('.lc[data-k="' + CSS.escape(k) + '"]'); if (el) { el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash') } }
+    })
+  }
+  function fieldInput(r, f, locked) {
+    var v = valueOf(r, f.member), id = 'f_' + f.member.replace(/\W/g, '_')
+    if (calcField(r, f)) return '<label>' + esc(f.label || f.member) + '<div class="ro">' + esc(fmt(f, v)) + ' <span class="sub">(calculated)</span></div></label>'
+    var dis = locked ? ' disabled' : ''
+    var input = f.options
+      ? '<select data-f="' + esc(f.member) + '"' + dis + '><option value=""></option>' + f.options.map(function (o) { return '<option' + (String(v) === String(o) ? ' selected' : '') + '>' + esc(o) + '</option>' }).join('') + '</select>'
+      : (f.type !== 'number' && (f.long || (f.width || 0) >= 240))
+        ? '<textarea data-f="' + esc(f.member) + '"' + dis + '>' + esc(v || '') + '</textarea>'
+        : '<input data-f="' + esc(f.member) + '"' + (f.type === 'number' ? ' inputmode="decimal"' : '') + ' value="' + esc(f.type === 'number' ? (v ? v : '') : (v || '')) + '"' + dis + '>'
+    return '<label class="' + ((f.type !== 'number' && (f.long || (f.width || 0) >= 240)) ? 'wide' : '') + '"' + ' for="' + id + '">' + esc(f.label || f.member) + (f.required ? ' *' : '') + input + '</label>'
+  }
+  function drawCards() {
+    var titleField = fields.find(function (f) { return f.type !== 'number' }) || fields[0]
+    var amtField = C.totalField ? fields.find(function (f) { return f.member === C.totalField }) : null
+    var can = approval && Lens.whoami.inGroup(who, approval.approvers || [])
+    $('grid').innerHTML = '<div class="lcards">' + (data.length ? data.map(function (r) {
+      var k = keyOf(r), open = openKey === k, appr = isApproved(r)
+      var t = valueOf(r, titleField.member)
+      var st = r.__new ? 'New — not saved' : appr ? '✓ Approved' + (r[approval.by] ? ' · ' + r[approval.by] : '') + (r[approval.at] ? ' · ' + Lens.localTime(r[approval.at]) : '') : approval ? 'Not approved yet' : ''
+      return '<div class="lc' + (open ? ' open' : '') + (appr ? ' approved' : '') + (r.__new ? ' new' : '') + '" data-k="' + esc(k) + '">' +
+        '<div class="lc-h" data-toggle>' + (groupCfg ? '<span class="chip">' + esc(groupName(r.__group)) + '</span>' : '') +
+        '<span class="lc-t' + (t ? '' : ' empty') + '">' + esc(t || 'Untitled') + '</span>' +
+        (amtField ? '<span class="lc-amt">' + esc(fmt(amtField, valueOf(r, amtField.member))) + '</span>' : '') +
+        '<span class="lc-st">' + esc(st) + '</span><span class="lc-car">' + (open ? '▴' : '▾') + '</span></div>' +
+        (open ? '<div class="lc-b">' + fields.map(function (f) { return fieldInput(r, f, appr) }).join('') +
+          '<div class="lc-a">' + (appr ? '<span class="sub">Approved requests are locked' + (can ? ' — reopen it to change it' : '') + '.</span>'
+            : '<button class="primary" data-act="save">Save</button><button data-act="cancel">' + (r.__new ? 'Discard' : 'Close') + '</button>') +
+          (can && !r.__new ? (appr ? '<button data-act="unapprove">Reopen</button>' : '<button data-act="approve">✓ Approve</button>') : '') +
+          '<span class="msg status"></span></div></div>' : '') + '</div>'
+    }).join('') : '<div class="need">Nothing here yet — press <b>+ New ' + esc((C.itemLabel || 'request').toLowerCase()) + '</b> to add one.</div>') + '</div>'
+    totals()
+    if ($('status').textContent === 'Loading…') say('')
+  }
+  function cardRow(el) { var k = el.closest('.lc').getAttribute('data-k'); return data.find(byKey(k)) }
+  function cardMsg(el, text, kind) { var m = el.closest('.lc').querySelector('.msg'); if (m) { m.textContent = text || ''; m.className = 'msg status ' + (kind || '') } }
+  $('grid').addEventListener('click', function (e) {
+    if (!CARDS) return
+    var tog = e.target.closest('[data-toggle]')
+    if (tog) { var k = tog.closest('.lc').getAttribute('data-k'); openKey = openKey === k ? null : k; drawCards(); return }
+    var act = e.target.closest('[data-act]')
+    if (!act) return
+    var r = cardRow(act), a = act.getAttribute('data-act')
+    if (a === 'cancel') { delete drafts[keyOf(r)]; if (r.__new) data = withAll(data.filter(function (x) { return x !== r })); openKey = null; drawCards() }
+    else if (a === 'save') saveCard(r, act)
+    else if (a === 'approve' || a === 'unapprove') { selected = r; approveAction(a === 'approve' ? 'Approve' : 'Unapprove') }
+  })
+  $('grid').addEventListener('input', function (e) {
+    var el = e.target.closest('[data-f]')
+    if (!CARDS || !el) return
+    var r = cardRow(el), m = el.getAttribute('data-f'), f = fields.find(function (x) { return x.member === m })
+    var v = f.type === 'number' ? (Number(String(el.value).replace(/[,$\s]/g, '')) || 0) : el.value
+    var k = keyOf(r)
+    drafts[k] = drafts[k] || {}
+    drafts[k][m] = v
+    if (f.member === C.totalField || f === fields.find(function (x) { return x.type !== 'number' })) {
+      var card = el.closest('.lc'), amt = card.querySelector('.lc-amt'), tt = card.querySelector('.lc-t')
+      if (amt && f.member === C.totalField) amt.textContent = fmt(f, v)
+      if (tt && f.type !== 'number') { tt.textContent = v || 'Untitled'; tt.classList.toggle('empty', !v) }
+    }
+  })
+  var withAll = function (arr) { arr.__all = data.__all; return arr }
+  function saveCard(r, btn) {
+    var d = drafts[keyOf(r)] || {}
+    var miss = required.filter(function (m) { var v = m in d ? d[m] : r[m]; return v === '' || v === null || v === 0 || v === undefined })
+    if (miss.length) return cardMsg(btn, 'Fill in ' + miss.map(function (m) { var f = fields.find(function (x) { return x.member === m }); return f.label || m }).join(' and ') + ' first.', 'err')
+    var cells = Object.keys(d).filter(function (m) { return d[m] !== r[m] }).map(function (m) {
+      var f = fields.find(function (x) { return x.member === m }) || {}, text = f.type !== 'number'
+      return { coordinates: coords(r, m), value: text ? String(d[m] == null ? '' : d[m]) : (Number(d[m]) || 0), expect: text ? String(r[m] == null ? '' : r[m]) : (Number(r[m]) || 0) }
+    })
+    if (!cells.length) { delete drafts[keyOf(r)]; openKey = null; return drawCards() }
+    cardMsg(btn, 'Saving…', 'busy')
+    Lens.save(cube, cells).then(function () {
+      delete drafts[keyOf(r)]
+      openKey = null
+      tell('saved', { note: (r.__new ? 'added ' : 'updated ') + (d[(fields.find(function (x) { return x.type !== 'number' }) || {}).member] || r[(fields.find(function (x) { return x.type !== 'number' }) || {}).member] || label(r)) })
+      return load().then(function () { say('Saved ' + label(r) + '.', 'ok') })
+    }).catch(function (e) { cardMsg(btn, 'Not saved: ' + (e && e.message ? e.message : e), 'err') })
+  }
+
+  // A new line: the next free line (for the chosen group).
+  function add() {
+    var group = groupCfg ? $('addGroup').value : ''
+    var taken = {}
+    data.forEach(function (r) { taken[keyOf(r)] = 1 })
+    var free = (data.__all || []).find(function (r) { return (!groupCfg || r.__group === group) && !taken[keyOf(r)] })
+    if (!free) return say('No free lines left' + (groupCfg ? ' for ' + (groupNames[group] || group) : '') + '.', 'err')
+    if (CARDS) {
+      // Start from TM1's own row for that line, so calculated fields (e.g. an
+      // asset's life) show straight away.
+      var nr = Object.assign({}, free, { __new: true })
+      data = withAll([nr].concat(data))
+      openKey = keyOf(nr)
+      drawCards()
+      var first = document.querySelector('.lc.open [data-f]'); if (first) first.focus()
+      return
+    }
+    g.addRow(blankRow(free.__line, group))
+    say('Added line ' + label(free) + ' — fill it in, then Save.', 'ok')
+  }
+
+  function save() {
+    var ch = g.changes()
+    if (!ch.length) return
+    // Lines that were touched must have their required fields.
+    var touched = {}
+    ch.forEach(function (c) { touched[keyOf(c.row)] = c.row })
+    var incomplete = Object.keys(touched).map(function (k) { return touched[k] }).filter(function (r) {
+      return required.some(function (m) { var v = r[m]; return v === '' || v === null || v === 0 })
+    })
+    if (incomplete.length) return say('Fill in ' + required.map(function (m) { var f = fields.find(function (x) { return x.member === m }); return f.label || m }).join(' and ') + ' for ' + incomplete.map(label).join(', ') + ' first.', 'err')
+    $('save').disabled = $('undo').disabled = true
+    say('Saving…', 'busy')
+    return Lens.save(cube, ch.map(function (c) {
+      var f = fields.find(function (x) { return x.member === c.field }) || {}
+      var text = f.type !== 'number'
+      return { coordinates: coords(c.row, c.field), value: text ? String(c.value == null ? '' : c.value) : (Number(c.value) || 0), expect: text ? String(c.old == null ? '' : c.old) : (Number(c.old) || 0) }
+    })).then(function (r) {
+      g.saved()
+      tell('saved', { note: 'saved ' + Object.keys(touched).length + ' line' + (Object.keys(touched).length === 1 ? '' : 's') })
+      return load().then(function () { say('Saved ' + r.written + ' value' + (r.written > 1 ? 's' : '') + ' to TM1.', 'ok') })
+    }).catch(function (e) {
+      $('save').disabled = $('undo').disabled = false
+      say('Not saved: ' + (e && e.message ? e.message : e), 'err')
+    })
+  }
+
+  // ── Approval: only shown to approvers; the process checks again and stamps who and when ──
+  function paintApprove() {
+    if (!approval || CARDS) return
+    var can = Lens.whoami.inGroup(who, approval.approvers || [])
+    $('approveBox').hidden = !can
+    var real = selected && !selected.__new
+    $('approve').disabled = !(can && real && !isApproved(selected))
+    $('unapprove').disabled = !(can && real && isApproved(selected))
+  }
+  function approveAction(action) {
+    if (!selected) return
+    // Unsaved typing first: the grid's changes, or this card's draft.
+    if ((g && g.changes().length) || (CARDS && drafts[keyOf(selected)] && Object.keys(drafts[keyOf(selected)]).some(function (m) { return drafts[keyOf(selected)][m] !== selected[m] }))) return say('Save or close your changes first.', 'err')
+    var p = {}, pr = approval.params || {}
+    p[pr.unit] = unitOf(); if (pr.period) p[pr.period] = periodOf(); if (pr.version && version) p[pr.version] = version.member
+    p[pr.line] = selected.__line; if (pr.group) p[pr.group] = selected.__group; p[pr.action] = action
+    say(action === 'Approve' ? 'Approving…' : 'Reopening…', 'busy')
+    Lens.run(approval.process, p)
+      .then(function (r) { tell('saved', { note: (action === 'Approve' ? 'approved ' : 'reopened ') + label(selected) }); openKey = null; return load().then(function () { say(r.message || 'Done.', 'ok') }) })
+      .catch(function (e) { say('Not done: ' + (e && e.message ? e.message : e), 'err') })
+  }
+
+  $('save').onclick = save
+  $('undo').onclick = function () { draw(); load().catch(fail); tell('history') }
+  $('add').onclick = add
+  $('approve').onclick = function () { approveAction('Approve') }
+  $('unapprove').onclick = function () { approveAction('Unapprove') }
+  $('unit').onchange = $('period').onchange = function () {
+    var dropped = g && g.changes().length
+    if (hp) hp.reset()
+    load().then(function () { if (dropped) say('Your unsaved changes were dropped when you switched.', 'err') }).catch(fail)
+  }
+  if (CARDS) {
+    // Cards save one at a time — no grid-wide Save / Undo.
+    $('save').hidden = $('undo').hidden = true
+    document.querySelector('.bar .sep').hidden = true
+    $('add').textContent = '+ New ' + (C.itemLabel || 'request').toLowerCase()
+  }
+  hp = Lens.historyPanel('#historyBtn', { describe: describe, title: 'History' })
+  tg = Lens.live('#people', { onEvent: onLive })
+  Promise.all([names(unitDim, unitNames), groupCfg ? names(groupCfg.dimension, groupNames) : null, Lens.whoami().then(function (w) { who = w })])
+    .then(units).then(groups).then(load).catch(fail)
+})()
+</script>
+</body>
+</html>

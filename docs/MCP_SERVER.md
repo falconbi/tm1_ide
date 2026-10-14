@@ -3,7 +3,7 @@
 `tools/tm1mcp/` is a [Model Context Protocol](https://modelcontextprotocol.io) server
 that exposes the TM1 model and a full set of build/diagnostic tools to any MCP-capable AI
 client (Claude Desktop, Claude Code, Cursor, Cline, …). `server.js` is just the bootstrap
-(shared context + wiring); the 60 tools themselves live in `shared.js` (common helpers) and
+(shared context + wiring); the 65 tools themselves live in `shared.js` (common helpers) and
 `tools/*.js`, one file per subject — `docs`, `introspect`, `changeset`, `assertions`,
 `deploy`, `build`, `develop`, `diagnostics`.
 
@@ -14,7 +14,7 @@ particular model.
 first (or call the `read_build_guide` tool) — it's the method; this file is the reference.
 
 > ⚠️ **Status: early, needs more real-world testing.** The change-set gating and deploy-pipeline
-> integration below are the intended safety net, but the tool surface (60 tools) hasn't seen
+> integration below are the intended safety net, but the tool surface (65 tools) hasn't seen
 > heavy production use yet — treat it as a working build, not a hardened one.
 >
 > **Security note on external LLMs:** any MCP client you point at this server — including a

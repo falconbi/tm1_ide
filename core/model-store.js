@@ -22,6 +22,7 @@ const AREAS = {
     deployState: { folder: 'Deployments', doc: 'state.json' },
     lock:        { folder: 'Deployments' },
     lenses:      { folder: 'Lenses' },
+    viewfinder:  { folder: 'Viewfinder' },
 }
 
 const MARKER_FILE = path.join(__dirname, '..', 'config', 'model-migration.json')
@@ -61,8 +62,8 @@ function _isExistsError(e) {
 }
 
 // List document names in an area (e.g. every change-set document).
-async function listDocs(server, area, { ideToken } = {}) {
-    const c = _clientFor(server, { ideToken })
+async function listDocs(server, area, opts = {}) {
+    const c = _clientFor(server, opts)
     const files = await c.listFiles(folderFor(area)).catch(e => {
         if (e.response?.status === 404) return []
         throw e
@@ -72,8 +73,8 @@ async function listDocs(server, area, { ideToken } = {}) {
 
 // Read one governance document. Returns null when the document (or folder) is
 // missing on an UNMIGRATED server; on a MIGRATED server missing is an error.
-async function readDoc(server, area, name, { ideToken } = {}) {
-    const c = _clientFor(server, { ideToken })
+async function readDoc(server, area, name, opts = {}) {
+    const c = _clientFor(server, opts)
     const folder = folderFor(area)
     const doc = docNameFor(area, name)
     try {
@@ -94,8 +95,8 @@ async function readDoc(server, area, name, { ideToken } = {}) {
 
 // Write a governance document (create-once + put content). Never silent: if a
 // migrated server cannot be written, this throws so the caller stops loudly.
-async function writeDoc(server, area, name, data, { ideToken } = {}) {
-    const c = _clientFor(server, { ideToken })
+async function writeDoc(server, area, name, data, opts = {}) {
+    const c = _clientFor(server, opts)
     const folder = folderFor(area)
     const doc = docNameFor(area, name)
     await c.ensureFolderPath(folder)
@@ -110,8 +111,8 @@ async function writeDoc(server, area, name, data, { ideToken } = {}) {
 // Read a governance document treating "missing" as null on ANY server (used for
 // the deploy lock, which is ephemeral coordination, not a migrated record —
 // no lock = free, whether or not the server is migrated).
-async function readOptional(server, area, name, { ideToken } = {}) {
-    const c = _clientFor(server, { ideToken })
+async function readOptional(server, area, name, opts = {}) {
+    const c = _clientFor(server, opts)
     const folder = folderFor(area)
     const doc = docNameFor(area, name)
     try {
@@ -124,8 +125,8 @@ async function readOptional(server, area, name, { ideToken } = {}) {
 
 // Delete one governance document. Missing is an error (the caller asked to delete
 // something that isn't there) — never a silent no-op.
-async function deleteDoc(server, area, name, { ideToken } = {}) {
-    const c = _clientFor(server, { ideToken })
+async function deleteDoc(server, area, name, opts = {}) {
+    const c = _clientFor(server, opts)
     const folder = folderFor(area)
     const doc = docNameFor(area, name)
     const files = await c.listFiles(folder).catch(e => (e.response?.status === 404 ? [] : (() => { throw e })()))

@@ -38,7 +38,6 @@ test('a cube the Lens did not declare is refused before TM1 is touched', async (
 
 test('only plain numbers, full coordinates, no duplicates, at most 500 cells', async () => {
   const c = stubClient()
-  await assert.rejects(writeCells(c, { ...ok, cells: [cell('x', 'y', '5')] }), /must be a number/)
   await assert.rejects(writeCells(c, { ...ok, cells: [cell('x', 'y', NaN)] }), /must be a number/)
   await assert.rejects(writeCells(c, { ...ok, cells: [{ coordinates: { A: 'x' }, value: 1 }] }), /missing B/)
   await assert.rejects(writeCells(c, { ...ok, cells: [{ coordinates: { A: 'x', B: 'y', C: 'z' }, value: 1 }] }), /"C" is not a dimension/)
@@ -198,4 +197,23 @@ test('Lens app: signing out runs the end-of-session processes as that user, then
     assert.equal(closed, 1)
     assert.equal(logged[0].lens, '(session end)'); assert.equal(logged[0].user, 'east_mgr')
   } finally { srv.close(); close() }
+})
+
+test('a Lens may declare what it writes and runs in its config as well as its <meta> tags', () => {
+  const { lensWrites, lensRuns } = require('../core/lens_bridge')
+  const doc = { html: '<meta name="lens-writes" content="Plan">', config: { writes: ['Income Statement', 'Plan'], runs: ['Spread'] } }
+  assert.deepEqual(lensWrites(doc), ['Plan', 'Income Statement'])
+  assert.deepEqual(lensRuns(doc), ['Spread'])
+  assert.deepEqual(lensWrites({ html: '', config: { writes: 'oops' } }), [])
+})
+
+test('text goes only into text cells and numbers only into number cells; text conflicts are caught too', async () => {
+  // a text cell: the stub reports a string value
+  const c1 = stubClient({ now: { 'x/desc': 'Laptops' } })
+  const r = await writeCells(c1, { ...ok, cells: [cell('x', 'desc', 'New laptops', 'Laptops')] })
+  assert.equal(r.written, 1); assert.deepEqual(r.changes[0], { coordinates: { A: 'x', B: 'desc' }, old: 'Laptops', value: 'New laptops' })
+  await assert.rejects(writeCells(stubClient({ now: { 'x/desc': 'Laptops' } }), { ...ok, cells: [cell('x', 'desc', 'B', 'old text')] }), /changed by someone else/)
+  await assert.rejects(writeCells(stubClient({ now: { 'x/desc': 'Laptops' } }), { ...ok, cells: [cell('x', 'desc', 5)] }), /wrong kind of value/)
+  await assert.rejects(writeCells(stubClient({ now: { 'x/cost': 5 } }), { ...ok, cells: [cell('x', 'cost', 'five')] }), /wrong kind of value/)
+  await assert.rejects(writeCells(stubClient(), { ...ok, cells: [cell('x', 'y', 'x'.repeat(1001))] }), /at most 1000 characters/)
 })
