@@ -56,6 +56,12 @@ recorded in change sets. Process pages fall out of it — the definition already
 - **Ownership = a TM1 group per node**, set in the workflow definition, so rights stay in TM1 security.
 - **Configs and workflow definitions are edited in the IDE only for now** (governed, in change sets); a business-admin screen in the Lens app (e.g. changing a node's owner mid-cycle) later.
 
+**Decision (Oct 14, James): node submit / approve is dropped.** "Even when it existed it was cumbersome — it never really worked." Access to a node is already controlled by TM1 security, so a hand-in ceremony per node adds little. Instead:
+- **Line approval is the approval mechanism** (as Pigment does): each line item (a hire, leaver, transfer, capex request…) carries an *Approved* flag plus who/when; only approver roles (a TM1 group) can set it; an approved line is locked by a **rule-driven cell security** rule (enforced everywhere, PAW included); the calculation rules count approved lines (or show approved and pending separately); history is automatic. Transfers stop being special — the line has a from and a to.
+- **Period close stays the admin month-end process** (lock, snapshot as a static version, open the next period) — at most an admin Lens with a "Run month-end" action button. No user-facing freeze.
+- The node workflow built in step 9 (Lens Workflow cube, Submit / Review processes, Approvals Lens) stays on the lab copy as a proven example of TM1-enforced locking, but is **not** the design going forward and won't be generalised.
+- So the Lens config's approval part is small: which lines, the flag, the approver group, what locks, how totals treat pending lines. Next: design the line-item side with a workforce example.
+
 The ownership Lenses on a private consolidation model (network, timeline) are a showcase of visuals PAW can't do, not on the main path.
 Notes: 24Retail's Revenue cube is empty on the lab server — use the Income Statement; account 6699 (allocations)
 holds junk sample values, so screens stop at Net Profit.
