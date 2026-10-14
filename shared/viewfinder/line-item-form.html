@@ -324,6 +324,7 @@ button:disabled{opacity:.45;cursor:default}
           '<span class="msg status"></span></div></div>' : '') + '</div>'
     }).join('') : '<div class="need">Nothing here yet — press <b>+ New ' + esc((C.itemLabel || 'request').toLowerCase()) + '</b> to add one.</div>') + '</div>'
     totals()
+    if ($('status').textContent === 'Loading…') say('')
   }
   function cardRow(el) { var k = el.closest('.lc').getAttribute('data-k'); return data.find(byKey(k)) }
   function cardMsg(el, text, kind) { var m = el.closest('.lc').querySelector('.msg'); if (m) { m.textContent = text || ''; m.className = 'msg status ' + (kind || '') } }
