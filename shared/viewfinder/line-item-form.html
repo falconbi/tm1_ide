@@ -430,7 +430,8 @@ button:disabled{opacity:.45;cursor:default}
   }
   function approveAction(action) {
     if (!selected) return
-    if (g.changes().length) return say('Save or undo your changes first.', 'err')
+    // Unsaved typing first: the grid's changes, or this card's draft.
+    if ((g && g.changes().length) || (CARDS && drafts[keyOf(selected)] && Object.keys(drafts[keyOf(selected)]).some(function (m) { return drafts[keyOf(selected)][m] !== selected[m] }))) return say('Save or close your changes first.', 'err')
     var p = {}, pr = approval.params || {}
     p[pr.unit] = unitOf(); if (pr.period) p[pr.period] = periodOf(); if (pr.version && version) p[pr.version] = version.member
     p[pr.line] = selected.__line; if (pr.group) p[pr.group] = selected.__group; p[pr.action] = action
