@@ -28,6 +28,8 @@ const lensBridge = require('./core/lens_bridge')
 const sharedBridge = require('./shared/lens-bridge')
 const { logLensWrite, logLensRun, readLensActivity } = require('./core/lens_activity_log')
 const { createLiveHub } = require('./core/lens_live')
+const { readPrefs, savePrefs, themeCss } = require('./core/lens_prefs')
+const THEMES = require('./shared/lens-themes.json')
 const { createIpLimiter, createFailureGuard } = require('./core/login-rate-limit')
 
 const CONFIG_PATH = path.join(__dirname, 'config', 'lens-app.json')
@@ -116,31 +118,37 @@ function createSessionStore({ idleMs, beforeClose = null }) {
 // ── Small HTML helpers ────────────────────────────────────────────────────────
 const esc = s => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 
+// The Lens app's own pages follow each person's theme: the colours arrive as
+// CSS variables (core/lens_prefs.js themeCss) ahead of this.
 const PAGE_CSS = `
-  body{font-family:system-ui,sans-serif;margin:0;background:#f8fafc;color:#0f172a}
-  header{background:#0f172a;color:#f8fafc;padding:14px 24px;display:flex;align-items:center;gap:12px}
+  body{font-family:system-ui,sans-serif;margin:0;background:var(--app-bg);color:var(--app-ink)}
+  header{background:var(--app-head);color:var(--app-head-ink);padding:14px 24px;display:flex;align-items:center;gap:12px;border-bottom:1px solid var(--app-rule)}
   header .brand{font-weight:600;font-size:15px}
-  header .sub{color:#94a3b8;font-size:12px}
+  header .sub{color:var(--app-faint);font-size:12px}
   main{max-width:920px;margin:0 auto;padding:24px}
-  .card{background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:16px 18px;margin-bottom:12px}
+  .card{background:var(--app-panel);border:1px solid var(--app-rule);border-radius:12px;padding:16px 18px;margin-bottom:12px}
   .card h3{margin:0 0 4px;font-size:16px}
-  .card .desc{color:#475569;font-size:13px;margin:0 0 8px}
-  .card .meta{color:#94a3b8;font-size:12px}
+  .card .desc{color:var(--app-soft);font-size:13px;margin:0 0 8px}
+  .card .meta{color:var(--app-faint);font-size:12px}
   .badge{display:inline-block;padding:1px 8px;border-radius:999px;font-size:11px;font-weight:600;margin-right:6px}
   .badge.draft{background:#fef3c7;color:#92400e}
   .badge.published{background:#d1fae5;color:#065f46}
-  .btn{display:inline-block;margin-top:10px;border:1px solid #cbd5e1;background:#fff;border-radius:8px;padding:7px 14px;font-size:13px;text-decoration:none;color:#0f172a}
-  .btn.primary{background:#0f172a;color:#fff;border-color:#0f172a}
-  input{width:100%;box-sizing:border-box;margin:6px 0 12px;border:1px solid #cbd5e1;border-radius:8px;padding:9px 12px;font-size:14px}
-  label{font-size:12px;color:#475569}
+  .btn{display:inline-block;margin-top:10px;border:1px solid var(--app-rule);background:var(--app-panel);border-radius:8px;padding:7px 14px;font-size:13px;text-decoration:none;color:var(--app-ink);cursor:pointer}
+  .btn.primary{background:var(--app-accent);color:#fff;border-color:var(--app-accent)}
+  input,select{box-sizing:border-box;border:1px solid var(--app-rule);border-radius:8px;padding:9px 12px;font-size:14px;background:var(--app-panel);color:var(--app-ink)}
+  input{width:100%;margin:6px 0 12px}
+  label{font-size:12px;color:var(--app-soft)}
   .err{color:#b91c1c;font-size:13px;margin:8px 0}
-  a{color:#0f172a}
+  a{color:var(--app-ink)}
+  .me{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .me .who{font-size:13px;color:var(--app-soft)} .me .who b{color:var(--app-ink)}
+  .me select{padding:5px 8px;font-size:12.5px}
 `
 
 // narrow: sign-in; wide: a Lens page — a dashboard gets the whole browser width.
-function layout(title, body, { narrow = false, wide = false } = {}) {
+function layout(title, body, { narrow = false, wide = false, theme } = {}) {
     return `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>${esc(title)} — Lenses</title><style>${PAGE_CSS}</style></head>
+<title>${esc(title)} — Lenses</title><style>${themeCss(theme)}${PAGE_CSS}</style></head>
 <body><header><span class="brand">Lenses</span><span class="sub">${esc(title)}</span></header>
 <main${narrow ? ' style="max-width:420px"' : wide ? ' style="max-width:none;padding:14px 18px"' : ''}>${body}</main></body></html>`
 }
@@ -194,10 +202,22 @@ function groupLenses(lenses) {
         .map(folder => ({ folder, items: by.get(folder).sort(order) }))
 }
 
-// Who is signed in, next to Sign out — on every page, so nobody wonders which
-// account they are looking through.
-function signOutBar(display) {
-    return `<div style="display:flex;align-items:center;gap:10px"><span style="font-size:13px;color:#475569">Signed in as <b style="color:#0f172a">${esc(display)}</b></span><form method="post" action="/auth/signout" style="margin:0"><button class="btn" style="margin-top:0">Sign out</button></form></div>`
+// Who is signed in, their theme, and Sign out — on every page, so nobody
+// wonders which account they are looking through, and each person can make
+// the app look the way they like (remembered for their login).
+function signOutBar(display, prefs = { mode: 'system', palette: THEMES.default }) {
+    const opt = (v, l, cur) => `<option value="${esc(v)}"${v === cur ? ' selected' : ''}>${esc(l)}</option>`
+    return `<div class="me"><span class="who">Signed in as <b>${esc(display)}</b></span>
+  <select id="thMode" title="Light or dark" aria-label="Light or dark">${opt('system', 'Match my computer', prefs.mode)}${opt('light', 'Light', prefs.mode)}${opt('dark', 'Dark', prefs.mode)}</select>
+  <select id="thPal" title="Colour theme" aria-label="Colour theme">${Object.entries(THEMES.themes).map(([k, t]) => opt(k, t.label, prefs.palette)).join('')}</select>
+  <form method="post" action="/auth/signout" style="margin:0"><button class="btn" style="margin-top:0">Sign out</button></form></div>
+  <script>(function () {
+    function save() {
+      fetch('/api/prefs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode: document.getElementById('thMode').value, palette: document.getElementById('thPal').value }) })
+        .then(function () { location.reload() })
+    }
+    document.getElementById('thMode').onchange = document.getElementById('thPal').onchange = save
+  })()</script>`
 }
 
 function cookieOptions(cfg) {
@@ -278,6 +298,9 @@ function createApp({ config = loadConfig(), deps = {} } = {}) {
     }
 
     const who = req => store.get(parseCookies(req)[COOKIE])?.display ?? ''
+    // Each person's theme (and later other preferences), remembered per login.
+    const prefsFile = deps.prefsFile
+    const prefsOf = req => readPrefs(cfg.server, who(req) || req.lens?.display || '', prefsFile)
 
     // ── Lens access: config.access lists the TM1 groups that may open a Lens.
     // The person's groups are asked of TM1 as them and kept for 5 minutes; if
@@ -445,30 +468,30 @@ function createApp({ config = loadConfig(), deps = {} } = {}) {
     details.folder{margin:0 0 14px}
     details.folder summary{cursor:pointer;font-weight:700;font-size:15px;padding:6px 0;list-style:none;display:flex;align-items:center;gap:8px}
     details.folder summary::-webkit-details-marker{display:none}
-    details.folder summary:before{content:'▸';color:#94a3b8;transition:transform .15s}
+    details.folder summary:before{content:'▸';color:var(--app-faint);transition:transform .15s}
     details.folder[open] summary:before{transform:rotate(90deg)}
-    .count{font-size:11px;font-weight:600;color:#64748b;background:#e2e8f0;border-radius:999px;padding:1px 8px}
+    .count{font-size:11px;font-weight:600;color:var(--app-faint);background:var(--app-rule);border-radius:999px;padding:1px 8px}
     .lgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px;margin-top:6px}
-    .lcard{display:flex;gap:12px;align-items:flex-start;background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:12px 14px;text-decoration:none;color:#0f172a;transition:border-color .15s,box-shadow .15s}
-    .lcard:hover{border-color:#0f766e;box-shadow:0 2px 10px rgba(15,118,110,.12)}
+    .lcard{display:flex;gap:12px;align-items:flex-start;background:var(--app-panel);border:1px solid var(--app-rule);border-radius:12px;padding:12px 14px;text-decoration:none;color:var(--app-ink);transition:border-color .15s,box-shadow .15s}
+    .lcard:hover{border-color:var(--app-accent);box-shadow:0 2px 10px rgba(15,118,110,.12)}
     .lcard{align-items:center;position:relative}
     .lcard .tile{flex:none;width:52px;height:52px;border-radius:14px;display:grid;place-items:center;overflow:hidden;box-shadow:0 4px 14px rgba(15,23,42,.14)}
     .lcard .tile img{width:100%;height:100%;object-fit:cover}
-    .lcard .step{position:absolute;top:8px;left:8px;width:20px;height:20px;border-radius:50%;background:#0f172a;color:#fff;font-weight:700;font-size:11px;display:grid;place-items:center;border:2px solid #fff}
+    .lcard .step{position:absolute;top:8px;left:8px;width:20px;height:20px;border-radius:50%;background:var(--app-ink);color:var(--app-panel);font-weight:700;font-size:11px;display:grid;place-items:center;border:2px solid var(--app-panel)}
     .lcard .lbody{display:grid;gap:3px;min-width:0}
-    .lcard .desc{margin:0;font-size:12.5px;color:#64748b}
+    .lcard .desc{margin:0;font-size:12.5px;color:var(--app-faint)}
     .lcard .badge{justify-self:start;margin-top:2px}
-    .none{color:#64748b;font-size:13px}
-    .peek{position:fixed;z-index:20;width:560px;height:350px;border-radius:14px;overflow:hidden;background:#fff;border:1px solid #cbd5e1;box-shadow:0 18px 50px rgba(15,23,42,.28);pointer-events:none;opacity:0;transform:translateY(6px) scale(.98);transition:opacity .18s,transform .18s}
+    .none{color:var(--app-faint);font-size:13px}
+    .peek{position:fixed;z-index:20;width:560px;height:350px;border-radius:14px;overflow:hidden;background:var(--app-panel);border:1px solid var(--app-rule);box-shadow:0 18px 50px rgba(15,23,42,.28);pointer-events:none;opacity:0;transform:translateY(6px) scale(.98);transition:opacity .18s,transform .18s}
     .peek.on{opacity:1;transform:none}
     .peek iframe{width:1120px;height:700px;border:0;transform:scale(.5);transform-origin:0 0;display:none}
-    .peek .wait{position:absolute;inset:0;display:grid;place-items:center;color:#94a3b8;font-size:12px;letter-spacing:.12em;text-transform:uppercase}
+    .peek .wait{position:absolute;inset:0;display:grid;place-items:center;color:var(--app-faint);font-size:12px;letter-spacing:.12em;text-transform:uppercase}
     @media (hover:none),(max-width:900px){.peek{display:none}}
   </style>
   <div class="top">
     <h2 style="margin:0">Your workspace</h2>
     <input id="q" class="search" type="search" placeholder="Search…" autocomplete="off">
-    ${signOutBar(who(req))}
+    ${signOutBar(who(req), prefsOf(req))}
   </div>
   ${visible.length ? sections : '<p class="none">Nothing here yet' + (cfg.showDrafts ? '' : ' (drafts are hidden)') + '.</p>'}
   <p class="none" id="nomatch" hidden>Nothing matches your search.</p>
@@ -537,7 +560,7 @@ function createApp({ config = loadConfig(), deps = {} } = {}) {
       })
     })()
   </script>`
-            res.send(layout('Home', body))
+            res.send(layout('Home', body, { theme: prefsOf(req) }))
         } catch (e) {
             res.status(500).send(layout('Home', `<p class="err">Could not load Lenses: ${esc(e.message)}</p>`))
         }
@@ -568,7 +591,7 @@ function createApp({ config = loadConfig(), deps = {} } = {}) {
             const body = `
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
     <div><a href="/" style="margin-right:10px">&larr; Lenses</a><span style="font-weight:600">${esc(doc.name)}</span> ${esc(doc.description || '') ? `<span class="desc" style="margin-left:6px">— ${esc(doc.description)}</span>` : ''}</div>
-    ${signOutBar(who(req))}
+    ${signOutBar(who(req), prefsOf(req))}
   </div>
   <div class="card" style="padding:0;overflow:hidden">
     <iframe id="lensFrame" sandbox="allow-scripts" title="Lens" style="width:100%;height:calc(100vh - 128px);min-height:480px;border:0;display:block" src="/lens-frame/${encodeURIComponent(doc.name)}"></iframe>
@@ -586,7 +609,7 @@ function createApp({ config = loadConfig(), deps = {} } = {}) {
     })()
   </script>`
             res.set('Content-Security-Policy', "default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-src 'self'")
-            res.send(layout(doc.name, body, { wide: true }))
+            res.send(layout(doc.name, body, { wide: true, theme: prefsOf(req) }))
         } catch (e) {
             res.status(404).send(layout('Lens', `<p class="err">${esc(e.message)}</p>`))
         }
@@ -609,7 +632,7 @@ function createApp({ config = loadConfig(), deps = {} } = {}) {
             const kit = `${req.protocol}://${req.get('host')}/lens-kit/`
             res.set('Content-Security-Policy', `sandbox allow-scripts; default-src 'none'; script-src 'unsafe-inline' ${kit}; style-src 'unsafe-inline'; img-src data:; connect-src 'none'; font-src 'none'`)
             res.type('html')
-            res.send(sharedBridge.lensSrcDoc(doc.html ?? '', { config: doc.config }))
+            res.send(sharedBridge.lensSrcDoc(doc.html ?? '', { config: doc.config, theme: prefsOf(req) }))
         } catch (e) { res.status(404).send('Lens not found') }
     })
 
@@ -627,6 +650,13 @@ function createApp({ config = loadConfig(), deps = {} } = {}) {
     })
 
     // ── API (server from settings; runs as the signed-in user) ────────────────
+    // The person's preferences (their theme): read, and change (remembered).
+    app.get('/api/prefs', requireSession, (req, res) => res.json(prefsOf(req)))
+    app.post('/api/prefs', requireSession, (req, res) => {
+        try { res.json(savePrefs(cfg.server, req.lens.display, { mode: req.body?.mode, palette: req.body?.palette }, prefsFile)) }
+        catch (e) { res.status(400).json({ error: e.message }) }
+    })
+
     app.get('/api/lenses', requireSession, async (req, res) => {
         const lens = await listLenses(cfg.server, { client: req.lens.client })
         const groups = await groupsFor(req.lens.sid)

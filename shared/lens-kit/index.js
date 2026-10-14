@@ -18,6 +18,7 @@ import dagre from '@dagrejs/dagre'
 import Alpine from '@alpinejs/csp'
 import { rows, format, better, localTime } from './rows.js'
 import { COMPONENTS, TOOLKIT_VERSION } from './components.js'
+import THEMES from '../lens-themes.json'
 
 echarts.use([BarChart, LineChart, ScatterChart, PieChart, HeatmapChart, SankeyChart, TreeChart, GaugeChart,
   SunburstChart, TreemapChart, RadarChart, FunnelChart,
@@ -26,12 +27,37 @@ echarts.use([BarChart, LineChart, ScatterChart, PieChart, HeatmapChart, SankeyCh
 ModuleRegistry.registerModules([AllCommunityModule])
 
 // ── Theme ──────────────────────────────────────────────────────────────────────
-const dark = () => !!(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches)
-const PALETTE = {
-  light: { calcBg: '#eef1f1', totalBg: '#dde3e3', ink: '#16201f', soft: '#4b5756', faint: '#85908f', rule: '#dfe4e3', panel: '#ffffff', bg: '#f6f7f7', accent: '#0f766e', compare: '#16201f', good: '#1d7a46', bad: '#b4372d', amber: '#a86a12', series: ['#0f766e', '#2b5ea7', '#a86a12', '#7c3aed', '#b4372d', '#475569'] },
-  dark:  { calcBg: '#1e2827', totalBg: '#2a3534', ink: '#e6ecea', soft: '#b2bdbb', faint: '#7d8987', rule: '#26302f', panel: '#161e1d', bg: '#0f1514', accent: '#3fb8aa', compare: '#e6ecea', good: '#4cc27f', bad: '#ef7d70', amber: '#e2a64a', series: ['#3fb8aa', '#7aa7e8', '#e2a64a', '#a78bfa', '#ef7d70', '#94a3b8'] },
+// The viewer's own choice (the Lens app hands it over as window.__lensTheme =
+// { mode: 'light' | 'dark' | 'system', palette: 'teal' | 'ocean' | … }); with
+// none — or a Lens whose config says theme: 'fixed' — it follows the computer.
+const chosen = () => (typeof window !== 'undefined' && window.__lensTheme) || {}
+const systemDark = () => !!(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches)
+const dark = () => chosen().mode === 'dark' || (chosen().mode !== 'light' && systemDark())
+function paletteFor(name, isDark) {
+  const t = THEMES.themes[name] || THEMES.themes[THEMES.default]
+  return Object.assign({}, THEMES.base[isDark ? 'dark' : 'light'], t[isDark ? 'dark' : 'light'])
 }
-const theme = { get colors() { return dark() ? PALETTE.dark : PALETTE.light }, format, better }
+const theme = {
+  get colors() { return paletteFor(chosen().palette, dark()) },
+  get mode() { return dark() ? 'dark' : 'light' },
+  get name() { return THEMES.themes[chosen().palette] ? chosen().palette : THEMES.default },
+  format, better,
+}
+// The colours as CSS variables, so a Lens styles itself with the viewer's
+// theme: background: var(--lens-bg); color: var(--lens-ink); … (and
+// color-scheme, so form controls and scrollbars match).
+const VAR_KEYS = ['bg', 'panel', 'ink', 'soft', 'faint', 'rule', 'accent', 'good', 'bad', 'amber', 'calcBg', 'totalBg']
+function applyThemeVars() {
+  if (typeof document === 'undefined') return
+  const c = theme.colors, root = document.documentElement
+  for (const k of VAR_KEYS) root.style.setProperty('--lens-' + k.replace(/[A-Z]/g, m => '-' + m.toLowerCase()), c[k])
+  root.style.colorScheme = theme.mode
+  root.setAttribute('data-lens-theme', theme.name + ' ' + theme.mode)
+}
+applyThemeVars()
+if (typeof window !== 'undefined' && window.matchMedia) {
+  try { window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', applyThemeVars) } catch { /* older browsers */ }
+}
 
 function host(el) {
   const node = typeof el === 'string' ? document.querySelector(el) : el

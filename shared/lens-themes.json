@@ -1,0 +1,26 @@
+{
+  "_about": "Personal themes for Lenses and the Lens app: a mode (light / dark / system) and one of these colour themes. Each theme lists only what it changes from base. Used by the Lens toolkit (shared/lens-kit) and the Lens app (lens-server.js).",
+  "default": "teal",
+  "base": {
+    "light": { "calcBg": "#eef1f1", "totalBg": "#dde3e3", "ink": "#16201f", "soft": "#4b5756", "faint": "#85908f", "rule": "#dfe4e3", "panel": "#ffffff", "bg": "#f6f7f7", "accent": "#0f766e", "compare": "#16201f", "good": "#1d7a46", "bad": "#b4372d", "amber": "#a86a12", "series": ["#0f766e", "#2b5ea7", "#a86a12", "#7c3aed", "#b4372d", "#475569"] },
+    "dark":  { "calcBg": "#1e2827", "totalBg": "#2a3534", "ink": "#e6ecea", "soft": "#b2bdbb", "faint": "#7d8987", "rule": "#26302f", "panel": "#161e1d", "bg": "#0f1514", "accent": "#3fb8aa", "compare": "#e6ecea", "good": "#4cc27f", "bad": "#ef7d70", "amber": "#e2a64a", "series": ["#3fb8aa", "#7aa7e8", "#e2a64a", "#a78bfa", "#ef7d70", "#94a3b8"] }
+  },
+  "themes": {
+    "teal":     { "label": "Teal",     "light": {}, "dark": {} },
+    "ocean":    { "label": "Ocean",
+                  "light": { "accent": "#1d4ed8", "bg": "#f5f7fb", "rule": "#dde3ee", "calcBg": "#eef1f7", "totalBg": "#dde3ee", "series": ["#1d4ed8", "#0e7490", "#a86a12", "#7c3aed", "#b4372d", "#475569"] },
+                  "dark":  { "accent": "#60a5fa", "bg": "#0c1220", "panel": "#131b2c", "rule": "#233049", "calcBg": "#1a2336", "totalBg": "#253049", "series": ["#60a5fa", "#22d3ee", "#e2a64a", "#a78bfa", "#ef7d70", "#94a3b8"] } },
+    "forest":   { "label": "Forest",
+                  "light": { "accent": "#15803d", "bg": "#f6f8f4", "rule": "#dfe6da", "calcBg": "#eef2ea", "totalBg": "#dfe6da", "series": ["#15803d", "#2b5ea7", "#a86a12", "#7c3aed", "#b4372d", "#475569"] },
+                  "dark":  { "accent": "#4ade80", "bg": "#0e140f", "panel": "#151d16", "rule": "#25302a", "calcBg": "#1c2620", "totalBg": "#28342c", "series": ["#4ade80", "#7aa7e8", "#e2a64a", "#a78bfa", "#ef7d70", "#94a3b8"] } },
+    "plum":     { "label": "Plum",
+                  "light": { "accent": "#7c3aed", "bg": "#f8f6fb", "rule": "#e4def0", "calcBg": "#f1edf7", "totalBg": "#e4def0", "series": ["#7c3aed", "#0f766e", "#a86a12", "#2b5ea7", "#b4372d", "#475569"] },
+                  "dark":  { "accent": "#a78bfa", "bg": "#120f1a", "panel": "#1a1524", "rule": "#2e2640", "calcBg": "#221c2e", "totalBg": "#2e2640", "series": ["#a78bfa", "#3fb8aa", "#e2a64a", "#7aa7e8", "#ef7d70", "#94a3b8"] } },
+    "graphite": { "label": "Graphite",
+                  "light": { "accent": "#334155", "bg": "#f6f7f8", "rule": "#e0e3e7", "calcBg": "#eef0f2", "totalBg": "#e0e3e7", "series": ["#334155", "#2b5ea7", "#a86a12", "#7c3aed", "#b4372d", "#0f766e"] },
+                  "dark":  { "accent": "#cbd5e1", "bg": "#0f1113", "panel": "#171a1d", "rule": "#2a2f35", "calcBg": "#1f2327", "totalBg": "#2a2f35", "series": ["#cbd5e1", "#7aa7e8", "#e2a64a", "#a78bfa", "#ef7d70", "#3fb8aa"] } },
+    "contrast": { "label": "High contrast",
+                  "light": { "ink": "#000000", "soft": "#1a1a1a", "faint": "#3d3d3d", "rule": "#000000", "panel": "#ffffff", "bg": "#ffffff", "accent": "#0033cc", "compare": "#000000", "good": "#006400", "bad": "#b00000", "amber": "#8a4b00", "calcBg": "#e6e6e6", "totalBg": "#cccccc", "series": ["#0033cc", "#b00000", "#006400", "#8a4b00", "#5a00b0", "#000000"] },
+                  "dark":  { "ink": "#ffffff", "soft": "#f0f0f0", "faint": "#d0d0d0", "rule": "#ffffff", "panel": "#000000", "bg": "#000000", "accent": "#ffd400", "compare": "#ffffff", "good": "#5cff7a", "bad": "#ff6b6b", "amber": "#ffb000", "calcBg": "#262626", "totalBg": "#3d3d3d", "series": ["#ffd400", "#5cc8ff", "#5cff7a", "#ff6b6b", "#d58cff", "#ffffff"] } }
+  }
+}

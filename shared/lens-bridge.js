@@ -185,9 +185,13 @@ function installLensHost(getLensWindow, { getServer, getToken, getLens, live = f
 // The Lens app prepends its CSP (connect-src 'none') before calling this.
 // config: the Lens's settings, handed over before any of its code runs —
 // read with Lens.config() (or window.__lensConfig without the toolkit).
-function lensSrcDoc(html, { config } = {}) {
-  const cfg = JSON.stringify(config && typeof config === 'object' ? config : {}).replace(/</g, '\\u003c')
-  return `<script>${LENS_BRIDGE_SCRIPT}\nwindow.__lensConfig = ${cfg};</script>` + (html ?? '')
+// theme: the viewer's { mode, palette } — not handed over when the Lens's
+// config says theme: 'fixed' (it keeps its own designed look).
+function lensSrcDoc(html, { config, theme } = {}) {
+  const c = config && typeof config === 'object' ? config : {}
+  const cfg = JSON.stringify(c).replace(/</g, '\\u003c')
+  const th = theme && c.theme !== 'fixed' ? JSON.stringify({ mode: String(theme.mode || 'system'), palette: String(theme.palette || '') }).replace(/</g, '\\u003c') : 'null'
+  return `<script>${LENS_BRIDGE_SCRIPT}\nwindow.__lensConfig = ${cfg};\nwindow.__lensTheme = ${th};</script>` + (html ?? '')
 }
 
 const api = { LENS_BRIDGE_SCRIPT, installLensHost, lensSrcDoc }

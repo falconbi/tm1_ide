@@ -230,3 +230,27 @@ test('a Lens limited to Finance is invisible and refused for others, open for Fi
     assert.equal(await (await as('boss')).api(), 200, 'ADMIN may open anything')
   } finally { srv.close(); close() }
 })
+
+// ── Personal themes: remembered per login, handed into Lenses ────────────────
+test('each person\'s theme is remembered and reaches their Lenses — unless a Lens keeps its own look', async () => {
+  const os = require('os'), path = require('path'), fs = require('fs')
+  const prefsFile = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'lensprefs-')), 'p.json')
+  await withApp(async ({ base, signin }) => {
+    const c = cookieOf(await signin('admin', 'apple'))
+    const post = body => fetch(`${base}/api/prefs`, { method: 'POST', headers: { 'Content-Type': 'application/json', cookie: c }, body: JSON.stringify(body) })
+    assert.deepEqual(await (await fetch(`${base}/api/prefs`, { headers: { cookie: c } })).json(), { mode: 'system', palette: 'teal' })
+    assert.equal((await post({ mode: 'dark', palette: 'ocean' })).status, 200)
+    assert.equal((await post({ palette: 'neon' })).status, 400, 'unknown themes refused')
+    const home = await (await fetch(`${base}/`, { headers: { cookie: c } })).text()
+    assert.match(home, /:root\{--app-bg:#0c1220/, 'the app\'s own pages follow it (ocean, dark)')
+    assert.match(home, /<option value="dark" selected>/)
+    const frame = await (await fetch(`${base}/lens-frame/Plain`, { headers: { cookie: c } })).text()
+    assert.match(frame, /window\.__lensTheme = \{"mode":"dark","palette":"ocean"\}/)
+    const fixed = await (await fetch(`${base}/lens-frame/Fixed`, { headers: { cookie: c } })).text()
+    assert.match(fixed, /window\.__lensTheme = null/, 'theme: fixed keeps the Lens\'s own look')
+    assert.deepEqual(JSON.parse(fs.readFileSync(prefsFile, 'utf8')), { 'S1::admin': { mode: 'dark', palette: 'ocean' } })
+  }, {
+    prefsFile,
+    readLens: async (s, name) => ({ name, status: 'published', toolkitVersion: 1, html: '<p>x</p>', config: name === 'Fixed' ? { theme: 'fixed' } : {} }),
+  })
+})

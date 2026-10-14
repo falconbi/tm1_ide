@@ -405,7 +405,7 @@ export default function LensEditor({ tab }) {
             ref={iframeRef}
             sandbox="allow-scripts"
             title="Lens preview"
-            srcDoc={lensSrcDoc(html, { config: goodConfig })}
+            srcDoc={lensSrcDoc(html, { config: goodConfig, theme: { mode: dark ? 'dark' : 'light', palette: 'teal' } })}
             className="w-full h-full bg-white"
           />
         </div>
