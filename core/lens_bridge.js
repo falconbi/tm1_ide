@@ -228,6 +228,7 @@ const num = v => (typeof v === 'number' && Number.isFinite(v) ? v : Number(v) ||
 // mean to the person typing, keeping the code for whoever administers security.
 function plainWriteRefusal(code, cube) {
     const why = [
+        [/StringCellUpdateError/i, `TM1 wouldn't change these text cells in ${cube} — usually you don't have permission to (ask your TM1 administrator)`],
         [/NoWriteAccess|WriteAccess|ObjectSecurity|SecurityNo/i, `You don't have permission to change these cells in ${cube} — ask your TM1 administrator for write access`],
         [/NoReservation/i, `Someone else is editing these cells, or you haven't started editing — TM1 needs a data reservation to change ${cube}`],
         [/ElementIsLocked|Locked|Reserved/i, 'Some of these cells are locked or reserved by someone else'],
