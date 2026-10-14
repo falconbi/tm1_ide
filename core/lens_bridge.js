@@ -322,6 +322,13 @@ const MSG_CUBE = 'Lens Messages'
 
 function declaredRunProcesses(html) { return metaList(html, 'lens-runs') }
 
+// What a saved Lens may change and run: its <meta> tags plus its config's
+// writes / runs lists — so reusable code can be pointed at another cube by its
+// config (saved, versioned and governed exactly like the code).
+function lensWrites(doc) { return [...new Set([...declaredWriteCubes(doc?.html), ...listOf(doc?.config?.writes)])] }
+function lensRuns(doc) { return [...new Set([...declaredRunProcesses(doc?.html), ...listOf(doc?.config?.runs)])] }
+const listOf = v => (Array.isArray(v) ? v.filter(x => typeof x === 'string' && x.trim()).map(x => x.trim()) : [])
+
 async function readLensMessage(client, user, process) {
     try {
         const r = await client.executeMDX(`SELECT {[Lens Message].[Lens Message].Members} ON 0, {[}Clients].[}Clients].${escMember(user)}} ON 1 FROM ${escMember(MSG_CUBE)}`, 10)
@@ -366,4 +373,4 @@ async function runProcess(client, { process, params = {}, allowedProcesses = [],
     return { status, seconds, message, result, since, detail }
 }
 
-module.exports = { execMDX, readCell, getMeta, validateLens, buildStarterLens, validateMdx, declaredWriteCubes, writeCells, MAX_WRITE_CELLS, declaredRunProcesses, runProcess }
+module.exports = { execMDX, readCell, getMeta, validateLens, buildStarterLens, validateMdx, declaredWriteCubes, writeCells, MAX_WRITE_CELLS, declaredRunProcesses, runProcess, lensWrites, lensRuns }

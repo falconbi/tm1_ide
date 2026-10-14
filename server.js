@@ -3907,7 +3907,7 @@ app.post('/api/lens/write-cells', async (req, res) => {
         const name = req.body?.lens
         if (!name || typeof name !== 'string') throw new Error('lens is required')
         const doc = await lensStore.readLens(server, name, { ideToken: req.ideToken })
-        const result = await lensBridge.writeCells(client, { cube: req.body?.cube, cells: req.body?.cells, allowedCubes: lensBridge.declaredWriteCubes(doc.html) })
+        const result = await lensBridge.writeCells(client, { cube: req.body?.cube, cells: req.body?.cells, allowedCubes: lensBridge.lensWrites(doc) })
         logLensWrite({ server, app: 'ide', user: req.user, lens: doc.name, cube: req.body.cube, changes: result.changes })
         res.json({ written: result.written })
     } catch (e) {
@@ -3924,7 +3924,7 @@ app.post('/api/lens/run-process', async (req, res) => {
         if (!gateReadOnly(res, server)) return
         if (!name || typeof name !== 'string') throw new Error('lens is required')
         const doc = await lensStore.readLens(server, name, { ideToken: req.ideToken })
-        const result = await lensBridge.runProcess(makeClient(server, req.ideToken), { process, params, allowedProcesses: lensBridge.declaredRunProcesses(doc.html), user: req.user })
+        const result = await lensBridge.runProcess(makeClient(server, req.ideToken), { process, params, allowedProcesses: lensBridge.lensRuns(doc), user: req.user })
         logLensRun({ server, app: 'ide', user: req.user, lens: doc.name, process, params, status: result.status, message: result.message })
         res.json(result)
     } catch (e) {

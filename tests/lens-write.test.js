@@ -199,3 +199,11 @@ test('Lens app: signing out runs the end-of-session processes as that user, then
     assert.equal(logged[0].lens, '(session end)'); assert.equal(logged[0].user, 'east_mgr')
   } finally { srv.close(); close() }
 })
+
+test('a Lens may declare what it writes and runs in its config as well as its <meta> tags', () => {
+  const { lensWrites, lensRuns } = require('../core/lens_bridge')
+  const doc = { html: '<meta name="lens-writes" content="Plan">', config: { writes: ['Income Statement', 'Plan'], runs: ['Spread'] } }
+  assert.deepEqual(lensWrites(doc), ['Plan', 'Income Statement'])
+  assert.deepEqual(lensRuns(doc), ['Spread'])
+  assert.deepEqual(lensWrites({ html: '', config: { writes: 'oops' } }), [])
+})

@@ -710,7 +710,7 @@ function createApp({ config = loadConfig(), deps = {} } = {}) {
             const name = req.body?.lens
             if (!name || typeof name !== 'string') throw new Error('lens is required')
             const doc = await visibleLens(req, name)
-            const result = await writeCells(req.lens.client, { cube: req.body?.cube, cells: req.body?.cells, allowedCubes: lensBridge.declaredWriteCubes(doc.html) })
+            const result = await writeCells(req.lens.client, { cube: req.body?.cube, cells: req.body?.cells, allowedCubes: lensBridge.lensWrites(doc) })
             logWrite({ server: cfg.server, app: 'lens', user: req.lens.display, lens: doc.name, cube: req.body.cube, changes: result.changes })
             res.json({ written: result.written })
         } catch (e) {
@@ -725,7 +725,7 @@ function createApp({ config = loadConfig(), deps = {} } = {}) {
         try {
             if (!name || typeof name !== 'string') throw new Error('lens is required')
             const doc = await visibleLens(req, name)
-            const result = await runProcess(req.lens.client, { process, params, allowedProcesses: lensBridge.declaredRunProcesses(doc.html), user: req.lens.display })
+            const result = await runProcess(req.lens.client, { process, params, allowedProcesses: lensBridge.lensRuns(doc), user: req.lens.display })
             logRun({ server: cfg.server, app: 'lens', user: req.lens.display, lens: doc.name, process, params, status: result.status, message: result.message })
             res.json(result)
         } catch (e) {
@@ -779,7 +779,7 @@ function createApp({ config = loadConfig(), deps = {} } = {}) {
             let match = {}
             try { match = JSON.parse(String(req.query.match ?? '{}')) } catch { throw new Error('match must be JSON') }
             if (!match || typeof match !== 'object' || Array.isArray(match)) throw new Error('match must be { dimension: element }')
-            const cube = lensBridge.declaredWriteCubes(doc.html)[0]
+            const cube = lensBridge.lensWrites(doc)[0]
             if (!cube) throw new Error('history is for Lenses that change data (lens-writes)')
             for (const [dim, el] of Object.entries(match)) {
                 // Fails for a member this person may not see — then nothing is returned.

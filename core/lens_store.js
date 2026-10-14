@@ -83,8 +83,10 @@ function cleanImage(image) {
 
 // config: the Lens's settings — its bindings and behaviour, read by its code
 // through Lens.config(). Free-form for the Lens, except the keys the platform
-// itself acts on: access (TM1 groups allowed to open it; empty = everyone) and
-// theme ('fixed' keeps the Lens's own look). A plain JSON object, at most 64 KB.
+// itself acts on: access (TM1 groups allowed to open it; empty = everyone),
+// theme ('fixed' keeps the Lens's own look), writes (cubes it may change) and
+// runs (processes it may run) — added to its <meta> tags. A plain JSON object,
+// at most 64 KB.
 const CONFIG_THEMES = ['', 'fixed']
 function cleanConfig(config) {
     if (config === '' ) return {}
@@ -99,6 +101,11 @@ function cleanConfig(config) {
         out.access = [...new Set(out.access.map(g => g.trim()))]
     }
     if (out.theme !== undefined && !CONFIG_THEMES.includes(out.theme)) throw new Error('config.theme can only be "fixed" (keep the Lens\'s own look)')
+    for (const k of ['writes', 'runs']) {
+        if (out[k] !== undefined && (!Array.isArray(out[k]) || out[k].some(x => typeof x !== 'string' || !x.trim()))) {
+            throw new Error(`config.${k} must be a list of ${k === 'writes' ? 'cube' : 'process'} names`)
+        }
+    }
     return out
 }
 
