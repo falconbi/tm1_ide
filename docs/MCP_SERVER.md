@@ -5,7 +5,8 @@ that exposes the TM1 model and a full set of build/diagnostic tools to any MCP-c
 client (Claude Desktop, Claude Code, Cursor, Cline, …). `server.js` is just the bootstrap
 (shared context + wiring); the 65 tools themselves live in `shared.js` (common helpers) and
 `tools/*.js`, one file per subject — `docs`, `introspect`, `changeset`, `assertions`,
-`deploy`, `build`, `develop`, `diagnostics`.
+`deploy`, `build`, `develop`, `diagnostics`, `lenses`. The security wrapper every tool goes
+through lives in `registry.js`, `guard.js` and `identity.js` (see [Security](#security)).
 
 It is **provider-neutral** — MCP is an open protocol; the server has no dependency on any
 particular model.
@@ -18,46 +19,169 @@ first (or call the `read_build_guide` tool) — it's the method; this file is th
 > heavy production use yet — treat it as a working build, not a hardened one.
 >
 > **Security note on external LLMs:** any MCP client you point at this server — including a
-> third-party/external LLM, not just Claude — gets real tool access to write to your TM1 model
-> (dimensions, cubes, rules, processes, cells) inside whatever change set is active, and the
-> `deploy` tools can read from and check drift against a live target server (e.g. Prod). Only
-> connect MCP clients and models you trust with that level of access, keep build work inside a
-> named change set (never against Release scope) so everything is diffed before it ships, and
-> review what an agent proposes before approving or deploying it.
+> third-party/external LLM, not just Claude — gets real tool access. In `build` mode that
+> includes writing to your TM1 model (dimensions, cubes, rules, processes, cells) inside whatever
+> change set is active, and the `deploy` tools can read from and check drift against a live
+> target server (e.g. Prod). For read-only use, run with `MCP_MODE=readonly` and
+> `TM1_MCP_READ_USER` so the agent has no write tools and sees only what that TM1 user may see
+> (see [Security](#security)). Only connect MCP clients and models you trust, keep build work
+> inside a named change set (never against Release scope) so everything is diffed before it
+> ships, and review what an agent proposes before approving or deploying it.
 
 ---
 
 ## What's been tested (and what's still open)
 
-The MCP is the layer used to build the **Workforce Planning (WFP) model** end-to-end —
-see [`WORKFORCE_MODEL_PLAN.md`](WORKFORCE_MODEL_PLAN.md). That is the current real-world
-evidence, and it's still early.
+Three full TM1 models have been built through this MCP, one after the other, by the same AI
+working with the same person. The write-up is the article
+[Three Models, One Lesson](https://falconbi.github.io/articles/three-models-ai-guardrails/).
 
-**Tested — a full model built through the external LLM:**
-- A blank test server (no dimensions, no TI library) built by conversation with an external
-  LLM over this MCP server — spec agreed interactively, replayed as requirements, then built
-  in **six iterative phases**, each building on the last.
-- Dimensions, cubes, rules, processes, subsets and views all created through the tools,
+1. **An operating-expense allocations model.** It worked in the end, and showed exactly where
+   an AI goes wrong in TM1 (wrong dimensionality, rules that compile but compute the wrong
+   thing). Those lessons are now built into the lints and [`BUILDING_MODELS.md`](BUILDING_MODELS.md).
+2. **A workforce planning model.** Versions and assumptions, pay rates, a hiring plan, FX, and
+   employee income tax through to gross-to-net pay. It was deployed through the IDE's pipeline
+   from a development server to a production server, and the figures **matched to the cent**.
+   See [`WORKFORCE_MODEL_PLAN.md`](WORKFORCE_MODEL_PLAN.md).
+3. **A statutory group consolidation.** Ownership and control at any depth, goodwill and
+   non-controlling interests, step acquisitions and disposals, foreign currency translation,
+   and consolidation of sub-groups. Built test-first: **26 published worked examples matched**,
+   with **over 150 stored checks** run after every change.
+
+Across all three:
+- Dimensions, cubes, rules, processes, subsets and views were created through the tools,
   change-set gated throughout.
-- The build was verified against **expected results** (see the model's `Applications/Governance/Tests/assertions.json` —
-  `config/assertions.json` is the fallback for unmigrated servers) — the
-  "does it compute the right number" layer on top of TM1's own rule checker.
-- Standards and conventions were taught to the LLM *during* the build; those conventions are
-  now codified in the lints (`core/rules-lint.js`, `core/ti-lint.js`) and
-  [`BUILDING_MODELS.md`](BUILDING_MODELS.md).
-- The IDE and the MCP write through the **same client and change log** — the agent's work
+- Builds are verified against **expected results** stored in the model
+  (`Applications/Governance/Tests/assertions.json`; `config/assertions.json` is the fallback
+  for unmigrated servers) — the "does it compute the right number" layer on top of TM1's own
+  rule checker.
+- The IDE and the MCP write through the **same client and change log**, so the agent's work
   flows through `diff → package → risk → deploy` exactly like hand-built changes.
 
-**Still open / not yet hardened:**
-- The tool surface (~60 operations) has not seen heavy production use — a second model is the
-  next test.
-- **Security is the open question.** The MCP authenticates as the server's configured
-  identity (not a specific logged-in user), and access is gated by the change set rather than
-  fine-grained per-action permissions. What the agent may read, whose permissions apply, and
-  how every change is reviewed are being worked through — read-only mode, scoping, and
-  data-redaction are planned (the reads are the current gap; the writes are change-set gated).
-- Redaction of sensitive data before it leaves the MCP (cell values, process code, attributes)
-  is not yet implemented.
+**Resolved — read security (October 2026).** Reads used to be the gap: the agent read
+everything as the service login, with no scoping, masking or record. That is now closed — see
+[Security](#security) below: per-user reads under TM1's own security, a `readonly` mode with no
+write tools, cube / dimension / process scoping, masking, TI password stripping, and an audit of
+every read.
+
+**Still open — honestly:**
+- **Per-user reads need a direct connection.** `TM1_MCP_READ_USER` works on servers reached
+  directly (Basic or CAM login). On a server reached through PAW there is no per-user login
+  here yet, so the MCP refuses to start with a reader user rather than fall back.
+- **One reader per MCP process.** The reader is whoever is set in the environment when the MCP
+  starts; there is no per-request sign-in. Run one MCP per person.
+- **Writes still use the builder (service) login.** That is deliberate — the change set is the
+  gate, and every change-set row now records both the developer and the TM1 login — but TM1
+  security does not limit what a build can change.
+- **Some governance reads use the service login.** `list_baselines`, `get_change_set`,
+  `diff_change_set`, `check_deploy_risk` and `check_target_drift` compare model *definitions*
+  (not cell data) through the deploy tooling, which has its own connection. They are scoped by
+  the target allowlist, audited, but not narrowed by the reader's TM1 security.
+- **Masking covers the tools that return values** (`read_cells`, `execute_view`,
+  `get_element_attributes`). `run_assertions` returns pass/fail and totals from stored checks,
+  and `get_transaction_log` returns old/new values for a cube you've allowed — deny the cube if
+  its history is sensitive.
+- **TI password stripping is pattern-based.** It catches the standard places (ODBCOpen,
+  ODBCOpenEx, AssignClientPassword, password-named variables, `PWD=` / `Password=` in
+  connection strings, datasource password fields). A password hidden some other way — say,
+  built up from pieces — would not be recognised.
+- The tool surface (65 tools) has been used on three models, not yet in heavy production use.
+
+---
+
+## Security
+
+What an agent may **read** through the MCP, as whom, what it sees masked, and the record kept.
+Writes are unchanged: change-set gated, read-only (PROD-posture) servers refuse them.
+
+### Two modes — `MCP_MODE`
+
+| Mode | Tools offered | Default when |
+|------|---------------|--------------|
+| `readonly` | the 39 read tools only — write tools are **not registered**, so the agent never sees them | the server is marked read-only in `config/servers.json` |
+| `build` | all 65 | any other server |
+
+`MCP_MODE=build` against a read-only server is refused at start-up. Every tool is classified
+read or write in `tools/tm1mcp/guard.js`; a new tool that isn't classified stops the MCP at
+start-up, so nothing slips in unreviewed.
+
+### Two identities — reads as the user, writes as the builder
+
+| Variable | Meaning |
+|----------|---------|
+| `TM1_MCP_READ_USER` | TM1 login every **read** runs as. TM1's own cube, dimension, element and cell security then decides what the agent sees — the same as that person sees in PAW. |
+| `TM1_MCP_READ_PASSWORD` | Its password (required when the user is set). |
+| `TM1_MCP_READ_NAMESPACE` | CAM namespace, for CAM-secured servers. |
+| `TM1_MCP_USER` | The developer's name — whose change set a build lands in (unchanged). |
+
+Writes run as the **builder**: the service login configured for the server. Each change-set row
+records both the developer (`user`) and that TM1 login (`identity`).
+
+Unset `TM1_MCP_READ_USER` and reads run as the service login — start-up says so plainly. Set it
+and the MCP logs in as that user before serving anything; if that can't be honoured (wrong
+password, or a server reached through PAW) it stops — it **never** falls back to the service
+login. Start-up prints the outcome, e.g.:
+
+```
+tm1mcp: connected to "MyServer" — mode readonly, 39 tools (26 write tools not offered);
+        reads as TM1 user "east_mgr" (TM1 security applies)
+```
+
+Tested on a lab server: the service login sees 36 cubes; a regional manager sees 4, and 4 of 15
+organisation elements.
+
+### Scoping and masking — `config/mcp-security.json`
+
+Optional. Copy [`config/mcp-security.example.json`](../config/mcp-security.example.json).
+`"*"` applies to every server; a server's own entry adds to it. `*` is a wildcard; case is
+ignored.
+
+```json
+{
+  "*": {
+    "cubes":      { "deny": ["Payroll*"] },
+    "processes":  { "deny": ["Security *"] },
+    "redact": {
+      "cells":      [{ "cube": "Employee*", "members": ["Salary", "Bonus*"], "action": "round:-3" }],
+      "attributes": [{ "dimension": "Employee", "attribute": "Home Address*", "action": "mask" }]
+    }
+  },
+  "MyDevServer": { "cubes": { "allow": ["Sales*", "Opex*"] } }
+}
+```
+
+- **Default: every model cube, dimension and process**, minus the security control objects,
+  which are always denied whatever the file says: `}Client*`, `}*Security*`, `}Capabilities`,
+  `}Groups*` cubes; `}Clients`, `}Groups` dimensions.
+- **Deny / allow** apply to the `cube`, `dimension` and `process` a tool names, to every cube in
+  an MDX query's `FROM`, and to the lists (`list_cubes`, `list_dimensions`, `list_processes`,
+  usage finders, `search_ti_code`). A refused call never reaches TM1.
+- **Cell masking** (`read_cells`, `execute_view`): a rule matches a cube, and optionally members
+  (on rows, columns or the `WHERE` slice). `mask` hides the value, `round:N` rounds it
+  (`round:-3` = nearest thousand), `block` refuses the whole read. No `members` = the whole cube.
+- **Attribute masking** (`get_element_attributes`): per dimension and attribute; `mask` or `block`.
+- **TI passwords are always stripped** — no setting. `get_process`, `search_ti_code` and
+  `get_process_log` mask the password argument of `ODBCOpen` / `ODBCOpenEx` /
+  `AssignClientPassword`, password-named variables (`vPassword = '…'`), `PWD=` / `Password=` in
+  connection strings, and a datasource's password field.
+- A policy file that isn't valid JSON, or has an unknown action, stops the MCP — it never
+  guesses "no restrictions".
+
+### Read audit
+
+Every read tool call is written to the `read_audit` table in `change_log.db`: time, server,
+developer, the TM1 login it ran as, tool, object, rows returned, cells masked, and the outcome
+(`ok`, `refused`, `error`). It is a separate table from the change log, so reads never appear in
+a change set, diff, package or deploy.
+
+### Tests
+
+`tests/safety-mcp-*.test.js` — `readonly` exposes no write tools; reads use the user's login and
+writes the builder's; a reader that can't be honoured fails closed; denylisted cubes are refused
+on every way in; masking masks, rounds and blocks; TI credentials are stripped; reads are
+audited and never touch the change set. An optional live check (`TM1_MCP_LIVE_SERVER`,
+`TM1_MCP_LIVE_USER`, `TM1_MCP_LIVE_PASSWORD`) proves a restricted user sees fewer cubes than
+the service login.
 
 ---
 

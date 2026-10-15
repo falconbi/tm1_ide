@@ -16,24 +16,25 @@ Return a SINGLE complete HTML document (html, head, style, body, script). The ON
 Lens toolkit catalogue:
 ${CATALOGUE}`
 
-function register(server, { SERVER, AGENT_USER, cl, ok, requireChangeSet }) {
+function register(server, { SERVER, AGENT_USER, ok, requireChangeSet, client, logChange }) {
     // Viewfinder: proven Lens code to build from — prefer a template + config
     // over writing a Lens from scratch.
     server.tool(
         'list_viewfinder',
         'List the Viewfinder templates — proven Lens code (e.g. an input form) that a Lens can use with just a config. Shows what each setting means and an example config. Prefer a template + config (save_lens with template) over writing a Lens from scratch.',
         {},
-        async () => ok((await require('../../../core/viewfinder').listAll(SERVER)).map(({ html: _h, ...t }) => t))
+        async () => ok((await require('../../../core/viewfinder').listAll(SERVER, { client: client() })).map(({ html: _h, ...t }) => t))
     )
 
     // Lenses live in the model (Applications/Governance/Lenses on the bound server).
-    // The MCP is the builder: it reads and writes with the builder identity.
+    // Reads go through client() — the reader identity — so a Lens document the
+    // reader's TM1 login can't open isn't shown; saves and deletes use the builder.
     server.tool(
         'list_lenses',
         'List the lenses (hand-rolled HTML dashboards on live TM1 data) stored in this server\'s model — name, status, version, owner, updated, description.',
         {},
         async () => {
-            const rows = await lensStore.listLenses(SERVER)
+            const rows = await lensStore.listLenses(SERVER, { client: client() })
             return ok(rows.length ? rows : 'No lenses yet.')
         }
     )
@@ -46,7 +47,7 @@ function register(server, { SERVER, AGENT_USER, cl, ok, requireChangeSet }) {
         },
         async ({ name }) => {
             try {
-                return ok(await lensStore.readLens(SERVER, name))
+                return ok(await lensStore.readLens(SERVER, name, { client: client() }))
             } catch (e) {
                 return ok({ error: e.message })
             }
@@ -74,18 +75,13 @@ ${BRIDGE_CONTRACT}`,
         async ({ name, html, description, folder, title, icon, color, config, template, publish, force }) => {
             requireChangeSet()
             if (!template && !html) return ok({ blocked: true, reason: 'Give the Lens either html or a Viewfinder template' })
-            const client = (require('../../../core/adapter_registry').makeClient)(SERVER, null)
-            const errors = await lensBridge.validateLens(client, template ? require('../../../core/viewfinder').readTemplate(template) : html)
+            const errors = await lensBridge.validateLens(client(), template ? require('../../../core/viewfinder').readTemplate(template) : html)
             if (errors.length && !force) {
                 return ok({ blocked: true, reason: `Lens validation failed (${errors.length}) — fix these and retry, or pass force:true:`, errors })
             }
             const saved = await lensStore.saveLens(SERVER, name, html, AGENT_USER, { publish: !!publish, description, folder, title, icon, color, config, template })
-            cl.writeLog({
-                server: SERVER, action: publish ? 'LENS_PUBLISHED' : 'LENS_SAVED',
-                objectType: 'lens', objectName: saved.name,
-                detail: `version ${saved.version}${description ? ` — ${description}` : ''}`,
-                user: AGENT_USER,
-            })
+            logChange(publish ? 'LENS_PUBLISHED' : 'LENS_SAVED', 'lens', saved.name,
+                { detail: `version ${saved.version}${description ? ` — ${description}` : ''}` })
             return ok({ saved, validation: errors, next: `Lens "${saved.name}" is saved in ${SERVER}'s model and on the change set. It shows in the IDE model tree under Lenses.` })
         }
     )
@@ -99,10 +95,7 @@ ${BRIDGE_CONTRACT}`,
         async ({ name }) => {
             requireChangeSet()
             await lensStore.deleteLens(SERVER, name)
-            cl.writeLog({
-                server: SERVER, action: 'LENS_DELETED', objectType: 'lens', objectName: name,
-                user: AGENT_USER,
-            })
+            logChange('LENS_DELETED', 'lens', name)
             return ok(`Lens "${name}" deleted from ${SERVER}'s model.`)
         }
     )

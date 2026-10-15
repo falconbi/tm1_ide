@@ -1,12 +1,16 @@
 'use strict'
 
 const { z } = require('zod')
+const guard = require('../guard')
 
 // ══════════════════════════════════════════════════════════════════════════════
 // DIAGNOSTICS
 // ══════════════════════════════════════════════════════════════════════════════
 
-function register(server, { client, ok }) {
+function register(server, { client, ok, policy }) {
+    const may = (kind, name) => guard.allowed(policy, kind, name)
+    const usable = (r) => ({ ...r, ...(r.cubes ? { cubes: r.cubes.filter(c => may('cubes', c.Name ?? c)) } : {}), ...(r.processes ? { processes: r.processes.filter(p => may('processes', p.process)) } : {}) })
+
     server.tool(
         'get_process_log',
         'Get the most recent error-log file(s) for a TI process (TM1 v11 has no execution-log entity — this reads TM1ProcessError_*.log files)',
@@ -27,7 +31,7 @@ function register(server, { client, ok }) {
             const out  = []
             for (const fn of pick) {
                 const content = await c.getErrorLogContent(fn).catch(e => `(could not read: ${e.message})`)
-                out.push({ file: fn, content })
+                out.push({ file: fn, content: guard.stripTiCredentials(content) })
             }
             return ok(out)
         }
@@ -87,8 +91,9 @@ function register(server, { client, ok }) {
         },
         async ({ cube, view, limit = 2000 }) => {
             const res   = await client().executeView(cube, view, limit)
-            const cells = (res.Cells ?? []).map(x => ({ ordinal: x.Ordinal, value: x.Value, formatted: x.FormattedValue }))
-            return ok({ view_type: res.ViewType ?? null, cell_count: cells.length, truncated: res.truncated ?? false, cells })
+            const raw   = (res.Cells ?? []).map(x => ({ ordinal: x.Ordinal, value: x.Value, formatted: x.FormattedValue }))
+            const { cells, redacted } = guard.redactCells(policy, { cube, axes: res.Axes, cells: raw })
+            return ok({ view_type: res.ViewType ?? null, cell_count: cells.length, truncated: res.truncated ?? false, ...(redacted ? { redacted } : {}), cells })
         }
     )
 
@@ -96,14 +101,14 @@ function register(server, { client, ok }) {
         'find_dimension_usage',
         'Find every cube that uses a dimension, and every TI process whose code references it — useful before renaming or deleting a dimension',
         { dimension: z.string().describe('Dimension name') },
-        async ({ dimension }) => ok(await client().scanDimensionUsage(dimension))
+        async ({ dimension }) => ok(usable(await client().scanDimensionUsage(dimension)))
     )
 
     server.tool(
         'find_cube_usage',
         'Find every TI process whose code references a cube by name — useful before renaming or deleting a cube',
         { cube: z.string().describe('Cube name') },
-        async ({ cube }) => ok(await client().scanCubeUsage(cube))
+        async ({ cube }) => ok(usable(await client().scanCubeUsage(cube)))
     )
 
     server.tool(
@@ -125,6 +130,7 @@ function register(server, { client, ok }) {
             const regex = new RegExp(pattern, case_sensitive ? '' : 'i')
             const hits = []
             for (const name of processes) {
+                if (!may('processes', name)) continue
                 try {
                     const p = await client().getProcess(name)
                     const sections = {
@@ -136,7 +142,7 @@ function register(server, { client, ok }) {
                     const matched = []
                     for (const [section, code] of Object.entries(sections)) {
                         code.split('\n').forEach((line, i) => {
-                            if (regex.test(line)) matched.push({ section, line: i + 1, text: line.trim() })
+                            if (regex.test(line)) matched.push({ section, line: i + 1, text: guard.stripTiCredentials(line.trim()) })
                         })
                     }
                     if (matched.length) hits.push({ process: name, matches: matched })
