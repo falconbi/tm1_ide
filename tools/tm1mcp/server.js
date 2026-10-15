@@ -30,15 +30,26 @@ const _server = new McpServer({
 
 // Tool registration + the security wrapper (read/write classification, readonly
 // mode, policy checks, reader/builder identity, read audit) live in registry.js.
-const { registerAll } = require('./registry')
+const { registerAll, DEPLOY_CHECK_TOOLS } = require('./registry')
 const { registered, skipped } = registerAll(_server, ctx, {
     mode:     ctx.MODE,
     policy:   ctx.policy,
     identity: ctx.identity,
     audit:    row => ctx.cl.writeReadAudit(row),
+    explicitTargets: ctx.explicitTargets(),
 })
 
 // ── Start ─────────────────────────────────────────────────────────────────────
+
+// Read audit retention: TM1_MCP_AUDIT_DAYS (default 90; 0 = keep forever).
+// Pruned at start-up and once a day while running.
+const AUDIT_DAYS = process.env.TM1_MCP_AUDIT_DAYS != null && process.env.TM1_MCP_AUDIT_DAYS !== ''
+    ? Number(process.env.TM1_MCP_AUDIT_DAYS) : 90
+if (!Number.isFinite(AUDIT_DAYS)) {
+    process.stderr.write(`tm1mcp: TM1_MCP_AUDIT_DAYS must be a number of days (got "${process.env.TM1_MCP_AUDIT_DAYS}")\n`)
+    process.exit(1)
+}
+function pruneAudit() { try { ctx.cl.pruneReadAudit(AUDIT_DAYS) } catch (e) { process.stderr.write(`tm1mcp: read-audit prune failed: ${e.message}\n`) } }
 
 async function main() {
     // Prove the reader login before serving anything — a bad per-user login stops
@@ -46,11 +57,15 @@ async function main() {
     const readerName = await ctx.identity.verifyReader()
     const builderName = await ctx.identity.builderClient().get('ActiveUser', { '$select': 'Name' }).then(u => u?.Name).catch(() => null)
     if (builderName) ctx.setBuilderLogin(builderName)
+    pruneAudit()
+    setInterval(pruneAudit, 86_400_000).unref()
     const transport = new StdioServerTransport()
     await _server.connect(transport)
+    const checks = skipped.filter(t => DEPLOY_CHECK_TOOLS.has(t)).length
+    const notOffered = [`${skipped.length - checks} write tools`, checks && `${checks} deploy checks — name target servers to offer them`].filter(Boolean).join(', ')
     const reads = readerName ? `as TM1 user "${readerName}" (TM1 security applies)` : 'as the service login (TM1 security does not narrow them — set TM1_MCP_READ_USER)'
     process.stderr.write(`tm1mcp: connected to "${ctx.SERVER}" — mode ${ctx.MODE}, ${registered.length} tools` +
-        `${skipped.length ? ` (${skipped.length} write tools not offered)` : ''}; reads ${reads}` +
+        `${skipped.length ? ` (not offered: ${notOffered})` : ''}; reads ${reads}` +
         `${ctx.MODE === 'build' ? `; writes as ${builderName ? `"${builderName}"` : 'the service login'}` : ''}\n`)
 }
 

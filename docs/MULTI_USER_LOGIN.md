@@ -45,7 +45,7 @@ security didn't apply to each person.
 - **v12 sign-in.** PAW-native covers v11 behind PAW. The `paw-oauth2` adapter in this repo uses a
   single machine credential (client ID and secret), so everyone is the same user to TM1. It is
   not per-person sign-in, and it isn't a supported v12 path (see
-  [AUTHENTICATION.md](AUTHENTICATION.md), Known issues 5). For per-person OIDC sign-in, see
+  [AUTHENTICATION.md](AUTHENTICATION.md), Known issues 5). Per-person OIDC sign-in is not built on v11 or v12. See
   [Connection types](AUTHENTICATION.md#connection-types).
 - **Windows integrated login (Kerberos/NTLM)** is not supported.
 - **Plain HTTP between browser and IDE.** That's fine on one machine. On a network, passwords

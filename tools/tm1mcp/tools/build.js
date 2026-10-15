@@ -449,7 +449,8 @@ function register(server, { client, ok, esc, logChange, requireChangeSet, lintRu
             // several cubes is checked against each.
             let cells = raw, redacted = 0
             for (const cb of [...new Set([cube, ...guard.cubesInMdx(query)].filter(Boolean))]) {
-                const r = guard.redactCells(policy, { cube: cb, axes: res.Axes, cells, mdx: query })
+                const { policy: pol } = await guard.maskPolicyFor(policy, cb, c)   // + parents of masked members
+                const r = guard.redactCells(pol, { cube: cb, axes: res.Axes, cells, mdx: query })
                 cells = r.cells; redacted += r.redacted
             }
             return ok({ mdx: query, cell_count: cells.length, truncated: res.truncated ?? false, ...(redacted ? { redacted } : {}), cells })

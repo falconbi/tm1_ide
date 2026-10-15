@@ -32,3 +32,14 @@ test('a failed read is audited as an error', async () => {
     assert.equal(h.audit[0].outcome, 'error')
     assert.match(h.audit[0].detail, /TM1 is down/)
 })
+
+test('read audit retention drops rows older than the setting, and 0 keeps everything', () => {
+    const cl = require('../core/change_log')
+    const server = `retention-test-${process.pid}-${Date.now()}`
+    cl.writeReadAudit({ server, tool: 'list_cubes', outcome: 'ok' })
+    const later = Date.now() + 91 * 86_400_000
+    assert.equal(cl.pruneReadAudit(0, { server, now: later }), 0, '0 = keep forever')
+    assert.equal(cl.pruneReadAudit(90, { server, now: Date.now() }), 0, 'a fresh row is kept')
+    assert.equal(cl.pruneReadAudit(90, { server, now: later }), 1, 'older than 90 days goes')
+    assert.equal(cl.getReadAudit(server).length, 0)
+})

@@ -367,6 +367,16 @@ function writeReadAudit({ server, user, identity, tool, object, rows, redacted, 
         rows ?? null, redacted ?? null, outcome, detail ?? null)
 }
 
+// Retention: drop read-audit rows older than `days` (0 or less = keep forever).
+// Returns how many rows went.
+function pruneReadAudit(days, { server = null, now = Date.now() } = {}) {
+    if (!(days > 0)) return 0
+    const cutoff = new Date(now - days * 86_400_000).toISOString()
+    return server
+        ? db.prepare(`DELETE FROM read_audit WHERE timestamp < ? AND server = ?`).run(cutoff, server).changes
+        : db.prepare(`DELETE FROM read_audit WHERE timestamp < ?`).run(cutoff).changes
+}
+
 function getReadAudit(server, { limit = 200, tool } = {}) {
     return tool
         ? db.prepare(`SELECT * FROM read_audit WHERE server = ? AND tool = ? ORDER BY id DESC LIMIT ?`).all(server, tool, limit)
@@ -403,4 +413,4 @@ try { db.exec(`ALTER TABLE log_entries ADD COLUMN user TEXT`) } catch {}
 // The TM1 login a change was made with (the MCP's builder identity), next to the developer in `user`.
 try { db.exec(`ALTER TABLE log_entries ADD COLUMN identity TEXT`) } catch {}
 
-module.exports = { startSession, getSession, getSessionManifest, closeSession, resumeSession, updateSessionDescription, setSessionCommit, setSessionRelease, markSessionDeployed, getActiveSession, getSessions, getAllSessions, getSessionLog, getCrossSessionTouches, getEntriesSince, getMaxEntryId, getEntriesSinceId, getSessionLogVerbose, getRecentLog, getObjectHistory, getEntryById, writeLog, writeReadAudit, getReadAudit, findArchivableEntries, pruneEntries }
+module.exports = { startSession, getSession, getSessionManifest, closeSession, resumeSession, updateSessionDescription, setSessionCommit, setSessionRelease, markSessionDeployed, getActiveSession, getSessions, getAllSessions, getSessionLog, getCrossSessionTouches, getEntriesSince, getMaxEntryId, getEntriesSinceId, getSessionLogVerbose, getRecentLog, getObjectHistory, getEntryById, writeLog, writeReadAudit, getReadAudit, pruneReadAudit, findArchivableEntries, pruneEntries }

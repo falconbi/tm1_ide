@@ -11,7 +11,7 @@ Install, configure and run the IDE.
 ### Prerequisites
 
 - **Node.js 20+** — [nodejs.org](https://nodejs.org)
-- One or more TM1 servers with `HTTPPortNumber` set in `tm1s.cfg` (for direct connection), **or** a PAW instance (V11 native auth / V12 Authentik SSO)
+- One or more TM1 servers with `HTTPPortNumber` set in `tm1s.cfg` (for direct connection), **or** a PAW v11 instance. v12 per-person sign-in (OIDC) is not built yet; see [Connection types](AUTHENTICATION.md#connection-types)
 
 ### 1. Install
 

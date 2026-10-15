@@ -70,3 +70,29 @@ test('attribute values are masked per dimension / attribute', async () => {
     assert.deepEqual(data.values, { Name: 'Alice', 'Salary Band': '***' })
     assert.equal(data.redacted, 1)
 })
+
+test('masking a member also masks its parents, so it cannot be worked out from a total', async () => {
+    // Org: 100 = 101 + 102 + 103; 101 is masked. Without widening, 100 − 102 − 103 gives 101 back.
+    const tree = [
+        { Name: '100', Type: 'C', Components: ['101', '102', '103'] },
+        { Name: 'All', Type: 'C', Components: ['100'] },
+        { Name: '101', Type: 'N', Components: [] }, { Name: '102', Type: 'N', Components: [] }, { Name: '103', Type: 'N', Components: [] },
+    ]
+    const axes = [{ Tuples: ['All', '100', '101', '102', '103'].map(n => ({ Members: [{ Name: n }] })) }]
+    const cells = [500, 400, 150, 120, 130].map((v, i) => ({ Ordinal: i, Value: v, FormattedValue: String(v) }))
+    const h = setup({ policyRaw: { '*': { redact: { cells: [{ cube: 'Org', members: ['101'], action: 'mask' }] } } } })
+    Object.assign(h.builder, {
+        async getCube() { return { Dimensions: [{ Name: 'Org' }] } },
+        async getElementsWithTree() { return tree },
+        async executeMDX() { return { Axes: axes, Cells: cells } },
+    })
+    const { data } = await h.call('read_cells', { mdx: 'SELECT {} ON 0 FROM [Org]' })
+    assert.deepEqual(data.cells.map(c => c.formatted), ['***', '***', '***', '120', '130'], 'All and 100 are masked with 101')
+})
+
+test('if the hierarchy cannot be read, a member rule masks the whole cube (fail closed)', async () => {
+    const h = withRule({ cube: 'Payroll', members: ['Salary'], action: 'mask' })
+    h.builder.getCube = async () => { throw new Error('no access') }
+    const { data } = await h.call('read_cells', { mdx: MDX })
+    assert.ok(data.cells.every(c => c.formatted === '***'))
+})

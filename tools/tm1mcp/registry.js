@@ -24,6 +24,12 @@ const guard = require('./guard')
 // Deploy execution is not an MCP tool; check_deploy_risk / check_target_drift only read.
 const UNGATED_WRITE_TOOLS = new Set(['start_change_set', 'run_process', 'reprocess_feeders', 'add_assertion', 'remove_assertion'])
 
+// The deploy checks open a connection to ANOTHER server (possibly production) with
+// that server's service login, outside the reader's TM1 security. In readonly mode
+// they are offered only when target servers were named on purpose
+// (TM1_MCP_ALLOWED_TARGETS or "mcpAllowTargets" in config/servers.json).
+const DEPLOY_CHECK_TOOLS = new Set(['check_deploy_risk', 'check_target_drift'])
+
 const GROUPS = ['docs', 'introspect', 'changeset', 'assertions', 'deploy', 'build', 'develop', 'diagnostics', 'lenses']
 
 function errorText(e) {
@@ -38,7 +44,7 @@ function _payload(res) {
     try { return JSON.parse(t) } catch { return t }
 }
 
-function toolServer(mcp, ctx, { mode, policy, identity, audit }) {
+function toolServer(mcp, ctx, { mode, policy, identity, audit, explicitTargets = false }) {
     const registered = [], skipped = []
     const who = () => identity.describe()
 
@@ -59,8 +65,10 @@ function toolServer(mcp, ctx, { mode, policy, identity, audit }) {
         tool(name, description, schema, handler) {
             const kind = guard.classify(name)
             if (mode === 'readonly' && kind === 'write') { skipped.push(name); return null }
+            if (mode === 'readonly' && DEPLOY_CHECK_TOOLS.has(name) && !explicitTargets) { skipped.push(name); return null }
             registered.push({ name, kind })
-            return mcp.tool(name, description, schema, async (args = {}) => {
+
+            async function run(args) {
                 if (kind === 'read') {
                     try { guard.checkArgs(policy, args) }
                     catch (e) {
@@ -85,7 +93,10 @@ function toolServer(mcp, ctx, { mode, policy, identity, audit }) {
                     if (kind === 'read') record(name, args, /blocked by config\/mcp-security/.test(msg) ? 'refused' : 'error', { detail: msg })
                     return { content: [{ type: 'text', text: `Error: ${msg}` }], isError: true }
                 }
-            })
+            }
+
+            // Passwords are stripped from EVERY answer, whatever the tool (guard.scrubResult).
+            return mcp.tool(name, description, schema, async (args = {}) => guard.scrubResult(await run(args)))
         },
     }
 }
@@ -97,4 +108,4 @@ function registerAll(mcp, ctx, opts) {
     return { registered: server.registered, skipped: server.skipped }
 }
 
-module.exports = { registerAll, toolServer, UNGATED_WRITE_TOOLS, GROUPS }
+module.exports = { registerAll, toolServer, UNGATED_WRITE_TOOLS, DEPLOY_CHECK_TOOLS, GROUPS }

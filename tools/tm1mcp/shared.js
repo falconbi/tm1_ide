@@ -142,6 +142,13 @@ function targetAllowlist() {
     return set
 }
 
+// Were target servers named on purpose (beyond the bound server itself)?
+function explicitTargets() {
+    const set = targetAllowlist()
+    set.delete(SERVER)
+    return set.size > 0
+}
+
 function assertTargetAllowed(target) {
     const allowed = targetAllowlist()
     if (!allowed.has(target)) {
@@ -152,4 +159,4 @@ function assertTargetAllowed(target) {
     }
 }
 
-module.exports = { SERVER, AGENT_USER, MODE, policy, identity, setBuilderLogin, client, ok, esc, logChange, runAssertions, requireWritable, requireChangeSet, assertTargetAllowed, targetAllowlist, cl, assertions, lintRules, lintTI }
+module.exports = { SERVER, AGENT_USER, MODE, policy, identity, setBuilderLogin, client, ok, esc, logChange, runAssertions, requireWritable, requireChangeSet, assertTargetAllowed, targetAllowlist, explicitTargets, cl, assertions, lintRules, lintTI }

@@ -73,32 +73,42 @@ every read.
 - **Writes still use the builder (service) login.** That is deliberate — the change set is the
   gate, and every change-set row now records both the developer and the TM1 login — but TM1
   security does not limit what a build can change.
-- **Some governance reads use the service login.** `list_baselines`, `get_change_set`,
-  `diff_change_set`, `check_deploy_risk` and `check_target_drift` compare model *definitions*
-  (not cell data) through the deploy tooling, which has its own connection. They are scoped by
-  the target allowlist, audited, but not narrowed by the reader's TM1 security.
-- **Masking a leaf doesn't hide it from its total.** Masking works cell by cell. If a leaf is
-  masked but its parent and the other children are not, the leaf is the parent minus the visible
-  siblings. Tested on a lab server: one masked organisation leaf was recovered exactly from its
-  parent and two siblings. To protect a value, mask its consolidations too (list them in
-  `members`), mask the whole cube, use `block`, or (best) deny it with TM1 element or cell
-  security on the reader login.
-- **The deploy checks are offered in `readonly` mode and read as the service login.**
-  `check_deploy_risk` and `check_target_drift` connect to a target server (which can be
-  production) through the deploy tooling with that server's service login. Their answers are
-  model definitions, including rules and TI code, which aren't stripped of passwords, plus picklist
-  cell values. They're limited to the target allowlist, but the reader's TM1 security and the
-  masking rules don't apply to them.
-- **The read audit has no retention or viewer yet.** `read_audit` (in `change_log.db`, gitignored)
-  grows without limit, and no MCP tool or IDE screen shows it. Read it with SQLite.
-- **Masking covers the tools that return values** (`read_cells`, `execute_view`,
-  `get_element_attributes`). `run_assertions` returns pass/fail and totals from stored checks,
-  and `get_transaction_log` returns old/new values for a cube you've allowed — deny the cube if
-  its history is sensitive.
-- **TI password stripping is pattern-based.** It catches the standard places (ODBCOpen,
-  ODBCOpenEx, AssignClientPassword, password-named variables, `PWD=` / `Password=` in
-  connection strings, datasource password fields). A password hidden some other way — say,
-  built up from pieces — would not be recognised.
+- **Masking is cosmetic. TM1 security is the real control.** Masking changes what the MCP
+  hands back; it doesn't stop TM1 calculating or returning the value. The classic leak is a
+  total: if a leaf is masked but its parent isn't, the leaf is the parent minus the visible
+  siblings. Tested on a lab server, one masked organisation leaf came back exactly from its parent
+  and two siblings. The MCP now masks every **parent** of a masked member automatically (default
+  hierarchies; if it can't read a hierarchy it masks the whole cube). That closed the lab leak,
+  but it still doesn't catch:
+  - a rule-calculated cell built from the masked value (e.g. `Total Comp = Salary + Bonus` as a
+    leaf);
+  - a total in an alternate hierarchy;
+  - a value seen through another tool (`get_transaction_log` shows old and new values for a cube
+    you've allowed).
+
+  If a value must not be seen, deny it with TM1 element or cell security on the reader login
+  (`TM1_MCP_READ_USER`), or deny the cube in the policy. Use masking as a convenience on top,
+  not as the control.
+- **Some governance reads use the service login.** `list_baselines`, `get_change_set` and
+  `diff_change_set` read through the deploy tooling with its own connection. They're audited and
+  scrubbed of passwords, but not narrowed by the reader's TM1 security.
+- **The deploy checks reach another server as its service login.** `check_deploy_risk` and
+  `check_target_drift` connect to a target (which can be production) with that server's service
+  login, outside the reader's TM1 security and the masking rules. In `readonly` mode they're
+  only offered when target servers were named on purpose (`TM1_MCP_ALLOWED_TARGETS` or
+  `"mcpAllowTargets"` in `config/servers.json`). In `build` mode they're limited to that list
+  plus the bound server.
+- **No screen for the read audit yet.** `read_audit` keeps 90 days by default
+  (`TM1_MCP_AUDIT_DAYS`; `0` = keep forever), but no MCP tool or IDE screen shows it. Read it
+  with SQLite.
+- **Password stripping is pattern-based.** Every tool's answer goes through it, the deploy
+  checks and error messages included. It recognises the standard places: the password argument
+  of `ODBCOpen` / `ODBCOpenEx` / `AssignClientPassword`, password-named variables
+  (`vPassword = '…'`), `PWD=` / `Password=` in connection strings, and password / secret / token
+  fields in returned objects. A password it doesn't recognise as one gets through, e.g. built
+  from pieces (`'Tr0' | 'ub4dor'`), held in a variable with an ordinary name, or read from a
+  file at run time. Don't rely on it to make TI that holds passwords safe to share; move the
+  passwords out of the code.
 - The tool surface (65 tools) has been used on three models, not yet in heavy production use.
 
 ---
@@ -112,7 +122,7 @@ Writes are unchanged: change-set gated, read-only (PROD-posture) servers refuse 
 
 | Mode | Tools offered | Default when |
 |------|---------------|--------------|
-| `readonly` | the 39 read tools only — write tools are **not registered**, so the agent never sees them | the server is marked read-only in `config/servers.json` |
+| `readonly` | the 39 read tools only, or 37 when no target servers are named (see below). Write tools are **not registered**, so the agent never sees them | the server is marked read-only in `config/servers.json` |
 | `build` | all 65 | any other server |
 
 `MCP_MODE=build` against a read-only server is refused at start-up. Every tool is classified
@@ -141,7 +151,8 @@ password, or a server reached through PAW) it stops — it **never** falls back 
 login. Start-up prints the outcome, e.g.:
 
 ```
-tm1mcp: connected to "MyServer" — mode readonly, 39 tools (26 write tools not offered);
+tm1mcp: connected to "MyServer" — mode readonly, 37 tools (not offered: 26 write tools,
+        2 deploy checks — name target servers to offer them);
         reads as TM1 user "east_mgr" (TM1 security applies)
 ```
 
@@ -177,11 +188,15 @@ ignored.
 - **Cell masking** (`read_cells`, `execute_view`): a rule matches a cube, and optionally members
   (on rows, columns or the `WHERE` slice). `mask` hides the value, `round:N` rounds it
   (`round:-3` = nearest thousand), `block` refuses the whole read. No `members` = the whole cube.
+  The parents of a masked member are masked too, so it can't be worked out from a total. Masking
+  is cosmetic: see the limits under "Still open" above. TM1 security on the reader login is the
+  real control.
 - **Attribute masking** (`get_element_attributes`): per dimension and attribute; `mask` or `block`.
-- **TI passwords are always stripped** — no setting. `get_process`, `search_ti_code` and
-  `get_process_log` mask the password argument of `ODBCOpen` / `ODBCOpenEx` /
-  `AssignClientPassword`, password-named variables (`vPassword = '…'`), `PWD=` / `Password=` in
-  connection strings, and a datasource's password field.
+- **Recognisable passwords are stripped from every answer**, whatever the tool. There's no
+  setting. Masked: the password argument of `ODBCOpen` / `ODBCOpenEx` / `AssignClientPassword`,
+  password-named variables (`vPassword = '…'`), `PWD=` / `Password=` in connection strings, and
+  password / secret / token fields. It's pattern-based, so a password it doesn't recognise as one
+  gets through (see "Still open").
 - A policy file that isn't valid JSON, or has an unknown action, stops the MCP — it never
   guesses "no restrictions".
 
@@ -190,14 +205,17 @@ ignored.
 Every read tool call is written to the `read_audit` table in `change_log.db`: time, server,
 developer, the TM1 login it ran as, tool, object, rows returned, cells masked, and the outcome
 (`ok`, `refused`, `error`). It is a separate table from the change log, so reads never appear in
-a change set, diff, package or deploy.
+a change set, diff, package or deploy. Rows older than `TM1_MCP_AUDIT_DAYS` (default 90; `0` =
+keep forever) are removed at start-up and once a day.
 
 ### Tests
 
 `tests/safety-mcp-*.test.js` — `readonly` exposes no write tools; reads use the user's login and
 writes the builder's; a reader that can't be honoured fails closed; denylisted cubes are refused
-on every way in; masking masks, rounds and blocks; TI credentials are stripped; reads are
-audited and never touch the change set. An optional live check (`TM1_MCP_LIVE_SERVER`,
+on every way in; masking masks, rounds and blocks, and covers parents; passwords are stripped
+from every answer; reads are audited, kept 90 days, and never touch the change set. Separately,
+`safety-mcp-write-tools.test.js` runs every one of the 26 write tools once against a fake TM1, so
+a tool that can't run at all (like the old `esc is not defined` bug) fails a test. An optional live check (`TM1_MCP_LIVE_SERVER`,
 `TM1_MCP_LIVE_USER`, `TM1_MCP_LIVE_PASSWORD`) proves a restricted user sees fewer cubes than
 the service login.
 

@@ -64,3 +64,20 @@ test('get_process and search_ti_code return code with credentials stripped', asy
     assert.equal(s.text.includes(SECRET), false, s.text)
     assert.equal(s.data[0].process, 'Load')
 })
+
+test('every tool answer is scrubbed — not just get_process (e.g. rules text, deploy-check output)', async () => {
+    const h = setup()
+    h.builder.get = async () => ({ Rules: `# loader uses ODBCOpen('Fin', 'u', '${SECRET}');` })
+    const r = await h.call('get_cube_rules', { cube: 'Sales' })
+    assert.equal(r.text.includes(SECRET), false, r.text)
+    const { scrubResult } = require('../tools/tm1mcp/guard')
+    // Shape of a deploy-check / diff answer: TI code and a datasource nested in objects.
+    const out = scrubResult({ content: [{ type: 'text', text: JSON.stringify({ objects: [{ name: 'Load', after: { prolog: `vPassword = '${SECRET}';` }, datasource: { userPassword: SECRET } }] }) }] })
+    assert.equal(out.content[0].text.includes(SECRET), false, out.content[0].text)
+})
+
+test('scrubbing leaves counts like "passed" alone', () => {
+    const { scrubResult } = require('../tools/tm1mcp/guard')
+    const out = scrubResult({ content: [{ type: 'text', text: JSON.stringify({ total: 5, passed: 4, passing: true }) }] })
+    assert.deepEqual(JSON.parse(out.content[0].text), { total: 5, passed: 4, passing: true })
+})

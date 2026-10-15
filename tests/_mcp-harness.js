@@ -22,11 +22,13 @@ function fakeTm1(name, overrides = {}) {
         async getModelCubes() { calls.push(['getModelCubes']); return [{ Name: 'Sales' }, { Name: 'Payroll' }] },
         async getModelDimensions() { calls.push(['getModelDimensions']); return [{ Name: 'Region' }, { Name: '}Clients' }] },
         async getProcesses() { calls.push(['getProcesses']); return [] },
+        async getCube(n) { calls.push(['getCube', n]); return { Name: n, Dimensions: [] } },
+        async getElementsWithTree(d) { calls.push(['getElementsWithTree', d]); return [] },
     }
     return Object.assign(base, overrides)
 }
 
-function setup({ mode = 'build', policyRaw = {}, env = {}, builder, reader, server = 'TestSrv' } = {}) {
+function setup({ mode = 'build', policyRaw = {}, env = {}, builder, reader, server = 'TestSrv', explicitTargets = false, cl, assertions } = {}) {
     const policy = guard.buildPolicy(policyRaw, server)
     const b = builder ?? fakeTm1('builder')
     const identity = createIdentity({
@@ -42,12 +44,12 @@ function setup({ mode = 'build', policyRaw = {}, env = {}, builder, reader, serv
         logChange: (...a) => changes.push(a),
         requireWritable() {}, requireChangeSet() { return { id: 'cs' } },
         runAssertions: async () => ({}), assertTargetAllowed() {}, targetAllowlist: () => new Set([server]),
-        cl: { getActiveSession: () => null, writeLog: () => ({}) },
-        assertions: {}, lintRules: () => ({ errors: [], warnings: [] }), lintTI: () => ({ errors: [], warnings: [] }),
+        cl: cl ?? { getActiveSession: () => null, writeLog: () => ({}) },
+        assertions: assertions ?? {}, lintRules: () => ({ errors: [], warnings: [] }), lintTI: () => ({ errors: [], warnings: [] }),
     }
     const handlers = {}
     const mcp = { tool(name, _d, _s, fn) { handlers[name] = fn } }
-    const { registered, skipped } = registerAll(mcp, ctx, { mode, policy, identity, audit: r => audit.push(r) })
+    const { registered, skipped } = registerAll(mcp, ctx, { mode, policy, identity, audit: r => audit.push(r), explicitTargets })
     const call = async (name, args = {}) => {
         const res = await handlers[name](args)
         const text = res.content[0].text

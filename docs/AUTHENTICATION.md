@@ -15,14 +15,14 @@ and how each one works.
 | **v11 LDAP password check** (`PasswordSource=LDAP`) | `Authorization: Basic` | ✅ Supported | — |
 | **v11 CAM — user + password** (mode 4/5) | `Authorization: CAMNamespace base64(user:password:namespace)` | ⚠️ Direct: built — header identical to TM1py's; not yet confirmed on a CAM server. Via PAW: works | Confirm at first CAM site |
 | **v11 CAM — single sign-on** | CAM passport from the Cognos gateway → `Authorization: CAMPassport …` | ⚠️ Via PAW only | Direct SSO |
-| **v11 OpenID Connect** (`SupportOpenConnect=T`) | Identity-provider sign-in (code from the provider) | 🧪 Being tested on the v11 lab | Confirm on v11 |
-| **v12 OpenID Connect — user sign-in** | Each person signs in through the identity provider | ✅ Works on the v12 lab (see [Connection types](#connection-types)) | — |
+| **v11 OpenID Connect** (`SupportOpenConnect=T`) | Identity-provider sign-in (code from the provider) | ❌ Not built in the IDE | Planned, with v12 sign-in |
+| **v12 OpenID Connect — user sign-in** | Each person signs in through the identity provider | ❌ Not built in the IDE (see [Connection types](#connection-types)) | Planned |
 | **v11 Windows integrated** (mode 2/3) | Kerberos / NTLM (`Negotiate`) | ❌ Not supported | Last |
 | **v12 Planning Analytics as a Service** | API key as Basic (`apikey` : key) | ❌ Not supported | Next |
 | **v12 on-prem / Cloud Pak for Data** | App client ID + secret → token → `Bearer` | ❌ An adapter exists (`paw-oauth2`) but has **never been tested** against a v12 server | Phase 2 — test on the v12 lab |
 | **Different login per server** | — | ✅ Tested (v11.8: separate sign-in per server, sign-out ends the TM1 session) | — |
 
-✅ supported and tested · ⚠️ partial or unverified · 🧪 being tested · ❌ not yet. A row only moves to ✅ after it has been tested
+✅ supported and tested · ⚠️ partial or unverified · ❌ not yet. A row only moves to ✅ after it has been tested
 against a real server of that type.
 
 ---
@@ -38,15 +38,17 @@ server, so one IDE can mix them.
 | **`paw-native`** | Through PAW's TM1 proxy, using PAW's own cookie session | Each person, with their PAW login | Whatever PAW signs in with on v11: TM1 security, CAM (including single sign-on through PAW). One PAW sign-in covers every server behind that PAW. | ✅ Works on v11 behind PAW. |
 | **`paw-oauth2`** | Through PAW, with an OAuth2 access token | One shared machine credential (client ID + secret), so everyone is the same user to TM1 | Service-style access only | ❌ Untested. It uses the "client credentials" flow, which IBM documents as not supported for PA authorized applications. Not a supported v12 path. |
 
-**OIDC user sign-in**, where each person signs in through the identity provider (e.g. Authentik)
-and TM1 sees that person:
+**OIDC user sign-in is not built.** By that we mean each person signing in through the identity
+provider (e.g. Authentik), with TM1 seeing that person. The IDE has no code for it on v11 or v12
+yet. The only adapter that talks OAuth, `paw-oauth2`, is a single shared machine login: every IDE
+user is the same account to TM1, and it is untested. So today:
 
-- **v12:** works on the v12 lab.
-- **v11** (`SupportOpenConnect=T`): being tested on the v11 lab.
+- **Per-person TM1 security on v11:** use `direct-v11` or `paw-native`.
+- **v12:** there is no per-person sign-in in the IDE. Don't build on `paw-oauth2` as if it were
+  one.
 
-This is not the `paw-oauth2` adapter above, which is a single machine credential. Until it's
-confirmed on both versions, use `direct-v11` or `paw-native` wherever per-person TM1 security
-matters.
+PAW itself can sign people in with OIDC on v12. That is PAW's own login, not something the IDE
+does or inherits.
 
 How each type works internally is in [Reference](#reference--how-the-ide-implements-it-today)
 below and in [ADAPTER_INTERFACE.md](ADAPTER_INTERFACE.md).

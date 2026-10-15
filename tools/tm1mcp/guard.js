@@ -116,7 +116,9 @@ function loadPolicy(server, file = POLICY_FILE) {
 
 // Wildcards: * = any run of characters. Case-insensitive, like TM1 names.
 function _rx(pattern) {
-    return new RegExp('^' + String(pattern).replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*') + '$', 'i')
+    // \* in a pattern is a literal asterisk; a bare * is the wildcard.
+    const parts = String(pattern).split('\\*').map(p => p.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*'))
+    return new RegExp('^' + parts.join('\\*') + '$', 'i')
 }
 function matches(pattern, name) { return _rx(pattern).test(String(name ?? '')) }
 function matchesAny(patterns, name) { return (patterns ?? []).some(p => matches(p, name)) }
@@ -222,6 +224,73 @@ function redactCells(policy, { cube, axes, cells, mdx }) {
     return { cells: out, redacted: count }
 }
 
+// A masked member must not be recoverable from a total: a parent minus its
+// visible children gives the masked leaf back exactly. So before masking, every
+// member-level rule on this cube is widened to all ANCESTORS of the elements it
+// matches (in every dimension of the cube, default hierarchies). If a dimension's
+// tree can't be read, the rule widens to the whole cube — fail closed.
+// Masking is still cosmetic next to TM1 element / cell security on the reader
+// login: a rule-calculated cell built from a masked value (e.g. Total Comp =
+// Salary + Bonus as a leaf) is not a consolidation and is not caught here.
+const _treeCache = new WeakMap()          // client → Map(dim → { at, parents })
+const TREE_TTL_MS = 5 * 60 * 1000
+
+async function _parentsOf(c, dim) {
+    let byDim = _treeCache.get(c)
+    if (!byDim) { byDim = new Map(); _treeCache.set(c, byDim) }
+    const hit = byDim.get(dim)
+    if (hit && Date.now() - hit.at < TREE_TTL_MS) return hit.parents
+    const elems = await c.getElementsWithTree(dim)
+    const hasTree = elems.some(e => Array.isArray(e.Components) && e.Components.length)
+    const hasConsolidations = elems.some(e => e.Type === 'C')
+    if (hasConsolidations && !hasTree) throw new Error(`no parent/child data for ${dim}`)
+    const parents = new Map()
+    for (const e of elems) for (const ch of e.Components ?? []) {
+        const k = String(ch).toLowerCase()
+        if (!parents.has(k)) parents.set(k, [])
+        parents.get(k).push(e.Name)
+    }
+    const names = elems.map(e => e.Name)
+    const entry = { at: Date.now(), parents, names }
+    byDim.set(dim, entry)
+    return entry
+}
+
+async function maskPolicyFor(policy, cube, c) {
+    const rules = (policy?.redact?.cells ?? []).filter(r => matches(r.cube, cube) && Array.isArray(r.members) && r.members.length)
+    if (!rules.length) return { policy, widened: 0 }
+    let trees
+    try {
+        const dims = ((await c.getCube(cube))?.Dimensions ?? []).map(d => d.Name)
+        trees = await Promise.all(dims.map(d => _parentsOf(c, d)))
+    } catch {
+        // Can't see the hierarchy → mask the whole cube for these rules.
+        const cells = policy.redact.cells.map(r => rules.includes(r) ? { ...r, members: [] } : r)
+        return { policy: { ...policy, redact: { ...policy.redact, cells } }, widened: -1 }
+    }
+    let widened = 0
+    const cells = policy.redact.cells.map(r => {
+        if (!rules.includes(r)) return r
+        const extra = new Set()
+        for (const t of trees) {
+            const seeds = t.names.filter(n => matchesAny(r.members, n))
+            const stack = seeds.map(n => n.toLowerCase())
+            const seen = new Set(stack)
+            while (stack.length) {
+                for (const p of t.parents.get(stack.pop()) ?? []) {
+                    const k = p.toLowerCase()
+                    if (seen.has(k)) continue
+                    seen.add(k); stack.push(k); extra.add(p)
+                }
+            }
+        }
+        widened += extra.size
+        // Exact names: escape the * wildcard so a parent called "A*" matches only itself.
+        return { ...r, members: [...r.members, ...[...extra].map(n => n.replace(/\*/g, '\\*'))] }
+    })
+    return { policy: { ...policy, redact: { ...policy.redact, cells } }, widened }
+}
+
 // values: { attrName: value } for one element of `dimension`.
 function redactAttributes(policy, dimension, values) {
     const rules = (policy?.redact?.attributes ?? []).filter(r => matches(r.dimension, dimension))
@@ -292,16 +361,38 @@ function stripTiCredentials(code) {
     return s
 }
 
+// Object keys that hold a secret: password, userPassword, db_pass, pwd, client_secret,
+// apiKey, token… — but not "passed" / "passing" (assertion counts) or "tokens".
+const SECRET_KEY = /(^|[_-])(pass|passwd|pwd)$|password|secret|api_?key$|^token$|[_-]token$|Token$/i
+
 function stripDatasourceCredentials(ds) {
     if (!ds || typeof ds !== 'object') return ds
     const out = Array.isArray(ds) ? [] : {}
     for (const [k, v] of Object.entries(ds)) {
-        if (/pass(word)?|pwd/i.test(k) && v != null && v !== '') out[k] = MASK
+        if (SECRET_KEY.test(k) && v != null && v !== '') out[k] = MASK
         else if (typeof v === 'string') out[k] = stripTiCredentials(v)
         else if (v && typeof v === 'object') out[k] = stripDatasourceCredentials(v)
         else out[k] = v
     }
     return out
+}
+
+// Every tool answer goes through this before it reaches the agent — the deploy
+// checks, diffs, Lens HTML and error text included, not just get_process — so
+// "TI passwords are always removed" holds for every output, not a list of tools.
+function scrubResult(res) {
+    if (!res?.content) return res
+    return {
+        ...res,
+        content: res.content.map(item => {
+            if (item?.type !== 'text' || typeof item.text !== 'string') return item
+            let data
+            try { data = JSON.parse(item.text) } catch { return { ...item, text: stripTiCredentials(item.text) } }
+            if (typeof data === 'string') return { ...item, text: JSON.stringify(stripTiCredentials(data)) }
+            if (!data || typeof data !== 'object') return item
+            return { ...item, text: JSON.stringify(stripDatasourceCredentials(data), null, 2) }
+        }),
+    }
 }
 
 // ── Audit helpers ────────────────────────────────────────────────────────────
@@ -335,6 +426,6 @@ function countRows(data) {
 module.exports = {
     READ_TOOLS, WRITE_TOOLS, classify, resolveMode,
     BUILT_IN_DENY, POLICY_FILE, buildPolicy, loadPolicy, matches, allowed, refusal, checkArgs,
-    cubesInMdx, whereMembers, cellMembers, redactCells, redactAttributes, MASK,
-    stripTiCredentials, stripDatasourceCredentials, objectOf, countRows,
+    cubesInMdx, whereMembers, cellMembers, redactCells, redactAttributes, maskPolicyFor, MASK,
+    stripTiCredentials, stripDatasourceCredentials, scrubResult, objectOf, countRows,
 }

@@ -5,13 +5,23 @@ const { test } = require('node:test')
 const assert = require('node:assert/strict')
 const { setup } = require('./_mcp-harness')
 const guard = require('../tools/tm1mcp/guard')
+const { DEPLOY_CHECK_TOOLS } = require('../tools/tm1mcp/registry')
 
-test('readonly registers every read tool and not one write tool', () => {
-    const { registered, skipped, handlers } = setup({ mode: 'readonly' })
+test('readonly registers read tools only — not one write tool', () => {
+    const { registered, handlers } = setup({ mode: 'readonly', explicitTargets: true })
     assert.equal(registered.length, guard.READ_TOOLS.size)
     assert.ok(registered.every(t => t.kind === 'read'))
     for (const w of guard.WRITE_TOOLS) assert.equal(handlers[w], undefined, `${w} must not be registered in readonly`)
-    assert.deepEqual(new Set(skipped), guard.WRITE_TOOLS)
+})
+
+test('readonly offers the deploy checks only when target servers were named on purpose', () => {
+    const plain = setup({ mode: 'readonly' })
+    for (const t of DEPLOY_CHECK_TOOLS) assert.equal(plain.handlers[t], undefined, `${t} must not be offered without an explicit target list`)
+    assert.equal(plain.registered.length, guard.READ_TOOLS.size - DEPLOY_CHECK_TOOLS.size)
+    const named = setup({ mode: 'readonly', explicitTargets: true })
+    for (const t of DEPLOY_CHECK_TOOLS) assert.equal(typeof named.handlers[t], 'function')
+    const build = setup({ mode: 'build' })
+    for (const t of DEPLOY_CHECK_TOOLS) assert.equal(typeof build.handlers[t], 'function', 'build mode unchanged')
 })
 
 test('build registers all 65 tools — every one classified', () => {

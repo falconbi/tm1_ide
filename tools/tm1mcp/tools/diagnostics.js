@@ -90,9 +90,11 @@ function register(server, { client, ok, policy }) {
             limit: z.number().int().min(1).max(50_000).optional().describe('Max cell count (default 2000)'),
         },
         async ({ cube, view, limit = 2000 }) => {
-            const res   = await client().executeView(cube, view, limit)
+            const c     = client()
+            const res   = await c.executeView(cube, view, limit)
             const raw   = (res.Cells ?? []).map(x => ({ ordinal: x.Ordinal, value: x.Value, formatted: x.FormattedValue }))
-            const { cells, redacted } = guard.redactCells(policy, { cube, axes: res.Axes, cells: raw })
+            const { policy: pol } = await guard.maskPolicyFor(policy, cube, c)   // + parents of masked members
+            const { cells, redacted } = guard.redactCells(pol, { cube, axes: res.Axes, cells: raw })
             return ok({ view_type: res.ViewType ?? null, cell_count: cells.length, truncated: res.truncated ?? false, ...(redacted ? { redacted } : {}), cells })
         }
     )
