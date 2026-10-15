@@ -1,0 +1,20 @@
+{
+  "_readme": "Copy to config/mcp-security.json. What an AI agent may read through the MCP, and what is masked. '*' applies to every server; a server's own entry adds to it. Patterns use * as a wildcard and ignore case. Security control cubes and dimensions (}Client*, }*Security*, }Capabilities, }Groups, }Clients) are always denied. Restart the MCP after editing.",
+  "*": {
+    "cubes":      { "deny": ["Payroll*", "Employee Salary*"] },
+    "dimensions": { "deny": [] },
+    "processes":  { "deny": ["Security *"] },
+    "redact": {
+      "cells": [
+        { "cube": "Employee*", "members": ["Salary", "Bonus*"], "action": "round:-3" },
+        { "cube": "Compensation", "action": "mask" }
+      ],
+      "attributes": [
+        { "dimension": "Employee", "attribute": "Home Address*", "action": "mask" }
+      ]
+    }
+  },
+  "MyDevServer": {
+    "cubes": { "allow": ["Sales*", "Opex*", "Workforce*"] }
+  }
+}

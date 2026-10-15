@@ -1,152 +1,57 @@
-# Multi-User Login — TODO
+# Multi-User Login — status
+
+**Last checked against the code: 15 Oct 2026.** This started as a TODO list. Most of it is now
+built; what is left is listed under [Still open](#still-open).
+
+How sign-in works for a user is in [AUTHENTICATION.md](AUTHENTICATION.md). This page tracks the
+multi-user work itself.
+
+---
 
 ## Why
 
-The IDE currently authenticates to PAW as a **single shared service account**
-configured in `.env` (`PAW_USERNAME` / `PAW_PASSWORD`). Every person using
-the IDE is the same user to TM1.
+The IDE used to sign in to TM1 as one shared account from `.env`. Everyone was the same user to
+TM1, so change sets mixed everyone's work, nobody could see who changed what, and TM1's own
+security didn't apply to each person.
 
-This causes problems:
+## Done
 
-- **Change sets are per-server, not per-person.** If two people work on the
-  same server, their changes merge into one change set. There's no audit trail
-  of who changed what.
+| Item | Where | Notes |
+| --- | --- | --- |
+| IDE sign-in | `POST /api/auth/login`, `POST /api/auth/logout` (`server.js`) | Sign in through any TM1 server you have an account on. The browser gets a random session token, never the password. Rate-limited: 10 attempts per 15 minutes per IP. |
+| Each server has its own login | `POST /api/auth/server-login`, `POST /api/auth/server-logout`, `GET /api/auth/servers` | Signing in to one server never signs you in to another. A rejected password is not retried. Signing out ends the TM1 session on the server. Tested on v11.8 on 4 Oct 2026. |
+| Sign-in method detection | `GET /api/auth/method` | Asks the server how it wants to be signed in to (TM1 security, LDAP check, CAM) before asking for anything. |
+| First login on a brand-new server | `POST /api/auth/setup-login` | Signs in once as `admin` with the blank password and makes you set a password straight away. |
+| Local single-user mode | `POST /api/auth/local-session` | When the IDE is reachable only from this machine (`HOST=127.0.0.1`), it opens without a sign-in page. You still sign in to each TM1 server. |
+| Token on every call | `x-ide-token` header from the client | Every TM1 call runs as the person signed in to that server. |
+| One TM1 session per person per server | `core/adapter_registry.js` | Reused for every call, closed on sign-out. Before this fix, a lab server had 538 leaked sessions. |
+| Per-person change sets | `core/change_log.js` `getActiveSession(server, user)` | Each person has their own open change set on a server. Each change records who made it. |
+| No hard-coded user | `SessionControl.jsx` | The old `user: 'jdlove'` is gone. The signed-in user is used. |
+| User Management on the selected server | Server Admin | Acts on the server selected in the IDE, not on a fixed login server. |
+| Baseline and drift checks before deploy (old "Phase 3") | `/api/deploy/drift-check`, `/api/git/drift` | Drift on the target pauses a deploy. Details: [DEPLOY_LIFECYCLE.md](DEPLOY_LIFECYCLE.md). |
 
-- **No user isolation.** TM1's own security (element security, process security,
-  cube security) doesn't apply per-person — everyone operates as the PAW
-  service account.
+## Partly done
 
-- **SessionControl.jsx** hardcodes `user: 'jdlove'` because there's no real
-  user identity to use. This works for a single developer but breaks in any
-  shared deployment.
+- **Warning when two people touch the same object.** The Deploy panel warns when the change set
+  you are packaging touches an object that's also in someone else's change set
+  (`CrossSessionWarning`, from `getCrossSessionTouches`). The editors don't yet warn when you
+  open or save something another person changed during your session. That was the old
+  "Phase 2" plan, and it is not built.
 
-## Use Case
+## Still open
 
-A team of TM1 developers shares one IDE instance (running on a dev server or
-localhost). Each developer:
-
-1. Opens the IDE in their browser
-2. Logs in with **their own PAW credentials** (same account they use in PAW)
-3. Sees only **their own active change set**
-4. All TM1 operations (rules saves, dimension edits, etc.) run through
-   **their personal PAW session**
-5. TM1 access controls apply correctly per person
-6. The change set log shows who made each change
-
-PAW / TM1 accounts already exist — no new user provisioning is needed. The
-IDE just needs to let people authenticate with their existing credentials.
-
----
-
-## Phase 2: Conflict Notification (depends on Phase 1)
-
-Once multi-user login works, editors can detect when another user has
-changed an object during your editing session:
-
-- **On open** — query `getObjectHistory(server, objectType, objectName)`.
-  If the latest entry is from a different user's active session and is newer
-  than your session start time, show a banner:
-
-  > *John edited this rule in change set "Budget Fixes" 12 min ago*
-
-- **On save** — same check. If someone saved during your editing session,
-  warn before overwriting:
-
-  > *This was just changed by John. Open diff to see what changed?*
-
-Both checks use the existing `getObjectHistory` API — no new backend needed.
-Implementation is frontend-only in editor components (ProcessEditor,
-DimensionEditor, ViewEditor, HierarchyGrid for rules, etc.).
-
-## What Needs Doing
-
-### Backend
-
-1. **`paw_connect.js` — per-user session cache**
-   - Replace the single `_session` singleton with a `Map<token, { session, expiry }>`
-   - `getPawSession(token)` logs in on first use, caches per token
-   - Token is generated server-side on login, returned to the client
-
-2. **`server.js` — login route**
-   - `POST /api/auth/login` — accepts `{ username, password }`, calls PAW login,
-     creates a session token, returns it
-   - `POST /api/auth/logout` — invalidates the token
-   - Every TM1 route reads the user's token from a header / cookie and
-     looks up their PAW session
-
-3. **`server.js` — propagate user to change set**
-   - `GET /api/sessions/active` — filter by `user` so each person gets their
-     own active session
-   - `POST /api/sessions/start` — use the authenticated user's identity
-
-### Frontend
-
-4. **Login page** — simple form (username + password), POSTs to `/api/auth/login`,
-   stores the returned token (localStorage or cookie)
-
-5. **`SessionControl.jsx`** — remove hardcoded `user: 'jdlove'`, use the
-   authenticated user from the login session
-
-6. **Session token on every API call** — the `get`/`post` helpers in `useApi.js`
-   need to attach the auth token to every request (custom header)
-
-### PAW Session Lifetime
-
-PAW sessions have an idle timeout (typically 10 min). The backend needs to:
-
-- Detect 401 from PAW (session expired)
-- Automatically re-auth with the stored credentials for that user
-- Or return a 401 to the frontend so the user re-logs in
-
-The cached session approach in `paw_connect.js` already handles this for the
-single-user case — it just needs to apply per token instead of globally.
-
----
-
-## Phase 3: Deploy Pipeline — Baseline Prod + Drift Re-Check
-
-### Corrected Deploy Flow
-
-The baseline and diff steps currently snapshot and compare against Dev only.
-Prod is never involved until the deploy step applies the package, meaning
-Prod's state is never verified before overwriting.
-
-**Corrected flow:**
-
-1. Seed baseline from **Prod** — snapshot all objects from the target server
-   (not Dev). This is the reference point for everything that follows.
-2. Align Dev to match Prod — run `provision-tm1-server.ps1` or equivalent
-3. Work in Dev — IDE tracks changes via the active change set
-4. Build package — diff Dev's current state against the **Prod baseline**.
-   Objects match baseline → UNCHANGED. Objects changed in Dev → MATCH/DRIFT.
-5. **Drift re-check (new)** — before deploying, re-fetch each object in the
-   package from **Prod's current state** and compare against the baseline.
-   If any differ, Prod has drifted since seeding. Flag these as deployment
-   blockers — the developer must re-seed baseline and re-align Dev.
-6. Risk check — dependency and compatibility analysis
-7. Deploy — apply to Prod
-
-### What Needs Changing
-
-1. **Seed baseline from target, not source**
-   - The UI currently passes the Dev server to `/api/deploy/seed`. The deploy
-     panel should prompt for the Prod/Target server and seed from there.
-   - Or auto-seed from Prod when creating a change set (needs Prod connectivity)
-
-2. **Drift re-check in deploy step**
-   - After packaging, before applying: for each object in the manifest,
-     fetch its current state from the Target server and compare against
-     the baseline snapshot.
-   - If any object differs → mark as `TARGET_DRIFT`, block deployment,
-     show which objects changed and when.
-
-3. **Re-seed trigger**
-   - When drift blocks deployment, the UI should offer "Re-seed baseline
-     from Target + re-align Dev" as a fix.
-
-## Out of Scope (for now)
-
-- OAuth / SSO integration
-- User registration or password management
-- Role-based access control within the IDE
-- Multiple PAW host support per IDE instance
+- **Direct CAM sign-in is untested.** The header matches TM1py's, but no CAM server has been
+  available to confirm it.
+- **v12 sign-in.** PAW-native covers v11 behind PAW. The `paw-oauth2` adapter in this repo uses a
+  single machine credential (client ID and secret), so everyone is the same user to TM1. It is
+  not per-person sign-in, and it isn't a supported v12 path (see
+  [AUTHENTICATION.md](AUTHENTICATION.md), Known issues 5). Per-person OIDC sign-in is not built on v11 or v12. See
+  [Connection types](AUTHENTICATION.md#connection-types).
+- **Windows integrated login (Kerberos/NTLM)** is not supported.
+- **Plain HTTP between browser and IDE.** That's fine on one machine. On a network, passwords
+  typed in the browser cross it unencrypted. HTTPS for the IDE is planned.
+- **Service credentials are plain text** in `config/servers.json`. They're gitignored, but not
+  encrypted. Moving them to the OS keychain is on the list.
+- **Sessions live in memory.** Restarting the IDE signs everyone out.
+- **No roles inside the IDE.** The IDE makes no access decisions of its own. TM1 groups decide.
+  That is deliberate, not a gap.

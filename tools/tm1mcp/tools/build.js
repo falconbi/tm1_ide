@@ -1,12 +1,13 @@
 'use strict'
 
 const { z } = require('zod')
+const guard = require('../guard')
 
 // ══════════════════════════════════════════════════════════════════════════════
 // MODEL BUILD — WRITE (all require an open change set)
 // ══════════════════════════════════════════════════════════════════════════════
 
-function register(server, { client, ok, logChange, requireChangeSet, lintRules, lintTI }) {
+function register(server, { client, ok, esc, logChange, requireChangeSet, lintRules, lintTI, policy }) {
     server.tool(
         'build_dimension',
         'Create a dimension declaratively in one call — elements, consolidation edges, and element attributes. If the dimension exists, elements/edges/attributes are added to it. Use for small dimensions; drive large dimensions from a TI process (build_process) that loads from a datasource. ' +
@@ -443,8 +444,16 @@ function register(server, { client, ok, logChange, requireChangeSet, lintRules, 
                 query = `SELECT {[${colDim}].[${colDim}].[${coordinates[colDim]}]} ON 0 FROM [${cube}]` + (slicer ? ` WHERE (${slicer})` : '')
             }
             const res   = await c.executeMDX(query, max_cells)
-            const cells = (res.Cells ?? []).map(x => ({ ordinal: x.Ordinal, value: x.Value, formatted: x.FormattedValue }))
-            return ok({ mdx: query, cell_count: cells.length, truncated: res.truncated ?? false, cells })
+            const raw   = (res.Cells ?? []).map(x => ({ ordinal: x.Ordinal, value: x.Value, formatted: x.FormattedValue }))
+            // Masking rules apply per cube (config/mcp-security.json); a read across
+            // several cubes is checked against each.
+            let cells = raw, redacted = 0
+            for (const cb of [...new Set([cube, ...guard.cubesInMdx(query)].filter(Boolean))]) {
+                const { policy: pol } = await guard.maskPolicyFor(policy, cb, c)   // + parents of masked members
+                const r = guard.redactCells(pol, { cube: cb, axes: res.Axes, cells, mdx: query })
+                cells = r.cells; redacted += r.redacted
+            }
+            return ok({ mdx: query, cell_count: cells.length, truncated: res.truncated ?? false, ...(redacted ? { redacted } : {}), cells })
         }
     )
 

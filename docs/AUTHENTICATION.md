@@ -15,7 +15,8 @@ and how each one works.
 | **v11 LDAP password check** (`PasswordSource=LDAP`) | `Authorization: Basic` | ✅ Supported | — |
 | **v11 CAM — user + password** (mode 4/5) | `Authorization: CAMNamespace base64(user:password:namespace)` | ⚠️ Direct: built — header identical to TM1py's; not yet confirmed on a CAM server. Via PAW: works | Confirm at first CAM site |
 | **v11 CAM — single sign-on** | CAM passport from the Cognos gateway → `Authorization: CAMPassport …` | ⚠️ Via PAW only | Direct SSO |
-| **v11 OpenID Connect** (`SupportOpenConnect=T`) | Identity-provider sign-in (code from the provider) | ❌ Not supported | Phase 2, with v12 sign-in |
+| **v11 OpenID Connect** (`SupportOpenConnect=T`) | Identity-provider sign-in (code from the provider) | ❌ Not built in the IDE | Planned, with v12 sign-in |
+| **v12 OpenID Connect — user sign-in** | Each person signs in through the identity provider | ❌ Not built in the IDE (see [Connection types](#connection-types)) | Planned |
 | **v11 Windows integrated** (mode 2/3) | Kerberos / NTLM (`Negotiate`) | ❌ Not supported | Last |
 | **v12 Planning Analytics as a Service** | API key as Basic (`apikey` : key) | ❌ Not supported | Next |
 | **v12 on-prem / Cloud Pak for Data** | App client ID + secret → token → `Bearer` | ❌ An adapter exists (`paw-oauth2`) but has **never been tested** against a v12 server | Phase 2 — test on the v12 lab |
@@ -25,6 +26,51 @@ and how each one works.
 against a real server of that type.
 
 ---
+
+## Connection types
+
+Each TM1 server in `config/servers.json` is reached one of three ways. The adapter is picked per
+server, so one IDE can mix them.
+
+| Type | Reaches TM1 | Who TM1 sees | Supports | Status |
+| --- | --- | --- | --- | --- |
+| **`direct-v11`** | Straight to the TM1 REST API (found through the Admin Host), no PAW | Each person, with their own login per server | TM1 security, LDAP password check, CAM user + password (namespace). Per-server sign-in, session reuse, first-login setup. Also the only type that supports per-user MCP reads (`TM1_MCP_READ_USER`). | ✅ Tested on v11.8. Direct CAM is built but unconfirmed on a CAM server. |
+| **`paw-native`** | Through PAW's TM1 proxy, using PAW's own cookie session | Each person, with their PAW login | Whatever PAW signs in with on v11: TM1 security, CAM (including single sign-on through PAW). One PAW sign-in covers every server behind that PAW. | ✅ Works on v11 behind PAW. |
+| **`paw-oauth2`** | Through PAW, with an OAuth2 access token | One shared machine credential (client ID + secret), so everyone is the same user to TM1 | Service-style access only | ❌ Untested. It uses the "client credentials" flow, which IBM documents as not supported for PA authorized applications. Not a supported v12 path. |
+
+**OIDC user sign-in is not built.** By that we mean each person signing in through the identity
+provider (e.g. Authentik), with TM1 seeing that person. The IDE has no code for it on v11 or v12
+yet. The only adapter that talks OAuth, `paw-oauth2`, is a single shared machine login: every IDE
+user is the same account to TM1, and it is untested. So today:
+
+- **Per-person TM1 security on v11:** use `direct-v11` or `paw-native`.
+- **v12:** there is no per-person sign-in in the IDE. Don't build on `paw-oauth2` as if it were
+  one.
+
+PAW itself can sign people in with OIDC on v12. That is PAW's own login, not something the IDE
+does or inherits.
+
+How each type works internally is in [Reference](#reference--how-the-ide-implements-it-today)
+below and in [ADAPTER_INTERFACE.md](ADAPTER_INTERFACE.md).
+
+## Where secrets live
+
+| Secret | Where | In Git? |
+| --- | --- | --- |
+| Service login per server (`username` / `password` on an `adminHosts` entry, or `serverCredentials`) and PAW OAuth `client_secret` | `config/servers.json` | **No.** It's gitignored and stored in plain text, so protect the file. |
+| PAW service login (`PAW_USERNAME` / `PAW_PASSWORD`), AI provider key (`AI_API_KEY`), Git token (`TM1_GIT_TOKEN`) | `.env` | **No.** It's gitignored. `.env.example` has the names only. |
+| MCP read login (`TM1_MCP_READ_USER` / `TM1_MCP_READ_PASSWORD` / `TM1_MCP_READ_NAMESPACE`) | `.env` (the MCP loads it at start) or the shell environment | **No.** |
+| External SQL connection logins | `config/sql-connections.json` | **No.** It's gitignored. |
+| People's own TM1 passwords | IDE server memory only, for the session | Never written to disk. The browser holds only a random token. |
+
+**Never put a password in `.mcp.json` or `opencode.jsonc`.** `.mcp.json` is committed to the
+repository and `opencode.jsonc` is often copied around. Both should only name the server
+(`TM1_MCP_SERVER`) and settings like `MCP_MODE`. Put any credential in `.env` or in
+`config/servers.json`. The same goes for `opencode.example.jsonc` and any other example file: use
+placeholder names, never real values.
+
+When the IDE pushes to Git it masks the token in any error message it shows. There is no
+automatic scan for passwords in files you commit yourself, so check before pushing.
 
 ## Signing in to the IDE
 

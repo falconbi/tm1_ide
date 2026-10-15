@@ -12,8 +12,8 @@
 //
 // This file is just the bootstrap: shared context (shared.js), server setup, wire
 // each tool group, connect. Tool registrations themselves live in tools/*.js,
-// grouped by subject — same 60 tools, same names, same behavior as before the
-// split; only where the code lives changed.
+// grouped by subject — 65 tools (39 read, 26 write; readonly mode offers only the
+// reads). Security model: docs/MCP_SERVER.md "Security".
 
 require('dotenv').config({ path: require('path').join(__dirname, '../../.env') })
 
@@ -28,55 +28,45 @@ const _server = new McpServer({
     version: '2.0.0',
 })
 
-// Every local tool that changes the BOUND server must refuse on a read-only
-// (PROD-posture) server. Most writes go through requireChangeSet(), which already
-// calls requireWritable(). The ones below change the server WITHOUT opening a
-// change set, so the read-only check is applied here instead:
-//   start_change_set   — opening a build session against a read-only server is refused too
-//   run_process, reprocess_feeders — execute TI; no change-set entry of their own
-//   add_assertion, remove_assertion — write the model's assertions document
-// Deliberately NOT listed: deploy tools. They change only an approved target and
-// are gated by a recorded human approval (approvals.find inside
-// core/git-deploy.execute), so read-only must not block the approved path.
-// (The old drift revert/promote tools were retired — drift pauses deploys.)
-// Read-only tools (list_/get_/find_/check_*) need no check.
-const UNGATED_WRITE_TOOLS = new Set(['start_change_set', 'run_process', 'reprocess_feeders', 'add_assertion', 'remove_assertion'])
-
-// Wrap every tool handler so TM1/OData error detail reaches the agent instead of
-// the opaque "Request failed with status code 400".
-const server = {
-    tool(name, description, schema, handler) {
-        return _server.tool(name, description, schema, async (args) => {
-            try {
-                if (UNGATED_WRITE_TOOLS.has(name)) ctx.requireWritable()
-                return await handler(args)
-            } catch (e) {
-                const d = e.response?.data?.error?.message ?? e.response?.data?.error ?? e.response?.data
-                const msg = typeof d === 'string' ? d : d ? JSON.stringify(d) : e.message
-                return { content: [{ type: 'text', text: `Error: ${msg}` }], isError: true }
-            }
-        })
-    },
-}
-
-// ── Tool groups ───────────────────────────────────────────────────────────────
-
-require('./tools/docs').register(server, ctx)          // read_build_guide
-require('./tools/introspect').register(server, ctx)     // list_*/get_*/find_cubes_using_dimension — model context, read-only
-require('./tools/changeset').register(server, ctx)       // seed/list/set_baseline, start/close/get/diff/package_change_set
-require('./tools/assertions').register(server, ctx)      // add/list/remove/run_assertions
-require('./tools/deploy').register(server, ctx)          // check_deploy_risk, check_target_drift
-require('./tools/build').register(server, ctx)           // build_*/add_elements/create_*/set_attribute_values/write_cells/read_cells/delete_object
-require('./tools/develop').register(server, ctx)         // update_cube_rules/update_process/run_process/check_rules_syntax/check_feeders/trace_feeders
-require('./tools/diagnostics').register(server, ctx)     // logs, threads, transaction log, usage-finders, search_ti_code
-require('./tools/lenses').register(server, ctx)          // list/get/save/delete_lens — governed HTML dashboards
+// Tool registration + the security wrapper (read/write classification, readonly
+// mode, policy checks, reader/builder identity, read audit) live in registry.js.
+const { registerAll, DEPLOY_CHECK_TOOLS } = require('./registry')
+const { registered, skipped } = registerAll(_server, ctx, {
+    mode:     ctx.MODE,
+    policy:   ctx.policy,
+    identity: ctx.identity,
+    audit:    row => ctx.cl.writeReadAudit(row),
+    explicitTargets: ctx.explicitTargets(),
+})
 
 // ── Start ─────────────────────────────────────────────────────────────────────
 
+// Read audit retention: TM1_MCP_AUDIT_DAYS (default 90; 0 = keep forever).
+// Pruned at start-up and once a day while running.
+const AUDIT_DAYS = process.env.TM1_MCP_AUDIT_DAYS != null && process.env.TM1_MCP_AUDIT_DAYS !== ''
+    ? Number(process.env.TM1_MCP_AUDIT_DAYS) : 90
+if (!Number.isFinite(AUDIT_DAYS)) {
+    process.stderr.write(`tm1mcp: TM1_MCP_AUDIT_DAYS must be a number of days (got "${process.env.TM1_MCP_AUDIT_DAYS}")\n`)
+    process.exit(1)
+}
+function pruneAudit() { try { ctx.cl.pruneReadAudit(AUDIT_DAYS) } catch (e) { process.stderr.write(`tm1mcp: read-audit prune failed: ${e.message}\n`) } }
+
 async function main() {
+    // Prove the reader login before serving anything — a bad per-user login stops
+    // here rather than surfacing as a confusing first tool error.
+    const readerName = await ctx.identity.verifyReader()
+    const builderName = await ctx.identity.builderClient().get('ActiveUser', { '$select': 'Name' }).then(u => u?.Name).catch(() => null)
+    if (builderName) ctx.setBuilderLogin(builderName)
+    pruneAudit()
+    setInterval(pruneAudit, 86_400_000).unref()
     const transport = new StdioServerTransport()
     await _server.connect(transport)
-    process.stderr.write(`tm1mcp: connected to "${ctx.SERVER}"\n`)
+    const checks = skipped.filter(t => DEPLOY_CHECK_TOOLS.has(t)).length
+    const notOffered = [`${skipped.length - checks} write tools`, checks && `${checks} deploy checks — name target servers to offer them`].filter(Boolean).join(', ')
+    const reads = readerName ? `as TM1 user "${readerName}" (TM1 security applies)` : 'as the service login (TM1 security does not narrow them — set TM1_MCP_READ_USER)'
+    process.stderr.write(`tm1mcp: connected to "${ctx.SERVER}" — mode ${ctx.MODE}, ${registered.length} tools` +
+        `${skipped.length ? ` (not offered: ${notOffered})` : ''}; reads ${reads}` +
+        `${ctx.MODE === 'build' ? `; writes as ${builderName ? `"${builderName}"` : 'the service login'}` : ''}\n`)
 }
 
 main().catch(e => {
