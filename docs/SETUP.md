@@ -137,3 +137,42 @@ cd client && npm run build
 This builds straight into `static/` (what the server serves), replacing the previous build.
 
 </details>
+
+---
+
+## Installing at a client
+
+### Intended setup
+
+- The IDE is installed **once, on the client's DEV TM1 server machine** (or a machine next to it),
+  not on each developer's PC.
+- Developers open it **in a browser**. Nothing is installed on their machines.
+- Each developer signs in to each TM1 server with **their own TM1 login**, so TM1 security and
+  per-person change sets apply. See [MULTI_USER_LOGIN.md](MULTI_USER_LOGIN.md).
+- To make it reachable from the network, set `HOST=0.0.0.0` in `.env`. A sign-in page then always
+  appears first. The browser-to-IDE connection is **plain HTTP** today, so passwords cross the
+  network unencrypted. Keep it on a trusted network until HTTPS for the IDE lands.
+- Changes reach TEST and PROD through the deploy pipeline. The IDE is not installed on PROD.
+- Secrets go in `config/servers.json` and `.env` on that machine only. See
+  [Where secrets live](AUTHENTICATION.md#where-secrets-live).
+
+### Windows: not tested yet
+
+Most client TM1 servers run Windows. **The IDE has only been run on Linux so far.** The code uses
+Node's own path and temp-folder handling, so it is expected to work. These are the known
+differences and risks, untested:
+
+| Area | On Linux today | On Windows |
+| --- | --- | --- |
+| Running as a service | `systemd --user` services (`tm1-backend`, `tm1-frontend`), logs in `/tmp/tm1-*.log`. These are machine setup, not in the repo. | Needs a Windows service wrapper (e.g. NSSM, or a scheduled task at start-up). Not written yet. |
+| `push.sh` | Bash script that pushes to GitHub | Developer convenience only, not part of the IDE. Won't run in `cmd`/PowerShell, and isn't needed. |
+| Git | `git` must be on the PATH (used for TM1 Git deploys, drift and review) | Install Git for Windows. **Line endings:** Git for Windows defaults to `core.autocrlf=true`, which can rewrite rule/TI files on checkout and make content checks see changes that aren't there. Set `core.autocrlf=false` for the IDE's repositories. Untested. |
+| `better-sqlite3` (change log) | Prebuilt binary | Usually has a Windows prebuilt for the Node version. If not, it needs Visual Studio Build Tools to compile. |
+| Package file names | Object names made file-safe (`safeFilename`) | Windows also rejects reserved names (`CON`, `PRN`, `AUX`, `NUL`, `COM1`…) and names ending in a dot or space. An object named exactly like one of those would fail to package. Not handled yet. |
+| File permissions | No permissions are set in code. `config/servers.json` relies on the folder's permissions. | Same. Restrict the IDE folder to the service account and administrators with Windows ACLs. |
+| Front-end rebuild | `npm run build` writes straight into `static/` | Same. Only needed when changing the front end, never for an install. |
+| Shebang lines (`#!/usr/bin/env node`) | Used to run tools directly | Ignored on Windows. Run tools with `node <file>`. |
+
+The first Windows install should be treated as a test: run `npm test`, then sign in, open each
+editor, and run one change set through package → risk → deploy on a scratch server before using
+it for real.

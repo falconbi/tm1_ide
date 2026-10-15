@@ -77,6 +77,20 @@ every read.
   `diff_change_set`, `check_deploy_risk` and `check_target_drift` compare model *definitions*
   (not cell data) through the deploy tooling, which has its own connection. They are scoped by
   the target allowlist, audited, but not narrowed by the reader's TM1 security.
+- **Masking a leaf doesn't hide it from its total.** Masking works cell by cell. If a leaf is
+  masked but its parent and the other children are not, the leaf is the parent minus the visible
+  siblings. Tested on a lab server: one masked organisation leaf was recovered exactly from its
+  parent and two siblings. To protect a value, mask its consolidations too (list them in
+  `members`), mask the whole cube, use `block`, or (best) deny it with TM1 element or cell
+  security on the reader login.
+- **The deploy checks are offered in `readonly` mode and read as the service login.**
+  `check_deploy_risk` and `check_target_drift` connect to a target server (which can be
+  production) through the deploy tooling with that server's service login. Their answers are
+  model definitions, including rules and TI code, which aren't stripped of passwords, plus picklist
+  cell values. They're limited to the target allowlist, but the reader's TM1 security and the
+  masking rules don't apply to them.
+- **The read audit has no retention or viewer yet.** `read_audit` (in `change_log.db`, gitignored)
+  grows without limit, and no MCP tool or IDE screen shows it. Read it with SQLite.
 - **Masking covers the tools that return values** (`read_cells`, `execute_view`,
   `get_element_attributes`). `run_assertions` returns pass/fail and totals from stored checks,
   and `get_transaction_log` returns old/new values for a cube you've allowed — deny the cube if
@@ -113,6 +127,10 @@ start-up, so nothing slips in unreviewed.
 | `TM1_MCP_READ_PASSWORD` | Its password (required when the user is set). |
 | `TM1_MCP_READ_NAMESPACE` | CAM namespace, for CAM-secured servers. |
 | `TM1_MCP_USER` | The developer's name — whose change set a build lands in (unchanged). |
+
+Put these in `.env` (the MCP loads it at start-up) or the shell environment. **Never put the
+password in `.mcp.json` or `opencode.jsonc`.** `.mcp.json` is committed to the repository. See
+[Where secrets live](AUTHENTICATION.md#where-secrets-live).
 
 Writes run as the **builder**: the service login configured for the server. Each change-set row
 records both the developer (`user`) and that TM1 login (`identity`).
@@ -263,8 +281,10 @@ On startup it prints `tm1mcp: connected to "<server>"` to stderr. `--server` bea
 
 ### Auth
 
-Same as the IDE with no logged-in user. It uses the `makeClient(server, null)` path,
-so it signs in with the adapter's fallback credentials from `config/servers.json`. A
+Writes (and reads, unless `TM1_MCP_READ_USER` is set) use the same login as the IDE with no
+signed-in user: the `makeClient(server, null)` path, which signs in with the service login
+for that server from `config/servers.json`. See [Security](#security) for reading as a
+specific TM1 user. A
 brand-new TM1 v11 server starts with `admin` / `apple`, and `tm1s.cfg` has no setting
 to change that. Change it after startup if needed (TI `AssignClientPassword`).
 
@@ -408,7 +428,10 @@ worked example (e.g. an Excel); the tool just enforces them.
 
 ---
 
-## Tool catalog (57)
+## Tool catalog (65: 39 read, 26 write)
+
+In `readonly` mode only the read tools are offered. The split is defined in
+`tools/tm1mcp/guard.js` (`READ_TOOLS` / `WRITE_TOOLS`).
 
 ### Orientation
 | Tool | Purpose |
@@ -432,6 +455,8 @@ worked example (e.g. an Excel); the tool just enforces them.
 | Tool | Purpose |
 |---|---|
 | `seed_baseline` | snapshot server state as the deploy baseline — run before a build |
+| `list_baselines` | the server's append-only baseline history, and which one is HEAD |
+| `set_baseline_head` | move HEAD back to an earlier baseline |
 | `start_change_set` | open — **call first** |
 | `close_change_set` | close when the build is done |
 | `get_change_set` | list recorded object changes |
@@ -470,6 +495,7 @@ worked example (e.g. an Excel); the tool just enforces them.
 | `read_cells` | read values by MDX or single intersection — check rules & feeders |
 | `execute_view` | run a view, return cells |
 | `run_process` | execute a TI (no change set needed) |
+| `reprocess_feeders` | reprocess feeders for cubes, e.g. after recreating a cube (no change set needed) |
 | `check_rules_syntax` | static lint + server CheckRules, no write |
 | `add_assertion` / `list_assertions` / `remove_assertion` | manage stored expected-result checks |
 | `run_assertions` | run the stored assertions — pass/fail against live cells |
@@ -485,6 +511,14 @@ worked example (e.g. an Excel); the tool just enforces them.
 | `get_transaction_log` | recent cell-write transactions (degrades gracefully on TM1 versions that reject the query) |
 | `find_dimension_usage` / `find_cube_usage` / `find_process_usage` | cross-object usage scans |
 | `search_ti_code` | regex across all TI code |
+
+### Lenses
+| Tool | Purpose |
+|---|---|
+| `list_viewfinder` | Viewfinder templates: proven Lens code a Lens can use with just a config |
+| `list_lenses` / `get_lens` | Lenses stored in the model, and one Lens's full HTML and settings |
+| `save_lens` | save a Lens (own HTML or a template + config) into the model, test-running its queries (change set required) |
+| `delete_lens` | delete a Lens from the model (change set required) |
 
 ---
 

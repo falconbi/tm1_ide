@@ -82,7 +82,7 @@ The frontend is pre-built — no build step needed. Full instructions: [Setup](d
 | Guide | What's in it |
 |---|---|
 | [Features](docs/FEATURES.md) | Every editor and tool, with screenshots |
-| [Setup](docs/SETUP.md) | Install, configure servers, run, development mode |
+| [Setup](docs/SETUP.md) | Install, configure servers, run, development mode, installing at a client (Windows untested) |
 | [Authentication](docs/AUTHENTICATION.md) | How the IDE signs in — per-server login, what's supported and tested |
 | [TM1 Authentication Guide](docs/TM1_AUTHENTICATION_GUIDE.md) | How every TM1 sign-in method works, in plain English — for anyone in TM1 |
 | [Architecture](docs/ARCHITECTURE.md) | How the pieces fit, project structure |
