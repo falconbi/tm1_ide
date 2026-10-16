@@ -4,10 +4,13 @@
   // Copy to opencode.jsonc and edit. One MCP entry per TM1 server (it binds to one via --server).
   // Use absolute paths so it works from any directory. Point agents at DEV; mark PROD read-only
   // in config/servers.json ("readOnlyServers") so the MCP refuses changes there.
+  // The MCP is READ-ONLY unless MCP_MODE=build is set — set it only where you build.
+  // Never put a password here: secrets go in .env or config/servers.json.
   "mcp": {
     "tm1-dev": {
       "type": "local",
       "command": ["node", "/path/to/tm1_ide/tools/tm1mcp/server.js", "--server", "MyServer_DEV"],
+      "environment": { "MCP_MODE": "build" },
       "enabled": true
     }
   }

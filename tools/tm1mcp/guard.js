@@ -53,14 +53,15 @@ function classify(tool) {
     throw new Error(`tm1mcp: tool "${tool}" is not classified as read or write in tools/tm1mcp/guard.js — add it to READ_TOOLS or WRITE_TOOLS before it can be served`)
 }
 
-// readonly | build. Unset → readonly on a read-only (PROD-posture) server, build
-// elsewhere (today's behaviour). Asking for build on a read-only server is refused
-// outright rather than quietly downgraded — the operator should know.
+// readonly | build. Unset → readonly, on every server: an AI connected to TM1 can
+// only read until someone deliberately asks for build mode (MCP_MODE=build).
+// Asking for build on a read-only server is refused outright rather than quietly
+// downgraded — the operator should know.
 function resolveMode(requested, serverIsReadOnly) {
     const m = (requested ?? '').trim().toLowerCase()
     if (m && m !== 'readonly' && m !== 'build') throw new Error(`MCP_MODE must be "readonly" or "build" (got "${requested}")`)
-    if (m === 'build' && serverIsReadOnly) throw new Error('MCP_MODE=build was asked for, but this server is read-only (PROD posture) — start with MCP_MODE=readonly, or bind a writable server to build')
-    return m || (serverIsReadOnly ? 'readonly' : 'build')
+    if (m === 'build' && serverIsReadOnly) throw new Error('MCP_MODE=build was asked for, but this server is read-only (PROD posture) — leave MCP_MODE unset (read-only), or bind a writable server to build')
+    return m || 'readonly'
 }
 
 // ── Policy ───────────────────────────────────────────────────────────────────

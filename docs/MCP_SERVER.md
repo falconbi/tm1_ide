@@ -19,10 +19,11 @@ first (or call the `read_build_guide` tool) — it's the method; this file is th
 > heavy production use yet — treat it as a working build, not a hardened one.
 >
 > **Security note on external LLMs:** any MCP client you point at this server — including a
-> third-party/external LLM, not just Claude — gets real tool access. In `build` mode that
+> third-party/external LLM, not just Claude — gets real tool access. By default that is
+> read-only (`readonly` mode). In `build` mode, which must be switched on with `MCP_MODE=build`, it
 > includes writing to your TM1 model (dimensions, cubes, rules, processes, cells) inside whatever
 > change set is active, and the `deploy` tools can read from and check drift against a live
-> target server (e.g. Prod). For read-only use, run with `MCP_MODE=readonly` and
+> target server (e.g. Prod). For read-only use, leave `MCP_MODE` unset and add
 > `TM1_MCP_READ_USER` so the agent has no write tools and sees only what that TM1 user may see
 > (see [Security](#security)). Only connect MCP clients and models you trust, keep build work
 > inside a named change set (never against Release scope) so everything is diffed before it
@@ -122,8 +123,15 @@ Writes are unchanged: change-set gated, read-only (PROD-posture) servers refuse 
 
 | Mode | Tools offered | Default when |
 |------|---------------|--------------|
-| `readonly` | the 39 read tools only, or 37 when no target servers are named (see below). Write tools are **not registered**, so the agent never sees them | the server is marked read-only in `config/servers.json` |
-| `build` | all 65 | any other server |
+| `readonly` | the 39 read tools only, or 37 when no target servers are named (see below). Write tools are **not registered**, so the agent never sees them | **always**, unless `MCP_MODE=build` is set |
+| `build` | all 65 | only when `MCP_MODE=build` is set |
+
+**Read-only is the default on every server.** An AI connected through this MCP can only read
+until someone deliberately turns on building. Set `MCP_MODE=build` only where you build:
+
+- Claude Code: in `.mcp.json`, next to `TM1_MCP_SERVER`: `"MCP_MODE": "${MCP_MODE:-build}"`
+- OpenCode: in `opencode.jsonc`, on the DEV entry: `"environment": { "MCP_MODE": "build" }`
+  (see `opencode.example.jsonc`)
 
 `MCP_MODE=build` against a read-only server is refused at start-up. Every tool is classified
 read or write in `tools/tm1mcp/guard.js`; a new tool that isn't classified stops the MCP at
@@ -245,6 +253,8 @@ The repo ships a project-level MCP config, `.mcp.json`, in the project root:
 }
 ```
 
+- Out of the box the MCP is **read-only**. To build models, add `"MCP_MODE": "${MCP_MODE:-build}"`
+  to the `env` block on your own machine (see [Two modes](#two-modes--mcp_mode)).
 - Claude Code picks it up automatically when you open this project. The first time,
   it asks you to approve the `tm1` server. Say yes.
 - The path is relative, so it works for anyone who clones the repo, whatever their

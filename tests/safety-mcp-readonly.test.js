@@ -34,9 +34,11 @@ test('an unclassified tool stops start-up', () => {
     assert.throws(() => guard.classify('drop_everything'), /not classified/)
 })
 
-test('mode: unset follows the server posture; build on a read-only server is refused', () => {
+test('mode: unset is readonly on every server; build only when asked; build on a read-only server is refused', () => {
     assert.equal(guard.resolveMode(undefined, true), 'readonly')
-    assert.equal(guard.resolveMode(undefined, false), 'build')
+    assert.equal(guard.resolveMode(undefined, false), 'readonly', 'a writable server is still read-only until build is asked for')
+    assert.equal(guard.resolveMode('', false), 'readonly')
+    assert.equal(guard.resolveMode('build', false), 'build')
     assert.equal(guard.resolveMode('READONLY', false), 'readonly')
     assert.throws(() => guard.resolveMode('build', true), /read-only/)
     assert.throws(() => guard.resolveMode('admin', false), /readonly" or "build/)

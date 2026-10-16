@@ -66,7 +66,7 @@ async function main() {
     const reads = readerName ? `as TM1 user "${readerName}" (TM1 security applies)` : 'as the service login (TM1 security does not narrow them — set TM1_MCP_READ_USER)'
     process.stderr.write(`tm1mcp: connected to "${ctx.SERVER}" — mode ${ctx.MODE}, ${registered.length} tools` +
         `${skipped.length ? ` (not offered: ${notOffered})` : ''}; reads ${reads}` +
-        `${ctx.MODE === 'build' ? `; writes as ${builderName ? `"${builderName}"` : 'the service login'}` : ''}\n`)
+        `${ctx.MODE === 'build' ? `; writes as ${builderName ? `"${builderName}"` : 'the service login'}` : '; read-only — set MCP_MODE=build to build'}\n`)
 }
 
 main().catch(e => {
