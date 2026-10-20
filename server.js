@@ -16,7 +16,7 @@ const gitSecrets = require('./core/git-secrets')
 const { odataKey } = require('./core/odata-key')
 if (!process.env.TM1_GIT_TOKEN && gitSecrets.getToken()) process.env.TM1_GIT_TOKEN = gitSecrets.getToken()
 const lensStore = require('./core/lens_store')
-const { logLensWrite, logLensRun } = require('./core/lens_activity_log')
+const { logLensWrite, logLensRun, readLensActivity } = require('./core/lens_activity_log')
 const lensBridge = require('./core/lens_bridge')
 const { readOnlyRefusal } = require('./core/readonly')
 
@@ -3928,6 +3928,32 @@ app.post('/api/lens/write-cells', async (req, res) => {
         const detail = e.response?.data?.error?.message ?? e.message
         res.status(e.conflicts ? 409 : 400).json({ error: typeof detail === 'string' ? detail : JSON.stringify(detail), conflicts: e.conflicts })
     }
+})
+
+// History from a Lens preview — the same activity log and the same rules as the
+// Lens app's /api/lens/:name/history: recent saves and runs through this saved
+// Lens on this server; a match slice is checked as the IDE user first.
+app.get('/api/lens/history', async (req, res) => {
+    try {
+        const server = req.query.server, name = req.query.lens
+        if (!name || typeof name !== 'string') throw new Error('lens is required')
+        const doc = await lensStore.readLens(server, name, { ideToken: req.ideToken })
+        let match = {}
+        try { match = JSON.parse(String(req.query.match ?? '{}')) } catch { throw new Error('match must be JSON') }
+        if (!match || typeof match !== 'object' || Array.isArray(match)) throw new Error('match must be { dimension: element }')
+        if (Object.keys(match).length) {
+            const cube = lensBridge.lensWrites(doc)[0]
+            if (!cube) throw new Error('a history slice needs a Lens that changes data (lens-writes)')
+            const client = makeClient(server, req.ideToken)
+            const q = s => String(s).replace(/]/g, ']]')
+            for (const [dim, el] of Object.entries(match)) {
+                await client.executeMDX(`SELECT {} ON 0, {[${q(dim)}].[${q(dim)}].[${q(el)}]} ON 1 FROM [${q(cube)}]`)
+                    .catch(() => { throw new Error(`you can't see ${dim} "${el}"`) })
+            }
+        }
+        const skip = String(req.query.skip ?? '').split(',').map(x => x.trim()).filter(Boolean).slice(0, 20)
+        res.json(readLensActivity({ server, lens: doc.name, match, skip, limit: Math.min(Number(req.query.limit) || 30, 100) }))
+    } catch (e) { res.status(400).json({ error: e.message }) }
 })
 
 // Who the IDE user is on this server, and their TM1 groups (Lens.whoami()).

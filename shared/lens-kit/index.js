@@ -180,11 +180,21 @@ theme.blue = BLUE         // for a Lens's own legend (Lens.legend draws the stan
 // More: rowEditable(row) → false locks a whole row (e.g. an approved line);
 // onSelect(row) — a click selects a row; a column with options: [...] edits by
 // a drop-down; g.addRow(row) adds a row (e.g. a new request).
-function grid(el, { columns = [], rows: data = [], height, onEdit, onFocus, onSelect, rowEditable } = {}) {
+// fit: 'width' (default) stretches columns to fill the grid; 'content' sizes each
+// column to its values and heading (tight); a number gives every column that many px.
+// height: CSS height, or 'auto' to fit every row with no inner scroll (short tables).
+// stripes: shade every other row (off unless asked); g.stripes(on) switches it.
+// A column's options may be a function (row) → list | null: a drop-down on the
+// rows that return a list, ordinary typing on the rest.
+function grid(el, { columns = [], rows: data = [], height, onEdit, onFocus, onSelect, rowEditable, fit = 'width', stripes = false } = {}) {
   const t = theme.colors, node = host(el)
   node.innerHTML = ''
-  node.style.height = height || node.style.height || Math.min(480, 44 + data.length * 36) + 'px'
-  const gridTheme = dark() ? themeQuartz.withPart(colorSchemeDark) : themeQuartz
+  // height 'auto': the grid grows to fit every row (no scrollbar of its own) — for short tables
+  const autoHeight = height === 'auto'
+  node.style.height = autoHeight ? '' : height || node.style.height || Math.min(480, 44 + data.length * 36) + 'px'
+  const baseTheme = dark() ? themeQuartz.withPart(colorSchemeDark) : themeQuartz
+  const stripedTheme = baseTheme.withParams({ oddRowBackgroundColor: dark() ? 'rgba(255,255,255,0.045)' : 'rgba(20,60,55,0.045)' })
+  const gridTheme = stripes ? stripedTheme : baseTheme
   const orig = new Map()                       // 'rowIndex|field' -> value before typing
   const remote = new Map()                     // 'rowIndex|field' -> { color, label } — someone else's cursor
   const typed = new Map()                      // 'rowIndex|field' -> colour — someone else's unsaved value
@@ -203,11 +213,16 @@ function grid(el, { columns = [], rows: data = [], height, onEdit, onFocus, onSe
     rowData: data,
     singleClickEdit: true,
     stopEditingWhenCellsLoseFocus: true,
-    defaultColDef: { sortable: true, resizable: true, filter: true, editable: false },
+    defaultColDef: Object.assign({ sortable: true, resizable: true, filter: true, editable: false }, typeof fit === 'number' ? { width: fit } : {}),
     columnDefs: columns.map(c => {
+      const optsFor = row => typeof c.options === 'function' ? c.options(row) : c.options
+      const listRow = row => typeof c.options === 'function' && !!optsFor(row)   // a drop-down row in a number column
+      const fmtFor = row => (typeof c.format === 'function' ? c.format(row) : c.format) || 'number'   // format may depend on the row
       const def = c.type === 'number'
-        ? { ...c, type: 'rightAligned', valueFormatter: p => format(p.value, c.format || 'number') }
+        ? { ...c, type: 'rightAligned', valueFormatter: p => listRow(p.data) ? (p.value ?? '') : format(p.value, fmtFor(p.data)) }
         : { ...c }
+      delete def.options
+      if (typeof c.format === 'function') delete def.format
       // One scheme for every Lens and every viewer (the editor and anyone
       // watching see the same): blue fill + blue border = typed, not saved
       // (mine or someone else's); blue corner = saved, not yet submitted;
@@ -233,10 +248,22 @@ function grid(el, { columns = [], rows: data = [], height, onEdit, onFocus, onSe
       }
       if (!c.editable) return def
       def.editable = p => canEdit(c, p.data)
-      if (c.options) { def.cellEditor = 'agSelectCellEditor'; def.cellEditorParams = { values: c.options } }
+      if (typeof c.options === 'function' || (c.type === 'number' && (typeof c.format === 'function' || c.format === '%'))) {
+        // per row: a drop-down where the row has options; on a % cell the edit box starts
+        // from what is shown ('3.0%', not 0.03), so what people type is read as a percentage
+        def.cellEditorSelector = p => {
+          const o = typeof c.options === 'function' ? optsFor(p.data) : c.options
+          if (o) return { component: 'agSelectCellEditor', params: { values: o } }
+          if (c.type === 'number' && fmtFor(p.data) === '%') return { component: 'agTextCellEditor', params: { useFormatter: true } }
+          return undefined
+        }
+      } else if (c.options) { def.cellEditor = 'agSelectCellEditor'; def.cellEditorParams = { values: c.options } }
       if (c.type === 'number') {
         def.valueParser = p => {
-          const v = Number(String(p.newValue ?? '').replace(/[,$\s]/g, ''))
+          if (listRow(p.data)) return p.newValue
+          // on a % cell people type the percentage: '3' or '3%' is 3% (0.03)
+          const pct = fmtFor(p.data) === '%'
+          const v = Number(String(p.newValue ?? '').replace(/[,$%\s]/g, '')) / (pct ? 100 : 1)
           return String(p.newValue ?? '').trim() === '' ? 0 : (Number.isFinite(v) ? v : p.oldValue)
         }
       }
@@ -253,15 +280,19 @@ function grid(el, { columns = [], rows: data = [], height, onEdit, onFocus, onSe
     onCellValueChanged: p => {
       const k = keyOf(p.data, p.colDef.field)
       if (!orig.has(k)) orig.set(k, p.oldValue)
-      if (Number(orig.get(k) ?? 0) === Number(p.newValue ?? 0)) orig.delete(k)
+      const a = orig.get(k), b = p.newValue
+      if (String(a ?? '') === String(b ?? '') || (Number.isFinite(Number(a ?? 0)) && Number.isFinite(Number(b ?? 0)) && Number(a ?? 0) === Number(b ?? 0))) orig.delete(k)
       refresh()
       if (onEdit) onEdit(changes())
     },
-    autoSizeStrategy: { type: 'fitGridWidth' },
+    domLayout: autoHeight ? 'autoHeight' : 'normal',
+    autoSizeStrategy: fit === 'content' ? { type: 'fitCellContents' } : typeof fit === 'number' ? undefined : { type: 'fitGridWidth' },
   })
   return {
     api,
     changes,
+    // shade every other row, or not
+    stripes(on) { api.setGridOption('theme', on ? stripedTheme : baseTheme) },
     // put every typed value back
     undo() { for (const ch of changes()) ch.row[ch.field] = ch.old; orig.clear(); api.setGridOption('rowData', data); if (onEdit) onEdit([]) },
     // the typed values are now in TM1: stop highlighting them

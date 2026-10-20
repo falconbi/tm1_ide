@@ -115,7 +115,7 @@ function installLensHost(getLensWindow, { getServer, getToken, getLens, live = f
         respond(d.id, readCtx())
         return
       }
-      if (d.method === 'liveJoin' || d.method === 'liveSend' || d.method === 'history') {
+      if (d.method === 'liveJoin' || d.method === 'liveSend' || (d.method === 'history' && live)) {
         const lens = getLens ? getLens() : null
         if (!live || !lens) throw new Error('working together needs the Lens app')
         const base = `/api/live/${encodeURIComponent(lens)}`
@@ -168,6 +168,12 @@ function installLensHost(getLensWindow, { getServer, getToken, getLens, live = f
         if (!lens) throw new Error('save the Lens first — processes are checked against the saved Lens')
         url = `/api/lens/run-process?server=${enc(server)}`
         init = { method: 'POST', headers, body: JSON.stringify({ lens, process: d.payload?.process, params: d.payload?.params ?? {} }) }
+      } else if (d.method === 'history') {
+        // the IDE preview: the same activity log the Lens app reads
+        const lens = getLens ? getLens() : null
+        if (!lens) throw new Error('save the Lens first — history is kept for the saved Lens')
+        url = `/api/lens/history?server=${enc(server)}&lens=${enc(lens)}&match=${enc(JSON.stringify(d.payload?.match ?? {}))}&limit=${enc(d.payload?.limit ?? 30)}&skip=${enc((d.payload?.skip ?? []).join(','))}`
+        init = { method: 'GET', headers }
       } else if (d.method === 'whoami') {
         url = `/api/lens/whoami?server=${enc(server)}`
         init = { method: 'GET', headers }

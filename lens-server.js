@@ -788,7 +788,7 @@ function createApp({ config = loadConfig(), deps = {} } = {}) {
             try { match = JSON.parse(String(req.query.match ?? '{}')) } catch { throw new Error('match must be JSON') }
             if (!match || typeof match !== 'object' || Array.isArray(match)) throw new Error('match must be { dimension: element }')
             const cube = lensBridge.lensWrites(doc)[0]
-            if (!cube) throw new Error('history is for Lenses that change data (lens-writes)')
+            if (!cube && Object.keys(match).length) throw new Error('a history slice needs a Lens that changes data (lens-writes)')
             for (const [dim, el] of Object.entries(match)) {
                 // Fails for a member this person may not see — then nothing is returned.
                 await execMdx(req.lens.client, `SELECT {} ON 0, {[${String(dim).replace(/]/g, ']]')}].[${String(dim).replace(/]/g, ']]')}].[${String(el).replace(/]/g, ']]')}]} ON 1 FROM [${cube.replace(/]/g, ']]')}]`)
