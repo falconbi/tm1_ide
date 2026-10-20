@@ -90,7 +90,7 @@ Step 1 done (commit 51d3db6): the pure logic lives in
     height, builder "Save layout".
 
 ### Scope agreed
-Fold in 1–9 (and 6), 12–14 and 16 during the move; 10 straight after; 11 as its own
+Fold in bugs 1–6 and items 6–9, 12–14 and 16 during the move; 10 straight after; 11 as its own
 investigation; 15 when convenient.
 
 ## Shape of the shared component
