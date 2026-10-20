@@ -34,8 +34,16 @@ built by AI, every change governed, everything run on TM1 as each person.
 **Next ideas (agreed Oct 13):**
 1. **Comments on cells** — TM1 annotations in Lenses: markers on commented cells, threads, a comments panel; the same comments show in PAW; Return can leave its reason on the cell that caused it.
 2. **What-if scenarios** — TM1 sandboxes: try a scenario privately, every tile recalculates through the rules, compare live vs scenarios side by side, then publish (through the same checks and locks) or discard.
-3. **Viewfinder** — the template gallery: proven starting points (dashboard, input form, approvals, process page) that people and the AI build new Lenses from. "New Lens → Blank or From Viewfinder…".
+3. ~~**Viewfinder** — a template gallery~~ — **dropped Oct 20**, see the decision below.
 AI features (commentary, ask-a-question) stay optional — switch-on extras where a site has a key, never required.
+
+**Decision (Oct 20, James): no prebuilt templates.** The template idea (Viewfinder: shared screens configured per Lens) was fundamentally flawed — "not flexible enough, as every client has a unique process that will require lots of customisation for the UI". What is shared is **behaviour, not screens**:
+- **Shared components** in the toolkit hold the hard, risky parts that must never be rewritten per client — safe saving (checks, someone-else-changed-it, calculated cells refused), line approval and locking, history, presence, editing locks, live updates, counts / "needs you", financial-statement layout (rounding, brackets, totals), text with live numbers.
+- **A general corporate style** (colours, number formats, finance conventions), applied by the toolkit to every Lens.
+- **Every client's Lenses are built to fit their own process** (mostly by the AI), as thin code arranging components. Each Lens's code is its own, stored in the model.
+- Guardrails stay in the platform (TM1 security, declared writes and processes, change sets).
+- Done Oct 20: the template library, template editor and template-copy-into-the-model were removed; Target-Input, Budget-Input and Capex-Requests on 24Retail_Lens converted to stand-alone Lenses (same code); the template code kept as **reference examples** (`shared/lens-examples/`, MCP `list_lens_examples`). Next: move the shared behaviour into toolkit components, starting with line items + approval.
+- The configuration and Viewfinder text below is history, superseded by this decision.
 
 **Lens configuration — the idea that ties it together (James, Oct 13: "like a configuration file with the Lens"):**
 a Lens = reusable **code** (often from Viewfinder) + a small **config** saved next to it in the model. The config names the

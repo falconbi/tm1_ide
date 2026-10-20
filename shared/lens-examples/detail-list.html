@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Detail list</title>
+<style>
+:root{--bg:var(--lens-bg,#f6f7f7);--ink:var(--lens-ink,#16201f);--faint:var(--lens-faint,#85908f);--rule:var(--lens-rule,#dfe4e3);--panel:var(--lens-panel,#fff);--accent:var(--lens-accent,#0f766e);--bad:var(--lens-bad,#b4372d);--good:var(--lens-good,#1d7a46)}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}
+.wrap{padding:16px 18px 24px;display:grid;gap:12px}
+header{display:flex;flex-wrap:wrap;align-items:end;gap:12px 18px}
+h1{font-size:20px;margin:0}
+h2{font-size:14px;margin:0 0 8px}
+.sub{font-size:12.5px;color:var(--faint)}
+.controls{display:flex;gap:10px;margin-left:auto;align-items:end;flex-wrap:wrap}
+label{display:grid;gap:3px;font-size:11px;color:var(--faint);text-transform:uppercase;letter-spacing:.06em}
+select,button,input,textarea{font:inherit;font-size:13px;padding:5px 10px;border:1px solid var(--rule);border-radius:7px;background:var(--panel);color:var(--ink)}
+button{cursor:pointer}
+button.primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+button:disabled{opacity:.45;cursor:default}
+.card{background:var(--panel);border:1px solid var(--rule);border-radius:10px;padding:12px;min-width:0}
+.bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px}
+.status{font-size:13px}
+.status.ok{color:var(--good)} .status.err{color:var(--bad)} .status.busy{color:var(--faint)}
+.need{padding:18px;border:1px dashed var(--rule);border-radius:10px;color:var(--faint);font-size:13px}
+.need code{color:var(--ink)}
+#search{width:220px}
+.total{margin-left:auto;font-size:13px;color:var(--faint)}
+.total b{color:var(--ink)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div><h1 id="heading">Detail</h1><div class="sub" id="subtitle"></div></div>
+    <div class="controls"><label id="pickWrap" hidden><span id="pickLabel"></span><select id="pick"></select></label><label>Search<input id="search" placeholder="Type to filter…"></label><button id="refresh">Refresh</button></div>
+  </header>
+  <div class="card">
+    <div class="bar"><span id="status" class="status"></span><span class="total" id="total"></span></div>
+    <div id="grid"></div>
+  </div>
+</div>
+<script src="/lens-kit/lens-kit.js"></script>
+<script>
+// ── Detail list (Viewfinder template) ────────────────────────────────────────
+// The underlying lines — requests, employees, transactions — with their fields,
+// filtered and searched. Read-only; only lines with something in them show.
+(function () {
+  var $ = function (id) { return document.getElementById(id) }
+  var esc = function (v) { return String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;') }
+  var M = function (d, e) { return '[' + d + '].[' + d + '].[' + String(e).replace(/]/g, ']]') + ']' }
+  var call = function (mdx) { return window.lensBridge.call('execMDX', { mdx: mdx }) }
+  var say = function (text, kind) { var s = $('status'); if (!s) return; s.textContent = text || ''; s.className = 'status ' + (kind || '') }
+  function fail(e) { say((e && e.message ? e.message : e), 'err') }
+  if (!window.Lens) return fail(new Error('the Lens toolkit did not load'))
+  var C = Lens.config()
+  function need(keys, into) {
+    var missing = keys.filter(function (k) { return !C[k] })
+    if (!missing.length) return false
+    $(into).innerHTML = '<div class="need">This screen needs its settings — add <code>' + missing.join('</code>, <code>') + '</code> to its config (IDE → Config tab).</div>'
+    return true
+  }
+  // A WHERE clause from { dimension: member } (missing dimensions use their default member).
+  function where(obj) { var k = Object.keys(obj || {}); return k.length ? ' WHERE (' + k.map(function (d) { return M(d, obj[d]) }).join(',') + ')' : '' }
+  function setOf(spec) {
+    if (spec.members) return '{' + spec.members.map(function (m) { return M(spec.dimension, m) }).join(',') + '}'
+    if (spec.under) return '{TM1FILTERBYLEVEL({DESCENDANTS(' + M(spec.dimension, spec.under) + ')}, ' + (spec.level || 0) + ')}'
+    return '{TM1FILTERBYLEVEL({TM1SUBSETALL([' + spec.dimension + '].[' + spec.dimension + '])}, ' + (spec.level || 0) + ')}'
+  }
+  function names(dim, into) {
+    return call('SELECT {[}ElementAttributes_' + dim + '].[}ElementAttributes_' + dim + '].[Caption_Default]} ON 0, {TM1SUBSETALL([' + dim + '].[' + dim + '])} ON 1 FROM [}ElementAttributes_' + dim + ']')
+      .then(function (r) { Lens.rows(r).forEach(function (x) { if (x.Caption_Default) into[x[dim]] = x.Caption_Default }) }, function () {})
+  }
+  // An optional picker (e.g. a region): its members, limited to what this person may see.
+  var pick = C.pick || null, pickNames = {}
+  function pickValue() { return pick ? $('pick').value : null }
+  function slice(extra) { var w = Object.assign({}, C.where || {}); if (pick) w[pick.dimension] = pickValue(); return Object.assign(w, extra || {}) }
+  function loadPick() {
+    if (!pick) return Promise.resolve()
+    $('pickWrap').hidden = false; $('pickLabel').textContent = pick.label || pick.dimension
+    return names(pick.dimension, pickNames).then(function () { return call('SELECT {} ON 0, ' + setOf(pick) + ' ON 1 FROM [' + C.cube + ']') }).then(function (r) {
+      var list = Lens.rows(r).map(function (x) { return x[pick.dimension] })
+      if (!list.length) throw new Error('you have no access to any ' + (pick.label || pick.dimension).toLowerCase() + ' here')
+      $('pick').innerHTML = list.map(function (o) { return '<option value="' + esc(o) + '">' + esc(pickNames[o] || o) + '</option>' }).join('')
+      if (pick.default && list.indexOf(pick.default) >= 0) $('pick').value = pick.default
+    })
+  }
+  if (need(['cube', 'lines', 'fieldsDimension', 'fields'], 'grid')) return
+  $('heading').textContent = C.heading || 'Detail'
+  $('subtitle').textContent = C.subtitle || ''
+  var lineDims = C.lines.map(function (l) { return l.dimension }), labels = {}, g = null, all = []
+  function load() {
+    say('Loading…', 'busy')
+    var w = slice(); lineDims.forEach(function (d) { delete w[d] }); delete w[C.fieldsDimension]
+    var rows = C.lines.map(setOf).join(' * ')
+    return call('SELECT {' + C.fields.map(function (f) { return M(C.fieldsDimension, f.member) }).join(',') + '} ON 0, NON EMPTY ' + rows + ' ON 1 FROM [' + C.cube + ']' + where(w)).then(function (r) {
+      all = Lens.rows(r).filter(function (x) { return C.fields.some(function (f) { var v = x[f.member]; return v !== null && v !== '' && v !== 0 && (x._input ? x._input[f.member] !== false : true) }) })
+      all.forEach(function (x) { lineDims.forEach(function (d) { var k = x[d]; x['_' + d] = (labels[d] && labels[d][k]) || k }) })
+      g = Lens.grid('#grid', {
+        height: C.height || '520px',
+        columns: C.lines.map(function (l) { return { field: '_' + l.dimension, headerName: l.label || l.dimension, minWidth: 120 } })
+          .concat(C.fields.map(function (f) { return { field: f.member, headerName: f.label || f.member, type: f.type === 'text' ? 'text' : 'number', format: f.format || C.format, minWidth: f.type === 'text' ? 180 : 90 } })),
+        rows: all
+      })
+      filter(); say('')
+    })
+  }
+  function filter() {
+    var q = $('search').value.trim().toLowerCase()
+    if (g && g.api) g.api.setGridOption('quickFilterText', q)
+    var shown = q ? all.filter(function (x) { return JSON.stringify(x).toLowerCase().indexOf(q) >= 0 }) : all
+    var tf = C.totalField
+    $('total').innerHTML = '<b>' + shown.length + '</b> line' + (shown.length === 1 ? '' : 's') + (tf ? ' · total <b>' + Lens.format(shown.reduce(function (s, x) { return s + (Number(x[tf]) || 0) }, 0), (C.fields.filter(function (f) { return f.member === tf })[0] || {}).format || C.format) + '</b>' : '')
+  }
+  $('search').oninput = filter
+  $('refresh').onclick = function () { load().catch(fail) }
+  $('pick').onchange = function () { load().catch(fail) }
+  Promise.all(lineDims.map(function (d) { labels[d] = {}; return names(d, labels[d]) })).then(loadPick).then(load).catch(fail)
+})()
+</script>
+</body>
+</html>

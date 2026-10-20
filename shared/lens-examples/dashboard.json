@@ -1,0 +1,132 @@
+{
+  "name": "dashboard",
+  "title": "Simple dashboard",
+  "description": "Headline figures with a comparison, a trend and a table, from one cube \u2014 read-only, each person sees what TM1 allows. For quick, standard dashboards; build a custom Lens for anything more.",
+  "icon": "gauge",
+  "color": "#0f766e",
+  "settings": {
+    "heading": "The title at the top",
+    "subtitle": "One line under the title",
+    "cube": "The cube to read",
+    "where": "{ dimension: member } \u2014 the slice every number is read at (version, year, currency\u2026)",
+    "pick": "{ dimension, under | level | members, label, default } \u2014 an optional picker, e.g. a region (only what the person may see)",
+    "kpis": "[{ label, value: { dimension: member }, compare: { dimension: member }, format, cost }] \u2014 headline tiles; cost: true when lower is better",
+    "compareLabel": "What the comparison is called, e.g. Target",
+    "trend": "{ title, dimension, members, series: [{ name, at: { dimension: member }, compare, type }], format, cost } \u2014 a chart across periods",
+    "table": "{ title, rows: { dimension, under | level, label }, columns: { dimension, members, labels }, format } \u2014 a table",
+    "format": "Number format: number, k$ or $"
+  },
+  "example": {
+    "heading": "Profit dashboard",
+    "subtitle": "Year to date against target",
+    "cube": "Income Statement",
+    "where": {
+      "Currency Calc": "Local",
+      "Year": "Y2",
+      "Month": "Year",
+      "Version": "Actual"
+    },
+    "pick": {
+      "dimension": "organization",
+      "members": [
+        "Total Company",
+        "100",
+        "200",
+        "300",
+        "400"
+      ],
+      "label": "Region",
+      "default": "Total Company"
+    },
+    "kpis": [
+      {
+        "label": "Gross margin",
+        "value": {
+          "Account": "GM"
+        },
+        "compare": {
+          "Account": "GM",
+          "Version": "Target"
+        }
+      },
+      {
+        "label": "Operating expense",
+        "value": {
+          "Account": "TE"
+        },
+        "compare": {
+          "Account": "TE",
+          "Version": "Target"
+        },
+        "cost": true
+      },
+      {
+        "label": "Net profit",
+        "value": {
+          "Account": "NP"
+        },
+        "compare": {
+          "Account": "NP",
+          "Version": "Target"
+        }
+      }
+    ],
+    "compareLabel": "Target",
+    "trend": {
+      "title": "Net profit by month",
+      "dimension": "Month",
+      "members": [
+        "Jan",
+        "Feb",
+        "Mar",
+        "Apr",
+        "May",
+        "Jun",
+        "Jul",
+        "Aug",
+        "Sep",
+        "Oct",
+        "Nov",
+        "Dec"
+      ],
+      "series": [
+        {
+          "name": "Actual",
+          "at": {
+            "Account": "NP"
+          }
+        },
+        {
+          "name": "Target",
+          "at": {
+            "Account": "NP",
+            "Version": "Target"
+          },
+          "compare": true,
+          "type": "line"
+        }
+      ]
+    },
+    "table": {
+      "title": "By expense group",
+      "rows": {
+        "dimension": "Account",
+        "under": "TE",
+        "level": 1,
+        "label": "Expense"
+      },
+      "columns": {
+        "dimension": "Version",
+        "members": [
+          "Actual",
+          "Target"
+        ],
+        "labels": [
+          "Actual",
+          "Target"
+        ]
+      }
+    },
+    "format": "k$"
+  }
+}

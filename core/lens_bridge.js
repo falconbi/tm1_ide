@@ -333,7 +333,7 @@ function declaredRunProcesses(html) { return metaList(html, 'lens-runs') }
 // What a saved Lens may change and run: its <meta> tags plus its config's
 // writes / runs lists — so reusable code can be pointed at another cube by its
 // config (saved, versioned and governed exactly like the code).
-const { lensHtml } = require('./viewfinder')
+const lensHtml = doc => doc?._code ?? doc?.html ?? ''
 function lensWrites(doc) { return [...new Set([...declaredWriteCubes(lensHtml(doc)), ...listOf(doc?.config?.writes)])] }
 function lensRuns(doc) { return [...new Set([...declaredRunProcesses(lensHtml(doc)), ...listOf(doc?.config?.runs)])] }
 const listOf = v => (Array.isArray(v) ? v.filter(x => typeof x === 'string' && x.trim()).map(x => x.trim()) : [])

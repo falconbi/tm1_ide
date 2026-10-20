@@ -451,56 +451,6 @@ function RulesSection({ _server, cubes, isLoading, onOpenRules }) {
   )
 }
 
-// ── Viewfinder: the Lens templates (built-in and this model's own), with how
-// many Lenses use each — click one to see, preview or edit it.
-function ViewfinderSection({ server, onOpen }) {
-  const [open, setOpen] = useState(false)
-  const [list, setList] = useState([])
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState(null)
-  const load = useCallback(() => {
-    setLoading(true); setError(null)
-    fetch(`/api/viewfinder?server=${encodeURIComponent(server)}&_=${Date.now()}`, { headers: { 'x-ide-token': localStorage.getItem('tm1-token') ?? '' } })
-      .then(async r => { const d = await r.json().catch(() => ({})); if (!r.ok) throw new Error(d.error || r.statusText); return d })
-      .then(d => setList(Array.isArray(d) ? d : []))
-      .catch(e => { setList([]); setError(e.message) })
-      .finally(() => setLoading(false))
-  }, [server])
-  useEffect(() => { if (open) load() }, [open, load])
-  useEffect(() => {
-    const onChange = e => { if (open && (!e.detail?.server || e.detail.server === server)) load() }
-    window.addEventListener('tm1-viewfinder-changed', onChange)
-    window.addEventListener('tm1-lenses-changed', onChange)
-    return () => { window.removeEventListener('tm1-viewfinder-changed', onChange); window.removeEventListener('tm1-lenses-changed', onChange) }
-  }, [open, server, load])
-  return (
-    <div data-section="viewfinder">
-      <div className="flex items-center w-full px-3 py-1">
-        <button onClick={() => setOpen(o => !o)} className="flex items-center gap-1.5 flex-1 text-xs font-semibold text-muted-foreground hover:text-foreground uppercase tracking-wider min-w-0" title="Lens templates — screens to build Lenses from">
-          {open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-          <Copy size={12} className="shrink-0" />
-          <span>Viewfinder</span>
-        </button>
-        {loading && <Loader2 size={10} className="animate-spin text-muted-foreground shrink-0 ml-1" />}
-      </div>
-      {open && (
-        <div className="pb-1">
-          {error && <div className="px-6 py-0.5 text-xs text-red-600" title={error}>Couldn't load templates: {error}</div>}
-          {list.map(t => (
-            <button key={t.name} onClick={() => onOpen(t)} title={`${t.title} — ${t.description ?? ''}`}
-              className="flex items-center gap-2 w-full px-6 py-0.5 text-xs text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground text-left">
-              <Copy size={10} className="shrink-0 text-muted-foreground" />
-              <span className="truncate flex-1">{t.title}</span>
-              <span className="shrink-0 text-[10px] text-muted-foreground">{t.source === 'built-in' ? 'built-in' : 'model'} · {t.usedBy?.length ?? 0} used</span>
-            </button>
-          ))}
-          {!loading && !error && list.length === 0 && <p className="px-6 py-0.5 text-xs text-muted-foreground/50 italic">No templates</p>}
-        </div>
-      )}
-    </div>
-  )
-}
-
 function LensesSection({ server, onOpen, onNew }) {
   const [open, setOpen] = useState(false)
   const [lenses, setLenses] = useState([])
@@ -1346,7 +1296,6 @@ export default function Explorer() {
               <Section    icon={Cog}   label="Processes" items={procs}  isLoading={loadingProcs}  onSelect={openProcess} itemIcon={Cog}   sectionId="processes" locateIdPrefix="process" onDelete={handleDeleteProcess} onAdd={openNewProcess} csType="process" />
               <Section    icon={Clock} label="Chores"    items={chores} isLoading={loadingChores} onSelect={openChore}   itemIcon={Clock} sectionId="chores" locateIdPrefix="chore" onDelete={handleDeleteChore} onAdd={openNewChore} csType="chore" />
               <LensesSection server={server} onOpen={openLens} onNew={openNewLens} />
-              <ViewfinderSection server={server} onOpen={t => toggleOpenTab({ id: `viewfinder:${server}:${t.name}`, type: 'viewfinder', label: t.title, server, name: t.name })} />
               <ControlSection
                 server={server}
                 onOpenViewer={openCubeViewer}

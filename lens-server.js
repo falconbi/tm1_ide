@@ -29,7 +29,6 @@ const sharedBridge = require('./shared/lens-bridge')
 const { logLensWrite, logLensRun, readLensActivity } = require('./core/lens_activity_log')
 const { createLiveHub } = require('./core/lens_live')
 const { readPrefs, savePrefs, themeCss } = require('./core/lens_prefs')
-const viewfinder = require('./core/viewfinder')
 const THEMES = require('./shared/lens-themes.json')
 const { createIpLimiter, createFailureGuard } = require('./core/login-rate-limit')
 
@@ -621,7 +620,7 @@ function createApp({ config = loadConfig(), deps = {} } = {}) {
             // opaque origin under the sandbox — same contract, plus it actually
             // renders in every browser.
             const body = `
-  <iframe id="lensFrame" sandbox="allow-scripts" title="${esc(stepOf(doc).label)}" style="width:100%;height:calc(100vh - 52px);border:0;display:block" src="/lens-frame/${encodeURIComponent(doc.name)}"></iframe>
+  <iframe id="lensFrame" sandbox="allow-scripts allow-modals" title="${esc(stepOf(doc).label)}" style="width:100%;height:calc(100vh - 52px);border:0;display:block" src="/lens-frame/${encodeURIComponent(doc.name)}"></iframe>
   <script src="/bridge.js"></script>
   <script>
     (function () {
@@ -630,6 +629,7 @@ function createApp({ config = loadConfig(), deps = {} } = {}) {
         getServer: function () { return ${JSON.stringify(cfg.server)} },
         getToken: function () { return null },
         getLens: function () { return ${JSON.stringify(doc.name).replace(/</g, '\\u003c')} },
+        openLens: function (n) { window.location.assign('/lens/' + encodeURIComponent(n)) },
         live: true
       })
     })()
@@ -660,7 +660,7 @@ function createApp({ config = loadConfig(), deps = {} } = {}) {
             const kit = `${req.protocol}://${req.get('host')}/lens-kit/`
             res.set('Content-Security-Policy', `sandbox allow-scripts; default-src 'none'; script-src 'unsafe-inline' ${kit}; style-src 'unsafe-inline'; img-src data:; connect-src 'none'; font-src 'none'`)
             res.type('html')
-            res.send(sharedBridge.lensSrcDoc(await viewfinder.codeOf(cfg.server, doc, { client: req.lens.client }), { config: doc.config, theme: prefsOf(req) }))
+            res.send(sharedBridge.lensSrcDoc(doc.html ?? '', { config: doc.config, theme: prefsOf(req) }))
         } catch (e) { res.status(404).send('Lens not found') }
     })
 
@@ -753,8 +753,6 @@ function createApp({ config = loadConfig(), deps = {} } = {}) {
         const doc = await readLens(cfg.server, name, { client: req.lens.client })
         if (!(doc.status === 'published' || (cfg.showDrafts && doc.status === 'draft'))) throw new Error(`Lens "${name}" is not available here`)
         await openable(req.lens.sid, doc)
-        // Its code — a template's, looked up once — for what it declares.
-        doc._code = await viewfinder.codeOf(cfg.server, doc, { client: req.lens.client })
         return doc
     }
     const channelOf = v => String(v ?? '').slice(0, 200)
@@ -809,7 +807,7 @@ function createApp({ config = loadConfig(), deps = {} } = {}) {
                 return res.status(417).json({ error: `This Lens needs toolkit version ${want}; this Lens app supports up to ${supported}.`, name: doc.name })
             }
             const { html: _own, ...meta } = doc
-            res.json({ html: await viewfinder.codeOf(cfg.server, doc, { client: req.lens.client }), meta })
+            res.json({ html: doc.html ?? '', meta })
         } catch (e) { res.status(404).json({ error: e.message }) }
     })
 

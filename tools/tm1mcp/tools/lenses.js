@@ -17,13 +17,17 @@ Lens toolkit catalogue:
 ${CATALOGUE}`
 
 function register(server, { SERVER, AGENT_USER, ok, requireChangeSet, client, logChange }) {
-    // Viewfinder: proven Lens code to build from — prefer a template + config
-    // over writing a Lens from scratch.
+    // Examples: working Lenses to learn from — there are no prebuilt templates;
+    // every client's Lenses are built for their own process from the toolkit.
     server.tool(
-        'list_viewfinder',
-        'List the Viewfinder templates — proven Lens code (e.g. an input form) that a Lens can use with just a config. Shows what each setting means and an example config. Prefer a template + config (save_lens with template) over writing a Lens from scratch.',
-        {},
-        async () => ok((await require('../../../core/viewfinder').listAll(SERVER, { client: client() })).map(({ html: _h, ...t }) => t))
+        'list_lens_examples',
+        'List the Lens examples — working reference Lenses (input grid, line items with approval, assumptions table, dashboard, variance report, detail list, app home page, process page, narrative document, disclosure accounts) to learn patterns from when building a Lens for this client. Pass name to get one example\'s full code. Never copy one wholesale: build each Lens to fit the client\'s own process, from the toolkit components.',
+        { name: z.string().optional().describe('An example name, to get its full code') },
+        async ({ name }) => {
+            const ex = require('../../../core/lens_examples')
+            if (name) return ok({ ...ex.listExamples().find(e => e.name === name), html: ex.readExample(name) })
+            return ok(ex.listExamples())
+        }
     )
 
     // Lenses live in the model (Applications/Governance/Lenses on the bound server).
@@ -61,8 +65,7 @@ function register(server, { SERVER, AGENT_USER, ok, requireChangeSet, client, lo
 ${BRIDGE_CONTRACT}`,
         {
             name:        z.string().describe('Lens name — letters, digits, - or _'),
-            html:        z.string().optional().describe('Complete HTML document for the lens (see contract) — omit when using a Viewfinder template'),
-            template:    z.string().optional().describe("Build from a Viewfinder template (see list_viewfinder) instead of writing code: the Lens stores only the template name + its config. '' detaches it."),
+            html:        z.string().describe('Complete HTML document for the lens (see contract)'),
             description: z.string().optional().describe('What the lens shows, in words'),
             config:      z.record(z.any()).optional().describe("The Lens's settings, read in the Lens with Lens.config(): bindings (cube, version, rows…) and behaviour; access: [TM1 groups] limits who can open it in the Lens app; theme: 'fixed'. Omit to keep the current config"),
             icon:        z.string().optional().describe('Home-page icon, one of: ' + require('../../../core/lens_store').ICON_NAMES.join(', ')),
@@ -72,18 +75,15 @@ ${BRIDGE_CONTRACT}`,
             publish:     z.boolean().optional().describe('Set status to published (default draft)'),
             force:       z.boolean().optional().describe('Save despite validation failures'),
         },
-        async ({ name, html, description, folder, title, icon, color, config, template, publish, force }) => {
+        async ({ name, html, description, folder, title, icon, color, config, publish, force }) => {
             requireChangeSet()
-            if (!template && !html) return ok({ blocked: true, reason: 'Give the Lens either html or a Viewfinder template' })
-            const errors = await lensBridge.validateLens(client(), template ? (await require('../../../core/viewfinder').findTemplate(SERVER, template, { client: client() })).html : html)
+            const errors = await lensBridge.validateLens(client(), html)
             if (errors.length && !force) {
                 return ok({ blocked: true, reason: `Lens validation failed (${errors.length}) — fix these and retry, or pass force:true:`, errors })
             }
-            const saved = await lensStore.saveLens(SERVER, name, html, AGENT_USER, { publish: !!publish, description, folder, title, icon, color, config, template })
+            const saved = await lensStore.saveLens(SERVER, name, html, AGENT_USER, { publish: !!publish, description, folder, title, icon, color, config })
             logChange(publish ? 'LENS_PUBLISHED' : 'LENS_SAVED', 'lens', saved.name,
                 { detail: `version ${saved.version}${description ? ` — ${description}` : ''}` })
-            if (saved.templateCopied) logChange('LENS_TEMPLATE_SAVED', 'lens-template', saved.templateCopied.name,
-                { detail: `built-in template copied into the model (version ${saved.templateCopied.version})` })
             return ok({ saved, validation: errors, next: `Lens "${saved.name}" is saved in ${SERVER}'s model and on the change set. It shows in the IDE model tree under Lenses.` })
         }
     )

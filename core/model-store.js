@@ -22,7 +22,6 @@ const AREAS = {
     deployState: { folder: 'Deployments', doc: 'state.json' },
     lock:        { folder: 'Deployments' },
     lenses:      { folder: 'Lenses' },
-    viewfinder:  { folder: 'Viewfinder' },
 }
 
 const MARKER_FILE = path.join(__dirname, '..', 'config', 'model-migration.json')

@@ -30,7 +30,6 @@ import DiffViewerModal from '@/components/DiffViewerModal'
 import CubeMapEditor from '@/components/CubeMapEditor'
 import HelpPanel from '@/components/HelpPanel'
 import LensEditor from '@/components/LensEditor'
-import TemplateEditor from '@/components/TemplateEditor'
 
 // ── Lineage panel ─────────────────────────────────────────────────────────────
 
@@ -1040,7 +1039,6 @@ export default function EditorPane({ groupId }) {
         {tab.type === 'cubemap'         && <CubeMapEditor      key={tab.id} tab={tab} />}
         {tab.type === 'session-report'  && <SessionReportTab   key={tab.id} tab={tab} />}
         {tab.type === 'lens'           && <LensEditor        key={tab.id} tab={tab} />}
-        {tab.type === 'viewfinder'     && <TemplateEditor    key={tab.id} tab={tab} />}
         {tab.type === 'transactionlog'  && (
           <div key={tab.id} className="flex h-full min-h-0 bg-sidebar">
             <TransactionLogPanel

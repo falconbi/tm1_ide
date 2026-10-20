@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Process page</title>
+<style>
+:root{--bg:var(--lens-bg,#f6f7f7);--ink:var(--lens-ink,#16201f);--faint:var(--lens-faint,#85908f);--rule:var(--lens-rule,#dfe4e3);--panel:var(--lens-panel,#fff);--accent:var(--lens-accent,#0f766e);--bad:var(--lens-bad,#b4372d);--good:var(--lens-good,#1d7a46)}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}
+.wrap{padding:16px 18px 24px;display:grid;gap:12px}
+header{display:flex;flex-wrap:wrap;align-items:end;gap:12px 18px}
+h1{font-size:20px;margin:0}
+h2{font-size:14px;margin:0 0 8px}
+.sub{font-size:12.5px;color:var(--faint)}
+.controls{display:flex;gap:10px;margin-left:auto;align-items:end;flex-wrap:wrap}
+label{display:grid;gap:3px;font-size:11px;color:var(--faint);text-transform:uppercase;letter-spacing:.06em}
+select,button,input,textarea{font:inherit;font-size:13px;padding:5px 10px;border:1px solid var(--rule);border-radius:7px;background:var(--panel);color:var(--ink)}
+button{cursor:pointer}
+button.primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+button:disabled{opacity:.45;cursor:default}
+.card{background:var(--panel);border:1px solid var(--rule);border-radius:10px;padding:12px;min-width:0}
+.bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px}
+.status{font-size:13px}
+.status.ok{color:var(--good)} .status.err{color:var(--bad)} .status.busy{color:var(--faint)}
+.need{padding:18px;border:1px dashed var(--rule);border-radius:10px;color:var(--faint);font-size:13px}
+.need code{color:var(--ink)}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px}
+.tile{background:var(--panel);border:1px solid var(--rule);border-radius:10px;padding:12px 14px}
+.tile .n{font-size:26px;font-weight:700;font-variant-numeric:tabular-nums}
+.tile .l{font-size:12.5px;color:var(--faint)}
+.tile.good .n{color:var(--good)} .tile.warn .n{color:#b7791f} .tile.bad .n{color:var(--bad)}
+.tile.click,.page,.need-me{cursor:pointer}
+.tile.click:hover,.page:hover,.need-me:hover{border-color:var(--accent)}
+.needs{display:grid;gap:8px}
+.need-me{display:flex;align-items:center;gap:10px;background:var(--panel);border:1px solid var(--rule);border-left:4px solid var(--accent);border-radius:8px;padding:10px 12px;font-weight:600}
+.need-me .go{margin-left:auto;color:var(--accent);font-size:13px}
+.pages{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px}
+.page{background:var(--panel);border:1px solid var(--rule);border-radius:10px;padding:14px}
+.page b{display:block;font-size:15px;margin-bottom:3px}
+.page span{font-size:13px;color:var(--faint)}
+.note{background:var(--panel);border:1px solid var(--rule);border-radius:10px;padding:10px 14px;font-size:13.5px}
+.empty{color:var(--faint);font-size:13px}
+.steps{display:grid;gap:10px;counter-reset:s}
+.step{display:grid;grid-template-columns:42px minmax(0,1fr) auto;gap:6px 14px;align-items:center;background:var(--panel);border:1px solid var(--rule);border-radius:10px;padding:12px 14px;cursor:pointer}
+.step:hover{border-color:var(--accent)}
+.step .num{width:32px;height:32px;border-radius:50%;background:var(--rule);display:flex;align-items:center;justify-content:center;font-weight:700}
+.step.done .num{background:var(--good);color:#fff}
+.step.mine{border-left:4px solid var(--accent)}
+.step b{font-size:15px}
+.step .who{font-size:12.5px;color:var(--faint)}
+.step .cnts{display:flex;gap:14px;font-size:13px;color:var(--faint);flex-wrap:wrap}
+.step .cnts b{font-size:14px;color:var(--ink)}
+.state{font-size:13px;font-weight:600;white-space:nowrap}
+.state.done{color:var(--good)} .state.open{color:#b7791f}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header><div><h1 id="heading">Process</h1><div class="sub" id="subtitle"></div></div><div class="controls"><button id="refresh">Refresh</button></div></header>
+  <div class="note" id="note" hidden></div>
+  <span id="status" class="status"></span>
+  <div class="steps" id="steps"></div>
+</div>
+<script src="/lens-kit/lens-kit.js"></script>
+<script>
+// ── Process page (Viewfinder template) ───────────────────────────────────────
+// The steps of a planning cycle in order — each opens its Lens or app — with
+// live counts and a done / still-to-do state worked out from the data. No
+// submit buttons, no states to maintain.
+(function () {
+  var $ = function (id) { return document.getElementById(id) }
+  var esc = function (v) { return String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;') }
+  var M = function (d, e) { return '[' + d + '].[' + d + '].[' + String(e).replace(/]/g, ']]') + ']' }
+  var call = function (mdx) { return window.lensBridge.call('execMDX', { mdx: mdx }) }
+  var say = function (text, kind) { var s = $('status'); if (!s) return; s.textContent = text || ''; s.className = 'status ' + (kind || '') }
+  function fail(e) { say((e && e.message ? e.message : e), 'err') }
+  if (!window.Lens) return fail(new Error('the Lens toolkit did not load'))
+  var C = Lens.config()
+  function need(keys, into) {
+    var missing = keys.filter(function (k) { return !C[k] })
+    if (!missing.length) return false
+    $(into).innerHTML = '<div class="need">This screen needs its settings — add <code>' + missing.join('</code>, <code>') + '</code> to its config (IDE → Config tab).</div>'
+    return true
+  }
+  // A WHERE clause from { dimension: member } (missing dimensions use their default member).
+  function where(obj) { var k = Object.keys(obj || {}); return k.length ? ' WHERE (' + k.map(function (d) { return M(d, obj[d]) }).join(',') + ')' : '' }
+  function setOf(spec) {
+    if (spec.members) return '{' + spec.members.map(function (m) { return M(spec.dimension, m) }).join(',') + '}'
+    if (spec.under) return '{TM1FILTERBYLEVEL({DESCENDANTS(' + M(spec.dimension, spec.under) + ')}, ' + (spec.level || 0) + ')}'
+    return '{TM1FILTERBYLEVEL({TM1SUBSETALL([' + spec.dimension + '].[' + spec.dimension + '])}, ' + (spec.level || 0) + ')}'
+  }
+  function names(dim, into) {
+    return call('SELECT {[}ElementAttributes_' + dim + '].[}ElementAttributes_' + dim + '].[Caption_Default]} ON 0, {TM1SUBSETALL([' + dim + '].[' + dim + '])} ON 1 FROM [}ElementAttributes_' + dim + ']')
+      .then(function (r) { Lens.rows(r).forEach(function (x) { if (x.Caption_Default) into[x[dim]] = x.Caption_Default }) }, function () {})
+  }
+  // A count: how many rows the query returns (use NON EMPTY / FILTER in it),
+  // or the number itself when it returns a single cell.
+  function count(spec) {
+    var hasRows = /\bON\s+(1|ROWS)\b/i.test(spec.mdx)
+    return call(spec.mdx).then(function (r) {
+      var axes = r.Axes || []
+      if (hasRows) return axes.length > 1 ? Lens.rows(r).length : 0
+      var c = (r.Cells || [])[0]; return c ? Number(c.Value) || 0 : 0
+    }, function () { return null })
+  }
+  function open(name) { if (name) window.lensBridge.call('openLens', { name: name }).catch(function (e) { say(e && e.message ? e.message : String(e), 'err') }) }
+  function fill(text, n) { return String(text).indexOf('{n}') >= 0 ? String(text).replace('{n}', n) : n + ' ' + text }
+  if (need(['steps'], 'steps')) return
+  $('heading').textContent = C.heading || 'Process'
+  $('subtitle').textContent = C.subtitle || ''
+  if (C.note) { $('note').hidden = false; $('note').textContent = C.note }
+  var who = { user: '', groups: [] }
+  function load() {
+    say('Loading…', 'busy')
+    return Promise.all(C.steps.map(function (s) {
+      return Promise.all([Promise.all((s.counts || []).map(count)), s.remaining ? count(s.remaining) : Promise.resolve(null)])
+    })).then(function (res) {
+      $('steps').innerHTML = C.steps.map(function (s, i) {
+        var ns = res[i][0], left = res[i][1]
+        var done = s.remaining && left === 0
+        var mine = s.groups && s.groups.length && Lens.whoami.inGroup(who, s.groups)
+        var state = !s.remaining ? '' : left == null ? '' : done ? '<span class="state done">✓ Done</span>' : '<span class="state open">' + esc(fill(s.remaining.label || 'to do', left)) + '</span>'
+        return '<div class="step' + (done ? ' done' : '') + (mine ? ' mine' : '') + '" data-open="' + esc(s.lens || '') + '">' +
+          '<div class="num">' + (done ? '✓' : (i + 1)) + '</div>' +
+          '<div><b>' + esc(s.title) + '</b>' + (s.who ? ' <span class="who">· ' + esc(s.who) + (mine ? ' (you)' : '') + '</span>' : '') +
+          '<div class="cnts">' + (s.counts || []).map(function (c, k) { return '<span><b>' + (ns[k] == null ? '—' : esc(Lens.format(ns[k]))) + '</b> ' + esc(c.label) + '</span>' }).join('') + '</div></div>' +
+          state + '</div>'
+      }).join('')
+      say('')
+    })
+  }
+  document.body.addEventListener('click', function (e) { var t = e.target.closest('[data-open]'); if (t && t.getAttribute('data-open')) open(t.getAttribute('data-open')) })
+  $('refresh').onclick = function () { load().catch(fail) }
+  Lens.whoami().then(function (w) { who = w || who }).then(load).catch(fail)
+})()
+</script>
+</body>
+</html>

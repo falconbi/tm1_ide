@@ -122,9 +122,6 @@ export default function LensEditor({ tab }) {
   const [folder, setFolder] = useState('')
   const [title, setTitle] = useState('')
   const [look, setLook] = useState({ icon: '', color: '', image: '' })
-  // Viewfinder: a Lens built from a template stores no code of its own.
-  const [template, setTemplate] = useState('')
-  const [templates, setTemplates] = useState([])
   // The Lens's config (Config tab): JSON the Lens reads with Lens.config(). The
   // preview always runs with the last config that parsed.
   const [configText, setConfigText] = useState('{\n}\n')
@@ -162,8 +159,6 @@ export default function LensEditor({ tab }) {
       .then(r => r.json())
       .then(d => setCubes(Array.isArray(d) ? d : []))
       .catch(() => {})
-    fetch(`/api/viewfinder?server=${encodeURIComponent(tab.server)}`, { headers: { 'x-ide-token': token() } })
-      .then(r => r.json()).then(d => setTemplates(Array.isArray(d) ? d : [])).catch(() => {})
     // Folders already in use, offered as suggestions.
     fetch(`/api/lenses?server=${encodeURIComponent(tab.server)}`, { headers: { 'x-ide-token': token() } })
       .then(r => r.json())
@@ -173,7 +168,7 @@ export default function LensEditor({ tab }) {
       fetch(`/api/lenses/${encodeURIComponent(tab.name)}?server=${encodeURIComponent(tab.server)}&_=${Date.now()}`, { headers: { 'x-ide-token': token() } })
         .then(r => r.json())
         .then(d => {
-          if (d.html) { setHtml(d.html); setDescription(d.meta?.description ?? ''); setFolder(d.meta?.folder ?? ''); setTitle(d.meta?.title ?? ''); setLook({ icon: d.meta?.icon ?? '', color: d.meta?.color ?? '', image: d.meta?.image ?? '' }); setConfigText(JSON.stringify(d.meta?.config ?? {}, null, 2) + '\n'); setGoodConfig(d.meta?.config ?? {}); setTemplate(d.meta?.template ?? '') }
+          if (d.html) { setHtml(d.html); setDescription(d.meta?.description ?? ''); setFolder(d.meta?.folder ?? ''); setTitle(d.meta?.title ?? ''); setLook({ icon: d.meta?.icon ?? '', color: d.meta?.color ?? '', image: d.meta?.image ?? '' }); setConfigText(JSON.stringify(d.meta?.config ?? {}, null, 2) + '\n'); setGoodConfig(d.meta?.config ?? {}) }
           else if (d.error) setMessage({ kind: 'error', text: `Couldn't load the Lens: ${d.error}` })
         })
         .catch(e => setMessage({ kind: 'error', text: `Couldn't load the Lens: ${e.message}` }))
@@ -183,7 +178,9 @@ export default function LensEditor({ tab }) {
   useEffect(() => {
     const off = installLensHost(
       () => iframeRef.current?.contentWindow,
-      { getServer: () => tab.server, getToken: token, getLens: () => tab.name },
+      { getServer: () => tab.server, getToken: token, getLens: () => tab.name,
+        // A Lens opening another (an app home page, a process step): a new tab here.
+        openLens: (n) => useStore.getState().openTab({ id: `lens:${tab.server}:${n}`, type: 'lens', label: n, server: tab.server, name: n }) },
     )
     return off
   }, [tab.server, tab.name])
@@ -230,7 +227,7 @@ export default function LensEditor({ tab }) {
       const res = await fetch(`/api/lenses/${encodeURIComponent(name.trim())}?server=${encodeURIComponent(tab.server)}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-ide-token': token() },
-        body: JSON.stringify({ html, description, folder, title, icon: look.icon, color: look.color, image: look.image, config: goodConfig, template, publish, force }),
+        body: JSON.stringify({ html, description, folder, title, icon: look.icon, color: look.color, image: look.image, config: goodConfig, publish, force }),
       })
       const data = await res.json()
       if (!res.ok) {
@@ -248,41 +245,6 @@ export default function LensEditor({ tab }) {
 
   const refreshPreview = () => setPreviewKey(k => k + 1)
 
-  // Start a new Lens from a Viewfinder template: its code, its example settings.
-  const startFromTemplate = (t) => {
-    setTemplate(t.name)
-    setHtml(t.html)
-    const ex = t.example ?? {}
-    setConfigText(JSON.stringify(ex, null, 2) + '\n'); setGoodConfig(ex)
-    if (!look.icon && t.icon) setLook(l => ({ ...l, icon: t.icon, color: l.color || t.color || '' }))
-    setMode('config')
-    setPreviewKey(k => k + 1)
-    setMessage({ kind: 'ok', text: `Started from the Viewfinder template "${t.title}" — adjust its settings in Config, then save.` })
-  }
-  const detach = () => {
-    setTemplate('')
-    setMessage({ kind: 'ok', text: 'This Lens now has its own copy of the code — template improvements no longer reach it.' })
-  }
-  const templateInfo = templates.find(t => t.name === template)
-
-  // Save as template: this Lens's code becomes a template in the model (its
-  // settings become the example), and the Lens switches to use it.
-  const saveAsTemplate = async () => {
-    const name = window.prompt('Template name (lower-case letters, digits and -), e.g. pnl-review:', (name0 => name0 ? name0.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') : '')(tab.name || ''))
-    if (!name) return
-    try {
-      const r = await fetch(`/api/viewfinder/${encodeURIComponent(name.trim())}?server=${encodeURIComponent(tab.server)}`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json', 'x-ide-token': token() },
-        body: JSON.stringify({ html, title: title || name, description, icon: look.icon, color: look.color, settings: {}, example: goodConfig }),
-      })
-      const d = await r.json()
-      if (!r.ok) throw new Error(d.error || r.statusText)
-      setTemplate(d.name)
-      setTemplates(ts => [...ts.filter(t => t.name !== d.name), { ...d, html, source: 'model', usedBy: [] }])
-      window.dispatchEvent(new CustomEvent('tm1-viewfinder-changed', { detail: { server: tab.server } }))
-      setMessage({ kind: 'ok', text: `Saved as the template "${d.title}" — save this Lens to switch it to the template.` })
-    } catch (e) { setMessage({ kind: 'error', text: e.message }) }
-  }
 
   const handleEditorChange = useCallback((value) => {
     setHtml(value ?? '')
@@ -405,30 +367,6 @@ export default function LensEditor({ tab }) {
           onChange={e => setDescription(e.target.value)}
         />
       </div>
-      {!tab.name && !template && templates.length > 0 && (
-        <div className="flex flex-wrap items-center gap-2 border-b border-border px-3 py-2 text-sm">
-          <span className="text-xs text-muted-foreground">Start from Viewfinder:</span>
-          {templates.map(t => (
-            <button key={t.name} onClick={() => startFromTemplate(t)} title={t.description}
-              className="inline-flex items-center gap-1.5 rounded border border-border px-2 py-1 hover:bg-accent">
-              <LensTile icon={t.icon} color={t.color} size={18} /> {t.title}
-            </button>
-          ))}
-          <span className="text-xs text-muted-foreground">— or write your own below</span>
-        </div>
-      )}
-      {template && (
-        <div className="flex flex-wrap items-center gap-2 border-b border-border bg-muted/40 px-3 py-1.5 text-xs">
-          <span>Built from the Viewfinder template <b>{templateInfo?.title ?? template}</b> — its code is shared; change this Lens through its <b>Config</b>.</span>
-          <button onClick={detach} className="ml-auto rounded border border-border px-2 py-0.5 hover:bg-accent" title="Give this Lens its own copy of the code to change freely">Make my own copy</button>
-        </div>
-      )}
-      {!template && tab.name && (
-        <div className="flex items-center gap-2 border-b border-border px-3 py-1 text-xs text-muted-foreground">
-          <span>This Lens has its own code.</span>
-          <button onClick={saveAsTemplate} className="rounded border border-border px-2 py-0.5 hover:bg-accent hover:text-foreground" title="Turn this Lens into a template others can be built from">Save as template</button>
-        </div>
-      )}
       {message && (
         <div className={cn('px-3 py-1.5 text-xs border-b', message.kind === 'error' ? 'text-red-600 border-red-200 bg-red-50' : 'text-emerald-700 border-emerald-200 bg-emerald-50')}>
           {message.text}
@@ -461,14 +399,14 @@ export default function LensEditor({ tab }) {
             theme={dark ? 'vs-dark' : 'vs'}
             value={html}
             onChange={handleEditorChange}
-            options={{ fixedOverflowWidgets: true, minimap: { enabled: false }, fontSize: 13, wordWrap: 'on', automaticLayout: true, readOnly: !!template }}
+            options={{ fixedOverflowWidgets: true, minimap: { enabled: false }, fontSize: 13, wordWrap: 'on', automaticLayout: true, readOnly: false }}
           />
         </div>
         <div className={cn('flex-1 min-h-0', mode === 'design' && 'hidden', mode === 'config' && 'border-l border-border')}>
           <iframe
             key={previewKey}
             ref={iframeRef}
-            sandbox="allow-scripts"
+            sandbox="allow-scripts allow-modals"
             title="Lens preview"
             srcDoc={lensSrcDoc(html, { config: goodConfig, theme: { mode: dark ? 'dark' : 'light', palette: 'teal' } })}
             className="w-full h-full bg-white"

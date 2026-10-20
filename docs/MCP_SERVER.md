@@ -543,7 +543,7 @@ In `readonly` mode only the read tools are offered. The split is defined in
 ### Lenses
 | Tool | Purpose |
 |---|---|
-| `list_viewfinder` | Viewfinder templates: proven Lens code a Lens can use with just a config |
+| `list_lens_examples` | reference Lenses to learn patterns from (input grid, line items with approval, dashboard, variance, process page, disclosure accounts…) — never copied wholesale |
 | `list_lenses` / `get_lens` | Lenses stored in the model, and one Lens's full HTML and settings |
 | `save_lens` | save a Lens (own HTML or a template + config) into the model, test-running its queries (change set required) |
 | `delete_lens` | delete a Lens from the model (change set required) |

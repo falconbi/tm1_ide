@@ -70,7 +70,7 @@ Five playlists, one theme each — build with AI, everyday development, governed
 23. Working together — two screens: watch someone type, see saves flash, the History panel
 24. Meeting mode — present, and everyone follows, each within their own security
 25. Requests with line approval — capex as cards; finance approves; TM1 locks the line
-26. Viewfinder — forms as model objects: change a board and every screen built from it improves
+26. Built to fit — every client's screens built for their own process, from shared, tested components and one company style
 
 ### 5. Running it
 27. Sign-in per server, and users — creating users and groups the right way

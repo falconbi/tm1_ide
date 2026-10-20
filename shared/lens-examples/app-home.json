@@ -1,0 +1,67 @@
+{
+  "name": "app-home",
+  "title": "App home",
+  "description": "The front page of an app (a module's Lenses): key counts such as approved and waiting, what needs the person looking at it, and a tile for each page \u2014 all from the data and TM1 security.",
+  "icon": "briefcase",
+  "color": "#0f766e",
+  "settings": {
+    "heading": "The app's name",
+    "subtitle": "One line under it",
+    "note": "A short note from the app owner, e.g. a deadline (optional)",
+    "counts": "[{ label, mdx, tone: good | warn | bad, open }] \u2014 counts shown as tiles; the count is how many rows the MDX returns (use NON EMPTY / FILTER); open: a Lens to open on click",
+    "needsMe": "[{ label, mdx, groups, open }] \u2014 shown only to people in groups, and only when the count is above 0; '{n}' in the label is replaced by the count",
+    "pages": "[{ lens, title, description, groups }] \u2014 a tile per Lens in the app; groups limits who sees it"
+  },
+  "example": {
+    "heading": "Capex",
+    "subtitle": "Capital expenditure requests and approvals",
+    "note": "Requests for next year close on 15 November.",
+    "counts": [
+      {
+        "label": "requests",
+        "mdx": "SELECT {[Capital].[Capital].[Purchase Cost]} ON 0, NON EMPTY {TM1FILTERBYLEVEL({TM1SUBSETALL([organization].[organization])},0)} * {TM1FILTERBYLEVEL({TM1SUBSETALL([CapitalList].[CapitalList])},0)} * {TM1FILTERBYLEVEL({TM1SUBSETALL([Asset Types].[Asset Types])},0)} ON 1 FROM [Capital] WHERE ([Year].[Year].[Y2],[Version].[Version].[Target])",
+        "open": "Capex-Requests"
+      },
+      {
+        "label": "approved",
+        "mdx": "SELECT {[Capital].[Capital].[Purchase Cost]} ON 0, NON EMPTY FILTER({TM1FILTERBYLEVEL({TM1SUBSETALL([organization].[organization])},0)} * {TM1FILTERBYLEVEL({TM1SUBSETALL([CapitalList].[CapitalList])},0)} * {TM1FILTERBYLEVEL({TM1SUBSETALL([Asset Types].[Asset Types])},0)}, [Capital].[Capital].[Approved] = \"Y\") ON 1 FROM [Capital] WHERE ([Year].[Year].[Y2],[Version].[Version].[Target])",
+        "tone": "good"
+      },
+      {
+        "label": "waiting for approval",
+        "mdx": "SELECT {[Capital].[Capital].[Purchase Cost]} ON 0, NON EMPTY FILTER({TM1FILTERBYLEVEL({TM1SUBSETALL([organization].[organization])},0)} * {TM1FILTERBYLEVEL({TM1SUBSETALL([CapitalList].[CapitalList])},0)} * {TM1FILTERBYLEVEL({TM1SUBSETALL([Asset Types].[Asset Types])},0)}, [Capital].[Capital].[Approved] <> \"Y\") ON 1 FROM [Capital] WHERE ([Year].[Year].[Y2],[Version].[Version].[Target])",
+        "tone": "warn"
+      }
+    ],
+    "needsMe": [
+      {
+        "label": "{n} requests waiting for your approval",
+        "mdx": "SELECT {[Capital].[Capital].[Purchase Cost]} ON 0, NON EMPTY FILTER({TM1FILTERBYLEVEL({TM1SUBSETALL([organization].[organization])},0)} * {TM1FILTERBYLEVEL({TM1SUBSETALL([CapitalList].[CapitalList])},0)} * {TM1FILTERBYLEVEL({TM1SUBSETALL([Asset Types].[Asset Types])},0)}, [Capital].[Capital].[Approved] <> \"Y\") ON 1 FROM [Capital] WHERE ([Year].[Year].[Y2],[Version].[Version].[Target])",
+        "groups": [
+          "Lens Finance"
+        ],
+        "open": "Capex-Requests"
+      }
+    ],
+    "pages": [
+      {
+        "lens": "Capex-Requests",
+        "title": "Requests",
+        "description": "Enter and approve capital requests"
+      },
+      {
+        "lens": "Capex-Assumptions",
+        "title": "Assumptions",
+        "description": "Asset lives and notes",
+        "groups": [
+          "Lens Finance"
+        ]
+      },
+      {
+        "lens": "Capex-Detail",
+        "title": "Detail",
+        "description": "Every request line"
+      }
+    ]
+  }
+}

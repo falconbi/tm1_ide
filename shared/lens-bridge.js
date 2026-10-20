@@ -78,7 +78,7 @@ function writeCtx(patch) {
 // `getLens` names the Lens this host opened — a write is checked against THAT
 // saved Lens's declared cubes, never a name taken from the message.
 // `live` (Lens app only): relay the working-together stream into the frame.
-function installLensHost(getLensWindow, { getServer, getToken, getLens, live = false }) {
+function installLensHost(getLensWindow, { getServer, getToken, getLens, live = false, openLens }) {
   let stream = null, liveChannel = '', liveConn = ''
   const pushCtx = () => {
     getLensWindow()?.postMessage({ __lensBridge: 1, ctx: true, context: readCtx() }, '*')
@@ -96,6 +96,17 @@ function installLensHost(getLensWindow, { getServer, getToken, getLens, live = f
     try {
       if (d.method === 'getContext') {
         respond(d.id, readCtx())
+        return
+      }
+      // Open another Lens (an app home page's tiles, a process page's steps).
+      // The host decides how: the Lens app navigates, the IDE opens a tab.
+      // Only a Lens name crosses — never a URL.
+      if (d.method === 'openLens') {
+        const name = String(d.payload?.name ?? '')
+        if (!/^[a-zA-Z0-9_-]+$/.test(name)) throw new Error('not a Lens name')
+        if (!openLens) throw new Error('opening another Lens is not available here')
+        openLens(name)
+        respond(d.id, { ok: true })
         return
       }
       if (d.method === 'setContext') {

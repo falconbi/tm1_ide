@@ -1,0 +1,119 @@
+{
+  "name": "disclosure-accounts",
+  "title": "Disclosure accounts",
+  "description": "Published financial statements and notes: fixed layouts with headings, subtotals and totals, this year against last year, rounded, negatives in brackets \u2014 laid out for printing or PDF. Numbers read live from TM1.",
+  "icon": "presentation",
+  "color": "#0f766e",
+  "settings": {
+    "heading": "The screen title",
+    "subtitle": "One line under it",
+    "entity": "The company name printed at the top",
+    "period": "e.g. For the year ended 31 December",
+    "cube": "The cube to read",
+    "where": "{ dimension: member } \u2014 the slice (version, currency, period\u2026)",
+    "lineDimension": "The dimension the statement lines come from (e.g. Account)",
+    "columns": "[{ label, at: { dimension: member } }] \u2014 e.g. this year and last year; every column uses the same dimensions",
+    "statements": "[{ title, lines: [{ label, member, style: heading | line | subtotal | total, sign: -1 | 1, note }] }] \u2014 no member = a heading",
+    "rounding": "units, thousands or millions",
+    "unitLabel": "e.g. $000 (optional)",
+    "notes": "[{ number, title, text }] \u2014 notes to the accounts"
+  },
+  "example": {
+    "heading": "Annual accounts",
+    "subtitle": "Draft \u2014 numbers read live from TM1",
+    "entity": "Smartco Retail Ltd",
+    "period": "For the year ended 31 December, Year 2 (comparative: prior year)",
+    "cube": "Income Statement",
+    "where": {
+      "Currency Calc": "Local",
+      "organization": "Total Company",
+      "Month": "Year",
+      "Year": "Y2"
+    },
+    "lineDimension": "Account",
+    "columns": [
+      {
+        "label": "Year 2",
+        "at": {
+          "Version": "Actual"
+        }
+      },
+      {
+        "label": "Year 1",
+        "at": {
+          "Version": "Prior Year Actual"
+        }
+      }
+    ],
+    "statements": [
+      {
+        "title": "Income statement",
+        "lines": [
+          {
+            "label": "Revenue",
+            "member": "4999",
+            "note": "2"
+          },
+          {
+            "label": "Cost of sales",
+            "member": "5999",
+            "sign": -1
+          },
+          {
+            "label": "Gross margin",
+            "member": "GM",
+            "style": "subtotal"
+          },
+          {
+            "label": "Operating expenses"
+          },
+          {
+            "label": "Salaries and benefits",
+            "member": "6099",
+            "sign": -1,
+            "note": "3"
+          },
+          {
+            "label": "Occupancy",
+            "member": "6199",
+            "sign": -1
+          },
+          {
+            "label": "Marketing",
+            "member": "6299",
+            "sign": -1
+          },
+          {
+            "label": "Total operating expenses",
+            "member": "TE",
+            "sign": -1,
+            "style": "subtotal"
+          },
+          {
+            "label": "Net profit",
+            "member": "NP",
+            "style": "total"
+          }
+        ]
+      }
+    ],
+    "rounding": "thousands",
+    "notes": [
+      {
+        "number": 1,
+        "title": "Basis of preparation",
+        "text": "These statements are prepared from the planning model. They are a draft and have not been audited."
+      },
+      {
+        "number": 2,
+        "title": "Revenue",
+        "text": "Revenue is recognised when goods are sold to customers."
+      },
+      {
+        "number": 3,
+        "title": "Employee costs",
+        "text": "Includes salaries, benefits and payroll taxes."
+      }
+    ]
+  }
+}

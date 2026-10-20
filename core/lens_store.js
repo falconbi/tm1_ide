@@ -109,9 +109,7 @@ function cleanConfig(config) {
     return out
 }
 
-// template: a Viewfinder template name — the Lens then stores no code of its
-// own (its code is the template's); '' detaches it (the Lens keeps html).
-async function saveLens(server, name, html, owner, { publish = false, description, folder, title, icon, color, image, config, template, ideToken, client } = {}) {
+async function saveLens(server, name, html, owner, { publish = false, description, folder, title, icon, color, image, config, ideToken, client } = {}) {
     const safe = safeName(name)
     const existing = await store.readDoc(server, AREA, docName(safe), { ideToken, client })
     const now = new Date().toISOString()
@@ -128,25 +126,15 @@ async function saveLens(server, name, html, owner, { publish = false, descriptio
         color:          color === undefined || color === null ? (existing?.color ?? '') : cleanColor(color),
         image:          image === undefined || image === null ? (existing?.image ?? '') : cleanImage(image),
         config:         config === undefined || config === null ? (existing?.config ?? {}) : cleanConfig(config),
-        template:       template === undefined || template === null ? (existing?.template ?? '') : String(template).trim(),
         created:        existing?.created ?? now,
         createdBy:      existing?.createdBy ?? owner ?? 'unknown',
         toolkitVersion: TOOLKIT_VERSION,
         html,
     }
-    let templateCopied = null
-    if (doc.template) {
-        const vf = require('./viewfinder')
-        await vf.findTemplate(server, doc.template, { ideToken, client })   // throws for an unknown template
-        doc.html = ''   // its code is the template's — never a stale copy
-        // Everything the model needs goes with the model: a built-in template is
-        // copied into the model the first time a Lens there uses it.
-        const copy = await vf.copyBuiltInToModel(server, doc.template, owner, { ideToken, client })
-        if (copy?.copied) templateCopied = { name: copy.name, version: copy.version }
-    }
+    if (typeof doc.html !== 'string' || !doc.html.trim()) throw new Error('A Lens needs its code (html)')
     await store.writeDoc(server, AREA, docName(safe), doc, { ideToken, client })
     const { html: _html, ...details } = doc
-    return templateCopied ? { ...details, templateCopied } : details
+    return details
 }
 
 async function deleteLens(server, name, { ideToken, client } = {}) {

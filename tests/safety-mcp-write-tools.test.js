@@ -27,7 +27,6 @@ const lensStore = require('../core/lens_store')
 lensStore.saveLens = async (server, name) => { calls.push(['saveLens', name]); return { name, version: 1 } }
 lensStore.deleteLens = async (server, name) => { calls.push(['deleteLens', name]) }
 require('../core/lens_bridge').validateLens = async () => []
-require('../core/viewfinder').readTemplate = () => '<html></html>'
 
 const { setup } = require('./_mcp-harness')
 
@@ -96,7 +95,7 @@ const ARGS = {
     update_cube_rules:     { cube: 'Sales', rules: "['Total'] = N: 1;" },
     update_process:        { process: 'Load Sales', prolog: "vCube = 'Sales';" },
     run_process:           { process: 'Load Sales' },
-    save_lens:             { name: 'sales-lens', template: 'input-form', config: {} },
+    save_lens:             { name: 'sales-lens', html: '<html><body>Sales</body></html>', config: {} },
     delete_lens:           { name: 'sales-lens' },
 }
 

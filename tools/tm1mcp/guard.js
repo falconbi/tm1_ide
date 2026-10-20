@@ -34,7 +34,7 @@ const READ_TOOLS = new Set([
     'list_assertions', 'run_assertions', 'list_baselines', 'get_change_set', 'diff_change_set',
     'check_deploy_risk', 'check_target_drift',
     // Lenses (read side)
-    'list_viewfinder', 'list_lenses', 'get_lens',
+    'list_lens_examples', 'list_lenses', 'get_lens',
 ])
 
 const WRITE_TOOLS = new Set([
