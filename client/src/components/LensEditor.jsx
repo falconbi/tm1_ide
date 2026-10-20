@@ -122,6 +122,9 @@ export default function LensEditor({ tab }) {
   const [folder, setFolder] = useState('')
   const [title, setTitle] = useState('')
   const [look, setLook] = useState({ icon: '', color: '', image: '' })
+  // A new Lens can start from a COPY of an example or of an existing Lens —
+  // never linked: once copied, the code is this Lens's own.
+  const [starts, setStarts] = useState({ examples: [], lenses: [] })
   // The Lens's config (Config tab): JSON the Lens reads with Lens.config(). The
   // preview always runs with the last config that parsed.
   const [configText, setConfigText] = useState('{\n}\n')
@@ -159,6 +162,12 @@ export default function LensEditor({ tab }) {
       .then(r => r.json())
       .then(d => setCubes(Array.isArray(d) ? d : []))
       .catch(() => {})
+    if (!tab.name) {
+      fetch('/api/lens-examples', { headers: { 'x-ide-token': token() } }).then(r => r.json())
+        .then(d => setStarts(s => ({ ...s, examples: Array.isArray(d) ? d : [] }))).catch(() => {})
+      fetch(`/api/lenses?server=${encodeURIComponent(tab.server)}`, { headers: { 'x-ide-token': token() } }).then(r => r.json())
+        .then(d => setStarts(s => ({ ...s, lenses: Array.isArray(d) ? d : [] }))).catch(() => {})
+    }
     // Folders already in use, offered as suggestions.
     fetch(`/api/lenses?server=${encodeURIComponent(tab.server)}`, { headers: { 'x-ide-token': token() } })
       .then(r => r.json())
@@ -245,6 +254,23 @@ export default function LensEditor({ tab }) {
 
   const refreshPreview = () => setPreviewKey(k => k + 1)
 
+
+  const startFrom = async (pick) => {
+    if (!pick) return
+    const [kind, src] = [pick.slice(0, pick.indexOf(':')), pick.slice(pick.indexOf(':') + 1)]
+    try {
+      const url = kind === 'example' ? `/api/lens-examples/${encodeURIComponent(src)}` : `/api/lenses/${encodeURIComponent(src)}?server=${encodeURIComponent(tab.server)}&_=${Date.now()}`
+      const r = await fetch(url, { headers: { 'x-ide-token': token() } })
+      const d = await r.json()
+      if (!r.ok) throw new Error(d.error || r.statusText)
+      const cfg = kind === 'example' ? (d.meta?.example ?? {}) : (d.meta?.config ?? {})
+      setHtml(d.html)
+      setConfigText(JSON.stringify(cfg, null, 2) + '\n'); setGoodConfig(cfg)
+      setPreviewKey(k => k + 1)
+      const label = kind === 'example' ? (d.meta?.title ?? src) : (d.meta?.title || src)
+      setMessage({ kind: 'ok', text: `Started from a copy of "${label}". It's this Lens's own code now — change it freely; the original is never affected.` })
+    } catch (e) { setMessage({ kind: 'error', text: e.message }) }
+  }
 
   const handleEditorChange = useCallback((value) => {
     setHtml(value ?? '')
@@ -367,6 +393,18 @@ export default function LensEditor({ tab }) {
           onChange={e => setDescription(e.target.value)}
         />
       </div>
+      {!tab.name && (starts.examples.length > 0 || starts.lenses.length > 0) && (
+        <div className="flex flex-wrap items-center gap-2 border-b border-border px-3 py-2 text-sm">
+          <span className="text-xs text-muted-foreground">Start from a copy of</span>
+          <select defaultValue="" onChange={e => { startFrom(e.target.value); e.target.value = '' }}
+            className="rounded border border-border bg-background px-2 py-1 text-sm" title="Copies its code and settings into this new Lens — never linked">
+            <option value="" disabled>choose…</option>
+            {starts.lenses.length > 0 && <optgroup label={`Lenses in ${tab.server}`}>{starts.lenses.map(l => <option key={l.name} value={`lens:${l.name}`}>{l.title || l.name}</option>)}</optgroup>}
+            {starts.examples.length > 0 && <optgroup label="Examples">{starts.examples.map(x => <option key={x.name} value={`example:${x.name}`}>{x.title}</option>)}</optgroup>}
+          </select>
+          <span className="text-xs text-muted-foreground">— or write your own below</span>
+        </div>
+      )}
       {message && (
         <div className={cn('px-3 py-1.5 text-xs border-b', message.kind === 'error' ? 'text-red-600 border-red-200 bg-red-50' : 'text-emerald-700 border-emerald-200 bg-emerald-50')}>
           {message.text}
