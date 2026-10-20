@@ -27,70 +27,11 @@ import { ChevronRight, ChevronDown } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import GridToolbar from './GridToolbar'
 import { useGridAppearance } from '@/lib/grid-appearance'
+import { allExpanded, computeVisibleTuples, initExpandedSets, rowIndent, buildColNodeMap, columnIsLeaf } from '@/lib/pivot-tree'
 
 ModuleRegistry.registerModules([AllCommunityModule])
 
 const HDR_ROW_H = 28
-
-// ── Shared algorithms ─────────────────────────────────────────────────────────
-
-function allExpanded(nodes) {
-    return new Set(Object.keys(nodes).filter(id => !nodes[id].isLeaf && nodes[id].children?.length))
-}
-
-function computeVisibleNodes(roots, nodes, expanded, keepMode, totalsAtBottom = false) {
-    const result = []
-    function visit(nodeId) {
-        const node = nodes[nodeId]
-        if (!node) return
-        const isOpen      = expanded.has(nodeId)
-        const hasChildren = !node.isLeaf && node.children?.length > 0
-        const showParent  = keepMode === 'replace' ? !(isOpen && hasChildren) : true
-        if (!totalsAtBottom && showParent) result.push(nodeId)
-        if (isOpen && hasChildren) for (const c of node.children) visit(c)
-        if (totalsAtBottom  && showParent) result.push(nodeId)
-    }
-    for (const r of roots) visit(r)
-    return result
-}
-
-
-/**
- * Recursively compute visible tuples with per-context inner-dim expansion.
- *   expandedSets[0]    = Set           (outer dim, global)
- *   expandedSets[i>0]  = Map<ctx, Set> (inner dims, per outer context)
- *                        missing key → allExpanded(h.nodes) default
- */
-function computeVisibleTuples(hierarchies, expandedSets, keepMode, totalsAtBottom = false) {
-    function recurse(dimIdx, contextKey) {
-        const h = hierarchies[dimIdx]
-        if (!h) return [[]]
-
-        let expanded
-        if (dimIdx === 0) {
-            expanded = expandedSets[0] ?? new Set()
-        } else {
-            const map = expandedSets[dimIdx]
-            expanded  = (map instanceof Map ? (map.get(contextKey) ?? map.get('*') ?? allExpanded(h.nodes)) : null) ?? allExpanded(h.nodes)
-        }
-
-        const visible = computeVisibleNodes(h.roots, h.nodes, expanded, keepMode, totalsAtBottom)
-        if (dimIdx === hierarchies.length - 1) return visible.map(id => [id])
-
-        return visible.flatMap(id => {
-            const ctx = contextKey ? `${contextKey}::${id}` : id
-            return recurse(dimIdx + 1, ctx).map(child => [id, ...child])
-        })
-    }
-    if (!hierarchies.length) return []
-    return recurse(0, '')
-}
-
-// ── State initializers ────────────────────────────────────────────────────────
-
-function initExpandedSets(hierarchies) {
-    return hierarchies.map((h, i) => i === 0 ? allExpanded(h.nodes ?? {}) : new Map())
-}
 
 // ── Row hierarchy cell ─────────────────────────────────────────────────────────
 
@@ -121,7 +62,7 @@ function HierarchyCell(params) {
 
     const isOpen   = expanded.has(nodeId)
     const maxLevel = h?.maxLevel ?? 0
-    const indent   = Math.max(0, (maxLevel - level)) * 14
+    const indent   = rowIndent(level, maxLevel)
 
     return (
         <div className="flex items-center h-full gap-0.5 overflow-hidden" style={{ paddingLeft: `${indent}px` }}>
@@ -337,17 +278,7 @@ export default function HierarchyGrid({
     )
 
     // For single-dim col: col.id → nodeId (for header toggle)
-    const colNodeMap = useMemo(() => {
-        if (!columnHierarchies.length) return {}
-        const h0    = columnHierarchies[0]
-        const nodes = h0?.nodes ?? {}
-        const map   = {}
-        for (const nodeId of Object.keys(nodes)) {
-            const col = colByTupleKey[nodeId]
-            if (col) map[col.id] = nodeId
-        }
-        return map
-    }, [columnHierarchies, colByTupleKey])
+    const colNodeMap = useMemo(() => buildColNodeMap(columnHierarchies, colByTupleKey), [columnHierarchies, colByTupleKey])
 
     // ── Visible row tuples ────────────────────────────────────────────────────
 
@@ -471,10 +402,7 @@ export default function HierarchyGrid({
                 const changed    = tuple.map((id, i) => prevTuple === null || prevTuple[i] !== id)
                 prevTuple = tuple
 
-                const nodeId    = colNodeMap[col.id]
-                const colH0     = columnHierarchies[0]
-                const colNode   = nodeId ? colH0?.nodes?.[nodeId] : null
-                const colIsLeaf = !colNode || colNode.isLeaf || !colNode.children?.length
+                const colIsLeaf = columnIsLeaf(col, colNodeMap, columnHierarchies)
 
                 return {
                     colId:           col.id,

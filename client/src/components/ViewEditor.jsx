@@ -31,6 +31,7 @@ function saveViewSessionEntry(entry) {
 
 import { buildMDX } from '@core/mdxBuilder.js'
 import HierarchyGrid from '@/components/HierarchyGrid'
+import { buildHierarchyFromElements, constrainHierarchy } from '@/lib/pivot-tree'
 import GridToolbar from '@/components/GridToolbar'
 import { ConflictBanner, ConflictSaveWarning } from '@/components/ConflictBanner'
 import DiffViewerModal from '@/components/DiffViewerModal'
@@ -98,49 +99,6 @@ function detectComplexMDX(mdx) {
     const found = COMPLEX_MDX_PATTERNS.filter(([, re]) => re.test(mdx)).map(([name]) => name)
     return found.length ? found : null
 }
-
-// ── Cellset → HierarchyGrid transforms ───────────────────────────────────────
-
-function buildHierarchyFromElements(elements, name) {
-    if (!elements?.length) return null
-    const nodes = {}
-    for (const el of elements) {
-        nodes[el.Name] = {
-            id:       el.Name,
-            label:    el.Name,
-            level:    el.Level ?? 0,
-            isLeaf:   el.Type !== 'C',
-            children: el.Components ?? [],
-        }
-    }
-    const childSet = new Set(elements.flatMap(e => e.Components ?? []))
-    const roots    = elements.filter(e => !childSet.has(e.Name)).map(e => e.Name)
-    const maxLevel = Math.max(0, ...elements.map(e => e.Level ?? 0))
-    return { nodes, roots, maxLevel, name }
-}
-
-// Prune hierarchy to only members present in the cellset result.
-// Consolidations only appear if they were actually returned by TM1.
-// Children list is filtered to only present members; isLeaf recomputed.
-function constrainHierarchy(hierarchy, presentMembers) {
-    if (!hierarchy || !presentMembers?.length) return hierarchy
-    const presentSet = new Set(presentMembers)
-    const { nodes: allNodes, name } = hierarchy
-
-    const nodes = {}
-    for (const id of presentMembers) {
-        const node = allNodes[id]
-        if (!node) continue
-        const children = (node.children ?? []).filter(c => presentSet.has(c))
-        nodes[id] = { ...node, children, isLeaf: children.length === 0 }
-    }
-
-    const childSet = new Set(Object.values(nodes).flatMap(n => n.children))
-    const roots    = Object.keys(nodes).filter(id => !childSet.has(id))
-    const maxLevel = Math.max(0, ...Object.values(nodes).map(n => n.level ?? 0))
-    return { nodes, roots, maxLevel, name }
-}
-
 
 // Convert ViewEditor axis state → GuidedMDXBuilder dimConfig format
 function viewerAxesToBuilderConfig(axes) {
