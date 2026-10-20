@@ -125,6 +125,7 @@ export default function LensEditor({ tab }) {
   // A new Lens can start from a COPY of an example or of an existing Lens —
   // never linked: once copied, the code is this Lens's own.
   const [starts, setStarts] = useState({ examples: [], lenses: [] })
+  const [started, setStarted] = useState(!!tab.name)   // a new Lens opens on its start page
   // The Lens's config (Config tab): JSON the Lens reads with Lens.config(). The
   // preview always runs with the last config that parsed.
   const [configText, setConfigText] = useState('{\n}\n')
@@ -269,6 +270,7 @@ export default function LensEditor({ tab }) {
       setPreviewKey(k => k + 1)
       const label = kind === 'example' ? (d.meta?.title ?? src) : (d.meta?.title || src)
       setMessage({ kind: 'ok', text: `Started from a copy of "${label}". It's this Lens's own code now — change it freely; the original is never affected.` })
+      setStarted(true)
     } catch (e) { setMessage({ kind: 'error', text: e.message }) }
   }
 
@@ -276,6 +278,46 @@ export default function LensEditor({ tab }) {
     setHtml(value ?? '')
     setDirtyPreview(true)
   }, [])
+
+  if (!started) {
+    const Card = ({ onClick, tile, title, text }) => (
+      <button onClick={onClick} className="flex items-start gap-3 rounded-lg border border-border bg-background p-3 text-left hover:border-primary hover:bg-accent/40">
+        {tile}
+        <span className="min-w-0"><span className="block text-sm font-semibold">{title}</span><span className="block text-xs text-muted-foreground line-clamp-2">{text}</span></span>
+      </button>
+    )
+    const grid = 'grid gap-2 [grid-template-columns:repeat(auto-fill,minmax(240px,1fr))]'
+    return (
+      <div className="h-full overflow-auto">
+        <div className="mx-auto max-w-4xl px-6 py-8 space-y-7">
+          <div>
+            <h2 className="text-xl font-semibold">New Lens</h2>
+            <p className="text-sm text-muted-foreground">Start from a blank Lens or a copy — a copy is yours to change; the original is never affected.</p>
+          </div>
+          {message && <div className="text-sm text-red-600">{message.text}</div>}
+          <div className={grid}>
+            <Card onClick={() => setStarted(true)} tile={<LensTile icon="square-pen" size={32} />} title="Blank" text="Start from an empty Lens" />
+          </div>
+          {starts.lenses.length > 0 && (
+            <div className="space-y-2">
+              <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Copy one of yours · {tab.server}</h3>
+              <div className={grid}>{starts.lenses.map(l => (
+                <Card key={l.name} onClick={() => startFrom(`lens:${l.name}`)} tile={<LensTile icon={l.icon} color={l.color} image={l.image} size={32} />} title={l.title || l.name} text={l.description || l.name} />
+              ))}</div>
+            </div>
+          )}
+          {starts.examples.length > 0 && (
+            <div className="space-y-2">
+              <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Copy an example</h3>
+              <div className={grid}>{starts.examples.map(x => (
+                <Card key={x.name} onClick={() => startFrom(`example:${x.name}`)} tile={<LensTile icon={x.icon} color={x.color} size={32} />} title={x.title} text={x.description} />
+              ))}</div>
+            </div>
+          )}
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="flex flex-col h-full min-h-0">
@@ -393,18 +435,6 @@ export default function LensEditor({ tab }) {
           onChange={e => setDescription(e.target.value)}
         />
       </div>
-      {!tab.name && (starts.examples.length > 0 || starts.lenses.length > 0) && (
-        <div className="flex flex-wrap items-center gap-2 border-b border-border px-3 py-2 text-sm">
-          <span className="text-xs text-muted-foreground">Start from a copy of</span>
-          <select defaultValue="" onChange={e => { startFrom(e.target.value); e.target.value = '' }}
-            className="rounded border border-border bg-background px-2 py-1 text-sm" title="Copies its code and settings into this new Lens — never linked">
-            <option value="" disabled>choose…</option>
-            {starts.lenses.length > 0 && <optgroup label={`Lenses in ${tab.server}`}>{starts.lenses.map(l => <option key={l.name} value={`lens:${l.name}`}>{l.title || l.name}</option>)}</optgroup>}
-            {starts.examples.length > 0 && <optgroup label="Examples">{starts.examples.map(x => <option key={x.name} value={`example:${x.name}`}>{x.title}</option>)}</optgroup>}
-          </select>
-          <span className="text-xs text-muted-foreground">— or write your own below</span>
-        </div>
-      )}
       {message && (
         <div className={cn('px-3 py-1.5 text-xs border-b', message.kind === 'error' ? 'text-red-600 border-red-200 bg-red-50' : 'text-emerald-700 border-emerald-200 bg-emerald-50')}>
           {message.text}
