@@ -51,6 +51,10 @@ test('format and better', () => {
   assert.equal(format(-1302000, 'k$'), '−$1,302k')
   assert.equal(format(0.377, '%'), '37.7%')
   assert.equal(format(null, 'k$'), '—')
+  assert.equal(format(238866433, '£m'), '£238.9m')
+  assert.equal(format(-17924908, '£k'), '−£17,925k')
+  assert.equal(format(1234.4, '€'), '€1,234')
+  assert.equal(format(5, '$'), '$5')
   assert.equal(better(10, 8), true); assert.equal(better(10, 8, { cost: true }), false)
 })
 

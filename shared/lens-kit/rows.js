@@ -57,6 +57,13 @@ export function format(value, kind = 'number') {
   const v = Number(value)
   const sign = v < 0 ? '−' : ''
   const a = Math.abs(v)
+  // Money in any of these currencies: '£', '£k' (thousands), '£m' (millions, 1 dp) — likewise $, €, ¥
+  const money = /^([$£€¥])(k|m)?$/.exec(kind)
+  if (money) {
+    const [, sym, scale] = money
+    const d = scale === 'm' ? 1e6 : scale === 'k' ? 1e3 : 1
+    return sign + sym + (a / d).toLocaleString(undefined, { minimumFractionDigits: scale === 'm' ? 1 : 0, maximumFractionDigits: scale === 'm' ? 1 : 0 }) + (scale || '')
+  }
   switch (kind) {
     case 'k$': return sign + '$' + (a / 1000).toLocaleString(undefined, { maximumFractionDigits: a < 100000 ? 1 : 0 }) + 'k'
     case '$': return sign + '$' + a.toLocaleString(undefined, { maximumFractionDigits: 0 })
