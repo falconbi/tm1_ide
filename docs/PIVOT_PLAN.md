@@ -55,6 +55,13 @@ notes, write, copy).
    silently loses its hierarchy.
 5. Click-to-edit reads a column flag that's never set, so it disagrees with
    the "editable" rule.
+6. (Found in step 1.) Pruning a tree to the returned members marks a total as a
+   leaf when its children were filtered out — it then looks editable.
+
+Step 1 done (commit 51d3db6): the pure logic lives in
+`client/src/lib/pivot-tree.js`; bugs 1–6 and items 12–13 are `todo` tests in
+`tests/pivot-tree.test.mjs`, `tests/mdx-builder.test.mjs`,
+`tests/view-cellset.test.mjs`.
 
 ### Scale
 6. Visible rows are every combination first, then filtered — build them from
@@ -83,7 +90,7 @@ notes, write, copy).
     height, builder "Save layout".
 
 ### Scope agreed
-Fold in 1–9, 12–14 and 16 during the move; 10 straight after; 11 as its own
+Fold in 1–9 (and 6), 12–14 and 16 during the move; 10 straight after; 11 as its own
 investigation; 15 when convenient.
 
 ## Shape of the shared component
