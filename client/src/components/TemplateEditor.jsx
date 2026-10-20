@@ -73,18 +73,18 @@ export default function TemplateEditor({ tab }) {
   // model); a newer built-in reaches it only through this deliberate update.
   const updateFromBuiltIn = async () => {
     const n = tpl?.usedBy?.length ?? 0
-    if (!window.confirm(`Update this model's copy of "${tpl?.title}" to the latest built-in?${n ? ` ${n} Lens${n > 1 ? 'es' : ''} in this model will change.` : ''} The change is recorded in the change set and reaches PROD through a release.`)) return
+    if (!window.confirm(`Push the new version of "${tpl?.title}" to the ${n} Lens${n === 1 ? '' : 'es'} using it on ${tab.server}? The change is recorded in the change set and reaches PROD through a release.`)) return
     setBusy(true); setMessage(null)
     try {
       const r = await fetch(`/api/viewfinder/${encodeURIComponent(tab.name)}/update-from-built-in?server=${encodeURIComponent(tab.server)}`, { method: 'POST', headers: headers() })
       const d = await r.json()
       if (!r.ok) throw new Error(d.error || r.statusText)
       window.dispatchEvent(new CustomEvent('tm1-viewfinder-changed', { detail: { server: tab.server } }))
-      setMessage({ kind: 'ok', text: `Updated to the latest built-in (model copy version ${d.version}).` }); load()
+      setMessage({ kind: 'ok', text: `Update pushed to the Lenses using this template.` }); load()
     } catch (e) { setMessage({ kind: 'error', text: e.message }) } finally { setBusy(false) }
   }
   const copyAsOwn = () => {
-    const name = window.prompt('Name for your own copy (lower-case letters, digits and -):', `${tab.name}-custom`)
+    const name = window.prompt('Name for the new template (lower-case letters, digits and -):', `${tab.name}-custom`)
     if (name) save(name.trim())
   }
   const remove = async () => {
@@ -102,9 +102,7 @@ export default function TemplateEditor({ tab }) {
       <div className="flex flex-wrap items-center gap-2 border-b border-border px-3 py-2">
         <LensTile icon={tpl.icon} color={tpl.color} size={26} />
         <div className="min-w-0">
-          <div className="text-sm font-semibold">{tpl.title} <span className="ml-1 rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase text-muted-foreground">{builtIn ? 'built-in' : 'this model'}</span>
-            {builtIn && <span className="ml-1 rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase text-muted-foreground" title={tpl.inModel ? 'This model holds its own copy, which its Lenses run and which deploys with the model' : 'Copied into this model when a Lens here first uses it'}>{tpl.inModel ? `copy in model · v${tpl.copyVersion}` : 'not in model yet'}</span>}
-          </div>
+          <div className="text-sm font-semibold">{tpl.title}</div>
           <div className="truncate text-xs text-muted-foreground">{tpl.description}</div>
         </div>
         <div className="ml-auto flex rounded border border-border">
@@ -113,10 +111,10 @@ export default function TemplateEditor({ tab }) {
           ))}
         </div>
         {builtIn && tpl.inModel && tpl.newerBuiltIn && (
-          <button onClick={updateFromBuiltIn} disabled={busy} className="inline-flex items-center gap-1.5 rounded border border-amber-400 px-3 py-1.5 text-sm text-amber-700 hover:bg-amber-50 disabled:opacity-50" title="A newer built-in version is available"><RefreshCw className="h-4 w-4" /> Update to latest built-in</button>
+          <button onClick={updateFromBuiltIn} disabled={busy} className="inline-flex items-center gap-1.5 rounded border border-amber-400 px-3 py-1.5 text-sm text-amber-700 hover:bg-amber-50 disabled:opacity-50" title="A newer version of this template is available"><RefreshCw className="h-4 w-4" /> Push update to the {tpl.usedBy?.length ?? 0} Lens{tpl.usedBy?.length === 1 ? '' : 'es'} using this template</button>
         )}
         {builtIn
-          ? <button onClick={copyAsOwn} className="inline-flex items-center gap-1.5 rounded border border-border px-3 py-1.5 text-sm hover:bg-accent" title="Make an editable copy saved in this model"><Copy className="h-4 w-4" /> Copy as my own</button>
+          ? <button onClick={copyAsOwn} className="inline-flex items-center gap-1.5 rounded border border-border px-3 py-1.5 text-sm hover:bg-accent" title="Make a new template from this one, with a new name, that you can edit"><Copy className="h-4 w-4" /> Duplicate and edit</button>
           : <>
               <button onClick={() => save()} disabled={busy} className="inline-flex items-center gap-1.5 rounded bg-primary px-3 py-1.5 text-sm text-primary-foreground disabled:opacity-50">{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />} Save</button>
               <button onClick={remove} disabled={busy || tpl.usedBy?.length > 0} className="inline-flex items-center gap-1.5 rounded border border-border px-2 py-1.5 text-sm hover:bg-accent disabled:opacity-40" title={tpl.usedBy?.length ? 'Still used — point those Lenses elsewhere first' : 'Delete this template'}><Trash2 className="h-4 w-4" /></button>

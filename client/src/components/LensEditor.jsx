@@ -151,7 +151,7 @@ export default function LensEditor({ tab }) {
   const [saving, setSaving] = useState(false)
   const [validation, setValidation] = useState([])
   const [message, setMessage] = useState(null)
-  const [mode, setMode] = useState('design') // 'design' | 'preview'
+  const [mode, setMode] = useState('preview') // 'design' | 'preview' — opens on Preview
   const [previewKey, setPreviewKey] = useState(0)
   const iframeRef = useRef(null)
   const previewTimer = useRef(null)
