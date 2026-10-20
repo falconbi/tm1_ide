@@ -134,13 +134,19 @@ async function saveLens(server, name, html, owner, { publish = false, descriptio
         toolkitVersion: TOOLKIT_VERSION,
         html,
     }
+    let templateCopied = null
     if (doc.template) {
-        await require('./viewfinder').findTemplate(server, doc.template, { ideToken, client })   // throws for an unknown template
+        const vf = require('./viewfinder')
+        await vf.findTemplate(server, doc.template, { ideToken, client })   // throws for an unknown template
         doc.html = ''   // its code is the template's — never a stale copy
+        // Everything the model needs goes with the model: a built-in template is
+        // copied into the model the first time a Lens there uses it.
+        const copy = await vf.copyBuiltInToModel(server, doc.template, owner, { ideToken, client })
+        if (copy?.copied) templateCopied = { name: copy.name, version: copy.version }
     }
     await store.writeDoc(server, AREA, docName(safe), doc, { ideToken, client })
     const { html: _html, ...details } = doc
-    return details
+    return templateCopied ? { ...details, templateCopied } : details
 }
 
 async function deleteLens(server, name, { ideToken, client } = {}) {

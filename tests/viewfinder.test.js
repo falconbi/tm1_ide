@@ -58,8 +58,61 @@ test('model templates: saved in the model, listed after the built-ins, found by 
     assert.equal(await vf.codeOf('S', { template: 'pnl-review' }), '<p>pnl</p>')
     await assert.rejects(vf.saveModelTemplate('S', 'input-form', { html: 'x' }), /built-in template/)
     await assert.rejects(vf.saveModelTemplate('S', 'Bad Name', { html: 'x' }), /lower-case/)
-    await assert.rejects(vf.deleteModelTemplate('S', 'input-form'), /can't be deleted/)
+    await assert.rejects(vf.deleteModelTemplate('S', 'input-form'), /built-in template/)
     await vf.deleteModelTemplate('S', 'pnl-review')
     await assert.rejects(vf.findTemplate('S', 'pnl-review'), /Unknown Viewfinder template/)
+  } finally { Object.assign(store, orig) }
+})
+
+// Everything the model needs goes with the model: a built-in template is copied
+// into the model when a Lens there uses it, and the copy is what Lenses run.
+test('saving a Lens copies its built-in template into the model, once; Lenses then run the model copy', async () => {
+  const store = require('../core/model-store')
+  const vf = require('../core/viewfinder')
+  const docs = {}
+  const orig = { listDocs: store.listDocs, readDoc: store.readDoc, writeDoc: store.writeDoc }
+  store.listDocs = async (s, a) => Object.keys(docs).filter(k => k.startsWith(a + '/')).map(k => k.slice(a.length + 1))
+  store.readDoc = async (s, a, n) => docs[`${a}/${n}`] ?? null
+  store.writeDoc = async (s, a, n, d) => { docs[`${a}/${n}`] = d }
+  try {
+    const ls = require('../core/lens_store')
+    const first = await ls.saveLens('S', 'Budget', '', 'me', { template: 'input-form', config: { cube: 'Plan' } })
+    assert.deepEqual(first.templateCopied, { name: 'input-form', version: 1 }, 'first Lens on a built-in copies it')
+    const copy = docs['viewfinder/input-form.json']
+    assert.equal(copy.builtIn, true)
+    assert.equal(copy.html, vf.readTemplate('input-form'), 'the copy is the built-in code')
+    assert.equal(copy.builtInFingerprint, vf.fingerprint(copy.html))
+
+    const second = await ls.saveLens('S', 'Target', '', 'me', { template: 'input-form', config: { cube: 'Target' } })
+    assert.equal(second.templateCopied, undefined, 'already in the model — not copied again')
+
+    // The model copy is what runs — even if the built-in on disk is newer.
+    docs['viewfinder/input-form.json'] = { ...copy, html: '<p>model copy</p>' }
+    assert.equal(await vf.codeOf('S', { template: 'input-form' }), '<p>model copy</p>')
+    assert.equal((await vf.findTemplate('S', 'input-form')).source, 'built-in copy')
+    const listed = (await vf.listAll('S')).find(t => t.name === 'input-form')
+    assert.equal(listed.inModel, true)
+    assert.equal(listed.html, '<p>model copy</p>', 'listed with the code the model runs')
+    assert.equal(listed.newerBuiltIn, false, 'fingerprint still matches the built-in it was copied from')
+    assert.equal((await vf.listAll('S')).filter(t => t.name === 'input-form').length, 1, 'shown once, not twice')
+
+    // A newer built-in is flagged, and reaches the model only by a deliberate update.
+    docs['viewfinder/input-form.json'] = { ...docs['viewfinder/input-form.json'], builtInFingerprint: 'older0000000' }
+    assert.equal((await vf.listAll('S')).find(t => t.name === 'input-form').newerBuiltIn, true)
+    const updated = await vf.updateBuiltInCopy('S', 'input-form', 'me')
+    assert.equal(updated.version, 2)
+    assert.equal(docs['viewfinder/input-form.json'].html, vf.readTemplate('input-form'))
+    assert.equal((await vf.listAll('S')).find(t => t.name === 'input-form').newerBuiltIn, false)
+  } finally { Object.assign(store, orig) }
+})
+
+test('a Lens saved before templates were copied still runs the built-in until its next save', async () => {
+  const store = require('../core/model-store')
+  const vf = require('../core/viewfinder')
+  const orig = { readDoc: store.readDoc }
+  store.readDoc = async () => null
+  try {
+    assert.equal(await vf.codeOf('S', { template: 'line-item-form' }), vf.readTemplate('line-item-form'))
+    assert.equal((await vf.findTemplate('S', 'line-item-form')).source, 'built-in')
   } finally { Object.assign(store, orig) }
 })

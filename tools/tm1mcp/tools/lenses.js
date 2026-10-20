@@ -75,13 +75,15 @@ ${BRIDGE_CONTRACT}`,
         async ({ name, html, description, folder, title, icon, color, config, template, publish, force }) => {
             requireChangeSet()
             if (!template && !html) return ok({ blocked: true, reason: 'Give the Lens either html or a Viewfinder template' })
-            const errors = await lensBridge.validateLens(client(), template ? require('../../../core/viewfinder').readTemplate(template) : html)
+            const errors = await lensBridge.validateLens(client(), template ? (await require('../../../core/viewfinder').findTemplate(SERVER, template, { client: client() })).html : html)
             if (errors.length && !force) {
                 return ok({ blocked: true, reason: `Lens validation failed (${errors.length}) — fix these and retry, or pass force:true:`, errors })
             }
             const saved = await lensStore.saveLens(SERVER, name, html, AGENT_USER, { publish: !!publish, description, folder, title, icon, color, config, template })
             logChange(publish ? 'LENS_PUBLISHED' : 'LENS_SAVED', 'lens', saved.name,
                 { detail: `version ${saved.version}${description ? ` — ${description}` : ''}` })
+            if (saved.templateCopied) logChange('LENS_TEMPLATE_SAVED', 'lens-template', saved.templateCopied.name,
+                { detail: `built-in template copied into the model (version ${saved.templateCopied.version})` })
             return ok({ saved, validation: errors, next: `Lens "${saved.name}" is saved in ${SERVER}'s model and on the change set. It shows in the IDE model tree under Lenses.` })
         }
     )

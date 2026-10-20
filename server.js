@@ -3803,6 +3803,20 @@ app.post('/api/viewfinder/:name', async (req, res) => {
     } catch (e) { res.status(400).json({ error: e.message }) }
 })
 
+// Update the model's copy of a built-in template to the current built-in —
+// deliberate, because every Lens in this model using it changes. Recorded in the
+// change set, so the new version reaches PROD only through a release.
+app.post('/api/viewfinder/:name/update-from-built-in', async (req, res) => {
+    try {
+        const server = req.query.server
+        if (!server) return res.status(400).json({ error: 'server required' })
+        if (!gateWrite(res, server)) return
+        const saved = await viewfinder.updateBuiltInCopy(server, req.params.name, req.user, { ideToken: req.ideToken })
+        cl.writeLog({ server, action: 'LENS_TEMPLATE_SAVED', objectType: 'lens-template', objectName: saved.name, detail: `updated to the current built-in (version ${saved.version})`, user: req.user })
+        res.json(saved)
+    } catch (e) { res.status(400).json({ error: e.message }) }
+})
+
 // Delete a model template — refused while any Lens still uses it.
 app.delete('/api/viewfinder/:name', async (req, res) => {
     try {
@@ -3842,6 +3856,8 @@ app.post('/api/lenses/:name', async (req, res) => {
         const saved = await lensStore.saveLens(server, req.params.name, html, req.user, { publish: !!publish, description, folder, title, icon, color, image, config, template, ideToken: req.ideToken })
         cl.writeLog({ server, action: publish ? 'LENS_PUBLISHED' : 'LENS_SAVED', objectType: 'lens', objectName: saved.name,
             detail: `version ${saved.version}${description ? ` — ${description}` : ''}`, user: req.user })
+        if (saved.templateCopied) cl.writeLog({ server, action: 'LENS_TEMPLATE_SAVED', objectType: 'lens-template', objectName: saved.templateCopied.name,
+            detail: `built-in template copied into the model (version ${saved.templateCopied.version})`, user: req.user })
         res.json({ ...saved, validation: errors })
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
