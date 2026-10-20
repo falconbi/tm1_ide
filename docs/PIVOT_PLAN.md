@@ -1,0 +1,94 @@
+# Shared Pivot — plan
+
+Agreed Oct 21 2026. The pivot (slice-and-dice grid with hierarchy drill-down,
+built on the free AG Grid) moves out of the IDE's View editor into one shared
+component that the IDE and Lenses both use. Alongside it, two more pieces move
+out: the member picker and the cell menu (rule breakdown, transaction log,
+notes, write, copy).
+
+## Why
+
+- The pivot is the clever part we built ourselves: drill-down remembered per
+  parent, stacked multi-dimension column headings, TM1 layout → MDX → grid.
+  Pivoting is a paid AG Grid feature; ours runs on the free edition and knows
+  TM1. It deserves to be one well-tested component, not code inside a
+  2,500-line screen.
+- Lenses need slice-and-dice (e.g. compare assumptions across companies)
+  without a second copy that drifts apart.
+- The View editor shrinks from ~2,550 lines to ~1,500 (≈1,000 once the rule
+  breakdown and trace panels also move out).
+
+## Order of work
+
+1. **Pin today's behaviour in tests** — MDX builder, the drill-down / visible
+   rows logic, stacked headings, the cellset conversion, the member picker's
+   tree. Include tests that expose bugs 1–5 below.
+2. **Build the shared pivot** from the IDE's code (no Tailwind; its own small
+   stylesheet), fold in the improvements below, and run the step-1 tests
+   against it.
+3. **Lenses first** — `Lens.pivot` in the toolkit: chip bar (move dimensions
+   between rows, columns, filters — only those the builder allows), a new
+   read-only bridge call for element trees, the toolkit edit model. First use:
+   Assumptions (compare companies side by side).
+4. **Repoint the IDE** View editor to the shared pivot once it passes the
+   tests and has been used in Lenses; delete the old IDE copy. No fixes to the
+   old copy in the meantime — keep the two-copy window short.
+5. Then split out the **member picker** and the **cell menu** (rule breakdown,
+   transaction log, notes, write, copy) the same way, so a Lens cell gets the
+   same right-click menu ("why is this number?", comments on cells).
+
+## Review findings
+
+### Keep
+- Drill-down state per parent; stacked column headings; parents above/below
+  children; "show parent" vs "replace with children".
+- Column widths remembered per person; quick search; freeze top row; CSV
+  export with labels; TM1 number formats; aliases.
+
+### Bugs (fix in the move)
+1. With 2+ dimensions on columns, only the first is checked for "is this a
+   total?" — totals aren't shaded and open an edit box TM1 will refuse.
+2. Indentation uses TM1's level (counted up from leaves), so uneven
+   hierarchies indent wrongly — use depth from the top instead.
+3. Names containing `]` or `"` break the MDX (no escaping in mdxBuilder).
+4. View editor supports at most 4 dimensions per axis (fixed slots); a 5th
+   silently loses its hierarchy.
+5. Click-to-edit reads a column flag that's never set, so it disagrees with
+   the "editable" rule.
+
+### Scale
+6. Visible rows are every combination first, then filtered — build them from
+   the tuples TM1 actually returned.
+7. Every typed cell re-runs the whole view (≈40 s on a cold cost cube) —
+   update in place, refresh in the background.
+8. Whole dimensions are fetched up front for drill-down — later: open to a
+   level and fetch children on demand for big models.
+
+### Entering data
+9. Use the toolkit edit model: blue = typed not saved, Save / Undo, "still
+   the old value?" check, History, live cursors. The IDE may keep
+   "write immediately" as a setting.
+10. **Paste from Excel** (free AG Grid has no clipboard) — straight after the move.
+11. **Spreading** (type on a total, spread to leaves) — check what the TM1
+    REST API offers first; separate piece of work.
+12. Keep the real value and the display format separate (today values become
+    display text before the grid sees them).
+
+### Look and consistency
+13. One colour scheme: grey = calculated, darker grey = total, blue = unsaved
+    (the cellset's rule / total flags are currently dropped).
+14. One AG Grid theme (IDE uses Balham, toolkit uses Quartz).
+15. Collapse-all / expand-all for columns too (nice-to-have).
+16. Today's toolkit grid features apply: stripes, fit to content, fit-all-rows
+    height, builder "Save layout".
+
+### Scope agreed
+Fold in 1–9, 12–14 and 16 during the move; 10 straight after; 11 as its own
+investigation; 15 when convenient.
+
+## Shape of the shared component
+- Input: a cube, a layout (rows, columns, filters; which dimensions may move),
+  and a bridge for TM1 calls. Two modes: IDE (write immediately, full
+  freedom) and Lens (save model, limited to what the builder allows).
+- Tests: drill-down and visible rows, MDX with awkward names, cellset
+  conversion with rule/total flags, the edit model, paste.
