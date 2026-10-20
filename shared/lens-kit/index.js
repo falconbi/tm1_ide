@@ -18,6 +18,7 @@ import dagre from '@dagrejs/dagre'
 import Alpine from '@alpinejs/csp'
 import { rows, format, better, localTime } from './rows.js'
 import { COMPONENTS, TOOLKIT_VERSION } from './components.js'
+import * as pivotKit from '../pivot/index.js'
 import THEMES from '../lens-themes.json'
 
 echarts.use([BarChart, LineChart, ScatterChart, PieChart, HeatmapChart, SankeyChart, TreeChart, GaugeChart,
@@ -694,7 +695,8 @@ function run(process, params) {
   return window.lensBridge.call('runProcess', { process, params: params || {} })
 }
 
-const Lens = { version: TOOLKIT_VERSION, components: COMPONENTS.slice(), rows, format, localTime, theme, kpis, trend, waterfall, bars, grid, flow, editing, live, history, historyPanel, legend, config, whoami, save, run, echarts }
+// _pivot: the shared pivot's building blocks (docs/PIVOT_PLAN.md) — internal until Lens.pivot
+const Lens = { _pivot: pivotKit, version: TOOLKIT_VERSION, components: COMPONENTS.slice(), rows, format, localTime, theme, kpis, trend, waterfall, bars, grid, flow, editing, live, history, historyPanel, legend, config, whoami, save, run, echarts }
 const missing = COMPONENTS.filter(n => typeof Lens[n] !== 'function')
 if (missing.length) throw new Error('Lens toolkit is missing: ' + missing.join(', '))
 
