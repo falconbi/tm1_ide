@@ -109,7 +109,10 @@ shared pivot can do everything the View editor does; a Lens exposes only part.
   the builder allows, pick filter members from the builder's list, stripes,
   column widths, layout remembered per person.
 - **Behind an "Advanced" button** — each one only if the builder switches it on
-  (`advanced: ['members', 'suppress', 'aliases', 'totals', 'csv']`):
+  (`advanced: ['views', 'members', 'suppress', 'aliases', 'totals', 'csv']`):
+  **choose a saved TM1 view** (from the views the builder names — loads its
+  rows, columns, filters and subsets; needs a read-only bridge call for a
+  view's layout, using the IDE's existing view reader),
   pick members / named subsets on an axis (the member picker, step 5, limited
   to subsets the builder names), suppress empty rows/columns, aliases, totals
   top/bottom, export to CSV.
