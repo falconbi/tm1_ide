@@ -534,8 +534,9 @@ function register(server, { client, ok, esc, logChange, requireChangeSet, lintRu
             start_time: z.string().optional().describe('ISO start time, e.g. 2026-01-01T06:00:00Z'),
             frequency:  z.string().optional().describe('ISO-8601 duration, e.g. P1DT00H00M00S for daily. Default daily.'),
             active:     z.boolean().optional().describe('Activate immediately (default false)'),
+            execution_mode: z.enum(['SingleCommit', 'MultipleCommit']).optional().describe('How the chore commits. SingleCommit (default) runs every step in one transaction; MultipleCommit commits after each step, so a long multi-step job never holds one long lock.'),
         },
-        async ({ name, steps, start_time, frequency, active }) => {
+        async ({ name, steps, start_time, frequency, active, execution_mode = 'SingleCommit' }) => {
             requireChangeSet()
             const c = client()
             await c.createChore({
@@ -543,7 +544,7 @@ function register(server, { client, ok, esc, logChange, requireChangeSet, lintRu
                 StartTime:     start_time ?? new Date().toISOString(),
                 DSTSensitive:  false,
                 Active:        !!active,
-                ExecutionMode: 'SingleCommit',
+                ExecutionMode: execution_mode,
                 Frequency:     frequency ?? 'P1DT00H00M00S',
                 Tasks: steps.map((s, i) => ({
                     Step: i,
