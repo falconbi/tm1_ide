@@ -368,15 +368,19 @@ function register(server, { client, ok, esc, logChange, requireChangeSet, lintRu
             })).optional(),
             datasource: z.record(z.any()).optional().describe(
                 'TM1 DataSource object, e.g. { "Type": "ODBC", "dataSourceNameForServer": "MyDSN", "userName": "u", "password": "p", "query": "SELECT ..." } ' +
-                'or { "Type": "ASCII", "dataSourceNameForServer": "C:\\\\data\\\\file.csv", "asciiDelimiterChar": ",", "asciiHeaderRecords": 1 }. Omit for a process with no datasource.'
+                'or { "Type": "ASCII", "dataSourceNameForServer": "C:\\\\data\\\\file.csv", "asciiDelimiterType": "Character", "asciiDelimiterChar": ",", "asciiQuoteCharacter": "\\"", "asciiHeaderRecords": 1 } (TM1 refuses an ASCII source without asciiDelimiterType) — and give its columns in variables. Omit for a process with no datasource.'
             ),
+            variables: z.array(z.object({
+                Name: z.string(),
+                Type: z.enum(['String', 'Numeric']).optional().describe('default String'),
+            })).optional().describe('The datasource columns, in order, as Data/Metadata variables (needed for an ASCII or ODBC datasource), e.g. [{ "Name": "vEmployee" }, { "Name": "nFTE", "Type": "Numeric" }]'),
             prolog:   z.string().optional().describe('Prolog section code'),
             metadata: z.string().optional().describe('Metadata section code'),
             data:     z.string().optional().describe('Data section code'),
             epilog:   z.string().optional().describe('Epilog section code'),
             force:    z.boolean().optional().describe('Write even if the static TI lint found errors'),
         },
-        async ({ name, parameters, datasource, prolog, metadata, data, epilog, force }) => {
+        async ({ name, parameters, datasource, variables, prolog, metadata, data, epilog, force }) => {
             requireChangeSet()
             const lint = lintTI({ prolog, metadata, data, epilog })
             if (lint.errors.length && !force) {
@@ -384,7 +388,8 @@ function register(server, { client, ok, esc, logChange, requireChangeSet, lintRu
             }
             const c      = client()
             const exists = await c.getProcess(name).then(() => true).catch(() => false)
-            await c.createOrReplaceProcess({ name, parameters, datasource, prolog, metadata, data, epilog })
+            await c.createOrReplaceProcess({ name, parameters, datasource, prolog, metadata, data, epilog,
+                variables: variables?.map((v, i) => ({ Name: v.Name, Type: v.Type ?? 'String', Position: i + 1, StartByte: 0, EndByte: 0 })) })
             logChange(exists ? 'PROCESS_SAVED' : 'PROCESS_CREATED', 'process', name,
                 { after: { prolog: prolog ?? '', metadata: metadata ?? '', data: data ?? '', epilog: epilog ?? '' } })
             const note = lint.warnings.length ? ` (lint warnings: ${lint.warnings.map(w => `[${w.section}] ${w.message}`).join(' | ')})` : ''
