@@ -100,6 +100,10 @@ test('moving a dimension re-asks TM1 with the new layout and keeps one dimension
   assert.ok(!/WHERE \(\[Period\]/.test(mdx), 'Period no longer a filter')
   assert.deepEqual(plain(pv.layout().columns), ['Entity', 'Period'])
   assert.match(mdx, /\{\[Period\]\.\[Period\]\.\[Jan\], \[Period\]\.\[Period\]\.\[Feb\]\}/, 'a filter moved onto an axis brings the choices it offered, not the whole dimension')
+  await pv.swap()                                 // ⇄: rows and columns trade places
+  assert.deepEqual(plain(pv.layout().rows), ['Entity', 'Period'])
+  assert.deepEqual(plain(pv.layout().columns), ['Measure'])
+  await pv.swap()
   await pv.move('Measure', 'filters')            // the only row dimension stays
   assert.deepEqual(plain(pv.layout().rows), ['Measure'])
   await pv.move('Version', 'rows')               // locked: stays a filter

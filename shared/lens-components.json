@@ -99,7 +99,7 @@
   },
   "pivot": {
     "purpose": "Slice and dice on one cube with drill-down — the same pivot as the IDE's View editor. Dimensions sit on rows, columns or filters; the person drags the ones the Lens lets move, drills into totals, and (with edit) types into input cells.",
-    "call": "const pv = Lens.pivot(element, { cube, rows, columns, filters, edit, onEdit, formats, key, stripes, movable }) → { ready, changes(), save(), undo(), refresh(), move(dimension, 'rows' | 'columns' | 'filters'), layout(), stripes(on), grid }",
+    "call": "const pv = Lens.pivot(element, { cube, rows, columns, filters, edit, onEdit, formats, key, stripes, movable }) → { ready, changes(), save(), undo(), refresh(), move(dimension, 'rows' | 'columns' | 'filters'), swap(), layout(), stripes(on), grid }",
     "data": "rows / columns: [{ dimension, members?: [...], memberSet?: 'all' | 'leaf' | 'root', subset?, hierarchy?, label? }]; filters: [{ dimension, member, choices?: [...], locked?: true }]. Every cube dimension must be placed somewhere to save.",
     "options": {
       "edit": "true lets people type into input cells (leaf × leaf, not rule-calculated); save() writes them with Lens.save, checked against the old values — declare the cube in <meta name=\"lens-writes\">.",
@@ -110,7 +110,7 @@
       "suppress": "'none' (default) | 'rows' | 'columns' | 'all' — leave out empty rows/columns.",
       "stripes": "shade every other row; pv.stripes(on) switches it."
     },
-    "interactions": "Drag a chip between Rows, Columns and Filters; pick a filter member from its list; ▸/▾ drills into a total (remembered per outer member); − / + on a row header collapses or opens a whole dimension. Colours as Lens.grid: grey = calculated, darker grey = total, blue = typed not saved.",
+    "interactions": "Drag a chip between Rows, Columns and Filters; ⇄ swaps rows and columns; pick a filter member from its list; ▸/▾ drills into a total (remembered per outer member); − / + on a row header collapses or opens a whole dimension. Colours as Lens.grid: grey = calculated, darker grey = total, blue = typed not saved.",
     "goodFor": [
       "Comparing across companies / cost centres / versions",
       "Entry across two dimensions at once",

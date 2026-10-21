@@ -383,7 +383,7 @@ function save(cube, cells) {
 //     filters: [{ dimension: 'Period', member: '2026-06', choices: [...] }, { dimension: 'Version', member: 'Forecast', locked: true }],
 //     edit: true, onEdit: changes => …, formats: { Measure: { 'Merit %': '0.0%' } }, key: 'assumptions',
 //   })
-//   pv.changes(); pv.save() → Promise; pv.undo(); pv.refresh(); pv.move(dim, 'rows'|'columns'|'filters'); pv.grid
+//   pv.changes(); pv.save() → Promise; pv.undo(); pv.refresh(); pv.move(dim, 'rows'|'columns'|'filters'); pv.swap(); pv.grid
 // Every cube dimension must be placed (rows, columns or filters) for saving.
 function pivot(el, cfg = {}) {
   const P = pivotKit, node = host(el), t = theme.colors
@@ -426,7 +426,10 @@ function pivot(el, cfg = {}) {
       }
       return '<span data-dim="' + esc(d) + '"' + (move ? ' draggable="true"' : '') + ' title="' + (move ? 'Drag to rows, columns or filters' : 'Fixed by the Lens') + '" style="display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border-radius:999px;border:1px solid ' + t.rule + ';background:' + t.panel + ';color:' + t.ink + ';cursor:' + (move ? 'grab' : 'default') + '">' + (move ? '' : '🔒 ') + inner + '</span>'
     }
-    bar.innerHTML = zone('rows', 'Rows') + zone('columns', 'Columns') + zone('filters', 'Filters')
+    const swapOk = layout.columns.length && layout.rows.concat(layout.columns).every(movable)
+    bar.innerHTML = zone('rows', 'Rows') +
+      '<button type="button" data-swap title="Swap rows and columns"' + (swapOk ? '' : ' disabled') + ' style="font:inherit;font-size:14px;line-height:1;padding:4px 8px;border-radius:7px;border:1px solid ' + t.rule + ';background:' + t.panel + ';color:' + t.ink + ';cursor:' + (swapOk ? 'pointer' : 'default') + ';opacity:' + (swapOk ? 1 : 0.4) + '">⇄</button>' +
+      zone('columns', 'Columns') + zone('filters', 'Filters')
   }
   // drag a chip to another zone
   bar.addEventListener('dragstart', e => { const c = e.target.closest && e.target.closest('[data-dim]'); if (c) e.dataTransfer.setData('text/plain', c.getAttribute('data-dim')) })
@@ -436,6 +439,7 @@ function pivot(el, cfg = {}) {
     e.preventDefault()
     run(() => move(e.dataTransfer.getData('text/plain'), z.getAttribute('data-zone')))
   })
+  bar.addEventListener('click', e => { if (e.target.closest && e.target.closest('[data-swap]')) run(swap) })
   bar.addEventListener('change', e => {
     const d = e.target.getAttribute && e.target.getAttribute('data-member')
     if (d) { member[d] = e.target.value; remember(); run(load) }
@@ -448,6 +452,13 @@ function pivot(el, cfg = {}) {
     if (g && g.changes().length) { report(new Error('Save or undo your changes before moving dimensions.')); return }
     layout[from] = layout[from].filter(x => x !== d); layout[to] = [...layout[to], d]
     if (to === 'filters' && member[d] == null) member[d] = spec[d].member
+    remember(); return rebuild()
+  }
+  // rows ⇄ columns in one go (only when both sides can move and columns aren't empty)
+  function swap() {
+    if (!layout.columns.length || !layout.rows.concat(layout.columns).every(movable)) return
+    if (g && g.changes().length) { report(new Error('Save or undo your changes before swapping.')); return }
+    layout = { rows: layout.columns, columns: layout.rows, filters: layout.filters }
     remember(); return rebuild()
   }
   const report = e => { if (cfg.onError) cfg.onError(e); else console.error(e) }
@@ -509,6 +520,7 @@ function pivot(el, cfg = {}) {
     onEdit(fn) { onChange = fn },
     // move a dimension to 'rows' | 'columns' | 'filters' (what dragging a chip does)
     move: (d, to) => run(() => move(d, to)),
+    swap: () => run(swap),
     // write the typed values: every coordinate from the layout; expect = the value before typing
     save() {
       const ch = g ? g.changes() : []
