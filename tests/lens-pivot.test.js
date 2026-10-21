@@ -230,3 +230,28 @@ test('right-click a cell: Why this number? traces the rule and clicks through; C
   assert.ok(panel.textContent.includes('Agreed with HR') && panel.textContent.includes('Note added'))
   pv.grid.destroy(); close()
 })
+
+test('Lens.grid: with cellMenu, right-click a cell opens the same Why / Who changed it / Notes menu for its TM1 cell', async () => {
+  const { doc, win, calls, close } = page()
+  doc.body.insertAdjacentHTML('beforeend', '<div id="g2" style="height:300px;width:600px"></div>')
+  const g = win.Lens.grid('#g2', {
+    columns: [{ field: 'measure', headerName: 'Assumption' }, { field: 'Jan', headerName: 'Jan', type: 'number' }],
+    rows: [{ measure: 'Merit %', Jan: 0.03 }],
+    cellMenu: (row, field) => field === 'Jan' ? { cube: 'Assumptions', coordinates: { Measure: row.measure, Entity: 'US', Period: 'Jan', Version: 'Forecast' } } : null,
+  })
+  await wait(40)
+  const cell = doc.querySelector('#g2 .ag-center-cols-container [col-id="Jan"]')
+  cell.dispatchEvent(new win.MouseEvent('contextmenu', { bubbles: true, clientX: 40, clientY: 40 }))
+  await wait(30)
+  const menu = doc.querySelector('[data-cell-menu]')
+  assert.ok(menu, 'menu opens')
+  menu.querySelector('[data-open="why"]').dispatchEvent(new win.MouseEvent('click', { bubbles: true }))
+  await wait(30)
+  assert.deepEqual(plain(calls.find(c => c.method === 'cellTrace').payload.coordinates), { Measure: 'Merit %', Entity: 'US', Period: 'Jan', Version: 'Forecast' })
+  // a label cell maps to nothing → no menu
+  doc.querySelectorAll('[data-cell-menu]').forEach(m => m.remove())
+  doc.querySelector('#g2 [col-id="measure"].ag-cell').dispatchEvent(new win.MouseEvent('contextmenu', { bubbles: true }))
+  await wait(20)
+  assert.equal(doc.querySelector('[data-cell-menu]'), null)
+  g.api.destroy(); close()
+})

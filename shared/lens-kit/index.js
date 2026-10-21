@@ -187,7 +187,9 @@ theme.blue = BLUE         // for a Lens's own legend (Lens.legend draws the stan
 // stripes: shade every other row (off unless asked); g.stripes(on) switches it.
 // A column's options may be a function (row) → list | null: a drop-down on the
 // rows that return a list, ordinary typing on the rest.
-function grid(el, { columns = [], rows: data = [], height, onEdit, onFocus, onSelect, rowEditable, fit = 'width', stripes = false } = {}) {
+// cellMenu: (row, field) → { cube, coordinates } | null — where a cell lives in TM1; with it,
+// right-click gives Why this number? / Who changed it / Notes (notes: true allows adding one).
+function grid(el, { columns = [], rows: data = [], height, onEdit, onFocus, onSelect, rowEditable, fit = 'width', stripes = false, cellMenu, notes = false } = {}) {
   const t = theme.colors, node = host(el)
   node.innerHTML = ''
   // height 'auto': the grid grows to fit every row (no scrollbar of its own) — for short tables
@@ -276,6 +278,11 @@ function grid(el, { columns = [], rows: data = [], height, onEdit, onFocus, onSe
       if (node) onFocus(node.data, p.column.getColId ? p.column.getColId() : p.column)
     },
     tooltipShowDelay: 0,
+    preventDefaultOnContextMenu: !!cellMenu,
+    onCellContextMenu: cellMenu ? p => {
+      const where = p.data && cellMenu(p.data, p.column.getColId())
+      if (where && where.cube && where.coordinates) openCellMenu(p.event, { cube: where.cube, coordinates: where.coordinates, notes })
+    } : undefined,
     rowSelection: onSelect ? { mode: 'singleRow', checkboxes: false, enableClickSelection: true } : undefined,
     onSelectionChanged: onSelect ? () => { const r = api.getSelectedRows(); onSelect(r[0] || null) } : undefined,
     onCellValueChanged: p => {
@@ -378,6 +385,26 @@ function save(cube, cells) {
 // needs notes: true and the cube declared in <meta name="lens-notes">).
 //   Lens.cellInfo({ cube, coordinates: { dim: element, … }, tab: 'why' | 'changes' | 'notes', notes: true })
 let cellPanel = null
+// The small right-click menu over a cell — opens Lens.cellInfo on the chosen tab.
+function openCellMenu(event, { cube, coordinates, notes }) {
+  const t = theme.colors
+  if (event && event.preventDefault) event.preventDefault()
+  document.querySelectorAll('[data-cell-menu]').forEach(m => m.remove())
+  const m = document.createElement('div'); m.setAttribute('data-cell-menu', '')
+  m.style.cssText = 'position:fixed;z-index:58;min-width:190px;background:' + t.panel + ';color:' + t.ink + ';border:1px solid ' + t.rule + ';border-radius:9px;box-shadow:0 10px 28px rgba(0,0,0,.2);padding:4px;font-size:13px'
+  m.style.left = Math.min(event?.clientX ?? 100, (window.innerWidth || 800) - 200) + 'px'
+  m.style.top = Math.min(event?.clientY ?? 100, (window.innerHeight || 600) - 120) + 'px'
+  const item = (k, l) => '<button type="button" data-open="' + k + '" style="display:block;width:100%;text-align:left;font:inherit;padding:6px 10px;border:0;border-radius:6px;background:none;color:inherit;cursor:pointer">' + l + '</button>'
+  m.innerHTML = item('why', 'Why this number?') + item('changes', 'Who changed it') + item('notes', 'Notes')
+  document.body.appendChild(m)
+  const close = () => { m.remove(); document.removeEventListener('mousedown', away, true) }
+  const away = e => { if (!m.contains(e.target)) close() }
+  setTimeout(() => document.addEventListener('mousedown', away, true), 0)
+  m.onclick = e => {
+    const b = e.target.closest && e.target.closest('[data-open]'); if (!b) return
+    close(); cellInfo({ cube, coordinates, tab: b.getAttribute('data-open'), notes: !!notes })
+  }
+}
 function cellInfo({ cube, coordinates, tab = 'why', notes = false, format: fmt } = {}) {
   const t = theme.colors
   if (!cellPanel) {
@@ -645,27 +672,13 @@ function pivot(el, cfg = {}) {
     })
     if (onChange) onChange([])
   }
-  // right-click a cell: Why this number? / Changes / Notes (Lens.cellInfo)
+  // right-click a cell: Why this number? / Who changed it / Notes
   function cellMenu({ tuple, members, event }) {
-    event?.preventDefault?.()
     const co = {}
     layout.rows.forEach((d, i) => { co[d] = tuple[i] }); layout.columns.forEach((d, i) => { co[d] = members[i] }); layout.filters.forEach(d => { co[d] = member[d] })
-    document.querySelectorAll('[data-cell-menu]').forEach(m => m.remove())
-    const m = document.createElement('div'); m.setAttribute('data-cell-menu', '')
-    m.style.cssText = 'position:fixed;z-index:58;min-width:190px;background:' + t.panel + ';color:' + t.ink + ';border:1px solid ' + t.rule + ';border-radius:9px;box-shadow:0 10px 28px rgba(0,0,0,.2);padding:4px;font-size:13px'
-    m.style.left = Math.min(event?.clientX ?? 100, (window.innerWidth || 800) - 200) + 'px'
-    m.style.top = Math.min(event?.clientY ?? 100, (window.innerHeight || 600) - 120) + 'px'
-    const item = (k, l) => '<button type="button" data-open="' + k + '" style="display:block;width:100%;text-align:left;font:inherit;padding:6px 10px;border:0;border-radius:6px;background:none;color:inherit;cursor:pointer">' + l + '</button>'
-    m.innerHTML = item('why', 'Why this number?') + item('changes', 'Who changed it') + item('notes', 'Notes')
-    document.body.appendChild(m)
-    const close = () => { m.remove(); document.removeEventListener('mousedown', away, true) }
-    const away = e => { if (!m.contains(e.target)) close() }
-    setTimeout(() => document.addEventListener('mousedown', away, true), 0)
-    m.onclick = e => {
-      const b = e.target.closest && e.target.closest('[data-open]'); if (!b) return
-      close(); cellInfo({ cube: cfg.cube, coordinates: co, tab: b.getAttribute('data-open'), notes: !!cfg.notes })
-    }
+    openCellMenu(event, { cube: cfg.cube, coordinates: co, notes: !!cfg.notes })
   }
+
   async function load() {
     if (!g) return rebuild()
     const [data, rowsH, colsH] = await Promise.all([query(), treesFor(layout.rows), treesFor(layout.columns)])
