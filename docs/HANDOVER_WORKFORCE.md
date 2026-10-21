@@ -110,6 +110,18 @@ Load HR Assignments (+ Write Sample HR Extract). Outcomes go to the `Lens Messag
    at cost-centre / entity level except **My cost centre and Since last forecast**, which
    read Cost at seat (Position) level — but only `Total Compensation` / `Reporting` /
    `Amount`. Position Map is read by none of them.
+10. **Fast-snapshot probe (read-only design check).** Every element checked: `Total
+    Positions` and the function names are consolidations; `Total Compensation`, `Cost to
+    Company`, `Employee Deductions`, `GL:…` are consolidations; `Currency` and `Measure`
+    are all leaves. So Cost must be stored at **leaf seats** — totals roll up. Bedrock's
+    `}bedrock.cube.data.copy` defaults `pSuppressConsol=1` (skips consolidations),
+    `pZeroTarget=1` (it **zeroes the target slice** via `}bedrock.cube.data.clear` before
+    writing) and `pSuppressRules=1` (the WFP processes pass 0 to copy calculated values).
+    Probe into `FCST 2026-03` itself (identical values, end state unchanged): one month ×
+    restricted leaf slice = 12.9k cells 9.9s / 43k cells 44.7s; the month still matched
+    Forecast to the last digit. Writes dominate. `create_chore` now takes `execution_mode`
+    (default `SingleCommit`) so a chore can be `MultipleCommit` (commit per step) — tested,
+    commit 8c99acc.
 
 **Salary belongs to the seat** (intended, confirmed by James): a transfer copies the rate to
 the new seat and **leaves it on the old seat** as the starting point for a backfill. A vacant
@@ -130,8 +142,14 @@ Record a transfer.
    (rule recalculation; not the new tile), a full feeder rebuild is ≈12 min, and **`WFP
    Snapshot` takes over an hour at 3,000 people** (measured 1h36m). The cost is Bedrock
    copying `WFP Workforce Cost` seat-by-seat: ~207k cells *per month* just for that cube
-   (≈7.5M over the plan), ~85% of all the data a snapshot copies. Fix soon — a snapshot
-   that copies only what the variance pages read would take minutes.
+   (≈7.5M over the plan), ~85% of all the data a snapshot copies. **Measured restricted
+   leaf slice** (6 real pay-component leaves × Reporting/Reporting @ Budget FX ×
+   Amount/Capex/Opex): ~43k cells/month (~1.56M over the plan), and Bedrock still takes
+   **~10s / 12.9k cells, ~45s / 43k cells** — a full restricted run ≈ **25–35 min** even
+   in committed steps. Writes dominate (the same slice reads back in ~1.3s; the copy is
+   ~10× that). **The real fix is to slim the Cost cube** — the 15 helper pay components
+   (`_…`) and the 3 local currencies (GBP/USD/NZD) are ~85% of its cells and no page reads
+   them. That is a model change for James to decide; not started.
 3. Re-record the 17 scale assertions for the 3,000-person model.
 4. Open question for James: Downside hiring lines for ENG-005 / SLS-003.
 
