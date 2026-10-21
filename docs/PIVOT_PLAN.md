@@ -99,3 +99,22 @@ investigation; 15 when convenient.
   freedom) and Lens (save model, limited to what the builder allows).
 - Tests: drill-down and visible rows, MDX with awkward names, cellset
   conversion with rule/total flags, the edit model, paste.
+
+## What a Lens shows (agreed Oct 21)
+
+Rule: **the builder decides the playground; the viewer plays inside it.** The
+shared pivot can do everything the View editor does; a Lens exposes only part.
+
+- **Always on:** drill-down, expand / collapse all, move and swap the dimensions
+  the builder allows, pick filter members from the builder's list, stripes,
+  column widths, layout remembered per person.
+- **Behind an "Advanced" button** — each one only if the builder switches it on
+  (`advanced: ['members', 'suppress', 'aliases', 'totals', 'csv']`):
+  pick members / named subsets on an axis (the member picker, step 5, limited
+  to subsets the builder names), suppress empty rows/columns, aliases, totals
+  top/bottom, export to CSV.
+- **IDE only, never in a Lens:** writing MDX, building or saving subsets and
+  views, moving locked dimensions, changing version or cube.
+
+The view switch in a Lens is called **Pivot** (e.g. Assumptions: By month | Pivot).
+Build the Advanced button after step 5, when the member picker exists.
