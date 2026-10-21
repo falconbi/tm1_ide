@@ -99,6 +99,17 @@ Load HR Assignments (+ Write Sample HR Extract). Outcomes go to the `Lens Messag
    rely on those stored values — using `WFP Copy Version` would leave them blank. The only
    old snapshot (`FCST 2026-02`) predates `WFP Assignment`, so it has no people data; a
    fresh snapshot fixes it. Written up in `docs/BUILDING_MODELS.md`.
+9. **Fresh snapshot `FCST 2026-03` taken** (Forecast → FCST 2026-03, `2026-04` Prior Fcst
+   Snapshot stamped). It **took 1h36m** (see performance item) but verified correct:
+   Assignment 18,287 = 18,287, Leaver flags 472 = 472, Headcount Closing 2026-02 2,676 =
+   2,676, Cost FY2026 matches, 238 hire months. It is now the "last forecast" for the 6
+   lenses that read the newest `FCST yyyy-mm` (Bridge, Cost, Headcount, KPIs, My cost
+   centre, Since last forecast). **Read-only timings (one month, Forecast):** WFP Workforce
+   Cost 207,566 cells / 19s; Assignment 5,478 / 0.6s; Position Map 15,009 / 0.7s; Headcount
+   11,229 / 1.2s; Workforce Input 5,643 / 0.6s; the rest tiny. **What the pages read:** all
+   at cost-centre / entity level except **My cost centre and Since last forecast**, which
+   read Cost at seat (Position) level — but only `Total Compensation` / `Reporting` /
+   `Amount`. Position Map is read by none of them.
 
 **Salary belongs to the seat** (intended, confirmed by James): a transfer copies the rate to
 the new seat and **leaves it on the old seat** as the starting point for a backfill. A vacant
@@ -116,8 +127,11 @@ Record a transfer.
    `WFP Hiring Plan` `Attrition Month` (`WFP-My-Cost-Centre.src.html:53,62`,
    `WFP-Since-Last.src.html:46,57`); the measure is dead — no rule reads it.
 2. **Model performance** — the first load of Home after assignment data changes is ~30s
-   (rule recalculation; not the new tile), and a full feeder rebuild is ≈12 min. Users feel
-   the ~30s. Fix soon.
+   (rule recalculation; not the new tile), a full feeder rebuild is ≈12 min, and **`WFP
+   Snapshot` takes over an hour at 3,000 people** (measured 1h36m). The cost is Bedrock
+   copying `WFP Workforce Cost` seat-by-seat: ~207k cells *per month* just for that cube
+   (≈7.5M over the plan), ~85% of all the data a snapshot copies. Fix soon — a snapshot
+   that copies only what the variance pages read would take minutes.
 3. Re-record the 17 scale assertions for the 3,000-person model.
 4. Open question for James: Downside hiring lines for ENG-005 / SLS-003.
 
