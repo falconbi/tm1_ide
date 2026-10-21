@@ -5,7 +5,7 @@ import { DndContext, DragOverlay, PointerSensor, useSensor, useSensors, useDropp
 import MonacoEditor from '@monaco-editor/react'
 import { useStore } from '@/store'
 import { subsetApplyCallbacks } from '@/lib/subsetCallbacks'
-import { useCubeDimensions, useSubsets, useElementsTree, useViews, useExecuteMDX, useViewAxes, useSaveView, useSetDefaultView, usePawBookUsage, useDimAttributes, useViewUsage, useMultiFormatAttrs, useConflictCheck, useGenerateViewMDX, useConfig } from '@/hooks/useApi'
+import { useCubeDimensions, useSubsets, useElementsTree, useElementsTrees, useViews, useExecuteMDX, useViewAxes, useSaveView, useSetDefaultView, usePawBookUsage, useDimAttributes, useViewUsage, useMultiFormatAttrs, useConflictCheck, useGenerateViewMDX, useConfig } from '@/hooks/useApi'
 import { toast } from 'sonner'
 import { RefreshCw, Loader2, Table2, GripVertical, GripHorizontal, X, LayoutGrid, Rows3, Columns3, Filter, ZapOff, Zap, ChevronLeft, ChevronRight, PencilLine, Save, Code2, Eye, ChevronDown, BookOpen, ChevronUp, MapPin, WrapText, Braces, History, AlertTriangle, Cog, FileSearch, Rss, Sparkles, Clock, Check, ArrowUpDown, HelpCircle } from 'lucide-react'
 import HelpPanel from '@/components/HelpPanel'
@@ -29,9 +29,10 @@ function saveViewSessionEntry(entry) {
     localStorage.setItem(VIEW_SESSIONS_KEY, JSON.stringify(list.slice(0, 30)))
 }
 
-import { buildMDX } from '@core/mdxBuilder.js'
-import HierarchyGrid from '@/components/HierarchyGrid'
-import { buildHierarchyFromElements, constrainHierarchy } from '@/lib/pivot-tree'
+import { buildMDX } from '@shared/pivot/mdx.js'
+import PivotGrid from '@/components/PivotGrid'
+import { buildHierarchy, tupleIsLeaf } from '@shared/pivot/tree.js'
+import { cellsetToPivot } from '@shared/pivot/cellset.js'
 import GridToolbar from '@/components/GridToolbar'
 import { ConflictBanner, ConflictSaveWarning } from '@/components/ConflictBanner'
 import DiffViewerModal from '@/components/DiffViewerModal'
@@ -1805,112 +1806,84 @@ export default function ViewEditor({ tab }) {
         return () => clearTimeout(t)
     }, [app.refreshKey])
 
-    // ── HierarchyGrid data ────────────────────────────────────────────────────
-    // Fixed 4-slot hooks per axis (React rules: no conditional/loop hooks)
+    // ── Pivot grid data (shared pivot — shared/pivot) ─────────────────────────
     const rowDims = useMemo(() => axes.rows.map(d => d.dimension),    [axes.rows])
     const colDims = useMemo(() => axes.columns.map(d => d.dimension), [axes.columns])
 
-    const { data: rTree0 = [] } = useElementsTree(rowDims[0] ? tab.server : null, rowDims[0] ?? null)
-    const { data: rTree1 = [] } = useElementsTree(rowDims[1] ? tab.server : null, rowDims[1] ?? null)
-    const { data: rTree2 = [] } = useElementsTree(rowDims[2] ? tab.server : null, rowDims[2] ?? null)
-    const { data: rTree3 = [] } = useElementsTree(rowDims[3] ? tab.server : null, rowDims[3] ?? null)
+    // element trees for every dimension on rows / columns (any number of them)
+    const rowTreeQs = useElementsTrees(tab.server, rowDims)
+    const colTreeQs = useElementsTrees(tab.server, colDims)
+    const rowTreesKey = rowTreeQs.map(q => q.dataUpdatedAt).join()
+    const colTreesKey = colTreeQs.map(q => q.dataUpdatedAt).join()
 
-    const { data: cTree0 = [] } = useElementsTree(colDims[0] ? tab.server : null, colDims[0] ?? null)
-    const { data: cTree1 = [] } = useElementsTree(colDims[1] ? tab.server : null, colDims[1] ?? null)
-    const { data: cTree2 = [] } = useElementsTree(colDims[2] ? tab.server : null, colDims[2] ?? null)
-    const { data: cTree3 = [] } = useElementsTree(colDims[3] ? tab.server : null, colDims[3] ?? null)
-
-    const hierarchies = useMemo(() => {
-        const trees = [rTree0, rTree1, rTree2, rTree3]
-        return rowDims.map((dim, i) => buildHierarchyFromElements(trees[i], dim)).filter(Boolean)
-    }, [rowDims, rTree0, rTree1, rTree2, rTree3])
-
-    const columnHierarchies = useMemo(() => {
-        const trees = [cTree0, cTree1, cTree2, cTree3]
-        return colDims.map((dim, i) => buildHierarchyFromElements(trees[i], dim)).filter(Boolean)
-    }, [colDims, cTree0, cTree1, cTree2, cTree3])
+    // a tree per dimension (null = not loaded → the grid lists that dimension flat), with aliases as labels
+    const withAlias = (h, dim) => {
+        const attr = h && dimAliases[dim]; const map = attr && aliasValueMaps[`${dim}:${attr}`]
+        if (!map) return h
+        return { ...h, nodes: Object.fromEntries(Object.entries(h.nodes).map(([id, n]) => [id, { ...n, label: map[id] ?? n.label ?? id }])) }
+    }
+    const hierarchies = useMemo(() =>
+        rowDims.map((dim, i) => withAlias(buildHierarchy(rowTreeQs[i]?.data ?? [], dim), dim)),
+    [rowDims, rowTreesKey, dimAliases, aliasValueMaps]) // eslint-disable-line react-hooks/exhaustive-deps
+    const columnHierarchies = useMemo(() =>
+        colDims.map((dim, i) => withAlias(buildHierarchy(colTreeQs[i]?.data ?? [], dim), dim)),
+    [colDims, colTreesKey, dimAliases, aliasValueMaps]) // eslint-disable-line react-hooks/exhaustive-deps
 
     const hierarchyData = useMemo(() => cellsetToHierarchyData(result, formatAttrs, pageMembers, suppressZeros, app.settings.numFormat), [result, formatAttrs, pageMembers, suppressZeros, app.settings.numFormat])
 
-    // Constrain hierarchies to only members the cellset actually returned
-    const constrainedHierarchies = useMemo(() => {
-        if (!hierarchyData || !hierarchies.length) return hierarchies
-        const dimCount = hierarchies.length
-        const perDim   = Array.from({ length: dimCount }, () => new Set())
-        for (const key of Object.keys(hierarchyData.data)) {
-            key.split('::').forEach((m, i) => { if (perDim[i]) perDim[i].add(m) })
-        }
-        return hierarchies.map((h, i) => constrainHierarchy(h, [...perDim[i]]))
-    }, [hierarchies, hierarchyData])
+    // the cellset as pivot data: real value + display + kind per cell
+    const pivotData = useMemo(() => result ? cellsetToPivot(result, { formatMap: formatAttrs, pageMembers, suppressZeros, useFormat: app.settings.numFormat }) : null,
+        [result, formatAttrs, pageMembers, suppressZeros, app.settings.numFormat])
 
-    const constrainedColHierarchies = useMemo(() => {
-        if (!hierarchyData || !columnHierarchies.length) return columnHierarchies
-        const perDim = Array.from({ length: columnHierarchies.length }, () => new Set())
-        for (const col of hierarchyData.columns) {
-            (col.members ?? [col.label]).forEach((m, i) => { if (perDim[i]) perDim[i].add(m) })
-        }
-        return columnHierarchies.map((h, i) => constrainHierarchy(h, [...perDim[i]]))
-    }, [columnHierarchies, hierarchyData])
+    // after typing, refresh the view once things go quiet (totals and rules recalculate) —
+    // not after every cell; the grid keeps its drill-down across the refresh
+    const refreshTimer = useRef(null)
+    useEffect(() => () => clearTimeout(refreshTimer.current), [])
+    const scheduleRefresh = useCallback(() => {
+        clearTimeout(refreshTimer.current)
+        refreshTimer.current = setTimeout(() => handleExecute(), 900)
+    }, [handleExecute])
 
-    const aliasActive = Object.values(dimAliases).some(Boolean)
-    const applyAliasToNodes = (nodes, dim) => {
-        const attr = dimAliases[dim]; if (!attr) return nodes
-        const map  = aliasValueMaps[`${dim}:${attr}`]; if (!map) return nodes
-        return Object.fromEntries(Object.entries(nodes).map(([id, n]) => [id, { ...n, label: map[id] ?? n.label ?? id }]))
-    }
-    const displayHierarchies = useMemo(() =>
-        !aliasActive ? constrainedHierarchies
-        : constrainedHierarchies.map((h, i) => ({ ...h, nodes: applyAliasToNodes(h.nodes ?? {}, rowDims[i]) })),
-    [constrainedHierarchies, rowDims, dimAliases, aliasValueMaps]) // eslint-disable-line
-    const displayColHierarchies = useMemo(() =>
-        !aliasActive ? constrainedColHierarchies
-        : constrainedColHierarchies.map((h, i) => ({ ...h, nodes: applyAliasToNodes(h.nodes ?? {}, colDims[i]) })),
-    [constrainedColHierarchies, colDims, dimAliases, aliasValueMaps]) // eslint-disable-line
-    const displayColumns = useMemo(() => {
-        if (!hierarchyData?.columns || !aliasActive) return hierarchyData?.columns
-        return hierarchyData.columns.map(col => {
-            const aliased = (col.members ?? [col.label]).map((name, i) => {
-                const dim = colDims[i]; const attr = dim ? dimAliases[dim] : null
-                return attr ? (aliasValueMaps[`${dim}:${attr}`]?.[name] ?? name) : name
-            })
-            return { ...col, label: aliased.join(' / '), members: aliased }
+    const coordsOf = useCallback((tuple, members) => new Map([
+        ...axes.rows.map((d, i) => [d.dimension, tuple[i]]),
+        ...axes.columns.map((d, i) => [d.dimension, members[i]]),
+        ...axes.pages.filter(p => p.member).map(p => [p.dimension, p.member]),
+    ].filter(([, e]) => e != null)), [axes])
+
+    // a typed cell → TM1, straight away; a refusal puts the old value back in the grid
+    const handlePivotWrite = useCallback(async ({ tuple, members, value }) => {
+        const coordMap = coordsOf(tuple, members)
+        const missing  = cubeDims.filter(d => !coordMap.has(d))
+        if (missing.length) throw new Error(`Cannot write — move all dimensions to an axis: ${missing.join(', ')}`)
+        const res = await fetch('/api/cells/write', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'x-ide-token': localStorage.getItem('tm1-token') ?? '' },
+            body: JSON.stringify({ server: tab.server, cube: tab.cube, dims: cubeDims.map(dim => ({ dim, element: coordMap.get(dim) })), value }),
         })
-    }, [hierarchyData?.columns, colDims, dimAliases, aliasValueMaps])
-    const handleCellEdit = useCallback(async ({ tupleKey, colId, value }) => {
-        if (!tab.server || !tab.cube) return
-        const rowMembers = tupleKey.split('::')
-        const rowCoords  = axes.rows.map((d, i) => ({ dim: d.dimension, element: rowMembers[i] })).filter(c => c.element != null)
-        const col        = hierarchyData?.columns?.find(c => c.id === colId)
-        if (!col) return
-        const colMembers = col.members ?? [col.label]
-        const colCoords  = axes.columns.map((d, i) => ({ dim: d.dimension, element: colMembers[i] })).filter(c => c.element != null)
-        const pageCoords = axes.pages.filter(p => p.member).map(p => ({ dim: p.dimension, element: p.member }))
-        const coordMap   = new Map([...rowCoords, ...colCoords, ...pageCoords].map(c => [c.dim, c.element]))
-        const missing    = cubeDims.filter(d => !coordMap.has(d))
-        if (missing.length) {
-            toast.error(`Cannot write — move all dimensions to an axis: ${missing.join(', ')}`)
-            handleExecute()
-            return
-        }
-        const dims = cubeDims.map(dim => ({ dim, element: coordMap.get(dim) }))
-        const id = toast.loading('Writing…')
-        try {
-            const res = await fetch('/api/cells/write', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'x-ide-token': localStorage.getItem('tm1-token') ?? '' },
-                body: JSON.stringify({ server: tab.server, cube: tab.cube, dims, value }),
-            })
-            const d = await res.json()
-            if (!res.ok) throw new Error(d.error || 'Write failed')
-            toast.success('Written', { id })
-            handleExecute()
-        } catch (e) {
-            toast.error(e.message, { id })
-            handleExecute()
-        }
-    }, [tab.server, tab.cube, axes, hierarchyData, cubeDims, handleExecute])
+        const d = await res.json().catch(() => ({}))
+        if (!res.ok) throw new Error(d.error || 'Write failed')
+        toast.success('Written')
+        scheduleRefresh()
+    }, [coordsOf, cubeDims, tab.server, tab.cube, scheduleRefresh])
 
-    const useHierarchy  = !flatMode && !!(rowDims.length > 0 && constrainedHierarchies.length > 0 && hierarchyData && result)
+    const handlePivotContextMenu = useCallback(({ tuple, members, cell, event }) => {
+        event?.preventDefault?.()
+        const coordMap = coordsOf(tuple, members)
+        const dimElemPairs = cubeDims.map(d => ({ dim: d, element: coordMap.get(d) })).filter(p => p.element)
+        if (!dimElemPairs.length) return
+        setCellCtx({
+            x: event?.clientX ?? 400,
+            y: event?.clientY ?? 200,
+            dimElemPairs,
+            value: cell?.d ?? cell?.v ?? null,
+            isAllLeaf: tupleIsLeaf(tuple, hierarchies) && tupleIsLeaf(members, columnHierarchies),
+            cube: tab.cube,
+            server: tab.server,
+        })
+        if (showLog) setLogTuple(cubeDims.map(d => coordMap.get(d) ?? null))
+    }, [coordsOf, cubeDims, hierarchies, columnHierarchies, tab.cube, tab.server, showLog])
+
+    const useHierarchy  = !flatMode && !!(rowDims.length > 0 && pivotData && result)
 
     const handleCellContextMenu = useCallback((e) => {
         e.event?.preventDefault?.()
@@ -2431,18 +2404,18 @@ export default function ViewEditor({ tab }) {
             ) : useHierarchy ? (
                 <div className="flex-1 min-h-0">
                     <GridErrorBoundary>
-                        <HierarchyGrid
+                        <PivotGrid
                             key={tab.server && tab.cube ? `hg::${tab.server}::${tab.cube}::${tab.viewName || 'adhoc'}` : undefined}
-                            hierarchies={displayHierarchies}
-                            columnHierarchies={colDims.length > 0 ? displayColHierarchies : []}
-                            columns={displayColumns ?? hierarchyData.columns}
-                            data={hierarchyData.data}
+                            pivot={pivotData}
+                            rowHierarchies={hierarchies}
+                            colHierarchies={columnHierarchies}
+                            rowNames={rowDims}
                             dark={dark}
-                            keepMode="parent"
-                            totalsPosition={totalsPosition}
-                            colTotalsPosition={colTotalsPosition}
-                            onCellEdit={handleCellEdit}
-                            onCellContextMenu={handleCellContextMenu}
+                            totals={totalsPosition}
+                            colTotals={colTotalsPosition}
+                            onWrite={handlePivotWrite}
+                            onError={e => { toast.error(e.message); scheduleRefresh() }}
+                            onContextMenu={handlePivotContextMenu}
                             storageKey={tab.server && tab.cube ? `hg::${tab.server}::${tab.cube}::${tab.viewName || 'adhoc'}` : undefined}
                             appearance={app}
                         />

@@ -1,4 +1,4 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueries, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useRef, useEffect, useMemo, useCallback } from 'react'
 import { useStore } from '@/store'
 import { toast } from 'sonner'
@@ -136,6 +136,10 @@ export const useServers   = ()                    => useQuery({ queryKey: ['serv
 export const useElements           = (server, dim, hierarchy) => useQuery({ queryKey: ['elements', server, dim, hierarchy],           queryFn: () => get(`/api/elements?server=${enc(server)}&dimension=${enc(dim)}${hierarchy ? `&hierarchy=${enc(hierarchy)}` : ''}`),           enabled: !!server && !!dim })
 export const useElementsWithIndex  = (server, dim, hierarchy) => useQuery({ queryKey: ['elements-index', server, dim, hierarchy],     queryFn: () => get(`/api/elements?server=${enc(server)}&dimension=${enc(dim)}${hierarchy ? `&hierarchy=${enc(hierarchy)}` : ''}&index=1`), enabled: !!server && !!dim })
 export const useElementsTree  = (server, dim, hierarchy) => useQuery({ queryKey: ['elements-tree', server, dim, hierarchy], queryFn: () => get(`/api/elements/tree?server=${enc(server)}&dimension=${enc(dim)}${hierarchy ? `&hierarchy=${enc(hierarchy)}` : ''}`), enabled: !!server && !!dim, staleTime: 60_000 })
+// Element trees for any number of dimensions at once (shares the cache with useElementsTree)
+export const useElementsTrees = (server, dims) => useQueries({
+  queries: (dims ?? []).map(dim => ({ queryKey: ['elements-tree', server, dim, undefined], queryFn: () => get(`/api/elements/tree?server=${enc(server)}&dimension=${enc(dim)}`), enabled: !!server && !!dim, staleTime: 60_000 })),
+})
 export const useEdges     = (server, dim, hierarchy) => useQuery({ queryKey: ['edges', server, dim, hierarchy],    queryFn: () => get(`/api/edges?server=${enc(server)}&dimension=${enc(dim)}${hierarchy ? `&hierarchy=${enc(hierarchy)}` : ''}`),    enabled: !!server && !!dim })
 export const useCubes    = (server)     => useQuery({ queryKey: ['cubes', server],     queryFn: () => get(`/api/cubes?server=${enc(server)}`),      enabled: !!server })
 export const useDims     = (server)     => useQuery({ queryKey: ['dims', server],      queryFn: () => get(`/api/dimensions?server=${enc(server)}`),  enabled: !!server })

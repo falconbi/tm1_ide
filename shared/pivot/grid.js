@@ -18,10 +18,12 @@
  *     rowEditable(tuple),        // false locks a row
  *     onContextMenu({ tuple, members, cell, event }),
  *     stripes, fit, height, storageKey (remember widths), dark, colors,
+ *     makeTheme(headerHeight),   // optional: the host's own AG theme (e.g. the IDE's appearance settings)
  *   })
  *   g.changes() → [{ tuple, members, colId, value, old }]; g.undo(); g.saved()
  *   g.setPivot(pivot, rowHierarchies?, colHierarchies?); g.expandAll('rows'|'cols', dimIdx, open)
  *   g.quickFilter(text); g.freezeTop(on); g.stripes(on); g.exportCsv(fileName); g.destroy()
+ *   g.setOptions({ totals, colTotals, keepMode, dark, makeTheme, rowNames, edit }) — redraw with new settings
  */
 import { createGrid, ModuleRegistry, AllCommunityModule, themeQuartz, colorSchemeDark } from 'ag-grid-community'
 import { applyTm1Format } from './format.js'
@@ -71,11 +73,11 @@ export function createPivotGrid(host, opts = {}) {
     const node = typeof host === 'string' ? document.querySelector(host) : host
     node.innerHTML = ''
     const o = { keepMode: 'parent', totals: 'top', colTotals: 'top', edit: false, fit: 'width', ...opts }
-    const dark = !!o.dark
-    const C = Object.assign(dark
+    let dark = !!o.dark
+    // cell colours for the current light/dark mode (the host may pass its own)
+    const colours = () => Object.assign(dark
         ? { calcBg: 'rgba(255,255,255,0.05)', totalBg: 'rgba(255,255,255,0.09)', blue: BLUE }
         : { calcBg: '#eef1f0', totalBg: '#e3e8e6', blue: BLUE }, o.colors || {})
-    const baseTheme = dark ? themeQuartz.withPart(colorSchemeDark) : themeQuartz
     let striped = !!o.stripes
 
     let pivot = { columns: [], rows: [], data: {} }
@@ -268,6 +270,7 @@ export function createPivotGrid(host, opts = {}) {
                 cellStyle: p => {
                     const cell = p.data?.[col.id], key = k(p)
                     const total = !leaf || !rowIsLeaf(p.data || {}) || cell?.kind === 'total'
+                    const C = colours()
                     const st = { background: '', boxShadow: 'none', fontWeight: '', color: cell?.colour || '', cursor: canEdit(p.data, col) ? 'text' : 'default' }
                     if (total) { st.background = C.totalBg; st.fontWeight = '600' }
                     else if (cell?.kind === 'calc' || cell?.u === 0) st.background = C.calcBg
@@ -280,8 +283,13 @@ export function createPivotGrid(host, opts = {}) {
     }
 
     // ── grid ───────────────────────────────────────────────────────────────
-    const themeFor = () => (striped ? baseTheme.withParams({ oddRowBackgroundColor: dark ? 'rgba(255,255,255,0.045)' : 'rgba(20,60,55,0.045)' }) : baseTheme)
-        .withParams({ headerHeight: Math.max(1, colH.length) * HDR_ROW_H + (colH.length > 1 ? 4 : 8) })
+    const headerHeight = () => Math.max(1, colH.length) * HDR_ROW_H + (colH.length > 1 ? 4 : 8)
+    const themeFor = () => {
+        if (o.makeTheme) return o.makeTheme(headerHeight())          // the host's look (IDE appearance settings)
+        const base = dark ? themeQuartz.withPart(colorSchemeDark) : themeQuartz
+        return (striped ? base.withParams({ oddRowBackgroundColor: dark ? 'rgba(255,255,255,0.045)' : 'rgba(20,60,55,0.045)' }) : base)
+            .withParams({ headerHeight: headerHeight() })
+    }
     function repaint() { if (api) api.refreshCells({ force: true }) }
     function refreshRows() { api.setGridOption('rowData', rowData()); if (frozen) freeze() }
     function refreshColumns() { api.setGridOption('columnDefs', columnDefs()); repaint() }
@@ -305,7 +313,8 @@ export function createPivotGrid(host, opts = {}) {
                 o.onContextMenu({ tuple: p.data?.__tuple ?? [], members: col?.members ?? [], cell: p.data?.[p.column.getColId()] ?? null, event: p.event })
             } : undefined,
             onColumnResized: e => { if (e.finished && e.column) { widths[e.column.getColId()] = e.column.getActualWidth(); saveWidths() } },
-            autoSizeStrategy: o.fit === 'content' ? { type: 'fitCellContents' } : o.fit === 'width' && !Object.keys(widths).length ? { type: 'fitGridWidth' } : undefined,
+            // size columns only when the person hasn't set widths of their own
+            autoSizeStrategy: Object.keys(widths).length ? undefined : o.fit === 'content' ? { type: 'fitCellContents' } : o.fit === 'width' ? { type: 'fitGridWidth' } : undefined,
             defaultColDef: typeof o.fit === 'number' ? { width: o.fit } : undefined,
             preventDefaultOnContextMenu: !!o.onContextMenu,
         })
@@ -343,6 +352,15 @@ export function createPivotGrid(host, opts = {}) {
         quickFilter(text) { api.setGridOption('quickFilterText', text || undefined); if (text && frozen) { frozen = false; freeze() } },
         freezeTop(on) { frozen = !!on; freeze() },
         stripes(on) { striped = !!on; api.setGridOption('theme', themeFor()) },
+        setOptions(next = {}) {
+            Object.assign(o, next)
+            if ('dark' in next) dark = !!next.dark
+            api.setGridOption('theme', themeFor())
+            api.setGridOption('columnDefs', columnDefs())
+            api.setGridOption('rowData', rowData())
+            if (frozen) freeze()
+            repaint()
+        },
         fitColumns() { api.autoSizeAllColumns() },
         resetWidths() { widths = {}; saveWidths(); api.setGridOption('columnDefs', columnDefs()); api.sizeColumnsToFit() },
         exportCsv(fileName) {
