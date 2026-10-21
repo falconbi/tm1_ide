@@ -939,7 +939,9 @@ function history(match, { limit = 30, skip = [] } = {}) {
 function historyPanel(el, { describe, title = 'History' } = {}) {
   const t = theme.colors, btnHost = host(el)
   let list = [], seenTop = null, open = false, filter = 'all'
-  const say = e => describe ? describe(e) : e.kind === 'write'
+  const say = e => describe ? describe(e) : e.kind === 'note'
+    ? 'added a note: “' + (e.text || '') + '”'
+    : e.kind === 'write'
     ? 'changed ' + (e.changes || []).length + ' cell' + ((e.changes || []).length === 1 ? '' : 's')
     : 'ran ' + e.process + (e.status && e.status !== 'CompletedSuccessfully' ? ' — refused' : '')
   btnHost.innerHTML = '<button type="button" data-h style="font:inherit;font-size:13px;padding:5px 10px;border-radius:7px;cursor:pointer;border:1px solid ' + t.rule + ';background:' + t.panel + ';color:' + t.ink + '">🕘 ' + esc(title) + ' <span data-n style="display:none;margin-left:4px;font-size:11px;font-weight:700;color:#fff;background:' + t.accent + ';border-radius:999px;padding:1px 7px"></span></button>'
@@ -950,7 +952,7 @@ function historyPanel(el, { describe, title = 'History' } = {}) {
     '<div style="display:flex;align-items:center;gap:8px"><b style="font-size:15px">' + esc(title) + '</b><span data-sub style="color:' + t.faint + ';font-size:12px"></span>' +
     '<button type="button" data-x title="Close" style="margin-left:auto;font:inherit;font-size:18px;line-height:1;border:0;background:transparent;color:' + t.faint + ';cursor:pointer">×</button></div>' +
     '<input data-q type="search" placeholder="Search — who, account, month, note…" style="font:inherit;font-size:13px;padding:6px 9px;border:1px solid ' + t.rule + ';border-radius:7px;background:' + t.bg + ';color:' + t.ink + '">' +
-    '<div style="display:flex;gap:6px">' + chip('all', 'All') + chip('write', 'Changes') + chip('run', 'Actions') + '</div></div>' +
+    '<div style="display:flex;gap:6px">' + chip('all', 'All') + chip('write', 'Changes') + chip('run', 'Actions') + chip('note', 'Notes') + '</div></div>' +
     '<div data-list style="overflow:auto;flex:1;padding:4px 14px 14px"></div>'
   document.body.appendChild(panel)
   const q = s => panel.querySelector(s)
