@@ -60,28 +60,42 @@ Load HR Assignments (+ Write Sample HR Extract). Outcomes go to the `Lens Messag
 3. **New Lens: Leavers & backfills** (WFP-Leavers v1): all leavers (472 in Forecast), what
    happens to the seat after, months vacant, editable Backfill from (writes Hire Month),
    Record a leaver by name (WFP End Assignment, HR/Finance only).
-4. **Titles renumbered** 0–13 to match Home order; Home tiles updated.
+4. **Titles renumbered** 0–14 to match Home order; Home tiles updated.
 5. **Model fix (processes, live):** WFP End Assignment (no backfill) and WFP Transfer Person
    now clear the seat's **old** approved Hire Month (≤ the person's last month), which would
    otherwise revive the seat as a counted "Planned hire" after they go. End Assignment's
    cutoff message no longer prints an index. Script: `tmp/workforce/fix-stale.js`.
-   **Compiled, not yet scenario-tested** — test on Downside: Assign Person into an approved
-   planned-hire seat, End Assignment with no backfill, check Hire Month = 0 and Seat
-   Status Vacant after; then revert.
+   **Verified live on Downside** (23 Oct): Assign Person into an approved planned-hire seat
+   (`ENG-2069`, hire 2026-08), End Assignment with no backfill → Hire Month 0, Approved/By/At
+   cleared, Seat Status Vacant from 2026-09; restored from a full snapshot. Neither process
+   touches the employee record for an existing person (the Status/Leaver attr writes are only
+   in the new-person branch).
+6. **New Lens: Transfers** (WFP-Transfers v1, title `4 Transfers`): people moving between
+   seats and cost centres (Assignment Transfer In / Out flags), paired per person (Transfer
+   Out sits the month before the Transfer In), "Old seat after" column reusing the Leavers
+   logic, record a move by name (WFP Transfer Person, HR/Finance). No direct cube writes —
+   process only. `tmp/workforce/lens/WFP-Transfers.src.html`. Tested live on Downside
+   (`EXEC-001` → `ENG-002`, Henry Ford · E10001, from 2026-06): FTE moves, End Reason
+   `Transfer Out` the month before, Start Reason `Transfer In`, old seat Vacant, new seat
+   Filled, salary copied to the new seat; restored from a full snapshot.
 
-Verified by live read-only runs only. **Not yet done by James in the UI:** a real hire-month
-save, an approval, a backfill save, Record a leaver.
+**Salary belongs to the seat** (intended, confirmed by James): a transfer copies the rate to
+the new seat and **leaves it on the old seat** as the starting point for a backfill. A vacant
+seat costs nothing, so it is not counted twice — **not yet proved**: next Downside test should
+read `WFP Workforce Cost` for the old seat in the vacant months and confirm 0.
+
+Verified by live read-only runs plus the two reversible Downside tests above. **Not yet done
+by James in the UI:** a real hire-month save, an approval, a backfill save, Record a leaver,
+Record a transfer.
 
 ## Next, in order
 
-1. **Transfers Lens** — people moving between seats/cost centres (Assignment Transfer In /
-   Out flags; WFP Transfer Person). Same shape as WFP-Leavers.
-2. **Home tile "seats needing attention"** from the 3 control assertions (over-filled,
+1. **Home tile "seats needing attention"** from the 3 control checks (over-filled,
    over-booked, person in closed seat — Position Map / Assignment check measures).
-3. **My cost centre** and **Since last forecast** still read the dead Attrition Month —
+2. **My cost centre** and **Since last forecast** still read the dead Attrition Month —
    switch their leaver lines to WFP Assignment (Leaver flag).
-4. Re-record the 17 scale assertions for the 3,000-person model.
-5. Open question for James: Downside hiring lines for ENG-005 / SLS-003.
+3. Re-record the 17 scale assertions for the 3,000-person model.
+4. Open question for James: Downside hiring lines for ENG-005 / SLS-003.
 
 Review list (work_state "workforce-lens-review"): save column layout from Preview; centre
 all Lenses / roll the Assumptions look (1700px, footer History icon, stripes); month-grid
