@@ -286,6 +286,18 @@ iterations:
 - TI Prolog element insert + attribute write in the same section
 - 3-deep nested `IF()` returns blank
 - element rename is not supported (`restructure_dimension` reports this honestly)
+- **REST query options with spaces must be sent as `%20`, never `+`.** TM1 does not
+  read `+` as a space, so `$filter=Cube eq 'X'` sent as `Cube+eq+'X'` fails with
+  "Unsupported token" — it looks like TM1 refusing `$filter`, but it is the encoding
+  (axios's default). `core/odata-params.js` fixes it for every connection; with it,
+  `TransactionLogEntries?$filter=Cube eq '…'` and Edges `$filter` work on v11.
+- **Cell notes (annotations) on v11 have no `Tuple`.** A note belongs to its cell via
+  `DimensionalContext` (members, one per cube dimension) and to its cube via
+  `ApplicationContext` (facet `}Cubes`). Create with `POST /Annotations` + those
+  bindings + `objectName`, `commentType: 'ANNOTATION'`, `commentLocation`.
+- **`}CubeProperties` `LOGGING` is per cube** — with `NO`, TM1 keeps no change history
+  for that cube, so "who changed this cell" has nothing to show. Lens saves are still
+  recorded in the Lens activity log either way.
 - **static subset save APPENDS.** `PATCH .../Subsets('X')` with
   `Elements@odata.bind` adds to the existing members, it doesn't replace them —
   re-running a subset seed accumulates duplicates. Rebuild with
