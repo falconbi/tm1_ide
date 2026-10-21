@@ -295,6 +295,19 @@ iterations:
   `DimensionalContext` (members, one per cube dimension) and to its cube via
   `ApplicationContext` (facet `}Cubes`). Create with `POST /Annotations` + those
   bindings + `objectName`, `commentType: 'ANNOTATION'`, `commentLocation`.
+- **An `N:` rule never applies to a consolidated cell.** A check written as
+  `['All Employees','Flag'] = N: …` on a consolidation silently never fires. Use
+  `C:` — and to make totals COUNT flagged children instead of summing the
+  underlying values, end the rule with `ConsolidateChildren('Dim')` for the
+  consolidated positions: `IF( ELLEV('Dim', !Dim) = 0, <check>, ConsolidateChildren('Dim') )`.
+  `ConsolidateChildren` takes one or more DIMENSION names (the catalog said
+  cube/element — corrected).
+- **A text cell can't be read with `['…']` in a numeric rule** ("Syntax error …
+  logical expression"). Read it with a full `DB('Cube', !Dim1, …, 'Measure') @= 'x'`.
+- **Feeders are never removed, and re-saving unchanged rules doesn't re-run them.**
+  To move one seat's cells to a new cost centre, write each source value over 0
+  (zero, then restore) — the feeders fire for just those cells in seconds; a full
+  `CubeProcessFeeders` at 3,000 people is ~12 minutes (≈ a server restart).
 - **`}CubeProperties` `LOGGING` is per cube** — with `NO`, TM1 keeps no change history
   for that cube, so "who changed this cell" has nothing to show. Lens saves are still
   recorded in the Lens activity log either way.
