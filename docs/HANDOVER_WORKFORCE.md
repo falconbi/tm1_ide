@@ -90,6 +90,15 @@ Load HR Assignments (+ Write Sample HR Extract). Outcomes go to the `Lens Messag
    closed seat → 1 closed, which also trips over-filled as its seat FTE is 0): lens and Home
    tile both showed all three; restored from a snapshot. Home tile adds ~0.1s (3 queries,
    72 cells).
+8. **Snapshot trap found (read-only):** `WFP Copy Version` is not the snapshot tool — it
+   copies only `WFP Workforce Input` (FTE, Base Salary). The snapshot tool is
+   **`WFP Snapshot`**: it creates the version under `Non-Calculating`, then copies every
+   cube carrying the Version dim via Bedrock `}bedrock.cube.data.copy` with
+   `pSuppressRules=0` (calculated values included), and stamps the next period's
+   `Prior Fcst Snapshot`. Headcount/Cost rules STET for non-calculating versions, so they
+   rely on those stored values — using `WFP Copy Version` would leave them blank. The only
+   old snapshot (`FCST 2026-02`) predates `WFP Assignment`, so it has no people data; a
+   fresh snapshot fixes it. Written up in `docs/BUILDING_MODELS.md`.
 
 **Salary belongs to the seat** (intended, confirmed by James): a transfer copies the rate to
 the new seat and **leaves it on the old seat** as the starting point for a backfill. A vacant

@@ -431,6 +431,19 @@ iterations:
   first (a handful of cells, always computed), then scan the detail (a full leaf
   grid, no `NON EMPTY`) only for the months/rows that trip. Never trust `NON EMPTY`
   for a check; prove every check with a real trip before shipping it.
+- **Use `WFP Snapshot` to take a snapshot — never `WFP Copy Version`.** Snapshot
+  versions live under `Non-Calculating`, and the Headcount / Cost rules carry
+  `[] = N: IF(ELPAR('WFP Version',1)@='Non-Calculating', STET, CONTINUE)` — so a
+  snapshot **stops calculating** and uses stored values. `WFP Snapshot` copies
+  **every cube that carries the Version dimension** (`WFP Assignment`,
+  `WFP Position Map`, `WFP Hiring Plan`, `WFP Workforce Input`, `WFP Headcount`,
+  `WFP Workforce Cost`, `WFP Assumptions`, `WFP FX Rates`, `WFP Pay Rates`) through
+  Bedrock `}bedrock.cube.data.copy` with **`pSuppressRules=0`**, so the *calculated*
+  Headcount/Cost values are copied in. `WFP Copy Version` copies only
+  `WFP Workforce Input` (`FTE`, `Base Salary`) — using it for a snapshot leaves
+  Headcount and Cost **blank**, because the non-calculating guard STETs and nothing
+  copies the values. (A snapshot taken before a new cube existed won't have that
+  cube's data — re-snapshot; there's no repair.)
 
 ---
 
