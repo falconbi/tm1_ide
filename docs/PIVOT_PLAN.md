@@ -109,13 +109,19 @@ shared pivot can do everything the View editor does; a Lens exposes only part.
   the builder allows, pick filter members from the builder's list, stripes,
   column widths, layout remembered per person.
 - **Behind an "Advanced" button** — each one only if the builder switches it on
-  (`advanced: ['views', 'members', 'suppress', 'aliases', 'totals', 'csv']`):
+  (`advanced: ['views', 'members', 'suppress', 'aliases', 'totals', 'csv', 'mdx']`):
   **choose a saved TM1 view** (from the views the builder names — loads its
   rows, columns, filters and subsets; needs a read-only bridge call for a
   view's layout, using the IDE's existing view reader),
   pick members / named subsets on an axis (the member picker, step 5, limited
   to subsets the builder names), suppress empty rows/columns, aliases, totals
-  top/bottom, export to CSV.
+  top/bottom, export to CSV, **copy MDX** (the pivot's current query, read-only —
+  to take into the IDE or PAW).
+- **MDX reaches planners through the builder**, never typed by them: dynamic
+  named subsets the builder writes ("Over budget this month", "Hires next
+  quarter", "Top 20 by cost") show up as plain choices; views built from MDX
+  are offered through view selection. Typing MDX is a natural wall for most
+  end users — and one bad query can tie up a large cube.
 - **IDE only, never in a Lens:** writing MDX, building or saving subsets and
   views, moving locked dimensions, changing version or cube.
 
