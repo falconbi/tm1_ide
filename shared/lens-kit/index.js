@@ -370,6 +370,161 @@ function save(cube, cells) {
   return window.lensBridge.call('writeCells', { cube, cells })
 }
 
+// ── pivot ─────────────────────────────────────────────────────────────────────
+// Slice and dice on one cube, with drill-down (the shared pivot — the same grid
+// as the IDE's View editor). Dimensions sit on rows, columns or filters; the
+// person drags the chips the builder lets move, drills into totals, and — with
+// edit — types into input cells; save() writes them (Lens.save, checked against
+// the old values). The layout each person arranges is remembered for them.
+//   const pv = Lens.pivot('#pv', {
+//     cube: 'Assumptions',
+//     rows:    [{ dimension: 'Measure', memberSet: 'all' }],
+//     columns: [{ dimension: 'Entity', members: ['UK', 'US', 'NZ'] }],
+//     filters: [{ dimension: 'Period', member: '2026-06', choices: [...] }, { dimension: 'Version', member: 'Forecast', locked: true }],
+//     edit: true, onEdit: changes => …, formats: { Measure: { 'Merit %': '0.0%' } }, key: 'assumptions',
+//   })
+//   pv.changes(); pv.save() → Promise; pv.undo(); pv.refresh(); pv.move(dim, 'rows'|'columns'|'filters'); pv.grid
+// Every cube dimension must be placed (rows, columns or filters) for saving.
+function pivot(el, cfg = {}) {
+  const P = pivotKit, node = host(el), t = theme.colors
+  if (!cfg.cube) throw new Error('Lens.pivot needs a cube')
+  const all = [...(cfg.rows || []), ...(cfg.columns || []), ...(cfg.filters || [])]
+  const spec = {}; for (const p of all) spec[p.dimension] = Object.assign({}, p)
+  const movable = d => !spec[d].locked && (!cfg.movable || cfg.movable.includes(d))
+  let layout = { rows: (cfg.rows || []).map(p => p.dimension), columns: (cfg.columns || []).map(p => p.dimension), filters: (cfg.filters || []).map(p => p.dimension) }
+  const member = {}; for (const p of cfg.filters || []) member[p.dimension] = p.member
+  const storeKey = cfg.key ? 'lens-pivot:' + cfg.key : null
+  try {
+    const saved = storeKey && JSON.parse(localStorage.getItem(storeKey) || 'null')
+    const dims = saved && [...saved.rows, ...saved.columns, ...saved.filters]
+    if (dims && dims.length === all.length && dims.every(d => spec[d]) && saved.rows.length) { layout = { rows: saved.rows, columns: saved.columns, filters: saved.filters }; Object.assign(member, saved.member || {}) }
+  } catch (e) { /* nothing remembered */ }
+  const remember = () => { if (storeKey) try { localStorage.setItem(storeKey, JSON.stringify({ ...layout, member })) } catch (e) { /* storage refused */ } }
+
+  const trees = {}, choices = {}
+  const tree = d => trees[d] || (trees[d] = window.lensBridge.call('elementTree', { dimension: d, hierarchy: spec[d].hierarchy }).then(els => els, () => null))
+  const label = d => spec[d].label || d
+
+  node.innerHTML = ''
+  const bar = document.createElement('div'), gridEl = document.createElement('div')
+  bar.style.cssText = 'display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;margin-bottom:10px;font-size:12px'
+  node.append(bar, gridEl)
+  let g = null, busy = null, onChange = cfg.onEdit
+
+  function drawBar() {
+    const zone = (key, title) => '<span data-zone="' + key + '" style="display:inline-flex;gap:6px;align-items:center;min-height:28px;padding:2px 6px;border:1px dashed ' + t.rule + ';border-radius:8px">' +
+      '<span style="color:' + t.faint + ';text-transform:uppercase;letter-spacing:.06em;font-size:10.5px">' + title + '</span>' +
+      layout[key].map(d => chip(d, key)).join('') + '</span>'
+    const chip = (d, key) => {
+      const move = movable(d)
+      let inner = esc(label(d))
+      if (key === 'filters') {
+        const list = choices[d]
+        inner += list && move !== false && !spec[d].locked
+          ? ' <select data-member="' + esc(d) + '" style="font:inherit;font-size:12px;border:0;background:transparent;color:inherit;max-width:180px">' + list.map(m => '<option' + (m === member[d] ? ' selected' : '') + '>' + esc(m) + '</option>').join('') + '</select>'
+          : ': <b>' + esc(member[d] ?? '') + '</b>'
+      }
+      return '<span data-dim="' + esc(d) + '"' + (move ? ' draggable="true"' : '') + ' title="' + (move ? 'Drag to rows, columns or filters' : 'Fixed by the Lens') + '" style="display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border-radius:999px;border:1px solid ' + t.rule + ';background:' + t.panel + ';color:' + t.ink + ';cursor:' + (move ? 'grab' : 'default') + '">' + (move ? '' : '🔒 ') + inner + '</span>'
+    }
+    bar.innerHTML = zone('rows', 'Rows') + zone('columns', 'Columns') + zone('filters', 'Filters')
+  }
+  // drag a chip to another zone
+  bar.addEventListener('dragstart', e => { const c = e.target.closest && e.target.closest('[data-dim]'); if (c) e.dataTransfer.setData('text/plain', c.getAttribute('data-dim')) })
+  bar.addEventListener('dragover', e => { if (e.target.closest && e.target.closest('[data-zone]')) e.preventDefault() })
+  bar.addEventListener('drop', e => {
+    const z = e.target.closest && e.target.closest('[data-zone]'); if (!z) return
+    e.preventDefault()
+    run(() => move(e.dataTransfer.getData('text/plain'), z.getAttribute('data-zone')))
+  })
+  bar.addEventListener('change', e => {
+    const d = e.target.getAttribute && e.target.getAttribute('data-member')
+    if (d) { member[d] = e.target.value; remember(); run(load) }
+  })
+  function move(d, to) {
+    if (!spec[d] || !movable(d)) return
+    const from = ['rows', 'columns', 'filters'].find(k => layout[k].includes(d))
+    if (!from || from === to) return
+    if (from !== 'filters' && layout[from].length === 1 && from === 'rows') return   // keep at least one row dimension
+    if (g && g.changes().length) { report(new Error('Save or undo your changes before moving dimensions.')); return }
+    layout[from] = layout[from].filter(x => x !== d); layout[to] = [...layout[to], d]
+    if (to === 'filters' && member[d] == null) member[d] = spec[d].member
+    remember(); return rebuild()
+  }
+  const report = e => { if (cfg.onError) cfg.onError(e); else console.error(e) }
+
+  // a dimension on rows/columns: its own members/set, or — for a filter moved onto an axis — the choices it offered
+  const axis = d => {
+    const p = spec[d], members = p.members || (!p.memberSet && !p.subset ? p.choices : null)
+    return { dimension: d, hierarchy: p.hierarchy, members, memberSet: p.memberSet || (members || p.subset ? undefined : 'all'), subset: p.subset }
+  }
+  async function filterChoices() {
+    await Promise.all(layout.filters.filter(d => !choices[d] && movable(d)).map(async d => {
+      if (spec[d].choices) { choices[d] = spec[d].choices; return }
+      const els = await tree(d)
+      choices[d] = els ? els.map(x => x.Name) : null
+    }))
+    for (const d of layout.filters) if (member[d] == null) member[d] = (choices[d] || [])[0]
+  }
+  async function query() {
+    const mdx = P.buildMDX({ cube: cfg.cube, rows: layout.rows.map(axis), columns: layout.columns.map(axis),
+      pages: layout.filters.map(d => ({ dimension: d, hierarchy: spec[d].hierarchy, member: member[d] })), suppressZeros: cfg.suppress || 'none' })
+    const r = await window.lensBridge.call('execMDX', { mdx })
+    if (r && r.truncated) throw new Error('This layout returns more than the cell limit — filter it down or move a dimension to filters.')
+    return P.cellsetToPivot(r, { formatMap: cfg.formats || {} })
+  }
+  async function treesFor(dims) {
+    const els = await Promise.all(dims.map(tree))
+    return els.map((e, i) => e ? P.buildHierarchy(e, label(dims[i])) : null)
+  }
+  async function rebuild() {
+    await filterChoices(); drawBar()
+    const [data, rowsH, colsH] = await Promise.all([query(), treesFor(layout.rows), treesFor(layout.columns)])
+    if (g) g.destroy()
+    g = P.createPivotGrid(gridEl, {
+      pivot: data, rowHierarchies: rowsH, colHierarchies: colsH, rowNames: layout.rows.map(label),
+      edit: cfg.edit ? 'save' : false, onEdit: ch => onChange && onChange(ch), rowEditable: cfg.rowEditable,
+      stripes: cfg.stripes, fit: cfg.fit || 'content', height: cfg.height || 'auto',
+      storageKey: storeKey ? storeKey + ':w:' + layout.rows.join('|') + '>' + layout.columns.join('|') : null,
+      dark: dark(), colors: { calcBg: t.calcBg, totalBg: t.totalBg },
+    })
+    if (onChange) onChange([])
+  }
+  async function load() {
+    if (!g) return rebuild()
+    const [data, rowsH, colsH] = await Promise.all([query(), treesFor(layout.rows), treesFor(layout.columns)])
+    g.setPivot(data, rowsH, colsH)
+    if (onChange) onChange([])
+  }
+  const run = f => { busy = (busy || Promise.resolve()).then(f).catch(e => { report(e); throw e }); return busy }
+  const ready = run(rebuild)
+
+  return {
+    ready,
+    get grid() { return g },
+    layout: () => JSON.parse(JSON.stringify({ ...layout, member })),
+    changes: () => (g ? g.changes() : []),
+    undo() { if (g) g.undo() },
+    refresh: () => run(load),
+    stripes(on) { cfg.stripes = !!on; if (g) g.stripes(on) },
+    onEdit(fn) { onChange = fn },
+    // move a dimension to 'rows' | 'columns' | 'filters' (what dragging a chip does)
+    move: (d, to) => run(() => move(d, to)),
+    // write the typed values: every coordinate from the layout; expect = the value before typing
+    save() {
+      const ch = g ? g.changes() : []
+      if (!ch.length) return Promise.resolve({ written: 0 })
+      const cells = ch.map(c => {
+        const co = {}
+        layout.rows.forEach((d, i) => { co[d] = c.tuple[i] })
+        layout.columns.forEach((d, i) => { co[d] = c.members[i] })
+        layout.filters.forEach(d => { co[d] = member[d] })
+        return { coordinates: co, value: c.value, expect: c.old }
+      })
+      return save(cfg.cube, cells).then(r => { g.saved(); return run(load).then(() => r) })
+    },
+  }
+}
+
 // ── flow ──────────────────────────────────────────────────────────────────────
 // nodes: [{ id, label, sub, kind: 'root' | 'good' | 'bad' | 'neutral' }]; edges: [{ source, target, label }]
 let flowCssInjected = false
@@ -696,7 +851,7 @@ function run(process, params) {
 }
 
 // _pivot: the shared pivot's building blocks (docs/PIVOT_PLAN.md) — internal until Lens.pivot
-const Lens = { _pivot: pivotKit, version: TOOLKIT_VERSION, components: COMPONENTS.slice(), rows, format, localTime, theme, kpis, trend, waterfall, bars, grid, flow, editing, live, history, historyPanel, legend, config, whoami, save, run, echarts }
+const Lens = { _pivot: pivotKit, pivot, version: TOOLKIT_VERSION, components: COMPONENTS.slice(), rows, format, localTime, theme, kpis, trend, waterfall, bars, grid, flow, editing, live, history, historyPanel, legend, config, whoami, save, run, echarts }
 const missing = COMPONENTS.filter(n => typeof Lens[n] !== 'function')
 if (missing.length) throw new Error('Lens toolkit is missing: ' + missing.join(', '))
 

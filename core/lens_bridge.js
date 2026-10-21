@@ -59,6 +59,16 @@ async function getMeta(client, cube) {
     return meta
 }
 
+// One dimension's element tree, for Lens.pivot's drill-down: [{ Name, Type, Level,
+// Components }]. Read as the person, so TM1 element security decides what comes back.
+const MAX_TREE_ELEMENTS = 20000
+async function elementTree(client, dimension, hierarchy) {
+    if (!dimension || typeof dimension !== 'string') throw new Error('dimension is required')
+    const els = await client.getElementsWithTree(dimension, hierarchy || dimension)
+    if (els.length > MAX_TREE_ELEMENTS) throw new Error(`"${dimension}" has ${els.length} elements — too many to draw as a tree (at most ${MAX_TREE_ELEMENTS})`)
+    return els.map(e => ({ Name: e.Name, Type: e.Type, Level: e.Level ?? 0, Components: e.Components ?? [] }))
+}
+
 // Save-time validation gate. Parsing bridge calls out of AI-written JS is
 // best-effort and will miss things, so every query we DO find is executed once
 // against the live model — a bad cube/dim/member/MDX fails here, not at runtime.
@@ -382,4 +392,4 @@ async function runProcess(client, { process, params = {}, allowedProcesses = [],
     return { status, seconds, message, result, since, detail }
 }
 
-module.exports = { execMDX, readCell, getMeta, validateLens, buildStarterLens, validateMdx, declaredWriteCubes, writeCells, MAX_WRITE_CELLS, declaredRunProcesses, runProcess, lensWrites, lensRuns }
+module.exports = { execMDX, readCell, getMeta, elementTree, MAX_TREE_ELEMENTS, validateLens, buildStarterLens, validateMdx, declaredWriteCubes, writeCells, MAX_WRITE_CELLS, declaredRunProcesses, runProcess, lensWrites, lensRuns }

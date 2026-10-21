@@ -3860,6 +3860,7 @@ Bridge API (always available):
   window.lensBridge.call('readCell', { cube: '<cube>', coordinates: { '<dim>': '<elem>', ... } }) -> Promise<number|string|null>
       coordinates must name EVERY dimension of the cube.
   window.lensBridge.call('getMeta', { cube: '<cube>' }) -> Promise<{ cubes, dimensions, cubeDims, elements }>
+  window.lensBridge.call('elementTree', { dimension: '<dim>' }) -> Promise<[{ Name, Type, Level, Components }]>  (one dimension's tree; Lens.pivot uses it for drill-down)
 
 Rules:
 - Return a SINGLE complete HTML document (html, head, style, body, script). No markdown, no code fences, no explanation.
@@ -3979,6 +3980,17 @@ app.post('/api/lens/run-process', async (req, res) => {
         if (e.status) logLensRun({ server, app: 'ide', user: req.user, lens: name, process, params, status: e.status, message: e.message })
         const detail = e.response?.data?.error?.message ?? e.message
         res.status(e.status ? 422 : 400).json({ error: typeof detail === 'string' ? detail : JSON.stringify(detail), status: e.status })
+    }
+})
+
+// Lens.pivot: one dimension's element tree, read as the IDE user.
+app.get('/api/lens/element-tree', async (req, res) => {
+    try {
+        const client = makeClient(req.query.server, req.ideToken)
+        res.json(await lensBridge.elementTree(client, req.query.dimension, req.query.hierarchy))
+    } catch (e) {
+        const detail = e.response?.data?.error?.message ?? e.message
+        res.status(400).json({ error: typeof detail === 'string' ? detail : JSON.stringify(detail) })
     }
 })
 
