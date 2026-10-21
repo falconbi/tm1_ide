@@ -370,6 +370,99 @@ function save(cube, cells) {
   return window.lensBridge.call('writeCells', { cube, cells })
 }
 
+// ── cellInfo ──────────────────────────────────────────────────────────────────
+// A cell's story in a side panel — three tabs, all TM1's own records, read as
+// the person: Why (the rule trace: the rule used and the values it read; click
+// one to trace that too), Changes (TM1's transaction log for this cell — loads
+// on demand, it can take a few seconds), Notes (TM1 cell comments; adding one
+// needs notes: true and the cube declared in <meta name="lens-notes">).
+//   Lens.cellInfo({ cube, coordinates: { dim: element, … }, tab: 'why' | 'changes' | 'notes', notes: true })
+let cellPanel = null
+function cellInfo({ cube, coordinates, tab = 'why', notes = false, format: fmt } = {}) {
+  const t = theme.colors
+  if (!cellPanel) {
+    cellPanel = document.createElement('div')
+    cellPanel.setAttribute('data-cell-info', '')
+    document.body.appendChild(cellPanel)
+  }
+  const panel = cellPanel
+  panel.style.cssText = 'position:fixed;top:0;right:0;height:100%;width:420px;max-width:94vw;background:' + t.panel + ';color:' + t.ink + ';border-left:1px solid ' + t.rule + ';box-shadow:-12px 0 32px rgba(0,0,0,.18);z-index:55;display:flex;flex-direction:column;font-size:13px'
+  const stack = [{ cube, coordinates }]                  // Why: the cells traced so far (click-through)
+  let current = tab
+  const here = () => stack[stack.length - 1]
+  const call = (m, p) => window.lensBridge.call(m, p)
+  const val = v => v == null || v === '' ? '—' : typeof v === 'number' ? (fmt ? format(v, fmt) : v.toLocaleString(undefined, { maximumFractionDigits: 4 })) : esc(v)
+  const tabBtn = (k, l) => '<button type="button" data-tab="' + k + '" style="font:inherit;font-size:12.5px;padding:6px 12px;border:0;border-bottom:2px solid ' + (current === k ? t.accent : 'transparent') + ';background:none;color:' + (current === k ? t.ink : t.faint) + ';cursor:pointer;font-weight:' + (current === k ? 600 : 400) + '">' + l + '</button>'
+  const coordsLine = co => Object.entries(co).map(([d, e]) => '<span title="' + esc(d) + '">' + esc(e) + '</span>').join(' · ')
+  function frame(body) {
+    panel.innerHTML =
+      '<div style="padding:12px 14px 6px;border-bottom:1px solid ' + t.rule + '">' +
+        '<div style="display:flex;align-items:center;gap:8px"><b style="flex:1">' + esc(cube) + '</b><button type="button" data-x title="Close" style="font:inherit;font-size:18px;line-height:1;border:0;background:none;color:' + t.faint + ';cursor:pointer">×</button></div>' +
+        '<div style="font-size:12px;color:' + t.faint + ';margin:2px 0 6px">' + coordsLine(coordinates) + '</div>' +
+        '<div>' + tabBtn('why', 'Why this number') + tabBtn('changes', 'Changes') + tabBtn('notes', 'Notes') + '</div>' +
+      '</div><div data-body style="overflow:auto;flex:1;padding:12px 14px">' + body + '</div>'
+  }
+  const say = (txt, bad) => '<div style="color:' + (bad ? t.bad : t.faint) + '">' + esc(txt) + '</div>'
+  const kindOf = r => /rule/i.test(r.Type || '') || (r.Statements || []).length ? 'Calculated by a rule' : /consol/i.test(r.Type || '') ? 'A total' : 'Typed in (input)'
+  const tupleOf = tuple => Object.fromEntries((tuple || []).map(m => [m.Hierarchy?.Dimension?.Name ?? '', m.Name]))
+  async function showWhy() {
+    frame(say('Tracing…'))
+    const h = here()
+    try {
+      const r = await call('cellTrace', { cube: h.cube, coordinates: h.coordinates })
+      const comps = (r.Components || []).slice().sort((a, b) => Math.abs(Number(b.Value) || 0) - Math.abs(Number(a.Value) || 0))
+      const shown = comps.slice(0, 60)
+      const diff = co => Object.entries(co).filter(([d, e]) => String(h.coordinates[d]) !== String(e)).map(([, e]) => esc(e)).join(' · ') || 'same cell'
+      frame(
+        (stack.length > 1 ? '<button type="button" data-back style="font:inherit;font-size:12px;border:0;background:none;color:' + t.accent + ';cursor:pointer;padding:0 0 8px">← back</button><div style="font-size:12px;color:' + t.faint + ';margin-bottom:6px">' + esc(h.cube) + ' · ' + coordsLine(h.coordinates) + '</div>' : '') +
+        '<div style="font-size:22px;font-weight:700;font-variant-numeric:tabular-nums">' + val(r.Value) + '</div>' +
+        '<div style="color:' + t.faint + ';margin-bottom:10px">' + kindOf(r) + (comps.length ? ' · from ' + comps.length + ' value' + (comps.length > 1 ? 's' : '') : '') + '</div>' +
+        ((r.Statements || []).length ? '<div style="font-size:11px;color:' + t.faint + ';text-transform:uppercase;letter-spacing:.06em;margin:4px 0">The rule</div><pre style="white-space:pre-wrap;font:12px ui-monospace,monospace;background:' + t.bg + ';border:1px solid ' + t.rule + ';border-radius:8px;padding:8px;margin:0 0 12px">' + esc(r.Statements.join('\n')) + '</pre>' : '') +
+        (shown.length ? '<div style="font-size:11px;color:' + t.faint + ';text-transform:uppercase;letter-spacing:.06em;margin:4px 0">It used — click one to see why</div>' +
+          shown.map((c, i) => {
+            const co = tupleOf(c.Tuple), cb = c.Cube?.Name || h.cube
+            return '<button type="button" data-comp="' + i + '" style="display:flex;width:100%;gap:10px;align-items:center;text-align:left;font:inherit;padding:6px 4px;border:0;border-bottom:1px solid ' + t.rule + ';background:none;color:inherit;cursor:pointer">' +
+              '<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + (cb !== h.cube ? '<b>' + esc(cb) + '</b> · ' : '') + diff(co) + '</span>' +
+              '<span style="font-variant-numeric:tabular-nums">' + val(c.Value) + '</span><span style="color:' + t.faint + '">›</span></button>'
+          }).join('') + (comps.length > shown.length ? say('…and ' + (comps.length - shown.length) + ' more') : '') : ''))
+      panel.querySelectorAll('[data-comp]').forEach(b => { b.onclick = () => {
+        const c = shown[Number(b.getAttribute('data-comp'))]
+        stack.push({ cube: c.Cube?.Name || h.cube, coordinates: Object.assign({}, h.coordinates, tupleOf(c.Tuple)) }); showWhy()
+      } })
+      const back = panel.querySelector('[data-back]'); if (back) back.onclick = () => { stack.pop(); showWhy() }
+    } catch (e) { frame(say(e && e.message ? e.message : String(e), true)) }
+  }
+  async function showChanges() {
+    frame(say('Reading TM1\'s change log for this cell… this can take a few seconds.'))
+    try {
+      const rows = await call('cellLog', { cube, coordinates, top: 30 })
+      frame(rows.length ? rows.map(r => '<div style="padding:7px 0;border-bottom:1px solid ' + t.rule + '"><div style="display:flex;gap:8px"><b style="flex:1">' + esc(r.user || '') + '</b><span style="color:' + t.faint + '">' + esc(localTime ? localTime(r.at) : r.at) + '</span></div><div style="font-variant-numeric:tabular-nums">' + val(r.old) + ' → <b>' + val(r.value) + '</b></div></div>').join('') : say('No changes recorded for this cell in TM1\'s log.'))
+    } catch (e) { frame(say(e && e.message ? e.message : String(e), true)) }
+  }
+  async function showNotes(msg) {
+    frame(say('Loading notes…'))
+    try {
+      const list = await call('cellNotes', { cube, coordinates })
+      frame((msg ? say(msg) : '') +
+        (list.length ? list.map(n => '<div style="padding:8px 0;border-bottom:1px solid ' + t.rule + '"><div style="display:flex;gap:8px;font-size:12px;color:' + t.faint + '"><span style="flex:1">' + esc(n.author || '') + '</span><span>' + esc(localTime ? localTime(n.at) : n.at) + '</span></div><div style="white-space:pre-wrap">' + esc(n.text) + '</div></div>').join('') : say('No notes on this cell yet.')) +
+        (notes ? '<div style="margin-top:12px;display:grid;gap:6px"><textarea data-note rows="3" placeholder="Add a note to this cell…" style="font:inherit;padding:6px 8px;border:1px solid ' + t.rule + ';border-radius:7px;background:' + t.bg + ';color:' + t.ink + ';resize:vertical"></textarea><button type="button" data-add style="justify-self:start;font:inherit;padding:5px 12px;border:0;border-radius:7px;background:' + t.accent + ';color:#fff;font-weight:600;cursor:pointer">Add note</button></div>' : ''))
+      const add = panel.querySelector('[data-add]')
+      if (add) add.onclick = () => {
+        const text = panel.querySelector('[data-note]').value.trim(); if (!text) return
+        add.disabled = true
+        call('addNote', { cube, coordinates, text }).then(() => showNotes('Note added.'), e => { add.disabled = false; showNotes(e && e.message ? e.message : String(e)) })
+      }
+    } catch (e) { frame(say(e && e.message ? e.message : String(e), true)) }
+  }
+  const show = k => { current = k; return k === 'changes' ? showChanges() : k === 'notes' ? showNotes() : showWhy() }
+  panel.onclick = e => {
+    const x = e.target.closest && e.target.closest('[data-x]'); if (x) { panel.style.display = 'none'; return }
+    const tb = e.target.closest && e.target.closest('[data-tab]'); if (tb) show(tb.getAttribute('data-tab'))
+  }
+  panel.style.display = 'flex'
+  return show(current)
+}
+
 // ── pivot ─────────────────────────────────────────────────────────────────────
 // Slice and dice on one cube, with drill-down (the shared pivot — the same grid
 // as the IDE's View editor). Dimensions sit on rows, columns or filters; the
@@ -548,8 +641,30 @@ function pivot(el, cfg = {}) {
       stripes: cfg.stripes, fit: cfg.fit || 'content', height: cfg.height || 'auto', totals, colTotals: totals,
       storageKey: storeKey ? storeKey + ':w:' + layout.rows.join('|') + '>' + layout.columns.join('|') : null,
       dark: dark(), colors: { calcBg: t.calcBg, totalBg: t.totalBg },
+      onContextMenu: cfg.cellMenu === false ? undefined : cellMenu,
     })
     if (onChange) onChange([])
+  }
+  // right-click a cell: Why this number? / Changes / Notes (Lens.cellInfo)
+  function cellMenu({ tuple, members, event }) {
+    event?.preventDefault?.()
+    const co = {}
+    layout.rows.forEach((d, i) => { co[d] = tuple[i] }); layout.columns.forEach((d, i) => { co[d] = members[i] }); layout.filters.forEach(d => { co[d] = member[d] })
+    document.querySelectorAll('[data-cell-menu]').forEach(m => m.remove())
+    const m = document.createElement('div'); m.setAttribute('data-cell-menu', '')
+    m.style.cssText = 'position:fixed;z-index:58;min-width:190px;background:' + t.panel + ';color:' + t.ink + ';border:1px solid ' + t.rule + ';border-radius:9px;box-shadow:0 10px 28px rgba(0,0,0,.2);padding:4px;font-size:13px'
+    m.style.left = Math.min(event?.clientX ?? 100, (window.innerWidth || 800) - 200) + 'px'
+    m.style.top = Math.min(event?.clientY ?? 100, (window.innerHeight || 600) - 120) + 'px'
+    const item = (k, l) => '<button type="button" data-open="' + k + '" style="display:block;width:100%;text-align:left;font:inherit;padding:6px 10px;border:0;border-radius:6px;background:none;color:inherit;cursor:pointer">' + l + '</button>'
+    m.innerHTML = item('why', 'Why this number?') + item('changes', 'Who changed it') + item('notes', 'Notes')
+    document.body.appendChild(m)
+    const close = () => { m.remove(); document.removeEventListener('mousedown', away, true) }
+    const away = e => { if (!m.contains(e.target)) close() }
+    setTimeout(() => document.addEventListener('mousedown', away, true), 0)
+    m.onclick = e => {
+      const b = e.target.closest && e.target.closest('[data-open]'); if (!b) return
+      close(); cellInfo({ cube: cfg.cube, coordinates: co, tab: b.getAttribute('data-open'), notes: !!cfg.notes })
+    }
   }
   async function load() {
     if (!g) return rebuild()
@@ -914,7 +1029,7 @@ function run(process, params) {
 }
 
 // _pivot: the shared pivot's building blocks (docs/PIVOT_PLAN.md) — internal until Lens.pivot
-const Lens = { _pivot: pivotKit, pivot, version: TOOLKIT_VERSION, components: COMPONENTS.slice(), rows, format, localTime, theme, kpis, trend, waterfall, bars, grid, flow, editing, live, history, historyPanel, legend, config, whoami, save, run, echarts }
+const Lens = { _pivot: pivotKit, pivot, cellInfo, version: TOOLKIT_VERSION, components: COMPONENTS.slice(), rows, format, localTime, theme, kpis, trend, waterfall, bars, grid, flow, editing, live, history, historyPanel, legend, config, whoami, save, run, echarts }
 const missing = COMPONENTS.filter(n => typeof Lens[n] !== 'function')
 if (missing.length) throw new Error('Lens toolkit is missing: ' + missing.join(', '))
 

@@ -17,6 +17,7 @@ const http  = require('http')
 //   "insecure"    no verification at all. Lab / throwaway self-signed box only.
 // caFile: optional path to a PEM (CA bundle or the server's own cert) to ADD to
 //   the trust store. Applies to "verify" and "chain-only".
+const { paramsSerializer } = require('../odata-params')   // spaces as %20 — TM1 doesn't read '+'
 const _httpClient  = axios.create({ timeout: 120_000 })
 const _agentCache  = new Map()   // key -> { agent, client }
 const _warned      = new Set()
@@ -141,7 +142,7 @@ class DirectV11Adapter {
         // A reused keep-alive socket the server already closed fails with
         // ECONNRESET before the request is processed — retry reads once.
         const send = async (auth) => {
-            const go = () => http.request({ method, url, params, data, headers: { ...headers, ...auth }, validateStatus: () => true })
+            const go = () => http.request({ method, url, params, paramsSerializer, data, headers: { ...headers, ...auth }, validateStatus: () => true })
             try { return await go() } catch (e) {
                 if (method === 'get' && (e.code === 'ECONNRESET' || e.code === 'EPIPE')) return go()
                 throw e

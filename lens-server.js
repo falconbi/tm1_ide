@@ -26,7 +26,7 @@ const { probeAuthMethod, makeClientWithCredentials } = require('./core/adapter_r
 const lensStore = require('./core/lens_store')
 const lensBridge = require('./core/lens_bridge')
 const sharedBridge = require('./shared/lens-bridge')
-const { logLensWrite, logLensRun, readLensActivity } = require('./core/lens_activity_log')
+const { logLensWrite, logLensRun, logLensNote, readLensActivity } = require('./core/lens_activity_log')
 const { createLiveHub } = require('./core/lens_live')
 const { readPrefs, savePrefs, themeCss } = require('./core/lens_prefs')
 const THEMES = require('./shared/lens-themes.json')
@@ -740,6 +740,26 @@ function createApp({ config = loadConfig(), deps = {} } = {}) {
             if (e.status) logRun({ server: cfg.server, app: 'lens', user: req.lens.display, lens: name, process, params, status: e.status, message: e.message })
             res.status(e.status ? 422 : 400).json({ error: e.response?.data?.error?.message ?? e.message, status: e.status })
         }
+    })
+
+    // A cell's story (right-click menu): why / who changed it / notes — as the person.
+    for (const [route, fn] of [['cell-trace', (c, b) => lensBridge.cellTrace(c, b.cube, b.coordinates)],
+                               ['cell-log',   (c, b) => lensBridge.cellLog(c, b.cube, b.coordinates, b.top)],
+                               ['cell-notes', (c, b) => lensBridge.cellNotes(c, b.cube, b.coordinates)]]) {
+        app.post(`/api/lens/${route}`, requireSession, serverGate, async (req, res) => {
+            try { res.json(await fn(req.lens.client, req.body ?? {})) }
+            catch (e) { res.status(400).json({ error: e.response?.data?.error?.message ?? e.message }) }
+        })
+    }
+    app.post('/api/lens/add-note', requireSession, serverGate, async (req, res) => {
+        try {
+            const name = req.body?.lens
+            if (!name || typeof name !== 'string') throw new Error('lens is required')
+            const doc = await visibleLens(req, name)
+            const note = await lensBridge.addCellNote(req.lens.client, { cube: req.body?.cube, coordinates: req.body?.coordinates, text: req.body?.text, allowedCubes: lensBridge.lensNotes(doc) })
+            logLensNote({ server: cfg.server, app: 'lens', user: req.lens.display, lens: doc.name, ...note })
+            res.json({ ok: true })
+        } catch (e) { res.status(400).json({ error: e.response?.data?.error?.message ?? e.message }) }
     })
 
     // Lens.pivot: one dimension's element tree, read as the signed-in person.

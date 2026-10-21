@@ -177,6 +177,14 @@ function installLensHost(getLensWindow, { getServer, getToken, getLens, live = f
       } else if (d.method === 'whoami') {
         url = `/api/lens/whoami?server=${enc(server)}`
         init = { method: 'GET', headers }
+      } else if (d.method === 'cellTrace' || d.method === 'cellLog' || d.method === 'cellNotes') {
+        url = `/api/lens/${{ cellTrace: 'cell-trace', cellLog: 'cell-log', cellNotes: 'cell-notes' }[d.method]}?server=${enc(server)}`
+        init = { method: 'POST', headers, body: JSON.stringify({ cube: d.payload?.cube, coordinates: d.payload?.coordinates, top: d.payload?.top }) }
+      } else if (d.method === 'addNote') {
+        const lens = getLens ? getLens() : null
+        if (!lens) throw new Error('save the Lens first — notes are checked against the saved Lens')
+        url = `/api/lens/add-note?server=${enc(server)}`
+        init = { method: 'POST', headers, body: JSON.stringify({ lens, cube: d.payload?.cube, coordinates: d.payload?.coordinates, text: d.payload?.text }) }
       } else if (d.method === 'elementTree') {
         url = `/api/lens/element-tree?server=${enc(server)}&dimension=${enc(d.payload?.dimension ?? '')}${d.payload?.hierarchy ? `&hierarchy=${enc(d.payload.hierarchy)}` : ''}`
         init = { method: 'GET', headers }

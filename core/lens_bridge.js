@@ -348,6 +348,56 @@ function lensWrites(doc) { return [...new Set([...declaredWriteCubes(lensHtml(do
 function lensRuns(doc) { return [...new Set([...declaredRunProcesses(lensHtml(doc)), ...listOf(doc?.config?.runs)])] }
 const listOf = v => (Array.isArray(v) ? v.filter(x => typeof x === 'string' && x.trim()).map(x => x.trim()) : [])
 
+// ── A cell's story, for a Lens's right-click menu ─────────────────────────────
+// Why this number (TM1's own rule trace), who changed it (TM1's transaction
+// log) and notes (TM1 cell annotations). Everything runs as the person; a
+// cell is named by { dimension: element } for every dimension of the cube.
+async function cellTuple(client, cube, coordinates) {
+    if (!cube || typeof cube !== 'string') throw new Error('cube is required')
+    const dims = ((await client.getCube(cube)).Dimensions ?? []).map(d => d.Name)
+    const missing = dims.filter(d => coordinates?.[d] == null || coordinates[d] === '')
+    if (missing.length) throw new Error(`Name every dimension of ${cube} — missing: ${missing.join(', ')}`)
+    return dims.map(d => ({ dim: d, element: String(coordinates[d]) }))
+}
+// the person must be able to read the cell (TM1 security) before anything about it is returned
+async function assertReadable(client, cube, pairs) {
+    const where = pairs.map(p => escMember(p.dim) + '.' + escMember(p.dim) + '.' + escMember(p.element)).join(',')
+    await client.executeMDX(`SELECT {} ON 0 FROM ${escMember(cube)} WHERE (${where})`, 1)
+        .catch(() => { throw new Error('You can\'t see this cell') })
+}
+async function cellTrace(client, cube, coordinates) {
+    return client.traceCellCalculation(cube, await cellTuple(client, cube, coordinates))
+}
+async function cellLog(client, cube, coordinates, top = 30) {
+    const pairs = await cellTuple(client, cube, coordinates)
+    await assertReadable(client, cube, pairs)
+    const rows = await client.getTransactionLog(cube, { top: Math.min(Number(top) || 30, 100), elements: pairs.map(p => p.element) })
+    return rows.map(r => ({ at: r.TimeStamp, user: r.User, old: r.OldValue ?? null, value: r.NewValue ?? null, how: r.ChangeSetID ? 'change set' : null }))
+}
+const tupleMatches = (tuple, pairs) => {
+    const want = new Map(pairs.map(p => [p.dim.toLowerCase(), p.element.toLowerCase()]))
+    return (tuple ?? []).length === pairs.length && tuple.every(t => want.get(String(t.Hierarchy?.Dimension?.Name ?? '').toLowerCase()) === String(t.Name ?? '').toLowerCase())
+}
+async function cellNotes(client, cube, coordinates) {
+    const pairs = await cellTuple(client, cube, coordinates)
+    await assertReadable(client, cube, pairs)
+    return (await client.getAnnotations(cube)).filter(a => tupleMatches(a.Tuple, pairs))
+        .map(a => ({ id: a.ID, text: a.Text, author: a.Author, at: a.TimeStamp }))
+}
+// a note is a change to TM1 — only on a cube the saved Lens declares
+// (<meta name="lens-notes"> or lens-writes)
+async function addCellNote(client, { cube, coordinates, text, allowedCubes = [] }) {
+    if (!allowedCubes.some(c => c.toLowerCase() === String(cube).toLowerCase())) throw new Error(`This Lens hasn't declared notes on "${cube}" — add <meta name="lens-notes" content="${cube}">`)
+    const t = String(text ?? '').trim()
+    if (!t) throw new Error('A note needs some text')
+    if (t.length > 2000) throw new Error('A note can be at most 2,000 characters')
+    const pairs = await cellTuple(client, cube, coordinates)
+    await assertReadable(client, cube, pairs)
+    await client.addAnnotation(cube, pairs, t)
+    return { cube, coordinates, text: t }
+}
+function lensNotes(doc) { return [...new Set([...metaList(lensHtml(doc), 'lens-notes'), ...listOf(doc?.config?.notes), ...lensWrites(doc)])] }
+
 async function readLensMessage(client, user, process) {
     try {
         const r = await client.executeMDX(`SELECT {[Lens Message].[Lens Message].Members} ON 0, {[}Clients].[}Clients].${escMember(user)}} ON 1 FROM ${escMember(MSG_CUBE)}`, 10)
@@ -392,4 +442,4 @@ async function runProcess(client, { process, params = {}, allowedProcesses = [],
     return { status, seconds, message, result, since, detail }
 }
 
-module.exports = { execMDX, readCell, getMeta, elementTree, MAX_TREE_ELEMENTS, validateLens, buildStarterLens, validateMdx, declaredWriteCubes, writeCells, MAX_WRITE_CELLS, declaredRunProcesses, runProcess, lensWrites, lensRuns }
+module.exports = { execMDX, readCell, getMeta, elementTree, MAX_TREE_ELEMENTS, cellTrace, cellLog, cellNotes, addCellNote, lensNotes, validateLens, buildStarterLens, validateMdx, declaredWriteCubes, writeCells, MAX_WRITE_CELLS, declaredRunProcesses, runProcess, lensWrites, lensRuns }

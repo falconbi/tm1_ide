@@ -59,6 +59,14 @@ function page() {
           if (method === 'elementTree') return TREES[payload.dimension]
           if (method === 'execMDX') return fakeCellset(payload.mdx)
           if (method === 'writeCells') return { written: payload.cells.length }
+          if (method === 'cellTrace') return payload.coordinates.Measure === 'Bonus %'
+            ? { Type: 'Simple', Value: 0.1, Statements: [] }
+            : { Type: 'Rule', Value: 0.04, Statements: ["['Merit %'] = N: ['Base %'] + ['Uplift %'];"],
+                Components: [{ Type: 'Simple', Value: 0.1, Tuple: [{ Name: 'Bonus %', Hierarchy: { Dimension: { Name: 'Measure' } } }] },
+                             { Type: 'Simple', Value: 0.03, Cube: { Name: 'Other' }, Tuple: [{ Name: 'Base', Hierarchy: { Dimension: { Name: 'Measure' } } }] }] }
+          if (method === 'cellLog') return [{ at: '2026-10-21T01:00:00Z', user: 'finance_mgr', old: 0.03, value: 0.04 }]
+          if (method === 'cellNotes') return (win.__notes ||= []).map(t => ({ text: t, author: 'finance_mgr', at: '2026-10-21T02:00:00Z' }))
+          if (method === 'addNote') { (win.__notes ||= []).push(payload.text); return { ok: true } }
           throw new Error('unexpected ' + method)
         },
       }
@@ -187,5 +195,38 @@ test('copy table: the grid as tab-separated text', async () => {
   const text = pv.grid.toText().split('\n')
   assert.equal(text[0], 'Measure\tUK\tUS')
   assert.equal(text[1], 'Merit %\t3.0%\t4.0%')
+  pv.grid.destroy(); close()
+})
+
+test('right-click a cell: Why this number? traces the rule and clicks through; Changes and Notes', async () => {
+  const { doc, win, calls, close } = page()
+  const pv = win.Lens.pivot('#pv', opts({ notes: true }))
+  await pv.ready
+  const click = el => el.dispatchEvent(new win.MouseEvent('click', { bubbles: true }))
+  const cell = doc.querySelector('.ag-center-cols-container [row-id="Merit %"] [col-id="c1"]')
+  cell.dispatchEvent(new win.MouseEvent('contextmenu', { bubbles: true, clientX: 50, clientY: 50 }))
+  await wait(30)
+  const menu = doc.querySelector('[data-cell-menu]')
+  assert.ok(menu && menu.textContent.includes('Why this number?'))
+  click(menu.querySelector('[data-open="why"]'))
+  await wait(30)
+  const panel = doc.querySelector('[data-cell-info]')
+  assert.ok(panel.textContent.includes('Calculated by a rule') && panel.textContent.includes("['Base %'] + ['Uplift %']"))
+  const trace = calls.find(c => c.method === 'cellTrace').payload
+  assert.deepEqual(plain(trace.coordinates), { Measure: 'Merit %', Entity: 'US', Period: 'Jan', Version: 'Forecast' })
+  click(panel.querySelector('[data-comp="0"]'))                     // click through to Bonus %
+  await wait(30)
+  assert.equal(calls.filter(c => c.method === 'cellTrace').at(-1).payload.coordinates.Measure, 'Bonus %')
+  assert.ok(panel.textContent.includes('Typed in') && panel.querySelector('[data-back]'))
+  click(panel.querySelector('[data-tab="changes"]'))
+  await wait(30)
+  assert.ok(panel.textContent.includes('finance_mgr'))
+  click(panel.querySelector('[data-tab="notes"]'))
+  await wait(30)
+  assert.ok(panel.textContent.includes('No notes on this cell yet'))
+  panel.querySelector('[data-note]').value = 'Agreed with HR'
+  click(panel.querySelector('[data-add]'))
+  await wait(40)
+  assert.ok(panel.textContent.includes('Agreed with HR') && panel.textContent.includes('Note added'))
   pv.grid.destroy(); close()
 })

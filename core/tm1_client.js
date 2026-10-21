@@ -1243,22 +1243,32 @@ return (d.value ?? [])
 
     // ── Cell annotations ──────────────────────────────────────────────────────
 
+    // Cell notes (TM1 annotations). A note belongs to its cell through
+    // DimensionalContext (one member per cube dimension) and to its cube through
+    // ApplicationContext — the TM1 v11 / v12 REST shape (Tuple is not a property).
+    // Returned in a stable shape: { ID, Text, Author, TimeStamp, Tuple: [member] }.
     async getAnnotations(cube) {
         const d = await this.get(`Cubes('${odataKey(cube)}')/Annotations`, {
-            '$select':  'ID,Text,TimeStamp,Author',
-            '$expand':  'Tuple($select=Name;$expand=Hierarchy($select=Name;$expand=Dimension($select=Name)))',
-            '$orderby': 'TimeStamp desc',
-            '$top':     200,
+            '$select':  'ID,Text,Creator,Created,LastUpdated',
+            '$expand':  'DimensionalContext($select=Name;$expand=Hierarchy($select=Name;$expand=Dimension($select=Name)))',
+            '$top':     500,
         })
-        return d.value ?? []
+        return (d.value ?? [])
+            .map(a => ({ ID: a.ID, Text: a.Text, Author: a.Creator, TimeStamp: a.LastUpdated ?? a.Created, Tuple: a.DimensionalContext ?? [] }))
+            .sort((a, b) => String(b.TimeStamp).localeCompare(String(a.TimeStamp)))
     }
 
     async addAnnotation(cube, dimElemPairs, text) {
-        return this.post(`Cubes('${odataKey(cube)}')/Annotations`, {
+        return this.post('Annotations', {
             Text: text,
-            'Tuple@odata.bind': dimElemPairs.map(({ dim, element }) =>
-                `Dimensions('${odataKey(dim)}')/Hierarchies('${odataKey(dim)}')/Elements('${odataKey(element)}')`
+            ApplicationContext: [{ 'Facet@odata.bind': "ApplicationContextFacets('}Cubes')", Value: cube }],
+            'DimensionalContext@odata.bind': dimElemPairs.map(({ dim, element }) =>
+                `Dimensions('${odataKey(dim)}')/Hierarchies('${odataKey(dim)}')/Members('${odataKey(element)}')`
             ),
+            objectName: cube,
+            commentValue: text,
+            commentType: 'ANNOTATION',
+            commentLocation: dimElemPairs.map(p => p.element).join(','),
         })
     }
 
@@ -1431,11 +1441,10 @@ return (d.value ?? [])
 
     // elements: array of element names in cube dimension order (nulls = unfiltered)
     //
-    // TM1 v11's TransactionLogEntries collection rejects $filter, $orderby and $select
-    // ("Unsupported token") — only $top / $skip / $count work, and $top returns from the
-    // OLDEST entry. So: read the total count, page backwards from the newest entry in
-    // chunks, and match cube + tuple client-side. SCAN_CAP bounds how far back we look —
-    // on a busy server a cube with no recent writes may fall outside the window.
+    // TM1 filters by cube itself ($filter=Cube eq '…' — this used to fail only because
+    // spaces were sent as '+'; core/odata-params sends %20). The tuple is matched here.
+    // If a server still refuses the filter, fall back to reading the log and matching
+    // cube + tuple here ($top returns from the OLDEST entry, so take the newest window).
     async getTransactionLog(cube, { top = 200, elements = null, maxScan = 200_000 } = {}) {
         const cubeLc  = String(cube).toLowerCase()
         const wantEls = Array.isArray(elements) ? elements : null
@@ -1443,6 +1452,11 @@ return (d.value ?? [])
         const tupleMatches = e =>
             !wantEls || wantEls.every((el, i) => !el || (e.Tuple?.[i] ?? '') === el)
         const keep = e => (e.Cube ?? '').toLowerCase() === cubeLc && tupleMatches(e)
+
+        try {
+            const hit = (await this.get('TransactionLogEntries', { '$filter': `Cube eq '${odataLit(cube)}'`, '$top': maxScan })).value ?? []
+            return hit.filter(keep).sort((a, b) => String(b.TimeStamp).localeCompare(String(a.TimeStamp))).slice(0, top)
+        } catch { /* filter refused — read the log and match here */ }
 
         // One big $top pulls the whole log fast (~3s for 70k rows) — far cheaper than
         // $count (server counts everything) or high $skip values. Rows come oldest-first.

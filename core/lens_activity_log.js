@@ -18,6 +18,10 @@ function logLensWrite({ server, app, user, lens, cube, changes }, file = FILE) {
     append({ kind: 'write', server, app, user, lens, cube, changes }, file)
 }
 
+function logLensNote({ server, app, user, lens, cube, coordinates, text }, file = FILE) {
+    append({ kind: 'note', server, app, user, lens, cube, coordinates, text }, file)
+}
+
 function logLensRun({ server, app, user, lens, process, params, status, message }, file = FILE) {
     append({ kind: 'run', server, app, user, lens, process, params, status, message }, file)
 }
@@ -38,7 +42,9 @@ function readLensActivity({ server, lens, match = {}, limit = 50, skip = [] }, f
         let e
         try { e = JSON.parse(lines[i]) } catch { continue }
         if (e.server !== server || String(e.lens || '').toLowerCase() !== String(lens).toLowerCase()) continue
-        if (e.kind === 'run') {
+        if (e.kind === 'note') {
+            if (want.every(([d, v]) => String(e.coordinates?.[d]) === String(v))) out.push(e)
+        } else if (e.kind === 'run') {
             if (skipped.has(String(e.process || '').toLowerCase())) continue
             const vals = Object.values(e.params ?? {}).map(String)
             if (want.every(([, v]) => vals.includes(String(v)))) out.push(e)
@@ -50,4 +56,4 @@ function readLensActivity({ server, lens, match = {}, limit = 50, skip = [] }, f
     return out
 }
 
-module.exports = { logLensWrite, logLensRun, readLensActivity, FILE }
+module.exports = { logLensWrite, logLensRun, logLensNote, readLensActivity, FILE }

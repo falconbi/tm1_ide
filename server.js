@@ -16,7 +16,7 @@ const gitSecrets = require('./core/git-secrets')
 const { odataKey } = require('./core/odata-key')
 if (!process.env.TM1_GIT_TOKEN && gitSecrets.getToken()) process.env.TM1_GIT_TOKEN = gitSecrets.getToken()
 const lensStore = require('./core/lens_store')
-const { logLensWrite, logLensRun, readLensActivity } = require('./core/lens_activity_log')
+const { logLensWrite, logLensRun, logLensNote, readLensActivity } = require('./core/lens_activity_log')
 const lensBridge = require('./core/lens_bridge')
 const { readOnlyRefusal } = require('./core/readonly')
 
@@ -3981,6 +3981,30 @@ app.post('/api/lens/run-process', async (req, res) => {
         const detail = e.response?.data?.error?.message ?? e.message
         res.status(e.status ? 422 : 400).json({ error: typeof detail === 'string' ? detail : JSON.stringify(detail), status: e.status })
     }
+})
+
+// A cell's story for a Lens's right-click menu — why (rule trace), who changed it
+// (transaction log), notes — read as the IDE user; adding a note needs the saved
+// Lens to declare the cube (lens-notes / lens-writes) and is logged.
+for (const [route, fn] of [['cell-trace', (c, b) => lensBridge.cellTrace(c, b.cube, b.coordinates)],
+                           ['cell-log',   (c, b) => lensBridge.cellLog(c, b.cube, b.coordinates, b.top)],
+                           ['cell-notes', (c, b) => lensBridge.cellNotes(c, b.cube, b.coordinates)]]) {
+    app.post(`/api/lens/${route}`, async (req, res) => {
+        try { res.json(await fn(makeClient(req.query.server, req.ideToken), req.body ?? {})) }
+        catch (e) { res.status(400).json({ error: e.response?.data?.error?.message ?? e.message }) }
+    })
+}
+app.post('/api/lens/add-note', async (req, res) => {
+    try {
+        const server = req.query.server
+        if (!gateReadOnly(res, server)) return
+        const name = req.body?.lens
+        if (!name || typeof name !== 'string') throw new Error('lens is required')
+        const doc = await lensStore.readLens(server, name, { ideToken: req.ideToken })
+        const note = await lensBridge.addCellNote(makeClient(server, req.ideToken), { cube: req.body?.cube, coordinates: req.body?.coordinates, text: req.body?.text, allowedCubes: lensBridge.lensNotes(doc) })
+        logLensNote({ server, app: 'ide', user: req.user, lens: doc.name, ...note })
+        res.json({ ok: true })
+    } catch (e) { res.status(400).json({ error: e.response?.data?.error?.message ?? e.message }) }
 })
 
 // Lens.pivot: one dimension's element tree, read as the IDE user.
