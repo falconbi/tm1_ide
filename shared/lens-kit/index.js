@@ -1049,6 +1049,31 @@ const missing = COMPONENTS.filter(n => typeof Lens[n] !== 'function')
 if (missing.length) throw new Error('Lens toolkit is missing: ' + missing.join(', '))
 
 window.Lens = Lens
+
+// ── home link ─────────────────────────────────────────────────────────────────
+// A Lens whose config names its app's home page (config.home: 'WFP-Home', with an
+// optional homeLabel: 'Workforce') gets a quiet "⌂ Workforce" link at the top
+// left, opening that page. The home page itself names no home, so has none.
+function drawHomeLink() {
+  const home = config('home')
+  if (!home || typeof document === 'undefined' || document.querySelector('[data-lens-home]')) return
+  const t = theme.colors
+  const bar = document.createElement('div')
+  bar.style.cssText = 'max-width:1700px;margin:0 auto;padding:8px 18px 0;box-sizing:border-box'
+  const a = document.createElement('button')
+  a.type = 'button'; a.setAttribute('data-lens-home', ''); a.title = 'Back to ' + (config('homeLabel') || 'the home page')
+  a.textContent = '⌂ ' + (config('homeLabel') || 'Home')
+  a.style.cssText = 'font:inherit;font-size:12.5px;border:0;background:transparent;color:' + t.faint + ';cursor:pointer;padding:2px 4px;border-radius:5px'
+  a.onmouseenter = () => { a.style.color = t.ink }
+  a.onmouseleave = () => { a.style.color = t.faint }
+  a.onclick = () => { if (window.lensBridge) window.lensBridge.call('openLens', { name: home }).catch(() => {}) }
+  bar.appendChild(a)
+  document.body.insertBefore(bar, document.body.firstChild)
+}
+if (typeof document !== 'undefined') {
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', drawHomeLink)
+  else drawHomeLink()
+}
 // Alpine (CSP build — no code evaluation, so it works under every Lens frame's
 // security header): register behaviour with Alpine.data(...) and reference it
 // from x-data / @click by name.

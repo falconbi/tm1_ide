@@ -255,3 +255,28 @@ test('Lens.grid: with cellMenu, right-click a cell opens the same Why / Who chan
   assert.equal(doc.querySelector('[data-cell-menu]'), null)
   g.api.destroy(); close()
 })
+
+test('home link: a Lens whose config names a home page gets a "⌂ label" link that opens it; none without', async () => {
+  const mk = cfg => {
+    const calls = []
+    const dom = new JSDOM('<!doctype html><body><h1>Page</h1></body>', { runScripts: 'dangerously', pretendToBeVisual: true, beforeParse(win) {
+      win.__lensConfig = cfg; win.matchMedia = () => ({ matches: false, addEventListener() {}, removeEventListener() {} }); win.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} }
+      win.lensBridge = { call: async (m, p) => { calls.push({ m, p }); return {} }, onLive() {}, onContext() {} }
+    } })
+    const s = dom.window.document.createElement('script'); s.textContent = KIT; dom.window.document.head.appendChild(s)
+    return { doc: dom.window.document, win: dom.window, calls, close: () => dom.window.close() }
+  }
+  const a = mk({ home: 'WFP-Home', homeLabel: 'Workforce' })
+  await wait(30)
+  const link = a.doc.querySelector('[data-lens-home]')
+  assert.equal(link.textContent, '⌂ Workforce')
+  assert.equal(a.doc.body.firstChild.contains(link), true, 'at the top of the page')
+  link.dispatchEvent(new a.win.MouseEvent('click', { bubbles: true }))
+  await wait(10)
+  assert.deepEqual(plain(a.calls), [{ m: 'openLens', p: { name: 'WFP-Home' } }])
+  a.close()
+  const b = mk({})
+  await wait(30)
+  assert.equal(b.doc.querySelector('[data-lens-home]'), null)
+  b.close()
+})
