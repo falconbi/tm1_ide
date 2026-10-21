@@ -422,6 +422,15 @@ iterations:
   organise them **per component from that component's own local driver**, not as
   one mega-fan-out from a single source. (Verified: the WFP feeder rewrite cut
   ~50 blanket targets to a per-component dependency map, 55/55 assertions green.)
+- **`NON EMPTY` silently skips rule cells that have no feeders.** A control/check
+  measure written as a rule (`['Over-filled'] = C: …`) with nothing feeding it is
+  computed when you ask for the cell, but a `NON EMPTY` MDX query treats it as
+  empty and drops it — so a check read that way can report "all clear" while the
+  thing it checks is actually wrong. (A rule cell that *is* fed, e.g. `Person In
+  Closed Seat`, does appear.) Read the **consolidated totals without `NON EMPTY`**
+  first (a handful of cells, always computed), then scan the detail (a full leaf
+  grid, no `NON EMPTY`) only for the months/rows that trip. Never trust `NON EMPTY`
+  for a check; prove every check with a real trip before shipping it.
 
 ---
 

@@ -60,7 +60,7 @@ Load HR Assignments (+ Write Sample HR Extract). Outcomes go to the `Lens Messag
 3. **New Lens: Leavers & backfills** (WFP-Leavers v1): all leavers (472 in Forecast), what
    happens to the seat after, months vacant, editable Backfill from (writes Hire Month),
    Record a leaver by name (WFP End Assignment, HR/Finance only).
-4. **Titles renumbered** 0–14 to match Home order; Home tiles updated.
+4. **Titles renumbered** 0–15 to match Home order; Home tiles updated.
 5. **Model fix (processes, live):** WFP End Assignment (no backfill) and WFP Transfer Person
    now clear the seat's **old** approved Hire Month (≤ the person's last month), which would
    otherwise revive the seat as a counted "Planned hire" after they go. End Assignment's
@@ -78,29 +78,43 @@ Load HR Assignments (+ Write Sample HR Extract). Outcomes go to the `Lens Messag
    (`EXEC-001` → `ENG-002`, Henry Ford · E10001, from 2026-06): FTE moves, End Reason
    `Transfer Out` the month before, Start Reason `Transfer In`, old seat Vacant, new seat
    Filled, salary copied to the new seat; restored from a full snapshot.
+7. **New Lens: Seats needing attention** (WFP-Attention v1, title `8 Seats needing attention`,
+   Review group) + a Home tile: the three control checks (WFP Assignment `Over-filled` /
+   `Over-booked`, WFP Position Map `Person In Closed Seat`). **The test caught a real bug:**
+   `NON EMPTY` silently skips the two unfed rule checks (it saw only the fed closed-seat
+   check), so it would have shown "all clear" while seats were over-filled. Fixed by reading
+   the **consolidated month totals without `NON EMPTY`**, then scanning the full leaf grid for
+   only the months that trip (no feeder changes). Landmine written up in
+   `docs/BUILDING_MODELS.md`. Proved with three real Downside trips (second person into a
+   filled seat → 2 over-filled; one person at FTE in two seats → 1 over-booked; a person in a
+   closed seat → 1 closed, which also trips over-filled as its seat FTE is 0): lens and Home
+   tile both showed all three; restored from a snapshot. Home tile adds ~0.1s (3 queries,
+   72 cells).
 
 **Salary belongs to the seat** (intended, confirmed by James): a transfer copies the rate to
 the new seat and **leaves it on the old seat** as the starting point for a backfill. A vacant
 seat costs nothing, so it is not counted twice — **not yet proved**: next Downside test should
 read `WFP Workforce Cost` for the old seat in the vacant months and confirm 0.
 
-Verified by live read-only runs plus the two reversible Downside tests above. **Not yet done
+Verified by live read-only runs plus the reversible Downside tests above. **Not yet done
 by James in the UI:** a real hire-month save, an approval, a backfill save, Record a leaver,
 Record a transfer.
 
 ## Next, in order
 
-1. **Home tile "seats needing attention"** from the 3 control checks (over-filled,
-   over-booked, person in closed seat — Position Map / Assignment check measures).
-2. **My cost centre** and **Since last forecast** still read the dead Attrition Month —
-   switch their leaver lines to WFP Assignment (Leaver flag).
+1. **My cost centre** and **Since last forecast** still read the dead Attrition Month —
+   switch their leaver lines to WFP Assignment (Leaver flag). Both read
+   `WFP Hiring Plan` `Attrition Month` (`WFP-My-Cost-Centre.src.html:53,62`,
+   `WFP-Since-Last.src.html:46,57`); the measure is dead — no rule reads it.
+2. **Model performance** — the first load of Home after assignment data changes is ~30s
+   (rule recalculation; not the new tile), and a full feeder rebuild is ≈12 min. Users feel
+   the ~30s. Fix soon.
 3. Re-record the 17 scale assertions for the 3,000-person model.
 4. Open question for James: Downside hiring lines for ENG-005 / SLS-003.
 
 Review list (work_state "workforce-lens-review"): save column layout from Preview; centre
 all Lenses / roll the Assumptions look (1700px, footer History icon, stripes); month-grid
-house rule (no sort/filter); cellMenu on every grid; model performance (full feeder
-rebuild ≈12 min, cold cost reads 75–90 s — low priority).
+house rule (no sort/filter); cellMenu on every grid.
 
 Shared pivot leftovers: IDE's own member picker + right-click menu onto the shared ones;
 Advanced "views" (needs a view-layout bridge call) and aliases; paste from Excel;
