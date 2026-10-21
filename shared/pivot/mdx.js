@@ -1,6 +1,6 @@
 /**
  * Shared pivot · mdx — a layout (what is on rows, columns and filters) → TM1 MDX.
- * Pure, no imports. (From core/mdxBuilder.js, now with names escaped.)
+ * Pure, no imports. (Was the IDE's core/mdxBuilder.js; now with names escaped.)
  *
  * A placement: { dimension, hierarchy?, member?, members?, memberSet?: 'all'|'leaf'|'root',
  *                subset?, customExpr? }

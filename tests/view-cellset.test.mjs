@@ -129,18 +129,3 @@ test('lookupFormat falls back across dimensions', () => {
   assert.equal(lookupFormat('Cost Centre', 'ENG-001', map), '1,000') // cross-dim fallback
   assert.equal(lookupFormat('Cost Centre', 'Missing', map), null)
 })
-// ── Shared pivot (docs/PIVOT_PLAN.md) — known gaps, stated as the right answer ──
-
-test('item 13: each cell says whether TM1 calculates it (rule) or totals it (consolidation)',
-  { todo: 'item 13 — carry RuleDerived / Consolidated into the pivot for the shared colour scheme' }, () => {
-  const cs = cellset([[member('Admin', 'Cost Centre')]], [[member('FY25', 'Period')]],
-    [{ Ordinal: 0, Value: 5, FormattedValue: '5', RuleDerived: true, Consolidated: false }])
-  assert.equal(cellsetToHierarchyData(cs).data['Admin']['c0__kind'], 'calc')
-})
-
-test('item 12: the real value is kept beside the display text',
-  { todo: 'item 12 — keep raw value and display format separate in the shared pivot' }, () => {
-  const cs = cellset([[member('Admin', 'Cost Centre')]], [[member('FY25', 'Period')]],
-    [{ Ordinal: 0, Value: 1234.5, FormattedValue: '1,234.50' }])
-  assert.equal(cellsetToHierarchyData(cs).data['Admin']['c0'], 1234.5)
-})

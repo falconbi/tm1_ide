@@ -58,7 +58,12 @@ notes, write, copy).
 6. (Found in step 1.) Pruning a tree to the returned members marks a total as a
    leaf when its children were filtered out — it then looks editable.
 
-Step 1 done (commit 51d3db6): the pure logic lives in
+Progress: step 1 done (51d3db6), step 2 — shared/pivot (9c67c7a), step 3 —
+Lens.pivot (99eda08, ⇄ swap fb595ed), step 4 — IDE View editor on the shared
+pivot (5ffb890), old HierarchyGrid / lib/pivot-tree / core/mdxBuilder deleted
+(Oct 21; tried on 24Retail Income Statement and WFP Workforce Cost). Next: step 5.
+
+Step 1 detail (commit 51d3db6): the pure logic lives in
 `client/src/lib/pivot-tree.js`; bugs 1–6 and items 12–13 are `todo` tests in
 `tests/pivot-tree.test.mjs`, `tests/mdx-builder.test.mjs`,
 `tests/view-cellset.test.mjs`.

@@ -17,7 +17,6 @@ tm1_ide/
 │   ├── paw_connect.js                 # Session store + PAW cookie-jar auth (paw-native)
 │   ├── change_log.js                  # Change Set tracking — logs every save to audit trail
 │   ├── sql_client.js                  # External SQL connections (MSSQL/PG/MySQL/SQLite)
-│   ├── mdxBuilder.js                  # MDX query construction helpers
 │   └── adapters/
 │       ├── direct_v11.js              # Direct TM1 REST — Basic Auth, no PAW
 │       ├── paw_native.js              # PAW proxy — cookie jar + CSRF header

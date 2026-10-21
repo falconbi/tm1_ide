@@ -1,5 +1,5 @@
 // Shared pivot — the pure parts (shared/pivot): drill-down, MDX, cellset → pivot data.
-// The same behaviour pinned for the IDE's copy in pivot-tree / mdx-builder tests,
+// The behaviour first pinned for the IDE's old copy (pivot-tree / mdx-builder tests, now gone),
 // with bugs 1, 2, 3, 6 and items 12, 13 of docs/PIVOT_PLAN.md fixed.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
