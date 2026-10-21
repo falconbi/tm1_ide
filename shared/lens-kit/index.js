@@ -393,13 +393,22 @@ function pivot(el, cfg = {}) {
   const movable = d => !spec[d].locked && (!cfg.movable || cfg.movable.includes(d))
   let layout = { rows: (cfg.rows || []).map(p => p.dimension), columns: (cfg.columns || []).map(p => p.dimension), filters: (cfg.filters || []).map(p => p.dimension) }
   const member = {}; for (const p of cfg.filters || []) member[p.dimension] = p.member
+  // Advanced (each feature only if the builder lists it): 'members' (pick members / named
+  // subsets on an axis — cfg.subsets: { dim: [names] }), 'suppress', 'totals', 'copy', 'mdx'
+  const adv = new Set(cfg.advanced || [])
+  let picks = {}, suppress = cfg.suppress || 'none', totals = cfg.totals || 'top', advOpen = false, lastMdx = ''
   const storeKey = cfg.key ? 'lens-pivot:' + cfg.key : null
   try {
     const saved = storeKey && JSON.parse(localStorage.getItem(storeKey) || 'null')
     const dims = saved && [...saved.rows, ...saved.columns, ...saved.filters]
-    if (dims && dims.length === all.length && dims.every(d => spec[d]) && saved.rows.length) { layout = { rows: saved.rows, columns: saved.columns, filters: saved.filters }; Object.assign(member, saved.member || {}) }
+    if (dims && dims.length === all.length && dims.every(d => spec[d]) && saved.rows.length) {
+      layout = { rows: saved.rows, columns: saved.columns, filters: saved.filters }; Object.assign(member, saved.member || {})
+      if (adv.has('members')) picks = saved.picks || {}
+      if (adv.has('suppress') && saved.suppress) suppress = saved.suppress
+      if (adv.has('totals') && saved.totals) totals = saved.totals
+    }
   } catch (e) { /* nothing remembered */ }
-  const remember = () => { if (storeKey) try { localStorage.setItem(storeKey, JSON.stringify({ ...layout, member })) } catch (e) { /* storage refused */ } }
+  const remember = () => { if (storeKey) try { localStorage.setItem(storeKey, JSON.stringify({ ...layout, member, picks, suppress, totals })) } catch (e) { /* storage refused */ } }
 
   const trees = {}, choices = {}
   const tree = d => trees[d] || (trees[d] = window.lensBridge.call('elementTree', { dimension: d, hierarchy: spec[d].hierarchy }).then(els => els, () => null))
@@ -424,12 +433,35 @@ function pivot(el, cfg = {}) {
           ? ' <select data-member="' + esc(d) + '" style="font:inherit;font-size:12px;border:0;background:transparent;color:inherit;max-width:180px">' + list.map(m => '<option' + (m === member[d] ? ' selected' : '') + '>' + esc(m) + '</option>').join('') + '</select>'
           : ': <b>' + esc(member[d] ?? '') + '</b>'
       }
+      if (key !== 'filters' && adv.has('members') && advOpen) inner += ' <button type="button" data-pick="' + esc(d) + '" title="Choose members or a subset" style="font:inherit;font-size:11px;border:0;background:transparent;color:' + t.accent + ';cursor:pointer;padding:0 0 0 2px">' + (picks[d] ? '▾ ' + esc(pickLabel(picks[d])) : '▾') + '</button>'
       return '<span data-dim="' + esc(d) + '"' + (move ? ' draggable="true"' : '') + ' title="' + (move ? 'Drag to rows, columns or filters' : 'Fixed by the Lens') + '" style="display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border-radius:999px;border:1px solid ' + t.rule + ';background:' + t.panel + ';color:' + t.ink + ';cursor:' + (move ? 'grab' : 'default') + '">' + (move ? '' : '🔒 ') + inner + '</span>'
     }
     const swapOk = layout.columns.length && layout.rows.concat(layout.columns).every(movable)
     bar.innerHTML = zone('rows', 'Rows') +
       '<button type="button" data-swap title="Swap rows and columns"' + (swapOk ? '' : ' disabled') + ' style="font:inherit;font-size:14px;line-height:1;padding:4px 8px;border-radius:7px;border:1px solid ' + t.rule + ';background:' + t.panel + ';color:' + t.ink + ';cursor:' + (swapOk ? 'pointer' : 'default') + ';opacity:' + (swapOk ? 1 : 0.4) + '">⇄</button>' +
-      zone('columns', 'Columns') + zone('filters', 'Filters')
+      zone('columns', 'Columns') + zone('filters', 'Filters') +
+      (adv.size ? '<button type="button" data-adv style="margin-left:auto;font:inherit;font-size:12px;padding:4px 10px;border-radius:7px;border:1px solid ' + t.rule + ';background:' + (advOpen ? t.accent : t.panel) + ';color:' + (advOpen ? '#fff' : t.ink) + ';cursor:pointer">Advanced ' + (advOpen ? '▴' : '▾') + '</button>' : '') +
+      (advOpen ? advRow() : '')
+  }
+  const pickLabel = p => p.subset ? p.subset : p.memberSet === 'leaf' ? 'lowest level' : p.members ? p.members.length + ' chosen' : 'all'
+  const sel = (attr, opts, cur) => '<select ' + attr + ' style="font:inherit;font-size:12px;padding:2px 6px;border:1px solid ' + t.rule + ';border-radius:6px;background:' + t.panel + ';color:' + t.ink + '">' + opts.map(o => '<option value="' + o[0] + '"' + (o[0] === cur ? ' selected' : '') + '>' + o[1] + '</option>').join('') + '</select>'
+  const small = (attr, text) => '<button type="button" ' + attr + ' style="font:inherit;font-size:12px;padding:3px 9px;border-radius:6px;border:1px solid ' + t.rule + ';background:' + t.panel + ';color:' + t.ink + ';cursor:pointer">' + text + '</button>'
+  function advRow() {
+    const parts = []
+    if (adv.has('members')) parts.push('<span style="color:' + t.faint + '">▾ on a row or column chip chooses its members</span>')
+    if (adv.has('suppress')) parts.push('<label style="display:inline-flex;gap:6px;align-items:center">Hide empty ' + sel('data-suppress', [['none', 'nothing'], ['rows', 'rows'], ['columns', 'columns'], ['all', 'rows and columns']], suppress) + '</label>')
+    if (adv.has('totals')) parts.push('<label style="display:inline-flex;gap:6px;align-items:center">Totals ' + sel('data-totals', [['top', 'above'], ['bottom', 'below']], totals) + '</label>')
+    if (adv.has('copy')) parts.push(small('data-copy-table', 'Copy table'))
+    if (adv.has('mdx')) parts.push(small('data-copy-mdx', 'Copy MDX'))
+    return '<div style="flex-basis:100%;display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center;padding:6px 8px;border-radius:8px;background:' + t.panel + ';border:1px solid ' + t.rule + '">' + parts.join('') + '<span data-adv-note style="color:' + t.faint + '"></span></div>'
+  }
+  // copy text from inside the Lens frame (a hidden text box — works where the clipboard API is refused)
+  function copyText(text, what) {
+    const ta = document.createElement('textarea'); ta.value = text; ta.style.cssText = 'position:fixed;opacity:0;top:0;left:0'
+    document.body.appendChild(ta); ta.select()
+    let ok = false; try { ok = document.execCommand('copy') } catch (e) { ok = false }
+    ta.remove()
+    const note = bar.querySelector('[data-adv-note]'); if (note) note.textContent = ok ? what + ' copied' : 'Copy was refused by the browser'
   }
   // drag a chip to another zone
   bar.addEventListener('dragstart', e => { const c = e.target.closest && e.target.closest('[data-dim]'); if (c) e.dataTransfer.setData('text/plain', c.getAttribute('data-dim')) })
@@ -439,10 +471,27 @@ function pivot(el, cfg = {}) {
     e.preventDefault()
     run(() => move(e.dataTransfer.getData('text/plain'), z.getAttribute('data-zone')))
   })
-  bar.addEventListener('click', e => { if (e.target.closest && e.target.closest('[data-swap]')) run(swap) })
+  bar.addEventListener('click', e => {
+    const at = s => e.target.closest && e.target.closest(s)
+    if (at('[data-swap]')) run(swap)
+    else if (at('[data-adv]')) { advOpen = !advOpen; drawBar() }
+    else if (at('[data-copy-table]')) { if (g) copyText(g.toText(), 'Table') }
+    else if (at('[data-copy-mdx]')) copyText(lastMdx, 'MDX')
+    else if (at('[data-pick]')) {
+      const b = at('[data-pick]'), d = b.getAttribute('data-pick')
+      if (g && g.changes().length) { report(new Error('Save or undo your changes before changing members.')); return }
+      tree(d).then(els => P.openMemberPicker({
+        anchor: b, title: label(d), elements: els || [], subsets: (cfg.subsets || {})[d] || [],
+        current: picks[d] || spec[d], colors: { panel: t.panel, ink: t.ink, faint: t.faint, rule: t.rule, accent: t.accent },
+        onApply: choice => { picks[d] = choice; remember(); run(rebuild) },
+      }))
+    }
+  })
   bar.addEventListener('change', e => {
     const d = e.target.getAttribute && e.target.getAttribute('data-member')
     if (d) { member[d] = e.target.value; remember(); run(load) }
+    if (e.target.hasAttribute && e.target.hasAttribute('data-suppress')) { suppress = e.target.value; remember(); run(load) }
+    if (e.target.hasAttribute && e.target.hasAttribute('data-totals')) { totals = e.target.value; remember(); if (g) g.setOptions({ totals, colTotals: totals }) }
   })
   function move(d, to) {
     if (!spec[d] || !movable(d)) return
@@ -465,7 +514,8 @@ function pivot(el, cfg = {}) {
 
   // a dimension on rows/columns: its own members/set, or — for a filter moved onto an axis — the choices it offered
   const axis = d => {
-    const p = spec[d], members = p.members || (!p.memberSet && !p.subset ? p.choices : null)
+    const p = Object.assign({}, spec[d], picks[d] ? { members: undefined, memberSet: undefined, subset: undefined, ...picks[d] } : {})
+    const members = p.members || (!p.memberSet && !p.subset ? p.choices : null)
     return { dimension: d, hierarchy: p.hierarchy, members, memberSet: p.memberSet || (members || p.subset ? undefined : 'all'), subset: p.subset }
   }
   async function filterChoices() {
@@ -478,7 +528,8 @@ function pivot(el, cfg = {}) {
   }
   async function query() {
     const mdx = P.buildMDX({ cube: cfg.cube, rows: layout.rows.map(axis), columns: layout.columns.map(axis),
-      pages: layout.filters.map(d => ({ dimension: d, hierarchy: spec[d].hierarchy, member: member[d] })), suppressZeros: cfg.suppress || 'none' })
+      pages: layout.filters.map(d => ({ dimension: d, hierarchy: spec[d].hierarchy, member: member[d] })), suppressZeros: suppress })
+    lastMdx = mdx
     const r = await window.lensBridge.call('execMDX', { mdx })
     if (r && r.truncated) throw new Error('This layout returns more than the cell limit — filter it down or move a dimension to filters.')
     return P.cellsetToPivot(r, { formatMap: cfg.formats || {} })
@@ -494,7 +545,7 @@ function pivot(el, cfg = {}) {
     g = P.createPivotGrid(gridEl, {
       pivot: data, rowHierarchies: rowsH, colHierarchies: colsH, rowNames: layout.rows.map(label),
       edit: cfg.edit ? 'save' : false, onEdit: ch => onChange && onChange(ch), rowEditable: cfg.rowEditable,
-      stripes: cfg.stripes, fit: cfg.fit || 'content', height: cfg.height || 'auto',
+      stripes: cfg.stripes, fit: cfg.fit || 'content', height: cfg.height || 'auto', totals, colTotals: totals,
       storageKey: storeKey ? storeKey + ':w:' + layout.rows.join('|') + '>' + layout.columns.join('|') : null,
       dark: dark(), colors: { calcBg: t.calcBg, totalBg: t.totalBg },
     })

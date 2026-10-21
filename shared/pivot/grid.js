@@ -363,6 +363,20 @@ export function createPivotGrid(host, opts = {}) {
         },
         fitColumns() { api.autoSizeAllColumns() },
         resetWidths() { widths = {}; saveWidths(); api.setGridOption('columnDefs', columnDefs()); api.sizeColumnsToFit() },
+        // the grid as it stands (labels, headings, what is shown) — tab-separated, pastes into Excel
+        toText() {
+            const cols = api.getAllDisplayedColumns()
+            const head = cols.map(c => c.getColDef().headerName ?? '').join('\t')
+            const lines = []
+            api.forEachNodeAfterFilterAndSort(n => {
+                lines.push(cols.map(c => {
+                    const id = c.getColId()
+                    if (id.startsWith('__d')) return n.data?.[`${id}_label`] ?? ''
+                    return show(n.data?.[id], (n.data?.__key ?? '') + '|' + id)
+                }).join('\t'))
+            })
+            return [head, ...lines].join('\n')
+        },
         exportCsv(fileName) {
             api.exportDataAsCsv({
                 fileName,

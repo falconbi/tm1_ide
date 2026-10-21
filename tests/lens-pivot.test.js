@@ -141,3 +141,51 @@ test('a total (Group) is shown but never typed into', async () => {
   assert.equal(pv.grid.api.getColumn(groupCol).getColDef().editable({ data }), false)
   pv.grid.destroy(); close()
 })
+
+test('Advanced: shows only what the builder lists; picking members re-asks TM1; hide empty, totals, copy MDX', async () => {
+  const { doc, win, calls, close } = page()
+  const pv = win.Lens.pivot('#pv', opts({ advanced: ['members', 'suppress', 'totals', 'mdx'], subsets: { Entity: ['Big two'] }, key: 'adv-test' }))
+  await pv.ready
+  const click = el => el.dispatchEvent(new win.MouseEvent('click', { bubbles: true }))
+  assert.ok(doc.querySelector('[data-adv]'), 'Advanced button shown')
+  assert.ok(!doc.querySelector('[data-pick]'), 'member pickers hidden until Advanced is opened')
+  click(doc.querySelector('[data-adv]'))
+  assert.ok(doc.querySelector('[data-suppress]') && doc.querySelector('[data-totals]') && doc.querySelector('[data-copy-mdx]'))
+  assert.ok(!doc.querySelector('[data-copy-table]'), 'copy table not listed → not shown')
+  // pick: Entity → the named subset
+  click(doc.querySelector('[data-pick="Entity"]'))
+  await wait(30)
+  const picker = doc.querySelector('[data-member-picker]')
+  assert.ok(picker, 'member picker opens')
+  assert.ok(picker.textContent.includes('Big two') && picker.textContent.includes('Group') && picker.textContent.includes('UK'))
+  const radio = [...picker.querySelectorAll('input[name="mp-mode"]')].find(r => r.value === 'subset:Big two')
+  radio.checked = true; radio.dispatchEvent(new win.Event('change', { bubbles: true }))
+  click(doc.querySelector('[data-mp-apply]'))
+  await wait(60)
+  const mdx = calls.filter(c => c.method === 'execMDX').at(-1).payload.mdx
+  assert.match(mdx, /TM1SubsetToSet\(\[Entity\]\.\[Entity\], "Big two", "public"\)/)
+  assert.ok(!doc.querySelector('[data-member-picker]'), 'picker closed after Apply')
+  // ticking members
+  click(doc.querySelector('[data-pick="Entity"]'))
+  await wait(30)
+  const tick = doc.querySelector('[data-mp-tick="US"]')
+  tick.checked = true; tick.dispatchEvent(new win.Event('change', { bubbles: true }))
+  click(doc.querySelector('[data-mp-apply]'))
+  await wait(60)
+  assert.match(calls.filter(c => c.method === 'execMDX').at(-1).payload.mdx, /\{\[Entity\]\.\[Entity\]\.\[US\]\} ON COLUMNS/)
+  // hide empty rows
+  const sup = doc.querySelector('[data-suppress]'); sup.value = 'rows'; sup.dispatchEvent(new win.Event('change', { bubbles: true }))
+  await wait(60)
+  assert.match(calls.filter(c => c.method === 'execMDX').at(-1).payload.mdx, /NON EMPTY/)
+  pv.grid.destroy(); close()
+})
+
+test('copy table: the grid as tab-separated text', async () => {
+  const { win, close } = page()
+  const pv = win.Lens.pivot('#pv', opts())
+  await pv.ready
+  const text = pv.grid.toText().split('\n')
+  assert.equal(text[0], 'Measure\tUK\tUS')
+  assert.equal(text[1], 'Merit %\t3.0%\t4.0%')
+  pv.grid.destroy(); close()
+})

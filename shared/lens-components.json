@@ -108,7 +108,9 @@
       "key": "remembers each person's layout and column widths under this name.",
       "movable": "dimensions people may move (default: every one not locked).",
       "suppress": "'none' (default) | 'rows' | 'columns' | 'all' — leave out empty rows/columns.",
-      "stripes": "shade every other row; pv.stripes(on) switches it."
+      "stripes": "shade every other row; pv.stripes(on) switches it.",
+      "advanced": "An 'Advanced' button with extras — only those listed: ['members', 'suppress', 'totals', 'copy', 'mdx']. members: ▾ on a row/column chip picks members (tree, search) or a named subset; suppress: hide empty rows/columns; totals: above/below; copy: the table to the clipboard (pastes into Excel); mdx: copy the query (read-only). People never type MDX in a Lens.",
+      "subsets": "{ dimension: [subset names] } — the named subsets the member picker offers (the builder decides; dynamic MDX subsets welcome)."
     },
     "interactions": "Drag a chip between Rows, Columns and Filters; ⇄ swaps rows and columns; pick a filter member from its list; ▸/▾ drills into a total (remembered per outer member); − / + on a row header collapses or opens a whole dimension. Colours as Lens.grid: grey = calculated, darker grey = total, blue = typed not saved.",
     "goodFor": [
