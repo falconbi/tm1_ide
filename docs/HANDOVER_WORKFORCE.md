@@ -193,7 +193,16 @@ Record a transfer.
    actual restriction needs each Lens's `config.access` set to the groups that may open it.
    Propose the per-Lens group map for James to approve; a Lens with no `access` stays
    visible to everyone.
-5. **Move heavy calculations to TI — do this LAST, after the Lenses are updated.** The
+5. **Terminology — standardize on "Position" (James's decision).** The model already says
+   Position; only the UI/docs say "Seat". Phase 1 (cheap, display only): Lens titles/labels/Info/
+   Home tiles/prose → "Position" ("Position roster", "Positions needing attention"), keeping the
+   internal names `WFP-Seat-Roster`, `Seat FTE`, `Seat Status`, `WFP Move Seat`. Phase 2 (model
+   refactor, test with compare + assertions): `Seat FTE` → `Position FTE`, `Seat Status` → ? — it
+   **collides with the `WFP Position` attribute `Position Status`** (the establishment status from
+   the position file), so one must be renamed (`Establishment Status` vs `Monthly Status`);
+   `WFP Move Seat` → `WFP Move Position`; lens name `WFP-Seat-Roster` → `WFP-Position-Roster`.
+   **Decision needed on the status naming before Phase 2.**
+6. **Move heavy calculations to TI — do this LAST, after the Lenses are updated.** The
    seat-level cost posting (Base, Benefits, ER tax → Cost) and the month-by-month YTD tax
    chain are what put a rule/feeder on every seat-month, driving the ~56s cold read, the
    ~12-min feeder rebuild and the 1.5h snapshot. Settings can't fix it. Plan (when we get
