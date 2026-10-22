@@ -51,6 +51,41 @@ the calculation lived.
 
 ---
 
+## Design rule #2 — version lifecycle
+
+A plan has **two independent axes**. Do not confuse them:
+
+1. **Lifecycle — working → approved.**
+   - Build in a **Calculating** version. Rules calculate, planners change it, Lenses are editable.
+   - On approval, **freeze** it: copy into a **Static / Non-Calculating** version, then **lock** it.
+   - The freeze must carry the **calculated** values (Headcount, Cost), not just the inputs. Use
+     `WFP Snapshot` (`}bedrock.cube.data.copy`, `pSuppressRules=0`, every Version-dim cube).
+     `WFP Copy Version` copies only Workforce Input and would leave Headcount/Cost blank.
+   - Variance versions (`Act vs Bud`, `Fcst vs Bud`) read the **approved** version, never the working
+     one.
+2. **Cycle overlap — different horizons can run at once.**
+   - Budget FY2027 and Forecast FY2026 overlap in calendar time; a budget often starts ~3 months
+     before the forecast year ends. That is normal. "Never run two in parallel" only means "never two
+     versions of the *same* plan".
+
+**The standard:**
+- `Version Type` attribute: **Calculated** for working, **Static** for approved; put approved versions
+  under `Non-Calculating` so every cube's `STET` guard uses the stored values.
+- **Locking:** cell security / data reservations (or a Locked flag enforced by processes and Lenses);
+  after approval nobody edits the static version.
+- The **plan month** (first forecast month = last Actual + 1) is global — it is not per version.
+- **Assumptions are effective-dated:** a value entered once applies from that month forward until the
+  next entered value, so a mid-year change is one edit, not 36.
+- Name versions for the reader (`Budget FY27 (working)` / `Budget FY27`) and say which one variance
+  uses.
+- Overlap is allowed; each cycle has its own year/horizon, approval state and working version.
+
+This model today: `Budget` is still **Calculated** (its description is "single-developer loop proof")
+and there is no static approved copy; it is seeded with zeros for merit/promo/bonus by design. The
+freeze + lock step has not been run.
+
+---
+
 ## Get the dimensionality right first
 
 Before any `build_cube`, settle the dimensions. Wrong dimensionality is the one
