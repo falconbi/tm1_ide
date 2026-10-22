@@ -456,6 +456,19 @@ function LensesSection({ server, onOpen, onNew }) {
   const [lenses, setLenses] = useState([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
+  // Lens folders collapse so ten models don't mean ten screens of scrolling.
+  // Remembered across sessions.
+  const [collapsedLensFolders, setCollapsedLensFolders] = useState(() => {
+    try { return new Set(JSON.parse(localStorage.getItem('tm1-lens-folders-collapsed') || '[]')) } catch { return new Set() }
+  })
+  const toggleLensFolder = (folder) => {
+    setCollapsedLensFolders(prev => {
+      const next = new Set(prev)
+      if (next.has(folder)) next.delete(folder); else next.add(folder)
+      try { localStorage.setItem('tm1-lens-folders-collapsed', JSON.stringify([...next])) } catch { /* storage refused */ }
+      return next
+    })
+  }
   const headers = () => ({ 'x-ide-token': localStorage.getItem('tm1-token') ?? '' })
   const load = useCallback(() => {
     setLoading(true); setError(null)
@@ -539,33 +552,45 @@ function LensesSection({ server, onOpen, onNew }) {
           {!loading && !error && lenses.length === 0 && (
             <p className="px-6 py-0.5 text-xs text-muted-foreground/50 italic">No lenses yet</p>
           )}
-          {lensGroups.map(g => (
-            <div key={g.folder}>
-              <div className="px-6 pt-1.5 pb-0.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60 truncate" title={g.folder}>{g.folder}</div>
-              {g.items.map(f => (
-                <div key={f.name} className="flex items-center w-full px-6 py-0.5 text-xs text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground group/lens">
-                  <button
-                    onClick={() => onOpen(f.name)}
-                    className="flex items-center gap-2 flex-1 min-w-0 text-left"
-                    title={`Open lens ${f.name}${f.description ? ` — ${f.description}` : ''}`}
-                  >
-                    <LayoutDashboard size={10} className="shrink-0 text-muted-foreground" />
-                    <span className="truncate">{lensStep(f).label}</span>
-                    {f.status && (
-                      <span className="text-[10px] text-muted-foreground shrink-0">{f.status}{f.version ? ` · v${f.version}` : ''}</span>
-                    )}
-                  </button>
-                  <button
-                    onClick={() => remove(f.name)}
-                    title={`Delete lens ${f.name}`}
-                    className="hidden group-hover/lens:flex items-center ml-1 text-muted-foreground hover:text-red-600 shrink-0"
-                  >
-                    <Trash2 size={10} />
-                  </button>
-                </div>
-              ))}
-            </div>
-          ))}
+          {lensGroups.map(g => {
+            const isCollapsed = collapsedLensFolders.has(g.folder)
+            return (
+              <div key={g.folder}>
+                <button
+                  type="button"
+                  onClick={() => toggleLensFolder(g.folder)}
+                  className="flex items-center gap-1 w-full px-6 pt-1.5 pb-0.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60 hover:text-foreground min-w-0"
+                  title={isCollapsed ? `Expand ${g.folder}` : `Collapse ${g.folder}`}
+                >
+                  {isCollapsed ? <ChevronRight size={10} className="shrink-0" /> : <ChevronDown size={10} className="shrink-0" />}
+                  <span className="truncate">{g.folder}</span>
+                  <span className="ml-1 text-muted-foreground/40 shrink-0">{g.items.length}</span>
+                </button>
+                {!isCollapsed && g.items.map(f => (
+                  <div key={f.name} className="flex items-center w-full px-6 py-0.5 text-xs text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground group/lens">
+                    <button
+                      onClick={() => onOpen(f.name)}
+                      className="flex items-center gap-2 flex-1 min-w-0 text-left"
+                      title={`Open lens ${f.name}${f.description ? ` — ${f.description}` : ''}`}
+                    >
+                      <LayoutDashboard size={10} className="shrink-0 text-muted-foreground" />
+                      <span className="truncate">{lensStep(f).label}</span>
+                      {f.status && (
+                        <span className="text-[10px] text-muted-foreground shrink-0">{f.status}{f.version ? ` · v${f.version}` : ''}</span>
+                      )}
+                    </button>
+                    <button
+                      onClick={() => remove(f.name)}
+                      title={`Delete lens ${f.name}`}
+                      className="hidden group-hover/lens:flex items-center ml-1 text-muted-foreground hover:text-red-600 shrink-0"
+                    >
+                      <Trash2 size={10} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )
+          })}
         </div>
       )}
     </div>
