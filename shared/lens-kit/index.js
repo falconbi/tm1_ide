@@ -184,12 +184,12 @@ theme.blue = BLUE         // for a Lens's own legend (Lens.legend draws the stan
 // fit: 'width' (default) stretches columns to fill the grid; 'content' sizes each
 // column to its values and heading (tight); a number gives every column that many px.
 // height: CSS height, or 'auto' to fit every row with no inner scroll (short tables).
-// stripes: shade every other row (on by default); g.stripes(false) turns it off.
+// stripes: shade every other row when the Lens passes stripes:true; g.stripes(on) switches it.
 // A column's options may be a function (row) → list | null: a drop-down on the
 // rows that return a list, ordinary typing on the rest.
 // cellMenu: (row, field) → { cube, coordinates } | null — where a cell lives in TM1; with it,
 // right-click gives Why this number? / Who changed it / Notes (notes: true allows adding one).
-function grid(el, { columns = [], rows: data = [], height, onEdit, onFocus, onSelect, rowEditable, fit = 'width', stripes = true, cellMenu, notes = false } = {}) {
+function grid(el, { columns = [], rows: data = [], height, onEdit, onFocus, onSelect, rowEditable, fit = 'width', stripes = false, key, cellMenu, notes = false } = {}) {
   const t = theme.colors, node = host(el)
   node.innerHTML = ''
   // height 'auto': the grid grows to fit every row (no scrollbar of its own) — for short tables
@@ -206,6 +206,17 @@ function grid(el, { columns = [], rows: data = [], height, onEdit, onFocus, onSe
   const canEdit = (c, row) => !!c.editable && !(row && row._input && row._input[c.field] === false) && !(rowEditable && row && rowEditable(row) === false)
   const tint = (hex, a) => hex + Math.round(a * 255).toString(16).padStart(2, '0')
   let api = null
+  // Persist the column layout (order / width / pinned / hidden) per Lens + user.
+  // Same idea as Lens.pivot's key, but for a plain grid.
+  const layoutKey = key ? 'lens-grid:' + key : null
+  const readLayout = () => { try { const v = JSON.parse(localStorage.getItem(layoutKey) || 'null'); return Array.isArray(v) ? v : null } catch (e) { return null } }
+  const writeLayout = () => {
+    if (!layoutKey || !api) return
+    try {
+      const state = api.getColumnState().map(c => ({ colId: c.colId, width: c.width, pinned: c.pinned, hide: c.hide }))
+      localStorage.setItem(layoutKey, JSON.stringify(state))
+    } catch (e) { /* storage refused */ }
+  }
   const changes = () => [...orig.keys()].map(k => {
     const [i, field] = [Number(k.slice(0, k.indexOf('|'))), k.slice(k.indexOf('|') + 1)]
     return { row: data[i], field, value: data[i][field], old: orig.get(k) }
@@ -285,6 +296,11 @@ function grid(el, { columns = [], rows: data = [], height, onEdit, onFocus, onSe
     } : undefined,
     rowSelection: onSelect ? { mode: 'singleRow', checkboxes: false, enableClickSelection: true } : undefined,
     onSelectionChanged: onSelect ? () => { const r = api.getSelectedRows(); onSelect(r[0] || null) } : undefined,
+    onGridReady: p => { const saved = layoutKey && readLayout(); if (saved) { try { p.api.applyColumnState({ state: saved, applyOrder: true }) } catch (e) { /* bad saved layout */ } } },
+    onColumnMoved: () => writeLayout(),
+    onColumnResized: e => { if (e.finished !== false) writeLayout() },
+    onColumnVisible: () => writeLayout(),
+    onColumnPinned: () => writeLayout(),
     onCellValueChanged: p => {
       const k = keyOf(p.data, p.colDef.field)
       if (!orig.has(k)) orig.set(k, p.oldValue)
