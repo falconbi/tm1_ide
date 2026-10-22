@@ -36,15 +36,17 @@ salaries.
 
 ## Proposed cost
 
-A TI process (`WFP Assignment Cost`) reads the detail, **prorates each assignment by days**,
-and sums by Position × Month × Version into a **cost driver** (e.g. a new `Assignment Base`
-measure in `WFP Workforce Input`). The Cost rules use that driver as `Base`; the existing
-on-cost and tax chain runs on it unchanged.
+A TI process (`WFP Assignment Cost`) reads the detail and, per assignment, **month by month**:
 
-- Keeps the current **Position-level** tax granularity (already an approximation).
-- Gets **day-accurate handovers** and **two salaries**.
-- Per-person cost (adding Employee to Cost) is the “perfect” version but changes every page;
-  not recommended now.
+- prorates by **days**,
+- carries **YTD earnings / employer and employee tax** for that person (continuing across a
+  transfer within the same company; restarting on a company move),
+- sums the components (Base, ER tax, pension, benefits, bonus) into the **Position** for the
+  existing Cost cube and pages.
+
+The Position is the reporting grain; the **calculation grain is the assignment**. The
+on-cost/tax logic moves out of the Position-level rules into this engine — it is across-time
+work, which belongs in TI (design rule #1).
 
 ## Handover and the Over-filled control
 
@@ -84,7 +86,11 @@ Actions write the detail dates; the existing processes keep the month-level assi
 
 1. **Salary per assignment — DECIDED (yes).** Each assignment carries `Base Salary` (from
    HR); the Position's `Base Salary` is the default for a vacant/new Position.
-2. **Cost granularity** — position-level aggregation (recommended) or per-person.
+2. **Cost granularity — DECIDED: assignment grain.** Cost and tax are calculated per
+   assignment, then rolled up to the Position for the existing pages. One person holds **one
+   Position at a time** (no simultaneous split), so tax per assignment = tax per person.
+   Sequential assignments (a transfer) must **carry the person's YTD** across the move within
+   the same company; a move to another company restarts it (as today).
 3. **Day basis** — calendar days or working days.
 4. **Handover** — explicit flag (recommended) or derived from overlapping dates.
 
