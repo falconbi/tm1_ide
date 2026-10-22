@@ -28,7 +28,7 @@ project to stand up.
 The first full set is a **17-page Workforce planning model** — the worked example of a model, its maths and its
 screens built together. **Landing soon.**
 
-![Lenses home — the Workforce planning model](docs/images/lenses-home.png)
+![Lenses home — the Workforce planning model](docs/images/lenses-home-full.png)
 
 ---
 
