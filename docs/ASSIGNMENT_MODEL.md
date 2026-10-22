@@ -91,7 +91,8 @@ Actions write the detail dates; the existing processes keep the month-level assi
    Position at a time** (no simultaneous split), so tax per assignment = tax per person.
    Sequential assignments (a transfer) must **carry the person's YTD** across the move within
    the same company; a move to another company restarts it (as today).
-3. **Day basis** — calendar days or working days.
+3. **Day basis — DECIDED: working days.** The engine needs a working-day count per period
+   (add a `Working Days` attribute on `WFP Period`, or a calendar; holidays still to decide).
 4. **Handover** — explicit flag (recommended) or derived from overlapping dates.
 
 ## Related
