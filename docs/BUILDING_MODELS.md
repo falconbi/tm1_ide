@@ -86,6 +86,43 @@ freeze + lock step has not been run.
 
 ---
 
+## Design rule #3 — server-wide control (versions, periods, settings, folders, palette)
+
+Some things are **platform, not app**: the version lifecycle, the actuals boundary, file folders,
+the corporate palette. Rebuilding them per model is how five apps end up disagreeing about "last
+actual". This is a model-building rule, not a Lens one — though Lenses consume the palette and
+defaults.
+
+**One control store per server, one fallback chain.**
+
+**Versions and periods as attributes, never literals:**
+- `Version` attributes: `Version Type` (Calculated | Static), `Status` (Working | Approved | Locked),
+  `Start Period`, `End Period`, `Approval Group`, `Prior Snapshot`.
+- `Period` attributes: `Period Index`, `Actuals Closed`, `Last Actual`, `Prior Fcst Snapshot`, `FY`,
+  `Next Period`.
+- **Plan month = Last Actual + 1**, derived once and read everywhere.
+- Share the `Version`/`Period` dimensions if every model shares the calendar; otherwise use one
+  standard template replicated per model. Either way, no process hardcodes `'2026-01'`, `'Forecast'`
+  or `'UK Ltd'`.
+
+**`SYS Settings` cube — `Application` × `Setting`, read app → `All` → code default:**
+- Folders: `Export Folder`, `Import Folder`, `Archive Folder`, `Log Folder` (app subfolders under a
+  central root), created and validated by one `SYS Ensure Folders` process.
+- Branding: `Palette` (accent / bg / ink / good / bad / warn), `Logo`, `Typography`.
+- Lifecycle: `Current Forecast`, `Working Budget`, `Last Actual Index`, `Plan Month Index`,
+  `Approval Group`, `FY`.
+- Defaults: `Default Entity`, `Default Year`, `Default Currency`.
+- Unknown keys are ignored (forward-compatible); only platform/admin writes it.
+
+**How it is used:** processes read the cube (no hardcoded version/period/paths); Lenses read the
+palette and defaults from the app config and fall back to the kit's own values. The control store is
+**platform** — deployed and versioned as platform, not inside an app's change set.
+
+This model today: processes read `'2026-01'` / `'Forecast'` / `'UK Ltd'` as literals in several
+places, and the Lens app carries its palettes in code. Those are exactly what this rule removes.
+
+---
+
 ## Get the dimensionality right first
 
 Before any `build_cube`, settle the dimensions. Wrong dimensionality is the one
