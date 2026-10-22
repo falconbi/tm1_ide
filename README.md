@@ -44,6 +44,17 @@ moving fast.
 A demonstration and reference project — to show what's possible, to learn from, and to build on. Not a supported
 product.
 
+## Landing soon: Lenses
+
+**Lenses are single-file HTML pages that turn a TM1 model into a focused web app.** One page per job — the position
+roster, hiring plan, leavers, transfers, pay changes, approvals, cost, headcount, variance — all on live TM1 data,
+in one clean shell, with the same grid, filters and history. They are built and previewed inside the IDE, served by
+a small lens server, and backed by governed TM1 processes, so a model gets a tailored interface without a BI tool
+or a separate front-end project.
+
+The first full set is a Workforce planning model — **17 pages from the roster to budget-to-forecast** — the worked
+example of a model, its maths and its screens built together. Landing soon in this repo.
+
 ## What's in it
 
 - **A real editor for rules and TI** — Monaco (the engine behind VS Code) with TM1-aware autocomplete, signature
