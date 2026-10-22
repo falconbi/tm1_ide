@@ -37,57 +37,57 @@ For the next agent (OpenCode) picking up the Workforce work. Read this first, th
 - **Toolkit:** `shared/lens-kit/*` (v11), catalogue `shared/lens-components.json`,
   shared pivot `shared/pivot/*`. Tests: `npm test` (308 pass at commit 49134b6).
 
-## The model in one paragraph (Option B: seats + people)
+## The model in one paragraph (Option B: positions + people)
 
-A `WFP Position` is a **seat**. `WFP Position Map` (by month) holds the seat's Cost Centre,
+A `WFP Position` is the **budgeted establishment** (the position); `WFP Position Map` (by month) holds its Cost Centre,
 Home Entity, Grade, Location, Seat FTE and a rule-driven **Seat Status**
 (Filled / Planned hire / Vacant / Closed). People are `WFP Employee` (2,782, alias Display
 "Name · ID"); `WFP Assignment` (Period × Version × Position × Employee × measure) says who
 sits where (FTE Share, Start/End Reason, flags Joiner/Leaver/Transfer In/Out — the Leaver
-flag sits in the person's **last** month). `WFP Hiring Plan` holds a seat's Hire Month +
+flag sits in the person's **last** month). `WFP Hiring Plan` holds a position's Hire Month +
 Finance approval; only approved hires count, and only while nobody is assigned
-(Effective Hire Month → seat End Period). Attrition Month is **dead** (no rule reads it).
+(Effective Hire Month → position End Period). Attrition Month is **dead** (no rule reads it).
 Processes: WFP Assign Person, End Assignment, Transfer Person, Move Seat, Approve Hire,
 Load HR Assignments (+ Write Sample HR Extract). Outcomes go to the `Lens Messages` cube.
 
 ## Done this session (22 Oct)
 
 1. **Home link** on every Workforce Lens (`config.home`), commit 49134b6.
-2. **Hiring plan reworked** (WFP-Hiring-Plan v4): one row per seat from Position Map +
+2. **Hiring plan reworked** (WFP-Hiring-Plan v4): one row per position from Position Map +
    Assignment; Leave month column removed; "Leaves after …" read-only; hire month refused
-   in a month someone sits in the seat or the seat is closed; "Opens Sep 2026" for future
-   seats; Seat roster link; right-click Why/Who/Notes on hire month.
+   in a month someone sits in the position or the position is closed; "Opens Sep 2026" for future
+   positions; Position roster link; right-click Why/Who/Notes on hire month.
 3. **New Lens: Leavers & backfills** (WFP-Leavers v1): all leavers (472 in Forecast), what
-   happens to the seat after, months vacant, editable Backfill from (writes Hire Month),
+   happens to the position after, months vacant, editable Backfill from (writes Hire Month),
    Record a leaver by name (WFP End Assignment, HR/Finance only).
 4. **Titles renumbered** 0–15 to match Home order; Home tiles updated.
 5. **Model fix (processes, live):** WFP End Assignment (no backfill) and WFP Transfer Person
-   now clear the seat's **old** approved Hire Month (≤ the person's last month), which would
-   otherwise revive the seat as a counted "Planned hire" after they go. End Assignment's
+   now clear the position's **old** approved Hire Month (≤ the person's last month), which would
+   otherwise revive the position as a counted "Planned hire" after they go. End Assignment's
    cutoff message no longer prints an index. Script: `tmp/workforce/fix-stale.js`.
-   **Verified live on Downside** (23 Oct): Assign Person into an approved planned-hire seat
+   **Verified live on Downside** (23 Oct): Assign Person into an approved planned-hire position
    (`ENG-2069`, hire 2026-08), End Assignment with no backfill → Hire Month 0, Approved/By/At
    cleared, Seat Status Vacant from 2026-09; restored from a full snapshot. Neither process
    touches the employee record for an existing person (the Status/Leaver attr writes are only
    in the new-person branch).
 6. **New Lens: Transfers** (WFP-Transfers v1, title `4 Transfers`): people moving between
-   seats and cost centres (Assignment Transfer In / Out flags), paired per person (Transfer
-   Out sits the month before the Transfer In), "Old seat after" column reusing the Leavers
+   positions and cost centres (Assignment Transfer In / Out flags), paired per person (Transfer
+   Out sits the month before the Transfer In), "Old position after" column reusing the Leavers
    logic, record a move by name (WFP Transfer Person, HR/Finance). No direct cube writes —
    process only. `tmp/workforce/lens/WFP-Transfers.src.html`. Tested live on Downside
    (`EXEC-001` → `ENG-002`, Henry Ford · E10001, from 2026-06): FTE moves, End Reason
-   `Transfer Out` the month before, Start Reason `Transfer In`, old seat Vacant, new seat
-   Filled, salary copied to the new seat; restored from a full snapshot.
-7. **New Lens: Seats needing attention** (WFP-Attention v1, title `8 Seats needing attention`,
+   `Transfer Out` the month before, Start Reason `Transfer In`, old position Vacant, new position
+   Filled, salary copied to the new position; restored from a full snapshot.
+7. **New Lens: Positions needing attention** (WFP-Attention v1, title `8 Positions needing attention`,
    Review group) + a Home tile: the three control checks (WFP Assignment `Over-filled` /
    `Over-booked`, WFP Position Map `Person In Closed Seat`). **The test caught a real bug:**
-   `NON EMPTY` silently skips the two unfed rule checks (it saw only the fed closed-seat
-   check), so it would have shown "all clear" while seats were over-filled. Fixed by reading
+   `NON EMPTY` silently skips the two unfed rule checks (it saw only the fed closed-position
+   check), so it would have shown "all clear" while positions were over-filled. Fixed by reading
    the **consolidated month totals without `NON EMPTY`**, then scanning the full leaf grid for
    only the months that trip (no feeder changes). Landmine written up in
    `docs/BUILDING_MODELS.md`. Proved with three real Downside trips (second person into a
-   filled seat → 2 over-filled; one person at FTE in two seats → 1 over-booked; a person in a
-   closed seat → 1 closed, which also trips over-filled as its seat FTE is 0): lens and Home
+   filled position → 2 over-filled; one person at FTE in two positions → 1 over-booked; a person in a
+   closed position → 1 closed, which also trips over-filled as its position FTE is 0): lens and Home
    tile both showed all three; restored from a snapshot. Home tile adds ~0.1s (3 queries,
    72 cells).
 8. **Snapshot trap found (read-only):** `WFP Copy Version` is not the snapshot tool — it
@@ -110,12 +110,12 @@ Load HR Assignments (+ Write Sample HR Extract). Outcomes go to the `Lens Messag
    Cost 207,566 cells / 19s; Assignment 5,478 / 0.6s; Position Map 15,009 / 0.7s; Headcount
    11,229 / 1.2s; Workforce Input 5,643 / 0.6s; the rest tiny. **What the pages read:** all
    at cost-centre / entity level except **My cost centre and Since last forecast**, which
-   read Cost at seat (Position) level — but only `Total Compensation` / `Reporting` /
+   read Cost at position (Position) level — but only `Total Compensation` / `Reporting` /
    `Amount`. Position Map is read by none of them.
 10. **Fast-snapshot probe (read-only design check).** Every element checked: `Total
     Positions` and the function names are consolidations; `Total Compensation`, `Cost to
     Company`, `Employee Deductions`, `GL:…` are consolidations; `Currency` and `Measure`
-    are all leaves. So Cost must be stored at **leaf seats** — totals roll up. Bedrock's
+    are all leaves. So Cost must be stored at **leaf positions** — totals roll up. Bedrock's
     `}bedrock.cube.data.copy` defaults `pSuppressConsol=1` (skips consolidations),
     `pZeroTarget=1` (it **zeroes the target slice** via `}bedrock.cube.data.clear` before
     writing) and `pSuppressRules=1` (the WFP processes pass 0 to copy calculated values).
@@ -145,10 +145,10 @@ Load HR Assignments (+ Write Sample HR Extract). Outcomes go to the `Lens Messag
     222,600 vs Forecast 218,400). #7 reworded to the approval gate ("planned hire waiting
     for Finance → headcount 0"). **62 total, 62 pass.**
 
-**Salary belongs to the seat** (intended, confirmed by James): a transfer copies the rate to
-the new seat and **leaves it on the old seat** as the starting point for a backfill. A vacant
-seat costs nothing, so it is not counted twice — **not yet proved**: next Downside test should
-read `WFP Workforce Cost` for the old seat in the vacant months and confirm 0.
+**Salary belongs to the position** (intended, confirmed by James): a transfer copies the rate to
+the new position and **leaves it on the old position** as the starting point for a backfill. A vacant
+position costs nothing, so it is not counted twice — **not yet proved**: next Downside test should
+read `WFP Workforce Cost` for the old position in the vacant months and confirm 0.
 
 Verified by live read-only runs plus the reversible Downside tests above. **Not yet done
 by James in the UI:** a real hire-month save, an approval, a backfill save, Record a leaver,
@@ -194,7 +194,7 @@ Record a transfer.
    Propose the per-Lens group map for James to approve; a Lens with no `access` stays
    visible to everyone.
 5. **Terminology — standardize on "Position" (James's decision).** The model already says
-   Position; only the UI/docs say "Seat". Phase 1 (cheap, display only): Lens titles/labels/Info/
+   Position; only the UI/docs say "Position". Phase 1 (cheap, display only): Lens titles/labels/Info/
    Home tiles/prose → "Position" ("Position roster", "Positions needing attention"), keeping the
    internal names `WFP-Seat-Roster`, `Seat FTE`, `Seat Status`, `WFP Move Seat`. Phase 2 (model
    refactor, test with compare + assertions): `Seat FTE` → `Position FTE`, `Seat Status` → ? — it
@@ -203,15 +203,15 @@ Record a transfer.
    `WFP Move Seat` → `WFP Move Position`; lens name `WFP-Seat-Roster` → `WFP-Position-Roster`.
    **Decision needed on the status naming before Phase 2.**
 6. **Move heavy calculations to TI — do this LAST, after the Lenses are updated.** The
-   seat-level cost posting (Base, Benefits, ER tax → Cost) and the month-by-month YTD tax
-   chain are what put a rule/feeder on every seat-month, driving the ~56s cold read, the
+   position-level cost posting (Base, Benefits, ER tax → Cost) and the month-by-month YTD tax
+   chain are what put a rule/feeder on every position-month, driving the ~56s cold read, the
    ~12-min feeder rebuild and the 1.5h snapshot. Settings can't fix it. Plan (when we get
    there): which calcs move, what triggers them (version copy / Lens Save / a single
    `CubeProcessFeeders` after a bulk load), and prove with the compare script (0
    differences) + the 62 assertions before touching rules.
 
 **Parked:** `WFP Snapshot Fast` (design: copy every cube in full except Cost, Cost at leaf
-seat level; chore `MultipleCommit`) was designed and probed but **not built** — James chose
+position level; chore `MultipleCommit`) was designed and probed but **not built** — James chose
 to slim the Cost cube instead. `WFP Snapshot` stays as-is; use it overnight.
 
 Review list (work_state "workforce-lens-review"): save column layout from Preview; centre

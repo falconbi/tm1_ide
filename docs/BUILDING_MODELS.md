@@ -34,7 +34,7 @@ the linters and returns numbers is not a build that is correct.
 
 Settle this **before building**, and again **before scaling the data up**:
 
-- **TI for heavy, stable, or across-time work** — posting seat cost to cost centre /
+- **TI for heavy, stable, or across-time work** — posting position cost to cost centre /
   company, YTD tax runs, snapshots, allocations.
 - **Rules only for what planners must see change live.**
 - **Avoid data-driven or attribute-driven feeders.** They block multi-threaded feeders and
@@ -43,7 +43,7 @@ Settle this **before building**, and again **before scaling the data up**:
   every cell.
 - **Estimate cells and feeders at the target scale first.**
 
-The WFP model is the cautionary tale: seat-level cost rules plus a month-by-month YTD tax
+The WFP model is the cautionary tale: position-level cost rules plus a month-by-month YTD tax
 chain gave a **~12-minute feeder rebuild**, **~56-second cold cost reads** and a
 **1.5-hour snapshot** — and its attribute/data-directional feeders meant **MTFeeders could
 not be enabled**. None of that was fixable with a server setting; it was decided by where
@@ -402,7 +402,7 @@ iterations:
 - **A text cell can't be read with `['…']` in a numeric rule** ("Syntax error …
   logical expression"). Read it with a full `DB('Cube', !Dim1, …, 'Measure') @= 'x'`.
 - **Feeders are never removed, and re-saving unchanged rules doesn't re-run them.**
-  To move one seat's cells to a new cost centre, write each source value over 0
+  To move one position's cells to a new cost centre, write each source value over 0
   (zero, then restore) — the feeders fire for just those cells in seconds; a full
   `CubeProcessFeeders` at 3,000 people is ~12 minutes (≈ a server restart).
 - **`}CubeProperties` `LOGGING` is per cube** — with `NO`, TM1 keeps no change history
@@ -524,7 +524,7 @@ iterations:
   computed when you ask for the cell, but a `NON EMPTY` MDX query treats it as
   empty and drops it — so a check read that way can report "all clear" while the
   thing it checks is actually wrong. (A rule cell that *is* fed, e.g. `Person In
-  Closed Seat`, does appear.) Read the **consolidated totals without `NON EMPTY`**
+  Closed Position`, does appear.) Read the **consolidated totals without `NON EMPTY`**
   first (a handful of cells, always computed), then scan the detail (a full leaf
   grid, no `NON EMPTY`) only for the months/rows that trip. Never trust `NON EMPTY`
   for a check; prove every check with a real trip before shipping it.
@@ -556,7 +556,7 @@ iterations:
   identical write into a snapshot was **0.41 ms/cell** on a no-feeder cell vs **0.48
   ms/cell** on a fed cell (~15%). Keep it when conditional feeders exist.
 - **A cold cost page (~56s) is a model-design cost, not a server setting.** MTQ is already
-  on (all 4 cores). The 56s → 15ms cold/warm gap is seat-level cost rules plus the
+  on (all 4 cores). The 56s → 15ms cold/warm gap is position-level cost rules plus the
   month-by-month YTD tax chain: the first read calculates the whole aggregate, later reads
   hit the cache. Only redesigning the Cost calculation changes it — not settings.
 
