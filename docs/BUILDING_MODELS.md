@@ -95,6 +95,10 @@ defaults.
 
 **One control store per server, one fallback chain.**
 
+**Every server gets exactly one `SYS Settings` cube by default** — created by the server
+template/bootstrap as a platform object, not per app and not by each model. The structure is
+standard; the values are per server/app. Apps read it; they never create their own copy.
+
 **Versions and periods as attributes, never literals:**
 - `Version` attributes: `Version Type` (Calculated | Static), `Status` (Working | Approved | Locked),
   `Start Period`, `End Period`, `Approval Group`, `Prior Snapshot`.
