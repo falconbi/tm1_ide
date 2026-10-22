@@ -18,6 +18,20 @@ No TM1 Architect, no Perspectives, nothing to install on the server.
 
 ---
 
+## Coming soon: Lenses
+
+**Your TM1 model, as a focused web app — not a spreadsheet.** Lenses are single-file HTML pages, one per job: the
+position roster, hiring plan, leavers, transfers, pay changes, approvals, cost, headcount, variance. Live TM1 data,
+one clean shell, governed write-back — built and previewed inside the IDE, with no BI tool or separate front-end
+project to stand up.
+
+The first full set is a **17-page Workforce planning model** — the worked example of a model, its maths and its
+screens built together. **Landing soon.**
+
+![Lenses home — the Workforce planning model](docs/images/lenses-home.png)
+
+---
+
 > [!IMPORTANT]
 > **Deployment now runs on TM1's built-in Git (preview).** Step-by-step deploy with approvals, drift checks and model-owned history. Tested in the lab, not yet production-proven — use it on test servers and tell us what you find.
 
@@ -43,17 +57,6 @@ moving fast.
 
 A demonstration and reference project — to show what's possible, to learn from, and to build on. Not a supported
 product.
-
-## Landing soon: Lenses
-
-**Lenses are single-file HTML pages that turn a TM1 model into a focused web app.** One page per job — the position
-roster, hiring plan, leavers, transfers, pay changes, approvals, cost, headcount, variance — all on live TM1 data,
-in one clean shell, with the same grid, filters and history. They are built and previewed inside the IDE, served by
-a small lens server, and backed by governed TM1 processes, so a model gets a tailored interface without a BI tool
-or a separate front-end project.
-
-The first full set is a Workforce planning model — **17 pages from the roster to budget-to-forecast** — the worked
-example of a model, its maths and its screens built together. Landing soon in this repo.
 
 ## What's in it
 
