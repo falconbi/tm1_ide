@@ -187,6 +187,13 @@ Record a transfer.
    assertions and time the restart and the cold read; undo by removing the line and
    restarting.
 3. Open question for James: Downside hiring lines for ENG-005 / SLS-003.
+4. **Move heavy calculations to TI — do this LAST, after the Lenses are updated.** The
+   seat-level cost posting (Base, Benefits, ER tax → Cost) and the month-by-month YTD tax
+   chain are what put a rule/feeder on every seat-month, driving the ~56s cold read, the
+   ~12-min feeder rebuild and the 1.5h snapshot. Settings can't fix it. Plan (when we get
+   there): which calcs move, what triggers them (version copy / Lens Save / a single
+   `CubeProcessFeeders` after a bulk load), and prove with the compare script (0
+   differences) + the 62 assertions before touching rules.
 
 **Parked:** `WFP Snapshot Fast` (design: copy every cube in full except Cost, Cost at leaf
 seat level; chore `MultipleCommit`) was designed and probed but **not built** — James chose
