@@ -27,6 +27,22 @@ export default function SessionsMonitor({ server, onClose }) {
     threadBySessionId[sid].push(t)
   }
 
+  // TM1 v11 Thread has no User navigation property, so attribute a thread through
+  // its Session instead. The session's own Threads (v11 expansion) are merged in
+  // too, so the monitor still works if the separate Threads query is unavailable.
+  const userBySessionId = {}
+  for (const s of sessions) {
+    const userName = (s.User && typeof s.User === 'object') ? (s.User.Name ?? s.User.FriendlyName ?? null) : null
+    if (userName) userBySessionId[s.Name] = userName
+  }
+  const threadsForSession = (s) => {
+    const merged = [...(threadBySessionId[s.Name] ?? [])]
+    for (const t of (Array.isArray(s.Threads) ? s.Threads : [])) {
+      if (!merged.some(x => x.Name === t.Name)) merged.push(t)
+    }
+    return merged
+  }
+
   const grouped = sessions.reduce((acc, s) => {
     const userName = (s.User && typeof s.User === 'object') ? (s.User.Name ?? s.User.FriendlyName ?? null) : null
     const name = userName ?? `session:${(s.Name ?? '').slice(0, 8)}`
@@ -108,7 +124,7 @@ export default function SessionsMonitor({ server, onClose }) {
                       </td>
                       <td className="px-3 py-1.5">
                         {(() => {
-                          const active = threads.filter(t => t.User?.Name === u.name)
+                          const active = threads.filter(t => userBySessionId[t.Session?.Name ?? t.Session] === u.name)
                           return active.length > 0
                             ? <span className="text-emerald-500 text-[10px]">{active.length} active</span>
                             : <span className="text-muted-foreground/50 text-[10px]">—</span>
@@ -128,7 +144,7 @@ export default function SessionsMonitor({ server, onClose }) {
                       </td>
                     </tr>
                     {isExpanded && u.sessions.map((s, _i) => {
-                      const sessionThreads = threadBySessionId[s.Name] ?? []
+                      const sessionThreads = threadsForSession(s)
                       return (
                         <tr key={s.Name} className="border-b border-border/30 bg-muted/10">
                           <td colSpan={4} className="px-6 py-1">

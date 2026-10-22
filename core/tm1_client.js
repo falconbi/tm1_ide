@@ -1586,8 +1586,27 @@ return (d.value ?? [])
     // ── Sessions ──────────────────────────────────────────────────────────────
 
     async getSessions() {
-        const d = await this.get('Sessions', { '$expand': 'User,CurrentThread' })
-        return d.value ?? []
+        // TM1 v12 has Session.CurrentThread; TM1 v11 does NOT — asking for it makes
+        // TM1 reject the whole request ("CurrentThread is not a property of Session"),
+        // which is why the Sessions monitor showed 0 sessions and a 400. v11 exposes
+        // Session.Threads instead. Try the expansion that worked last time first, then
+        // the v11 and v12 shapes, then no thread expand at all, so both versions work.
+        const tries = []
+        if (this._sessionsExpand) tries.push(this._sessionsExpand)
+        for (const e of ['User,Threads', 'User,CurrentThread', 'User']) {
+            if (!tries.includes(e)) tries.push(e)
+        }
+        let lastErr
+        for (const expand of tries) {
+            try {
+                const d = await this.get('Sessions', { '$expand': expand })
+                this._sessionsExpand = expand
+                return d.value ?? []
+            } catch (e) {
+                lastErr = e
+            }
+        }
+        throw lastErr
     }
 
     async disconnectSession(id) {
