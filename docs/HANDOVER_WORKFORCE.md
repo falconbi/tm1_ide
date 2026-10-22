@@ -140,10 +140,12 @@ Load HR Assignments (+ Write Sample HR Extract). Outcomes go to the `Lens Messag
     WFP Headcount at the same level. Stores only non-zero values (6 dp, keyed by full
     coordinates) and compares with tolerance 0.005. **Capture: 702,216 values, 3,198
     queries, 2–4 min, ~53 MB. Compare against the unchanged model: 0 differences.**
-    Assertion baseline (unchanged model): **62 total, 39 pass, 23 fail**, stable across
-    runs — the 23 are pre-existing stale-scale expectations (16-position model), i.e. the
-    "re-record the scale assertions" item, not a regression. **Until those are re-recorded
-    the assertions are not a usable safety net** — the compare script is.
+    Assertions were re-recorded on 24 Oct: the 19 stale-scale checks plus #5, #12 and #13
+    (descriptions updated to remove old constants; #5 rewritten on EXEC-001: Downside
+    222,600 vs Forecast 218,400). Now **62 total, 61 pass, 1 fail** — **#7 (ENG-008
+    backfill) is pending a decision**: Downside Hire Month = 20 but `Approved=""`, so
+    Effective = 9999 and Seat Status = Vacant → Headcount 0 is **correct**; reword to
+    "waiting for Finance → 0" or approve the hire.
 
 **Salary belongs to the seat** (intended, confirmed by James): a transfer copies the rate to
 the new seat and **leaves it on the old seat** as the starting point for a backfill. A vacant
@@ -179,7 +181,13 @@ Record a transfer.
    ~43k cells/month → snapshot ~25–30 min, **not minutes**. Prove any change with the
    compare script plus the 62 assertions, across all versions (a rules/feeder change applies
    to the whole cube — there is no "Downside first").
-2. Re-record the 17 scale assertions for the 3,000-person model.
+2. **Server settings (investigated, read-only).** MTQ is already on (4 cores). **MTFeeders /
+   MTFeeders.AtStartup must stay F** — the model has conditional (attribute- and
+   data-directional) feeders. **`ForceReevaluation…OnDataChange` stays T** (measured ~15%
+   write overhead). The one candidate is **`MaximumCubeLoadThreads=3`** (static): James adds
+   it at the next planned restart (SaveDataAll first), then run the compare (expect 0) +
+   assertions and time the restart and the cold read; undo by removing the line and
+   restarting.
 3. Open question for James: Downside hiring lines for ENG-005 / SLS-003.
 
 **Parked:** `WFP Snapshot Fast` (design: copy every cube in full except Cost, Cost at leaf

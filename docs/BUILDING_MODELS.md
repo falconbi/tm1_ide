@@ -442,10 +442,29 @@ iterations:
   Headcount/Cost values are copied in. `WFP Copy Version` copies only
   `WFP Workforce Input` (`FTE`, `Base Salary`) — using it for a snapshot leaves
   Headcount and Cost **blank**, because the non-calculating guard STETs and nothing
-  copies the values. (A snapshot taken before a new cube existed won't have that
-  cube's data — re-snapshot; there's no repair.)
+   copies the values. (A snapshot taken before a new cube existed won't have that
+   cube's data — re-snapshot; there's no repair.)
+- **MTFeeders / MTFeeders.AtStartup need a model with NO conditional feeders.** IBM's
+  docs: both are *"not supported when the model uses conditional feeders"*, and MTFeeders
+  also warns it *"increases memory usage significantly"*. "Conditional" includes
+  **attribute-directional** (target via `ATTRS`) and **data-directional** (target via
+  `DB`, e.g. the Position Map cost centre) feeders — the WFP model has both
+  (`WFP Workforce Input` FTE → Cost target Currency via `Salary Currency`, Entity/CC via
+  Position Map; `WFP Headcount` Headcount → next Period via attribute). So **leave
+  MTFeeders=F**. The load/feeder lever is **`MaximumCubeLoadThreads`** (static; cores−1) —
+  its restriction is only for *value-conditional* feeders (IF in a feeder), which this
+  model has none of.
+- **`ForceReevaluationOfFeedersForFedCellsOnDataChange` is required only for conditional
+  feeders**, and is **static** on 11.8 (restart). Measured cost is small: a 6,044-cell
+  identical write into a snapshot was **0.41 ms/cell** on a no-feeder cell vs **0.48
+  ms/cell** on a fed cell (~15%). Keep it when conditional feeders exist.
+- **A cold cost page (~56s) is a model-design cost, not a server setting.** MTQ is already
+  on (all 4 cores). The 56s → 15ms cold/warm gap is seat-level cost rules plus the
+  month-by-month YTD tax chain: the first read calculates the whole aggregate, later reads
+  hit the cache. Only redesigning the Cost calculation changes it — not settings.
 
 ---
+
 
 ## What each build taught us
 
