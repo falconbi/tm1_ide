@@ -187,7 +187,13 @@ Record a transfer.
    assertions and time the restart and the cold read; undo by removing the line and
    restarting.
 3. Open question for James: Downside hiring lines for ENG-005 / SLS-003.
-4. **Move heavy calculations to TI — do this LAST, after the Lenses are updated.** The
+4. **Lens access (`config.access` per Lens).** Home now hides Lenses the person can't
+   open — new route `GET /api/lens/lenses` filters by `config.access` against the signed-in
+   person's TM1 groups (commit 240e059; IDE Explorer still shows all by design). The
+   actual restriction needs each Lens's `config.access` set to the groups that may open it.
+   Propose the per-Lens group map for James to approve; a Lens with no `access` stays
+   visible to everyone.
+5. **Move heavy calculations to TI — do this LAST, after the Lenses are updated.** The
    seat-level cost posting (Base, Benefits, ER tax → Cost) and the month-by-month YTD tax
    chain are what put a rule/feeder on every seat-month, driving the ~56s cold read, the
    ~12-min feeder rebuild and the 1.5h snapshot. Settings can't fix it. Plan (when we get
