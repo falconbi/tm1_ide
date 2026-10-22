@@ -184,12 +184,12 @@ theme.blue = BLUE         // for a Lens's own legend (Lens.legend draws the stan
 // fit: 'width' (default) stretches columns to fill the grid; 'content' sizes each
 // column to its values and heading (tight); a number gives every column that many px.
 // height: CSS height, or 'auto' to fit every row with no inner scroll (short tables).
-// stripes: shade every other row (off unless asked); g.stripes(on) switches it.
+// stripes: shade every other row (on by default); g.stripes(false) turns it off.
 // A column's options may be a function (row) → list | null: a drop-down on the
 // rows that return a list, ordinary typing on the rest.
 // cellMenu: (row, field) → { cube, coordinates } | null — where a cell lives in TM1; with it,
 // right-click gives Why this number? / Who changed it / Notes (notes: true allows adding one).
-function grid(el, { columns = [], rows: data = [], height, onEdit, onFocus, onSelect, rowEditable, fit = 'width', stripes = false, cellMenu, notes = false } = {}) {
+function grid(el, { columns = [], rows: data = [], height, onEdit, onFocus, onSelect, rowEditable, fit = 'width', stripes = true, cellMenu, notes = false } = {}) {
   const t = theme.colors, node = host(el)
   node.innerHTML = ''
   // height 'auto': the grid grows to fit every row (no scrollbar of its own) — for short tables
