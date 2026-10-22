@@ -26,6 +26,8 @@ New cube **`WFP Assignment Detail`**
   — one record per assignment, **not** per month.
 - Measures: `Start Period`, `Start Day`, `End Period`, `End Day`, `FTE`, `Base Salary`,
   `Handover` (0/1).
+- **Salary is per assignment** (the person's terms, from HR). The Position's `Base Salary`
+  is only the default for a vacant/new Position.
 - `WFP Assignment` stays for month-level presence and flags (headcount, leavers, transfers).
 
 Backfill from today's assignments: first/last month and reasons from `WFP Assignment`;
@@ -80,8 +82,8 @@ Actions write the detail dates; the existing processes keep the month-level assi
 
 ## Decisions (open — take one at a time)
 
-1. **Salary per assignment** — store `Base Salary` per assignment in the detail (sourced
-   from HR), instead of one salary per Position.
+1. **Salary per assignment — DECIDED (yes).** Each assignment carries `Base Salary` (from
+   HR); the Position's `Base Salary` is the default for a vacant/new Position.
 2. **Cost granularity** — position-level aggregation (recommended) or per-person.
 3. **Day basis** — calendar days or working days.
 4. **Handover** — explicit flag (recommended) or derived from overlapping dates.
