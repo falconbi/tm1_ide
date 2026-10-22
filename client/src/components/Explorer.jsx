@@ -481,6 +481,28 @@ function LensesSection({ server, onOpen, onNew }) {
     if (!r.ok) { setError(d.error || r.statusText); return }
     load()
   }
+  // Group Lenses the same way the Lens app does: by folder (one folder per model),
+  // numbered steps in order (so "0 <Model> home" is first), then title. If a Lens
+  // has no folder, fall back to the name prefix (WFP-Seat-Roster → WFP) so an
+  // unset folder still groups instead of all landing in "Other".
+  const lensGroup = (l) => {
+    const folder = String(l.folder || '').trim()
+    if (folder) return folder
+    const m = /^([A-Za-z0-9]+)[-_]/.exec(String(l.name || ''))
+    return m ? m[1] : 'Other'
+  }
+  const lensStep = (l) => {
+    const t = String(l.title || l.name || '').trim()
+    const m = /^(\d+)[.)]?\s+(.+)$/.exec(t)
+    return m ? { n: Number(m[1]), label: m[2] } : { n: Infinity, label: t }
+  }
+  const lensGroups = (() => {
+    const by = new Map()
+    for (const l of lenses) { const f = lensGroup(l); if (!by.has(f)) by.set(f, []); by.get(f).push(l) }
+    const folders = [...by.keys()].sort((a, b) => (a === 'Other') - (b === 'Other') || a.localeCompare(b))
+    for (const f of folders) by.get(f).sort((a, b) => { const sa = lensStep(a), sb = lensStep(b); return sa.n - sb.n || sa.label.localeCompare(sb.label) })
+    return folders.map(folder => ({ folder, items: by.get(folder) }))
+  })()
   return (
     <div data-section="lenses">
       <div className="flex items-center w-full px-3 py-1 group">
@@ -517,26 +539,31 @@ function LensesSection({ server, onOpen, onNew }) {
           {!loading && !error && lenses.length === 0 && (
             <p className="px-6 py-0.5 text-xs text-muted-foreground/50 italic">No lenses yet</p>
           )}
-          {lenses.map(f => (
-            <div key={f.name} className="flex items-center w-full px-6 py-0.5 text-xs text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground group/lens">
-              <button
-                onClick={() => onOpen(f.name)}
-                className="flex items-center gap-2 flex-1 min-w-0 text-left"
-                title={`Open lens ${f.name}${f.description ? ` — ${f.description}` : ''}`}
-              >
-                <LayoutDashboard size={10} className="shrink-0 text-muted-foreground" />
-                <span className="truncate">{f.name}</span>
-                {f.status && (
-                  <span className="text-[10px] text-muted-foreground shrink-0">{f.status}{f.version ? ` · v${f.version}` : ''}</span>
-                )}
-              </button>
-              <button
-                onClick={() => remove(f.name)}
-                title={`Delete lens ${f.name}`}
-                className="hidden group-hover/lens:flex items-center ml-1 text-muted-foreground hover:text-red-600 shrink-0"
-              >
-                <Trash2 size={10} />
-              </button>
+          {lensGroups.map(g => (
+            <div key={g.folder}>
+              <div className="px-6 pt-1.5 pb-0.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60 truncate" title={g.folder}>{g.folder}</div>
+              {g.items.map(f => (
+                <div key={f.name} className="flex items-center w-full px-6 py-0.5 text-xs text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground group/lens">
+                  <button
+                    onClick={() => onOpen(f.name)}
+                    className="flex items-center gap-2 flex-1 min-w-0 text-left"
+                    title={`Open lens ${f.name}${f.description ? ` — ${f.description}` : ''}`}
+                  >
+                    <LayoutDashboard size={10} className="shrink-0 text-muted-foreground" />
+                    <span className="truncate">{lensStep(f).label}</span>
+                    {f.status && (
+                      <span className="text-[10px] text-muted-foreground shrink-0">{f.status}{f.version ? ` · v${f.version}` : ''}</span>
+                    )}
+                  </button>
+                  <button
+                    onClick={() => remove(f.name)}
+                    title={`Delete lens ${f.name}`}
+                    className="hidden group-hover/lens:flex items-center ml-1 text-muted-foreground hover:text-red-600 shrink-0"
+                  >
+                    <Trash2 size={10} />
+                  </button>
+                </div>
+              ))}
             </div>
           ))}
         </div>
