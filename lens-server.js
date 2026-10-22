@@ -805,6 +805,17 @@ function createApp({ config = loadConfig(), deps = {} } = {}) {
         } catch (e) { res.status(400).json({ error: e.message }) }
     })
 
+    // The Lenses this person may open. Home uses it to hide steps that aren't
+    // theirs; opening a restricted Lens is still refused by openable().
+    app.get('/api/lens/lenses', requireSession, serverGate, async (req, res) => {
+        try {
+            const all = await listLenses(cfg.server, { client: req.lens.client })
+            const groups = await groupsFor(req.lens.sid)
+            res.json(all.filter(d => lensStore.canOpenLens(d, groups))
+                .map(d => ({ name: d.name, title: d.title, folder: d.folder, icon: d.icon, color: d.color, description: d.description })))
+        } catch (e) { res.status(400).json({ error: e.message }) }
+    })
+
     // History: recent saves and runs through this Lens, for one slice the person
     // can see (match = { dimension: element }, checked as them against the
     // Lens's own cube before anything is returned).

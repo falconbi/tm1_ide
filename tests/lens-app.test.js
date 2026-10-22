@@ -216,3 +216,21 @@ test('idle sessions time out and are dropped', async () => {
   assert.equal(dropped, 1, 'the stale session is swept')
   assert.equal((await get('/api/lenses', cookie)).status, 401, 'the expired session no longer works')
 })
+test('the Lenses list only includes Lenses the person may open', async () => {
+  await teardown()
+  await setup({
+    groupsOf: async () => ['WFP HR'],
+    listLenses: async () => ([
+      { name: 'Everyone',    title: 'Everyone',     folder: 'Workforce', toolkitVersion: 1, config: {} },
+      { name: 'HrOnly',      title: 'HR only',      folder: 'Workforce', toolkitVersion: 1, config: { access: ['WFP HR'] } },
+      { name: 'FinanceOnly', title: 'Finance only', folder: 'Workforce', toolkitVersion: 1, config: { access: ['WFP Finance'] } },
+    ]),
+  })
+  try {
+    const { cookie } = await signIn()
+    const r = await get('/api/lens/lenses', cookie)
+    assert.equal(r.status, 200)
+    const names = (await r.json()).map(x => x.name).sort()
+    assert.deepEqual(names, ['Everyone', 'HrOnly'], 'a restricted Lens is not listed')
+  } finally { await teardown(); await setup() }
+})

@@ -191,6 +191,9 @@ function installLensHost(getLensWindow, { getServer, getToken, getLens, live = f
       } else if (d.method === 'getMeta') {
         url = `/api/lens/meta?server=${enc(server)}${d.payload?.cube ? `&cube=${enc(d.payload.cube)}` : ''}`
         init = { method: 'GET', headers }
+      } else if (d.method === 'lenses') {
+        url = `/api/lens/lenses?server=${enc(server)}`
+        init = { method: 'GET', headers }
       } else {
         throw new Error(`Unknown bridge method: ${d.method}`)
       }
