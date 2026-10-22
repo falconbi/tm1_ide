@@ -102,7 +102,9 @@ Load HR Assignments (+ Write Sample HR Extract). Outcomes go to the `Lens Messag
 9. **Fresh snapshot `FCST 2026-03` taken** (Forecast → FCST 2026-03, `2026-04` Prior Fcst
    Snapshot stamped). It **took 1h36m** (see performance item) but verified correct:
    Assignment 18,287 = 18,287, Leaver flags 472 = 472, Headcount Closing 2026-02 2,676 =
-   2,676, Cost FY2026 matches, 238 hire months. It is now the "last forecast" for the 6
+   2,676, Cost FY2026 matches, 238 hire months. **A later accidental whole-cube Bedrock copy
+   (no period filter) ran 1h23m into FCST 2026-03; all 36 months still matched Forecast (0
+   mismatches) and no thread was left.** It is now the "last forecast" for the 6
    lenses that read the newest `FCST yyyy-mm` (Bridge, Cost, Headcount, KPIs, My cost
    centre, Since last forecast). **Read-only timings (one month, Forecast):** WFP Workforce
    Cost 207,566 cells / 19s; Assignment 5,478 / 0.6s; Position Map 15,009 / 0.7s; Headcount
@@ -123,6 +125,16 @@ Load HR Assignments (+ Write Sample HR Extract). Outcomes go to the `Lens Messag
     (default `SingleCommit`) so a chore can be `MultipleCommit` (commit per step) — tested,
     commit 8c99acc.
 
+11. **Leaver comparison restored** (`WFP-My-Cost-Centre` v8, `WFP-Since-Last` v8): leaver
+    lines now come from `WFP Assignment` `Leaver` (next leaver on/after the cutoff),
+    compared Forecast → `FCST 2026-03`. The "comes back once snapshots carry people data"
+    notes are gone; "New or moved leavers" and the Change filter are back. All differences
+    are zero because the snapshot is a copy of Forecast.
+12. **Sessions monitor fixed** (`getSessions` asked for `CurrentThread`, which TM1 v11
+    rejects; now tries `Threads` → `CurrentThread` → `User`, caches the working one; the
+    page attributes threads via `Session` and merges `s.Threads`). Tested, commit 83fa2b9.
+    **Backend restart pending** (`systemctl --user restart tm1-backend`).
+
 **Salary belongs to the seat** (intended, confirmed by James): a transfer copies the rate to
 the new seat and **leaves it on the old seat** as the starting point for a backfill. A vacant
 seat costs nothing, so it is not counted twice — **not yet proved**: next Downside test should
@@ -134,24 +146,29 @@ Record a transfer.
 
 ## Next, in order
 
-1. **My cost centre** and **Since last forecast** still read the dead Attrition Month —
-   switch their leaver lines to WFP Assignment (Leaver flag). Both read
-   `WFP Hiring Plan` `Attrition Month` (`WFP-My-Cost-Centre.src.html:53,62`,
-   `WFP-Since-Last.src.html:46,57`); the measure is dead — no rule reads it.
-2. **Model performance** — the first load of Home after assignment data changes is ~30s
-   (rule recalculation; not the new tile), a full feeder rebuild is ≈12 min, and **`WFP
-   Snapshot` takes over an hour at 3,000 people** (measured 1h36m). The cost is Bedrock
-   copying `WFP Workforce Cost` seat-by-seat: ~207k cells *per month* just for that cube
-   (≈7.5M over the plan), ~85% of all the data a snapshot copies. **Measured restricted
-   leaf slice** (6 real pay-component leaves × Reporting/Reporting @ Budget FX ×
-   Amount/Capex/Opex): ~43k cells/month (~1.56M over the plan), and Bedrock still takes
-   **~10s / 12.9k cells, ~45s / 43k cells** — a full restricted run ≈ **25–35 min** even
-   in committed steps. Writes dominate (the same slice reads back in ~1.3s; the copy is
-   ~10× that). **The real fix is to slim the Cost cube** — the 15 helper pay components
-   (`_…`) and the 3 local currencies (GBP/USD/NZD) are ~85% of its cells and no page reads
-   them. That is a model change for James to decide; not started.
-3. Re-record the 17 scale assertions for the 3,000-person model.
-4. Open question for James: Downside hiring lines for ENG-005 / SLS-003.
+1. **Slim the WFP Workforce Cost cube** (the real performance fix; James to decide — analysis
+   done, nothing changed). Measured leaf breakdown, one month, 207,566 cells:
+   - page-read components (Base, ER tax, ER pension, Benefits, Bonus, One-Time): **91,155 (44%)**
+   - non-page real components (Gross Pay, Employee Income Tax, Employee Pension, Net Pay): **63,222 (30%)**
+   - helpers `_…`: **53,189 (26%)** — only four hold cells (`_Monthly Base Full` 2,921,
+     `_Earnings YTD` 16,902, `_Employer Tax YTD` 16,794, `_Employee Tax YTD` 16,572); the
+     other nine are empty. Helpers are used **only** by the Cost rules/feeders (no TI, no
+     Lens) and are the cross-cube entry point from `WFP Workforce Input` FTE / One-Time.
+   - currencies: GBP 30,816 + USD 29,223 + NZD 11,097 (**local 71,136, 34%**), Reporting +
+     Reporting @ Budget FX 136,430. Local currencies are the **calc basis** for the
+     translation rules; **24 assertions** read local currencies or helpers.
+   Options: (a) stop feeding the rule-only helpers — safe, no cell change, small feeder win;
+   (b) move the 13 helpers to a small helper cube — −26% cells, medium effort; (c) also drop
+   the 4 non-page components — −56%, but loses Employee Deductions and breaks their
+   assertions; (d) drop local currencies — high risk (calc basis + 24 assertions). Even the
+   aggressive path lands at ~43k cells/month → snapshot ~25–30 min, **not minutes**. Prove
+   any change with all 62 assertions plus a full cell-by-cell Cost compare, Downside first.
+2. Re-record the 17 scale assertions for the 3,000-person model.
+3. Open question for James: Downside hiring lines for ENG-005 / SLS-003.
+
+**Parked:** `WFP Snapshot Fast` (design: copy every cube in full except Cost, Cost at leaf
+seat level; chore `MultipleCommit`) was designed and probed but **not built** — James chose
+to slim the Cost cube instead. `WFP Snapshot` stays as-is; use it overnight.
 
 Review list (work_state "workforce-lens-review"): save column layout from Preview; centre
 all Lenses / roll the Assumptions look (1700px, footer History icon, stripes); month-grid
