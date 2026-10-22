@@ -134,6 +134,16 @@ Load HR Assignments (+ Write Sample HR Extract). Outcomes go to the `Lens Messag
     rejects; now tries `Threads` → `CurrentThread` → `User`, caches the working one; the
     page attributes threads via `Session` and merges `s.Threads`). Tested, commit 83fa2b9.
     **Backend restart pending** (`systemctl --user restart tm1-backend`).
+13. **Cost compare + assertion baseline built** (read-only; `tmp/workforce/compare-consol.js`).
+    Reads **leaf** Entity / Cost Centre / Pay Component at `Position = Total Positions` for
+    Budget / Forecast / Downside / Actual (months 2025-12…2027-12; Actual 2026-01…03), plus
+    WFP Headcount at the same level. Stores only non-zero values (6 dp, keyed by full
+    coordinates) and compares with tolerance 0.005. **Capture: 702,216 values, 3,198
+    queries, 2–4 min, ~53 MB. Compare against the unchanged model: 0 differences.**
+    Assertion baseline (unchanged model): **62 total, 39 pass, 23 fail**, stable across
+    runs — the 23 are pre-existing stale-scale expectations (16-position model), i.e. the
+    "re-record the scale assertions" item, not a regression. **Until those are re-recorded
+    the assertions are not a usable safety net** — the compare script is.
 
 **Salary belongs to the seat** (intended, confirmed by James): a transfer copies the rate to
 the new seat and **leaves it on the old seat** as the starting point for a backfill. A vacant
@@ -157,12 +167,18 @@ Record a transfer.
    - currencies: GBP 30,816 + USD 29,223 + NZD 11,097 (**local 71,136, 34%**), Reporting +
      Reporting @ Budget FX 136,430. Local currencies are the **calc basis** for the
      translation rules; **24 assertions** read local currencies or helpers.
-   Options: (a) stop feeding the rule-only helpers — safe, no cell change, small feeder win;
-   (b) move the 13 helpers to a small helper cube — −26% cells, medium effort; (c) also drop
-   the 4 non-page components — −56%, but loses Employee Deductions and breaks their
-   assertions; (d) drop local currencies — high risk (calc basis + 24 assertions). Even the
-   aggressive path lands at ~43k cells/month → snapshot ~25–30 min, **not minutes**. Prove
-   any change with all 62 assertions plus a full cell-by-cell Cost compare, Downside first.
+   Options: (a) **NOT safe as framed** — the feeder chain is load-bearing: `WFP Workforce
+   Input` FTE feeds `_Monthly Base Full`, which feeds **Base** and **Benefits**; ER tax is
+   fed `Base → _Earnings YTD → _Employer Tax YTD → Employer Payroll Tax`. Remove those
+   helper feeders and Base/Benefits/ER tax silently unfeed (totals drop). The only safe
+   version is to re-point the cross-cube FTE feeder straight at Base and Benefits and keep
+   the YTD chain — a small feeder win, **no cell change**. (b) move the 13 helpers to a small
+   helper cube — −26% cells, medium effort; (c) also drop the 4 non-page components — −56%,
+   but loses Employee Deductions and breaks their assertions (James deciding); (d) drop local
+   currencies — high risk (calc basis + 24 assertions). Even the aggressive path lands at
+   ~43k cells/month → snapshot ~25–30 min, **not minutes**. Prove any change with the
+   compare script plus the 62 assertions, across all versions (a rules/feeder change applies
+   to the whole cube — there is no "Downside first").
 2. Re-record the 17 scale assertions for the 3,000-person model.
 3. Open question for James: Downside hiring lines for ENG-005 / SLS-003.
 
