@@ -93,7 +93,10 @@ Actions write the detail dates; the existing processes keep the month-level assi
    the same company; a move to another company restarts it (as today).
 3. **Day basis — DECIDED: working days.** The engine needs a working-day count per period
    (add a `Working Days` attribute on `WFP Period`, or a calendar; holidays still to decide).
-4. **Handover** — explicit flag (recommended) or derived from overlapping dates.
+4. **Handover — DECIDED: explicit.** The incoming assignment is marked as a handover; only
+   marked overlaps are exempt from `Over-filled`. Unmarked over-fills still flag.
+
+All four decisions are resolved.
 
 ## Related
 
