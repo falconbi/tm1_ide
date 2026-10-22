@@ -142,10 +142,8 @@ Load HR Assignments (+ Write Sample HR Extract). Outcomes go to the `Lens Messag
     queries, 2–4 min, ~53 MB. Compare against the unchanged model: 0 differences.**
     Assertions were re-recorded on 24 Oct: the 19 stale-scale checks plus #5, #12 and #13
     (descriptions updated to remove old constants; #5 rewritten on EXEC-001: Downside
-    222,600 vs Forecast 218,400). Now **62 total, 61 pass, 1 fail** — **#7 (ENG-008
-    backfill) is pending a decision**: Downside Hire Month = 20 but `Approved=""`, so
-    Effective = 9999 and Seat Status = Vacant → Headcount 0 is **correct**; reword to
-    "waiting for Finance → 0" or approve the hire.
+    222,600 vs Forecast 218,400). #7 reworded to the approval gate ("planned hire waiting
+    for Finance → headcount 0"). **62 total, 62 pass.**
 
 **Salary belongs to the seat** (intended, confirmed by James): a transfer copies the rate to
 the new seat and **leaves it on the old seat** as the starting point for a backfill. A vacant

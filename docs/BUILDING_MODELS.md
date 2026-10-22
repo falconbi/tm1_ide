@@ -30,6 +30,27 @@ the linters and returns numbers is not a build that is correct.
 
 ---
 
+## Design rule #1 — decide where each calculation lives
+
+Settle this **before building**, and again **before scaling the data up**:
+
+- **TI for heavy, stable, or across-time work** — posting seat cost to cost centre /
+  company, YTD tax runs, snapshots, allocations.
+- **Rules only for what planners must see change live.**
+- **Avoid data-driven or attribute-driven feeders.** They block multi-threaded feeders and
+  force feeder re-evaluation on every write.
+- **A Lens can run a small TI on Save**, so the screen still feels live without a rule on
+  every cell.
+- **Estimate cells and feeders at the target scale first.**
+
+The WFP model is the cautionary tale: seat-level cost rules plus a month-by-month YTD tax
+chain gave a **~12-minute feeder rebuild**, **~56-second cold cost reads** and a
+**1.5-hour snapshot** — and its attribute/data-directional feeders meant **MTFeeders could
+not be enabled**. None of that was fixable with a server setting; it was decided by where
+the calculation lived.
+
+---
+
 ## Get the dimensionality right first
 
 Before any `build_cube`, settle the dimensions. Wrong dimensionality is the one
