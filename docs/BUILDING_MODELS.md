@@ -384,6 +384,9 @@ iterations:
 - **Reading a native view's subsets over REST:** `Rows`/`Columns`/`Titles` are complex types — use
   a path (`$expand=tm1.NativeView/Rows/Subset(...)`), not `Rows($expand=Subset)`; an MDX view
   rejects the `tm1.NativeView` cast, so read it without the expand.
+- **A chore's start time is in the TM1 server's clock** (TM1_Test_DEV runs UTC−8). A start "tomorrow
+  00:00 UTC" was this afternoon to the server, so the 5-minute chore didn't run for hours. Set the start in
+  the past; check `Chores('x')` StartTime with its offset.
 - **Renaming an element (TM1 can't):** add the new element, copy its stored data in every version
   (snapshots too) with a view-sourced TI, repoint rules, processes, subsets, views, Lenses and
   assertions, then delete the old one — and log every direct REST change to the change set so the

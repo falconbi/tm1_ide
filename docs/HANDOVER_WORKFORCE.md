@@ -126,6 +126,30 @@ Read this first; items 14–17 below have the detail.
   Absent / Cover Headcount, Cover FTE, Headcount excl Cover. Lab, then Downside; compare 0;
   59/59. **New compare baseline `2026-10-24-step7`.** Details `docs/POSITION_LIFECYCLE.md` →
   "Built (Step 7)". Next: Step 8 (naming).
+- **Pages rebuilt around the workflow (24 Oct, Claude)** — one page per job, from the lifecycle
+  (`docs/POSITION_LIFECYCLE.md`):
+
+  | # | Page | Who | What |
+  |---|---|---|---|
+  | 0 | Workforce home | all | tiles by job: People & positions · Plan · Review · Dashboard · Variance |
+  | 1 | **People** (`WFP-People`, new) | HR | hire (replace / handover), pay or FTE change from a month, leaver + backfill, transfer, time away, cover |
+  | 2 | **Positions** (`WFP-Positions`, new) | HR / Finance | change grade / FTE / location / salary from a month, move (CC or company), close, reopen, cancel a TBH |
+  | 3 | **Match new Positions** (`WFP-Match`, new) | HR | new HR positions with no plan → suggested TBHs (company 3, CC 2, grade 1, hire ±3 months 2) → confirm |
+  | 4 | Hiring plan | managers | + Request a new position (TBH), Cancel; asks for a cost update after Save |
+  | 7 | Needs attention | HR / Finance | + hiring checks (Unplanned Position, Late Hire) with a link to Match |
+
+  **Retired:** Position roster, Leavers & backfills, Transfers, Assignments, Pay & FTE changes (their
+  jobs are on People / Positions; code kept in `tmp/workforce/pages/cur/`). Titles renumbered 0–14.
+  Page sources: `tmp/workforce/pages/src/` built by `pages/mk.js` (shared header, Info card, cost banner).
+- **New engine:** `WFP Change Assignment` (a person's pay / FTE from a month — the old "Pay & FTE
+  changes" page edited the Position, which no longer drives a filled Position's cost);
+  `WFP Change Position` gained `pSalary` (the Position's salary for a vacancy / planned hire).
+- **Cost follows every action automatically:** each action process calls `WFP Request
+  Recalculation` (cube `WFP Control`: Cost Out Of Date / Requested At / By / Updated At); chore **`WFP
+  Recalculate Cost`** (every 5 min, MultipleCommit, active) runs `WFP Recalculate If Needed` → Base + tax
+  run only when something is marked. Pages show "Cost up to date (hh:mm)" / "Cost updating…".
+  Proven on Downside: a pay change was costed by the chore ~5 min later, then reversed; compare 0, 59/59.
+  **The TM1 server clock is UTC−8** — a chore start time must be in the past in server time.
 - **Step 8 done (24 Oct, Claude): naming — "Seat" is gone; Position everywhere.** Renames (older
   notes below still use the old names): Position Map `Seat FTE` → **`Position FTE`**, `Seat Status`
   → **`Position State`**, `Person In Closed Seat` → **`Person In Closed Position`**; process
