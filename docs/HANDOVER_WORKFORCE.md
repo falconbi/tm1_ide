@@ -114,6 +114,13 @@ Read this first; items 14–17 below have the detail.
   read-only). **Baselines are write-once:** capture refuses an existing label, and the files are
   read-only. Capture a new, dated label after an intended change (`capture 2026-MM-DD-<what>`).
   `2026-10-23-clean` = the model after Step 1 + the E10003 restore (59/59).
+- **Step 6 done (24 Oct, Claude): TBH lifecycle + matching to HR** — `Source` / link attributes;
+  `WFP Create TBH Position`, `WFP Cancel TBH Position`, `WFP Match TBH`; `Late Hire` /
+  `Unplanned Position` checks; Base costs a hire with no pay rows (was £0). Proven in the lab, then
+  Downside; compare 0, 59/59. Details: `docs/POSITION_LIFECYCLE.md` → "Built (Step 6)". Sources
+  `tmp/workforce/src/step6/` (`deploy6.js LAB|WFP` deploys the same code to either). Downside flags
+  ENG-005 / SLS-003 as Unplanned (no Downside hire line) — James to decide. Next: Step 7 (absence /
+  cover), Step 8 (naming).
 - **WFP_Lab (rebuilt 24 Oct): test every new process / rule change here FIRST, then one Downside
   run with snapshot + restore + compare.** `LIVE=1 node tmp/workforce/live-lab-build.js` (~4 min)
   deletes and regenerates every `LAB …` object from the current WFP model: all 29 dimensions

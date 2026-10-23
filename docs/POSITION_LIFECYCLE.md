@@ -119,6 +119,36 @@ Assignments on a Position HRIS already knows, matched by Position + hire window 
 
 ---
 
+### Built (Step 6, 24 Oct 2026)
+
+- **Attributes on WFP Position:** `Source` (`HRIS` / `TM1` — set for all 3,022: TBH → TM1, Filled
+  and Open Req → HRIS), and the link both ways: on the TBH `HRIS Position ID` + `Matched From`
+  (first open month), on the HR Position `Matched TBH`. The link is one real-world fact, so it is
+  unversioned; its **effect** is per version.
+- **`WFP Create TBH Position`** — `TBH-<cost centre without CC->-<nnnn>` (never reused), under a
+  department, in a company / cost centre (location, currency and tax from the company), budgeted
+  FTE, open from the hire month, a planned hire that month waiting for Finance (`WFP Approve
+  Hire`). Counts once approved.
+- **`WFP Cancel TBH Position`** — planning-created and unmatched only, nobody holding it: planned
+  hire cleared, closed in every open month; the element stays.
+- **`WFP Match TBH`** (pVersion, pTBH, pHRISPosition) — the confirmed match (no auto-match, per
+  decision 1): records the link, and in that version the TBH stops counting from the first open
+  month (planned hire cleared, closed). Refuses: a TBH or HR Position already linked elsewhere,
+  an HR-side "TBH", a planning-side "HR Position", anyone holding the TBH. Notes where they differ
+  (company / cost centre / grade). Run per version that should follow (Forecast, Downside).
+- **Checks** on `WFP Hiring Plan` (Forecast / Downside only — Budget has no cut-off; read without
+  NON EMPTY): `Late Hire` (approved TBH, hire month in actuals, unmatched) and `Unplanned Position`
+  (HR Position starting in an open month, no TBH linked, no hire planned). On 24 Oct: Downside
+  flags ENG-005 and SLS-003 — Open Reqs with a hire in Budget/Forecast but none in Downside.
+- Found on the way: a hire approved after the Step 1 pay backfill had no monthly pay rows, so
+  `WFP Assignment Base` costed it at **zero**. Base now falls back to the record's own FTE and salary
+  (then the pay band). No existing hire was affected (all had pay rows); compare 0.
+- Proof: lab (create / approve / cost, match, both checks, seven refusals, cancel), then Downside on
+  the real model (TBH-ENG-APP-0001: USD 11,183 base, 1,007 employer tax, 500 benefits from Aug;
+  matched to ENG-005 → its Unplanned flag cleared; removed), compare 0, 59/59.
+- **Not yet:** the "Match new Positions" page (suggested candidates: same company / cost centre /
+  grade, hire month ±3 months — decision 1), and the HR feed carrying the TBH ID on a requisition.
+
 ## 5. Counting rules (what each number means)
 
 - **Headcount** = people with an Assignment in the month (a handover overlap counts 2), plus
