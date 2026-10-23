@@ -408,6 +408,11 @@ iterations:
 - **`}CubeProperties` `LOGGING` is per cube** — with `NO`, TM1 keeps no change history
   for that cube, so "who changed this cell" has nothing to show. Lens saves are still
   recorded in the Lens activity log either way.
+- **`node --test` must never see live scripts.** The default runner discovers
+  `test-*.js` anywhere, including `tmp/`. A live script that deleted "the first
+  employee" deleted E10003 on every test run and created a phantom E12784. Live
+  integration scripts are named `live-*.js` and refuse to run unless `LIVE=1`;
+  `npm test` is scoped to `tests/` only. Unit tests never touch a live server.
 - **static subset save APPENDS.** `PATCH .../Subsets('X')` with
   `Elements@odata.bind` adds to the existing members, it doesn't replace them —
   re-running a subset seed accumulates duplicates. Rebuild with
