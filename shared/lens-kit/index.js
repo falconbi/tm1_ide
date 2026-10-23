@@ -251,6 +251,8 @@ function grid(el, { columns = [], rows: data = [], height, onEdit, onFocus, onSe
         let st = Object.assign({}, plain)
         if (kind === 'total') st.background = t.totalBg
         else if (kind === 'calc') st.background = t.calcBg
+        // carried forward from an earlier month, not typed for this one (e.g. an assumption still in force)
+        else if (kind === 'inherit') { st.color = t.faint; st.fontStyle = 'italic' }
         if (orig.has(k) || typed.has(k)) Object.assign(st, { background: tint(BLUE, 0.16), boxShadow: 'inset 0 0 0 1.5px ' + BLUE, fontWeight: '600' })
         else if (pending.has(k)) st.backgroundImage = 'linear-gradient(225deg, ' + BLUE + ' 0, ' + BLUE + ' 7px, transparent 7px)'
         if (r) st.boxShadow = 'inset 0 0 0 2px ' + r.color
