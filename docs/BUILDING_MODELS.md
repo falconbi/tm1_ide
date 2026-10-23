@@ -379,6 +379,19 @@ See `MCP_SERVER.md` → "Notes & limits" for the full list. The ones that cost r
 iterations:
 
 - 3-arg `ElementAttrN`/`ElementAttrS` — parses fine, returns blank at runtime
+- **A new element goes to the END of the dimension** (REST `POST Elements`). Code that takes a
+  month's "first" / "last" by walking `DIMNM` order then picks the new element — WFP's sample HR
+  extract took `Obl 2026` as everyone's last month and dropped a leaver's end date. Insert in place
+  with TI `DimensionElementInsertDirect( dim, '<before>', name, 'N' )`, and compare months by an
+  index attribute (`Period Index`), never by dimension position.
+- **Feeders fire when a cell is written, reading the other cubes as they are then.** Copying data
+  into a new period, write the cube the feeders look up (WFP Position Map's Home Entity / Cost
+  Centre) FIRST; written the other way round, the new period's Headcount was unfed and read 0 in
+  views. v11 has no REST `tm1.ProcessFeeders` — re-feed by clearing and rewriting the cells.
+- **The opening is a period, not a borrowed month** (Falcon BI `Obl yyyy`): balances only, in no FY
+  total, never costed, found by its `Period Type` attribute — never a hard-coded `'2025-12'`.
+  Payroll year to date sits there, so a tax year that started before the model (UK / NZ April) is
+  taxed right from the first plan month.
 - **A cube whose rules start `[] = N: … STET …` flags every cell `RuleDerived`**, even stored
   ones — a copy that skips rule-derived cells copies nothing. Copy leaf cells before the rules go on.
 - **Reading a native view's subsets over REST:** `Rows`/`Columns`/`Titles` are complex types — use
