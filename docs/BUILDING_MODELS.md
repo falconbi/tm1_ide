@@ -379,6 +379,13 @@ See `MCP_SERVER.md` → "Notes & limits" for the full list. The ones that cost r
 iterations:
 
 - 3-arg `ElementAttrN`/`ElementAttrS` — parses fine, returns blank at runtime
+- **TI doesn't short-circuit `%` (or) and `&` (and).** `IF( s @= '' % ATTRN( cPer, s, 'Period Index' ) > n )`
+  still evaluates `ATTRN` on the blank `s` and logs "Element "" not found" on every record
+  (status *HasMinorErrors*). Guard the lookup in its own `IF` first.
+- **An `ASCIIOUTPUT` header written in the Prolog is lost when the Data procedure writes
+  the same file** — TM1 re-opens (and empties) it at the start of Data, so the first data
+  row becomes the "header" and the loader silently skips it. Write the header with the
+  first data row (a flag), or write everything from one procedure.
 - `AttrInsert` is 4 args, not 3
 - TI Prolog element insert + attribute write in the same section
 - 3-deep nested `IF()` returns blank

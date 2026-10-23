@@ -22,6 +22,14 @@ For the next agent (OpenCode) picking up the Workforce work. Read this first, th
 
 Read this first; items 14–17 below have the detail.
 
+- **Step 2 done (23 Oct, Claude): the HR load keeps Actual assignments, records and dated
+  pay.** New extract layout with dates and BaseSalary; `pClear`, `pCost`. Proven: reload
+  reproduces every Actual assignment, compare 0 vs `2026-10-23-clean`, 59/59, a pay-change
+  round trip. Design + proof in `docs/ASSIGNMENT_MODEL.md` → "HR extract and load". Process
+  sources: `tmp/workforce/src/step2/`. **Caution:** the old backfill process
+  `WFP Assignment Pay` clears the whole Pay cube, Actual included — don't run it after an HR
+  load (it would put Workforce Input salaries back over HR pay). Next: Step 3 (handover).
+
 - Branch `lenses`, server `TM1_Test_DEV`, change set `92a949c9` open. Uncommitted:
   `docs/HANDOVER_WORKFORCE.md`, `shared/lens-kit/index.js`, `static/lens-kit/lens-kit.js`.
 - **Default convention:** every model dimension/cube has a public object literally named

@@ -112,6 +112,29 @@ Actions write the detail dates; the existing processes keep the month-level assi
 
 All six decisions are resolved.
 
+## HR extract and load (Step 2 — done 23 Oct)
+
+`WFP Load HR Assignments` (pFile, pClear, pCost) reads the HR extract — one row per
+assignment, plus a continuation row (Reason `Pay change`) whenever its pay or FTE changes:
+
+`EmployeeID, Name, Position, Entity, EmploymentType, FTE, StartDate, EndDate, Reason, EndReason, BaseSalary`
+
+- Dates `yyyy-mm-dd` (a bare `yyyy-mm` = day 1 / the last day); blank `EndDate` = runs on; a
+  start before the model's first month counts from that month (an opening person).
+- Writes Actual up to the cut-off: `WFP Assignment` (FTE Share, Start/End Reason),
+  `WFP Assignment Detail` (the record — clipped to the cut-off year, the Actual cost months),
+  `WFP Assignment Pay` (salary + FTE each month, so a pay change is dated).
+- `pClear = 1` clears Actual in all three; `pCost = 1` reruns `WFP Assignment Base`.
+- Employee Status is set from the HR row (Active while it runs, Leaver when it ends with an
+  end reason) — a continuation row doesn't change it.
+- `WFP Write Sample HR Extract` stands in for HR: it writes this layout from today's Actual
+  (through a view), so a clean reload reproduces Actual exactly.
+- Proof (23 Oct): reload = every Actual assignment identical; compare 0 (702,222 values);
+  59/59. A March pay rise on one person → two HR rows → March pay and cost follow; reverted.
+  Intended changes: E10003's record starts Jan 2026 like everyone else's (Dec isn't a cost
+  month); 108 people's Status Leaver → Active (the old sample took a Position's future end
+  date as the person's).
+
 ## Related
 
 - `docs/BUILDING_MODELS.md` rule #1 (TI for heavy/across-time work), rule #2 (version
