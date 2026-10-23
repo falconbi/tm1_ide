@@ -871,9 +871,12 @@ app.post('/api/process/debug', async (req, res) => {
 
     // ── 4. Create temp process with instrumented code ────────────────────────
     const prologInst = instrumentSection(sections.PrologProcedure,   'PrologProcedure',   'Prolog')
-    const metaInst   = (sections.MetaDataProcedure ?? '').trim()
-        ? instrumentSection(sections.MetaDataProcedure, 'MetaDataProcedure', 'Metadata')
-        : (jc(sections.MetaDataProcedure ?? ''))
+    // TM1's property is MetadataProcedure (lowercase d); an older client may still send MetaDataProcedure
+    const metaSrc    = sections.MetadataProcedure ?? sections.MetaDataProcedure ?? ''
+    if (breakpoints && breakpoints.MetadataProcedure == null && breakpoints.MetaDataProcedure) breakpoints.MetadataProcedure = breakpoints.MetaDataProcedure
+    const metaInst   = metaSrc.trim()
+        ? instrumentSection(metaSrc, 'MetadataProcedure', 'Metadata')
+        : (jc(metaSrc))
     const dataInst   = (sections.DataProcedure ?? '').trim()
         ? instrumentSection(sections.DataProcedure,     'DataProcedure',     'Data')
         : (jc(sections.DataProcedure ?? ''))
@@ -1534,7 +1537,7 @@ app.get('/api/search/index', async (req, res) => {
                 return {
                     name,
                     Prolog:   p.PrologProcedure   ?? '',
-                    Metadata: p.MetaDataProcedure ?? '',
+                    Metadata: p.MetadataProcedure ?? '',
                     Data:     p.DataProcedure     ?? '',
                     Epilog:   p.EpilogProcedure   ?? '',
                 }

@@ -137,7 +137,7 @@ function register(server, { client, ok, policy }) {
                     const p = await client().getProcess(name)
                     const sections = {
                         Prolog:   p.PrologProcedure ?? '',
-                        Metadata: p.MetaDataProcedure ?? '',
+                        Metadata: p.MetadataProcedure ?? '',
                         Data:     p.DataProcedure ?? '',
                         Epilog:   p.EpilogProcedure ?? '',
                     }

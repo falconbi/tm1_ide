@@ -20,7 +20,7 @@ import DiffViewerModal from '@/components/DiffViewerModal'
 
 const CODE_TABS = [
   { key: 'PrologProcedure',    label: 'Prolog'   },
-  { key: 'MetaDataProcedure',  label: 'Metadata' },
+  { key: 'MetadataProcedure',  label: 'Metadata' },
   { key: 'DataProcedure',      label: 'Data'     },
   { key: 'EpilogProcedure',    label: 'Epilog'   },
 ]
@@ -888,7 +888,7 @@ export default function ProcessEditor({ tab }) {
   const [showCheck, setShowCheck]       = useState(false)
   const [showHelp, setShowHelp]         = useState(false)
 
-  const SECTION_TO_KEY = { Prolog: 'PrologProcedure', Metadata: 'MetaDataProcedure', Data: 'DataProcedure', Epilog: 'EpilogProcedure' }
+  const SECTION_TO_KEY = { Prolog: 'PrologProcedure', Metadata: 'MetadataProcedure', Data: 'DataProcedure', Epilog: 'EpilogProcedure' }
 
   const [activeSection, setActiveSection] = useState('PrologProcedure')
   const [showSaveAs, setShowSaveAs] = useState(false)
@@ -1440,7 +1440,7 @@ export default function ProcessEditor({ tab }) {
         onShowDiff={() => {
           const current = {
             prolog:   edits.PrologProcedure   ?? data?.PrologProcedure   ?? '',
-            metadata: edits.MetaDataProcedure ?? data?.MetaDataProcedure ?? '',
+            metadata: edits.MetadataProcedure ?? data?.MetadataProcedure ?? '',
             data:     edits.DataProcedure     ?? data?.DataProcedure     ?? '',
             epilog:   edits.EpilogProcedure   ?? data?.EpilogProcedure   ?? '',
           }

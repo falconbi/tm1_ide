@@ -78,13 +78,13 @@ function register(server, { client, ok, esc, logChange, requireChangeSet, lintRu
             const cur = await c.get(`Processes('${esc(process)}')`)
             const patch = {}
             if (prolog   !== undefined) patch.PrologProcedure   = prolog
-            if (metadata !== undefined) patch.MetaDataProcedure = metadata
+            if (metadata !== undefined) patch.MetadataProcedure = metadata   // TM1's name: lowercase d
             if (data     !== undefined) patch.DataProcedure     = data
             if (epilog   !== undefined) patch.EpilogProcedure   = epilog
 
             const lint = lintTI({
                 prolog:   patch.PrologProcedure   ?? cur.PrologProcedure   ?? '',
-                metadata: patch.MetaDataProcedure ?? cur.MetaDataProcedure ?? '',
+                metadata: patch.MetadataProcedure ?? cur.MetadataProcedure ?? '',
                 data:     patch.DataProcedure     ?? cur.DataProcedure     ?? '',
                 epilog:   patch.EpilogProcedure   ?? cur.EpilogProcedure   ?? '',
             })
@@ -94,8 +94,8 @@ function register(server, { client, ok, esc, logChange, requireChangeSet, lintRu
 
             await c.patch(`Processes('${esc(process)}')`, patch)
             logChange('PROCESS_SAVED', 'process', process, {
-                before: { prolog: cur.PrologProcedure ?? '', metadata: cur.MetaDataProcedure ?? '', data: cur.DataProcedure ?? '', epilog: cur.EpilogProcedure ?? '' },
-                after:  { prolog: patch.PrologProcedure ?? cur.PrologProcedure ?? '', metadata: patch.MetaDataProcedure ?? cur.MetaDataProcedure ?? '', data: patch.DataProcedure ?? cur.DataProcedure ?? '', epilog: patch.EpilogProcedure ?? cur.EpilogProcedure ?? '' },
+                before: { prolog: cur.PrologProcedure ?? '', metadata: cur.MetadataProcedure ?? '', data: cur.DataProcedure ?? '', epilog: cur.EpilogProcedure ?? '' },
+                after:  { prolog: patch.PrologProcedure ?? cur.PrologProcedure ?? '', metadata: patch.MetadataProcedure ?? cur.MetadataProcedure ?? '', data: patch.DataProcedure ?? cur.DataProcedure ?? '', epilog: patch.EpilogProcedure ?? cur.EpilogProcedure ?? '' },
             })
             const note = lint.warnings.length ? ` (lint warnings: ${lint.warnings.map(w => `[${w.section}] ${w.message}`).join(' | ')})` : ''
             return ok(`Process "${process}" updated (sections: ${Object.keys(patch).join(', ') || 'none'}).${note}`)

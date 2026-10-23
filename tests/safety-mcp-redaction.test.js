@@ -96,3 +96,15 @@ test('if the hierarchy cannot be read, a member rule masks the whole cube (fail 
     const { data } = await h.call('read_cells', { mdx: MDX })
     assert.ok(data.cells.every(c => c.formatted === '***'))
 })
+
+test('a password-like key keeps a true/false or number (an assertion "pass") but masks text', () => {
+    const { scrubResult } = require('../tools/tm1mcp/guard')
+    const res = scrubResult({ content: [{ type: 'text', text: JSON.stringify({ results: [{ pass: true, passed: 3 }, { pass: false }], password: 'hunter2', db_pass: 'x', pwd: 42 }) }] })
+    const d = JSON.parse(res.content[0].text)
+    assert.equal(d.results[0].pass, true)
+    assert.equal(d.results[1].pass, false)
+    assert.equal(d.results[0].passed, 3)
+    assert.equal(d.password, '***')
+    assert.equal(d.db_pass, '***')
+    assert.equal(d.pwd, 42, 'a number is never a secret')
+})

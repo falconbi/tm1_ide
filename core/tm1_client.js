@@ -599,7 +599,7 @@ class TM1Client {
                 const p = await this.getProcess(proc)
                 const code = [
                     p.PrologProcedure   ?? '',
-                    p.MetaDataProcedure ?? '',
+                    p.MetadataProcedure ?? '',
                     p.DataProcedure     ?? '',
                     p.EpilogProcedure   ?? '',
                 ].join('\n')
@@ -646,7 +646,7 @@ class TM1Client {
                 const p = await this.getProcess(proc)
                 const code = [
                     p.PrologProcedure   ?? '',
-                    p.MetaDataProcedure ?? '',
+                    p.MetadataProcedure ?? '',
                     p.DataProcedure     ?? '',
                     p.EpilogProcedure   ?? '',
                 ].join('\n')
@@ -691,7 +691,7 @@ class TM1Client {
         for (const proc of processes) {
             try {
                 const p = await this.getProcess(proc)
-                const code = [p.PrologProcedure ?? '', p.MetaDataProcedure ?? '', p.DataProcedure ?? '', p.EpilogProcedure ?? ''].join('\n')
+                const code = [p.PrologProcedure ?? '', p.MetadataProcedure ?? '', p.DataProcedure ?? '', p.EpilogProcedure ?? ''].join('\n')
                 if (code.includes(dim)) tiUsage.push({ process: proc })
             } catch { /* skip */ }
         }
@@ -704,7 +704,7 @@ class TM1Client {
         for (const proc of processes) {
             try {
                 const p = await this.getProcess(proc)
-                const code = [p.PrologProcedure ?? '', p.MetaDataProcedure ?? '', p.DataProcedure ?? '', p.EpilogProcedure ?? ''].join('\n')
+                const code = [p.PrologProcedure ?? '', p.MetadataProcedure ?? '', p.DataProcedure ?? '', p.EpilogProcedure ?? ''].join('\n')
                 if (code.includes(cube)) tiUsage.push({ process: proc })
             } catch { /* skip */ }
         }

@@ -370,7 +370,9 @@ function stripDatasourceCredentials(ds) {
     if (!ds || typeof ds !== 'object') return ds
     const out = Array.isArray(ds) ? [] : {}
     for (const [k, v] of Object.entries(ds)) {
-        if (SECRET_KEY.test(k) && v != null && v !== '') out[k] = MASK
+        // a secret is text — a true/false or a number under a matching key (an assertion's
+        // "pass": true) is not one, and masking it hid every assertion result
+        if (SECRET_KEY.test(k) && v != null && v !== '' && typeof v !== 'boolean' && typeof v !== 'number') out[k] = MASK
         else if (typeof v === 'string') out[k] = stripTiCredentials(v)
         else if (v && typeof v === 'object') out[k] = stripDatasourceCredentials(v)
         else out[k] = v

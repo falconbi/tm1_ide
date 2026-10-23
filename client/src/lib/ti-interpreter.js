@@ -655,7 +655,7 @@ function executeBlocks(blocks, ctx, bpLines, watches, initialVars = {}) {
 
 const SECTION_NAMES = {
   PrologProcedure:   'Prolog',
-  MetaDataProcedure: 'Metadata',
+  MetadataProcedure: 'Metadata',
   DataProcedure:     'Data',
   EpilogProcedure:   'Epilog',
 }
@@ -719,7 +719,7 @@ function guessType(expr, vars) {
 
 /**
  * Scan all sections for variables (assignments + parameters).
- * @param {{ PrologProcedure, MetaDataProcedure, DataProcedure, EpilogProcedure }} sections
+ * @param {{ PrologProcedure, MetadataProcedure, DataProcedure, EpilogProcedure }} sections
  * @param {Array} parameters - Process parameter definitions [{Name, Type, Value, Prompt}]
  * @returns {Array<{name:string, type:'number'|'string', section:string, line:number|null}>}
  */

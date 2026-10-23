@@ -112,7 +112,7 @@ function register(server, { client, ok, esc, policy }) {
                 parameters: p.Parameters ?? [],
                 datasource: guard.stripDatasourceCredentials(p.DataSources?.[0] ?? p.DataSource ?? null),
                 prolog:     strip(p.PrologProcedure   ?? ''),
-                metadata:   strip(p.MetaDataProcedure ?? ''),
+                metadata:   strip(p.MetadataProcedure ?? ''),
                 data:       strip(p.DataProcedure     ?? ''),
                 epilog:     strip(p.EpilogProcedure   ?? ''),
             })
