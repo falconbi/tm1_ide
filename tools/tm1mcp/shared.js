@@ -15,14 +15,26 @@ const assertions      = require('../../core/assertions')
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
+// Which TM1 server this session works on: --server, else TM1_MCP_SERVER, else the
+// server the IDE has selected (config/forge.json). No hard-coded fallback — a stale
+// default once left the MCP aimed at the consolidation server while the work was on
+// another model, so a write could have landed on the wrong one.
+function ideServer() {
+    try { return require('../../config/forge.json').server || null } catch { return null }
+}
 const args   = process.argv.slice(2)
 const srvIdx = args.indexOf('--server')
-const SERVER = srvIdx !== -1 ? args[srvIdx + 1] : (process.env.TM1_MCP_SERVER ?? null)
+const [SERVER, SERVER_SOURCE] =
+      srvIdx !== -1                 ? [args[srvIdx + 1], '--server']
+    : process.env.TM1_MCP_SERVER    ? [process.env.TM1_MCP_SERVER, 'TM1_MCP_SERVER']
+    : ideServer()                   ? [ideServer(), 'the IDE (config/forge.json)']
+    :                                 [null, null]
 
 if (!SERVER) {
-    process.stderr.write('tm1mcp: specify a server with --server <name> or TM1_MCP_SERVER env var\n')
+    process.stderr.write('tm1mcp: no server — select one in the IDE, or pass --server <name> / set TM1_MCP_SERVER\n')
     process.exit(1)
 }
+process.stderr.write(`tm1mcp: server ${SERVER} (from ${SERVER_SOURCE})\n`)
 
 // The developer's identity. Override with TM1_MCP_USER so an agent's changes land
 // in that developer's own change set (per-person change sets on a shared DEV),
@@ -159,4 +171,4 @@ function assertTargetAllowed(target) {
     }
 }
 
-module.exports = { SERVER, AGENT_USER, MODE, policy, identity, setBuilderLogin, client, ok, esc, logChange, runAssertions, requireWritable, requireChangeSet, assertTargetAllowed, targetAllowlist, explicitTargets, cl, assertions, lintRules, lintTI }
+module.exports = { SERVER, SERVER_SOURCE, AGENT_USER, MODE, policy, identity, setBuilderLogin, client, ok, esc, logChange, runAssertions, requireWritable, requireChangeSet, assertTargetAllowed, targetAllowlist, explicitTargets, cl, assertions, lintRules, lintTI }

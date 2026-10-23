@@ -44,6 +44,13 @@ function _payload(res) {
     try { return JSON.parse(t) } catch { return t }
 }
 
+// Every write answer names the server it ran on, so a wrong server is seen at once.
+function _stampServer(res, server) {
+    const c = res?.content
+    if (!Array.isArray(c) || c[0]?.type !== 'text' || !server) return res
+    return { ...res, content: [{ ...c[0], text: `[ran on ${server}]\n${c[0].text}` }, ...c.slice(1)] }
+}
+
 function toolServer(mcp, ctx, { mode, policy, identity, audit, explicitTargets = false }) {
     const registered = [], skipped = []
     const who = () => identity.describe()
@@ -79,7 +86,7 @@ function toolServer(mcp, ctx, { mode, policy, identity, audit, explicitTargets =
                 try {
                     if (kind === 'write') {
                         if (UNGATED_WRITE_TOOLS.has(name)) ctx.requireWritable()
-                        return await identity.asBuilder(() => handler(args))
+                        return _stampServer(await identity.asBuilder(() => handler(args)), ctx.SERVER)
                     }
                     const res = await identity.asReader(() => handler(args))
                     const data = _payload(res)

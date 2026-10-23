@@ -246,7 +246,7 @@ The repo ships a project-level MCP config, `.mcp.json`, in the project root:
       "command": "node",
       "args": ["tools/tm1mcp/server.js"],
       "env": {
-        "TM1_MCP_SERVER": "${TM1_MCP_SERVER:-MyServer}"
+        "TM1_MCP_SERVER": "${TM1_MCP_SERVER:-}"
       }
     }
   }
@@ -262,25 +262,27 @@ The repo ships a project-level MCP config, `.mcp.json`, in the project root:
 - The MCP is named `tm1`, so tools show up as `mcp__tm1__list_cubes` and so on. The
   tool permissions in `.claude/settings.json` are keyed to that name, so keep it `tm1`.
 
-### Changing which TM1 server the MCP points at
+### Which TM1 server the MCP points at
 
-**Option 1: edit the default (simplest).**
+**By default it follows the IDE.** With nothing set, the MCP uses the server you last
+selected in the IDE (saved in `config/forge.json`). Switch server in the IDE, then
+restart Claude Code — the MCP only picks its server at startup.
 
-1. Open `.mcp.json`.
-2. On the `TM1_MCP_SERVER` line, change the name after `:-`. For example,
-   `"${TM1_MCP_SERVER:-TM1_Test_DEV}"`. Leave everything else alone.
-3. Save.
-4. Restart Claude Code. The MCP only reads its config at startup.
+There is deliberately **no hard-coded default server**. One used to sit in `.mcp.json`;
+when the work moved to another model nobody changed it, and the MCP stayed aimed at
+the old server, where a write could have landed on the wrong model.
 
-**Option 2: environment variable (no file edit).** Set `TM1_MCP_SERVER` before
-starting Claude Code. It overrides the default in `.mcp.json`:
+**To pin a server instead** (overrides the IDE), set `TM1_MCP_SERVER` before starting
+Claude Code:
 
 ```bash
 TM1_MCP_SERVER=TM1_Test_DEV claude
 ```
 
-**Checking it worked:** after the restart, ask Claude to list the cubes (the
-`list_cubes` tool). The cube names tell you which server you're on.
+**Checking it:** on startup it prints `tm1mcp: server <name> (from <where>)`, and every
+write tool's answer starts with `[ran on <server>]`, so a wrong server shows at once.
+If no server is set anywhere (no flag, no env var, nothing selected in the IDE) the
+MCP refuses to start and says so.
 
 ### Gotcha: a personal entry overrides the project one
 
@@ -304,8 +306,8 @@ node tools/tm1mcp/server.js --server MyServer
 TM1_MCP_SERVER=MyServer node tools/tm1mcp/server.js
 ```
 
-On startup it prints `tm1mcp: connected to "<server>"` to stderr. `--server` beats
-`TM1_MCP_SERVER` if both are given.
+On startup it prints `tm1mcp: server <name> (from <where>)` to stderr. Order: `--server`,
+then `TM1_MCP_SERVER`, then the IDE's selected server.
 
 ### Auth
 
