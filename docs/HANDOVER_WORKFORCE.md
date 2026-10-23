@@ -42,6 +42,10 @@ Read this first; items 14–17 below have the detail.
   **Gap found:** on-costs still follow the Position's budgeted FTE and salary, not the person's
   assignment (see `docs/ASSIGNMENT_MODEL.md` → "Position change"). Next: Step 5 (close /
   reopen a Position, company move).
+- **Step 5 done (23 Oct, Claude): `WFP Close Position`, `WFP Reopen Position`,
+  `WFP Move Position To Company`.** Proven on Downside, reverted; compare 0, 59/59. Sources
+  `tmp/workforce/src/step5/`. Next: on-costs onto the assignment (cost rules), then Step 6
+  (TBH matching).
 
 - Branch `lenses`, server `TM1_Test_DEV`, change set `92a949c9` open. Uncommitted:
   `docs/HANDOVER_WORKFORCE.md`, `shared/lens-kit/index.js`, `static/lens-kit/lens-kit.js`.

@@ -185,6 +185,30 @@ assignment, plus a continuation row (Reason `Pay change`) whenever its pay or FT
   assignment — only Base moved to the assignment in Step 1. So a Position at 0.8 with a person
   at 1.0 gets Base for 1.0 but Benefits for 0.8. Move the on-costs onto the assignment too.
 
+## Close, reopen, company move (Step 5 — done 23 Oct)
+
+- **`WFP Close Position`** (pVersion, pPosition, pLast): open through `pLast`, closed from the
+  month after (Position Map `Seat FTE` 0, Workforce Input `FTE` 0); months before untouched.
+  Refused while anyone holds it after `pLast` (end or transfer them first) or a hire is planned
+  after `pLast`. A hire month at or before `pLast` is history: it's cleared (with its approval)
+  and the planned-hire record ends at `pLast` — otherwise the planned-hire window (which runs to
+  the Position's unversioned End Period attribute) would count the closed Position again.
+- **`WFP Reopen Position`** (pVersion, pPosition, pFrom, pFTE −1 = last FTE): the same budget
+  line only — it must have been open earlier in `pFrom`'s plan year (`FY`), otherwise
+  "create a new Position". Opens the closed months from `pFrom`, vacant.
+- **`WFP Move Position To Company`** (pVersion, pPosition, pFrom, pEntity, pCostCentre,
+  pNewPosition, pSalary): a Position never changes company. Creates a new Position
+  (`<Position>-<2 letters>` by default) under the same parent with the company's currency
+  (`Local Currency`), location (`Primary Location`) and tax (from a Position already there);
+  copies grade and FTE from `pFrom`; each holder leaves the old Position the month before
+  (End Assignment, Leaver) and is hired into the new one (Assign Person, Hire, `pSalary` in the
+  new currency); the old Position closes. Year-to-date tax restarts with the new employer.
+- Proof (Downside, all reverted): close of a held Position refused; SLS-1078 closed after Jun /
+  re-close refused / reopened from Aug (Jul stays closed); future-hire and other-plan-year
+  refusals; ENG-001 → US Inc from Oct 2026 at $160,000: Alice Leaver Sep / Hire Oct on
+  ENG-001-US, cost USD 13,333/month (≈ £10,533), US `_Earnings YTD` restarts in Oct. After
+  restore: compare 0, 59/59.
+
 ## Related
 
 - `docs/BUILDING_MODELS.md` rule #1 (TI for heavy/across-time work), rule #2 (version
