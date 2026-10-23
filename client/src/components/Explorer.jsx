@@ -496,7 +496,7 @@ function LensesSection({ server, onOpen, onNew }) {
   }
   // Group Lenses the same way the Lens app does: by folder (one folder per model),
   // numbered steps in order (so "0 <Model> home" is first), then title. If a Lens
-  // has no folder, fall back to the name prefix (WFP-Seat-Roster → WFP) so an
+  // has no folder, fall back to the name prefix (WFP-Position-Roster → WFP) so an
   // unset folder still groups instead of all landing in "Other".
   const lensGroup = (l) => {
     const folder = String(l.folder || '').trim()

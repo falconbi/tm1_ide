@@ -384,6 +384,12 @@ iterations:
 - **Reading a native view's subsets over REST:** `Rows`/`Columns`/`Titles` are complex types — use
   a path (`$expand=tm1.NativeView/Rows/Subset(...)`), not `Rows($expand=Subset)`; an MDX view
   rejects the `tm1.NativeView` cast, so read it without the expand.
+- **Renaming an element (TM1 can't):** add the new element, copy its stored data in every version
+  (snapshots too) with a view-sourced TI, repoint rules, processes, subsets, views, Lenses and
+  assertions, then delete the old one — and log every direct REST change to the change set so the
+  deploy package carries it. Prove it in the lab first and diff values under old → new names.
+  Note: a helper that treats any tool output containing "refused" as a failure trips on Lens HTML
+  that contains the word.
 - **WFP Period `Next Period` of the last month is the month itself** (2027-12 → 2027-12). A
   TI loop that walks `Next Period` until blank never ends. Stop when Next Period equals the
   current month, or loop by Period Index.

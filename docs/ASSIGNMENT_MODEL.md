@@ -268,5 +268,5 @@ assignment, plus a continuation row (Reason `Pay change`) whenever its pay or FT
 - `docs/BUILDING_MODELS.md` rule #1 (TI for heavy/across-time work), rule #2 (version
   lifecycle), rule #3 (server-wide control).
 - Effective-dated assumptions (`_Effective …` measures) already flow forward.
-- Position vs Seat: the user-facing noun is **Position**; model object names
-  (`Seat FTE`, `Seat Status`, `WFP Move Seat`, `WFP-Seat-Roster`) are Phase 2.
+- Position vs Seat: **Position** everywhere since Step 8 (24 Oct) — `Position FTE`, `Position State`,
+  `Person In Closed Position`, `WFP Move Position`, `WFP-Position-Roster`.

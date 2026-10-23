@@ -126,6 +126,16 @@ Read this first; items 14–17 below have the detail.
   Absent / Cover Headcount, Cover FTE, Headcount excl Cover. Lab, then Downside; compare 0;
   59/59. **New compare baseline `2026-10-24-step7`.** Details `docs/POSITION_LIFECYCLE.md` →
   "Built (Step 7)". Next: Step 8 (naming).
+- **Step 8 done (24 Oct, Claude): naming — "Seat" is gone; Position everywhere.** Renames (older
+  notes below still use the old names): Position Map `Seat FTE` → **`Position FTE`**, `Seat Status`
+  → **`Position State`**, `Person In Closed Seat` → **`Person In Closed Position`**; process
+  `WFP Move Seat` → **`WFP Move Position`**; Lens `WFP-Seat-Roster` → **`WFP-Position-Roster`**; the
+  check tag `seats-people` → `positions-people`; "seat" wording in rules, 14 processes, 8 Lenses,
+  4 checks. TM1 can't rename elements, so: new measures, data copied (372,622 cells, every version
+  incl. snapshots), everything repointed, old measures deleted — all logged to the change set.
+  Proof: renamed lab = WFP (12,096 cells, 0 different); WFP compare 0 vs `2026-10-24-step7`;
+  59/59; ENG-001 values identical under the new names; all 8 changed Lenses load with no errors.
+  Script `tmp/workforce/src/step8/rename8.js` (LAB|WFP, model / lenses / assertions).
 - **WFP_Lab (rebuilt 24 Oct): test every new process / rule change here FIRST, then one Downside
   run with snapshot + restore + compare.** `LIVE=1 node tmp/workforce/live-lab-build.js` (~4 min)
   deletes and regenerates every `LAB …` object from the current WFP model: all 29 dimensions
