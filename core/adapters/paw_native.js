@@ -25,9 +25,9 @@ class PawNativeAdapter {
         return (await s.get(this._url(path), { params, paramsSerializer, headers: h })).data
     }
 
-    async post(path, body = {}) {
+    async post(path, body = {}, opts = {}) {
         const { s, h } = await this._sh()
-        return (await s.post(this._url(path), body, { headers: h })).data
+        return (await s.post(this._url(path), body, { headers: h, ...(opts.timeout ? { timeout: opts.timeout } : {}) })).data
     }
 
     async patch(path, body = {}) {

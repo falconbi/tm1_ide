@@ -12,8 +12,8 @@ class TM1Client {
         return this._adapter.get(path, params)
     }
 
-    async post(path, body = {}) {
-        return this._adapter.post(path, body)
+    async post(path, body = {}, opts = {}) {
+        return this._adapter.post(path, body, opts)
     }
 
     async patch(path, body = {}) {
@@ -468,14 +468,15 @@ class TM1Client {
         return this.get(`Processes('${odataKey(name)}')`)
     }
 
-    async executeProcess(name, params = {}) {
+    async executeProcess(name, params = {}, opts = {}) {
         const paramArray = Array.isArray(params)
             ? params
             : Object.entries(params).map(([Name, Value]) => ({ Name, Value: String(Value) }))
         // ExecuteWithReturn returns status + ErrorLogFile reference inline — better than tm1.Execute
         return this.post(
             `Processes('${odataKey(name)}')/tm1.ExecuteWithReturn?$expand=ErrorLogFile`,
-            { Parameters: paramArray }
+            { Parameters: paramArray },
+            opts
         )
     }
 

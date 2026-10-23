@@ -44,9 +44,9 @@ class PawOAuth2Adapter {
         return r.data
     }
 
-    async post(path, body = {}) {
+    async post(path, body = {}, opts = {}) {
         await this._ensureToken()
-        const r = await this._client.post(this._url(path), body, { headers: this._headers() })
+        const r = await this._client.post(this._url(path), body, { headers: this._headers(), ...(opts.timeout ? { timeout: opts.timeout } : {}) })
         return r.data
     }
 

@@ -134,7 +134,7 @@ class DirectV11Adapter {
     // One request. Reuses the TM1 session cookie when there is one; signs in
     // with the credentials only when there isn't (or it expired). A 401 on a
     // fresh sign-in is a rejection — reported once, never retried.
-    async _request(method, path, { params, data, headers = {} } = {}) {
+    async _request(method, path, { params, data, headers = {}, timeout } = {}) {
         const base = await this._base()
         const http = this._client(base)
         const url  = this._url(base, path)
@@ -142,7 +142,7 @@ class DirectV11Adapter {
         // A reused keep-alive socket the server already closed fails with
         // ECONNRESET before the request is processed — retry reads once.
         const send = async (auth) => {
-            const go = () => http.request({ method, url, params, paramsSerializer, data, headers: { ...headers, ...auth }, validateStatus: () => true })
+            const go = () => http.request({ method, url, params, paramsSerializer, data, headers: { ...headers, ...auth }, validateStatus: () => true, ...(timeout ? { timeout } : {}) })
             try { return await go() } catch (e) {
                 if (method === 'get' && (e.code === 'ECONNRESET' || e.code === 'EPIPE')) return go()
                 throw e
@@ -175,8 +175,8 @@ class DirectV11Adapter {
         return (await this._request('get', path, { params })).data
     }
 
-    async post(path, body = {}) {
-        return (await this._request('post', path, { data: body })).data
+    async post(path, body = {}, opts = {}) {
+        return (await this._request('post', path, { data: body, timeout: opts.timeout })).data
     }
 
     async patch(path, body = {}) {

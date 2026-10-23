@@ -108,9 +108,10 @@ function register(server, { client, ok, esc, logChange, requireChangeSet, lintRu
         {
             process:    z.string().describe('Process name'),
             parameters: z.record(z.union([z.string(), z.number()])).optional().describe('Parameter values as {name: value}'),
+            timeout_ms: z.number().int().positive().optional().describe('Optional HTTP timeout for this run (default 120s). Long TIs need this raised.'),
         },
-        async ({ process, parameters }) => {
-            const result = await client().executeProcess(process, parameters ?? {})
+        async ({ process, parameters, timeout_ms }) => {
+            const result = await client().executeProcess(process, parameters ?? {}, timeout_ms ? { timeout: timeout_ms } : {})
             const status = result?.ProcessExecuteStatusCode ?? result?.Status ?? 'completed'
             return ok({ status, result })
         }
