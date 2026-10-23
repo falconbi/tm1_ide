@@ -75,8 +75,15 @@ Read this first; items 14–17 below have the detail.
   different CC; a company change is a leaver + a new Position, not a Transfer.
 - **Data facts:** 3,022 positions, 2,782 employees; Actuals Cutoff Index 15 (2026-03);
   ENG-005 is US Inc; FIN-1238 is CC-FIN-FPA (UK Ltd); test temps cleaned up.
-- **Checks:** `npm test` (321 pass, 1 skip at this commit); live check `tmp/workforce/run.js`; MCP
-  `tmp/workforce/mcp.js`; baseline compare `tmp/workforce/compare-consol.js`.
+- **Checks:** `npm test` (316 pass, 1 skip — `tests/` only, never touches TM1); live check
+  `tmp/workforce/run.js`; MCP `tmp/workforce/mcp.js`; 59 assertions (all pass, 23 Oct).
+- **Baseline compare:** `node tmp/workforce/compare-consol.js compare 2026-10-23-clean` (~2 min,
+  read-only). **Baselines are write-once:** capture refuses an existing label, and the files are
+  read-only. Capture a new, dated label after an intended change (`capture 2026-MM-DD-<what>`).
+  `2026-10-23-clean` = the model after Step 1 + the E10003 restore (59/59).
+- **Live scripts:** only `tmp/workforce/live-*.js`, each refusing to run without `LIVE=1`. The 58
+  older one-off scripts that changed TM1 without a guard are in `tmp/workforce/archive-unguarded/`
+  — do not run them.
 
 ## Where things are
 
