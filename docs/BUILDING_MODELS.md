@@ -379,6 +379,9 @@ See `MCP_SERVER.md` → "Notes & limits" for the full list. The ones that cost r
 iterations:
 
 - 3-arg `ElementAttrN`/`ElementAttrS` — parses fine, returns blank at runtime
+- **`CellPutN` into a summary cell overwrites.** When several source rows land on the same
+  target (two assignments on one Position in a month), the last one wins and the total is
+  silently understated. Clear the target first, then `CellIncrementN`.
 - **TI doesn't short-circuit `%` (or) and `&` (and).** `IF( s @= '' % ATTRN( cPer, s, 'Period Index' ) > n )`
   still evaluates `ATTRN` on the blank `s` and logs "Element "" not found" on every record
   (status *HasMinorErrors*). Guard the lookup in its own `IF` first.

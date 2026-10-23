@@ -135,6 +135,35 @@ assignment, plus a continuation row (Reason `Pay change`) whenever its pay or FT
   month); 108 people's Status Leaver → Active (the old sample took a Position's future end
   date as the person's).
 
+## Handover (Step 3 — done 23 Oct)
+
+- **Create:** `WFP Assign Person` with `pReplace = 'handover'` and `pHandoverUntil` (the
+  outgoing person's last month): the current people stay through that month and then leave
+  (End Reason Leaver, record End Period); the new person starts at `pFrom`; the overlap is
+  marked automatically. `pReplace = 'yes'` (end the month before) and `'no'` (refuse) are
+  unchanged.
+- **Mark / clear:** `WFP Mark Handover` (pVersion, pPosition, pEmployee, pAction mark|clear).
+  Writes the incoming person's FTE to `WFP Assignment` → `Handover FTE` in each month they
+  overlap someone else on the Position, and `Handover` = 1 on their record. It refuses the
+  outgoing person (whoever held the Position the month before the overlap) and Actual.
+- **Checks:** `Over-filled` = FTE Share − Handover FTE > the Position's FTE — so a marked
+  overlap is allowed and an unmarked one still flags. `In Handover` (new, informational)
+  counts Positions in a handover; it is not an error.
+- **Cost:** both people are paid during the overlap. `WFP Assignment Base` now **adds** each
+  assignment's cost to the Position (`CellIncrementN`) — it used to overwrite, so a Position
+  with two people in a month (handover, job share) was costed for one. No existing data had
+  two people in a month, so today's numbers were unaffected (compare 0).
+- `WFP Assign Person` now also writes the new assignment's monthly pay
+  (`WFP Assignment Pay`: pSalary, or the Position's salary) — before, a new hire was costed
+  at the pay band midpoint whatever salary was given.
+- Proof (Downside ENG-001, reverted): handover hire Aug, outgoing through Sep → In Handover
+  Aug–Sep, Over-filled 0; clear → Over-filled Aug–Sep; re-mark → 0; marking the outgoing
+  person refused; cost ENG-001 Jul–Oct 11,042 / 22,083 / 22,083 / 11,042. After restore:
+  compare 0 (702,222), 59/59.
+- **Not yet:** the Position roster Lens has no "handover" option in its Assign form; if
+  the outgoing person's end later changes, `Handover FTE` isn't recalculated (re-run Mark
+  Handover).
+
 ## Related
 
 - `docs/BUILDING_MODELS.md` rule #1 (TI for heavy/across-time work), rule #2 (version

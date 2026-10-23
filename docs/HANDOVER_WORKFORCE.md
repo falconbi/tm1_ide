@@ -28,7 +28,15 @@ Read this first; items 14–17 below have the detail.
   round trip. Design + proof in `docs/ASSIGNMENT_MODEL.md` → "HR extract and load". Process
   sources: `tmp/workforce/src/step2/`. **Caution:** the old backfill process
   `WFP Assignment Pay` clears the whole Pay cube, Actual included — don't run it after an HR
-  load (it would put Workforce Input salaries back over HR pay). Next: Step 3 (handover).
+  load (it would put Workforce Input salaries back over HR pay).
+- **Step 3 done (23 Oct, Claude): handover.** `WFP Assign Person` pReplace `handover` +
+  `pHandoverUntil`; new `WFP Mark Handover`; `Handover FTE` / `In Handover` measures; the
+  Over-filled rule allows a marked overlap. Fixed on the way: Base cost now adds each
+  assignment (was overwriting → two people in a month costed as one), and Assign Person
+  writes the new assignment's pay (was costed at band midpoint). Proven on Downside and
+  reverted; compare 0, 59/59. Details: `docs/ASSIGNMENT_MODEL.md` → "Handover". Sources:
+  `tmp/workforce/src/step3/`. Next: Step 4 (Position regrade / FTE change from a month);
+  roster Lens needs the handover option.
 
 - Branch `lenses`, server `TM1_Test_DEV`, change set `92a949c9` open. Uncommitted:
   `docs/HANDOVER_WORKFORCE.md`, `shared/lens-kit/index.js`, `static/lens-kit/lens-kit.js`.
