@@ -227,6 +227,42 @@ assignment, plus a continuation row (Reason `Pay change`) whenever its pay or FT
   employer tax can come out low once band thresholds bite. The fix is a TI tax run per person
   (assignment grain), in line with design rule #1.
 
+## Payroll tax per person — the tax run (done 23 Oct)
+
+- **Why:** tax was banded on the **Position's** earnings year to date (`_Earnings YTD` rules).
+  A mid-year backfill inherited the leaver's year (no fresh threshold or allowance), and two
+  people in a handover month were taxed on their combined pay.
+- **Now, in TI** (design rule #1):
+  - `WFP Assignment Base` also writes each assignment's monthly earnings
+    (`WFP Assignment Pay` → `Earnings`), then runs `WFP Tax Run`.
+  - `WFP Tax Run` adds earnings up **per person** (new cube `WFP Person Tax`: Earnings, YTD, ER/EE
+    tax, company, jurisdiction) and walks the months: year to date carries across transfers in
+    the same company, restarts each January and on a company change; bands from
+    `WFP Tax Bands` by the Position's Tax Jurisdiction; contractors pay none. A planned hire
+    (no named person) is taxed per Position (`Planned Hire` rows in Pay: `ER Tax`, `EE Tax`).
+  - `WFP Tax Run Post` clears Employer Payroll Tax / Employee Income Tax (Budget, Forecast,
+    Downside; local currencies; Amount) and writes each person's tax to the Positions they held
+    that month, shared by earnings, at the Position's company / cost centre / salary currency.
+    Capex/Opex and the Reporting currencies follow from the existing feeders and rules.
+  - The `_Earnings YTD`, `_Employer Tax YTD`, `_Employee Tax YTD` and `_Prior …` rules and the
+    YTD feeder chain are **removed** from `WFP Workforce Cost`.
+- **Run time:** Base + tax run + post ≈ 87 s (Base alone was ~25 s). The cost-rule change
+  took ~13 min to apply (removing feeders); the MCP client gave up at 120 s while TM1 carried on.
+- **Proof:**
+  - Independent recalculation (`tmp/workforce/src/taxrun/verify.js`): all 61,219 Forecast
+    person-months match the TI to the penny.
+  - Against the old rule before the switch: every Position-month equal, total employer tax
+    identical (£35,739,630) — today no Position changes hands mid-year, so YTD never differed.
+  - Backfill case on Downside (Alice leaves ENG-001 after Jun; replacement from Jul at
+    £120,000): employer tax Jul **1,380 → 124** (own £9,100 threshold), employee tax Jul
+    **4,000 → 0** (own allowance), then 1,486 / 2,000. Reverted.
+  - After the switch: compare **0 differences** over all 550,608 remaining values (only the
+    retired `_… YTD` helper lines dropped out); 59/59. New baseline `2026-10-23-taxrun`.
+- Tax year is the calendar year (January), as the rules had it — not the UK's April year.
+- Bug of my own on the way: the month walk followed `Next Period`, and **2027-12's Next
+  Period is itself** — the first run looped forever (cancelled; nothing written but the new
+  cube). The walk now stops when Next Period equals the month.
+
 ## Related
 
 - `docs/BUILDING_MODELS.md` rule #1 (TI for heavy/across-time work), rule #2 (version

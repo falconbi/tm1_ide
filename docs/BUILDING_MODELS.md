@@ -379,6 +379,12 @@ See `MCP_SERVER.md` → "Notes & limits" for the full list. The ones that cost r
 iterations:
 
 - 3-arg `ElementAttrN`/`ElementAttrS` — parses fine, returns blank at runtime
+- **WFP Period `Next Period` of the last month is the month itself** (2027-12 → 2027-12). A
+  TI loop that walks `Next Period` until blank never ends. Stop when Next Period equals the
+  current month, or loop by Period Index.
+- **Changing a big cube's rules can run for many minutes after the MCP call gives up** (120 s
+  client timeout) — removing feeders on `WFP Workforce Cost` took ~13 min. Check the thread
+  list before running anything that depends on it; later steps in the same script are skipped.
 - **`CellPutN` into a summary cell overwrites.** When several source rows land on the same
   target (two assignments on one Position in a month), the last one wins and the total is
   silently understated. Clear the target first, then `CellIncrementN`.

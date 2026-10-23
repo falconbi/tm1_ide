@@ -48,7 +48,12 @@ Read this first; items 14–17 below have the detail.
 - **On-costs (23 Oct, Claude):** only Benefits still used the Position's FTE — fixed (people's
   FTE when filled). Pension, bonus, tax already followed Base. Compare 0, 59/59. **Open:**
   payroll-tax YTD is per Position, not per person (a backfill inherits the leaver's YTD) — needs
-  a TI tax run per person. Next: Step 6 (TBH matching) or the tax run — James to choose.
+  a TI tax run per person.
+- **Tax run done (23 Oct, Claude):** payroll tax is per person, year to date, in TI
+  (`WFP Tax Run` + `WFP Tax Run Post`, run by `WFP Assignment Base`; new cube `WFP Person Tax`);
+  the YTD rules and feeders are gone from `WFP Workforce Cost`. Proven (independent recalc,
+  backfill case, compare 0, 59/59). **New compare baseline: `2026-10-23-taxrun`.** Also added the
+  missing Default views/subsets (WFP Assignment Pay, WFP Person Tax). Next: Step 6 (TBH matching).
 
 - Branch `lenses`, server `TM1_Test_DEV`, change set `92a949c9` open. Uncommitted:
   `docs/HANDOVER_WORKFORCE.md`, `shared/lens-kit/index.js`, `static/lens-kit/lens-kit.js`.
@@ -105,7 +110,7 @@ Read this first; items 14–17 below have the detail.
   ENG-005 is US Inc; FIN-1238 is CC-FIN-FPA (UK Ltd); test temps cleaned up.
 - **Checks:** `npm test` (316 pass, 1 skip — `tests/` only, never touches TM1); live check
   `tmp/workforce/run.js`; MCP `tmp/workforce/mcp.js`; 59 assertions (all pass, 23 Oct).
-- **Baseline compare:** `node tmp/workforce/compare-consol.js compare 2026-10-23-clean` (~2 min,
+- **Baseline compare:** `node tmp/workforce/compare-consol.js compare 2026-10-23-taxrun` (~2 min,
   read-only). **Baselines are write-once:** capture refuses an existing label, and the files are
   read-only. Capture a new, dated label after an intended change (`capture 2026-MM-DD-<what>`).
   `2026-10-23-clean` = the model after Step 1 + the E10003 restore (59/59).
