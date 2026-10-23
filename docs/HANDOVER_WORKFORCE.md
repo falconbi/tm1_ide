@@ -37,6 +37,11 @@ Read this first; items 14–17 below have the detail.
   reverted; compare 0, 59/59. Details: `docs/ASSIGNMENT_MODEL.md` → "Handover". Sources:
   `tmp/workforce/src/step3/`. Next: Step 4 (Position regrade / FTE change from a month);
   roster Lens needs the handover option.
+- **Step 4 done (23 Oct, Claude): `WFP Change Position`** — regrade / budgeted FTE / location
+  from a month; Base reads the dated grade. Proven on Downside, reverted; compare 0, 59/59.
+  **Gap found:** on-costs still follow the Position's budgeted FTE and salary, not the person's
+  assignment (see `docs/ASSIGNMENT_MODEL.md` → "Position change"). Next: Step 5 (close /
+  reopen a Position, company move).
 
 - Branch `lenses`, server `TM1_Test_DEV`, change set `92a949c9` open. Uncommitted:
   `docs/HANDOVER_WORKFORCE.md`, `shared/lens-kit/index.js`, `static/lens-kit/lens-kit.js`.

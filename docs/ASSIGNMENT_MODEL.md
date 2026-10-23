@@ -164,6 +164,27 @@ assignment, plus a continuation row (Reason `Pay change`) whenever its pay or FT
   the outgoing person's end later changes, `Handover FTE` isn't recalculated (re-run Mark
   Handover).
 
+## Position change — regrade, budgeted FTE, location (Step 4 — done 23 Oct)
+
+- `WFP Change Position` (pVersion, pPosition, pFrom, pGrade, pFTE, pLocation): from `pFrom` to
+  the end of the plan, in the months the Position is open, writes Position Map `Grade` /
+  `Location` and budgeted FTE (Position Map `Seat FTE` **and** Workforce Input `FTE`, zeroed
+  then written so the feeders fire). Months before are untouched. Blank / −1 = unchanged.
+- The person in the Position keeps their own pay and FTE (the assignment). If their FTE is
+  now above the Position's, the message says so and Over-filled flags it.
+- Refuses: Actual, a month in actuals, a closed Position, an unknown grade/location,
+  FTE ≤ 0 or > 1 (closing is Step 5's Close Position).
+- `WFP Assignment Base` now reads the Position's **dated** grade and location (Position Map,
+  falling back to the attribute) for the pay-band fallback — as the cost rules already did.
+  No effect on today's data (compare 0).
+- Proof (Downside ENG-001, reverted): FTE 0.8 from Oct → Sep 1 / Oct+ 0.8 in both stores,
+  warning, Over-filled Oct+; grade G4→G5 from Oct → Benefits 240→320 (G5 rate), Base
+  unchanged; refusals OK. After restore: compare 0, 59/59.
+- **Gap found:** on-costs (Benefits, pension, bonus, employer tax) are still worked out from
+  the **Position** (its salary × budgeted FTE in `_Monthly Base Full`), not from the person's
+  assignment — only Base moved to the assignment in Step 1. So a Position at 0.8 with a person
+  at 1.0 gets Base for 1.0 but Benefits for 0.8. Move the on-costs onto the assignment too.
+
 ## Related
 
 - `docs/BUILDING_MODELS.md` rule #1 (TI for heavy/across-time work), rule #2 (version
