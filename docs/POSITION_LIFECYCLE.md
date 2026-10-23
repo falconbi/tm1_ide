@@ -139,12 +139,24 @@ Assignments on a Position HRIS already knows, matched by Position + hire window 
 - Every Approved TBH past its hire month is either matched or flagged *Late hire*.
 - A plan item fulfilled by HRIS (hire, leaver, pay change) is never counted twice.
 
-## 7. Open decisions (James)
+## 7. Decisions (resolved 23 Oct 2026)
 
-1. ◆ Match window (±3 months?) and auto-match on a single candidate, or always confirm?
-2. Does an approved TBH count from its hire month before it is matched? (Current model: yes.)
-3. Temporary absence and cover: does the absent person keep counting in headcount? Does cover
-   count as a second head? And how is the absence paid?
-4. Reopen vs new: when may a closed Position be reopened rather than a new one created?
-5. HRIS feed: which future-dated events does the extract include (offers, notices, pay
-   changes)? This decides how much of the open months HRIS can fill in by itself.
+1. **Match window:** ±3 months, and **always confirmed by a person**. No auto-match yet; add
+   single-candidate auto-match later only if it proves reliable.
+2. **Approved TBH before match:** **yes**, it counts from its hire month. Otherwise the
+   forecast drops the hire until HR acts.
+3. **Absence / cover:** the absent person **stays in headcount**, paid per policy. Cover is a
+   second real person, flagged *Cover*, and also counts. Reports get a **"without cover"**
+   option.
+4. **Reopen vs new:** reopen only when it is the **same budget line in the same plan year**;
+   otherwise create a new Position.
+5. **HRIS future events:** accept accepted offers, resignations with notice and scheduled pay
+   changes **when the feed has them**; never depend on them.
+6. **Pay/FTE history (A):** **effective-dated monthly measures per assignment** (option a),
+   not split assignment records.
+7. **Test lab (B):** build **WFP_Lab** by script from WFP's definitions (dimensions, cubes,
+   rules, processes) so it cannot drift; use it for steps 1, 3 and 4.
+
+Implementation notes: the model's "Seat Status" is the derived **Monthly Position State**
+(naming phase); the stored **Position Status** is a separate attribute. Pay/FTE changes are
+dated on the assignment, not on the Position.

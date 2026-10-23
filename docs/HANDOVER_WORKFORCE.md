@@ -5,7 +5,10 @@ For the next agent (OpenCode) picking up the Workforce work. Read this first, th
 
 ## Working rules (James's, non-negotiable)
 
-- **Never push.** Everything stays local on branch `lenses` until James says "push".
+- **Push only when James explicitly says "push".** Default is local on branch `lenses`.
+- **Warn him before anything that may take more than a few seconds** — full compare (~8 min),
+  rules PATCH (~15 min), snapshots, long TI runs. Never leave him waiting silently; keep
+  replies short.
 - **Never restart servers.** Tell James: `systemctl --user restart tm1-backend` (IDE);
   the Lens app is Ctrl+C then `npm run lens`.
 - **Ask before coding** when he is discussing ("I am discussing" = don't build). When he
@@ -14,6 +17,66 @@ For the next agent (OpenCode) picking up the Workforce work. Read this first, th
 - No Playwright. Never write anything personal about James. Never call Lenses "frames".
 - Keep TM1_CONSOL private. Never print or commit tokens. Security changes: James runs them.
 - Don't re-add the amber "zero rule cell" highlight — he rejected it.
+
+## Cold start — current state (25 Oct)
+
+Read this first; items 14–17 below have the detail.
+
+- Branch `lenses`, server `TM1_Test_DEV`, change set `92a949c9` open. Uncommitted:
+  `docs/HANDOVER_WORKFORCE.md`, `shared/lens-kit/index.js`, `static/lens-kit/lens-kit.js`.
+- **Default convention:** every model dimension/cube has a public object literally named
+  `Default` (case-sensitive, no braces). All 27 subsets + 12 views exist and execute.
+- **Base is TI-written now.** Cost `Base` rule + `_Monthly Base Full => Base` feeder removed.
+  TI `WFP Assignment Base` reads the **monthly assignment pay** cube `WFP Assignment Pay`
+  (per assignment per month: Base Salary, FTE; backfilled from Workforce Input, Pay Rates
+  `Salary Mid` fallback), and its Epilog full pass writes every Position-month (0 where none)
+  to Cost `Base` at Position Map Entity / Cost Centre / Salary Currency.
+  **compare 0 (702,222 values), 59/59 assertions; Base TI ~23–28s; pay backfill ~4 min.**
+  Rules PATCH **872s** (raise the 120s client timeout); long TIs also exceed 120s. Triggers:
+  `WFP Copy Version` Epilog; Lens **5 Assignments v5 Recalculate**. Write actions do NOT
+  auto-recalc. Caveats: full pass covers Budget/Forecast/Downside/Actual only (not Working or
+  stored snapshots); a `WFP Move Seat` CC change can leave Base at the old CC until cleared;
+  the pay backfill clears `WFP Assignment Pay` before rebuilding (so it wipes any future dated pay edits — those must be re-applied or sourced).
+- **Detail:** 2,782 named records per version + planned-hire presence (Budget 236 / Forecast
+  128 / Downside 127) on employee leaf `Planned Hire`; day-level dates; Actual trimmed to
+  2026-01. Rebuilding the detail drops view `WFP Assignment Base Src` — recreate it.
+- **Stage 4 actions write the detail:** End Assignment, Approve Hire (Planned Hire presence
+  at Hire Month; needs `cPer='WFP Period'`), Assign, Transfer (same-company guard). All
+  tested and restored. E10003 (Ben Ortiz) incident repaired across all versions + detail;
+  baseline re-captured. **Confirm E10003's name with HR.**
+- **Lenses:** 5 Assignments v5; Position roster v16 (transfer From-first, same-company,
+  taken-seat exclusion, history refresh v12; Move copy says same-company); Home v19.
+  Recipient-CC-owner approval is design only, not built.
+- **Home slowness (settled on a warm server):** the full page renders in 1.0–1.2s and its
+  four queries take 0.0–0.1s once warm — it is not slow on every load. The cold first read
+  after a TM1 restart is still unmeasured (needs a restart); run
+  `node tmp/workforce/home-cold-check.js` immediately after one, before opening the Home.
+- **Move-position test: done via the roster Lens** (Downside, ENG-002, from 2026-05,
+  CC-ENG-PLT → CC-ENG-APP). The Lens ran `WFP Move Seat` (1.7s), the message appeared, 20
+  months (2026-05…2027-12) changed CC and Home Entity stayed UK Ltd; the roster showed it
+  leave CC-ENG-PLT and appear in CC-ENG-APP. Restored 72 Position Map cells from
+  `move-snapshot.json`; roster re-check passed; compare 0 (702,218 values); 62/62 assertions
+  at the time (58/58 now — item 20).
+  The position was vacant, so the stale-Base caveat was not exercised — still open for a
+  filled position.
+- **Move guard (done):** cost centres are **shared across companies** (39/40 have UK/US/NZ
+  positions; only CC-SALES-UK is UK-only), so a CC list **cannot** be filtered by company —
+  that part of the old Next step was wrong. The real risk was `pEntity`: `WFP Move Seat` now
+  **refuses a company different from the seat's current Home Entity**. Tested: US Inc
+  refused, UK Ltd / blank allowed, Position Map unchanged. Roster v16 copy updated.
+- **Open:** a filled-position Move may leave Cost Base at the old CC until cleared.
+- **Next (approved plan):** 1) Home cold probe at the next TM1 restart. 2) Step 2: the Actual
+  HR feed maintains `WFP Assignment Detail` + `WFP Assignment Pay`. 3) Step 3: Handover action
+  + `Over-filled` exemption. 4) Step 4: dated regrade / budgeted-FTE. 5) Step 5: Close/Reopen
+  + company move. 6) Step 6: TBH lifecycle/matching. 7) Step 7: absence/cover. 8) naming
+  cleanup. Also open: stale-Base clear on Move (filled position); recipient-owner approval.
+- **Terms:** user-facing "Position"; internal names stay (`Seat FTE`, `WFP Move Seat`,
+  `WFP-Seat-Roster`). Transfer = person to a different Position; Move = same Position to a
+  different CC; a company change is a leaver + a new Position, not a Transfer.
+- **Data facts:** 3,022 positions, 2,782 employees; Actuals Cutoff Index 15 (2026-03);
+  ENG-005 is US Inc; FIN-1238 is CC-FIN-FPA (UK Ltd); test temps cleaned up.
+- **Checks:** `npm test` (321 pass, 1 skip at this commit); live check `tmp/workforce/run.js`; MCP
+  `tmp/workforce/mcp.js`; baseline compare `tmp/workforce/compare-consol.js`.
 
 ## Where things are
 
@@ -144,15 +207,181 @@ Load HR Assignments (+ Write Sample HR Extract). Outcomes go to the `Lens Messag
     (descriptions updated to remove old constants; #5 rewritten on EXEC-001: Downside
     222,600 vs Forecast 218,400). #7 reworded to the approval gate ("planned hire waiting
     for Finance → headcount 0"). **62 total, 62 pass.**
+14. **Every model dimension and cube has a Default object (25 Oct).** All 27 model
+    dimensions carry a public subset named `Default` (all elements); all 12 cubes carry a
+    public view named `Default` (measure on columns, first dimension on rows, the other
+    titles at their default member). Created the 2 missing subsets (`Lens Message`,
+    `WFP Assignment Detail Measure`) and the 4 missing views (`Lens Messages`,
+    `WFP Assignment`, `WFP Assignment Detail`, `WFP Position Map`); **all 12 views execute
+    cleanly**. The object name is the flag — `Default` is case-sensitive and there is no
+    separate "is default" property in the REST API.
+15. **Assignment list Stage 1 done (25 Oct).** New `WFP Assignment Detail Measure` (7
+    elements) and cube `WFP Assignment Detail` (Version × Position × Employee × Measure);
+    backfilled 1,940 assignments across Budget/Forecast/Downside (13,580 cells; salary from
+    the end-month Workforce Input Base Salary, Seed Base Salary fallback). New read-only
+    Lens **5 Assignments** (`WFP-Assignments`, inserted after Transfers; Home tile;
+    renumbered 0–16, so **Attention is now 9**): version / cost centre / position picker,
+    one row per assignment with Person, From, To, FTE, Salary, Handover. Vacant positions
+    read "No assignments". Tested Forecast + Downside + cost-centre switch; assertions
+    62/62. **The first backfill was wrong** (the month axis was NON EMPTY, so chunks with
+    fewer months mis-indexed and lost 842 positions) — the cube was cleared/rebuilt:
+    **2,782 named records per version** (every paid position), dates day-level (320 partial
+    starts), plus **planned-hire presence records** (Budget 236, Forecast 128, Downside 127)
+    using a new **`Planned Hire`** employee leaf (Display "Planned hire"). Total detail
+    records: Budget 3,018, Forecast 2,910, Downside 2,909, **Actual 2,782** — the Actual
+    detail starts are trimmed to **2026-01** (the first Actual Cost month; the Actual
+    Assignment FTE begins 2025-12).
+
+16. **Base → TI: final (25 Oct).** A read-only replica proved the formula: detail
+    windows + monthly Workforce Input salary/FTE + Pay Rates `Salary Mid` fallback +
+    calendar-day proration matches the old Cost `Base` **exactly** — 0 differences across
+    36 months × Budget / Forecast / Downside (491,556,295.71 / 482,509,947.88 /
+    480,495,890.79). A staging cube **`WFP Assignment Base`** and TI **`WFP Assignment
+    Base`** (view `WFP Assignment Base Src` over the detail) were built. The Cost `Base`
+    rule + `_Monthly Base Full => Base` feeder were removed; the TI fills the staging from
+    the detail and an **Epilog full pass** writes **every Position-month** to Cost `Base`
+    (0 where nothing is assigned) at the Position Map Entity / Cost Centre / Salary
+    Currency — this clears stale months after an end or transfer.
+    **compare 0 (702,218 values) and 62/62 assertions.** Rules PATCH **872s** (raise the
+    120s client timeout for this cube); the TI run **35s**.
+    **Triggers:** `WFP Copy Version` calls the TI in its Epilog; Lens **5 Assignments v5**
+    has a **Recalculate** button (all versions, ~1 min). The write actions do **not**
+    auto-recalc; version copy does.
+    **Caveats:** the full pass covers Budget / Forecast / Downside / Actual only (not
+    Working; the stored snapshot versions are untouched). A Position Map / Cost Centre
+    change (`WFP Move Seat`) can leave Base at the old Cost Centre until cleared — add a
+    clear to Move Seat (or avoid map changes) until then.
+    *History: a first switch was reverted because the actions did not yet write the detail
+    and the detail had no Actual; both were fixed in item 17 before this final switch.*
+
+17. **Stage 4 + incident (25 Oct).** The four write actions now update the detail:
+    - **End Assignment** sets the record End Period/Day (tested PRD-1060/E10074; restored).
+    - **Approve Hire** creates the `Planned Hire` presence at the Hire Month on approve and
+      clears it on reopen (tested PRD-1089; restored).
+    - **Assign Person** creates the new record and ends replaced people's records; the
+      process ran correctly — **but the test cleanup picked the first employee in the
+      detail (historical E10003) and deleted E10003**.
+    - **Transfer Person** code is in place (old record ends the month before pFrom; new
+      record starts at pFrom) — **not yet tested**.
+    **Incident repair:** E10003 (Ben Ortiz · E10003, ENG-002) was re-added with attributes,
+    assignments in Budget / Forecast / Downside / Actual / FCST 2026-03, and detail
+    records; the phantom E12784 was removed. Cost compare 0; 62/62 assertions. Two HC cells
+    (`HC|Downside|2025-12` Hires/Closing) are now 1 — the position-level HC was already 1
+    (the snapshot confirms) and the old CC roll-up was stale at 0; **the compare baseline
+    was re-captured** (702,218 values; compare 0). E10003's name is inferred from the
+    position incumbent — **confirm with HR**.
+    **Transfer Person** is **same-company only** (James's call): a company change is a leaver
+    + a new Position/assignment in the new company, not a Transfer. A guard was added to the
+    process (refuses a cross-company target) and the roster filters its targets to the current
+    company. The Transfer form now puts **From first** and re-filters the To list to that
+    From (roster **v14**; verified Apr 61 → Jul 105 options, label follows). The earlier temp
+    test moved ENG-002 (UK Ltd) → ENG-005 (**US Inc**) — a cross-company move, not the
+    intended transfer; its data was restored (compare 0) and the guard now refuses it (tested:
+    no data change). The **same-company CC transfer** on the temp is the remaining scenario;
+    the **Base switch was redone** with the full pass (item 16).
+
+18. **Move-position test via the roster Lens.** Drove **Position roster v15** in jsdom
+    with a live runner (`tmp/workforce/run-live.js` — real `runProcess`, unlike `run.js`)
+    against `TM1_Test_DEV`: Downside, Apr 2026, CC-ENG-PLT, select **ENG-002**, **Move
+    position…** → **CC-ENG-APP** (a UK Ltd CC), from **2026-05**. The form listed **39 CCs**
+    (all except the current one — no company filter), `pEntity=''`. The Lens ran
+    `WFP Move Seat` in **1.7s** and showed *"Seat ENG-002 moves from CC-ENG-PLT to CC-ENG-APP
+    from 2026-05 (Downside)."* Data: **20 months changed** (2026-05…2027-12), **16 unchanged**
+    (…2026-04), Home Entity stayed **UK Ltd**, Seat FTE 1, Seat Status Vacant. The roster then
+    showed ENG-002 gone from CC-ENG-PLT and present in CC-ENG-APP in May.
+    **Restored** all 36 months × {Cost Centre, Home Entity} = **72 cells** from
+    `tmp/workforce/move-snapshot.json`; all match the snapshot; roster re-check confirms it is
+    back in CC-ENG-PLT. **Compare 0 (702,218 values); 62/62 assertions.** The position was
+    **vacant**, so Base was null at both CCs — the **stale-Base caveat is untested** and needs
+    a filled position (next test). Scripts: `move-snap.js`, `move-lens-check.js`,
+    `move-restore.js`, `run-live.js`.
+
+19. **Move guard — same company only.** Investigated the old Next step "filter the
+    Move CC list to the current company". **That premise is wrong:** cost centres are not
+    company-specific — at Apr 2026, **39 of 40 CCs have positions in all three companies**
+    (e.g. CC-ENG-APP = UK 89 / US 89 / NZ 32); only **CC-SALES-UK** is UK-only. There is no
+    CC→company mapping to filter on (Transfer can filter because it targets *positions*,
+    which carry Home Entity; Move targets a *CC*).
+    The real risk was the process parameter `pEntity`: `WFP Move Seat` would change Home
+    Entity if passed one. It now **refuses a company different from the seat's current Home
+    Entity** (blank or the same company is allowed). Updated the process (prolog, change set
+    `92a949c9`) and the roster Info/note copy (**v16**). Tested live on Downside / ENG-002 /
+    2026-05: `pEntity='US Inc'` → *"Seat ENG-002 is in UK Ltd — a move stays in the same
+    company…"*; `pEntity='UK Ltd'` and blank → allowed; **Position Map unchanged** after all
+    three (checked against `move-snapshot.json`). No compare re-run — no data changed.
+    Scripts: `move-company-probe.js`, `move-guard-apply.js`, `move-guard-test.js`.
+
+20. **Assertion cleanup (58 remain).** Removed four duplicates; backup in
+    `tmp/workforce/assert-removed.json`; **58/58 pass**. Removed: `1740b6db` (older copy of
+    the ENG-002 tax control), `9cdd95e8` (identical, untagged), `61a5059e` (ENG-005 `=6600`
+    mislabelled `control` — it depends on data), `7e937d87` (identical, untagged). Kept the
+    ENG-002 tax zero as the `control` (`958ed167`) and the ENG-005 6600 as a `behaviour`
+    check (`39aeacf8`). Tags on the rest were left alone — the tooling has no assertion
+    update, and re-adding would rewrite each assertion's author/change-set provenance.
+    **Caveat:** the over-booked control (`b09660c1`) hit the client's **120s** timeout on a
+    cold cache, then passed; run assertions again if it times out. Coverage gaps unchanged:
+    no assertions yet for Assignment Detail counts, Base TI totals, or the Stage 4/Move
+    process guards (the Move guard is a manual test by nature).
+
+21. **LAB separated from the Workforce change set.** The 42 `LAB *` entries were moved from
+    `92a949c9` to a separate **closed** session `a793c922-4a56-4b20-ab72-37b868b9cfaf`
+    ("WFP_Lab — test model, never deploy"). Packaging filters them out
+    (`tools/tm1deploy/src/never-deploy.js`, used by the packager) and the deployer **hard-stops**
+    any package containing a `LAB ` object. `WFP_Lab` is generated by `tmp/workforce/lab-build.js`
+    from WFP's own cube dimension order and measure names; it proved the dated-pay logic
+    (LAB-003: 80k→90k mid-year = 6,666.67 then 7,500, while the old position salary stayed
+    7,500).
+
+22. **Step 1 — pay on the assignment (done).** New cube **`WFP Assignment Pay`** (Period ×
+    Version × Position × Employee × Measure: Base Salary, FTE), backfilled from monthly
+    Workforce Input; `WFP Assignment Base` now reads it (Pay Rates fallback). Old TI backed up
+    at `tmp/workforce/base-ti-before-step1.json`. Scope: **11,618 detail records / 207,339
+    months / 414,678 pay cells**. The backfill exceeded the 120s client timeout (actual ~3 min;
+    the 40–70s estimate was wrong); Base TI **24.6s**, **28.1s** after the repair.
+    **Compare 0 (702,222 values); 59/59 assertions; npm test 316 pass, 1 skip (unit only).**
+    The first compare showed 792 differences in CC-FIN-FPA / Downside 2026-11: **FIN-1238's
+    `Planned Hire` detail record had End 2026-04 before Start 2026-11** — the only such record
+    in any version. The baseline held a stale 2,666.67 Base; the record was repaired to
+    End 2027-12/31. Caveat: the pay backfill clears `WFP Assignment Pay` before rebuilding, so
+    dated pay edits must be re-applied or sourced.
+
+23. **Follow-ups to Step 1 (done).** `WFP Approve Hire` now **refuses a planned hire whose
+    position end is before the hire month** (tested: End 2026-04 on FIN-1238 → Aborted,
+    approval unchanged). New **`WFP Check Assignment Spans`** writes `Bad Span` (1 where
+    end < start); it is called from Assign / End / Transfer / Approve Hire. New control
+    assertion **"no assignment record ends before it starts"** (expected 0) — **59/59**.
+    `WFP Assignment Pay` now **clears before rebuilding** (house rule). `run_process` takes
+    **`timeout_ms`**, threaded through the adapter/client (backfill ran 233.6s). Also repaired
+    a repeat **E10003** deletion (not via the MCP log; cause unknown) with correct per-version
+    spans: Budget/Forecast/FCST to 2027-12, Downside/Actual to 2026-03; Forecast gets the 4%
+    merit from 2026-04 (85,280). Removed the returned **phantom E12784** (ENG-002 Oct 2026+,
+    +7,333/month). Baseline recaptured at **702,222** values because the Forecast 2025-12
+    CC roll-up was stale 0 (same pattern as item 17); compare 0.
+
+24. **Root cause of the repeated E10003 loss: `npm test` ran live scripts.** `node --test`
+    discovers `test-*.js` anywhere, and `tmp/workforce/test-assign.js` was deleting **the first
+    employee in the detail** (E10003) after creating "ZZ Test Assign" (the phantom E12784). So
+    every test run damaged the model. Fixes:
+    - `npm test` now runs **`tests/` only** (316 pass, 1 skip, 13s; no live calls).
+    - live scripts renamed **`tmp/workforce/live-*.js`** and each **refuses unless `LIVE=1`**.
+    - `live-assign.js` records the IDs before the run and deletes **only the one it created**.
+    - **`WFP Assign Person` now allocates `max E-number + 1`** and never reuses a gap (a deleted
+      test ID can't be handed to a real hire).
+    - E10003 restored with verified spans (Budget/Forecast/FCST to 2027-12, Downside/Actual to
+      2026-03; Forecast 4% merit from 2026-04 = 85,280); phantom E12784 removed.
+    **Compare 0 (702,222), 59/59.** The 18:07 `WFP Assumptions` MCP writes are **not** from any
+    test script (none write Assumptions) and remain unattributed; no live script runs now.
+    Landmine added to `BUILDING_MODELS.md`.
 
 **Salary belongs to the position** (intended, confirmed by James): a transfer copies the rate to
 the new position and **leaves it on the old position** as the starting point for a backfill. A vacant
 position costs nothing, so it is not counted twice — **not yet proved**: next Downside test should
 read `WFP Workforce Cost` for the old position in the vacant months and confirm 0.
 
-Verified by live read-only runs plus the reversible Downside tests above. **Not yet done
-by James in the UI:** a real hire-month save, an approval, a backfill save, Record a leaver,
-Record a transfer.
+Verified by live read-only runs plus the reversible Downside tests above (actions tested
+via the API). **Not yet exercised in the UI:** the Lens v5 **Recalculate** button, the
+`WFP Copy Version` trigger, a real hire-month save, an approval, a backfill save, Record a
+leaver, Record a transfer.
 
 ## Next, in order
 
@@ -177,7 +406,7 @@ Record a transfer.
    but loses Employee Deductions and breaks their assertions (James deciding); (d) drop local
    currencies — high risk (calc basis + 24 assertions). Even the aggressive path lands at
    ~43k cells/month → snapshot ~25–30 min, **not minutes**. Prove any change with the
-   compare script plus the 62 assertions, across all versions (a rules/feeder change applies
+   compare script plus the 58 assertions, across all versions (a rules/feeder change applies
    to the whole cube — there is no "Downside first").
 2. **Server settings (investigated, read-only).** MTQ is already on (4 cores). **MTFeeders /
    MTFeeders.AtStartup must stay F** — the model has conditional (attribute- and
@@ -208,7 +437,7 @@ Record a transfer.
    ~12-min feeder rebuild and the 1.5h snapshot. Settings can't fix it. Plan (when we get
    there): which calcs move, what triggers them (version copy / Lens Save / a single
    `CubeProcessFeeders` after a bulk load), and prove with the compare script (0
-   differences) + the 62 assertions before touching rules.
+   differences) + the 58 assertions before touching rules.
 
 **Parked:** `WFP Snapshot Fast` (design: copy every cube in full except Cost, Cost at leaf
 position level; chore `MultipleCommit`) was designed and probed but **not built** — James chose
