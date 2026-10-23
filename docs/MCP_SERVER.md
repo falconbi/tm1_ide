@@ -280,7 +280,7 @@ TM1_MCP_SERVER=TM1_Test_DEV claude
 ```
 
 **Checking it:** on startup it prints `tm1mcp: server <name> (from <where>)`, and every
-write tool's answer starts with `[ran on <server>]`, so a wrong server shows at once.
+write tool's answer ends with `[ran on <server>]`, so a wrong server shows at once.
 If no server is set anywhere (no flag, no env var, nothing selected in the IDE) the
 MCP refuses to start and says so.
 

@@ -44,11 +44,12 @@ function _payload(res) {
     try { return JSON.parse(t) } catch { return t }
 }
 
-// Every write answer names the server it ran on, so a wrong server is seen at once.
+// Every write answer names the server it ran on, so a wrong server is seen at once — as its
+// own trailing text block, so the answer itself (often JSON) still parses as it did.
 function _stampServer(res, server) {
     const c = res?.content
-    if (!Array.isArray(c) || c[0]?.type !== 'text' || !server) return res
-    return { ...res, content: [{ ...c[0], text: `[ran on ${server}]\n${c[0].text}` }, ...c.slice(1)] }
+    if (!Array.isArray(c) || !server) return res
+    return { ...res, content: [...c, { type: 'text', text: `[ran on ${server}]` }] }
 }
 
 function toolServer(mcp, ctx, { mode, policy, identity, audit, explicitTargets = false }) {
