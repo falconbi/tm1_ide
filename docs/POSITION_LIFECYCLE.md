@@ -149,6 +149,28 @@ Assignments on a Position HRIS already knows, matched by Position + hire window 
 - **Not yet:** the "Match new Positions" page (suggested candidates: same company / cost centre /
   grade, hire month ±3 months — decision 1), and the HR feed carrying the TBH ID on a requisition.
 
+### Built (Step 7, 24 Oct 2026) — absence and cover (decision 3)
+
+- **`WFP Record Absence`** (pVersion, pEmployee, pFrom, pTo, pPayPct, pReason, pAction record|clear):
+  on every Position the person holds then, `WFP Assignment` `Absent` = 1 (`Absence Reason` in the
+  first month) and `WFP Assignment Pay` `Absence Pay %`. `WFP Assignment Base` pays them that % of
+  their pay (tax follows). They **stay in headcount**; `Absent Headcount` shows them.
+- **`WFP Assign Cover`** (pVersion, pPosition, pEmployee or pName, pFrom, pUntil, pFTE, pSalary,
+  pAction assign|remove): a cover assignment for a fixed window, **only while someone on the
+  Position is away in every one of those months**. Start Reason `Cover`, End Reason `Cover end` —
+  not a joiner or leaver. `Cover FTE` marks it; paid its own salary (0 = the Position's).
+- **Checks / measures:** `Over-filled` allows cover only in months someone is away (`Cover
+  Allowance` = cover FTE when `Absent` > 0) — remove the absence and the cover flags. Headcount
+  gains `Absent Headcount`, `Cover Headcount`, `Cover FTE` and **`Headcount excl Cover`** (the
+  "without cover" view).
+- Proof: lab, then Downside ENG-001 on the real model (Alice away Jun–Aug at 50%: base 11,042 →
+  5,521, still 1 head; cover at £90k: headcount 2, cover 1, excl cover 1, no hire, base 13,021;
+  cover past the absence refused; Aug absence removed → Aug over-filled; all undone, ENG-001
+  diff 0). Compare 0 on everything that existed; the 8,475 new `Headcount excl Cover` values
+  equal Headcount. New baseline `2026-10-24-step7`.
+- **Not yet:** absence is month-grain (no part months); Actual (stored from HR) has no absence /
+  cover — the HR extract would need absence rows; `Headcount excl Cover` is empty for Actual.
+
 ## 5. Counting rules (what each number means)
 
 - **Headcount** = people with an Assignment in the month (a handover overlap counts 2), plus

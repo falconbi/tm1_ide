@@ -110,7 +110,7 @@ Read this first; items 14–17 below have the detail.
   ENG-005 is US Inc; FIN-1238 is CC-FIN-FPA (UK Ltd); test temps cleaned up.
 - **Checks:** `npm test` (316 pass, 1 skip — `tests/` only, never touches TM1); live check
   `tmp/workforce/run.js`; MCP `tmp/workforce/mcp.js`; 59 assertions (all pass, 23 Oct).
-- **Baseline compare:** `node tmp/workforce/compare-consol.js compare 2026-10-23-taxrun` (~2 min,
+- **Baseline compare:** `node tmp/workforce/compare-consol.js compare 2026-10-24-step7` (~2 min,
   read-only). **Baselines are write-once:** capture refuses an existing label, and the files are
   read-only. Capture a new, dated label after an intended change (`capture 2026-MM-DD-<what>`).
   `2026-10-23-clean` = the model after Step 1 + the E10003 restore (59/59).
@@ -121,6 +121,11 @@ Read this first; items 14–17 below have the detail.
   `tmp/workforce/src/step6/` (`deploy6.js LAB|WFP` deploys the same code to either). Downside flags
   ENG-005 / SLS-003 as Unplanned (no Downside hire line) — James to decide. Next: Step 7 (absence /
   cover), Step 8 (naming).
+- **Step 7 done (24 Oct, Claude): absence and cover** — `WFP Record Absence`, `WFP Assign Cover`;
+  Base pays absence at its pay %; Over-filled allows cover only while someone is away; Headcount:
+  Absent / Cover Headcount, Cover FTE, Headcount excl Cover. Lab, then Downside; compare 0;
+  59/59. **New compare baseline `2026-10-24-step7`.** Details `docs/POSITION_LIFECYCLE.md` →
+  "Built (Step 7)". Next: Step 8 (naming).
 - **WFP_Lab (rebuilt 24 Oct): test every new process / rule change here FIRST, then one Downside
   run with snapshot + restore + compare.** `LIVE=1 node tmp/workforce/live-lab-build.js` (~4 min)
   deletes and regenerates every `LAB …` object from the current WFP model: all 29 dimensions
