@@ -114,6 +114,17 @@ Read this first; items 14–17 below have the detail.
   read-only). **Baselines are write-once:** capture refuses an existing label, and the files are
   read-only. Capture a new, dated label after an intended change (`capture 2026-MM-DD-<what>`).
   `2026-10-23-clean` = the model after Step 1 + the E10003 restore (59/59).
+- **WFP_Lab (rebuilt 24 Oct): test every new process / rule change here FIRST, then one Downside
+  run with snapshot + restore + compare.** `LIVE=1 node tmp/workforce/live-lab-build.js` (~4 min)
+  deletes and regenerates every `LAB …` object from the current WFP model: all 29 dimensions
+  (Position / Employee trimmed to 14 chosen Positions and their 11 people — UK/US/NZ, contractor,
+  part-time, vacant, approved / waiting / future planned hires, actual and forecast leavers, a
+  mid-month hire), all 14 cubes with their rules, all subsets and views, all 33 processes
+  (WFP → LAB), and the data of those Positions. It then runs `LAB Assignment Base` (→ tax run) and
+  compares the chosen Positions' cost with WFP: must be 0 different (24 Oct: 12,096 cells, 0).
+  `LAB Assignment Base` runs in 0.4 s, `LAB Tax Run` 0.2 s (WFP: 87 s). Rebuild the lab after
+  any WFP change before testing the next one. LAB objects never deploy (`never-deploy.js`); group
+  checks in LAB processes look for `LAB HR` / `LAB Finance` (absent), so run them as ADMIN.
 - **Live scripts:** only `tmp/workforce/live-*.js`, each refusing to run without `LIVE=1`. The 58
   older one-off scripts that changed TM1 without a guard are in `tmp/workforce/archive-unguarded/`
   — do not run them.

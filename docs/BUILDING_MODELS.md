@@ -379,6 +379,11 @@ See `MCP_SERVER.md` → "Notes & limits" for the full list. The ones that cost r
 iterations:
 
 - 3-arg `ElementAttrN`/`ElementAttrS` — parses fine, returns blank at runtime
+- **A cube whose rules start `[] = N: … STET …` flags every cell `RuleDerived`**, even stored
+  ones — a copy that skips rule-derived cells copies nothing. Copy leaf cells before the rules go on.
+- **Reading a native view's subsets over REST:** `Rows`/`Columns`/`Titles` are complex types — use
+  a path (`$expand=tm1.NativeView/Rows/Subset(...)`), not `Rows($expand=Subset)`; an MDX view
+  rejects the `tm1.NativeView` cast, so read it without the expand.
 - **WFP Period `Next Period` of the last month is the month itself** (2027-12 → 2027-12). A
   TI loop that walks `Next Period` until blank never ends. Stop when Next Period equals the
   current month, or loop by Period Index.
