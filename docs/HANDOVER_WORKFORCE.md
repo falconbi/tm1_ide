@@ -44,8 +44,11 @@ Read this first; items 14–17 below have the detail.
   reopen a Position, company move).
 - **Step 5 done (23 Oct, Claude): `WFP Close Position`, `WFP Reopen Position`,
   `WFP Move Position To Company`.** Proven on Downside, reverted; compare 0, 59/59. Sources
-  `tmp/workforce/src/step5/`. Next: on-costs onto the assignment (cost rules), then Step 6
-  (TBH matching).
+  `tmp/workforce/src/step5/`.
+- **On-costs (23 Oct, Claude):** only Benefits still used the Position's FTE — fixed (people's
+  FTE when filled). Pension, bonus, tax already followed Base. Compare 0, 59/59. **Open:**
+  payroll-tax YTD is per Position, not per person (a backfill inherits the leaver's YTD) — needs
+  a TI tax run per person. Next: Step 6 (TBH matching) or the tax run — James to choose.
 
 - Branch `lenses`, server `TM1_Test_DEV`, change set `92a949c9` open. Uncommitted:
   `docs/HANDOVER_WORKFORCE.md`, `shared/lens-kit/index.js`, `static/lens-kit/lens-kit.js`.

@@ -209,6 +209,24 @@ assignment, plus a continuation row (Reason `Pay change`) whenever its pay or FT
   ENG-001-US, cost USD 13,333/month (≈ £10,533), US `_Earnings YTD` restarts in Oct. After
   restore: compare 0, 59/59.
 
+## On-costs follow the person (done 23 Oct)
+
+- Checked every component: **Employer Pension, Employee Pension, Bonus and the YTD payroll-tax
+  chain are all worked out from `Base`** — which `WFP Assignment Base` writes from the people's
+  assignments since Step 1 — so they already followed the person.
+- **Benefits** was the one still using the Position's budgeted FTE (Workforce Input `FTE`). The
+  rule now uses the people's FTE (`WFP Assignment` All Employees `FTE Share`) when someone holds
+  the Position, and the Position's budgeted FTE only for a planned hire. Written with two IF
+  levels (a 3-deep IF can return blank on this engine — the lint caught the first draft).
+- Applied in ~30–47 s (not the ~15 min feared). Compare 0 on today's data (everyone's FTE equals
+  their Position's). Proof: ENG-001 Downside budget FTE 0.8 from Oct with Alice at 1.0 →
+  Benefits stays 300 (was 240 before the fix); reverted. 59/59.
+- **Still open — payroll tax YTD is per Position, not per person.** `_Earnings YTD` runs on the
+  Position (following its cost centre), so a mid-year backfill inherits the leaver's
+  year-to-date earnings, and two people in a handover month are taxed on their combined pay —
+  employer tax can come out low once band thresholds bite. The fix is a TI tax run per person
+  (assignment grain), in line with design rule #1.
+
 ## Related
 
 - `docs/BUILDING_MODELS.md` rule #1 (TI for heavy/across-time work), rule #2 (version
