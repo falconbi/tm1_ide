@@ -1,6 +1,8 @@
 # Position lifecycle — how a Position lives, changes and ends
 
-Status: reference + proposals (23 Oct 2026). Read before designing or changing anything in a
+Status: **target design** + proposals (23 Oct 2026). Where the WFP model doesn't match it yet
+(e.g. Base pay is still read from the Position's Workforce Input, not the Assignment; nothing
+sets Handover; no Cancel/Reopen actions), the model is the gap to close, not this document. Read before designing or changing anything in a
 workforce model. Works with `docs/ASSIGNMENT_MODEL.md` (the assignment record) and
 `docs/BUILDING_MODELS.md` (the design standard).
 
@@ -60,7 +62,7 @@ applies from its date onwards; months before it are never rewritten.
 | 6 | **Pay change** (merit, promotion pay) | HRIS or plan | Assignment salary from a month | cost from that month |
 | 7 | **Person FTE change** (part-time, return) | HRIS or plan | Assignment FTE from a month | FTE and cost from that month |
 | 8 | **Position change** (regrade, budgeted FTE) | HRIS or plan | Position grade / FTE from a month | budget and the default salary for the next hire |
-| 9 | **Reorg move** | HRIS or plan | Position's company / CC from a month (dated mapping, not an overwritten attribute) | cost and heads report under the new CC from that month; history stays under the old one |
+| 9 | **Reorg move (same company)** | HRIS or plan | Position's cost centre from a month (dated mapping, not an overwritten attribute) | cost and heads report under the new CC from that month; history stays under the old one. **A Position never changes company:** a reorg into another company closes this Position (row 16) and opens a new one there, and its holder makes a company move (row 11) |
 | 10 | **Transfer (same company)** | HRIS or plan | old Assignment ends, new Assignment starts on another Position | Person counted once; YTD tax carries across |
 | 11 | **Company move** | HRIS or plan | treated as a **leaver + a new hire** (not a transfer) | YTD restarts in the new company |
 | 12 | **Leaver** | HRIS (actual) or planned | Assignment end date + reason | the Position becomes vacant from the next day/month |
@@ -71,8 +73,14 @@ applies from its date onwards; months before it are never rewritten.
 | 17 | **TBH cancelled** | planner / Finance | status *Cancelled* | stops counting; element kept (history, snapshots) — **never delete** |
 | 18 | **Position reopened** | HRIS or plan | end date removed / moved | counts again — only if it's the same budget line; otherwise create a new one |
 
-States of a Position: **Planned → Approved → (Matched) → Vacant ⇄ Filled → Closed**, with
-*Cancelled* as the end state for a TBH that never happened.
+There are **two different statuses**. Keep them apart, with different names:
+
+- **Position Status** is stored, set by HRIS or by a planner/approver action, and is not by
+  month: *Planned → Approved → Matched* for a TBH; *Open* for an HRIS Position; *Closed*;
+  *Cancelled* for a TBH that never happened.
+- **Monthly Position State** is derived by rule for each month, never typed: *Filled* (an
+  Assignment counts), *Planned hire* (an approved, unmatched hire has started), *Vacant* (the
+  Position exists, nobody counts), *Not open* (before its start or after its end).
 
 ---
 
