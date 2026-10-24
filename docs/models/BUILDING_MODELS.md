@@ -447,6 +447,18 @@ See `MCP_SERVER.md` → "Notes & limits" for the full list. The ones that cost r
 iterations:
 
 - 3-arg `ElementAttrN`/`ElementAttrS` — parses fine, returns blank at runtime
+- **Alternate Hierarchies on v11 (a second named hierarchy in a dimension, e.g. WFP Position "By
+  Location"):** TI builds them through the ordinary functions with `'Dim:Hierarchy'` as the
+  dimension name (`DimensionExists`, `DimensionElementInsertDirect`, `…ComponentAddDirect`,
+  `ELPAR`, `DIMIX` all work; `HierarchyCreate` / `HierarchyDestroy` too). Cubes consolidate them by
+  themselves. **But in rules `ELLEV(dim, !dim)` doesn't know an Alternate-Hierarchy total** — it
+  returned 0, so a `= C:` rule written `IF( ELLEV(...) = 0, <leaf calc>, ConsolidateChildren(dim) )`
+  treated "London" as one Position and read blank. Test leaves with `DTYPE(dim, !dim) @= 'N'`
+  instead; `ConsolidateChildren(dim)` then follows the cell's own hierarchy. A hierarchy-qualified
+  `ConsolidateChildren('Dim:Hier')` breaks the whole formula. In MDX one axis set can't mix two
+  hierarchies — query them separately. Generate an Alternate Hierarchy from data with a process,
+  never by hand; the deploy packager carries only the main hierarchy, so the process (run on each
+  server) is what deploys.
 - **A new element goes to the END of the dimension** (REST `POST Elements`). Code that takes a
   month's "first" / "last" by walking `DIMNM` order then picks the new element — WFP's sample HR
   extract took `Obl 2026` as everyone's last month and dropped a leaver's end date. Insert in place
