@@ -1,6 +1,6 @@
 # TM1 IDE — Deployment Pipeline (earlier REST pipeline)
 
-← [Back to README](../README.md)
+← [Back to README](../../README.md)
 
 > **This is the earlier deploy method, kept for history.** It describes the original REST package pipeline
 > (baselines → diff → package → risk → deploy), which now survives only as the admin-only `tm1deploy` CLI.

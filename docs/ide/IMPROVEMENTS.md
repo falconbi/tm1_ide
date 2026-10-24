@@ -309,7 +309,7 @@ candidates from first principles (no external implementation referenced).
 
 ### 10.1 Move the deploy pipeline onto TM1's built-in Git integration — **DECIDED 5 Oct 2026: hybrid**
 
-**Decision (after the lab evaluation — evidence in `docs/TM1_GIT_EVALUATION.md`):** the deploy pipeline moves to a
+**Decision (after the lab evaluation — evidence in `docs/deploy/TM1_GIT_EVALUATION.md`):** the deploy pipeline moves to a
 **hybrid**. **TM1 Git is the transport and history for object structure** (cubes, dimensions, processes, rules,
 views, subsets — IBM's standard format, clean per-change git commits, customer-owned repo). The **IDE keeps** what
 TM1 Git cannot do — **attribute values** (don't travel: check #5), **deletes** (don't propagate: check #6),

@@ -2,7 +2,7 @@
 
 Everything the IDE does, editor by editor, with screenshots.
 
-← [Back to README](../README.md)
+← [Back to README](../../README.md)
 
 ---
 
@@ -10,27 +10,27 @@ Everything the IDE does, editor by editor, with screenshots.
 
 | Rules Editor | TI Editor |
 |---|---|
-| ![Rules Editor](images/1_screenshot.png) | ![TI Editor](images/2_screenshot.png) |
+| ![Rules Editor](../images/1_screenshot.png) | ![TI Editor](../images/2_screenshot.png) |
 
 | View Editor — Native | View Editor — MDX |
 |---|---|
-| ![View Editor Native](images/3_screenshot.png) | ![View Editor MDX](images/4_screenshot.png) |
+| ![View Editor Native](../images/3_screenshot.png) | ![View Editor MDX](../images/4_screenshot.png) |
 
 **Split pane — View + Rules (dark theme)**
 
-![Split pane dark theme](images/5_screenshot.png)
+![Split pane dark theme](../images/5_screenshot.png)
 
 | Cube Map | Rules Editor — Minimap + Lineage |
 | --- | --- |
-| ![Cube Map](images/6_screenshot_cubemap.png) | ![Rules Editor minimap and lineage](images/8_screenshot_rules_lineage.png) |
+| ![Cube Map](../images/6_screenshot_cubemap.png) | ![Rules Editor minimap and lineage](../images/8_screenshot_rules_lineage.png) |
 
 | Native View Builder | Deploy Center — History |
 | --- | --- |
-| ![Native View Builder](images/7_screenshot_cubeview.png) | ![Deploy History](images/9_screenshot_deploy_history.png) |
+| ![Native View Builder](../images/7_screenshot_cubeview.png) | ![Deploy History](../images/9_screenshot_deploy_history.png) |
 
 **Deploy Center — Release, all changes since baseline**
 
-![Deploy Release wizard](images/10_screenshot_deploy_release.png)
+![Deploy Release wizard](../images/10_screenshot_deploy_release.png)
 
 ---
 
@@ -98,7 +98,7 @@ Five playlists, one theme each — build with AI, everyday development, governed
 | **Cube Map** | Interactive dependency graph of the whole model — auto-laid-out (dagre) nodes for every cube, with edges for rule calc references, feeders, and TI process writes. Click a cube to highlight its full transitive dependency chain (upstream + downstream) with a count; layer toggles for Rules/Feeders/Groups/TI; auto-clusters related cubes into groups; shows the TI **writer** for a cube and, one hop further, what **calls** that writer — so a generic reusable process (e.g. a Bedrock copy utility) is correctly attributed wherever it's invoked. Open the cube, its rules, or the process straight from the node. Minimap + legend included |
 | **Deploy Panel** | 5-step wizard: Diff → Package → Risk (drift check + BLOCKER/WARNING/INFO) → Approve → Deploy |
 | **Deploy History** | Permanent archive of every deployment — approval record, manifest, results, and pre/post target snapshots with inline diff viewer |
-| **MCP server (external LLM)** | A standard Model Context Protocol server (`tools/tm1mcp`, ~65 operations) that **external LLM agents connect to** — Claude Code or any MCP-compatible client — to build dimensions, cubes, rules and processes by conversation, change-set gated. See [`docs/MCP_SERVER.md`](MCP_SERVER.md) |
+| **MCP server (external LLM)** | A standard Model Context Protocol server (`tools/tm1mcp`, ~65 operations) that **external LLM agents connect to** — Claude Code or any MCP-compatible client — to build dimensions, cubes, rules and processes by conversation, change-set gated. See [`docs/ide/MCP_SERVER.md`](MCP_SERVER.md) |
 | **AI assistant (built-in)** | The IDE's inline helper generates views and subsets from a description (Anthropic API key) |
 
 > ⚠️ **MCP is still early and needs more real-world testing** before treating it as production-hardened. It's also a genuinely different trust boundary from the rest of the IDE: pointing it at an external/third-party LLM means that LLM gets tool access to write to your TM1 model (dimensions, cubes, rules, processes) inside whatever change set is active. Review what an agent proposes before approving/deploying it, keep MCP-driven work inside change sets (never Release mode) so it's diffed like anything else, and don't point it at a server you wouldn't want an unreviewed process run against.

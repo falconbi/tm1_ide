@@ -3,7 +3,7 @@
  * columns show for a given expand state, and the "is this a total?" rules.
  * Pure functions, no imports, so the IDE, the Lens toolkit and node tests all
  * run the same code. (Was inside the IDE's old HierarchyGrid / View editor; see
- * docs/PIVOT_PLAN.md for the bugs fixed here.)
+ * docs/lenses/PIVOT_PLAN.md for the bugs fixed here.)
  *
  * A hierarchy: { name, nodes: { [id]: { id, label, isLeaf, children, level, depth } },
  *                roots: [id], maxLevel, maxDepth }

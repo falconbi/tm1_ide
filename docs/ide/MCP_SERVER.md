@@ -11,7 +11,7 @@ through lives in `registry.js`, `guard.js` and `identity.js` (see [Security](#se
 It is **provider-neutral** — MCP is an open protocol; the server has no dependency on any
 particular model.
 
-**Building a model from a requirements doc?** Read [`BUILDING_MODELS.md`](BUILDING_MODELS.md)
+**Building a model from a requirements doc?** Read [`BUILDING_MODELS.md`](../models/BUILDING_MODELS.md)
 first (or call the `read_build_guide` tool) — it's the method; this file is the reference.
 
 > ⚠️ **Status: early, needs more real-world testing.** The change-set gating and deploy-pipeline
@@ -39,11 +39,11 @@ working with the same person. The write-up is the article
 
 1. **An operating-expense allocations model.** It worked in the end, and showed exactly where
    an AI goes wrong in TM1 (wrong dimensionality, rules that compile but compute the wrong
-   thing). Those lessons are now built into the lints and [`BUILDING_MODELS.md`](BUILDING_MODELS.md).
+   thing). Those lessons are now built into the lints and [`BUILDING_MODELS.md`](../models/BUILDING_MODELS.md).
 2. **A workforce planning model.** Versions and assumptions, pay rates, a hiring plan, FX, and
    employee income tax through to gross-to-net pay. It was deployed through the IDE's pipeline
    from a development server to a production server, and the figures **matched to the cent**.
-   See [`WORKFORCE_MODEL_PLAN.md`](WORKFORCE_MODEL_PLAN.md).
+   See [`WORKFORCE_MODEL_PLAN.md`](../Archive/WORKFORCE_MODEL_PLAN.md).
 3. **A statutory group consolidation.** Ownership and control at any depth, goodwill and
    non-controlling interests, step acquisitions and disposals, foreign currency translation,
    and consolidation of sub-groups. Built test-first: **26 published worked examples matched**,
@@ -148,7 +148,7 @@ start-up, so nothing slips in unreviewed.
 
 Put these in `.env` (the MCP loads it at start-up) or the shell environment. **Never put the
 password in `.mcp.json` or `opencode.jsonc`.** `.mcp.json` is committed to the repository. See
-[Where secrets live](AUTHENTICATION.md#where-secrets-live).
+[Where secrets live](../auth/AUTHENTICATION.md#where-secrets-live).
 
 Writes run as the **builder**: the service login configured for the server. Each change-set row
 records both the developer (`user`) and that TM1 login (`identity`).
@@ -169,7 +169,7 @@ organisation elements.
 
 ### Scoping and masking — `config/mcp-security.json`
 
-Optional. Copy [`config/mcp-security.example.json`](../config/mcp-security.example.json).
+Optional. Copy [`config/mcp-security.example.json`](../../config/mcp-security.example.json).
 `"*"` applies to every server; a server's own entry adds to it. `*` is a wildcard; case is
 ignored.
 

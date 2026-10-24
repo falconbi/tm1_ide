@@ -1499,7 +1499,7 @@ return (d.value ?? [])
     // ['Applications','Governance','Tests'] under the v11 Applications container.
     // v11 addresses documents by their '<name>.blob' id and reads/writes content
     // via /Document/Content; v12 addresses by name with /Content (see
-    // docs/MODEL_OWNED_HISTORY_PLAN.md §7 for the live-verified v11 facts).
+    // docs/deploy/MODEL_OWNED_HISTORY_PLAN.md §7 for the live-verified v11 facts).
     _contentsPath(pathParts) {
         return pathParts.map(p => `Contents('${odataKey(p)}')`).join('/')
     }

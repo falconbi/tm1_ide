@@ -14,6 +14,72 @@ bottom. Learnings get sorted into one of three homes:
 
 ---
 
+## Design first — business → screens → model
+
+**Nothing is built until the design is signed off.** The first real Lenses test (Workforce
+Planning, Oct 2026) went wrong here: the model was built first, from cubes outward, and the gaps
+(no assignments, a Position-centric cost, mixed names, rules where TI belonged) only showed when
+someone tried to *use* it through the screens. Every step below exists because it was missed.
+
+Work in this order, each step signed off by the person who owns the business process before the
+next starts:
+
+1. **Workflow first.** Write the lifecycle as a table: every change that can happen in the
+   business process, **who makes it, when, and from which month it applies**. For a workforce
+   model that is hire, pay change, transfer, leaver, backfill, handover, absence, cover, new
+   position, close, reopen… The standard business lifecycle is not bespoke — list it in full
+   without being asked. *Sign-off.*
+2. **Design questions.** Answer the checklist below in writing. Unanswered questions are design
+   gaps, not details for later. *Sign-off.*
+3. **Screens next.** One page per job from the workflow table (who does what, where). If a
+   change in the table has no page, or a page has no change behind it, the design is wrong.
+   *Sign-off.*
+4. **Model last,** built to serve those screens, following the technical rules below.
+5. **One design document per model, written before the build** and kept true afterwards — what
+   the model is now, not a diary of how it got there. Example:
+   [WORKFORCE_MODEL.md](WORKFORCE_MODEL.md).
+6. **Test lab-first.** Prove every change in a small generated lab copy of the model (seconds per
+   run), then once on the real model (one spare version, snapshot → change → compare → restore),
+   then compare against a baseline and run the assertions. Never skip an agreed step silently.
+
+### Design questions (answer before building)
+
+#### Every model
+
+- What are the **core records**, and what is each one's stable key from the source system? What
+  is a record vs an attribute vs something that happens to a record over time?
+- **One name per thing,** used everywhere (dimension, measures, processes, pages, text). No
+  synonyms.
+- What does the **workflow table** say changes, who changes it, and is each change dated (from a
+  month on, history untouched)?
+- **Actual vs plan:** where do actuals come from, what is the cut-off, and which plan items can
+  later become real — and how is each one matched so it never counts twice?
+- **Versions:** which calculate, which are stored, how a plan is frozen and locked; is there a
+  scenario version.
+- **Periods:** the plan horizon; the **opening balance period** (`Obl yyyy`, Falcon BI standard:
+  balances only, in no FY total, never calculated); a model period dimension carries its own
+  attributes (`Period Index`, `Period Type`, `Next Period`…), while a shared **GBL Period** is the
+  common calendar for reports across models.
+- **Where each calculation lives** (rule #1 below): what must change live on screen (rules) vs
+  heavy or across-time work (TI)? Estimate cells and feeders at full scale.
+- **Year-to-date and tax years:** which totals reset, when (calendar or tax year, per country),
+  and where the balance at the opening comes from.
+- **Who may change what** (security), and which changes need approval.
+- **Checks:** what must always hold (no double counting, no impossible states)? Each becomes an
+  assertion and a Needs-attention line.
+
+#### Workforce models
+
+See [WORKFORCE_MODEL.md](WORKFORCE_MODEL.md).
+
+- Position vs Person vs Assignment — tenure and pay on the assignment, never on the Position.
+- Can a person hold more than one assignment (job share, handover, cover)?
+- Planned new positions (TBH): how are they matched to the HR Position when it appears?
+- Absence and cover: does the absent person stay in headcount; is cover counted?
+- Tax per person or per Position; which tax year per country; opening year to date.
+
+---
+
 ## The one principle
 
 There are two questions about any model, and they need different answers:

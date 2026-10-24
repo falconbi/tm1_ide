@@ -2,7 +2,7 @@
 
 Install, configure and run the IDE.
 
-← [Back to README](../README.md)
+← [Back to README](../../README.md)
 
 ---
 
@@ -11,7 +11,7 @@ Install, configure and run the IDE.
 ### Prerequisites
 
 - **Node.js 20+** — [nodejs.org](https://nodejs.org)
-- One or more TM1 servers with `HTTPPortNumber` set in `tm1s.cfg` (for direct connection), **or** a PAW v11 instance. v12 per-person sign-in (OIDC) is not built yet; see [Connection types](AUTHENTICATION.md#connection-types)
+- One or more TM1 servers with `HTTPPortNumber` set in `tm1s.cfg` (for direct connection), **or** a PAW v11 instance. v12 per-person sign-in (OIDC) is not built yet; see [Connection types](../auth/AUTHENTICATION.md#connection-types)
 
 ### 1. Install
 
@@ -61,7 +61,7 @@ Restart the TM1 server after adding it. You can use any free port — `5895` is 
 |-------|-----------------|
 | `url` | IP address of the Windows machine running TM1, followed by the `HTTPPortNumber` |
 | `username` / `password` | A TM1 admin account (must be in the `ADMIN` group on the TM1 server) |
-| `loginServer` | *Optional.* The server pre-selected on the sign-in page when the IDE is reachable from the network. Not needed for a local-only IDE — there you sign in to each server as you use it (see [Authentication](AUTHENTICATION.md#signing-in-to-the-ide)). |
+| `loginServer` | *Optional.* The server pre-selected on the sign-in page when the IDE is reachable from the network. Not needed for a local-only IDE — there you sign in to each server as you use it (see [Authentication](../auth/AUTHENTICATION.md#signing-in-to-the-ide)). |
 | `serverCredentials` | *Optional, top level.* Per-server service logins for the MCP and background jobs: `{ "MyServer": { "username": "…", "password": "…" } }`. Falls back to the admin host's `username`/`password`. Plain text — keep `servers.json` private (it is git-ignored). |
 | `servers` | The names of all your TM1 servers as they appear in Cognos Configuration — these are what show up in the IDE's server selector |
 | `tls` | *(optional)* TLS mode for HTTPS connections: `"verify"` (default — CA chain + hostname match), `"chain-only"` (verify the CA chain, skip the hostname match — for the stock IBM TM1 cert, which has no server name), or `"insecure"` (no verification — lab only, logs a warning). Covers both the Admin Server discovery call and the resolved model-server connections. |
@@ -105,7 +105,7 @@ Edit `config/servers.json`:
 ]
 ```
 
-> See [Authentication](AUTHENTICATION.md) for multi-host and advanced adapter setups.
+> See [Authentication](../auth/AUTHENTICATION.md) for multi-host and advanced adapter setups.
 
 ### 3. Run
 
@@ -148,13 +148,13 @@ This builds straight into `static/` (what the server serves), replacing the prev
   not on each developer's PC.
 - Developers open it **in a browser**. Nothing is installed on their machines.
 - Each developer signs in to each TM1 server with **their own TM1 login**, so TM1 security and
-  per-person change sets apply. See [MULTI_USER_LOGIN.md](MULTI_USER_LOGIN.md).
+  per-person change sets apply. See [MULTI_USER_LOGIN.md](../auth/MULTI_USER_LOGIN.md).
 - To make it reachable from the network, set `HOST=0.0.0.0` in `.env`. A sign-in page then always
   appears first. The browser-to-IDE connection is **plain HTTP** today, so passwords cross the
   network unencrypted. Keep it on a trusted network until HTTPS for the IDE lands.
 - Changes reach TEST and PROD through the deploy pipeline. The IDE is not installed on PROD.
 - Secrets go in `config/servers.json` and `.env` on that machine only. See
-  [Where secrets live](AUTHENTICATION.md#where-secrets-live).
+  [Where secrets live](../auth/AUTHENTICATION.md#where-secrets-live).
 
 ### Windows: not tested yet
 

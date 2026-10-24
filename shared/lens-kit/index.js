@@ -1061,7 +1061,7 @@ function run(process, params) {
   return window.lensBridge.call('runProcess', { process, params: params || {} })
 }
 
-// _pivot: the shared pivot's building blocks (docs/PIVOT_PLAN.md) — internal until Lens.pivot
+// _pivot: the shared pivot's building blocks (docs/lenses/PIVOT_PLAN.md) — internal until Lens.pivot
 const Lens = { _pivot: pivotKit, pivot, cellInfo, version: TOOLKIT_VERSION, components: COMPONENTS.slice(), rows, format, localTime, theme, kpis, trend, waterfall, bars, grid, flow, editing, live, history, historyPanel, legend, config, whoami, save, run, echarts }
 const missing = COMPONENTS.filter(n => typeof Lens[n] !== 'function')
 if (missing.length) throw new Error('Lens toolkit is missing: ' + missing.join(', '))

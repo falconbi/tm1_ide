@@ -3,7 +3,7 @@
 How the IDE signs in to TM1 — every TM1 security setup, what the IDE supports today, what it doesn't yet,
 and how each one works.
 
-← [Back to README](../README.md)
+← [Back to README](../../README.md)
 
 ---
 
@@ -122,7 +122,7 @@ first administrator on a new server, sessions and lock-outs, TLS — is in the
 ## Security model
 
 - **Local, single-user tool by default.** The IDE binds to `127.0.0.1` and trusts your OS account. See
-  [SECURITY.md](../SECURITY.md) for what a shared deployment would need.
+  [SECURITY.md](../../SECURITY.md) for what a shared deployment would need.
 - **Your TM1 password stays on your machine** — held in the IDE server's memory for the life of the session (it
   is needed to re-sign in to PAW and, until session reuse lands, on every direct call). It is never written to
   disk by the login flow and never sent to the browser; the browser holds only a random session token.
@@ -158,7 +158,7 @@ security decides what each viewer sees, exactly as for the book around it.
 | **Login inside the frame** — the Lens asks for a sign-in itself | Fallback; acceptable in some cases |
 | Token in the URL · shared service account | ❌ Never (leaks credentials / bypasses TM1 security) |
 
-Status: designed, not built. Detail: [LENSES_PLAN.md](LENSES_PLAN.md).
+Status: designed, not built. Detail: [LENSES_PLAN.md](../lenses/LENSES_PLAN.md).
 
 ## Known issues
 

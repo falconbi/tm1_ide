@@ -77,7 +77,7 @@ hierarchy's default member). The MCP `create_view` requires `member` on explicit
 it cannot exclude a single view (`Cubes('…').Views('…')` and `Views('…')` both fail to parse). The only repo-level
 way to exclude the view is to ignore the whole cube, which is too heavy.
 
-**IDE's answer — see `docs/IMPROVEMENTS.md` 10.2 (Git readiness check):** a blocker in the deploy risk check before
+**IDE's answer — see `docs/ide/IMPROVEMENTS.md` 10.2 (Git readiness check):** a blocker in the deploy risk check before
 every push, on demand, and in a read-only cross-server scan. It checks (1) view titles with no selected member,
 (2) views and subsets referencing members that no longer exist, (3) names TM1 Git can't round-trip (e.g. a comma in
 a subset name), (4) anything in `tm1project` Ignore, reported. Prevention: the IDE always saves a resolved `Selected`

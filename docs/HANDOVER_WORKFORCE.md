@@ -1,7 +1,7 @@
 # Handover — Workforce model & Lenses (22 Oct 2026)
 
 For the next agent (OpenCode) picking up the Workforce work. Read this first, then
-`docs/BUILDING_MODELS.md` (v11 landmines) and `docs/PIVOT_PLAN.md`.
+`docs/models/BUILDING_MODELS.md` (v11 landmines) and `docs/lenses/PIVOT_PLAN.md`.
 
 ## Working rules (James's, non-negotiable)
 
@@ -25,7 +25,7 @@ Read this first; items 14–17 below have the detail.
 - **Step 2 done (23 Oct, Claude): the HR load keeps Actual assignments, records and dated
   pay.** New extract layout with dates and BaseSalary; `pClear`, `pCost`. Proven: reload
   reproduces every Actual assignment, compare 0 vs `2026-10-23-clean`, 59/59, a pay-change
-  round trip. Design + proof in `docs/ASSIGNMENT_MODEL.md` → "HR extract and load". Process
+  round trip. Design + proof in `docs/models/WORKFORCE_MODEL.md` → "HR extract and load". Process
   sources: `tmp/workforce/src/step2/`. **Caution:** the old backfill process
   `WFP Assignment Pay` clears the whole Pay cube, Actual included — don't run it after an HR
   load (it would put Workforce Input salaries back over HR pay).
@@ -34,13 +34,13 @@ Read this first; items 14–17 below have the detail.
   Over-filled rule allows a marked overlap. Fixed on the way: Base cost now adds each
   assignment (was overwriting → two people in a month costed as one), and Assign Person
   writes the new assignment's pay (was costed at band midpoint). Proven on Downside and
-  reverted; compare 0, 59/59. Details: `docs/ASSIGNMENT_MODEL.md` → "Handover". Sources:
+  reverted; compare 0, 59/59. Details: `docs/models/WORKFORCE_MODEL.md` → "Handover". Sources:
   `tmp/workforce/src/step3/`. Next: Step 4 (Position regrade / FTE change from a month);
   roster Lens needs the handover option.
 - **Step 4 done (23 Oct, Claude): `WFP Change Position`** — regrade / budgeted FTE / location
   from a month; Base reads the dated grade. Proven on Downside, reverted; compare 0, 59/59.
   **Gap found:** on-costs still follow the Position's budgeted FTE and salary, not the person's
-  assignment (see `docs/ASSIGNMENT_MODEL.md` → "Position change"). Next: Step 5 (close /
+  assignment (see `docs/models/WORKFORCE_MODEL.md` → "Position change"). Next: Step 5 (close /
   reopen a Position, company move).
 - **Step 5 done (23 Oct, Claude): `WFP Close Position`, `WFP Reopen Position`,
   `WFP Move Position To Company`.** Proven on Downside, reverted; compare 0, 59/59. Sources
@@ -117,17 +117,17 @@ Read this first; items 14–17 below have the detail.
 - **Step 6 done (24 Oct, Claude): TBH lifecycle + matching to HR** — `Source` / link attributes;
   `WFP Create TBH Position`, `WFP Cancel TBH Position`, `WFP Match TBH`; `Late Hire` /
   `Unplanned Position` checks; Base costs a hire with no pay rows (was £0). Proven in the lab, then
-  Downside; compare 0, 59/59. Details: `docs/POSITION_LIFECYCLE.md` → "Built (Step 6)". Sources
+  Downside; compare 0, 59/59. Details: `docs/models/WORKFORCE_MODEL.md` → "Built (Step 6)". Sources
   `tmp/workforce/src/step6/` (`deploy6.js LAB|WFP` deploys the same code to either). Downside flags
   ENG-005 / SLS-003 as Unplanned (no Downside hire line) — James to decide. Next: Step 7 (absence /
   cover), Step 8 (naming).
 - **Step 7 done (24 Oct, Claude): absence and cover** — `WFP Record Absence`, `WFP Assign Cover`;
   Base pays absence at its pay %; Over-filled allows cover only while someone is away; Headcount:
   Absent / Cover Headcount, Cover FTE, Headcount excl Cover. Lab, then Downside; compare 0;
-  59/59. **New compare baseline `2026-10-24-step7`.** Details `docs/POSITION_LIFECYCLE.md` →
+  59/59. **New compare baseline `2026-10-24-step7`.** Details `docs/models/WORKFORCE_MODEL.md` →
   "Built (Step 7)". Next: Step 8 (naming).
 - **Pages rebuilt around the workflow (24 Oct, Claude)** — one page per job, from the lifecycle
-  (`docs/POSITION_LIFECYCLE.md`):
+  (`docs/models/WORKFORCE_MODEL.md`):
 
   | # | Page | Who | What |
   |---|---|---|---|
@@ -245,7 +245,7 @@ Load HR Assignments (+ Write Sample HR Extract). Outcomes go to the `Lens Messag
    check), so it would have shown "all clear" while positions were over-filled. Fixed by reading
    the **consolidated month totals without `NON EMPTY`**, then scanning the full leaf grid for
    only the months that trip (no feeder changes). Landmine written up in
-   `docs/BUILDING_MODELS.md`. Proved with three real Downside trips (second person into a
+   `docs/models/BUILDING_MODELS.md`. Proved with three real Downside trips (second person into a
    filled position → 2 over-filled; one person at FTE in two positions → 1 over-booked; a person in a
    closed position → 1 closed, which also trips over-filled as its position FTE is 0): lens and Home
    tile both showed all three; restored from a snapshot. Home tile adds ~0.1s (3 queries,
@@ -258,7 +258,7 @@ Load HR Assignments (+ Write Sample HR Extract). Outcomes go to the `Lens Messag
    `Prior Fcst Snapshot`. Headcount/Cost rules STET for non-calculating versions, so they
    rely on those stored values — using `WFP Copy Version` would leave them blank. The only
    old snapshot (`FCST 2026-02`) predates `WFP Assignment`, so it has no people data; a
-   fresh snapshot fixes it. Written up in `docs/BUILDING_MODELS.md`.
+   fresh snapshot fixes it. Written up in `docs/models/BUILDING_MODELS.md`.
 9. **Fresh snapshot `FCST 2026-03` taken** (Forecast → FCST 2026-03, `2026-04` Prior Fcst
    Snapshot stamped). It **took 1h36m** (see performance item) but verified correct:
    Assignment 18,287 = 18,287, Leaver flags 472 = 472, Headcount Closing 2026-02 2,676 =

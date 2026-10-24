@@ -56,7 +56,7 @@ Eight steps, plain language, no icons:
 
 ## Assertions
 
-- **Ground rules** in `docs/ASSERTIONS.md`; the AI authors via MCP, a human overrides/deletes.
+- **Ground rules** in `docs/deploy/ASSERTIONS.md`; the AI authors via MCP, a human overrides/deletes.
 - Each assertion now records `why`, `author`, `changeSet`, and an **expected-change history** (who/when/from→to/why).
 - MCP `add_assertion` takes `kind`, `severity`, `why` and stamps author + change set.
 - **Wording:** a **behaviour** mismatch reads **"changed"** (the number moved — data or logic); a **control** mismatch
@@ -64,9 +64,9 @@ Eight steps, plain language, no icons:
 
 ## Docs
 
-- `docs/DEPLOY_LIFECYCLE.md` — proven-loop record + the two bug fixes + the first-time GitHub setup gap.
-- `docs/MULTI_DEVELOPER.md` — per-person change sets marked built (review points #3/#4).
-- `docs/ASSERTIONS.md` — the ground rules.
+- `docs/deploy/DEPLOY_LIFECYCLE.md` — proven-loop record + the two bug fixes + the first-time GitHub setup gap.
+- `docs/deploy/MULTI_DEVELOPER.md` — per-person change sets marked built (review points #3/#4).
+- `docs/deploy/ASSERTIONS.md` — the ground rules.
 
 ## Caveats / not done
 
@@ -74,4 +74,4 @@ Eight steps, plain language, no icons:
 - The **first-time GitHub setup** flow (link a server to a repo) is designed but **not built** — see
   `DEPLOY_LIFECYCLE.md`.
 - The **change-log correlation** ("did the data move or a rule?") is designed, not built.
-- `docs/IMPROVEMENTS.md` was **not touched** (yours).
+- `docs/ide/IMPROVEMENTS.md` was **not touched** (yours).

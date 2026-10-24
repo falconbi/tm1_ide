@@ -2,7 +2,7 @@
 
 Status: **agreed direction, not started** · 11 Oct 2026 · replaces [LENSES_PLAN.md](LENSES_PLAN.md) (Stage 1 inside the IDE — built, kept as history).
 
-← [Back to README](../README.md)
+← [Back to README](../../README.md)
 
 ## The goal and how we prove it
 

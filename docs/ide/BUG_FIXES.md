@@ -5,7 +5,7 @@ commits that mixed a fix into a feature are included too. New features are not l
 
 166 fixes from 2026-05-20 to 2026-10-10.
 
-← [Back to README](../README.md)
+← [Back to README](../../README.md)
 
 
 ## October 2026

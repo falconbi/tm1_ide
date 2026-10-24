@@ -28,7 +28,7 @@ security didn't apply to each person.
 | Per-person change sets | `core/change_log.js` `getActiveSession(server, user)` | Each person has their own open change set on a server. Each change records who made it. |
 | No hard-coded user | `SessionControl.jsx` | The old `user: 'jdlove'` is gone. The signed-in user is used. |
 | User Management on the selected server | Server Admin | Acts on the server selected in the IDE, not on a fixed login server. |
-| Baseline and drift checks before deploy (old "Phase 3") | `/api/deploy/drift-check`, `/api/git/drift` | Drift on the target pauses a deploy. Details: [DEPLOY_LIFECYCLE.md](DEPLOY_LIFECYCLE.md). |
+| Baseline and drift checks before deploy (old "Phase 3") | `/api/deploy/drift-check`, `/api/git/drift` | Drift on the target pauses a deploy. Details: [DEPLOY_LIFECYCLE.md](../deploy/DEPLOY_LIFECYCLE.md). |
 
 ## Partly done
 

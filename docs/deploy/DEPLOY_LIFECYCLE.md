@@ -1,7 +1,7 @@
 # Deploy lifecycle — model-owned, TM1 Git transport (design record, 5 Oct 2026)
 
 Plain-English record of the agreed end-to-end deployment model. Source decisions:
-`docs/TM1_GIT_EVALUATION.md`, `docs/IMPROVEMENTS.md` 10.1 (hybrid) + 10.2 (readiness).
+`docs/deploy/TM1_GIT_EVALUATION.md`, `docs/ide/IMPROVEMENTS.md` 10.1 (hybrid) + 10.2 (readiness).
 
 ## The rules
 

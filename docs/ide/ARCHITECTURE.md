@@ -2,7 +2,7 @@
 
 How the pieces fit together, and where the code lives.
 
-← [Back to README](../README.md)
+← [Back to README](../../README.md)
 
 ---
 
@@ -74,4 +74,4 @@ Browser  ←→  Express (server.js)  ──Cookie+CSRF──▶  PAW  ──▶
 
 ---
 
-See also: [CONNECTION_ARCHITECTURE.md](CONNECTION_ARCHITECTURE.md) (adapter pattern deep-dive) · [ADAPTER_INTERFACE.md](ADAPTER_INTERFACE.md) (adapter contract).
+See also: [CONNECTION_ARCHITECTURE.md](../auth/CONNECTION_ARCHITECTURE.md) (adapter pattern deep-dive) · [ADAPTER_INTERFACE.md](../auth/ADAPTER_INTERFACE.md) (adapter contract).
