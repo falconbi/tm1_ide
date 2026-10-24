@@ -278,6 +278,7 @@ function createApp({ config = loadConfig(), deps = {} } = {}) {
     const readCell  = deps.readCell ?? ((client, cube, coords) => lensBridge.readCell(client, cube, coords))
     const getMeta   = deps.getMeta  ?? ((client, cube) => lensBridge.getMeta(client, cube))
     const elementTree = deps.elementTree ?? ((client, dim, hier) => lensBridge.elementTree(client, dim, hier))
+    const hierarchies = deps.hierarchies ?? ((client, dim) => lensBridge.hierarchies(client, dim))
     const writeCells = deps.writeCells ?? ((client, args) => lensBridge.writeCells(client, args))
     const logWrite   = deps.logLensWrite ?? logLensWrite
     const runProcess = deps.runProcess ?? ((client, args) => lensBridge.runProcess(client, args))
@@ -760,6 +761,12 @@ function createApp({ config = loadConfig(), deps = {} } = {}) {
             logLensNote({ server: cfg.server, app: 'lens', user: req.lens.display, lens: doc.name, ...note })
             res.json({ ok: true })
         } catch (e) { res.status(400).json({ error: e.response?.data?.error?.message ?? e.message }) }
+    })
+
+    // Lens.pivot: a dimension's hierarchies (main + any ALT H), read as the signed-in person.
+    app.get('/api/lens/hierarchies', requireSession, serverGate, async (req, res) => {
+        try { res.json(await hierarchies(req.lens.client, req.query?.dimension)) }
+        catch (e) { res.status(400).json({ error: e.response?.data?.error?.message ?? e.message }) }
     })
 
     // Lens.pivot: one dimension's element tree, read as the signed-in person.

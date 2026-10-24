@@ -17,6 +17,10 @@
  *     onWrite(change) → Promise, // immediate mode: write one cell; rejects → value put back
  *     rowEditable(tuple),        // false locks a row
  *     onContextMenu({ tuple, members, cell, event }),
+ *     onDrill({ axis: 'rows'|'cols', dimIdx, member, members?, scope, count }) → the host re-queries
+ *                                // with more members (scope 'children' | 'all' | 'leaves' | 'keep' |
+ *                                // 'remove'); a total whose children the query didn't return opens this way,
+ *                                // and right-clicking a row or column heading offers it as a menu
  *     stripes, fit, height, storageKey (remember widths), dark, colors,
  *     makeTheme(headerHeight),   // optional: the host's own AG theme (e.g. the IDE's appearance settings)
  *   })
@@ -54,6 +58,12 @@ const CSS = `
 .tp-stack > div{display:flex;align-items:center;gap:3px;height:${HDR_ROW_H}px;flex:none;overflow:hidden;border-bottom:1px solid rgba(127,127,127,.25)}
 .tp-stack > div:last-child{border-bottom:0}
 .tp-click{cursor:pointer;user-select:none}
+.tp-menu{position:fixed;z-index:3000;min-width:210px;padding:4px 0;border-radius:8px;border:1px solid rgba(127,127,127,.35);box-shadow:0 10px 28px rgba(0,0,0,.22);font:12px system-ui,sans-serif}
+.tp-menu button{display:block;width:100%;text-align:left;border:0;background:transparent;color:inherit;padding:6px 12px;cursor:pointer;font:inherit}
+.tp-menu button:hover{background:rgba(127,127,127,.16)}
+.tp-menu button[disabled]{opacity:.4;cursor:default;background:transparent}
+.tp-menu hr{border:0;border-top:1px solid rgba(127,127,127,.25);margin:4px 0}
+.tp-menu .tp-mh{padding:4px 12px 2px;opacity:.6;font-size:11px}
 `
 let cssDone = false
 function injectCss() {
@@ -82,6 +92,8 @@ export function createPivotGrid(host, opts = {}) {
 
     let pivot = { columns: [], rows: [], data: {} }
     let rowH = [], colH = []                        // hierarchies in use (constrained to the data)
+    let rowFull = [], colFull = []                  // the whole hierarchies — for totals whose children aren't loaded
+    let allTotalRows = false                        // every row a total → no grey total shading (it would hide the stripes)
     let rowExp = [], colExp = []                    // expand state
     const orig = new Map()                          // 'tupleKey|colId' → value before typing
     const pending = new Set()                       // immediate mode: being written
@@ -101,6 +113,8 @@ export function createPivotGrid(host, opts = {}) {
         const colMembers = membersByPosition(pivot.columns.map(c => c.members))
         const nRow = pivot.rows[0]?.length ?? 0, nCol = pivot.columns[0]?.members?.length ?? 0
         const prevRowCounts = rowH.map(h => Object.keys(h.nodes).length).join(), prevColCounts = colH.map(h => Object.keys(h.nodes).length).join()
+        rowFull = Array.from({ length: nRow }, (_, i) => rowsIn?.[i] || null)
+        colFull = Array.from({ length: nCol }, (_, i) => colsIn?.[i] || null)
         rowH = Array.from({ length: nRow }, (_, i) => {
             const h = rowsIn?.[i]
             return h ? constrainHierarchy(h, rowMembers[i]) : flatHierarchy(rowMembers[i] ?? [], o.rowNames?.[i] ?? `Dim ${i + 1}`)
@@ -128,6 +142,7 @@ export function createPivotGrid(host, opts = {}) {
         const tuples = computeVisibleTuples(rowH, rowExp, o.keepMode, o.totals === 'bottom', present)
             .filter(t => pivot.data[tupleKey(t)])
         const flags = changedFlags(tuples)
+        allTotalRows = tuples.length > 0 && tuples.every(t => !tupleIsLeaf(t, rowH))
         return tuples.map((t, r) => {
             const key = tupleKey(t)
             const row = { __key: key, __tuple: t, ...pivot.data[key] }
@@ -166,6 +181,67 @@ export function createPivotGrid(host, opts = {}) {
         return { tuple: key ? key.split('::') : [], members: col?.members ?? [], colId, value: pivot.data[key]?.[colId]?.v ?? null, old }
     })
 
+    // ── drill-down beyond what the query returned ──────────────────────────
+    // a total can open when its children are loaded (local) or when the host can fetch them (onDrill)
+    const fullKids = (axis, i, id) => ((axis === 'rows' ? rowFull : colFull)[i]?.nodes?.[id]?.children) ?? []
+    const loadedKids = (axis, i, id) => ((axis === 'rows' ? rowH : colH)[i]?.nodes?.[id]?.children) ?? []
+    const canOpen = (axis, i, id) => loadedKids(axis, i, id).length > 0 || (!!o.onDrill && fullKids(axis, i, id).length > 0)
+    // how many members everything below would add (the host warns before a large one)
+    function descendantCount(axis, i, id) {
+        const nodes = (axis === 'rows' ? rowFull : colFull)[i]?.nodes || {}
+        let n = 0; const seen = new Set(); const stack = [...(nodes[id]?.children || [])]
+        while (stack.length) { const c = stack.pop(); if (seen.has(c)) continue; seen.add(c); n++; stack.push(...(nodes[c]?.children || [])) }
+        return n
+    }
+    function drill(axis, i, id, scope, extra = {}) {
+        if (!o.onDrill) return
+        o.onDrill({ axis, dimIdx: i, member: id, scope, count: scope === 'children' ? fullKids(axis, i, id).length : descendantCount(axis, i, id), ...extra })
+    }
+    function openOrToggle(axis, i, id, ctx) {
+        if (loadedKids(axis, i, id).length) {
+            if (axis === 'rows') { rowExp = toggleExpanded(rowH, rowExp, i, id, ctx); refreshRows() }
+            else { colExp = toggleExpanded(colH, colExp, i, id, ctx); refreshColumns() }
+        } else drill(axis, i, id, 'children')
+    }
+    // right-click a row or column heading: open / close / narrow it
+    let menuEl = null
+    const closeMenu = () => { if (menuEl) { menuEl.remove(); menuEl = null; document.removeEventListener('mousedown', outside, true) } }
+    const outside = e => { if (menuEl && !menuEl.contains(e.target)) closeMenu() }
+    function memberMenu(event, axis, i, id, ctx) {
+        event.preventDefault(); event.stopPropagation(); closeMenu()
+        const H = axis === 'rows' ? rowH : colH, E = axis === 'rows' ? rowExp : colExp
+        const node = H[i]?.nodes?.[id], total = canOpen(axis, i, id)
+        const open = total && expandedFor(H, E, i, ctx).has(id) && loadedKids(axis, i, id).length > 0
+        // the other members at this depth (for "open this level everywhere")
+        const peers = Object.values(H[i]?.nodes || {}).filter(n => n.depth === node?.depth && canOpen(axis, i, n.id)).map(n => n.id)
+        const items = [
+            ['Expand', total && !open, () => openOrToggle(axis, i, id, ctx)],
+            ['Expand all levels below', total && !!o.onDrill, () => drill(axis, i, id, 'all')],
+            ['Collapse', open, () => openOrToggle(axis, i, id, ctx)],
+            ['Expand this level for all', peers.length > 0 && !!o.onDrill, () => drill(axis, i, id, 'children', { members: peers, count: peers.reduce((a, p) => a + fullKids(axis, i, p).length, 0) })],
+            null,
+            ['Show leaves only', total && !!o.onDrill, () => drill(axis, i, id, 'leaves')],
+            ['Keep only this', !!o.onDrill, () => drill(axis, i, id, 'keep')],
+            ['Remove this', !!o.onDrill, () => drill(axis, i, id, 'remove')],
+        ]
+        menuEl = el('div', 'tp-menu')
+        const C = dark ? { bg: '#1f2326', ink: '#e6e8ea' } : { bg: '#ffffff', ink: '#1f2328' }
+        menuEl.style.background = C.bg; menuEl.style.color = C.ink
+        menuEl.appendChild(el('div', 'tp-mh', node?.label ?? id))
+        for (const it of items) {
+            if (!it) { menuEl.appendChild(el('hr')); continue }
+            const [text, ok, fn] = it
+            const b = el('button', null, text); b.type = 'button'; b.disabled = !ok
+            b.onclick = () => { closeMenu(); fn() }
+            menuEl.appendChild(b)
+        }
+        document.body.appendChild(menuEl)
+        const w = menuEl.offsetWidth || 220, h = menuEl.offsetHeight || 240
+        menuEl.style.left = Math.max(4, Math.min(event.clientX, (window.innerWidth || 1200) - w - 4)) + 'px'
+        menuEl.style.top = Math.max(4, Math.min(event.clientY, (window.innerHeight || 800) - h - 4)) + 'px'
+        setTimeout(() => document.addEventListener('mousedown', outside, true), 0)
+    }
+
     // ── cell + header renderers ────────────────────────────────────────────
     function rowCell(p) {
         const i = p.colDef.context.dimIdx, row = p.data
@@ -174,14 +250,16 @@ export function createPivotGrid(host, opts = {}) {
         if (!isInner && !row[`__d${i}_changed`]) return el('div', 'tp-rep')          // repeated outer label
         const nodeObj = row[`__d${i}_node`], id = row[`__d${i}`]
         const box = el('div', 'tp-cell'); box.style.paddingLeft = indentFor(nodeObj) + 'px'
-        const total = nodeObj && !nodeObj.isLeaf && nodeObj.children?.length
+        const ctx = row[`__d${i}_ctx`]
+        const total = nodeObj && !nodeObj.isLeaf && canOpen('rows', i, id)
         if (total) {
-            const open = expandedFor(rowH, rowExp, i, row[`__d${i}_ctx`]).has(id)
+            const open = loadedKids('rows', i, id).length > 0 && expandedFor(rowH, rowExp, i, ctx).has(id)
             const b = el('button', 'tp-tog', open ? '▾' : '▸'); b.type = 'button'; b.title = open ? 'Collapse' : 'Expand'
-            b.onclick = e => { e.stopPropagation(); rowExp = toggleExpanded(rowH, rowExp, i, id, row[`__d${i}_ctx`]); refreshRows() }
+            b.onclick = e => { e.stopPropagation(); openOrToggle('rows', i, id, ctx) }
             box.appendChild(b)
         } else box.appendChild(el('span', 'tp-gap'))
-        box.appendChild(el('span', 'tp-lab' + (total ? ' tp-tot' : ''), row[`__d${i}_label`]))
+        box.appendChild(el('span', 'tp-lab' + (nodeObj && !nodeObj.isLeaf ? ' tp-tot' : ''), row[`__d${i}_label`]))
+        box.oncontextmenu = e => memberMenu(e, 'rows', i, id, ctx)
         return box
     }
     class RowDimHeader {
@@ -202,16 +280,17 @@ export function createPivotGrid(host, opts = {}) {
             this.g = el('div', stacked ? 'tp-stack' : 'tp-hdr')
             tuple.forEach((id, i) => {
                 const line = stacked ? el('div') : this.g
-                const n = colH[i]?.nodes?.[id], total = n && !n.isLeaf && n.children?.length
+                const n = colH[i]?.nodes?.[id], total = n && !n.isLeaf && canOpen('cols', i, id)
                 const ctx = tuple.slice(0, i).join('::')
                 if (!stacked || changed[i]) {
                     if (total) {
-                        const open = expandedFor(colH, colExp, i, ctx).has(id)
+                        const open = loadedKids('cols', i, id).length > 0 && expandedFor(colH, colExp, i, ctx).has(id)
                         line.appendChild(el('span', null, open ? '▾' : '▸'))
                         line.classList.add('tp-click')
-                        line.onclick = () => { colExp = toggleExpanded(colH, colExp, i, id, ctx); refreshColumns() }
+                        line.onclick = () => openOrToggle('cols', i, id, ctx)
                     }
-                    line.appendChild(el('span', 'tp-lab' + (total ? ' tp-tot' : ''), n?.label ?? id))
+                    line.appendChild(el('span', 'tp-lab' + (n && !n.isLeaf ? ' tp-tot' : ''), n?.label ?? id))
+                    line.oncontextmenu = e => memberMenu(e, 'cols', i, id, ctx)
                 }
                 if (stacked) this.g.appendChild(line)
             })
@@ -272,7 +351,7 @@ export function createPivotGrid(host, opts = {}) {
                     const total = !leaf || !rowIsLeaf(p.data || {}) || cell?.kind === 'total'
                     const C = colours()
                     const st = { background: '', boxShadow: 'none', fontWeight: '', color: cell?.colour || '', cursor: canEdit(p.data, col) ? 'text' : 'default' }
-                    if (total) { st.background = C.totalBg; st.fontWeight = '600' }
+                    if (total) { if (!allTotalRows) st.background = C.totalBg; st.fontWeight = '600' }
                     else if (cell?.kind === 'calc' || cell?.u === 0) st.background = C.calcBg
                     if (orig.has(key) || pending.has(key)) Object.assign(st, { background: C.blue + '29', boxShadow: 'inset 0 0 0 1.5px ' + C.blue, fontWeight: '600' })
                     return st
@@ -309,6 +388,7 @@ export function createPivotGrid(host, opts = {}) {
             enableCellTextSelection: !o.edit,
             onCellValueChanged: () => { repaint(); if (o.edit === 'save' && o.onEdit) o.onEdit(changes()) },
             onCellContextMenu: o.onContextMenu ? p => {
+                if (String(p.column.getColId()).startsWith('__d')) return     // row headings have their own menu
                 const col = pivot.columns.find(c => c.id === p.column.getColId())
                 o.onContextMenu({ tuple: p.data?.__tuple ?? [], members: col?.members ?? [], cell: p.data?.[p.column.getColId()] ?? null, event: p.event })
             } : undefined,
@@ -387,6 +467,6 @@ export function createPivotGrid(host, opts = {}) {
                 },
             })
         },
-        destroy() { if (api) api.destroy(); api = null },
+        destroy() { closeMenu(); if (api) api.destroy(); api = null },
     }
 }

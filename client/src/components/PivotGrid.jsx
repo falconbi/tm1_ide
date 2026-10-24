@@ -12,6 +12,7 @@
  *   totals, colTotals  'top' | 'bottom'
  *   onWrite(change) → Promise   write one typed cell ({ tuple, members, value, old }); omit = read-only
  *   onError(e), onContextMenu({ tuple, members, cell, event })
+ *   onDrill({ axis, dimIdx, member, members?, scope, count })   open a total beyond what the query returned (shared/pivot/grid.js)
  *   storageKey       remembers column widths; a new key = a new grid
  *   dark, appearance (useGridAppearance instance shared with the View editor)
  */
@@ -24,7 +25,7 @@ import { cn } from '@/lib/utils'
 export default function PivotGrid({
     pivot, rowHierarchies, colHierarchies, rowNames,
     totals = 'top', colTotals = 'top',
-    onWrite, onError, onContextMenu,
+    onWrite, onError, onContextMenu, onDrill,
     storageKey, dark = false, appearance,
 }) {
     const hostRef  = useRef(null)
@@ -35,7 +36,7 @@ export default function PivotGrid({
     const [frozen, setFrozen] = useState(false)
     // the latest callbacks, without re-creating the grid when they change
     const cb = useRef({})
-    useEffect(() => { cb.current = { onWrite, onError, onContextMenu } })
+    useEffect(() => { cb.current = { onWrite, onError, onContextMenu, onDrill } })
 
     // one grid per view (storageKey); later data goes in through setPivot
     useEffect(() => {
@@ -45,6 +46,7 @@ export default function PivotGrid({
             onWrite: w => cb.current.onWrite?.(w),
             onError: e => cb.current.onError?.(e),
             onContextMenu: info => cb.current.onContextMenu?.(info),
+            onDrill: onDrill ? info => cb.current.onDrill?.(info) : undefined,
             storageKey, height: '100%', fit: 'content',
             makeTheme: h => app.makeTheme(dark, h),
         })

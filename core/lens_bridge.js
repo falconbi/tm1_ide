@@ -69,6 +69,13 @@ async function elementTree(client, dimension, hierarchy) {
     return els.map(e => ({ Name: e.Name, Type: e.Type, Level: e.Level ?? 0, Components: e.Components ?? [] }))
 }
 
+// A dimension's hierarchies — its main one and any ALT H (Alternate Hierarchy), for Lens.pivot's
+// hierarchy choice. TM1's automatic 'Leaves' hierarchy is left out.
+async function hierarchies(client, dimension) {
+    if (!dimension || typeof dimension !== 'string') throw new Error('dimension is required')
+    return (await client.getHierarchies(dimension)).filter(h => h !== 'Leaves')
+}
+
 // Save-time validation gate. Parsing bridge calls out of AI-written JS is
 // best-effort and will miss things, so every query we DO find is executed once
 // against the live model — a bad cube/dim/member/MDX fails here, not at runtime.
@@ -442,4 +449,4 @@ async function runProcess(client, { process, params = {}, allowedProcesses = [],
     return { status, seconds, message, result, since, detail }
 }
 
-module.exports = { execMDX, readCell, getMeta, elementTree, MAX_TREE_ELEMENTS, cellTrace, cellLog, cellNotes, addCellNote, lensNotes, validateLens, buildStarterLens, validateMdx, declaredWriteCubes, writeCells, MAX_WRITE_CELLS, declaredRunProcesses, runProcess, lensWrites, lensRuns }
+module.exports = { execMDX, readCell, getMeta, elementTree, hierarchies, MAX_TREE_ELEMENTS, cellTrace, cellLog, cellNotes, addCellNote, lensNotes, validateLens, buildStarterLens, validateMdx, declaredWriteCubes, writeCells, MAX_WRITE_CELLS, declaredRunProcesses, runProcess, lensWrites, lensRuns }

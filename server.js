@@ -3891,7 +3891,8 @@ Bridge API (always available):
   window.lensBridge.call('readCell', { cube: '<cube>', coordinates: { '<dim>': '<elem>', ... } }) -> Promise<number|string|null>
       coordinates must name EVERY dimension of the cube.
   window.lensBridge.call('getMeta', { cube: '<cube>' }) -> Promise<{ cubes, dimensions, cubeDims, elements }>
-  window.lensBridge.call('elementTree', { dimension: '<dim>' }) -> Promise<[{ Name, Type, Level, Components }]>  (one dimension's tree; Lens.pivot uses it for drill-down)
+  window.lensBridge.call('elementTree', { dimension: '<dim>', hierarchy: '<hier>' }) -> Promise<[{ Name, Type, Level, Components }]>  (one dimension's tree; Lens.pivot uses it for drill-down; hierarchy optional, e.g. an ALT H)
+  window.lensBridge.call('hierarchies', { dimension: '<dim>' }) -> Promise<[name]>  (the dimension's hierarchies: its main one and any ALT H)
 
 Rules:
 - Return a SINGLE complete HTML document (html, head, style, body, script). No markdown, no code fences, no explanation.
@@ -4036,6 +4037,17 @@ app.post('/api/lens/add-note', async (req, res) => {
         logLensNote({ server, app: 'ide', user: req.user, lens: doc.name, ...note })
         res.json({ ok: true })
     } catch (e) { res.status(400).json({ error: e.response?.data?.error?.message ?? e.message }) }
+})
+
+// Lens.pivot: a dimension's hierarchies (main + any ALT H), for the hierarchy choice.
+app.get('/api/lens/hierarchies', async (req, res) => {
+    try {
+        const client = makeClient(req.query.server, req.ideToken)
+        res.json(await lensBridge.hierarchies(client, req.query.dimension))
+    } catch (e) {
+        const detail = e.response?.data?.error?.message ?? e.message
+        res.status(400).json({ error: typeof detail === 'string' ? detail : JSON.stringify(detail) })
+    }
 })
 
 // Lens.pivot: one dimension's element tree, read as the IDE user.

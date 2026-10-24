@@ -58,3 +58,22 @@ export function buildMDX({ cube, rows = [], columns = [], pages = [], bench = []
     if (where.length) mdx += `\nWHERE (${where.join(', ')})`
     return mdx
 }
+
+// Drill-down beyond a query: widen one placement's set, step by step (the grid's onDrill).
+//   steps: [{ scope: 'children' | 'all' | 'leaves' | 'keep' | 'remove', member, members? }]
+//   children — the member's children (or each of members'); all — everything below it;
+//   leaves — its leaves in place of it; keep — only it; remove — everything but it.
+export function widenPlacement(p, steps) {
+    if (!steps?.length) return p
+    let set = axisSet(p)
+    for (const st of steps) {
+        const m = mem(p, st.member)
+        if (st.scope === 'children') set = `{${set}, ${(st.members?.length ? st.members : [st.member]).map(x => `${mem(p, x)}.Children`).join(', ')}}`
+        else if (st.scope === 'all') set = `{${set}, DESCENDANTS(${m})}`
+        else if (st.scope === 'leaves') set = `{EXCEPT(${set}, {${m}}), TM1FILTERBYLEVEL(DESCENDANTS(${m}), 0)}`
+        else if (st.scope === 'keep') set = `{${m}}`
+        else if (st.scope === 'remove') set = `EXCEPT(${set}, {${m}})`
+    }
+    return { ...p, customExpr: `DISTINCT(${set})` }
+}
+

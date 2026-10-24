@@ -522,6 +522,10 @@ function cellInfo({ cube, coordinates, tab = 'why', notes = false, format: fmt }
 //     edit: true, onEdit: changes => …, formats: { Measure: { 'Merit %': '0.0%' } }, key: 'assumptions',
 //   })
 //   pv.changes(); pv.save() → Promise; pv.undo(); pv.refresh(); pv.move(dim, 'rows'|'columns'|'filters'); pv.swap(); pv.grid
+// A total opens even when the query didn't return its children (fetched on demand), and right-clicking
+// a row or column heading offers Expand / Expand all / Collapse / This level for all / Leaves only /
+// Keep only / Remove — for this person, until the layout changes. advanced: ['hierarchies'] lets a chip
+// switch its dimension to an ALT H (an Alternate Hierarchy, e.g. Positions by location).
 // Every cube dimension must be placed (rows, columns or filters) for saving.
 function pivot(el, cfg = {}) {
   const P = pivotKit, node = host(el), t = theme.colors
@@ -534,6 +538,9 @@ function pivot(el, cfg = {}) {
   // Advanced (each feature only if the builder lists it): 'members' (pick members / named
   // subsets on an axis — cfg.subsets: { dim: [names] }), 'suppress', 'totals', 'copy', 'mdx'
   const adv = new Set(cfg.advanced || [])
+  let drills = {}                                   // { 'rows|Dim': [{ scope, member, members }] } — opened beyond the query
+  let hierPick = {}, hiers = {}                     // chosen hierarchy per dimension (an ALT H) / the ones it has
+  const hierOf = d => hierPick[d] || spec[d].hierarchy
   let picks = {}, suppress = cfg.suppress || 'none', totals = cfg.totals || 'top', advOpen = false, lastMdx = ''
   const storeKey = cfg.key ? 'lens-pivot:' + cfg.key : null
   try {
@@ -544,12 +551,19 @@ function pivot(el, cfg = {}) {
       if (adv.has('members')) picks = saved.picks || {}
       if (adv.has('suppress') && saved.suppress) suppress = saved.suppress
       if (adv.has('totals') && saved.totals) totals = saved.totals
+      if (adv.has('hierarchies')) hierPick = saved.hierPick || {}
     }
   } catch (e) { /* nothing remembered */ }
-  const remember = () => { if (storeKey) try { localStorage.setItem(storeKey, JSON.stringify({ ...layout, member, picks, suppress, totals })) } catch (e) { /* storage refused */ } }
+  const remember = () => { if (storeKey) try { localStorage.setItem(storeKey, JSON.stringify({ ...layout, member, picks, suppress, totals, hierPick })) } catch (e) { /* storage refused */ } }
 
   const trees = {}, choices = {}
-  const tree = d => trees[d] || (trees[d] = window.lensBridge.call('elementTree', { dimension: d, hierarchy: spec[d].hierarchy }).then(els => els, () => null))
+  const tree = d => { const k = d + '::' + (hierOf(d) || d); return trees[k] || (trees[k] = window.lensBridge.call('elementTree', { dimension: d, hierarchy: hierOf(d) }).then(els => els, () => null)) }
+  // which hierarchies each dimension has (only when the builder offers the choice)
+  async function loadHierarchies() {
+    if (!adv.has('hierarchies')) return
+    await Promise.all(all.map(p => p.dimension).filter(d => !(d in hiers) && movable(d)).map(d =>
+      window.lensBridge.call('hierarchies', { dimension: d }).then(h => { hiers[d] = h }, () => { hiers[d] = null })))
+  }
   const label = d => spec[d].label || d
 
   node.innerHTML = ''
@@ -571,6 +585,9 @@ function pivot(el, cfg = {}) {
           ? ' <select data-member="' + esc(d) + '" style="font:inherit;font-size:12px;border:0;background:transparent;color:inherit;max-width:180px">' + list.map(m => '<option' + (m === member[d] ? ' selected' : '') + '>' + esc(m) + '</option>').join('') + '</select>'
           : ': <b>' + esc(member[d] ?? '') + '</b>'
       }
+      const hs = hiers[d]
+      if (hs && hs.length > 1 && !spec[d].locked) inner += ' <select data-hier="' + esc(d) + '" title="Hierarchy — an ALT H rolls the same members up another way" style="font:inherit;font-size:11px;border:0;background:transparent;color:' + (hierOf(d) && hierOf(d) !== d ? t.accent : t.faint) + ';max-width:150px">' +
+        hs.map(h => '<option value="' + esc(h) + '"' + ((hierOf(d) || d) === h ? ' selected' : '') + '>' + (h === d ? 'main' : '› ' + esc(h)) + '</option>').join('') + '</select>'
       if (key !== 'filters' && adv.has('members') && advOpen) inner += ' <button type="button" data-pick="' + esc(d) + '" title="Choose members or a subset" style="font:inherit;font-size:11px;border:0;background:transparent;color:' + t.accent + ';cursor:pointer;padding:0 0 0 2px">' + (picks[d] ? '▾ ' + esc(pickLabel(picks[d])) : '▾') + '</button>'
       return '<span data-dim="' + esc(d) + '"' + (move ? ' draggable="true"' : '') + ' title="' + (move ? 'Drag to rows, columns or filters' : 'Fixed by the Lens') + '" style="display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border-radius:999px;border:1px solid ' + t.rule + ';background:' + t.panel + ';color:' + t.ink + ';cursor:' + (move ? 'grab' : 'default') + '">' + (move ? '' : '🔒 ') + inner + '</span>'
     }
@@ -621,13 +638,21 @@ function pivot(el, cfg = {}) {
       tree(d).then(els => P.openMemberPicker({
         anchor: b, title: label(d), elements: els || [], subsets: (cfg.subsets || {})[d] || [],
         current: picks[d] || spec[d], colors: { panel: t.panel, ink: t.ink, faint: t.faint, rule: t.rule, accent: t.accent },
-        onApply: choice => { picks[d] = choice; remember(); run(rebuild) },
+        onApply: choice => { picks[d] = choice; drills = {}; remember(); run(rebuild) },
       }))
     }
   })
   bar.addEventListener('change', e => {
     const d = e.target.getAttribute && e.target.getAttribute('data-member')
     if (d) { member[d] = e.target.value; remember(); run(load) }
+    const hd = e.target.getAttribute && e.target.getAttribute('data-hier')
+    if (hd) {
+      if (g && g.changes().length) { report(new Error('Save or undo your changes before changing the hierarchy.')); drawBar(); return }
+      // members belong to a hierarchy: switching clears this dimension's choice and what was opened
+      hierPick[hd] = e.target.value === hd ? undefined : e.target.value
+      delete picks[hd]; delete choices[hd]; if (layout.filters.includes(hd)) member[hd] = undefined
+      drills = {}; remember(); run(rebuild)
+    }
     if (e.target.hasAttribute && e.target.hasAttribute('data-suppress')) { suppress = e.target.value; remember(); run(load) }
     if (e.target.hasAttribute && e.target.hasAttribute('data-totals')) { totals = e.target.value; remember(); if (g) g.setOptions({ totals, colTotals: totals }) }
   })
@@ -637,7 +662,7 @@ function pivot(el, cfg = {}) {
     if (!from || from === to) return
     if (from !== 'filters' && layout[from].length === 1 && from === 'rows') return   // keep at least one row dimension
     if (g && g.changes().length) { report(new Error('Save or undo your changes before moving dimensions.')); return }
-    layout[from] = layout[from].filter(x => x !== d); layout[to] = [...layout[to], d]
+    layout[from] = layout[from].filter(x => x !== d); layout[to] = [...layout[to], d]; drills = {}
     if (to === 'filters' && member[d] == null) member[d] = spec[d].member
     remember(); return rebuild()
   }
@@ -645,28 +670,30 @@ function pivot(el, cfg = {}) {
   function swap() {
     if (!layout.columns.length || !layout.rows.concat(layout.columns).every(movable)) return
     if (g && g.changes().length) { report(new Error('Save or undo your changes before swapping.')); return }
-    layout = { rows: layout.columns, columns: layout.rows, filters: layout.filters }
+    layout = { rows: layout.columns, columns: layout.rows, filters: layout.filters }; drills = {}
     remember(); return rebuild()
   }
   const report = e => { if (cfg.onError) cfg.onError(e); else console.error(e) }
 
   // a dimension on rows/columns: its own members/set, or — for a filter moved onto an axis — the choices it offered
-  const axis = d => {
-    const p = Object.assign({}, spec[d], picks[d] ? { members: undefined, memberSet: undefined, subset: undefined, ...picks[d] } : {})
+  const axis = (d, zone) => {
+    const base = hierPick[d] ? Object.assign({}, spec[d], { members: undefined, memberSet: undefined, subset: undefined, choices: undefined }) : spec[d]
+    const p = Object.assign({}, base, picks[d] ? { members: undefined, memberSet: undefined, subset: undefined, ...picks[d] } : {})
     const members = p.members || (!p.memberSet && !p.subset ? p.choices : null)
-    return { dimension: d, hierarchy: p.hierarchy, members, memberSet: p.memberSet || (members || p.subset ? undefined : 'all'), subset: p.subset }
+    const placed = { dimension: d, hierarchy: hierOf(d), members, memberSet: p.memberSet || (members || p.subset ? undefined : 'all'), subset: p.subset }
+    return P.widenPlacement(placed, drills[zone + '|' + d])
   }
   async function filterChoices() {
     await Promise.all(layout.filters.filter(d => !choices[d] && movable(d)).map(async d => {
-      if (spec[d].choices) { choices[d] = spec[d].choices; return }
+      if (spec[d].choices && !hierPick[d]) { choices[d] = spec[d].choices; return }
       const els = await tree(d)
       choices[d] = els ? els.map(x => x.Name) : null
     }))
     for (const d of layout.filters) if (member[d] == null) member[d] = (choices[d] || [])[0]
   }
   async function query() {
-    const mdx = P.buildMDX({ cube: cfg.cube, rows: layout.rows.map(axis), columns: layout.columns.map(axis),
-      pages: layout.filters.map(d => ({ dimension: d, hierarchy: spec[d].hierarchy, member: member[d] })), suppressZeros: suppress })
+    const mdx = P.buildMDX({ cube: cfg.cube, rows: layout.rows.map(d => axis(d, 'rows')), columns: layout.columns.map(d => axis(d, 'columns')),
+      pages: layout.filters.map(d => ({ dimension: d, hierarchy: hierOf(d), member: member[d] })), suppressZeros: suppress })
     lastMdx = mdx
     const r = await window.lensBridge.call('execMDX', { mdx })
     if (r && r.truncated) throw new Error('This layout returns more than the cell limit — filter it down or move a dimension to filters.')
@@ -677,7 +704,7 @@ function pivot(el, cfg = {}) {
     return els.map((e, i) => e ? P.buildHierarchy(e, label(dims[i])) : null)
   }
   async function rebuild() {
-    await filterChoices(); drawBar()
+    await loadHierarchies(); await filterChoices(); drawBar()
     const [data, rowsH, colsH] = await Promise.all([query(), treesFor(layout.rows), treesFor(layout.columns)])
     if (g) g.destroy()
     g = P.createPivotGrid(gridEl, {
@@ -687,8 +714,19 @@ function pivot(el, cfg = {}) {
       storageKey: storeKey ? storeKey + ':w:' + layout.rows.join('|') + '>' + layout.columns.join('|') : null,
       dark: dark(), colors: { calcBg: t.calcBg, totalBg: t.totalBg },
       onContextMenu: cfg.cellMenu === false ? undefined : cellMenu,
+      onDrill: drill,
     })
     if (onChange) onChange([])
+  }
+  // open a total beyond what the query returned (the grid asks; re-query with it widened)
+  function drill({ axis: ax, dimIdx, member: m, members, scope, count }) {
+    const zone = ax === 'cols' ? 'columns' : 'rows', d = layout[zone][dimIdx]
+    if (!d) return
+    if (g && g.changes().length) { report(new Error('Save or undo your changes before opening more rows.')); return }
+    if (count > 2000 && !window.confirm('This adds about ' + count.toLocaleString() + ' ' + zone + '. Continue?')) return
+    const key = zone + '|' + d
+    drills[key] = [...(drills[key] || []), { scope, member: m, members }]
+    run(rebuild)
   }
   // right-click a cell: Why this number? / Who changed it / Notes
   function cellMenu({ tuple, members, event }) {

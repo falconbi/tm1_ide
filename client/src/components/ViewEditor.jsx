@@ -29,7 +29,7 @@ function saveViewSessionEntry(entry) {
     localStorage.setItem(VIEW_SESSIONS_KEY, JSON.stringify(list.slice(0, 30)))
 }
 
-import { buildMDX } from '@shared/pivot/mdx.js'
+import { buildMDX, widenPlacement } from '@shared/pivot/mdx.js'
 import PivotGrid from '@/components/PivotGrid'
 import { buildHierarchy, tupleIsLeaf } from '@shared/pivot/tree.js'
 import { cellsetToPivot } from '@shared/pivot/cellset.js'
@@ -1560,9 +1560,31 @@ export default function ViewEditor({ tab }) {
         openTab({ id: tabId, type: 'subset', label: `Build: ${dimName}`, server: tab.server, dimension: dimName, subsetName: null, mdx: existing?.customExpr ?? '', returnTabId: tab.id })
     }, [tab.server, tab.id, axes, openTab, setCustomExpr])
 
+    // ── drill-down beyond the view (the grid's onDrill) ─────────────────────
+    // Each step widens one row / column dimension's set: a total's children, everything below it,
+    // its leaves instead of it, only it, or without it. View-only until saved (then as an MDX view);
+    // cleared whenever the layout changes.
+    const [drills, setDrills] = useState({})          // { 'rows|Dim': [{ scope, member, members }] }
+    const [drillRun, setDrillRun] = useState(0)
+    useEffect(() => { setDrills({}) }, [axes])
+    const effAxes = useMemo(() => {
+        if (!Object.keys(drills).length) return axes
+        const widen = (zone, list) => list.map(p => widenPlacement(p, drills[`${zone}|${p.dimension}`]))
+        return { ...axes, rows: widen('rows', axes.rows), columns: widen('columns', axes.columns) }
+    }, [axes, drills])
+    const handleDrill = useCallback(({ axis, dimIdx, member, members, scope, count }) => {
+        if (mode !== 'visual') { toast.info('Opening a total beyond the view works in the builder — switch from MDX to Visual'); return }
+        const zone = axis === 'cols' ? 'columns' : 'rows'
+        const p = axes[zone][dimIdx]; if (!p) return
+        if (count > 2000 && !window.confirm(`This adds about ${count.toLocaleString()} ${zone === 'rows' ? 'rows' : 'columns'}. Continue?`)) return
+        const key = `${zone}|${p.dimension}`
+        setDrills(prev => ({ ...prev, [key]: [...(prev[key] ?? []), { scope, member, members }] }))
+        setDrillRun(n => n + 1)
+    }, [mode, axes])
+
     const handleExecute = useCallback((opts = {}) => {
         const sz    = 'suppressZeros' in opts ? opts.suppressZeros : suppressZeros
-        const query = mode === 'mdx' ? mdx : buildMDX({ cube: tab.cube, ...axes, bench, suppressZeros: sz })
+        const query = mode === 'mdx' ? mdx : buildMDX({ cube: tab.cube, ...effAxes, bench, suppressZeros: sz })
         if (!query.trim()) {
             toast.error('No MDX to execute')
             return
@@ -1580,7 +1602,10 @@ export default function ViewEditor({ tab }) {
                 onError:   e    => toast.error(e.message, { id }),
             }
         )
-    }, [mode, mdx, axes, suppressZeros, tab.server, tab.cube])
+    }, [mode, mdx, effAxes, suppressZeros, tab.server, tab.cube])
+
+    // run again once a drill step is in
+    useEffect(() => { if (drillRun) handleExecute() }, [drillRun]) // eslint-disable-line react-hooks/exhaustive-deps
 
     // ── Auto-execute default layout once ────────────────────────────────────
     const [autoExecuted, setAutoExecuted] = useState(false)
@@ -1631,9 +1656,10 @@ export default function ViewEditor({ tab }) {
 
     const buildSavePayload = useCallback(() => {
         const usesAltH = [...axes.rows, ...axes.columns, ...axes.pages].some(d => d.hierarchy && d.hierarchy !== d.dimension)
-        if (mode === 'visual' && usesAltH) {
-            toast.info('This view uses an ALT H, so it is saved as an MDX view')
-            return { mdx: buildMDX({ cube: tab.cube, ...axes, bench, suppressZeros }) }
+        const drilled = Object.keys(drills).length > 0
+        if (mode === 'visual' && (usesAltH || drilled)) {
+            toast.info(drilled ? 'Saved as an MDX view, with what you opened' : 'This view uses an ALT H, so it is saved as an MDX view')
+            return { mdx: buildMDX({ cube: tab.cube, ...effAxes, bench, suppressZeros }) }
         }
         if (mode === 'visual') {
             return { nativeAxes: {
@@ -1643,7 +1669,7 @@ export default function ViewEditor({ tab }) {
             } }
         }
         return { mdx: mdx }
-    }, [mode, mdx, axes, suppressZeros, bench, tab.cube])
+    }, [mode, mdx, axes, effAxes, drills, suppressZeros, bench, tab.cube])
 
     const executeSave = useCallback((name) => {
         if (isOriginallyNative && mode === 'mdx') {
@@ -2447,6 +2473,7 @@ export default function ViewEditor({ tab }) {
                             onWrite={handlePivotWrite}
                             onError={e => { toast.error(e.message); scheduleRefresh() }}
                             onContextMenu={handlePivotContextMenu}
+                            onDrill={handleDrill}
                             storageKey={tab.server && tab.cube ? `hg::${tab.server}::${tab.cube}::${tab.viewName || 'adhoc'}` : undefined}
                             appearance={app}
                         />

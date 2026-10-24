@@ -155,3 +155,22 @@ test('names containing ] round-trip; members per position for pruning trees', ()
   assert.equal(elementOf('[K].[K].[a]]b]', 'x'), 'a]b')
   assert.deepEqual(membersByPosition([['A', 'x'], ['A', 'y'], ['B', 'x']]), [['A', 'B'], ['x', 'y']])
 })
+
+// ── drill-down beyond a query: widenPlacement ────────────────────────────────
+import { widenPlacement as widen } from '../shared/pivot/mdx.js'
+test('widenPlacement: children, all, leaves, keep, remove — hierarchy-qualified, de-duplicated', () => {
+    const p = { dimension: 'WFP Position', hierarchy: 'By Location', subset: 'Cities' }
+    const base = 'TM1SubsetToSet([WFP Position].[By Location], "Cities", "public")'
+    const L = '[WFP Position].[By Location].[London]'
+    assert.equal(widen(p, []), p, 'no steps → unchanged')
+    assert.equal(widen(p, [{ scope: 'children', member: 'London' }]).customExpr, `DISTINCT({${base}, ${L}.Children})`)
+    assert.equal(widen(p, [{ scope: 'children', member: 'London', members: ['London', 'Auckland'] }]).customExpr,
+        `DISTINCT({${base}, ${L}.Children, [WFP Position].[By Location].[Auckland].Children})`)
+    assert.equal(widen(p, [{ scope: 'all', member: 'London' }]).customExpr, `DISTINCT({${base}, DESCENDANTS(${L})})`)
+    assert.equal(widen(p, [{ scope: 'leaves', member: 'London' }]).customExpr, `DISTINCT({EXCEPT(${base}, {${L}}), TM1FILTERBYLEVEL(DESCENDANTS(${L}), 0)})`)
+    assert.equal(widen(p, [{ scope: 'keep', member: 'London' }]).customExpr, `DISTINCT({${L}})`)
+    assert.equal(widen(p, [{ scope: 'remove', member: 'London' }]).customExpr, `DISTINCT(EXCEPT(${base}, {${L}}))`)
+    // steps build on each other, and a main-hierarchy placement uses [Dim].[Dim]
+    const two = widen({ dimension: 'Region', members: ['World'] }, [{ scope: 'children', member: 'World' }, { scope: 'remove', member: 'World' }]).customExpr
+    assert.equal(two, 'DISTINCT(EXCEPT({{[Region].[Region].[World]}, [Region].[Region].[World].Children}, {[Region].[Region].[World]}))')
+})
