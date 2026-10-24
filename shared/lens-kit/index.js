@@ -172,7 +172,7 @@ function bars(el, { rows: data = [], format: fmt = 'number', cost = false, onCli
 // ── grid ──────────────────────────────────────────────────────────────────────
 const BLUE = '#2b7de9'   // typed-not-saved fill/border and the saved-not-submitted corner, both themes
 theme.blue = BLUE         // for a Lens's own legend (Lens.legend draws the standard one)
-// columns: [{ field, headerName, type: 'number' | 'text', format, editable }]
+// columns: [{ field, headerName, type: 'number' | 'text', format, editable, pill: { value: 'good'|'warn'|'bad'|'info'|'accent'|'faint' } }]
 // An `editable` column takes input only where the row allows it: a row from
 // Lens.rows carries _input (false = TM1 calculates that cell), so calculated
 // cells stay read-only. Input cells are tinted; typed values are highlighted
@@ -237,6 +237,21 @@ function grid(el, { columns = [], rows: data = [], height, onEdit, onFocus, onSe
         : { ...c }
       delete def.options
       if (typeof c.format === 'function') delete def.format
+      // pill: { value: 'good' | 'warn' | 'bad' | 'info' | 'accent' | 'faint' } — the value as a coloured pill
+      // (theme colours, so dark mode follows); a value not in the map shows as a plain grey pill
+      if (c.pill) {
+        delete def.pill
+        const tone = { good: t.good, warn: t.amber, bad: t.bad, info: BLUE, accent: t.accent, faint: t.faint }
+        def.cellRenderer = p => {
+          if (p.value == null || p.value === '') return ''
+          const key = Object.keys(c.pill).find(k => String(p.value) === k || String(p.value).startsWith(k + ' ')) || null
+          const col = tone[key ? c.pill[key] : 'faint'] || t.faint
+          const sp = document.createElement('span')
+          sp.textContent = p.value
+          sp.style.cssText = 'display:inline-block;padding:1px 9px;border-radius:999px;font-size:12px;font-weight:600;line-height:18px;border:1px solid ' + col + ';color:' + col + ';background:' + tint(col, 0.1)
+          return sp
+        }
+      }
       // One scheme for every Lens and every viewer (the editor and anyone
       // watching see the same): blue fill + blue border = typed, not saved
       // (mine or someone else's); blue corner = saved, not yet submitted;
