@@ -137,8 +137,13 @@ export const useElements           = (server, dim, hierarchy) => useQuery({ quer
 export const useElementsWithIndex  = (server, dim, hierarchy) => useQuery({ queryKey: ['elements-index', server, dim, hierarchy],     queryFn: () => get(`/api/elements?server=${enc(server)}&dimension=${enc(dim)}${hierarchy ? `&hierarchy=${enc(hierarchy)}` : ''}&index=1`), enabled: !!server && !!dim })
 export const useElementsTree  = (server, dim, hierarchy) => useQuery({ queryKey: ['elements-tree', server, dim, hierarchy], queryFn: () => get(`/api/elements/tree?server=${enc(server)}&dimension=${enc(dim)}${hierarchy ? `&hierarchy=${enc(hierarchy)}` : ''}`), enabled: !!server && !!dim, staleTime: 60_000 })
 // Element trees for any number of dimensions at once (shares the cache with useElementsTree)
+// each entry a dimension name, or { dim, hierarchy } for an ALT H
 export const useElementsTrees = (server, dims) => useQueries({
-  queries: (dims ?? []).map(dim => ({ queryKey: ['elements-tree', server, dim, undefined], queryFn: () => get(`/api/elements/tree?server=${enc(server)}&dimension=${enc(dim)}`), enabled: !!server && !!dim, staleTime: 60_000 })),
+  queries: (dims ?? []).map(d => {
+    const dim = typeof d === 'string' ? d : d?.dim
+    const hierarchy = typeof d === 'string' ? undefined : (d?.hierarchy && d.hierarchy !== dim ? d.hierarchy : undefined)
+    return { queryKey: ['elements-tree', server, dim, hierarchy], queryFn: () => get(`/api/elements/tree?server=${enc(server)}&dimension=${enc(dim)}${hierarchy ? `&hierarchy=${enc(hierarchy)}` : ''}`), enabled: !!server && !!dim, staleTime: 60_000 }
+  }),
 })
 export const useEdges     = (server, dim, hierarchy) => useQuery({ queryKey: ['edges', server, dim, hierarchy],    queryFn: () => get(`/api/edges?server=${enc(server)}&dimension=${enc(dim)}${hierarchy ? `&hierarchy=${enc(hierarchy)}` : ''}`),    enabled: !!server && !!dim })
 export const useCubes    = (server)     => useQuery({ queryKey: ['cubes', server],     queryFn: () => get(`/api/cubes?server=${enc(server)}`),      enabled: !!server })
