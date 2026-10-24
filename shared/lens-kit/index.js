@@ -539,6 +539,7 @@ function pivot(el, cfg = {}) {
   // subsets on an axis — cfg.subsets: { dim: [names] }), 'suppress', 'totals', 'copy', 'mdx'
   const adv = new Set(cfg.advanced || [])
   let drills = {}                                   // { 'rows|Dim': [{ scope, member, members }] } — opened beyond the query
+  let keepState = false                             // the next rebuild comes from a drill: keep what was open
   let hierPick = {}, hiers = {}                     // chosen hierarchy per dimension (an ALT H) / the ones it has
   const hierOf = d => hierPick[d] || spec[d].hierarchy
   let picks = {}, suppress = cfg.suppress || 'none', totals = cfg.totals || 'top', advOpen = false, lastMdx = ''
@@ -706,6 +707,7 @@ function pivot(el, cfg = {}) {
   async function rebuild() {
     await loadHierarchies(); await filterChoices(); drawBar()
     const [data, rowsH, colsH] = await Promise.all([query(), treesFor(layout.rows), treesFor(layout.columns)])
+    const restore = keepState && g ? g.state() : null; keepState = false
     if (g) g.destroy()
     g = P.createPivotGrid(gridEl, {
       pivot: data, rowHierarchies: rowsH, colHierarchies: colsH, rowNames: layout.rows.map(label),
@@ -714,7 +716,7 @@ function pivot(el, cfg = {}) {
       storageKey: storeKey ? storeKey + ':w:' + layout.rows.join('|') + '>' + layout.columns.join('|') : null,
       dark: dark(), colors: { calcBg: t.calcBg, totalBg: t.totalBg },
       onContextMenu: cfg.cellMenu === false ? undefined : cellMenu,
-      onDrill: drill,
+      onDrill: drill, restore,
     })
     if (onChange) onChange([])
   }
@@ -726,6 +728,7 @@ function pivot(el, cfg = {}) {
     if (count > 2000 && !window.confirm('This adds about ' + count.toLocaleString() + ' ' + zone + '. Continue?')) return
     const key = zone + '|' + d
     drills[key] = [...(drills[key] || []), { scope, member: m, members }]
+    keepState = true
     run(rebuild)
   }
   // right-click a cell: Why this number? / Who changed it / Notes

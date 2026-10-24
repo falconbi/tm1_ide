@@ -23,6 +23,7 @@
  *                                // and right-clicking a row or column heading offers it as a menu
  *     stripes, fit, height, storageKey (remember widths), dark, colors,
  *     makeTheme(headerHeight),   // optional: the host's own AG theme (e.g. the IDE's appearance settings)
+ *     restore,                   // g.state() of the grid this one replaces — keeps what was open
  *   })
  *   g.changes() → [{ tuple, members, colId, value, old }]; g.undo(); g.saved()
  *   g.setPivot(pivot, rowHierarchies?, colHierarchies?); g.expandAll('rows'|'cols', dimIdx, open)
@@ -93,7 +94,9 @@ export function createPivotGrid(host, opts = {}) {
     let pivot = { columns: [], rows: [], data: {} }
     let rowH = [], colH = []                        // hierarchies in use (constrained to the data)
     let rowFull = [], colFull = []                  // the whole hierarchies — for totals whose children aren't loaded
-    let allTotalRows = false                        // every row a total → no grey total shading (it would hide the stripes)
+    let rowKnown = [], colKnown = []                // the members each dimension had last time (new ones arrive open)
+    let pendingOpen = null                          // { axis, dimIdx, ids } — opened by a drill, waiting for its data
+    let allTotalRows = false                        // every visible cell a total → no grey total shading (it would hide the stripes)
     let rowExp = [], colExp = []                    // expand state
     const orig = new Map()                          // 'tupleKey|colId' → value before typing
     const pending = new Set()                       // immediate mode: being written
@@ -123,9 +126,23 @@ export function createPivotGrid(host, opts = {}) {
             const h = colsIn?.[i]
             return h ? constrainHierarchy(h, colMembers[i]) : flatHierarchy(colMembers[i] ?? [], `Col ${i + 1}`)
         })
-        // keep drill-down state when the shape is the same (e.g. after a save); otherwise start fully open
-        if (rowH.map(h => Object.keys(h.nodes).length).join() !== prevRowCounts || rowExp.length !== rowH.length) rowExp = initExpandedSets(rowH)
-        if (colH.map(h => Object.keys(h.nodes).length).join() !== prevColCounts || colExp.length !== colH.length) colExp = initExpandedSets(colH)
+        // the shape changed (more members fetched): keep what was open / closed, open the drilled member,
+        // and let members that weren't there before arrive open; the first time, everything starts open
+        if (rowH.map(h => Object.keys(h.nodes).length).join() !== prevRowCounts || rowExp.length !== rowH.length) rowExp = carry(rowH, rowExp, rowKnown, 'rows')
+        if (colH.map(h => Object.keys(h.nodes).length).join() !== prevColCounts || colExp.length !== colH.length) colExp = carry(colH, colExp, colKnown, 'cols')
+        rowKnown = rowH.map(h => new Set(Object.keys(h.nodes))); colKnown = colH.map(h => new Set(Object.keys(h.nodes)))
+        pendingOpen = null
+    }
+    function carry(H, prev, known, axis) {
+        if (prev.length !== H.length || !known.length) return initExpandedSets(H)
+        const opens = id => H[0]?.nodes?.[id]?.children?.length > 0
+        return H.map((h, i) => {
+            if (i > 0) return prev[i]                       // inner dimensions remember per outer member already
+            const next = new Set([...(prev[0] ?? [])].filter(opens))
+            for (const id of Object.keys(h.nodes)) if (!known[0]?.has(id) && opens(id)) next.add(id)
+            if (pendingOpen && pendingOpen.axis === axis && pendingOpen.dimIdx === 0) for (const id of pendingOpen.ids) if (opens(id)) next.add(id)
+            return next
+        })
     }
 
     // ── what shows ─────────────────────────────────────────────────────────
@@ -142,7 +159,13 @@ export function createPivotGrid(host, opts = {}) {
         const tuples = computeVisibleTuples(rowH, rowExp, o.keepMode, o.totals === 'bottom', present)
             .filter(t => pivot.data[tupleKey(t)])
         const flags = changedFlags(tuples)
-        allTotalRows = tuples.length > 0 && tuples.every(t => !tupleIsLeaf(t, rowH))
+        // every visible cell a total (a total row, a total column, or TM1 says consolidated) → no grey shading
+        const cols = visibleColumns()
+        allTotalRows = tuples.length > 0 && tuples.every(t => {
+            if (!tupleIsLeaf(t, rowH)) return true
+            const data = pivot.data[tupleKey(t)] || {}
+            return cols.every(c => !colIsLeaf(c) || data[c.id]?.kind === 'total')
+        })
         return tuples.map((t, r) => {
             const key = tupleKey(t)
             const row = { __key: key, __tuple: t, ...pivot.data[key] }
@@ -195,6 +218,7 @@ export function createPivotGrid(host, opts = {}) {
     }
     function drill(axis, i, id, scope, extra = {}) {
         if (!o.onDrill) return
+        if (scope === 'children' || scope === 'all') pendingOpen = { axis, dimIdx: i, ids: extra.members?.length ? extra.members : [id] }
         o.onDrill({ axis, dimIdx: i, member: id, scope, count: scope === 'children' ? fullKids(axis, i, id).length : descendantCount(axis, i, id), ...extra })
     }
     function openOrToggle(axis, i, id, ctx) {
@@ -370,7 +394,8 @@ export function createPivotGrid(host, opts = {}) {
             .withParams({ headerHeight: headerHeight() })
     }
     function repaint() { if (api) api.refreshCells({ force: true }) }
-    function refreshRows() { api.setGridOption('rowData', rowData()); if (frozen) freeze() }
+    // rowData then a forced redraw: AG Grid keeps a row whose label is unchanged, with its old arrow and indent
+    function refreshRows() { api.setGridOption('rowData', rowData()); if (frozen) freeze(); repaint() }
     function refreshColumns() { api.setGridOption('columnDefs', columnDefs()); repaint() }
     function freeze() { const rows = rowData(); api.setGridOption('pinnedTopRowData', frozen && rows.length ? [rows[0]] : null) }
 
@@ -400,6 +425,7 @@ export function createPivotGrid(host, opts = {}) {
         })
     }
     if (o.pivot) pivot = o.pivot
+    if (o.restore) ({ rowExp, colExp, rowKnown, colKnown, pendingOpen } = o.restore)
     build()
 
     return {
@@ -424,7 +450,10 @@ export function createPivotGrid(host, opts = {}) {
             api.setGridOption('columnDefs', columnDefs())
             api.setGridOption('rowData', rowData())
             if (frozen) freeze()
+            repaint()
         },
+        // what is open, for a grid that replaces this one (opts.restore)
+        state() { return { rowExp, colExp, rowKnown, colKnown, pendingOpen } },
         expandAll(axis, dimIdx, open = true) {
             if (axis === 'cols') { colExp = setAllExpanded(colH, colExp, dimIdx, open); refreshColumns() }
             else { rowExp = setAllExpanded(rowH, rowExp, dimIdx, open); refreshRows() }
