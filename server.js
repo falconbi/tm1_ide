@@ -1582,14 +1582,14 @@ app.get('/api/search/index', async (req, res) => {
 app.get('/api/subsets', async (req, res) => {
     try {
         const client = makeClient(req.query.server, req.ideToken)
-        res.json(await client.getSubsets(req.query.dimension))
+        res.json(await client.getSubsets(req.query.dimension, req.query.hierarchy || undefined))
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
 app.get('/api/subset', async (req, res) => {
     try {
         const client = makeClient(req.query.server, req.ideToken)
-        res.json(await client.getSubset(req.query.dimension, req.query.name))
+        res.json(await client.getSubset(req.query.dimension, req.query.name, req.query.hierarchy || undefined))
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
@@ -1597,9 +1597,9 @@ app.post('/api/subset', async (req, res) => {
     try {
         if (!gateWrite(res, req.query.server)) return
         const client      = makeClient(req.query.server, req.ideToken)
-        const current     = await client.getSubset(req.query.dimension, req.query.name).catch(() => null)
+        const current     = await client.getSubset(req.query.dimension, req.query.name, req.query.hierarchy || undefined).catch(() => null)
         const beforeState = current ? { expression: current.Expression ?? '' } : null
-        await client.saveSubset(req.query.dimension, req.query.name, req.body.mdx)
+        await client.saveSubset(req.query.dimension, req.query.name, req.body.mdx, req.query.hierarchy || undefined)
         const afterState  = { expression: req.body.mdx }
         const { hasSession } = cl.writeLog({ server: req.query.server, action: 'SUBSET_SAVED', objectType: 'subset', objectName: req.query.name, detail: req.query.dimension, beforeState, afterState, user: req.user })
         res.json({ ok: true, noSession: !hasSession })
@@ -1612,7 +1612,7 @@ app.post('/api/subset', async (req, res) => {
 app.get('/api/subset/elements', async (req, res) => {
     try {
         const client = makeClient(req.query.server, req.ideToken)
-        res.json(await client.getSubsetElements(req.query.dimension, req.query.name))
+        res.json(await client.getSubsetElements(req.query.dimension, req.query.name, req.query.hierarchy || undefined))
     } catch (e) {
         res.status(500).json({ error: e.message })
     }
@@ -1622,9 +1622,9 @@ app.post('/api/subset/static', async (req, res) => {
     try {
         if (!gateWrite(res, req.query.server)) return
         const client      = makeClient(req.query.server, req.ideToken)
-        const currentEls  = await client.getSubsetElements(req.query.dimension, req.query.name).catch(() => null)
+        const currentEls  = await client.getSubsetElements(req.query.dimension, req.query.name, req.query.hierarchy || undefined).catch(() => null)
         const beforeState = currentEls ? { elements: currentEls.map(e => e.name) } : null
-        await client.saveStaticSubset(req.query.dimension, req.query.name, req.body.elements)
+        await client.saveStaticSubset(req.query.dimension, req.query.name, req.body.elements, req.query.hierarchy || undefined)
         const afterState  = { elements: req.body.elements ?? [] }
         const { hasSession } = cl.writeLog({ server: req.query.server, action: 'SUBSET_SAVED', objectType: 'subset', objectName: req.query.name, detail: req.query.dimension, beforeState, afterState, user: req.user })
         res.json({ ok: true, noSession: !hasSession })
