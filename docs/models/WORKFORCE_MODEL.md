@@ -184,7 +184,8 @@ hire lands on it. Unlinked, the plan would count two Positions and two salaries 
   status, and each open month's FTE). **`WFP Unmatch TBH`** (pVersion, pTBH) puts it all back, clears
   the restore point and the link (unless the TBH is still matched in another version), and cost
   follows. The Match page lists "Matched in this version" with **Unmatch…**. Proven identical
-  before / after in the lab and on Downside (24–25 Oct 2026).
+  before / after in the lab and on Downside (24–25 Oct 2026). Match refuses a TBH already matched in that version, so a
+  restore point is never overwritten.
 - **Unmatched outcomes are flagged** (Needs attention; Forecast and Downside only):
   - `Unplanned Position`: a new HR Position in an open month with no TBH and no planned hire.
     It is real, so it counts.
