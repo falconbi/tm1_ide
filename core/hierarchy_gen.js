@@ -11,6 +11,8 @@
 // 'Dim:Hierarchy' as the dimension name; HierarchyCreate makes it.
 
 const q = s => String(s).replace(/'/g, "''")
+// a name inside MDX inside a TI string: ] doubled for MDX, ' doubled for TI
+const mdxName = s => q(String(s).replace(/]/g, ']]'))
 
 // 'WFP Position' + 'By Grade' → 'WFP Rebuild By Grade Hierarchy'; a dimension without an
 // upper-case prefix keeps its full name ('Region' → 'Region Rebuild By Country Hierarchy').
@@ -100,6 +102,10 @@ ${lvl ? `      IF( DIMIX( cLvl, vGroup ) = 0 ); vGroup = cNone; ENDIF;
    ENDIF;
    nE = nE + 1;
 END;
+# the hierarchy's own Default subset (MDX, so it follows the tree) — every hierarchy gets one
+IF( SubsetExists( sDH, 'Default' ) = 0 );
+   SubsetCreateByMDX( 'Default', '{TM1DRILLDOWNMEMBER({[${mdxName(o.dimension)}].[${mdxName(o.hierarchy)}].[${mdxName(o.top)}]}, ALL, RECURSIVE)}' );
+ENDIF;
 LogOutput( 'INFO', '${q(name)}: ' | NUMBERTOSTRING( nAll ) | ' leaves, ' | NUMBERTOSTRING( nMoved ) | ' placed or moved' );
 `
     return { name, prolog }

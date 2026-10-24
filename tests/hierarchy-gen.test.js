@@ -18,6 +18,7 @@ test('with a level dimension: mirrors it, unknown values go to "not set", lints 
     assert.match(p.prolog, /cLvl  = 'WFP Location';/)
     assert.match(p.prolog, /IF\( DIMIX\( cLvl, vGroup \) = 0 \); vGroup = cNone; ENDIF;/)
     assert.match(p.prolog, /cNone = 'Location not set';/)
+    assert.match(p.prolog, /SubsetCreateByMDX\( 'Default', '\{TM1DRILLDOWNMEMBER\(\{\[WFP Position\]\.\[By Location\]\.\[All Locations\]\}, ALL, RECURSIVE\)\}' \);/)
     const lint = lintTI({ prolog: p.prolog })
     assert.deepEqual(lint.errors, [], JSON.stringify(lint.errors))
 })
