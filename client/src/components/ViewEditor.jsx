@@ -471,7 +471,8 @@ function DimPill({ id, dim, zone, server, onRemove, onSubsetChange, onMemberChan
                     >
                         <span className="font-mono truncate block text-xs">{dim.dimension}</span>
                     </button>
-                    {zone === 'bench' && dim.hierarchy && (
+                    {/* an ALT H keeps its amber label wherever it sits; the switch only shows when there's another to choose */}
+                    {dim.hierarchy && dim.hierarchy !== dim.dimension && (zone === 'bench' || hierChoices.length <= 1) && (
                         <span className="block text-[10px] text-amber-500 font-semibold truncate" title="An ALT H: the same members rolled up another way">› {dim.hierarchy}</span>
                     )}
                     {zone !== 'bench' && hierChoices.length > 1 && (
