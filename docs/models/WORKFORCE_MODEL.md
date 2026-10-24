@@ -142,6 +142,7 @@ Actual months are refused. Every action calls `WFP Request Recalculation` so cos
 | 2 | New position requested (TBH) | manager | Hiring plan | `WFP Create TBH Position` | `TBH-<cc>-<nnnn>` (never reused), waiting for Finance |
 | 3 | Hire approved | Finance | Hire approvals | `WFP Approve Hire` | counts from its hire month at the Position's FTE and default salary, until matched |
 | 4 | TBH matched to the HR Position | HR | Match new Positions | `WFP Match TBH` | TBH stops counting; the HR Position carries the hire from its real start |
+| 4b | Match undone | HR | Match new Positions | `WFP Unmatch TBH` | everything the match changed is put back |
 | 5 | Hire (incl. replace / handover) | HR | People | `WFP Assign Person` | new assignment with its own pay |
 | 6 | Pay or FTE change from a month | HR | People | `WFP Change Assignment` | the person's pay / FTE from that month |
 | 7 | Position change: grade, budgeted FTE, location, salary | HR / Finance | Positions | `WFP Change Position` | dated in Position Map; the person keeps their own pay |
@@ -178,6 +179,12 @@ hire lands on it. Unlinked, the plan would count two Positions and two salaries 
   late hire shows as forecast variance, not as two Positions.
 - `WFP Match TBH` refuses: a TBH or HR Position already linked, an HR-side "TBH", a planning-side
   "HR Position", anyone holding the TBH.
+- **A match can be undone.** Before it clears anything, `WFP Match TBH` saves a restore point in that
+  version (Hiring Plan `Match Undo`: the planned hire — month, approval, its record — the TBH's
+  status, and each open month's FTE). **`WFP Unmatch TBH`** (pVersion, pTBH) puts it all back, clears
+  the restore point and the link (unless the TBH is still matched in another version), and cost
+  follows. The Match page lists "Matched in this version" with **Unmatch…**. Proven identical
+  before / after in the lab and on Downside (24–25 Oct 2026).
 - **Unmatched outcomes are flagged** (Needs attention; Forecast and Downside only):
   - `Unplanned Position`: a new HR Position in an open month with no TBH and no planned hire.
     It is real, so it counts.
