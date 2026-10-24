@@ -1507,6 +1507,34 @@ app.post('/api/dimension/hierarchy', async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
+// Alternate Hierarchies — what a hierarchy is (default / alternate / TM1's Leaves) and which
+// processes build it; an element's parents in each hierarchy; build one from an attribute.
+app.get('/api/hierarchy/info', async (req, res) => {
+    try {
+        const { server, dimension, hierarchy } = req.query
+        res.json(await makeClient(server, req.ideToken).hierarchyInfo(dimension, hierarchy))
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.get('/api/element/hierarchy-parents', async (req, res) => {
+    try {
+        const { server, dimension, element } = req.query
+        res.json(await makeClient(server, req.ideToken).elementHierarchyParents(dimension, element))
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.post('/api/hierarchy/from-attribute', async (req, res) => {
+    try {
+        const { server, dimension, hierarchy, attribute, levelDimension, hookProcess } = req.body
+        if (!gateWrite(res, server)) return
+        const r = await makeClient(server, req.ideToken).buildHierarchyFromAttribute({ dimension, hierarchy, attribute, levelDimension, hookProcess })
+        cl.writeLog({ server, action: 'PROCESS_SAVED', objectType: 'process', objectName: r.process, detail: `builds the "${hierarchy}" Alternate Hierarchy on ${dimension} from ${attribute}`, user: req.user })
+        cl.writeLog({ server, action: 'HIERARCHY_CREATED', objectType: 'dimension', objectName: hierarchy, detail: dimension, user: req.user })
+        if (r.hooked) cl.writeLog({ server, action: 'PROCESS_SAVED', objectType: 'process', objectName: r.hooked, detail: `now runs ${r.process}`, user: req.user })
+        res.json({ ok: true, ...r })
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
 app.delete('/api/dimension/hierarchy', async (req, res) => {
     try {
         const { server, dimension, name } = req.query

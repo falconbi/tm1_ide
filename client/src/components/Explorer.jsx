@@ -5,6 +5,7 @@ import { useStore } from '@/store'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { ChevronRight, ChevronDown, Box, Layers, Cog, Clock, Loader2, List, Plus, Table2, Code2, Sigma, PencilLine, Search, X, Braces, Trash2, FileSearch, Database, Network, LayoutDashboard, Copy } from 'lucide-react'
 import GlobalSearch from '@/components/GlobalSearch'
+import HierarchyFromAttributeDialog from '@/components/HierarchyFromAttributeDialog'
 import { DeleteWarningModal } from '@/components/DeleteWarningModal'
 import { cn } from '@/lib/utils'
 
@@ -661,8 +662,12 @@ function DimRow({ server, dim, onOpenSubset, onOpenDim }) {
   const [newHierarchyName, setNewHierarchyName] = useState('')
   const hierarchyInputRef = useRef(null)
   const { data: subsets, isFetching } = useSubsets(open ? server : null, open ? dim : null)
-  const { data: hierarchies = [] } = useHierarchies(open ? server : null, open ? dim : null)
+  // TM1's automatic 'Leaves' hierarchy isn't one anyone builds — leave it out
+  const { data: allHierarchies = [] } = useHierarchies(open ? server : null, open ? dim : null)
+  const hierarchies = allHierarchies.filter(h => h !== 'Leaves')
   const createHierarchyMut = useCreateHierarchy()
+  const [hierMenu, setHierMenu] = useState(false)
+  const [fromAttr, setFromAttr] = useState(false)
   const hasMultipleHierarchies = hierarchies.length > 1 || addingHierarchy
   const deleteDimMut = useDeleteDimension()
   const deleteSubsetMut = useDeleteSubset()
@@ -724,6 +729,10 @@ function DimRow({ server, dim, onOpenSubset, onOpenDim }) {
                 <Plus size={9} /> Subset
               </button>
           }
+          <button onClick={(e) => { e.stopPropagation(); setOpen(true); setFromAttr(true) }} title="New Alternate Hierarchy from an attribute"
+            className="flex items-center gap-0.5 px-1 py-0.5 rounded text-[10px] text-muted-foreground hover:text-foreground hover:bg-sidebar-accent">
+            <Plus size={9} /> Hierarchy
+          </button>
           <button onClick={handleDelete} title="Delete dimension"
             className="flex items-center gap-0.5 px-1 py-0.5 rounded text-[10px] text-muted-foreground hover:text-red-400 hover:bg-sidebar-accent">
             <Trash2 size={9} />
@@ -738,13 +747,26 @@ function DimRow({ server, dim, onOpenSubset, onOpenDim }) {
               <div className="flex items-center justify-between mb-0.5">
                 <div className="text-[10px] uppercase tracking-wider text-muted-foreground/60 font-semibold">Hierarchies</div>
                 {!addingHierarchy && (
-                  <button
-                    onClick={() => { setAddingHierarchy(true); setNewHierarchyName(''); setTimeout(() => hierarchyInputRef.current?.focus(), 0) }}
-                    className="flex items-center gap-0.5 px-1 py-0.5 rounded text-[10px] text-muted-foreground hover:text-foreground hover:bg-sidebar-accent"
-                    title="New hierarchy"
-                  >
-                    <Plus size={9} />
-                  </button>
+                  <span className="relative">
+                    <button
+                      onClick={() => setHierMenu(m => !m)}
+                      className="flex items-center gap-0.5 px-1 py-0.5 rounded text-[10px] text-muted-foreground hover:text-foreground hover:bg-sidebar-accent"
+                      title="New hierarchy"
+                    >
+                      <Plus size={9} />
+                    </button>
+                    {hierMenu && (
+                      <span className="absolute right-0 top-full mt-1 z-50 w-52 rounded border border-border bg-popover shadow-lg py-1 text-xs">
+                        <button className="block w-full text-left px-3 py-1.5 hover:bg-muted" onClick={() => { setHierMenu(false); setFromAttr(true) }}>
+                          From an attribute…<span className="block text-[10px] text-muted-foreground">Generated, kept in step by a process</span>
+                        </button>
+                        <button className="block w-full text-left px-3 py-1.5 hover:bg-muted"
+                          onClick={() => { setHierMenu(false); setAddingHierarchy(true); setNewHierarchyName(''); setTimeout(() => hierarchyInputRef.current?.focus(), 0) }}>
+                          Empty<span className="block text-[10px] text-muted-foreground">Built by hand</span>
+                        </button>
+                      </span>
+                    )}
+                  </span>
                 )}
               </div>
               {addingHierarchy && (
@@ -783,10 +805,16 @@ function DimRow({ server, dim, onOpenSubset, onOpenDim }) {
                 >
                   <Layers size={10} className="shrink-0 text-muted-foreground" />
                   <span className="truncate font-mono">{h}</span>
-                  {h === dim && <span className="text-[10px] text-muted-foreground/50">(default)</span>}
+                  {h === dim
+                    ? <span className="text-[10px] text-muted-foreground/50">(default)</span>
+                    : <span className="text-[10px] text-muted-foreground/50" title="An Alternate Hierarchy: the same elements, so the same data, rolled up another way">alternate</span>}
                 </button>
               ))}
             </div>
+          )}
+          {fromAttr && (
+            <HierarchyFromAttributeDialog server={server} dimension={dim} onClose={() => setFromAttr(false)}
+              onDone={h => { setFromAttr(false); onOpenDim(dim, h) }} />
           )}
           {(subsets ?? []).length === 0 && !isFetching && !hasMultipleHierarchies && (
             <p className="px-14 py-0.5 text-xs text-muted-foreground italic">No subsets — hover to add</p>

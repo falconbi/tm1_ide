@@ -515,6 +515,32 @@ export const useProcessUsage = (server, process) => useQuery({
   staleTime: 0,
 })
 
+// Alternate Hierarchies: what one is and who builds it; an element's parents per hierarchy; build from an attribute
+export const useHierarchyInfo = (server, dim, hier) => useQuery({
+  queryKey: ['hierarchy-info', server, dim, hier],
+  queryFn:  () => get(`/api/hierarchy/info?server=${enc(server)}&dimension=${enc(dim)}&hierarchy=${enc(hier)}`),
+  enabled:  !!server && !!dim && !!hier && hier !== dim,
+  staleTime: 60_000,
+})
+
+export const useElementHierarchyParents = (server, dim, element, enabled = true) => useQuery({
+  queryKey: ['element-hierarchy-parents', server, dim, element],
+  queryFn:  () => get(`/api/element/hierarchy-parents?server=${enc(server)}&dimension=${enc(dim)}&element=${enc(element)}`),
+  enabled:  enabled && !!server && !!dim && !!element,
+  staleTime: 30_000,
+})
+
+export const useHierarchyFromAttribute = () => {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (body) => post('/api/hierarchy/from-attribute', body),
+    onSuccess: (_, { server, dimension }) => {
+      queryClient.invalidateQueries({ queryKey: ['hierarchies', server, dimension] })
+      queryClient.invalidateQueries({ queryKey: ['procs', server] })
+    },
+  })
+}
+
 export const useCreateHierarchy = () => useMutation({
   mutationFn: ({ server, dimension, name }) =>
     post('/api/dimension/hierarchy', { server, dimension, name }),

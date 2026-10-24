@@ -1,6 +1,7 @@
 'use strict'
 
 const { odataKey, odataLit } = require('./odata-key')
+const { rebuildProcess, referencesHierarchy } = require('./hierarchy_gen')
 
 class TM1Client {
     constructor(server, adapter) {
@@ -227,6 +228,71 @@ class TM1Client {
 
     async deleteHierarchy(dim, name) {
         return this.delete(`Dimensions('${odataKey(dim)}')/Hierarchies('${odataKey(name)}')`)
+    }
+
+    // ── Alternate Hierarchies ─────────────────────────────────────────────────
+    // A second named hierarchy in a dimension: same leaves (so the same data), another rollup.
+    // 'Leaves' is TM1's own automatic hierarchy of every leaf — not something anyone builds.
+
+    // What a hierarchy is, and which processes build it (TI that names 'Dim:Hierarchy').
+    async hierarchyInfo(dim, hier) {
+        const kind = hier === dim ? 'default' : hier === 'Leaves' ? 'leaves' : 'alternate'
+        let builtBy = []
+        if (kind === 'alternate') {
+            const r = await this.get('Processes', { '$select': 'Name,PrologProcedure,MetadataProcedure,DataProcedure,EpilogProcedure' })
+            builtBy = (r.value ?? []).filter(p => !p.Name.startsWith('}') && referencesHierarchy(
+                [p.PrologProcedure, p.MetadataProcedure, p.DataProcedure, p.EpilogProcedure].join('\n'), dim, hier)).map(p => p.Name)
+        }
+        return { dimension: dim, hierarchy: hier, kind, builtBy }
+    }
+
+    // An element's parents in each hierarchy it belongs to (Leaves left out).
+    async elementHierarchyParents(dim, element) {
+        const out = {}
+        for (const h of await this.getHierarchies(dim)) {
+            if (h === 'Leaves') continue
+            const el = await this.get(`Dimensions('${odataKey(dim)}')/Hierarchies('${odataKey(h)}')/Elements('${odataKey(element)}')`,
+                { '$select': 'Name', '$expand': 'Parents($select=Name)' }).catch(() => null)
+            if (el) out[h] = (el.Parents ?? []).map(p => p.Name)
+        }
+        return out
+    }
+
+    // Build (or re-point) an Alternate Hierarchy from an attribute: write its rebuild process,
+    // run it once, and optionally call it from another process's Epilog so it stays in step.
+    async buildHierarchyFromAttribute({ dimension, hierarchy, attribute, levelDimension = '', hookProcess = '' }) {
+        if (!dimension || !hierarchy || !attribute) throw new Error('dimension, hierarchy and attribute are required')
+        if (hierarchy === dimension || hierarchy === 'Leaves') throw new Error(`"${hierarchy}" is not a name an Alternate Hierarchy can have`)
+        const attrs = await this.getElementAttributes(dimension)
+        const attr = attrs.find(a => a.Name === attribute)
+        if (!attr) throw new Error(`${dimension} has no attribute "${attribute}"`)
+        const leaves = new Set((await this.getElements(dimension)).map(e => e.Name.toLowerCase()))
+        // the group names must not be names the dimension already uses
+        let top = `All ${hierarchy}`, groups = []
+        if (levelDimension) {
+            const lv = await this.get(`Dimensions('${odataKey(levelDimension)}')/Hierarchies('${odataKey(levelDimension)}')/Elements`, { '$select': 'Name', '$expand': 'Parents($select=Name)' })
+            groups = (lv.value ?? []).map(e => e.Name)
+            const roots = (lv.value ?? []).filter(e => !(e.Parents ?? []).length).map(e => e.Name)
+            if (roots.length === 1) top = roots[0]
+        } else {
+            const vals = await this.get(`Dimensions('${odataKey(dimension)}')/Hierarchies('${odataKey(dimension)}')/Elements`, { '$select': 'Name,Attributes', '$filter': 'Level eq 0' })
+            groups = [...new Set((vals.value ?? []).map(e => String(e.Attributes?.[attribute] ?? '')).filter(Boolean))]
+        }
+        const clash = [top, `${attribute} not set`, ...groups].filter(g => leaves.has(String(g).toLowerCase()))
+        if (clash.length) throw new Error(`these names already exist in ${dimension}, so they can't be groups: ${clash.slice(0, 5).join(', ')}`)
+        const proc = rebuildProcess({ dimension, hierarchy, attribute, attributeType: /numeric/i.test(attr.Type) ? 'Numeric' : 'String', levelDimension, top })
+        await this.createOrReplaceProcess({ name: proc.name, prolog: proc.prolog })
+        const run = await this.executeProcess(proc.name)
+        let hooked = null
+        if (hookProcess) {
+            const p = await this.getProcess(hookProcess)
+            const ep = String(p.EpilogProcedure ?? '').replace(/\r\n/g, '\n')
+            if (!ep.includes(proc.name)) {
+                await this.patch(`Processes('${odataKey(hookProcess)}')`, { EpilogProcedure: ep.replace(/\s*$/, '') + `\n# keep the "${hierarchy}" Alternate Hierarchy in step\nExecuteProcess( '${proc.name.replace(/'/g, "''")}' );\n` })
+            }
+            hooked = hookProcess
+        }
+        return { process: proc.name, status: run?.ProcessExecuteStatusCode ?? null, top, groups: groups.length, hooked }
     }
 
     // ── Attribute value write probe ───────────────────────────────────────────

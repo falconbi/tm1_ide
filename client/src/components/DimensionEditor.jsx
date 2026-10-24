@@ -4,7 +4,9 @@ import {
   useAddElement, useDeleteElement, useAddEdge, useDeleteEdge, useUpdateEdgeWeight,
   useAttrGrid, useWriteElementAttribute, useCreateAttrDef, useDeleteAttrDef, useSubsets, useSubsetElements,
   useDimensionUsage, useCreateHierarchy, useBulkDimImport, useBulkAttrImport, useCreateDimension, usePreDeleteElementCheck,
+  useHierarchyInfo, useElementHierarchyParents,
 } from '@/hooks/useApi'
+import HierarchyFromAttributeDialog from '@/components/HierarchyFromAttributeDialog'
 import { AgGridReact } from 'ag-grid-react'
 import { AllCommunityModule, ModuleRegistry, themeBalham, colorSchemeDark, colorSchemeLight } from 'ag-grid-community'
 import { useStore } from '@/store'
@@ -115,8 +117,43 @@ function BulkAddModal({ consolElements, onConfirm, onClose }) {
   )
 }
 
+// Where an element sits in each hierarchy — the main one and any Alternate Hierarchy (same element,
+// same data, another rollup). TM1's automatic 'Leaves' hierarchy is left out.
+function HierarchyPlaces({ server, dimension, element }) {
+  const { data: places, isLoading } = useElementHierarchyParents(server, dimension, element)
+  return (
+    <section>
+      <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">In each hierarchy</div>
+      {isLoading && <Loader2 size={10} className="animate-spin text-muted-foreground" />}
+      {Object.entries(places ?? {}).map(([h, ps]) => (
+        <div key={h} className="flex items-baseline gap-1.5 py-0.5 text-[11px]">
+          <span className="font-mono">{h}</span>
+          <span className="text-[10px] text-muted-foreground/70">{h === dimension ? 'default' : 'alternate'}</span>
+          <span className="ml-auto text-muted-foreground truncate">{ps.length ? 'under ' + ps.join(', ') : 'top level'}</span>
+        </div>
+      ))}
+    </section>
+  )
+}
+
+// What the open hierarchy is, so an Alternate Hierarchy isn't mistaken for a hand-kept dimension.
+function AlternateBanner({ server, dimension, hierarchy }) {
+  const { data: info } = useHierarchyInfo(server, dimension, hierarchy)
+  if (!hierarchy || hierarchy === dimension) return null
+  const built = info?.builtBy ?? []
+  return (
+    <div className="px-3 py-1.5 text-[11px] border-b border-border bg-muted/40 text-muted-foreground">
+      <b className="text-foreground">Alternate Hierarchy</b> of <span className="font-mono">{dimension}</span> — the same elements as the main
+      hierarchy, so the same data, rolled up another way.{' '}
+      {info && (built.length
+        ? <>Built by <span className="font-mono text-foreground">{built.join(', ')}</span> — edits made here are overwritten the next time it runs.</>
+        : <>No process builds it — it is kept by hand.</>)}
+    </div>
+  )
+}
+
 // ── Element properties panel ────────────────────────────────────────────────
-function ElementPanel({ el, parents, children, byName, consolElements, elemAttrs, loadingAttrs, hierarchies,
+function ElementPanel({ server, dimension, el, parents, children, byName, consolElements, elemAttrs, loadingAttrs, hierarchies,
   onDelete, onAddParent, onRemoveParent, onUpdateWeight, onClose }) {
   const [addingParent, setAddingParent] = useState(false)
   const [newParent, setNewParent] = useState('')
@@ -142,15 +179,8 @@ function ElementPanel({ el, parents, children, byName, consolElements, elemAttrs
       <div className="flex-1 overflow-auto p-3 space-y-4">
 
         {/* Hierarchies */}
-        {hierarchies && hierarchies.length > 1 && (
-          <section>
-            <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">Hierarchies</div>
-            <div className="flex flex-wrap gap-1">
-              {hierarchies.map(h => (
-                <span key={h} className="px-1.5 py-px rounded border border-border text-[10px] text-muted-foreground">{h}</span>
-              ))}
-            </div>
-          </section>
+        {hierarchies && hierarchies.filter(h => h !== 'Leaves').length > 1 && (
+          <HierarchyPlaces server={server} dimension={dimension} element={el.Name} />
         )}
 
         {/* Parents */}
@@ -1080,6 +1110,8 @@ function DimensionEditorCore({ tab }) {
   const [selectedHierarchy, setSelectedHierarchy] = useState(tab.hierarchy ?? tab.dimension)
   const [addingHierarchy, setAddingHierarchy] = useState(false)
   const [newHierarchyName, setNewHierarchyName] = useState('')
+  const [hierMenu, setHierMenu] = useState(false)
+  const [fromAttr, setFromAttr] = useState(false)
   const [deleteCheck, setDeleteCheck] = useState(null)
   const [deleteTarget, setDeleteTarget] = useState(null)
   const [showHelp, setShowHelp] = useState(false)
@@ -1243,14 +1275,14 @@ function DimensionEditorCore({ tab }) {
         >
           <MapPin size={11} />
         </button>
-        {hierarchies.length > 1 && (
+        {hierarchies.filter(h => h !== 'Leaves').length > 1 && (
           <select
             value={selectedHierarchy}
             onChange={e => { setSelectedHierarchy(e.target.value); setSelected(null) }}
             className="text-xs bg-background border border-border rounded px-1.5 py-0.5 text-foreground max-w-36"
             title="Select hierarchy"
           >
-            {hierarchies.map(h => <option key={h} value={h}>{h}</option>)}
+            {hierarchies.filter(h => h !== 'Leaves').map(h => <option key={h} value={h}>{h}{h === tab.dimension ? ' (default)' : ' (alternate)'}</option>)}
           </select>
         )}
         {addingHierarchy ? (
@@ -1278,11 +1310,23 @@ function DimensionEditorCore({ tab }) {
           </div>
         ) : (
           <button
-            onClick={() => { setAddingHierarchy(true); setNewHierarchyName('') }}
-            className="flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] rounded border border-border text-muted-foreground hover:text-foreground hover:bg-background"
+            onClick={() => setHierMenu(m => !m)}
+            className="flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] rounded border border-border text-muted-foreground hover:text-foreground hover:bg-background relative"
             title="New hierarchy"
           >
             <Plus size={9} /> Hierarchy
+            {hierMenu && (
+              <span className="absolute left-0 top-full mt-1 z-50 w-56 rounded border border-border bg-popover shadow-lg text-left py-1" onClick={e => e.stopPropagation()}>
+                <span role="button" className="block px-3 py-1.5 hover:bg-muted text-foreground"
+                  onClick={() => { setHierMenu(false); setFromAttr(true) }}>
+                  From an attribute…<span className="block text-[10px] text-muted-foreground">Generated and kept in step by a process</span>
+                </span>
+                <span role="button" className="block px-3 py-1.5 hover:bg-muted text-foreground"
+                  onClick={() => { setHierMenu(false); setAddingHierarchy(true); setNewHierarchyName('') }}>
+                  Empty<span className="block text-[10px] text-muted-foreground">Built by hand in this editor</span>
+                </span>
+              </span>
+            )}
           </button>
         )}
         <span className="text-xs text-muted-foreground">
@@ -1342,6 +1386,11 @@ function DimensionEditorCore({ tab }) {
         </div>
       </div>
       <HelpPanel open={showHelp} onClose={() => setShowHelp(false)} area="dimension" />
+      <AlternateBanner server={tab.server} dimension={tab.dimension} hierarchy={selectedHierarchy} />
+      {fromAttr && (
+        <HierarchyFromAttributeDialog server={tab.server} dimension={tab.dimension} onClose={() => setFromAttr(false)}
+          onDone={h => { setFromAttr(false); setSelectedHierarchy(h); setSelected(null) }} />
+      )}
 
       {/* Toolbar row 2 — used in + filters */}
       <div className="flex items-center gap-2 px-3 py-1 border-b border-border bg-muted/50 shrink-0 flex-wrap">
@@ -1415,6 +1464,8 @@ function DimensionEditorCore({ tab }) {
           {selectedEl && (
             <div className="w-[45%] shrink-0 overflow-auto">
               <ElementPanel
+                server={tab.server}
+                dimension={tab.dimension}
                 el={selectedEl}
                 parents={selectedParents}
                 children={selectedChildren}
