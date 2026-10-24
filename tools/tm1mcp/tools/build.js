@@ -339,16 +339,31 @@ function register(server, { client, ok, esc, logChange, requireChangeSet, lintRu
 
     server.tool(
         'reprocess_feeders',
-        'Reprocess the FEEDERS for one or more cubes (POST tm1.ProcessFeeders). Run this after recreating a cube or changing feeder rules — cross-cube feeders into a recreated cube stay dead until you do, and consolidations silently read as 0 while every leaf still computes on a direct read.',
+        'Reprocess the FEEDERS for one or more cubes (POST tm1.ProcessFeeders; on TM1 v11, which lacks it, a temporary TI runs CubeProcessFeeders). Run this after recreating a cube or changing feeder rules — cross-cube feeders into a recreated cube stay dead until you do, and consolidations silently read as 0 while every leaf still computes on a direct read.',
         {
             cubes: z.array(z.string()).describe('Cube names to reprocess, e.g. the recreated cube plus any that feed into it'),
         },
         async ({ cubes }) => {
             const c = client()
-            const done = [], failed = []
+            const done = [], failed = [], noRest = []
             for (const name of cubes) {
                 try { await c.post(`Cubes('${esc(name)}')/tm1.ProcessFeeders`, {}); done.push(name) }
-                catch (e) { failed.push(`${name}: ${e.response?.data?.error?.message ?? e.message}`) }
+                catch (e) {
+                    const msg = e.response?.data?.error?.message ?? e.message
+                    // TM1 v11 has no REST ProcessFeeders — do it in TI instead (below)
+                    if (/can ?not be resolved/i.test(msg)) noRest.push(name)
+                    else failed.push(`${name}: ${msg}`)
+                }
+            }
+            if (noRest.length) {
+                const tmp = `}tm1mcp feeders ${Date.now()}`
+                try {
+                    await c.createOrReplaceProcess({ name: tmp, prolog: noRest.map(n => `CubeProcessFeeders( '${n.replace(/'/g, "''")}' );`).join('\n') })
+                    const r = await c.executeProcess(tmp)
+                    if (r?.ProcessExecuteStatusCode && r.ProcessExecuteStatusCode !== 'CompletedSuccessfully') throw new Error(r.ProcessExecuteStatusCode)
+                    done.push(...noRest)
+                } catch (e) { for (const n of noRest) failed.push(`${n}: ${e.response?.data?.error?.message ?? e.message}`) }
+                finally { await c.delete(`Processes('${esc(tmp)}')`).catch(() => {}) }
             }
             return ok(failed.length ? { reprocessed: done, failed } : `Feeders reprocessed for ${done.join(', ')}.`)
         }
