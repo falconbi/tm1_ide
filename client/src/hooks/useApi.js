@@ -418,6 +418,11 @@ export const useElementAttrValues = (server, dim, element, hierarchy) => useQuer
   staleTime: 30_000,
 })
 
+// the hierarchies of several dimensions at once (e.g. every dimension of a cube, to offer each ALT H)
+export const useHierarchiesFor = (server, dims) => useQueries({
+  queries: (dims ?? []).map(dim => ({ queryKey: ['hierarchies', server, dim], queryFn: () => get(`/api/hierarchies?server=${enc(server)}&dimension=${enc(dim)}`), enabled: !!server && !!dim, staleTime: 60_000 })),
+})
+
 export const useHierarchies = (server, dim) => useQuery({
   queryKey: ['hierarchies', server, dim],
   queryFn:  () => get(`/api/hierarchies?server=${enc(server)}&dimension=${enc(dim)}`),

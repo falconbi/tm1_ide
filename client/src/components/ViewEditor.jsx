@@ -5,7 +5,7 @@ import { DndContext, DragOverlay, PointerSensor, useSensor, useSensors, useDropp
 import MonacoEditor from '@monaco-editor/react'
 import { useStore } from '@/store'
 import { subsetApplyCallbacks } from '@/lib/subsetCallbacks'
-import { useCubeDimensions, useSubsets, useElementsTree, useElementsTrees, useHierarchies, useViews, useExecuteMDX, useViewAxes, useSaveView, useSetDefaultView, usePawBookUsage, useDimAttributes, useViewUsage, useMultiFormatAttrs, useConflictCheck, useGenerateViewMDX, useConfig } from '@/hooks/useApi'
+import { useCubeDimensions, useSubsets, useElementsTree, useElementsTrees, useHierarchies, useHierarchiesFor, useViews, useExecuteMDX, useViewAxes, useSaveView, useSetDefaultView, usePawBookUsage, useDimAttributes, useViewUsage, useMultiFormatAttrs, useConflictCheck, useGenerateViewMDX, useConfig } from '@/hooks/useApi'
 import { toast } from 'sonner'
 import { RefreshCw, Loader2, Table2, GripVertical, GripHorizontal, X, LayoutGrid, Rows3, Columns3, Filter, ZapOff, Zap, ChevronLeft, ChevronRight, PencilLine, Save, Code2, Eye, ChevronDown, BookOpen, ChevronUp, MapPin, WrapText, Braces, History, AlertTriangle, Cog, FileSearch, Rss, Sparkles, Clock, Check, ArrowUpDown, HelpCircle } from 'lucide-react'
 import HelpPanel from '@/components/HelpPanel'
@@ -94,6 +94,10 @@ const COMPLEX_MDX_PATTERNS = [
     ['.PROPERTIES',    /\.PROPERTIES\s*\(/i],
     ['HIERARCHIZE',    /\bHIERARCHIZE\b/i],
 ]
+
+// A view entry is a dimension in one of its hierarchies: 'WFP Position', or 'WFP Position › By Location'
+// for an ALT H (Alternate Hierarchy) — both can be on the grid at once (they share the same leaves).
+const entryKey = p => (p?.hierarchy && p.hierarchy !== p.dimension) ? `${p.dimension} › ${p.hierarchy}` : p?.dimension
 
 function detectComplexMDX(mdx) {
     if (!mdx) return null
@@ -405,13 +409,15 @@ function SubsetPopover({ server, dim, zone, subsets, onSubsetSelect, onMemberSel
 
 // ── Draggable dimension pill ──────────────────────────────────────────────────
 
-function DimPill({ id, dim, zone, server, onRemove, onSubsetChange, onMemberChange, onMembersChange, onMemberSetChange, onHierarchyChange, onMoveLeft, onMoveRight, activeAlias, onAliasChange, onBuildSubset }) {
+function DimPill({ id, dim, zone, server, onRemove, onSubsetChange, onMemberChange, onMembersChange, onMemberSetChange, onHierarchyChange, usedKeys, onMoveLeft, onMoveRight, activeAlias, onAliasChange, onBuildSubset }) {
+    const key = entryKey(dim)
     const { attributes, listeners, setNodeRef: setDragRef, isDragging } = useDraggable({ id })
-    const { setNodeRef: setDropRef, isOver } = useDroppable({ id: `dim:${dim.dimension}` })
+    const { setNodeRef: setDropRef, isOver } = useDroppable({ id: `dim:${key}` })
     const { data: subsets = [] } = useSubsets(server, dim.dimension, dim.hierarchy || undefined)
     // an ALT H (Alternate Hierarchy) can stand in for the dimension's main hierarchy
     const { data: allHier = [] } = useHierarchies(onHierarchyChange ? server : null, onHierarchyChange ? dim.dimension : null)
-    const hierChoices = allHier.filter(h => h !== 'Leaves')
+    // a hierarchy already on the grid as another entry isn't offered again
+    const hierChoices = allHier.filter(h => h !== 'Leaves' && (h === (dim.hierarchy || dim.dimension) || !usedKeys?.has(entryKey({ dimension: dim.dimension, hierarchy: h }))))
     const { data: dimAttrs = [] } = useDimAttributes(server, dim.dimension)
     const aliasAttrs = dimAttrs.filter(a => a.type === 'Alias')
     const [open, setOpen] = useState(false)
@@ -465,17 +471,20 @@ function DimPill({ id, dim, zone, server, onRemove, onSubsetChange, onMemberChan
                     >
                         <span className="font-mono truncate block text-xs">{dim.dimension}</span>
                     </button>
-                    {hierChoices.length > 1 && (
+                    {zone === 'bench' && dim.hierarchy && (
+                        <span className="block text-[10px] text-amber-500 font-semibold truncate" title="An ALT H: the same members rolled up another way">› {dim.hierarchy}</span>
+                    )}
+                    {zone !== 'bench' && hierChoices.length > 1 && (
                         <select
                             value={dim.hierarchy || dim.dimension}
                             onClick={e => e.stopPropagation()}
                             onPointerDown={e => e.stopPropagation()}
-                            onChange={e => onHierarchyChange(dim.dimension, e.target.value)}
+                            onChange={e => onHierarchyChange(key, e.target.value)}
                             className={cn('block max-w-full text-[10px] bg-transparent border-0 p-0 cursor-pointer outline-none',
                                 dim.hierarchy && dim.hierarchy !== dim.dimension ? 'text-amber-500 font-semibold' : 'text-muted-foreground')}
                             title="Hierarchy — an ALT H rolls the same elements up another way"
                         >
-                            {hierChoices.map(h => <option key={h} value={h}>{h === dim.dimension ? 'main hierarchy' : `› ${h} (ALT H)`}</option>)}
+                            {hierChoices.map(h => <option key={h} value={h}>{h === dim.dimension ? 'main hierarchy' : `› ${h}`}</option>)}
                         </select>
                     )}
                     <div className="flex items-center gap-0.5 min-w-0">
@@ -522,7 +531,7 @@ function DimPill({ id, dim, zone, server, onRemove, onSubsetChange, onMemberChan
                             >
                                 <ChevronRight size={10} />
                             </button>
-                            <button onClick={() => onRemove(dim.dimension)} className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-foreground p-0.5 rounded">
+                            <button onClick={() => onRemove(key)} className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-foreground p-0.5 rounded">
                                 <X size={10} />
                             </button>
                         </>)}
@@ -540,10 +549,10 @@ function DimPill({ id, dim, zone, server, onRemove, onSubsetChange, onMemberChan
             {open && (
                 <SubsetPopover
                     server={server} dim={dim} zone={zone} subsets={subsets}
-                    onSubsetSelect={name => onSubsetChange(dim.dimension, name)}
-                    onMemberSelect={name => onMemberChange(dim.dimension, name)}
-                    onMembersSelect={members => onMembersChange?.(dim.dimension, members)}
-                    onMemberSetSelect={mset => onMemberSetChange?.(dim.dimension, mset)}
+                    onSubsetSelect={name => onSubsetChange(key, name)}
+                    onMemberSelect={name => onMemberChange(key, name)}
+                    onMembersSelect={members => onMembersChange?.(key, members)}
+                    onMemberSetSelect={mset => onMemberSetChange?.(key, mset)}
                     onEditSubset={onEditSubset}
                     onBuildSubset={onBuildSubset ? () => { setOpen(false); onBuildSubset(dim.dimension) } : null}
                     onClose={() => setOpen(false)}
@@ -555,7 +564,7 @@ function DimPill({ id, dim, zone, server, onRemove, onSubsetChange, onMemberChan
 
 // ── Drop zone ─────────────────────────────────────────────────────────────────
 
-function DropZone({ id, label, icon: Icon, dims, server, onRemove, onSubsetChange, onMemberChange, onMembersChange, onMemberSetChange, onHierarchyChange, onReorder, accent, dimAliases, onAliasChange, onBuildSubset }) {
+function DropZone({ id, label, icon: Icon, dims, server, onRemove, onSubsetChange, onMemberChange, onMembersChange, onMemberSetChange, onHierarchyChange, usedKeys, onReorder, accent, dimAliases, onAliasChange, onBuildSubset }) {
     const { setNodeRef, isOver } = useDroppable({ id })
     return (
         <div ref={setNodeRef}
@@ -568,7 +577,7 @@ function DropZone({ id, label, icon: Icon, dims, server, onRemove, onSubsetChang
             </div>
             <div className="flex flex-wrap gap-1">
                 {dims.map((d, i) => (
-                    <DimPill key={d.dimension} id={d.dimension} dim={d} zone={id}
+                    <DimPill key={entryKey(d)} id={entryKey(d)} dim={d} zone={id} usedKeys={usedKeys}
                         server={server} onRemove={onRemove}
                         onSubsetChange={onSubsetChange} onMemberChange={onMemberChange} onMembersChange={onMembersChange} onMemberSetChange={onMemberSetChange}
                         onHierarchyChange={onHierarchyChange}
@@ -1256,13 +1265,22 @@ export default function ViewEditor({ tab }) {
     // Loading guard using state (not ref) to survive StrictMode remounts
     const [loadedKey, setLoadedKey] = useState(null)
 
+    const cubeHierQs = useHierarchiesFor(tab.server, cubeDims)
+    const cubeHierStamp = cubeHierQs.map(q => q.dataUpdatedAt).join()
+    const altEntries = useMemo(() => cubeDims.flatMap((d, i) => (cubeHierQs[i]?.data ?? [])
+        .filter(h => h !== d && h !== 'Leaves').map(h => ({ dimension: d, hierarchy: h }))),
+        [cubeDims, cubeHierStamp]) // eslint-disable-line react-hooks/exhaustive-deps
     const bench = useMemo(() => {
-        const placed = new Set([...axes.rows, ...axes.columns, ...axes.pages].map(d => d.dimension))
-        return cubeDims.filter(d => !placed.has(d)).map(d => ({
+        const placed = new Set([...axes.rows, ...axes.columns, ...axes.pages].map(entryKey))
+        const mains = cubeDims.filter(d => !placed.has(d)).map(d => ({
             dimension: d,
             ...(benchState[d] ?? { subset: null, member: null }),
         }))
-    }, [cubeDims, axes, benchState])
+        const alts = altEntries.filter(a => !placed.has(entryKey(a))).map(a => ({ ...a, alt: true, ...(benchState[entryKey(a)] ?? {}) }))
+        return [...mains, ...alts]
+    }, [cubeDims, axes, benchState, altEntries])
+    // what goes into WHERE: the main hierarchies left on the bench (an ALT H there is only on offer)
+    const benchSlicers = useMemo(() => bench.filter(b => !b.alt), [bench])
 
     const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
 
@@ -1438,7 +1456,7 @@ export default function ViewEditor({ tab }) {
 
     const findZone = (dimName) => {
         for (const zone of ['rows', 'columns', 'pages']) {
-            if (axes[zone].find(d => d.dimension === dimName)) return zone
+            if (axes[zone].find(d => entryKey(d) === dimName)) return zone
         }
         return 'bench'
     }
@@ -1469,15 +1487,15 @@ export default function ViewEditor({ tab }) {
         }
 
         const existing = [...axes.rows, ...axes.columns, ...axes.pages, ...bench]
-            .find(d => d.dimension === dimName) ?? { dimension: dimName, subset: null, member: null }
+            .find(d => entryKey(d) === dimName) ?? { dimension: dimName, subset: null, member: null }
 
         if (toZone === 'bench') {
             // Preserve member/subset so it's remembered if moved back
             setBenchState(prev => ({ ...prev, [dimName]: { subset: existing.subset ?? null, member: existing.member ?? null, members: existing.members ?? null, memberSet: existing.memberSet ?? null } }))
             setAxes(prev => ({
-                rows:    prev.rows.filter(d => d.dimension !== dimName),
-                columns: prev.columns.filter(d => d.dimension !== dimName),
-                pages:   prev.pages.filter(d => d.dimension !== dimName),
+                rows:    prev.rows.filter(d => entryKey(d) !== dimName),
+                columns: prev.columns.filter(d => entryKey(d) !== dimName),
+                pages:   prev.pages.filter(d => entryKey(d) !== dimName),
             }))
             return
         }
@@ -1486,12 +1504,12 @@ export default function ViewEditor({ tab }) {
         setBenchState(prev => { const n = { ...prev }; delete n[dimName]; return n })
         setAxes(prev => {
             const next = {
-                rows:    prev.rows.filter(d => d.dimension !== dimName),
-                columns: prev.columns.filter(d => d.dimension !== dimName),
-                pages:   prev.pages.filter(d => d.dimension !== dimName),
+                rows:    prev.rows.filter(d => entryKey(d) !== dimName),
+                columns: prev.columns.filter(d => entryKey(d) !== dimName),
+                pages:   prev.pages.filter(d => entryKey(d) !== dimName),
             }
             if (insertBeforeDim) {
-                const idx = next[toZone].findIndex(d => d.dimension === insertBeforeDim)
+                const idx = next[toZone].findIndex(d => entryKey(d) === insertBeforeDim)
                 next[toZone] = idx >= 0
                     ? [...next[toZone].slice(0, idx), existing, ...next[toZone].slice(idx)]
                     : [...next[toZone], existing]
@@ -1504,44 +1522,44 @@ export default function ViewEditor({ tab }) {
 
     const removeDim = useCallback((dimName) => {
         setAxes(prev => ({
-            rows:    prev.rows.filter(d => d.dimension !== dimName),
-            columns: prev.columns.filter(d => d.dimension !== dimName),
-            pages:   prev.pages.filter(d => d.dimension !== dimName),
+            rows:    prev.rows.filter(d => entryKey(d) !== dimName),
+            columns: prev.columns.filter(d => entryKey(d) !== dimName),
+            pages:   prev.pages.filter(d => entryKey(d) !== dimName),
         }))
     }, [])
 
     const setSubset = useCallback((dimName, subset) => {
         setAxes(prev => {
-            const update = zone => zone.map(d => d.dimension === dimName ? { ...d, subset, member: null, members: null, memberSet: null } : d)
+            const update = zone => zone.map(d => entryKey(d) === dimName ? { ...d, subset, member: null, members: null, memberSet: null } : d)
             return { rows: update(prev.rows), columns: update(prev.columns), pages: update(prev.pages) }
         })
     }, [])
 
     const setMember = useCallback((dimName, member) => {
         setAxes(prev => {
-            const update = zone => zone.map(d => d.dimension === dimName ? { ...d, member, members: null, memberSet: null, subset: null } : d)
+            const update = zone => zone.map(d => entryKey(d) === dimName ? { ...d, member, members: null, memberSet: null, subset: null } : d)
             return { rows: update(prev.rows), columns: update(prev.columns), pages: update(prev.pages) }
         })
     }, [])
 
     const setMembers = useCallback((dimName, members) => {
         setAxes(prev => {
-            const update = zone => zone.map(d => d.dimension === dimName ? { ...d, members, member: null, subset: null, memberSet: null } : d)
+            const update = zone => zone.map(d => entryKey(d) === dimName ? { ...d, members, member: null, subset: null, memberSet: null } : d)
             return { rows: update(prev.rows), columns: update(prev.columns), pages: update(prev.pages) }
         })
     }, [])
 
     const setHierarchy = useCallback((dimName, hierarchy) => {
         setAxes(prev => {
-            const h = hierarchy && hierarchy !== dimName ? hierarchy : undefined
-            const update = zone => zone.map(d => d.dimension === dimName ? { ...d, hierarchy: h, subset: null, member: null, members: null, memberSet: null } : d)
+            const update = zone => zone.map(d => entryKey(d) === dimName
+                ? { ...d, hierarchy: hierarchy && hierarchy !== d.dimension ? hierarchy : undefined, subset: null, member: null, members: null, memberSet: null } : d)
             return { rows: update(prev.rows), columns: update(prev.columns), pages: update(prev.pages) }
         })
     }, [])
 
     const setMemberSet = useCallback((dimName, memberSet) => {
         setAxes(prev => {
-            const update = zone => zone.map(d => d.dimension === dimName ? { ...d, memberSet, subset: null, member: null, members: null } : d)
+            const update = zone => zone.map(d => entryKey(d) === dimName ? { ...d, memberSet, subset: null, member: null, members: null } : d)
             return { rows: update(prev.rows), columns: update(prev.columns), pages: update(prev.pages) }
         })
     }, [])
@@ -1569,7 +1587,7 @@ export default function ViewEditor({ tab }) {
     useEffect(() => { setDrills({}) }, [axes])
     const effAxes = useMemo(() => {
         if (!Object.keys(drills).length) return axes
-        const widen = (zone, list) => list.map(p => widenPlacement(p, drills[`${zone}|${p.dimension}`]))
+        const widen = (zone, list) => list.map(p => widenPlacement(p, drills[`${zone}|${entryKey(p)}`]))
         return { ...axes, rows: widen('rows', axes.rows), columns: widen('columns', axes.columns) }
     }, [axes, drills])
     const handleDrill = useCallback(({ axis, dimIdx, member, members, scope, count }) => {
@@ -1577,14 +1595,14 @@ export default function ViewEditor({ tab }) {
         const zone = axis === 'cols' ? 'columns' : 'rows'
         const p = axes[zone][dimIdx]; if (!p) return
         if (count > 2000 && !window.confirm(`This adds about ${count.toLocaleString()} ${zone === 'rows' ? 'rows' : 'columns'}. Continue?`)) return
-        const key = `${zone}|${p.dimension}`
+        const key = `${zone}|${entryKey(p)}`
         setDrills(prev => ({ ...prev, [key]: [...(prev[key] ?? []), { scope, member, members }] }))
         setDrillRun(n => n + 1)
     }, [mode, axes])
 
     const handleExecute = useCallback((opts = {}) => {
         const sz    = 'suppressZeros' in opts ? opts.suppressZeros : suppressZeros
-        const query = mode === 'mdx' ? mdx : buildMDX({ cube: tab.cube, ...effAxes, bench, suppressZeros: sz })
+        const query = mode === 'mdx' ? mdx : buildMDX({ cube: tab.cube, ...effAxes, bench: benchSlicers, suppressZeros: sz })
         if (!query.trim()) {
             toast.error('No MDX to execute')
             return
@@ -1602,7 +1620,7 @@ export default function ViewEditor({ tab }) {
                 onError:   e    => toast.error(e.message, { id }),
             }
         )
-    }, [mode, mdx, effAxes, suppressZeros, tab.server, tab.cube])
+    }, [mode, mdx, effAxes, benchSlicers, suppressZeros, tab.server, tab.cube])
 
     // run again once a drill step is in
     useEffect(() => { if (drillRun) handleExecute() }, [drillRun]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -1619,7 +1637,7 @@ export default function ViewEditor({ tab }) {
     const isFirstAxesRender = useRef(true)
     useEffect(() => {
         if (mode !== 'visual') return
-        setMdx(buildMDX({ cube: tab.cube, ...axes, bench, suppressZeros }))
+        setMdx(buildMDX({ cube: tab.cube, ...axes, bench: benchSlicers, suppressZeros }))
         setMdxDirty(false)
 
         // Auto-execute after axes settle (skip initial mount)
@@ -1659,7 +1677,7 @@ export default function ViewEditor({ tab }) {
         const drilled = Object.keys(drills).length > 0
         if (mode === 'visual' && (usesAltH || drilled)) {
             toast.info(drilled ? 'Saved as an MDX view, with what you opened' : 'This view uses an ALT H, so it is saved as an MDX view')
-            return { mdx: buildMDX({ cube: tab.cube, ...effAxes, bench, suppressZeros }) }
+            return { mdx: buildMDX({ cube: tab.cube, ...effAxes, bench: benchSlicers, suppressZeros }) }
         }
         if (mode === 'visual') {
             return { nativeAxes: {
@@ -1669,7 +1687,7 @@ export default function ViewEditor({ tab }) {
             } }
         }
         return { mdx: mdx }
-    }, [mode, mdx, axes, effAxes, drills, suppressZeros, bench, tab.cube])
+    }, [mode, mdx, axes, effAxes, drills, suppressZeros, benchSlicers, tab.cube])
 
     const executeSave = useCallback((name) => {
         if (isOriginallyNative && mode === 'mdx') {
@@ -1969,7 +1987,8 @@ export default function ViewEditor({ tab }) {
     }, [axes, hierarchyData, cubeDims, tab.cube, tab.server, showLog])
 
     const allDims = useMemo(() => [...axes.rows, ...axes.columns, ...axes.pages, ...bench], [axes, bench])
-    const activeDim = activeDrag ? allDims.find(d => d.dimension === activeDrag) : null
+    const usedKeys = useMemo(() => new Set([...axes.rows, ...axes.columns, ...axes.pages].map(entryKey)), [axes])
+    const activeDim = activeDrag ? allDims.find(d => entryKey(d) === activeDrag) : null
 
     const isLoadingView = loadViewAxes.isPending
     const isExecuting   = executeMDX.isPending
@@ -2042,7 +2061,7 @@ export default function ViewEditor({ tab }) {
                         <Eye size={10} /> Visual
                     </button>
                     <button onClick={() => {
-                        if (mode === 'visual') setMdx(buildMDX({ cube: tab.cube, ...axes, bench, suppressZeros }))
+                        if (mode === 'visual') setMdx(buildMDX({ cube: tab.cube, ...axes, bench: benchSlicers, suppressZeros }))
                         setMode('mdx')
                     }}
                         className={cn('flex items-center gap-1 px-2 py-0.5 text-[10px] rounded transition-colors',
@@ -2356,9 +2375,9 @@ export default function ViewEditor({ tab }) {
                     {!builderCollapsed && (
                         <DndContext sensors={sensors} onDragStart={({ active }) => setActiveDrag(active.id)} onDragEnd={handleDragEnd}>
                             <div className="px-3 py-2 grid grid-cols-4 gap-2">
-                                <DropZone id="rows"    label="Rows"    icon={Rows3}    dims={axes.rows}    server={tab.server} onRemove={removeDim} onSubsetChange={setSubset} onMemberChange={setMember} onMembersChange={setMembers} onMemberSetChange={setMemberSet} onHierarchyChange={setHierarchy} onReorder={(f,t) => reorderDim('rows',f,t)}    accent="text-muted-foreground" dimAliases={dimAliases} onAliasChange={handleAliasChange} onBuildSubset={handleBuildSubset} />
-                                <DropZone id="columns" label="Columns" icon={Columns3} dims={axes.columns} server={tab.server} onRemove={removeDim} onSubsetChange={setSubset} onMemberChange={setMember} onMembersChange={setMembers} onMemberSetChange={setMemberSet} onHierarchyChange={setHierarchy} onReorder={(f,t) => reorderDim('columns',f,t)} accent="text-muted-foreground" dimAliases={dimAliases} onAliasChange={handleAliasChange} onBuildSubset={handleBuildSubset} />
-                                <DropZone id="pages"   label="Filter"  icon={Filter}   dims={axes.pages}   server={tab.server} onRemove={removeDim} onSubsetChange={setSubset} onMemberChange={setMember} onMembersChange={setMembers} onHierarchyChange={setHierarchy} onReorder={(f,t) => reorderDim('pages',f,t)}   accent="text-muted-foreground" dimAliases={dimAliases} onAliasChange={handleAliasChange} onBuildSubset={handleBuildSubset} />
+                                <DropZone id="rows"    label="Rows"    icon={Rows3}    dims={axes.rows}    server={tab.server} onRemove={removeDim} onSubsetChange={setSubset} onMemberChange={setMember} onMembersChange={setMembers} onMemberSetChange={setMemberSet} onHierarchyChange={setHierarchy} usedKeys={usedKeys} onReorder={(f,t) => reorderDim('rows',f,t)}    accent="text-muted-foreground" dimAliases={dimAliases} onAliasChange={handleAliasChange} onBuildSubset={handleBuildSubset} />
+                                <DropZone id="columns" label="Columns" icon={Columns3} dims={axes.columns} server={tab.server} onRemove={removeDim} onSubsetChange={setSubset} onMemberChange={setMember} onMembersChange={setMembers} onMemberSetChange={setMemberSet} onHierarchyChange={setHierarchy} usedKeys={usedKeys} onReorder={(f,t) => reorderDim('columns',f,t)} accent="text-muted-foreground" dimAliases={dimAliases} onAliasChange={handleAliasChange} onBuildSubset={handleBuildSubset} />
+                                <DropZone id="pages"   label="Filter"  icon={Filter}   dims={axes.pages}   server={tab.server} onRemove={removeDim} onSubsetChange={setSubset} onMemberChange={setMember} onMembersChange={setMembers} onHierarchyChange={setHierarchy} usedKeys={usedKeys} onReorder={(f,t) => reorderDim('pages',f,t)}   accent="text-muted-foreground" dimAliases={dimAliases} onAliasChange={handleAliasChange} onBuildSubset={handleBuildSubset} />
                                 <DropZone id="bench"   label="Bench"   icon={LayoutGrid} dims={bench}      server={tab.server} onRemove={() => {}}  onSubsetChange={() => {}}  onMemberChange={() => {}}  onMembersChange={() => {}}  onReorder={() => {}}                           accent="text-muted-foreground" />
                             </div>
                             <DragOverlay>
@@ -2466,7 +2485,7 @@ export default function ViewEditor({ tab }) {
                             pivot={pivotData}
                             rowHierarchies={hierarchies}
                             colHierarchies={columnHierarchies}
-                            rowNames={rowDims}
+                            rowNames={axes.rows.map(entryKey)}
                             dark={dark}
                             totals={totalsPosition}
                             colTotals={colTotalsPosition}
