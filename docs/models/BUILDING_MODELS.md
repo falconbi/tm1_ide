@@ -33,7 +33,9 @@ next starts:
    gaps, not details for later. *Sign-off.*
 3. **Screens next.** One page per job from the workflow table (who does what, where). If a
    change in the table has no page, or a page has no change behind it, the design is wrong.
-   *Sign-off.*
+   Walk each page through with the business owner: who uses it, what they see, what they can do.
+   A page that can't be explained in one or two plain sentences, or two pages that overlap, mean
+   the model design is muddled — confusing WFP screens were how its flaws were found. *Sign-off.*
 4. **Model last,** built to serve those screens, following the technical rules below.
 5. **One design document per model, written before the build** and kept true afterwards — what
    the model is now, not a diary of how it got there. Example:
