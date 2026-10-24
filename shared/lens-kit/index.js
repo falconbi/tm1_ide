@@ -121,7 +121,9 @@ function trend(el, { categories = [], series = [], format: fmt = 'number', cost 
 
 // ── waterfall ─────────────────────────────────────────────────────────────────
 // steps: [{ label, value, total: true }, { label, value }, ..., { label, value, total: true }]
-function waterfall(el, { steps = [], format: fmt = 'number' } = {}) {
+// onClick(label, index) — click a step (e.g. to focus on that driver); selected: the label of the
+// step to stand out (the others fade)
+function waterfall(el, { steps = [], format: fmt = 'number', onClick, selected } = {}) {
   const t = theme.colors
   let run = 0
   const base = [], up = [], down = [], tot = []
@@ -131,7 +133,9 @@ function waterfall(el, { steps = [], format: fmt = 'number' } = {}) {
     else { run += s.value; base.push(run); up.push('-'); down.push(-s.value); tot.push('-') }
   })
   const lo = Math.min(0, ...steps.map((s, i) => base[i]))
-  return chart(el, {
+  const sel = selected == null ? -1 : steps.findIndex(s => s.label === selected)
+  const fade = arr => sel < 0 ? arr : arr.map((v, i) => v === '-' ? v : { value: v, itemStyle: { opacity: i === sel ? 1 : 0.3 } })
+  const c = chart(el, {
     animationDuration: 500,
     grid: { left: 60, right: 10, top: 14, bottom: 60 },
     tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' }, formatter: ps => { const i = ps[0].dataIndex, s = steps[i]; return esc(s.label) + ': ' + (s.total ? '' : (s.value >= 0 ? '+' : '')) + format(s.value, fmt) } },
@@ -139,11 +143,13 @@ function waterfall(el, { steps = [], format: fmt = 'number' } = {}) {
     yAxis: { type: 'value', min: lo < 0 ? undefined : 0, ...axisStyle(t), axisLabel: { color: t.faint, formatter: v => format(v, fmt) } },
     series: [
       { type: 'bar', stack: 'w', data: base, itemStyle: { color: 'transparent' }, emphasis: { disabled: true }, tooltip: { show: false } },
-      { type: 'bar', stack: 'w', data: tot, itemStyle: { color: t.ink, borderRadius: 3 } },
-      { type: 'bar', stack: 'w', data: up, itemStyle: { color: t.good, borderRadius: 3 } },
-      { type: 'bar', stack: 'w', data: down, itemStyle: { color: t.bad, borderRadius: 3 } },
+      { type: 'bar', stack: 'w', data: fade(tot), itemStyle: { color: t.ink, borderRadius: 3 } },
+      { type: 'bar', stack: 'w', data: fade(up), itemStyle: { color: t.good, borderRadius: 3 } },
+      { type: 'bar', stack: 'w', data: fade(down), itemStyle: { color: t.bad, borderRadius: 3 } },
     ],
   })
+  if (onClick && c && c.on) { c.on('click', p => { if (p.seriesIndex > 0) onClick(steps[p.dataIndex].label, p.dataIndex) }); const n = host(el); if (n) n.style.cursor = 'pointer' }
+  return c
 }
 
 // ── bars ──────────────────────────────────────────────────────────────────────
