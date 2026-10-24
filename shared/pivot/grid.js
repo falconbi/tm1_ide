@@ -395,9 +395,16 @@ export function createPivotGrid(host, opts = {}) {
     }
     function repaint() { if (api) api.refreshCells({ force: true }) }
     // rowData then a forced redraw: AG Grid keeps a row whose label is unchanged, with its old arrow and indent
-    function refreshRows() { api.setGridOption('rowData', rowData()); if (frozen) freeze(); repaint() }
+    function refreshRows() { applyRows(); repaint() }
     function refreshColumns() { api.setGridOption('columnDefs', columnDefs()); repaint() }
-    function freeze() { const rows = rowData(); api.setGridOption('pinnedTopRowData', frozen && rows.length ? [rows[0]] : null) }
+    // Freeze top moves the first row into the pinned area (not a copy); unfreezing puts it back.
+    // An empty list clears the pinned area — AG Grid ignores null and kept the old row.
+    function applyRows() {
+        const rows = rowData(), pin = frozen && rows.length > 0
+        api.setGridOption('pinnedTopRowData', pin ? [rows[0]] : [])
+        api.setGridOption('rowData', pin ? rows.slice(1) : rows)
+    }
+    const freeze = applyRows
 
     function build() {
         useHierarchies(o.rowHierarchies, o.colHierarchies)
@@ -448,8 +455,7 @@ export function createPivotGrid(host, opts = {}) {
             useHierarchies(o.rowHierarchies, o.colHierarchies)
             api.setGridOption('theme', themeFor())
             api.setGridOption('columnDefs', columnDefs())
-            api.setGridOption('rowData', rowData())
-            if (frozen) freeze()
+            applyRows()
             repaint()
         },
         // what is open, for a grid that replaces this one (opts.restore)
@@ -466,8 +472,7 @@ export function createPivotGrid(host, opts = {}) {
             if ('dark' in next) dark = !!next.dark
             api.setGridOption('theme', themeFor())
             api.setGridOption('columnDefs', columnDefs())
-            api.setGridOption('rowData', rowData())
-            if (frozen) freeze()
+            applyRows()
             repaint()
         },
         fitColumns() { api.autoSizeAllColumns() },
