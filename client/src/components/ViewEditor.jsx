@@ -1486,8 +1486,17 @@ export default function ViewEditor({ tab }) {
             toZone = overId
         }
 
-        const existing = [...axes.rows, ...axes.columns, ...axes.pages, ...bench]
+        let existing = [...axes.rows, ...axes.columns, ...axes.pages, ...bench]
             .find(d => entryKey(d) === dimName) ?? { dimension: dimName, subset: null, member: null }
+
+        // Moving to Filter with nothing chosen: keep the first member it was showing (a filter left on
+        // TM1's default member — e.g. a measure dimension's — leaves the grid blank)
+        if (toZone === 'pages' && !existing.member) {
+            const from = ['rows', 'columns'].find(z => axes[z].some(d => entryKey(d) === dimName))
+            const shown = from && result?.Axes?.[from === 'columns' ? 0 : 1]?.Tuples?.[0]?.Members?.[axes[from].findIndex(d => entryKey(d) === dimName)]?.Name
+            const first = existing.members?.[0] ?? shown
+            if (first) existing = { ...existing, member: first, members: null, subset: null, memberSet: null }
+        }
 
         if (toZone === 'bench') {
             // Preserve member/subset so it's remembered if moved back
