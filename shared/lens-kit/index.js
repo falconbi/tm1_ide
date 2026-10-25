@@ -158,15 +158,16 @@ function bars(el, { rows: data = [], format: fmt = 'number', cost = false, onCli
   const t = theme.colors
   const node = host(el)
   if (!node.style.height) node.style.height = Math.max(140, data.length * 38 + 30) + 'px'
+  const hasCompare = data.some(r => r.compare !== undefined)
   const c = chart(node, {
     animationDuration: 500,
-    grid: { left: 130, right: 70, top: 8, bottom: 20 },
-    tooltip: { trigger: 'item', formatter: p => { const r = data[p.dataIndex]; return esc(r.label) + ': ' + format(r.value, fmt) + (r.compare !== undefined ? ' · comparison ' + format(r.compare, fmt) : '') } },
+    grid: { left: 130, right: hasCompare ? 112 : 80, top: 8, bottom: 20 },
+    tooltip: { trigger: 'item', formatter: p => { const r = data[p.dataIndex]; return esc(r.label) + ': ' + format(r.value, fmt) + (r.compare !== undefined ? ' · comparison ' + format(r.compare, fmt) + ' (' + (r.value >= r.compare ? '+' : '') + format(r.value - r.compare, fmt) + ')' : '') } },
     xAxis: { type: 'value', ...axisStyle(t), axisLabel: { color: t.faint, formatter: v => format(v, fmt) } },
     yAxis: { type: 'category', inverse: true, data: data.map(r => r.label), ...axisStyle(t), axisLabel: { color: t.ink } },
     series: [
       { type: 'bar', barMaxWidth: 18, data: data.map(r => ({ value: r.value, itemStyle: { color: r.compare === undefined ? t.accent : (better(r.value, r.compare, { cost }) ? t.accent : t.bad), borderRadius: 3 } })),
-        label: { show: data.some(r => r.compare !== undefined), position: 'right', color: t.soft, formatter: p => { const r = data[p.dataIndex]; if (r.compare === undefined) return ''; const d = r.value - r.compare; return (d >= 0 ? '+' : '') + format(d, fmt) } } },
+        label: { show: true, position: 'right', distance: 4, color: t.soft, fontSize: 11, formatter: p => { const r = data[p.dataIndex]; return format(r.value, fmt) + (r.compare === undefined ? '' : ' (' + (r.value >= r.compare ? '+' : '') + format(r.value - r.compare, fmt) + ')') } } },
       { type: 'scatter', symbol: 'rect', symbolSize: [3, 24], data: data.map(r => r.compare === undefined ? null : r.compare), itemStyle: { color: t.compare }, tooltip: { show: false }, z: 3 },
     ],
   })
