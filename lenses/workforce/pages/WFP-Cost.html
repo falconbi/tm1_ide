@@ -101,7 +101,7 @@ table.t tr.tot td{font-weight:700;background:color-mix(in srgb,var(--rule) 40%,t
   <div id="infoModal" class="info-modal" hidden>
     <div class="info-card">
       <div class="info-head"><h3>Workforce cost</h3><button id="infoModalClose" type="button" title="Close">✕</button></div>
-      <div class="info-body"><p>Workforce cost by month, cost centre and pay component, against budget or the last forecast.</p><h4>Using it</h4><p>Click a cost-centre bar for its detail. Right-click a value for its story (why, who changed it, notes).</p></div>
+      <div class="info-body"><p>Workforce cost by month, cost centre and pay component, against budget or the last forecast.</p><h4>Using it</h4><p>Click a cost-centre bar for its detail; click a stacked component to focus the pay-component grid. Right-click a value for its story (why, who changed it, notes).</p></div>
     </div>
   </div>
 </div>
@@ -223,11 +223,12 @@ table.t tr.tot td{font-weight:700;background:color-mix(in srgb,var(--rule) 40%,t
   var striped = stripeState('wfp-cost')
   $('stripes').checked = striped
   $('stripes').onchange = function () { striped = this.checked; stripeSave('wfp-cost', striped); if (g) g.stripes(striped) }
-  var VERSION = C.version || 'Forecast', CURRENCY = C.currency || 'Reporting', YEARS = C.years || ['2026', '2027'], ENTITIES = C.entities || ['Group', 'UK Ltd', 'US Inc', 'NZ Ltd'], tile = 'all'
+  var VERSION = C.version || 'Forecast', CURRENCY = C.currency || 'Reporting', YEARS = C.years || ['2026', '2027'], ENTITIES = C.entities || ['Group', 'UK Ltd', 'US Inc', 'NZ Ltd'], tile = 'all', component = ''
   planMeta('when', VERSION)
   var TOTAL = 'Total Compensation', ALLCC = 'Total Cost Centre'
   var LINES = C.lines || ['Base', 'Employer Payroll Tax', 'Employer Pension', 'Benefits', 'Bonus', 'One-Time', TOTAL]
-  var ccs = [], cc = '', snap = ''
+  var STACK = LINES.filter(function (l) { return l !== TOTAL })   // the cost-to-company lines under Total Compensation
+  var ccs = [], cc = '', snap = '', renderGrid = null
   var where = function (extra) { return ' WHERE (' + [M('WFP Entity', $('entity').value), M('WFP Currency', CURRENCY), M('WFP Position', 'Total Positions')].concat(extra).join(',') + ')' }
 
   function load() {
@@ -241,7 +242,8 @@ table.t tr.tot td{font-weight:700;background:color-mix(in srgb,var(--rule) 40%,t
       call('SELECT ' + V + ' ON 0, {' + months.concat([FY]).map(function (p) { return M('WFP Period', p) }).join(',') + '} ON 1 FROM [WFP Workforce Cost]' + where([M('WFP Cost Centre', scope), M('WFP Pay Component', TOTAL), amt])),
       call('SELECT ' + V + ' ON 0, {' + list.map(function (c) { return M('WFP Cost Centre', c.id) }).join(',') + '} ON 1 FROM [WFP Workforce Cost]' + where([M('WFP Period', FY), M('WFP Pay Component', TOTAL), amt])),
       call('SELECT {' + [[VERSION, 'Amount'], [cmp, 'Amount'], [VERSION, 'Amount Capex'], [VERSION, 'Amount Opex']].map(function (x) { return '(' + M('WFP Version', x[0]) + ',' + M('WFP Workforce Cost Measure', x[1]) + ')' }).join(',') + '} ON 0, {' + LINES.map(function (l) { return M('WFP Pay Component', l) }).join(',') + '} ON 1 FROM [WFP Workforce Cost]' + where([M('WFP Period', FY), M('WFP Cost Centre', scope)])),
-      call('SELECT ' + V + ' ON 0, {' + M('WFP Period', FY) + '} ON 1 FROM [WFP Headcount] WHERE (' + [M('WFP Entity', $('entity').value), M('WFP Cost Centre', scope), M('WFP Position', 'Total Positions'), M('WFP Headcount Measure', 'FTE')].join(',') + ')')
+      call('SELECT ' + V + ' ON 0, {' + M('WFP Period', FY) + '} ON 1 FROM [WFP Headcount] WHERE (' + [M('WFP Entity', $('entity').value), M('WFP Cost Centre', scope), M('WFP Position', 'Total Positions'), M('WFP Headcount Measure', 'FTE')].join(',') + ')'),
+      call('SELECT ' + V + ' ON 0, {' + STACK.map(function (l) { return M('WFP Pay Component', l) }).join(',') + '} * {' + months.map(function (p) { return M('WFP Period', p) }).join(',') + '} ON 1 FROM [WFP Workforce Cost]' + where([M('WFP Cost Centre', scope), M('WFP Workforce Cost Measure', 'Amount')]))
     ]).then(function (r) {
       var byMonth = Lens.rows(r[0]), year = byMonth.pop(), fte = Lens.rows(r[3])[0] || {}
       var tot = num(year[VERSION]), totC = num(year[cmp]), fteAvg = num(fte[VERSION]) / 12, fteAvgC = num(fte[cmp]) / 12
@@ -253,26 +255,43 @@ table.t tr.tot td{font-weight:700;background:color-mix(in srgb,var(--rule) 40%,t
         { label: 'Average FTE', value: Math.round(fteAvg * 10) / 10, compare: Math.round(fteAvgC * 10) / 10 },
         { label: 'Cost per FTE', value: fteAvg ? tot / fteAvg : null, compare: fteAvgC ? totC / fteAvgC : null, cost: true, format: '£k' }
       ], { compareLabel: cmp })
-      paintTiles(['cost', 'bonus', 'capex', 'fte', 'costPerFte'], function () { load().catch(fail) })
-      Lens.trend('#trend', { categories: months.map(function (m) { return MON[Number(m.slice(5)) - 1] }), cost: true, format: '£m', series: [
-        { name: VERSION, values: byMonth.map(function (x) { return num(x[VERSION]) }) },
-        { name: cmp, values: byMonth.map(function (x) { return num(x[cmp]) }), compare: true }] })
+      paintTiles(['cost', 'bonus', 'capex', 'fte', 'costPerFte'], function () { component = ''; load().catch(fail) })
+      var stackMap = {}
+      Lens.rows(r[4]).forEach(function (x) { stackMap[x['WFP Pay Component'] + '|' + x['WFP Period']] = num(x[VERSION]) })
+      var focusLine = function (name) {
+        component = component === name ? '' : name
+        if (component) tile = 'all'
+        paintTiles(['cost', 'bonus', 'capex', 'fte', 'costPerFte'], function () { component = ''; load().catch(fail) })
+        if (renderGrid) renderGrid()
+      }
+      Lens.stack('#trend', {
+        categories: months.map(function (m) { return MON[Number(m.slice(5)) - 1] }),
+        series: STACK.map(function (l) { return { name: l, values: months.map(function (m) { return stackMap[l + '|' + m] || 0 }) } }),
+        compare: byMonth.map(function (x) { return num(x[cmp]) }),
+        format: '£m', cost: true, onClick: focusLine
+      })
       var names = {}; ccs.forEach(function (c) { names[c.id] = c.name })
       $('bars').style.height = ''   // re-size to this many cost centres; the card scrolls when they outrun the left column
       Lens.bars('#bars', { cost: true, format: '£m', rows: Lens.rows(r[1]).filter(function (x) { return num(x[VERSION]) || num(x[cmp]) }).map(function (x) { var id = x['WFP Cost Centre']; return { key: id, label: id + ' ' + (names[id] || ''), value: num(x[VERSION]), compare: num(x[cmp]) } }),
         onClick: function (k) { cc = k; load().catch(fail) } })
-      $('detailTitle').innerHTML = 'Pay components · ' + esc(cc ? cc + ' ' + (names[cc] || '') : fn || 'all cost centres') + (cc ? '<button class="chip" id="allcc">show all</button>' : '')
-      if ($('allcc')) $('allcc').onclick = function () { cc = ''; load().catch(fail) }
-      var k = function () { return { line: 'total', v: 'total', c: 'total', d: 'total', cap: 'total', opx: 'total' } }
-      var gridRows = det.map(function (d) {
-        var v = num(d[VERSION + ' / Amount']), c = num(d[cmp + ' / Amount'])
-        return { line: d['WFP Pay Component'], v: v, c: c, d: v - c, cap: num(d[VERSION + ' / Amount Capex']), opx: num(d[VERSION + ' / Amount Opex']), _kind: d['WFP Pay Component'] === TOTAL ? k() : {} }
-      })
-      if (tile === 'bonus') gridRows = gridRows.filter(function (r) { return r.line === 'Bonus' })
-      else if (tile === 'capex') gridRows = gridRows.filter(function (r) { return r.cap > 0 })
-      else if (tile === 'cost' || tile === 'fte') gridRows.sort(function (a, b) { return b.v - a.v })
-      else if (tile === 'costPerFte') gridRows.sort(function (a, b) { return Math.abs(b.d) - Math.abs(a.d) })
-      g = Lens.grid('#grid', { key: 'wfp-cost', stripes: striped,
+      renderGrid = function () {
+        var focus = component ? esc(component) : (cc ? esc(cc + ' ' + (names[cc] || '')) : esc(fn || 'all cost centres'))
+        $('detailTitle').innerHTML = 'Pay components · ' + focus +
+          (component ? ' <button class="chip" id="allpc">show all components</button>' : '') +
+          (cc ? '<button class="chip" id="allcc">show all</button>' : '')
+        if ($('allpc')) $('allpc').onclick = function () { component = ''; paintTiles(['cost', 'bonus', 'capex', 'fte', 'costPerFte'], function () { component = ''; load().catch(fail) }); renderGrid() }
+        if ($('allcc')) $('allcc').onclick = function () { cc = ''; component = ''; load().catch(fail) }
+        var k = function () { return { line: 'total', v: 'total', c: 'total', d: 'total', cap: 'total', opx: 'total' } }
+        var gridRows = det.map(function (d) {
+          var v = num(d[VERSION + ' / Amount']), c = num(d[cmp + ' / Amount'])
+          return { line: d['WFP Pay Component'], v: v, c: c, d: v - c, cap: num(d[VERSION + ' / Amount Capex']), opx: num(d[VERSION + ' / Amount Opex']), _kind: d['WFP Pay Component'] === TOTAL ? k() : {} }
+        })
+        if (component) gridRows = gridRows.filter(function (r) { return r.line === component })
+        else if (tile === 'bonus') gridRows = gridRows.filter(function (r) { return r.line === 'Bonus' })
+        else if (tile === 'capex') gridRows = gridRows.filter(function (r) { return r.cap > 0 })
+        else if (tile === 'cost' || tile === 'fte') gridRows.sort(function (a, b) { return b.v - a.v })
+        else if (tile === 'costPerFte') gridRows.sort(function (a, b) { return Math.abs(b.d) - Math.abs(a.d) })
+        g = Lens.grid('#grid', { key: 'wfp-cost', stripes: striped,
         columns: [
           { field: 'line', headerName: 'Pay component', pinned: 'left', minWidth: 180 },
           { field: 'v', headerName: VERSION, type: 'number', format: '£' },
@@ -290,6 +309,8 @@ table.t tr.tot td{font-weight:700;background:color-mix(in srgb,var(--rule) 40%,t
           return { cube: 'WFP Workforce Cost', coordinates: co }
         }
       })
+      }
+      renderGrid()
       say('Read at ' + new Date().toLocaleTimeString() + '. Only approved hires are in ' + VERSION + '.')
     })
   }

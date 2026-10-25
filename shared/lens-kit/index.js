@@ -119,6 +119,74 @@ function trend(el, { categories = [], series = [], format: fmt = 'number', cost 
   })
 }
 
+// ── stack ─────────────────────────────────────────────────────────────────────
+// One stacked bar per category: series are quiet shades of the theme accent.
+// Legend entries toggle a series; the optional compare array draws a line over
+// the stacks and, with cost: true, turns the top segment red where the total is
+// over. onClick(seriesName, 'bar' | 'legend') focuses the matching detail.
+const stackRgb = h => {
+  let x = String(h || '#000').replace('#', '')
+  if (x.length === 3) x = x.split('').map(c => c + c).join('')
+  const n = parseInt(x, 16)
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255]
+}
+const stackMix = (a, b, p) => '#' + stackRgb(a).map((v, i) => Math.round(v + (stackRgb(b)[i] - v) * p).toString(16).padStart(2, '0')).join('')
+const stackColors = (t, n) => Array.from({ length: n }, (_, i) => stackMix(t.accent, '#ffffff', n === 1 ? 0 : 0.08 + 0.62 * i / (n - 1)))
+
+function stack(el, { categories = [], series: data = [], compare = null, format: fmt = 'number', cost = false, onClick } = {}) {
+  const t = theme.colors
+  const cats = (categories || []).map(String)
+  const names = data.map(s => s.name)
+  const vals = data.map(s => cats.map((_, i) => { const v = (s.values || [])[i]; return v === null || v === undefined || v === '' ? 0 : Number(v) }))
+  const hasCompare = Array.isArray(compare) && compare.length > 0
+  const cmp = hasCompare ? cats.map((_, i) => { const v = compare[i]; return v === null || v === undefined || v === '' ? null : Number(v) }) : []
+  const colors = stackColors(t, data.length)
+  const selected = {}
+  const totalOf = i => data.reduce((sum, s, j) => selected[s.name] === false ? sum : sum + vals[j][i], 0)
+  const topOf = i => { let top = -1; data.forEach((s, j) => { if (selected[s.name] !== false && vals[j][i] !== 0) top = j }); return top }
+  const bars = () => data.map((s, j) => ({ name: s.name, type: 'bar', stack: 'total', barMaxWidth: 42, emphasis: { focus: 'series' },
+    data: vals[j].map((v, i) => {
+      const top = topOf(i), over = hasCompare && cost && cmp[i] !== null && totalOf(i) > cmp[i]
+      return { value: v, itemStyle: { color: over && top === j ? t.bad : colors[j], borderRadius: top === j ? [3, 3, 0, 0] : 0 } }
+    }) }))
+  const compareSeries = hasCompare ? { name: 'Comparison', type: 'line', data: cmp, symbol: 'circle', symbolSize: 5, z: 8,
+    lineStyle: { width: 2, color: t.compare }, itemStyle: { color: t.compare }, emphasis: { disabled: true } } : null
+  const tooltip = {
+    trigger: 'axis', axisPointer: { type: 'shadow' }, confine: true,
+    formatter: ps => {
+      const first = ps && ps[0] || {}, i = first.dataIndex == null ? 0 : first.dataIndex
+      const parts = (ps || []).filter(p => p.seriesType === 'bar')
+      const total = parts.reduce((sum, p) => sum + (Number(p.value) || 0), 0)
+      let out = '<div style="font-weight:600;margin-bottom:4px">' + esc(cats[i]) + '</div>'
+      parts.forEach(p => { out += '<div style="display:flex;gap:10px;justify-content:space-between"><span>' + p.marker + esc(p.seriesName) + '</span><b style="font-variant-numeric:tabular-nums">' + format(p.value, fmt) + '</b></div>' })
+      out += '<div style="display:flex;gap:10px;justify-content:space-between;border-top:1px solid ' + t.rule + ';margin-top:4px;padding-top:4px"><span>Total</span><b style="font-variant-numeric:tabular-nums">' + format(total, fmt) + '</b></div>'
+      if (hasCompare && cmp[i] !== null) {
+        const d = total - cmp[i], ok = better(total, cmp[i], { cost })
+        out += '<div style="display:flex;gap:10px;justify-content:space-between;color:' + (ok ? t.good : t.bad) + '"><span>vs comparison</span><span style="font-variant-numeric:tabular-nums">' + format(cmp[i], fmt) + ' · ' + (d >= 0 ? '+' : '') + format(d, fmt) + '</span></div>'
+      }
+      return out
+    }
+  }
+  const c = chart(el, {
+    animationDuration: 500,
+    grid: { left: 62, right: 18, top: 38, bottom: 28 },
+    legend: { top: 0, left: 0, type: 'scroll', data: names, textStyle: { color: t.soft }, itemWidth: 10, itemHeight: 10 },
+    tooltip,
+    xAxis: { type: 'category', data: cats, ...axisStyle(t) },
+    yAxis: { type: 'value', ...axisStyle(t), axisLabel: { color: t.faint, formatter: v => format(v, fmt) } },
+    series: bars().concat(compareSeries ? [compareSeries] : []),
+  })
+  c.off('click'); c.off('legendselectchanged')
+  c.on('legendselectchanged', p => {
+    Object.assign(selected, p.selected || {})
+    c.setOption({ series: bars().concat(compareSeries ? [compareSeries] : []) })
+    if (onClick && p.name) onClick(p.name, 'legend')
+  })
+  if (onClick) c.on('click', p => { if (p.seriesType === 'bar') onClick(p.seriesName, 'bar') })
+  const node = host(el); if (onClick) node.style.cursor = 'pointer'
+  return c
+}
+
 // ── waterfall ─────────────────────────────────────────────────────────────────
 // steps: [{ label, value, total: true }, { label, value }, ..., { label, value, total: true }]
 // onClick(label, index) — click a step (e.g. to focus on that driver); selected: the label of the
@@ -1130,7 +1198,7 @@ function run(process, params) {
 }
 
 // _pivot: the shared pivot's building blocks (docs/lenses/PIVOT_PLAN.md) — internal until Lens.pivot
-const Lens = { _pivot: pivotKit, pivot, cellInfo, version: TOOLKIT_VERSION, components: COMPONENTS.slice(), rows, format, localTime, theme, kpis, trend, waterfall, bars, grid, flow, editing, live, history, historyPanel, legend, config, whoami, save, run, echarts }
+const Lens = { _pivot: pivotKit, pivot, cellInfo, version: TOOLKIT_VERSION, components: COMPONENTS.slice(), rows, format, localTime, theme, kpis, trend, stack, waterfall, bars, grid, flow, editing, live, history, historyPanel, legend, config, whoami, save, run, echarts }
 const missing = COMPONENTS.filter(n => typeof Lens[n] !== 'function')
 if (missing.length) throw new Error('Lens toolkit is missing: ' + missing.join(', '))
 

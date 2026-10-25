@@ -1,5 +1,5 @@
 {
-  "_about": "The Lens toolkit's building blocks (window.Lens, toolkit version 9). One entry per component — the AI reads this to choose and use them; a test checks it matches the toolkit exactly. Load the toolkit in a Lens with <script src=\"/lens-kit/lens-kit.js\"></script>. Data always comes from window.lensBridge.call('execMDX', { mdx }) and is turned into rows with Lens.rows(result).",
+  "_about": "The Lens toolkit's building blocks (window.Lens, toolkit version 12). One entry per component — the AI reads this to choose and use them; a test checks it matches the toolkit exactly. Load the toolkit in a Lens with <script src=\"/lens-kit/lens-kit.js\"></script>. Data always comes from window.lensBridge.call('execMDX', { mdx }) and is turned into rows with Lens.rows(result).",
   "helpers": {
     "Lens.rows(cellset)": "Turn an execMDX result into tidy rows: one object per row tuple with _label, _members, one property per row dimension (its member name), and one property per column labelled by its member names joined with ' / '. Missing cells are null. Each row also has _input: { [column label]: true when TM1 does not calculate that cell (it can be typed into) }.",
     "Lens.save(cube, cells)": "Write numbers to TM1 as the signed-in user. cells: [{ coordinates: { <every cube dimension>: element }, value, expect }] — expect is the value the screen showed (null counts as 0), so a cell changed by someone else since is caught. The Lens MUST declare the cube in its head: <meta name=\"lens-writes\" content=\"Cube Name\">. Resolves { written }; rejects with a plain reason and saves nothing (calculated cell, changed by someone else, no TM1 write access). Only numbers; at most 500 cells per save.",
@@ -48,6 +48,24 @@
       "Headcount over time"
     ],
     "example": "Lens.trend('#trend', { categories: ['Jan','Feb','Mar'], series: [{ name: 'Actual', values: [10,12,9] }, { name: 'Target', values: [11,11,11], compare: true }], format: 'k$' })"
+  },
+  "stack": {
+    "purpose": "A stacked bar per category — how a total splits into components (e.g. pay components by month) — with a comparison line over the stacks and the top segment red where the total is over.",
+    "call": "Lens.stack(element, { categories, series, compare, format, cost, onClick })",
+    "data": "categories: ['Jan', …]; series: [{ name, values: [n…] }] — one entry per component, in stack order (first at the bottom); compare: [n…] optional comparison total per category.",
+    "options": {
+      "format": "Number format for the axis, labels and tooltip.",
+      "compare": "Array of comparison totals, one per category; drawn as a line over the stacks.",
+      "cost": "true when lower is better — the top of a stack turns red where its total is over the comparison.",
+      "onClick": "function (seriesName, 'bar' | 'legend') — focus the matching detail; legend entries also toggle the series."
+    },
+    "interactions": "Hover shows every component, the total and the comparison; click a legend entry to toggle a component (and focus it); click a bar segment to focus that component.",
+    "goodFor": [
+      "Cost split by pay component over time",
+      "Revenue or headcount mix by month",
+      "Any total against a comparison"
+    ],
+    "example": "Lens.stack('#month', { categories: ['Jan','Feb'], series: [{ name: 'Base', values: [100, 110] }, { name: 'Tax', values: [12, 14] }], compare: [100, 130], format: '£k', cost: true, onClick: n => focusLine(n) })"
   },
   "waterfall": {
     "purpose": "A bridge from one total to another, step by step — what moved the result.",
