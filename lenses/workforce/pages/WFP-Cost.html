@@ -22,7 +22,12 @@ button:disabled{opacity:.45;cursor:default}
 .card{background:var(--panel);border:1px solid var(--rule);border-radius:10px;padding:12px;min-width:0}
 .two{display:grid;grid-template-columns:minmax(0,3fr) minmax(0,2fr);gap:12px}
 .halves{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px}
-@media (max-width:860px){.two,.halves{grid-template-columns:1fr}}
+.split{display:grid;grid-template-columns:minmax(0,3fr) minmax(0,2fr);gap:12px;align-items:stretch}
+.stack{display:flex;flex-direction:column;gap:12px;min-width:0}
+.side{position:relative;min-height:320px;display:flex;flex-direction:column}
+.side-body{position:relative;flex:1;min-height:0}
+.side-scroll{position:absolute;inset:0;overflow-y:auto;overflow-x:hidden}
+@media (max-width:860px){.two,.halves,.split{grid-template-columns:1fr}.side-scroll{position:static}}
 .bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px}
 .status{font-size:13px;color:var(--faint)}
 .status.ok{color:var(--good)} .status.err{color:var(--bad)} .status.busy{color:var(--faint)}
@@ -85,11 +90,13 @@ table.t tr.tot td{font-weight:700;background:color-mix(in srgb,var(--rule) 40%,t
     </div>
   </header>
   <div id="kpis"></div>
-  <div class="two">
-    <div class="card"><h2>By month <span class="sub">— red where over</span></h2><div id="trend" style="height:280px"></div></div>
-    <div class="card"><h2>By cost centre <span class="sub">— click one for its detail</span></h2><div id="bars"></div></div>
+  <div class="split">
+    <div class="stack">
+      <div class="card"><h2>By month <span class="sub">— red where over</span></h2><div id="trend" style="height:280px"></div></div>
+      <div class="card"><h2 id="detailTitle">Pay components</h2><div id="grid"></div></div>
+    </div>
+    <div class="card side"><h2>By cost centre <span class="sub">— click one for its detail</span></h2><div class="side-body"><div class="side-scroll"><div id="bars"></div></div></div></div>
   </div>
-  <div class="card"><h2 id="detailTitle">Pay components</h2><div id="grid"></div></div>
   <div id="status" class="status"></div>
   <div id="infoModal" class="info-modal" hidden>
     <div class="info-card">
@@ -251,6 +258,7 @@ table.t tr.tot td{font-weight:700;background:color-mix(in srgb,var(--rule) 40%,t
         { name: VERSION, values: byMonth.map(function (x) { return num(x[VERSION]) }) },
         { name: cmp, values: byMonth.map(function (x) { return num(x[cmp]) }), compare: true }] })
       var names = {}; ccs.forEach(function (c) { names[c.id] = c.name })
+      $('bars').style.height = ''   // re-size to this many cost centres; the card scrolls when they outrun the left column
       Lens.bars('#bars', { cost: true, format: '£m', rows: Lens.rows(r[1]).filter(function (x) { return num(x[VERSION]) || num(x[cmp]) }).map(function (x) { var id = x['WFP Cost Centre']; return { key: id, label: id + ' ' + (names[id] || ''), value: num(x[VERSION]), compare: num(x[cmp]) } }),
         onClick: function (k) { cc = k; load().catch(fail) } })
       $('detailTitle').innerHTML = 'Pay components · ' + esc(cc ? cc + ' ' + (names[cc] || '') : fn || 'all cost centres') + (cc ? '<button class="chip" id="allcc">show all</button>' : '')
