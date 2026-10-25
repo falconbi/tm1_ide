@@ -3,8 +3,7 @@
 <head>
 <meta charset="utf-8">
 <title>Hiring plan</title>
-<meta name="lens-writes" content="WFP Hiring Plan">
-<meta name="lens-runs" content="WFP Approve Hire, WFP Create TBH Position, WFP Cancel TBH Position, WFP Request Recalculation">
+<meta name="lens-runs" content="WFP Set Hire Month, WFP Approve Hire, WFP Create TBH Position, WFP Cancel TBH Position, WFP Request Recalculation">
 <style>
 :root{--bg:var(--lens-bg,#f6f7f7);--ink:var(--lens-ink,#16201f);--faint:var(--lens-faint,#85908f);--rule:var(--lens-rule,#dfe4e3);--panel:var(--lens-panel,#fff);--accent:var(--lens-accent,#0f766e);--bad:var(--lens-bad,#b4372d);--good:var(--lens-good,#1d7a46);--warn:#b7791f}
 body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}
@@ -207,7 +206,7 @@ table.t tr.tot td{font-weight:700;background:color-mix(in srgb,var(--rule) 40%,t
   var striped = stripeState('wfp-hiring-plan')
   $('stripes').checked = striped
   $('stripes').onchange = function () { striped = this.checked; stripeSave('wfp-hiring-plan', striped); if (g) g.stripes(striped) }
-  var VERSION = C.version || 'Forecast', APPROVERS = C.approvers || ['WFP Finance']
+  var VERSION = (C.versions && C.versions[0]) || 'Forecast', APPROVERS = C.approvers || ['WFP Finance']
   planMeta('when', VERSION)
   var CUBE = 'WFP Hiring Plan', MD = 'WFP Hiring Plan Measure', PD = 'WFP Position'
   var A = 'WFP Assignment', MAP = 'WFP Position Map'
@@ -326,11 +325,19 @@ table.t tr.tot td{font-weight:700;background:color-mix(in srgb,var(--rule) 40%,t
   function save() {
     var ch = g.changes(); if (!ch.length) return
     $('save').disabled = $('undo').disabled = true; say('Saving…', 'busy')
-    Lens.save(CUBE, ch.map(function (c) {
-      var co = {}; co['WFP Version'] = VERSION; co[PD] = c.row.Position; co[MD] = 'Hire Month'
-      return { coordinates: co, value: c.value ? P.idx[byName[c.value]] : 0, expect: c.old ? P.idx[byName[c.old]] : 0 }
-    })).then(function (r) { g.saved(); if (tg) tg.send('saved', { count: r.written }); Lens.run('WFP Request Recalculation', { pVersion: VERSION }).catch(function () {}); return load().then(function () { say('Saved — new hires now wait for Finance.', 'ok') }) })
-      .catch(function (e) { $('save').disabled = $('undo').disabled = false; say('Not saved: ' + (e && e.message ? e.message : e), 'err') })
+    var i = 0
+    function next() {
+      if (i >= ch.length) return done()
+      var c = ch[i++]
+      return Lens.run('WFP Set Hire Month', { pVersion: VERSION, pPosition: c.row.Position, pMonth: c.value ? byName[c.value] : '' })
+        .then(next, function (e) { g.undo(); return load().then(function () { say('Not saved: ' + (e && e.message ? e.message : e), 'err') }) })
+    }
+    function done() {
+      g.saved(); if (tg) tg.send('saved', { count: ch.length })
+      Lens.run('WFP Request Recalculation', { pVersion: VERSION }).catch(function () {})
+      return load().then(function () { say('Saved — new hires now wait for Finance.', 'ok') })
+    }
+    next()
   }
   function act(action) {
     if (!sel) return
