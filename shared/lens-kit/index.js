@@ -154,17 +154,22 @@ function waterfall(el, { steps = [], format: fmt = 'number', onClick, selected }
 
 // ── bars ──────────────────────────────────────────────────────────────────────
 // rows: [{ key, label, value, compare }]; onClick(key) for drill-down
-function bars(el, { rows: data = [], format: fmt = 'number', cost = false, onClick } = {}) {
+// labels: 'above' (default) puts each name on its own line over its bar, so long names fit and bars
+// use the full width; 'side' keeps names in a left gutter (short names only).
+function bars(el, { rows: data = [], format: fmt = 'number', cost = false, onClick, labels = 'above' } = {}) {
   const t = theme.colors
   const node = host(el)
-  if (!node.style.height) node.style.height = Math.max(140, data.length * 38 + 30) + 'px'
+  const above = labels !== 'side'
+  if (!node.style.height) node.style.height = Math.max(140, data.length * (above ? 46 : 38) + 30) + 'px'
+  const labelWidth = Math.max(80, (node.clientWidth || 400) - 24)
   const hasCompare = data.some(r => r.compare !== undefined)
   const c = chart(node, {
     animationDuration: 500,
-    grid: { left: 130, right: hasCompare ? 112 : 80, top: 8, bottom: 20 },
+    grid: { left: above ? 8 : 130, right: hasCompare ? 112 : 80, top: above ? 18 : 8, bottom: 20 },
     tooltip: { trigger: 'item', formatter: p => { const r = data[p.dataIndex]; return esc(r.label) + ': ' + format(r.value, fmt) + (r.compare !== undefined ? ' · comparison ' + format(r.compare, fmt) + ' (' + (r.value >= r.compare ? '+' : '') + format(r.value - r.compare, fmt) + ')' : '') } },
     xAxis: { type: 'value', ...axisStyle(t), axisLabel: { color: t.faint, formatter: v => format(v, fmt) } },
-    yAxis: { type: 'category', inverse: true, data: data.map(r => r.label), ...axisStyle(t), axisLabel: { color: t.ink } },
+    yAxis: { type: 'category', inverse: true, data: data.map(r => r.label), ...axisStyle(t),
+      axisLabel: above ? { color: t.ink, inside: true, align: 'left', verticalAlign: 'bottom', padding: [0, 0, 13, 0], width: labelWidth, overflow: 'truncate', fontSize: 12 } : { color: t.ink } },
     series: [
       { type: 'bar', barMaxWidth: 18, data: data.map(r => ({ value: r.value, itemStyle: { color: r.compare === undefined ? t.accent : (better(r.value, r.compare, { cost }) ? t.accent : t.bad), borderRadius: 3 } })),
         label: { show: true, position: 'right', distance: 4, color: t.soft, fontSize: 11, formatter: p => { const r = data[p.dataIndex]; return format(r.value, fmt) + (r.compare === undefined ? '' : ' (' + (r.value >= r.compare ? '+' : '') + format(r.value - r.compare, fmt) + ')') } } },
