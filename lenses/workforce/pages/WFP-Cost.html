@@ -112,6 +112,21 @@ table.t tr.tot td{font-weight:700;background:color-mix(in srgb,var(--rule) 40%,t
   var opt = function (list, sel) { return list.map(function (x) { var v = typeof x === 'object' ? x.value : x, l = typeof x === 'object' ? x.label : x; return '<option value="' + esc(v) + '"' + (v === sel ? ' selected' : '') + '>' + esc(l) + '</option>' }).join('') }
   var say = function (t, k) { var s = $('status'); if (s) { s.textContent = t || ''; s.className = 'status ' + (k || '') } }
   var fail = function (e) { say(e && e.message ? e.message : String(e), 'err') }
+  function paintTiles(keys, pick) {
+    var host = $('kpis'); if (!host) return
+    Array.prototype.forEach.call(host.children, function (el, i) {
+      var k = keys[i]; if (!k) return
+      var on = tile === k
+      el.setAttribute('data-tile', k); el.setAttribute('role', 'button'); el.tabIndex = 0
+      el.style.cursor = 'pointer'; el.style.transition = 'border-color .12s'
+      el.style.borderColor = on ? 'var(--accent)' : ''
+      el.style.boxShadow = on ? 'inset 0 0 0 1.5px var(--accent)' : ''
+      var go = function () { tile = tile === k ? 'all' : k; paintTiles(keys, pick); pick() }
+      el.onclick = go
+      el.onkeydown = function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go() } }
+    })
+  }
+
   var num = function (v) { return v == null || v === '' ? 0 : Number(v) }
   var gbp = function (v) { return Lens.format(v, Math.abs(v) >= 1e6 ? '£m' : Math.abs(v) >= 1e4 ? '£k' : '£') }
   var signed = function (v, f) { return (v > 0 ? '+' : v < 0 ? '−' : '') + (f || gbp)(Math.abs(v)) }
@@ -201,7 +216,7 @@ table.t tr.tot td{font-weight:700;background:color-mix(in srgb,var(--rule) 40%,t
   var striped = stripeState('wfp-cost')
   $('stripes').checked = striped
   $('stripes').onchange = function () { striped = this.checked; stripeSave('wfp-cost', striped); if (g) g.stripes(striped) }
-  var VERSION = C.version || 'Forecast', CURRENCY = C.currency || 'Reporting', YEARS = C.years || ['2026', '2027'], ENTITIES = C.entities || ['Group', 'UK Ltd', 'US Inc', 'NZ Ltd']
+  var VERSION = C.version || 'Forecast', CURRENCY = C.currency || 'Reporting', YEARS = C.years || ['2026', '2027'], ENTITIES = C.entities || ['Group', 'UK Ltd', 'US Inc', 'NZ Ltd'], tile = 'all'
   planMeta('when', VERSION)
   var TOTAL = 'Total Compensation', ALLCC = 'Total Cost Centre'
   var LINES = C.lines || ['Base', 'Employer Payroll Tax', 'Employer Pension', 'Benefits', 'Bonus', 'One-Time', TOTAL]
@@ -231,6 +246,7 @@ table.t tr.tot td{font-weight:700;background:color-mix(in srgb,var(--rule) 40%,t
         { label: 'Average FTE', value: Math.round(fteAvg * 10) / 10, compare: Math.round(fteAvgC * 10) / 10 },
         { label: 'Cost per FTE', value: fteAvg ? tot / fteAvg : null, compare: fteAvgC ? totC / fteAvgC : null, cost: true, format: '£k' }
       ], { compareLabel: cmp })
+      paintTiles(['cost', 'bonus', 'capex', 'fte', 'costPerFte'], function () { load().catch(fail) })
       Lens.trend('#trend', { categories: months.map(function (m) { return MON[Number(m.slice(5)) - 1] }), cost: true, format: '£m', series: [
         { name: VERSION, values: byMonth.map(function (x) { return num(x[VERSION]) }) },
         { name: cmp, values: byMonth.map(function (x) { return num(x[cmp]) }), compare: true }] })
@@ -240,6 +256,14 @@ table.t tr.tot td{font-weight:700;background:color-mix(in srgb,var(--rule) 40%,t
       $('detailTitle').innerHTML = 'Pay components · ' + esc(cc ? cc + ' ' + (names[cc] || '') : fn || 'all cost centres') + (cc ? '<button class="chip" id="allcc">show all</button>' : '')
       if ($('allcc')) $('allcc').onclick = function () { cc = ''; load().catch(fail) }
       var k = function () { return { line: 'total', v: 'total', c: 'total', d: 'total', cap: 'total', opx: 'total' } }
+      var gridRows = det.map(function (d) {
+        var v = num(d[VERSION + ' / Amount']), c = num(d[cmp + ' / Amount'])
+        return { line: d['WFP Pay Component'], v: v, c: c, d: v - c, cap: num(d[VERSION + ' / Amount Capex']), opx: num(d[VERSION + ' / Amount Opex']), _kind: d['WFP Pay Component'] === TOTAL ? k() : {} }
+      })
+      if (tile === 'bonus') gridRows = gridRows.filter(function (r) { return r.line === 'Bonus' })
+      else if (tile === 'capex') gridRows = gridRows.filter(function (r) { return r.cap > 0 })
+      else if (tile === 'cost' || tile === 'fte') gridRows.sort(function (a, b) { return b.v - a.v })
+      else if (tile === 'costPerFte') gridRows.sort(function (a, b) { return Math.abs(b.d) - Math.abs(a.d) })
       g = Lens.grid('#grid', { key: 'wfp-cost', stripes: striped,
         columns: [
           { field: 'line', headerName: 'Pay component', pinned: 'left', minWidth: 180 },
@@ -249,10 +273,7 @@ table.t tr.tot td{font-weight:700;background:color-mix(in srgb,var(--rule) 40%,t
           { field: 'cap', headerName: 'Capex', type: 'number', format: '£' },
           { field: 'opx', headerName: 'Opex', type: 'number', format: '£' }
         ],
-        rows: det.map(function (d) {
-          var v = num(d[VERSION + ' / Amount']), c = num(d[cmp + ' / Amount'])
-          return { line: d['WFP Pay Component'], v: v, c: c, d: v - c, cap: num(d[VERSION + ' / Amount Capex']), opx: num(d[VERSION + ' / Amount Opex']), _kind: d['WFP Pay Component'] === TOTAL ? k() : {} }
-        }),
+        rows: gridRows,
         cellMenu: function (row, field) {
           var meas = field === 'cap' ? 'Amount Capex' : field === 'opx' ? 'Amount Opex' : (field === 'v' || field === 'c') ? 'Amount' : null
           if (!meas) return null

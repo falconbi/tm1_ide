@@ -199,10 +199,24 @@ table.t tr.tot td{font-weight:700;background:color-mix(in srgb,var(--rule) 40%,t
   infoPanel('info', 'infoModal')
   var VERSION = C.version || 'Forecast', BUDGET = C.budget || 'Budget', YEARS = C.years || ['2026', '2027']
   planMeta('when', VERSION)
-  var P = null, ccs = [], pos = [], snap = '', planMonths = [], cutoff = 15
+  var P = null, ccs = [], pos = [], snap = '', planMonths = [], cutoff = 15, tile = 'all'
   var A = 'WFP Assignment', PD = 'WFP Position', ED = 'WFP Employee'
   var WC = function (extra) { return ' FROM [WFP Workforce Cost] WHERE (' + [M('WFP Entity', 'Group'), M('WFP Currency', 'Reporting'), M('WFP Workforce Cost Measure', 'Amount')].concat(extra).join(',') + ')' }
 
+  function paintTiles(keys) {
+    var host = $('kpis'); if (!host) return
+    Array.prototype.forEach.call(host.children, function (el, i) {
+      var k = keys[i]; if (!k) return
+      var on = tile === k
+      el.setAttribute('data-tile', k); el.setAttribute('role', 'button'); el.tabIndex = 0
+      el.style.cursor = 'pointer'; el.style.transition = 'border-color .12s'
+      el.style.borderColor = on ? 'var(--accent)' : ''
+      el.style.boxShadow = on ? 'inset 0 0 0 1.5px var(--accent)' : ''
+      var go = function () { tile = tile === k ? 'all' : k; load().catch(fail) }
+      el.onclick = go
+      el.onkeydown = function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go() } }
+    })
+  }
   function load() {
     var cc = $('cc').value, yr = $('year').value, FY = 'FY' + yr, months = monthsOf(yr), c = ccs.filter(function (x) { return x.id === cc })[0] || {}
     var list = pos.filter(function (p) { return p.cc === cc })
@@ -231,13 +245,13 @@ table.t tr.tot td{font-weight:700;background:color-mix(in srgb,var(--rule) 40%,t
       var items = list.map(function (p) {
         var pl = plan[p.id] || {}, k = function (m, v) { return pl[m + ' / ' + v] }
         var h = num(k('Hire Month', VERSION)), hs = num(k('Hire Month', snap))
-        var notes = []
-        if (h) { var w = k('Approved', VERSION) !== 'Y'; if (w) waiting++; notes.push('<span class="pill ' + (w ? 'warn' : 'good') + '">' + (w ? 'waiting' : 'approved') + '</span> starts ' + monthName(P.month[h])) }
+        var notes = [], waitingHere = false
+        if (h) { var w = k('Approved', VERSION) !== 'Y'; if (w) { waiting++; waitingHere = true } notes.push('<span class="pill ' + (w ? 'warn' : 'good') + '">' + (w ? 'waiting' : 'approved') + '</span> starts ' + monthName(P.month[h])) }
         if (snap && h && hs && h !== hs) notes.push('moved from ' + monthName(P.month[hs]))
         if (leaver[p.id]) notes.push('leaves ' + monthName(P.month[leaver[p.id]]) + (snap && leaver[p.id] !== leaverSnap[p.id] ? ' <span class="pill bad">new since ' + esc(snap.slice(5)) + '</span>' : ''))
         if (p.end) notes.push('contract ends ' + monthName(p.end))
         var x = cost[p.id] || {}, f = num(x[VERSION]), b = num(x[BUDGET]), s = num(x[snap])
-        return { p: p, f: f, b: b, s: s, notes: notes.join(' · ') }
+        return { p: p, f: f, b: b, s: s, notes: notes.join(' · '), waiting: waitingHere, hire: h, leaver: leaver[p.id] }
       }).sort(function (a, b) { return Math.abs(b.f - b.b) - Math.abs(a.f - a.b) })
       var f = num(year[VERSION]), b = num(year[BUDGET]), s = num(year[snap])
       Lens.kpis('#kpis', [
@@ -247,12 +261,21 @@ table.t tr.tot td{font-weight:700;background:color-mix(in srgb,var(--rule) 40%,t
         { label: 'Joiners / leavers', value: hv(2, VERSION) - hv(3, VERSION), compare: hv(2, BUDGET) - hv(3, BUDGET), note: hv(2, VERSION) + ' joining, ' + hv(3, VERSION) + ' leaving' },
         { label: 'Hires waiting for Finance', value: waiting, note: waiting ? 'not in the numbers until approved' : 'none waiting' }
       ], { compareLabel: BUDGET })
+      paintTiles(['cost', 'hc', 'fte', 'joiners', 'waiting'])
       var series = [{ name: VERSION, values: byMonth.map(function (x) { return num(x[VERSION]) }) }, { name: BUDGET, values: byMonth.map(function (x) { return num(x[BUDGET]) }), compare: true }]
       if (snap) series.push({ name: snap, type: 'line', values: byMonth.map(function (x) { return num(x[snap]) }) })
       Lens.trend('#trend', { categories: months.map(function (m) { return MON[Number(m.slice(5)) - 1] }), series: series, cost: true, format: '£k' })
       $('trendNote').textContent = '— bars red where over budget'
+      var shown = items.filter(function (i) {
+        if (tile === 'cost') return i.f > i.b
+        if (tile === 'hc') return i.p.status === 'Filled'
+        if (tile === 'fte') return i.p.fte < 1
+        if (tile === 'joiners') return !!i.hire || !!i.leaver
+        if (tile === 'waiting') return i.waiting
+        return true
+      })
       $('tbl').innerHTML = '<thead><tr><th>Person / role</th><th>Status</th><th>Grade</th><th class="n">FTE</th><th class="n">' + esc(VERSION) + '</th><th class="n">' + esc(BUDGET) + '</th><th class="n">Over / under</th>' + (snap ? '<th class="n">vs last forecast</th>' : '') + '<th>Plan</th></tr></thead><tbody>' +
-        items.map(function (i) {
+        shown.map(function (i) {
           var d = i.f - i.b, ds = i.f - i.s
           return '<tr><td>' + esc(i.p.id) + (i.p.who ? ' · ' + esc(i.p.who) : '') + '</td><td>' + esc(i.p.status) + '</td><td>' + esc(i.p.grade) + '</td><td class="n">' + i.p.fte + '</td><td class="n">' + gbp(i.f) + '</td><td class="n">' + gbp(i.b) + '</td><td class="n ' + (d > 0 ? 'up' : d < 0 ? 'down' : '') + '">' + (d ? signed(d) : '—') + '</td>' + (snap ? '<td class="n ' + (ds > 0 ? 'up' : ds < 0 ? 'down' : '') + '">' + (ds ? signed(ds) : '—') + '</td>' : '') + '<td>' + i.notes + '</td></tr>'
         }).join('') +

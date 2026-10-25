@@ -47,6 +47,7 @@ button:disabled{opacity:.45;cursor:default}
     <div><h1>Assumptions</h1><div class="sub" id="sub"></div><div class="when" id="when"></div></div>
     <div class="controls"><div id="people" style="align-self:center"></div><span class="views" role="group" aria-label="View"><button type="button" data-view="month">By month</button><button type="button" data-view="compare">Pivot</button></span><label id="entityBox">Company<select id="entity"></select></label><label>Year<select id="year"></select></label></div>
   </header>
+  <div class="counts" id="counts"></div>
   <div class="card">
     <div class="bar">
       <button id="save" class="primary" disabled>Save</button>
@@ -113,7 +114,7 @@ button:disabled{opacity:.45;cursor:default}
   var ENTITIES = C.entities || ['UK Ltd', 'US Inc', 'NZ Ltd'], YEARS = C.years || ['2026', '2027']
   $('entity').innerHTML = ENTITIES.map(function (e) { return '<option>' + esc(e) + '</option>' }).join('')
   $('year').innerHTML = YEARS.map(function (y) { return '<option>' + esc(y) + '</option>' }).join('')
-  var canEdit = false, g = null, focus = null, months = [], measures = [], tg = null, hp = null
+  var canEdit = false, g = null, focus = null, months = [], measures = [], shownMeasures = [], tg = null, hp = null, tile = 'all'
   var isPct = function (m) { return /%$/.test(m) }
   var isIdx = function (m) { return /Index$/.test(m) }
   var MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
@@ -134,7 +135,21 @@ button:disabled{opacity:.45;cursor:default}
       var allMeasures = r.Axes[1].Tuples.map(function (t) { return t.Members[0].Name })
       var at = {}; allMeasures.forEach(function (m, i) { at[m] = i })
       measures = allMeasures.filter(function (m) { return !/^_/.test(m) })
-      var rows = measures.map(function (m) {
+      shownMeasures = measures.filter(function (m) { return tile === 'all' || (tile === 'rates' ? !isIdx(m) : isIdx(m)) })
+      $('counts').innerHTML = [
+        ['all', measures.length, 'Assumptions'],
+        ['rates', measures.filter(function (m) { return !isIdx(m) }).length, 'Rates'],
+        ['indices', measures.filter(isIdx).length, 'Indices']
+      ].map(function (x) { return '<button type="button" class="count' + (tile === x[0] ? ' on' : '') + '" data-tile="' + x[0] + '"><b>' + x[1] + '</b><span>' + x[2] + '</span></button>' }).join('')
+      if (!$('counts')._wired) {
+        $('counts')._wired = true
+        $('counts').addEventListener('click', function (e) {
+          var b = e.target.closest && e.target.closest('[data-tile]'); if (!b) return
+          var k = b.getAttribute('data-tile'); tile = tile === k ? 'all' : k
+          load().then(function () { return showView() }).catch(fail)
+        })
+      }
+      var rows = shownMeasures.map(function (m) {
         var row = { measure: m, _kind: {}, _base: {} }, bi = at[m], ei = at['_Effective ' + m]
         months.forEach(function (p, k) {
           // input = this month was set; else the value carried forward from the last input
@@ -196,7 +211,7 @@ button:disabled{opacity:.45;cursor:default}
     pvYear = yr
     pv = Lens.pivot('#pv', {
       cube: CUBE,
-      rows: [{ dimension: MD, members: measures.filter(function (m) { return !isIdx(m) }), label: 'Assumption' }],
+      rows: [{ dimension: MD, members: shownMeasures.filter(function (m) { return !isIdx(m) }), label: 'Assumption' }],
       columns: [{ dimension: 'WFP Entity', members: ENTITIES, label: 'Company' }],
       filters: [{ dimension: 'WFP Period', member: months[0], choices: months, label: 'Month' }, { dimension: 'WFP Version', member: VERSION, locked: true, label: 'Version' }],
       edit: canEdit, notes: true, formats: formats, key: 'wfp-assumptions-compare', stripes: striped,

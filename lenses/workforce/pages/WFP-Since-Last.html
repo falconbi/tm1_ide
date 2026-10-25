@@ -111,6 +111,21 @@ table.t tr.tot td{font-weight:700;background:color-mix(in srgb,var(--rule) 40%,t
   var opt = function (list, sel) { return list.map(function (x) { var v = typeof x === 'object' ? x.value : x, l = typeof x === 'object' ? x.label : x; return '<option value="' + esc(v) + '"' + (v === sel ? ' selected' : '') + '>' + esc(l) + '</option>' }).join('') }
   var say = function (t, k) { var s = $('status'); if (s) { s.textContent = t || ''; s.className = 'status ' + (k || '') } }
   var fail = function (e) { say(e && e.message ? e.message : String(e), 'err') }
+  function paintTiles(keys, pick) {
+    var host = $('kpis'); if (!host) return
+    Array.prototype.forEach.call(host.children, function (el, i) {
+      var k = keys[i]; if (!k) return
+      var on = tile === k
+      el.setAttribute('data-tile', k); el.setAttribute('role', 'button'); el.tabIndex = 0
+      el.style.cursor = 'pointer'; el.style.transition = 'border-color .12s'
+      el.style.borderColor = on ? 'var(--accent)' : ''
+      el.style.boxShadow = on ? 'inset 0 0 0 1.5px var(--accent)' : ''
+      var go = function () { tile = tile === k ? 'all' : k; paintTiles(keys, pick); pick() }
+      el.onclick = go
+      el.onkeydown = function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go() } }
+    })
+  }
+
   var num = function (v) { return v == null || v === '' ? 0 : Number(v) }
   var gbp = function (v) { return Lens.format(v, Math.abs(v) >= 1e6 ? '£m' : Math.abs(v) >= 1e4 ? '£k' : '£') }
   var signed = function (v, f) { return (v > 0 ? '+' : v < 0 ? '−' : '') + (f || gbp)(Math.abs(v)) }
@@ -198,7 +213,7 @@ table.t tr.tot td{font-weight:700;background:color-mix(in srgb,var(--rule) 40%,t
   infoPanel('info', 'infoModal')
   var VERSION = C.version || 'Forecast', YEARS = C.years || ['2026', '2027']
   planMeta('when', VERSION)
-  var P = null, snap = '', pos = {}, ccs = [], names = {}, items = [], planMonths = [], cutoff = 15
+  var P = null, snap = '', pos = {}, ccs = [], names = {}, items = [], planMonths = [], cutoff = 15, tile = 'all'
   var HP = 'WFP Hiring Plan Measure'
 
   function load() {
@@ -249,6 +264,7 @@ table.t tr.tot td{font-weight:700;background:color-mix(in srgb,var(--rule) 40%,t
           { label: 'Approved since', value: count('appr') },
           { label: 'Pay or FTE changes', value: count('pay') }
         ], { compareLabel: snap })
+        paintTiles(['cost', 'hc', 'slip', 'leave', 'appr', 'pay'], function () { render() })
         Lens.bars('#bars', { format: '£k', rows: cc.map(function (x) { var id = x['WFP Cost Centre']; return { key: id, label: id + ' ' + (names[id] || ''), value: num(x[VERSION]) - num(x[snap]) } }).filter(function (b) { return Math.abs(b.value) >= 500 }).sort(function (a, b) { return Math.abs(b.value) - Math.abs(a.value) }).slice(0, 15),
           onClick: function (k) { $('fn').value = ''; render(k) } })
         render()
@@ -258,7 +274,13 @@ table.t tr.tot td{font-weight:700;background:color-mix(in srgb,var(--rule) 40%,t
   }
   function render(onlyCc) {
     var k = $('kind').value, fn = $('fn').value
-    var list = items.filter(function (i) { return (!k || i.kinds[k]) && (!fn || i.fn === fn) && (!onlyCc || i.cc === onlyCc) }).sort(function (a, b) { return Math.abs(b.effect) - Math.abs(a.effect) })
+    var list = items.filter(function (i) {
+      if (tile === 'slip' && !i.kinds.slip) return false
+      if (tile === 'leave' && !i.kinds.leave) return false
+      if (tile === 'appr' && !i.kinds.appr) return false
+      if (tile === 'pay' && !i.kinds.pay) return false
+      return (!k || i.kinds[k]) && (!fn || i.fn === fn) && (!onlyCc || i.cc === onlyCc)
+    }).sort(function (a, b) { return tile === 'cost' ? b.effect - a.effect : Math.abs(b.effect) - Math.abs(a.effect) })
     $('tbl').innerHTML = '<thead><tr><th>Person / role</th><th>Cost centre</th><th>What changed</th><th class="n">Cost effect</th></tr></thead><tbody>' +
       (list.length ? list.map(function (i) { return '<tr><td>' + esc(i.id) + (i.who ? ' · ' + esc(i.who) : '') + '</td><td>' + esc(i.cc) + '</td><td>' + esc(i.notes.join('; ')) + '</td><td class="n ' + (i.effect > 0 ? 'up' : i.effect < 0 ? 'down' : '') + '">' + (Math.abs(i.effect) < 1 ? '—' : signed(i.effect)) + '</td></tr>' }).join('') : '<tr><td colspan="4" class="sub">No changes match.</td></tr>') +
       '<tr class="tot"><td>' + list.length + ' line' + (list.length === 1 ? '' : 's') + (onlyCc ? ' in ' + esc(onlyCc) : '') + '</td><td></td><td></td><td class="n">' + signed(list.reduce(function (s, i) { return s + i.effect }, 0)) + '</td></tr></tbody>'

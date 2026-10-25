@@ -114,6 +114,26 @@ table.t tr.tot td{font-weight:700;background:color-mix(in srgb,var(--rule) 40%,t
   var opt = function (list, sel) { return list.map(function (x) { var v = typeof x === 'object' ? x.value : x, l = typeof x === 'object' ? x.label : x; return '<option value="' + esc(v) + '"' + (v === sel ? ' selected' : '') + '>' + esc(l) + '</option>' }).join('') }
   var say = function (t, k) { var s = $('status'); if (s) { s.textContent = t || ''; s.className = 'status ' + (k || '') } }
   var fail = function (e) { say(e && e.message ? e.message : String(e), 'err') }
+  var KPI_KEYS = ['hc', 'fte', 'cost', 'costFte', 'attrition', 'joiners', 'approvals', 'capex']
+  function paintTiles() {
+    var host = $('kpis'); if (!host) return
+    Array.prototype.forEach.call(host.children, function (el, i) {
+      var k = KPI_KEYS[i]; if (!k) return
+      var on = tile === k
+      el.setAttribute('data-tile', k); el.setAttribute('role', 'button'); el.tabIndex = 0
+      el.style.cursor = 'pointer'; el.style.transition = 'border-color .12s'
+      el.style.borderColor = on ? 'var(--accent)' : ''
+      el.style.boxShadow = on ? 'inset 0 0 0 1.5px var(--accent)' : ''
+      var go = function () {
+        tile = tile === k ? 'all' : k; paintTiles()
+        var target = { hc: 'hc', fte: 'hc', cost: 'cost', costFte: 'cost', attrition: 'hc', joiners: 'hc', approvals: 'kpis', capex: 'cost' }[tile] || 'kpis'
+        var n = $(target); if (n && n.scrollIntoView) n.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      }
+      el.onclick = go
+      el.onkeydown = function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go() } }
+    })
+  }
+
   var num = function (v) { return v == null || v === '' ? 0 : Number(v) }
   var gbp = function (v) { return Lens.format(v, Math.abs(v) >= 1e6 ? '£m' : Math.abs(v) >= 1e4 ? '£k' : '£') }
   var signed = function (v, f) { return (v > 0 ? '+' : v < 0 ? '−' : '') + (f || gbp)(Math.abs(v)) }
@@ -199,7 +219,7 @@ table.t tr.tot td{font-weight:700;background:color-mix(in srgb,var(--rule) 40%,t
 
   var C = Lens.config()
   infoPanel('info', 'infoModal')
-  var VERSION = C.version || 'Forecast', YEARS = C.years || ['2026', '2027'], ENTITIES = C.entities || ['Group', 'UK Ltd', 'US Inc', 'NZ Ltd'], FNS = C.functions || ['R&D', 'S&M', 'G&A']
+  var VERSION = C.version || 'Forecast', YEARS = C.years || ['2026', '2027'], ENTITIES = C.entities || ['Group', 'UK Ltd', 'US Inc', 'NZ Ltd'], FNS = C.functions || ['R&D', 'S&M', 'G&A'], tile = 'all'
   planMeta('when', VERSION)
   var HM = function (m) { return M('WFP Headcount Measure', m) }
   var CM = function (m) { return M('WFP Workforce Cost Measure', m) }
@@ -237,6 +257,7 @@ table.t tr.tot td{font-weight:700;background:color-mix(in srgb,var(--rule) 40%,t
         { label: 'Planned hires approved', value: hires.length ? appr / hires.length : null, format: '%', note: appr + ' of ' + hires.length + ' — ' + (hires.length - appr) + ' waiting' },
         { label: 'Capitalised share of cost', value: cost ? cv(VERSION, 'Amount Capex') / cost : null, compare: costC ? cv(cmp, 'Amount Capex') / costC : null, format: '%' }
       ], { compareLabel: cmp })
+      paintTiles()
       var cat = months.map(function (m) { return MON[Number(m.slice(5)) - 1] })
       var hm = Lens.rows(r[2])
       Lens.trend('#hc', { categories: cat, series: [{ name: VERSION, type: 'line', values: hm.map(function (x) { return num(x[VERSION]) }) }, { name: cmp, type: 'line', values: hm.map(function (x) { return num(x[cmp]) }) }] })

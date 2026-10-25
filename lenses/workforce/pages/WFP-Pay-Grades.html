@@ -112,6 +112,21 @@ table.t tr.tot td{font-weight:700;background:color-mix(in srgb,var(--rule) 40%,t
   var opt = function (list, sel) { return list.map(function (x) { var v = typeof x === 'object' ? x.value : x, l = typeof x === 'object' ? x.label : x; return '<option value="' + esc(v) + '"' + (v === sel ? ' selected' : '') + '>' + esc(l) + '</option>' }).join('') }
   var say = function (t, k) { var s = $('status'); if (s) { s.textContent = t || ''; s.className = 'status ' + (k || '') } }
   var fail = function (e) { say(e && e.message ? e.message : String(e), 'err') }
+  function paintTiles(keys, pick) {
+    var host = $('kpis'); if (!host) return
+    Array.prototype.forEach.call(host.children, function (el, i) {
+      var k = keys[i]; if (!k) return
+      var on = tile === k
+      el.setAttribute('data-tile', k); el.setAttribute('role', 'button'); el.tabIndex = 0
+      el.style.cursor = 'pointer'; el.style.transition = 'border-color .12s'
+      el.style.borderColor = on ? 'var(--accent)' : ''
+      el.style.boxShadow = on ? 'inset 0 0 0 1.5px var(--accent)' : ''
+      var go = function () { tile = tile === k ? 'all' : k; paintTiles(keys, pick); pick() }
+      el.onclick = go
+      el.onkeydown = function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go() } }
+    })
+  }
+
   var num = function (v) { return v == null || v === '' ? 0 : Number(v) }
   var gbp = function (v) { return Lens.format(v, Math.abs(v) >= 1e6 ? '£m' : Math.abs(v) >= 1e4 ? '£k' : '£') }
   var signed = function (v, f) { return (v > 0 ? '+' : v < 0 ? '−' : '') + (f || gbp)(Math.abs(v)) }
@@ -197,7 +212,7 @@ table.t tr.tot td{font-weight:700;background:color-mix(in srgb,var(--rule) 40%,t
 
   var C = Lens.config()
   infoPanel('info', 'infoModal')
-  var VERSION = C.version || 'Forecast', ENTITIES = C.entities || ['Group', 'UK Ltd', 'US Inc', 'NZ Ltd']
+  var VERSION = C.version || 'Forecast', ENTITIES = C.entities || ['Group', 'UK Ltd', 'US Inc', 'NZ Ltd'], tile = 'all'
   planMeta('when', VERSION)
   var data = null, ccFn = {}
   var CUR = { GBP: '£', USD: '$', NZD: 'NZ$' }
@@ -237,8 +252,10 @@ table.t tr.tot td{font-weight:700;background:color-mix(in srgb,var(--rule) 40%,t
       { label: 'Part-time', value: ps.length ? ps.filter(function (p) { return p.fte < 1 }).length / ps.length : null, format: '%' },
       { label: 'Contractors', value: ps.length ? ps.filter(function (p) { return p.contractor }).length / ps.length : null, format: '%' }
     ])
+    paintTiles(['people', 'salary', 'compa', 'inBand', 'partTime', 'contractors'], function () { render() })
     var grades = Array.from(new Set(data.people.map(function (p) { return p.grade }))).sort()
-    Lens.bars('#grades', { rows: grades.map(function (g) { return { key: g, label: g, value: ps.filter(function (p) { return p.grade === g }).length } }) })
+    var barFilter = tile === 'partTime' ? function (p) { return p.fte < 1 } : tile === 'contractors' ? function (p) { return p.contractor } : function () { return true }
+    Lens.bars('#grades', { rows: grades.map(function (g) { return { key: g, label: g, value: ps.filter(function (p) { return p.grade === g && barFilter(p) }).length } }) })
     var share = function (f) { return ps.length ? Math.round(ps.filter(f).length / ps.length * 100) : 0 }
     var bar = function (parts) { return '<div class="dist">' + parts.map(function (x, i) { return '<i title="' + esc(x[0] + ' ' + x[1] + '%') + '" style="width:' + x[1] + '%;background:' + Lens.theme.colors.series[i % Lens.theme.colors.series.length] + '"></i>' }).join('') + '</div><div class="sub">' + parts.map(function (x) { return esc(x[0]) + ' ' + x[1] + '%' }).join(' · ') + '</div>' }
     var locs = Array.from(new Set(ps.map(function (p) { return p.loc }))).sort()
@@ -249,7 +266,15 @@ table.t tr.tot td{font-weight:700;background:color-mix(in srgb,var(--rule) 40%,t
       '<tr><td>Grade</td><td>' + bar(grades.map(function (g) { return [g, share(function (p) { return p.grade === g })] })) + '</td></tr></tbody></table>'
     // grade × location: salary in local currency against the band (bands are per job family, so ratios are per person)
     var keys = {}; ps.forEach(function (p) { var k = p.grade + '|' + p.loc; (keys[k] = keys[k] || []).push(p) })
-    var rows = Object.keys(keys).sort().map(function (k) {
+    var keyList = Object.keys(keys)
+    var outside = function (l) { return l.some(function (p) { return (p.band.min && p.sal < p.band.min) || (p.band.max && p.sal > p.band.max) }) }
+    var compa = function (l) { return avg(l.filter(function (p) { return p.band.mid }), function (p) { return p.sal / p.band.mid }) || 0 }
+    if (tile === 'inBand') keyList = keyList.filter(function (k) { return !outside(keys[k]) })
+    if (tile === 'people') keyList.sort(function (a, b) { return keys[b].length - keys[a].length })
+    else if (tile === 'salary') keyList.sort(function (a, b) { return avg(keys[b], function (p) { return p.sal }) - avg(keys[a], function (p) { return p.sal }) })
+    else if (tile === 'compa') keyList.sort(function (a, b) { return compa(keys[a]) - compa(keys[b]) })
+    else keyList.sort()
+    var rows = keyList.map(function (k) {
       var l = keys[k], p0 = l[0], cr = avg(l.filter(function (p) { return p.band.mid }), function (p) { return p.sal / p.band.mid })
       var lo = l.filter(function (p) { return p.band.min && p.sal < p.band.min }).length, hi = l.filter(function (p) { return p.band.max && p.sal > p.band.max }).length
       var c = CUR[p0.cur] || ''

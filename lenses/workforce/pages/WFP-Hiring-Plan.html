@@ -29,6 +29,9 @@ button:disabled{opacity:.45;cursor:default}
 .status.ok{color:var(--good)} .status.err{color:var(--bad)} .status.busy{color:var(--faint)}
 .note{font-size:12px;color:var(--faint);margin:8px 0 0}
 .counts{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px}
+button.count{font:inherit;color:inherit;text-align:left;cursor:pointer;transition:border-color .12s}
+button.count:hover{border-color:var(--accent)}
+button.count.on{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}
 .count{background:var(--panel);border:1px solid var(--rule);border-radius:10px;padding:8px 14px}
 .count b{display:block;font-size:22px;font-variant-numeric:tabular-nums}
 .count span{font-size:12px;color:var(--faint)}
@@ -77,6 +80,7 @@ table.t tr.tot td{font-weight:700;background:color-mix(in srgb,var(--rule) 40%,t
   <header>
     <div><h1>Hiring plan</h1><div class="sub" id="sub"></div><div class="when" id="when"></div></div>
     <div class="controls"><label style="display:flex;flex-direction:row;align-items:center;gap:6px;text-transform:none;letter-spacing:0;font-size:13px;color:var(--ink)"><input type="checkbox" id="stripes"> Stripes</label><div id="people" style="align-self:center"></div>
+      <label>Version<select id="ver"></select></label>
       <label>Cost centre<select id="cc"></select></label>
       <label>Show<select id="show"><option value="open">Open and leaving positions</option><option value="hire">Planned hires</option><option value="all">Every position</option></select></label>
     </div>
@@ -211,7 +215,7 @@ table.t tr.tot td{font-weight:700;background:color-mix(in srgb,var(--rule) 40%,t
   var CUBE = 'WFP Hiring Plan', MD = 'WFP Hiring Plan Measure', PD = 'WFP Position'
   var A = 'WFP Assignment', MAP = 'WFP Position Map'
   $('sub').textContent = VERSION + ' · when each empty position is filled'
-  var P = null, months = [], ccs = [], finance = false, g = null, sel = null, tg = null, hp = null, cutoff = 15, names = {}, byName = {}
+  var P = null, months = [], ccs = [], finance = false, g = null, sel = null, tg = null, hp = null, cutoff = 15, names = {}, byName = {}, tile = 'all'
 
   function load() {
     var cc = $('cc').value, show = $('show').value, first = months[0], last = months[months.length - 1]
@@ -266,12 +270,21 @@ table.t tr.tot td{font-weight:700;background:color-mix(in srgb,var(--rule) 40%,t
   function draw(Positions, show) {
     var n = function (f) { return Positions.filter(f).length }
     var hires = Positions.filter(function (s) { return s.hire }), appr = hires.filter(function (s) { return s.approved }).length
-    $('counts').innerHTML = [['', Positions.length, 'Positions'], ['good', n(function (s) { return s.status === 'Filled' }), 'filled now'],
-      ['warn', n(function (s) { return s.status === 'Vacant' && !s.hire }), 'vacant, no hire planned'], ['', n(function (s) { return s.leaves }), 'person leaving'],
-      ['', hires.length, 'planned hires'], ['good', appr, 'approved'], ['warn', hires.length - appr, 'waiting for Finance']]
-      .map(function (x) { return '<div class="count ' + x[0] + '"><b>' + x[1] + '</b><span>' + x[2] + '</span></div>' }).join('')
+    var cards = [['all', '', Positions.length, 'Positions'], ['filled', 'good', n(function (s) { return s.status === 'Filled' }), 'filled now'],
+      ['vacant', 'warn', n(function (s) { return s.status === 'Vacant' && !s.hire }), 'vacant, no hire planned'], ['leaving', '', n(function (s) { return s.leaves }), 'person leaving'],
+      ['planned', '', hires.length, 'planned hires'], ['approved', 'good', appr, 'approved'], ['waiting', 'warn', hires.length - appr, 'waiting for Finance']]
+    $('counts').innerHTML = cards.map(function (x) { return '<button type="button" class="count ' + x[1] + (tile === x[0] ? ' on' : '') + '" data-tile="' + x[0] + '"><b>' + x[2] + '</b><span>' + x[3] + '</span></button>' }).join('')
+    var byTile = function (s) {
+      if (tile === 'filled') return s.status === 'Filled'
+      if (tile === 'vacant') return s.status === 'Vacant' && !s.hire
+      if (tile === 'leaving') return !!s.leaves
+      if (tile === 'planned') return !!s.hire
+      if (tile === 'approved') return !!s.hire && s.approved
+      if (tile === 'waiting') return !!s.hire && !s.approved
+      return true
+    }
     var needs = function (s) { return s.seatFte > 0 && (s.status !== 'Filled' || s.leaves || s.hire) }
-    var rows = Positions.filter(function (s) { return show === 'all' || (show === 'hire' ? s.hire : needs(s)) }).map(function (s) {
+    var rows = Positions.filter(byTile).filter(function (s) { return show === 'all' || (show === 'hire' ? s.hire : needs(s)) }).map(function (s) {
       return { Position: s.id, status: s.status,
         person: s.people.map(function (p) { return names[p.emp] || p.emp }).join(' + '),
         leaves: s.leaves ? 'after ' + monthName(s.leaves) : '',
@@ -387,6 +400,10 @@ table.t tr.tot td{font-weight:700;background:color-mix(in srgb,var(--rule) 40%,t
   var showSel0 = showSel
   showSel = function () { showSel0(); $('newpos').hidden = !canAct; $('canceltbh').hidden = !canAct; $('canceltbh').disabled = !sel }
   $('cc').onchange = $('show').onchange = function () { load().catch(fail) }
+  $('counts').addEventListener('click', function (e) {
+    var b = e.target.closest && e.target.closest('[data-tile]'); if (!b) return
+    var k = b.getAttribute('data-tile'); tile = tile === k ? 'all' : k; load().catch(fail)
+  })
   hp = Lens.historyPanel('#historyBtn', { title: 'History', describe: function (e) {
     if (e.kind === 'write') return 'changed ' + (e.changes || []).map(function (x) { return x.coordinates[PD] + ' hire month → ' + (monthName(P && P.month[x.value]) || 'none') }).join(', ')
     var p = e.params || {}
@@ -402,6 +419,16 @@ table.t tr.tot td{font-weight:700;background:color-mix(in srgb,var(--rule) 40%,t
     return e.message || ('ran ' + e.process)
   } })
   tg = Lens.live('#people', { onEvent: function (ev) { if (ev.type === 'saved' && g && !g.changes().length) load().catch(fail) } })
+  $('ver').innerHTML = opt(C.versions || ['Forecast', 'Budget', 'Downside'], VERSION)
+  $('ver').onchange = function () {
+    VERSION = $('ver').value; planMeta('when', VERSION)
+    cutoffIndex(VERSION).then(function (c) {
+      cutoff = Number(c) || 0
+      months = Object.keys(P.idx).filter(function (m) { return P.idx[m] > cutoff }).sort()
+      byName = {}; months.forEach(function (m) { byName[monthName(m)] = m })
+      return load()
+    }).catch(fail)
+  }
   Promise.all([Lens.whoami(), periodIndex(), costCentres(), cutoffIndex(VERSION)]).then(function (r) {
     finance = Lens.whoami.inGroup(r[0], APPROVERS); P = r[1]; ccs = r[2]; cutoff = r[3] || 15
     canAct = Lens.whoami.inGroup(r[0], C.actors || ['WFP HR', 'WFP Finance'])
