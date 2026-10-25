@@ -1,0 +1,281 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Budget to forecast</title>
+<style>
+:root{--bg:var(--lens-bg,#f6f7f7);--ink:var(--lens-ink,#16201f);--faint:var(--lens-faint,#85908f);--rule:var(--lens-rule,#dfe4e3);--panel:var(--lens-panel,#fff);--accent:var(--lens-accent,#0f766e);--bad:var(--lens-bad,#b4372d);--good:var(--lens-good,#1d7a46);--warn:#b7791f}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}
+.wrap{padding:16px 18px 24px;display:grid;gap:12px;max-width:1700px;margin:0 auto}
+header{display:flex;flex-wrap:wrap;align-items:end;gap:12px 18px}
+h1{font-size:20px;margin:0}
+h2{font-size:12px;margin:0 0 8px;color:var(--faint);text-transform:uppercase;letter-spacing:.07em;font-weight:600}
+h2 .sub{text-transform:none;letter-spacing:0;font-weight:400}
+.sub{font-size:12.5px;color:var(--faint)}
+.controls{display:flex;gap:10px;margin-left:auto;align-items:end;flex-wrap:wrap}
+label{display:grid;gap:3px;font-size:11px;color:var(--faint);text-transform:uppercase;letter-spacing:.06em}
+select,button,input{font:inherit;font-size:13px;padding:5px 10px;border:1px solid var(--rule);border-radius:7px;background:var(--panel);color:var(--ink)}
+input[type=checkbox]{padding:0;width:15px;height:15px;accent-color:var(--accent)}
+button{cursor:pointer}
+button.primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+button:disabled{opacity:.45;cursor:default}
+.card{background:var(--panel);border:1px solid var(--rule);border-radius:10px;padding:12px;min-width:0}
+.two{display:grid;grid-template-columns:minmax(0,3fr) minmax(0,2fr);gap:12px}
+.halves{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px}
+@media (max-width:860px){.two,.halves{grid-template-columns:1fr}}
+.bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px}
+.status{font-size:13px;color:var(--faint)}
+.status.ok{color:var(--good)} .status.err{color:var(--bad)} .status.busy{color:var(--faint)}
+.note{font-size:12px;color:var(--faint);margin:8px 0 0}
+.counts{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px}
+.count{background:var(--panel);border:1px solid var(--rule);border-radius:10px;padding:8px 14px}
+.count b{display:block;font-size:22px;font-variant-numeric:tabular-nums}
+.count span{font-size:12px;color:var(--faint)}
+.count.good b{color:var(--good)} .count.warn b{color:var(--warn)} .count.bad b{color:var(--bad)}
+.scroll{overflow:auto;max-height:520px}
+table.t{border-collapse:collapse;width:100%;font-size:13px;font-variant-numeric:tabular-nums}
+table.t th{position:sticky;top:0;background:var(--panel);text-align:left;font-size:11px;color:var(--faint);text-transform:uppercase;letter-spacing:.05em;font-weight:600;padding:6px 8px;border-bottom:1px solid var(--rule);white-space:nowrap}
+table.t td{padding:6px 8px;border-bottom:1px solid var(--rule);white-space:nowrap}
+table.t td.n,table.t th.n{text-align:right}
+table.t tr.tot td{font-weight:700;background:color-mix(in srgb,var(--rule) 40%,transparent)}
+.pill{display:inline-block;font-size:11px;padding:1px 8px;border-radius:999px;border:1px solid var(--rule);color:var(--faint)}
+.pill.good{color:var(--good);border-color:currentColor} .pill.warn{color:var(--warn);border-color:currentColor} .pill.bad{color:var(--bad);border-color:currentColor}
+.up{color:var(--bad)} .down{color:var(--good)}
+
+/* quiet History icon — the Assumptions look, applied to every lens footer */
+#historyBtn button{background:transparent!important;border-color:transparent!important;font-size:0!important;padding:6px!important;line-height:0}
+#historyBtn button::before{content:"";display:inline-block;width:18px;height:18px;background:var(--faint);-webkit-mask:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22M3%2012a9%209%200%201%200%209-9%209.75%209.75%200%200%200-6.74%202.74L3%208%22/%3E%3Cpath%20d%3D%22M3%203v5h5%22/%3E%3Cpath%20d%3D%22M12%207v5l4%202%22/%3E%3C/svg%3E") center/contain no-repeat;mask:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22M3%2012a9%209%200%201%200%209-9%209.75%209.75%200%200%200-6.74%202.74L3%208%22/%3E%3Cpath%20d%3D%22M3%203v5h5%22/%3E%3Cpath%20d%3D%22M12%207v5l4%202%22/%3E%3C/svg%3E") center/contain no-repeat}
+#historyBtn button:hover::before{background:var(--ink)}
+
+/* Version / Plan month / Actuals — the same strip on every Lens */
+.when{display:flex;flex-wrap:wrap;gap:4px 18px;margin-top:4px}
+.when span{display:inline-flex;align-items:baseline;gap:6px}
+.when em{font-style:normal;font-size:10px;color:var(--faint);text-transform:uppercase;letter-spacing:.06em}
+.when b{font-size:13px;font-weight:600;font-variant-numeric:tabular-nums}
+
+/* Info panel — the ⓘ Info button opens a plain-English card */
+.info-modal{position:fixed;inset:0;background:rgba(10,20,18,.30);display:flex;align-items:flex-start;justify-content:center;padding:7vh 16px;z-index:60}
+.info-modal[hidden]{display:none}
+.info-card{background:var(--panel);border:1px solid var(--rule);border-radius:12px;max-width:660px;width:100%;padding:16px 18px;box-shadow:0 24px 60px rgba(0,0,0,.22);max-height:80vh;overflow:auto}
+.info-head{display:flex;align-items:center;gap:10px;margin-bottom:4px}
+.info-head h3{margin:0;font-size:16px}
+.info-head button{margin-left:auto;border:0;background:transparent;font-size:16px;line-height:1;color:var(--faint);cursor:pointer;padding:4px}
+.info-body{font-size:13px;line-height:1.55}
+.info-body h4{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--faint);margin:14px 0 4px}
+.info-body p{margin:0 0 6px}
+
+.chip{font-size:12px;border:1px solid var(--rule);border-radius:999px;padding:1px 9px;margin-left:6px;cursor:pointer;background:transparent;color:var(--ink)}
+/* Info — an icon beside History; the label shows on hover */
+#info{background:transparent!important;border-color:transparent!important;font-size:0!important;padding:6px!important;line-height:0;cursor:pointer;min-width:0}
+#info::before{content:"";display:inline-block;width:18px;height:18px;background:var(--faint,#8a8f98);-webkit-mask:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Ccircle%20cx%3D%2212%22%20cy%3D%2212%22%20r%3D%2210%22/%3E%3Cpath%20d%3D%22M12%2016v-4%22/%3E%3Cpath%20d%3D%22M12%208h.01%22/%3E%3C/svg%3E") center/contain no-repeat;mask:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Ccircle%20cx%3D%2212%22%20cy%3D%2212%22%20r%3D%2210%22/%3E%3Cpath%20d%3D%22M12%2016v-4%22/%3E%3Cpath%20d%3D%22M12%208h.01%22/%3E%3C/svg%3E") center/contain no-repeat}
+#info:hover::before{background:var(--ink,#1f2328)}
+.foot-icons{display:inline-flex;align-items:center;gap:0}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div><h1 id="title">Budget to forecast</h1><div class="sub" id="sub"></div><div class="when" id="when"></div></div>
+    <div class="controls"><button id="info" type="button" title="Info: what this page shows" aria-label="Info: what this page shows">Info</button>
+      <label>From<select id="cmp"></select></label>
+      <label>Company<select id="entity"></select></label>
+      <label>Year<select id="year"></select></label>
+      <button id="refresh" title="Read the latest numbers">↻ Refresh</button>
+    </div>
+  </header>
+  <div class="card"><h2 id="bridgeTitle">The bridge</h2><div id="waterfall" style="height:300px"></div><p class="note" id="explain"></p></div>
+  <div class="two">
+    <div class="card"><h2>By function <span class="sub">— click a row to bridge it</span></h2><div class="scroll"><table class="t" id="tbl"></table></div></div>
+    <div class="card"><h2 id="movesTitle">Biggest moves by cost centre <span class="sub">— click one to bridge it</span></h2><div id="bars"></div></div>
+  </div>
+  <div id="status" class="status"></div>
+  <div id="infoModal" class="info-modal" hidden>
+    <div class="info-card">
+      <div class="info-head"><h3>Budget to forecast</h3><button id="infoModalClose" type="button" title="Close">✕</button></div>
+      <div class="info-body"><p>Why forecast differs from budget: FX, people (FTE), pay rates and merit, and bonus, as a waterfall.</p><h4>Good to know</h4><p>Read-only. Choose the entity, year and comparison version at the top.</p></div>
+    </div>
+  </div>
+</div>
+<script src="/lens-kit/lens-kit.js"></script>
+<script>
+// Workforce · Budget to forecast — why the forecast differs from budget (or
+// from the last forecast), step by step:
+//   FX            — exchange rates (reporting currency vs at budget rates)
+//   People        — more or fewer FTE than budget (hiring timing, leavers), at budget cost per FTE
+//   Pay rates     — what is left of salary, tax, pension and benefits: merit, promotions, pay mix
+//   Bonus, One-off payments — straight from those pay lines
+// Everything but FX is measured at budget exchange rates, so the steps add up exactly.
+(function () {
+  // ── Workforce helpers (the same small block in every Workforce Lens) ──
+  var $ = function (id) { return document.getElementById(id) }
+  var esc = function (v) { return String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;') }
+  var M = function (d, e) { return '[' + d + '].[' + d + '].[' + String(e).replace(/]/g, ']]') + ']' }
+  // one MDX query; a result cut short by the 20,000-cell limit is an error, never partial numbers
+  var call = function (mdx) { return window.lensBridge.call('execMDX', { mdx: mdx }).then(function (r) { if (r && r.truncated) throw new Error('A query returned more than 20,000 cells and was cut short — narrow it.'); return r }) }
+  var opt = function (list, sel) { return list.map(function (x) { var v = typeof x === 'object' ? x.value : x, l = typeof x === 'object' ? x.label : x; return '<option value="' + esc(v) + '"' + (v === sel ? ' selected' : '') + '>' + esc(l) + '</option>' }).join('') }
+  var say = function (t, k) { var s = $('status'); if (s) { s.textContent = t || ''; s.className = 'status ' + (k || '') } }
+  var fail = function (e) { say(e && e.message ? e.message : String(e), 'err') }
+  var num = function (v) { return v == null || v === '' ? 0 : Number(v) }
+  var gbp = function (v) { return Lens.format(v, Math.abs(v) >= 1e6 ? '£m' : Math.abs(v) >= 1e4 ? '£k' : '£') }
+  var signed = function (v, f) { return (v > 0 ? '+' : v < 0 ? '−' : '') + (f || gbp)(Math.abs(v)) }
+  var monthsOf = function (yr) { var m = []; for (var i = 1; i <= 12; i++) m.push(yr + '-' + (i < 10 ? '0' : '') + i); return m }
+  var MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+  var monthName = function (p) { return p ? MON[Number(p.slice(5)) - 1] + ' ' + p.slice(0, 4) : '' }
+  var attrMDX = function (dim, attrs, set) { var A = '}ElementAttributes_' + dim; return 'SELECT {' + attrs.map(function (a) { return M(A, a) }).join(',') + '} ON 0, {' + (set || 'TM1FILTERBYLEVEL({TM1SUBSETALL([' + dim + '].[' + dim + '])},0)') + '} ON 1 FROM [' + A + ']' }
+  // cost centres with their function (R&D / S&M / G&A) and name, from the model
+  var costCentres = function () {
+    return call(attrMDX('WFP Cost Centre', ['Function', 'CC Name'])).then(function (r) {
+      var list = Lens.rows(r).map(function (x) { return { id: x['WFP Cost Centre'], fn: x.Function || '', name: x['CC Name'] || '' } })
+      var order = []; list.forEach(function (c) { if (order.indexOf(c.fn) < 0) order.push(c.fn) })   // functions in model order
+      return list.sort(function (a, b) { return order.indexOf(a.fn) - order.indexOf(b.fn) || a.id.localeCompare(b.id) })
+    })
+  }
+  var ccOptions = function (ccs, sel, all) {
+    var fns = Array.from(new Set(ccs.map(function (c) { return c.fn })))
+    return (all ? '<option value="">' + esc(all) + '</option>' : '') + fns.map(function (f) {
+      return '<optgroup label="' + esc(f) + '">' + ccs.filter(function (c) { return c.fn === f }).map(function (c) { return '<option value="' + esc(c.id) + '"' + (c.id === sel ? ' selected' : '') + '>' + esc(c.id + ' · ' + c.name) + '</option>' }).join('') + '</optgroup>'
+    }).join('')
+  }
+  // every position with the attributes asked for — in as many queries as the cell limit needs
+  var positions = function (attrs) {
+    return call('SELECT {} ON 0, {TM1FILTERBYLEVEL({TM1SUBSETALL([WFP Position].[WFP Position])},0)} ON 1 FROM [}ElementAttributes_WFP Position]').then(function (r) {
+      var n = r.Axes[1] ? r.Axes[1].Tuples.length : 0, per = Math.max(1, Math.floor(18000 / Math.max(n, 1))), groups = []
+      for (var i = 0; i < attrs.length; i += per) groups.push(attrs.slice(i, i + per))
+      return Promise.all(groups.map(function (g) { return call(attrMDX('WFP Position', g)) })).then(function (rs) {
+        var by = {}, out = []
+        rs.forEach(function (res) { Lens.rows(res).forEach(function (x) { var id = x['WFP Position']; if (!by[id]) { by[id] = { id: id }; out.push(by[id]) } Object.assign(by[id], x) }) })
+        return out
+      })
+    })
+  }
+  // period index <-> month name ('2026-04' = 16)
+  var periodIndex = function () {
+    return call('SELECT {[}ElementAttributes_WFP Period].[}ElementAttributes_WFP Period].[Period Index]} ON 0, {TM1FILTERBYLEVEL({TM1SUBSETALL([WFP Period].[WFP Period])},0)} ON 1 FROM [}ElementAttributes_WFP Period]').then(function (r) {
+      var to = {}, from = {}; Lens.rows(r).forEach(function (x) { var i = Number(x['Period Index']); if (i && /^\d{4}-\d{2}$/.test(x['WFP Period'])) { to[x['WFP Period']] = i; from[i] = x['WFP Period'] } }); return { idx: to, month: from }
+    })
+  }
+  // the latest forecast snapshot (a FCST yyyy-mm version under Non-Calculating) — none = ''
+  var lastSnapshot = function () {
+    return call('SELECT {} ON 0, {[WFP Version].[WFP Version].[Non-Calculating].Children} ON 1 FROM [WFP Headcount]').then(function (r) {
+      var s = (r.Axes[1] ? r.Axes[1].Tuples : []).map(function (t) { return t.Members[0].Name }).filter(function (n) { return /^FCST \d{4}-\d{2}$/.test(n) }).sort()
+      return s.length ? s[s.length - 1] : ''
+    }, function () { return '' })
+  }
+  // the month actuals run to (Actuals Cutoff Index in Forecast)
+  var cutoffIndex = function (version) {
+    return call('SELECT {' + M('WFP Assumptions Measure', 'Actuals Cutoff Index') + '} ON 0 FROM [WFP Assumptions] WHERE (' + M('WFP Period', '2026-01') + ',' + M('WFP Version', version || 'Forecast') + ',' + M('WFP Entity', 'UK Ltd') + ')').then(function (r) { return num((Lens.rows(r)[0] || {})['Actuals Cutoff Index']) })
+  }
+  // ────────────────────────────────────────────────────────────────────
+
+  // ── Stripes: every grid Lens has its own toggle, remembered per user ──
+  var stripeState = function (key) { try { var v = localStorage.getItem('lens-stripes:' + key); return v === null ? true : v === '1' } catch (e) { return true } }
+  var stripeSave = function (key, on) { try { localStorage.setItem('lens-stripes:' + key, on ? '1' : '0') } catch (e) {} }
+
+  // Version · Plan month (first forecast month = the month after the last Actual)
+  // · Actuals to. Rendered into every Lens header; follows the #ver selector.
+  var planMeta = function (el, fallbackVersion) {
+    var draw = function () {
+      var v = ($('ver') && $('ver').value) || fallbackVersion || 'Forecast'
+      return Promise.all([periodIndex(), cutoffIndex('Forecast')]).then(function (r) {
+        var P = r[0], cutoff = Number(r[1]) || 0
+        var pm = P.month[cutoff + 1] || '', am = P.month[cutoff] || ''
+        $(el).innerHTML = '<span><em>Version</em><b>' + esc(v) + '</b></span>' +
+          '<span><em>Plan month</em><b>' + esc(monthName(pm) || '—') + '</b></span>' +
+          '<span><em>Actuals to</em><b>' + esc(monthName(am) || '—') + '</b></span>'
+      }, function () {})
+    }
+    var sel = $('ver'); if (sel) sel.addEventListener('change', draw)
+    return draw()
+  }
+
+  // Info: the ⓘ Info button opens a plain-English card for the page.
+  var infoPanel = function (openId, modalId) {
+    var b = $(openId), m = $(modalId); if (!b || !m) return
+    var close = function () { m.hidden = true }
+    b.onclick = function () { m.hidden = false }
+    var x = $(modalId + 'Close'); if (x) x.onclick = close
+    m.addEventListener('click', function (e) { if (e.target === m) close() })
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape') close() })
+  }
+
+  var C = Lens.config()
+  infoPanel('info', 'infoModal')
+  var VERSION = C.version || 'Forecast', YEARS = C.years || ['2026', '2027'], ENTITIES = C.entities || ['Group', 'UK Ltd', 'US Inc', 'NZ Ltd']
+  planMeta('when', VERSION)
+  var ccs = [], names = {}, cc = ''
+  // what is in focus: one driver (a waterfall step) and/or one function (a table row) — click again to clear
+  var driver = '', fnSel = ''
+  var DRIVERS = { 'FX': 'fx', 'People (FTE)': 'people', 'Pay rates & merit': 'rate', 'Bonus': 'bonus', 'One-off payments': 'oneoff' }
+  var DLABEL = { fx: 'FX', people: 'People (FTE)', rate: 'Pay rates & merit', bonus: 'Bonus', oneoff: 'One-off payments' }
+  var PC = ['Cost to Company', 'Bonus', 'One-Time', 'Total Compensation'], CUR = ['Reporting', 'Reporting @ Budget FX']
+
+  // one scope's numbers → the bridge steps
+  function steps(get, getFte, cmp) {
+    var A = function (v, pc, cur) { return num(get(v, pc, cur)) }
+    var cS = A(cmp, 'Total Compensation', 'Reporting'), fS = A(VERSION, 'Total Compensation', 'Reporting')
+    var fx = (fS - A(VERSION, 'Total Compensation', 'Reporting @ Budget FX')) - (cS - A(cmp, 'Total Compensation', 'Reporting @ Budget FX'))
+    var ctcC = A(cmp, 'Cost to Company', 'Reporting @ Budget FX'), ctcF = A(VERSION, 'Cost to Company', 'Reporting @ Budget FX')
+    var fteC = num(getFte(cmp)), fteF = num(getFte(VERSION))
+    var people = fteC ? (fteF - fteC) * ctcC / fteC : 0
+    return { start: cS, fx: fx, people: people, rate: ctcF - ctcC - people,
+      bonus: A(VERSION, 'Bonus', 'Reporting @ Budget FX') - A(cmp, 'Bonus', 'Reporting @ Budget FX'),
+      oneoff: A(VERSION, 'One-Time', 'Reporting @ Budget FX') - A(cmp, 'One-Time', 'Reporting @ Budget FX'), end: fS, fteC: fteC / 12, fteF: fteF / 12 }
+  }
+  function load() {
+    var cmp = $('cmp').value, ent = $('entity').value, yr = $('year').value, FY = 'FY' + yr
+    var fns = Array.from(new Set(ccs.map(function (c) { return c.fn })))
+    var scopes = [cc || fnSel || 'Total Cost Centre'].concat(fns, ccs.map(function (c) { return c.id }))
+    $('title').textContent = (cmp === 'Budget' ? 'Budget' : cmp) + ' to ' + VERSION.toLowerCase()
+    $('sub').textContent = FY + ' · ' + ent + ' · pounds · ' + (cc ? cc + ' ' + names[cc] : fnSel ? fnSel : 'all cost centres') + (driver ? ' · focus: ' + DLABEL[driver] : '')
+    say('Loading…', 'busy')
+    var V = '{' + M('WFP Version', VERSION) + ',' + M('WFP Version', cmp) + '}'
+    return Promise.all([
+      call('SELECT ' + V + ' * {' + PC.map(function (p) { return M('WFP Pay Component', p) }).join(',') + '} * {' + CUR.map(function (c) { return M('WFP Currency', c) }).join(',') + '} ON 0, {' + scopes.map(function (s) { return M('WFP Cost Centre', s) }).join(',') + '} ON 1 FROM [WFP Workforce Cost] WHERE (' + [M('WFP Entity', ent), M('WFP Period', FY), M('WFP Position', 'Total Positions'), M('WFP Workforce Cost Measure', 'Amount')].join(',') + ')'),
+      call('SELECT ' + V + ' ON 0, {' + scopes.map(function (s) { return M('WFP Cost Centre', s) }).join(',') + '} ON 1 FROM [WFP Headcount] WHERE (' + [M('WFP Entity', ent), M('WFP Period', FY), M('WFP Position', 'Total Positions'), M('WFP Headcount Measure', 'FTE')].join(',') + ')')
+    ]).then(function (r) {
+      var cost = Lens.rows(r[0]), fte = Lens.rows(r[1])
+      var of = function (i) { return steps(function (v, pc, c) { return cost[i][v + ' / ' + pc + ' / ' + c] }, function (v) { return fte[i][v] }, cmp) }
+      var main = of(0)
+      Lens.waterfall('#waterfall', { format: '£m', steps: [
+        { label: cmp, value: main.start, total: true },
+        { label: 'FX', value: main.fx },
+        { label: 'People (FTE)', value: main.people },
+        { label: 'Pay rates & merit', value: main.rate },
+        { label: 'Bonus', value: main.bonus },
+        { label: 'One-off payments', value: main.oneoff },
+        { label: VERSION, value: main.end, total: true }
+      ], selected: driver ? DLABEL[driver] : null,
+        onClick: function (label) { var k = DRIVERS[label]; if (!k) return; driver = driver === k ? '' : k; load().catch(fail) } })
+      $('bridgeTitle').innerHTML = 'The bridge · ' + esc(cc ? cc + ' ' + names[cc] : fnSel || 'all cost centres') + (cc || fnSel || driver ? '<button class="chip" id="allcc">show all</button>' : '') +
+        ' <span class="sub">— click a step to focus on it</span>'
+      if ($('allcc')) $('allcc').onclick = function () { cc = ''; fnSel = ''; driver = ''; load().catch(fail) }
+      $('explain').textContent = 'People: average FTE ' + main.fteF.toFixed(1) + ' against ' + main.fteC.toFixed(1) + ' (' + (main.fteF >= main.fteC ? '+' : '−') + Math.abs(main.fteF - main.fteC).toFixed(1) + '), priced at the ' + cmp + ' cost per FTE. Pay rates & merit is what is left of salary, tax, pension and benefits. FX compares reporting currency with budget exchange rates.'
+      var cols = ['start', 'fx', 'people', 'rate', 'bonus', 'oneoff', 'end'], heads = [cmp, 'FX', 'People', 'Pay rates', 'Bonus', 'One-off', VERSION]
+      var hl = function (k) { return driver === k ? ' style="background:color-mix(in srgb,var(--accent) 10%,transparent)"' : '' }
+      $('tbl').innerHTML = '<thead><tr><th>Function</th>' + heads.map(function (h, j) { return '<th class="n"' + hl(cols[j]) + '>' + esc(h) + '</th>' }).join('') + '</tr></thead><tbody>' +
+        fns.map(function (f, i) { var s = of(1 + i); return '<tr data-fn="' + esc(f) + '" style="cursor:pointer' + (fnSel === f ? ';outline:2px solid var(--accent);outline-offset:-2px' : '') + '" title="Bridge ' + esc(f) + '"><td>' + esc(f) + '</td>' + cols.map(function (k) { var v = s[k], t = k === 'start' || k === 'end'; return '<td class="n ' + (!t && v > 0 ? 'up' : !t && v < 0 ? 'down' : '') + '"' + hl(k) + '>' + (t ? gbp(v) : Math.abs(v) < 500 ? '—' : signed(v)) + '</td>' }).join('') + '</tr>' }).join('') +
+        '<tr class="tot"><td>All</td>' + cols.map(function (k) { var v = cc ? null : main[k], t = k === 'start' || k === 'end'; return '<td class="n">' + (v == null ? '' : t ? gbp(v) : Math.abs(v) < 500 ? '—' : signed(v)) + '</td>' }).join('') + '</tr></tbody>'
+      // biggest moves: in the chosen function only, and by the chosen driver alone when one is in focus
+      var moves = ccs.map(function (c, i) { var s = of(1 + fns.length + i); return { key: c.id, label: c.id + ' ' + c.name, value: driver ? s[driver] : s.end - s.start, fn: c.fn } })
+        .filter(function (m) { return (!fnSel || m.fn === fnSel) && Math.abs(m.value) >= 500 })
+        .sort(function (a, b) { return Math.abs(b.value) - Math.abs(a.value) }).slice(0, 12)
+      $('movesTitle').innerHTML = 'Biggest moves by cost centre' + (driver ? ' — ' + esc(DLABEL[driver]) + ' only' : '') + (fnSel ? ' · ' + esc(fnSel) : '') + ' <span class="sub">— click one to bridge it</span>'
+      Lens.bars('#bars', { rows: moves, format: '£k', onClick: function (k) { cc = k; load().catch(fail) } })
+      say('Read at ' + new Date().toLocaleTimeString() + '.')
+    })
+  }
+  $('entity').innerHTML = opt(ENTITIES); $('year').innerHTML = opt(YEARS)
+  $('tbl').addEventListener('click', function (e) {
+    var tr = e.target.closest && e.target.closest('[data-fn]'); if (!tr) return
+    var f = tr.getAttribute('data-fn'); fnSel = fnSel === f ? '' : f; cc = ''; load().catch(fail)
+  })
+  $('cmp').onchange = $('entity').onchange = $('year').onchange = $('refresh').onclick = function () { load().catch(fail) }
+  Promise.all([costCentres(), lastSnapshot()]).then(function (r) {
+    ccs = r[0]; ccs.forEach(function (c) { names[c.id] = c.name })
+    $('cmp').innerHTML = opt((C.compare || ['Budget']).concat(r[1] ? [r[1]] : []))
+    return load()
+  }).catch(fail)
+})()
+</script>
+</body>
+</html>

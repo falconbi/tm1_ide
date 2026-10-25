@@ -1,0 +1,30 @@
+{
+  "name": "WFP-People",
+  "status": "draft",
+  "owner": "admin",
+  "version": 7,
+  "updated": "2026-10-24T21:23:41.193Z",
+  "description": "People & positions — everyone holding a position: hire (replace or handover), pay / FTE change from a month, leavers with backfill, transfers, time away and cover. Each action runs its WFP process.",
+  "folder": "Workforce",
+  "title": "1 People",
+  "icon": "users",
+  "color": "#0f766e",
+  "image": "",
+  "config": {
+    "home": "WFP-Home",
+    "homeLabel": "Workforce",
+    "versions": [
+      "Forecast",
+      "Budget",
+      "Downside"
+    ],
+    "actors": [
+      "WFP HR",
+      "WFP Finance"
+    ],
+    "costCentre": "CC-ENG-PLT"
+  },
+  "created": "2026-10-23T18:41:14.161Z",
+  "createdBy": "admin",
+  "toolkitVersion": 11
+}

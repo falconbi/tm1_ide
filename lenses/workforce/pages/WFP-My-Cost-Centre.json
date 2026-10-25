@@ -1,0 +1,26 @@
+{
+  "name": "WFP-My-Cost-Centre",
+  "status": "draft",
+  "owner": "admin",
+  "version": 19,
+  "updated": "2026-10-24T00:13:15.555Z",
+  "description": "Review — a cost-centre manager's people and cost against budget and the last forecast, month by month and person by person.",
+  "folder": "Workforce",
+  "title": "8 My cost centre",
+  "icon": "briefcase",
+  "color": "#0f766e",
+  "image": "",
+  "config": {
+    "version": "Forecast",
+    "budget": "Budget",
+    "years": [
+      "2026",
+      "2027"
+    ],
+    "home": "WFP-Home",
+    "homeLabel": "Workforce"
+  },
+  "created": "2026-10-20T19:16:21.754Z",
+  "createdBy": "admin",
+  "toolkitVersion": 11
+}

@@ -1,0 +1,300 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Headcount</title>
+<style>
+:root{--bg:var(--lens-bg,#f6f7f7);--ink:var(--lens-ink,#16201f);--faint:var(--lens-faint,#85908f);--rule:var(--lens-rule,#dfe4e3);--panel:var(--lens-panel,#fff);--accent:var(--lens-accent,#0f766e);--bad:var(--lens-bad,#b4372d);--good:var(--lens-good,#1d7a46);--warn:#b7791f}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}
+.wrap{padding:16px 18px 24px;display:grid;gap:12px;max-width:1700px;margin:0 auto}
+header{display:flex;flex-wrap:wrap;align-items:end;gap:12px 18px}
+h1{font-size:20px;margin:0}
+h2{font-size:12px;margin:0 0 8px;color:var(--faint);text-transform:uppercase;letter-spacing:.07em;font-weight:600}
+h2 .sub{text-transform:none;letter-spacing:0;font-weight:400}
+.sub{font-size:12.5px;color:var(--faint)}
+.controls{display:flex;gap:10px;margin-left:auto;align-items:end;flex-wrap:wrap}
+label{display:grid;gap:3px;font-size:11px;color:var(--faint);text-transform:uppercase;letter-spacing:.06em}
+select,button,input{font:inherit;font-size:13px;padding:5px 10px;border:1px solid var(--rule);border-radius:7px;background:var(--panel);color:var(--ink)}
+input[type=checkbox]{padding:0;width:15px;height:15px;accent-color:var(--accent)}
+button{cursor:pointer}
+button.primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+button:disabled{opacity:.45;cursor:default}
+.card{background:var(--panel);border:1px solid var(--rule);border-radius:10px;padding:12px;min-width:0}
+.two{display:grid;grid-template-columns:minmax(0,3fr) minmax(0,2fr);gap:12px}
+.halves{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px}
+@media (max-width:860px){.two,.halves{grid-template-columns:1fr}}
+.bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px}
+.status{font-size:13px;color:var(--faint)}
+.status.ok{color:var(--good)} .status.err{color:var(--bad)} .status.busy{color:var(--faint)}
+.note{font-size:12px;color:var(--faint);margin:8px 0 0}
+.counts{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px}
+.count{background:var(--panel);border:1px solid var(--rule);border-radius:10px;padding:8px 14px}
+.count b{display:block;font-size:22px;font-variant-numeric:tabular-nums}
+.count span{font-size:12px;color:var(--faint)}
+.count.good b{color:var(--good)} .count.warn b{color:var(--warn)} .count.bad b{color:var(--bad)}
+.scroll{overflow:auto;max-height:520px}
+table.t{border-collapse:collapse;width:100%;font-size:13px;font-variant-numeric:tabular-nums}
+table.t th{position:sticky;top:0;background:var(--panel);text-align:left;font-size:11px;color:var(--faint);text-transform:uppercase;letter-spacing:.05em;font-weight:600;padding:6px 8px;border-bottom:1px solid var(--rule);white-space:nowrap}
+table.t td{padding:6px 8px;border-bottom:1px solid var(--rule);white-space:nowrap}
+table.t td.n,table.t th.n{text-align:right}
+table.t tr.tot td{font-weight:700;background:color-mix(in srgb,var(--rule) 40%,transparent)}
+.pill{display:inline-block;font-size:11px;padding:1px 8px;border-radius:999px;border:1px solid var(--rule);color:var(--faint)}
+.pill.good{color:var(--good);border-color:currentColor} .pill.warn{color:var(--warn);border-color:currentColor} .pill.bad{color:var(--bad);border-color:currentColor}
+.up{color:var(--bad)} .down{color:var(--good)}
+
+/* quiet History icon — the Assumptions look, applied to every lens footer */
+#historyBtn button{background:transparent!important;border-color:transparent!important;font-size:0!important;padding:6px!important;line-height:0}
+#historyBtn button::before{content:"";display:inline-block;width:18px;height:18px;background:var(--faint);-webkit-mask:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22M3%2012a9%209%200%201%200%209-9%209.75%209.75%200%200%200-6.74%202.74L3%208%22/%3E%3Cpath%20d%3D%22M3%203v5h5%22/%3E%3Cpath%20d%3D%22M12%207v5l4%202%22/%3E%3C/svg%3E") center/contain no-repeat;mask:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22M3%2012a9%209%200%201%200%209-9%209.75%209.75%200%200%200-6.74%202.74L3%208%22/%3E%3Cpath%20d%3D%22M3%203v5h5%22/%3E%3Cpath%20d%3D%22M12%207v5l4%202%22/%3E%3C/svg%3E") center/contain no-repeat}
+#historyBtn button:hover::before{background:var(--ink)}
+
+/* Version / Plan month / Actuals — the same strip on every Lens */
+.when{display:flex;flex-wrap:wrap;gap:4px 18px;margin-top:4px}
+.when span{display:inline-flex;align-items:baseline;gap:6px}
+.when em{font-style:normal;font-size:10px;color:var(--faint);text-transform:uppercase;letter-spacing:.06em}
+.when b{font-size:13px;font-weight:600;font-variant-numeric:tabular-nums}
+
+/* Info panel — the ⓘ Info button opens a plain-English card */
+.info-modal{position:fixed;inset:0;background:rgba(10,20,18,.30);display:flex;align-items:flex-start;justify-content:center;padding:7vh 16px;z-index:60}
+.info-modal[hidden]{display:none}
+.info-card{background:var(--panel);border:1px solid var(--rule);border-radius:12px;max-width:660px;width:100%;padding:16px 18px;box-shadow:0 24px 60px rgba(0,0,0,.22);max-height:80vh;overflow:auto}
+.info-head{display:flex;align-items:center;gap:10px;margin-bottom:4px}
+.info-head h3{margin:0;font-size:16px}
+.info-head button{margin-left:auto;border:0;background:transparent;font-size:16px;line-height:1;color:var(--faint);cursor:pointer;padding:4px}
+.info-body{font-size:13px;line-height:1.55}
+.info-body h4{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--faint);margin:14px 0 4px}
+.info-body p{margin:0 0 6px}
+
+/* Info — an icon beside History; the label shows on hover */
+#info{background:transparent!important;border-color:transparent!important;font-size:0!important;padding:6px!important;line-height:0;cursor:pointer;min-width:0}
+#info::before{content:"";display:inline-block;width:18px;height:18px;background:var(--faint,#8a8f98);-webkit-mask:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Ccircle%20cx%3D%2212%22%20cy%3D%2212%22%20r%3D%2210%22/%3E%3Cpath%20d%3D%22M12%2016v-4%22/%3E%3Cpath%20d%3D%22M12%208h.01%22/%3E%3C/svg%3E") center/contain no-repeat;mask:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Ccircle%20cx%3D%2212%22%20cy%3D%2212%22%20r%3D%2210%22/%3E%3Cpath%20d%3D%22M12%2016v-4%22/%3E%3Cpath%20d%3D%22M12%208h.01%22/%3E%3C/svg%3E") center/contain no-repeat}
+#info:hover::before{background:var(--ink,#1f2328)}
+.foot-icons{display:inline-flex;align-items:center;gap:0}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div><h1>Headcount</h1><div class="sub" id="sub"></div><div class="when" id="when"></div></div>
+    <div class="controls"><button id="info" type="button" title="Info: what this page shows" aria-label="Info: what this page shows">Info</button><label style="display:flex;flex-direction:row;align-items:center;gap:6px;text-transform:none;letter-spacing:0;font-size:13px;color:var(--ink)"><input type="checkbox" id="stripes"> Stripes</label>
+      <label>View by<select id="by"><option value="cc">Cost centre</option><option value="loc">Location</option></select></label>
+      <label>Company<select id="entity"></select></label>
+      <label>Function<select id="fn"></select></label>
+      <label>Year<select id="year"></select></label>
+      <label>Compare with<select id="cmp"></select></label>
+      <label style="display:flex;flex-direction:row;align-items:center;gap:6px;text-transform:none;letter-spacing:0;font-size:13px;color:var(--ink)" title="People covering for someone who is away"><input type="checkbox" id="cover" checked> Include cover</label>
+      <button id="refresh" title="Read the latest numbers">↻ Refresh</button>
+    </div>
+  </header>
+  <div id="kpis"></div>
+  <div class="note" id="awayline" style="margin:4px 0 8px"></div>
+  <div class="card"><h2>People at month end</h2><div id="trend" style="height:260px"></div></div>
+  <div class="card"><h2>Movement by cost centre</h2><div id="grid"></div></div>
+  <div id="status" class="status"></div>
+  <div id="infoModal" class="info-modal" hidden>
+    <div class="info-card">
+      <div class="info-head"><h3>Headcount</h3><button id="infoModalClose" type="button" title="Close">✕</button></div>
+      <div class="info-body"><p>People at month end, joiners, leavers and open roles by cost centre, with the monthly trend.</p><h4>Good to know</h4><p>New hires count once Finance approves them. Right-click a number for its story.</p></div>
+    </div>
+  </div>
+</div>
+<script src="/lens-kit/lens-kit.js"></script>
+<script>
+// Workforce · Headcount — people at the start and end of the year, who joins,
+// who leaves, and the roles still open, by cost centre. Headcount is a
+// month-end count, so year figures use December, not a sum of months. Read-only.
+(function () {
+  // ── Workforce helpers (the same small block in every Workforce Lens) ──
+  var $ = function (id) { return document.getElementById(id) }
+  var esc = function (v) { return String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;') }
+  var M = function (d, e) { return '[' + d + '].[' + d + '].[' + String(e).replace(/]/g, ']]') + ']' }
+  // one MDX query; a result cut short by the 20,000-cell limit is an error, never partial numbers
+  var call = function (mdx) { return window.lensBridge.call('execMDX', { mdx: mdx }).then(function (r) { if (r && r.truncated) throw new Error('A query returned more than 20,000 cells and was cut short — narrow it.'); return r }) }
+  var opt = function (list, sel) { return list.map(function (x) { var v = typeof x === 'object' ? x.value : x, l = typeof x === 'object' ? x.label : x; return '<option value="' + esc(v) + '"' + (v === sel ? ' selected' : '') + '>' + esc(l) + '</option>' }).join('') }
+  var say = function (t, k) { var s = $('status'); if (s) { s.textContent = t || ''; s.className = 'status ' + (k || '') } }
+  var fail = function (e) { say(e && e.message ? e.message : String(e), 'err') }
+  var num = function (v) { return v == null || v === '' ? 0 : Number(v) }
+  var gbp = function (v) { return Lens.format(v, Math.abs(v) >= 1e6 ? '£m' : Math.abs(v) >= 1e4 ? '£k' : '£') }
+  var signed = function (v, f) { return (v > 0 ? '+' : v < 0 ? '−' : '') + (f || gbp)(Math.abs(v)) }
+  var monthsOf = function (yr) { var m = []; for (var i = 1; i <= 12; i++) m.push(yr + '-' + (i < 10 ? '0' : '') + i); return m }
+  var MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+  var monthName = function (p) { return p ? MON[Number(p.slice(5)) - 1] + ' ' + p.slice(0, 4) : '' }
+  var attrMDX = function (dim, attrs, set) { var A = '}ElementAttributes_' + dim; return 'SELECT {' + attrs.map(function (a) { return M(A, a) }).join(',') + '} ON 0, {' + (set || 'TM1FILTERBYLEVEL({TM1SUBSETALL([' + dim + '].[' + dim + '])},0)') + '} ON 1 FROM [' + A + ']' }
+  // cost centres with their function (R&D / S&M / G&A) and name, from the model
+  var costCentres = function () {
+    return call(attrMDX('WFP Cost Centre', ['Function', 'CC Name'])).then(function (r) {
+      var list = Lens.rows(r).map(function (x) { return { id: x['WFP Cost Centre'], fn: x.Function || '', name: x['CC Name'] || '' } })
+      var order = []; list.forEach(function (c) { if (order.indexOf(c.fn) < 0) order.push(c.fn) })   // functions in model order
+      return list.sort(function (a, b) { return order.indexOf(a.fn) - order.indexOf(b.fn) || a.id.localeCompare(b.id) })
+    })
+  }
+  var ccOptions = function (ccs, sel, all) {
+    var fns = Array.from(new Set(ccs.map(function (c) { return c.fn })))
+    return (all ? '<option value="">' + esc(all) + '</option>' : '') + fns.map(function (f) {
+      return '<optgroup label="' + esc(f) + '">' + ccs.filter(function (c) { return c.fn === f }).map(function (c) { return '<option value="' + esc(c.id) + '"' + (c.id === sel ? ' selected' : '') + '>' + esc(c.id + ' · ' + c.name) + '</option>' }).join('') + '</optgroup>'
+    }).join('')
+  }
+  // every position with the attributes asked for — in as many queries as the cell limit needs
+  var positions = function (attrs) {
+    return call('SELECT {} ON 0, {TM1FILTERBYLEVEL({TM1SUBSETALL([WFP Position].[WFP Position])},0)} ON 1 FROM [}ElementAttributes_WFP Position]').then(function (r) {
+      var n = r.Axes[1] ? r.Axes[1].Tuples.length : 0, per = Math.max(1, Math.floor(18000 / Math.max(n, 1))), groups = []
+      for (var i = 0; i < attrs.length; i += per) groups.push(attrs.slice(i, i + per))
+      return Promise.all(groups.map(function (g) { return call(attrMDX('WFP Position', g)) })).then(function (rs) {
+        var by = {}, out = []
+        rs.forEach(function (res) { Lens.rows(res).forEach(function (x) { var id = x['WFP Position']; if (!by[id]) { by[id] = { id: id }; out.push(by[id]) } Object.assign(by[id], x) }) })
+        return out
+      })
+    })
+  }
+  // period index <-> month name ('2026-04' = 16)
+  var periodIndex = function () {
+    return call('SELECT {[}ElementAttributes_WFP Period].[}ElementAttributes_WFP Period].[Period Index]} ON 0, {TM1FILTERBYLEVEL({TM1SUBSETALL([WFP Period].[WFP Period])},0)} ON 1 FROM [}ElementAttributes_WFP Period]').then(function (r) {
+      var to = {}, from = {}; Lens.rows(r).forEach(function (x) { var i = Number(x['Period Index']); if (i && /^\d{4}-\d{2}$/.test(x['WFP Period'])) { to[x['WFP Period']] = i; from[i] = x['WFP Period'] } }); return { idx: to, month: from }
+    })
+  }
+  // the latest forecast snapshot (a FCST yyyy-mm version under Non-Calculating) — none = ''
+  var lastSnapshot = function () {
+    return call('SELECT {} ON 0, {[WFP Version].[WFP Version].[Non-Calculating].Children} ON 1 FROM [WFP Headcount]').then(function (r) {
+      var s = (r.Axes[1] ? r.Axes[1].Tuples : []).map(function (t) { return t.Members[0].Name }).filter(function (n) { return /^FCST \d{4}-\d{2}$/.test(n) }).sort()
+      return s.length ? s[s.length - 1] : ''
+    }, function () { return '' })
+  }
+  // the month actuals run to (Actuals Cutoff Index in Forecast)
+  var cutoffIndex = function (version) {
+    return call('SELECT {' + M('WFP Assumptions Measure', 'Actuals Cutoff Index') + '} ON 0 FROM [WFP Assumptions] WHERE (' + M('WFP Period', '2026-01') + ',' + M('WFP Version', version || 'Forecast') + ',' + M('WFP Entity', 'UK Ltd') + ')').then(function (r) { return num((Lens.rows(r)[0] || {})['Actuals Cutoff Index']) })
+  }
+  // ────────────────────────────────────────────────────────────────────
+
+  // ── Stripes: every grid Lens has its own toggle, remembered per user ──
+  var stripeState = function (key) { try { var v = localStorage.getItem('lens-stripes:' + key); return v === null ? true : v === '1' } catch (e) { return true } }
+  var stripeSave = function (key, on) { try { localStorage.setItem('lens-stripes:' + key, on ? '1' : '0') } catch (e) {} }
+
+  // Version · Plan month (first forecast month = the month after the last Actual)
+  // · Actuals to. Rendered into every Lens header; follows the #ver selector.
+  var planMeta = function (el, fallbackVersion) {
+    var draw = function () {
+      var v = ($('ver') && $('ver').value) || fallbackVersion || 'Forecast'
+      return Promise.all([periodIndex(), cutoffIndex('Forecast')]).then(function (r) {
+        var P = r[0], cutoff = Number(r[1]) || 0
+        var pm = P.month[cutoff + 1] || '', am = P.month[cutoff] || ''
+        $(el).innerHTML = '<span><em>Version</em><b>' + esc(v) + '</b></span>' +
+          '<span><em>Plan month</em><b>' + esc(monthName(pm) || '—') + '</b></span>' +
+          '<span><em>Actuals to</em><b>' + esc(monthName(am) || '—') + '</b></span>'
+      }, function () {})
+    }
+    var sel = $('ver'); if (sel) sel.addEventListener('change', draw)
+    return draw()
+  }
+
+  // Info: the ⓘ Info button opens a plain-English card for the page.
+  var infoPanel = function (openId, modalId) {
+    var b = $(openId), m = $(modalId); if (!b || !m) return
+    var close = function () { m.hidden = true }
+    b.onclick = function () { m.hidden = false }
+    var x = $(modalId + 'Close'); if (x) x.onclick = close
+    m.addEventListener('click', function (e) { if (e.target === m) close() })
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape') close() })
+  }
+
+  var C = Lens.config()
+  infoPanel('info', 'infoModal')
+  var g = null
+  var striped = stripeState('wfp-headcount')
+  $('stripes').checked = striped
+  $('stripes').onchange = function () { striped = this.checked; stripeSave('wfp-headcount', striped); if (g) g.stripes(striped) }
+  var VERSION = C.version || 'Forecast', YEARS = C.years || ['2026', '2027'], ENTITIES = C.entities || ['Group', 'UK Ltd', 'US Inc', 'NZ Ltd']
+  planMeta('when', VERSION)
+  var ccs = []
+  var n1 = function (v) { return Math.round(num(v) * 10) / 10 }
+  var HM = function (m) { return M('WFP Headcount Measure', m) }
+
+  function load() {
+    var yr = $('year').value, cmp = $('cmp').value, ent = $('entity').value, fn = $('fn').value, months = monthsOf(yr)
+    var JAN = months[0], DEC = months[11], FY = 'FY' + yr, top = fn || 'Total Cost Centre'
+    var list = ccs.filter(function (c) { return !fn || c.fn === fn })
+    // View by Location: the rows come from the By Location Alternate Hierarchy on WFP Position
+    var byLoc = $('by').value === 'loc', LA = '[WFP Position].[By Location].[All Locations]'
+    $('sub').textContent = VERSION + ' vs ' + cmp + ' · ' + ent + ' · ' + (fn || 'all functions') + (byLoc ? ' · by location' : '') + ' · month-end counts'
+    say('Loading…', 'busy')
+    var W = function (x) { return ' WHERE (' + [M('WFP Entity', ent), M('WFP Position', 'Total Positions')].concat(x).join(',') + ')' }
+    // Include cover off: people covering for someone away are left out of the year-end count and the trend
+    var END = $('cover').checked ? 'Closing' : 'Headcount excl Cover'
+    var cols = [[JAN, 'Opening'], [FY, 'Hires'], [FY, 'Leavers'], [DEC, END], [DEC, 'Open Positions'], [FY, 'FTE']]
+    var colSet = '{' + cols.map(function (c) { return '(' + M('WFP Period', c[0]) + ',' + HM(c[1]) + ')' }).join(',') + '}'
+    return Promise.all([
+      call('SELECT {' + M('WFP Version', VERSION) + ',' + M('WFP Version', cmp) + '} ON 0, {' + months.map(function (p) { return M('WFP Period', p) }).join(',') + '} ON 1 FROM [WFP Headcount]' + W([M('WFP Cost Centre', top), HM(END)])),
+      call('SELECT {' + HM('Absent Headcount') + ',' + HM('Cover Headcount') + '} ON 0 FROM [WFP Headcount]' + W([M('WFP Version', VERSION), M('WFP Cost Centre', top), M('WFP Period', DEC)])),
+      byLoc
+        // region > country > city in tree order, All Locations last (the total); Cost Centre at its total
+        ? call('SELECT ' + colSet + ' ON 0, {Except(Descendants(' + LA + ', 3, SELF_AND_BEFORE), {' + LA + '}), ' + LA + '} ON 1 FROM [WFP Headcount] WHERE (' + [M('WFP Entity', ent), M('WFP Version', VERSION), M('WFP Cost Centre', top)].join(',') + ')')
+        : call('SELECT ' + colSet + ' ON 0, {' + list.map(function (c) { return M('WFP Cost Centre', c.id) }).concat([M('WFP Cost Centre', top)]).join(',') + '} ON 1 FROM [WFP Headcount]' + W([M('WFP Version', VERSION)])),
+      call('SELECT ' + colSet + ' ON 0 FROM [WFP Headcount]' + W([M('WFP Version', cmp), M('WFP Cost Centre', top)])),
+      // which members are regions / countries (for indenting) — read from the hierarchy, not typed in
+      byLoc ? call('SELECT {} ON 0, {Descendants(' + LA + ', 1)} ON 1 FROM [WFP Headcount]') : null,
+      byLoc ? call('SELECT {} ON 0, {Descendants(' + LA + ', 2)} ON 1 FROM [WFP Headcount]') : null
+    ]).then(function (r) {
+      var depth = {}
+      if (byLoc) { Lens.rows(r[4]).forEach(function (x) { depth[x._label] = 1 }); Lens.rows(r[5]).forEach(function (x) { depth[x._label] = 2 }) }
+      var aw = Lens.rows(r[1])[0] || {}
+      $('awayline').textContent = 'At the end of ' + monthName(DEC) + ': ' + n1(aw['Absent Headcount']) + ' away (still counted) · ' + n1(aw['Cover Headcount']) + ' covering for them (' + ($('cover').checked ? 'included' : 'left out') + ')'
+      r.splice(1, 1)
+      var trend = Lens.rows(r[0]), byCC = Lens.rows(r[1]), cmpRow = Lens.rows(r[2])[0] || {}
+      var K = cols.map(function (c) { return c[0] + ' / ' + c[1] }), tot = byCC.pop()
+      Lens.kpis('#kpis', [
+        { label: 'People end of ' + yr + ($('cover').checked ? '' : ' (excl. cover)'), value: n1(tot[K[3]]), compare: n1(cmpRow[K[3]]) },
+        { label: 'Joiners in ' + yr, value: n1(tot[K[1]]), compare: n1(cmpRow[K[1]]), note: 'approved hires only' },
+        { label: 'Leavers in ' + yr, value: n1(tot[K[2]]), compare: n1(cmpRow[K[2]]), cost: true },
+        { label: 'Open roles at year end', value: n1(tot[K[4]]), compare: n1(cmpRow[K[4]]), cost: true },
+        { label: 'Average FTE', value: n1(num(tot[K[5]]) / 12), compare: n1(num(cmpRow[K[5]]) / 12) }
+      ], { compareLabel: cmp })
+      Lens.trend('#trend', { categories: months.map(function (m) { return MON[Number(m.slice(5)) - 1] }), series: [
+        { name: VERSION, type: 'line', values: trend.map(function (x) { return num(x[VERSION]) }) },
+        { name: cmp, type: 'line', values: trend.map(function (x) { return num(x[cmp]) }) }] })
+      var names = {}; ccs.forEach(function (c) { names[c.id] = c.name })
+      var mk = function (x, label, total) {
+        var o = { cc: label, ccId: x['WFP Cost Centre'] || top, open: n1(x[K[0]]), hires: n1(x[K[1]]), leavers: n1(x[K[2]]), close: n1(x[K[3]]), openRoles: n1(x[K[4]]), fte: n1(num(x[K[5]]) / 12) }
+        if (total) o._kind = { cc: 'total', open: 'total', hires: 'total', leavers: 'total', close: 'total', openRoles: 'total', fte: 'total' }
+        return o
+      }
+      var rows = byCC.filter(function (x) { return K.some(function (k) { return num(x[k]) }) }).map(function (x) {
+        if (!byLoc) { var id = x['WFP Cost Centre']; return mk(x, id + ' · ' + (names[id] || '')) }
+        // a city sits under its country and region; regions and countries are totals
+        var d = depth[x._label] || 3, o = mk(x, '\u2003'.repeat(d - 1) + x._label, d < 3)
+        o.ccId = top; o.loc = x._label
+        return o
+      })
+      rows.push(mk(tot, byLoc ? 'All locations' : fn ? 'All ' + fn : 'All cost centres', true))
+      g = Lens.grid('#grid', { key: 'wfp-headcount', stripes: striped,
+        height: Math.min(560, 60 + rows.length * 36) + 'px',
+        columns: [
+          { field: 'cc', headerName: byLoc ? 'Location' : 'Cost centre', pinned: 'left', minWidth: 240 },
+          { field: 'open', headerName: 'Start of Jan', type: 'number' },
+          { field: 'hires', headerName: '+ Joiners', type: 'number' },
+          { field: 'leavers', headerName: '− Leavers', type: 'number' },
+          { field: 'close', headerName: $('cover').checked ? 'End of Dec' : 'End of Dec (excl. cover)', type: 'number' },
+          { field: 'openRoles', headerName: 'Open roles (Dec)', type: 'number' },
+          { field: 'fte', headerName: 'Average FTE', type: 'number' }
+        ],
+        rows: rows,
+        cellMenu: function (row, field) {
+          var m = { open: [JAN, 'Opening'], hires: [FY, 'Hires'], leavers: [FY, 'Leavers'], close: [DEC, END], openRoles: [DEC, 'Open Positions'], fte: [FY, 'FTE'] }[field]
+          if (!m || byLoc) return null
+          var co = { 'WFP Period': m[0], 'WFP Version': VERSION, 'WFP Entity': $('entity').value, 'WFP Cost Centre': row.ccId,
+            'WFP Position': 'Total Positions', 'WFP Headcount Measure': m[1] }
+          return { cube: 'WFP Headcount', coordinates: co }
+        }
+      })
+      say('Read at ' + new Date().toLocaleTimeString() + '. New hires count once Finance approves them.')
+    })
+  }
+  $('entity').innerHTML = opt(ENTITIES); $('year').innerHTML = opt(YEARS)
+  $('by').onchange = $('entity').onchange = $('year').onchange = $('cmp').onchange = $('fn').onchange = $('cover').onchange = $('refresh').onclick = function () { load().catch(fail) }
+  Promise.all([costCentres(), lastSnapshot()]).then(function (r) {
+    ccs = r[0]
+    $('fn').innerHTML = '<option value="">All</option>' + opt(Array.from(new Set(ccs.map(function (c) { return c.fn }))))
+    $('cmp').innerHTML = opt((C.compare || ['Budget']).concat(r[1] ? [r[1]] : []).concat(['Downside']))
+    return load()
+  }).catch(fail)
+})()
+</script>
+</body>
+</html>

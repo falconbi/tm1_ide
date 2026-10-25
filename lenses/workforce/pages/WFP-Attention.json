@@ -1,0 +1,26 @@
+{
+  "name": "WFP-Attention",
+  "status": "draft",
+  "owner": "admin",
+  "version": 18,
+  "updated": "2026-10-25T01:44:14.635Z",
+  "description": "Review — the three control checks: Positions holding more FTE than they have (Over-filled), people over 1.0 FTE across Positions (Over-booked), and anyone in a Position that does not exist that month (Person In Closed Position). Reads the rules directly; they have no feeders, so the month totals are read first, then only the months that trip.",
+  "folder": "Workforce",
+  "title": "7 Needs attention",
+  "icon": "shield-check",
+  "color": "#0f766e",
+  "image": "",
+  "config": {
+    "versions": [
+      "Forecast",
+      "Budget",
+      "Downside"
+    ],
+    "home": "WFP-Home",
+    "homeLabel": "Workforce",
+    "positions": "WFP-Positions"
+  },
+  "created": "2026-10-21T20:29:22.826Z",
+  "createdBy": "admin",
+  "toolkitVersion": 11
+}

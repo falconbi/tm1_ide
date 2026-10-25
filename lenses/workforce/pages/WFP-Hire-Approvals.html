@@ -1,0 +1,309 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Hire approvals</title>
+<meta name="lens-runs" content="WFP Approve Hire">
+<style>
+:root{--bg:var(--lens-bg,#f6f7f7);--ink:var(--lens-ink,#16201f);--faint:var(--lens-faint,#85908f);--rule:var(--lens-rule,#dfe4e3);--panel:var(--lens-panel,#fff);--accent:var(--lens-accent,#0f766e);--bad:var(--lens-bad,#b4372d);--good:var(--lens-good,#1d7a46);--warn:#b7791f}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}
+.wrap{padding:16px 18px 24px;display:grid;gap:12px;max-width:1700px;margin:0 auto}
+header{display:flex;flex-wrap:wrap;align-items:end;gap:12px 18px}
+h1{font-size:20px;margin:0}
+h2{font-size:12px;margin:0 0 8px;color:var(--faint);text-transform:uppercase;letter-spacing:.07em;font-weight:600}
+h2 .sub{text-transform:none;letter-spacing:0;font-weight:400}
+.sub{font-size:12.5px;color:var(--faint)}
+.controls{display:flex;gap:10px;margin-left:auto;align-items:end;flex-wrap:wrap}
+label{display:grid;gap:3px;font-size:11px;color:var(--faint);text-transform:uppercase;letter-spacing:.06em}
+select,button,input{font:inherit;font-size:13px;padding:5px 10px;border:1px solid var(--rule);border-radius:7px;background:var(--panel);color:var(--ink)}
+input[type=checkbox]{padding:0;width:15px;height:15px;accent-color:var(--accent)}
+button{cursor:pointer}
+button.primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+button:disabled{opacity:.45;cursor:default}
+.card{background:var(--panel);border:1px solid var(--rule);border-radius:10px;padding:12px;min-width:0}
+.two{display:grid;grid-template-columns:minmax(0,3fr) minmax(0,2fr);gap:12px}
+.halves{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px}
+@media (max-width:860px){.two,.halves{grid-template-columns:1fr}}
+.bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px}
+.status{font-size:13px;color:var(--faint)}
+.status.ok{color:var(--good)} .status.err{color:var(--bad)} .status.busy{color:var(--faint)}
+.note{font-size:12px;color:var(--faint);margin:8px 0 0}
+.counts{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px}
+.count{background:var(--panel);border:1px solid var(--rule);border-radius:10px;padding:8px 14px}
+.count b{display:block;font-size:22px;font-variant-numeric:tabular-nums}
+.count span{font-size:12px;color:var(--faint)}
+button.count{font:inherit;color:inherit;text-align:left;cursor:pointer;transition:border-color .12s}
+button.count:hover{border-color:var(--accent)}
+button.count.on{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}
+.count.good b{color:var(--good)} .count.warn b{color:var(--warn)} .count.bad b{color:var(--bad)}
+.scroll{overflow:auto;max-height:520px}
+table.t{border-collapse:collapse;width:100%;font-size:13px;font-variant-numeric:tabular-nums}
+table.t th{position:sticky;top:0;background:var(--panel);text-align:left;font-size:11px;color:var(--faint);text-transform:uppercase;letter-spacing:.05em;font-weight:600;padding:6px 8px;border-bottom:1px solid var(--rule);white-space:nowrap}
+table.t td{padding:6px 8px;border-bottom:1px solid var(--rule);white-space:nowrap}
+table.t td.n,table.t th.n{text-align:right}
+table.t tr.tot td{font-weight:700;background:color-mix(in srgb,var(--rule) 40%,transparent)}
+.pill{display:inline-block;font-size:11px;padding:1px 8px;border-radius:999px;border:1px solid var(--rule);color:var(--faint)}
+.pill.good{color:var(--good);border-color:currentColor} .pill.warn{color:var(--warn);border-color:currentColor} .pill.bad{color:var(--bad);border-color:currentColor}
+.up{color:var(--bad)} .down{color:var(--good)}
+
+/* quiet History icon — the Assumptions look, applied to every lens footer */
+#historyBtn button{background:transparent!important;border-color:transparent!important;font-size:0!important;padding:6px!important;line-height:0}
+#historyBtn button::before{content:"";display:inline-block;width:18px;height:18px;background:var(--faint);-webkit-mask:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22M3%2012a9%209%200%201%200%209-9%209.75%209.75%200%200%200-6.74%202.74L3%208%22/%3E%3Cpath%20d%3D%22M3%203v5h5%22/%3E%3Cpath%20d%3D%22M12%207v5l4%202%22/%3E%3C/svg%3E") center/contain no-repeat;mask:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22M3%2012a9%209%200%201%200%209-9%209.75%209.75%200%200%200-6.74%202.74L3%208%22/%3E%3Cpath%20d%3D%22M3%203v5h5%22/%3E%3Cpath%20d%3D%22M12%207v5l4%202%22/%3E%3C/svg%3E") center/contain no-repeat}
+#historyBtn button:hover::before{background:var(--ink)}
+
+/* Version / Plan month / Actuals — the same strip on every Lens */
+.when{display:flex;flex-wrap:wrap;gap:4px 18px;margin-top:4px}
+.when span{display:inline-flex;align-items:baseline;gap:6px}
+.when em{font-style:normal;font-size:10px;color:var(--faint);text-transform:uppercase;letter-spacing:.06em}
+.when b{font-size:13px;font-weight:600;font-variant-numeric:tabular-nums}
+
+/* Info panel — the ⓘ Info button opens a plain-English card */
+.info-modal{position:fixed;inset:0;background:rgba(10,20,18,.30);display:flex;align-items:flex-start;justify-content:center;padding:7vh 16px;z-index:60}
+.info-modal[hidden]{display:none}
+.info-card{background:var(--panel);border:1px solid var(--rule);border-radius:12px;max-width:660px;width:100%;padding:16px 18px;box-shadow:0 24px 60px rgba(0,0,0,.22);max-height:80vh;overflow:auto}
+.info-head{display:flex;align-items:center;gap:10px;margin-bottom:4px}
+.info-head h3{margin:0;font-size:16px}
+.info-head button{margin-left:auto;border:0;background:transparent;font-size:16px;line-height:1;color:var(--faint);cursor:pointer;padding:4px}
+.info-body{font-size:13px;line-height:1.55}
+.info-body h4{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--faint);margin:14px 0 4px}
+.info-body p{margin:0 0 6px}
+
+tr.pick td{background:color-mix(in srgb,var(--accent) 9%,transparent)}
+input[type=search]{min-width:180px}
+/* Info — an icon beside History; the label shows on hover */
+#info{background:transparent!important;border-color:transparent!important;font-size:0!important;padding:6px!important;line-height:0;cursor:pointer;min-width:0}
+#info::before{content:"";display:inline-block;width:18px;height:18px;background:var(--faint,#8a8f98);-webkit-mask:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Ccircle%20cx%3D%2212%22%20cy%3D%2212%22%20r%3D%2210%22/%3E%3Cpath%20d%3D%22M12%2016v-4%22/%3E%3Cpath%20d%3D%22M12%208h.01%22/%3E%3C/svg%3E") center/contain no-repeat;mask:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Ccircle%20cx%3D%2212%22%20cy%3D%2212%22%20r%3D%2210%22/%3E%3Cpath%20d%3D%22M12%2016v-4%22/%3E%3Cpath%20d%3D%22M12%208h.01%22/%3E%3C/svg%3E") center/contain no-repeat}
+#info:hover::before{background:var(--ink,#1f2328)}
+.foot-icons{display:inline-flex;align-items:center;gap:0}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div><h1>Hire approvals</h1><div class="sub" id="sub"></div><div class="when" id="when"></div></div>
+    <div class="controls"><div id="people" style="align-self:center"></div>
+      <label>Company<select id="entity"><option value="">All</option></select></label>
+      <label>Function<select id="fn"><option value="">All</option></select></label>
+      <label>Starting by<select id="by"></select></label>
+      <label>Find<input id="q" type="search" placeholder="role, cost centre…"></label>
+    </div>
+  </header>
+  <div class="counts" id="counts"></div>
+  <div class="card">
+    <div class="bar">
+      <button id="approve" class="primary" disabled>Approve selected</button>
+      <span id="pickInfo" class="note" style="margin:0"></span>
+      <span class="foot-icons" style="margin-left:auto"><button id="info" type="button" title="Info: what this page shows" aria-label="Info: what this page shows">Info</button><span id="historyBtn"></span></span>
+    </div>
+    <div class="scroll"><table class="t" id="tbl"></table></div>
+    <p class="note">Cost is an estimate: the middle of the pay band × FTE, in pounds at the forecast rate. The full cost (tax, pension, benefits, bonus) lands in Workforce cost once approved. <span id="status" class="status"></span></p>
+  </div>
+  <div id="infoModal" class="info-modal" hidden>
+    <div class="info-card">
+      <div class="info-head"><h3>Hire approvals</h3><button id="infoModalClose" type="button" title="Close">✕</button></div>
+      <div class="info-body"><p>Every hire waiting for Finance, with its cost.</p><h4>How it works</h4><p>Approve several at once. Only approved hires count in headcount and cost.</p><h4>Who can change</h4><p>WFP Finance; everyone can read.</p></div>
+    </div>
+  </div>
+</div>
+<script src="/lens-kit/lens-kit.js"></script>
+<script>
+// Workforce · Hire approvals — Finance's queue: every planned hire still
+// waiting for approval, across all cost centres, with what it will cost.
+// Approve several at once; each runs WFP Approve Hire, which checks the
+// person is allowed. Until approved, a hire is not in the forecast.
+(function () {
+  // ── Workforce helpers (the same small block in every Workforce Lens) ──
+  var $ = function (id) { return document.getElementById(id) }
+  var esc = function (v) { return String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;') }
+  var M = function (d, e) { return '[' + d + '].[' + d + '].[' + String(e).replace(/]/g, ']]') + ']' }
+  // one MDX query; a result cut short by the 20,000-cell limit is an error, never partial numbers
+  var call = function (mdx) { return window.lensBridge.call('execMDX', { mdx: mdx }).then(function (r) { if (r && r.truncated) throw new Error('A query returned more than 20,000 cells and was cut short — narrow it.'); return r }) }
+  var opt = function (list, sel) { return list.map(function (x) { var v = typeof x === 'object' ? x.value : x, l = typeof x === 'object' ? x.label : x; return '<option value="' + esc(v) + '"' + (v === sel ? ' selected' : '') + '>' + esc(l) + '</option>' }).join('') }
+  var say = function (t, k) { var s = $('status'); if (s) { s.textContent = t || ''; s.className = 'status ' + (k || '') } }
+  var fail = function (e) { say(e && e.message ? e.message : String(e), 'err') }
+  var num = function (v) { return v == null || v === '' ? 0 : Number(v) }
+  var gbp = function (v) { return Lens.format(v, Math.abs(v) >= 1e6 ? '£m' : Math.abs(v) >= 1e4 ? '£k' : '£') }
+  var signed = function (v, f) { return (v > 0 ? '+' : v < 0 ? '−' : '') + (f || gbp)(Math.abs(v)) }
+  var monthsOf = function (yr) { var m = []; for (var i = 1; i <= 12; i++) m.push(yr + '-' + (i < 10 ? '0' : '') + i); return m }
+  var MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+  var monthName = function (p) { return p ? MON[Number(p.slice(5)) - 1] + ' ' + p.slice(0, 4) : '' }
+  var attrMDX = function (dim, attrs, set) { var A = '}ElementAttributes_' + dim; return 'SELECT {' + attrs.map(function (a) { return M(A, a) }).join(',') + '} ON 0, {' + (set || 'TM1FILTERBYLEVEL({TM1SUBSETALL([' + dim + '].[' + dim + '])},0)') + '} ON 1 FROM [' + A + ']' }
+  // cost centres with their function (R&D / S&M / G&A) and name, from the model
+  var costCentres = function () {
+    return call(attrMDX('WFP Cost Centre', ['Function', 'CC Name'])).then(function (r) {
+      var list = Lens.rows(r).map(function (x) { return { id: x['WFP Cost Centre'], fn: x.Function || '', name: x['CC Name'] || '' } })
+      var order = []; list.forEach(function (c) { if (order.indexOf(c.fn) < 0) order.push(c.fn) })   // functions in model order
+      return list.sort(function (a, b) { return order.indexOf(a.fn) - order.indexOf(b.fn) || a.id.localeCompare(b.id) })
+    })
+  }
+  var ccOptions = function (ccs, sel, all) {
+    var fns = Array.from(new Set(ccs.map(function (c) { return c.fn })))
+    return (all ? '<option value="">' + esc(all) + '</option>' : '') + fns.map(function (f) {
+      return '<optgroup label="' + esc(f) + '">' + ccs.filter(function (c) { return c.fn === f }).map(function (c) { return '<option value="' + esc(c.id) + '"' + (c.id === sel ? ' selected' : '') + '>' + esc(c.id + ' · ' + c.name) + '</option>' }).join('') + '</optgroup>'
+    }).join('')
+  }
+  // every position with the attributes asked for — in as many queries as the cell limit needs
+  var positions = function (attrs) {
+    return call('SELECT {} ON 0, {TM1FILTERBYLEVEL({TM1SUBSETALL([WFP Position].[WFP Position])},0)} ON 1 FROM [}ElementAttributes_WFP Position]').then(function (r) {
+      var n = r.Axes[1] ? r.Axes[1].Tuples.length : 0, per = Math.max(1, Math.floor(18000 / Math.max(n, 1))), groups = []
+      for (var i = 0; i < attrs.length; i += per) groups.push(attrs.slice(i, i + per))
+      return Promise.all(groups.map(function (g) { return call(attrMDX('WFP Position', g)) })).then(function (rs) {
+        var by = {}, out = []
+        rs.forEach(function (res) { Lens.rows(res).forEach(function (x) { var id = x['WFP Position']; if (!by[id]) { by[id] = { id: id }; out.push(by[id]) } Object.assign(by[id], x) }) })
+        return out
+      })
+    })
+  }
+  // period index <-> month name ('2026-04' = 16)
+  var periodIndex = function () {
+    return call('SELECT {[}ElementAttributes_WFP Period].[}ElementAttributes_WFP Period].[Period Index]} ON 0, {TM1FILTERBYLEVEL({TM1SUBSETALL([WFP Period].[WFP Period])},0)} ON 1 FROM [}ElementAttributes_WFP Period]').then(function (r) {
+      var to = {}, from = {}; Lens.rows(r).forEach(function (x) { var i = Number(x['Period Index']); if (i && /^\d{4}-\d{2}$/.test(x['WFP Period'])) { to[x['WFP Period']] = i; from[i] = x['WFP Period'] } }); return { idx: to, month: from }
+    })
+  }
+  // the latest forecast snapshot (a FCST yyyy-mm version under Non-Calculating) — none = ''
+  var lastSnapshot = function () {
+    return call('SELECT {} ON 0, {[WFP Version].[WFP Version].[Non-Calculating].Children} ON 1 FROM [WFP Headcount]').then(function (r) {
+      var s = (r.Axes[1] ? r.Axes[1].Tuples : []).map(function (t) { return t.Members[0].Name }).filter(function (n) { return /^FCST \d{4}-\d{2}$/.test(n) }).sort()
+      return s.length ? s[s.length - 1] : ''
+    }, function () { return '' })
+  }
+  // the month actuals run to (Actuals Cutoff Index in Forecast)
+  var cutoffIndex = function (version) {
+    return call('SELECT {' + M('WFP Assumptions Measure', 'Actuals Cutoff Index') + '} ON 0 FROM [WFP Assumptions] WHERE (' + M('WFP Period', '2026-01') + ',' + M('WFP Version', version || 'Forecast') + ',' + M('WFP Entity', 'UK Ltd') + ')').then(function (r) { return num((Lens.rows(r)[0] || {})['Actuals Cutoff Index']) })
+  }
+  // ────────────────────────────────────────────────────────────────────
+
+  // ── Stripes: every grid Lens has its own toggle, remembered per user ──
+  var stripeState = function (key) { try { var v = localStorage.getItem('lens-stripes:' + key); return v === null ? true : v === '1' } catch (e) { return true } }
+  var stripeSave = function (key, on) { try { localStorage.setItem('lens-stripes:' + key, on ? '1' : '0') } catch (e) {} }
+
+  // Version · Plan month (first forecast month = the month after the last Actual)
+  // · Actuals to. Rendered into every Lens header; follows the #ver selector.
+  var planMeta = function (el, fallbackVersion) {
+    var draw = function () {
+      var v = ($('ver') && $('ver').value) || fallbackVersion || 'Forecast'
+      return Promise.all([periodIndex(), cutoffIndex('Forecast')]).then(function (r) {
+        var P = r[0], cutoff = Number(r[1]) || 0
+        var pm = P.month[cutoff + 1] || '', am = P.month[cutoff] || ''
+        $(el).innerHTML = '<span><em>Version</em><b>' + esc(v) + '</b></span>' +
+          '<span><em>Plan month</em><b>' + esc(monthName(pm) || '—') + '</b></span>' +
+          '<span><em>Actuals to</em><b>' + esc(monthName(am) || '—') + '</b></span>'
+      }, function () {})
+    }
+    var sel = $('ver'); if (sel) sel.addEventListener('change', draw)
+    return draw()
+  }
+
+  // Info: the ⓘ Info button opens a plain-English card for the page.
+  var infoPanel = function (openId, modalId) {
+    var b = $(openId), m = $(modalId); if (!b || !m) return
+    var close = function () { m.hidden = true }
+    b.onclick = function () { m.hidden = false }
+    var x = $(modalId + 'Close'); if (x) x.onclick = close
+    m.addEventListener('click', function (e) { if (e.target === m) close() })
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape') close() })
+  }
+
+  var C = Lens.config()
+  infoPanel('info', 'infoModal')
+  var VERSION = C.version || 'Forecast', APPROVERS = C.approvers || ['WFP Finance']
+  planMeta('when', VERSION)
+  var P = null, firstOpen = 16, lines = [], picked = {}, finance = false, tg = null, hp = null, sortBy = 'hire', tile = 'waiting'
+  var MD = 'WFP Hiring Plan Measure'
+
+  function load() {
+    say('Loading…', 'busy')
+    return Promise.all([
+      call('SELECT {' + M(MD, 'Hire Month') + ',' + M(MD, 'Approved') + '} ON 0, NON EMPTY {TM1FILTERBYLEVEL({TM1SUBSETALL([WFP Position].[WFP Position])},0)} ON 1 FROM [WFP Hiring Plan] WHERE (' + M('WFP Version', VERSION) + ')'),
+      positions(['Cost Centre', 'Position Status', 'Grade', 'Job Family', 'Location', 'FTE', 'Home Entity', 'Salary Currency']),
+      costCentres(),
+      call('SELECT {' + M('WFP Pay Rates Measure', 'Salary Mid') + '} ON 0, {TM1SUBSETALL([WFP Grade].[WFP Grade])} * {TM1SUBSETALL([WFP Job Family].[WFP Job Family])} * {TM1SUBSETALL([WFP Location].[WFP Location])} ON 1 FROM [WFP Pay Rates] WHERE (' + M('WFP Period', '2026-06') + ',' + M('WFP Version', VERSION) + ')'),
+      call('SELECT {TM1SUBSETALL([WFP Currency].[WFP Currency])} ON 0 FROM [WFP FX Rates] WHERE (' + M('WFP Period', '2026-06') + ',' + M('WFP Version', VERSION) + ',' + M('WFP FX Rate Type', 'Average') + ',' + M('WFP FX Rates Measure', 'Rate') + ')')
+    ]).then(function (r) {
+      var plan = {}; Lens.rows(r[0]).forEach(function (x) { plan[x['WFP Position']] = x })
+      var cc = {}; r[2].forEach(function (c) { cc[c.id] = c })
+      var mid = {}; Lens.rows(r[3]).forEach(function (x) { mid[x['WFP Grade'] + '|' + x['WFP Job Family'] + '|' + x['WFP Location']] = num(x['Salary Mid']) })
+      var fx = Lens.rows(r[4])[0] || {}
+      lines = r[1].filter(function (p) { var v = plan[p.id]; return v && num(v['Hire Month']) > 0 && (p['Position Status'] === 'TBH' || p['Position Status'] === 'Open Req') }).map(function (p) {
+        var v = plan[p.id], h = num(v['Hire Month']), m = P.month[h] || '', c = cc[p['Cost Centre']] || {}
+        var annual = (mid[p.Grade + '|' + p['Job Family'] + '|' + p.Location] || 0) * num(p.FTE) * num(fx[p['Salary Currency']] || 1)
+        var leftThisYear = m ? 12 - Number(m.slice(5)) + 1 : 0
+        return { id: p.id, cc: p['Cost Centre'], ccName: c.name || '', fn: c.fn || '', entity: p['Home Entity'], grade: p.Grade, job: p['Job Family'], fte: num(p.FTE), status: p['Position Status'],
+          hire: h, month: m, approved: v.Approved === 'Y', annual: annual, firstYear: annual * leftThisYear / 12 }
+      })
+      var by = Array.from(new Set(lines.map(function (l) { return l.month }))).filter(Boolean).sort()
+      if (!$('by').options.length) $('by').innerHTML = '<option value="">Any time</option>' + by.map(function (m) { return '<option value="' + m + '">' + monthName(m) + '</option>' }).join('')
+      if ($('fn').options.length < 2) $('fn').innerHTML += opt(Array.from(new Set(r[2].map(function (c) { return c.fn }))))
+      if ($('entity').options.length < 2) $('entity').innerHTML += opt(Array.from(new Set(lines.map(function (l) { return l.entity }))).sort())
+      picked = {}
+      render(); say('')
+      if (hp) Lens.history({ process: 'WFP Approve Hire' }, { limit: 200 }).then(function (l) { hp.set(l) }, function () {})
+    })
+  }
+  function shown() {
+    var e = $('entity').value, f = $('fn').value, by = $('by').value, q = $('q').value.trim().toLowerCase()
+    return lines.filter(function (l) {
+      return (tile === 'approved' ? l.approved : !l.approved && (tile !== 'soon' || l.hire <= firstOpen + 2)) && (!e || l.entity === e) && (!f || l.fn === f) && (!by || l.month <= by) &&
+        (!q || (l.id + ' ' + l.cc + ' ' + l.ccName + ' ' + l.job + ' ' + l.grade).toLowerCase().indexOf(q) >= 0)
+    }).sort(function (a, b) { return sortBy === 'cost' ? b.annual - a.annual : sortBy === 'cc' ? a.cc.localeCompare(b.cc) || a.hire - b.hire : a.hire - b.hire || a.cc.localeCompare(b.cc) })
+  }
+  function render() {
+    var all = lines.filter(function (l) { return !l.approved }), soon = all.filter(function (l) { return l.hire <= firstOpen + 2 })
+    var appr = lines.filter(function (l) { return l.approved })
+    $('counts').innerHTML = [['warn', all.length, 'waiting for approval'], ['bad', soon.length, 'start in the next 3 months'], ['', gbp(all.reduce(function (s, l) { return s + l.annual }, 0)), 'a year if all approved'], ['good', appr.length, 'already approved']]
+      .map(function (x, i) { var k = ['waiting', 'soon', 'cost', 'approved'][i]; return '<button type="button" class="count ' + x[0] + (tile === k && k !== 'waiting' ? ' on' : '') + '" data-tile="' + k + '" title="' + ['Show every hire waiting', 'Show only these', 'Show the waiting hires, dearest first', 'Show the hires already approved'][i] + '"><b>' + x[1] + '</b><span>' + x[2] + '</span></button>' }).join('')
+    var rows = shown()
+    var th = function (k, l, n) { return '<th' + (n ? ' class="n"' : '') + ' data-sort="' + k + '" style="cursor:' + (k ? 'pointer' : 'default') + '">' + l + (sortBy === k ? ' ↓' : '') + '</th>' }
+    $('tbl').innerHTML = '<thead><tr><th><input type="checkbox" id="all"' + (finance ? '' : ' disabled') + '></th>' + th('', 'Role') + th('cc', 'Cost centre') + th('', 'Company') + th('', 'Grade') + th('', 'FTE', 1) + th('hire', 'Starts') + th('cost', 'Cost a year', 1) + th('', 'Cost this year', 1) + '</tr></thead><tbody>' +
+      (rows.length ? rows.map(function (l) {
+        return '<tr data-id="' + esc(l.id) + '"' + (picked[l.id] ? ' class="pick"' : '') + '><td>' + (l.approved ? '' : '<input type="checkbox" data-pick="' + esc(l.id) + '"' + (picked[l.id] ? ' checked' : '') + (finance ? '' : ' disabled') + '>') + '</td><td>' + esc(l.id) + ' <span class="pill">' + esc(l.approved ? 'Approved' : l.status) + '</span><div class="sub">' + esc(l.job) + '</div></td><td>' + esc(l.cc) + '<div class="sub">' + esc(l.ccName) + '</div></td><td>' + esc(l.entity) + '</td><td>' + esc(l.grade) + '</td><td class="n">' + l.fte + '</td><td>' + esc(monthName(l.month)) + '</td><td class="n">' + gbp(l.annual) + '</td><td class="n">' + gbp(l.firstYear) + '</td></tr>'
+      }).join('') : '<tr><td colspan="9" class="sub">' + (tile === 'approved' ? 'No approved hires that match.' : 'Nothing waiting that matches.') + '</td></tr>') + '</tbody>'
+    pickInfo()
+  }
+  function pickInfo() {
+    var ids = Object.keys(picked), sel = lines.filter(function (l) { return picked[l.id] })
+    $('approve').disabled = !finance || !ids.length
+    $('approve').textContent = ids.length ? 'Approve ' + ids.length + ' selected' : 'Approve selected'
+    $('pickInfo').textContent = !finance ? 'Only Finance can approve — you can see the queue.' : ids.length ? gbp(sel.reduce(function (s, l) { return s + l.annual }, 0)) + ' a year · ' + gbp(sel.reduce(function (s, l) { return s + l.firstYear }, 0)) + ' this year' : 'Tick the hires to approve'
+  }
+  function approve() {
+    var ids = Object.keys(picked); if (!ids.length) return
+    var done = 0, failed = []
+    $('approve').disabled = true
+    var next = function (i) {
+      if (i >= ids.length) return Promise.resolve()
+      say('Approving ' + (i + 1) + ' of ' + ids.length + '…', 'busy')
+      return Lens.run('WFP Approve Hire', { pVersion: VERSION, pPosition: ids[i], pAction: 'approve' })
+        .then(function () { done++ }, function (e) { failed.push(ids[i] + ': ' + (e && e.message ? e.message : e)) })
+        .then(function () { return next(i + 1) })
+    }
+    next(0).then(function () {
+      if (tg && done) tg.send('saved', { note: 'approved ' + done + ' hires' })
+      return load().then(function () { say(failed.length ? 'Approved ' + done + '; not done: ' + failed.join('; ') : 'Approved ' + done + ' hire' + (done > 1 ? 's' : '') + ' — now in the forecast.', failed.length ? 'err' : 'ok') })
+    }).catch(fail)
+  }
+  document.addEventListener('change', function (e) {
+    var id = e.target.getAttribute && e.target.getAttribute('data-pick')
+    if (id) { if (e.target.checked) picked[id] = 1; else delete picked[id]; e.target.closest('tr').className = e.target.checked ? 'pick' : ''; pickInfo() }
+    if (e.target.id === 'all') { picked = {}; if (e.target.checked) shown().forEach(function (l) { if (!l.approved) picked[l.id] = 1 }); render(); $('all').checked = e.target.checked }
+  })
+  document.addEventListener('click', function (e) { var th = e.target.closest && e.target.closest('th[data-sort]'); if (th && th.getAttribute('data-sort')) { sortBy = th.getAttribute('data-sort'); render() } })
+  $('counts').addEventListener('click', function (e) {
+    var t = e.target.closest && e.target.closest('[data-tile]'); if (!t) return
+    var k = t.getAttribute('data-tile'); tile = tile === k ? 'waiting' : k; if (tile === 'cost') sortBy = 'cost'; else if (sortBy === 'cost') sortBy = 'hire'; picked = {}; render()
+  })
+  $('entity').onchange = $('fn').onchange = $('by').onchange = function () { picked = {}; render() }
+  $('q').oninput = function () { render() }
+  $('approve').onclick = approve
+  hp = Lens.historyPanel('#historyBtn', { title: 'Approvals', describe: function (e) { return (e.params && e.params.pAction === 'reopen' ? 'reopened ' : 'approved ') + (e.params ? e.params.pPosition : '') + (e.status && e.status !== 'CompletedSuccessfully' ? ' — refused' : '') } })
+  tg = Lens.live('#people', { onEvent: function (ev) { if (ev.type === 'saved' && !Object.keys(picked).length) load().catch(fail) } })
+  tg.join('approvals')
+  Promise.all([Lens.whoami(), periodIndex(), cutoffIndex(VERSION)]).then(function (r) {
+    finance = Lens.whoami.inGroup(r[0], APPROVERS); P = r[1]; firstOpen = (r[2] || 15) + 1
+    $('sub').textContent = VERSION + ' · new hires waiting for Finance' + (finance ? '' : ' · view only')
+    return load()
+  }).catch(fail)
+})()
+</script>
+</body>
+</html>

@@ -1,0 +1,580 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>People</title>
+<meta name="lens-runs" content="WFP Assign Person, WFP Change Assignment, WFP End Assignment, WFP Transfer Person, WFP Record Absence, WFP Assign Cover">
+
+<style>
+:root{--bg:var(--lens-bg,#f6f7f7);--ink:var(--lens-ink,#16201f);--faint:var(--lens-faint,#85908f);--rule:var(--lens-rule,#dfe4e3);--panel:var(--lens-panel,#fff);--accent:var(--lens-accent,#0f766e);--bad:var(--lens-bad,#b4372d);--good:var(--lens-good,#1d7a46);--warn:#b7791f}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}
+.wrap{padding:16px 18px 24px;display:grid;gap:12px;max-width:1700px;margin:0 auto}
+header{display:flex;flex-wrap:wrap;align-items:end;gap:12px 18px}
+h1{font-size:20px;margin:0}
+h2{font-size:12px;margin:0 0 8px;color:var(--faint);text-transform:uppercase;letter-spacing:.07em;font-weight:600}
+h2 .sub{text-transform:none;letter-spacing:0;font-weight:400}
+.sub{font-size:12.5px;color:var(--faint)}
+.controls{display:flex;gap:10px;margin-left:auto;align-items:end;flex-wrap:wrap}
+label{display:grid;gap:3px;font-size:11px;color:var(--faint);text-transform:uppercase;letter-spacing:.06em}
+select,button,input{font:inherit;font-size:13px;padding:5px 10px;border:1px solid var(--rule);border-radius:7px;background:var(--panel);color:var(--ink)}
+input[type=checkbox]{padding:0;width:15px;height:15px;accent-color:var(--accent)}
+button{cursor:pointer}
+button.primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+button:disabled{opacity:.45;cursor:default}
+.card{background:var(--panel);border:1px solid var(--rule);border-radius:10px;padding:12px;min-width:0}
+.two{display:grid;grid-template-columns:minmax(0,3fr) minmax(0,2fr);gap:12px}
+.halves{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px}
+@media (max-width:860px){.two,.halves{grid-template-columns:1fr}}
+.bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px}
+.status{font-size:13px;color:var(--faint)}
+.status.ok{color:var(--good)} .status.err{color:var(--bad)} .status.busy{color:var(--faint)}
+.note{font-size:12px;color:var(--faint);margin:8px 0 0}
+.counts{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px}
+.count{background:var(--panel);border:1px solid var(--rule);border-radius:10px;padding:8px 14px}
+.count b{display:block;font-size:22px;font-variant-numeric:tabular-nums}
+.count span{font-size:12px;color:var(--faint)}
+/* a tile that filters the list: click to show just those; the chosen one is outlined */
+button.count{font:inherit;color:inherit;text-align:left;cursor:pointer;transition:border-color .12s}
+button.count:hover{border-color:var(--accent)}
+button.count.on{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}
+.count.good b{color:var(--good)} .count.warn b{color:var(--warn)} .count.bad b{color:var(--bad)}
+.scroll{overflow:auto;max-height:520px}
+table.t{border-collapse:collapse;width:100%;font-size:13px;font-variant-numeric:tabular-nums}
+table.t th{position:sticky;top:0;background:var(--panel);text-align:left;font-size:11px;color:var(--faint);text-transform:uppercase;letter-spacing:.05em;font-weight:600;padding:6px 8px;border-bottom:1px solid var(--rule);white-space:nowrap}
+table.t td{padding:6px 8px;border-bottom:1px solid var(--rule);white-space:nowrap}
+table.t td.n,table.t th.n{text-align:right}
+table.t tr.tot td{font-weight:700;background:color-mix(in srgb,var(--rule) 40%,transparent)}
+.pill{display:inline-block;font-size:11px;padding:1px 8px;border-radius:999px;border:1px solid var(--rule);color:var(--faint)}
+.pill.good{color:var(--good);border-color:currentColor} .pill.warn{color:var(--warn);border-color:currentColor} .pill.bad{color:var(--bad);border-color:currentColor}
+.up{color:var(--bad)} .down{color:var(--good)}
+
+/* quiet History icon — the Assumptions look, applied to every lens footer */
+#historyBtn button{background:transparent!important;border-color:transparent!important;font-size:0!important;padding:6px!important;line-height:0}
+#historyBtn button::before{content:"";display:inline-block;width:18px;height:18px;background:var(--faint);-webkit-mask:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22M3%2012a9%209%200%201%200%209-9%209.75%209.75%200%200%200-6.74%202.74L3%208%22/%3E%3Cpath%20d%3D%22M3%203v5h5%22/%3E%3Cpath%20d%3D%22M12%207v5l4%202%22/%3E%3C/svg%3E") center/contain no-repeat;mask:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22M3%2012a9%209%200%201%200%209-9%209.75%209.75%200%200%200-6.74%202.74L3%208%22/%3E%3Cpath%20d%3D%22M3%203v5h5%22/%3E%3Cpath%20d%3D%22M12%207v5l4%202%22/%3E%3C/svg%3E") center/contain no-repeat}
+#historyBtn button:hover::before{background:var(--ink)}
+
+/* Version / Plan month / Actuals — the same strip on every Lens */
+.when{display:flex;flex-wrap:wrap;gap:4px 18px;margin-top:4px}
+.when span{display:inline-flex;align-items:baseline;gap:6px}
+.when em{font-style:normal;font-size:10px;color:var(--faint);text-transform:uppercase;letter-spacing:.06em}
+.when b{font-size:13px;font-weight:600;font-variant-numeric:tabular-nums}
+
+/* Info panel — the Info icon (beside History) opens a plain-English card */
+.info-modal{position:fixed;inset:0;background:rgba(10,20,18,.30);display:flex;align-items:flex-start;justify-content:center;padding:7vh 16px;z-index:60}
+.info-modal[hidden]{display:none}
+.info-card{background:var(--panel);border:1px solid var(--rule);border-radius:12px;max-width:660px;width:100%;padding:16px 18px;box-shadow:0 24px 60px rgba(0,0,0,.22);max-height:80vh;overflow:auto}
+.info-head{display:flex;align-items:center;gap:10px;margin-bottom:4px}
+.info-head h3{margin:0;font-size:16px}
+.info-head button{margin-left:auto;border:0;background:transparent;font-size:16px;line-height:1;color:var(--faint);cursor:pointer;padding:4px}
+.info-body{font-size:13px;line-height:1.55}
+.info-body h4{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--faint);margin:14px 0 4px}
+.info-body p{margin:0 0 6px}
+
+.wrap{max-width:1700px;margin:0 auto}
+.actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.form{display:grid;gap:10px;border:1px solid var(--rule);border-radius:10px;padding:12px;margin-top:10px;background:var(--bg)}
+.form .row{display:flex;gap:12px;flex-wrap:wrap;align-items:end}
+.form h3{margin:0;font-size:14px}
+.result{font-size:13px;padding:8px 10px;border-radius:8px}
+.result.ok{background:color-mix(in srgb,var(--good) 12%,transparent);color:var(--good)}
+.result.err{background:color-mix(in srgb,var(--bad) 12%,transparent);color:var(--bad)}
+.quiet{flex:none}
+.foot{display:flex;align-items:center;gap:12px;margin-top:8px}
+.foot .note{margin:0;flex:1}
+/* Info — an icon beside History; the label shows on hover */
+#info{background:transparent!important;border-color:transparent!important;font-size:0!important;padding:6px!important;line-height:0;cursor:pointer;min-width:0}
+#info::before{content:"";display:inline-block;width:18px;height:18px;background:var(--faint,#8a8f98);-webkit-mask:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Ccircle%20cx%3D%2212%22%20cy%3D%2212%22%20r%3D%2210%22/%3E%3Cpath%20d%3D%22M12%2016v-4%22/%3E%3Cpath%20d%3D%22M12%208h.01%22/%3E%3C/svg%3E") center/contain no-repeat;mask:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Ccircle%20cx%3D%2212%22%20cy%3D%2212%22%20r%3D%2210%22/%3E%3Cpath%20d%3D%22M12%2016v-4%22/%3E%3Cpath%20d%3D%22M12%208h.01%22/%3E%3C/svg%3E") center/contain no-repeat}
+#info:hover::before{background:var(--ink,#1f2328)}
+.foot-icons{display:inline-flex;align-items:center;gap:0}
+.cost{font-size:12px;padding:2px 8px;border-radius:10px;white-space:nowrap}
+.cost.ok{color:var(--faint)}
+.cost.pending{background:color-mix(in srgb,var(--warn,#b7791f) 14%,transparent);color:var(--ink)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div><h1>People</h1><div class="sub" id="sub"></div><div class="when" id="when"></div><div id="cost"></div></div>
+    <div class="controls"><label style="display:flex;flex-direction:row;align-items:center;gap:6px;text-transform:none;letter-spacing:0;font-size:13px;color:var(--ink)"><input type="checkbox" id="stripes"> Stripes</label>
+      <label>Version<select id="ver"></select></label>
+      <label>Month<select id="month"></select></label>
+      <label>Cost centre<select id="cc"></select></label>
+      <label>Show<select id="show"><option value="all">Everyone</option><option value="leaving">Leaving</option><option value="transfer">Transfers</option><option value="away">Away</option><option value="cover">Cover</option></select></label>
+      
+    </div>
+  </header>
+  <div class="counts" id="counts"></div>
+  <div class="card">
+    <div class="bar">
+      <button type="button" id="hire">Hire someone…</button>
+      <span class="actions" id="actions"></span>
+      <span id="status" class="status"></span>
+    </div>
+    <div id="grid"></div>
+    <div id="form"></div>
+    <div class="foot"><p class="note" id="note"></p><span class="foot-icons"><button id="info" type="button" title="Info: what this page shows" aria-label="Info: what this page shows">Info</button><span id="historyBtn" class="quiet"></span></span></div>
+  </div>
+  <div id="infoModal" class="info-modal" hidden>
+    <div class="info-card">
+      <div class="info-head"><h3>People</h3><button id="infoModalClose" type="button" title="Close">✕</button></div>
+      <div class="info-body">
+        <p>Everyone holding a Position in the chosen cost centre that month, and everything that can happen to them. Pick a person to act.</p>
+        <h4>Actions</h4>
+        <p><b>Hire someone…</b> puts a person (or a new person) in a Position from a month — into an open Position, replacing whoever is there (they leave the month before), or as a <b>handover</b> where the leaver stays to a month you give and the two overlap.
+        <b>Change pay / FTE…</b> a pay rise, promotion pay or going part-time, from a month — the months before keep their pay.
+        <b>Leaves…</b> records a leaver and can plan a backfill that waits for Finance. <b>Transfer…</b> moves the person to an open Position in the same company; their pay and year-to-date tax go with them.
+        <b>Away…</b> records time away (parental leave, long-term sick) at a pay % — they stay in headcount. <b>Cover…</b> puts someone in while they are away; cover counts in headcount (shown separately) and is not a joiner or leaver.</p>
+        <h4>States</h4>
+        <p><b>In post</b>, <b>Leaving</b> (their last month is in the plan), <b>Away</b> (with the pay %), <b>Cover</b>, <b>Handover</b> (overlapping the leaver).</p>
+        <h4>Cost</h4>
+        <p>Every action marks cost out of date; it is brought up to date about every 5 minutes (the line under the title says when).</p>
+        <h4>Who can change</h4>
+        <p>HR and Finance (WFP HR / WFP Finance); everyone can read.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="/lens-kit/lens-kit.js"></script>
+<script>
+// Workforce · People — HR's page for everything about a person: hire (with replace or a handover), pay / FTE change, leaver (with backfill), transfer, time away, cover. Each action runs its WFP process, which checks the rules and says why when it refuses; cost follows within about 5 minutes.
+(function () {
+  // ── Workforce helpers (the same small block in every Workforce Lens) ──
+  var $ = function (id) { return document.getElementById(id) }
+  var esc = function (v) { return String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;') }
+  var M = function (d, e) { return '[' + d + '].[' + d + '].[' + String(e).replace(/]/g, ']]') + ']' }
+  // one MDX query; a result cut short by the 20,000-cell limit is an error, never partial numbers
+  var call = function (mdx) { return window.lensBridge.call('execMDX', { mdx: mdx }).then(function (r) { if (r && r.truncated) throw new Error('A query returned more than 20,000 cells and was cut short — narrow it.'); return r }) }
+  var opt = function (list, sel) { return list.map(function (x) { var v = typeof x === 'object' ? x.value : x, l = typeof x === 'object' ? x.label : x; return '<option value="' + esc(v) + '"' + (v === sel ? ' selected' : '') + '>' + esc(l) + '</option>' }).join('') }
+  var say = function (t, k) { var s = $('status'); if (s) { s.textContent = t || ''; s.className = 'status ' + (k || '') } }
+  var fail = function (e) { say(e && e.message ? e.message : String(e), 'err') }
+  var num = function (v) { return v == null || v === '' ? 0 : Number(v) }
+  var gbp = function (v) { return Lens.format(v, Math.abs(v) >= 1e6 ? '£m' : Math.abs(v) >= 1e4 ? '£k' : '£') }
+  var signed = function (v, f) { return (v > 0 ? '+' : v < 0 ? '−' : '') + (f || gbp)(Math.abs(v)) }
+  var monthsOf = function (yr) { var m = []; for (var i = 1; i <= 12; i++) m.push(yr + '-' + (i < 10 ? '0' : '') + i); return m }
+  var MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+  var monthName = function (p) { return p ? MON[Number(p.slice(5)) - 1] + ' ' + p.slice(0, 4) : '' }
+  var attrMDX = function (dim, attrs, set) { var A = '}ElementAttributes_' + dim; return 'SELECT {' + attrs.map(function (a) { return M(A, a) }).join(',') + '} ON 0, {' + (set || 'TM1FILTERBYLEVEL({TM1SUBSETALL([' + dim + '].[' + dim + '])},0)') + '} ON 1 FROM [' + A + ']' }
+  // cost centres with their function (R&D / S&M / G&A) and name, from the model
+  var costCentres = function () {
+    return call(attrMDX('WFP Cost Centre', ['Function', 'CC Name'])).then(function (r) {
+      var list = Lens.rows(r).map(function (x) { return { id: x['WFP Cost Centre'], fn: x.Function || '', name: x['CC Name'] || '' } })
+      var order = []; list.forEach(function (c) { if (order.indexOf(c.fn) < 0) order.push(c.fn) })   // functions in model order
+      return list.sort(function (a, b) { return order.indexOf(a.fn) - order.indexOf(b.fn) || a.id.localeCompare(b.id) })
+    })
+  }
+  var ccOptions = function (ccs, sel, all) {
+    var fns = Array.from(new Set(ccs.map(function (c) { return c.fn })))
+    return (all ? '<option value="">' + esc(all) + '</option>' : '') + fns.map(function (f) {
+      return '<optgroup label="' + esc(f) + '">' + ccs.filter(function (c) { return c.fn === f }).map(function (c) { return '<option value="' + esc(c.id) + '"' + (c.id === sel ? ' selected' : '') + '>' + esc(c.id + ' · ' + c.name) + '</option>' }).join('') + '</optgroup>'
+    }).join('')
+  }
+  // every position with the attributes asked for — in as many queries as the cell limit needs
+  var positions = function (attrs) {
+    return call('SELECT {} ON 0, {TM1FILTERBYLEVEL({TM1SUBSETALL([WFP Position].[WFP Position])},0)} ON 1 FROM [}ElementAttributes_WFP Position]').then(function (r) {
+      var n = r.Axes[1] ? r.Axes[1].Tuples.length : 0, per = Math.max(1, Math.floor(18000 / Math.max(n, 1))), groups = []
+      for (var i = 0; i < attrs.length; i += per) groups.push(attrs.slice(i, i + per))
+      return Promise.all(groups.map(function (g) { return call(attrMDX('WFP Position', g)) })).then(function (rs) {
+        var by = {}, out = []
+        rs.forEach(function (res) { Lens.rows(res).forEach(function (x) { var id = x['WFP Position']; if (!by[id]) { by[id] = { id: id }; out.push(by[id]) } Object.assign(by[id], x) }) })
+        return out
+      })
+    })
+  }
+  // period index <-> month name ('2026-04' = 16)
+  var periodIndex = function () {
+    return call('SELECT {[}ElementAttributes_WFP Period].[}ElementAttributes_WFP Period].[Period Index]} ON 0, {TM1FILTERBYLEVEL({TM1SUBSETALL([WFP Period].[WFP Period])},0)} ON 1 FROM [}ElementAttributes_WFP Period]').then(function (r) {
+      var to = {}, from = {}; Lens.rows(r).forEach(function (x) { var i = Number(x['Period Index']); if (i && /^\d{4}-\d{2}$/.test(x['WFP Period'])) { to[x['WFP Period']] = i; from[i] = x['WFP Period'] } }); return { idx: to, month: from }
+    })
+  }
+  // the latest forecast snapshot (a FCST yyyy-mm version under Non-Calculating) — none = ''
+  var lastSnapshot = function () {
+    return call('SELECT {} ON 0, {[WFP Version].[WFP Version].[Non-Calculating].Children} ON 1 FROM [WFP Headcount]').then(function (r) {
+      var s = (r.Axes[1] ? r.Axes[1].Tuples : []).map(function (t) { return t.Members[0].Name }).filter(function (n) { return /^FCST \d{4}-\d{2}$/.test(n) }).sort()
+      return s.length ? s[s.length - 1] : ''
+    }, function () { return '' })
+  }
+  // the month actuals run to (Actuals Cutoff Index in Forecast)
+  var cutoffIndex = function (version) {
+    return call('SELECT {' + M('WFP Assumptions Measure', 'Actuals Cutoff Index') + '} ON 0 FROM [WFP Assumptions] WHERE (' + M('WFP Period', '2026-01') + ',' + M('WFP Version', version || 'Forecast') + ',' + M('WFP Entity', 'UK Ltd') + ')').then(function (r) { return num((Lens.rows(r)[0] || {})['Actuals Cutoff Index']) })
+  }
+  // ────────────────────────────────────────────────────────────────────
+
+  // ── Stripes: every grid Lens has its own toggle, remembered per user ──
+  var stripeState = function (key) { try { var v = localStorage.getItem('lens-stripes:' + key); return v === null ? true : v === '1' } catch (e) { return true } }
+  var stripeSave = function (key, on) { try { localStorage.setItem('lens-stripes:' + key, on ? '1' : '0') } catch (e) {} }
+
+  // Version · Plan month (first forecast month = the month after the last Actual)
+  // · Actuals to. Rendered into every Lens header; follows the #ver selector.
+  var planMeta = function (el, fallbackVersion) {
+    var draw = function () {
+      var v = ($('ver') && $('ver').value) || fallbackVersion || 'Forecast'
+      return Promise.all([periodIndex(), cutoffIndex('Forecast')]).then(function (r) {
+        var P = r[0], cutoff = Number(r[1]) || 0
+        var pm = P.month[cutoff + 1] || '', am = P.month[cutoff] || ''
+        $(el).innerHTML = '<span><em>Version</em><b>' + esc(v) + '</b></span>' +
+          '<span><em>Plan month</em><b>' + esc(monthName(pm) || '—') + '</b></span>' +
+          '<span><em>Actuals to</em><b>' + esc(monthName(am) || '—') + '</b></span>'
+      }, function () {})
+    }
+    var sel = $('ver'); if (sel) sel.addEventListener('change', draw)
+    return draw()
+  }
+
+  // Info: the Info icon (beside History) opens a plain-English card for the page.
+  var infoPanel = function (openId, modalId) {
+    var b = $(openId), m = $(modalId); if (!b || !m) return
+    var close = function () { m.hidden = true }
+    b.onclick = function () { m.hidden = false }
+    var x = $(modalId + 'Close'); if (x) x.onclick = close
+    m.addEventListener('click', function (e) { if (e.target === m) close() })
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape') close() })
+  }
+
+  // ── shared by the Workforce action pages ─────────────────────────────────
+  // Cost banner: every action marks cost out of date; chore WFP Recalculate Cost brings it up to
+  // date every 5 minutes. Shows "Cost up to date (10:42)" or "Cost updating — changes since 10:40".
+  var costBanner = function (el) {
+    var draw = function () {
+      var v = ($('ver') && $('ver').value) || 'Forecast'
+      return call('SELECT {' + ['Cost Out Of Date', 'Cost Requested At', 'Cost Updated At'].map(function (x) { return M('WFP Control Measure', x) }).join(',') + '} ON 0 FROM [WFP Control] WHERE (' + M('WFP Version', v) + ')').then(function (r) {
+        var x = Lens.rows(r)[0] || {}, out = num(x['Cost Out Of Date']) > 0
+        var t = function (s) { return s ? String(s).slice(11, 16) : '' }
+        $(el).innerHTML = out ? '<span class="cost pending">Cost updating — changes since ' + esc(t(x['Cost Requested At'])) + ' (about every 5 minutes)</span>'
+          : '<span class="cost ok">Cost up to date' + (x['Cost Updated At'] ? ' (' + esc(t(x['Cost Updated At'])) + ')' : '') + '</span>'
+      }, function () { $(el).innerHTML = '' })
+    }
+    var sel = $('ver'); if (sel) sel.addEventListener('change', draw)
+    draw(); setInterval(draw, 60000)
+    return draw
+  }
+  var field = function (label, html) { return '<label>' + label + html + '</label>' }
+  // a form under the grid: fields + "Do it"; run() returns the process call; on success the page reloads
+  // a form with Do it / Cancel; target = the element to draw it in (default #form). Its buttons are
+  // found inside the form, never page-wide: a finished form left on screen (its result showing) has
+  // buttons with the same ids, and a page-wide lookup wired the new form's Do it to the old one.
+  var form = function (title, body, run, after, target) {
+    var F = target || 'form', box = $(F)
+    box.innerHTML = '<div class="form"><h3>' + esc(title) + '</h3>' + body + '<div class="row"><button type="button" class="primary" id="go">Do it</button><button type="button" id="cancel">Cancel</button></div><div id="result"></div></div>'
+    var q = function (sel) { return box.querySelector(sel) }
+    var wire = function () {
+      q('#cancel').onclick = function () { box.innerHTML = '' }
+      q('#go').onclick = function () {
+        var go = q('#go'); go.disabled = true; q('#result').innerHTML = '<div class="result">Working…</div>'
+        run().then(function (r) {
+          q('#result').innerHTML = '<div class="result ok">' + esc(r && r.message ? r.message : 'Done.') + '</div>'
+          var keep = box.innerHTML
+          return Promise.resolve(after && after()).then(function () { box.innerHTML = keep; q('#go').disabled = true; q('#cancel').textContent = 'Close'; q('#cancel').onclick = function () { box.innerHTML = '' } })
+        }, function (e) { go.disabled = false; q('#result').innerHTML = '<div class="result err">' + esc(e && e.message ? e.message : String(e)) + '</div>' })
+      }
+    }
+    wire()
+  }
+  var check = function (label, id, on) { return '<label style="flex-direction:row;display:flex;gap:6px;align-items:center;text-transform:none;letter-spacing:0;font-size:13px;color:var(--ink)"><input type="checkbox" id="' + id + '"' + (on ? ' checked' : '') + '> ' + label + '</label>' }
+  var historyFoot = function () {
+    var hp = Lens.historyPanel('#historyBtn', { title: 'History', describe: function (e) { return e.message || ('ran ' + e.process + ' ' + JSON.stringify(e.params || {})) } })
+    var refresh = function () { if (hp) Lens.history({}, { limit: 100 }).then(function (l) { hp.set(l) }, function () {}) }
+    var hb = $('historyBtn').querySelector('button'); if (hb) { hb.title = 'History'; hb.setAttribute('aria-label', 'History'); hb.addEventListener('click', refresh) }
+    refresh(); return refresh
+  }
+
+  var C = Lens.config()
+  planMeta('when', 'Forecast')
+  var refreshCost = costBanner('cost')
+  var striped = stripeState('wfp-people')
+  $('stripes').checked = striped
+  $('stripes').onchange = function () { striped = this.checked; stripeSave('wfp-people', striped); if (g) g.stripes(striped) }
+  var ACTORS = C.actors || ['WFP HR', 'WFP Finance']
+  var A = 'WFP Assignment', MAP = 'WFP Position Map', PAY = 'WFP Assignment Pay'
+  var P = null, ccs = [], months = [], cutoff = 15, canAct = false, g = null, sel = null, names = {}, rowsAll = [], posList = []
+  var ver = function () { return $('ver').value }, mon = function () { return $('month').value }
+  var am = function (x) { return M('WFP Assignment Measure', x) }, mm = function (x) { return M('WFP Position Map Measure', x) }
+  var monthOpts = function (from) { return months.filter(function (p) { return P.idx[p] > cutoff && (!from || p >= from) }).map(function (p) { return { value: p, label: monthName(p) } }) }
+  var last = function () { return months[months.length - 1] }
+
+  // ── read: the cost centre's Positions this month, everyone on them, their pay and flags ──
+  function load() {
+    var v = ver(), m = mon(), cc = $('cc').value
+    sel = null; showActions(); $('form').innerHTML = ''
+    say('Loading…', 'busy')
+    var posSet = '{FILTER({TM1FILTERBYLEVEL({TM1SUBSETALL([WFP Position].[WFP Position])},0)}, [' + MAP + '].(' + M('WFP Period', m) + ',' + M('WFP Version', v) + ',' + mm('Cost Centre') + ') = "' + cc.replace(/"/g, '""') + '")}'
+    return call('SELECT {' + ['Home Entity', 'Position FTE', 'Position State'].map(mm).join(',') + '} ON 0, ' + posSet + ' ON 1 FROM [' + MAP + '] WHERE (' + M('WFP Period', m) + ',' + M('WFP Version', v) + ')').then(function (r) {
+      posList = Lens.rows(r).map(function (x) { return { id: x['WFP Position'], entity: x['Home Entity'], fte: num(x['Position FTE']), state: x['Position State'] || 'Closed' } })
+      if (!posList.length) { rowsAll = []; draw(); say('No positions in ' + cc + ' in ' + monthName(m) + '.'); return }
+      var set = '{' + posList.map(function (s) { return M('WFP Position', s.id) }).join(',') + '}'
+      var emps = '{TM1FILTERBYLEVEL({TM1SUBSETALL([WFP Employee].[WFP Employee])},0)}'
+      return Promise.all([
+        call('SELECT {' + months.map(function (p) { return M('WFP Period', p) }).join(',') + '} ON 0, NON EMPTY ' + set + ' * ' + emps + ' ON 1 FROM [' + A + '] WHERE (' + M('WFP Version', v) + ',' + am('FTE Share') + ')'),
+        call('SELECT {' + ['Absent', 'Cover FTE', 'Handover FTE'].map(am).join(',') + '} ON 0, NON EMPTY ' + set + ' * ' + emps + ' ON 1 FROM [' + A + '] WHERE (' + M('WFP Version', v) + ',' + M('WFP Period', m) + ')'),
+        call('SELECT NON EMPTY {' + months.map(function (p) { return M('WFP Period', p) }).join(',') + '} * {' + am('Start Reason') + ',' + am('End Reason') + '} ON 0, NON EMPTY ' + set + ' * ' + emps + ' ON 1 FROM [' + A + '] WHERE (' + M('WFP Version', v) + ')'),
+        call('SELECT {' + ['Base Salary', 'Absence Pay %'].map(function (x) { return M('WFP Assignment Pay Measure', x) }).join(',') + '} ON 0, NON EMPTY ' + set + ' * ' + emps + ' ON 1 FROM [' + PAY + '] WHERE (' + M('WFP Version', v) + ',' + M('WFP Period', m) + ')')
+      ]).then(function (q) {
+        var key = function (x) { return x['WFP Position'] + '|' + x['WFP Employee'] }
+        var flags = {}; Lens.rows(q[1]).forEach(function (x) { flags[key(x)] = x })
+        var pay = {}; Lens.rows(q[3]).forEach(function (x) { pay[key(x)] = x })
+        var moves = {}
+        Lens.rows(q[2]).forEach(function (x) {
+          var k = key(x), o = moves[k] = moves[k] || {}
+          Object.keys(x).forEach(function (c) { if (/Transfer In/.test(String(x[c]))) o.tin = c.split(/[|\/]/)[0]; if (/Transfer Out/.test(String(x[c]))) o.tout = c.split(/[|\/]/)[0] })
+        })
+        var list = [], ids = []
+        Lens.rows(q[0]).forEach(function (x) {
+          var on = months.filter(function (p) { return num(x[p]) > 0 })
+          if (!on.length) return
+          var k = key(x), f = flags[k] || {}, py = pay[k] || {}
+          list.push({ pos: x['WFP Position'], emp: x['WFP Employee'], fte: num(x[m]), here: num(x[m]) > 0, since: on[0], until: on[on.length - 1],
+            away: num(f.Absent) > 0, payPct: num(py['Absence Pay %']), cover: num(f['Cover FTE']) > 0, handover: num(f['Handover FTE']) > 0,
+            salary: num(py['Base Salary']), tin: (moves[k] || {}).tin, tout: (moves[k] || {}).tout })
+          ids.push(x['WFP Employee'])
+        })
+        var need = ids.filter(function (id) { return !names[id] })
+        var named = need.length ? call(attrMDX('WFP Employee', ['Display'], need.map(function (id) { return M('WFP Employee', id) }).join(','))).then(function (r) { Lens.rows(r).forEach(function (x) { names[x['WFP Employee']] = x.Display }) }) : Promise.resolve()
+        return named.then(function () { rowsAll = list; draw(); say('') })
+      })
+    })
+  }
+  var stateOf = function (r) {
+    if (r.away) return 'Away (' + r.payPct + '% pay)'
+    if (r.cover) return 'Cover'
+    if (r.handover) return 'Handover'
+    if (r.until < last()) return 'Leaving'
+    return 'In post'
+  }
+  function draw() {
+    var show = $('show').value, m = mon()
+    var list = rowsAll.filter(function (r) {
+      if (show === 'leaving') return r.until < last() && r.until >= m
+      if (show === 'transfer') return !!(r.tin || r.tout)
+      if (show === 'away') return r.here && r.away
+      if (show === 'cover') return r.here && r.cover
+      return r.here
+    })
+    var here = rowsAll.filter(function (r) { return r.here })
+    var n = function (f) { return here.filter(f).length }
+    // each tile is also the filter for its group (people / FTE = everyone)
+    $('counts').innerHTML = [['', here.length, 'people', 'all'], ['', Math.round(here.reduce(function (a, r) { return a + r.fte }, 0) * 10) / 10, 'FTE', 'all'],
+      ['warn', rowsAll.filter(function (r) { return r.until < last() && r.until >= m }).length, 'leaving', 'leaving'], ['', n(function (r) { return r.away }), 'away', 'away'],
+      ['', n(function (r) { return r.cover }), 'cover', 'cover'], ['', rowsAll.filter(function (r) { return r.tin || r.tout }).length, 'transfers', 'transfer']]
+      .map(function (x) { return '<button type="button" class="count ' + x[0] + (show === x[3] && show !== 'all' ? ' on' : '') + '" data-show="' + x[3] + '" title="' + (x[3] === 'all' ? 'Show everyone' : 'Show only these') + '"><b>' + x[1] + '</b><span>' + x[2] + '</span></button>' }).join('')
+    var rows = list.map(function (r) {
+      return { person: names[r.emp] || r.emp, position: r.pos, state: stateOf(r), fte: r.fte || null, salary: r.salary || null,
+        since: monthName(r.since), until: r.until < last() ? 'leaves after ' + monthName(r.until) : '',
+        move: r.tin ? 'transferred in ' + monthName(r.tin) : r.tout ? 'transfers out after ' + monthName(r.tout) : '', _r: r }
+    })
+    g = Lens.grid('#grid', { key: 'wfp-people', stripes: striped, fit: 'content', height: Math.min(600, 60 + rows.length * 36) + 'px',
+      columns: [
+        { field: 'person', headerName: 'Person', pinned: 'left', minWidth: 190 },
+        { field: 'position', headerName: 'Position', minWidth: 100 },
+        { field: 'state', headerName: 'State', minWidth: 120 },
+        { field: 'fte', headerName: 'FTE', type: 'number', minWidth: 70 },
+        { field: 'salary', headerName: 'Salary', type: 'number', minWidth: 100 },
+        { field: 'since', headerName: 'Since', minWidth: 90 },
+        { field: 'until', headerName: 'Until', minWidth: 140 },
+        { field: 'move', headerName: 'Transfer', minWidth: 170 }
+      ],
+      rows: rows,
+      onSelect: function (row) { sel = row ? row._r : null; showActions(); $('form').innerHTML = '' },
+      cellMenu: function (row, field) {
+        if (field !== 'fte' && field !== 'salary') return null
+        var co = {}; co['WFP Period'] = mon(); co['WFP Version'] = ver(); co['WFP Position'] = row.position; co['WFP Employee'] = row._r.emp
+        if (field === 'fte') { co['WFP Assignment Measure'] = 'FTE Share'; return { cube: A, coordinates: co } }
+        co['WFP Assignment Pay Measure'] = 'Base Salary'; return { cube: PAY, coordinates: co }
+      }
+    })
+    if (!rows.length && posList.length) say(show === 'all' ? 'Nobody holds a position here in ' + monthName(m) + '.' : 'Nobody to show.')
+  }
+
+  // ── actions ──────────────────────────────────────────────────────────────
+  function showActions() {
+    $('hire').hidden = !canAct
+    if (!canAct) { $('actions').innerHTML = '<span class="note" style="margin:0">View only — HR or Finance make changes.</span>'; return }
+    if (!sel) { $('actions').innerHTML = '<span class="note" style="margin:0">Pick a person to act.</span>'; return }
+    var b = function (k, l) { return '<button type="button" data-act="' + k + '">' + l + '</button>' }
+    var out = '<b style="font-size:13px">' + esc(names[sel.emp] || sel.emp) + '</b> '
+    if (sel.cover) out += b('pay', 'Change pay / FTE…') + b('uncover', 'End cover…')
+    else out += b('pay', 'Change pay / FTE…') + b('leave', 'Leaves…') + b('transfer', 'Transfer…') + b('away', sel.away ? 'Away — change…' : 'Away…') + (sel.away ? b('cover', 'Cover…') : '')
+    $('actions').innerHTML = out
+  }
+  var after = function () { refreshHistory(); refreshCost(); return load() }
+  var people = null
+  function loadPeople() { return people ? Promise.resolve(people) : call(attrMDX('WFP Employee', ['Display', 'Status'])).then(function (r) { people = Lens.rows(r).map(function (x) { return { id: x['WFP Employee'], name: x.Display, status: x.Status } }); return people }) }
+  var whoField = function (list) { return field('Existing person', '<input id="who" list="plist" placeholder="type a name or ID" style="min-width:240px">') + field('or a new person (name)', '<input id="newname" placeholder="e.g. Riya Shah">') +
+    '<datalist id="plist">' + list.filter(function (p) { return p.status !== 'Leaver' }).slice(0, 4000).map(function (p) { return '<option value="' + esc(p.name || p.id) + '">' }).join('') + '</datalist>' }
+  var whoPicked = function (list) { var typed = $('who').value.trim(), hit = typed ? list.filter(function (p) { return p.name === typed || p.id === typed })[0] : null
+    if (typed && !hit) throw new Error('No person called "' + typed + '" — pick from the list, or give a new name.'); return hit }
+
+  function hire() {
+    var opts = posList.filter(function (s) { return s.state !== 'Closed' }).map(function (s) { return { value: s.id, label: s.id + ' · ' + s.state.toLowerCase() } })
+    loadPeople().then(function (list) {
+      form('Hire someone into a position in ' + $('cc').value,
+        '<div class="row">' + field('Position', '<select id="pos">' + opt(opts) + '</select>') + whoField(list) + '</div>' +
+        '<div class="row">' + field('From', '<select id="from">' + opt(monthOpts(mon()), mon()) + '</select>') +
+          field('FTE', '<input id="fte" type="number" min="0.1" max="1" step="0.1" value="1" style="width:80px">') +
+          field('Salary (optional)', '<input id="sal" type="number" min="0" step="500" placeholder="the position\'s" style="width:130px">') +
+          field('If someone is in it', '<select id="mode"><option value="no">stop — don\'t replace</option><option value="yes">replace — they leave the month before</option><option value="handover">handover — they stay until…</option></select>') +
+          field('Handover until', '<select id="until"><option value="">—</option>' + opt(monthOpts(mon())) + '</select>') + '</div>' +
+        '<div id="whoNote"></div>' +
+        '<p class="note" style="margin:0">A handover keeps the outgoing person to the month you give; the two overlap and both are paid. Without one, a filled position needs "replace".</p>',
+        function () {
+          var hit = whoPicked(list), mode = $('mode').value
+          if (mode === 'handover' && !$('until').value) return Promise.reject(new Error('Give the outgoing person\'s last month for the handover.'))
+          return Lens.run('WFP Assign Person', { pVersion: ver(), pPosition: $('pos').value, pEmployee: hit ? hit.id : '', pName: hit ? '' : $('newname').value.trim(),
+            pFrom: $('from').value, pFTE: Number($('fte').value) || 1, pReason: 'Hire', pReplace: mode, pSalary: Number($('sal').value) || 0, pHandoverUntil: mode === 'handover' ? $('until').value : '' })
+        }, after)
+      // an existing person who already holds a position: say so now, and offer the right move
+      var check = function () { whereNow(list).catch(function (e) { $('whoNote').innerHTML = '' }) }
+      ;['who', 'pos', 'from', 'fte'].forEach(function (id) { $(id).addEventListener('change', check) })
+      $('who').addEventListener('input', check)
+    }).catch(fail)
+  }
+  // Where the picked person is in the From month (Position, FTE, company) → a note with the right action:
+  // same company → transfer; another company → leaves there and is hired here; room for both → part-time.
+  function whereNow(list) {
+    var note = $('whoNote'), typed = $('who').value.trim()
+    var hit = typed ? list.filter(function (p) { return p.name === typed || p.id === typed })[0] : null
+    if (!hit) { note.innerHTML = ''; return Promise.resolve() }
+    var from = $('from').value, to = $('pos').value, fte = Number($('fte').value) || 1
+    var target = posList.filter(function (s) { return s.id === to })[0] || {}
+    return call('SELECT {' + am('FTE Share') + '} ON 0, NON EMPTY {TM1FILTERBYLEVEL({TM1SUBSETALL([WFP Position].[WFP Position])},0)} ON 1 FROM [' + A + '] WHERE (' + M('WFP Period', from) + ',' + M('WFP Version', ver()) + ',' + M('WFP Employee', hit.id) + ')').then(function (r) {
+      var held = Lens.rows(r).filter(function (x) { return num(x['FTE Share']) > 0 && x['WFP Position'] !== to }).map(function (x) { return { pos: x['WFP Position'], fte: num(x['FTE Share']) } })
+      if (!held.length) { note.innerHTML = ''; return }
+      return call('SELECT {' + mm('Home Entity') + '} ON 0, {' + held.map(function (h) { return M('WFP Position', h.pos) }).join(',') + '} ON 1 FROM [' + MAP + '] WHERE (' + M('WFP Period', from) + ',' + M('WFP Version', ver()) + ')').then(function (r2) {
+        var ent = {}; Lens.rows(r2).forEach(function (x) { ent[x['WFP Position']] = x['Home Entity'] })
+        var total = held.reduce(function (a, h) { return a + h.fte }, 0), who = hit.name || hit.id
+        var where = held.map(function (h) { return h.pos + ' (' + h.fte + ' FTE, ' + (ent[h.pos] || '?') + ')' }).join(', ')
+        var prev = P.month[P.idx[from] - 1], h0 = held[0], same = held.length === 1 && ent[h0.pos] === target.entity
+        var box = function (cls, html) { return '<div class="result ' + cls + '" style="margin:6px 0">' + html + '</div>' }
+        if (total + fte <= 1.0001) {
+          note.innerHTML = box('', '<b>' + esc(who) + '</b> is in ' + esc(where) + ' in ' + esc(monthName(from)) + '. There\'s room for both — this hire makes them part-time in two positions (' + (total + fte) + ' FTE). Or move them instead:' +
+            (same ? ' <button type="button" id="doMove">Transfer to ' + esc(to) + ' from ' + esc(monthName(from)) + '</button>' : ''))
+        } else if (same) {
+          note.innerHTML = box('err', '<b>' + esc(who) + '</b> is already in ' + esc(where) + ' in ' + esc(monthName(from)) + ' — a hire would count them twice. In the same company that\'s a <b>transfer</b>: their pay and year-to-date tax go with them and ' + esc(h0.pos) + ' becomes vacant.' +
+            ' <button type="button" class="primary" id="doMove">Transfer to ' + esc(to) + ' from ' + esc(monthName(from)) + '</button>')
+        } else if (held.length === 1) {
+          note.innerHTML = box('err', '<b>' + esc(who) + '</b> is already in ' + esc(where) + ' in ' + esc(monthName(from)) + '. Moving to ' + esc(target.entity || 'another company') + ' is a <b>leaver there and a hire here</b> (a new employer starts a new tax year to date).' +
+            (prev ? ' <button type="button" class="primary" id="doMove">Leaves ' + esc(h0.pos) + ' after ' + esc(monthName(prev)) + ', hired here from ' + esc(monthName(from)) + '</button>' : ''))
+        } else {
+          note.innerHTML = box('err', '<b>' + esc(who) + '</b> holds ' + esc(where) + ' in ' + esc(monthName(from)) + ' — end or transfer those first, on their row.')
+        }
+        var b = $('doMove'); if (!b) return
+        b.onclick = function () {
+          b.disabled = true; note.querySelector('.result').insertAdjacentHTML('beforeend', ' <span class="note">Working…</span>')
+          var run = same
+            ? Lens.run('WFP Transfer Person', { pVersion: ver(), pEmployee: hit.id, pToPosition: to, pFrom: from, pFTE: 0 })
+            : Lens.run('WFP End Assignment', { pVersion: ver(), pEmployee: hit.id, pLast: prev, pReason: 'Leaver', pBackfill: 'no', pBackfillMonth: '' }).then(function () {
+                return Lens.run('WFP Assign Person', { pVersion: ver(), pPosition: to, pEmployee: hit.id, pName: '', pFrom: from, pFTE: fte, pReason: 'Hire', pReplace: $('mode').value, pSalary: Number($('sal').value) || 0, pHandoverUntil: $('mode').value === 'handover' ? $('until').value : '' })
+              })
+          // done: show it, reload the list (which clears the form), then put the form with the message back
+          run.then(function (r) {
+              note.innerHTML = box('ok', esc(r && r.message ? r.message : 'Done.'))
+              var keep = $('form').innerHTML
+              return Promise.resolve(after()).then(function () { $('form').innerHTML = keep; $('go').disabled = true; $('cancel').textContent = 'Close'; $('cancel').onclick = function () { $('form').innerHTML = '' } })
+            },
+            function (e) { b.disabled = false; note.insertAdjacentHTML('beforeend', box('err', esc(e && e.message ? e.message : String(e)))) })
+        }
+      })
+    })
+  }
+  function pay() {
+    var p = sel
+    form('Change pay / FTE — ' + (names[p.emp] || p.emp) + ' on ' + p.pos,
+      '<div class="row">' + field('From', '<select id="from">' + opt(monthOpts(mon() > p.since ? mon() : p.since), mon()) + '</select>') +
+        field('To (optional)', '<select id="to"><option value="">to the end</option>' + opt(monthOpts(mon())) + '</select>') +
+        field('New salary', '<input id="sal" type="number" min="0" step="500" placeholder="' + (p.salary || '') + '" style="width:130px">') +
+        field('New FTE', '<input id="fte" type="number" min="0.1" max="1" step="0.1" placeholder="' + (p.fte || '') + '" style="width:80px">') +
+        field('Why', '<select id="why"><option>Merit</option><option>Promotion</option><option>Part-time</option><option>Back to full-time</option><option>Correction</option></select>') + '</div>' +
+      '<p class="note" style="margin:0">From that month on; earlier months keep their pay. Leave a box empty to keep it as it is.</p>',
+      function () {
+        return Lens.run('WFP Change Assignment', { pVersion: ver(), pEmployee: p.emp, pPosition: p.pos, pFrom: $('from').value, pTo: $('to').value,
+          pSalary: Number($('sal').value) || 0, pFTE: $('fte').value === '' ? -1 : Number($('fte').value), pReason: $('why').value })
+      }, after)
+  }
+  function leave() {
+    var p = sel
+    form((names[p.emp] || p.emp) + ' leaves ' + p.pos,
+      '<div class="row">' + field('Last month in the position', '<select id="lastm">' + opt(months.filter(function (x) { return P.idx[x] >= cutoff && x < last() }).map(function (x) { return { value: x, label: monthName(x) } }), mon()) + '</select>') +
+        field('Reason', '<select id="why"><option>Leaver</option><option>Retired</option></select>') +
+        field('Backfill from', '<select id="bf"><option value="">no backfill</option>' + opt(monthOpts(mon())) + '</select>') + '</div>' +
+      '<p class="note" style="margin:0">The position becomes vacant. A backfill goes into the hiring plan and waits for Finance.</p>',
+      function () { var bf = $('bf').value; return Lens.run('WFP End Assignment', { pVersion: ver(), pEmployee: p.emp, pLast: $('lastm').value, pReason: $('why').value, pBackfill: bf ? 'yes' : 'no', pBackfillMonth: bf }) }, after)
+  }
+  function transfer() {
+    var p = sel, me = posList.filter(function (s) { return s.id === p.pos })[0] || {}
+    var openIn = function (at) {
+      return Promise.all([
+        call('SELECT {' + mm('Position State') + ',' + mm('Cost Centre') + ',' + mm('Home Entity') + '} ON 0, {TM1FILTERBYLEVEL({TM1SUBSETALL([WFP Position].[WFP Position])},0)} ON 1 FROM [' + MAP + '] WHERE (' + M('WFP Period', at) + ',' + M('WFP Version', ver()) + ')'),
+        call('SELECT {' + am('FTE Share') + '} ON 0, {TM1FILTERBYLEVEL({TM1SUBSETALL([WFP Position].[WFP Position])},0)} ON 1 FROM [' + A + '] WHERE (' + M('WFP Period', at) + ',' + M('WFP Version', ver()) + ',' + M('WFP Employee', 'All Employees') + ')')
+      ]).then(function (rs) {
+        var f = {}; Lens.rows(rs[1]).forEach(function (x) { f[x['WFP Position']] = num(x['FTE Share']) })
+        return Lens.rows(rs[0]).filter(function (x) { return (x['Position State'] === 'Vacant' || x['Position State'] === 'Planned hire') && x['Home Entity'] === me.entity && !(f[x['WFP Position']] > 0) })
+          .map(function (x) { return { value: x['WFP Position'], label: x['WFP Position'] + ' · ' + x['Cost Centre'] + ' (' + x['Position State'].toLowerCase() + ')' } })
+      })
+    }
+    openIn(mon()).then(function (open) {
+      form('Transfer ' + (names[p.emp] || p.emp) + ' from ' + p.pos,
+        '<div class="row">' + field('From', '<select id="from">' + opt(monthOpts(mon()), mon()) + '</select>') +
+          field('To position (open, same company)', '<select id="to" style="max-width:360px">' + (open.length ? opt(open) : '<option value="">no open positions</option>') + '</select>') + '</div>' +
+        '<p class="note" style="margin:0">Their pay and year-to-date tax go with them; ' + esc(p.pos) + ' becomes vacant. A move to another company is a leaver and a hire.</p>',
+        function () { if (!$('to').value) return Promise.reject(new Error('No open position in ' + (me.entity || 'the company') + ' that month.')); return Lens.run('WFP Transfer Person', { pVersion: ver(), pEmployee: p.emp, pToPosition: $('to').value, pFrom: $('from').value, pFTE: 0 }) }, after)
+      $('from').onchange = function () { var t = $('to'); t.disabled = true; openIn($('from').value).then(function (l) { t.innerHTML = l.length ? opt(l) : '<option value="">no open positions</option>'; t.disabled = false }) }
+    }).catch(fail)
+  }
+  function away() {
+    var p = sel
+    form('Time away — ' + (names[p.emp] || p.emp),
+      '<div class="row">' + field('First month away', '<select id="from">' + opt(monthOpts(mon()), mon()) + '</select>') +
+        field('Last month away', '<select id="to">' + opt(monthOpts(mon()), mon()) + '</select>') +
+        field('Pay while away (%)', '<input id="pct" type="number" min="0" max="100" step="5" value="100" style="width:80px">') +
+        field('Reason', '<select id="why"><option>Parental leave</option><option>Long-term sick</option><option>Sabbatical</option><option>Other leave</option></select>') +
+        field('Action', '<select id="act"><option value="record">record</option><option value="clear">clear these months</option></select>') + '</div>' +
+      '<p class="note" style="margin:0">They stay in headcount (shown as away) and are paid the % you give. Cover can be added once the time away is recorded.</p>',
+      function () { return Lens.run('WFP Record Absence', { pVersion: ver(), pEmployee: p.emp, pFrom: $('from').value, pTo: $('to').value, pPayPct: Number($('pct').value), pReason: $('why').value, pAction: $('act').value }) }, after)
+  }
+  function cover() {
+    var p = sel
+    loadPeople().then(function (list) {
+      form('Cover for ' + (names[p.emp] || p.emp) + ' on ' + p.pos,
+        '<div class="row">' + whoField(list) + field('From', '<select id="from">' + opt(monthOpts(mon()), mon()) + '</select>') + field('Until', '<select id="until">' + opt(monthOpts(mon()), mon()) + '</select>') +
+          field('FTE', '<input id="fte" type="number" min="0.1" max="1" step="0.1" value="1" style="width:80px">') +
+          field('Salary (optional)', '<input id="sal" type="number" min="0" step="500" placeholder="the position\'s" style="width:130px">') + '</div>' +
+        '<p class="note" style="margin:0">Only while someone on the position is away, every month. Cover counts in headcount (shown separately) and isn\'t a joiner or leaver.</p>',
+        function () { var hit = whoPicked(list); return Lens.run('WFP Assign Cover', { pVersion: ver(), pPosition: p.pos, pEmployee: hit ? hit.id : '', pName: hit ? '' : $('newname').value.trim(), pFrom: $('from').value, pUntil: $('until').value, pFTE: Number($('fte').value) || 1, pSalary: Number($('sal').value) || 0, pAction: 'assign' }) }, after)
+    }).catch(fail)
+  }
+  function uncover() {
+    var p = sel
+    form('End cover — ' + (names[p.emp] || p.emp) + ' on ' + p.pos,
+      '<div class="row">' + field('Remove cover from', '<select id="from">' + opt(monthOpts(mon()), mon()) + '</select>') + field('to', '<select id="until">' + opt(monthOpts(mon()), p.until) + '</select>') + '</div>',
+      function () { return Lens.run('WFP Assign Cover', { pVersion: ver(), pPosition: p.pos, pEmployee: p.emp, pName: '', pFrom: $('from').value, pUntil: $('until').value, pFTE: 1, pSalary: 0, pAction: 'remove' }) }, after)
+  }
+  $('hire').onclick = function () { hire() }
+  $('actions').addEventListener('click', function (e) {
+    var b = e.target.closest && e.target.closest('[data-act]'); if (!b || !sel) return
+    var k = b.getAttribute('data-act'); ({ pay: pay, leave: leave, transfer: transfer, away: away, cover: cover, uncover: uncover })[k]()
+  })
+  $('ver').onchange = $('month').onchange = $('cc').onchange = function () { load().catch(fail) }
+  $('show').onchange = function () { draw() }
+  $('counts').addEventListener('click', function (e) {
+    var t = e.target.closest && e.target.closest('[data-show]'); if (!t) return
+    var v = t.getAttribute('data-show'); $('show').value = $('show').value === v ? 'all' : v; draw()   // click again to clear
+  })
+  infoPanel('info', 'infoModal')
+  var refreshHistory = historyFoot()
+
+  Promise.all([Lens.whoami(), periodIndex(), costCentres(), cutoffIndex('Forecast')]).then(function (r) {
+    canAct = Lens.whoami.inGroup(r[0], ACTORS); P = r[1]; cutoff = r[3] || 15
+    months = Object.keys(P.idx).filter(function (p) { return P.idx[p] >= 12 && P.idx[p] <= 36 }).sort()
+    ccs = r[2]
+    $('ver').innerHTML = opt(C.versions || ['Forecast', 'Budget', 'Downside'])
+    $('month').innerHTML = opt(months.map(function (p) { return { value: p, label: monthName(p) + (P.idx[p] <= cutoff ? ' (actual)' : '') } }), P.month[cutoff + 1])
+    $('cc').innerHTML = ccOptions(ccs, C.costCentre || 'CC-ENG-PLT')
+    $('sub').textContent = 'everyone in a position · hire, pay, leavers, transfers, time away, cover'
+    $('note').textContent = 'Right-click an FTE or salary for its story (why, who changed it, notes).'
+    refreshCost()
+    return load()
+  }).catch(fail)
+
+})()
+</script>
+</body>
+</html>
