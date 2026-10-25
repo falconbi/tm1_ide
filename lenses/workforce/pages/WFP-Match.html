@@ -346,7 +346,7 @@ table.t tr.tot td{font-weight:700;background:color-mix(in srgb,var(--rule) 40%,t
         { field: 'hire', headerName: 'Hire month', minWidth: 100 }, { field: 'approved', headerName: 'Approved', minWidth: 90 }],
       rows: scored.map(function (x) { var t = x.t; return { id: t.id, fit: x.strong ? 'strong' : 'possible', score: x.s, why: x.why, entity: t['Home Entity'], cc: t['Cost Centre'], grade: t.Grade, hire: monthName(P.month[num(t['Hire Month'])]), approved: t.Approved === 'Y' ? 'yes' : 'waiting', _t: t } }),
       onSelect: function (row) { pick = row ? row._t : null; showActions() } })
-    if (!scored.length) say('No planning position looks like ' + sel.id + ' — it may be a genuinely new role (leave it, or plan it on the Hiring plan).')
+    if (!scored.length) say('No planning position looks like ' + sel.id + ' — it may be a genuinely new role (leave it, or plan it on Positions).')
     else say('')
   }
   function showActions() {

@@ -246,9 +246,8 @@ details.all summary::before{content:"▸ ";} details.all[open] summary::before{c
   var VERSION = C.version || 'Forecast', COMPARE = C.compare || 'Budget', YEAR = C.year || '2026', APPROVERS = C.approvers || ['WFP Finance']
   var PAGES = {
     'WFP-People': ['People', 'Hire, pay or FTE change, leavers and backfill, transfers, time away and cover.'],
-    'WFP-Positions': ['Positions', 'Grade, FTE, location or salary from a month; move, close, reopen.'],
+    'WFP-Positions': ['Positions', 'Hire month, grade, FTE, location or salary from a month; move, close, reopen, request a new position.'],
     'WFP-Match': ['Match new Positions', 'Link each new HR position to the planned one it fulfils.'],
-    'WFP-Hiring-Plan': ['Hiring plan', 'When each empty position is filled; request a new position.'],
     'WFP-Assumptions': ['Assumptions', 'Merit, inflation, bonus pool and on-costs, by month.'],
     'WFP-Hire-Approvals': ['Hire approvals', 'Hires waiting for approval, with their cost.'],
     'WFP-Attention': ['Needs attention', 'Positions breaking a rule, new HR positions, late hires.'],
@@ -262,7 +261,7 @@ details.all summary::before{content:"▸ ";} details.all[open] summary::before{c
   }
   var MENU = C.menu || [
     ['People & positions', ['WFP-People', 'WFP-Positions', 'WFP-Match']],
-    ['Plan', ['WFP-Hiring-Plan', 'WFP-Assumptions']],
+    ['Plan', ['WFP-Assumptions']],
     ['Review', ['WFP-Hire-Approvals', 'WFP-Attention', 'WFP-My-Cost-Centre']],
     ['Dashboard & analysis', ['WFP-KPIs', 'WFP-Cost', 'WFP-Headcount', 'WFP-Pay-Grades']],
     ['Variance', ['WFP-Bridge', 'WFP-Since-Last']]
@@ -271,7 +270,7 @@ details.all summary::before{content:"▸ ";} details.all[open] summary::before{c
   var ROLES = C.roles || [
     { role: 'HR', groups: ['WFP HR'], pages: ['WFP-People', 'WFP-Positions', 'WFP-Match', 'WFP-Attention'] },
     { role: 'Finance', groups: ['WFP Finance'], pages: ['WFP-Hire-Approvals', 'WFP-Assumptions', 'WFP-Bridge', 'WFP-Since-Last', 'WFP-Attention'] },
-    { role: 'Cost-centre manager', groups: [], pages: ['WFP-My-Cost-Centre', 'WFP-Hiring-Plan', 'WFP-Headcount', 'WFP-Cost'] }
+    { role: 'Cost-centre manager', groups: [], pages: ['WFP-My-Cost-Centre', 'WFP-Positions', 'WFP-Headcount', 'WFP-Cost'] }
   ]
   var RECENT = 'wfp-home:recent'
   var recent = function () { try { return JSON.parse(localStorage.getItem(RECENT) || '[]') } catch (e) { return [] } }

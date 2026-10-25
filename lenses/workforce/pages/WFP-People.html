@@ -495,7 +495,7 @@ table.t tr.tot td{font-weight:700;background:color-mix(in srgb,var(--rule) 40%,t
       '<div class="row">' + field('Last month in the position', '<select id="lastm">' + opt(months.filter(function (x) { return P.idx[x] >= cutoff && x < last() }).map(function (x) { return { value: x, label: monthName(x) } }), mon()) + '</select>') +
         field('Reason', '<select id="why"><option>Leaver</option><option>Retired</option></select>') +
         field('Backfill from', '<select id="bf"><option value="">no backfill</option>' + opt(monthOpts(mon())) + '</select>') + '</div>' +
-      '<p class="note" style="margin:0">The position becomes vacant. A backfill goes into the hiring plan and waits for Finance.</p>',
+      '<p class="note" style="margin:0">The position becomes vacant. A backfill goes into Positions and waits for Finance.</p>',
       function () { var bf = $('bf').value; return Lens.run('WFP End Assignment', { pVersion: ver(), pEmployee: p.emp, pLast: $('lastm').value, pReason: $('why').value, pBackfill: bf ? 'yes' : 'no', pBackfillMonth: bf }) }, after)
   }
   function transfer() {
