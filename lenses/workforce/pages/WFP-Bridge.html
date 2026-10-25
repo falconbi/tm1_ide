@@ -22,7 +22,12 @@ button:disabled{opacity:.45;cursor:default}
 .card{background:var(--panel);border:1px solid var(--rule);border-radius:10px;padding:12px;min-width:0}
 .two{display:grid;grid-template-columns:minmax(0,3fr) minmax(0,2fr);gap:12px}
 .halves{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px}
-@media (max-width:860px){.two,.halves{grid-template-columns:1fr}}
+.split{display:grid;grid-template-columns:minmax(0,3fr) minmax(0,2fr);gap:12px;align-items:stretch}
+.stack{display:flex;flex-direction:column;gap:12px;min-width:0}
+.side{position:relative;min-height:320px;display:flex;flex-direction:column}
+.side-body{position:relative;flex:1;min-height:0}
+.side-scroll{position:absolute;inset:0;overflow-y:auto;overflow-x:hidden}
+@media (max-width:860px){.two,.halves,.split{grid-template-columns:1fr}.side-scroll{position:static}}
 .bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px}
 .status{font-size:13px;color:var(--faint)}
 .status.ok{color:var(--good)} .status.err{color:var(--bad)} .status.busy{color:var(--faint)}
@@ -83,10 +88,12 @@ table.t tr.tot td{font-weight:700;background:color-mix(in srgb,var(--rule) 40%,t
       <button id="refresh" title="Read the latest numbers">↻ Refresh</button>
     </div>
   </header>
-  <div class="card"><h2 id="bridgeTitle">The bridge</h2><div id="waterfall" style="height:300px"></div><p class="note" id="explain"></p></div>
-  <div class="two">
-    <div class="card"><h2>By function <span class="sub">— click a row to bridge it</span></h2><div class="scroll"><table class="t" id="tbl"></table></div></div>
-    <div class="card"><h2 id="movesTitle">Biggest moves by cost centre <span class="sub">— click one to bridge it</span></h2><div id="bars"></div></div>
+  <div class="split">
+    <div class="stack">
+      <div class="card"><h2 id="bridgeTitle">The bridge</h2><div id="waterfall" style="height:300px"></div><p class="note" id="explain"></p></div>
+      <div class="card"><h2>By function <span class="sub">— click a row to bridge it</span></h2><div class="scroll"><table class="t" id="tbl"></table></div></div>
+    </div>
+    <div class="card side"><h2 id="movesTitle">Moves by cost centre <span class="sub">— click one to bridge it</span></h2><div class="side-body"><div class="side-scroll"><div id="bars"></div></div></div></div>
   </div>
   <div id="status" class="status"></div>
   <div id="infoModal" class="info-modal" hidden>
@@ -258,8 +265,9 @@ table.t tr.tot td{font-weight:700;background:color-mix(in srgb,var(--rule) 40%,t
       // biggest moves: in the chosen function only, and by the chosen driver alone when one is in focus
       var moves = ccs.map(function (c, i) { var s = of(1 + fns.length + i); return { key: c.id, label: c.id + ' ' + c.name, value: driver ? s[driver] : s.end - s.start, fn: c.fn } })
         .filter(function (m) { return (!fnSel || m.fn === fnSel) && Math.abs(m.value) >= 500 })
-        .sort(function (a, b) { return Math.abs(b.value) - Math.abs(a.value) }).slice(0, 12)
-      $('movesTitle').innerHTML = 'Biggest moves by cost centre' + (driver ? ' — ' + esc(DLABEL[driver]) + ' only' : '') + (fnSel ? ' · ' + esc(fnSel) : '') + ' <span class="sub">— click one to bridge it</span>'
+        .sort(function (a, b) { return Math.abs(b.value) - Math.abs(a.value) })
+      $('movesTitle').innerHTML = 'Moves by cost centre · ' + moves.length + (driver ? ' — ' + esc(DLABEL[driver]) + ' only' : '') + (fnSel ? ' · ' + esc(fnSel) : '') + ' <span class="sub">— click one to bridge it</span>'
+      $('bars').style.height = Math.max(140, moves.length * 46 + 30) + 'px'   // every move; the card scrolls when they outrun the left column
       Lens.bars('#bars', { rows: moves, format: '£k', onClick: function (k) { cc = k; load().catch(fail) } })
       say('Read at ' + new Date().toLocaleTimeString() + '.')
     })
