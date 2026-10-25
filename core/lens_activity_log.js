@@ -22,8 +22,8 @@ function logLensNote({ server, app, user, lens, cube, coordinates, text }, file 
     append({ kind: 'note', server, app, user, lens, cube, coordinates, text }, file)
 }
 
-function logLensRun({ server, app, user, lens, process, params, status, message }, file = FILE) {
-    append({ kind: 'run', server, app, user, lens, process, params, status, message }, file)
+function logLensRun({ server, app, user, lens, process, params, status, message, detail }, file = FILE) {
+    append({ kind: 'run', server, app, user, lens, process, params, status, message, detail }, file)
 }
 
 // Recent activity for one Lens, newest first: its saves and runs on this server.

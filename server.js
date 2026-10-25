@@ -4006,10 +4006,10 @@ app.post('/api/lens/run-process', async (req, res) => {
         if (!name || typeof name !== 'string') throw new Error('lens is required')
         const doc = await lensStore.readLens(server, name, { ideToken: req.ideToken })
         const result = await lensBridge.runProcess(makeClient(server, req.ideToken), { process, params, allowedProcesses: lensBridge.lensRuns(doc), user: req.user })
-        logLensRun({ server, app: 'ide', user: req.user, lens: doc.name, process, params, status: result.status, message: result.message })
+        logLensRun({ server, app: 'ide', user: req.user, lens: doc.name, process, params, status: result.status, message: result.message, detail: result.detail })
         res.json(result)
     } catch (e) {
-        if (e.status) logLensRun({ server, app: 'ide', user: req.user, lens: name, process, params, status: e.status, message: e.message })
+        if (e.status) logLensRun({ server, app: 'ide', user: req.user, lens: name, process, params, status: e.status, message: e.message, detail: e.detail })
         const detail = e.response?.data?.error?.message ?? e.message
         res.status(e.status ? 422 : 400).json({ error: typeof detail === 'string' ? detail : JSON.stringify(detail), status: e.status })
     }

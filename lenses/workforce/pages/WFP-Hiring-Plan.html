@@ -261,7 +261,7 @@ table.t tr.tot td{font-weight:700;background:color-mix(in srgb,var(--rule) 40%,t
           draw(Positions, show); say('')
         })
       })
-    }).then(function () { if (hp) Lens.history({}, { limit: 100 }).then(function (l) { hp.set(l) }, function () {}) })
+    }).then(function () { if (hp) Lens.history({}, { limit: 100 }).then(function (l) { hp.set(l.filter(function (e) { return e.process !== 'WFP Request Recalculation' })) }, function () {}) })
   }
   function draw(Positions, show) {
     var n = function (f) { return Positions.filter(f).length }
@@ -389,7 +389,17 @@ table.t tr.tot td{font-weight:700;background:color-mix(in srgb,var(--rule) 40%,t
   $('cc').onchange = $('show').onchange = function () { load().catch(fail) }
   hp = Lens.historyPanel('#historyBtn', { title: 'History', describe: function (e) {
     if (e.kind === 'write') return 'changed ' + (e.changes || []).map(function (x) { return x.coordinates[PD] + ' hire month → ' + (monthName(P && P.month[x.value]) || 'none') }).join(', ')
-    return (e.params && e.params.pAction === 'reopen' ? 'reopened ' : 'approved ') + (e.params ? e.params.pPosition : '')
+    var p = e.params || {}
+    var refused = e.status && e.status !== 'CompletedSuccessfully'
+    var why = refused ? ' — refused: ' + (e.message || 'not allowed') : ''
+    if (e.process === 'WFP Set Hire Month')
+      return (p.pMonth ? 'set ' + (p.pPosition || '') + ' hire month → ' + monthName(p.pMonth) : 'cleared ' + (p.pPosition || '') + ' hire month') + why
+    if (e.process === 'WFP Approve Hire')
+      return (p.pAction === 'reopen' ? 'reopened ' : 'approved ') + (p.pPosition || '') + why
+    if (e.process === 'WFP Create TBH Position') return 'created ' + (e.detail || p.pPosition || 'Position') + why
+    if (e.process === 'WFP Cancel TBH Position') return 'cancelled ' + (p.pPosition || e.detail || 'Position') + why
+    if (e.process === 'WFP Request Recalculation') return ''
+    return e.message || ('ran ' + e.process)
   } })
   tg = Lens.live('#people', { onEvent: function (ev) { if (ev.type === 'saved' && g && !g.changes().length) load().catch(fail) } })
   Promise.all([Lens.whoami(), periodIndex(), costCentres(), cutoffIndex(VERSION)]).then(function (r) {

@@ -444,6 +444,7 @@ async function runProcess(client, { process, params = {}, allowedProcesses = [],
     if (status !== 'CompletedSuccessfully') {
         const e = new Error(message || `"${process}" did not complete (${status}) — your TM1 administrator can see why in its error log`)
         e.status = status
+        e.detail = detail
         throw e
     }
     return { status, seconds, message, result, since, detail }

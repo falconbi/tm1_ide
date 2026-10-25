@@ -735,10 +735,10 @@ function createApp({ config = loadConfig(), deps = {} } = {}) {
             if (!name || typeof name !== 'string') throw new Error('lens is required')
             const doc = await visibleLens(req, name)
             const result = await runProcess(req.lens.client, { process, params, allowedProcesses: lensBridge.lensRuns(doc), user: req.lens.display })
-            logRun({ server: cfg.server, app: 'lens', user: req.lens.display, lens: doc.name, process, params, status: result.status, message: result.message })
+            logRun({ server: cfg.server, app: 'lens', user: req.lens.display, lens: doc.name, process, params, status: result.status, message: result.message, detail: result.detail })
             res.json(result)
         } catch (e) {
-            if (e.status) logRun({ server: cfg.server, app: 'lens', user: req.lens.display, lens: name, process, params, status: e.status, message: e.message })
+            if (e.status) logRun({ server: cfg.server, app: 'lens', user: req.lens.display, lens: name, process, params, status: e.status, message: e.message, detail: e.detail })
             res.status(e.status ? 422 : 400).json({ error: e.response?.data?.error?.message ?? e.message, status: e.status })
         }
     })
