@@ -311,11 +311,11 @@ table.t tr.tot td{font-weight:700;background:color-mix(in srgb,var(--rule) 40%,t
     sel = null; showActions(); $('form').innerHTML = ''
     say('Loading…', 'busy')
     // a Position is in this cost centre this month — or, when closed now, was the last time it was open (its Cost Centre stays)
-    var posSet = '{FILTER({TM1FILTERBYLEVEL({TM1SUBSETALL([WFP Position].[WFP Position])},0)}, [' + MAP + '].(' + M('WFP Period', m) + ',' + M('WFP Version', v) + ',' + mm('Cost Centre') + ') = "' + cc.replace(/"/g, '""') + '")}'
+    var posSet = cc ? '{FILTER({TM1FILTERBYLEVEL({TM1SUBSETALL([WFP Position].[WFP Position])},0)}, [' + MAP + '].(' + M('WFP Period', m) + ',' + M('WFP Version', v) + ',' + mm('Cost Centre') + ') = "' + cc.replace(/"/g, '""') + '")}' : '{TM1FILTERBYLEVEL({TM1SUBSETALL([WFP Position].[WFP Position])},0)}'
     return call('SELECT {' + ['Home Entity', 'Grade', 'Location', 'Position FTE', 'Position State'].map(mm).join(',') + '} ON 0, ' + posSet + ' ON 1 FROM [' + MAP + '] WHERE (' + M('WFP Period', m) + ',' + M('WFP Version', v) + ')').then(function (r) {
       list = Lens.rows(r).map(function (x) { return { id: x['WFP Position'], entity: x['Home Entity'], grade: x.Grade, location: x.Location, fte: num(x['Position FTE']), state: x['Position State'] || 'Closed' } })
-      if (!list.length) { draw(); say('No positions in ' + cc + ' in ' + monthName(m) + '.'); return }
-      var set = '{' + list.map(function (s) { return M('WFP Position', s.id) }).join(',') + '}'
+      if (!list.length) { draw(); say('No positions in ' + (cc || 'any cost centre') + ' in ' + monthName(m) + '.'); return }
+      var set = posSet
       return Promise.all([
         call('SELECT {' + M('WFP Workforce Input Measure', 'Base Salary') + '} ON 0, ' + set + ' ON 1 FROM [' + WI + '] WHERE (' + M('WFP Period', m) + ',' + M('WFP Version', v) + ')'),
         call('SELECT {' + ['Source', 'Position Status', 'HRIS Position ID', 'Matched TBH', 'Department'].map(function (a) { return M(PA, a) }).join(',') + '} ON 0, ' + set + ' ON 1 FROM [' + PA + ']'),
@@ -338,7 +338,8 @@ table.t tr.tot td{font-weight:700;background:color-mix(in srgb,var(--rule) 40%,t
           s.label = s.state === 'Closed' && hm > P.idx[m] ? 'Opens ' + monthName(P.month[hm]) : s.state
         })
         var need = ids.filter(function (id) { return !names[id] })
-        var named = need.length ? call(attrMDX('WFP Employee', ['Display'], need.map(function (id) { return M('WFP Employee', id) }).join(','))).then(function (r) { Lens.rows(r).forEach(function (x) { names[x['WFP Employee']] = x.Display }) }) : Promise.resolve()
+        var named = !cc ? call(attrMDX('WFP Employee', ['Display'])).then(function (r) { Lens.rows(r).forEach(function (x) { names[x['WFP Employee']] = x.Display }) })
+          : need.length ? call(attrMDX('WFP Employee', ['Display'], need.map(function (id) { return M('WFP Employee', id) }).join(','))).then(function (r) { Lens.rows(r).forEach(function (x) { names[x['WFP Employee']] = x.Display }) }) : Promise.resolve()
         return named.then(function () { draw(); say('') })
       })
     })
@@ -503,7 +504,7 @@ table.t tr.tot td{font-weight:700;background:color-mix(in srgb,var(--rule) 40%,t
     ccs = r[2]
     $('ver').innerHTML = opt(C.versions || ['Forecast', 'Budget', 'Downside'])
     $('month').innerHTML = opt(months.map(function (p) { return { value: p, label: monthName(p) + (P.idx[p] <= cutoff ? ' (actual)' : '') } }), P.month[cutoff + 1])
-    $('cc').innerHTML = ccOptions(ccs, C.costCentre || 'CC-ENG-PLT')
+    $('cc').innerHTML = ccOptions(ccs, '', 'All cost centres')
     $('sub').textContent = 'every position · change, move, close, reopen · planning-created positions'
     $('note').textContent = 'Right-click a budgeted FTE or Position salary for its story.'
     refreshCost()

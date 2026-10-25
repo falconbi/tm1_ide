@@ -2,8 +2,8 @@
   "name": "WFP-Positions",
   "status": "draft",
   "owner": "admin",
-  "version": 8,
-  "updated": "2026-10-25T03:01:33.802Z",
+  "version": 9,
+  "updated": "2026-10-25T03:27:30.391Z",
   "description": "People & positions — every position: change grade / FTE / location / salary from a month, move (cost centre or company), close, reopen; planning-created positions can be cancelled or matched.",
   "folder": "Workforce",
   "title": "2 Positions",
@@ -21,8 +21,7 @@
     "actors": [
       "WFP HR",
       "WFP Finance"
-    ],
-    "costCentre": "CC-ENG-PLT"
+    ]
   },
   "created": "2026-10-23T18:41:14.355Z",
   "createdBy": "admin",

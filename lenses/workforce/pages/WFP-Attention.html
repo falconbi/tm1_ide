@@ -340,7 +340,7 @@ table.t tr.tot td{font-weight:700;background:color-mix(in srgb,var(--rule) 40%,t
     people = { name: {} }; Lens.rows(r[3]).forEach(function (x) { people.name[x[ED]] = x.Display })
     months = Object.keys(P.idx).filter(function (p) { return P.idx[p] >= 12 && P.idx[p] <= 36 }).sort()
     $('ver').innerHTML = opt(C.versions || ['Forecast', 'Budget', 'Downside'])
-    $('cc').innerHTML = ccOptions(ccs, C.costCentre || '', 'All cost centres')
+    $('cc').innerHTML = ccOptions(ccs, '', 'All cost centres')
     $('sub').textContent = 'over-filled positions · over-booked people · anyone in a position that does not exist · hiring not matched to HR'
     if (tg) tg.join('cc:all')
     return load()

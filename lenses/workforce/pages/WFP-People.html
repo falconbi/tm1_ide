@@ -297,41 +297,56 @@ table.t tr.tot td{font-weight:700;background:color-mix(in srgb,var(--rule) 40%,t
     var v = ver(), m = mon(), cc = $('cc').value
     sel = null; showActions(); $('form').innerHTML = ''
     say('Loading…', 'busy')
-    var posSet = '{FILTER({TM1FILTERBYLEVEL({TM1SUBSETALL([WFP Position].[WFP Position])},0)}, [' + MAP + '].(' + M('WFP Period', m) + ',' + M('WFP Version', v) + ',' + mm('Cost Centre') + ') = "' + cc.replace(/"/g, '""') + '")}'
+    var posSet = cc ? '{FILTER({TM1FILTERBYLEVEL({TM1SUBSETALL([WFP Position].[WFP Position])},0)}, [' + MAP + '].(' + M('WFP Period', m) + ',' + M('WFP Version', v) + ',' + mm('Cost Centre') + ') = "' + cc.replace(/"/g, '""') + '")}' : '{TM1FILTERBYLEVEL({TM1SUBSETALL([WFP Position].[WFP Position])},0)}'
     return call('SELECT {' + ['Home Entity', 'Position FTE', 'Position State'].map(mm).join(',') + '} ON 0, ' + posSet + ' ON 1 FROM [' + MAP + '] WHERE (' + M('WFP Period', m) + ',' + M('WFP Version', v) + ')').then(function (r) {
       posList = Lens.rows(r).map(function (x) { return { id: x['WFP Position'], entity: x['Home Entity'], fte: num(x['Position FTE']), state: x['Position State'] || 'Closed' } })
-      if (!posList.length) { rowsAll = []; draw(); say('No positions in ' + cc + ' in ' + monthName(m) + '.'); return }
-      var set = '{' + posList.map(function (s) { return M('WFP Position', s.id) }).join(',') + '}'
+      if (!posList.length) { rowsAll = []; draw(); say('No positions in ' + (cc || 'any cost centre') + ' in ' + monthName(m) + '.'); return }
       var emps = '{TM1FILTERBYLEVEL({TM1SUBSETALL([WFP Employee].[WFP Employee])},0)}'
+      var fteQ = function (ps) { return call('SELECT {' + ps.map(function (p) { return M('WFP Period', p) }).join(',') + '} ON 0, NON EMPTY ' + posSet + ' * ' + emps + ' ON 1 FROM [' + A + '] WHERE (' + M('WFP Version', v) + ',' + am('FTE Share') + ')') }
+      var moveQ = function (ps) { return call('SELECT NON EMPTY {' + ps.map(function (p) { return M('WFP Period', p) }).join(',') + '} * {' + am('Start Reason') + ',' + am('End Reason') + '} ON 0, NON EMPTY ' + posSet + ' * ' + emps + ' ON 1 FROM [' + A + '] WHERE (' + M('WFP Version', v) + ')') }
+      // All cost centres has too many position × employee cells for one read: do it a month at a time.
+      var fteP = cc ? [fteQ(months)] : months.map(function (p) { return fteQ([p]) })
+      var moveP = cc ? [moveQ(months)] : months.map(function (p) { return moveQ([p]) })
       return Promise.all([
-        call('SELECT {' + months.map(function (p) { return M('WFP Period', p) }).join(',') + '} ON 0, NON EMPTY ' + set + ' * ' + emps + ' ON 1 FROM [' + A + '] WHERE (' + M('WFP Version', v) + ',' + am('FTE Share') + ')'),
-        call('SELECT {' + ['Absent', 'Cover FTE', 'Handover FTE'].map(am).join(',') + '} ON 0, NON EMPTY ' + set + ' * ' + emps + ' ON 1 FROM [' + A + '] WHERE (' + M('WFP Version', v) + ',' + M('WFP Period', m) + ')'),
-        call('SELECT NON EMPTY {' + months.map(function (p) { return M('WFP Period', p) }).join(',') + '} * {' + am('Start Reason') + ',' + am('End Reason') + '} ON 0, NON EMPTY ' + set + ' * ' + emps + ' ON 1 FROM [' + A + '] WHERE (' + M('WFP Version', v) + ')'),
-        call('SELECT {' + ['Base Salary', 'Absence Pay %'].map(function (x) { return M('WFP Assignment Pay Measure', x) }).join(',') + '} ON 0, NON EMPTY ' + set + ' * ' + emps + ' ON 1 FROM [' + PAY + '] WHERE (' + M('WFP Version', v) + ',' + M('WFP Period', m) + ')')
+        Promise.all(fteP),
+        call('SELECT {' + ['Absent', 'Cover FTE', 'Handover FTE'].map(am).join(',') + '} ON 0, NON EMPTY ' + posSet + ' * ' + emps + ' ON 1 FROM [' + A + '] WHERE (' + M('WFP Version', v) + ',' + M('WFP Period', m) + ')'),
+        Promise.all(moveP),
+        call('SELECT {' + ['Base Salary', 'Absence Pay %'].map(function (x) { return M('WFP Assignment Pay Measure', x) }).join(',') + '} ON 0, NON EMPTY ' + posSet + ' * ' + emps + ' ON 1 FROM [' + PAY + '] WHERE (' + M('WFP Version', v) + ',' + M('WFP Period', m) + ')')
       ]).then(function (q) {
         var key = function (x) { return x['WFP Position'] + '|' + x['WFP Employee'] }
+        var flat = function (rs) { return [].concat.apply([], rs.map(Lens.rows)) }
+        var fteRows = flat(q[0]), moveRows = flat(q[2])
         var flags = {}; Lens.rows(q[1]).forEach(function (x) { flags[key(x)] = x })
         var pay = {}; Lens.rows(q[3]).forEach(function (x) { pay[key(x)] = x })
         var moves = {}
-        Lens.rows(q[2]).forEach(function (x) {
+        moveRows.forEach(function (x) {
           var k = key(x), o = moves[k] = moves[k] || {}
           Object.keys(x).forEach(function (c) { if (/Transfer In/.test(String(x[c]))) o.tin = c.split(/[|\/]/)[0]; if (/Transfer Out/.test(String(x[c]))) o.tout = c.split(/[|\/]/)[0] })
         })
+        var agg = {}, order = []
+        fteRows.forEach(function (x) {
+          var k = key(x), o = agg[k]
+          if (!o) { o = agg[k] = { pos: x['WFP Position'], emp: x['WFP Employee'], months: [], fte: 0 }; order.push(k) }
+          months.forEach(function (p) { if (num(x[p]) > 0 && o.months.indexOf(p) < 0) o.months.push(p) })
+          if (num(x[m]) > 0) o.fte = num(x[m])
+        })
         var list = [], ids = []
-        Lens.rows(q[0]).forEach(function (x) {
-          var on = months.filter(function (p) { return num(x[p]) > 0 })
-          if (!on.length) return
-          var k = key(x), f = flags[k] || {}, py = pay[k] || {}
-          list.push({ pos: x['WFP Position'], emp: x['WFP Employee'], fte: num(x[m]), here: num(x[m]) > 0, since: on[0], until: on[on.length - 1],
+        order.forEach(function (k) {
+          var o = agg[k]; if (!o.months.length) return
+          var on = o.months.sort(), f = flags[k] || {}, py = pay[k] || {}
+          list.push({ pos: o.pos, emp: o.emp, fte: o.fte, here: o.fte > 0, since: on[0], until: on[on.length - 1],
             away: num(f.Absent) > 0, payPct: num(py['Absence Pay %']), cover: num(f['Cover FTE']) > 0, handover: num(f['Handover FTE']) > 0,
             salary: num(py['Base Salary']), tin: (moves[k] || {}).tin, tout: (moves[k] || {}).tout })
-          ids.push(x['WFP Employee'])
+          ids.push(o.emp)
         })
-        var need = ids.filter(function (id) { return !names[id] })
-        var named = need.length ? call(attrMDX('WFP Employee', ['Display'], need.map(function (id) { return M('WFP Employee', id) }).join(','))).then(function (r) { Lens.rows(r).forEach(function (x) { names[x['WFP Employee']] = x.Display }) }) : Promise.resolve()
+        var named
+        if (!cc) named = call(attrMDX('WFP Employee', ['Display'])).then(function (r) { Lens.rows(r).forEach(function (x) { names[x['WFP Employee']] = x.Display }) })
+        else {
+          var need = ids.filter(function (id) { return !names[id] })
+          named = need.length ? call(attrMDX('WFP Employee', ['Display'], need.map(function (id) { return M('WFP Employee', id) }).join(','))).then(function (r) { Lens.rows(r).forEach(function (x) { names[x['WFP Employee']] = x.Display }) }) : Promise.resolve()
+        }
         return named.then(function () { rowsAll = list; draw(); say('') })
-      })
-    })
+      })    })
   }
   var stateOf = function (r) {
     if (r.away) return 'Away (' + r.payPct + '% pay)'
@@ -406,7 +421,7 @@ table.t tr.tot td{font-weight:700;background:color-mix(in srgb,var(--rule) 40%,t
   function hire() {
     var opts = posList.filter(function (s) { return s.state !== 'Closed' }).map(function (s) { return { value: s.id, label: s.id + ' · ' + s.state.toLowerCase() } })
     loadPeople().then(function (list) {
-      form('Hire someone into a position in ' + $('cc').value,
+      form('Hire someone into ' + ($('cc').value ? 'a position in ' + $('cc').value : 'a position'),
         '<div class="row">' + field('Position', '<select id="pos">' + opt(opts) + '</select>') + whoField(list) + '</div>' +
         '<div class="row">' + field('From', '<select id="from">' + opt(monthOpts(mon()), mon()) + '</select>') +
           field('FTE', '<input id="fte" type="number" min="0.1" max="1" step="0.1" value="1" style="width:80px">') +
@@ -567,7 +582,7 @@ table.t tr.tot td{font-weight:700;background:color-mix(in srgb,var(--rule) 40%,t
     ccs = r[2]
     $('ver').innerHTML = opt(C.versions || ['Forecast', 'Budget', 'Downside'])
     $('month').innerHTML = opt(months.map(function (p) { return { value: p, label: monthName(p) + (P.idx[p] <= cutoff ? ' (actual)' : '') } }), P.month[cutoff + 1])
-    $('cc').innerHTML = ccOptions(ccs, C.costCentre || 'CC-ENG-PLT')
+    $('cc').innerHTML = ccOptions(ccs, '', 'All cost centres')
     $('sub').textContent = 'everyone in a position · hire, pay, leavers, transfers, time away, cover'
     $('note').textContent = 'Right-click an FTE or salary for its story (why, who changed it, notes).'
     refreshCost()

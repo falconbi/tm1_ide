@@ -218,19 +218,21 @@ table.t tr.tot td{font-weight:700;background:color-mix(in srgb,var(--rule) 40%,t
     })
   }
   function load() {
-    var cc = $('cc').value, yr = $('year').value, FY = 'FY' + yr, months = monthsOf(yr), c = ccs.filter(function (x) { return x.id === cc })[0] || {}
-    var list = pos.filter(function (p) { return p.cc === cc })
+    var cc = $('cc').value, all = !cc, cck = cc || 'Total Cost Centre', yr = $('year').value, FY = 'FY' + yr, months = monthsOf(yr), c = ccs.filter(function (x) { return x.id === cc })[0] || {}
+    var list = all ? pos : pos.filter(function (p) { return p.cc === cc })
+    var posSet = all ? '{TM1FILTERBYLEVEL({TM1SUBSETALL([WFP Position].[WFP Position])},0)}'
+      : (list.length ? '{' + list.map(function (p) { return M(PD, p.id) }).join(',') + '}' : '{}')
     var vers = [VERSION, BUDGET].concat(snap ? [snap] : []), V = '{' + vers.map(function (v) { return M('WFP Version', v) }).join(',') + '}'
-    $('title').textContent = cc + ' · ' + c.name
-    $('sub').textContent = c.fn + ' · ' + VERSION + ' against ' + BUDGET + (snap ? ' and the last forecast (' + snap + ')' : '') + ' · pounds'
+    $('title').textContent = all ? 'All cost centres' : cc + ' · ' + c.name
+    $('sub').textContent = (all ? 'All functions' : c.fn) + ' · ' + VERSION + ' against ' + BUDGET + (snap ? ' and the last forecast (' + snap + ')' : '') + ' · pounds'
     say('Loading…', 'busy')
     var HM = function (m) { return M('WFP Headcount Measure', m) }
-    var leaverQ = function (v) { return list.length ? call('SELECT NON EMPTY {' + planMonths.map(function (p) { return M('WFP Period', p) }).join(',') + '} ON 0, NON EMPTY {' + list.map(function (p) { return M(PD, p.id) }).join(',') + '} * {TM1FILTERBYLEVEL({TM1SUBSETALL([' + ED + '].[' + ED + '])},0)} ON 1 FROM [' + A + '] WHERE (' + M('WFP Version', v) + ',' + M('WFP Assignment Measure', 'Leaver') + ')') : null }
+    var leaverQ = function (v) { return list.length ? call('SELECT NON EMPTY {' + planMonths.map(function (p) { return M('WFP Period', p) }).join(',') + '} ON 0, NON EMPTY ' + posSet + ' * {TM1FILTERBYLEVEL({TM1SUBSETALL([' + ED + '].[' + ED + '])},0)} ON 1 FROM [' + A + '] WHERE (' + M('WFP Version', v) + ',' + M('WFP Assignment Measure', 'Leaver') + ')') : null }
     return Promise.all([
-      call('SELECT ' + V + ' ON 0, {' + months.concat([FY]).map(function (p) { return M('WFP Period', p) }).join(',') + '} ON 1' + WC([M('WFP Cost Centre', cc), M('WFP Position', 'Total Positions'), M('WFP Pay Component', 'Total Compensation')])),
-      list.length ? call('SELECT ' + V + ' ON 0, {' + list.map(function (p) { return M('WFP Position', p.id) }).join(',') + '} ON 1' + WC([M('WFP Cost Centre', cc), M('WFP Period', FY), M('WFP Pay Component', 'Total Compensation')])) : null,
-      call('SELECT ' + V + ' ON 0, {(' + M('WFP Period', yr + '-12') + ',' + HM('Closing') + '),(' + M('WFP Period', FY) + ',' + HM('FTE') + '),(' + M('WFP Period', FY) + ',' + HM('Hires') + '),(' + M('WFP Period', FY) + ',' + HM('Leavers') + ')} ON 1 FROM [WFP Headcount] WHERE (' + M('WFP Entity', 'Group') + ',' + M('WFP Cost Centre', cc) + ',' + M('WFP Position', 'Total Positions') + ')'),
-      list.length ? call('SELECT {' + ['Hire Month', 'Approved'].map(function (m) { return M('WFP Hiring Plan Measure', m) }).join(',') + '} * {' + M('WFP Version', VERSION) + (snap ? ',' + M('WFP Version', snap) : '') + '} ON 0, {' + list.map(function (p) { return M('WFP Position', p.id) }).join(',') + '} ON 1 FROM [WFP Hiring Plan]') : null,
+      call('SELECT ' + V + ' ON 0, {' + months.concat([FY]).map(function (p) { return M('WFP Period', p) }).join(',') + '} ON 1' + WC([M('WFP Cost Centre', cck), M('WFP Position', 'Total Positions'), M('WFP Pay Component', 'Total Compensation')])),
+      list.length ? call('SELECT ' + V + ' ON 0, ' + posSet + ' ON 1' + WC([M('WFP Cost Centre', cck), M('WFP Period', FY), M('WFP Pay Component', 'Total Compensation')])) : null,
+      call('SELECT ' + V + ' ON 0, {(' + M('WFP Period', yr + '-12') + ',' + HM('Closing') + '),(' + M('WFP Period', FY) + ',' + HM('FTE') + '),(' + M('WFP Period', FY) + ',' + HM('Hires') + '),(' + M('WFP Period', FY) + ',' + HM('Leavers') + ')} ON 1 FROM [WFP Headcount] WHERE (' + M('WFP Entity', 'Group') + ',' + M('WFP Cost Centre', cck) + ',' + M('WFP Position', 'Total Positions') + ')'),
+      list.length ? call('SELECT {' + ['Hire Month', 'Approved'].map(function (m) { return M('WFP Hiring Plan Measure', m) }).join(',') + '} * {' + M('WFP Version', VERSION) + (snap ? ',' + M('WFP Version', snap) : '') + '} ON 0, ' + posSet + ' ON 1 FROM [WFP Hiring Plan]') : null,
       leaverQ(VERSION),
       snap ? leaverQ(snap) : null
     ]).then(function (r) {
@@ -290,7 +292,7 @@ table.t tr.tot td{font-weight:700;background:color-mix(in srgb,var(--rule) 40%,t
     planMonths = Object.keys(P.idx).filter(function (p) { return P.idx[p] >= 12 && P.idx[p] <= 36 }).sort()
     pos = r[2].map(function (x) { return { id: x.id, cc: x['Cost Centre'], status: x['Position Status'], grade: x.Grade, who: x['Incumbent Name'], fte: num(x.FTE), end: x['End Period'] } })
     var used = new Set(pos.map(function (p) { return p.cc })); ccs = r[1].filter(function (c) { return used.has(c.id) })
-    $('cc').innerHTML = ccOptions(ccs, C.costCentre || (ccs[0] && ccs[0].id))
+    $('cc').innerHTML = ccOptions(ccs, '', 'All cost centres')
     return load()
   }).catch(fail)
 })()
