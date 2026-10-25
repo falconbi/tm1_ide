@@ -68,7 +68,30 @@ next starts:
   and where the balance at the opening comes from.
 - **Who may change what** (security), and which changes need approval.
 - **Checks:** what must always hold (no double counting, no impossible states)? Each becomes an
-  assertion and a Needs-attention line.
+  assertion and a Needs-attention line. See *Checks — who decides, and the three kinds* below.
+
+#### Checks — who decides, and the three kinds
+
+**The developer proposes the checks, the business owner signs them off** — at design, and again
+at UAT with the numbers. The AI may suggest checks from the model (a consolidation must equal its
+parts, a required attribute must be set), but a person approves every one; none is added
+automatically. Checks are part of the model design document and travel with the release — never
+changed quietly on a target.
+
+Every check in the design document is tagged with its kind, because the kind decides where it
+can run and whether it can stop a deploy:
+
+| Kind | What it proves | Example | Where it runs |
+|---|---|---|---|
+| **Control check** | must hold on any data — nothing is broken | a total equals its parts; nobody over 1.0 FTE; no missing required attribute | DEV, the QA rehearsal, Prod after a load |
+| **Worked example** | the logic gives the agreed number on known data | "this employee's March tax is 1,234.50" | DEV, or wherever its test data is loaded — never on Prod's real data |
+| **Regression total** | a deploy didn't move numbers it shouldn't | cost by version × entity × month, before vs after | the QA rehearsal, before vs after the deploy, same data |
+
+A control check that finds no data to look at has **not been tested** — it is not a pass. A new
+model arriving empty needs its test data loaded before its control checks mean anything.
+
+The design document names the **regression totals**: the few key totals (by version, entity,
+period, main measure) whose movement must be explained by the change set.
 
 #### Workforce models
 

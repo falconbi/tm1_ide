@@ -258,7 +258,10 @@ TI; rules only for what planners must see change live.
 
 ## 10. Checks that must always hold
 
-Run as assertions and on the Needs attention page:
+The three kinds of check are explained in
+[BUILDING_MODELS.md](BUILDING_MODELS.md#checks--who-decides-and-the-three-kinds).
+
+**Control checks** — run as assertions and on the Needs attention page:
 
 - Nobody over 1.0 FTE across Positions (`Over-booked`).
 - No Position holding more people than its FTE (`Over-filled`), except a marked handover or cover
@@ -268,6 +271,18 @@ Run as assertions and on the Needs attention page:
 - No HRIS Position linked to more than one TBH; no matched TBH counting in an open month.
 - Every new HR Position in an open month is matched or flagged *Unplanned*; every approved TBH
   past its hire month is matched or flagged *Late hire*.
+
+**Worked examples** — the remaining assertions check agreed numbers on the sample data (tax, net
+pay, cost per assignment). They run on DEV or a loaded test dataset, not on Prod's real people.
+
+**Regression totals** — compared before and after a change on the same data:
+
+- `WFP Workforce Cost`: every version × entity × cost centre × month (Obl 2026 onward) × leaf pay
+  component × currency × measure, at Total Positions.
+- `WFP Headcount`: every version × entity × leaf cost centre × month × headcount measure, at Total
+  Positions.
+
+Any difference must be one the change set says to expect.
 
 ---
 
