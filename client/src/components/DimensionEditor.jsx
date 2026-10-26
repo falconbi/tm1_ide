@@ -604,6 +604,31 @@ function AttrGrid({ tab, elements, edges, hierarchy }) {
   }, [tab, hierarchy, refetch])
 
   const attrs = grid?.attrs ?? []
+  const [colWidths, setColWidths] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('tm1-attr-widths')) ?? {} } catch { return {} }
+  })
+  const setAttrWidth = useCallback((name, width) => {
+    const w = Math.max(80, Math.round(width))
+    setColWidths(prev => {
+      const next = { ...prev, [name]: w }
+      try { localStorage.setItem('tm1-attr-widths', JSON.stringify(next)) } catch { /* private mode */ }
+      return next
+    })
+  }, [])
+  const startAttrResize = useCallback((e, name, startWidth) => {
+    e.preventDefault()
+    e.stopPropagation()
+    const startX = e.clientX
+    document.body.style.cursor = 'col-resize'
+    const move = ev => setAttrWidth(name, startWidth + ev.clientX - startX)
+    const up = () => {
+      document.body.style.cursor = ''
+      window.removeEventListener('mousemove', move)
+      window.removeEventListener('mouseup', up)
+    }
+    window.addEventListener('mousemove', move)
+    window.addEventListener('mouseup', up)
+  }, [setAttrWidth])
 
   const ordered = useMemo(() => buildTreeOrder(elements, edges), [elements, edges])
 
@@ -643,7 +668,7 @@ function AttrGrid({ tab, elements, edges, hierarchy }) {
       headerName: attr.Name,
       editable: !isFormat,
       resizable: true,
-      width: isFormat ? 170 : isDescription ? 480 : 140,
+      width: colWidths[attr.Name] ?? (isFormat ? 170 : isDescription ? 480 : 140),
       minWidth: 80,
       tooltipField: attr.Name,
       ...(isFormat ? { cellRenderer: p => (
@@ -654,7 +679,7 @@ function AttrGrid({ tab, elements, edges, hierarchy }) {
         </button>
       )} : {}),
       headerComponent: _p => (
-        <div className="flex items-center gap-1 w-full group">
+        <div className="relative flex items-center gap-1 w-full h-full group">
           <span className="flex-1 truncate">{attr.Name}</span>
           <span className={cn('text-[8px] font-bold shrink-0',
             attr.Type === 'Numeric' ? 'text-sky-400/70' : attr.Type === 'Alias' ? 'text-amber-400/70' : 'text-muted-foreground/50')}>
@@ -672,11 +697,16 @@ function AttrGrid({ tab, elements, edges, hierarchy }) {
             title={`Delete attribute ${attr.Name}`}>
             <X size={10} />
           </button>
+          <span
+            onMouseDown={e => startAttrResize(e, attr.Name, colWidths[attr.Name] ?? ((isFormat ? 170 : isDescription ? 480 : 140)))}
+            className="absolute -right-1 top-0 h-full w-3 cursor-col-resize border-r border-transparent hover:border-primary/60"
+            title={`Drag to widen ${attr.Name}`}
+          />
         </div>
       ),
     }
     }),
-  ], [attrs, handleDeleteAttr, handleConvertToAlias])
+  ], [attrs, handleDeleteAttr, handleConvertToAlias, colWidths, startAttrResize])
 
   const onCellValueChanged = useCallback(p => {
     const element   = p.data.__name
@@ -788,6 +818,7 @@ function AttrGrid({ tab, elements, edges, hierarchy }) {
           rowData={rows}
           columnDefs={colDefs}
           onCellValueChanged={onCellValueChanged}
+          onColumnResized={e => { if (e.finished && e.column.getColId() !== '__name') setAttrWidth(e.column.getColId(), e.column.getActualWidth()) }}
           getRowId={p => p.data.__name}
           defaultColDef={{ resizable: true }}
           stopEditingWhenCellsLoseFocus
