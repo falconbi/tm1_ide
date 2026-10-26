@@ -869,7 +869,7 @@ function DebugPanel({ watches, onWatchesChange, events, isDebugging, onRun, onJu
 }
 
 export default function ProcessEditor({ tab }) {
-  const { server, serverVersion, dark, themeVersion, updateTabContent, markTabSaved, clearScrollTo, openTab, patchTab, setRevealTarget } = useStore()
+  const { server, serverVersion, dark, themeVersion, initTabContent, markTabSaved, clearScrollTo, openTab, patchTab, setRevealTarget } = useStore()
   const { data, isLoading } = useProcess(tab.server, tab.name)
   const saveProcess   = useSaveProcess()
   const runProcess    = useRunProcess()
@@ -924,8 +924,13 @@ export default function ProcessEditor({ tab }) {
   const [dsEdits, setDsEdits]       = useState(null)
 
   useEffect(() => {
-    if (data) { updateTabContent(tab.id, data); setParamEdits(null); setDsEdits(null) }
+    if (data) { initTabContent(tab.id, data); setParamEdits(null); setDsEdits(null) }
   }, [data])
+
+  const markDirty = useCallback(() => {
+    const current = useStore.getState().tabs.find(t => t.id === tab.id)
+    if (current && !current.dirty) patchTab(tab.id, { dirty: true })
+  }, [tab.id, patchTab])
 
   // Build sorted variable list for watch dropdown
   const availableVars = (() => {
@@ -1721,7 +1726,7 @@ export default function ProcessEditor({ tab }) {
           <EditableDatasourcePanel
             ds={dsEdits ?? data.DataSource ?? { Type: 'None' }}
             server={tab.server}
-            onChange={setDsEdits}
+            onChange={v => { setDsEdits(v); markDirty() }}
           />
         </CollapsibleSection>
       )}
@@ -1749,7 +1754,7 @@ export default function ProcessEditor({ tab }) {
         >
           <EditableParamsPanel
             params={paramEdits ?? data.Parameters ?? []}
-            onChange={setParamEdits}
+            onChange={v => { setParamEdits(v); markDirty() }}
           />
         </CollapsibleSection>
       )}
@@ -1857,7 +1862,7 @@ export default function ProcessEditor({ tab }) {
             value={value}
             theme="tm1-custom"
             beforeMount={monaco => registerTM1Theme(monaco, dark)}
-            onChange={v => setEdits(e => ({ ...e, [activeSection]: v }))}
+            onChange={v => { setEdits(e => ({ ...e, [activeSection]: v })); markDirty() }}
             onMount={handleMount}
             options={{
               padding: { top: 48, bottom: 12 },
