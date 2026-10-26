@@ -553,6 +553,39 @@ function NewAttrModal({ onConfirm, onClose }) {
   )
 }
 
+// A stable header component: AG Grid rebuilds the header when its type changes,
+// and a type that changes on every render interrupts a column resize mid-drag.
+function AttrHeader({ column }) {
+  const colDef = column.getColDef()
+  const attr   = colDef.attrDef
+  if (!attr) return <span className="truncate">{colDef.headerName}</span>
+  const { name, type } = attr
+  return (
+    <div className="relative flex items-center gap-1 w-full h-full group">
+      <span className="flex-1 truncate">{name}</span>
+      <span className={cn('text-[8px] font-bold shrink-0',
+        type === 'Numeric' ? 'text-sky-400/70' : type === 'Alias' ? 'text-amber-400/70' : 'text-muted-foreground/50')}>
+        {type === 'Numeric' ? 'N' : type === 'Alias' ? 'A' : 'S'}
+      </span>
+      {type === 'String' && !['Format', 'Picklist'].includes(name) && (
+        <button onClick={() => colDef.onConvertAttr?.(name)}
+          className="opacity-0 group-hover:opacity-100 text-amber-500 hover:text-amber-400 transition-opacity text-[8px] font-bold leading-none"
+          title={`Convert ${name} to Alias type`}>
+          →A
+        </button>
+      )}
+      <button onClick={() => colDef.onDeleteAttr?.(name)}
+        className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-red-400 transition-opacity"
+        title={`Delete attribute ${name}`}>
+        <X size={10} />
+      </button>
+    </div>
+  )
+}
+
+const NO_ATTRS = []
+const ATTR_WIDTHS_KEY = 'tm1-attr-widths'
+
 function AttrGrid({ tab, elements, edges, hierarchy }) {
   const dark      = useStore(s => s.dark)
   const [subset, setSubset]     = useState('')
@@ -583,7 +616,7 @@ function AttrGrid({ tab, elements, edges, hierarchy }) {
       { server: tab.server, dimension: tab.dimension, name, hierarchy },
       { onSuccess: () => refetch() }
     )
-  }, [deleteAttr, tab, refetch, hierarchy])
+  }, [deleteAttr.mutate, tab, refetch, hierarchy])
 
   const handleConvertToAlias = useCallback(async (attrName) => {
     if (!window.confirm(`Convert "${attrName}" from String to Alias type?\n\nAll values will be preserved.`)) return
@@ -603,32 +636,30 @@ function AttrGrid({ tab, elements, edges, hierarchy }) {
     }
   }, [tab, hierarchy, refetch])
 
-  const attrs = grid?.attrs ?? []
-  const [colWidths, setColWidths] = useState(() => {
-    try { return JSON.parse(localStorage.getItem('tm1-attr-widths')) ?? {} } catch { return {} }
+  const attrs = grid?.attrs ?? NO_ATTRS
+
+  // Column widths are the grid's state, not React state: rebuilding columnDefs
+  // while a column is being dragged re-applies them and snaps the column back.
+  // Read the saved sizes once, hand them to the grid at creation, then only
+  // write on a finished resize — never re-render.
+  const [initialWidths] = useState(() => {
+    try { return JSON.parse(localStorage.getItem(ATTR_WIDTHS_KEY)) ?? {} } catch { return {} }
   })
-  const setAttrWidth = useCallback((name, width) => {
-    const w = Math.max(80, Math.round(width))
-    setColWidths(prev => {
-      const next = { ...prev, [name]: w }
-      try { localStorage.setItem('tm1-attr-widths', JSON.stringify(next)) } catch { /* private mode */ }
-      return next
-    })
+  const savedWidthsRef = useRef(initialWidths)
+  const saveAttrWidth = useCallback((name, width) => {
+    savedWidthsRef.current = { ...savedWidthsRef.current, [name]: Math.max(80, Math.round(width)) }
+    try { localStorage.setItem(ATTR_WIDTHS_KEY, JSON.stringify(savedWidthsRef.current)) } catch { /* private mode */ }
   }, [])
-  const startAttrResize = useCallback((e, name, startWidth) => {
-    e.preventDefault()
-    e.stopPropagation()
-    const startX = e.clientX
-    document.body.style.cursor = 'col-resize'
-    const move = ev => setAttrWidth(name, startWidth + ev.clientX - startX)
-    const up = () => {
-      document.body.style.cursor = ''
-      window.removeEventListener('mousemove', move)
-      window.removeEventListener('mouseup', up)
+  const attrInitialState = useMemo(() => ({
+    columnSizing: {
+      columnSizingModel: Object.entries(initialWidths).map(([colId, width]) => ({ colId, width })),
+    },
+  }), [initialWidths])
+  const onAttrColumnResized = useCallback(e => {
+    if (e.finished && e.column && e.source === 'uiColumnResized') {
+      saveAttrWidth(e.column.getColId(), e.column.getActualWidth())
     }
-    window.addEventListener('mousemove', move)
-    window.addEventListener('mouseup', up)
-  }, [setAttrWidth])
+  }, [saveAttrWidth])
 
   const ordered = useMemo(() => buildTreeOrder(elements, edges), [elements, edges])
 
@@ -651,7 +682,7 @@ function AttrGrid({ tab, elements, edges, hierarchy }) {
       field: '__name',
       headerName: 'Element',
       pinned: 'left',
-      width: 220,
+      initialWidth: 220,
       editable: false,
       cellRenderer: p => (
         <span style={{ paddingLeft: p.data.__depth * 14 }}>
@@ -668,7 +699,7 @@ function AttrGrid({ tab, elements, edges, hierarchy }) {
       headerName: attr.Name,
       editable: !isFormat,
       resizable: true,
-      width: colWidths[attr.Name] ?? (isFormat ? 170 : isDescription ? 480 : 140),
+      initialWidth: isFormat ? 170 : isDescription ? 480 : 140,
       minWidth: 80,
       tooltipField: attr.Name,
       ...(isFormat ? { cellRenderer: p => (
@@ -678,35 +709,13 @@ function AttrGrid({ tab, elements, edges, hierarchy }) {
           {p.value || <span className="opacity-30 italic">click to set</span>}
         </button>
       )} : {}),
-      headerComponent: _p => (
-        <div className="relative flex items-center gap-1 w-full h-full group">
-          <span className="flex-1 truncate">{attr.Name}</span>
-          <span className={cn('text-[8px] font-bold shrink-0',
-            attr.Type === 'Numeric' ? 'text-sky-400/70' : attr.Type === 'Alias' ? 'text-amber-400/70' : 'text-muted-foreground/50')}>
-            {attr.Type === 'Numeric' ? 'N' : attr.Type === 'Alias' ? 'A' : 'S'}
-          </span>
-          {attr.Type === 'String' && !['Format', 'Picklist'].includes(attr.Name) && (
-            <button onClick={() => handleConvertToAlias(attr.Name)}
-              className="opacity-0 group-hover:opacity-100 text-amber-500 hover:text-amber-400 transition-opacity text-[8px] font-bold leading-none"
-              title={`Convert ${attr.Name} to Alias type`}>
-              →A
-            </button>
-          )}
-          <button onClick={() => handleDeleteAttr(attr.Name)}
-            className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-red-400 transition-opacity"
-            title={`Delete attribute ${attr.Name}`}>
-            <X size={10} />
-          </button>
-          <span
-            onMouseDown={e => startAttrResize(e, attr.Name, colWidths[attr.Name] ?? ((isFormat ? 170 : isDescription ? 480 : 140)))}
-            className="absolute -right-1 top-0 h-full w-3 cursor-col-resize border-r border-transparent hover:border-primary/60"
-            title={`Drag to widen ${attr.Name}`}
-          />
-        </div>
-      ),
+      headerComponent: AttrHeader,
+      attrDef: { name: attr.Name, type: attr.Type },
+      onConvertAttr: handleConvertToAlias,
+      onDeleteAttr: handleDeleteAttr,
     }
     }),
-  ], [attrs, handleDeleteAttr, handleConvertToAlias, colWidths, startAttrResize])
+  ], [attrs, handleDeleteAttr, handleConvertToAlias])
 
   const onCellValueChanged = useCallback(p => {
     const element   = p.data.__name
@@ -817,10 +826,11 @@ function AttrGrid({ tab, elements, edges, hierarchy }) {
           theme={dark ? darkTheme : lightTheme}
           rowData={rows}
           columnDefs={colDefs}
+          initialState={attrInitialState}
           onCellValueChanged={onCellValueChanged}
-          onColumnResized={e => { if (e.finished && e.column.getColId() !== '__name') setAttrWidth(e.column.getColId(), e.column.getActualWidth()) }}
+          onColumnResized={onAttrColumnResized}
           getRowId={p => p.data.__name}
-          defaultColDef={{ resizable: true }}
+          defaultColDef={ATTR_DEFAULT_COL}
           stopEditingWhenCellsLoseFocus
           singleClickEdit
         />
@@ -1125,6 +1135,9 @@ function PreDeleteDialog({ check, elementName, onConfirm, onCancel }) {
     </div>
   )
 }
+
+// the attribute grid's column defaults -- one object, so a redraw doesn't reset the columns
+const ATTR_DEFAULT_COL = { resizable: true }
 
 export default function DimensionEditor({ tab }) {
   if (!tab.dimension) return <NewDimensionScreen tab={tab} />
