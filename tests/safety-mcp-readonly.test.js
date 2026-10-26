@@ -24,10 +24,10 @@ test('readonly offers the deploy checks only when target servers were named on p
     for (const t of DEPLOY_CHECK_TOOLS) assert.equal(typeof build.handlers[t], 'function', 'build mode unchanged')
 })
 
-test('build registers all 65 tools — every one classified', () => {
+test('build registers all 67 tools — every one classified', () => {
     const { registered } = setup({ mode: 'build' })
-    assert.equal(registered.length, 65)
-    assert.equal(guard.READ_TOOLS.size + guard.WRITE_TOOLS.size, 65)
+    assert.equal(registered.length, 67)
+    assert.equal(guard.READ_TOOLS.size + guard.WRITE_TOOLS.size, 67)
 })
 
 test('an unclassified tool stops start-up', () => {

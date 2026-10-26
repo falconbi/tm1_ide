@@ -81,6 +81,8 @@ const ARGS = {
     build_cube:            { name: 'Sales', dimensions: ['Region', 'Month'], rules: "['Total'] = N: 1;" },
     reprocess_feeders:     { cubes: ['Sales'] },
     build_process:         { name: 'Load Sales', prolog: "vCube = 'Sales';" },
+    build_period_dimension:{ dimensionName: 'Test Period', fyStartMonth: 4, firstFY: 2026, lastFY: 2027 },
+    copy_version:          { pSource: 'Budget', pTarget: 'New Version', pMode: 'new', pType: 'static', pVersionDim: 'Version' },
     write_cells:           { cube: 'Sales', cells: [{ coordinates: { Region: 'North', Month: 'Jan' }, value: 1 }] },
     create_view:           { cube: 'Sales', name: 'Default', mdx: 'SELECT {} ON 0 FROM [Sales]' },
     create_subset:         { dimension: 'Region', subset: 'Leaves', expression: '{TM1FILTERBYLEVEL({TM1SUBSETALL([Region])},0)}' },

@@ -30,7 +30,7 @@ const UNGATED_WRITE_TOOLS = new Set(['start_change_set', 'run_process', 'reproce
 // (TM1_MCP_ALLOWED_TARGETS or "mcpAllowTargets" in config/servers.json).
 const DEPLOY_CHECK_TOOLS = new Set(['check_deploy_risk', 'check_target_drift'])
 
-const GROUPS = ['docs', 'introspect', 'changeset', 'assertions', 'deploy', 'build', 'develop', 'diagnostics', 'lenses']
+const GROUPS = ['docs', 'introspect', 'changeset', 'assertions', 'deploy', 'build', 'develop', 'period', 'coreti', 'diagnostics', 'lenses']
 
 function errorText(e) {
     const d = e.response?.data?.error?.message ?? e.response?.data?.error ?? e.response?.data
