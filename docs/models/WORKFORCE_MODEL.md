@@ -237,11 +237,12 @@ TI; rules only for what planners must see change live.
   pay at the opening × the months of the tax year already gone (UK / NZ 9, US 12), taxed on the
   same bands. Real payroll figures replace the estimate.
 - **Cost follows every action:** each action process calls `WFP Request Recalculation` (marks
-  `WFP Control` → Cost Out Of Date). Chore **`WFP Recalculate Cost`** (every 5 minutes) runs
-  `WFP Recalculate If Needed` → Base + tax run only when something is marked. Pages show "Cost up
-  to date (hh:mm)" or "Cost updating…". **The TM1 server clock is UTC−8**: a chore start time
-  must be in the past in server time.
-- Run time on the full model: Base + tax run + post ≈ 90 s.
+  `WFP Control` → Cost Out Of Date for that version). Chore **`WFP Recalculate Cost`** (every
+  5 minutes) runs `WFP Recalculate If Needed` → Base + tax run for **only the versions marked**,
+  one at a time, so a change to Forecast never recomputes Budget, Downside or Actual. Pages show
+  "Cost up to date (hh:mm)" or "Cost updating…". **The TM1 server clock is UTC−8**: a chore start
+  time must be in the past in server time.
+- Run time on the full model: one version ≈ 40 s; all four ≈ 2 min.
 
 ---
 

@@ -4,7 +4,7 @@ const fs   = require('fs')
 const path = require('path')
 const { makeClient }  = require('./client')
 const { analyzeRisk } = require('./risk')
-const { isNeverDeploy } = require('./never-deploy')
+const { isNeverDeploy, isLabObject } = require('./never-deploy')
 const { odataKey } = require('../../../core/odata-key')
 
 // ── Per-type deployers ────────────────────────────────────────────────────────
@@ -258,7 +258,7 @@ async function deploy(packageDir, targetServer, options = {}, ideToken) {
     const targetClient = makeClient(targetServer, ideToken)
 
     // Hard stop: WFP_Lab is a test model and must never reach a target.
-    const labObjects = (manifest.objects ?? []).filter(o => isNeverDeploy(o.name))
+    const labObjects = (manifest.objects ?? []).filter(o => isLabObject(o))
     if (labObjects.length) {
         return {
             source_server: manifest._meta?.server,
@@ -312,12 +312,17 @@ async function deploy(packageDir, targetServer, options = {}, ideToken) {
         }
     }
 
+    // Never-deploy objects (Bedrock, WFP_Lab) are left out rather than failing the
+    // whole package, so a package built before this filter still deploys its real work.
+    const excluded = (manifest.objects ?? []).filter(o => isNeverDeploy(o))
+    if (excluded.length) report.skipped_never_deploy = excluded.map(o => `${o.type}/${o.name}`)
+
     if (dryRun) {
         return { ...report, aborted: false, dry_run: true }
     }
 
     // Sort objects in dependency order
-    const sorted = [...manifest.objects].sort((a, b) =>
+    const sorted = [...manifest.objects].filter(o => !isNeverDeploy(o)).sort((a, b) =>
         DEPLOY_ORDER.indexOf(a.type) - DEPLOY_ORDER.indexOf(b.type)
     )
 

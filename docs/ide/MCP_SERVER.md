@@ -116,11 +116,11 @@ every read.
 
 ### Bedrock is not an MCP dependency
 
-The MCP tools and AI-generated TI must not call `}bedrock.*` processes. Bedrock is a
-developer-only TM1 toolbox; it is not part of the core IDE process layer and not a
-supported dependency for AI-built applications. Use purpose-built, reviewable
-processes instead. This applies to `run_process`, generated TI and anything MCP
-proposes for a WFP or core process.
+The MCP tools and AI-generated TI must not call `}bedrock.*` processes. Bedrock is
+retired here: it is not installed on the model servers and `}bedrock.*` is filtered
+out of every package (`tools/tm1deploy/src/never-deploy.js`). Use purpose-built,
+reviewable processes or the MCP tools instead. This applies to `run_process`,
+generated TI and anything MCP proposes for a WFP or core process.
 
 The core namespace follows the same boundary: `}IDE.*` processes are hidden
 infrastructure. Do not ask the AI to discover them with `list_processes`; expose a

@@ -150,8 +150,8 @@ A plan has **two independent axes**. Do not confuse them:
    - Build in a **Calculating** version. Rules calculate, planners change it, Lenses are editable.
    - On approval, **freeze** it: copy into a **Static / Non-Calculating** version, then **lock** it.
    - The freeze must carry the **calculated** values (Headcount, Cost), not just the inputs. Use
-     `WFP Snapshot` (`}bedrock.cube.data.copy`, `pSuppressRules=0`, every Version-dim cube).
-     `WFP Copy Version` copies only Workforce Input and would leave Headcount/Cost blank.
+     `WFP Snapshot` — a thin wrapper over `}IDE.Version.Copy` (`pType=static`, every Version-dim
+     cube). `WFP Copy Version` copies only Workforce Input and would leave Headcount/Cost blank.
    - Variance versions (`Act vs Bud`, `Fcst vs Bud`) read the **approved** version, never the working
      one.
 2. **Cycle overlap — different horizons can run at once.**
@@ -426,13 +426,11 @@ Rules:
 - **Model logic ships bespoke.** Snapshot / version copy / close / allocations /
   recalc chains — anything scheduled, assertion-backed, or part of what the model
   produces — is a short purpose-built process shaped to *this* model's known
-  cubes. It has to be reviewable in a change set, lintable, and testable. A
-  generic library process (Bedrock `}bedrock.cube.data.copy` is ~2,200 lines, 35
-  params, 27 dims hand-unrolled, and ships with a real copy-paste bug on the
-  `v24` line) is none of those things.
-- **Bedrock is a dev/admin toolbox**, not application code: ad-hoc region clears,
-  one-off copies, view→file exports, dimension surgery while building. Fine to
-  keep on the server; don't wire it into a chore.
+  cubes. It has to be reviewable in a change set, lintable, and testable.
+- **Bedrock is retired here.** It is not installed on the model servers and
+  `}bedrock.*` is filtered out of every package (`tools/tm1deploy/src/never-deploy.js`).
+  The IDE tools and MCP cover the ad-hoc operations it used to provide. Do not
+  reintroduce it into core, app logic, chores, Lens, MCP or AI-generated TI.
 
 **Policy (October 2026): developer-only.** Bedrock may stay installed for a human
 developer doing ad-hoc work. It must not be used by:
@@ -458,7 +456,7 @@ blur:
 | Core IDE infrastructure | `}IDE.*` | Hidden (control prefix) | Server template / platform release | Generic version copy, period maintenance, shared utilities |
 | Application infrastructure | `}IDE.Period.<App>.*` or equivalent | Hidden | That application's release | Generated period build / refresh / rollover |
 | Application logic | `WFP *`, `OPX *`, `CPX *`, `RPT *` | Visible | That application's change set | Hires, cost, approvals, workflow and other business behaviour |
-| Developer toolbox | `}bedrock.*` | Hidden | Manually / developer install | Ad-hoc developer work only; never core, app, chore, Lens, MCP or AI |
+| Retired external toolbox | `}bedrock.*` | — | Never | Not installed; excluded from packages. Use core or MCP tools instead |
 
 Rules:
 
@@ -754,8 +752,8 @@ iterations:
   **every cube that carries the Version dimension** (`WFP Assignment`,
   `WFP Position Map`, `WFP Hiring Plan`, `WFP Workforce Input`, `WFP Headcount`,
   `WFP Workforce Cost`, `WFP Assumptions`, `WFP FX Rates`, `WFP Pay Rates`) through
-  Bedrock `}bedrock.cube.data.copy` with **`pSuppressRules=0`**, so the *calculated*
-  Headcount/Cost values are copied in. `WFP Copy Version` copies only
+  the core `}IDE.Version.Copy` (`pType=static`), so the *calculated* Headcount/Cost
+  values are copied in. `WFP Copy Version` copies only
   `WFP Workforce Input` (`FTE`, `Base Salary`) — using it for a snapshot leaves
   Headcount and Cost **blank**, because the non-calculating guard STETs and nothing
    copies the values. (A snapshot taken before a new cube existed won't have that

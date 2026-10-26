@@ -153,9 +153,9 @@ async function pack(server, sessionEntries, sessionName, options = {}, ideToken)
     // Load baseline now for picklist comparison later (diff() also loads it internally)
     const loadedBaseline = loadBaseline(baselinePath, server)
 
-    // Test-only objects (WFP_Lab) never enter a package. Filter the change-log
-    // entries before diff, so release mode can't pick them up either.
-    const entries = (sessionEntries ?? []).filter(e => !isNeverDeploy(e.object_name))
+    // Test-only (WFP_Lab) and third-party (Bedrock) objects never enter a package.
+    // Filter the change-log entries before diff, so release mode can't pick them up either.
+    const entries = (sessionEntries ?? []).filter(e => !isNeverDeploy({ object_name: e.object_name, detail: e.detail }))
 
     // Run diff to get packable objects
     const diffResult = await diff(server, entries, baselinePath, ideToken)
@@ -166,7 +166,7 @@ async function pack(server, sessionEntries, sessionName, options = {}, ideToken)
         forcedKeys.has(`${i.object_type}::${i.object_name}::${i.detail ?? ''}`)
     ).map(i => ({ ...i, outcome: 'DRIFT_FORCED' }))
 
-    const packable = [...diffResult.match, ...diffResult.new, ...forcedDrift].filter(i => !isNeverDeploy(i.object_name))
+    const packable = [...diffResult.match, ...diffResult.new, ...forcedDrift].filter(i => !isNeverDeploy(i))
 
     if (packable.length === 0) {
         return { packaged: 0, skipped: diffResult.total, outputDir: null, manifest: null, diffResult }
