@@ -637,11 +637,15 @@ function AttrGrid({ tab, elements, edges, hierarchy }) {
     },
     ...attrs.map(attr => {
       const isFormat = attr.Name.toLowerCase() === 'format'
+      const isDescription = attr.Name.toLowerCase() === 'description'
       return {
       field: attr.Name,
       headerName: attr.Name,
       editable: !isFormat,
-      width: isFormat ? 170 : 140,
+      resizable: true,
+      width: isFormat ? 170 : isDescription ? 480 : 140,
+      minWidth: 80,
+      tooltipField: attr.Name,
       ...(isFormat ? { cellRenderer: p => (
         <button onClick={() => setFormatPicker({ element: p.data.__name, value: p.value ?? '' })}
           className="w-full text-left font-mono text-xs hover:text-primary truncate"
@@ -785,6 +789,7 @@ function AttrGrid({ tab, elements, edges, hierarchy }) {
           columnDefs={colDefs}
           onCellValueChanged={onCellValueChanged}
           getRowId={p => p.data.__name}
+          defaultColDef={{ resizable: true }}
           stopEditingWhenCellsLoseFocus
           singleClickEdit
         />

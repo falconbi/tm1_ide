@@ -1030,7 +1030,7 @@ added (both live-verified); rules-lint no longer splits on commas inside area re
   save was gone**; metadata, processes, rules and attribute values survived. "Transaction log write-locked, recovery possible" is NOT replayed automatically for a service.
 - Recovered by reloading every test payload (kept as JSON files) + reprocess feeders + the full test run → all
   green. Then SaveDataAll.
-- **Rule now: SaveDataAll after every data load / build** (a `<prefix> Save Data` TI), and a scheduled save chore.
+- **Rule now: SaveDataAll after every data load / build** (a `<prefix> Save Data` TI), and a scheduled save chore. The IDE header **Save data** button and MCP `save_data_all` do the same for admins, falling back to hidden `}IDE.SaveDataAll` where the REST action is missing.
   Keep test payloads as files, not only as one-off write_cells calls — they were the whole recovery.
 
 ### Storing documents in TM1 v11 Applications (Oct 2026 — phase 0 of model-owned history)

@@ -20,9 +20,10 @@ const guard = require('./guard')
 // read-only check is applied here instead (the rest call requireChangeSet()):
 //   start_change_set   — opening a build session against a read-only server is refused too
 //   run_process, reprocess_feeders — execute TI; no change-set entry of their own
+//   save_data_all — server operation; no change-set entry of its own
 //   add_assertion, remove_assertion — write the model's assertions document
 // Deploy execution is not an MCP tool; check_deploy_risk / check_target_drift only read.
-const UNGATED_WRITE_TOOLS = new Set(['start_change_set', 'run_process', 'reprocess_feeders', 'add_assertion', 'remove_assertion'])
+const UNGATED_WRITE_TOOLS = new Set(['start_change_set', 'run_process', 'reprocess_feeders', 'save_data_all', 'add_assertion', 'remove_assertion'])
 
 // The deploy checks open a connection to ANOTHER server (possibly production) with
 // that server's service login, outside the reader's TM1 security. In readonly mode

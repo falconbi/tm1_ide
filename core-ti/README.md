@@ -5,6 +5,7 @@ Hidden, platform-level TI processes. Install once per server through the server 
 | Object | Purpose |
 |---|---|
 | `}IDE.Version.Copy` | Copy a version as static values or a calculating seed. |
+| `}IDE.SaveDataAll` | Fallback for servers without the REST `SaveDataAll` action (`save-data-all/`). |
 | `SYS Settings` | Platform settings cube (`sys-settings/`). |
 
 Rules:

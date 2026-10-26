@@ -19,6 +19,7 @@ const lensStore = require('./core/lens_store')
 const { logLensWrite, logLensRun, logLensNote, readLensActivity } = require('./core/lens_activity_log')
 const lensBridge = require('./core/lens_bridge')
 const { readOnlyRefusal } = require('./core/readonly')
+const { createSaveDataAllRoute } = require('./core/save_data_all')
 
 // Session (Change Set) is optional for using the IDE — it groups changes for
 // deployment, it is not a login and must never gate whether a save works.
@@ -2443,6 +2444,14 @@ app.get('/api/server/version', async (req, res) => {
         res.status(500).json({ error: e.message })
     }
 })
+
+// Write all changed cube data to disk. Admin-only; falls back to }IDE.SaveDataAll
+// on servers without the REST tm1.SaveDataAll action.
+app.post('/api/server/save-data-all', createSaveDataAllRoute({
+    makeClient,
+    gateReadOnly,
+    writeLog: cl.writeLog,
+}))
 
 app.patch('/api/admin/configuration', async (req, res) => {
     try {

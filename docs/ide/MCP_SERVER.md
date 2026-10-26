@@ -3,7 +3,7 @@
 `tools/tm1mcp/` is a [Model Context Protocol](https://modelcontextprotocol.io) server
 that exposes the TM1 model and a full set of build/diagnostic tools to any MCP-capable AI
 client (Claude Desktop, Claude Code, Cursor, Cline, …). `server.js` is just the bootstrap
-(shared context + wiring); the 67 tools themselves live in `shared.js` (common helpers) and
+(shared context + wiring); the 68 tools themselves live in `shared.js` (common helpers) and
 `tools/*.js`, one file per subject — `docs`, `introspect`, `changeset`, `assertions`,
 `deploy`, `build`, `develop`, `period`, `coreti`, `diagnostics`, `lenses`. The security wrapper every tool goes
 through lives in `registry.js`, `guard.js` and `identity.js` (see [Security](#security)).
@@ -15,7 +15,7 @@ particular model.
 first (or call the `read_build_guide` tool) — it's the method; this file is the reference.
 
 > ⚠️ **Status: early, needs more real-world testing.** The change-set gating and deploy-pipeline
-> integration below are the intended safety net, but the tool surface (67 tools) hasn't seen
+> integration below are the intended safety net, but the tool surface (68 tools) hasn't seen
 > heavy production use yet — treat it as a working build, not a hardened one.
 >
 > **Security note on external LLMs:** any MCP client you point at this server — including a
@@ -110,7 +110,7 @@ every read.
   from pieces (`'Tr0' | 'ub4dor'`), held in a variable with an ordinary name, or read from a
   file at run time. Don't rely on it to make TI that holds passwords safe to share; move the
   passwords out of the code.
-- The tool surface (67 tools) has been used on three models, not yet in heavy production use.
+- The tool surface (68 tools) has been used on three models, not yet in heavy production use.
 
 ---
 
@@ -138,7 +138,7 @@ Writes are unchanged: change-set gated, read-only (PROD-posture) servers refuse 
 | Mode | Tools offered | Default when |
 |------|---------------|--------------|
 | `readonly` | the 39 read tools only, or 37 when no target servers are named (see below). Write tools are **not registered**, so the agent never sees them | **always**, unless `MCP_MODE=build` is set |
-| `build` | all 67 | only when `MCP_MODE=build` is set |
+| `build` | all 68 | only when `MCP_MODE=build` is set |
 
 **Read-only is the default on every server.** An AI connected through this MCP can only read
 until someone deliberately turns on building. Set `MCP_MODE=build` only where you build:
@@ -472,7 +472,7 @@ worked example (e.g. an Excel); the tool just enforces them.
 
 ---
 
-## Tool catalog (67: 39 read, 28 write)
+## Tool catalog (68: 39 read, 29 write)
 
 In `readonly` mode only the read tools are offered. The split is defined in
 `tools/tm1mcp/guard.js` (`READ_TOOLS` / `WRITE_TOOLS`).
@@ -541,6 +541,7 @@ In `readonly` mode only the read tools are offered. The split is defined in
 | `execute_view` | run a view, return cells |
 | `run_process` | execute a TI (no change set needed) |
 | `copy_version` | run the installed core `}IDE.Version.Copy` (requires a change set; no Bedrock) |
+| `save_data_all` | write all changed cube data to disk (`SaveDataAll`; admin only; no change set) |
 | `reprocess_feeders` | reprocess feeders for cubes, e.g. after recreating a cube (no change set needed) |
 | `check_rules_syntax` | static lint + server CheckRules, no write |
 | `add_assertion` / `list_assertions` / `remove_assertion` | manage stored expected-result checks |

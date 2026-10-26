@@ -43,7 +43,7 @@ const WRITE_TOOLS = new Set([
     'build_cube', 'reprocess_feeders', 'build_process', 'build_period_dimension', 'write_cells', 'create_view', 'create_subset',
     'create_chore', 'set_chore_state', 'delete_object',
     'seed_baseline', 'set_baseline_head', 'start_change_set', 'close_change_set', 'package_change_set',
-    'update_cube_rules', 'update_process', 'run_process', 'copy_version',
+    'update_cube_rules', 'update_process', 'run_process', 'copy_version', 'save_data_all',
     'save_lens', 'delete_lens',
 ])
 

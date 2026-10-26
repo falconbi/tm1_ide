@@ -12,7 +12,7 @@
 //
 // This file is just the bootstrap: shared context (shared.js), server setup, wire
 // each tool group, connect. Tool registrations themselves live in tools/*.js,
-// grouped by subject — 67 tools (39 read, 28 write; readonly mode offers only the
+// grouped by subject — 68 tools (39 read, 29 write; readonly mode offers only the
 // reads). Security model: docs/ide/MCP_SERVER.md "Security".
 
 require('dotenv').config({ path: require('path').join(__dirname, '../../.env') })

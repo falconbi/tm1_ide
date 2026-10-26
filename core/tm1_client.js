@@ -1,6 +1,7 @@
 'use strict'
 
 const { odataKey, odataLit } = require('./odata-key')
+const SAVE_DATA_ALL = require('../core-ti/save-data-all/process.json')
 const { rebuildProcess, referencesHierarchy } = require('./hierarchy_gen')
 
 class TM1Client {
@@ -544,6 +545,37 @@ class TM1Client {
             { Parameters: paramArray },
             opts
         )
+    }
+
+    // Write all changed cube data to disk. TM1 11.8 supports the REST action;
+    // if a server does not, fall back to the hidden core TI whose Prolog is SaveDataAll;.
+    async saveDataAll() {
+        try {
+            await this.post('tm1.SaveDataAll', {})
+            return { method: 'rest' }
+        } catch (e) {
+            const status = e.response?.status
+            if (![400, 404, 405, 501].includes(status)) throw e
+        }
+
+        const name = SAVE_DATA_ALL.name
+        const existing = await this.getProcess(name).catch(e => {
+            if (e.response?.status === 404) return null
+            throw e
+        })
+        if (!existing) await this.createOrReplaceProcess(SAVE_DATA_ALL)
+        const result = await this.executeProcess(name)
+        const status = result?.ProcessExecuteStatusCode ?? result?.['odata.ProcessExecuteStatusCode']
+        const ok = status === undefined || status === 0 || status === 'CompletedSuccessfully' || status === 'HasMinorErrors'
+        if (!ok) {
+            const errFile = result?.ErrorLogFile?.Filename ?? ''
+            let detail = `SaveDataAll TI failed (status ${status})`
+            if (errFile) {
+                try { detail += '\n' + (await this.getErrorLogContent(errFile))?.Content } catch { detail += ': ' + errFile }
+            }
+            throw new Error(detail)
+        }
+        return { method: 'ti', result }
     }
 
     async createOrReplaceProcess(proc) {

@@ -114,6 +114,7 @@ Five playlists, one theme each — build with AI, everyday development, governed
 | **Transaction Log** | Side panel showing a cube's real transaction log — timestamp, user, old value → new value — either for the whole cube or filtered to one cell intersection (e.g. from the cell right-click menu's Log tab) |
 | **Jobs Monitor** | Live list of TM1 background jobs/processes on the server with status (Running/Completed/Cancelled/Aborted), auto-refreshing every 4 seconds; cancel any running job in one click |
 | **Sessions Monitor** | Active TM1 sessions grouped by user, each expandable to its running threads (state + function), with per-thread cancel and per-session disconnect |
+| **Save data** | Header button (admins only) writes all changed cube data to disk with `SaveDataAll`, confirms first, shows a spinner, and keeps the last-saved time per server in its tooltip. |
 | **Server Admin** | **Admin** in the status bar. Sessions (with disconnect) and a read-only tree of the server's active configuration on every version; on V12 also a Status tab — live server metrics and the maintenance-mode toggle (TM1 12.6+). Tabs a server's version doesn't support are hidden |
 
 ### 🗓️ Period Builder
