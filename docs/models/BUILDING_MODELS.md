@@ -186,9 +186,15 @@ defaults.
 
 **One control store per server, one fallback chain.**
 
-**Every server gets exactly one `SYS Settings` cube by default** — created by the server
-template/bootstrap as a platform object, not per app and not by each model. The structure is
-standard; the values are per server/app. Apps read it; they never create their own copy.
+**Agreed (October 2026): every server gets exactly one `SYS Settings` cube**, created by the
+server template/bootstrap as a platform object, not per app and not by each model. The structure
+is standard; the values are per server/app. Apps read it; they never create their own copy. Only
+the platform/admin writes it. It is deployed and versioned as platform, not inside an app's change
+set.
+
+The `SYS Application × SYS Setting × SYS Settings Measure` cube is also the home for Version Copy's model-specific configuration:
+the static parent, input cubes, excluded cubes, version type/status attributes and the current
+budget pointer. The Version Copy TI reads those values; it must not hardcode WFP names.
 
 **Versions and periods as attributes, never literals:**
 - `Version` attributes: `Version Type` (Calculated | Static), `Status` (Working | Approved | Locked),
@@ -321,6 +327,24 @@ Rules:
 - **Cube rules target `Calculated` members**, so `Static` members are never
   overwritten by a recalculation. Either scope the rule area to those members
   explicitly, or guard on the `Non-Calculating` parent (see the landmine below).
+- **Every rule file starts with the static guard — no exceptions** (`[] = N:` and, where the
+  file has string rules, `[] = S:`, both `IF(ELPAR(<dim>, !<dim>, 1) @= 'Non-Calculating', STET,
+  CONTINUE);`). Don't guard `C:` rules: a consolidation rule (e.g. a count of over-filled
+  Positions) should keep working on a static version's frozen data. Found Oct 2026: WFP Assignment
+  and WFP Position Map had no guard, so their rule cells could never be written into a snapshot,
+  and a later rule change would have recalculated every old snapshot.
+- **Actual is static too, so nothing may derive Actual by rule.** If a rule derives a value from
+  loaded data (Head from FTE Share, Joiner/Leaver from the start/end reason, Position State), the
+  guard blanks it for Actual. Store it instead: a TI run at the end of the Actual load calculates
+  the same values for Actual (WFP: `WFP Derive Actual Flags`, called by `WFP Load HR Assignments`
+  and `WFP Load Actuals`). The rule (plan versions) and the TI (Actual) then hold the **same
+  logic in two places**; each carries a note naming the other — change both together. No extra
+  "staging" version.
+- **Copying into a version: use `}IDE.Version.Copy`** (static snapshot or calculating seed —
+  documented in its own header). It skips cells a rule still owns, refuses a static copy whose
+  target isn't under `Non-Calculating`, and fails the whole copy if any cube fails.
+- **A process that ends in `ProcessQuit` flags its caller with an error**, even when it worked.
+  A process meant to be called from others should end normally.
 - Cross-version coupling (e.g. "`Forecast` open months = the `Working` version")
   causes feeder traps and version-agnostic reference bugs, and makes a version
   impossible to reason about alone. Don't.
@@ -409,6 +433,50 @@ Rules:
 - **Bedrock is a dev/admin toolbox**, not application code: ad-hoc region clears,
   one-off copies, view→file exports, dimension surgery while building. Fine to
   keep on the server; don't wire it into a chore.
+
+**Policy (October 2026): developer-only.** Bedrock may stay installed for a human
+developer doing ad-hoc work. It must not be used by:
+
+- `}IDE.*` core processes (including Version Copy),
+- WFP or any other model logic, chores or Lens actions,
+- MCP tools or AI-generated TI,
+- anything an assertion, deploy or scheduled process depends on.
+
+Use a short purpose-built process with a view datasource and
+`CubeSetLogChanges`, not a Bedrock call. `WFP Snapshot`'s Bedrock copy is the
+remaining known exception; replace it with the core Version Copy when that
+lands. This is a deliberate dependency boundary: Bedrock is a toolbox, not
+application code.
+
+### Core TI vs application TI — the boundary
+
+**Agreed (October 2026).** These are different kinds of process and should not
+blur:
+
+| Layer | Naming | Visible? | Deployed with | Owns |
+|---|---|---|---|---|
+| Core IDE infrastructure | `}IDE.*` | Hidden (control prefix) | Server template / platform release | Generic version copy, period maintenance, shared utilities |
+| Application infrastructure | `}IDE.Period.<App>.*` or equivalent | Hidden | That application's release | Generated period build / refresh / rollover |
+| Application logic | `WFP *`, `OPX *`, `CPX *`, `RPT *` | Visible | That application's change set | Hires, cost, approvals, workflow and other business behaviour |
+| Developer toolbox | `}bedrock.*` | Hidden | Manually / developer install | Ad-hoc developer work only; never core, app, chore, Lens, MCP or AI |
+
+Rules:
+
+- **Core is generic.** `}IDE.*` must not contain WFP/OPX/CPX literals, business rules or
+  application-specific cube lists. It reads those from `SYS Settings` or parameters.
+- **Application logic stays out of core.** A WFP process may call a core process by
+  name; core must not call WFP.
+- **Hidden means infrastructure, not secure.** Control-prefixed processes are filtered
+  from normal lists but still need process security.
+- **MCP does not get the raw hidden namespace.** Expose a dedicated tool
+  (`copy_version`, `build_period_dimension`) with its own validation. `list_processes`
+  filters `}` names, so discovery must not depend on listing them.
+- **The Period Builder UI is an authoring tool.** Its generated processes are
+  infrastructure for that application and may be hidden; the builder remains visible
+  in the IDE.
+- **A core process installed per server is still model metadata.** There is no global
+  TI: the server template/bootstrap installs it once per server, then platform releases
+  update it.
 - **The reusable technique from Bedrock's copy:** a **cube-view datasource** for
   the read (never nested `DIMNM`/`CellGetN` loops — those walk every empty
   intersection) plus **`CubeSetLogChanges(cube, 0)` around the write** (restore in
