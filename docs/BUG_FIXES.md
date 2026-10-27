@@ -3,12 +3,97 @@
 Every bug-fix commit, newest first, by the date it was committed. Generated from the git history;
 commits that mixed a fix into a feature are included too. New features are not listed here.
 
-166 fixes from 2026-05-20 to 2026-10-10.
+166 fixes from 2026-05-20 to 2026-10-10, plus 46 entries for 11–27 October. Last updated 2026-10-27.
 
 ← [Back to README](../README.md)
 
 
 ## October 2026
+
+### 2026-10-27
+
+- **cube-map** — Playback and focus state was lost when switching tabs or splitting; map scope, phase, visibility, zoom and deep links now restore, and deep links fire once
+- **cube-map** — Focused-map visibility controls and the right-hand trace controls disagreed; Rules / Feeders / All TI now drive one trace-kind state, and TI/dimensions hide correctly
+- **rules** — Rule lineage disappeared when the pane was split or the tab switched; the editor now saves and restores the lineage session
+- **transaction-log** — The log grid was narrow and crushed its columns; it now fills the pane, keeps cells on one line, adds the cell column and cube heading, filters by text and user, and opens without a split
+
+### 2026-10-26
+
+- **ide** — Opening a TI process marked it dirty immediately; opening no longer changes the process
+- **dimension-editor** — Dragging an attribute column wider snapped back; the width now persists per browser
+- **core-ti** — `}IDE.Version.Copy` now skips rule-owned cells, fails on any cube failure, refuses a static copy outside Non-Calculating, and ends without `ProcessQuit`
+- **deploy** — Bedrock objects are no longer shipped; recalculation is scoped to the version being changed
+
+### 2026-10-25
+
+- **pivot** — Freeze top copied the first row instead of pinning it, and unfreezing left the copy; it now moves the row back
+- **lenses** — Hiring Plan history could report changes that never happened, and cutoff/plan end were read from the page; TI now reads them from the model
+
+### 2026-10-24
+
+- **view-editor** — An ALT H pill lost its amber hierarchy label when shown on the grid
+- **view-editor** — Moving a dimension to Filter could leave the grid blank; it now keeps the member it was showing
+- **pivot** — Opening one total closed the others, and indents/arrows did not redraw; totals now stay open and render correctly
+- **subsets** — ALT H subsets never listed, opened or saved because the subset routes dropped the hierarchy; the routes now pass it
+- **mcp** — `reprocess_feeders` did nothing on v11 (no REST `ProcessFeeders`); it now runs a temporary TI with `CubeProcessFeeders`
+- **metadata** — Metadata tabs were empty and a save wiped the procedure because the code used `MetadataSource`; it now uses TM1's `MetadataProcedure`
+- **mcp** — Write answers could not be parsed when the server label came after the JSON; the label is now a trailing block
+- **mcp** — The MCP used a hard-coded default server instead of the IDE's selected server; it now follows the selected server
+
+### 2026-10-23
+
+- **tests** — `npm test` could run live TM1 scripts; it is now scoped to `tests/`
+- **deploy** — WFP_Lab test objects could be packaged and deployed; they are now always excluded
+
+### 2026-10-22
+
+- **sessions** — Expanding Threads on v11 failed the whole request (`CurrentThread` 400); threads now expand through Session attributes
+- **catalog** — `ConsolidateChildren` was documented and tested with one dimension; it accepts one or more dimension names
+
+### 2026-10-21
+
+- **lens-kit** — History omitted cell notes; it now shows "added a note" with a Notes filter
+
+### 2026-10-16
+
+- **mcp** — Read-only was opt-in; every server is now read-only unless `MCP_MODE=build` is set
+
+### 2026-10-15
+
+- **mcp** — Masking a member's value still exposed its parents; parents and passwords are now masked, read-audit retention is enforced, and read-only deploy checks require named targets
+- **viewfinder** — Approve/Reopen in card layout did nothing because it checked a grid that does not exist; cards now act on their line
+- **viewfinder** — Card layout stayed on "Loading…" after drawing; it now clears
+- **viewfinder** — The line-item form showed calculated fields as empty lines and left asset type unnamed; only typed lines show and asset type is its own column
+- **lens-store** — A Lens could not be saved on a model template; model templates are now accepted
+
+### 2026-10-14
+
+- **model-store** — Model writes used the server's admin account instead of the signed-in caller; they now use the caller's connection
+- **lenses** — A refused text write showed TM1's `StringCellUpdateError`; it now explains the cell in plain words
+- **lenses** — Text writes could go into numeric cells and number writes into text cells; each now stays in its own cell type, including conflict checks
+
+### 2026-10-13
+
+- **lens app** — The hover preview script did not parse because regex escapes were lost in the server template; it now parses and has a test
+- **lens-kit** — A read-only watcher's grid had no cursor outline or unsaved-typing tint; read-only cells now show both
+- **lens-kit** — A previous cell outline stayed after focus moved; every style now sets every key
+- **lens-kit** — "Still editing?" appeared immediately because inline display overrode `hidden`; it now waits
+- **lenses** — Presence showed more than one avatar per person and dead connections lingered; one avatar per person and faster cleanup
+- **lenses** — A failed editing check could leave the grid hidden, and the toolkit was cached for an hour; failures no longer hide the grid and the cache is short
+
+### 2026-10-12
+
+- **users** — New users were created with no password because add and set-password were one run; they are now separate runs
+- **lenses** — TM1 write refusals surfaced raw errors; they now read in plain English with the TM1 code kept
+- **lens app** — Sign-in did not verify every step; the frame is sandboxed, account lock-out is guarded, errors are cleared, and sign-out returns to sign-in
+
+### 2026-10-11
+
+- **lens app** — The preview frame was rendered with `srcdoc` and blocked; it is now a real URL
+- **lens app** — `/api/lens/meta` was captured by `/api/lens/:name`; the meta route now wins and the `LENS_CONFIG` override works
+- **lenses** — The save check ran a query fragment built at runtime; it now skips fragments instead of failing
+- **auth** — An ended IDE session left screens open and a server sign-in did not reload them; both are now handled
+- **lenses** — A reply meant for an earlier preview page could answer the next one; replies are now tied to their page
 
 ### 2026-10-10
 
