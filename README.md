@@ -18,15 +18,15 @@ No TM1 Architect, no Perspectives, nothing to install on the server.
 
 ---
 
-## Coming soon: Lenses
+## Lenses (preview)
 
-**Your TM1 model, as a focused web app — not a spreadsheet.** Lenses are single-file HTML pages, one per job: the
-position roster, hiring plan, leavers, transfers, pay changes, approvals, cost, headcount, variance. Live TM1 data,
-one clean shell, governed write-back — built and previewed inside the IDE, with no BI tool or separate front-end
-project to stand up.
+**Your TM1 model, as a focused web app — not a spreadsheet.** Lenses are single-file HTML pages, one per job:
+assumptions, people, positions, HR matching, hire approvals, attention, cost centre, KPIs, cost, headcount,
+pay and grades, budget-to-forecast, since-last — plus the home page. Live TM1 data, one clean shell, governed
+write-back — built and previewed inside the IDE, with no BI tool or separate front-end project to stand up.
 
-The first full set is a **17-page Workforce planning model** — the worked example of a model, its maths and its
-screens built together. **Landing soon.**
+The current set is a **14-page Workforce planning model** — the worked example of a model, its maths and its
+screens built together. Built and previewed inside the IDE; still preview-quality.
 
 ![Lenses home — the Workforce planning model](docs/images/lenses-home-full.png)
 
@@ -64,7 +64,9 @@ product.
   help, formatting, folding and regions. Validation catches wrong argument counts and broken IF/WHILE blocks as
   you type, before TM1 does. TI has a debugger with breakpoints and watches.
 - **See how the model works** — the Cube Map draws every cube and how data moves between them (rules, feeders,
-  TI writes). Right-click any cell to trace the rule chain behind its value.
+  TI writes), plays a run sequence, and links each object to its process summary and transaction log. Rule Lens
+  reads a cube's rules by measure, and Data sources shows every writer and reader. Right-click any cell to trace
+  the rule chain behind its value.
 - **Prove the numbers** — assertions hold the answers you know are right and run after every build and deploy.
   TM1 will happily return a confident wrong number; this catches it.
 - **Ship with confidence** — every save is tracked in a change set, and a release ships exactly that change set
@@ -96,6 +98,7 @@ The frontend is pre-built — no build step needed. Full instructions: [Setup](d
 | Guide | What's in it |
 |---|---|
 | [Features](docs/ide/FEATURES.md) | Every editor and tool, with screenshots |
+| [Workforce Lenses](lenses/workforce/README.md) | The 14 pages, how they are exported from TM1 and committed |
 | [Setup](docs/ide/SETUP.md) | Install, configure servers, run, development mode, installing at a client (Windows untested) |
 | [Authentication](docs/auth/AUTHENTICATION.md) | How the IDE signs in — per-server login, what's supported and tested |
 | [TM1 Authentication Guide](docs/auth/TM1_AUTHENTICATION_GUIDE.md) | How every TM1 sign-in method works, in plain English — for anyone in TM1 |
@@ -113,7 +116,7 @@ Keyboard shortcuts: press `F1` or `Ctrl+Shift+K` in the app.
 
 ## Status
 
-Active development. Core IDE features are complete and stable; MCP and the deployment pipeline are still being proven on real builds.
+Active development. Core IDE features and the Workforce Lenses are usable; the Lenses are still preview-quality, and MCP and the deployment pipeline are still being proven on real builds.
 
 ---
 
