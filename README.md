@@ -18,7 +18,7 @@ No TM1 Architect, no Perspectives, nothing to install on the server.
 
 ---
 
-## Lenses (preview)
+## Lenses (in development)
 
 **Your TM1 model, as a focused web app — not a spreadsheet.** Lenses are single-file HTML pages, one per job:
 assumptions, people, positions, HR matching, hire approvals, attention, cost centre, KPIs, cost, headcount,
@@ -26,7 +26,7 @@ pay and grades, budget-to-forecast, since-last — plus the home page. Live TM1 
 write-back — built and previewed inside the IDE, with no BI tool or separate front-end project to stand up.
 
 The current set is a **14-page Workforce planning model** — the worked example of a model, its maths and its
-screens built together. Built and previewed inside the IDE; still preview-quality.
+screens built together. It is being tested; it is not yet ready for use.
 
 ![Lenses home — the Workforce planning model](docs/images/lenses-home-full.png)
 
@@ -116,7 +116,7 @@ Keyboard shortcuts: press `F1` or `Ctrl+Shift+K` in the app.
 
 ## Status
 
-Active development. Core IDE features and the Workforce Lenses are usable; the Lenses are still preview-quality, and MCP and the deployment pipeline are still being proven on real builds.
+Active development. Core IDE features are usable. The Workforce Lenses are still under test and are not yet ready for use; MCP and the deployment pipeline are still being proven on real builds.
 
 ---
 
