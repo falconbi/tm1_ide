@@ -18,15 +18,16 @@ No TM1 Architect, no Perspectives, nothing to install on the server.
 
 ---
 
-## Coming soon: Lenses
+## Lenses (in development)
 
-**Your TM1 model, as a focused web app — not a spreadsheet.** Lenses are single-file HTML pages, one per job: the
-position roster, hiring plan, leavers, transfers, pay changes, approvals, cost, headcount, variance. Live TM1 data,
-one clean shell, governed write-back — built and previewed inside the IDE, with no BI tool or separate front-end
-project to stand up.
+**Your TM1 model, as a focused web app — not a spreadsheet.** Lenses are single-file HTML pages, one per job:
+assumptions, people, positions, HR matching, hire approvals, attention, cost centre, KPIs, cost, headcount,
+pay and grades, budget-to-forecast, since-last — plus the home page. Live TM1 data, one clean shell, governed
+write-back — built and previewed inside the IDE, with no BI tool or separate front-end project to stand up.
 
-The first full set is a **17-page Workforce planning model** — the worked example of a model, its maths and its
-screens built together. **Landing soon.**
+The current set is a **14-page Workforce planning model** — the worked example of a model, its maths and its
+screens built together. It is still being tested on the [`lenses` branch](https://github.com/falconbi/tm1_ide/tree/lenses);
+it is not yet ready for use or merged here.
 
 ![Lenses home — the Workforce planning model](docs/images/lenses-home-full.png)
 
