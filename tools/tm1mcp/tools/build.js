@@ -115,7 +115,8 @@ function register(server, { client, ok, esc, logChange, requireChangeSet, lintRu
     server.tool(
         'add_elements',
         'Add elements and/or consolidation edges to an existing dimension (incremental — for small additions; use a TI process for bulk loads). ' +
-        'If `hierarchy` names one that does not exist, it is created. Note: an element added to the main hierarchy is NOT automatically in an alternate hierarchy — list it in `elements` here too.',
+        'If `hierarchy` names one that does not exist, it is created. Numeric elements in a measure dimension get a Format (default "#,##0.00"; pass `format` per element for counts "#,##0" or rates "0.00%"). ' +
+        'Note: an element added to the main hierarchy is NOT automatically in an alternate hierarchy — list it in `elements` here too.',
         {
             dimension: z.string().describe('Dimension name'),
             hierarchy: z.string().optional().describe('Hierarchy name (defaults to the dimension name); created if missing'),
@@ -152,9 +153,31 @@ function register(server, { client, ok, esc, logChange, requireChangeSet, lintRu
                 try { await c.addEdge(dimension, ed.parent, ed.child, ed.weight ?? 1, h) }
                 catch (e) { tol(e, /already exists|duplicate/i) }
             }
+
+            // House rule, same as build_dimension: numeric elements in a measure dimension get a
+            // Format. A new element otherwise lands with a blank Format and displays raw. Only
+            // fill a blank one (or one the caller explicitly formats) — never overwrite.
+            let formatsApplied = 0
+            if (/\bMeasures?$/i.test(dimension) && elements.length) {
+                try { await c.createElementAttribute(dimension, 'Format', 'String') }
+                catch (e) { tol(e, /already exists/i) }
+                for (const el of elements) {
+                    if ((el.type ?? 'N') !== 'N') continue
+                    let current = ''
+                    try {
+                        const vals = await c.getElementAttributeValues(dimension, el.name)
+                        current = vals?.Format ?? vals?.format ?? ''
+                    } catch { /* element attr row not readable yet — treat as unset */ }
+                    if (current && !el.format) continue
+                    await c.writeElementAttribute(dimension, el.name, 'Format', el.format ?? '#,##0.00', 'S')
+                    formatsApplied++
+                }
+            }
+
             logChange(hierCreated ? 'HIERARCHY_CREATED' : 'ELEMENT_ADDED', 'dimension', dimension,
                 { detail: `${elements.length} elements, ${edges.length} edges${hierarchy ? ` in ${hierarchy}` : ''}` })
-            return ok(`Added ${elements.length} elements and ${edges.length} edges to "${dimension}"${hierarchy && hierarchy !== dimension ? ` hierarchy "${hierarchy}"${hierCreated ? ' (created)' : ''}` : ''}.`)
+            return ok(`Added ${elements.length} elements and ${edges.length} edges to "${dimension}"${hierarchy && hierarchy !== dimension ? ` hierarchy "${hierarchy}"${hierCreated ? ' (created)' : ''}` : ''}` +
+                (formatsApplied ? `; applied Format to ${formatsApplied} numeric measure element(s)` : '') + '.')
         }
     )
 

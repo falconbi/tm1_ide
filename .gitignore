@@ -91,3 +91,6 @@ data/lens-activity.jsonl
 
 # ── Lens app preferences (each person's theme) ──
 data/lens-prefs.json
+
+# AI process summaries (runtime knowledge, regenerate/review — not source)
+data/process-summaries.json

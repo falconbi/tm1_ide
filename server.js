@@ -53,6 +53,9 @@ function gateWrite(res, server) {
 }
 const { diff: deployDiff, driftCheck: deployDriftCheck } = require('./tools/tm1deploy/src/diff')
 const { pack: deployPack }      = require('./tools/tm1deploy/src/packager')
+const { getCubeDataSources, getProcessFacts, listProcessSummaries, invalidate: invalidateCubeSources } = require('./core/cube_data_sources')
+const { parseRuleLens } = require('./core/rule_lens')
+const processSummaries = require('./core/process_summaries')
 const { analyzeRisk }           = require('./tools/tm1deploy/src/risk')
 const { seed: deploySeed, scopedSnapshot: deployScopedSnapshot } = require('./tools/tm1deploy/src/snapshot')
 const { loadBaseline: deployLoadBaseline, listBaselines: deployListBaselines, setBaselineHead: deploySetBaselineHead } = require('./tools/tm1deploy/src/diff')
@@ -707,6 +710,7 @@ app.post('/api/rules', async (req, res) => {
         const current = await client.getCube(req.query.cube).catch(() => null)
         const beforeState = { text: current?.Rules ?? '' }
         await client.patch(`Cubes('${odataKey(req.query.cube)}')`, { Rules: req.body.rules })
+        invalidateCubeSources(req.query.server)
         const afterState  = { text: req.body.rules }
         const { hasSession } = cl.writeLog({ server: req.query.server, action: 'RULES_SAVED', objectType: 'rules', objectName: req.query.cube, beforeState, afterState, user: req.user })
         res.json({ ok: true, noSession: !hasSession })
@@ -1018,6 +1022,7 @@ app.post('/api/process', async (req, res) => {
             delete body.MetaDataProcedure
         }
         await client.patch(`Processes('${odataKey(req.query.name)}')`, body)
+        invalidateCubeSources(req.query.server)
         const afterState = {
             prolog:   req.body.PrologProcedure                                       ?? beforeState?.prolog   ?? '',
             metadata: req.body.MetaDataProcedure ?? req.body.MetadataProcedure       ?? beforeState?.metadata ?? '',
@@ -3542,6 +3547,153 @@ app.post('/api/admin/validate-ti-functions', async (req, res) => {
 })
 
 // ── Cube Map ──────────────────────────────────────────────────────────────────
+// Runbooks — phased review sequences (config/workforce-lifecycle.json)
+app.get('/api/runbooks', (req, res) => {
+    try {
+        const book = JSON.parse(fs.readFileSync(path.join(__dirname, 'config', 'workforce-lifecycle.json'), 'utf8'))
+        res.json({ runbooks: [book] })
+    } catch (e) {
+        res.status(500).json({ error: e.message })
+    }
+})
+
+// ── Process summaries (AI worded, stored outside the TI) ─────────────────────
+function processCode(p) {
+    return [p.PrologProcedure, p.MetaDataProcedure ?? p.MetadataProcedure, p.DataProcedure, p.EpilogProcedure]
+        .filter(Boolean).join('\n')
+}
+
+function summaryPrompt(p, f, includeCode) {
+    const writes = f.writes.map(w => {
+        const what = w.measures?.length ? w.measures.join(', ')
+            : w.kinds?.includes('clear') ? 'cleared'
+            : w.kinds?.includes('feeders') ? 'feeders recalculated'
+            : 'written'
+        return `- ${w.cube}: ${what}`
+    }).join('\n')
+    const params = (p.Parameters ?? []).map(x =>
+        `${x.Name}${x.Value !== '' && x.Value != null ? ` (default ${x.Value})` : ''}${x.Prompt ? ` — ${x.Prompt}` : ''}`
+    ).join('; ')
+    const system = 'You document IBM TM1 TurboIntegrator processes for a data-lineage tooltip. Write plain English for an admin. ' +
+        'Return ONLY: one or two sentences on what the process does and when it runs, then one line starting "Writes:" listing cube -> measures (or "clears"/"feeders"), ' +
+        'then one line "Reads:" with the source cubes if any. No headings, no bullets, no code fences, no invented facts, no permissions unless they change what it does. Max 90 words.'
+    const user = [
+        `Process: ${p.Name}`,
+        `Author's header:\n${f.header || '(none)'}`,
+        `Parameters: ${params || '(none)'}`,
+        `Datasource: ${f.source}`,
+        `Writes (scanned from the code):\n${writes || '(no cube writes)'}`,
+        `Reads (scanned): ${f.reads.join(', ') || '(none)'}`,
+        `Called by: ${f.calledBy.join(', ') || '(nothing)'}`,
+        includeCode ? `Code:\n${processCode(p).slice(0, 12000)}` : '',
+    ].filter(Boolean).join('\n\n')
+    return { system, user }
+}
+
+app.get('/api/process/summaries', async (req, res) => {
+    try {
+        const client = makeClient(req.query.server, req.ideToken)
+        res.json({ processes: await listProcessSummaries(client, req.query.server), aiConfigured: ai.isConfigured() })
+    } catch (e) {
+        res.status(500).json({ error: e.message })
+    }
+})
+
+app.post('/api/process/summary', async (req, res) => {
+    try {
+        const { server, name } = req.body
+        if (!ai.isConfigured()) return res.status(503).json({ error: 'AI not configured — set AI_PROVIDER and AI_API_KEY in .env (or write a summary by hand)' })
+        const client = makeClient(server, req.ideToken)
+        const p = await client.getProcess(name)
+        if (!p?.Name) return res.status(404).json({ error: `Process "${name}" not found` })
+        const hash = processSummaries.hashCode(processCode(p))
+        if (!req.body.force) {
+            const hit = processSummaries.get(server, name, hash)
+            if (hit) return res.json({ ...hit, cached: true })
+        }
+        const facts = await getProcessFacts(client, server, name)
+        const obf = ai.shouldObfuscate()
+        let { system, user } = summaryPrompt(p, facts, !obf)
+        let map = null
+        if (obf) {
+            const names = [name, ...(facts.parameters ?? []), ...(facts.calledBy ?? []), ...(facts.reads ?? []),
+                ...facts.writes.flatMap(w => [w.cube, ...(w.measures ?? [])])]
+            map = obfuscate.makeMap(names)
+            user = obfuscate.obfuscateText(user, map.realToCode)
+        }
+        let out = await ai.complete({ system, user, maxTokens: 400, label: 'process-summary', obfuscated: obf })
+        if (map) out = obfuscate.restoreText(out, map.codeToReal)
+        const summary = String(out ?? '').replace(/```[a-z]*\s*/gi, '').replace(/```/g, '').trim().slice(0, 1200)
+        if (!summary) return res.status(502).json({ error: 'The model returned an empty summary' })
+        const entry = processSummaries.put(server, name, { hash, summary, source: 'ai', model: process.env.AI_MODEL || '' })
+        res.json({ ...entry, cached: false })
+    } catch (e) {
+        res.status(500).json({ error: e.message })
+    }
+})
+
+app.put('/api/process/summary', async (req, res) => {
+    try {
+        const { server, name, summary } = req.body
+        if (!String(summary ?? '').trim()) return res.status(400).json({ error: 'Summary is empty' })
+        const client = makeClient(server, req.ideToken)
+        const p = await client.getProcess(name)
+        if (!p?.Name) return res.status(404).json({ error: `Process "${name}" not found` })
+        const entry = processSummaries.put(server, name, {
+            hash: processSummaries.hashCode(processCode(p)),
+            summary: String(summary).trim().slice(0, 1200),
+            source: 'manual',
+        })
+        res.json(entry)
+    } catch (e) {
+        res.status(500).json({ error: e.message })
+    }
+})
+
+app.delete('/api/process/summary', async (req, res) => {
+    try {
+        const ok = processSummaries.remove(req.query.server, req.query.name)
+        res.json({ ok })
+    } catch (e) {
+        res.status(500).json({ error: e.message })
+    }
+})
+
+// Rule lens — a cube's rules broken into target areas, measures, DB sources and feeders.
+app.get('/api/cube/rules-lens', async (req, res) => {
+    try {
+        const client = makeClient(req.query.server, req.ideToken)
+        const name = req.query.cube
+        const cube = await client.getCube(name)
+        if (!cube) return res.status(404).json({ error: `Cube "${name}" not found` })
+        const dims = (cube.Dimensions ?? []).map(d => d.Name)
+        const measureDim = dims.find(d => /measure/i.test(d)) ?? null
+        const measureEls = measureDim ? await client.getElements(measureDim).catch(() => []) : []
+        const allCubes = await client.getAllCubesWithRules().catch(() => [])
+        const cubeNames = new Set(allCubes.map(c => c.Name))
+        const parsed = parseRuleLens(cube.Rules ?? '', { measureElements: new Set(measureEls.map(e => e.Name)) })
+        const checks = []
+        const missing = [...new Set(parsed.items.flatMap(i => i.dbSources).filter(c => !cubeNames.has(c)))]
+        if (missing.length) checks.push({ level: 'error', message: `Reads cubes that do not exist: ${missing.join(', ')}` })
+        if ((cube.Rules ?? '').trim() && parsed.summary.feeders === 0) checks.push({ level: 'warn', message: 'No feeder statements found.' })
+        res.json({ cube: name, dims, measureDim, hasRules: !!(cube.Rules ?? '').trim(), ...parsed, checks })
+    } catch (e) {
+        res.status(500).json({ error: e.message })
+    }
+})
+
+// Where a cube's data comes from — writers / readers / rule dependencies (Rules editor strip)
+app.get('/api/cube/data-sources', async (req, res) => {
+    try {
+        const client = makeClient(req.query.server, req.ideToken)
+        if (req.query.refresh) invalidateCubeSources(req.query.server)
+        const data = await getCubeDataSources(client, req.query.server, req.query.cube)
+        res.json({ ...data, aiConfigured: ai.isConfigured() })
+    } catch (e) {
+        res.status(500).json({ error: e.message })
+    }
+})
+
 app.get('/api/cubemap/model', async (req, res) => {
     try {
         const client = makeClient(req.query.server, req.ideToken)
@@ -3583,6 +3735,7 @@ app.get('/api/cubemap/model', async (req, res) => {
         }
 
         const cubeNames = new Set(allCubes.map(c => c.Name))
+        const cubeDims  = Object.fromEntries(allCubes.map(c => [c.Name, (c.Dimensions ?? []).map(d => d.Name)]))
         const dimNames  = new Set(await client.getDimensions().catch(() => []))
 
         // Fetch TI process code for write-ref and call-chain analysis (best-effort — skip if slow/unavailable)
@@ -3632,7 +3785,7 @@ app.get('/api/cubemap/model', async (req, res) => {
             const ASSIGN_RE     = /\b([A-Za-z_]\w*)\s*=\s*'([^']*)'\s*;/g
             const VAR_ASSIGN_RE = /\b([A-Za-z_]\w*)\s*=\s*([A-Za-z_]\w*)\s*;/g
             // cube is the 2nd arg: CellPutN/S, CellPutNComplete, CellIncrementN/S (accumulating write)
-            const CELLPUT_RE    = /\b(?:CellPut[NS](?:Complete)?|CellIncrement[NS])\s*\(\s*[^,]+,\s*([^,]+),/gi
+            const CELLPUT_RE    = /\b(CellPut[NS](?:Complete)?|CellIncrement[NS])\s*\(/gi
             // cube is the 1st arg: functions that change a cube's data without CellPut — clear-and-rebuild
             // processes (ViewZeroOut then CellIncrementN) were invisible on the Cube Map without these
             const CUBE_FIRST_RE = /\b(?:ViewZeroOut|CubeClearData|CubeProcessFeeders)\s*\(\s*([^,)]+)/gi
@@ -3641,12 +3794,20 @@ app.get('/api/cubemap/model', async (req, res) => {
             const EXEC_RE       = /\b(?:ExecuteProcess|RunProcess)\s*\(([\s\S]*?)\)\s*;/gi
             const CUBE_PARAM_RE = /'([pP]\w*[Cc]ube\w*)'\s*,\s*'([^']+)'/g
 
-            const addStep = (proc, kind, target, pos) => {
+            const addStep = (proc, kind, target, pos, measure) => {
                 const e = procEntry(proc)
                 const list = { read: e.reads, write: e.writes, call: e.calls, dimwrite: e.dimWrites }[kind]
-                if (list.includes(target)) return
+                if (list.includes(target)) {
+                    if (kind === 'write' && measure) {
+                        const st = e.steps.find(x => x.kind === 'write' && x.target === target)
+                        if (st) { st.measures = st.measures ?? []; if (!st.measures.includes(measure)) st.measures.push(measure) }
+                    }
+                    return
+                }
                 list.push(target)
-                e.steps.push({ kind, target, pos })
+                const step = { kind, target, pos }
+                if (kind === 'write' && measure) step.measures = [measure]
+                e.steps.push(step)
             }
             const addWriter = (cube, proc, pos = Infinity) => {
                 if (!cubeNames.has(cube)) return
@@ -3703,8 +3864,14 @@ app.get('/api/cubemap/model', async (req, res) => {
                 CELLPUT_RE.lastIndex = 0
                 let m
                 while ((m = CELLPUT_RE.exec(code)) !== null) {
-                    const cubeName = resolveName(m[1], varValues)
-                    if (cubeName) addWriter(cubeName, p.Name, m.index)
+                    const args = splitArgs(code, m.index + m[0].length - 1)
+                    const cubeName = resolveName(args[1], varValues)
+                    if (!cubeName) continue
+                    addWriter(cubeName, p.Name, m.index)
+                    const dims = cubeDims[cubeName] ?? []
+                    const mi = dims.findIndex(d => /measure/i.test(d))
+                    const measure = mi >= 0 ? resolveName(args[2 + mi], varValues) : undefined
+                    addStep(p.Name, 'write', cubeName, m.index, measure)
                 }
 
                 CUBE_FIRST_RE.lastIndex = 0

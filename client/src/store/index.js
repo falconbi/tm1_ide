@@ -194,7 +194,9 @@ export const useStore = create((set, get) => ({
       const newLayout = mapLeaves(layout, l => l.id === holder.id ? { ...l, activeTabId: tab.id } : l)
       set(s => ({
         tabs: s.tabs.map(t => t.id === tab.id
-          ? { ...t, scrollToLine: tab.scrollToLine ?? null, scrollToSection: tab.scrollToSection ?? null }
+          ? { ...t, scrollToLine: tab.scrollToLine ?? null, scrollToSection: tab.scrollToSection ?? null,
+              ...(tab.focusCube ? { focusCube: tab.focusCube, focusAt: tab.focusAt ?? Date.now() } : {}),
+              ...(tab.focusProcesses ? { focusProcesses: tab.focusProcesses, phaseLabel: tab.phaseLabel ?? null, phaseEntries: tab.phaseEntries ?? null, phaseKind: tab.phaseKind ?? 'phase', focusAt: tab.focusAt ?? Date.now() } : {}) }
           : t),
         layout: newLayout,
         groups: collectLeaves(newLayout),
@@ -329,6 +331,34 @@ export const useStore = create((set, get) => ({
       return { ...l, tabIds }
     })
     set({ layout: newLayout, groups: collectLeaves(newLayout) })
+    _saveForge(get())
+  },
+
+  // Contextual drill-in: open beside the current pane (or focus it if already open),
+  // rather than replacing what you were reading. Used by Lineage, Show and Data Sources.
+  openTabToSide: (tab, opts = {}) => {
+    const { tabs, layout, activeGroupId } = get()
+    const known = tabs.some(t => t.id === tab.id)
+    if (known) {
+      const holder = findLeafByTab(layout, tab.id)
+      if (holder && holder.id !== activeGroupId) {
+        const newLayout = mapLeaves(layout, l => l.id === holder.id ? { ...l, activeTabId: tab.id } : l)
+        set({ layout: newLayout, groups: collectLeaves(newLayout), activeGroupId: holder.id, activeTab: tab.id })
+        _saveForge(get())
+        return
+      }
+      if (holder && collectLeaves(layout).length === 1) { get().openTab(tab); return }
+    } else {
+      set({ tabs: [...tabs, tab] })
+    }
+    const activeLeaf = findLeaf(layout, activeGroupId)
+    if (activeLeaf && activeLeaf.tabIds.length === 0) { get().openTab(tab); return }
+    if (opts.noSplit && collectLeaves(layout).length === 1) { get().openTab(tab); return }
+    get().openTabInOtherGroup(tab.id)
+    const { content: _content, dirty: _dirty, ...meta } = tab
+    const history = [meta, ...get().tabHistory.filter(h => h.id !== tab.id)].slice(0, 10)
+    localStorage.setItem('tm1-tab-history', JSON.stringify(history))
+    set({ tabHistory: history })
     _saveForge(get())
   },
 

@@ -20,7 +20,7 @@ Everything the IDE does, editor by editor, with screenshots.
 
 ![Split pane dark theme](../images/5_screenshot.png)
 
-| Cube Map | Rules Editor — Minimap + Lineage |
+| Cube Map | Rules Editor — Minimap + Rules lineage + Data sources |
 | --- | --- |
 | ![Cube Map](../images/6_screenshot_cubemap.png) | ![Rules Editor minimap and lineage](../images/8_screenshot_rules_lineage.png) |
 
