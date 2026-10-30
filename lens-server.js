@@ -1,11 +1,15 @@
 'use strict'
 
-// ── Lens app — read-only Lens viewer for business users ───────────────────────
+// ── Lens app — where business users open and work in Lenses ───────────────────
 // A separate small server in the same project as the IDE, sharing core/ (TM1
 // client, sign-in, model store, Lens store/bridge). Serves ONE TM1 server from
 // config/lens-app.json (gitignored; config/lens-app.example.json is the shape).
 //
-// Read-only only: execMDX / readCell / getMeta — literally no write routes. The
+// Reads, write-back, action buttons and cell notes — every one as the signed-in
+// user, so TM1 security decides. A Lens may only write to the cubes, run the
+// processes and annotate the cubes its SAVED copy declares (lens-writes /
+// lens-runs / lens-notes meta tags or config); every write and run is logged.
+// Working together runs over a live channel (core/lens_live.js). The
 // sign-in is the IDE's per-server login (probeAuthMethod + makeClientWithCredentials):
 // users sign in to TM1 AS THEMSELVES, one TM1 session per user, rejected
 // passwords are never retried, nothing is stored beyond the TM1 session, and the
