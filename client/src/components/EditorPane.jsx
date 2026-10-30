@@ -12,7 +12,7 @@ import ChoreEditor from '@/components/ChoreEditor'
 import GuidedMDXBuilder from '@/components/GuidedMDXBuilder'
 import CubeEditor from '@/components/CubeEditor'
 import { toast } from 'sonner'
-import { GitBranch, ChevronRight, ChevronDown, Loader2, ChevronsUpDown, ChevronsDownUp, ListTree, AlignLeft, Settings, Locate, Braces, Save, Map, Microscope, X, History, ShieldCheck, Rss, AlertTriangle, AlertCircle, HelpCircle } from 'lucide-react'
+import { GitBranch, ChevronRight, ChevronDown, Loader2, ChevronsUpDown, ChevronsDownUp, ListTree, AlignLeft, Settings, Locate, Braces, Save, Map, Microscope, X, History, ShieldCheck, Rss, AlertTriangle, AlertCircle, HelpCircle, ListFilter } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { loadSettings, saveSettings } from '@/lib/formatters/settings.js'
 import { formatRules } from '@/lib/formatters/rules-formatter.js'
@@ -28,7 +28,10 @@ import SessionReportTab from '@/components/SessionReportTab'
 import { ConflictBanner, ConflictSaveWarning } from '@/components/ConflictBanner'
 import DiffViewerModal from '@/components/DiffViewerModal'
 import CubeMapEditor from '@/components/CubeMapEditor'
+import RuleLensPanel from '@/components/RuleLensPanel'
+import CubeDataSources from '@/components/CubeDataSources'
 import HelpPanel from '@/components/HelpPanel'
+import { getRulesSession, saveRulesSession } from '@/lib/rules-session'
 import LensEditor from '@/components/LensEditor'
 
 // ── Lineage panel ─────────────────────────────────────────────────────────────
@@ -50,9 +53,9 @@ function TreeNode({ cube, tree, depth, onOpen, visited = new Set() }) {
           </button>
         ) : <span className="w-3 shrink-0" />}
         <button
-          onClick={() => onOpen(cube)}
+          onClick={ev => onOpen(cube, ev.altKey)}
           className="font-mono hover:text-primary truncate text-left"
-          title={cube}
+          title={`${cube} — Alt-click to open here`}
         >
           {cube}
         </button>
@@ -67,8 +70,7 @@ function TreeNode({ cube, tree, depth, onOpen, visited = new Set() }) {
   )
 }
 
-function LineagePanel({ server, cube, onOpen }) {
-  const [mode, setMode] = useState('sources')
+function LineagePanel({ server, cube, onOpen, mode, setMode }) {
   const { data: srcData, isFetching: srcFetching }   = useLineage(server, cube, mode === 'sources')
   const { data: conData, isFetching: conFetching }   = useLineageConsumers(server, cube, mode === 'consumers')
 
@@ -77,7 +79,7 @@ function LineagePanel({ server, cube, onOpen }) {
   return (
     <div className="w-64 shrink-0 border-l border-border flex flex-col bg-sidebar overflow-hidden">
       <div className="flex items-center justify-between px-3 py-2 border-b border-border shrink-0">
-        <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Lineage</span>
+        <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Rules lineage</span>
         {fetching && <Loader2 size={11} className="animate-spin text-muted-foreground" />}
       </div>
 
@@ -102,7 +104,7 @@ function LineagePanel({ server, cube, onOpen }) {
           conData.consumers.length === 0
             ? <p className="text-xs text-muted-foreground px-1">No cubes reference this cube.</p>
             : conData.consumers.map(c => (
-                <button key={c} onClick={() => onOpen(c)}
+                <button key={c} onClick={ev => onOpen(c, ev.altKey)}
                   className="flex items-center w-full px-1 py-0.5 text-xs font-mono hover:text-primary text-left truncate">
                   {c}
                 </button>
@@ -339,19 +341,23 @@ function CellTracePanel({ server, cube, cubeDims, onClose }) {
 // ── Rules editor ─────────────────────────────────────────────────────────────
 
 function RulesEditor({ tab, onCursor }) {
-  const { initTabContent, updateTabContent, markTabSaved, clearScrollTo, openTab, server, serverVersion, dark, themeVersion, setFormatSettingsOpen, setRevealTarget, bumpRulesVersion } = useStore()
+  const { initTabContent, updateTabContent, markTabSaved, clearScrollTo, openTab, openTabToSide, server, serverVersion, dark, themeVersion, setFormatSettingsOpen, setRevealTarget, bumpRulesVersion } = useStore()
   const { data, isLoading } = useRules(tab.server, tab.cube)
   const saveRules = useSaveRules()
   const registeredRef = useRef(false)
   const editorRef = useRef(null)
   const monacoRef = useRef(null)
   const formatPopupRef = useRef(null)
-  const [showLineage, setShowLineage] = useState(false)
-  const [showSnippets, setShowSnippets] = useState(false)
+  const savedUi = getRulesSession(tab.id)
+  const [showLineage, setShowLineage] = useState(savedUi?.showLineage ?? false)
+  const [showRuleLens, setShowRuleLens] = useState(savedUi?.showRuleLens ?? false)
+  const [ruleLensGrouped, setRuleLensGrouped] = useState(savedUi?.ruleLensGrouped ?? false)
+  const [lineageMode, setLineageMode] = useState(savedUi?.lineageMode ?? 'sources')
+  const [showSnippets, setShowSnippets] = useState(savedUi?.showSnippets ?? false)
   const [showHelp, setShowHelp] = useState(false)
   const [showMinimap, setShowMinimap] = useState(() => loadSettings().editor?.minimap?.rules ?? false)
   const [showTrace, setShowTrace] = useState(false)
-  const [showHistory, setShowHistory] = useState(false)
+  const [showHistory, setShowHistory] = useState(savedUi?.showHistory ?? false)
   const [cubeDims, setCubeDims] = useState(null)
   const [dismissedId, setDismissedId] = useState(null)
   const [saveConflict, setSaveConflict] = useState(null)
@@ -377,9 +383,36 @@ function RulesEditor({ tab, onCursor }) {
   const [checkErrors, setCheckErrors]       = useState([])   // { severity, line, message }[]
   const [checkingFeeders, setCheckingFeeders] = useState(false)
 
-  const openCube = useCallback((cube) => {
-    openTab({ id: `rules:${tab.server}:${cube}`, type: 'rules', label: cube, server: tab.server, cube, content: null })
-  }, [tab.server])
+  // Contextual drill-ins (Lineage, Data Sources) open beside the rules you are reading.
+  const openCube = useCallback((cube, openHere) => {
+    const t = { id: `rules:${tab.server}:${cube}`, type: 'rules', label: cube, server: tab.server, cube, content: null }
+    if (openHere) openTab(t); else openTabToSide(t)
+  }, [tab.server, openTab, openTabToSide])
+
+  const openProcess = useCallback((name, openHere) => {
+    const t = { id: `process:${tab.server}:${name}`, type: 'process', label: name, server: tab.server, name, content: null }
+    if (openHere) openTab(t); else openTabToSide(t)
+  }, [tab.server, openTab, openTabToSide])
+
+  const openCubeMap = useCallback(() => {
+    openTab({ id: `cubemap:${tab.server}`, type: 'cubemap', label: 'Cube Map', server: tab.server, focusCube: tab.cube, focusAt: Date.now() })
+  }, [tab.server, tab.cube])
+
+  // Transaction log for a rule-lens measure (other dimensions left unfiltered).
+  const openTransactionLog = useCallback((elements, dims, label) => {
+    openTabToSide({
+      id: `txlog:${tab.server}:${tab.cube}:${Date.now()}`,
+      type: 'transactionlog',
+      label: `Log — ${tab.cube}${label ? ` · ${label}` : ''}`,
+      server: tab.server, cube: tab.cube, cubeDims: dims, elements,
+    }, { noSplit: true })
+  }, [tab.server, tab.cube, openTabToSide])
+
+  // Keep side-panel state for this tab when a lineage cube opens another rules tab.
+  // Saved on change (not just unmount): a split remounts this editor immediately.
+  useEffect(() => {
+    saveRulesSession(tab.id, { showLineage, lineageMode, showSnippets, showHistory, showRuleLens, ruleLensGrouped })
+  }, [tab.id, showLineage, lineageMode, showSnippets, showHistory, showRuleLens, ruleLensGrouped])
 
   const content = tab.content ?? data?.rules ?? ''
 
@@ -700,6 +733,7 @@ function RulesEditor({ tab, onCursor }) {
       </div>
       <div className="relative z-10 flex flex-1 min-h-0 overflow-hidden">
       <div className="flex-1 min-w-0 overflow-hidden flex flex-col">
+        <CubeDataSources server={tab.server} cube={tab.cube} onOpenCube={openCube} onOpenProcess={openProcess} onOpenMap={openCubeMap} />
         <div className="relative flex-1 min-h-0 overflow-hidden">
         <div className="absolute top-2 right-2 z-10 flex items-center gap-1.5">
           <button
@@ -900,10 +934,21 @@ function RulesEditor({ tab, onCursor }) {
               'flex items-center gap-1 px-2 py-1 rounded text-xs border transition-colors',
               showLineage ? 'bg-primary text-primary-foreground border-primary' : 'bg-background/80 border-border text-muted-foreground hover:text-foreground'
             )}
-            title="Toggle lineage trace"
+            title="Toggle rules lineage — which cubes this cube's rules read, and who reads it"
           >
             <GitBranch size={11} />
-            Lineage
+            Rules lineage
+          </button>
+          <button
+            onClick={() => setShowRuleLens(s => !s)}
+            className={cn(
+              'flex items-center gap-1 px-2 py-1 rounded text-xs border transition-colors',
+              showRuleLens ? 'bg-primary text-primary-foreground border-primary' : 'bg-background/80 border-border text-muted-foreground hover:text-foreground'
+            )}
+            title="Toggle the rule lens — rule areas, measures, DB sources and feeders"
+          >
+            <ListFilter size={11} />
+            Rule lens
           </button>
           <button
             onClick={() => setShowHelp(true)}
@@ -978,7 +1023,10 @@ function RulesEditor({ tab, onCursor }) {
         />
       )}
       {showLineage && (
-        <LineagePanel server={tab.server} cube={tab.cube} onOpen={openCube} />
+        <LineagePanel server={tab.server} cube={tab.cube} onOpen={openCube} mode={lineageMode} setMode={setLineageMode} />
+      )}
+      {showRuleLens && (
+        <RuleLensPanel server={tab.server} cube={tab.cube} onOpenCube={openCube} onOpenMap={openCubeMap} onClose={() => setShowRuleLens(false)} grouped={ruleLensGrouped} onToggleGrouped={setRuleLensGrouped} onOpenLog={openTransactionLog} />
       )}
       </div>
     </div>
@@ -1048,6 +1096,7 @@ export default function EditorPane({ groupId }) {
               tupleFilter={tab.elements?.length ? tab.elements : null}
               onClearFilter={null}
               onClose={null}
+              fill
             />
           </div>
         )}

@@ -16,8 +16,10 @@ const gitSecrets = require('./core/git-secrets')
 const { odataKey } = require('./core/odata-key')
 if (!process.env.TM1_GIT_TOKEN && gitSecrets.getToken()) process.env.TM1_GIT_TOKEN = gitSecrets.getToken()
 const lensStore = require('./core/lens_store')
+const { logLensWrite, logLensRun, logLensNote, readLensActivity } = require('./core/lens_activity_log')
 const lensBridge = require('./core/lens_bridge')
 const { readOnlyRefusal } = require('./core/readonly')
+const { createSaveDataAllRoute } = require('./core/save_data_all')
 
 // Session (Change Set) is optional for using the IDE — it groups changes for
 // deployment, it is not a login and must never gate whether a save works.
@@ -51,6 +53,9 @@ function gateWrite(res, server) {
 }
 const { diff: deployDiff, driftCheck: deployDriftCheck } = require('./tools/tm1deploy/src/diff')
 const { pack: deployPack }      = require('./tools/tm1deploy/src/packager')
+const { getCubeDataSources, getProcessFacts, listProcessSummaries, invalidate: invalidateCubeSources } = require('./core/cube_data_sources')
+const { parseRuleLens } = require('./core/rule_lens')
+const processSummaries = require('./core/process_summaries')
 const { analyzeRisk }           = require('./tools/tm1deploy/src/risk')
 const { seed: deploySeed, scopedSnapshot: deployScopedSnapshot } = require('./tools/tm1deploy/src/snapshot')
 const { loadBaseline: deployLoadBaseline, listBaselines: deployListBaselines, setBaselineHead: deploySetBaselineHead } = require('./tools/tm1deploy/src/diff')
@@ -705,6 +710,7 @@ app.post('/api/rules', async (req, res) => {
         const current = await client.getCube(req.query.cube).catch(() => null)
         const beforeState = { text: current?.Rules ?? '' }
         await client.patch(`Cubes('${odataKey(req.query.cube)}')`, { Rules: req.body.rules })
+        invalidateCubeSources(req.query.server)
         const afterState  = { text: req.body.rules }
         const { hasSession } = cl.writeLog({ server: req.query.server, action: 'RULES_SAVED', objectType: 'rules', objectName: req.query.cube, beforeState, afterState, user: req.user })
         res.json({ ok: true, noSession: !hasSession })
@@ -870,9 +876,12 @@ app.post('/api/process/debug', async (req, res) => {
 
     // ── 4. Create temp process with instrumented code ────────────────────────
     const prologInst = instrumentSection(sections.PrologProcedure,   'PrologProcedure',   'Prolog')
-    const metaInst   = (sections.MetaDataProcedure ?? '').trim()
-        ? instrumentSection(sections.MetaDataProcedure, 'MetaDataProcedure', 'Metadata')
-        : (jc(sections.MetaDataProcedure ?? ''))
+    // TM1's property is MetadataProcedure (lowercase d); an older client may still send MetaDataProcedure
+    const metaSrc    = sections.MetadataProcedure ?? sections.MetaDataProcedure ?? ''
+    if (breakpoints && breakpoints.MetadataProcedure == null && breakpoints.MetaDataProcedure) breakpoints.MetadataProcedure = breakpoints.MetaDataProcedure
+    const metaInst   = metaSrc.trim()
+        ? instrumentSection(metaSrc, 'MetadataProcedure', 'Metadata')
+        : (jc(metaSrc))
     const dataInst   = (sections.DataProcedure ?? '').trim()
         ? instrumentSection(sections.DataProcedure,     'DataProcedure',     'Data')
         : (jc(sections.DataProcedure ?? ''))
@@ -1013,6 +1022,7 @@ app.post('/api/process', async (req, res) => {
             delete body.MetaDataProcedure
         }
         await client.patch(`Processes('${odataKey(req.query.name)}')`, body)
+        invalidateCubeSources(req.query.server)
         const afterState = {
             prolog:   req.body.PrologProcedure                                       ?? beforeState?.prolog   ?? '',
             metadata: req.body.MetaDataProcedure ?? req.body.MetadataProcedure       ?? beforeState?.metadata ?? '',
@@ -1503,6 +1513,34 @@ app.post('/api/dimension/hierarchy', async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
+// Alternate Hierarchies — what a hierarchy is (default / alternate / TM1's Leaves) and which
+// processes build it; an element's parents in each hierarchy; build one from an attribute.
+app.get('/api/hierarchy/info', async (req, res) => {
+    try {
+        const { server, dimension, hierarchy } = req.query
+        res.json(await makeClient(server, req.ideToken).hierarchyInfo(dimension, hierarchy))
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.get('/api/element/hierarchy-parents', async (req, res) => {
+    try {
+        const { server, dimension, element } = req.query
+        res.json(await makeClient(server, req.ideToken).elementHierarchyParents(dimension, element))
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.post('/api/hierarchy/from-attribute', async (req, res) => {
+    try {
+        const { server, dimension, hierarchy, attribute, levelDimension, hookProcess } = req.body
+        if (!gateWrite(res, server)) return
+        const r = await makeClient(server, req.ideToken).buildHierarchyFromAttribute({ dimension, hierarchy, attribute, levelDimension, hookProcess })
+        cl.writeLog({ server, action: 'PROCESS_SAVED', objectType: 'process', objectName: r.process, detail: `builds the "${hierarchy}" Alternate Hierarchy on ${dimension} from ${attribute}`, user: req.user })
+        cl.writeLog({ server, action: 'HIERARCHY_CREATED', objectType: 'dimension', objectName: hierarchy, detail: dimension, user: req.user })
+        if (r.hooked) cl.writeLog({ server, action: 'PROCESS_SAVED', objectType: 'process', objectName: r.hooked, detail: `now runs ${r.process}`, user: req.user })
+        res.json({ ok: true, ...r })
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
 app.delete('/api/dimension/hierarchy', async (req, res) => {
     try {
         const { server, dimension, name } = req.query
@@ -1533,7 +1571,7 @@ app.get('/api/search/index', async (req, res) => {
                 return {
                     name,
                     Prolog:   p.PrologProcedure   ?? '',
-                    Metadata: p.MetaDataProcedure ?? '',
+                    Metadata: p.MetadataProcedure ?? '',
                     Data:     p.DataProcedure     ?? '',
                     Epilog:   p.EpilogProcedure   ?? '',
                 }
@@ -1550,14 +1588,14 @@ app.get('/api/search/index', async (req, res) => {
 app.get('/api/subsets', async (req, res) => {
     try {
         const client = makeClient(req.query.server, req.ideToken)
-        res.json(await client.getSubsets(req.query.dimension))
+        res.json(await client.getSubsets(req.query.dimension, req.query.hierarchy || undefined))
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
 app.get('/api/subset', async (req, res) => {
     try {
         const client = makeClient(req.query.server, req.ideToken)
-        res.json(await client.getSubset(req.query.dimension, req.query.name))
+        res.json(await client.getSubset(req.query.dimension, req.query.name, req.query.hierarchy || undefined))
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
@@ -1565,9 +1603,9 @@ app.post('/api/subset', async (req, res) => {
     try {
         if (!gateWrite(res, req.query.server)) return
         const client      = makeClient(req.query.server, req.ideToken)
-        const current     = await client.getSubset(req.query.dimension, req.query.name).catch(() => null)
+        const current     = await client.getSubset(req.query.dimension, req.query.name, req.query.hierarchy || undefined).catch(() => null)
         const beforeState = current ? { expression: current.Expression ?? '' } : null
-        await client.saveSubset(req.query.dimension, req.query.name, req.body.mdx)
+        await client.saveSubset(req.query.dimension, req.query.name, req.body.mdx, req.query.hierarchy || undefined)
         const afterState  = { expression: req.body.mdx }
         const { hasSession } = cl.writeLog({ server: req.query.server, action: 'SUBSET_SAVED', objectType: 'subset', objectName: req.query.name, detail: req.query.dimension, beforeState, afterState, user: req.user })
         res.json({ ok: true, noSession: !hasSession })
@@ -1580,7 +1618,7 @@ app.post('/api/subset', async (req, res) => {
 app.get('/api/subset/elements', async (req, res) => {
     try {
         const client = makeClient(req.query.server, req.ideToken)
-        res.json(await client.getSubsetElements(req.query.dimension, req.query.name))
+        res.json(await client.getSubsetElements(req.query.dimension, req.query.name, req.query.hierarchy || undefined))
     } catch (e) {
         res.status(500).json({ error: e.message })
     }
@@ -1590,9 +1628,9 @@ app.post('/api/subset/static', async (req, res) => {
     try {
         if (!gateWrite(res, req.query.server)) return
         const client      = makeClient(req.query.server, req.ideToken)
-        const currentEls  = await client.getSubsetElements(req.query.dimension, req.query.name).catch(() => null)
+        const currentEls  = await client.getSubsetElements(req.query.dimension, req.query.name, req.query.hierarchy || undefined).catch(() => null)
         const beforeState = currentEls ? { elements: currentEls.map(e => e.name) } : null
-        await client.saveStaticSubset(req.query.dimension, req.query.name, req.body.elements)
+        await client.saveStaticSubset(req.query.dimension, req.query.name, req.body.elements, req.query.hierarchy || undefined)
         const afterState  = { elements: req.body.elements ?? [] }
         const { hasSession } = cl.writeLog({ server: req.query.server, action: 'SUBSET_SAVED', objectType: 'subset', objectName: req.query.name, detail: req.query.dimension, beforeState, afterState, user: req.user })
         res.json({ ok: true, noSession: !hasSession })
@@ -2411,6 +2449,14 @@ app.get('/api/server/version', async (req, res) => {
         res.status(500).json({ error: e.message })
     }
 })
+
+// Write all changed cube data to disk. Admin-only; falls back to }IDE.SaveDataAll
+// on servers without the REST tm1.SaveDataAll action.
+app.post('/api/server/save-data-all', createSaveDataAllRoute({
+    makeClient,
+    gateReadOnly,
+    writeLog: cl.writeLog,
+}))
 
 app.patch('/api/admin/configuration', async (req, res) => {
     try {
@@ -3501,6 +3547,153 @@ app.post('/api/admin/validate-ti-functions', async (req, res) => {
 })
 
 // ── Cube Map ──────────────────────────────────────────────────────────────────
+// Runbooks — phased review sequences (config/workforce-lifecycle.json)
+app.get('/api/runbooks', (req, res) => {
+    try {
+        const book = JSON.parse(fs.readFileSync(path.join(__dirname, 'config', 'workforce-lifecycle.json'), 'utf8'))
+        res.json({ runbooks: [book] })
+    } catch (e) {
+        res.status(500).json({ error: e.message })
+    }
+})
+
+// ── Process summaries (AI worded, stored outside the TI) ─────────────────────
+function processCode(p) {
+    return [p.PrologProcedure, p.MetaDataProcedure ?? p.MetadataProcedure, p.DataProcedure, p.EpilogProcedure]
+        .filter(Boolean).join('\n')
+}
+
+function summaryPrompt(p, f, includeCode) {
+    const writes = f.writes.map(w => {
+        const what = w.measures?.length ? w.measures.join(', ')
+            : w.kinds?.includes('clear') ? 'cleared'
+            : w.kinds?.includes('feeders') ? 'feeders recalculated'
+            : 'written'
+        return `- ${w.cube}: ${what}`
+    }).join('\n')
+    const params = (p.Parameters ?? []).map(x =>
+        `${x.Name}${x.Value !== '' && x.Value != null ? ` (default ${x.Value})` : ''}${x.Prompt ? ` — ${x.Prompt}` : ''}`
+    ).join('; ')
+    const system = 'You document IBM TM1 TurboIntegrator processes for a data-lineage tooltip. Write plain English for an admin. ' +
+        'Return ONLY: one or two sentences on what the process does and when it runs, then one line starting "Writes:" listing cube -> measures (or "clears"/"feeders"), ' +
+        'then one line "Reads:" with the source cubes if any. No headings, no bullets, no code fences, no invented facts, no permissions unless they change what it does. Max 90 words.'
+    const user = [
+        `Process: ${p.Name}`,
+        `Author's header:\n${f.header || '(none)'}`,
+        `Parameters: ${params || '(none)'}`,
+        `Datasource: ${f.source}`,
+        `Writes (scanned from the code):\n${writes || '(no cube writes)'}`,
+        `Reads (scanned): ${f.reads.join(', ') || '(none)'}`,
+        `Called by: ${f.calledBy.join(', ') || '(nothing)'}`,
+        includeCode ? `Code:\n${processCode(p).slice(0, 12000)}` : '',
+    ].filter(Boolean).join('\n\n')
+    return { system, user }
+}
+
+app.get('/api/process/summaries', async (req, res) => {
+    try {
+        const client = makeClient(req.query.server, req.ideToken)
+        res.json({ processes: await listProcessSummaries(client, req.query.server), aiConfigured: ai.isConfigured() })
+    } catch (e) {
+        res.status(500).json({ error: e.message })
+    }
+})
+
+app.post('/api/process/summary', async (req, res) => {
+    try {
+        const { server, name } = req.body
+        if (!ai.isConfigured()) return res.status(503).json({ error: 'AI not configured — set AI_PROVIDER and AI_API_KEY in .env (or write a summary by hand)' })
+        const client = makeClient(server, req.ideToken)
+        const p = await client.getProcess(name)
+        if (!p?.Name) return res.status(404).json({ error: `Process "${name}" not found` })
+        const hash = processSummaries.hashCode(processCode(p))
+        if (!req.body.force) {
+            const hit = processSummaries.get(server, name, hash)
+            if (hit) return res.json({ ...hit, cached: true })
+        }
+        const facts = await getProcessFacts(client, server, name)
+        const obf = ai.shouldObfuscate()
+        let { system, user } = summaryPrompt(p, facts, !obf)
+        let map = null
+        if (obf) {
+            const names = [name, ...(facts.parameters ?? []), ...(facts.calledBy ?? []), ...(facts.reads ?? []),
+                ...facts.writes.flatMap(w => [w.cube, ...(w.measures ?? [])])]
+            map = obfuscate.makeMap(names)
+            user = obfuscate.obfuscateText(user, map.realToCode)
+        }
+        let out = await ai.complete({ system, user, maxTokens: 400, label: 'process-summary', obfuscated: obf })
+        if (map) out = obfuscate.restoreText(out, map.codeToReal)
+        const summary = String(out ?? '').replace(/```[a-z]*\s*/gi, '').replace(/```/g, '').trim().slice(0, 1200)
+        if (!summary) return res.status(502).json({ error: 'The model returned an empty summary' })
+        const entry = processSummaries.put(server, name, { hash, summary, source: 'ai', model: process.env.AI_MODEL || '' })
+        res.json({ ...entry, cached: false })
+    } catch (e) {
+        res.status(500).json({ error: e.message })
+    }
+})
+
+app.put('/api/process/summary', async (req, res) => {
+    try {
+        const { server, name, summary } = req.body
+        if (!String(summary ?? '').trim()) return res.status(400).json({ error: 'Summary is empty' })
+        const client = makeClient(server, req.ideToken)
+        const p = await client.getProcess(name)
+        if (!p?.Name) return res.status(404).json({ error: `Process "${name}" not found` })
+        const entry = processSummaries.put(server, name, {
+            hash: processSummaries.hashCode(processCode(p)),
+            summary: String(summary).trim().slice(0, 1200),
+            source: 'manual',
+        })
+        res.json(entry)
+    } catch (e) {
+        res.status(500).json({ error: e.message })
+    }
+})
+
+app.delete('/api/process/summary', async (req, res) => {
+    try {
+        const ok = processSummaries.remove(req.query.server, req.query.name)
+        res.json({ ok })
+    } catch (e) {
+        res.status(500).json({ error: e.message })
+    }
+})
+
+// Rule lens — a cube's rules broken into target areas, measures, DB sources and feeders.
+app.get('/api/cube/rules-lens', async (req, res) => {
+    try {
+        const client = makeClient(req.query.server, req.ideToken)
+        const name = req.query.cube
+        const cube = await client.getCube(name)
+        if (!cube) return res.status(404).json({ error: `Cube "${name}" not found` })
+        const dims = (cube.Dimensions ?? []).map(d => d.Name)
+        const measureDim = dims.find(d => /measure/i.test(d)) ?? null
+        const measureEls = measureDim ? await client.getElements(measureDim).catch(() => []) : []
+        const allCubes = await client.getAllCubesWithRules().catch(() => [])
+        const cubeNames = new Set(allCubes.map(c => c.Name))
+        const parsed = parseRuleLens(cube.Rules ?? '', { measureElements: new Set(measureEls.map(e => e.Name)) })
+        const checks = []
+        const missing = [...new Set(parsed.items.flatMap(i => i.dbSources).filter(c => !cubeNames.has(c)))]
+        if (missing.length) checks.push({ level: 'error', message: `Reads cubes that do not exist: ${missing.join(', ')}` })
+        if ((cube.Rules ?? '').trim() && parsed.summary.feeders === 0) checks.push({ level: 'warn', message: 'No feeder statements found.' })
+        res.json({ cube: name, dims, measureDim, hasRules: !!(cube.Rules ?? '').trim(), ...parsed, checks })
+    } catch (e) {
+        res.status(500).json({ error: e.message })
+    }
+})
+
+// Where a cube's data comes from — writers / readers / rule dependencies (Rules editor strip)
+app.get('/api/cube/data-sources', async (req, res) => {
+    try {
+        const client = makeClient(req.query.server, req.ideToken)
+        if (req.query.refresh) invalidateCubeSources(req.query.server)
+        const data = await getCubeDataSources(client, req.query.server, req.query.cube)
+        res.json({ ...data, aiConfigured: ai.isConfigured() })
+    } catch (e) {
+        res.status(500).json({ error: e.message })
+    }
+})
+
 app.get('/api/cubemap/model', async (req, res) => {
     try {
         const client = makeClient(req.query.server, req.ideToken)
@@ -3542,6 +3735,7 @@ app.get('/api/cubemap/model', async (req, res) => {
         }
 
         const cubeNames = new Set(allCubes.map(c => c.Name))
+        const cubeDims  = Object.fromEntries(allCubes.map(c => [c.Name, (c.Dimensions ?? []).map(d => d.Name)]))
         const dimNames  = new Set(await client.getDimensions().catch(() => []))
 
         // Fetch TI process code for write-ref and call-chain analysis (best-effort — skip if slow/unavailable)
@@ -3591,7 +3785,7 @@ app.get('/api/cubemap/model', async (req, res) => {
             const ASSIGN_RE     = /\b([A-Za-z_]\w*)\s*=\s*'([^']*)'\s*;/g
             const VAR_ASSIGN_RE = /\b([A-Za-z_]\w*)\s*=\s*([A-Za-z_]\w*)\s*;/g
             // cube is the 2nd arg: CellPutN/S, CellPutNComplete, CellIncrementN/S (accumulating write)
-            const CELLPUT_RE    = /\b(?:CellPut[NS](?:Complete)?|CellIncrement[NS])\s*\(\s*[^,]+,\s*([^,]+),/gi
+            const CELLPUT_RE    = /\b(CellPut[NS](?:Complete)?|CellIncrement[NS])\s*\(/gi
             // cube is the 1st arg: functions that change a cube's data without CellPut — clear-and-rebuild
             // processes (ViewZeroOut then CellIncrementN) were invisible on the Cube Map without these
             const CUBE_FIRST_RE = /\b(?:ViewZeroOut|CubeClearData|CubeProcessFeeders)\s*\(\s*([^,)]+)/gi
@@ -3600,12 +3794,20 @@ app.get('/api/cubemap/model', async (req, res) => {
             const EXEC_RE       = /\b(?:ExecuteProcess|RunProcess)\s*\(([\s\S]*?)\)\s*;/gi
             const CUBE_PARAM_RE = /'([pP]\w*[Cc]ube\w*)'\s*,\s*'([^']+)'/g
 
-            const addStep = (proc, kind, target, pos) => {
+            const addStep = (proc, kind, target, pos, measure) => {
                 const e = procEntry(proc)
                 const list = { read: e.reads, write: e.writes, call: e.calls, dimwrite: e.dimWrites }[kind]
-                if (list.includes(target)) return
+                if (list.includes(target)) {
+                    if (kind === 'write' && measure) {
+                        const st = e.steps.find(x => x.kind === 'write' && x.target === target)
+                        if (st) { st.measures = st.measures ?? []; if (!st.measures.includes(measure)) st.measures.push(measure) }
+                    }
+                    return
+                }
                 list.push(target)
-                e.steps.push({ kind, target, pos })
+                const step = { kind, target, pos }
+                if (kind === 'write' && measure) step.measures = [measure]
+                e.steps.push(step)
             }
             const addWriter = (cube, proc, pos = Infinity) => {
                 if (!cubeNames.has(cube)) return
@@ -3662,8 +3864,14 @@ app.get('/api/cubemap/model', async (req, res) => {
                 CELLPUT_RE.lastIndex = 0
                 let m
                 while ((m = CELLPUT_RE.exec(code)) !== null) {
-                    const cubeName = resolveName(m[1], varValues)
-                    if (cubeName) addWriter(cubeName, p.Name, m.index)
+                    const args = splitArgs(code, m.index + m[0].length - 1)
+                    const cubeName = resolveName(args[1], varValues)
+                    if (!cubeName) continue
+                    addWriter(cubeName, p.Name, m.index)
+                    const dims = cubeDims[cubeName] ?? []
+                    const mi = dims.findIndex(d => /measure/i.test(d))
+                    const measure = mi >= 0 ? resolveName(args[2 + mi], varValues) : undefined
+                    addStep(p.Name, 'write', cubeName, m.index, measure)
                 }
 
                 CUBE_FIRST_RE.lastIndex = 0
@@ -3762,6 +3970,19 @@ app.get('/api/cubemap/model', async (req, res) => {
 // deletes are model changes: they need a writable server and an open change set,
 // and are recorded in it.
 
+// Lens examples — reference Lenses to start a new one from (a copy, never a link).
+app.get('/api/lens-examples', (req, res) => {
+    try { res.json(require('./core/lens_examples').listExamples()) } catch (e) { res.status(500).json({ error: e.message }) }
+})
+app.get('/api/lens-examples/:name', (req, res) => {
+    try {
+        const ex = require('./core/lens_examples')
+        const meta = ex.listExamples().find(e => e.name === req.params.name)
+        if (!meta) return res.status(404).json({ error: `Unknown Lens example "${req.params.name}"` })
+        res.json({ meta, html: ex.readExample(req.params.name) })
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
 app.get('/api/lenses', async (req, res) => {
     try {
         const server = req.query.server
@@ -3774,8 +3995,9 @@ app.get('/api/lenses/:name', async (req, res) => {
     try {
         const server = req.query.server
         if (!server) return res.status(400).json({ error: 'server required' })
-        const { html, ...meta } = await lensStore.readLens(server, req.params.name, { ideToken: req.ideToken })
-        res.json({ name: meta.name, html, meta })
+        const doc = await lensStore.readLens(server, req.params.name, { ideToken: req.ideToken })
+        const { html: _own, ...meta } = doc
+        res.json({ name: meta.name, html: doc.html ?? '', meta })
     } catch (e) { res.status(/not found/.test(e.message) ? 404 : 500).json({ error: e.message }) }
 })
 
@@ -3785,13 +4007,13 @@ app.post('/api/lenses/:name', async (req, res) => {
         if (!server) return res.status(400).json({ error: 'server required' })
         if (!gateWrite(res, server)) return
         const client = makeClient(server, req.ideToken)
-        const { html, description, publish, force } = req.body
+        const { html, description, folder, title, icon, color, image, config, publish, force } = req.body
         if (typeof html !== 'string' || !html.trim()) return res.status(400).json({ error: 'html is required' })
         const errors = await lensBridge.validateLens(client, html)
         if (errors.length && !force) {
             return res.status(400).json({ error: `Lens validation failed (${errors.length}):`, validation: errors })
         }
-        const saved = await lensStore.saveLens(server, req.params.name, html, req.user, { publish: !!publish, description, ideToken: req.ideToken })
+        const saved = await lensStore.saveLens(server, req.params.name, html, req.user, { publish: !!publish, description, folder, title, icon, color, image, config, ideToken: req.ideToken })
         cl.writeLog({ server, action: publish ? 'LENS_PUBLISHED' : 'LENS_SAVED', objectType: 'lens', objectName: saved.name,
             detail: `version ${saved.version}${description ? ` — ${description}` : ''}`, user: req.user })
         res.json({ ...saved, validation: errors })
@@ -3841,10 +4063,12 @@ The ONLY way to get data is the bridge API below. There is NO network access, no
 
 Bridge API (always available):
   window.lensBridge.call('execMDX', { mdx: '<MDX SELECT>' }) -> Promise<{ Axes, Cells }>
-      Cells: [{ Ordinal, Value, FormattedValue }] — Value is a number or null.
+      Cells: [{ Ordinal, Value, FormattedValue, RuleDerived, Consolidated }] — Value is a number or null.
   window.lensBridge.call('readCell', { cube: '<cube>', coordinates: { '<dim>': '<elem>', ... } }) -> Promise<number|string|null>
       coordinates must name EVERY dimension of the cube.
   window.lensBridge.call('getMeta', { cube: '<cube>' }) -> Promise<{ cubes, dimensions, cubeDims, elements }>
+  window.lensBridge.call('elementTree', { dimension: '<dim>', hierarchy: '<hier>' }) -> Promise<[{ Name, Type, Level, Components }]>  (one dimension's tree; Lens.pivot uses it for drill-down; hierarchy optional, e.g. an ALT H)
+  window.lensBridge.call('hierarchies', { dimension: '<dim>' }) -> Promise<[name]>  (the dimension's hierarchies: its main one and any ALT H)
 
 Rules:
 - Return a SINGLE complete HTML document (html, head, style, body, script). No markdown, no code fences, no explanation.
@@ -3854,6 +4078,8 @@ Lens toolkit catalogue:
 ${LENS_CATALOGUE}
 - Style it as a polished executive dashboard: card layout, clear hierarchy, good typography, whitespace, a coherent color scheme. Add a small refresh button that re-runs the data calls.
 - All numbers must come from the bridge at runtime — never hard-code values.
+- Only build input (write-back) when the request asks for it: an editable Lens.grid plus Lens.save, and declare the cube in the head with <meta name="lens-writes" content="Cube Name">.
+- Only add action buttons when asked: Lens.run('Process', { params }), declared with <meta name="lens-runs" content="Process Name">.
 - Use EXACT cube/dimension/element names from the model context. In MDX reference members as [Dim].[Dim].[Member].
 - Prefer readCell for single values and execMDX for series/sets. Keep MDX simple and correct. The Measures dimension is typically the last one — put it on columns.
 - Render loading states and handle null/empty values gracefully (show '—').`,
@@ -3869,7 +4095,7 @@ ${LENS_CATALOGUE}
     }
 })
 
-// ── Lens bridge (read-only, runs as the viewing user) ────────────────────────
+// ── Lens bridge (runs as the viewing user) ───────────────────────────────────
 
 app.post('/api/lens/exec-mdx', async (req, res) => {
     try {
@@ -3889,6 +4115,125 @@ app.post('/api/lens/read-cell', async (req, res) => {
     } catch (e) {
         const detail = e.response?.data?.error?.message ?? e.response?.data ?? e.message
         res.status(500).json({ error: typeof detail === 'string' ? detail : JSON.stringify(detail) })
+    }
+})
+
+// Write-back from a Lens preview — same checks as the Lens app (declared cubes,
+// numbers only, no calculated cells, nothing changed since it loaded), as the
+// IDE user. Data entry, not a model change, so no change set is needed; a
+// read-only (PROD-posture) server refuses it here.
+app.post('/api/lens/write-cells', async (req, res) => {
+    try {
+        const server = req.query.server
+        if (!gateReadOnly(res, server)) return
+        const client = makeClient(server, req.ideToken)
+        const name = req.body?.lens
+        if (!name || typeof name !== 'string') throw new Error('lens is required')
+        const doc = await lensStore.readLens(server, name, { ideToken: req.ideToken })
+        const result = await lensBridge.writeCells(client, { cube: req.body?.cube, cells: req.body?.cells, allowedCubes: lensBridge.lensWrites(doc) })
+        logLensWrite({ server, app: 'ide', user: req.user, lens: doc.name, cube: req.body.cube, changes: result.changes })
+        res.json({ written: result.written })
+    } catch (e) {
+        const detail = e.response?.data?.error?.message ?? e.message
+        res.status(e.conflicts ? 409 : 400).json({ error: typeof detail === 'string' ? detail : JSON.stringify(detail), conflicts: e.conflicts })
+    }
+})
+
+// History from a Lens preview — the same activity log and the same rules as the
+// Lens app's /api/lens/:name/history: recent saves and runs through this saved
+// Lens on this server; a match slice is checked as the IDE user first.
+app.get('/api/lens/history', async (req, res) => {
+    try {
+        const server = req.query.server, name = req.query.lens
+        if (!name || typeof name !== 'string') throw new Error('lens is required')
+        const doc = await lensStore.readLens(server, name, { ideToken: req.ideToken })
+        let match = {}
+        try { match = JSON.parse(String(req.query.match ?? '{}')) } catch { throw new Error('match must be JSON') }
+        if (!match || typeof match !== 'object' || Array.isArray(match)) throw new Error('match must be { dimension: element }')
+        if (Object.keys(match).length) {
+            const cube = lensBridge.lensWrites(doc)[0]
+            if (!cube) throw new Error('a history slice needs a Lens that changes data (lens-writes)')
+            const client = makeClient(server, req.ideToken)
+            const q = s => String(s).replace(/]/g, ']]')
+            for (const [dim, el] of Object.entries(match)) {
+                await client.executeMDX(`SELECT {} ON 0, {[${q(dim)}].[${q(dim)}].[${q(el)}]} ON 1 FROM [${q(cube)}]`)
+                    .catch(() => { throw new Error(`you can't see ${dim} "${el}"`) })
+            }
+        }
+        const skip = String(req.query.skip ?? '').split(',').map(x => x.trim()).filter(Boolean).slice(0, 20)
+        res.json(readLensActivity({ server, lens: doc.name, match, skip, limit: Math.min(Number(req.query.limit) || 30, 100) }))
+    } catch (e) { res.status(400).json({ error: e.message }) }
+})
+
+// Who the IDE user is on this server, and their TM1 groups (Lens.whoami()).
+app.get('/api/lens/whoami', async (req, res) => {
+    try {
+        const d = await makeClient(req.query.server, req.ideToken).get('ActiveUser', { '$expand': 'Groups($select=Name)' })
+        res.json({ user: d?.Name ?? req.user, groups: (d?.Groups ?? []).map(g => g.Name) })
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// Action buttons from a Lens preview — the process must be declared by the
+// saved Lens; parameters checked; runs as the IDE user; logged.
+app.post('/api/lens/run-process', async (req, res) => {
+    const server = req.query.server, name = req.body?.lens, process = req.body?.process, params = req.body?.params ?? {}
+    try {
+        if (!gateReadOnly(res, server)) return
+        if (!name || typeof name !== 'string') throw new Error('lens is required')
+        const doc = await lensStore.readLens(server, name, { ideToken: req.ideToken })
+        const result = await lensBridge.runProcess(makeClient(server, req.ideToken), { process, params, allowedProcesses: lensBridge.lensRuns(doc), user: req.user })
+        logLensRun({ server, app: 'ide', user: req.user, lens: doc.name, process, params, status: result.status, message: result.message, detail: result.detail })
+        res.json(result)
+    } catch (e) {
+        if (e.status) logLensRun({ server, app: 'ide', user: req.user, lens: name, process, params, status: e.status, message: e.message, detail: e.detail })
+        const detail = e.response?.data?.error?.message ?? e.message
+        res.status(e.status ? 422 : 400).json({ error: typeof detail === 'string' ? detail : JSON.stringify(detail), status: e.status })
+    }
+})
+
+// A cell's story for a Lens's right-click menu — why (rule trace), who changed it
+// (transaction log), notes — read as the IDE user; adding a note needs the saved
+// Lens to declare the cube (lens-notes / lens-writes) and is logged.
+for (const [route, fn] of [['cell-trace', (c, b) => lensBridge.cellTrace(c, b.cube, b.coordinates)],
+                           ['cell-log',   (c, b) => lensBridge.cellLog(c, b.cube, b.coordinates, b.top)],
+                           ['cell-notes', (c, b) => lensBridge.cellNotes(c, b.cube, b.coordinates)]]) {
+    app.post(`/api/lens/${route}`, async (req, res) => {
+        try { res.json(await fn(makeClient(req.query.server, req.ideToken), req.body ?? {})) }
+        catch (e) { res.status(400).json({ error: e.response?.data?.error?.message ?? e.message }) }
+    })
+}
+app.post('/api/lens/add-note', async (req, res) => {
+    try {
+        const server = req.query.server
+        if (!gateReadOnly(res, server)) return
+        const name = req.body?.lens
+        if (!name || typeof name !== 'string') throw new Error('lens is required')
+        const doc = await lensStore.readLens(server, name, { ideToken: req.ideToken })
+        const note = await lensBridge.addCellNote(makeClient(server, req.ideToken), { cube: req.body?.cube, coordinates: req.body?.coordinates, text: req.body?.text, allowedCubes: lensBridge.lensNotes(doc) })
+        logLensNote({ server, app: 'ide', user: req.user, lens: doc.name, ...note })
+        res.json({ ok: true })
+    } catch (e) { res.status(400).json({ error: e.response?.data?.error?.message ?? e.message }) }
+})
+
+// Lens.pivot: a dimension's hierarchies (main + any ALT H), for the hierarchy choice.
+app.get('/api/lens/hierarchies', async (req, res) => {
+    try {
+        const client = makeClient(req.query.server, req.ideToken)
+        res.json(await lensBridge.hierarchies(client, req.query.dimension))
+    } catch (e) {
+        const detail = e.response?.data?.error?.message ?? e.message
+        res.status(400).json({ error: typeof detail === 'string' ? detail : JSON.stringify(detail) })
+    }
+})
+
+// Lens.pivot: one dimension's element tree, read as the IDE user.
+app.get('/api/lens/element-tree', async (req, res) => {
+    try {
+        const client = makeClient(req.query.server, req.ideToken)
+        res.json(await lensBridge.elementTree(client, req.query.dimension, req.query.hierarchy))
+    } catch (e) {
+        const detail = e.response?.data?.error?.message ?? e.message
+        res.status(400).json({ error: typeof detail === 'string' ? detail : JSON.stringify(detail) })
     }
 })
 

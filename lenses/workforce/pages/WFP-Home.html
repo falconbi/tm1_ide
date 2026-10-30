@@ -1,0 +1,394 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Workforce</title>
+<style>
+:root{--bg:var(--lens-bg,#f6f7f7);--ink:var(--lens-ink,#16201f);--faint:var(--lens-faint,#85908f);--rule:var(--lens-rule,#dfe4e3);--panel:var(--lens-panel,#fff);--accent:var(--lens-accent,#0f766e);--bad:var(--lens-bad,#b4372d);--good:var(--lens-good,#1d7a46);--warn:#b7791f}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}
+.wrap{padding:16px 18px 24px;display:grid;gap:12px;max-width:1700px;margin:0 auto}
+header{display:flex;flex-wrap:wrap;align-items:end;gap:12px 18px}
+h1{font-size:20px;margin:0}
+h2{font-size:12px;margin:0 0 8px;color:var(--faint);text-transform:uppercase;letter-spacing:.07em;font-weight:600}
+h2 .sub{text-transform:none;letter-spacing:0;font-weight:400}
+.sub{font-size:12.5px;color:var(--faint)}
+.controls{display:flex;gap:10px;margin-left:auto;align-items:end;flex-wrap:wrap}
+label{display:grid;gap:3px;font-size:11px;color:var(--faint);text-transform:uppercase;letter-spacing:.06em}
+select,button,input{font:inherit;font-size:13px;padding:5px 10px;border:1px solid var(--rule);border-radius:7px;background:var(--panel);color:var(--ink)}
+input[type=checkbox]{padding:0;width:15px;height:15px;accent-color:var(--accent)}
+button{cursor:pointer}
+button.primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+button:disabled{opacity:.45;cursor:default}
+.card{background:var(--panel);border:1px solid var(--rule);border-radius:10px;padding:12px;min-width:0}
+.two{display:grid;grid-template-columns:minmax(0,3fr) minmax(0,2fr);gap:12px}
+.halves{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px}
+@media (max-width:860px){.two,.halves{grid-template-columns:1fr}}
+.bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px}
+.status{font-size:13px;color:var(--faint)}
+.status.ok{color:var(--good)} .status.err{color:var(--bad)} .status.busy{color:var(--faint)}
+.note{font-size:12px;color:var(--faint);margin:8px 0 0}
+.counts{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px}
+.count{background:var(--panel);border:1px solid var(--rule);border-radius:10px;padding:8px 14px}
+.count b{display:block;font-size:22px;font-variant-numeric:tabular-nums}
+.count span{font-size:12px;color:var(--faint)}
+.count.good b{color:var(--good)} .count.warn b{color:var(--warn)} .count.bad b{color:var(--bad)}
+.scroll{overflow:auto;max-height:520px}
+table.t{border-collapse:collapse;width:100%;font-size:13px;font-variant-numeric:tabular-nums}
+table.t th{position:sticky;top:0;background:var(--panel);text-align:left;font-size:11px;color:var(--faint);text-transform:uppercase;letter-spacing:.05em;font-weight:600;padding:6px 8px;border-bottom:1px solid var(--rule);white-space:nowrap}
+table.t td{padding:6px 8px;border-bottom:1px solid var(--rule);white-space:nowrap}
+table.t td.n,table.t th.n{text-align:right}
+table.t tr.tot td{font-weight:700;background:color-mix(in srgb,var(--rule) 40%,transparent)}
+.pill{display:inline-block;font-size:11px;padding:1px 8px;border-radius:999px;border:1px solid var(--rule);color:var(--faint)}
+.pill.good{color:var(--good);border-color:currentColor} .pill.warn{color:var(--warn);border-color:currentColor} .pill.bad{color:var(--bad);border-color:currentColor}
+.up{color:var(--bad)} .down{color:var(--good)}
+
+/* quiet History icon — the Assumptions look, applied to every lens footer */
+#historyBtn button{background:transparent!important;border-color:transparent!important;font-size:0!important;padding:6px!important;line-height:0}
+#historyBtn button::before{content:"";display:inline-block;width:18px;height:18px;background:var(--faint);-webkit-mask:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22M3%2012a9%209%200%201%200%209-9%209.75%209.75%200%200%200-6.74%202.74L3%208%22/%3E%3Cpath%20d%3D%22M3%203v5h5%22/%3E%3Cpath%20d%3D%22M12%207v5l4%202%22/%3E%3C/svg%3E") center/contain no-repeat;mask:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22M3%2012a9%209%200%201%200%209-9%209.75%209.75%200%200%200-6.74%202.74L3%208%22/%3E%3Cpath%20d%3D%22M3%203v5h5%22/%3E%3Cpath%20d%3D%22M12%207v5l4%202%22/%3E%3C/svg%3E") center/contain no-repeat}
+#historyBtn button:hover::before{background:var(--ink)}
+
+/* Version / Plan month / Actuals — the same strip on every Lens */
+.when{display:flex;flex-wrap:wrap;gap:4px 18px;margin-top:4px}
+.when span{display:inline-flex;align-items:baseline;gap:6px}
+.when em{font-style:normal;font-size:10px;color:var(--faint);text-transform:uppercase;letter-spacing:.06em}
+.when b{font-size:13px;font-weight:600;font-variant-numeric:tabular-nums}
+
+/* Info panel — the ⓘ Info button opens a plain-English card */
+.info-modal{position:fixed;inset:0;background:rgba(10,20,18,.30);display:flex;align-items:flex-start;justify-content:center;padding:7vh 16px;z-index:60}
+.info-modal[hidden]{display:none}
+.info-card{background:var(--panel);border:1px solid var(--rule);border-radius:12px;max-width:660px;width:100%;padding:16px 18px;box-shadow:0 24px 60px rgba(0,0,0,.22);max-height:80vh;overflow:auto}
+.info-head{display:flex;align-items:center;gap:10px;margin-bottom:4px}
+.info-head h3{margin:0;font-size:16px}
+.info-head button{margin-left:auto;border:0;background:transparent;font-size:16px;line-height:1;color:var(--faint);cursor:pointer;padding:4px}
+.info-body{font-size:13px;line-height:1.55}
+.info-body h4{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--faint);margin:14px 0 4px}
+.info-body p{margin:0 0 6px}
+
+/* ── Home ───────────────────────────────────────────────────────────── */
+.wrap{max-width:1180px;gap:22px;padding-top:22px}
+.hero{display:flex;flex-wrap:wrap;align-items:flex-end;gap:6px 18px;padding-bottom:14px;border-bottom:1px solid var(--rule)}
+.hero h1{font-size:26px;letter-spacing:-.01em;margin:0;display:flex;align-items:center;gap:4px}
+.hello{font-size:14px;color:var(--faint);margin-top:2px}
+.hello b{color:var(--ink);font-weight:600}
+.role{display:inline-block;margin-left:6px;font-size:11px;padding:1px 8px;border-radius:999px;background:color-mix(in srgb,var(--accent) 12%,transparent);color:var(--accent);font-weight:600;vertical-align:1px}
+.where{flex-basis:100%;display:flex;flex-wrap:wrap;gap:6px 8px;margin-top:8px}
+.where span{display:inline-flex;align-items:baseline;gap:6px;font-size:12.5px;padding:3px 10px;border:1px solid var(--rule);border-radius:999px;background:var(--panel)}
+.where em{font-style:normal;font-size:10px;color:var(--faint);text-transform:uppercase;letter-spacing:.06em}
+.where b{font-weight:600;font-variant-numeric:tabular-nums}
+.where .live b{color:var(--good)} .where .busy b{color:var(--warn)}
+section h2{display:flex;align-items:baseline;gap:8px}
+.tasks{display:grid;gap:8px}
+.task{display:flex;align-items:center;gap:14px;width:100%;background:var(--panel);border:1px solid var(--rule);border-radius:12px;padding:10px 14px;cursor:pointer;font:inherit;color:var(--ink);text-align:left;transition:border-color .12s,box-shadow .12s}
+.task:hover{border-color:var(--accent);box-shadow:0 2px 10px rgba(0,0,0,.05)}
+.task .n{flex:none;min-width:34px;height:34px;padding:0 8px;border-radius:999px;display:inline-flex;align-items:center;justify-content:center;font-weight:700;font-size:15px;font-variant-numeric:tabular-nums;background:color-mix(in srgb,var(--warn) 14%,transparent);color:var(--warn)}
+.task.bad .n{background:color-mix(in srgb,var(--bad) 13%,transparent);color:var(--bad)}
+.task .t{display:grid;gap:1px;min-width:0}
+.task .t small{color:var(--faint);font-size:12px}
+.task .go{margin-left:auto;color:var(--accent);font-weight:600;font-size:13px;white-space:nowrap}
+.clear{display:flex;align-items:center;gap:10px;background:var(--panel);border:1px dashed var(--rule);border-radius:12px;padding:12px 14px;color:var(--faint)}
+.clear::before{content:"✓";display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:999px;background:color-mix(in srgb,var(--good) 14%,transparent);color:var(--good);font-weight:700}
+.kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+@media (max-width:900px){.kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.kpi{background:var(--panel);border:1px solid var(--rule);border-radius:12px;padding:12px 14px 8px;cursor:pointer;text-align:left;font:inherit;color:var(--ink);display:grid;gap:2px;transition:border-color .12s}
+.kpi:hover{border-color:var(--accent)}
+.kpi .l{font-size:11px;color:var(--faint);text-transform:uppercase;letter-spacing:.06em;font-weight:600}
+.kpi .v{font-size:26px;font-weight:650;letter-spacing:-.01em;font-variant-numeric:tabular-nums;line-height:1.15}
+.kpi .d{font-size:12px;color:var(--faint);font-variant-numeric:tabular-nums}
+.kpi .d b{font-weight:600}
+.kpi .d b.up{color:var(--warn)} .kpi .d b.down{color:var(--good)} .kpi .d b.flat{color:var(--faint)}
+.kpi svg{width:100%;height:38px;margin-top:4px;overflow:visible}
+.work{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:10px}
+.tile{background:var(--panel);border:1px solid var(--rule);border-left:3px solid var(--accent);border-radius:12px;padding:12px 14px;cursor:pointer;text-align:left;font:inherit;color:var(--ink);display:grid;gap:3px;transition:border-color .12s,box-shadow .12s}
+.tile:hover{border-color:var(--accent);box-shadow:0 2px 10px rgba(0,0,0,.05)}
+.tile strong{font-size:15px}
+.tile small{color:var(--faint);font-size:12.5px;line-height:1.4}
+.recent{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px}
+.recent button{font-size:12.5px;padding:4px 12px;border-radius:999px}
+.recent button:hover{border-color:var(--accent);color:var(--accent)}
+details.all{background:var(--panel);border:1px solid var(--rule);border-radius:12px;padding:10px 14px}
+details.all summary{cursor:pointer;font-size:12px;color:var(--faint);text-transform:uppercase;letter-spacing:.07em;font-weight:600;list-style:none}
+details.all summary::before{content:"▸ ";} details.all[open] summary::before{content:"▾ ";}
+.menu{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:4px 20px;margin-top:10px}
+.menu h3{font-size:11px;color:var(--faint);text-transform:uppercase;letter-spacing:.06em;margin:8px 0 2px}
+.menu button{display:block;width:100%;text-align:left;border:0;background:transparent;padding:4px 0;font-size:13.5px;color:var(--ink);cursor:pointer}
+.menu button:hover{color:var(--accent)}
+.menu button small{color:var(--faint);font-size:11px;margin-left:4px}
+/* Info — an icon beside History; the label shows on hover */
+#info{background:transparent!important;border-color:transparent!important;font-size:0!important;padding:6px!important;line-height:0;cursor:pointer;min-width:0}
+#info::before{content:"";display:inline-block;width:18px;height:18px;background:var(--faint,#8a8f98);-webkit-mask:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Ccircle%20cx%3D%2212%22%20cy%3D%2212%22%20r%3D%2210%22/%3E%3Cpath%20d%3D%22M12%2016v-4%22/%3E%3Cpath%20d%3D%22M12%208h.01%22/%3E%3C/svg%3E") center/contain no-repeat;mask:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Ccircle%20cx%3D%2212%22%20cy%3D%2212%22%20r%3D%2210%22/%3E%3Cpath%20d%3D%22M12%2016v-4%22/%3E%3Cpath%20d%3D%22M12%208h.01%22/%3E%3C/svg%3E") center/contain no-repeat}
+#info:hover::before{background:var(--ink,#1f2328)}
+.foot-icons{display:inline-flex;align-items:center;gap:0}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="hero">
+    <div><h1>Workforce <button id="info" type="button" title="Info: what this page shows" aria-label="Info: what this page shows">Info</button></h1>
+      <div class="hello" id="hello"></div></div>
+    <div class="where" id="where"></div>
+  </div>
+  <section><h2>Needs you</h2><div class="tasks" id="tasks"><div class="clear">Checking…</div></div></section>
+  <section><h2>Where things stand <span class="sub" id="kpiSub"></span></h2><div class="kpis" id="kpis"></div></section>
+  <section><h2>Your work</h2><div class="work" id="work"></div></section>
+  <section><div class="recent" id="recent"></div>
+    <details class="all" id="all"><summary>All pages</summary><div class="menu" id="menu"></div></details></section>
+  <div id="status" class="status"></div>
+  <div id="infoModal" class="info-modal" hidden>
+    <div class="info-card">
+      <div class="info-head"><h3>Workforce home</h3><button id="infoModalClose" type="button" title="Close">✕</button></div>
+      <div class="info-body"><p>Your front page: what needs you, where the plan stands, and your pages.</p>
+        <h4>Needs you</h4><p>Only the tasks that are yours, from the model's own checks: hires waiting for Finance, new HR positions to match, late hires, positions that break a rule. Nothing there means nothing needs you.</p>
+        <h4>Where things stand</h4><p>Four numbers for the year with the change against the comparison version, and the month-by-month line (dashed: the comparison). Click a card for its report.</p>
+        <h4>Your work</h4><p>The pages for your role (HR, Finance or cost-centre manager, from your TM1 groups). Every page you may open is under All pages.</p></div>
+    </div>
+  </div>
+</div>
+<script src="/lens-kit/lens-kit.js"></script>
+<script>
+// Workforce · Home — the front page: what needs the person looking at it (their tasks from the
+// model's checks), where the plan stands (four KPIs with trends), their pages, and every page.
+// Everything is read from the model and the person's TM1 groups — nothing kept by hand.
+(function () {
+  // ── Workforce helpers (the same small block in every Workforce Lens) ──
+  var $ = function (id) { return document.getElementById(id) }
+  var esc = function (v) { return String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;') }
+  var M = function (d, e) { return '[' + d + '].[' + d + '].[' + String(e).replace(/]/g, ']]') + ']' }
+  // one MDX query; a result cut short by the 20,000-cell limit is an error, never partial numbers
+  var call = function (mdx) { return window.lensBridge.call('execMDX', { mdx: mdx }).then(function (r) { if (r && r.truncated) throw new Error('A query returned more than 20,000 cells and was cut short — narrow it.'); return r }) }
+  var opt = function (list, sel) { return list.map(function (x) { var v = typeof x === 'object' ? x.value : x, l = typeof x === 'object' ? x.label : x; return '<option value="' + esc(v) + '"' + (v === sel ? ' selected' : '') + '>' + esc(l) + '</option>' }).join('') }
+  var say = function (t, k) { var s = $('status'); if (s) { s.textContent = t || ''; s.className = 'status ' + (k || '') } }
+  var fail = function (e) { say(e && e.message ? e.message : String(e), 'err') }
+  var num = function (v) { return v == null || v === '' ? 0 : Number(v) }
+  var gbp = function (v) { return Lens.format(v, Math.abs(v) >= 1e6 ? '£m' : Math.abs(v) >= 1e4 ? '£k' : '£') }
+  var signed = function (v, f) { return (v > 0 ? '+' : v < 0 ? '−' : '') + (f || gbp)(Math.abs(v)) }
+  var monthsOf = function (yr) { var m = []; for (var i = 1; i <= 12; i++) m.push(yr + '-' + (i < 10 ? '0' : '') + i); return m }
+  var MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+  var monthName = function (p) { return p ? MON[Number(p.slice(5)) - 1] + ' ' + p.slice(0, 4) : '' }
+  var attrMDX = function (dim, attrs, set) { var A = '}ElementAttributes_' + dim; return 'SELECT {' + attrs.map(function (a) { return M(A, a) }).join(',') + '} ON 0, {' + (set || 'TM1FILTERBYLEVEL({TM1SUBSETALL([' + dim + '].[' + dim + '])},0)') + '} ON 1 FROM [' + A + ']' }
+  // cost centres with their function (R&D / S&M / G&A) and name, from the model
+  var costCentres = function () {
+    return call(attrMDX('WFP Cost Centre', ['Function', 'CC Name'])).then(function (r) {
+      var list = Lens.rows(r).map(function (x) { return { id: x['WFP Cost Centre'], fn: x.Function || '', name: x['CC Name'] || '' } })
+      var order = []; list.forEach(function (c) { if (order.indexOf(c.fn) < 0) order.push(c.fn) })   // functions in model order
+      return list.sort(function (a, b) { return order.indexOf(a.fn) - order.indexOf(b.fn) || a.id.localeCompare(b.id) })
+    })
+  }
+  var ccOptions = function (ccs, sel, all) {
+    var fns = Array.from(new Set(ccs.map(function (c) { return c.fn })))
+    return (all ? '<option value="">' + esc(all) + '</option>' : '') + fns.map(function (f) {
+      return '<optgroup label="' + esc(f) + '">' + ccs.filter(function (c) { return c.fn === f }).map(function (c) { return '<option value="' + esc(c.id) + '"' + (c.id === sel ? ' selected' : '') + '>' + esc(c.id + ' · ' + c.name) + '</option>' }).join('') + '</optgroup>'
+    }).join('')
+  }
+  // every position with the attributes asked for — in as many queries as the cell limit needs
+  var positions = function (attrs) {
+    return call('SELECT {} ON 0, {TM1FILTERBYLEVEL({TM1SUBSETALL([WFP Position].[WFP Position])},0)} ON 1 FROM [}ElementAttributes_WFP Position]').then(function (r) {
+      var n = r.Axes[1] ? r.Axes[1].Tuples.length : 0, per = Math.max(1, Math.floor(18000 / Math.max(n, 1))), groups = []
+      for (var i = 0; i < attrs.length; i += per) groups.push(attrs.slice(i, i + per))
+      return Promise.all(groups.map(function (g) { return call(attrMDX('WFP Position', g)) })).then(function (rs) {
+        var by = {}, out = []
+        rs.forEach(function (res) { Lens.rows(res).forEach(function (x) { var id = x['WFP Position']; if (!by[id]) { by[id] = { id: id }; out.push(by[id]) } Object.assign(by[id], x) }) })
+        return out
+      })
+    })
+  }
+  // period index <-> month name ('2026-04' = 16)
+  var periodIndex = function () {
+    return call('SELECT {[}ElementAttributes_WFP Period].[}ElementAttributes_WFP Period].[Period Index]} ON 0, {TM1FILTERBYLEVEL({TM1SUBSETALL([WFP Period].[WFP Period])},0)} ON 1 FROM [}ElementAttributes_WFP Period]').then(function (r) {
+      var to = {}, from = {}; Lens.rows(r).forEach(function (x) { var i = Number(x['Period Index']); if (i && /^\d{4}-\d{2}$/.test(x['WFP Period'])) { to[x['WFP Period']] = i; from[i] = x['WFP Period'] } }); return { idx: to, month: from }
+    })
+  }
+  // the latest forecast snapshot (a FCST yyyy-mm version under Non-Calculating) — none = ''
+  var lastSnapshot = function () {
+    return call('SELECT {} ON 0, {[WFP Version].[WFP Version].[Non-Calculating].Children} ON 1 FROM [WFP Headcount]').then(function (r) {
+      var s = (r.Axes[1] ? r.Axes[1].Tuples : []).map(function (t) { return t.Members[0].Name }).filter(function (n) { return /^FCST \d{4}-\d{2}$/.test(n) }).sort()
+      return s.length ? s[s.length - 1] : ''
+    }, function () { return '' })
+  }
+  // the month actuals run to (Actuals Cutoff Index in Forecast)
+  var cutoffIndex = function (version) {
+    return call('SELECT {' + M('WFP Assumptions Measure', 'Actuals Cutoff Index') + '} ON 0 FROM [WFP Assumptions] WHERE (' + M('WFP Period', '2026-01') + ',' + M('WFP Version', version || 'Forecast') + ',' + M('WFP Entity', 'UK Ltd') + ')').then(function (r) { return num((Lens.rows(r)[0] || {})['Actuals Cutoff Index']) })
+  }
+  // ────────────────────────────────────────────────────────────────────
+
+  // ── Stripes: every grid Lens has its own toggle, remembered per user ──
+  var stripeState = function (key) { try { var v = localStorage.getItem('lens-stripes:' + key); return v === null ? true : v === '1' } catch (e) { return true } }
+  var stripeSave = function (key, on) { try { localStorage.setItem('lens-stripes:' + key, on ? '1' : '0') } catch (e) {} }
+
+  // Version · Plan month (first forecast month = the month after the last Actual)
+  // · Actuals to. Rendered into every Lens header; follows the #ver selector.
+  var planMeta = function (el, fallbackVersion) {
+    var draw = function () {
+      var v = ($('ver') && $('ver').value) || fallbackVersion || 'Forecast'
+      return Promise.all([periodIndex(), cutoffIndex('Forecast')]).then(function (r) {
+        var P = r[0], cutoff = Number(r[1]) || 0
+        var pm = P.month[cutoff + 1] || '', am = P.month[cutoff] || ''
+        $(el).innerHTML = '<span><em>Version</em><b>' + esc(v) + '</b></span>' +
+          '<span><em>Plan month</em><b>' + esc(monthName(pm) || '—') + '</b></span>' +
+          '<span><em>Actuals to</em><b>' + esc(monthName(am) || '—') + '</b></span>'
+      }, function () {})
+    }
+    var sel = $('ver'); if (sel) sel.addEventListener('change', draw)
+    return draw()
+  }
+
+  // Info: the ⓘ Info button opens a plain-English card for the page.
+  var infoPanel = function (openId, modalId) {
+    var b = $(openId), m = $(modalId); if (!b || !m) return
+    var close = function () { m.hidden = true }
+    b.onclick = function () { m.hidden = false }
+    var x = $(modalId + 'Close'); if (x) x.onclick = close
+    m.addEventListener('click', function (e) { if (e.target === m) close() })
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape') close() })
+  }
+
+  var C = Lens.config()
+  infoPanel('info', 'infoModal')
+  var VERSION = C.version || 'Forecast', COMPARE = C.compare || 'Budget', YEAR = C.year || '2026', APPROVERS = C.approvers || ['WFP Finance']
+  var PAGES = {
+    'WFP-People': ['People', 'Hire, pay or FTE change, leavers and backfill, transfers, time away and cover.'],
+    'WFP-Positions': ['Positions', 'Hire month, grade, FTE, location or salary from a month; move, close, reopen, request a new position.'],
+    'WFP-Match': ['Match new Positions', 'Link each new HR position to the planned one it fulfils.'],
+    'WFP-Assumptions': ['Assumptions', 'Merit, inflation, bonus pool and on-costs, by month.'],
+    'WFP-Hire-Approvals': ['Hire approvals', 'Hires waiting for approval, with their cost.'],
+    'WFP-Attention': ['Needs attention', 'Positions breaking a rule, new HR positions, late hires.'],
+    'WFP-My-Cost-Centre': ['My cost centre', 'My people and cost against budget and the last forecast.'],
+    'WFP-KPIs': ['Workforce KPIs', 'Headcount, FTE, cost, attrition and approvals against budget.'],
+    'WFP-Cost': ['Workforce cost', 'Cost by month, cost centre and pay component.'],
+    'WFP-Headcount': ['Headcount', 'People at month end, joiners, leavers and open roles; by location.'],
+    'WFP-Pay-Grades': ['Pay & grades', 'Salaries against pay bands, grade mix, part-time and contractors.'],
+    'WFP-Bridge': ['Budget to forecast', 'Why forecast differs from budget: FX, people, pay, bonus.'],
+    'WFP-Since-Last': ['Since last forecast', 'Hires moved, new leavers, approvals, pay changes.']
+  }
+  var MENU = C.menu || [
+    ['People & positions', ['WFP-People', 'WFP-Positions', 'WFP-Match']],
+    ['Plan', ['WFP-Assumptions']],
+    ['Review', ['WFP-Hire-Approvals', 'WFP-Attention', 'WFP-My-Cost-Centre']],
+    ['Dashboard & analysis', ['WFP-KPIs', 'WFP-Cost', 'WFP-Headcount', 'WFP-Pay-Grades']],
+    ['Variance', ['WFP-Bridge', 'WFP-Since-Last']]
+  ]
+  // a role from the person's TM1 groups; its pages come first
+  var ROLES = C.roles || [
+    { role: 'HR', groups: ['WFP HR'], pages: ['WFP-People', 'WFP-Positions', 'WFP-Match', 'WFP-Attention'] },
+    { role: 'Finance', groups: ['WFP Finance'], pages: ['WFP-Hire-Approvals', 'WFP-Assumptions', 'WFP-Bridge', 'WFP-Since-Last', 'WFP-Attention'] },
+    { role: 'Cost-centre manager', groups: [], pages: ['WFP-My-Cost-Centre', 'WFP-Positions', 'WFP-Headcount', 'WFP-Cost'] }
+  ]
+  var RECENT = 'wfp-home:recent'
+  var recent = function () { try { return JSON.parse(localStorage.getItem(RECENT) || '[]') } catch (e) { return [] } }
+  var open = function (name) {
+    try { localStorage.setItem(RECENT, JSON.stringify([name].concat(recent().filter(function (x) { return x !== name })).slice(0, 5))) } catch (e) {}
+    window.lensBridge.call('openLens', { name: name }).catch(fail)
+  }
+  var allowed = null
+  var canSee = function (lens) { return !!PAGES[lens] && (!allowed || allowed.has(lens)) }
+
+  // ── a small trend line: this version solid, the comparison dashed ──
+  var spark = function (vals, cmp) {
+    var all = vals.concat(cmp || []).filter(function (v) { return v != null })
+    if (!all.length) return ''
+    var lo = Math.min.apply(null, all), hi = Math.max.apply(null, all), W = 120, H = 34
+    var y = function (v) { return hi === lo ? H / 2 : H - 2 - (v - lo) / (hi - lo) * (H - 4) }
+    var pts = function (a) { return a.map(function (v, i) { return (i * W / Math.max(a.length - 1, 1)).toFixed(1) + ',' + y(v).toFixed(1) }).join(' ') }
+    var last = vals.length - 1
+    return '<svg viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none" aria-hidden="true">' +
+      (cmp ? '<polyline points="' + pts(cmp) + '" fill="none" stroke="var(--faint)" stroke-width="1.2" stroke-dasharray="3 3" vector-effect="non-scaling-stroke"/>' : '') +
+      '<polyline points="' + pts(vals) + '" fill="none" stroke="var(--accent)" stroke-width="2" vector-effect="non-scaling-stroke" stroke-linejoin="round"/>' +
+      '<circle cx="' + (last * W / Math.max(last, 1)).toFixed(1) + '" cy="' + y(vals[last]).toFixed(1) + '" r="2.6" fill="var(--accent)"/></svg>'
+  }
+  var delta = function (v, c, fmt, costLike) {
+    var d = v - c, cls = Math.abs(d) < 0.5 ? 'flat' : costLike ? (d > 0 ? 'up' : 'down') : 'flat'
+    return '<b class="' + cls + '">' + (Math.abs(d) < 0.5 ? 'same as' : (d > 0 ? '+' : '−') + fmt(Math.abs(d)) + ' vs') + '</b> ' + esc(COMPARE.toLowerCase()) + ' ' + esc(fmt(c))
+  }
+  var whole = function (v) { return Math.round(v).toLocaleString() }
+
+  var months = monthsOf(YEAR), MS = '{' + months.map(function (p) { return M('WFP Period', p) }).join(',') + '}'
+  var V = '{' + M('WFP Version', VERSION) + ',' + M('WFP Version', COMPARE) + '}'
+  var G = [M('WFP Entity', 'Group'), M('WFP Cost Centre', 'Total Cost Centre'), M('WFP Position', 'Total Positions')]
+  var HMeas = '{' + ['Closing', 'Open Positions', 'Leavers'].map(function (m) { return M('WFP Headcount Measure', m) }).join(',') + '}'
+  var attnTotal = function (cube, measure, measureDim, emp) {
+    var HM = monthsOf('2026').concat(monthsOf('2027'))
+    var where = [M('WFP Version', VERSION), M('WFP Position', 'Total Positions')].concat(emp ? [M('WFP Employee', emp)] : []).concat([M(measureDim, measure)])
+    return call('SELECT {' + HM.map(function (p) { return M('WFP Period', p) }).join(',') + '} ON 0 FROM [' + cube + '] WHERE (' + where.join(',') + ')')
+      .then(function (r) { var row = Lens.rows(r)[0] || {}; return HM.reduce(function (a, p) { return a + num(row[p]) }, 0) })
+  }
+
+  Promise.all([
+    (window.lensBridge && window.lensBridge.call) ? window.lensBridge.call('lenses').catch(function () { return null }) : Promise.resolve(null),
+    Lens.whoami(),
+    Promise.all([periodIndex(), cutoffIndex(VERSION), lastSnapshot(),
+      call('SELECT {' + M('WFP Control Measure', 'Cost Out Of Date') + ',' + M('WFP Control Measure', 'Cost Updated At') + '} ON 0 FROM [WFP Control] WHERE (' + M('WFP Version', VERSION) + ')').catch(function () { return null })]),
+    call('SELECT ' + V + ' * ' + HMeas + ' ON 0, ' + MS + ' ON 1 FROM [WFP Headcount] WHERE (' + G.join(',') + ')'),
+    call('SELECT ' + V + ' ON 0, ' + MS + ' ON 1 FROM [WFP Workforce Cost] WHERE (' + G.concat([M('WFP Currency', 'Reporting'), M('WFP Pay Component', 'Total Compensation'), M('WFP Workforce Cost Measure', 'Amount')]).join(',') + ')'),
+    call('SELECT {' + M('WFP Hiring Plan Measure', 'Hire Month') + ',' + M('WFP Hiring Plan Measure', 'Approved') + '} ON 0, NON EMPTY {TM1FILTERBYLEVEL({TM1SUBSETALL([WFP Position].[WFP Position])},0)} ON 1 FROM [WFP Hiring Plan] WHERE (' + M('WFP Version', VERSION) + ')'),
+    call('SELECT {' + M('WFP Hiring Plan Measure', 'Unplanned Position') + ',' + M('WFP Hiring Plan Measure', 'Late Hire') + '} ON 0 FROM [WFP Hiring Plan] WHERE (' + M('WFP Version', VERSION) + ',' + M('WFP Position', 'Total Positions') + ')'),
+    Promise.all([attnTotal('WFP Assignment', 'Over-filled', 'WFP Assignment Measure', 'All Employees'), attnTotal('WFP Assignment', 'Over-booked', 'WFP Assignment Measure', 'All Employees'), attnTotal('WFP Position Map', 'Person In Closed Position', 'WFP Position Map Measure', '')])
+  ]).then(function (r) {
+    if (Array.isArray(r[0]) && r[0].length) allowed = new Set(r[0].map(function (x) { return x.name }))
+    var who = r[1] || {}
+    // ── who: the roles from their groups (an administrator sees HR and Finance) ──
+    var admin = Lens.whoami.inGroup(who, ['ADMIN'])
+    var mine = ROLES.filter(function (x) { return x.groups.length && (admin || Lens.whoami.inGroup(who, x.groups)) })
+    if (!mine.length) mine = ROLES.filter(function (x) { return !x.groups.length })
+    var roleNames = mine.map(function (x) { return x.role })
+    var hour = new Date().getHours(), greet = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening'
+    $('hello').innerHTML = greet + ', <b>' + esc(who.name || who.display || who.user || '') + '</b>' + roleNames.map(function (n) { return '<span class="role">' + esc(n) + '</span>' }).join('')
+
+    // ── where we are in the cycle, and whether cost is fresh ──
+    var P = r[2][0], cut = Number(r[2][1]) || 0, snap = r[2][2], ctl = r[2][3] ? (Lens.rows(r[2][3])[0] || {}) : {}
+    var busy = num(ctl['Cost Out Of Date']) > 0, at = String(ctl['Cost Updated At'] || '')
+    $('where').innerHTML = [
+      ['Version', VERSION], ['Plan from', monthName(P.month[cut + 1]) || '—'], ['Actuals to', monthName(P.month[cut]) || '—'],
+      ['Last snapshot', snap || 'none']
+    ].map(function (x) { return '<span><em>' + esc(x[0]) + '</em><b>' + esc(x[1]) + '</b></span>' }).join('') +
+      '<span class="' + (busy ? 'busy' : 'live') + '"><em>Cost</em><b>' + (busy ? 'updating…' : 'up to date' + (at ? ' · ' + esc(at.slice(5)) : '')) + '</b></span>'
+
+    // ── needs you: only this person's tasks ──
+    var hires = Lens.rows(r[5]).filter(function (x) { return num(x['Hire Month']) > 0 })
+    var waiting = hires.filter(function (x) { return x.Approved !== 'Y' }).length
+    var chk = Lens.rows(r[6])[0] || {}, unplanned = num(chk['Unplanned Position']), late = num(chk['Late Hire'])
+    var attn = (r[7] || []).reduce(function (a, x) { return a + x }, 0)
+    var is = function (n) { return roleNames.indexOf(n) >= 0 }
+    var tasks = []
+    if (waiting && Lens.whoami.inGroup(who, APPROVERS.concat(admin ? ['ADMIN'] : [])) && canSee('WFP-Hire-Approvals')) tasks.push({ n: waiting, t: waiting === 1 ? 'hire waiting for your approval' : 'hires waiting for your approval', s: 'Each counts in the plan once you approve it.', lens: 'WFP-Hire-Approvals' })
+    if (unplanned && is('HR') && canSee('WFP-Match')) tasks.push({ n: unplanned, t: unplanned === 1 ? 'new HR position to match' : 'new HR positions to match', s: 'Link each to the planned position it fulfils, so the hire counts once.', lens: 'WFP-Match' })
+    if (late && (is('HR') || is('Finance')) && canSee('WFP-Attention')) tasks.push({ n: late, t: late === 1 ? 'late hire' : 'late hires', s: 'Approved, past their month, nobody in post — move the month, match or cancel.', lens: 'WFP-Attention' })
+    if (attn && (is('HR') || is('Finance')) && canSee('WFP-Attention')) tasks.push({ n: attn, t: attn === 1 ? 'position breaks a rule' : 'positions break a rule', s: 'Over-filled, someone over 1.0 FTE, or someone in a closed position.', lens: 'WFP-Attention', cls: 'bad' })
+    $('tasks').innerHTML = tasks.length
+      ? tasks.map(function (x) { return '<button class="task ' + (x.cls || '') + '" data-open="' + esc(x.lens) + '"><span class="n">' + x.n + '</span><span class="t"><strong>' + esc(x.t) + '</strong><small>' + esc(x.s) + '</small></span><span class="go">Open →</span></button>' }).join('')
+      : '<div class="clear">Nothing needs you right now.</div>'
+
+    // ── where things stand: four numbers for the year, with their month-by-month line ──
+    var hc = Lens.rows(r[3]), cost = Lens.rows(r[4])
+    var col = function (rows, v, m) { return rows.map(function (x) { return num(x[m ? v + ' / ' + m : v]) }) }
+    var sum = function (a) { return a.reduce(function (s, x) { return s + x }, 0) }
+    var ppl = col(hc, VERSION, 'Closing'), pplC = col(hc, COMPARE, 'Closing')
+    var opn = col(hc, VERSION, 'Open Positions'), opnC = col(hc, COMPARE, 'Open Positions')
+    var lv = col(hc, VERSION, 'Leavers'), lvC = col(hc, COMPARE, 'Leavers')
+    var cs = col(cost, VERSION), csC = col(cost, COMPARE)
+    var cum = function (a) { var t = 0; return a.map(function (x) { return t += x }) }
+    $('kpiSub').textContent = '· ' + YEAR + ' · ' + VERSION + ' (dashed: ' + COMPARE + ')'
+    $('kpis').innerHTML = [
+      { l: 'People at year end', v: whole(ppl[11]), d: delta(ppl[11], pplC[11], whole), s: spark(ppl, pplC), lens: 'WFP-Headcount' },
+      { l: 'Cost FY' + YEAR, v: gbp(sum(cs)), d: delta(sum(cs), sum(csC), gbp, true), s: spark(cum(cs), cum(csC)), lens: 'WFP-Cost' },
+      { l: 'Open roles at year end', v: whole(opn[11]), d: delta(opn[11], opnC[11], whole), s: spark(opn, opnC), lens: 'WFP-Headcount' },
+      { l: 'Leavers in ' + YEAR, v: whole(sum(lv)), d: delta(sum(lv), sum(lvC), whole), s: spark(cum(lv), cum(lvC)), lens: 'WFP-Headcount' }
+    ].map(function (k) { return '<button class="kpi" data-open="' + esc(k.lens) + '" title="Open ' + esc(PAGES[k.lens][0]) + '"><span class="l">' + esc(k.l) + '</span><span class="v">' + esc(k.v) + '</span><span class="d">' + k.d + '</span>' + k.s + '</button>' }).join('')
+
+    // ── your work, recently opened, every page ──
+    var seen = {}, work = []
+    mine.forEach(function (x) { x.pages.forEach(function (p) { if (!seen[p] && canSee(p)) { seen[p] = 1; work.push(p) } }) })
+    $('work').innerHTML = work.map(function (p) { return '<button class="tile" data-open="' + esc(p) + '"><strong>' + esc(PAGES[p][0]) + '</strong><small>' + esc(PAGES[p][1]) + '</small></button>' }).join('')
+    var rec = recent().filter(canSee).slice(0, 5)
+    $('recent').innerHTML = rec.length ? '<span class="sub" style="align-self:center;margin-right:4px">Recently opened</span>' + rec.map(function (p) { return '<button data-open="' + esc(p) + '">' + esc(PAGES[p][0]) + '</button>' }).join('') : ''
+    $('menu').innerHTML = MENU.map(function (g) {
+      var ps = g[1].filter(canSee); if (!ps.length) return ''
+      return '<div><h3>' + esc(g[0]) + '</h3>' + ps.map(function (p) { return '<button data-open="' + esc(p) + '">' + esc(PAGES[p][0]) + '</button>' }).join('') + '</div>'
+    }).join('')
+    try { if (localStorage.getItem('wfp-home:all') === '1') $('all').open = true } catch (e) {}
+    say('Read at ' + new Date().toLocaleTimeString() + '.')
+  }).catch(fail)
+  $('all').addEventListener('toggle', function () { try { localStorage.setItem('wfp-home:all', $('all').open ? '1' : '0') } catch (e) {} })
+  document.addEventListener('click', function (e) { var b = e.target.closest('[data-open]'); if (b) open(b.getAttribute('data-open')) })
+})()
+</script>
+</body>
+</html>

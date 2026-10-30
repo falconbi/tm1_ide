@@ -18,6 +18,7 @@ import FormatSettings from '@/components/FormatSettings'
 import EditorPreferences from '@/components/EditorPreferences'
 import PeriodBuilder from '@/components/PeriodBuilder'
 import SessionControl from '@/components/SessionControl'
+import SaveDataButton from '@/components/SaveDataButton'
 import LoginPage from '@/components/LoginPage'
 import UserManagement from '@/components/UserManagement'
 import ServerLoginDialog from '@/components/ServerLoginDialog'
@@ -361,6 +362,7 @@ const [showCatalog, setShowCatalog]           = useState(false)
               </div>
 
               <div className="w-px h-4 bg-border mx-1" />
+              <SaveDataButton />
               <SessionControl />
 
             </div>

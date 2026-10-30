@@ -1,0 +1,107 @@
+{
+  "name": "narrative-document",
+  "title": "Narrative document",
+  "description": "Commentary or a board paper: sections of text written in the Lens and stored in TM1 text cells, with live numbers dropped into the sentences ({{revenue}}). Read, print, or edit if you are an editor.",
+  "icon": "file-text",
+  "color": "#0f766e",
+  "settings": {
+    "heading": "The document title",
+    "subtitle": "One line under it",
+    "cube": "The cube holding the text cells",
+    "sections": "[{ title, at: { every dimension: member }, placeholder }] \u2014 each section's text is one text (string) cell; put the string member's dimension first in at",
+    "numbers": "{ name: { cube, at: { dimension: member }, format } } \u2014 live numbers; write {{name}} in the text to show it",
+    "editors": "[TM1 groups] \u2014 who sees Edit (TM1 security still decides what can be saved)",
+    "format": "Default number format: number, k$ or $",
+    "writes": "The cubes the text is saved to"
+  },
+  "example": {
+    "heading": "Monthly commentary",
+    "subtitle": "Total company \u00b7 Year 2",
+    "cube": "Income Statement",
+    "sections": [
+      {
+        "title": "Summary",
+        "at": {
+          "Version": "Explanation",
+          "Currency Calc": "Local",
+          "organization": "Total Company",
+          "Year": "Y2",
+          "Month": "Year",
+          "Account": "NP"
+        },
+        "placeholder": "How did the year go? e.g. Net profit was {{np}} against a target of {{np_target}}."
+      },
+      {
+        "title": "Revenue",
+        "at": {
+          "Version": "Explanation",
+          "Currency Calc": "Local",
+          "organization": "Total Company",
+          "Year": "Y2",
+          "Month": "Year",
+          "Account": "4999"
+        }
+      },
+      {
+        "title": "Costs",
+        "at": {
+          "Version": "Explanation",
+          "Currency Calc": "Local",
+          "organization": "Total Company",
+          "Year": "Y2",
+          "Month": "Year",
+          "Account": "TE"
+        }
+      }
+    ],
+    "numbers": {
+      "np": {
+        "at": {
+          "Version": "Actual",
+          "Currency Calc": "Local",
+          "organization": "Total Company",
+          "Year": "Y2",
+          "Month": "Year",
+          "Account": "NP"
+        }
+      },
+      "np_target": {
+        "at": {
+          "Version": "Target",
+          "Currency Calc": "Local",
+          "organization": "Total Company",
+          "Year": "Y2",
+          "Month": "Year",
+          "Account": "NP"
+        }
+      },
+      "revenue": {
+        "at": {
+          "Version": "Actual",
+          "Currency Calc": "Local",
+          "organization": "Total Company",
+          "Year": "Y2",
+          "Month": "Year",
+          "Account": "4999"
+        }
+      },
+      "costs": {
+        "at": {
+          "Version": "Actual",
+          "Currency Calc": "Local",
+          "organization": "Total Company",
+          "Year": "Y2",
+          "Month": "Year",
+          "Account": "TE"
+        }
+      }
+    },
+    "editors": [
+      "Lens Finance"
+    ],
+    "format": "k$",
+    "writes": [
+      "Income Statement"
+    ]
+  }
+}

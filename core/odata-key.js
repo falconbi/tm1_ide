@@ -1,6 +1,6 @@
 'use strict'
 
-// Shared OData segment / URI-reference encoder (see docs/ESCAPING_AUDIT.md).
+// Shared OData segment / URI-reference encoder (see docs/ide/ESCAPING_AUDIT.md).
 // TM1 REST keys sit inside single quotes in a URL path (`Dimensions('Name')`),
 // so a literal apostrophe in a name must be doubled (`''`) for the OData key
 // literal — and encodeURIComponent deliberately leaves `'` alone, so that

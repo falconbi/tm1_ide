@@ -31,7 +31,7 @@ export function cellsetToHierarchyData(cellset, formatMap = {}, pageMembers = []
   const colTuples = colAxis.Tuples ?? []
   const rowTuples = rowAxis?.Tuples ?? []
 
-  // Include members array so HierarchyGrid can build tuple keys for multi-dim cols
+  // Include members array so a grid can build tuple keys for multi-dim cols
   let columns = colTuples.map((t, i) => ({
     id:      `c${i}`,
     label:   (t.Members ?? []).map(m => m.Name).join(' / '),

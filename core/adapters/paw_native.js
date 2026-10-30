@@ -1,6 +1,7 @@
 'use strict'
 
 const { getCachedPawSession, getCSRF } = require('../paw_connect')
+const { paramsSerializer } = require('../odata-params')   // spaces as %20 — TM1 doesn't read '+'
 
 class PawNativeAdapter {
     constructor({ pawHost, serverName, token }) {
@@ -21,12 +22,12 @@ class PawNativeAdapter {
 
     async get(path, params = {}) {
         const { s, h } = await this._sh()
-        return (await s.get(this._url(path), { params, headers: h })).data
+        return (await s.get(this._url(path), { params, paramsSerializer, headers: h })).data
     }
 
-    async post(path, body = {}) {
+    async post(path, body = {}, opts = {}) {
         const { s, h } = await this._sh()
-        return (await s.post(this._url(path), body, { headers: h })).data
+        return (await s.post(this._url(path), body, { headers: h, ...(opts.timeout ? { timeout: opts.timeout } : {}) })).data
     }
 
     async patch(path, body = {}) {

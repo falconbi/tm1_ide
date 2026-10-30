@@ -1,0 +1,28 @@
+{
+  "name": "WFP-KPIs",
+  "status": "draft",
+  "owner": "admin",
+  "version": 19,
+  "updated": "2026-10-25T03:01:34.308Z",
+  "description": "Dashboard — headcount, FTE, cost, cost per FTE, attrition, approvals and capex share against budget, with trends and splits.",
+  "folder": "Workforce",
+  "title": "8 Workforce KPIs",
+  "icon": "gauge",
+  "color": "#0f766e",
+  "image": "",
+  "config": {
+    "version": "Forecast",
+    "compare": [
+      "Budget"
+    ],
+    "years": [
+      "2026",
+      "2027"
+    ],
+    "home": "WFP-Home",
+    "homeLabel": "Workforce"
+  },
+  "created": "2026-10-20T19:16:21.917Z",
+  "createdBy": "admin",
+  "toolkitVersion": 11
+}

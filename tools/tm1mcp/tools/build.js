@@ -1,12 +1,13 @@
 'use strict'
 
 const { z } = require('zod')
+const guard = require('../guard')
 
 // ══════════════════════════════════════════════════════════════════════════════
 // MODEL BUILD — WRITE (all require an open change set)
 // ══════════════════════════════════════════════════════════════════════════════
 
-function register(server, { client, ok, logChange, requireChangeSet, lintRules, lintTI }) {
+function register(server, { client, ok, esc, logChange, requireChangeSet, lintRules, lintTI, policy }) {
     server.tool(
         'build_dimension',
         'Create a dimension declaratively in one call — elements, consolidation edges, and element attributes. If the dimension exists, elements/edges/attributes are added to it. Use for small dimensions; drive large dimensions from a TI process (build_process) that loads from a datasource. ' +
@@ -114,7 +115,8 @@ function register(server, { client, ok, logChange, requireChangeSet, lintRules, 
     server.tool(
         'add_elements',
         'Add elements and/or consolidation edges to an existing dimension (incremental — for small additions; use a TI process for bulk loads). ' +
-        'If `hierarchy` names one that does not exist, it is created. Note: an element added to the main hierarchy is NOT automatically in an alternate hierarchy — list it in `elements` here too.',
+        'If `hierarchy` names one that does not exist, it is created. Numeric elements in a measure dimension get a Format (default "#,##0.00"; pass `format` per element for counts "#,##0" or rates "0.00%"). ' +
+        'Note: an element added to the main hierarchy is NOT automatically in an alternate hierarchy — list it in `elements` here too.',
         {
             dimension: z.string().describe('Dimension name'),
             hierarchy: z.string().optional().describe('Hierarchy name (defaults to the dimension name); created if missing'),
@@ -151,9 +153,31 @@ function register(server, { client, ok, logChange, requireChangeSet, lintRules, 
                 try { await c.addEdge(dimension, ed.parent, ed.child, ed.weight ?? 1, h) }
                 catch (e) { tol(e, /already exists|duplicate/i) }
             }
+
+            // House rule, same as build_dimension: numeric elements in a measure dimension get a
+            // Format. A new element otherwise lands with a blank Format and displays raw. Only
+            // fill a blank one (or one the caller explicitly formats) — never overwrite.
+            let formatsApplied = 0
+            if (/\bMeasures?$/i.test(dimension) && elements.length) {
+                try { await c.createElementAttribute(dimension, 'Format', 'String') }
+                catch (e) { tol(e, /already exists/i) }
+                for (const el of elements) {
+                    if ((el.type ?? 'N') !== 'N') continue
+                    let current = ''
+                    try {
+                        const vals = await c.getElementAttributeValues(dimension, el.name)
+                        current = vals?.Format ?? vals?.format ?? ''
+                    } catch { /* element attr row not readable yet — treat as unset */ }
+                    if (current && !el.format) continue
+                    await c.writeElementAttribute(dimension, el.name, 'Format', el.format ?? '#,##0.00', 'S')
+                    formatsApplied++
+                }
+            }
+
             logChange(hierCreated ? 'HIERARCHY_CREATED' : 'ELEMENT_ADDED', 'dimension', dimension,
                 { detail: `${elements.length} elements, ${edges.length} edges${hierarchy ? ` in ${hierarchy}` : ''}` })
-            return ok(`Added ${elements.length} elements and ${edges.length} edges to "${dimension}"${hierarchy && hierarchy !== dimension ? ` hierarchy "${hierarchy}"${hierCreated ? ' (created)' : ''}` : ''}.`)
+            return ok(`Added ${elements.length} elements and ${edges.length} edges to "${dimension}"${hierarchy && hierarchy !== dimension ? ` hierarchy "${hierarchy}"${hierCreated ? ' (created)' : ''}` : ''}` +
+                (formatsApplied ? `; applied Format to ${formatsApplied} numeric measure element(s)` : '') + '.')
         }
     )
 
@@ -338,16 +362,31 @@ function register(server, { client, ok, logChange, requireChangeSet, lintRules, 
 
     server.tool(
         'reprocess_feeders',
-        'Reprocess the FEEDERS for one or more cubes (POST tm1.ProcessFeeders). Run this after recreating a cube or changing feeder rules — cross-cube feeders into a recreated cube stay dead until you do, and consolidations silently read as 0 while every leaf still computes on a direct read.',
+        'Reprocess the FEEDERS for one or more cubes (POST tm1.ProcessFeeders; on TM1 v11, which lacks it, a temporary TI runs CubeProcessFeeders). Run this after recreating a cube or changing feeder rules — cross-cube feeders into a recreated cube stay dead until you do, and consolidations silently read as 0 while every leaf still computes on a direct read.',
         {
             cubes: z.array(z.string()).describe('Cube names to reprocess, e.g. the recreated cube plus any that feed into it'),
         },
         async ({ cubes }) => {
             const c = client()
-            const done = [], failed = []
+            const done = [], failed = [], noRest = []
             for (const name of cubes) {
                 try { await c.post(`Cubes('${esc(name)}')/tm1.ProcessFeeders`, {}); done.push(name) }
-                catch (e) { failed.push(`${name}: ${e.response?.data?.error?.message ?? e.message}`) }
+                catch (e) {
+                    const msg = e.response?.data?.error?.message ?? e.message
+                    // TM1 v11 has no REST ProcessFeeders — do it in TI instead (below)
+                    if (/can ?not be resolved/i.test(msg)) noRest.push(name)
+                    else failed.push(`${name}: ${msg}`)
+                }
+            }
+            if (noRest.length) {
+                const tmp = `}tm1mcp feeders ${Date.now()}`
+                try {
+                    await c.createOrReplaceProcess({ name: tmp, prolog: noRest.map(n => `CubeProcessFeeders( '${n.replace(/'/g, "''")}' );`).join('\n') })
+                    const r = await c.executeProcess(tmp)
+                    if (r?.ProcessExecuteStatusCode && r.ProcessExecuteStatusCode !== 'CompletedSuccessfully') throw new Error(r.ProcessExecuteStatusCode)
+                    done.push(...noRest)
+                } catch (e) { for (const n of noRest) failed.push(`${n}: ${e.response?.data?.error?.message ?? e.message}`) }
+                finally { await c.delete(`Processes('${esc(tmp)}')`).catch(() => {}) }
             }
             return ok(failed.length ? { reprocessed: done, failed } : `Feeders reprocessed for ${done.join(', ')}.`)
         }
@@ -367,15 +406,19 @@ function register(server, { client, ok, logChange, requireChangeSet, lintRules, 
             })).optional(),
             datasource: z.record(z.any()).optional().describe(
                 'TM1 DataSource object, e.g. { "Type": "ODBC", "dataSourceNameForServer": "MyDSN", "userName": "u", "password": "p", "query": "SELECT ..." } ' +
-                'or { "Type": "ASCII", "dataSourceNameForServer": "C:\\\\data\\\\file.csv", "asciiDelimiterChar": ",", "asciiHeaderRecords": 1 }. Omit for a process with no datasource.'
+                'or { "Type": "ASCII", "dataSourceNameForServer": "C:\\\\data\\\\file.csv", "asciiDelimiterType": "Character", "asciiDelimiterChar": ",", "asciiQuoteCharacter": "\\"", "asciiHeaderRecords": 1 } (TM1 refuses an ASCII source without asciiDelimiterType) — and give its columns in variables. Omit for a process with no datasource.'
             ),
+            variables: z.array(z.object({
+                Name: z.string(),
+                Type: z.enum(['String', 'Numeric']).optional().describe('default String'),
+            })).optional().describe('The datasource columns, in order, as Data/Metadata variables (needed for an ASCII or ODBC datasource), e.g. [{ "Name": "vEmployee" }, { "Name": "nFTE", "Type": "Numeric" }]'),
             prolog:   z.string().optional().describe('Prolog section code'),
             metadata: z.string().optional().describe('Metadata section code'),
             data:     z.string().optional().describe('Data section code'),
             epilog:   z.string().optional().describe('Epilog section code'),
             force:    z.boolean().optional().describe('Write even if the static TI lint found errors'),
         },
-        async ({ name, parameters, datasource, prolog, metadata, data, epilog, force }) => {
+        async ({ name, parameters, datasource, variables, prolog, metadata, data, epilog, force }) => {
             requireChangeSet()
             const lint = lintTI({ prolog, metadata, data, epilog })
             if (lint.errors.length && !force) {
@@ -383,7 +426,8 @@ function register(server, { client, ok, logChange, requireChangeSet, lintRules, 
             }
             const c      = client()
             const exists = await c.getProcess(name).then(() => true).catch(() => false)
-            await c.createOrReplaceProcess({ name, parameters, datasource, prolog, metadata, data, epilog })
+            await c.createOrReplaceProcess({ name, parameters, datasource, prolog, metadata, data, epilog,
+                variables: variables?.map((v, i) => ({ Name: v.Name, Type: v.Type ?? 'String', Position: i + 1, StartByte: 0, EndByte: 0 })) })
             logChange(exists ? 'PROCESS_SAVED' : 'PROCESS_CREATED', 'process', name,
                 { after: { prolog: prolog ?? '', metadata: metadata ?? '', data: data ?? '', epilog: epilog ?? '' } })
             const note = lint.warnings.length ? ` (lint warnings: ${lint.warnings.map(w => `[${w.section}] ${w.message}`).join(' | ')})` : ''
@@ -443,8 +487,16 @@ function register(server, { client, ok, logChange, requireChangeSet, lintRules, 
                 query = `SELECT {[${colDim}].[${colDim}].[${coordinates[colDim]}]} ON 0 FROM [${cube}]` + (slicer ? ` WHERE (${slicer})` : '')
             }
             const res   = await c.executeMDX(query, max_cells)
-            const cells = (res.Cells ?? []).map(x => ({ ordinal: x.Ordinal, value: x.Value, formatted: x.FormattedValue }))
-            return ok({ mdx: query, cell_count: cells.length, truncated: res.truncated ?? false, cells })
+            const raw   = (res.Cells ?? []).map(x => ({ ordinal: x.Ordinal, value: x.Value, formatted: x.FormattedValue }))
+            // Masking rules apply per cube (config/mcp-security.json); a read across
+            // several cubes is checked against each.
+            let cells = raw, redacted = 0
+            for (const cb of [...new Set([cube, ...guard.cubesInMdx(query)].filter(Boolean))]) {
+                const { policy: pol } = await guard.maskPolicyFor(policy, cb, c)   // + parents of masked members
+                const r = guard.redactCells(pol, { cube: cb, axes: res.Axes, cells, mdx: query })
+                cells = r.cells; redacted += r.redacted
+            }
+            return ok({ mdx: query, cell_count: cells.length, truncated: res.truncated ?? false, ...(redacted ? { redacted } : {}), cells })
         }
     )
 
@@ -520,8 +572,9 @@ function register(server, { client, ok, logChange, requireChangeSet, lintRules, 
             start_time: z.string().optional().describe('ISO start time, e.g. 2026-01-01T06:00:00Z'),
             frequency:  z.string().optional().describe('ISO-8601 duration, e.g. P1DT00H00M00S for daily. Default daily.'),
             active:     z.boolean().optional().describe('Activate immediately (default false)'),
+            execution_mode: z.enum(['SingleCommit', 'MultipleCommit']).optional().describe('How the chore commits. SingleCommit (default) runs every step in one transaction; MultipleCommit commits after each step, so a long multi-step job never holds one long lock.'),
         },
-        async ({ name, steps, start_time, frequency, active }) => {
+        async ({ name, steps, start_time, frequency, active, execution_mode = 'SingleCommit' }) => {
             requireChangeSet()
             const c = client()
             await c.createChore({
@@ -529,7 +582,7 @@ function register(server, { client, ok, logChange, requireChangeSet, lintRules, 
                 StartTime:     start_time ?? new Date().toISOString(),
                 DSTSensitive:  false,
                 Active:        !!active,
-                ExecutionMode: 'SingleCommit',
+                ExecutionMode: execution_mode,
                 Frequency:     frequency ?? 'P1DT00H00M00S',
                 Tasks: steps.map((s, i) => ({
                     Step: i,

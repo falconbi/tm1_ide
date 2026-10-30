@@ -11,6 +11,8 @@ export default defineConfig({
       '@':      path.resolve(__dirname, './src'),
       '@core':  path.resolve(__dirname, '../core'),
       '@shared': path.resolve(__dirname, '../shared'),
+      // the shared pivot (shared/pivot) imports AG Grid — resolve it from here, one copy
+      'ag-grid-community': path.resolve(__dirname, 'node_modules/ag-grid-community'),
     },
   },
   // Build straight into the folder the server serves, clearing it first —

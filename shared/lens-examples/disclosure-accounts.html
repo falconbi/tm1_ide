@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Disclosure accounts</title>
+<style>
+:root{--bg:var(--lens-bg,#f6f7f7);--ink:var(--lens-ink,#16201f);--faint:var(--lens-faint,#85908f);--rule:var(--lens-rule,#dfe4e3);--panel:var(--lens-panel,#fff);--accent:var(--lens-accent,#0f766e);--bad:var(--lens-bad,#b4372d);--good:var(--lens-good,#1d7a46)}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}
+.wrap{padding:16px 18px 24px;display:grid;gap:12px}
+header{display:flex;flex-wrap:wrap;align-items:end;gap:12px 18px}
+h1{font-size:20px;margin:0}
+h2{font-size:14px;margin:0 0 8px}
+.sub{font-size:12.5px;color:var(--faint)}
+.controls{display:flex;gap:10px;margin-left:auto;align-items:end;flex-wrap:wrap}
+label{display:grid;gap:3px;font-size:11px;color:var(--faint);text-transform:uppercase;letter-spacing:.06em}
+select,button,input,textarea{font:inherit;font-size:13px;padding:5px 10px;border:1px solid var(--rule);border-radius:7px;background:var(--panel);color:var(--ink)}
+button{cursor:pointer}
+button.primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+button:disabled{opacity:.45;cursor:default}
+.card{background:var(--panel);border:1px solid var(--rule);border-radius:10px;padding:12px;min-width:0}
+.bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px}
+.status{font-size:13px}
+.status.ok{color:var(--good)} .status.err{color:var(--bad)} .status.busy{color:var(--faint)}
+.need{padding:18px;border:1px dashed var(--rule);border-radius:10px;color:var(--faint);font-size:13px}
+.need code{color:var(--ink)}
+.page{background:#fff;color:#111;border:1px solid var(--rule);border-radius:6px;padding:34px 42px;max-width:820px;margin:0 auto;font-family:Georgia,"Times New Roman",serif}
+.page .ent{font-size:22px;font-weight:700;margin:0}
+.page .per{color:#555;margin:2px 0 26px}
+.stmt{margin:0 0 30px;break-inside:avoid}
+.stmt h2{font-size:16px;margin:0 0 4px;font-family:inherit}
+.stmt .unit{font-size:12px;color:#555;margin-bottom:6px}
+table.fs{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums;font-size:14px}
+table.fs th{text-align:right;font-weight:700;padding:4px 6px;border-bottom:1px solid #111}
+table.fs th:first-child{text-align:left}
+table.fs td{padding:3px 6px}
+table.fs td.n{text-align:right;white-space:nowrap;width:120px}
+table.fs td.note{text-align:center;width:46px;color:#555}
+table.fs tr.heading td{font-weight:700;padding-top:12px}
+table.fs tr.subtotal td{font-weight:700}
+table.fs tr.subtotal td.n{border-top:1px solid #111}
+table.fs tr.total td{font-weight:700}
+table.fs tr.total td.n{border-top:1px solid #111;border-bottom:3px double #111}
+table.fs tr.line td:first-child{padding-left:16px}
+.notes h2{font-size:16px;margin:0 0 10px;font-family:inherit}
+.notes .n{margin:0 0 14px}
+.notes .n b{display:block;margin-bottom:3px}
+.notes .n p{margin:0;white-space:pre-wrap;line-height:1.55}
+@media print{header,.bar{display:none!important}.wrap{padding:0}.page{border:0;padding:0;max-width:none}body{background:#fff}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header><div><h1 id="heading">Disclosure accounts</h1><div class="sub" id="subtitle"></div></div>
+    <div class="controls"><button id="refresh">Refresh</button><button id="print" class="primary">Print / PDF</button></div></header>
+  <div class="bar"><span id="status" class="status"></span></div>
+  <div class="page" id="page"></div>
+</div>
+<script src="/lens-kit/lens-kit.js"></script>
+<script>
+// ── Disclosure accounts (Viewfinder template) ────────────────────────────────
+// Published financial statements and notes: fixed layouts (statement lines,
+// headings, subtotals and totals), this year against last year, rounded, with
+// negatives in brackets — laid out for printing or saving as PDF. Every number
+// is read live from TM1.
+(function () {
+  var $ = function (id) { return document.getElementById(id) }
+  var esc = function (v) { return String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;') }
+  var M = function (d, e) { return '[' + d + '].[' + d + '].[' + String(e).replace(/]/g, ']]') + ']' }
+  var call = function (mdx) { return window.lensBridge.call('execMDX', { mdx: mdx }) }
+  var say = function (text, kind) { var s = $('status'); if (!s) return; s.textContent = text || ''; s.className = 'status ' + (kind || '') }
+  function fail(e) { say((e && e.message ? e.message : e), 'err') }
+  if (!window.Lens) return fail(new Error('the Lens toolkit did not load'))
+  var C = Lens.config()
+  function need(keys, into) {
+    var missing = keys.filter(function (k) { return !C[k] })
+    if (!missing.length) return false
+    $(into).innerHTML = '<div class="need">This screen needs its settings — add <code>' + missing.join('</code>, <code>') + '</code> to its config (IDE → Config tab).</div>'
+    return true
+  }
+  // A WHERE clause from { dimension: member } (missing dimensions use their default member).
+  function where(obj) { var k = Object.keys(obj || {}); return k.length ? ' WHERE (' + k.map(function (d) { return M(d, obj[d]) }).join(',') + ')' : '' }
+  function setOf(spec) {
+    if (spec.members) return '{' + spec.members.map(function (m) { return M(spec.dimension, m) }).join(',') + '}'
+    if (spec.under) return '{TM1FILTERBYLEVEL({DESCENDANTS(' + M(spec.dimension, spec.under) + ')}, ' + (spec.level || 0) + ')}'
+    return '{TM1FILTERBYLEVEL({TM1SUBSETALL([' + spec.dimension + '].[' + spec.dimension + '])}, ' + (spec.level || 0) + ')}'
+  }
+  function names(dim, into) {
+    return call('SELECT {[}ElementAttributes_' + dim + '].[}ElementAttributes_' + dim + '].[Caption_Default]} ON 0, {TM1SUBSETALL([' + dim + '].[' + dim + '])} ON 1 FROM [}ElementAttributes_' + dim + ']')
+      .then(function (r) { Lens.rows(r).forEach(function (x) { if (x.Caption_Default) into[x[dim]] = x.Caption_Default }) }, function () {})
+  }
+  if (need(['cube', 'lineDimension', 'columns', 'statements'], 'page')) return
+  $('heading').textContent = C.heading || 'Disclosure accounts'
+  $('subtitle').textContent = C.subtitle || ''
+  var DIV = { units: 1, thousands: 1000, millions: 1000000 }[C.rounding || 'thousands'] || 1000
+  function amount(v, sign) {
+    if (v == null || v === '') return '–'
+    var x = Math.round((Number(v) * (sign || 1)) / DIV)
+    if (!x) return '–'
+    var s = Math.abs(x).toLocaleString('en', { maximumFractionDigits: 0 })
+    return x < 0 ? '(' + s + ')' : s
+  }
+  var colDims = Object.keys(C.columns[0].at || {})
+  function tuple(at) { return '(' + colDims.map(function (d) { return M(d, at[d]) }).join(',') + ')' }
+  function statement(st) {
+    var members = st.lines.filter(function (l) { return l.member }).map(function (l) { return l.member })
+    var w = Object.assign({}, C.where || {}); colDims.forEach(function (d) { delete w[d] }); delete w[C.lineDimension]
+    if (!members.length) return Promise.resolve({})
+    return call('SELECT {' + C.columns.map(function (c) { return tuple(c.at) }).join(',') + '} ON 0, {' + members.map(function (m) { return M(C.lineDimension, m) }).join(',') + '} ON 1 FROM [' + (st.cube || C.cube) + ']' + where(w))
+      .then(function (r) {
+        var out = {}, n = C.columns.length
+        members.forEach(function (m, i) { out[m] = C.columns.map(function (c, k) { var cell = (r.Cells || [])[i * n + k]; return cell ? cell.Value : null }) })
+        return out
+      })
+  }
+  function render(values) {
+    var unit = C.unitLabel || ({ units: '\$', thousands: '\$000', millions: '\$m' }[C.rounding || 'thousands'])
+    var html = '<p class="ent">' + esc(C.entity || '') + '</p><p class="per">' + esc(C.period || '') + '</p>'
+    html += C.statements.map(function (st, si) {
+      var v = values[si]
+      return '<div class="stmt"><h2>' + esc(st.title) + '</h2><div class="unit">' + esc(st.unitLabel || unit) + '</div><table class="fs"><thead><tr><th></th><th>' + (C.notesColumn === false ? '' : 'Note') + '</th>' +
+        C.columns.map(function (c) { return '<th>' + esc(c.label) + '</th>' }).join('') + '</tr></thead><tbody>' +
+        st.lines.map(function (l) {
+          var style = l.style || (l.member ? 'line' : 'heading')
+          var cells = l.member ? (v[l.member] || []).map(function (x) { return '<td class="n">' + amount(x, l.sign) + '</td>' }).join('') : C.columns.map(function () { return '<td class="n"></td>' }).join('')
+          return '<tr class="' + esc(style) + '"><td>' + esc(l.label) + '</td><td class="note">' + esc(l.note || '') + '</td>' + cells + '</tr>'
+        }).join('') + '</tbody></table></div>'
+    }).join('')
+    if ((C.notes || []).length) html += '<div class="notes"><h2>Notes to the financial statements</h2>' + C.notes.map(function (n) { return '<div class="n"><b>' + esc(n.number ? n.number + '. ' : '') + esc(n.title) + '</b><p>' + esc(n.text || '') + '</p></div>' }).join('') + '</div>'
+    $('page').innerHTML = html
+  }
+  function load() { say('Loading…', 'busy'); return Promise.all(C.statements.map(statement)).then(function (v) { render(v); say('') }) }
+  $('refresh').onclick = function () { load().catch(fail) }
+  $('print').onclick = function () { try { window.print() } catch (e) { say('Printing is not available here.', 'err') } }
+  load().catch(fail)
+})()
+</script>
+</body>
+</html>

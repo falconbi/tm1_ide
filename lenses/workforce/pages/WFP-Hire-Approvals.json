@@ -1,0 +1,24 @@
+{
+  "name": "WFP-Hire-Approvals",
+  "status": "draft",
+  "owner": "admin",
+  "version": 18,
+  "updated": "2026-10-25T03:01:34.081Z",
+  "description": "Review — Finance's queue of every hire waiting for approval across the company, with its cost; approve several at once.",
+  "folder": "Workforce",
+  "title": "5 Hire approvals",
+  "icon": "circle-check",
+  "color": "#0f766e",
+  "image": "",
+  "config": {
+    "version": "Forecast",
+    "approvers": [
+      "WFP Finance"
+    ],
+    "home": "WFP-Home",
+    "homeLabel": "Workforce"
+  },
+  "created": "2026-10-20T19:16:21.579Z",
+  "createdBy": "admin",
+  "toolkitVersion": 11
+}

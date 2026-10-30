@@ -12,7 +12,7 @@ const TI_CONTROL_KEYWORDS = new Set(['IF', 'WHILE', 'ELSEIF'])
 
 const SECTION_LABELS = {
   PrologProcedure:   'Prolog',
-  MetaDataProcedure: 'Metadata',
+  MetadataProcedure: 'Metadata',
   DataProcedure:     'Data',
   EpilogProcedure:   'Epilog',
 }
@@ -582,7 +582,7 @@ function checkSemicolons(rawCode, sectionLabel) {
 
 /**
  * Validate TI process code across all sections.
- * @param {{ PrologProcedure:string, MetaDataProcedure:string, DataProcedure:string, EpilogProcedure:string }} sections
+ * @param {{ PrologProcedure:string, MetadataProcedure:string, DataProcedure:string, EpilogProcedure:string }} sections
  * @returns {{ section: string, line: number, severity: 'error'|'warning', message: string }[]}
  */
 export function validateTICode(sections, options = {}) {

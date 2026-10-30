@@ -1,6 +1,7 @@
 'use strict'
 
 const axios = require('axios')
+const { paramsSerializer } = require('../odata-params')   // spaces as %20 — TM1 doesn't read '+'
 
 const TOKEN_REFRESH_MARGIN = 60_000  // refresh 60s before expiry
 
@@ -39,13 +40,13 @@ class PawOAuth2Adapter {
 
     async get(path, params = {}) {
         await this._ensureToken()
-        const r = await this._client.get(this._url(path), { params, headers: this._headers() })
+        const r = await this._client.get(this._url(path), { params, paramsSerializer, headers: this._headers() })
         return r.data
     }
 
-    async post(path, body = {}) {
+    async post(path, body = {}, opts = {}) {
         await this._ensureToken()
-        const r = await this._client.post(this._url(path), body, { headers: this._headers() })
+        const r = await this._client.post(this._url(path), body, { headers: this._headers(), ...(opts.timeout ? { timeout: opts.timeout } : {}) })
         return r.data
     }
 

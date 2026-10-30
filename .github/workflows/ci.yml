@@ -48,6 +48,6 @@ jobs:
             exit 1
           fi
           if [ "$COUNT" -gt "$LINT_BASELINE" ]; then
-            echo "Lint regressed: ${COUNT} > ${LINT_BASELINE}. Lower the baseline in docs/LINT.md AND here in .github/workflows/ci.yml together, only when lint improves."
+            echo "Lint regressed: ${COUNT} > ${LINT_BASELINE}. Lower the baseline in docs/ide/LINT.md AND here in .github/workflows/ci.yml together, only when lint improves."
             exit 1
           fi

@@ -1,0 +1,156 @@
+{
+  "name": "}IDE.Version.Copy",
+  "description": "Copies one version into another across every cube carrying the version dimension: static (frozen snapshot under Non-Calculating) or calculating (inputs only, rules rebuild). One generic core TI, no Bedrock. Full documentation in the Prolog header.",
+  "parameters": [
+    {
+      "Name": "pSource",
+      "Prompt": "REQUIRED: version to copy FROM - a leaf element of the version dimension (e.g. Forecast)",
+      "Value": "",
+      "Type": "String"
+    },
+    {
+      "Name": "pTarget",
+      "Prompt": "REQUIRED: version to copy TO (e.g. FCST 2026-04). Must not exist for pMode=new; must exist for pMode=replace",
+      "Value": "",
+      "Type": "String"
+    },
+    {
+      "Name": "pMode",
+      "Prompt": "REQUIRED: new = create the target version | replace = the target exists; clear it and copy again",
+      "Value": "new",
+      "Type": "String"
+    },
+    {
+      "Name": "pType",
+      "Prompt": "REQUIRED: static = frozen copy of every value, target put under pStaticParent | calculating = copy input cells only, rules recalculate",
+      "Value": "static",
+      "Type": "String"
+    },
+    {
+      "Name": "pVersionDim",
+      "Prompt": "OPTIONAL: version dimension (e.g. WFP Version). Blank = SYS Settings 'Version Dimension' for pApp, then All",
+      "Value": "",
+      "Type": "String"
+    },
+    {
+      "Name": "pStaticParent",
+      "Prompt": "OPTIONAL: consolidation that marks a version static, which the rule guards test (default Non-Calculating)",
+      "Value": "Non-Calculating",
+      "Type": "String"
+    },
+    {
+      "Name": "pInputCubes",
+      "Prompt": "OPTIONAL: calculating copies only - cubes to copy, | separated. Blank = every cube carrying the version dimension",
+      "Value": "",
+      "Type": "String"
+    },
+    {
+      "Name": "pExcludeCubes",
+      "Prompt": "OPTIONAL: cubes never copied, | separated (e.g. WFP Control). Blank = SYS Settings 'Version Exclude Cubes'",
+      "Value": "",
+      "Type": "String"
+    },
+    {
+      "Name": "pStatus",
+      "Prompt": "OPTIONAL: value written to the target's status attribute. Blank = Approved (static) or Working (calculating)",
+      "Value": "",
+      "Type": "String"
+    },
+    {
+      "Name": "pTypeAttr",
+      "Prompt": "OPTIONAL: version attribute that records the type (default Version Type). Skipped if the dimension has no such attribute",
+      "Value": "Version Type",
+      "Type": "String"
+    },
+    {
+      "Name": "pStatusAttr",
+      "Prompt": "OPTIONAL: version attribute that records the status (default Status). Skipped if the dimension has no such attribute",
+      "Value": "Status",
+      "Type": "String"
+    },
+    {
+      "Name": "pCube",
+      "Prompt": "INTERNAL: leave blank. The process sets it when it calls itself once per cube",
+      "Value": "",
+      "Type": "String"
+    },
+    {
+      "Name": "pApp",
+      "Prompt": "OPTIONAL: application row in SYS Settings used for blank defaults (default WFP)",
+      "Value": "WFP",
+      "Type": "String"
+    }
+  ],
+  "variables": [
+    {
+      "Name": "V1",
+      "Type": "String",
+      "Position": 1,
+      "StartByte": 0,
+      "EndByte": 0
+    },
+    {
+      "Name": "V2",
+      "Type": "String",
+      "Position": 2,
+      "StartByte": 0,
+      "EndByte": 0
+    },
+    {
+      "Name": "V3",
+      "Type": "String",
+      "Position": 3,
+      "StartByte": 0,
+      "EndByte": 0
+    },
+    {
+      "Name": "V4",
+      "Type": "String",
+      "Position": 4,
+      "StartByte": 0,
+      "EndByte": 0
+    },
+    {
+      "Name": "V5",
+      "Type": "String",
+      "Position": 5,
+      "StartByte": 0,
+      "EndByte": 0
+    },
+    {
+      "Name": "V6",
+      "Type": "String",
+      "Position": 6,
+      "StartByte": 0,
+      "EndByte": 0
+    },
+    {
+      "Name": "V7",
+      "Type": "String",
+      "Position": 7,
+      "StartByte": 0,
+      "EndByte": 0
+    },
+    {
+      "Name": "V8",
+      "Type": "String",
+      "Position": 8,
+      "StartByte": 0,
+      "EndByte": 0
+    },
+    {
+      "Name": "Value",
+      "Type": "Numeric",
+      "Position": 9,
+      "StartByte": 0,
+      "EndByte": 0
+    }
+  ],
+  "datasource": {
+    "Type": "None"
+  },
+  "prolog": "#Region @DOC\r\n# ====================================================================================================\r\n# }IDE.Version.Copy -- copy one version into another, across every cube that carries the version\r\n# dimension. One generic core process for any TM1 model; no Bedrock.\r\n# ====================================================================================================\r\n#\r\n# DESCRIPTION\r\n#   Copies the data of version pSource into version pTarget in every cube that has the version\r\n#   dimension (less pExcludeCubes). Two kinds of copy:\r\n#     static       a frozen copy: every stored and rule-calculated value is written into the target,\r\n#                  and the target is put under pStaticParent (e.g. Non-Calculating) so the rule guard\r\n#                  [] = N: IF(ELPAR(<dim>, !<dim>, 1) @= 'Non-Calculating', STET, CONTINUE);\r\n#                  stops the rules recalculating it. Use for a month-end forecast snapshot.\r\n#     calculating  a working copy: only input cells are copied (rule values are skipped) and the\r\n#                  target is NOT under pStaticParent, so the rules rebuild everything from the copied\r\n#                  inputs. Use to seed a scenario (e.g. Downside from Forecast).\r\n#\r\n# USE CASES\r\n#   Month-end snapshot   pSource=Forecast  pTarget=FCST 2026-04  pMode=new  pType=static\r\n#   Re-run a snapshot    as above with pMode=replace (the target is cleared first)\r\n#   Seed a scenario      pSource=Forecast  pTarget=Downside  pMode=replace  pType=calculating\r\n#\r\n# HOW IT WORKS\r\n#   Parent call (pCube blank)\r\n#     Prolog  checks the parameters, creates or prepares the target version (type and status\r\n#             attributes, parent), never touching the source.\r\n#     Epilog  calls this process once per cube (pCube set) and fails the whole copy if any cube\r\n#             fails -- there is no silent partial copy.\r\n#   Child call (pCube set)\r\n#     Prolog  builds a source view (pSource only, leaf cells, zeros skipped) and a target view, zeroes\r\n#             the target slice in that cube, and makes the source view this call's data source.\r\n#     Data    writes each source cell to the same coordinates in pTarget.\r\n#     Epilog  removes the temporary views and subsets.\r\n#\r\n# NOTES / GOOD TO KNOW\r\n#   * Cells a rule still owns in the target are skipped (CellIsUpdateable). That happens only in a cube\r\n#     whose rules have no static-version guard; there the rules calculate those cells in the target\r\n#     from its copied inputs. House standard: every rule file starts with the guard.\r\n#   * A static copy refuses to run unless pTarget is under pStaticParent, so a \"static\" copy can never\r\n#     quietly land in a calculating version.\r\n#   * Transaction logging is switched off per cube while copying, and back on after.\r\n#   * Cubes with 2 to 8 dimensions are supported.\r\n#   * Blank pVersionDim / pStaticParent / pInputCubes / pExcludeCubes / pTypeAttr / pStatusAttr are\r\n#     filled from cube SYS Settings (row pApp, then All) when that cube exists.\r\n#   * Called from another process, it ends normally (no ProcessQuit), so the caller is not flagged.\r\n#   * Hidden process (leading }): call it from a model wrapper (e.g. WFP Snapshot) or the IDE's Core TI\r\n#     action / MCP copy_version tool, not directly by end users.\r\n#\r\n# CALL THIS PROCESS\r\n#   nRet = ExecuteProcess( '}IDE.Version.Copy',\r\n#      'pSource', 'Forecast', 'pTarget', 'FCST 2026-04', 'pMode', 'new', 'pType', 'static',\r\n#      'pVersionDim', 'WFP Version', 'pStaticParent', 'Non-Calculating',\r\n#      'pExcludeCubes', 'WFP Control', 'pStatus', 'Approved' );\r\n#   IF( nRet <> ProcessExitNormal() ); ProcessError; ENDIF;\r\n#\r\n# SOURCE  core-ti/version-copy/process.json in the TM1 IDE repo (this server copy is the runtime copy)\r\n# ====================================================================================================\r\n#EndRegion @DOC\r\ncThis = GetProcessName();\r\n# Model settings: application row, then All, then parameter defaults.\r\nIF(CubeExists('SYS Settings') = 1);\r\n  sTmp = CellGetS('SYS Settings', pApp, 'Version Dimension', 'Text');\r\n  IF(sTmp @= ''); sTmp = CellGetS('SYS Settings', 'All', 'Version Dimension', 'Text'); ENDIF;\r\n  IF(sTmp @<> '' & pVersionDim @= ''); pVersionDim = sTmp; ENDIF;\r\n  sTmp = CellGetS('SYS Settings', pApp, 'Version Static Parent', 'Text');\r\n  IF(sTmp @= ''); sTmp = CellGetS('SYS Settings', 'All', 'Version Static Parent', 'Text'); ENDIF;\r\n  IF(sTmp @<> '' & pStaticParent @= ''); pStaticParent = sTmp; ENDIF;\r\n  sTmp = CellGetS('SYS Settings', pApp, 'Version Input Cubes', 'Text');\r\n  IF(sTmp @= ''); sTmp = CellGetS('SYS Settings', 'All', 'Version Input Cubes', 'Text'); ENDIF;\r\n  IF(sTmp @<> '' & pInputCubes @= ''); pInputCubes = sTmp; ENDIF;\r\n  sTmp = CellGetS('SYS Settings', pApp, 'Version Exclude Cubes', 'Text');\r\n  IF(sTmp @= ''); sTmp = CellGetS('SYS Settings', 'All', 'Version Exclude Cubes', 'Text'); ENDIF;\r\n  IF(sTmp @<> '' & pExcludeCubes @= ''); pExcludeCubes = sTmp; ENDIF;\r\n  sTmp = CellGetS('SYS Settings', pApp, 'Version Type Attribute', 'Text');\r\n  IF(sTmp @= ''); sTmp = CellGetS('SYS Settings', 'All', 'Version Type Attribute', 'Text'); ENDIF;\r\n  IF(sTmp @<> '' & pTypeAttr @= ''); pTypeAttr = sTmp; ENDIF;\r\n  sTmp = CellGetS('SYS Settings', pApp, 'Version Status Attribute', 'Text');\r\n  IF(sTmp @= ''); sTmp = CellGetS('SYS Settings', 'All', 'Version Status Attribute', 'Text'); ENDIF;\r\n  IF(sTmp @<> '' & pStatusAttr @= ''); pStatusAttr = sTmp; ENDIF;\r\nENDIF;\r\ncVer = pVersionDim;\r\nIF(cVer @= ''); ProcessError; ENDIF;\r\nIF(pCube @= '');\r\n  IF(pSource @= '' % pTarget @= '' % pSource @= pTarget);\r\n    ProcessError;\r\n  ENDIF;\r\n  IF(DIMIX(cVer, pSource) = 0 % DTYPE(cVer, pSource) @<> 'N');\r\n    ProcessError;\r\n  ENDIF;\r\n  IF(DIMIX(cVer, pTarget) > 0 & DTYPE(cVer, pTarget) @<> 'N');\r\n    ProcessError;\r\n  ENDIF;\r\n  IF(pMode @<> 'new' & pMode @<> 'replace');\r\n    ProcessError;\r\n  ENDIF;\r\n  IF(pType @<> 'static' & pType @<> 'calculating');\r\n    ProcessError;\r\n  ENDIF;\r\n  IF(pMode @= 'new' & DIMIX(cVer, pTarget) > 0);\r\n    ProcessError;\r\n  ENDIF;\r\n  IF(pMode @= 'replace' & DIMIX(cVer, pTarget) = 0);\r\n    ProcessError;\r\n  ENDIF;\r\n  IF(pMode @= 'new');\r\n    DimensionElementInsertDirect(cVer, '', pTarget, 'N');\r\n  ENDIF;\r\n  IF(pType @= 'static');\r\n    IF(DIMIX('}ElementAttributes_' | cVer, pTypeAttr) > 0); AttrPutS('Static', cVer, pTarget, pTypeAttr); ENDIF;\r\n    IF(pStaticParent @<> '' & DIMIX(cVer, pStaticParent) > 0);\r\n      IF(ELISANC(cVer, pStaticParent, pTarget) = 0);\r\n        DimensionElementComponentAddDirect(cVer, pStaticParent, pTarget, 1);\r\n      ENDIF;\r\n    ENDIF;\r\n  ELSE;\r\n    IF(DIMIX('}ElementAttributes_' | cVer, pTypeAttr) > 0); AttrPutS('Calculated', cVer, pTarget, pTypeAttr); ENDIF;\r\n    IF(pStaticParent @<> '' & DIMIX(cVer, pStaticParent) > 0);\r\n      IF(ELISANC(cVer, pStaticParent, pTarget) = 1);\r\n        DimensionElementComponentDelete(cVer, pStaticParent, pTarget);\r\n      ENDIF;\r\n    ENDIF;\r\n  ENDIF;\r\n  IF(pStatus @= '');\r\n    IF(pType @= 'static'); pStatus = 'Approved'; ELSE; pStatus = 'Working'; ENDIF;\r\n  ENDIF;\r\n  IF(DIMIX('}ElementAttributes_' | cVer, pStatusAttr) > 0); AttrPutS(pStatus, cVer, pTarget, pStatusAttr); ENDIF;\r\n  # The cubes are copied in the Epilog, once the target version is prepared.\r\nENDIF;\r\n\r\n\r\n# Child: pCube set\r\nIF(pCube @<> '');\r\nnSkip = 0;\r\nnDimCount = 0; nD = 1;\r\nWHILE(TabDim(pCube, nD) @<> '');\r\n  nDimCount = nDimCount + 1; nD = nD + 1;\r\nEND;\r\nIF(nDimCount < 2 % nDimCount > 8); ProcessError; ENDIF;\r\nsSuf = NumberToString(INT(RAND() * 1000000000));\r\ncSrcSub = cThis | ' Src ' | sSuf;\r\ncTgtSub = cThis | ' Tgt ' | sSuf;\r\ncSrcView = cThis | ' Src View ' | sSuf;\r\ncTgtView = cThis | ' Tgt View ' | sSuf;\r\nIF(SubsetExists(cVer, cSrcSub) = 1); SubsetDestroy(cVer, cSrcSub); ENDIF;\r\nIF(SubsetExists(cVer, cTgtSub) = 1); SubsetDestroy(cVer, cTgtSub); ENDIF;\r\nSubsetCreate(cVer, cSrcSub); SubsetElementInsert(cVer, cSrcSub, pSource, 1);\r\nSubsetCreate(cVer, cTgtSub); SubsetElementInsert(cVer, cTgtSub, pTarget, 1);\r\n\r\nIF(ViewExists(pCube, cSrcView) = 1); ViewDestroy(pCube, cSrcView); ENDIF;\r\nViewCreate(pCube, cSrcView);\r\nViewSubsetAssign(pCube, cSrcView, cVer, cSrcSub);\r\nnD = 1;\r\nWHILE(TabDim(pCube, nD) @<> '');\r\n  IF(TabDim(pCube, nD) @<> cVer); ViewRowDimensionSet(pCube, cSrcView, TabDim(pCube, nD), 1); ENDIF;\r\n  nD = nD + 1;\r\nEND;\r\nViewExtractSkipZeroesSet(pCube, cSrcView, 1);\r\nViewExtractSkipCalcsSet(pCube, cSrcView, 1);\r\nIF(pType @= 'calculating'); ViewExtractSkipRuleValuesSet(pCube, cSrcView, 1); ELSE; ViewExtractSkipRuleValuesSet(pCube, cSrcView, 0); ENDIF;\r\n\r\nIF(ViewExists(pCube, cTgtView) = 1); ViewDestroy(pCube, cTgtView); ENDIF;\r\nViewCreate(pCube, cTgtView);\r\nViewSubsetAssign(pCube, cTgtView, cVer, cTgtSub);\r\nnD = 1;\r\nWHILE(TabDim(pCube, nD) @<> '');\r\n  IF(TabDim(pCube, nD) @<> cVer); ViewRowDimensionSet(pCube, cTgtView, TabDim(pCube, nD), 1); ENDIF;\r\n  nD = nD + 1;\r\nEND;\r\nViewExtractSkipZeroesSet(pCube, cTgtView, 1);\r\nViewExtractSkipCalcsSet(pCube, cTgtView, 1);\r\nIF(pType @= 'calculating'); ViewExtractSkipRuleValuesSet(pCube, cTgtView, 1); ELSE; ViewExtractSkipRuleValuesSet(pCube, cTgtView, 0); ENDIF;\r\nCubeSetLogChanges(pCube, 0);\r\nViewZeroOut(pCube, cTgtView);\r\nViewDestroy(pCube, cTgtView);\r\n\r\nDataSourceType = 'VIEW';\r\nDatasourceNameForServer = pCube;\r\nDatasourceNameForClient = pCube;\r\nDatasourceCubeView = cSrcView;\r\nENDIF;\r\n",
+  "metadata": "",
+  "data": "# Cells a rule still owns in the target (a cube with no static-version guard) are not\r\n# writable: skip them -- the rule calculates them from the copied inputs.\r\nsV1 = IF(TabDim(pCube, 1) @= pVersionDim, pTarget, V1);\r\nsV2 = IF(TabDim(pCube, 2) @= pVersionDim, pTarget, V2);\r\nsV3 = IF(TabDim(pCube, 3) @= pVersionDim, pTarget, V3);\r\nsV4 = IF(TabDim(pCube, 4) @= pVersionDim, pTarget, V4);\r\nsV5 = IF(TabDim(pCube, 5) @= pVersionDim, pTarget, V5);\r\nsV6 = IF(TabDim(pCube, 6) @= pVersionDim, pTarget, V6);\r\nsV7 = IF(TabDim(pCube, 7) @= pVersionDim, pTarget, V7);\r\nsV8 = IF(TabDim(pCube, 8) @= pVersionDim, pTarget, V8);\r\nIF(Value_is_String = 1);\r\nIF(nDimCount = 2); IF(CellIsUpdateable(pCube, sV1, sV2) = 1); CellPutS(SValue, pCube, sV1, sV2); ELSE; nSkip = nSkip + 1; ENDIF;\r\nELSEIF(nDimCount = 3); IF(CellIsUpdateable(pCube, sV1, sV2, sV3) = 1); CellPutS(SValue, pCube, sV1, sV2, sV3); ELSE; nSkip = nSkip + 1; ENDIF;\r\nELSEIF(nDimCount = 4); IF(CellIsUpdateable(pCube, sV1, sV2, sV3, sV4) = 1); CellPutS(SValue, pCube, sV1, sV2, sV3, sV4); ELSE; nSkip = nSkip + 1; ENDIF;\r\nELSEIF(nDimCount = 5); IF(CellIsUpdateable(pCube, sV1, sV2, sV3, sV4, sV5) = 1); CellPutS(SValue, pCube, sV1, sV2, sV3, sV4, sV5); ELSE; nSkip = nSkip + 1; ENDIF;\r\nELSEIF(nDimCount = 6); IF(CellIsUpdateable(pCube, sV1, sV2, sV3, sV4, sV5, sV6) = 1); CellPutS(SValue, pCube, sV1, sV2, sV3, sV4, sV5, sV6); ELSE; nSkip = nSkip + 1; ENDIF;\r\nELSEIF(nDimCount = 7); IF(CellIsUpdateable(pCube, sV1, sV2, sV3, sV4, sV5, sV6, sV7) = 1); CellPutS(SValue, pCube, sV1, sV2, sV3, sV4, sV5, sV6, sV7); ELSE; nSkip = nSkip + 1; ENDIF;\r\nELSEIF(nDimCount = 8); IF(CellIsUpdateable(pCube, sV1, sV2, sV3, sV4, sV5, sV6, sV7, sV8) = 1); CellPutS(SValue, pCube, sV1, sV2, sV3, sV4, sV5, sV6, sV7, sV8); ELSE; nSkip = nSkip + 1; ENDIF;\r\nENDIF;\r\nELSE;\r\nIF(nDimCount = 2); IF(CellIsUpdateable(pCube, sV1, sV2) = 1); CellPutN(NValue, pCube, sV1, sV2); ELSE; nSkip = nSkip + 1; ENDIF;\r\nELSEIF(nDimCount = 3); IF(CellIsUpdateable(pCube, sV1, sV2, sV3) = 1); CellPutN(NValue, pCube, sV1, sV2, sV3); ELSE; nSkip = nSkip + 1; ENDIF;\r\nELSEIF(nDimCount = 4); IF(CellIsUpdateable(pCube, sV1, sV2, sV3, sV4) = 1); CellPutN(NValue, pCube, sV1, sV2, sV3, sV4); ELSE; nSkip = nSkip + 1; ENDIF;\r\nELSEIF(nDimCount = 5); IF(CellIsUpdateable(pCube, sV1, sV2, sV3, sV4, sV5) = 1); CellPutN(NValue, pCube, sV1, sV2, sV3, sV4, sV5); ELSE; nSkip = nSkip + 1; ENDIF;\r\nELSEIF(nDimCount = 6); IF(CellIsUpdateable(pCube, sV1, sV2, sV3, sV4, sV5, sV6) = 1); CellPutN(NValue, pCube, sV1, sV2, sV3, sV4, sV5, sV6); ELSE; nSkip = nSkip + 1; ENDIF;\r\nELSEIF(nDimCount = 7); IF(CellIsUpdateable(pCube, sV1, sV2, sV3, sV4, sV5, sV6, sV7) = 1); CellPutN(NValue, pCube, sV1, sV2, sV3, sV4, sV5, sV6, sV7); ELSE; nSkip = nSkip + 1; ENDIF;\r\nELSEIF(nDimCount = 8); IF(CellIsUpdateable(pCube, sV1, sV2, sV3, sV4, sV5, sV6, sV7, sV8) = 1); CellPutN(NValue, pCube, sV1, sV2, sV3, sV4, sV5, sV6, sV7, sV8); ELSE; nSkip = nSkip + 1; ENDIF;\r\nENDIF;\r\nENDIF;\r\n",
+  "epilog": "IF(pCube @= '');\r\n  # Parent: the target is committed now -- copy each cube in its own child call.\r\n  # A static copy must land in a version the rules treat as static; skipping unwritable\r\n  # cells into a calculating version would leave a live, not a frozen, copy.\r\n  IF(pType @= 'static' & pStaticParent @<> '');\r\n    IF(ELISANC(cVer, pStaticParent, pTarget) = 0);\r\n      LogOutput('ERROR', cThis | ': ' | pTarget | ' is not under ' | pStaticParent | ' -- refusing a static copy');\r\n      ProcessError;\r\n    ENDIF;\r\n  ENDIF;\r\n  nFail = 0; vFailed = '';\r\n  nC = 1; nCC = DIMSIZ('}Cubes');\r\n  WHILE(nC <= nCC);\r\n    vCube = DIMNM('}Cubes', nC);\r\n    IF(SUBST(vCube, 1, 1) @<> '}');\r\n      nHas = 0; nD = 1;\r\n      WHILE(TabDim(vCube, nD) @<> '');\r\n        IF(TabDim(vCube, nD) @= cVer); nHas = 1; ENDIF;\r\n        nD = nD + 1;\r\n      END;\r\n      IF(nHas = 1);\r\n        vEx = '|' | pExcludeCubes | '|';\r\n        vIn = '|' | pInputCubes | '|';\r\n        IF(SCAN(vEx, '|' | vCube | '|') = 0 & (pType @= 'static' % pInputCubes @= '' % SCAN(vIn, '|' | vCube | '|') > 0));\r\n          nRet = ExecuteProcess(cThis, 'pSource', pSource, 'pTarget', pTarget, 'pMode', pMode, 'pType', pType, 'pVersionDim', cVer, 'pStaticParent', pStaticParent, 'pInputCubes', pInputCubes, 'pExcludeCubes', pExcludeCubes, 'pStatus', pStatus, 'pTypeAttr', pTypeAttr, 'pStatusAttr', pStatusAttr, 'pCube', vCube, 'pApp', pApp);\r\n          # a cube that fails to copy fails the whole copy -- never a silent partial snapshot\r\n          IF(nRet <> ProcessExitNormal()); nFail = nFail + 1; vFailed = vFailed | vCube | '|'; ENDIF;\r\n        ENDIF;\r\n      ENDIF;\r\n    ENDIF;\r\n    nC = nC + 1;\r\n  END;\r\n  IF(nFail > 0);\r\n    LogOutput('ERROR', cThis | ': ' | NumberToString(nFail) | ' cube(s) failed to copy ' | pSource | ' -> ' | pTarget | ': ' | vFailed);\r\n    ProcessError;\r\n  ENDIF;\r\nELSE;\r\n  # Child: drop the temporary views and subsets.\r\n  IF(ViewExists(pCube, cSrcView) = 1); ViewDestroy(pCube, cSrcView); ENDIF;\r\n  IF(ViewExists(pCube, cTgtView) = 1); ViewDestroy(pCube, cTgtView); ENDIF;\r\n  IF(SubsetExists(cVer, cSrcSub) = 1); SubsetDestroy(cVer, cSrcSub); ENDIF;\r\n  IF(SubsetExists(cVer, cTgtSub) = 1); SubsetDestroy(cVer, cTgtSub); ENDIF;\r\n  CubeSetLogChanges(pCube, 1);\r\nENDIF;\r\n"
+}

@@ -1,0 +1,28 @@
+{
+  "name": "WFP-Bridge",
+  "status": "draft",
+  "owner": "admin",
+  "version": 19,
+  "updated": "2026-10-25T03:01:34.695Z",
+  "description": "Variance — why forecast differs from budget (or the last forecast): FX, people, pay rates & merit, bonus, one-offs; by function and cost centre.",
+  "folder": "Workforce",
+  "title": "12 Budget to forecast",
+  "icon": "trending-up",
+  "color": "#0f766e",
+  "image": "",
+  "config": {
+    "version": "Forecast",
+    "compare": [
+      "Budget"
+    ],
+    "years": [
+      "2026",
+      "2027"
+    ],
+    "home": "WFP-Home",
+    "homeLabel": "Workforce"
+  },
+  "created": "2026-10-20T19:16:22.373Z",
+  "createdBy": "admin",
+  "toolkitVersion": 11
+}

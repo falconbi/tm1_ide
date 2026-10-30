@@ -1,19 +1,22 @@
 'use strict'
 
 const { z } = require('zod')
+const guard = require('../guard')
 
 // ══════════════════════════════════════════════════════════════════════════════
 // MODEL CONTEXT — READ
 // ══════════════════════════════════════════════════════════════════════════════
 
-function register(server, { client, ok, esc }) {
+function register(server, { client, ok, esc, policy }) {
+    const may = (kind, name) => guard.allowed(policy, kind, name)
+
     server.tool(
         'list_cubes',
         'List all model (non-control) cube names on the TM1 server',
         {},
         async () => {
             const cubes = await client().getModelCubes()
-            return ok(cubes.map(c => c.Name ?? c))
+            return ok(cubes.map(c => c.Name ?? c).filter(n => may('cubes', n)))
         }
     )
 
@@ -46,7 +49,7 @@ function register(server, { client, ok, esc }) {
         {},
         async () => {
             const dims = await client().getModelDimensions()
-            return ok(dims.map(d => d.Name ?? d))
+            return ok(dims.map(d => d.Name ?? d).filter(n => may('dimensions', n)))
         }
     )
 
@@ -77,7 +80,11 @@ function register(server, { client, ok, esc }) {
             const c = client()
             const defs = await c.getElementAttributes(dimension).catch(() => [])
             const out  = { attributes: defs }
-            if (element) out.values = await c.getElementAttributeValues(dimension, element).catch(() => ({}))
+            if (element) {
+                const { values, redacted } = guard.redactAttributes(policy, dimension, await c.getElementAttributeValues(dimension, element).catch(() => ({})))
+                out.values = values
+                if (redacted) out.redacted = redacted
+            }
             return ok(out)
         }
     )
@@ -88,7 +95,7 @@ function register(server, { client, ok, esc }) {
         {},
         async () => {
             const procs = await client().getProcesses()
-            return ok((procs.value ?? procs).map(p => p.Name ?? p).filter(n => !n.startsWith('}')))
+            return ok((procs.value ?? procs).map(p => p.Name ?? p).filter(n => !n.startsWith('}') && may('processes', n)))
         }
     )
 
@@ -98,14 +105,16 @@ function register(server, { client, ok, esc }) {
         { process: z.string().describe('Process name') },
         async ({ process }) => {
             const p = await client().get(`Processes('${esc(process)}')`)
+            // Passwords in the code or the datasource are always masked.
+            const strip = guard.stripTiCredentials
             return ok({
                 name:       p.Name,
                 parameters: p.Parameters ?? [],
-                datasource: p.DataSources?.[0] ?? p.DataSource ?? null,
-                prolog:     p.PrologProcedure   ?? '',
-                metadata:   p.MetaDataProcedure ?? '',
-                data:       p.DataProcedure     ?? '',
-                epilog:     p.EpilogProcedure   ?? '',
+                datasource: guard.stripDatasourceCredentials(p.DataSources?.[0] ?? p.DataSource ?? null),
+                prolog:     strip(p.PrologProcedure   ?? ''),
+                metadata:   strip(p.MetadataProcedure ?? ''),
+                data:       strip(p.DataProcedure     ?? ''),
+                epilog:     strip(p.EpilogProcedure   ?? ''),
             })
         }
     )
@@ -216,7 +225,7 @@ function register(server, { client, ok, esc }) {
         { dimension: z.string().describe('Dimension name') },
         async ({ dimension }) => {
             const cubes = await client().getCubesForDimension(dimension)
-            return ok((cubes.value ?? cubes).map(c => c.Name ?? c))
+            return ok((cubes.value ?? cubes).map(c => c.Name ?? c).filter(n => may('cubes', n)))
         }
     )
 }

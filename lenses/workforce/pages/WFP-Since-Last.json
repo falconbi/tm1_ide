@@ -1,0 +1,25 @@
+{
+  "name": "WFP-Since-Last",
+  "status": "draft",
+  "owner": "admin",
+  "version": 22,
+  "updated": "2026-10-25T03:01:34.771Z",
+  "description": "Variance — line by line what changed since the last forecast snapshot (hires moved, new leavers, approvals, pay changes) and the cost of each.",
+  "folder": "Workforce",
+  "title": "13 Since last forecast",
+  "icon": "clock",
+  "color": "#0f766e",
+  "image": "",
+  "config": {
+    "version": "Forecast",
+    "years": [
+      "2026",
+      "2027"
+    ],
+    "home": "WFP-Home",
+    "homeLabel": "Workforce"
+  },
+  "created": "2026-10-20T19:16:22.531Z",
+  "createdBy": "admin",
+  "toolkitVersion": 11
+}

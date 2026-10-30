@@ -1,0 +1,283 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Input form</title>
+<style>
+/* colours follow each person's theme (Lens.theme) */
+:root{--bg:var(--lens-bg,#f6f7f7);--ink:var(--lens-ink,#16201f);--faint:var(--lens-faint,#85908f);--rule:var(--lens-rule,#dfe4e3);--panel:var(--lens-panel,#fff);--accent:var(--lens-accent,#0f766e);--bad:var(--lens-bad,#b4372d);--good:var(--lens-good,#1d7a46)}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}
+.wrap{padding:16px 18px 24px;display:grid;gap:12px}
+header{display:flex;flex-wrap:wrap;align-items:end;gap:12px 18px}
+h1{font-size:20px;margin:0}
+.sub{font-size:12.5px;color:var(--faint)}
+.controls{display:flex;gap:10px;margin-left:auto;align-items:end;flex-wrap:wrap}
+label{display:grid;gap:3px;font-size:11px;color:var(--faint);text-transform:uppercase;letter-spacing:.06em}
+select,button{font:inherit;font-size:13px;padding:5px 10px;border:1px solid var(--rule);border-radius:7px;background:var(--panel);color:var(--ink)}
+button{cursor:pointer}
+button.primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+button:disabled{opacity:.45;cursor:default}
+.card{background:var(--panel);border:1px solid var(--rule);border-radius:10px;padding:12px;min-width:0}
+.bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px}
+.status{font-size:13px}
+.status.ok{color:var(--good)} .status.err{color:var(--bad)} .status.busy{color:var(--faint)}
+.key{display:flex;gap:14px;font-size:12px;color:var(--faint);margin-left:auto}
+.spread{display:flex;align-items:end;gap:10px;flex-wrap:wrap;margin-top:12px;padding-top:12px;border-top:1px solid var(--rule)}
+.spread h2{font-size:13px;margin:0 6px 4px 0;align-self:center}
+input{font:inherit;font-size:13px;padding:5px 9px;border:1px solid var(--rule);border-radius:7px;background:var(--panel);color:var(--ink);width:120px}
+.need{padding:18px;border:1px dashed var(--rule);border-radius:10px;color:var(--faint);font-size:13px}
+.need code{color:var(--ink)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div><h1 id="heading">Input form</h1><div class="sub" id="subtitle"></div></div>
+    <div class="controls">
+      <div id="people" style="align-self:center"></div>
+      <label><span id="unitLabel">Unit</span><select id="unit"></select></label>
+      <label id="periodWrap"><span id="periodLabel">Period</span><select id="period"></select></label>
+    </div>
+  </header>
+  <div class="card">
+    <div id="editing" style="margin-bottom:10px"></div>
+    <div class="bar">
+      <button id="save" class="primary" disabled>Save</button>
+      <button id="undo" disabled>Undo</button>
+      <span id="historyBtn"></span>
+      <span id="status" class="status"></span>
+      <span class="key" id="legend"></span>
+    </div>
+    <div id="grid"></div>
+    <div class="spread" id="spreadBox" hidden>
+      <h2>Spread a total</h2>
+      <label><span id="spRowLabel">Row</span><select id="spRow"></select></label>
+      <label>Total<input id="spTotal" inputmode="decimal" placeholder="e.g. 1200"></label>
+      <button id="spGo" title="Saves to TM1 straight away — no need to press Save">Spread and save</button>
+      <span class="sub">saves straight away</span>
+      <span id="spStatus" class="status"></span>
+    </div>
+  </div>
+</div>
+<script src="/lens-kit/lens-kit.js"></script>
+<script>
+// ── Input form (Viewfinder template) ─────────────────────────────────────────
+// One screen for typing numbers into a TM1 cube, driven entirely by its
+// config: which cube and version, the unit people pick (a store, a cost
+// centre…), the period, the rows (leaves under one element) and the columns,
+// plus an optional spread action and editing reservations. Working together,
+// history and the standard colours come with it.
+(function () {
+  var $ = function (id) { return document.getElementById(id) }
+  var esc = function (v) { return String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;') }
+  var M = function (d, e) { return '[' + d + '].[' + d + '].[' + String(e).replace(/]/g, ']]') + ']' }
+  var call = function (mdx) { return window.lensBridge.call('execMDX', { mdx: mdx }) }
+  var say = function (text, kind) { $('status').textContent = text || ''; $('status').className = 'status ' + (kind || '') }
+  function fail(e) { say((e && e.message ? e.message : e), 'err') }
+  if (!window.Lens) return fail(new Error('the Lens toolkit did not load'))
+
+  // ── The config ──
+  var C = Lens.config()
+  var missing = ['cube', 'unit', 'rows', 'columns'].filter(function (k) { return !C[k] })
+  if (missing.length) {
+    $('grid').innerHTML = '<div class="need">This input form needs its settings — add <code>' + missing.join('</code>, <code>') + '</code> to its config (IDE → Config tab).</div>'
+    return
+  }
+  var cube = C.cube
+  var unitDim = C.unit.dimension, rowDim = C.rows.dimension, colDim = C.columns.dimension
+  var period = C.period || null, version = C.version || null
+  var cols = C.columns.members || []
+  var colsAll = cols.concat(C.columns.total ? [C.columns.total] : [])
+  var spreadCfg = C.spread || null, resCfg = C.reservations || null
+  $('heading').textContent = C.heading || 'Input form'
+  $('subtitle').textContent = C.subtitle || ''
+  $('unitLabel').textContent = C.unit.label || unitDim
+  if (period) { $('periodLabel').textContent = period.label || period.dimension; $('period').innerHTML = (period.members || []).map(function (p) { return '<option>' + esc(p) + '</option>' }).join('') }
+  else $('periodWrap').hidden = true
+  $('spRowLabel').textContent = C.rows.label || rowDim
+  $('spreadBox').hidden = !spreadCfg
+
+  var unitNames = {}, rowNames = {}, g = null
+  var unitOf = function () { return $('unit').value }, periodOf = function () { return period ? $('period').value : '' }
+  // Every cube coordinate of one cell: the fixed members, the version, the
+  // unit and period picked, the row and the column.
+  function coords(row, col) {
+    var c = Object.assign({}, C.fixed || {})
+    if (version) c[version.dimension] = version.member
+    c[unitDim] = unitOf()
+    if (period) c[period.dimension] = periodOf()
+    c[rowDim] = row
+    c[colDim] = col
+    return c
+  }
+  function slice() {
+    var w = Object.keys(C.fixed || {}).map(function (d) { return M(d, C.fixed[d]) })
+    if (version) w.push(M(version.dimension, version.member))
+    w.push(M(unitDim, unitOf()))
+    if (period) w.push(M(period.dimension, periodOf()))
+    return ' WHERE (' + w.join(',') + ')'
+  }
+
+  // Names are a nicety: a user without access to the attribute cubes sees codes.
+  function names(dim, into) {
+    return call('SELECT {[}ElementAttributes_' + dim + '].[}ElementAttributes_' + dim + '].[Caption_Default]} ON 0, {TM1SUBSETALL([' + dim + '].[' + dim + '])} ON 1 FROM [}ElementAttributes_' + dim + ']')
+      .then(function (r) { Lens.rows(r).forEach(function (x) { if (x.Caption_Default) into[x[dim]] = x.Caption_Default }) }, function () {})
+  }
+  // The units this person may see (TM1 security hides the rest).
+  function units() {
+    return call('SELECT {} ON 0, {TM1FILTERBYLEVEL({TM1SUBSETALL(' + '[' + unitDim + '].[' + unitDim + '])}, ' + (C.unit.level || 0) + ')} ON 1 FROM [' + cube + ']').then(function (r) {
+      var list = Lens.rows(r).map(function (x) { return x[unitDim] })
+      if (!list.length) throw new Error('you have no access to any ' + (C.unit.label || unitDim).toLowerCase() + ' here')
+      $('unit').innerHTML = list.map(function (o) { return '<option value="' + esc(o) + '">' + esc(unitNames[o] ? unitNames[o] + ' (' + o + ')' : o) + '</option>' }).join('')
+    })
+  }
+
+  // ── Working together ──
+  var tg = null, sent = {}, ed = null, hp = null
+  var channel = function () { return 'unit:' + unitOf() + '|' + periodOf() }
+  var byRow = function (a) { return function (r) { return r[rowDim] === a } }
+  var tell = function (type, data) { if (tg) tg.send(type, data || {}) }
+  function onLive(ev) {
+    var f = ev.from || {}
+    // Someone left without saving: their typing was never in TM1 — reload.
+    if (ev.type === 'leave') { if (g) { g.unmark(ev.id); if (!g.changes().length) load().catch(fail) } return }
+    if (!g || !f.id) return
+    if (ev.type === 'cursor') g.mark(byRow(ev.row), ev.col, f.id, { color: f.color, label: f.user + ' is here' })
+    else if (ev.type === 'typing') {
+      g.setValue(byRow(ev.row), ev.col, ev.value, f.user)
+      g.mark(byRow(ev.row), ev.col, f.id, { color: f.color, label: f.user + ' typed ' + Lens.format(ev.value) })
+    } else if (ev.type === 'saved' || ev.type === 'reservation' || ev.type === 'history') {
+      if (ev.type === 'saved') say(f.user + ' saved ' + (ev.note || (ev.count + ' cell' + (ev.count === 1 ? '' : 's'))) + '.', 'ok')
+      var before = g.snapshot()
+      if (!g.changes().length) load().then(function () { if (g) g.flashChanges(before, { key: function (r) { return r[rowDim] } }) }).catch(fail)
+      else loadHistory()
+    }
+  }
+
+  // ── History, in words ──
+  function describe(e) {
+    if (e.kind === 'write') {
+      var c = e.changes || []
+      return 'changed ' + c.length + ' cell' + (c.length === 1 ? '' : 's') + ': ' + c.slice(0, 4).map(function (x) {
+        var r = x.coordinates[rowDim]
+        return (rowNames[r] || r) + ' ' + x.coordinates[colDim] + ' ' + Lens.format(x.old) + ' → ' + Lens.format(x.value)
+      }).join(', ') + (c.length > 4 ? ' …' : '')
+    }
+    if (spreadCfg && e.process === spreadCfg.process) {
+      var p = e.params || {}, r = p[spreadCfg.row]
+      return 'spread ' + Lens.format(Number(p[spreadCfg.total])) + ' for ' + (rowNames[r] || r) + (e.status && e.status !== 'CompletedSuccessfully' ? ' — refused' : '')
+    }
+    return 'ran ' + e.process + (e.status && e.status !== 'CompletedSuccessfully' ? ' — refused' : '')
+  }
+  function loadHistory() {
+    var match = {}
+    match[unitDim] = unitOf()
+    if (period) match[period.dimension] = periodOf()
+    return Lens.history(match, { skip: resCfg ? [resCfg.process] : [], limit: 100 })
+      .then(function (list) { if (hp) hp.set(list) }, function () { /* a Lens app feature — the IDE preview has none */ })
+  }
+
+  // ── The grid ──
+  var canEdit = function () { return ed.canEdit }
+  function load() { return ed.check().then(loadGrid) }
+  function loadGrid() {
+    if (tg) tg.join(channel())
+    say('Loading…', 'busy')
+    var q = 'SELECT {' + colsAll.map(function (m) { return M(colDim, m) }).join(',') + '} ON 0, ' +
+      '{TM1FILTERBYLEVEL({DESCENDANTS(' + M(rowDim, C.rows.under) + ')}, ' + (C.rows.level || 0) + ')} ON 1 FROM [' + cube + ']' + slice()
+    return call(q).then(function (r) {
+      var data = Lens.rows(r).map(function (x) { var k = x[rowDim]; x.line = rowNames[k] ? k + ' ' + rowNames[k] : k; return x })
+      if (spreadCfg) {
+        var keep = $('spRow').value
+        $('spRow').innerHTML = data.filter(function (x) { return cols.some(function (m) { return x._input && x._input[m] }) })
+          .map(function (x) { return '<option value="' + esc(x[rowDim]) + '">' + esc(x.line) + '</option>' }).join('')
+        if (keep) $('spRow').value = keep
+      }
+      g = Lens.grid('#grid', {
+        height: C.height || '520px',
+        columns: [{ field: 'line', headerName: C.rows.label || rowDim, pinned: 'left', minWidth: 180 }]
+          .concat(cols.map(function (m) { return { field: m, headerName: m, type: 'number', editable: canEdit(), minWidth: 74, format: C.format } }))
+          .concat(C.columns.total ? [{ field: C.columns.total, headerName: C.columns.total, type: 'number', minWidth: 90, format: C.format }] : []),
+        rows: data,
+        onEdit: function (ch) {
+          $('save').disabled = $('undo').disabled = !ch.length
+          say(ch.length ? ch.length + ' change' + (ch.length > 1 ? 's' : '') + ' not saved' : '')
+          ch.forEach(function (c) {
+            var k = c.row[rowDim] + '|' + c.field
+            if (sent[k] !== c.value) { sent[k] = c.value; tell('typing', { row: c.row[rowDim], col: c.field, value: Number(c.value) || 0 }) }
+          })
+        },
+        onFocus: function (row, field) { if (cols.indexOf(field) >= 0) tell('cursor', { row: row[rowDim], col: field }) }
+      })
+      sent = {}
+      $('save').disabled = $('undo').disabled = true
+      $('spGo').disabled = !canEdit()
+      say('')
+      loadHistory()
+    })
+  }
+
+  function save() {
+    var ch = g.changes()
+    if (!ch.length) return
+    $('save').disabled = $('undo').disabled = true
+    say('Saving ' + ch.length + ' cell' + (ch.length > 1 ? 's' : '') + '…', 'busy')
+    return Lens.save(cube, ch.map(function (c) {
+      return { coordinates: coords(c.row[rowDim], c.field), value: Number(c.value) || 0, expect: Number(c.old) || 0 }
+    })).then(function (r) {
+      g.saved()
+      tell('saved', { count: r.written })
+      return loadGrid().then(function () { say('Saved ' + r.written + ' cell' + (r.written > 1 ? 's' : '') + ' to TM1.', 'ok') })
+    }).catch(function (e) {
+      $('save').disabled = $('undo').disabled = false
+      say('Not saved: ' + (e && e.message ? e.message : e), 'err')
+    })
+  }
+
+  // ── Spread (an action button; the process checks rights and does the work) ──
+  function spread() {
+    var say2 = function (text, kind) { $('spStatus').textContent = text || ''; $('spStatus').className = 'status ' + (kind || '') }
+    var total = Number(String($('spTotal').value).replace(/[,$\s]/g, ''))
+    if (!$('spRow').value) return say2('Pick a row.', 'err')
+    if (!isFinite(total) || String($('spTotal').value).trim() === '') return say2('Type the total as a number.', 'err')
+    if (g && g.changes().length) return say2('Save or undo your typed changes first.', 'err')
+    var p = {}
+    p[spreadCfg.unit] = unitOf(); if (spreadCfg.period) p[spreadCfg.period] = periodOf()
+    p[spreadCfg.row] = $('spRow').value; p[spreadCfg.total] = total
+    $('spGo').disabled = true
+    say2('Running…', 'busy')
+    Lens.run(spreadCfg.process, p)
+      .then(function (r) { tell('saved', { note: 'a spread of ' + (rowNames[$('spRow').value] || $('spRow').value) }); return loadGrid().then(function () { say2((r.message || 'Done.') + ' (' + r.seconds + 's)', 'ok') }) })
+      .catch(function (e) { say2('Not done: ' + (e && e.message ? e.message : e), 'err') })
+      .then(function () { $('spGo').disabled = !canEdit() })
+  }
+  $('spGo').onclick = spread
+
+  Lens.legend('#legend', { show: ['typed', 'calc', 'total'] })
+  $('save').onclick = save
+  $('undo').onclick = function () { g.undo(); say(''); tell('history') }
+  $('unit').onchange = $('period').onchange = function () {
+    var dropped = g && g.changes().length
+    if (hp) hp.reset()
+    ed.refresh().then(loadGrid).then(function () { if (dropped) say('Your unsaved changes were dropped when you switched.', 'err') }).catch(fail)
+  }
+  hp = Lens.historyPanel('#historyBtn', { describe: describe, title: 'History' })
+  tg = Lens.live('#people', { onEvent: onLive })
+  ed = Lens.editing('#editing', {
+    process: resCfg ? resCfg.process : 'Lens Reserve',
+    mode: resCfg ? (resCfg.mode || 'auto') : 'off',
+    target: function () { var t = {}; t[resCfg.unit] = unitOf(); if (resCfg.period) t[resCfg.period] = periodOf(); return t },
+    hasChanges: function () { return !!(g && g.changes().length) },
+    save: save,
+    onChange: function (state, why) {
+      tell('reservation')
+      if (why === 'take' && g && g.changes().length && ed.canEdit) { $('save').disabled = $('undo').disabled = false; $('spGo').disabled = false; return say('You are editing again — press Save to keep your changes.', 'ok') }
+      if (why === 'timeout' && g && g.changes().length) { $('spGo').disabled = true; return say('Editing timed out and was handed back. Your unsaved changes are still on screen — press Start editing, then Save, to keep them.', 'err') }
+      loadGrid().then(function () { if (why === 'timeout') say('Editing timed out and was handed back.', 'err') }).catch(fail)
+    }
+  })
+  Promise.all([names(unitDim, unitNames), names(rowDim, rowNames)]).then(units).then(load).catch(fail)
+})()
+</script>
+</body>
+</html>

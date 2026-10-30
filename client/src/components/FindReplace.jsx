@@ -182,7 +182,7 @@ export default function FindReplace({ onClose }) {
             method: 'POST', headers: { 'Content-Type': 'application/json', 'x-ide-token': localStorage.getItem('tm1-token') ?? '' },
             body: JSON.stringify({
               PrologProcedure:   updated.Prolog,
-              MetaDataProcedure: updated.Metadata,
+              MetadataProcedure: updated.Metadata,
               DataProcedure:     updated.Data,
               EpilogProcedure:   updated.Epilog,
             }),

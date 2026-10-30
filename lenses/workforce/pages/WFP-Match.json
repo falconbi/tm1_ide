@@ -1,0 +1,28 @@
+{
+  "name": "WFP-Match",
+  "status": "draft",
+  "owner": "admin",
+  "version": 10,
+  "updated": "2026-10-25T03:01:33.951Z",
+  "description": "People & positions — link each new HR position to the planning-created position it fulfils (WFP Match TBH), so the hire counts once. Suggestions are confirmed by a person.",
+  "folder": "Workforce",
+  "title": "3 Match new Positions",
+  "icon": "users",
+  "color": "#0f766e",
+  "image": "",
+  "config": {
+    "home": "WFP-Home",
+    "homeLabel": "Workforce",
+    "versions": [
+      "Forecast",
+      "Downside"
+    ],
+    "actors": [
+      "WFP HR",
+      "WFP Finance"
+    ]
+  },
+  "created": "2026-10-23T18:41:14.544Z",
+  "createdBy": "admin",
+  "toolkitVersion": 11
+}
