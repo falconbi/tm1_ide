@@ -21,8 +21,12 @@ function grid(initialState) {
   for (const key of ['window', 'document', 'navigator', 'location', 'history', 'getComputedStyle',
     'Node', 'Element', 'HTMLElement', 'Event', 'MouseEvent', 'KeyboardEvent', 'CustomEvent',
     'DOMParser', 'MutationObserver', 'requestAnimationFrame', 'cancelAnimationFrame', 'DocumentFragment']) {
-    saved[key] = global[key]
-    global[key] = key === 'window' ? window : key === 'document' ? window.document : window[key]
+    // defineProperty, not assignment: Node 21+ has a getter-only global navigator
+    saved[key] = Object.getOwnPropertyDescriptor(global, key)
+    Object.defineProperty(global, key, {
+      value: key === 'window' ? window : key === 'document' ? window.document : window[key],
+      configurable: true, writable: true,
+    })
   }
   window.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} }
   window.matchMedia = () => ({ matches: false, addEventListener() {}, removeEventListener() {} })
@@ -52,7 +56,10 @@ function grid(initialState) {
     close() {
       api.destroy()
       dom.window.close()
-      for (const [key, value] of Object.entries(saved)) global[key] = value
+      for (const [key, desc] of Object.entries(saved)) {
+        if (desc) Object.defineProperty(global, key, desc)
+        else delete global[key]
+      }
     },
   }
 }

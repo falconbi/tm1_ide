@@ -2,6 +2,8 @@
 
 const test = require('node:test')
 const assert = require('node:assert')
+const fs = require('node:fs')
+const path = require('node:path')
 const { isNeverDeploy, isLabObject } = require('../tools/tm1deploy/src/never-deploy')
 
 test('WFP_Lab objects are never deployable', () => {
@@ -34,8 +36,10 @@ test('real objects are unaffected — including names that merely contain "Lab" 
     assert.equal(isNeverDeploy(null), false)
 })
 
-test('the 15 Sep package keeps the WFP process and drops all 122 Bedrock objects', () => {
-    const manifest = require('../packages/release-2026-09-15-2026-09-15/manifest.json')
+// packages/ is gitignored, so this real-release check runs only where the package exists (not in CI)
+const SEP15 = path.join(__dirname, '../packages/release-2026-09-15-2026-09-15/manifest.json')
+test('the 15 Sep package keeps the WFP process and drops all 122 Bedrock objects', { skip: !fs.existsSync(SEP15) && 'packages/ is gitignored' }, () => {
+    const manifest = require(SEP15)
     const kept = manifest.objects.filter(o => !isNeverDeploy(o))
     const dropped = manifest.objects.filter(isNeverDeploy)
     assert.deepEqual(kept.map(o => o.name), ['WFP Seed Prior Forecast'])
