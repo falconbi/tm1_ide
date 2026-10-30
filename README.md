@@ -99,6 +99,8 @@ The frontend is pre-built — no build step needed. Full instructions: [Setup](d
 |---|---|
 | [Features](docs/ide/FEATURES.md) | Every editor and tool, with screenshots |
 | [Workforce Lenses](lenses/workforce/README.md) | The 14 pages, how they are exported from TM1 and committed |
+| [HTML apps on TM1: security](docs/lenses/TM1_HTML_APPS_SECURITY.md) | The browser security layer you own once TM1 screens are HTML you (or an AI) write — five decisions, one checklist |
+| [Lens learning lab](docs/learn/lens-lab/README.md) | Five browser-security ideas you can break on purpose, run locally with no dependencies |
 | [Setup](docs/ide/SETUP.md) | Install, configure servers, run, development mode, installing at a client (Windows untested) |
 | [Authentication](docs/auth/AUTHENTICATION.md) | How the IDE signs in — per-server login, what's supported and tested |
 | [TM1 Authentication Guide](docs/auth/TM1_AUTHENTICATION_GUIDE.md) | How every TM1 sign-in method works, in plain English — for anyone in TM1 |
