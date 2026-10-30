@@ -1,0 +1,275 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Assumptions</title>
+<meta name="lens-writes" content="WFP Assumptions">
+<style>
+:root{--bg:var(--lens-bg,#f6f7f7);--ink:var(--lens-ink,#16201f);--faint:var(--lens-faint,#85908f);--rule:var(--lens-rule,#dfe4e3);--panel:var(--lens-panel,#fff);--accent:var(--lens-accent,#0f766e);--bad:var(--lens-bad,#b4372d);--good:var(--lens-good,#1d7a46)}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}
+.wrap{padding:16px 18px 24px;display:grid;gap:12px;max-width:1700px;margin:0 auto}
+header{display:flex;flex-wrap:wrap;align-items:end;gap:12px 18px}
+h1{font-size:20px;margin:0}
+.sub{font-size:12.5px;color:var(--faint)}
+.controls{display:flex;gap:10px;margin-left:auto;align-items:end;flex-wrap:wrap}
+label{display:grid;gap:3px;font-size:11px;color:var(--faint);text-transform:uppercase;letter-spacing:.06em}
+select,button{font:inherit;font-size:13px;padding:5px 10px;border:1px solid var(--rule);border-radius:7px;background:var(--panel);color:var(--ink)}
+button{cursor:pointer}
+button.primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+button:disabled{opacity:.45;cursor:default}
+.card{background:var(--panel);border:1px solid var(--rule);border-radius:10px;padding:12px;min-width:0}
+.bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px}
+.status{font-size:13px}
+.status.ok{color:var(--good)} .status.err{color:var(--bad)} .status.busy{color:var(--faint)}
+.note{font-size:12px;color:var(--faint);margin:8px 0 0}
+/* History: just a grey icon top right — white on hover, "History" on hover */
+.foot{display:flex;align-items:center;gap:12px;margin-top:8px}
+.foot .note{margin:0;flex:1}
+.quiet{flex:none}
+.quiet button{background:transparent!important;border-color:transparent!important;font-size:0!important;padding:6px!important;line-height:0}
+.quiet button::before{content:"";display:inline-block;width:18px;height:18px;background:var(--faint);-webkit-mask:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22M3%2012a9%209%200%201%200%209-9%209.75%209.75%200%200%200-6.74%202.74L3%208%22/%3E%3Cpath%20d%3D%22M3%203v5h5%22/%3E%3Cpath%20d%3D%22M12%207v5l4%202%22/%3E%3C/svg%3E") center/contain no-repeat;mask:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22M3%2012a9%209%200%201%200%209-9%209.75%209.75%200%200%200-6.74%202.74L3%208%22/%3E%3Cpath%20d%3D%22M3%203v5h5%22/%3E%3Cpath%20d%3D%22M12%207v5l4%202%22/%3E%3C/svg%3E") center/contain no-repeat}
+.quiet button:hover::before{background:var(--ink)}
+.quiet button [data-n]{font-size:10px!important;line-height:1.4;vertical-align:top}
+/* view switch */
+.views{display:inline-flex;align-self:end;border:1px solid var(--rule);border-radius:8px;overflow:hidden}
+.views button{border:0;border-radius:0;padding:5px 12px;background:var(--panel);color:var(--faint)}
+.views button.on{background:var(--accent);color:#fff;font-weight:600}
+/* Info — an icon beside History; the label shows on hover */
+#info{background:transparent!important;border-color:transparent!important;font-size:0!important;padding:6px!important;line-height:0;cursor:pointer;min-width:0}
+#info::before{content:"";display:inline-block;width:18px;height:18px;background:var(--faint,#8a8f98);-webkit-mask:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Ccircle%20cx%3D%2212%22%20cy%3D%2212%22%20r%3D%2210%22/%3E%3Cpath%20d%3D%22M12%2016v-4%22/%3E%3Cpath%20d%3D%22M12%208h.01%22/%3E%3C/svg%3E") center/contain no-repeat;mask:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Ccircle%20cx%3D%2212%22%20cy%3D%2212%22%20r%3D%2210%22/%3E%3Cpath%20d%3D%22M12%2016v-4%22/%3E%3Cpath%20d%3D%22M12%208h.01%22/%3E%3C/svg%3E") center/contain no-repeat}
+#info:hover::before{background:var(--ink,#1f2328)}
+.foot-icons{display:inline-flex;align-items:center;gap:0}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div><h1>Assumptions</h1><div class="sub" id="sub"></div><div class="when" id="when"></div></div>
+    <div class="controls"><div id="people" style="align-self:center"></div><span class="views" role="group" aria-label="View"><button type="button" data-view="month">By month</button><button type="button" data-view="compare">Pivot</button></span><label id="entityBox">Company<select id="entity"></select></label><label>Year<select id="year"></select></label></div>
+  </header>
+  <div class="counts" id="counts"></div>
+  <div class="card">
+    <div class="bar">
+      <button id="save" class="primary" disabled>Save</button>
+      <button id="undo" disabled>Undo</button>
+      <button id="fill" disabled title="Copy the selected month's value to every later month this year">Fill right</button>
+      <label style="display:flex;flex-direction:row;align-items:center;gap:6px;text-transform:none;letter-spacing:0;font-size:13px;color:var(--ink)"><input type="checkbox" id="stripes"> Stripes</label>
+      <span id="status" class="status"></span>
+    </div>
+    <div id="grid"></div>
+    <div id="pv" hidden></div>
+    <div class="foot"><p class="note" id="note"></p><span class="foot-icons"><button id="info" type="button" title="Info: what this page shows" aria-label="Info: what this page shows">Info</button><span id="historyBtn" class="quiet"></span></span></div>
+  </div>
+  <div id="infoModal" class="info-modal" hidden>
+    <div class="info-card">
+      <div class="info-head"><h3>Assumptions</h3><button id="infoModalClose" type="button" title="Close">✕</button></div>
+      <div class="info-body"><p>Finance's monthly rates by company: merit, promotion, inflation, vacancy, bonus pool, on-costs and the two indices.</p><h4>Reading the grid</h4><p><b>White</b> = a value you set in that month. <b>Grey italic</b> = carried forward from the last white cell — it is not a new input. Type in a grey cell to set a new value from that month; type <b>0</b> to clear an input and fall back to the carry-forward.</p><h4>Using it</h4><p>Type 3 or 3% for 3%. A value applies from its month onward until the next input, so you set it once. Actuals Cutoff and Merit Review are months — pick them from the list. Pivot compares months or companies.</p><h4>Who can change</h4><p>WFP Finance; everyone can read.</p></div>
+    </div>
+  </div>
+</div>
+<script src="/lens-kit/lens-kit.js"></script>
+<script>
+// Workforce · Assumptions — Finance sets the monthly rates the workforce
+// model runs on (merit, inflation, bonus pool, on-costs…) per company.
+// Percentages show as 3.0% and are typed as 3 or 3% (TM1 holds 0.03); the period-number rows
+// (Actuals Cutoff Index, Merit Review Index) are picked as months from the
+// period dimension and saved as their Period Index. Others can look.
+// Two views: By month (one company, the year across) and Pivot (Lens.pivot —
+// assumptions × companies for a month; drag Period onto columns for months too).
+(function () {
+  var $ = function (id) { return document.getElementById(id) }
+  var infoPanel = function (openId, modalId) {
+    var b = $(openId), m = $(modalId); if (!b || !m) return
+    var close = function () { m.hidden = true }
+    b.onclick = function () { m.hidden = false }
+    var x = $(modalId + 'Close'); if (x) x.onclick = close
+    m.addEventListener('click', function (e) { if (e.target === m) close() })
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape') close() })
+  }
+  var esc = function (v) { return String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') }
+  var M = function (d, e) { return '[' + d + '].[' + d + '].[' + String(e).replace(/]/g, ']]') + ']' }
+  var call = function (mdx) { return window.lensBridge.call('execMDX', { mdx: mdx }) }
+  var planMeta = function (el, fallbackVersion) {
+    var MN = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+    var mn = function (p) { return p ? MN[Number(p.slice(5)) - 1] + ' ' + p.slice(0, 4) : '' }
+    var draw = function () {
+      var v = ($('ver') && $('ver').value) || fallbackVersion || 'Forecast'
+      var periods = call('SELECT {[}ElementAttributes_WFP Period].[}ElementAttributes_WFP Period].[Period Index]} ON 0, {TM1FILTERBYLEVEL({TM1SUBSETALL([WFP Period].[WFP Period])},0)} ON 1 FROM [}ElementAttributes_WFP Period]').then(function (r) {
+        var from = {}; Lens.rows(r).forEach(function (x) { var i = Number(x['Period Index']); if (i && /^\d{4}-\d{2}$/.test(x['WFP Period'])) from[i] = x['WFP Period'] }); return from
+      })
+      var cut = call('SELECT {' + M('WFP Assumptions Measure', 'Actuals Cutoff Index') + '} ON 0 FROM [WFP Assumptions] WHERE (' + M('WFP Period', '2026-01') + ',' + M('WFP Version', 'Forecast') + ',' + M('WFP Entity', 'UK Ltd') + ')').then(function (r) { var row = Lens.rows(r)[0] || {}; return Number(row['Actuals Cutoff Index']) || 0 })
+      return Promise.all([periods, cut]).then(function (x) {
+        var P = x[0], cutoff = x[1]
+        $(el).innerHTML = '<span><em>Version</em><b>' + esc(v) + '</b></span><span><em>Plan month</em><b>' + esc(mn(P[cutoff + 1]) || '—') + '</b></span><span><em>Actuals to</em><b>' + esc(mn(P[cutoff]) || '—') + '</b></span>'
+      }, function () {})
+    }
+    return draw()
+  }
+  var say = function (t, k) { $('status').textContent = t || ''; $('status').className = 'status ' + (k || '') }
+  var fail = function (e) { say(e && e.message ? e.message : String(e), 'err') }
+  var C = Lens.config()
+  infoPanel('info', 'infoModal')
+  var VERSION = C.version || 'Forecast', EDITORS = C.editors || ['WFP Finance'], CUBE = 'WFP Assumptions', MD = 'WFP Assumptions Measure'
+  planMeta('when', VERSION)
+  var ENTITIES = C.entities || ['UK Ltd', 'US Inc', 'NZ Ltd'], YEARS = C.years || ['2026', '2027']
+  $('entity').innerHTML = ENTITIES.map(function (e) { return '<option>' + esc(e) + '</option>' }).join('')
+  $('year').innerHTML = YEARS.map(function (y) { return '<option>' + esc(y) + '</option>' }).join('')
+  var canEdit = false, g = null, focus = null, months = [], measures = [], shownMeasures = [], tg = null, hp = null, tile = 'all'
+  var isPct = function (m) { return /%$/.test(m) }
+  var isIdx = function (m) { return /Index$/.test(m) }
+  var MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+  var nice = function (p) { return MON[Number(p.slice(5)) - 1] + ' ' + p.slice(0, 4) }      // '2026-03' → 'Mar 2026'
+  var toIdx = {}, toName = {}, monthList = []                                              // from the period dimension
+  var striped = true; try { var _s = localStorage.getItem('wfp-assumptions-stripes'); if (_s !== null) striped = _s === '1' } catch (e) {}
+  var view = 'month'; try { view = localStorage.getItem('wfp-assumptions-view') || 'month' } catch (e) {}
+  var pv = null, pvYear = null
+
+  function load() {
+    var ent = $('entity').value, yr = $('year').value
+    if (tg) tg.join(ent + ':' + yr)
+    months = []; for (var i = 1; i <= 12; i++) months.push(yr + '-' + (i < 10 ? '0' : '') + i)
+    say('Loading…', 'busy')
+    var q = 'SELECT {' + months.map(function (m) { return M('WFP Period', m) }).join(',') + '} ON 0, {TM1SUBSETALL(' + '[' + MD + '].[' + MD + '])} ON 1 FROM [' + CUBE + '] WHERE (' + M('WFP Version', VERSION) + ',' + M('WFP Entity', ent) + ')'
+    return call(q).then(function (r) {
+      var n = months.length
+      var allMeasures = r.Axes[1].Tuples.map(function (t) { return t.Members[0].Name })
+      var at = {}; allMeasures.forEach(function (m, i) { at[m] = i })
+      measures = allMeasures.filter(function (m) { return !/^_/.test(m) })
+      shownMeasures = measures.filter(function (m) { return tile === 'all' || (tile === 'rates' ? !isIdx(m) : isIdx(m)) })
+      $('counts').innerHTML = [
+        ['all', measures.length, 'Assumptions'],
+        ['rates', measures.filter(function (m) { return !isIdx(m) }).length, 'Rates'],
+        ['indices', measures.filter(isIdx).length, 'Indices']
+      ].map(function (x) { return '<button type="button" class="count' + (tile === x[0] ? ' on' : '') + '" data-tile="' + x[0] + '"><b>' + x[1] + '</b><span>' + x[2] + '</span></button>' }).join('')
+      if (!$('counts')._wired) {
+        $('counts')._wired = true
+        $('counts').addEventListener('click', function (e) {
+          var b = e.target.closest && e.target.closest('[data-tile]'); if (!b) return
+          var k = b.getAttribute('data-tile'); tile = tile === k ? 'all' : k
+          load().then(function () { return showView() }).catch(fail)
+        })
+      }
+      var rows = shownMeasures.map(function (m) {
+        var row = { measure: m, _kind: {}, _base: {} }, bi = at[m], ei = at['_Effective ' + m]
+        months.forEach(function (p, k) {
+          // input = this month was set; else the value carried forward from the last input
+          var b = r.Cells[bi * n + k] || {}, e = ei == null ? b : (r.Cells[ei * n + k] || {})
+          var bv = b.Value == null ? 0 : Number(b.Value), ev = e.Value == null ? 0 : Number(e.Value)
+          var input = bv !== 0, v = input ? bv : ev
+          row._base[p] = bv
+          row[p] = isIdx(m) ? (toName[v] || '') : v
+          row._kind[p] = input ? 'input' : 'inherit'
+        })
+        return row
+      })
+      g = Lens.grid('#grid', {
+        fit: 'content',
+        stripes: striped,
+        height: 'auto',
+        columns: [{ field: 'measure', headerName: 'Assumption', pinned: 'left', minWidth: 200, sortable: false, filter: false }]
+          .concat(months.map(function (p) { return { field: p, headerName: nice(p), type: 'number', editable: canEdit, minWidth: 84, sortable: false, filter: false, format: function (row) { return isPct(row.measure) ? '%' : 'number' },
+            options: function (row) { return isIdx(row.measure) ? [''].concat(monthList) : null } } })),
+        rows: rows,
+        // right-click a month cell: Why this number? / Who changed it / Notes
+        cellMenu: function (row, field) {
+          if (months.indexOf(field) < 0) return null
+          var co = {}; co['WFP Period'] = field; co['WFP Version'] = VERSION; co['WFP Entity'] = $('entity').value; co[MD] = row.measure
+          return { cube: CUBE, coordinates: co }
+        },
+        notes: true,
+        onFocus: function (row, field) { focus = months.indexOf(field) >= 0 ? { row: row, field: field } : null; $('fill').disabled = !canEdit || !focus || field === months[11] },
+        onEdit: function (ch) { $('save').disabled = $('undo').disabled = !ch.length; say(ch.length ? ch.length + ' change' + (ch.length > 1 ? 's' : '') + ' not saved' : '') }
+      })
+      $('save').disabled = $('undo').disabled = $('fill').disabled = true; say('')
+      if (hp) Lens.history({}, { limit: 100 }).then(function (l) { hp.set(l) }, function () {})
+    })
+  }
+  function fillRight() {
+    if (!focus) return
+    var row = focus.row, from = months.indexOf(focus.field), v = row[focus.field]
+    g.api.forEachNode(function (node) {
+      if (node.data !== row) return
+      for (var k = from + 1; k < months.length; k++) if (row[months[k]] !== v) node.setDataValue(months[k], v)
+    })
+  }
+  // ── Pivot: assumptions × companies for one month (Lens.pivot) ────────────
+  function showView() {
+    document.querySelectorAll('[data-view]').forEach(function (b) { b.classList.toggle('on', b.getAttribute('data-view') === view) })
+    $('grid').hidden = view !== 'month'; $('pv').hidden = view !== 'compare'
+    $('entityBox').hidden = view !== 'month'; $('fill').hidden = true
+    $('save').disabled = $('undo').disabled = true; say('')
+    $('note').textContent = view === 'month'
+      ? 'Type 3 or 3% for 3%. A value carries forward until you enter a new one. White = your input · grey italic = carried forward. Actuals Cutoff and Merit Review are months — pick them from the list.'
+      : 'Drag Period onto Columns to compare months as well, or Company onto Filters to see one company. Type 3 or 3% for 3%. The month rows (Actuals Cutoff, Merit Review) are set in By month.'
+    if (view === 'compare' && (!pv || pvYear !== $('year').value)) return openPivot()
+    return Promise.resolve()
+  }
+  function openPivot() {
+    var yr = $('year').value, months = []; for (var i = 1; i <= 12; i++) months.push(yr + '-' + (i < 10 ? '0' : '') + i)
+    var formats = {}; formats[MD] = {}; measures.forEach(function (m) { if (isPct(m)) formats[MD][m] = '0.0%' })
+    if (pv && pv.grid) pv.grid.destroy()
+    pvYear = yr
+    pv = Lens.pivot('#pv', {
+      cube: CUBE,
+      rows: [{ dimension: MD, members: shownMeasures.filter(function (m) { return !isIdx(m) }), label: 'Assumption' }],
+      columns: [{ dimension: 'WFP Entity', members: ENTITIES, label: 'Company' }],
+      filters: [{ dimension: 'WFP Period', member: months[0], choices: months, label: 'Month' }, { dimension: 'WFP Version', member: VERSION, locked: true, label: 'Version' }],
+      edit: canEdit, notes: true, formats: formats, key: 'wfp-assumptions-compare', stripes: striped,
+      onEdit: function (ch) { $('save').disabled = $('undo').disabled = !ch.length; say(ch.length ? ch.length + ' change' + (ch.length > 1 ? 's' : '') + ' not saved' : '') },
+      onError: fail,
+    })
+    return pv.ready
+  }
+  function savePivot() {
+    $('save').disabled = $('undo').disabled = true; say('Saving…', 'busy')
+    return pv.save().then(function (r) { if (tg) tg.send('saved', { count: r.written }); say('Saved — the forecast recalculates straight away.', 'ok') })
+      .catch(function (e) { $('save').disabled = $('undo').disabled = false; say('Not saved: ' + (e && e.message ? e.message : e), 'err') })
+  }
+
+  function save() {
+    if (view === 'compare') return savePivot()
+    var ch = g.changes(); if (!ch.length) return
+    var ent = $('entity').value
+    $('save').disabled = $('undo').disabled = true; say('Saving…', 'busy')
+    Lens.save(CUBE, ch.map(function (c) {
+      var co = {}, pct = isPct(c.row.measure), idx = isIdx(c.row.measure)
+      var val = function (v) { return idx ? (toIdx[v] || 0) : Number(v || 0) }
+      co['WFP Period'] = c.field; co['WFP Version'] = VERSION; co['WFP Entity'] = ent; co[MD] = c.row.measure
+      return { coordinates: co, value: val(c.value), expect: c.row._base ? Number(c.row._base[c.field] || 0) : val(c.old) }
+    })).then(function (r) { g.saved(); if (tg) tg.send('saved', { count: r.written }); return load().then(function () { say('Saved — the forecast recalculates straight away.', 'ok') }) })
+      .catch(function (e) { $('save').disabled = $('undo').disabled = false; say('Not saved: ' + (e && e.message ? e.message : e), 'err') })
+  }
+  $('save').onclick = save
+  $('undo').onclick = function () { if (view === 'compare') pv.undo(); else g.undo(); say('') }
+  document.querySelectorAll('[data-view]').forEach(function (b) { b.onclick = function () {
+    var next = b.getAttribute('data-view'); if (next === view) return
+    if ((view === 'month' && g && g.changes().length) || (view === 'compare' && pv && pv.changes().length)) { say('Save or undo your changes first.', 'err'); return }
+    view = next; try { localStorage.setItem('wfp-assumptions-view', view) } catch (e) {}
+    showView().catch(fail)
+  } })
+  $('fill').onclick = fillRight
+  $('stripes').checked = striped
+  $('stripes').onchange = function () { striped = this.checked; try { localStorage.setItem('wfp-assumptions-stripes', striped ? '1' : '0') } catch (e) {} if (g) g.stripes(striped); if (pv) pv.stripes(striped) }
+  $('entity').onchange = function () { load().catch(fail) }
+  $('year').onchange = function () { load().then(function () { if (view === 'compare') return openPivot() }).catch(fail) }
+  hp = Lens.historyPanel('#historyBtn', { title: 'History', describe: function (e) {
+    if (e.kind === 'note') return 'added a note on ' + (e.coordinates || {})['WFP Entity'] + ' ' + (e.coordinates || {})[MD] + ' ' + (e.coordinates || {})['WFP Period'] + ': “' + e.text + '”'
+    return 'changed ' + (e.changes || []).map(function (x) { var m = x.coordinates[MD]; return x.coordinates['WFP Entity'] + ' ' + m + ' ' + x.coordinates['WFP Period'] + ' → ' + (isPct(m) ? Math.round(x.value * 1e4) / 100 + '%' : isIdx(m) ? (toName[x.value] || 'none') : x.value) }).join(', ')
+  } })
+  var hb = $('historyBtn').querySelector('button'); if (hb) { hb.title = 'History'; hb.setAttribute('aria-label', 'History') }
+  tg = Lens.live('#people', { onEvent: function (ev) { if (ev.type === 'saved' && g && !g.changes().length) load().catch(fail); if (ev.type === 'saved' && pv && !pv.changes().length) pv.refresh() } })
+  Lens.whoami().then(function (w) {
+    canEdit = Lens.whoami.inGroup(w, EDITORS)
+    $('sub').textContent = VERSION + ' · monthly rates by company' + (canEdit ? '' : ' · view only (Finance sets these)')
+    $('note').textContent = 'Type 3 or 3% for 3%. A value carries forward until you enter a new one. White = your input · grey italic = carried forward. Actuals Cutoff and Merit Review are months — pick them from the list.'
+  }).then(function () {
+    // the months of the period dimension, with their Period Index
+    return call('SELECT {[}ElementAttributes_WFP Period].[}ElementAttributes_WFP Period].[Period Index]} ON 0, {TM1FILTERBYLEVEL({TM1SUBSETALL([WFP Period].[WFP Period])},0)} ON 1 FROM [}ElementAttributes_WFP Period]').then(function (r) {
+      Lens.rows(r).forEach(function (x) { var p = x['WFP Period'], i = Number(x['Period Index']); if (i && /^\d{4}-\d{2}$/.test(p)) { toIdx[nice(p)] = i; toName[i] = nice(p) } })
+      monthList = Object.keys(toIdx).sort(function (a, b) { return toIdx[a] - toIdx[b] })
+    })
+  }).then(load).then(showView).catch(fail)
+})()
+</script>
+</body>
+</html>

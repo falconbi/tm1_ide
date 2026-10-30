@@ -1,0 +1,1043 @@
+# Building TM1 models through the MCP
+
+Read this before building a model from a requirements document. It is the method,
+not the API reference — for the tool list see `MCP_SERVER.md`.
+
+Accretive: every model built adds to the "What each build taught us" log at the
+bottom. Learnings get sorted into one of three homes:
+
+- **enforceable rule** → a check in `core/rules-lint.js` or `core/ti-lint.js` (the
+  agent can't bypass it)
+- **per-call nudge** → the `description` string of the relevant tool in
+  `tools/tm1mcp/server.js` (seen on every call)
+- **method / judgement** → this file
+
+---
+
+## Design first — business → screens → model
+
+**Nothing is built until the design is signed off.** The first real Lenses test (Workforce
+Planning, Oct 2026) went wrong here: the model was built first, from cubes outward, and the gaps
+(no assignments, a Position-centric cost, mixed names, rules where TI belonged) only showed when
+someone tried to *use* it through the screens. Every step below exists because it was missed.
+
+Work in this order, each step signed off by the person who owns the business process before the
+next starts:
+
+1. **Workflow first.** Write the lifecycle as a table: every change that can happen in the
+   business process, **who makes it, when, and from which month it applies**. For a workforce
+   model that is hire, pay change, transfer, leaver, backfill, handover, absence, cover, new
+   position, close, reopen… The standard business lifecycle is not bespoke — list it in full
+   without being asked. *Sign-off.*
+2. **Design questions.** Answer the checklist below in writing. Unanswered questions are design
+   gaps, not details for later. *Sign-off.*
+3. **Screens next.** One page per job from the workflow table (who does what, where). If a
+   change in the table has no page, or a page has no change behind it, the design is wrong.
+   Walk each page through with the business owner: who uses it, what they see, what they can do.
+   A page that can't be explained in one or two plain sentences, or two pages that overlap, mean
+   the model design is muddled — confusing WFP screens were how its flaws were found. *Sign-off.*
+4. **Model last,** built to serve those screens, following the technical rules below.
+5. **One design document per model, written before the build** and kept true afterwards — what
+   the model is now, not a diary of how it got there. Example:
+   [WORKFORCE_MODEL.md](WORKFORCE_MODEL.md).
+6. **Test lab-first.** Prove every change in a small generated lab copy of the model (seconds per
+   run), then once on the real model (one spare version, snapshot → change → compare → restore),
+   then compare against a baseline and run the assertions. Never skip an agreed step silently.
+
+### Design questions (answer before building)
+
+#### Every model
+
+- What are the **core records**, and what is each one's stable key from the source system? What
+  is a record vs an attribute vs something that happens to a record over time?
+- **One name per thing,** used everywhere (dimension, measures, processes, pages, text). No
+  synonyms.
+- What does the **workflow table** say changes, who changes it, and is each change dated (from a
+  month on, history untouched)?
+- **Actual vs plan:** where do actuals come from, what is the cut-off, and which plan items can
+  later become real — and how is each one matched so it never counts twice?
+- **Versions:** which calculate, which are stored, how a plan is frozen and locked; is there a
+  scenario version.
+- **Periods:** the plan horizon; the **opening balance period** (`Obl yyyy`, Falcon BI standard:
+  balances only, in no FY total, never calculated); a model period dimension carries its own
+  attributes (`Period Index`, `Period Type`, `Next Period`…), while a shared **GBL Period** is the
+  common calendar for reports across models.
+- **Where each calculation lives** (rule #1 below): what must change live on screen (rules) vs
+  heavy or across-time work (TI)? Estimate cells and feeders at full scale.
+- **Year-to-date and tax years:** which totals reset, when (calendar or tax year, per country),
+  and where the balance at the opening comes from.
+- **Who may change what** (security), and which changes need approval.
+- **Checks:** what must always hold (no double counting, no impossible states)? Each becomes an
+  assertion and a Needs-attention line. See *Checks — who decides, and the three kinds* below.
+
+#### Checks — who decides, and the three kinds
+
+**The developer proposes the checks, the business owner signs them off** — at design, and again
+at UAT with the numbers. The AI may suggest checks from the model (a consolidation must equal its
+parts, a required attribute must be set), but a person approves every one; none is added
+automatically. Checks are part of the model design document and travel with the release — never
+changed quietly on a target.
+
+Every check in the design document is tagged with its kind, because the kind decides where it
+can run and whether it can stop a deploy:
+
+| Kind | What it proves | Example | Where it runs |
+|---|---|---|---|
+| **Control check** | must hold on any data — nothing is broken | a total equals its parts; nobody over 1.0 FTE; no missing required attribute | DEV, the QA rehearsal, Prod after a load |
+| **Worked example** | the logic gives the agreed number on known data | "this employee's March tax is 1,234.50" | DEV, or wherever its test data is loaded — never on Prod's real data |
+| **Regression total** | a deploy didn't move numbers it shouldn't | cost by version × entity × month, before vs after | the QA rehearsal, before vs after the deploy, same data |
+
+A control check that finds no data to look at has **not been tested** — it is not a pass. A new
+model arriving empty needs its test data loaded before its control checks mean anything.
+
+The design document names the **regression totals**: the few key totals (by version, entity,
+period, main measure) whose movement must be explained by the change set.
+
+#### Workforce models
+
+See [WORKFORCE_MODEL.md](WORKFORCE_MODEL.md).
+
+- Position vs Person vs Assignment — tenure and pay on the assignment, never on the Position.
+- Can a person hold more than one assignment (job share, handover, cover)?
+- Planned new positions (TBH): how are they matched to the HR Position when it appears?
+- Absence and cover: does the absent person stay in headcount; is cover counted?
+- Tax per person or per Position; which tax year per country; opening year to date.
+
+---
+
+## The one principle
+
+There are two questions about any model, and they need different answers:
+
+1. **Is it written correctly?** — syntax, argument counts, section order. The
+   linters and TM1's own `CheckRules` answer this. Cheap, automatic.
+2. **Does it compute the right number?** — only a human plus `read_cells` against
+   a known-good figure answers this. TM1 will happily return a confident wrong
+   number with no error.
+
+**So: for every worked example in the requirements document, add an assertion and
+verify it with `read_cells` before closing the change set.** A build that passes
+the linters and returns numbers is not a build that is correct.
+
+---
+
+## Design rule #1 — decide where each calculation lives
+
+Settle this **before building**, and again **before scaling the data up**:
+
+- **TI for heavy, stable, or across-time work** — posting position cost to cost centre /
+  company, YTD tax runs, snapshots, allocations.
+- **Rules only for what planners must see change live.**
+- **Avoid data-driven or attribute-driven feeders.** They block multi-threaded feeders and
+  force feeder re-evaluation on every write.
+- **A Lens can run a small TI on Save**, so the screen still feels live without a rule on
+  every cell.
+- **Estimate cells and feeders at the target scale first.**
+
+The WFP model is the cautionary tale: position-level cost rules plus a month-by-month YTD tax
+chain gave a **~12-minute feeder rebuild**, **~56-second cold cost reads** and a
+**1.5-hour snapshot** — and its attribute/data-directional feeders meant **MTFeeders could
+not be enabled**. None of that was fixable with a server setting; it was decided by where
+the calculation lived.
+
+---
+
+## Design rule #2 — version lifecycle
+
+A plan has **two independent axes**. Do not confuse them:
+
+1. **Lifecycle — working → approved.**
+   - Build in a **Calculating** version. Rules calculate, planners change it, Lenses are editable.
+   - On approval, **freeze** it: copy into a **Static / Non-Calculating** version, then **lock** it.
+   - The freeze must carry the **calculated** values (Headcount, Cost), not just the inputs. Use
+     `WFP Snapshot` — a thin wrapper over `}IDE.Version.Copy` (`pType=static`, every Version-dim
+     cube). `WFP Copy Version` copies only Workforce Input and would leave Headcount/Cost blank.
+   - Variance versions (`Act vs Bud`, `Fcst vs Bud`) read the **approved** version, never the working
+     one.
+2. **Cycle overlap — different horizons can run at once.**
+   - Budget FY2027 and Forecast FY2026 overlap in calendar time; a budget often starts ~3 months
+     before the forecast year ends. That is normal. "Never run two in parallel" only means "never two
+     versions of the *same* plan".
+
+**The standard:**
+- `Version Type` attribute: **Calculated** for working, **Static** for approved; put approved versions
+  under `Non-Calculating` so every cube's `STET` guard uses the stored values.
+- **Locking:** cell security / data reservations (or a Locked flag enforced by processes and Lenses);
+  after approval nobody edits the static version.
+- The **plan month** (first forecast month = last Actual + 1) is global — it is not per version.
+- **Assumptions are effective-dated:** a value entered once applies from that month forward until the
+  next entered value, so a mid-year change is one edit, not 36.
+- Name versions for the reader (`Budget FY27 (working)` / `Budget FY27`) and say which one variance
+  uses.
+- Overlap is allowed; each cycle has its own year/horizon, approval state and working version.
+
+This model today: `Budget` is still **Calculated** (its description is "single-developer loop proof")
+and there is no static approved copy; it is seeded with zeros for merit/promo/bonus by design. The
+freeze + lock step has not been run.
+
+---
+
+## Design rule #3 — server-wide control (versions, periods, settings, folders, palette)
+
+Some things are **platform, not app**: the version lifecycle, the actuals boundary, file folders,
+the corporate palette. Rebuilding them per model is how five apps end up disagreeing about "last
+actual". This is a model-building rule, not a Lens one — though Lenses consume the palette and
+defaults.
+
+**One control store per server, one fallback chain.**
+
+**Agreed (October 2026): every server gets exactly one `SYS Settings` cube**, created by the
+server template/bootstrap as a platform object, not per app and not by each model. The structure
+is standard; the values are per server/app. Apps read it; they never create their own copy. Only
+the platform/admin writes it. It is deployed and versioned as platform, not inside an app's change
+set.
+
+The `SYS Application × SYS Setting × SYS Settings Measure` cube is also the home for Version Copy's model-specific configuration:
+the static parent, input cubes, excluded cubes, version type/status attributes and the current
+budget pointer. The Version Copy TI reads those values; it must not hardcode WFP names.
+
+**Versions and periods as attributes, never literals:**
+- `Version` attributes: `Version Type` (Calculated | Static), `Status` (Working | Approved | Locked),
+  `Start Period`, `End Period`, `Approval Group`, `Prior Snapshot`.
+- `Period` attributes: `Period Index`, `Actuals Closed`, `Last Actual`, `Prior Fcst Snapshot`, `FY`,
+  `Next Period`.
+- **Plan month = Last Actual + 1**, derived once and read everywhere.
+- Share the `Version`/`Period` dimensions if every model shares the calendar; otherwise use one
+  standard template replicated per model. Either way, no process hardcodes `'2026-01'`, `'Forecast'`
+  or `'UK Ltd'`.
+
+**`SYS Settings` cube — `Application` × `Setting`, read app → `All` → code default:**
+- Folders: `Export Folder`, `Import Folder`, `Archive Folder`, `Log Folder` (app subfolders under a
+  central root), created and validated by one `SYS Ensure Folders` process.
+- Branding: `Palette` (accent / bg / ink / good / bad / warn), `Logo`, `Typography`.
+- Lifecycle: `Current Forecast`, `Working Budget`, `Last Actual Index`, `Plan Month Index`,
+  `Approval Group`, `FY`.
+- Defaults: `Default Entity`, `Default Year`, `Default Currency`.
+- Unknown keys are ignored (forward-compatible); only platform/admin writes it.
+
+**How it is used:** processes read the cube (no hardcoded version/period/paths); Lenses read the
+palette and defaults from the app config and fall back to the kit's own values. The control store is
+**platform** — deployed and versioned as platform, not inside an app's change set.
+
+This model today: processes read `'2026-01'` / `'Forecast'` / `'UK Ltd'` as literals in several
+places, and the Lens app carries its palettes in code. Those are exactly what this rule removes.
+
+---
+
+## Get the dimensionality right first
+
+Before any `build_cube`, settle the dimensions. Wrong dimensionality is the one
+mistake you cannot lint your way out of and cannot cheaply fix later.
+
+Signs you have a dimension missing and are about to encode it wrong:
+
+- **Element names with a suffix that encodes a second attribute** — `Benefits
+  North`, `Benefits South`; `Rent UK`, `Rent USA`. The suffix is a dimension.
+  Model it as `Account × Entity`, not as `Account` with the entity baked into
+  the name.
+- **Parallel measures that are one measure times a type** — `Direct Input`,
+  `Allocation`, `Fully Loaded` as three measure elements is usually one `Amount`
+  measure and a missing `Method` / `Layer` dimension (or just rules).
+- **A cube whose rules constantly parse the element name** (`SUBST`, `SCAN` on
+  `!dim`) — the thing being parsed out wants to be its own dimension.
+
+If the design needs another dimension, **create it — even if cubes must be
+dropped and rebuilt.** Do not let build friction (an existing cube, a change-set
+already open) push you into adding elements to the wrong dimension. Rebuilding a
+cube is a 5-minute cost; a wrong grain is a rebuild of the whole model.
+
+### Fixed house dimension order
+
+Every cube uses the **same dimension order**, deliberately *not* re-tuned per cube
+for sparsity. There is a sparsity-optimal order for any given cube; we don't chase
+it. A predictable order across every cube is worth more — views and subsets line
+up, cross-cube reading is easier, and rules are easier to follow.
+
+```text
+Period, Version, Company, Cost Centre, Account, Type, <cube-specific dims>, Measure
+```
+
+- Use whichever of the leading dimensions the cube actually has, in that order.
+- Any dimensions unique to this cube go after `Type` and before the measure
+  dimension.
+- The measure dimension is always last (see below).
+
+### Every cube has a measure dimension, and it goes last
+
+No exceptions. The last dimension of every cube is its measures, named
+`<Prefix> <Cube distinctive name> Measure`:
+
+- `WFP Workforce Cost` → `WFP Workforce Cost Measure`
+- `WFP Headcount` → `WFP Headcount Measure`
+- Reference-data cubes too: `WFP FX Rates` → `WFP FX Rates Measure` (with a
+  `Rate` element); `WFP Tax Bands` → `WFP Tax Bands Measure` (`From`, `To`,
+  `Rate`, …).
+
+A dedicated per-cube measure dimension (not a shared one) keeps each cube's
+measures self-documenting, keeps rules unambiguous about which measure they
+target, and gives every cube an obvious axis for its default view.
+`build_cube` refuses a cube whose last dimension name doesn't end in
+`Measure`/`Measures`.
+
+**Default element format is `#,##0.00`** — numeric, thousands separator, 2 dp.
+Every measure dimension gets a `Format` element attribute and `build_dimension`
+sets each numeric element to `#,##0.00` automatically. Override per element where
+that's wrong: `0.00%` for ratios/percentages, `#,##0` for headcount/counts, more
+decimals for FX and unit rates. Pass the override as a `Format` attribute value
+in the same `build_dimension` call.
+
+---
+
+## Dimensions
+
+- **Small and hand-listed in the doc** → `build_dimension` (elements, edges,
+  attributes in one call).
+- **Large, or sourced from a system** → a TI process (`build_process`) that loads
+  from a datasource. Don't enumerate hundreds of elements as tool arguments.
+- Element attributes: on v11 the rule/TI functions are 4-arg
+  (`ElementAttrN(dim, hier, elem, attr)`) — the linters enforce this. The 3-arg
+  legacy `ATTRN`/`ATTRS` also work and are simpler for single-hierarchy dims.
+- You cannot create an element attribute on a zero-element dimension. Insert
+  elements first.
+
+### Version dimension — calculating vs static
+
+A version has one of two roles at any time, carried on a `Version Type` string
+attribute:
+
+| `Version Type` | Behaviour | Members |
+|---|---|---|
+| `Calculated` | live, fully rule-driven, carries **its own complete set of assumptions** | `Budget` (while being built), `Forecast` (the working current model), scenarios (`Downside`, …) |
+| `Static` | fixed; carries no rule; holds only what a snapshot process wrote | `Actual`, budget snapshots (`Budget FINAL`), monthly forecast snapshots (`FCST 2026-01`, …) |
+
+The static members sit under one consolidation parent (`Non-Calculating`) so a
+single rule guard can hold them — see the non-calculating landmine below.
+
+Rules:
+
+- **A snapshot is a new Version member** — not a separate dimension or cube. Every
+  existing view, subset and report then works on it unchanged, and analysis stays
+  in the same cube. At month-end close, a TI copies all `Forecast` leaf cells into
+  a new static member; `Forecast` itself rolls forward.
+- **Assumption encapsulation** — no `Calculated` version's rules read another
+  version's assumptions or drivers. The **only** permitted cross-version read is
+  **prior-period `Actual`** (closed-month values, or a driver keyed on actual
+  history), and it comes in as a rule (`['Forecast'] = N: IF(closed, DB(…Actual…),
+  STET)`), never a copy.
+- **Cube rules target `Calculated` members**, so `Static` members are never
+  overwritten by a recalculation. Either scope the rule area to those members
+  explicitly, or guard on the `Non-Calculating` parent (see the landmine below).
+- **Every rule file starts with the static guard — no exceptions** (`[] = N:` and, where the
+  file has string rules, `[] = S:`, both `IF(ELPAR(<dim>, !<dim>, 1) @= 'Non-Calculating', STET,
+  CONTINUE);`). Don't guard `C:` rules: a consolidation rule (e.g. a count of over-filled
+  Positions) should keep working on a static version's frozen data. Found Oct 2026: WFP Assignment
+  and WFP Position Map had no guard, so their rule cells could never be written into a snapshot,
+  and a later rule change would have recalculated every old snapshot.
+- **Actual is static too, so nothing may derive Actual by rule.** If a rule derives a value from
+  loaded data (Head from FTE Share, Joiner/Leaver from the start/end reason, Position State), the
+  guard blanks it for Actual. Store it instead: a TI run at the end of the Actual load calculates
+  the same values for Actual (WFP: `WFP Derive Actual Flags`, called by `WFP Load HR Assignments`
+  and `WFP Load Actuals`). The rule (plan versions) and the TI (Actual) then hold the **same
+  logic in two places**; each carries a note naming the other — change both together. No extra
+  "staging" version.
+- **Copying into a version: use `}IDE.Version.Copy`** (static snapshot or calculating seed —
+  documented in its own header). It skips cells a rule still owns, refuses a static copy whose
+  target isn't under `Non-Calculating`, and fails the whole copy if any cube fails.
+- **A process that ends in `ProcessQuit` flags its caller with an error**, even when it worked.
+  A process meant to be called from others should end normally.
+- Cross-version coupling (e.g. "`Forecast` open months = the `Working` version")
+  causes feeder traps and version-agnostic reference bugs, and makes a version
+  impossible to reason about alone. Don't.
+
+### Variance as version members
+
+- **Variance is a version member, not a new cube or dimension.** Add a calculating
+  `Variance` folder (weight-0 edges so its total is inert) with members like
+  `Act vs Bud` = `DB(…,'Actual',…) − DB(…,'Budget',…)`, `Fcst vs Bud`,
+  `Var FX` / `Var Operational`. Every existing view/report then does variance by
+  picking the member — zero rework.
+- **Gate the actuals-only variance** (`Act vs Bud`) to closed periods — a
+  `WFP Period` "Actuals Closed" numeric attr set by the actuals load. Otherwise
+  open months read `0 − Budget` as a huge favourable swing, and it's wrong at FY.
+  Use `Fcst vs Bud` for the full-year outlook (Forecast already carries Actual in
+  closed months).
+- **Put the variance rules ABOVE the currency-translation rule.** The variance
+  members have no FX rate of their own, so the P5-style `['Reporting'] = Σ ccy ×
+  DB(FX, !Version, …)` returns 0 for them. First-match-wins → the variance rule
+  must be earlier so it computes `Actual/Reporting − Budget/Reporting` directly.
+- **FX vs operational split:** `Var FX` = Actual at actual rate − Actual at Budget
+  rate; `Var Operational` = Actual − Budget both at Budget FX. They sum to the
+  total variance because Budget's two currency views are equal by definition.
+- **Closed-month = Actual creates "zombies"** when the forecast roster isn't kept
+  current: someone who left shows present (actual) → gone (actual) → back (stale
+  plan for open months). That's realistic and exactly what the variance layer is
+  for — flag it, don't paper over it in the actuals load.
+- **Stock measures (Headcount, FTE) sum over YTD / quarter / FY rollups** — a YTD
+  headcount is headcount-months, not period-end. The *variance* is still correct
+  (−1 vs −1); the absolute needs a period-end aggregation rule if it matters.
+
+---
+
+## Rules and TI
+
+- The linters catch argument counts, 3-arg `ElementAttrN`, `IF` nested past 2
+  deep, TI attribute writes ordered before the element insert commits. They do
+  **not** catch wrong logic. Reading numbers back does.
+- Flatten `IF` past two levels into helper measures — three-deep silently returns
+  blank on this engine.
+- In TI, structure goes in Prolog; attribute *values* go in the Epilog (Prolog
+  inserts aren't committed until the Prolog ends).
+- Feeders: don't feed a `DB()` whose target element is read from an attribute
+  that might be blank — it feeds a non-existent element and fails at load.
+- **A ratio KPI at a consolidation (cost per FTE, etc.) is painful under
+  SKIPCHECK.** The rule computes `Amount / FTE` at every level, but a rule cell
+  that *overrides* a consolidation needs that consolidated cell explicitly fed —
+  feeding the leaves doesn't help (and their sum is the wrong number anyway). An
+  over-feed for every entity/CC/department combo isn't worth it. Compute the ratio
+  in the view / reporting layer instead, or accept it only at leaf level.
+- **A one-off payment in a month with no base pay** (severance the month after a
+  leaver's last month) is missed if `One-Time` cost is fed only from the salary
+  driver (`_Monthly Base Full`, which is 0 that month). Feed the `One-Time` cost
+  cell directly from the `One-Time Amount` input.
+
+### House rules (from the Cubewise best-practice papers, still current)
+
+- **Update a dimension, never Recreate.** Recreate drops any element missing from
+  the new load *and its historical cube data*, silently and unlogged. Incremental
+  `add_elements` / `restructure_dimension` are Update-style — keep it that way; a
+  full rebuild only from a datasource that is authoritative for every element.
+- **Zero the target region before an accumulating write.** A load that adds to
+  the existing cell (`CellGetN` + add, or datasource "accumulate") double-counts
+  on re-run. Our seeds write absolute values, so this only bites if a process
+  ever switches to accumulate — clear the slice first (view + `ViewZeroOut`-style)
+  in the Prolog.
+- **Cube logging off during a bulk write must be guaranteed to come back on.**
+  `CubeSetLogChanges(cube, 0)` is the speed lever, but if a fatal error in Data
+  skips the Epilog the cube is left unlogged (crash = silent data loss until
+  someone notices). Restore in the Epilog *and* either run it as a 3-step chore
+  (off / load / on) or add a startup check that re-enables logging.
+- **TI data sources are process-specific temp views/subsets, built in the Prolog
+  and destroyed in the Epilog.** Never point a process at `Default` or a
+  reporting subset — someone will change it and the process silently reads the
+  wrong slice.
+
+### Bespoke vs library (Bedrock)
+
+- **Model logic ships bespoke.** Snapshot / version copy / close / allocations /
+  recalc chains — anything scheduled, assertion-backed, or part of what the model
+  produces — is a short purpose-built process shaped to *this* model's known
+  cubes. It has to be reviewable in a change set, lintable, and testable.
+- **Bedrock is retired here.** It is not installed on the model servers and
+  `}bedrock.*` is filtered out of every package (`tools/tm1deploy/src/never-deploy.js`).
+  The IDE tools and MCP cover the ad-hoc operations it used to provide. Do not
+  reintroduce it into core, app logic, chores, Lens, MCP or AI-generated TI.
+
+**Policy (October 2026): developer-only.** Bedrock may stay installed for a human
+developer doing ad-hoc work. It must not be used by:
+
+- `}IDE.*` core processes (including Version Copy),
+- WFP or any other model logic, chores or Lens actions,
+- MCP tools or AI-generated TI,
+- anything an assertion, deploy or scheduled process depends on.
+
+Use a short purpose-built process with a view datasource and
+`CubeSetLogChanges`, not a Bedrock call. `WFP Snapshot`'s Bedrock copy is the
+remaining known exception; replace it with the core Version Copy when that
+lands. This is a deliberate dependency boundary: Bedrock is a toolbox, not
+application code.
+
+### Core TI vs application TI — the boundary
+
+**Agreed (October 2026).** These are different kinds of process and should not
+blur:
+
+| Layer | Naming | Visible? | Deployed with | Owns |
+|---|---|---|---|---|
+| Core IDE infrastructure | `}IDE.*` | Hidden (control prefix) | Server template / platform release | Generic version copy, period maintenance, shared utilities |
+| Application infrastructure | `}IDE.Period.<App>.*` or equivalent | Hidden | That application's release | Generated period build / refresh / rollover |
+| Application logic | `WFP *`, `OPX *`, `CPX *`, `RPT *` | Visible | That application's change set | Hires, cost, approvals, workflow and other business behaviour |
+| Retired external toolbox | `}bedrock.*` | — | Never | Not installed; excluded from packages. Use core or MCP tools instead |
+
+Rules:
+
+- **Core is generic.** `}IDE.*` must not contain WFP/OPX/CPX literals, business rules or
+  application-specific cube lists. It reads those from `SYS Settings` or parameters.
+- **Application logic stays out of core.** A WFP process may call a core process by
+  name; core must not call WFP.
+- **Hidden means infrastructure, not secure.** Control-prefixed processes are filtered
+  from normal lists but still need process security.
+- **MCP does not get the raw hidden namespace.** Expose a dedicated tool
+  (`copy_version`, `build_period_dimension`) with its own validation. `list_processes`
+  filters `}` names, so discovery must not depend on listing them.
+- **The Period Builder UI is an authoring tool.** Its generated processes are
+  infrastructure for that application and may be hidden; the builder remains visible
+  in the IDE.
+- **A core process installed per server is still model metadata.** There is no global
+  TI: the server template/bootstrap installs it once per server, then platform releases
+  update it.
+- **The reusable technique from Bedrock's copy:** a **cube-view datasource** for
+  the read (never nested `DIMNM`/`CellGetN` loops — those walk every empty
+  intersection) plus **`CubeSetLogChanges(cube, 0)` around the write** (restore in
+  Epilog). That combination is the speed, not the ASCII round-trip — exporting to
+  a flat file and re-importing only pays off for cross-server copies or
+  file-split parallelism. A view datasource also hands you `NValue` **and**
+  `SValue`, so numeric and string cells copy in one pass.
+
+---
+
+## Views
+
+- **Every cube gets a default view. Every dimension gets a default subset.** No
+  exceptions — a cube or dimension with nothing to open is not finished. Name
+  them `Default` (or set the cube's default view). Dimension default subset is
+  usually all leaves, or all members if the consolidations matter.
+- **Native for anything a human opens in the IDE** — input templates, standard
+  reports, P&L layouts. The IDE's MDX-view axis parser is fragile with
+  CROSSJOIN / ranges / filters; native views always render.
+- **MDX only where the view genuinely needs set logic** native can't express, and
+  you'll consume it via `execute_view` / the API rather than the IDE grid.
+- Native axis entries take `subset:"Name"`, `members:[...]`,
+  `memberSet:"leaf"|"root"`, or `customExpr:"<MDX set>"`.
+
+## Subsets
+
+- **Static `elements` list** when the membership is fixed and small.
+- **`expression` (MDX set)** when it's rule-based — all leaves, top N, filter by
+  attribute.
+
+---
+
+## Workflow
+
+Each model gets its own server (e.g. `DEV_A`). Baselines are per-server
+(`.tm1baseline/<server>.json`), so builds on different servers don't interfere.
+Seed once at the start; re-seed only after a deploy, when starting the next version.
+
+```
+seed_baseline                     first — so the diff shows only what you build
+start_change_set  "AI: <model>"
+  … build dimensions, cubes, rules, processes, views …
+  add_assertion   per worked example in the doc, AS YOU GO
+run_assertions                    self-check before closing
+close_change_set                  runs the assertions again, reports pass/fail
+package_change_set                build the deployable
+check_deploy_risk / check_target_drift   against a target
+                                  → a human does the actual deploy
+```
+
+Narrate each step. Don't go dark for twenty tool calls — report what was built
+and what the numbers came back as.
+
+---
+
+## v11 landmines (most are lint-enforced)
+
+See `MCP_SERVER.md` → "Notes & limits" for the full list. The ones that cost real
+iterations:
+
+- 3-arg `ElementAttrN`/`ElementAttrS` — parses fine, returns blank at runtime
+- **Alternate Hierarchies on v11 (a second named hierarchy in a dimension, e.g. WFP Position "By
+  Location"):** TI builds them through the ordinary functions with `'Dim:Hierarchy'` as the
+  dimension name (`DimensionExists`, `DimensionElementInsertDirect`, `…ComponentAddDirect`,
+  `ELPAR`, `DIMIX` all work; `HierarchyCreate` / `HierarchyDestroy` too). Cubes consolidate them by
+  themselves. **But in rules `ELLEV(dim, !dim)` doesn't know an Alternate-Hierarchy total** — it
+  returned 0, so a `= C:` rule written `IF( ELLEV(...) = 0, <leaf calc>, ConsolidateChildren(dim) )`
+  treated "London" as one Position and read blank. Test leaves with `DTYPE(dim, !dim) @= 'N'`
+  instead; `ConsolidateChildren(dim)` then follows the cell's own hierarchy. A hierarchy-qualified
+  `ConsolidateChildren('Dim:Hier')` breaks the whole formula. In MDX one axis set can't mix two
+  hierarchies — query them separately. Generate an Alternate Hierarchy from data with a process,
+  never by hand; the deploy packager carries only the main hierarchy, so the process (run on each
+  server) is what deploys.
+- **A new element goes to the END of the dimension** (REST `POST Elements`). Code that takes a
+  month's "first" / "last" by walking `DIMNM` order then picks the new element — WFP's sample HR
+  extract took `Obl 2026` as everyone's last month and dropped a leaver's end date. Insert in place
+  with TI `DimensionElementInsertDirect( dim, '<before>', name, 'N' )`, and compare months by an
+  index attribute (`Period Index`), never by dimension position.
+- **Feeders fire when a cell is written, reading the other cubes as they are then.** Copying data
+  into a new period, write the cube the feeders look up (WFP Position Map's Home Entity / Cost
+  Centre) FIRST; written the other way round, the new period's Headcount was unfed and read 0 in
+  views. v11 has no REST `tm1.ProcessFeeders` — re-feed by clearing and rewriting the cells.
+- **The opening is a period, not a borrowed month** (Falcon BI `Obl yyyy`): balances only, in no FY
+  total, never costed, found by its `Period Type` attribute — never a hard-coded `'2025-12'`.
+  Payroll year to date sits there, so a tax year that started before the model (UK / NZ April) is
+  taxed right from the first plan month.
+- **A cube whose rules start `[] = N: … STET …` flags every cell `RuleDerived`**, even stored
+  ones — a copy that skips rule-derived cells copies nothing. Copy leaf cells before the rules go on.
+- **Reading a native view's subsets over REST:** `Rows`/`Columns`/`Titles` are complex types — use
+  a path (`$expand=tm1.NativeView/Rows/Subset(...)`), not `Rows($expand=Subset)`; an MDX view
+  rejects the `tm1.NativeView` cast, so read it without the expand.
+- **A chore's start time is in the TM1 server's clock** (TM1_Test_DEV runs UTC−8). A start "tomorrow
+  00:00 UTC" was this afternoon to the server, so the 5-minute chore didn't run for hours. Set the start in
+  the past; check `Chores('x')` StartTime with its offset.
+- **Renaming an element (TM1 can't):** add the new element, copy its stored data in every version
+  (snapshots too) with a view-sourced TI, repoint rules, processes, subsets, views, Lenses and
+  assertions, then delete the old one — and log every direct REST change to the change set so the
+  deploy package carries it. Prove it in the lab first and diff values under old → new names.
+  Note: a helper that treats any tool output containing "refused" as a failure trips on Lens HTML
+  that contains the word.
+- **WFP Period `Next Period` of the last month is the month itself** (2027-12 → 2027-12). A
+  TI loop that walks `Next Period` until blank never ends. Stop when Next Period equals the
+  current month, or loop by Period Index.
+- **Changing a big cube's rules can run for many minutes after the MCP call gives up** (120 s
+  client timeout) — removing feeders on `WFP Workforce Cost` took ~13 min. Check the thread
+  list before running anything that depends on it; later steps in the same script are skipped.
+- **`CellPutN` into a summary cell overwrites.** When several source rows land on the same
+  target (two assignments on one Position in a month), the last one wins and the total is
+  silently understated. Clear the target first, then `CellIncrementN`.
+- **TI doesn't short-circuit `%` (or) and `&` (and).** `IF( s @= '' % ATTRN( cPer, s, 'Period Index' ) > n )`
+  still evaluates `ATTRN` on the blank `s` and logs "Element "" not found" on every record
+  (status *HasMinorErrors*). Guard the lookup in its own `IF` first.
+- **An `ASCIIOUTPUT` header written in the Prolog is lost when the Data procedure writes
+  the same file** — TM1 re-opens (and empties) it at the start of Data, so the first data
+  row becomes the "header" and the loader silently skips it. Write the header with the
+  first data row (a flag), or write everything from one procedure.
+- `AttrInsert` is 4 args, not 3
+- TI Prolog element insert + attribute write in the same section
+- 3-deep nested `IF()` returns blank
+- element rename is not supported (`restructure_dimension` reports this honestly)
+- **REST query options with spaces must be sent as `%20`, never `+`.** TM1 does not
+  read `+` as a space, so `$filter=Cube eq 'X'` sent as `Cube+eq+'X'` fails with
+  "Unsupported token" — it looks like TM1 refusing `$filter`, but it is the encoding
+  (axios's default). `core/odata-params.js` fixes it for every connection; with it,
+  `TransactionLogEntries?$filter=Cube eq '…'` and Edges `$filter` work on v11.
+- **Cell notes (annotations) on v11 have no `Tuple`.** A note belongs to its cell via
+  `DimensionalContext` (members, one per cube dimension) and to its cube via
+  `ApplicationContext` (facet `}Cubes`). Create with `POST /Annotations` + those
+  bindings + `objectName`, `commentType: 'ANNOTATION'`, `commentLocation`.
+- **An `N:` rule never applies to a consolidated cell.** A check written as
+  `['All Employees','Flag'] = N: …` on a consolidation silently never fires. Use
+  `C:` — and to make totals COUNT flagged children instead of summing the
+  underlying values, end the rule with `ConsolidateChildren('Dim')` for the
+  consolidated positions: `IF( ELLEV('Dim', !Dim) = 0, <check>, ConsolidateChildren('Dim') )`.
+  `ConsolidateChildren` takes one or more DIMENSION names (the catalog said
+  cube/element — corrected).
+- **A text cell can't be read with `['…']` in a numeric rule** ("Syntax error …
+  logical expression"). Read it with a full `DB('Cube', !Dim1, …, 'Measure') @= 'x'`.
+- **Feeders are never removed, and re-saving unchanged rules doesn't re-run them.**
+  To move one position's cells to a new cost centre, write each source value over 0
+  (zero, then restore) — the feeders fire for just those cells in seconds; a full
+  `CubeProcessFeeders` at 3,000 people is ~12 minutes (≈ a server restart).
+- **`}CubeProperties` `LOGGING` is per cube** — with `NO`, TM1 keeps no change history
+  for that cube, so "who changed this cell" has nothing to show. Lens saves are still
+  recorded in the Lens activity log either way.
+- **`node --test` must never see live scripts.** The default runner discovers
+  `test-*.js` anywhere, including `tmp/`. A live script that deleted "the first
+  employee" deleted E10003 on every test run and created a phantom E12784. Live
+  integration scripts are named `live-*.js` and refuse to run unless `LIVE=1`;
+  `npm test` is scoped to `tests/` only. Unit tests never touch a live server.
+- **static subset save APPENDS.** `PATCH .../Subsets('X')` with
+  `Elements@odata.bind` adds to the existing members, it doesn't replace them —
+  re-running a subset seed accumulates duplicates. Rebuild with
+  `SubsetDeleteAllElements` then `SubsetElementInsert` in a TI.
+- **A user needs four kinds of READ to query a cube**, and a missing one gives the
+  same bare `ObjectSecurityNoReadRights`: the cube (`}CubeSecurity`), every one
+  of its dimensions (`}DimensionSecurity` — no entry is *not* READ), the
+  elements (`}ElementSecurity_<dim>`), and any cell security
+  (`}CellSecurity_<cube>`). Attribute cubes (`}ElementAttributes_<dim>`) count
+  as cubes — a regional user usually has no access to them, so a screen that
+  reads captions should fall back to element names rather than fail.
+- **Writing needs WRITE in the same four places** (cube, elements of every
+  dimension in the cell, cell security) — READ there gives
+  `CubeCellWriteStatusCubeNoWriteAccess`.
+- **Data reservation blocks every write without a reservation.** A cube used by
+  TM1 Applications usually has `}CubeProperties` `DATARESERVATIONMODE` =
+  `REQUIREDSHARED`: any REST/TI write from someone not holding a reservation on
+  that slice fails with `CubeCellWriteStatusNoReservation`. Either take a
+  reservation first or set the mode to `OFF` (only where Applications isn't used).
+- **Only admins can read process error logs** (`ErrorLogFiles`) — a non-admin
+  who runs a process can't see why it failed. If users run a process, have it
+  leave its outcome somewhere they can read (we use a small `Lens Messages`
+  cube: `}Clients` × Process / Time / Message).
+- **The rule-derived flag can mislead with IF … CONTINUE rules.** A cellset said
+  a Target payroll cell was rule-derived while `CellIsUpdateable` said input
+  (the rule only applies to budget-type versions) — and the reported flag
+  changed with the stored value. Trust `CellIsUpdateable` in TI.
+- **Data reservations from TI (v11.8 has no REST calls for them).** Signatures
+  (wrong ones parse on save and only fail when the line runs):
+  `CubeDataReservationAcquire(Cube, User, bForce, Address, Delim)`,
+  `…Release(Cube, User, Address, Delim)`, `…ReleaseAll(Cube, UserFilter, Address, Delim)`,
+  `…Get(Index, Cube, User, Delim)`, `…GetConflicts(Index, Cube, User, Address, Delim)`.
+  Address = one element per cube dimension, blank = whole dimension. Get returns
+  `yyyymmddhhmmss|user|'Hier':'Elem'|…`. A user needs the **ManageDataReservation**
+  capability (`}Capabilities`, EXECUTE = Grant) — often granted only to a CAMID
+  group. Check for **old whole-cube reservations** (24Retail had Admin's from 2019
+  blocking everyone). A reservation taken by a process in the user's name does
+  let that user's REST writes through.
+- **Reservation stamps are UTC; TI's `NOW` is server-local.** Measure ages on the
+  reservation clock (take and drop a probe reservation, read its stamp); store
+  times in UTC and convert only for display.
+- New client password: `AssignClientPassword` in the same procedure as
+  `AddClient` silently does nothing (the client isn't committed until the
+  procedure ends) — run them as two separate processes.
+- `SubsetCreatebyMDX` silently no-ops — use `SubsetCreate` + a
+  `SubsetElementInsert` loop.
+- `CubeProcessFeeders` is the only feeder-recalc that works — `tm1.CheckFeeders*`
+  / `tm1.CheckFeedersOfCell` (Architect "Check Feeders") 404 on this build.
+- **Stopping calc for a group of versions (non-calculating / static).** A bare
+  `['<consolidation>'] = N: STET;` does **not** hold — the calc rules below still
+  fire. The guard that works, first after `SKIPCHECK`:
+  `[] = N: IF(ELPAR('<Version dim>', !<Version dim>, 1) @= '<non-calc parent>', STET, CONTINUE);`
+  A rule *area* can't test a parent/attribute — only the RHS can. `CONTINUE` is a
+  valid keyword. Put the non-calc versions under one consolidation parent.
+- **`DimensionElementComponentAdd` in a TI Prolog is not committed until the
+  Prolog ends** (the non-`Direct` form). A process that creates a member, parents
+  it with `DimensionElementComponentAdd`, then writes its cells (where the
+  parent's rule guard should permit the write) must do the writes in the
+  **Epilog**. Or use `DimensionElementComponentAddDirect` (v11 has it — see
+  `WFP Load Positions`), which commits immediately, same as
+  `DimensionElementInsertDirect`.
+- **A parse-a-delimited-string loop (`WHILE(SCAN('~', v) > 1)`) skips the LAST
+  record** if it has no trailing `~`. Always end the string with the delimiter.
+  `WFP Load Positions` silently dropped its final roster row for months this way.
+- **Restructuring a dimension can rewrite views that reference it.** Adding ~230
+  members to `WFP Period` (the YTD hierarchy) silently degraded
+  `Cost by Cost Centre`'s column axis from the named subset `2026 Quarters + FY`
+  to an empty inline subset. Give every view axis a **named public subset**, not
+  an inline / dynamic one — named subsets survive a restructure; inline ones get
+  re-materialised. After a bulk dimension load, eyeball any view that used that
+  dimension.
+- **First matching rule wins, not last.** When two rule areas overlap on a cell,
+  TM1 uses the one defined *earlier* in the file. So a broad component rule
+  (`['Base'] = N: …`, area = one Pay Component element, every measure) beats a
+  later measure rule (`['Amount Capex'] = N: …`, area = one Measure element, every
+  pay component) on the cell they share — the new measure just inherits the
+  component value. Fix: put the narrower/override rule **above** the broad one,
+  and have it `CONTINUE` for the cells it doesn't own. Verify by reading one
+  overlapping cell back — the symptom is "every measure returns the same number".
+- **An `N:` rule is leaf-only — do NOT add `ELLEV(...) = 0` guards or `CONTINUE`
+  branches inside it.** The `N:` qualifier already means "fires only at leaf cells
+  of every dimension"; a consolidation never reaches an `N:` rule, it rolls up
+  from its leaves naturally. So a per-leaf calc (capex = amount × a cost-centre
+  rate) needs **no** leaf guard: write `['<measure>'] = N: IF(<gate>, expr, 0)`
+  and the consolidations aggregate the leaf values correctly on their own.
+  Adding `ELLEV(...) = 0` checks + `CONTINUE` is redundant noise that obscures the
+  logic and breeds bugs — a leftover `CONTINUE` in the false branch makes the
+  next matching rule (e.g. the component rule, or the Reporting translation)
+  supply the value instead of `0`, silently breaking the split. `CONTINUE` only
+  belongs in a rule that *does* fire at consolidations (a `C:` or unqualified
+  rule). Verified: the WFP capex/opex split runs with no guard and all
+  consolidations roll up correctly (55/55 assertions).
+- **Feed a rule's output from its TRUE input, not from a blanket root.** A
+  feeder section that says `['_Monthly Base Full'] => ['Base'], ['Gross Pay'],
+  ['Employer Payroll Tax'], ... ['Net Pay'], ['_Earnings YTD'], ...` is
+  inarticulate — it works but doesn't explain why. Each arrow should read as a
+  dependency statement: `['Base'] => ['Gross Pay']` because gross = base;
+  `['_Earnings YTD'] => ['_Employer Tax YTD']` because the tax is a function of
+  earnings, not of monthly base. Write the feeder section as a mirror of the
+  rule dependency graph, per-component.
+- **Never feed rule-read-only helper cells.** Feeding only matters for cells that
+  must appear in a *consolidation*. A helper that is a leaf and is only
+  referenced by other rules (`_Earnings YTD`, `_Employer Tax YTD`, the
+  `_Start/_End` index helpers) does NOT need feeding — a rule reads its value
+  directly. Blanket-feeding helpers is pure noise and hides the real structure.
+- **The currency/measure fan-out is irreducible under SKIPCHECK.** A rule-computed
+  Reporting / Budget-FX / Capex / Opex leaf must be individually fed to roll up
+  into a consolidation. So the translation-currency feeds can't be removed — but
+  organise them **per component from that component's own local driver**, not as
+  one mega-fan-out from a single source. (Verified: the WFP feeder rewrite cut
+  ~50 blanket targets to a per-component dependency map, 55/55 assertions green.)
+- **`NON EMPTY` silently skips rule cells that have no feeders.** A control/check
+  measure written as a rule (`['Over-filled'] = C: …`) with nothing feeding it is
+  computed when you ask for the cell, but a `NON EMPTY` MDX query treats it as
+  empty and drops it — so a check read that way can report "all clear" while the
+  thing it checks is actually wrong. (A rule cell that *is* fed, e.g. `Person In
+  Closed Position`, does appear.) Read the **consolidated totals without `NON EMPTY`**
+  first (a handful of cells, always computed), then scan the detail (a full leaf
+  grid, no `NON EMPTY`) only for the months/rows that trip. Never trust `NON EMPTY`
+  for a check; prove every check with a real trip before shipping it.
+- **Use `WFP Snapshot` to take a snapshot — never `WFP Copy Version`.** Snapshot
+  versions live under `Non-Calculating`, and the Headcount / Cost rules carry
+  `[] = N: IF(ELPAR('WFP Version',1)@='Non-Calculating', STET, CONTINUE)` — so a
+  snapshot **stops calculating** and uses stored values. `WFP Snapshot` copies
+  **every cube that carries the Version dimension** (`WFP Assignment`,
+  `WFP Position Map`, `WFP Hiring Plan`, `WFP Workforce Input`, `WFP Headcount`,
+  `WFP Workforce Cost`, `WFP Assumptions`, `WFP FX Rates`, `WFP Pay Rates`) through
+  the core `}IDE.Version.Copy` (`pType=static`), so the *calculated* Headcount/Cost
+  values are copied in. `WFP Copy Version` copies only
+  `WFP Workforce Input` (`FTE`, `Base Salary`) — using it for a snapshot leaves
+  Headcount and Cost **blank**, because the non-calculating guard STETs and nothing
+   copies the values. (A snapshot taken before a new cube existed won't have that
+   cube's data — re-snapshot; there's no repair.)
+- **MTFeeders / MTFeeders.AtStartup need a model with NO conditional feeders.** IBM's
+  docs: both are *"not supported when the model uses conditional feeders"*, and MTFeeders
+  also warns it *"increases memory usage significantly"*. "Conditional" includes
+  **attribute-directional** (target via `ATTRS`) and **data-directional** (target via
+  `DB`, e.g. the Position Map cost centre) feeders — the WFP model has both
+  (`WFP Workforce Input` FTE → Cost target Currency via `Salary Currency`, Entity/CC via
+  Position Map; `WFP Headcount` Headcount → next Period via attribute). So **leave
+  MTFeeders=F**. The load/feeder lever is **`MaximumCubeLoadThreads`** (static; cores−1) —
+  its restriction is only for *value-conditional* feeders (IF in a feeder), which this
+  model has none of.
+- **`ForceReevaluationOfFeedersForFedCellsOnDataChange` is required only for conditional
+  feeders**, and is **static** on 11.8 (restart). Measured cost is small: a 6,044-cell
+  identical write into a snapshot was **0.41 ms/cell** on a no-feeder cell vs **0.48
+  ms/cell** on a fed cell (~15%). Keep it when conditional feeders exist.
+- **A cold cost page (~56s) is a model-design cost, not a server setting.** MTQ is already
+  on (all 4 cores). The 56s → 15ms cold/warm gap is position-level cost rules plus the
+  month-by-month YTD tax chain: the first read calculates the whole aggregate, later reads
+  hit the cache. Only redesigning the Cost calculation changes it — not settings.
+
+---
+
+
+## What each build taught us
+
+### OPX Allocations (Sep 2026) — first end-to-end MCP build
+
+- **Wrong dimensionality.** Cost centres were built as `Benefits North Src` /
+  `Benefits South Src` — subsidiary baked into the element name instead of a
+  `Subsidiary` (or `Entity`) dimension. Also `Direct Input` / `Allocation` /
+  `Fully Loaded` as separate measure elements where one `Amount` measure would
+  do. This is a modelling competence failure, not a TM1 quirk — hence the
+  "Get the dimensionality right first" section above. Likely cause: building
+  cube-by-cube against an already-open change set made "add elements to the
+  existing dimension" the path of least resistance over "introduce a new
+  dimension and rebuild the cubes."
+- 3-arg `ElementAttrN` returned blank for ~2 iterations → became a lint rule.
+- TI built month elements in Prolog then wrote attributes on them in Prolog →
+  "element not found" at runtime → became a lint rule; fix is attributes in
+  Epilog.
+- 3-deep `IF()` in the Direct Expense rule returned 0 with all inputs correct →
+  flattened into helper measures.
+- MDX views wouldn't render in the IDE → rebuilt as native. Native is now the
+  default recommendation.
+- ~175 tool calls, ~89 `read_cells` verifications. Checking was half the work and
+  stayed manual.
+
+### Workforce Planning — Phase 1 (Sep 2026) — second MCP build
+
+- **Clean first pass — 16/16 assertions on the first `run_assertions`.** No
+  wrong-number iterations. Differences from OPX: dimensionality agreed and
+  written up in full (`WORKFORCE_MODEL_PLAN.md`) before any `build_cube`;
+  helper measures for the proration logic kept every rule ≤1 IF deep; guards
+  written as one compound `IF(cond1 & cond2, expr, 0)` not nested.
+- **`STR()` in TI fails on this engine** — `vYr = TRIM( STR( nYear, 12, 0 ) );`
+  → "invalid numeric expression". `STR` is a *rules* function; TI wants
+  `NumberToString` / `NumberToStringEx`. Worked around by building the small
+  fixed period dimension declaratively. → candidate ti-lint rule: flag `STR(`
+  in TI code.
+- **Parse-a-delimited-string-in-TI** works well for loading a roster / rate
+  table without a datasource file: `~`-delimited records, `;`-delimited fields,
+  repeated `SCAN`/`SUBST`. `DimensionElementInsertDirect` + immediate `AttrPutS`
+  in the Prolog (Direct commits, so no Prolog-timing problem).
+- The attribute-fed-feeder lint warning fired on
+  `['FTE'] => DB(..., ATTRS(pos,'Home Entity'), ATTRS(pos,'Cost Centre'), ...)`
+  — acceptable here because the loader `ItemReject`s any position whose
+  entity/CC don't resolve, so the attributes are never blank.
+
+### Workforce Planning — Phase 1 rev B (Sep 2026) — design review + rebuild
+
+- **First build passed 16/16 assertions but was still wrong.** A design review
+  found 7 foundational gaps (Version not Scenario, currency + FX, headcount as an
+  output, salary as input not attribute, employment type, multi-year period,
+  **progressive banded taxation**). Passing assertions ≠ a correct model — the
+  assertions only check what you thought to check. The reviewer (domain expert)
+  caught what the build missed.
+- **`Group` is ambiguous when it's a member of two dimensions** — Entity *and*
+  Currency both had `Group`. `['Group', 'Base'] = ...` → "Element name ambiguous".
+  Rules can't disambiguate by dimension in the area. Fix: rename one (currency
+  member → `Reporting`). → worth a lint check: flag an element name that exists
+  in more than one dimension used by the same cube.
+- **Progressive tax needs a YTD roll-forward even in "Phase 1".** Annual
+  thresholds/caps mean `tax[month] = f(cumulative_YTD) - f(cumulative_prior)`.
+  The 4-band walk is `Σ MAX(0, MIN(ytd, To_b) - From_b) * Rate_b` — flat, no IF
+  nesting, unused bands (To=From=Rate=0) contribute 0. YTD resets at the FY
+  boundary via `SUBST(!period, 6, 2) @= '01'`.
+- **Reporting-currency translation as a rule area**: `['Reporting', 'Base'] = N:
+  Σ DB(self, <ccy>, 'Base') * DB('FX Rates', <ccy>, ...)`. Place it *before* the
+  local-currency `['Base']` rule so the more-specific area wins.
+- Rebuild cost: ~70 objects, one change set, ~2 hours. Deleting + recreating was
+  cleaner than surgical edits given Period, Pay Component, and all cubes changed.
+
+### Workforce Planning — Phase 1 rev C (Sep 2026) — employee income tax / gross-to-net
+
+- **Recreating a cube breaks the feeders from other cubes into it.** After
+  `delete_object` + `build_cube` on `WFP Workforce Cost`, every leaf computed
+  fine on a direct read but all consolidations returned 0 — the
+  `WFP Workforce Input ['FTE'] => DB(WFP Workforce Cost, …)` feeder was dead.
+  Re-applying the source cube's rules did **not** fix it. Fix: a TI running
+  `CubeProcessFeeders('WFP Workforce Cost')`. **Always run CubeProcessFeeders on
+  any cube you recreate, and on cubes that feed into it.** Keep a
+  `<prefix> Reprocess Feeders` process in the model.
+- **Progressive tax generalises cleanly**: one `WFP Tax Type` axis on the bands
+  cube (`Employer Payroll Tax` / `Employee Income Tax`), the same 7-band YTD walk
+  with the type as a parameter. Employee income tax verified against real
+  NZ/UK brackets to the cent.
+- Pay Component split into `Cost to Company` (C) and `Employee Deductions` (C),
+  with `Gross Pay` and `Net Pay` as computed leaves
+  (`Net Pay = Gross Pay − Employee Deductions`, referencing the consolidation
+  directly in the rule).
+- Contractor gate extends: no employer on-costs AND no employee PAYE / pension
+  (a contractor invoices gross), so Net = Gross for them.
+- **Default subset / view compliance** — a TI loops the model dimensions and
+  builds a `Default` subset (all members) on each; a `Default` native view on
+  each cube. `SubsetCreatebyMDX` silently no-opped on this engine — use
+  `SubsetCreate` + a `SubsetElementInsert` loop.
+
+### Workforce Planning — Phase 1 rev D (Sep 2026) — house conventions retrofit
+
+Retrofit of three model-wide conventions onto a finished, assertion-green model:
+per-cube measure dimension last, fixed house dimension order, default `#,##0.00`
+element format. All six cubes dropped and rebuilt.
+
+- **A coordinate-only rewrite is safe if you keep every element name identical.**
+  Renaming the four "item" dims to `<Cube> Measure`, adding two new measure dims,
+  and reordering cube dimensions touched ~40 `DB()` calls and ~25 rule areas —
+  but because element names never changed, rule *areas* (`['Reporting', 'Base']`)
+  needed no edits at all; only positional `DB()` argument lists were remapped.
+  19/19 assertions green on the first `run_assertions` after the rewrite.
+- **Rule areas are matched by element name, not dimension position** — so a
+  single-element measure dim (`WFP Workforce Cost Measure` = just `Amount`) costs
+  nothing in the calc rules; every `['Base'] = N: …` still resolves to Base ×
+  Amount. Only `DB()` self-references have to carry the `'Amount'` coordinate.
+- **YTD prior-period self-references survive a dimension reorder** provided the
+  `ATTRS('WFP Period', !period, 'Prior Period')` term lands in the new Period
+  slot. Verified with a *sum-of-12-months = FY* assertion, which catches a
+  mis-placed self-ref coordinate that a single-period check would miss.
+- **Every cube gets a measures dimension, last — no exceptions.** This is
+  standard TM1 practice. A cube with one measure today (`WFP Workforce Cost
+  Measure` = `Amount`) still gets the dimension: it is the extension point for
+  the next measure, it keeps every cube's shape uniform, it gives the default
+  view an obvious axis, and `build_cube` enforces it. Don't skip it just because
+  the account dimension already carries the line structure.
+- Seed-TI rewrite is the fiddly part: every `CellPutN` argument list is
+  positional and has to be re-ordered to the new cube shape. Dims whose position
+  didn't change (Tax Bands: Jurisdiction, Tax Type, Band, Measure) needed no
+  edit.
+- Rebuild cost: 39 change-set objects (92 in the release package), one change
+  set, ~1 hour — cheaper than rev B because the logic was already correct and
+  only coordinates moved.
+
+### Workforce Planning — Phase 2 (Sep 2026) — versions & assumptions
+
+- **A calculating version needs its downstream cells fed explicitly.** A
+  `['Forecast'] = N: IF(cutoff, Actual, Working)` rule computes fine on a direct
+  leaf read, but every consolidation over it read 0. `!WFP Version` feeders
+  (`['FTE'] => DB(cube, !WFP Version, …)`) only ever fire for versions that have
+  an *input* FTE cell — Forecast never does. Fix: feed the Forecast targets from
+  a version that is always populated — `['Working', 'FTE'] => DB(cube, 'Forecast',
+  …)` — a literal target, not `!WFP Version`.
+- **Reference cubes that carry a `Version` dimension but hold version-agnostic
+  data are a trap.** `WFP FX Rates` and `WFP Pay Rates` are keyed by Version; the
+  engine reads them at `!WFP Version`. A new version (`Forecast`, a scenario)
+  reads blank there until the seed is re-run for it — and the symptom is a
+  silently-short consolidation, not an error. Either drop `Version` from the
+  cube, or read at a fixed version in the rules, or (stopgap) loop **all** leaf
+  versions in the seed (`DIMNM('<Version dim>', n)` not a hard-coded
+  `'Budget|Working|'`).
+- **Can't `CellPutN` to a consolidation.** `WFP Entity` has `Group` (C); seeding
+  assumptions looped `Group` → "Cell type is consolidated". Write leaf entities
+  only; rules read at a leaf (the position's Home Entity).
+- **Neither `tm1.CheckFeedersForRules` nor `tm1.CheckFeedersOfCell` exists on
+  this v11** — `check_feeders` / `trace_feeders` both fail. Only
+  `CubeProcessFeeders` (the TI function) works. Diagnose under-feeding by reading
+  the consolidation one level at a time (single position → position total →
+  entity total) to find where it drops to 0.
+
+### Workforce Planning — P5 simplification (Sep 2026)
+
+- **`ELLEV` guards + `CONTINUE` inside an `N:` rule are redundant — and harmful.**
+  The P5 capex/opex split was originally written with a five-way `ELLEV(...) = 0`
+  leaf guard and a `CONTINUE` fallthrough. But `N:` already means "leaf cells
+  only"; consolidations never reach the rule and roll up naturally (verified:
+  the R&D consolidation computes correct Capex/Opex with no guard). When the
+  guard was stripped, a leftover `CONTINUE` in the false branch made the next
+  matching rule (the component rule / Reporting translation) supply the value
+  instead of `0`, breaking `Capex + Opex = Amount` by exactly one component's
+  value (11,850). The fix was `CONTINUE` → `0`. See the "Rules and TI" section
+  for the full convention. Rule-reading discipline: when you edit a rule, re-read
+  an overlapping cell AND a consolidation to confirm both still behave — one
+  assertion (`capex + opex = Amount`) caught what a leaf-only read would miss.
+
+### Financial consolidation build (Sep–Oct 2026) — Windows v11, test-first
+
+A statutory group consolidation (ownership, goodwill, NCI, currency translation, intragroup, disposals,
+sub-groups, year-end close) built through the MCP and proven against published worked answers.
+
+**TM1 / v11 platform**
+- **Windows reserved device names.** TM1 saves every object as a file, so on a Windows server a name whose part
+  before the first dot is `CON`/`PRN`/`AUX`/`NUL`/`COM1-9`/`LPT1-9` can't be created (400 code 178 "Failed to
+  register object"). Names with spaces (`CON Data`) are fine; `CON.Something` is not.
+- **v11 returns 400 code 278 ("already exists"), not 409, for a duplicate POST.** Create-or-replace must PATCH
+  only on 409 or 400/278 and rethrow anything else (fixed in `tm1_client.createOrReplaceProcess`).
+- **A data leaf can't be a consolidated node in an alternate hierarchy** (`ElementLeafConsolidationConflict`,
+  and the failed call leaves an empty hierarchy behind). For a structure-only tree over data leaves, use separate
+  node elements or a parent attribute.
+- **`tm1.ProcessFeeders` (MCP `reprocess_feeders`) isn't resolvable on this v11** — keep a
+  `<prefix> Reprocess Feeders` TI with `CubeProcessFeeders` in every model.
+- **TM1 returns process code with `\r\n` line endings** — regex edits of fetched TI must allow `\r?\n`.
+
+**TI patterns**
+- **`ProcessError` rolls back everything the process wrote, including its own log lines.** End validation
+  failures with `ProcessQuit` (writes persist, status `QuitCalled`) and have callers test
+  `ExecuteProcess(...) <> ProcessExitNormal()`.
+- **No end-of-line comments in TI:** `nX = 1;  # note` is a syntax error, and it only shows at run time.
+- **`LogOutput` goes to tm1server.log, not the process error file** — write validation messages to a run-log
+  cube the run can be read back from.
+- **Clear + `CellIncrementN` = idempotent re-runs** when two postings can hit the same cell.
+- **In a Prolog, `ELCOMP` reads the committed structure** — delete children by counting down from a fixed
+  `ELCOMPN`; a "while children > 0" loop never ends.
+- **Long processes outlive the MCP `run_process` timeout** — the process still completes; poll `Threads` until
+  idle before reading results.
+
+**Rules and feeders**
+- **Under SKIPCHECK an under-fed classification cube doesn't give a slightly wrong number — it silently drops
+  rows** (a subsidiary read as 0% control, no error). Feed only the leaf cells that roll into a consolidation;
+  values read with `DB()` always evaluate.
+- **Self-checking feeders:** a direct read of one leaf always evaluates the rule, a consolidation adds only fed
+  leaves — so Σ(leaf reads) − consolidated total ≠ 0 means under-fed. Run it as a TI inside every run and as an
+  MDX assertion (`WITH MEMBER [Dim].[Feed Gap] AS SUM(leaves) - [Dim].[Total]` → 0).
+- **Recursive ownership as live rules:** recursion that runs downward only resolves any depth with no
+  per-depth blocks; keep IF-nesting ≤ 2 with helper measures, or chain depth blocks with `CONTINUE`.
+
+**Data design**
+- **Store movements; get balances from the period dimension** (`yyyy OBL` + `LTD FYyyyy Pnn` = OBL + YTD).
+  Point-in-time stocks (ownership %) are read at month leaves only.
+- **Movements + an OBL leaf need a year-end close**, even for monthly actuals — nothing fills the OBL by itself,
+  so P01 of a new year opens at zero. Find the OBL from the period dimension, not by name.
+- **Journals as closing positions, stored as movements** (movement = closing − prior LTD): re-runs and
+  multi-month runs never double-count. One-off gains computed as closing positions must go to P&L only in their
+  own year, to retained earnings b/f after the close.
+- **Mid-run reads of a derived layer see the closing target, not the movement** — read copied layers at LTD and
+  derived layers at the current month cell.
+- **Currency without a currency dimension:** data stays in the entity's currency (an attribute); translation is a
+  derived layer. Never retranslate history at the current average rate — chain it month by month, or months with
+  no movement drift when the rate changes (flat filler months are a cheap, sharp test for this).
+
+**Testing method**
+- **Hand-work every expected figure into test cases before writing any TI.** The consolidation run matched the
+  published answers on its first run because of this.
+- **Prove the design numerically first** — a 30-line script reproducing the published answer with the proposed
+  journals found a missing split before any TI existed.
+- **Re-run the whole regression set before every new case**; a rewrite that changes nothing for earlier cases is
+  the evidence it's safe.
+- **Published answers can be wrong** — one worked example was; corrected from first principles and documented.
+- **Where no published answer exists** (e.g. a second year), anchor on a published year and assert invariants
+  (no-movement months stable, opening = prior closing, rerun identical) plus hand calculations.
+- **Keep test payloads as files** — after an unclean stop they were the whole recovery (see the SaveDataAll entry).
+
+**IDE fixes from this build:** Cube Map writer scan now sees `CellIncrementN/S`, `ViewZeroOut`, `CubeClearData`;
+Period Builder rebuilds FY/YTD/rolling children instead of appending; catalog `ParseDate` corrected and `TM1User`
+added (both live-verified); rules-lint no longer splits on commas inside area references.
+
+### TM1 only persists cube data on SaveDataAll or a clean shutdown (Oct 2026)
+
+- A Windows v11 server went down uncleanly (a leftover `tm1sd.exe` held `PortNumber`, so the service's restarts
+  died with `E15) Server unable to listen on port …`; worked around with a new `PortNumber` — the REST port is
+  separate, so IDE/MCP/PAW were unaffected). On restart **all input cube data loaded via REST/TI since the last
+  save was gone**; metadata, processes, rules and attribute values survived. "Transaction log write-locked, recovery possible" is NOT replayed automatically for a service.
+- Recovered by reloading every test payload (kept as JSON files) + reprocess feeders + the full test run → all
+  green. Then SaveDataAll.
+- **Rule now: SaveDataAll after every data load / build** (a `<prefix> Save Data` TI), and a scheduled save chore. The IDE header **Save data** button and MCP `save_data_all` do the same for admins, falling back to hidden `}IDE.SaveDataAll` where the REST action is missing.
+  Keep test payloads as files, not only as one-off write_cells calls — they were the whole recovery.
+
+### Storing documents in TM1 v11 Applications (Oct 2026 — phase 0 of model-owned history)
+
+- `Contents('Files')` is v12-only; on v11.8 use `Contents('Applications')`.
+- Folder names **can't start with `}`** (POST 400) — Applications folders can't be hidden by naming.
+- A document named `X` gets ID **`X.blob`**; address it by ID. Content is at **`…/Contents('X.blob')/Document/Content`**
+  on v11 (`…/Contents('X')/Content` → 404 "'Content' resource can not be resolved on type 'DocumentReference'").
+- Deleting a folder deletes its documents. 5 MB writes fine (~0.3 s).
+- Documents survived a stuck shutdown + VM reboot with no SaveDataAll — unlike cube data (see the SaveDataAll entry).
+- A stuck shutdown ("Saving… The server is coming down… Deactivating chore", then nothing; REST refuses connections,
+  service won't stop, Task Manager can't kill it) needed a VM reboot. Cube data came back intact (full assertion set green).

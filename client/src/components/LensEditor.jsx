@@ -1,9 +1,84 @@
-import { useState, useRef, useCallback, useEffect } from 'react'
+import { useState, useRef, useCallback, useEffect, useMemo } from 'react'
 import MonacoEditor from '@monaco-editor/react'
 import { useStore } from '@/store'
-import { Sparkles, Save, RefreshCw, Loader2, Eye, Pencil } from 'lucide-react'
+import { Sparkles, Save, RefreshCw, Loader2, Eye, Pencil, SlidersHorizontal } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { lensSrcDoc, installLensHost } from '@shared/lens-bridge'
+import LENS_ICONS from '@shared/lens-icons.json'
+
+const ICON_NAMES = Object.keys(LENS_ICONS).filter(k => !k.startsWith('_'))
+const TILE_COLORS = ['#0f766e', '#2563eb', '#7c3aed', '#c2410c', '#be123c', '#0e7490', '#4d7c0f', '#a16207']
+
+// One Lens icon (shared/lens-icons.json — the same set the Lens app draws).
+function LensIcon({ name, size = 18, stroke = 'currentColor' }) {
+  return (
+    <svg viewBox="0 0 24 24" width={size} height={size} fill="none" stroke={stroke} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      {(LENS_ICONS[name] ?? []).map(([Tag, attrs], i) => <Tag key={i} {...attrs} />)}
+    </svg>
+  )
+}
+
+// The Lens's tile on the Lens app home page: its image, or its icon on a colour.
+export function LensTile({ icon, color, image, size = 28 }) {
+  if (image) return <img src={image} alt="" style={{ width: size, height: size, borderRadius: size / 4, objectFit: 'cover' }} />
+  return (
+    <span style={{ width: size, height: size, borderRadius: size / 4, display: 'inline-grid', placeItems: 'center', background: `linear-gradient(135deg, ${color || '#0f766e'}, ${color || '#0f766e'}bb)` }}>
+      <LensIcon name={icon || 'layers'} size={size * 0.56} stroke="#fff" />
+    </span>
+  )
+}
+
+// Pick the icon, its colour, or upload your own image (≤ 200 KB) for the Lens app home page.
+function IconPicker({ icon, color, image, onChange }) {
+  const [open, setOpen] = useState(false)
+  const [error, setError] = useState('')
+  const fileRef = useRef(null)
+  const upload = (file) => {
+    setError('')
+    if (!file) return
+    if (!/^image\/(png|jpeg|webp|svg\+xml)$/.test(file.type)) { setError('Use a PNG, JPEG, WebP or SVG picture'); return }
+    if (file.size > 200 * 1024) { setError('That picture is over 200 KB — use a smaller one'); return }
+    const reader = new FileReader()
+    reader.onload = () => onChange({ image: String(reader.result) })
+    reader.readAsDataURL(file)
+  }
+  return (
+    <div className="relative">
+      <button onClick={() => setOpen(o => !o)} className="inline-flex items-center gap-1.5 rounded border border-border px-2 py-1 text-sm hover:bg-accent" title="Icon on the Lens app home page">
+        <LensTile icon={icon} color={color} image={image} size={20} /> Icon
+      </button>
+      {open && (
+        <div className="absolute left-0 top-full z-50 mt-1 w-[300px] rounded-md border border-border bg-background p-3 shadow-lg">
+          <div className="mb-2 flex items-center gap-2">
+            <LensTile icon={icon} color={color} image={image} size={44} />
+            <div className="text-xs text-muted-foreground">How this Lens looks on the Lens app home page</div>
+          </div>
+          <div className="grid grid-cols-8 gap-1">
+            {ICON_NAMES.map(n => (
+              <button key={n} title={n} onClick={() => onChange({ icon: n, image: '' })}
+                className={cn('grid h-8 w-8 place-items-center rounded hover:bg-accent', !image && icon === n && 'bg-primary text-primary-foreground')}>
+                <LensIcon name={n} />
+              </button>
+            ))}
+          </div>
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {TILE_COLORS.map(c => (
+              <button key={c} title={c} onClick={() => onChange({ color: c, image: '' })}
+                className={cn('h-6 w-6 rounded-full border-2', color === c ? 'border-foreground' : 'border-transparent')} style={{ background: c }} />
+            ))}
+          </div>
+          <div className="mt-3 flex items-center gap-2 border-t border-border pt-2">
+            <button onClick={() => fileRef.current?.click()} className="rounded border border-border px-2 py-1 text-xs hover:bg-accent">Use my own image…</button>
+            {image && <button onClick={() => onChange({ image: '' })} className="rounded border border-border px-2 py-1 text-xs hover:bg-accent">Remove image</button>}
+            <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" hidden onChange={e => { upload(e.target.files?.[0]); e.target.value = '' }} />
+          </div>
+          {error && <div className="mt-1 text-xs text-red-600">{error}</div>}
+          <div className="mt-2 text-right"><button onClick={() => setOpen(false)} className="text-xs text-muted-foreground hover:underline">Done</button></div>
+        </div>
+      )}
+    </div>
+  )
+}
 
 const token = () => localStorage.getItem('tm1-token') ?? ''
 
@@ -41,7 +116,33 @@ const LOADING_LENS = '<!doctype html><html><body style="font:14px system-ui,sans
 export default function LensEditor({ tab }) {
   const { dark } = useStore()
   const [name, setName] = useState(tab.name ?? '')
+  const [prompt, setPrompt] = useState('')
+  // Stored with the Lens (shown in the Lens app): loaded on open, kept on save.
   const [description, setDescription] = useState('')
+  const [folder, setFolder] = useState('')
+  const [title, setTitle] = useState('')
+  const [look, setLook] = useState({ icon: '', color: '', image: '' })
+  // A new Lens can start from a COPY of an example or of an existing Lens —
+  // never linked: once copied, the code is this Lens's own.
+  const [starts, setStarts] = useState({ examples: [], lenses: [] })
+  const [started, setStarted] = useState(!!tab.name)   // a new Lens opens on its start page
+  // The Lens's config (Config tab): JSON the Lens reads with Lens.config(). The
+  // preview always runs with the last config that parsed.
+  const [configText, setConfigText] = useState('{\n}\n')
+  const [goodConfig, setGoodConfig] = useState({})
+  const parseConfig = text => {
+    try {
+      const c = JSON.parse(text || '{}')
+      return c && typeof c === 'object' && !Array.isArray(c) ? { config: c } : { error: 'The config must be a JSON object { … }' }
+    } catch (e) { return { error: e.message } }
+  }
+  const configError = useMemo(() => parseConfig(configText).error ?? '', [configText])
+  const editConfig = text => {
+    setConfigText(text)
+    const p = parseConfig(text)
+    if (p.config) setGoodConfig(p.config)
+  }
+  const [folders, setFolders] = useState([])
   const [cube, setCube] = useState(tab.cube ?? '')
   const [cubes, setCubes] = useState([])
   // A saved Lens starts on a plain placeholder (no bridge calls) until it loads —
@@ -51,7 +152,7 @@ export default function LensEditor({ tab }) {
   const [saving, setSaving] = useState(false)
   const [validation, setValidation] = useState([])
   const [message, setMessage] = useState(null)
-  const [mode, setMode] = useState('design') // 'design' | 'preview'
+  const [mode, setMode] = useState('preview') // 'design' | 'preview' — opens on Preview
   const [previewKey, setPreviewKey] = useState(0)
   const iframeRef = useRef(null)
   const previewTimer = useRef(null)
@@ -62,10 +163,24 @@ export default function LensEditor({ tab }) {
       .then(r => r.json())
       .then(d => setCubes(Array.isArray(d) ? d : []))
       .catch(() => {})
+    if (!tab.name) {
+      fetch('/api/lens-examples', { headers: { 'x-ide-token': token() } }).then(r => r.json())
+        .then(d => setStarts(s => ({ ...s, examples: Array.isArray(d) ? d : [] }))).catch(() => {})
+      fetch(`/api/lenses?server=${encodeURIComponent(tab.server)}`, { headers: { 'x-ide-token': token() } }).then(r => r.json())
+        .then(d => setStarts(s => ({ ...s, lenses: Array.isArray(d) ? d : [] }))).catch(() => {})
+    }
+    // Folders already in use, offered as suggestions.
+    fetch(`/api/lenses?server=${encodeURIComponent(tab.server)}`, { headers: { 'x-ide-token': token() } })
+      .then(r => r.json())
+      .then(d => setFolders(Array.isArray(d) ? [...new Set(d.map(l => l.folder).filter(Boolean))].sort() : []))
+      .catch(() => {})
     if (tab.name) {
       fetch(`/api/lenses/${encodeURIComponent(tab.name)}?server=${encodeURIComponent(tab.server)}&_=${Date.now()}`, { headers: { 'x-ide-token': token() } })
         .then(r => r.json())
-        .then(d => { if (d.html) setHtml(d.html); else if (d.error) setMessage({ kind: 'error', text: `Couldn't load the Lens: ${d.error}` }) })
+        .then(d => {
+          if (d.html) { setHtml(d.html); setDescription(d.meta?.description ?? ''); setFolder(d.meta?.folder ?? ''); setTitle(d.meta?.title ?? ''); setLook({ icon: d.meta?.icon ?? '', color: d.meta?.color ?? '', image: d.meta?.image ?? '' }); setConfigText(JSON.stringify(d.meta?.config ?? {}, null, 2) + '\n'); setGoodConfig(d.meta?.config ?? {}) }
+          else if (d.error) setMessage({ kind: 'error', text: `Couldn't load the Lens: ${d.error}` })
+        })
         .catch(e => setMessage({ kind: 'error', text: `Couldn't load the Lens: ${e.message}` }))
     }
   }, [tab.server, tab.name])
@@ -73,10 +188,12 @@ export default function LensEditor({ tab }) {
   useEffect(() => {
     const off = installLensHost(
       () => iframeRef.current?.contentWindow,
-      { getServer: () => tab.server, getToken: token },
+      { getServer: () => tab.server, getToken: token, getLens: () => tab.name,
+        // A Lens opening another (an app home page, a process step): a new tab here.
+        openLens: (n) => useStore.getState().openTab({ id: `lens:${tab.server}:${n}`, type: 'lens', label: n, server: tab.server, name: n }) },
     )
     return off
-  }, [tab.server])
+  }, [tab.server, tab.name])
 
   useEffect(() => {
     if (!dirtyPreview) return
@@ -86,14 +203,14 @@ export default function LensEditor({ tab }) {
   }, [html, dirtyPreview])
 
   const generate = async () => {
-    if (!description.trim()) { setMessage({ kind: 'error', text: 'Describe the lens you want first' }); return }
+    if (!prompt.trim()) { setMessage({ kind: 'error', text: 'Describe the lens you want first' }); return }
     setGenerating(true)
     setMessage(null)
     try {
       const res = await fetch('/api/lenses/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-ide-token': token() },
-        body: JSON.stringify({ server: tab.server, cube: cube || undefined, description }),
+        body: JSON.stringify({ server: tab.server, cube: cube || undefined, description: prompt }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || res.statusText)
@@ -112,6 +229,7 @@ export default function LensEditor({ tab }) {
 
   const save = async (publish = false, force = false) => {
     if (!name.trim()) { setMessage({ kind: 'error', text: 'Give the lens a name' }); return }
+    if (configError) { setMode('config'); setMessage({ kind: 'error', text: `Fix the config first: ${configError}` }); return }
     setSaving(true)
     setMessage(null)
     setValidation([])
@@ -119,7 +237,7 @@ export default function LensEditor({ tab }) {
       const res = await fetch(`/api/lenses/${encodeURIComponent(name.trim())}?server=${encodeURIComponent(tab.server)}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-ide-token': token() },
-        body: JSON.stringify({ html, description, publish, force }),
+        body: JSON.stringify({ html, description, folder, title, icon: look.icon, color: look.color, image: look.image, config: goodConfig, publish, force }),
       })
       const data = await res.json()
       if (!res.ok) {
@@ -137,10 +255,69 @@ export default function LensEditor({ tab }) {
 
   const refreshPreview = () => setPreviewKey(k => k + 1)
 
+
+  const startFrom = async (pick) => {
+    if (!pick) return
+    const [kind, src] = [pick.slice(0, pick.indexOf(':')), pick.slice(pick.indexOf(':') + 1)]
+    try {
+      const url = kind === 'example' ? `/api/lens-examples/${encodeURIComponent(src)}` : `/api/lenses/${encodeURIComponent(src)}?server=${encodeURIComponent(tab.server)}&_=${Date.now()}`
+      const r = await fetch(url, { headers: { 'x-ide-token': token() } })
+      const d = await r.json()
+      if (!r.ok) throw new Error(d.error || r.statusText)
+      const cfg = kind === 'example' ? (d.meta?.example ?? {}) : (d.meta?.config ?? {})
+      setHtml(d.html)
+      setConfigText(JSON.stringify(cfg, null, 2) + '\n'); setGoodConfig(cfg)
+      setPreviewKey(k => k + 1)
+      const label = kind === 'example' ? (d.meta?.title ?? src) : (d.meta?.title || src)
+      setMessage({ kind: 'ok', text: `Started from a copy of "${label}". It's this Lens's own code now — change it freely; the original is never affected.` })
+      setStarted(true)
+    } catch (e) { setMessage({ kind: 'error', text: e.message }) }
+  }
+
   const handleEditorChange = useCallback((value) => {
     setHtml(value ?? '')
     setDirtyPreview(true)
   }, [])
+
+  if (!started) {
+    const Card = ({ onClick, tile, title, text }) => (
+      <button onClick={onClick} className="flex items-start gap-3 rounded-lg border border-border bg-background p-3 text-left hover:border-primary hover:bg-accent/40">
+        {tile}
+        <span className="min-w-0"><span className="block text-sm font-semibold">{title}</span><span className="block text-xs text-muted-foreground line-clamp-2">{text}</span></span>
+      </button>
+    )
+    const grid = 'grid gap-2 [grid-template-columns:repeat(auto-fill,minmax(240px,1fr))]'
+    return (
+      <div className="h-full overflow-auto">
+        <div className="mx-auto max-w-4xl px-6 py-8 space-y-7">
+          <div>
+            <h2 className="text-xl font-semibold">New Lens</h2>
+            <p className="text-sm text-muted-foreground">Start from a blank Lens or a copy — a copy is yours to change; the original is never affected.</p>
+          </div>
+          {message && <div className="text-sm text-red-600">{message.text}</div>}
+          <div className={grid}>
+            <Card onClick={() => setStarted(true)} tile={<LensTile icon="square-pen" size={32} />} title="Blank" text="Start from an empty Lens" />
+          </div>
+          {starts.lenses.length > 0 && (
+            <div className="space-y-2">
+              <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Copy one of yours · {tab.server}</h3>
+              <div className={grid}>{starts.lenses.map(l => (
+                <Card key={l.name} onClick={() => startFrom(`lens:${l.name}`)} tile={<LensTile icon={l.icon} color={l.color} image={l.image} size={32} />} title={l.title || l.name} text={l.description || l.name} />
+              ))}</div>
+            </div>
+          )}
+          {starts.examples.length > 0 && (
+            <div className="space-y-2">
+              <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Copy an example</h3>
+              <div className={grid}>{starts.examples.map(x => (
+                <Card key={x.name} onClick={() => startFrom(`example:${x.name}`)} tile={<LensTile icon={x.icon} color={x.color} size={32} />} title={x.title} text={x.description} />
+              ))}</div>
+            </div>
+          )}
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="flex flex-col h-full min-h-0">
@@ -162,8 +339,8 @@ export default function LensEditor({ tab }) {
         <input
           className="min-w-[220px] flex-1 rounded border border-border bg-background px-2 py-1 text-sm"
           placeholder="Describe the dashboard, e.g. revenue vs budget by region with a variance table"
-          value={description}
-          onChange={e => setDescription(e.target.value)}
+          value={prompt}
+          onChange={e => setPrompt(e.target.value)}
           onKeyDown={e => { if (e.key === 'Enter') generate() }}
         />
         <button
@@ -181,6 +358,13 @@ export default function LensEditor({ tab }) {
             title="Edit HTML"
           >
             <Pencil className="h-3.5 w-3.5" /> Code
+          </button>
+          <button
+            onClick={() => setMode('config')}
+            className={cn('inline-flex items-center gap-1 px-2.5 py-1.5 text-sm', mode === 'config' && 'bg-primary text-primary-foreground')}
+            title="The Lens's settings (Lens.config()) — with the preview beside it"
+          >
+            <SlidersHorizontal className="h-3.5 w-3.5" /> Config
           </button>
           <button
             onClick={() => setMode('preview')}
@@ -223,6 +407,34 @@ export default function LensEditor({ tab }) {
           </button>
         )}
       </div>
+      <div className="flex flex-wrap items-center gap-2 border-b border-border px-3 py-1.5">
+        <IconPicker {...look} onChange={patch => setLook(l => ({ ...l, ...patch }))} />
+        <span className="text-xs text-muted-foreground">Title</span>
+        <input
+          className="w-48 rounded border border-border bg-background px-2 py-1 text-sm"
+          placeholder="e.g. 1 Enter targets"
+          value={title}
+          onChange={e => setTitle(e.target.value)}
+          title="What people see in the Lens app — business words, not cube names. A leading number orders the steps in a folder"
+        />
+        <span className="text-xs text-muted-foreground">Folder</span>
+        <input
+          className="w-52 rounded border border-border bg-background px-2 py-1 text-sm"
+          placeholder="e.g. Target setting 2027"
+          list={`lens-folders-${tab.id}`}
+          value={folder}
+          onChange={e => setFolder(e.target.value)}
+          title="The business process this Lens belongs to, as people know it — '/' makes a sub-folder"
+        />
+        <datalist id={`lens-folders-${tab.id}`}>{folders.map(f => <option key={f} value={f} />)}</datalist>
+        <span className="text-xs text-muted-foreground">Description</span>
+        <input
+          className="min-w-[220px] flex-1 rounded border border-border bg-background px-2 py-1 text-sm"
+          placeholder="What this Lens shows — people see this in the Lens app"
+          value={description}
+          onChange={e => setDescription(e.target.value)}
+        />
+      </div>
       {message && (
         <div className={cn('px-3 py-1.5 text-xs border-b', message.kind === 'error' ? 'text-red-600 border-red-200 bg-red-50' : 'text-emerald-700 border-emerald-200 bg-emerald-50')}>
           {message.text}
@@ -235,22 +447,36 @@ export default function LensEditor({ tab }) {
         </div>
       )}
       <div className="flex-1 min-h-0 flex">
-        <div className={cn('flex-1 min-h-0', mode === 'preview' && 'hidden')}>
+        <div className={cn('flex-1 min-h-0 flex flex-col', mode !== 'config' && 'hidden')}>
+          <div className={cn('px-3 py-1 text-xs border-b', configError ? 'text-red-600 bg-red-50 border-red-200' : 'text-muted-foreground border-border')}>
+            {configError ? `Not valid yet: ${configError} — the preview keeps the last good config` : 'Settings the Lens reads with Lens.config() — e.g. "cube", "version", rows. "access": ["Finance"] limits who can open it in the Lens app; "theme": "fixed" keeps its own look.'}
+          </div>
+          <div className="flex-1 min-h-0">
+            <MonacoEditor
+              language="json"
+              theme={dark ? 'vs-dark' : 'vs'}
+              value={configText}
+              onChange={v => { editConfig(v ?? ''); setDirtyPreview(true) }}
+              options={{ fixedOverflowWidgets: true, minimap: { enabled: false }, fontSize: 13, automaticLayout: true, tabSize: 2 }}
+            />
+          </div>
+        </div>
+        <div className={cn('flex-1 min-h-0', mode !== 'design' && 'hidden')}>
           <MonacoEditor
             language="html"
             theme={dark ? 'vs-dark' : 'vs'}
             value={html}
             onChange={handleEditorChange}
-            options={{ fixedOverflowWidgets: true, minimap: { enabled: false }, fontSize: 13, wordWrap: 'on', automaticLayout: true }}
+            options={{ fixedOverflowWidgets: true, minimap: { enabled: false }, fontSize: 13, wordWrap: 'on', automaticLayout: true, readOnly: false }}
           />
         </div>
-        <div className={cn('flex-1 min-h-0', mode === 'design' && 'hidden')}>
+        <div className={cn('flex-1 min-h-0', mode === 'design' && 'hidden', mode === 'config' && 'border-l border-border')}>
           <iframe
             key={previewKey}
             ref={iframeRef}
-            sandbox="allow-scripts"
+            sandbox="allow-scripts allow-modals"
             title="Lens preview"
-            srcDoc={lensSrcDoc(html)}
+            srcDoc={lensSrcDoc(html, { config: goodConfig, theme: { mode: dark ? 'dark' : 'light', palette: 'teal' } })}
             className="w-full h-full bg-white"
           />
         </div>

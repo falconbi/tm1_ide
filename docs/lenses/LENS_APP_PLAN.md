@@ -1,0 +1,310 @@
+# Lens app — plan
+
+Status: **agreed direction, not started** · 11 Oct 2026 · replaces [LENSES_PLAN.md](LENSES_PLAN.md) (Stage 1 inside the IDE — built, kept as history).
+
+← [Back to README](../../README.md)
+
+## The goal and how we prove it
+
+**Live screens with input and workflow** — Tableau-quality visuals on live TM1 data, with data entry and a planning
+workflow built in. **Not** a Tableau replacement: no self-service drag-and-drop authoring, subscriptions, PDF
+publishing or ad-hoc exploration (PAW covers ad hoc).
+
+**The proof demo (24Retail):** a region manager signs in to the Lens app, sees only their region's P&L, enters next
+quarter's forecast and submits it; finance sees what's waiting, approves, and the group dashboard updates. Every screen
+built by AI, every change governed, everything run on TM1 as each person.
+
+| # | Build | Proves | Status |
+|---|---|---|---|
+| 1 | Lens storage + IDE plumbing | Lenses live in the model, governed, private | done |
+| 2 | PnL-Dashboard (24Retail Income Statement) | AI builds a good, correct finance screen quickly | done |
+| 3 | Lens app, read-only — own server, sign-in, home page, open a Lens outside the IDE | Business users use Lenses without the IDE | done |
+| 4 | Toolkit v1 — ECharts, AG Grid, React Flow + dagre, Alpine bundled in the Lens app (and IDE preview); `Lens.kpis/trend/waterfall/bars/grid/flow`; component catalogue | Rich, consistent visuals with far less code; AI builds faster and more reliably | done |
+| 5 | Rebuild PnL-Dashboard on the toolkit and compare | The toolkit is worth it — measured | done — same dashboard in 119 lines vs 250 (script 64 vs 146), plus tooltips, legends, sortable grid |
+| 6 | Security test — East vs Canada test users | Each user sees only what TM1 allows | done — on a copy of the model, each regional manager signs in to the Lens app as themselves and sees only their region; the dashboard opens at the highest level the user may see |
+| 7 | Input form (AG Grid) on a **copy** of 24Retail | Safe data entry: checked, written as the user, logged | done — simple test: Target-Input Lens (24Retail's Forecast is all rule-calculated, so Target was used; a proper model is needed for the full forecast story). Toolkit v3: editable `Lens.grid` + `Lens.save`; a Lens changes only cubes it declares; numbers only, no calculated cells, stale saves refused, TM1 security has the final say, every save logged. Data reservation was switched off on the copy — the Lens app doesn't take reservations yet (step 9) |
+| 8 | Action buttons — seed forecast, spread a total | Lenses run processes safely | done — `Lens.run` (toolkit v4): a Lens runs only processes it declares (`lens-runs`), parameters checked against the process, runs as the user, logged. Test: Lens Spread Target from Target-Input. The process checks the caller's rights itself and leaves its outcome in a **Lens Messages** cube (non-admins can't read TM1 error logs) |
+| 9 | Submit / approve workflow (24Retail Task Workflow cube) | A real planning process runs through Lenses — incl. taking/releasing TM1 data reservations where a cube requires them | done — **data reservations**: Lens Reserve (take/release/check/release-all) via TI, Start/Finish editing in Target-Input, three timeout layers (in-Lens "Still editing?" prompt, release on sign-out/idle via `endSessionProcesses`, 15-min chore releasing Lens reservations > 2 h), times stored UTC and shown local (`Lens.localTime`, toolkit v5). Per-Lens setting `<meta name="lens-reservations" content="auto|always|off">` + `Lens.editing` toolkit piece (v6) done — Target-Input 262 → 183 lines. **Submit / approve built** — Lens Workflow cube (state, who, when in UTC, comment, locked groups), Lens Workflow Submit (locks the store via cell security) and Review (finance: Approve keeps the lock, Return needs a comment and unlocks), Target-Input status bar + Submit, new Approvals Lens; full cycle tested as east_mgr / finance_mgr. Note: 24Retail cell security is by store only, so a lock covers all the store's years and versions. Tested in the browser as east_mgr and finance_mgr. |
+| 10 | Release DEV → PROD through the deploy | Governed like everything else | **parked** (Oct 13) — the deploy needs its own round of work first. When resumed: PROD copied from the original 24Retail; a private repo for the pair; PROD adopts its own state as the base (not a first pull from DEV); Lenses carried in the release commit and installed after the pull (like subsets/views); environment setup (users, groups, security grants, capabilities, reservation mode) listed as "not deployed" with a PROD setup checklist |
+
+**Later (after the proof):** board packs and PDF export of Lenses.
+
+**The Lens app speaks in business processes, not models** (James, Oct 13): people think "Target setting → enter → approve → results", never cubes. Lenses carry a folder (the process) and a title in people's words, with a leading number for the step. Later: a folder becomes a **process page** — the steps in order, each with its live status from the workflow ("Step 2: 3 of 10 stores waiting for approval"). Also later: sign-in through the same CAM / Planning Analytics login as PAW (single sign-on), and folder access by TM1 group.
+
+**Next ideas (agreed Oct 13):**
+1. **Comments on cells** — TM1 annotations in Lenses: markers on commented cells, threads, a comments panel; the same comments show in PAW; Return can leave its reason on the cell that caused it.
+2. **What-if scenarios** — TM1 sandboxes: try a scenario privately, every tile recalculates through the rules, compare live vs scenarios side by side, then publish (through the same checks and locks) or discard.
+3. ~~**Viewfinder** — a template gallery~~ — **dropped Oct 20**, see the decision below.
+AI features (commentary, ask-a-question) stay optional — switch-on extras where a site has a key, never required.
+
+**Decision (Oct 20, James): no prebuilt templates.** The template idea (Viewfinder: shared screens configured per Lens) was fundamentally flawed — "not flexible enough, as every client has a unique process that will require lots of customisation for the UI". What is shared is **behaviour, not screens**:
+- **Shared components** in the toolkit hold the hard, risky parts that must never be rewritten per client — safe saving (checks, someone-else-changed-it, calculated cells refused), line approval and locking, history, presence, editing locks, live updates, counts / "needs you", financial-statement layout (rounding, brackets, totals), text with live numbers.
+- **A general corporate style** (colours, number formats, finance conventions), applied by the toolkit to every Lens.
+- **Every client's Lenses are built to fit their own process** (mostly by the AI), as thin code arranging components. Each Lens's code is its own, stored in the model.
+- Guardrails stay in the platform (TM1 security, declared writes and processes, change sets).
+- Done Oct 20: the template library, template editor and template-copy-into-the-model were removed; Target-Input, Budget-Input and Capex-Requests on 24Retail_Lens converted to stand-alone Lenses (same code); the template code kept as **reference examples** (`shared/lens-examples/`, MCP `list_lens_examples`). Next: move the shared behaviour into toolkit components, starting with line items + approval.
+- The configuration and Viewfinder text below is history, superseded by this decision.
+
+**Lens configuration — the idea that ties it together (James, Oct 13: "like a configuration file with the Lens"):**
+a Lens = reusable **code** (often from Viewfinder) + a small **config** saved next to it in the model. The config names the
+bindings and behaviour — title, folder, cube, version, the *unit* that is submitted/locked (stores, cost centres…), rows,
+columns, editing (reservations auto/always/off), workflow, actions. So "budget by cost centre" is the same Input form with a
+different config, not new code; Viewfinder = pick a template + fill its config form; the AI writes a config (reliable)
+rather than code; a business admin can change version/year/approver without touching code; deploys carry a small file.
+**Configurable workflow** is one part of it: a workflow definition (cube, version, unit, steps Open → Submitted → Approved
+with Returned back to Open, who may submit/approve by TM1 group, which states lock, editing mode) read by ONE generic set of
+TI processes and a `Lens.workflow` toolkit piece (status bar, Submit / Approve / Return, history); an IDE form edits it,
+recorded in change sets. Process pages fall out of it — the definition already knows the steps. Today's test workflow
+(Income Statement / Target / organization, group "Lens Finance") is hard-wired and becomes the first definition.
+
+**Design agreed (Oct 14):**
+- **Sharing:** code (shared, e.g. one Input form from Viewfinder) + workflow (shared by every Lens in a process — Enter / Approve / Results agree on each node's state) + config (each Lens's own: title, icon, folder, cube, version, rows, columns).
+- **Unit = one node on a hierarchy** (store, cost centre, entity, project — any level). Two-dimensional units later if a model needs them.
+- **Approval follows the hierarchy:** a node is reviewed by the owner of the node above it — stores submit, the region owner approves or returns each; when all of a region's children are approved the region can be submitted up; finance (top node) gives the final sign-off. Built for many levels; switched on one level first.
+- **Ownership = a TM1 group per node**, set in the workflow definition, so rights stay in TM1 security.
+- **Configs and workflow definitions are edited in the IDE only for now** (governed, in change sets); a business-admin screen in the Lens app (e.g. changing a node's owner mid-cycle) later.
+
+**Decision (Oct 14, James): node submit / approve is dropped.** "Even when it existed it was cumbersome — it never really worked." Access to a node is already controlled by TM1 security, so a hand-in ceremony per node adds little. Instead:
+- **Line approval is the approval mechanism** (as Pigment does): each line item (a hire, leaver, transfer, capex request…) carries an *Approved* flag plus who/when; only approver roles (a TM1 group) can set it; an approved line is locked by a **rule-driven cell security** rule (enforced everywhere, PAW included); the calculation rules count approved lines (or show approved and pending separately); history is automatic. Transfers stop being special — the line has a from and a to.
+- **Period close stays the admin month-end process** (lock, snapshot as a static version, open the next period) — at most an admin Lens with a "Run month-end" action button. No user-facing freeze.
+- The node workflow built in step 9 (Lens Workflow cube, Submit / Review processes, Approvals Lens) stays on the lab copy as a proven example of TM1-enforced locking, but is **not** the design going forward and won't be generalised.
+- So the Lens config's approval part is small: which lines, the flag, the approver group, what locks, how totals treat pending lines. Next: design the line-item side with a workforce example.
+- **Approval is an optional feature of line-item Lenses, not a platform-wide workflow.** Most planning is dimensional (nobody approves a cell — security + the month-end version lock suffice). Line approval fits *request-style* items: **workforce** (hires, leavers, transfers, promotions — the main case), **capex** (assets / projects), **large opex contracts** (leases, outsourcing, agencies — with **value thresholds**: e.g. under 50k none, to 500k cost-centre manager, above finance), and **manual journals / adjustments** in consolidation. Approver group can be chosen by the line's value.
+- **Multi-screen processes without submit** (e.g. workforce: hires, leavers, transfers, promotions, summary): a tiny process definition — the steps in order (folder + step numbers), one shared selection (e.g. cost centre, picked once via the bridge's shared context), a live status line per step computed from the data ("4 lines · 2 waiting approval"), and checks shown as warnings with a link to fix ("a leaver needs a date") — warn, never block. No states, node locks, node owners or engine processes.
+- **Lens security = two layers, like PAW's book + data:** (1) **Lens access** — who can see and open a Lens — as TM1 groups in the Lens config (`access: Finance, HR Approvers`; empty = everyone), **enforced by the Lens app on every request** (home list, open, preview, and every bridge call: data, writes, runs, live, history) — never just hidden; (2) everything inside stays TM1 security (data, process rights, approver groups). Decided Oct 14 against relying on the TM1 Applications-folder security (`}ApplicationSecurity`): the same behaviour must hold on v11 and v12, where Applications becomes Files. Front-ends are fragmented (Architect/TM1 Web in Applications, PAW in its content store, PAfE on PCs/SharePoint) — Lenses keep screens in the model with one security model: TM1 groups.
+- **Personal themes (adoption — "you can decide"):** each person picks Light / Dark / Match my computer and a colour theme (a tasteful handful, incl. high contrast) from a menu by "Signed in as"; **remembered per login on the Lens app server** (follows them to any machine; no TM1 write access needed). The toolkit receives the theme when a Lens opens, so charts, grids, tiles, legend and bars follow; Lenses style with the toolkit's theme colour names (not fixed colours). A Lens config can say `theme: fixed` to keep its own designed look (e.g. Command Centre). Built right after step 1 (config).
+- **Design principle — dynamic, low admin (James, Oct 14):** "the more it's dynamic the better, less admin". Lenses work things out from the model instead of being told: access from TM1 security, editing locks `auto` (follow the cube), status lines computed from data, icons guessed, approvers by line value, pickers read live from TM1. No lists or states an admin must keep current (no node owners, no season resets). **Continuous planning:** type and save any time, live presence and history, the collision check as the safety net, line approval only for requests, the month-end snapshot as the fixed record. 24Retail_Lens: Income Statement reservations switched OFF (Oct 14), so Target-Input is type-and-save; node workflow retired and store 101 unlocked.
+- **Built Oct 14–15:** Lens configuration (config per Lens, `Lens.config()`, IDE Config tab, access by TM1 groups, writes/runs in config); personal themes (remembered per login; account button with Appearance); one slim bar per page; quiet presence and meeting mode; **Viewfinder** — built-in templates (Input form, Line-item form) + the model's own templates, "used by", template editor with real-settings preview, Save as template; Target-Input and Budget-Input share the Input form; **Capex requests** on 24Retail's Capital cube via the Line-item form — text + number fields, **card layout** (one form per request) or grid, + New request, **line approval** (Lens Capex Approve stamps who/when; `}CellSecurity_Capital` rule locks approved lines in TM1), `Lens.whoami()`. Tested on two screens (east_mgr / finance_mgr).
+- Idea for later: a **modern sample model** (workforce with line approval, the version model, clean conventions) as a better showcase than IBM's 24Retail.
+
+The ownership Lenses on a private consolidation model (network, timeline) are a showcase of visuals PAW can't do, not on the main path.
+Notes: 24Retail's Revenue cube is empty on the lab server — use the Income Statement; account 6699 (allocations)
+holds junk sample values, so screens stop at Net Profit.
+
+## 1. What it is
+
+A **separate, simple web app for business users** — planners, managers, the board — that shows Lenses: purpose-built
+screens on live TM1 data. Users see only their screens; no explorer, no editors, nothing they can break.
+
+The **IDE stays the developer tool**: Lenses are built, tested and approved there (by people or AI), then released to
+PROD like any other change.
+
+```
+ Developers + AI                                   Business users
+      │                                                  │
+   TM1 IDE ── change set → test → approve → release ──▶ TM1 PROD model ◀── reads Lenses ── Lens app
+   (build, govern)                                      (holds the Lenses)             (view, input, act)
+```
+
+PAW stays the tool for ad-hoc analysis and Excel. Lenses link to PAW ("open in PAW") and PAW can link to Lenses.
+
+## 2. Architecture
+
+| Decision | Detail |
+|---|---|
+| **Separate app** | Its own small server (`lens-server.js`) in the same project as the IDE. Independent at runtime: the IDE does not need to be installed, running or reachable. |
+| **Shared code, not copied** | Both apps use the same `core/` code: TM1 client, sign-in (per-server login, CAM, sessions), safe names, model storage, Lens bridge. Fix once, both get it. |
+| **Runs next to PROD** | Preferred: on the **PAW server** (already the users' HTTPS front door). Also allowed: on the TM1 PROD server, or a small machine on the same network. TM1's REST port never needs opening to users. |
+| **Windows and Linux** | v11 PROD is usually Windows: the Lens app installs as a **Windows service**. Linux service and a container image for v12/cloud. One settings file (TM1 server, port, HTTPS certificate). |
+| **Version check** | Each Lens records the toolkit version it needs. The Lens app refuses an incompatible Lens with a clear message, and a release refuses to ship a Lens to a PROD whose Lens app is too old. |
+
+### Languages
+
+One language end to end, so the shared `core/` code works in both apps and there is one skill set to maintain.
+
+| Part | Language |
+|---|---|
+| Lens app server | JavaScript on Node.js (CommonJS, like the IDE) — reuses `core/` directly; runs on Windows and Linux |
+| App screens (sign-in, home, viewer frame) | React + Vite + Tailwind, like the IDE |
+| Lenses | Plain HTML, CSS and JavaScript + the toolkit — no build step inside a Lens |
+| Talking to TM1 | MDX for reads (generated by the data layer), TI for the processes Lenses run |
+| Catalogue, model profile, Lens details, settings | JSON |
+
+Not used: a TypeScript conversion (optional `// @ts-check` type hints instead), Python or any second server language,
+heavier frameworks inside Lenses.
+
+### Who makes the calls
+
+**The Lens app makes every call to TM1.** A Lens never talks to TM1 directly:
+
+```
+ Lens (sandbox)          Lens app                              TM1 PROD
+ "revenue by month" ──▶  checks: signed in? allowed?    ──▶   runs the query
+                    ◀──  returns just the numbers       ◀──   as that user
+```
+
+- A Lens holds only its **layout and look, the components it uses, and requests in plain terms** (read this, save
+  that, run this process). No TM1 addresses, passwords or REST calls.
+- **Everything runs as the person viewing** — TM1 security decides what they see and change. Never as admin, never as
+  a shared account.
+- **The MCP is not used by the Lens app.** The MCP is the builder's tool (builder-level access); it creates and saves
+  Lenses into the model. The Lens app only reads them.
+
+## 3. Authentication
+
+Users sign in **as themselves**, with the identity they use for TM1 and PAW — that is what makes "runs as the viewer"
+work. Simpler than the IDE: one server only (the PROD it sits beside).
+
+1. Sign-in page; the app **detects TM1's sign-in method** (existing detection) and asks for the right details —
+   username + password (TM1 security / LDAP), or username + password + namespace (CAM).
+2. The app signs in to TM1 **as that user** and holds **one TM1 session per user**; every Lens, read, save and process
+   run uses it, so TM1 security decides what they see and change.
+3. Sign-out closes the TM1 session; idle sessions time out.
+
+Protections (reused from the IDE's per-server login): a rejected password is **never retried** (no lockouts); **no
+password stored** — only the TM1 session; the app's own session in an **HttpOnly, Secure cookie** that page scripts and
+Lenses cannot read; **HTTPS only**.
+
+Later — single sign-on: **CAM SSO** (Windows / Active Directory) on v11; the **company sign-in (OIDC)** on v12, as PAW
+v12 does.
+
+Licensing: every Lens user is a named TM1 user and needs a TM1 licence, as for PAW.
+
+## 4. Security — non-negotiable
+
+Carried over from Stage 1 and extended:
+
+1. Every Lens runs in a **sandbox** (iframe `sandbox` + CSP `sandbox allow-scripts`, `connect-src 'none'`); never
+   `allow-same-origin`. The Lens cannot reach the internet or the user's session.
+2. **The token never enters the Lens.** Requests go Lens → Lens app → TM1; the app attaches the user's session.
+3. **Every request is checked on the server**: signed in, allowed, and (for writes) an input cell the user may change;
+   (for processes) on the Lens's own allowed list.
+4. **Freedom of design is not freedom to bypass controls.** However the HTML is written — by a person or AI — data
+   access, write-back, sign-in and process runs stay governed by the app.
+5. Writes and process runs are **logged** (who, what, when).
+6. **Read-only PROD posture** means no *model* changes; **data entry through a Lens is normal planning and allowed**.
+7. **Where Lenses are authored.** **DEV can build every kind of Lens. PROD additionally allows drafting read-only
+   Lenses** (reports, dashboards, analysis) — nothing that changes data. In detail:
+   - **Display Lenses** (charts, dashboards, board packs — read-only): **draft → review → publish on PROD**, with real
+     data. A draft is visible only to its author and chosen reviewers; publishing keeps the previous version
+     (one-click rollback); who drafted, reviewed and published is recorded with the Lens. Only named authors (a TM1
+     group, e.g. "Lens Authors") can draft. Authoring starts in the IDE connected to PROD in a **Lens-authoring-only**
+     mode (no model changes); an author mode in the Lens app itself may follow.
+   - **Anything that changes data** (write-back forms, action buttons, workflow): **built and tested on DEV**, then
+     test → approve → release like models and processes. They cannot be tested on PROD — TM1 sandboxes cover cell
+     writes but not processes, so a process run from a form always changes real data.
+
+## 5. How Lenses are built
+
+### Three design levels
+
+| Level | What the AI (or developer) does | Use |
+|---|---|---|
+| 1. Compose | Assembles toolkit components (charts, grids, filters, cards) | Most consistent, easiest to check |
+| **2. Custom layout** | Writes the page layout and styling freely, **using toolkit components inside** | **The sweet spot** — Pigment-style freedom with tested parts |
+| 3. Bespoke | Writes a one-off visual or interaction | Showpieces. Reviewed before it becomes reusable |
+
+Plain HTML by default (no build step inside a Lens); React only for rare level-3 work.
+
+### The toolkit
+
+Thin, tested wrappers (`Lens.waterfall(...)`, `Lens.inputGrid(...)`, `Lens.timeline(...)`), wired to the governed data
+layer, bundled inside the Lens app (no CDN at runtime).
+
+| Purpose | Library | Licence |
+|---|---|---|
+| Main charts (waterfall, trend + band, sankey, heatmap, tree, gauge, timeline) | Apache ECharts | Apache 2.0 |
+| Grids and input forms | AG Grid Community | MIT |
+| Interactivity glue (filters, tabs, linked state) | Alpine.js | MIT |
+| Styling and themes | Tailwind CSS | MIT |
+| Networks (ownership structures) | Cytoscape.js | MIT |
+| Large time series | uPlot | MIT |
+| Bespoke visuals | D3 | ISC |
+| AI-friendly, checkable charts | Vega-Lite | BSD |
+
+**Licence rule:** MIT, Apache 2.0, BSD or ISC only, so everything ships inside an MIT project; keep each library's
+notice in `THIRD_PARTY_LICENSES`. Not allowed: Highcharts, Handsontable (paid), GSAP (own non-open licence).
+Gallery of examples: the "Lens Component Gallery" artifact (sample data).
+
+### Shared data layer
+
+Components ask in business terms ("revenue by month, actual vs budget, this entity"); the layer builds the query, caches
+it, and **re-queries when a filter changes**. This gives linked views, drill-down with breadcrumbs, and **timeline
+sliders** (all periods fetched once, the slider switches between them; large data prefetched ahead).
+
+### The component catalogue (one source of truth)
+
+Like `shared/tm1-function-catalog.json`: one file describes every component — purpose, data it needs, options,
+interactions, good uses. It drives the AI's choices, the validator, the editor palette and the docs. A new component,
+once reviewed, joins the catalogue and is immediately available to the AI.
+
+## 6. AI — from charts to whole apps
+
+| Level | When | What |
+|---|---|---|
+| **1. AI builds Lenses** | Developer time | Describe a screen (or give a mockup); AI writes the Lens with the toolkit; checked against the live model; governed release |
+| **2. AI explains the numbers** | Viewing, read-only | "Revenue is 4% under budget, mostly EMEA, lower volume in two products" — walks the hierarchy to find the drivers |
+| **3. Users ask for views** | Viewing | "Show headcount by department vs budget" → a temporary, read-only panel; **pin** it to request a governed Lens |
+| **4. AI helps with input** | Stages 2–4 | Suggestions the user accepts, sanity checks on entries, what-if in a **TM1 sandbox** |
+
+**Designing whole apps.** The **Cube Map** already understands a model's flow (inputs, rules, processes, outputs). With
+a **model profile** (business names for cubes, measures and members — drafted by AI, checked by a developer, stored in
+the model), the AI can infer the business process (e.g. load actuals → seed forecast → managers enter → finance
+approves) and propose an app: a screen per step and role, inputs where the model takes input, action buttons,
+workflow. Visual direction can come from **mockups, screenshots, PAW books or Tableau workbooks** (readable files).
+The AI drafts; people review, test on DEV, approve and release.
+
+**Guardrails:** AI never writes data or changes the model by itself; everything AI-generated is checked against the live
+model before it shows; users only see what TM1 security allows; sending data to an AI service is **off by default**,
+configurable per client, totals not raw data, and a privately hosted model is an option.
+
+**Iterating** is built into the editor: "change this…" edits the Lens with the change highlighted and the live preview
+updated; every version kept; checks run on save. (No copying code out to another tool.)
+
+## 7. Stages
+
+Each stage is proven in the lab before the next.
+
+### Stage 0 — Foundations (in the IDE)
+- **A Lens is saved in the model** — `Applications/Governance/Lenses/`, reusing `core/model-store.js` — and appears in
+  the IDE's **model tree** under its server, alongside cubes, dimensions and processes. No local `config/lenses/`
+  storage: a private model's Lenses stay private with the model.
+- The 10 early demo Lenses are **removed** (experiments; kept in git history) — nothing to migrate.
+- Saving a Lens is recorded in the change set; **releases carry Lenses** DEV → PROD with approval.
+- `core/` ready for a second entry point (`lens-server.js`); toolkit version stamp on every Lens.
+- First real Lenses built on a **private consolidation model**: ownership network, then ownership over time (timeline).
+
+### Stage 1 — Read-only Lens app
+- Sign-in (per-server TM1/CAM/LDAP login, already built); home page listing the user's Lenses; the sandboxed viewer.
+- Toolkit display components, the data layer, filters, drill-down, linked views, timeline slider.
+- Links to and from PAW.
+- HTTPS, Windows service + Linux service install, settings file, session clean-up.
+- AI level 1 (build) in the IDE; level 2 (explain) as an option.
+
+### Stage 2 — Write-back
+- Input components (grid, sliders, comment boxes). Each cell checked first (input cell, not rule-calculated, allowed by
+  TM1 security), written as the user, logged. Clear feedback: saved / refused and why / changed by someone else.
+
+### Stage 3 — Processes
+- Action buttons running named processes with parameters; each Lens lists the processes it may run. Confirm before
+  running, plain-words result, logged.
+
+### Stage 4 — Input forms within a workflow
+- Forms combining input and actions ("submit my plan"). Workflow states per entity and version — *not started → in
+  progress → submitted → approved / rejected* — stored in the model, with who and when. Submitted inputs lock until
+  rejected or reopened; approvers see what's waiting.
+
+### Later
+SSO (CAM SSO on v11, company sign-in on v12); Lenses embedded in PAW books (same-origin / OAuth / sign-in-in-frame,
+see LENSES_PLAN.md); v12 container deployment; AI levels 3–4; AI-designed apps from the model profile + Cube Map.
+
+## 8. Test model — TM1_Sales_Demo (v11 lab)
+
+A new, public-safe **Sales & Margin Planning** model, built by AI through the MCP, test-first:
+
+- Dimensions: Sales Version, Sales Region (lat/long, manager), Sales Product (category → family → product),
+  Sales Month (2025–2027, year/quarter attributes), measure dimensions per cube.
+- Cubes: Sales Plan, Sales Actuals, Sales Pricing, Sales Plan Workflow, Sales Plan Commentary.
+- Processes: generate sample data (seasonality, growth, deliberate surprises), seed forecast, copy version, spread
+  target, workflow submit / approve / reject.
+- Security: `north_mgr`, `south_mgr` (own area only), `finance` (all, approves) — to prove "runs as the viewer".
+
+It exercises every stage: map, revenue race on a timeline, price-volume-mix bridge, heatmap (1); unit and price input
+(2); seed and spread buttons (3); submit / approve per region (4). A consolidation model (ownership over time) and WFP (input
+forms) follow as real-model tests.
+
+## 9. Open questions
+
+1. First users: internal users at one client site, or a public showcase first?
+2. Where the first install runs: PAW host or TM1 host on the Windows lab?
+3. AI levels 2–3 in Stage 1, or after Stage 2?

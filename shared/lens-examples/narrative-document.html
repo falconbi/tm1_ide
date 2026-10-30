@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Narrative document</title>
+<style>
+:root{--bg:var(--lens-bg,#f6f7f7);--ink:var(--lens-ink,#16201f);--faint:var(--lens-faint,#85908f);--rule:var(--lens-rule,#dfe4e3);--panel:var(--lens-panel,#fff);--accent:var(--lens-accent,#0f766e);--bad:var(--lens-bad,#b4372d);--good:var(--lens-good,#1d7a46)}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}
+.wrap{padding:16px 18px 24px;display:grid;gap:12px}
+header{display:flex;flex-wrap:wrap;align-items:end;gap:12px 18px}
+h1{font-size:20px;margin:0}
+h2{font-size:14px;margin:0 0 8px}
+.sub{font-size:12.5px;color:var(--faint)}
+.controls{display:flex;gap:10px;margin-left:auto;align-items:end;flex-wrap:wrap}
+label{display:grid;gap:3px;font-size:11px;color:var(--faint);text-transform:uppercase;letter-spacing:.06em}
+select,button,input,textarea{font:inherit;font-size:13px;padding:5px 10px;border:1px solid var(--rule);border-radius:7px;background:var(--panel);color:var(--ink)}
+button{cursor:pointer}
+button.primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+button:disabled{opacity:.45;cursor:default}
+.card{background:var(--panel);border:1px solid var(--rule);border-radius:10px;padding:12px;min-width:0}
+.bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px}
+.status{font-size:13px}
+.status.ok{color:var(--good)} .status.err{color:var(--bad)} .status.busy{color:var(--faint)}
+.need{padding:18px;border:1px dashed var(--rule);border-radius:10px;color:var(--faint);font-size:13px}
+.need code{color:var(--ink)}
+.doc{background:var(--panel);border:1px solid var(--rule);border-radius:10px;padding:22px 26px;max-width:860px}
+.doc section{margin:0 0 20px}
+.doc h2{font-size:16px;margin:0 0 6px}
+.doc p{margin:0 0 8px;line-height:1.65;white-space:pre-wrap}
+.doc .num{font-weight:700;font-variant-numeric:tabular-nums}
+.doc .empty{color:var(--faint);font-style:italic}
+textarea{width:100%;min-height:110px;box-sizing:border-box;line-height:1.55;resize:vertical}
+.tokens{font-size:12px;color:var(--faint);margin:4px 0 0}
+.tokens code{color:var(--ink);background:var(--bg);padding:0 4px;border-radius:4px;cursor:pointer}
+@media print{header .controls,.bar,.tokens{display:none!important}.doc{border:0;padding:0}body{background:#fff}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header><div><h1 id="heading">Document</h1><div class="sub" id="subtitle"></div></div>
+    <div class="controls"><div id="people" style="align-self:center"></div><button id="edit" hidden>Edit</button><button id="print">Print</button></div></header>
+  <div class="bar"><button id="save" class="primary" hidden>Save</button><button id="cancel" hidden>Cancel</button><span id="status" class="status"></span></div>
+  <div class="doc" id="doc"></div>
+</div>
+<script src="/lens-kit/lens-kit.js"></script>
+<script>
+// ── Narrative document (Viewfinder template) ─────────────────────────────────
+// Commentary or a board paper: sections of text people write, stored in TM1
+// text cells, with live numbers dropped into the sentences — write
+// {{revenue}} and the current figure appears, read as the person viewing.
+(function () {
+  var $ = function (id) { return document.getElementById(id) }
+  var esc = function (v) { return String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;') }
+  var M = function (d, e) { return '[' + d + '].[' + d + '].[' + String(e).replace(/]/g, ']]') + ']' }
+  var call = function (mdx) { return window.lensBridge.call('execMDX', { mdx: mdx }) }
+  var say = function (text, kind) { var s = $('status'); if (!s) return; s.textContent = text || ''; s.className = 'status ' + (kind || '') }
+  function fail(e) { say((e && e.message ? e.message : e), 'err') }
+  if (!window.Lens) return fail(new Error('the Lens toolkit did not load'))
+  var C = Lens.config()
+  function need(keys, into) {
+    var missing = keys.filter(function (k) { return !C[k] })
+    if (!missing.length) return false
+    $(into).innerHTML = '<div class="need">This screen needs its settings — add <code>' + missing.join('</code>, <code>') + '</code> to its config (IDE → Config tab).</div>'
+    return true
+  }
+  // A WHERE clause from { dimension: member } (missing dimensions use their default member).
+  function where(obj) { var k = Object.keys(obj || {}); return k.length ? ' WHERE (' + k.map(function (d) { return M(d, obj[d]) }).join(',') + ')' : '' }
+  function setOf(spec) {
+    if (spec.members) return '{' + spec.members.map(function (m) { return M(spec.dimension, m) }).join(',') + '}'
+    if (spec.under) return '{TM1FILTERBYLEVEL({DESCENDANTS(' + M(spec.dimension, spec.under) + ')}, ' + (spec.level || 0) + ')}'
+    return '{TM1FILTERBYLEVEL({TM1SUBSETALL([' + spec.dimension + '].[' + spec.dimension + '])}, ' + (spec.level || 0) + ')}'
+  }
+  function names(dim, into) {
+    return call('SELECT {[}ElementAttributes_' + dim + '].[}ElementAttributes_' + dim + '].[Caption_Default]} ON 0, {TM1SUBSETALL([' + dim + '].[' + dim + '])} ON 1 FROM [}ElementAttributes_' + dim + ']')
+      .then(function (r) { Lens.rows(r).forEach(function (x) { if (x.Caption_Default) into[x[dim]] = x.Caption_Default }) }, function () {})
+  }
+  if (need(['cube', 'sections'], 'doc')) return
+  $('heading').textContent = C.heading || 'Document'
+  $('subtitle').textContent = C.subtitle || ''
+  var texts = [], nums = {}, editing = false, who = { user: '', groups: [] }, tg = null
+  var canEdit = function () { return !C.editors || !C.editors.length || Lens.whoami.inGroup(who, C.editors) }
+  function readText(s) {
+    var at = s.at, k = Object.keys(at)[0], w = Object.assign({}, at); delete w[k]
+    return call('SELECT {' + M(k, at[k]) + '} ON 0 FROM [' + (s.cube || C.cube) + ']' + where(w)).then(function (r) { var c = (r.Cells || [])[0]; return c && c.Value != null ? String(c.Value) : '' })
+  }
+  function readNum(spec) {
+    var at = spec.at, k = Object.keys(at)[0], w = Object.assign({}, at); delete w[k]
+    return call('SELECT {' + M(k, at[k]) + '} ON 0 FROM [' + (spec.cube || C.cube) + ']' + where(w)).then(function (r) { var c = (r.Cells || [])[0]; return c ? c.Value : null }, function () { return null })
+  }
+  function fillNums(text) {
+    return esc(text).replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, function (m, key) {
+      var spec = (C.numbers || {})[key]
+      if (!spec) return m
+      return '<span class="num">' + esc(Lens.format(nums[key], spec.format || C.format)) + '</span>'
+    })
+  }
+  function render() {
+    var keys = Object.keys(C.numbers || {})
+    $('doc').innerHTML = C.sections.map(function (s, i) {
+      if (editing) return '<section><h2>' + esc(s.title) + '</h2><textarea data-i="' + i + '" placeholder="' + esc(s.placeholder || 'Write here…') + '">' + esc(texts[i]) + '</textarea>' +
+        (keys.length ? '<div class="tokens">Live numbers: ' + keys.map(function (k) { return '<code data-token="' + esc(k) + '" title="Click to insert">{{' + esc(k) + '}}</code>' }).join(' ') + '</div>' : '') + '</section>'
+      return '<section><h2>' + esc(s.title) + '</h2>' + (texts[i] ? '<p>' + fillNums(texts[i]) + '</p>' : '<p class="empty">Nothing written yet.</p>') + '</section>'
+    }).join('')
+    $('edit').hidden = editing || !canEdit()
+    $('save').hidden = $('cancel').hidden = !editing
+  }
+  var lastFocus = null
+  document.addEventListener('focusin', function (e) { if (e.target.tagName === 'TEXTAREA') lastFocus = e.target })
+  document.addEventListener('click', function (e) {
+    var t = e.target.closest('[data-token]'); if (!t) return
+    var ta = lastFocus || document.querySelector('textarea'); if (!ta) return
+    var ins = '{{' + t.getAttribute('data-token') + '}}', p = ta.selectionStart || ta.value.length
+    ta.value = ta.value.slice(0, p) + ins + ta.value.slice(ta.selectionEnd || p); ta.focus()
+  })
+  function load() {
+    say('Loading…', 'busy')
+    var keys = Object.keys(C.numbers || {})
+    return Promise.all([Promise.all(C.sections.map(readText)), Promise.all(keys.map(function (k) { return readNum(C.numbers[k]) }))]).then(function (v) {
+      texts = v[0]; keys.forEach(function (k, i) { nums[k] = v[1][i] })
+      render(); say('')
+    })
+  }
+  function save() {
+    var cells = []
+    document.querySelectorAll('textarea[data-i]').forEach(function (ta) {
+      var i = Number(ta.getAttribute('data-i')), s = C.sections[i]
+      if (ta.value !== texts[i]) cells.push({ cube: s.cube || C.cube, cell: { coordinates: s.at, value: ta.value, expect: texts[i] } })
+    })
+    if (!cells.length) { editing = false; render(); return }
+    say('Saving…', 'busy')
+    var byCube = {}
+    cells.forEach(function (c) { (byCube[c.cube] = byCube[c.cube] || []).push(c.cell) })
+    Promise.all(Object.keys(byCube).map(function (cb) { return Lens.save(cb, byCube[cb]) })).then(function () {
+      editing = false; if (tg) tg.send('saved', {})
+      return load().then(function () { say('Saved.', 'ok') })
+    }).catch(function (e) { say('Not saved: ' + (e && e.message ? e.message : e), 'err') })
+  }
+  $('edit').onclick = function () { editing = true; render() }
+  $('cancel').onclick = function () { editing = false; render(); say('') }
+  $('save').onclick = save
+  $('print').onclick = function () { try { window.print() } catch (e) { say('Printing is not available here.', 'err') } }
+  tg = Lens.live('#people', { onEvent: function (ev) { if (ev.type === 'saved' && !editing) load().catch(fail) } })
+  tg.join('document')
+  Lens.whoami().then(function (w) { who = w || who }).then(load).catch(fail)
+})()
+</script>
+</body>
+</html>

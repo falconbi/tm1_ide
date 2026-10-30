@@ -1,4 +1,4 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueries, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useRef, useEffect, useMemo, useCallback } from 'react'
 import { useStore } from '@/store'
 import { toast } from 'sonner'
@@ -136,6 +136,15 @@ export const useServers   = ()                    => useQuery({ queryKey: ['serv
 export const useElements           = (server, dim, hierarchy) => useQuery({ queryKey: ['elements', server, dim, hierarchy],           queryFn: () => get(`/api/elements?server=${enc(server)}&dimension=${enc(dim)}${hierarchy ? `&hierarchy=${enc(hierarchy)}` : ''}`),           enabled: !!server && !!dim })
 export const useElementsWithIndex  = (server, dim, hierarchy) => useQuery({ queryKey: ['elements-index', server, dim, hierarchy],     queryFn: () => get(`/api/elements?server=${enc(server)}&dimension=${enc(dim)}${hierarchy ? `&hierarchy=${enc(hierarchy)}` : ''}&index=1`), enabled: !!server && !!dim })
 export const useElementsTree  = (server, dim, hierarchy) => useQuery({ queryKey: ['elements-tree', server, dim, hierarchy], queryFn: () => get(`/api/elements/tree?server=${enc(server)}&dimension=${enc(dim)}${hierarchy ? `&hierarchy=${enc(hierarchy)}` : ''}`), enabled: !!server && !!dim, staleTime: 60_000 })
+// Element trees for any number of dimensions at once (shares the cache with useElementsTree)
+// each entry a dimension name, or { dim, hierarchy } for an ALT H
+export const useElementsTrees = (server, dims) => useQueries({
+  queries: (dims ?? []).map(d => {
+    const dim = typeof d === 'string' ? d : d?.dim
+    const hierarchy = typeof d === 'string' ? undefined : (d?.hierarchy && d.hierarchy !== dim ? d.hierarchy : undefined)
+    return { queryKey: ['elements-tree', server, dim, hierarchy], queryFn: () => get(`/api/elements/tree?server=${enc(server)}&dimension=${enc(dim)}${hierarchy ? `&hierarchy=${enc(hierarchy)}` : ''}`), enabled: !!server && !!dim, staleTime: 60_000 }
+  }),
+})
 export const useEdges     = (server, dim, hierarchy) => useQuery({ queryKey: ['edges', server, dim, hierarchy],    queryFn: () => get(`/api/edges?server=${enc(server)}&dimension=${enc(dim)}${hierarchy ? `&hierarchy=${enc(hierarchy)}` : ''}`),    enabled: !!server && !!dim })
 export const useCubes    = (server)     => useQuery({ queryKey: ['cubes', server],     queryFn: () => get(`/api/cubes?server=${enc(server)}`),      enabled: !!server })
 export const useDims     = (server)     => useQuery({ queryKey: ['dims', server],      queryFn: () => get(`/api/dimensions?server=${enc(server)}`),  enabled: !!server })
@@ -409,6 +418,11 @@ export const useElementAttrValues = (server, dim, element, hierarchy) => useQuer
   staleTime: 30_000,
 })
 
+// the hierarchies of several dimensions at once (e.g. every dimension of a cube, to offer each ALT H)
+export const useHierarchiesFor = (server, dims) => useQueries({
+  queries: (dims ?? []).map(dim => ({ queryKey: ['hierarchies', server, dim], queryFn: () => get(`/api/hierarchies?server=${enc(server)}&dimension=${enc(dim)}`), enabled: !!server && !!dim, staleTime: 60_000 })),
+})
+
 export const useHierarchies = (server, dim) => useQuery({
   queryKey: ['hierarchies', server, dim],
   queryFn:  () => get(`/api/hierarchies?server=${enc(server)}&dimension=${enc(dim)}`),
@@ -510,6 +524,32 @@ export const useProcessUsage = (server, process) => useQuery({
   enabled:  !!server && !!process,
   staleTime: 0,
 })
+
+// Alternate Hierarchies: what one is and who builds it; an element's parents per hierarchy; build from an attribute
+export const useHierarchyInfo = (server, dim, hier) => useQuery({
+  queryKey: ['hierarchy-info', server, dim, hier],
+  queryFn:  () => get(`/api/hierarchy/info?server=${enc(server)}&dimension=${enc(dim)}&hierarchy=${enc(hier)}`),
+  enabled:  !!server && !!dim && !!hier && hier !== dim,
+  staleTime: 60_000,
+})
+
+export const useElementHierarchyParents = (server, dim, element, enabled = true) => useQuery({
+  queryKey: ['element-hierarchy-parents', server, dim, element],
+  queryFn:  () => get(`/api/element/hierarchy-parents?server=${enc(server)}&dimension=${enc(dim)}&element=${enc(element)}`),
+  enabled:  enabled && !!server && !!dim && !!element,
+  staleTime: 30_000,
+})
+
+export const useHierarchyFromAttribute = () => {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (body) => post('/api/hierarchy/from-attribute', body),
+    onSuccess: (_, { server, dimension }) => {
+      queryClient.invalidateQueries({ queryKey: ['hierarchies', server, dimension] })
+      queryClient.invalidateQueries({ queryKey: ['procs', server] })
+    },
+  })
+}
 
 export const useCreateHierarchy = () => useMutation({
   mutationFn: ({ server, dimension, name }) =>

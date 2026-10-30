@@ -1,0 +1,33 @@
+{
+  "name": "WFP-Assumptions",
+  "status": "draft",
+  "owner": "admin",
+  "version": 36,
+  "updated": "2026-10-25T03:01:34.014Z",
+  "description": "Input — Finance sets the monthly workforce rates by company (merit, inflation, bonus pool, on-costs); everyone else can view.",
+  "folder": "Workforce",
+  "title": "4 Assumptions",
+  "icon": "scale",
+  "color": "#0f766e",
+  "image": "",
+  "config": {
+    "version": "Forecast",
+    "editors": [
+      "WFP Finance"
+    ],
+    "entities": [
+      "UK Ltd",
+      "US Inc",
+      "NZ Ltd"
+    ],
+    "years": [
+      "2026",
+      "2027"
+    ],
+    "home": "WFP-Home",
+    "homeLabel": "Workforce"
+  },
+  "created": "2026-10-20T09:18:43.972Z",
+  "createdBy": "admin",
+  "toolkitVersion": 11
+}

@@ -1,0 +1,73 @@
+{
+  "id": "wfp-monthly-update",
+  "name": "WFP monthly update",
+  "model": "Workforce",
+  "description": "How a month is closed and the plan is moved on. Each phase is dated; plan actions mark cost out of date and the chore recalculates only the marked versions.",
+  "phases": [
+    {
+      "id": "actuals",
+      "title": "Load actuals (close the month)",
+      "who": "HR",
+      "note": "Load the HR extract into Actual. The process derives Actual's flags and rebuilds the By Location hierarchy, then recalculates Actual cost. WFP Load Actuals is the demo generator; in production use Load HR Assignments with the real extract.",
+      "entries": [{ "type": "process", "name": "WFP Load HR Assignments" }]
+    },
+    {
+      "id": "snapshot",
+      "title": "Freeze the plan",
+      "who": "Finance",
+      "note": "Snapshot Forecast as of the close before changing it: a static copy under Non-Calculating, with the following period's Prior Fcst Snapshot pointed at it.",
+      "entries": [{ "type": "process", "name": "WFP Snapshot" }]
+    },
+    {
+      "id": "roll",
+      "title": "Roll the period forward",
+      "who": "Finance",
+      "note": "Add the new month first (Period Builder / period maintenance), then the year's opening balance before January. Estimate opening YTD only while payroll has not supplied the real figures.",
+      "entries": [
+        { "type": "manual", "label": "Add the new month (Period Builder)" },
+        { "type": "process", "name": "WFP Add Opening Period" },
+        { "type": "process", "name": "WFP Estimate Opening YTD", "note": "Only if payroll has not supplied opening YTD." }
+      ]
+    },
+    {
+      "id": "change",
+      "title": "Change the plan",
+      "who": "HR / Finance",
+      "note": "Every action is dated from its month and marks cost out of date. Use the page for the job: Positions, People, Hire approvals, Hiring plan.",
+      "entries": [
+        { "type": "process", "name": "WFP Change Position" },
+        { "type": "process", "name": "WFP Change Assignment" },
+        { "type": "process", "name": "WFP Assign Person" },
+        { "type": "process", "name": "WFP Transfer Person" },
+        { "type": "process", "name": "WFP End Assignment" },
+        { "type": "process", "name": "WFP Move Position" },
+        { "type": "process", "name": "WFP Move Position To Company" },
+        { "type": "process", "name": "WFP Record Absence" },
+        { "type": "process", "name": "WFP Assign Cover" },
+        { "type": "process", "name": "WFP Mark Handover" },
+        { "type": "process", "name": "WFP Create TBH Position" },
+        { "type": "process", "name": "WFP Approve Hire" },
+        { "type": "process", "name": "WFP Cancel TBH Position" },
+        { "type": "process", "name": "WFP Close Position" },
+        { "type": "process", "name": "WFP Reopen Position" }
+      ]
+    },
+    {
+      "id": "recalc",
+      "title": "Recalculate cost",
+      "who": "Automatic",
+      "note": "The chore runs every 5 minutes and recalcs only the versions marked out of date: Base, then the tax run for that version.",
+      "entries": [{ "type": "chore", "name": "WFP Recalculate Cost" }]
+    },
+    {
+      "id": "match",
+      "title": "Match actuals",
+      "who": "HR",
+      "note": "Match each plan TBH to the real HR position when it appears; unmatch if the link was wrong. Here 'match actuals' means the TBH ↔ HR match, not the variance reports.",
+      "entries": [
+        { "type": "process", "name": "WFP Match TBH" },
+        { "type": "process", "name": "WFP Unmatch TBH" }
+      ]
+    }
+  ]
+}

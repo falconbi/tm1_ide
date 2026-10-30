@@ -1,0 +1,64 @@
+{
+  "name": "variance-report",
+  "title": "Variance report",
+  "description": "Actual against a comparison (budget, forecast, prior year) line by line \u2014 amount and percent, coloured better or worse, the biggest movers as bars, and an optional comment per line saved in TM1.",
+  "icon": "trending-up",
+  "color": "#0f766e",
+  "settings": {
+    "heading": "The title at the top",
+    "subtitle": "One line under the title",
+    "cube": "The cube to read",
+    "where": "{ dimension: member } \u2014 the slice (year, period, currency\u2026)",
+    "pick": "{ dimension, under | level | members, label, default } \u2014 optional picker, e.g. a region",
+    "rows": "{ dimension, under | level | members, label } \u2014 the lines",
+    "actual": "{ label, at: { dimension: member } } \u2014 e.g. { label: 'Actual', at: { Version: 'Actual' } }",
+    "compare": "{ label, at: { dimension: member } } \u2014 e.g. Target or Prior Year Actual",
+    "cost": "[members] \u2014 lines where lower is better (or costAll: true)",
+    "commentary": "{ label, cube, at: { dimension: member } } \u2014 optional comment per line, saved to a text cell (declare the cube in writes)",
+    "top": "How many lines to show as bars (default 8)",
+    "format": "Number format: number, k$ or $",
+    "writes": "The cube comments are saved to, if any"
+  },
+  "example": {
+    "heading": "Expenses against target",
+    "subtitle": "Year to date",
+    "cube": "Income Statement",
+    "where": {
+      "Currency Calc": "Local",
+      "Year": "Y2",
+      "Month": "Year"
+    },
+    "pick": {
+      "dimension": "organization",
+      "members": [
+        "Total Company",
+        "100",
+        "200",
+        "300",
+        "400"
+      ],
+      "label": "Region",
+      "default": "Total Company"
+    },
+    "rows": {
+      "dimension": "Account",
+      "under": "TE",
+      "level": 0,
+      "label": "Expense"
+    },
+    "actual": {
+      "label": "Actual",
+      "at": {
+        "Version": "Actual"
+      }
+    },
+    "compare": {
+      "label": "Target",
+      "at": {
+        "Version": "Target"
+      }
+    },
+    "costAll": true,
+    "format": "k$"
+  }
+}

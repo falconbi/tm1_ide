@@ -3,8 +3,9 @@ import { toast } from 'sonner'
 import { useCubes, useDims, useProcs, useChores, useSubsets, useViews, useCubeDimensions, useSaveView, useHierarchies, useCreateHierarchy, useControlObjects, useDeleteDimension, useDeleteCube, useDeleteProcess, useDeleteChore, useDeleteSubset, useDeleteView, useActiveWorkSession, useWorkSessionLog } from '@/hooks/useApi'
 import { useStore } from '@/store'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { ChevronRight, ChevronDown, Box, Layers, Cog, Clock, Loader2, List, Plus, Table2, Code2, Sigma, PencilLine, Search, X, Braces, Trash2, FileSearch, Database, Network, LayoutDashboard } from 'lucide-react'
+import { ChevronRight, ChevronDown, Box, Layers, Cog, Clock, Loader2, List, Plus, Table2, Code2, Sigma, PencilLine, Search, X, Braces, Trash2, FileSearch, Database, Network, LayoutDashboard, Copy } from 'lucide-react'
 import GlobalSearch from '@/components/GlobalSearch'
+import HierarchyFromAttributeDialog from '@/components/HierarchyFromAttributeDialog'
 import { DeleteWarningModal } from '@/components/DeleteWarningModal'
 import { cn } from '@/lib/utils'
 
@@ -456,6 +457,19 @@ function LensesSection({ server, onOpen, onNew }) {
   const [lenses, setLenses] = useState([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
+  // Lens folders collapse so ten models don't mean ten screens of scrolling.
+  // Remembered across sessions.
+  const [collapsedLensFolders, setCollapsedLensFolders] = useState(() => {
+    try { return new Set(JSON.parse(localStorage.getItem('tm1-lens-folders-collapsed') || '[]')) } catch { return new Set() }
+  })
+  const toggleLensFolder = (folder) => {
+    setCollapsedLensFolders(prev => {
+      const next = new Set(prev)
+      if (next.has(folder)) next.delete(folder); else next.add(folder)
+      try { localStorage.setItem('tm1-lens-folders-collapsed', JSON.stringify([...next])) } catch { /* storage refused */ }
+      return next
+    })
+  }
   const headers = () => ({ 'x-ide-token': localStorage.getItem('tm1-token') ?? '' })
   const load = useCallback(() => {
     setLoading(true); setError(null)
@@ -481,6 +495,28 @@ function LensesSection({ server, onOpen, onNew }) {
     if (!r.ok) { setError(d.error || r.statusText); return }
     load()
   }
+  // Group Lenses the same way the Lens app does: by folder (one folder per model),
+  // numbered steps in order (so "0 <Model> home" is first), then title. If a Lens
+  // has no folder, fall back to the name prefix (WFP-Position-Roster → WFP) so an
+  // unset folder still groups instead of all landing in "Other".
+  const lensGroup = (l) => {
+    const folder = String(l.folder || '').trim()
+    if (folder) return folder
+    const m = /^([A-Za-z0-9]+)[-_]/.exec(String(l.name || ''))
+    return m ? m[1] : 'Other'
+  }
+  const lensStep = (l) => {
+    const t = String(l.title || l.name || '').trim()
+    const m = /^(\d+)[.)]?\s+(.+)$/.exec(t)
+    return m ? { n: Number(m[1]), label: m[2] } : { n: Infinity, label: t }
+  }
+  const lensGroups = (() => {
+    const by = new Map()
+    for (const l of lenses) { const f = lensGroup(l); if (!by.has(f)) by.set(f, []); by.get(f).push(l) }
+    const folders = [...by.keys()].sort((a, b) => (a === 'Other') - (b === 'Other') || a.localeCompare(b))
+    for (const f of folders) by.get(f).sort((a, b) => { const sa = lensStep(a), sb = lensStep(b); return sa.n - sb.n || sa.label.localeCompare(sb.label) })
+    return folders.map(folder => ({ folder, items: by.get(folder) }))
+  })()
   return (
     <div data-section="lenses">
       <div className="flex items-center w-full px-3 py-1 group">
@@ -517,28 +553,45 @@ function LensesSection({ server, onOpen, onNew }) {
           {!loading && !error && lenses.length === 0 && (
             <p className="px-6 py-0.5 text-xs text-muted-foreground/50 italic">No lenses yet</p>
           )}
-          {lenses.map(f => (
-            <div key={f.name} className="flex items-center w-full px-6 py-0.5 text-xs text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground group/lens">
-              <button
-                onClick={() => onOpen(f.name)}
-                className="flex items-center gap-2 flex-1 min-w-0 text-left"
-                title={`Open lens ${f.name}${f.description ? ` — ${f.description}` : ''}`}
-              >
-                <LayoutDashboard size={10} className="shrink-0 text-muted-foreground" />
-                <span className="truncate">{f.name}</span>
-                {f.status && (
-                  <span className="text-[10px] text-muted-foreground shrink-0">{f.status}{f.version ? ` · v${f.version}` : ''}</span>
-                )}
-              </button>
-              <button
-                onClick={() => remove(f.name)}
-                title={`Delete lens ${f.name}`}
-                className="hidden group-hover/lens:flex items-center ml-1 text-muted-foreground hover:text-red-600 shrink-0"
-              >
-                <Trash2 size={10} />
-              </button>
-            </div>
-          ))}
+          {lensGroups.map(g => {
+            const isCollapsed = collapsedLensFolders.has(g.folder)
+            return (
+              <div key={g.folder}>
+                <button
+                  type="button"
+                  onClick={() => toggleLensFolder(g.folder)}
+                  className="flex items-center gap-1 w-full px-6 pt-1.5 pb-0.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60 hover:text-foreground min-w-0"
+                  title={isCollapsed ? `Expand ${g.folder}` : `Collapse ${g.folder}`}
+                >
+                  {isCollapsed ? <ChevronRight size={10} className="shrink-0" /> : <ChevronDown size={10} className="shrink-0" />}
+                  <span className="truncate">{g.folder}</span>
+                  <span className="ml-1 text-muted-foreground/40 shrink-0">{g.items.length}</span>
+                </button>
+                {!isCollapsed && g.items.map(f => (
+                  <div key={f.name} className="flex items-center w-full px-6 py-0.5 text-xs text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground group/lens">
+                    <button
+                      onClick={() => onOpen(f.name)}
+                      className="flex items-center gap-2 flex-1 min-w-0 text-left"
+                      title={`Open lens ${f.name}${f.description ? ` — ${f.description}` : ''}`}
+                    >
+                      <LayoutDashboard size={10} className="shrink-0 text-muted-foreground" />
+                      <span className="truncate">{lensStep(f).label}</span>
+                      {f.status && (
+                        <span className="text-[10px] text-muted-foreground shrink-0">{f.status}{f.version ? ` · v${f.version}` : ''}</span>
+                      )}
+                    </button>
+                    <button
+                      onClick={() => remove(f.name)}
+                      title={`Delete lens ${f.name}`}
+                      className="hidden group-hover/lens:flex items-center ml-1 text-muted-foreground hover:text-red-600 shrink-0"
+                    >
+                      <Trash2 size={10} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )
+          })}
         </div>
       )}
     </div>
@@ -609,8 +662,12 @@ function DimRow({ server, dim, onOpenSubset, onOpenDim }) {
   const [newHierarchyName, setNewHierarchyName] = useState('')
   const hierarchyInputRef = useRef(null)
   const { data: subsets, isFetching } = useSubsets(open ? server : null, open ? dim : null)
-  const { data: hierarchies = [] } = useHierarchies(open ? server : null, open ? dim : null)
+  // TM1's automatic 'Leaves' hierarchy isn't one anyone builds — leave it out
+  const { data: allHierarchies = [] } = useHierarchies(open ? server : null, open ? dim : null)
+  const hierarchies = allHierarchies.filter(h => h !== 'Leaves')
   const createHierarchyMut = useCreateHierarchy()
+  const [hierMenu, setHierMenu] = useState(false)
+  const [fromAttr, setFromAttr] = useState(false)
   const hasMultipleHierarchies = hierarchies.length > 1 || addingHierarchy
   const deleteDimMut = useDeleteDimension()
   const deleteSubsetMut = useDeleteSubset()
@@ -672,6 +729,10 @@ function DimRow({ server, dim, onOpenSubset, onOpenDim }) {
                 <Plus size={9} /> Subset
               </button>
           }
+          <button onClick={(e) => { e.stopPropagation(); setOpen(true); setFromAttr(true) }} title="New Alternate Hierarchy from an attribute"
+            className="flex items-center gap-0.5 px-1 py-0.5 rounded text-[10px] text-muted-foreground hover:text-foreground hover:bg-sidebar-accent">
+            <Plus size={9} /> Hierarchy
+          </button>
           <button onClick={handleDelete} title="Delete dimension"
             className="flex items-center gap-0.5 px-1 py-0.5 rounded text-[10px] text-muted-foreground hover:text-red-400 hover:bg-sidebar-accent">
             <Trash2 size={9} />
@@ -686,13 +747,26 @@ function DimRow({ server, dim, onOpenSubset, onOpenDim }) {
               <div className="flex items-center justify-between mb-0.5">
                 <div className="text-[10px] uppercase tracking-wider text-muted-foreground/60 font-semibold">Hierarchies</div>
                 {!addingHierarchy && (
-                  <button
-                    onClick={() => { setAddingHierarchy(true); setNewHierarchyName(''); setTimeout(() => hierarchyInputRef.current?.focus(), 0) }}
-                    className="flex items-center gap-0.5 px-1 py-0.5 rounded text-[10px] text-muted-foreground hover:text-foreground hover:bg-sidebar-accent"
-                    title="New hierarchy"
-                  >
-                    <Plus size={9} />
-                  </button>
+                  <span className="relative">
+                    <button
+                      onClick={() => setHierMenu(m => !m)}
+                      className="flex items-center gap-0.5 px-1 py-0.5 rounded text-[10px] text-muted-foreground hover:text-foreground hover:bg-sidebar-accent"
+                      title="New hierarchy"
+                    >
+                      <Plus size={9} />
+                    </button>
+                    {hierMenu && (
+                      <span className="absolute right-0 top-full mt-1 z-50 w-52 rounded border border-border bg-popover shadow-lg py-1 text-xs">
+                        <button className="block w-full text-left px-3 py-1.5 hover:bg-muted" onClick={() => { setHierMenu(false); setFromAttr(true) }}>
+                          From an attribute…<span className="block text-[10px] text-muted-foreground">Generated, kept in step by a process</span>
+                        </button>
+                        <button className="block w-full text-left px-3 py-1.5 hover:bg-muted"
+                          onClick={() => { setHierMenu(false); setAddingHierarchy(true); setNewHierarchyName(''); setTimeout(() => hierarchyInputRef.current?.focus(), 0) }}>
+                          Empty<span className="block text-[10px] text-muted-foreground">Built by hand</span>
+                        </button>
+                      </span>
+                    )}
+                  </span>
                 )}
               </div>
               {addingHierarchy && (
@@ -731,10 +805,16 @@ function DimRow({ server, dim, onOpenSubset, onOpenDim }) {
                 >
                   <Layers size={10} className="shrink-0 text-muted-foreground" />
                   <span className="truncate font-mono">{h}</span>
-                  {h === dim && <span className="text-[10px] text-muted-foreground/50">(default)</span>}
+                  {h === dim
+                    ? <span className="text-[10px] text-muted-foreground/50">(default)</span>
+                    : <span className="text-[10px] text-muted-foreground/50" title="An Alternate Hierarchy: the same elements, so the same data, rolled up another way">alternate</span>}
                 </button>
               ))}
             </div>
+          )}
+          {fromAttr && (
+            <HierarchyFromAttributeDialog server={server} dimension={dim} onClose={() => setFromAttr(false)}
+              onDone={h => { setFromAttr(false); onOpenDim(dim, h) }} />
           )}
           {(subsets ?? []).length === 0 && !isFetching && !hasMultipleHierarchies && (
             <p className="px-14 py-0.5 text-xs text-muted-foreground italic">No subsets — hover to add</p>

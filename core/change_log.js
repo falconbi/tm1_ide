@@ -312,14 +312,14 @@ function getEntryById(id) {
 // started and stamping every later save's user with the session's original
 // user — wrong on both counts, and wrong specifically *because* it made
 // history depend on session state, which it must never do.)
-function writeLog({ server, action, objectType, objectName, detail, beforeState, afterState, user }) {
+function writeLog({ server, action, objectType, objectName, detail, beforeState, afterState, user, identity }) {
     // Keyed by the saver's own open change set (server+user), so per-person
     // change sets on a shared DEV stay separate.
     const session = getActiveSession(server, user)
 
     db.prepare(`
-        INSERT INTO log_entries (session_id, timestamp, server, action, object_type, object_name, detail, before_state, after_state, user)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO log_entries (session_id, timestamp, server, action, object_type, object_name, detail, before_state, after_state, user, identity)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
         session?.id ?? null,
         new Date().toISOString(),
@@ -330,9 +330,57 @@ function writeLog({ server, action, objectType, objectName, detail, beforeState,
         detail       ?? null,
         beforeState  ? JSON.stringify(beforeState)  : null,
         afterState   ? JSON.stringify(afterState)   : null,
-        user ?? null
+        user ?? null,
+        identity ?? null
     )
     return { hasSession: !!session }
+}
+
+// ── MCP read audit ─────────────────────────────────────────────────────────
+// Every MCP read tool call: who asked (developer + the TM1 login the read ran
+// as), which tool, which object, how many rows came back, and whether it was
+// served, refused by policy, or failed. Its own table — reads never touch a
+// change set, so they can never end up in a diff, package or deploy.
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS read_audit (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp  TEXT NOT NULL,
+    server     TEXT NOT NULL,
+    user       TEXT,
+    identity   TEXT,
+    tool       TEXT NOT NULL,
+    object     TEXT,
+    rows       INTEGER,
+    redacted   INTEGER,
+    outcome    TEXT NOT NULL,
+    detail     TEXT
+  );
+  CREATE INDEX IF NOT EXISTS idx_read_audit_srv ON read_audit(server, timestamp);
+`)
+
+function writeReadAudit({ server, user, identity, tool, object, rows, redacted, outcome, detail }) {
+    db.prepare(`
+        INSERT INTO read_audit (timestamp, server, user, identity, tool, object, rows, redacted, outcome, detail)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(new Date().toISOString(), server, user ?? null, identity ?? null, tool, object ?? null,
+        rows ?? null, redacted ?? null, outcome, detail ?? null)
+}
+
+// Retention: drop read-audit rows older than `days` (0 or less = keep forever).
+// Returns how many rows went.
+function pruneReadAudit(days, { server = null, now = Date.now() } = {}) {
+    if (!(days > 0)) return 0
+    const cutoff = new Date(now - days * 86_400_000).toISOString()
+    return server
+        ? db.prepare(`DELETE FROM read_audit WHERE timestamp < ? AND server = ?`).run(cutoff, server).changes
+        : db.prepare(`DELETE FROM read_audit WHERE timestamp < ?`).run(cutoff).changes
+}
+
+function getReadAudit(server, { limit = 200, tool } = {}) {
+    return tool
+        ? db.prepare(`SELECT * FROM read_audit WHERE server = ? AND tool = ? ORDER BY id DESC LIMIT ?`).all(server, tool, limit)
+        : db.prepare(`SELECT * FROM read_audit WHERE server = ? ORDER BY id DESC LIMIT ?`).all(server, limit)
 }
 
 // ── Retention / archive ────────────────────────────────────────────────────
@@ -362,5 +410,7 @@ function pruneEntries(ids) {
 // SQLite doesn't add columns to existing tables via CREATE TABLE — migrate if needed
 try { db.exec(`ALTER TABLE sessions ADD COLUMN description TEXT`) } catch {}
 try { db.exec(`ALTER TABLE log_entries ADD COLUMN user TEXT`) } catch {}
+// The TM1 login a change was made with (the MCP's builder identity), next to the developer in `user`.
+try { db.exec(`ALTER TABLE log_entries ADD COLUMN identity TEXT`) } catch {}
 
-module.exports = { startSession, getSession, getSessionManifest, closeSession, resumeSession, updateSessionDescription, setSessionCommit, setSessionRelease, markSessionDeployed, getActiveSession, getSessions, getAllSessions, getSessionLog, getCrossSessionTouches, getEntriesSince, getMaxEntryId, getEntriesSinceId, getSessionLogVerbose, getRecentLog, getObjectHistory, getEntryById, writeLog, findArchivableEntries, pruneEntries }
+module.exports = { startSession, getSession, getSessionManifest, closeSession, resumeSession, updateSessionDescription, setSessionCommit, setSessionRelease, markSessionDeployed, getActiveSession, getSessions, getAllSessions, getSessionLog, getCrossSessionTouches, getEntriesSince, getMaxEntryId, getEntriesSinceId, getSessionLogVerbose, getRecentLog, getObjectHistory, getEntryById, writeLog, writeReadAudit, getReadAudit, pruneReadAudit, findArchivableEntries, pruneEntries }

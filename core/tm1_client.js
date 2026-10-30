@@ -1,6 +1,8 @@
 'use strict'
 
 const { odataKey, odataLit } = require('./odata-key')
+const SAVE_DATA_ALL = require('../core-ti/save-data-all/process.json')
+const { rebuildProcess, referencesHierarchy } = require('./hierarchy_gen')
 
 class TM1Client {
     constructor(server, adapter) {
@@ -12,8 +14,8 @@ class TM1Client {
         return this._adapter.get(path, params)
     }
 
-    async post(path, body = {}) {
-        return this._adapter.post(path, body)
+    async post(path, body = {}, opts = {}) {
+        return this._adapter.post(path, body, opts)
     }
 
     async patch(path, body = {}) {
@@ -227,6 +229,71 @@ class TM1Client {
 
     async deleteHierarchy(dim, name) {
         return this.delete(`Dimensions('${odataKey(dim)}')/Hierarchies('${odataKey(name)}')`)
+    }
+
+    // ── Alternate Hierarchies ─────────────────────────────────────────────────
+    // A second named hierarchy in a dimension: same leaves (so the same data), another rollup.
+    // 'Leaves' is TM1's own automatic hierarchy of every leaf — not something anyone builds.
+
+    // What a hierarchy is, and which processes build it (TI that names 'Dim:Hierarchy').
+    async hierarchyInfo(dim, hier) {
+        const kind = hier === dim ? 'default' : hier === 'Leaves' ? 'leaves' : 'alternate'
+        let builtBy = []
+        if (kind === 'alternate') {
+            const r = await this.get('Processes', { '$select': 'Name,PrologProcedure,MetadataProcedure,DataProcedure,EpilogProcedure' })
+            builtBy = (r.value ?? []).filter(p => !p.Name.startsWith('}') && referencesHierarchy(
+                [p.PrologProcedure, p.MetadataProcedure, p.DataProcedure, p.EpilogProcedure].join('\n'), dim, hier)).map(p => p.Name)
+        }
+        return { dimension: dim, hierarchy: hier, kind, builtBy }
+    }
+
+    // An element's parents in each hierarchy it belongs to (Leaves left out).
+    async elementHierarchyParents(dim, element) {
+        const out = {}
+        for (const h of await this.getHierarchies(dim)) {
+            if (h === 'Leaves') continue
+            const el = await this.get(`Dimensions('${odataKey(dim)}')/Hierarchies('${odataKey(h)}')/Elements('${odataKey(element)}')`,
+                { '$select': 'Name', '$expand': 'Parents($select=Name)' }).catch(() => null)
+            if (el) out[h] = (el.Parents ?? []).map(p => p.Name)
+        }
+        return out
+    }
+
+    // Build (or re-point) an Alternate Hierarchy from an attribute: write its rebuild process,
+    // run it once, and optionally call it from another process's Epilog so it stays in step.
+    async buildHierarchyFromAttribute({ dimension, hierarchy, attribute, levelDimension = '', hookProcess = '' }) {
+        if (!dimension || !hierarchy || !attribute) throw new Error('dimension, hierarchy and attribute are required')
+        if (hierarchy === dimension || hierarchy === 'Leaves') throw new Error(`"${hierarchy}" is not a name an Alternate Hierarchy can have`)
+        const attrs = await this.getElementAttributes(dimension)
+        const attr = attrs.find(a => a.Name === attribute)
+        if (!attr) throw new Error(`${dimension} has no attribute "${attribute}"`)
+        const leaves = new Set((await this.getElements(dimension)).map(e => e.Name.toLowerCase()))
+        // the group names must not be names the dimension already uses
+        let top = `All ${hierarchy}`, groups = []
+        if (levelDimension) {
+            const lv = await this.get(`Dimensions('${odataKey(levelDimension)}')/Hierarchies('${odataKey(levelDimension)}')/Elements`, { '$select': 'Name', '$expand': 'Parents($select=Name)' })
+            groups = (lv.value ?? []).map(e => e.Name)
+            const roots = (lv.value ?? []).filter(e => !(e.Parents ?? []).length).map(e => e.Name)
+            if (roots.length === 1) top = roots[0]
+        } else {
+            const vals = await this.get(`Dimensions('${odataKey(dimension)}')/Hierarchies('${odataKey(dimension)}')/Elements`, { '$select': 'Name,Attributes', '$filter': 'Level eq 0' })
+            groups = [...new Set((vals.value ?? []).map(e => String(e.Attributes?.[attribute] ?? '')).filter(Boolean))]
+        }
+        const clash = [top, `${attribute} not set`, ...groups].filter(g => leaves.has(String(g).toLowerCase()))
+        if (clash.length) throw new Error(`these names already exist in ${dimension}, so they can't be groups: ${clash.slice(0, 5).join(', ')}`)
+        const proc = rebuildProcess({ dimension, hierarchy, attribute, attributeType: /numeric/i.test(attr.Type) ? 'Numeric' : 'String', levelDimension, top })
+        await this.createOrReplaceProcess({ name: proc.name, prolog: proc.prolog })
+        const run = await this.executeProcess(proc.name)
+        let hooked = null
+        if (hookProcess) {
+            const p = await this.getProcess(hookProcess)
+            const ep = String(p.EpilogProcedure ?? '').replace(/\r\n/g, '\n')
+            if (!ep.includes(proc.name)) {
+                await this.patch(`Processes('${odataKey(hookProcess)}')`, { EpilogProcedure: ep.replace(/\s*$/, '') + `\n# keep the "${hierarchy}" Alternate Hierarchy in step\nExecuteProcess( '${proc.name.replace(/'/g, "''")}' );\n` })
+            }
+            hooked = hookProcess
+        }
+        return { process: proc.name, status: run?.ProcessExecuteStatusCode ?? null, top, groups: groups.length, hooked }
     }
 
     // ── Attribute value write probe ───────────────────────────────────────────
@@ -468,15 +535,47 @@ class TM1Client {
         return this.get(`Processes('${odataKey(name)}')`)
     }
 
-    async executeProcess(name, params = {}) {
+    async executeProcess(name, params = {}, opts = {}) {
         const paramArray = Array.isArray(params)
             ? params
             : Object.entries(params).map(([Name, Value]) => ({ Name, Value: String(Value) }))
         // ExecuteWithReturn returns status + ErrorLogFile reference inline — better than tm1.Execute
         return this.post(
             `Processes('${odataKey(name)}')/tm1.ExecuteWithReturn?$expand=ErrorLogFile`,
-            { Parameters: paramArray }
+            { Parameters: paramArray },
+            opts
         )
+    }
+
+    // Write all changed cube data to disk. TM1 11.8 supports the REST action;
+    // if a server does not, fall back to the hidden core TI whose Prolog is SaveDataAll;.
+    async saveDataAll() {
+        try {
+            await this.post('tm1.SaveDataAll', {})
+            return { method: 'rest' }
+        } catch (e) {
+            const status = e.response?.status
+            if (![400, 404, 405, 501].includes(status)) throw e
+        }
+
+        const name = SAVE_DATA_ALL.name
+        const existing = await this.getProcess(name).catch(e => {
+            if (e.response?.status === 404) return null
+            throw e
+        })
+        if (!existing) await this.createOrReplaceProcess(SAVE_DATA_ALL)
+        const result = await this.executeProcess(name)
+        const status = result?.ProcessExecuteStatusCode ?? result?.['odata.ProcessExecuteStatusCode']
+        const ok = status === undefined || status === 0 || status === 'CompletedSuccessfully' || status === 'HasMinorErrors'
+        if (!ok) {
+            const errFile = result?.ErrorLogFile?.Filename ?? ''
+            let detail = `SaveDataAll TI failed (status ${status})`
+            if (errFile) {
+                try { detail += '\n' + (await this.getErrorLogContent(errFile))?.Content } catch { detail += ': ' + errFile }
+            }
+            throw new Error(detail)
+        }
+        return { method: 'ti', result }
     }
 
     async createOrReplaceProcess(proc) {
@@ -598,7 +697,7 @@ class TM1Client {
                 const p = await this.getProcess(proc)
                 const code = [
                     p.PrologProcedure   ?? '',
-                    p.MetaDataProcedure ?? '',
+                    p.MetadataProcedure ?? '',
                     p.DataProcedure     ?? '',
                     p.EpilogProcedure   ?? '',
                 ].join('\n')
@@ -645,7 +744,7 @@ class TM1Client {
                 const p = await this.getProcess(proc)
                 const code = [
                     p.PrologProcedure   ?? '',
-                    p.MetaDataProcedure ?? '',
+                    p.MetadataProcedure ?? '',
                     p.DataProcedure     ?? '',
                     p.EpilogProcedure   ?? '',
                 ].join('\n')
@@ -690,7 +789,7 @@ class TM1Client {
         for (const proc of processes) {
             try {
                 const p = await this.getProcess(proc)
-                const code = [p.PrologProcedure ?? '', p.MetaDataProcedure ?? '', p.DataProcedure ?? '', p.EpilogProcedure ?? ''].join('\n')
+                const code = [p.PrologProcedure ?? '', p.MetadataProcedure ?? '', p.DataProcedure ?? '', p.EpilogProcedure ?? ''].join('\n')
                 if (code.includes(dim)) tiUsage.push({ process: proc })
             } catch { /* skip */ }
         }
@@ -703,7 +802,7 @@ class TM1Client {
         for (const proc of processes) {
             try {
                 const p = await this.getProcess(proc)
-                const code = [p.PrologProcedure ?? '', p.MetaDataProcedure ?? '', p.DataProcedure ?? '', p.EpilogProcedure ?? ''].join('\n')
+                const code = [p.PrologProcedure ?? '', p.MetadataProcedure ?? '', p.DataProcedure ?? '', p.EpilogProcedure ?? ''].join('\n')
                 if (code.includes(cube)) tiUsage.push({ process: proc })
             } catch { /* skip */ }
         }
@@ -1197,7 +1296,7 @@ return (d.value ?? [])
         const { ID } = await this.post('ExecuteMDX', { MDX: mdx })
         const [axisData, cellData] = await Promise.all([
             this.get(`Cellsets('${ID}')/Axes`, { '$expand': 'Tuples($expand=Members($select=Name,UniqueName,Type))' }),
-            this.get(`Cellsets('${ID}')/Cells`, { '$select': 'Ordinal,Value,FormattedValue,Updateable', '$top': maxCells }),
+            this.get(`Cellsets('${ID}')/Cells`, { '$select': 'Ordinal,Value,FormattedValue,Updateable,RuleDerived,Consolidated', '$top': maxCells }),
         ])
         try { await this.delete(`Cellsets('${ID}')`) } catch {}
         const cells = cellData.value
@@ -1243,22 +1342,32 @@ return (d.value ?? [])
 
     // ── Cell annotations ──────────────────────────────────────────────────────
 
+    // Cell notes (TM1 annotations). A note belongs to its cell through
+    // DimensionalContext (one member per cube dimension) and to its cube through
+    // ApplicationContext — the TM1 v11 / v12 REST shape (Tuple is not a property).
+    // Returned in a stable shape: { ID, Text, Author, TimeStamp, Tuple: [member] }.
     async getAnnotations(cube) {
         const d = await this.get(`Cubes('${odataKey(cube)}')/Annotations`, {
-            '$select':  'ID,Text,TimeStamp,Author',
-            '$expand':  'Tuple($select=Name;$expand=Hierarchy($select=Name;$expand=Dimension($select=Name)))',
-            '$orderby': 'TimeStamp desc',
-            '$top':     200,
+            '$select':  'ID,Text,Creator,Created,LastUpdated',
+            '$expand':  'DimensionalContext($select=Name;$expand=Hierarchy($select=Name;$expand=Dimension($select=Name)))',
+            '$top':     500,
         })
-        return d.value ?? []
+        return (d.value ?? [])
+            .map(a => ({ ID: a.ID, Text: a.Text, Author: a.Creator, TimeStamp: a.LastUpdated ?? a.Created, Tuple: a.DimensionalContext ?? [] }))
+            .sort((a, b) => String(b.TimeStamp).localeCompare(String(a.TimeStamp)))
     }
 
     async addAnnotation(cube, dimElemPairs, text) {
-        return this.post(`Cubes('${odataKey(cube)}')/Annotations`, {
+        return this.post('Annotations', {
             Text: text,
-            'Tuple@odata.bind': dimElemPairs.map(({ dim, element }) =>
-                `Dimensions('${odataKey(dim)}')/Hierarchies('${odataKey(dim)}')/Elements('${odataKey(element)}')`
+            ApplicationContext: [{ 'Facet@odata.bind': "ApplicationContextFacets('}Cubes')", Value: cube }],
+            'DimensionalContext@odata.bind': dimElemPairs.map(({ dim, element }) =>
+                `Dimensions('${odataKey(dim)}')/Hierarchies('${odataKey(dim)}')/Members('${odataKey(element)}')`
             ),
+            objectName: cube,
+            commentValue: text,
+            commentType: 'ANNOTATION',
+            commentLocation: dimElemPairs.map(p => p.element).join(','),
         })
     }
 
@@ -1431,11 +1540,10 @@ return (d.value ?? [])
 
     // elements: array of element names in cube dimension order (nulls = unfiltered)
     //
-    // TM1 v11's TransactionLogEntries collection rejects $filter, $orderby and $select
-    // ("Unsupported token") — only $top / $skip / $count work, and $top returns from the
-    // OLDEST entry. So: read the total count, page backwards from the newest entry in
-    // chunks, and match cube + tuple client-side. SCAN_CAP bounds how far back we look —
-    // on a busy server a cube with no recent writes may fall outside the window.
+    // TM1 filters by cube itself ($filter=Cube eq '…' — this used to fail only because
+    // spaces were sent as '+'; core/odata-params sends %20). The tuple is matched here.
+    // If a server still refuses the filter, fall back to reading the log and matching
+    // cube + tuple here ($top returns from the OLDEST entry, so take the newest window).
     async getTransactionLog(cube, { top = 200, elements = null, maxScan = 200_000 } = {}) {
         const cubeLc  = String(cube).toLowerCase()
         const wantEls = Array.isArray(elements) ? elements : null
@@ -1443,6 +1551,11 @@ return (d.value ?? [])
         const tupleMatches = e =>
             !wantEls || wantEls.every((el, i) => !el || (e.Tuple?.[i] ?? '') === el)
         const keep = e => (e.Cube ?? '').toLowerCase() === cubeLc && tupleMatches(e)
+
+        try {
+            const hit = (await this.get('TransactionLogEntries', { '$filter': `Cube eq '${odataLit(cube)}'`, '$top': maxScan })).value ?? []
+            return hit.filter(keep).sort((a, b) => String(b.TimeStamp).localeCompare(String(a.TimeStamp))).slice(0, top)
+        } catch { /* filter refused — read the log and match here */ }
 
         // One big $top pulls the whole log fast (~3s for 70k rows) — far cheaper than
         // $count (server counts everything) or high $skip values. Rows come oldest-first.
@@ -1484,7 +1597,7 @@ return (d.value ?? [])
     // ['Applications','Governance','Tests'] under the v11 Applications container.
     // v11 addresses documents by their '<name>.blob' id and reads/writes content
     // via /Document/Content; v12 addresses by name with /Content (see
-    // docs/MODEL_OWNED_HISTORY_PLAN.md §7 for the live-verified v11 facts).
+    // docs/deploy/MODEL_OWNED_HISTORY_PLAN.md §7 for the live-verified v11 facts).
     _contentsPath(pathParts) {
         return pathParts.map(p => `Contents('${odataKey(p)}')`).join('/')
     }
@@ -1572,8 +1685,27 @@ return (d.value ?? [])
     // ── Sessions ──────────────────────────────────────────────────────────────
 
     async getSessions() {
-        const d = await this.get('Sessions', { '$expand': 'User,CurrentThread' })
-        return d.value ?? []
+        // TM1 v12 has Session.CurrentThread; TM1 v11 does NOT — asking for it makes
+        // TM1 reject the whole request ("CurrentThread is not a property of Session"),
+        // which is why the Sessions monitor showed 0 sessions and a 400. v11 exposes
+        // Session.Threads instead. Try the expansion that worked last time first, then
+        // the v11 and v12 shapes, then no thread expand at all, so both versions work.
+        const tries = []
+        if (this._sessionsExpand) tries.push(this._sessionsExpand)
+        for (const e of ['User,Threads', 'User,CurrentThread', 'User']) {
+            if (!tries.includes(e)) tries.push(e)
+        }
+        let lastErr
+        for (const expand of tries) {
+            try {
+                const d = await this.get('Sessions', { '$expand': expand })
+                this._sessionsExpand = expand
+                return d.value ?? []
+            } catch (e) {
+                lastErr = e
+            }
+        }
+        throw lastErr
     }
 
     async disconnectSession(id) {
@@ -1691,10 +1823,11 @@ return (d.value ?? [])
 
     async provisionUser(clientName, password, groups = [], friendlyName = '') {
         const s = v => `'${v.replace(/'/g, "''")}'`
-        await this._runTI([
-            `AddClient(${s(clientName)});`,
-            `AssignClientPassword(${s(clientName)}, ${s(password)});`,
-        ].join('\n'))
+        // Two separate runs: TM1 only commits a new client at the end of the
+        // procedure that added it, so AssignClientPassword in the same Prolog has
+        // nothing to apply to — the user was created with NO password (silently).
+        await this._runTI(`AddClient(${s(clientName)});`)
+        await this._runTI(`AssignClientPassword(${s(clientName)}, ${s(password)});`)
         for (const g of groups) {
             try { await this.addClientToGroup(clientName, g) } catch {}
         }

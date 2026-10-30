@@ -125,7 +125,7 @@ export default function AssertionsManager({ server, onClose }) {
 
         <div className="flex-1 overflow-y-auto p-4 space-y-2">
           <p className="text-[11px] text-muted-foreground leading-relaxed border border-border rounded-md px-3 py-2 bg-muted/20">
-            Assertions check the model's numbers. <span className="text-foreground">Behaviour</span> checks a specific value (runs on DEV, where the data is known). <span className="text-foreground">Control</span> checks a rule that must hold on any data (runs on DEV and PROD). Severity <span className="text-foreground">block</span> stops the Close / fails the deploy check; <span className="text-foreground">warn</span> just flags it. The AI writes these as it builds the model; a human overrides or deletes. Ground rules: <span className="font-mono">docs/ASSERTIONS.md</span>.
+            Assertions check the model's numbers. <span className="text-foreground">Behaviour</span> checks a specific value (runs on DEV, where the data is known). <span className="text-foreground">Control</span> checks a rule that must hold on any data (runs on DEV and PROD). Severity <span className="text-foreground">block</span> stops the Close / fails the deploy check; <span className="text-foreground">warn</span> just flags it. The AI writes these as it builds the model; a human overrides or deletes. Ground rules: <span className="font-mono">docs/deploy/ASSERTIONS.md</span>.
           </p>
           {error && <p className="text-xs text-red-600 border border-red-600/40 rounded px-3 py-2">{error}</p>}
           {!list && <p className="text-xs text-muted-foreground italic">Loading…</p>}

@@ -8,7 +8,7 @@
     "dev": "node --watch server.js",
     "tm1deploy": "node tools/tm1deploy/bin/tm1deploy.js",
     "tm1mcp": "node tools/tm1mcp/server.js",
-    "test": "node --test",
+    "test": "node --test tests/*.test.js tests/*.test.mjs",
     "lens": "node lens-server.js"
   },
   "keywords": [],
@@ -31,6 +31,7 @@
     "ws": "^8.20.1"
   },
   "devDependencies": {
+    "jsdom": "^26.1.0",
     "playwright": "^1.63.0"
   }
 }

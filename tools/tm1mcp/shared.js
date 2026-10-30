@@ -5,7 +5,9 @@
 // a change, formatting a response, running stored assertions, gating on an
 // open change set). One place, no duplication across tools/*.js.
 
-const { makeClient, isReadOnly } = require('../../core/adapter_registry')
+const { makeClient, makeClientWithCredentials, isReadOnly } = require('../../core/adapter_registry')
+const { createIdentity } = require('./identity')
+const guard           = require('./guard')
 const cl              = require('../../core/change_log')
 const { lintRules }   = require('../../core/rules-lint')
 const { lintTI }      = require('../../core/ti-lint')
@@ -13,23 +15,51 @@ const assertions      = require('../../core/assertions')
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
+// Which TM1 server this session works on: --server, else TM1_MCP_SERVER, else the
+// server the IDE has selected (config/forge.json). No hard-coded fallback — a stale
+// default once left the MCP aimed at the consolidation server while the work was on
+// another model, so a write could have landed on the wrong one.
+function ideServer() {
+    try { return require('../../config/forge.json').server || null } catch { return null }
+}
 const args   = process.argv.slice(2)
 const srvIdx = args.indexOf('--server')
-const SERVER = srvIdx !== -1 ? args[srvIdx + 1] : (process.env.TM1_MCP_SERVER ?? null)
+const [SERVER, SERVER_SOURCE] =
+      srvIdx !== -1                 ? [args[srvIdx + 1], '--server']
+    : process.env.TM1_MCP_SERVER    ? [process.env.TM1_MCP_SERVER, 'TM1_MCP_SERVER']
+    : ideServer()                   ? [ideServer(), 'the IDE (config/forge.json)']
+    :                                 [null, null]
 
 if (!SERVER) {
-    process.stderr.write('tm1mcp: specify a server with --server <name> or TM1_MCP_SERVER env var\n')
+    process.stderr.write('tm1mcp: no server — select one in the IDE, or pass --server <name> / set TM1_MCP_SERVER\n')
     process.exit(1)
 }
+process.stderr.write(`tm1mcp: server ${SERVER} (from ${SERVER_SOURCE})\n`)
 
 // The developer's identity. Override with TM1_MCP_USER so an agent's changes land
 // in that developer's own change set (per-person change sets on a shared DEV),
 // instead of all landing under a fixed 'ai-agent'.
 const AGENT_USER = process.env.TM1_MCP_USER || 'ai-agent'
 
+// readonly | build (MCP_MODE) — readonly registers no write tools at all.
+const MODE = guard.resolveMode(process.env.MCP_MODE, isReadOnly(SERVER))
+
+// What an agent may read here, and what is masked (config/mcp-security.json).
+const policy = guard.loadPolicy(SERVER)
+
+// Reads run as the reader (TM1_MCP_READ_USER → TM1's own security applies);
+// writes as the builder (service login). See identity.js.
+const identity = createIdentity({ server: SERVER, makeClient, makeClientWithCredentials })
+
+// The builder's TM1 login name, filled in at start-up — recorded on every change-set row.
+let builderLogin = null
+function setBuilderLogin(name) { builderLogin = name }
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function client() { return makeClient(SERVER, null) }
+// The TM1 client for the current call — the reader inside a read tool, the
+// builder inside a write tool (the wrapper in registry.js decides).
+function client() { return identity.client() }
 
 function ok(data) {
     return { content: [{ type: 'text', text: typeof data === 'string' ? data : JSON.stringify(data, null, 2) }] }
@@ -52,6 +82,7 @@ function logChange(action, objectType, objectName, opts = {}) {
         beforeState: opts.before ?? null,
         afterState:  opts.after  ?? null,
         user:        AGENT_USER,
+        identity:    builderLogin ?? 'service login',
     })
 }
 
@@ -123,6 +154,13 @@ function targetAllowlist() {
     return set
 }
 
+// Were target servers named on purpose (beyond the bound server itself)?
+function explicitTargets() {
+    const set = targetAllowlist()
+    set.delete(SERVER)
+    return set.size > 0
+}
+
 function assertTargetAllowed(target) {
     const allowed = targetAllowlist()
     if (!allowed.has(target)) {
@@ -133,4 +171,4 @@ function assertTargetAllowed(target) {
     }
 }
 
-module.exports = { SERVER, AGENT_USER, client, ok, esc, logChange, runAssertions, requireWritable, requireChangeSet, assertTargetAllowed, targetAllowlist, cl, assertions, lintRules, lintTI }
+module.exports = { SERVER, SERVER_SOURCE, AGENT_USER, MODE, policy, identity, setBuilderLogin, client, ok, esc, logChange, runAssertions, requireWritable, requireChangeSet, assertTargetAllowed, targetAllowlist, explicitTargets, cl, assertions, lintRules, lintTI }

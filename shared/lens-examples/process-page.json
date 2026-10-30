@@ -1,0 +1,75 @@
+{
+  "name": "process-page",
+  "title": "Process page",
+  "description": "The steps of a planning cycle in order \u2014 each opens its Lens or app \u2014 with live counts and a done / still-to-do state worked out from the data. No submit buttons, no states to maintain.",
+  "icon": "workflow",
+  "color": "#0f766e",
+  "settings": {
+    "heading": "The process name, e.g. Budget 2027",
+    "subtitle": "One line under it",
+    "note": "A short note, e.g. the timetable (optional)",
+    "steps": "[{ title, lens, who, groups, counts: [{ label, mdx }], remaining: { label, mdx } }] \u2014 in order; remaining: when its count is 0 the step shows Done; groups marks the step as the viewer's own"
+  },
+  "example": {
+    "heading": "Budget 2027",
+    "subtitle": "Year 2 \u00b7 the steps in order",
+    "note": "Targets by 1 Nov \u00b7 budgets by 15 Nov \u00b7 capex approved by 30 Nov.",
+    "steps": [
+      {
+        "title": "Set targets",
+        "lens": "Target-Input",
+        "who": "Finance",
+        "groups": [
+          "Lens Finance"
+        ]
+      },
+      {
+        "title": "Enter budgets",
+        "lens": "Budget-Input",
+        "who": "Store managers",
+        "groups": [
+          "Lens East",
+          "Lens Canada"
+        ]
+      },
+      {
+        "title": "Capex requests",
+        "lens": "Capex-Requests",
+        "who": "Store managers",
+        "groups": [
+          "Lens East",
+          "Lens Canada"
+        ],
+        "counts": [
+          {
+            "label": "requests",
+            "mdx": "SELECT {[Capital].[Capital].[Purchase Cost]} ON 0, NON EMPTY {TM1FILTERBYLEVEL({TM1SUBSETALL([organization].[organization])},0)} * {TM1FILTERBYLEVEL({TM1SUBSETALL([CapitalList].[CapitalList])},0)} * {TM1FILTERBYLEVEL({TM1SUBSETALL([Asset Types].[Asset Types])},0)} ON 1 FROM [Capital] WHERE ([Year].[Year].[Y2],[Version].[Version].[Target])"
+          }
+        ]
+      },
+      {
+        "title": "Approve capex",
+        "lens": "Capex-Requests",
+        "who": "Finance",
+        "groups": [
+          "Lens Finance"
+        ],
+        "counts": [
+          {
+            "label": "approved",
+            "mdx": "SELECT {[Capital].[Capital].[Purchase Cost]} ON 0, NON EMPTY FILTER({TM1FILTERBYLEVEL({TM1SUBSETALL([organization].[organization])},0)} * {TM1FILTERBYLEVEL({TM1SUBSETALL([CapitalList].[CapitalList])},0)} * {TM1FILTERBYLEVEL({TM1SUBSETALL([Asset Types].[Asset Types])},0)}, [Capital].[Capital].[Approved] = \"Y\") ON 1 FROM [Capital] WHERE ([Year].[Year].[Y2],[Version].[Version].[Target])"
+          }
+        ],
+        "remaining": {
+          "label": "{n} waiting",
+          "mdx": "SELECT {[Capital].[Capital].[Purchase Cost]} ON 0, NON EMPTY FILTER({TM1FILTERBYLEVEL({TM1SUBSETALL([organization].[organization])},0)} * {TM1FILTERBYLEVEL({TM1SUBSETALL([CapitalList].[CapitalList])},0)} * {TM1FILTERBYLEVEL({TM1SUBSETALL([Asset Types].[Asset Types])},0)}, [Capital].[Capital].[Approved] <> \"Y\") ON 1 FROM [Capital] WHERE ([Year].[Year].[Y2],[Version].[Version].[Target])"
+        }
+      },
+      {
+        "title": "Results",
+        "lens": "PnL-Dashboard",
+        "who": "Everyone"
+      }
+    ]
+  }
+}

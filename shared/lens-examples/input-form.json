@@ -1,0 +1,36 @@
+{
+  "name": "input-form",
+  "title": "Input form",
+  "description": "Type numbers into a cube — one unit at a time (a store, a cost centre…), rows down, periods across — with save checks, working together, history and an optional spread action.",
+  "icon": "pencil-line",
+  "color": "#0f766e",
+  "settings": {
+    "heading": "The title at the top of the screen",
+    "subtitle": "One line under the title",
+    "cube": "The cube people type into",
+    "version": "{ dimension, member } — the version they type into (optional)",
+    "fixed": "{ dimension: member } — other dimensions held at one member (e.g. a currency)",
+    "unit": "{ dimension, level, label } — what people pick: the elements at that level they can see (e.g. stores)",
+    "period": "{ dimension, members, label } — e.g. years to choose from (optional)",
+    "rows": "{ dimension, under, label } — the leaf elements under this element, down the side",
+    "columns": "{ dimension, members, total } — across the top; total is shown, not typed",
+    "spread": "{ process, unit, period, row, total } — optional 'spread a total' action: the process and its parameter names",
+    "reservations": "{ process, unit, period, mode } — optional editing locks (mode auto = only when the cube requires them)",
+    "writes": "The cubes it may change — normally just the cube",
+    "runs": "The processes it may run — the spread and reservation processes, if any",
+    "format": "Number format: number, k$ or $ (optional)"
+  },
+  "example": {
+    "heading": "Expense input",
+    "subtitle": "Operating expenses · type into the white cells, then Save",
+    "cube": "Income Statement",
+    "version": { "dimension": "Version", "member": "Target" },
+    "fixed": { "Currency Calc": "Local" },
+    "unit": { "dimension": "organization", "level": 0, "label": "Store" },
+    "period": { "dimension": "Year", "members": ["Y2", "Y3"], "label": "Year" },
+    "rows": { "dimension": "Account", "under": "TE", "label": "Account" },
+    "columns": { "dimension": "Month", "members": ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"], "total": "Year" },
+    "writes": ["Income Statement"],
+    "runs": []
+  }
+}

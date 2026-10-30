@@ -345,12 +345,11 @@
   "CONSOLIDATECHILDREN": {
     "compat": "both",
     "deprecated": null,
-    "description": "Controls whether children of a consolidation are consolidated normally.",
+    "description": "Makes a consolidated cell the sum of its immediate children along the named dimension(s) \u2014 so children that are themselves rule-calculated are added up, e.g. ['All Employees','Flag'] = C: ConsolidateChildren('Position'). One or more dimension names. Verified on TM1 v11 (CheckRules) Oct 2026.",
     "isStatement": false,
     "language": "rules",
     "params": [
-      "cubename",
-      "element"
+      "dimname*"
     ],
     "returnType": "numeric"
   },

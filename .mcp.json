@@ -5,7 +5,8 @@
       "command": "node",
       "args": ["tools/tm1mcp/server.js"],
       "env": {
-        "TM1_MCP_SERVER": "${TM1_MCP_SERVER:-MyServer}"
+        "TM1_MCP_SERVER": "${TM1_MCP_SERVER:-}",
+        "MCP_MODE": "${MCP_MODE:-build}"
       }
     }
   }

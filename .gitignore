@@ -85,3 +85,12 @@ config/lenses/
 
 # Lens app settings (per install — the example is committed)
 config/lens-app.json
+
+# ── Lens activity log (cells saved and processes run through Lenses) ──
+data/lens-activity.jsonl
+
+# ── Lens app preferences (each person's theme) ──
+data/lens-prefs.json
+
+# AI process summaries (runtime knowledge, regenerate/review — not source)
+data/process-summaries.json

@@ -1,0 +1,814 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HTML apps on TM1: the security layer you now own</title>
+<meta name="description" content="PAW handled the browser. When the screen is HTML you author, or an AI writes, you inherit that layer. The five decisions it makes, the three failures to recognise, and the eight checks to run before anything reaches a user.">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="icon" href="favicon.png" type="image/png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="falconbi.css">
+<style>
+  :root{
+    --ink:#1c1917;
+    --ink-soft:#57534e;
+    --ink-faint:#a8a29e;
+    --paper:#fafaf9;
+    --panel:#ffffff;
+    --rule:#e7e5e4;
+    --rule-soft:#f5f5f4;
+
+    --steel:#0f766e;        /* structure, hierarchy, base */
+    --steel-light:#f0fdfa;
+    --green:#166534;        /* valid flow, base data, counted-once */
+    --green-light:#f0fdf4;
+    --amber:#92400e;        /* contra, grouped, reversal */
+    --amber-light:#fef3c7;
+    --red:#991b1b;          /* double-count, warnings */
+    --red-light:#fee2e2;
+    --indigo:#4c1d95;       /* implementation, UI */
+    --indigo-light:#ede9fe;
+
+    --maxw:860px;
+  }
+
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  @media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+
+  body{
+    margin:0;
+    background:var(--paper);
+    color:var(--ink);
+    font-family:'DM Sans',system-ui,sans-serif;
+    font-size:17px;
+    line-height:1.62;
+    -webkit-font-smoothing:antialiased;
+    text-rendering:optimizeLegibility;
+  }
+
+  .wrap{max-width:var(--maxw);margin:0 auto;padding:0 28px}
+
+  /* ---------- Masthead ---------- */
+  .masthead{
+    border-bottom:1px solid var(--rule);
+    background:
+      linear-gradient(180deg,#ffffff 0%, var(--paper) 100%);
+  }
+  .masthead .wrap{padding-top:78px;padding-bottom:52px}
+  .eyebrow{
+    font-family:'IBM Plex Mono',monospace;
+    font-size:12.5px;
+    letter-spacing:.18em;
+    text-transform:uppercase;
+    color:var(--steel);
+    font-weight:500;
+    margin:0 0 22px;
+    display:flex;align-items:center;gap:12px;
+  }
+  .eyebrow::after{content:"";flex:1;height:1px;background:var(--rule)}
+  h1.title{
+    font-family:'DM Sans',system-ui,sans-serif;
+    font-weight:600;
+    font-size:clamp(2.1rem,5.4vw,3.3rem);
+    line-height:1.08;
+    letter-spacing:-.012em;
+    margin:0 0 22px;
+    color:var(--ink);
+  }
+  h1.title .accent{color:var(--steel)}
+  .standfirst{
+    font-size:1.18rem;
+    line-height:1.55;
+    color:var(--ink-soft);
+    max-width:64ch;
+    margin:0 0 30px;
+  }
+  .meta-row{
+    display:flex;flex-wrap:wrap;gap:10px 26px;
+    font-size:13.5px;color:var(--ink-faint);
+    font-family:'IBM Plex Mono',monospace;
+    padding-top:8px;border-top:1px solid var(--rule-soft);
+  }
+  .meta-row b{color:var(--ink-soft);font-weight:500}
+
+  .prototype{
+    margin:34px 0 0;
+    background:var(--green-light);
+    border:1px solid #cfe6d8;
+    border-left:4px solid var(--green);
+    border-radius:6px;
+    padding:16px 20px;
+    font-size:15.5px;
+    color:#21422f;
+  }
+  .prototype b{color:var(--green);font-weight:600}
+
+  /* ---------- TOC ---------- */
+  /* falconbi.css sets .toc{position:sticky} for sidebar use — override for this horizontal bar */
+  nav.toc{border-bottom:1px solid var(--rule);background:var(--panel);position:static;top:auto}
+  nav.toc .wrap{padding-top:34px;padding-bottom:34px}
+  nav.toc h2{
+    font-family:'IBM Plex Mono',monospace;
+    font-size:12px;letter-spacing:.16em;text-transform:uppercase;
+    color:var(--ink-faint);font-weight:500;margin:0 0 18px;
+  }
+  nav.toc ol{
+    list-style:none;margin:0;padding:0;
+    display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));
+    gap:2px 28px;
+    counter-reset:toc;
+  }
+  nav.toc li{counter-increment:toc}
+  nav.toc a{
+    display:flex;gap:12px;align-items:baseline;
+    text-decoration:none;color:var(--ink-soft);
+    padding:7px 4px;border-radius:4px;
+    border-bottom:1px solid transparent;
+    transition:color .15s,background .15s;
+  }
+  nav.toc a::before{
+    content:counter(toc,decimal-leading-zero);
+    font-family:'IBM Plex Mono',monospace;
+    font-size:12px;color:var(--steel);
+    flex:none;width:2ch;
+  }
+  nav.toc a:hover{color:var(--steel);background:var(--steel-light)}
+
+  /* ---------- Sections ---------- */
+  main .wrap{padding-top:8px;padding-bottom:8px}
+  section{padding:44px 0;border-bottom:1px solid var(--rule-soft)}
+  section:last-of-type{border-bottom:none}
+  .sec-head{display:flex;gap:18px;align-items:baseline;margin:0 0 18px}
+  .sec-num{
+    font-family:'IBM Plex Mono',monospace;
+    font-size:14px;font-weight:600;color:var(--steel);
+    flex:none;padding-top:5px;
+  }
+  h2.sec-title{
+    font-family:'DM Sans',system-ui,sans-serif;
+    font-weight:600;font-size:clamp(1.5rem,3.4vw,2rem);
+    line-height:1.15;letter-spacing:-.01em;margin:0;color:var(--ink);
+  }
+  h3{
+    font-family:'DM Sans',sans-serif;
+    font-weight:600;font-size:1.16rem;
+    margin:34px 0 12px;color:var(--ink);
+    letter-spacing:-.005em;
+  }
+  p{margin:0 0 16px}
+  section > p, section > ul, section > ol, section > .fig, section > .tablewrap,
+  section > pre, section > blockquote, section > .callout{margin-left:0}
+  strong{font-weight:600;color:var(--ink)}
+  code{
+    font-family:'IBM Plex Mono',monospace;
+    font-size:.88em;
+    background:#f1f0ec;
+    padding:.1em .38em;border-radius:4px;
+    color:#3a4750;
+  }
+  a{color:var(--steel)}
+
+  ul,ol{margin:0 0 16px;padding-left:1.3em}
+  li{margin:6px 0}
+  li::marker{color:var(--steel)}
+
+  blockquote{
+    margin:18px 0;padding:4px 0 4px 22px;
+    border-left:3px solid var(--rule);
+    color:var(--ink-soft);font-style:italic;
+    font-family:'DM Sans',system-ui,sans-serif;font-size:1.08rem;
+  }
+
+  /* ---------- Tables ---------- */
+  .tablewrap{overflow-x:auto;margin:22px 0}
+  table{border-collapse:collapse;width:100%;font-size:15px}
+  th,td{text-align:left;padding:10px 14px;border-bottom:1px solid var(--rule);vertical-align:top}
+  thead th{
+    font-family:'IBM Plex Mono',monospace;
+    font-size:11.5px;letter-spacing:.08em;text-transform:uppercase;
+    color:var(--ink-faint);font-weight:600;
+    border-bottom:1.5px solid var(--ink-soft);
+  }
+  tbody tr:hover{background:#f6f7f8}
+  td code{background:#eef0f2}
+  .pill{
+    display:inline-block;font-family:'IBM Plex Mono',monospace;
+    font-size:11.5px;font-weight:600;padding:2px 9px;border-radius:20px;
+    letter-spacing:.02em;
+  }
+  .pill.sub{background:var(--steel-light);color:var(--steel)}
+  .pill.assoc{background:var(--indigo-light);color:var(--indigo)}
+  .pill.inv{background:#eef1f3;color:var(--ink-soft)}
+  .pill.grp{background:var(--amber-light);color:var(--amber)}
+
+  /* ---------- Code / ASCII ---------- */
+  pre{
+    background:#1c2530;color:#d7e0e8;
+    font-family:'IBM Plex Mono',monospace;font-size:13.5px;line-height:1.6;
+    padding:18px 20px;border-radius:8px;overflow-x:auto;margin:20px 0;
+    border:1px solid #283442;
+  }
+  pre .c{color:#7f8fa0}      /* comment / faint */
+  pre .k{color:#7fb3e0}      /* steel key */
+  pre .g{color:#7fd0a0}      /* green */
+  pre .a{color:#e3b766}      /* amber */
+  pre .r{color:#e89b94}      /* red */
+  pre.ascii{font-size:13px;line-height:1.5}
+
+  /* ---------- Figures ---------- */
+  .fig{margin:26px 0;text-align:center}
+  .fig svg{max-width:100%;height:auto}
+  figcaption{
+    font-size:13px;color:var(--ink-faint);
+    font-family:'IBM Plex Mono',monospace;letter-spacing:.02em;
+    margin-top:12px;text-align:center;
+  }
+  figcaption b{color:var(--ink-soft);font-weight:600}
+
+  /* SVG element styling */
+  .svg-label{font-family:'DM Sans',sans-serif;font-size:14px;fill:var(--ink)}
+  .svg-sub{font-family:'IBM Plex Mono',monospace;font-size:11px;fill:var(--ink-faint)}
+  .svg-edge{font-family:'IBM Plex Mono',monospace;font-size:12px;font-weight:600}
+  .node-steel{fill:var(--steel-light);stroke:var(--steel);stroke-width:1.5}
+  .node-green{fill:var(--green-light);stroke:var(--green);stroke-width:1.5}
+  .node-amber{fill:var(--amber-light);stroke:var(--amber);stroke-width:1.5}
+  .node-red{fill:var(--red-light);stroke:var(--red);stroke-width:1.5}
+  .node-indigo{fill:var(--indigo-light);stroke:var(--indigo);stroke-width:1.5}
+  .node-plain{fill:#fff;stroke:var(--ink-soft);stroke-width:1.3}
+  .edge{stroke:var(--ink-soft);stroke-width:1.5;fill:none}
+  .edge-green{stroke:var(--green);stroke-width:1.8;fill:none}
+  .edge-red{stroke:var(--red);stroke-width:1.8;fill:none}
+  .edge-amber{stroke:var(--amber);stroke-width:1.8;fill:none}
+  .edge-dash{stroke:var(--ink-faint);stroke-width:1.4;fill:none;stroke-dasharray:5 4}
+
+  /* ---------- Callouts ---------- */
+  .callout{
+    border-radius:6px;padding:16px 20px;margin:22px 0;font-size:15.5px;
+    border:1px solid var(--rule);border-left:4px solid var(--ink-soft);
+    background:var(--panel);
+  }
+  .callout.warn{background:var(--red-light);border-color:#eccac6;border-left-color:var(--red)}
+  .callout.warn b{color:var(--red)}
+  .callout.note{background:var(--steel-light);border-color:#cfe0ee;border-left-color:var(--steel)}
+  .callout.note b{color:var(--steel)}
+  .callout.key{background:var(--amber-light);border-color:#e8d6a8;border-left-color:var(--amber)}
+  .callout.key b{color:var(--amber)}
+  .callout p{margin:0}
+  .callout p + p{margin-top:10px}
+
+  /* ---------- Signature: path encoding ---------- */
+  .signature{
+    margin:30px 0;padding:30px 26px;border-radius:10px;
+    background:linear-gradient(160deg,#1c2530 0%,#243140 100%);
+    border:1px solid #2b3a4a;color:#dbe4ec;
+  }
+  .signature .sig-label{
+    font-family:'IBM Plex Mono',monospace;font-size:11.5px;
+    letter-spacing:.16em;text-transform:uppercase;color:#8aa0b4;margin:0 0 18px;
+  }
+
+  /* ---------- Footer ---------- */
+  footer{background:#1c2530;color:#aebccb;border-top:3px solid var(--steel)}
+  footer .wrap{padding-top:48px;padding-bottom:54px}
+  footer h2{
+    font-family:'DM Sans',system-ui,sans-serif;color:#f0f4f8;font-weight:600;
+    font-size:1.3rem;margin:0 0 14px;
+  }
+  footer p{color:#aebccb;font-size:15px;max-width:62ch}
+  footer a{color:#9ec3e6}
+  .lic{
+    margin-top:22px;padding-top:20px;border-top:1px solid #2c3a48;
+    font-family:'IBM Plex Mono',monospace;font-size:12.5px;color:#8294a4;
+    display:flex;flex-wrap:wrap;gap:8px 22px;
+  }
+  .refs{font-size:15px;color:#c4d0db}
+  .refs cite{font-style:italic;color:#e6edf3}
+
+  @media (max-width:620px){
+    body{font-size:16px}
+    .sec-head{gap:12px}
+    nav.toc ol{grid-template-columns:1fr}
+    .masthead .wrap{padding-top:54px;padding-bottom:40px}
+  }
+</style>
+<style>
+  /* gates diagram + small extras */
+  .svg-small{font-family:'DM Sans',sans-serif;font-size:12px;fill:var(--ink)}
+  .svg-tiny{font-family:'IBM Plex Mono',monospace;font-size:10px;fill:var(--ink-faint)}
+  .svg-red{font-family:'IBM Plex Mono',monospace;font-size:10.5px;fill:var(--red)}
+  .svg-green{font-family:'IBM Plex Mono',monospace;font-size:10.5px;fill:var(--green)}
+  ol.lessons{padding-left:1.2em}
+  ol.lessons li{margin:0 0 10px}
+</style>
+</head>
+
+<body>
+
+<header class="topbar">
+  <a href="https://falconbi.github.io/articles/" class="brand">
+    <img src="favicon.png" class="brand-eagle" alt="FalconBI">
+    <span class="brand-word">falcon<b>bi</b></span>
+  </a>
+  <div class="topbar-right"><span class="kicker">Security &nbsp;·&nbsp; IBM Planning Analytics</span>
+    <a href="https://falconbi.github.io/articles/">&larr; articles</a></div>
+</header>
+
+<header class="masthead">
+  <div class="wrap">
+    <p class="eyebrow">HTML apps &nbsp;·&nbsp; TM1</p>
+    <h1 class="title">HTML apps on TM1:<br>the security layer you now <span class="accent">own</span></h1>
+    <p class="standfirst">PAW handled the browser. When the screen is HTML you author — or an AI writes — you inherit that layer. Most TM1 developers have never had to know what it does. This is the layer, in plain terms, with the five decisions it makes and the eight checks to run before anything reaches a user.</p>
+    <div class="meta-row">
+      <span><b>Tested on</b> TM1 v11 · Lens runtime</span>
+      <span><b>Related</b> <a href="../authentication-guide/">How signing in to TM1 works</a> · <a href="../consolidation-built-by-ai/">How it was built</a></span>
+      <span><b>Status</b> Published · October 2026</span>
+    </div>
+  </div>
+</header>
+
+<nav class="toc">
+  <div class="wrap">
+    <h2>Contents</h2>
+    <ol>
+      <li><a href="#a1">The shift</a></li>
+      <li><a href="#a2">The web layer, in plain terms</a></li>
+      <li><a href="#a3">The threat model, in TM1 terms</a></li>
+      <li><a href="#a4">The five layers</a></li>
+      <li><a href="#a5">One request, end to end</a></li>
+      <li><a href="#a6">What the server must never accept</a></li>
+      <li><a href="#a7">Three failures worth recognising</a></li>
+      <li><a href="#a8">The checklist</a></li>
+      <li><a href="#a9">Five tests you can run</a></li>
+      <li><a href="#a10">Questions for a client’s security team</a></li>
+      <li><a href="#a11">A short glossary</a></li>
+    </ol>
+  </div>
+</nav>
+
+<main>
+<div class="wrap">
+
+<section id="a1">
+  <div class="sec-head"><span class="sec-num">01</span><h2 class="sec-title">The shift</h2></div>
+  <p>For most of its life, building on TM1 meant rules, feeders, dimensions, processes and a cube view. The browser was somebody else’s problem.</p>
+  <p>Planning Analytics Workspace owns that layer. It authenticates users, keeps sessions, blocks cross-site request forgery, renders data safely, sets content security policy, terminates TLS and patches its own framework. None of it is free — it is inside the licence. It is also invisible, so a TM1 developer never has to learn it.</p>
+  <p>An HTML app changes one thing: <b>the page is untrusted content.</b> PAW composes screens inside a runtime it controls. When the screen itself is arbitrary HTML, the platform cannot vouch for it, so whoever ships it inherits the layer.</p>
+
+  <figure class="fig">
+    <svg viewBox="0 0 720 250" role="img" aria-label="What PAW owns compared with what an HTML app must own.">
+      <defs><marker id="ar1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#78716c"/></marker></defs>
+      <rect x="30" y="16" width="290" height="38" rx="8" class="node-steel"/>
+      <text x="175" y="40" text-anchor="middle" class="svg-label">PAW book</text>
+      <rect x="400" y="16" width="290" height="38" rx="8" class="node-amber"/>
+      <text x="545" y="40" text-anchor="middle" class="svg-label">HTML app</text>
+
+      <text x="175" y="86" text-anchor="middle" class="svg-tiny">PAW: login, session, CSRF</text>
+      <text x="175" y="110" text-anchor="middle" class="svg-tiny">PAW: safe rendering, CSP</text>
+      <text x="175" y="134" text-anchor="middle" class="svg-tiny">PAW: TLS, certificates, patching</text>
+      <text x="175" y="170" text-anchor="middle" class="svg-small">you: rules, cubes, dimensions, views</text>
+
+      <text x="545" y="86" text-anchor="middle" class="svg-tiny">you: login, session, CSRF</text>
+      <text x="545" y="110" text-anchor="middle" class="svg-tiny">you: safe rendering, CSP</text>
+      <text x="545" y="134" text-anchor="middle" class="svg-tiny">you: TLS, certificates, patching</text>
+      <text x="545" y="170" text-anchor="middle" class="svg-small">you: rules, cubes, dimensions, views</text>
+
+      <path d="M330 35 L396 35" class="edge" marker-end="url(#ar1)"/>
+      <text x="363" y="26" text-anchor="middle" class="svg-tiny">adds</text>
+      <text x="360" y="212" text-anchor="middle" class="svg-sub">same model knowledge · a new layer of responsibility</text>
+    </svg>
+    <figcaption>Everything in the left column was included. In the right column, it is yours.</figcaption>
+  </figure>
+
+  <p>“Untrusted” does not mean “malicious”. It means <b>the platform has no way to know what the page will do</b>. The page is text sent to the browser; the browser renders it and runs its JavaScript. If a person wrote it, or an AI wrote it and a person reviewed it, the runtime still cannot read it and decide it is safe. So it must be treated as content, not as code the platform trusts.</p>
+  <p>AI made the build cheap. It did not make the page trustworthy.</p>
+  <div class="callout key"><p><b>Principle.</b> A page can be authored freely only if the platform stops trusting it.</p></div>
+</section>
+
+<section id="a2">
+  <div class="sec-head"><span class="sec-num">02</span><h2 class="sec-title">The web layer, in plain terms</h2></div>
+  <p>Before the security, the mechanics. Six words carry most of this article, and none of them are TM1 words.</p>
+
+  <div class="tablewrap"><table>
+    <thead><tr><th>Word</th><th>What it means</th><th>Closest TM1 idea</th></tr></thead>
+    <tbody>
+      <tr><td><b>Browser</b></td><td>A program on the user’s machine that asks for pages and draws them. Chrome, Edge, Safari.</td><td>Architect — but the user can change anything inside it</td></tr>
+      <tr><td><b>Server</b></td><td>A program on a machine somewhere, listening for requests, sending answers.</td><td>The TM1 server — though here it is your small web app</td></tr>
+      <tr><td><b>Request</b></td><td>“Give me this page”, or “save this number”. A method, a URL, some headers, sometimes a body.</td><td>A REST call to TM1</td></tr>
+      <tr><td><b>Response</b></td><td>The answer: a status code, headers, and a body (usually HTML or JSON).</td><td>What the REST call returns</td></tr>
+      <tr><td><b>Cookie</b></td><td>A small piece of text the server asks the browser to store and send back on later requests.</td><td>A claim ticket — not a login</td></tr>
+      <tr><td><b>Session</b></td><td>The server’s own record that a user signed in. The cookie is only the key to it.</td><td>A client connection in }ClientProperties</td></tr>
+    </tbody>
+  </table></div>
+
+  <p>The important structural fact: <b>the browser is a separate computer that you do not control.</b> It will do what the user, the page, or a browser extension tells it to. Everything in it — the HTML, the JavaScript, hidden fields, a “current user” variable — can be changed before it comes back.</p>
+  <p>That is why every decision that matters has to be made on the server. The page can <i>ask</i>; only the server can <i>decide</i>.</p>
+
+  <div class="callout note"><p><b>Authentication and authorisation are different questions.</b> Authentication asks “who is this?” — usually answered once, by TM1, at sign-in. Authorisation asks “what may they see or change?” — answered on every request, also by TM1. Most security mistakes come from answering the first and forgetting the second.</p></div>
+
+  <p>HTTP has no memory. Each request arrives as a stranger; the server remembers nothing between them. Identity has to be carried, and the only thing the browser carries automatically is the cookie. So the cookie is a <b>ticket</b>, and the session is the <b>coat check</b> where the server looks up what the ticket means.</p>
+</section>
+
+<section id="a3">
+  <div class="sec-head"><span class="sec-num">03</span><h2 class="sec-title">The threat model, in TM1 terms</h2></div>
+  <p>Three failures explain most of the risk, and each has a TM1-shaped version.</p>
+
+  <h3>A service account is not “the app”</h3>
+  <p>If the web layer talks to TM1 as one shared login, every user is that login. Region security, cost-centre security and version locks stop applying, because TM1 sees a single powerful user. The app can still <i>display</i> a filter; that is a UI, not a right.</p>
+
+  <figure class="fig">
+    <svg viewBox="0 0 720 200" role="img" aria-label="A shared service login compared with one TM1 session per user.">
+      <defs><marker id="ar2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#78716c"/></marker></defs>
+      <circle cx="40" cy="45" r="10" class="node-plain"/><circle cx="70" cy="45" r="10" class="node-plain"/><circle cx="100" cy="45" r="10" class="node-plain"/>
+      <text x="70" y="24" text-anchor="middle" class="svg-tiny">three users</text>
+      <path d="M118 45 L178 45" class="edge" marker-end="url(#ar2)"/>
+      <rect x="182" y="26" width="180" height="40" rx="8" class="node-red"/>
+      <text x="272" y="51" text-anchor="middle" class="svg-label">one shared login</text>
+      <path d="M366 45 L426 45" class="edge" marker-end="url(#ar2)"/>
+      <rect x="430" y="26" width="240" height="40" rx="8" class="node-red"/>
+      <text x="550" y="51" text-anchor="middle" class="svg-label">TM1 sees one user</text>
+      <text x="550" y="84" text-anchor="middle" class="svg-tiny">region and version security stop applying</text>
+
+      <circle cx="40" cy="145" r="10" class="node-plain"/><circle cx="70" cy="145" r="10" class="node-plain"/><circle cx="100" cy="145" r="10" class="node-plain"/>
+      <path d="M118 145 L178 145" class="edge" marker-end="url(#ar2)"/>
+      <rect x="182" y="126" width="180" height="40" rx="8" class="node-green"/>
+      <text x="272" y="151" text-anchor="middle" class="svg-label">own session each</text>
+      <path d="M366 145 L426 145" class="edge" marker-end="url(#ar2)"/>
+      <rect x="430" y="126" width="240" height="40" rx="8" class="node-green"/>
+      <text x="550" y="151" text-anchor="middle" class="svg-label">TM1 sees the person</text>
+      <text x="550" y="184" text-anchor="middle" class="svg-tiny">security applies, as it does in PAW</text>
+    </svg>
+    <figcaption>The difference is not performance. It is whether TM1 security applies at all.</figcaption>
+  </figure>
+
+  <h3>Hiding a button is not a permission</h3>
+  <p>The same as hiding a cube in Architect. If the server performs the action when asked, the button was never the control. A user can post the request without the button, and a script can do it in a loop.</p>
+
+  <h3>A session cookie is a bearer token</h3>
+  <p>Whoever holds it is the user until it expires. It is not a password and it is not proof of anything on its own; it is a ticket, and the server trusts whoever presents it. That is why the cookie is protected in transit, hidden from JavaScript, and given a short life.</p>
+
+  <h3>The browser is someone else’s computer</h3>
+  <p>HTML, JavaScript, hidden fields and “current user” variables can all be changed before they come back. Anything the page says about who it is, what it may do, or which server to use is a claim, not a fact.</p>
+
+  <div class="callout key"><p><b>Rule.</b> The server never accepts an identity, a server name or a permission from the page.</p></div>
+</section>
+
+<section id="a4">
+  <div class="sec-head"><span class="sec-num">04</span><h2 class="sec-title">The five layers</h2></div>
+  <p>This is the whole model. Each layer answers one question, and each fails in its own way.</p>
+
+  <div class="tablewrap"><table>
+    <thead><tr><th>Question</th><th>Layer</th><th>Control</th><th>Typical failure</th></tr></thead>
+    <tbody>
+      <tr><td>Can anyone on the path read or change this?</td><td>Transport</td><td>TLS from a trusted CA, HTTPS redirect, HSTS, <code>Secure</code> cookies</td><td><code>Secure</code> decided by a config flag instead of the request</td></tr>
+      <tr><td>Who is this?</td><td>Identity</td><td>per-user TM1 login, random session id, <code>HttpOnly</code>, <code>SameSite</code></td><td>one shared service account</td></tr>
+      <tr><td>What may they see or change?</td><td>Authorisation</td><td>TM1 security on every read and direct write; declared write cubes and processes</td><td>checks made in the UI</td></tr>
+      <tr><td>Is this page allowed to ask?</td><td>Isolation</td><td>sandboxed frame, opaque origin, <code>connect-src 'none'</code>, message bridge</td><td><code>allow-same-origin</code></td></tr>
+      <tr><td>Did this request come from my app?</td><td>Provenance</td><td>server-side <code>Origin</code> check, <code>__Host-</code> cookies, host-only scope</td><td>relying on <code>SameSite</code> alone</td></tr>
+    </tbody>
+  </table></div>
+
+  <h3>Transport — is the connection private and genuine?</h3>
+  <p>TLS encrypts the conversation between the browser and whatever accepts the connection, and proves the server is the one the user typed. On an internal network it is still required: credentials and session cookies are the payload, and an internal LAN is not a trust boundary.</p>
+  <p>The two details that matter more than the certificate:</p>
+  <ul>
+    <li>the <code>Secure</code> flag must follow the request the browser actually made, not “is this process configured for TLS” — behind a reverse proxy those are different questions;</li>
+    <li>HTTP must redirect to HTTPS, and the browser must be told (HSTS), or the first request, including the sign-in form, can still travel in clear text.</li>
+  </ul>
+
+  <h3>Identity — who is it?</h3>
+  <p>Every user signs in as themselves, against TM1. The app keeps one TM1 session per user and gives the browser a random session id.</p>
+  <p>The TM1 side of that — native, LDAP, CAM, Windows integrated, v12 tokens, OpenID Connect and PAW — is covered in <a href="../authentication-guide/">How signing in to TM1 works</a>. This article is about what the browser layer must do with the result.</p>
+  <ul>
+    <li>the password is checked once, with TM1, and never stored;</li>
+    <li>the cookie contains only an opaque id — not the username, groups or a token;</li>
+    <li><code>HttpOnly</code> means page scripts cannot read it;</li>
+    <li><code>SameSite=Strict</code> means other sites cannot make the browser send it.</li>
+  </ul>
+
+  <figure class="fig">
+    <svg viewBox="0 0 720 210" role="img" aria-label="The browser holds an opaque session id; the app maps it to a user and to that user's TM1 session.">
+      <defs><marker id="ar3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#78716c"/></marker></defs>
+      <rect x="30" y="70" width="170" height="60" rx="8" class="node-steel"/>
+      <text x="115" y="96" text-anchor="middle" class="svg-label">browser</text>
+      <text x="115" y="115" text-anchor="middle" class="svg-tiny">cookie = random id</text>
+
+      <path d="M204 100 L264 100" class="edge" marker-end="url(#ar3)"/>
+      <text x="234" y="88" text-anchor="middle" class="svg-tiny">id</text>
+
+      <rect x="268" y="55" width="190" height="90" rx="8" class="node-indigo"/>
+      <text x="363" y="82" text-anchor="middle" class="svg-label">app server</text>
+      <text x="363" y="103" text-anchor="middle" class="svg-tiny">id → user</text>
+      <text x="363" y="122" text-anchor="middle" class="svg-tiny">user → TM1 session</text>
+
+      <path d="M462 100 L522 100" class="edge" marker-end="url(#ar3)"/>
+      <text x="492" y="88" text-anchor="middle" class="svg-tiny">TM1 session</text>
+
+      <rect x="526" y="70" width="170" height="60" rx="8" class="node-green"/>
+      <text x="611" y="96" text-anchor="middle" class="svg-label">TM1</text>
+      <text x="611" y="115" text-anchor="middle" class="svg-tiny">as the person</text>
+
+      <text x="360" y="180" text-anchor="middle" class="svg-sub">nothing identifying is in the cookie; the mapping lives on the server</text>
+    </svg>
+    <figcaption>The cookie says “which session”, never “who” or “what they may do”.</figcaption>
+  </figure>
+
+  <h3>Authorisation — what may they do?</h3>
+  <p>TM1 decides on every read and every direct cell write, as the signed-in user. The app’s job is to ask, not to judge:</p>
+  <ul>
+    <li>reads go through TM1, so cell security applies;</li>
+    <li>writes are checked against the cubes the <b>saved</b> screen declares, and TM1 still refuses calculated cells and cells the user may not change;</li>
+    <li>process runs are checked against the process list the saved screen declares, with parameter types validated;</li>
+    <li>opening a screen is checked against a TM1 group.</li>
+  </ul>
+  <div class="callout warn"><p><b>One honest qualification.</b> A running TI process is not limited by the caller’s cell security. Any action process must check the caller itself and report why it refused. “TM1 security applies” is true for reads and direct writes; it does not automatically follow a process into its work.</p></div>
+
+  <h3>Isolation — is this page allowed to ask?</h3>
+  <p>The authored HTML runs in a sandboxed frame. Without <code>allow-same-origin</code>, the frame gets an <b>opaque origin</b>: it has no cookie, no storage, and no access to the host page. A content security policy with <code>connect-src 'none'</code> means it cannot call the API, reach the internet or open a socket.</p>
+
+  <figure class="fig">
+    <svg viewBox="0 0 720 300" role="img" aria-label="A sandboxed frame inside the host page: no cookie, no storage, no network and no access to the host page.">
+      <rect x="18" y="18" width="430" height="264" rx="10" class="node-plain"/>
+      <text x="34" y="44" class="svg-label">host page (trusted)</text>
+      <text x="34" y="64" class="svg-tiny">holds the session cookie · calls the API · answers the bridge</text>
+
+      <rect x="44" y="86" width="378" height="170" rx="10" class="node-amber"/>
+      <text x="60" y="112" class="svg-label">sandboxed frame</text>
+      <text x="60" y="132" class="svg-tiny">authored HTML — a person or an AI wrote it</text>
+      <text x="60" y="162" class="svg-tiny">no cookie</text>
+      <text x="60" y="182" class="svg-tiny">no localStorage</text>
+      <text x="60" y="202" class="svg-tiny">no network (connect-src 'none')</text>
+      <text x="60" y="222" class="svg-tiny">no parent document</text>
+
+      <path d="M160 260 L160 282" class="edge-dash"/>
+      <text x="160" y="296" text-anchor="middle" class="svg-tiny">only postMessage() out</text>
+
+      <rect x="478" y="86" width="220" height="170" rx="8" class="node-steel"/>
+      <text x="588" y="112" text-anchor="middle" class="svg-label">the bridge</text>
+      <text x="498" y="140" class="svg-tiny">the frame asks</text>
+      <text x="498" y="160" class="svg-tiny">the host answers</text>
+      <text x="498" y="180" class="svg-tiny">server name from config</text>
+      <text x="498" y="200" class="svg-tiny">sender checked by window</text>
+      <text x="498" y="220" class="svg-tiny">runs as the signed-in user</text>
+    </svg>
+    <figcaption>Whatever the page contains, it can only ask. It cannot help itself to the session.</figcaption>
+  </figure>
+
+  <h3>Provenance — did this request come from my app?</h3>
+  <p><code>SameSite</code> answers “is this another site?”. It does not answer “is this my app?”. Behind one domain, sibling subdomains are the same site, so a compromised app on one subdomain can POST to another with the user’s cookies attached.</p>
+  <p>The missing control is a server-side <code>Origin</code> check on every state-changing route, plus <code>__Host-</code> cookie names and no <code>Domain</code> attribute, so cookies stay host-only.</p>
+
+  <div class="callout warn"><p><b>The layers do not compensate for each other.</b> TLS without <code>Secure</code> still lets the cookie out over a plain request. <code>SameSite</code> without an <code>Origin</code> check leaves you open to a sibling app. A perfect sandbox does not help if the server trusts a user id from the request.</p></div>
+</section>
+
+<section id="a5">
+  <div class="sec-head"><span class="sec-num">05</span><h2 class="sec-title">One request, end to end</h2></div>
+  <p>Here is what happens when a user opens a screen and reads a number. The point is not the sequence; it is <b>where each decision is made</b>.</p>
+
+  <figure class="fig">
+    <svg viewBox="0 0 720 430" role="img" aria-label="Request path: browser, reverse proxy, app server, TM1, data, with the decision made at each step.">
+      <defs><marker id="ar5" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#78716c"/></marker></defs>
+      <rect x="40" y="16" width="250" height="52" rx="8" class="node-steel"/>
+      <text x="165" y="40" text-anchor="middle" class="svg-label">browser</text>
+      <text x="165" y="58" text-anchor="middle" class="svg-tiny">HTTPS + session cookie</text>
+      <text x="320" y="40" class="svg-tiny">decides nothing</text>
+
+      <path d="M165 72 L165 102" class="edge" marker-end="url(#ar5)"/>
+
+      <rect x="40" y="106" width="250" height="58" rx="8" class="node-indigo"/>
+      <text x="165" y="130" text-anchor="middle" class="svg-label">reverse proxy</text>
+      <text x="165" y="148" text-anchor="middle" class="svg-tiny">TLS ends here · redirect · HSTS</text>
+      <text x="320" y="132" class="svg-tiny">decides encrypted or not</text>
+
+      <path d="M165 168 L165 198" class="edge" marker-end="url(#ar5)"/>
+
+      <rect x="40" y="202" width="250" height="76" rx="8" class="node-green"/>
+      <text x="165" y="226" text-anchor="middle" class="svg-label">app server</text>
+      <text x="165" y="244" text-anchor="middle" class="svg-tiny">cookie → session → user</text>
+      <text x="165" y="262" text-anchor="middle" class="svg-tiny">group access · Origin check</text>
+      <text x="320" y="232" class="svg-tiny">decides who is asking</text>
+
+      <path d="M165 282 L165 312" class="edge" marker-end="url(#ar5)"/>
+
+      <rect x="40" y="316" width="250" height="58" rx="8" class="node-amber"/>
+      <text x="165" y="340" text-anchor="middle" class="svg-label">TM1</text>
+      <text x="165" y="358" text-anchor="middle" class="svg-tiny">cell security · process rights</text>
+      <text x="320" y="342" class="svg-tiny">decides what may be read</text>
+
+      <path d="M165 378 L165 402" class="edge" marker-end="url(#ar5)"/>
+      <text x="165" y="422" text-anchor="middle" class="svg-sub">data</text>
+    </svg>
+    <figcaption>Identity at the app server. Authorisation at TM1. The page decides nothing at all.</figcaption>
+  </figure>
+
+  <ol class="lessons">
+    <li><b>The browser sends a request</b> with the cookie the server gave it earlier. It is a claim, not an identity.</li>
+    <li><b>The proxy terminates TLS</b> and forwards the request. It also redirects HTTP and sends HSTS on the way back. It does not authenticate users.</li>
+    <li><b>The app looks up the session.</b> A known id becomes a user; an unknown one becomes “not signed in”. The username is never taken from the request body.</li>
+    <li><b>The app checks access to this screen</b> against the user’s TM1 groups.</li>
+    <li><b>The app connects to TM1 as that user</b> — one TM1 session per user, not a shared login.</li>
+    <li><b>TM1 evaluates the query</b> under that user’s security. It decides what rows and cells exist in the answer.</li>
+    <li><b>A write takes the same path</b>, plus: the app re-reads the <b>saved</b> screen to know which cubes it may write, rejects calculated cells, and refuses a value that changed since the screen loaded.</li>
+    <li><b>A process run takes the same path</b>, plus: the app checks the process is declared by the saved screen and the parameters match its own.</li>
+  </ol>
+
+  <div class="callout key"><p><b>The page decides nothing.</b> It may send questions — an MDX query, a coordinate, a number — and the server answers them as the signed-in user.</p></div>
+</section>
+
+<section id="a6">
+  <div class="sec-head"><span class="sec-num">06</span><h2 class="sec-title">What the server must never accept</h2></div>
+  <div class="tablewrap"><table>
+    <thead><tr><th>Never accepted from the page</th><th>Where it comes from instead</th></tr></thead>
+    <tbody>
+      <tr><td>a user id, username or “current user”</td><td>the session behind the cookie</td></tr>
+      <tr><td>a server, environment or tenant</td><td>configuration on the app</td></tr>
+      <tr><td>a permission, role or “canWrite” flag</td><td>TM1, on the request</td></tr>
+      <tr><td>which cubes or processes may be used</td><td>the <b>saved</b> screen, which is a recorded model change</td></tr>
+      <tr><td>an access token or TM1 session</td><td>the app’s own memory, per user</td></tr>
+    </tbody>
+  </table></div>
+  <p>The last row is what makes write-back trustworthy even when the page is untrusted: the app does not believe the running page about what it may write. It re-reads the saved document, which was reviewed and deployed like any other model object. A page cannot widen its own permissions by editing its HTML.</p>
+</section>
+
+<section id="a7">
+  <div class="sec-head"><span class="sec-num">07</span><h2 class="sec-title">Three failures worth recognising</h2></div>
+
+  <h3>1. The <code>Secure</code> flag that follows a boolean</h3>
+  <p>The app asks “does this process serve TLS?” A proxy answers for it in production, so the process says no and the cookie is written without <code>Secure</code>. The site is HTTPS; the cookie is not protected.</p>
+
+  <figure class="fig">
+    <svg viewBox="0 0 720 210" role="img" aria-label="A proxy terminates TLS, the app sees plain HTTP, and the cookie is written without the Secure flag.">
+      <defs><marker id="ar7" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#78716c"/></marker></defs>
+      <rect x="30" y="60" width="150" height="56" rx="8" class="node-steel"/>
+      <text x="105" y="84" text-anchor="middle" class="svg-label">browser</text>
+      <text x="105" y="102" text-anchor="middle" class="svg-tiny">https</text>
+
+      <path d="M184 88 L264 88" class="edge-green" marker-end="url(#ar7)"/>
+      <text x="224" y="76" text-anchor="middle" class="svg-tiny">TLS</text>
+
+      <rect x="268" y="60" width="150" height="56" rx="8" class="node-indigo"/>
+      <text x="343" y="84" text-anchor="middle" class="svg-label">proxy</text>
+      <text x="343" y="102" text-anchor="middle" class="svg-tiny">terminates TLS</text>
+
+      <path d="M422 88 L502 88" class="edge-red" marker-end="url(#ar7)"/>
+      <text x="462" y="76" text-anchor="middle" class="svg-tiny">plain HTTP</text>
+
+      <rect x="506" y="60" width="184" height="56" rx="8" class="node-red"/>
+      <text x="598" y="84" text-anchor="middle" class="svg-label">app</text>
+      <text x="598" y="102" text-anchor="middle" class="svg-tiny">https.enabled = false</text>
+
+      <text x="360" y="158" text-anchor="middle" class="svg-sub">the cookie is written without Secure, though the user is on HTTPS</text>
+      <text x="360" y="182" text-anchor="middle" class="svg-tiny">a later plain-HTTP request to the same host can carry it in clear text</text>
+    </svg>
+    <figcaption>The flag answers the wrong question: “does this process serve TLS”, not “did this request arrive over TLS”.</figcaption>
+  </figure>
+
+  <h3>2. <code>SameSite=Strict</code> and no <code>Origin</code> check</h3>
+  <p>It blocks <code>evil.com</code>, so it feels finished. But a second app on a sibling subdomain is the same site, and a script there can POST to your API with the user’s cookie.</p>
+
+  <figure class="fig">
+    <svg viewBox="0 0 720 230" role="img" aria-label="A compromised sibling app on the same site can POST to the Lens API with the user's cookie; CORS only blocks reading the response.">
+      <defs><marker id="ar8" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#78716c"/></marker></defs>
+      <rect x="40" y="50" width="240" height="70" rx="8" class="node-red"/>
+      <text x="160" y="76" text-anchor="middle" class="svg-label">ide.corp.example.com</text>
+      <text x="160" y="96" text-anchor="middle" class="svg-tiny">an XSS runs here</text>
+
+      <path d="M284 85 L436 85" class="edge-red" marker-end="url(#ar8)"/>
+      <text x="360" y="72" text-anchor="middle" class="svg-tiny">POST · same site · cookie attached</text>
+
+      <rect x="440" y="50" width="240" height="70" rx="8" class="node-amber"/>
+      <text x="560" y="76" text-anchor="middle" class="svg-label">lens.corp.example.com</text>
+      <text x="560" y="96" text-anchor="middle" class="svg-tiny">the write happens as the user</text>
+
+      <text x="360" y="160" text-anchor="middle" class="svg-sub">CORS blocks the attacker reading the reply —</text>
+      <text x="360" y="184" text-anchor="middle" class="svg-sub">it does not stop the request, or the write</text>
+      <text x="360" y="212" text-anchor="middle" class="svg-tiny">fix: reject a request whose Origin is not this app’s own</text>
+    </svg>
+    <figcaption><code>SameSite</code> protects you from other sites. It does not protect you from your own subdomains.</figcaption>
+  </figure>
+
+  <h3>3. One wildcard, many apps</h3>
+  <p>Convenient: one certificate, one proxy, one route per app. But cookies are host-only while <code>SameSite</code> sees one site, so the apps are isolated for storage and grouped for requests.</p>
+  <div class="tablewrap"><table>
+    <thead><tr><th></th><th>Cookie scope</th><th><code>SameSite</code></th><th>CORS</th></tr></thead>
+    <tbody>
+      <tr><td><code>lens.corp.example.com</code></td><td>own jar</td><td>same site</td><td>own origin</td></tr>
+      <tr><td><code>ide.corp.example.com</code></td><td>own jar</td><td>same site</td><td>own origin</td></tr>
+    </tbody>
+  </table></div>
+  <p>That is fine for apps at the same trust level, and wrong for apps that must not trust each other. If you need isolation, use separate registrable domains, or an <code>Origin</code> check plus strict CORS between siblings.</p>
+</section>
+
+<section id="a8">
+  <div class="sec-head"><span class="sec-num">08</span><h2 class="sec-title">The checklist</h2></div>
+  <p>Before anything reaches a user:</p>
+  <ol class="lessons">
+    <li><b>A certificate from a CA the users’ machines already trust.</b> Their internal CA is normal for an internal app; a public CA for anything reachable outside.</li>
+    <li><b>A reverse proxy terminating TLS, with apps bound to loopback.</b> Nothing should reach the app over plain HTTP except the proxy.</li>
+    <li><b>HTTP redirected to HTTPS, and HSTS sent.</b> Otherwise the first request, including the password, can be plain.</li>
+    <li><b><code>Secure</code> derived from the request, not a configuration switch.</b> Trust the proxy and read the external scheme.</li>
+    <li><b>A <code>__Host-</code> session cookie, with a distinct name per app.</b> Host-only, <code>Path=/</code>, <code>Secure</code>; no <code>Domain</code>.</li>
+    <li><b><code>Origin</code> checked on every write, process run and preference change.</b> <code>SameSite</code> is not a substitute.</li>
+    <li><b>An idle timeout and an absolute maximum session age; sign-out revokes the server-side session.</b> Deleting the cookie alone leaves it usable.</li>
+    <li><b>The back hop to TM1 verified.</b> Never disable certificate verification to make an internal certificate “work”; install the right root instead.</li>
+  </ol>
+</section>
+
+<section id="a9">
+  <div class="sec-head"><span class="sec-num">09</span><h2 class="sec-title">Five tests you can run</h2></div>
+  <p>You do not need to be a web developer to prove the important parts. These take ten minutes with a browser and a terminal.</p>
+
+  <h3>1. Read the cookie flags</h3>
+  <p>Sign in, then open DevTools → Application → Cookies. The session cookie should show <code>HttpOnly</code>, <code>Secure</code>, <code>SameSite=Strict</code>, and a path of <code>/</code>. If <code>Secure</code> is missing on an HTTPS site, the flag is following the wrong thing.</p>
+
+  <h3>2. Call the API without the cookie, then with it</h3>
+  <pre><code>curl -i https://lens.example.com/api/lens/lenses
+curl -i -H 'Cookie: lens_session=&lt;value&gt;' https://lens.example.com/api/lens/lenses</code></pre>
+  <p>The first should be <code>401</code>. The second should be <code>200</code>. If the first succeeds, something is not checking the session.</p>
+
+  <h3>3. Sign out, then replay the old cookie</h3>
+  <p>Copy the cookie value, sign out, and repeat the second call. It must be <code>401</code>. If it still works, sign-out cleared the browser but not the server.</p>
+
+  <h3>4. Try to escape the frame</h3>
+  <p>Open the frame URL directly, then in its console try <code>document.cookie</code>, <code>localStorage</code>, and <code>fetch('/api/lens/lenses')</code>. All three should fail or be empty. The network request should never appear in the Network tab — <code>connect-src 'none'</code> stops it before it is sent.</p>
+
+  <h3>5. Sign in as two users</h3>
+  <p>Use two browser profiles. Each should see only their own slice of the model. Then ask TM1 to read a member the other user cannot see: it must be refused, not filtered by the page.</p>
+
+  <div class="callout note"><p><b>The point of the tests is the refusal.</b> A check that cannot fail is worse than no check; prove the system says no when it should.</p></div>
+</section>
+
+<section id="a10">
+  <div class="sec-head"><span class="sec-num">10</span><h2 class="sec-title">Questions for a client’s security team</h2></div>
+  <p>These turn a review into a conversation, and they are the questions that decide the deployment shape.</p>
+  <div class="tablewrap"><table>
+    <thead><tr><th>Question</th><th>Why it matters</th></tr></thead>
+    <tbody>
+      <tr><td>Which CA signs the existing platform, and do all user devices trust it?</td><td>decides whether internal certificates work without warnings</td></tr>
+      <tr><td>Can you issue certificates for these internal hostnames?</td><td>avoids self-signed certificates and user warnings</td></tr>
+      <tr><td>Is there an existing reverse proxy, and who owns it?</td><td>sets where TLS terminates, and who can see cookies</td></tr>
+      <tr><td>Are all users on managed devices?</td><td>unmanaged phones and laptops will not trust an internal CA</td></tr>
+      <tr><td>What is the session timeout policy — idle, absolute, or both?</td><td>the app must match the policy, not invent one</td></tr>
+      <tr><td>Is the app internal-only, or reachable from outside?</td><td>decides internal CA vs public CA</td></tr>
+      <tr><td>Who may author screens, and who reviews them before release?</td><td>authored HTML is a trusted input; review is a control</td></tr>
+      <tr><td>What access and activity logging is required, and for how long?</td><td>drives what the app records and how long it keeps it</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section id="a11">
+  <div class="sec-head"><span class="sec-num">11</span><h2 class="sec-title">A short glossary</h2></div>
+  <div class="tablewrap"><table>
+    <thead><tr><th>Term</th><th>In one sentence</th></tr></thead>
+    <tbody>
+      <tr><td><b>Origin</b></td><td>scheme + hostname + port; the unit the browser uses for “may this page read that?”</td></tr>
+      <tr><td><b>Site</b></td><td>the registrable domain (<code>corp.example.com</code>); ports and subdomains do not count. Used by <code>SameSite</code>.</td></tr>
+      <tr><td><b>CSP</b></td><td>a header listing what a page may load and connect to. It can stop a request before it is made.</td></tr>
+      <tr><td><b>CORS</b></td><td>a header allowing another origin to read a response. It controls reading, not sending.</td></tr>
+      <tr><td><b>CSRF</b></td><td>making the user’s browser send a state-changing request to a site it is signed in to. <code>SameSite</code> is the main defence.</td></tr>
+      <tr><td><b>XSS</b></td><td>getting your JavaScript to run inside someone else’s page. <code>HttpOnly</code> stops it reading the cookie, not acting as the user.</td></tr>
+      <tr><td><b>Opaque origin</b></td><td>a sandboxed frame’s identity: it has no cookie, storage or access to the parent.</td></tr>
+      <tr><td><b>HSTS</b></td><td>a header telling the browser to use HTTPS for this host from now on, before the request is made.</td></tr>
+      <tr><td><b>Bearer token</b></td><td>a credential where possession is enough. A session cookie is one.</td></tr>
+      <tr><td><b>CA / internal CA</b></td><td>the authority that signs certificates. A company CA is trusted on its managed machines by policy.</td></tr>
+      <tr><td><b>SNI</b></td><td>how the browser tells the server which hostname it wants, so one proxy can hold many certificates.</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<div class="callout note"><p><b>How this was tested.</b> The controls described here are the ones implemented in the Lens runtime in this repository, and they are covered by its test suites: sign-in and session flags, idle timeout, per-user identity, a sandboxed frame with its own CSP, group access on every route, declared write cubes and processes, and the server always taking its target from configuration. Not yet proven: an independent penetration test, and a production deployment behind a real internal CA and proxy. Those are the next two gates, not claims in this article.</p></div>
+
+<h3>Still open</h3>
+<ul>
+  <li><b>An <code>Origin</code> check on writes.</b> Today <code>SameSite=Strict</code> is the CSRF control; it does not cover sibling apps on one domain.</li>
+  <li><b>An absolute session age.</b> The runtime has an idle timeout; it needs a maximum too.</li>
+  <li><b><code>__Host-</code> cookie names.</b> A rename, and a sign-out for everyone — best done before a pilot.</li>
+  <li><b>PAW single sign-on.</b> The runtime signs in with TM1 credentials today; trusting a PAW session is a separate integration.</li>
+  <li><b>Load and session-leak testing</b> with several users and a real TM1 server.</li>
+</ul>
+
+<p>TLS protects the channel. Identity and authorisation protect the data. Isolation protects the app from its own content. Provenance protects one app from another. None of them compensates for the others being missing.</p>
+<p><b>AI can write the screen. Only the architecture makes it safe.</b></p>
+
+</div>
+</main>
+
+<footer>
+  <div class="foot-inner">
+    <div>
+      <div class="foot-mark">falcon<b>bi</b></div>
+      <p>HTML apps on TM1: the security layer you now own.</p>
+      <span class="license">CC BY 4.0 — attribution required</span>
+    </div>
+    <div class="foot-meta">
+      Security · HTML apps · IBM Planning Analytics<br>
+      © 2026 falconbi
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>

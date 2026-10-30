@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Dashboard</title>
+<style>
+:root{--bg:var(--lens-bg,#f6f7f7);--ink:var(--lens-ink,#16201f);--faint:var(--lens-faint,#85908f);--rule:var(--lens-rule,#dfe4e3);--panel:var(--lens-panel,#fff);--accent:var(--lens-accent,#0f766e);--bad:var(--lens-bad,#b4372d);--good:var(--lens-good,#1d7a46)}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}
+.wrap{padding:16px 18px 24px;display:grid;gap:12px}
+header{display:flex;flex-wrap:wrap;align-items:end;gap:12px 18px}
+h1{font-size:20px;margin:0}
+h2{font-size:14px;margin:0 0 8px}
+.sub{font-size:12.5px;color:var(--faint)}
+.controls{display:flex;gap:10px;margin-left:auto;align-items:end;flex-wrap:wrap}
+label{display:grid;gap:3px;font-size:11px;color:var(--faint);text-transform:uppercase;letter-spacing:.06em}
+select,button,input,textarea{font:inherit;font-size:13px;padding:5px 10px;border:1px solid var(--rule);border-radius:7px;background:var(--panel);color:var(--ink)}
+button{cursor:pointer}
+button.primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+button:disabled{opacity:.45;cursor:default}
+.card{background:var(--panel);border:1px solid var(--rule);border-radius:10px;padding:12px;min-width:0}
+.bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px}
+.status{font-size:13px}
+.status.ok{color:var(--good)} .status.err{color:var(--bad)} .status.busy{color:var(--faint)}
+.need{padding:18px;border:1px dashed var(--rule);border-radius:10px;color:var(--faint);font-size:13px}
+.need code{color:var(--ink)}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:12px}
+#trend{height:300px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div><h1 id="heading">Dashboard</h1><div class="sub" id="subtitle"></div></div>
+    <div class="controls"><label id="pickWrap" hidden><span id="pickLabel"></span><select id="pick"></select></label><button id="refresh">Refresh</button></div>
+  </header>
+  <span id="status" class="status"></span>
+  <div id="kpis"></div>
+  <div class="grid2">
+    <div class="card" id="trendCard" hidden><h2 id="trendTitle"></h2><div id="trend"></div></div>
+    <div class="card" id="tableCard" hidden><h2 id="tableTitle"></h2><div id="table"></div></div>
+  </div>
+</div>
+<script src="/lens-kit/lens-kit.js"></script>
+<script>
+// ── Simple dashboard (Viewfinder template) ───────────────────────────────────
+// Headline figures, a trend and a table, all from one cube, driven by config.
+// Read-only. Every number is read as the signed-in user, so TM1 security
+// decides what each person sees.
+(function () {
+  var $ = function (id) { return document.getElementById(id) }
+  var esc = function (v) { return String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;') }
+  var M = function (d, e) { return '[' + d + '].[' + d + '].[' + String(e).replace(/]/g, ']]') + ']' }
+  var call = function (mdx) { return window.lensBridge.call('execMDX', { mdx: mdx }) }
+  var say = function (text, kind) { var s = $('status'); if (!s) return; s.textContent = text || ''; s.className = 'status ' + (kind || '') }
+  function fail(e) { say((e && e.message ? e.message : e), 'err') }
+  if (!window.Lens) return fail(new Error('the Lens toolkit did not load'))
+  var C = Lens.config()
+  function need(keys, into) {
+    var missing = keys.filter(function (k) { return !C[k] })
+    if (!missing.length) return false
+    $(into).innerHTML = '<div class="need">This screen needs its settings — add <code>' + missing.join('</code>, <code>') + '</code> to its config (IDE → Config tab).</div>'
+    return true
+  }
+  // A WHERE clause from { dimension: member } (missing dimensions use their default member).
+  function where(obj) { var k = Object.keys(obj || {}); return k.length ? ' WHERE (' + k.map(function (d) { return M(d, obj[d]) }).join(',') + ')' : '' }
+  function setOf(spec) {
+    if (spec.members) return '{' + spec.members.map(function (m) { return M(spec.dimension, m) }).join(',') + '}'
+    if (spec.under) return '{TM1FILTERBYLEVEL({DESCENDANTS(' + M(spec.dimension, spec.under) + ')}, ' + (spec.level || 0) + ')}'
+    return '{TM1FILTERBYLEVEL({TM1SUBSETALL([' + spec.dimension + '].[' + spec.dimension + '])}, ' + (spec.level || 0) + ')}'
+  }
+  function names(dim, into) {
+    return call('SELECT {[}ElementAttributes_' + dim + '].[}ElementAttributes_' + dim + '].[Caption_Default]} ON 0, {TM1SUBSETALL([' + dim + '].[' + dim + '])} ON 1 FROM [}ElementAttributes_' + dim + ']')
+      .then(function (r) { Lens.rows(r).forEach(function (x) { if (x.Caption_Default) into[x[dim]] = x.Caption_Default }) }, function () {})
+  }
+  // An optional picker (e.g. a region): its members, limited to what this person may see.
+  var pick = C.pick || null, pickNames = {}
+  function pickValue() { return pick ? $('pick').value : null }
+  function slice(extra) { var w = Object.assign({}, C.where || {}); if (pick) w[pick.dimension] = pickValue(); return Object.assign(w, extra || {}) }
+  function loadPick() {
+    if (!pick) return Promise.resolve()
+    $('pickWrap').hidden = false; $('pickLabel').textContent = pick.label || pick.dimension
+    return names(pick.dimension, pickNames).then(function () { return call('SELECT {} ON 0, ' + setOf(pick) + ' ON 1 FROM [' + C.cube + ']') }).then(function (r) {
+      var list = Lens.rows(r).map(function (x) { return x[pick.dimension] })
+      if (!list.length) throw new Error('you have no access to any ' + (pick.label || pick.dimension).toLowerCase() + ' here')
+      $('pick').innerHTML = list.map(function (o) { return '<option value="' + esc(o) + '">' + esc(pickNames[o] || o) + '</option>' }).join('')
+      if (pick.default && list.indexOf(pick.default) >= 0) $('pick').value = pick.default
+    })
+  }
+  if (need(['cube'], 'kpis')) return
+  $('heading').textContent = C.heading || 'Dashboard'
+  $('subtitle').textContent = C.subtitle || ''
+  // One number: the cube at the slice, with the given members.
+  function value(at) {
+    var w = slice(); Object.keys(at).forEach(function (d) { delete w[d] })
+    var tuple = '(' + Object.keys(at).map(function (d) { return M(d, at[d]) }).join(',') + ')'
+    return call('SELECT {' + tuple + '} ON 0 FROM [' + C.cube + ']' + where(w)).then(function (r) { var c = (r.Cells || [])[0]; return c ? c.Value : null })
+  }
+  function kpis() {
+    var list = C.kpis || []
+    if (!list.length) return Promise.resolve()
+    return Promise.all(list.map(function (k) {
+      return Promise.all([value(k.value || {}), k.compare ? value(k.compare) : Promise.resolve(undefined)])
+        .then(function (v) { return { label: k.label, value: v[0], compare: v[1], format: k.format || C.format, cost: !!k.cost } })
+    })).then(function (items) { Lens.kpis('#kpis', items, { compareLabel: C.compareLabel }) })
+  }
+  function trend() {
+    var t = C.trend
+    if (!t) return Promise.resolve()
+    $('trendCard').hidden = false; $('trendTitle').textContent = t.title || ''
+    return Promise.all(t.series.map(function (s) {
+      var w = slice(); Object.keys(s.at || {}).forEach(function (d) { w[d] = s.at[d] }); delete w[t.dimension]
+      return call('SELECT {' + t.members.map(function (m) { return M(t.dimension, m) }).join(',') + '} ON 0 FROM [' + C.cube + ']' + where(w))
+        .then(function (r) { return { name: s.name, values: (r.Cells || []).map(function (c) { return c.Value || 0 }), compare: !!s.compare, type: s.type } })
+    })).then(function (series) { Lens.trend('#trend', { categories: t.members, series: series, format: t.format || C.format, cost: !!t.cost }) })
+  }
+  function table() {
+    var t = C.table
+    if (!t) return Promise.resolve()
+    $('tableCard').hidden = false; $('tableTitle').textContent = t.title || ''
+    var rowNames = {}
+    var w = slice(); delete w[t.rows.dimension]; delete w[t.columns.dimension]
+    return names(t.rows.dimension, rowNames).then(function () {
+      return call('SELECT {' + t.columns.members.map(function (m) { return M(t.columns.dimension, m) }).join(',') + '} ON 0, ' + setOf(t.rows) + ' ON 1 FROM [' + C.cube + ']' + where(w))
+    }).then(function (r) {
+      var data = Lens.rows(r).map(function (x) { var k = x[t.rows.dimension]; x.line = rowNames[k] || k; return x })
+      Lens.grid('#table', { columns: [{ field: 'line', headerName: t.rows.label || t.rows.dimension, minWidth: 160 }].concat(t.columns.members.map(function (m, i) { return { field: m, headerName: (t.columns.labels || [])[i] || m, type: 'number', format: t.format || C.format } })), rows: data })
+    })
+  }
+  function load() { say('Loading…', 'busy'); return Promise.all([kpis(), trend(), table()]).then(function () { say('') }) }
+  $('refresh').onclick = function () { load().catch(fail) }
+  $('pick').onchange = function () { load().catch(fail) }
+  loadPick().then(load).catch(fail)
+})()
+</script>
+</body>
+</html>

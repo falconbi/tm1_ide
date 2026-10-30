@@ -1,0 +1,11 @@
+{
+  "name": "}IDE.SaveDataAll",
+  "description": "Hidden core fallback for servers whose REST API has no tm1.SaveDataAll action. Writes all changed cube data to disk. Admin-only by policy; exposed through the IDE Save data button and the save_data_all MCP tool, not as a raw process.",
+  "parameters": [],
+  "variables": [],
+  "datasource": { "Type": "None" },
+  "prolog": "#Region }IDE.SaveDataAll\n# Fallback for servers without POST /api/v1/tm1.SaveDataAll.\n# SaveDataAll writes all changed cube data to disk and pauses the server briefly.\nSaveDataAll;\n#EndRegion",
+  "metadata": "",
+  "data": "",
+  "epilog": ""
+}

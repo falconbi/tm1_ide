@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>App home</title>
+<style>
+:root{--bg:var(--lens-bg,#f6f7f7);--ink:var(--lens-ink,#16201f);--faint:var(--lens-faint,#85908f);--rule:var(--lens-rule,#dfe4e3);--panel:var(--lens-panel,#fff);--accent:var(--lens-accent,#0f766e);--bad:var(--lens-bad,#b4372d);--good:var(--lens-good,#1d7a46)}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}
+.wrap{padding:16px 18px 24px;display:grid;gap:12px}
+header{display:flex;flex-wrap:wrap;align-items:end;gap:12px 18px}
+h1{font-size:20px;margin:0}
+h2{font-size:14px;margin:0 0 8px}
+.sub{font-size:12.5px;color:var(--faint)}
+.controls{display:flex;gap:10px;margin-left:auto;align-items:end;flex-wrap:wrap}
+label{display:grid;gap:3px;font-size:11px;color:var(--faint);text-transform:uppercase;letter-spacing:.06em}
+select,button,input,textarea{font:inherit;font-size:13px;padding:5px 10px;border:1px solid var(--rule);border-radius:7px;background:var(--panel);color:var(--ink)}
+button{cursor:pointer}
+button.primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+button:disabled{opacity:.45;cursor:default}
+.card{background:var(--panel);border:1px solid var(--rule);border-radius:10px;padding:12px;min-width:0}
+.bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px}
+.status{font-size:13px}
+.status.ok{color:var(--good)} .status.err{color:var(--bad)} .status.busy{color:var(--faint)}
+.need{padding:18px;border:1px dashed var(--rule);border-radius:10px;color:var(--faint);font-size:13px}
+.need code{color:var(--ink)}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px}
+.tile{background:var(--panel);border:1px solid var(--rule);border-radius:10px;padding:12px 14px}
+.tile .n{font-size:26px;font-weight:700;font-variant-numeric:tabular-nums}
+.tile .l{font-size:12.5px;color:var(--faint)}
+.tile.good .n{color:var(--good)} .tile.warn .n{color:#b7791f} .tile.bad .n{color:var(--bad)}
+.tile.click,.page,.need-me{cursor:pointer}
+.tile.click:hover,.page:hover,.need-me:hover{border-color:var(--accent)}
+.needs{display:grid;gap:8px}
+.need-me{display:flex;align-items:center;gap:10px;background:var(--panel);border:1px solid var(--rule);border-left:4px solid var(--accent);border-radius:8px;padding:10px 12px;font-weight:600}
+.need-me .go{margin-left:auto;color:var(--accent);font-size:13px}
+.pages{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px}
+.page{background:var(--panel);border:1px solid var(--rule);border-radius:10px;padding:14px}
+.page b{display:block;font-size:15px;margin-bottom:3px}
+.page span{font-size:13px;color:var(--faint)}
+.note{background:var(--panel);border:1px solid var(--rule);border-radius:10px;padding:10px 14px;font-size:13.5px}
+.empty{color:var(--faint);font-size:13px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header><div><h1 id="heading">App</h1><div class="sub" id="subtitle"></div></div><div class="controls"><button id="refresh">Refresh</button></div></header>
+  <div class="note" id="note" hidden></div>
+  <span id="status" class="status"></span>
+  <div class="tiles" id="counts"></div>
+  <div><h2>Needs you</h2><div class="needs" id="needs"></div></div>
+  <div><h2>Pages</h2><div class="pages" id="pages"></div></div>
+</div>
+<script src="/lens-kit/lens-kit.js"></script>
+<script>
+// ── App home (Viewfinder template) ───────────────────────────────────────────
+// The front page of an app (a module's Lenses): the key counts, what needs the
+// person looking at it, and a tile for each page. Everything comes from the
+// data and TM1 security — nothing to maintain.
+(function () {
+  var $ = function (id) { return document.getElementById(id) }
+  var esc = function (v) { return String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;') }
+  var M = function (d, e) { return '[' + d + '].[' + d + '].[' + String(e).replace(/]/g, ']]') + ']' }
+  var call = function (mdx) { return window.lensBridge.call('execMDX', { mdx: mdx }) }
+  var say = function (text, kind) { var s = $('status'); if (!s) return; s.textContent = text || ''; s.className = 'status ' + (kind || '') }
+  function fail(e) { say((e && e.message ? e.message : e), 'err') }
+  if (!window.Lens) return fail(new Error('the Lens toolkit did not load'))
+  var C = Lens.config()
+  function need(keys, into) {
+    var missing = keys.filter(function (k) { return !C[k] })
+    if (!missing.length) return false
+    $(into).innerHTML = '<div class="need">This screen needs its settings — add <code>' + missing.join('</code>, <code>') + '</code> to its config (IDE → Config tab).</div>'
+    return true
+  }
+  // A WHERE clause from { dimension: member } (missing dimensions use their default member).
+  function where(obj) { var k = Object.keys(obj || {}); return k.length ? ' WHERE (' + k.map(function (d) { return M(d, obj[d]) }).join(',') + ')' : '' }
+  function setOf(spec) {
+    if (spec.members) return '{' + spec.members.map(function (m) { return M(spec.dimension, m) }).join(',') + '}'
+    if (spec.under) return '{TM1FILTERBYLEVEL({DESCENDANTS(' + M(spec.dimension, spec.under) + ')}, ' + (spec.level || 0) + ')}'
+    return '{TM1FILTERBYLEVEL({TM1SUBSETALL([' + spec.dimension + '].[' + spec.dimension + '])}, ' + (spec.level || 0) + ')}'
+  }
+  function names(dim, into) {
+    return call('SELECT {[}ElementAttributes_' + dim + '].[}ElementAttributes_' + dim + '].[Caption_Default]} ON 0, {TM1SUBSETALL([' + dim + '].[' + dim + '])} ON 1 FROM [}ElementAttributes_' + dim + ']')
+      .then(function (r) { Lens.rows(r).forEach(function (x) { if (x.Caption_Default) into[x[dim]] = x.Caption_Default }) }, function () {})
+  }
+  // A count: how many rows the query returns (use NON EMPTY / FILTER in it),
+  // or the number itself when it returns a single cell.
+  function count(spec) {
+    var hasRows = /\bON\s+(1|ROWS)\b/i.test(spec.mdx)
+    return call(spec.mdx).then(function (r) {
+      var axes = r.Axes || []
+      if (hasRows) return axes.length > 1 ? Lens.rows(r).length : 0
+      var c = (r.Cells || [])[0]; return c ? Number(c.Value) || 0 : 0
+    }, function () { return null })
+  }
+  function open(name) { if (name) window.lensBridge.call('openLens', { name: name }).catch(function (e) { say(e && e.message ? e.message : String(e), 'err') }) }
+  function fill(text, n) { return String(text).indexOf('{n}') >= 0 ? String(text).replace('{n}', n) : n + ' ' + text }
+  if (need(['pages'], 'pages')) return
+  $('heading').textContent = C.heading || 'App'
+  $('subtitle').textContent = C.subtitle || ''
+  if (C.note) { $('note').hidden = false; $('note').textContent = C.note }
+  var who = { user: '', groups: [] }
+  var allowed = function (groups) { return !groups || !groups.length || Lens.whoami.inGroup(who, groups) }
+  function counts() {
+    var list = C.counts || []
+    return Promise.all(list.map(count)).then(function (ns) {
+      $('counts').innerHTML = list.map(function (c, i) { return '<div class="tile ' + esc(c.tone || '') + (c.open ? ' click' : '') + '" data-open="' + esc(c.open || '') + '"><div class="n">' + (ns[i] == null ? '—' : esc(Lens.format(ns[i]))) + '</div><div class="l">' + esc(c.label) + '</div></div>' }).join('')
+    })
+  }
+  function needs() {
+    var list = (C.needsMe || []).filter(function (n) { return allowed(n.groups) })
+    return Promise.all(list.map(count)).then(function (ns) {
+      var shown = list.map(function (n, i) { return { n: n, k: ns[i] } }).filter(function (x) { return x.k > 0 })
+      $('needs').innerHTML = shown.length ? shown.map(function (x) { return '<div class="need-me" data-open="' + esc(x.n.open || '') + '">' + esc(fill(x.n.label, x.k)) + '<span class="go">Open →</span></div>' }).join('') : '<div class="empty">Nothing waiting for you.</div>'
+    })
+  }
+  function pages() {
+    var list = C.pages.filter(function (p) { return allowed(p.groups) })
+    $('pages').innerHTML = list.map(function (p) { return '<div class="page" data-open="' + esc(p.lens) + '"><b>' + esc(p.title || p.lens) + '</b><span>' + esc(p.description || '') + '</span></div>' }).join('') || '<div class="empty">No pages you can open.</div>'
+  }
+  document.body.addEventListener('click', function (e) { var t = e.target.closest('[data-open]'); if (t && t.getAttribute('data-open')) open(t.getAttribute('data-open')) })
+  function load() { say('Loading…', 'busy'); pages(); return Promise.all([counts(), needs()]).then(function () { say('') }) }
+  $('refresh').onclick = function () { load().catch(fail) }
+  Lens.whoami().then(function (w) { who = w || who }).then(load).catch(fail)
+})()
+</script>
+</body>
+</html>

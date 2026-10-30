@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
-  ReactFlow, Background, Controls, MiniMap,
+  ReactFlow, Background, Controls,
   useNodesState, useEdgesState, useReactFlow,
   ReactFlowProvider, Handle, Position,
   getBezierPath, BaseEdge,
@@ -9,12 +9,15 @@ import '@xyflow/react/dist/style.css'
 import dagre from '@dagrejs/dagre'
 import { useStore } from '../store'
 import {
-  Network, ChevronRight, Search, X, RefreshCw, ArrowRight, Layers,
-  Code2, Workflow, Filter, GitBranch, Zap, BookOpen,
-  Box, Eye, Play, Pause, StepBack, StepForward, SkipBack, Clapperboard, Map as MapIcon,
+  Network, ChevronRight, ChevronDown, Search, X, RefreshCw, ArrowRight, Layers,
+  Code2, Workflow, Filter, GitBranch, Zap, BookOpen, Milestone,
+  Box, Eye, Play, Pause, StepBack, StepForward, SkipBack, Clapperboard, PanelLeftClose, PanelLeftOpen, Info, ExternalLink, Maximize2, History,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { loadSettings } from '@/lib/formatters/settings.js'
+import { buildRunSequence, buildPhaseSequence } from '@/lib/run-sequence'
+import { getCubemapSession, saveCubemapSession } from '@/lib/cubemap-session'
+import RunbookDialog from '@/components/RunbookDialog'
 
 // ── Layout ────────────────────────────────────────────────────────────────────
 
@@ -53,6 +56,10 @@ function buildReverseMap(cubeData) {
 // edge types the traversal follows, so "graph from here" can walk the process
 // network (reads/writes/calls/dim changes) as well as rule links.
 const MAX_FOCUS_NODES = 250
+const FIT_MAX_ZOOM = 1.1   // fit-to-view may never blow a 4-node graph up past this
+const FIT_MIN_ZOOM = 0.8   // automatic fit never shrinks an object smaller than this
+const FIT_MIN_ZOOM_FULL = 0.05 // explicit Fit to screen may go all the way out
+const prefixOf = name => String(name ?? '').split(/[\s_]/)[0]
 
 const TRACE_KIND_DEFAULTS = { rule: true, feeder: true, read: true, write: true, dimwrite: true, call: true, dimuse: true }
 
@@ -107,67 +114,7 @@ function getReachable(startIds, depth, kinds, ctx) {
   return result
 }
 
-// ── Show playback: the designed run order, from the scanner's code-order steps ─────────────────────
-// Walks an entry process (or chore) depth-first: each read/write/dimension change in code order, and
-// each ExecuteProcess dives into the callee and comes back. Loops inside a process play once — this is
-// the order the code is written in, not a replay of a real run.
-
-const RUN_SEQ_MAX = 400
-
-function buildRunSequence(entry, processData, cubeData, chores) {
-  const items = []
-  // Rules behind a cube a process reads: its own DB() refs, and the feeders that feed it
-  const ruleContext = (cube) => {
-    const d = cubeData[cube]
-    if (!d?.hasRules) return { nodes: [], edges: [] }
-    const nodes = [], edges = []
-    for (const t of d.ruleCalcRefs ?? []) { nodes.push(t); edges.push(`calc:${cube}:${t}`) }
-    for (const [src, sd] of Object.entries(cubeData)) {
-      if ((sd.ruleFeederRefs ?? []).includes(cube)) { nodes.push(src); edges.push(`feeder:${src}:${cube}`) }
-    }
-    return { nodes, edges }
-  }
-
-  const visit = (proc, caller, path, intro) => {
-    if (items.length >= RUN_SEQ_MAX) return
-    const node = `proc:${proc}`
-    if (path.includes(proc)) {
-      items.push({ path, nodes: [node], edges: [], caption: `${proc} is already running further up — recursive call not followed` })
-      return
-    }
-    const here = [...path, proc]
-    items.push({
-      path: here, nodes: [node], edges: caller ? [`call:${caller}:${proc}`] : [],
-      caption: intro ?? (caller ? `${caller} calls ${proc}` : `${proc} starts`),
-    })
-    const steps = processData[proc]?.steps ?? []
-    steps.forEach((s, i) => {
-      if (items.length >= RUN_SEQ_MAX) return
-      if (s.kind === 'read') {
-        const rc = ruleContext(s.target)
-        items.push({
-          path: here, nodes: [node, s.target, ...rc.nodes], edges: [`read:${s.target}:${proc}`, ...rc.edges],
-          caption: `${proc} reads ${s.target}` + (rc.edges.length ? ' — rule-calculated live, not a step' : ''),
-        })
-      } else if (s.kind === 'write') {
-        items.push({ path: here, nodes: [node, s.target], edges: [`write:${proc}:${s.target}`], caption: `${proc} writes ${s.target}` })
-      } else if (s.kind === 'dimwrite') {
-        items.push({ path: here, nodes: [node, `dim:${s.target}`], edges: [`dimwrite:${proc}:${s.target}`], caption: `${proc} changes dimension ${s.target}` })
-      } else if (s.kind === 'call') {
-        visit(s.target, proc, here)
-        if (i < steps.length - 1) items.push({ path: here, nodes: [node], edges: [], caption: `${s.target} done — back in ${proc}` })
-      }
-    })
-  }
-
-  if (entry.kind === 'chore') {
-    const tasks = chores.find(c => c.name === entry.name)?.processes ?? []
-    tasks.forEach((proc, i) => visit(proc, null, [`⏱ ${entry.name}`], `Chore ${entry.name} — task ${i + 1} of ${tasks.length}: ${proc}`))
-  } else {
-    visit(entry.name, null, [])
-  }
-  return items
-}
+// Run sequence + Steps list live in @/lib/run-sequence and this file's dialogs below
 
 // ── Prefix clustering ─────────────────────────────────────────────────────────
 
@@ -450,10 +397,18 @@ function Legend() {
 
 // ── Detail panel helpers ──────────────────────────────────────────────────────
 
-function Section({ title, count, icon, children }) {
+function Section({ title, count, icon, children, defaultOpen = false }) {
+  const [open, setOpen] = useState(defaultOpen)
   return (
-    <div style={{ marginBottom: 10 }}>
-      <div style={{ padding: '0 12px 4px', display: 'flex', alignItems: 'center', gap: 4 }}>
+    <div style={{ marginBottom: 6 }}>
+      <button onClick={() => setOpen(o => !o)}
+        title={open ? `Collapse ${title}` : `Expand ${title}`}
+        style={{
+          width: '100%', padding: '3px 12px', display: 'flex', alignItems: 'center', gap: 4,
+          background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left',
+        }}>
+        {open ? <ChevronDown size={10} style={{ color: 'var(--cm-text-muted)', flexShrink: 0 }} />
+              : <ChevronRight size={10} style={{ color: 'var(--cm-text-muted)', flexShrink: 0 }} />}
         {icon}
         <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--cm-text-muted)', opacity: 0.65 }}>
           {title}
@@ -461,8 +416,8 @@ function Section({ title, count, icon, children }) {
         {count !== undefined && (
           <span style={{ fontSize: 10, color: 'var(--cm-text-muted)', opacity: 0.4, marginLeft: 1 }}>{count}</span>
         )}
-      </div>
-      {children}
+      </button>
+      {open && <div>{children}</div>}
     </div>
   )
 }
@@ -530,7 +485,7 @@ function StatChip({ label, value }) {
 function DetailPanel({
   cube, cubeData, reverseMap,
   onNavigate, onClose,
-  onOpenRules, onOpenCube,
+  onOpenRules, onOpenCube, onOpenLog,
   processCallers = {},
   onFilterDim, dimFilter,
   traceDepth, setTraceDepth, traceKinds, setTraceKinds, transitiveCount,
@@ -559,6 +514,7 @@ function DetailPanel({
       <div style={{ padding: '8px 10px', borderBottom: '1px solid var(--cm-border)', display: 'flex', gap: 5 }}>
         {hasRules && <ActionBtn icon={<Code2 size={11} />} label="Rules"    onClick={onOpenRules} title="Open rules editor" />}
         <ActionBtn icon={<Box size={11} />}       label="Cube"     onClick={onOpenCube}  title="Open cube editor" />
+        <ActionBtn icon={<History size={11} />}   label="Log"      onClick={() => onOpenLog?.(cube, dims)} title="Transaction log for this cube" />
       </div>
 
       {/* Stats */}
@@ -617,7 +573,7 @@ function DetailPanel({
       {/* Scrollable sections */}
       <div style={{ overflow: 'auto', flex: 1, paddingTop: 8 }}>
 
-        <Section title="Dimensions" icon={<Filter size={9} style={{ color: 'var(--cm-text-muted)', opacity: 0.65 }} />}>
+        <Section title="Dimensions" count={dims.length} icon={<Filter size={9} style={{ color: 'var(--cm-text-muted)', opacity: 0.65 }} />}>
           {dims.map(d => (
             <DimItem key={d} name={d} active={dimFilter === d} onClick={() => onFilterDim(d)} />
           ))}
@@ -692,7 +648,7 @@ function DetailPanel({
 // ── Main inner component ──────────────────────────────────────────────────────
 
 function CubeMapInner({ tab }) {
-  const { server: storeServer, openTab } = useStore()
+  const { server: storeServer, openTab, openTabToSide, patchTab } = useStore()
   const dark = useStore(s => s.dark)
   const themeVersion = useStore(s => s.themeVersion)
   const srv  = tab?.server ?? storeServer
@@ -701,14 +657,19 @@ function CubeMapInner({ tab }) {
   // Configurable cube grouping key (regex) — reloads whenever settings are saved.
   const groupRegex = useMemo(() => loadSettings().cubeMap?.groupRegex ?? '', [themeVersion])
 
-  const [cubeData,       setCubeData]       = useState(null)
+  const [cubeDataAll,    setCubeData]       = useState(null)
   const [processCallers, setProcessCallers] = useState({})
-  const [processData,    setProcessData]    = useState({})
-  const [dimData,        setDimData]        = useState({})
+  const [processDataAll, setProcessData]    = useState({})
+  const [dimDataAll,     setDimData]        = useState({})
   const [chores,         setChores]         = useState([])
   const [loading,        setLoading]        = useState(false)
   const [error,          setError]          = useState(null)
+  const [modelReady,     setModelReady]     = useState(false)
 
+  // Prefix scope: WFP / LAB / SYS… — hides the other model instead of just clustering it.
+  const prefixes = useMemo(() => [...new Set([
+    ...Object.keys(cubeDataAll ?? {}), ...Object.keys(processDataAll ?? {}),
+  ].map(prefixOf).filter(Boolean))].sort(), [cubeDataAll, processDataAll])
   const [nodes, setNodes, onNodesChange] = useNodesState([])
   const [edges, setEdges, onEdgesChange] = useEdgesState([])
 
@@ -730,27 +691,39 @@ function CubeMapInner({ tab }) {
   const [dimFilter,      setDimFilter]      = useState(null)
   const [traceDepth,     setTraceDepth]     = useState(prefs.traceDepth ?? 1)
   const [showLegend,     setShowLegend]     = useState(prefs.showLegend ?? false)
-  const [showMiniMap,    setShowMiniMap]    = useState(prefs.showMiniMap ?? true)
   const [showClusters,   setShowClusters]   = useState(prefs.showClusters ?? false)
   const [dimSpotlight,   setDimSpotlight]   = useState('')
   const [showProcesses,  setShowProcesses]  = useState(prefs.showProcesses ?? true)
   const [allTI,          setAllTI]          = useState(prefs.allTI ?? false)
   const [showDims,       setShowDims]       = useState(prefs.showDims ?? true)
+  const [scope,          setScope]          = useState(prefs.scope ?? '')
+  const [sidebarOpen,    setSidebarOpen]    = useState(prefs.sidebarOpen ?? true)
+  const cubeData = useMemo(() => (!cubeDataAll ? cubeDataAll : !scope ? cubeDataAll : Object.fromEntries(Object.entries(cubeDataAll).filter(([n]) => prefixOf(n) === scope))), [cubeDataAll, scope])
+  const processData = useMemo(() => (!scope ? processDataAll : Object.fromEntries(Object.entries(processDataAll).filter(([n]) => prefixOf(n) === scope))), [processDataAll, scope])
+  const dimData = useMemo(() => (!scope ? dimDataAll : Object.fromEntries(Object.entries(dimDataAll).filter(([n]) => prefixOf(n) === scope))), [dimDataAll, scope])
+
+
   // Show playback
   const [showBar,        setShowBar]        = useState(false)
+  const [processInfo,    setProcessInfo]    = useState({})
+  const [stepInfoOpen,   setStepInfoOpen]   = useState(false)
+  const [runbookOpen,    setRunbookOpen]    = useState(false)
+  const [phaseFocus,     setPhaseFocus]     = useState(null)
   const [runEntry,       setRunEntry]       = useState('')    // 'process:<name>' | 'chore:<name>'
   const [runSeq,         setRunSeq]         = useState(null)
+  const [runScope,       setRunScope]       = useState(null)
   const [runIdx,         setRunIdx]         = useState(0)
   const [playing,        setPlaying]        = useState(false)
   const [speed,          setSpeed]          = useState(1)
   const [follow,         setFollow]         = useState(false)
   const canvasRef = useRef(null)
+  const playbackReturnRef = useRef(null)
 
-  const { fitView, setCenter, getNode, getViewport } = useReactFlow()
+  const { fitView, setCenter, getNode, getViewport, setViewport } = useReactFlow()
 
   // ── Fetch ─────────────────────────────────────────────────────────────────────
   const fetchModel = useCallback(async () => {
-    setLoading(true); setError(null)
+    setLoading(true); setError(null); setModelReady(false)
     try {
       const r = await fetch(`/api/cubemap/model?server=${encodeURIComponent(srv)}`, {
         headers: { 'x-ide-token': token },
@@ -762,6 +735,7 @@ function CubeMapInner({ tab }) {
       setProcessData(d.processes ?? {})
       setDimData(d.dims ?? {})
       setChores(d.chores ?? [])
+      setModelReady(true)
     } catch (e) {
       setError(e.message)
       toast.error(`CubeMap: ${e.message}`)
@@ -772,15 +746,112 @@ function CubeMapInner({ tab }) {
 
   useEffect(() => { fetchModel() }, [fetchModel])
 
+  // Process summary/header/parameters for the Show details card.
+  useEffect(() => {
+    if (!showBar) return
+    let cancelled = false
+    fetch(`/api/process/summaries?server=${encodeURIComponent(srv)}`, { headers: { 'x-ide-token': token } })
+      .then(r => r.json())
+      .then(d => { if (!cancelled && Array.isArray(d.processes)) setProcessInfo(Object.fromEntries(d.processes.map(x => [x.process, x]))) })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [showBar, srv, token])
+
+  // The runbook is a docked panel — refit the map when it opens/closes.
+  useEffect(() => {
+    const t = setTimeout(() => fitView({ padding: 0.12, duration: 250, maxZoom: FIT_MAX_ZOOM, minZoom: FIT_MIN_ZOOM }), 120)
+    return () => clearTimeout(t)
+  }, [runbookOpen, fitView])
+
+  // Explicit Fit to screen — allowed to go below the automatic minimum.
+  const fitToScreen = useCallback(() => {
+    fitView({ padding: 0.08, duration: 350, maxZoom: FIT_MAX_ZOOM, minZoom: FIT_MIN_ZOOM_FULL })
+  }, [fitView])
+
+  // Restore this tab's player/phase/camera when coming back from a rules or process tab.
+  const savedSessionRef = useRef(getCubemapSession(tab?.id))
+  const didRestoreRef = useRef(false)
+  useEffect(() => {
+    if (didRestoreRef.current || !modelReady || !cubeData || !processData) return
+    const saved = savedSessionRef.current
+    didRestoreRef.current = true
+    if (!saved) return
+    if (saved.scope) setScope(saved.scope)
+    if (saved.sidebarOpen != null) setSidebarOpen(saved.sidebarOpen)
+    if (saved.phaseFocus) setPhaseFocus(saved.phaseFocus)
+    if (saved.selectedCube && (cubeData[saved.selectedCube] || processData[saved.selectedCube.slice(5)] || dimData[saved.selectedCube.slice(4)])) {
+      setSelectedCube(saved.selectedCube)
+      setFocused(!!saved.focused)
+    }
+    if (saved.runEntry) {
+      setRunEntry(saved.runEntry)
+      setShowBar(!!saved.showBar)
+      setStepInfoOpen(!!saved.stepInfoOpen)
+      const [kind, ...rest] = String(saved.runEntry).split(':')
+      const seq = kind === 'phase'
+        ? buildPhaseSequence(saved.phaseFocus, processData, cubeData, chores)
+        : buildRunSequence({ kind, name: rest.join(':') }, processData, cubeData, chores)
+      setRunSeq(seq)
+      setRunIdx(Math.min(saved.runIdx ?? 0, Math.max(0, seq.length - 1)))
+      setPlaying(false)
+      const nodes = new Set(saved.runScope?.nodes ?? [...new Set(seq.flatMap(x => x.nodes ?? []))])
+      const edges = new Set(saved.runScope?.edges ?? [...new Set(seq.flatMap(x => x.edges ?? []))])
+      setRunScope({ nodes, edges })
+    }
+    if (saved.viewport) setTimeout(() => setViewport(saved.viewport, { duration: 0 }), 250)
+  }, [modelReady, cubeData, processData, dimData, chores, setViewport])
+
+  // Keep the session current; the cleanup also catches a tab switch.
+  const sessionRef = useRef(null)
+  useEffect(() => {
+    sessionRef.current = { runEntry, runIdx, runScope, phaseFocus, selectedCube, focused, scope, sidebarOpen, showBar, stepInfoOpen }
+  })
+  const saveSession = useCallback(() => {
+    const st = sessionRef.current
+    if (!st) return
+    saveCubemapSession(tab?.id, {
+      ...st,
+      runScope: st.runScope ? { nodes: [...st.runScope.nodes], edges: [...st.runScope.edges] } : null,
+      viewport: getViewport(),
+    })
+  }, [tab?.id, getViewport])
+  useEffect(() => () => saveSession(), [saveSession])
+
   // Persist view prefs for this server
   useEffect(() => {
     try {
       localStorage.setItem(prefsKey, JSON.stringify({
         layout, showCalc, showFeeders, showClusters, showDims, showProcesses, allTI,
-        showMiniMap, showLegend, traceDepth, traceKinds,
+        showLegend, traceDepth, traceKinds, scope, sidebarOpen,
       }))
     } catch { /* prefs read failed — defaults apply */ }
-  }, [prefsKey, layout, showCalc, showFeeders, showClusters, showDims, showProcesses, allTI, showMiniMap, showLegend, traceDepth, traceKinds])
+  }, [prefsKey, layout, showCalc, showFeeders, showClusters, showDims, showProcesses, allTI, showLegend, traceDepth, traceKinds, scope, sidebarOpen])
+
+  // Deep link from the Rules editor's Data Sources strip: focus this cube.
+  useEffect(() => {
+    if (!tab?.focusCube || !tab?.focusAt || !cubeData) return
+    if (!cubeData[tab.focusCube]) return
+    setSelectedCube(tab.focusCube)
+    setModuleFocus(null)
+    setPhaseFocus(null)
+    setFocused(true)
+    setDimmedIds(new Set())
+    patchTab(tab.id, { focusCube: null, focusAt: null })
+  }, [tab?.focusAt, tab?.focusCube, cubeData, patchTab])
+
+  // Deep link from the runbook: focus every process in a phase at once.
+  useEffect(() => {
+    if (!tab?.focusProcesses?.length || !tab?.focusAt || !cubeData) return
+    setPhaseFocus({ label: tab.phaseLabel || 'Phase', processes: tab.focusProcesses, entries: tab.phaseEntries ?? [], kind: tab.phaseKind ?? 'phase' })
+    setRunEntry('phase:current')
+    setRunSeq(null)
+    setPlaying(false)
+    setSelectedCube(null)
+    setModuleFocus(null)
+    setFocused(true)
+    setDimmedIds(new Set())
+    patchTab(tab.id, { focusProcesses: null, phaseLabel: null, phaseEntries: null, phaseKind: null, focusAt: null })
+  }, [tab?.focusAt, tab?.focusProcesses, tab?.phaseLabel, tab?.phaseEntries, tab?.phaseKind, cubeData, patchTab])
 
   // Pre-computed reverse map (who references whom)
   const reverseMap = useMemo(() => cubeData ? buildReverseMap(cubeData) : {}, [cubeData])
@@ -801,13 +872,59 @@ function CubeMapInner({ tab }) {
       if (!seeds.length) return null
       return getReachable(seeds, traceDepth, traceKinds, ctx)
     }
+    if (phaseFocus?.processes?.length) {
+      const seeds = phaseFocus.processes.map(p => `proc:${p}`).filter(id => processData[id.slice(5)])
+      if (seeds.length) return getReachable(seeds, traceDepth, traceKinds, ctx)
+    }
     if (!selectedCube) return null
     return getReachable([selectedCube], traceDepth, traceKinds, ctx)
-  }, [moduleFocus, selectedCube, traceDepth, traceKinds, cubeData, processData, dimData, reverseMap, processCallers, modulesMap])
+  }, [moduleFocus, phaseFocus, selectedCube, traceDepth, traceKinds, cubeData, processData, dimData, reverseMap, processCallers, modulesMap])
 
   // ── Build graph ───────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!cubeData) return
+
+    // Playback scope: show only the processes/cubes/dims the run touches, so a
+    // single-process movie is not shrunk to fit the whole model.
+    if (runScope) {
+      const isP = id => id.startsWith('proc:') && processData[id.slice(5)]
+      const isD = id => id.startsWith('dim:') && dimData[id.slice(4)]
+      const ids = [...runScope.nodes].filter(id => cubeData[id] || isP(id) || isD(id))
+      const nodeSet = new Set(ids)
+      const rawNodes = ids.map(id => {
+        if (isP(id)) return { id, type: 'process', data: { label: id.slice(5) }, position: { x: 0, y: 0 } }
+        if (isD(id)) return { id, type: 'dim', data: { label: id.slice(4) }, position: { x: 0, y: 0 } }
+        const d = cubeData[id]
+        return { id, type: 'cube', data: { label: id, hasRules: d?.hasRules, ruleLoc: d?.ruleLoc ?? 0, dimCount: d?.dims?.length ?? 0 }, position: { x: 0, y: 0 } }
+      })
+      // Build the edges from the run's own ids, so the Show highlight matches exactly.
+      const EDGE_TYPE = { read: 'process_read', write: 'process_write', call: 'process_call', dimwrite: 'process_dimwrite', calc: 'rule_calc', feeder: 'rule_feeder', dimuse: 'dim_used_by' }
+      const rawEdges = []
+      for (const eid of runScope.edges) {
+        const i1 = eid.indexOf(':')
+        const kind = eid.slice(0, i1)
+        const rest = eid.slice(i1 + 1)
+        const i2 = rest.indexOf(':')
+        if (i2 < 0) continue
+        const a = rest.slice(0, i2), b = rest.slice(i2 + 1)
+        const map = {
+          read:      [a, `proc:${b}`],
+          write:     [`proc:${a}`, b],
+          call:      [`proc:${a}`, `proc:${b}`],
+          dimwrite:  [`proc:${a}`, `dim:${b}`],
+          calc:      [a, b],
+          feeder:    [a, b],
+          dimuse:    [`dim:${a}`, b],
+        }[kind]
+        if (!map) continue
+        const [source, target] = map
+        if (nodeSet.has(source) && nodeSet.has(target)) rawEdges.push({ id: eid, source, target, type: EDGE_TYPE[kind] })
+      }
+      setNodes(applyDagreLayout(rawNodes, rawEdges, layout))
+      setEdges(rawEdges)
+      setTimeout(() => fitView({ padding: 0.14, duration: 300, maxZoom: FIT_MAX_ZOOM, minZoom: FIT_MIN_ZOOM }), 80)
+      return
+    }
 
     // Focus mode: the reachable subgraph (cubes + processes + dims) around the
     // selected node or module, through the chosen edge kinds, laid out together.
@@ -851,8 +968,8 @@ function CubeMapInner({ tab }) {
           ;(dimData[name]?.cubes ?? []).forEach(c => addEdge('dim_used_by', id, c))
         } else {
           const d = cubeData[id]
-          if (showCalc) (d?.ruleCalcRefs ?? []).forEach(t => addEdge('rule_calc', id, t))
-          if (showFeeders) (d?.ruleFeederRefs ?? []).forEach(t => addEdge('rule_feeder', id, t))
+          if (traceKinds.rule) (d?.ruleCalcRefs ?? []).forEach(t => addEdge('rule_calc', id, t))
+          if (traceKinds.feeder) (d?.ruleFeederRefs ?? []).forEach(t => addEdge('rule_feeder', id, t))
         }
       }
       setNodes(applyGrouping(applyDagreLayout(rawNodes, rawEdges, layout), showClusters, groupRegex))
@@ -934,14 +1051,13 @@ function CubeMapInner({ tab }) {
 
     setNodes(applyGrouping(applyDagreLayout(rawNodes, rawEdges, layout), showClusters, groupRegex))
     setEdges(rawEdges)
-    if (!focused) { setSelectedCube(null); setDimmedIds(new Set()) }
-  }, [cubeData, processData, dimData, allTI, showDims, showProcesses, showCalc, showFeeders, layout, dimFilter, showClusters, groupRegex, focused, selectedCube, traceDepth, traceKinds, reachableSet])
+  }, [cubeData, processData, dimData, allTI, showDims, showProcesses, showCalc, showFeeders, layout, dimFilter, showClusters, groupRegex, focused, selectedCube, traceDepth, traceKinds, reachableSet, runScope, fitView])
 
   // ── Fit view ──────────────────────────────────────────────────────────────────
   // (not while Show is running — the camera holds still there; startShow does one fit itself)
   const showRunningRef = useRef(false)
   useEffect(() => {
-    if (nodes.length && !showRunningRef.current) setTimeout(() => fitView({ padding: 0.12, duration: 400 }), 50)
+    if (nodes.length && !showRunningRef.current) setTimeout(() => fitView({ padding: 0.12, duration: 400, maxZoom: FIT_MAX_ZOOM, minZoom: FIT_MIN_ZOOM }), 50)
   }, [nodes.length, layout, dimFilter, focused, selectedCube])
 
   // ── Show playback ───────────────────────────────────────────────────────────
@@ -951,25 +1067,47 @@ function CubeMapInner({ tab }) {
       .filter(n => !(processCallers[n]?.length) && processData[n].steps.length)
       .map(n => ({ key: `process:${n}`, label: n, len: buildRunSequence({ kind: 'process', name: n }, processData, cubeData ?? {}, chores).length }))
       .sort((a, b) => b.len - a.len || a.label.localeCompare(b.label))
-    return [...chores.map(c => ({ key: `chore:${c.name}`, label: `⏱ ${c.name}${c.active ? '' : ' (inactive)'}` })), ...procs]
-  }, [processData, processCallers, cubeData, chores])
+    const phaseEntry = phaseFocus
+      ? [{ key: 'phase:current', label: `▶ ${phaseFocus.kind === 'process' ? 'Process' : phaseFocus.kind === 'chore' ? 'Chore' : 'Phase'} — ${phaseFocus.label}`, len: buildPhaseSequence(phaseFocus, processData, cubeData ?? {}, chores).length }]
+      : []
+    return [...phaseEntry, ...chores.map(c => ({ key: `chore:${c.name}`, label: `⏱ ${c.name}${c.active ? '' : ' (inactive)'}` })), ...procs]
+  }, [phaseFocus, processData, processCallers, cubeData, chores])
 
   const startShow = useCallback((key) => {
     if (!key || !cubeData) return
     const [kind, ...rest] = key.split(':')
-    const seq = buildRunSequence({ kind, name: rest.join(':') }, processData, cubeData, chores)
-      .filter(it => showDims || !it.nodes.some(n => n.startsWith('dim:')) || it.edges.length === 0)
-    // the playback needs every process on the map
-    setAllTI(true); setShowProcesses(true); setFocused(false); setSelectedCube(null); setModuleFocus(null); setDimFilter(null)
+    const raw = kind === 'phase'
+      ? buildPhaseSequence(phaseFocus, processData, cubeData, chores)
+      : buildRunSequence({ kind, name: rest.join(':') }, processData, cubeData, chores)
+    const seq = raw.filter(it => showDims || !(it.nodes ?? []).some(n => n.startsWith('dim:')) || (it.edges ?? []).length === 0)
+    playbackReturnRef.current = { phaseFocus, selectedCube, focused, allTI, showProcesses, sidebarOpen }
+    const nodes = new Set(), edges = new Set()
+    for (const it of seq) { (it.nodes ?? []).forEach(n => nodes.add(n)); (it.edges ?? []).forEach(e => edges.add(e)) }
+    setRunScope({ nodes, edges })
+    setFocused(false); setSelectedCube(null); setModuleFocus(null); setDimFilter(null)
+    setSidebarOpen(false)   // give the movie the canvas
+    if (kind !== 'phase') setPhaseFocus(null)
     setRunEntry(key); setRunSeq(seq); setRunIdx(0); setPlaying(true)
+    patchTab(tab?.id, { focusProcesses: null, phaseLabel: null, phaseEntries: null, phaseKind: null, focusCube: null, focusAt: null })
     showRunningRef.current = true
-    // one fit once the All TI layout has rendered, then the camera stays where the user puts it
-    setTimeout(() => fitView({ padding: 0.08, duration: 400 }), 250)
-  }, [cubeData, processData, chores, showDims, fitView])
+  }, [cubeData, processData, chores, showDims, fitView, phaseFocus])
 
   useEffect(() => { if (!runSeq) showRunningRef.current = false }, [runSeq])
 
-  const stopShow = useCallback(() => { setPlaying(false); setRunSeq(null); setShowBar(false) }, [])
+  const stopShow = useCallback(() => {
+    setPlaying(false); setRunSeq(null); setShowBar(false); setRunScope(null)
+    const prev = playbackReturnRef.current
+    if (prev) {
+      setPhaseFocus(prev.phaseFocus)
+      setSelectedCube(prev.selectedCube)
+      setFocused(prev.focused)
+      setAllTI(prev.allTI)
+      setShowProcesses(prev.showProcesses)
+      setSidebarOpen(prev.sidebarOpen ?? true)
+    }
+    playbackReturnRef.current = null
+    showRunningRef.current = false
+  }, [])
 
   useEffect(() => {
     if (!playing || !runSeq) return
@@ -1072,6 +1210,7 @@ function CubeMapInner({ tab }) {
     if (node.type === 'group') { focusModule(node.data.label); return }
     setSelectedCube(node.id)
     setModuleFocus(null)
+    setPhaseFocus(null)
     setFocused(true)
     const n = getNode(node.id)
     if (n) setCenter(n.position.x + NODE_W / 2, n.position.y + NODE_H / 2, { duration: 350, zoom: 1.2 })
@@ -1098,12 +1237,39 @@ function CubeMapInner({ tab }) {
   }, [cubeData, openTab, srv])
 
   const onPaneClick = useCallback(() => {
-    setModuleFocus(null); setSelectedCube(null); setDimmedIds(new Set()); setFocused(false)
+    setModuleFocus(null); setSelectedCube(null); setPhaseFocus(null); setDimmedIds(new Set()); setFocused(false)
   }, [])
 
   const exitFocus = useCallback(() => {
-    setModuleFocus(null); setSelectedCube(null); setDimmedIds(new Set()); setFocused(false)
+    setModuleFocus(null); setSelectedCube(null); setPhaseFocus(null); setDimmedIds(new Set()); setFocused(false)
   }, [])
+
+  // In a focused/phase/player map the Follow controls and the left Rules/Feeders/All TI
+  // buttons must drive the same state, or one set of checkboxes appears locked.
+  const focusMode = !!(focused || phaseFocus || runScope)
+  const rulesVisible = focusMode ? !!traceKinds.rule : showCalc
+  const feedersVisible = focusMode ? !!traceKinds.feeder : showFeeders
+  const tiKinds = ['read', 'write', 'call', 'dimwrite', 'dimuse']
+  const tiVisible = focusMode ? tiKinds.some(k => traceKinds[k]) : allTI
+  const toggleRules = () => {
+    const next = !rulesVisible
+    setShowCalc(next)
+    setTraceKinds(k => ({ ...k, rule: next }))
+  }
+  const toggleFeeders = () => {
+    const next = !feedersVisible
+    setShowFeeders(next)
+    setTraceKinds(k => ({ ...k, feeder: next }))
+  }
+  const toggleTI = () => {
+    if (focusMode) {
+      const next = !tiVisible
+      setTraceKinds(k => ({ ...k, read: next, write: next, call: next, dimwrite: next, dimuse: next }))
+    } else {
+      setAllTI(v => !v)
+      setShowProcesses(true)
+    }
+  }
 
   // Esc exits focus / module view
   useEffect(() => {
@@ -1124,9 +1290,21 @@ function CubeMapInner({ tab }) {
   // ── Open tab actions ──────────────────────────────────────────────────────────
   const openRules   = (cube)  => openTab({ id: `rules:${srv}:${cube}`,           type: 'rules',      label: cube,    server: srv, cube })
   const openCube    = (cube)  => openTab({ id: `cubeeditor:${srv}:${cube}`,       type: 'cubeeditor', label: cube,    server: srv, cube })
+  // Drill-ins from the player/runbook keep the map visible beside them.
+  // Alt-click "opens here" instead (the old replace-the-pane behaviour).
+  const openProcessCtx   = (name, openHere) => (openHere ? openTab : openTabToSide)({ id: `process:${srv}:${name}`,   type: 'process',    label: name, server: srv, name, content: null })
+  const openDimensionCtx = (dim, openHere)  => (openHere ? openTab : openTabToSide)({ id: `dimension:${srv}:${dim}`,  type: 'dimension',  label: dim,  server: srv, dimension: dim })
+  const openRulesCtx     = (cube, openHere) => (openHere ? openTab : openTabToSide)({ id: `rules:${srv}:${cube}`,     type: 'rules',      label: cube, server: srv, cube })
+  const openCubeCtx      = (cube, openHere) => (openHere ? openTab : openTabToSide)({ id: `cubeeditor:${srv}:${cube}`, type: 'cubeeditor', label: cube, server: srv, cube })
+  const openTransactionLog = (cube, dims = [], label = '') => openTabToSide({
+    id: `txlog:${srv}:${cube}:${Date.now()}`,
+    type: 'transactionlog',
+    label: `Log — ${cube}${label ? ` · ${label}` : ''}`,
+    server: srv, cube, cubeDims: dims, elements: null,
+  }, { noSplit: true })
 
   // ── Dim filter ────────────────────────────────────────────────────────────────
-  const handleFilterDim = (dim) => { setDimFilter(p => p === dim ? null : dim); setModuleFocus(null); setSelectedCube(null); setFocused(false) }
+  const handleFilterDim = (dim) => { setDimFilter(p => p === dim ? null : dim); setModuleFocus(null); setSelectedCube(null); setPhaseFocus(null); setFocused(false) }
 
   // ── Sidebar list ──────────────────────────────────────────────────────────────
   const filteredCubes = useMemo(() => {
@@ -1137,7 +1315,7 @@ function CubeMapInner({ tab }) {
 
   const transitiveCount = reachableSet ? reachableSet.size - 1 : 0
   const reachableCapped = reachableSet ? reachableSet.size >= MAX_FOCUS_NODES : false
-  const focusLabel = moduleFocus ? `module ${moduleFocus}` : (selectedCube?.replace(/^(proc|dim):/, '') ?? '')
+  const focusLabel = phaseFocus ? phaseFocus.label : moduleFocus ? `module ${moduleFocus}` : (selectedCube?.replace(/^(proc|dim):/, '') ?? '')
 
   const spotlitCount = useMemo(() => {
     if (!spotQ || !cubeData) return 0
@@ -1181,6 +1359,7 @@ function CubeMapInner({ tab }) {
       <SvgMarkers />
 
       {/* ── Sidebar ────────────────────────────────────────────────────────── */}
+      {sidebarOpen ? (
       <div className="cubemap-root" style={{
         width: 222, borderRight: '1px solid var(--cm-border)',
         background: 'var(--cm-panel-bg)', display: 'flex', flexDirection: 'column', flexShrink: 0,
@@ -1190,14 +1369,20 @@ function CubeMapInner({ tab }) {
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             <Network size={14} style={{ color: 'var(--cm-icon)', flexShrink: 0 }} />
             <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--cm-text)', flex: 1 }}>Cube Map</span>
+            <button onClick={() => setSidebarOpen(false)} title="Hide the object list" style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 3, color: 'var(--cm-icon)', borderRadius: 4, display: 'flex', alignItems: 'center' }}>
+              <PanelLeftClose size={13} />
+            </button>
+            <button onClick={() => setRunbookOpen(true)} title="Runbook — phased review of a model update" style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 3, color: runbookOpen ? '#f59e0b' : 'var(--cm-icon)', borderRadius: 4, display: 'flex', alignItems: 'center' }}>
+              <Milestone size={13} />
+            </button>
             <button onClick={() => setShowBar(v => !v)} title="Show — step through a run" style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 3, color: showBar ? '#f59e0b' : 'var(--cm-icon)', borderRadius: 4, display: 'flex', alignItems: 'center' }}>
               <Clapperboard size={12} />
             </button>
             <button onClick={() => setShowLegend(v => !v)} title="Legend" style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 3, color: showLegend ? 'var(--cm-link)' : 'var(--cm-icon)', borderRadius: 4, display: 'flex', alignItems: 'center' }}>
               <BookOpen size={12} />
             </button>
-            <button onClick={() => setShowMiniMap(v => !v)} title="Overview map" style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 3, color: showMiniMap ? 'var(--cm-link)' : 'var(--cm-icon)', borderRadius: 4, display: 'flex', alignItems: 'center' }}>
-              <MapIcon size={12} />
+            <button onClick={fitToScreen} title="Fit to screen — may zoom out below the normal minimum for a huge map" style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 3, color: 'var(--cm-icon)', borderRadius: 4, display: 'flex', alignItems: 'center' }}>
+              <Maximize2 size={13} />
             </button>
             <button onClick={fetchModel} disabled={loading} title="Refresh" style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 3, color: 'var(--cm-icon)', borderRadius: 4, display: 'flex', alignItems: 'center' }}>
               <RefreshCw size={13} style={{ animation: loading ? 'cm-spin 1s linear infinite' : 'none' }} />
@@ -1253,8 +1438,8 @@ function CubeMapInner({ tab }) {
 
           {/* Edge + cluster toggles */}
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-            <Toggle active={showCalc}      onClick={() => setShowCalc(v => !v)}      color="#b45309" label="Rules" />
-            <Toggle active={showFeeders}   onClick={() => setShowFeeders(v => !v)}   color="#475569" label="Feeders" dashed />
+            <Toggle active={rulesVisible}    onClick={toggleRules}    color="#b45309" label="Rules" />
+            <Toggle active={feedersVisible}  onClick={toggleFeeders}  color="#475569" label="Feeders" dashed />
             <Toggle active={showClusters}  onClick={() => setShowClusters(v => !v)}  color="#6366f1" label="Groups" title={groupRegex ? `Group by regex: ${groupRegex}` : 'Group by prefix before first underscore'} />
             {modules.length > 0 && (
               <select
@@ -1267,9 +1452,15 @@ function CubeMapInner({ tab }) {
                 {modules.map(m => <option key={m} value={m}>{m}</option>)}
               </select>
             )}
-            <Toggle active={showProcesses} onClick={() => setShowProcesses(v => !v)} color="#10b981" label="TI" />
-            <Toggle active={allTI && showProcesses} onClick={() => { setAllTI(v => !v); setShowProcesses(true) }} color="#0ea5e9" label="All TI" />
-            {allTI && showProcesses && <Toggle active={showDims} onClick={() => setShowDims(v => !v)} color="#8b5cf6" label="Dims" />}
+            <select value={scope} onChange={e => { setScope(e.target.value); setSelectedCube(null); setFocused(false); setPhaseFocus(null); setModuleFocus(null) }}
+              title="Show only one model prefix — e.g. WFP hides LAB"
+              style={{ fontSize: 10, padding: '2px 4px', background: 'var(--cm-node-bg)', color: 'var(--cm-text)', border: `1px solid ${scope ? 'var(--cm-link)' : 'var(--cm-border)'}`, borderRadius: 4, cursor: 'pointer', maxWidth: 120 }}>
+              <option value="">All models</option>
+              {prefixes.map(p => <option key={p} value={p}>{p}</option>)}
+            </select>
+            {!focusMode && <Toggle active={showProcesses} onClick={() => setShowProcesses(v => !v)} color="#10b981" label="TI" />}
+            <Toggle active={tiVisible} onClick={toggleTI} color="#0ea5e9" label="All TI" />
+            {!focusMode && allTI && showProcesses && <Toggle active={showDims} onClick={() => setShowDims(v => !v)} color="#8b5cf6" label="Dims" />}
           </div>
 
           {/* Layout */}
@@ -1324,6 +1515,13 @@ function CubeMapInner({ tab }) {
           </div>
         )}
       </div>
+      ) : (
+        <div className="cubemap-root" style={{ width: 34, borderRight: '1px solid var(--cm-border)', background: 'var(--cm-panel-bg)', display: 'flex', flexDirection: 'column', alignItems: 'center', paddingTop: 8, flexShrink: 0 }}>
+          <button onClick={() => setSidebarOpen(true)} title="Show the object list" style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, color: 'var(--cm-icon)', borderRadius: 4, display: 'flex' }}>
+            <PanelLeftOpen size={14} />
+          </button>
+        </div>
+      )}
 
       {/* ── Graph canvas ───────────────────────────────────────────────────── */}
       <div ref={canvasRef} className="cubemap-root" style={{ flex: 1, position: 'relative' }}>
@@ -1340,20 +1538,11 @@ function CubeMapInner({ tab }) {
           minZoom={0.04}
           maxZoom={3}
           fitView
+          minZoom={FIT_MIN_ZOOM_FULL}
           proOptions={{ hideAttribution: true }}
         >
           <Background color={dark ? '#1e1e30' : '#cbd5e1'} gap={24} size={1} />
           <Controls />
-          {showMiniMap && (
-            <MiniMap
-              nodeColor={n => {
-                if (n.type === 'group') return 'transparent'
-                if (n.data?.hasRules) return dark ? '#78350f' : '#fde68a'
-                return dark ? '#1e2a3a' : '#dbeafe'
-              }}
-              maskColor={dark ? 'rgba(8,8,16,0.72)' : 'rgba(241,245,249,0.72)'}
-            />
-          )}
         </ReactFlow>
         {showLegend && <Legend />}
         {showBar && (
@@ -1366,9 +1555,13 @@ function CubeMapInner({ tab }) {
             onRestart={() => { setRunIdx(0); setPlaying(false) }}
             speed={speed} onSpeed={setSpeed} follow={follow} onFollow={setFollow}
             onClose={stopShow}
+            processInfo={processInfo} cubeData={cubeData} dimData={dimData}
+            onOpenProcess={openProcessCtx} onOpenRules={openRulesCtx} onOpenCube={openCubeCtx} onOpenDimension={openDimensionCtx}
+            onPause={() => setPlaying(false)}
+            showInfo={stepInfoOpen} onToggleInfo={() => setStepInfoOpen(v => !v)} onBeforeNavigate={saveSession}
           />
         )}
-        {focused && (selectedCube || moduleFocus) && (
+        {focused && (selectedCube || moduleFocus || phaseFocus) && (
           <div style={{
             position: 'absolute', top: 10, left: 10, zIndex: 5,
             background: 'var(--cm-panel-bg)', border: '1px solid var(--cm-border)',
@@ -1378,7 +1571,8 @@ function CubeMapInner({ tab }) {
           }}>
             <GitBranch size={12} style={{ color: 'var(--cm-link)', flexShrink: 0 }} />
             <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              Focused on <b style={{ color: 'var(--cm-link)' }}>{focusLabel}</b>
+              {phaseFocus ? (phaseFocus.kind === 'process' ? 'Process' : phaseFocus.kind === 'chore' ? 'Chore' : 'Phase') : 'Focused on'} <b style={{ color: 'var(--cm-link)' }}>{focusLabel}</b>
+              {phaseFocus && <span style={{ color: 'var(--cm-text-muted)' }}> · {phaseFocus.processes.length} process{phaseFocus.processes.length !== 1 ? 'es' : ''}</span>}
               {transitiveCount > 0 && <span style={{ color: 'var(--cm-text-muted)' }}> · {transitiveCount} connected{reachableCapped ? ' (capped)' : ''}</span>}
             </span>
             {moduleFocus && (
@@ -1402,6 +1596,20 @@ function CubeMapInner({ tab }) {
           </div>
         )}
       </div>
+        <RunbookDialog
+          open={runbookOpen}
+          onClose={() => setRunbookOpen(false)}
+          server={srv}
+          processData={processData}
+          cubeData={cubeData}
+          chores={chores}
+          onOpenProcess={openProcessCtx}
+          onOpenPhaseMap={(label, processes, entries, kind = 'phase') => {
+            const pfx = processes[0] ? prefixOf(processes[0]) : ''
+            if (pfx && pfx !== scope) setScope(pfx)
+            openTab({ id: `cubemap:${srv}`, type: 'cubemap', label: 'Cube Map', server: srv, focusProcesses: processes, phaseLabel: label, phaseEntries: entries, phaseKind: kind, focusAt: Date.now() })
+          }}
+        />
 
       {/* ── Detail panel ───────────────────────────────────────────────────── */}
       {selectedCube && selectedType === 'cube' && cubeData?.[selectedCube] && (
@@ -1414,6 +1622,7 @@ function CubeMapInner({ tab }) {
             onClose={() => { setSelectedCube(null); setDimmedIds(new Set()) }}
             onOpenRules={() => openRules(selectedCube)}
             onOpenCube={() => openCube(selectedCube)}
+            onOpenLog={(cb, dims) => openTransactionLog(cb, dims)}
             processCallers={processCallers}
             onFilterDim={handleFilterDim}
             dimFilter={dimFilter}
@@ -1431,7 +1640,7 @@ function CubeMapInner({ tab }) {
 
 // ── Show bar ─────────────────────────────────────────────────────────────────
 
-function ShowBar({ entries, entry, onEntry, seq, idx, step, playing, onPlay, onPrev, onNext, onRestart, speed, onSpeed, follow, onFollow, onClose }) {
+function ShowBar({ entries, entry, onEntry, seq, idx, step, playing, onPlay, onPrev, onNext, onRestart, speed, onSpeed, follow, onFollow, onClose, processInfo = {}, cubeData = {}, dimData = {}, onOpenProcess, onOpenRules, onOpenCube, onOpenDimension, onPause, showInfo, onToggleInfo, onBeforeNavigate }) {
   const btn = { background: 'none', border: '1px solid var(--cm-border)', borderRadius: 4, cursor: 'pointer', padding: '3px 6px', color: 'var(--cm-text)', display: 'flex', alignItems: 'center' }
   return (
     <div style={{
@@ -1462,6 +1671,10 @@ function ShowBar({ entries, entry, onEntry, seq, idx, step, playing, onPlay, onP
         <label style={{ display: 'flex', alignItems: 'center', gap: 3, color: 'var(--cm-text-muted)', cursor: 'pointer' }} title="Pan (never zoom) to a step when it's off-screen">
           <input type="checkbox" checked={follow} onChange={e => onFollow(e.target.checked)} /> Follow
         </label>
+        <button style={{ ...btn, borderColor: showInfo ? '#0ea5e9' : 'var(--cm-border)', color: showInfo ? '#0ea5e9' : 'var(--cm-text)' }}
+          onClick={onToggleInfo} disabled={!step} title="What is this step?">
+          <Info size={12} />
+        </button>
         <button style={{ ...btn, border: 'none' }} onClick={onClose} title="Close Show"><X size={12} /></button>
       </div>
       {!entries.length && <div style={{ color: 'var(--cm-text-muted)' }}>No entry points — no process here reads, writes or calls anything.</div>}
@@ -1474,12 +1687,105 @@ function ShowBar({ entries, entry, onEntry, seq, idx, step, playing, onPlay, onP
             <span style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--cm-text-muted)', flexShrink: 0 }}>{idx + 1} / {seq.length}</span>
             <span style={{ fontWeight: 600, fontFamily: 'monospace' }}>{step.caption}</span>
           </div>
+          {showInfo && <StepInfo step={step} idx={idx} total={seq.length} processInfo={processInfo} cubeData={cubeData} dimData={dimData}
+            onOpenProcess={onOpenProcess} onOpenRules={onOpenRules} onOpenCube={onOpenCube} onOpenDimension={onOpenDimension} onPause={onPause}
+            onBeforeNavigate={onBeforeNavigate} onClose={onToggleInfo} />}
           {idx === seq.length - 1 && (
             <div style={{ fontSize: 10, color: 'var(--cm-text-muted)', opacity: 0.75 }}>
               End of run. Order follows the code as written — loops play once; it's not a replay of a real run.
             </div>
           )}
         </>
+      )}
+    </div>
+  )
+}
+
+// ── Step details (Show info) ─────────────────────────────────────────────────
+function StepInfo({ step, idx, total, processInfo, cubeData, dimData, onOpenProcess, onOpenRules, onOpenCube, onOpenDimension, onPause, onBeforeNavigate, onClose }) {
+  const procName = step?.path?.[step.path.length - 1]
+  const proc = procName && !String(procName).startsWith('⏱') ? procName : null
+  const info = proc ? processInfo[proc] : null
+  const cube = step?.nodes?.find(n => !n.startsWith('proc:') && !n.startsWith('dim:') && cubeData[n]) ?? null
+  const dim = step?.nodes?.find(n => n.startsWith('dim:'))?.slice(4) ?? null
+  const cd = cube ? cubeData[cube] : null
+  const dd = dim ? dimData[dim] : null
+  const open = fn => { onPause?.(); onBeforeNavigate?.(); fn?.() }
+
+  const label = { fontSize: 9, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--cm-text-muted)', opacity: 0.7, marginBottom: 2 }
+  const link = { display: 'inline-flex', alignItems: 'center', gap: 3, padding: '2px 6px', fontSize: 10, borderRadius: 4, border: '1px solid var(--cm-border)', background: 'var(--cm-node-bg)', color: 'var(--cm-text)', cursor: 'pointer' }
+  const mono = { fontFamily: 'monospace', color: 'var(--cm-link)' }
+  const chip = { padding: '1px 5px', borderRadius: 3, border: '1px solid var(--cm-border)', fontSize: 9, color: 'var(--cm-text)' }
+
+  return (
+    <div style={{ background: 'var(--cm-toolbar)', border: '1px solid var(--cm-border)', borderRadius: 6, padding: '7px 9px', maxHeight: 260, overflow: 'auto', display: 'flex', flexDirection: 'column', gap: 7 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 10, color: 'var(--cm-text-muted)' }}>
+        <Info size={11} style={{ color: '#0ea5e9' }} />
+        <span>Step {idx + 1} of {total}</span>
+        <button onClick={onClose} style={{ marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--cm-text-muted)', display: 'flex' }}><X size={10} /></button>
+      </div>
+
+      {proc && (
+        <div>
+          <div style={label}>Process</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+            <span style={{ ...mono, fontSize: 11 }}>{proc}</span>
+            <button style={link} onClick={ev => open(() => onOpenProcess(proc, ev.altKey))}><ExternalLink size={9} /> Open process</button>
+          </div>
+          {info?.summary ? (
+            <div style={{ marginTop: 3 }}>
+              <div style={{ ...label, marginBottom: 0 }}>{info.sourceKind === 'manual' ? 'Summary' : 'AI summary'}{info.at ? ' · ' + String(info.at).slice(0, 10) : ''}</div>
+              <div style={{ color: 'var(--cm-text)', lineHeight: 1.5 }}>{info.summary}</div>
+            </div>
+          ) : info?.header ? (
+            <div style={{ marginTop: 3, color: 'var(--cm-text-muted)', lineHeight: 1.5 }}>{info.header}</div>
+          ) : null}
+          {info?.parameters?.length > 0 && (
+            <div style={{ marginTop: 3, display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+              <span style={{ ...label, marginBottom: 0 }}>Parameters</span>
+              {info.parameters.map(p => <span key={p} style={chip}>{p}</span>)}
+            </div>
+          )}
+        </div>
+      )}
+
+      {cube && (
+        <div>
+          <div style={label}>Cube {step.kind === 'read' ? 'read' : step.kind === 'write' ? 'written' : ''}</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+            <span style={{ ...mono, fontSize: 11 }}>{cube}</span>
+            {cd?.hasRules && <button style={link} onClick={ev => open(() => onOpenRules(cube, ev.altKey))}><Code2 size={9} /> Open rules</button>}
+            <button style={link} onClick={ev => open(() => onOpenCube(cube, ev.altKey))}><ExternalLink size={9} /> Open cube</button>
+          </div>
+          {step.measures?.length > 0 && (
+            <div style={{ marginTop: 3, display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+              <span style={{ ...label, marginBottom: 0 }}>Writes</span>
+              {step.measures.map(m => <span key={m} style={chip}>{m}</span>)}
+            </div>
+          )}
+          <div style={{ marginTop: 3, display: 'flex', gap: 8, flexWrap: 'wrap', fontSize: 10, color: 'var(--cm-text-muted)' }}>
+            <span>{cd?.dims?.length ?? 0} dimensions</span>
+            <span>{cd?.hasRules ? `${cd.ruleLoc ?? 0} rule lines` : 'no rules'}</span>
+            {cd?.dims?.length > 0 && <span title={cd.dims.join(', ')}>{cd.dims.slice(0, 5).join(', ')}{cd.dims.length > 5 ? '…' : ''}</span>}
+          </div>
+        </div>
+      )}
+
+      {dim && (
+        <div>
+          <div style={label}>Dimension</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+            <span style={{ ...mono, fontSize: 11 }}>{dim}</span>
+            <button style={link} onClick={ev => open(() => onOpenDimension(dim, ev.altKey))}><ExternalLink size={9} /> Open dimension</button>
+          </div>
+          <div style={{ marginTop: 3, fontSize: 10, color: 'var(--cm-text-muted)' }}>
+            {dd?.cubes?.length ?? 0} cubes use it · {dd?.writers?.length ?? 0} TIs change it
+          </div>
+        </div>
+      )}
+
+      {!proc && !cube && !dim && (
+        <div style={{ color: 'var(--cm-text-muted)' }}>{step?.caption}</div>
       )}
     </div>
   )

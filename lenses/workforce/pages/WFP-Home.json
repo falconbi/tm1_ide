@@ -1,0 +1,24 @@
+{
+  "name": "WFP-Home",
+  "status": "draft",
+  "owner": "admin",
+  "version": 26,
+  "updated": "2026-10-25T03:01:33.660Z",
+  "description": "Your front page: what needs you (from the model's checks and your TM1 groups), where the plan stands (four KPIs with trends), your pages, and every page.",
+  "folder": "Workforce",
+  "title": "0 Workforce home",
+  "icon": "users",
+  "color": "#0f766e",
+  "image": "",
+  "config": {
+    "version": "Forecast",
+    "compare": "Budget",
+    "year": "2026",
+    "approvers": [
+      "WFP Finance"
+    ]
+  },
+  "created": "2026-10-20T09:18:43.607Z",
+  "createdBy": "admin",
+  "toolkitVersion": 11
+}

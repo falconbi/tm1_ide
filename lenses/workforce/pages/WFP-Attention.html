@@ -1,0 +1,351 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Positions needing attention</title>
+<style>
+:root{--bg:var(--lens-bg,#f6f7f7);--ink:var(--lens-ink,#16201f);--faint:var(--lens-faint,#85908f);--rule:var(--lens-rule,#dfe4e3);--panel:var(--lens-panel,#fff);--accent:var(--lens-accent,#0f766e);--bad:var(--lens-bad,#b4372d);--good:var(--lens-good,#1d7a46);--warn:#b7791f}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}
+.wrap{padding:16px 18px 24px;display:grid;gap:12px;max-width:1700px;margin:0 auto}
+header{display:flex;flex-wrap:wrap;align-items:end;gap:12px 18px}
+h1{font-size:20px;margin:0}
+h2{font-size:12px;margin:0 0 8px;color:var(--faint);text-transform:uppercase;letter-spacing:.07em;font-weight:600}
+h2 .sub{text-transform:none;letter-spacing:0;font-weight:400}
+.sub{font-size:12.5px;color:var(--faint)}
+.controls{display:flex;gap:10px;margin-left:auto;align-items:end;flex-wrap:wrap}
+label{display:grid;gap:3px;font-size:11px;color:var(--faint);text-transform:uppercase;letter-spacing:.06em}
+select,button,input{font:inherit;font-size:13px;padding:5px 10px;border:1px solid var(--rule);border-radius:7px;background:var(--panel);color:var(--ink)}
+input[type=checkbox]{padding:0;width:15px;height:15px;accent-color:var(--accent)}
+button{cursor:pointer}
+button.primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+button:disabled{opacity:.45;cursor:default}
+.card{background:var(--panel);border:1px solid var(--rule);border-radius:10px;padding:12px;min-width:0}
+.two{display:grid;grid-template-columns:minmax(0,3fr) minmax(0,2fr);gap:12px}
+.halves{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px}
+@media (max-width:860px){.two,.halves{grid-template-columns:1fr}}
+.bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px}
+.status{font-size:13px;color:var(--faint)}
+.status.ok{color:var(--good)} .status.err{color:var(--bad)} .status.busy{color:var(--faint)}
+.note{font-size:12px;color:var(--faint);margin:8px 0 0}
+.counts{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px}
+.count{background:var(--panel);border:1px solid var(--rule);border-radius:10px;padding:8px 14px}
+.count b{display:block;font-size:22px;font-variant-numeric:tabular-nums}
+.count span{font-size:12px;color:var(--faint)}
+button.count{font:inherit;color:inherit;text-align:left;cursor:pointer;transition:border-color .12s}
+button.count:hover{border-color:var(--accent)}
+button.count.on{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}
+.count.good b{color:var(--good)} .count.warn b{color:var(--warn)} .count.bad b{color:var(--bad)}
+.scroll{overflow:auto;max-height:520px}
+table.t{border-collapse:collapse;width:100%;font-size:13px;font-variant-numeric:tabular-nums}
+table.t th{position:sticky;top:0;background:var(--panel);text-align:left;font-size:11px;color:var(--faint);text-transform:uppercase;letter-spacing:.05em;font-weight:600;padding:6px 8px;border-bottom:1px solid var(--rule);white-space:nowrap}
+table.t td{padding:6px 8px;border-bottom:1px solid var(--rule);white-space:nowrap}
+table.t td.n,table.t th.n{text-align:right}
+table.t tr.tot td{font-weight:700;background:color-mix(in srgb,var(--rule) 40%,transparent)}
+.pill{display:inline-block;font-size:11px;padding:1px 8px;border-radius:999px;border:1px solid var(--rule);color:var(--faint)}
+.pill.good{color:var(--good);border-color:currentColor} .pill.warn{color:var(--warn);border-color:currentColor} .pill.bad{color:var(--bad);border-color:currentColor}
+.up{color:var(--bad)} .down{color:var(--good)}
+
+/* quiet History icon — the Assumptions look, applied to every lens footer */
+#historyBtn button{background:transparent!important;border-color:transparent!important;font-size:0!important;padding:6px!important;line-height:0}
+#historyBtn button::before{content:"";display:inline-block;width:18px;height:18px;background:var(--faint);-webkit-mask:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22M3%2012a9%209%200%201%200%209-9%209.75%209.75%200%200%200-6.74%202.74L3%208%22/%3E%3Cpath%20d%3D%22M3%203v5h5%22/%3E%3Cpath%20d%3D%22M12%207v5l4%202%22/%3E%3C/svg%3E") center/contain no-repeat;mask:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22M3%2012a9%209%200%201%200%209-9%209.75%209.75%200%200%200-6.74%202.74L3%208%22/%3E%3Cpath%20d%3D%22M3%203v5h5%22/%3E%3Cpath%20d%3D%22M12%207v5l4%202%22/%3E%3C/svg%3E") center/contain no-repeat}
+#historyBtn button:hover::before{background:var(--ink)}
+
+/* Version / Plan month / Actuals — the same strip on every Lens */
+.when{display:flex;flex-wrap:wrap;gap:4px 18px;margin-top:4px}
+.when span{display:inline-flex;align-items:baseline;gap:6px}
+.when em{font-style:normal;font-size:10px;color:var(--faint);text-transform:uppercase;letter-spacing:.06em}
+.when b{font-size:13px;font-weight:600;font-variant-numeric:tabular-nums}
+
+/* Info panel — the ⓘ Info button opens a plain-English card */
+.info-modal{position:fixed;inset:0;background:rgba(10,20,18,.30);display:flex;align-items:flex-start;justify-content:center;padding:7vh 16px;z-index:60}
+.info-modal[hidden]{display:none}
+.info-card{background:var(--panel);border:1px solid var(--rule);border-radius:12px;max-width:660px;width:100%;padding:16px 18px;box-shadow:0 24px 60px rgba(0,0,0,.22);max-height:80vh;overflow:auto}
+.info-head{display:flex;align-items:center;gap:10px;margin-bottom:4px}
+.info-head h3{margin:0;font-size:16px}
+.info-head button{margin-left:auto;border:0;background:transparent;font-size:16px;line-height:1;color:var(--faint);cursor:pointer;padding:4px}
+.info-body{font-size:13px;line-height:1.55}
+.info-body h4{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--faint);margin:14px 0 4px}
+.info-body p{margin:0 0 6px}
+
+.wrap{max-width:1700px;margin:0 auto}
+.foot{display:flex;align-items:center;gap:12px;margin-top:8px}
+.foot .note{margin:0;flex:1}
+/* Info — an icon beside History; the label shows on hover */
+#info{background:transparent!important;border-color:transparent!important;font-size:0!important;padding:6px!important;line-height:0;cursor:pointer;min-width:0}
+#info::before{content:"";display:inline-block;width:18px;height:18px;background:var(--faint,#8a8f98);-webkit-mask:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Ccircle%20cx%3D%2212%22%20cy%3D%2212%22%20r%3D%2210%22/%3E%3Cpath%20d%3D%22M12%2016v-4%22/%3E%3Cpath%20d%3D%22M12%208h.01%22/%3E%3C/svg%3E") center/contain no-repeat;mask:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Ccircle%20cx%3D%2212%22%20cy%3D%2212%22%20r%3D%2210%22/%3E%3Cpath%20d%3D%22M12%2016v-4%22/%3E%3Cpath%20d%3D%22M12%208h.01%22/%3E%3C/svg%3E") center/contain no-repeat}
+#info:hover::before{background:var(--ink,#1f2328)}
+.foot-icons{display:inline-flex;align-items:center;gap:0}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div><h1>Positions needing attention</h1><div class="sub" id="sub"></div><div class="when" id="when"></div></div>
+    <div class="controls"><label style="display:flex;flex-direction:row;align-items:center;gap:6px;text-transform:none;letter-spacing:0;font-size:13px;color:var(--ink)"><input type="checkbox" id="stripes"> Stripes</label><div id="people" style="align-self:center"></div>
+      <label>Version<select id="ver"></select></label>
+      <label>Check<select id="check"><option value="all">All three</option><option value="overfilled">Over-filled positions</option><option value="overbooked">Over-booked people</option><option value="closed">In a closed position</option></select></label>
+      <label>Cost centre<select id="cc"></select></label>
+    </div>
+  </header>
+  <div class="counts" id="counts"></div>
+  <div class="note" id="planchecks" style="margin:6px 0 10px"></div>
+  <div class="card">
+    <div class="bar"><span id="status" class="status"></span>
+      <span style="margin-left:auto;display:flex;gap:8px;align-items:center"><button id="roster" type="button">Positions →</button></span>
+    </div>
+    <div id="grid"></div>
+    <div class="foot"><p class="note">Three control checks, read straight from the model's own rules: a <b>position holding more FTE than it has</b>, a <b>person over 1.0 FTE across positions</b>, and <b>someone in a position that does not exist that month</b>. The assignment processes normally prevent all three, so anything here is bad data. Right-click a position or person for its story.</p><span class="foot-icons"><button id="info" type="button" title="Info: what this page shows" aria-label="Info: what this page shows">Info</button><span id="historyBtn"></span></span></div>
+  </div>
+  <div id="infoModal" class="info-modal" hidden>
+    <div class="info-card">
+      <div class="info-head"><h3>Positions needing attention</h3><button id="infoModalClose" type="button" title="Close">✕</button></div>
+      <div class="info-body"><p>The three control checks: positions holding more FTE than they have, people over 1.0 FTE across positions, and anyone in a position that doesn't exist that month.</p><h4>Good to know</h4><p>Read-only. The assignment processes normally prevent all three, so anything here is bad data. Right-click a position or person for its story.</p></div>
+    </div>
+  </div>
+</div>
+<script src="/lens-kit/lens-kit.js"></script>
+<script>
+// Workforce · Positions needing attention — the three control checks (WFP Assignment
+// Over-filled / Over-booked, WFP Position Map Person In Closed Position). These are
+// rule cells with no feeders, so a NON EMPTY query skips them; this reads the
+// month totals at the consolidation first, then only the months that trip.
+(function () {
+  // ── Workforce helpers (the same small block in every Workforce Lens) ──
+  var $ = function (id) { return document.getElementById(id) }
+  var esc = function (v) { return String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;') }
+  var M = function (d, e) { return '[' + d + '].[' + d + '].[' + String(e).replace(/]/g, ']]') + ']' }
+  // one MDX query; a result cut short by the 20,000-cell limit is an error, never partial numbers
+  var call = function (mdx) { return window.lensBridge.call('execMDX', { mdx: mdx }).then(function (r) { if (r && r.truncated) throw new Error('A query returned more than 20,000 cells and was cut short — narrow it.'); return r }) }
+  var opt = function (list, sel) { return list.map(function (x) { var v = typeof x === 'object' ? x.value : x, l = typeof x === 'object' ? x.label : x; return '<option value="' + esc(v) + '"' + (v === sel ? ' selected' : '') + '>' + esc(l) + '</option>' }).join('') }
+  var say = function (t, k) { var s = $('status'); if (s) { s.textContent = t || ''; s.className = 'status ' + (k || '') } }
+  var fail = function (e) { say(e && e.message ? e.message : String(e), 'err') }
+  var num = function (v) { return v == null || v === '' ? 0 : Number(v) }
+  var gbp = function (v) { return Lens.format(v, Math.abs(v) >= 1e6 ? '£m' : Math.abs(v) >= 1e4 ? '£k' : '£') }
+  var signed = function (v, f) { return (v > 0 ? '+' : v < 0 ? '−' : '') + (f || gbp)(Math.abs(v)) }
+  var monthsOf = function (yr) { var m = []; for (var i = 1; i <= 12; i++) m.push(yr + '-' + (i < 10 ? '0' : '') + i); return m }
+  var MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+  var monthName = function (p) { return p ? MON[Number(p.slice(5)) - 1] + ' ' + p.slice(0, 4) : '' }
+  var attrMDX = function (dim, attrs, set) { var A = '}ElementAttributes_' + dim; return 'SELECT {' + attrs.map(function (a) { return M(A, a) }).join(',') + '} ON 0, {' + (set || 'TM1FILTERBYLEVEL({TM1SUBSETALL([' + dim + '].[' + dim + '])},0)') + '} ON 1 FROM [' + A + ']' }
+  // cost centres with their function (R&D / S&M / G&A) and name, from the model
+  var costCentres = function () {
+    return call(attrMDX('WFP Cost Centre', ['Function', 'CC Name'])).then(function (r) {
+      var list = Lens.rows(r).map(function (x) { return { id: x['WFP Cost Centre'], fn: x.Function || '', name: x['CC Name'] || '' } })
+      var order = []; list.forEach(function (c) { if (order.indexOf(c.fn) < 0) order.push(c.fn) })   // functions in model order
+      return list.sort(function (a, b) { return order.indexOf(a.fn) - order.indexOf(b.fn) || a.id.localeCompare(b.id) })
+    })
+  }
+  var ccOptions = function (ccs, sel, all) {
+    var fns = Array.from(new Set(ccs.map(function (c) { return c.fn })))
+    return (all ? '<option value="">' + esc(all) + '</option>' : '') + fns.map(function (f) {
+      return '<optgroup label="' + esc(f) + '">' + ccs.filter(function (c) { return c.fn === f }).map(function (c) { return '<option value="' + esc(c.id) + '"' + (c.id === sel ? ' selected' : '') + '>' + esc(c.id + ' · ' + c.name) + '</option>' }).join('') + '</optgroup>'
+    }).join('')
+  }
+  // every position with the attributes asked for — in as many queries as the cell limit needs
+  var positions = function (attrs) {
+    return call('SELECT {} ON 0, {TM1FILTERBYLEVEL({TM1SUBSETALL([WFP Position].[WFP Position])},0)} ON 1 FROM [}ElementAttributes_WFP Position]').then(function (r) {
+      var n = r.Axes[1] ? r.Axes[1].Tuples.length : 0, per = Math.max(1, Math.floor(18000 / Math.max(n, 1))), groups = []
+      for (var i = 0; i < attrs.length; i += per) groups.push(attrs.slice(i, i + per))
+      return Promise.all(groups.map(function (g) { return call(attrMDX('WFP Position', g)) })).then(function (rs) {
+        var by = {}, out = []
+        rs.forEach(function (res) { Lens.rows(res).forEach(function (x) { var id = x['WFP Position']; if (!by[id]) { by[id] = { id: id }; out.push(by[id]) } Object.assign(by[id], x) }) })
+        return out
+      })
+    })
+  }
+  // period index <-> month name ('2026-04' = 16)
+  var periodIndex = function () {
+    return call('SELECT {[}ElementAttributes_WFP Period].[}ElementAttributes_WFP Period].[Period Index]} ON 0, {TM1FILTERBYLEVEL({TM1SUBSETALL([WFP Period].[WFP Period])},0)} ON 1 FROM [}ElementAttributes_WFP Period]').then(function (r) {
+      var to = {}, from = {}; Lens.rows(r).forEach(function (x) { var i = Number(x['Period Index']); if (i && /^\d{4}-\d{2}$/.test(x['WFP Period'])) { to[x['WFP Period']] = i; from[i] = x['WFP Period'] } }); return { idx: to, month: from }
+    })
+  }
+  // the latest forecast snapshot (a FCST yyyy-mm version under Non-Calculating) — none = ''
+  var lastSnapshot = function () {
+    return call('SELECT {} ON 0, {[WFP Version].[WFP Version].[Non-Calculating].Children} ON 1 FROM [WFP Headcount]').then(function (r) {
+      var s = (r.Axes[1] ? r.Axes[1].Tuples : []).map(function (t) { return t.Members[0].Name }).filter(function (n) { return /^FCST \d{4}-\d{2}$/.test(n) }).sort()
+      return s.length ? s[s.length - 1] : ''
+    }, function () { return '' })
+  }
+  // the month actuals run to (Actuals Cutoff Index in Forecast)
+  var cutoffIndex = function (version) {
+    return call('SELECT {' + M('WFP Assumptions Measure', 'Actuals Cutoff Index') + '} ON 0 FROM [WFP Assumptions] WHERE (' + M('WFP Period', '2026-01') + ',' + M('WFP Version', version || 'Forecast') + ',' + M('WFP Entity', 'UK Ltd') + ')').then(function (r) { return num((Lens.rows(r)[0] || {})['Actuals Cutoff Index']) })
+  }
+  // ────────────────────────────────────────────────────────────────────
+
+  // ── Stripes: every grid Lens has its own toggle, remembered per user ──
+  var stripeState = function (key) { try { var v = localStorage.getItem('lens-stripes:' + key); return v === null ? true : v === '1' } catch (e) { return true } }
+  var stripeSave = function (key, on) { try { localStorage.setItem('lens-stripes:' + key, on ? '1' : '0') } catch (e) {} }
+
+  // Version · Plan month (first forecast month = the month after the last Actual)
+  // · Actuals to. Rendered into every Lens header; follows the #ver selector.
+  var planMeta = function (el, fallbackVersion) {
+    var draw = function () {
+      var v = ($('ver') && $('ver').value) || fallbackVersion || 'Forecast'
+      return Promise.all([periodIndex(), cutoffIndex('Forecast')]).then(function (r) {
+        var P = r[0], cutoff = Number(r[1]) || 0
+        var pm = P.month[cutoff + 1] || '', am = P.month[cutoff] || ''
+        $(el).innerHTML = '<span><em>Version</em><b>' + esc(v) + '</b></span>' +
+          '<span><em>Plan month</em><b>' + esc(monthName(pm) || '—') + '</b></span>' +
+          '<span><em>Actuals to</em><b>' + esc(monthName(am) || '—') + '</b></span>'
+      }, function () {})
+    }
+    var sel = $('ver'); if (sel) sel.addEventListener('change', draw)
+    return draw()
+  }
+
+  // Info: the ⓘ Info button opens a plain-English card for the page.
+  var infoPanel = function (openId, modalId) {
+    var b = $(openId), m = $(modalId); if (!b || !m) return
+    var close = function () { m.hidden = true }
+    b.onclick = function () { m.hidden = false }
+    var x = $(modalId + 'Close'); if (x) x.onclick = close
+    m.addEventListener('click', function (e) { if (e.target === m) close() })
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape') close() })
+  }
+
+  var C = Lens.config()
+  infoPanel('info', 'infoModal')
+  planMeta('when', 'Forecast')
+  var striped = stripeState('wfp-attention')
+  $('stripes').checked = striped
+  $('stripes').onchange = function () { striped = this.checked; stripeSave('wfp-attention', striped); if (g) g.stripes(striped) }
+  var A = 'WFP Assignment', MAP = 'WFP Position Map', PD = 'WFP Position', ED = 'WFP Employee'
+  var P = null, months = [], ccs = [], g = null, tg = null, hp = null, all = [], people = null
+  var ver = function () { return $('ver').value }
+  var mm = function (x) { return M('WFP Position Map Measure', x) }
+  var am = function (x) { return M('WFP Assignment Measure', x) }
+  var leafP = function () { return 'TM1FILTERBYLEVEL({TM1SUBSETALL([' + PD + '].[' + PD + '])},0)' }
+  var leafE = function () { return 'TM1FILTERBYLEVEL({TM1SUBSETALL([' + ED + '].[' + ED + '])},0)' }
+  var cols = function () { return months.map(function (p) { return M('WFP Period', p) }).join(',') }
+
+  // month totals at the consolidation — cheap, and always computed (never NON EMPTY)
+  function monthTotals(v, cube, measure, measureDim, pos, emp) {
+    var where = [M('WFP Version', v), M(PD, pos)].concat(emp ? [M(ED, emp)] : []).concat([M(measureDim, measure)])
+    return call('SELECT {' + cols() + '} ON 0 FROM [' + cube + '] WHERE (' + where.join(',') + ')').then(function (r) { return Lens.rows(r)[0] || {} })
+  }
+  // only a tripped month is scanned, over every leaf — one month is under the cell limit
+  function scanMonth(v, cube, measure, measureDim, dim, pos, emp, p) {
+    // the member dimension is on axis 1, so a position slicer only belongs there for a person scan
+    var where = [M('WFP Version', v)].concat(dim === ED && pos ? [M(PD, pos)] : []).concat(emp ? [M(ED, emp)] : []).concat([M(measureDim, measure)])
+    var set = dim === PD ? leafP() : leafE()
+    return call('SELECT {' + M('WFP Period', p) + '} ON 0, {' + set + '} ON 1 FROM [' + cube + '] WHERE (' + where.join(',') + ')').then(function (r) {
+      return Lens.rows(r).filter(function (x) { return num(x[p]) > 0 }).map(function (x) { return x[dim] })
+    })
+  }
+  function occupants(v, Position, p) {
+    return call('SELECT {' + am('FTE Share') + '} ON 0, {' + M(PD, Position) + '} * {' + leafE() + '} ON 1 FROM [' + A + '] WHERE (' + M('WFP Period', p) + ',' + M('WFP Version', v) + ')').then(function (r) {
+      return Lens.rows(r).map(function (x) { return { emp: x[ED], fte: num(x['FTE Share']) } }).filter(function (x) { return x.fte > 0 })
+    })
+  }
+  function seatsOf(v, emp, p) {
+    return call('SELECT {' + am('FTE Share') + '} ON 0, {' + leafP() + '} * {' + M(ED, emp) + '} ON 1 FROM [' + A + '] WHERE (' + M('WFP Period', p) + ',' + M('WFP Version', v) + ')').then(function (r) {
+      return Lens.rows(r).map(function (x) { return { Position: x[PD], fte: num(x['FTE Share']) } }).filter(function (x) { return x.fte > 0 })
+    })
+  }
+  function seatFacts(v, Position, p) {
+    return call('SELECT {' + mm('Cost Centre') + ',' + mm('Position FTE') + '} ON 0 FROM [' + MAP + '] WHERE (' + M('WFP Period', p) + ',' + M('WFP Version', v) + ',' + M(PD, Position) + ')').then(function (r) { return Lens.rows(r)[0] || {} })
+  }
+  var name = function (id) { return people.name[id] || id }
+
+  // hiring checks (WFP Hiring Plan, not fed — read without NON EMPTY): new HR Positions with no plan, late hires
+  function planChecks() {
+    var v = $('ver') ? $('ver').value : 'Forecast'
+    return call('SELECT {' + M('WFP Hiring Plan Measure', 'Unplanned Position') + ',' + M('WFP Hiring Plan Measure', 'Late Hire') + '} ON 0 FROM [WFP Hiring Plan] WHERE (' + M('WFP Version', v) + ',' + M('WFP Position', 'Total Positions') + ')').then(function (r) {
+      var x = Lens.rows(r)[0] || {}, u = num(x['Unplanned Position']), l = num(x['Late Hire'])
+      $('planchecks').innerHTML = (u || l)
+        ? '<b>Hiring:</b> ' + u + ' new HR position' + (u === 1 ? '' : 's') + ' with no plan · ' + l + ' late hire' + (l === 1 ? '' : 's') + ' — <a href="#" id="tomatch">Match new Positions →</a>'
+        : 'Hiring: every new HR position is matched to its plan; no late hires.'
+      var t = $('tomatch'); if (t) t.onclick = function (e) { e.preventDefault(); if (window.lensBridge) window.lensBridge.call('openLens', { name: 'WFP-Match' }) }
+    }, function () {})
+  }
+  function load() {
+    planChecks()
+    var v = ver(), chk = 'all'
+    say('Loading…', 'busy')
+    var want = { overfilled: chk === 'all' || chk === 'overfilled', overbooked: chk === 'all' || chk === 'overbooked', closed: chk === 'all' || chk === 'closed' }
+    var q = []
+    if (want.overfilled) q.push(monthTotals(v, A, 'Over-filled', 'WFP Assignment Measure', 'Total Positions', 'All Employees'))
+    if (want.overbooked) q.push(monthTotals(v, A, 'Over-booked', 'WFP Assignment Measure', 'Total Positions', 'All Employees'))
+    if (want.closed) q.push(monthTotals(v, MAP, 'Person In Closed Position', 'WFP Position Map Measure', 'Total Positions', ''))
+    return Promise.all(q).then(function (tot) {
+      var i = 0, bad = { overfilled: [], overbooked: [], closed: [] }
+      if (want.overfilled) { var t1 = tot[i++]; bad.overfilled = months.filter(function (p) { return num(t1[p]) > 0 }) }
+      if (want.overbooked) { var t2 = tot[i++]; bad.overbooked = months.filter(function (p) { return num(t2[p]) > 0 }) }
+      if (want.closed) { var t3 = tot[i++]; bad.closed = months.filter(function (p) { return num(t3[p]) > 0 }) }
+      var jobs = []
+      bad.overfilled.forEach(function (p) { jobs.push(scanMonth(v, A, 'Over-filled', 'WFP Assignment Measure', PD, 'Total Positions', 'All Employees', p).then(function (Positions) { return Positions.map(function (s) { return { kind: 'overfilled', Position: s, month: p } }) })) })
+      bad.overbooked.forEach(function (p) { jobs.push(scanMonth(v, A, 'Over-booked', 'WFP Assignment Measure', ED, 'Total Positions', '', p).then(function (emps) { return emps.map(function (e) { return { kind: 'overbooked', emp: e, month: p } }) })) })
+      bad.closed.forEach(function (p) { jobs.push(scanMonth(v, MAP, 'Person In Closed Position', 'WFP Position Map Measure', PD, 'Total Positions', '', p).then(function (Positions) { return Positions.map(function (s) { return { kind: 'closed', Position: s, month: p } }) })) })
+      return Promise.all(jobs)
+    }).then(function (lists) {
+      var raw = []
+      lists.forEach(function (l) { raw = raw.concat(l) })
+      if (!raw.length) { all = []; draw(); say('Nothing needs attention in ' + v + '.'); return }
+      return Promise.all(raw.map(function (r) {
+        if (r.kind === 'overbooked') return seatsOf(ver(), r.emp, r.month).then(function (Positions) {
+          var total = Positions.reduce(function (a, x) { return a + x.fte }, 0)
+          return { check: 'Over-booked person', month: r.month, Position: Positions.map(function (x) { return x.Position }).join(', '), cc: '', person: name(r.emp),
+            detail: Math.round(total * 10) / 10 + ' FTE across ' + Positions.length + ' position' + (Positions.length === 1 ? '' : 's'), _r: r }
+        })
+        return Promise.all([occupants(ver(), r.Position, r.month), seatFacts(ver(), r.Position, r.month)]).then(function (x) {
+          var occ = x[0], f = x[1], total = occ.reduce(function (a, o) { return a + o.fte }, 0)
+          var who = occ.map(function (o) { return name(o.emp) }).join(', ')
+          return { check: r.kind === 'closed' ? 'In a closed position' : 'Over-filled position', month: r.month, Position: r.Position, cc: f['Cost Centre'] || '',
+            person: who, detail: r.kind === 'closed' ? 'position is closed that month' : (Math.round(total * 10) / 10 + ' FTE in a ' + num(f['Position FTE']) + ' position'), _r: r }
+        })
+      })).then(function (rows) { all = rows; draw(); say('') })
+    })
+  }
+
+  function draw() {
+    var cc = $('cc').value
+    var mine = all.filter(function (r) { return !cc || r.cc === cc })
+    var by = function (k) { return mine.filter(function (r) { return r._r.kind === k }).length }
+    $('counts').innerHTML = [['bad', by('overfilled'), 'over-filled positions'], ['bad', by('overbooked'), 'over-booked people'], ['bad', by('closed'), 'in a closed position'],
+      ['', mine.length, 'position-months needing attention']]
+      .map(function (x, i) { var k = ['overfilled', 'overbooked', 'closed', 'all'][i], on = $('check').value; return '<button type="button" class="count ' + x[0] + (on === k && k !== 'all' ? ' on' : '') + '" data-check="' + k + '" title="' + (k === 'all' ? 'Show every check' : 'Show only these') + '"><b>' + x[1] + '</b><span>' + x[2] + '</span></button>' }).join('')
+    var chk = $('check').value
+    var rows = mine.filter(function (r) { return chk === 'all' || r._r.kind === chk }).slice().sort(function (a, b) { return a.month.localeCompare(b.month) || a.check.localeCompare(b.check) || String(a.Position).localeCompare(String(b.Position)) })
+    g = Lens.grid('#grid', { key: 'wfp-attention', stripes: striped,
+      fit: 'content', height: Math.min(600, 60 + rows.length * 36) + 'px',
+      columns: [
+        { field: 'check', headerName: 'Check', pinned: 'left', minWidth: 150 },
+        { field: 'month', headerName: 'Month', minWidth: 100 },
+        { field: 'Position', headerName: 'Position', minWidth: 140 },
+        { field: 'cc', headerName: 'Cost centre', minWidth: 120 },
+        { field: 'person', headerName: 'Person', minWidth: 190 },
+        { field: 'detail', headerName: 'Detail', minWidth: 220 }
+      ],
+      rows: rows,
+      cellMenu: function (row, field) {
+        var r = row._r
+        if (field === 'Position') return { cube: MAP, coordinates: { 'WFP Period': r.month, 'WFP Version': ver(), 'WFP Position': r.Position, 'WFP Position Map Measure': 'Position State' } }
+        if (field === 'person' && r.emp) return { cube: A, coordinates: { 'WFP Period': r.month, 'WFP Version': ver(), 'WFP Position': 'Total Positions', 'WFP Employee': r.emp, 'WFP Assignment Measure': 'FTE Share' } }
+        return null
+      }
+    })
+    if (!rows.length) say('Nothing needs attention here.')
+  }
+
+  $('roster').onclick = function () { if (window.lensBridge) window.lensBridge.call('openLens', { name: C.positions || 'WFP-Positions' }).catch(fail) }
+  $('ver').onchange = function () { load().catch(fail) }
+  $('check').onchange = function () { draw() }
+  $('counts').addEventListener('click', function (e) {
+    var t = e.target.closest && e.target.closest('[data-check]'); if (!t) return
+    var k = t.getAttribute('data-check'); $('check').value = $('check').value === k ? 'all' : k; draw()   // click again to clear
+  })
+  $('cc').onchange = function () { if (tg) tg.join('cc:' + ($('cc').value || 'all')); draw() }
+  tg = Lens.live('#people', { onEvent: function (ev) { if (ev.type === 'saved') load().catch(fail) } })
+  Promise.all([Lens.whoami(), periodIndex(), costCentres(), call(attrMDX(ED, ['Display']))]).then(function (r) {
+    P = r[1]; ccs = r[2]
+    people = { name: {} }; Lens.rows(r[3]).forEach(function (x) { people.name[x[ED]] = x.Display })
+    months = Object.keys(P.idx).filter(function (p) { return P.idx[p] >= 12 && P.idx[p] <= 36 }).sort()
+    $('ver').innerHTML = opt(C.versions || ['Forecast', 'Budget', 'Downside'])
+    $('cc').innerHTML = ccOptions(ccs, '', 'All cost centres')
+    $('sub').textContent = 'over-filled positions · over-booked people · anyone in a position that does not exist · hiring not matched to HR'
+    if (tg) tg.join('cc:all')
+    return load()
+  }).catch(fail)
+})()
+</script>
+</body>
+</html>

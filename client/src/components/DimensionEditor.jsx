@@ -4,7 +4,9 @@ import {
   useAddElement, useDeleteElement, useAddEdge, useDeleteEdge, useUpdateEdgeWeight,
   useAttrGrid, useWriteElementAttribute, useCreateAttrDef, useDeleteAttrDef, useSubsets, useSubsetElements,
   useDimensionUsage, useCreateHierarchy, useBulkDimImport, useBulkAttrImport, useCreateDimension, usePreDeleteElementCheck,
+  useHierarchyInfo, useElementHierarchyParents,
 } from '@/hooks/useApi'
+import HierarchyFromAttributeDialog from '@/components/HierarchyFromAttributeDialog'
 import { AgGridReact } from 'ag-grid-react'
 import { AllCommunityModule, ModuleRegistry, themeBalham, colorSchemeDark, colorSchemeLight } from 'ag-grid-community'
 import { useStore } from '@/store'
@@ -115,8 +117,43 @@ function BulkAddModal({ consolElements, onConfirm, onClose }) {
   )
 }
 
+// Where an element sits in each hierarchy — the main one and any Alternate Hierarchy (same element,
+// same data, another rollup). TM1's automatic 'Leaves' hierarchy is left out.
+function HierarchyPlaces({ server, dimension, element }) {
+  const { data: places, isLoading } = useElementHierarchyParents(server, dimension, element)
+  return (
+    <section>
+      <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">In each hierarchy</div>
+      {isLoading && <Loader2 size={10} className="animate-spin text-muted-foreground" />}
+      {Object.entries(places ?? {}).map(([h, ps]) => (
+        <div key={h} className="flex items-baseline gap-1.5 py-0.5 text-[11px]">
+          <span className="font-mono">{h}</span>
+          <span className="text-[10px] text-muted-foreground/70">{h === dimension ? 'default' : 'alternate'}</span>
+          <span className="ml-auto text-muted-foreground truncate">{ps.length ? 'under ' + ps.join(', ') : 'top level'}</span>
+        </div>
+      ))}
+    </section>
+  )
+}
+
+// What the open hierarchy is, so an Alternate Hierarchy isn't mistaken for a hand-kept dimension.
+function AlternateBanner({ server, dimension, hierarchy }) {
+  const { data: info } = useHierarchyInfo(server, dimension, hierarchy)
+  if (!hierarchy || hierarchy === dimension) return null
+  const built = info?.builtBy ?? []
+  return (
+    <div className="px-3 py-1.5 text-[11px] border-b border-border bg-muted/40 text-muted-foreground">
+      <b className="text-foreground">Alternate Hierarchy</b> of <span className="font-mono">{dimension}</span> — the same elements as the main
+      hierarchy, so the same data, rolled up another way.{' '}
+      {info && (built.length
+        ? <>Built by <span className="font-mono text-foreground">{built.join(', ')}</span> — edits made here are overwritten the next time it runs.</>
+        : <>No process builds it — it is kept by hand.</>)}
+    </div>
+  )
+}
+
 // ── Element properties panel ────────────────────────────────────────────────
-function ElementPanel({ el, parents, children, byName, consolElements, elemAttrs, loadingAttrs, hierarchies,
+function ElementPanel({ server, dimension, el, parents, children, byName, consolElements, elemAttrs, loadingAttrs, hierarchies,
   onDelete, onAddParent, onRemoveParent, onUpdateWeight, onClose }) {
   const [addingParent, setAddingParent] = useState(false)
   const [newParent, setNewParent] = useState('')
@@ -142,15 +179,8 @@ function ElementPanel({ el, parents, children, byName, consolElements, elemAttrs
       <div className="flex-1 overflow-auto p-3 space-y-4">
 
         {/* Hierarchies */}
-        {hierarchies && hierarchies.length > 1 && (
-          <section>
-            <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">Hierarchies</div>
-            <div className="flex flex-wrap gap-1">
-              {hierarchies.map(h => (
-                <span key={h} className="px-1.5 py-px rounded border border-border text-[10px] text-muted-foreground">{h}</span>
-              ))}
-            </div>
-          </section>
+        {hierarchies && hierarchies.filter(h => h !== 'Leaves').length > 1 && (
+          <HierarchyPlaces server={server} dimension={dimension} element={el.Name} />
         )}
 
         {/* Parents */}
@@ -523,6 +553,39 @@ function NewAttrModal({ onConfirm, onClose }) {
   )
 }
 
+// A stable header component: AG Grid rebuilds the header when its type changes,
+// and a type that changes on every render interrupts a column resize mid-drag.
+function AttrHeader({ column }) {
+  const colDef = column.getColDef()
+  const attr   = colDef.attrDef
+  if (!attr) return <span className="truncate">{colDef.headerName}</span>
+  const { name, type } = attr
+  return (
+    <div className="relative flex items-center gap-1 w-full h-full group">
+      <span className="flex-1 truncate">{name}</span>
+      <span className={cn('text-[8px] font-bold shrink-0',
+        type === 'Numeric' ? 'text-sky-400/70' : type === 'Alias' ? 'text-amber-400/70' : 'text-muted-foreground/50')}>
+        {type === 'Numeric' ? 'N' : type === 'Alias' ? 'A' : 'S'}
+      </span>
+      {type === 'String' && !['Format', 'Picklist'].includes(name) && (
+        <button onClick={() => colDef.onConvertAttr?.(name)}
+          className="opacity-0 group-hover:opacity-100 text-amber-500 hover:text-amber-400 transition-opacity text-[8px] font-bold leading-none"
+          title={`Convert ${name} to Alias type`}>
+          →A
+        </button>
+      )}
+      <button onClick={() => colDef.onDeleteAttr?.(name)}
+        className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-red-400 transition-opacity"
+        title={`Delete attribute ${name}`}>
+        <X size={10} />
+      </button>
+    </div>
+  )
+}
+
+const NO_ATTRS = []
+const ATTR_WIDTHS_KEY = 'tm1-attr-widths'
+
 function AttrGrid({ tab, elements, edges, hierarchy }) {
   const dark      = useStore(s => s.dark)
   const [subset, setSubset]     = useState('')
@@ -553,7 +616,7 @@ function AttrGrid({ tab, elements, edges, hierarchy }) {
       { server: tab.server, dimension: tab.dimension, name, hierarchy },
       { onSuccess: () => refetch() }
     )
-  }, [deleteAttr, tab, refetch, hierarchy])
+  }, [deleteAttr.mutate, tab, refetch, hierarchy])
 
   const handleConvertToAlias = useCallback(async (attrName) => {
     if (!window.confirm(`Convert "${attrName}" from String to Alias type?\n\nAll values will be preserved.`)) return
@@ -573,7 +636,30 @@ function AttrGrid({ tab, elements, edges, hierarchy }) {
     }
   }, [tab, hierarchy, refetch])
 
-  const attrs = grid?.attrs ?? []
+  const attrs = grid?.attrs ?? NO_ATTRS
+
+  // Column widths are the grid's state, not React state: rebuilding columnDefs
+  // while a column is being dragged re-applies them and snaps the column back.
+  // Read the saved sizes once, hand them to the grid at creation, then only
+  // write on a finished resize — never re-render.
+  const [initialWidths] = useState(() => {
+    try { return JSON.parse(localStorage.getItem(ATTR_WIDTHS_KEY)) ?? {} } catch { return {} }
+  })
+  const savedWidthsRef = useRef(initialWidths)
+  const saveAttrWidth = useCallback((name, width) => {
+    savedWidthsRef.current = { ...savedWidthsRef.current, [name]: Math.max(80, Math.round(width)) }
+    try { localStorage.setItem(ATTR_WIDTHS_KEY, JSON.stringify(savedWidthsRef.current)) } catch { /* private mode */ }
+  }, [])
+  const attrInitialState = useMemo(() => ({
+    columnSizing: {
+      columnSizingModel: Object.entries(initialWidths).map(([colId, width]) => ({ colId, width })),
+    },
+  }), [initialWidths])
+  const onAttrColumnResized = useCallback(e => {
+    if (e.finished && e.column && e.source === 'uiColumnResized') {
+      saveAttrWidth(e.column.getColId(), e.column.getActualWidth())
+    }
+  }, [saveAttrWidth])
 
   const ordered = useMemo(() => buildTreeOrder(elements, edges), [elements, edges])
 
@@ -596,7 +682,7 @@ function AttrGrid({ tab, elements, edges, hierarchy }) {
       field: '__name',
       headerName: 'Element',
       pinned: 'left',
-      width: 220,
+      initialWidth: 220,
       editable: false,
       cellRenderer: p => (
         <span style={{ paddingLeft: p.data.__depth * 14 }}>
@@ -607,11 +693,15 @@ function AttrGrid({ tab, elements, edges, hierarchy }) {
     },
     ...attrs.map(attr => {
       const isFormat = attr.Name.toLowerCase() === 'format'
+      const isDescription = attr.Name.toLowerCase() === 'description'
       return {
       field: attr.Name,
       headerName: attr.Name,
       editable: !isFormat,
-      width: isFormat ? 170 : 140,
+      resizable: true,
+      initialWidth: isFormat ? 170 : isDescription ? 480 : 140,
+      minWidth: 80,
+      tooltipField: attr.Name,
       ...(isFormat ? { cellRenderer: p => (
         <button onClick={() => setFormatPicker({ element: p.data.__name, value: p.value ?? '' })}
           className="w-full text-left font-mono text-xs hover:text-primary truncate"
@@ -619,27 +709,10 @@ function AttrGrid({ tab, elements, edges, hierarchy }) {
           {p.value || <span className="opacity-30 italic">click to set</span>}
         </button>
       )} : {}),
-      headerComponent: _p => (
-        <div className="flex items-center gap-1 w-full group">
-          <span className="flex-1 truncate">{attr.Name}</span>
-          <span className={cn('text-[8px] font-bold shrink-0',
-            attr.Type === 'Numeric' ? 'text-sky-400/70' : attr.Type === 'Alias' ? 'text-amber-400/70' : 'text-muted-foreground/50')}>
-            {attr.Type === 'Numeric' ? 'N' : attr.Type === 'Alias' ? 'A' : 'S'}
-          </span>
-          {attr.Type === 'String' && !['Format', 'Picklist'].includes(attr.Name) && (
-            <button onClick={() => handleConvertToAlias(attr.Name)}
-              className="opacity-0 group-hover:opacity-100 text-amber-500 hover:text-amber-400 transition-opacity text-[8px] font-bold leading-none"
-              title={`Convert ${attr.Name} to Alias type`}>
-              →A
-            </button>
-          )}
-          <button onClick={() => handleDeleteAttr(attr.Name)}
-            className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-red-400 transition-opacity"
-            title={`Delete attribute ${attr.Name}`}>
-            <X size={10} />
-          </button>
-        </div>
-      ),
+      headerComponent: AttrHeader,
+      attrDef: { name: attr.Name, type: attr.Type },
+      onConvertAttr: handleConvertToAlias,
+      onDeleteAttr: handleDeleteAttr,
     }
     }),
   ], [attrs, handleDeleteAttr, handleConvertToAlias])
@@ -753,8 +826,11 @@ function AttrGrid({ tab, elements, edges, hierarchy }) {
           theme={dark ? darkTheme : lightTheme}
           rowData={rows}
           columnDefs={colDefs}
+          initialState={attrInitialState}
           onCellValueChanged={onCellValueChanged}
+          onColumnResized={onAttrColumnResized}
           getRowId={p => p.data.__name}
+          defaultColDef={ATTR_DEFAULT_COL}
           stopEditingWhenCellsLoseFocus
           singleClickEdit
         />
@@ -1060,6 +1136,9 @@ function PreDeleteDialog({ check, elementName, onConfirm, onCancel }) {
   )
 }
 
+// the attribute grid's column defaults -- one object, so a redraw doesn't reset the columns
+const ATTR_DEFAULT_COL = { resizable: true }
+
 export default function DimensionEditor({ tab }) {
   if (!tab.dimension) return <NewDimensionScreen tab={tab} />
   return <DimensionEditorCore tab={tab} />
@@ -1080,6 +1159,8 @@ function DimensionEditorCore({ tab }) {
   const [selectedHierarchy, setSelectedHierarchy] = useState(tab.hierarchy ?? tab.dimension)
   const [addingHierarchy, setAddingHierarchy] = useState(false)
   const [newHierarchyName, setNewHierarchyName] = useState('')
+  const [hierMenu, setHierMenu] = useState(false)
+  const [fromAttr, setFromAttr] = useState(false)
   const [deleteCheck, setDeleteCheck] = useState(null)
   const [deleteTarget, setDeleteTarget] = useState(null)
   const [showHelp, setShowHelp] = useState(false)
@@ -1243,14 +1324,14 @@ function DimensionEditorCore({ tab }) {
         >
           <MapPin size={11} />
         </button>
-        {hierarchies.length > 1 && (
+        {hierarchies.filter(h => h !== 'Leaves').length > 1 && (
           <select
             value={selectedHierarchy}
             onChange={e => { setSelectedHierarchy(e.target.value); setSelected(null) }}
             className="text-xs bg-background border border-border rounded px-1.5 py-0.5 text-foreground max-w-36"
             title="Select hierarchy"
           >
-            {hierarchies.map(h => <option key={h} value={h}>{h}</option>)}
+            {hierarchies.filter(h => h !== 'Leaves').map(h => <option key={h} value={h}>{h}{h === tab.dimension ? ' (default)' : ' (alternate)'}</option>)}
           </select>
         )}
         {addingHierarchy ? (
@@ -1278,11 +1359,23 @@ function DimensionEditorCore({ tab }) {
           </div>
         ) : (
           <button
-            onClick={() => { setAddingHierarchy(true); setNewHierarchyName('') }}
-            className="flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] rounded border border-border text-muted-foreground hover:text-foreground hover:bg-background"
+            onClick={() => setHierMenu(m => !m)}
+            className="flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] rounded border border-border text-muted-foreground hover:text-foreground hover:bg-background relative"
             title="New hierarchy"
           >
             <Plus size={9} /> Hierarchy
+            {hierMenu && (
+              <span className="absolute left-0 top-full mt-1 z-50 w-56 rounded border border-border bg-popover shadow-lg text-left py-1" onClick={e => e.stopPropagation()}>
+                <span role="button" className="block px-3 py-1.5 hover:bg-muted text-foreground"
+                  onClick={() => { setHierMenu(false); setFromAttr(true) }}>
+                  From an attribute…<span className="block text-[10px] text-muted-foreground">Generated and kept in step by a process</span>
+                </span>
+                <span role="button" className="block px-3 py-1.5 hover:bg-muted text-foreground"
+                  onClick={() => { setHierMenu(false); setAddingHierarchy(true); setNewHierarchyName('') }}>
+                  Empty<span className="block text-[10px] text-muted-foreground">Built by hand in this editor</span>
+                </span>
+              </span>
+            )}
           </button>
         )}
         <span className="text-xs text-muted-foreground">
@@ -1342,6 +1435,11 @@ function DimensionEditorCore({ tab }) {
         </div>
       </div>
       <HelpPanel open={showHelp} onClose={() => setShowHelp(false)} area="dimension" />
+      <AlternateBanner server={tab.server} dimension={tab.dimension} hierarchy={selectedHierarchy} />
+      {fromAttr && (
+        <HierarchyFromAttributeDialog server={tab.server} dimension={tab.dimension} onClose={() => setFromAttr(false)}
+          onDone={h => { setFromAttr(false); setSelectedHierarchy(h); setSelected(null) }} />
+      )}
 
       {/* Toolbar row 2 — used in + filters */}
       <div className="flex items-center gap-2 px-3 py-1 border-b border-border bg-muted/50 shrink-0 flex-wrap">
@@ -1415,6 +1513,8 @@ function DimensionEditorCore({ tab }) {
           {selectedEl && (
             <div className="w-[45%] shrink-0 overflow-auto">
               <ElementPanel
+                server={tab.server}
+                dimension={tab.dimension}
                 el={selectedEl}
                 parents={selectedParents}
                 children={selectedChildren}

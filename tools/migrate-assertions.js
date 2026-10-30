@@ -6,7 +6,7 @@
 // One-time, per-server, opt-in: copies a server's entries from
 // config/assertions.json into that server's own governance document
 // (Applications/Governance/Tests/assertions.json) so the model owns its tests
-// (docs/MODEL_OWNED_HISTORY_PLAN.md, phase 1).
+// (docs/deploy/MODEL_OWNED_HISTORY_PLAN.md, phase 1).
 //
 // Copy only — config/assertions.json is left untouched. Refuses to overwrite an
 // existing model document unless --force. After writing, reads the document back

@@ -1,0 +1,34 @@
+{
+  "cube": "SYS Settings",
+  "dimensions": [
+    { "name": "SYS Application", "elements": ["All", "WFP", "OPX", "CPX", "RPT"] },
+    { "name": "SYS Setting", "elements": [
+      "Version Dimension", "Version Static Parent", "Version Input Cubes", "Version Exclude Cubes",
+      "Version Type Attribute", "Version Status Attribute",
+      "Current Forecast", "Working Budget", "Current Budget",
+      "Last Actual Index", "Plan Month Index", "Default Entity", "Default Year", "Default Currency"
+    ] },
+    { "name": "SYS Settings Measure", "elements": [{ "name": "Value", "type": "N" }, { "name": "Text", "type": "S" }] }
+  ],
+  "values": {
+    "All": {
+      "Version Static Parent": "Non-Calculating",
+      "Version Type Attribute": "Version Type",
+      "Version Status Attribute": "Status",
+      "Current Forecast": "Forecast",
+      "Working Budget": "Budget Working",
+      "Current Budget": "Budget Approved",
+      "Default Entity": "Group",
+      "Default Year": "2026",
+      "Default Currency": "Reporting"
+    },
+    "WFP": {
+      "Version Dimension": "WFP Version",
+      "Version Input Cubes": "WFP Assumptions,WFP Workforce Input,WFP Hiring Plan,WFP Assignment Detail,WFP Assignment Pay,WFP Pay Rates,WFP FX Rates,WFP Tax Bands,WFP Position Map",
+      "Version Exclude Cubes": "WFP Control",
+      "Current Forecast": "Forecast",
+      "Working Budget": "Budget Working",
+      "Current Budget": "Budget Approved"
+    }
+  }
+}

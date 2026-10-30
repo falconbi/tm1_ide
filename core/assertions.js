@@ -7,7 +7,7 @@
 // written correctly). An assertion is an MDX query plus the number it should
 // return; run_assertions executes each and compares.
 //
-// Storage (Phase 1 — the model owns its tests, see docs/MODEL_OWNED_HISTORY_PLAN.md):
+// Storage (Phase 1 — the model owns its tests, see docs/deploy/MODEL_OWNED_HISTORY_PLAN.md):
 // - A migrated server keeps its assertions in the model: the TM1 server's own
 //   Applications/Governance/Tests/assertions.json document (an array of records,
 //   same shape as ever). The IDE/MCP read and write that document.

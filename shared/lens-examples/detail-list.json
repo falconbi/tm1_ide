@@ -1,0 +1,75 @@
+{
+  "name": "detail-list",
+  "title": "Detail list",
+  "description": "The underlying lines \u2014 requests, employees, transactions \u2014 with their fields, searchable and filterable, with a count and total. Read-only; only lines with something in them show.",
+  "icon": "layers",
+  "color": "#0f766e",
+  "settings": {
+    "heading": "The title at the top",
+    "subtitle": "One line under the title",
+    "cube": "The cube holding the lines",
+    "where": "{ dimension: member } \u2014 the slice (version, year\u2026)",
+    "pick": "{ dimension, under | level | members, label, default } \u2014 optional picker, e.g. a store",
+    "lines": "[{ dimension, under | level | members, label }] \u2014 what identifies a line (e.g. line number and asset type)",
+    "fieldsDimension": "The dimension holding the fields (the measures)",
+    "fields": "[{ member, label, type: number | text, format }] \u2014 the columns",
+    "totalField": "A number field to total (optional)",
+    "format": "Number format: number, k$ or $",
+    "height": "Grid height (optional)"
+  },
+  "example": {
+    "heading": "Capex requests \u2014 detail",
+    "subtitle": "Every request line, all stores you can see",
+    "cube": "Capital",
+    "where": {
+      "Year": "Y2",
+      "Version": "Target"
+    },
+    "pick": {
+      "dimension": "organization",
+      "level": 0,
+      "label": "Store"
+    },
+    "lines": [
+      {
+        "dimension": "CapitalList",
+        "level": 0,
+        "label": "Line"
+      },
+      {
+        "dimension": "Asset Types",
+        "under": "Asset Total",
+        "label": "Asset type"
+      }
+    ],
+    "fieldsDimension": "Capital",
+    "fields": [
+      {
+        "member": "Description",
+        "label": "What",
+        "type": "text"
+      },
+      {
+        "member": "Purchase Cost",
+        "label": "Cost",
+        "format": "$"
+      },
+      {
+        "member": "Purchase Period",
+        "label": "Period",
+        "type": "text"
+      },
+      {
+        "member": "Approved",
+        "label": "Approved",
+        "type": "text"
+      },
+      {
+        "member": "Approved By",
+        "label": "By",
+        "type": "text"
+      }
+    ],
+    "totalField": "Purchase Cost"
+  }
+}

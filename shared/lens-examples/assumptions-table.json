@@ -1,0 +1,51 @@
+{
+  "name": "assumptions-table",
+  "title": "Assumptions table",
+  "description": "Rates, drivers and settings \u2014 one row per element (an asset type, a grade, a product), one column per assumption \u2014 numbers and text, typed and saved as the signed-in user.",
+  "icon": "scale",
+  "color": "#0f766e",
+  "settings": {
+    "heading": "The title at the top of the screen",
+    "subtitle": "One line under the title",
+    "cube": "The cube the assumptions live in",
+    "rows": "{ dimension, under | members | level, label } \u2014 one row per element",
+    "columns": "{ dimension, items: [{ member, label, type: number | text, format, options }] } \u2014 the assumptions across the top; options makes a drop-down",
+    "fixed": "{ dimension: member } \u2014 every other dimension of the cube, held at one member",
+    "writes": "The cubes it may change \u2014 normally just the cube",
+    "height": "Grid height, e.g. 520px (optional)"
+  },
+  "example": {
+    "heading": "Capital assumptions",
+    "subtitle": "Asset lives and notes by asset type",
+    "cube": "Capital",
+    "rows": {
+      "dimension": "Asset Types",
+      "under": "Asset Total",
+      "label": "Asset type"
+    },
+    "columns": {
+      "dimension": "Capital",
+      "items": [
+        {
+          "member": "Life",
+          "label": "Life (months)",
+          "type": "number"
+        },
+        {
+          "member": "Justification",
+          "label": "Note",
+          "type": "text"
+        }
+      ]
+    },
+    "fixed": {
+      "organization": "101",
+      "CapitalList": "1",
+      "Year": "Y2",
+      "Version": "Target"
+    },
+    "writes": [
+      "Capital"
+    ]
+  }
+}

@@ -1,63 +1,197 @@
 {
-  "_about": "The Lens toolkit's building blocks (window.Lens, toolkit version 2). One entry per component — the AI reads this to choose and use them; a test checks it matches the toolkit exactly. Load the toolkit in a Lens with <script src=\"/lens-kit/lens-kit.js\"></script>. Data always comes from window.lensBridge.call('execMDX', { mdx }) and is turned into rows with Lens.rows(result).",
+  "_about": "The Lens toolkit's building blocks (window.Lens, toolkit version 12). One entry per component — the AI reads this to choose and use them; a test checks it matches the toolkit exactly. Load the toolkit in a Lens with <script src=\"/lens-kit/lens-kit.js\"></script>. Data always comes from window.lensBridge.call('execMDX', { mdx }) and is turned into rows with Lens.rows(result).",
   "helpers": {
-    "Lens.rows(cellset)": "Turn an execMDX result into tidy rows: one object per row tuple with _label, _members, one property per row dimension (its member name), and one property per column labelled by its member names joined with ' / '. Missing cells are null.",
-    "Lens.format(value, kind)": "Format a number: 'k$' ($ thousands), '$', '%' (0.12 → 12.0%), 'number'. Null/blank → '—'.",
-    "Lens.theme.colors": "The shared palette (light/dark): ink, soft, faint, rule, panel, bg, accent, compare, good, bad, amber, series[].",
-    "Alpine (CSP build)": "For simple interactivity (tabs, toggles). No inline code expressions: register behaviour with Alpine.data('name', () => ({ ... })) and reference it from x-data=\"name\" and @click=\"methodName\"."
+    "Lens.rows(cellset)": "Turn an execMDX result into tidy rows: one object per row tuple with _label, _members, one property per row dimension (its member name), and one property per column labelled by its member names joined with ' / '. Missing cells are null. Each row also has _input: { [column label]: true when TM1 does not calculate that cell (it can be typed into) }.",
+    "Lens.save(cube, cells)": "Write numbers to TM1 as the signed-in user. cells: [{ coordinates: { <every cube dimension>: element }, value, expect }] — expect is the value the screen showed (null counts as 0), so a cell changed by someone else since is caught. The Lens MUST declare the cube in its head: <meta name=\"lens-writes\" content=\"Cube Name\">. Resolves { written }; rejects with a plain reason and saves nothing (calculated cell, changed by someone else, no TM1 write access). Only numbers; at most 500 cells per save.",
+    "Lens.run(process, params)": "Run a TI process as the signed-in user — an action button (seed, spread, copy, recalculate). params: { pName: 'text' | number } using only the process's own parameters (text for String, number for Numeric). The Lens MUST declare it: <meta name=\"lens-runs\" content=\"Process Name\">. Resolves { status, seconds, message, result, since } (result: a short outcome the process left, e.g. free / mine / taken; since: a UTC time — show it with Lens.localTime); rejects with the reason. Disable the button while it runs, then reload the data it changed. The process itself must check the caller may change what it touches (a running process ignores cell security) and should leave its outcome in the 'Lens Messages' cube so the person sees why.",
+    "Lens.localTime(utc)": "Show a UTC time from TM1 (e.g. a run's since) in the viewer's own time zone: '2:33 pm' today, '13 Oct, 2:33 pm' otherwise. TM1 stores times in UTC; always convert with this before showing one.",
+    "Lens.history(match, { limit, skip })": "Lens app only. Recent saves and runs through this Lens for one slice the person can see, newest first: Lens.history({ organization: '101', Year: 'Y2' }, { skip: ['Lens Reserve'] }) → [{ at, kind: 'write' | 'run', user, changes: [{ coordinates, old, value }] | process, params, status, message }]. The Lens must declare a lens-writes cube.",
+    "Lens.historyPanel(el, { describe, title })": "A History button (count of what's new since you last looked) that opens a side panel with search and All / Changes / Actions filters, newest first, times in the viewer's zone. Feed it with hp.set(await Lens.history(match, { skip })); describe(entry) turns an entry into words. Keep history in this panel rather than on the page.",
+    "Lens.legend(el, { show })": "The standard key for Lens.grid's colours, in the same words everywhere: show any of 'typed', 'pending', 'calc', 'total' (default all four). Use it under or above every input grid instead of writing your own.",
+    "Lens.config(key?, fallback?)": "The Lens's settings from its config (edited in the IDE's Config tab): put bindings and behaviour there — cube, version, unit dimension, rows, columns, labels — instead of typing them into the code, so the same Lens can be reused with a different config. Lens.config() → the whole object; Lens.config('cube', 'Income Statement') → one key with a default. Platform keys: access (TM1 groups allowed to open the Lens; empty = everyone), theme ('fixed' keeps the Lens's own look), writes (cubes it may change) and runs (processes it may run) — the config may declare these instead of <meta> tags, so reusable code can be pointed at other cubes.",
+    "Lens.whoami()": "→ Promise { user, groups } — the signed-in person and their TM1 groups; Lens.whoami.inGroup(who, ['Finance']) is true for members (and ADMIN). Use it to show buttons only to people who can use them (e.g. Approve for approvers) — never as security on its own: the server and TM1 enforce every save and process.",
+    "Lens.format(value, kind)": "Format a number: money as '£', '£k' (thousands), '£m' (millions) — likewise $, €, ¥ — or 'k$' ($ thousands), '%' (0.12 → 12.0%), 'number'. Null/blank → '—'.",
+    "Lens.echarts": "Apache ECharts itself, for any chart no component covers: Lens.echarts.init(element).setOption({...}). Registered charts: bar, line, scatter, pie, heatmap, sankey, tree, gauge, sunburst, treemap, radar, funnel; components: grid, tooltip, legend, dataZoom, markLine, markPoint, visualMap, title, radar, graphic. Resize it with a ResizeObserver on its element.",
+    "Lens.theme.colors": "The viewer's palette — they choose light / dark / system and a colour theme (Teal, Ocean, Forest, Plum, Graphite, High contrast): ink, soft, faint, rule, panel, bg, accent, compare, good, bad, amber, calcBg, totalBg, series[]. The same colours are CSS variables — style a Lens with them so it follows each person's theme: background: var(--lens-bg); color: var(--lens-ink); var(--lens-panel), --lens-soft, --lens-faint, --lens-rule, --lens-accent, --lens-good, --lens-bad, --lens-amber, --lens-calc-bg, --lens-total-bg. A Lens with its own designed look sets config theme: 'fixed'.",
+    "Security": "Every query runs as the signed-in user, so TM1 security may hide members or refuse a cube. Never hard-code a top member such as 'Total Company' — find the highest level the user can see (e.g. TM1FILTERBYLEVEL on levels 2, 1, 0 and take the first non-empty set). Treat attribute cubes (}ElementAttributes_<dim>) as optional: if reading captions fails, show element names instead of failing the whole Lens.",
+    "Alpine (CSP build)": "For simple interactivity (tabs, toggles). No inline code expressions: register behaviour with Alpine.data('name', () => ({ ... })) and reference it from x-data=\"name\" and @click=\"methodName\".",
+    "Lens.cellInfo({ cube, coordinates, tab, notes })": "A side panel telling a cell's story from TM1's own records, read as the person: 'why' (rule trace with click-through), 'changes' (transaction log for that cell), 'notes' (cell comments; notes: true allows adding — declare <meta name=\"lens-notes\">). coordinates name every cube dimension.",
+    "config: home / homeLabel": "Name the app's home page in a Lens's config — { home: 'WFP-Home', homeLabel: 'Workforce' } — and the toolkit draws a quiet '⌂ Workforce' link at the top left that opens it. Leave it out on the home page itself."
   },
   "kpis": {
     "purpose": "A row of headline figures, each compared with a target, forecast or prior year, with the variance coloured better/worse.",
     "call": "Lens.kpis(element, items, { compareLabel })",
     "data": "items: [{ label, value, compare?, format?, cost?, note?, compareLabel? }] — cost: true for expense lines (lower is better).",
-    "options": { "compareLabel": "Name of the comparison, e.g. 'Target'." },
+    "options": {
+      "compareLabel": "Name of the comparison, e.g. 'Target'."
+    },
     "interactions": "None (static tiles).",
-    "goodFor": ["Revenue / margin / profit headlines", "Plan vs actual summaries", "Dashboard first row"],
+    "goodFor": [
+      "Revenue / margin / profit headlines",
+      "Plan vs actual summaries",
+      "Dashboard first row"
+    ],
     "example": "Lens.kpis('#kpis', [{ label: 'Revenue', value: 71566000, compare: 41583000, format: 'k$' }, { label: 'Operating expense', value: 13540000, compare: 4709000, format: 'k$', cost: true }], { compareLabel: 'Target' })"
   },
   "trend": {
     "purpose": "A time series — bars or lines by period — optionally against a comparison line; bars turn red where they are worse than the comparison.",
     "call": "Lens.trend(element, { categories, series, format, cost })",
     "data": "categories: ['Jan', …]; series: [{ name, values: [n…], type: 'bar' | 'line', compare?: true }] — mark the comparison series with compare: true.",
-    "options": { "format": "Number format for axis and tooltip.", "cost": "true when lower is better." },
+    "options": {
+      "format": "Number format for axis and tooltip.",
+      "cost": "true when lower is better."
+    },
     "interactions": "Hover tooltips; click a legend entry to hide a series.",
-    "goodFor": ["Monthly actual vs target", "Revenue / profit trends", "Headcount over time"],
+    "goodFor": [
+      "Monthly actual vs target",
+      "Revenue / profit trends",
+      "Headcount over time"
+    ],
     "example": "Lens.trend('#trend', { categories: ['Jan','Feb','Mar'], series: [{ name: 'Actual', values: [10,12,9] }, { name: 'Target', values: [11,11,11], compare: true }], format: 'k$' })"
+  },
+  "stack": {
+    "purpose": "A stacked bar per category — how a total splits into components (e.g. pay components by month) — with a comparison line over the stacks and the top segment red where the total is over.",
+    "call": "Lens.stack(element, { categories, series, compare, format, cost, onClick })",
+    "data": "categories: ['Jan', …]; series: [{ name, values: [n…] }] — one entry per component, in stack order (first at the bottom); compare: [n…] optional comparison total per category.",
+    "options": {
+      "format": "Number format for the axis, labels and tooltip.",
+      "compare": "Array of comparison totals, one per category; drawn as a line over the stacks.",
+      "cost": "true when lower is better — the top of a stack turns red where its total is over the comparison.",
+      "onClick": "function (seriesName, 'bar' | 'legend') — focus the matching detail; legend entries also toggle the series."
+    },
+    "interactions": "Hover shows every component, the total and the comparison; click a legend entry to toggle a component (and focus it); click a bar segment to focus that component.",
+    "goodFor": [
+      "Cost split by pay component over time",
+      "Revenue or headcount mix by month",
+      "Any total against a comparison"
+    ],
+    "example": "Lens.stack('#month', { categories: ['Jan','Feb'], series: [{ name: 'Base', values: [100, 110] }, { name: 'Tax', values: [12, 14] }], compare: [100, 130], format: '£k', cost: true, onClick: n => focusLine(n) })"
   },
   "waterfall": {
     "purpose": "A bridge from one total to another, step by step — what moved the result.",
     "call": "Lens.waterfall(element, { steps, format })",
     "data": "steps: [{ label, value, total: true }, { label, value }, …, { label, value, total: true }] — first and last are totals; steps in between are signed changes (positive adds, negative takes away).",
-    "options": { "format": "Number format." },
+    "options": {
+      "format": "Number format."
+    },
     "interactions": "Hover tooltips.",
-    "goodFor": ["Target → actual profit bridge", "Price / volume / mix", "Cash movements"],
+    "goodFor": [
+      "Target → actual profit bridge",
+      "Price / volume / mix",
+      "Cash movements"
+    ],
     "example": "Lens.waterfall('#bridge', { steps: [{ label: 'Target', value: 14094, total: true }, { label: 'Revenue', value: 29983 }, { label: 'Cost of sales', value: -21783 }, { label: 'Actual', value: 22294, total: true }], format: 'k$' })"
   },
   "bars": {
     "purpose": "Horizontal bars by item (region, product, cost centre), each with a comparison marker and the variance; click a bar to drill in.",
     "call": "Lens.bars(element, { rows, format, cost, onClick })",
     "data": "rows: [{ key, label, value, compare? }] — key is passed to onClick (defaults to label).",
-    "options": { "format": "Number format.", "cost": "true when lower is better.", "onClick": "function (key) — e.g. drill into that region." },
+    "options": {
+      "format": "Number format.",
+      "cost": "true when lower is better.",
+      "onClick": "function (key) — e.g. drill into that region."
+    },
     "interactions": "Hover tooltips; click a bar → onClick(key).",
-    "goodFor": ["Region / product comparison", "Drill-down navigation", "Ranking"],
+    "goodFor": [
+      "Region / product comparison",
+      "Drill-down navigation",
+      "Ranking"
+    ],
     "example": "Lens.bars('#regions', { rows: [{ key: '100', label: 'East Region', value: -1302, compare: 28 }], format: 'k$', onClick: k => drillInto(k) })"
   },
   "grid": {
-    "purpose": "A spreadsheet-style table — sorting, filtering, resizing, fast scrolling. Read-only in toolkit version 2 (editing comes with write-back).",
-    "call": "Lens.grid(element, { columns, rows, height })",
-    "data": "columns: [{ field, headerName, type?: 'number' | 'text', format? }]; rows: array of objects (e.g. from Lens.rows).",
-    "options": { "height": "CSS height; defaults to fit the rows (max 480px)." },
-    "interactions": "Click a header to sort; column filters; resize columns.",
-    "goodFor": ["Detail tables", "Expense lines with variances", "Lists to scan and sort"],
+    "purpose": "A spreadsheet-style table — sorting, filtering, resizing, fast scrolling — and input forms: editable columns take typed numbers where TM1 allows input.",
+    "call": "const g = Lens.grid(element, { columns, rows, height, onEdit }) → { api, changes(), undo(), saved() }",
+    "data": "columns: [{ field, headerName, type?: 'number' | 'text', format? (a kind, or a function (row) → kind for mixed rows; on a '%' cell people type the percentage — 3 or 3% is 0.03), editable? }]; rows: array of objects (e.g. from Lens.rows — their _input flags keep calculated cells read-only).",
+    "options": {
+      "height": "CSS height; defaults to fit the rows (max 480px). 'auto' grows the grid to fit every row with no scrollbar of its own — use it for short tables (up to ~25 rows); long lists keep a fixed height.",
+      "stripes": "true shades every other row (off by default); g.stripes(on) switches it, e.g. from a toggle the viewer clicks.",
+      "fit": "'width' (default) stretches columns to fill the grid; 'content' sizes each column to its values (tight — good for month grids on wide screens); a number gives every column that many px (a column's own width/minWidth still wins).",
+      "onEdit": "function (changes) — called after each edit with [{ row, field, value, old }] (enable a Save button).",
+      "cellMenu": "(row, field) → { cube, coordinates } | null — where a cell lives in TM1 (every cube dimension). With it, right-click a cell: Why this number? / Who changed it / Notes. notes: true lets people add a note (declare <meta name=\"lens-notes\"> or lens-writes)."
+    },
+    "interactions": "Click a header to sort; column filters; resize columns. One colour scheme everywhere: blue fill + border = typed, not saved; blue corner = saved, not submitted; grey = calculated (rule); darker grey = total (consolidation); white = input — show it with Lens.legend(el). Editable columns: click to type. g.changes() lists them; g.undo() puts them back; after Lens.save succeeds call g.saved(). Working together / review: g.setPending([{ match, field, label }]) marks cells saved but not yet handed in (blue corner marker, label on hover); g.snapshot() + g.flashChanges(before, { key }) flashes what someone else just changed. Line items: rowEditable(row) → false locks a row (e.g. approved), onSelect(row) selects by click, a column with options: [...] edits by drop-down (options may be a function (row) → list | null: drop-down on those rows, typing on the rest), g.addRow(row) adds a new row; text columns save text (Lens.save carries text into text cells).",
+    "goodFor": [
+      "Detail tables",
+      "Expense lines with variances",
+      "Input forms (budget / forecast / target entry)"
+    ],
     "example": "Lens.grid('#tbl', { columns: [{ field: 'line', headerName: 'Line' }, { field: 'actual', headerName: 'Actual', type: 'number', format: 'k$' }], rows: [{ line: 'Payroll', actual: 7159000 }] })"
+  },
+  "pivot": {
+    "purpose": "Slice and dice on one cube with drill-down — the same pivot as the IDE's View editor. Dimensions sit on rows, columns or filters; the person drags the ones the Lens lets move, drills into totals, and (with edit) types into input cells.",
+    "call": "const pv = Lens.pivot(element, { cube, rows, columns, filters, edit, onEdit, formats, key, stripes, movable }) → { ready, changes(), save(), undo(), refresh(), move(dimension, 'rows' | 'columns' | 'filters'), swap(), layout(), stripes(on), grid }",
+    "data": "rows / columns: [{ dimension, members?: [...], memberSet?: 'all' | 'leaf' | 'root', subset?, hierarchy?, label? }]; filters: [{ dimension, member, choices?: [...], locked?: true }]. Every cube dimension must be placed somewhere to save.",
+    "options": {
+      "edit": "true lets people type into input cells (leaf × leaf, not rule-calculated); save() writes them with Lens.save, checked against the old values — declare the cube in <meta name=\"lens-writes\">.",
+      "onEdit": "function (changes) — after each edit, e.g. enable a Save button.",
+      "formats": "{ dimension: { element: TM1 format } } e.g. { Measure: { 'Merit %': '0.0%' } } — % cells take typed percentages (3 = 3%).",
+      "key": "remembers each person's layout and column widths under this name.",
+      "movable": "dimensions people may move (default: every one not locked).",
+      "suppress": "'none' (default) | 'rows' | 'columns' | 'all' — leave out empty rows/columns.",
+      "stripes": "shade every other row; pv.stripes(on) switches it.",
+      "advanced": "An 'Advanced' button with extras — only those listed: ['members', 'suppress', 'totals', 'copy', 'mdx']. members: ▾ on a row/column chip picks members (tree, search) or a named subset; suppress: hide empty rows/columns; totals: above/below; copy: the table to the clipboard (pastes into Excel); mdx: copy the query (read-only). People never type MDX in a Lens.",
+      "subsets": "{ dimension: [subset names] } — the named subsets the member picker offers (the builder decides; dynamic MDX subsets welcome).",
+      "cellMenu": "Right-click a cell: Why this number? (TM1's rule trace — the rule and the values it read, click through), Who changed it (TM1's transaction log for the cell), Notes (TM1 cell comments). On by default; false turns it off.",
+      "notes": "true lets people add a note to a cell from that menu — declare the cube in <meta name=\"lens-notes\" content=\"Cube\"> (or lens-writes)."
+    },
+    "interactions": "Drag a chip between Rows, Columns and Filters; ⇄ swaps rows and columns; pick a filter member from its list; ▸/▾ drills into a total (remembered per outer member); − / + on a row header collapses or opens a whole dimension. Colours as Lens.grid: grey = calculated, darker grey = total, blue = typed not saved.",
+    "goodFor": [
+      "Comparing across companies / cost centres / versions",
+      "Entry across two dimensions at once",
+      "Exploring a cube without a fixed report"
+    ],
+    "example": "const pv = Lens.pivot('#pv', { cube: 'WFP Assumptions', rows: [{ dimension: 'WFP Assumptions Measure', memberSet: 'all' }], columns: [{ dimension: 'WFP Entity', members: ['UK Ltd', 'US Inc', 'NZ Ltd'] }], filters: [{ dimension: 'WFP Period', member: '2026-06' }, { dimension: 'WFP Version', member: 'Forecast', locked: true }], edit: true, key: 'assumptions' })"
   },
   "flow": {
     "purpose": "A network or tree with automatic layout — boxes and arrows you can zoom and drag.",
     "call": "Lens.flow(element, { nodes, edges, direction, onClick })",
     "data": "nodes: [{ id, label, sub?, kind?: 'root' | 'good' | 'bad' | 'neutral' }]; edges: [{ source, target, label? }].",
-    "options": { "direction": "'TB' top-to-bottom (default) or 'LR' left-to-right.", "onClick": "function (nodeId)." },
+    "options": {
+      "direction": "'TB' top-to-bottom (default) or 'LR' left-to-right.",
+      "onClick": "function (nodeId)."
+    },
     "interactions": "Zoom, pan, drag boxes; click a box → onClick(id).",
-    "goodFor": ["Ownership structures", "Organisation / cost-centre hierarchies", "Allocation or process flows"],
+    "goodFor": [
+      "Ownership structures",
+      "Organisation / cost-centre hierarchies",
+      "Allocation or process flows"
+    ],
     "example": "Lens.flow('#org', { nodes: [{ id: 'TC', label: 'Total Company', kind: 'root' }, { id: '100', label: 'East Region', kind: 'bad' }], edges: [{ source: 'TC', target: '100' }] })"
+  },
+  "editing": {
+    "purpose": "Start / Finish editing with TM1 data reservations for an input Lens: shows who is editing (in the viewer's time zone), takes and hands back the reservation, hands it back when the Lens switches slice, and asks 'Still editing?' after a quiet spell (finishing automatically if nobody answers).",
+    "call": "const ed = Lens.editing(element, { process, target, mode, idleMinutes, graceMinutes, hasChanges, save, onChange }) → { state, canEdit, check(), refresh(), take(), release() } — state: open (no reservation needed) | free | mine | taken | unavailable (the check itself failed; show the data read-only); check() never rejects",
+    "data": "process: the reservation process (default 'Lens Reserve', declared in lens-runs); target: function returning that process's params for the slice on screen, e.g. () => ({ pOrg: org, pYear: year }).",
+    "options": {
+      "mode": "auto (default: only when the cube REQUIRES reservations) | always (whenever TM1 allows them) | off — or set <meta name=\"lens-reservations\" content=\"auto\">.",
+      "idleMinutes": "Quiet time before asking (default 20).",
+      "graceMinutes": "Countdown before finishing automatically (default 5).",
+      "hasChanges": "function → true while typed numbers are unsaved.",
+      "save": "function → Promise: saves typed numbers (offered as 'Save and finish').",
+      "onChange": "function (state, why) — why is take | release | timeout; reload the grid so cells follow ed.canEdit."
+    },
+    "interactions": "Start editing / Finish editing buttons; the 'Still editing?' prompt with Keep editing / Finish editing. Call ed.check() before first drawing the grid, ed.refresh() when the slice changes; build editable columns only when ed.canEdit.",
+    "goodFor": [
+      "Input forms on cubes that require data reservations (TM1 Applications models)",
+      "Stopping two people editing the same slice",
+      "Budget / forecast entry by store, cost centre or entity"
+    ],
+    "example": "const ed = Lens.editing('#editing', { target: () => ({ pOrg: org.value, pYear: year.value }), hasChanges: () => g.changes().length > 0, save: saveTyped, onChange: () => drawGrid() }); ed.check().then(drawGrid)"
+  },
+  "live": {
+    "purpose": "Working together (Lens app only): who else has this Lens open on the same channel, as a row of coloured initials, and live events between them — e.g. watch someone type, follow a presenter.",
+    "call": "const tg = Lens.live(element, { onEvent }) → { me, members, join(channel), send(type, data) }",
+    "data": "channel: a string naming what people share, e.g. 'store:101|Y2' — only people on the same channel hear each other. Event types: cursor, typing, saved, reservation, state, present, history. Every event arrives with from = { id, user, color } stamped by the server.",
+    "options": {
+      "onEvent": "function (ev) — someone else's event (also join / leave)."
+    },
+    "interactions": "Shows who is here; pair with grid.mark(match, field, ev.from.id, { color, label }) for another person's cursor and grid.setValue(match, field, value, ev.from.user) for their unsaved typing (blue, 'Typed by …' on hover, until they save), and re-read data on 'saved'.",
+    "goodFor": [
+      "Watching a colleague enter numbers live",
+      "Meeting mode: everyone follows the presenter",
+      "Live activity feeds"
+    ],
+    "example": "const tg = Lens.live('#people', { onEvent: ev => { if (ev.type === 'typing') g.setValue(r => r.Account === ev.account, ev.month, ev.value) } }); tg.join('store:' + org + '|' + year)"
   }
 }
