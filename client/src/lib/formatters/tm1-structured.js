@@ -325,7 +325,11 @@ export function parseLogicalUnits(text) {
         }
         if (inStr) continue
 
-        // Inline comment stops the scan for this line
+        // A comment starts at # (or //) and runs to the end of this line.
+        // Ignore anything after it when tracking brackets or the closing ;.
+        // This matters inside a multi-line rule: an apostrophe in a comment
+        // (e.g. "the people's FTE") must not be read as a string quote.
+        if (ch === '#') break
         if (ch === '/' && c + 1 < lt.length && lt[c + 1] === '/') break
 
         if (ch === '(' || ch === '[' || ch === '{') depth++
@@ -337,7 +341,7 @@ export function parseLogicalUnits(text) {
     }
 
     if (parts.length) {
-      units.push({ type: 'statement', text: parts.join(' '), startLine })
+      units.push({ type: 'statement', text: parts.join('\n'), startLine })
     }
   }
 

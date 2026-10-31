@@ -452,7 +452,9 @@ function RulesEditor({ tab, onCursor }) {
           endColumn: model.getLineMaxColumn(e.LineNumber),
         })),
         ...staticErrors.map(e => ({
-          severity: monacoRef.current.MarkerSeverity.Error,
+          severity: e.severity === 'warning'
+            ? monacoRef.current.MarkerSeverity.Warning
+            : monacoRef.current.MarkerSeverity.Error,
           message: e.message,
           startLineNumber: e.line,
           startColumn: 1,
@@ -461,7 +463,9 @@ function RulesEditor({ tab, onCursor }) {
         })),
       ]
       monacoRef.current.editor.setModelMarkers(model, 'rules-check', markers)
-      setCheckResult(markers.length === 0 ? 'pass' : 'fail')
+      const errorCount = tm1Errors.length +
+        staticErrors.filter(e => (e.severity ?? 'error') === 'error').length
+      setCheckResult(errorCount === 0 ? 'pass' : 'fail')
       setCheckErrors([
         ...tm1Errors.map(e => ({ severity: 'error', line: e.LineNumber, message: e.Message })),
         ...staticErrors.map(e => ({ severity: e.severity ?? 'error', line: e.line, message: e.message })),

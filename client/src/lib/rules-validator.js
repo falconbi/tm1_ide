@@ -1,6 +1,7 @@
 import { tokenize } from '@/lib/formatters/tokenizer.js'
 import { parseLogicalUnits } from '@/lib/formatters/tm1-structured.js'
 import { parseExpression } from '@/lib/formatters/tm1-expression-parser.js'
+import { stripComments } from '@/lib/rules-comments.js'
 import { RULES_CATALOG, TI_CATALOG } from '@/lib/tm1-completion.js'
 import { catalogEntry } from '@/lib/catalog-runtime.js'
 import { compatWarning } from '@/lib/tm1-version.js'
@@ -79,7 +80,7 @@ export function validateRulesSyntax(code, options = {}) {
   for (const unit of units) {
     if (unit.type !== 'statement') continue
 
-    const text = unit.text
+    const text = stripComments(unit.text)
     const tokens = tokenize(text)
     const toks = tokens.filter(t => t.type !== 'whitespace')
     if (!toks.length) continue
