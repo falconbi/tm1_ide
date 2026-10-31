@@ -11,7 +11,7 @@ import { useStore } from '../store'
 import {
   Network, ChevronRight, ChevronDown, Search, X, RefreshCw, ArrowRight, Layers,
   Code2, Workflow, Filter, GitBranch, Zap, BookOpen, Milestone,
-  Box, Eye, Play, Pause, StepBack, StepForward, SkipBack, Clapperboard, PanelLeftClose, PanelLeftOpen, Info, ExternalLink, Maximize2, History,
+  Box, Eye, Play, Pause, StepBack, StepForward, SkipBack, Clapperboard, PanelLeftClose, PanelLeftOpen, Info, ExternalLink, Maximize2, History, ArrowLeft,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { loadSettings } from '@/lib/formatters/settings.js'
@@ -681,6 +681,7 @@ function CubeMapInner({ tab }) {
 
   const [selectedCube,   setSelectedCube]   = useState(null)
   const [moduleFocus,    setModuleFocus]    = useState(null)
+  const [trail,          setTrail]          = useState([])   // focus path since the full map — see Trail below
   const [focused,        setFocused]        = useState(false)
   const [traceKinds,     setTraceKinds]     = useState({ ...TRACE_KIND_DEFAULTS, ...(prefs.traceKinds ?? {}) })
   const [search,         setSearch]         = useState('')
@@ -779,6 +780,7 @@ function CubeMapInner({ tab }) {
     if (saved.scope) setScope(saved.scope)
     if (saved.sidebarOpen != null) setSidebarOpen(saved.sidebarOpen)
     if (saved.phaseFocus) setPhaseFocus(saved.phaseFocus)
+    if (Array.isArray(saved.trail)) setTrail(saved.trail)
     if (saved.selectedCube && (cubeData[saved.selectedCube] || processData[saved.selectedCube.slice(5)] || dimData[saved.selectedCube.slice(4)])) {
       setSelectedCube(saved.selectedCube)
       setFocused(!!saved.focused)
@@ -804,7 +806,7 @@ function CubeMapInner({ tab }) {
   // Keep the session current; the cleanup also catches a tab switch.
   const sessionRef = useRef(null)
   useEffect(() => {
-    sessionRef.current = { runEntry, runIdx, runScope, phaseFocus, selectedCube, focused, scope, sidebarOpen, showBar, stepInfoOpen }
+    sessionRef.current = { runEntry, runIdx, runScope, phaseFocus, selectedCube, focused, scope, sidebarOpen, showBar, stepInfoOpen, trail }
   })
   const saveSession = useCallback(() => {
     const st = sessionRef.current
@@ -1287,6 +1289,60 @@ function CubeMapInner({ tab }) {
     if (found) setCenter(found.position.x + NODE_W / 2, found.position.y + NODE_H / 2, { duration: 400, zoom: 1.2 })
   }, [nodes, setCenter])
 
+  // ── Trail: the path of focuses since the full map ───────────────────────────
+  // Every drill (map click, detail-panel link, module picker, deep link) adds a
+  // step, so you can go back one step or jump to any earlier one. Derived from
+  // the focus state rather than each call site, so no route into focus is missed.
+  // A phase focus (runbook) is its own mode with its own bar — the trail waits.
+  const focusEntry = !focused || phaseFocus ? null
+    : moduleFocus ? { kind: 'module', id: moduleFocus }
+    : selectedCube ? { kind: 'node', id: selectedCube }
+    : null
+  const focusEntryKey = focusEntry ? `${focusEntry.kind}:${focusEntry.id}` : ''
+  const trailNavRef = useRef(false)   // set by goTo so its own focus change isn't pushed again
+  useEffect(() => {
+    if (phaseFocus) return
+    if (!focusEntry) { setTrail([]); return }
+    if (trailNavRef.current) { trailNavRef.current = false; return }
+    setTrail(t => {
+      const i = t.findIndex(e => e.kind === focusEntry.kind && e.id === focusEntry.id)
+      if (i === t.length - 1) return t
+      return i >= 0 ? t.slice(0, i + 1) : [...t, focusEntry]   // revisiting a step goes back to it
+    })
+  }, [focusEntryKey, phaseFocus])   // eslint-disable-line react-hooks/exhaustive-deps
+
+  const goToTrail = useCallback((index) => {
+    const entry = trail[index]
+    if (!entry || index === trail.length - 1) return
+    trailNavRef.current = true
+    setTrail(trail.slice(0, index + 1))
+    // State only, no camera move of our own: the relayout's fitView frames the
+    // result. A second animation here kept the nodes sliding under the pointer,
+    // so clicks right after Back were read as drags and lost.
+    setPhaseFocus(null)
+    setDimmedIds(new Set())
+    if (entry.kind === 'module') { setModuleFocus(entry.id); setSelectedCube(null) }
+    else { setModuleFocus(null); setSelectedCube(entry.id) }
+    setFocused(true)
+  }, [trail])
+
+  const trailBack = useCallback(() => {
+    if (trail.length > 1) goToTrail(trail.length - 2)
+    else exitFocus()
+  }, [trail, goToTrail, exitFocus])
+
+  // Backspace or Alt+← steps back (not while typing in a field)
+  useEffect(() => {
+    if (!focused) return
+    const onKey = (e) => {
+      const el = e.target
+      if (el?.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(el?.tagName)) return
+      if (e.key === 'Backspace' || (e.altKey && e.key === 'ArrowLeft')) { e.preventDefault(); trailBack() }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [focused, trailBack])
+
   // ── Open tab actions ──────────────────────────────────────────────────────────
   const openRules   = (cube)  => openTab({ id: `rules:${srv}:${cube}`,           type: 'rules',      label: cube,    server: srv, cube })
   const openCube    = (cube)  => openTab({ id: `cubeeditor:${srv}:${cube}`,       type: 'cubeeditor', label: cube,    server: srv, cube })
@@ -1532,6 +1588,7 @@ function CubeMapInner({ tab }) {
           onEdgesChange={onEdgesChange}
           onNodeClick={onNodeClick}
           onNodeDoubleClick={onNodeDoubleClick}
+          nodeClickDistance={5}
           onPaneClick={onPaneClick}
           nodeTypes={nodeTypes}
           edgeTypes={edgeTypes}
@@ -1563,18 +1620,54 @@ function CubeMapInner({ tab }) {
         )}
         {focused && (selectedCube || moduleFocus || phaseFocus) && (
           <div style={{
-            position: 'absolute', top: 10, left: 10, zIndex: 5,
+            position: 'absolute', top: 10, left: 10, zIndex: 5, maxWidth: 'calc(100% - 20px)',
             background: 'var(--cm-panel-bg)', border: '1px solid var(--cm-border)',
             borderRadius: 7, padding: '6px 10px', fontSize: 11, color: 'var(--cm-text)',
             display: 'flex', alignItems: 'center', gap: 8,
             boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
           }}>
-            <GitBranch size={12} style={{ color: 'var(--cm-link)', flexShrink: 0 }} />
-            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {phaseFocus ? (phaseFocus.kind === 'process' ? 'Process' : phaseFocus.kind === 'chore' ? 'Chore' : 'Phase') : 'Focused on'} <b style={{ color: 'var(--cm-link)' }}>{focusLabel}</b>
-              {phaseFocus && <span style={{ color: 'var(--cm-text-muted)' }}> · {phaseFocus.processes.length} process{phaseFocus.processes.length !== 1 ? 'es' : ''}</span>}
-              {transitiveCount > 0 && <span style={{ color: 'var(--cm-text-muted)' }}> · {transitiveCount} connected{reachableCapped ? ' (capped)' : ''}</span>}
-            </span>
+            {phaseFocus ? (
+              <>
+                <GitBranch size={12} style={{ color: 'var(--cm-link)', flexShrink: 0 }} />
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {phaseFocus.kind === 'process' ? 'Process' : phaseFocus.kind === 'chore' ? 'Chore' : 'Phase'} <b style={{ color: 'var(--cm-link)' }}>{focusLabel}</b>
+                  <span style={{ color: 'var(--cm-text-muted)' }}> · {phaseFocus.processes.length} process{phaseFocus.processes.length !== 1 ? 'es' : ''}</span>
+                  {transitiveCount > 0 && <span style={{ color: 'var(--cm-text-muted)' }}> · {transitiveCount} connected{reachableCapped ? ' (capped)' : ''}</span>}
+                </span>
+              </>
+            ) : (
+              <>
+                <button onClick={trailBack} title="Back one step (Backspace / Alt+←)" style={{
+                  background: 'none', border: '1px solid var(--cm-border)', borderRadius: 4, cursor: 'pointer',
+                  padding: '1px 6px', color: 'var(--cm-text)', display: 'flex', alignItems: 'center', gap: 3, fontSize: 11, flexShrink: 0,
+                }}>
+                  <ArrowLeft size={11} /> Back
+                </button>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 4, minWidth: 0, overflow: 'hidden', whiteSpace: 'nowrap' }}>
+                  <button onClick={exitFocus} title="Show the full map (Esc)" style={{
+                    background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: 'var(--cm-link)', fontSize: 11, flexShrink: 0,
+                  }}>
+                    Full map{scope ? ` (${scope} only)` : ''}
+                  </button>
+                  {trail.map((e, i) => {
+                    const last = i === trail.length - 1
+                    const label = e.kind === 'module' ? `module ${e.id}` : e.id.replace(/^(proc|dim):/, '')
+                    return (
+                      <span key={`${e.kind}:${e.id}`} style={{ display: 'flex', alignItems: 'center', gap: 4, minWidth: 0 }}>
+                        <ChevronRight size={10} style={{ color: 'var(--cm-text-muted)', flexShrink: 0 }} />
+                        {last
+                          ? <b style={{ color: 'var(--cm-text)', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 220 }} title={label}>{label}</b>
+                          : <button onClick={() => goToTrail(i)} title={`Back to ${label}`} style={{
+                              background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: 'var(--cm-link)', fontSize: 11,
+                              overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 160,
+                            }}>{label}</button>}
+                      </span>
+                    )
+                  })}
+                  {transitiveCount > 0 && <span style={{ color: 'var(--cm-text-muted)', flexShrink: 0 }}>· {transitiveCount} connected{reachableCapped ? ' (capped)' : ''}</span>}
+                </span>
+              </>
+            )}
             {moduleFocus && (
               <div style={{ display: 'flex', gap: 2 }} title="How many hops to follow through the selected edge kinds">
                 {[1, 2, 3, 4].map(d => (
