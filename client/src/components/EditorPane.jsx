@@ -12,7 +12,7 @@ import ChoreEditor from '@/components/ChoreEditor'
 import GuidedMDXBuilder from '@/components/GuidedMDXBuilder'
 import CubeEditor from '@/components/CubeEditor'
 import { toast } from 'sonner'
-import { GitBranch, ChevronRight, ChevronDown, Loader2, ChevronsUpDown, ChevronsDownUp, ListTree, AlignLeft, Settings, Locate, Braces, Save, Map, Microscope, X, History, ShieldCheck, Rss, AlertTriangle, AlertCircle, HelpCircle, ListFilter } from 'lucide-react'
+import { GitBranch, ChevronRight, ChevronDown, Loader2, ChevronsUpDown, ChevronsDownUp, ListTree, AlignLeft, Settings, Locate, Braces, Save, Map, Microscope, X, History, ShieldCheck, Rss, AlertTriangle, AlertCircle, HelpCircle, ListFilter, Undo2, Redo2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { loadSettings, saveSettings } from '@/lib/formatters/settings.js'
 import { formatRules } from '@/lib/formatters/rules-formatter.js'
@@ -593,9 +593,19 @@ function RulesEditor({ tab, onCursor }) {
     doSave()
   }
 
+  const undo = () => editorRef.current?.trigger('tm1ide', 'undo', null)
+  const redo = () => editorRef.current?.trigger('tm1ide', 'redo', null)
+
   const handleMount = (editor, monaco) => {
     editorRef.current = editor
     monacoRef.current = monaco
+    // Explicit bindings: Cmd+Z / Ctrl+Z undo, Cmd+Shift+Z / Ctrl+Y redo.
+    // Monaco has these by default, but binding them here keeps the shortcut
+    // inside the editor even when the page or a parent pane has its own key
+    // handling.
+    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyZ, () => editor.trigger('tm1ide', 'undo', null))
+    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyZ, () => editor.trigger('tm1ide', 'redo', null))
+    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyY, () => editor.trigger('tm1ide', 'redo', null))
     // apply the user's editor font preferences (fontFamily / fontSize / lineHeight from settings)
     const editorSettings = loadSettings().editor ?? {}
     editor.updateOptions({
@@ -759,6 +769,20 @@ function RulesEditor({ tab, onCursor }) {
             )}
           >
             <History size={11} />
+          </button>
+          <button
+            onClick={undo}
+            title="Undo (Ctrl/Cmd+Z)"
+            className="flex items-center gap-1 px-2 py-1 rounded text-xs border bg-background/80 border-border text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <Undo2 size={11} /> Undo
+          </button>
+          <button
+            onClick={redo}
+            title="Redo (Ctrl+Shift+Z / Ctrl+Y)"
+            className="flex items-center gap-1 px-2 py-1 rounded text-xs border bg-background/80 border-border text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <Redo2 size={11} /> Redo
           </button>
           <button
             onClick={handleSave}
