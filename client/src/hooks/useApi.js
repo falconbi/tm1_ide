@@ -14,10 +14,11 @@ if (typeof window !== 'undefined' && !window.__tm1FetchWrapped) {
   const WRITE = new Set(['POST', 'PATCH', 'DELETE'])
   const EXCLUDED = ['/api/auth/', '/api/sessions/', '/api/assertions', '/api/deploy', '/api/git', '/api/servers', '/api/config', '/api/catalog', '/api/explorer', '/api/log', '/api/model-health', '/api/git-readiness', '/api/readiness', '/api/admin', '/api/files', '/api/sql', '/api/jobs', '/api/maintenance', '/api/users', '/api/notebooks', '/api/period', '/api/search', '/api/mcp', '/api/function-catalog', '/api/subset/preview', '/api/mdx']
   const tok = () => localStorage.getItem('tm1-token') ?? ''
-  // Read-only (PROD-posture) servers, from /api/servers (listServersWithFlags),
-  // cached once per page load. Used to skip the change-set prompt and to name
-  // the write-refused toast.
+  // Read-only (PROD-posture) and Simple-mode servers, from /api/servers
+  // (listServersWithFlags), cached once per page load. Both skip the change-set
+  // prompt; read-only also names the write-refused toast.
   const readOnlyServers = new Set()
+  const simpleServers = new Set()
   let readOnlyLoaded = false
   let readOnlyLoadPromise = null
   // Loaded only by a 2xx response carrying an array — a 401/500/non-array (e.g.
@@ -29,7 +30,12 @@ if (typeof window !== 'undefined' && !window.__tm1FetchWrapped) {
         if (!Array.isArray(list)) return
         readOnlyLoaded = true
         readOnlyServers.clear()
-        for (const s of list) if (s?.readOnly) readOnlyServers.add(String(s?.name ?? '').toLowerCase())
+        simpleServers.clear()
+        for (const s of list) {
+          const key = String(s?.name ?? '').toLowerCase()
+          if (s?.readOnly) readOnlyServers.add(key)
+          if (s?.simple) simpleServers.add(key)
+        }
       })
       .catch(() => { /* auth/network hiccup — not loaded; the next save attempts again */ })
       .finally(() => { if (!readOnlyLoaded) readOnlyLoadPromise = null })   // never reuse a failed attempt
@@ -37,6 +43,8 @@ if (typeof window !== 'undefined' && !window.__tm1FetchWrapped) {
   }
   loadReadOnlyServers() // page-load warmth only, not relied upon — a backend restart
                         // or a first visit has no token, and sign-in doesn't reload.
+  // Simple mode switched in Server Admin — reload the flags so the next save follows it
+  window.addEventListener('tm1-servers-changed', () => { loadReadOnlyServers() })
   // First save with no open change set → prompt for a name and start one.
   const ensureChangeSet = async (server) => {
     // Lazy: if the read-only flags aren't loaded yet, await one load attempt
@@ -46,7 +54,8 @@ if (typeof window !== 'undefined' && !window.__tm1FetchWrapped) {
       try { await readOnlyLoadPromise } catch { /* fall through to the prompt */ }
       if (!readOnlyLoaded) readOnlyLoadPromise = null   // allow a fresh attempt next save
     }
-    if (readOnlyServers.has(String(server ?? '').toLowerCase())) return
+    const key = String(server ?? '').toLowerCase()
+    if (readOnlyServers.has(key) || simpleServers.has(key)) return
     try {
       const r = await nativeFetch(`/api/sessions/active?server=${enc(server)}`, { headers: { 'x-ide-token': tok() } })
       const s = await r.json().catch(() => null)
@@ -133,6 +142,12 @@ const enc = encodeURIComponent
 
 export const useConfig    = ()                    => useQuery({ queryKey: ['config'],                     queryFn: () => get('/api/config'), staleTime: Infinity })
 export const useServers   = ()                    => useQuery({ queryKey: ['servers'],                    queryFn: () => get('/api/servers') })
+// Simple mode (config/servers.json): the deploy process is hidden on this server
+export function useIsSimple(server) {
+  const { data: servers = [] } = useServers()
+  const key = String(server ?? '').toLowerCase()
+  return Array.isArray(servers) && servers.some(s => s?.simple && String(s.name).toLowerCase() === key)
+}
 export const useElements           = (server, dim, hierarchy) => useQuery({ queryKey: ['elements', server, dim, hierarchy],           queryFn: () => get(`/api/elements?server=${enc(server)}&dimension=${enc(dim)}${hierarchy ? `&hierarchy=${enc(hierarchy)}` : ''}`),           enabled: !!server && !!dim })
 export const useElementsWithIndex  = (server, dim, hierarchy) => useQuery({ queryKey: ['elements-index', server, dim, hierarchy],     queryFn: () => get(`/api/elements?server=${enc(server)}&dimension=${enc(dim)}${hierarchy ? `&hierarchy=${enc(hierarchy)}` : ''}&index=1`), enabled: !!server && !!dim })
 export const useElementsTree  = (server, dim, hierarchy) => useQuery({ queryKey: ['elements-tree', server, dim, hierarchy], queryFn: () => get(`/api/elements/tree?server=${enc(server)}&dimension=${enc(dim)}${hierarchy ? `&hierarchy=${enc(hierarchy)}` : ''}`), enabled: !!server && !!dim, staleTime: 60_000 })
@@ -600,6 +615,17 @@ export const useCancelJob        = () => useMutation({ mutationFn: ({ server, id
 export const useServerMetrics        = (server, opts = {}) => useQuery({ queryKey: ['metrics', server], queryFn: () => get(`/api/admin/metrics?server=${enc(server)}`), enabled: !!server, staleTime: 15_000, ...opts })
 export const useActiveConfiguration  = (server, opts = {}) => useQuery({ queryKey: ['config', server],  queryFn: () => get(`/api/admin/configuration?server=${enc(server)}`), enabled: !!server, staleTime: 30_000, ...opts })
 export const useMaintenanceMode      = () => useMutation({ mutationFn: ({ server, enable }) => post(`/api/admin/maintenance/${enable ? 'enable' : 'disable'}`, { server }) })
+// Simple mode switch — TM1 admins only; refreshes the server flags everywhere
+export function useSetSimpleMode() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ server, simple }) => post('/api/server/simple-mode', { server, simple }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['servers'] })
+      window.dispatchEvent(new CustomEvent('tm1-servers-changed'))
+    },
+  })
+}
 
 // ── TM1 Sessions (who is connected) ──────────────────────────────────────────
 export const useSessions          = (server, opts = {}) => useQuery({ queryKey: ['sessions', server], queryFn: () => get(`/api/tm1-sessions?server=${enc(server)}`), enabled: !!server, staleTime: 0, ...opts })

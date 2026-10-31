@@ -7,6 +7,7 @@ const { PawNativeAdapter }  = require('./adapters/paw_native')
 const { DirectV11Adapter, httpsAgentFor, TM1AuthRejected }  = require('./adapters/direct_v11')
 const { PawOAuth2Adapter }  = require('./adapters/paw_oauth2')
 const { getServerCredentials, markServerRejected, hasPawSession } = require('./paw_connect')
+const { isSimpleInModes } = require('./ide_modes')
 
 const SERVERS_PATH = path.join(__dirname, '..', 'config', 'servers.json')
 
@@ -38,9 +39,10 @@ function _loadConfig() {
             adminHosts:      [],
             connections:     [{ name: 'default', adapter: 'paw-native', pawHost: process.env.PAW_HOST, servers: cfg.map(s => s.name) }],
             readOnlyServers: [],
+            simpleServers:   [],
         }
     }
-    return { adminHosts: cfg.adminHosts ?? [], connections: cfg.connections ?? [], readOnlyServers: cfg.readOnlyServers ?? [] }
+    return { adminHosts: cfg.adminHosts ?? [], connections: cfg.connections ?? [], readOnlyServers: cfg.readOnlyServers ?? [], simpleServers: cfg.simpleServers ?? [] }
 }
 
 // ── TLS ───────────────────────────────────────────────────────────────────────
@@ -299,9 +301,34 @@ function isReadOnly(serverName) {
     return false
 }
 
-// Server list enriched with the read-only flag for the UI indicator.
+// Simple mode: a server for people who just edit. The IDE hides the deploy
+// process there (change sets, deploy, drift, tests) and never asks for a change
+// set on save. Saves are still logged with the user, and the MCP still requires
+// a change set — Simple mode changes what a person sees, not what an agent must do.
+// Switched on in Server Admin (kept in config/ide-modes.json, core/ide_modes.js),
+// or marked the same way as read-only, in config/servers.json:
+//   "simpleServers": ["SANDBOX", ...]         — explicit per-server list
+//   a connection/adminHost with "simple": true makes every server it owns simple
+// Returns where it is set — 'config' (servers.json, so the UI can't switch it
+// off) or 'ide' (the Server Admin switch) — or null when the server isn't simple.
+function simpleSource(serverName) {
+    if (!serverName) return null
+    try {
+        const cfg = _loadConfig()
+        if ((cfg.simpleServers ?? []).some(s => String(s).toLowerCase() === serverName.toLowerCase())) return 'config'
+        if (_findAdminHost(serverName, cfg.adminHosts ?? [])?.simple === true) return 'config'
+        if (_findConnection(serverName, cfg.connections ?? [])?.simple === true) return 'config'
+    } catch {}
+    return isSimpleInModes(serverName) ? 'ide' : null
+}
+const isSimple = serverName => simpleSource(serverName) !== null
+
+// Server list enriched with the read-only and simple flags for the UI.
 function listServersWithFlags() {
-    return listServers().map(name => ({ name, readOnly: isReadOnly(name) }))
+    return listServers().map(name => {
+        const source = simpleSource(name)
+        return { name, readOnly: isReadOnly(name), simple: source !== null, simpleSource: source }
+    })
 }
 
-module.exports = { getAdapter, makeClient, makeClientWithCredentials, needsServerLogin, isDirectServer, isPawNativeServer, probeAuthMethod, NeedsServerLogin, TM1AuthRejected, listServers, listServersWithFlags, isReadOnly, getDefaultAdapterType, getLoginServer }
+module.exports = { getAdapter, makeClient, makeClientWithCredentials, needsServerLogin, isDirectServer, isPawNativeServer, probeAuthMethod, NeedsServerLogin, TM1AuthRejected, listServers, listServersWithFlags, isReadOnly, isSimple, simpleSource, getDefaultAdapterType, getLoginServer }

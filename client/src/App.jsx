@@ -29,10 +29,18 @@ import DeployWizard from '@/components/DeployWizard'
 import GitSetup from '@/components/GitSetup'
 import GitDrift from '@/components/GitDrift'
 import DeployCenter from '@/components/DeployCenter'
+import { useIsSimple } from '@/hooks/useApi'
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { staleTime: 30_000, retry: 1 } },
 })
+
+// Simple mode (per server, config/servers.json): the deploy menu and change sets
+// are hidden. A component, not a hook in App, because App creates the
+// QueryClientProvider that useIsSimple's query needs.
+function FullModeOnly({ server, children }) {
+  return useIsSimple(server) ? null : children
+}
 
 export default function App() {
   const { loadForge, formatSettingsOpen, setFormatSettingsOpen, openTab, openDeployCenter, server, token, clearAuth } = useStore()
@@ -305,7 +313,7 @@ const [showCatalog, setShowCatalog]           = useState(false)
               )}
 
               {/* Deploy — one contextual icon; opens the deploy components */}
-              <div className="relative" ref={deployMenuRef}>
+              <FullModeOnly server={server}><div className="relative" ref={deployMenuRef}>
                 <button
                   onClick={() => setShowDeployMenu(v => !v)}
                   className={cn('p-1.5 rounded text-muted-foreground hover:text-foreground transition-colors', (showDeployMenu || showGitDeploy || showGitDrift || showModelHealth || showAssertions) && 'bg-muted text-foreground')}
@@ -359,11 +367,11 @@ const [showCatalog, setShowCatalog]           = useState(false)
                     </button>
                   </div>
                 )}
-              </div>
+              </div></FullModeOnly>
 
               <div className="w-px h-4 bg-border mx-1" />
               <SaveDataButton />
-              <SessionControl />
+              <FullModeOnly server={server}><SessionControl /></FullModeOnly>
 
             </div>
           </div>

@@ -107,6 +107,18 @@ Edit `config/servers.json`:
 
 > See [Authentication](../auth/AUTHENTICATION.md) for multi-host and advanced adapter setups.
 
+#### Simple mode (optional)
+
+For a server where people just edit and save, Simple mode hides the deploy process: the Deploy menu,
+the change set button and the change set prompt on save. Every save is still recorded with who made it,
+read-only servers stay read-only, and an AI agent working through the MCP server still has to open a
+change set. It is off by default.
+
+- **From the IDE:** **Admin** in the status bar → **IDE** → **Turn on Simple mode**. TM1 admins only. It
+  applies to everyone on that server and is kept in `config/ide-modes.json`.
+- **In `config/servers.json`:** `"simpleServers": ["Sandbox"]`, or `"simple": true` on an `adminHosts` /
+  `connections` entry for every server it owns. This takes priority — the IDE switch can't turn it off.
+
 ### 3. Run
 
 ```bash

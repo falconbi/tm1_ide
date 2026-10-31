@@ -123,6 +123,7 @@ Five playlists, one theme each — build with AI, everyday development, governed
 | **Sessions Monitor** | Active TM1 sessions grouped by user, each expandable to its running threads (state + function), with per-thread cancel and per-session disconnect |
 | **Save data** | Header button (admins only) writes all changed cube data to disk with `SaveDataAll`, confirms first, shows a spinner, and keeps the last-saved time per server in its tooltip. |
 | **Server Admin** | **Admin** in the status bar. Sessions (with disconnect) and a read-only tree of the server's active configuration on every version; on V12 also a Status tab — live server metrics and the maintenance-mode toggle (TM1 12.6+). Tabs a server's version doesn't support are hidden |
+| **Simple mode** | Per server, for people who just edit: hides the Deploy menu, change sets and the change set prompt on save. Switched in **Admin → IDE** (TM1 admins only) or set in `config/servers.json`. Saves are still recorded with the user, and an AI agent still needs a change set. Off by default — see [Setup](SETUP.md#simple-mode-optional) |
 
 ### 🗓️ Period Builder
 

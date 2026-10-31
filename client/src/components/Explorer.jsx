@@ -1,6 +1,6 @@
 import { useState, useRef, useMemo, useEffect, createContext, useContext, useCallback } from 'react'
 import { toast } from 'sonner'
-import { useCubes, useDims, useProcs, useChores, useSubsets, useViews, useCubeDimensions, useSaveView, useHierarchies, useCreateHierarchy, useControlObjects, useDeleteDimension, useDeleteCube, useDeleteProcess, useDeleteChore, useDeleteSubset, useDeleteView, useActiveWorkSession, useWorkSessionLog } from '@/hooks/useApi'
+import { useCubes, useDims, useProcs, useChores, useSubsets, useViews, useCubeDimensions, useSaveView, useHierarchies, useCreateHierarchy, useControlObjects, useDeleteDimension, useDeleteCube, useDeleteProcess, useDeleteChore, useDeleteSubset, useDeleteView, useActiveWorkSession, useWorkSessionLog, useIsSimple } from '@/hooks/useApi'
 import { useStore } from '@/store'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { ChevronRight, ChevronDown, Box, Layers, Cog, Clock, Loader2, List, Plus, Table2, Code2, Sigma, PencilLine, Search, X, Braces, Trash2, FileSearch, Database, Network, LayoutDashboard, Copy } from 'lucide-react'
@@ -1093,14 +1093,17 @@ export default function Explorer() {
 
   const { data: activeSession }    = useActiveWorkSession(server)
   const { data: sessionEntries = [] } = useWorkSessionLog(activeSession?.id)
+  const simple = useIsSimple(server)
+  // Green "changed in the open change set" dots — none in Simple mode
   const changedSet = useMemo(() => {
     const s = new Set()
+    if (simple) return s
     for (const e of sessionEntries) {
       s.add(`${e.object_type}::${e.object_name}`)
       if (e.detail) s.add(`${e.object_type}::${e.detail}::${e.object_name}`)
     }
     return s
-  }, [sessionEntries])
+  }, [sessionEntries, simple])
 
   useEffect(() => {
     const handler = (e) => {

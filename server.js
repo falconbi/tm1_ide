@@ -7,7 +7,7 @@ const path      = require('path')
 const fs        = require('fs')
 const ai        = require('./core/ai/registry')
 const obfuscate = require('./core/ai/obfuscate')
-const { makeClient, makeClientWithCredentials, needsServerLogin, isDirectServer, isPawNativeServer, probeAuthMethod, listServers, listServersWithFlags, getDefaultAdapterType, getLoginServer } = require('./core/adapter_registry')
+const { makeClient, makeClientWithCredentials, needsServerLogin, isDirectServer, isPawNativeServer, probeAuthMethod, listServers, listServersWithFlags, isSimple, simpleSource, getDefaultAdapterType, getLoginServer } = require('./core/adapter_registry')
 const { loadConnections, saveConnections, getConnection, executeQuery, testConnection, getSchema, loadQueries, saveQueries } = require('./core/sql_client')
 const { createSession, createDirectSession, createLocalSession, attachPawSession, getSessionUser, touchSession, invalidateSession, getCachedPawSession, getCSRF, PAW_HOST, setServerCredentials, getServerCredentials, clearServerCredentials, getServerStatus, listServerEntries, getSessionCredentials } = require('./core/paw_connect')
 const cl = require('./core/change_log')
@@ -19,7 +19,8 @@ const lensStore = require('./core/lens_store')
 const { logLensWrite, logLensRun, logLensNote, readLensActivity } = require('./core/lens_activity_log')
 const lensBridge = require('./core/lens_bridge')
 const { readOnlyRefusal } = require('./core/readonly')
-const { createSaveDataAllRoute } = require('./core/save_data_all')
+const { createSaveDataAllRoute, isAdminGroups } = require('./core/save_data_all')
+const { setSimpleInModes } = require('./core/ide_modes')
 
 // Session (Change Set) is optional for using the IDE — it groups changes for
 // deployment, it is not a login and must never gate whether a save works.
@@ -30,6 +31,8 @@ const { createSaveDataAllRoute } = require('./core/save_data_all')
 const SESSION_GATE_ENABLED = ['1', 'true', 'yes'].includes(String(process.env.TM1_REQUIRE_SESSION ?? '0').toLowerCase())
 function requireSession(server, user) {
     if (!SESSION_GATE_ENABLED) return true
+    // A Simple-mode server hides change sets, so it can never demand one
+    if (isSimple(server)) return true
     return !!cl.getActiveSession(server, user)
 }
 const NO_SESSION_ERROR = 'No change set is open for this server — start one first (Change Log → Start change set) so this change can be attributed and deployed.'
@@ -2457,6 +2460,29 @@ app.post('/api/server/save-data-all', createSaveDataAllRoute({
     gateReadOnly,
     writeLog: cl.writeLog,
 }))
+
+// Simple mode switch (Server Admin → IDE). It changes the IDE for everyone on the
+// server, so only TM1 admins may flip it. Kept in config/ide-modes.json; a server
+// marked simple in servers.json can't be switched off here.
+app.post('/api/server/simple-mode', async (req, res) => {
+    const { server, simple } = req.body ?? {}
+    if (!server) return res.status(400).json({ error: 'server required' })
+    try {
+        if (simpleSource(server) === 'config') {
+            return res.status(409).json({ error: `Simple mode for ${server} is set in config/servers.json — change it there.` })
+        }
+        const me = await makeClient(server, req.ideToken).get('ActiveUser', { '$expand': 'Groups($select=Name)' })
+        if (!isAdminGroups(me?.Groups)) {
+            return res.status(403).json({ error: `Only TM1 admins can change Simple mode on ${server}.` })
+        }
+        setSimpleInModes(server, !!simple)
+        cl.writeLog({ server, action: simple ? 'SIMPLE_MODE_ON' : 'SIMPLE_MODE_OFF', objectType: 'server', objectName: server, detail: `Simple mode ${simple ? 'on' : 'off'}`, user: req.user })
+        res.json({ ok: true, server, simple: !!simple })
+    } catch (e) {
+        const detail = e.response?.data?.error?.message ?? e.response?.data?.error ?? e.message
+        res.status(500).json({ error: typeof detail === 'string' ? detail : JSON.stringify(detail) })
+    }
+})
 
 app.patch('/api/admin/configuration', async (req, res) => {
     try {

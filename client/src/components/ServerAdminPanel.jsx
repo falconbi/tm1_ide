@@ -1,6 +1,6 @@
 import { useState } from 'react'
-import { X, RefreshCw, Loader2, ShieldAlert, ShieldCheck, Server, Settings, BarChart3, Users, UserX } from 'lucide-react'
-import { useServerMetrics, useActiveConfiguration, useMaintenanceMode, useSessions, useDisconnectSession } from '@/hooks/useApi'
+import { X, RefreshCw, Loader2, ShieldAlert, ShieldCheck, Server, Settings, BarChart3, Users, UserX, SlidersHorizontal } from 'lucide-react'
+import { useServerMetrics, useActiveConfiguration, useMaintenanceMode, useSessions, useDisconnectSession, useServers, useSetSimpleMode } from '@/hooks/useApi'
 import { useQueryClient } from '@tanstack/react-query'
 import { cn } from '@/lib/utils'
 import { useStore } from '@/store'
@@ -63,7 +63,60 @@ const TABS = [
   { id: 'status',   label: 'Status',        icon: BarChart3 },
   { id: 'sessions', label: 'Sessions',      icon: Users     },
   { id: 'config',   label: 'Configuration', icon: Settings  },
+  { id: 'ide',      label: 'IDE',           icon: SlidersHorizontal },
 ]
+
+// ── IDE tab: Simple mode ──────────────────────────────────────────────────────
+// Hides the deploy process (Deploy menu, change sets) on this server for
+// everyone. Saves are still logged; an AI agent (MCP) still needs a change set.
+function SimpleModeSwitch({ server }) {
+  const { data: servers = [] } = useServers()
+  const setSimple = useSetSimpleMode()
+  const entry  = (Array.isArray(servers) ? servers : []).find(s => String(s?.name).toLowerCase() === String(server).toLowerCase())
+  const simple = !!entry?.simple
+  const locked = entry?.simpleSource === 'config'
+
+  const toggle = async () => {
+    try {
+      await setSimple.mutateAsync({ server, simple: !simple })
+      toast.success(simple ? `Full deploy process on ${server}` : `Simple mode on ${server}`)
+    } catch (e) {
+      toast.error(e.message)
+    }
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between p-4 rounded-lg border border-border bg-muted/20">
+        <div>
+          <div className="text-sm font-semibold">Simple mode {simple ? 'on' : 'off'}</div>
+          <div className="text-[11px] text-muted-foreground mt-0.5 max-w-md">
+            {simple
+              ? 'The Deploy menu and change sets are hidden on this server — just edit and save.'
+              : 'The full deploy process is shown: change sets, deploy, drift and tests.'}
+          </div>
+        </div>
+        <button
+          onClick={toggle}
+          disabled={setSimple.isPending || locked || !entry}
+          className="px-4 py-2 text-xs rounded font-medium bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-40 transition-opacity"
+        >
+          {setSimple.isPending
+            ? <Loader2 size={11} className="animate-spin mx-auto" />
+            : simple ? 'Show deploy process' : 'Turn on Simple mode'}
+        </button>
+      </div>
+      {locked && (
+        <p className="text-[11px] text-amber-400">Set in config/servers.json — change it there.</p>
+      )}
+      <p className="text-[11px] text-muted-foreground leading-relaxed">
+        Applies to everyone using this server; only TM1 admins can change it. Every save is still
+        recorded with who made it, read-only servers stay read-only, and an AI agent working
+        through MCP still has to open a change set.
+      </p>
+    </div>
+  )
+}
 
 // ── Panel ─────────────────────────────────────────────────────────────────────
 
@@ -304,6 +357,9 @@ export default function ServerAdminPanel({ server, onClose }) {
               )}
             </div>
           )}
+
+          {/* ── IDE tab ── */}
+          {tab === 'ide' && <SimpleModeSwitch server={server} />}
 
           {/* ── Configuration tab ── */}
           {tab === 'config' && (

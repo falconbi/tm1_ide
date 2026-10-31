@@ -20,6 +20,7 @@ export default function StatusBar() {
   const { data: servers = [] } = useServers()
   const activeServer = servers.find(s => (typeof s === 'string' ? s : s.name) === server)
   const readOnly = server ? (typeof activeServer === 'string' ? false : !!activeServer?.readOnly) : false
+  const simple = server ? (typeof activeServer === 'string' ? false : !!activeServer?.simple) : false
 
   // The identity that owns change sets on this server (case-insensitive name match) —
   // show it so edits are always attributable to the person signed in to the server.
@@ -55,7 +56,7 @@ export default function StatusBar() {
           {serverUser && (
             <span title={`Signed in to ${server} as ${serverUser}`} className="opacity-70 text-[10px] font-normal">· as {serverUser}</span>
           )}
-          {activeSession && (
+          {activeSession && !simple && (
             <span title={`Open change set: ${activeSession.name}`} className="opacity-70 text-[10px] font-normal">· set: {activeSession.name}</span>
           )}
           {serverUser && (
