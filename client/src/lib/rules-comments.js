@@ -27,3 +27,33 @@ export function stripComments(text) {
   }
   return out
 }
+
+// Return the line where a single-line rule string is left open, or 0 if all
+// strings close. Comments are ignored, including apostrophes inside them.
+// If a quote is removed early, later quotes may look paired; reporting the
+// first line that ends while a string is open points at the real mistake.
+export function findUnclosedStringLine(code) {
+  let inStr = false
+  let inComment = false
+  let line = 1
+  let startLine = 1
+  for (let i = 0; i < code.length; i++) {
+    const ch = code[i]
+    if (inComment) {
+      if (ch === '\n') { inComment = false; line++ }
+      continue
+    }
+    if (ch === '#') { inComment = true; continue }
+    if (ch === '\n') {
+      if (inStr) return startLine
+      line++
+      continue
+    }
+    if (ch === "'") {
+      if (inStr && i + 1 < code.length && code[i + 1] === "'") { i++; continue }
+      inStr = !inStr
+      if (inStr) startLine = line
+    }
+  }
+  return inStr ? startLine : 0
+}

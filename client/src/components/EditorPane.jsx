@@ -442,6 +442,16 @@ function RulesEditor({ tab, onCursor }) {
         const d = await r.json()
         tm1Errors = d.errors ?? []
       } catch { /* TM1 check failed — static errors still shown */ }
+      // Once TM1 reports a syntax error, static warnings later in the file are
+      // usually cascades from that one error (the parser has lost sync). Keep
+      // static findings before the first TM1 error, but don't bury the real
+      // error under a list of misleading warnings.
+      const firstTm1Line = tm1Errors.length
+        ? Math.min(...tm1Errors.map(e => Number(e.LineNumber) || 0))
+        : null
+      const staticToShow = firstTm1Line === null
+        ? staticErrors
+        : staticErrors.filter(e => e.line < firstTm1Line)
       const markers = [
         ...tm1Errors.map(e => ({
           severity: monacoRef.current.MarkerSeverity.Error,
@@ -451,7 +461,7 @@ function RulesEditor({ tab, onCursor }) {
           endLineNumber: e.LineNumber,
           endColumn: model.getLineMaxColumn(e.LineNumber),
         })),
-        ...staticErrors.map(e => ({
+        ...staticToShow.map(e => ({
           severity: e.severity === 'warning'
             ? monacoRef.current.MarkerSeverity.Warning
             : monacoRef.current.MarkerSeverity.Error,
@@ -464,11 +474,11 @@ function RulesEditor({ tab, onCursor }) {
       ]
       monacoRef.current.editor.setModelMarkers(model, 'rules-check', markers)
       const errorCount = tm1Errors.length +
-        staticErrors.filter(e => (e.severity ?? 'error') === 'error').length
+        staticToShow.filter(e => (e.severity ?? 'error') === 'error').length
       setCheckResult(errorCount === 0 ? 'pass' : 'fail')
       setCheckErrors([
         ...tm1Errors.map(e => ({ severity: 'error', line: e.LineNumber, message: e.Message })),
-        ...staticErrors.map(e => ({ severity: e.severity ?? 'error', line: e.line, message: e.message })),
+        ...staticToShow.map(e => ({ severity: e.severity ?? 'error', line: e.line, message: e.message })),
       ])
     } finally {
       setChecking(false)

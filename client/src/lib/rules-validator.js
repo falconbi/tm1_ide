@@ -1,7 +1,7 @@
 import { tokenize } from '@/lib/formatters/tokenizer.js'
 import { parseLogicalUnits } from '@/lib/formatters/tm1-structured.js'
 import { parseExpression } from '@/lib/formatters/tm1-expression-parser.js'
-import { stripComments } from '@/lib/rules-comments.js'
+import { findUnclosedStringLine, stripComments } from '@/lib/rules-comments.js'
 import { RULES_CATALOG, TI_CATALOG } from '@/lib/tm1-completion.js'
 import { catalogEntry } from '@/lib/catalog-runtime.js'
 import { compatWarning } from '@/lib/tm1-version.js'
@@ -40,31 +40,11 @@ export function validateRulesSyntax(code, options = {}) {
   // Comments may contain apostrophes (e.g. "Budget's", "it's") which are not
   // string delimiters — counting them naively toggles the string state and
   // produces a false "Unclosed string" error on otherwise valid rules.
-  let inStr = false
-  let strStartLine = 0
-  let inComment = false
-  for (let i = 0; i < code.length; i++) {
-    if (inComment) {
-      if (code[i] === '\n') inComment = false
-      continue
-    }
-    if (code[i] === '#') { inComment = true; continue }
-    if (code[i] === "'") {
-      if (i + 1 < code.length && code[i + 1] === "'") { i++; continue }
-      inStr = !inStr
-      if (inStr) {
-        strStartLine = code.substring(0, i).split('\n').length
-      }
-    }
+  const unclosedLine = findUnclosedStringLine(code)
+  if (unclosedLine) {
+    errors.push({ severity: 'error', line: unclosedLine, message: `Unclosed string — missing closing single quote` })
+    return errors
   }
-  if (inStr) {
-    errors.push({ severity: 'error', line: strStartLine, message: `Unclosed string — missing closing single quote` })
-  }
-
-  // ── Multi-line string guard ───────────────────────────────────────────────
-  // If there's an unclosed string, the tokenizer and parser will be confused.
-  // Return early with just the string error.
-  if (inStr) return errors
 
   // ── Parse into logical statements ─────────────────────────────────────────
   const units = parseLogicalUnits(code)
