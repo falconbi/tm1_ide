@@ -3,6 +3,9 @@ import { AgGridReact } from 'ag-grid-react'
 import { AllCommunityModule, ModuleRegistry } from 'ag-grid-community'
 import { DndContext, DragOverlay, PointerSensor, useSensor, useSensors, useDroppable, useDraggable } from '@dnd-kit/core'
 import MonacoEditor from '@monaco-editor/react'
+import { formatRules } from '@/lib/formatters/rules-formatter.js'
+import { loadSettings as loadFormatSettings } from '@/lib/formatters/settings.js'
+import { getNamingMap } from '@/lib/formatters/naming.js'
 import { useStore } from '@/store'
 import { subsetApplyCallbacks } from '@/lib/subsetCallbacks'
 import { useCubeDimensions, useSubsets, useElementsTree, useElementsTrees, useHierarchies, useHierarchiesFor, useViews, useExecuteMDX, useViewAxes, useSaveView, useSetDefaultView, usePawBookUsage, useDimAttributes, useViewUsage, useMultiFormatAttrs, useConflictCheck, useGenerateViewMDX, useConfig } from '@/hooks/useApi'
@@ -598,7 +601,39 @@ function DropZone({ id, label, icon: Icon, dims, server, onRemove, onSubsetChang
 
 // ── Rule breakdown component ──────────────────────────────────────────────────
 
-function RuleBreakdown({ server, statements, dimElemPairs, cube, onDrill }) {
+// The static-version guard at the top of every rule file (IF(ELPAR(...) @= 'Non-Calculating', STET,
+// CONTINUE)). TM1's trace lists it once for every cube the calculation touches; it explains nothing.
+const GUARD_RX = /IF\s*\(\s*ELPAR\s*\([^)]*\)\s*@=\s*'[^']*'\s*,\s*STET\s*,\s*CONTINUE\s*\)/i
+const isGuardStatement = s => GUARD_RX.test(s)
+
+// 366.666666 -> 366.67, 10833.33333 -> 10,833.33; strings unchanged
+const fmtTraceValue = v => {
+    if (v == null || v === '') return v
+    const n = typeof v === 'number' ? v : (/^-?\d+(\.\d+)?(e[-+]?\d+)?$/i.test(String(v).trim()) ? Number(v) : NaN)
+    if (Number.isNaN(n)) return String(v)
+    return n.toLocaleString(undefined, { minimumFractionDigits: Number.isInteger(n) ? 0 : 2, maximumFractionDigits: 2 })
+}
+
+// A rule statement laid out with the IDE's TM1 Structured formatter (DB arguments on their own lines)
+const formatStatement = stmt => {
+    try {
+        const { map } = getNamingMap()
+        return formatRules(stmt, { ...loadFormatSettings().rules, expressionFormatter: 'tm1-structured' }, map)
+    } catch { return stmt }
+}
+
+function RuleBreakdown({ server, statements: allStatements, dimElemPairs, cube, onDrill }) {
+    // the statements that actually calculate the cell: no guards, no repeats
+    const { statements, guardCount } = useMemo(() => {
+        const seen = new Set(), real = []
+        let guards = 0
+        for (const st of allStatements) {
+            if (isGuardStatement(st)) { guards++; continue }
+            const k = st.replace(/\s+/g, ' ').trim()
+            if (!seen.has(k)) { seen.add(k); real.push(st) }
+        }
+        return { statements: real, guardCount: guards }
+    }, [allStatements])
     const [attrValues,   setAttrValues]   = useState({})
     const [loadingAttrs, setLoadingAttrs] = useState(false)
     const token = typeof window !== 'undefined' ? localStorage.getItem('tm1-token') ?? '' : ''
@@ -675,6 +710,59 @@ function RuleBreakdown({ server, statements, dimElemPairs, cube, onDrill }) {
         } catch { return [] }
     }, [server, token])
 
+    // Attribute values by dimension + element, fetched once.
+    const attrCache = useRef({})
+    const fetchAttrs = useCallback(async (dim, elem) => {
+        const key = `${dim}::${elem}`
+        if (attrCache.current[key]) return attrCache.current[key]
+        try {
+            const r = await fetch(`/api/element/attributes?server=${encodeURIComponent(server)}&dimension=${encodeURIComponent(dim)}&element=${encodeURIComponent(elem)}`, { headers: { 'x-ide-token': token } })
+            attrCache.current[key] = await r.json()
+        } catch { attrCache.current[key] = {} }
+        return attrCache.current[key]
+    }, [server, token])
+
+    // Work out what a coordinate expression comes to for this cell: a 'literal', a !Dim reference,
+    // ATTRS(...), DB(...) or IF(cond, a, b) -- nested as deep as the rule goes. { value, source }
+    // where source is the expression it came from (null for a plain name).
+    const resolveArgAsync = useCallback(async function resolveArgAsync(arg) {
+        const a = (arg ?? '').trim()
+        const lit = a.match(/^'([^']*)'$/)
+        if (lit) return { value: lit[1], source: null }
+        const inner = () => splitArgs(a.slice(a.indexOf('(') + 1, a.lastIndexOf(')')))
+        if (/^ATTRS\s*\(/i.test(a)) {
+            const x = inner()
+            const dim = resolveArg(x[0] ?? '', dimElemPairs)
+            const elem = (await resolveArgAsync(x[1] ?? '')).value
+            const vals = await fetchAttrs(dim, elem)
+            const v = vals?.[(x[2] ?? '').replace(/^['"]|['"]$/g, '')]
+            return { value: v == null ? '' : String(v), source: a }
+        }
+        if (/^DB\s*\(/i.test(a)) {
+            const x = inner()
+            const cubeName = (x[0] ?? '').replace(/^['"]|['"]$/g, '')
+            const coords = (await Promise.all(x.slice(1).map(resolveArgAsync))).map(r => r.value)
+            const dims = await getCubeDims(cubeName)
+            const v = await fetchCellValue(cubeName, dims.map((d, i) => ({ dim: d, element: coords[i] })).filter(p => p.element))
+            return { value: v == null ? '' : String(v), source: a }
+        }
+        if (/^IF\s*\(/i.test(a)) {
+            const open = a.indexOf('('), close = matchingCloseParen(a, open)
+            const x = splitArgs(a.slice(open + 1, close))
+            const c = splitComparison((x[0] ?? '').trim())
+            if (c && c[1] === '@=') {
+                const l = (await resolveArgAsync(c[0])).value, r = (await resolveArgAsync(c[2])).value
+                const pick = await resolveArgAsync(String(l).trim().toLowerCase() === String(r).trim().toLowerCase() ? x[1] : x[2])
+                return { value: pick.value, source: a }
+            }
+            return { value: '', source: a }
+        }
+        return { value: resolveArg(a, dimElemPairs), source: null }
+    }, [dimElemPairs, fetchAttrs, getCubeDims, fetchCellValue])
+
+    // DB operand text -> its resolved coordinates [{ value, source }]
+    const coordCache = useRef({})
+
     // Re-parse statements into a fetchable operand list whenever they change.
     const operandPlan = useMemo(() => {
         const plan = []
@@ -693,11 +781,12 @@ function RuleBreakdown({ server, statements, dimElemPairs, cube, onDrill }) {
                     for (const arg of splitArgs(s.slice(open + 1, close))) visit(arg)
                     return
                 }
+                // split on operators FIRST: ['Base'] * DB(...) is two operands, not one reference
+                const parts = splitTopLevelOps(s)
+                if (parts.length > 1) { for (const t of parts) if (t.type === 'operand') visit(t.value); return }
                 if (s.startsWith('[')) { plan.push({ kind: 'ref', element: (s.match(/\[['"]([^'"]+)['"]\]/) ?? [])[1] ?? s, lhs }); return }
                 if (/^DB\s*\(/i.test(s)) { plan.push({ kind: 'db', text: s, lhs }); return }
-                const parts = splitTopLevelOps(s)
-                if (parts.length <= 1) return  // leaf — no operators to split, stop (else infinite recursion)
-                for (const t of parts) if (t.type === 'operand') visit(t.value)
+                // a leaf with nothing to fetch -- stop (else infinite recursion)
             }
             visit(rhs)
         }
@@ -722,16 +811,19 @@ function RuleBreakdown({ server, statements, dimElemPairs, cube, onDrill }) {
                     const inner = op.text.slice(op.text.indexOf('(') + 1, op.text.lastIndexOf(')'))
                     const args = splitArgs(inner)
                     const cubeName = (args[0] ?? '').replace(/^['"]|['"]$/g, '')
-                    const coords = args.slice(1).map(a => resolveAttrArg(a) ?? resolveArg(a, dimElemPairs))
+                    const resolved = await Promise.all(args.slice(1).map(resolveArgAsync))
+                    coordCache.current[op.text] = resolved
+                    const coords = resolved.map(r => r.value)
                     const dims = await getCubeDims(cubeName)
                     const pairs = dims.map((d, i) => ({ dim: d, element: coords[i] })).filter(p => p.element)
                     await fetchCellValue(cubeName, pairs)
+                    bumpVal()
                 } else if (op.kind === 'ref') {
                     await fetchCellValue(cube, relativeRefPairs(op.element, op.lhs))
                 }
             }
         })()
-    }, [operandPlan, getCubeDims, fetchCellValue, relativeRefPairs, attrValues, loadingAttrs]) // eslint-disable-line
+    }, [operandPlan, getCubeDims, fetchCellValue, relativeRefPairs, resolveArgAsync]) // eslint-disable-line
 
     // ── Rendering ──────────────────────────────────────────────────────────────
 
@@ -742,7 +834,7 @@ function RuleBreakdown({ server, statements, dimElemPairs, cube, onDrill }) {
             const inner = s.slice(s.indexOf('(') + 1, s.lastIndexOf(')'))
             const args = splitArgs(inner)
             const cubeName = (args[0] ?? '').replace(/^['"]|['"]$/g, '')
-            const resolvedOps = args.slice(1).map(a => {
+            const resolvedOps = coordCache.current[s] ?? args.slice(1).map(a => {
                 const r = resolveAttrArg(a)
                 return r ? { value: r.value, source: r.source } : { value: resolveArg(a, dimElemPairs), source: null }
             })
@@ -763,13 +855,13 @@ function RuleBreakdown({ server, statements, dimElemPairs, cube, onDrill }) {
                     <div className="flex items-center gap-2 flex-wrap">
                         <span className="badge bg-amber-500/20 text-amber-400 font-mono">DB</span>
                         <span className="text-[11px] font-medium">{cubeName}</span>
-                        <span className="ml-auto font-mono text-[11px] font-semibold tabular-nums">{value ?? (valCache.current[key] === undefined ? '…' : '—')}</span>
+                        <span className="ml-auto font-mono text-[11px] font-semibold tabular-nums">{value != null ? fmtTraceValue(value) : (valCache.current[key] === undefined ? '…' : '—')}</span>
                         {drillable && <ChevronRight size={10} className="text-muted-foreground/50 shrink-0" />}
                     </div>
-                    <div className="font-mono text-[10px] text-muted-foreground flex items-center gap-1 flex-wrap">
-                        {coords.map((c, i) => (
+                    <div className="font-mono text-[10px] text-muted-foreground flex items-center gap-1 flex-wrap" title={coords.join(' · ')}>
+                        {coords.map((c, i) => ({ c, i })).filter(({ c, i }) => i === measureIdx || !dimElemPairs.some(p => p.element === c)).map(({ c, i }, j) => (
                             <span key={i} className={cn(i === measureIdx && 'text-foreground font-semibold')}>
-                                {i > 0 && <span className="text-muted-foreground/50 mr-1">·</span>}{c}
+                                {j > 0 && <span className="text-muted-foreground/50 mr-1">·</span>}{c}
                             </span>
                         ))}
                         {measureIdx >= 0 && coords[measureIdx] && (
@@ -808,7 +900,7 @@ function RuleBreakdown({ server, statements, dimElemPairs, cube, onDrill }) {
                     <div className="flex items-center gap-2">
                         <span className="badge bg-muted text-muted-foreground font-mono text-[9px]">ref</span>
                         <span className="font-mono text-[11px] font-medium">[{rm[1]}]</span>
-                        <span className="ml-auto font-mono text-[11px] font-semibold tabular-nums">{value ?? (valCache.current[key] === undefined ? '…' : '—')}</span>
+                        <span className="ml-auto font-mono text-[11px] font-semibold tabular-nums">{value != null ? fmtTraceValue(value) : (valCache.current[key] === undefined ? '…' : '—')}</span>
                     </div>
                 </div>
             )
@@ -820,6 +912,41 @@ function RuleBreakdown({ server, statements, dimElemPairs, cube, onDrill }) {
         return <div className="border border-border/50 bg-muted/20 rounded px-3 py-2"><span className="font-mono text-[10px] text-muted-foreground">{s}</span></div>
     }
 
+    // the number an operand comes to, once fetched (null if not known yet)
+    const operandNumber = (expr, lhs) => {
+        const t = expr.trim()
+        const num = Number(t); if (t !== '' && !Number.isNaN(num)) return num
+        const rm = t.match(/^\[['"]?([^'"\]]+)['"]?\]$/)
+        let key = null
+        if (rm) key = `${cube}::${relativeRefPairs(rm[1], lhs).map(p => p.element).join('|')}`
+        else if (/^DB\s*\(/i.test(t) && coordCache.current[t]) {
+            const cubeName = (splitArgs(t.slice(t.indexOf('(') + 1, t.lastIndexOf(')')))[0] ?? '').replace(/^['"]|['"]$/g, '')
+            key = `${cubeName}::${coordCache.current[t].map(r => r.value).filter(Boolean).join('|')}`
+        }
+        const v = key ? valCache.current[key] : undefined
+        return v == null || v === '' || Number.isNaN(Number(v)) ? null : Number(v)
+    }
+    const literalOf = (x) => { const m = x.trim().match(/^'([^']*)'$/); return m ? m[1] : null }
+    const valueOfSide = (x) => {
+        const lit = literalOf(x); if (lit != null) return lit
+        const am = x.trim().match(/^ATTRS\s*\(/i)
+        if (am) {
+            const inner = x.trim().slice(x.trim().indexOf('(') + 1, x.trim().lastIndexOf(')'))
+            const a = splitArgs(inner)
+            const v = attrValues[`${resolveArg(a[0] ?? '', dimElemPairs)}::${resolveArg(a[1] ?? '', dimElemPairs)}`]?.[(a[2] ?? '').replace(/^['"]|['"]$/g, '')]
+            return v == null ? null : String(v)
+        }
+        return null
+    }
+    const evalCondition = (expr) => {
+        const c = splitComparison(expr.trim()); if (!c) return null
+        const a = valueOfSide(c[0]), b = valueOfSide(c[2]); if (a == null || b == null) return null
+        const eq = a.trim().toLowerCase() === b.trim().toLowerCase()
+        if (c[1] === '@=') return eq
+        if (c[1] === '@<>') return !eq
+        return null
+    }
+
     const renderExpr = (expr, lhs) => {
         const s = expr.trim()
         const ifm = s.match(/^IF\s*\(/i)
@@ -827,21 +954,26 @@ function RuleBreakdown({ server, statements, dimElemPairs, cube, onDrill }) {
             const open = s.indexOf('(')
             const close = matchingCloseParen(s, open)
             const args = splitArgs(s.slice(open + 1, close))
+            const cond = evalCondition(args[0] ?? '')   // true | false | null (can't tell)
+            const branch = (label, cls, taken, body) => (
+                <div className={cn('space-y-1', taken === false && 'opacity-40')}>
+                    <div className="flex items-center gap-2">
+                        <span className={cn('badge font-mono text-[9px]', cls)}>{label}</span>
+                        {taken === true && <span className="text-[10px] text-foreground">this applies</span>}
+                        {taken === false && <span className="text-[10px] text-muted-foreground">not used</span>}
+                    </div>
+                    <div className="pl-3">{body}</div>
+                </div>
+            )
             return (
                 <div className="space-y-2">
                     <div className="flex items-center gap-2">
                         <span className="badge bg-amber-500/20 text-amber-400 font-mono text-[9px]">IF</span>
-                        <span className="text-[10px] text-muted-foreground">condition</span>
+                        {cond != null && <span className="text-[10px] text-foreground">is {cond ? 'true' : 'false'}</span>}
                     </div>
                     <div className="pl-3">{renderExpr(args[0] ?? '', lhs)}</div>
-                    <div className="flex items-center gap-2">
-                        <span className="badge bg-emerald-500/20 text-emerald-400 font-mono text-[9px]">THEN</span>
-                    </div>
-                    <div className="pl-3">{renderExpr(args[1] ?? '', lhs)}</div>
-                    <div className="flex items-center gap-2">
-                        <span className="badge bg-purple-500/20 text-purple-400 font-mono text-[9px]">ELSE</span>
-                    </div>
-                    <div className="pl-3">{renderExpr(args[2] ?? '', lhs)}</div>
+                    {branch('THEN', 'bg-emerald-500/20 text-emerald-400', cond == null ? null : cond, renderExpr(args[1] ?? '', lhs))}
+                    {branch('ELSE', 'bg-purple-500/20 text-purple-400', cond == null ? null : !cond, renderExpr(args[2] ?? '', lhs))}
                 </div>
             )
         }
@@ -858,11 +990,22 @@ function RuleBreakdown({ server, statements, dimElemPairs, cube, onDrill }) {
         }
         const parts = splitTopLevelOps(s)
         if (parts.length === 1) return renderOperand(parts[0].value, lhs)
+        const nums = parts.map(t => t.type === 'op' ? t.value : operandNumber(t.value, lhs))
+        const known = nums.every((x, i) => parts[i].type === 'op' ? /^[-+*\/]$/.test(x) : typeof x === 'number')
+        let result = null
+        if (known) { try { result = Function(`return (${nums.join(' ')})`)() } catch { result = null } }
         return (
-            <div className="flex items-stretch gap-2 flex-wrap">
-                {parts.map((t, i) => t.type === 'op'
-                    ? <span key={i} className="self-center font-mono text-[12px] text-muted-foreground font-semibold">{t.value}</span>
-                    : <div key={i}>{renderOperand(t.value, lhs)}</div>
+            <div className="space-y-1.5">
+                <div className="flex items-stretch gap-2 flex-wrap">
+                    {parts.map((t, i) => t.type === 'op'
+                        ? <span key={i} className="self-center font-mono text-[12px] text-muted-foreground font-semibold">{t.value === '*' ? '×' : t.value}</span>
+                        : <div key={i}>{renderOperand(t.value, lhs)}</div>
+                    )}
+                </div>
+                {known && Number.isFinite(result) && (
+                    <div className="font-mono text-[11px] text-foreground tabular-nums">
+                        = {nums.map((x, i) => parts[i].type === 'op' ? (x === '*' ? '×' : x) : fmtTraceValue(x)).join(' ')} = <span className="font-semibold">{fmtTraceValue(result)}</span>
+                    </div>
                 )}
             </div>
         )
@@ -870,17 +1013,26 @@ function RuleBreakdown({ server, statements, dimElemPairs, cube, onDrill }) {
 
     return (
         <div className="space-y-3">
+            {statements.length === 0 && guardCount > 0 && (
+                <div className="text-[11px] text-muted-foreground">Only the static-version guard applies here — no rule calculates this cell.</div>
+            )}
             {statements.map((s, i) => (
                 <div key={i} className="space-y-2">
-                    <div className="font-mono text-[11px] bg-muted/50 rounded px-3 py-2 break-all whitespace-pre-wrap leading-relaxed">
-                        {s}
-                    </div>
+                    <div className="text-[10px] uppercase tracking-wide text-muted-foreground font-medium">{statements.length > 1 ? `Rule ${i + 1}` : 'Rule'}</div>
+                    <pre className="font-mono text-[11px] bg-muted/50 rounded px-3 py-2 whitespace-pre-wrap break-words leading-relaxed overflow-x-auto">
+                        {formatStatement(s)}
+                    </pre>
                     <div className="pl-1">
-                        <div className="text-[10px] uppercase tracking-wide text-muted-foreground font-medium mb-1.5">Expression</div>
+                        <div className="text-[10px] uppercase tracking-wide text-muted-foreground font-medium mb-1.5">How it works out for this cell</div>
                         {renderExpr(rhsOf(s), (s.match(/\[\s*['"]([^'"]+)['"]\s*\]\s*=/) ?? [])[1] ?? null)}
                     </div>
                 </div>
             ))}
+            {guardCount > 0 && statements.length > 0 && (
+                <div className="text-[10px] text-muted-foreground/70 border-t border-border/40 pt-2">
+                    Static-version guard passed ({guardCount} {guardCount === 1 ? 'check' : 'checks'} along the way, hidden)
+                </div>
+            )}
         </div>
     )
 }
@@ -977,7 +1129,7 @@ function TraceSidePanel({ ctx, onClose }) {
                     <span className="text-xs font-semibold flex-1">{current.cube}</span>
                     {data && <TypeBadgeTrace type={data.Type} />}
                     {data?.Value != null && (
-                        <span className="font-mono text-xs font-semibold tabular-nums">{data.Value}</span>
+                        <span className="font-mono text-xs font-semibold tabular-nums">{fmtTraceValue(data.Value)}</span>
                     )}
                     <button onClick={onClose} className="text-muted-foreground hover:text-foreground ml-1">
                         <X size={14} />
@@ -1072,7 +1224,7 @@ function TraceSidePanel({ ctx, onClose }) {
                                                 <span className="text-[10px] text-blue-400 font-medium">{c.Cube.Name}</span>
                                             )}
                                             <span className="ml-auto font-mono text-[11px] font-semibold tabular-nums">
-                                                {c.Value ?? '—'}
+                                                {c.Value != null ? fmtTraceValue(c.Value) : '—'}
                                             </span>
                                             {drillable && (
                                                 <ChevronRight size={10} className="text-muted-foreground/50 shrink-0" />
