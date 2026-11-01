@@ -3,12 +3,26 @@
 Every bug-fix commit, newest first, by the date it was committed. Generated from the git history;
 commits that mixed a fix into a feature are included too. New features are not listed here.
 
-166 fixes from 2026-05-20 to 2026-10-10, plus 46 entries for 11–27 October. Last updated 2026-10-27.
+166 fixes from 2026-05-20 to 2026-10-10, plus 46 entries for 11–27 October and 6 for 28 October–1 November. Last updated 2026-11-01.
 
 ← [Back to README](../../README.md)
 
 
+## November 2026
+
+### 2026-11-01
+
+- **cube-map** — The drill trail lost steps: revisiting a cube cut the trail back to it, arriving from the Rules editor appended to the last visit's trail so Back could land on the full map, and after returning to the full map it could stop recording until a refresh; the trail now works like browser history
+- **cube-map** — Clicks right after Back were often ignored on a large focus; Back ran a second camera move that slid nodes under the pointer so clicks read as drags, and a click may now move up to 5px
+- **rules** — An unclosed string was reported on a later line, and cascading warnings buried TM1's real syntax error; the first line ending with an open string is reported, and static findings after TM1's first error are hidden
+- **rules** — A comment inside a multi-line rule hid the statement's semicolon, giving a false "missing semicolon" warning that moved when lines were added; comments are stripped before checking, and static warnings show amber, not red
+
 ## October 2026
+
+### 2026-10-30
+
+- **ci** — Tests failed on Node 22: `node --test tests` is rejected there; the test files are now listed explicitly
+- **ci** — The attribute-grid width test could not replace Node 22's getter-only `navigator`, and a release-package test read a gitignored folder; globals are now defined properly and that test skips when the package is absent
 
 ### 2026-10-27
 
