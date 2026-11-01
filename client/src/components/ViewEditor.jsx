@@ -728,15 +728,16 @@ function RuleBreakdown({ server, statements: allStatements, dimElemPairs, cube, 
     const resolveArgAsync = useCallback(async function resolveArgAsync(arg) {
         const a = (arg ?? '').trim()
         const lit = a.match(/^'([^']*)'$/)
-        if (lit) return { value: lit[1], source: null }
+        if (lit) return { value: lit[1], source: null, how: 'named in the rule' }
         const inner = () => splitArgs(a.slice(a.indexOf('(') + 1, a.lastIndexOf(')')))
         if (/^ATTRS\s*\(/i.test(a)) {
             const x = inner()
             const dim = resolveArg(x[0] ?? '', dimElemPairs)
             const elem = (await resolveArgAsync(x[1] ?? '')).value
             const vals = await fetchAttrs(dim, elem)
-            const v = vals?.[(x[2] ?? '').replace(/^['"]|['"]$/g, '')]
-            return { value: v == null ? '' : String(v), source: a }
+            const attrName = (x[2] ?? '').replace(/^['"]|['"]$/g, '')
+            const v = vals?.[attrName]
+            return { value: v == null ? '' : String(v), source: a, how: `attribute ${attrName} of ${elem}` }
         }
         if (/^DB\s*\(/i.test(a)) {
             const x = inner()
@@ -744,7 +745,7 @@ function RuleBreakdown({ server, statements: allStatements, dimElemPairs, cube, 
             const coords = (await Promise.all(x.slice(1).map(resolveArgAsync))).map(r => r.value)
             const dims = await getCubeDims(cubeName)
             const v = await fetchCellValue(cubeName, dims.map((d, i) => ({ dim: d, element: coords[i] })).filter(p => p.element))
-            return { value: v == null ? '' : String(v), source: a }
+            return { value: v == null ? '' : String(v), source: a, how: `${cubeName.replace(/^WFP |^LAB /, '')} · ${coords[coords.length - 1] ?? ''}`, drill: { cube: cubeName, coords } }
         }
         if (/^IF\s*\(/i.test(a)) {
             const open = a.indexOf('('), close = matchingCloseParen(a, open)
@@ -752,12 +753,16 @@ function RuleBreakdown({ server, statements: allStatements, dimElemPairs, cube, 
             const c = splitComparison((x[0] ?? '').trim())
             if (c && c[1] === '@=') {
                 const l = (await resolveArgAsync(c[0])).value, r = (await resolveArgAsync(c[2])).value
-                const pick = await resolveArgAsync(String(l).trim().toLowerCase() === String(r).trim().toLowerCase() ? x[1] : x[2])
-                return { value: pick.value, source: a }
+                const isTrue = String(l).trim().toLowerCase() === String(r).trim().toLowerCase()
+                const pick = await resolveArgAsync(isTrue ? x[1] : x[2])
+                // the common "use X unless it's blank" fallback reads better said plainly
+                const blankTest = /^''$/.test((c[2] ?? '').trim())
+                const why = blankTest ? (isTrue ? 'blank, so the fallback is used' : 'set, so used') : `condition ${isTrue ? 'true' : 'false'}`
+                return { value: pick.value, source: a, how: `${pick.how ?? ''} (${why})`.trim(), drill: pick.drill }
             }
             return { value: '', source: a }
         }
-        return { value: resolveArg(a, dimElemPairs), source: null }
+        return { value: resolveArg(a, dimElemPairs), source: null, how: a.startsWith('!') ? 'this cell' : '' }
     }, [dimElemPairs, fetchAttrs, getCubeDims, fetchCellValue])
 
     // DB operand text -> its resolved coordinates [{ value, source }]
@@ -858,16 +863,22 @@ function RuleBreakdown({ server, statements: allStatements, dimElemPairs, cube, 
                         <span className="ml-auto font-mono text-[11px] font-semibold tabular-nums">{value != null ? fmtTraceValue(value) : (valCache.current[key] === undefined ? '…' : '—')}</span>
                         {drillable && <ChevronRight size={10} className="text-muted-foreground/50 shrink-0" />}
                     </div>
-                    <div className="font-mono text-[10px] text-muted-foreground flex items-center gap-1 flex-wrap" title={coords.join(' · ')}>
-                        {coords.map((c, i) => ({ c, i })).filter(({ c, i }) => i === measureIdx || !dimElemPairs.some(p => p.element === c)).map(({ c, i }, j) => (
-                            <span key={i} className={cn(i === measureIdx && 'text-foreground font-semibold')}>
-                                {j > 0 && <span className="text-muted-foreground/50 mr-1">·</span>}{c}
-                            </span>
-                        ))}
-                        {measureIdx >= 0 && coords[measureIdx] && (
-                            <span className="badge bg-muted text-muted-foreground ml-1">measure</span>
-                        )}
-                    </div>
+                    {coordCache.current[s] ? (
+                        <div className="grid gap-x-2 gap-y-0.5 text-[10px]" style={{ gridTemplateColumns: 'auto auto 1fr' }} title={coords.join(' · ')}>
+                            {resolvedOps.map((r, i) => (
+                                <div key={i} className="contents">
+                                    <span className="text-muted-foreground/70 truncate">{i === measureIdx ? 'Measure' : (dims[i] ?? '').replace(/^WFP |^LAB /, '')}</span>
+                                    <span className={cn('font-mono', i === measureIdx ? 'text-foreground font-semibold' : 'text-foreground')}>{r.value || '—'}</span>
+                                    {r.drill && onDrill
+                                        ? <button type="button" onClick={e => { e.stopPropagation(); onDrill(r.drill.cube, r.drill.coords) }}
+                                            className="text-left text-muted-foreground hover:text-primary truncate" title="Trace this value">{r.how} ›</button>
+                                        : <span className="text-muted-foreground truncate">{r.how}</span>}
+                                </div>
+                            ))}
+                        </div>
+                    ) : (
+                        <div className="font-mono text-[10px] text-muted-foreground">working out the lookup…</div>
+                    )}
                 </div>
             )
         }
@@ -1199,6 +1210,12 @@ function TraceSidePanel({ ctx, onClose }) {
                     />
                 )}
 
+                {data && stmts.length === 0 && comps.length === 0 && (
+                    <div className="rounded border border-border/60 bg-muted/20 px-3 py-2 space-y-1">
+                        <div className="text-[11px] font-medium">Stored input: this is the source</div>
+                        <div className="text-[10px] text-muted-foreground">No rule calculates this cell. The value was entered or loaded. To see who changed it and when, right-click the cell in a view and choose Log.</div>
+                    </div>
+                )}
                 {stmts.length === 0 && comps.length > 0 && (
                     <div className="space-y-2">
                         <div className="text-[10px] uppercase tracking-wide text-muted-foreground font-medium">
