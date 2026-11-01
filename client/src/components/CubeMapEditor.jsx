@@ -16,6 +16,7 @@ import {
 import { toast } from 'sonner'
 import { loadSettings } from '@/lib/formatters/settings.js'
 import { buildRunSequence, buildPhaseSequence } from '@/lib/run-sequence'
+import { pushStep, backTo, previousStep } from '@/lib/cubemap-trail'
 import { getCubemapSession, saveCubemapSession } from '@/lib/cubemap-session'
 import RunbookDialog from '@/components/RunbookDialog'
 
@@ -838,6 +839,9 @@ function CubeMapInner({ tab }) {
     setPhaseFocus(null)
     setFocused(true)
     setDimmedIds(new Set())
+    // Arriving from the Rules editor starts a fresh trail at this cube — not
+    // appended to the last visit's trail, so Back always returns here.
+    setTrail([{ kind: 'node', id: tab.focusCube }])
     patchTab(tab.id, { focusCube: null, focusAt: null })
   }, [tab?.focusAt, tab?.focusCube, cubeData, patchTab])
 
@@ -852,6 +856,7 @@ function CubeMapInner({ tab }) {
     setModuleFocus(null)
     setFocused(true)
     setDimmedIds(new Set())
+    setTrail([])   // a runbook phase is its own view; drills from it start a new trail
     patchTab(tab.id, { focusProcesses: null, phaseLabel: null, phaseEntries: null, phaseKind: null, focusAt: null })
   }, [tab?.focusAt, tab?.focusProcesses, tab?.phaseLabel, tab?.phaseEntries, tab?.phaseKind, cubeData, patchTab])
 
@@ -1198,15 +1203,22 @@ function CubeMapInner({ tab }) {
   }), [edges, dimmedIds, runHighlight])
 
   // ── Interactions ──────────────────────────────────────────────────────────────
+  // ── Trail: every drill since the full map, like browser history ─────────────
+  // Each drill adds a step (revisiting a cube adds it again — it is a path, not a
+  // set); Back removes the last step; clicking a step jumps back to it. Leaving
+  // focus (Full map, Esc, empty canvas) clears it. A drill changes focus only —
+  // the relayout's fitView moves the camera once; a second animation of our own
+  // slid nodes under the pointer and lost clicks.
+  const pushTrail = useCallback((entry) => setTrail(t => pushStep(t, entry)), [])
+
   const focusModule = useCallback((key) => {
     if (!key) return
     setModuleFocus(key)
     setSelectedCube(null)
     setFocused(true)
     setDimmedIds(new Set())
-    const n = getNode(`__group__${key}`)
-    if (n) setCenter(n.position.x + n.style?.width / 2, n.position.y + (n.style?.height ?? 0) / 2, { duration: 350, zoom: 1.1 })
-  }, [getNode, setCenter])
+    pushTrail({ kind: 'module', id: key })
+  }, [pushTrail])
 
   const onNodeClick = useCallback((_, node) => {
     if (node.type === 'group') { focusModule(node.data.label); return }
@@ -1214,9 +1226,8 @@ function CubeMapInner({ tab }) {
     setModuleFocus(null)
     setPhaseFocus(null)
     setFocused(true)
-    const n = getNode(node.id)
-    if (n) setCenter(n.position.x + NODE_W / 2, n.position.y + NODE_H / 2, { duration: 350, zoom: 1.2 })
-  }, [getNode, setCenter, focusModule])
+    pushTrail({ kind: 'node', id: node.id })
+  }, [focusModule, pushTrail])
 
   const onNodeDoubleClick = useCallback((_, node) => {
     if (node.type === 'cube') {
@@ -1239,11 +1250,11 @@ function CubeMapInner({ tab }) {
   }, [cubeData, openTab, srv])
 
   const onPaneClick = useCallback(() => {
-    setModuleFocus(null); setSelectedCube(null); setPhaseFocus(null); setDimmedIds(new Set()); setFocused(false)
+    setModuleFocus(null); setSelectedCube(null); setPhaseFocus(null); setDimmedIds(new Set()); setFocused(false); setTrail([])
   }, [])
 
   const exitFocus = useCallback(() => {
-    setModuleFocus(null); setSelectedCube(null); setPhaseFocus(null); setDimmedIds(new Set()); setFocused(false)
+    setModuleFocus(null); setSelectedCube(null); setPhaseFocus(null); setDimmedIds(new Set()); setFocused(false); setTrail([])
   }, [])
 
   // In a focused/phase/player map the Follow controls and the left Rules/Feeders/All TI
@@ -1281,44 +1292,19 @@ function CubeMapInner({ tab }) {
     return () => window.removeEventListener('keydown', onKey)
   }, [focused, exitFocus])
 
+  // Detail-panel links drill the same way as a map click
   const navigateTo = useCallback((name) => {
     setModuleFocus(null)
+    setPhaseFocus(null)
     setSelectedCube(name)
     setFocused(true)
-    const found = nodes.find(n => n.id === name)
-    if (found) setCenter(found.position.x + NODE_W / 2, found.position.y + NODE_H / 2, { duration: 400, zoom: 1.2 })
-  }, [nodes, setCenter])
-
-  // ── Trail: the path of focuses since the full map ───────────────────────────
-  // Every drill (map click, detail-panel link, module picker, deep link) adds a
-  // step, so you can go back one step or jump to any earlier one. Derived from
-  // the focus state rather than each call site, so no route into focus is missed.
-  // A phase focus (runbook) is its own mode with its own bar — the trail waits.
-  const focusEntry = !focused || phaseFocus ? null
-    : moduleFocus ? { kind: 'module', id: moduleFocus }
-    : selectedCube ? { kind: 'node', id: selectedCube }
-    : null
-  const focusEntryKey = focusEntry ? `${focusEntry.kind}:${focusEntry.id}` : ''
-  const trailNavRef = useRef(false)   // set by goTo so its own focus change isn't pushed again
-  useEffect(() => {
-    if (phaseFocus) return
-    if (!focusEntry) { setTrail([]); return }
-    if (trailNavRef.current) { trailNavRef.current = false; return }
-    setTrail(t => {
-      const i = t.findIndex(e => e.kind === focusEntry.kind && e.id === focusEntry.id)
-      if (i === t.length - 1) return t
-      return i >= 0 ? t.slice(0, i + 1) : [...t, focusEntry]   // revisiting a step goes back to it
-    })
-  }, [focusEntryKey, phaseFocus])   // eslint-disable-line react-hooks/exhaustive-deps
+    pushTrail({ kind: 'node', id: name })
+  }, [pushTrail])
 
   const goToTrail = useCallback((index) => {
     const entry = trail[index]
     if (!entry || index === trail.length - 1) return
-    trailNavRef.current = true
-    setTrail(trail.slice(0, index + 1))
-    // State only, no camera move of our own: the relayout's fitView frames the
-    // result. A second animation here kept the nodes sliding under the pointer,
-    // so clicks right after Back were read as drags and lost.
+    setTrail(backTo(trail, index))
     setPhaseFocus(null)
     setDimmedIds(new Set())
     if (entry.kind === 'module') { setModuleFocus(entry.id); setSelectedCube(null) }
@@ -1327,7 +1313,7 @@ function CubeMapInner({ tab }) {
   }, [trail])
 
   const trailBack = useCallback(() => {
-    if (trail.length > 1) goToTrail(trail.length - 2)
+    if (previousStep(trail)) goToTrail(trail.length - 2)
     else exitFocus()
   }, [trail, goToTrail, exitFocus])
 
@@ -1360,7 +1346,7 @@ function CubeMapInner({ tab }) {
   }, { noSplit: true })
 
   // ── Dim filter ────────────────────────────────────────────────────────────────
-  const handleFilterDim = (dim) => { setDimFilter(p => p === dim ? null : dim); setModuleFocus(null); setSelectedCube(null); setPhaseFocus(null); setFocused(false) }
+  const handleFilterDim = (dim) => { setDimFilter(p => p === dim ? null : dim); setModuleFocus(null); setSelectedCube(null); setPhaseFocus(null); setFocused(false); setTrail([]) }
 
   // ── Sidebar list ──────────────────────────────────────────────────────────────
   const filteredCubes = useMemo(() => {
@@ -1508,7 +1494,7 @@ function CubeMapInner({ tab }) {
                 {modules.map(m => <option key={m} value={m}>{m}</option>)}
               </select>
             )}
-            <select value={scope} onChange={e => { setScope(e.target.value); setSelectedCube(null); setFocused(false); setPhaseFocus(null); setModuleFocus(null) }}
+            <select value={scope} onChange={e => { setScope(e.target.value); setSelectedCube(null); setFocused(false); setPhaseFocus(null); setModuleFocus(null); setTrail([]) }}
               title="Show only one model prefix — e.g. WFP hides LAB"
               style={{ fontSize: 10, padding: '2px 4px', background: 'var(--cm-node-bg)', color: 'var(--cm-text)', border: `1px solid ${scope ? 'var(--cm-link)' : 'var(--cm-border)'}`, borderRadius: 4, cursor: 'pointer', maxWidth: 120 }}>
               <option value="">All models</option>
