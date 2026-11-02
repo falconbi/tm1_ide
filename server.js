@@ -901,6 +901,9 @@ app.post('/api/process/debug', async (req, res) => {
             data:       dataInst,
             epilog:     epilInst,
             parameters: cleanParams,
+            // the copy must keep the datasource + its variables, or the Data section never runs
+            datasource: proc.DataSource ? stripMeta(proc.DataSource) : undefined,
+            variables:  (proc.Variables ?? []).map(stripMeta),
         })
     } catch (e) {
         return res.status(500).json({ error: `Failed to create debug process: ${e.message}` })

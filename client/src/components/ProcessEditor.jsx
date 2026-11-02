@@ -151,7 +151,7 @@ function EditableDatasourcePanel({ ds, server, onChange }) {
         className="flex-1 bg-muted border border-border rounded px-1.5 py-0.5 text-xs font-mono focus:outline-none"
       >
         <option value="">{loading ? 'Loading…' : 'Select…'}</option>
-        {(options ?? []).map(o => <option key={o} value={o}>{o}</option>)}
+        {(options ?? []).map(o => typeof o === 'string' ? o : (o?.name ?? o?.Name)).filter(Boolean).map(o => <option key={o} value={o}>{o}</option>)}
       </select>
     </div>
   )
@@ -447,7 +447,7 @@ function DatasourceInsertDialog({ server, onInsert, onClose }) {
         className="w-full bg-muted border border-border rounded px-2 py-1.5 text-sm font-mono focus:outline-none focus:ring-1 focus:ring-ring"
       >
         <option value="">{loading ? 'Loading…' : `Select ${label.toLowerCase()}…`}</option>
-        {(options ?? []).map(o => <option key={o} value={o}>{o}</option>)}
+        {(options ?? []).map(o => typeof o === 'string' ? o : (o?.name ?? o?.Name)).filter(Boolean).map(o => <option key={o} value={o}>{o}</option>)}
       </select>
     </div>
   )
