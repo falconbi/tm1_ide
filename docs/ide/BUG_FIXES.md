@@ -3,7 +3,7 @@
 Every bug-fix commit, newest first, by the date it was committed. Generated from the git history;
 commits that mixed a fix into a feature are included too. New features are not listed here.
 
-166 fixes from 2026-05-20 to 2026-10-10, plus 46 entries for 11–27 October, 6 for 28 October–1 November and 6 for 2 November. Last updated 2026-11-02.
+166 fixes from 2026-05-20 to 2026-10-10, plus 46 entries for 11–27 October, 6 for 28 October–1 November and 7 for 2 November. Last updated 2026-11-02.
 
 ← [Back to README](../../README.md)
 
@@ -12,6 +12,7 @@ commits that mixed a fix into a feature are included too. New features are not l
 
 ### 2026-11-02
 
+- **ti** — A breakpoint in the Data section made Debug Run crawl past the 2-minute timeout on a large view (every record appended to one growing log); captures now stop after the first 50 hits and the run continues at normal speed
 - **ti** — Debug Run captured nothing for a process whose work is in the Data section; the temporary debug copy was made without the datasource and its variables, so the Data section never ran
 - **ti** — Opening the Datasource bar of a process with a cube-view datasource crashed the IDE (the Datasource Block dialog too, once a cube was picked); the view list was given view records instead of names
 - **ti** — Saving warned "Cube … does not exist" for values like `'closed'`; the reference check read the first argument of CellPutS/CellPutN as the cube, but there the cube is the second

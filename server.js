@@ -828,13 +828,17 @@ app.post('/api/process/debug', async (req, res) => {
     // ── 3. Instrument sections ────────────────────────────────────────────────
     function appendLines(label, lineNum, sectionLabel) {
         const AT = safeProcName
-        const lines = [`sDBGLog__IDE__ = ATTRS('}Processes', '${AT}', '${ATTR}');`]
+        // capped: a breakpoint in the Data section fires once per record, and the log is one growing
+        // string — capturing every record made a debug run on a big view crawl past the 2-minute timeout
+        const lines = [`IF( nDBGHit__IDE__ < ${MAX_HITS} ); nDBGHit__IDE__ = nDBGHit__IDE__ + 1;`,
+                       `sDBGLog__IDE__ = ATTRS('}Processes', '${AT}', '${ATTR}');`]
         lines.push(`sDBGLog__IDE__ = sDBGLog__IDE__ | '${label}' | CHAR(10);`)
         for (const w of (watches ?? [])) {
             const val = w.type === 'number' ? `NumberToString(${w.name})` : w.name
             lines.push(`sDBGLog__IDE__ = sDBGLog__IDE__ | '__DBG_VAR:${w.name}__${sectionLabel}__${lineNum}=' | ${val} | CHAR(10);`)
         }
         lines.push(`AttrPutS(sDBGLog__IDE__, '}Processes', '${AT}', '${ATTR}');`)
+        lines.push('ENDIF;')
         return lines
     }
 
@@ -878,7 +882,9 @@ app.post('/api/process/debug', async (req, res) => {
     }
 
     // ── 4. Create temp process with instrumented code ────────────────────────
-    const prologInst = instrumentSection(sections.PrologProcedure,   'PrologProcedure',   'Prolog')
+    const MAX_HITS   = 50
+    // the hit counter starts in the Prolog — prefixed onto line 1 so no line numbers move
+    const prologInst = (hasCapture ? 'nDBGHit__IDE__ = 0; ' : '') + instrumentSection(sections.PrologProcedure, 'PrologProcedure', 'Prolog')
     // TM1's property is MetadataProcedure (lowercase d); an older client may still send MetaDataProcedure
     const metaSrc    = sections.MetadataProcedure ?? sections.MetaDataProcedure ?? ''
     if (breakpoints && breakpoints.MetadataProcedure == null && breakpoints.MetaDataProcedure) breakpoints.MetadataProcedure = breakpoints.MetaDataProcedure
