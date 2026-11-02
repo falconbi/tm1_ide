@@ -3,7 +3,7 @@ import MonacoEditor from '@monaco-editor/react'
 import { useStore } from '@/store'
 import { useSQLConnections, useSaveSQLConn, useDeleteSQLConn, useTestSQLConn, useExecuteSQL, useSQLSchema, useSQLQueries, useSaveSQLQuery, useDeleteSQLQuery, usePostToTI, useODBCProcs } from '@/hooks/useApi'
 import { cn } from '@/lib/utils'
-import { Play, Plus, Trash2, ChevronDown, ChevronRight, Database, Settings, X, CheckCircle, AlertCircle, Loader2, Copy, Table, Save, BookOpen, Pencil, Send, Cog, Map, HelpCircle } from 'lucide-react'
+import { Play, Plus, Trash2, ChevronDown, ChevronRight, Database, Settings, X, CheckCircle, AlertCircle, Loader2, Copy, Table, Save, BookOpen, Pencil, Send, Cog, Map, HelpCircle, Eraser } from 'lucide-react'
 import HelpPanel from '@/components/HelpPanel'
 import { toast } from 'sonner'
 import { loadSettings, saveSettings } from '@/lib/formatters/settings.js'
@@ -166,7 +166,7 @@ function SchemaTree({ schema, onInsert }) {
 
 // ── Results Grid ──────────────────────────────────────────────────────────────
 
-function ResultsGrid({ result, error, duration }) {
+function ResultsGrid({ result, error, duration, onClear }) {
   if (error) return (
     <div className="flex items-start gap-2 p-3 text-red-400">
       <AlertCircle size={14} className="shrink-0 mt-0.5" />
@@ -193,9 +193,14 @@ function ResultsGrid({ result, error, duration }) {
         <span className="text-[10px] text-muted-foreground">
           {rowCount} row{rowCount !== 1 ? 's' : ''}{duration != null ? ` — ${duration}ms` : ''}
         </span>
-        <button onClick={copyCSV} className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground transition-colors">
-          <Copy size={10} /> CSV
-        </button>
+        <div className="flex items-center gap-3">
+          <button onClick={copyCSV} className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground transition-colors">
+            <Copy size={10} /> CSV
+          </button>
+          <button onClick={onClear} title="Clear the results" className="text-muted-foreground hover:text-foreground transition-colors">
+            <Eraser size={11} />
+          </button>
+        </div>
       </div>
       <div className="flex-1 overflow-auto">
         <table className="w-full text-xs border-collapse">
@@ -225,8 +230,12 @@ function ResultsGrid({ result, error, duration }) {
 
 // ── Main SQL Editor ───────────────────────────────────────────────────────────
 
+// last result per tab, kept in memory only (too big for the saved workspace) — survives a tab switch
+const resultCache = new globalThis.Map()   // globalThis: `Map` is the lucide icon in this file
+
 export default function SQLEditor({ tab }) {
-  const { dark, themeVersion, server } = useStore()
+  const { dark, themeVersion, server, patchTab } = useStore()
+  const cached = resultCache.get(tab.id)
   const monacoRef    = useRef(null)
   const editorRef    = useRef(null)
   const runQueryRef  = useRef(null)
@@ -238,10 +247,10 @@ export default function SQLEditor({ tab }) {
 
   const [connId, setConnId]       = useState(tab.connectionId ?? null)
   const [sql, setSql]             = useState(tab.sql ?? '-- Write your SQL here\nSELECT 1')
-  const [result, setResult]       = useState(null)
-  const [queryError, setQueryError] = useState(null)
+  const [result, setResult]       = useState(cached?.result ?? null)
+  const [queryError, setQueryError] = useState(cached?.queryError ?? null)
   const [showHelp, setShowHelp]   = useState(false)
-  const [duration, setDuration]   = useState(null)
+  const [duration, setDuration]   = useState(cached?.duration ?? null)
   const [showConnForm, setShowConnForm] = useState(false)
   const [editingConn, setEditingConn]   = useState(null)
   const [showSchema, setShowSchema]     = useState(true)
@@ -299,7 +308,10 @@ export default function SQLEditor({ tab }) {
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
   }, [showPostToTI])
-  const [paramValues, setParamValues] = useState({})
+  const [paramValues, setParamValues] = useState(tab.paramValues ?? {})
+  // the query, connection and parameter values survive a tab switch (and a reload, via the tab); the result in memory
+  useEffect(() => { patchTab(tab.id, { sql, connectionId: connId, paramValues }) }, [sql, connId, paramValues])  // eslint-disable-line
+  useEffect(() => { resultCache.set(tab.id, { result, queryError, duration }) }, [result, queryError, duration])  // eslint-disable-line
 
   const detectedParams = [...new Set([...sql.matchAll(/\?(\w+)\?/g)].map(m => m[1]))]
 
@@ -818,7 +830,7 @@ export default function SQLEditor({ tab }) {
 
           {/* Results */}
           <div className="flex flex-col border-border overflow-hidden" style={{ height: `${resultHeight}px` }}>
-            <ResultsGrid result={result} error={queryError} duration={duration} />
+            <ResultsGrid result={result} error={queryError} duration={duration} onClear={() => { setResult(null); setQueryError(null); setDuration(null) }} />
           </div>
         </div>
       </div>

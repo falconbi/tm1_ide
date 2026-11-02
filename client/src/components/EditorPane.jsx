@@ -12,7 +12,7 @@ import ChoreEditor from '@/components/ChoreEditor'
 import GuidedMDXBuilder from '@/components/GuidedMDXBuilder'
 import CubeEditor from '@/components/CubeEditor'
 import { toast } from 'sonner'
-import { GitBranch, ChevronRight, ChevronDown, Loader2, ChevronsUpDown, ChevronsDownUp, ListTree, AlignLeft, Settings, Locate, Braces, Save, Map, Microscope, X, History, ShieldCheck, Rss, AlertTriangle, AlertCircle, HelpCircle, ListFilter, Undo2, Redo2 } from 'lucide-react'
+import { GitBranch, ChevronRight, ChevronDown, Loader2, ChevronsUpDown, ChevronsDownUp, ListTree, AlignLeft, Settings, Locate, Braces, Save, Map, Microscope, X, History, ShieldCheck, Rss, AlertTriangle, AlertCircle, HelpCircle, ListFilter, Undo2, Redo2, RefreshCw, Eraser } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { loadSettings, saveSettings } from '@/lib/formatters/settings.js'
 import { formatRules } from '@/lib/formatters/rules-formatter.js'
@@ -251,10 +251,17 @@ function ElementPicker({ server, dim, value, onChange, onCommit }) {
   )
 }
 
-function CellTracePanel({ server, cube, cubeDims, onClose }) {
-  const [rows, setRows] = useState(() => (cubeDims ?? []).map(d => ({ dim: d, element: '' })))
+function CellTracePanel({ tabId, server, cube, cubeDims, onClose }) {
+  // the typed tuple and the last traced cell survive a tab switch (re-traced on return)
+  const sessionKey = tabId ? `${tabId}::trace` : null
+  const saved = getRulesSession(sessionKey)
+  const [rows, setRows] = useState(() => saved?.rows ?? (cubeDims ?? []).map(d => ({ dim: d, element: '' })))
+  const [lastPairs, setLastPairs] = useState(saved?.lastPairs ?? null)
   const trace = useTraceCellCalc()
   const { openTab } = useStore()
+
+  useEffect(() => { saveRulesSession(sessionKey, { rows, lastPairs }) }, [sessionKey, rows, lastPairs])
+  useEffect(() => { if (lastPairs) trace.mutate({ server, cube, dimElemPairs: lastPairs }) }, [])  // eslint-disable-line
 
   useEffect(() => {
     if (!cubeDims?.length) return
@@ -266,8 +273,12 @@ function CellTracePanel({ server, cube, cubeDims, onClose }) {
   const run = () => {
     const pairs = rows.map(r => ({ dim: r.dim, element: r.element.trim() }))
     if (pairs.some(p => !p.element)) return
+    setLastPairs(pairs)
     trace.mutate({ server, cube, dimElemPairs: pairs })
   }
+
+  const refresh = () => { if (lastPairs) trace.mutate({ server, cube, dimElemPairs: lastPairs }) }
+  const clear = () => { setRows(r => r.map(row => ({ ...row, element: '' }))); setLastPairs(null); trace.reset() }
 
   const handleShowHistory = (srcCube, tuple) => {
     const tgtCube = srcCube || cube
@@ -289,7 +300,16 @@ function CellTracePanel({ server, cube, cubeDims, onClose }) {
           <Microscope size={11} className="text-emerald-400" />
           Trace Cell
         </div>
-        <button onClick={onClose} className="text-muted-foreground hover:text-foreground"><X size={13} /></button>
+        <div className="flex items-center gap-2">
+          <button onClick={refresh} disabled={!lastPairs || trace.isPending} title="Refresh — trace the same cell again with current data"
+            className="text-muted-foreground hover:text-foreground disabled:opacity-40">
+            <RefreshCw size={12} className={trace.isPending ? 'animate-spin' : ''} />
+          </button>
+          <button onClick={clear} title="Clear — empty the tuple and the result" className="text-muted-foreground hover:text-foreground">
+            <Eraser size={12} />
+          </button>
+          <button onClick={onClose} title="Close" className="text-muted-foreground hover:text-foreground"><X size={13} /></button>
+        </div>
       </div>
 
       {/* Tuple inputs */}
@@ -356,7 +376,7 @@ function RulesEditor({ tab, onCursor }) {
   const [showSnippets, setShowSnippets] = useState(savedUi?.showSnippets ?? false)
   const [showHelp, setShowHelp] = useState(false)
   const [showMinimap, setShowMinimap] = useState(() => loadSettings().editor?.minimap?.rules ?? false)
-  const [showTrace, setShowTrace] = useState(false)
+  const [showTrace, setShowTrace] = useState(savedUi?.showTrace ?? false)
   const [showHistory, setShowHistory] = useState(savedUi?.showHistory ?? false)
   const [cubeDims, setCubeDims] = useState(null)
   const [dismissedId, setDismissedId] = useState(null)
@@ -411,8 +431,8 @@ function RulesEditor({ tab, onCursor }) {
   // Keep side-panel state for this tab when a lineage cube opens another rules tab.
   // Saved on change (not just unmount): a split remounts this editor immediately.
   useEffect(() => {
-    saveRulesSession(tab.id, { showLineage, lineageMode, showSnippets, showHistory, showRuleLens, ruleLensGrouped })
-  }, [tab.id, showLineage, lineageMode, showSnippets, showHistory, showRuleLens, ruleLensGrouped])
+    saveRulesSession(tab.id, { showLineage, lineageMode, showSnippets, showHistory, showRuleLens, ruleLensGrouped, showTrace })
+  }, [tab.id, showLineage, lineageMode, showSnippets, showHistory, showRuleLens, ruleLensGrouped, showTrace])
 
   const content = tab.content ?? data?.rules ?? ''
 
@@ -775,14 +795,14 @@ function RulesEditor({ tab, onCursor }) {
             title="Undo (Ctrl/Cmd+Z)"
             className="flex items-center gap-1 px-2 py-1 rounded text-xs border bg-background/80 border-border text-muted-foreground hover:text-foreground transition-colors"
           >
-            <Undo2 size={11} /> Undo
+            <Undo2 size={11} />
           </button>
           <button
             onClick={redo}
             title="Redo (Ctrl+Shift+Z / Ctrl+Y)"
             className="flex items-center gap-1 px-2 py-1 rounded text-xs border bg-background/80 border-border text-muted-foreground hover:text-foreground transition-colors"
           >
-            <Redo2 size={11} /> Redo
+            <Redo2 size={11} />
           </button>
           <button
             onClick={handleSave}
@@ -834,7 +854,6 @@ function RulesEditor({ tab, onCursor }) {
             title="CheckFeedersForRules — recalculates feeder propagation for this cube. Open a view after to see zero rule cells highlighted amber."
           >
             {checkingFeeders ? <Loader2 size={11} className="animate-spin" /> : <Rss size={11} />}
-            Fire Feeders
           </button>
           <div ref={formatPopupRef} className="relative format-popup-container">
             <button
@@ -900,7 +919,6 @@ function RulesEditor({ tab, onCursor }) {
               title="Go to region"
             >
               <ListTree size={11} />
-              Regions
             </button>
             {showRegionMenu && (
               <div className="absolute right-0 top-full mt-1 w-56 bg-popover border border-border rounded shadow-lg z-50 max-h-64 overflow-auto text-xs">
@@ -931,7 +949,6 @@ function RulesEditor({ tab, onCursor }) {
             title={regionsCollapsed ? 'Expand all regions' : 'Collapse all regions'}
           >
             {regionsCollapsed ? <ChevronsDownUp size={11} /> : <ChevronsUpDown size={11} />}
-            {regionsCollapsed ? 'Expand' : 'Collapse'}
           </button>
           <button
             onClick={() => setShowSnippets(s => !s)}
@@ -942,7 +959,6 @@ function RulesEditor({ tab, onCursor }) {
             title="Toggle function reference panel"
           >
             <Braces size={11} />
-            Ref
           </button>
           <button
             onClick={() => setShowTrace(s => !s)}
@@ -964,7 +980,6 @@ function RulesEditor({ tab, onCursor }) {
             title="Toggle minimap"
           >
             <Map size={11} />
-            Minimap
           </button>
           <button
             onClick={() => setShowLineage(s => !s)}
@@ -975,7 +990,6 @@ function RulesEditor({ tab, onCursor }) {
             title="Toggle rules lineage — which cubes this cube's rules read, and who reads it"
           >
             <GitBranch size={11} />
-            Rules lineage
           </button>
           <button
             onClick={() => setShowRuleLens(s => !s)}
@@ -986,7 +1000,6 @@ function RulesEditor({ tab, onCursor }) {
             title="Toggle the rule lens — rule areas, measures, DB sources and feeders"
           >
             <ListFilter size={11} />
-            Rule lens
           </button>
           <button
             onClick={() => setShowHelp(true)}
@@ -1054,6 +1067,7 @@ function RulesEditor({ tab, onCursor }) {
       )}
       {showTrace && (
         <CellTracePanel
+          tabId={tab.id}
           server={tab.server}
           cube={tab.cube}
           cubeDims={cubeDims}

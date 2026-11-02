@@ -1435,8 +1435,9 @@ return (d.value ?? [])
         // Strip comment lines
         const stripped = allCode.split('\n').map(l => l.replace(/#.*$/, '')).join('\n')
 
-        // Cell functions — first arg is cube name
-        const cubeFnRx = /\b(?:CellPut[NS]|CellGet[NS]|CellIsUpdateable|CellIncrement[NS])\s*\(\s*['"]([^'"]+)['"]/gi
+        // Cell functions — the cube is the first arg of CellGet/CellIsUpdateable, but the SECOND of
+        // CellPut/CellIncrement (the first is the value: CellPutS('closed', 'Cube', ...))
+        const cubeFnRx = /\b(?:CellGet[NS]|CellIsUpdateable)\s*\(\s*['"]([^'"]+)['"]|\b(?:CellPut[NS]|CellIncrementN)\s*\(\s*(?:'(?:[^']|'')*'|"[^"]*"|[^,'"()]+(?:\([^()]*\))?)\s*,\s*['"]([^'"]+)['"]/gi
         // Dimension/element functions — first arg is dimension name
         const dimFnRx  = /\b(?:DimensionElement(?:Count|Index|Insert|ComponentAdd|PrincipalName|Type)?|DimensionSize|ElementAscend|ElementComponent(?:Count|Weight)?|ElementParent(?:Count|Name)?|ElementIndex|ElementIsAncestor|ElementIsParent|ElementIsLeaf|ElementFirstChild|ElementLastChild|ElementRoot|ElementLevel|ElementType|SubsetCreate|SubsetAll|SubsetGetSize|SubsetElementIndex|SubsetToMDX|ElementAttributeValue|AttributeElementSet|Dnlookup)\s*\(\s*['"]([^'"]+)['"]/gi
         // ProcessExecute — first arg is process name
@@ -1446,7 +1447,7 @@ return (d.value ?? [])
         const foundDims  = new Set()
         const foundProcs = new Set()
         let m
-        while ((m = cubeFnRx.exec(stripped)) !== null) foundCubes.add(m[1])
+        while ((m = cubeFnRx.exec(stripped)) !== null) foundCubes.add(m[1] ?? m[2])
         while ((m = dimFnRx.exec(stripped))  !== null) foundDims.add(m[1])
         while ((m = procFnRx.exec(stripped)) !== null) foundProcs.add(m[1])
 

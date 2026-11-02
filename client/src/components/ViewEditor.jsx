@@ -10,7 +10,7 @@ import { useStore } from '@/store'
 import { subsetApplyCallbacks } from '@/lib/subsetCallbacks'
 import { useCubeDimensions, useSubsets, useElementsTree, useElementsTrees, useHierarchies, useHierarchiesFor, useViews, useExecuteMDX, useViewAxes, useSaveView, useSetDefaultView, usePawBookUsage, useDimAttributes, useViewUsage, useMultiFormatAttrs, useConflictCheck, useGenerateViewMDX, useConfig } from '@/hooks/useApi'
 import { toast } from 'sonner'
-import { RefreshCw, Loader2, Table2, GripVertical, GripHorizontal, X, LayoutGrid, Rows3, Columns3, Filter, ZapOff, Zap, ChevronLeft, ChevronRight, PencilLine, Save, Code2, Eye, ChevronDown, BookOpen, ChevronUp, MapPin, WrapText, Braces, History, AlertTriangle, Cog, FileSearch, Rss, Sparkles, Clock, Check, ArrowUpDown, HelpCircle } from 'lucide-react'
+import { RefreshCw, Loader2, Table2, GripVertical, GripHorizontal, X, LayoutGrid, Rows3, Columns3, Filter, ZapOff, Zap, ChevronLeft, ChevronRight, PencilLine, Save, Code2, Eye, ChevronDown, BookOpen, ChevronUp, MapPin, WrapText, Braces, History, AlertTriangle, Cog, FileSearch, Rss, Sparkles, Clock, Check, ArrowUpDown, HelpCircle, Eraser } from 'lucide-react'
 import HelpPanel from '@/components/HelpPanel'
 import TransactionLogPanel from '@/components/TransactionLogPanel'
 import CellContextMenu from '@/components/CellContextMenu'
@@ -1060,11 +1060,11 @@ function TypeBadgeTrace({ type }) {
     return null
 }
 
-function useTraceData(server, cube, dimElemPairs) {
+function useTraceData(server, cube, dimElemPairs, nonce = 0) {
     const [data,  setData]  = useState(null)
     const [error, setError] = useState(null)
     const [busy,  setBusy]  = useState(true)
-    const key = JSON.stringify({ server, cube, dimElemPairs })
+    const key = JSON.stringify({ server, cube, dimElemPairs, nonce })
 
     useEffect(() => {
         setBusy(true); setError(null); setData(null)
@@ -1082,15 +1082,17 @@ function useTraceData(server, cube, dimElemPairs) {
     return { data, error, busy }
 }
 
-function TraceSidePanel({ ctx, onClose }) {
-    const [stack, setStack] = useState([{
+function TraceSidePanel({ ctx, onClose, initialStack, onStackChange }) {
+    const [stack, setStack] = useState(() => initialStack?.length ? initialStack : [{
         cube:         ctx.cube,
         dimElemPairs: ctx.dimElemPairs,
         label:        ctx.dimElemPairs.map(p => p.element).join(' · '),
     }])
+    useEffect(() => { onStackChange?.(stack) }, [stack])  // eslint-disable-line
 
     const current = stack[stack.length - 1]
-    const { data, error, busy } = useTraceData(ctx.server, current.cube, current.dimElemPairs)
+    const [nonce, setNonce] = useState(0)   // Refresh: re-trace the same cell (and re-read its lookups)
+    const { data, error, busy } = useTraceData(ctx.server, current.cube, current.dimElemPairs, nonce)
     // Dimension order for the CUBE CURRENTLY ON THE STACK (not just the original
     // cube) — needed to build coordinates when drilling, including cross-cube.
     const { data: stackCubeDims = [] } = useCubeDimensions(ctx.server, current.cube)
@@ -1142,7 +1144,15 @@ function TraceSidePanel({ ctx, onClose }) {
                     {data?.Value != null && (
                         <span className="font-mono text-xs font-semibold tabular-nums">{fmtTraceValue(data.Value)}</span>
                     )}
-                    <button onClick={onClose} className="text-muted-foreground hover:text-foreground ml-1">
+                    <button onClick={() => setNonce(n => n + 1)} disabled={busy} title="Refresh — trace this cell again with current data"
+                        className="text-muted-foreground hover:text-foreground disabled:opacity-40 ml-1">
+                        <RefreshCw size={12} className={busy ? 'animate-spin' : ''} />
+                    </button>
+                    <button onClick={() => setStack(st => st.slice(0, 1))} disabled={stack.length < 2} title="Clear — back to the cell you traced"
+                        className="text-muted-foreground hover:text-foreground disabled:opacity-40">
+                        <Eraser size={12} />
+                    </button>
+                    <button onClick={onClose} title="Close" className="text-muted-foreground hover:text-foreground ml-1">
                         <X size={14} />
                     </button>
                 </div>
@@ -1192,7 +1202,7 @@ function TraceSidePanel({ ctx, onClose }) {
 
             {/* Body */}
             <TraceErrorBoundary>
-            <div className="flex-1 overflow-y-auto p-4 space-y-4 text-xs">
+            <div key={nonce} className="flex-1 overflow-y-auto p-4 space-y-4 text-xs">
                 {busy && (
                     <div className="flex items-center gap-2 text-muted-foreground">
                         <Loader2 size={12} className="animate-spin" /> Tracing…
@@ -1423,7 +1433,11 @@ export default function ViewEditor({ tab }) {
     const [saveConflict, setSaveConflict] = useState(null)
     const [conflictDiff, setConflictDiff] = useState(null)
     const [cellCtx,  setCellCtx]  = useState(null)
-    const [traceCtx, setTraceCtx] = useState(null)
+    const [traceCtx, setTraceCtx] = useState(() => tab.savedTrace?.ctx ?? null)
+    // the open trace and its drill path survive a tab switch (saved onto the tab when the editor unmounts)
+    const traceRef = useRef(tab.savedTrace ?? null)
+    useEffect(() => { traceRef.current = traceCtx ? { ctx: traceCtx, stack: traceRef.current?.ctx === traceCtx ? traceRef.current.stack : null } : null }, [traceCtx])
+    useEffect(() => () => patchTab(tab.id, { savedTrace: traceRef.current }), [])  // eslint-disable-line
     const [checkingFeeders, setCheckingFeeders] = useState(false)
     const { openConflict, checkBeforeSave } = useConflictCheck(tab.server, 'view', tab.viewName)
     const { data: pawBookData, isFetching: loadingPawBooks, refetch: refetchPawBooks } = usePawBookUsage(tab.server, tab.cube, tab.viewName)
@@ -2730,6 +2744,8 @@ export default function ViewEditor({ tab }) {
         {traceCtx && (
             <TraceSidePanel
                 ctx={traceCtx}
+                initialStack={traceRef.current?.ctx === traceCtx ? traceRef.current?.stack : null}
+                onStackChange={st => { if (traceRef.current) traceRef.current.stack = st }}
                 onClose={() => setTraceCtx(null)}
             />
         )}

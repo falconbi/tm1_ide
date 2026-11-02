@@ -892,6 +892,8 @@ export default function ProcessEditor({ tab }) {
 
   const [activeSection, setActiveSection] = useState('PrologProcedure')
   const [showSaveAs, setShowSaveAs] = useState(false)
+  const [showSaveMenu, setShowSaveMenu] = useState(false)
+  const [saveMenuRect, setSaveMenuRect] = useState(null)   // fixed position: the toolbar row clips anything hanging below it
   const [draftName, setDraftName] = useState('')
   const [showRun, setShowRun] = useState(false)
   const [showDsInsert, setShowDsInsert] = useState(false)
@@ -912,7 +914,10 @@ export default function ProcessEditor({ tab }) {
   const editorRef = useRef(null)
   const monacoRef = useRef(null)
   const pendingLineRef = useRef(null)
-  const [regionsCollapsed, setRegionsCollapsed] = useState(false)
+  // each section (Prolog/Metadata/Data/Epilog) is its own editor, so each keeps its own collapsed state
+  const [collapsedSections, setCollapsedSections] = useState({})
+  const regionsCollapsed = !!collapsedSections[activeSection]
+  const setRegionsCollapsed = v => setCollapsedSections(c => ({ ...c, [activeSection]: v }))
   const [showRegionMenu, setShowRegionMenu] = useState(false)
   const [regionRect, setRegionRect] = useState(null)
   const [regionList, setRegionList] = useState([])   // scanned when the menu opens
@@ -1053,6 +1058,7 @@ export default function ProcessEditor({ tab }) {
   const handleMount = (editor, monaco) => {
     editorRef.current = editor
     monacoRef.current = monaco
+    if (regionsCollapsed) requestAnimationFrame(() => editor.trigger('fold', 'editor.foldAllMarkerRegions'))
     // apply the user's editor font preferences (fontFamily / fontSize / lineHeight from settings)
     const editorSettings = loadSettings().editor ?? {}
     editor.updateOptions({
@@ -1545,84 +1551,68 @@ export default function ProcessEditor({ tab }) {
         ))}
 
         <div className="ml-auto flex items-center gap-1 mr-2">
-          <div className="relative region-menu-container shrink-0">
-            <button
-              ref={regionBtnRef}
-              onClick={openRegionMenu}
-              title="Go to region"
-              className={cn(
-                'flex items-center gap-1.5 px-2.5 py-1 text-xs rounded border transition-colors',
-                showRegionMenu ? 'bg-primary text-primary-foreground border-primary' : 'border-border text-muted-foreground hover:text-foreground hover:bg-muted'
-              )}
-            >
-              <ListTree size={11} />
-              <span className="hidden sm:inline">Regions</span>
-            </button>
-            {showRegionMenu && regionRect && (
-              <div
-                className="fixed w-56 bg-popover border border-border rounded shadow-lg max-h-64 overflow-auto text-xs"
-                style={{ top: regionRect.top, right: regionRect.right, zIndex: 9999 }}
+          <button
+            onClick={() => setShowHistory(v => !v)}
+            disabled={!tab.name}
+            title="Object history"
+            className={cn(
+              'flex items-center gap-1.5 px-2.5 py-1 text-xs rounded border transition-colors disabled:opacity-40',
+              showHistory ? 'bg-primary text-primary-foreground border-primary' : 'border-border text-muted-foreground hover:text-foreground hover:bg-muted'
+            )}
+          >
+            <History size={11} />
+          </button>
+          {!tab.name ? (
+            <>
+              <input
+                value={draftName}
+                onChange={e => setDraftName(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && handleCreateNew()}
+                placeholder="Process name…"
+                className="px-2 py-1 text-xs border rounded bg-background font-mono outline-none focus:border-primary w-44"
+              />
+              <button
+                onClick={handleCreateNew}
+                disabled={!draftName.trim() || createProcess.isPending || saveProcess.isPending}
+                className="px-3 py-1 text-xs rounded bg-emerald-700 text-white disabled:opacity-40 hover:opacity-90 transition-opacity"
               >
-                {regionList.length === 0 ? (
-                  <div className="px-3 py-1.5 text-muted-foreground italic">No regions found</div>
-                ) : (
-                  regionList.map(r => (
-                    <button
-                      key={r.line}
-                      onClick={() => goToRegion(r.line)}
-                      className="flex items-center gap-1.5 w-full px-3 py-1 text-left hover:bg-muted text-sidebar-foreground truncate"
-                      title={`Line ${r.line}`}
-                    >
-                      <span className="text-muted-foreground/50 font-mono text-[10px] shrink-0">{r.line}</span>
-                      <span className="truncate">{r.name}</span>
-                    </button>
-                  ))
-                )}
-              </div>
-            )}
-          </div>
-          <button
-            onClick={toggleRegions}
-            title={regionsCollapsed ? 'Expand all regions' : 'Collapse all regions'}
-            className={cn(
-              'flex items-center gap-1.5 px-2.5 py-1 text-xs rounded border transition-colors',
-              regionsCollapsed ? 'bg-primary text-primary-foreground border-primary' : 'border-border text-muted-foreground hover:text-foreground hover:bg-muted'
-            )}
-          >
-            {regionsCollapsed ? <ChevronsDownUp size={11} /> : <ChevronsUpDown size={11} />}
-            {regionsCollapsed ? 'Expand' : 'Collapse'}
-          </button>
-          <button
-            onClick={toggleMinimap}
-            title="Toggle minimap"
-            className={cn(
-              'flex items-center gap-1.5 px-2.5 py-1 text-xs rounded border transition-colors',
-              showMinimap ? 'bg-primary text-primary-foreground border-primary' : 'border-border text-muted-foreground hover:text-foreground hover:bg-muted'
-            )}
-          >
-            <Map size={11} />
-            <span className="hidden sm:inline">Minimap</span>
-          </button>
-          <button
-            onClick={() => { setShowSnippets(s => !s); setShowDebug(false) }}
-            title="Function reference"
-            className={cn(
-              'flex items-center gap-1.5 px-2.5 py-1 text-xs rounded border transition-colors',
-              showSnippets ? 'bg-primary text-primary-foreground border-primary' : 'border-border text-muted-foreground hover:text-foreground hover:bg-muted'
-            )}
-          >
-            <Braces size={11} />
-            <span className="hidden sm:inline">Ref</span>
-          </button>
-          <button
-            onClick={() => setShowDsInsert(true)}
-            disabled={!data}
-            className="flex items-center gap-1 px-2.5 py-1 text-xs rounded border border-border text-muted-foreground hover:text-foreground hover:bg-muted transition-colors disabled:opacity-40"
-            title="Insert datasource block"
-          >
-            <Database size={11} />
-            <span className="hidden sm:inline">Datasource</span>
-          </button>
+                {createProcess.isPending || saveProcess.isPending ? 'Creating…' : 'Create & Save'}
+              </button>
+            </>
+          ) : (
+            <div className="relative flex items-center">
+              <button
+                onClick={handleSave}
+                disabled={(!Object.keys(edits).length && paramEdits === null && dsEdits === null) || saveProcess.isPending}
+                title="Save (Ctrl+S)"
+                className="px-3 py-1 text-xs rounded-l bg-primary text-primary-foreground disabled:opacity-40 hover:opacity-90 transition-opacity"
+              >
+                {saveProcess.isPending ? 'Saving…' : 'Save'}
+              </button>
+              <button
+                onClick={e => {
+                  const r = e.currentTarget.getBoundingClientRect()
+                  setSaveMenuRect({ top: r.bottom + 4, right: window.innerWidth - r.right })
+                  setShowSaveMenu(v => !v)
+                }}
+                disabled={!data}
+                title="Save options"
+                className="px-1 py-1 text-xs rounded-r bg-primary text-primary-foreground border-l border-primary-foreground/20 disabled:opacity-40 hover:opacity-90 transition-opacity"
+              >
+                <ChevronDown size={11} />
+              </button>
+              {showSaveMenu && saveMenuRect && (
+                <div className="fixed bg-popover border border-border rounded shadow-lg py-1 w-44"
+                  style={{ top: saveMenuRect.top, right: saveMenuRect.right, zIndex: 9999 }}
+                  onMouseLeave={() => setShowSaveMenu(false)}>
+                  <button onClick={() => { setShowSaveAs(true); setShowSaveMenu(false) }}
+                    className="w-full text-left px-3 py-1.5 text-xs hover:bg-muted transition-colors">
+                    Save As… (new name)
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
           <button
             onClick={() => {
               setShowDebug(false)
@@ -1663,51 +1653,79 @@ export default function ProcessEditor({ tab }) {
             <Play size={11} />
             Run
           </button>
+          <div className="relative region-menu-container shrink-0">
+            <button
+              ref={regionBtnRef}
+              onClick={openRegionMenu}
+              title="Go to region"
+              className={cn(
+                'flex items-center gap-1.5 px-2.5 py-1 text-xs rounded border transition-colors',
+                showRegionMenu ? 'bg-primary text-primary-foreground border-primary' : 'border-border text-muted-foreground hover:text-foreground hover:bg-muted'
+              )}
+            >
+              <ListTree size={11} />
+            </button>
+            {showRegionMenu && regionRect && (
+              <div
+                className="fixed w-56 bg-popover border border-border rounded shadow-lg max-h-64 overflow-auto text-xs"
+                style={{ top: regionRect.top, right: regionRect.right, zIndex: 9999 }}
+              >
+                {regionList.length === 0 ? (
+                  <div className="px-3 py-1.5 text-muted-foreground italic">No regions found</div>
+                ) : (
+                  regionList.map(r => (
+                    <button
+                      key={r.line}
+                      onClick={() => goToRegion(r.line)}
+                      className="flex items-center gap-1.5 w-full px-3 py-1 text-left hover:bg-muted text-sidebar-foreground truncate"
+                      title={`Line ${r.line}`}
+                    >
+                      <span className="text-muted-foreground/50 font-mono text-[10px] shrink-0">{r.line}</span>
+                      <span className="truncate">{r.name}</span>
+                    </button>
+                  ))
+                )}
+              </div>
+            )}
+          </div>
           <button
-            onClick={() => setShowHistory(v => !v)}
-            disabled={!tab.name}
-            title="Object history"
+            onClick={toggleRegions}
+            title={regionsCollapsed ? 'Expand all regions' : 'Collapse all regions'}
             className={cn(
-              'flex items-center gap-1.5 px-2.5 py-1 text-xs rounded border transition-colors disabled:opacity-40',
-              showHistory ? 'bg-primary text-primary-foreground border-primary' : 'border-border text-muted-foreground hover:text-foreground hover:bg-muted'
+              'flex items-center gap-1.5 px-2.5 py-1 text-xs rounded border transition-colors',
+              regionsCollapsed ? 'bg-primary text-primary-foreground border-primary' : 'border-border text-muted-foreground hover:text-foreground hover:bg-muted'
             )}
           >
-            <History size={11} />
+            {regionsCollapsed ? <ChevronsDownUp size={11} /> : <ChevronsUpDown size={11} />}
           </button>
           <button
-            onClick={() => setShowSaveAs(true)}
-            disabled={!data}
-            className="px-2.5 py-1 text-xs rounded border border-border text-muted-foreground hover:text-foreground hover:bg-muted disabled:opacity-40 transition-colors"
-            title="Save As — copy to new process name"
+            onClick={() => { setShowSnippets(s => !s); setShowDebug(false) }}
+            title="Function reference"
+            className={cn(
+              'flex items-center gap-1.5 px-2.5 py-1 text-xs rounded border transition-colors',
+              showSnippets ? 'bg-primary text-primary-foreground border-primary' : 'border-border text-muted-foreground hover:text-foreground hover:bg-muted'
+            )}
           >
-            Save As
+            <Braces size={11} />
           </button>
-          {!tab.name ? (
-            <>
-              <input
-                value={draftName}
-                onChange={e => setDraftName(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && handleCreateNew()}
-                placeholder="Process name…"
-                className="px-2 py-1 text-xs border rounded bg-background font-mono outline-none focus:border-primary w-44"
-              />
-              <button
-                onClick={handleCreateNew}
-                disabled={!draftName.trim() || createProcess.isPending || saveProcess.isPending}
-                className="px-3 py-1 text-xs rounded bg-emerald-700 text-white disabled:opacity-40 hover:opacity-90 transition-opacity"
-              >
-                {createProcess.isPending || saveProcess.isPending ? 'Creating…' : 'Create & Save'}
-              </button>
-            </>
-          ) : (
-            <button
-              onClick={handleSave}
-              disabled={(!Object.keys(edits).length && paramEdits === null && dsEdits === null) || saveProcess.isPending}
-              className="px-3 py-1 text-xs rounded bg-primary text-primary-foreground disabled:opacity-40 hover:opacity-90 transition-opacity"
-            >
-              {saveProcess.isPending ? 'Saving…' : 'Save'}
-            </button>
-          )}
+          <button
+            onClick={toggleMinimap}
+            title="Toggle minimap"
+            className={cn(
+              'flex items-center gap-1.5 px-2.5 py-1 text-xs rounded border transition-colors',
+              showMinimap ? 'bg-primary text-primary-foreground border-primary' : 'border-border text-muted-foreground hover:text-foreground hover:bg-muted'
+            )}
+          >
+            <Map size={11} />
+          </button>
+          <button
+            onClick={() => setShowDsInsert(true)}
+            disabled={!data}
+            className="flex items-center gap-1 px-2.5 py-1 text-xs rounded border border-border text-muted-foreground hover:text-foreground hover:bg-muted transition-colors disabled:opacity-40"
+            title="Insert datasource block"
+          >
+            <Database size={11} />
+          </button>
         </div>
       </div>
 

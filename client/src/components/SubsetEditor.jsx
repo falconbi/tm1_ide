@@ -286,6 +286,8 @@ export default function SubsetEditor({ tab }) {
   const [validating, setValidating] = useState(false)
   const [aiPrompt, setAiPrompt] = useState('')
   const [saveAsOpen, setSaveAsOpen] = useState(false)
+  const [showSaveMenu, setShowSaveMenu] = useState(false)
+  const startSaveAs = () => { setShowSaveMenu(false); setSaveAsOpen(true); setSaveAsName(''); setTimeout(() => saveAsRef.current?.focus(), 0) }
   const [saveAsName, setSaveAsName] = useState('')
   const saveAsRef = useRef(null)
   const [sessionsOpen, setSessionsOpen] = useState(false)
@@ -650,19 +652,31 @@ export default function SubsetEditor({ tab }) {
                 onBlur={commitSaveAs} placeholder="New name…"
                 className="w-28 text-xs bg-background border border-border rounded px-1.5 py-1 outline-none font-mono" />
             ) : (
-              <>
-                <button onClick={() => { setSaveAsOpen(true); setSaveAsName(''); setTimeout(() => saveAsRef.current?.focus(), 0) }}
-                  disabled={!mdx?.trim()}
-                  className="px-2 py-1 text-xs rounded border border-border text-muted-foreground hover:bg-muted disabled:opacity-40 transition-colors">
-                  Save As
-                </button>
-                {tab.subsetName && (
-                  <button onClick={handleSave} disabled={!dirty || saveSubset.isPending}
-                    className="px-3 py-1 text-xs rounded bg-primary text-primary-foreground disabled:opacity-40 hover:opacity-90 transition-opacity">
+              tab.subsetName ? (
+                <div className="relative flex items-center">
+                  <button onClick={handleSave} disabled={!dirty || saveSubset.isPending} title="Save"
+                    className="px-3 py-1 text-xs rounded-l bg-primary text-primary-foreground disabled:opacity-40 hover:opacity-90 transition-opacity">
                     {saveSubset.isPending ? 'Saving…' : 'Save'}
                   </button>
-                )}
-              </>
+                  <button onClick={() => setShowSaveMenu(v => !v)} title="Save options"
+                    className="px-1 py-1 text-xs rounded-r bg-primary text-primary-foreground border-l border-primary-foreground/20 hover:opacity-90 transition-opacity">
+                    <ChevronDown size={11} />
+                  </button>
+                  {showSaveMenu && (
+                    <div className="absolute right-0 top-full mt-1 z-50 bg-popover border border-border rounded shadow-lg py-1 w-44" onMouseLeave={() => setShowSaveMenu(false)}>
+                      <button onClick={startSaveAs} disabled={!mdx?.trim()}
+                        className="w-full text-left px-3 py-1.5 text-xs hover:bg-muted disabled:opacity-40 transition-colors">
+                        Save As… (new name)
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <button onClick={startSaveAs} disabled={!mdx?.trim()}
+                  className="px-3 py-1 text-xs rounded bg-primary text-primary-foreground disabled:opacity-40 hover:opacity-90 transition-opacity">
+                  Save As
+                </button>
+              )
             )}
           </div>
 
