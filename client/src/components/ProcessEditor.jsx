@@ -567,7 +567,7 @@ function DebugPanel({ watches, onWatchesChange, events, isDebugging, onRun, onJu
   }
 
   return (
-    <div className="w-64 shrink-0 border-l border-border flex flex-col bg-sidebar overflow-hidden">
+    <div className="w-72 shrink-0 border-l border-border flex flex-col bg-sidebar overflow-hidden">
       {/* Header + run */}
       <div className="flex items-center justify-between px-3 py-2 border-b border-border shrink-0">
         <span className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
@@ -603,8 +603,8 @@ function DebugPanel({ watches, onWatchesChange, events, isDebugging, onRun, onJu
             </button>
           </div>
         ))}
-        <div className="flex items-center gap-1 px-2 pt-1 pb-2 border-t border-border/50" ref={dropdownRef}>
-          <div className="relative flex-1 min-w-0">
+        <div className="px-2 pt-1 pb-2 border-t border-border/50" ref={dropdownRef}>
+          <div className="relative w-full">
             <input
               value={dropdownOpen ? filterText : newName}
               onChange={e => {
@@ -630,11 +630,11 @@ function DebugPanel({ watches, onWatchesChange, events, isDebugging, onRun, onJu
                   setActiveIndex(i => Math.max(i - 1, 0))
                 }
               }}
-              placeholder="Search variables… (Enter to add)"
+              placeholder="Find variable…  (Enter to add)"
               className="w-full text-xs font-mono bg-muted border border-border rounded px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-ring"
             />
             {dropdownOpen && filteredVars.length > 0 && (
-              <div className="absolute bottom-full left-0 mb-1 w-56 max-h-48 overflow-auto bg-popover border border-border rounded shadow-lg z-50">
+              <div className="absolute bottom-full left-0 mb-1 w-full max-h-48 overflow-auto bg-popover border border-border rounded shadow-lg z-50">
                 {filteredVars.map((v, i) => (
                   <button
                     key={i}
@@ -662,7 +662,7 @@ function DebugPanel({ watches, onWatchesChange, events, isDebugging, onRun, onJu
           </div>
           <div className="px-2 pb-2">
             <div className="flex items-center gap-1 mb-1">
-              <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Only capture when</span>
+              <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Capture when</span>
               {captureWhen?.trim() && <span className="text-[9px] px-1 py-px rounded bg-amber-500/15 border border-amber-500/30 text-amber-600 dark:text-amber-400">filter</span>}
             </div>
             <input
