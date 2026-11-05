@@ -883,8 +883,9 @@ app.post('/api/process/debug', async (req, res) => {
 
     // ── 4. Create temp process with instrumented code ────────────────────────
     const MAX_HITS   = 50
-    // the hit counter starts in the Prolog — prefixed onto line 1 so no line numbers move
-    const prologInst = (hasCapture ? 'nDBGHit__IDE__ = 0; ' : '') + instrumentSection(sections.PrologProcedure, 'PrologProcedure', 'Prolog')
+    // The hit counter starts on its own line before the Prolog. Prefixing it to
+    // line 1 broke processes whose first line was a #Region/comment.
+    const prologInst = (hasCapture ? 'nDBGHit__IDE__ = 0;\n' : '') + instrumentSection(sections.PrologProcedure, 'PrologProcedure', 'Prolog')
     // TM1's property is MetadataProcedure (lowercase d); an older client may still send MetaDataProcedure
     const metaSrc    = sections.MetadataProcedure ?? sections.MetaDataProcedure ?? ''
     if (breakpoints && breakpoints.MetadataProcedure == null && breakpoints.MetaDataProcedure) breakpoints.MetadataProcedure = breakpoints.MetaDataProcedure
@@ -917,7 +918,14 @@ app.post('/api/process/debug', async (req, res) => {
 
     // ── 5. Execute ─────────────────────────────────────────────────────────────
     try {
-        await client.executeProcess(tempName, params ?? [])
+        const dbgRun = await client.executeProcess(tempName, params ?? [])
+        const status = dbgRun?.ProcessExecuteStatusCode
+        if (status && !['CompletedSuccessfully', 'HasMinorErrors', 0].includes(status)) {
+            const errFile = dbgRun?.ErrorLogFile?.Filename
+            runError = errFile
+                ? ((await client.getErrorLogContent(errFile).catch(() => null))?.Content || `Debug run ${status}`)
+                : `Debug run ${status}`
+        }
     } catch (e) {
         const data  = e.response?.data
         const inner = data?.error?.innererror ?? {}
