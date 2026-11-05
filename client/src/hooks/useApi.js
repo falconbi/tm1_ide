@@ -233,11 +233,11 @@ export const useSaveProcess = () => useMutation({
 })
 
 export const useDebugProcess = () => useMutation({
-  mutationFn: ({ server, name, params, sections, watches, breakpoints }) => {
+  mutationFn: ({ server, name, params, sections, watches, breakpoints, captureWhen }) => {
     const bpArrays = Object.fromEntries(
       Object.entries(breakpoints ?? {}).map(([k, v]) => [k, [...(v instanceof Set ? v : [])]])
     )
-    return post('/api/process/debug', { server, name, params, sections, watches, breakpoints: bpArrays })
+    return post('/api/process/debug', { server, name, params, sections, watches, breakpoints: bpArrays, captureWhen })
   },
 })
 
