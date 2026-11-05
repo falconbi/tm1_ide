@@ -777,7 +777,7 @@ function joinContinuations(code) {
 }
 
 app.post('/api/process/debug', async (req, res) => {
-    const { server, name, params, sections, watches, breakpoints } = req.body
+    const { server, name, params, sections, watches, breakpoints, captureWhen } = req.body
     if (!gateReadOnly(res, server)) return
     const client   = makeClient(server, req.ideToken)
     const tempName = `_IDE_Debug_${Date.now()}`
@@ -830,7 +830,11 @@ app.post('/api/process/debug', async (req, res) => {
         const AT = safeProcName
         // capped: a breakpoint in the Data section fires once per record, and the log is one growing
         // string — capturing every record made a debug run on a big view crawl past the 2-minute timeout
-        const lines = [`IF( nDBGHit__IDE__ < ${MAX_HITS} ); nDBGHit__IDE__ = nDBGHit__IDE__ + 1;`,
+        const guard = String(captureWhen ?? '').replace(/[\r\n]/g, ' ').trim()
+        const condition = guard
+            ? `nDBGHit__IDE__ < ${MAX_HITS} & (${guard})`
+            : `nDBGHit__IDE__ < ${MAX_HITS}`
+        const lines = [`IF( ${condition} ); nDBGHit__IDE__ = nDBGHit__IDE__ + 1;`,
                        `sDBGLog__IDE__ = ATTRS('}Processes', '${AT}', '${ATTR}');`]
         lines.push(`sDBGLog__IDE__ = sDBGLog__IDE__ | '${label}' | CHAR(10);`)
         for (const w of (watches ?? [])) {

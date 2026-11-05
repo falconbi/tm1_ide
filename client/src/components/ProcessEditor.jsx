@@ -505,7 +505,7 @@ function SaveAsDialog({ sourceName, onSave, onClose, isPending }) {
   )
 }
 
-function DebugPanel({ watches, onWatchesChange, events, isDebugging, onRun, onJumpTo, availableVars }) {
+function DebugPanel({ watches, onWatchesChange, events, isDebugging, onRun, onJumpTo, availableVars, captureWhen, onCaptureWhenChange }) {
   const [newName, setNewName] = useState('')
   const [dropdownOpen, setDropdownOpen] = useState(false)
   const [filterText, setFilterText] = useState('')
@@ -660,6 +660,18 @@ function DebugPanel({ watches, onWatchesChange, events, isDebugging, onRun, onJu
               </div>
             )}
           </div>
+          <div className="px-2 pb-2">
+            <div className="flex items-center gap-1 mb-1">
+              <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Only capture when</span>
+              {captureWhen?.trim() && <span className="text-[9px] px-1 py-px rounded bg-amber-500/15 border border-amber-500/30 text-amber-600 dark:text-amber-400">filter</span>}
+            </div>
+            <input
+              value={captureWhen ?? ''}
+              onChange={e => onCaptureWhenChange(e.target.value)}
+              placeholder="TI condition, e.g. nBad = 1"
+              className="w-full text-xs font-mono bg-muted border border-border rounded px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-ring"
+            />
+          </div>
         </div>
       </div>
 
@@ -717,6 +729,7 @@ export default function ProcessEditor({ tab }) {
   const [showDebug, setShowDebug]       = useState(false)
   const [breakpoints, setBreakpoints]   = useState({})
   const [watches, setWatches]           = useState([])
+  const [captureWhen, setCaptureWhen]   = useState('')
   const [debugEvents, setDebugEvents]   = useState([])
   const [isDebugging, setIsDebugging]   = useState(false)
   const [showDebugRun, setShowDebugRun] = useState(false)
@@ -1249,6 +1262,7 @@ export default function ProcessEditor({ tab }) {
       sections,
       watches,
       breakpoints,
+      captureWhen,
     }, {
       onSuccess: res => {
         setDebugEvents(parseDebugLog(res.log))
@@ -1262,6 +1276,9 @@ export default function ProcessEditor({ tab }) {
           toast.warning(`${res.warnings.length} unknown function${res.warnings.length > 1 ? 's' : ''} commented out — see Issues panel`)
         }
         setIsDebugging(false)
+        if (!res.error && captureWhen.trim() && !parseDebugLog(res.log).length) {
+            toast.info(`No breakpoint captures matched: ${captureWhen}`)
+        }
         if (res.error) {
             if (res.error.includes('invalid string expression')) {
                 toast.warning(`Process errored: ${res.error} — this may be a TM1 variable name length bug. Try shortening variable names to ≤ 8 characters.`)
@@ -1757,6 +1774,8 @@ export default function ProcessEditor({ tab }) {
             <DebugPanel
               watches={watches}
               onWatchesChange={setWatches}
+              captureWhen={captureWhen}
+              onCaptureWhenChange={setCaptureWhen}
               events={debugEvents}
               isDebugging={isDebugging}
               availableVars={availableVars}
