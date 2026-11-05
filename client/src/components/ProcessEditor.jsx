@@ -509,6 +509,7 @@ function DebugPanel({ watches, onWatchesChange, events, isDebugging, onRun, onJu
   const [newName, setNewName] = useState('')
   const [dropdownOpen, setDropdownOpen] = useState(false)
   const [filterText, setFilterText] = useState('')
+  const [activeIndex, setActiveIndex] = useState(0)
   const dropdownRef = useRef(null)
 
   useEffect(() => {
@@ -519,21 +520,12 @@ function DebugPanel({ watches, onWatchesChange, events, isDebugging, onRun, onJu
     return () => document.removeEventListener('mousedown', handler)
   }, [])
 
-  const addWatch = () => {
-    const name = newName.trim()
-    const known = (availableVars ?? []).find(v => v.name.toLowerCase() === name.toLowerCase())
-    if (!known || watches.some(w => w.name.toLowerCase() === name.toLowerCase())) return
-    onWatchesChange([...watches, { name: known.name, type: known.type }])
-    setNewName('')
-    setFilterText('')
-    setDropdownOpen(false)
-  }
-
-  const selectVar = (v) => {
-    if (watches.some(w => w.name.toLowerCase() === v.name.toLowerCase())) return
+  const addVar = (v) => {
+    if (!v || watches.some(w => w.name.toLowerCase() === v.name.toLowerCase())) return
     onWatchesChange([...watches, { name: v.name, type: v.type }])
     setNewName('')
     setFilterText('')
+    setActiveIndex(0)
     setDropdownOpen(false)
   }
 
@@ -542,6 +534,16 @@ function DebugPanel({ watches, onWatchesChange, events, isDebugging, onRun, onJu
     const lo = filterText.toLowerCase()
     return v.name.toLowerCase().includes(lo) || v.section.toLowerCase().includes(lo)
   })
+
+  const addWatch = () => {
+    const name = newName.trim()
+    const known = dropdownOpen && filteredVars[activeIndex]
+      ? filteredVars[activeIndex]
+      : (availableVars ?? []).find(v => v.name.toLowerCase() === name.toLowerCase())
+    addVar(known)
+  }
+
+  const selectVar = (v) => addVar(v)
 
   // Group events into frames anchored at each breakpoint hit
   const frames = []
@@ -607,6 +609,7 @@ function DebugPanel({ watches, onWatchesChange, events, isDebugging, onRun, onJu
               value={dropdownOpen ? filterText : newName}
               onChange={e => {
                 const v = e.target.value
+                setActiveIndex(0)
                 if (dropdownOpen) {
                   setFilterText(v)
                   setNewName(v)
@@ -614,16 +617,20 @@ function DebugPanel({ watches, onWatchesChange, events, isDebugging, onRun, onJu
                   setNewName(v)
                 }
               }}
-              onFocus={() => { setDropdownOpen(true); setFilterText(newName) }}
+              onFocus={() => { setDropdownOpen(true); setFilterText(newName); setActiveIndex(0) }}
               onKeyDown={e => {
                 if (e.key === 'Enter') { addWatch(); e.preventDefault() }
                 if (e.key === 'Escape') setDropdownOpen(false)
                 if (e.key === 'ArrowDown' && filteredVars.length > 0) {
                   e.preventDefault()
-                  // focus first item — simplified: just select it
+                  setActiveIndex(i => Math.min(i + 1, filteredVars.length - 1))
+                }
+                if (e.key === 'ArrowUp' && filteredVars.length > 0) {
+                  e.preventDefault()
+                  setActiveIndex(i => Math.max(i - 1, 0))
                 }
               }}
-              placeholder="Search variables…"
+              placeholder="Search variables… (Enter to add)"
               className="w-full text-xs font-mono bg-muted border border-border rounded px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-ring"
             />
             {dropdownOpen && filteredVars.length > 0 && (
@@ -632,7 +639,8 @@ function DebugPanel({ watches, onWatchesChange, events, isDebugging, onRun, onJu
                   <button
                     key={i}
                     onClick={() => selectVar(v)}
-                    className="w-full flex items-center gap-2 px-2 py-1 text-xs hover:bg-muted text-left"
+                    onMouseEnter={() => setActiveIndex(i)}
+                    className={cn('w-full flex items-center gap-2 px-2 py-1 text-xs hover:bg-muted text-left', i === activeIndex && 'bg-muted')}
                   >
                     <span className={cn(
                       'font-mono flex-1 truncate',
@@ -652,9 +660,6 @@ function DebugPanel({ watches, onWatchesChange, events, isDebugging, onRun, onJu
               </div>
             )}
           </div>
-          <button onClick={addWatch} className="shrink-0 text-muted-foreground hover:text-foreground">
-            <Plus size={12} />
-          </button>
         </div>
       </div>
 
