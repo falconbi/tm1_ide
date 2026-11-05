@@ -723,7 +723,7 @@ function guessType(expr, vars) {
  * @param {Array} parameters - Process parameter definitions [{Name, Type, Value, Prompt}]
  * @returns {Array<{name:string, type:'number'|'string', section:string, line:number|null}>}
  */
-export function scanVariables(sections, parameters) {
+export function scanVariables(sections, parameters, processVariables = []) {
   const vars = new Map()
 
   const add = (name, type, section, line) => {
@@ -736,6 +736,14 @@ export function scanVariables(sections, parameters) {
   // Parameters first (they're always defined)
   for (const p of (parameters ?? [])) {
     if (p.Name) add(p.Name, p.Type === 1 ? 'number' : 'string', 'Param', null)
+  }
+
+  // Data-source variables (e.g. vVersion, vEmployee) are defined by the
+  // process metadata even when the code never assigns them.
+  for (const v of (processVariables ?? [])) {
+    if (!v?.Name) continue
+    const type = v.Type === 1 || String(v.Type).toLowerCase() === 'numeric' ? 'number' : 'string'
+    add(v.Name, type, 'Source', null)
   }
 
   for (const [key, label] of Object.entries(SECTION_NAMES)) {

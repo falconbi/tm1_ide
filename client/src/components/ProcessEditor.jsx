@@ -507,7 +507,6 @@ function SaveAsDialog({ sourceName, onSave, onClose, isPending }) {
 
 function DebugPanel({ watches, onWatchesChange, events, isDebugging, onRun, onJumpTo, availableVars }) {
   const [newName, setNewName] = useState('')
-  const [newType, setNewType] = useState('number')
   const [dropdownOpen, setDropdownOpen] = useState(false)
   const [filterText, setFilterText] = useState('')
   const dropdownRef = useRef(null)
@@ -522,16 +521,18 @@ function DebugPanel({ watches, onWatchesChange, events, isDebugging, onRun, onJu
 
   const addWatch = () => {
     const name = newName.trim()
-    if (!name || watches.some(w => w.name.toLowerCase() === name.toLowerCase())) return
-    onWatchesChange([...watches, { name, type: newType }])
+    const known = (availableVars ?? []).find(v => v.name.toLowerCase() === name.toLowerCase())
+    if (!known || watches.some(w => w.name.toLowerCase() === name.toLowerCase())) return
+    onWatchesChange([...watches, { name: known.name, type: known.type }])
     setNewName('')
     setFilterText('')
     setDropdownOpen(false)
   }
 
   const selectVar = (v) => {
-    setNewName(v.name)
-    setNewType(v.type)
+    if (watches.some(w => w.name.toLowerCase() === v.name.toLowerCase())) return
+    onWatchesChange([...watches, { name: v.name, type: v.type }])
+    setNewName('')
     setFilterText('')
     setDropdownOpen(false)
   }
@@ -540,7 +541,7 @@ function DebugPanel({ watches, onWatchesChange, events, isDebugging, onRun, onJu
     if (!filterText) return true
     const lo = filterText.toLowerCase()
     return v.name.toLowerCase().includes(lo) || v.section.toLowerCase().includes(lo)
-  }).slice(0, 30)
+  })
 
   // Group events into frames anchored at each breakpoint hit
   const frames = []
@@ -622,7 +623,7 @@ function DebugPanel({ watches, onWatchesChange, events, isDebugging, onRun, onJu
                   // focus first item — simplified: just select it
                 }
               }}
-              placeholder="variable or type…"
+              placeholder="Search variables…"
               className="w-full text-xs font-mono bg-muted border border-border rounded px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-ring"
             />
             {dropdownOpen && filteredVars.length > 0 && (
@@ -651,14 +652,6 @@ function DebugPanel({ watches, onWatchesChange, events, isDebugging, onRun, onJu
               </div>
             )}
           </div>
-          <select
-            value={newType}
-            onChange={e => setNewType(e.target.value)}
-            className="text-xs bg-muted border border-border rounded px-1 py-0.5 focus:outline-none w-12 shrink-0"
-          >
-            <option value="number">num</option>
-            <option value="string">str</option>
-          </select>
           <button onClick={addWatch} className="shrink-0 text-muted-foreground hover:text-foreground">
             <Plus size={12} />
           </button>
@@ -779,7 +772,7 @@ export default function ProcessEditor({ tab }) {
     const sections = {}
     CODE_TABS.forEach(({ key }) => { sections[key] = edits[key] ?? data?.[key] ?? '' })
     const params = paramEdits ?? data?.Parameters ?? []
-    return scanVariables(sections, params)
+    return scanVariables(sections, params, data?.Variables)
   })()
 
   useEffect(() => {
