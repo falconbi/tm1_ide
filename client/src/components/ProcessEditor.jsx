@@ -1223,6 +1223,14 @@ export default function ProcessEditor({ tab }) {
   }
 
   const handleDebugRun = (params) => {
+    // Instrumenting an unknown name makes TI abort before any breakpoint can
+    // report. Catch it here with the actual variable list instead.
+    const knownVars = new Set(availableVars.map(v => v.name.toLowerCase()))
+    const unknown = watches.filter(w => !knownVars.has(w.name.toLowerCase()))
+    if (unknown.length) {
+        toast.warning(`Unknown watch variable${unknown.length > 1 ? 's' : ''}: ${unknown.map(w => w.name).join(', ')}. Add the variable to the process or remove the watch.`)
+        return
+    }
     setShowDebugRun(false)
     setRunOutput(null)
     setIsDebugging(true)
