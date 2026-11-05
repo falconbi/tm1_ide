@@ -110,6 +110,7 @@ The frontend is pre-built — no build step needed. Full instructions: [Setup](d
 | [Earlier REST pipeline](docs/deploy/DEPLOYMENT.md) | The original diff → package → risk → deploy pipeline, kept for history and the admin-only CLI |
 | [MCP server](docs/ide/MCP_SERVER.md) | Connecting an AI agent to build and test models |
 | [Building models](docs/models/BUILDING_MODELS.md) | Lessons and TM1 quirks from real model builds |
+| [Changelog](CHANGELOG.md) | Monthly summary of user-visible changes |
 | [Bug fixes](docs/ide/BUG_FIXES.md) | Every bug fix, by date committed |
 | [Security](SECURITY.md) | The security model |
 | [IBM REST API](docs/ide/Planning%20Analytics.postman_collection.json) | Postman collection of the TM1 REST API |
