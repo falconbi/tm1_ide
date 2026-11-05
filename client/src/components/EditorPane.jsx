@@ -402,6 +402,7 @@ function RulesEditor({ tab, onCursor }) {
   const [checking, setChecking]             = useState(false)
   const [checkResult, setCheckResult]       = useState(null) // null | 'pass' | 'fail'
   const [checkErrors, setCheckErrors]       = useState([])   // { severity, line, message }[]
+  const checkSeqRef                          = useRef(0)
   const [checkingFeeders, setCheckingFeeders] = useState(false)
 
   // Contextual drill-ins (Lineage, Data Sources) open beside the rules you are reading.
@@ -447,6 +448,9 @@ function RulesEditor({ tab, onCursor }) {
   const runCheck = useCallback(async () => {
     const model = editorRef.current?.getModel()
     if (!model || !monacoRef.current) return
+    // Only the newest check may write markers. A slower earlier request can
+    // otherwise land after the fixed buffer passes and put the old squiggle back.
+    const seq = ++checkSeqRef.current
     setChecking(true)
     try {
       const staticErrors = validateRulesSyntax(content, { version: serverVersion })
@@ -463,6 +467,7 @@ function RulesEditor({ tab, onCursor }) {
         const d = await r.json()
         tm1Errors = d.errors ?? []
       } catch { /* TM1 check failed — static errors still shown */ }
+      if (seq !== checkSeqRef.current) return
       // Once TM1 reports a syntax error, static warnings later in the file are
       // usually cascades from that one error (the parser has lost sync). Keep
       // static findings before the first TM1 error, but don't bury the real
@@ -502,7 +507,7 @@ function RulesEditor({ tab, onCursor }) {
         ...staticToShow.map(e => ({ severity: e.severity ?? 'error', line: e.line, message: e.message })),
       ])
     } finally {
-      setChecking(false)
+      if (seq === checkSeqRef.current) setChecking(false)
     }
   }, [content, tab.server, tab.cube])
 
