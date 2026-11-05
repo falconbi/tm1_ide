@@ -6,7 +6,8 @@ import { registerTM1Completions, registerTM1Theme } from '@/lib/tm1-functions'
 import { registerTICompletions } from '@/lib/tm1-completion'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
-import { ChevronRight, ChevronDown, Play, X, Braces, CheckCircle2, XCircle, Database, Trash2, Plus, Loader2, Bug, Search, AlertTriangle, AlertCircle, Map, Upload, History, Locate, HelpCircle, ListTree, ChevronsUpDown, ChevronsDownUp } from 'lucide-react'
+import { ChevronRight, ChevronDown, Play, X, Braces, CheckCircle2, XCircle, Trash2, Plus, Loader2, Bug, Search, AlertTriangle, AlertCircle, Map, Upload, History, Locate, HelpCircle, ListTree, ChevronsUpDown, ChevronsDownUp, Undo2, Redo2 } from 'lucide-react'
+import { enableQuoteDoubleClick } from '@/lib/quote-select'
 import HelpPanel from '@/components/HelpPanel'
 import ObjectHistoryPanel from '@/components/ObjectHistoryPanel'
 import { getFunctionRef } from '@/lib/tm1-snippets.js'
@@ -227,36 +228,99 @@ function EditableDatasourcePanel({ ds, server, onChange }) {
   )
 }
 
-function DatasourcePreviewPanel({ ds }) {
+// Preview of what the process will read, for every datasource type: the ODBC query's rows (with ?pName?
+// tokens filled from the parameter defaults, as TM1 does), the first lines of a file, a subset's elements,
+// or the source view / subset opened in its own tab.
+function DatasourcePreviewPanel({ ds, server, params }) {
+  const { openTab } = useStore()
   const preview = usePreviewDatasource()
-  const [result, setResult] = useState(null)
-  const [error,  setError]  = useState(null)
+  const [result, setResult]   = useState(null)
+  const [error,  setError]    = useState(null)
+  const [loading, setLoading] = useState(false)
+  const type = ds?.Type ?? 'None'
+  const name = ds?.dataSourceNameForServer ?? ''
+  const enc  = encodeURIComponent
+  const hdrs = { 'x-ide-token': localStorage.getItem('tm1-token') ?? '' }
 
-  const dsn   = ds?.dataSourceNameForServer
-  const query = ds?.query
+  useEffect(() => { setResult(null); setError(null) }, [type, name, ds?.view, ds?.subset, ds?.query])
 
-  const run = () => {
+  // TM1 substitutes ?pName? as plain text, no quoting
+  const fillParams = q => (q ?? '').replace(/\?(\w+)\?/g, (m, n) => {
+    const p = (params ?? []).find(x => x.Name?.toLowerCase() === n.toLowerCase())
+    return p ? String(p.Value ?? '') : m
+  })
+
+  const fail = e => { setError(e.message ?? String(e)); setLoading(false) }
+
+  const run = async () => {
     setResult(null); setError(null)
-    preview.mutate({ dsn, query }, {
-      onSuccess: (r) => setResult(r),
-      onError:   (e) => setError(e.message),
-    })
+    if (type === 'ODBC') {
+      preview.mutate({ dsn: name, query: fillParams(ds?.query) }, { onSuccess: setResult, onError: fail })
+      return
+    }
+    setLoading(true)
+    try {
+      if (type === 'TM1DimensionSubset') {
+        const r = await fetch(`/api/subset/elements?server=${enc(server)}&dimension=${enc(name)}&name=${enc(ds?.subset ?? '')}`, { headers: hdrs })
+        const d = await r.json()
+        if (!r.ok) throw new Error(d.error || 'Could not read the subset')
+        const els = (Array.isArray(d) ? d : d.elements ?? []).map(e => e.name ?? e.Name ?? e)
+        setResult({ columns: ['Element'], rows: els.slice(0, 200).map(e => [e]), rowCount: els.length })
+      } else if (type === 'ASCII') {
+        const file = name.split(/[\\/]/).pop()
+        const r = await fetch(`/api/files/content?server=${enc(server)}&name=${enc(file)}`, { headers: hdrs })
+        if (!r.ok) {
+          const d = await r.json().catch(() => ({}))
+          throw new Error(d.error || `Could not read ${file}. Reading server files needs Planning Analytics v12; on v11 TM1 has no way to read them over its API.`)
+        }
+        const lines = (await r.text()).split(/\r?\n/).filter(l => l !== '')
+        const delim = ds?.asciiDelimiterChar || ','
+        const head  = Number(ds?.asciiHeaderRecords ?? 1) || 0
+        const split = l => l.split(delim)
+        const body  = lines.slice(head)
+        const width = Math.max(1, ...body.slice(0, 20).map(l => split(l).length))
+        const columns = head > 0 ? split(lines[0]) : Array.from({ length: width }, (_, i) => `Column ${i + 1}`)
+        setResult({ columns, rows: body.slice(0, 20).map(split), rowCount: body.length, note: 'first 20 records' })
+      }
+      setLoading(false)
+    } catch (e) { fail(e) }
   }
+
+  const openView   = () => openTab({ id: `view:${server}:${name}:${ds.view}`, type: 'view', label: ds.view, server, cube: name, viewName: ds.view })
+  const openSubset = () => openTab({ id: `subset:${server}:${name}:${ds.subset}`, type: 'subset', label: ds.subset, server, dimension: name, subsetName: ds.subset })
+
+  const busy = loading || preview.isPending
+  const btn  = 'flex items-center gap-1.5 px-2.5 py-1 text-xs rounded border border-border text-muted-foreground hover:text-foreground hover:bg-muted transition-colors disabled:opacity-40'
+  const canPreview = type === 'ODBC' ? !!(name && ds?.query) : type === 'ASCII' ? !!name : type === 'TM1DimensionSubset' ? !!(name && ds?.subset) : false
 
   return (
     <div className="px-3 py-2 space-y-2">
-      <div className="flex items-center justify-between">
-        <div className="text-[10px] text-muted-foreground">
-          DSN: <span className="font-mono text-foreground">{dsn || '—'}</span>
+      <div className="flex items-center justify-between gap-2">
+        <div className="text-[10px] text-muted-foreground truncate">
+          {type === 'TM1CubeView'
+            ? <>The process reads every record of <span className="font-mono text-foreground">{ds?.view || '—'}</span> on <span className="font-mono text-foreground">{name || '—'}</span></>
+            : type === 'ODBC' ? <>DSN: <span className="font-mono text-foreground">{name || '—'}</span>{/\?\w+\?/.test(ds?.query ?? '') && ' · parameters filled from their defaults'}</>
+            : type === 'ASCII' ? <>File: <span className="font-mono text-foreground">{name || '—'}</span></>
+            : <>Subset: <span className="font-mono text-foreground">{ds?.subset || '—'}</span> of <span className="font-mono text-foreground">{name || '—'}</span></>}
         </div>
-        <button
-          onClick={run}
-          disabled={preview.isPending || !dsn || !query}
-          className="flex items-center gap-1.5 px-2.5 py-1 text-xs rounded bg-emerald-700 text-white disabled:opacity-40 hover:bg-emerald-600 transition-colors"
-        >
-          {preview.isPending ? <Loader2 size={10} className="animate-spin" /> : <Play size={10} />}
-          Preview
-        </button>
+        <div className="flex items-center gap-1 shrink-0">
+          {type === 'TM1CubeView' && (
+            <button onClick={openView} disabled={!name || !ds?.view} className={btn} title="Open the source view in its own tab">Open view</button>
+          )}
+          {type === 'TM1DimensionSubset' && (
+            <button onClick={openSubset} disabled={!name || !ds?.subset} className={btn} title="Open the source subset in its own tab">Open subset</button>
+          )}
+          {type !== 'TM1CubeView' && (
+            <button
+              onClick={run}
+              disabled={busy || !canPreview}
+              className="flex items-center gap-1.5 px-2.5 py-1 text-xs rounded bg-emerald-700 text-white disabled:opacity-40 hover:bg-emerald-600 transition-colors"
+            >
+              {busy ? <Loader2 size={10} className="animate-spin" /> : <Play size={10} />}
+              Preview
+            </button>
+          )}
+        </div>
       </div>
 
       {error && (
@@ -270,15 +334,15 @@ function DatasourcePreviewPanel({ ds }) {
         <div className="border border-border rounded overflow-hidden">
           <div className="flex items-center justify-between px-2 py-1 bg-muted border-b border-border">
             <span className="text-[10px] text-muted-foreground">
-              {result.rowCount} row{result.rowCount !== 1 ? 's' : ''}{result.duration != null ? ` — ${result.duration}ms` : ''}
+              {result.rowCount} row{result.rowCount !== 1 ? 's' : ''}{result.note ? ` — showing ${result.note}` : ''}{result.duration != null ? ` — ${result.duration}ms` : ''}
             </span>
           </div>
           <div className="overflow-x-auto max-h-48">
             <table className="w-full text-xs border-collapse">
               <thead className="sticky top-0 bg-muted">
                 <tr>
-                  {result.columns.map(c => (
-                    <th key={c} className="text-left px-2 py-1 font-medium text-muted-foreground border-b border-border whitespace-nowrap">{c}</th>
+                  {result.columns.map((c, i) => (
+                    <th key={i} className="text-left px-2 py-1 font-medium text-muted-foreground border-b border-border whitespace-nowrap">{c}</th>
                   ))}
                 </tr>
               </thead>
@@ -342,231 +406,6 @@ function VariablesPanel({ variables }) {
           ))}
         </tbody>
       </table>
-    </div>
-  )
-}
-
-const DS_TYPES = [
-  { value: 'ASCII',              label: 'ASCII File',         desc: 'Delimited or fixed-width text file' },
-  { value: 'ODBC',               label: 'ODBC',               desc: 'Database via ODBC DSN and SQL query' },
-  { value: 'TM1CubeView',        label: 'TM1 Cube View',      desc: 'Another cube on this server' },
-  { value: 'TM1DimensionSubset', label: 'TM1 Dimension',      desc: 'Dimension subset as datasource' },
-  { value: 'NULL',               label: 'No datasource',      desc: 'Pure TI code, no data loop' },
-]
-
-function buildDsCode(type, fields) {
-  const q = (v) => `'${v}'`
-  if (type === 'ASCII') return [
-    `DataSourceType = 'ASCII';`,
-    `DataSourceNameForServer = ${q(fields.serverPath)};`,
-    `DataSourceNameForClient = ${q(fields.clientPath || fields.serverPath)};`,
-    `DataSourceASCIIDelimiterType = 'Character';`,
-    `DataSourceASCIIDelimiterChar = ${q(fields.delimiter || ',')};`,
-    `DataSourceASCIIHeaderRecords = ${fields.headerRows ?? 1};`,
-    `DataSourceASCIIQuoteCharacter = '"';`,
-  ].join('\n')
-
-  if (type === 'ODBC') return [
-    `DataSourceType = 'ODBC';`,
-    `DataSourceNameForServer = ${q(fields.dsn)};`,
-    `DataSourceNameForClient = ${q(fields.dsn)};`,
-    `DataSourceQuery = ${q(fields.query)};`,
-    fields.username ? `DataSourceUserName = ${q(fields.username)};` : null,
-    fields.password ? `DataSourcePassword = ${q(fields.password)};` : null,
-  ].filter(Boolean).join('\n')
-
-  if (type === 'TM1CubeView') return [
-    `DataSourceType = 'TM1CubeView';`,
-    `DataSourceNameForServer = ${q(fields.cube)};`,
-    `DataSourceNameForClient = ${q(fields.cube)};`,
-    `DataSourceView = ${q(fields.view)};`,
-  ].join('\n')
-
-  if (type === 'TM1DimensionSubset') return [
-    `DataSourceType = 'TM1DimensionSubset';`,
-    `DataSourceNameForServer = ${q(fields.dimension)};`,
-    `DataSourceNameForClient = ${q(fields.dimension)};`,
-    `DataSourceDimensionSubset = ${q(fields.subset)};`,
-  ].join('\n')
-
-  return `DataSourceType = 'NULL';`
-}
-
-function DatasourceInsertDialog({ server, onInsert, onClose }) {
-  const [type, setType]     = useState('ASCII')
-  const [fields, setFields] = useState({})
-  const set = (k, v) => setFields(f => ({ ...f, [k]: v }))
-  const csvInputRef = useRef(null)
-  const [csvUploading, setCsvUploading] = useState(false)
-  const enc = encodeURIComponent
-
-  const handleCsvUpload = async (e) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-    setCsvUploading(true)
-    try {
-      const buffer = await file.arrayBuffer()
-      const r = await fetch(
-        `/api/files/upload?server=${enc(server)}&name=${enc(file.name)}`,
-        { method: 'POST', headers: { 'Content-Type': 'application/octet-stream', 'x-ide-token': localStorage.getItem('tm1-token') ?? '' }, body: buffer }
-      )
-      const d = await r.json()
-      if (!r.ok) throw new Error(d.error || 'Upload failed')
-      set('serverPath', file.name)
-      toast.success(`Uploaded: ${file.name}`)
-    } catch (err) {
-      toast.error(err.message)
-    } finally {
-      setCsvUploading(false)
-      e.target.value = ''
-    }
-  }
-
-  const { data: cubes }                          = useCubes(server)
-  const { data: views, isFetching: fetchingViews } = useViews(server, fields.cube)
-
-  const input = (label, key, opts = {}) => (
-    <div className="space-y-1" key={key}>
-      <label className="text-xs font-medium text-muted-foreground">{label}</label>
-      <input
-        type={opts.type ?? 'text'}
-        value={fields[key] ?? opts.default ?? ''}
-        onChange={e => set(key, e.target.value)}
-        placeholder={opts.placeholder ?? ''}
-        className="w-full bg-muted border border-border rounded px-2 py-1.5 text-sm font-mono focus:outline-none focus:ring-1 focus:ring-ring"
-      />
-    </div>
-  )
-
-  const select = (label, key, options, loading) => (
-    <div className="space-y-1" key={key}>
-      <label className="text-xs font-medium text-muted-foreground">{label}</label>
-      <select
-        value={fields[key] ?? ''}
-        onChange={e => set(key, e.target.value)}
-        className="w-full bg-muted border border-border rounded px-2 py-1.5 text-sm font-mono focus:outline-none focus:ring-1 focus:ring-ring"
-      >
-        <option value="">{loading ? 'Loading…' : `Select ${label.toLowerCase()}…`}</option>
-        {(options ?? []).map(o => typeof o === 'string' ? o : (o?.name ?? o?.Name)).filter(Boolean).map(o => <option key={o} value={o}>{o}</option>)}
-      </select>
-    </div>
-  )
-
-  const fields_for_type = () => {
-    if (type === 'ASCII') return (
-      <div className="space-y-3">
-        <div className="space-y-1">
-          <label className="text-xs font-medium text-muted-foreground">File path (server)</label>
-          <div className="flex items-center gap-2">
-            <input
-              type="text"
-              value={fields.serverPath ?? ''}
-              onChange={e => set('serverPath', e.target.value)}
-              placeholder=".\\data\\file.csv"
-              className="flex-1 bg-muted border border-border rounded px-2 py-1.5 text-sm font-mono focus:outline-none focus:ring-1 focus:ring-ring"
-            />
-            <input type="file" accept=".csv,.txt,.asc" ref={csvInputRef} onChange={handleCsvUpload} className="hidden" />
-            <button
-              onClick={() => csvInputRef.current?.click()}
-              disabled={csvUploading}
-              className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground border border-border rounded px-2 py-1.5 disabled:opacity-50 shrink-0"
-            >
-              {csvUploading ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
-              Upload
-            </button>
-          </div>
-        </div>
-        {input('File path (client)', 'clientPath', { placeholder: 'Leave blank to mirror server path' })}
-        {input('Delimiter char', 'delimiter', { placeholder: ',', default: ',' })}
-        {input('Header rows', 'headerRows', { type: 'number', default: '1' })}
-      </div>
-    )
-    if (type === 'ODBC') return (
-      <div className="space-y-3">
-        {input('DSN name', 'dsn', { placeholder: 'MyDatabase' })}
-        <div className="space-y-1">
-          <label className="text-xs font-medium text-muted-foreground">SQL query</label>
-          <textarea
-            value={fields.query ?? ''}
-            onChange={e => set('query', e.target.value)}
-            placeholder="SELECT col1, col2 FROM table WHERE ..."
-            rows={3}
-            className="w-full bg-muted border border-border rounded px-2 py-1.5 text-sm font-mono focus:outline-none focus:ring-1 focus:ring-ring resize-none"
-          />
-        </div>
-        {input('Username', 'username', { placeholder: 'Optional' })}
-        {input('Password', 'password', { placeholder: 'Optional' })}
-      </div>
-    )
-    if (type === 'TM1CubeView') return (
-      <div className="space-y-3">
-        {select('Cube', 'cube', cubes)}
-        {select('View', 'view', views, fetchingViews)}
-      </div>
-    )
-    if (type === 'TM1DimensionSubset') return (
-      <div className="space-y-3">
-        {input('Dimension name', 'dimension', { placeholder: 'e.g. CostCentre' })}
-        {input('Subset name', 'subset', { placeholder: 'e.g. All CostCentres' })}
-      </div>
-    )
-    return <p className="text-xs text-muted-foreground">Inserts <code>DataSourceType = &apos;NULL&apos;;</code></p>
-  }
-
-  const canInsert = () => {
-    if (type === 'ASCII')              return !!fields.serverPath
-    if (type === 'ODBC')               return !!fields.dsn && !!fields.query
-    if (type === 'TM1CubeView')        return !!fields.cube && !!fields.view
-    if (type === 'TM1DimensionSubset') return !!fields.dimension && !!fields.subset
-    return true
-  }
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-      <div className="bg-background border border-border rounded-lg shadow-xl w-full max-w-lg mx-4 flex flex-col max-h-[90vh]">
-
-        <div className="flex items-center justify-between px-4 py-3 border-b border-border shrink-0">
-          <span className="text-sm font-semibold">Insert Datasource Block</span>
-          <button onClick={onClose} className="text-muted-foreground hover:text-foreground"><X size={14} /></button>
-        </div>
-
-        <div className="overflow-auto flex-1 px-4 py-3 space-y-4">
-          {/* Type selector */}
-          <div className="grid grid-cols-1 gap-1">
-            {DS_TYPES.map(t => (
-              <button
-                key={t.value}
-                onClick={() => { setType(t.value); setFields({}) }}
-                className={cn(
-                  'flex items-center gap-3 px-3 py-2 rounded border text-left transition-colors',
-                  type === t.value ? 'border-primary bg-primary/10 text-foreground' : 'border-border hover:bg-muted text-muted-foreground'
-                )}
-              >
-                <span className="text-xs font-semibold w-36 shrink-0">{t.label}</span>
-                <span className="text-xs">{t.desc}</span>
-              </button>
-            ))}
-          </div>
-
-          {/* Type-specific fields */}
-          <div className="border-t border-border pt-3">
-            {fields_for_type()}
-          </div>
-        </div>
-
-        <div className="flex justify-end gap-2 px-4 py-3 border-t border-border shrink-0">
-          <button onClick={onClose} className="px-3 py-1.5 text-xs rounded border border-border hover:bg-muted transition-colors">
-            Cancel
-          </button>
-          <button
-            onClick={() => onInsert(buildDsCode(type, fields))}
-            disabled={!canInsert()}
-            className="px-3 py-1.5 text-xs rounded bg-primary text-primary-foreground disabled:opacity-50 hover:opacity-90 transition-opacity"
-          >
-            Insert
-          </button>
-        </div>
-      </div>
     </div>
   )
 }
@@ -831,7 +670,7 @@ function DebugPanel({ watches, onWatchesChange, events, isDebugging, onRun, onJu
       <div className="flex-1 overflow-auto">
         {events.length === 0 ? (
           <p className="px-3 py-3 text-xs text-muted-foreground italic leading-relaxed">
-            Add watches above, then Run. Watches are captured at end of each section — click the gutter to also capture at specific lines.
+            Click the margin to set a breakpoint, add watches above, then Run. Watches are captured each time the run reaches a breakpoint.
           </p>
         ) : (
           <div className="py-1">
@@ -896,7 +735,6 @@ export default function ProcessEditor({ tab }) {
   const [saveMenuRect, setSaveMenuRect] = useState(null)   // fixed position: the toolbar row clips anything hanging below it
   const [draftName, setDraftName] = useState('')
   const [showRun, setShowRun] = useState(false)
-  const [showDsInsert, setShowDsInsert] = useState(false)
   const [showSnippets, setShowSnippets] = useState(false)
   const [showMinimap, setShowMinimap]   = useState(() => loadSettings().editor?.minimap?.ti ?? false)
   const [showHistory, setShowHistory]   = useState(false)
@@ -1030,17 +868,6 @@ export default function ProcessEditor({ tab }) {
     }
   }
 
-  const handleInsertDs = (code) => {
-    const editor = editorRef.current
-    const monaco = monacoRef.current
-    if (!editor || !monaco) return
-    const pos = editor.getPosition()
-    const range = new monaco.Range(pos.lineNumber, pos.column, pos.lineNumber, pos.column)
-    editor.executeEdits('insert-datasource', [{ range, text: '\n' + code + '\n' }])
-    editor.focus()
-    setShowDsInsert(false)
-  }
-
   useEffect(() => {
     if (monacoRef.current) registerTM1Theme(monacoRef.current, dark)
   }, [dark, themeVersion])
@@ -1055,9 +882,17 @@ export default function ProcessEditor({ tab }) {
     })
   }, [themeVersion])
 
+  const undo = () => editorRef.current?.trigger('tm1ide', 'undo', null)
+  const redo = () => editorRef.current?.trigger('tm1ide', 'redo', null)
+
   const handleMount = (editor, monaco) => {
     editorRef.current = editor
     monacoRef.current = monaco
+    enableQuoteDoubleClick(editor)
+    // Explicit undo/redo bindings, as in the Rules editor, so the shortcuts stay in the editor
+    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyZ, () => editor.trigger('tm1ide', 'undo', null))
+    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyZ, () => editor.trigger('tm1ide', 'redo', null))
+    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyY, () => editor.trigger('tm1ide', 'redo', null))
     if (regionsCollapsed) requestAnimationFrame(() => editor.trigger('fold', 'editor.foldAllMarkerRegions'))
     // apply the user's editor font preferences (fontFamily / fontSize / lineHeight from settings)
     const editorSettings = loadSettings().editor ?? {}
@@ -1499,15 +1334,6 @@ export default function ProcessEditor({ tab }) {
         />
       )}
 
-      {/* ── Datasource insert dialog ──────────────────────────────────── */}
-      {showDsInsert && (
-        <DatasourceInsertDialog
-          server={tab.server}
-          onInsert={handleInsertDs}
-          onClose={() => setShowDsInsert(false)}
-        />
-      )}
-
       {/* ── Run dialog ────────────────────────────────────────────────── */}
       {showRun && (
         <RunDialog
@@ -1561,6 +1387,20 @@ export default function ProcessEditor({ tab }) {
             )}
           >
             <History size={11} />
+          </button>
+          <button
+            onClick={undo}
+            title="Undo (Ctrl/Cmd+Z)"
+            className="flex items-center gap-1.5 px-2.5 py-1 text-xs rounded border border-border text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+          >
+            <Undo2 size={11} />
+          </button>
+          <button
+            onClick={redo}
+            title="Redo (Ctrl+Shift+Z / Ctrl+Y)"
+            className="flex items-center gap-1.5 px-2.5 py-1 text-xs rounded border border-border text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+          >
+            <Redo2 size={11} />
           </button>
           {!tab.name ? (
             <>
@@ -1718,14 +1558,6 @@ export default function ProcessEditor({ tab }) {
           >
             <Map size={11} />
           </button>
-          <button
-            onClick={() => setShowDsInsert(true)}
-            disabled={!data}
-            className="flex items-center gap-1 px-2.5 py-1 text-xs rounded border border-border text-muted-foreground hover:text-foreground hover:bg-muted transition-colors disabled:opacity-40"
-            title="Insert datasource block"
-          >
-            <Database size={11} />
-          </button>
         </div>
       </div>
 
@@ -1749,9 +1581,9 @@ export default function ProcessEditor({ tab }) {
         </CollapsibleSection>
       )}
 
-      {data && (dsEdits ?? data.DataSource)?.Type === 'ODBC' && (
+      {data && ['ODBC', 'ASCII', 'TM1CubeView', 'TM1DimensionSubset'].includes((dsEdits ?? data.DataSource)?.Type) && (
         <CollapsibleSection label="Datasource Preview" hint={(dsEdits ?? data.DataSource)?.dataSourceNameForServer ?? ''}>
-          <DatasourcePreviewPanel ds={dsEdits ?? data.DataSource} />
+          <DatasourcePreviewPanel ds={dsEdits ?? data.DataSource} server={tab.server} params={paramEdits ?? data.Parameters} />
         </CollapsibleSection>
       )}
 

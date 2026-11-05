@@ -13,6 +13,7 @@ import GuidedMDXBuilder from '@/components/GuidedMDXBuilder'
 import CubeEditor from '@/components/CubeEditor'
 import { toast } from 'sonner'
 import { GitBranch, ChevronRight, ChevronDown, Loader2, ChevronsUpDown, ChevronsDownUp, ListTree, AlignLeft, Settings, Locate, Braces, Save, Map, Microscope, X, History, ShieldCheck, Rss, AlertTriangle, AlertCircle, HelpCircle, ListFilter, Undo2, Redo2, RefreshCw, Eraser } from 'lucide-react'
+import { enableQuoteDoubleClick } from '@/lib/quote-select'
 import { cn } from '@/lib/utils'
 import { loadSettings, saveSettings } from '@/lib/formatters/settings.js'
 import { formatRules } from '@/lib/formatters/rules-formatter.js'
@@ -619,6 +620,7 @@ function RulesEditor({ tab, onCursor }) {
   const handleMount = (editor, monaco) => {
     editorRef.current = editor
     monacoRef.current = monaco
+    enableQuoteDoubleClick(editor)
     // Explicit bindings: Cmd+Z / Ctrl+Z undo, Cmd+Shift+Z / Ctrl+Y redo.
     // Monaco has these by default, but binding them here keeps the shortcut
     // inside the editor even when the page or a parent pane has its own key

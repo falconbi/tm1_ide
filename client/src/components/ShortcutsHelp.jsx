@@ -26,6 +26,8 @@ const SHORTCUTS = [
       { key: 'Ctrl + Y', desc: 'Redo (Windows)' },
       { key: 'Ctrl + /', desc: 'Toggle line comment' },
       { key: 'Ctrl + D', desc: 'Select next occurrence' },
+      { key: 'Double-click in quotes', desc: "Select the whole quoted name ('LAB Employee')" },
+      { key: 'Double-click a quote', desc: 'Select the name with its quotes' },
       { key: 'Alt + ↑ / ↓', desc: 'Move line up / down' },
       { key: 'Ctrl + =', desc: 'Increase editor font size' },
       { key: 'Ctrl + -', desc: 'Decrease editor font size' },
