@@ -3,7 +3,7 @@
 Every bug-fix commit, newest first, by the date it was committed. Generated from the git history;
 commits that mixed a fix into a feature are included too. New features are not listed here.
 
-166 fixes from 2026-05-20 to 2026-10-10, plus 46 entries for 11–27 October, 6 for 28 October–1 November, 7 for 2 November, 4 for 5 November and 5 for 6 November. Last updated 2026-11-06.
+166 fixes from 2026-05-20 to 2026-10-10, plus 46 entries for 11–27 October, 6 for 28 October–1 November, 7 for 2 November, 4 for 5 November and 7 for 6 November. Last updated 2026-11-06.
 
 ← [Back to README](../../README.md)
 
@@ -12,6 +12,8 @@ commits that mixed a fix into a feature are included too. New features are not l
 
 ### 2026-11-06
 
+- **ti** — Debug runs returned nothing when the Prolog started with a `#Region`/comment: the hit counter was prefixed onto line 1 and made the instrumented copy invalid TI. The initialiser is now on its own line, and an Aborted/HasMinorErrors status surfaces the process error log
+- **ti** — Watching a variable that does not exist in the process (e.g. `vStart` instead of `sStart`) aborted the debug copy silently; the debugger now refuses unknown watches and names them
 - **ti** — The function picker stripped Monaco placeholders, so Tab stayed in the first argument; snippets now insert through Monaco's snippet controller and tab through value → cube → elements
 - **ti** — Selecting a cube in CellPutN/S, CellGetN/S or CellIncrementN now fills the cube's dimensions with matching TI variables (vVersion, vPosition, vEmployee) or empty-string placeholders, leaving the final element for selection
 - **ti** — CellPutN/CellGetN element completion looked for the cube in argument 0; CellPut has a value first, so no measures appeared. It now uses the right argument and offers the target dimension's elements
