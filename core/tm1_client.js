@@ -1325,6 +1325,39 @@ return (d.value ?? [])
         }
     }
 
+    // The first records a TI process gets from a cube-view datasource: one per non-empty cell, its
+    // coordinates (row, column and title members) plus the value. Reads only the first cells and tuples,
+    // so a huge source view doesn't have to come back whole.
+    async previewViewRecords(cube, view, limit = 20) {
+        const { ID } = await this.post(`Cubes('${odataKey(cube)}')/Views('${odataKey(view)}')/tm1.Execute`, {})
+        try {
+            const [axisData, cellData] = await Promise.all([
+                this.get(`Cellsets('${ID}')/Axes`, { '$select': 'Ordinal,Cardinality', '$expand': 'Hierarchies($select=Name),Tuples($top=2000;$expand=Members($select=Name))' }),
+                this.get(`Cellsets('${ID}')/Cells`, { '$select': 'Ordinal,Value', '$top': 2000 }),
+            ])
+            const axes = [...axisData.value].sort((a, b) => a.Ordinal - b.Ordinal)
+            const [cols, rows, titles] = [axes[0], axes[1], axes[2]]
+            const names = ax => (ax?.Hierarchies ?? []).map(h => h.Name)
+            const mems  = (ax, i) => (ax?.Tuples?.[i]?.Members ?? []).map(m => m.Name)
+            const colCard = cols?.Cardinality || 1
+            const records = []
+            for (const c of cellData.value) {
+                if (c.Value == null || c.Value === '' || c.Value === 0) continue
+                const ri = Math.floor(c.Ordinal / colCard), ci = c.Ordinal % colCard
+                if (rows && !rows.Tuples?.[ri]) break
+                records.push([...mems(rows, ri), ...mems(cols, ci), ...mems(titles, 0), c.Value])
+                if (records.length >= limit) break
+            }
+            return {
+                columns: [...names(rows), ...names(cols), ...names(titles), 'Value'],
+                rows: records,
+                viewRows: rows?.Cardinality ?? 1,
+            }
+        } finally {
+            try { await this.delete(`Cellsets('${ID}')`) } catch {}
+        }
+    }
+
     // ── Cell write ────────────────────────────────────────────────────────────
 
     // dimElemPairs: [{ dim, element }, ...] — one entry per cube dimension, in order

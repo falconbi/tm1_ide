@@ -230,7 +230,7 @@ function EditableDatasourcePanel({ ds, server, onChange }) {
 
 // Preview of what the process will read, for every datasource type: the ODBC query's rows (with ?pName?
 // tokens filled from the parameter defaults, as TM1 does), the first lines of a file, a subset's elements,
-// or the source view / subset opened in its own tab.
+// the first records of a cube view (read from the server, never the whole view), or a subset's elements.
 function DatasourcePreviewPanel({ ds, server, params }) {
   const { openTab } = useStore()
   const preview = usePreviewDatasource()
@@ -260,7 +260,12 @@ function DatasourcePreviewPanel({ ds, server, params }) {
     }
     setLoading(true)
     try {
-      if (type === 'TM1DimensionSubset') {
+      if (type === 'TM1CubeView') {
+        const r = await fetch(`/api/view/preview-records?server=${enc(server)}&cube=${enc(name)}&view=${enc(ds?.view ?? '')}`, { method: 'POST', headers: hdrs })
+        const d = await r.json()
+        if (!r.ok) throw new Error(d.error || 'Could not read the view')
+        setResult({ columns: d.columns, rows: d.rows, rowCount: d.rows.length, note: `the first records, as the process receives them · the view has ${d.viewRows.toLocaleString()} rows` })
+      } else if (type === 'TM1DimensionSubset') {
         const r = await fetch(`/api/subset/elements?server=${enc(server)}&dimension=${enc(name)}&name=${enc(ds?.subset ?? '')}`, { headers: hdrs })
         const d = await r.json()
         if (!r.ok) throw new Error(d.error || 'Could not read the subset')
@@ -286,12 +291,11 @@ function DatasourcePreviewPanel({ ds, server, params }) {
     } catch (e) { fail(e) }
   }
 
-  const openView   = () => openTab({ id: `view:${server}:${name}:${ds.view}`, type: 'view', label: ds.view, server, cube: name, viewName: ds.view })
   const openSubset = () => openTab({ id: `subset:${server}:${name}:${ds.subset}`, type: 'subset', label: ds.subset, server, dimension: name, subsetName: ds.subset })
 
   const busy = loading || preview.isPending
   const btn  = 'flex items-center gap-1.5 px-2.5 py-1 text-xs rounded border border-border text-muted-foreground hover:text-foreground hover:bg-muted transition-colors disabled:opacity-40'
-  const canPreview = type === 'ODBC' ? !!(name && ds?.query) : type === 'ASCII' ? !!name : type === 'TM1DimensionSubset' ? !!(name && ds?.subset) : false
+  const canPreview = type === 'TM1CubeView' ? !!(name && ds?.view) : type === 'ODBC' ? !!(name && ds?.query) : type === 'ASCII' ? !!name : type === 'TM1DimensionSubset' ? !!(name && ds?.subset) : false
 
   return (
     <div className="px-3 py-2 space-y-2">
@@ -304,22 +308,17 @@ function DatasourcePreviewPanel({ ds, server, params }) {
             : <>Subset: <span className="font-mono text-foreground">{ds?.subset || '—'}</span> of <span className="font-mono text-foreground">{name || '—'}</span></>}
         </div>
         <div className="flex items-center gap-1 shrink-0">
-          {type === 'TM1CubeView' && (
-            <button onClick={openView} disabled={!name || !ds?.view} className={btn} title="Open the source view in its own tab">Open view</button>
-          )}
           {type === 'TM1DimensionSubset' && (
             <button onClick={openSubset} disabled={!name || !ds?.subset} className={btn} title="Open the source subset in its own tab">Open subset</button>
           )}
-          {type !== 'TM1CubeView' && (
-            <button
-              onClick={run}
-              disabled={busy || !canPreview}
-              className="flex items-center gap-1.5 px-2.5 py-1 text-xs rounded bg-emerald-700 text-white disabled:opacity-40 hover:bg-emerald-600 transition-colors"
-            >
-              {busy ? <Loader2 size={10} className="animate-spin" /> : <Play size={10} />}
-              Preview
-            </button>
-          )}
+          <button
+            onClick={run}
+            disabled={busy || !canPreview}
+            className="flex items-center gap-1.5 px-2.5 py-1 text-xs rounded bg-emerald-700 text-white disabled:opacity-40 hover:bg-emerald-600 transition-colors"
+          >
+            {busy ? <Loader2 size={10} className="animate-spin" /> : <Play size={10} />}
+            Preview
+          </button>
         </div>
       </div>
 
@@ -334,7 +333,7 @@ function DatasourcePreviewPanel({ ds, server, params }) {
         <div className="border border-border rounded overflow-hidden">
           <div className="flex items-center justify-between px-2 py-1 bg-muted border-b border-border">
             <span className="text-[10px] text-muted-foreground">
-              {result.rowCount} row{result.rowCount !== 1 ? 's' : ''}{result.note ? ` — showing ${result.note}` : ''}{result.duration != null ? ` — ${result.duration}ms` : ''}
+              {result.rowCount} {type === 'TM1CubeView' ? 'record' : 'row'}{result.rowCount !== 1 ? 's' : ''}{result.note ? ` — showing ${result.note}` : ''}{result.duration != null ? ` — ${result.duration}ms` : ''}
             </span>
           </div>
           <div className="overflow-x-auto max-h-48">

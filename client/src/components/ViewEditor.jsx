@@ -41,6 +41,8 @@ import { ConflictBanner, ConflictSaveWarning } from '@/components/ConflictBanner
 import DiffViewerModal from '@/components/DiffViewerModal'
 import { Component } from 'react'
 
+const BIG_VIEW_ROWS = 5000
+
 class GridErrorBoundary extends Component {
     constructor(props) { super(props); this.state = { error: null } }
     static getDerivedStateFromError(error) { return { error } }
@@ -1992,8 +1994,15 @@ export default function ViewEditor({ tab }) {
         return () => window.removeEventListener('keydown', onKey)
     }, [handleExecute, handleSave, handleSaveAs, tab.viewName])
 
+    // A view with tens of thousands of rows (e.g. a TI source view) froze the browser while the grid was
+    // built; past BIG_VIEW_ROWS the grid waits until the user asks for it.
+    const resultRows  = result?.Axes?.find?.(a => a.Ordinal === 1)?.Tuples?.length ?? result?.Axes?.[1]?.Tuples?.length ?? 0
+    const [bigConfirmed, setBigConfirmed] = useState(null)
+    const tooBig      = resultRows > BIG_VIEW_ROWS && bigConfirmed !== result
+    const gridResult  = tooBig ? null : result
+
     const displayResult = useMemo(() => {
-        if (!result?.Axes || !Object.values(dimAliases).some(Boolean)) return result
+        if (!gridResult?.Axes || !Object.values(dimAliases).some(Boolean)) return gridResult
         const axes = result.Axes.map(axis => ({
             ...axis,
             Tuples: axis.Tuples.map(tuple => ({
@@ -2007,8 +2016,8 @@ export default function ViewEditor({ tab }) {
                 })
             }))
         }))
-        return { ...result, Axes: axes }
-    }, [result, dimAliases, aliasValueMaps])
+        return { ...gridResult, Axes: axes }
+    }, [gridResult, dimAliases, aliasValueMaps])
     const allAxesDims = useMemo(() => [...new Set([...axes.columns, ...axes.rows, ...axes.pages].map(d => d.dimension))], [axes.columns, axes.rows, axes.pages])
     const { data: formatAttrs = {} } = useMultiFormatAttrs(tab.server, allAxesDims)
     const pageMembers = useMemo(() => axes.pages.map(p => p.member).filter(Boolean), [axes.pages])
@@ -2097,11 +2106,11 @@ export default function ViewEditor({ tab }) {
         colDims.map((dim, i) => withAlias(buildHierarchy(colTreeQs[i]?.data ?? [], dim), dim)),
     [colDims, colTreesKey, dimAliases, aliasValueMaps]) // eslint-disable-line react-hooks/exhaustive-deps
 
-    const hierarchyData = useMemo(() => cellsetToHierarchyData(result, formatAttrs, pageMembers, suppressZeros, app.settings.numFormat), [result, formatAttrs, pageMembers, suppressZeros, app.settings.numFormat])
+    const hierarchyData = useMemo(() => cellsetToHierarchyData(gridResult, formatAttrs, pageMembers, suppressZeros, app.settings.numFormat), [gridResult, formatAttrs, pageMembers, suppressZeros, app.settings.numFormat])
 
     // the cellset as pivot data: real value + display + kind per cell
-    const pivotData = useMemo(() => result ? cellsetToPivot(result, { formatMap: formatAttrs, pageMembers, suppressZeros, useFormat: app.settings.numFormat }) : null,
-        [result, formatAttrs, pageMembers, suppressZeros, app.settings.numFormat])
+    const pivotData = useMemo(() => gridResult ? cellsetToPivot(gridResult, { formatMap: formatAttrs, pageMembers, suppressZeros, useFormat: app.settings.numFormat }) : null,
+        [gridResult, formatAttrs, pageMembers, suppressZeros, app.settings.numFormat])
 
     // after typing, refresh the view once things go quiet (totals and rules recalculate) —
     // not after every cell; the grid keeps its drill-down across the refresh
@@ -2663,7 +2672,21 @@ export default function ViewEditor({ tab }) {
             )}
 
             {/* Grid */}
-            {!result ? (
+            {tooBig ? (
+                <div className="flex-1 flex items-center justify-center text-sm select-none">
+                    <div className="text-center max-w-md space-y-3 px-4">
+                        <AlertTriangle size={28} className="mx-auto text-amber-500" />
+                        <p className="text-foreground">This view has <span className="font-semibold">{resultRows.toLocaleString()}</span> rows.</p>
+                        <p className="text-muted-foreground text-xs">Drawing that many rows can freeze the browser. Narrow it with a subset or a title member, or show it anyway.</p>
+                        <button
+                            onClick={() => setBigConfirmed(result)}
+                            className="px-3 py-1.5 text-xs rounded border border-border text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                        >
+                            Show all {resultRows.toLocaleString()} rows
+                        </button>
+                    </div>
+                </div>
+            ) : !result ? (
                 <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm select-none">
                     <div className="text-center">
                         <Table2 size={32} className="mx-auto mb-2 opacity-30" />

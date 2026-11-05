@@ -1312,6 +1312,15 @@ app.post('/api/view/execute', async (req, res) => {
     }
 })
 
+app.post('/api/view/preview-records', async (req, res) => {
+    try {
+        const { server, cube, view } = req.query
+        res.json(await makeClient(server, req.ideToken).previewViewRecords(cube, view, 20))
+    } catch (e) {
+        res.status(500).json({ error: e.response?.data?.error?.message || e.message })
+    }
+})
+
 app.post('/api/view/save', async (req, res) => {
     try {
         const { server, cube, name } = req.query
