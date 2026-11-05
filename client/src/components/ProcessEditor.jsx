@@ -571,7 +571,7 @@ function DebugPanel({ watches, onWatchesChange, events, isDebugging, onRun, onJu
       {/* Header + run */}
       <div className="flex items-center justify-between px-3 py-2 border-b border-border shrink-0">
         <span className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-          <Bug size={11} /> Debug
+          <Bug size={11} /> Debug capture
         </span>
         <button
           onClick={onRun}
@@ -579,7 +579,7 @@ function DebugPanel({ watches, onWatchesChange, events, isDebugging, onRun, onJu
           className="flex items-center gap-1 px-2 py-1 text-xs rounded bg-emerald-700 text-white disabled:opacity-40 hover:bg-emerald-600 transition-colors"
         >
           {isDebugging ? <Loader2 size={10} className="animate-spin" /> : <Play size={10} />}
-          {isDebugging ? 'Running…' : 'Run'}
+          {isDebugging ? 'Capturing…' : 'Run and capture'}
         </button>
       </div>
 
@@ -679,7 +679,7 @@ function DebugPanel({ watches, onWatchesChange, events, isDebugging, onRun, onJu
       <div className="flex-1 overflow-auto">
         {events.length === 0 ? (
           <p className="px-3 py-3 text-xs text-muted-foreground italic leading-relaxed">
-            Click the margin to set a breakpoint, add watches above, then Run. Watches are captured each time the run reaches a breakpoint.
+            Click the margin to add a capture point, add watches above, then Run and capture. The process runs to completion; watches are recorded each time execution reaches a capture point.
           </p>
         ) : (
           <div className="py-1">
@@ -1277,7 +1277,7 @@ export default function ProcessEditor({ tab }) {
         }
         setIsDebugging(false)
         if (!res.error && captureWhen.trim() && !parseDebugLog(res.log).length) {
-            toast.info(`No breakpoint captures matched: ${captureWhen}`)
+            toast.info(`No capture points matched: ${captureWhen}`)
         }
         if (res.error) {
             if (res.error.includes('invalid string expression')) {
@@ -1287,8 +1287,8 @@ export default function ProcessEditor({ tab }) {
             }
         }
         else if (res.badVars?.length) toast.warning(`Variable names may cause TM1 API issues: ${res.badVars.join(', ')} — consider shortening`)
-        else if (res.noCapture) toast.info('Debug run complete — no watches or breakpoints set')
-        else toast.success('Debug run complete')
+        else if (res.noCapture) toast.info('Capture run complete — no watches or capture points set')
+        else toast.success('Capture run complete')
       },
       onError: e => {
         setIsDebugging(false)
@@ -1374,7 +1374,7 @@ export default function ProcessEditor({ tab }) {
       {/* ── Debug run dialog ──────────────────────────────────────────── */}
       {showDebugRun && (
         <RunDialog
-          title="Debug Run"
+          title="Capture Run"
           params={paramEdits ?? data?.Parameters}
           onRun={handleDebugRun}
           onClose={() => setShowDebugRun(false)}
@@ -1503,14 +1503,14 @@ export default function ProcessEditor({ tab }) {
           <button
             onClick={() => { setShowDebug(d => !d); setShowSnippets(false) }}
             disabled={!data}
-            title="Debug — click gutter to set breakpoints"
+            title="Debug capture — click gutter to add capture points"
             className={cn(
               'flex items-center gap-1.5 px-2.5 py-1 text-xs rounded border transition-colors disabled:opacity-40',
               showDebug ? 'bg-orange-600 text-white border-orange-600 hover:bg-orange-700' : 'border-border text-muted-foreground hover:text-foreground hover:bg-muted'
             )}
           >
             <Bug size={11} />
-            <span className="hidden sm:inline">Debug</span>
+            <span className="hidden sm:inline">Capture</span>
           </button>
           <button
             onClick={() => setShowRun(true)}

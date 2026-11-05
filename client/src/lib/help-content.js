@@ -59,8 +59,8 @@ export const HELP_CONTENT = {
         body: 'Click **Run** to execute via `tm1.ExecuteWithReturn`, which returns timing and the error log filename inline. Results and any errors appear in the panel below.',
       },
       {
-        heading: 'Debugger',
-        body: 'Click the gutter next to a line to toggle a breakpoint, then start a debug run. The debugger injects capture statements around each breakpoint and shows variable values at each stop.',
+        heading: 'Debug capture',
+        body: 'Click the gutter next to a line to add a capture point, then run and capture. The process runs to completion; the IDE records the selected watches each time execution reaches a capture point.',
       },
       {
         heading: 'Datasource',
