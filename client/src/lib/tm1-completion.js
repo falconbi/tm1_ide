@@ -506,11 +506,11 @@ export function registerTM1Completions(monaco, language, catalog, keywords, getC
       if (paramType === 'cubename') {
         const cubes = await fetchCubes(server)
 
-        // Offer full snippet expansion for cell-access functions
-        const isExpandable = [
-          'DB', 'CELLPUTN', 'CELLPUTS', 'CELLGETN', 'CELLGETS', 'CELLINCREMENTN',
-          'CELLVALUEN', 'CELLVALUES',
-        ].includes(ctx.fn)
+        // Only DB takes dimension names after the cube. CellPut/CellGet/
+        // CellIncrement take element coordinates there, so appending a ')' and
+        // dimension stops would close the call early and leave the snippet's
+        // remaining arguments stranded outside it.
+        const isExpandable = ctx.fn === 'DB'
 
         if (isExpandable) {
           // Show the cube list the instant /api/cubes resolves — don't block the
@@ -576,7 +576,10 @@ export function registerTM1Completions(monaco, language, catalog, keywords, getC
           const cubeName = extractStringArg(textBefore, 0)
           if (cubeName) {
             const dims = await fetchCubeDims(server, cubeName)
-            targetDim = dims[ctx.paramIdx - 1] ?? null
+            // CellPutN/S and CellIncrementN take a value before the cube, so
+            // the first coordinate is one parameter later than for CellGet/DB.
+            const offset = ['CELLPUTN', 'CELLPUTS', 'CELLINCREMENTN'].includes(ctx.fn) ? 2 : 1
+            targetDim = dims[ctx.paramIdx - offset] ?? null
           }
         } else {
           // dim-first functions (ATTRN, ELPAR, etc.) — dim name is at arg 0
