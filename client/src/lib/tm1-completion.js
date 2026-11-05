@@ -634,11 +634,13 @@ export function registerTM1Completions(monaco, language, catalog, keywords, getC
         let targetDim = null
 
         if (CUBE_FIRST_FNS.has(ctx.fn)) {
-          const cubeName = extractStringArg(textBefore, 0)
+          // CellPutN/S and CellIncrementN take a value before the cube; the
+          // cube is argument 1, not argument 0.
+          const cubeArg = ['CELLPUTN', 'CELLPUTS', 'CELLINCREMENTN'].includes(ctx.fn) ? 1 : 0
+          const cubeName = extractStringArg(textBefore, cubeArg)
           if (cubeName) {
             const dims = await fetchCubeDims(server, cubeName)
-            // CellPutN/S and CellIncrementN take a value before the cube, so
-            // the first coordinate is one parameter later than for CellGet/DB.
+            // The first coordinate is one parameter later for CellPut/Increment.
             const offset = ['CELLPUTN', 'CELLPUTS', 'CELLINCREMENTN'].includes(ctx.fn) ? 2 : 1
             targetDim = dims[ctx.paramIdx - offset] ?? null
           }
@@ -664,10 +666,20 @@ export function registerTM1Completions(monaco, language, catalog, keywords, getC
           }
         }
 
-        // Not inside a quote — this is an expression position, so offer both
-        // the quick !DimName reference AND every catalog function (ATTRS,
-        // ELPAR, etc.) so a nested call can be composed here instead of a
-        // plain element name.
+        // Not inside a quote — this is an expression position. Offer the
+        // actual elements of the coordinate dimension as quoted values (so a
+        // CellPutN/CellGetN argument can be picked after tabbing to it), plus
+        // the quick !DimName reference and catalog functions.
+        const elements = await fetchElements(server, targetDim)
+        const hasClose = quoteAfterCursor(model, position)
+        const elementSuggestions = elements.map(el => ({
+          label:      el.Name,
+          kind:       CIK.Value,
+          detail:     `Element — ${targetDim}`,
+          insertText: hasClose ? el.Name : `'${el.Name}'`,
+          range,
+          sortText:   `0_${el.Name}`,
+        }))
         const typed = word.word.toUpperCase()
         const fnSuggestions = Object.entries(catalogNow)
           .filter(([name, entry]) => name.startsWith(typed) && compatAvailable(entry?.compat ?? 'both', version))
@@ -689,7 +701,7 @@ export function registerTM1Completions(monaco, language, catalog, keywords, getC
             insertText: `!${targetDim}`,
             range,
             sortText:   '0_!',
-          }, ...fnSuggestions],
+          }, ...elementSuggestions, ...fnSuggestions],
         }
       }
 
