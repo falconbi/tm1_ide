@@ -139,6 +139,7 @@ async function buildIndex(client, serverName) {
     for (const c of allCubes) cubeDims[c.Name] = (c.Dimensions ?? []).map(d => d.Name)
 
     const index = {}
+    const viewSources = {}
     for (const c of allCubes) {
         index[c.Name] = {
             dims: cubeDims[c.Name],
@@ -239,8 +240,13 @@ async function buildIndex(client, serverName) {
         // A cube-view datasource reads the whole view before any code runs
         if (p.DataSource?.Type === 'TM1CubeView' && p.DataSource.dataSourceNameForServer) {
             const cube = p.DataSource.dataSourceNameForServer
-            reader(cube, p.Name, 'view', { code: `Data source: view '${p.DataSource.view ?? ''}' over '${cube}'` })
-            if (cubeNames.has(cube)) (procReads[p.Name] ??= new Set()).add(cube)
+            const view = p.DataSource.view ?? ''
+            reader(cube, p.Name, 'view', { code: `Data source: view '${view}' over '${cube}'` })
+            if (cubeNames.has(cube)) {
+                (procReads[p.Name] ??= new Set()).add(cube)
+                const key = cube + '\u001f' + view
+                ;(viewSources[key] ??= []).push({ process: p.Name, cube, view })
+            }
         }
 
         EXEC_RE.lastIndex = 0
@@ -291,7 +297,7 @@ async function buildIndex(client, serverName) {
         e.readers = Object.values(e.readers).map(r => ({ ...r, how: [...r.how], evidence: r.evidence ?? [] }))
         e.copiers = [...new Set(e.copiers)]
     }
-    return { cubes: index, processes: meta }
+    return { cubes: index, processes: meta, viewSources }
 }
 
 async function indexFor(client, server) {
@@ -324,6 +330,15 @@ async function getCubeDataSources(client, server, cube) {
     const readers = e.readers.map(r => join(r, index.processes[r.process] ?? {}))
     return { cube, ...e, writers, readers }
 }
+
+async function getViewSourceUsage(client, server, cube, view) {
+    const index = await indexFor(client, server)
+    const key = cube + '\u001f' + (view ?? '')
+    const processes = (index.viewSources?.[key] ?? [])
+        .filter(p => !/^_IDE_Debug_/i.test(p.process) && !p.process.startsWith('}'))
+    return { cube, view, processes: processes.map(p => ({ process: p.process })) }
+}
+
 
 // Everything one process does, for a "what does this do" summary prompt.
 async function getProcessFacts(client, server, name) {
@@ -366,4 +381,4 @@ async function listProcessSummaries(client, server) {
     })
 }
 
-module.exports = { getCubeDataSources, getProcessFacts, listProcessSummaries, invalidate }
+module.exports = { getCubeDataSources, getViewSourceUsage, getProcessFacts, listProcessSummaries, invalidate }

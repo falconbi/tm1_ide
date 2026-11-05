@@ -519,6 +519,14 @@ export const useViewUsage = (server, cube, view) => useQuery({
   staleTime: 0,
 })
 
+// Cheap check from the cached process scan: is this view wired as a TI datasource?
+export const useViewSourceUsage = (server, cube, view) => useQuery({
+  queryKey: ['view-source-usage', server, cube, view],
+  queryFn:  () => get(`/api/view/source-usage?server=${enc(server)}&cube=${enc(cube)}&view=${enc(view)}`),
+  enabled:  !!(server && cube && view),
+  staleTime: 30_000,
+})
+
 export const useDimensionUsage = (server, dimension) => useQuery({
   queryKey: ['dimension-usage', server, dimension],
   queryFn:  () => get(`/api/dimension/usage?server=${enc(server)}&dimension=${enc(dimension)}`),

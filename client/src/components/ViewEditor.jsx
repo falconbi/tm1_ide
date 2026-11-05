@@ -8,7 +8,7 @@ import { loadSettings as loadFormatSettings } from '@/lib/formatters/settings.js
 import { getNamingMap } from '@/lib/formatters/naming.js'
 import { useStore } from '@/store'
 import { subsetApplyCallbacks } from '@/lib/subsetCallbacks'
-import { useCubeDimensions, useSubsets, useElementsTree, useElementsTrees, useHierarchies, useHierarchiesFor, useViews, useExecuteMDX, useViewAxes, useSaveView, useSetDefaultView, usePawBookUsage, useDimAttributes, useViewUsage, useMultiFormatAttrs, useConflictCheck, useGenerateViewMDX, useConfig } from '@/hooks/useApi'
+import { useCubeDimensions, useSubsets, useElementsTree, useElementsTrees, useHierarchies, useHierarchiesFor, useViews, useExecuteMDX, useViewAxes, useSaveView, useSetDefaultView, usePawBookUsage, useDimAttributes, useViewUsage, useViewSourceUsage, useMultiFormatAttrs, useConflictCheck, useGenerateViewMDX, useConfig } from '@/hooks/useApi'
 import { toast } from 'sonner'
 import { RefreshCw, Loader2, Table2, GripVertical, GripHorizontal, X, LayoutGrid, Rows3, Columns3, Filter, ZapOff, Zap, ChevronLeft, ChevronRight, PencilLine, Save, Code2, Eye, ChevronDown, BookOpen, ChevronUp, MapPin, WrapText, Braces, History, AlertTriangle, Cog, FileSearch, Rss, Sparkles, Clock, Check, ArrowUpDown, HelpCircle, Eraser } from 'lucide-react'
 import HelpPanel from '@/components/HelpPanel'
@@ -63,6 +63,69 @@ class GridErrorBoundary extends Component {
         return this.props.children
     }
 }
+
+function SourceViewPreview({ server, cube, view, processes, onOpenFull }) {
+    const [data, setData] = useState(null)
+    const [error, setError] = useState(null)
+    const [loading, setLoading] = useState(true)
+
+    useEffect(() => {
+        let cancelled = false
+        setLoading(true); setError(null)
+        const url = `/api/view/preview-records?server=${encodeURIComponent(server)}&cube=${encodeURIComponent(cube)}&view=${encodeURIComponent(view)}`
+        fetch(url, {
+            method: 'POST',
+            headers: { 'x-ide-token': localStorage.getItem('tm1-token') ?? '' },
+        })
+            .then(async r => {
+                const d = await r.json()
+                if (!r.ok) throw new Error(d.error || 'Could not read the source view')
+                if (!cancelled) setData(d)
+            })
+            .catch(e => { if (!cancelled) setError(e.message || String(e)) })
+            .finally(() => { if (!cancelled) setLoading(false) })
+        return () => { cancelled = true }
+    }, [server, cube, view])
+
+    const total = data?.viewRows
+    return (
+        <div className="flex flex-col h-full min-h-0">
+            <div className="shrink-0 px-3 py-2 border-b border-border bg-amber-500/10">
+                <div className="flex items-center gap-2 text-xs">
+                    <span className="px-1.5 py-0.5 rounded border border-amber-500/40 text-amber-600 dark:text-amber-400 font-semibold">SOURCE VIEW</span>
+                    <span className="font-mono text-foreground">{cube} / {view}</span>
+                    <span className="text-muted-foreground">read-only preview</span>
+                </div>
+                <p className="mt-1 text-[11px] text-muted-foreground">
+                    This view is wired as a TI datasource{processes?.length ? ` (${processes.map(p => p.process).join(', ')})` : ''}.
+                    The IDE will not load the whole view. Showing the first {data?.rows?.length ?? 0}{total != null ? ` of ${total.toLocaleString()}` : ''} records as the process sees them.
+                </p>
+            </div>
+            <div className="flex-1 min-h-0 overflow-auto p-3">
+                {loading && <div className="flex items-center gap-2 text-xs text-muted-foreground"><Loader2 size={12} className="animate-spin" /> Reading source preview…</div>}
+                {error && <div className="text-xs text-red-400">{error}</div>}
+                {!loading && !error && data && (
+                    data.rows.length ? (
+                        <table className="text-[11px] border-collapse min-w-full">
+                            <thead><tr>{data.columns.map((c, i) => <th key={i} className="text-left font-semibold px-2 py-1 border-b border-border text-muted-foreground whitespace-nowrap">{c}</th>)}</tr></thead>
+                            <tbody>{data.rows.map((r, i) => <tr key={i}>{r.map((v, j) => <td key={j} className="px-2 py-1 border-b border-border/40 font-mono whitespace-nowrap">{String(v ?? '')}</td>)}</tr>)}</tbody>
+                        </table>
+                    ) : <p className="text-xs text-muted-foreground">The source view returned no non-empty records.</p>
+                )}
+            </div>
+            <div className="shrink-0 px-3 py-2 border-t border-border flex items-center gap-2">
+                <span className="text-[11px] text-muted-foreground flex-1">Source views are for TI input, not analysis. Open the full grid only if you need to inspect or narrow it.</span>
+                <button
+                    onClick={() => { if (window.confirm('Load the full view into the grid? Large source views can be slow.')) onOpenFull() }}
+                    className="px-2.5 py-1 text-xs rounded border border-border text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                >
+                    Open full view…
+                </button>
+            </div>
+        </div>
+    )
+}
+
 
 class TraceErrorBoundary extends Component {
     constructor(props) { super(props); this.state = { error: null } }
@@ -1444,6 +1507,10 @@ export default function ViewEditor({ tab }) {
     const { openConflict, checkBeforeSave } = useConflictCheck(tab.server, 'view', tab.viewName)
     const { data: pawBookData, isFetching: loadingPawBooks, refetch: refetchPawBooks } = usePawBookUsage(tab.server, tab.cube, tab.viewName)
     const { data: usageData,   isFetching: loadingUsage,   refetch: refetchUsage }    = useViewUsage(tab.server, tab.cube, tab.viewName)
+    const { data: sourceUsage, isLoading: loadingSourceUsage } = useViewSourceUsage(tab.server, tab.cube, tab.viewName)
+    const [sourceOverride, setSourceOverride] = useState(false)
+    const sourceProcesses = sourceUsage?.processes ?? []
+    const sourceMode = !!tab.viewName && sourceProcesses.length > 0 && !sourceOverride
 
     const refetchUsedIn = useCallback(() => { refetchUsage(); refetchPawBooks() }, [refetchUsage, refetchPawBooks])
     const loadingUsedIn = loadingUsage || loadingPawBooks
@@ -1557,6 +1624,9 @@ export default function ViewEditor({ tab }) {
     // ── Load existing view ──────────────────────────────────────────────────
     useEffect(() => {
         if (!tab.viewName || !cubeDims.length) return
+        // Wait for the cheap source-view check before fetching the cellset. A
+        // source view is previewed from the first records instead.
+        if (!sourceOverride && (loadingSourceUsage || sourceProcesses.length)) return
         const key = `${tab.server}:${tab.cube}:${tab.viewName}`
         if (loadedKey === key) return
         setLoadedKey(key)
@@ -1627,7 +1697,7 @@ export default function ViewEditor({ tab }) {
                 },
             }
         )
-    }, [tab.viewName, cubeDims, parseMdxToAxes])
+    }, [tab.viewName, cubeDims, parseMdxToAxes, loadingSourceUsage, sourceProcesses, sourceOverride])
 
     // ── Default layout for new cube view (no viewName) ──────────────────────
     useEffect(() => {
@@ -2194,6 +2264,18 @@ export default function ViewEditor({ tab }) {
 
     const isLoadingView = loadViewAxes.isPending
     const isExecuting   = executeMDX.isPending
+
+    if (sourceMode) {
+        return (
+            <SourceViewPreview
+                server={tab.server}
+                cube={tab.cube}
+                view={tab.viewName}
+                processes={sourceProcesses}
+                onOpenFull={() => setSourceOverride(true)}
+            />
+        )
+    }
 
     return (
         <div className="flex h-full min-h-0">

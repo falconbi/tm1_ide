@@ -3,7 +3,7 @@
 // (literals, variables, generic copy call sites and clear/feeder calls) plus its rules.
 const test = require('node:test')
 const assert = require('node:assert')
-const { getCubeDataSources, invalidate } = require('../core/cube_data_sources')
+const { getCubeDataSources, getViewSourceUsage, invalidate } = require('../core/cube_data_sources')
 
 function client(processes, cubes) {
     return {
@@ -67,4 +67,17 @@ test('comments do not create phantom writers or readers', async () => {
     assert.deepEqual(d.ruleReads.calc, [])
     assert.deepEqual(d.ruleReads.feeders, [])
     assert.deepEqual(d.ruleReads.calcEvidence, {})
+})
+
+test('a view used as a TI datasource is reported, without debug copies', async () => {
+    const cubes = [{ Name: 'Cube A', Dimensions: [{ Name: 'Period' }, { Name: 'Measure' }], Rules: '' }]
+    const source = { Type: 'TM1CubeView', dataSourceNameForServer: 'Cube A', view: 'Source View' }
+    const processes = [
+        proc('P source', '', { DataSource: source }),
+        proc('_IDE_Debug_123', '', { DataSource: source }),
+        proc('P other', '', { DataSource: { Type: 'None' } }),
+    ]
+    invalidate()
+    const d = await getViewSourceUsage(client(processes, cubes), 'unit-view-source', 'Cube A', 'Source View')
+    assert.deepEqual(d.processes, [{ process: 'P source' }])
 })

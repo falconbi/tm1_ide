@@ -56,7 +56,7 @@ function gateWrite(res, server) {
 }
 const { diff: deployDiff, driftCheck: deployDriftCheck } = require('./tools/tm1deploy/src/diff')
 const { pack: deployPack }      = require('./tools/tm1deploy/src/packager')
-const { getCubeDataSources, getProcessFacts, listProcessSummaries, invalidate: invalidateCubeSources } = require('./core/cube_data_sources')
+const { getCubeDataSources, getViewSourceUsage, getProcessFacts, listProcessSummaries, invalidate: invalidateCubeSources } = require('./core/cube_data_sources')
 const { parseRuleLens } = require('./core/rule_lens')
 const processSummaries = require('./core/process_summaries')
 const { analyzeRisk }           = require('./tools/tm1deploy/src/risk')
@@ -1500,6 +1500,13 @@ app.get('/api/view/usage', async (req, res) => {
     try {
         const client = makeClient(req.query.server, req.ideToken)
         res.json(await client.scanViewUsage(req.query.cube, req.query.view))
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.get('/api/view/source-usage', async (req, res) => {
+    try {
+        const client = makeClient(req.query.server, req.ideToken)
+        res.json(await getViewSourceUsage(client, req.query.server, req.query.cube, req.query.view))
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
