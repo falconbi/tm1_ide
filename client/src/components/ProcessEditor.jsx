@@ -27,6 +27,9 @@ const CODE_TABS = [
 ]
 const SECTION_LABEL = Object.fromEntries(CODE_TABS.map(({ key, label }) => [key, label]))
 
+const CAPTURE_HOVER = { value: 'Capture point — records the selected watches when execution reaches this line. The process runs to completion.' }
+const CAPTURE_WHEN_HELP = "Only record a capture when this TI condition is true.\n\nExamples:\n  nBad = 1\n  vPosition @= 'ENG-001'\n  vPosition @= 'ENG-001' & nBad = 1\n\nUse @= for string comparisons."
+
 const PARAM_TYPE = { 1: 'Numeric', 2: 'String', Numeric: 'Numeric', String: 'String' }
 const toTypeStr = t => (t === 1 ? 'Numeric' : t === 2 ? 'String' : t ?? 'String')
 
@@ -662,12 +665,14 @@ function DebugPanel({ watches, onWatchesChange, events, isDebugging, onRun, onJu
           </div>
           <div className="px-2 pb-2">
             <div className="flex items-center gap-1 mb-1">
-              <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Capture when</span>
+              <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider cursor-help" title={CAPTURE_WHEN_HELP}>Capture when</span>
+              <HelpCircle size={10} className="text-muted-foreground/60 cursor-help" title={CAPTURE_WHEN_HELP} />
               {captureWhen?.trim() && <span className="text-[9px] px-1 py-px rounded bg-amber-500/15 border border-amber-500/30 text-amber-600 dark:text-amber-400">filter</span>}
             </div>
             <input
               value={captureWhen ?? ''}
               onChange={e => onCaptureWhenChange(e.target.value)}
+              title={CAPTURE_WHEN_HELP}
               placeholder="TI condition, e.g. nBad = 1"
               className="w-full text-xs font-mono bg-muted border border-border rounded px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-ring"
             />
@@ -932,7 +937,7 @@ export default function ProcessEditor({ tab }) {
     if (bps.size > 0) {
       const decs = [...bps].map(line => ({
         range: new monaco.Range(line, 1, line, 1),
-        options: { glyphMarginClassName: 'debug-bp-glyph' },
+        options: { glyphMarginClassName: 'debug-bp-glyph', glyphMarginHoverMessage: CAPTURE_HOVER },
       }))
       decorationIdsRef.current[activeSection] = editor.deltaDecorations([], decs)
     }
@@ -1176,7 +1181,7 @@ export default function ProcessEditor({ tab }) {
     const bps = showDebug ? (breakpoints[activeSection] ?? new Set()) : new Set()
     const newDecs = [...bps].map(line => ({
       range: new monaco.Range(line, 1, line, 1),
-      options: { glyphMarginClassName: 'debug-bp-glyph' },
+      options: { glyphMarginClassName: 'debug-bp-glyph', glyphMarginHoverMessage: CAPTURE_HOVER },
     }))
     const old = decorationIdsRef.current[activeSection] ?? []
     decorationIdsRef.current[activeSection] = editor.deltaDecorations(old, newDecs)
