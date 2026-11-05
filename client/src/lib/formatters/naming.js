@@ -19,8 +19,8 @@ export const IBM_DEFAULTS = {
   'attrs': 'ATTRS',
   'attrn': 'ATTRN',
   'attrl': 'ATTRL',
-  'cellgetn': 'CELLGETN',
-  'cellgets': 'CELLGETS',
+  'cellgetn': 'CellGetN',
+  'cellgets': 'CellGetS',
   'dnlev': 'DNLEV',
   'dimix': 'DIMIX',
   'dimsiz': 'DIMSIZ',
@@ -357,7 +357,7 @@ export const IBM_DEFAULTS = {
 
 export const IBM_TYPES = {
   'if':'rules','elseif':'rules','else':'rules','endif':'rules','continue':'rules','stet':'rules','feeders':'rules','skipcheck':'rules',
-  'db':'rules','attrs':'rules','attrn':'rules','attrl':'rules','cellgetn':'rules','cellgets':'rules','dnlev':'rules','dimix':'rules','dimsiz':'rules','dimnm':'rules','dnext':'rules','dtype':'rules',
+  'db':'rules','attrs':'rules','attrn':'rules','attrl':'rules','dnlev':'rules','dimix':'rules','dimsiz':'rules','dimnm':'rules','dnext':'rules','dtype':'rules',
   'abs':'rules','acos':'rules','asin':'rules','atan':'rules','cos':'rules','exp':'rules','int':'rules','isund':'rules','ln':'rules','log':'rules','max':'rules','min':'rules','mod':'rules','rand':'rules','round':'rules','roundp':'rules','sign':'rules','sin':'rules','sqrt':'rules','tan':'rules','undef':'rules','undeffn':'rules',
   'consolidatedavg':'rules','consolidatedcount':'rules','consolidatedmax':'rules','consolidatedmin':'rules',
   'date':'rules','dates':'rules','day':'rules','dayno':'rules','month':'rules','now':'rules','time':'rules','timst':'rules','today':'rules','year':'rules',
@@ -366,7 +366,7 @@ export const IBM_TYPES = {
   'logoutput':'rules',
   'while':'ti','end':'ti','break':'ti','executeprocess':'ti','processreturncode':'ti','processerror':'ti','processbreak':'ti','processcontinue':'ti','processexit':'ti',
   'asciidelete':'ti','asciioutput':'ti','asciiread':'ti','asctowide':'ti','filedelete':'ti','fileexists':'ti','removedirectory':'ti','textoutput':'ti','widedelete':'ti','wideread':'ti','widetoasc':'ti','read':'ti','write':'ti',
-  'batchupdatefinish':'ti','batchupdatestart':'ti','cellincrementn':'ti','cellputn':'ti','cellputs':'ti','cellputsn':'ti','cellsetdn':'ti','cellsetds':'ti',
+  'batchupdatefinish':'ti','batchupdatestart':'ti','cellincrementn':'ti','cellputn':'ti','cellputs':'ti','cellputsn':'ti','cellgetn':'ti','cellgets':'ti','cellsetdn':'ti','cellsetds':'ti',
   'cubecreate':'ti','cubecomponentadd':'ti','cubecomponentdelete':'ti','cubecreatedatacopy':'ti','cubedatacopy':'ti','cubedestroy':'ti','cubesaveas':'ti','cubesetlogchanges':'ti','rulesloadoptimization':'ti',
   'dimensioncreate':'ti','dimensiondeleteallelements':'ti','dimensiondestroy':'ti','dimensionelementcomponentadd':'ti','dimensionelementcomponentdelete':'ti','dimensionelementcreate':'ti','dimensionelementdelete':'ti','dimensionelementinsert':'ti','dimensiontopelementinsert':'ti','dimensionsortorder':'ti',
   'elementcomponentadd':'ti','elementcomponentdelete':'ti','elementcreate':'ti','elementdelete':'ti','elementinsert':'ti','elementtype':'ti','elementupdate':'ti','newelementinsert':'ti','setelement':'ti',

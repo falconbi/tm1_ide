@@ -3,6 +3,7 @@
 // The panel strips markers before insertion; autocomplete uses them as tab stops.
 
 import { loadCustomSnippets } from './custom-snippets'
+import { getNamingMap } from './formatters/naming.js'
 import TM1_CATALOG from '@shared/tm1-function-catalog.json'
 
 // Every catalog function already has an autocomplete entry (with signature +
@@ -39,19 +40,21 @@ function categorizeFunction(name) {
 
 export function getFunctionRef(language) {
   const funcs = []
+  const naming = getNamingMap().map
   for (const [name, entry] of Object.entries(TM1_CATALOG)) {
     if (entry.language !== language && entry.language !== 'both') continue
     const params = entry.params ?? []
+    const official = naming[name.toLowerCase()] ?? name
     funcs.push({
       trigger:   name.toLowerCase(),
-      label:     name,
+      label:     official,
       description: entry.description ?? '',
-      category:  categorizeFunction(name),
+      category:  categorizeFunction(official),
       language,
-      signature: params.length ? `${name}(${params.join(', ')})` : `${name}()`,
+      signature: params.length ? `${official}(${params.join(', ')})` : `${official}()`,
       code:      params.length
-        ? `${name}(${params.map((p, i) => `\${${i + 1}:${p.replace(/[*?]$/, '')}}`).join(', ')})`
-        : `${name}()`,
+        ? `${official}(${params.map((p, i) => `\${${i + 1}:${p.replace(/[*?]$/, '')}}`).join(', ')})`
+        : `${official}()`,
       isFunction: true,
     })
   }
