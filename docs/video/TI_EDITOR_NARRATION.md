@@ -14,9 +14,11 @@ that ends before it starts.
 **[Click the Datasource bar at the top]**
 The datasource sits at the top of the process, one click to open. This one is a cube view: the view WFP Assignment Base Src,
 on the cube WFP Assignment Detail.
-**[Open that view in another tab, or point to its layout]**
-The view puts every Version, Position and Employee on the rows and the FTE measure on the columns, with empty rows suppressed.
-So each row that's left is one real assignment — this employee, in this position, in this version.
+**[Open that view in another tab]**
+The IDE recognises it as a TI source view and opens a read-only record preview. It shows the first records as the process sees
+them, the total row count and the processes using it — and it does not fetch the whole view. The view still puts every Version,
+Position and Employee on the rows and the FTE measure on the columns, with empty rows suppressed. So each row is one real
+assignment — this employee, in this position, in this version.
 **[Back to the process; open Variables]**
 TM1 hands the process one record per row of that view. Variables shows the columns of each record — vVersion, vPosition and
 vEmployee, one for each dimension, plus the cell value. The Data section then runs once per record, using those variables.
@@ -24,7 +26,7 @@ vEmployee, one for each dimension, plus the cell value. The Data section then ru
 The Type list has every choice TM1 offers: none, a text file, ODBC, a cube view or a dimension subset. The fields change to
 suit what you pick: for a file, the name, delimiter and header rows, with an Upload button to send the file to the server;
 for ODBC, the DSN and the query; for a cube view, a list of the cubes and then that cube's views; for a subset, the dimension
-and the subset.
+and the subset. The Preview button below shows the first records the process will actually receive, without loading the whole source.
 **[Put it back to TM1 Cube View — WFP Assignment Detail, WFP Assignment Base Src]**
 
 ## 2. Parameters (~15s)
@@ -56,7 +58,9 @@ contents — and each section keeps its own state.
 **[Click Ref]**
 The function reference lists every TI function, grouped by category, each with its arguments and a short description.
 **[Click on a new line at the end of the Data section, then click a function]**
-I put the cursor where I want it, click a function, and it's inserted with a placeholder for each argument.
+I put the cursor where I want it, click a function, and it's inserted with a placeholder for each argument. Tab moves
+through those arguments, so the snippet behaves like the editor rather than plain pasted text. The function names use the
+IDE's Naming Dictionary, so the picker and autocomplete agree on casing.
 The list comes from the IDE's single function catalog — the same one that drives autocomplete and the checks — and that
 catalog is tested against a real TM1 server: the Validate button in Catalog Admin tries every function on the server and
 reports any TM1 rejects. So every function in this list is one TM1 actually accepts.
@@ -64,11 +68,14 @@ reports any TM1 rejects. So every function in this list is one TM1 actually acce
 
 ## 6. Autocomplete (~30s)
 
-**[Data section, new line at the end: type `CellGetN(`]**
-As I type, the editor knows where I am. Inside CellGetN it offers the cube names first — the real cubes on this server.
+**[Data section, new line at the end: type `CellPutN(nBad, `]**
+As I type, the editor knows where I am. Inside CellPutN it offers the cube names first — the real cubes on this server.
 **[Pick WFP Assignment Detail]**
-Pick a cube, and it fills in a stop for each of its dimensions in the right order. I tab from one to the next, and at each
-stop it offers that dimension's real elements.
+Pick a cube, and it fills the arguments before the final element from variables already in this process — vVersion,
+vPosition and vEmployee here. If it cannot find a matching variable, it leaves an empty string for you to pick. It does
+not close the call early.
+**[Tab to the last stop]**
+The final stop is the measure. It offers that dimension's real elements, so I can pick Bad Span without typing it.
 **[Point to the hint]**
 A signature hint shows which argument I'm on, and hovering any function shows what it does.
 **[New line: type `sS`]**
@@ -106,27 +113,32 @@ Here it is: ODBC, the DSN and my query, with pYear ready to prompt for. Now I ju
 columns. No copying the query by hand.
 **[Close Demo SQL Load; back to WFP Check Assignment Spans, Data tab]**
 
-## 9. Debugger (~70s)
+## 9. Debug capture (~85s)
 
 **[Data tab]**
 Back to our check. For each record, vVersion, vPosition and vEmployee come in from the view. It reads the assignment's start
 and end month, turns each into a period number, and if the end comes before the start it sets nBad to 1. The last line
 writes that flag back as Bad Span.
 Loops like this are where TI is hardest to follow. Until now the usual answer was to add lines that write values out to a
-text file, run it, open the file — and then remember to take those lines out again. The IDE's debugger does that for you.
-**[Click Debug; click the margin beside the `CellPutN( nBad …` line — a red dot appears]**
-I open the debugger and click in the margin to set a breakpoint on the last line — by then the check has made its decision.
-I can set as many breakpoints as I like, in any section.
-**[In Watches, add `vEmployee`, `sStart`, `sEnd` as text and `nBad` as a number]**
-Then I add watches — the variables I want to see. Whose record it is, the two months being compared, and the answer.
-**[Click Debug Run, then Run]**
-Debug Run runs the process on the server against the real data. Behind the scenes the IDE makes a temporary copy of the
-process — with the same datasource — adds the capture code at each breakpoint, runs it, reads the values back and deletes the
-copy. My process is never changed.
+text file, run it, open the file — and then remember to take those lines out again. The IDE's capture tool does that for you.
+**[Click Capture; click the margin beside the `CellPutN( nBad …` line — a red dot appears]**
+This is a capture point, not a pause. The process still runs to completion; the IDE records the watches each time execution
+reaches this line. I can put capture points in any section.
+**[Hover the red dot]**
+The tooltip says exactly that: it records values, it does not stop the process.
+**[In Watches, click `vEmployee`, `sStart`, `sEnd`, `nBad`]**
+Selecting a variable adds it immediately, with its real type — no type picker. The list includes parameters, datasource
+variables and variables assigned in the code.
+**[In Capture when, type `nBad = 1`]**
+This is the useful part for this process. It records only the assignments that actually fail. For a position, use a string
+condition such as `vPosition @= 'ENG-001'`; combine them with `&`.
+**[Click Run and capture]**
+The IDE makes a temporary copy of the process — with the same datasource — adds the capture code, runs it, reads the values
+back and deletes the copy. My process is never changed.
 **[The panel fills — open a few entries]**
-Each record that reaches the breakpoint gives me an entry: this employee, starts in this month, ends in that one, nBad 0 — the
-span is fine. If an assignment ended before it started, I'd see nBad 1, and exactly which employee and which months caused it.
-A view can hold thousands of records, so it captures the first 50 and lets the rest of the run go at full speed.
+Each matching record gives me an entry. With `nBad = 1` I only see failures, and I know which employee, position and months
+caused them. It stops after 50 matching captures and lets the rest of the run finish at full speed. If nothing matches, it
+tells me instead of showing an empty panel.
 **[Click an entry — the editor jumps to the line]**
 Click an entry and the editor jumps straight to that line.
 *(Optional)* It's a real run, so whatever the process writes, it writes — here that's just the Bad Span flag being worked out
@@ -134,5 +146,5 @@ again, so it's safe to run any time. In return, what I see is exactly what happe
 
 ---
 
-Total about **5 min 5 s**. To get nearer 4 minutes, the easiest cuts are: the catalog-validation sentences in Ref (−12s),
-the Type list walk-through in section 1 (−15s) and the optional line in the debugger (−8s).
+Total about **5 min 25 s**. To get nearer 4 minutes, the easiest cuts are: the catalog-validation sentences in Ref (−12s),
+the Type list walk-through in section 1 (−15s) and the optional line in the debug capture section (−8s).
