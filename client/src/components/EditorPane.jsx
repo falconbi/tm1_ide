@@ -729,8 +729,14 @@ function RulesEditor({ tab, onCursor }) {
   const insertSnippet = (code) => {
     const editor = editorRef.current
     if (!editor) return
-    const sel = editor.getSelection()
-    editor.executeEdits('snippet', [{ range: sel, text: code }])
+    // Use Monaco's snippet controller so ${1:...} tab stops work, instead of
+    // inserting the braces as literal text.
+    const snippets = editor.getContribution('snippetController2')
+    if (snippets) snippets.insert(code)
+    else {
+      const sel = editor.getSelection()
+      editor.executeEdits('snippet', [{ range: sel, text: code }])
+    }
     editor.focus()
   }
 

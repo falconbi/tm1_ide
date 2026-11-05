@@ -799,10 +799,15 @@ export default function ProcessEditor({ tab }) {
 
   const insertSnippet = (code) => {
     const editor = editorRef.current
-    const monaco = monacoRef.current
-    if (!editor || !monaco) return
-    const sel = editor.getSelection()
-    editor.executeEdits('snippet', [{ range: sel, text: code }])
+    if (!editor) return
+    // Use Monaco's snippet controller so ${1:...} tab stops work, instead of
+    // inserting the braces as literal text.
+    const snippets = editor.getContribution('snippetController2')
+    if (snippets) snippets.insert(code)
+    else {
+      const sel = editor.getSelection()
+      editor.executeEdits('snippet', [{ range: sel, text: code }])
+    }
     editor.focus()
   }
 

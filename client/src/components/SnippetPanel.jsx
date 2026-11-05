@@ -4,13 +4,6 @@ import {
   loadCustomSnippets, addOrUpdateCustomSnippet, deleteCustomSnippet,
 } from '@/lib/custom-snippets'
 
-function cleanInsert(code) {
-  return code
-    .replace(/\$\{\d+:([^}]*)\}/g, '$1')
-    .replace(/\$\{0\}/g, '')
-    .replace(/\$0/g, '')
-}
-
 const EMPTY_FORM = { trigger: '', label: '', description: '', category: 'Custom', code: '' }
 
 function SnippetForm({ initial, language, categories, onSave, onCancel }) {
@@ -210,7 +203,7 @@ export default function SnippetPanel({ snippets, language, onInsert }) {
                     <div key={`${s.trigger}-${s.language}`} className="group border-b border-border/20">
                       <div className="flex items-start gap-1 px-3 py-1.5 hover:bg-sidebar-accent">
                         <button
-                          onClick={() => onInsert(cleanInsert(s.code))}
+                          onClick={() => onInsert(s.code)}
                           className="flex-1 text-left min-w-0"
                         >
                           <div className="flex items-center gap-2">

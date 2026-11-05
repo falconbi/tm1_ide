@@ -188,6 +188,30 @@ async function fetchCubeDims(server, cube) {
   })
 }
 
+// Try to find a TI variable already used in this process that matches a cube
+// dimension, so CellPutN(value, 'Cube', vVersion, vPosition, ...) can be filled
+// with the variables the process already has instead of inserting bare !Dim
+// references (which are Rules syntax, not TI).
+function dimensionVariable(text, dimension) {
+  const base = dimension.replace(/^WFP\s+/i, '')
+  const words = base.split(/[^A-Za-z0-9]+/).filter(Boolean)
+  if (!words.length) return null
+  const pascal = words.map(w => w[0].toUpperCase() + w.slice(1)).join('')
+  const candidates = [
+    `v${pascal}`,
+    `v${words[words.length - 1]}`,
+    pascal,
+    `v${base.replace(/[^A-Za-z0-9]/g, '')}`,
+  ]
+  for (const name of [...new Set(candidates)]) {
+    const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    const m = text.match(new RegExp(`\\b${escaped}\\b`, 'i'))
+    if (m) return m[0]
+  }
+  return null
+}
+
+
 async function fetchElements(server, dim) {
   return _cached(`elements:${server}:${dim}`, 60_000, async () => {
     const r = await authFetch(`/api/elements?server=${enc(server)}&dimension=${enc(dim)}`)
@@ -391,6 +415,19 @@ export function registerTM1Completions(monaco, language, catalog, keywords, getC
       const r = item._tm1Resolve
       if (!r) return item
       const dims = await fetchCubeDims(r.server, r.cube)
+      if (r.kind === 'cell') {
+        // The snippet already has a final `elements` placeholder after the
+        // cube. Fill the dimensions before it with variables the TI already
+        // uses, or an empty-string placeholder the user can replace. Do not
+        // append a closing parenthesis: the snippet still supplies `, elements)`.
+        const lead = dims.slice(0, -1)
+          .map(d => dimensionVariable(r.text, d) ?? "''")
+          .join(', ')
+        item.insertText = lead ? `${r.cubePart}, ${lead}` : r.cubePart
+        item.detail = dims.length ? `${dims.length} dims: ${dims.join(', ')}` : 'No dimensions'
+        item.documentation = { value: `**${r.cube}**\n\nDimensions (in order):\n${dims.map((d, i) => `${i + 1}. ${d}`).join('\n')}` }
+        return item
+      }
       const dimStops = dims.map((d, i) => `\${${i + 1}:!${d}}`).join(', ')
       item.detail = dims.length ? `${dims.length} dims: ${dims.join(', ')}` : 'No dimensions'
       item.documentation = { value: `**${r.cube}**\n\nDimensions (in order):\n${dims.map((d, i) => `${i + 1}. ${d}`).join('\n')}` }
@@ -511,6 +548,30 @@ export function registerTM1Completions(monaco, language, catalog, keywords, getC
         // dimension stops would close the call early and leave the snippet's
         // remaining arguments stranded outside it.
         const isExpandable = ctx.fn === 'DB'
+        const isCellAccess = [
+          'CELLPUTN', 'CELLPUTS', 'CELLGETN', 'CELLGETS',
+          'CELLINCREMENTN', 'CELLVALUEN', 'CELLVALUES',
+        ].includes(ctx.fn)
+
+        if (isCellAccess) {
+          const inQuote = isInsideString(textBefore)
+          const text = model.getValue()
+          return {
+            suggestions: cubes.map(cube => {
+              const cubePart = inQuote ? `${cube}'` : `'${cube}'`
+              return {
+                label: cube,
+                kind: CIK.Module,
+                detail: 'Resolving dimensions…',
+                insertText: cubePart,
+                insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+                range,
+                sortText: cube,
+                _tm1Resolve: { kind: 'cell', server, cube, cubePart, text },
+              }
+            }),
+          }
+        }
 
         if (isExpandable) {
           // Show the cube list the instant /api/cubes resolves — don't block the
