@@ -71,7 +71,6 @@ function SourceViewPreview({ server, cube, view, processes, onOpenFull }) {
 
     useEffect(() => {
         let cancelled = false
-        setLoading(true); setError(null)
         const url = `/api/view/preview-records?server=${encodeURIComponent(server)}&cube=${encodeURIComponent(cube)}&view=${encodeURIComponent(view)}`
         fetch(url, {
             method: 'POST',
@@ -1067,7 +1066,7 @@ function RuleBreakdown({ server, statements: allStatements, dimElemPairs, cube, 
         const parts = splitTopLevelOps(s)
         if (parts.length === 1) return renderOperand(parts[0].value, lhs)
         const nums = parts.map(t => t.type === 'op' ? t.value : operandNumber(t.value, lhs))
-        const known = nums.every((x, i) => parts[i].type === 'op' ? /^[-+*\/]$/.test(x) : typeof x === 'number')
+        const known = nums.every((x, i) => parts[i].type === 'op' ? /^[-+*/]$/.test(x) : typeof x === 'number')
         let result = null
         if (known) { try { result = Function(`return (${nums.join(' ')})`)() } catch { result = null } }
         return (
@@ -2268,6 +2267,7 @@ export default function ViewEditor({ tab }) {
     if (sourceMode) {
         return (
             <SourceViewPreview
+                key={`${tab.server}:${tab.cube}:${tab.viewName}`}
                 server={tab.server}
                 cube={tab.cube}
                 view={tab.viewName}
