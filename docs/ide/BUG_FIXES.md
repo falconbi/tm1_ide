@@ -3,15 +3,24 @@
 Every bug-fix commit, newest first, by the date it was committed. Generated from the git history;
 commits that mixed a fix into a feature are included too. New features are not listed here.
 
-166 fixes from 2026-05-20 to 2026-10-10, plus 46 entries for 11–27 October, 6 for 28 October–1 November, 7 for 2 November and 3 for 5 November. Last updated 2026-11-05.
+166 fixes from 2026-05-20 to 2026-10-10, plus 46 entries for 11–27 October, 6 for 28 October–1 November, 7 for 2 November, 4 for 5 November and 5 for 6 November. Last updated 2026-11-06.
 
 ← [Back to README](../../README.md)
 
 
 ## November 2026
 
+### 2026-11-06
+
+- **ti** — The function picker stripped Monaco placeholders, so Tab stayed in the first argument; snippets now insert through Monaco's snippet controller and tab through value → cube → elements
+- **ti** — Selecting a cube in CellPutN/S, CellGetN/S or CellIncrementN now fills the cube's dimensions with matching TI variables (vVersion, vPosition, vEmployee) or empty-string placeholders, leaving the final element for selection
+- **ti** — CellPutN/CellGetN element completion looked for the cube in argument 0; CellPut has a value first, so no measures appeared. It now uses the right argument and offers the target dimension's elements
+- **ti** — The function picker showed catalog keys (`CELLPUTN`) while autocomplete inserted `CellPutN`; picker names now resolve through the Naming Dictionary, and CellGetN/CellGetS are CamelCase
+- **view** — A very large view could freeze the browser while the grid was built; views over 5,000 rows now ask before drawing
+
 ### 2026-11-05
 
+- **ti** — Selecting a cube in CellPutN/CellGetN appended a `)` after the cube and stranded `, elements);`; cube completion now leaves the element argument inside the call
 - **ti** — The toolbar's Insert datasource block wrote the REST API's type names (`'TM1CubeView'`, `'ASCII'`, `DataSourceView`) instead of the names TI uses (`'VIEW'`, `'CHARACTERDELIMITED'`, `DatasourceCubeview`), so the inserted lines didn't set the datasource; the button is removed — the Datasource bar sets the datasource
 - **ti** — The Debug panel said watches are captured at the end of each section; they are only captured at breakpoints, and the hint now says so
 - **ti** — The ODBC datasource preview failed for a query with `?pName?` parameters; they are now filled in from the parameters' default values, as TM1 does
