@@ -23,10 +23,11 @@ of, and the kind TI processes use as a datasource.
 Here, the cost centres run down the rows, with the 2026 quarters and the full year across the top. Everything else is fixed
 in the filter: the Budget version, the whole Group, reporting currency, and Cost to Company, so every number on screen is the
 full budgeted cost of each cost centre.
-**[Drag WFP Version from Filter onto Columns; Ctrl+Enter]**
-The layout is drag and drop. Say I want to compare versions. I drag Version from the filter onto the columns, press
-Ctrl+Enter, and the grid redraws with each version side by side, under each quarter. No dialogs, no rebuilding the view.
-**[Drag WFP Version back to Filter; Ctrl+Enter]**
+**[Drag WFP Version from Filter onto Columns — wait for the grid to redraw]**
+The layout is drag and drop. Say I want to compare versions. I drag Version from the filter onto the columns, and the
+grid redraws by itself with each version side by side, under each quarter. No button to press, no dialogs, no
+rebuilding the view.
+**[Drag WFP Version back to Filter]**
 Drag it back, and I'm where I started.
 **[Point to the Bench — check before recording what it shows; this view places all eight dimensions, so it may only hold the Cost Centre location hierarchy]**
 The Bench holds whatever this view doesn't place: spare dimensions, and alternate hierarchies such as cost centres rolled up
