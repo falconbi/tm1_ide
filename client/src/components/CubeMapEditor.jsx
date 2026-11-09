@@ -62,6 +62,8 @@ const FIT_MAX_ZOOM = 1.1   // fit-to-view may never blow a 4-node graph up past 
 const FIT_MIN_ZOOM_FULL = 0.05 // explicit Fit to screen may go all the way out
 const prefixOf = name => String(name ?? '').split(/[\s_]/)[0]
 
+const NO_LENS_USAGE = Object.freeze({})   // shared empty default — a fresh {} would re-run the map build every render
+
 const TRACE_KIND_DEFAULTS = { rule: true, feeder: true, read: true, write: true, dimwrite: true, call: true, dimuse: true }
 
 function getNeighbors(id, ctx, kinds) {
@@ -121,8 +123,6 @@ function getReachable(startIds, depth, kinds, ctx) {
 // Processes run from Lens buttons (each Lens declares the processes it may run) get a Lens badge.
 // With Lens actions switched off they leave the map, with any helper that only they run, so the
 // back-end flow (loads, recalculation, snapshots) stands out. Seeds — what you clicked — always stay.
-const NO_LENS_USAGE = Object.freeze({})
-
 function applyLensActions(rawNodes, rawEdges, usage, roots, show, keep = []) {
   const isLens = name => !!usage[name]?.length
   const hide = new Set()
@@ -548,7 +548,18 @@ function Section({ title, count, icon, children, defaultOpen = false }) {
   )
 }
 
-function FlowItem({ label, onClick, color, icon }) {
+// A small 'Lens' tag for a process run from a Lens button (lens = the Lens titles using it).
+function LensTag({ lens }) {
+  if (!lens?.length) return null
+  return (
+    <span title={`Run from a Lens button — ${lens.join(', ')}`} style={{
+      flexShrink: 0, marginLeft: 'auto', fontSize: 9, fontWeight: 600, padding: '0 5px', borderRadius: 3,
+      border: '1px solid #6366f1', color: '#6366f1', background: 'rgba(99,102,241,0.12)',
+    }}>Lens</span>
+  )
+}
+
+function FlowItem({ label, onClick, color, icon, lens }) {
   return (
     <button onClick={onClick} style={{
       display: 'flex', alignItems: 'center', gap: 5, width: '100%',
@@ -560,6 +571,7 @@ function FlowItem({ label, onClick, color, icon }) {
     >
       {icon ?? <ArrowRight size={10} style={{ flexShrink: 0 }} />}
       <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{label}</span>
+      <LensTag lens={lens} />
     </button>
   )
 }
@@ -623,7 +635,7 @@ function DetailPanel({
   onOpenRules, onOpenView, onOpenRulesSplit, onOpenViewSplit,
   processCallers = {},
   onFilterDim, dimFilter,
-  traceKinds, setTraceKinds, transitiveCount,
+  traceKinds, setTraceKinds, transitiveCount, lensUsage = NO_LENS_USAGE,
 }) {
   const [followOpen, setFollowOpen] = useState(false)
   if (!cube || !cubeData) return null
@@ -728,7 +740,7 @@ function DetailPanel({
               const callers = processCallers[p] ?? []
               return (
                 <div key={p}>
-                  <FlowItem label={p} onClick={() => onNavigate(`proc:${p}`)}
+                  <FlowItem label={p} onClick={() => onNavigate(`proc:${p}`)} lens={lensUsage[p]}
                     icon={<Workflow size={10} style={{ flexShrink: 0, color: 'var(--cm-link)' }} />}
                   />
                   {callers.length > 0 && (
@@ -738,7 +750,7 @@ function DetailPanel({
                   )}
                   {callers.map(c => (
                     <div key={c} style={{ paddingLeft: 18 }}>
-                      <FlowItem label={c} onClick={() => onNavigate(`proc:${c}`)} color="var(--cm-text-muted)" />
+                      <FlowItem label={c} onClick={() => onNavigate(`proc:${c}`)} color="var(--cm-text-muted)" lens={lensUsage[c]} />
                     </div>
                   ))}
                 </div>
@@ -750,7 +762,7 @@ function DetailPanel({
         {tiReaders.length > 0 && (
           <Section title="Read by (TI)" count={tiReaders.length} icon={<Zap size={9} style={{ color: 'var(--cm-text-muted)', opacity: 0.65 }} />}>
             {tiReaders.map(p => (
-              <FlowItem key={p} label={p} onClick={() => onNavigate(`proc:${p}`)}
+              <FlowItem key={p} label={p} onClick={() => onNavigate(`proc:${p}`)} lens={lensUsage[p]}
                 icon={<Workflow size={10} style={{ flexShrink: 0, color: '#0ea5e9' }} />}
               />
             ))}
@@ -1943,6 +1955,7 @@ function CubeMapInner({ tab }) {
             onFilterDim={handleFilterDim}
             dimFilter={dimFilter}
             traceKinds={traceKinds}
+            lensUsage={lensUsage}
             setTraceKinds={setTraceKinds}
             transitiveCount={transitiveCount}
           />
