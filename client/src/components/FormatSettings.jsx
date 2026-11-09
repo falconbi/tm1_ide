@@ -345,6 +345,7 @@ export default function FormatSettings({ onClose }) {
                     {[
                       { id: '^(.{3})',      label: 'First 3 chars' },
                       { id: '^(\\S+)',      label: 'First word' },
+                      { id: '^(WFP\\s+\\S+)', label: 'WFP sub-groups' },
                       { id: '^([A-Za-z]+)', label: 'Leading letters' },
                       { id: '',             label: 'Default (underscore prefix)' },
                     ].map(opt => (
