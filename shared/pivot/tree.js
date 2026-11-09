@@ -137,16 +137,44 @@ export function computeVisibleTuples(hierarchies, expandedSets, keepMode, totals
     return recurse(0, '')
 }
 
-// Toggle one node open/closed under a context (returns new expand state)
+// Every id below nodeId in the tree.
+function descendantsOf(nodes, nodeId) {
+    const out = new Set(), stack = [...(nodes[nodeId]?.children ?? [])]
+    while (stack.length) { const id = stack.pop(); if (out.has(id)) continue; out.add(id); stack.push(...(nodes[id]?.children ?? [])) }
+    return out
+}
+
+// Open the given nodes ONE level: each opens, and everything below it closes — so a total that was
+// collapsed with open branches underneath comes back one level deep, not with all its old levels.
+function openOneLevel(set, nodes, ids) {
+    for (const id of ids) { set.add(id); for (const d of descendantsOf(nodes, id)) set.delete(d) }
+    return set
+}
+
+// Toggle one node open/closed under a context (returns new expand state). Opening shows one level.
 export function toggleExpanded(hierarchies, expandedSets, dimIdx, nodeId, contextKey) {
     const next = [...expandedSets]
+    const nodes = hierarchies[dimIdx]?.nodes ?? {}
+    const flip = s => (s.has(nodeId) ? (s.delete(nodeId), s) : openOneLevel(s, nodes, [nodeId]))
     if (dimIdx === 0) {
-        const s = new Set(next[0]); s.has(nodeId) ? s.delete(nodeId) : s.add(nodeId); next[0] = s
+        next[0] = flip(new Set(next[0]))
     } else {
         const map = new Map(next[dimIdx] instanceof Map ? next[dimIdx] : [])
-        const s = new Set(map.get(contextKey) ?? map.get('*') ?? allExpanded(hierarchies[dimIdx]?.nodes ?? {}))
-        s.has(nodeId) ? s.delete(nodeId) : s.add(nodeId)
-        map.set(contextKey, s); next[dimIdx] = map
+        map.set(contextKey, flip(new Set(map.get(contextKey) ?? map.get('*') ?? allExpanded(nodes))))
+        next[dimIdx] = map
+    }
+    return next
+}
+
+// Open several nodes one level each, under a context ("Expand this level for all").
+export function expandOneLevel(hierarchies, expandedSets, dimIdx, ids, contextKey) {
+    const next = [...expandedSets]
+    const nodes = hierarchies[dimIdx]?.nodes ?? {}
+    if (dimIdx === 0) next[0] = openOneLevel(new Set(next[0]), nodes, ids)
+    else {
+        const map = new Map(next[dimIdx] instanceof Map ? next[dimIdx] : [])
+        map.set(contextKey, openOneLevel(new Set(map.get(contextKey) ?? map.get('*') ?? allExpanded(nodes)), nodes, ids))
+        next[dimIdx] = map
     }
     return next
 }

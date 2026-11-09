@@ -35,7 +35,7 @@ import { applyTm1Format } from './format.js'
 import { tupleKey, membersByPosition } from './cellset.js'
 import {
     buildHierarchy, constrainHierarchy, initExpandedSets, expandedFor, computeVisibleTuples, tuplePrefixes,
-    toggleExpanded, setAllExpanded, tupleIsLeaf, indentFor, changedFlags,
+    toggleExpanded, expandOneLevel, setAllExpanded, tupleIsLeaf, indentFor, changedFlags,
 } from './tree.js'
 
 ModuleRegistry.registerModules([AllCommunityModule])
@@ -227,6 +227,17 @@ export function createPivotGrid(host, opts = {}) {
             else { colExp = toggleExpanded(colH, colExp, i, id, ctx); refreshColumns() }
         } else drill(axis, i, id, 'children')
     }
+    // "Expand this level for all": members whose children are already loaded open here, one level;
+    // only the rest are fetched (a drill that brings nothing new would otherwise open nothing).
+    function expandLevel(axis, i, peers, ctx) {
+        const loaded = peers.filter(p => loadedKids(axis, i, p).length)
+        const missing = peers.filter(p => !loadedKids(axis, i, p).length)
+        if (loaded.length) {
+            if (axis === 'rows') { rowExp = expandOneLevel(rowH, rowExp, i, loaded, ctx); refreshRows() }
+            else { colExp = expandOneLevel(colH, colExp, i, loaded, ctx); refreshColumns() }
+        }
+        if (missing.length) drill(axis, i, missing[0], 'children', { members: missing, count: missing.reduce((a, p) => a + fullKids(axis, i, p).length, 0) })
+    }
     // right-click a row or column heading: open / close / narrow it
     let menuEl = null
     const closeMenu = () => { if (menuEl) { menuEl.remove(); menuEl = null; document.removeEventListener('mousedown', outside, true) } }
@@ -242,7 +253,7 @@ export function createPivotGrid(host, opts = {}) {
             ['Expand', total && !open, () => openOrToggle(axis, i, id, ctx)],
             ['Expand all levels below', total && !!o.onDrill, () => drill(axis, i, id, 'all')],
             ['Collapse', open, () => openOrToggle(axis, i, id, ctx)],
-            ['Expand this level for all', peers.length > 0 && !!o.onDrill, () => drill(axis, i, id, 'children', { members: peers, count: peers.reduce((a, p) => a + fullKids(axis, i, p).length, 0) })],
+            ['Expand this level for all', peers.length > 0 && !!o.onDrill, () => expandLevel(axis, i, peers, ctx)],
             null,
             ['Show leaves only', total && !!o.onDrill, () => drill(axis, i, id, 'leaves')],
             ['Keep only this', !!o.onDrill, () => drill(axis, i, id, 'keep')],

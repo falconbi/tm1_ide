@@ -174,3 +174,20 @@ test('widenPlacement: children, all, leaves, keep, remove — hierarchy-qualifie
     const two = widen({ dimension: 'Region', members: ['World'] }, [{ scope: 'children', member: 'World' }, { scope: 'remove', member: 'World' }]).customExpr
     assert.equal(two, 'DISTINCT(EXCEPT({{[Region].[Region].[World]}, [Region].[Region].[World].Children}, {[Region].[Region].[World]}))')
 })
+
+// Nov 2026: Expand opened every old level again after a Collapse, and "Expand this level for all"
+// did nothing when the members' children were already loaded.
+import { expandOneLevel } from '../shared/pivot/tree.js'
+test('Expand opens one level, even after collapsing a total whose branches were open', () => {
+  let sets = initExpandedSets([period])                                   // all open
+  sets = toggleExpanded([period], sets, 0, 'FY', '')                      // collapse FY (H1, Q1… still marked open)
+  assert.deepEqual(computeVisibleTuples([period], sets, 'parent').map(t => t[0]), ['FY'])
+  sets = toggleExpanded([period], sets, 0, 'FY', '')                      // expand FY again
+  assert.deepEqual(computeVisibleTuples([period], sets, 'parent').map(t => t[0]), ['FY', 'H1', 'H2'], 'one level, not all')
+})
+test('Expand this level for all opens each member one level', () => {
+  let sets = setAllExpanded([period], initExpandedSets([period]), 0, false)
+  sets = toggleExpanded([period], sets, 0, 'FY', '')                      // FY → H1, H2
+  sets = expandOneLevel([period], sets, 0, ['H1', 'H2'], '')              // level for all
+  assert.deepEqual(computeVisibleTuples([period], sets, 'parent').map(t => t[0]), ['FY', 'H1', 'Q1', 'Q2', 'H2', 'Q3'])
+})
