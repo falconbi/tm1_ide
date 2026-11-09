@@ -172,6 +172,27 @@ function foldProcesses(rawNodes, rawEdges, roots, expanded, onToggleFold) {
   return { nodes, edges }
 }
 
+// ── Dimension filter ──────────────────────────────────────────────────────────
+// Narrow a trace to the cubes that use one dimension, the processes that read or write those
+// cubes, and that dimension itself. Seeds always stay so the view never loses its anchor.
+function narrowToDim(set, dim, seeds, cubeData, processData) {
+  if (!set || !dim) return set
+  const keepCube = id => cubeData[id]?.dims?.includes(dim)
+  const out = new Set()
+  for (const id of set) {
+    if (seeds?.includes(id)) { out.add(id); continue }
+    if (id.startsWith('dim:')) { if (id === `dim:${dim}`) out.add(id); continue }
+    if (id.startsWith('proc:')) continue
+    if (keepCube(id)) out.add(id)
+  }
+  for (const id of set) {
+    if (!id.startsWith('proc:')) continue
+    const p = processData[id.slice(5)]
+    if (p && [...p.reads, ...p.writes].some(c => out.has(c))) out.add(id)
+  }
+  return out
+}
+
 // ── Prefix clustering ─────────────────────────────────────────────────────────
 
 const GROUP_COLORS = [
@@ -855,6 +876,7 @@ function CubeMapInner({ tab }) {
     if (saved.sidebarOpen != null) setSidebarOpen(saved.sidebarOpen)
     if (saved.phaseFocus) setPhaseFocus(saved.phaseFocus)
     if (Array.isArray(saved.trail)) setTrail(saved.trail)
+    if (saved.dimFilter) setDimFilter(saved.dimFilter)
     if (saved.selectedCube && (cubeData[saved.selectedCube] || processData[saved.selectedCube.slice(5)] || dimData[saved.selectedCube.slice(4)])) {
       setSelectedCube(saved.selectedCube)
       setFocused(!!saved.focused)
@@ -880,7 +902,7 @@ function CubeMapInner({ tab }) {
   // Keep the session current; the cleanup also catches a tab switch.
   const sessionRef = useRef(null)
   useEffect(() => {
-    sessionRef.current = { runEntry, runIdx, runScope, phaseFocus, selectedCube, focused, scope, sidebarOpen, showBar, stepInfoOpen, trail }
+    sessionRef.current = { runEntry, runIdx, runScope, phaseFocus, selectedCube, focused, scope, sidebarOpen, showBar, stepInfoOpen, trail, dimFilter }
   })
   const saveSession = useCallback(() => {
     const st = sessionRef.current
@@ -961,13 +983,15 @@ function CubeMapInner({ tab }) {
   const traceCtx = useMemo(() => ({ cubeData, processData, dimData, reverseMap, processCallers }),
     [cubeData, processData, dimData, reverseMap, processCallers])
 
-  const reachableSet = useMemo(() => (focusSeeds ? getReachable(focusSeeds, traceDepth, traceKinds, traceCtx) : null),
-    [focusSeeds, traceDepth, traceKinds, traceCtx])
+  // A dimension filter (a 'dim' step in the thread) narrows the trace you're on, not the whole model.
+  const reachableSet = useMemo(() => (focusSeeds
+    ? narrowToDim(getReachable(focusSeeds, traceDepth, traceKinds, traceCtx), dimFilter, focusSeeds, cubeData ?? {}, processData ?? {})
+    : null), [focusSeeds, traceDepth, traceKinds, traceCtx, dimFilter, cubeData, processData])
 
   // How much each Steps away setting would bring in, shown on its button before you click it.
   const stepCounts = useMemo(() => (focusSeeds
-    ? [1, 2, 3, 4].map(d => getReachable(focusSeeds, d, traceKinds, traceCtx).size - focusSeeds.length)
-    : null), [focusSeeds, traceKinds, traceCtx])
+    ? [1, 2, 3, 4].map(d => narrowToDim(getReachable(focusSeeds, d, traceKinds, traceCtx), dimFilter, focusSeeds, cubeData ?? {}, processData ?? {}).size - focusSeeds.length)
+    : null), [focusSeeds, traceKinds, traceCtx, dimFilter, cubeData, processData])
 
   // What the trace reached, by kind (folded helper processes included).
   const reachBreakdown = useMemo(() => {
@@ -1046,7 +1070,7 @@ function CubeMapInner({ tab }) {
       if (traceKinds.dimuse) {
         for (const id of reachableSet) {
           if (isP(id) || isD(id)) continue
-          for (const dimName of cubeData[id]?.dims ?? []) {
+          for (const dimName of (cubeData[id]?.dims ?? []).filter(d => !dimFilter || d === dimFilter)) {
             const dimId = `dim:${dimName}`
             if (!inSet.has(dimId)) {
               inSet.add(dimId)
@@ -1327,6 +1351,7 @@ function CubeMapInner({ tab }) {
     setSelectedCube(null)
     setFocused(true)
     setDimmedIds(new Set())
+    setDimFilter(null)
     pushTrail({ kind: 'module', id: key })
   }, [pushTrail])
 
@@ -1336,6 +1361,7 @@ function CubeMapInner({ tab }) {
     setModuleFocus(null)
     setPhaseFocus(null)
     setFocused(true)
+    setDimFilter(null)
     pushTrail({ kind: 'node', id: node.id })
   }, [focusModule, pushTrail])
 
@@ -1360,11 +1386,11 @@ function CubeMapInner({ tab }) {
   }, [cubeData, openTab, srv])
 
   const onPaneClick = useCallback(() => {
-    setModuleFocus(null); setSelectedCube(null); setPhaseFocus(null); setDimmedIds(new Set()); setFocused(false); setTrail([])
+    setModuleFocus(null); setSelectedCube(null); setPhaseFocus(null); setDimmedIds(new Set()); setFocused(false); setTrail([]); setDimFilter(null)
   }, [])
 
   const exitFocus = useCallback(() => {
-    setModuleFocus(null); setSelectedCube(null); setPhaseFocus(null); setDimmedIds(new Set()); setFocused(false); setTrail([])
+    setModuleFocus(null); setSelectedCube(null); setPhaseFocus(null); setDimmedIds(new Set()); setFocused(false); setTrail([]); setDimFilter(null)
   }, [])
 
   // In a focused/phase/player map the Follow controls and the left Rules/Feeders/All TI
@@ -1416,6 +1442,7 @@ function CubeMapInner({ tab }) {
     setPhaseFocus(null)
     setSelectedCube(name)
     setFocused(true)
+    setDimFilter(null)
     pushTrail({ kind: 'node', id: name })
   }, [pushTrail])
 
@@ -1425,10 +1452,14 @@ function CubeMapInner({ tab }) {
     setTrail(backTo(trail, index))
     setPhaseFocus(null)
     setDimmedIds(new Set())
-    if (entry.kind === 'module') { setModuleFocus(entry.id); setSelectedCube(null) }
-    else { setModuleFocus(null); setSelectedCube(entry.id) }
+    // A 'dim' step filters the cube or module before it.
+    const base = [...trail.slice(0, index + 1)].reverse().find(e => e.kind !== 'dim')
+    setDimFilter(entry.kind === 'dim' ? entry.id : null)
+    if (!base) { exitFocus(); return }
+    if (base.kind === 'module') { setModuleFocus(base.id); setSelectedCube(null) }
+    else { setModuleFocus(null); setSelectedCube(base.id) }
     setFocused(true)
-  }, [trail])
+  }, [trail, exitFocus])
 
   const trailBack = useCallback(() => {
     if (previousStep(trail)) goToTrail(trail.length - 2)
@@ -1462,7 +1493,15 @@ function CubeMapInner({ tab }) {
   const openCubeCtx      = (cube, here) => (here ? openHere : openSide)({ id: `view:${srv}:${cube}:Default`, type: 'view', label: cube, server: srv, cube, viewName: 'Default' })
 
   // ── Dim filter ────────────────────────────────────────────────────────────────
-  const handleFilterDim = (dim) => { setDimFilter(p => p === dim ? null : dim); setModuleFocus(null); setSelectedCube(null); setPhaseFocus(null); setFocused(false); setTrail([]) }
+  // Clicking a cube's dimension narrows the map you're on to the cubes that use it — a step in the
+  // thread, so Back (or an earlier name in the thread) removes it. Clicking it again removes it too.
+  const handleFilterDim = (dim) => {
+    if (dimFilter === dim) { trailBack(); return }
+    setDimFilter(dim)
+    setDimmedIds(new Set())
+    if (!focused && !selectedCube && !moduleFocus) return   // full map: plain filter
+    setTrail(t => [...t.filter(e => !(e.kind === 'dim' && t.indexOf(e) === t.length - 1)), { kind: 'dim', id: dim }])
+  }
 
   // ── Sidebar list ──────────────────────────────────────────────────────────────
   const filteredCubes = useMemo(() => {
@@ -1613,7 +1652,7 @@ function CubeMapInner({ tab }) {
             <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '2px 8px', background: 'rgba(125,211,252,0.1)', border: '1px solid rgba(125,211,252,0.25)', borderRadius: 20, fontSize: 10, color: 'var(--cm-link)' }}>
               <Filter size={9} style={{ flexShrink: 0 }} />
               <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{dimFilter}</span>
-              <button onClick={() => setDimFilter(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: 'var(--cm-link)', display: 'flex', alignItems: 'center' }}>
+              <button onClick={() => (trail[trail.length - 1]?.kind === 'dim' ? trailBack() : setDimFilter(null))} title="Remove the dimension filter" style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: 'var(--cm-link)', display: 'flex', alignItems: 'center' }}>
                 <X size={9} />
               </button>
             </div>
@@ -1793,7 +1832,7 @@ function CubeMapInner({ tab }) {
                   </button>
                   {trail.map((e, i) => {
                     const last = i === trail.length - 1
-                    const label = e.kind === 'module' ? `module ${e.id}` : e.id.replace(/^(proc|dim):/, '')
+                    const label = e.kind === 'module' ? `module ${e.id}` : e.kind === 'dim' ? `with ${e.id}` : e.id.replace(/^(proc|dim):/, '')
                     return (
                       <span key={`${e.kind}:${e.id}`} style={{ display: 'flex', alignItems: 'center', gap: 4, minWidth: 0 }}>
                         <ChevronRight size={10} style={{ color: 'var(--cm-text-muted)', flexShrink: 0 }} />

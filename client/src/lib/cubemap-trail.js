@@ -1,5 +1,6 @@
 // Cube Map trail — every drill since the full map, like browser history.
-// A step is { kind: 'node' | 'module', id }. Pure functions so the rules are tested.
+// A step is { kind: 'node' | 'module' | 'dim', id } — a 'dim' step filters the step before it
+// to the cubes using that dimension. Pure functions so the rules are tested.
 
 const sameStep = (a, b) => !!a && !!b && a.kind === b.kind && a.id === b.id
 
