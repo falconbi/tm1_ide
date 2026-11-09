@@ -26,8 +26,10 @@ trace any number back to where it came from. One cube and one view throughout.
 
 ## 2. Rearranging by dragging (~50s)
 
-- Drag **Version** from the filter onto the columns, press **Ctrl+Enter**, and versions appear side
-  by side under each quarter. Drag it back.
+- Drag **Version** from the filter onto the columns and the grid redraws by itself, with the versions
+  side by side under each quarter — no button to press. Drag it back.
+- The view re-runs on its own about a second after any layout change (a drag, a subset, ticked
+  members), so a few quick changes make one refresh, not several.
 - **The Bench**: dimensions the view doesn't use, and alternate hierarchies (cost centres by
   location), each one drag away. *(Check what the Bench shows before recording.)*
 - **Sessions**: save the layout as a named local draft to come back to; it never touches the saved
@@ -72,10 +74,16 @@ trace any number back to where it came from. One cube and one view throughout.
 - Follow it all the way down to typed-in data or a process load. That's the whole story of one
   number, without leaving the view.
 
-## 7. Tips (~20s)
+## 7. Tips (~25s)
 
-- **Ctrl+Enter** refreshes, **Ctrl+S** saves, **Ctrl+Shift+S** saves as.
-- **Sessions** to try layouts without risk; reopen the view to get back to the saved layout.
+- The view refreshes itself after every layout change. **Ctrl+Enter** is for running hand-edited
+  MDX, or picking up changes someone else (or a process) has made since.
+- **Alt+.** and **Alt+,** step through the open tabs in this pane; **Alt+W** closes the current one.
+- Right-click any member to **keep only it** or **remove it**; on a total you also get the expand
+  options.
+- No undo for layout changes: if it gets messy, **close the tab and open the view again** for the saved
+  layout, or load a **Session** you saved along the way.
+- **Ctrl+S** saves, **Ctrl+Shift+S** saves as.
 - **Log** on the toolbar: who changed the selected cell, over the last day by default.
 
 ## Outro (~15s)
@@ -85,8 +93,9 @@ work the grid, and trace any number. Next: **the Cube Map**, reading the whole m
 
 ---
 
-Total about **5 min 15 s**. The easiest cuts: Tips (−20s), Sessions in section 2 (−8s), Builder in
+Total about **5 min 20 s**. The easiest cuts: Tips (−25s), Sessions in section 2 (−8s), Builder in
 section 4 (−15s).
 
 **Not in the IDE** (so not in the script): a view switcher or recent-views list, freezing the first
-column, and a column-alignment setting.
+column, a column-alignment setting, and undo for layout changes. Ctrl+Enter is **not** needed after a
+layout change in Visual mode — the view re-runs itself.
