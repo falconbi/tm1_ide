@@ -64,12 +64,12 @@ want.
 Execute runs it against the server and shows the result right there, before anything is saved.
 **[Close the builder; click Visual]**
 
-## 4. Working the grid (~40s)
+## 4. Working the grid (~60s)
 
-**[Right-click the top cost-centre total — Expand all levels below]**
-In the grid, totals open and close like a tree. Right-click a total for more: expand every level below it in one go, keep
-only that member, remove it, or show just the leaves underneath. It's the quickest way to go from the group total down to
-the cost centres that matter.
+**[Click the ▸ on the top cost-centre total, then right-click it — Expand all levels below]**
+In the grid, totals open and close like a tree, one level at a time. Right-click a total for more: expand every level
+below it in one go, open the same level for every member, keep only that member, remove it, or show just the leaves
+underneath. It's the quickest way to go from the group total down to the cost centres that matter.
 **[Click Suppress empty]**
 Suppress empty hides rows and columns with nothing in them. With hundreds of cost centres, it's the difference between a
 page of zeros and the few rows that actually have cost. And it's saved with the view, so it's still on next time it opens.
@@ -78,9 +78,17 @@ Flat turns the grid into a plain list. Click a column header and it sorts, so th
 top.
 **[Click Flat again]**
 Toggle it off, and I'm back to the hierarchy.
-**[Point to the grid options and the CSV button]**
-The grid options control the look, column widths and fitting, and CSV exports what's on screen. The numbers themselves follow
-each element's Format attribute, set in the Dimension Editor, so money shows as money and rates as rates.
+**[Type a cost centre name in the grid's Search box, then clear it]**
+With hundreds of rows, Search finds what I need without scrolling: type part of a name or a number, and the grid shows only
+the rows that match. Clear it, and everything comes back.
+**[Drag a column edge wider; then click Fit columns; then Reset widths]**
+Columns resize by dragging their edge, and the grid remembers my widths for this view next time. Fit columns, or
+Ctrl+Shift+A, sizes every column to its contents in one go, and Reset widths puts them back to the default.
+**[Click Freeze top row, scroll down]**
+Freeze top row keeps the first row, here the group total, pinned while I scroll through the detail.
+**[Point to Grid format options and the CSV button]**
+Grid format options change the look: row height, font size, zebra striping, the number format, and how totals stand out. CSV exports exactly what's on screen. The numbers themselves
+follow each element's Format attribute, set in the Dimension Editor, so money shows as money and rates as rates.
 
 ## 5. Trace a number (~50s)
 
@@ -124,5 +132,5 @@ In the next video: the Cube Map, and how to read a whole model on one page.
 
 ---
 
-Total about **4 min 50 s**. If it needs to come down, the easiest cuts are: the Bench line in section 1 (−8s), the grid
+Total about **5 min 10 s**. If it needs to come down, the easiest cuts are: the Bench line in section 1 (−8s), the grid
 options line in section 4 (−12s) and the builder paragraph in section 3 (−15s).
