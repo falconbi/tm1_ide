@@ -4108,6 +4108,25 @@ app.get('/api/lenses', async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
+// Which processes the Lenses run (their declared lens-runs), as { process: [lens, ...] } — so the
+// IDE can mark front-end actions without anyone tagging them. Cached briefly per user and server.
+const lensUsageCache = new Map()
+app.get('/api/lens/process-usage', async (req, res) => {
+    try {
+        const server = req.query.server
+        if (!server) return res.status(400).json({ error: 'server required' })
+        const key = `${req.ideToken ?? ''}|${server}`
+        const hit = lensUsageCache.get(key)
+        if (hit && Date.now() - hit.at < 60_000) return res.json(hit.data)
+        const usage = {}
+        for (const l of await lensStore.listLensRuns(server, lensBridge.lensRuns, { ideToken: req.ideToken })) {
+            for (const p of l.runs) (usage[p] ??= []).push(l.title || l.name)
+        }
+        lensUsageCache.set(key, { at: Date.now(), data: usage })
+        res.json(usage)
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
 app.get('/api/lenses/:name', async (req, res) => {
     try {
         const server = req.query.server

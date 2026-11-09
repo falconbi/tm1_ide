@@ -8,6 +8,7 @@ import {
 import '@xyflow/react/dist/style.css'
 import dagre from '@dagrejs/dagre'
 import { useStore } from '../store'
+import { useLensProcessUsage } from '@/hooks/useApi'
 import {
   Network, ChevronRight, ChevronDown, Search, X, RefreshCw, ArrowRight, Layers,
   Code2, Workflow, Filter, GitBranch, Zap, BookOpen, Milestone,
@@ -115,6 +116,29 @@ function getReachable(startIds, depth, kinds, ctx) {
 }
 
 // Run sequence + Steps list live in @/lib/run-sequence and this file's dialogs below
+
+// ── Lens actions ──────────────────────────────────────────────────────────────
+// Processes run from Lens buttons (each Lens declares the processes it may run) get a Lens badge.
+// With Lens actions switched off they leave the map, with any helper that only they run, so the
+// back-end flow (loads, recalculation, snapshots) stands out. Seeds — what you clicked — always stay.
+const NO_LENS_USAGE = Object.freeze({})
+
+function applyLensActions(rawNodes, rawEdges, usage, roots, show, keep = []) {
+  const isLens = name => !!usage[name]?.length
+  const hide = new Set()
+  if (!show) {
+    for (const n of rawNodes) {
+      if (n.type !== 'process' || keep.includes(n.id)) continue
+      const name = n.id.slice(5)
+      const rs = [...(roots[name] ?? [])]
+      if (isLens(name) || (rs.length && rs.every(r => r !== name && isLens(r)))) hide.add(n.id)
+    }
+  }
+  const nodes = rawNodes.filter(n => !hide.has(n.id)).map(n =>
+    n.type === 'process' && isLens(n.id.slice(5)) ? { ...n, data: { ...n.data, lens: usage[n.id.slice(5)] } } : n)
+  const edges = rawEdges.filter(e => !hide.has(e.source) && !hide.has(e.target))
+  return { nodes, edges }
+}
 
 // ── Process folding ───────────────────────────────────────────────────────────
 // A process another process calls is a helper of its caller's chain: on the map it folds into the
@@ -341,7 +365,7 @@ function GroupNode({ data }) {
 }
 
 function ProcessNode({ data }) {
-  const { label, folded = 0, expanded, onToggleFold } = data
+  const { label, folded = 0, expanded, onToggleFold, lens } = data
   return (
     <div style={{
       width: NODE_W, height: NODE_H, borderRadius: 8,
@@ -356,6 +380,12 @@ function ProcessNode({ data }) {
         fontSize: 11, fontWeight: 500, color: 'var(--cm-text)', fontFamily: 'monospace',
         overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1,
       }}>{label}</span>
+      {lens?.length > 0 && (
+        <span title={`Run from a Lens button — ${lens.join(', ')}`} style={{
+          flexShrink: 0, fontSize: 9, fontWeight: 600, padding: '0 5px', borderRadius: 3,
+          border: '1px solid #6366f1', color: '#6366f1', background: 'rgba(99,102,241,0.12)',
+        }}>Lens</span>
+      )}
       {onToggleFold && (
         <button
           className="nodrag"
@@ -757,6 +787,8 @@ function CubeMapInner({ tab }) {
   const prefixes = useMemo(() => [...new Set([
     ...Object.keys(cubeDataAll ?? {}), ...Object.keys(processDataAll ?? {}),
   ].map(prefixOf).filter(Boolean))].sort(), [cubeDataAll, processDataAll])
+  // NO_LENS_USAGE, not `= {}`: a fresh {} on every render would re-run the map build forever.
+  const { data: lensUsage = NO_LENS_USAGE } = useLensProcessUsage(srv)
   const procRoots = useMemo(() => processRoots(processDataAll ?? {}, processCallers ?? {}), [processDataAll, processCallers])
   const [nodes, setNodes, onNodesChange] = useNodesState([])
   const [edges, setEdges, onEdgesChange] = useEdgesState([])
@@ -785,6 +817,7 @@ function CubeMapInner({ tab }) {
   const [showProcesses,  setShowProcesses]  = useState(true)
   const [allTI,          setAllTI]          = useState(prefs.allTI ?? false)
   const [showDims,       setShowDims]       = useState(prefs.showDims ?? true)
+  const [showLensActions, setShowLensActions] = useState(prefs.showLensActions ?? true)
   const [scope,          setScope]          = useState(prefs.scope ?? '')
   const [sidebarOpen,    setSidebarOpen]    = useState(prefs.sidebarOpen ?? true)
   const [advancedOpen,   setAdvancedOpen]   = useState(false)
@@ -920,10 +953,10 @@ function CubeMapInner({ tab }) {
     try {
       localStorage.setItem(prefsKey, JSON.stringify({
         layout, showCalc, showFeeders, showClusters, showDims, showProcesses, allTI,
-        showLegend, traceDepth, traceKinds, scope, sidebarOpen,
+        showLegend, traceDepth, traceKinds, scope, sidebarOpen, showLensActions,
       }))
     } catch { /* prefs read failed — defaults apply */ }
-  }, [prefsKey, layout, showCalc, showFeeders, showClusters, showDims, showProcesses, allTI, showLegend, traceDepth, traceKinds, scope, sidebarOpen])
+  }, [prefsKey, layout, showCalc, showFeeders, showClusters, showDims, showProcesses, allTI, showLegend, traceDepth, traceKinds, scope, sidebarOpen, showLensActions])
 
   // Deep link from the Rules editor's Data Sources strip: focus this cube.
   useEffect(() => {
@@ -1099,7 +1132,8 @@ function CubeMapInner({ tab }) {
           if (traceKinds.feeder) (d?.ruleFeederRefs ?? []).forEach(t => addEdge('rule_feeder', id, t))
         }
       }
-      const f = runScope ? { nodes: rawNodes, edges: rawEdges } : foldProcesses(rawNodes, rawEdges, procRoots, expandedFolds, toggleFold)
+      const L = applyLensActions(rawNodes, rawEdges, lensUsage, procRoots, showLensActions || !!runScope, focusSeeds ?? [])
+      const f = runScope ? L : foldProcesses(L.nodes, L.edges, procRoots, expandedFolds, toggleFold)
       setNodes(applyGrouping(applyDagreLayout(f.nodes, f.edges, layout), showClusters, groupRegex))
       setEdges(f.edges)
       setFitTick(t => t + 1)
@@ -1178,11 +1212,12 @@ function CubeMapInner({ tab }) {
       }
     }
 
-    const f = runScope ? { nodes: rawNodes, edges: rawEdges } : foldProcesses(rawNodes, rawEdges, procRoots, expandedFolds, toggleFold)
+    const L = applyLensActions(rawNodes, rawEdges, lensUsage, procRoots, showLensActions || !!runScope)
+    const f = runScope ? L : foldProcesses(L.nodes, L.edges, procRoots, expandedFolds, toggleFold)
     setNodes(applyGrouping(applyDagreLayout(f.nodes, f.edges, layout), showClusters, groupRegex))
     setEdges(f.edges)
     setFitTick(t => t + 1)
-  }, [cubeData, processData, dimData, allTI, showDims, showProcesses, showCalc, showFeeders, layout, dimFilter, showClusters, groupRegex, focused, selectedCube, traceDepth, traceKinds, reachableSet, runScope, fitView, procRoots, expandedFolds, toggleFold])
+  }, [cubeData, processData, dimData, allTI, showDims, showProcesses, showCalc, showFeeders, layout, dimFilter, showClusters, groupRegex, focused, selectedCube, traceDepth, traceKinds, reachableSet, runScope, fitView, procRoots, expandedFolds, toggleFold, lensUsage, showLensActions, focusSeeds])
 
   // ── Fit view ──────────────────────────────────────────────────────────────────
   // (not while Show is running — the camera holds still there; startShow does one fit itself)
@@ -1668,6 +1703,9 @@ function CubeMapInner({ tab }) {
               <Toggle active={dimsVisible}    onClick={toggleDims}     color="#8b5cf6" label="Dimensions"
                 disabled={!dimsAvailable}
                 title={dimsAvailable ? 'Dimensions: the ones processes change, and (on a cube) the ones it uses' : 'Turn on Processes first — on the full map, dimensions are shown through the processes that change them'} />
+              <Toggle active={showLensActions && tiVisible} onClick={() => setShowLensActions(v => !v)} color="#6366f1" label="Lens actions"
+                disabled={!tiVisible}
+                title={tiVisible ? 'Processes run from Lens buttons (Assign Person, Approve Hire…). Off: only the back-end processes — loads, recalculation, snapshots' : 'Turn on Processes first'} />
             </div>
           </div>
 

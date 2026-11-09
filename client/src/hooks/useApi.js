@@ -161,6 +161,8 @@ export const useElementsTrees = (server, dims) => useQueries({
   }),
 })
 export const useEdges     = (server, dim, hierarchy) => useQuery({ queryKey: ['edges', server, dim, hierarchy],    queryFn: () => get(`/api/edges?server=${enc(server)}&dimension=${enc(dim)}${hierarchy ? `&hierarchy=${enc(hierarchy)}` : ''}`),    enabled: !!server && !!dim })
+// { process: [Lens title, ...] } — the processes behind Lens buttons, from each Lens's declared runs.
+export const useLensProcessUsage = (server) => useQuery({ queryKey: ['lens-process-usage', server], queryFn: () => get(`/api/lens/process-usage?server=${enc(server)}`), enabled: !!server, staleTime: 60_000 })
 export const useCubes    = (server)     => useQuery({ queryKey: ['cubes', server],     queryFn: () => get(`/api/cubes?server=${enc(server)}`),      enabled: !!server })
 export const useDims     = (server)     => useQuery({ queryKey: ['dims', server],      queryFn: () => get(`/api/dimensions?server=${enc(server)}`),  enabled: !!server })
 export const useDeleteDimension = () => {

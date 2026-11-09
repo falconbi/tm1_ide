@@ -1,6 +1,6 @@
 import { useState, useRef, useMemo, useEffect, createContext, useContext, useCallback } from 'react'
 import { toast } from 'sonner'
-import { useCubes, useDims, useProcs, useChores, useSubsets, useViews, useCubeDimensions, useSaveView, useHierarchies, useCreateHierarchy, useControlObjects, useDeleteDimension, useDeleteCube, useDeleteProcess, useDeleteChore, useDeleteSubset, useDeleteView, useActiveWorkSession, useWorkSessionLog, useIsSimple } from '@/hooks/useApi'
+import { useCubes, useDims, useProcs, useChores, useSubsets, useViews, useCubeDimensions, useSaveView, useHierarchies, useCreateHierarchy, useControlObjects, useDeleteDimension, useDeleteCube, useDeleteProcess, useDeleteChore, useDeleteSubset, useDeleteView, useActiveWorkSession, useWorkSessionLog, useIsSimple, useLensProcessUsage } from '@/hooks/useApi'
 import { useStore } from '@/store'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { ChevronRight, ChevronDown, Box, Layers, Cog, Clock, Loader2, List, Plus, Table2, Code2, Sigma, PencilLine, Search, X, Braces, Trash2, FileSearch, Database, Network, LayoutDashboard, Copy } from 'lucide-react'
@@ -78,7 +78,11 @@ function getLocateIdFromTab(tab) {
 const ActiveLocateCtx = createContext('')
 const ChangedCtx      = createContext(new Set())
 
-function Section({ icon: Icon, label, items, isLoading, onSelect, itemIcon: ItemIcon, sectionId, locateIdPrefix, onDelete, onAdd, csType }) {
+const NO_LENS_USAGE = Object.freeze({})
+
+// tagOf(item) → optional { label, title } shown as a small tag after the name (e.g. 'Lens' on a
+// process run from a Lens button).
+function Section({ icon: Icon, label, items, isLoading, onSelect, itemIcon: ItemIcon, sectionId, locateIdPrefix, onDelete, onAdd, csType, tagOf }) {
   const [open, setOpen] = useState(false)
   const activeId  = useContext(ActiveLocateCtx)
   const changedSet = useContext(ChangedCtx)
@@ -120,6 +124,9 @@ function Section({ icon: Icon, label, items, isLoading, onSelect, itemIcon: Item
               >
                 {ItemIcon && <ItemIcon size={12} className="shrink-0 text-muted-foreground" />}
                 <span className={cn('truncate', locateIdPrefix && activeId === `${locateIdPrefix}:${item}` && 'text-amber-400 dark:text-amber-300')}>{item}</span>
+                {(() => { const t = tagOf?.(item); return t ? (
+                  <span title={t.title} className="shrink-0 text-[9px] font-semibold px-1 rounded border border-indigo-500/60 text-indigo-500 bg-indigo-500/10">{t.label}</span>
+                ) : null })()}
                 {csType && changedSet.has(`${csType}::${item}`) && (
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0 ml-auto mr-1" title="Changed in active change set" />
                 )}
@@ -1119,6 +1126,8 @@ export default function Explorer() {
   const { data: dims,   isFetching: loadingDims   } = useDims(server)
   const { data: procs,  isFetching: loadingProcs  } = useProcs(server)
   const { data: chores, isFetching: loadingChores } = useChores(server)
+  const { data: lensUsage = NO_LENS_USAGE } = useLensProcessUsage(server)
+  const lensTag = name => (lensUsage[name]?.length ? { label: 'Lens', title: `Run from a Lens button — ${lensUsage[name].join(', ')}` } : null)
   const deleteProcessMut  = useDeleteProcess()
   const deleteCoreMut     = useDeleteChore()
 
@@ -1376,7 +1385,7 @@ export default function Explorer() {
                 onOpenViewer={openCubeViewer} onOpenCubeEditor={openCubeEditor}
                 onOpenCubeMap={openCubeMap} />
               <DimSection server={server} dims={dims}    isLoading={loadingDims}   onOpenSubset={openSubset} onOpenDim={openDim} onCreateDim={() => openDim(null)} />
-              <Section    icon={Cog}   label="Processes" items={procs}  isLoading={loadingProcs}  onSelect={openProcess} itemIcon={Cog}   sectionId="processes" locateIdPrefix="process" onDelete={handleDeleteProcess} onAdd={openNewProcess} csType="process" />
+              <Section    icon={Cog}   label="Processes" items={procs}  isLoading={loadingProcs}  onSelect={openProcess} itemIcon={Cog}   sectionId="processes" locateIdPrefix="process" onDelete={handleDeleteProcess} onAdd={openNewProcess} csType="process" tagOf={lensTag} />
               <Section    icon={Clock} label="Chores"    items={chores} isLoading={loadingChores} onSelect={openChore}   itemIcon={Clock} sectionId="chores" locateIdPrefix="chore" onDelete={handleDeleteChore} onAdd={openNewChore} csType="chore" />
               <LensesSection server={server} onOpen={openLens} onNew={openNewLens} />
               <ControlSection

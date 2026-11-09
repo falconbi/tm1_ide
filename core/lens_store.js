@@ -47,6 +47,18 @@ async function listLenses(server, { ideToken, client } = {}) {
     return out.sort((a, b) => String(a.name).localeCompare(String(b.name)))
 }
 
+// Every Lens with the processes it may run — `runsOf(doc)` is lens_bridge.lensRuns (passed in so
+// the store stays free of Lens logic). Used to mark the processes behind Lens buttons.
+async function listLensRuns(server, runsOf, { ideToken, client } = {}) {
+    const names = (await store.listDocs(server, AREA, { ideToken, client })).filter(n => n.endsWith('.json'))
+    const out = []
+    for (const n of names) {
+        const doc = await store.readDoc(server, AREA, n, { ideToken, client })
+        if (doc) out.push({ name: doc.name, title: doc.title ?? doc.name, runs: runsOf(doc) })
+    }
+    return out
+}
+
 // One Lens, HTML included. Missing is an error.
 async function readLens(server, name, { ideToken, client } = {}) {
     const doc = await store.readDoc(server, AREA, docName(name), { ideToken, client })
@@ -150,4 +162,4 @@ function canOpenLens(doc, groups = []) {
     return mine.has('admin') || allowed.some(g => mine.has(String(g).toLowerCase()))
 }
 
-module.exports = { safeName, cleanFolder, cleanIcon, cleanColor, cleanImage, cleanConfig, canOpenLens, ICON_NAMES, listLenses, readLens, saveLens, deleteLens, TOOLKIT_VERSION }
+module.exports = { listLensRuns, safeName, cleanFolder, cleanIcon, cleanColor, cleanImage, cleanConfig, canOpenLens, ICON_NAMES, listLenses, readLens, saveLens, deleteLens, TOOLKIT_VERSION }
