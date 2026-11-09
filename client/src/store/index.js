@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { clearCubemapSession } from '@/lib/cubemap-session'
 
 /**
  * @typedef {'rules'|'process'|'subset'|'dimension'|'view'|'cubeview'|'chore'|'cubeeditor'|'cubemap'|
@@ -255,6 +256,7 @@ export const useStore = create((set, get) => ({
     // destroy it there. Only delete the tab object if no leaf still references it.
     const stillReferenced = collectLeaves(newLayout).some(l => l.tabIds.includes(id))
     const newTabs = stillReferenced ? tabs : tabs.filter(t => t.id !== id)
+    if (!stillReferenced) clearCubemapSession(id)
 
     const groups = collectLeaves(newLayout)
     const newActiveGroupId = findLeaf(newLayout, activeGroupId) ? activeGroupId : (groups.at(-1)?.id ?? null)
@@ -278,6 +280,7 @@ export const useStore = create((set, get) => ({
   },
 
   closeAllTabs: () => {
+    for (const t of get().tabs) clearCubemapSession(t.id)
     const l = { type: 'leaf', id: 'g1', tabIds: [], activeTabId: null }
     set({ tabs: [], activeTab: null, layout: l, groups: [l], activeGroupId: 'g1' })
     _saveForge(get())
@@ -406,6 +409,7 @@ export const useStore = create((set, get) => ({
     const idsToRemove = group.tabIds.filter(id => id !== tabId)
     const otherGroupTabIds = new Set(collectLeaves(layout).filter(g => g.id !== groupId).flatMap(g => g.tabIds))
     const tabsToDelete = idsToRemove.filter(id => !otherGroupTabIds.has(id))
+    for (const id of tabsToDelete) clearCubemapSession(id)
     const newLayout = mapLeaves(layout, l => l.id === groupId ? { ...l, tabIds: [tabId], activeTabId: tabId } : l)
     set({ tabs: tabs.filter(t => !tabsToDelete.includes(t.id)), layout: newLayout, groups: collectLeaves(newLayout), activeTab: tabId })
     _saveForge(get())
@@ -420,6 +424,7 @@ export const useStore = create((set, get) => ({
     const idsToRemove = group.tabIds.slice(idx + 1)
     const otherGroupTabIds = new Set(collectLeaves(layout).filter(g => g.id !== groupId).flatMap(g => g.tabIds))
     const tabsToDelete = idsToRemove.filter(id => !otherGroupTabIds.has(id))
+    for (const id of tabsToDelete) clearCubemapSession(id)
     const newLayout = mapLeaves(layout, l => l.id === groupId ? { ...l, tabIds: l.tabIds.slice(0, idx + 1), activeTabId: tabId } : l)
     set({ tabs: tabs.filter(t => !tabsToDelete.includes(t.id)), layout: newLayout, groups: collectLeaves(newLayout), activeTab: tabId })
     _saveForge(get())
