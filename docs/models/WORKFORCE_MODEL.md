@@ -91,6 +91,16 @@ dimension), `Next Period` / `Prior Period`, `FY`, `Days In Month`, `Period Type`
 calculating version (a scenario). Budget is not yet frozen into a static approved copy.
 `WFP Copy Version` copies between versions, the opening included; `WFP Snapshot` freezes one.
 
+**Variance versions** (under `Variance`). In WFP Workforce Cost:
+
+- `Fcst vs Bud` (Forecast − Budget) is the only one calculated by rule, because Forecast is live.
+- `Act vs Bud`, `Var FX`, `Var Operational` and `Act vs Prior Fcst` are **stored**. They only
+  change when actuals close, so `WFP Calc Variances` (run by `WFP Load Actuals`) works them out
+  for the closed months (`Actuals Closed` = 1). The rules set them to STET and nothing feeds them.
+- Until Nov 2026 they were rules fed across every currency, measure and month. That was the
+  largest share of the cube's fed cells and of its 9½-minute feeder load.
+- After any change to Actual, Budget or a snapshot in a closed month, re-run `WFP Calc Variances`.
+
 ---
 
 ## 4. The cubes
@@ -342,6 +352,8 @@ Month lists on the pages offer real months only (`yyyy-mm`), never the opening p
 1. **Lab first.** `LIVE=1 node tmp/workforce/live-lab-build.js` (about 4 minutes) regenerates
    WFP_Lab (every `LAB …` object, 14 chosen Positions and their people, never deployed) from the
    current WFP model and checks its cost equals WFP's. Prove the change there.
+   *The LAB objects were removed on 7 Nov 2026 to save memory on TM1_Test_DEV. Regenerate them
+   with this script when a change needs the lab.*
 2. **Then one Downside run** on the real model with snapshot, restore and compare, when the change
    can be confined to one version. A change to something every version shares (the period
    dimension, for example) is proven in the lab and checked by the compare.
