@@ -114,14 +114,16 @@ View on map takes that chore's processes and everything they touch onto the Cube
 **[Click Play a run]**
 Play a run shows the order a process will execute in. It does not run anything; it walks the code path across the map.
 
-**[Choose WFP Snapshot; click Play]**
-Start from WFP Snapshot. Each step lights the next read, write or call. Pause, step back and forward, change the speed, and use Follow if the current step leaves the screen.
+**[Choose the WFP Month End chore; click Play]**
+Start from a chore: WFP Month End. It is runbook-only here, so it never fires on a schedule, but playing it shows exactly what it would do: WFP Load HR Assignments, then WFP Calc Variances, then WFP Snapshot. The player follows the chore across those processes, and WFP Snapshot itself calls the core version copy, so the helper chain appears too.
+
+Each step lights the next read, write or call. Pause, step back and forward, change the speed, and use Follow if the current step leaves the screen.
 
 **[Click What is this step?]**
 What is this step? names the process, its parameters, and the cube or dimension it touches.
 
 **[Click Back to the start; choose WFP Change Assignment]**
-Now pick WFP Change Assignment from the same list. It plays a different shape: the change process, its reads and writes, and the helpers it calls. The map only shows the objects in that run, so the player is a focused story rather than the whole model.
+Now pick the WFP Change Assignment process from the same list. It plays a different shape: one process, its reads and writes, and the recalculation helper it calls. The map only shows the objects in that run, so the player is a focused story rather than the whole model.
 
 **[Pause on a step; click through to a process]**
 Pause on a step, then open the process from the step card. The thread takes me back to the run. That is how I learn an unfamiliar update without reading every line first.
