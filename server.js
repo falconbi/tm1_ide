@@ -2362,15 +2362,69 @@ app.delete('/api/cube/annotations/:id', async (req, res) => {
 })
 
 // ── Transaction log ───────────────────────────────────────────────────────────
+// A TM1 log search can't be cancelled once started, so a repeat of the same search by the same
+// user (a second click, a refresh) joins the one already running instead of starting another.
+const txLogSearches = new Map()
 app.get('/api/transactions', async (req, res) => {
     try {
-        const { server, cube, top, elements } = req.query
+        const { server, cube, top, elements, days } = req.query
         const parsed = elements ? JSON.parse(elements) : null
-        res.json(await makeClient(server, req.ideToken).getTransactionLog(cube, {
-            top:      top ? parseInt(top) : 200,
-            elements: parsed,
-        }))
+        const nDays  = Math.min(Math.max(parseInt(days) || 7, 1), 366)
+        const client = makeClient(server, req.ideToken)
+        // Logging off: TM1 keeps no history for this cube, so don't make it search for nothing.
+        if (await client.getCubeLoggingOff(cube) === true) return res.json({ entries: [], loggingOff: true, days: nDays })
+        const key = [req.ideToken ?? '', server, cube, nDays].join('|')
+        let search = txLogSearches.get(key)
+        if (!search) {
+            search = client.getTransactionLog(cube, { top: 5000, days: nDays }).finally(() => txLogSearches.delete(key))
+            txLogSearches.set(key, search)
+        }
+        const rows = await search
+        const want = Array.isArray(parsed) ? parsed : null
+        const entries = rows
+            .filter(e => !want || want.every((el, i) => !el || (e.Tuple?.[i] ?? '') === el))
+            .slice(0, top ? parseInt(top) : 200)
+        res.json({ entries, loggingOff: false, days: nDays })
     } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// Restore one cell to the value it had before a logged change (the Log panel's Restore button).
+// TM1 admins only — the log isn't filtered by cell security. Refuses, unless forced, when the cell
+// has changed again since that log row, so a newer change is never wiped by accident. The write
+// goes through the user's own TM1 login, so TM1 still decides whether the cell can be written.
+app.post('/api/transactions/restore', async (req, res) => {
+    try {
+        const { server, cube, tuple, restoreTo, expectNow, force } = req.body ?? {}
+        if (!gateReadOnly(res, server)) return
+        if (!server || !cube || !Array.isArray(tuple) || !tuple.length)
+            return res.status(400).json({ error: 'server, cube and tuple are required' })
+        const client = makeClient(server, req.ideToken)
+        const me = await client.get('ActiveUser', { '$expand': 'Groups($select=Name)' })
+        if (!isAdminGroups(me?.Groups))
+            return res.status(403).json({ error: `Only TM1 admins can restore values from the transaction log on ${server}.` })
+        const dims = ((await client.get(`Cubes('${odataKey(cube)}')/Dimensions`, { '$select': 'Name' })).value ?? []).map(d => d.Name)
+        if (dims.length !== tuple.length)
+            return res.status(400).json({ error: `The log row has ${tuple.length} elements but ${cube} has ${dims.length} dimensions.` })
+        const br = x => String(x).replace(/]/g, ']]')
+        // TM1 v11 rejects an axis-less SELECT, so the last dimension goes on columns, the rest in WHERE.
+        const mem = i => `[${br(dims[i])}].[${br(dims[i])}].[${br(tuple[i])}]`
+        const last = dims.length - 1
+        const where = dims.slice(0, last).map((_, i) => mem(i)).join(',')
+        const cell = await client.post('ExecuteMDX?$expand=Cells($select=Value)', {
+            MDX: `SELECT {${mem(last)}} ON 0 FROM [${br(cube)}]${where ? ` WHERE (${where})` : ''}` })
+        const current = cell?.Cells?.[0]?.Value ?? null
+        const same = (a, b) => (a == null || a === '' ? 0 : a) == (b == null || b === '' ? 0 : b) || String(a ?? '') === String(b ?? '')
+        if (!force && !same(current, expectNow))
+            return res.status(409).json({ error: 'changed since', current })
+        await client.writeCellValue(cube, dims.map((dim, i) => ({ dim, element: tuple[i] })), restoreTo ?? 0)
+        cl.writeLog({ server, action: 'CELL_RESTORED', objectType: 'cell', objectName: cube,
+            detail: `${tuple.join(' · ')}: ${current} → ${restoreTo} (restored from the transaction log)`,
+            beforeState: { tuple, value: current }, afterState: { tuple, value: restoreTo }, user: req.user })
+        res.json({ ok: true, previous: current, value: restoreTo })
+    } catch (e) {
+        const detail = e.response?.data?.error?.message ?? e.message
+        res.status(500).json({ error: typeof detail === 'string' ? detail : JSON.stringify(detail) })
+    }
 })
 
 // ── File management ───────────────────────────────────────────────────────────

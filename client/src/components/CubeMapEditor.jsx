@@ -11,7 +11,7 @@ import { useStore } from '../store'
 import {
   Network, ChevronRight, ChevronDown, Search, X, RefreshCw, ArrowRight, Layers,
   Code2, Workflow, Filter, GitBranch, Zap, BookOpen, Milestone,
-  Box, Eye, Play, Pause, StepBack, StepForward, SkipBack, Clapperboard, PanelLeftClose, PanelLeftOpen, Info, ExternalLink, Maximize2, History, ArrowLeft,
+  Eye, Play, Pause, StepBack, StepForward, SkipBack, Clapperboard, PanelLeftClose, PanelLeftOpen, Info, ExternalLink, Maximize2, ArrowLeft, RotateCw, Columns2,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { loadSettings } from '@/lib/formatters/settings.js'
@@ -58,7 +58,6 @@ function buildReverseMap(cubeData) {
 // network (reads/writes/calls/dim changes) as well as rule links.
 const MAX_FOCUS_NODES = 250
 const FIT_MAX_ZOOM = 1.1   // fit-to-view may never blow a 4-node graph up past this
-const FIT_MIN_ZOOM = 0.8   // automatic fit never shrinks an object smaller than this
 const FIT_MIN_ZOOM_FULL = 0.05 // explicit Fit to screen may go all the way out
 const prefixOf = name => String(name ?? '').split(/[\s_]/)[0]
 
@@ -116,6 +115,62 @@ function getReachable(startIds, depth, kinds, ctx) {
 }
 
 // Run sequence + Steps list live in @/lib/run-sequence and this file's dialogs below
+
+// ── Process folding ───────────────────────────────────────────────────────────
+// A process another process calls is a helper of its caller's chain: on the map it folds into the
+// top-level process(es) it belongs to (ones with no caller), which show "+n". Worked out from the
+// code each load — nothing to maintain. A shared helper folds into every caller on screen; open a
+// chain (its "+n") to show every step.
+
+function processRoots(processData, processCallers) {
+  const memo = {}
+  const rootsOf = (name, seen = new Set()) => {
+    if (memo[name]) return memo[name]
+    if (seen.has(name)) return new Set()          // call cycle — no root through here
+    seen.add(name)
+    const callers = (processCallers[name] ?? []).filter(c => processData[c])
+    const out = new Set()
+    if (!callers.length) out.add(name)
+    else for (const c of callers) for (const r of rootsOf(c, seen)) out.add(r)
+    if (!out.size) out.add(name)                  // only reachable through a cycle: treat as its own root
+    memo[name] = out
+    return out
+  }
+  return Object.fromEntries(Object.keys(processData).map(n => [n, rootsOf(n)]))
+}
+
+function foldProcesses(rawNodes, rawEdges, roots, expanded, onToggleFold) {
+  const present = new Set(rawNodes.filter(n => n.type === 'process').map(n => n.id.slice(5)))
+  // helper name -> the top-level processes on screen it folds into (all of them, so a shared helper
+  // like a recalculation request never draws a fan of call lines); opening any of those chains shows it
+  const into = {}
+  for (const name of present) {
+    const rs = [...(roots[name] ?? [])].filter(r => r !== name && present.has(r))
+    if (rs.length && !rs.some(r => expanded.has(r))) into[name] = rs
+  }
+  const count = {}
+  for (const rs of Object.values(into)) for (const r of rs) count[r] = (count[r] ?? 0) + 1
+  const mapIds = id => id.startsWith('proc:') && into[id.slice(5)] ? into[id.slice(5)].map(r => `proc:${r}`) : [id]
+  const nodes = rawNodes.filter(n => !(n.type === 'process' && into[n.id.slice(5)])).map(n => {
+    if (n.type !== 'process') return n
+    const name = n.id.slice(5)
+    const hidden = count[name] ?? 0
+    return hidden > 0 || expanded.has(name)
+      ? { ...n, data: { ...n.data, folded: hidden, expanded: expanded.has(name), onToggleFold: () => onToggleFold(name) } }
+      : n
+  })
+  const seen = new Set(), edges = []
+  for (const e of rawEdges) {
+    for (const source of mapIds(e.source)) for (const target of mapIds(e.target)) {
+      if (source === target) continue              // a call inside a folded chain
+      const id = `${e.type}:${source}:${target}`
+      if (seen.has(id)) continue
+      seen.add(id)
+      edges.push({ ...e, id, source, target })
+    }
+  }
+  return { nodes, edges }
+}
 
 // ── Prefix clustering ─────────────────────────────────────────────────────────
 
@@ -265,7 +320,7 @@ function GroupNode({ data }) {
 }
 
 function ProcessNode({ data }) {
-  const { label } = data
+  const { label, folded = 0, expanded, onToggleFold } = data
   return (
     <div style={{
       width: NODE_W, height: NODE_H, borderRadius: 8,
@@ -280,6 +335,16 @@ function ProcessNode({ data }) {
         fontSize: 11, fontWeight: 500, color: 'var(--cm-text)', fontFamily: 'monospace',
         overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1,
       }}>{label}</span>
+      {onToggleFold && (
+        <button
+          className="nodrag"
+          onClick={e => { e.stopPropagation(); onToggleFold() }}
+          title={expanded ? 'Fold this chain back into one box' : `${folded} process${folded !== 1 ? 'es' : ''} this one runs — click to show each step`}
+          style={{
+            flexShrink: 0, fontSize: 10, fontWeight: 600, padding: '1px 6px', borderRadius: 10, cursor: 'pointer',
+            border: '1px solid #10b981', background: expanded ? 'none' : 'rgba(16,185,129,0.18)', color: '#10b981',
+          }}>{expanded ? '−' : `+${folded}`}</button>
+      )}
       <Handle type="source" position={Position.Right} style={{ opacity: 0 }} />
     </div>
   )
@@ -364,9 +429,13 @@ function SvgMarkers() {
 }
 
 
+// Rotate cycles the dagre direction; the label is for the tooltip.
+const LAYOUT_NEXT  = { LR: 'TB', TB: 'RL', RL: 'BT', BT: 'LR' }
+const LAYOUT_LABEL = { LR: 'left to right', TB: 'top to bottom', RL: 'right to left', BT: 'bottom to top' }
+
 // ── Legend ────────────────────────────────────────────────────────────────────
 
-function Legend() {
+function Legend({ onClose }) {
   return (
     <div style={{
       position: 'absolute', bottom: 44, right: 10, zIndex: 5,
@@ -375,11 +444,16 @@ function Legend() {
       display: 'flex', flexDirection: 'column', gap: 6,
       boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
     }}>
-      <span style={{ fontWeight: 700, fontSize: 9, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 2 }}>Legend</span>
+      <div style={{ display: 'flex', alignItems: 'center', marginBottom: 2 }}>
+        <span style={{ fontWeight: 700, fontSize: 9, textTransform: 'uppercase', letterSpacing: '0.06em', flex: 1 }}>Legend</span>
+        <button onClick={onClose} title="Hide the legend (the book icon at the top brings it back)" style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: 'var(--cm-icon)', display: 'flex', alignItems: 'center' }}>
+          <X size={10} />
+        </button>
+      </div>
       {[
         { el: <div style={{ width: 20, height: 1.5, background: '#b45309' }} />,                      label: 'Rule DB() reference'     },
         { el: <div style={{ width: 20, borderTop: '1.5px dashed #475569' }} />,                       label: 'Feeder reference'        },
-        { el: <div style={{ width: 3, height: 10, background: '#f59e0b', borderRadius: 2 }} />,       label: 'Has rules (bar = LOC)'   },
+        { el: <div style={{ width: 3, height: 10, background: '#f59e0b', borderRadius: 2 }} />,       label: 'Has rules (bar = lines of rules)'   },
         { el: <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#60a5fa' }} />,     label: 'Dim spotlight match'   },
         { el: <div style={{ width: 20, height: 1.5, background: '#10b981' }} />,                       label: 'TI writes to cube'       },
         { el: <div style={{ width: 20, borderTop: '1.5px dashed #0ea5e9' }} />,                        label: 'Cube read by TI'         },
@@ -456,19 +530,28 @@ function DimItem({ name, active, onClick }) {
   )
 }
 
-function ActionBtn({ icon, label, onClick, title }) {
+// A panel button; with onSplit it gets a second half that opens the same thing beside the map.
+function ActionBtn({ icon, label, onClick, title, onSplit }) {
+  const base = {
+    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4,
+    padding: '4px 6px', fontSize: 11, cursor: 'pointer',
+    background: 'var(--cm-node-bg)', border: '1px solid var(--cm-border)', color: 'var(--cm-text)',
+    transition: 'border-color 0.1s',
+  }
+  const hover = { onMouseEnter: e => { e.currentTarget.style.borderColor = 'var(--cm-link)' }, onMouseLeave: e => { e.currentTarget.style.borderColor = 'var(--cm-border)' } }
   return (
-    <button onClick={onClick} title={title} style={{
-      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4,
-      flex: 1, padding: '4px 6px', fontSize: 11, borderRadius: 5, cursor: 'pointer',
-      background: 'var(--cm-node-bg)', border: '1px solid var(--cm-border)', color: 'var(--cm-text)',
-      transition: 'border-color 0.1s',
-    }}
-      onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--cm-link)'}
-      onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--cm-border)'}
-    >
-      {icon} {label}
-    </button>
+    <div style={{ display: 'flex', flex: 1, minWidth: 0 }}>
+      <button onClick={onClick} title={title} {...hover}
+        style={{ ...base, flex: 1, borderRadius: onSplit ? '5px 0 0 5px' : 5 }}>
+        {icon} {label}
+      </button>
+      {onSplit && (
+        <button onClick={onSplit} title={`${label} — open beside the map (split)`} {...hover}
+          style={{ ...base, padding: '4px 5px', borderLeft: 'none', borderRadius: '0 5px 5px 0', color: 'var(--cm-text-muted)' }}>
+          <Columns2 size={11} />
+        </button>
+      )}
+    </div>
   )
 }
 
@@ -486,11 +569,12 @@ function StatChip({ label, value }) {
 function DetailPanel({
   cube, cubeData, reverseMap,
   onNavigate, onClose,
-  onOpenRules, onOpenCube, onOpenLog,
+  onOpenRules, onOpenView, onOpenRulesSplit, onOpenViewSplit,
   processCallers = {},
   onFilterDim, dimFilter,
-  traceDepth, setTraceDepth, traceKinds, setTraceKinds, transitiveCount,
+  traceKinds, setTraceKinds, transitiveCount,
 }) {
+  const [followOpen, setFollowOpen] = useState(false)
   if (!cube || !cubeData) return null
   const { dims, hasRules, ruleCalcRefs, ruleFeederRefs, tiWriters = [], tiReaders = [], ruleLoc = 0 } = cubeData
   const incomingCalc = (reverseMap[cube] ?? []).filter(n => n !== cube)
@@ -513,46 +597,26 @@ function DetailPanel({
 
       {/* Open actions */}
       <div style={{ padding: '8px 10px', borderBottom: '1px solid var(--cm-border)', display: 'flex', gap: 5 }}>
-        {hasRules && <ActionBtn icon={<Code2 size={11} />} label="Rules"    onClick={onOpenRules} title="Open rules editor" />}
-        <ActionBtn icon={<Box size={11} />}       label="Cube"     onClick={onOpenCube}  title="Open cube editor" />
-        <ActionBtn icon={<History size={11} />}   label="Log"      onClick={() => onOpenLog?.(cube, dims)} title="Transaction log for this cube" />
+        {hasRules && <ActionBtn icon={<Code2 size={11} />} label="Rules"    onClick={onOpenRules} onSplit={onOpenRulesSplit} title="Open the rules editor" />}
+        <ActionBtn icon={<Eye size={11} />}       label="View"     onClick={onOpenView}  onSplit={onOpenViewSplit}  title="Open the cube's Default view — see its data" />
       </div>
 
       {/* Stats */}
       <div style={{ padding: '8px 12px', borderBottom: '1px solid var(--cm-border)', display: 'flex', gap: 14, justifyContent: 'flex-start' }}>
         <StatChip label="dims"      value={dims.length} />
-        {hasRules          && <StatChip label="rule LOC" value={ruleLoc} />}
+        {hasRules          && <StatChip label="rule lines" value={ruleLoc} />}
         {transitiveCount > 0 && <StatChip label="connected" value={transitiveCount} />}
         {tiWriters.length > 0 && <StatChip label="TI writers" value={tiWriters.length} />}
         {tiReaders.length > 0 && <StatChip label="TI readers" value={tiReaders.length} />}
       </div>
 
-      {/* Trace depth */}
-      <div style={{ padding: '8px 12px', borderBottom: '1px solid var(--cm-border)' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 5 }} title="How many hops to follow from this cube through the edge kinds selected below (rules AND TI reads/writes/calls/dimension usage).">
-          <GitBranch size={10} style={{ color: 'var(--cm-text-muted)' }} />
-          <span style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--cm-text-muted)', opacity: 0.65 }}>Trace depth</span>
-        </div>
-        <div style={{ display: 'flex', gap: 3 }}>
-          {[1, 2, 3, 4].map(d => (
-            <button key={d} onClick={() => setTraceDepth(d)} style={{
-              flex: 1, padding: '3px 0', fontSize: 11, fontWeight: d === traceDepth ? 700 : 400,
-              borderRadius: 4, cursor: 'pointer',
-              background: d === traceDepth ? 'var(--cm-sel-bg)' : 'none',
-              border: `1px solid ${d === traceDepth ? 'var(--cm-link)' : 'var(--cm-border)'}`,
-              color: d === traceDepth ? 'var(--cm-link)' : 'var(--cm-text-muted)',
-              transition: 'all 0.1s',
-            }}>{d}</button>
-          ))}
-        </div>
-      </div>
-
       {/* Follow kinds */}
-      <div style={{ padding: '8px 12px', borderBottom: '1px solid var(--cm-border)' }} title="Edge kinds the trace follows. Untick to cut whole relationship types out of the reachable graph.">
-        <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 5 }}>
-          <Zap size={10} style={{ color: 'var(--cm-text-muted)' }} />
-          <span style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--cm-text-muted)', opacity: 0.65 }}>Follow</span>
-        </div>
+      <div style={{ padding: '6px 12px', borderBottom: '1px solid var(--cm-border)' }} title="Fine-tune which kinds of link the trace follows. Show (left panel) switches them in groups.">
+        <button onClick={() => setFollowOpen(v => !v)} style={{ display: 'flex', alignItems: 'center', gap: 5, width: '100%', background: 'none', border: 'none', padding: 0, cursor: 'pointer', marginBottom: followOpen ? 5 : 0 }}>
+          {followOpen ? <ChevronDown size={10} style={{ color: 'var(--cm-text-muted)' }} /> : <ChevronRight size={10} style={{ color: 'var(--cm-text-muted)' }} />}
+          <span style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--cm-text-muted)', opacity: 0.65 }}>Fine-tune the trace</span>
+        </button>
+        {followOpen && (
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
           {[
             { k: 'rule',     label: 'Rules' },
@@ -569,6 +633,7 @@ function DetailPanel({
             </label>
           ))}
         </div>
+        )}
       </div>
 
       {/* Scrollable sections */}
@@ -671,6 +736,7 @@ function CubeMapInner({ tab }) {
   const prefixes = useMemo(() => [...new Set([
     ...Object.keys(cubeDataAll ?? {}), ...Object.keys(processDataAll ?? {}),
   ].map(prefixOf).filter(Boolean))].sort(), [cubeDataAll, processDataAll])
+  const procRoots = useMemo(() => processRoots(processDataAll ?? {}, processCallers ?? {}), [processDataAll, processCallers])
   const [nodes, setNodes, onNodesChange] = useNodesState([])
   const [edges, setEdges, onEdgesChange] = useEdgesState([])
 
@@ -692,14 +758,22 @@ function CubeMapInner({ tab }) {
   const [dimmedIds,      setDimmedIds]      = useState(new Set())
   const [dimFilter,      setDimFilter]      = useState(null)
   const [traceDepth,     setTraceDepth]     = useState(prefs.traceDepth ?? 1)
-  const [showLegend,     setShowLegend]     = useState(prefs.showLegend ?? false)
+  const [showLegend,     setShowLegend]     = useState(prefs.showLegend ?? true)
   const [showClusters,   setShowClusters]   = useState(prefs.showClusters ?? false)
   const [dimSpotlight,   setDimSpotlight]   = useState('')
-  const [showProcesses,  setShowProcesses]  = useState(prefs.showProcesses ?? true)
+  const [showProcesses,  setShowProcesses]  = useState(true)
   const [allTI,          setAllTI]          = useState(prefs.allTI ?? false)
   const [showDims,       setShowDims]       = useState(prefs.showDims ?? true)
   const [scope,          setScope]          = useState(prefs.scope ?? '')
   const [sidebarOpen,    setSidebarOpen]    = useState(prefs.sidebarOpen ?? true)
+  const [advancedOpen,   setAdvancedOpen]   = useState(false)
+  const [expandedFolds,  setExpandedFolds]  = useState(() => new Set())   // process chains opened out on the map
+  const [fitTick,        setFitTick]        = useState(0)   // bumped on every map rebuild; the fit effect watches it
+  const toggleFold = useCallback(name => setExpandedFolds(prev => {
+    const next = new Set(prev)
+    if (next.has(name)) next.delete(name); else next.add(name)
+    return next
+  }), [])
   const cubeData = useMemo(() => (!cubeDataAll ? cubeDataAll : !scope ? cubeDataAll : Object.fromEntries(Object.entries(cubeDataAll).filter(([n]) => prefixOf(n) === scope))), [cubeDataAll, scope])
   const processData = useMemo(() => (!scope ? processDataAll : Object.fromEntries(Object.entries(processDataAll).filter(([n]) => prefixOf(n) === scope))), [processDataAll, scope])
   const dimData = useMemo(() => (!scope ? dimDataAll : Object.fromEntries(Object.entries(dimDataAll).filter(([n]) => prefixOf(n) === scope))), [dimDataAll, scope])
@@ -761,7 +835,7 @@ function CubeMapInner({ tab }) {
 
   // The runbook is a docked panel — refit the map when it opens/closes.
   useEffect(() => {
-    const t = setTimeout(() => fitView({ padding: 0.12, duration: 250, maxZoom: FIT_MAX_ZOOM, minZoom: FIT_MIN_ZOOM }), 120)
+    const t = setTimeout(() => fitView({ padding: 0.08, duration: 250, maxZoom: FIT_MAX_ZOOM, minZoom: FIT_MIN_ZOOM_FULL }), 120)
     return () => clearTimeout(t)
   }, [runbookOpen, fitView])
 
@@ -771,11 +845,10 @@ function CubeMapInner({ tab }) {
   }, [fitView])
 
   // Restore this tab's player/phase/camera when coming back from a rules or process tab.
-  const savedSessionRef = useRef(getCubemapSession(tab?.id))
   const didRestoreRef = useRef(false)
   useEffect(() => {
     if (didRestoreRef.current || !modelReady || !cubeData || !processData) return
-    const saved = savedSessionRef.current
+    const saved = getCubemapSession(tab?.id)   // read now: leaving the old copy may have saved after this one rendered
     didRestoreRef.current = true
     if (!saved) return
     if (saved.scope) setScope(saved.scope)
@@ -802,7 +875,7 @@ function CubeMapInner({ tab }) {
       setRunScope({ nodes, edges })
     }
     if (saved.viewport) setTimeout(() => setViewport(saved.viewport, { duration: 0 }), 250)
-  }, [modelReady, cubeData, processData, dimData, chores, setViewport])
+  }, [modelReady, cubeData, processData, dimData, chores, setViewport, tab?.id])
 
   // Keep the session current; the cleanup also catches a tab switch.
   const sessionRef = useRef(null)
@@ -871,21 +944,44 @@ function CubeMapInner({ tab }) {
   // underscore-prefix fallback). Used for the module lens.
   const modulesMap = useMemo(() => cubeData ? computePrefixGroups(Object.keys(cubeData), groupRegex) : {}, [cubeData, groupRegex])
   const modules = useMemo(() => Object.keys(modulesMap).sort(), [modulesMap])
-  const reachableSet = useMemo(() => {
+  // Where a trace starts: the module's cubes, the phase's processes, or the clicked cube.
+  const focusSeeds = useMemo(() => {
     if (!cubeData) return null
-    const ctx = { cubeData, processData, dimData, reverseMap, processCallers }
     if (moduleFocus) {
       const seeds = modulesMap[moduleFocus] ?? []
-      if (!seeds.length) return null
-      return getReachable(seeds, traceDepth, traceKinds, ctx)
+      return seeds.length ? seeds : null
     }
     if (phaseFocus?.processes?.length) {
       const seeds = phaseFocus.processes.map(p => `proc:${p}`).filter(id => processData[id.slice(5)])
-      if (seeds.length) return getReachable(seeds, traceDepth, traceKinds, ctx)
+      if (seeds.length) return seeds
     }
-    if (!selectedCube) return null
-    return getReachable([selectedCube], traceDepth, traceKinds, ctx)
-  }, [moduleFocus, phaseFocus, selectedCube, traceDepth, traceKinds, cubeData, processData, dimData, reverseMap, processCallers, modulesMap])
+    return selectedCube ? [selectedCube] : null
+  }, [moduleFocus, phaseFocus, selectedCube, cubeData, processData, modulesMap])
+
+  const traceCtx = useMemo(() => ({ cubeData, processData, dimData, reverseMap, processCallers }),
+    [cubeData, processData, dimData, reverseMap, processCallers])
+
+  const reachableSet = useMemo(() => (focusSeeds ? getReachable(focusSeeds, traceDepth, traceKinds, traceCtx) : null),
+    [focusSeeds, traceDepth, traceKinds, traceCtx])
+
+  // How much each Steps away setting would bring in, shown on its button before you click it.
+  const stepCounts = useMemo(() => (focusSeeds
+    ? [1, 2, 3, 4].map(d => getReachable(focusSeeds, d, traceKinds, traceCtx).size - focusSeeds.length)
+    : null), [focusSeeds, traceKinds, traceCtx])
+
+  // What the trace reached, by kind (folded helper processes included).
+  const reachBreakdown = useMemo(() => {
+    if (!reachableSet || !focusSeeds) return null
+    const seeds = new Set(focusSeeds)
+    const out = { cubes: 0, processes: 0, dims: 0 }
+    for (const id of reachableSet) {
+      if (seeds.has(id)) continue
+      if (id.startsWith('proc:')) out.processes++
+      else if (id.startsWith('dim:')) out.dims++
+      else out.cubes++
+    }
+    return out
+  }, [reachableSet, focusSeeds])
 
   // ── Build graph ───────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -929,7 +1025,7 @@ function CubeMapInner({ tab }) {
       }
       setNodes(applyDagreLayout(rawNodes, rawEdges, layout))
       setEdges(rawEdges)
-      setTimeout(() => fitView({ padding: 0.14, duration: 300, maxZoom: FIT_MAX_ZOOM, minZoom: FIT_MIN_ZOOM }), 80)
+      setTimeout(() => fitView({ padding: 0.08, duration: 300, maxZoom: FIT_MAX_ZOOM, minZoom: FIT_MIN_ZOOM_FULL }), 80)
       return
     }
 
@@ -979,8 +1075,10 @@ function CubeMapInner({ tab }) {
           if (traceKinds.feeder) (d?.ruleFeederRefs ?? []).forEach(t => addEdge('rule_feeder', id, t))
         }
       }
-      setNodes(applyGrouping(applyDagreLayout(rawNodes, rawEdges, layout), showClusters, groupRegex))
-      setEdges(rawEdges)
+      const f = runScope ? { nodes: rawNodes, edges: rawEdges } : foldProcesses(rawNodes, rawEdges, procRoots, expandedFolds, toggleFold)
+      setNodes(applyGrouping(applyDagreLayout(f.nodes, f.edges, layout), showClusters, groupRegex))
+      setEdges(f.edges)
+      setFitTick(t => t + 1)
       return
     }
 
@@ -1056,16 +1154,20 @@ function CubeMapInner({ tab }) {
       }
     }
 
-    setNodes(applyGrouping(applyDagreLayout(rawNodes, rawEdges, layout), showClusters, groupRegex))
-    setEdges(rawEdges)
-  }, [cubeData, processData, dimData, allTI, showDims, showProcesses, showCalc, showFeeders, layout, dimFilter, showClusters, groupRegex, focused, selectedCube, traceDepth, traceKinds, reachableSet, runScope, fitView])
+    const f = runScope ? { nodes: rawNodes, edges: rawEdges } : foldProcesses(rawNodes, rawEdges, procRoots, expandedFolds, toggleFold)
+    setNodes(applyGrouping(applyDagreLayout(f.nodes, f.edges, layout), showClusters, groupRegex))
+    setEdges(f.edges)
+    setFitTick(t => t + 1)
+  }, [cubeData, processData, dimData, allTI, showDims, showProcesses, showCalc, showFeeders, layout, dimFilter, showClusters, groupRegex, focused, selectedCube, traceDepth, traceKinds, reachableSet, runScope, fitView, procRoots, expandedFolds, toggleFold])
 
   // ── Fit view ──────────────────────────────────────────────────────────────────
   // (not while Show is running — the camera holds still there; startShow does one fit itself)
   const showRunningRef = useRef(false)
   useEffect(() => {
-    if (nodes.length && !showRunningRef.current) setTimeout(() => fitView({ padding: 0.12, duration: 400, maxZoom: FIT_MAX_ZOOM, minZoom: FIT_MIN_ZOOM }), 50)
-  }, [nodes.length, layout, dimFilter, focused, selectedCube])
+    // Every rebuild of the map (model, Show switches, Steps away, a click, a filter) fits it to the
+    // screen — however small that makes it. Fit to screen does the same on demand.
+    if (fitTick && !showRunningRef.current) setTimeout(() => fitView({ padding: 0.08, duration: 400, maxZoom: FIT_MAX_ZOOM, minZoom: FIT_MIN_ZOOM_FULL }), 50)
+  }, [fitTick, fitView])
 
   // ── Show playback ───────────────────────────────────────────────────────────
   // Entry points: chores, then processes nothing else calls, longest run first
@@ -1115,6 +1217,14 @@ function CubeMapInner({ tab }) {
     playbackReturnRef.current = null
     showRunningRef.current = false
   }, [])
+
+  // The three tabs at the top of the sidebar: one mode at a time.
+  const mapMode = showBar ? 'run' : runbookOpen ? 'runbook' : 'map'
+  const setMapMode = useCallback(mode => {
+    if (mode !== 'run' && showBar) stopShow()
+    setRunbookOpen(mode === 'runbook')
+    if (mode === 'run') setShowBar(true)
+  }, [showBar, stopShow])
 
   useEffect(() => {
     if (!playing || !runSeq) return
@@ -1262,8 +1372,12 @@ function CubeMapInner({ tab }) {
   const focusMode = !!(focused || phaseFocus || runScope)
   const rulesVisible = focusMode ? !!traceKinds.rule : showCalc
   const feedersVisible = focusMode ? !!traceKinds.feeder : showFeeders
-  const tiKinds = ['read', 'write', 'call', 'dimwrite', 'dimuse']
-  const tiVisible = focusMode ? tiKinds.some(k => traceKinds[k]) : allTI
+  const tiKinds  = ['read', 'write', 'call']
+  const dimKinds = ['dimwrite', 'dimuse']
+  const tiVisible   = focusMode ? tiKinds.some(k => traceKinds[k]) : allTI
+  const dimsVisible = focusMode ? dimKinds.some(k => traceKinds[k]) : (allTI && showDims)
+  // On the full map dimensions only appear through processes; on a cube they can be followed directly.
+  const dimsAvailable = focusMode || allTI
   const toggleRules = () => {
     const next = !rulesVisible
     setShowCalc(next)
@@ -1274,14 +1388,18 @@ function CubeMapInner({ tab }) {
     setShowFeeders(next)
     setTraceKinds(k => ({ ...k, feeder: next }))
   }
+  // Each Show switch sets the full-map flag and the trace kinds together, so it means the same
+  // thing on the full map and on a cube.
   const toggleTI = () => {
-    if (focusMode) {
-      const next = !tiVisible
-      setTraceKinds(k => ({ ...k, read: next, write: next, call: next, dimwrite: next, dimuse: next }))
-    } else {
-      setAllTI(v => !v)
-      setShowProcesses(true)
-    }
+    const next = !tiVisible
+    setAllTI(next)
+    setShowProcesses(true)
+    setTraceKinds(k => ({ ...k, read: next, write: next, call: next }))
+  }
+  const toggleDims = () => {
+    const next = !dimsVisible
+    setShowDims(next)
+    setTraceKinds(k => ({ ...k, dimwrite: next, dimuse: next }))
   }
 
   // Esc exits focus / module view
@@ -1330,20 +1448,18 @@ function CubeMapInner({ tab }) {
   }, [focused, trailBack])
 
   // ── Open tab actions ──────────────────────────────────────────────────────────
-  const openRules   = (cube)  => openTab({ id: `rules:${srv}:${cube}`,           type: 'rules',      label: cube,    server: srv, cube })
-  const openCube    = (cube)  => openTab({ id: `cubeeditor:${srv}:${cube}`,       type: 'cubeeditor', label: cube,    server: srv, cube })
+  // Save where the map is before any tab opens: opening a tab or a split can rebuild the Cube Map
+  // before the old copy has saved, and it would come back at the full map.
+  const openHere = (t, o) => { saveSession(); openTab(t, o) }
+  const openSide = (t, o) => { saveSession(); openTabToSide(t, o) }
+  const openRules   = (cube)  => openHere({ id: `rules:${srv}:${cube}`,           type: 'rules',      label: cube,    server: srv, cube })
+  const openView    = (cube)  => openHere({ id: `view:${srv}:${cube}:Default`,     type: 'view',       label: cube,    server: srv, cube, viewName: 'Default' })
   // Drill-ins from the player/runbook keep the map visible beside them.
   // Alt-click "opens here" instead (the old replace-the-pane behaviour).
-  const openProcessCtx   = (name, openHere) => (openHere ? openTab : openTabToSide)({ id: `process:${srv}:${name}`,   type: 'process',    label: name, server: srv, name, content: null })
-  const openDimensionCtx = (dim, openHere)  => (openHere ? openTab : openTabToSide)({ id: `dimension:${srv}:${dim}`,  type: 'dimension',  label: dim,  server: srv, dimension: dim })
-  const openRulesCtx     = (cube, openHere) => (openHere ? openTab : openTabToSide)({ id: `rules:${srv}:${cube}`,     type: 'rules',      label: cube, server: srv, cube })
-  const openCubeCtx      = (cube, openHere) => (openHere ? openTab : openTabToSide)({ id: `cubeeditor:${srv}:${cube}`, type: 'cubeeditor', label: cube, server: srv, cube })
-  const openTransactionLog = (cube, dims = [], label = '') => openTabToSide({
-    id: `txlog:${srv}:${cube}:${Date.now()}`,
-    type: 'transactionlog',
-    label: `Log — ${cube}${label ? ` · ${label}` : ''}`,
-    server: srv, cube, cubeDims: dims, elements: null,
-  }, { noSplit: true })
+  const openProcessCtx   = (name, here) => (here ? openHere : openSide)({ id: `process:${srv}:${name}`,   type: 'process',    label: name, server: srv, name, content: null })
+  const openDimensionCtx = (dim, here)  => (here ? openHere : openSide)({ id: `dimension:${srv}:${dim}`,  type: 'dimension',  label: dim,  server: srv, dimension: dim })
+  const openRulesCtx     = (cube, here) => (here ? openHere : openSide)({ id: `rules:${srv}:${cube}`,     type: 'rules',      label: cube, server: srv, cube })
+  const openCubeCtx      = (cube, here) => (here ? openHere : openSide)({ id: `view:${srv}:${cube}:Default`, type: 'view', label: cube, server: srv, cube, viewName: 'Default' })
 
   // ── Dim filter ────────────────────────────────────────────────────────────────
   const handleFilterDim = (dim) => { setDimFilter(p => p === dim ? null : dim); setModuleFocus(null); setSelectedCube(null); setPhaseFocus(null); setFocused(false); setTrail([]) }
@@ -1414,22 +1530,47 @@ function CubeMapInner({ tab }) {
             <button onClick={() => setSidebarOpen(false)} title="Hide the object list" style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 3, color: 'var(--cm-icon)', borderRadius: 4, display: 'flex', alignItems: 'center' }}>
               <PanelLeftClose size={13} />
             </button>
-            <button onClick={() => setRunbookOpen(true)} title="Runbook — phased review of a model update" style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 3, color: runbookOpen ? '#f59e0b' : 'var(--cm-icon)', borderRadius: 4, display: 'flex', alignItems: 'center' }}>
-              <Milestone size={13} />
-            </button>
-            <button onClick={() => setShowBar(v => !v)} title="Show — step through a run" style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 3, color: showBar ? '#f59e0b' : 'var(--cm-icon)', borderRadius: 4, display: 'flex', alignItems: 'center' }}>
-              <Clapperboard size={12} />
-            </button>
-            <button onClick={() => setShowLegend(v => !v)} title="Legend" style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 3, color: showLegend ? 'var(--cm-link)' : 'var(--cm-icon)', borderRadius: 4, display: 'flex', alignItems: 'center' }}>
+            <button onClick={() => setShowLegend(v => !v)} title={showLegend ? 'Hide the legend (what the lines and colours mean)' : 'Show the legend (what the lines and colours mean)'} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 3, color: showLegend ? 'var(--cm-link)' : 'var(--cm-icon)', borderRadius: 4, display: 'flex', alignItems: 'center' }}>
               <BookOpen size={12} />
             </button>
-            <button onClick={fitToScreen} title="Fit to screen — may zoom out below the normal minimum for a huge map" style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 3, color: 'var(--cm-icon)', borderRadius: 4, display: 'flex', alignItems: 'center' }}>
+            <button onClick={fitToScreen} title="Fit the whole map to the screen" style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 3, color: 'var(--cm-icon)', borderRadius: 4, display: 'flex', alignItems: 'center' }}>
               <Maximize2 size={13} />
             </button>
-            <button onClick={fetchModel} disabled={loading} title="Refresh" style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 3, color: 'var(--cm-icon)', borderRadius: 4, display: 'flex', alignItems: 'center' }}>
+            <button onClick={fetchModel} disabled={loading} title="Reload the model from the server" style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 3, color: 'var(--cm-icon)', borderRadius: 4, display: 'flex', alignItems: 'center' }}>
               <RefreshCw size={13} style={{ animation: loading ? 'cm-spin 1s linear infinite' : 'none' }} />
             </button>
           </div>
+
+          {/* Mode tabs — the map, a process run played step by step, or the runbook */}
+          <div style={{ display: 'flex', gap: 2, padding: 2, borderRadius: 6, background: 'var(--cm-node-bg)', border: '1px solid var(--cm-border)' }}>
+            {[
+              { key: 'map',     label: 'Map',        icon: <Network size={11} />,      title: 'The model: cubes, and what connects them' },
+              { key: 'run',     label: 'Play a run', icon: <Clapperboard size={11} />, title: 'Play a process or chore step by step across the map' },
+              { key: 'runbook', label: 'Runbook',    icon: <Milestone size={11} />,    title: 'Review a model update phase by phase' },
+            ].map(t => {
+              const active = mapMode === t.key
+              return (
+                <button key={t.key} onClick={() => setMapMode(t.key)} title={t.title} style={{
+                  flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4,
+                  padding: '3px 2px', fontSize: 10, borderRadius: 4, cursor: 'pointer', whiteSpace: 'nowrap',
+                  background: active ? 'var(--cm-sel-bg)' : 'none',
+                  border: `1px solid ${active ? 'var(--cm-link)' : 'transparent'}`,
+                  color: active ? 'var(--cm-link)' : 'var(--cm-text-muted)',
+                  fontWeight: active ? 600 : 400,
+                }}>{t.icon}{t.label}</button>
+              )
+            })}
+          </div>
+
+          {/* Model — show one model's objects only (e.g. WFP) */}
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 10, color: 'var(--cm-text-muted)' }} title="Show only one model's cubes and processes, by name prefix">
+            <span style={{ fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', opacity: 0.75 }}>Model</span>
+            <select value={scope} onChange={e => { setScope(e.target.value); setSelectedCube(null); setFocused(false); setPhaseFocus(null); setModuleFocus(null); setTrail([]) }}
+              style={{ flex: 1, minWidth: 0, fontSize: 11, padding: '3px 4px', background: 'var(--cm-node-bg)', color: 'var(--cm-text)', border: `1px solid ${scope ? 'var(--cm-link)' : 'var(--cm-border)'}`, borderRadius: 4, outline: 'none', cursor: 'pointer' }}>
+              <option value="">All models</option>
+              {prefixes.map(p => <option key={p} value={p}>{p}</option>)}
+            </select>
+          </label>
 
           {/* Search */}
           <div style={{ position: 'relative' }}>
@@ -1478,10 +1619,36 @@ function CubeMapInner({ tab }) {
             </div>
           )}
 
-          {/* Edge + cluster toggles */}
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-            <Toggle active={rulesVisible}    onClick={toggleRules}    color="#b45309" label="Rules" />
-            <Toggle active={feedersVisible}  onClick={toggleFeeders}  color="#475569" label="Feeders" dashed />
+          {/* Show — what the map draws, and what a cube's trace follows. Always the same four. */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <span style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--cm-text-muted)', opacity: 0.75 }}>Show</span>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4 }}>
+              <Toggle active={rulesVisible}   onClick={toggleRules}    color="#b45309" label="Rules"   title="Rule links: a rule in one cube reading another cube with DB()" />
+              <Toggle active={feedersVisible} onClick={toggleFeeders}  color="#475569" label="Feeders" dashed title="Feeder links: a cube's feeders pointing at another cube" />
+              <Toggle active={tiVisible}      onClick={toggleTI}       color="#0ea5e9" label="Processes" title="TI processes: which cubes they read and write, and which processes they call" />
+              <Toggle active={dimsVisible}    onClick={toggleDims}     color="#8b5cf6" label="Dimensions"
+                disabled={!dimsAvailable}
+                title={dimsAvailable ? 'Dimensions: the ones processes change, and (on a cube) the ones it uses' : 'Turn on Processes first — on the full map, dimensions are shown through the processes that change them'} />
+            </div>
+          </div>
+
+          {/* Layout direction + the less-used grouping controls */}
+          <div style={{ display: 'flex', gap: 4 }}>
+            <button onClick={() => setLayout(l => LAYOUT_NEXT[l] ?? 'LR')} title={`Rotate the map — now ${LAYOUT_LABEL[layout] ?? layout}`} style={{
+              flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4,
+              fontSize: 10, padding: '2px 0', borderRadius: 3, cursor: 'pointer',
+              background: 'none', border: '1px solid var(--cm-border)', color: 'var(--cm-text-muted)',
+            }}><RotateCw size={10} />Rotate</button>
+            <button onClick={() => setAdvancedOpen(v => !v)} title="Grouping by name and module focus" style={{
+              flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 3,
+              fontSize: 10, padding: '2px 0', borderRadius: 3, cursor: 'pointer',
+              background: advancedOpen || showClusters || moduleFocus ? 'var(--cm-sel-bg)' : 'none',
+              border: `1px solid ${showClusters || moduleFocus ? 'var(--cm-link)' : 'var(--cm-border)'}`,
+              color: showClusters || moduleFocus ? 'var(--cm-link)' : 'var(--cm-text-muted)',
+            }}>{advancedOpen ? <ChevronDown size={10} /> : <ChevronRight size={10} />}Advanced</button>
+          </div>
+          {advancedOpen && (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
             <Toggle active={showClusters}  onClick={() => setShowClusters(v => !v)}  color="#6366f1" label="Groups" title={groupRegex ? `Group by regex: ${groupRegex}` : 'Group by prefix before first underscore'} />
             {modules.length > 0 && (
               <select
@@ -1494,29 +1661,8 @@ function CubeMapInner({ tab }) {
                 {modules.map(m => <option key={m} value={m}>{m}</option>)}
               </select>
             )}
-            <select value={scope} onChange={e => { setScope(e.target.value); setSelectedCube(null); setFocused(false); setPhaseFocus(null); setModuleFocus(null); setTrail([]) }}
-              title="Show only one model prefix — e.g. WFP hides LAB"
-              style={{ fontSize: 10, padding: '2px 4px', background: 'var(--cm-node-bg)', color: 'var(--cm-text)', border: `1px solid ${scope ? 'var(--cm-link)' : 'var(--cm-border)'}`, borderRadius: 4, cursor: 'pointer', maxWidth: 120 }}>
-              <option value="">All models</option>
-              {prefixes.map(p => <option key={p} value={p}>{p}</option>)}
-            </select>
-            {!focusMode && <Toggle active={showProcesses} onClick={() => setShowProcesses(v => !v)} color="#10b981" label="TI" />}
-            <Toggle active={tiVisible} onClick={toggleTI} color="#0ea5e9" label="All TI" />
-            {!focusMode && allTI && showProcesses && <Toggle active={showDims} onClick={() => setShowDims(v => !v)} color="#8b5cf6" label="Dims" />}
-          </div>
-
-          {/* Layout */}
-          <div style={{ display: 'flex', gap: 3 }}>
-            {['LR', 'TB', 'BT', 'RL'].map(dir => (
-              <button key={dir} onClick={() => setLayout(dir)} style={{
-                flex: 1, fontSize: 9, padding: '2px 0', borderRadius: 3, cursor: 'pointer',
-                background: layout === dir ? 'var(--cm-sel-bg)' : 'none',
-                border: `1px solid ${layout === dir ? 'var(--cm-link)' : 'var(--cm-border)'}`,
-                color: layout === dir ? 'var(--cm-link)' : 'var(--cm-text-muted)',
-                transition: 'all 0.1s',
-              }}>{dir}</button>
-            ))}
-          </div>
+            </div>
+          )}
         </div>
 
         {/* Cube list */}
@@ -1587,7 +1733,17 @@ function CubeMapInner({ tab }) {
           <Background color={dark ? '#1e1e30' : '#cbd5e1'} gap={24} size={1} />
           <Controls />
         </ReactFlow>
-        {showLegend && <Legend />}
+        {showLegend && <Legend onClose={() => setShowLegend(false)} />}
+        {modelReady && !selectedCube && !focused && !phaseFocus && !moduleFocus && !showBar && (
+          <div style={{
+            position: 'absolute', top: 10, left: '50%', transform: 'translateX(-50%)', zIndex: 4,
+            maxWidth: 'calc(100% - 20px)', padding: '5px 12px', borderRadius: 6, fontSize: 11,
+            background: 'var(--cm-panel-bg)', border: '1px solid var(--cm-border)', color: 'var(--cm-text-muted)',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.12)', pointerEvents: 'none', textAlign: 'center',
+          }}>
+            {scope ? 'Click a cube to see what feeds it and what it feeds.' : 'Pick a model, then click a cube to see what feeds it and what it feeds.'}
+          </div>
+        )}
         {showBar && (
           <ShowBar
             entries={runEntries} entry={runEntry} onEntry={startShow}
@@ -1618,7 +1774,7 @@ function CubeMapInner({ tab }) {
                 <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {phaseFocus.kind === 'process' ? 'Process' : phaseFocus.kind === 'chore' ? 'Chore' : 'Phase'} <b style={{ color: 'var(--cm-link)' }}>{focusLabel}</b>
                   <span style={{ color: 'var(--cm-text-muted)' }}> · {phaseFocus.processes.length} process{phaseFocus.processes.length !== 1 ? 'es' : ''}</span>
-                  {transitiveCount > 0 && <span style={{ color: 'var(--cm-text-muted)' }}> · {transitiveCount} connected{reachableCapped ? ' (capped)' : ''}</span>}
+                  {transitiveCount > 0 && <span style={{ color: 'var(--cm-text-muted)' }}> {reachText(reachBreakdown, reachableCapped)}</span>}
                 </span>
               </>
             ) : (
@@ -1650,22 +1806,25 @@ function CubeMapInner({ tab }) {
                       </span>
                     )
                   })}
-                  {transitiveCount > 0 && <span style={{ color: 'var(--cm-text-muted)', flexShrink: 0 }}>· {transitiveCount} connected{reachableCapped ? ' (capped)' : ''}</span>}
+                  {transitiveCount > 0 && <span style={{ color: 'var(--cm-text-muted)', flexShrink: 0 }}>{reachText(reachBreakdown, reachableCapped)}</span>}
                 </span>
               </>
             )}
-            {moduleFocus && (
-              <div style={{ display: 'flex', gap: 2 }} title="How many hops to follow through the selected edge kinds">
+            <div style={{ display: 'flex', alignItems: 'center', gap: 2, flexShrink: 0, paddingLeft: 6, borderLeft: '1px solid var(--cm-border)' }}
+              title="How far the map reaches from here: 1 = direct links only, 2 = their links too, and so on (through the kinds of link switched on under Show)">
+                <span style={{ fontSize: 10, color: 'var(--cm-text-muted)', marginRight: 2, whiteSpace: 'nowrap' }}>Steps away</span>
                 {[1, 2, 3, 4].map(d => (
-                  <button key={d} onClick={() => setTraceDepth(d)} style={{
-                    padding: '1px 5px', fontSize: 10, borderRadius: 3, cursor: 'pointer',
+                  <button key={d} onClick={() => setTraceDepth(d)}
+                    title={stepCounts ? `${d} step${d > 1 ? 's' : ''} away: ${stepCounts[d - 1]} connected` : undefined}
+                    style={{
+                    padding: '1px 5px', fontSize: 10, borderRadius: 3, cursor: 'pointer', whiteSpace: 'nowrap',
+                    fontVariantNumeric: 'tabular-nums',
                     background: d === traceDepth ? 'var(--cm-sel-bg)' : 'none',
                     border: `1px solid ${d === traceDepth ? 'var(--cm-link)' : 'var(--cm-border)'}`,
                     color: d === traceDepth ? 'var(--cm-link)' : 'var(--cm-text-muted)',
-                  }}>{d}</button>
+                  }}>{d}{stepCounts && <span style={{ opacity: 0.7 }}> ({stepCounts[d - 1]})</span>}</button>
                 ))}
-              </div>
-            )}
+            </div>
             <button onClick={exitFocus} title="Exit focus — show full map" style={{
               background: 'none', border: 'none', cursor: 'pointer', padding: 2,
               color: 'var(--cm-icon)', borderRadius: 4, display: 'flex', alignItems: 'center',
@@ -1700,13 +1859,12 @@ function CubeMapInner({ tab }) {
             onNavigate={navigateTo}
             onClose={() => { setSelectedCube(null); setDimmedIds(new Set()) }}
             onOpenRules={() => openRules(selectedCube)}
-            onOpenCube={() => openCube(selectedCube)}
-            onOpenLog={(cb, dims) => openTransactionLog(cb, dims)}
+            onOpenView={() => openView(selectedCube)}
+            onOpenRulesSplit={() => openRulesCtx(selectedCube)}
+            onOpenViewSplit={() => openCubeCtx(selectedCube)}
             processCallers={processCallers}
             onFilterDim={handleFilterDim}
             dimFilter={dimFilter}
-            traceDepth={traceDepth}
-            setTraceDepth={setTraceDepth}
             traceKinds={traceKinds}
             setTraceKinds={setTraceKinds}
             transitiveCount={transitiveCount}
@@ -1834,7 +1992,7 @@ function StepInfo({ step, idx, total, processInfo, cubeData, dimData, onOpenProc
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
             <span style={{ ...mono, fontSize: 11 }}>{cube}</span>
             {cd?.hasRules && <button style={link} onClick={ev => open(() => onOpenRules(cube, ev.altKey))}><Code2 size={9} /> Open rules</button>}
-            <button style={link} onClick={ev => open(() => onOpenCube(cube, ev.altKey))}><ExternalLink size={9} /> Open cube</button>
+            <button style={link} onClick={ev => open(() => onOpenCube(cube, ev.altKey))}><ExternalLink size={9} /> Open view</button>
           </div>
           {step.measures?.length > 0 && (
             <div style={{ marginTop: 3, display: 'flex', gap: 4, flexWrap: 'wrap' }}>
@@ -1870,13 +2028,22 @@ function StepInfo({ step, idx, total, processInfo, cubeData, dimData, onOpenProc
   )
 }
 
+// "12 cubes · 9 processes · 2 dimensions" for the thread bar.
+function reachText(b, capped) {
+  if (!b) return ''
+  const part = (n, one, many) => (n ? `${n} ${n === 1 ? one : many}` : null)
+  const parts = [part(b.cubes, 'cube', 'cubes'), part(b.processes, 'process', 'processes'), part(b.dims, 'dimension', 'dimensions')].filter(Boolean)
+  return parts.length ? `· ${parts.join(' · ')}${capped ? ' (capped)' : ''}` : ''
+}
+
 // ── Toggle helper ─────────────────────────────────────────────────────────────
 
-function Toggle({ active, onClick, color, label, dashed, title }) {
+function Toggle({ active, onClick, color, label, dashed, title, disabled }) {
   return (
-    <button onClick={onClick} title={title} style={{
+    <button onClick={disabled ? undefined : onClick} title={title} aria-disabled={disabled || undefined} style={{
       flex: 1, display: 'flex', alignItems: 'center', gap: 4,
-      padding: '3px 6px', fontSize: 10, borderRadius: 4, cursor: 'pointer',
+      padding: '3px 6px', fontSize: 10, borderRadius: 4, cursor: disabled ? 'not-allowed' : 'pointer',
+      opacity: disabled ? 0.45 : 1,
       border: `1px solid ${active ? color : 'var(--cm-border)'}`,
       background: active ? `${color}22` : 'none',
       color: active ? color : 'var(--cm-text-muted)',

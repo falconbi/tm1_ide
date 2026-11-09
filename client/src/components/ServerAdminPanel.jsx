@@ -1,6 +1,7 @@
 import { useState } from 'react'
-import { X, RefreshCw, Loader2, ShieldAlert, ShieldCheck, Server, Settings, BarChart3, Users, UserX, SlidersHorizontal } from 'lucide-react'
-import { useServerMetrics, useActiveConfiguration, useMaintenanceMode, useSessions, useDisconnectSession, useServers, useSetSimpleMode } from '@/hooks/useApi'
+import { X, RefreshCw, Loader2, ShieldAlert, ShieldCheck, Server, Settings, BarChart3, Users, UserX, SlidersHorizontal, History } from 'lucide-react'
+import { useServerMetrics, useActiveConfiguration, useMaintenanceMode, useSessions, useDisconnectSession, useServers, useSetSimpleMode, useCubes } from '@/hooks/useApi'
+import TransactionLogPanel from '@/components/TransactionLogPanel'
 import { useQueryClient } from '@tanstack/react-query'
 import { cn } from '@/lib/utils'
 import { useStore } from '@/store'
@@ -63,6 +64,7 @@ const TABS = [
   { id: 'status',   label: 'Status',        icon: BarChart3 },
   { id: 'sessions', label: 'Sessions',      icon: Users     },
   { id: 'config',   label: 'Configuration', icon: Settings  },
+  { id: 'txlog',    label: 'Transaction log', icon: History },
   { id: 'ide',      label: 'IDE',           icon: SlidersHorizontal },
 ]
 
@@ -114,6 +116,49 @@ function SimpleModeSwitch({ server }) {
         recorded with who made it, read-only servers stay read-only, and an AI agent working
         through MCP still has to open a change set.
       </p>
+    </div>
+  )
+}
+
+// ── Transaction log tab ───────────────────────────────────────────────────────
+// The cube-wide log lives here, not on every editor: TM1 answers a log search by reading its
+// log files from disk, the search can't be cancelled, and a long window takes minutes.
+
+function TransactionLogTab({ server }) {
+  const { data: cubes = [] } = useCubes(server)
+  const [cube, setCube]     = useState('')
+  const [days, setDays]     = useState(1)
+  const [run, setRun]       = useState(null)   // { cube, days, n } — the search being shown
+  return (
+    <div className="flex flex-col gap-3 h-full min-h-0">
+      <p className="text-xs text-muted-foreground leading-relaxed max-w-prose">
+        Who changed which numbers in a cube, from TM1's transaction log. TM1 reads its log files from disk for
+        every search and <b className="text-foreground/80">can't cancel one once it starts</b>, so start with a short window
+        and widen it only if you need to. Cubes with logging switched off have no history. The log isn't filtered
+        by cell security — it is for administrators.
+      </p>
+      <div className="flex items-center gap-2 flex-wrap">
+        <select value={cube} onChange={e => setCube(e.target.value)}
+          className="text-xs bg-background border border-border rounded px-2 py-1 text-foreground min-w-[220px]">
+          <option value="">Choose a cube…</option>
+          {cubes.map(c => <option key={c} value={c}>{c}</option>)}
+        </select>
+        <select value={days} onChange={e => setDays(Number(e.target.value))}
+          className="text-xs bg-background border border-border rounded px-2 py-1 text-foreground">
+          <option value={1}>Last day</option>
+          <option value={7}>Last 7 days</option>
+          <option value={30}>Last 30 days (slow)</option>
+          <option value={90}>Last 90 days (slowest)</option>
+        </select>
+        <button disabled={!cube} onClick={() => setRun(r => ({ cube, days, n: (r?.n ?? 0) + 1 }))}
+          className="text-xs px-3 py-1 rounded bg-primary text-primary-foreground disabled:opacity-40">Search</button>
+      </div>
+      {run && (
+        <div className="flex-1 min-h-[300px] flex border border-border rounded overflow-hidden">
+          <TransactionLogPanel key={`${run.cube}:${run.days}:${run.n}`} server={server} cube={run.cube}
+            defaultDays={run.days} fill onClose={() => setRun(null)} />
+        </div>
+      )}
     </div>
   )
 }
@@ -274,6 +319,9 @@ export default function ServerAdminPanel({ server, onClose }) {
               )}
             </div>
           )}
+
+          {/* ── Transaction log tab ── */}
+          {tab === 'txlog' && <TransactionLogTab server={server} />}
 
           {/* ── Sessions tab ── */}
           {tab === 'sessions' && (

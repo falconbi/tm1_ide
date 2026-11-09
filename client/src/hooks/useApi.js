@@ -610,12 +610,14 @@ export const useBulkDimImport    = () => useMutation({ mutationFn: (body) => pos
 export const useBulkAttrImport   = () => useMutation({ mutationFn: (body) => post('/api/dimension/bulk-attr-import', body) })
 export const useTraceCellCalc    = () => useMutation({ mutationFn: (body) => post('/api/cube/trace', body) })
 export const useTransactionLog   = () => useMutation({
-  mutationFn: ({ server, cube, top = 200, elements = null }) => {
-    const p = new URLSearchParams({ server, cube, top })
+  mutationFn: ({ server, cube, top = 200, elements = null, days = 7 }) => {
+    const p = new URLSearchParams({ server, cube, top, days })
     if (elements) p.set('elements', JSON.stringify(elements))
     return get(`/api/transactions?${p}`)
   },
 })
+// Put one cell back to its value before a logged change (admins only; 409 when it has changed since).
+export const useRestoreCell      = () => useMutation({ mutationFn: (body) => post('/api/transactions/restore', body) })
 export const useJobs             = (server, opts = {}) => useQuery({ queryKey: ['jobs', server], queryFn: () => get(`/api/jobs?server=${enc(server)}`), enabled: !!server, staleTime: 0, ...opts })
 export const useCancelJob        = () => useMutation({ mutationFn: ({ server, id }) => post(`/api/job/cancel?server=${enc(server)}&id=${enc(id)}`, {}) })
 

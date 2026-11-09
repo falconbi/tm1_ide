@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
-import { History, RefreshCw, X, Loader2, XCircle, Search } from 'lucide-react'
-import { useTransactionLog } from '@/hooks/useApi'
+import { History, RefreshCw, X, Loader2, XCircle, Search, Undo2 } from 'lucide-react'
+import { useTransactionLog, useRestoreCell } from '@/hooks/useApi'
+import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 
 function fmt(ts) {
@@ -15,18 +16,39 @@ function Val({ v }) {
 }
 
 // tupleFilter: array of element names in cube dimension order, or null for whole cube
-export default function TransactionLogPanel({ server, cube, cubeDims, tupleFilter, onClearFilter, onClose, fill = false }) {
+export default function TransactionLogPanel({ server, cube, cubeDims, tupleFilter, onClearFilter, onClose, fill = false, defaultDays = 1 }) {
   const log = useTransactionLog()
+  // TM1 reads its log files from disk for every search and can't cancel one, so the panel only
+  // asks for a recent window (widen it with the picker) and never starts a second search while
+  // one is running.
+  const [days, setDays] = useState(defaultDays)
 
-  const fetch = (filter) =>
-    log.mutate({ server, cube, elements: filter ?? null })
+  const fetch = (filter, d = days) => {
+    if (log.isPending) return
+    log.mutate({ server, cube, elements: filter ?? null, days: d })
+  }
 
   // Auto-fetch whenever server/cube/tupleFilter changes
   useEffect(() => {
     if (server && cube) fetch(tupleFilter)
   }, [server, cube, JSON.stringify(tupleFilter)])  // eslint-disable-line react-hooks/exhaustive-deps
 
-  const entries = log.data ?? []
+  // Restore: put one cell back to its value before a logged change. Confirmed on screen first;
+  // if the cell has changed again since, the server says so and we ask again before overwriting.
+  const restore = useRestoreCell()
+  const [confirm, setConfirm] = useState(null)   // { row, current? }
+  const doRestore = (row, force = false) => {
+    restore.mutate({ server, cube: row.Cube ?? cube, tuple: row.Tuple, restoreTo: row.OldValue ?? 0, expectNow: row.NewValue, force }, {
+      onSuccess: () => { setConfirm(null); toast.success(`Restored ${cellText(row)} to ${row.OldValue ?? 0}`); fetch(tupleFilter) },
+      onError: (e) => {
+        if (e?.status === 409 || /changed since/.test(e?.message ?? '')) setConfirm({ row, current: e?.data?.current ?? e?.body?.current ?? '(changed)' })
+        else { setConfirm(null); toast.error(e?.message ?? 'Restore failed') }
+      },
+    })
+  }
+
+  const entries = Array.isArray(log.data) ? log.data : (log.data?.entries ?? [])
+  const loggingOff = !!log.data?.loggingOff
   const filtered = tupleFilter?.some(Boolean)
   const [q, setQ] = useState('')
   const [userFilter, setUserFilter] = useState('')
@@ -57,10 +79,20 @@ export default function TransactionLogPanel({ server, cube, cubeDims, tupleFilte
           <span className="text-[10px] font-mono text-foreground/70 truncate" title={cube}>{cube}</span>
         </div>
         <div className="flex items-center gap-1">
+          <select value={days} disabled={log.isPending}
+            onChange={e => { const d = Number(e.target.value); setDays(d); fetch(tupleFilter, d) }}
+            title="How far back to search TM1's transaction log — longer takes longer"
+            className="text-[10px] bg-background border border-border rounded px-1 py-0.5 text-foreground disabled:opacity-50">
+            <option value={1}>Last day</option>
+            <option value={7}>Last 7 days</option>
+            <option value={30}>Last 30 days</option>
+            <option value={90}>Last 90 days</option>
+          </select>
           <button
             onClick={() => fetch(tupleFilter)}
-            title="Refresh"
-            className="p-1 rounded text-emerald-500 hover:text-emerald-400 hover:bg-emerald-500/10 transition-colors"
+            disabled={log.isPending}
+            title={log.isPending ? 'A search is already running on TM1' : 'Refresh'}
+            className="p-1 rounded text-emerald-500 hover:text-emerald-400 hover:bg-emerald-500/10 transition-colors disabled:opacity-50"
           >
             {log.isPending ? <Loader2 size={11} className="animate-spin" /> : <RefreshCw size={11} />}
           </button>
@@ -114,11 +146,27 @@ export default function TransactionLogPanel({ server, cube, cubeDims, tupleFilte
         </div>
       )}
 
+      {/* Restore confirmation */}
+      {confirm && (
+        <div className="px-3 py-2 border-b border-border bg-amber-500/10 text-[11px] flex items-center gap-2 flex-wrap shrink-0">
+          <span className="flex-1 min-w-0">
+            {confirm.current !== undefined
+              ? <>This cell has changed since: it is now <b>{String(confirm.current)}</b>, not {String(confirm.row.NewValue ?? '')}. Put it back to <b>{String(confirm.row.OldValue ?? 0)}</b> anyway?</>
+              : <>Put <span className="font-mono">{cellText(confirm.row)}</span> back to <b>{String(confirm.row.OldValue ?? 0)}</b>?</>}
+          </span>
+          <button onClick={() => doRestore(confirm.row, confirm.current !== undefined)} disabled={restore.isPending}
+            className="px-2 py-0.5 rounded bg-amber-600 text-white hover:bg-amber-500 disabled:opacity-50">
+            {restore.isPending ? 'Restoring…' : confirm.current !== undefined ? 'Restore anyway' : 'Restore'}
+          </button>
+          <button onClick={() => setConfirm(null)} className="px-2 py-0.5 rounded border border-border hover:bg-muted">Cancel</button>
+        </div>
+      )}
+
       {/* Log table */}
       <div className="flex-1 min-h-0 overflow-auto">
         {log.isPending && (
           <div className="flex items-center gap-2 px-3 py-4 text-xs text-muted-foreground">
-            <Loader2 size={11} className="animate-spin" /> Loading…
+            <Loader2 size={11} className="animate-spin" /> Searching TM1's log for the {days === 1 ? 'last day' : `last ${days} days`}… TM1 reads its log files from disk, so this can take a minute.
           </div>
         )}
         {log.isError && (
@@ -126,7 +174,9 @@ export default function TransactionLogPanel({ server, cube, cubeDims, tupleFilte
         )}
         {!log.isPending && !log.isError && entries.length === 0 && (
           <p className="px-3 py-4 text-xs text-muted-foreground italic">
-            {filtered ? 'No transactions for this filter.' : 'No transactions found. Cube logging may be off (}CubeProperties → Logging).'}
+            {loggingOff
+              ? 'Logging is switched off for this cube, so TM1 keeps no history of its changes. (Turn it on in }CubeProperties → LOGGING.)'
+              : `${filtered ? 'No changes to this cell' : 'No changes to this cube'} in the ${days === 1 ? 'last day' : `last ${days} days`}. Choose a longer window above to look further back.`}
           </p>
         )}
         {!log.isPending && !log.isError && entries.length > 0 && visible.length === 0 && (
@@ -141,6 +191,7 @@ export default function TransactionLogPanel({ server, cube, cubeDims, tupleFilte
                 <th className="text-left px-2 py-1.5 font-medium text-muted-foreground whitespace-nowrap">Cell</th>
                 <th className="text-right px-2 py-1.5 font-medium text-muted-foreground whitespace-nowrap">Old</th>
                 <th className="text-right px-3 py-1.5 font-medium text-muted-foreground whitespace-nowrap">New</th>
+                <th className="px-1 py-1.5" />
               </tr>
             </thead>
             <tbody>
@@ -151,6 +202,14 @@ export default function TransactionLogPanel({ server, cube, cubeDims, tupleFilte
                   <td className="px-2 py-1 font-mono text-foreground/60 max-w-[150px] truncate" title={cellTitle(e)}>{cellText(e) || '—'}</td>
                   <td className="px-2 py-1 text-right font-mono text-red-400/80 whitespace-nowrap"><Val v={e.OldValue} /></td>
                   <td className="px-3 py-1 text-right font-mono text-emerald-400 whitespace-nowrap"><Val v={e.NewValue} /></td>
+                  <td className="px-1 py-1 text-right">
+                    {Array.isArray(e.Tuple) && e.Tuple.length > 0 && (
+                      <button onClick={() => setConfirm({ row: e })} title={`Put this cell back to ${e.OldValue ?? 0} (its value before this change)`}
+                        className="p-0.5 rounded text-muted-foreground hover:text-amber-400 hover:bg-amber-500/10">
+                        <Undo2 size={10} />
+                      </button>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>

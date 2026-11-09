@@ -1578,36 +1578,38 @@ return (d.value ?? [])
     // spaces were sent as '+'; core/odata-params sends %20). The tuple is matched here.
     // If a server still refuses the filter, fall back to reading the log and matching
     // cube + tuple here ($top returns from the OLDEST entry, so take the newest window).
-    async getTransactionLog(cube, { top = 200, elements = null, maxScan = 200_000 } = {}) {
-        const cubeLc  = String(cube).toLowerCase()
-        const wantEls = Array.isArray(elements) ? elements : null
-
-        const tupleMatches = e =>
-            !wantEls || wantEls.every((el, i) => !el || (e.Tuple?.[i] ?? '') === el)
-        const keep = e => (e.Cube ?? '').toLowerCase() === cubeLc && tupleMatches(e)
-
+    // Is this cube's transaction logging switched off? (}CubeProperties LOGGING = NO). Blank means
+    // the server default (on). null when it can't be read — callers then just search.
+    async getCubeLoggingOff(cube) {
         try {
-            const hit = (await this.get('TransactionLogEntries', { '$filter': `Cube eq '${odataLit(cube)}'`, '$top': maxScan })).value ?? []
-            return hit.filter(keep).sort((a, b) => String(b.TimeStamp).localeCompare(String(a.TimeStamp))).slice(0, top)
-        } catch { /* filter refused — read the log and match here */ }
+            const mdx = `SELECT {[}CubeProperties].[LOGGING]} ON 0, {[}Cubes].[${String(cube).replace(/]/g, ']]')}]} ON 1 FROM [}CubeProperties]`
+            const r = await this.post('ExecuteMDX?$expand=Cells($select=Value)', { MDX: mdx })
+            return String(r?.Cells?.[0]?.Value ?? '').trim().toUpperCase() === 'NO'
+        } catch { return null }
+    }
 
-        // One big $top pulls the whole log fast (~3s for 70k rows) — far cheaper than
-        // $count (server counts everything) or high $skip values. Rows come oldest-first.
-        let rows = (await this.get('TransactionLogEntries', { '$top': maxScan })).value ?? []
-
-        // If we hit the cap, the log is bigger than maxScan and we only have the OLDEST
-        // rows — fall back to count + tail-window to get the most recent.
-        if (rows.length >= maxScan) {
-            try {
-                const total = (await this.get('TransactionLogEntries', { '$count': 'true', '$top': 1 }))['@odata.count']
-                if (total > maxScan) {
-                    rows = (await this.get('TransactionLogEntries', { '$skip': total - maxScan, '$top': maxScan })).value ?? []
-                }
-            } catch { /* keep the rows we have */ }
-        }
-
+    // Recent changes to a cube (optionally one cell), newest first.
+    //
+    // TM1 answers a TransactionLogEntries query by reading its log files on disk, and a query
+    // cannot be cancelled once it starts. An open-ended "Cube eq X" read scanned the whole log
+    // history and took minutes; the old fallback then started a second, unfiltered read of the
+    // whole log on top, so a few clicks left half a dozen searches running (Nov 2026). Now:
+    //   * only the last `days` days are read (TimeStamp filter), newest `top` rows;
+    //   * no fallback search — if TM1 refuses or fails, the caller gets TM1's message;
+    //   * server.js joins a repeat of the same search for the same user instead of starting another.
+    async getTransactionLog(cube, { top = 200, elements = null, days = 7 } = {}) {
+        const wantEls = Array.isArray(elements) ? elements : null
+        const since   = new Date(Date.now() - Math.max(1, Number(days) || 7) * 86_400_000)
+        since.setUTCHours(0, 0, 0, 0)   // whole days, so repeated clicks ask TM1 the same thing
+        const rows = (await this.get('TransactionLogEntries', {
+            '$filter':  `Cube eq '${odataLit(cube)}' and TimeStamp ge ${since.toISOString().replace('.000Z', 'Z')}`,
+            '$orderby': 'TimeStamp desc',
+            '$top':     5000,
+        })).value ?? []
+        const cubeLc = String(cube).toLowerCase()
         return rows
-            .filter(keep)
+            .filter(e => (e.Cube ?? '').toLowerCase() === cubeLc)
+            .filter(e => !wantEls || wantEls.every((el, i) => !el || (e.Tuple?.[i] ?? '') === el))
             .sort((a, b) => String(b.TimeStamp).localeCompare(String(a.TimeStamp)))
             .slice(0, top)
     }
