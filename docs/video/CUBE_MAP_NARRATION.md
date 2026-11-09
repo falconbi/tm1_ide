@@ -128,7 +128,7 @@ Now pause and ask: what is this step? The info button opens the detail card for 
 The card is plain about where to go next. A process gives me Open process. A cube gives me Open view, and Open rules when it has rules. A dimension gives me Open dimension. These open beside the map, so I do not lose the run.
 
 **[Click Open process]**
-Open process pauses the run and docks the TI beside the map. This is the moment the feature pays off: I can read the actual code next to the step that triggered it. The CellGet, the CellPut, the ExecuteProcess — I can see what the map just told me. The map stays on the same step, so I can read, close, and carry on.
+Open process pauses the run and docks the TI beside the map. This is the moment the feature pays off: I can read the actual code next to the step that triggered it. The CellGet, the CellPut, the ExecuteProcess — I can see what the map just told me. The map stays on the same step, and the Runbook stays open, so I can read, go back, and carry on.
 
 **[Choose WFP Snapshot from the same list]**
 When I want a closer look at the snapshot, I switch the start point. WFP Snapshot is a short process: a wrapper that calls the core version copy. Open process shows the wrapper; back on the map, click +n on its process box and the helper unfolds as its own TI. Two levels, both readable, without opening the model by hand.

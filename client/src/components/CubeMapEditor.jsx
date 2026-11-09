@@ -922,6 +922,7 @@ function CubeMapInner({ tab }) {
     if (!saved) return
     if (saved.scope) setScope(saved.scope)
     if (saved.sidebarOpen != null) setSidebarOpen(saved.sidebarOpen)
+    if (saved.runbookOpen != null) setRunbookOpen(!!saved.runbookOpen)
     if (saved.phaseFocus) setPhaseFocus(saved.phaseFocus)
     if (Array.isArray(saved.trail)) setTrail(saved.trail)
     if (saved.dimFilter) setDimFilter(saved.dimFilter)
@@ -950,7 +951,7 @@ function CubeMapInner({ tab }) {
   // Keep the session current; the cleanup also catches a tab switch.
   const sessionRef = useRef(null)
   useEffect(() => {
-    sessionRef.current = { runEntry, runIdx, runScope, phaseFocus, selectedCube, focused, scope, sidebarOpen, showBar, stepInfoOpen, trail, dimFilter }
+    sessionRef.current = { runEntry, runIdx, runScope, phaseFocus, selectedCube, focused, scope, sidebarOpen, showBar, stepInfoOpen, runbookOpen, trail, dimFilter }
   })
   const saveSession = useCallback(() => {
     const st = sessionRef.current
