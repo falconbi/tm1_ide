@@ -3,7 +3,7 @@
 Every bug-fix commit, newest first, by the date it was committed. Generated from the git history;
 commits that mixed a fix into a feature are included too. New features are not listed here.
 
-166 fixes from 2026-05-20 to 2026-10-10, plus 46 entries for 11–27 October, 6 for 28 October–1 November, 7 for 2 November, 4 for 5 November and 8 for 6 November. Last updated 2026-11-06.
+166 fixes from 2026-05-20 to 2026-10-10, plus 46 entries for 11–27 October, 6 for 28 October–1 November, 7 for 2 November, 4 for 5 November and 10 for 6 November. Last updated 2026-11-06.
 
 ← [Back to README](../../README.md)
 
@@ -12,6 +12,8 @@ commits that mixed a fix into a feature are included too. New features are not l
 
 ### 2026-11-06
 
+- **rules** — An older CheckRules response could finish after a corrected buffer passed and put the red squiggle back; only the newest check may now write markers
+- **ti** — The Debug capture condition was never sent by the client, so every breakpoint was logged regardless of the condition; it now travels with the run
 - **ti** — The debug watch picker needed a second click on `+` after choosing a variable; selecting it (or Enter on the highlighted item) now adds the watch immediately with its real type
 - **ti** — Debug runs returned nothing when the Prolog started with a `#Region`/comment: the hit counter was prefixed onto line 1 and made the instrumented copy invalid TI. The initialiser is now on its own line, and an Aborted/HasMinorErrors status surfaces the process error log
 - **ti** — Watching a variable that does not exist in the process (e.g. `vStart` instead of `sStart`) aborted the debug copy silently; the debugger now refuses unknown watches and names them
