@@ -337,7 +337,7 @@ export default function FormatSettings({ onClose }) {
                   <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">Cube grouping</div>
                   <p className="text-[10px] text-muted-foreground mb-2 leading-relaxed">
                     When the Groups toggle is on, cubes whose names share a key are wrapped in a coloured group box.
-                    The key is the first capture group of the regex (or the whole match if it has no groups).
+                    The key is the first capture group of the regex (or the whole match if it has no groups). With no regex, the prefix before the first underscore is used. A module is a sub-group inside the Model filter, not another model filter.
                     At least two cubes must share a key for a group to appear.
                   </p>
                   <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mt-3 mb-1">Presets</div>

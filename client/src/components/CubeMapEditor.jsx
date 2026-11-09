@@ -784,7 +784,10 @@ function CubeMapInner({ tab }) {
   const token = typeof localStorage !== 'undefined' ? (localStorage.getItem('tm1-token') ?? '') : ''
 
   // Configurable cube grouping key (regex) — reloads whenever settings are saved.
-  const groupRegex = useMemo(() => loadSettings().cubeMap?.groupRegex ?? '', [themeVersion])
+  const groupRegex = useMemo(() => {
+    void themeVersion
+    return loadSettings().cubeMap?.groupRegex ?? ''
+  }, [themeVersion])
 
   const [cubeDataAll,    setCubeData]       = useState(null)
   const [processCallers, setProcessCallers] = useState({})
@@ -1738,7 +1741,12 @@ function CubeMapInner({ tab }) {
           </div>
           {advancedOpen && (
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-            <Toggle active={showClusters}  onClick={() => setShowClusters(v => !v)}  color="#6366f1" label="Groups" title={groupRegex ? `Group by regex: ${groupRegex}` : 'Group by prefix before first underscore'} />
+            <Toggle active={showClusters}  onClick={() => setShowClusters(v => !v)}  color="#6366f1" label="Groups" title={groupRegex ? `Group by regex: ${groupRegex}` : 'Group by prefix before first underscore — a module is a sub-group, not the Model filter'} />
+            {modules.length === 0 && (
+              <span style={{ fontSize: 9, color: 'var(--cm-text-muted)', opacity: 0.65, lineHeight: 1.4 }}>
+                No modules — Model already filters the model. Use a Group regex for a finer sub-group.
+              </span>
+            )}
             {modules.length > 0 && (
               <select
                 value={moduleFocus ?? ''}
