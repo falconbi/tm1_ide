@@ -109,32 +109,37 @@ For each process I see its description, then Steps expands it in code order: wha
 **[Click View on map]**
 View on map takes that chore's processes and everything they touch onto the Cube Map. That is the bridge between “what runs” and “what it changes”.
 
-## 7. Play a run (~95s)
+## 7. Play a run (~2:15)
 
 **[Click Play a run]**
-Play a run shows the order a process will execute in. It does not run anything; it walks the code path across the map.
+This is the part I would show anyone who asks what the Cube Map is for. Models are full of processes, and the usual question is: if I run this, what happens, in what order, and what does it touch? Play a run answers that without running anything. It walks the code path across the map, one step at a time.
 
-**[Choose ⏱ WFP Month End (inactive); click Play]**
-Start from a chore: WFP Month End. It is runbook-only here, so it never fires on a schedule, but playing it shows exactly what it would do: WFP Load HR Assignments, then WFP Calc Variances, then WFP Snapshot. The player follows the chore across those processes, and WFP Snapshot itself calls the core version copy, so the helper chain appears too.
+That is the feature that makes the Cube Map more than a picture. It is the bridge between seeing the model and reading the update.
 
-As it plays, the current connection and node light up. The bar tells me where I am: the path at the top, the step number, and the caption. On the right are the controls. Play and Pause are the same button. The arrows step back and forward. The speed menu slows the run to half speed or speeds it up. Follow pans to the current step when it leaves the screen.
+**[Choose ⏱ WFP Month End (inactive); set 2×; click Play]**
+Start from a chore. WFP Month End is runbook-only here, so it never fires on a schedule; playing it is safe. The player uses the stored sequence: WFP Load HR Assignments, then WFP Calc Variances, then WFP Snapshot. WFP Snapshot calls the core version copy, so that helper appears too.
 
-**[Pause on WFP Load HR Assignments; click the info button]**
-Pause first. The highlight stays on the step, so I can read it properly. The info button — What is this step? — opens the detail card for this exact read, write or call. It names the process and its parameters, the cube being read or written, the measures it writes, and the rule lines and dimensions behind it.
+**[Let a few steps play, then click Pause]**
+As it plays, the current connection and node light up. The bar tells me where I am: the path at the top, the step number, and what this step does. Play and Pause are the same button. Pause stops the animation, not a live run — nothing is executing. The arrows move one step at a time, and Follow pans to the current step when it leaves the screen.
 
-The card is how I see the information without leaving the run. If the step is a process, I get Open process. If it touches a cube, I get Open view, and Open rules when the cube has rules. A dimension gets Open dimension.
+**[With a step selected, click the info button]**
+Now pause and ask: what is this step? The info button opens the detail card for this exact read, write or call. It names the process and its parameters, the cube being read or written, the measures it writes, and the rule lines and dimensions behind it. That is the information I would otherwise collect by opening several tabs and holding it in my head.
+
+The card is plain about where to go next. A process gives me Open process. A cube gives me Open view, and Open rules when it has rules. A dimension gives me Open dimension. These open beside the map, so I do not lose the run.
 
 **[Click Open process]**
-Open process pauses the run and docks the TI beside the map, so I can read the actual code next to the step that triggered it. Alt-click opens it in the pane instead. This is where I check the CellGet, the CellPut, or the ExecuteProcess call I just saw on the map. When I have finished, the map is still on the same step, and I can press Play again or step on.
+Open process pauses the run and docks the TI beside the map. This is the moment the feature pays off: I can read the actual code next to the step that triggered it. The CellGet, the CellPut, the ExecuteProcess — I can see what the map just told me. The map stays on the same step, so I can read, close, and carry on.
 
-**[Step to WFP Calc Variances, then WFP Snapshot]**
-The same card follows each step. On WFP Snapshot, Open process shows the wrapper; back on the map, click +n on that process box and the core copy it calls unfolds as its own TI. That is the difference between guessing what an update does and reading the two lines that do it.
+**[Choose WFP Snapshot from the same list]**
+When I want a closer look at the snapshot, I switch the start point. WFP Snapshot is a short process: a wrapper that calls the core version copy. Open process shows the wrapper; back on the map, click +n on its process box and the helper unfolds as its own TI. Two levels, both readable, without opening the model by hand.
 
-**[Choose WFP Change Assignment from the same list]**
-The list is the switching point. I can change the start without closing the player: here is one process, its reads and writes, and the recalculation helper it calls. The map is rebuilt for that run, so I get a focused story rather than the whole model.
+**[Choose WFP Change Assignment]**
+The same list switches me to a single process. WFP Change Assignment shows one process, its reads and writes, and the recalculation helper it calls. Chore or process, the controls are the same.
 
 **[Pause on the last step]**
-At the end the player says the run is finished. The order follows the code as written; loops play once. It is a reading of the path, not a replay of a real execution.
+At the end the player says the run is finished. The order follows the code as written, and loops play once. It is a reading of the path, not a replay of a real execution.
+
+That is why I would put this in front of every new starter and every reviewer: a process run becomes a short, paused, readable story, and the TI is one click away.
 
 ## Outro (~15s)
 
@@ -145,4 +150,4 @@ In the next video: the editing features that make everyday work in the IDE faste
 
 ---
 
-Total about **7–8 minutes**. To shorten, the easiest cuts are: the Show walk-through in section 3 (−30s), the helper example in section 5 (−15s), and one of the two Play a run examples (−20s).
+Total about **8–9 minutes**. To shorten, the easiest cuts are: the Show walk-through in section 3 (−30s), the helper example in section 5 (−15s), and one of the two Play a run examples (−20s).
