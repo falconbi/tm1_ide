@@ -1873,6 +1873,11 @@ function CubeMapInner({ tab }) {
                   <span style={{ color: 'var(--cm-text-muted)' }}> · {phaseFocus.processes.length} process{phaseFocus.processes.length !== 1 ? 'es' : ''}</span>
                   {transitiveCount > 0 && <span style={{ color: 'var(--cm-text-muted)' }}> {reachText(reachBreakdown, reachableCapped)}</span>}
                 </span>
+                <button onClick={() => { setMapMode('run'); startShow('phase:current') }}
+                  title="Play this chore step by step"
+                  style={{ display: 'flex', alignItems: 'center', gap: 3, padding: '2px 6px', fontSize: 10, borderRadius: 4, border: '1px solid #f59e0b', background: 'none', color: '#f59e0b', cursor: 'pointer', flexShrink: 0 }}>
+                  <Play size={10} /> Play
+                </button>
               </>
             ) : (
               <>

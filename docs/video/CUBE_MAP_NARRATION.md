@@ -107,7 +107,7 @@ On the left are the chores. A scheduled chore runs on TM1; a runbook-only chore 
 For each process I see its description, then Steps expands it in code order: what it reads, what it writes, what it calls, and the rule cubes each write sets off. So I can review an update before it runs, not after it has gone wrong.
 
 **[Click View on map]**
-View on map takes that chore's processes and everything they touch onto the Cube Map. That is the bridge between “what runs” and “what it changes”.
+View on map takes that chore's processes and everything they touch onto the Cube Map. That is the bridge between “what runs” and “what it changes”. It is still the map, not the player: to animate the sequence, use the **Play** button in the chore header, or open Play a run and choose the chore.
 
 ## 7. Play a run (~2:15)
 
