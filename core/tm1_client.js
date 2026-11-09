@@ -640,6 +640,15 @@ class TM1Client {
     }
 
     async updateChore(name, data) {
+        // TM1 v11 APPENDS the Tasks in a PATCH instead of replacing them (tested Nov 2026 — every
+        // Chore Editor save duplicated the steps). So when the steps are being saved, remove the
+        // existing ones first (highest step first), then PATCH the full list.
+        if (Array.isArray(data?.Tasks)) {
+            const tasks = (await this.get(`Chores('${odataKey(name)}')/Tasks`, { '$select': 'Step' })).value ?? []
+            for (const t of tasks.map(x => x.Step).sort((a, b) => b - a)) {
+                await this.delete(`Chores('${odataKey(name)}')/Tasks(${t})`)
+            }
+        }
         return this.patch(`Chores('${odataKey(name)}')`, data)
     }
 
