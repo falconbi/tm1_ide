@@ -1,0 +1,16 @@
+{
+  "Name": "WFP Seed Tax Bands",
+  "PrologProcedure": "#Region Seed tax bands — employer payroll tax + employee income tax, by jurisdiction\r\ncCube = 'WFP Tax Bands';\r\n\r\n# jurisdiction;taxtype;band;from;to;rate\r\nvB =\r\n'UK;Employer Payroll Tax;Band 1;0;9100;0~' |\r\n'UK;Employer Payroll Tax;Band 2;9100;99999999;0.138~' |\r\n'US-NY;Employer Payroll Tax;Band 1;0;168600;0.09~' |\r\n'US-NY;Employer Payroll Tax;Band 2;168600;99999999;0.0145~' |\r\n'NZ;Employer Payroll Tax;Band 1;0;142283;0.016~' |\r\n'NZ;Employer Payroll Tax;Band 2;142283;99999999;0~' |\r\n'UK;Employee Income Tax;Band 1;0;12570;0~' |\r\n'UK;Employee Income Tax;Band 2;12570;50270;0.20~' |\r\n'UK;Employee Income Tax;Band 3;50270;125140;0.40~' |\r\n'UK;Employee Income Tax;Band 4;125140;99999999;0.45~' |\r\n'US-NY;Employee Income Tax;Band 1;0;11600;0.10~' |\r\n'US-NY;Employee Income Tax;Band 2;11600;47150;0.18~' |\r\n'US-NY;Employee Income Tax;Band 3;47150;100525;0.26~' |\r\n'US-NY;Employee Income Tax;Band 4;100525;191950;0.30~' |\r\n'US-NY;Employee Income Tax;Band 5;191950;99999999;0.35~' |\r\n'NZ;Employee Income Tax;Band 1;0;15600;0.105~' |\r\n'NZ;Employee Income Tax;Band 2;15600;53500;0.175~' |\r\n'NZ;Employee Income Tax;Band 3;53500;78100;0.30~' |\r\n'NZ;Employee Income Tax;Band 4;78100;180000;0.33~' |\r\n'NZ;Employee Income Tax;Band 5;180000;99999999;0.39~';\r\n\r\nWHILE( SCAN( '~', vB ) > 1 );\r\n   nS = SCAN( '~', vB );\r\n   vRec = SUBST( vB, 1, nS - 1 ) | ';';\r\n   vB = SUBST( vB, nS + 1, LONG( vB ) - nS );\r\n\r\n   nS = SCAN(';',vRec); vJur  = SUBST(vRec,1,nS-1); vRec = SUBST(vRec,nS+1,LONG(vRec)-nS);\r\n   nS = SCAN(';',vRec); vType = SUBST(vRec,1,nS-1); vRec = SUBST(vRec,nS+1,LONG(vRec)-nS);\r\n   nS = SCAN(';',vRec); vBand = SUBST(vRec,1,nS-1); vRec = SUBST(vRec,nS+1,LONG(vRec)-nS);\r\n   nS = SCAN(';',vRec); nFrom = NUMBR(SUBST(vRec,1,nS-1)); vRec = SUBST(vRec,nS+1,LONG(vRec)-nS);\r\n   nS = SCAN(';',vRec); nTo   = NUMBR(SUBST(vRec,1,nS-1)); vRec = SUBST(vRec,nS+1,LONG(vRec)-nS);\r\n   nS = SCAN(';',vRec); nRate = NUMBR(SUBST(vRec,1,nS-1));\r\n\r\n   CellPutN( nFrom, cCube, vJur, vType, vBand, 'Threshold From' );\r\n   CellPutN( nTo,   cCube, vJur, vType, vBand, 'Threshold To' );\r\n   CellPutN( nRate, cCube, vJur, vType, vBand, 'Rate' );\r\nEND;",
+  "MetadataProcedure": "",
+  "DataProcedure": "",
+  "EpilogProcedure": "",
+  "DataSource": {
+    "Type": "None"
+  },
+  "Parameters": [],
+  "Variables": [],
+  "Attributes": {
+    "Caption": "WFP Seed Tax Bands"
+  },
+  "LocalizedAttributes": []
+}

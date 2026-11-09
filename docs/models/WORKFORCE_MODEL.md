@@ -40,6 +40,11 @@ never changes company (see the company move, section 5).
   pay assumptions.
 - **Every plan item HR can later make real has a match key.** When HRIS records the real thing,
   the plan item is matched and stops counting. It is never left beside the real one.
+- **The demo data on TM1_Test_DEV** was built by nine setup processes (the WFP Seed processes,
+  Generate Positions, Generate Hiring Plan). They were removed from the server on 9 Nov 2026 and are
+  kept, with the order to run them, in [workforce-setup/](workforce-setup/README.md).
+  `WFP Load Actuals` is also a demo generator (Actual from Forecast plus planted deltas) and stays
+  until a real payroll load replaces it.
 
 | Plan item (TM1) | Becomes real in HRIS as | Matched on |
 |---|---|---|

@@ -1,0 +1,16 @@
+{
+  "Name": "WFP Seed Hiring Plan",
+  "PrologProcedure": "#Region WFP Seed Hiring Plan — per-version hire month + attrition month\r\n# Table: version;position;hire_month;attrition_month  (period-index values; 0 = none).\r\n# Hire Month already includes recruiting lead time (approve month + lead).\r\n# Budget carries nothing (flat); the rules fall back to Start/End Period attrs\r\n# when the plan cell is 0.\r\ncCube = 'WFP Hiring Plan';\r\n\r\nvP =\r\n'Forecast;ENG-007;16;0~' |\r\n'Forecast;SLS-004;16;0~' |\r\n'Forecast;ENG-005;16;0~' |\r\n'Downside;ENG-002;0;16~' |\r\n'Downside;ENG-006;0;19~' |\r\n'Downside;ENG-008;20;0~';\r\n\r\nWHILE( SCAN( '~', vP ) > 1 );\r\n   nS = SCAN( '~', vP ); vRec = SUBST( vP, 1, nS - 1 ) | ';'; vP = SUBST( vP, nS + 1, LONG( vP ) - nS );\r\n   nS = SCAN( ';', vRec ); vVer = SUBST( vRec, 1, nS - 1 ); vRec = SUBST( vRec, nS + 1, LONG( vRec ) - nS );\r\n   nS = SCAN( ';', vRec ); vPos = SUBST( vRec, 1, nS - 1 ); vRec = SUBST( vRec, nS + 1, LONG( vRec ) - nS );\r\n   nS = SCAN( ';', vRec ); nHire = NUMBR( SUBST( vRec, 1, nS - 1 ) ); vRec = SUBST( vRec, nS + 1, LONG( vRec ) - nS );\r\n   nS = SCAN( ';', vRec ); nLeave = NUMBR( SUBST( vRec, 1, nS - 1 ) );\r\n   IF( DIMIX( 'WFP Version', vVer ) > 0 & DIMIX( 'WFP Position', vPos ) > 0 );\r\n      CellPutN( nHire,  cCube, vVer, vPos, 'Hire Month' );\r\n      CellPutN( nLeave, cCube, vVer, vPos, 'Attrition Month' );\r\n   ENDIF;\r\nEND;",
+  "MetadataProcedure": "",
+  "DataProcedure": "",
+  "EpilogProcedure": "",
+  "DataSource": {
+    "Type": "None"
+  },
+  "Parameters": [],
+  "Variables": [],
+  "Attributes": {
+    "Caption": "WFP Seed Hiring Plan"
+  },
+  "LocalizedAttributes": []
+}

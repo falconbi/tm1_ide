@@ -1,0 +1,16 @@
+{
+  "Name": "WFP Seed FX Rates",
+  "PrologProcedure": "#Region Seed FX rates — 1 unit of currency in the reporting currency (GBP). Order: Period, Version, Currency, FX Rate Type, Measure\r\n# Seeded for EVERY leaf version — FX is market data, not a planning assumption,\r\n# so all versions (incl. the calculated Forecast) share the same rates.\r\ncCube = 'WFP FX Rates';\r\ncPer  = 'WFP Period';\r\ncVer  = 'WFP Version';\r\nnPcount = DIMSIZ( cPer );\r\nnVcount = DIMSIZ( cVer );\r\n\r\nvC = 'GBP;1~USD;0.79~NZD;0.47~Reporting;1~';\r\n\r\nWHILE( SCAN( '~', vC ) > 1 );\r\n   nS = SCAN( '~', vC );\r\n   vRec = SUBST( vC, 1, nS - 1 ) | ';';\r\n   vC = SUBST( vC, nS + 1, LONG( vC ) - nS );\r\n\r\n   nS = SCAN(';',vRec); vCur = SUBST(vRec,1,nS-1); vRec = SUBST(vRec,nS+1,LONG(vRec)-nS);\r\n   nS = SCAN(';',vRec); nRate = NUMBR(SUBST(vRec,1,nS-1));\r\n\r\n   nP = 1;\r\n   WHILE( nP <= nPcount );\r\n      vPer = DIMNM( cPer, nP );\r\n      IF( DTYPE( cPer, vPer ) @= 'N' );\r\n         nV = 1;\r\n         WHILE( nV <= nVcount );\r\n            vVer = DIMNM( cVer, nV );\r\n            IF( DTYPE( cVer, vVer ) @= 'N' );\r\n               CellPutN( nRate, cCube, vPer, vVer, vCur, 'Average', 'Rate' );\r\n               CellPutN( nRate, cCube, vPer, vVer, vCur, 'Closing', 'Rate' );\r\n            ENDIF;\r\n            nV = nV + 1;\r\n         END;\r\n      ENDIF;\r\n      nP = nP + 1;\r\n   END;\r\nEND;\r\n",
+  "MetadataProcedure": "",
+  "DataProcedure": "",
+  "EpilogProcedure": "",
+  "DataSource": {
+    "Type": "None"
+  },
+  "Parameters": [],
+  "Variables": [],
+  "Attributes": {
+    "Caption": "WFP Seed FX Rates"
+  },
+  "LocalizedAttributes": []
+}
