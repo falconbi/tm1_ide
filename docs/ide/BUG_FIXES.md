@@ -3,7 +3,7 @@
 Every bug-fix commit, newest first, by the date it was committed. Generated from the git history;
 commits that mixed a fix into a feature are included too. New features are not listed here.
 
-166 fixes from 2026-05-20 to 2026-10-10, plus 46 entries for 11–27 October, 6 for 28 October–1 November, 7 for 2 November, 4 for 5 November, 10 for 6 November and 5 for 9 November. Last updated 2026-11-09.
+166 fixes from 2026-05-20 to 2026-10-10, plus 46 entries for 11–27 October, 6 for 28 October–1 November, 7 for 2 November, 4 for 5 November, 10 for 6 November and 6 for 9 November. Last updated 2026-11-09.
 
 ← [Back to README](../../README.md)
 
@@ -12,6 +12,7 @@ commits that mixed a fix into a feature are included too. New features are not l
 
 ### 2026-11-09
 
+- **cube-map** — After closing the player, a stale run could still leave one process ringed amber and the rest of the map greyed; playback highlighting is now shown only while the player is open
 - **cube-map** — Opening a TI from the Runbook closed the Runbook panel, so there was no way back to the steps; the panel's open state now survives the side-by-side split
 - **cube-map** — Closing and reopening a Cube Map tab restored the last phase focus, so a static runbook map came back looking held; a closed tab now drops its saved session
 - **cube-map** — The map lost its saved place when opening a tab; it now saves before opening and returns to the same place

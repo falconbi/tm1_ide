@@ -930,9 +930,9 @@ function CubeMapInner({ tab }) {
       setSelectedCube(saved.selectedCube)
       setFocused(!!saved.focused)
     }
-    if (saved.runEntry) {
+    if (saved.runEntry && saved.showBar) {
       setRunEntry(saved.runEntry)
-      setShowBar(!!saved.showBar)
+      setShowBar(true)
       setStepInfoOpen(!!saved.stepInfoOpen)
       const [kind, ...rest] = String(saved.runEntry).split(':')
       const seq = kind === 'phase'
@@ -1279,7 +1279,7 @@ function CubeMapInner({ tab }) {
   useEffect(() => { if (!runSeq) showRunningRef.current = false }, [runSeq])
 
   const stopShow = useCallback(() => {
-    setPlaying(false); setRunSeq(null); setShowBar(false); setRunScope(null)
+    setPlaying(false); setRunSeq(null); setRunEntry(null); setRunIdx(0); setStepInfoOpen(false); setShowBar(false); setRunScope(null)
     const prev = playbackReturnRef.current
     if (prev) {
       setPhaseFocus(prev.phaseFocus)
@@ -1330,7 +1330,7 @@ function CubeMapInner({ tab }) {
 
   // active = this step; trail = everything earlier steps touched
   const runHighlight = useMemo(() => {
-    if (!runSeq || !runStep) return null
+    if (!showBar || !runSeq || !runStep) return null
     const trailNodes = new Set(), trailEdges = new Set()
     for (let i = 0; i < runIdx; i++) { runSeq[i].nodes.forEach(n => trailNodes.add(n)); runSeq[i].edges.forEach(e => trailEdges.add(e)) }
     return { nodes: new Set(runStep.nodes), edges: new Set(runStep.edges), trailNodes, trailEdges }
