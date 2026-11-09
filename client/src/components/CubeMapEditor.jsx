@@ -1632,7 +1632,7 @@ function CubeMapInner({ tab }) {
             {[
               { key: 'map',     label: 'Map',        icon: <Network size={11} />,      title: 'The model: cubes, and what connects them' },
               { key: 'run',     label: 'Play a run', icon: <Clapperboard size={11} />, title: 'Play a process or chore step by step across the map' },
-              { key: 'runbook', label: 'Runbook',    icon: <Milestone size={11} />,    title: 'Review a model update phase by phase' },
+              { key: 'runbook', label: 'Runbook',    icon: <Milestone size={11} />,    title: 'Each chore, step by step — what runs, in what order, and what it changes (read-only)' },
             ].map(t => {
               const active = mapMode === t.key
               return (

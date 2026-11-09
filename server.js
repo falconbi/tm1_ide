@@ -3664,15 +3664,7 @@ app.post('/api/admin/validate-ti-functions', async (req, res) => {
 })
 
 // ── Cube Map ──────────────────────────────────────────────────────────────────
-// Runbooks — phased review sequences (config/workforce-lifecycle.json)
-app.get('/api/runbooks', (req, res) => {
-    try {
-        const book = JSON.parse(fs.readFileSync(path.join(__dirname, 'config', 'workforce-lifecycle.json'), 'utf8'))
-        res.json({ runbooks: [book] })
-    } catch (e) {
-        res.status(500).json({ error: e.message })
-    }
-})
+// The Runbook reads chores (from /api/cubemap/model) — a runbook is a chore, so there's no runbook file.
 
 // ── Process summaries (AI worded, stored outside the TI) ─────────────────────
 function processCode(p) {
