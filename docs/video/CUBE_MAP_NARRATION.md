@@ -109,32 +109,40 @@ For each process I see its description, then Steps expands it in code order: wha
 **[Click View on map]**
 View on map takes that chore's processes and everything they touch onto the Cube Map. That is the bridge between “what runs” and “what it changes”.
 
-## 7. Play a run (~60s)
+## 7. Play a run (~95s)
 
 **[Click Play a run]**
 Play a run shows the order a process will execute in. It does not run anything; it walks the code path across the map.
 
-**[Choose the WFP Month End chore; click Play]**
+**[Choose ⏱ WFP Month End (inactive); click Play]**
 Start from a chore: WFP Month End. It is runbook-only here, so it never fires on a schedule, but playing it shows exactly what it would do: WFP Load HR Assignments, then WFP Calc Variances, then WFP Snapshot. The player follows the chore across those processes, and WFP Snapshot itself calls the core version copy, so the helper chain appears too.
 
-Each step lights the next read, write or call. Pause, step back and forward, change the speed, and use Follow if the current step leaves the screen.
+As it plays, the current connection and node light up. The bar tells me where I am: the path at the top, the step number, and the caption. On the right are the controls. Play and Pause are the same button. The arrows step back and forward. The speed menu slows the run to half speed or speeds it up. Follow pans to the current step when it leaves the screen.
 
-**[Click What is this step?]**
-What is this step? names the process, its parameters, and the cube or dimension it touches.
+**[Pause on WFP Load HR Assignments; click the info button]**
+Pause first. The highlight stays on the step, so I can read it properly. The info button — What is this step? — opens the detail card for this exact read, write or call. It names the process and its parameters, the cube being read or written, the measures it writes, and the rule lines and dimensions behind it.
 
-**[Click Back to the start; choose WFP Change Assignment]**
-Now pick the WFP Change Assignment process from the same list. It plays a different shape: one process, its reads and writes, and the recalculation helper it calls. The map only shows the objects in that run, so the player is a focused story rather than the whole model.
+The card is how I see the information without leaving the run. If the step is a process, I get Open process. If it touches a cube, I get Open view, and Open rules when the cube has rules. A dimension gets Open dimension.
 
-**[Pause on a step; click through to a process]**
-Pause on a step, then open the process from the step card. The thread takes me back to the run. That is how I learn an unfamiliar update without reading every line first.
+**[Click Open process]**
+Open process pauses the run and docks the TI beside the map, so I can read the actual code next to the step that triggered it. Alt-click opens it in the pane instead. This is where I check the CellGet, the CellPut, or the ExecuteProcess call I just saw on the map. When I have finished, the map is still on the same step, and I can press Play again or step on.
+
+**[Step to WFP Calc Variances, then WFP Snapshot]**
+The same card follows each step. On WFP Snapshot, Open process shows the wrapper; back on the map, click +n on that process box and the core copy it calls unfolds as its own TI. That is the difference between guessing what an update does and reading the two lines that do it.
+
+**[Choose WFP Change Assignment from the same list]**
+The list is the switching point. I can change the start without closing the player: here is one process, its reads and writes, and the recalculation helper it calls. The map is rebuilt for that run, so I get a focused story rather than the whole model.
+
+**[Pause on the last step]**
+At the end the player says the run is finished. The order follows the code as written; loops play once. It is a reading of the path, not a replay of a real execution.
 
 ## Outro (~15s)
 
 **[Escape back to the full map]**
-So that's the Cube Map: what it is, how it's built from the live model, how to switch the layers, pick a cube, follow its relationships, open Rules or the Default View beside it, and use the Runbook and Play a run to understand an update before it happens.
+So that's the Cube Map: what it is, how it's built from the live model, how to switch the layers, pick a cube, follow its relationships, open Rules or the Default View beside it, and use the Runbook and Play a run — pausing on a step and opening the TI — to understand an update before it happens.
 
 In the next video: the editing features that make everyday work in the IDE faster.
 
 ---
 
-Total about **7 minutes**. To shorten, the easiest cuts are: the Show walk-through in section 3 (−30s), the helper example in section 5 (−15s), and one of the two Play a run examples (−20s).
+Total about **7–8 minutes**. To shorten, the easiest cuts are: the Show walk-through in section 3 (−30s), the helper example in section 5 (−15s), and one of the two Play a run examples (−20s).
