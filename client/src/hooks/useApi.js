@@ -448,8 +448,8 @@ export const useHierarchies = (server, dim) => useQuery({
 })
 
 export const useAddElement = () => useMutation({
-  mutationFn: ({ server, dimension, name, type, hierarchy }) =>
-    post(`/api/dimension/element?server=${enc(server)}&dimension=${enc(dimension)}${hierarchy ? `&hierarchy=${enc(hierarchy)}` : ''}`, { name, type }),
+  mutationFn: ({ server, dimension, name, type, hierarchy, parent, before }) =>
+    post(`/api/dimension/element?server=${enc(server)}&dimension=${enc(dimension)}${hierarchy ? `&hierarchy=${enc(hierarchy)}` : ''}`, { name, type, parent, before }),
 })
 
 export const useDeleteElement = () => useMutation({
@@ -460,6 +460,11 @@ export const useDeleteElement = () => useMutation({
 export const useAddEdge = () => useMutation({
   mutationFn: ({ server, dimension, parent, child, weight, hierarchy }) =>
     post(`/api/dimension/edge?server=${enc(server)}&dimension=${enc(dimension)}${hierarchy ? `&hierarchy=${enc(hierarchy)}` : ''}`, { parent, child, weight: weight ?? 1 }),
+})
+
+export const useSetComponent = () => useMutation({
+  mutationFn: ({ server, dimension, parent, child, before, weight, hierarchy }) =>
+    post(`/api/dimension/component?server=${enc(server)}&dimension=${enc(dimension)}${hierarchy ? `&hierarchy=${enc(hierarchy)}` : ''}`, { parent, child, before: before ?? null, weight: weight ?? 1 }),
 })
 
 export const useDeleteEdge = () => useMutation({
@@ -507,9 +512,9 @@ export const useUpdateEdgeWeight = () => useMutation({
     patch(`/api/dimension/edge?server=${enc(server)}&dimension=${enc(dimension)}&parent=${enc(parent)}&child=${enc(child)}${hierarchy ? `&hierarchy=${enc(hierarchy)}` : ''}`, { weight }),
 })
 
-export const useSubsetUsage = (server, dimension, subset) => useQuery({
-  queryKey: ['subset-usage', server, dimension, subset],
-  queryFn:  () => get(`/api/subset/usage?server=${enc(server)}&dimension=${enc(dimension)}&subset=${enc(subset)}`),
+export const useSubsetUsage = (server, dimension, subset, hierarchy) => useQuery({
+  queryKey: ['subset-usage', server, dimension, hierarchy, subset],
+  queryFn:  () => get(`/api/subset/usage?server=${enc(server)}&dimension=${enc(dimension)}&subset=${enc(subset)}${hierarchy ? `&hierarchy=${enc(hierarchy)}` : ''}`),
   enabled:  !!server && !!dimension && !!subset,
   staleTime: 0,
 })

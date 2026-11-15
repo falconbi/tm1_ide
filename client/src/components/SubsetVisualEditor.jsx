@@ -4,6 +4,7 @@ import { useElements, useEdges, useSubsets, useSubsetElements, useSaveStaticSubs
 import { toast } from 'sonner'
 import { ChevronRight, ChevronDown, Loader2, Search, ArrowUp, ArrowDown, Trash2, X, PanelLeftClose, PanelLeftOpen } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { subsetTabId } from '@/lib/subset-tab'
 
 const TYPE_ICON  = { N: '○', C: '◆', S: '"' }
 const TYPE_COLOR = { N: 'text-blue-400', C: 'text-orange-400', S: 'text-green-400' }
@@ -88,9 +89,9 @@ function ColConfig({ cols, onChange, onClose, attributes = [] }) {
 
 // ── Left panel: dimension browser ─────────────────────────────────────────────
 
-function DimensionBrowser({ server, dim, onKeep, subsets = [], cols, attributes, onColsChange }) {
-    const { data: elements = [], isLoading: loadingEl } = useElements(server, dim)
-    const { data: edges = [],    isLoading: loadingEd } = useEdges(server, dim)
+function DimensionBrowser({ server, dim, hierarchy, onKeep, subsets = [], cols, attributes, onColsChange }) {
+    const { data: elements = [], isLoading: loadingEl } = useElements(server, dim, hierarchy)
+    const { data: edges = [],    isLoading: loadingEd } = useEdges(server, dim, hierarchy)
     const [search, setSearch]         = useState('')
     const [expanded, setExpanded]     = useState(new Set())
     const [selected, setSelected]     = useState(new Set())
@@ -555,10 +556,11 @@ function SubsetGrid({ members, onReorder, onRemove, onAdd, cols, childrenMap = {
 export default function SubsetVisualEditor({ tab, onMdxConvert, onVisualDirty, onVisualMembersChange }) {
     const { bumpSubsetVersion, markTabSaved, closeTab, openTab } = useStore()
     const saveStatic = useSaveStaticSubset()
+    const hierarchy = tab.hierarchy ?? tab.dimension
 
-    const { data: allElements = [] } = useElements(tab.server, tab.dimension)
-    const { data: allEdges    = [] } = useEdges(tab.server, tab.dimension)
-    const { data: subsets     = [] } = useSubsets(tab.server, tab.dimension)
+    const { data: allElements = [] } = useElements(tab.server, tab.dimension, hierarchy)
+    const { data: allEdges    = [] } = useEdges(tab.server, tab.dimension, hierarchy)
+    const { data: subsets     = [] } = useSubsets(tab.server, tab.dimension, hierarchy)
     const { data: attributes  = [] } = useDimAttributes(tab.server, tab.dimension)
 
     const { childrenMap, elementMap, parentMap } = useMemo(
@@ -567,7 +569,7 @@ export default function SubsetVisualEditor({ tab, onMdxConvert, onVisualDirty, o
     )
 
     const { data: existingElements, isLoading: loadingExisting, isError, error } =
-        useSubsetElements(tab.server, tab.dimension, tab.subsetName)
+        useSubsetElements(tab.server, tab.dimension, tab.subsetName, hierarchy)
 
     const [members, setMembers]             = useState(null)
     const [dirty, _setDirty]        = useState(false)
@@ -617,7 +619,7 @@ export default function SubsetVisualEditor({ tab, onMdxConvert, onVisualDirty, o
 
     const handleLoadSubset = async (name) => {
         try {
-            const r = await fetch(`/api/subset/elements?server=${enc(tab.server)}&dimension=${enc(tab.dimension)}&name=${enc(name)}`, { headers: { 'x-ide-token': localStorage.getItem('tm1-token') ?? '' } })
+            const r = await fetch(`/api/subset/elements?server=${enc(tab.server)}&dimension=${enc(tab.dimension)}&name=${enc(name)}&hierarchy=${enc(hierarchy)}`, { headers: { 'x-ide-token': localStorage.getItem('tm1-token') ?? '' } })
             if (!r.ok) throw new Error(await r.text())
             const els = await r.json()
             setMembers(els)
@@ -628,7 +630,7 @@ export default function SubsetVisualEditor({ tab, onMdxConvert, onVisualDirty, o
     const handleSaveStatic = () => {
         const id = toast.loading('Saving static subset\u2026')
         saveStatic.mutate(
-            { server: tab.server, dimension: tab.dimension, name: tab.subsetName, elements: (members ?? []).map(m => m.name) },
+            { server: tab.server, dimension: tab.dimension, hierarchy, name: tab.subsetName, elements: (members ?? []).map(m => m.name) },
             {
                 onSuccess: () => {
                     setDirty(false)
@@ -658,18 +660,19 @@ export default function SubsetVisualEditor({ tab, onMdxConvert, onVisualDirty, o
         if (!name || name === tab.subsetName) return
         const id = toast.loading(`Saving as "${name}"\u2026`)
         saveStatic.mutate(
-            { server: tab.server, dimension: tab.dimension, name, elements: (members ?? []).map(m => m.name) },
+            { server: tab.server, dimension: tab.dimension, hierarchy, name, elements: (members ?? []).map(m => m.name) },
             {
                 onSuccess: () => {
                     toast.success(`Saved as "${name}"`, { id })
                     bumpSubsetVersion(tab.server, tab.dimension)
                     closeTab(tab.id)
                     openTab({
-                        id: `subset:${tab.server}:${tab.dimension}:${name}`,
+                        id: subsetTabId(tab.server, tab.dimension, hierarchy, name),
                         type: 'subset',
                         label: name,
                         server: tab.server,
                         dimension: tab.dimension,
+                        hierarchy,
                         subsetName: name,
                     })
                 },
@@ -679,7 +682,7 @@ export default function SubsetVisualEditor({ tab, onMdxConvert, onVisualDirty, o
     }
 
     const _handleConvertMDX = () => {
-        const names = (members ?? []).map(m => `[${tab.dimension}].[${tab.dimension}].[${m.name}]`)
+        const names = (members ?? []).map(m => `[${tab.dimension}].[${hierarchy}].[${m.name}]`)
         onMdxConvert(names.length ? `{${names.join(', ')}}` : '{}')
     }
 
@@ -752,6 +755,7 @@ export default function SubsetVisualEditor({ tab, onMdxConvert, onVisualDirty, o
                         <DimensionBrowser
                             server={tab.server}
                             dim={tab.dimension}
+                            hierarchy={hierarchy}
                             onKeep={handleKeep}
                             subsets={subsets}
                             cols={srcCols}

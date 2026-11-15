@@ -8,6 +8,7 @@ import GlobalSearch from '@/components/GlobalSearch'
 import HierarchyFromAttributeDialog from '@/components/HierarchyFromAttributeDialog'
 import { DeleteWarningModal } from '@/components/DeleteWarningModal'
 import { cn } from '@/lib/utils'
+import { subsetTabId, subsetLocateId } from '@/lib/subset-tab'
 
 // ── Reveal / locate helpers ───────────────────────────────────────────────────
 
@@ -59,7 +60,7 @@ function getLocateId(target) {
   if (target.type === 'rules') return `rules:${target.cube}`
   if (target.type === 'dimension') return `dimension:${target.dimension}`
   if (target.type === 'hierarchy') return `hierarchy:${target.dimension}:${target.hierarchy}`
-  if (target.type === 'subset') return `subset:${target.dimension}:${target.subsetName}`
+  if (target.type === 'subset') return subsetLocateId(target.dimension, target.hierarchy, target.subsetName)
   if (target.type === 'process') return `process:${target.name}`
   return ''
 }
@@ -69,7 +70,7 @@ function getLocateIdFromTab(tab) {
   if (tab.type === 'process')   return `process:${tab.name}`
   if (tab.type === 'rules')     return `rules:${tab.cube}`
   if (tab.type === 'view' || tab.type === 'cubeview') return tab.viewName ? `view:${tab.cube}:${tab.viewName}` : `cube:${tab.cube}`
-  if (tab.type === 'subset')    return tab.subsetName ? `subset:${tab.dimension}:${tab.subsetName}` : `dimension:${tab.dimension}`
+  if (tab.type === 'subset')    return tab.subsetName ? subsetLocateId(tab.dimension, tab.hierarchy, tab.subsetName) : `dimension:${tab.dimension}`
   if (tab.type === 'dimension') return `dimension:${tab.dimension}`
   if (tab.type === 'chore')     return tab.name ? `chore:${tab.name}` : ''
   return ''
@@ -668,7 +669,6 @@ function DimRow({ server, dim, onOpenSubset, onOpenDim }) {
   const [addingHierarchy, setAddingHierarchy] = useState(false)
   const [newHierarchyName, setNewHierarchyName] = useState('')
   const hierarchyInputRef = useRef(null)
-  const { data: subsets, isFetching } = useSubsets(open ? server : null, open ? dim : null)
   // TM1's automatic 'Leaves' hierarchy isn't one anyone builds — leave it out
   const { data: allHierarchies = [] } = useHierarchies(open ? server : null, open ? dim : null)
   const hierarchies = allHierarchies.filter(h => h !== 'Leaves')
@@ -676,24 +676,27 @@ function DimRow({ server, dim, onOpenSubset, onOpenDim }) {
   const [hierMenu, setHierMenu] = useState(false)
   const [fromAttr, setFromAttr] = useState(false)
   const hasMultipleHierarchies = hierarchies.length > 1 || addingHierarchy
+  // one flat list for a classic dimension; with hierarchies, each row has its own
+  const { data: subsets, isFetching } = useSubsets(open && !hasMultipleHierarchies ? server : null, open && !hasMultipleHierarchies ? dim : null)
   const deleteDimMut = useDeleteDimension()
   const deleteSubsetMut = useDeleteSubset()
 
   const [deleteModal, setDeleteModal] = useState(null)
 
-  const handleDeleteSubset = (name) => setDeleteModal({ type: 'subset', name })
+  const handleDeleteSubset = (name, hierarchy = dim) => setDeleteModal({ type: 'subset', name, hierarchy })
   const handleDelete = (e) => { e.stopPropagation(); setDeleteModal({ type: 'dimension' }) }
 
   const confirmDelete = () => {
     const m = deleteModal
     setDeleteModal(null)
     if (m.type === 'subset') {
-      deleteSubsetMut.mutate({ server, dimension: dim, name: m.name }, {
+      deleteSubsetMut.mutate({ server, dimension: dim, name: m.name, hierarchy: m.hierarchy }, {
         onSuccess: () => {
           toast.success(`Deleted ${m.name}`)
           const { tabs, closeTab } = useStore.getState()
+          const tabId = subsetTabId(server, dim, m.hierarchy, m.name)
           tabs
-            .filter(t => t.id === `subset:${server}:${dim}:${m.name}`)
+            .filter(t => t.id === tabId)
             .forEach(t => closeTab(t.id))
         },
         onError: (err) => toast.error(err.message ?? 'Delete failed'),
@@ -803,19 +806,34 @@ function DimRow({ server, dim, onOpenSubset, onOpenDim }) {
                 </div>
               )}
               {hierarchies.map(h => (
-                <button
-                  key={h}
-                  onClick={() => onOpenDim(dim, h)}
-                  data-locate-id={`hierarchy:${dim}:${h}`}
-                  className="flex items-center gap-2 w-full px-4 py-0.5 text-xs text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground truncate"
-                  title={`Open ${h} hierarchy`}
-                >
-                  <Layers size={10} className="shrink-0 text-muted-foreground" />
-                  <span className="truncate font-mono">{h}</span>
-                  {h === dim
-                    ? <span className="text-[10px] text-muted-foreground/50">(default)</span>
-                    : <span className="text-[10px] text-muted-foreground/50" title="An Alternate Hierarchy: the same elements, so the same data, rolled up another way">alternate</span>}
-                </button>
+                <div key={h}>
+                  <div className="flex items-center group/hier">
+                    <button
+                      onClick={() => onOpenDim(dim, h)}
+                      data-locate-id={`hierarchy:${dim}:${h}`}
+                      className="flex items-center gap-2 flex-1 px-4 py-0.5 text-xs text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground truncate min-w-0"
+                      title={`Open ${h} hierarchy`}
+                    >
+                      <Layers size={10} className="shrink-0 text-muted-foreground" />
+                      <span className="truncate font-mono">{h}</span>
+                      {h === dim
+                        ? <span className="text-[10px] text-muted-foreground/50">(default)</span>
+                        : <span className="text-[10px] text-muted-foreground/50" title="An Alternate Hierarchy: the same elements, so the same data, rolled up another way">alternate</span>}
+                    </button>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); onOpenSubset(dim, null, h) }}
+                      title={`New subset in ${h}`}
+                      className="hidden group-hover/hier:flex items-center pr-3 py-0.5 text-muted-foreground hover:text-foreground shrink-0"
+                    >
+                      <Plus size={9} />
+                    </button>
+                  </div>
+                  <HierarchySubsetList
+                    server={server} dim={dim} hierarchy={h}
+                    activeId={activeId} changedSet={changedSet}
+                    onOpenSubset={onOpenSubset} onDeleteSubset={handleDeleteSubset}
+                  />
+                </div>
               ))}
             </div>
           )}
@@ -826,11 +844,11 @@ function DimRow({ server, dim, onOpenSubset, onOpenDim }) {
           {(subsets ?? []).length === 0 && !isFetching && !hasMultipleHierarchies && (
             <p className="px-14 py-0.5 text-xs text-muted-foreground italic">No subsets — hover to add</p>
           )}
-          {(subsets ?? []).map(s => (
+          {!hasMultipleHierarchies && (subsets ?? []).map(s => (
             <div key={s.Name} className="flex items-center text-xs text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground group">
               <button
-                onClick={() => onOpenSubset(dim, s.Name)}
-                data-locate-id={`subset:${dim}:${s.Name}`}
+                onClick={() => onOpenSubset(dim, s.Name, dim)}
+                data-locate-id={subsetLocateId(dim, dim, s.Name)}
                 className="flex items-center gap-2 flex-1 pl-14 pr-2 py-0.5 truncate min-w-0"
                 title={s.Expression ? 'MDX subset' : 'Static subset'}
               >
@@ -838,10 +856,10 @@ function DimRow({ server, dim, onOpenSubset, onOpenDim }) {
                   {s.Expression ? 'MDX' : 'STA'}
                 </span>
                 {changedSet.has(`subset::${dim}::${s.Name}`) && <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0 mr-1" />}
-                <span className={cn('truncate font-mono', activeId === `subset:${dim}:${s.Name}` && 'text-amber-400 dark:text-amber-300')}>{s.Name}</span>
+                <span className={cn('truncate font-mono', activeId === subsetLocateId(dim, dim, s.Name) && 'text-amber-400 dark:text-amber-300')}>{s.Name}</span>
               </button>
               <button
-                onClick={(e) => { e.stopPropagation(); handleDeleteSubset(s.Name) }}
+                onClick={(e) => { e.stopPropagation(); handleDeleteSubset(s.Name, dim) }}
                 title="Delete subset"
                 className="hidden group-hover:flex items-center pr-2 py-0.5 text-muted-foreground hover:text-red-400 shrink-0"
               >
@@ -862,6 +880,38 @@ function DimRow({ server, dim, onOpenSubset, onOpenDim }) {
       />
     </div>
   )
+}
+
+function HierarchySubsetList({ server, dim, hierarchy, activeId, changedSet, onOpenSubset, onDeleteSubset }) {
+  const { data: subsets = [], isFetching } = useSubsets(server, dim, hierarchy)
+  if (isFetching && subsets.length === 0) return null
+  if (subsets.length === 0) return null
+  return subsets.map(s => {
+    const locate = subsetLocateId(dim, hierarchy, s.Name)
+    return (
+      <div key={s.Name} className="flex items-center text-xs text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground group">
+        <button
+          onClick={() => onOpenSubset(dim, s.Name, hierarchy)}
+          data-locate-id={locate}
+          className="flex items-center gap-2 flex-1 pl-16 pr-2 py-0.5 truncate min-w-0"
+          title={s.Expression ? 'MDX subset' : 'Static subset'}
+        >
+          <span className="shrink-0 w-6 text-center font-mono text-[8px] font-bold tracking-tight text-muted-foreground/70">
+            {s.Expression ? 'MDX' : 'STA'}
+          </span>
+          {changedSet.has(`subset::${dim}::${s.Name}`) && <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0 mr-1" />}
+          <span className={cn('truncate font-mono', activeId === locate && 'text-amber-400 dark:text-amber-300')}>{s.Name}</span>
+        </button>
+        <button
+          onClick={(e) => { e.stopPropagation(); onDeleteSubset(s.Name, hierarchy) }}
+          title="Delete subset"
+          className="hidden group-hover:flex items-center pr-2 py-0.5 text-muted-foreground hover:text-red-400 shrink-0"
+        >
+          <Trash2 size={9} />
+        </button>
+      </div>
+    )
+  })
 }
 
 function DimSection({ server, dims, isLoading, onOpenSubset, onOpenDim, onCreateDim }) {
@@ -1198,12 +1248,13 @@ export default function Explorer() {
     content: null,
   })
 
-  const openSubset = (dim, name) => toggleOpenTab({
-    id:         name ? `subset:${server}:${dim}:${name}` : `subset:${server}:${dim}:new:${Date.now()}`,
+  const openSubset = (dim, name, hierarchy) => toggleOpenTab({
+    id:         subsetTabId(server, dim, hierarchy, name),
     type:       'subset',
     label:      name ?? 'New Subset',
     server,
     dimension:  dim,
+    hierarchy:  hierarchy ?? dim,
     subsetName: name ?? null,
   })
 

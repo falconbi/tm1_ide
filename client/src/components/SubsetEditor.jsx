@@ -14,6 +14,7 @@ import HelpPanel from '@/components/HelpPanel'
 import SubsetVisualEditor from './SubsetVisualEditor'
 import { ConflictBanner, ConflictSaveWarning } from '@/components/ConflictBanner'
 import DiffViewerModal from '@/components/DiffViewerModal'
+import { subsetTabId } from '@/lib/subset-tab'
 
 const TYPE_ICON  = { N: '○', C: '◆', S: '"' }
 const TYPE_COLOR = { N: 'text-blue-400', C: 'text-amber-400', S: 'text-emerald-400' }
@@ -243,14 +244,15 @@ function registerMDXLanguage(monaco, dimension, getElements) {
 export default function SubsetEditor({ tab }) {
   const { dark, markTabSaved, bumpSubsetVersion, closeTab, openTab, setActiveTab } = useStore()
   useQueryClient()
-  const { data, isLoading } = useSubset(tab.server, tab.dimension, tab.subsetName)
+  const hierarchy = tab.hierarchy ?? tab.dimension
+  const { data, isLoading } = useSubset(tab.server, tab.dimension, tab.subsetName, hierarchy)
   const saveSubset  = useSaveSubset()
   const previewMDX  = usePreviewMDX()
   const generateMDX = useGenerateMDX()
   const { data: config } = useConfig()
   const hasAI = !!config?.hasAI
-  const { data: elements } = useElements(tab.server, tab.dimension)
-  const { data: usageData, isFetching: loadingUsage, refetch: refetchUsage } = useSubsetUsage(tab.server, tab.dimension, tab.subsetName)
+  const { data: elements } = useElements(tab.server, tab.dimension, hierarchy)
+  const { data: usageData, isFetching: loadingUsage, refetch: refetchUsage } = useSubsetUsage(tab.server, tab.dimension, tab.subsetName, hierarchy)
 
   const hasApply = !!subsetApplyCallbacks.get(tab.id)
 
@@ -311,7 +313,7 @@ export default function SubsetEditor({ tab }) {
       if (!window.confirm('Switch to MDX? Unsaved visual changes will be lost.')) return
     }
     if (mode === 'visual' && next === 'mdx' && visualMembersRef.current.length) {
-      const names = visualMembersRef.current.map(m => `[${tab.dimension}].[${tab.dimension}].[${m.name ?? m}]`)
+      const names = visualMembersRef.current.map(m => `[${tab.dimension}].[${hierarchy}].[${m.name ?? m}]`)
       setMdx(names.length ? `{${names.join(', ')}}` : '{}')
       setDirty(true); setMembers(null)
     }
@@ -347,7 +349,7 @@ export default function SubsetEditor({ tab }) {
       // 2. Server-side validation (execution errors — syntax, missing elements, etc.)
       try {
         const enc = encodeURIComponent
-        const r = await fetch(`/api/subset/preview?server=${enc(tab.server)}&dimension=${enc(tab.dimension)}`, {
+        const r = await fetch(`/api/subset/preview?server=${enc(tab.server)}&dimension=${enc(tab.dimension)}&hierarchy=${enc(hierarchy)}`, {
           method: 'POST', headers: { 'Content-Type': 'application/json', 'x-ide-token': localStorage.getItem('tm1-token') ?? '' },
           body: JSON.stringify({ mdx, limit: 1 }),
         })
@@ -382,7 +384,7 @@ export default function SubsetEditor({ tab }) {
     const mdxToRun = getMDXToRun()
     if (!mdxToRun?.trim()) return
     previewMDX.mutate(
-      { server: tab.server, dimension: tab.dimension, mdx: mdxToRun },
+      { server: tab.server, dimension: tab.dimension, mdx: mdxToRun, hierarchy },
       { onSuccess: (d) => { setMembers(d.members) }, onError: (e) => toast.error(e.message) }
     )
   }
@@ -400,7 +402,7 @@ export default function SubsetEditor({ tab }) {
   const doSave = () => {
     const id = toast.loading('Saving…')
     saveSubset.mutate(
-      { server: tab.server, dimension: tab.dimension, name: tab.subsetName, mdx },
+      { server: tab.server, dimension: tab.dimension, name: tab.subsetName, mdx, hierarchy },
       { onSuccess: () => { setDirty(false); markTabSaved(tab.id); toast.success('Saved', { id }); bumpSubsetVersion(tab.server, tab.dimension) }, onError: (e) => toast.error(e.message, { id }) }
     )
   }
@@ -417,8 +419,8 @@ export default function SubsetEditor({ tab }) {
     if (!name || name === tab.subsetName) return
     const id = toast.loading(`Saving as "${name}"…`)
     saveSubset.mutate(
-      { server: tab.server, dimension: tab.dimension, name, mdx },
-      { onSuccess: () => { toast.success(`Saved as "${name}"`, { id }); bumpSubsetVersion(tab.server, tab.dimension); closeTab(tab.id); openTab({ id: `subset:${tab.server}:${tab.dimension}:${name}`, type: 'subset', label: name, server: tab.server, dimension: tab.dimension, subsetName: name }) }, onError: e => toast.error(e.message, { id }) }
+      { server: tab.server, dimension: tab.dimension, name, mdx, hierarchy },
+      { onSuccess: () => { toast.success(`Saved as "${name}"`, { id }); bumpSubsetVersion(tab.server, tab.dimension); closeTab(tab.id); openTab({ id: subsetTabId(tab.server, tab.dimension, hierarchy, name), type: 'subset', label: name, server: tab.server, dimension: tab.dimension, hierarchy, subsetName: name }) }, onError: e => toast.error(e.message, { id }) }
     )
   }
 
@@ -519,6 +521,10 @@ export default function SubsetEditor({ tab }) {
           ))}
         </div>
         <span className="text-xs text-muted-foreground">{tab.dimension}</span>
+        {tab.hierarchy && tab.hierarchy !== tab.dimension && <>
+          <span className="text-muted-foreground/40">/</span>
+          <span className="text-xs text-muted-foreground">{tab.hierarchy}</span>
+        </>}
         {tab.subsetName && <>
           <span className="text-muted-foreground/40">·</span>
           <span className="text-xs font-mono">{tab.subsetName}</span>
@@ -532,7 +538,7 @@ export default function SubsetEditor({ tab }) {
         <button onClick={() => {
           const { setRevealTarget } = useStore.getState()
           setRevealTarget(tab.subsetName
-            ? { type: 'subset',    server: tab.server, dimension: tab.dimension, subsetName: tab.subsetName }
+            ? { type: 'subset',    server: tab.server, dimension: tab.dimension, hierarchy: tab.hierarchy, subsetName: tab.subsetName }
             : { type: 'dimension', server: tab.server, dimension: tab.dimension }
           )
         }}

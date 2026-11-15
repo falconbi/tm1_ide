@@ -65,14 +65,19 @@ class TM1Client {
         }
     }
 
-    async getElements(dim, hierarchy = dim, includeIndex = false) {
+    async getElements(dim, hierarchy = dim) {
         const TYPE = { Numeric: 'N', Consolidated: 'C', String: 'S', N: 'N', C: 'C', S: 'S', 1: 'N', 2: 'S', 3: 'C' }
         const d = await this.get(
             `Dimensions('${odataKey(dim)}')/Hierarchies('${odataKey(hierarchy)}')/Elements`,
 
-            { '$select': includeIndex ? 'Name,Type,Level,Index' : 'Name,Type,Level' }
+            // Index is always selected: the dimension editor orders the tree by it (the
+            // position an insert-before actually changes), not by whatever order the
+            // collection happens to come back in.
+            { '$select': 'Name,Type,Level,Index' }
         )
-        return (d.value ?? []).map(e => ({ ...e, Type: TYPE[e.Type] ?? e.Type }))
+        return (d.value ?? [])
+            .map(e => ({ ...e, Type: TYPE[e.Type] ?? e.Type }))
+            .sort((a, b) => (a.Index ?? 0) - (b.Index ?? 0))
     }
 
     async getElementsWithTree(dim, hierarchy = dim) {
@@ -151,6 +156,88 @@ class TM1Client {
         )
     }
 
+    // Best-effort: make the hierarchy keep input order, so an insertion point is
+    // actually honoured. Done through }DimensionProperties because HierarchySortOrder
+    // is unreliable on classic dimensions (and rejects some named-hierarchy spellings).
+    // If the control cube refuses the write, the insert still goes ahead.
+    async _setInputOrder(dim, hierarchy = dim) {
+        const holder = String(hierarchy) === String(dim) ? dim : `${dim}:${hierarchy}`
+        const set = async (property, value) => {
+            await this.post(`Cubes('}DimensionProperties')/tm1.Update`, {
+                Cells: [{
+                    'Tuple@odata.bind': [
+                        `Dimensions('}Dimensions')/Hierarchies('}Dimensions')/Elements('${odataKey(holder)}')`,
+                        `Dimensions('}DimensionProperties')/Hierarchies('}DimensionProperties')/Elements('${odataKey(property)}')`,
+                    ]
+                }],
+                Value: value,
+            })
+        }
+        try {
+            await set('SortElementsType', 'ByInput')
+            await set('SortElementsSense', 'Ascending')
+            await set('SortComponentsType', 'ByInput')
+            await set('SortComponentsSense', 'Ascending')
+        } catch (e) {
+            console.warn(`[dimension] could not set input order for ${holder}: ${e.message}`)
+        }
+    }
+
+    // Add an element at a chosen position: a child before a sibling (tm1.SetComponent),
+    // or a top-level element before another root (DimensionElementInsert via TI).
+    async addElementAt(dim, name, type, hierarchy = dim, { parent = null, before = null } = {}) {
+        const TYPE_MAP = { N: 'Numeric', C: 'Consolidated', S: 'String' }
+        const e = s => String(s).replace(/'/g, "''")
+        if (parent && before) {
+            // SetComponent creates the child itself (with its type). Do NOT create it
+            // first: it treats its Element as a new element and fails "already exists".
+            if (type === 'S') throw new Error('String elements cannot be added under a consolidation')
+            const exists = await this.get(
+                `Dimensions('${odataKey(dim)}')/Hierarchies('${odataKey(hierarchy)}')/Elements('${odataKey(name)}')`,
+                { '$select': 'Name' }
+            ).catch(() => null)
+            if (exists?.Name) throw new Error(`Element "${name}" already exists`)
+            await this._setInputOrder(dim, hierarchy)
+            await this.post(
+                `Dimensions('${odataKey(dim)}')/Hierarchies('${odataKey(hierarchy)}')/Elements('${odataKey(parent)}')/tm1.SetComponent`,
+                {
+                    Element: { Name: name, Type: TYPE_MAP[type] ?? type },
+                    'Before@odata.bind': `Dimensions('${odataKey(dim)}')/Hierarchies('${odataKey(hierarchy)}')/Elements('${odataKey(before)}')`,
+                    Weight: 1,
+                }
+            )
+            return
+        }
+        if (parent) {
+            await this.addElement(dim, name, type, hierarchy)
+            try {
+                await this.addEdge(dim, parent, name, 1, hierarchy)
+            } catch (err) {
+                await this.deleteElement(dim, name, hierarchy).catch(() => {})
+                throw err
+            }
+            return
+        }
+        if (before) {
+            // DimensionElementInsert only inserts into the main hierarchy, and its
+            // insertion point must be a top-level element.
+            if (String(hierarchy) !== String(dim)) {
+                throw new Error('Inserting before another top-level element is only supported in the main hierarchy')
+            }
+            const exists = await this.get(
+                `Dimensions('${odataKey(dim)}')/Hierarchies('${odataKey(hierarchy)}')/Elements('${odataKey(name)}')`,
+                { '$select': 'Name' }
+            ).catch(() => null)
+            if (exists?.Name) throw new Error(`Element "${name}" already exists`)
+            await this._setInputOrder(dim, hierarchy)
+            await this._runTI(
+                `DimensionElementInsertDirect('${e(dim)}', '${e(before)}', '${e(name)}', '${e(type)}');`
+            )
+            return
+        }
+        await this.addElement(dim, name, type, hierarchy)
+    }
+
     // Bulk-create elements in one POST — far faster than addElement() in a loop
     async bulkSetElements(dim, elements, hierarchy = dim) {
         const TYPE_MAP = { N: 'Numeric', C: 'Consolidated', S: 'String' }
@@ -202,6 +289,24 @@ class TM1Client {
         return this.post(
             `Dimensions('${odataKey(dim)}')/Hierarchies('${odataKey(hierarchy)}')/Edges`,
             { ParentName: parent, ComponentName: child, Weight: weight }
+        )
+    }
+
+    // Place an EXISTING element under a parent, before `before` (or at the end when
+    // `before` is null). Element@odata.bind references the existing element — the
+    // inline Element form creates a new one and fails "already exists".
+    async setComponent(dim, parent, child, before = null, weight = 1, hierarchy = dim) {
+        await this._setInputOrder(dim, hierarchy)
+        const body = {
+            'Element@odata.bind': `Dimensions('${odataKey(dim)}')/Hierarchies('${odataKey(hierarchy)}')/Elements('${odataKey(child)}')`,
+            Weight: weight,
+        }
+        if (before) {
+            body['Before@odata.bind'] = `Dimensions('${odataKey(dim)}')/Hierarchies('${odataKey(hierarchy)}')/Elements('${odataKey(before)}')`
+        }
+        return this.post(
+            `Dimensions('${odataKey(dim)}')/Hierarchies('${odataKey(hierarchy)}')/Elements('${odataKey(parent)}')/tm1.SetComponent`,
+            body
         )
     }
 
@@ -670,7 +775,7 @@ class TM1Client {
 
     // ── Subset usage scan ─────────────────────────────────────────────────────
 
-    async scanSubsetUsage(dim, subsetName) {
+    async scanSubsetUsage(dim, subsetName, hierarchy = dim) {
         const cubeUsage = []
         const tiUsage   = []
 
@@ -687,9 +792,12 @@ class TM1Client {
                     for (const axis of axes) {
                         const placements = v[axis] ?? []
                         for (const p of placements) {
-                            if (p.Subset?.Name === subsetName && p.Dimension?.Name === dim) {
-                                cubeUsage.push({ cube, view, axis })
-                            }
+                            if (p.Subset?.Name !== subsetName || p.Dimension?.Name !== dim) continue
+                            // a native view can't carry an alternate hierarchy; for the
+                            // default hierarchy (or when TM1 doesn't report one) accept it
+                            const ph = p.Subset?.Hierarchy?.Name
+                            if (hierarchy !== dim && ph && ph !== hierarchy) continue
+                            cubeUsage.push({ cube, view, axis })
                         }
                     }
                 } catch { /* skip inaccessible views */ }

@@ -1,7 +1,7 @@
 import { useMemo, useState, useCallback, useRef, useEffect, forwardRef, useImperativeHandle } from 'react'
 import {
   useElements, useElementsWithIndex, useEdges, useElementAttrValues, useHierarchies,
-  useAddElement, useDeleteElement, useAddEdge, useDeleteEdge, useUpdateEdgeWeight,
+  useAddElement, useDeleteElement, useAddEdge, useDeleteEdge, useUpdateEdgeWeight, useSetComponent,
   useAttrGrid, useWriteElementAttribute, useCreateAttrDef, useDeleteAttrDef, useSubsets, useSubsetElements,
   useDimensionUsage, useCreateHierarchy, useBulkDimImport, useBulkAttrImport, useCreateDimension, usePreDeleteElementCheck,
   useHierarchyInfo, useElementHierarchyParents,
@@ -25,8 +25,9 @@ const TYPE_COLOR = { N: 'text-blue-400', C: 'text-orange-400', S: 'text-green-40
 const TYPE_LABEL = { N: 'Numeric', C: 'Consolidated', S: 'String' }
 
 function buildTree(elements, edges) {
+  const sorted = [...elements].sort((a, b) => (a.Index ?? 0) - (b.Index ?? 0))
   const byName = {}
-  for (const e of elements) byName[e.Name] = e
+  for (const e of sorted) byName[e.Name] = e
   const childrenOf = {}
   const isChild = new Set()
   for (const edge of edges) {
@@ -34,8 +35,37 @@ function buildTree(elements, edges) {
     childrenOf[edge.ParentName].push(edge.ComponentName)
     isChild.add(edge.ComponentName)
   }
-  const roots = elements.filter(e => !isChild.has(e.Name)).map(e => e.Name)
+  // roots follow TM1's element Index; children follow the edge order the server
+  // returns (that is what tm1.SetComponent's Before controls).
+  const roots = sorted.filter(e => !isChild.has(e.Name)).map(e => e.Name)
   return { roots, childrenOf, byName }
+}
+
+// is `node` anywhere below `ancestor`? (used to refuse a drag that would make a loop)
+function isUnder(childrenOf, ancestor, node) {
+  const stack = [...(childrenOf[ancestor] ?? [])]
+  while (stack.length) {
+    const c = stack.pop()
+    if (c === node) return true
+    stack.push(...(childrenOf[c] ?? []))
+  }
+  return false
+}
+
+// ── Drop line between siblings (drag to place before) ───────────────────────
+function DropLine({ onDrop }) {
+  const [over, setOver] = useState(false)
+  return (
+    <div
+      onDragOver={e => { e.preventDefault(); e.stopPropagation(); e.dataTransfer.dropEffect = 'move'; setOver(true) }}
+      onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget)) setOver(false) }}
+      onDrop={e => {
+        e.preventDefault(); e.stopPropagation(); setOver(false)
+        onDrop(e.dataTransfer.getData('text/plain'))
+      }}
+      className={cn('h-1.5 mx-1 rounded-full transition-colors', over ? 'bg-primary' : 'bg-transparent')}
+    />
+  )
 }
 
 // ── Weight input ────────────────────────────────────────────────────────────
@@ -53,12 +83,22 @@ function WeightInput({ value, onSave }) {
 }
 
 // ── Bulk add modal ──────────────────────────────────────────────────────────
-function BulkAddModal({ consolElements, onConfirm, onClose }) {
+function BulkAddModal({ consolElements, roots = [], childrenOf = {}, onConfirm, onClose }) {
   const [text, setText] = useState('')
   const [type, setType] = useState('N')
   const [parent, setParent] = useState('')
+  const [direction, setDirection] = useState('before')
+  const [target, setTarget] = useState('')
 
   const names = text.split('\n').map(s => s.trim()).filter(Boolean)
+  const candidates = parent ? (childrenOf[parent] ?? []) : roots
+  const pick = candidates.includes(target) ? target : ''
+  const anchor = () => {
+    if (!pick) return null
+    const at = candidates.indexOf(pick)
+    if (direction === 'before') return pick
+    return candidates[at + 1] ?? null
+  }
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={onClose}>
@@ -96,6 +136,24 @@ function BulkAddModal({ consolElements, onConfirm, onClose }) {
               {consolElements.map(e => <option key={e.Name} value={e.Name}>{e.Name}</option>)}
             </select>
           </div>
+          {candidates.length > 0 && (
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-muted-foreground shrink-0">Position:</span>
+              <select value={direction} onChange={e => setDirection(e.target.value)}
+                className="text-xs bg-muted border border-border rounded px-2 py-1 outline-none shrink-0">
+                <option value="before">before</option>
+                <option value="after">after</option>
+              </select>
+              <select value={pick} onChange={e => setTarget(e.target.value)}
+                className="flex-1 text-xs bg-muted border border-border rounded px-2 py-1 outline-none min-w-0">
+                <option value="">at end</option>
+                {candidates.map(n => <option key={n} value={n}>{n}</option>)}
+              </select>
+            </div>
+          )}
+          {type === 'S' && parent && (
+            <div className="text-xs text-red-400">String elements cannot be added under a consolidation.</div>
+          )}
         </div>
         <div className="flex items-center justify-between px-4 py-3 border-t border-border">
           <span className="text-xs text-muted-foreground">{names.length} element{names.length !== 1 ? 's' : ''} to add</span>
@@ -105,8 +163,8 @@ function BulkAddModal({ consolElements, onConfirm, onClose }) {
               Cancel
             </button>
             <button
-              onClick={() => names.length > 0 && onConfirm(names, type, parent || null)}
-              disabled={names.length === 0}
+              onClick={() => names.length > 0 && onConfirm(names, type, parent || null, anchor())}
+              disabled={names.length === 0 || (type === 'S' && !!parent)}
               className="px-3 py-1.5 text-xs bg-primary text-primary-foreground rounded disabled:opacity-40">
               Add {names.length > 0 ? names.length : ''} Element{names.length !== 1 ? 's' : ''}
             </button>
@@ -279,46 +337,97 @@ function ElementPanel({ server, dimension, el, parents, children, byName, consol
 }
 
 // ── Tree node ───────────────────────────────────────────────────────────────
-function AddRow({ onConfirm, onCancel }) {
+function AddRow({ onConfirm, onCancel, beforeOptions = [] }) {
   const [name, setName] = useState('')
   const [type, setType] = useState('N')
-  const confirm = () => { if (name.trim()) onConfirm(name.trim(), type) }
+  const [direction, setDirection] = useState('before')
+  const [target, setTarget] = useState('')
+  const insertBefore = () => {
+    if (!target) return null
+    const at = beforeOptions.indexOf(target)
+    if (direction === 'before' || at < 0) return target
+    return beforeOptions[at + 1] ?? null
+  }
+  const confirm = () => { if (name.trim()) onConfirm(name.trim(), type, insertBefore()) }
   return (
-    <div className="flex items-center gap-1 py-1 px-1 bg-muted/40 rounded mb-1">
-      <span className={cn('shrink-0 text-[10px] w-3', TYPE_COLOR[type])}>{TYPE_ICON[type]}</span>
-      <input autoFocus value={name} onChange={e => setName(e.target.value)}
-        onKeyDown={e => { if (e.key === 'Enter') confirm(); if (e.key === 'Escape') onCancel() }}
-        placeholder="element name…"
-        className="flex-1 text-xs font-mono bg-transparent border-b border-primary outline-none py-px min-w-0" />
-      <select value={type} onChange={e => setType(e.target.value)}
-        className="text-[10px] bg-background border border-border rounded px-1 py-px text-muted-foreground shrink-0">
-        <option value="N">Leaf</option>
-        <option value="C">Consol</option>
-        <option value="S">String</option>
-      </select>
-      <button onClick={confirm} className="p-1 text-primary shrink-0"><Check size={11} /></button>
-      <button onClick={onCancel} className="p-1 text-muted-foreground shrink-0"><X size={11} /></button>
+    <div className="py-1 px-1 bg-muted/40 rounded mb-1">
+      <div className="flex items-center gap-1">
+        <span className={cn('shrink-0 text-[10px] w-3', TYPE_COLOR[type])}>{TYPE_ICON[type]}</span>
+        <input autoFocus value={name} onChange={e => setName(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') confirm(); if (e.key === 'Escape') onCancel() }}
+          placeholder="element name…"
+          className="flex-1 text-xs font-mono bg-transparent border-b border-primary outline-none py-px min-w-0" />
+        <select value={type} onChange={e => setType(e.target.value)}
+          className="text-[10px] bg-background border border-border rounded px-1 py-px text-muted-foreground shrink-0">
+          <option value="N">Leaf</option>
+          <option value="C">Consol</option>
+          <option value="S">String</option>
+        </select>
+        <button onClick={confirm} className="p-1 text-primary shrink-0"><Check size={11} /></button>
+        <button onClick={onCancel} className="p-1 text-muted-foreground shrink-0"><X size={11} /></button>
+      </div>
+      {beforeOptions.length > 0 && (
+        <div className="flex items-center gap-1 mt-1 pl-4 text-[10px] text-muted-foreground">
+          <span>Insert</span>
+          <select value={direction} onChange={e => setDirection(e.target.value)}
+            className="text-[10px] bg-background border border-border rounded px-1 py-px shrink-0">
+            <option value="before">before</option>
+            <option value="after">after</option>
+          </select>
+          <select value={target} onChange={e => setTarget(e.target.value)}
+            className="text-[10px] bg-background border border-border rounded px-1 py-px max-w-[140px]">
+            <option value="">— at end —</option>
+            {beforeOptions.map(n => <option key={n} value={n}>{n}</option>)}
+          </select>
+        </div>
+      )}
     </div>
   )
 }
 
-function TreeNode({ name, childrenOf, byName, depth, onAddChild, onDelete, selected, onSelect, visited = new Set(), indexMap }) {
+function TreeNode({ name, childrenOf, byName, depth, onAddChild, onDelete, selected, onSelect, visited = new Set(), indexMap,
+  drag, onDragStart, onDragEnd, onDropChildAt }) {
   const children = childrenOf[name] ?? []
   const hasChildren = children.length > 0
   const cycle = visited.has(name)
   const [open, setOpen] = useState(depth < 2)
   const [addingChild, setAddingChild] = useState(false)
+  const [dropOver, setDropOver] = useState(false)
   const el = byName[name]
   const isC = el?.Type === 'C'
   const isSel = selected === name
   const nextVisited = new Set(visited).add(name)
+  const canAccept = isC && drag && drag !== name && !isUnder(childrenOf, drag, name)
 
   return (
     <div className={cn(depth > 0 && 'ml-4 border-l border-border/40 pl-1.5')}>
       <div
+        draggable={!cycle}
+        onDragStart={e => {
+          e.stopPropagation()
+          e.dataTransfer.setData('text/plain', name)
+          e.dataTransfer.effectAllowed = 'move'
+          onDragStart?.(name)
+        }}
+        onDragEnd={() => { onDragEnd?.(); setDropOver(false) }}
+        onDragOver={e => {
+          if (!canAccept) return
+          e.preventDefault(); e.stopPropagation()
+          e.dataTransfer.dropEffect = 'move'
+          if (!dropOver) setDropOver(true)
+        }}
+        onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget)) setDropOver(false) }}
+        onDrop={e => {
+          if (!canAccept) return
+          e.preventDefault(); e.stopPropagation()
+          setDropOver(false)
+          onDropChildAt?.(name, null, e.dataTransfer.getData('text/plain') || drag)
+          setOpen(true)
+        }}
         onClick={() => onSelect(isSel ? null : name)}
         className={cn('flex items-center gap-1 py-0.5 cursor-pointer rounded-sm',
-          isSel ? 'bg-primary/10 text-foreground' : 'hover:bg-muted/50')}
+          isSel ? 'bg-primary/10 text-foreground' : 'hover:bg-muted/50',
+          dropOver && 'ring-1 ring-primary bg-primary/10')}
       >
         <button onClick={e => { e.stopPropagation(); setOpen(o => !o) }}
           className={cn('shrink-0 text-muted-foreground hover:text-foreground', (!hasChildren || cycle) && 'invisible')}>
@@ -348,15 +457,21 @@ function TreeNode({ name, childrenOf, byName, depth, onAddChild, onDelete, selec
           {addingChild && (
             <div className="ml-4 border-l border-border/40 pl-1.5">
               <AddRow
-                onConfirm={(n, t) => { onAddChild(name, n, t); setAddingChild(false) }}
+                beforeOptions={children}
+                onConfirm={(n, t, b) => { onAddChild(name, n, t, b); setAddingChild(false) }}
                 onCancel={() => setAddingChild(false)}
               />
             </div>
           )}
           {children.map(c => (
-            <TreeNode key={c} name={c} childrenOf={childrenOf} byName={byName} depth={depth + 1}
-              onAddChild={onAddChild} onDelete={onDelete} selected={selected} onSelect={onSelect} visited={nextVisited} indexMap={indexMap} />
+            <div key={c}>
+              {canAccept && <DropLine onDrop={child => onDropChildAt?.(name, c, child || drag)} />}
+              <TreeNode name={c} childrenOf={childrenOf} byName={byName} depth={depth + 1}
+                onAddChild={onAddChild} onDelete={onDelete} selected={selected} onSelect={onSelect} visited={nextVisited} indexMap={indexMap}
+                drag={drag} onDragStart={onDragStart} onDragEnd={onDragEnd} onDropChildAt={onDropChildAt} />
+            </div>
           ))}
+          {canAccept && <DropLine onDrop={child => onDropChildAt?.(name, null, child || drag)} />}
         </>
       )}
     </div>
@@ -401,6 +516,7 @@ function FlatList({ elements, selected, onSelect, onDelete, indexMap }) {
 
 // ── Tree order helper ───────────────────────────────────────────────────────
 function buildTreeOrder(elements, edges) {
+  const sorted = [...elements].sort((a, b) => (a.Index ?? 0) - (b.Index ?? 0))
   const childrenOf = {}
   const isChild = new Set()
   for (const edge of edges) {
@@ -408,8 +524,8 @@ function buildTreeOrder(elements, edges) {
     childrenOf[edge.ParentName].push(edge.ComponentName)
     isChild.add(edge.ComponentName)
   }
-  const byName = Object.fromEntries(elements.map(e => [e.Name, e]))
-  const roots = elements.filter(e => !isChild.has(e.Name)).map(e => e.Name)
+  const byName = Object.fromEntries(sorted.map(e => [e.Name, e]))
+  const roots = sorted.filter(e => !isChild.has(e.Name)).map(e => e.Name)
   const result = []
   const visited = new Set()
   function dfs(name, depth) {
@@ -420,7 +536,7 @@ function buildTreeOrder(elements, edges) {
     for (const child of childrenOf[name] ?? []) dfs(child, depth + 1)
   }
   for (const r of roots) dfs(r, 0)
-  for (const el of elements) if (!visited.has(el.Name)) result.push({ ...el, depth: 0 })
+  for (const el of sorted) if (!visited.has(el.Name)) result.push({ ...el, depth: 0 })
   return result
 }
 
@@ -1164,6 +1280,7 @@ function DimensionEditorCore({ tab }) {
   const [deleteCheck, setDeleteCheck] = useState(null)
   const [deleteTarget, setDeleteTarget] = useState(null)
   const [showHelp, setShowHelp] = useState(false)
+  const [dragging, setDragging] = useState(null)
 
   const { data: elements = [], isLoading: loadingEl, refetch: refetchEl } = useElements(tab.server, tab.dimension, selectedHierarchy)
   const { data: indexedEls = [] } = useElementsWithIndex(showIndex ? tab.server : null, tab.dimension, selectedHierarchy)
@@ -1180,6 +1297,7 @@ function DimensionEditorCore({ tab }) {
   const addElementMut     = useAddElement()
   const deleteElementMut  = useDeleteElement()
   const addEdgeMut        = useAddEdge()
+  const setComponentMut   = useSetComponent()
   const deleteEdgeMut     = useDeleteEdge()
   const updateWeightMut   = useUpdateEdgeWeight()
   const createHierarchyMut = useCreateHierarchy()
@@ -1213,38 +1331,55 @@ function DimensionEditorCore({ tab }) {
 
   const run = useCallback(async (fn) => {
     setBusy(true); setError(null)
-    try { await fn() } catch (e) { setError(e.message) }
+    try { await fn() } catch (e) { setError(e.message); toast.error(e.message) }
     finally { setBusy(false) }
   }, [])
 
-  const handleAddRoot = useCallback((name, type) => {
+  const handleAddRoot = useCallback((name, type, before) => {
     setAddRoot(false)
     run(async () => {
-      await addElementMut.mutateAsync({ server: tab.server, dimension: tab.dimension, name, type, hierarchy: selectedHierarchy })
+      await addElementMut.mutateAsync({ server: tab.server, dimension: tab.dimension, name, type, before, hierarchy: selectedHierarchy })
       refresh()
     })
   }, [run, addElementMut, tab, refresh, selectedHierarchy])
 
-  const handleAddChild = useCallback((parent, name, type) => {
+  const handleAddChild = useCallback((parent, name, type, before) => {
     run(async () => {
-      await addElementMut.mutateAsync({ server: tab.server, dimension: tab.dimension, name, type, hierarchy: selectedHierarchy })
-      await addEdgeMut.mutateAsync({ server: tab.server, dimension: tab.dimension, parent, child: name, hierarchy: selectedHierarchy })
+      await addElementMut.mutateAsync({ server: tab.server, dimension: tab.dimension, name, type, parent, before, hierarchy: selectedHierarchy })
       refresh()
     })
-  }, [run, addElementMut, addEdgeMut, tab, refresh, selectedHierarchy])
+  }, [run, addElementMut, tab, refresh, selectedHierarchy])
 
-  const handleBulkAdd = useCallback((names, type, parent) => {
+  const handleBulkAdd = useCallback((names, type, parent, before) => {
     setBulkAdd(false)
     run(async () => {
+      // all names go in before the same anchor, in list order — so the block keeps
+      // the order it was pasted in
       for (const name of names) {
-        await addElementMut.mutateAsync({ server: tab.server, dimension: tab.dimension, name, type, hierarchy: selectedHierarchy })
-        if (parent) {
-          await addEdgeMut.mutateAsync({ server: tab.server, dimension: tab.dimension, parent, child: name, hierarchy: selectedHierarchy })
-        }
+        await addElementMut.mutateAsync({ server: tab.server, dimension: tab.dimension, name, type, parent, before, hierarchy: selectedHierarchy })
       }
       refresh()
     })
-  }, [run, addElementMut, addEdgeMut, tab, refresh, selectedHierarchy])
+  }, [run, addElementMut, tab, refresh, selectedHierarchy])
+
+  // drag an element onto a consolidation (before = null → end) or between two siblings
+  const handleDropChildAt = useCallback((parent, before, child) => {
+    if (!parent || !child || parent === child || before === child) return
+    const parentEl = tree.byName[parent], childEl = tree.byName[child]
+    if (parentEl?.Type !== 'C' || !childEl) return
+    if (childEl.Type === 'S') { toast.error('String elements cannot be added under a consolidation'); return }
+    if (isUnder(tree.childrenOf, child, parent)) { toast.error(`Cannot put "${child}" under its own descendant`); return }
+    const existing = edges.find(e => e.ParentName === parent && e.ComponentName === child)
+    run(async () => {
+      await setComponentMut.mutateAsync({
+        server: tab.server, dimension: tab.dimension, parent, child, before,
+        weight: existing?.Weight ?? 1, hierarchy: selectedHierarchy,
+      })
+      refresh()
+      setSelected(parent)
+      toast.success(`${existing ? 'Moved' : 'Added'} ${child} under ${parent}`)
+    })
+  }, [tree, edges, run, setComponentMut, tab, refresh, selectedHierarchy])
 
   const execDelete = useCallback((name) => {
     if (selected === name) setSelected(null)
@@ -1496,7 +1631,7 @@ function DimensionEditorCore({ tab }) {
             )}
             {view === 'tree' && (
               <div className="p-2">
-                {addRoot && <AddRow onConfirm={handleAddRoot} onCancel={() => setAddRoot(false)} />}
+                {addRoot && <AddRow beforeOptions={selectedHierarchy === tab.dimension ? tree.roots : []} onConfirm={handleAddRoot} onCancel={() => setAddRoot(false)} />}
                 {filteredTree.roots.length === 0 && !addRoot && (
                   <p className="text-xs text-muted-foreground px-2 py-4 text-center">
                     {filterSubset || filterSearch ? 'No elements match the current filter.' : 'No elements. Click Add or Bulk to start.'}
@@ -1505,7 +1640,8 @@ function DimensionEditorCore({ tab }) {
                 {filteredTree.roots.map(r => (
                   <TreeNode key={r} name={r} childrenOf={filteredTree.childrenOf} byName={filteredTree.byName} depth={0}
                     onAddChild={handleAddChild} onDelete={handleDelete}
-                    selected={selected} onSelect={setSelected} visited={new Set()} indexMap={showIndex ? indexMap : null} />
+                    selected={selected} onSelect={setSelected} visited={new Set()} indexMap={showIndex ? indexMap : null}
+                    drag={dragging} onDragStart={setDragging} onDragEnd={() => setDragging(null)} onDropChildAt={handleDropChildAt} />
                 ))}
               </div>
             )}
@@ -1538,6 +1674,8 @@ function DimensionEditorCore({ tab }) {
       {bulkAdd && (
         <BulkAddModal
           consolElements={consolElements}
+          roots={tree.roots}
+          childrenOf={tree.childrenOf}
           onConfirm={handleBulkAdd}
           onClose={() => setBulkAdd(false)}
         />

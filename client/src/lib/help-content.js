@@ -86,7 +86,7 @@ export const HELP_CONTENT = {
       },
       {
         heading: 'Elements & edges',
-        body: 'Right-click an element in the tree for **Add child / rename / delete**. Drag an element onto a consolidation to add it as a child; edit the weight inline.',
+        body: 'Select an element in the tree for **+ Child** and **Del**. Drag an element onto a consolidation to add it there; edit the weight in the element panel.',
       },
       {
         heading: 'Bulk import',

@@ -1437,10 +1437,16 @@ app.post('/api/dimension/element', async (req, res) => {
         const { server, dimension, hierarchy } = req.query
         if (!gateWrite(res, server)) return
         const client = makeClient(server, req.ideToken)
-        await client.addElement(dimension, req.body.name, req.body.type, hierarchy)
-        cl.writeLog({ server, action: 'ELEMENT_ADDED', objectType: 'dimension', objectName: dimension, detail: req.body.name, user: req.user })
+        const { name, type, parent, before } = req.body
+        await client.addElementAt(dimension, name, type, hierarchy, { parent, before })
+        const where = parent ? ` under ${parent}${before ? ` before ${before}` : ''}` : before ? ` before ${before}` : ''
+        cl.writeLog({ server, action: 'ELEMENT_ADDED', objectType: 'dimension', objectName: dimension, detail: `${name}${where}`, user: req.user })
         res.json({ ok: true })
-    } catch (e) { res.status(500).json({ error: e.message }) }
+    } catch (e) {
+        const message = e.response?.data?.error?.message ?? e.message
+        console.error(`[dimension/element] ${req.query.dimension}: ${message}`)
+        res.status(500).json({ error: message })
+    }
 })
 
 app.delete('/api/dimension/element', async (req, res) => {
@@ -1470,6 +1476,19 @@ app.post('/api/dimension/edge', async (req, res) => {
         if (!gateWrite(res, req.query.server)) return
         const client = makeClient(req.query.server, req.ideToken)
         await client.addEdge(req.query.dimension, req.body.parent, req.body.child, req.body.weight ?? 1, req.query.hierarchy)
+        res.json({ ok: true })
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// Place an existing element under a parent at a given position (drag-and-drop).
+app.post('/api/dimension/component', async (req, res) => {
+    try {
+        const { server, dimension, hierarchy } = req.query
+        if (!gateWrite(res, server)) return
+        const client = makeClient(server, req.ideToken)
+        const { parent, child, before, weight } = req.body
+        await client.setComponent(dimension, parent, child, before ?? null, weight ?? 1, hierarchy)
+        cl.writeLog({ server, action: 'ELEMENT_LINKED', objectType: 'dimension', objectName: dimension, detail: `${child} under ${parent}${before ? ` before ${before}` : ''}`, user: req.user })
         res.json({ ok: true })
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
@@ -1504,7 +1523,7 @@ app.get('/api/hierarchies', async (req, res) => {
 app.get('/api/subset/usage', async (req, res) => {
     try {
         const client = makeClient(req.query.server, req.ideToken)
-        res.json(await client.scanSubsetUsage(req.query.dimension, req.query.subset))
+        res.json(await client.scanSubsetUsage(req.query.dimension, req.query.subset, req.query.hierarchy || req.query.dimension))
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 

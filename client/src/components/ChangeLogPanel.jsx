@@ -25,6 +25,7 @@ export function autoDescription(action, objectName, detail) {
     case 'ELEMENT_ADDED':      return `Element '${objectName}' added${detail ? ` to '${detail}'` : ''}`
     case 'ELEMENT_DELETED':    return `Element '${objectName}' removed${detail ? ` from '${detail}'` : ''}`
     case 'ELEMENT_RENAMED':    return `Element renamed${detail ? ` in '${detail}'` : ''}`
+    case 'ELEMENT_LINKED':     return `Element linked${detail ? ` — ${detail}` : ''}`
     case 'ATTRIBUTE_CREATED':  return `Attribute '${objectName}' added${detail ? ` to '${detail}'` : ''}`
     case 'ATTRIBUTE_DELETED':  return `Attribute '${objectName}' removed${detail ? ` from '${detail}'` : ''}`
     case 'HIERARCHY_CREATED':  return `Hierarchy '${objectName}' created`
@@ -52,6 +53,7 @@ const ACTION_META = {
   ELEMENT_ADDED:      { label: 'Element added',       icon: Layers,   colour: 'text-emerald-400' },
   ELEMENT_DELETED:    { label: 'Element deleted',     icon: Layers,   colour: 'text-red-400' },
   ELEMENT_RENAMED:    { label: 'Element renamed',     icon: Layers,   colour: 'text-amber-400' },
+  ELEMENT_LINKED:     { label: 'Element linked',      icon: Layers,   colour: 'text-blue-400' },
   HIERARCHY_CREATED:  { label: 'Hierarchy created',   icon: Layers,   colour: 'text-emerald-400' },
   HIERARCHY_DELETED:  { label: 'Hierarchy deleted',   icon: Layers,   colour: 'text-red-400' },
   EDGE_REMOVED:       { label: 'Parent removed',      icon: Layers,   colour: 'text-amber-400' },
