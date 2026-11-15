@@ -2,7 +2,7 @@ import { useMemo, useState, useCallback, useRef, useEffect, forwardRef, useImper
 import {
   useElements, useElementsWithIndex, useEdges, useElementAttrValues, useHierarchies,
   useAddElement, useDeleteElement, useAddEdge, useDeleteEdge, useUpdateEdgeWeight, useSetComponent,
-  useAttrGrid, useWriteElementAttribute, useCreateAttrDef, useDeleteAttrDef, useSubsets, useSubsetElements,
+  useAttrGrid, useWriteElementAttribute, useCreateAttrDef, useDeleteAttrDef,
   useDimensionUsage, useCreateHierarchy, useBulkDimImport, useBulkAttrImport, useCreateDimension, usePreDeleteElementCheck,
   useHierarchyInfo, useElementHierarchyParents,
 } from '@/hooks/useApi'
@@ -386,11 +386,11 @@ function AddRow({ onConfirm, onCancel, beforeOptions = [] }) {
 }
 
 function TreeNode({ name, childrenOf, byName, depth, onAddChild, onDelete, selected, onSelect, visited = new Set(), indexMap,
-  drag, onDragStart, onDragEnd, onDropChildAt }) {
+  drag, onDragStart, onDragEnd, onDropChildAt, filtering = false }) {
   const children = childrenOf[name] ?? []
   const hasChildren = children.length > 0
   const cycle = visited.has(name)
-  const [open, setOpen] = useState(depth < 2)
+  const [open, setOpen] = useState(filtering || depth < 2)   // filtering: open all the way down to the matches
   const [addingChild, setAddingChild] = useState(false)
   const [dropOver, setDropOver] = useState(false)
   const el = byName[name]
@@ -468,7 +468,7 @@ function TreeNode({ name, childrenOf, byName, depth, onAddChild, onDelete, selec
               {canAccept && <DropLine onDrop={child => onDropChildAt?.(name, c, child || drag)} />}
               <TreeNode name={c} childrenOf={childrenOf} byName={byName} depth={depth + 1}
                 onAddChild={onAddChild} onDelete={onDelete} selected={selected} onSelect={onSelect} visited={nextVisited} indexMap={indexMap}
-                drag={drag} onDragStart={onDragStart} onDragEnd={onDragEnd} onDropChildAt={onDropChildAt} />
+                drag={drag} onDragStart={onDragStart} onDragEnd={onDragEnd} onDropChildAt={onDropChildAt} filtering={filtering} />
             </div>
           ))}
           {canAccept && <DropLine onDrop={child => onDropChildAt?.(name, null, child || drag)} />}
@@ -702,17 +702,13 @@ function AttrHeader({ column }) {
 const NO_ATTRS = []
 const ATTR_WIDTHS_KEY = 'tm1-attr-widths'
 
-function AttrGrid({ tab, elements, edges, hierarchy }) {
+function AttrGrid({ tab, elements, edges, hierarchy, search = '', indexMap = null }) {
   const dark      = useStore(s => s.dark)
-  const [subset, setSubset]     = useState('')
-  const [search,  setSearch]    = useState('')
   const [newAttr, setNewAttr]   = useState(false)
   const [formatPicker, setFormatPicker] = useState(null) // { element, value }
   const attrFileRef             = useRef(null)
 
   const { data: grid, isLoading, refetch } = useAttrGrid(tab.server, tab.dimension, hierarchy)
-  const { data: subsets = [] }             = useSubsets(tab.server, tab.dimension, hierarchy)
-  const { data: subElems = [] }            = useSubsetElements(tab.server, tab.dimension, subset, hierarchy)
   const writeAttr                          = useWriteElementAttribute()
   const createAttr                         = useCreateAttrDef()
   const deleteAttr                         = useDeleteAttrDef()
@@ -781,17 +777,13 @@ function AttrGrid({ tab, elements, edges, hierarchy }) {
 
   const rows = useMemo(() => {
     let list = ordered
-    if (subset && subElems.length > 0) {
-      const names = new Set(subElems.map(e => e.name))
-      list = list.filter(e => names.has(e.Name))
-    }
     if (search) {
       const q = search.toLowerCase()
       list = list.filter(e => e.Name.toLowerCase().includes(q))
     }
     const vals = grid?.values ?? {}
-    return list.map(el => ({ __name: el.Name, __type: el.Type, __depth: el.depth, ...vals[el.Name] }))
-  }, [ordered, subset, subElems, search, grid])
+    return list.map(el => ({ __name: el.Name, __type: el.Type, __depth: el.depth, __idx: indexMap?.[el.Name] ?? null, ...vals[el.Name] }))
+  }, [ordered, search, grid, indexMap])
 
   const colDefs = useMemo(() => [
     {
@@ -807,6 +799,11 @@ function AttrGrid({ tab, elements, edges, hierarchy }) {
         </span>
       ),
     },
+    // # Idx: the element's position in the dimension — click the header to sort by it
+    ...(indexMap ? [{
+      field: '__idx', headerName: 'Idx', pinned: 'left', initialWidth: 70, editable: false, sortable: true,
+      type: 'rightAligned', cellClass: 'font-mono text-muted-foreground',
+    }] : []),
     ...attrs.map(attr => {
       const isFormat = attr.Name.toLowerCase() === 'format'
       const isDescription = attr.Name.toLowerCase() === 'description'
@@ -831,7 +828,7 @@ function AttrGrid({ tab, elements, edges, hierarchy }) {
       onDeleteAttr: handleDeleteAttr,
     }
     }),
-  ], [attrs, handleDeleteAttr, handleConvertToAlias])
+  ], [attrs, handleDeleteAttr, handleConvertToAlias, indexMap])
 
   const onCellValueChanged = useCallback(p => {
     const element   = p.data.__name
@@ -896,16 +893,6 @@ function AttrGrid({ tab, elements, edges, hierarchy }) {
   return (
     <div className="flex flex-col h-full">
       <div className="flex items-center gap-2 px-3 py-1.5 border-b border-border bg-muted shrink-0">
-        <select value={subset} onChange={e => setSubset(e.target.value)}
-          className="text-xs bg-background border border-border rounded px-1.5 py-0.5 text-foreground max-w-44">
-          <option value="">All elements</option>
-          {subsets.map(s => <option key={s.Name} value={s.Name}>{s.Name}</option>)}
-        </select>
-        <div className="flex items-center gap-1 bg-background border border-border rounded px-1.5 py-0.5">
-          <Search size={10} className="text-muted-foreground shrink-0" />
-          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Filter elements…"
-            className="text-xs bg-transparent outline-none w-32 placeholder:text-muted-foreground" />
-        </div>
         {(writeAttr.isPending || createAttr.isPending || deleteAttr.isPending) && <Loader2 size={11} className="animate-spin text-muted-foreground" />}
         {writeAttr.isError  && <span className="text-xs text-red-400">{writeAttr.error?.message}</span>}
         {createAttr.isError && <span className="text-xs text-red-400">{createAttr.error?.message}</span>}
@@ -1269,7 +1256,6 @@ function DimensionEditorCore({ tab }) {
   const [busy, setBusy]           = useState(false)
   const [error, setError]         = useState(null)
   const [showCubes, setShowCubes]       = useState(false)
-  const [filterSubset, setFilterSubset] = useState('')
   const [filterSearch, setFilterSearch] = useState('')
   const [showPicklist, setShowPicklist] = useState(false)
   const [selectedHierarchy, setSelectedHierarchy] = useState(tab.hierarchy ?? tab.dimension)
@@ -1291,8 +1277,6 @@ function DimensionEditorCore({ tab }) {
   const dimCubes    = dimUsageData?.cubes    ?? []
   const dimProcs    = dimUsageData?.processes ?? []
   const { data: elemAttrs, isFetching: loadingAttrs } = useElementAttrValues(tab.server, tab.dimension, selected, selectedHierarchy)
-  const { data: subsets = [] }    = useSubsets(tab.server, tab.dimension, selectedHierarchy)
-  const { data: subsetElems = [] } = useSubsetElements(tab.server, tab.dimension, filterSubset, selectedHierarchy)
 
   const addElementMut     = useAddElement()
   const deleteElementMut  = useDeleteElement()
@@ -1307,18 +1291,22 @@ function DimensionEditorCore({ tab }) {
 
   const filteredElements = useMemo(() => {
     let list = elements
-    if (filterSubset && subsetElems.length > 0) {
-      const names = new Set(subsetElems.map(e => e.name))
-      list = list.filter(e => names.has(e.Name))
-    }
     if (filterSearch) {
       const q = filterSearch.toLowerCase()
       list = list.filter(e => e.Name.toLowerCase().includes(q))
     }
     return list
-  }, [elements, filterSubset, subsetElems, filterSearch])
+  }, [elements, filterSearch])
 
-  const filteredTree = useMemo(() => buildTree(filteredElements, edges), [filteredElements, edges])
+  // Tree: the matches plus the parents above them, so a match still has a path down from the top
+  const filteredTree = useMemo(() => {
+    if (!filterSearch) return buildTree(elements, edges)
+    const parentsOf = {}
+    for (const e of edges) (parentsOf[e.ComponentName] ??= []).push(e.ParentName)
+    const keep = new Set(), stack = filteredElements.map(e => e.Name)
+    while (stack.length) { const n = stack.pop(); if (keep.has(n)) continue; keep.add(n); stack.push(...(parentsOf[n] ?? [])) }
+    return buildTree(elements.filter(e => keep.has(e.Name)), edges.filter(e => keep.has(e.ParentName) && keep.has(e.ComponentName)))
+  }, [elements, filteredElements, edges, filterSearch])
 
   const consolElements   = useMemo(() => elements.filter(e => e.Type === 'C'), [elements])
   const selectedEl       = selected ? tree.byName[selected] : null
@@ -1597,15 +1585,9 @@ function DimensionEditorCore({ tab }) {
             </>}
           </span>
         )}
+        {/* the one element filter — Tree, Flat and Attrs; not Grid, which edits and applies every row */}
         <span className="ml-auto flex items-center gap-2">
-          {subsets.length > 0 && (
-            <select value={filterSubset} onChange={e => setFilterSubset(e.target.value)}
-              className="text-xs bg-background border border-border rounded px-1.5 py-0.5 text-foreground max-w-36">
-              <option value="">All elements</option>
-              {subsets.map(s => <option key={s.Name} value={s.Name}>{s.Name}</option>)}
-            </select>
-          )}
-          <div className="flex items-center gap-1 bg-background border border-border rounded px-1.5 py-0.5">
+          {view !== 'grid' && <div className="flex items-center gap-1 bg-background border border-border rounded px-1.5 py-0.5">
             <Search size={10} className="text-muted-foreground shrink-0" />
             <input value={filterSearch} onChange={e => setFilterSearch(e.target.value)}
               placeholder="Filter elements…"
@@ -1615,13 +1597,13 @@ function DimensionEditorCore({ tab }) {
                 <X size={9} />
               </button>
             )}
-          </div>
+          </div>}
         </span>
       </div>
 
       {/* Body */}
       <div className="flex-1 min-h-0 flex overflow-hidden">
-        {view === 'attrs' && <div className="flex-1 min-w-0 min-h-0 flex flex-col"><AttrGrid tab={tab} elements={elements} edges={edges} hierarchy={selectedHierarchy} /></div>}
+        {view === 'attrs' && <div className="flex-1 min-w-0 min-h-0 flex flex-col"><AttrGrid tab={tab} elements={elements} edges={edges} hierarchy={selectedHierarchy} search={filterSearch} indexMap={showIndex ? indexMap : null} /></div>}
         {view === 'grid' && <div className="flex-1 min-w-0 min-h-0 flex flex-col"><StructureGrid tab={tab} elements={elements} edges={edges} hierarchy={selectedHierarchy} onApplied={refresh} /></div>}
         {/* Tree / Flat pane */}
         {view !== 'attrs' && view !== 'grid' && <>
@@ -1634,11 +1616,11 @@ function DimensionEditorCore({ tab }) {
                 {addRoot && <AddRow beforeOptions={selectedHierarchy === tab.dimension ? tree.roots : []} onConfirm={handleAddRoot} onCancel={() => setAddRoot(false)} />}
                 {filteredTree.roots.length === 0 && !addRoot && (
                   <p className="text-xs text-muted-foreground px-2 py-4 text-center">
-                    {filterSubset || filterSearch ? 'No elements match the current filter.' : 'No elements. Click Add or Bulk to start.'}
+                    {filterSearch ? 'No elements match the current filter.' : 'No elements. Click Add or Bulk to start.'}
                   </p>
                 )}
                 {filteredTree.roots.map(r => (
-                  <TreeNode key={r} name={r} childrenOf={filteredTree.childrenOf} byName={filteredTree.byName} depth={0}
+                  <TreeNode key={filterSearch ? `${r}|filtered` : r} filtering={!!filterSearch} name={r} childrenOf={filteredTree.childrenOf} byName={filteredTree.byName} depth={0}
                     onAddChild={handleAddChild} onDelete={handleDelete}
                     selected={selected} onSelect={setSelected} visited={new Set()} indexMap={showIndex ? indexMap : null}
                     drag={dragging} onDragStart={setDragging} onDragEnd={() => setDragging(null)} onDropChildAt={handleDropChildAt} />

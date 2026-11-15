@@ -1,7 +1,26 @@
 
-## Intro (~15s)
-In this video I'll work with the data itself: opening a view, shaping it, reading the grid, and tracing any number back to
-where it came from. 
+## Intro (~75s)
+
+**[View Editor open on Cost by Cost Centre]**
+This video is about the grid: where you read your numbers, shape a view, and trace any number back to where it came from.
+I'll open a view, rearrange it, choose its members, read the grid properly, and follow one number all the way down.
+
+**[Scroll the grid; open and close a few totals]**
+First, what the grid is. It's built on AG Grid, one of the most widely used data grids on the web, and the free Community
+edition of it. That matters for three reasons.
+It's fast. It only draws the rows and columns on screen, so a view with thousands of cost centres scrolls as smoothly as
+one with ten.
+It's proven. Teams all over the world build on it, so things like column resizing, pinning, sorting, search and keyboard
+movement work the way people already expect.
+And it's open. The Community edition is free, so anyone can run this without a licence.
+
+**[Right-click a total to show the member menu]**
+What AG Grid doesn't know about is TM1. Its tree and pivot features are in the paid edition, and they don't understand
+TM1 hierarchies anyway. So the TM1 part is ours, built on top: totals that open one level at a time, inner dimensions that
+remember what's open under each outer member, opening a total beyond what the view returned by asking TM1 for more, the
+right-click menu on every member, totals left or right and top or bottom, typing values into input cells only, and numbers
+shown with each element's TM1 Format. Column widths are remembered per view, and right-click any cell to trace it.
+And it's one grid. The same grid is used in the IDE and in Lenses, so a fix or a feature lands in both at once.
 
 ## 1. A native view (~70s)
 This is Cost by Cost Centre. The badge in the toolbar says it's a native view: the classic TM1 view, where each dimension
@@ -96,13 +115,14 @@ returns.
 Once it returns what I expect, I copy it into the process. MDX that's been run once in the editor is MDX I know works,
 before the process ever touches it.
 
-## Outro (~15s)
-So that's views and data: open a view and rearrange it by dragging, choose members with subsets, roll them up another way with a hierarchy, see the same view as MDX or
-build one with the builder, work the grid, and trace any number back to where it came from. And whenever MDX goes into a
-process, test it first.
+## Outro (~25s)
+So that's views and data: open a view and rearrange it by dragging, choose members with subsets, roll them up another way
+with a hierarchy, see the same view as MDX or build one with the builder, work the grid, and trace any number back to where
+it came from. And whenever MDX goes into a process, test it first.
+All of it runs on AG Grid, with the TM1 smarts built on top, and the same grid carries straight into Lenses.
 In the next video: the Cube Map, and how to read a whole model on one page.
 
 ---
 
-Total about **6 min 30 s**. If it needs to come down, the easiest cuts are: the Bench line in section 1 (−8s), the grid
+Total about **7 min 40 s**. If it needs to come down, the easiest cuts are: the Bench line in section 1 (−8s), the grid
 options line in section 5 (−12s) and the builder paragraph in section 4 (−15s).

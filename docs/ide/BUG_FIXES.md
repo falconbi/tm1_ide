@@ -3,7 +3,7 @@
 Every bug-fix commit, newest first, by the date it was committed. Generated from the git history;
 commits that mixed a fix into a feature are included too. New features are not listed here.
 
-166 fixes from 2026-05-20 to 2026-10-10, plus 46 entries for 11–27 October, 6 for 28 October–1 November, 7 for 2 November, 4 for 5 November, 10 for 6 November, 9 for 9 November and 6 for 15 November. Last updated 2026-11-15.
+166 fixes from 2026-05-20 to 2026-10-10, plus 46 entries for 11–27 October, 6 for 28 October–1 November, 7 for 2 November, 4 for 5 November, 10 for 6 November, 9 for 9 November and 8 for 15 November. Last updated 2026-11-15.
 
 ← [Back to README](../../README.md)
 
@@ -12,6 +12,8 @@ commits that mixed a fix into a feature are included too. New features are not l
 
 ### 2026-11-15
 
+- **dimensions** — Filtering the Dimension Editor's Tree showed nothing when the matches were children (e.g. "ENG" on WFP Cost Centre): the filter removed their parents, so they had nothing to hang from. The Tree now keeps the parents above each match and opens all the way down to it
+- **dimensions** — The Dimension Editor had two element filters: one top right (Tree and Flat only) and a second, with its own subset picker, inside the Attrs view, where the top-right one did nothing. It now has one element filter, top right, for Tree, Flat and Attrs; the subset pickers are gone, and the filter hides in Grid, which applies every row
 - **pivot** — The column (and row) totals position did nothing when a subset skipped levels, e.g. "2026 Quarters + FY" (the halves left out): FY wasn't seen as the quarters' total. A total whose lower levels are in the view now moves before or after them with the toggle; the members stay side by side, no new tree
 - **pivot** — A view opened after a page reload showed its rows collapsed: the data arrived before the dimension trees, the grid showed each dimension as a plain list with nothing to open, and when the tree came the member count was the same, so it kept "nothing open". A dimension whose tree arrives now starts open, as on a first load
 - **pivot** — Column widths snapped back after dragging: the view handed the grid a new row-names list on every redraw, which rebuilt the columns at the last saved widths, and a width was only saved on release. The grid now keeps the width while dragging, and the view passes the same list until its rows change
