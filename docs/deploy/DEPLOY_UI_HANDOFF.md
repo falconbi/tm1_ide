@@ -23,8 +23,7 @@ Eight steps, plain language, no icons:
   no assertions.
 - **Commit** = push DEV to the repo (`POST /api/deploy/git/push`, create+execute atomically). Branch field removed —
   it is fixed by the server's TM1 deployment.
-- **Review** shows the object list **and** the actual content diff (`POST /api/deploy/git/review` →
-  `core/git-review.js`), per object, `+`/`-` coloured.
+- **Review** shows the object list **and** the actual content diff (`core/git-review.js`), per object, `+`/`-` coloured.
 - **Approve** records who/when/the exact commit/target/note to `config/deploy-approvals.json`; bound to the commit.
   Deploy is disabled until approved.
 - **Verify** runs the drift check; Revert / Promote for recovery.
@@ -42,7 +41,6 @@ Eight steps, plain language, no icons:
 
 - `POST /api/deploy/git/push` — commit a server's state to the repo.
 - `POST /api/deploy/git/approve`, `GET /api/deploy/git/approval` — the recorded approval.
-- `POST /api/deploy/git/review` — the content diff for Review.
 - `POST /api/sessions/close` now takes `{ id, tests }` and records the close decision.
 - `core/git-deploy.execute()` verification now returns per-assertion `results`.
 

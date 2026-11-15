@@ -7,7 +7,6 @@
 // Also reports the change set's manifest deletes, and flags anything in the
 // commit diff that did NOT come from this change set (dev moved, or other work).
 
-const { execFileSync } = require('child_process')
 const fs = require('fs')
 const os = require('os')
 const path = require('path')

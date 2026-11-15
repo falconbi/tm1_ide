@@ -54,7 +54,7 @@ client/src/
     SubsetEditor.jsx          # MDX + visual subset editor
     ViewEditor.jsx            # Native/MDX view builder + cell grid (PivotGrid → shared pivot), auto-refreshes on rules save
     PivotGrid.jsx             # React wrapper around shared/pivot/grid.js with the IDE toolbar + appearance
-    CellContextMenu.jsx       # Right-click context menu for view grid cells (write, trace, log, notes, copy, rules)
+    CellContextMenu.jsx       # Right-click context menu for view grid cells (trace)
     GuidedMDXBuilder.jsx      # Guided MDX view and subset builders
     ChoreEditor.jsx           # Chore schedule + steps editor
     CubeEditor.jsx            # Cube structure editor
@@ -282,7 +282,7 @@ TanStack Query handles all server state — data fetching, caching, mutations. C
 - TI Editor: Monaco + 4-section tabs + parameter editor + datasource editor + run + debugger + error log viewer + snippets + static validator (section structure, IF/WHILE/FOR/NEXT block tracking, arg counts) + **IF/WHILE/FOR block folding**
 - Dimension Editor: hierarchy tree + attribute grid + element/edge CRUD + bulk import
 - Subset Editor: MDX code view + visual tree + static/MDX save + MDX preview
-- View Editor: native + MDX view builder + cell grid with writeback + **auto-refresh when rules for the same cube are saved** + **cell right-click context menu** (write value, rule trace, transaction log, annotations, copy intersection, open rules)
+- View Editor: native + MDX view builder + cell grid with writeback + **auto-refresh when rules for the same cube are saved** + **cell right-click context menu** (rule trace)
 - Guided MDX Builder: axis builder, subset filter, MDX execution
 - Chore Editor: schedule + steps + activate/deactivate + execute
 - Cube Editor: create/delete cubes
@@ -371,19 +371,8 @@ In `SubsetPopover` (line 498), clicking a named subset called both `onSubsetSele
 | Write | `POST /api/cells/write` | Inline value write; `dims` = `dimElemPairs`; triggers `handleExecute()` on success |
 | Trace | `POST /api/cube/trace` | Rule chain — shows `Type` badge (RULE/CONSOLIDATED/BASE/FEEDER), rule statements, component breakdown |
 | Log | `GET /api/transactions?elements=JSON` | Transaction history filtered to this intersection (top 30) |
-| Notes | `GET/POST/DELETE /api/cube/annotations` | Cell annotations — all annotations loaded for cube, filtered client-side by matching `Tuple` dim/element names (case-insensitive) |
 | Copy | clipboard | Writes `dim: element` pairs + MDX tuple `([Dim].[Dim].[Elem], ...)` |
 | Rules | `openTab()` | Opens rules editor tab for the cube (`type: 'rules'`) |
-
-### Annotation matching
-
-TM1 `GET /Cubes('{cube}')/Annotations?$expand=Tuple(...)` returns all annotations for the cube. `NotesPanel` filters with:
-
-```js
-a.Tuple.every(t => pairs.get(t.Hierarchy?.Dimension?.Name?.toLowerCase()) === t.Name?.toLowerCase())
-```
-
-This matches annotations where every tuple entry's dimension+element matches the current cell intersection.
 
 ### `.badge` utility class
 

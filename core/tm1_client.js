@@ -405,91 +405,7 @@ class TM1Client {
     // Tests PATCH on Elements('name')/Attributes — the sub-resource we confirmed
     // works for reads. Writes back the SAME value already there (safe no-op).
     // Tries two body formats: flat object and array.
-    async probeAttributeValueWrite(dim, element, attribute, value, hierarchy = dim) {
-        const results = {}
-        const base = `Dimensions('${odataKey(dim)}')/Hierarchies('${odataKey(hierarchy)}')/Elements('${odataKey(element)}')/Attributes`
-
-        // Format A: flat object { attrName: value } — mirrors what GET returns
-        try {
-            await this.patch(base, { [attribute]: value })
-            results.flatObject = { ok: true }
-        } catch (e) {
-            results.flatObject = { ok: false, status: e.response?.status, error: e.message }
-        }
-
-        // Format B: array [ { Name, Value } ]
-        try {
-            await this.patch(base, [{ Name: attribute, Value: value }])
-            results.arrayFormat = { ok: true }
-        } catch (e) {
-            results.arrayFormat = { ok: false, status: e.response?.status, error: e.message }
-        }
-
-        // Format C: POST (create/upsert) with flat object
-        try {
-            await this.post(base, { [attribute]: value })
-            results.postFlat = { ok: true }
-        } catch (e) {
-            results.postFlat = { ok: false, status: e.response?.status, error: e.message }
-        }
-
-        return results
-    }
-
     // ── Attribute write probe (TM1py-derived approaches) ─────────────────────
-    async probeAttributeWrite(dim, element, attribute, value) {
-        const results = {}
-        const attrDim = `}ElementAttributes_${dim}`
-        const elemDim = `}Elements_${dim}`
-
-        // Method A: tm1.Update on the }ElementAttributes cube (TM1py write_value pattern)
-        try {
-            await this.post(`Cubes('${odataKey(attrDim)}')/tm1.Update`, {
-                Cells: [{
-                    'Tuple@odata.bind': [
-                        `Dimensions('${odataKey(attrDim)}')/Hierarchies('${odataKey(attrDim)}')/Elements('${odataKey(attribute)}')`,
-                        `Dimensions('${odataKey(elemDim)}')/Hierarchies('${odataKey(elemDim)}')/Elements('${odataKey(element)}')`,
-                    ]
-                }],
-                Value: String(value),
-            })
-            results.tmUpdate = { ok: true }
-        } catch (e) {
-            console.error('[probe-tmUpdate] status:', e.response?.status, 'data:', JSON.stringify(e.response?.data ?? ''))
-            results.tmUpdate = { ok: false, status: e.response?.status, error: e.message }
-        }
-
-        // Method B: ExecuteProcessWithReturn — inline TI, no create/delete needed (TM1py pattern)
-        const isNumeric = typeof value === 'number'
-        const safeVal = isNumeric ? value : `'${odataLit(value)}'`
-        const safeElem = odataLit(element)
-        const safeAttr = odataLit(attribute)
-        const tiCode = isNumeric
-            ? `ElementAttrPutN(${safeVal}, '${odataLit(String(dim))}', '${safeElem}', '${safeAttr}');`
-            : `ElementAttrPutS(${safeVal}, '${odataLit(String(dim))}', '${safeElem}', '${safeAttr}');`
-        try {
-            await this.post('ExecuteProcessWithReturn?$expand=*', {
-                Process: {
-                    Name: `}TM1IDE_probe_${Date.now()}`,
-                    PrologProcedure: tiCode,
-                    MetadataProcedure: '',
-                    DataProcedure: '',
-                    EpilogProcedure: '',
-                    HasSecurityAccess: false,
-                    DataSource: { Type: 'None' },
-                    Parameters: [],
-                    Variables: [],
-                }
-            })
-            results.tiInline = { ok: true }
-        } catch (e) {
-            console.error('[probe-tiInline] status:', e.response?.status, 'data:', JSON.stringify(e.response?.data ?? ''))
-            results.tiInline = { ok: false, status: e.response?.status, error: e.message }
-        }
-
-        return results
-    }
-
     async createElementAttribute(dim, name, type, hierarchy = dim) {
         // type: 'String' | 'Numeric' | 'Alias'
         return this.post(
@@ -578,11 +494,6 @@ class TM1Client {
     }
 
     // ── Current user ─────────────────────────────────────────────────────────
-
-    async getCurrentUser() {
-        const d = await this.get('ActiveUser')
-        return d?.Name ?? null
-    }
 
     // ── Cubes ─────────────────────────────────────────────────────────────────
 
@@ -763,14 +674,6 @@ class TM1Client {
 
     async executeChore(name) {
         return this.post(`Chores('${odataKey(name)}')/tm1.Execute`, {})
-    }
-
-    async activateChore(name) {
-        return this.patch(`Chores('${odataKey(name)}')`, { Active: true })
-    }
-
-    async deactivateChore(name) {
-        return this.patch(`Chores('${odataKey(name)}')`, { Active: false })
     }
 
     // ── Subset usage scan ─────────────────────────────────────────────────────
@@ -1430,11 +1333,6 @@ return (d.value ?? [])
         return { Axes: axisData.value, Cells: cells, truncated: cells.length >= maxCells }
     }
 
-    async executeViewWithSuppression(cube, view, suppressZeros, maxCells = 50_000) {
-        await this.patch(`Cubes('${odataKey(cube)}')/Views('${odataKey(view)}')`, { SuppressEmptyRows: suppressZeros })
-        return this.executeView(cube, view, maxCells)
-    }
-
     async executeView(cube, view, maxCells = 50_000) {
         const viewDef = await this.get(`Cubes('${odataKey(cube)}')/Views('${odataKey(view)}')`)
         const { ID }  = await this.post(`Cubes('${odataKey(cube)}')/Views('${odataKey(view)}')/tm1.Execute`, {})
@@ -1529,10 +1427,6 @@ return (d.value ?? [])
             commentType: 'ANNOTATION',
             commentLocation: dimElemPairs.map(p => p.element).join(','),
         })
-    }
-
-    async deleteAnnotation(id) {
-        return this.delete(`Annotations('${encodeURIComponent(id)}')`)
     }
 
     async createCube(name, dims) {

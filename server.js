@@ -458,11 +458,6 @@ app.patch('/api/sessions/:id/description', (req, res) => {
     catch (e) { res.status(500).json({ error: e.message }) }
 })
 
-app.get('/api/log/recent', (req, res) => {
-    try { res.json(cl.getRecentLog(req.query.server)) }
-    catch (e) { res.status(500).json({ error: e.message }) }
-})
-
 app.get('/api/log/object', (req, res) => {
     try { res.json(cl.getObjectHistory(req.query.server, req.query.type, req.query.name)) }
     catch (e) { res.status(500).json({ error: e.message }) }
@@ -1006,15 +1001,6 @@ app.get('/api/processes/search', async (req, res) => {
     }
 })
 
-app.get('/api/process/log', async (req, res) => {
-    try {
-        const client = makeClient(req.query.server, req.ideToken)
-        const result = await client.get(`Processes('${odataKey(req.query.name)}')/ErrorLog`)
-        const log = typeof result === 'string' ? result : (result?.value ?? '')
-        res.json({ log })
-    } catch (e) { fail(res, e) }
-})
-
 app.post('/api/process/create', async (req, res) => {
     try {
         if (!gateWrite(res, req.query.server)) return
@@ -1322,15 +1308,6 @@ app.get('/api/view', async (req, res) => {
     }
 })
 
-app.post('/api/view/execute', async (req, res) => {
-    try {
-        const client = makeClient(req.query.server, req.ideToken)
-        res.json(await client.executeView(req.query.cube, req.query.view))
-    } catch (e) {
-        res.status(500).json({ error: e.message })
-    }
-})
-
 app.post('/api/view/preview-records', async (req, res) => {
     try {
         const { server, cube, view } = req.query
@@ -1404,15 +1381,6 @@ app.get('/api/elements/tree', async (req, res) => {
         console.log('[elements/tree] count:', result.length, 'sample:', JSON.stringify(sample))
         res.json(result)
     } catch (e) { res.status(500).json({ error: e.message }) }
-})
-
-app.get('/api/elements/attributes', async (req, res) => {
-    try {
-        const client = makeClient(req.query.server, req.ideToken)
-        res.json(await client.getElementsWithAttributes(req.query.dimension, req.query.hierarchy))
-    } catch (e) {
-        res.status(500).json({ error: e.message })
-    }
 })
 
 app.get('/api/element/attributes', async (req, res) => {
@@ -1925,14 +1893,6 @@ app.get('/api/view/axes', async (req, res) => {
 })
 
 // ── Native View Execute (with suppression toggle) ────────────────────────────
-app.post('/api/view/execute-suppressed', async (req, res) => {
-    try {
-        const client = makeClient(req.query.server, req.ideToken)
-        const { suppressZeros } = req.body
-        res.json(await client.executeViewWithSuppression(req.query.cube, req.query.view, suppressZeros))
-    } catch (e) { fail(res, e) }
-})
-
 // ── MDX Execute ──────────────────────────────────────────────────────────────
 app.post('/api/mdx/execute', async (req, res) => {
     try {
@@ -2121,37 +2081,7 @@ app.get('/api/model/cubes', async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
-app.get('/api/model/dimensions', async (req, res) => {
-    try {
-        res.json(await makeClient(req.query.server, req.ideToken).getModelDimensions())
-    } catch (e) { res.status(500).json({ error: e.message }) }
-})
-
 // ── Chore execute / activate / deactivate / create ────────────────────────────
-app.post('/api/chore/execute', async (req, res) => {
-    try {
-        if (!gateReadOnly(res, req.query.server)) return
-        await makeClient(req.query.server, req.ideToken).executeChore(req.query.name)
-        res.json({ ok: true })
-    } catch (e) { res.status(500).json({ error: e.message }) }
-})
-
-app.post('/api/chore/activate', async (req, res) => {
-    try {
-        if (!gateReadOnly(res, req.query.server)) return
-        await makeClient(req.query.server, req.ideToken).activateChore(req.query.name)
-        res.json({ ok: true })
-    } catch (e) { res.status(500).json({ error: e.message }) }
-})
-
-app.post('/api/chore/deactivate', async (req, res) => {
-    try {
-        if (!gateReadOnly(res, req.query.server)) return
-        await makeClient(req.query.server, req.ideToken).deactivateChore(req.query.name)
-        res.json({ ok: true })
-    } catch (e) { res.status(500).json({ error: e.message }) }
-})
-
 app.post('/api/chore', async (req, res) => {
     try {
         if (!gateReadOnly(res, req.query.server)) return
@@ -2180,12 +2110,6 @@ app.post('/api/job/cancel', async (req, res) => {
 })
 
 // ── Process error logs ────────────────────────────────────────────────────────
-app.get('/api/process/errorlogs', async (req, res) => {
-    try {
-        res.json(await makeClient(req.query.server, req.ideToken).getErrorLogFiles())
-    } catch (e) { res.status(500).json({ error: e.message }) }
-})
-
 app.get('/api/process/errorlog/content', async (req, res) => {
     try {
         const content = await makeClient(req.query.server, req.ideToken).getErrorLogContent(req.query.filename)
@@ -2198,120 +2122,6 @@ app.post('/api/cube/trace', async (req, res) => {
     try {
         const { server, cube, dimElemPairs } = req.body
         res.json(await makeClient(server, req.ideToken).traceCellCalculation(cube, dimElemPairs))
-    } catch (e) { res.status(500).json({ error: e.message }) }
-})
-
-app.post('/api/cube/feeders', async (req, res) => {
-    try {
-        const { server, cube, dimElemPairs } = req.body
-        res.json(await makeClient(server, req.ideToken).checkFeedersOfCell(cube, dimElemPairs))
-    } catch (e) { res.status(500).json({ error: e.message }) }
-})
-
-app.post('/api/cube/breakdown', async (req, res) => {
-    try {
-        const { server, cube, dimElemPairs } = req.body
-        const client = makeClient(server, req.ideToken)
-
-        // Classify each element — C (has children) vs leaf (no children)
-        const classified = await Promise.all(dimElemPairs.map(async p => {
-            const children = await client.getElementChildren(p.dim, p.element).catch(() => [])
-            return { ...p, children, isC: children.length > 0 }
-        }))
-
-        const cDims = classified.filter(d => d.isC)
-        if (!cDims.length) return res.json({ sections: [], note: 'All elements are at leaf level' })
-
-        // One MDX query per C-dim, keeping other dims at their current member
-        const sections = await Promise.all(cDims.map(async cd => {
-            const where   = classified.filter(d => d.dim !== cd.dim)
-                                      .map(d => `[${d.dim}].[${d.dim}].[${d.element}]`)
-            const setExpr = cd.children.map(c => `[${cd.dim}].[${cd.dim}].[${c.name}]`).join(', ')
-            const mdx     = [`SELECT NON EMPTY {${setExpr}} ON COLUMNS`, `FROM [${cube}]`,
-                             where.length ? `WHERE (${where.join(', ')})` : ''].filter(Boolean).join(' ')
-            try {
-                const result = await client.executeMDX(mdx)
-                const tuples = result.Axes?.[0]?.Tuples ?? []
-                const cells  = result.Cells ?? []
-                const rows = tuples.map((t, i) => ({
-                    element: t.Members?.[0]?.Name ?? '?',
-                    weight:  cd.children.find(c => c.name === t.Members?.[0]?.Name)?.weight ?? 1,
-                    value:   cells[i]?.Value ?? null,
-                })).filter(r => r.value !== null).sort((a, b) => Math.abs(b.value) - Math.abs(a.value))
-                const abs = rows.reduce((s, r) => s + Math.abs(r.value ?? 0), 0)
-                return {
-                    dim: cd.dim, element: cd.element,
-                    rows: rows.map(r => ({ ...r, pct: abs > 0 ? Math.round(Math.abs(r.value) / abs * 100) : 0 })),
-                }
-            } catch (e) {
-                return { dim: cd.dim, element: cd.element, rows: [], error: e.message }
-            }
-        }))
-        res.json({ sections })
-    } catch (e) { res.status(500).json({ error: e.message }) }
-})
-
-app.post('/api/cube/leaves', async (req, res) => {
-    try {
-        const { server, cube, dimElemPairs } = req.body
-        const client = makeClient(server, req.ideToken)
-
-        const classified = await Promise.all(dimElemPairs.map(async p => {
-            const children = await client.getElementChildren(p.dim, p.element).catch(() => [])
-            return { ...p, children, isC: children.length > 0 }
-        }))
-
-        const cDims = classified.filter(d => d.isC)
-        if (!cDims.length) return res.json({ sections: [], note: 'All elements are at leaf level' })
-
-        const sections = await Promise.all(cDims.map(async cd => {
-            // Fetch all edges once — build parent→children map, then BFS to find all leaf descendants
-            const edges    = await client.getEdges(cd.dim)
-            const childMap = new Map()
-            for (const e of edges) {
-                if (!childMap.has(e.ParentName)) childMap.set(e.ParentName, [])
-                childMap.get(e.ParentName).push(e.ComponentName)
-            }
-            const leaves = [], queue = [cd.element], visited = new Set()
-            while (queue.length) {
-                const curr = queue.shift()
-                if (visited.has(curr)) continue
-                visited.add(curr)
-                const kids = childMap.get(curr) ?? []
-                if (kids.length) queue.push(...kids)
-                else leaves.push(curr)
-            }
-            if (!leaves.length) return { dim: cd.dim, element: cd.element, rows: [], totalLeaves: 0 }
-
-            const CAP     = 100
-            const leafSet = leaves.slice(0, CAP)
-            const where   = classified.filter(d => d.dim !== cd.dim)
-                                      .map(d => `[${d.dim}].[${d.dim}].[${d.element}]`)
-            const setExpr = leafSet.map(l => `[${cd.dim}].[${cd.dim}].[${l}]`).join(', ')
-            const mdx     = [`SELECT NON EMPTY {${setExpr}} ON COLUMNS`, `FROM [${cube}]`,
-                             where.length ? `WHERE (${where.join(', ')})` : ''].filter(Boolean).join(' ')
-            try {
-                const result = await client.executeMDX(mdx)
-                const tuples = result.Axes?.[0]?.Tuples ?? []
-                const cells  = result.Cells ?? []
-                const rows = tuples.map((t, i) => ({
-                    element: t.Members?.[0]?.Name ?? '?',
-                    value:   cells[i]?.Value ?? null,
-                }))
-                .filter(r => r.value !== null && r.value !== 0)
-                .sort((a, b) => Math.abs(b.value) - Math.abs(a.value))
-                .slice(0, 50)
-                const abs = rows.reduce((s, r) => s + Math.abs(r.value ?? 0), 0)
-                return {
-                    dim: cd.dim, element: cd.element,
-                    rows: rows.map(r => ({ ...r, pct: abs > 0 ? Math.round(Math.abs(r.value) / abs * 100) : 0 })),
-                    totalLeaves: leaves.length, capped: leaves.length > CAP,
-                }
-            } catch (e) {
-                return { dim: cd.dim, element: cd.element, rows: [], error: e.message, totalLeaves: leaves.length }
-            }
-        }))
-        res.json({ sections })
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
@@ -2330,29 +2140,6 @@ app.post('/api/process/check-references', async (req, res) => {
 })
 
 // ── Cell annotations ──────────────────────────────────────────────────────────
-app.get('/api/cube/annotations', async (req, res) => {
-    try {
-        const { server, cube } = req.query
-        res.json(await makeClient(server, req.ideToken).getAnnotations(cube))
-    } catch (e) { res.status(500).json({ error: e.message }) }
-})
-
-app.post('/api/cube/annotations', async (req, res) => {
-    try {
-        const { server, cube, dimElemPairs, text } = req.body
-        if (!gateReadOnly(res, server)) return
-        res.json(await makeClient(server, req.ideToken).addAnnotation(cube, dimElemPairs, text))
-    } catch (e) { res.status(500).json({ error: e.message }) }
-})
-
-app.delete('/api/cube/annotations/:id', async (req, res) => {
-    try {
-        const { server } = req.query
-        if (!gateReadOnly(res, server)) return
-        res.json(await makeClient(server, req.ideToken).deleteAnnotation(req.params.id))
-    } catch (e) { res.status(500).json({ error: e.message }) }
-})
-
 // ── Transaction log ───────────────────────────────────────────────────────────
 // A TM1 log search can't be cancelled once started, so a repeat of the same search by the same
 // user (a second click, a refresh) joins the one already running instead of starting another.
@@ -2912,16 +2699,6 @@ app.delete('/api/sql/queries/:id', (req, res) => {
 })
 
 // ── Current user ──────────────────────────────────────────────────────────────
-app.get('/api/whoami', async (req, res) => {
-    try {
-        const client = makeClient(req.query.server, req.ideToken)
-        const name = await client.getCurrentUser()
-        res.json({ name })
-    } catch (e) {
-        res.status(500).json({ error: e.message })
-    }
-})
-
 // ── Cell write ────────────────────────────────────────────────────────────────
 // Body: { server, cube, dims: [{ dim, element }, ...], value }
 app.post('/api/cells/write', async (req, res) => {
@@ -3207,15 +2984,6 @@ app.get('/api/deploy/git/approval', async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 // Review — the actual content diff the target will receive (read-only).
-app.post('/api/deploy/git/review', async (req, res) => {
-    try {
-        const { review } = require('./core/git-review')
-        const { source, target, branch, session } = req.body
-        if (!target) return res.status(400).json({ error: 'target required' })
-        res.json(await review(source, target, { branch, token: process.env.TM1_GIT_TOKEN, ideToken: req.ideToken, session }))
-    } catch (e) { res.status(500).json({ error: e.message }) }
-})
-
 // ── Drift (#3): PROD pushes prod-live; diff vs its deployed commit. ─────────
 app.post('/api/git/drift', async (req, res) => {
     try {
@@ -3320,24 +3088,6 @@ app.post('/api/git/setup/first-pull', async (req, res) => {
 })
 
 // ── Governance mirror (#4): Applications/Governance ⇄ governance/ in the repo ──
-app.post('/api/git/governance/mirror', async (req, res) => {
-    try {
-        const { mirrorToRepo } = require('./core/governance-mirror')
-        const { server, branch } = req.body
-        if (!server) return res.status(400).json({ error: 'server required' })
-        res.json(await mirrorToRepo(server, { branch, token: process.env.TM1_GIT_TOKEN, ideToken: req.ideToken }))
-    } catch (e) { res.status(500).json({ error: e.message }) }
-})
-app.post('/api/git/governance/apply', async (req, res) => {
-    try {
-        if (!gateReadOnly(res, req.body?.server)) return
-        const { applyFromRepo } = require('./core/governance-mirror')
-        const { server, branch, allow } = req.body
-        if (!server) return res.status(400).json({ error: 'server required' })
-        res.json(await applyFromRepo(server, { branch, allow, token: process.env.TM1_GIT_TOKEN, ideToken: req.ideToken }))
-    } catch (e) { res.status(500).json({ error: e.message }) }
-})
-
 // ── Git reconcile (#6): deletes + attribute values the pull won't cover ──────
 app.post('/api/deploy/seed', async (req, res) => {
     try {
@@ -3352,21 +3102,6 @@ app.post('/api/deploy/seed', async (req, res) => {
 })
 
 // Append-only baseline history for a server + move HEAD (recovery point).
-app.get('/api/deploy/baselines', (req, res) => {
-    try {
-        if (!req.query.server) return res.status(400).json({ error: 'server required' })
-        res.json(deployListBaselines(req.query.server))
-    } catch (e) { res.status(500).json({ error: e.message }) }
-})
-
-app.post('/api/deploy/baseline/head', (req, res) => {
-    try {
-        const { server, file } = req.body
-        if (!server || !file) return res.status(400).json({ error: 'server and file required' })
-        res.json(deploySetBaselineHead(server, file))
-    } catch (e) { res.status(500).json({ error: e.message }) }
-})
-
 app.post('/api/deploy/diff', async (req, res) => {
     try {
         const { server, sessionId, release } = req.body
@@ -3731,15 +3466,6 @@ app.put('/api/process/summary', async (req, res) => {
             source: 'manual',
         })
         res.json(entry)
-    } catch (e) {
-        res.status(500).json({ error: e.message })
-    }
-})
-
-app.delete('/api/process/summary', async (req, res) => {
-    try {
-        const ok = processSummaries.remove(req.query.server, req.query.name)
-        res.json({ ok })
     } catch (e) {
         res.status(500).json({ error: e.message })
     }
