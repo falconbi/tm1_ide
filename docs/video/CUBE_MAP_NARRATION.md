@@ -2,152 +2,152 @@
 
 Follows the Views and data short. **[Bracketed]** lines are on-screen cues — don't read them out. Approximate times in brackets.
 
-Record on **TM1_Test_DEV**. Before recording, open the Cube Map on the Workforce model, choose **WFP** in the Model filter so the LAB cubes are hidden, and start with nothing selected. The worked cube is **WFP Workforce Cost**.
+Record on **TM1_Test_DEV**. Before recording, open the Cube Map, choose **WFP** in the Model filter, and start with nothing selected. The worked cube is **WFP Workforce Cost**.
 
 ---
 
 ## Intro (~20s)
 
 **[Cube Map open on the full WFP model, nothing selected]**
-This is the Cube Map, on TM1_Test_DEV. In this video I'll show what it is, why it matters, how it's built, and how to use it to read the whole Workforce model. We'll finish with the Runbook and a played process run.
+This is the Cube Map, on TM1_Test_DEV. In this video I'll show what it is, why it's useful, how it's built, and how to use it to understand a model.
 
-## 1. What it is and why it's useful (~45s)
+## 1. What it is and why it's useful (~75s)
 
-**[Click Fit to screen]**
-When you inherit a TM1 model, or come back to one after a few months, the hardest question is the simplest: how does it all fit together? Which cubes feed which, and which processes move the data? Normally that answer lives in someone's head, or in a diagram that was out of date a week after it was drawn.
+When you inherit a TM1 model, or come back to one after a few months, the first question is: how does it all fit together? A live diagram helps you refresh your own understanding, and it helps you explain the model to another developer, at a handover or in a model review.
 
-The Cube Map answers it from the model itself. Every box is a cube. Every line is a real connection, worked out from the rules and the TI code on the server each time the map loads. Nobody draws it and nobody maintains it, so it cannot drift away from what the model actually does.
+The Cube Map answers that question from the model itself. Every box is a cube. Every line is a real connection, worked out from the rules and the TI code on the server each time the map loads. Nobody draws it and nobody maintains it, so it can't drift away from what the model actually does.
 
-It is useful in three ways: it shows the shape of the model, it shows the source of any number, and it shows the path a process run will take.
+**[Point to the legend]**
+The legend explains the lines.
+Amber is a rule reading another cube with DB.
+Dashed is a feeder.
+Blue is a TI process reading or writing a cube.
+The other colours show a process changing a dimension, or one process calling another.
 
-**[Click Legend]**
-The legend explains the lines. Amber is a rule reading another cube with DB. Dashed is a feeder. Blue is a TI process reading or writing a cube. Other colours show a process changing a dimension or calling another process. A Lens tag marks a process a Lens button can run.
+**[Point to a Lens tag]**
+You'll also see a Lens tag on some processes, so first: what is a Lens?
+A Lens is a web page built on top of the TM1 model, for the people who plan in it rather than the developers who build it. A manager opens it in a browser and sees their own numbers, such as their people, positions and costs, laid out for the job they're doing. When they press a button on the page, such as Hire or Change assignment, a TI process on the server does the work. The page holds no data and no logic of its own; everything stays in TM1.
 
-**[Point to the bar on a cube with rules]**
-The bar means the cube has rules. The longer the bar, the more rule lines it has, so the busiest calculation cubes stand out.
+So the Lens tag marks a process that a Lens button runs. This sample model leans on TI on purpose. The heavy calculations run in TI rather than in rules, which keeps the feeders light and the server small, and every Lens action is a TI process. So expect to see a lot of processes on this map.
 
 ## 2. How it's built (~35s)
 
-**[Point around the graph]**
-The map is a React component inside the IDE. The graph itself is drawn with **React Flow** — the panning, zooming, nodes and connection handles. **Dagre** calculates the automatic layout, so nobody places a box by hand.
+The map is a React component inside the IDE. The graph itself is drawn with **React Flow**, which handles the panning, zooming, boxes and connections. **Dagre** works out the layout automatically, so nobody places a box by hand.
 
-The data comes from the Node/Express server. It reads cubes, rules, processes, dimensions and chores through the **TM1 REST API**, then scans the rules and TI code for DB references, feeders, CellGet/CellPut calls, dimension changes and ExecuteProcess calls. The Lens process usage comes from the Lenses' declared run processes.
+The data comes from the IDE's Node/Express server. It reads the cubes, rules, processes, dimensions and chores through the **TM1 REST API**, then scans the rules and the TI code for DB references, feeders, CellGet and CellPut calls, dimension changes and ExecuteProcess calls. The map is a view over the live model, nothing more.
 
-So there is no diagram database and no external drawing service. The map is a view over the live model. If the code changes, the next load changes the map.
+## 3. Show — switch the layers on and off (~40s)
 
-## 3. The Map options — show and hide the layers (~65s)
+**[Click each Show switch in turn]**
+The Show switches work the same on the full map and when you trace a cube:
+Rules,
+Feeders,
+Processes,
+and Dimensions.
+Lens actions is a fifth switch. It hides the processes the Lens buttons run, along with any helpers only they use.
 
-**[Point to the Show row]**
-Show is the same set of switches on the full map and in a cube trace: Rules, Feeders, Processes and Dimensions. Lens actions is a fifth switch.
+Switch on what you're interested in and switch off the rest. The map redraws and fits itself to the screen each time, so it only shows what you asked for.
 
-**[Untick Rules; pause]**
-With Rules off, the rule-to-rule links go. What remains is the movement of data through feeders and TI. This is useful when the calculation chain is too noisy and I only care about what loads or copies data.
+## 4. Pick WFP Workforce Cost (~75s)
 
-**[Tick Rules; untick Feeders; pause]**
-With Feeders off, the feeder edges go. The calculation rules are still there, but the map no longer shows where calculated values are fed. This is the reading-only view of the logic.
+**[Click WFP Workforce Cost]**
+Now let's pick a real cube: WFP Workforce Cost.
+The map focuses on it and dims everything else. The thread at the top now reads Full map › WFP Workforce Cost.
 
-**[Tick Feeders; untick Processes; pause]**
-With Processes off, the process boxes and their read/write edges go. Dimensions become unavailable, because on the full map dimensions are shown through the processes that change them. What remains is the cube-to-cube relationship: the shape of the model without the movers.
+**[Point to the right panel]**
+A panel opens on the right for the focused cube. This is where you get the detail, and where you can fine-tune what you see around the cube.
 
-**[Tick Processes; untick Lens actions; pause]**
-Lens actions is the interesting one. Turn it off and the processes that only a Lens button runs — and helpers only they run — leave the map. What is left is the back-end flow: loads, recalculation, snapshots. Turn it back on and the front-end actions return.
-
-**[Point to Model, Search and Spotlight]**
-The Model filter shows one model at a time by name prefix. Search finds a cube. Spotlight dimension lights up every cube that uses a dimension. Those are the finding controls; the Show row is the explaining control.
-
-## 4. Pick WFP Workforce Cost (~70s)
-
-**[Clear any search; click WFP Workforce Cost in the cube list]**
-Now let's pick a real cube: WFP Workforce Cost. The map focuses on it, dims the rest, and the thread at the top starts with Full map › WFP Workforce Cost.
-
-**[Point to the right-hand panel, top to bottom]**
-This is the context of the cube I selected. Across the top are its dimensions, then the actions: Rules and View. The small split buttons open Rules or the Default View beside the map instead of replacing it.
-
-Below that are the stats or KPIs for this cube: dimensions, rule lines, connected objects, TI writers and TI readers.
-
-**[Point to each section]**
-Then the relationships: the cubes its rules read from, the cubes that reference it, its feeders, the TI processes that write into it, the processes that read from it, and the processes that call those writers. A Lens tag shows where a Lens button can start a process.
-
-That is the direct answer to “where does this number come from?” — without opening every process in the model.
+At the top, Rules and View open the cube's rules or its default view. The split half of each button opens it in a pane beside the map, so you keep your place. Below them are counts of the objects connected to this cube.
 
 **[Open Fine-tune the trace]**
-Fine-tune the trace is where I change which link kinds count: Rules, Feeders, TI reads, TI writes, Calls, Dimension changes and Dimension usage. This is the detailed version of the Show switches.
+Fine-tune the trace is where you choose which kinds of link count: Rules, Feeders, TI reads, TI writes, Calls, Dim changes and Dim usage. It's the detailed version of the Show switches.
 
-**[Click a dimension in the Dimensions list]**
-I can also filter by a dimension. Clicking one narrows the current trace to the cubes using that dimension and adds “with <dimension>” to the thread. Back or the chip's X removes it.
+**[Scroll the relationship lists]**
+Then come the relationships: the cubes its rules read from, the cubes that reference it, its feeders, the TI processes that write into it, the processes that read from it, and the processes that call those writers.
 
-**[Hover a TI process; click it]**
-Every TI name here opens its process. A process that calls helpers folds them into its box with a **+n** count. Click **+n** and the chain opens into the individual TI processes; click any one to open it, and the thread still takes me back.
+The Lens tag appears on every process a Lens uses, here and in the Explorer, so you can tell a front-end process from a back-end one at a glance.
 
-## 5. The thread, levels and helpers (~55s)
+Between them, the map and the panel let you follow the logic of a complex model by drilling into the diagram, instead of opening objects one by one.
 
-**[Click a connected cube, then another]**
-Now I follow the numbers. WFP Workforce Cost gets its numbers from other cubes, and those get theirs from others again. Click a connected cube, and the map refocuses; click the next, and the next.
+## 5. The thread and Steps away (~55s)
 
-**[Point to the thread at the top]**
-The thread keeps every cube I've visited, in order. Back or Backspace goes one step back. Clicking any name in the thread jumps back to it. Full map or Escape leaves the thread and returns to the whole model, so I can never get lost.
+**[Click a connected cube, then another, then another]**
+Let's follow the thread. Click a connected cube and the map refocuses on it. Click another and the thread grows, and again.
 
-**[Click Steps away 1, then 2]**
-Steps away controls how far the map reaches. One is direct links only. Two is two steps out: the neighbours of the neighbours. That wider view matters here, because it brings in the earlier cubes whose Lens buttons start the downstream processes — and their process boxes carry the Lens tag. The number beside each button previews how many objects it will add.
+The thread keeps every cube you've visited, in order. Back, or Backspace, goes one step back, and you can click any earlier step to jump straight to it. You never get lost.
 
-**[Click +n on a process with helpers]**
-Most load chains are one box with a +n. That box is the top-level process; the helpers it calls are folded in. Click +n and each helper appears as its own TI. The folding is calculated from ExecuteProcess calls every time the map loads, so it stays right without anyone tagging the helpers.
+**[Click 1, then 2, under Steps away]**
+Steps away sets how far the map reaches out from the focused cube.
+One shows direct links only.
+Two goes two steps out: the neighbours of the neighbours.
+Each button shows how much it would bring in before you click it.
+
+On this model, two steps gets busy quickly. That's the design choice from earlier: lots of TI, much of it behind Lens buttons. In another model, the same processes could just as easily be action buttons in Planning Analytics Workspace. Either way, the Lens actions switch and the Processes switch are how you thin it out.
 
 ## 6. Runbook (~75s)
 
-**[Click Runbook; select a chore]**
-The Runbook is the presentation of the model's **chores** — the sequences TM1 already uses to run an update. It is read-only; it runs nothing.
+**[Switch the mode tab to Runbook]**
+Now switch the Cube Map to the Runbook tab. A Runbook shows a model's workflow as it's defined in its **chores**, the sequences TM1 already uses to run an update.
 
-It is built from TM1: the chore list comes from the server, each chore's processes come in their stored order, the description comes from each process's Prolog header or saved summary, and the steps come from scanning the process code. That is why it does not need a hand-written phases file and cannot get out of step with the model.
+The IDE builds it all from TM1. The chore list comes from the server. Each chore's processes come in their stored order. The description comes from each process's Prolog header or saved summary, and the steps come from scanning the process code.
 
 **[Point to the chore list]**
-On the left are the chores. A scheduled chore runs on TM1; a runbook-only chore is inactive and never runs on a schedule. If the master process is not on a chore, give it one — inactive if it should only be reviewed.
+This model has three chores. WFP Recalculate Cost is **scheduled**: it runs on TM1. WFP Month End and WFP Year Start are **runbook only**: they're inactive, so they never run on a schedule. They exist to show the workflow.
 
-**[Point to a process and click Steps]**
-For each process I see its description, then Steps expands it in code order: what it reads, what it writes, what it calls, and the rule cubes each write sets off. So I can review an update before it runs, not after it has gone wrong.
+That's the one rule for a Runbook: if a sequence matters, it needs a chore. If the master process isn't on a chore, give it one, inactive if it should only be reviewed. Set your chores up well, and the Runbook presents them well.
+
+**[Click WFP Month End, then Steps]**
+For each process I see its description. Steps expands it in code order: what it reads, what it writes, what it calls, and which rule cubes each write sets off.
 
 **[Click View on map]**
-View on map takes that chore's processes and everything they touch onto the Cube Map. That is the bridge between “what runs” and “what it changes”. It is still the map, not the player: to animate the sequence, use the **Play** button in the chore header, or open Play a run and choose the chore.
+View on map takes the chore's processes, and everything they touch, onto the Cube Map. That's the bridge between what runs and what it changes. From here it's the same map as before: switch on TI, click into other cubes, and use the thread to go back to where you started.
 
 ## 7. Play a run (~2:15)
 
-**[Click Play a run]**
-This is the part I would show anyone who asks what the Cube Map is for. Models are full of processes, and the usual question is: if I run this, what happens, in what order, and what does it touch? Play a run answers that without running anything. It walks the code path across the map, one step at a time.
+**[Switch the mode tab to Play a run]**
+Now a feature that shows a run as a sequence on the map.
+Models are full of processes, and the usual question is: if I run this, what happens, in what order, and what does it touch?
+Play a run answers that without running anything. It's a presentation only, and no data in the model changes.
+This is the feature that makes the Cube Map more than a picture.
 
-That is the feature that makes the Cube Map more than a picture. It is the bridge between seeing the model and reading the update.
+**[Pick WFP Month End and press Play]**
+Start from a chore. WFP Month End is runbook only, so it never fires on a schedule.
+As it plays, the current connection and box light up. The bar tells me where I am: the path at the top, the step number, and what this step does.
 
-**[Choose ⏱ WFP Month End (inactive); set 2×; click Play]**
-Start from a chore. WFP Month End is runbook-only here, so it never fires on a schedule; playing it is safe. The player uses the stored sequence: WFP Load HR Assignments, then WFP Calc Variances, then WFP Snapshot. WFP Snapshot calls the core version copy, so that helper appears too.
+Play and Pause are the same button.
+The arrows move one step at a time, and Follow pans the map to the current step when it goes off screen.
 
-**[Let a few steps play, then click Pause]**
-As it plays, the current connection and node light up. The bar tells me where I am: the path at the top, the step number, and what this step does. Play and Pause are the same button. Pause stops the animation, not a live run — nothing is executing. The arrows move one step at a time, and Follow pans to the current step when it leaves the screen.
+**[Pause, then click the info button]**
+Now pause and ask: what is this step?
+The info button opens the detail card for this exact read, write or call.
+It names the process and its parameters, the cube being read or written, the measures it writes, and the rule lines and dimensions behind it.
+That's the information I'd otherwise collect by opening several tabs and holding it all in my head.
 
-**[With a step selected, click the info button]**
-Now pause and ask: what is this step? The info button opens the detail card for this exact read, write or call. It names the process and its parameters, the cube being read or written, the measures it writes, and the rule lines and dimensions behind it. That is the information I would otherwise collect by opening several tabs and holding it in my head.
-
-The card is plain about where to go next. A process gives me Open process. A cube gives me Open view, and Open rules when it has rules. A dimension gives me Open dimension. These open beside the map, so I do not lose the run.
+The card also tells me where to go next.
+For a process: Open process.
+For a cube: Open view, and Open rules when it has rules.
+For a dimension: Open dimension.
+These open beside the map, so I don't lose the run.
 
 **[Click Open process]**
-Open process pauses the run and docks the TI beside the map. This is the moment the feature pays off: I can read the actual code next to the step that triggered it. The CellGet, the CellPut, the ExecuteProcess — I can see what the map just told me. The map stays on the same step, and the Runbook stays open, so I can read, go back, and carry on.
+Open process pauses the run and docks the TI beside the map.
+This is where the feature pays off: I can read the actual code next to the step that triggered it.
+The map stays on the same step, so I can read, go back, and carry on.
 
-**[Choose WFP Snapshot from the same list]**
-When I want a closer look at the snapshot, I switch the start point. WFP Snapshot is a short process: a wrapper that calls the core version copy. Open process shows the wrapper; back on the map, click +n on its process box and the helper unfolds as its own TI. Two levels, both readable, without opening the model by hand.
+**[Pick WFP Change Assignment]**
+You don't need a chore to play a run. Any single process works too.
+WFP Change Assignment shows one process: its reads and writes, and the recalculation helper it calls.
+Chore or process, the controls are the same.
 
-**[Choose WFP Change Assignment]**
-The same list switches me to a single process. WFP Change Assignment shows one process, its reads and writes, and the recalculation helper it calls. Chore or process, the controls are the same.
+**[Let it play to the end]**
+At the end, the player says the run is finished.
+The order follows the code as written, and loops play once.
+Remember, it's a reading of the path, not a replay of a real execution. Nothing in the model has changed.
 
-**[Pause on the last step]**
-At the end the player says the run is finished. The order follows the code as written, and loops play once. It is a reading of the path, not a replay of a real execution.
+## Outro (~20s)
 
-That is why I would put this in front of every new starter and every reviewer: a process run becomes a short, paused, readable story, and the TI is one click away.
-
-## Outro (~15s)
-
-**[Escape back to the full map]**
-So that's the Cube Map: what it is, how it's built from the live model, how to switch the layers, pick a cube, follow its relationships, open Rules or the Default View beside it, and use the Runbook and Play a run — pausing on a step and opening the TI — to understand an update before it happens.
-
-In the next video: the editing features that make everyday work in the IDE faster.
+So that's the Cube Map: what it is, how it's built from the live model, how to switch the layers, pick a cube and follow its relationships, open the rules or default view beside it, and use the Runbook and Play a run to understand an update before it happens.
 
 ---
 
-Total about **8–9 minutes**. To shorten, the easiest cuts are: the Show walk-through in section 3 (−30s), the helper example in section 5 (−15s), and one of the two Play a run examples (−20s).
+Total about **8 min 25 s**. The easiest cuts: section 2 "How it's built" (−35s), the second Play a run example (−20s), the Lens explanation in section 1 if the Lenses short covers it (−20s).
