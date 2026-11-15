@@ -12,7 +12,7 @@ import ChoreEditor from '@/components/ChoreEditor'
 import GuidedMDXBuilder from '@/components/GuidedMDXBuilder'
 import CubeEditor from '@/components/CubeEditor'
 import { toast } from 'sonner'
-import { GitBranch, ChevronRight, ChevronDown, Loader2, ChevronsUpDown, ChevronsDownUp, ListTree, AlignLeft, Settings, Locate, Braces, Save, Map, Microscope, X, History, ShieldCheck, Rss, AlertTriangle, AlertCircle, HelpCircle, ListFilter, Undo2, Redo2, RefreshCw, Eraser } from 'lucide-react'
+import { GitBranch, ChevronRight, ChevronDown, Loader2, ChevronsUpDown, ChevronsDownUp, ListTree, AlignLeft, Settings, Locate, Braces, Save, Map, Microscope, X, History, ShieldCheck, AlertTriangle, AlertCircle, HelpCircle, ListFilter, Undo2, Redo2, RefreshCw, Eraser } from 'lucide-react'
 import { enableQuoteDoubleClick } from '@/lib/quote-select'
 import { cn } from '@/lib/utils'
 import { loadSettings, saveSettings } from '@/lib/formatters/settings.js'
@@ -403,7 +403,6 @@ function RulesEditor({ tab, onCursor }) {
   const [checkResult, setCheckResult]       = useState(null) // null | 'pass' | 'fail'
   const [checkErrors, setCheckErrors]       = useState([])   // { severity, line, message }[]
   const checkSeqRef                          = useRef(0)
-  const [checkingFeeders, setCheckingFeeders] = useState(false)
 
   // Contextual drill-ins (Lineage, Data Sources) open beside the rules you are reading.
   const openCube = useCallback((cube, openHere) => {
@@ -844,29 +843,6 @@ function RulesEditor({ tab, onCursor }) {
           >
             {checking ? <Loader2 size={11} className="animate-spin" /> : <ShieldCheck size={11} />}
             Check
-          </button>
-          <button
-            onClick={async () => {
-              setCheckingFeeders(true)
-              try {
-                const token = localStorage.getItem('tm1-token') ?? ''
-                const r = await fetch('/api/cube/check-feeders-for-rules', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json', 'x-ide-token': token },
-                  body: JSON.stringify({ server: tab.server, cube: tab.cube }),
-                })
-                const d = await r.json()
-                if (d.unsupported) toast.warning(d.message)
-                else if (d.error) toast.error(`Feeder check failed: ${d.error}`)
-                else toast.success('Feeder check complete — open a view to see highlighted zero cells')
-              } catch { toast.error('Feeder check failed') }
-              finally { setCheckingFeeders(false) }
-            }}
-            disabled={checkingFeeders}
-            className="flex items-center gap-1 px-2 py-1 rounded text-xs border bg-background/80 border-border text-muted-foreground hover:text-foreground disabled:opacity-40 transition-colors"
-            title="CheckFeedersForRules — recalculates feeder propagation for this cube. Open a view after to see zero rule cells highlighted amber."
-          >
-            {checkingFeeders ? <Loader2 size={11} className="animate-spin" /> : <Rss size={11} />}
           </button>
           <div ref={formatPopupRef} className="relative format-popup-container">
             <button

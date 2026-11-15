@@ -10,7 +10,7 @@ import { useStore } from '@/store'
 import { subsetApplyCallbacks } from '@/lib/subsetCallbacks'
 import { useCubeDimensions, useSubsets, useElementsTree, useElementsTrees, useHierarchies, useHierarchiesFor, useViews, useExecuteMDX, useViewAxes, useSaveView, useSetDefaultView, usePawBookUsage, useDimAttributes, useViewUsage, useViewSourceUsage, useMultiFormatAttrs, useConflictCheck, useGenerateViewMDX, useConfig } from '@/hooks/useApi'
 import { toast } from 'sonner'
-import { RefreshCw, Loader2, Table2, GripVertical, GripHorizontal, X, LayoutGrid, Rows3, Columns3, Filter, ZapOff, Zap, ChevronLeft, ChevronRight, PencilLine, Save, Code2, Eye, ChevronDown, BookOpen, ChevronUp, MapPin, WrapText, Braces, History, AlertTriangle, Cog, FileSearch, Rss, Sparkles, Clock, Check, ArrowUpDown, HelpCircle, Eraser } from 'lucide-react'
+import { RefreshCw, Loader2, Table2, GripVertical, GripHorizontal, X, LayoutGrid, Rows3, Columns3, Filter, ZapOff, Zap, ChevronLeft, ChevronRight, PencilLine, Save, Code2, Eye, ChevronDown, BookOpen, ChevronUp, MapPin, WrapText, Braces, History, AlertTriangle, Cog, FileSearch, Sparkles, Clock, Check, ArrowUpDown, HelpCircle, Eraser } from 'lucide-react'
 import HelpPanel from '@/components/HelpPanel'
 import TransactionLogPanel from '@/components/TransactionLogPanel'
 import CellContextMenu from '@/components/CellContextMenu'
@@ -1502,7 +1502,6 @@ export default function ViewEditor({ tab }) {
     const traceRef = useRef(tab.savedTrace ?? null)
     useEffect(() => { traceRef.current = traceCtx ? { ctx: traceCtx, stack: traceRef.current?.ctx === traceCtx ? traceRef.current.stack : null } : null }, [traceCtx])
     useEffect(() => () => patchTab(tab.id, { savedTrace: traceRef.current }), [])  // eslint-disable-line
-    const [checkingFeeders, setCheckingFeeders] = useState(false)
     const { openConflict, checkBeforeSave } = useConflictCheck(tab.server, 'view', tab.viewName)
     const { data: pawBookData, isFetching: loadingPawBooks, refetch: refetchPawBooks } = usePawBookUsage(tab.server, tab.cube, tab.viewName)
     const { data: usageData,   isFetching: loadingUsage,   refetch: refetchUsage }    = useViewUsage(tab.server, tab.cube, tab.viewName)
@@ -1849,6 +1848,8 @@ export default function ViewEditor({ tab }) {
     const [drills, setDrills] = useState({})          // { 'rows|Dim': [{ scope, member, members }] }
     const [drillRun, setDrillRun] = useState(0)
     useEffect(() => { setDrills({}) }, [axes])
+    // the grid's row headings — the same array until the rows change, so a redraw doesn't reset the grid
+    const rowNames = useMemo(() => axes.rows.map(entryKey), [axes.rows])
     const effAxes = useMemo(() => {
         if (!Object.keys(drills).length) return axes
         const widen = (zone, list) => list.map(p => widenPlacement(p, drills[`${zone}|${entryKey(p)}`]))
@@ -2421,30 +2422,6 @@ export default function ViewEditor({ tab }) {
                     <History size={10} /> Log
                 </button>
 
-                <button
-                    onClick={async () => {
-                        setCheckingFeeders(true)
-                        try {
-                            const token = localStorage.getItem('tm1-token') ?? ''
-                            const r = await fetch('/api/cube/check-feeders-for-rules', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json', 'x-ide-token': token },
-                                body: JSON.stringify({ server: tab.server, cube: tab.cube }),
-                            })
-                            const d = await r.json()
-                            if (d.unsupported) toast.warning(d.message)
-                            else if (d.error) toast.error(`Feeder check failed: ${d.error}`)
-                            else { toast.success('Feeder check complete — refreshing view'); handleExecute() }
-                        } catch { toast.error('Feeder check failed') }
-                        finally { setCheckingFeeders(false) }
-                    }}
-                    disabled={checkingFeeders || !result}
-                    title="Run CheckFeedersForRules — recalculates feeder propagation for this cube. Zero rule cells highlight amber."
-                    className="flex items-center gap-1 px-2 py-0.5 text-[10px] rounded border border-border text-muted-foreground hover:text-foreground hover:bg-muted disabled:opacity-40 transition-colors"
-                >
-                    {checkingFeeders ? <Loader2 size={10} className="animate-spin" /> : <Rss size={10} />} Fire Feeders
-                </button>
-
                 <div className="flex-1" />
 
                 <button onClick={() => setFlatMode(v => !v)}
@@ -2783,7 +2760,7 @@ export default function ViewEditor({ tab }) {
                             pivot={pivotData}
                             rowHierarchies={hierarchies}
                             colHierarchies={columnHierarchies}
-                            rowNames={axes.rows.map(entryKey)}
+                            rowNames={rowNames}
                             dark={dark}
                             totals={totalsPosition}
                             colTotals={colTotalsPosition}

@@ -191,3 +191,33 @@ test('Expand this level for all opens each member one level', () => {
   sets = expandOneLevel([period], sets, 0, ['H1', 'H2'], '')              // level for all
   assert.deepEqual(computeVisibleTuples([period], sets, 'parent').map(t => t[0]), ['FY', 'H1', 'Q1', 'Q2', 'H2', 'Q3'])
 })
+
+// Nov 2026: "Expand all levels below" re-queried TM1 and opened nothing when the members below
+// were already loaded; it now opens what's loaded locally, on the outer and the inner dimension.
+import { expandBelow } from '../shared/pivot/tree.js'
+test('Expand all levels below opens every level under the total, and leaves its peers alone', () => {
+  let sets = setAllExpanded([period], initExpandedSets([period]), 0, false)
+  sets = toggleExpanded([period], sets, 0, 'FY', '')                      // FY → H1, H2
+  sets = expandBelow([period], sets, 0, ['H1'], '')
+  assert.deepEqual(computeVisibleTuples([period], sets, 'parent').map(t => t[0]), ['FY', 'H1', 'Q1', 'Jan', 'Feb', 'Q2', 'Apr', 'H2'])
+})
+test('Expand all levels below on an inner dimension opens it under that outer member only', () => {
+  let sets = setAllExpanded([region, period], initExpandedSets([region, period]), 1, false)
+  const outer = region.roots[0]
+  sets = expandBelow([region, period], sets, 1, ['FY'], outer)
+  const inner = ctx => computeVisibleTuples([region, period], sets, 'parent').filter(t => t[0] === ctx).map(t => t[1])
+  assert.deepEqual(inner(outer), ['FY', 'H1', 'Q1', 'Jan', 'Feb', 'Q2', 'Apr', 'H2', 'Q3', 'Jul'])
+  const other = Object.keys(region.nodes).find(id => id !== outer)
+  assert.deepEqual(inner(other), ['FY'], 'other outer members stay collapsed')
+})
+
+// Nov 2026: Col totals did nothing on "2026 Quarters + FY" — FY's children (the halves) weren't in
+// the subset, so FY wasn't seen as the quarters' total. It now moves before / after them.
+import { constrainHierarchy as constrain } from '../shared/pivot/tree.js'
+test('a total that skips levels moves with the totals position, and stays flat', () => {
+  const h = constrain(period, ['Q1', 'Q2', 'Q3', 'FY'])
+  const all = allExpanded(h.nodes)
+  assert.deepEqual(computeVisibleNodes(h.roots, h.nodes, all, 'parent'), ['FY', 'Q1', 'Q2', 'Q3'])
+  assert.deepEqual(computeVisibleNodes(h.roots, h.nodes, all, 'parent', true), ['Q1', 'Q2', 'Q3', 'FY'])
+  assert.deepEqual(h.nodes.FY.children, [], 'no new tree: FY still has no children here')
+})

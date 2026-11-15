@@ -2324,19 +2324,6 @@ app.post('/api/process/check-references', async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
-app.post('/api/cube/check-feeders-for-rules', async (req, res) => {
-    try {
-        const { server, cube } = req.body
-        await makeClient(server, req.ideToken).checkFeedersForRules(cube)
-        res.json({ ok: true })
-    } catch (e) {
-        if (e.response?.status === 404) {
-            return res.json({ unsupported: true, message: 'Feeder check is not supported on this TM1 server version' })
-        }
-        res.status(500).json({ error: e.message })
-    }
-})
-
 // ── Cell annotations ──────────────────────────────────────────────────────────
 app.get('/api/cube/annotations', async (req, res) => {
     try {

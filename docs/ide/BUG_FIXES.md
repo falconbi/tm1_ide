@@ -3,12 +3,21 @@
 Every bug-fix commit, newest first, by the date it was committed. Generated from the git history;
 commits that mixed a fix into a feature are included too. New features are not listed here.
 
-166 fixes from 2026-05-20 to 2026-10-10, plus 46 entries for 11–27 October, 6 for 28 October–1 November, 7 for 2 November, 4 for 5 November, 10 for 6 November and 9 for 9 November. Last updated 2026-11-09.
+166 fixes from 2026-05-20 to 2026-10-10, plus 46 entries for 11–27 October, 6 for 28 October–1 November, 7 for 2 November, 4 for 5 November, 10 for 6 November, 9 for 9 November and 6 for 15 November. Last updated 2026-11-15.
 
 ← [Back to README](../../README.md)
 
 
 ## November 2026
+
+### 2026-11-15
+
+- **pivot** — The column (and row) totals position did nothing when a subset skipped levels, e.g. "2026 Quarters + FY" (the halves left out): FY wasn't seen as the quarters' total. A total whose lower levels are in the view now moves before or after them with the toggle; the members stay side by side, no new tree
+- **pivot** — A view opened after a page reload showed its rows collapsed: the data arrived before the dimension trees, the grid showed each dimension as a plain list with nothing to open, and when the tree came the member count was the same, so it kept "nothing open". A dimension whose tree arrives now starts open, as on a first load
+- **pivot** — Column widths snapped back after dragging: the view handed the grid a new row-names list on every redraw, which rebuilt the columns at the last saved widths, and a width was only saved on release. The grid now keeps the width while dragging, and the view passes the same list until its rows change
+- **pivot** — "Expand all levels below" did nothing on a view: it always asked TM1 again, and when the members below were already loaded nothing new came back, so nothing opened. It now opens what's loaded straight away and fetches only what's missing. A total opened by fetching on an inner row or column dimension (Expand, Expand all levels below, Expand this level for all) also stayed closed; the grid now opens it under the right outer member. Also fixes the Lens grids
+- **admin** — Removed the Admin → Transaction log tab: it repeated the view toolbar's Log, which has the same time-window picker; the log is now opened from the view (and from the rule trace and Rule Lens)
+- **views / rules** — The Fire Feeders button (view toolbar and Rules editor) called `tm1.CheckFeedersForRules`, which TM1 v11 doesn't have, so it only ever said "not supported", and its promised amber highlight of unfed cells was never built; removed, with its server route. Feeders already fire on data entry and are recomputed when rules are saved
 
 ### 2026-11-09
 

@@ -35,7 +35,7 @@ import { applyTm1Format } from './format.js'
 import { tupleKey, membersByPosition } from './cellset.js'
 import {
     buildHierarchy, constrainHierarchy, initExpandedSets, expandedFor, computeVisibleTuples, tuplePrefixes,
-    toggleExpanded, expandOneLevel, setAllExpanded, tupleIsLeaf, indentFor, changedFlags,
+    toggleExpanded, expandOneLevel, expandBelow, setAllExpanded, tupleIsLeaf, indentFor, changedFlags,
 } from './tree.js'
 
 ModuleRegistry.registerModules([AllCommunityModule])
@@ -94,8 +94,9 @@ export function createPivotGrid(host, opts = {}) {
     let pivot = { columns: [], rows: [], data: {} }
     let rowH = [], colH = []                        // hierarchies in use (constrained to the data)
     let rowFull = [], colFull = []                  // the whole hierarchies — for totals whose children aren't loaded
+    let rowTree = [], colTree = []                  // which dimensions had their hierarchy last time
     let rowKnown = [], colKnown = []                // the members each dimension had last time (new ones arrive open)
-    let pendingOpen = null                          // { axis, dimIdx, ids } — opened by a drill, waiting for its data
+    let pendingOpen = null                          // { axis, dimIdx, ids, ctx, deep } — opened by a drill, waiting for its data
     let allTotalRows = false                        // every visible cell a total → no grey total shading (it would hide the stripes)
     let rowExp = [], colExp = []                    // expand state
     const orig = new Map()                          // 'tupleKey|colId' → value before typing
@@ -115,7 +116,11 @@ export function createPivotGrid(host, opts = {}) {
         const rowMembers = membersByPosition(pivot.rows)
         const colMembers = membersByPosition(pivot.columns.map(c => c.members))
         const nRow = pivot.rows[0]?.length ?? 0, nCol = pivot.columns[0]?.members?.length ?? 0
-        const prevRowCounts = rowH.map(h => Object.keys(h.nodes).length).join(), prevColCounts = colH.map(h => Object.keys(h.nodes).length).join()
+        // the shape: member counts, and which dimensions have their tree yet (a dimension shows as a plain
+        // list until its hierarchy arrives — on a reload that is often after the data)
+        const shape = (H, ins) => H.map((h, i) => Object.keys(h.nodes).length + (ins?.[i] ? 't' : 'f')).join()
+        const prevRowCounts = shape(rowH, rowTree), prevColCounts = shape(colH, colTree)
+        const prevRowTree = rowTree, prevColTree = colTree
         rowFull = Array.from({ length: nRow }, (_, i) => rowsIn?.[i] || null)
         colFull = Array.from({ length: nCol }, (_, i) => colsIn?.[i] || null)
         rowH = Array.from({ length: nRow }, (_, i) => {
@@ -128,19 +133,29 @@ export function createPivotGrid(host, opts = {}) {
         })
         // the shape changed (more members fetched): keep what was open / closed, open the drilled member,
         // and let members that weren't there before arrive open; the first time, everything starts open
-        if (rowH.map(h => Object.keys(h.nodes).length).join() !== prevRowCounts || rowExp.length !== rowH.length) rowExp = carry(rowH, rowExp, rowKnown, 'rows')
-        if (colH.map(h => Object.keys(h.nodes).length).join() !== prevColCounts || colExp.length !== colH.length) colExp = carry(colH, colExp, colKnown, 'cols')
+        rowTree = rowH.map((_, i) => !!rowsIn?.[i]); colTree = colH.map((_, i) => !!colsIn?.[i])
+        if (shape(rowH, rowTree) !== prevRowCounts || rowExp.length !== rowH.length) rowExp = carry(rowH, rowExp, rowKnown, prevRowTree, rowTree)
+        if (shape(colH, colTree) !== prevColCounts || colExp.length !== colH.length) colExp = carry(colH, colExp, colKnown, prevColTree, colTree)
         rowKnown = rowH.map(h => new Set(Object.keys(h.nodes))); colKnown = colH.map(h => new Set(Object.keys(h.nodes)))
+        // what the drill asked to open — even when it brought nothing new (the members were already loaded)
+        if (pendingOpen) {
+            const p = pendingOpen, H = p.axis === 'rows' ? rowH : colH
+            const ids = p.ids.filter(id => H[p.dimIdx]?.nodes?.[id]?.children?.length)
+            const open = p.deep ? expandBelow : expandOneLevel
+            if (ids.length && p.axis === 'rows') rowExp = open(rowH, rowExp, p.dimIdx, ids, p.ctx)
+            else if (ids.length) colExp = open(colH, colExp, p.dimIdx, ids, p.ctx)
+        }
         pendingOpen = null
     }
-    function carry(H, prev, known, axis) {
+    function carry(H, prev, known, hadTree = [], hasTree = []) {
         if (prev.length !== H.length || !known.length) return initExpandedSets(H)
+        const fresh = initExpandedSets(H)
         const opens = id => H[0]?.nodes?.[id]?.children?.length > 0
         return H.map((h, i) => {
+            if (hasTree[i] && !hadTree[i]) return fresh[i]  // its tree just arrived: it starts open, like a first load
             if (i > 0) return prev[i]                       // inner dimensions remember per outer member already
             const next = new Set([...(prev[0] ?? [])].filter(opens))
             for (const id of Object.keys(h.nodes)) if (!known[0]?.has(id) && opens(id)) next.add(id)
-            if (pendingOpen && pendingOpen.axis === axis && pendingOpen.dimIdx === 0) for (const id of pendingOpen.ids) if (opens(id)) next.add(id)
             return next
         })
     }
@@ -210,22 +225,31 @@ export function createPivotGrid(host, opts = {}) {
     const loadedKids = (axis, i, id) => ((axis === 'rows' ? rowH : colH)[i]?.nodes?.[id]?.children) ?? []
     const canOpen = (axis, i, id) => loadedKids(axis, i, id).length > 0 || (!!o.onDrill && fullKids(axis, i, id).length > 0)
     // how many members everything below would add (the host warns before a large one)
-    function descendantCount(axis, i, id) {
-        const nodes = (axis === 'rows' ? rowFull : colFull)[i]?.nodes || {}
+    function descendantCount(axis, i, id, loaded = false) {
+        const nodes = (loaded ? (axis === 'rows' ? rowH : colH) : (axis === 'rows' ? rowFull : colFull))[i]?.nodes || {}
         let n = 0; const seen = new Set(); const stack = [...(nodes[id]?.children || [])]
         while (stack.length) { const c = stack.pop(); if (seen.has(c)) continue; seen.add(c); n++; stack.push(...(nodes[c]?.children || [])) }
         return n
     }
-    function drill(axis, i, id, scope, extra = {}) {
+    function drill(axis, i, id, scope, extra = {}, ctx = '') {
         if (!o.onDrill) return
-        if (scope === 'children' || scope === 'all') pendingOpen = { axis, dimIdx: i, ids: extra.members?.length ? extra.members : [id] }
+        if (scope === 'children' || scope === 'all') pendingOpen = { axis, dimIdx: i, ids: extra.members?.length ? extra.members : [id], ctx, deep: scope === 'all' }
         o.onDrill({ axis, dimIdx: i, member: id, scope, count: scope === 'children' ? fullKids(axis, i, id).length : descendantCount(axis, i, id), ...extra })
     }
     function openOrToggle(axis, i, id, ctx) {
         if (loadedKids(axis, i, id).length) {
             if (axis === 'rows') { rowExp = toggleExpanded(rowH, rowExp, i, id, ctx); refreshRows() }
             else { colExp = toggleExpanded(colH, colExp, i, id, ctx); refreshColumns() }
-        } else drill(axis, i, id, 'children')
+        } else drill(axis, i, id, 'children', {}, ctx)
+    }
+    // "Expand all levels below": what's loaded opens here, every level; the host fetches the rest
+    // only when the full hierarchy has members below that the query didn't return.
+    function expandAllBelow(axis, i, id, ctx) {
+        if (loadedKids(axis, i, id).length) {
+            if (axis === 'rows') { rowExp = expandBelow(rowH, rowExp, i, [id], ctx); refreshRows() }
+            else { colExp = expandBelow(colH, colExp, i, [id], ctx); refreshColumns() }
+        }
+        if (descendantCount(axis, i, id) > descendantCount(axis, i, id, true)) drill(axis, i, id, 'all', {}, ctx)
     }
     // "Expand this level for all": members whose children are already loaded open here, one level;
     // only the rest are fetched (a drill that brings nothing new would otherwise open nothing).
@@ -236,7 +260,7 @@ export function createPivotGrid(host, opts = {}) {
             if (axis === 'rows') { rowExp = expandOneLevel(rowH, rowExp, i, loaded, ctx); refreshRows() }
             else { colExp = expandOneLevel(colH, colExp, i, loaded, ctx); refreshColumns() }
         }
-        if (missing.length) drill(axis, i, missing[0], 'children', { members: missing, count: missing.reduce((a, p) => a + fullKids(axis, i, p).length, 0) })
+        if (missing.length) drill(axis, i, missing[0], 'children', { members: missing, count: missing.reduce((a, p) => a + fullKids(axis, i, p).length, 0) }, ctx)
     }
     // right-click a row or column heading: open / close / narrow it
     let menuEl = null
@@ -251,9 +275,9 @@ export function createPivotGrid(host, opts = {}) {
         const peers = Object.values(H[i]?.nodes || {}).filter(n => n.depth === node?.depth && canOpen(axis, i, n.id)).map(n => n.id)
         const items = [
             ['Expand', total && !open, () => openOrToggle(axis, i, id, ctx)],
-            ['Expand all levels below', total && !!o.onDrill, () => drill(axis, i, id, 'all')],
+            ['Expand all levels below', total, () => expandAllBelow(axis, i, id, ctx)],
             ['Collapse', open, () => openOrToggle(axis, i, id, ctx)],
-            ['Expand this level for all', peers.length > 0 && !!o.onDrill, () => expandLevel(axis, i, peers, ctx)],
+            ['Expand this level for all', peers.length > 0, () => expandLevel(axis, i, peers, ctx)],
             null,
             ['Show leaves only', total && !!o.onDrill, () => drill(axis, i, id, 'leaves')],
             ['Keep only this', !!o.onDrill, () => drill(axis, i, id, 'keep')],
@@ -435,7 +459,14 @@ export function createPivotGrid(host, opts = {}) {
                 const col = pivot.columns.find(c => c.id === p.column.getColId())
                 o.onContextMenu({ tuple: p.data?.__tuple ?? [], members: col?.members ?? [], cell: p.data?.[p.column.getColId()] ?? null, event: p.event })
             } : undefined,
-            onColumnResized: e => { if (e.finished && e.column) { widths[e.column.getColId()] = e.column.getActualWidth(); saveWidths() } },
+            // keep the width while it is dragged, not only at the end: a redraw mid-drag (new settings from
+            // the host) rebuilds the columns from these widths and would otherwise snap the column back
+            onColumnResized: e => {
+                const cols = e.columns?.length ? e.columns : e.column ? [e.column] : []
+                if (!cols.length || (!e.finished && !String(e.source).startsWith('ui'))) return
+                for (const c of cols) widths[c.getColId()] = c.getActualWidth()
+                if (e.finished) saveWidths()
+            },
             // size columns only when the person hasn't set widths of their own
             autoSizeStrategy: Object.keys(widths).length ? undefined : o.fit === 'content' ? { type: 'fitCellContents' } : o.fit === 'width' ? { type: 'fitGridWidth' } : undefined,
             defaultColDef: typeof o.fit === 'number' ? { width: o.fit } : undefined,
@@ -443,7 +474,7 @@ export function createPivotGrid(host, opts = {}) {
         })
     }
     if (o.pivot) pivot = o.pivot
-    if (o.restore) ({ rowExp, colExp, rowKnown, colKnown, pendingOpen } = o.restore)
+    if (o.restore) ({ rowExp, colExp, rowKnown, colKnown, pendingOpen, rowTree = [], colTree = [] } = o.restore)
     build()
 
     return {
@@ -470,7 +501,7 @@ export function createPivotGrid(host, opts = {}) {
             repaint()
         },
         // what is open, for a grid that replaces this one (opts.restore)
-        state() { return { rowExp, colExp, rowKnown, colKnown, pendingOpen } },
+        state() { return { rowExp, colExp, rowKnown, colKnown, pendingOpen, rowTree, colTree } },
         expandAll(axis, dimIdx, open = true) {
             if (axis === 'cols') { colExp = setAllExpanded(colH, colExp, dimIdx, open); refreshColumns() }
             else { rowExp = setAllExpanded(rowH, rowExp, dimIdx, open); refreshRows() }

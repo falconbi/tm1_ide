@@ -68,6 +68,17 @@ export function constrainHierarchy(hierarchy, presentMembers) {
         if (!node || nodes[id]) continue
         nodes[id] = { ...node, children: (node.children ?? []).filter(c => present.has(c)) }
     }
+    // a total whose direct children were left out but whose lower levels are here (FY with the
+    // quarters, not the halves): remember those, so the totals position still puts it before / after them
+    for (const id of Object.keys(nodes)) {
+        if (nodes[id].isLeaf) continue
+        const skip = [], seen = new Set(), stack = (hierarchy.nodes[id].children ?? []).filter(c => !present.has(c))
+        while (stack.length) {
+            const c = stack.pop(); if (seen.has(c)) continue; seen.add(c)
+            for (const g of hierarchy.nodes[c]?.children ?? []) present.has(g) ? skip.push(g) : stack.push(g)
+        }
+        if (skip.length) nodes[id].skipKids = [...new Set(skip)]
+    }
     return finish(nodes, hierarchy.name)
 }
 
@@ -98,11 +109,28 @@ export function computeVisibleNodes(roots, nodes, expanded, keepMode, totalsAtBo
         const hasChildren = !node.isLeaf && node.children?.length > 0
         const showParent  = keepMode === 'replace' ? !(isOpen && hasChildren) : true
         if (!totalsAtBottom && showParent) result.push(nodeId)
-        if (isOpen && hasChildren) for (const c of node.children) visit(c)
+        if (isOpen && hasChildren) for (const c of placeTotals(node.children, nodes, totalsAtBottom)) visit(c)
         if (totalsAtBottom && showParent) result.push(nodeId)
     }
-    for (const r of roots) visit(r)
+    for (const r of placeTotals(roots, nodes, totalsAtBottom)) visit(r)
     return result
+}
+
+// Among siblings, put a total that skipped levels (see constrainHierarchy) before or after the
+// lower-level members of it that sit beside it — order only; the members stay side by side.
+function placeTotals(list, nodes, totalsAtBottom) {
+    if (!list.some(id => nodes[id]?.skipKids)) return list
+    let out = [...list]
+    for (const id of list) {
+        const kids = nodes[id]?.skipKids
+        if (!kids) continue
+        const rest = out.filter(x => x !== id), at = new Map(rest.map((x, i) => [x, i]))
+        const idx = kids.map(k => at.get(k)).filter(i => i !== undefined)
+        if (!idx.length) continue
+        rest.splice(totalsAtBottom ? Math.max(...idx) + 1 : Math.min(...idx), 0, id)
+        out = rest
+    }
+    return out
 }
 
 // Every prefix of the tuples that have data ('a', 'a::b', …) — lets the walk
@@ -151,32 +179,40 @@ function openOneLevel(set, nodes, ids) {
     return set
 }
 
-// Toggle one node open/closed under a context (returns new expand state). Opening shows one level.
-export function toggleExpanded(hierarchies, expandedSets, dimIdx, nodeId, contextKey) {
+// Open the given nodes and every level below them ("Expand all levels below").
+function openAllBelow(set, nodes, ids) {
+    for (const id of ids) { set.add(id); for (const d of descendantsOf(nodes, id)) set.add(d) }
+    return set
+}
+
+// Change one dimension's open set under a context (returns new expand state). An inner dimension
+// keeps a set per outer member, starting from the '*' set or, failing that, everything open.
+function changeSet(hierarchies, expandedSets, dimIdx, contextKey, fn) {
     const next = [...expandedSets]
     const nodes = hierarchies[dimIdx]?.nodes ?? {}
-    const flip = s => (s.has(nodeId) ? (s.delete(nodeId), s) : openOneLevel(s, nodes, [nodeId]))
-    if (dimIdx === 0) {
-        next[0] = flip(new Set(next[0]))
-    } else {
+    if (dimIdx === 0) next[0] = fn(new Set(next[0]), nodes)
+    else {
         const map = new Map(next[dimIdx] instanceof Map ? next[dimIdx] : [])
-        map.set(contextKey, flip(new Set(map.get(contextKey) ?? map.get('*') ?? allExpanded(nodes))))
+        map.set(contextKey, fn(new Set(map.get(contextKey) ?? map.get('*') ?? allExpanded(nodes)), nodes))
         next[dimIdx] = map
     }
     return next
 }
 
+// Toggle one node open/closed under a context. Opening shows one level.
+export function toggleExpanded(hierarchies, expandedSets, dimIdx, nodeId, contextKey) {
+    return changeSet(hierarchies, expandedSets, dimIdx, contextKey,
+        (s, nodes) => (s.has(nodeId) ? (s.delete(nodeId), s) : openOneLevel(s, nodes, [nodeId])))
+}
+
 // Open several nodes one level each, under a context ("Expand this level for all").
 export function expandOneLevel(hierarchies, expandedSets, dimIdx, ids, contextKey) {
-    const next = [...expandedSets]
-    const nodes = hierarchies[dimIdx]?.nodes ?? {}
-    if (dimIdx === 0) next[0] = openOneLevel(new Set(next[0]), nodes, ids)
-    else {
-        const map = new Map(next[dimIdx] instanceof Map ? next[dimIdx] : [])
-        map.set(contextKey, openOneLevel(new Set(map.get(contextKey) ?? map.get('*') ?? allExpanded(nodes)), nodes, ids))
-        next[dimIdx] = map
-    }
-    return next
+    return changeSet(hierarchies, expandedSets, dimIdx, contextKey, (s, nodes) => openOneLevel(s, nodes, ids))
+}
+
+// Open nodes and everything below them, under a context ("Expand all levels below").
+export function expandBelow(hierarchies, expandedSets, dimIdx, ids, contextKey) {
+    return changeSet(hierarchies, expandedSets, dimIdx, contextKey, (s, nodes) => openAllBelow(s, nodes, ids))
 }
 
 // Open or close a whole dimension everywhere
