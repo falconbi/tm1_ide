@@ -2,6 +2,7 @@
 
 const axios = require('axios')
 const { paramsSerializer } = require('../odata-params')   // spaces as %20 — TM1 doesn't read '+'
+const { normalizeError } = require('../tm1-error')
 
 const TOKEN_REFRESH_MARGIN = 60_000  // refresh 60s before expiry
 
@@ -38,34 +39,41 @@ class PawOAuth2Adapter {
         return { Authorization: `Bearer ${this._token}` }
     }
 
-    async get(path, params = {}) {
+    async _call(fn) {
+        try { return await fn() } catch (e) { throw normalizeError(e) }
+    }
+
+    async get(path, params = {}, opts = {}) {
         await this._ensureToken()
-        const r = await this._client.get(this._url(path), { params, paramsSerializer, headers: this._headers() })
+        const r = await this._call(() => this._client.get(this._url(path), {
+            params, paramsSerializer, headers: this._headers(),
+            ...(opts.binary ? { responseType: 'arraybuffer' } : {}),
+        }))
         return r.data
     }
 
     async post(path, body = {}, opts = {}) {
         await this._ensureToken()
-        const r = await this._client.post(this._url(path), body, { headers: this._headers(), ...(opts.timeout ? { timeout: opts.timeout } : {}) })
+        const r = await this._call(() => this._client.post(this._url(path), body, { headers: this._headers(), ...(opts.timeout ? { timeout: opts.timeout } : {}) }))
         return r.data
     }
 
     async patch(path, body = {}) {
         await this._ensureToken()
-        const r = await this._client.patch(this._url(path), body, { headers: this._headers() })
+        const r = await this._call(() => this._client.patch(this._url(path), body, { headers: this._headers() }))
         return r.data ?? {}
     }
 
     async delete(path) {
         await this._ensureToken()
-        await this._client.delete(this._url(path), { headers: this._headers() })
+        await this._call(() => this._client.delete(this._url(path), { headers: this._headers() }))
     }
 
     async put(path, data, contentType = 'application/octet-stream') {
         await this._ensureToken()
-        const r = await this._client.put(this._url(path), data, {
+        const r = await this._call(() => this._client.put(this._url(path), data, {
             headers: { ...this._headers(), 'Content-Type': contentType },
-        })
+        }))
         return r.data
     }
 }

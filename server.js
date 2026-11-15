@@ -54,6 +54,16 @@ function gateWrite(res, server) {
     }
     return true
 }
+// One failure shape for every route (see core/tm1-error.js for the message).
+function fail(res, e) {
+    const status = e?.status ?? e?.response?.status
+    const code = e?.code
+    const out = status === 400 ? 400
+        : status === 401 || status === 403 || status === 404 ? status
+        : status === 409 || code === 'READ_ONLY' || code === 'LOCKED' ? 409
+        : 500
+    return res.status(out).json({ error: e?.message || 'Request failed' })
+}
 const { diff: deployDiff, driftCheck: deployDriftCheck } = require('./tools/tm1deploy/src/diff')
 const { pack: deployPack }      = require('./tools/tm1deploy/src/packager')
 const { getCubeDataSources, getViewSourceUsage, getProcessFacts, listProcessSummaries, invalidate: invalidateCubeSources } = require('./core/cube_data_sources')
@@ -498,7 +508,7 @@ app.post('/api/log/rollback', async (req, res) => {
 // ── Servers ───────────────────────────────────────────────────────────────────
 app.get('/api/servers', (req, res) => {
     try { res.json(listServersWithFlags()) }
-    catch { res.json([]) }
+    catch (e) { fail(res, e) }
 })
 
 // ── Cubes ─────────────────────────────────────────────────────────────────────
@@ -608,8 +618,7 @@ app.post('/api/cube', async (req, res) => {
         res.json({ ok: true, noSession: !hasSession })
     } catch (e) {
         console.error('[view/save] error:', e.message, 'data:', JSON.stringify(e.response?.data).slice(0, 300))
-        const detail = e.response?.data?.error?.message ?? e.response?.data ?? e.message
-        res.status(500).json({ error: typeof detail === 'string' ? detail : JSON.stringify(detail) })
+        fail(res, e)
     }
 })
 
@@ -728,10 +737,7 @@ app.post('/api/rules/check', async (req, res) => {
         const client = makeClient(server, req.ideToken)
         const result = await client.post(`Cubes('${odataKey(cube)}')/tm1.CheckRules`, { Rules: rules })
         res.json({ errors: result.value ?? [] })
-    } catch (e) {
-        const detail = e.response?.data?.error?.message ?? e.message
-        res.status(500).json({ error: typeof detail === 'string' ? detail : JSON.stringify(detail) })
-    }
+    } catch (e) { fail(res, e) }
 })
 
 // ── Process detail + execute ──────────────────────────────────────────────────
@@ -740,8 +746,8 @@ app.get('/api/process', async (req, res) => {
         const client = makeClient(req.query.server, req.ideToken)
         res.json(await client.getProcess(req.query.name))
     } catch (e) {
-        console.error('[api/process] GET failed:', e.response?.status, e.response?.data?.error?.message || e.message)
-        res.status(500).json({ error: e.message })
+        console.error('[api/process] GET failed:', e.response?.status, e.message)
+        fail(res, e)
     }
 })
 
@@ -1006,9 +1012,7 @@ app.get('/api/process/log', async (req, res) => {
         const result = await client.get(`Processes('${odataKey(req.query.name)}')/ErrorLog`)
         const log = typeof result === 'string' ? result : (result?.value ?? '')
         res.json({ log })
-    } catch (e) {
-        res.json({ log: '' })
-    }
+    } catch (e) { fail(res, e) }
 })
 
 app.post('/api/process/create', async (req, res) => {
@@ -1056,96 +1060,99 @@ app.post('/api/process', async (req, res) => {
         const { hasSession } = cl.writeLog({ server: req.query.server, action: 'PROCESS_SAVED', objectType: 'process', objectName: req.query.name, beforeState, afterState, user: req.user })
         res.json({ ok: true, noSession: !hasSession })
     } catch (e) {
-        console.error('[api/process] SAVE failed:', e.response?.status, e.response?.data?.error?.message || e.message)
-        res.status(500).json({ error: e.message })
+        console.error('[api/process] SAVE failed:', e.response?.status, e.message)
+        fail(res, e)
     }
 })
 
 app.post('/api/process/run', async (req, res) => {
     if (!gateReadOnly(res, req.query.server)) return
-    const client   = makeClient(req.query.server, req.ideToken)
     const procName = req.query.name
-    const RUN_ATTR = '__RUN_LOG'
-    const safeName = procName.replace(/'/g, "''")
-
-    // ── 1. Ensure __RUN_LOG attribute exists and is cleared ──────────────────
+    if (!procName) return res.status(400).json({ error: 'name required' })
     try {
-        await client.post(
-            `Dimensions('%7DProcesses')/Hierarchies('%7DProcesses')/ElementAttributes`,
-            { Name: RUN_ATTR, Type: 'String' }
-        )
-    } catch (_) { /* 409 = already exists — fine */ }
-    try {
-        await client.post('ExecuteProcessWithReturn?$expand=*', {
-            Process: {
-                Name: '_IDE_ClearRunLog',
-                PrologProcedure: `AttrPutS('', '}Processes', '${safeName}', '${RUN_ATTR}');`,
-                MetadataProcedure: '', DataProcedure: '', EpilogProcedure: '',
-                HasSecurityAccess: false, DataSource: { Type: 'None' },
-                Parameters: [], Variables: [],
-            }
-        })
-    } catch (_) { /* non-critical */ }
+        const client   = makeClient(req.query.server, req.ideToken)
+        const RUN_ATTR = '__RUN_LOG'
+        const safeName = procName.replace(/'/g, "''")
 
-    // ── 2. Execute the process ────────────────────────────────────────────────
-    let duration = null, runError = null, errorSection = null, errorLine = null, errorLogFilename = null
-    try {
-        const result = await client.executeProcess(procName, req.body.params ?? [])
-        duration         = result?.Times?.ExecutionTimeInMilliseconds ?? null
-        errorLogFilename = result?.ErrorLogFile?.Filename ?? null
-    } catch (e) {
-        const inner = e.response?.data?.error?.innererror ?? {}
-        console.error('[process/run]', JSON.stringify(inner) || e.message)
-        runError         = inner.Message || e.message
-        errorSection     = inner.ProcedureSection ?? null
-        errorLine        = inner.LineNumber ?? null
-        // ErrorLogFile may be in the error response body
-        errorLogFilename = e.response?.data?.error?.innererror?.ErrorLogFile?.Filename
-                        ?? e.response?.data?.ErrorLogFile?.Filename
-                        ?? null
-    }
-
-    // ── 3. Read __RUN_LOG back via MDX ────────────────────────────────────────
-    let runLog = ''
-    try {
-        const mdxMember = procName.replace(/\]/g, ']]')
-        const mdx = [
-            `SELECT {[}ElementAttributes_}Processes].[}ElementAttributes_}Processes].[${RUN_ATTR}]} ON COLUMNS,`,
-            `{[}Processes].[}Processes].[${mdxMember}]} ON ROWS`,
-            `FROM [}ElementAttributes_}Processes]`,
-        ].join(' ')
-        const mdxResult = await client.executeMDX(mdx)
-        runLog = (mdxResult?.Cells?.[0]?.Value ?? '').replace(/\r/g, '')
-        console.log(`[process/run] __RUN_LOG MDX result: "${runLog.slice(0, 200)}"`)
-    } catch (e) {
-        console.error('[process/run] __RUN_LOG MDX failed:', e.message)
-    }
-
-    // ── 4. Fallback: if no __RUN_LOG and process errored, use TM1 ErrorLog ────
-    if (!runLog && runError) {
-        console.log('[process/run] __RUN_LOG empty, trying ErrorLog fallback')
+        // ── 1. Ensure __RUN_LOG attribute exists and is cleared ──────────────────
         try {
-            const errLog = await client.get(`Processes('${odataKey(procName)}')/ErrorLog`)
-            runLog = typeof errLog === 'string' ? errLog : (errLog?.value ?? '')
-            console.log(`[process/run] ErrorLog result: "${String(runLog).slice(0, 200)}"`)
+            await client.post(
+                `Dimensions('%7DProcesses')/Hierarchies('%7DProcesses')/ElementAttributes`,
+                { Name: RUN_ATTR, Type: 'String' }
+            )
+        } catch (_) { /* 409 = already exists — fine */ }
+        try {
+            await client.post('ExecuteProcessWithReturn?$expand=*', {
+                Process: {
+                    Name: '_IDE_ClearRunLog',
+                    PrologProcedure: `AttrPutS('', '}Processes', '${safeName}', '${RUN_ATTR}');`,
+                    MetadataProcedure: '', DataProcedure: '', EpilogProcedure: '',
+                    HasSecurityAccess: false, DataSource: { Type: 'None' },
+                    Parameters: [], Variables: [],
+                }
+            })
+        } catch (_) { /* non-critical */ }
+
+        // ── 2. Execute the process ────────────────────────────────────────────────
+        let duration = null, runError = null, errorSection = null, errorLine = null, errorLogFilename = null
+        try {
+            const result = await client.executeProcess(procName, req.body.params ?? [])
+            duration         = result?.Times?.ExecutionTimeInMilliseconds ?? null
+            errorLogFilename = result?.ErrorLogFile?.Filename ?? null
         } catch (e) {
-            console.error('[process/run] ErrorLog fallback failed:', e.message)
+            const inner = e.response?.data?.error?.innererror ?? {}
+            console.error('[process/run]', JSON.stringify(inner) || e.message)
+            runError         = inner.Message || e.message
+            errorSection     = inner.ProcedureSection ?? null
+            errorLine        = inner.LineNumber ?? null
+            // ErrorLogFile may be in the error response body
+            errorLogFilename = e.response?.data?.error?.innererror?.ErrorLogFile?.Filename
+                            ?? e.response?.data?.ErrorLogFile?.Filename
+                            ?? null
         }
-    }
 
-    // ── 5. Detect __ERROR: validation marker (written before ProcessQuit) ────────
-    if (!runError && runLog.startsWith('__ERROR:')) {
-        const msg = runLog.replace(/^__ERROR:/, '').trim()
-        console.log(`[process/run] validation quit detected: "${msg}"`)
-        return res.status(500).json({ error: msg, section: null, line: null, runLog: msg })
-    }
+        // ── 3. Read __RUN_LOG back via MDX ────────────────────────────────────────
+        let runLog = ''
+        try {
+            const mdxMember = procName.replace(/\]/g, ']]')
+            const mdx = [
+                `SELECT {[}ElementAttributes_}Processes].[}ElementAttributes_}Processes].[${RUN_ATTR}]} ON COLUMNS,`,
+                `{[}Processes].[}Processes].[${mdxMember}]} ON ROWS`,
+                `FROM [}ElementAttributes_}Processes]`,
+            ].join(' ')
+            const mdxResult = await client.executeMDX(mdx)
+            runLog = (mdxResult?.Cells?.[0]?.Value ?? '').replace(/\r/g, '')
+            console.log(`[process/run] __RUN_LOG MDX result: "${runLog.slice(0, 200)}"`)
+        } catch (e) {
+            console.error('[process/run] __RUN_LOG MDX failed:', e.message)
+        }
 
-    console.log(`[process/run] final runLog length: ${runLog.length}, runError: ${!!runError}`)
-    if (runError) {
-        res.status(500).json({ error: runError, section: errorSection, line: errorLine, runLog, errorLogFilename })
-    } else {
-        res.json({ ok: true, duration, runLog, errorLogFilename })
-    }
+        // ── 4. Fallback: if no __RUN_LOG and process errored, use TM1 ErrorLog ────
+        if (!runLog && runError) {
+            console.log('[process/run] __RUN_LOG empty, trying ErrorLog fallback')
+            try {
+                const errLog = await client.get(`Processes('${odataKey(procName)}')/ErrorLog`)
+                runLog = typeof errLog === 'string' ? errLog : (errLog?.value ?? '')
+                console.log(`[process/run] ErrorLog result: "${String(runLog).slice(0, 200)}"`)
+            } catch (e) {
+                console.error('[process/run] ErrorLog fallback failed:', e.message)
+            }
+        }
+
+        // ── 5. Detect __ERROR: validation marker (written before ProcessQuit) ────────
+        if (!runError && runLog.startsWith('__ERROR:')) {
+            const msg = runLog.replace(/^__ERROR:/, '').trim()
+            console.log(`[process/run] validation quit detected: "${msg}"`)
+            return res.status(500).json({ error: msg, section: null, line: null, runLog: msg })
+        }
+
+        console.log(`[process/run] final runLog length: ${runLog.length}, runError: ${!!runError}`)
+        if (runError) {
+            res.status(500).json({ error: runError, section: errorSection, line: errorLine, runLog, errorLogFilename })
+        } else {
+            res.json({ ok: true, duration, runLog, errorLogFilename })
+        }
+    } catch (e) { fail(res, e) }
 })
 
 // ── Cube dimensions ───────────────────────────────────────────────────────────
@@ -1328,9 +1335,7 @@ app.post('/api/view/preview-records', async (req, res) => {
     try {
         const { server, cube, view } = req.query
         res.json(await makeClient(server, req.ideToken).previewViewRecords(cube, view, 20))
-    } catch (e) {
-        res.status(500).json({ error: e.response?.data?.error?.message || e.message })
-    }
+    } catch (e) { fail(res, e) }
 })
 
 app.post('/api/view/save', async (req, res) => {
@@ -1355,10 +1360,7 @@ app.post('/api/view/save', async (req, res) => {
         const afterState = nativeAxes ? { type: 'native', definition: nativeAxes } : { type: 'mdx', mdx: mdx ?? '' }
         const { hasSession } = cl.writeLog({ server, action: 'VIEW_SAVED', objectType: 'view', objectName: name, detail: cube, beforeState, afterState, user: req.user })
         res.json({ ok: true, noSession: !hasSession })
-    } catch (e) {
-        const detail = e.response?.data?.error?.message ?? e.response?.data ?? e.message
-        res.status(500).json({ error: typeof detail === 'string' ? detail : JSON.stringify(detail) })
-    }
+    } catch (e) { fail(res, e) }
 })
 
 app.post('/api/view/set-default', async (req, res) => {
@@ -1369,8 +1371,8 @@ app.post('/api/view/set-default', async (req, res) => {
         await client.setDefaultView(cube, name)
         res.json({ ok: true, noSession: false })
     } catch (e) {
-        console.error('[set-default]', e.message, e.response?.status, e.response?.data ? JSON.stringify(e.response.data).slice(0, 200) : '')
-        res.status(500).json({ error: e.message })
+        console.error('[set-default]', e.message, e.response?.status)
+        fail(res, e)
     }
 })
 
@@ -1443,9 +1445,8 @@ app.post('/api/dimension/element', async (req, res) => {
         cl.writeLog({ server, action: 'ELEMENT_ADDED', objectType: 'dimension', objectName: dimension, detail: `${name}${where}`, user: req.user })
         res.json({ ok: true })
     } catch (e) {
-        const message = e.response?.data?.error?.message ?? e.message
-        console.error(`[dimension/element] ${req.query.dimension}: ${message}`)
-        res.status(500).json({ error: message })
+        console.error(`[dimension/element] ${req.query.dimension}: ${e.message}`)
+        fail(res, e)
     }
 })
 
@@ -1668,10 +1669,7 @@ app.post('/api/subset', async (req, res) => {
         const afterState  = { expression: req.body.mdx }
         const { hasSession } = cl.writeLog({ server: req.query.server, action: 'SUBSET_SAVED', objectType: 'subset', objectName: req.query.name, detail: req.query.dimension, beforeState, afterState, user: req.user })
         res.json({ ok: true, noSession: !hasSession })
-    } catch (e) {
-        const detail = e.response?.data?.error?.message ?? e.response?.data ?? e.message
-        res.status(500).json({ error: typeof detail === 'string' ? detail : JSON.stringify(detail) })
-    }
+    } catch (e) { fail(res, e) }
 })
 
 app.get('/api/subset/elements', async (req, res) => {
@@ -1693,10 +1691,7 @@ app.post('/api/subset/static', async (req, res) => {
         const afterState  = { elements: req.body.elements ?? [] }
         const { hasSession } = cl.writeLog({ server: req.query.server, action: 'SUBSET_SAVED', objectType: 'subset', objectName: req.query.name, detail: req.query.dimension, beforeState, afterState, user: req.user })
         res.json({ ok: true, noSession: !hasSession })
-    } catch (e) {
-        const detail = e.response?.data?.error?.message ?? e.response?.data ?? e.message
-        res.status(500).json({ error: typeof detail === 'string' ? detail : JSON.stringify(detail) })
-    }
+    } catch (e) { fail(res, e) }
 })
 
 // Get distinct attribute values for a dimension (samples up to 500 elements)
@@ -1926,10 +1921,7 @@ app.get('/api/view/axes', async (req, res) => {
         // For MDX views, return the MDX text so the client can parse it back to axes
         const mdxText = (viewDef && viewDef['@odata.type']?.includes('MDXView')) ? (viewDef.MDX || null) : null
         res.json({ axisConfig, cellset: data, viewType: data.ViewType, nativeConfig, mdx: mdxText })
-    } catch (e) {
-        const detail = e.response?.data?.error?.message ?? e.response?.data ?? e.message
-        res.status(500).json({ error: typeof detail === 'string' ? detail : JSON.stringify(detail) })
-    }
+    } catch (e) { fail(res, e) }
 })
 
 // ── Native View Execute (with suppression toggle) ────────────────────────────
@@ -1938,10 +1930,7 @@ app.post('/api/view/execute-suppressed', async (req, res) => {
         const client = makeClient(req.query.server, req.ideToken)
         const { suppressZeros } = req.body
         res.json(await client.executeViewWithSuppression(req.query.cube, req.query.view, suppressZeros))
-    } catch (e) {
-        const detail = e.response?.data?.error?.message ?? e.response?.data ?? e.message
-        res.status(500).json({ error: typeof detail === 'string' ? detail : JSON.stringify(detail) })
-    }
+    } catch (e) { fail(res, e) }
 })
 
 // ── MDX Execute ──────────────────────────────────────────────────────────────
@@ -1949,10 +1938,7 @@ app.post('/api/mdx/execute', async (req, res) => {
     try {
         const client = makeClient(req.query.server, req.ideToken)
         res.json(await client.executeMDX(req.body.mdx))
-    } catch (e) {
-        const detail = e.response?.data?.error?.message ?? e.response?.data ?? e.message
-        res.status(500).json({ error: typeof detail === 'string' ? detail : JSON.stringify(detail) })
-    }
+    } catch (e) { fail(res, e) }
 })
 
 // ── Rules lineage ─────────────────────────────────────────────────────────────
@@ -2427,10 +2413,7 @@ app.post('/api/transactions/restore', async (req, res) => {
             detail: `${tuple.join(' · ')}: ${current} → ${restoreTo} (restored from the transaction log)`,
             beforeState: { tuple, value: current }, afterState: { tuple, value: restoreTo }, user: req.user })
         res.json({ ok: true, previous: current, value: restoreTo })
-    } catch (e) {
-        const detail = e.response?.data?.error?.message ?? e.message
-        res.status(500).json({ error: typeof detail === 'string' ? detail : JSON.stringify(detail) })
-    }
+    } catch (e) { fail(res, e) }
 })
 
 // ── File management ───────────────────────────────────────────────────────────
@@ -2575,10 +2558,7 @@ app.post('/api/server/simple-mode', async (req, res) => {
         setSimpleInModes(server, !!simple)
         cl.writeLog({ server, action: simple ? 'SIMPLE_MODE_ON' : 'SIMPLE_MODE_OFF', objectType: 'server', objectName: server, detail: `Simple mode ${simple ? 'on' : 'off'}`, user: req.user })
         res.json({ ok: true, server, simple: !!simple })
-    } catch (e) {
-        const detail = e.response?.data?.error?.message ?? e.response?.data?.error ?? e.message
-        res.status(500).json({ error: typeof detail === 'string' ? detail : JSON.stringify(detail) })
-    }
+    } catch (e) { fail(res, e) }
 })
 
 app.patch('/api/admin/configuration', async (req, res) => {
@@ -2625,9 +2605,8 @@ app.post('/api/users/provision', async (req, res) => {
         }
         res.json({ ok: true })
     } catch (e) {
-        const detail = e.response?.data ?? e.message
-        console.error('[provisionUser]', e.response?.status, JSON.stringify(detail))
-        res.status(500).json({ error: typeof detail === 'string' ? detail : JSON.stringify(detail) })
+        console.error('[provisionUser]', e.response?.status, e.message)
+        fail(res, e)
     }
 })
 
@@ -2643,10 +2622,7 @@ app.post('/api/users/:name/password', async (req, res) => {
             setServerCredentials(req.ideToken, userServer(req), { username: mine.username, password }, mine.state)
         }
         res.json({ ok: true })
-    } catch (e) {
-        const detail = e.response?.data ?? e.message
-        res.status(500).json({ error: typeof detail === 'string' ? detail : JSON.stringify(detail) })
-    }
+    } catch (e) { fail(res, e) }
 })
 
 app.get('/api/users', async (req, res) => {
@@ -2706,9 +2682,8 @@ app.post('/api/users/:name/groups', async (req, res) => {
         await cl.addClientToGroup(req.params.name, group)
         res.json({ ok: true })
     } catch (e) {
-        const detail = e.response?.data ?? e.message
-        console.error('[addClientToGroup]', e.response?.status, JSON.stringify(detail))
-        res.status(500).json({ error: typeof detail === 'string' ? detail : JSON.stringify(detail) })
+        console.error('[addClientToGroup]', e.response?.status, e.message)
+        fail(res, e)
     }
 })
 
@@ -2760,7 +2735,7 @@ app.get('/api/forge', (req, res) => {
             ? JSON.parse(fs.readFileSync(FORGE_PATH, 'utf8'))
             : {}
         res.json(data)
-    } catch { res.json({}) }
+    } catch (e) { fail(res, e) }
 })
 
 app.post('/api/forge', (req, res) => {
@@ -2893,9 +2868,8 @@ app.post('/api/sql/post-to-ti', async (req, res) => {
 
         res.json({ ok: true, created: createNew, dsn: conn.dsn, paramsAdded: newParams.map(p => p.Name) })
     } catch (e) {
-        const tm1Msg = e.response?.data?.error?.message
-        console.error('[sql/post-to-ti]', tm1Msg || e.message)
-        res.status(500).json({ error: tm1Msg || e.message })
+        console.error('[sql/post-to-ti]', e.message)
+        fail(res, e)
     }
 })
 
@@ -2909,9 +2883,8 @@ app.post('/api/sql/preview-datasource', async (req, res) => {
         const result = await executeQuery(conn, query)
         res.json({ ...result, duration: Date.now() - start })
     } catch (e) {
-        const tm1Msg = e.response?.data?.error?.message
-        console.error('[sql/preview-datasource]', tm1Msg || e.message)
-        res.status(500).json({ error: tm1Msg || e.message })
+        console.error('[sql/preview-datasource]', e.message)
+        fail(res, e)
     }
 })
 
@@ -2963,10 +2936,8 @@ app.post('/api/cells/write', async (req, res) => {
         console.log('[cells/write] TM1 RESPONSE:', JSON.stringify(result))
         res.json({ ok: true })
     } catch (e) {
-        const detail = e.response?.data?.error?.message ?? e.response?.data ?? e.message
-        console.error('[cells/write] ERROR:', detail)
-        const msg = typeof detail === 'string' ? detail : JSON.stringify(detail)
-        res.status(500).json({ error: msg })
+        console.error('[cells/write] ERROR:', e.message)
+        fail(res, e)
     }
 })
 
@@ -3291,7 +3262,7 @@ app.get('/api/git/setup/status', async (req, res) => {
         if (!server) return res.status(400).json({ error: 'server required' })
         const st = await makeClient(server, req.ideToken).post('GitStatus', { Username: _GI().user(), Password: _GITOK() })
         res.json({ linked: !!st?.URL, repoUrl: st?.URL ?? null, deployment: st?.Deployment ?? null, connected: st?.Remote?.Connected ?? false })
-    } catch (e) { res.status(500).json({ error: e.response?.data?.error?.message ?? e.message }) }
+    } catch (e) { fail(res, e) }
 })
 
 app.post('/api/git/setup/token', (req, res) => {
@@ -3319,7 +3290,7 @@ app.post('/api/git/setup/init', async (req, res) => {
         const r = await init(server, { repo, deployment, force, gitUser: _GI().user(), token: _GITOK(), ideToken: req.ideToken })
         if (r.refused) return res.status(409).json({ error: r.error })
         res.json(r)
-    } catch (e) { res.status(500).json({ error: e.response?.data?.error?.message ?? e.message }) }
+    } catch (e) { fail(res, e) }
 })
 
 // DEV first push — the initial commit.
@@ -3331,7 +3302,7 @@ app.post('/api/git/setup/first-push', async (req, res) => {
         const plan = await c.post('GitPush', { Branch: 'dev', NewBranch: '', Force: false, Message: message || `Initial state of ${server}`, Author: req.user ?? _GI().user(), Email: _GI().email(), Username: _GI().user(), Password: _GITOK() })
         await c.post(`GitPlans('${encodeURIComponent(plan.ID)}')/tm1.Execute`, {})
         res.json({ ok: true, commit: plan.NewCommit?.ID ?? null, note: `First commit of ${server} pushed to the repo.` })
-    } catch (e) { res.status(500).json({ error: e.response?.data?.error?.message ?? e.message }) }
+    } catch (e) { fail(res, e) }
 })
 
 // PROD first pull — full overwrite; requires the typed confirmation. The object
@@ -3345,7 +3316,7 @@ app.post('/api/git/setup/first-pull', async (req, res) => {
         if (r.refused) return res.status(409).json({ error: r.error })
         if (r.ok === false) return res.status(400).json({ error: r.error })
         res.json(r)
-    } catch (e) { res.status(500).json({ error: e.response?.data?.error?.message ?? e.message }) }
+    } catch (e) { fail(res, e) }
 })
 
 // ── Governance mirror (#4): Applications/Governance ⇄ governance/ in the repo ──
@@ -4235,10 +4206,7 @@ app.post('/api/lens/exec-mdx', async (req, res) => {
     try {
         const client = makeClient(req.query.server, req.ideToken)
         res.json(await lensBridge.execMDX(client, req.body?.mdx))
-    } catch (e) {
-        const detail = e.response?.data?.error?.message ?? e.response?.data ?? e.message
-        res.status(500).json({ error: typeof detail === 'string' ? detail : JSON.stringify(detail) })
-    }
+    } catch (e) { fail(res, e) }
 })
 
 app.post('/api/lens/read-cell', async (req, res) => {
@@ -4246,10 +4214,7 @@ app.post('/api/lens/read-cell', async (req, res) => {
         const client = makeClient(req.query.server, req.ideToken)
         const { cube, coordinates } = req.body
         res.json({ value: await lensBridge.readCell(client, cube, coordinates) })
-    } catch (e) {
-        const detail = e.response?.data?.error?.message ?? e.response?.data ?? e.message
-        res.status(500).json({ error: typeof detail === 'string' ? detail : JSON.stringify(detail) })
-    }
+    } catch (e) { fail(res, e) }
 })
 
 // Write-back from a Lens preview — same checks as the Lens app (declared cubes,
@@ -4375,10 +4340,7 @@ app.get('/api/lens/meta', async (req, res) => {
     try {
         const client = makeClient(req.query.server, req.ideToken)
         res.json(await lensBridge.getMeta(client, req.query.cube))
-    } catch (e) {
-        const detail = e.response?.data?.error?.message ?? e.response?.data ?? e.message
-        res.status(500).json({ error: typeof detail === 'string' ? detail : JSON.stringify(detail) })
-    }
+    } catch (e) { fail(res, e) }
 })
 
 

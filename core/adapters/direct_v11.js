@@ -18,6 +18,7 @@ const http  = require('http')
 // caFile: optional path to a PEM (CA bundle or the server's own cert) to ADD to
 //   the trust store. Applies to "verify" and "chain-only".
 const { paramsSerializer } = require('../odata-params')   // spaces as %20 — TM1 doesn't read '+'
+const { responseError } = require('../tm1-error')
 const _httpClient  = axios.create({ timeout: 120_000 })
 const _agentCache  = new Map()   // key -> { agent, client }
 const _warned      = new Set()
@@ -79,12 +80,10 @@ function _sessionCookie(r) {
     return null
 }
 
-// Non-2xx → throw an axios-shaped error (callers read e.response.status / .data).
+// Non-2xx → throw one normalised error (message, status, response, tm1 flag).
 function _settle(r) {
     if (r.status >= 200 && r.status < 300) return r
-    const e = new Error(`Request failed with status code ${r.status}`)
-    e.response = r
-    throw e
+    throw responseError(r)
 }
 
 class DirectV11Adapter {

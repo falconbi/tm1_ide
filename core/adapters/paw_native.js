@@ -2,6 +2,7 @@
 
 const { getCachedPawSession, getCSRF } = require('../paw_connect')
 const { paramsSerializer } = require('../odata-params')   // spaces as %20 — TM1 doesn't read '+'
+const { normalizeError } = require('../tm1-error')
 
 class PawNativeAdapter {
     constructor({ pawHost, serverName, token }) {
@@ -20,31 +21,35 @@ class PawNativeAdapter {
         return { s, h: { 'ba-sso-authenticity': csrf } }
     }
 
+    async _call(fn) {
+        try { return await fn() } catch (e) { throw normalizeError(e) }
+    }
+
     async get(path, params = {}) {
         const { s, h } = await this._sh()
-        return (await s.get(this._url(path), { params, paramsSerializer, headers: h })).data
+        return (await this._call(() => s.get(this._url(path), { params, paramsSerializer, headers: h }))).data
     }
 
     async post(path, body = {}, opts = {}) {
         const { s, h } = await this._sh()
-        return (await s.post(this._url(path), body, { headers: h, ...(opts.timeout ? { timeout: opts.timeout } : {}) })).data
+        return (await this._call(() => s.post(this._url(path), body, { headers: h, ...(opts.timeout ? { timeout: opts.timeout } : {}) }))).data
     }
 
     async patch(path, body = {}) {
         const { s, h } = await this._sh()
-        return (await s.patch(this._url(path), body, { headers: h })).data ?? {}
+        return (await this._call(() => s.patch(this._url(path), body, { headers: h }))).data ?? {}
     }
 
     async delete(path) {
         const { s, h } = await this._sh()
-        await s.delete(this._url(path), { headers: h })
+        await this._call(() => s.delete(this._url(path), { headers: h }))
     }
 
     async put(path, data, contentType = 'application/octet-stream') {
         const { s, h } = await this._sh()
-        return (await s.put(this._url(path), data, {
+        return (await this._call(() => s.put(this._url(path), data, {
             headers: { ...h, 'Content-Type': contentType },
-        })).data
+        }))).data
     }
 }
 
