@@ -1108,18 +1108,15 @@ app.post('/api/process/run', async (req, res) => {
             ].join(' ')
             const mdxResult = await client.executeMDX(mdx)
             runLog = (mdxResult?.Cells?.[0]?.Value ?? '').replace(/\r/g, '')
-            console.log(`[process/run] __RUN_LOG MDX result: "${runLog.slice(0, 200)}"`)
-        } catch (e) {
+            } catch (e) {
             console.error('[process/run] __RUN_LOG MDX failed:', e.message)
         }
 
         // ── 4. Fallback: if no __RUN_LOG and process errored, use TM1 ErrorLog ────
         if (!runLog && runError) {
-            console.log('[process/run] __RUN_LOG empty, trying ErrorLog fallback')
-            try {
+                try {
                 const errLog = await client.get(`Processes('${odataKey(procName)}')/ErrorLog`)
                 runLog = typeof errLog === 'string' ? errLog : (errLog?.value ?? '')
-                console.log(`[process/run] ErrorLog result: "${String(runLog).slice(0, 200)}"`)
             } catch (e) {
                 console.error('[process/run] ErrorLog fallback failed:', e.message)
             }
@@ -1128,11 +1125,9 @@ app.post('/api/process/run', async (req, res) => {
         // ── 5. Detect __ERROR: validation marker (written before ProcessQuit) ────────
         if (!runError && runLog.startsWith('__ERROR:')) {
             const msg = runLog.replace(/^__ERROR:/, '').trim()
-            console.log(`[process/run] validation quit detected: "${msg}"`)
             return res.status(500).json({ error: msg, section: null, line: null, runLog: msg })
         }
 
-        console.log(`[process/run] final runLog length: ${runLog.length}, runError: ${!!runError}`)
         if (runError) {
             res.status(500).json({ error: runError, section: errorSection, line: errorLine, runLog, errorLogFilename })
         } else {
@@ -1328,10 +1323,8 @@ app.post('/api/view/save', async (req, res) => {
                 : { type: 'native', definition: current }
             : null
         if (nativeAxes) {
-            console.log('[view/save] cube=%s name=%s nativeAxes=%s', cube, name, JSON.stringify(nativeAxes).slice(0, 500))
             await client.saveNativeView(cube, name, nativeAxes)
         } else {
-            console.log('[view/save] cube=%s name=%s mdx=%s', cube, name, (mdx ?? '').slice(0, 300))
             await client.saveView(cube, name, mdx)
         }
         const afterState = nativeAxes ? { type: 'native', definition: nativeAxes } : { type: 'mdx', mdx: mdx ?? '' }
@@ -1377,8 +1370,6 @@ app.get('/api/elements/tree', async (req, res) => {
     try {
         const client = makeClient(req.query.server, req.ideToken)
         const result = await client.getElementsWithTree(req.query.dimension, req.query.hierarchy)
-        const sample = result.slice(0, 3)
-        console.log('[elements/tree] count:', result.length, 'sample:', JSON.stringify(sample))
         res.json(result)
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
@@ -1825,7 +1816,6 @@ app.get('/api/view/axes', async (req, res) => {
             client.executeView(req.query.cube, req.query.view),
             client.getViewWithSubsets(req.query.cube, req.query.view),
         ])
-        console.log('[view/axes] viewDef keys:', viewDef ? Object.keys(viewDef) : 'null', 'has _rows:', !!viewDef?._rows, 'has Rows:', !!(viewDef?.Rows?.length), 'Rows[0] keys:', viewDef?.Rows?.[0] ? Object.keys(viewDef.Rows[0]) : 'none', '_rows sample:', viewDef?._rows ? JSON.stringify(viewDef._rows).slice(0, 500) : 'none')
         // Parse dimension names from UniqueName: [Dim].[Hier].[Member] → Dim
         const parseDim = (uniqueName) => uniqueName?.match(/^\[([^\]]+)\]/)?.[1] ?? null
         const axisConfig = data.Axes.map(ax => ({
@@ -2497,7 +2487,7 @@ app.post('/api/period-builder/run', async (req, res) => {
     if (!server || !Array.isArray(processes)) {
         return res.status(400).json({ ok: false, error: 'server and processes required' })
     }
-    if (!gateReadOnly(res, server)) return
+    if (!gateWrite(res, server)) return
     try {
         const client = makeClient(server, req.ideToken)
         for (const proc of processes) {
@@ -2592,7 +2582,7 @@ app.post('/api/sql/post-to-ti', async (req, res) => {
         const { connectionId, sql, server, processName, createNew = false } = req.body
         if (!connectionId || !sql || !server || !processName)
             return res.status(400).json({ error: 'connectionId, sql, server and processName are required' })
-        if (!gateReadOnly(res, server)) return
+        if (!gateWrite(res, server)) return
 
         const conn = getConnection(connectionId)
         if (!conn) return res.status(404).json({ error: 'Connection not found' })
@@ -2700,12 +2690,10 @@ app.post('/api/cells/write', async (req, res) => {
     try {
         const { server, cube, dims, value } = req.body
         if (!gateReadOnly(res, server)) return
-        console.log('[cells/write] REQUEST BODY:', JSON.stringify({ server, cube, dims, value }))
         if (!server || !cube || !Array.isArray(dims) || dims.length === 0)
             return res.status(400).json({ error: 'server, cube, and dims are required' })
         const client = makeClient(server, req.ideToken)
         const result = await client.writeCellValue(cube, dims, value)
-        console.log('[cells/write] TM1 RESPONSE:', JSON.stringify(result))
         res.json({ ok: true })
     } catch (e) {
         console.error('[cells/write] ERROR:', e.message)
@@ -3338,7 +3326,7 @@ app.put('/api/admin/catalog-overrides', (req, res) => {
 app.post('/api/admin/validate-ti-functions', async (req, res) => {
     try {
         const { server, tests } = req.body
-        if (!gateReadOnly(res, server)) return
+        if (!gateWrite(res, server)) return
         const client = makeClient(server, req.ideToken)
         const results = []
         for (const { name, code } of tests) {

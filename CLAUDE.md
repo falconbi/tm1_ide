@@ -123,6 +123,7 @@ cd client && npm run dev   # terminal 2 (Vite on :5173)
 - **Routes report failure with `fail(res, e)`** — the adapters normalise TM1 errors (`core/tm1-error.js`), so `e.message` is TM1's own text and `e.status` is the HTTP status. The only routes that return a result object containing `error` with HTTP 200 are the command-result routes `/api/period-builder/run` and `/api/deploy/git/prepare|execute|review`.
 - **TM1 OData URL pattern**: `${PAW_HOST}/api/v0/tm1/{server}/api/v1/{path}`
 - **No direct TM1 connections** — everything proxies through PAW. Server name comes from `config/servers.json`.
+- **Routes that write to TM1 use `gateWrite`**; routes that write only local files (`forge.json`, SQL connections, catalog overrides, process summaries) use `gateReadOnly`.
 - **Frontend served from `static/`** — the built assets are committed. Always rebuild and copy after client changes.
 - **CommonJS throughout** — `server.js` and `core/` use `require`/`module.exports`. Ignore VS Code's "convert to ES module" hints.
 
