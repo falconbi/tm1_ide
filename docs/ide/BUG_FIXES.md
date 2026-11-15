@@ -13,6 +13,7 @@ commits that mixed a fix into a feature are included too. New features are not l
 ### 2026-11-16
 
 - **tm1 client / git release** — TM1 keys built with `encodeURIComponent` left a literal apostrophe unescaped, so a cube, dimension, subset, view, chore or process whose name contained `'` could break the OData key in a release check (and in temporary process deletes). Every TM1 key interpolation now uses `odataKey`; a test scans `server.js`, `core/**` and the MCP tools for the old pattern
+- **views** — `executeViewWithSuppression` PATCHed `SuppressEmptyRows`/`SuppressEmptyColumns` on the saved view before executing it, so a read changed the view. Its only caller (`/api/view/execute-suppressed`) was unreachable and was removed in the dead-code step, together with the method; the live View Editor suppresses in its MDX/client-side grid instead
 - **files** — Downloading a document content built a PAW-only URL in the route, so it failed on a direct connection and ignored the v11 `.blob` / `Document/Content` shape. The route now calls `TM1Client.downloadFile`, which asks the adapter for binary data and uses the existing v11/v12 content address
 
 ### 2026-11-15
