@@ -25,9 +25,12 @@ class PawNativeAdapter {
         try { return await fn() } catch (e) { throw normalizeError(e) }
     }
 
-    async get(path, params = {}) {
+    async get(path, params = {}, opts = {}) {
         const { s, h } = await this._sh()
-        return (await this._call(() => s.get(this._url(path), { params, paramsSerializer, headers: h }))).data
+        return (await this._call(() => s.get(this._url(path), {
+            params, paramsSerializer, headers: h,
+            ...(opts.binary ? { responseType: 'arraybuffer' } : {}),
+        }))).data
     }
 
     async post(path, body = {}, opts = {}) {

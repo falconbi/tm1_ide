@@ -7,7 +7,7 @@ const guard = require('../guard')
 // MODEL BUILD — WRITE (all require an open change set)
 // ══════════════════════════════════════════════════════════════════════════════
 
-function register(server, { client, ok, esc, logChange, requireChangeSet, lintRules, lintTI, policy }) {
+function register(server, { client, ok, esc: odataKey, logChange, requireChangeSet, lintRules, lintTI, policy }) {
     server.tool(
         'build_dimension',
         'Create a dimension declaratively in one call — elements, consolidation edges, and element attributes. If the dimension exists, elements/edges/attributes are added to it. Use for small dimensions; drive large dimensions from a TI process (build_process) that loads from a datasource. ' +
@@ -341,7 +341,7 @@ function register(server, { client, ok, esc, logChange, requireChangeSet, lintRu
 
             let ruleNote = ''
             if (rules) {
-                const check  = await c.post(`Cubes('${esc(name)}')/tm1.CheckRules`, { Rules: rules }).catch(e => ({ _error: e.message }))
+                const check  = await c.post(`Cubes('${odataKey(name)}')/tm1.CheckRules`, { Rules: rules }).catch(e => ({ _error: e.message }))
                 const errors = check?.value ?? []
                 if (check?._error) {
                     ruleNote = ` Cube created, but CheckRules could not run (${check._error}); rules NOT written.`
@@ -349,7 +349,7 @@ function register(server, { client, ok, esc, logChange, requireChangeSet, lintRu
                     ruleNote = ` Cube created, but rules have ${errors.length} error(s) and were NOT written: ` +
                                JSON.stringify(errors.map(e => ({ line: e.LineNumber, message: e.Message ?? e.Description })))
                 } else {
-                    await c.patch(`Cubes('${esc(name)}')`, { Rules: rules })
+                    await c.patch(`Cubes('${odataKey(name)}')`, { Rules: rules })
                     logChange('RULES_SAVED', 'rules', name, { after: { text: rules } })
                     ruleNote = ' Rules validated and written.'
                 }
@@ -370,7 +370,7 @@ function register(server, { client, ok, esc, logChange, requireChangeSet, lintRu
             const c = client()
             const done = [], failed = [], noRest = []
             for (const name of cubes) {
-                try { await c.post(`Cubes('${esc(name)}')/tm1.ProcessFeeders`, {}); done.push(name) }
+                try { await c.post(`Cubes('${odataKey(name)}')/tm1.ProcessFeeders`, {}); done.push(name) }
                 catch (e) {
                     const msg = e.response?.data?.error?.message ?? e.message
                     // TM1 v11 has no REST ProcessFeeders — do it in TI instead (below)
@@ -386,7 +386,7 @@ function register(server, { client, ok, esc, logChange, requireChangeSet, lintRu
                     if (r?.ProcessExecuteStatusCode && r.ProcessExecuteStatusCode !== 'CompletedSuccessfully') throw new Error(r.ProcessExecuteStatusCode)
                     done.push(...noRest)
                 } catch (e) { for (const n of noRest) failed.push(`${n}: ${e.response?.data?.error?.message ?? e.message}`) }
-                finally { await c.delete(`Processes('${esc(tmp)}')`).catch(() => {}) }
+                finally { await c.delete(`Processes('${odataKey(tmp)}')`).catch(() => {}) }
             }
             return ok(failed.length ? { reprocessed: done, failed } : `Feeders reprocessed for ${done.join(', ')}.`)
         }
@@ -586,7 +586,7 @@ function register(server, { client, ok, esc, logChange, requireChangeSet, lintRu
                 Frequency:     frequency ?? 'P1DT00H00M00S',
                 Tasks: steps.map((s, i) => ({
                     Step: i,
-                    'Process@odata.bind': `Processes('${esc(s.process)}')`,
+                    'Process@odata.bind': `Processes('${odataKey(s.process)}')`,
                     Parameters: s.parameters ?? [],
                 })),
             })
@@ -653,7 +653,7 @@ function register(server, { client, ok, esc, logChange, requireChangeSet, lintRu
                     if (!dimension) return ok('`dimension` is required to delete a hierarchy.')
                     await c.deleteHierarchy(dimension, name); logChange('HIERARCHY_DELETED', 'dimension', dimension, { detail: `hierarchy ${name}` }); break
                 case 'chore':
-                    await c.delete(`Chores('${esc(name)}')`); logChange('CHORE_DELETED', 'chore', name); break
+                    await c.delete(`Chores('${odataKey(name)}')`); logChange('CHORE_DELETED', 'chore', name); break
             }
             return ok(`Deleted ${type} "${name}".`)
         }

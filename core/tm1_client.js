@@ -10,8 +10,8 @@ class TM1Client {
         this._adapter = adapter
     }
 
-    async get(path, params = {}) {
-        return this._adapter.get(path, params)
+    async get(path, params = {}, opts = {}) {
+        return this._adapter.get(path, params, opts)
     }
 
     async post(path, body = {}, opts = {}) {
@@ -1444,7 +1444,7 @@ return (d.value ?? [])
     }
 
     async cancelJob(id) {
-        return this.post(`Jobs('${encodeURIComponent(id)}')/tm1.Cancel`, {})
+        return this.post(`Jobs('${odataKey(id)}')/tm1.Cancel`, {})
     }
 
     // ── Bulk cell write ───────────────────────────────────────────────────────
@@ -1698,6 +1698,11 @@ return (d.value ?? [])
         return this.get(await this._fileContentUrl(pathParts, name))
     }
 
+    // Raw document content (a Buffer). The route streams it to the browser.
+    async downloadFile(pathParts, name) {
+        return this.get(await this._fileContentUrl(pathParts, name), {}, { binary: true })
+    }
+
     async createFileDocument(pathParts, name) {
         return this.post(`${this._contentsPath(pathParts)}/Contents`, {
             '@odata.type': '#ibm.tm1.api.v1.Document',
@@ -1766,7 +1771,7 @@ return (d.value ?? [])
     }
 
     async disconnectSession(id) {
-        return this.delete(`Sessions('${encodeURIComponent(id)}')`)
+        return this.delete(`Sessions('${odataKey(id)}')`)
     }
 
     async getThreads() {
@@ -1777,7 +1782,7 @@ return (d.value ?? [])
 
     async cancelThread(id) {
         // Threads use tm1.CancelOperation (tm1.Cancel is the Jobs action — 404 on a Thread).
-        return this.post(`Threads('${encodeURIComponent(id)}')/tm1.CancelOperation`, {})
+        return this.post(`Threads('${odataKey(id)}')/tm1.CancelOperation`, {})
     }
 
     // ── Server admin ──────────────────────────────────────────────────────────
@@ -1812,7 +1817,7 @@ return (d.value ?? [])
             })
             await this.executeProcess(procName)
         } finally {
-            try { await this.delete(`Processes('${esc(procName)}')`) } catch {}
+            try { await this.delete(`Processes('${odataKey(procName)}')`) } catch {}
         }
     }
 

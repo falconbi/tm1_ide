@@ -6,7 +6,7 @@ const { z } = require('zod')
 // DEVELOPMENT — WRITE (existing tools, now change-set gated + logged)
 // ══════════════════════════════════════════════════════════════════════════════
 
-function register(server, { client, ok, esc, logChange, requireChangeSet, lintRules, lintTI }) {
+function register(server, { client, ok, esc: odataKey, logChange, requireChangeSet, lintRules, lintTI }) {
     server.tool(
         'update_cube_rules',
         'Write new rules to a cube. The full rules text replaces any existing rules. Requires an open change set. ' +
@@ -28,10 +28,10 @@ function register(server, { client, ok, esc, logChange, requireChangeSet, lintRu
                 })
             }
             const c    = client()
-            const prev = await c.get(`Cubes('${esc(cube)}')`, { '$select': 'Rules' }).then(d => d.Rules ?? '').catch(() => '')
+            const prev = await c.get(`Cubes('${odataKey(cube)}')`, { '$select': 'Rules' }).then(d => d.Rules ?? '').catch(() => '')
 
             // Live TM1 compile check — the real safety net static lint can't provide.
-            const check  = await c.post(`Cubes('${esc(cube)}')/tm1.CheckRules`, { Rules: rules }).catch(e => ({ _error: e.message }))
+            const check  = await c.post(`Cubes('${odataKey(cube)}')/tm1.CheckRules`, { Rules: rules }).catch(e => ({ _error: e.message }))
             const errors = check?.value ?? []
             const details = errors.map(e => ({ line: e.LineNumber ?? null, message: e.Message ?? e.Description ?? String(e) }))
 
@@ -50,7 +50,7 @@ function register(server, { client, ok, esc, logChange, requireChangeSet, lintRu
                 })
             }
 
-            await c.patch(`Cubes('${esc(cube)}')`, { Rules: rules })
+            await c.patch(`Cubes('${odataKey(cube)}')`, { Rules: rules })
             logChange('RULES_SAVED', 'rules', cube, { before: { text: prev }, after: { text: rules } })
 
             const parts = []
@@ -75,7 +75,7 @@ function register(server, { client, ok, esc, logChange, requireChangeSet, lintRu
         async ({ process, prolog, metadata, data, epilog, force }) => {
             requireChangeSet()
             const c   = client()
-            const cur = await c.get(`Processes('${esc(process)}')`)
+            const cur = await c.get(`Processes('${odataKey(process)}')`)
             const patch = {}
             if (prolog   !== undefined) patch.PrologProcedure   = prolog
             if (metadata !== undefined) patch.MetadataProcedure = metadata   // TM1's name: lowercase d
@@ -92,7 +92,7 @@ function register(server, { client, ok, esc, logChange, requireChangeSet, lintRu
                 return ok({ refused: 'static TI lint found errors on the merged process — not written. Fix, or pass force:true.', errors: lint.errors, warnings: lint.warnings })
             }
 
-            await c.patch(`Processes('${esc(process)}')`, patch)
+            await c.patch(`Processes('${odataKey(process)}')`, patch)
             logChange('PROCESS_SAVED', 'process', process, {
                 before: { prolog: cur.PrologProcedure ?? '', metadata: cur.MetadataProcedure ?? '', data: cur.DataProcedure ?? '', epilog: cur.EpilogProcedure ?? '' },
                 after:  { prolog: patch.PrologProcedure ?? cur.PrologProcedure ?? '', metadata: patch.MetadataProcedure ?? cur.MetadataProcedure ?? '', data: patch.DataProcedure ?? cur.DataProcedure ?? '', epilog: patch.EpilogProcedure ?? cur.EpilogProcedure ?? '' },
@@ -126,7 +126,7 @@ function register(server, { client, ok, esc, logChange, requireChangeSet, lintRu
         },
         async ({ cube, rules }) => {
             const lint   = lintRules(rules)
-            const result = await client().post(`Cubes('${esc(cube)}')/tm1.CheckRules`, { Rules: rules }).catch(e => ({ _error: e.message }))
+            const result = await client().post(`Cubes('${odataKey(cube)}')/tm1.CheckRules`, { Rules: rules }).catch(e => ({ _error: e.message }))
             const tm1Errors = (result?.value ?? []).map(e => ({ line: e.LineNumber, message: e.Message ?? e.Description }))
 
             const out = {}

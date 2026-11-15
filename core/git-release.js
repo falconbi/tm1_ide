@@ -20,6 +20,7 @@ const gitIdentity = require('./git-identity')
 const cl = require('./change_log')
 const { lintTI } = require('./ti-lint')
 const { sameCommit } = require('./git-approvals')
+const { odataKey } = require('./odata-key')
 
 const NO_BASE_ERROR = (target) => `${target} has no recorded deployed commit — set it up first (init + first pull), then release against it.`
 
@@ -285,11 +286,11 @@ async function verifyRelease(target, { base, releaseCommit, repoUrl, token, gitU
             try {
                 if (obj.kind === 'rules') {
                     const releaseText = git(work, 'show', `${releaseCommit}:${ch.file}`)
-                    const r = await c.get(`Cubes('${encodeURIComponent(obj.name)}')`, { $select: 'Rules' })
+                    const r = await c.get(`Cubes('${odataKey(obj.name)}')`, { $select: 'Rules' })
                     ok = String(r?.Rules ?? '') === String(releaseText ?? '').replace(/\r\n/g, '\n')
                 } else if (obj.type === 'subset') {
                     const sub = JSON.parse(git(work, 'show', `${releaseCommit}:${ch.file}`))
-                    const path = `Dimensions('${encodeURIComponent(obj.parent)}')/Hierarchies('${encodeURIComponent(obj.parent)}')/Subsets('${encodeURIComponent(obj.name)}')`
+                    const path = `Dimensions('${odataKey(obj.parent)}')/Hierarchies('${odataKey(obj.parent)}')/Subsets('${odataKey(obj.name)}')`
                     if (sub.Expression) {
                         const t = await c.get(path, { $select: 'Expression' })
                         ok = String(t?.Expression ?? '') === String(sub.Expression)
@@ -300,7 +301,7 @@ async function verifyRelease(target, { base, releaseCommit, repoUrl, token, gitU
                     }
                 } else if (obj.type === 'view') {
                     const view = JSON.parse(git(work, 'show', `${releaseCommit}:${ch.file}`))
-                    const vpath = `Cubes('${encodeURIComponent(obj.parent)}')/Views('${encodeURIComponent(obj.name)}')`
+                    const vpath = `Cubes('${odataKey(obj.parent)}')/Views('${odataKey(obj.name)}')`
                     if (view['@type'] === 'MDXView' || view['MDX@Code.link']) {
                         let want = view.MDX ?? null
                         if (want === null) { try { want = git(work, 'show', `${releaseCommit}:${ch.file.replace(/\.json$/, '.mdx')}`) } catch { want = null } }
@@ -314,10 +315,10 @@ async function verifyRelease(target, { base, releaseCommit, repoUrl, token, gitU
                         ok = true
                     }
                 } else {
-                    const url = obj.type === 'dimension' ? `Dimensions('${encodeURIComponent(obj.name)}')`
-                        : obj.type === 'cube' ? `Cubes('${encodeURIComponent(obj.name)}')`
-                        : obj.type === 'chore' ? `Chores('${encodeURIComponent(obj.name)}')`
-                        : `Processes('${encodeURIComponent(obj.name)}')`
+                    const url = obj.type === 'dimension' ? `Dimensions('${odataKey(obj.name)}')`
+                        : obj.type === 'cube' ? `Cubes('${odataKey(obj.name)}')`
+                        : obj.type === 'chore' ? `Chores('${odataKey(obj.name)}')`
+                        : `Processes('${odataKey(obj.name)}')`
                     await c.get(url, { $select: 'Name' })
                     ok = true
                 }
@@ -364,7 +365,7 @@ async function checkDependencies(releaseCommit, target, { token, gitUser = gitId
             const text = git(work, 'show', `${releaseCommit}:${ch.file}`)
             if (obj.kind === 'rules') {
                 try {
-                    const r = await c.post(`Cubes('${encodeURIComponent(obj.name)}')/tm1.CheckRules`, { Rules: text })
+                    const r = await c.post(`Cubes('${odataKey(obj.name)}')/tm1.CheckRules`, { Rules: text })
                     const errs = r?.value ?? []
                     if (errs.length) blockers.push({
                         object: `rules ${obj.name}`,

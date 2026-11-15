@@ -2027,7 +2027,7 @@ app.get('/api/paw/book-usage', async (req, res) => {
 
         // Walk PAW content tree looking for books
         // PAW 2.1.8 uses 'folder' (lowercase) and book types 'dashboard'/'workbench'
-        const encodePath = (p) => encodeURIComponent(encodeURIComponent(p))
+        const encodePath = (p) => encodeURIComponent(encodeURIComponent(p)) // odata-key: ok — PAW Assets path, not a TM1 key
         const books = []
         const walk = async (path) => {
             const url = `${base}/Assets(path='${encodePath(path)}')/Assets`
@@ -2221,15 +2221,10 @@ app.get('/api/files/content', async (req, res) => {
         const { server, path: p, name } = req.query
         const pathParts = p ? JSON.parse(p) : ['Files']
         const client = makeClient(server, req.ideToken)
-        // Get raw content — stream back as download (binary, must bypass the JSON-returning adapter.get)
-        const session = await getCachedPawSession(req.ideToken)
-        const csrf    = await getCSRF(session)
-        const apiPath = `${client._contentsPath(pathParts)}/Contents('${odataKey(name)}')/Content`
-        const url     = `${PAW_HOST}/api/v0/tm1/${server}/api/v1/${apiPath}`
-        const r = await session.get(url, { headers: { 'ba-sso-authenticity': csrf }, responseType: 'arraybuffer' })
+        const content = await client.downloadFile(pathParts, name)
         res.setHeader('Content-Disposition', `attachment; filename="${name}"`)
         res.setHeader('Content-Type', 'application/octet-stream')
-        res.send(Buffer.from(r.data))
+        res.send(Buffer.isBuffer(content) ? content : Buffer.from(content))
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
@@ -3361,11 +3356,11 @@ app.post('/api/admin/validate-ti-functions', async (req, res) => {
                     Variables: [],
                 })
                 status = 'valid'
-                try { await client.delete(`Processes('${encodeURIComponent(procName)}')`) } catch {}
+                try { await client.delete(`Processes('${odataKey(procName)}')`) } catch {}
             } catch (e) {
                 message = e.message ?? ''
                 status = message.toLowerCase().includes('syntax') || message.toLowerCase().includes('equal sign') ? 'invalid' : 'error'
-                try { await client.delete(`Processes('${encodeURIComponent(procName)}')`) } catch {}
+                try { await client.delete(`Processes('${odataKey(procName)}')`) } catch {}
             }
             results.push({ name, status, message })
         }

@@ -7,7 +7,7 @@ const guard = require('../guard')
 // MODEL CONTEXT — READ
 // ══════════════════════════════════════════════════════════════════════════════
 
-function register(server, { client, ok, esc, policy }) {
+function register(server, { client, ok, esc: odataKey, policy }) {
     const may = (kind, name) => guard.allowed(policy, kind, name)
 
     server.tool(
@@ -25,7 +25,7 @@ function register(server, { client, ok, esc, policy }) {
         'Get the rules text for a cube',
         { cube: z.string().describe('Cube name') },
         async ({ cube }) => {
-            const data = await client().get(`Cubes('${esc(cube)}')`, { '$select': 'Name,Rules' })
+            const data = await client().get(`Cubes('${odataKey(cube)}')`, { '$select': 'Name,Rules' })
             return ok(data.Rules ?? '(no rules)')
         }
     )
@@ -36,7 +36,7 @@ function register(server, { client, ok, esc, policy }) {
         { cube: z.string().describe('Cube name') },
         async ({ cube }) => {
             const data = await client().get(
-                `Cubes('${esc(cube)}')/Dimensions`,
+                `Cubes('${odataKey(cube)}')/Dimensions`,
                 { '$select': 'Name' }
             )
             return ok((data.value ?? []).map(d => d.Name))
@@ -104,7 +104,7 @@ function register(server, { client, ok, esc, policy }) {
         'Get a TI process — all four code sections, parameters, and datasource configuration',
         { process: z.string().describe('Process name') },
         async ({ process }) => {
-            const p = await client().get(`Processes('${esc(process)}')`)
+            const p = await client().get(`Processes('${odataKey(process)}')`)
             // Passwords in the code or the datasource are always masked.
             const strip = guard.stripTiCredentials
             return ok({
@@ -124,7 +124,7 @@ function register(server, { client, ok, esc, policy }) {
         'List views for a cube',
         { cube: z.string().describe('Cube name') },
         async ({ cube }) => {
-            const data = await client().get(`Cubes('${esc(cube)}')/Views`, { '$select': 'Name' })
+            const data = await client().get(`Cubes('${odataKey(cube)}')/Views`, { '$select': 'Name' })
             return ok((data.value ?? []).map(v => v.Name))
         }
     )
@@ -138,7 +138,7 @@ function register(server, { client, ok, esc, policy }) {
         },
         async ({ cube, view }) => {
             const c   = client()
-            const def = await c.get(`Cubes('${esc(cube)}')/Views('${esc(view)}')`)
+            const def = await c.get(`Cubes('${odataKey(cube)}')/Views('${odataKey(view)}')`)
             if (def?.['@odata.type']?.includes('MDXView')) {
                 return ok({ type: 'mdx', name: def.Name, mdx: def.MDX ?? '' })
             }
@@ -154,7 +154,7 @@ function register(server, { client, ok, esc, policy }) {
         { dimension: z.string().describe('Dimension name') },
         async ({ dimension }) => {
             const data = await client().get(
-                `Dimensions('${esc(dimension)}')/Hierarchies('${esc(dimension)}')/Subsets`,
+                `Dimensions('${odataKey(dimension)}')/Hierarchies('${odataKey(dimension)}')/Subsets`,
                 { '$select': 'Name' }
             )
             return ok((data.value ?? []).map(s => s.Name))
@@ -170,11 +170,11 @@ function register(server, { client, ok, esc, policy }) {
         },
         async ({ dimension, subset }) => {
             const data = await client().get(
-                `Dimensions('${esc(dimension)}')/Hierarchies('${esc(dimension)}')/Subsets('${esc(subset)}')`
+                `Dimensions('${odataKey(dimension)}')/Hierarchies('${odataKey(dimension)}')/Subsets('${odataKey(subset)}')`
             )
             if (data.Expression) return ok({ type: 'mdx', expression: data.Expression })
             const elems = await client().get(
-                `Dimensions('${esc(dimension)}')/Hierarchies('${esc(dimension)}')/Subsets('${esc(subset)}')/Elements`,
+                `Dimensions('${odataKey(dimension)}')/Hierarchies('${odataKey(dimension)}')/Subsets('${odataKey(subset)}')/Elements`,
                 { '$select': 'Name' }
             )
             return ok({ type: 'static', elements: (elems.value ?? []).map(e => e.Name) })
