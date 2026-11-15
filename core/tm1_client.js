@@ -778,25 +778,38 @@ class TM1Client {
     async scanSubsetUsage(dim, subsetName, hierarchy = dim) {
         const cubeUsage = []
         const tiUsage   = []
+        const esc = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+        const safeSubset = esc(subsetName)
+        const safeDim    = esc(dim)
+        const safeHier   = esc(hierarchy)
 
         // 1. Scan cube views
         const cubes = await this.getCubes()
         for (const cube of cubes) {
             const views = await this.getViews(cube)
-            for (const view of views) {
+            for (const { name: view } of views) {
                 try {
-                    const v = await this.getView(cube, view)
-                    if (!v || v['@odata.type']?.includes('MDXView')) continue
-                    // Native view - check axes for subset references
-                    const axes = ['Rows', 'Columns', 'Titles']
-                    for (const axis of axes) {
-                        const placements = v[axis] ?? []
-                        for (const p of placements) {
-                            if (p.Subset?.Name !== subsetName || p.Dimension?.Name !== dim) continue
-                            // a native view can't carry an alternate hierarchy; for the
-                            // default hierarchy (or when TM1 doesn't report one) accept it
-                            const ph = p.Subset?.Hierarchy?.Name
-                            if (hierarchy !== dim && ph && ph !== hierarchy) continue
+                    const base = await this.getView(cube, view)
+                    if (!base) continue
+                    // MDX views: look for the subset in the query text
+                    if (base['@odata.type']?.includes('MDXView')) {
+                        const mdx = base.MDX ?? ''
+                        if (!mdx) continue
+                        if (hierarchy !== dim && !new RegExp(`\\[${safeDim}\\]\\s*\\.\\s*\\[${safeHier}\\]`, 'i').test(mdx)) continue
+                        const usesSubset =
+                            new RegExp(`TM1SubsetToSet\\s*\\([^)]*['"]?${safeSubset}`, 'i').test(mdx) ||
+                            new RegExp(`\\[${safeDim}\\]\\s*\\.\\s*\\[${safeSubset}\\]`, 'i').test(mdx)
+                        if (usesSubset) cubeUsage.push({ cube, view, axis: 'MDX' })
+                        continue
+                    }
+                    // Native view: placement-level Subset is only reliable when the
+                    // placement collection is expanded; getView alone never reports it.
+                    const full = await this.getViewWithSubsets(cube, view)
+                    for (const [axis, placements] of [['Rows', full?._rows], ['Columns', full?._columns], ['Titles', full?._titles]]) {
+                        for (const p of placements ?? []) {
+                            if (p.subset !== subsetName || p.dimension !== dim) continue
+                            // a native view can't carry an alternate hierarchy
+                            if (hierarchy !== dim) continue
                             cubeUsage.push({ cube, view, axis })
                         }
                     }
@@ -806,9 +819,6 @@ class TM1Client {
 
         // 2. Scan TI processes
         const processes = await this.getProcesses()
-        const esc = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-        const safeSubset = esc(subsetName)
-        const safeDim    = esc(dim)
         for (const proc of processes) {
             try {
                 const p = await this.getProcess(proc)
@@ -818,8 +828,8 @@ class TM1Client {
                     p.DataProcedure     ?? '',
                     p.EpilogProcedure   ?? '',
                 ].join('\n')
-                // Quick string test first
-                if (!code.includes(subsetName)) continue
+                // Quick string test first (TM1 names are case-insensitive)
+                if (!code.toLowerCase().includes(subsetName.toLowerCase())) continue
                 // Check multiple usage patterns
                 const patterns = [
                     // Direct subset functions: SubsetCreate, SubsetDelete, SubsetGet, etc.
