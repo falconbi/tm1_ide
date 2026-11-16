@@ -38,11 +38,16 @@ function cleanFolder(folder) {
 async function listLenses(server, { ideToken, client } = {}) {
     const names = (await store.listDocs(server, AREA, { ideToken, client })).filter(n => n.endsWith('.json'))
     const out = []
+    out.errors = []
     for (const n of names) {
-        const doc = await store.readDoc(server, AREA, n, { ideToken, client })
-        if (!doc) continue
-        const { html: _html, ...details } = doc
-        out.push(details)
+        try {
+            const doc = await store.readDoc(server, AREA, n, { ideToken, client })
+            if (!doc) continue
+            const { html: _html, ...details } = doc
+            out.push(details)
+        } catch (e) {
+            out.errors.push({ name: n.replace(/\.json$/, ''), error: e.message })
+        }
     }
     return out.sort((a, b) => String(a.name).localeCompare(String(b.name)))
 }
@@ -52,9 +57,14 @@ async function listLenses(server, { ideToken, client } = {}) {
 async function listLensRuns(server, runsOf, { ideToken, client } = {}) {
     const names = (await store.listDocs(server, AREA, { ideToken, client })).filter(n => n.endsWith('.json'))
     const out = []
+    out.errors = []
     for (const n of names) {
-        const doc = await store.readDoc(server, AREA, n, { ideToken, client })
-        if (doc) out.push({ name: doc.name, title: doc.title ?? doc.name, runs: runsOf(doc) })
+        try {
+            const doc = await store.readDoc(server, AREA, n, { ideToken, client })
+            if (doc) out.push({ name: doc.name, title: doc.title ?? doc.name, runs: runsOf(doc) })
+        } catch (e) {
+            out.errors.push({ name: n.replace(/\.json$/, ''), error: e.message })
+        }
     }
     return out
 }

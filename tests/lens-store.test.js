@@ -16,7 +16,12 @@ require.cache[require.resolve(storePath)] = {
       calls.push(['list', server, area, opts?.client])
       return [...docs.keys()].filter(k => k.startsWith(`${server}|${area}|`)).map(k => k.split('|')[2])
     },
-    async readDoc(server, area, name, opts) { calls.push(['read', server, area, name, opts?.client]); return docs.get(`${server}|${area}|${name}`) ?? null },
+    async readDoc(server, area, name, opts) {
+      calls.push(['read', server, area, name, opts?.client])
+      const doc = docs.get(`${server}|${area}|${name}`) ?? null
+      if (doc?.corrupt) throw new Error('unreadable document')
+      return doc
+    },
     async writeDoc(server, area, name, data, opts) { calls.push(['write', server, area, name, opts?.client]); docs.set(`${server}|${area}|${name}`, data); return data },
     async deleteDoc(server, area, name, opts) {
       calls.push(['delete', server, area, name, opts?.client])
@@ -85,4 +90,12 @@ test('reads/list can run through a given client (the Lens app reads as the viewe
   assert.equal(calls.find(c => c[0] === 'list')[3], viewerClient, 'listDocs got the viewer client')
   const readsWithClient = calls.filter(c => c[0] === 'read' && !!c[4])
   assert.equal(readsWithClient.at(-1)?.[4], viewerClient, 'readDoc got the viewer client')
+})
+
+test('one unreadable document does not hide the readable Lenses', async () => {
+  await lens.saveLens('SrvA', 'Good', '<p/>', 'a')
+  docs.set('SrvA|lenses|Bad.json', { corrupt: true })
+  const list = await lens.listLenses('SrvA')
+  assert.deepEqual(list.map(l => l.name), ['Good'])
+  assert.deepEqual(list.errors, [{ name: 'Bad', error: 'unreadable document' }])
 })

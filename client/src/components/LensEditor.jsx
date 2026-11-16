@@ -128,6 +128,8 @@ export default function LensEditor({ tab }) {
   // A new Lens can start from a COPY of an example or of an existing Lens —
   // never linked: once copied, the code is this Lens's own.
   const [starts, setStarts] = useState({ examples: [], lenses: [] })
+  const [startError, setStartError] = useState('')
+  const [startsReload, setStartsReload] = useState(0)
   const [started, setStarted] = useState(!!tab.name)   // a new Lens opens on its start page
   // The Lens's config (Config tab): JSON the Lens reads with Lens.config(). The
   // preview always runs with the last config that parsed.
@@ -162,21 +164,27 @@ export default function LensEditor({ tab }) {
   const [dirtyPreview, setDirtyPreview] = useState(false)
 
   useEffect(() => {
-    fetch(`/api/model/cubes?server=${encodeURIComponent(tab.server)}`, { headers: { 'x-ide-token': token() } })
-      .then(r => r.json())
+    const readJson = async (url) => {
+      const r = await fetch(url, { headers: { 'x-ide-token': token() } })
+      const d = await r.json().catch(() => null)
+      if (!r.ok) throw new Error(d?.error ?? `Request failed (${r.status})`)
+      return d
+    }
+    readJson(`/api/model/cubes?server=${encodeURIComponent(tab.server)}`)
       .then(d => setCubes(Array.isArray(d) ? d : []))
-      .catch(() => {})
+      .catch(e => setStartError(e.message))
     if (!tab.name) {
-      fetch('/api/lens-examples', { headers: { 'x-ide-token': token() } }).then(r => r.json())
-        .then(d => setStarts(s => ({ ...s, examples: Array.isArray(d) ? d : [] }))).catch(() => {})
-      fetch(`/api/lenses?server=${encodeURIComponent(tab.server)}`, { headers: { 'x-ide-token': token() } }).then(r => r.json())
-        .then(d => setStarts(s => ({ ...s, lenses: Array.isArray(d) ? d : [] }))).catch(() => {})
+      readJson('/api/lens-examples')
+        .then(d => setStarts(s => ({ ...s, examples: Array.isArray(d) ? d : [] })))
+        .catch(e => setStartError(e.message))
+      readJson(`/api/lenses?server=${encodeURIComponent(tab.server)}`)
+        .then(d => setStarts(s => ({ ...s, lenses: Array.isArray(d) ? d : [] })))
+        .catch(e => setStartError(e.message))
     }
     // Folders already in use, offered as suggestions.
-    fetch(`/api/lenses?server=${encodeURIComponent(tab.server)}`, { headers: { 'x-ide-token': token() } })
-      .then(r => r.json())
+    readJson(`/api/lenses?server=${encodeURIComponent(tab.server)}`)
       .then(d => setFolders(Array.isArray(d) ? [...new Set(d.map(l => l.folder).filter(Boolean))].sort() : []))
-      .catch(() => {})
+      .catch(e => setStartError(e.message))
     if (tab.name) {
       fetch(`/api/lenses/${encodeURIComponent(tab.name)}?server=${encodeURIComponent(tab.server)}&_=${Date.now()}`, { headers: { 'x-ide-token': token() } })
         .then(r => r.json())
@@ -186,7 +194,7 @@ export default function LensEditor({ tab }) {
         })
         .catch(e => setMessage({ kind: 'error', text: `Couldn't load the Lens: ${e.message}` }))
     }
-  }, [tab.server, tab.name])
+  }, [tab.server, tab.name, startsReload])
 
   useEffect(() => {
     const off = installLensHost(
@@ -302,6 +310,12 @@ export default function LensEditor({ tab }) {
             <p className="text-sm text-muted-foreground">Start from a blank Lens or a copy — a copy is yours to change; the original is never affected.</p>
           </div>
           {message && <div className="text-sm text-red-600">{message.text}</div>}
+          {startError && (
+            <div className="flex items-center gap-2 rounded border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700">
+              <span>Couldn't load the start page: {startError}</span>
+              <button onClick={() => { setStartError(''); setStartsReload(n => n + 1) }} className="ml-auto rounded border border-red-300 px-2 py-0.5 text-xs hover:bg-red-100">Retry</button>
+            </div>
+          )}
           <div className={grid}>
             <Card onClick={() => setStarted(true)} tile={<LensTile icon="square-pen" size={32} />} title="Blank" text="Start from an empty Lens" />
           </div>

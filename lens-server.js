@@ -500,6 +500,9 @@ function createApp({ config = loadConfig(), deps = {} } = {}) {
             const lens = await listLenses(cfg.server, { client: store.clientFor(sid) })
             const myGroups = await groupsFor(sid)
             const visible = lens.filter(l => lensStore.visibleTo(l, myGroups, { showDrafts: cfg.showDrafts }))
+            const unreadable = lens.errors?.length
+                ? `<p class="err">Could not read ${lens.errors.length} Lens document${lens.errors.length === 1 ? '' : 's'}: ${lens.errors.map(e => `${esc(e.name)} (${esc(e.error)})`).join(', ')}</p>`
+                : ''
             // Grouped by business process (folder), steps in order, in people's
             // words (title) — no cube or model names on this page.
             const groups = groupLenses(visible)
@@ -545,6 +548,7 @@ function createApp({ config = loadConfig(), deps = {} } = {}) {
     .peek .wait{position:absolute;inset:0;display:grid;place-items:center;color:var(--app-faint);font-size:12px;letter-spacing:.12em;text-transform:uppercase}
     @media (hover:none),(max-width:900px){.peek{display:none}}
   </style>
+  ${unreadable}
   ${visible.length ? sections : '<p class="none">Nothing here yet' + (cfg.showDrafts ? '' : ' (drafts are hidden)') + '.</p>'}
   <p class="none" id="nomatch" hidden>Nothing matches your search.</p>
   <div class="peek" id="peek"><div class="wait" id="peekWait">Loading preview…</div></div>
@@ -716,10 +720,14 @@ function createApp({ config = loadConfig(), deps = {} } = {}) {
     })
 
     app.get('/api/lenses', requireSession, async (req, res) => {
-        const lens = await listLenses(cfg.server, { client: req.lens.client })
-        const groups = await groupsFor(req.lens.sid)
-        const visible = lens.filter(l => lensStore.visibleTo(l, groups, { showDrafts: cfg.showDrafts }))
-        res.json(visible)
+        try {
+            const lens = await listLenses(cfg.server, { client: req.lens.client })
+            const groups = await groupsFor(req.lens.sid)
+            const visible = lens.filter(l => lensStore.visibleTo(l, groups, { showDrafts: cfg.showDrafts }))
+            res.json(visible)
+        } catch (e) {
+            res.status(e.status ?? 500).json({ error: e.message })
+        }
     })
 
     // Static read-only bridge routes FIRST — `/api/lens/meta` must win over the

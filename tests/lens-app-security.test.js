@@ -262,3 +262,12 @@ test('whoami tells a Lens who is signed in and their TM1 groups', async () => {
     assert.deepEqual(await (await fetch(`${base}/api/lens/whoami`, { headers: { cookie: c } })).json(), { user: 'admin', groups: ['Lens Finance'] })
   }, { groupsOf: async () => ['Lens Finance'] })
 })
+
+test('a rejected Lens list returns JSON 500 instead of an unhandled promise', async () => {
+  await withApp(async ({ base, signin }) => {
+    const c = cookieOf(await signin('admin', 'apple'))
+    const r = await fetch(`${base}/api/lenses`, { headers: { cookie: c } })
+    assert.equal(r.status, 500)
+    assert.match((await r.json()).error, /store down/)
+  }, { listLenses: async () => { throw new Error('store down') } })
+})
