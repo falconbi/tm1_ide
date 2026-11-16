@@ -295,7 +295,6 @@ export default function FormatSettings({ onClose }) {
                   </Section>
 
                   <Section label="Layout" open={rulesLayoutOpen} onToggle={() => setRulesLayoutOpen(v => !v)}>
-                    <Toggle label="Align = signs" checked={settings.rules.alignEquals}   onChange={v => updateRuleSetting('alignEquals', v)} />
                     <Select label="Line wrap"     value={settings.rules.lineWrap}         onChange={v => updateRuleSetting('lineWrap', v)}    options={wrapOpts} />
                     <Select label="Wrap indent"   value={settings.rules.wrapIndent}       onChange={v => updateRuleSetting('wrapIndent', v)}  options={wrapIndOpts} />
                     <Select label="IF format"     value={settings.rules.ifFormatting}     onChange={v => updateRuleSetting('ifFormatting', v)} options={ifOpts} />

@@ -68,7 +68,7 @@ client/src/
     ti-validator.js           # Static analysis for TI: section structure, IF/WHILE/FOR/NEXT tracking, arg counts
     mdx-validator.js          # MDX expression validator: function names, arg counts
     tm1-snippets.js           # TI and Rules snippet library
-    ti-interpreter.js         # Client-side TI code execution simulator
+    ti-interpreter.js         # TI variable scanner for the debug watch dropdown
     ti-debugger.js            # TI debugger — breakpoint injection + capture parsing
     formatters/               # TM1 rules formatter (tokenizer, AST, presets, settings)
 config/
@@ -215,7 +215,6 @@ whether `shared/tm1-function-catalog.json` already has (or should have) it.
 | Hover | `client/src/lib/tm1-functions.js` | `catalogHover` reads `catalogEntry()` (below) directly — no separate fallback catalog |
 | `core/rules-lint.js` / `core/ti-lint.js` | server-side, CJS | `require()` the JSON directly and compute each `SIG` arity table (`{min, max}`) from `params.length` + the variadic/`variadicMin` rule — not hand-transcribed |
 | `isBuiltInTM1Function` | `client/src/lib/ti-validator.js` | `Object.prototype.hasOwnProperty.call(TI_CATALOG, name.toUpperCase())` — no separate allowlist |
-| `SIMULATED_FNS` | `client/src/lib/ti-interpreter.js` | Hand-written JS implementations (can't be derived — it's *behavior*, not metadata) but every key must correspond to a real catalog entry; don't add a simulated function that isn't in the catalog |
 | Snippets | `client/src/lib/tm1-snippets.js` | Hand-curated (nicer placeholder names than a generic builder), but every function name/arity used in a snippet body must match the catalog |
 | Casing dictionary | `client/src/lib/formatters/naming.js` | Controls capitalization, not validation. Every entry must be a catalog name or listed in `IBM_KEYWORDS`; `tests/catalog-consumers.test.mjs` also checks `IBM_TYPES` language labels against the catalog |
 

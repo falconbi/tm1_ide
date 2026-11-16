@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useCallback } from 'react'
 import MonacoEditor from '@monaco-editor/react'
 import { useStore } from '@/store'
 import { useProcess, useSaveProcess, useRunProcess, useCreateProcess, useDebugProcess, useCubes, useViews, usePreviewDatasource, useConflictCheck } from '@/hooks/useApi'
-import { registerTM1Completions, registerTM1Theme } from '@/lib/tm1-functions'
+import { registerMDXAndVariableCompletions, registerTM1Theme } from '@/lib/tm1-functions'
 import { registerTICompletions } from '@/lib/tm1-completion'
 import { cn } from '@/lib/utils'
 import { subsetTabId, processTabId } from '@/lib/tab-ids'
@@ -923,7 +923,7 @@ export default function ProcessEditor({ tab }) {
       lineHeight: editorSettings.lineHeight ?? undefined,
     })
     if (!registeredRef.current) {
-      registerTM1Completions(monaco, () => server, () => serverVersion)
+      registerMDXAndVariableCompletions(monaco, () => server, () => serverVersion)
       registerTICompletions(monaco)
       registerTM1Theme(monaco, dark)
       registeredRef.current = true

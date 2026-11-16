@@ -35,7 +35,7 @@ tm1_ide/
 │           ├── ti-validator.js        # Static analysis for TI
 │           ├── mdx-validator.js       # Static analysis for MDX
 │           ├── ti-debugger.js         # Breakpoint injection + capture parsing
-│           ├── ti-interpreter.js      # Client-side TI execution simulator
+│           ├── ti-interpreter.js      # TI variable scanner for debug watches
 │           ├── tm1-snippets.js        # TI and Rules snippet library
 │           └── formatters/            # Rules formatter: tokenizer, AST, presets
 ├── tools/

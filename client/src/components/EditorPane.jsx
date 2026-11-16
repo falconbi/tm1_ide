@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, useCallback } from 'react'
 import MonacoEditor from '@monaco-editor/react'
 import { useStore } from '@/store'
 import { useRules, useSaveRules, useLineage, useLineageConsumers, useTraceCellCalc, useConflictCheck, useCubeDimensions } from '@/hooks/useApi'
-import { registerTM1Completions, registerTM1Theme } from '@/lib/tm1-functions'
+import { registerMDXAndVariableCompletions, registerTM1Theme } from '@/lib/tm1-functions'
 import ProcessEditor from '@/components/ProcessEditor'
 import SQLEditor from '@/components/SQLEditor'
 import SubsetEditor from '@/components/SubsetEditor'
@@ -633,7 +633,7 @@ function RulesEditor({ tab, onCursor }) {
       lineHeight: editorSettings.lineHeight ?? undefined,
     })
     if (!registeredRef.current) {
-      registerTM1Completions(monaco, () => server, () => serverVersion)
+      registerMDXAndVariableCompletions(monaco, () => server, () => serverVersion)
       registerRulesCompletions(monaco)
       registerTM1Theme(monaco, dark)
       registeredRef.current = true

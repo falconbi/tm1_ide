@@ -2,7 +2,7 @@
 // SINGLE SOURCE OF TRUTH: shared/tm1-function-catalog.json (repo root) — one entry
 // per TM1 Rules/TI function, covering both languages. Every consumer (this
 // file's RULES_CATALOG/TI_CATALOG split, core/rules-lint.js, core/ti-lint.js,
-// ti-validator.js's isBuiltInTM1Function, ti-interpreter.js's simulator,
+// ti-validator.js's isBuiltInTM1Function,
 // tm1-snippets.js, naming.js's casing dictionary) derives from this JSON —
 // do not hand-add a function name anywhere else. See CLAUDE.md "TM1 Function
 // Catalog" section for the update workflow and the automated live-validation

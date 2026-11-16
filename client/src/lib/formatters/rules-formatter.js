@@ -235,20 +235,5 @@ export function formatRules(text, settings, namingMap) {
     }
   }
 
-  // Optional: align = signs within #Region blocks
-  if (settings.alignEquals) {
-    return alignEqualsInRegions(formatted, settings)
-  }
-
   return formatted.join('\n')
-}
-
-/**
- * Align = signs within #Region blocks.
- * Only aligns consecutive assignment lines (lines with ['...'] = ... or N: ... = ...).
- */
-function alignEqualsInRegions(lines, _settings) {
-  // This is a Phase 1.5 / Phase 2 enhancement.
-  // For now, return as-is.
-  return lines.join('\n')
 }

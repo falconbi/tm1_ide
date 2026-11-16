@@ -14,7 +14,7 @@ import { catalogEntry } from '@/lib/catalog-runtime.js'
 // getVersion: function that returns the connected server's product version (optional)
 let _tm1LanguageRegistered = false
 
-function registerTM1Completions(monaco, _getServer, _getVersion) {
+function registerMDXAndVariableCompletions(monaco, _getServer, _getVersion) {
   // Monaco registers providers globally — only register the language, tokenizer,
   // folding and snippets once app-wide, or every editor mount accumulates copies.
   if (_tm1LanguageRegistered) return
@@ -480,4 +480,4 @@ export function registerTM1Theme(monaco, dark) {
   monaco.editor.setTheme('tm1-custom')
 }
 
-export { registerTM1Completions }
+export { registerMDXAndVariableCompletions }

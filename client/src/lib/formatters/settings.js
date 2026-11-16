@@ -16,7 +16,6 @@ export const DEFAULT_SETTINGS = {
     commaSpacing: 'single',
     semicolonSpacing: 'none',
     operatorSpacing: 'standard',
-    alignEquals: false,
     lineWrap: 'off',
     wrapIndent: 'hanging',
     ifFormatting: 'inline',
