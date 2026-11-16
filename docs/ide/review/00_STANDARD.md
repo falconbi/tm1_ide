@@ -45,8 +45,8 @@ That puts these first, in this order:
 
 | # | Area | Status |
 |---|---|---|
-| 01 | Front door: README, CLAUDE.md, layout, setup, docs index | findings written (Claude) |
-| 02 | `server.js` and `core/` | verdict written; fixes round 1 done (5 commits, checked); routes split + core rename + logic move still to brief |
+| 01 | Front door: README, CLAUDE.md, layout, setup, docs index | done — round 1 (5 commits, checked) |
+| 02 | `server.js` and `core/` | done — round 1 (5 commits) + route split (16 commits, checked); core rename/logic move still later |
 | 03 | Explorer and the editors (`client/src/components`, `hooks`, `store`) | round 1 done (9 commits, checked); editors split still to brief; ~100 direct fetches left for a later round |
 | 04 | Shared pivot (`shared/pivot`) and the grid | done — verdict + fixes round 1 (9 commits, checked) |
 | 05 | Validators, formatter, function catalog, autocomplete (`client/src/lib`, `core/*-lint.js`) | round 1 done (9 commits, checked); shared-module CJS/ESM convention open (see 05 QUESTIONS) |
@@ -54,5 +54,5 @@ That puts these first, in this order:
 | 07 | Change sets, assertions, deploy (`core/git-*`, `core/change*`, deploy components) | round 1 done (10 commits, checked); 7 live checks for James in 07_DEPLOY_FIXES_DONE.md; round 2 (model-owned discovery + first-pull analysis) to design |
 | 08 | Admin: monitoring, server admin, users, catalog admin | done — round 1 (7 commits, checked); one admin rule (`core/admin_gate.js`), session/job list GETs left ungated by design |
 | 09 | MCP server (`tools/tm1mcp`) | done — round 1 (8 commits, checked); 67 tools, inventory generated and tested |
-| 10 | Lenses: kit, editor, app, Workforce pages | done — round 1 (9 commits, checked); Workforce page content (`lenses/workforce`) not yet reviewed |
-| 11 | Build, tests, lint, CI, docs | done — round 1 (7 commits, checked); CI matrix + static check proven on first push; backend lint 87 recorded, not fixed |
+| 10 | Lenses: kit, editor, app, patterns | done — round 1 (9 commits) + patterns round 2 (4 commits, checked); Workforce content moved to the model repo |
+| 11 | Build, tests, lint, CI, docs | done — round 1 (7 commits, checked); CI matrix + static check proven on first push; backend lint burn-down in progress |
