@@ -159,31 +159,7 @@ const ALLOWLIST = [
   },
   {
     "file": "components/ProcessEditor.jsx",
-    "line": 269,
-    "kind": "pending",
-    "reason": "round 2b conversion pending"
-  },
-  {
-    "file": "components/ProcessEditor.jsx",
-    "line": 274,
-    "kind": "pending",
-    "reason": "round 2b conversion pending"
-  },
-  {
-    "file": "components/ProcessEditor.jsx",
-    "line": 281,
-    "kind": "pending",
-    "reason": "round 2b conversion pending"
-  },
-  {
-    "file": "components/ProcessEditor.jsx",
-    "line": 1062,
-    "kind": "pending",
-    "reason": "round 2b conversion pending"
-  },
-  {
-    "file": "components/ProcessEditor.jsx",
-    "line": 1118,
+    "line": 277,
     "kind": "pending",
     "reason": "round 2b conversion pending"
   },
@@ -206,18 +182,6 @@ const ALLOWLIST = [
     "reason": "round 2b conversion pending"
   },
   {
-    "file": "components/FindReplace.jsx",
-    "line": 143,
-    "kind": "pending",
-    "reason": "round 2b conversion pending"
-  },
-  {
-    "file": "components/FindReplace.jsx",
-    "line": 194,
-    "kind": "pending",
-    "reason": "round 2b conversion pending"
-  },
-  {
     "file": "components/Explorer.jsx",
     "line": 485,
     "kind": "pending",
@@ -226,24 +190,6 @@ const ALLOWLIST = [
   {
     "file": "components/Explorer.jsx",
     "line": 501,
-    "kind": "pending",
-    "reason": "round 2b conversion pending"
-  },
-  {
-    "file": "components/EditorPane.jsx",
-    "line": 201,
-    "kind": "pending",
-    "reason": "round 2b conversion pending"
-  },
-  {
-    "file": "components/EditorPane.jsx",
-    "line": 452,
-    "kind": "pending",
-    "reason": "round 2b conversion pending"
-  },
-  {
-    "file": "components/EditorPane.jsx",
-    "line": 591,
     "kind": "pending",
     "reason": "round 2b conversion pending"
   },
@@ -316,24 +262,6 @@ const ALLOWLIST = [
   {
     "file": "components/CubeMapEditor.jsx",
     "line": 906,
-    "kind": "pending",
-    "reason": "round 2b conversion pending"
-  },
-  {
-    "file": "components/ProcessSummariesDialog.jsx",
-    "line": 31,
-    "kind": "pending",
-    "reason": "round 2b conversion pending"
-  },
-  {
-    "file": "components/ProcessSummariesDialog.jsx",
-    "line": 64,
-    "kind": "pending",
-    "reason": "round 2b conversion pending"
-  },
-  {
-    "file": "components/ProcessSummariesDialog.jsx",
-    "line": 94,
     "kind": "pending",
     "reason": "round 2b conversion pending"
   },

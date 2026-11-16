@@ -1,4 +1,4 @@
-import { apiFetch } from '@/lib/api'
+import { apiFetch, get, post } from '@/lib/api'
 import { useState, useRef, useEffect, useCallback } from 'react'
 import MonacoEditor from '@monaco-editor/react'
 import { useStore } from '@/store'
@@ -266,14 +266,10 @@ function DatasourcePreviewPanel({ ds, server, params }) {
     setLoading(true)
     try {
       if (type === 'TM1CubeView') {
-        const r = await apiFetch(`/api/view/preview-records?server=${enc(server)}&cube=${enc(name)}&view=${enc(ds?.view ?? '')}`, { method: 'POST', headers: hdrs })
-        const d = await r.json()
-        if (!r.ok) throw new Error(d.error || 'Could not read the view')
+        const d = await post(`/api/view/preview-records?server=${enc(server)}&cube=${enc(name)}&view=${enc(ds?.view ?? '')}`, {})
         setResult({ columns: d.columns, rows: d.rows, rowCount: d.rows.length, note: `the first records, as the process receives them · the view has ${d.viewRows.toLocaleString()} rows` })
       } else if (type === 'TM1DimensionSubset') {
-        const r = await apiFetch(`/api/subset/elements?server=${enc(server)}&dimension=${enc(name)}&name=${enc(ds?.subset ?? '')}`, { headers: hdrs })
-        const d = await r.json()
-        if (!r.ok) throw new Error(d.error || 'Could not read the subset')
+        const d = await get(`/api/subset/elements?server=${enc(server)}&dimension=${enc(name)}&name=${enc(ds?.subset ?? '')}`)
         const els = (Array.isArray(d) ? d : d.elements ?? []).map(e => e.name ?? e.Name ?? e)
         setResult({ columns: ['Element'], rows: els.slice(0, 200).map(e => [e]), rowCount: els.length })
       } else if (type === 'ASCII') {
@@ -1059,9 +1055,7 @@ export default function ProcessEditor({ tab }) {
     setErrorLogLoading(true)
     setErrorLogContent(null)
     try {
-      const r = await apiFetch(`/api/process/errorlog/content?server=${encodeURIComponent(tab.server)}&filename=${encodeURIComponent(errorLogFilename)}`, { headers: { 'x-ide-token': localStorage.getItem('tm1-token') ?? '' } })
-      const d = await r.json().catch(() => ({}))
-      if (!r.ok || d.error) throw new Error(d.error || r.statusText)
+      const d = await get(`/api/process/errorlog/content?server=${encodeURIComponent(tab.server)}&filename=${encodeURIComponent(errorLogFilename)}`)
       setErrorLogContent(d.content ?? '')
     } catch (e) {
       setErrorLogContent(`Failed to load error log: ${e.message}`)
@@ -1114,13 +1108,7 @@ export default function ProcessEditor({ tab }) {
           // Non-blocking reference integrity check
           const sections = {}
           CODE_TABS.forEach(({ key }) => { sections[key] = edits[key] ?? data[key] ?? '' })
-          const token = localStorage.getItem('tm1-token') ?? ''
-          apiFetch('/api/process/check-references', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'x-ide-token': token },
-            body: JSON.stringify({ server: tab.server, sections }),
-          })
-            .then(r => r.json())
+          post('/api/process/check-references', { server: tab.server, sections })
             .then(d => { d.warnings?.forEach(w => toast.warning(w.message, { duration: 8000 })) })
             .catch(() => {})
         },

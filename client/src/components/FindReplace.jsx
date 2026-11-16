@@ -1,4 +1,4 @@
-import { apiFetch } from '@/lib/api'
+import { get, post } from '@/lib/api'
 import { useState } from 'react'
 import { useStore } from '@/store'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
@@ -140,10 +140,7 @@ export default function FindReplace({ onClose }) {
   const { data: index, isFetching, refetch, error: searchError } = useQuery({
     queryKey: ['search-index', server],
     queryFn: async () => {
-      const r = await apiFetch(`/api/search/index?server=${enc(server)}`, { headers: { 'x-ide-token': localStorage.getItem('tm1-token') ?? '' } })
-      let d = {}
-      try { d = await r.json() } catch { /* non-JSON error page */ }
-      if (!r.ok || d.error) throw new Error(d.error || `${r.status} ${r.statusText}`)
+      const d = await get(`/api/search/index?server=${enc(server)}`)
       if (!Array.isArray(d.rules) || !Array.isArray(d.processes)) throw new Error('Unexpected search index response')
       return d
     },
@@ -191,14 +188,7 @@ export default function FindReplace({ onClose }) {
     }
 
     const save = async (url, body) => {
-      const r = await apiFetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-ide-token': localStorage.getItem('tm1-token') ?? '' },
-        body: JSON.stringify(body),
-      })
-      let d = {}
-      try { d = await r.json() } catch { /* non-JSON error page */ }
-      if (!r.ok || d.error) throw new Error(d.error || `${r.status} ${r.statusText}`)
+      const d = await post(url, body)
       return d
     }
 

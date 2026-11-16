@@ -55,3 +55,7 @@ export const apiFetch = (input, init = {}) => {
   if (!headers.has('x-ide-token')) headers.set('x-ide-token', authHeader()['x-ide-token'])
   return fetch(input, { ...init, headers })
 }
+
+export const put = (url, body) => fetch(url, {
+  method: 'PUT', headers: { 'Content-Type': 'application/json', ...authHeader() }, body: JSON.stringify(body),
+}).then(async r => { if (!r.ok) throw await extractError(r); return r.json() })

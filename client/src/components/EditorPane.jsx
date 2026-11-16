@@ -1,4 +1,4 @@
-import { apiFetch } from '@/lib/api'
+import { get, post } from '@/lib/api'
 import { useEffect, useRef, useState, useCallback } from 'react'
 import MonacoEditor from '@monaco-editor/react'
 import { useStore } from '@/store'
@@ -197,12 +197,7 @@ function ElementPicker({ server, dim, value, onChange, onCommit }) {
     if (elements !== null) return
     setLoading(true)
     try {
-      const token = localStorage.getItem('tm1-token') ?? ''
-      const r = await apiFetch(
-        `/api/elements?server=${encodeURIComponent(server)}&dimension=${encodeURIComponent(dim)}`,
-        { headers: { 'x-ide-token': token } }
-      )
-      const d = await r.json()
+      const d = await get(`/api/elements?server=${encodeURIComponent(server)}&dimension=${encodeURIComponent(dim)}`)
       setElems(Array.isArray(d) ? d.map(e => e.Name ?? e) : [])
     } catch { setElems([]) }
     finally { setLoading(false) }
@@ -449,15 +444,7 @@ function RulesEditor({ tab, onCursor }) {
       const staticErrors = validateRulesSyntax(content, { version: serverVersion })
       let tm1Errors = []
       try {
-        const r = await apiFetch('/api/rules/check', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-ide-token': localStorage.getItem('tm1-token') ?? '',
-          },
-          body: JSON.stringify({ server: tab.server, cube: tab.cube, rules: content }),
-        })
-        const d = await r.json()
+        const d = await post('/api/rules/check', { server: tab.server, cube: tab.cube, rules: content })
         tm1Errors = d.errors ?? []
       } catch { /* TM1 check failed — static errors still shown */ }
       if (seq !== checkSeqRef.current) return
@@ -587,13 +574,7 @@ function RulesEditor({ tab, onCursor }) {
           bumpRulesVersion(tab.server, tab.cube)
           toast.success('Rules saved', { id })
           // Non-blocking reference integrity check — warnings shown after save
-          const token = localStorage.getItem('tm1-token') ?? ''
-          apiFetch('/api/cube/rules/check-references', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'x-ide-token': token },
-            body: JSON.stringify({ server: tab.server, cube: tab.cube, rules: editor.getValue() }),
-          })
-            .then(r => r.json())
+          post('/api/cube/rules/check-references', { server: tab.server, cube: tab.cube, rules: editor.getValue() })
             .then(d => {
               if (d.warnings?.length) {
                 d.warnings.forEach(w => toast.warning(w.message, { duration: 8000 }))
