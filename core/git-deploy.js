@@ -17,7 +17,7 @@ const { driftCheck } = require('./git-drift')
 // target get refused at Review AND at Deploy.
 async function targetDrift(target, { token, gitUser = gitIdentity.user(), ideToken } = {}) {
     try {
-        const d = await driftCheck(target, { token, gitUser, ideToken })
+        const d = await driftCheck(target, { token, gitUser, ideToken, lock: false })
         if (d?.error) return { clean: false, entries: [], error: d.error }
         const entries = d?.entries ?? []
         return { clean: entries.length === 0, entries, deployed: d?.deployed ?? null }

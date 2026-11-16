@@ -16,7 +16,7 @@ const { makeClient } = require('./adapter_registry')
 const gitIdentity = require('./git-identity')
 const { git, authUrl, sanitize } = require('./git-repo')
 
-async function driftCheck(server, { token, gitUser = gitIdentity.user(), ideToken } = {}) {
+async function driftCheckUnlocked(server, { token, gitUser = gitIdentity.user(), ideToken } = {}) {
     const c = makeClient(server, ideToken)
     const st = await c.post('GitStatus', { Username: gitUser, Password: token })
     const repoUrl = st?.URL
@@ -86,6 +86,24 @@ async function driftCheck(server, { token, gitUser = gitIdentity.user(), ideToke
         return { server, deployed, drift: null, error: `git diff failed: ${sanitize(e.message, token)}` }
     } finally {
         fs.rmSync(work, { recursive: true, force: true })
+    }
+}
+
+// One drift check per target at a time. The live snapshot is a repo push, so it
+// must not race another check or a deploy. Deploy's internal targetDrift passes
+// lock:false because execute() already holds the target lock.
+async function driftCheck(server, { lock = true, ...opts } = {}) {
+    if (!lock) return driftCheckUnlocked(server, opts)
+    const lockMod = require('./git-lock')
+    try {
+        await lockMod.acquire(server, { by: opts.by ?? 'drift check', ideToken: opts.ideToken })
+    } catch (e) {
+        return { server, drift: null, busy: !!e.refused, error: e.message }
+    }
+    try {
+        return await driftCheckUnlocked(server, opts)
+    } finally {
+        await lockMod.release(server, { ideToken: opts.ideToken }).catch(() => {})
     }
 }
 

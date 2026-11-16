@@ -13,10 +13,10 @@ Found by code review, not by a failed deploy. Each line moves to **Fixed** as th
 - Step 4 — an unrecognised pull-plan operation now refuses instead of being ignored.
 - Step 5 — first pull records the pulled commit as the target's deploy anchor.
 - Step 6 — readiness findings now block the Git push route, and the setup screen disables Link/Commit while blockers remain.
+- Step 7 — standalone drift checks take the target's deploy lock; a concurrent check returns busy instead of racing the `prod-live` push.
 
 **Still open**
 
-- Step 7 — a drift check pushed `prod-live` without taking the target's deploy lock.
 - Step 8 — another user could close, resume or edit a change set.
 - Step 9 — single-assertion runs did not record history; assertion writes did not use the normal model-write gate; numeric fields were not validated.
 - Step 10 — two deploy surfaces and a Deploy History built from local package archives, not model deploy records.
@@ -152,7 +152,7 @@ test process, cleaned up immediately; with it removed, drift is **clean** and th
 
 One storage layer — the same Application-document mechanism assertions use (v11 `.blob` / `/Document/Content`, the 226/278/409 "already exists" handling). On a migrated server the model is the truth; a missing document **throws** (the migrated-marker pattern — never a silent gap). The local files stay as the read fallback until the migration is proven, then retire.
 
-**The deploy lock:** one deploy at a time per target, held in the target's own model, acquired before the pull, released on finish or failure, and shown to everyone in the wizard ("TM1_Test_PROD is being deployed by admin since HH:MM"). A second deploy to the same target is refused. The lock is also the model-writability gate — if the target's model can't be written, the deploy stops with a clear message. A lock older than ~30 min is treated as **stale** (a deploy that died with a backend, or a failed release) and can be **cleared** from the IDE, recording who/when in the deploy history — a stale lock can no longer block a target forever. **Caveat:** `acquire` is check-then-write, so two simultaneous deploys to the same target could both pass the check before either writes — accepted for small teams; a compare-and-swap would close the race if it ever matters.
+**The deploy lock:** one deploy at a time per target, held in the target's own model, acquired before the pull, released on finish or failure, and shown to everyone in the wizard ("TM1_Test_PROD is being deployed by admin since HH:MM"). A second deploy to the same target is refused. Standalone drift checks take the same lock (a deploy's internal drift check skips it because the deploy already holds it). The lock is also the model-writability gate — if the target's model can't be written, the deploy stops with a clear message. A lock older than ~30 min is treated as **stale** (a deploy that died with a backend, or a failed release) and can be **cleared** from the IDE, recording who/when in the deploy history — a stale lock can no longer block a target forever. **Caveat:** `acquire` is check-then-write, so two simultaneous deploys to the same target could both pass the check before either writes — accepted for small teams; a compare-and-swap would close the race if it ever matters.
 
 **Proof (round 2, plain English):**
 - A change set that deleted the dummy **"Test Process"** → committed → **deploy without approval refused** → approved (recorded in the model) → deployed → **Test Process deleted on PROD** by the change-set-scoped reconcile.

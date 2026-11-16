@@ -12,6 +12,7 @@ commits that mixed a fix into a feature are included too. New features are not l
 
 ### 2026-11-16
 
+- **drift** — A standalone drift check pushed the target's live state to `prod-live` without the target's deploy lock, so two checks or a check plus a deploy could race. Standalone checks now take the same lock (a deploy's internal check skips it because the deploy already holds it) and a concurrent check returns busy
 - **Git readiness** — Readiness findings were warnings in the old risk report and the Git push route did not scan at all, so a blocker could be linked/pushed. The Git push route now runs the readiness scan and refuses on blockers (returning the findings), readiness errors are blockers when the transport is Git, and the setup screen disables Link/Commit while the last scan has blockers
 - **deploy** — A successful first pull applied the repo but recorded no target anchor, so the next release said "no recorded deployed commit" and drift fell back to TM1's `DeployedCommit`. First pull now records the pulled commit through `git-state.recordDeploy` and returns it
 - **deploy** — The pull-plan check silently ignored operations it could not parse, so an unrecognised TM1 Git operation could ride along with a release. `parsePlanOp` now marks unknown operations and `execute()` refuses, listing the raw operations
