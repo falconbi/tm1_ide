@@ -1,4 +1,4 @@
-import { apiFetch } from '@/lib/api'
+import { post } from '@/lib/api'
 import { useMemo, useState, useCallback, useRef, useEffect, forwardRef, useImperativeHandle } from 'react'
 import {
   useElements, useElementsWithIndex, useEdges, useElementAttrValues, useHierarchies,
@@ -734,14 +734,7 @@ function AttrGrid({ tab, elements, edges, hierarchy, search = '', indexMap = nul
   const handleConvertToAlias = useCallback(async (attrName) => {
     if (!window.confirm(`Convert "${attrName}" from String to Alias type?\n\nAll values will be preserved.`)) return
     try {
-      const token = localStorage.getItem('tm1-token') ?? ''
-      const r = await apiFetch('/api/dimension/attribute/convert-to-alias', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-ide-token': token },
-        body: JSON.stringify({ server: tab.server, dimension: tab.dimension, attribute: attrName, hierarchy }),
-      })
-      const d = await r.json()
-      if (!r.ok) throw new Error(d.error)
+      const d = await post('/api/dimension/attribute/convert-to-alias', { server: tab.server, dimension: tab.dimension, attribute: attrName, hierarchy })
       toast.success(`Converted ${attrName} to Alias — ${d.converted} values preserved`)
       refetch()
     } catch (e) {
