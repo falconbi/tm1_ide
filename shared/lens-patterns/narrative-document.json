@@ -14,7 +14,7 @@
     "format": "Default number format: number, k$ or $",
     "writes": "The cubes the text is saved to"
   },
-  "example": {
+  "sample": {
     "heading": "Monthly commentary",
     "subtitle": "Total company \u00b7 Year 2",
     "cube": "Income Statement",

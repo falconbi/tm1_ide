@@ -18,7 +18,7 @@
     "unitLabel": "e.g. $000 (optional)",
     "notes": "[{ number, title, text }] \u2014 notes to the accounts"
   },
-  "example": {
+  "sample": {
     "heading": "Annual accounts",
     "subtitle": "Draft \u2014 numbers read live from TM1",
     "entity": "Smartco Retail Ltd",

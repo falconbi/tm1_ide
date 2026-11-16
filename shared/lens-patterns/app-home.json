@@ -12,7 +12,7 @@
     "needsMe": "[{ label, mdx, groups, open }] \u2014 shown only to people in groups, and only when the count is above 0; '{n}' in the label is replaced by the count",
     "pages": "[{ lens, title, description, groups }] \u2014 a tile per Lens in the app; groups limits who sees it"
   },
-  "example": {
+  "sample": {
     "heading": "Capex",
     "subtitle": "Capital expenditure requests and approvals",
     "note": "Requests for next year close on 15 November.",

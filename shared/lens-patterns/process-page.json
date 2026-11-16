@@ -10,7 +10,7 @@
     "note": "A short note, e.g. the timetable (optional)",
     "steps": "[{ title, lens, who, groups, counts: [{ label, mdx }], remaining: { label, mdx } }] \u2014 in order; remaining: when its count is 0 the step shows Done; groups marks the step as the viewer's own"
   },
-  "example": {
+  "sample": {
     "heading": "Budget 2027",
     "subtitle": "Year 2 \u00b7 the steps in order",
     "note": "Targets by 1 Nov \u00b7 budgets by 15 Nov \u00b7 capex approved by 30 Nov.",

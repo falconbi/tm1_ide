@@ -3325,16 +3325,16 @@ app.get('/api/cubemap/model', async (req, res) => {
 // deletes are model changes: they need a writable server and an open change set,
 // and are recorded in it.
 
-// Lens examples — reference Lenses to start a new one from (a copy, never a link).
-app.get('/api/lens-examples', (req, res) => {
-    try { res.json(require('./core/lens_examples').listExamples()) } catch (e) { res.status(500).json({ error: e.message }) }
+// Lens patterns — reference Lenses to start a new one from (a copy, never a link).
+app.get('/api/lens-patterns', (req, res) => {
+    try { res.json(require('./core/lens_patterns').listPatterns()) } catch (e) { res.status(500).json({ error: e.message }) }
 })
-app.get('/api/lens-examples/:name', (req, res) => {
+app.get('/api/lens-patterns/:name', (req, res) => {
     try {
-        const ex = require('./core/lens_examples')
-        const meta = ex.listExamples().find(e => e.name === req.params.name)
-        if (!meta) return res.status(404).json({ error: `Unknown Lens example "${req.params.name}"` })
-        res.json({ meta, html: ex.readExample(req.params.name) })
+        const ex = require('./core/lens_patterns')
+        const meta = ex.listPatterns().find(e => e.name === req.params.name)
+        if (!meta) return res.status(404).json({ error: `Unknown Lens pattern "${req.params.name}"` })
+        res.json({ meta, html: ex.readPattern(req.params.name) })
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 

@@ -14,7 +14,7 @@
     "writes": "The cubes it may change \u2014 normally just the cube",
     "height": "Grid height, e.g. 520px (optional)"
   },
-  "example": {
+  "sample": {
     "heading": "Capital assumptions",
     "subtitle": "Asset lives and notes by asset type",
     "cube": "Capital",

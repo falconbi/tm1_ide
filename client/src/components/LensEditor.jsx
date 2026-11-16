@@ -153,7 +153,7 @@ export default function LensEditor({ tab }) {
   const [cube, setCube] = useState(tab.cube ?? '')
   const [cubes, setCubes] = useState([])
   // A saved Lens starts on a plain placeholder (no bridge calls) until it loads —
-  // never on the example Lens, whose requests would race the real one.
+  // never on a pattern, whose requests would race the real one.
   const [html, setHtml] = useState(tab.name ? LOADING_LENS : DEFAULT_LENS)
   const [generating, setGenerating] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -176,7 +176,7 @@ export default function LensEditor({ tab }) {
       .then(d => setCubes(Array.isArray(d) ? d : []))
       .catch(e => setStartError(e.message))
     if (!tab.name) {
-      readJson('/api/lens-examples')
+      readJson('/api/lens-patterns')
         .then(d => setStarts(s => ({ ...s, examples: Array.isArray(d) ? d : [] })))
         .catch(e => setStartError(e.message))
       readJson(`/api/lenses?server=${encodeURIComponent(tab.server)}`)
@@ -278,7 +278,7 @@ export default function LensEditor({ tab }) {
     if (!pick) return
     const [kind, src] = [pick.slice(0, pick.indexOf(':')), pick.slice(pick.indexOf(':') + 1)]
     try {
-      const url = kind === 'example' ? `/api/lens-examples/${encodeURIComponent(src)}` : `/api/lenses/${encodeURIComponent(src)}?server=${encodeURIComponent(tab.server)}&_=${Date.now()}`
+      const url = kind === 'example' ? `/api/lens-patterns/${encodeURIComponent(src)}` : `/api/lenses/${encodeURIComponent(src)}?server=${encodeURIComponent(tab.server)}&_=${Date.now()}`
       const r = await fetch(url, { headers: { 'x-ide-token': token() } })
       const d = await r.json()
       if (!r.ok) throw new Error(d.error || r.statusText)

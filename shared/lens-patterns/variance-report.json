@@ -19,7 +19,7 @@
     "format": "Number format: number, k$ or $",
     "writes": "The cube comments are saved to, if any"
   },
-  "example": {
+  "sample": {
     "heading": "Expenses against target",
     "subtitle": "Year to date",
     "cube": "Income Statement",

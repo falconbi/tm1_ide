@@ -16,7 +16,7 @@
     "table": "{ title, rows: { dimension, under | level, label }, columns: { dimension, members, labels }, format } \u2014 a table",
     "format": "Number format: number, k$ or $"
   },
-  "example": {
+  "sample": {
     "heading": "Profit dashboard",
     "subtitle": "Year to date against target",
     "cube": "Income Statement",

@@ -42,7 +42,7 @@ AI features (commentary, ask-a-question) stay optional — switch-on extras wher
 - **A general corporate style** (colours, number formats, finance conventions), applied by the toolkit to every Lens.
 - **Every client's Lenses are built to fit their own process** (mostly by the AI), as thin code arranging components. Each Lens's code is its own, stored in the model.
 - Guardrails stay in the platform (TM1 security, declared writes and processes, change sets).
-- Done Oct 20: the template library, template editor and template-copy-into-the-model were removed; Target-Input, Budget-Input and Capex-Requests on 24Retail_Lens converted to stand-alone Lenses (same code); the template code kept as **reference examples** (`shared/lens-examples/`, MCP `list_lens_examples`). Next: move the shared behaviour into toolkit components, starting with line items + approval.
+- Done Oct 20: the template library, template editor and template-copy-into-the-model were removed; Target-Input, Budget-Input and Capex-Requests on 24Retail_Lens converted to stand-alone Lenses (same code); the template code kept as **reference examples** (now called patterns: `shared/lens-patterns/`, MCP `list_lens_patterns`). Next: move the shared behaviour into toolkit components, starting with line items + approval.
 - The configuration and Viewfinder text below is history, superseded by this decision.
 
 **Lens configuration — the idea that ties it together (James, Oct 13: "like a configuration file with the Lens"):**

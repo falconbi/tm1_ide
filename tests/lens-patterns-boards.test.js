@@ -4,9 +4,9 @@ const assert = require('node:assert/strict')
 const fs = require('fs')
 const path = require('path')
 const { JSDOM } = require('jsdom')
-const { readExample: readTemplate } = require('../core/lens_examples')
+const { readPattern: readTemplate } = require('../core/lens_patterns')
 
-// ── Lens examples, clicked through like a person ─────────────────────────
+// ── Lens patterns, clicked through like a person ─────────────────────────
 // Each board runs with the REAL toolkit (static/lens-kit/lens-kit.js), a config
 // and a fake TM1 behind the bridge; the test clicks and types, then checks what
 // reached TM1 (the bridge calls). A broken button in a board fails here, not in

@@ -4,9 +4,9 @@ const assert = require('node:assert/strict')
 const fs = require('fs')
 const path = require('path')
 const { JSDOM } = require('jsdom')
-const { readExample: readTemplate, listExamples: listTemplates } = require('../core/lens_examples')
+const { readPattern: readTemplate, listPatterns: listTemplates } = require('../core/lens_patterns')
 
-// ── The Lens examples, clicked through like a person ───────────
+// ── The Lens patterns, clicked through like a person ───────────
 // Each template runs with the REAL toolkit and a fake TM1 behind the bridge;
 // the test reads what it shows and checks exactly what reaches TM1 (the bridge
 // calls) when someone saves or clicks.
@@ -68,14 +68,14 @@ const common = (method) => {
   return undefined
 }
 
-test('every example has its code, what it shows and an example config', () => {
+test('every pattern has its code, what it shows and an example config', () => {
   const list = listTemplates()
   for (const name of ['input-form', 'line-item-form', 'assumptions-table', 'dashboard', 'variance-report', 'detail-list', 'app-home', 'process-page', 'narrative-document', 'disclosure-accounts']) {
     const t = list.find(x => x.name === name)
     assert.ok(t, `${name} is in the library`)
     assert.ok(t.title && t.description && t.icon, `${name} has a title, description and icon`)
     assert.ok(t.settings && Object.keys(t.settings).length, `${name} explains its settings`)
-    assert.ok(t.example && Object.keys(t.example).length, `${name} has an example config`)
+    assert.ok(t.sample && Object.keys(t.sample).length, `${name} has a sample config`)
     assert.match(readTemplate(name), /<script src="\/lens-kit\/lens-kit\.js"><\/script>/, `${name} uses the toolkit`)
   }
 })

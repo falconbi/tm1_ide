@@ -17,7 +17,7 @@
     "format": "Number format: number, k$ or $",
     "height": "Grid height (optional)"
   },
-  "example": {
+  "sample": {
     "heading": "Capex requests \u2014 detail",
     "subtitle": "Every request line, all stores you can see",
     "cube": "Capital",
