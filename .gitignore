@@ -93,3 +93,6 @@ data/lens-prefs.json
 
 # AI process summaries (runtime knowledge, regenerate/review — not source)
 data/process-summaries.json
+
+# Personal Claude Code settings and memory (CLAUDE.md at the root is shared; this folder is not)
+.claude/

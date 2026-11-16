@@ -498,4 +498,4 @@ commits that mixed a fix into a feature are included too. New features are not l
 - **fix** — Σ toggle bypasses tree view to show sorted flat list
 - **fix** — Σ toggle pushes consolidated elements to bottom of subset list
 - **fix** — Subset tree expandable consolidations + compact tab bar with hide toggle
-- change_log.js crashed on a fresh clone: it opened data/change_log.db without creating the git-ignored data/ folder (first IDE start, and CI). Now creates it. (17 Nov 2026)
+- **fix** — change_log.js crashed on a fresh clone: it opened data/change_log.db without creating the git-ignored data/ folder (first IDE start, and CI). Now creates it. (17 Nov 2026)
