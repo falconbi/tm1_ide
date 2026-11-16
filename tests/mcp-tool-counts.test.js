@@ -4,6 +4,7 @@ const assert = require('node:assert/strict')
 const fs = require('fs')
 const path = require('path')
 const guard = require('../tools/tm1mcp/guard')
+const { buildTable } = require('../tools/tm1mcp/tool-table')
 
 test('the MCP docs state the actual read/write tool counts', () => {
     const doc = fs.readFileSync(path.join(__dirname, '..', 'docs', 'ide', 'MCP_SERVER.md'), 'utf8')
@@ -12,4 +13,10 @@ test('the MCP docs state the actual read/write tool counts', () => {
     assert.match(doc, new RegExp(`## Tool catalog \\(${reads + writes}: ${reads} read, ${writes} write\\)`))
     assert.match(doc, new RegExp(`${reads} read tools only`))
     assert.match(doc, new RegExp(`${writes} write tools`))
+})
+
+test('the generated tool inventory matches guard.js and registry.js', () => {
+    const doc = fs.readFileSync(path.join(__dirname, '..', 'docs', 'ide', 'MCP_SERVER.md'), 'utf8')
+    assert.ok(doc.includes(buildTable()), 'run node tools/tm1mcp/tool-table.js --write')
+    assert.doesNotMatch(doc, /68 tools|all 68/)
 })
