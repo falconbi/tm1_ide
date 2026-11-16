@@ -141,23 +141,6 @@ function register(server, { client, ok, esc: odataKey, logChange, requireChangeS
     )
 
     server.tool(
-        'check_feeders',
-        'Recalculate feeder propagation for all of a cube\'s rules (the REST equivalent of Architect "Check Feeders"). ' +
-        'Run this after writing or changing feeders — it makes rule-calculated leaf values visible to consolidations and cross-cube reads. Does not need a change set.',
-        { cube: z.string().describe('Cube name') },
-        async ({ cube }) => {
-            try {
-                await client().checkFeedersForRules(cube)
-                return ok(`Feeders recalculated for "${cube}". Verify consolidated totals with read_cells.`)
-            } catch (e) {
-                const m = e.response?.data?.error?.message ?? e.message
-                if (/not supported|resolved|404/i.test(m)) return ok(`Feeder recalculation is not supported on this TM1 version (${m}).`)
-                throw e
-            }
-        }
-    )
-
-    server.tool(
         'trace_feeders',
         'Show which cells feed a given cube intersection — the answer to "is this cell fed, and from where". ' +
         'An empty result for a cell that has a rule value means it is under-fed (the consolidation above it will read blank).',

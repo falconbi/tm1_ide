@@ -1569,11 +1569,6 @@ return (d.value ?? [])
         return { warnings }
     }
 
-    // Recalculates feeder propagation for all rules in the cube (equivalent to Architect "Check Feeders")
-    async checkFeedersForRules(cube) {
-        return this.post(`Cubes('${odataKey(cube)}')/tm1.CheckFeedersForRules`, {})
-    }
-
     // dimElemPairs: [{ dim, element }, ...] — returns list of cells feeding this intersection
     async checkFeedersOfCell(cube, dimElemPairs) {
         const expand = [

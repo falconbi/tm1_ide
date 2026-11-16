@@ -27,7 +27,7 @@ const READ_TOOLS = new Set([
     // data
     'read_cells', 'execute_view',
     // checks and diagnostics
-    'check_rules_syntax', 'check_feeders', 'trace_feeders', 'get_process_log', 'get_active_threads',
+    'check_rules_syntax', 'trace_feeders', 'get_process_log', 'get_active_threads',
     'get_transaction_log', 'list_error_logs', 'find_dimension_usage', 'find_cube_usage',
     'find_process_usage', 'search_ti_code',
     // governance (read side)

@@ -137,7 +137,7 @@ Writes are unchanged: change-set gated, read-only (PROD-posture) servers refuse 
 
 | Mode | Tools offered | Default when |
 |------|---------------|--------------|
-| `readonly` | the 39 read tools only, or 37 when no target servers are named (see below). Write tools are **not registered**, so the agent never sees them | **always**, unless `MCP_MODE=build` is set |
+| `readonly` | the 38 read tools only, or 36 when no target servers are named (see below). Write tools are **not registered**, so the agent never sees them | **always**, unless `MCP_MODE=build` is set |
 | `build` | all 68 | only when `MCP_MODE=build` is set |
 
 **Read-only is the default on every server.** An AI connected through this MCP can only read
@@ -173,7 +173,7 @@ password, or a server reached through PAW) it stops — it **never** falls back 
 login. Start-up prints the outcome, e.g.:
 
 ```
-tm1mcp: connected to "MyServer" — mode readonly, 37 tools (not offered: 26 write tools,
+tm1mcp: connected to "MyServer" — mode readonly, 36 tools (not offered: 29 write tools,
         2 deploy checks — name target servers to offer them);
         reads as TM1 user "east_mgr" (TM1 security applies)
 ```
@@ -236,7 +236,7 @@ keep forever) are removed at start-up and once a day.
 writes the builder's; a reader that can't be honoured fails closed; denylisted cubes are refused
 on every way in; masking masks, rounds and blocks, and covers parents; passwords are stripped
 from every answer; reads are audited, kept 90 days, and never touch the change set. Separately,
-`safety-mcp-write-tools.test.js` runs every one of the 26 write tools once against a fake TM1, so
+`safety-mcp-write-tools.test.js` runs every one of the 29 write tools once against a fake TM1, so
 a tool that can't run at all (like the old `esc is not defined` bug) fails a test. An optional live check (`TM1_MCP_LIVE_SERVER`,
 `TM1_MCP_LIVE_USER`, `TM1_MCP_LIVE_PASSWORD`) proves a restricted user sees fewer cubes than
 the service login.
@@ -436,9 +436,8 @@ attribute read (`=> DB(cube, …, ATTRS('Dim', !Dim, 'attr'), …)`). If the att
 for any source element, the feeder writes to a non-existent element and fails at load — give
 unmatched elements a sentinel value instead of blank.
 
-`check_feeders` (recalculate feeder propagation — run after writing feeders) and
-`trace_feeders` (which cells feed an intersection; empty = under-fed) use REST endpoints that
-exist only on newer PA — they degrade with a clear message on servers that lack them.
+`trace_feeders` (which cells feed an intersection; empty = under-fed) uses a REST endpoint that
+exists only on newer PA — it degrades with a clear message on servers that lack it.
 
 ---
 
@@ -472,7 +471,7 @@ worked example (e.g. an Excel); the tool just enforces them.
 
 ---
 
-## Tool catalog (68: 39 read, 29 write)
+## Tool catalog (67: 38 read, 29 write)
 
 In `readonly` mode only the read tools are offered. The split is defined in
 `tools/tm1mcp/guard.js` (`READ_TOOLS` / `WRITE_TOOLS`).
@@ -546,7 +545,6 @@ In `readonly` mode only the read tools are offered. The split is defined in
 | `check_rules_syntax` | static lint + server CheckRules, no write |
 | `add_assertion` / `list_assertions` / `remove_assertion` | manage stored expected-result checks |
 | `run_assertions` | run the stored assertions — pass/fail against live cells |
-| `check_feeders` | recalculate feeder propagation for a cube's rules (newer PA only) |
 | `trace_feeders` | which cells feed an intersection — empty = under-fed (newer PA only) |
 
 ### Diagnostics

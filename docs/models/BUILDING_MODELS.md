@@ -928,8 +928,8 @@ element format. All six cubes dropped and rebuilt.
 - **Can't `CellPutN` to a consolidation.** `WFP Entity` has `Group` (C); seeding
   assumptions looped `Group` → "Cell type is consolidated". Write leaf entities
   only; rules read at a leaf (the position's Home Entity).
-- **Neither `tm1.CheckFeedersForRules` nor `tm1.CheckFeedersOfCell` exists on
-  this v11** — `check_feeders` / `trace_feeders` both fail. Only
+- **`tm1.CheckFeedersOfCell` does not exist on this v11** — `trace_feeders`
+  fails. The old `check_feeders` tool was removed for the same reason. Only
   `CubeProcessFeeders` (the TI function) works. Diagnose under-feeding by reading
   the consolidation one level at a time (single position → position total →
   entity total) to find where it drops to 0.
