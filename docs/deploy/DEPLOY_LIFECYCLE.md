@@ -3,6 +3,21 @@
 Plain-English record of the agreed end-to-end deployment model. Source decisions:
 `docs/deploy/TM1_GIT_EVALUATION.md`, `docs/ide/IMPROVEMENTS.md` 10.1 (hybrid) + 10.2 (readiness).
 
+## Known gaps (16 Nov 2026) — being fixed in review area 07
+
+Found by code review, not by a failed deploy. Each line moves to **Fixed** as the fix lands.
+
+- Step 2 — deploy `source` was not tied to the approved change set; reconcile/control checks could be skipped.
+- Step 3 — attribute values were not written to the change set; the manifest missed subset/view/chore deletes and read attribute fields backwards.
+- Step 4 — an unrecognised pull-plan operation was ignored instead of refusing the deploy.
+- Step 5 — first pull did not record the target's deployed commit, so the next release had no anchor.
+- Step 6 — readiness findings did not block a Git push; first-pull safety analysis was unreachable.
+- Step 7 — a drift check pushed `prod-live` without taking the target's deploy lock.
+- Step 8 — another user could close, resume or edit a change set.
+- Step 9 — single-assertion runs did not record history; assertion writes did not use the normal model-write gate; numeric fields were not validated.
+- Step 10 — two deploy surfaces and a Deploy History built from local package archives, not model deploy records.
+- Round 2 — a fresh IDE cannot yet read model-owned governance without local migration markers.
+
 ## The rules
 
 1. **A release ships exactly its change set's objects.** A deploy never carries
@@ -32,6 +47,8 @@ Plain-English record of the agreed end-to-end deployment model. Source decisions
 | The IDE | governance (change sets, risk, approval, readiness, Model Health) + the three gaps | no model data — connections, secrets, preferences, cache only |
 
 ## Proven end to end (5 Oct 2026)
+
+Proven on the happy path from one IDE and one user; the gaps below were found by code review, not by a failed deploy.
 
 The full single-developer loop was exercised on the lab WFP pair (TM1_Test_DEV → TM1_Test_PROD),
 unaided, with one attribute value and one delete (the two parts TM1 Git doesn't do):
