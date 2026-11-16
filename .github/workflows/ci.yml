@@ -44,18 +44,17 @@ jobs:
       - name: Test
         run: npm test
 
-      - name: Lint ratchet (baseline 133 — must only go down)
+      - name: Lint ratchet (must only go down)
         working-directory: client
-        env:
-          LINT_BASELINE: 133
         run: |
+          BASELINE=$(node -p "require('./lint-baseline.json').problems")
           COUNT=$(npm run lint:count 2>&1 | grep -oE '[0-9]+' | tail -1)
-          echo "lint problems: ${COUNT} (baseline ${LINT_BASELINE})"
+          echo "lint problems: ${COUNT} (baseline ${BASELINE})"
           if [ -z "$COUNT" ]; then
             echo "Could not read the lint problem count — inspect npm run lint:count."
             exit 1
           fi
-          if [ "$COUNT" -gt "$LINT_BASELINE" ]; then
-            echo "Lint regressed: ${COUNT} > ${LINT_BASELINE}. Lower the baseline in docs/ide/LINT.md AND here in .github/workflows/ci.yml together, only when lint improves."
+          if [ "$COUNT" -gt "$BASELINE" ]; then
+            echo "Lint regressed: ${COUNT} > ${BASELINE}. Lower client/lint-baseline.json only when lint improves."
             exit 1
           fi
