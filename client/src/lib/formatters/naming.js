@@ -361,9 +361,9 @@ export const IBM_TYPES = {
   'abs':'rules','acos':'rules','asin':'rules','atan':'rules','cos':'rules','exp':'rules','int':'rules','isund':'rules','ln':'rules','log':'rules','max':'rules','min':'rules','mod':'rules','rand':'rules','round':'rules','roundp':'rules','sign':'rules','sin':'rules','sqrt':'rules','tan':'rules','undef':'rules','undeffn':'rules',
   'consolidatedavg':'rules','consolidatedcount':'rules','consolidatedmax':'rules','consolidatedmin':'rules',
   'date':'rules','dates':'rules','day':'rules','dayno':'rules','month':'rules','now':'rules','time':'rules','timst':'rules','today':'rules','year':'rules',
-  'char':'rules','code':'rules','delet':'rules','fill':'rules','insrt':'rules','long':'rules','lower':'rules','numbertostring':'rules','numbertostringex':'rules','scan':'rules','str':'rules','subst':'rules','trim':'rules','upper':'rules',
-  'cubeexists':'rules','dimensionelementexists':'rules','dimensionelementsortorder':'rules','dimensionhierarchysortorder':'rules','elcomp':'rules','elcompn':'rules','ellev':'rules','elisanc':'rules','elispar':'rules','elpar':'rules','elparn':'rules','elweight':'rules','tabdim':'rules','tidy':'rules',
-  'logoutput':'rules',
+  'char':'rules','code':'rules','delet':'rules','fill':'rules','insrt':'rules','long':'rules','lower':'rules','numbertostring':'ti','numbertostringex':'rules','scan':'rules','str':'rules','subst':'rules','trim':'rules','upper':'rules',
+  'cubeexists':'ti','dimensionelementexists':'ti','dimensionelementsortorder':'rules','dimensionhierarchysortorder':'rules','elcomp':'rules','elcompn':'rules','ellev':'rules','elisanc':'rules','elispar':'rules','elpar':'rules','elparn':'rules','elweight':'rules','tabdim':'rules','tidy':'rules',
+  'logoutput':'ti',
   'while':'ti','end':'ti','break':'ti','executeprocess':'ti','processreturncode':'ti','processerror':'ti','processbreak':'ti','processcontinue':'ti','processexit':'ti',
   'asciidelete':'ti','asciioutput':'ti','asciiread':'ti','asctowide':'ti','filedelete':'ti','fileexists':'ti','removedirectory':'ti','textoutput':'ti','widedelete':'ti','wideread':'ti','widetoasc':'ti','read':'ti','write':'ti',
   'batchupdatefinish':'ti','batchupdatestart':'ti','cellincrementn':'ti','cellputn':'ti','cellputs':'ti','cellputsn':'ti','cellgetn':'ti','cellgets':'ti','cellsetdn':'ti','cellsetds':'ti',
@@ -384,11 +384,46 @@ export const IBM_TYPES = {
   'currentmember':'mdx','parent':'mdx','ancestor':'mdx','cousin':'mdx','firstchild':'mdx','lastchild':'mdx','firstsibling':'mdx','lastsibling':'mdx','prevmember':'mdx','nextmember':'mdx','defaultmember':'mdx',
   'name':'mdx','uniquename':'mdx','caption':'mdx','ordinal':'mdx','item':'mdx','properties':'mdx','dimension':'mdx','hierarchy':'mdx','level':'mdx','levels':'mdx',
   'count':'mdx','sum':'mdx','avg':'mdx','aggregate':'mdx','coalesceempty':'mdx','validmeasure':'mdx',
-  'iif':'mdx','isempty':'mdx','isancestor':'mdx','isleaf':'mdx','isgeneration':'mdx','islevel':'mdx','isparent':'mdx','issibling':'mdx','ischild':'mdx',
+  'iif':'mdx','isempty':'mdx','isancestor':'mdx','isleaf':'rules','isgeneration':'mdx','islevel':'mdx','isparent':'mdx','issibling':'mdx','ischild':'mdx',
   'strtomember':'mdx','strtoset':'mdx','strtotuple':'mdx','membertostr':'mdx','settostr':'mdx','tupletostr':'mdx',
   'periodstodate':'mdx','parallelperiod':'mdx','lastperiods':'mdx','mtd':'mdx','qtd':'mdx','ytd':'mdx','wtd':'mdx',
   'linregintercept':'mdx','linregpoint':'mdx','linregr2':'mdx','linregslope':'mdx','linregvariance':'mdx',
 }
+
+// Names that are not in shared/tm1-function-catalog.json but are legitimate
+// casing entries: TM1 flow keywords, MDX functions (their own catalog), and
+// older TI names kept for compatibility. The catalog-consumer test treats this
+// as the explicit allow-list so a new invented name cannot slip in.
+const IBM_FLOW_KEYWORDS = [
+  'if', 'elseif', 'else', 'endif', 'continue', 'stet', 'feeders', 'skipcheck',
+  'while', 'end', 'break',
+]
+const IBM_LEGACY_NAMES = [
+  'undeffn', 'numbertostringex', 'dimensionelementsortorder', 'dimensionhierarchysortorder',
+  'tidy', 'processreturncode', 'processcontinue', 'processexit', 'asciiread', 'asctowide',
+  'filedelete', 'fileexists', 'removedirectory', 'widedelete', 'wideread', 'widetoasc',
+  'read', 'write', 'batchupdatefinish', 'batchupdatestart', 'cellputsn', 'cellsetdn',
+  'cellsetds', 'cubecomponentadd', 'cubecomponentdelete', 'cubecreatedatacopy',
+  'cubedatacopy', 'cubesaveas', 'rulesloadoptimization', 'dimensionelementcreate',
+  'elementcomponentadd', 'elementcomponentdelete', 'elementcreate', 'elementdelete',
+  'elementinsert', 'elementupdate', 'newelementinsert', 'setelement',
+  'elementattributedelete', 'elementattributeinsert', 'elementattributegetn',
+  'elementattributegets', 'elementattributeputn', 'elementattributeputs',
+  'hierarchyelementcreate', 'subsetaliasgetsort', 'subsetgetelement', 'subsettomdx',
+  'subsetisallset', 'createtemporarysubsetbymdx', 'viewextract', 'unpublishview',
+  'refreshmdxview', 'viewcolumnsuppresszeroset', 'viewrowsuppresszeroset',
+  'viewextractskipconsolidatedstringset', 'viewsetdn', 'viewsetds', 'viewtitlesubsetassign',
+  'addclient', 'deleteclient', 'assignclienttogroup', 'removeclientfromgroup', 'addgroup',
+  'deletegroup', 'assigngrouptoroles', 'removegroupfromroles', 'setpwd', 'choreerror',
+  'serverrename', 'servershutdown', 'getusenamedtailors', 'setnamedtailor',
+  'setusenamedtailors', 'numberoftailors', 'lock', 'lockname', 'periods', 'error', 'save',
+]
+
+export const IBM_KEYWORDS = new Set([
+  ...IBM_FLOW_KEYWORDS,
+  ...IBM_LEGACY_NAMES,
+  ...Object.entries(IBM_TYPES).filter(([, type]) => type === 'mdx').map(([name]) => name),
+])
 
 const STORAGE_KEY = 'tm1-ide-naming-dictionary'
 

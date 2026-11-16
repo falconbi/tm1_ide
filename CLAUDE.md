@@ -217,7 +217,7 @@ whether `shared/tm1-function-catalog.json` already has (or should have) it.
 | `isBuiltInTM1Function` | `client/src/lib/ti-validator.js` | `Object.prototype.hasOwnProperty.call(TI_CATALOG, name.toUpperCase())` — no separate allowlist |
 | `SIMULATED_FNS` | `client/src/lib/ti-interpreter.js` | Hand-written JS implementations (can't be derived — it's *behavior*, not metadata) but every key must correspond to a real catalog entry; don't add a simulated function that isn't in the catalog |
 | Snippets | `client/src/lib/tm1-snippets.js` | Hand-curated (nicer placeholder names than a generic builder), but every function name/arity used in a snippet body must match the catalog |
-| Casing dictionary | `client/src/lib/formatters/naming.js` | Independent list (controls capitalization, not validation) — should agree with the catalog's real names, checked periodically, not auto-derived (different purpose: casing preference, not existence) |
+| Casing dictionary | `client/src/lib/formatters/naming.js` | Controls capitalization, not validation. Every entry must be a catalog name or listed in `IBM_KEYWORDS`; `tests/catalog-consumers.test.mjs` also checks `IBM_TYPES` language labels against the catalog |
 
 `config/function-catalog-overrides.json` + `client/src/lib/catalog-runtime.js` still provide the **user-editable override layer** on top of `RULES_CATALOG`/`TI_CATALOG` (additions/overrides/deletions persisted via Catalog Admin) — unchanged by this rebuild. It does not yet reach the other consumers in the table above (a known, pre-existing gap, not introduced by this rebuild).
 
