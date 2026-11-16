@@ -43,7 +43,15 @@ function register(server, { client, ok, policy }) {
         {},
         async () => {
             const threads = await client().getThreads()
-            return ok(threads.value ?? threads)
+            const redact = name => (typeof name === 'string' && !may('processes', name)) ? '(not visible)' : name
+            return ok((threads.value ?? threads).map(t => {
+                const out = { ...t }
+                if (out.Process && typeof out.Process === 'object') out.Process = { ...out.Process, Name: redact(out.Process.Name) }
+                else if (typeof out.Process === 'string') out.Process = redact(out.Process)
+                if ('ProcessName' in out) out.ProcessName = redact(out.ProcessName)
+                if ('Function' in out) out.Function = redact(out.Function)
+                return out
+            }))
         }
     )
 

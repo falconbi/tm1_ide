@@ -12,6 +12,7 @@ commits that mixed a fix into a feature are included too. New features are not l
 
 ### 2026-11-16
 
+- **MCP related objects** — Cube dimensions, chore steps, and active-thread process/function fields leaked names the visibility policy denies. They now filter or show `(not visible)`; a view on an allowed cube remains fully readable by design
 - **MCP attribute values** — `build_dimension` and `add_elements` wrote attribute values (including default Format values) without change-log entries, so MCP-built attributes could not reach the target through the deploy manifest. Every MCP attribute write now goes through one `logAttributeValue` helper that records before/after as `ATTRIBUTE_VALUE_SET`
 - **change sets** — The IDE close route wrote the model-owned closed record while the MCP close only wrote the local log, so agent-closed change sets were invisible to a fresh IDE. Both now call one `closeChangeSet` service that persists the model record before closing locally
 - **MCP tools** — `check_feeders` was classified read-only but called a feeder recalculation endpoint that does not exist on TM1 v11. It was removed, with its unused `TM1Client` method, and the docs/tool counts now derive from `guard.js` with a test preventing drift

@@ -443,6 +443,8 @@ exists only on newer PA — it degrades with a clear message on servers that lac
 
 Attribute values written by MCP build tools (`build_dimension`, `add_elements`, `set_attribute_values`, including default `Format` values) are logged as `ATTRIBUTE_VALUE_SET` entries with before/after, so the deploy reconcile sees the same manifest pairs as the IDE.
 
+Related-object names follow the same visibility policy: cube dimensions, chore steps, and active-thread process/function fields are filtered or shown as `(not visible)` when the policy denies them. A view on an allowed cube is readable in full (including member names), by design — the cube is the access boundary, not the view object.
+
 ## Model assertions (`core/assertions.js`)
 
 The rules lint checks that a rule is *written* correctly. Assertions check that the model

@@ -39,7 +39,7 @@ function register(server, { client, ok, esc: odataKey, policy }) {
                 `Cubes('${odataKey(cube)}')/Dimensions`,
                 { '$select': 'Name' }
             )
-            return ok((data.value ?? []).map(d => d.Name))
+            return ok((data.value ?? []).map(d => d.Name).filter(n => may('dimensions', n)))
         }
     )
 
@@ -210,11 +210,14 @@ function register(server, { client, ok, esc: odataKey, policy }) {
                 active:     c.Active,
                 frequency:  c.Frequency,
                 start_time: c.StartTime,
-                steps:      (c.Tasks ?? c.Steps ?? []).map(s => ({
-                    step:    s.Step ?? s.StepNumber,
-                    process: s.Process?.Name ?? s.ProcessName,
-                    params:  s.Parameters,
-                })),
+                steps:      (c.Tasks ?? c.Steps ?? []).map(s => {
+                    const process = s.Process?.Name ?? s.ProcessName
+                    return {
+                        step: s.Step ?? s.StepNumber,
+                        process: process && !may('processes', process) ? '(not visible)' : process,
+                        params: s.Parameters,
+                    }
+                }),
             })
         }
     )
