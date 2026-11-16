@@ -12,6 +12,7 @@ commits that mixed a fix into a feature are included too. New features are not l
 
 ### 2026-11-16
 
+- **user management** — The New User form started with `ADMIN` selected, so an ordinary create silently granted full administration. It now starts with no groups, lists `ADMIN` last with a red "Full administrator" label, and shows the selected groups on the Create button
 - **admin authorization** — The Sessions, Admin and Jobs controls were visible to every user, and session/thread/job cancel, maintenance, configuration, metrics, user management and catalog override routes accepted any IDE token. One cached TM1-Admin check now gates every admin mutation and sensitive read, `/api/auth/servers` carries `isAdmin`, and the UI hides those controls for non-admins
 - **MCP assertions** — `add_assertion` / `remove_assertion` are deliberately ungated, but their writes were invisible in the change log. They now log `ASSERTION_ADDED` / `ASSERTION_REMOVED` (shown in Change Log), and the tool docs state the exception
 - **MCP related objects** — Cube dimensions, chore steps, and active-thread process/function fields leaked names the visibility policy denies. They now filter or show `(not visible)`; a view on an allowed cube remains fully readable by design

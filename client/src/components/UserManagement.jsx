@@ -3,9 +3,10 @@ import { X, Plus, Loader2, Eye, EyeOff, Trash2, Check, Shield, Users, Info } fro
 import { useStore } from '@/store'
 import { useClients, useGroups, useClientGroups, useCreateClient, useUpdateClient, useDeleteClient, useAddClientToGroup, useRemoveClientFromGroup, useResetClientPassword } from '@/hooks/useApi'
 import { cn } from '@/lib/utils'
+import { defaultUserGroups, isAdminGroup, orderGroups } from '@/lib/user-groups'
 import { toast } from 'sonner'
 
-function GroupCheckbox({ name, checked, onToggle, disabled }) {
+function GroupCheckbox({ name, checked, onToggle, disabled, danger = false }) {
   return (
     <button
       onClick={onToggle}
@@ -21,7 +22,7 @@ function GroupCheckbox({ name, checked, onToggle, disabled }) {
       )}>
         {checked && <Check size={9} className="text-primary-foreground" />}
       </span>
-      <span className="font-mono">{name}</span>
+      <span className="font-mono">{name}{danger && <span className="ml-2 font-sans text-[10px] font-semibold text-red-500">Full administrator</span>}</span>
     </button>
   )
 }
@@ -189,7 +190,7 @@ function CreateUserForm({ server, allGroups, onCreated, onCancel }) {
   const [password, setPassword] = useState('')
   const [friendly, setFriendly] = useState('')
   const [showPwd,  setShowPwd]  = useState(false)
-  const [selGroups, setSelGroups] = useState(new Set(['ADMIN']))
+  const [selGroups, setSelGroups] = useState(defaultUserGroups)
 
   const createClient = useCreateClient()
 
@@ -252,10 +253,11 @@ function CreateUserForm({ server, allGroups, onCreated, onCancel }) {
           <div className="text-xs text-muted-foreground italic">No groups found</div>
         ) : (
           <div className="flex flex-col gap-0.5 max-h-40 overflow-y-auto border border-border rounded p-1 bg-muted/20">
-            {allGroups.map(g => (
+            {orderGroups(allGroups).map(g => (
               <GroupCheckbox
                 key={g}
                 name={g}
+                danger={isAdminGroup(g)}
                 checked={selGroups.has(g)}
                 onToggle={() => toggleGroup(g)}
                 disabled={busy}
@@ -277,7 +279,7 @@ function CreateUserForm({ server, allGroups, onCreated, onCancel }) {
           disabled={!name.trim() || !password.trim() || busy}
           className="flex-1 py-1.5 text-xs rounded bg-emerald-700 text-white hover:bg-emerald-600 disabled:opacity-40 flex items-center justify-center gap-1"
         >
-          {busy ? <Loader2 size={10} className="animate-spin" /> : <><Plus size={10} /> Create</>}
+          {busy ? <Loader2 size={10} className="animate-spin" /> : <><Plus size={10} /> Create user{[...selGroups].join(', ') ? ` (${[...selGroups].join(', ')})` : ''}</>}
         </button>
       </div>
     </div>
