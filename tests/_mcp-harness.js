@@ -22,6 +22,8 @@ function fakeTm1(name, overrides = {}) {
         async getModelCubes() { calls.push(['getModelCubes']); return [{ Name: 'Sales' }, { Name: 'Payroll' }] },
         async getModelDimensions() { calls.push(['getModelDimensions']); return [{ Name: 'Region' }, { Name: '}Clients' }] },
         async getProcesses() { calls.push(['getProcesses']); return [] },
+        async getElementAttributeValues(d, e) { calls.push(['getElementAttributeValues', d, e]); return {} },
+        async writeElementAttribute(...a) { calls.push(['writeElementAttribute', ...a]); return {} },
         async getCube(n) { calls.push(['getCube', n]); return { Name: n, Dimensions: [] } },
         async getElementsWithTree(d) { calls.push(['getElementsWithTree', d]); return [] },
     }

@@ -564,6 +564,20 @@ app.post('/api/dimension/bulk-import', async (req, res) => {
     }
 })
 
+function logAttributeValue({ server, dimension, element, attribute, hierarchy, before, after, user }) {
+    if (String(before ?? '') === String(after ?? '')) return
+    try {
+        cl.writeLog({
+            server,
+            action: 'ATTRIBUTE_VALUE_SET',
+            objectType: 'attribute-value',
+            objectName: `${dimension}:${element}:${attribute}`,
+            detail: { dimension, hierarchy: hierarchy ?? dimension, element, attribute, before: before ?? null, after: after ?? null },
+            user,
+        })
+    } catch { /* history must not block the value write */ }
+}
+
 // Bulk attribute import: rows = [{ element, attrName, value }]
 app.post('/api/dimension/bulk-attr-import', async (req, res) => {
     try {
@@ -573,8 +587,14 @@ app.post('/api/dimension/bulk-attr-import', async (req, res) => {
         const errors = []
         for (const row of rows) {
             if (!row.element?.trim() || !row.attrName?.trim()) continue
-            try { await client.writeElementAttribute(dimension, row.element.trim(), row.attrName.trim(), row.value ?? '', row.type || 'S', hierarchy) }
-            catch (e) { errors.push(`${row.element}[${row.attrName}]: ${e.message}`) }
+            const element = row.element.trim()
+            const attribute = row.attrName.trim()
+            try {
+                const current = await client.getElementAttributeValues(dimension, element, hierarchy).catch(() => ({}))
+                const before = current?.[attribute] ?? null
+                await client.writeElementAttribute(dimension, element, attribute, row.value ?? '', row.type || 'S', hierarchy)
+                logAttributeValue({ server, dimension, element, attribute, hierarchy, before, after: row.value ?? '', user: req.user })
+            } catch (e) { errors.push(`${row.element}[${row.attrName}]: ${e.message}`) }
         }
         res.json({ ok: true, errors })
     } catch (e) {
@@ -1279,7 +1299,11 @@ app.post('/api/element/attribute', async (req, res) => {
     try {
         const { server, dimension, element, attribute, value, type, hierarchy } = req.body
         if (!gateReadOnly(res, server)) return
-        await makeClient(server, req.ideToken).writeElementAttribute(dimension, element, attribute, value, type, hierarchy)
+        const client = makeClient(server, req.ideToken)
+        const current = await client.getElementAttributeValues(dimension, element, hierarchy).catch(() => ({}))
+        const before = current?.[attribute] ?? null
+        await client.writeElementAttribute(dimension, element, attribute, value, type, hierarchy)
+        logAttributeValue({ server, dimension, element, attribute, hierarchy, before, after: value, user: req.user })
         res.json({ ok: true })
     } catch (e) {
         res.status(500).json({ error: e.message })

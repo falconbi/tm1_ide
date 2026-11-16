@@ -21,16 +21,29 @@ async function reconcileDeletes(source, target, { ideToken, deletes = [] } = {})
     try {
         const tgtProcs = new Set(await tc.getProcesses())
         for (const d of deletes) {
-            if (d.type !== 'process') {
-                out.flagged.push({ type: d.type, name: d.name, error: 'not auto-applied — needs cube/dimension context' })
-                continue
+            try {
+                if (d.type === 'process') {
+                    if (!tgtProcs.has(d.name)) {
+                        out.flagged.push({ type: d.type, name: d.name, error: 'not present on target (already gone)' })
+                        continue
+                    }
+                    await tc.deleteProcess(d.name)
+                } else if (d.type === 'subset') {
+                    if (!d.detail) throw new Error('subset delete needs its dimension')
+                    await tc.deleteSubset(d.detail, d.name, d.detail)
+                } else if (d.type === 'view') {
+                    if (!d.detail) throw new Error('view delete needs its cube')
+                    await tc.deleteView(d.detail, d.name)
+                } else if (d.type === 'chore') {
+                    await tc.deleteChore(d.name)
+                } else {
+                    out.flagged.push({ type: d.type, name: d.name, error: 'not auto-applied — needs cube/dimension context' })
+                    continue
+                }
+                out.deleted.push({ type: d.type, name: d.name })
+            } catch (e) {
+                out.flagged.push({ type: d.type, name: d.name, error: e.message })
             }
-            if (!tgtProcs.has(d.name)) {
-                out.flagged.push({ type: d.type, name: d.name, error: 'not present on target (already gone)' })
-                continue
-            }
-            try { await tc.deleteProcess(d.name); out.deleted.push({ type: d.type, name: d.name }) }
-            catch (e) { out.flagged.push({ type: d.type, name: d.name, error: e.message }) }
         }
     } catch (e) { out.error = e.message }
     return out
@@ -54,11 +67,16 @@ async function syncAttributeValues(source, target, { ideToken, dims = [], attrEl
             return m
         } catch { return {} }
     }
-    const push = (dim, element, attribute, value, attrTypes) =>
-        ({ dimElemPairs: [
-            { dim: `}ElementAttributes_${dim}`, element: attribute },
-            { dim, element },
-        ], value: attrTypes[attribute] === 'N' ? Number(value) : String(value) })
+    const push = (dim, element, attribute, value, attrTypes) => {
+        const blank = value == null || value === ''
+        return {
+            dimElemPairs: [
+                { dim: `}ElementAttributes_${dim}`, element: attribute },
+                { dim, element },
+            ],
+            value: blank ? '' : (attrTypes[attribute] === 'N' ? Number(value) : String(value)),
+        }
+    }
 
     for (const dim of dims) {
         const attrDim = `}ElementAttributes_${dim}`
@@ -72,7 +90,7 @@ async function syncAttributeValues(source, target, { ideToken, dims = [], attrEl
                     if (attrTypes[p.attribute] === undefined) continue
                     try {
                         const attrs = await sc.getElementAttributeValues(dim, p.element)
-                        if (attrs[p.attribute] != null && typeof attrs[p.attribute] !== 'object') {
+                        if (Object.prototype.hasOwnProperty.call(attrs, p.attribute) && typeof attrs[p.attribute] !== 'object') {
                             updates.push(push(dim, p.element, p.attribute, attrs[p.attribute], attrTypes))
                         }
                     } catch { /* skip unreadable */ }
@@ -92,7 +110,7 @@ async function syncAttributeValues(source, target, { ideToken, dims = [], attrEl
                     const attrs = await sc.getElementAttributeValues(dim, el)
                     for (const attrName of attrNames) {
                         const v = attrs[attrName]
-                        if (v == null || typeof v === 'object') continue
+                        if (typeof v === 'object' && v !== null) continue
                         updates.push(push(dim, el, attrName, v, attrTypes))
                     }
                 } catch { /* skip unreadable element */ }

@@ -9,10 +9,10 @@ Found by code review, not by a failed deploy. Each line moves to **Fixed** as th
 
 **Fixed**
 - Step 2 — the approval's linked change set now supplies the authoritative `source`; source mismatch is refused, source is required in release-only mode, and reconcile errors/skips make `controlOk` false with reasons.
+- Step 3 — attribute-value writes are logged as `ATTRIBUTE_VALUE_SET`; the manifest carries dimension/element/attribute pairs and subset/view/chore deletes, and a blank value clears the target value.
 
 **Still open**
 
-- Step 3 — attribute values were not written to the change set; the manifest missed subset/view/chore deletes and read attribute fields backwards.
 - Step 4 — an unrecognised pull-plan operation was ignored instead of refusing the deploy.
 - Step 5 — first pull did not record the target's deployed commit, so the next release had no anchor.
 - Step 6 — readiness findings did not block a Git push; first-pull safety analysis was unreachable.
@@ -28,7 +28,10 @@ Found by code review, not by a failed deploy. Each line moves to **Fixed** as th
    whatever else happens to be on DEV. The release is a commit built on the
    target's last deployed state plus ONLY the change set's files; the target's
    pull plan lists those objects and skips the rest. If the plan shows anything
-   else, the deploy refuses.
+   else, the deploy refuses. Attribute values are logged as change-set entries
+   and reconciled as element/attribute pairs; a blank value clears it. Subset,
+   view and chore deletes are part of the manifest; dimension/cube deletes that
+   need more context stay explicitly flagged.
 2. Nothing reaches a target without a recorded **approval** bound to the exact
    commit — non-optional, enforced server-side.
 3. Every deploy runs **control checks** on the target and records the result. The approved change set supplies the source used for reconcile/assertions; a caller cannot substitute another source, and reconcile errors or skipped deletes make the deploy not-clean.

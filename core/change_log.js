@@ -126,7 +126,7 @@ function getSessionManifest(sessionId) {
     const entries = getSessionLog(sessionId)
     const created = new Set()
     for (const e of entries) {
-        if (/_CREATED$/.test(e.action ?? '')) created.add(`${e.object_type}:${e.object_name}`)
+        if (/_CREATED$/.test(e.action ?? '')) created.add(`${e.object_type}:${e.object_name}:${e.detail ?? ''}`)
     }
     const deletes = []
     const attrElements = []
@@ -134,18 +134,25 @@ function getSessionManifest(sessionId) {
     for (const e of entries) {
         // Objects deleted here that were NOT created inside the session pre-existed
         // it — deleting them on the target is this change set's doing.
-        if (/^(PROCESS|DIMENSION|CUBE)_DELETED$/.test(e.action ?? '') && !created.has(`${e.object_type}:${e.object_name}`)) {
-            deletes.push({ type: e.object_type, name: e.object_name })
+        if (/^(PROCESS|DIMENSION|CUBE|SUBSET|VIEW|CHORE)_DELETED$/.test(e.action ?? '') && !created.has(`${e.object_type}:${e.object_name}:${e.detail ?? ''}`)) {
+            deletes.push({ type: e.object_type, name: e.object_name, detail: e.detail ?? null })
         }
-        // Attribute writes: the dimension is object_name; the element+attribute may
-        // be in detail (e.g. "Budget.Description"). Record the pair when we can.
-        if ((e.action ?? '').startsWith('ATTRIBUTE') || e.object_type === 'elementAttribute') {
-            const dim = e.object_name
+        // Attribute-value writes carry an object detail with the dimension,
+        // element and attribute. Older attribute-definition entries only give the
+        // dimension (their object_name is the attribute; detail is the dimension).
+        if (e.action === 'ATTRIBUTE_VALUE_SET' || e.object_type === 'attribute-value') {
+            let d = e.detail
+            if (typeof d === 'string') { try { d = JSON.parse(d) } catch { d = null } }
+            const dim = d?.dimension
             if (dim) {
                 dimSet.add(dim)
-                const m = typeof e.detail === 'string' ? e.detail.split('.') : []
-                if (m.length >= 2) attrElements.push({ dim, element: m[0], attribute: m[m.length - 1] })
+                if (d.element && d.attribute) {
+                    attrElements.push({ dim, element: d.element, attribute: d.attribute, hierarchy: d.hierarchy ?? dim })
+                }
             }
+        } else if ((e.action ?? '').startsWith('ATTRIBUTE') || e.object_type === 'elementAttribute') {
+            const dim = typeof e.detail === 'string' ? e.detail : e.detail?.dimension
+            if (dim) dimSet.add(dim)
         }
     }
     const dims = [...dimSet]
@@ -327,7 +334,7 @@ function writeLog({ server, action, objectType, objectName, detail, beforeState,
         action,
         objectType,
         objectName,
-        detail       ?? null,
+        detail == null ? null : (typeof detail === 'object' ? JSON.stringify(detail) : detail),
         beforeState  ? JSON.stringify(beforeState)  : null,
         afterState   ? JSON.stringify(afterState)   : null,
         user ?? null,

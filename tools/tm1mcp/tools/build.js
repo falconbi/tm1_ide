@@ -274,9 +274,15 @@ function register(server, { client, ok, esc: odataKey, logChange, requireChangeS
             requireChangeSet()
             const c = client()
             for (const v of values) {
+                const current = await c.getElementAttributeValues(dimension, v.element).catch(() => ({}))
+                const before = current?.[v.attribute] ?? null
                 await c.writeElementAttribute(dimension, v.element, v.attribute, v.value, v.numeric ? 'N' : 'S')
+                if (String(before ?? '') !== String(v.value ?? '')) {
+                    logChange('ATTRIBUTE_VALUE_SET', 'attribute-value', `${dimension}:${v.element}:${v.attribute}`, {
+                        detail: { dimension, hierarchy: dimension, element: v.element, attribute: v.attribute, before, after: v.value },
+                    })
+                }
             }
-            logChange('ELEMENT_ADDED', 'dimension', dimension, { detail: `${values.length} attribute values set` })
             return ok(`Set ${values.length} attribute value(s) on "${dimension}".`)
         }
     )
