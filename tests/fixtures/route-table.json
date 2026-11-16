@@ -40,7 +40,6 @@
   "POST /api/rules/check",
   "GET /api/process",
   "POST /api/process/debug",
-  "GET /api/processes/search",
   "POST /api/process/create",
   "POST /api/process",
   "POST /api/process/run",
@@ -83,7 +82,6 @@
   "GET /api/element/hierarchy-parents",
   "POST /api/hierarchy/from-attribute",
   "DELETE /api/dimension/hierarchy",
-  "GET /api/search/index",
   "GET /api/subsets",
   "GET /api/subset",
   "POST /api/subset",
@@ -208,5 +206,7 @@
   "GET /api/lens/meta",
   "GET /api/forge",
   "POST /api/forge",
+  "GET /api/processes/search",
+  "GET /api/search/index",
   "GET /{*path}"
 ]

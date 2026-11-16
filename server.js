@@ -1018,38 +1018,7 @@ app.post('/api/process/debug', async (req, res) => {
     res.json({ log, error: runError, noCapture: !hasCapture && !runError })
 })
 
-app.get('/api/processes/search', async (req, res) => {
-    try {
-        const { server, q } = req.query
-        if (!q || q.length < 2) return res.json({ results: [] })
-        const client = makeClient(server, req.ideToken)
-        const data = await client.get('Processes', {
-            '$select': 'Name,PrologProcedure,MetadataProcedure,DataProcedure,EpilogProcedure',
-        })
-        const lower = q.toLowerCase()
-        const sections = [
-            { key: 'PrologProcedure',    label: 'Prolog'   },
-            { key: 'MetadataProcedure',  label: 'Metadata' },
-            { key: 'DataProcedure',      label: 'Data'     },
-            { key: 'EpilogProcedure',    label: 'Epilog'   },
-        ]
-        const results = []
-        for (const proc of (data.value ?? [])) {
-            if (proc.Name.startsWith('}')) continue
-            for (const { key, label } of sections) {
-                const lines = (proc[key] ?? '').split('\n')
-                for (let i = 0; i < lines.length; i++) {
-                    if (lines[i].toLowerCase().includes(lower)) {
-                        results.push({ process: proc.Name, section: label, line: i + 1, preview: lines[i].trim().slice(0, 150) })
-                    }
-                }
-            }
-        }
-        res.json({ results })
-    } catch (e) {
-        res.status(500).json({ error: e.message })
-    }
-})
+
 
 app.post('/api/process/create', async (req, res) => {
     try {
@@ -1627,31 +1596,7 @@ app.delete('/api/dimension/hierarchy', async (req, res) => {
 // ── Search index — all rules + all process code in one call ──────────────────
 // Scope: Rules + TI, used by Find & Replace. The Explorer's Ctrl+Shift+F quick
 // search is deliberately TI-only (see /api/processes/search and FEATURES.md).
-app.get('/api/search/index', async (req, res) => {
-    try {
-        const client = makeClient(req.query.server, req.ideToken)
-        const [cubes, processData] = await Promise.all([
-            client.getAllCubesWithRules(),
-            client.get('Processes', {
-                '$select': 'Name,PrologProcedure,MetadataProcedure,DataProcedure,EpilogProcedure',
-            }),
-        ])
-        const rulesResults = cubes.map(c => ({ name: c.Name, rules: c.Rules ?? '' }))
-        const processResults = (processData.value ?? [])
-            .filter(p => !p.Name.startsWith('}'))
-            .map(p => ({
-                name: p.Name,
-                Prolog:   p.PrologProcedure ?? '',
-                Metadata: p.MetaDataProcedure ?? p.MetadataProcedure ?? '',
-                Data:     p.DataProcedure ?? '',
-                Epilog:   p.EpilogProcedure ?? '',
-            }))
-        console.log('[api/search/index] request:', req.query.server, `${rulesResults.length} rules, ${processResults.length} processes`)
-        res.json({ rules: rulesResults, processes: processResults })
-    } catch (e) {
-        res.status(500).json({ error: e.message })
-    }
-})
+
 
 // ── Subsets ───────────────────────────────────────────────────────────────────
 app.get('/api/subsets', async (req, res) => {
@@ -3602,6 +3547,8 @@ app.get('/api/lens/meta', async (req, res) => {
 
 const routeDeps = { FORGE_PATH, LENS_CATALOGUE, LOCAL_ONLY, LOGIN_REQUIRED, PAW_HOST, PAW_LOGIN_SERVER, SAMPLE_PASSWORD_WARNING, SQL_PASSWORD_MASK, _GI, _GITOK, ai, attachPawSession, buildCubeMapModel, catalogRoutes, cl, clearServerCredentials, closeServerSession, createCancelJobRoute, createDirectSession, createLocalSession, createProvisionUserRoute, createSaveDataAllRoute, createSession, createStartSessionRoute, deployLoadBaseline, deploySeed, executeQuery, express, extractMembersFromExpression, fail, fs, gateReadOnly, gateWrite, getCSRF, getCachedPawSession, getConnection, getCubeDataSources, getLoginServer, getProcessFacts, getSchema, getServerCredentials, getServerStatus, getSessionCredentials, getViewSourceUsage, gitSecrets, invalidateCubeSources, invalidateSession, isAdminGroups, isDirectServer, isLoopbackReq, isPawNativeServer, isSampleLogin, isTm1Admin, joinContinuations, lensBridge, lensStore, lensUsageCache, listProcessSummaries, listServerEntries, listServers, listServersWithFlags, loadConnections, loadQueries, logAttributeValue, logLensNote, logLensRun, logLensWrite, loginRateLimit, makeClient, makeClientWithCredentials, mayManageSession, obfuscate, odataKey, parseDbRefs, parseRuleLens, path, probeAuthMethod, processCode, processSummaries, readLensActivity, requireTm1Admin, saveConnections, saveQueries, scanIdentity, sendMaintenanceError, sendSetupError, setServerCredentials, setSimpleInModes, setupBlankAdmin, simpleSource, summaryPrompt, testConnection, txLogSearches, userServer }
 require('./routes/workspace').register(app, routeDeps)
+
+require('./routes/search').register(app, routeDeps)
 
 app.get('/{*path}', (req, res) => {
     res.sendFile(path.join(__dirname, 'static', 'index.html'))
