@@ -4,9 +4,12 @@
  * tm1-rule-parser re-exports these. Pure, no imports.
  */
 
-// TM1 REST API sometimes prefixes FormattedValue with a single-char type indicator, e.g. "c:12345"
-export function stripTm1TypePrefix(fv) {
-    if (typeof fv === 'string' && fv.length > 2 && fv[1] === ':') return fv.slice(2)
+// TM1 REST API sometimes prefixes FormattedValue with a single-char type indicator:
+// c: text/consolidated, n: numeric, s: string (the set used by this IDE; a plain
+// time or text value such as "1:30"/"A:B" must not be mistaken for one). Only a
+// value the caller knows is numeric is stripped.
+export function stripTm1TypePrefix(fv, numeric = true) {
+    if (numeric && typeof fv === 'string' && /^[cns]:/i.test(fv)) return fv.slice(2)
     return fv
 }
 

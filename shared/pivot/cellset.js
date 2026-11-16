@@ -14,7 +14,8 @@ export const tupleKey = names => names.join('::')
 
 // '[Region].[Region].[North]' → 'Region'
 export function dimOf(uniqueName) {
-    return uniqueName?.match(/^\[([^\]]+)\]/)?.[1] ?? ''
+    const m = uniqueName?.match(/^\[((?:[^\]]|\]\])*)\]/)
+    return m ? m[1].replace(/\]\]/g, ']') : ''
 }
 // last bracketed part, with ]] read back as ]
 export function elementOf(uniqueName, fallback) {
@@ -67,11 +68,12 @@ export function cellsetToPivot(cellset, { formatMap = {}, pageMembers = [], supp
             if (!fmt) for (const p of pageMembers) { fmt = formatOf('', p, formatMap); if (fmt) break }
             const fv = c?.FormattedValue
             // TM1 can send Value null with FormattedValue "0.00" for a zero — read the number back
+            const numericFv = stripTm1TypePrefix(fv, true)
             const v = c?.Value != null ? c.Value
-                : (fv != null && fv !== '' && !Number.isNaN(Number(stripTm1TypePrefix(fv))) ? Number(stripTm1TypePrefix(fv)) : null)
+                : (numericFv != null && numericFv !== '' && !Number.isNaN(Number(numericFv)) ? Number(numericFv) : null)
             let d
             if (fmt && v != null && useFormat) d = applyTm1Format(v, fmt)
-            else if (useFormat && fv != null && fv !== '') d = stripTm1TypePrefix(fv)
+            else if (useFormat && fv != null && fv !== '') d = stripTm1TypePrefix(fv, typeof v === 'number')
             else d = v == null ? '' : String(v)
             const cell = { v, d, u: c?.Updateable ?? 1, kind: c?.Consolidated ? 'total' : c?.RuleDerived ? 'calc' : 'input' }
             if (fmt) { cell.fmt = fmt; if (fmt.startsWith('@')) { const colour = fmt.slice(1).trim(); if (colour) cell.colour = colour } }

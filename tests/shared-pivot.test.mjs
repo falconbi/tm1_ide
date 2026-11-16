@@ -8,7 +8,8 @@ import {
   tuplePrefixes, toggleExpanded, setAllExpanded, tupleIsLeaf, indentFor, changedFlags,
 } from '../shared/pivot/tree.js'
 import { buildMDX } from '../shared/pivot/mdx.js'
-import { cellsetToPivot, membersByPosition, elementOf } from '../shared/pivot/cellset.js'
+import { cellsetToPivot, membersByPosition, elementOf, dimOf } from '../shared/pivot/cellset.js'
+import { stripTm1TypePrefix } from '../shared/pivot/format.js'
 
 const periodEls = [
   { Name: 'FY', Type: 'C', Level: 3, Components: ['H1', 'H2'] },
@@ -142,6 +143,12 @@ test('formats from attributes apply to the display only; zero sent as text is re
   assert.equal(p.data.Rate.c0.fmt, '0.0%')
 })
 
+test('a text cell that looks like a type prefix keeps its text', () => {
+  const p = cellsetToPivot(cs([[m('Note', 'Measure')]], [[m('Jan', 'Period')]], [{ Ordinal: 0, Value: '1:30', FormattedValue: '1:30' }]))
+  assert.equal(p.data.Note.c0.v, '1:30')
+  assert.equal(p.data.Note.c0.d, '1:30')
+})
+
 test('suppression: empty rows and columns can be dropped', () => {
   const raw = cs([[m('A', 'R')], [m('B', 'R')]], [[m('x', 'K')], [m('y', 'K')]], [
     { Ordinal: 0, Value: 1 }, { Ordinal: 1, Value: 0 }, { Ordinal: 2, Value: 0 }, { Ordinal: 3, Value: null }])
@@ -153,7 +160,15 @@ test('suppression: empty rows and columns can be dropped', () => {
 
 test('names containing ] round-trip; members per position for pruning trees', () => {
   assert.equal(elementOf('[K].[K].[a]]b]', 'x'), 'a]b')
+  assert.equal(dimOf('[A]]B].[A]]B].[x]'), 'A]B')
   assert.deepEqual(membersByPosition([['A', 'x'], ['A', 'y'], ['B', 'x']]), [['A', 'B'], ['x', 'y']])
+})
+
+test('a colon is only a TM1 type prefix when the value is numeric and the letter is known', () => {
+  assert.equal(stripTm1TypePrefix('1:30'), '1:30')
+  assert.equal(stripTm1TypePrefix('A:B'), 'A:B')
+  assert.equal(stripTm1TypePrefix('c:123', true), '123')
+  assert.equal(stripTm1TypePrefix('c:123', false), 'c:123')
 })
 
 // ── drill-down beyond a query: widenPlacement ────────────────────────────────

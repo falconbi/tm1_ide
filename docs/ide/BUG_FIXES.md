@@ -12,6 +12,8 @@ commits that mixed a fix into a feature are included too. New features are not l
 
 ### 2026-11-16
 
+- **pivot** — A dimension name containing `]` was read only up to the first bracket (`dimOf`), so its formats and labels were attached to the wrong dimension; it now uses the same `]]`-aware parser as `elementOf`
+- **pivot** — Any formatted string with a colon as its second character (`A:B`, `1:30`) was treated as a TM1 type prefix and lost its first two characters. Only known type letters (`c`, `n`, `s`), and only for a numeric cell, are stripped now
 - **pivot** — A rejected immediate write restored `cell.v` but not `cell.d`, so the number TM1 refused stayed on screen until the next data load. The error branch now restores the old display text too; the jsdom edit test asserts it
 - **tm1 client / git release** — TM1 keys built with `encodeURIComponent` left a literal apostrophe unescaped, so a cube, dimension, subset, view, chore or process whose name contained `'` could break the OData key in a release check (and in temporary process deletes). Every TM1 key interpolation now uses `odataKey`; a test scans `server.js`, `core/**` and the MCP tools for the old pattern
 - **views** — `executeViewWithSuppression` PATCHed `SuppressEmptyRows`/`SuppressEmptyColumns` on the saved view before executing it, so a read changed the view. Its only caller (`/api/view/execute-suppressed`) was unreachable and was removed in the dead-code step, together with the method; the live View Editor suppresses in its MDX/client-side grid instead
