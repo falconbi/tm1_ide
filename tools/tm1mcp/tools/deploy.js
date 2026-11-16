@@ -1,6 +1,28 @@
 'use strict'
 
+const fs = require('fs')
+const path = require('path')
 const { z } = require('zod')
+
+// The deploy tooling reads package files from disk. Do not let an agent choose
+// an arbitrary directory: resolve the path under the IDE's packages root and
+// refuse escapes (including symlinks), then require a manifest.
+function packageDirFor(input) {
+    const { PACKAGES_DIR } = require('../../../tools/tm1deploy/src/packager')
+    const root = fs.realpathSync(PACKAGES_DIR)
+    const candidate = path.isAbsolute(input) ? input : path.join(root, input)
+    let resolved
+    try { resolved = fs.realpathSync(candidate) }
+    catch { throw new Error(`Package folder not found: ${input}`) }
+    const rel = path.relative(root, resolved)
+    if (rel.startsWith('..') || path.isAbsolute(rel)) {
+        throw new Error(`Package folder must be inside the packages root (${root}); refusing ${input}`)
+    }
+    if (!fs.existsSync(path.join(resolved, 'manifest.json'))) {
+        throw new Error(`No manifest.json found in ${resolved}`)
+    }
+    return resolved
+}
 
 // ══════════════════════════════════════════════════════════════════════════════
 // DEPLOY — prepare & check against a target (no writes to the target)
@@ -15,13 +37,14 @@ function register(server, { ok }) {
             target:     z.string().describe('Target server name to check against, e.g. "TM1_Test"'),
         },
         async ({ packageDir, target }) => {
+            const dir = packageDirFor(packageDir)
             let analyzeRisk
             try { ({ analyzeRisk } = require('../../../tools/tm1deploy/src/risk')) }
-            catch (e) { return ok(`Deploy tooling not available: ${e.message}`) }
+            catch (e) { throw new Error(`Deploy tooling not available: ${e.message}`) }
             try {
                 const { assertTargetAllowed } = require('../shared')
                 assertTargetAllowed(target)
-                const r = await analyzeRisk(packageDir, target, null)
+                const r = await analyzeRisk(dir, target, null)
                 return ok({
                     target,
                     safe_to_deploy: r.safe_to_deploy,
@@ -29,7 +52,7 @@ function register(server, { ok }) {
                     warnings: (r.warnings ?? []).map(w => `${w.type} ${w.name}: ${w.message}`),
                     info_count: (r.infos ?? []).length,
                 })
-            } catch (e) { return ok(`risk check failed: ${e.message}`) }
+            } catch (e) { throw new Error(`risk check failed: ${e.message}`) }
         }
     )
 
@@ -41,13 +64,14 @@ function register(server, { ok }) {
             target:     z.string().describe('Target server name'),
         },
         async ({ packageDir, target }) => {
+            const dir = packageDirFor(packageDir)
             let driftCheck
             try { ({ driftCheck } = require('../../../tools/tm1deploy/src/diff')) }
-            catch (e) { return ok(`Deploy tooling not available: ${e.message}`) }
+            catch (e) { throw new Error(`Deploy tooling not available: ${e.message}`) }
             try {
                 const { assertTargetAllowed } = require('../shared')
                 assertTargetAllowed(target)
-                const r = await driftCheck(packageDir, target, null)
+                const r = await driftCheck(dir, target, null)
                 if (r.skipped) return ok({ target, note: r.reason ?? 'drift check skipped (no baseline in the package or repo)' })
                 return ok({
                     target,
@@ -55,7 +79,7 @@ function register(server, { ok }) {
                     checked: r.checked,
                     drifted: (r.drifted ?? []).map(d => `${d.type} ${d.name}${d.detail ? ` (${d.detail})` : ''}: ${d.note ?? 'differs from baseline'}`),
                 })
-            } catch (e) { return ok(`drift check failed: ${e.message}`) }
+            } catch (e) { throw new Error(`drift check failed: ${e.message}`) }
         }
     )
 }

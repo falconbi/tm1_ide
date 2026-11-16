@@ -98,7 +98,9 @@ every read.
   login, outside the reader's TM1 security and the masking rules. In `readonly` mode they're
   only offered when target servers were named on purpose (`TM1_MCP_ALLOWED_TARGETS` or
   `"mcpAllowTargets"` in `config/servers.json`). In `build` mode they're limited to that list
-  plus the bound server.
+  plus the bound server. `packageDir` must resolve inside the IDE's `packages/` folder and
+  contain a `manifest.json`; paths outside it are refused. A failed check is returned as a
+  protocol error (`isError: true`), not as successful prose.
 - **No screen for the read audit yet.** `read_audit` keeps 90 days by default
   (`TM1_MCP_AUDIT_DAYS`; `0` = keep forever), but no MCP tool or IDE screen shows it. Read it
   with SQLite.
@@ -516,8 +518,8 @@ In `readonly` mode only the read tools are offered. The split is defined in
 | Tool | Purpose |
 |---|---|
 | `package_change_set` | build the deployable folder under `packages/` (`release:true` = everything since baseline) |
-| `check_deploy_risk` | risk analysis of a package vs a target — syntax on target, missing deps, chore conflicts |
-| `check_target_drift` | has the target changed from the baseline for the package's objects? |
+| `check_deploy_risk` | risk analysis of a package vs a target — syntax on target, missing deps, chore conflicts; `packageDir` must be under `packages/` |
+| `check_target_drift` | has the target changed from the baseline for the package's objects? `packageDir` must be under `packages/` |
 
 *(No `deploy_execute` — the push to a target is a human step in the IDE.)*
 
