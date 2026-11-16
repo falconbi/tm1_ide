@@ -1,4 +1,4 @@
-import { apiFetch } from '@/lib/api'
+import { request } from '@/lib/api'
 import { useState, useEffect } from 'react'
 import { X, Plus, Trash2, Pencil, Check, Play, RefreshCw, ListChecks } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -23,7 +23,7 @@ export default function AssertionsManager({ server, onClose }) {
   const load = async () => {
     setError(null)
     try {
-      const r = await apiFetch(`/api/assertions?server=${encodeURIComponent(server)}`, { headers: authHeader() })
+      const r = await request(`/api/assertions?server=${encodeURIComponent(server)}`, { headers: authHeader() })
       const d = await r.json()
       if (!r.ok) throw new Error(d.error || r.statusText)
       setList(d)
@@ -31,7 +31,7 @@ export default function AssertionsManager({ server, onClose }) {
   }
   useEffect(() => { load() }, [server])
   useEffect(() => {
-    apiFetch(`/api/sessions/active?server=${encodeURIComponent(server)}`, { headers: authHeader() })
+    request(`/api/sessions/active?server=${encodeURIComponent(server)}`, { headers: authHeader() })
       .then(r => r.json()).then(d => setActiveSessionId(d?.id ?? null)).catch(() => {})
   }, [server])
 
@@ -55,7 +55,7 @@ export default function AssertionsManager({ server, onClose }) {
     }
     try {
       const url = `/api/assertions${editId ? `/${encodeURIComponent(editId)}` : ''}?server=${encodeURIComponent(server)}`
-      const r = await apiFetch(url, { method: editId ? 'PATCH' : 'POST', headers: { 'Content-Type': 'application/json', ...authHeader() }, body: JSON.stringify(body) })
+      const r = await request(url, { method: editId ? 'PATCH' : 'POST', headers: { 'Content-Type': 'application/json', ...authHeader() }, body: JSON.stringify(body) })
       const d = await r.json()
       if (!r.ok) throw new Error(d.error || r.statusText)
       cancelForm()
@@ -67,7 +67,7 @@ export default function AssertionsManager({ server, onClose }) {
     if (!confirm(`Remove assertion "${a.description.slice(0, 60)}…"?`)) return
     setError(null)
     try {
-      const r = await apiFetch(`/api/assertions/${encodeURIComponent(a.id)}?server=${encodeURIComponent(server)}`, { method: 'DELETE', headers: authHeader() })
+      const r = await request(`/api/assertions/${encodeURIComponent(a.id)}?server=${encodeURIComponent(server)}`, { method: 'DELETE', headers: authHeader() })
       const d = await r.json()
       if (!r.ok) throw new Error(d.error || r.statusText)
       await load()
@@ -77,7 +77,7 @@ export default function AssertionsManager({ server, onClose }) {
   const runOne = async a => {
     setRunning(a.id); setError(null)
     try {
-      const r = await apiFetch(`/api/assertions/run?server=${encodeURIComponent(server)}`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeader() }, body: JSON.stringify({ id: a.id }) })
+      const r = await request(`/api/assertions/run?server=${encodeURIComponent(server)}`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeader() }, body: JSON.stringify({ id: a.id }) })
       const d = await r.json()
       if (!r.ok) throw new Error(d.error || r.statusText)
       setResults(prev => ({ ...prev, [a.id]: d }))
@@ -88,7 +88,7 @@ export default function AssertionsManager({ server, onClose }) {
   const runAll = async () => {
     setRunning('all'); setError(null); setResults({})
     try {
-      const r = await apiFetch(`/api/assertions/run?server=${encodeURIComponent(server)}`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeader() }, body: JSON.stringify({}) })
+      const r = await request(`/api/assertions/run?server=${encodeURIComponent(server)}`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeader() }, body: JSON.stringify({}) })
       const d = await r.json()
       if (!r.ok) throw new Error(d.error || r.statusText)
       const map = {}

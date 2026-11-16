@@ -1,4 +1,4 @@
-import { apiFetch } from '@/lib/api'
+import { request } from '@/lib/api'
 import { useState, useEffect } from 'react'
 import { X, GitCompare, RefreshCw, ChevronDown, ChevronRight, AlertTriangle, CheckCircle2, HelpCircle } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -21,7 +21,7 @@ export default function GitDrift({ server, onClose }) {
   const [showHelp, setShowHelp] = useState(false)
 
   useEffect(() => {
-    apiFetch('/api/servers', { headers: authHeader() }).then(r => r.json()).then(d => {
+    request('/api/servers', { headers: authHeader() }).then(r => r.json()).then(d => {
       const others = (d ?? []).map(s => s?.name).filter(n => n && n !== server)
       setServers(others)
       setTarget(t => t || (others[0] ?? ''))
@@ -31,7 +31,7 @@ export default function GitDrift({ server, onClose }) {
   const check = async () => {
     setBusy('check'); setError(null)
     try {
-      const r = await apiFetch('/api/git/drift', { method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeader() }, body: JSON.stringify({ server: target }) })
+      const r = await request('/api/git/drift', { method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeader() }, body: JSON.stringify({ server: target }) })
       const d = await r.json()
       if (!r.ok) throw new Error(d.error || r.statusText)
       setDrift(d)

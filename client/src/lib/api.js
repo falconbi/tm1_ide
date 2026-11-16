@@ -59,3 +59,10 @@ export const apiFetch = (input, init = {}) => {
 export const put = (url, body) => fetch(url, {
   method: 'PUT', headers: { 'Content-Type': 'application/json', ...authHeader() }, body: JSON.stringify(body),
 }).then(async r => { if (!r.ok) throw await extractError(r); return r.json() })
+
+// A checked low-level request for a component's own one-off call: same Response
+// as fetch, but a non-2xx answer throws the server's message. Prefer a hook.
+export const request = (url, init = {}) => apiFetch(url, init).then(async r => {
+  if (!r.ok) throw await extractError(r)
+  return r
+})

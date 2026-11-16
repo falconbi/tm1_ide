@@ -1,4 +1,4 @@
-import { apiFetch } from '@/lib/api'
+import { request } from '@/lib/api'
 import { useState, useEffect } from 'react'
 
 // Git connection setup — link a server to an EXISTING GitHub repo (no repo
@@ -25,7 +25,7 @@ export default function GitSetup({ server, onClose }) {
   const run = async (action, body, route) => {
     setBusy(action); setError(null)
     try {
-      const r = await apiFetch(route, { method: 'POST', headers: authHeader(), body: JSON.stringify(body ?? {}) })
+      const r = await request(route, { method: 'POST', headers: authHeader(), body: JSON.stringify(body ?? {}) })
       const d = await r.json()
       if (!r.ok) throw new Error(d.error || r.statusText)
       return d
@@ -33,7 +33,7 @@ export default function GitSetup({ server, onClose }) {
     finally { setBusy('') }
   }
   useEffect(() => {
-    apiFetch(`/api/git/setup/status?server=${encodeURIComponent(server)}`, { headers: authHeader() })
+    request(`/api/git/setup/status?server=${encodeURIComponent(server)}`, { headers: authHeader() })
       .then(r => r.json()).then(d => { setStatus(d); if (d?.linked) setLinked(true) }).catch(() => {})
   }, [server])
 
@@ -44,7 +44,7 @@ export default function GitSetup({ server, onClose }) {
   const checkReadiness = async () => {
     setBusy('ready')
     try {
-      const r = await apiFetch(`/api/git/setup/readiness?server=${encodeURIComponent(server)}`, { headers: authHeader() })
+      const r = await request(`/api/git/setup/readiness?server=${encodeURIComponent(server)}`, { headers: authHeader() })
       const d = await r.json()
       if (!r.ok || d.error) throw new Error(d.error || r.statusText)
       setReadiness(d)
@@ -55,7 +55,7 @@ export default function GitSetup({ server, onClose }) {
   const doInit = async () => {
     setBusy('init'); setError(null)
     try {
-      const r = await apiFetch('/api/git/setup/init', { method: 'POST', headers: authHeader(), body: JSON.stringify({ server, repo, deployment }) })
+      const r = await request('/api/git/setup/init', { method: 'POST', headers: authHeader(), body: JSON.stringify({ server, repo, deployment }) })
       const d = await r.json()
       if (!r.ok) throw new Error(d.error || r.statusText)
       setLinked(true); setStatus(d); setReadiness(null)

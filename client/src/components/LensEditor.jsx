@@ -260,7 +260,6 @@ export default function LensEditor({ tab }) {
 
   const refreshPreview = () => setPreviewKey(k => k + 1)
 
-
   const startFrom = async (src) => {
     if (!src) return
     try {

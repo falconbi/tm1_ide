@@ -1,4 +1,4 @@
-import { apiFetch, del, get } from '@/lib/api'
+import { del, get, request } from '@/lib/api'
 import { useState, useRef } from 'react'
 import { X, RefreshCw, Loader2, Folder, FileText, Upload, Download, Trash2, ChevronRight, Home } from 'lucide-react'
 import { useQueryClient } from '@tanstack/react-query'
@@ -31,7 +31,7 @@ export default function FileManager({ server, onClose }) {
 
   const upload = useMutation({
     mutationFn: async ({ name, buffer }) => {
-      const r = await apiFetch(
+      const r = await request(
         `/api/files/upload?server=${enc(server)}&path=${enc(pathKey)}&name=${enc(name)}`,
         { method: 'POST', headers: { 'Content-Type': 'application/octet-stream', 'x-ide-token': localStorage.getItem('tm1-token') ?? '' }, body: buffer }
       )
