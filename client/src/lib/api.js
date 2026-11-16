@@ -1,6 +1,7 @@
 // One HTTP layer for the client. hooks/useApi.js is the normal way to read or
 // write server state; this module is the low-level helper it builds on, plus
-// the few genuine one-offs (sign-in, downloads, streams).
+// genuine one-offs (sign-in, downloads, streams). `tests/client-no-direct-fetch.test.js`
+// is the gate: no raw fetch and no apiFetch outside this file.
 export const authHeader = () => ({ 'x-ide-token': localStorage.getItem('tm1-token') ?? '' })
 
 export const extractError = async (r) => {
@@ -46,8 +47,8 @@ export const postRaw = (url, body) => fetch(url, {
   method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeader() }, body: JSON.stringify(body),
 }).then(async r => { if (!r.ok) throw await extractError(r); return r })
 
-// Authenticated fetch for a genuine one-off that is not JSON-shaped (download,
-// stream, file upload). Server state and saves belong in hooks/useApi.js.
+// Authenticated fetch behind apiGet/apiPost/request. Components use request()
+// for an event-driven one-off or get/post/patch/del for JSON; hooks otherwise.
 export const apiFetch = (input, init = {}) => {
   const url = typeof input === 'string' ? input : input?.url ?? ''
   if (!url.startsWith('/api/')) return fetch(input, init)

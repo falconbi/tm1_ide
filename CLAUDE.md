@@ -266,7 +266,7 @@ Zustand store (`client/src/store/`) holds:
 - `rulesVersions` — `{ 'server::cube': n }` — bumped on rules save; ViewEditor watches and re-executes automatically
 
 TanStack Query handles all server state — data fetching, caching, mutations. Cache keys always include `server` as the first key segment.
-Data and saves go through hooks in `hooks/useApi.js`. A genuine one-off command (download, stream, sign-in) uses `lib/api.js`; nothing else calls `fetch` directly.
+Data and saves go through hooks in `hooks/useApi.js`. A genuine one-off command (download, stream, sign-in) uses `lib/api.js`; nothing else calls `fetch` directly. `tests/client-no-direct-fetch.test.js` is the gate: `apiFetch` is only allowed through its empty/explicit allowlist in `lib/api.js`.
 
 ---
 

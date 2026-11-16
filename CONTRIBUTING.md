@@ -69,7 +69,9 @@ Pick the existing pattern and keep one obvious way to do the job:
 - **A TM1 call** goes in `core/tm1_client.js`, never directly in a route. The OData URL pattern and
   endpoint notes are in [CLAUDE.md](CLAUDE.md#tm1-specific-conventions).
 - **A client hook** belongs in `client/src/hooks/useApi.js`; cache keys include `server` first. A
-  one-off download/stream uses `client/src/lib/api.js`; no component calls `fetch` directly. See
+  one-off download/stream uses `client/src/lib/api.js`; no component calls `fetch` directly.
+  `tests/client-no-direct-fetch.test.js` enforces it, with an explicit allowlist for real
+  upload/download/stream cases. See
   [CLAUDE.md](CLAUDE.md#state-management).
 - **An editor** follows the dispatcher and tab pattern in
   [CLAUDE.md](CLAUDE.md#adding-a-new-editor-type).
