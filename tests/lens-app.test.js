@@ -34,7 +34,7 @@ async function setup(stubOverrides = {}) {
       { name: 'Private-Draft', status: 'draft', version: 2, toolkitVersion: 1 },
     ]),
     readLens: async (server, name, opts) => {
-      if (name === 'Future') return { name: 'Future', toolkitVersion: 99, html: '<p>future</p>' }
+      if (name === 'Future') return { name: 'Future', status: 'published', toolkitVersion: 99, html: '<p>future</p>' }
       return { name, status: 'published', version: 1, toolkitVersion: 1, html: '<div>hello lens</div>' }
     },
     ...stubOverrides,
@@ -221,9 +221,9 @@ test('the Lenses list only includes Lenses the person may open', async () => {
   await setup({
     groupsOf: async () => ['WFP HR'],
     listLenses: async () => ([
-      { name: 'Everyone',    title: 'Everyone',     folder: 'Workforce', toolkitVersion: 1, config: {} },
-      { name: 'HrOnly',      title: 'HR only',      folder: 'Workforce', toolkitVersion: 1, config: { access: ['WFP HR'] } },
-      { name: 'FinanceOnly', title: 'Finance only', folder: 'Workforce', toolkitVersion: 1, config: { access: ['WFP Finance'] } },
+      { name: 'Everyone',    title: 'Everyone',     folder: 'Workforce', status: 'published', toolkitVersion: 1, config: {} },
+      { name: 'HrOnly',      title: 'HR only',      folder: 'Workforce', status: 'published', toolkitVersion: 1, config: { access: ['WFP HR'] } },
+      { name: 'FinanceOnly', title: 'Finance only', folder: 'Workforce', status: 'published', toolkitVersion: 1, config: { access: ['WFP Finance'] } },
     ]),
   })
   try {

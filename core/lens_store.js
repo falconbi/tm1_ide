@@ -153,6 +153,12 @@ async function deleteLens(server, name, { ideToken, client } = {}) {
     await store.deleteDoc(server, AREA, docName(name), { ideToken, client })
 }
 
+// One gate for every list, page, frame and API read: published (or draft when
+// the Lens app shows drafts) AND the person's TM1 groups may open it.
+function visibleTo(doc, groups = [], { showDrafts = false } = {}) {
+    return (doc?.status === 'published' || (showDrafts && doc?.status === 'draft')) && canOpenLens(doc, groups)
+}
+
 // May this person open the Lens? config.access lists TM1 groups; empty = everyone.
 // ADMIN always may. groups: the person's TM1 group names.
 function canOpenLens(doc, groups = []) {
@@ -162,4 +168,4 @@ function canOpenLens(doc, groups = []) {
     return mine.has('admin') || allowed.some(g => mine.has(String(g).toLowerCase()))
 }
 
-module.exports = { listLensRuns, safeName, cleanFolder, cleanIcon, cleanColor, cleanImage, cleanConfig, canOpenLens, ICON_NAMES, listLenses, readLens, saveLens, deleteLens, TOOLKIT_VERSION }
+module.exports = { listLensRuns, safeName, cleanFolder, cleanIcon, cleanColor, cleanImage, cleanConfig, canOpenLens, visibleTo, ICON_NAMES, listLenses, readLens, saveLens, deleteLens, TOOLKIT_VERSION }

@@ -19,7 +19,7 @@ async function withApp(fn, depsOverride = {}) {
     },
     execMdx: async (client) => ({ ranAs: client._creds.username, pw: client._creds.password }),
     listLenses: async () => [],
-    readLens: async (s, name) => ({ name, toolkitVersion: 1, html: '<p>lens</p>' }),
+    readLens: async (s, name) => ({ name, status: 'published', toolkitVersion: 1, html: '<p>lens</p>' }),
     ...depsOverride,
   }
   const { app, close } = createApp({ config: { server: 'S1', port: 0, showDrafts: true, endSessionProcesses: [] }, deps })

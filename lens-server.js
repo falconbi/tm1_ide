@@ -361,14 +361,16 @@ function createApp({ config = loadConfig(), deps = {} } = {}) {
         groupCache.set(sess.user, { groups, at: Date.now() })
         return groups
     }
-    async function openable(sid, doc) {
-        if (!lensStore.canOpenLens(doc, await groupsFor(sid))) {
-            const e = new Error(`Lens "${doc.name}" is not available to you`)
-            e.status = 403
+    async function visibleLensFor(sid, name, client) {
+        const doc = await readLens(cfg.server, name, { client })
+        if (!lensStore.visibleTo(doc, await groupsFor(sid), { showDrafts: cfg.showDrafts })) {
+            const e = new Error(`Lens "${name}" is not available to you`)
+            e.status = 404
             throw e
         }
         return doc
     }
+    const visibleLens = (req, name) => visibleLensFor(req.lens.sid, name, req.lens.client)
 
     function requireSessionPage(req, res, next) {
         const sid = parseCookies(req)[COOKIE]
@@ -482,7 +484,7 @@ function createApp({ config = loadConfig(), deps = {} } = {}) {
             const sid = parseCookies(req)[COOKIE]
             const lens = await listLenses(cfg.server, { client: store.clientFor(sid) })
             const myGroups = await groupsFor(sid)
-            const visible = lens.filter(l => (l.status === 'published' || (cfg.showDrafts && l.status === 'draft')) && lensStore.canOpenLens(l, myGroups))
+            const visible = lens.filter(l => lensStore.visibleTo(l, myGroups, { showDrafts: cfg.showDrafts }))
             // Grouped by business process (folder), steps in order, in people's
             // words (title) — no cube or model names on this page.
             const groups = groupLenses(visible)
@@ -606,7 +608,8 @@ function createApp({ config = loadConfig(), deps = {} } = {}) {
     // ── Lens viewer (sandboxed, read-only) ─────────────────────────────────────
     app.get('/lens/:name', requireSessionPage, async (req, res) => {
         try {
-            const doc = await openable(parseCookies(req)[COOKIE], await readLens(cfg.server, req.params.name, { client: store.clientFor(parseCookies(req)[COOKIE]) }))
+            const sid = parseCookies(req)[COOKIE]
+            const doc = await visibleLensFor(sid, req.params.name, store.clientFor(sid))
             const want = Number(doc.toolkitVersion) || 1
             if (want > supported) {
                 const body = `
@@ -655,7 +658,7 @@ function createApp({ config = loadConfig(), deps = {} } = {}) {
     // opaque origin. Same contract as the IDE's preview frame.
     app.get('/lens-frame/:name', requireSession, async (req, res) => {
         try {
-            const doc = await openable(req.lens.sid, await readLens(cfg.server, req.params.name, { client: req.lens.client }))
+            const doc = await visibleLensFor(req.lens.sid, req.params.name, req.lens.client)
             const want = Number(doc.toolkitVersion) || 1
             if (want > supported) {
                 res.set('Content-Security-Policy', "sandbox; default-src 'none'; style-src 'unsafe-inline'")
@@ -700,7 +703,7 @@ function createApp({ config = loadConfig(), deps = {} } = {}) {
     app.get('/api/lenses', requireSession, async (req, res) => {
         const lens = await listLenses(cfg.server, { client: req.lens.client })
         const groups = await groupsFor(req.lens.sid)
-        const visible = lens.filter(l => (l.status === 'published' || (cfg.showDrafts && l.status === 'draft')) && lensStore.canOpenLens(l, groups))
+        const visible = lens.filter(l => lensStore.visibleTo(l, groups, { showDrafts: cfg.showDrafts }))
         res.json(visible)
     })
 
@@ -787,12 +790,6 @@ function createApp({ config = loadConfig(), deps = {} } = {}) {
     // ── Working together: live channel + history ──────────────────────────────
     const hub = deps.liveHub ?? createLiveHub()
     const readActivity = deps.readLensActivity ?? readLensActivity
-    const visibleLens = async (req, name) => {
-        const doc = await readLens(cfg.server, name, { client: req.lens.client })
-        if (!(doc.status === 'published' || (cfg.showDrafts && doc.status === 'draft'))) throw new Error(`Lens "${name}" is not available here`)
-        await openable(req.lens.sid, doc)
-        return doc
-    }
     const channelOf = v => String(v ?? '').slice(0, 200)
 
     // One stream per open Lens: who else is here, and what they do (Server-Sent
@@ -817,12 +814,12 @@ function createApp({ config = loadConfig(), deps = {} } = {}) {
     })
 
     // The Lenses this person may open. Home uses it to hide steps that aren't
-    // theirs; opening a restricted Lens is still refused by openable().
+    // theirs; opening a restricted Lens is still refused by visibleTo().
     app.get('/api/lens/lenses', requireSession, serverGate, async (req, res) => {
         try {
             const all = await listLenses(cfg.server, { client: req.lens.client })
             const groups = await groupsFor(req.lens.sid)
-            res.json(all.filter(d => lensStore.canOpenLens(d, groups))
+            res.json(all.filter(d => lensStore.visibleTo(d, groups, { showDrafts: cfg.showDrafts }))
                 .map(d => ({ name: d.name, title: d.title, folder: d.folder, icon: d.icon, color: d.color, description: d.description })))
         } catch (e) { res.status(400).json({ error: e.message }) }
     })
@@ -850,7 +847,7 @@ function createApp({ config = loadConfig(), deps = {} } = {}) {
 
     app.get('/api/lens/:name', requireSession, async (req, res) => {
         try {
-            const doc = await openable(req.lens.sid, await readLens(cfg.server, req.params.name, { client: req.lens.client }))
+            const doc = await visibleLensFor(req.lens.sid, req.params.name, req.lens.client)
             const want = Number(doc.toolkitVersion) || 1
             if (want > supported) {
                 return res.status(417).json({ error: `This Lens needs toolkit version ${want}; this Lens app supports up to ${supported}.`, name: doc.name })

@@ -12,6 +12,7 @@ commits that mixed a fix into a feature are included too. New features are not l
 
 ### 2026-11-16
 
+- **Lenses publish gate** — Drafts were hidden on the home page but could still be opened, framed or fetched by name, and the status/group predicate was copied in four places. One `visibleTo` now owns the publish + group check and every list, page, frame and API route uses it
 - **sessions** — Server Admin's Kick button sent a numeric row index (or `undefined`) instead of the TM1 session name, so it could disconnect the wrong session. One `sessionKey` helper now resolves `Name` (v11) → `ID` → `SessionID` for Server Admin and the Sessions Monitor
 - **user provisioning** — The New User route called `createClient` and patched groups itself, bypassing `provisionUser`'s two-run workaround; TM1 could create the account with no usable password while the test suite stayed green. The route now calls `provisionUser`, has a route-level two-run test, and the duplicate create route is gone
 - **user management** — The New User form started with `ADMIN` selected, so an ordinary create silently granted full administration. It now starts with no groups, lists `ADMIN` last with a red "Full administrator" label, and shows the selected groups on the Create button
