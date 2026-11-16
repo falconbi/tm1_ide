@@ -92,6 +92,15 @@ export default function RunbookDialog({ open, onClose, server, processData, cube
     .sort((a, b) => a.name.localeCompare(b.name)), [chores, processData])
   const chore = list[active] ?? null
 
+  // Follow the selected chore by name when the model refresh changes the list.
+  const activeName = list[active]?.name ?? null
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (!list.length) { setActive(0); return }
+    const idx = list.findIndex(c => c.name === activeName)
+    setActive(idx >= 0 ? idx : 0)
+  }, [list, activeName])
+
   // Each process's description (its Prolog header, or a saved summary).
   useEffect(() => {
     if (!open) return

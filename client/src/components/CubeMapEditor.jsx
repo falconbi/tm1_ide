@@ -830,7 +830,7 @@ function CubeMapInner({ tab }) {
   const [showLegend,     setShowLegend]     = useState(prefs.showLegend ?? true)
   const [showClusters,   setShowClusters]   = useState(prefs.showClusters ?? false)
   const [dimSpotlight,   setDimSpotlight]   = useState('')
-  const [showProcesses,  setShowProcesses]  = useState(true)
+  const [showProcesses,  setShowProcesses]  = useState(prefs.showProcesses ?? true)
   const [allTI,          setAllTI]          = useState(prefs.allTI ?? false)
   const [showDims,       setShowDims]       = useState(prefs.showDims ?? true)
   const [showLensActions, setShowLensActions] = useState(prefs.showLensActions ?? true)
@@ -868,7 +868,10 @@ function CubeMapInner({ tab }) {
   const { fitView, setCenter, getNode, getViewport, setViewport } = useReactFlow()
 
   // ── Fetch ─────────────────────────────────────────────────────────────────────
+  // Request counter: a slow older server switch must not overwrite a newer map.
+  const modelRequestRef = useRef(0)
   const fetchModel = useCallback(async () => {
+    const requestId = ++modelRequestRef.current
     setLoading(true); setError(null); setModelReady(false)
     try {
       const r = await fetch(`/api/cubemap/model?server=${encodeURIComponent(srv)}`, {
@@ -876,6 +879,7 @@ function CubeMapInner({ tab }) {
       })
       const d = await r.json()
       if (d.error) throw new Error(d.error)
+      if (requestId !== modelRequestRef.current) return
       setCubeData(d.cubes)
       setProcessCallers(d.processCallers ?? {})
       setProcessData(d.processes ?? {})
@@ -883,14 +887,16 @@ function CubeMapInner({ tab }) {
       setChores(d.chores ?? [])
       setModelReady(true)
     } catch (e) {
+      if (requestId !== modelRequestRef.current) return
       setError(e.message)
       toast.error(`CubeMap: ${e.message}`)
     } finally {
-      setLoading(false)
+      if (requestId === modelRequestRef.current) setLoading(false)
     }
   }, [srv, token])
 
   useEffect(() => { fetchModel() }, [fetchModel])
+  useEffect(() => () => { modelRequestRef.current++ }, [])
 
   // Process summary/header/parameters for the Show details card.
   useEffect(() => {
