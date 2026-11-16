@@ -6,7 +6,7 @@ const { z } = require('zod')
 // CHANGE SET — the deployment-workflow gate
 // ══════════════════════════════════════════════════════════════════════════════
 
-function register(server, { SERVER, AGENT_USER, cl, assertions, runAssertions, ok }) {
+function register(server, { SERVER, AGENT_USER, cl, assertions, runAssertions, ok, client }) {
     server.tool(
         'seed_baseline',
         'Snapshot the current server state as a new deployment baseline (append-only — nothing is overwritten). ' +
@@ -78,18 +78,20 @@ function register(server, { SERVER, AGENT_USER, cl, assertions, runAssertions, o
     server.tool(
         'close_change_set',
         'Close the open change set on this server. Do this when the model build is complete and ready for review. ' +
+        'The same close sequence as the IDE is used (model-owned record first, then the local log). ' +
         'If the server has stored assertions, they are run and the result is included.',
         {},
         async () => {
             const s = cl.getActiveSession(SERVER, AGENT_USER)
             if (!s) return ok(`No change set is open on "${SERVER}" for ${AGENT_USER}.`)
-            cl.closeSession(s.id)
             const entries = cl.getSessionLog(s.id)
 
+            let tests = null
             let assertLine = ''
             const { assertions: storedAssertions } = await assertions.list(SERVER)
             if (storedAssertions.length) {
                 const a = await runAssertions()
+                tests = { passed: a.passed, total: a.total, blocking: a.failed.length }
                 assertLine = `\nAssertions (from ${a.source}): ${a.passed}/${a.total} passing.`
                 if (a.failed.length) {
                     assertLine += ' FAILING — ' + a.failed.map(f =>
@@ -97,6 +99,8 @@ function register(server, { SERVER, AGENT_USER, cl, assertions, runAssertions, o
                     ).join(' | ')
                 }
             }
+            const { closeChangeSet } = require('../../../core/change-set-service')
+            await closeChangeSet(s.id, { user: AGENT_USER, tests, client: client() })
 
             // Overlap warning: another open change set touched the same objects.
             let overlapLine = ''

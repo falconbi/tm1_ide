@@ -40,10 +40,10 @@ function lightAudit(sessionId) {
 // Persist a closed change set to the model. On a migrated server this is the
 // record and a failure THROWS (the close fails). On an unmigrated server it is
 // a silent no-op — the local log is the truth until migration.
-async function closeAndPersist(server, session, { closedBy, tests, ideToken } = {}) {
+async function closeAndPersist(server, session, { closedBy, tests, ideToken, client } = {}) {
     if (!store.isMigrated(server, AREA)) return { ok: true, model: false }
     const closed = buildClosedRecord(session, { closedBy, tests, audit: lightAudit(session.id) })
-    await store.writeDoc(server, AREA, `${session.id}.json`, closed, { ideToken })   // loud
+    await store.writeDoc(server, AREA, `${session.id}.json`, closed, { ideToken, client })   // loud
     return { ok: true, model: true, id: session.id }
 }
 

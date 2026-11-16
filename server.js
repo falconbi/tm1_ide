@@ -413,9 +413,8 @@ app.post('/api/sessions/close', async (req, res) => {
         // Write the immutable closed record to the model (loud on a migrated server —
         // a write failure fails the close, and the change set stays open). Open
         // change sets stay in the local log until this moment.
-        const csm = require('./core/change-set-model')
-        await csm.closeAndPersist(sess.server, sess, { closedBy: req.user, tests, ideToken: req.ideToken })
-        const closed = cl.closeSession(id, { user: req.user, tests })
+        const { closeChangeSet } = require('./core/change-set-service')
+        const closed = await closeChangeSet(id, { user: req.user, tests, ideToken: req.ideToken })
         res.json(closed)
     } catch (e) { res.status(500).json({ error: e.message }) }
 })

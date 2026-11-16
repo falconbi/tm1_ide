@@ -12,6 +12,7 @@ commits that mixed a fix into a feature are included too. New features are not l
 
 ### 2026-11-16
 
+- **change sets** — The IDE close route wrote the model-owned closed record while the MCP close only wrote the local log, so agent-closed change sets were invisible to a fresh IDE. Both now call one `closeChangeSet` service that persists the model record before closing locally
 - **MCP tools** — `check_feeders` was classified read-only but called a feeder recalculation endpoint that does not exist on TM1 v11. It was removed, with its unused `TM1Client` method, and the docs/tool counts now derive from `guard.js` with a test preventing drift
 - **MCP assertions** — `add_assertion` executed the supplied MDX as the builder and returned the value, bypassing the read policy and reader identity; stored assertions were also run without a policy check. The add tool now only stores the assertion and points at `run_assertions`; run/list check each stored MDX against the read policy, report denied ones as `not visible`, and never execute them
 - **assertions** — Running one assertion returned a result without recording it in `}TestResults`; assertion writes used `gateReadOnly` rather than the normal model-write gate; invalid `expected`/`tolerance` values were stored as NaN and client-supplied author/change-set fields were trusted. Single runs now record history, writes use `gateWrite`, numeric fields are validated, identity/change-set come from the server, and a history read failure shows an error instead of "no history"
