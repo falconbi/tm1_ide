@@ -6,8 +6,6 @@ const path = require('path')
 
 const ROOT = path.join(__dirname, '..', 'client', 'src')
 const ALLOW = path.join(ROOT, 'lib', 'api.js')
-// One-offs allowed to keep apiFetch: file, line, kind, reason. Pending entries
-// are removed by the round 2b conversion; the final list is uploads/downloads.
 const ALLOWLIST = [
   {
     "file": "hooks/useApi.js",
@@ -286,24 +284,6 @@ const ALLOWLIST = [
     "reason": "round 2b conversion pending"
   },
   {
-    "file": "components/GuidedMDXBuilder.jsx",
-    "line": 715,
-    "kind": "pending",
-    "reason": "round 2b conversion pending"
-  },
-  {
-    "file": "components/GuidedMDXBuilder.jsx",
-    "line": 916,
-    "kind": "pending",
-    "reason": "round 2b conversion pending"
-  },
-  {
-    "file": "components/GuidedMDXBuilder.jsx",
-    "line": 957,
-    "kind": "pending",
-    "reason": "round 2b conversion pending"
-  },
-  {
     "file": "components/RunbookDialog.jsx",
     "line": 110,
     "kind": "pending",
@@ -420,48 +400,6 @@ const ALLOWLIST = [
   {
     "file": "components/LoginPage.jsx",
     "line": 57,
-    "kind": "pending",
-    "reason": "round 2b conversion pending"
-  },
-  {
-    "file": "components/ViewEditor.jsx",
-    "line": 78,
-    "kind": "pending",
-    "reason": "round 2b conversion pending"
-  },
-  {
-    "file": "components/ViewEditor.jsx",
-    "line": 691,
-    "kind": "pending",
-    "reason": "round 2b conversion pending"
-  },
-  {
-    "file": "components/ViewEditor.jsx",
-    "line": 733,
-    "kind": "pending",
-    "reason": "round 2b conversion pending"
-  },
-  {
-    "file": "components/ViewEditor.jsx",
-    "line": 748,
-    "kind": "pending",
-    "reason": "round 2b conversion pending"
-  },
-  {
-    "file": "components/ViewEditor.jsx",
-    "line": 1144,
-    "kind": "pending",
-    "reason": "round 2b conversion pending"
-  },
-  {
-    "file": "components/ViewEditor.jsx",
-    "line": 1403,
-    "kind": "pending",
-    "reason": "round 2b conversion pending"
-  },
-  {
-    "file": "components/ViewEditor.jsx",
-    "line": 2168,
     "kind": "pending",
     "reason": "round 2b conversion pending"
   },
