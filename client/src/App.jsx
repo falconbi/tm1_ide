@@ -42,12 +42,18 @@ function FullModeOnly({ server, children }) {
   return useIsSimple(server) ? null : children
 }
 
+// Admin controls need the query provider, so the hook lives in a child (not App,
+// which creates the provider below).
+function AdminOnly({ server, children }) {
+  const { data: logins = [] } = useServerLogins()
+  const isAdmin = logins.some(l => String(l?.name ?? '').toLowerCase() === String(server ?? '').toLowerCase() && l?.isAdmin)
+  return isAdmin ? children : null
+}
+
 export default function App() {
   const { loadForge, formatSettingsOpen, setFormatSettingsOpen, openTab, openDeployCenter, openDeployWizard, deployWizard, closeDeployWizard, server, token, clearAuth } = useStore()
   const layout         = useStore(s => s.layout)
   const revealTarget   = useStore(s => s.revealTarget)
-  const { data: logins = [] } = useServerLogins()
-  const isAdmin = logins.some(l => String(l?.name ?? '').toLowerCase() === String(server ?? '').toLowerCase() && l?.isAdmin)
 
   // Recursive render of the nested-split layout tree.
   const renderLayout = (node) => {
@@ -316,7 +322,7 @@ const [showCatalog, setShowCatalog]           = useState(false)
                   </div>
                 )}
               </div>
-              {server && isAdmin && (
+              <AdminOnly server={server}>
                 <button
                   onClick={() => setShowUserMgmt(v => !v)}
                   className={cn('p-1.5 rounded text-muted-foreground hover:text-foreground transition-colors', showUserMgmt && 'bg-muted text-foreground')}
@@ -324,7 +330,7 @@ const [showCatalog, setShowCatalog]           = useState(false)
                 >
                   <Users size={15} />
                 </button>
-              )}
+              </AdminOnly>
 
               {/* Deploy — one contextual icon; opens the deploy components */}
               <FullModeOnly server={server}><div className="relative" ref={deployMenuRef}>
@@ -440,7 +446,7 @@ const [showCatalog, setShowCatalog]           = useState(false)
           />
         )}
         {formatSettingsOpen && <FormatSettings onClose={() => setFormatSettingsOpen(false)} />}
-        {showUserMgmt && server && isAdmin && <UserManagement server={server} onClose={() => setShowUserMgmt(false)} />}
+        <AdminOnly server={server}>{showUserMgmt && <UserManagement server={server} onClose={() => setShowUserMgmt(false)} />}</AdminOnly>
         {showCatalog && <CatalogAdmin server={server} onClose={() => setShowCatalog(false)} />}
         {showModelHealth && <ModelHealth server={server} onClose={() => setShowModelHealth(false)} />}
         {showAssertions && <AssertionsManager server={server} onClose={() => setShowAssertions(false)} />}

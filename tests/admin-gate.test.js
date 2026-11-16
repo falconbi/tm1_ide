@@ -79,5 +79,6 @@ test('the per-server login info carries isAdmin, and the UI hides admin controls
     const statusBar = fs.readFileSync(path.join(__dirname, '..', 'client', 'src', 'components', 'StatusBar.jsx'), 'utf8')
     const app = fs.readFileSync(path.join(__dirname, '..', 'client', 'src', 'App.jsx'), 'utf8')
     assert.match(statusBar, /server && isAdmin &&/)
-    assert.match(app, /server && isAdmin &&/)
+    assert.match(app, /function AdminOnly/)
+    assert.match(app, /AdminOnly server=\{server\}/)
 })

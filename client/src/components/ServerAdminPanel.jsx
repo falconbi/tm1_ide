@@ -211,6 +211,11 @@ export default function ServerAdminPanel({ server, onClose }) {
             </button>
           ))}
         </div>
+        {!caps.metrics && (
+          <div className="px-4 py-1.5 text-[10px] text-muted-foreground border-b border-border bg-muted/20 shrink-0">
+            Status and maintenance mode need TM1 12.6+ — this server shows Sessions and Configuration.
+          </div>
+        )}
 
         {/* Content */}
         <div className="flex-1 min-h-0 overflow-auto p-5">

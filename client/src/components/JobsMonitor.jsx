@@ -11,11 +11,13 @@ function fmt(ts) {
   return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
 }
 
+const normaliseStatus = job => String(job?.Status ?? job?.StatusMessage ?? '').toLowerCase()
+const isRunning = job => normaliseStatus(job) === 'running'
 const STATUS_COLOR = {
-  Running:   'text-emerald-400',
-  Completed: 'text-muted-foreground',
-  Cancelled: 'text-amber-400',
-  Aborted:   'text-red-400',
+  running:   'text-emerald-400',
+  completed: 'text-muted-foreground',
+  cancelled: 'text-amber-400',
+  aborted:   'text-red-400',
 }
 
 export default function JobsMonitor({ server, onClose }) {
@@ -24,7 +26,7 @@ export default function JobsMonitor({ server, onClose }) {
   const qc        = useQueryClient()
 
   const entries   = jobs.data ?? []
-  const running   = entries.filter(j => j.Status === 'Running' || j.StatusMessage === 'Running')
+  const running   = entries.filter(isRunning)
 
   const handleCancel = async (id, name) => {
     try {
@@ -35,9 +37,6 @@ export default function JobsMonitor({ server, onClose }) {
       toast.error(`Cancel failed: ${e.message}`)
     }
   }
-
-  const isRunning = (j) =>
-    (j.Status ?? j.StatusMessage ?? '').toLowerCase() === 'running'
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
@@ -103,7 +102,7 @@ export default function JobsMonitor({ server, onClose }) {
                       <td className="px-4 py-2 text-muted-foreground font-mono">{objType}</td>
                       <td className="px-2 py-2 font-medium max-w-[180px] truncate" title={objName}>{objName}</td>
                       <td className="px-2 py-2 text-muted-foreground font-mono">{user}</td>
-                      <td className={cn('px-2 py-2 font-medium', STATUS_COLOR[status] ?? 'text-foreground')}>
+                      <td className={cn('px-2 py-2 font-medium', STATUS_COLOR[normaliseStatus(j)] ?? 'text-foreground')}>
                         <span className="flex items-center gap-1">
                           {running && <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse shrink-0" />}
                           {status}

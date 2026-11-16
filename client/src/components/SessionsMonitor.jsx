@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { Fragment, useState } from 'react'
 import { X, RefreshCw, Loader2, Users, ShieldCheck, User, Trash2, Ban, Activity } from 'lucide-react'
 import { useSessions, useThreads, useDisconnectSession, useCancelThread } from '@/hooks/useApi'
 import { useQueryClient } from '@tanstack/react-query'
@@ -12,7 +12,7 @@ export default function SessionsMonitor({ server, onClose }) {
   const [expandedUser, setExpandedUser] = useState(null)
 
   const { data: sessions = [], isFetching, error } = useSessions(server, { refetchInterval: 30_000 })
-  const { data: threads = [] } = useThreads(server, { refetchInterval: 30_000, enabled: !!server })
+  const { data: threads = [], isError: threadsError, error: threadsErrorDetail } = useThreads(server, { refetchInterval: 30_000, enabled: !!server })
 
   const disconnect = useDisconnectSession()
   const cancelThread = useCancelThread()
@@ -90,6 +90,7 @@ export default function SessionsMonitor({ server, onClose }) {
 
       <div className="overflow-auto flex-1">
         {error && <p className="px-4 py-6 text-xs text-red-400 text-center">{error.message}</p>}
+        {threadsError && <p className="px-4 py-2 text-xs text-amber-400">Couldn't load threads: {threadsErrorDetail?.message ?? 'unknown error'}</p>}
         {!error && users.length === 0 && !isFetching && (
           <p className="px-4 py-6 text-xs text-muted-foreground italic text-center">No active sessions.</p>
         )}
@@ -107,8 +108,8 @@ export default function SessionsMonitor({ server, onClose }) {
               {users.map((u) => {
                 const isExpanded = expandedUser === u.name
                 return (
-                  <>
-                    <tr key={u.name}
+                  <Fragment key={u.name}>
+                    <tr
                       onClick={() => setExpandedUser(isExpanded ? null : u.name)}
                       className={cn('border-b border-border/50 cursor-pointer hover:bg-muted/30', isExpanded && 'bg-muted/20')}
                     >
@@ -195,7 +196,7 @@ export default function SessionsMonitor({ server, onClose }) {
                         </tr>
                       )
                     })}
-                  </>
+                  </Fragment>
                 )
               })}
             </tbody>

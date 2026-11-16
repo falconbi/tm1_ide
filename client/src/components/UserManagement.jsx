@@ -28,7 +28,7 @@ function GroupCheckbox({ name, checked, onToggle, disabled, danger = false }) {
   )
 }
 
-function UserDetail({ server, client, allGroups, onDeleted }) {
+function UserDetail({ server, client, allGroups, groupsError, groupsLoading, onDeleted }) {
   const [newPwd, setNewPwd]         = useState('')
   const [showPwd, setShowPwd]       = useState(false)
   const { username } = useStore()
@@ -41,7 +41,7 @@ function UserDetail({ server, client, allGroups, onDeleted }) {
   const removeFromGroup   = useRemoveClientFromGroup()
 
   const memberSet = new Set(memberGroups)
-  const isSelf    = client.Name === username
+  const isSelf    = String(client.Name).toLowerCase() === String(username ?? '').toLowerCase()
   const groupBusy = addToGroup.isPending || removeFromGroup.isPending
 
   const handleResetPassword = async () => {
@@ -109,10 +109,10 @@ function UserDetail({ server, client, allGroups, onDeleted }) {
           </div>
           <button
             onClick={handleResetPassword}
-            disabled={!newPwd.trim() || updateClient.isPending}
+            disabled={!newPwd.trim() || resetPassword.isPending}
             className="px-3 py-1.5 text-xs rounded bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-40 flex items-center gap-1"
           >
-            {updateClient.isPending ? <Loader2 size={10} className="animate-spin" /> : 'Set'}
+            {resetPassword.isPending ? <Loader2 size={10} className="animate-spin" /> : 'Set'}
           </button>
         </div>
       </div>
@@ -123,7 +123,11 @@ function UserDetail({ server, client, allGroups, onDeleted }) {
           Group Membership
           {(loadingGroups || groupBusy) && <Loader2 size={9} className="animate-spin" />}
         </div>
-        {allGroups.length === 0 ? (
+        {groupsError ? (
+          <div className="text-xs text-red-400">Couldn't load groups: {groupsError.message}</div>
+        ) : groupsLoading ? (
+          <div className="flex items-center gap-1.5 text-xs text-muted-foreground"><Loader2 size={10} className="animate-spin" /> Loading groups…</div>
+        ) : allGroups.length === 0 ? (
           <div className="text-xs text-muted-foreground italic">No groups found</div>
         ) : (
           <div className="flex flex-col gap-0.5 max-h-52 overflow-y-auto border border-border rounded p-1 bg-muted/20">
@@ -169,7 +173,7 @@ function UserDetail({ server, client, allGroups, onDeleted }) {
   )
 }
 
-function CreateUserForm({ server, allGroups, onCreated, onCancel }) {
+function CreateUserForm({ server, allGroups, groupsError, groupsLoading, onCreated, onCancel }) {
   const [name,     setName]     = useState('')
   const [password, setPassword] = useState('')
   const [friendly, setFriendly] = useState('')
@@ -233,7 +237,11 @@ function CreateUserForm({ server, allGroups, onCreated, onCancel }) {
 
       <div>
         <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-2">Groups</div>
-        {allGroups.length === 0 ? (
+        {groupsError ? (
+          <div className="text-xs text-red-400">Couldn't load groups: {groupsError.message}</div>
+        ) : groupsLoading ? (
+          <div className="flex items-center gap-1.5 text-xs text-muted-foreground"><Loader2 size={10} className="animate-spin" /> Loading groups…</div>
+        ) : allGroups.length === 0 ? (
           <div className="text-xs text-muted-foreground italic">No groups found</div>
         ) : (
           <div className="flex flex-col gap-0.5 max-h-40 overflow-y-auto border border-border rounded p-1 bg-muted/20">
@@ -244,7 +252,7 @@ function CreateUserForm({ server, allGroups, onCreated, onCancel }) {
                 danger={isAdminGroup(g)}
                 checked={selGroups.has(g)}
                 onToggle={() => toggleGroup(g)}
-                disabled={busy}
+                disabled={busy || groupsLoading || !!groupsError}
               />
             ))}
           </div>
@@ -277,7 +285,7 @@ export default function UserManagement({ server, onClose }) {
   // Signed out of this server → say so (and offer Sign in) instead of an empty list.
   // The sign-in dialog reloads all queries on success, so the list then appears.
   const needsLogin = !!clientsError?.data?.needsServerLogin
-  const { data: groups  = [] }                        = useGroups(loginServer)
+  const { data: groups = [], isLoading: groupsLoading, error: groupsError } = useGroups(loginServer)
   const [selectedName, setSelectedName] = useState(null)
   const [creating, setCreating]         = useState(false)
 
@@ -364,6 +372,8 @@ export default function UserManagement({ server, onClose }) {
               <CreateUserForm
                 server={loginServer}
                 allGroups={groups}
+                groupsError={groupsError}
+                groupsLoading={groupsLoading}
                 onCreated={(name) => { setCreating(false); setSelectedName(name) }}
                 onCancel={() => setCreating(false)}
               />
@@ -374,6 +384,8 @@ export default function UserManagement({ server, onClose }) {
                 server={loginServer}
                 client={selectedClient}
                 allGroups={groups}
+                groupsError={groupsError}
+                groupsLoading={groupsLoading}
                 onDeleted={() => setSelectedName(null)}
               />
             )}
