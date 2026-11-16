@@ -29,7 +29,8 @@ Users open it in a browser, connect to a TM1 server, and edit rules, processes, 
 ## Key Files
 
 ```
-server.js                     # Express backend — all API routes
+server.js                     # IDE bootstrap: middleware, route registration, SPA fallback
+routes/                       # One file per noun; each exports register(app, deps)
 core/
   tm1_client.js               # TM1 REST client (all API calls go through here)
   paw_connect.js              # PAW session auth + CSRF caching
@@ -120,7 +121,7 @@ cd client && npm run dev   # terminal 2 (Vite on :5173)
 ## Architecture Constraints
 
 - **All TM1 calls go through `TM1Client`** — never call the TM1 REST API directly from a route. Add a method to `tm1_client.js` and call it from the route.
-- **All API routes are in `server.js`** — no router files. Routes follow the pattern `app.METHOD('/api/noun/verb', async (req, res) => { try { ... } catch (e) { res.status(500).json({ error: e.message }) } })`.
+- **API routes live in `routes/<noun>.js`** — each exports `register(app, deps)` and is called from `server.js` in a fixed order. Shared HTTP helpers (`fail`, `gateReadOnly`, `gateWrite`, `requireTm1Admin`, `scanIdentity`) live in `routes/_http.js`. `core/` never sees `req`/`res`.
 - **Routes report failure with `fail(res, e)`** — the adapters normalise TM1 errors (`core/tm1-error.js`), so `e.message` is TM1's own text and `e.status` is the HTTP status. The only routes that return a result object containing `error` with HTTP 200 are the command-result routes `/api/period-builder/run` and `/api/deploy/git/prepare|execute|review`.
 - **TM1 OData URL pattern**: `${PAW_HOST}/api/v0/tm1/{server}/api/v1/{path}`
 - **Connections are adapter-driven** — `config/servers.json` decides direct or PAW for each server; the client must not assume one. Server name comes from `config/servers.json`.
@@ -273,7 +274,7 @@ Data goes through hooks in `hooks/useApi.js`; a direct `fetch` is only for a one
 1. Create `client/src/components/MyEditor.jsx`
 2. Add to the dispatcher in `EditorPane.jsx` or `App.jsx`
 3. Add a tab type to `openTab` calls in `Explorer.jsx`
-4. Add API routes to `server.js` (and methods to `tm1_client.js` if needed)
+4. Add API routes to the matching `routes/<noun>.js` (and methods to `tm1_client.js` if needed)
 5. Add hooks to `hooks/useApi.js`
 6. Add to the `getRevealTarget` function in `EditorPane.jsx` if it has a "show in tree" target
 

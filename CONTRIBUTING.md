@@ -61,10 +61,11 @@ move the number; the remaining findings are recorded in [LINT.md](docs/ide/LINT.
 
 Pick the existing pattern and keep one obvious way to do the job:
 
-- **A server route** lives in `server.js`; routes report failures through `fail(res, e)`. If a route
-  is worth testing without Express, put the handler in a small factory such as
-  `core/user_admin.js`, `core/admin_routes.js` or `core/session_routes.js`. See
-  [CLAUDE.md](CLAUDE.md#architecture-constraints).
+- **A server route** lives in the matching `routes/<noun>.js`, exported as `register(app, deps)`
+  and called from `server.js`; shared HTTP helpers are in `routes/_http.js`, and routes report
+  failures through `fail(res, e)`. If a route is worth testing without Express, put the handler in
+  a small factory such as `core/user_admin.js`, `core/admin_routes.js` or
+  `core/session_routes.js`. See [CLAUDE.md](CLAUDE.md#architecture-constraints).
 - **A TM1 call** goes in `core/tm1_client.js`, never directly in a route. The OData URL pattern and
   endpoint notes are in [CLAUDE.md](CLAUDE.md#tm1-specific-conventions).
 - **A client hook** belongs in `client/src/hooks/useApi.js`; cache keys include `server` first. See

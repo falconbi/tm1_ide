@@ -24,7 +24,8 @@ it is not the IDE’s release path, which now runs through TM1 Git.
 
 ```
 tm1_ide/
-├── server.js                    # IDE Express backend — all IDE API routes
+├── server.js                    # IDE bootstrap: middleware, route registration, SPA, listen
+├── routes/                      # One register(app, deps) file per noun; _http.js has shared helpers
 ├── lens-server.js               # Lens app: sign-in, home, sandboxed Lens viewer
 ├── core/                        # Shared Node code
 │   ├── tm1_client.js            # Every TM1 REST call goes through this client
