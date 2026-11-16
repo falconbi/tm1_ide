@@ -24,9 +24,11 @@ function roundTripProblem(name) {
 function memberRefs(expr) {
     const out = []
     if (!expr) return out
-    const re = /\[([^\]\[]+)\]\.\[([^\]\[]+)\]\.\[([^\]\[]+)\]/g
+    // Element names may contain ]] (same encoding as shared/pivot/cellset.js).
+    const re = /\[((?:[^\]]|\]\])*)\]\.\[((?:[^\]]|\]\])*)\]\.\[((?:[^\]]|\]\])*)\]/g
     let m
-    while ((m = re.exec(expr))) out.push({ dim: m[1], hier: m[2], member: m[3] })
+    const unescape = s => s.replace(/\]\]/g, ']')
+    while ((m = re.exec(expr))) out.push({ dim: unescape(m[1]), hier: unescape(m[2]), member: unescape(m[3]) })
     return out
 }
 
@@ -154,6 +156,12 @@ async function scan(server, opts = {}) {
     return out
 }
 
+// The Git push route's gate: run the readiness scan and return blockers verbatim.
+async function pushReadiness(server, opts = {}) {
+    const result = await scan(server, opts)
+    return { ok: result.ok, blockers: result.blockers ?? [], readiness: result }
+}
+
 // ── First-pull safety analysis (IMPROVEMENTS 10.2) ──────────────────────────
 // For a populated target that is about to receive its first pull: TM1 Git has no
 // "adopt current state" action, so the first pull is a full overwrite. Analyze the
@@ -216,4 +224,4 @@ async function firstPullAnalysis(server, opts = {}) {
     return out
 }
 
-module.exports = { scan, firstPullAnalysis, memberRefs }
+module.exports = { scan, pushReadiness, firstPullAnalysis, memberRefs }

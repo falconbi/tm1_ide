@@ -12,6 +12,7 @@ commits that mixed a fix into a feature are included too. New features are not l
 
 ### 2026-11-16
 
+- **Git readiness** — Readiness findings were warnings in the old risk report and the Git push route did not scan at all, so a blocker could be linked/pushed. The Git push route now runs the readiness scan and refuses on blockers (returning the findings), readiness errors are blockers when the transport is Git, and the setup screen disables Link/Commit while the last scan has blockers
 - **deploy** — A successful first pull applied the repo but recorded no target anchor, so the next release said "no recorded deployed commit" and drift fell back to TM1's `DeployedCommit`. First pull now records the pulled commit through `git-state.recordDeploy` and returns it
 - **deploy** — The pull-plan check silently ignored operations it could not parse, so an unrecognised TM1 Git operation could ride along with a release. `parsePlanOp` now marks unknown operations and `execute()` refuses, listing the raw operations
 - **deploy / attribute values** — Attribute edits were invisible to change sets: the UI and bulk importer wrote values without a log, the manifest parsed the old attribute fields backwards and omitted subset/view/chore deletes, and reconcile skipped blank values. The writers now log `ATTRIBUTE_VALUE_SET` with the preceding value, the manifest carries the correct dimension/element/attribute pairs and delete types, and a blank value clears the target. The MCP `set_attribute_values` tool logs the same record

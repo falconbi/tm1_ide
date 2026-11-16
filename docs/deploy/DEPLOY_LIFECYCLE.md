@@ -12,14 +12,15 @@ Found by code review, not by a failed deploy. Each line moves to **Fixed** as th
 - Step 3 — attribute-value writes are logged as `ATTRIBUTE_VALUE_SET`; the manifest carries dimension/element/attribute pairs and subset/view/chore deletes, and a blank value clears the target value.
 - Step 4 — an unrecognised pull-plan operation now refuses instead of being ignored.
 - Step 5 — first pull records the pulled commit as the target's deploy anchor.
+- Step 6 — readiness findings now block the Git push route, and the setup screen disables Link/Commit while blockers remain.
 
 **Still open**
 
-- Step 6 — readiness findings did not block a Git push; first-pull safety analysis was unreachable.
 - Step 7 — a drift check pushed `prod-live` without taking the target's deploy lock.
 - Step 8 — another user could close, resume or edit a change set.
 - Step 9 — single-assertion runs did not record history; assertion writes did not use the normal model-write gate; numeric fields were not validated.
 - Step 10 — two deploy surfaces and a Deploy History built from local package archives, not model deploy records.
+- First-pull element-loss analysis (`firstPullAnalysis`) is still not wired into the setup screen (round 2).
 - Round 2 — a fresh IDE cannot yet read model-owned governance without local migration markers.
 
 ## The rules
@@ -212,7 +213,7 @@ Auto-deploy doesn't keep DEV and PROD converged over months — a **recurring dr
 
 ## The readiness check (IMPROVEMENTS 10.2)
 
-A blocker before any push: member-less view titles, stale member references in views/subsets, names TM1 Git won't round-trip, `tm1project` Ignore — plus the first-pull safety analysis on a populated target. Runs in the deploy risk check, on demand, and cross-server (Model Health).
+A blocker before any push: member-less view titles, stale member references in views/subsets, names TM1 Git won't round-trip, `tm1project` Ignore. The Git push route runs the scan and refuses on blockers; warnings still travel with a successful push. It also runs on demand and cross-server (Model Health). The separate first-pull element-loss analysis is not yet wired into the setup screen.
 
 ## What stays where (the "no model data on the IDE" rule)
 

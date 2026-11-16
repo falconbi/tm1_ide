@@ -391,7 +391,7 @@ function checkVersionCompat(obj, packageDir, major) {
     return risks
 }
 
-async function analyzeRisk(packageDir, targetServer, ideToken) {
+async function analyzeRisk(packageDir, targetServer, ideToken, { transport = null } = {}) {
     const manifestPath = path.join(packageDir, 'manifest.json')
     if (!fs.existsSync(manifestPath)) throw new Error(`No manifest.json found in ${packageDir}`)
 
@@ -462,7 +462,7 @@ async function analyzeRisk(packageDir, targetServer, ideToken) {
 // about "Selected": null — so findings are WARNINGs, not blockers. When the Git
 // transport deploy path exists, set `gitTransport = true` and they become BLOCKERs
 // (a single stale view would otherwise reject the target's pull).
-const gitTransport = false // flip when the TM1 Git deploy path is wired
+const gitTransport = (transport ?? manifest._meta?.transport) === 'git'
 const sourceServer = manifest._meta?.server
 if (sourceServer && sourceServer !== targetServer) {
     try {

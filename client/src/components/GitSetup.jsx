@@ -42,10 +42,15 @@ export default function GitSetup({ server, onClose }) {
   }
   const checkReadiness = async () => {
     setBusy('ready')
-    try { const d = await fetch(`/api/git/setup/readiness?server=${encodeURIComponent(server)}`, { headers: authHeader() }).then(r => r.json()); setReadiness(d) }
-    catch (e) { setError(e.message) }
+    try {
+      const r = await fetch(`/api/git/setup/readiness?server=${encodeURIComponent(server)}`, { headers: authHeader() })
+      const d = await r.json()
+      if (!r.ok || d.error) throw new Error(d.error || r.statusText)
+      setReadiness(d)
+    } catch (e) { setError(e.message) }
     finally { setBusy('') }
   }
+  const readinessBlocked = readiness?.ok === false
   const doInit = async () => {
     setBusy('init'); setError(null)
     try {
@@ -165,7 +170,7 @@ export default function GitSetup({ server, onClose }) {
                 <p className="text-[10px] text-muted-foreground uppercase tracking-wide">4 · Check &amp; link</p>
                 <div className="flex gap-2">
                   <button onClick={checkReadiness} disabled={busy === 'ready'} className={text}>{busy === 'ready' ? 'Checking…' : 'Check readiness'}</button>
-                  <button onClick={doInit} disabled={busy === 'init' || !repo.trim() || (deployment !== 'PROD' && !deployment)} className={primary}>Link to repo (GitInit)</button>
+                  <button onClick={doInit} disabled={busy === 'init' || readinessBlocked || !repo.trim() || (deployment !== 'PROD' && !deployment)} title={readinessBlocked ? 'Fix the readiness blockers first' : ''} className={primary}>Link to repo (GitInit)</button>
                 </div>
                 {readiness && (
                   <p className={'text-[11px] ' + (readiness.ok === false ? 'text-amber-600' : 'text-emerald-700')}>
@@ -194,7 +199,7 @@ export default function GitSetup({ server, onClose }) {
               {linked && deployment !== 'PROD' && (
                 <div className="border border-border rounded-md p-3 space-y-2">
                   <p className="text-[10px] text-muted-foreground uppercase tracking-wide">5 · First commit</p>
-                  <button onClick={doFirstPush} disabled={busy === 'push'} className={primary}>{busy === 'push' ? 'Pushing…' : 'Commit this server to the repo'}</button>
+                  <button onClick={doFirstPush} disabled={busy === 'push' || readinessBlocked} title={readinessBlocked ? 'Fix the readiness blockers first' : ''} className={primary}>{busy === 'push' ? 'Pushing…' : 'Commit this server to the repo'}</button>
                 </div>
               )}
             </>

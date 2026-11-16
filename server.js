@@ -2917,6 +2917,15 @@ app.post('/api/deploy/git/push', async (req, res) => {
         if (!gateReadOnly(res, req.body?.source)) return
         const { source, branch = 'dev', message, session } = req.body
         if (!source) return res.status(400).json({ error: 'source required' })
+        const { pushReadiness } = require('./core/git-readiness')
+        const readiness = await pushReadiness(source, { ideToken: req.ideToken })
+        if (!readiness.ok) {
+            return res.status(409).json({
+                error: `Readiness blockers must be fixed before pushing: ${readiness.blockers.join('; ')}`,
+                blockers: readiness.blockers,
+                readiness: readiness.readiness,
+            })
+        }
         const c = makeClient(source, req.ideToken)
         const gi = require('./core/git-identity')
         const creds = { Username: gi.user(), Password: process.env.TM1_GIT_TOKEN }
@@ -2927,7 +2936,7 @@ app.post('/api/deploy/git/push', async (req, res) => {
         })
         await c.post(`GitPlans('${encodeURIComponent(plan.ID)}')/tm1.Execute`, {})
         if (session) try { cl.setSessionCommit(session, plan.NewCommit?.ID ?? null) } catch { /* link is best-effort */ }
-        res.json({ pushed: true, commit: plan.NewCommit?.ID ?? null, summary: plan.NewCommit?.Summary ?? null })
+        res.json({ pushed: true, commit: plan.NewCommit?.ID ?? null, summary: plan.NewCommit?.Summary ?? null, readiness: readiness.readiness })
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
