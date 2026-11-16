@@ -12,6 +12,7 @@ commits that mixed a fix into a feature are included too. New features are not l
 
 ### 2026-11-16
 
+- **sessions** — Server Admin's Kick button sent a numeric row index (or `undefined`) instead of the TM1 session name, so it could disconnect the wrong session. One `sessionKey` helper now resolves `Name` (v11) → `ID` → `SessionID` for Server Admin and the Sessions Monitor
 - **user provisioning** — The New User route called `createClient` and patched groups itself, bypassing `provisionUser`'s two-run workaround; TM1 could create the account with no usable password while the test suite stayed green. The route now calls `provisionUser`, has a route-level two-run test, and the duplicate create route is gone
 - **user management** — The New User form started with `ADMIN` selected, so an ordinary create silently granted full administration. It now starts with no groups, lists `ADMIN` last with a red "Full administrator" label, and shows the selected groups on the Create button
 - **admin authorization** — The Sessions, Admin and Jobs controls were visible to every user, and session/thread/job cancel, maintenance, configuration, metrics, user management and catalog override routes accepted any IDE token. One cached TM1-Admin check now gates every admin mutation and sensitive read, `/api/auth/servers` carries `isAdmin`, and the UI hides those controls for non-admins

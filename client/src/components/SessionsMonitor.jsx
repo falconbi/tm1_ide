@@ -3,6 +3,7 @@ import { X, RefreshCw, Loader2, Users, ShieldCheck, User, Trash2, Ban, Activity 
 import { useSessions, useThreads, useDisconnectSession, useCancelThread } from '@/hooks/useApi'
 import { useQueryClient } from '@tanstack/react-query'
 import { cn } from '@/lib/utils'
+import { sessionKey } from '@/lib/session-key'
 import { toast } from 'sonner'
 
 export default function SessionsMonitor({ server, onClose }) {
@@ -133,7 +134,7 @@ export default function SessionsMonitor({ server, onClose }) {
                       <td className="px-3 py-1.5 text-right">
                         {u.sessions.length === 1 && (
                           <button
-                            onClick={(e) => { e.stopPropagation(); handleDisconnect(u.sessions[0].Name) }}
+                            onClick={(e) => { e.stopPropagation(); handleDisconnect(sessionKey(u.sessions[0])) }}
                             disabled={disconnect.isPending}
                             className="inline-flex items-center gap-1 text-[10px] text-muted-foreground hover:text-red-400 disabled:opacity-40 px-1.5 py-0.5 rounded hover:bg-muted transition-colors"
                           >
@@ -179,7 +180,7 @@ export default function SessionsMonitor({ server, onClose }) {
                               ))}
                               <div className="flex gap-2 pt-0.5">
                                 <button
-                                  onClick={() => handleDisconnect(s.Name)}
+                                  onClick={() => handleDisconnect(sessionKey(s))}
                                   disabled={disconnect.isPending}
                                   className="inline-flex items-center gap-1 text-[9px] text-muted-foreground hover:text-red-400 disabled:opacity-40 px-1.5 py-0.5 rounded hover:bg-muted transition-colors"
                                 >

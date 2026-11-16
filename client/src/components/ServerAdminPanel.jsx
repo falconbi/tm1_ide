@@ -3,6 +3,7 @@ import { X, RefreshCw, Loader2, ShieldAlert, ShieldCheck, Server, Settings, BarC
 import { useServerMetrics, useActiveConfiguration, useMaintenanceMode, useSessions, useDisconnectSession, useServers, useSetSimpleMode } from '@/hooks/useApi'
 import { useQueryClient } from '@tanstack/react-query'
 import { cn } from '@/lib/utils'
+import { sessionKey } from '@/lib/session-key'
 import { useStore } from '@/store'
 import { serverCapabilities } from '@/lib/tm1-version'
 import { toast } from 'sonner'
@@ -307,7 +308,7 @@ export default function ServerAdminPanel({ server, onClose }) {
                     </thead>
                     <tbody>
                       {sessions.data.map((s, i) => {
-                        const id       = s.ID ?? s.SessionID ?? i
+                        const id       = sessionKey(s) ?? i
                         // $expand=User gives an object ({ Name, FriendlyName, … }) — rendering it as-is crashed the app
                         const user     = s.UserName ?? (typeof s.User === 'object' ? (s.User?.FriendlyName || s.User?.Name) : s.User) ?? '—'
                         const ip       = s.IPAddress ?? s.ClientIPAddress ?? '—'
