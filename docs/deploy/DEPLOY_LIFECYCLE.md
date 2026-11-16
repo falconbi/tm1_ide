@@ -11,10 +11,10 @@ Found by code review, not by a failed deploy. Each line moves to **Fixed** as th
 - Step 2 — the approval's linked change set now supplies the authoritative `source`; source mismatch is refused, source is required in release-only mode, and reconcile errors/skips make `controlOk` false with reasons.
 - Step 3 — attribute-value writes are logged as `ATTRIBUTE_VALUE_SET`; the manifest carries dimension/element/attribute pairs and subset/view/chore deletes, and a blank value clears the target value.
 - Step 4 — an unrecognised pull-plan operation now refuses instead of being ignored.
+- Step 5 — first pull records the pulled commit as the target's deploy anchor.
 
 **Still open**
 
-- Step 5 — first pull did not record the target's deployed commit, so the next release had no anchor.
 - Step 6 — readiness findings did not block a Git push; first-pull safety analysis was unreachable.
 - Step 7 — a drift check pushed `prod-live` without taking the target's deploy lock.
 - Step 8 — another user could close, resume or edit a change set.
@@ -36,7 +36,8 @@ Found by code review, not by a failed deploy. Each line moves to **Fixed** as th
    commit — non-optional, enforced server-side.
 3. Every deploy runs **control checks** on the target and records the result. The approved change set supplies the source used for reconcile/assertions; a caller cannot substitute another source, and reconcile errors or skipped deletes make the deploy not-clean.
 4. **Drift** is measured against what the target last received (the IDE-recorded
-   commit), never TM1's own `DeployedCommit`.
+   commit), never TM1's own `DeployedCommit`. The first pull records that anchor so
+   the first release and the first drift check have a base.
 5. **Drift pauses deploys** — the fix is to **re-apply the change on DEV in a change
    set and release it**. There is **no automated Revert or Promote** anymore (both
    were retired 10 Oct 2026): the wizard no longer offers them, the routes and

@@ -12,7 +12,7 @@
 // message (and it stays enforced, and testable, without the HTTP layer).
 
 const { makeClient, isReadOnly } = require('./adapter_registry')
-const { lastDeployed } = require('./git-state')
+const { lastDeployed, recordDeploy } = require('./git-state')
 
 // Tells the caller how to get unblocked: init and first-pull only run on a
 // writable server, so setup must happen BEFORE marking the server read-only.
@@ -54,7 +54,11 @@ async function firstPull(server, { branch = 'dev', confirm, gitUser, token, ideT
     const plan = await c.post('GitPull', { Branch: branch, ExecutionMode: 'SingleCommit', Force: false, Username: gitUser, Password: token })
     const n = (plan.Operations ?? []).length
     await c.post(`GitPlans('${encodeURIComponent(plan.ID)}')/tm1.Execute`, {})
-    return { ok: true, overwritten: n, note: `First pull applied — every object on ${server} was replaced by the repo state (${n} operations).` }
+    const commit = plan?.Commit?.ID ?? plan?.NewCommit?.ID ?? null
+    if (commit) {
+        await recordDeploy(server, commit, plan?.Commit?.Summary ?? null, { ideToken })
+    }
+    return { ok: true, overwritten: n, commit, note: `First pull applied — every object on ${server} was replaced by the repo state (${n} operations).` }
 }
 
 module.exports = { alreadyDeployed, init, firstPull }

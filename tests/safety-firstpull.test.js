@@ -10,6 +10,7 @@ const stub = (rel, o) => { const r = resolve(rel); require.cache[r] = { id: r, f
 let fakeReadOnly = false
 let gitStatus = {}
 let recordedDeployed = null
+let recordedDeploy = null
 function fakeClient() {
     return {
         async post(route) {
@@ -23,7 +24,11 @@ function fakeClient() {
 
 const arReal = require(resolve('core/adapter_registry'))
 stub('core/adapter_registry', { ...arReal, makeClient: () => fakeClient(), isReadOnly: () => fakeReadOnly })
-stub('core/git-state', { lastDeployed: () => (recordedDeployed ? { lastDeployedCommit: recordedDeployed } : null), load: () => ({}), FILE: '' })
+stub('core/git-state', {
+    lastDeployed: () => (recordedDeployed ? { lastDeployedCommit: recordedDeployed } : null),
+    recordDeploy: async (_s, c) => { recordedDeploy = c; return { lastDeployedCommit: c } },
+    load: () => ({}), FILE: '',
+})
 
 const { firstPull } = require(resolve('core/git-setup'))
 const OK = (s) => `I understand this overwrites ${s}`
@@ -57,8 +62,10 @@ test('first-pull is refused when a deploy was recorded for the server', async ()
 test('first-pull is allowed on a fresh, writable server', async () => {
     gitStatus = {}
     recordedDeployed = null
+    recordedDeploy = null
     const r = await firstPull('FRESH01', { confirm: OK('FRESH01'), gitUser: 't', token: 'x' })
     assert.equal(r.ok, true)
     assert.ok(!r.refused, 'not refused')
     assert.equal(r.overwritten, 2, 'two operations applied')
+    assert.equal(recordedDeploy, 'C1', 'the pulled commit is recorded as the target anchor')
 })
