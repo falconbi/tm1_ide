@@ -153,6 +153,22 @@ test('immediate mode: each typed cell is written at once; a refused write puts t
   g.destroy(); close()
 })
 
+test('setPivot refuses to discard held save-mode edits unless forced', async () => {
+  const { P, close } = page()
+  const first = sample(P)
+  const g = P.createPivotGrid('#g', { ...first, edit: 'save' })
+  await wait(50)
+  g.api.getRowNode('North::Feb').setDataValue('c0', 12)
+  assert.equal(g.changes().length, 1)
+  const next = sample(P)
+  assert.equal(g.setPivot(next.pivot, next.rowHierarchies), false)
+  assert.equal(g.changes().length, 1, 'refused setPivot keeps the held value')
+  assert.equal(g.api.getRowNode('North::Feb').data.c0.v, 12)
+  assert.equal(g.setPivot(next.pivot, next.rowHierarchies, undefined, { force: true }), true)
+  assert.equal(g.changes().length, 0, 'forced setPivot clears the edit')
+  g.destroy(); close()
+})
+
 test('CSV exports what the screen shows (TM1 formats applied)', async () => {
   const { P, close } = page()
   const pivot = P.cellsetToPivot({

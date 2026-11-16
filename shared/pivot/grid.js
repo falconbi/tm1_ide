@@ -26,7 +26,10 @@
  *     restore,                   // g.state() of the grid this one replaces — keeps what was open
  *   })
  *   g.changes() → [{ tuple, members, colId, value, old }]; g.undo(); g.saved()
- *   g.setPivot(pivot, rowHierarchies?, colHierarchies?); g.expandAll('rows'|'cols', dimIdx, open)
+ *   g.setPivot(pivot, rowHierarchies?, colHierarchies?, { force }?) → boolean; in save mode it
+ *                                refuses when typed values are held unless { force: true }, so a
+ *                                background refresh cannot silently discard them
+ *   g.expandAll('rows'|'cols', dimIdx, open)
  *   g.quickFilter(text); g.freezeTop(on); g.stripes(on); g.exportCsv(fileName); g.destroy()
  *   g.setOptions({ totals, colTotals, keepMode, dark, makeTheme, rowNames, edit }) — redraw with new settings
  */
@@ -498,8 +501,10 @@ export function createPivotGrid(host, opts = {}) {
             for (const k of orig.keys()) { const i = k.lastIndexOf('|'); const cell = pivot.data[k.slice(0, i)]?.[k.slice(i + 1)]; if (cell) cell.d = show(cell, k) }
             orig.clear(); repaint(); if (o.edit === 'save' && o.onEdit) o.onEdit([])
         },
-        // new data (after a query); keeps drill-down when the shape is unchanged
-        setPivot(next, rowsIn, colsIn) {
+        // new data (after a query); keeps drill-down when the shape is unchanged.
+        // In save mode, held edits are kept and the call is refused unless forced.
+        setPivot(next, rowsIn, colsIn, { force = false } = {}) {
+            if (o.edit === 'save' && orig.size > 0 && !force) return false
             pivot = next || { columns: [], rows: [], data: {} }
             if (rowsIn) o.rowHierarchies = rowsIn
             if (colsIn) o.colHierarchies = colsIn
@@ -509,6 +514,7 @@ export function createPivotGrid(host, opts = {}) {
             api.setGridOption('columnDefs', columnDefs())
             applyRows()
             repaint()
+            return true
         },
         // what is open, for a grid that replaces this one (opts.restore)
         state() { return { rowExp, colExp, rowKnown, colKnown, pendingOpen, rowTree, colTree } },

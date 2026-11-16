@@ -666,7 +666,7 @@ function pivot(el, cfg = {}) {
   const bar = document.createElement('div'), gridEl = document.createElement('div')
   bar.style.cssText = 'display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;margin-bottom:10px;font-size:12px'
   node.append(bar, gridEl)
-  let g = null, busy = null, onChange = cfg.onEdit
+  let g = null, busy = null, onChange = cfg.onEdit, lastShape = ''
 
   function drawBar() {
     const zone = (key, title) => '<span data-zone="' + key + '" style="display:inline-flex;gap:6px;align-items:center;min-height:28px;padding:2px 6px;border:1px dashed ' + t.rule + ';border-radius:8px">' +
@@ -802,6 +802,14 @@ function pivot(el, cfg = {}) {
   async function rebuild() {
     await loadHierarchies(); await filterChoices(); drawBar()
     const [data, rowsH, colsH] = await Promise.all([query(), treesFor(layout.rows), treesFor(layout.columns)])
+    const shape = layout.rows.join('|') + '::' + layout.columns.join('|')
+    // Data / member / hierarchy / drill change with the same columns: update in
+    // place. Only a changed column set needs a new grid (and its width key).
+    if (g && shape === lastShape) {
+      if (g.setPivot(data, rowsH, colsH) === false) { report(new Error('Save or undo your changes before refreshing.')); return }
+      if (onChange) onChange([])
+      return
+    }
     const restore = keepState && g ? g.state() : null; keepState = false
     if (g) g.destroy()
     g = P.createPivotGrid(gridEl, {
@@ -813,6 +821,7 @@ function pivot(el, cfg = {}) {
       onContextMenu: cfg.cellMenu === false ? undefined : cellMenu,
       onDrill: drill, restore,
     })
+    lastShape = shape
     if (onChange) onChange([])
   }
   // open a total beyond what the query returned (the grid asks; re-query with it widened)
@@ -836,7 +845,7 @@ function pivot(el, cfg = {}) {
   async function load() {
     if (!g) return rebuild()
     const [data, rowsH, colsH] = await Promise.all([query(), treesFor(layout.rows), treesFor(layout.columns)])
-    g.setPivot(data, rowsH, colsH)
+    if (g.setPivot(data, rowsH, colsH) === false) { report(new Error('Save or undo your changes before refreshing.')); return }
     if (onChange) onChange([])
   }
   const run = f => { busy = (busy || Promise.resolve()).then(f).catch(e => { report(e); throw e }); return busy }
