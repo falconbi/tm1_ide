@@ -1,77 +1,94 @@
 # TM1 IDE — Architecture
 
-How the pieces fit together, and where the code lives.
+How the pieces fit together, and where the code lives. Read this after Setup and Features, then use
+[CLAUDE.md](../../CLAUDE.md) as the working map (constraints, conventions, and the “how to add…”
+sections).
 
 ← [Back to README](../../README.md)
 
 ---
 
-## 📁 Project Structure
+## Three programs, one codebase
+
+| Program | Entry point | Who uses it |
+|---|---|---|
+| **IDE** | `server.js` | Developers: rules, TI, dimensions, views, deploys, admin |
+| **Lens app** | `lens-server.js` | Business users: the saved Lenses, as a separate runtime |
+| **MCP server** | `tools/tm1mcp/server.js` | AI agents building and checking models through MCP tools |
+
+They share `core/` (TM1 client, change log, model store, deploy tooling) and `shared/` (Lens bridge,
+pivot engine, function catalog). `tools/tm1deploy/` is the command-line package/risk/deploy tooling;
+it is not the IDE’s release path, which now runs through TM1 Git.
+
+## Project structure
 
 ```
 tm1_ide/
-├── server.js                          # Express backend — all API routes
-├── core/
-│   ├── tm1_client.js                  # TM1 REST client — all API calls go through here
-│   ├── adapter_registry.js            # Selects adapter per request, resolves server URLs
-│   ├── paw_connect.js                 # Session store + PAW cookie-jar auth (paw-native)
-│   ├── change_log.js                  # Change Set tracking — logs every save to audit trail
-│   ├── sql_client.js                  # External SQL connections (MSSQL/PG/MySQL/SQLite)
-│   └── adapters/
-│       ├── direct_v11.js              # Direct TM1 REST — Basic Auth, no PAW
-│       ├── paw_native.js              # PAW proxy — cookie jar + CSRF header
-│       └── paw_oauth2.js              # PAW proxy — Authentik/OAuth2 machine credential
-├── client/                            # React + Vite frontend source
+├── server.js                    # IDE Express backend — all IDE API routes
+├── lens-server.js               # Lens app: sign-in, home, sandboxed Lens viewer
+├── core/                        # Shared Node code
+│   ├── tm1_client.js            # Every TM1 REST call goes through this client
+│   ├── adapter_registry.js      # Picks direct-v11 / paw_native / paw_oauth2 per server
+│   ├── adapters/
+│   │   ├── direct_v11.js        # Direct TM1 REST, Basic Auth
+│   │   ├── paw_native.js        # PAW cookie jar + CSRF
+│   │   └── paw_oauth2.js        # PAW with an Authentik/OAuth2 machine credential
+│   ├── change_log.js            # Change sets + audit log (SQLite)
+│   ├── model-store.js           # Model-owned documents (tests, Lenses, baselines)
+│   ├── git-*.js                 # TM1 Git releases, approvals, drift, readiness
+│   ├── lens_*.js                # Lens store, bridge validation, activity, preferences
+│   └── sql_client.js            # MSSQL / PostgreSQL / MySQL / SQLite connections
+├── client/                      # React + Vite frontend source (built into static/)
 │   └── src/
-│       ├── App.jsx                    # Root layout, global keyboard handlers
-│       ├── store/                     # Zustand: tabs, groups, server, UI state
-│       ├── hooks/useApi.js            # All TanStack Query data hooks
-│       ├── components/                # One file per editor/panel
-│       └── lib/
-│           ├── tm1-completion.js      # RULES_CATALOG + TI_CATALOG (rich schema, arg counts)
-│           ├── tm1-functions.js       # TM1_FUNCTIONS (Monarch highlighting, signature help)
-│           ├── tm1-mdx-catalog.js     # MDX_CATALOG (category-grouped MDX functions)
-│           ├── rules-validator.js     # Static analysis for Rules
-│           ├── ti-validator.js        # Static analysis for TI
-│           ├── mdx-validator.js       # Static analysis for MDX
-│           ├── ti-debugger.js         # Breakpoint injection + capture parsing
-│           ├── ti-interpreter.js      # TI variable scanner for debug watches
-│           ├── tm1-snippets.js        # TI and Rules snippet library
-│           └── formatters/            # Rules formatter: tokenizer, AST, presets
+│       ├── App.jsx              # Root layout, tabs, global keyboard handling
+│       ├── store/               # Zustand: tabs, groups, server, UI state
+│       ├── hooks/useApi.js      # All TanStack Query hooks
+│       ├── components/          # One file per editor/panel
+│       └── lib/                 # Monaco language, validators, formatters, pivot wrapper
+├── shared/                      # Code shared by the IDE and Lens app
+│   ├── tm1-function-catalog.json # The one function catalog (all consumers derive from it)
+│   ├── lens-bridge.js           # postMessage contract between a Lens frame and its host
+│   ├── lens-kit/                # The Lens toolkit (ECharts, AG Grid, React Flow, Alpine)
+│   └── pivot/                   # One pivot engine for the IDE View grid and Lenses
+├── static/                      # Committed build output, served by the IDE
 ├── tools/
-│   └── tm1deploy/                     # Deploy CLI (optional — UI pipeline does the same)
-│       ├── bin/tm1deploy.js           # Entry point: seed / diff / package / risk / deploy
-│       └── src/                       # snapshot.js, diff.js, packager.js, risk.js, deployer.js
-├── static/                            # Pre-built frontend (committed, served directly)
-├── config/
-│   ├── servers.json                   # TM1 server list + adapter config
-│   ├── forge.json                     # Workspace state (open tabs, server, split direction)
-│   ├── function-catalog-overrides.json # User-editable catalog additions/corrections
-│   ├── sql-connections.json           # External SQL connection definitions
-│   └── sql-queries.json               # Saved SQL queries
-└── docs/
-    ├── Planning Analytics.postman_collection.json  # Full IBM REST API reference
-    ├── CONNECTION_ARCHITECTURE.md     # Adapter pattern deep-dive
-    ├── DEPLOYMENT.md                  # Deploy pipeline internals
-    └── ADAPTER_INTERFACE.md           # Adapter contract reference
+│   ├── tm1mcp/                  # MCP server + its 67 tools and security wrapper
+│   └── tm1deploy/               # Package / diff / risk / deploy CLI
+├── config/                      # Committed examples + per-install runtime state
+├── data/                        # Runtime DB, summaries, Lens logs and prefs
+├── lenses/                      # Workforce worked-example Lenses and save.js
+├── core-ti/                     # Hidden core TI processes and platform settings
+├── tests/                       # node --test suite (fakes; no live TM1 required)
+├── docs/                        # Guides and review records
+├── scripts/                     # Small developer scripts (e.g. test DB seed)
+└── .github/workflows/ci.yml     # Node 20/22: build, static check, tests, both lint ratchets
 ```
 
----
+## Connections
 
-## 🏗️ Architecture
+The IDE connects either directly to a TM1 server’s REST port or through PAW; the adapter in
+`config/servers.json` decides. Direct is simplest for a lab; PAW is usual at a client.
 
 ```
-# Option A — direct-v11 (recommended)
-Browser  ←→  Express (server.js)  ──Basic Auth──▶  TM1 Server
-
-# Option B — paw-native / paw-oauth2
-Browser  ←→  Express (server.js)  ──Cookie+CSRF──▶  PAW  ──▶  TM1 Server
+Direct:  Browser ←→ server.js ←Basic Auth→ TM1 REST
+PAW:     Browser ←→ server.js ←Cookie+CSRF→ PAW ←→ TM1
+Lenses:  Browser ←→ lens-server.js ←same core adapters→ TM1
+MCP:     Agent ←stdio→ tools/tm1mcp ←same core adapters→ TM1
 ```
 
-- `core/adapter_registry.js` selects the right adapter from `servers.json` on every request
-- `core/tm1_client.js` wraps every TM1 API call — routes never call the API directly
-- The frontend uses **TanStack Query** for all server state — all cache keys include the server name
+- `core/adapter_registry.js` selects the adapter from `config/servers.json` on every request.
+- `core/tm1_client.js` wraps every TM1 call; routes and MCP tools never build REST URLs themselves.
+- The IDE frontend uses **TanStack Query**; cache keys include `server` first.
+- The Lens frame never holds a token and never talks to the network directly: it posts to its host,
+  which performs the call as the signed-in user.
 
----
+## Documentation map
 
-See also: [CONNECTION_ARCHITECTURE.md](../auth/CONNECTION_ARCHITECTURE.md) (adapter pattern deep-dive) · [ADAPTER_INTERFACE.md](../auth/ADAPTER_INTERFACE.md) (adapter contract).
+- [SETUP.md](SETUP.md) — install, server config, run, development mode
+- [FEATURES.md](FEATURES.md) — every editor and tool
+- [LINT.md](LINT.md) — client and backend lint ratchets
+- [MCP_SERVER.md](MCP_SERVER.md) — connecting an AI agent
+- [../auth/CONNECTION_ARCHITECTURE.md](../auth/CONNECTION_ARCHITECTURE.md) — adapter pattern
+- [../auth/ADAPTER_INTERFACE.md](../auth/ADAPTER_INTERFACE.md) — adapter contract
+- [../deploy/DEPLOY_LIFECYCLE.md](../deploy/DEPLOY_LIFECYCLE.md) — the current release path
+- [CLAUDE.md](../../CLAUDE.md) — architecture constraints, conventions, adding an editor

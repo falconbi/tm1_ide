@@ -59,10 +59,6 @@ nohup.out
 tmp/
 temp/
 
-# ── Claude / AI ──
-CLAUDE.md
-.claude/
-
 # ── Git ──
 !.gitkeep
 

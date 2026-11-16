@@ -36,8 +36,8 @@ core/
   adapter_registry.js         # Pluggable PAW connection adapter registry
   adapters/
     direct_v11.js             # Direct PAW V11 native auth adapter
-    paw-native.js             # PAW-native session adapter
-    paw-oauth2.js             # Authentik/OAuth2 adapter (PAW V12)
+    paw_native.js             # PAW-native session adapter
+    paw_oauth2.js             # Authentik/OAuth2 adapter (PAW V12)
   sql_client.js               # External SQL connections (MSSQL/PG/MySQL/SQLite)
 shared/pivot/                 # The shared pivot — one slice-and-dice grid for the IDE View editor and Lenses (docs/lenses/PIVOT_PLAN.md)
   tree.js / mdx.js / cellset.js / format.js / grid.js
@@ -122,9 +122,9 @@ cd client && npm run dev   # terminal 2 (Vite on :5173)
 - **All API routes are in `server.js`** — no router files. Routes follow the pattern `app.METHOD('/api/noun/verb', async (req, res) => { try { ... } catch (e) { res.status(500).json({ error: e.message }) } })`.
 - **Routes report failure with `fail(res, e)`** — the adapters normalise TM1 errors (`core/tm1-error.js`), so `e.message` is TM1's own text and `e.status` is the HTTP status. The only routes that return a result object containing `error` with HTTP 200 are the command-result routes `/api/period-builder/run` and `/api/deploy/git/prepare|execute|review`.
 - **TM1 OData URL pattern**: `${PAW_HOST}/api/v0/tm1/{server}/api/v1/{path}`
-- **No direct TM1 connections** — everything proxies through PAW. Server name comes from `config/servers.json`.
+- **Connections are adapter-driven** — `config/servers.json` decides direct or PAW for each server; the client must not assume one. Server name comes from `config/servers.json`.
 - **Routes that write to TM1 use `gateWrite`**; routes that write only local files (`forge.json`, SQL connections, catalog overrides, process summaries) use `gateReadOnly`.
-- **Frontend served from `static/`** — the built assets are committed. Always rebuild and copy after client changes.
+- **Frontend served from `static/`** — the built assets are committed. Always rebuild (`cd client && npm run build`, which writes `static/`); never copy from `client/dist`.
 - **CommonJS throughout** — `server.js` and `core/` use `require`/`module.exports`. Ignore VS Code's "convert to ES module" hints.
 
 ---

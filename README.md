@@ -95,6 +95,9 @@ Node.js **20 or later** is required (CI tests 20 and 22). The frontend is pre-bu
 
 ## Documentation
 
+Start here: [Setup](docs/ide/SETUP.md) → [Features](docs/ide/FEATURES.md) → [Architecture](docs/ide/ARCHITECTURE.md) → [CLAUDE.md](CLAUDE.md).
+
+
 | Guide | What's in it |
 |---|---|
 | [Features](docs/ide/FEATURES.md) | Every editor and tool, with screenshots |
