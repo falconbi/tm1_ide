@@ -102,6 +102,7 @@ Node.js **20 or later** is required (CI tests 20 and 22). The frontend is pre-bu
 | [HTML apps on TM1: security](docs/lenses/TM1_HTML_APPS_SECURITY.md) | The browser security layer you own once TM1 screens are HTML you (or an AI) write — five decisions, one checklist |
 | [Lens learning lab](docs/learn/lens-lab/README.md) | Five browser-security ideas you can break on purpose, run locally with no dependencies |
 | [Setup](docs/ide/SETUP.md) | Install, configure servers, run, development mode, installing at a client (Windows untested) |
+| [Contributing](CONTRIBUTING.md) | Node version, install, tests, building `static/`, both lint ratchets, CI, where each kind of change belongs |
 | [Authentication](docs/auth/AUTHENTICATION.md) | How the IDE signs in — per-server login, what's supported and tested |
 | [TM1 Authentication Guide](docs/auth/TM1_AUTHENTICATION_GUIDE.md) | How every TM1 sign-in method works, in plain English — for anyone in TM1 |
 | [Architecture](docs/ide/ARCHITECTURE.md) | How the pieces fit, project structure |
