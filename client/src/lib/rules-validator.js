@@ -4,6 +4,7 @@ import { parseExpression } from '@/lib/formatters/tm1-expression-parser.js'
 import { findUnclosedStringLine, stripComments } from '@/lib/rules-comments.js'
 import { RULES_CATALOG, TI_CATALOG } from '@/lib/tm1-completion.js'
 import { catalogEntry } from '@/lib/catalog-runtime.js'
+import { deriveArity } from '@shared/catalog-arity.js'
 import { compatWarning } from '@/lib/tm1-version.js'
 
 // ELSEIF / ELSE / ENDIF are TI block keywords — not valid in TM1 Rules (Rules use IF() function syntax)
@@ -15,15 +16,8 @@ function getFunctionArgInfo(fnName) {
 
   const catEntry = catalogEntry('rules', upper, RULES_CATALOG)
   if (!catEntry) return null
-  const params = catEntry.params ?? []
-  const last = params[params.length - 1]
-  const base = last?.endsWith('*')
-    ? { variadic: true,  min: catEntry.variadicMin ?? params.length, max: Infinity }
-    : last?.endsWith('?')
-    ? { variadic: false, min: params.length - 1, max: params.length }
-    : { variadic: false, min: params.length,     max: params.length }
   return {
-    ...base,
+    ...deriveArity(catEntry),
     deprecated: catEntry.deprecated ?? null,
     isStatement: catEntry.isStatement ?? false,
     compat: catEntry.compat ?? 'both',
@@ -357,18 +351,10 @@ function validateAST(ast, code, line) {
         }
       } else {
         const argCount = (ast.args || []).length
-        if (catInfo.variadic) {
-          if (argCount < catInfo.min) {
-            issues.push({ severity: 'error', line, message: `${fnName} expects at least ${catInfo.min} arguments, got ${argCount}` })
-          }
-        } else {
-          if (argCount !== catInfo.min) {
-            if (argCount < catInfo.min) {
-              issues.push({ severity: 'error', line, message: `${fnName} expects ${catInfo.min} arguments, got ${argCount}` })
-            } else {
-              issues.push({ severity: 'error', line, message: `${fnName} expects ${catInfo.min} arguments, got ${argCount}` })
-            }
-          }
+        if (argCount < catInfo.min || argCount > catInfo.max) {
+          const want = catInfo.min === catInfo.max ? `${catInfo.min}`
+            : catInfo.max === Infinity ? `at least ${catInfo.min}` : `${catInfo.min}–${catInfo.max}`
+          issues.push({ severity: 'error', line, message: `${fnName} expects ${want} arguments, got ${argCount}` })
         }
         if (catInfo.deprecated) {
           issues.push({ severity: 'warning', line, message: `${fnName} is deprecated: ${catInfo.deprecated}` })

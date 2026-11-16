@@ -6,6 +6,7 @@
 
 import { TI_CATALOG } from '@/lib/tm1-completion.js'
 import { catalogEntry } from '@/lib/catalog-runtime.js'
+import { deriveArity } from '@shared/catalog-arity.js'
 import { compatWarning } from '@/lib/tm1-version.js'
 
 const TI_CONTROL_KEYWORDS = new Set(['IF', 'WHILE', 'ELSEIF'])
@@ -122,15 +123,8 @@ function getTIFunctionArgInfo(fnName) {
   const upper = fnName.toUpperCase()
   const catEntry = catalogEntry('ti', upper, TI_CATALOG)
   if (!catEntry) return null
-  const params = catEntry.params ?? []
-  const last = params[params.length - 1]
-  const base = last?.endsWith('*')
-    ? { variadic: true,  min: catEntry.variadicMin ?? params.length, max: Infinity }
-    : last?.endsWith('?')
-    ? { variadic: false, min: params.length - 1, max: params.length }
-    : { variadic: false, min: params.length,     max: params.length }
   return {
-    ...base,
+    ...deriveArity(catEntry),
     deprecated: catEntry.deprecated ?? null,
     isStatement: catEntry.isStatement ?? false,
     compat: catEntry.compat ?? 'both',
@@ -160,17 +154,12 @@ function checkFunctions(rawCode, sectionLabel) {
           message: `Unknown function '${call.fn}'`,
         })
       }
-    } else if (catInfo.variadic) {
-      if (call.argCount < catInfo.min) {
-        errors.push({
-          severity: 'error', section: sectionLabel, line: call.line,
-          message: `${upper} expects at least ${catInfo.min} arguments, got ${call.argCount}`,
-        })
-      }
-    } else if (call.argCount !== catInfo.min) {
+    } else if (call.argCount < catInfo.min || call.argCount > catInfo.max) {
+      const want = catInfo.min === catInfo.max ? `${catInfo.min}`
+        : catInfo.max === Infinity ? `at least ${catInfo.min}` : `${catInfo.min}–${catInfo.max}`
       errors.push({
         severity: 'error', section: sectionLabel, line: call.line,
-        message: `${upper} expects ${catInfo.min} arguments, got ${call.argCount}`,
+        message: `${upper} expects ${want} arguments, got ${call.argCount}`,
       })
     }
     if (catInfo?.deprecated) {
