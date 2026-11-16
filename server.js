@@ -2535,26 +2535,9 @@ app.post('/api/period-builder/run', async (req, res) => {
     }
 })
 
-app.get('/api/forge', (req, res) => {
-    try {
-        const data = fs.existsSync(FORGE_PATH)
-            ? JSON.parse(fs.readFileSync(FORGE_PATH, 'utf8'))
-            : {}
-        res.json(data)
-    } catch (e) { fail(res, e) }
-})
 
-app.post('/api/forge', (req, res) => {
-    try {
-        fs.mkdirSync(path.dirname(FORGE_PATH), { recursive: true })
-        // The workspace file is layout only. Strip an old client's editor bodies and
-        // dirty flags so they cannot be written back.
-        const body = { ...(req.body ?? {}) }
-        if (Array.isArray(body.tabs)) body.tabs = body.tabs.map(({ content: _c, dirty: _d, ...meta }) => meta)
-        fs.writeFileSync(FORGE_PATH, JSON.stringify(body, null, 2))
-        res.json({ ok: true })
-    } catch (e) { res.status(500).json({ error: e.message }) }
-})
+
+
 
 // ── SQL Editor ───────────────────────────────────────────────────────────────
 
@@ -3616,6 +3599,9 @@ app.get('/api/lens/meta', async (req, res) => {
 })
 
 
+
+const routeDeps = { FORGE_PATH, LENS_CATALOGUE, LOCAL_ONLY, LOGIN_REQUIRED, PAW_HOST, PAW_LOGIN_SERVER, SAMPLE_PASSWORD_WARNING, SQL_PASSWORD_MASK, _GI, _GITOK, ai, attachPawSession, buildCubeMapModel, catalogRoutes, cl, clearServerCredentials, closeServerSession, createCancelJobRoute, createDirectSession, createLocalSession, createProvisionUserRoute, createSaveDataAllRoute, createSession, createStartSessionRoute, deployLoadBaseline, deploySeed, executeQuery, express, extractMembersFromExpression, fail, fs, gateReadOnly, gateWrite, getCSRF, getCachedPawSession, getConnection, getCubeDataSources, getLoginServer, getProcessFacts, getSchema, getServerCredentials, getServerStatus, getSessionCredentials, getViewSourceUsage, gitSecrets, invalidateCubeSources, invalidateSession, isAdminGroups, isDirectServer, isLoopbackReq, isPawNativeServer, isSampleLogin, isTm1Admin, joinContinuations, lensBridge, lensStore, lensUsageCache, listProcessSummaries, listServerEntries, listServers, listServersWithFlags, loadConnections, loadQueries, logAttributeValue, logLensNote, logLensRun, logLensWrite, loginRateLimit, makeClient, makeClientWithCredentials, mayManageSession, obfuscate, odataKey, parseDbRefs, parseRuleLens, path, probeAuthMethod, processCode, processSummaries, readLensActivity, requireTm1Admin, saveConnections, saveQueries, scanIdentity, sendMaintenanceError, sendSetupError, setServerCredentials, setSimpleInModes, setupBlankAdmin, simpleSource, summaryPrompt, testConnection, txLogSearches, userServer }
+require('./routes/workspace').register(app, routeDeps)
 
 app.get('/{*path}', (req, res) => {
     res.sendFile(path.join(__dirname, 'static', 'index.html'))

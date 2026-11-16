@@ -135,8 +135,6 @@
   "DELETE /api/users/:name/groups/:group",
   "GET /api/control/objects",
   "POST /api/period-builder/run",
-  "GET /api/forge",
-  "POST /api/forge",
   "GET /api/sql/connections",
   "POST /api/sql/connections",
   "DELETE /api/sql/connections/:id",
@@ -208,5 +206,7 @@
   "GET /api/lens/hierarchies",
   "GET /api/lens/element-tree",
   "GET /api/lens/meta",
+  "GET /api/forge",
+  "POST /api/forge",
   "GET /{*path}"
 ]
