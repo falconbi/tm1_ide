@@ -3,6 +3,7 @@ import { X, RefreshCw, XCircle, Loader2, Activity } from 'lucide-react'
 import { useJobs, useCancelJob } from '@/hooks/useApi'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
+import ConfirmButton from '@/components/ConfirmButton'
 
 function fmt(ts) {
   if (!ts) return '—'
@@ -111,14 +112,14 @@ export default function JobsMonitor({ server, onClose }) {
                       <td className="px-2 py-2 text-muted-foreground font-mono whitespace-nowrap">{fmt(started)}</td>
                       <td className="px-4 py-2">
                         {running && (
-                          <button
-                            onClick={() => handleCancel(j.ID, objName)}
-                            disabled={cancel.isPending}
+                          <ConfirmButton
+                            label={<><XCircle size={10} /> Cancel</>}
+                            message={`Cancel "${objName}"?`}
+                            onConfirm={() => handleCancel(j.ID, objName)}
+                            pending={cancel.isPending}
                             title="Cancel this job"
                             className="flex items-center gap-1 px-2 py-0.5 text-[10px] rounded border border-red-500/30 text-red-400 hover:bg-red-500/10 disabled:opacity-40 transition-colors"
-                          >
-                            <XCircle size={10} /> Cancel
-                          </button>
+                          />
                         )}
                       </td>
                     </tr>

@@ -7,6 +7,7 @@ import { sessionKey } from '@/lib/session-key'
 import { useStore } from '@/store'
 import { serverCapabilities } from '@/lib/tm1-version'
 import { toast } from 'sonner'
+import ConfirmButton from '@/components/ConfirmButton'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -134,7 +135,6 @@ export default function ServerAdminPanel({ server, onClose }) {
   const maintenance           = useMaintenanceMode()
   const sessions              = useSessions(server, { refetchInterval: tab === 'sessions' ? 10_000 : false })
   const disconnect            = useDisconnectSession()
-  const [disconnecting, setDisconnecting] = useState(null)
 
   const m   = metrics.data ?? {}
   const cfg = config.data  ?? {}
@@ -158,7 +158,6 @@ export default function ServerAdminPanel({ server, onClose }) {
     try {
       await disconnect.mutateAsync({ server, id })
       toast.success(`Disconnected: ${user}`)
-      setDisconnecting(null)
       qc.invalidateQueries({ queryKey: ['sessions', server] })
     } catch (e) {
       toast.error(`Disconnect failed: ${e.message}`)
@@ -242,21 +241,19 @@ export default function ServerAdminPanel({ server, onClose }) {
                     </div>
                   </div>
                 </div>
-                <button
-                  onClick={() => handleMaintenance(!inMaintenance)}
-                  disabled={maintenance.isPending || config.isLoading}
+                <ConfirmButton
+                  label={inMaintenance ? 'Disable Maintenance' : 'Enable Maintenance'}
+                  message={inMaintenance ? undefined : 'All non-admin sessions will be blocked.'}
+                  onConfirm={() => handleMaintenance(!inMaintenance)}
+                  disabled={config.isLoading}
+                  pending={maintenance.isPending}
                   className={cn(
                     'px-4 py-2 text-xs rounded font-medium disabled:opacity-40 transition-colors',
                     inMaintenance
                       ? 'bg-emerald-700 text-white hover:bg-emerald-600'
                       : 'bg-amber-600 text-white hover:bg-amber-500'
                   )}
-                >
-                  {maintenance.isPending
-                    ? <Loader2 size={11} className="animate-spin mx-auto" />
-                    : inMaintenance ? 'Disable Maintenance' : 'Enable Maintenance'
-                  }
-                </button>
+                />
               </div>
 
               {/* Metrics grid */}
@@ -327,27 +324,14 @@ export default function ServerAdminPanel({ server, onClose }) {
                               {lastCall ? new Date(lastCall).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '—'}
                             </td>
                             <td className="py-2 pl-2">
-                              {disconnecting === id ? (
-                                <div className="flex items-center gap-1">
-                                  <button
-                                    onClick={() => handleDisconnect(id, user)}
-                                    disabled={disconnect.isPending}
-                                    className="px-1.5 py-0.5 text-[10px] rounded bg-red-600 text-white hover:bg-red-500 disabled:opacity-40"
-                                  >Confirm</button>
-                                  <button
-                                    onClick={() => setDisconnecting(null)}
-                                    className="px-1.5 py-0.5 text-[10px] rounded border border-border hover:bg-muted"
-                                  >Cancel</button>
-                                </div>
-                              ) : (
-                                <button
-                                  onClick={() => setDisconnecting(id)}
-                                  title={`Disconnect ${user}`}
-                                  className="flex items-center gap-1 px-2 py-0.5 text-[10px] rounded border border-border text-muted-foreground hover:text-red-400 hover:border-red-400/40 transition-colors opacity-0 group-hover:opacity-100"
-                                >
-                                  <UserX size={10} /> Kick
-                                </button>
-                              )}
+                              <ConfirmButton
+                                label={<><UserX size={10} /> Kick</>}
+                                message={`Disconnect ${user}?`}
+                                onConfirm={() => handleDisconnect(id, user)}
+                                pending={disconnect.isPending}
+                                title={`Disconnect ${user}`}
+                                className="flex items-center gap-1 px-2 py-0.5 text-[10px] rounded border border-border text-muted-foreground hover:text-red-400 hover:border-red-400/40 transition-colors opacity-0 group-hover:opacity-100"
+                              />
                             </td>
                           </tr>
                         )

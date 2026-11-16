@@ -5,6 +5,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { cn } from '@/lib/utils'
 import { sessionKey } from '@/lib/session-key'
 import { toast } from 'sonner'
+import ConfirmButton from '@/components/ConfirmButton'
 
 export default function SessionsMonitor({ server, onClose }) {
   const qc = useQueryClient()
@@ -133,14 +134,15 @@ export default function SessionsMonitor({ server, onClose }) {
                       </td>
                       <td className="px-3 py-1.5 text-right">
                         {u.sessions.length === 1 && (
-                          <button
-                            onClick={(e) => { e.stopPropagation(); handleDisconnect(sessionKey(u.sessions[0])) }}
-                            disabled={disconnect.isPending}
-                            className="inline-flex items-center gap-1 text-[10px] text-muted-foreground hover:text-red-400 disabled:opacity-40 px-1.5 py-0.5 rounded hover:bg-muted transition-colors"
-                          >
-                            <Trash2 size={10} />
-                            Disconnect
-                          </button>
+                          <span onClick={e => e.stopPropagation()}>
+                            <ConfirmButton
+                              label={<><Trash2 size={10} /> Disconnect</>}
+                              message={`Disconnect ${u.name}?`}
+                              onConfirm={() => handleDisconnect(sessionKey(u.sessions[0]))}
+                              pending={disconnect.isPending}
+                              className="inline-flex items-center gap-1 text-[10px] text-muted-foreground hover:text-red-400 disabled:opacity-40 px-1.5 py-0.5 rounded hover:bg-muted transition-colors"
+                            />
+                          </span>
                         )}
                       </td>
                     </tr>
@@ -168,25 +170,25 @@ export default function SessionsMonitor({ server, onClose }) {
                                     t.State === 'Running' ? 'bg-emerald-500/10 text-emerald-500' : 'bg-muted text-muted-foreground'
                                   )}>{t.State ?? '—'}</span>
                                   <span className="text-[9px] text-muted-foreground">{t.Function ?? ''}</span>
-                                  <button
-                                    onClick={() => handleCancelThread(t.Name)}
-                                    disabled={cancelThread.isPending}
-                                    className="ml-auto inline-flex items-center gap-0.5 text-[9px] text-muted-foreground hover:text-red-400 disabled:opacity-40 px-1 py-0.5 rounded hover:bg-muted transition-colors"
-                                  >
-                                    <Ban size={9} />
-                                    Cancel
-                                  </button>
+                                  <span className="ml-auto">
+                                    <ConfirmButton
+                                      label={<><Ban size={9} /> Cancel</>}
+                                      message={`Cancel thread ${t.Name?.slice(0, 12)}?`}
+                                      onConfirm={() => handleCancelThread(t.Name)}
+                                      pending={cancelThread.isPending}
+                                      className="inline-flex items-center gap-0.5 text-[9px] text-muted-foreground hover:text-red-400 disabled:opacity-40 px-1 py-0.5 rounded hover:bg-muted transition-colors"
+                                    />
+                                  </span>
                                 </div>
                               ))}
                               <div className="flex gap-2 pt-0.5">
-                                <button
-                                  onClick={() => handleDisconnect(sessionKey(s))}
-                                  disabled={disconnect.isPending}
+                                <ConfirmButton
+                                  label={<><Trash2 size={9} /> Disconnect session</>}
+                                  message="Disconnect this TM1 session? Any unsaved work in it will be lost."
+                                  onConfirm={() => handleDisconnect(sessionKey(s))}
+                                  pending={disconnect.isPending}
                                   className="inline-flex items-center gap-1 text-[9px] text-muted-foreground hover:text-red-400 disabled:opacity-40 px-1.5 py-0.5 rounded hover:bg-muted transition-colors"
-                                >
-                                  <Trash2 size={9} />
-                                  Disconnect session
-                                </button>
+                                />
                               </div>
                             </div>
                           </td>

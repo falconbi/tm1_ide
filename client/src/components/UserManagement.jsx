@@ -3,6 +3,7 @@ import { X, Plus, Loader2, Eye, EyeOff, Trash2, Check, Shield, Users, Info } fro
 import { useStore } from '@/store'
 import { useClients, useGroups, useClientGroups, useCreateClient, useUpdateClient, useDeleteClient, useAddClientToGroup, useRemoveClientFromGroup, useResetClientPassword } from '@/hooks/useApi'
 import { cn } from '@/lib/utils'
+import ConfirmButton from '@/components/ConfirmButton'
 import { defaultUserGroups, isAdminGroup, orderGroups } from '@/lib/user-groups'
 import { toast } from 'sonner'
 
@@ -30,7 +31,6 @@ function GroupCheckbox({ name, checked, onToggle, disabled, danger = false }) {
 function UserDetail({ server, client, allGroups, onDeleted }) {
   const [newPwd, setNewPwd]         = useState('')
   const [showPwd, setShowPwd]       = useState(false)
-  const [confirmDelete, setConfirmDelete] = useState(false)
   const { username } = useStore()
 
   const { data: memberGroups = [], isLoading: loadingGroups } = useClientGroups(server, client.Name)
@@ -155,31 +155,15 @@ function UserDetail({ server, client, allGroups, onDeleted }) {
           {client.Enabled ? 'Disable user' : 'Enable user'}
         </button>
 
-        {!confirmDelete ? (
-          <button
-            onClick={() => setConfirmDelete(true)}
-            disabled={isSelf}
-            className="flex items-center gap-1 px-3 py-1.5 text-xs rounded border border-red-500/40 text-red-400 hover:bg-red-500/10 disabled:opacity-40 transition-colors"
-          >
-            <Trash2 size={11} /> Delete
-          </button>
-        ) : (
-          <div className="flex gap-1.5">
-            <button
-              onClick={() => setConfirmDelete(false)}
-              className="px-2.5 py-1.5 text-xs rounded border border-border text-muted-foreground hover:bg-muted"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={handleDelete}
-              disabled={deleteClient.isPending}
-              className="px-2.5 py-1.5 text-xs rounded bg-red-600 text-white hover:bg-red-500 disabled:opacity-40 flex items-center gap-1"
-            >
-              {deleteClient.isPending ? <Loader2 size={10} className="animate-spin" /> : 'Confirm delete'}
-            </button>
-          </div>
-        )}
+        <ConfirmButton
+          label={<><Trash2 size={11} /> Delete</>}
+          message={`Delete ${client.Name}?`}
+          confirmLabel="Confirm delete"
+          onConfirm={handleDelete}
+          disabled={isSelf}
+          pending={deleteClient.isPending}
+          className="flex items-center gap-1 px-3 py-1.5 text-xs rounded border border-red-500/40 text-red-400 hover:bg-red-500/10 disabled:opacity-40 transition-colors"
+        />
       </div>
     </div>
   )
