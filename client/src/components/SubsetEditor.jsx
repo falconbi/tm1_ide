@@ -8,6 +8,7 @@ import { validateMDX } from '@/lib/mdx-validator'
 import { MDX_PATTERN_CATEGORIES } from '@/lib/tm1-mdx-primer-patterns'
 import { subsetApplyCallbacks } from '@/lib/subsetCallbacks'
 import { cn } from '@/lib/utils'
+import { formatMDX } from '@/lib/mdx-format'
 import { toast } from 'sonner'
 import { Play, Loader2, Sparkles, Search, ChevronDown, ChevronRight, ChevronLeft, Box, Cog, Locate, Clock, Save, AlignLeft, Check, X, GripHorizontal, HelpCircle } from 'lucide-react'
 import HelpPanel from '@/components/HelpPanel'
@@ -30,21 +31,6 @@ function saveSessionEntry(entry) {
   localStorage.setItem(SESSIONS_KEY, JSON.stringify(list.slice(0, 30)))
 }
 
-function formatMDX(mdx) {
-  if (!mdx?.trim()) return mdx
-  let out = '', depth = 0, i = 0
-  const pad = (n) => '  '.repeat(Math.max(0, n))
-  while (i < mdx.length) {
-    const ch = mdx[i]
-    if (ch === '{') { out += '{\n' + pad(depth + 1); depth++ }
-    else if (ch === '}') { depth--; out = out.trimEnd() + '\n' + pad(depth) + '}' }
-    else if (ch === ',' && depth > 0) { out += ',\n' + pad(depth) }
-    else if (ch === '\n') { /* collapse existing newlines */ out += ' ' }
-    else { out += ch }
-    i++
-  }
-  return out.trim()
-}
 
 // ── Function Palette ──────────────────────────────────────────────────────────
 function FnCard({ fn, onInsert }) {
@@ -390,7 +376,7 @@ export default function SubsetEditor({ tab }) {
   }
 
   const handleFormat = () => {
-    const formatted = formatMDX(mdx)
+    const formatted = formatMDX(mdx, { mode: 'set' })
     if (formatted !== mdx) { setMdx(formatted); setDirty(true) }
   }
 

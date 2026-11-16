@@ -6,6 +6,7 @@ import { subsetApplyCallbacks } from '@/lib/subsetCallbacks'
 import { ArrowLeft, Play, Loader2, Copy, X, Check, ExternalLink, HelpCircle, Save, Clock, Plus, Pencil, Trash2, ChevronDown, ChevronRight, GripHorizontal, WrapText, Sparkles } from 'lucide-react'
 import MonacoEditor from '@monaco-editor/react'
 import { cn } from '@/lib/utils'
+import { formatMDX } from '@/lib/mdx-format'
 import { subsetTabId, viewTabId } from '@/lib/tab-ids'
 import { validateMDX } from '@/lib/mdx-validator'
 import ResultGrid from '@/components/mdx/ResultGrid'
@@ -22,38 +23,6 @@ function saveRecent(entry) {
 function loadPersistedState(tabId) { try { return JSON.parse(localStorage.getItem(PERSIST_KEY(tabId)) || 'null') } catch { return null } }
 function savePersistedState(tabId, state) { try { localStorage.setItem(PERSIST_KEY(tabId), JSON.stringify(state)) } catch { /* storage full/unavailable — skipping persistence is safe */ } }
 
-function formatMDX(mdx) {
-  if (!mdx?.trim()) return mdx
-  let s = mdx.replace(/\s+/g, ' ').trim()
-  s = s
-    .replace(/\bSELECT\b\s*/gi,               'SELECT\n  ')
-    .replace(/\s*\bNON EMPTY\b\s*/gi,          ' NON EMPTY ')
-    .replace(/\s*\bON COLUMNS\s*,\s*/gi,       ' ON COLUMNS,\n  ')
-    .replace(/\s*\bON COLUMNS\b/gi,            ' ON COLUMNS')
-    .replace(/\s*\bON ROWS\s*,\s*/gi,          ' ON ROWS,\n  ')
-    .replace(/\s*\bON ROWS\b/gi,               ' ON ROWS')
-    .replace(/\s*\bON 0\s*,\s*/gi,             ' ON COLUMNS,\n  ')
-    .replace(/\s*\bON 0\b/gi,                  ' ON COLUMNS')
-    .replace(/\s*\bON 1\s*,\s*/gi,             ' ON ROWS,\n  ')
-    .replace(/\s*\bON 1\b/gi,                  ' ON ROWS')
-    .replace(/\s*\bFROM\b\s*/gi,               '\nFROM ')
-    .replace(/\s*\bWHERE\b\s*/gi,              '\nWHERE ')
-    .trim()
-  return s.split('\n').map(line => {
-    const lead = line.match(/^(\s*)/)[1]
-    const body = line.trimStart()
-    if (!body.includes('{')) return line
-    let out = '', depth = 0
-    for (let i = 0; i < body.length; i++) {
-      const ch = body[i]
-      if      (ch === '{') { out += '{\n' + lead + '  '.repeat(depth + 1); depth++ }
-      else if (ch === '}') { depth = Math.max(0, depth - 1); out = out.trimEnd() + '\n' + lead + '  '.repeat(depth) + '}' }
-      else if (ch === ',' && depth > 0) { out += ',\n' + lead + '  '.repeat(depth) }
-      else { out += ch }
-    }
-    return lead + out.trim()
-  }).join('\n').trim()
-}
 
 const WRAPPERS = {
   'all':         (dim, _inner) => `{TM1SUBSETALL([${dim}].[${dim}])}`,
