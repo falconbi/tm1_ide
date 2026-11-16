@@ -117,13 +117,13 @@ test('no route works without a session — pages redirect, the API refuses', asy
 
 test('bridge reads run AS the signed-in user', async () => {
   const { cookie } = await signIn('reviewer')
-  const r = await post('/api/lens/exec-mdx', { mdx: 'SELECT {} ON 0 FROM [C]' }, cookie)
+  const r = await post('/api/lens/exec-mdx', { lens: 'PnL-Dashboard', mdx: 'SELECT {} ON 0 FROM [C]' }, cookie)
   assert.equal(r.status, 200)
   const body = await r.json()
   assert.equal(body.executedAs, 'reviewer')
   // The static /api/lens/meta + /api/lens/:name routes both exist and resolve
   // to their own handler (not each other): /api/lens/meta is NOT a lens named "meta".
-  const meta = await get('/api/lens/meta?cube=Sales', cookie)
+  const meta = await get('/api/lens/meta?cube=Sales&lens=PnL-Dashboard', cookie)
   assert.equal(meta.status, 200)
   assert.deepEqual(await meta.json(), { metaFor: 'reviewer', cube: 'Sales' })
   const lens = await get('/api/lens/PnL-Dashboard', cookie)
@@ -137,7 +137,7 @@ test('the server always comes from settings — a request naming another is refu
   const orig = stubs.execMdx
   stubs.execMdx = async (c, m) => { execCalls++; return orig(c, m) }
   try {
-    const r = await post('/api/lens/exec-mdx?server=H4x0r', { mdx: 'S' }, cookie)
+    const r = await post('/api/lens/exec-mdx?server=H4x0r', { lens: 'PnL-Dashboard', mdx: 'S' }, cookie)
     assert.equal(r.status, 400)
     assert.match((await r.json()).error, /configured server/)
     assert.equal(execCalls, 0, 'the other server never reaches the bridge')

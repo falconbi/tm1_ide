@@ -45,7 +45,7 @@ test('a second sign-in with the right password shares the one TM1 session and cl
     assert.equal(a.status, 200); assert.equal(b.status, 200)
     assert.equal(calls.signIn, 2, 'password checked with TM1 both times')
     assert.equal(calls.closed, 1, 'the extra check session was closed')
-    const q = await fetch(`${base}/api/lens/exec-mdx`, { method: 'POST', headers: { 'Content-Type': 'application/json', cookie: cookieOf(b) }, body: JSON.stringify({ mdx: 'x' }) })
+    const q = await fetch(`${base}/api/lens/exec-mdx`, { method: 'POST', headers: { 'Content-Type': 'application/json', cookie: cookieOf(b) }, body: JSON.stringify({ lens: 'PnL-Dashboard', mdx: 'x' }) })
     assert.equal((await q.json()).pw, 'apple', 'queries run on the verified session')
   })
 })

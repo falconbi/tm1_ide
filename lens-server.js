@@ -361,16 +361,31 @@ function createApp({ config = loadConfig(), deps = {} } = {}) {
         groupCache.set(sess.user, { groups, at: Date.now() })
         return groups
     }
-    async function visibleLensFor(sid, name, client) {
-        const doc = await readLens(cfg.server, name, { client })
-        if (!lensStore.visibleTo(doc, await groupsFor(sid), { showDrafts: cfg.showDrafts })) {
+    const visibleCache = new Map()
+    async function visibleLensFor(sid, name, client, { notFound = 404 } = {}) {
+        const key = `${sid}::${name}`
+        const hit = visibleCache.get(key)
+        const allowed = hit && Date.now() - hit.at < 60_000
+            ? hit.allowed
+            : lensStore.visibleTo(await readLens(cfg.server, name, { client }), await groupsFor(sid), { showDrafts: cfg.showDrafts })
+        visibleCache.set(key, { allowed, at: Date.now() })
+        if (!allowed) {
             const e = new Error(`Lens "${name}" is not available to you`)
-            e.status = 404
+            e.status = notFound
             throw e
         }
-        return doc
+        return readLens(cfg.server, name, { client })
     }
-    const visibleLens = (req, name) => visibleLensFor(req.lens.sid, name, req.lens.client)
+    const visibleLens = (req, name, opts) => visibleLensFor(req.lens.sid, name, req.lens.client, opts)
+    const lensArg = (req) => {
+        const name = req.body?.lens ?? req.query?.lens
+        if (!name || typeof name !== 'string') {
+            const e = new Error('lens is required')
+            e.status = 400
+            throw e
+        }
+        return name
+    }
 
     function requireSessionPage(req, res, next) {
         const sid = parseCookies(req)[COOKIE]
@@ -710,13 +725,17 @@ function createApp({ config = loadConfig(), deps = {} } = {}) {
     // Static read-only bridge routes FIRST — `/api/lens/meta` must win over the
     // generic `/api/lens/:name` (express routes match in registration order).
     app.post('/api/lens/exec-mdx', requireSession, serverGate, async (req, res) => {
-        try { res.json(await execMdx(req.lens.client, req.body?.mdx)) }
-        catch (e) { res.status(400).json({ error: e.response?.data?.error?.message ?? e.message }) }
+        try {
+            await visibleLens(req, lensArg(req), { notFound: 403 })
+            res.json(await execMdx(req.lens.client, req.body?.mdx))
+        } catch (e) { res.status(e.status ?? 400).json({ error: e.response?.data?.error?.message ?? e.message }) }
     })
 
     app.post('/api/lens/read-cell', requireSession, serverGate, async (req, res) => {
-        try { res.json({ value: await readCell(req.lens.client, req.body?.cube, req.body?.coordinates) }) }
-        catch (e) { res.status(400).json({ error: e.response?.data?.error?.message ?? e.message }) }
+        try {
+            await visibleLens(req, lensArg(req), { notFound: 403 })
+            res.json({ value: await readCell(req.lens.client, req.body?.cube, req.body?.coordinates) })
+        } catch (e) { res.status(e.status ?? 400).json({ error: e.response?.data?.error?.message ?? e.message }) }
     })
 
     // Write-back: numbers only, into the cubes the SAVED Lens declares, as the
@@ -755,8 +774,10 @@ function createApp({ config = loadConfig(), deps = {} } = {}) {
                                ['cell-log',   (c, b) => lensBridge.cellLog(c, b.cube, b.coordinates, b.top)],
                                ['cell-notes', (c, b) => lensBridge.cellNotes(c, b.cube, b.coordinates)]]) {
         app.post(`/api/lens/${route}`, requireSession, serverGate, async (req, res) => {
-            try { res.json(await fn(req.lens.client, req.body ?? {})) }
-            catch (e) { res.status(400).json({ error: e.response?.data?.error?.message ?? e.message }) }
+            try {
+                await visibleLens(req, lensArg(req), { notFound: 403 })
+                res.json(await fn(req.lens.client, req.body ?? {}))
+            } catch (e) { res.status(e.status ?? 400).json({ error: e.response?.data?.error?.message ?? e.message }) }
         })
     }
     app.post('/api/lens/add-note', requireSession, serverGate, async (req, res) => {
@@ -772,19 +793,25 @@ function createApp({ config = loadConfig(), deps = {} } = {}) {
 
     // Lens.pivot: a dimension's hierarchies (main + any ALT H), read as the signed-in person.
     app.get('/api/lens/hierarchies', requireSession, serverGate, async (req, res) => {
-        try { res.json(await hierarchies(req.lens.client, req.query?.dimension)) }
-        catch (e) { res.status(400).json({ error: e.response?.data?.error?.message ?? e.message }) }
+        try {
+            await visibleLens(req, lensArg(req), { notFound: 403 })
+            res.json(await hierarchies(req.lens.client, req.query?.dimension))
+        } catch (e) { res.status(e.status ?? 400).json({ error: e.response?.data?.error?.message ?? e.message }) }
     })
 
     // Lens.pivot: one dimension's element tree, read as the signed-in person.
     app.get('/api/lens/element-tree', requireSession, serverGate, async (req, res) => {
-        try { res.json(await elementTree(req.lens.client, req.query?.dimension, req.query?.hierarchy)) }
-        catch (e) { res.status(400).json({ error: e.response?.data?.error?.message ?? e.message }) }
+        try {
+            await visibleLens(req, lensArg(req), { notFound: 403 })
+            res.json(await elementTree(req.lens.client, req.query?.dimension, req.query?.hierarchy))
+        } catch (e) { res.status(e.status ?? 400).json({ error: e.response?.data?.error?.message ?? e.message }) }
     })
 
     app.get('/api/lens/meta', requireSession, serverGate, async (req, res) => {
-        try { res.json(await getMeta(req.lens.client, req.query?.cube)) }
-        catch (e) { res.status(400).json({ error: e.response?.data?.error?.message ?? e.message }) }
+        try {
+            await visibleLens(req, lensArg(req), { notFound: 403 })
+            res.json(await getMeta(req.lens.client, req.query?.cube))
+        } catch (e) { res.status(e.status ?? 400).json({ error: e.response?.data?.error?.message ?? e.message }) }
     })
 
     // ── Working together: live channel + history ──────────────────────────────

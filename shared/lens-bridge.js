@@ -148,6 +148,7 @@ function installLensHost(getLensWindow, { getServer, getToken, getLens, live = f
       }
       const server = getServer()
       const token = getToken ? getToken() : null
+      const openedLens = getLens ? getLens() : null
       if (!server) throw new Error('no server configured')
       const enc = encodeURIComponent
       const headers = { 'x-ide-token': token ?? '', 'Content-Type': 'application/json' }
@@ -200,7 +201,10 @@ function installLensHost(getLensWindow, { getServer, getToken, getLens, live = f
       } else {
         throw new Error(`Unknown bridge method: ${d.method}`)
       }
-      const res = await fetch(url, init)
+      // Every call, reads included, names the Lens it came from. The IDE preview
+      // may have no saved name (null); the Lens app refuses that with 400.
+      const withLens = u => `${u}${u.includes('?') ? '&' : '?'}lens=${enc(openedLens ?? '')}`
+      const res = await fetch(withLens(url), init)
       const data = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(data.error || res.statusText)
       respond(d.id, d.method === 'readCell' ? data.value : data)

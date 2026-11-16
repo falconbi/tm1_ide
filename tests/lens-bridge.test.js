@@ -66,7 +66,7 @@ test('the host answers only its exact frame and posts back on the same channel',
     return { ok: true, json: async () => ({ value: 'ok' }), statusText: 'OK' }
   }
 
-  const off = installLensHost(() => me, { getServer: () => '24Retail', getToken: () => 'ABCD' })
+  const off = installLensHost(() => me, { getServer: () => '24Retail', getToken: () => 'ABCD', getLens: () => 'Target-Input' })
   try {
     // From a DIFFERENT source: ignored — no fetch, no reply.
     win._emit('message', { data: { __lensBridge: 1, id: 1, chan: 'x', method: 'execMDX', payload: { mdx: 'S' } }, source: { other: true } })
@@ -78,7 +78,7 @@ test('the host answers only its exact frame and posts back on the same channel',
     win._emit('message', { data: msg, source: me })
     await flush()
     assert.equal(calls.length, 1)
-    assert.match(calls[0][0], /\/api\/lens\/meta\?server=24Retail&cube=Cube1$/)
+    assert.match(calls[0][0], /\/api\/lens\/meta\?server=24Retail&cube=Cube1&lens=Target-Input$/)
     assert.equal(calls[0][1], 'GET')
     assert.equal(win._posted[0].id, 2, 'replies to the same id')
     assert.equal(win._posted[0].chan, 'abc', 'on the frame\u2019s channel')
@@ -96,14 +96,14 @@ test('the server always comes from settings, never from the message', async () =
     calls.push(String(url))
     return { ok: true, json: async () => ({ value: 'ok' }), statusText: 'OK' }
   }
-  const off = installLensHost(() => me, { getServer: () => '24Retail', getToken: () => '' })
+  const off = installLensHost(() => me, { getServer: () => '24Retail', getToken: () => '', getLens: () => 'Target-Input' })
   try {
     // A hostile message puts another server every place it can — none of it is used.
     const msg = { __lensBridge: 1, id: 3, chan: 'c', method: 'readCell', payload: { server: 'H4x0r', cube: 'C', coordinates: { D: 'E' } } }
     win._emit('message', { data: msg, source: me })
     await flush()
     assert.equal(calls.length, 1)
-    assert.match(calls[0], /\/api\/lens\/read-cell\?server=24Retail$/)
+    assert.match(calls[0], /\/api\/lens\/read-cell\?server=24Retail&lens=Target-Input$/)
     assert.ok(!calls[0].includes('H4x0r'), 'message-provided server never used')
   } finally { off() }
 })
