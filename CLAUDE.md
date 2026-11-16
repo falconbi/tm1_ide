@@ -221,6 +221,8 @@ whether `shared/tm1-function-catalog.json` already has (or should have) it.
 
 `config/function-catalog-overrides.json` + `client/src/lib/catalog-runtime.js` still provide the **user-editable override layer** on top of `RULES_CATALOG`/`TI_CATALOG` (additions/overrides/deletions persisted via Catalog Admin) — unchanged by this rebuild. It does not yet reach the other consumers in the table above (a known, pre-existing gap, not introduced by this rebuild).
 
+MDX functions are not user-editable; the MDX validator uses `client/src/lib/tm1-mdx-catalog.js`.
+
 #### Keeping it correct: automated live validation
 
 **Never add a function to the catalog from memory alone if it can be checked.** `tools/validate-catalog.js` is the automated drift-check:

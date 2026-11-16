@@ -2,7 +2,7 @@
 // Client-side static analysis: function name + argument count validation
 // using MDX_FUNCTIONS_FLAT. Runs before / in parallel with server-side preview.
 
-import { MDX_FUNCTIONS_FLAT } from '@/lib/tm1-mdx-catalog.js'
+import { MDX_FUNCTIONS_FLAT } from './tm1-mdx-catalog.js'
 
 // Build a fast lookup: upperName -> { paramCount }
 const MDX_CATALOG_MAP = {}

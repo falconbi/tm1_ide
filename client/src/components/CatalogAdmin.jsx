@@ -3,7 +3,6 @@ import { X, Plus, Trash2, ShieldCheck, Loader2, RotateCcw, Save, Pencil, Check, 
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import { TI_CATALOG, RULES_CATALOG } from '@/lib/tm1-completion'
-import { MDX_CATALOG } from '@/lib/tm1-mdx-catalog'
 import { NamingDictionaryPanel } from '@/components/NamingDictionary'
 import { buildTestCall } from '@shared/catalog-test-call.js'
 
@@ -14,13 +13,6 @@ const COMPAT_CLASS = {
   v11:  'bg-blue-500/10  text-blue-400  border-blue-500/20',
   v12:  'bg-violet-500/10 text-violet-400 border-violet-500/20',
 }
-
-const MDX_FLAT = MDX_CATALOG.flatMap(c => c.fns.map(f => ({
-  name: f.name,
-  params: f.params ?? [],
-  description: f.description ?? '',
-  category: c.category,
-})))
 
 function buildRows(catalog, overrides = {}) {
   const { overrides: ov = {}, additions = {}, deletions = [] } = overrides
@@ -44,29 +36,6 @@ function buildRows(catalog, overrides = {}) {
     description: v.description ?? '',
     deprecated:  v.deprecated  ?? null,
     isStatement: false,
-    source: 'user',
-    deleted: false,
-  }))
-  return [...rows, ...added]
-}
-
-function buildMdxRows(overrides = {}) {
-  const { overrides: ov = {}, additions = {}, deletions = [] } = overrides
-  const delSet = new Set(deletions)
-  const rows = MDX_FLAT.map(f => ({
-    name: f.name,
-    params: ov[f.name]?.params ?? f.params,
-    compat: ov[f.name]?.compat ?? 'both',
-    source: 'builtin',
-    deleted: delSet.has(f.name),
-    description: ov[f.name]?.description ?? f.description,
-    category: f.category,
-  }))
-  const added = Object.entries(additions).map(([name, v]) => ({
-    name,
-    params: v.params ?? [],
-    compat: v.compat ?? 'both',
-    description: v.description ?? '',
     source: 'user',
     deleted: false,
   }))
@@ -260,7 +229,6 @@ export default function CatalogAdmin({ server, onClose, initialTab = 'ti' }) {
       .catch(() => setOverrides({
         ti:    { overrides: {}, additions: {}, deletions: [] },
         rules: { overrides: {}, additions: {}, deletions: [] },
-        mdx:   { overrides: {}, additions: {}, deletions: [] },
       }))
   }, [])
 
@@ -269,7 +237,6 @@ export default function CatalogAdmin({ server, onClose, initialTab = 'ti' }) {
     const ov = overrides[tab] ?? { overrides: {}, additions: {}, deletions: [] }
     if (tab === 'ti')    return buildRows(TI_CATALOG, ov)
     if (tab === 'rules') return buildRows(RULES_CATALOG, ov)
-    if (tab === 'mdx')   return buildMdxRows(ov)
     return []
   }, [overrides, tab])
 
@@ -432,7 +399,6 @@ export default function CatalogAdmin({ server, onClose, initialTab = 'ti' }) {
   const TABS = [
     { id: 'ti',     label: 'TI Functions' },
     { id: 'rules',  label: 'Rules Functions' },
-    { id: 'mdx',    label: 'MDX Functions' },
     { id: 'naming', label: 'Naming / Formatter' },
   ]
 
