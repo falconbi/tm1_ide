@@ -147,6 +147,7 @@ test('immediate mode: each typed cell is written at once; a refused write puts t
   assert.deepEqual(plain(writes.map(w => [w.tuple.join('/'), w.members[0], w.value])), [['North/Feb', 'Amount', 12], ['North/Apr', 'Amount', 13]])
   assert.equal(g.api.getRowNode('North::Feb').data.c0.v, 12)
   assert.equal(g.api.getRowNode('North::Apr').data.c0.v, 111, 'refused → old value back')
+  assert.equal(g.api.getRowNode('North::Apr').data.c0.d, '111', 'refused → old display back too')
   assert.deepEqual(errors, ['refused'])
   assert.equal(g.changes().length, 0, 'nothing held for a Save')
   g.destroy(); close()

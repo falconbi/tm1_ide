@@ -390,14 +390,14 @@ export function createPivotGrid(host, opts = {}) {
                 valueSetter: p => {
                     const row = p.data, key = row.__key + '|' + col.id
                     const cell = row[col.id] || (row[col.id] = pivot.data[row.__key][col.id] = { v: null, d: '', u: 1, kind: 'input' })
-                    const old = cell.v, nv = p.newValue
+                    const old = cell.v, oldD = cell.d, nv = p.newValue
                     if (String(old ?? '') === String(nv ?? '')) return false
                     cell.v = nv
                     if (o.edit === 'immediate') {
                         pending.add(key)
                         Promise.resolve(o.onWrite && o.onWrite({ tuple: row.__tuple ?? [], members: col.members ?? [], colId: col.id, value: nv, old }))
                             .then(() => { pending.delete(key); cell.d = show(cell, '') || String(nv ?? ''); repaint() },
-                                  e => { pending.delete(key); cell.v = old; repaint(); if (o.onError) o.onError(e) })
+                                  e => { pending.delete(key); cell.v = old; cell.d = oldD; repaint(); if (o.onError) o.onError(e) })
                         cell.d = typeof nv === 'number' && cell.fmt ? applyTm1Format(nv, cell.fmt) : String(nv ?? '')
                         return true
                     }
