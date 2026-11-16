@@ -323,6 +323,7 @@ The Postman collection at `docs/ide/Planning Analytics.postman_collection.json` 
 - Block structure checker tracks IF/WHILE/FOR on a stack; ENDIF/END/NEXT pop and emit ranges. Unmatched opens/closes are reported by section.
 - `isBuiltInTM1Function()` is a hardcoded allowlist that suppresses "unknown function" warnings for TM1 statements (`ItemReject`, `ItemSkip`, `FOR`, `NEXT`, etc.) that look like function calls but aren't in any catalog.
 - `ItemReject` and `ItemSkip` are **statements**, not functions — write `ItemReject;` without parentheses.
+- Unknown function names are **warnings**, not errors, in both client and server validation: the catalog may lag the TM1 version. `STR` is catalogued as `both`, so it is not a special TI error. The client scanner strips `#`/`//` comments before looking for calls, and the MDX validator strips `--`/`//`/`/* */` comments.
 
 ### Code folding
 

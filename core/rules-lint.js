@@ -27,6 +27,8 @@ for (const [name, entry] of Object.entries(CATALOG)) {
   SIG[name] = deriveArity(entry)
 }
 
+const CONTROL = new Set(['IF', 'WHILE', 'FOR', 'ELSEIF', 'ELSE', 'END', 'ENDIF', 'NEXT'])
+
 // ── scanner ──────────────────────────────────────────────────────────────────
 // Walks the text once, skipping '…' string literals and #… line comments,
 // finding IDENT( … ) and counting top-level commas.
@@ -147,15 +149,21 @@ function lintRules(rules) {
   if (!rules || !rules.trim()) return { errors, warnings }
 
   for (const c of findCalls(rules)) {
-    const sig = SIG[c.name.toUpperCase()]
-    if (!sig) continue   // unknown to this table — leave it to TM1 CheckRules
+    const upper = c.name.toUpperCase()
+    const sig = SIG[upper]
+    if (!sig) {
+      if (!CONTROL.has(upper)) {
+        warnings.push({ line: c.line, message: `Unknown function '${c.name}'` })
+      }
+      continue
+    }
     if (c.argCount < sig.min || c.argCount > sig.max) {
       const want = sig.min === sig.max ? `${sig.min}`
         : sig.max === Infinity ? `at least ${sig.min}`
         : `${sig.min}–${sig.max}`
       const plural = want === '1' ? '' : 's'
       let msg = `${c.name}() expects ${want} argument${plural}, got ${c.argCount}`
-      if ((c.name.toUpperCase() === 'ELEMENTATTRN' || c.name.toUpperCase() === 'ELEMENTATTRS') && c.argCount === 3) {
+      if ((upper === 'ELEMENTATTRN' || upper === 'ELEMENTATTRS') && c.argCount === 3) {
         msg += ` — ElementAttrN/S are hierarchy-aware: (dimension, hierarchy, element, attribute). ` +
                `For a single-hierarchy dimension use ATTRN/ATTRS(dimension, element, attribute).`
       }

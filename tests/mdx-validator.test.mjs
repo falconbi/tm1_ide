@@ -13,3 +13,9 @@ test('MDX validator still warns about an unknown function', () => {
   assert.equal(issues.length, 1)
   assert.match(issues[0].message, /Unknown MDX function/)
 })
+
+test('MDX comments are ignored', () => {
+  assert.deepEqual(validateMDX('-- NotARealFunction()\nSELECT TM1SUBSETALL([Region]) ON ROWS FROM [Cube]'), [])
+  assert.deepEqual(validateMDX('// NotARealFunction()\nSELECT TM1SUBSETALL([Region]) ON ROWS FROM [Cube]'), [])
+  assert.deepEqual(validateMDX('/* NotARealFunction() */\nSELECT TM1SUBSETALL([Region]) ON ROWS FROM [Cube]'), [])
+})

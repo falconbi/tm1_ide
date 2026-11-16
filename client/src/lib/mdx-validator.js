@@ -15,7 +15,53 @@ for (const entry of MDX_FUNCTIONS_FLAT) {
 // We skip member-property access (.Children, .Members, .Siblings etc.)
 // and dotted method calls (CurrentMember.Properties).
 
-function findMDXFunctionCalls(text) {
+// Remove MDX comments while preserving quoted strings and line numbers.
+function stripMdxComments(text) {
+  let out = ''
+  let inStr = false
+  let strChar = ''
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i]
+    if (inStr) {
+      out += ch
+      if (ch === strChar) {
+        if (text[i + 1] === strChar) { out += text[++i] }
+        else inStr = false
+      }
+      continue
+    }
+    if (ch === '"' || ch === "'") {
+      inStr = true
+      strChar = ch
+      out += ch
+      continue
+    }
+    if (ch === '-' && text[i + 1] === '-') {
+      while (i < text.length && text[i] !== '\n') i++
+      if (i < text.length) out += '\n'
+      continue
+    }
+    if (ch === '/' && text[i + 1] === '/') {
+      while (i < text.length && text[i] !== '\n') i++
+      if (i < text.length) out += '\n'
+      continue
+    }
+    if (ch === '/' && text[i + 1] === '*') {
+      i += 2
+      while (i < text.length && !(text[i] === '*' && text[i + 1] === '/')) {
+        if (text[i] === '\n') out += '\n'
+        i++
+      }
+      if (i < text.length) i++
+      continue
+    }
+    out += ch
+  }
+  return out
+}
+
+function findMDXFunctionCalls(rawText) {
+  const text = stripMdxComments(rawText)
   const calls = []
   const stack = []
   let inStr = false

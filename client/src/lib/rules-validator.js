@@ -347,7 +347,7 @@ function validateAST(ast, code, line) {
         if (tiOnly) {
           issues.push({ severity: 'error', line, message: `${fnName} is a TI function — cannot be used in rules` })
         } else {
-          issues.push({ severity: 'error', line, message: `Unknown function '${fnName}'` })
+          issues.push({ severity: 'warning', line, message: `Unknown function '${fnName}'` })
         }
       } else {
         const argCount = (ast.args || []).length
