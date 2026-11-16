@@ -20,6 +20,7 @@ test('a packageDir outside the packages root is refused', async () => {
 })
 
 test('a failing deploy check surfaces isError', async () => {
+    fs.mkdirSync(PACKAGES_DIR, { recursive: true })   // git-ignored: absent in a fresh clone
     const dir = fs.mkdtempSync(path.join(PACKAGES_DIR, 'mcp-test-'))
     try {
         fs.writeFileSync(path.join(dir, 'manifest.json'), '{ not json')

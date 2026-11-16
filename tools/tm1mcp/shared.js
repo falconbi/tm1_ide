@@ -104,10 +104,6 @@ async function logAttributeValue(client, dim, element, attribute, value, { hiera
 
 // Run the server's stored assertions: execute each MDX, sum the returned cells,
 // compare to the expected value within tolerance.
-function assertionVisible(policy, mdx) {
-    return !guard.cubesInMdx(mdx).some(cube => !guard.allowed(policy, 'cubes', cube))
-}
-
 async function runAssertions(tags, ids = null) {
     const { source, assertions: stored } = await assertions.list(SERVER)
     const wanted = Array.isArray(ids) && ids.length ? new Set(ids) : null
@@ -118,7 +114,7 @@ async function runAssertions(tags, ids = null) {
     for (const a of set) {
         // The stored MDX is data, not a tool argument, so check it against the
         // same read policy here. A denied assertion is reported, never executed.
-        const denied = !assertionVisible(policy, a.mdx)
+        const denied = !guard.assertionVisible(policy, a.mdx)
         if (denied) {
             results.push({ id: a.id, description: a.description, status: 'not visible' })
             continue
@@ -201,4 +197,4 @@ function assertTargetAllowed(target) {
     }
 }
 
-module.exports = { SERVER, SERVER_SOURCE, AGENT_USER, MODE, policy, identity, setBuilderLogin, client, ok, esc, logChange, logAttributeValue, runAssertions, assertionVisible, requireWritable, requireChangeSet, assertTargetAllowed, targetAllowlist, explicitTargets, cl, assertions, lintRules, lintTI }
+module.exports = { SERVER, SERVER_SOURCE, AGENT_USER, MODE, policy, identity, setBuilderLogin, client, ok, esc, logChange, logAttributeValue, runAssertions, requireWritable, requireChangeSet, assertTargetAllowed, targetAllowlist, explicitTargets, cl, assertions, lintRules, lintTI }

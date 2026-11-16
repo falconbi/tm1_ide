@@ -426,9 +426,15 @@ function countRows(data) {
     return data == null ? 0 : 1
 }
 
+// A stored assertion's MDX is data, not a tool argument: it is visible only when
+// every cube it reads is allowed by the read policy.
+function assertionVisible(policy, mdx) {
+    return !cubesInMdx(mdx).some(cube => !allowed(policy, 'cubes', cube))
+}
+
 module.exports = {
     READ_TOOLS, WRITE_TOOLS, classify, resolveMode,
     BUILT_IN_DENY, POLICY_FILE, buildPolicy, loadPolicy, matches, allowed, refusal, checkArgs,
-    cubesInMdx, whereMembers, cellMembers, redactCells, redactAttributes, maskPolicyFor, MASK,
+    cubesInMdx, assertionVisible, whereMembers, cellMembers, redactCells, redactAttributes, maskPolicyFor, MASK,
     stripTiCredentials, stripDatasourceCredentials, scrubResult, objectOf, countRows,
 }

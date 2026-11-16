@@ -9,6 +9,8 @@ const { z } = require('zod')
 // refuse escapes (including symlinks), then require a manifest.
 function packageDirFor(input) {
     const { PACKAGES_DIR } = require('../../../tools/tm1deploy/src/packager')
+    // A fresh clone has no packages folder yet (it is git-ignored): nothing can be inside it.
+    if (!fs.existsSync(PACKAGES_DIR)) throw new Error(`Package folder must be inside the packages root (${PACKAGES_DIR}), which does not exist yet; refusing ${input}`)
     const root = fs.realpathSync(PACKAGES_DIR)
     const candidate = path.isAbsolute(input) ? input : path.join(root, input)
     let resolved
@@ -28,7 +30,7 @@ function packageDirFor(input) {
 // DEPLOY — prepare & check against a target (no writes to the target)
 // ══════════════════════════════════════════════════════════════════════════════
 
-function register(server, { ok }) {
+function register(server, { ok, assertTargetAllowed }) {
     server.tool(
         'check_deploy_risk',
         'Run the pre-deploy risk analysis for a package against a target server — rule/TI syntax on the target, missing dependencies, chore conflicts, structural impact. Read-only: nothing is written to the target. Use it as a fix loop before handoff: fix what it flags, re-package, re-check.',
@@ -42,7 +44,6 @@ function register(server, { ok }) {
             try { ({ analyzeRisk } = require('../../../tools/tm1deploy/src/risk')) }
             catch (e) { throw new Error(`Deploy tooling not available: ${e.message}`) }
             try {
-                const { assertTargetAllowed } = require('../shared')
                 assertTargetAllowed(target)
                 const r = await analyzeRisk(dir, target, null)
                 return ok({
@@ -69,7 +70,6 @@ function register(server, { ok }) {
             try { ({ driftCheck } = require('../../../tools/tm1deploy/src/diff')) }
             catch (e) { throw new Error(`Deploy tooling not available: ${e.message}`) }
             try {
-                const { assertTargetAllowed } = require('../shared')
                 assertTargetAllowed(target)
                 const r = await driftCheck(dir, target, null)
                 if (r.skipped) return ok({ target, note: r.reason ?? 'drift check skipped (no baseline in the package or repo)' })

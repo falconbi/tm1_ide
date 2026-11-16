@@ -55,6 +55,11 @@ function loadConfig({
             console.warn(`⚠  Demo mode: ${configPath} not readable (${e.message}) — using ${EXAMPLE_PATH} (server "${cfg.server}").`)
         } catch { throw new Error(`No Lens app settings and the example is unreadable: ${EXAMPLE_PATH}. ${e.message}`) }
     }
+    return normalizeConfig(cfg)
+}
+
+// Defaults and types for a settings object (from the file, or passed in by a test).
+function normalizeConfig(cfg = {}) {
     return {
         server:       String(cfg.server ?? '').trim(),
         port:         Number(cfg.port) || 8090,
@@ -279,8 +284,10 @@ function parseCookies(req) {
 }
 
 // Build the app. `deps` let the offline tests swap the TM1-facing pieces.
-function createApp({ config = loadConfig(), deps = {} } = {}) {
-    const cfg = { ...loadConfig(), ...config }
+// A passed-in `config` is used as given (with defaults); only a call without one
+// reads config/lens-app.json — so tests never depend on a local settings file.
+function createApp({ config, deps = {} } = {}) {
+    const cfg = config ? { ...normalizeConfig(config), ...config } : loadConfig()
     const probe     = deps.probeAuthMethod      ?? ((s) => probeAuthMethod(s))
     const signIn    = deps.makeClientWithCredentials ?? ((s, c, st) => makeClientWithCredentials(s, c, st))
     const execMdx   = deps.execMdx  ?? ((client, mdx) => lensBridge.execMDX(client, mdx))
@@ -919,4 +926,4 @@ if (require.main === module) {
     start(loadConfig())
 }
 
-module.exports = { createApp, loadConfig, createSessionStore, start, groupLenses, stepOf }
+module.exports = { createApp, loadConfig, normalizeConfig, createSessionStore, start, groupLenses, stepOf }

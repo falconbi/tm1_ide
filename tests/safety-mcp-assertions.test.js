@@ -2,8 +2,8 @@
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
 const { setup } = require('./_mcp-harness')
-const { assertionVisible } = require('../tools/tm1mcp/shared')
 const guard = require('../tools/tm1mcp/guard')
+const { assertionVisible } = guard
 
 function assertionStore(records) {
     return {
