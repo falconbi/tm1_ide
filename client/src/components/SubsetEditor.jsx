@@ -1,3 +1,4 @@
+import { apiFetch } from '@/lib/api'
 import { useState, useEffect, useRef, useCallback } from 'react'
 import MonacoEditor from '@monaco-editor/react'
 import { useQueryClient } from '@tanstack/react-query'
@@ -335,7 +336,7 @@ export default function SubsetEditor({ tab }) {
       // 2. Server-side validation (execution errors — syntax, missing elements, etc.)
       try {
         const enc = encodeURIComponent
-        const r = await fetch(`/api/subset/preview?server=${enc(tab.server)}&dimension=${enc(tab.dimension)}&hierarchy=${enc(hierarchy)}`, {
+        const r = await apiFetch(`/api/subset/preview?server=${enc(tab.server)}&dimension=${enc(tab.dimension)}&hierarchy=${enc(hierarchy)}`, {
           method: 'POST', headers: { 'Content-Type': 'application/json', 'x-ide-token': localStorage.getItem('tm1-token') ?? '' },
           body: JSON.stringify({ mdx, limit: 1 }),
         })

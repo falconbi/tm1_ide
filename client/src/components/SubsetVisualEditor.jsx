@@ -1,3 +1,4 @@
+import { apiFetch } from '@/lib/api'
 import { useState, useMemo, useCallback, useRef, useEffect } from 'react'
 import { useStore } from '@/store'
 import { useElements, useEdges, useSubsets, useSubsetElements, useSaveStaticSubset, useDimAttributes } from '@/hooks/useApi'
@@ -177,7 +178,7 @@ function DimensionBrowser({ server, dim, hierarchy, onKeep, subsets = [], cols, 
                             const name = e.target.value
                             if (!name) return
                             try {
-                                const r = await fetch(`/api/subset/elements?server=${enc(server)}&dimension=${enc(dim)}&name=${enc(name)}`, { headers: { 'x-ide-token': localStorage.getItem('tm1-token') ?? '' } })
+                                const r = await apiFetch(`/api/subset/elements?server=${enc(server)}&dimension=${enc(dim)}&name=${enc(name)}`, { headers: { 'x-ide-token': localStorage.getItem('tm1-token') ?? '' } })
                                 const els = await r.json().catch(() => ({}))
                                 if (!r.ok || els.error) throw new Error(els.error || r.statusText)
                                 onKeep(els.map(el => ({ Name: el.name, Type: el.type, Level: el.level })))
@@ -620,7 +621,7 @@ export default function SubsetVisualEditor({ tab, onMdxConvert, onVisualDirty, o
 
     const handleLoadSubset = async (name) => {
         try {
-            const r = await fetch(`/api/subset/elements?server=${enc(tab.server)}&dimension=${enc(tab.dimension)}&name=${enc(name)}&hierarchy=${enc(hierarchy)}`, { headers: { 'x-ide-token': localStorage.getItem('tm1-token') ?? '' } })
+            const r = await apiFetch(`/api/subset/elements?server=${enc(tab.server)}&dimension=${enc(tab.dimension)}&name=${enc(name)}&hierarchy=${enc(hierarchy)}`, { headers: { 'x-ide-token': localStorage.getItem('tm1-token') ?? '' } })
             if (!r.ok) throw new Error(await r.text())
             const els = await r.json()
             setMembers(els)
