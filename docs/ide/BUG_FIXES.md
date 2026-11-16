@@ -12,6 +12,7 @@ commits that mixed a fix into a feature are included too. New features are not l
 
 ### 2026-11-16
 
+- **change sets** — Any user could close, resume or edit another user's change set by id. Close/resume/description now require the owner (case-insensitive) or a TM1 admin, all three check read-only posture first, and the Change Log hides Close/Resume/pencil for someone else's set
 - **drift** — A standalone drift check pushed the target's live state to `prod-live` without the target's deploy lock, so two checks or a check plus a deploy could race. Standalone checks now take the same lock (a deploy's internal check skips it because the deploy already holds it) and a concurrent check returns busy
 - **Git readiness** — Readiness findings were warnings in the old risk report and the Git push route did not scan at all, so a blocker could be linked/pushed. The Git push route now runs the readiness scan and refuses on blockers (returning the findings), readiness errors are blockers when the transport is Git, and the setup screen disables Link/Commit while the last scan has blockers
 - **deploy** — A successful first pull applied the repo but recorded no target anchor, so the next release said "no recorded deployed commit" and drift fell back to TM1's `DeployedCommit`. First pull now records the pulled commit through `git-state.recordDeploy` and returns it

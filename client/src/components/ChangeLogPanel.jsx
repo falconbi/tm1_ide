@@ -125,7 +125,7 @@ function LogEntry({ entry, server, openTab }) {
   )
 }
 
-function SessionRow({ session, server, openTab, onClose }) {
+function SessionRow({ session, server, openTab, onClose, currentUser }) {
   const { openDeployCenter } = useStore()
   const [open, setOpen]           = useState(false)
   const [editingDesc, setEditingDesc] = useState(false)
@@ -164,6 +164,7 @@ function SessionRow({ session, server, openTab, onClose }) {
 
   const { data: entries = [], isFetching } = useWorkSessionLog(open ? session.id : null)
   const isActive = !session.closed_at
+  const owns = !session.user || !currentUser || String(session.user).toLowerCase() === String(currentUser).toLowerCase()
 
   useEffect(() => { if (editingDesc) descRef.current?.focus() }, [editingDesc])
 
@@ -218,7 +219,7 @@ function SessionRow({ session, server, openTab, onClose }) {
               )}
             </div>
           </button>
-          {!isActive && (
+          {!isActive && owns && (
             <button
               onClick={e => { e.stopPropagation(); resume.mutate({ id: session.id, server }) }}
               title="Resume this change set"
@@ -227,7 +228,7 @@ function SessionRow({ session, server, openTab, onClose }) {
               <RotateCcw size={10} />
             </button>
           )}
-          {isActive && (
+          {isActive && owns && (
             <div className="flex items-center gap-0.5 mr-1 shrink-0">
               <button
                 onClick={e => { e.stopPropagation(); runTests() }}
@@ -246,13 +247,13 @@ function SessionRow({ session, server, openTab, onClose }) {
               </button>
             </div>
           )}
-          <button
+          {owns && <button
             onClick={e => { e.stopPropagation(); setEditingDesc(v => !v) }}
             title="Add / edit note"
             className="opacity-0 group-hover:opacity-100 transition-opacity p-2 rounded hover:bg-muted text-muted-foreground hover:text-foreground shrink-0"
           >
             <Pencil size={10} />
-          </button>
+          </button>}
           {(session.entry_count ?? 0) > 0 && (
             <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center mr-1">
               <button
@@ -316,7 +317,7 @@ function SessionRow({ session, server, openTab, onClose }) {
 }
 
 export default function ChangeLogPanel({ server, onClose, direction = 'up' }) {
-  const { openTab, openDeployCenter } = useStore()
+  const { openTab, openDeployCenter, username } = useStore()
   const { data: allSessions = [], isFetching } = useWorkSessions(server)
   const [showDeployed, setShowDeployed] = useState(false)
   const [showHelp, setShowHelp] = useState(false)
@@ -375,6 +376,7 @@ export default function ChangeLogPanel({ server, onClose, direction = 'up' }) {
               server={server}
               openTab={openTab}
               onClose={onClose}
+              currentUser={username}
             />
           ))}
         </div>

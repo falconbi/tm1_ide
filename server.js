@@ -12,6 +12,7 @@ const { makeClient, makeClientWithCredentials, needsServerLogin, isDirectServer,
 const { loadConnections, saveConnections, getConnection, executeQuery, testConnection, getSchema, loadQueries, saveQueries } = require('./core/sql_client')
 const { createSession, createDirectSession, createLocalSession, attachPawSession, getSessionUser, touchSession, invalidateSession, getCachedPawSession, getCSRF, PAW_HOST, setServerCredentials, getServerCredentials, clearServerCredentials, getServerStatus, listServerEntries, getSessionCredentials } = require('./core/paw_connect')
 const cl = require('./core/change_log')
+const { canManageSession } = require('./core/session_access')
 // Persisted Git token (never returned to the client) — env wins, else the secrets file.
 const gitSecrets = require('./core/git-secrets')
 const { odataKey } = require('./core/odata-key')
@@ -36,6 +37,18 @@ function requireSession(server, user) {
     if (isSimple(server)) return true
     return !!cl.getActiveSession(server, user)
 }
+async function isTm1Admin(req, server) {
+    try {
+        const me = await makeClient(server, req.ideToken).get('ActiveUser', { '$expand': 'Groups($select=Name)' })
+        return isAdminGroups(me?.Groups)
+    } catch { return false }
+}
+
+async function mayManageSession(req, session) {
+    if (canManageSession(req.user, session)) return true
+    return isTm1Admin(req, session.server)
+}
+
 const NO_SESSION_ERROR = 'No change set is open for this server — start one first (Change Log → Start change set) so this change can be attributed and deployed.'
 function gateReadOnly(res, server) {
     const refusal = readOnlyRefusal(server)
@@ -379,6 +392,10 @@ app.post('/api/sessions/close', async (req, res) => {
         if (!id) return res.status(400).json({ error: 'id required' })
         const sess = cl.getSession(id)
         if (!sess) return res.status(404).json({ error: `No change set ${id}` })
+        if (!gateReadOnly(res, sess.server)) return
+        if (!(await mayManageSession(req, sess))) {
+            return res.status(403).json({ error: `Change set ${id} belongs to ${sess.user ?? 'another user'}.` })
+        }
         // Run the tests server-side — do not trust the client's results. Refuse to
         // close while any block-severity assertion is failing.
         let tests = null
@@ -406,10 +423,16 @@ app.post('/api/sessions/close', async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
-app.post('/api/sessions/resume', (req, res) => {
+app.post('/api/sessions/resume', async (req, res) => {
     try {
         const { id } = req.body
         if (!id) return res.status(400).json({ error: 'id required' })
+        const sess = cl.getSession(id)
+        if (!sess) return res.status(404).json({ error: `No change set ${id}` })
+        if (!gateReadOnly(res, sess.server)) return
+        if (!(await mayManageSession(req, sess))) {
+            return res.status(403).json({ error: `Change set ${id} belongs to ${sess.user ?? 'another user'}.` })
+        }
         res.json(cl.resumeSession(id))
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
@@ -455,9 +478,16 @@ app.get('/api/sessions/:id/log/verbose', (req, res) => {
     catch (e) { res.status(500).json({ error: e.message }) }
 })
 
-app.patch('/api/sessions/:id/description', (req, res) => {
-    try { res.json(cl.updateSessionDescription(req.params.id, req.body.description)) }
-    catch (e) { res.status(500).json({ error: e.message }) }
+app.patch('/api/sessions/:id/description', async (req, res) => {
+    try {
+        const sess = cl.getSession(req.params.id)
+        if (!sess) return res.status(404).json({ error: `No change set ${req.params.id}` })
+        if (!gateReadOnly(res, sess.server)) return
+        if (!(await mayManageSession(req, sess))) {
+            return res.status(403).json({ error: `Change set ${req.params.id} belongs to ${sess.user ?? 'another user'}.` })
+        }
+        res.json(cl.updateSessionDescription(req.params.id, req.body.description))
+    } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
 app.get('/api/log/object', (req, res) => {

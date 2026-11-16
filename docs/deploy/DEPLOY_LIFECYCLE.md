@@ -14,10 +14,10 @@ Found by code review, not by a failed deploy. Each line moves to **Fixed** as th
 - Step 5 — first pull records the pulled commit as the target's deploy anchor.
 - Step 6 — readiness findings now block the Git push route, and the setup screen disables Link/Commit while blockers remain.
 - Step 7 — standalone drift checks take the target's deploy lock; a concurrent check returns busy instead of racing the `prod-live` push.
+- Step 8 — change sets are owner-managed (case-insensitive); admins may also close/resume/edit. The UI hides those controls for another user's set.
 
 **Still open**
 
-- Step 8 — another user could close, resume or edit a change set.
 - Step 9 — single-assertion runs did not record history; assertion writes did not use the normal model-write gate; numeric fields were not validated.
 - Step 10 — two deploy surfaces and a Deploy History built from local package archives, not model deploy records.
 - First-pull element-loss analysis (`firstPullAnalysis`) is still not wired into the setup screen (round 2).
