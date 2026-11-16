@@ -25,3 +25,18 @@ number.
 `.github/workflows/ci.yml` builds the client, checks that `static/` is current, runs the tests,
 then reads `client/lint-baseline.json` and fails if `npm run lint:count` reports more problems than
 the file allows. The count and the baseline are printed either way.
+
+## Backend
+
+The server and tooling use the root ESLint config (`eslint.config.js`): `server.js`, `lens-server.js`,
+`core/**` and `tools/**` as CommonJS, and `shared/**` as ESM. The ratchet number lives in
+`lint-baseline.json` at the repository root.
+
+```bash
+npm run lint          # from the repository root
+npm run lint:count
+```
+
+A fresh run on 16 Nov 2026 reported **87** problems (56 errors, 31 warnings). Most are existing
+`no-empty`, `no-useless-assignment`, `preserve-caught-error` and `no-unused-vars` findings. They
+are recorded, not fixed, so the backend now has the same “only go down” gate as the client.

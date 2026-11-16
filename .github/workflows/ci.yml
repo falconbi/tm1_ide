@@ -61,3 +61,18 @@ jobs:
             echo "Lint regressed: ${COUNT} > ${BASELINE}. Lower client/lint-baseline.json only when lint improves."
             exit 1
           fi
+
+      - name: Backend lint ratchet (must only go down)
+        if: matrix.node == 20
+        run: |
+          BASELINE=$(node -p "require('./lint-baseline.json').problems")
+          COUNT=$(npm run lint:count 2>&1 | grep -oE '[0-9]+' | tail -1)
+          echo "backend lint problems: ${COUNT} (baseline ${BASELINE})"
+          if [ -z "$COUNT" ]; then
+            echo "Could not read the backend lint count — inspect npm run lint:count."
+            exit 1
+          fi
+          if [ "$COUNT" -gt "$BASELINE" ]; then
+            echo "Backend lint regressed: ${COUNT} > ${BASELINE}. Lower lint-baseline.json only when lint improves."
+            exit 1
+          fi
