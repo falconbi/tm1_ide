@@ -34,6 +34,7 @@ import CubeDataSources from '@/components/CubeDataSources'
 import HelpPanel from '@/components/HelpPanel'
 import { getRulesSession, saveRulesSession } from '@/lib/rules-session'
 import LensEditor from '@/components/LensEditor'
+import { rulesTabId, processTabId } from '@/lib/tab-ids'
 
 // ── Lineage panel ─────────────────────────────────────────────────────────────
 
@@ -406,12 +407,12 @@ function RulesEditor({ tab, onCursor }) {
 
   // Contextual drill-ins (Lineage, Data Sources) open beside the rules you are reading.
   const openCube = useCallback((cube, openHere) => {
-    const t = { id: `rules:${tab.server}:${cube}`, type: 'rules', label: cube, server: tab.server, cube, content: null }
+    const t = { id: rulesTabId(tab.server, cube), type: 'rules', label: cube, server: tab.server, cube, content: null }
     if (openHere) openTab(t); else openTabToSide(t)
   }, [tab.server, openTab, openTabToSide])
 
   const openProcess = useCallback((name, openHere) => {
-    const t = { id: `process:${tab.server}:${name}`, type: 'process', label: name, server: tab.server, name, content: null }
+    const t = { id: processTabId(tab.server, name), type: 'process', label: name, server: tab.server, name, content: null }
     if (openHere) openTab(t); else openTabToSide(t)
   }, [tab.server, openTab, openTabToSide])
 

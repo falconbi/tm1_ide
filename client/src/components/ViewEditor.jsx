@@ -15,6 +15,7 @@ import HelpPanel from '@/components/HelpPanel'
 import TransactionLogPanel from '@/components/TransactionLogPanel'
 import CellContextMenu from '@/components/CellContextMenu'
 import { cn } from '@/lib/utils'
+import { dimensionTabId, viewTabId, processTabId, subsetTabId } from '@/lib/tab-ids'
 import { useGridAppearance } from '@/lib/grid-appearance'
 import { extractRuleCalls, splitArgs, resolveArg, matchingCloseParen, splitTopLevelOps, rhsOf, splitComparison } from '@/lib/tm1-rule-parser'
 import { cellsetToHierarchyData, parseCellset, buildGridData } from '@/lib/view-cellset'
@@ -495,7 +496,7 @@ function DimPill({ id, dim, zone, server, onRemove, onSubsetChange, onMemberChan
     const onEditSubset = (dimName, subsetName) => {
         setOpen(false)
         openTab({
-            id:         `subset:${server}:${dimName}:${subsetName}`,
+            id:         subsetTabId(server, dimName, dimName, subsetName),
             type:       'subset',
             label:      subsetName,
             server,
@@ -604,7 +605,7 @@ function DimPill({ id, dim, zone, server, onRemove, onSubsetChange, onMemberChan
                             </button>
                         </>)}
                         <button
-                            onClick={e => { e.stopPropagation(); openTab({ id: `dimension:${server}:${dim.dimension}`, type: 'dimension', label: dim.dimension, server, dimension: dim.dimension }) }}
+                            onClick={e => { e.stopPropagation(); openTab({ id: dimensionTabId(server, dim.dimension, dim.dimension), type: 'dimension', label: dim.dimension, server, dimension: dim.dimension }) }}
                             className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-primary p-0.5 rounded"
                             title="Open in Dimension Editor"
                         >
@@ -2009,7 +2010,7 @@ export default function ViewEditor({ tab }) {
                     setMdxDirty(false)
                     toast.success(`Saved "${name}"`, { id })
                     openTab({
-                        id:       `cubeview:${tab.server}:${tab.cube}:${name}`,
+                        id:       viewTabId(tab.server, tab.cube, name),
                         type:     'cubeview',
                         label:    `⊞ ${tab.cube} / ${name}`,
                         server:   tab.server,
@@ -2466,7 +2467,7 @@ export default function ViewEditor({ tab }) {
                             const v = e.target.value
                             if (!v) return
                             openTab({
-                                id:       `cubeview:${tab.server}:${tab.cube}:${v}`,
+                                id:       viewTabId(tab.server, tab.cube, v),
                                 type:     'cubeview',
                                 label:    `⊞ ${tab.cube} / ${v}`,
                                 server:   tab.server,
@@ -2595,7 +2596,7 @@ export default function ViewEditor({ tab }) {
                                     </div>
                                     {usageData.processes.map((u, i) => (
                                         <button key={i}
-                                            onClick={() => openTab({ id: `process:${tab.server}:${u.process}`, type: 'process', label: u.process, server: tab.server, processName: u.process })}
+                                            onClick={() => openTab({ id: processTabId(tab.server, u.process), type: 'process', label: u.process, server: tab.server, name: u.process })}
                                             className="flex items-center gap-1.5 w-full px-1 py-0.5 text-[11px] hover:bg-muted rounded text-left">
                                             <Cog size={10} className="shrink-0 text-muted-foreground" />
                                             <span className="font-mono truncate">{u.process}</span>

@@ -4,7 +4,7 @@ import { useElements, useEdges, useSubsets, useSubsetElements, useSaveStaticSubs
 import { toast } from 'sonner'
 import { ChevronRight, ChevronDown, Loader2, Search, ArrowUp, ArrowDown, Trash2, X, PanelLeftClose, PanelLeftOpen } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { subsetTabId } from '@/lib/subset-tab'
+import { subsetTabId } from '@/lib/tab-ids'
 
 const TYPE_ICON  = { N: '○', C: '◆', S: '"' }
 const TYPE_COLOR = { N: 'text-blue-400', C: 'text-orange-400', S: 'text-green-400' }

@@ -4,6 +4,7 @@ import { useStore } from '@/store'
 import { Box, Code2, Table2, Trash2, ChevronUp, ChevronDown, X, Plus, Star, Loader2, Eye, EyeOff } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
+import { rulesTabId, viewTabId } from '@/lib/tab-ids'
 
 export default function CubeEditor({ tab }) {
     const { server: storeServer, openTab, closeTab } = useStore()
@@ -42,7 +43,7 @@ export default function CubeEditor({ tab }) {
             onSuccess: () => {
                 toast.success(`Cube "${name.trim()}" created`, { id })
                 closeTab(tab.id)
-                openTab({ id: `cubeview:${server}:${name.trim()}`, type: 'cubeview', label: `⊞ ${name.trim()}`, server, cube: name.trim() })
+                openTab({ id: viewTabId(server, name.trim(), 'Default'), type: 'cubeview', label: `⊞ ${name.trim()}`, server, cube: name.trim() })
             },
             onError: e => toast.error(e.message, { id }),
         })
@@ -76,11 +77,11 @@ export default function CubeEditor({ tab }) {
                 <div className="flex-1" />
                 {!isNew && (
                     <>
-                        <button onClick={() => openTab({ id: `rules:${server}:${tab.cube}`, type: 'rules', label: tab.cube, server, cube: tab.cube, content: null })}
+                        <button onClick={() => openTab({ id: rulesTabId(server, tab.cube), type: 'rules', label: tab.cube, server, cube: tab.cube, content: null })}
                             className="flex items-center gap-1 px-2 py-1 text-xs rounded border border-border hover:bg-muted transition-colors">
                             <Code2 size={11} /> Rules
                         </button>
-                        <button onClick={() => openTab({ id: `cubeview:${server}:${tab.cube}`, type: 'cubeview', label: `⊞ ${tab.cube}`, server, cube: tab.cube })}
+                        <button onClick={() => openTab({ id: viewTabId(server, tab.cube, 'Default'), type: 'cubeview', label: `⊞ ${tab.cube}`, server, cube: tab.cube })}
                             className="flex items-center gap-1 px-2 py-1 text-xs rounded border border-border hover:bg-muted transition-colors">
                             <Table2 size={11} /> View
                         </button>

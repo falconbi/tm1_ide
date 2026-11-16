@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { X, Activity, RefreshCw, CheckCircle2, XCircle, ChevronDown, ChevronRight, Copy, FileCode2, Table2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useStore } from '@/store'
+import { rulesTabId, viewTabId } from '@/lib/tab-ids'
 
 // Plain-English summary of what an assertion's MDX checks: the cube and its
 // [Dim].[Member] filters.
@@ -186,11 +187,11 @@ export default function ModelHealth({ server, onClose }) {
                             </button>
                             {s.cube && (
                               <>
-                                <button onClick={() => openTab({ id: `rules:${server}:${s.cube}`, type: 'rules', label: s.cube, server, cube: s.cube, content: null })}
+                                <button onClick={() => openTab({ id: rulesTabId(server, s.cube), type: 'rules', label: s.cube, server, cube: s.cube, content: null })}
                                   className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] rounded border border-border text-foreground hover:bg-muted transition-colors" title="Open this cube's rules">
                                   <FileCode2 size={10} /> Open rules
                                 </button>
-                                <button onClick={() => openTab({ id: `view:${server}:${s.cube}:Default`, type: 'view', label: s.cube, server, cube: s.cube, viewName: 'Default' })}
+                                <button onClick={() => openTab({ id: viewTabId(server, s.cube, 'Default'), type: 'cubeview', label: s.cube, server, cube: s.cube, viewName: 'Default' })}
                                   className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] rounded border border-border text-foreground hover:bg-muted transition-colors" title="Open the cube's Default view">
                                   <Table2 size={10} /> Open Default view
                                 </button>

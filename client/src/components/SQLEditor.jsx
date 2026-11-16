@@ -3,6 +3,7 @@ import MonacoEditor from '@monaco-editor/react'
 import { useStore } from '@/store'
 import { useSQLConnections, useSaveSQLConn, useDeleteSQLConn, useTestSQLConn, useExecuteSQL, useSQLSchema, useSQLQueries, useSaveSQLQuery, useDeleteSQLQuery, usePostToTI, useODBCProcs } from '@/hooks/useApi'
 import { cn } from '@/lib/utils'
+import { processTabId } from '@/lib/tab-ids'
 import { Play, Plus, Trash2, ChevronDown, ChevronRight, Database, Settings, X, CheckCircle, AlertCircle, Loader2, Copy, Table, Save, BookOpen, Pencil, Send, Cog, Map, HelpCircle, Eraser } from 'lucide-react'
 import HelpPanel from '@/components/HelpPanel'
 import { toast } from 'sonner'
@@ -295,7 +296,7 @@ export default function SQLEditor({ tab }) {
   }
 
   const openInTI = (processName) => {
-    openTab({ id: `process:${server}:${processName}`, type: 'process', label: processName, server, name: processName, content: null })
+    openTab({ id: processTabId(server, processName), type: 'process', label: processName, server, name: processName, content: null })
     setShowPostToTI(false)
     setLastPosted(null)
   }

@@ -5,6 +5,7 @@ import { useProcess, useSaveProcess, useRunProcess, useCreateProcess, useDebugPr
 import { registerTM1Completions, registerTM1Theme } from '@/lib/tm1-functions'
 import { registerTICompletions } from '@/lib/tm1-completion'
 import { cn } from '@/lib/utils'
+import { subsetTabId, processTabId } from '@/lib/tab-ids'
 import { toast } from 'sonner'
 import { ChevronRight, ChevronDown, Play, X, Braces, CheckCircle2, XCircle, Trash2, Plus, Loader2, Bug, Search, AlertTriangle, AlertCircle, Map, Upload, History, Locate, HelpCircle, ListTree, ChevronsUpDown, ChevronsDownUp, Undo2, Redo2 } from 'lucide-react'
 import { enableQuoteDoubleClick } from '@/lib/quote-select'
@@ -294,7 +295,7 @@ function DatasourcePreviewPanel({ ds, server, params }) {
     } catch (e) { fail(e) }
   }
 
-  const openSubset = () => openTab({ id: `subset:${server}:${name}:${ds.subset}`, type: 'subset', label: ds.subset, server, dimension: name, subsetName: ds.subset })
+  const openSubset = () => openTab({ id: subsetTabId(server, name, name, ds.subset), type: 'subset', label: ds.subset, server, dimension: name, subsetName: ds.subset })
 
   const busy = loading || preview.isPending
   const btn  = 'flex items-center gap-1.5 px-2.5 py-1 text-xs rounded border border-border text-muted-foreground hover:text-foreground hover:bg-muted transition-colors disabled:opacity-40'
@@ -1144,7 +1145,7 @@ export default function ProcessEditor({ tab }) {
         onSuccess: () => {
           toast.success(`Saved as "${newName}"`, { id })
           setShowSaveAs(false)
-          openTab({ id: `process:${tab.server}:${newName}`, type: 'process', label: newName, server: tab.server, name: newName, content: null })
+          openTab({ id: processTabId(tab.server, newName), type: 'process', label: newName, server: tab.server, name: newName, content: null })
         },
         onError: e => toast.error(e.message, { id }),
       }),

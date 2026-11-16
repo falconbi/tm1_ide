@@ -14,7 +14,7 @@ import HelpPanel from '@/components/HelpPanel'
 import SubsetVisualEditor from './SubsetVisualEditor'
 import { ConflictBanner, ConflictSaveWarning } from '@/components/ConflictBanner'
 import DiffViewerModal from '@/components/DiffViewerModal'
-import { subsetTabId } from '@/lib/subset-tab'
+import { subsetTabId } from '@/lib/tab-ids'
 
 const TYPE_ICON  = { N: '○', C: '◆', S: '"' }
 const TYPE_COLOR = { N: 'text-blue-400', C: 'text-amber-400', S: 'text-emerald-400' }

@@ -12,6 +12,7 @@ commits that mixed a fix into a feature are included too. New features are not l
 
 ### 2026-11-16
 
+- **views** — The same saved view opened from Explorer used `cubeview:…` while Cube Map and Model Health used `view:…`, so it could appear twice and "already open" failed. One `viewTabId` is used everywhere (default view keeps the three-segment id); rules/process/dimension/subset ids live in the same helper file
 - **rules/TI/view/subset** — The “someone else changed this” banner was computed from refs set in an effect after the memo, so the first conflict could be missed. The baseline is state now, the decision is a pure tested function, and the React ref warnings in `useApi` are gone
 - **workspace** — `forge.json` saved the full editor bodies and dirty flags from whatever the last tab/layout action happened to hold, and restored them on reload (stale content, or a saved tab showing as dirty). It is now layout only: tabs, splits and active ids; the server strips an old client's content/dirty too
 - **tabs** — Closing a pane, closing other tabs or closing to the right discarded unsaved Rule/TI/subset tabs without asking (only the single-tab close did). Every close path and a browser-close `beforeunload` now use one dirty check that names the tabs

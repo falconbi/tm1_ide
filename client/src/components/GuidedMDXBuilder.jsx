@@ -6,6 +6,7 @@ import { subsetApplyCallbacks } from '@/lib/subsetCallbacks'
 import { ArrowLeft, Play, Loader2, Copy, X, Check, ExternalLink, HelpCircle, Save, Clock, Plus, Pencil, Trash2, ChevronDown, ChevronRight, GripHorizontal, WrapText, Sparkles } from 'lucide-react'
 import MonacoEditor from '@monaco-editor/react'
 import { cn } from '@/lib/utils'
+import { subsetTabId, viewTabId } from '@/lib/tab-ids'
 import { validateMDX } from '@/lib/mdx-validator'
 import ResultGrid from '@/components/mdx/ResultGrid'
 
@@ -1353,7 +1354,7 @@ export default function GuidedMDXBuilder({ tab, server: serverProp, _onSwitchToR
                     theme="tm1-custom"
                   />
                 </div>
-                <button onClick={() => openTab({ id: `subsetmdx:${selectedDim}:${Date.now()}`, type: 'subset', label: `MDX: ${selectedDim}`, server, dimension: selectedDim, mdx: currentMDX })}
+                <button onClick={() => openTab({ id: subsetTabId(server, selectedDim, selectedDim, null, Date.now()), type: 'subset', label: `MDX: ${selectedDim}`, server, dimension: selectedDim, mdx: currentMDX })}
                   className="w-full mt-2 px-3 py-2 rounded bg-primary text-primary-foreground text-xs flex items-center justify-center gap-2 disabled:opacity-40">
                   <ExternalLink size={13} /> Open in Subset Editor
                 </button>
@@ -1528,8 +1529,8 @@ export default function GuidedMDXBuilder({ tab, server: serverProp, _onSwitchToR
                           pages:   axes.filter.map(toEntry),
                       }
                       openTab({
-                          id:          `view:${server}:${selectedCube}:guided-${Date.now()}`,
-                          type:        'view',
+                          id:          viewTabId(server, selectedCube, `guided-${Date.now()}`),
+                          type:        'cubeview',
                           label:       selectedCube,
                           server,
                           cube:        selectedCube,

@@ -20,6 +20,7 @@ import { buildRunSequence, buildPhaseSequence } from '@/lib/run-sequence'
 import { pushStep, backTo, previousStep } from '@/lib/cubemap-trail'
 import { getCubemapSession, saveCubemapSession } from '@/lib/cubemap-session'
 import RunbookDialog from '@/components/RunbookDialog'
+import { rulesTabId, processTabId, dimensionTabId, viewTabId } from '@/lib/tab-ids'
 
 // ── Layout ────────────────────────────────────────────────────────────────────
 
@@ -1420,19 +1421,19 @@ function CubeMapInner({ tab }) {
     if (node.type === 'cube') {
       const hasRules = cubeData?.[node.id]?.hasRules
       openTab(hasRules
-        ? { id: `rules:${srv}:${node.id}`,      type: 'rules',      label: node.id, server: srv, cube: node.id }
+        ? { id: rulesTabId(srv, node.id),      type: 'rules',      label: node.id, server: srv, cube: node.id }
         : { id: `cubeeditor:${srv}:${node.id}`, type: 'cubeeditor', label: node.id, server: srv, cube: node.id }
       )
       return
     }
     if (node.type === 'process') {
       const name = node.id.slice('proc:'.length)
-      openTab({ id: `process:${srv}:${name}`, type: 'process', label: name, server: srv, name, content: null })
+      openTab({ id: processTabId(srv, name), type: 'process', label: name, server: srv, name, content: null })
       return
     }
     if (node.type === 'dim') {
       const dim = node.id.slice('dim:'.length)
-      openTab({ id: `dimension:${srv}:${dim}`, type: 'dimension', label: dim, server: srv, dimension: dim })
+      openTab({ id: dimensionTabId(srv, dim, dim), type: 'dimension', label: dim, server: srv, dimension: dim })
     }
   }, [cubeData, openTab, srv])
 
@@ -1534,14 +1535,14 @@ function CubeMapInner({ tab }) {
   // before the old copy has saved, and it would come back at the full map.
   const openHere = (t, o) => { saveSession(); openTab(t, o) }
   const openSide = (t, o) => { saveSession(); openTabToSide(t, o) }
-  const openRules   = (cube)  => openHere({ id: `rules:${srv}:${cube}`,           type: 'rules',      label: cube,    server: srv, cube })
-  const openView    = (cube)  => openHere({ id: `view:${srv}:${cube}:Default`,     type: 'view',       label: cube,    server: srv, cube, viewName: 'Default' })
+  const openRules   = (cube)  => openHere({ id: rulesTabId(srv, cube),           type: 'rules',      label: cube,    server: srv, cube })
+  const openView    = (cube)  => openHere({ id: viewTabId(srv, cube, 'Default'),     type: 'cubeview',   label: cube,    server: srv, cube, viewName: 'Default' })
   // Drill-ins from the player/runbook keep the map visible beside them.
   // Alt-click "opens here" instead (the old replace-the-pane behaviour).
-  const openProcessCtx   = (name, here) => (here ? openHere : openSide)({ id: `process:${srv}:${name}`,   type: 'process',    label: name, server: srv, name, content: null })
-  const openDimensionCtx = (dim, here)  => (here ? openHere : openSide)({ id: `dimension:${srv}:${dim}`,  type: 'dimension',  label: dim,  server: srv, dimension: dim })
-  const openRulesCtx     = (cube, here) => (here ? openHere : openSide)({ id: `rules:${srv}:${cube}`,     type: 'rules',      label: cube, server: srv, cube })
-  const openCubeCtx      = (cube, here) => (here ? openHere : openSide)({ id: `view:${srv}:${cube}:Default`, type: 'view', label: cube, server: srv, cube, viewName: 'Default' })
+  const openProcessCtx   = (name, here) => (here ? openHere : openSide)({ id: processTabId(srv, name),   type: 'process',    label: name, server: srv, name, content: null })
+  const openDimensionCtx = (dim, here)  => (here ? openHere : openSide)({ id: dimensionTabId(srv, dim, dim),  type: 'dimension',  label: dim,  server: srv, dimension: dim })
+  const openRulesCtx     = (cube, here) => (here ? openHere : openSide)({ id: rulesTabId(srv, cube),     type: 'rules',      label: cube, server: srv, cube })
+  const openCubeCtx      = (cube, here) => (here ? openHere : openSide)({ id: viewTabId(srv, cube, 'Default'), type: 'cubeview', label: cube, server: srv, cube, viewName: 'Default' })
 
   // ── Dim filter ────────────────────────────────────────────────────────────────
   // Clicking a cube's dimension narrows the map you're on to the cubes that use it — a step in the

@@ -5,6 +5,7 @@ import { toast } from 'sonner'
 import { Search, Replace, ChevronDown, ChevronRight, X, AlertTriangle } from 'lucide-react'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { cn } from '@/lib/utils'
+import { rulesTabId, processTabId } from '@/lib/tab-ids'
 
 const enc = encodeURIComponent
 
@@ -200,9 +201,9 @@ export default function FindReplace({ onClose }) {
 
   const handleOpen = (result) => {
     if (result.type === 'rules') {
-      openTab({ id: `rules:${server}:${result.object}`, type: 'rules', label: result.object, server, cube: result.object, content: null, scrollToLine: result.line })
+      openTab({ id: rulesTabId(server, result.object), type: 'rules', label: result.object, server, cube: result.object, content: null, scrollToLine: result.line })
     } else {
-      openTab({ id: `process:${server}:${result.object}`, type: 'process', label: result.object, server, name: result.object, content: null, scrollToLine: result.line, scrollToSection: result.section })
+      openTab({ id: processTabId(server, result.object), type: 'process', label: result.object, server, name: result.object, content: null, scrollToLine: result.line, scrollToSection: result.section })
     }
   }
 

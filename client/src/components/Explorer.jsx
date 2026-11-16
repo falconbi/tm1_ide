@@ -8,7 +8,7 @@ import GlobalSearch from '@/components/GlobalSearch'
 import HierarchyFromAttributeDialog from '@/components/HierarchyFromAttributeDialog'
 import { DeleteWarningModal } from '@/components/DeleteWarningModal'
 import { cn } from '@/lib/utils'
-import { subsetTabId, subsetLocateId } from '@/lib/subset-tab'
+import { subsetTabId, subsetLocateId, rulesTabId, processTabId, dimensionTabId, viewTabId } from '@/lib/tab-ids'
 
 // ── Reveal / locate helpers ───────────────────────────────────────────────────
 
@@ -1231,7 +1231,7 @@ export default function Explorer() {
   }, [search, cubes, dims, procs, chores])
 
   const openRules = (cube) => toggleOpenTab({
-    id:      `rules:${server}:${cube}`,
+    id:      rulesTabId(server, cube),
     type:    'rules',
     label:   cube,
     server,
@@ -1240,7 +1240,7 @@ export default function Explorer() {
   })
 
   const openProcess = (name) => toggleOpenTab({
-    id:      `process:${server}:${name}`,
+    id:      processTabId(server, name),
     type:    'process',
     label:   name,
     server,
@@ -1259,7 +1259,7 @@ export default function Explorer() {
   })
 
   const openCubeViewer = (cube) => toggleOpenTab({
-    id:       `cubeview:${server}:${cube}`,
+    id:       viewTabId(server, cube, 'Default'),
     type:     'cubeview',
     label:    `⊞ ${cube}`,
     server,
@@ -1268,7 +1268,7 @@ export default function Explorer() {
   })
 
   const openView = (cube, view) => toggleOpenTab({
-    id:       `cubeview:${server}:${cube}:${view}`,
+    id:       viewTabId(server, cube, view),
     type:     'cubeview',
     label:    view,
     server,
@@ -1277,7 +1277,7 @@ export default function Explorer() {
   })
 
   const openDim = (dim, hierarchy) => toggleOpenTab({
-    id:        dim ? `dim:${server}:${dim}:${hierarchy ?? dim}` : `dim:${server}:new:${Date.now()}`,
+    id:        dim ? dimensionTabId(server, dim, hierarchy) : `dim:${server}:new:${Date.now()}`,
     type:      'dimension',
     label:     dim ? (hierarchy && hierarchy !== dim ? `${dim} / ${hierarchy}` : dim) : 'New Dimension',
     server,
@@ -1327,7 +1327,7 @@ export default function Explorer() {
   })
 
   const openProcessAtLine = useCallback((name, section, line) => toggleOpenTab({
-    id: `process:${server}:${name}`, type: 'process', label: name, server, name, content: null,
+    id: processTabId(server, name), type: 'process', label: name, server, name, content: null,
     ...(section && line ? { scrollToSection: section, scrollToLine: line } : {}),
   }), [server])
 

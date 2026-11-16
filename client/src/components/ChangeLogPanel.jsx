@@ -5,6 +5,7 @@ import HelpPanel from '@/components/HelpPanel'
 import { useWorkSessions, useWorkSessionLog, useUpdateSessionDescription, useResumeWorkSession } from '@/hooks/useApi'
 import { useStore } from '@/store'
 import { cn } from '@/lib/utils'
+import { rulesTabId, processTabId, dimensionTabId, viewTabId, subsetTabId } from '@/lib/tab-ids'
 
 const authHeader = () => ({ 'Content-Type': 'application/json', 'x-ide-token': localStorage.getItem('tm1-token') ?? '' })
 
@@ -87,11 +88,11 @@ function LogEntry({ entry, server, openTab }) {
 
   const handleClick = () => {
     if (!openTab) return
-    if (entry.object_type === 'rules')     openTab({ id: `rules:${server}:${entry.object_name}`,     type: 'rules',     label: `Rules: ${entry.object_name}`, server, cube: entry.object_name })
-    if (entry.object_type === 'process')   openTab({ id: `process:${server}:${entry.object_name}`,   type: 'process',   label: entry.object_name, server, processName: entry.object_name })
-    if (entry.object_type === 'dimension') openTab({ id: `dimension:${server}:${entry.object_name}`, type: 'dimension', label: entry.object_name, server, dimension: entry.object_name })
-    if (entry.object_type === 'view')      openTab({ id: `cubeview:${server}:${entry.detail}:${entry.object_name}`, type: 'cubeview', label: entry.object_name, server, cube: entry.detail, viewName: entry.object_name })
-    if (entry.object_type === 'subset')    openTab({ id: `subset:${server}:${entry.detail}:${entry.object_name}`,   type: 'subset',   label: entry.object_name, server, dimension: entry.detail, subsetName: entry.object_name })
+    if (entry.object_type === 'rules')     openTab({ id: rulesTabId(server, entry.object_name),     type: 'rules',     label: `Rules: ${entry.object_name}`, server, cube: entry.object_name })
+    if (entry.object_type === 'process')   openTab({ id: processTabId(server, entry.object_name),   type: 'process',   label: entry.object_name, server, name: entry.object_name })
+    if (entry.object_type === 'dimension') openTab({ id: dimensionTabId(server, entry.object_name, entry.object_name), type: 'dimension', label: entry.object_name, server, dimension: entry.object_name })
+    if (entry.object_type === 'view')      openTab({ id: viewTabId(server, entry.detail, entry.object_name), type: 'cubeview', label: entry.object_name, server, cube: entry.detail, viewName: entry.object_name })
+    if (entry.object_type === 'subset')    openTab({ id: subsetTabId(server, entry.detail, entry.detail, entry.object_name),   type: 'subset',   label: entry.object_name, server, dimension: entry.detail, subsetName: entry.object_name })
   }
 
   return (
