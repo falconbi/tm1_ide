@@ -12,6 +12,7 @@ commits that mixed a fix into a feature are included too. New features are not l
 
 ### 2026-11-16
 
+- **MCP attribute values** — `build_dimension` and `add_elements` wrote attribute values (including default Format values) without change-log entries, so MCP-built attributes could not reach the target through the deploy manifest. Every MCP attribute write now goes through one `logAttributeValue` helper that records before/after as `ATTRIBUTE_VALUE_SET`
 - **change sets** — The IDE close route wrote the model-owned closed record while the MCP close only wrote the local log, so agent-closed change sets were invisible to a fresh IDE. Both now call one `closeChangeSet` service that persists the model record before closing locally
 - **MCP tools** — `check_feeders` was classified read-only but called a feeder recalculation endpoint that does not exist on TM1 v11. It was removed, with its unused `TM1Client` method, and the docs/tool counts now derive from `guard.js` with a test preventing drift
 - **MCP assertions** — `add_assertion` executed the supplied MDX as the builder and returned the value, bypassing the read policy and reader identity; stored assertions were also run without a policy check. The add tool now only stores the assertion and points at `run_assertions`; run/list check each stored MDX against the read policy, report denied ones as `not visible`, and never execute them

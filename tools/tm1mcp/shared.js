@@ -86,6 +86,22 @@ function logChange(action, objectType, objectName, opts = {}) {
     })
 }
 
+// Write one element-attribute value and record the before/after pair in the
+// active change set. One helper for every MCP path that writes attribute values
+// (build_dimension, add_elements, set_attribute_values) so deploy reconcile sees
+// the same manifest shape as the IDE.
+async function logAttributeValue(client, dim, element, attribute, value, { hierarchy = dim, type = 'S' } = {}) {
+    const current = await client.getElementAttributeValues(dim, element, hierarchy).catch(() => ({}))
+    const before = current?.[attribute] ?? null
+    await client.writeElementAttribute(dim, element, attribute, value, type, hierarchy)
+    if (String(before ?? '') !== String(value ?? '')) {
+        logChange('ATTRIBUTE_VALUE_SET', 'attribute-value', `${dim}:${element}:${attribute}`, {
+            detail: { dimension: dim, hierarchy, element, attribute, before, after: value ?? '' },
+        })
+    }
+    return value
+}
+
 // Run the server's stored assertions: execute each MDX, sum the returned cells,
 // compare to the expected value within tolerance.
 function assertionVisible(policy, mdx) {
@@ -185,4 +201,4 @@ function assertTargetAllowed(target) {
     }
 }
 
-module.exports = { SERVER, SERVER_SOURCE, AGENT_USER, MODE, policy, identity, setBuilderLogin, client, ok, esc, logChange, runAssertions, assertionVisible, requireWritable, requireChangeSet, assertTargetAllowed, targetAllowlist, explicitTargets, cl, assertions, lintRules, lintTI }
+module.exports = { SERVER, SERVER_SOURCE, AGENT_USER, MODE, policy, identity, setBuilderLogin, client, ok, esc, logChange, logAttributeValue, runAssertions, assertionVisible, requireWritable, requireChangeSet, assertTargetAllowed, targetAllowlist, explicitTargets, cl, assertions, lintRules, lintTI }

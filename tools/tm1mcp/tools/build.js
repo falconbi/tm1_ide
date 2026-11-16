@@ -7,7 +7,7 @@ const guard = require('../guard')
 // MODEL BUILD — WRITE (all require an open change set)
 // ══════════════════════════════════════════════════════════════════════════════
 
-function register(server, { client, ok, esc: odataKey, logChange, requireChangeSet, lintRules, lintTI, policy }) {
+function register(server, { client, ok, esc: odataKey, logChange, logAttributeValue, requireChangeSet, lintRules, lintTI, policy }) {
     server.tool(
         'build_dimension',
         'Create a dimension declaratively in one call — elements, consolidation edges, and element attributes. If the dimension exists, elements/edges/attributes are added to it. Use for small dimensions; drive large dimensions from a TI process (build_process) that loads from a datasource. ' +
@@ -67,7 +67,7 @@ function register(server, { client, ok, esc: odataKey, logChange, requireChangeS
             }
             for (const v of attribute_values) {
                 const def = attributes.find(a => a.name === v.attribute)
-                await c.writeElementAttribute(name, v.element, v.attribute, v.value, def?.type === 'Numeric' ? 'N' : 'S')
+                await logAttributeValue(c, name, v.element, v.attribute, v.value, { hierarchy: name, type: def?.type === 'Numeric' ? 'N' : 'S' })
             }
 
             // House rule: every measure dimension's numeric elements default to
@@ -89,7 +89,7 @@ function register(server, { client, ok, esc: odataKey, logChange, requireChangeS
                         current = vals?.Format ?? vals?.format ?? ''
                     } catch { /* element attr row not readable yet — treat as unset */ }
                     if (current) continue
-                    await c.writeElementAttribute(name, el.name, 'Format', '#,##0.00', 'S')
+                    await logAttributeValue(c, name, el.name, 'Format', '#,##0.00', { hierarchy: name, type: 'S' })
                     formatsApplied++
                 }
             }
@@ -169,7 +169,7 @@ function register(server, { client, ok, esc: odataKey, logChange, requireChangeS
                         current = vals?.Format ?? vals?.format ?? ''
                     } catch { /* element attr row not readable yet — treat as unset */ }
                     if (current && !el.format) continue
-                    await c.writeElementAttribute(dimension, el.name, 'Format', el.format ?? '#,##0.00', 'S')
+                    await logAttributeValue(c, dimension, el.name, 'Format', el.format ?? '#,##0.00', { hierarchy: dimension, type: 'S' })
                     formatsApplied++
                 }
             }
@@ -274,14 +274,7 @@ function register(server, { client, ok, esc: odataKey, logChange, requireChangeS
             requireChangeSet()
             const c = client()
             for (const v of values) {
-                const current = await c.getElementAttributeValues(dimension, v.element).catch(() => ({}))
-                const before = current?.[v.attribute] ?? null
-                await c.writeElementAttribute(dimension, v.element, v.attribute, v.value, v.numeric ? 'N' : 'S')
-                if (String(before ?? '') !== String(v.value ?? '')) {
-                    logChange('ATTRIBUTE_VALUE_SET', 'attribute-value', `${dimension}:${v.element}:${v.attribute}`, {
-                        detail: { dimension, hierarchy: dimension, element: v.element, attribute: v.attribute, before, after: v.value },
-                    })
-                }
+                await logAttributeValue(c, dimension, v.element, v.attribute, v.value, { hierarchy: dimension, type: v.numeric ? 'N' : 'S' })
             }
             return ok(`Set ${values.length} attribute value(s) on "${dimension}".`)
         }

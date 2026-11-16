@@ -441,6 +441,8 @@ exists only on newer PA — it degrades with a clear message on servers that lac
 
 ---
 
+Attribute values written by MCP build tools (`build_dimension`, `add_elements`, `set_attribute_values`, including default `Format` values) are logged as `ATTRIBUTE_VALUE_SET` entries with before/after, so the deploy reconcile sees the same manifest pairs as the IDE.
+
 ## Model assertions (`core/assertions.js`)
 
 The rules lint checks that a rule is *written* correctly. Assertions check that the model

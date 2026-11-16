@@ -44,6 +44,9 @@ function setup({ mode = 'build', policyRaw = {}, env = {}, builder, reader, serv
         SERVER: server, AGENT_USER: 'dev-test', MODE: mode, policy, identity,
         client: () => identity.client(), ok, esc: s => s,
         logChange: (...a) => changes.push(a),
+        logAttributeValue: async (_client, dim, element, attribute, value) => {
+            changes.push(['ATTRIBUTE_VALUE_SET', 'attribute-value', `${dim}:${element}:${attribute}`, { detail: { dimension: dim, element, attribute, after: value } }])
+        },
         requireWritable() {}, requireChangeSet() { return { id: 'cs' } },
         runAssertions: async () => ({}), assertTargetAllowed() {}, targetAllowlist: () => new Set([server]),
         cl: cl ?? { getActiveSession: () => null, writeLog: () => ({}) },
