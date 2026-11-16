@@ -47,6 +47,7 @@ client/src/
   App.jsx                     # Root layout, tab groups, global keyboard handlers
   store/                      # Zustand: tabs, groups, splitDirection, server, UI state
   hooks/useApi.js             # All TanStack Query hooks (useCubes, useRules, etc.)
+  lib/api.js                  # One HTTP layer: get/post/patch/del/apiFetch; no raw fetch elsewhere
   components/
     Explorer.jsx              # Left sidebar: object tree for all TM1 object types
     TabBar.jsx                # Tab bar — drag-to-reorder, right-click menu, split controls
@@ -265,7 +266,7 @@ Zustand store (`client/src/store/`) holds:
 - `rulesVersions` — `{ 'server::cube': n }` — bumped on rules save; ViewEditor watches and re-executes automatically
 
 TanStack Query handles all server state — data fetching, caching, mutations. Cache keys always include `server` as the first key segment.
-Data goes through hooks in `hooks/useApi.js`; a direct `fetch` is only for a one-off command, and it checks `r.ok`.
+Data and saves go through hooks in `hooks/useApi.js`. A genuine one-off command (download, stream, sign-in) uses `lib/api.js`; nothing else calls `fetch` directly.
 
 ---
 

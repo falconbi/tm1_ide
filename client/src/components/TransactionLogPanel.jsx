@@ -23,14 +23,14 @@ export default function TransactionLogPanel({ server, cube, cubeDims, tupleFilte
   // one is running.
   const [days, setDays] = useState(defaultDays)
 
-  const fetch = (filter, d = days) => {
+  const loadLog = (filter, d = days) => {
     if (log.isPending) return
     log.mutate({ server, cube, elements: filter ?? null, days: d })
   }
 
   // Auto-fetch whenever server/cube/tupleFilter changes
   useEffect(() => {
-    if (server && cube) fetch(tupleFilter)
+    if (server && cube) loadLog(tupleFilter)
   }, [server, cube, JSON.stringify(tupleFilter)])  // eslint-disable-line react-hooks/exhaustive-deps
 
   // Restore: put one cell back to its value before a logged change. Confirmed on screen first;
@@ -39,7 +39,7 @@ export default function TransactionLogPanel({ server, cube, cubeDims, tupleFilte
   const [confirm, setConfirm] = useState(null)   // { row, current? }
   const doRestore = (row, force = false) => {
     restore.mutate({ server, cube: row.Cube ?? cube, tuple: row.Tuple, restoreTo: row.OldValue ?? 0, expectNow: row.NewValue, force }, {
-      onSuccess: () => { setConfirm(null); toast.success(`Restored ${cellText(row)} to ${row.OldValue ?? 0}`); fetch(tupleFilter) },
+      onSuccess: () => { setConfirm(null); toast.success(`Restored ${cellText(row)} to ${row.OldValue ?? 0}`); loadLog(tupleFilter) },
       onError: (e) => {
         if (e?.status === 409 || /changed since/.test(e?.message ?? '')) setConfirm({ row, current: e?.data?.current ?? e?.body?.current ?? '(changed)' })
         else { setConfirm(null); toast.error(e?.message ?? 'Restore failed') }
@@ -80,7 +80,7 @@ export default function TransactionLogPanel({ server, cube, cubeDims, tupleFilte
         </div>
         <div className="flex items-center gap-1">
           <select value={days} disabled={log.isPending}
-            onChange={e => { const d = Number(e.target.value); setDays(d); fetch(tupleFilter, d) }}
+            onChange={e => { const d = Number(e.target.value); setDays(d); loadLog(tupleFilter, d) }}
             title="How far back to search TM1's transaction log — longer takes longer"
             className="text-[10px] bg-background border border-border rounded px-1 py-0.5 text-foreground disabled:opacity-50">
             <option value={1}>Last day</option>
@@ -89,7 +89,7 @@ export default function TransactionLogPanel({ server, cube, cubeDims, tupleFilte
             <option value={90}>Last 90 days</option>
           </select>
           <button
-            onClick={() => fetch(tupleFilter)}
+            onClick={() => loadLog(tupleFilter)}
             disabled={log.isPending}
             title={log.isPending ? 'A search is already running on TM1' : 'Refresh'}
             className="p-1 rounded text-emerald-500 hover:text-emerald-400 hover:bg-emerald-500/10 transition-colors disabled:opacity-50"
@@ -108,7 +108,7 @@ export default function TransactionLogPanel({ server, cube, cubeDims, tupleFilte
           <div className="flex items-center justify-between mb-1">
             <span className="text-[10px] text-muted-foreground uppercase tracking-wider">Filtered to cell</span>
             <button
-              onClick={() => { onClearFilter?.(); fetch(null) }}
+              onClick={() => { onClearFilter?.(); loadLog(null) }}
               title="Clear filter — show all cube transactions"
               className="flex items-center gap-0.5 text-[10px] text-muted-foreground hover:text-foreground transition-colors"
             >
