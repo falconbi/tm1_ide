@@ -12,6 +12,7 @@ commits that mixed a fix into a feature are included too. New features are not l
 
 ### 2026-11-16
 
+- **catalog admin** — Validate built every test as `Name(args);`, so functions that return a value were compiled in the wrong position and could be marked invalid; Rules functions were compiled as TI. It now uses the CLI's statement/assignment builder, labels the Rules action "TI-compile check", and Apply opens a review list (unchecked for Rules, checked for TI) instead of suppressing every failure in one click. The last suppression can be undone from the tab footer
 - **rules/TI validators** — Optional trailing arguments were rejected: `SUBSETCREATE('D','S',1)` and `PARSEDATE('2026','01','01')` were reported as too many arguments because the client checked only the minimum. Both client validators now use the shared `deriveArity` bounds (`argCount < min || argCount > max`), so optional and variadic signatures are checked the same way as the server lints; a table test runs the client and server derivations together
 - **rules formatter** — Grouped expressions are now kept as a group in the parsed tree and the structured/verbose presets emit the brackets, so `(1 + 2) * 3` formats without becoming `1 + 2 * 3`. The presets and structure pickers are re-enabled, and a 20-rule round-trip test compares tokens for every preset and formatter
 - **rules formatter** — The tokenizer read `1+2` as one number because it consumed `+`/`-` after any digit; it now only takes an exponent sign (`1e-3`), so formatting and validation see the operators

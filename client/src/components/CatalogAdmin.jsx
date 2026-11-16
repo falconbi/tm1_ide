@@ -5,6 +5,7 @@ import { cn } from '@/lib/utils'
 import { TI_CATALOG, RULES_CATALOG } from '@/lib/tm1-completion'
 import { MDX_CATALOG } from '@/lib/tm1-mdx-catalog'
 import { NamingDictionaryPanel } from '@/components/NamingDictionary'
+import { buildTestCall } from '@shared/catalog-test-call.js'
 
 const COMPAT_OPTS = ['both', 'v11', 'v12']
 const COMPAT_LABEL = { both: 'Both', v11: 'V11', v12: 'V12' }
@@ -249,6 +250,8 @@ export default function CatalogAdmin({ server, onClose, initialTab = 'ti' }) {
   const [validating,      setValidating]      = useState(false)
   const [filter,          setFilter]          = useState('all')
   const [editingName,     setEditingName]     = useState(null)
+  const [suppressReview,  setSuppressReview]  = useState(null)
+  const [lastSuppressed,  setLastSuppressed]  = useState(null)
 
   useEffect(() => {
     fetch('/api/admin/catalog-overrides')
@@ -354,16 +357,13 @@ export default function CatalogAdmin({ server, onClose, initialTab = 'ti' }) {
     if (!server) return toast.error('No server selected')
     setValidating(true)
     setValidateResults(null)
+    setSuppressReview(null)
     try {
       const catalog = tab === 'ti' ? TI_CATALOG : RULES_CATALOG
-      const tests = Object.entries(catalog).map(([name, entry]) => {
-        const params = entry.params ?? []
-        const args = params.map(p => {
-          const base = p.replace('*', '')
-          return ['n', 'numeric', 'index', 'level', 'count', 'position', 'value'].includes(base) ? '1' : "'x'"
-        })
-        return { name, code: `${name}(${args.join(', ')});` }
-      })
+      const tests = Object.entries(catalog).map(([name, entry]) => ({
+        name,
+        code: buildTestCall(name, entry),
+      }))
       const r = await fetch('/api/admin/validate-ti-functions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-ide-token': localStorage.getItem('tm1-token') ?? '' },
@@ -384,19 +384,50 @@ export default function CatalogAdmin({ server, onClose, initialTab = 'ti' }) {
     }
   }, [tab, server])
 
-  const handleApplyResults = useCallback(() => {
+  const handleReviewResults = useCallback(() => {
     if (!validateResults) return
-    const toSuppress = Object.entries(validateResults)
+    const names = Object.entries(validateResults)
       .filter(([, r]) => r.status === 'invalid')
       .map(([name]) => name)
-    if (!toSuppress.length) return
+    if (!names.length) return
+    setSuppressReview({
+      names,
+      selected: tab === 'ti' ? [...names] : [],
+    })
+  }, [validateResults, tab])
+
+  const toggleSuppress = useCallback((name) => {
+    setSuppressReview(prev => {
+      if (!prev) return prev
+      const selected = prev.selected.includes(name)
+        ? prev.selected.filter(n => n !== name)
+        : [...prev.selected, name]
+      return { ...prev, selected }
+    })
+  }, [])
+
+  const handleConfirmSuppress = useCallback(() => {
+    if (!suppressReview?.selected.length) return
+    const names = suppressReview.selected
     mutateOverride(tab, ov => ({
       ...ov,
-      deletions: [...new Set([...(ov.deletions ?? []), ...toSuppress])],
+      deletions: [...new Set([...(ov.deletions ?? []), ...names])],
     }))
-    toast.success(`Suppressed ${toSuppress.length} invalid function${toSuppress.length > 1 ? 's' : ''}`)
+    setLastSuppressed({ tab, names })
+    setSuppressReview(null)
     setValidateResults(null)
-  }, [validateResults, tab, mutateOverride])
+    toast.success(`Suppressed ${names.length} function${names.length > 1 ? 's' : ''}`)
+  }, [suppressReview, tab, mutateOverride])
+
+  const handleUndoSuppression = useCallback(() => {
+    if (!lastSuppressed) return
+    mutateOverride(lastSuppressed.tab, ov => ({
+      ...ov,
+      deletions: (ov.deletions ?? []).filter(name => !lastSuppressed.names.includes(name)),
+    }))
+    toast.success(`Restored ${lastSuppressed.names.length} function${lastSuppressed.names.length > 1 ? 's' : ''}`)
+    setLastSuppressed(null)
+  }, [lastSuppressed, mutateOverride])
 
   const TABS = [
     { id: 'ti',     label: 'TI Functions' },
@@ -408,7 +439,7 @@ export default function CatalogAdmin({ server, onClose, initialTab = 'ti' }) {
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={onClose}>
       <div
-        className="bg-background border border-border rounded-lg shadow-xl w-[820px] max-h-[82vh] flex flex-col"
+        className="relative bg-background border border-border rounded-lg shadow-xl w-[820px] max-h-[82vh] flex flex-col"
         onClick={e => e.stopPropagation()}
       >
         {/* Header */}
@@ -435,7 +466,7 @@ export default function CatalogAdmin({ server, onClose, initialTab = 'ti' }) {
         <div className="flex border-b border-border shrink-0">
           {TABS.map(t => (
             <button key={t.id}
-              onClick={() => { setTab(t.id); setValidateResults(null); setSearch(''); setFilter('all'); setEditingName(null) }}
+              onClick={() => { setTab(t.id); setValidateResults(null); setSuppressReview(null); setSearch(''); setFilter('all'); setEditingName(null) }}
               className={cn(
                 'px-4 py-2 text-xs font-medium border-r border-border transition-colors',
                 tab === t.id
@@ -471,19 +502,21 @@ export default function CatalogAdmin({ server, onClose, initialTab = 'ti' }) {
             </div>
             <div className="ml-auto flex items-center gap-2">
               {invalidCount > 0 && (
-                <button onClick={handleApplyResults}
+                <button onClick={handleReviewResults}
                   className="flex items-center gap-1.5 px-2.5 py-1 text-xs rounded border border-amber-500/40 text-amber-400 hover:bg-amber-500/10 transition-colors"
-                  title="Suppress all functions that failed validation">
+                  title="Review functions that failed validation before suppressing them">
                   <Zap size={11} />
-                  Suppress {invalidCount} invalid
+                  Review {invalidCount} invalid
                 </button>
               )}
               {(tab === 'ti' || tab === 'rules') && (
                 <button onClick={handleValidate} disabled={validating || !server}
                   className="flex items-center gap-1.5 px-2.5 py-1 text-xs rounded border border-border text-muted-foreground hover:text-foreground hover:bg-muted disabled:opacity-40 transition-colors"
-                  title={server ? 'Test all functions against live TM1 server' : 'Connect to a server first'}>
+                  title={!server ? 'Connect to a server first'
+                    : tab === 'rules' ? 'Rules functions are compiled as TI here; a failure is not proof the function is invalid. Real Rules validation needs a cube (tools/validate-catalog.js).'
+                    : 'Test all functions against live TM1 server'}>
                   {validating ? <Loader2 size={11} className="animate-spin" /> : <ShieldCheck size={11} />}
-                  Validate
+                  {tab === 'rules' ? 'TI-compile check' : 'Validate'}
                 </button>
               )}
             </div>
@@ -529,11 +562,53 @@ export default function CatalogAdmin({ server, onClose, initialTab = 'ti' }) {
             )}
           </div>
           <AddFunctionForm onAdd={handleAdd} />
-          <div className="px-4 py-2 border-t border-border text-[10px] text-muted-foreground flex justify-between shrink-0">
+          <div className="px-4 py-2 border-t border-border text-[10px] text-muted-foreground flex items-center justify-between gap-2 shrink-0">
             <span>Changes apply to autocomplete and validation after page reload. Built-in deletions suppress warnings only.</span>
-            {dirty && <span className="text-amber-400">Unsaved changes</span>}
+            <div className="flex items-center gap-2">
+              {lastSuppressed?.tab === tab && (
+                <button onClick={handleUndoSuppression} className="text-[10px] text-primary hover:underline">
+                  Undo last suppression ({lastSuppressed.names.length})
+                </button>
+              )}
+              {dirty && <span className="text-amber-400">Unsaved changes</span>}
+            </div>
           </div>
         </>}
+
+        {suppressReview && (
+          <div className="absolute inset-0 z-20 bg-background/95 flex flex-col p-4">
+            <div className="text-sm font-medium mb-1">Review invalid functions</div>
+            <p className="text-[11px] text-muted-foreground mb-3">
+              {tab === 'rules'
+                ? 'These Rules functions were compiled as TI. A failure is not proof they are invalid; select only the ones you want to hide.'
+                : 'Select the functions to suppress. All are selected by default.'}
+            </p>
+            <div className="flex-1 overflow-auto rounded border border-border divide-y divide-border">
+              {suppressReview.names.map(name => (
+                <label key={name} className="flex items-center gap-2 px-3 py-1.5 text-xs cursor-pointer hover:bg-muted/40">
+                  <input
+                    type="checkbox"
+                    checked={suppressReview.selected.includes(name)}
+                    onChange={() => toggleSuppress(name)}
+                  />
+                  {name}
+                </label>
+              ))}
+            </div>
+            <div className="flex items-center justify-end gap-2 pt-3">
+              <button onClick={() => setSuppressReview(null)} className="px-3 py-1 text-xs rounded border border-border text-muted-foreground hover:bg-muted">
+                Cancel
+              </button>
+              <button
+                onClick={handleConfirmSuppress}
+                disabled={!suppressReview.selected.length}
+                className="px-3 py-1 text-xs rounded bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-40"
+              >
+                Suppress {suppressReview.selected.length} function{suppressReview.selected.length === 1 ? '' : 's'}
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )

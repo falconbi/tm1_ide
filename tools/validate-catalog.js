@@ -36,6 +36,7 @@ require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') }
 
 const { makeClient } = require('../core/adapter_registry')
 const CATALOG = require('../shared/tm1-function-catalog.json')
+const { buildTestCall } = require('./lib/catalog-test-call.cjs')
 
 function parseArgs(argv) {
     const out = { language: 'ti' }
@@ -44,28 +45,6 @@ function parseArgs(argv) {
         else if (argv[i] === '--language') out.language = argv[++i]
     }
     return out
-}
-
-// Build a plausible test value for a param tag. Mirrors CatalogAdmin.jsx's
-// heuristic (numeric-sounding names get a number, everything else a string) —
-// same known limitation: a param that's actually a string despite a
-// numeric-sounding tag (or vice versa) can produce a false "invalid" result.
-// That's a heuristic-quality issue, not a correctness bug — always read the
-// reported error message before concluding a function is fake.
-function testValue(tag, index) {
-    const bare = tag.replace(/[*?]$/, '')
-    if (bare === 'n') return String(index + 1)
-    return `'x${index}'`
-}
-
-function buildTestCall(name, entry) {
-    const params = entry.params ?? []
-    const args = params.map((tag, i) => testValue(tag, i)).join(', ')
-    const call = `${name}(${args})`
-    if (entry.isStatement) return `${call};`
-    // Non-statement (returns a value) — must appear in an assignment to compile
-    // as a standalone Prolog line.
-    return entry.returnType === 'string' ? `vTestResult = ${call};` : `nTestResult = ${call};`
 }
 
 async function main() {
