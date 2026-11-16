@@ -28,6 +28,15 @@ function write(all) {
     fs.renameSync(tmp, FILE)
 }
 
+// Serialise read-modify-write cycles. put/remove are async by contract so two
+// callers cannot both read the same base and overwrite each other's entry.
+let writeQueue = Promise.resolve()
+function enqueueWrite(fn) {
+    const next = writeQueue.then(fn, fn)
+    writeQueue = next.then(() => {}, () => {})
+    return next
+}
+
 function get(server, name, hash) {
     const e = read()?.[server]?.[name]
     if (!e) return null
@@ -40,19 +49,23 @@ function getLatest(server, name) {
 }
 
 function put(server, name, entry) {
-    const all = read()
-    ;(all[server] ??= {})[name] = { ...entry, at: new Date().toISOString() }
-    write(all)
-    return all[server][name]
+    return enqueueWrite(() => {
+        const all = read()
+        ;(all[server] ??= {})[name] = { ...entry, at: new Date().toISOString() }
+        write(all)
+        return all[server][name]
+    })
 }
 
 function remove(server, name) {
-    const all = read()
-    if (!all[server]?.[name]) return false
-    delete all[server][name]
-    if (!Object.keys(all[server]).length) delete all[server]
-    write(all)
-    return true
+    return enqueueWrite(() => {
+        const all = read()
+        if (!all[server]?.[name]) return false
+        delete all[server][name]
+        if (!Object.keys(all[server]).length) delete all[server]
+        write(all)
+        return true
+    })
 }
 
 function list(server) {

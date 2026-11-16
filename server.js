@@ -3442,7 +3442,8 @@ app.post('/api/process/summary', async (req, res) => {
         if (map) out = obfuscate.restoreText(out, map.codeToReal)
         const summary = String(out ?? '').replace(/```[a-z]*\s*/gi, '').replace(/```/g, '').trim().slice(0, 1200)
         if (!summary) return res.status(502).json({ error: 'The model returned an empty summary' })
-        const entry = processSummaries.put(server, name, { hash, summary, source: 'ai', model: process.env.AI_MODEL || '' })
+        if (!gateReadOnly(res, server)) return
+        const entry = await processSummaries.put(server, name, { hash, summary, source: 'ai', model: process.env.AI_MODEL || '' })
         res.json({ ...entry, cached: false })
     } catch (e) {
         res.status(500).json({ error: e.message })
@@ -3456,7 +3457,8 @@ app.put('/api/process/summary', async (req, res) => {
         const client = makeClient(server, req.ideToken)
         const p = await client.getProcess(name)
         if (!p?.Name) return res.status(404).json({ error: `Process "${name}" not found` })
-        const entry = processSummaries.put(server, name, {
+        if (!gateReadOnly(res, server)) return
+        const entry = await processSummaries.put(server, name, {
             hash: processSummaries.hashCode(processCode(p)),
             summary: String(summary).trim().slice(0, 1200),
             source: 'manual',

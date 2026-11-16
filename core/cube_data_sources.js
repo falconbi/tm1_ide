@@ -9,7 +9,7 @@
 // named by a literal, a variable assigned a literal, or an ExecuteProcess cube parameter.
 // The result is cached per server briefly because it reads every process.
 
-const { hashCode, getLatest } = require('./process_summaries')
+const { hashCode, list } = require('./process_summaries')
 
 const TTL_MS = 30_000
 const MAX_CACHE = 50
@@ -141,6 +141,7 @@ function scanRules(rules) {
 const CUBE_FIRST_FNS = ['ViewZeroOut', 'CubeClearData', 'CubeProcessFeeders']
 
 async function buildIndex(client, serverName, { includeControl = false } = {}) {
+    const summaries = list(serverName)
     const allCubes = await client.getAllCubesWithRules()
     const cubeNames = new Set(allCubes.map(c => c.Name))
     const cubeDims = {}
@@ -290,7 +291,7 @@ async function buildIndex(client, serverName, { includeControl = false } = {}) {
     for (const e of Object.values(index)) {
         e.writers = Object.values(e.writers).map(w => {
             const m = meta[w.process] ?? {}
-            const latest = getLatest(serverName, w.process)
+            const latest = summaries[w.process]
             const current = latest && latest.hash === m.codeHash ? latest : null
             return {
                 ...w, ...m,
@@ -332,8 +333,9 @@ async function getCubeDataSources(client, server, cube, identity, options = {}) 
     const e = index.cubes[cube]
     if (!e) return { cube, dims: [], writers: [], readers: [], ruleReads: { calc: [], feeders: [] }, copiers: [] }
     // summaries are joined at read time so a just-generated one shows without a rescan
+    const summaries = list(server)
     const join = (x, meta = {}) => {
-        const latest = getLatest(server, x.process)
+        const latest = summaries[x.process]
         const current = latest && latest.hash === meta.codeHash ? latest : null
         return {
             ...x, ...meta,
@@ -391,8 +393,9 @@ function invalidate(server) {
 // Every process with its summary status — for the server-wide summary review list.
 async function listProcessSummaries(client, server, identity, options = {}) {
     const index = await indexFor(client, server, identity, options)
+    const summaries = list(server)
     return Object.entries(index.processes).sort(([a], [b]) => a.localeCompare(b)).map(([name, m]) => {
-        const latest = getLatest(server, name)
+        const latest = summaries[name]
         const current = latest && latest.hash === m.codeHash ? latest : null
         return {
             process: name, header: m.header, parameters: m.parameters, source: m.source,
