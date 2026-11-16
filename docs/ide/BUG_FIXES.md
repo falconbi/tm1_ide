@@ -12,6 +12,7 @@ commits that mixed a fix into a feature are included too. New features are not l
 
 ### 2026-11-16
 
+- **Lens editor identity** — After the first save or a rename, the preview still used the old tab name, so write/run checks ran against the wrong Lens. One save-state helper now moves both the saved name and the tab label to the name the server returned
 - **Lens read bridge** — Reads (`execMDX`, `readCell`, `meta`, `hierarchies`, `elementTree`, `cell-*`) bypassed `config.access` because they carried no Lens name. Every host call now sends the opened Lens, and the Lens app requires it and checks visibility (cached 60 seconds) before dispatch
 - **Lenses publish gate** — Drafts were hidden on the home page but could still be opened, framed or fetched by name, and the status/group predicate was copied in four places. One `visibleTo` now owns the publish + group check and every list, page, frame and API route uses it
 - **sessions** — Server Admin's Kick button sent a numeric row index (or `undefined`) instead of the TM1 session name, so it could disconnect the wrong session. One `sessionKey` helper now resolves `Name` (v11) → `ID` → `SessionID` for Server Admin and the Sessions Monitor

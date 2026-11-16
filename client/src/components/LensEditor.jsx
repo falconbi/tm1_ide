@@ -5,6 +5,7 @@ import { Sparkles, Save, RefreshCw, Loader2, Eye, Pencil, SlidersHorizontal } fr
 import { cn } from '@/lib/utils'
 import { lensSrcDoc, installLensHost } from '@shared/lens-bridge'
 import LENS_ICONS from '@shared/lens-icons.json'
+import { afterLensSave } from '@/lib/lens-save-state'
 
 const ICON_NAMES = Object.keys(LENS_ICONS).filter(k => !k.startsWith('_'))
 const TILE_COLORS = ['#0f766e', '#2563eb', '#7c3aed', '#c2410c', '#be123c', '#0e7490', '#4d7c0f', '#a16207']
@@ -114,8 +115,10 @@ const DEFAULT_LENS = `<!DOCTYPE html>
 const LOADING_LENS = '<!doctype html><html><body style="font:14px system-ui,sans-serif;color:#85908f;padding:24px">Loading…</body></html>'
 
 export default function LensEditor({ tab }) {
-  const { dark } = useStore()
+  const { dark, patchTab } = useStore()
   const [name, setName] = useState(tab.name ?? '')
+  const [savedName, setSavedName] = useState(tab.name ?? '')
+
   const [prompt, setPrompt] = useState('')
   // Stored with the Lens (shown in the Lens app): loaded on open, kept on save.
   const [description, setDescription] = useState('')
@@ -188,12 +191,12 @@ export default function LensEditor({ tab }) {
   useEffect(() => {
     const off = installLensHost(
       () => iframeRef.current?.contentWindow,
-      { getServer: () => tab.server, getToken: token, getLens: () => tab.name,
+      { getServer: () => tab.server, getToken: token, getLens: () => savedName,
         // A Lens opening another (an app home page, a process step): a new tab here.
         openLens: (n) => useStore.getState().openTab({ id: `lens:${tab.server}:${n}`, type: 'lens', label: n, server: tab.server, name: n }) },
     )
     return off
-  }, [tab.server, tab.name])
+  }, [tab.server, savedName])
 
   useEffect(() => {
     if (!dirtyPreview) return
@@ -244,6 +247,10 @@ export default function LensEditor({ tab }) {
         if (Array.isArray(data.validation)) setValidation(data.validation)
         throw new Error(data.error || res.statusText)
       }
+      const next = afterLensSave(savedName, data)
+      setSavedName(next.savedName)
+      setName(next.savedName)
+      if (next.patch) patchTab(tab.id, next.patch)
       setMessage({ kind: 'ok', text: `Saved "${data.name}" to ${tab.server}'s model (${data.status}, version ${data.version})${data.validation?.length ? ` — ${data.validation.length} validation warnings` : ''}` })
       window.dispatchEvent(new CustomEvent('tm1-lenses-changed', { detail: { server: tab.server } }))
     } catch (e) {
