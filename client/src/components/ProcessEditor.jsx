@@ -1059,10 +1059,11 @@ export default function ProcessEditor({ tab }) {
     setErrorLogContent(null)
     try {
       const r = await fetch(`/api/process/errorlog/content?server=${encodeURIComponent(tab.server)}&filename=${encodeURIComponent(errorLogFilename)}`, { headers: { 'x-ide-token': localStorage.getItem('tm1-token') ?? '' } })
-      const d = await r.json()
+      const d = await r.json().catch(() => ({}))
+      if (!r.ok || d.error) throw new Error(d.error || r.statusText)
       setErrorLogContent(d.content ?? '')
-    } catch {
-      setErrorLogContent('Failed to load error log.')
+    } catch (e) {
+      setErrorLogContent(`Failed to load error log: ${e.message}`)
     } finally {
       setErrorLogLoading(false)
     }

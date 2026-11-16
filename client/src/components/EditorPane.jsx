@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import MonacoEditor from '@monaco-editor/react'
 import { useStore } from '@/store'
-import { useRules, useSaveRules, useLineage, useLineageConsumers, useTraceCellCalc, useConflictCheck } from '@/hooks/useApi'
+import { useRules, useSaveRules, useLineage, useLineageConsumers, useTraceCellCalc, useConflictCheck, useCubeDimensions } from '@/hooks/useApi'
 import { registerTM1Completions, registerTM1Theme } from '@/lib/tm1-functions'
 import ProcessEditor from '@/components/ProcessEditor'
 import SQLEditor from '@/components/SQLEditor'
@@ -380,21 +380,13 @@ function RulesEditor({ tab, onCursor }) {
   const [showMinimap, setShowMinimap] = useState(() => loadSettings().editor?.minimap?.rules ?? false)
   const [showTrace, setShowTrace] = useState(savedUi?.showTrace ?? false)
   const [showHistory, setShowHistory] = useState(savedUi?.showHistory ?? false)
-  const [cubeDims, setCubeDims] = useState(null)
+  const { data: cubeDimsData } = useCubeDimensions(showTrace ? tab.server : null, showTrace ? tab.cube : null)
+  const cubeDims = cubeDimsData ?? null
   const [dismissedId, setDismissedId] = useState(null)
   const [saveConflict, setSaveConflict] = useState(null)
   const [conflictDiff, setConflictDiff] = useState(null)
   const { openConflict, checkBeforeSave } = useConflictCheck(tab.server, 'rules', tab.cube)
 
-  useEffect(() => {
-    if (!showTrace || cubeDims !== null) return
-    const token = localStorage.getItem('tm1-token') ?? ''
-    fetch(`/api/cube/dimensions?server=${encodeURIComponent(tab.server)}&cube=${encodeURIComponent(tab.cube)}`, {
-      headers: { 'x-ide-token': token },
-    })
-      .then(r => r.json()).then(d => setCubeDims(Array.isArray(d) ? d : []))
-      .catch(() => setCubeDims([]))
-  }, [showTrace])
   const [regionsCollapsed, setRegionsCollapsed] = useState(false)
   const [showRegionMenu, setShowRegionMenu] = useState(false)
   const [regionList, setRegionList] = useState([])   // scanned when the menu opens

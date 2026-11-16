@@ -5,6 +5,7 @@ import HelpPanel from '@/components/HelpPanel'
 import { useWorkSessions, useWorkSessionLog, useUpdateSessionDescription, useResumeWorkSession } from '@/hooks/useApi'
 import { useStore } from '@/store'
 import { cn } from '@/lib/utils'
+import { toast } from 'sonner'
 import { rulesTabId, processTabId, dimensionTabId, viewTabId, subsetTabId } from '@/lib/tab-ids'
 
 const authHeader = () => ({ 'Content-Type': 'application/json', 'x-ide-token': localStorage.getItem('tm1-token') ?? '' })
@@ -146,10 +147,13 @@ function SessionRow({ session, server, openTab, onClose }) {
   const closeSet = async () => {
     setClosing(true)
     try {
-      await fetch('/api/sessions/close', { method: 'POST', headers: authHeader(), body: JSON.stringify({ id: session.id }) }).then(r => r.json())
+      const r = await fetch('/api/sessions/close', { method: 'POST', headers: authHeader(), body: JSON.stringify({ id: session.id }) })
+      const d = await r.json().catch(() => ({}))
+      if (!r.ok || d.error) throw new Error(d.error || r.statusText)
       qc.invalidateQueries({ queryKey: ['work-sessions', server] })
       qc.invalidateQueries({ queryKey: ['work-session-active', server] })
-    } finally { setClosing(false) }
+    } catch (e) { toast.error(e.message || 'Could not close the change set') }
+    finally { setClosing(false) }
   }
 
   useEffect(() => {

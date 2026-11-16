@@ -8,7 +8,7 @@ import { loadSettings as loadFormatSettings } from '@/lib/formatters/settings.js
 import { getNamingMap } from '@/lib/formatters/naming.js'
 import { useStore } from '@/store'
 import { subsetApplyCallbacks } from '@/lib/subsetCallbacks'
-import { useCubeDimensions, useSubsets, useElementsTree, useElementsTrees, useHierarchies, useHierarchiesFor, useViews, useExecuteMDX, useViewAxes, useSaveView, useSetDefaultView, usePawBookUsage, useDimAttributes, useViewUsage, useViewSourceUsage, useMultiFormatAttrs, useConflictCheck, useGenerateViewMDX, useConfig } from '@/hooks/useApi'
+import { useCubeDimensions, useSubsets, useElementsTree, useElementsTrees, useHierarchies, useHierarchiesFor, useViews, useExecuteMDX, useViewAxes, useSaveView, useSetDefaultView, usePawBookUsage, useDimAttributes, useViewUsage, useViewSourceUsage, useMultiFormatAttrs, useConflictCheck, useGenerateViewMDX, useConfig, useTraceCellCalc } from '@/hooks/useApi'
 import { toast } from 'sonner'
 import { RefreshCw, Loader2, Table2, GripVertical, GripHorizontal, X, LayoutGrid, Rows3, Columns3, Filter, ZapOff, Zap, ChevronLeft, ChevronRight, PencilLine, Save, Code2, Eye, ChevronDown, BookOpen, ChevronUp, MapPin, WrapText, Braces, History, AlertTriangle, Cog, FileSearch, Sparkles, Clock, Check, ArrowUpDown, HelpCircle, Eraser } from 'lucide-react'
 import HelpPanel from '@/components/HelpPanel'
@@ -713,22 +713,18 @@ function RuleBreakdown({ server, statements: allStatements, dimElemPairs, cube, 
     const valCache = useRef({})
     const dimCache = useRef({})
     const [, bumpVal] = useReducer(x => x + 1, 0)
+    const traceCell = useTraceCellCalc()
 
     const fetchCellValue = useCallback(async (targetCube, pairs) => {
         const key = `${targetCube}::${pairs.map(p => p.element).join('|')}`
         if (valCache.current[key] !== undefined) return valCache.current[key]
         try {
-            const res = await fetch('/api/cube/trace', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'x-ide-token': token },
-                body: JSON.stringify({ server, cube: targetCube, dimElemPairs: pairs }),
-            })
-            const d = await res.json()
+            const d = await traceCell.mutateAsync({ server, cube: targetCube, dimElemPairs: pairs })
             valCache.current[key] = d?.Value
             bumpVal()
             return d?.Value
         } catch { return undefined }
-    }, [server, token])
+    }, [server, token, traceCell])
 
     const getCubeDims = useCallback(async (cubeName) => {
         if (dimCache.current[cubeName]) return dimCache.current[cubeName]
@@ -1096,20 +1092,17 @@ function useTraceData(server, cube, dimElemPairs, nonce = 0) {
     const [data,  setData]  = useState(null)
     const [error, setError] = useState(null)
     const [busy,  setBusy]  = useState(true)
+    const traceCell = useTraceCellCalc()
     const key = JSON.stringify({ server, cube, dimElemPairs, nonce })
 
     useEffect(() => {
+        let live = true
         setBusy(true); setError(null); setData(null)
-        const token = localStorage.getItem('tm1-token') ?? ''
-        fetch('/api/cube/trace', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'x-ide-token': token },
-            body: JSON.stringify({ server, cube, dimElemPairs }),
-        })
-            .then(r => r.json())
-            .then(d => { setBusy(false); d.error ? setError(d.error) : setData(d) })
-            .catch(e => { setBusy(false); setError(e.message) })
-    }, [key])  // eslint-disable-line
+        traceCell.mutateAsync({ server, cube, dimElemPairs })
+            .then(d => { if (!live) return; setBusy(false); d?.error ? setError(d.error) : setData(d) })
+            .catch(e => { if (live) { setBusy(false); setError(e.message) } })
+        return () => { live = false }
+    }, [key])  // eslint-disable-line react-hooks/exhaustive-deps
 
     return { data, error, busy }
 }

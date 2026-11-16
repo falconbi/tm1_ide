@@ -262,6 +262,7 @@ Zustand store (`client/src/store/`) holds:
 - `rulesVersions` — `{ 'server::cube': n }` — bumped on rules save; ViewEditor watches and re-executes automatically
 
 TanStack Query handles all server state — data fetching, caching, mutations. Cache keys always include `server` as the first key segment.
+Data goes through hooks in `hooks/useApi.js`; a direct `fetch` is only for a one-off command, and it checks `r.ok`.
 
 ---
 

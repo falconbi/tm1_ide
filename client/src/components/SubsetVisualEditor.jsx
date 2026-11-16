@@ -178,9 +178,10 @@ function DimensionBrowser({ server, dim, hierarchy, onKeep, subsets = [], cols, 
                             if (!name) return
                             try {
                                 const r = await fetch(`/api/subset/elements?server=${enc(server)}&dimension=${enc(dim)}&name=${enc(name)}`, { headers: { 'x-ide-token': localStorage.getItem('tm1-token') ?? '' } })
-                                const els = await r.json()
+                                const els = await r.json().catch(() => ({}))
+                                if (!r.ok || els.error) throw new Error(els.error || r.statusText)
                                 onKeep(els.map(el => ({ Name: el.name, Type: el.type, Level: el.level })))
-                            } catch { toast.error('Failed to load subset') }
+                            } catch (e) { toast.error(`Failed to load subset: ${e.message}`) }
                             e.target.value = ''
                         }}
                         className="w-full text-xs px-2 py-1 rounded border border-border bg-background text-muted-foreground">
