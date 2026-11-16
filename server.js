@@ -1574,7 +1574,7 @@ app.delete('/api/dimension/hierarchy', async (req, res) => {
 
 // ── Search index — all rules + all process code in one call ──────────────────
 app.get('/api/search/index', async (req, res) => {
-    console.log('[api/process] request:', req.query.server, req.query.name)
+    console.log('[api/search/index] request:', req.query.server)
     try {
         const client = makeClient(req.query.server, req.ideToken)
         const [cubes, processes] = await Promise.all([
@@ -2114,7 +2114,7 @@ app.post('/api/cube/trace', async (req, res) => {
     try {
         const { server, cube, dimElemPairs } = req.body
         res.json(await makeClient(server, req.ideToken).traceCellCalculation(cube, dimElemPairs))
-    } catch (e) { res.status(500).json({ error: e.message }) }
+    } catch (e) { fail(res, e) }
 })
 
 app.post('/api/cube/rules/check-references', async (req, res) => {

@@ -136,9 +136,16 @@ export default function FindReplace({ onClose }) {
   const [preview, setPreview] = useState(null)
   const [searched, setSearched] = useState(false)
 
-  const { data: index, isFetching, refetch } = useQuery({
+  const { data: index, isFetching, refetch, error: searchError } = useQuery({
     queryKey: ['search-index', server],
-    queryFn: () => fetch(`/api/search/index?server=${enc(server)}`, { headers: { 'x-ide-token': localStorage.getItem('tm1-token') ?? '' } }).then(r => r.json()),
+    queryFn: async () => {
+      const r = await fetch(`/api/search/index?server=${enc(server)}`, { headers: { 'x-ide-token': localStorage.getItem('tm1-token') ?? '' } })
+      let d = {}
+      try { d = await r.json() } catch { /* non-JSON error page */ }
+      if (!r.ok || d.error) throw new Error(d.error || `${r.status} ${r.statusText}`)
+      if (!Array.isArray(d.rules) || !Array.isArray(d.processes)) throw new Error('Unexpected search index response')
+      return d
+    },
     enabled: false,
     staleTime: 60_000,
   })
@@ -368,9 +375,11 @@ export default function FindReplace({ onClose }) {
 
         {/* Summary */}
         {searched && (
-          <p className="text-xs text-muted-foreground">
-            {results.length === 0 ? 'No matches' : `${totalMatches} match${totalMatches !== 1 ? 'es' : ''} in ${Object.keys(grouped).length} object${Object.keys(grouped).length !== 1 ? 's' : ''}`}
-          </p>
+          searchError
+            ? <p className="text-xs text-red-400">Search failed: {searchError.message}</p>
+            : <p className="text-xs text-muted-foreground">
+                {results.length === 0 ? 'No matches' : `${totalMatches} match${totalMatches !== 1 ? 'es' : ''} in ${Object.keys(grouped).length} object${Object.keys(grouped).length !== 1 ? 's' : ''}`}
+              </p>
         )}
 
         {/* Preview summary */}

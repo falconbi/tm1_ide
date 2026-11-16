@@ -83,6 +83,7 @@ export default function RunbookDialog({ open, onClose, server, processData, cube
   const [expanded, setExpanded] = useState(null)
   const [openPaths, setOpenPaths] = useState(() => new Set())
   const [info, setInfo]         = useState({})
+  const [infoError, setInfoError] = useState(null)
   const [copied, setCopied]     = useState(false)
 
   // A chore belongs on the list when it runs at least one process of the model on screen.
@@ -94,12 +95,18 @@ export default function RunbookDialog({ open, onClose, server, processData, cube
   // Each process's description (its Prolog header, or a saved summary).
   useEffect(() => {
     if (!open) return
-    setExpanded(null); setOpenPaths(new Set()); setCopied(false)
+    setExpanded(null); setOpenPaths(new Set()); setCopied(false); setInfo({}); setInfoError(null)
     let cancelled = false
     fetch(`/api/process/summaries?server=${encodeURIComponent(server)}`, { headers: { 'x-ide-token': localStorage.getItem('tm1-token') ?? '' } })
-      .then(r => r.json())
-      .then(d => { if (!cancelled && Array.isArray(d.processes)) setInfo(Object.fromEntries(d.processes.map(x => [x.process, x]))) })
-      .catch(() => {})
+      .then(async r => {
+        let d = {}
+        try { d = await r.json() } catch { /* non-JSON error page */ }
+        if (!r.ok || d.error) throw new Error(d.error || `${r.status} ${r.statusText}`)
+        if (!Array.isArray(d.processes)) throw new Error('Unexpected summary response')
+        return d
+      })
+      .then(d => { if (!cancelled) setInfo(Object.fromEntries(d.processes.map(x => [x.process, x]))) })
+      .catch(e => { if (!cancelled) setInfoError(e.message || 'Could not load summaries') })
     return () => { cancelled = true }
   }, [open, server])
 
@@ -140,6 +147,11 @@ export default function RunbookDialog({ open, onClose, server, processData, cube
           <span className="text-[10px] text-muted-foreground">Each chore, step by step — read-only; it runs nothing.</span>
           <button onClick={onClose} className="ml-auto p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted"><X size={13} /></button>
         </div>
+        {infoError && (
+          <div className="px-4 py-1.5 border-b border-border text-[10px] text-red-400 shrink-0">
+            Could not load process descriptions: {infoError}
+          </div>
+        )}
         <div className="flex flex-1 min-h-0">
           <div className="w-52 shrink-0 border-r border-border overflow-auto">
             {list.map((c, i) => (
