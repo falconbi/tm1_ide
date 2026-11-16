@@ -29,12 +29,20 @@ jobs:
         working-directory: client
         run: npm ci
 
-      - name: Test
-        run: npm test
-
-      - name: Build client (proves it compiles)
+      - name: Build client (proves it compiles, and produces the bundles tests use)
         working-directory: client
         run: npm run build
+
+      - name: static/ is current
+        run: |
+          if [ -n "$(git status --porcelain -- static)" ]; then
+            git status --short -- static
+            echo "static/ is out of date — run \`cd client && npm run build\` and commit static/"
+            exit 1
+          fi
+
+      - name: Test
+        run: npm test
 
       - name: Lint ratchet (baseline 133 — must only go down)
         working-directory: client
