@@ -47,7 +47,7 @@ That puts these first, in this order:
 |---|---|---|
 | 01 | Front door: README, CLAUDE.md, layout, setup, docs index | done — round 1 (5 commits, checked) |
 | 02 | `server.js` and `core/` | done — round 1 (5 commits) + route split (16 commits, checked); core rename/logic move still later |
-| 03 | Explorer and the editors (`client/src/components`, `hooks`, `store`) | round 1 done (9 commits) + API layer round 2 (9 commits, checked); raw fetches 0 outside `lib/api.js`; per-call hooks and editor splits later |
+| 03 | Explorer and the editors (`client/src/components`, `hooks`, `store`) | round 1 done (9 commits) + API rounds 2/2b (17 commits, checked); raw/apiFetch 0 outside `lib/api.js`; per-call hooks and editor splits later |
 | 04 | Shared pivot (`shared/pivot`) and the grid | done — verdict + fixes round 1 (9 commits, checked) |
 | 05 | Validators, formatter, function catalog, autocomplete (`client/src/lib`, `core/*-lint.js`) | round 1 done (9 commits, checked); shared-module CJS/ESM convention open (see 05 QUESTIONS) |
 | 06 | Understanding the model: Cube Map, Runbook, trace, search | round 1 done (9 commits, checked); Cube Map editor split and full scanner-index unification later |
