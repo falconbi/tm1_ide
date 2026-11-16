@@ -35,6 +35,31 @@ function savePrefs(server, user, prefs = {}, file = FILE) {
     return next
 }
 
+
+// The keys themeCss actually reads. Every theme may rely on base for the rest.
+const REQUIRED_THEME_KEYS = ['bg', 'panel', 'ink', 'soft', 'faint', 'rule', 'accent']
+
+function validateThemes(catalog = THEMES) {
+    const errors = []
+    for (const mode of ['light', 'dark']) {
+        const base = catalog?.base?.[mode]
+        if (!base || typeof base !== 'object') errors.push(`base.${mode} is missing`)
+        else for (const key of REQUIRED_THEME_KEYS) if (typeof base[key] !== 'string') errors.push(`base.${mode}.${key} is missing`)
+    }
+    const themes = catalog?.themes
+    if (!themes || typeof themes !== 'object' || !Object.keys(themes).length) errors.push('themes is empty')
+    else for (const [name, theme] of Object.entries(themes)) {
+        if (!theme?.label || !String(theme.label).trim()) errors.push(`themes.${name}.label is missing`)
+        for (const mode of ['light', 'dark']) {
+            const effective = { ...(catalog.base?.[mode] ?? {}), ...(theme?.[mode] ?? {}) }
+            for (const key of REQUIRED_THEME_KEYS) if (typeof effective[key] !== 'string') errors.push(`themes.${name}.${mode}.${key} is missing`)
+        }
+    }
+    if (catalog?.default && !themes?.[catalog.default]) errors.push(`default theme "${catalog.default}" is not defined`)
+    if (errors.length) throw new Error(`Lens themes are invalid: ${errors.join('; ')}`)
+    return true
+}
+
 // The theme's colours for the Lens app's own pages, as CSS variables — for
 // 'system', both sets with a prefers-color-scheme switch.
 function themeCss({ mode, palette } = DEFAULTS) {
@@ -45,4 +70,4 @@ function themeCss({ mode, palette } = DEFAULTS) {
     return `:root{${vars(pick(false), false)}}@media (prefers-color-scheme:dark){:root{${vars(pick(true), true)}}}`
 }
 
-module.exports = { readPrefs, savePrefs, themeCss, MODES, FILE }
+module.exports = { readPrefs, savePrefs, themeCss, validateThemes, MODES, FILE }
