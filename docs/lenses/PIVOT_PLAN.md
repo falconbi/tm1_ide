@@ -135,3 +135,23 @@ shared pivot can do everything the View editor does; a Lens exposes only part.
 
 The view switch in a Lens is called **Pivot** (e.g. Assumptions: By month | Pivot).
 Build the Advanced button after step 5, when the member picker exists.
+
+## Status at 16 Nov 2026
+
+| item | status |
+|---|---|
+| Bugs 1–6 (totals, indent, escaping, >4 dims, edit flag, pruned total) | **done** — pinned in `tests/shared-pivot.test.mjs` / `shared-pivot-grid.test.js` |
+| Scale 6 — build rows from the tuples returned | **done** |
+| Scale 7 — typed cell updates in place | **done** for immediate mode; Lens keeps the grid and uses `setPivot` when the columns are unchanged |
+| Scale 8 — fetch children on demand for big dimensions | **pending** (whole trees up front; `elementTree` caps at 20,000) |
+| Entering data 9 — toolkit edit model + IDE immediate mode | **done** |
+| Entering data 10 — paste from Excel | **pending** (free AG Grid has no clipboard) |
+| Entering data 11 — spreading on a total | **pending** (needs a TM1 API decision) |
+| Entering data 12 — real value and display kept separate | **done** |
+| Look 13 — one colour scheme | **done** |
+| Look 14 — AG Grid theme | **decided:** the host supplies the theme; the toolkit default is Quartz (IDE Balham) |
+| Look 15 — collapse/expand all for columns | **pending** (member menu covers one level; no header all-button) |
+| Look 16 — toolkit grid features (stripes, fit, height, layout) | **done** |
+| Shared member picker | **done** (`shared/pivot/picker.js`) |
+| Shared cell menu (why / changes / notes) | **dropped** for the IDE — its cell menu is Trace only; Lenses keep `openCellMenu` |
+| Advanced “views” and aliases in a Lens | **pending** |

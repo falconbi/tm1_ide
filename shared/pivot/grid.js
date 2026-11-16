@@ -30,7 +30,8 @@
  *                                refuses when typed values are held unless { force: true }, so a
  *                                background refresh cannot silently discard them
  *   g.expandAll('rows'|'cols', dimIdx, open)
- *   g.quickFilter(text); g.freezeTop(on); g.stripes(on); g.exportCsv(fileName); g.destroy()
+ *   g.quickFilter(text); g.freezeTop(on); g.stripes(on); g.exportCsv(fileName); g.csvText()
+ *   g.state(); g.fitColumns(); g.resetWidths(); g.toText(); g.destroy()
  *   g.setOptions({ totals, colTotals, keepMode, dark, makeTheme, rowNames, edit }) — redraw with new settings
  */
 import { createGrid, ModuleRegistry, AllCommunityModule, themeQuartz, colorSchemeDark } from 'ag-grid-community'
