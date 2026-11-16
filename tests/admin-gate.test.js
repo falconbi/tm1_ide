@@ -57,7 +57,6 @@ test('every admin mutation and sensitive read uses requireTm1Admin', () => {
         "app.post('/api/admin/maintenance/disable'",
         "app.post('/api/users/provision'",
         "app.post('/api/users/:name/password'",
-        "app.post('/api/users',",
         "app.patch('/api/users/:name'",
         "app.delete('/api/users/:name'",
         "app.post('/api/users/:name/groups'",

@@ -23,6 +23,7 @@ const lensBridge = require('./core/lens_bridge')
 const { readOnlyRefusal } = require('./core/readonly')
 const { createSaveDataAllRoute, isAdminGroups } = require('./core/save_data_all')
 const { createAdminGate } = require('./core/admin_gate')
+const { createProvisionUserRoute } = require('./core/user_admin')
 const { setSimpleInModes } = require('./core/ide_modes')
 
 // Session (Change Set) is optional for using the IDE — it groups changes for
@@ -2426,22 +2427,7 @@ app.post('/api/admin/maintenance/disable', async (req, res) => {
 // Acts on the server selected in the UI (?server= / body.server); the login
 // server only when none is given.
 const userServer = (req) => req.query?.server ?? req.body?.server ?? PAW_LOGIN_SERVER
-app.post('/api/users/provision', async (req, res) => {
-    try {
-        if (!gateReadOnly(res, userServer(req))) return
-        if (!(await requireTm1Admin(req, res, userServer(req)))) return
-        const { name, password, groups = [], friendlyName = '' } = req.body
-        const cl = makeClient(userServer(req), req.ideToken)
-        await cl.createClient(name, password, friendlyName)
-        for (const g of groups) {
-            try { await cl.addClientToGroup(name, g) } catch {}
-        }
-        res.json({ ok: true })
-    } catch (e) {
-        console.error('[provisionUser]', e.response?.status, e.message)
-        fail(res, e)
-    }
-})
+app.post('/api/users/provision', createProvisionUserRoute({ makeClient, gateReadOnly, requireTm1Admin, userServer, fail }))
 
 app.post('/api/users/:name/password', async (req, res) => {
     try {
@@ -2463,16 +2449,6 @@ app.get('/api/users', async (req, res) => {
     try {
         const cl = makeClient(userServer(req), req.ideToken)
         res.json(await cl.getClients())
-    } catch (e) { res.status(500).json({ error: e.message }) }
-})
-
-app.post('/api/users', async (req, res) => {
-    try {
-        if (!gateReadOnly(res, userServer(req))) return
-        if (!(await requireTm1Admin(req, res, userServer(req)))) return
-        const { name, password, friendlyName } = req.body
-        const cl = makeClient(userServer(req), req.ideToken)
-        res.json(await cl.createClient(name, password, friendlyName))
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
