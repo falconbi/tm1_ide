@@ -1,7 +1,8 @@
 import { useQuery, useQueries, useMutation, useQueryClient } from '@tanstack/react-query'
-import { useRef, useEffect, useMemo, useCallback } from 'react'
+import { useRef, useEffect, useMemo, useCallback, useState } from 'react'
 import { useStore } from '@/store'
 import { toast } from 'sonner'
+import { conflictEntry } from '@/lib/conflict'
 
 // ── Global /api fetch wrapper ─────────────────────────────────────────────────
 // 1. Attaches the IDE token to every same-origin /api call that lacks one (some
@@ -671,30 +672,27 @@ export const useObjectHistory      = (server, type, name) => useQuery({ queryKey
 export function useConflictCheck(server, type, name) {
   const username = useStore(s => s.username)
   const { data: history = [], refetch } = useObjectHistory(server, type, name)
-  const baselineRef = useRef(undefined)
-  const initializedRef = useRef(false)
+  const [baseline, setBaseline] = useState(null)
+  const [initialized, setInitialized] = useState(false)
   useEffect(() => {
-    if (!initializedRef.current && history.length > 0) {
-      baselineRef.current = history[0].id ?? null
-      initializedRef.current = true
+    if (!initialized && history.length > 0) {
+      setBaseline(history[0].id ?? null)
+      setInitialized(true)
     }
-  }, [history])
-  const openConflict = useMemo(() => {
-    if (!username || !initializedRef.current) return null
-    const latest = history[0]
-    if (!latest?.user || latest.user === username) return null
-    if (latest.id === baselineRef.current) return null
-    return latest
-  }, [history, username])
+  }, [history, initialized])
+  const openConflict = useMemo(
+    () => initialized ? conflictEntry(history, username, baseline) : null,
+    [history, username, baseline, initialized],
+  )
   const checkBeforeSave = useCallback(async () => {
     const result = await refetch()
     const fresh = result.data ?? []
     const latest = fresh[0]
     if (!latest) return null
-    if (latest.id === baselineRef.current) return null
-    if (!latest.user || latest.user === username) { baselineRef.current = latest.id; return null }
+    if (latest.id === baseline) return null
+    if (!latest.user || latest.user === username) { setBaseline(latest.id); return null }
     return latest
-  }, [refetch, username])
+  }, [refetch, username, baseline])
   return { openConflict, checkBeforeSave }
 }
 export const useRollbackEntry            = () => { const qc = useQueryClient(); return useMutation({ mutationFn: (body) => post('/api/log/rollback', body), onSuccess: () => { qc.invalidateQueries({ queryKey: ['object-history'] }); qc.invalidateQueries({ queryKey: ['work-session-log'] }); qc.invalidateQueries({ queryKey: ['work-sessions'] }) } }) }
