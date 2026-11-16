@@ -49,6 +49,7 @@ tm1_ide/
 │   ├── tm1-function-catalog.json # The one function catalog (all consumers derive from it)
 │   ├── lens-bridge.js           # postMessage contract between a Lens frame and its host
 │   ├── lens-kit/                # The Lens toolkit (ECharts, AG Grid, React Flow, Alpine)
+│   ├── lens-patterns/           # Worked Lens patterns (read-only demonstrations)
 │   └── pivot/                   # One pivot engine for the IDE View grid and Lenses
 ├── static/                      # Committed build output, served by the IDE
 ├── tools/

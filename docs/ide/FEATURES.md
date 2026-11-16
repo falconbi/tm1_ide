@@ -52,7 +52,7 @@ Every feature in one numbered list.
 
 ## Lenses (in development)
 
-29. **Lenses and the Lens Editor** — single-file HTML apps on live TM1 data with governed write-back, built and previewed in the IDE. Current set: the 14-page Workforce planning model.
+29. **Lenses and the Lens Editor** — single-file HTML apps on live TM1 data with governed write-back, built and previewed in the IDE. The Workforce model's Lenses stay in TM1 with the model.
 
 ## Server and operations
 
@@ -175,7 +175,7 @@ Five playlists, one theme each — build with AI, everyday development, governed
 | **Deploy (TM1 Git, preview)** | The one deploy flow. A release ships exactly one change set through TM1's built-in Git: test → close → commit → build release → review → approve → deploy → verify, with drift checks and a deploy lock. See [Deploy lifecycle](../deploy/DEPLOY_LIFECYCLE.md) |
 | **Deploy History** | Model deploy records and approvals first; earlier REST-pipeline package archives are kept in a collapsed section |
 | **MCP server (external LLM)** | A standard Model Context Protocol server (`tools/tm1mcp`, 67 operations) that **external LLM agents connect to** — Claude Code or any MCP-compatible client — to build dimensions, cubes, rules and processes by conversation, change-set gated. See [`docs/ide/MCP_SERVER.md`](MCP_SERVER.md) |
-| **Lens Editor** *(in development)* | Build a Lens — a single-file HTML page on live TM1 data — and preview it in the IDE. Start blank or from one of your own Lenses, set its JSON config, and pick its icon or image for the Lens app home page. Patterns are read-only worked demonstrations |
+| **Lens Editor** *(in development)* | Build a Lens — a single-file HTML Lens on live TM1 data — and preview it in the IDE. Start blank or from one of your own Lenses, set its JSON config, and pick its icon or image for the Lens app home page. Patterns are read-only worked demonstrations |
 | **AI assistant (built-in)** | The IDE's inline helper generates views and subsets from a description (Anthropic API key) |
 
 > ⚠️ **MCP is still early and needs more real-world testing** before treating it as production-hardened. It's also a genuinely different trust boundary from the rest of the IDE: pointing it at an external/third-party LLM means that LLM gets tool access to write to your TM1 model (dimensions, cubes, rules, processes) inside whatever change set is active. Review what an agent proposes before approving/deploying it, keep MCP-driven work inside change sets (never Release mode) so it's diffed like anything else, and don't point it at a server you wouldn't want an unreviewed process run against.

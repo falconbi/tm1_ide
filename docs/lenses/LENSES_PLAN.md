@@ -79,7 +79,7 @@ decides what each viewer sees, exactly as for the book around it.
 | E. Shared service account | ❌ Bypasses TM1 security — only for genuinely public data, labelled as such. |
 
 Needed whichever option: a standalone **Lens runtime** (does the calls itself instead of via the IDE page), an HTTPS
-certificate, and `Content-Security-Policy: frame-ancestors <PAW origin>` on the Lens page.
+certificate, and `Content-Security-Policy: frame-ancestors <PAW origin>` on the Lens.
 
 ## Lenses are model content
 

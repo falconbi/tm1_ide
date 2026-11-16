@@ -39,6 +39,7 @@ core/
     paw_native.js             # PAW-native session adapter
     paw_oauth2.js             # Authentik/OAuth2 adapter (PAW V12)
   sql_client.js               # External SQL connections (MSSQL/PG/MySQL/SQLite)
+shared/lens-patterns/         # Worked Lens patterns — read-only demonstrations, never copied into a model
 shared/pivot/                 # The shared pivot — one slice-and-dice grid for the IDE View editor and Lenses (docs/lenses/PIVOT_PLAN.md)
   tree.js / mdx.js / cellset.js / format.js / grid.js
 client/src/
