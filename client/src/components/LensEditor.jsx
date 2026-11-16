@@ -2,6 +2,7 @@ import { useState, useRef, useCallback, useEffect, useMemo } from 'react'
 import MonacoEditor from '@monaco-editor/react'
 import { useStore } from '@/store'
 import { Sparkles, Save, RefreshCw, Loader2, Eye, Pencil, SlidersHorizontal } from 'lucide-react'
+import ConfirmButton from '@/components/ConfirmButton'
 import { cn } from '@/lib/utils'
 import { lensSrcDoc, installLensHost } from '@shared/lens-bridge'
 import LENS_ICONS from '@shared/lens-icons.json'
@@ -118,6 +119,7 @@ export default function LensEditor({ tab }) {
   const { dark, patchTab } = useStore()
   const [name, setName] = useState(tab.name ?? '')
   const [savedName, setSavedName] = useState(tab.name ?? '')
+  const [status, setStatus] = useState('draft')
 
   const [prompt, setPrompt] = useState('')
   // Stored with the Lens (shown in the Lens app): loaded on open, kept on save.
@@ -189,7 +191,7 @@ export default function LensEditor({ tab }) {
       fetch(`/api/lenses/${encodeURIComponent(tab.name)}?server=${encodeURIComponent(tab.server)}&_=${Date.now()}`, { headers: { 'x-ide-token': token() } })
         .then(r => r.json())
         .then(d => {
-          if (d.html) { setHtml(d.html); setDescription(d.meta?.description ?? ''); setFolder(d.meta?.folder ?? ''); setTitle(d.meta?.title ?? ''); setLook({ icon: d.meta?.icon ?? '', color: d.meta?.color ?? '', image: d.meta?.image ?? '' }); setConfigText(JSON.stringify(d.meta?.config ?? {}, null, 2) + '\n'); setGoodConfig(d.meta?.config ?? {}) }
+          if (d.html) { setHtml(d.html); setStatus(d.meta?.status ?? 'draft'); setDescription(d.meta?.description ?? ''); setFolder(d.meta?.folder ?? ''); setTitle(d.meta?.title ?? ''); setLook({ icon: d.meta?.icon ?? '', color: d.meta?.color ?? '', image: d.meta?.image ?? '' }); setConfigText(JSON.stringify(d.meta?.config ?? {}, null, 2) + '\n'); setGoodConfig(d.meta?.config ?? {}) }
           else if (d.error) setMessage({ kind: 'error', text: `Couldn't load the Lens: ${d.error}` })
         })
         .catch(e => setMessage({ kind: 'error', text: `Couldn't load the Lens: ${e.message}` }))
@@ -238,7 +240,7 @@ export default function LensEditor({ tab }) {
     }
   }
 
-  const save = async (publish = false, force = false) => {
+  const save = async (publish, force = false) => {
     if (!name.trim()) { setMessage({ kind: 'error', text: 'Give the lens a name' }); return }
     if (configError) { setMode('config'); setMessage({ kind: 'error', text: `Fix the config first: ${configError}` }); return }
     setSaving(true)
@@ -257,6 +259,7 @@ export default function LensEditor({ tab }) {
       }
       const next = afterLensSave(savedName, data)
       setSavedName(next.savedName)
+      setStatus(data.status ?? status)
       setName(next.savedName)
       if (next.patch) patchTab(tab.id, next.patch)
       setMessage({ kind: 'ok', text: `Saved "${data.name}" to ${tab.server}'s model (${data.status}, version ${data.version})${data.validation?.length ? ` — ${data.validation.length} validation warnings` : ''}` })
@@ -403,23 +406,34 @@ export default function LensEditor({ tab }) {
           <RefreshCw className="h-3.5 w-3.5" /> Refresh
         </button>
         <button
-          onClick={() => save(false)}
+          onClick={() => save()}
           disabled={saving}
           className="inline-flex items-center gap-1.5 rounded border border-border px-3 py-1.5 text-sm hover:bg-accent disabled:opacity-50"
         >
           {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-          Save draft
+          Save
         </button>
-        <button
-          onClick={() => save(true)}
-          disabled={saving}
-          className="inline-flex items-center gap-1.5 rounded bg-primary px-3 py-1.5 text-sm text-primary-foreground disabled:opacity-50"
-        >
-          Publish
-        </button>
+        {status === 'published' ? (
+          <ConfirmButton
+            label="Unpublish"
+            message="Removes it from the Lens app for everyone."
+            confirmLabel="Unpublish"
+            onConfirm={() => save(false)}
+            pending={saving}
+            className="inline-flex items-center gap-1.5 rounded border border-amber-500/40 px-3 py-1.5 text-sm text-amber-600 hover:bg-amber-500/10 disabled:opacity-50"
+          />
+        ) : (
+          <button
+            onClick={() => save(true)}
+            disabled={saving}
+            className="inline-flex items-center gap-1.5 rounded bg-primary px-3 py-1.5 text-sm text-primary-foreground disabled:opacity-50"
+          >
+            Publish
+          </button>
+        )}
         {validation.length > 0 && (
           <button
-            onClick={() => save(false, true)}
+            onClick={() => save(undefined, true)}
             disabled={saving}
             className="inline-flex items-center gap-1.5 rounded border border-red-300 px-3 py-1.5 text-sm text-red-600 hover:bg-red-50 disabled:opacity-50"
             title="Save despite validation failures"

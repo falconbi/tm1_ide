@@ -99,3 +99,20 @@ test('one unreadable document does not hide the readable Lenses', async () => {
   assert.deepEqual(list.map(l => l.name), ['Good'])
   assert.deepEqual(list.errors, [{ name: 'Bad', error: 'unreadable document' }])
 })
+
+test('saving a published Lens without publish keeps it published', async () => {
+  await lens.saveLens('SrvA', 'Live', '<p>1</p>', 'a', { publish: true })
+  const again = await lens.saveLens('SrvA', 'Live', '<p>2</p>', 'a')
+  assert.equal(again.status, 'published')
+  assert.equal(again.version, 2)
+})
+
+test('publish:false unpublishes, while a new Lens with no publish starts as a draft', async () => {
+  const fresh = await lens.saveLens('SrvA', 'New', '<p/>', 'a')
+  assert.equal(fresh.status, 'draft')
+  const down = await lens.saveLens('SrvA', 'New', '<p/>', 'a', { publish: false })
+  assert.equal(down.status, 'draft')
+  await lens.saveLens('SrvA', 'New', '<p/>', 'a', { publish: true })
+  const off = await lens.saveLens('SrvA', 'New', '<p/>', 'a', { publish: false })
+  assert.equal(off.status, 'draft')
+})

@@ -82,8 +82,8 @@ ${BRIDGE_CONTRACT}`,
             if (errors.length && !force) {
                 return ok({ blocked: true, reason: `Lens validation failed (${errors.length}) — fix these and retry, or pass force:true:`, errors })
             }
-            const saved = await lensStore.saveLens(SERVER, name, html, AGENT_USER, { publish: !!publish, description, folder, title, icon, color, config })
-            logChange(publish ? 'LENS_PUBLISHED' : 'LENS_SAVED', 'lens', saved.name,
+            const saved = await lensStore.saveLens(SERVER, name, html, AGENT_USER, { publish, description, folder, title, icon, color, config })
+            logChange(saved.status === 'published' ? 'LENS_PUBLISHED' : 'LENS_SAVED', 'lens', saved.name,
                 { detail: `version ${saved.version}${description ? ` — ${description}` : ''}` })
             return ok({ saved, validation: errors, next: `Lens "${saved.name}" is saved in ${SERVER}'s model and on the change set. It shows in the IDE model tree under Lenses.` })
         }

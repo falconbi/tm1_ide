@@ -12,6 +12,7 @@ commits that mixed a fix into a feature are included too. New features are not l
 
 ### 2026-11-16
 
+- **Lens status** — Saving a published Lens sent `publish:false`, silently unpublishing it. Save now leaves the status alone, Publish publishes, and Unpublish asks first; new Lenses still start as drafts
 - **Lens app settings** — A missing `config/lens-app.json` silently started the app against the example `24Retail` server. It now fails with the actionable create-file error; the example is used only in `--demo` / `LENS_DEMO=1`, and logs that it is demo data
 - **Lens editor identity** — After the first save or a rename, the preview still used the old tab name, so write/run checks ran against the wrong Lens. One save-state helper now moves both the saved name and the tab label to the name the server returned
 - **Lens read bridge** — Reads (`execMDX`, `readCell`, `meta`, `hierarchies`, `elementTree`, `cell-*`) bypassed `config.access` because they carried no Lens name. Every host call now sends the opened Lens, and the Lens app requires it and checks visibility (cached 60 seconds) before dispatch

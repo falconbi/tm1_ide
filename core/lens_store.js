@@ -131,13 +131,13 @@ function cleanConfig(config) {
     return out
 }
 
-async function saveLens(server, name, html, owner, { publish = false, description, folder, title, icon, color, image, config, ideToken, client } = {}) {
+async function saveLens(server, name, html, owner, { publish, description, folder, title, icon, color, image, config, ideToken, client } = {}) {
     const safe = safeName(name)
     const existing = await store.readDoc(server, AREA, docName(safe), { ideToken, client })
     const now = new Date().toISOString()
     const doc = {
         name:           safe,
-        status:         publish ? 'published' : 'draft',
+        status:         publish === true ? 'published' : publish === false ? 'draft' : (existing?.status ?? 'draft'),
         owner:          owner ?? 'unknown',
         version:        (Number(existing?.version) || 0) + 1,
         updated:        now,
