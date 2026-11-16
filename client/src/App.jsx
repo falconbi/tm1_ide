@@ -43,7 +43,7 @@ function FullModeOnly({ server, children }) {
 }
 
 export default function App() {
-  const { loadForge, formatSettingsOpen, setFormatSettingsOpen, openTab, openDeployCenter, server, token, clearAuth } = useStore()
+  const { loadForge, formatSettingsOpen, setFormatSettingsOpen, openTab, openDeployCenter, openDeployWizard, deployWizard, closeDeployWizard, server, token, clearAuth } = useStore()
   const layout         = useStore(s => s.layout)
   const revealTarget   = useStore(s => s.revealTarget)
 
@@ -98,7 +98,6 @@ export default function App() {
 const [showCatalog, setShowCatalog]           = useState(false)
   const [showModelHealth, setShowModelHealth]   = useState(false)
   const [showAssertions, setShowAssertions]     = useState(false)
-  const [showGitDeploy, setShowGitDeploy]       = useState(false)
   const [showGitSetup, setShowGitSetup]         = useState(false)
   const [showGitDrift, setShowGitDrift]         = useState(false)
   const [showToolsMenu, setShowToolsMenu]         = useState(false)
@@ -329,7 +328,7 @@ const [showCatalog, setShowCatalog]           = useState(false)
               <FullModeOnly server={server}><div className="relative" ref={deployMenuRef}>
                 <button
                   onClick={() => setShowDeployMenu(v => !v)}
-                  className={cn('p-1.5 rounded text-muted-foreground hover:text-foreground transition-colors', (showDeployMenu || showGitDeploy || showGitDrift || showModelHealth || showAssertions) && 'bg-muted text-foreground')}
+                  className={cn('p-1.5 rounded text-muted-foreground hover:text-foreground transition-colors', (showDeployMenu || deployWizard || showGitDrift || showModelHealth || showAssertions) && 'bg-muted text-foreground')}
                   title="Deploy"
                 >
                   <Rocket size={15} />
@@ -337,7 +336,7 @@ const [showCatalog, setShowCatalog]           = useState(false)
                 {showDeployMenu && (
                   <div className="absolute right-0 top-full mt-1 w-52 rounded border border-border bg-card shadow-lg py-1 z-50">
                     <button
-                      onClick={() => { setShowGitDeploy(true); setShowDeployMenu(false) }}
+                      onClick={() => { openDeployWizard({}); setShowDeployMenu(false) }}
                       className="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-left text-foreground hover:bg-muted"
                     >
                       <GitBranch size={13} className="shrink-0 text-muted-foreground" />
@@ -443,11 +442,11 @@ const [showCatalog, setShowCatalog]           = useState(false)
         {showCatalog && <CatalogAdmin server={server} onClose={() => setShowCatalog(false)} />}
         {showModelHealth && <ModelHealth server={server} onClose={() => setShowModelHealth(false)} />}
         {showAssertions && <AssertionsManager server={server} onClose={() => setShowAssertions(false)} />}
-        {showGitDeploy && <DeployWizard server={server} onClose={() => setShowGitDeploy(false)} onOpenTests={() => { setShowAssertions(true); setShowGitDeploy(false) }} />}
+        {deployWizard && <DeployWizard server={server} initialSession={deployWizard.session} release={!!deployWizard.release} onClose={closeDeployWizard} onOpenTests={() => { setShowAssertions(true); closeDeployWizard() }} />}
         {showGitSetup && <GitSetup server={server} onClose={() => setShowGitSetup(false)} />}
         {showGitDrift && <GitDrift server={server} onClose={() => setShowGitDrift(false)} />}
         <PeriodBuilder open={showPeriodBuilder} onClose={() => setShowPeriodBuilder(false)} />
-        <DeployCenter />
+        <DeployCenter onOpenWizard={() => openDeployWizard({})} />
         <ServerLoginDialog />
         <Toaster position="bottom-right" duration={3000} />
       </TooltipProvider>

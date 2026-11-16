@@ -1,13 +1,11 @@
 import { useEffect, useState } from 'react'
-import { X, Rocket, History, FolderArchive, HardDriveDownload, Loader2, CheckCircle2, HelpCircle } from 'lucide-react'
+import { X, Rocket, History, HardDriveDownload, Loader2, CheckCircle2, HelpCircle } from 'lucide-react'
 import HelpPanel from '@/components/HelpPanel'
 import { useStore } from '@/store'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
 import { useServers, useDeployBaseline, useDeploySeed } from '@/hooks/useApi'
-import DeployPanel from '@/components/DeployPanel'
 import DeployHistory from '@/components/DeployHistory'
-import ImportPackagePanel from '@/components/ImportPackagePanel'
 import DiffTab from '@/components/DiffTab'
 
 // A full-screen takeover for everything deploy-related — not a tab. While
@@ -16,9 +14,7 @@ import DiffTab from '@/components/DiffTab'
 // state in the store is untouched by this.
 
 const NAV = [
-  { id: 'wizard',    label: 'New Deploy', icon: Rocket },
   { id: 'history',   label: 'History',    icon: History },
-  { id: 'import',    label: 'Import',     icon: FolderArchive },
   { id: 'baselines', label: 'Baselines',  icon: HardDriveDownload, title: 'Bootstrap or recover a baseline — deploys keep this current automatically, not a normal step' },
 ]
 
@@ -91,9 +87,9 @@ function BaselinesView({ defaultServer }) {
   )
 }
 
-export default function DeployCenter() {
+export default function DeployCenter({ onOpenWizard }) {
   const { deployCenter, closeDeployCenter, server: currentServer } = useStore()
-  const [view, setView] = useState(deployCenter?.view ?? 'wizard')
+  const [view, setView] = useState(deployCenter?.view === 'baselines' ? 'baselines' : 'history')
   // Diff views opened from inside the takeover (Package Contents row click,
   // Target State snapshot diff) can't go through the normal tab system — that's
   // hidden behind this overlay. Shown as a second overlay, above this one.
@@ -103,16 +99,12 @@ export default function DeployCenter() {
   // A fresh openDeployCenter() call is a new object each time — use that to
   // reset which rail view is showing, per how this particular open was triggered.
   useEffect(() => {
-    if (deployCenter) setView(deployCenter.view ?? 'wizard')
+    if (deployCenter) setView(deployCenter.view === 'baselines' ? 'baselines' : 'history')
   }, [deployCenter])
 
   if (!deployCenter) return null
 
-  const title = view !== 'wizard'
-    ? NAV.find(n => n.id === view)?.label
-    : deployCenter.importDir  ? 'Import Package'
-    : deployCenter.session    ? deployCenter.session.name
-    : 'Release'
+  const title = NAV.find(n => n.id === view)?.label ?? 'History'
 
   return (
     <div className="fixed inset-0 z-[100] flex flex-col bg-background text-foreground">
@@ -141,6 +133,12 @@ export default function DeployCenter() {
       <div className="flex flex-1 min-h-0">
         {/* Rail */}
         <div className="w-44 shrink-0 border-r border-border/50 flex flex-col py-3 gap-0.5">
+          <button
+            onClick={() => { closeDeployCenter(); onOpenWizard?.() }}
+            className="flex items-center gap-2 px-4 py-2 text-xs text-left text-emerald-500 hover:text-emerald-400 hover:bg-muted/50 transition-colors"
+          >
+            <Rocket size={13} /> New Deploy
+          </button>
           {NAV.map(n => (
             <button
               key={n.id}
@@ -157,9 +155,7 @@ export default function DeployCenter() {
         {/* Content */}
         <div className="flex-1 min-w-0 overflow-hidden flex justify-center">
           <div className="w-full max-w-4xl min-w-0 flex flex-col">
-            {view === 'wizard'    && <DeployPanel tab={deployCenter} onOpenDiff={setDiffTab} />}
             {view === 'history'   && <DeployHistory onOpenDiff={setDiffTab} />}
-            {view === 'import'    && <ImportPackagePanel />}
             {view === 'baselines' && <BaselinesView defaultServer={deployCenter.server ?? currentServer} />}
           </div>
         </div>

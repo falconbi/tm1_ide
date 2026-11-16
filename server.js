@@ -78,15 +78,12 @@ function fail(res, e) {
         : 500
     return res.status(out).json({ error: e?.message || 'Request failed' })
 }
-const { diff: deployDiff, driftCheck: deployDriftCheck } = require('./tools/tm1deploy/src/diff')
-const { pack: deployPack }      = require('./tools/tm1deploy/src/packager')
 const { getCubeDataSources, getViewSourceUsage, getProcessFacts, listProcessSummaries, invalidate: invalidateCubeSources } = require('./core/cube_data_sources')
 const { buildCubeMapModel } = require('./core/cubemap')
 const { parseRuleLens } = require('./core/rule_lens')
 const processSummaries = require('./core/process_summaries')
-const { analyzeRisk }           = require('./tools/tm1deploy/src/risk')
-const { seed: deploySeed, scopedSnapshot: deployScopedSnapshot } = require('./tools/tm1deploy/src/snapshot')
-const { loadBaseline: deployLoadBaseline, listBaselines: deployListBaselines, setBaselineHead: deploySetBaselineHead } = require('./tools/tm1deploy/src/diff')
+const { seed: deploySeed } = require('./tools/tm1deploy/src/snapshot')
+const { loadBaseline: deployLoadBaseline } = require('./tools/tm1deploy/src/diff')
 
 const FORGE_PATH = path.join(__dirname, 'config', 'forge.json')
 const PAW_LOGIN_SERVER = process.env.PAW_LOGIN_SERVER
@@ -2760,55 +2757,12 @@ app.post('/api/cells/write', async (req, res) => {
 // ── Deploy pipeline ───────────────────────────────────────────────────────────
 
 // When this server's baseline was last seeded — the start of its release window.
-function baselineSeededAt(server) {
-    return deployLoadBaseline(null, server)?._meta?.seeded_at ?? null
-}
-
-// Resolve the change-log entries a diff/package should work from:
-// one change set (sessionId), or every object touched since the baseline (release).
-// Release prefers the baseline's change-log position (deterministic); falls back
-// to the seeded_at timestamp for baselines seeded before positions were stamped.
-function deployEntries({ server, sessionId, release }) {
-    if (!release) return cl.getSessionLog(sessionId)
-    const base    = deployLoadBaseline(null, server)
-    const sinceId = base?._meta?.last_entry_id
-    return sinceId != null
-        ? cl.getEntriesSinceId(server, sinceId)
-        : cl.getEntriesSince(server, baselineSeededAt(server))
-}
-
-app.get('/api/deploy/object-diff', async (req, res) => {
+app.post('/api/deploy/pre-delete-check', async (req, res) => {
     try {
-        const { server, type, name, detail } = req.query
-        const snapshot = deployLoadBaseline(null, server)
-        if (!snapshot) return res.status(404).json({ error: 'No baseline seeded for this server' })
+        const { server, dimension, element, hierarchy } = req.body
+        if (!server || !dimension || !element) return res.status(400).json({ error: 'server, dimension and element required' })
         const client = makeClient(server, req.ideToken)
-        let before = null, after = null
-
-        if (type === 'rules') {
-            before = { text: snapshot.cubes?.[name]?.rules ?? '' }
-            const cube = await client.getCube(name)
-            after = { text: cube?.Rules ?? '' }
-        } else if (type === 'process') {
-            const bp = snapshot.processes?.[name]
-            before = bp ? { prolog: bp.PrologProcedure ?? '', metadata: bp.MetadataProcedure ?? bp.MetaDataProcedure ?? '', data: bp.DataProcedure ?? '', epilog: bp.EpilogProcedure ?? '' } : null
-            const p = await client.getProcess(name)
-            after = { prolog: p.PrologProcedure ?? '', metadata: p.MetaDataProcedure ?? p.MetadataProcedure ?? '', data: p.DataProcedure ?? '', epilog: p.EpilogProcedure ?? '' }
-        } else if (type === 'subset') {
-            const bs = snapshot.subsets?.[detail]?.[detail]?.[name]
-            before = bs ?? null
-            const sub = await client.getSubset(detail, name, detail)
-            after = sub?.Expression ? { expression: sub.Expression } : { elements: [] }
-        } else if (type === 'view') {
-            const bv = snapshot.views?.[detail]?.[name]
-            before = bv ? (bv.type === 'mdx' ? { type: 'mdx', mdx: bv.MDX ?? bv.mdx ?? '' } : { type: 'native', definition: bv.definition }) : null
-            const view = await client.getView(detail, name)
-            after = view?.MDX ? { type: 'mdx', mdx: view.MDX } : { type: 'native', definition: view }
-        } else {
-            return res.status(400).json({ error: `Unsupported type: ${type}` })
-        }
-
-        res.json({ before, after })
+        res.json(await client.preDeleteElementCheck(dimension, element, hierarchy ?? dimension))
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
@@ -2817,16 +2771,6 @@ app.get('/api/deploy/baseline', (req, res) => {
         const snapshot = deployLoadBaseline(null, req.query.server)
         if (!snapshot) return res.json({ exists: false })
         res.json({ exists: true, ...snapshot._meta })
-    } catch (e) { res.status(500).json({ error: e.message }) }
-})
-
-app.post('/api/deploy/pre-delete-check', async (req, res) => {
-    try {
-        const { server, dimension, element, hierarchy } = req.body
-        if (!server || !dimension || !element) return res.status(400).json({ error: 'server, dimension and element required' })
-        const cl     = makeClient(server, req.ideToken)
-        const result = await cl.preDeleteElementCheck(dimension, element, hierarchy ?? dimension)
-        res.json(result)
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
@@ -3153,192 +3097,15 @@ app.post('/api/deploy/seed', async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
-// Append-only baseline history for a server + move HEAD (recovery point).
-app.post('/api/deploy/diff', async (req, res) => {
+// Git deploy history for the History rail: the IDE-recorded deploy and the
+// approvals for this target. Package archives stay available below as legacy.
+app.get('/api/deploy/git/history', async (req, res) => {
     try {
-        const { server, sessionId, release } = req.body
-        const entries = deployEntries({ server, sessionId, release })
-        const result  = await deployDiff(server, entries, undefined, req.ideToken)
-        // Release mode already unions every session's changes since the last baseline —
-        // there's no "other session" boundary to warn about. Only a named, session-scoped
-        // deploy can bleed in someone else's unrelated edit to a shared object.
-        const crossSessionTouches = (!release && sessionId) ? cl.getCrossSessionTouches(server, sessionId, entries) : []
-        res.json({ ...result, crossSessionTouches })
-    } catch (e) { res.status(500).json({ error: e.message }) }
-})
-
-app.post('/api/deploy/package', async (req, res) => {
-    try {
-        const { server, sessionId, sessionName, release, forceInclude = [], selectedObjects } = req.body
-        let entries = deployEntries({ server, sessionId, release })
-        if (selectedObjects?.length) {
-            const sel = new Set(selectedObjects.map(o => `${o.object_type}::${o.object_name}::${o.detail ?? ''}`))
-            entries = entries.filter(e => sel.has(`${e.object_type}::${e.object_name}::${e.detail ?? ''}`))
-        }
-        const name = sessionName || (release ? `Release ${new Date().toISOString().slice(0, 10)}` : 'deploy')
-        // no force — packager auto-suffixes rather than overwriting a retained package
-        const result = await deployPack(server, entries, name, { forceInclude, sessionId }, req.ideToken)
-        res.json(result)
-    } catch (e) { res.status(500).json({ error: e.message }) }
-})
-
-// Read an existing package's manifest — used both by the freshly-built package
-// (outputDir just returned from /api/deploy/package POST) and by an imported one.
-app.get('/api/deploy/package', (req, res) => {
-    try {
-        const dir = req.query.dir
-        if (!dir) return res.status(400).json({ error: 'dir required' })
-        const resolved     = path.resolve(dir)
-        const packagesRoot = path.resolve(__dirname, 'packages')
-        if (resolved !== packagesRoot && !resolved.startsWith(packagesRoot + path.sep)) {
-            return res.status(403).json({ error: 'path outside packages directory' })
-        }
-        const manifestPath = path.join(resolved, 'manifest.json')
-        if (!fs.existsSync(manifestPath)) return res.status(404).json({ error: 'manifest.json not found' })
-        const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'))
-        res.json({ outputDir: resolved, manifest })
-    } catch (e) { res.status(500).json({ error: e.message }) }
-})
-
-// Accept a package .zip (built by another IDE instance) and unpack it into
-// packages/, so the admin can review + deploy it here without ever running
-// the CLI or touching the source Dev server.
-app.post('/api/deploy/import-zip', express.raw({ type: '*/*', limit: '200mb' }), (req, res) => {
-    try {
-        if (!req.body?.length) return res.status(400).json({ error: 'Empty upload' })
-        const AdmZip   = require('adm-zip')
-        const zip      = new AdmZip(req.body)
-        const entries  = zip.getEntries().filter(e => !e.isDirectory)
-        if (!entries.length) return res.status(400).json({ error: 'Empty zip' })
-
-        // Packages are zipped as <name>/manifest.json, <name>/rules/..., etc. —
-        // strip that single common top-level folder on extract.
-        const topNames  = new Set(entries.map(e => e.entryName.split('/')[0]))
-        const zipTop    = topNames.size === 1 ? [...topNames][0] : null
-        const requested = (req.query.name || '').toString().trim()
-        let name = (requested || zipTop || `import-${new Date().toISOString().replace(/[:.]/g, '-')}`)
-            .replace(/[^a-zA-Z0-9_.-]/g, '_')
-
-        const packagesRoot = path.join(__dirname, 'packages')
-        let outDir = path.join(packagesRoot, name)
-        for (let n = 2; fs.existsSync(outDir); n++) outDir = path.join(packagesRoot, `${name}-${n}`)
-        fs.mkdirSync(outDir, { recursive: true })
-
-        for (const entry of entries) {
-            const rel = zipTop ? entry.entryName.slice(zipTop.length + 1) : entry.entryName
-            if (!rel) continue
-            const dest = path.join(outDir, rel)
-            if (!dest.startsWith(outDir + path.sep)) continue   // zip-slip guard
-            fs.mkdirSync(path.dirname(dest), { recursive: true })
-            fs.writeFileSync(dest, entry.getData())
-        }
-
-        const manifestPath = path.join(outDir, 'manifest.json')
-        if (!fs.existsSync(manifestPath)) {
-            fs.rmSync(outDir, { recursive: true, force: true })
-            return res.status(400).json({ error: 'Not a deploy package — no manifest.json found in the zip' })
-        }
-        const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'))
-        // Tag as imported so /api/deploy/packages can tell it apart from a package
-        // this IDE built itself — Import Package should only ever list handoffs.
-        manifest._meta = { ...(manifest._meta ?? {}), imported: true, imported_at: new Date().toISOString() }
-        fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2))
-        res.json({ dir: outDir, name: path.basename(outDir), manifest })
-    } catch (e) { res.status(500).json({ error: e.message }) }
-})
-
-app.get('/api/deploy/packages', (req, res) => {
-    try {
-        const dir = path.join(__dirname, 'packages')
-        if (!fs.existsSync(dir)) return res.json([])
-        const importedOnly = req.query.imported === '1'
-        const items = fs.readdirSync(dir)
-            .filter(n => fs.statSync(path.join(dir, n)).isDirectory())
-            .map(n => {
-                const mp = path.join(dir, n, 'manifest.json')
-                if (!fs.existsSync(mp)) return null
-                const m = JSON.parse(fs.readFileSync(mp, 'utf8'))
-                return { dir: path.join(dir, n), name: n, meta: m._meta, objectCount: m.objects?.length ?? 0 }
-            })
-            .filter(Boolean)
-            .filter(p => !importedOnly || p.meta?.imported === true)
-            .sort((a, b) => (b.meta?.packaged_at ?? '').localeCompare(a.meta?.packaged_at ?? ''))
-        res.json(items)
-    } catch (e) { res.status(500).json({ error: e.message }) }
-})
-
-// Stream a package folder as a .zip for handoff to an admin who will deploy it.
-app.get('/api/deploy/package-zip', (req, res) => {
-    try {
-        const dir = req.query.dir
-        if (!dir) return res.status(400).json({ error: 'dir required' })
-        const resolved      = path.resolve(dir)
-        const packagesRoot  = path.resolve(__dirname, 'packages')
-        if (resolved !== packagesRoot && !resolved.startsWith(packagesRoot + path.sep)) {
-            return res.status(403).json({ error: 'path outside packages directory' })
-        }
-        if (!fs.existsSync(path.join(resolved, 'manifest.json'))) {
-            return res.status(404).json({ error: 'not a package (no manifest.json)' })
-        }
-        const { ZipArchive } = require('archiver')
-        const name = path.basename(resolved)
-        res.attachment(`${name}.zip`)
-        const zip = new ZipArchive({ zlib: { level: 9 } })
-        zip.on('error', err => res.destroy(err))
-        zip.pipe(res)
-        zip.directory(resolved, name)
-        zip.finalize()
-    } catch (e) { res.status(500).json({ error: e.message }) }
-})
-
-app.post('/api/deploy/drift-check', async (req, res) => {
-    try {
-        const { packageDir, target } = req.body
-        if (!packageDir || !target) return res.status(400).json({ error: 'packageDir and target required' })
-        const result = await deployDriftCheck(packageDir, target, req.ideToken)
-        res.json(result)
-    } catch (e) { res.status(500).json({ error: e.message }) }
-})
-
-app.post('/api/deploy/risk', async (req, res) => {
-    try {
-        const { packageDir, target } = req.body
-        const result = await analyzeRisk(packageDir, target, req.ideToken)
-        res.json(result)
-    } catch (e) { res.status(500).json({ error: e.message }) }
-})
-
-app.post('/api/deploy/verify', async (req, res) => {
-    try {
-        const { source, target, tags } = req.body
-        if (!source) return res.status(400).json({ error: 'source (server whose assertions to run) required' })
-        const result = await require('./core/assertions').run(source, { targetServer: target || source, tags, ideToken: req.ideToken })
-        res.json(result)
-    } catch (e) { res.status(500).json({ error: e.message }) }
-})
-
-app.post('/api/deploy/scoped-snapshot', async (req, res) => {
-    try {
-        const { packageDir, target } = req.body
-        const manifestPath = path.join(packageDir, 'manifest.json')
-        if (!fs.existsSync(manifestPath)) return res.status(400).json({ error: 'No manifest found' })
-        const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'))
-        const result = await deployScopedSnapshot(manifest, target, req.ideToken)
-        res.json(result)
-    } catch (e) { res.status(500).json({ error: e.message }) }
-})
-
-app.post('/api/deploy/archive', (req, res) => {
-    try {
-        const { approval, deployResult, manifest, source, target, deployer, preSnapshot, postSnapshot } = req.body
-        const now = new Date()
-        const stamp = now.toISOString().replace(/[:.]/g, '-')
-        const filename = `${stamp}_${(source ?? '').replace(/\W+/g, '_')}_to_${(target ?? '').replace(/\W+/g, '_')}.json`
-        const dir = path.join(__dirname, 'config', 'archives')
-        if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true })
-        const record = { archived_at: now.toISOString(), source, target, deployer, approval, deploy: deployResult, manifest, preSnapshot, postSnapshot }
-        fs.writeFileSync(path.join(dir, filename), JSON.stringify(record, null, 2))
-        res.json({ id: filename.replace('.json', ''), ...record })
+        const target = req.query.target
+        if (!target) return res.status(400).json({ error: 'target required' })
+        const state = require('./core/git-state').load()[target] ?? null
+        const approvals = await require('./core/git-approvals').readFor(target, { ideToken: req.ideToken })
+        res.json({ target, deploy: state, approvals })
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 

@@ -107,7 +107,7 @@ The frontend is pre-built — no build step needed. Full instructions: [Setup](d
 | [Architecture](docs/ide/ARCHITECTURE.md) | How the pieces fit, project structure |
 | [Deploy lifecycle](docs/deploy/DEPLOY_LIFECYCLE.md) | The current deploy — change-set releases through TM1 Git, approvals, drift, verification |
 | [Governed TM1 deploys](https://falconbi.github.io/articles/governed-tm1-deploys/) | Article: how and why the deploy works, with diagrams — a good first read |
-| [Earlier REST pipeline](docs/deploy/DEPLOYMENT.md) | The original diff → package → risk → deploy pipeline, kept for history and the admin-only CLI |
+| [Earlier REST pipeline](docs/deploy/DEPLOYMENT.md) | Historical package/CLI notes — the IDE now has one step-by-step deploy flow |
 | [MCP server](docs/ide/MCP_SERVER.md) | Connecting an AI agent to build and test models |
 | [Building models](docs/models/BUILDING_MODELS.md) | Lessons and TM1 quirks from real model builds |
 | [Changelog](CHANGELOG.md) | Monthly summary of user-visible changes |

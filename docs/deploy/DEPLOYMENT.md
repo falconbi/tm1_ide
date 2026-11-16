@@ -1,3 +1,5 @@
+> **Historical note (16 Nov 2026):** the REST package/import UI and its browser routes were removed in review area 07. The `tm1deploy` CLI remains an admin-only path; use the step-by-step Git deploy in the IDE.
+
 # TM1 IDE — Deployment Pipeline (earlier REST pipeline)
 
 ← [Back to README](../../README.md)

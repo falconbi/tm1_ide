@@ -16,10 +16,10 @@ Found by code review, not by a failed deploy. Each line moves to **Fixed** as th
 - Step 7 — standalone drift checks take the target's deploy lock; a concurrent check returns busy instead of racing the `prod-live` push.
 - Step 8 — change sets are owner-managed (case-insensitive); admins may also close/resume/edit. The UI hides those controls for another user's set.
 - Step 9 — single-assertion runs record to `}TestResults`; assertion writes use `gateWrite`; finite numeric fields are validated and client-supplied identity/change-set fields are ignored.
+- Step 10 — one deploy surface (the step-by-step wizard); Deploy History shows model deploy records first and keeps package archives collapsed; Release opens the wizard.
 
 **Still open**
 
-- Step 10 — two deploy surfaces and a Deploy History built from local package archives, not model deploy records.
 - First-pull element-loss analysis (`firstPullAnalysis`) is still not wired into the setup screen (round 2).
 - Round 2 — a fresh IDE cannot yet read model-owned governance without local migration markers.
 
@@ -124,7 +124,8 @@ Notes:
   known only by name is copied **wholesale and surfaced** (Review warning + "Copied wholesale" in the result) — scoping
   is never silent.
 - The **legacy `/api/deploy/execute` and `/api/deploy/approve` routes are retired** — the step-by-step wizard is the
-  only deploy path. The classic DeployPanel refuses with a plain "retired" note.
+  only IDE deploy path. The classic DeployPanel/Import package UI and their routes were removed in area 07; the
+  `tm1deploy` CLI remains an admin-only path.
 - The **`tm1deploy` CLI's `deploy` command** writes to a target **outside** the IDE's approval gate and change-set
   reconcile scope — treat it as **admin-only** (run a drift check after).
 - **Static-subset hazard (7 Oct):** PROD's `WFP Period` Default subset lost its 36 YTD members while the dimension

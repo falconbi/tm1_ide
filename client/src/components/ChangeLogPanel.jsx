@@ -126,7 +126,7 @@ function LogEntry({ entry, server, openTab }) {
 }
 
 function SessionRow({ session, server, openTab, onClose, currentUser }) {
-  const { openDeployCenter } = useStore()
+  const { openDeployWizard } = useStore()
   const [open, setOpen]           = useState(false)
   const [editingDesc, setEditingDesc] = useState(false)
   const [descValue, setDescValue]     = useState(session.description ?? '')
@@ -264,7 +264,7 @@ function SessionRow({ session, server, openTab, onClose, currentUser }) {
                 <ScrollText size={11} />
               </button>
               <button
-                onClick={() => { openDeployCenter({ server, session }); onClose?.() }}
+                onClick={() => { openDeployWizard({ session }); onClose?.() }}
                 title="Deploy this session"
                 className="p-2 rounded hover:bg-muted text-emerald-500 hover:text-emerald-400"
               >
@@ -317,7 +317,7 @@ function SessionRow({ session, server, openTab, onClose, currentUser }) {
 }
 
 export default function ChangeLogPanel({ server, onClose, direction = 'up' }) {
-  const { openTab, openDeployCenter, username } = useStore()
+  const { openTab, openDeployWizard, username } = useStore()
   const { data: allSessions = [], isFetching } = useWorkSessions(server)
   const [showDeployed, setShowDeployed] = useState(false)
   const [showHelp, setShowHelp] = useState(false)
@@ -328,7 +328,7 @@ export default function ChangeLogPanel({ server, onClose, direction = 'up' }) {
   const deployedCount = allSessions.filter(s => s.deployed).length
   const sessions = showDeployed ? allSessions : allSessions.filter(s => !s.deployed)
 
-  const openReleaseAndClose = () => { openDeployCenter({ server, release: true }); onClose?.() }
+  const openReleaseAndClose = () => { openDeployWizard({ release: true }); onClose?.() }
 
   const posClass = direction === 'down'
     ? 'absolute top-full right-0 mt-1'
@@ -346,7 +346,7 @@ export default function ChangeLogPanel({ server, onClose, direction = 'up' }) {
           </div>
           <button
             onClick={openReleaseAndClose}
-            title="Deploy everything changed since the baseline was seeded"
+            title="Open the release wizard for the latest closed change set"
             className="flex items-center gap-1 px-2 py-1 rounded text-[10px] font-medium text-emerald-500 hover:text-emerald-400 hover:bg-muted transition-colors mr-1"
           >
             <Rocket size={10} /> Release

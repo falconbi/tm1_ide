@@ -1,5 +1,5 @@
-import { useState, Fragment } from 'react'
-import { useDeployArchives } from '@/hooks/useApi'
+import { useState, Fragment, useEffect } from 'react'
+import { useDeployArchives, useServers } from '@/hooks/useApi'
 import { Loader2, ChevronDown, ChevronRight, CheckCircle2, XCircle, UserCheck, ArrowRight, Diff } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useStore } from '@/store'
@@ -277,6 +277,75 @@ function ArchiveDetail({ id, approval, _deployStats, onOpenDiff }) {
   )
 }
 
+function GitHistoryPanel() {
+  const server = useStore(s => s.server)
+  const { data: serverData } = useServers()
+  const servers = (serverData?.value ?? serverData ?? []).map(s => s?.name ?? s).filter(Boolean)
+  const [target, setTarget] = useState(server ?? '')
+  const [state, setState] = useState(null)
+  const [error, setError] = useState(null)
+  const [busy, setBusy] = useState(false)
+
+  useEffect(() => { if (server) setTarget(server) }, [server])
+  useEffect(() => {
+    if (!target) return
+    let live = true
+    setBusy(true); setError(null)
+    fetch(`/api/deploy/git/history?target=${encodeURIComponent(target)}`, { headers: { 'x-ide-token': localStorage.getItem('tm1-token') ?? '' } })
+      .then(async r => {
+        const d = await r.json()
+        if (!r.ok || d.error) throw new Error(d.error || r.statusText)
+        return d
+      })
+      .then(d => { if (live) setState(d) })
+      .catch(e => { if (live) setError(e.message) })
+      .finally(() => { if (live) setBusy(false) })
+    return () => { live = false }
+  }, [target])
+
+  return (
+    <div className="m-4 border border-border rounded overflow-hidden">
+      <div className="flex items-center gap-2 px-4 py-2 bg-muted/30 border-b border-border">
+        <span className="text-xs font-semibold">Model deploy records</span>
+        <select value={target} onChange={e => setTarget(e.target.value)} className="ml-auto bg-background border border-border rounded px-2 py-1 text-xs">
+          {servers.map(s => <option key={s} value={s} className="bg-background">{s}</option>)}
+          {servers.length === 0 && <option value="">(no servers)</option>}
+        </select>
+      </div>
+      {busy && <div className="flex items-center gap-2 text-xs text-muted-foreground px-4 py-3"><Loader2 size={11} className="animate-spin" /> Loading…</div>}
+      {error && <div className="text-xs text-red-400 px-4 py-3">{error}</div>}
+      {!busy && !error && state && (
+        <div className="p-4 space-y-3">
+          {state.deploy ? (
+            <div className="text-xs">
+              <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">Latest deploy</div>
+              <div className="flex items-center gap-2">
+                <CheckCircle2 size={11} className="text-emerald-400" />
+                <span className="font-mono">{state.deploy.lastDeployedCommit}</span>
+                <span className="text-muted-foreground">{fmt(state.deploy.at)}</span>
+              </div>
+              {state.deploy.summary && <div className="text-muted-foreground mt-0.5">{state.deploy.summary}</div>}
+            </div>
+          ) : <p className="text-xs text-muted-foreground italic">No deploy recorded for {target} yet.</p>}
+          <div>
+            <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">Approvals ({state.approvals?.length ?? 0})</div>
+            {(state.approvals ?? []).length === 0
+              ? <p className="text-xs text-muted-foreground italic">No approvals recorded.</p>
+              : (state.approvals ?? []).slice().reverse().map((a, i) => (
+                  <div key={`${a.commit}-${i}`} className="flex items-baseline gap-2 text-xs py-1 border-b border-border/40 last:border-0">
+                    <UserCheck size={10} className="text-emerald-400 shrink-0" />
+                    <span className="font-mono">{String(a.commit ?? '').slice(0, 10)}</span>
+                    <span className="text-muted-foreground">{a.approver} · {fmt(a.approved_at)}</span>
+                    {a.notes && <span className="text-muted-foreground/70 truncate">— {a.notes}</span>}
+                  </div>
+                ))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function DeployHistory({ onOpenDiff }) {
   const { data: archives, isLoading, error } = useDeployArchives()
 
@@ -284,10 +353,14 @@ export default function DeployHistory({ onOpenDiff }) {
     <div className="flex flex-col h-full">
       <div className="px-5 py-3 border-b border-border shrink-0">
         <div className="text-sm font-semibold">Deploy History</div>
-        <div className="text-[11px] text-muted-foreground mt-0.5">All approved deployments — permanent record</div>
+        <div className="text-[11px] text-muted-foreground mt-0.5">Model deploy records and approvals; earlier package archives stay below</div>
       </div>
 
       <div className="flex-1 overflow-auto">
+        <GitHistoryPanel />
+        <details className="mx-4 mb-4 border border-border rounded overflow-hidden">
+          <summary className="px-4 py-2 text-xs font-medium cursor-pointer bg-muted/30 text-muted-foreground">Earlier REST pipeline archives</summary>
+          <div className="p-3">
         {isLoading && (
           <div className="flex items-center gap-2 text-sm text-muted-foreground py-12 justify-center">
             <Loader2 size={14} className="animate-spin" /> Loading archives…
@@ -300,7 +373,7 @@ export default function DeployHistory({ onOpenDiff }) {
           <div className="text-sm text-muted-foreground py-12 text-center">No deploy archives yet.</div>
         )}
         {archives && archives.length > 0 && (
-          <div className="border border-border rounded m-4 overflow-hidden">
+          <div className="border border-border rounded overflow-hidden">
             <div className="grid grid-cols-[20px_1fr_140px_100px_80px] text-[10px] font-medium text-muted-foreground bg-muted/30 px-4 py-1.5 border-b border-border gap-3">
               <span />
               <span>SOURCE → TARGET</span>
@@ -311,6 +384,8 @@ export default function DeployHistory({ onOpenDiff }) {
             {archives.map(a => <ArchiveRow key={a.id} a={a} onOpenDiff={onOpenDiff} />)}
           </div>
         )}
+          </div>
+        </details>
       </div>
     </div>
   )

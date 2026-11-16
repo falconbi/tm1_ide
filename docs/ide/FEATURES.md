@@ -28,7 +28,7 @@ Everything the IDE does, editor by editor, with screenshots.
 | --- | --- |
 | ![Native View Builder](../images/7_screenshot_cubeview.png) | ![Deploy History](../images/9_screenshot_deploy_history.png) |
 
-**Deploy Center — Release, all changes since baseline**
+**Deploy step by step — the release workflow**
 
 ![Deploy Release wizard](../images/10_screenshot_deploy_release.png)
 
@@ -61,7 +61,7 @@ Five playlists, one theme each — build with AI, everyday development, governed
 16. Change sets — every save recorded, before/after for each object
 17. Tests that live in the model — assertions stored in the TM1 server, run before release
 18. From change set to release — a release commit holding exactly one change set (TM1 Git)
-19. Approve & deploy — approval tied to that exact commit, then deploy and verify
+19. Approve & deploy — one step-by-step flow: test, close, commit, build the change-set release, review, approve, deploy and verify
 20. Drift & read-only PROD — spotting hand changes; why PROD refuses edits
 21. History & rollback — deploy history, object history, putting things back
 
@@ -102,9 +102,8 @@ Five playlists, one theme each — build with AI, everyday development, governed
 | **Process summaries** | A plain-English "what does this process do" for each TI process, written by AI or by hand and shown in the Data sources hover. Kept outside the TI code; a process that has changed since its summary shows as stale |
 | **Runbooks** | A phased review of a model update: phases in business order on the left; on the right, the processes and chores for that phase, each expanding to its steps in code order, with a phase-filtered Cube Map |
 | **Assertions** | The model's own tests — known-right answers stored in the TM1 server. List, add, edit, remove and run them; they run before release and after every build and deploy |
-| **Deploy (TM1 Git, preview)** | A release ships exactly one change set through TM1's built-in Git: test → close → build release → review → approve → deploy → verify, with drift checks and a deploy lock. See [Deploy lifecycle](../deploy/DEPLOY_LIFECYCLE.md) |
-| **Deploy Panel (earlier REST pipeline)** | 5-step wizard: Diff → Package → Risk (drift check + BLOCKER/WARNING/INFO) → Approve → Deploy. Kept for history and the admin-only CLI — see [Earlier REST pipeline](../deploy/DEPLOYMENT.md) |
-| **Deploy History** | Permanent archive of every deployment — approval record, manifest, results, and pre/post target snapshots with inline diff viewer |
+| **Deploy (TM1 Git, preview)** | The one deploy flow. A release ships exactly one change set through TM1's built-in Git: test → close → commit → build release → review → approve → deploy → verify, with drift checks and a deploy lock. See [Deploy lifecycle](../deploy/DEPLOY_LIFECYCLE.md) |
+| **Deploy History** | Model deploy records and approvals first; earlier REST-pipeline package archives are kept in a collapsed section |
 | **MCP server (external LLM)** | A standard Model Context Protocol server (`tools/tm1mcp`, ~65 operations) that **external LLM agents connect to** — Claude Code or any MCP-compatible client — to build dimensions, cubes, rules and processes by conversation, change-set gated. See [`docs/ide/MCP_SERVER.md`](MCP_SERVER.md) |
 | **Lens Editor** *(in development)* | Build a Lens — a single-file HTML page on live TM1 data — and preview it in the IDE. Start from a copy of an example or another Lens, set its JSON config, and pick its icon or image for the Lens app home page. See [Workforce Lenses](../../lenses/workforce/README.md) |
 | **AI assistant (built-in)** | The IDE's inline helper generates views and subsets from a description (Anthropic API key) |
@@ -115,7 +114,7 @@ Five playlists, one theme each — build with AI, everyday development, governed
 
 | Tool | What it does |
 | --- | --- |
-| **Change Sets** | Popup (Clock icon) listing every change set for the server — active and deployed. Expand one to see its full change log grouped by action (rules saved, process created, element renamed, etc.), open any changed object directly, view a before/after diff inline, add a note, resume a closed change set, or hit **Release** to deploy everything changed since the last baseline in one go |
+| **Change Sets** | Popup (Clock icon) listing every change set for the server — active and deployed. Expand one to see its full change log grouped by action (rules saved, process created, element renamed, etc.), open any changed object directly, view a before/after diff inline, add a note, resume a closed change set, or hit **Release** to open the step-by-step release wizard for the latest closed change set |
 | **File Manager** | Browses the TM1 server's own `Files` file space over the REST API — breadcrumb folder navigation, upload/download/delete — for managing TI datasource files without touching the OS filesystem directly |
 | **Naming Dictionary** | A tab inside Catalog Admin: an editable input→output identifier map the code formatter uses to capitalise Rules/TI/MDX function names (e.g. `subnm` → `SUBNM`). Ships with IBM's default casing, supports custom entries per language, search/filter, import/export as JSON, reset to defaults |
 | **Transaction Log** | Side panel showing a cube's real transaction log — timestamp, user, old value → new value — either for the whole cube or filtered to one cell intersection (e.g. from the cell right-click menu's Log tab) |

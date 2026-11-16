@@ -497,8 +497,14 @@ export const useStore = create((set, get) => ({
   // A full-screen takeover, not a tab — the entire normal IDE (sidebar, tab
   // bar, every open editor) is hidden while this is set. Closing it restores
   // the IDE exactly as it was; tab/group state is untouched by this.
-  // Shape matches what DeployPanel already reads off a tab: { server, session?, release?, importDir? }
+  // Shape: { server, view? } — the deploy itself is the separate deployWizard surface.
   deployCenter: null,
   openDeployCenter:  (config) => set({ deployCenter: config }),
   closeDeployCenter: () => set({ deployCenter: null }),
+
+  // The one deploy surface. `{ release: true }` opens the latest closed change
+  // set; `{ session }` opens a specific change set.
+  deployWizard: null,
+  openDeployWizard:  (config = {}) => set({ deployWizard: config }),
+  closeDeployWizard: () => set({ deployWizard: null }),
 }))

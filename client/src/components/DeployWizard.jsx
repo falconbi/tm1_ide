@@ -51,8 +51,8 @@ function TestList({ title, meaning, results }) {
   )
 }
 
-export default function DeployWizard({ server, onClose, onOpenTests }) {
-  const [step,      setStep]      = useState(1)
+export default function DeployWizard({ server, onClose, onOpenTests, initialSession = null, release: releaseMode = false }) {
+  const [step,      setStep]      = useState(releaseMode ? 4 : 1)
   const [message,   setMessage]   = useState(`Deploy from ${server}`)
   const [servers,   setServers]   = useState([])
   const [target,    setTarget]    = useState('')
@@ -78,7 +78,7 @@ export default function DeployWizard({ server, onClose, onOpenTests }) {
   const latestClosed = (sessions ?? [])
     .filter(s => s.closed_at && !s.deployed_target && !s.deployed && s.commit_ref)
     .sort((a, b) => (a.closed_at < b.closed_at ? 1 : -1))[0] ?? null
-  const deployCtx = activeSession ?? latestClosed
+  const deployCtx = initialSession ?? (releaseMode ? latestClosed : activeSession ?? latestClosed)
 
   useEffect(() => { if (deployCtx?.id) setSessionId(deployCtx.id) }, [deployCtx?.id])
 
@@ -351,7 +351,10 @@ export default function DeployWizard({ server, onClose, onOpenTests }) {
               <div className="border border-border rounded-md p-3 space-y-3">
                 <div className="flex items-center gap-2">
                   <label className="text-xs text-muted-foreground w-16">Target</label>
-                  <select value={target} onChange={e => setTarget(e.target.value)} className={inputCls}>
+                  <select value={target} onChange={e => {
+                    setTarget(e.target.value)
+                    setRelease(null); setPrep(null); setApproval(null)
+                  }} className={inputCls}>
                     {servers.map(s => <option key={s} value={s} className="bg-background">{s}</option>)}
                     {servers.length === 0 && <option value="">(no other servers)</option>}
                   </select>
@@ -523,7 +526,7 @@ export default function DeployWizard({ server, onClose, onOpenTests }) {
               <div className="border border-border rounded-md p-3 space-y-3">
                 <div className="flex items-center gap-2">
                   <label className="text-xs text-muted-foreground w-16">Target</label>
-                  <select value={target} onChange={e => setTarget(e.target.value)} className={inputCls}>
+                  <select value={target} onChange={e => { setTarget(e.target.value); setDrift(null) }} className={inputCls}>
                     {servers.map(s => <option key={s} value={s} className="bg-background">{s}</option>)}
                   </select>
                   <button onClick={doDrift} disabled={busy === 'drift'} className={primaryBtn}>Check for drift</button>
