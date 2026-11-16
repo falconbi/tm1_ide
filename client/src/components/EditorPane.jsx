@@ -1,3 +1,4 @@
+import { apiFetch } from '@/lib/api'
 import { useEffect, useRef, useState, useCallback } from 'react'
 import MonacoEditor from '@monaco-editor/react'
 import { useStore } from '@/store'
@@ -197,7 +198,7 @@ function ElementPicker({ server, dim, value, onChange, onCommit }) {
     setLoading(true)
     try {
       const token = localStorage.getItem('tm1-token') ?? ''
-      const r = await fetch(
+      const r = await apiFetch(
         `/api/elements?server=${encodeURIComponent(server)}&dimension=${encodeURIComponent(dim)}`,
         { headers: { 'x-ide-token': token } }
       )
@@ -448,7 +449,7 @@ function RulesEditor({ tab, onCursor }) {
       const staticErrors = validateRulesSyntax(content, { version: serverVersion })
       let tm1Errors = []
       try {
-        const r = await fetch('/api/rules/check', {
+        const r = await apiFetch('/api/rules/check', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -587,7 +588,7 @@ function RulesEditor({ tab, onCursor }) {
           toast.success('Rules saved', { id })
           // Non-blocking reference integrity check — warnings shown after save
           const token = localStorage.getItem('tm1-token') ?? ''
-          fetch('/api/cube/rules/check-references', {
+          apiFetch('/api/cube/rules/check-references', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'x-ide-token': token },
             body: JSON.stringify({ server: tab.server, cube: tab.cube, rules: editor.getValue() }),

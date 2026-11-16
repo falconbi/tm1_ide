@@ -1,3 +1,4 @@
+import { apiFetch } from '@/lib/api'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Loader2, Sparkles, Pencil, Check, X, RefreshCw, AlertTriangle, Wand2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -27,7 +28,7 @@ export default function ProcessSummariesDialog({ open, onClose, server, cube, wr
     let cancelled = false
     ;(async () => {
       try {
-        const r = await fetch(`/api/process/summaries?server=${encodeURIComponent(server)}`, { headers: { 'x-ide-token': token() } })
+        const r = await apiFetch(`/api/process/summaries?server=${encodeURIComponent(server)}`, { headers: { 'x-ide-token': token() } })
         const d = await r.json()
         if (!r.ok || d.error) throw new Error(d.error || r.statusText)
         if (cancelled) return
@@ -60,7 +61,7 @@ export default function ProcessSummariesDialog({ open, onClose, server, cube, wr
   async function generate(name, force) {
     setBusy(name); setError(null)
     try {
-      const r = await fetch('/api/process/summary', {
+      const r = await apiFetch('/api/process/summary', {
         method: 'POST', headers: { 'Content-Type': 'application/json', 'x-ide-token': token() },
         body: JSON.stringify({ server, name, force }),
       })
@@ -90,7 +91,7 @@ export default function ProcessSummariesDialog({ open, onClose, server, cube, wr
   async function saveEdit(name) {
     setBusy(name); setError(null)
     try {
-      const r = await fetch('/api/process/summary', {
+      const r = await apiFetch('/api/process/summary', {
         method: 'PUT', headers: { 'Content-Type': 'application/json', 'x-ide-token': token() },
         body: JSON.stringify({ server, name, summary: draft }),
       })
