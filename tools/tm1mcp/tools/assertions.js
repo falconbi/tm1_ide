@@ -1,12 +1,13 @@
 'use strict'
 
 const { z } = require('zod')
+const guard = require('../guard')
 
 // ══════════════════════════════════════════════════════════════════════════════
 // ASSERTIONS
 // ══════════════════════════════════════════════════════════════════════════════
 
-function register(server, { client, assertions, runAssertions, ok, SERVER, AGENT_USER }) {
+function register(server, { client, assertions, runAssertions, ok, SERVER, AGENT_USER, policy }) {
     server.tool(
         'add_assertion',
         'Record an expected result for this model — an MDX query and the number it should return. ' +
@@ -29,15 +30,9 @@ function register(server, { client, assertions, runAssertions, ok, SERVER, AGENT
             const cl = require('../../../core/change_log')
             const sess = cl.getActiveSession(SERVER, AGENT_USER)
             const rec = await assertions.add(SERVER, { description, mdx, expected, tolerance, tags, kind, severity, why, author: AGENT_USER, changeSet: sess?.id ?? null })
-            let actual = null, error = null
-            try {
-                const r = await client().executeMDX(mdx, 5000)
-                actual = (r.Cells ?? []).reduce((s, x) => s + (x.Value ?? 0), 0)
-            } catch (e) { error = e.response?.data?.error?.message ?? e.message }
-            const pass = error == null && Math.abs(actual - rec.expected) <= rec.tolerance
             return ok({
                 added: rec.id,
-                check_now: error ? { error } : { actual, expected: rec.expected, pass },
+                next: `run_assertions with ids: [${rec.id}] to check it`,
             })
         }
     )
@@ -47,7 +42,13 @@ function register(server, { client, assertions, runAssertions, ok, SERVER, AGENT
         'List the stored assertions for this server — with `source`: "model" when read from the server\'s own ' +
         'Applications/Governance/Tests/assertions.json, "config" when falling back to config/assertions.json',
         {},
-        async () => ok(await assertions.list(SERVER))
+        async () => {
+            const { source, assertions: stored } = await assertions.list(SERVER)
+            const visible = stored.map(a => guard.cubesInMdx(a.mdx).some(cube => !guard.allowed(policy, 'cubes', cube))
+                ? { id: a.id, description: a.description, tags: a.tags ?? [], status: 'not visible', mdx: null }
+                : a)
+            return ok({ source, assertions: visible })
+        }
     )
 
     server.tool(
@@ -63,11 +64,12 @@ function register(server, { client, assertions, runAssertions, ok, SERVER, AGENT
         'Use this to self-check a build before closing the change set.',
         {
             tags: z.array(z.string()).optional().describe('Run only assertions with one of these tags'),
+            ids:  z.array(z.string()).optional().describe('Run only these assertion ids (for example the id returned by add_assertion)'),
         },
-        async ({ tags }) => {
+        async ({ tags, ids }) => {
             const { source, assertions: set } = await assertions.list(SERVER)
             if (!set.length) return ok(`No assertions stored for "${SERVER}" (source: ${source}). Add them with add_assertion.`)
-            return ok(await runAssertions(tags))
+            return ok(await runAssertions(tags, ids))
         }
     )
 }

@@ -88,12 +88,25 @@ function logChange(action, objectType, objectName, opts = {}) {
 
 // Run the server's stored assertions: execute each MDX, sum the returned cells,
 // compare to the expected value within tolerance.
-async function runAssertions(tags) {
+function assertionVisible(policy, mdx) {
+    return !guard.cubesInMdx(mdx).some(cube => !guard.allowed(policy, 'cubes', cube))
+}
+
+async function runAssertions(tags, ids = null) {
     const { source, assertions: stored } = await assertions.list(SERVER)
-    const set = stored.filter(a => !tags?.length || a.tags.some(t => tags.includes(t)))
+    const wanted = Array.isArray(ids) && ids.length ? new Set(ids) : null
+    const set = stored.filter(a => (!wanted || wanted.has(a.id)) &&
+        (!tags?.length || (a.tags ?? []).some(t => tags.includes(t))))
     const c = client()
     const results = []
     for (const a of set) {
+        // The stored MDX is data, not a tool argument, so check it against the
+        // same read policy here. A denied assertion is reported, never executed.
+        const denied = !assertionVisible(policy, a.mdx)
+        if (denied) {
+            results.push({ id: a.id, description: a.description, status: 'not visible' })
+            continue
+        }
         let actual = null, error = null
         try {
             const r = await c.executeMDX(a.mdx, 5000)
@@ -110,9 +123,10 @@ async function runAssertions(tags) {
     }
     return {
         source,
-        total:  results.length,
+        total:  results.filter(r => r.status !== 'not visible').length,
         passed: results.filter(r => r.pass).length,
-        failed: results.filter(r => !r.pass),
+        failed: results.filter(r => r.status !== 'not visible' && !r.pass),
+        not_visible: results.filter(r => r.status === 'not visible').length,
         results,
     }
 }
@@ -171,4 +185,4 @@ function assertTargetAllowed(target) {
     }
 }
 
-module.exports = { SERVER, SERVER_SOURCE, AGENT_USER, MODE, policy, identity, setBuilderLogin, client, ok, esc, logChange, runAssertions, requireWritable, requireChangeSet, assertTargetAllowed, targetAllowlist, explicitTargets, cl, assertions, lintRules, lintTI }
+module.exports = { SERVER, SERVER_SOURCE, AGENT_USER, MODE, policy, identity, setBuilderLogin, client, ok, esc, logChange, runAssertions, assertionVisible, requireWritable, requireChangeSet, assertTargetAllowed, targetAllowlist, explicitTargets, cl, assertions, lintRules, lintTI }

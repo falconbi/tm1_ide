@@ -456,10 +456,10 @@ so it's always clear which store the assertions were read from.
 
 | Tool | |
 |---|---|
-| `add_assertion` | `{ description, mdx, expected, tolerance?, tags? }` — stores it and runs it once so you know the query and value are right |
-| `list_assertions` | the stored set for this server |
+| `add_assertion` | `{ description, mdx, expected, tolerance?, tags? }` — stores it and returns the id plus the `run_assertions` command to check it (it does not execute arbitrary MDX as the builder) |
+| `list_assertions` | the stored set for this server; assertions whose MDX names a cube the read policy denies are listed as `status: not visible` with the MDX redacted |
 | `remove_assertion` | delete by id |
-| `run_assertions` | run all (or `{ tags: [...] }` for a subset) — returns `{ total, passed, failed[] }` with `expected` / `actual` / `diff` per failure |
+| `run_assertions` | run all, a tag subset, or `ids: [...]`; denied stored MDX is reported as `status: not visible` and never executed — returns `{ total, passed, failed[], not_visible, results[] }` |
 
 **`close_change_set` runs the assertions automatically** if any are stored, and reports
 `Assertions: N/M passing` plus the failing descriptions. It does not block the close — a
