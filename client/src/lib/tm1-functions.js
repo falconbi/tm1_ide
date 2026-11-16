@@ -5,7 +5,8 @@ import { getNamingMap } from '@/lib/formatters/naming.js'
 import { registerTM1Snippets } from '@/lib/tm1-snippets.js'
 import { MDX_FUNCTIONS_FLAT, MDX_KEYWORDS } from '@/lib/tm1-mdx-catalog.js'
 import { RULES_CATALOG, TI_CATALOG } from '@/lib/tm1-completion.js'
-import { catalogEntry } from '@/lib/catalog-runtime.js'
+import { catalogEntry, getRulesCatalog } from '@/lib/catalog-runtime.js'
+import { buildRulesFunctionPattern } from '@/lib/rules-highlight.js'
 
 
 // ── Monaco registration ───────────────────────────────────────────────────────
@@ -14,21 +15,11 @@ import { catalogEntry } from '@/lib/catalog-runtime.js'
 // getVersion: function that returns the connected server's product version (optional)
 let _tm1LanguageRegistered = false
 
-function registerMDXAndVariableCompletions(monaco, _getServer, _getVersion) {
-  // Monaco registers providers globally — only register the language, tokenizer,
-  // folding and snippets once app-wide, or every editor mount accumulates copies.
-  if (_tm1LanguageRegistered) return
-  _tm1LanguageRegistered = true
-  // ── Language registration + tokenizers ──────────────────────────────────────
-  // Function-name highlighting is built from the real catalog (not a short
-  // hand-picked list) so every Rules function gets the same 'type' token —
-  // previously only ~10 names (DB, ATTRS, STET, ...) were ever highlighted.
-  const rulesFnNames = Object.keys(RULES_CATALOG).sort((a, b) => b.length - a.length)
-  const rulesFnPattern = new RegExp(`\\b(${rulesFnNames.join('|')})\\b`, 'i')
+let _monaco = null
 
-  monaco.languages.register({ id: 'tm1rules' })
-  monaco.languages.setLanguageConfiguration('tm1rules', { comments: { lineComment: '#' } })
-  monaco.languages.setMonarchTokensProvider('tm1rules', {
+function installRulesTokensProvider() {
+  const rulesFnPattern = buildRulesFunctionPattern(getRulesCatalog() ?? RULES_CATALOG)
+  _monaco.languages.setMonarchTokensProvider('tm1rules', {
     tokenizer: {
       root: [
         [/#.*/, 'comment'],
@@ -43,6 +34,24 @@ function registerMDXAndVariableCompletions(monaco, _getServer, _getVersion) {
       ]
     }
   })
+}
+
+export function refreshRulesFunctionPattern() {
+  if (_monaco && _tm1LanguageRegistered) installRulesTokensProvider()
+}
+
+function registerMDXAndVariableCompletions(monaco, _getServer, _getVersion) {
+  // Monaco registers providers globally — only register the language, tokenizer,
+  // folding and snippets once app-wide, or every editor mount accumulates copies.
+  if (_tm1LanguageRegistered) return
+  _tm1LanguageRegistered = true
+  // ── Language registration + tokenizers ──────────────────────────────────────
+  // Function-name highlighting is built from the effective catalog (not a short
+  // hand-picked list) so every Rules function gets the same 'type' token.
+  _monaco = monaco
+  monaco.languages.register({ id: 'tm1rules' })
+  monaco.languages.setLanguageConfiguration('tm1rules', { comments: { lineComment: '#' } })
+  installRulesTokensProvider()
 
   // Folding: #Region / #EndRegion blocks (PAW-style)
   monaco.languages.registerFoldingRangeProvider('tm1rules', {

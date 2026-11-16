@@ -174,6 +174,8 @@ const [showCatalog, setShowCatalog]           = useState(false)
     import('@/lib/tm1-completion').then(({ RULES_CATALOG, TI_CATALOG }) =>
       import('@/lib/catalog-runtime').then(({ initEffectiveCatalogs }) =>
         initEffectiveCatalogs({ rules: RULES_CATALOG, ti: TI_CATALOG })
+          .then(() => import('@/lib/tm1-functions'))
+          .then(({ refreshRulesFunctionPattern }) => refreshRulesFunctionPattern())
       )
     )
   }, [])

@@ -211,7 +211,7 @@ whether `shared/tm1-function-catalog.json` already has (or should have) it.
 | Consumer | File | What it derives |
 | --- | --- | --- |
 | `RULES_CATALOG` / `TI_CATALOG` | `client/src/lib/tm1-completion.js` | Filters the JSON by `language`; drives completion, the bare-word snippet list, and signature help for both `tm1rules`/`tm1ti` |
-| Monarch syntax highlighting | `client/src/lib/tm1-functions.js` | Builds the `tm1rules` function-name regex from `Object.keys(RULES_CATALOG)` at register time — every cataloged function gets highlighted, not a fixed ~10-name list |
+| Monarch syntax highlighting | `client/src/lib/tm1-functions.js` | Builds the `tm1rules` function-name regex from the effective `getRulesCatalog()` and refreshes after Catalog Admin overrides load — every cataloged function gets highlighted |
 | Hover | `client/src/lib/tm1-functions.js` | `catalogHover` reads `catalogEntry()` (below) directly — no separate fallback catalog |
 | `core/rules-lint.js` / `core/ti-lint.js` | server-side, CJS | `require()` the JSON directly and compute each `SIG` arity table (`{min, max}`) from `params.length` + the variadic/`variadicMin` rule — not hand-transcribed |
 | `isBuiltInTM1Function` | `client/src/lib/ti-validator.js` | `Object.prototype.hasOwnProperty.call(TI_CATALOG, name.toUpperCase())` — no separate allowlist |
