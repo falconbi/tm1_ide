@@ -127,12 +127,13 @@ export default function LensEditor({ tab }) {
   const [folder, setFolder] = useState('')
   const [title, setTitle] = useState('')
   const [look, setLook] = useState({ icon: '', color: '', image: '' })
-  // A new Lens can start from a COPY of an example or of an existing Lens —
-  // never linked: once copied, the code is this Lens's own.
-  const [starts, setStarts] = useState({ examples: [], lenses: [] })
+  // A new Lens starts blank or from one of your own Lenses. Patterns are
+  // read-only demonstrations, never copied into the model.
+  const [starts, setStarts] = useState({ patterns: [], lenses: [] })
   const [startError, setStartError] = useState('')
   const [startsReload, setStartsReload] = useState(0)
   const [started, setStarted] = useState(!!tab.name)   // a new Lens opens on its start page
+  const [patternView, setPatternView] = useState(null)
   // The Lens's config (Config tab): JSON the Lens reads with Lens.config(). The
   // preview always runs with the last config that parsed.
   const [configText, setConfigText] = useState('{\n}\n')
@@ -177,7 +178,7 @@ export default function LensEditor({ tab }) {
       .catch(e => setStartError(e.message))
     if (!tab.name) {
       readJson('/api/lens-patterns')
-        .then(d => setStarts(s => ({ ...s, examples: Array.isArray(d) ? d : [] })))
+        .then(d => setStarts(s => ({ ...s, patterns: Array.isArray(d) ? d : [] })))
         .catch(e => setStartError(e.message))
       readJson(`/api/lenses?server=${encodeURIComponent(tab.server)}`)
         .then(d => setStarts(s => ({ ...s, lenses: Array.isArray(d) ? d : [] })))
@@ -274,22 +275,28 @@ export default function LensEditor({ tab }) {
   const refreshPreview = () => setPreviewKey(k => k + 1)
 
 
-  const startFrom = async (pick) => {
-    if (!pick) return
-    const [kind, src] = [pick.slice(0, pick.indexOf(':')), pick.slice(pick.indexOf(':') + 1)]
+  const startFrom = async (src) => {
+    if (!src) return
     try {
-      const url = kind === 'example' ? `/api/lens-patterns/${encodeURIComponent(src)}` : `/api/lenses/${encodeURIComponent(src)}?server=${encodeURIComponent(tab.server)}&_=${Date.now()}`
-      const r = await fetch(url, { headers: { 'x-ide-token': token() } })
+      const r = await fetch(`/api/lenses/${encodeURIComponent(src)}?server=${encodeURIComponent(tab.server)}`, { headers: { 'x-ide-token': token() }, cache: 'no-store' })
       const d = await r.json()
       if (!r.ok) throw new Error(d.error || r.statusText)
-      const cfg = kind === 'example' ? (d.meta?.example ?? {}) : (d.meta?.config ?? {})
+      const cfg = d.meta?.config ?? {}
       setHtml(d.html)
       setConfigText(JSON.stringify(cfg, null, 2) + '\n'); setGoodConfig(cfg)
       setPreviewKey(k => k + 1)
-      const label = kind === 'example' ? (d.meta?.title ?? src) : (d.meta?.title || src)
-      setMessage({ kind: 'ok', text: `Started from a copy of "${label}". It's this Lens's own code now — change it freely; the original is never affected.` })
+      setMessage({ kind: 'ok', text: `Started from a copy of "${d.meta?.title || src}". It's this Lens's own code now — change it freely; the original is never affected.` })
       setStarted(true)
     } catch (e) { setMessage({ kind: 'error', text: e.message }) }
+  }
+
+  const openPattern = async (name) => {
+    try {
+      const r = await fetch(`/api/lens-patterns/${encodeURIComponent(name)}`, { headers: { 'x-ide-token': token() } })
+      const d = await r.json()
+      if (!r.ok) throw new Error(d.error || r.statusText)
+      setPatternView(d)
+    } catch (e) { setMessage({ kind: 'error', text: `Couldn't load the pattern: ${e.message}` }) }
   }
 
   const handleEditorChange = useCallback((value) => {
@@ -310,7 +317,7 @@ export default function LensEditor({ tab }) {
         <div className="mx-auto max-w-4xl px-6 py-8 space-y-7">
           <div>
             <h2 className="text-xl font-semibold">New Lens</h2>
-            <p className="text-sm text-muted-foreground">Start from a blank Lens or a copy — a copy is yours to change; the original is never affected.</p>
+            <p className="text-sm text-muted-foreground">Start blank, or from one of your own Lenses — a copy is yours to change; the original is never affected.</p>
           </div>
           {message && <div className="text-sm text-red-600">{message.text}</div>}
           {startError && (
@@ -324,18 +331,33 @@ export default function LensEditor({ tab }) {
           </div>
           {starts.lenses.length > 0 && (
             <div className="space-y-2">
-              <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Copy one of yours · {tab.server}</h3>
+              <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Start from one of your Lenses · {tab.server}</h3>
               <div className={grid}>{starts.lenses.map(l => (
-                <Card key={l.name} onClick={() => startFrom(`lens:${l.name}`)} tile={<LensTile icon={l.icon} color={l.color} image={l.image} size={32} />} title={l.title || l.name} text={l.description || l.name} />
+                <Card key={l.name} onClick={() => startFrom(l.name)} tile={<LensTile icon={l.icon} color={l.color} image={l.image} size={32} />} title={l.title || l.name} text={l.description || l.name} />
               ))}</div>
             </div>
           )}
-          {starts.examples.length > 0 && (
+          {starts.patterns.length > 0 && (
             <div className="space-y-2">
-              <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Copy an example</h3>
-              <div className={grid}>{starts.examples.map(x => (
-                <Card key={x.name} onClick={() => startFrom(`example:${x.name}`)} tile={<LensTile icon={x.icon} color={x.color} size={32} />} title={x.title} text={x.description} />
+              <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Patterns</h3>
+              <p className="text-xs text-muted-foreground">How each kind of screen is built. Ask the AI to build yours from them.</p>
+              <div className={grid}>{starts.patterns.map(x => (
+                <Card key={x.name} onClick={() => openPattern(x.name)} tile={<LensTile icon={x.icon} color={x.color} size={32} />} title={x.title} text={x.description} />
               ))}</div>
+            </div>
+          )}
+          {patternView && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-6" onClick={() => setPatternView(null)}>
+              <div className="flex max-h-[85vh] w-full max-w-3xl flex-col overflow-hidden rounded-lg border border-border bg-background shadow-2xl" onClick={e => e.stopPropagation()}>
+                <div className="border-b border-border px-4 py-3">
+                  <h3 className="text-sm font-semibold">{patternView.meta?.title ?? patternView.meta?.name}</h3>
+                  <p className="mt-1 text-xs text-muted-foreground">{patternView.meta?.description}</p>
+                </div>
+                <pre className="flex-1 overflow-auto whitespace-pre-wrap break-words bg-muted/20 p-4 text-[11px]">{patternView.html}</pre>
+                <div className="border-t border-border px-4 py-2 text-right">
+                  <button onClick={() => setPatternView(null)} className="rounded border border-border px-2.5 py-1 text-xs hover:bg-muted">Close</button>
+                </div>
+              </div>
             </div>
           )}
         </div>

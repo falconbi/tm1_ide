@@ -6,7 +6,7 @@ const { lensWrites } = require('../core/lens_bridge')
 
 // There are no prebuilt templates: every Lens's code is its own, stored in the
 // model. The patterns are worked demonstrations to learn from.
-test('the patterns list with what they show and an example config; each has code; odd names are refused', () => {
+test('the patterns list with what they show and a sample config; each has code; odd names are refused', () => {
   const list = listPatterns()
   assert.ok(list.length >= 10)
   for (const e of list) for (const k of ['name', 'title', 'description', 'sample']) assert.ok(e[k], `${e.name}: ${k}`)

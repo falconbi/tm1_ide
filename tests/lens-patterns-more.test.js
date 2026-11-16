@@ -68,7 +68,7 @@ const common = (method) => {
   return undefined
 }
 
-test('every pattern has its code, what it shows and an example config', () => {
+test('every pattern has its code, what it shows and a sample config', () => {
   const list = listTemplates()
   for (const name of ['input-form', 'line-item-form', 'assumptions-table', 'dashboard', 'variance-report', 'detail-list', 'app-home', 'process-page', 'narrative-document', 'disclosure-accounts']) {
     const t = list.find(x => x.name === name)
