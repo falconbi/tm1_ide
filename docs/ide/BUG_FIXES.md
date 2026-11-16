@@ -12,6 +12,7 @@ commits that mixed a fix into a feature are included too. New features are not l
 
 ### 2026-11-16
 
+- **grid** — With two grids open (split panes), Ctrl+F focused every toolbar's search and Ctrl+Shift+A fitted every grid. The shortcuts now act only when focus is inside that grid's wrapper
 - **pivot** — A dimension name containing `]` was read only up to the first bracket (`dimOf`), so its formats and labels were attached to the wrong dimension; it now uses the same `]]`-aware parser as `elementOf`
 - **pivot** — Any formatted string with a colon as its second character (`A:B`, `1:30`) was treated as a TM1 type prefix and lost its first two characters. Only known type letters (`c`, `n`, `s`), and only for a numeric cell, are stripped now
 - **pivot** — A rejected immediate write restored `cell.v` but not `cell.d`, so the number TM1 refused stayed on screen until the next data load. The error branch now restores the old display text too; the jsdom edit test asserts it

@@ -1366,6 +1366,7 @@ export default function ViewEditor({ tab }) {
 
     // Flat (fallback) grid state — search + freeze + persisted widths
     const flatGridRef = useRef(null)
+    const flatRootRef = useRef(null)
     const flatStorageKey = tab.server && tab.cube ? `ve-flat::${tab.server}::${tab.cube}::${tab.viewName || 'adhoc'}` : undefined
     const [flatQuickFilter, setFlatQuickFilter] = useState('')
     const [flatFreezeTop, setFlatFreezeTop] = useState(false)
@@ -2776,9 +2777,10 @@ export default function ViewEditor({ tab }) {
             ) : !parsed || parsed.grid.length === 0 ? (
                 <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm">No data returned</div>
             ) : (
-                <div className={cn('flex flex-col flex-1 min-h-0', cn(app.settings.headerTint && 'grid-wrap-accent', app.settings.headerBold && 'grid-wrap-bold'))} style={app.wrapperStyle}>
+                <div ref={flatRootRef} className={cn('flex flex-col flex-1 min-h-0', cn(app.settings.headerTint && 'grid-wrap-accent', app.settings.headerBold && 'grid-wrap-bold'))} style={app.wrapperStyle}>
                     <GridToolbar
                         apiRef={flatGridRef}
+                        scopeRef={flatRootRef}
                         onFit={() => flatGridRef.current?.api?.autoSizeAllColumns?.()}
                         onReset={handleFlatResetWidths}
                         onSearch={handleFlatSearch}

@@ -29,6 +29,7 @@ export default function PivotGrid({
     storageKey, dark = false, appearance,
 }) {
     const hostRef  = useRef(null)
+    const rootRef  = useRef(null)
     const gridRef  = useRef(null)
     const apiRef   = useRef({ api: null })
     const own      = useGridAppearance()
@@ -62,9 +63,10 @@ export default function PivotGrid({
     }, [totals, colTotals, dark, rowNames, app.refreshKey, app.settings.zebra]) // eslint-disable-line react-hooks/exhaustive-deps
 
     return (
-        <div className={cn('flex flex-col h-full min-h-0', app.settings.headerTint && 'grid-wrap-accent', app.settings.headerBold && 'grid-wrap-bold')} style={app.wrapperStyle}>
+        <div ref={rootRef} className={cn('flex flex-col h-full min-h-0', app.settings.headerTint && 'grid-wrap-accent', app.settings.headerBold && 'grid-wrap-bold')} style={app.wrapperStyle}>
             <GridToolbar
                 apiRef={apiRef}
+                scopeRef={rootRef}
                 onFit={() => gridRef.current?.fitColumns()}
                 onReset={() => gridRef.current?.resetWidths()}
                 onSearch={text => { gridRef.current?.quickFilter(text); if (text) setFrozen(false) }}

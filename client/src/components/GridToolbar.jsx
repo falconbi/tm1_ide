@@ -7,6 +7,7 @@
  *
  * Props:
  *   apiRef           ref → { current: { api } }  (used for default fit/reset/export)
+ *   scopeRef         ref to the grid wrapper — shortcuts only act when focus is inside it
  *   onFit            optional — override fit behaviour
  *   onReset          optional — grid handles clearing its own saved widths
  *   onSearch(text)   sets the grid's quick filter
@@ -21,6 +22,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Search, X, Maximize2, RefreshCw, Pin, PinOff, Download, Palette, Check } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { inGridScope } from '@/lib/grid-shortcuts'
 
 const BTN = 'flex items-center gap-1 px-1.5 py-0.5 rounded border border-border hover:bg-muted transition-colors text-muted-foreground hover:text-foreground'
 
@@ -150,6 +152,7 @@ function AppearancePopover({ appearance }) {
 
 export default function GridToolbar({
   apiRef,
+  scopeRef,
   onFit,
   onReset,
   onSearch,
@@ -168,6 +171,7 @@ export default function GridToolbar({
 
   useEffect(() => {
     const onKey = (e) => {
+      if (!inGridScope(scopeRef?.current, e)) return
       const ae = document.activeElement
       const typing = ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.isContentEditable)
 
@@ -186,7 +190,7 @@ export default function GridToolbar({
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [apiRef, onFit])
+  }, [apiRef, onFit, scopeRef])
 
   const handleFit = () => {
     if (onFit) onFit()

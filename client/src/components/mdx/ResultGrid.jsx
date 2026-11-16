@@ -394,6 +394,7 @@ export default function ResultGrid({ axes, cells, truncated, onReady, server, cu
       </div>
       <GridToolbar
         apiRef={gridRef}
+        scopeRef={gridWrapRef}
         onFit={handleFit}
         onReset={handleResetWidths}
         onSearch={handleSearch}
