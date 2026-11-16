@@ -2880,6 +2880,7 @@ app.post('/api/deploy/git/execute', async (req, res) => {
         const { target, branch, source, session } = req.body
         if (!target) return res.status(400).json({ error: 'target required' })
         const result = await execute(target, { branch, token: process.env.TM1_GIT_TOKEN, ideToken: req.ideToken, source, by: req.user, session })
+        if (result?.missingSource) return res.status(400).json({ error: result.error })
         if (result?.approvalSession && result?.executed && result?.controlOk) try { cl.markSessionDeployed(result.approvalSession, target) } catch { /* link is best-effort */ }
         res.json(result)
     } catch (e) { res.status(500).json({ error: e.message }) }

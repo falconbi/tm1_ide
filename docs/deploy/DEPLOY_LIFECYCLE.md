@@ -7,7 +7,11 @@ Plain-English record of the agreed end-to-end deployment model. Source decisions
 
 Found by code review, not by a failed deploy. Each line moves to **Fixed** as the fix lands.
 
-- Step 2 — deploy `source` was not tied to the approved change set; reconcile/control checks could be skipped.
+**Fixed**
+- Step 2 — the approval's linked change set now supplies the authoritative `source`; source mismatch is refused, source is required in release-only mode, and reconcile errors/skips make `controlOk` false with reasons.
+
+**Still open**
+
 - Step 3 — attribute values were not written to the change set; the manifest missed subset/view/chore deletes and read attribute fields backwards.
 - Step 4 — an unrecognised pull-plan operation was ignored instead of refusing the deploy.
 - Step 5 — first pull did not record the target's deployed commit, so the next release had no anchor.
@@ -27,7 +31,7 @@ Found by code review, not by a failed deploy. Each line moves to **Fixed** as th
    else, the deploy refuses.
 2. Nothing reaches a target without a recorded **approval** bound to the exact
    commit — non-optional, enforced server-side.
-3. Every deploy runs **control checks** on the target and records the result.
+3. Every deploy runs **control checks** on the target and records the result. The approved change set supplies the source used for reconcile/assertions; a caller cannot substitute another source, and reconcile errors or skipped deletes make the deploy not-clean.
 4. **Drift** is measured against what the target last received (the IDE-recorded
    commit), never TM1's own `DeployedCommit`.
 5. **Drift pauses deploys** — the fix is to **re-apply the change on DEV in a change

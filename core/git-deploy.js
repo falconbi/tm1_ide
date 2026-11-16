@@ -169,6 +169,27 @@ async function execute(target, { branch = 'dev', token, gitUser = gitIdentity.us
     out.approvedAt  = approval.approved_at
     out.approvalSession = approval.session ?? null
 
+    // The approval's linked change set is the authoritative source. If the approval
+    // has no linked change set (release mode), the caller must supply the source.
+    const linkedSession = approval.session ? cl.getSession(approval.session) : null
+    const approvedSource = linkedSession?.server ?? null
+    if (approvedSource) {
+        if (source && source !== approvedSource) {
+            out.executed = false
+            out.refused = true
+            out.error = 'source does not match the approved change set'
+            return out
+        }
+        source = approvedSource
+        out.source = source
+    } else if (!source) {
+        out.executed = false
+        out.refused = true
+        out.missingSource = true
+        out.error = 'source is required when the approval has no linked change set'
+        return out
+    }
+
     // Deploy lock — one deploy at a time on this target, held in the target's own
     // model. This is also the model-writability gate: if the target's model cannot
     // be written, the deploy stops here with a clear message (never silent).
@@ -286,36 +307,43 @@ async function execute(target, { branch = 'dev', token, gitUser = gitIdentity.us
         // (#6) — so the control checks below run against the fully-applied state.
         // Scoped strictly to the change set linked to this approval (never from the
         // request body; a missing session is reported, never silently skipped).
-        if (source) {
-            let manifest = { deletes: [], dims: [], attrElements: [], wholesaleDims: [] }
-            if (approval.session) {
-                try { manifest = require('./change_log').getSessionManifest(approval.session) || manifest } catch { /* no manifest */ }
-            } else {
-                out.reconcileWarning = 'This approval has no linked change set — reconcile scope is unknown and was skipped (not silently).'
-            }
-            out.manifest = manifest
-            try {
-                const { reconcile } = require('./git-reconcile')
-                out.reconcile = await reconcile(source, target, { ideToken, deletes: manifest.deletes, dims: manifest.dims, attrElements: manifest.attrElements })
-            } catch (e) {
-                out.reconcile = { error: e.message }
-            }
+        let manifest = { deletes: [], dims: [], attrElements: [], wholesaleDims: [] }
+        if (approval.session) {
+            try { manifest = require('./change_log').getSessionManifest(approval.session) || manifest } catch { /* no manifest */ }
+        } else {
+            out.reconcileWarning = 'This approval has no linked change set — reconcile scope is unknown and was skipped (not silently).'
+        }
+        out.manifest = manifest
+        try {
+            const { reconcile } = require('./git-reconcile')
+            out.reconcile = await reconcile(source, target, { ideToken, deletes: manifest.deletes, dims: manifest.dims, attrElements: manifest.attrElements })
+        } catch (e) {
+            out.reconcile = { error: e.message }
         }
 
         // Control checks on the target — invariant tests, valid on any data.
-        if (source) {
-            try {
-                const v = await assertions.run(source, { targetServer: target, kind: 'control', ideToken })
-                out.verification = {
-                    source, total: v.total, passed: v.passed, failed: v.failed.length,
-                    failures: v.failed.map(f => ({ id: f.id, description: f.description, expected: f.expected, actual: f.actual, error: f.error ?? null })),
-                    results: v.results.map(r => ({ id: r.id, description: r.description, expected: r.expected, actual: r.actual, pass: r.pass, error: r.error ?? null })),
-                }
-                out.controlOk = v.failed.length === 0
-            } catch (e) {
-                out.verification = { error: e.message }
-                out.controlOk = false
+        try {
+            const v = await assertions.run(source, { targetServer: target, kind: 'control', ideToken })
+            out.verification = {
+                source, total: v.total, passed: v.passed, failed: v.failed.length,
+                failures: v.failed.map(f => ({ id: f.id, description: f.description, expected: f.expected, actual: f.actual, error: f.error ?? null })),
+                results: v.results.map(r => ({ id: r.id, description: r.description, expected: r.expected, actual: r.actual, pass: r.pass, error: r.error ?? null })),
             }
+            out.controlOk = v.failed.length === 0
+        } catch (e) {
+            out.verification = { error: e.message }
+            out.controlOk = false
+        }
+        const controlReasons = []
+        if (out.reconcile?.error) controlReasons.push(`reconcile: ${out.reconcile.error}`)
+        if (out.reconcile?.deletes?.error) controlReasons.push(`reconcile deletes: ${out.reconcile.deletes.error}`)
+        for (const x of out.reconcile?.deletes?.flagged ?? []) controlReasons.push(`delete skipped: ${x.type} ${x.name} — ${x.error}`)
+        if (out.reconcile?.attributeValues?.error) controlReasons.push(`reconcile attribute values: ${out.reconcile.attributeValues.error}`)
+        for (const x of out.reconcile?.attributeValues?.errors ?? []) controlReasons.push(`attribute sync ${x.dim}: ${x.error}`)
+        for (const x of out.reconcile?.attributeValues?.flagged ?? []) controlReasons.push(`attribute sync ${x.dim}: ${x.error}`)
+        if (controlReasons.length) {
+            out.controlOk = false
+            out.controlReasons = controlReasons
         }
         // A deploy's own signals override the assertion verdict: a subset/view apply
         // that failed, an object that did not land, or an errored verification is
