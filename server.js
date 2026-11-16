@@ -93,12 +93,18 @@ const PAW_LOGIN_SERVER = process.env.PAW_LOGIN_SERVER
 // provider in .env (AI_PROVIDER + AI_API_KEY + optional AI_MODEL/AI_BASE_URL).
 // Legacy ANTHROPIC_API_KEY is still honoured so an existing .env keeps working.
 
-const app  = express()
 const PORT = process.env.PORT || 8083
 // TM1 IDE is a local single-user developer tool — bind loopback only (see SECURITY.md).
 // Override with HOST=0.0.0.0 only if you deliberately need LAN access and understand
 // that the browser<->server leg is then plaintext HTTP with no transport security.
 const HOST = process.env.HOST || '127.0.0.1'
+
+const IDE_LOGIN    = String(process.env.IDE_LOGIN || 'auto').toLowerCase()
+const LOCAL_ONLY   = ['127.0.0.1', 'localhost', '::1'].includes(HOST)
+const LOGIN_REQUIRED = IDE_LOGIN === 'always' || !LOCAL_ONLY
+
+function createApp() {
+const app  = express()
 
 // ── IDE sign-in (Architect model) ─────────────────────────────────────────────
 // IDE_LOGIN=auto (default): no IDE login when the IDE listens on this machine only
@@ -107,9 +113,6 @@ const HOST = process.env.HOST || '127.0.0.1'
 //   the network could reach stored SQL logins, the AI key and change history.
 // IDE_LOGIN=always: require the IDE sign-in even when local (e.g. a shared PC).
 // There is deliberately no "never" for a network-exposed IDE.
-const IDE_LOGIN    = String(process.env.IDE_LOGIN || 'auto').toLowerCase()
-const LOCAL_ONLY   = ['127.0.0.1', 'localhost', '::1'].includes(HOST)
-const LOGIN_REQUIRED = IDE_LOGIN === 'always' || !LOCAL_ONLY
 const isLoopbackReq = (req) => ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(req.socket.remoteAddress)
 
 // ── Login rate limit ──────────────────────────────────────────────────────────
@@ -3618,23 +3621,32 @@ app.get('/{*path}', (req, res) => {
     res.sendFile(path.join(__dirname, 'static', 'index.html'))
 })
 
-app.listen(PORT, HOST, () => {
-    const shown = (HOST === '0.0.0.0' ? `all interfaces on :${PORT} (LAN-exposed — no TLS)` : `http://${HOST}:${PORT}`)
-        + (LOGIN_REQUIRED ? ' · IDE sign-in required' : ' · local only, no IDE sign-in (sign in per server)')
-    console.log(`TM1 IDE running at ${shown}`)
-})
-
-// HTTPS listener for embedding lenses in HTTPS hosts (e.g. PAW over HTTPS): a
-// self-signed cert in config/certs/ide-{cert,key}.pem. Same app, so /lenses/...
-// is served on both ports. Browsers must be told to trust the cert once.
-const HTTPS_PORT = parseInt(process.env.HTTPS_PORT || '8443', 10)
-try {
-    const https = require('https')
-    const key  = fs.readFileSync(path.join(__dirname, 'config', 'certs', 'ide-key.pem'))
-    const cert = fs.readFileSync(path.join(__dirname, 'config', 'certs', 'ide-cert.pem'))
-    https.createServer({ key, cert }, app).listen(HTTPS_PORT, HOST, () => {
-        console.log(`TM1 IDE HTTPS (self-signed) at https://${HOST}:${HTTPS_PORT} — /lenses/... for PAW embedding`)
-    })
-} catch (e) {
-    console.warn(`HTTPS listener not started: ${e.message} — generate config/certs/ide-{cert,key}.pem to enable`)
+return app
 }
+
+const app = createApp()
+
+if (require.main === module) {
+    app.listen(PORT, HOST, () => {
+        const shown = (HOST === '0.0.0.0' ? `all interfaces on :${PORT} (LAN-exposed — no TLS)` : `http://${HOST}:${PORT}`)
+            + (LOGIN_REQUIRED ? ' · IDE sign-in required' : ' · local only, no IDE sign-in (sign in per server)')
+        console.log(`TM1 IDE running at ${shown}`)
+    })
+
+    // HTTPS listener for embedding lenses in HTTPS hosts (e.g. PAW over HTTPS): a
+    // self-signed cert in config/certs/ide-{cert,key}.pem. Same app, so /lenses/...
+    // is served on both ports. Browsers must be told to trust the cert once.
+    const HTTPS_PORT = parseInt(process.env.HTTPS_PORT || '8443', 10)
+    try {
+        const https = require('https')
+        const key  = fs.readFileSync(path.join(__dirname, 'config', 'certs', 'ide-key.pem'))
+        const cert = fs.readFileSync(path.join(__dirname, 'config', 'certs', 'ide-cert.pem'))
+        https.createServer({ key, cert }, app).listen(HTTPS_PORT, HOST, () => {
+            console.log(`TM1 IDE HTTPS (self-signed) at https://${HOST}:${HTTPS_PORT} — /lenses/... for PAW embedding`)
+        })
+    } catch (e) {
+        console.warn(`HTTPS listener not started: ${e.message} — generate config/certs/ide-{cert,key}.pem to enable`)
+    }
+}
+
+module.exports = { app, createApp }
