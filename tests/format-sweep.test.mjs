@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { applyTm1Format } from '../client/src/lib/tm1-rule-parser.js'
 
 // Scan the baseline for strings that look like TM1/Excel number formats and
@@ -13,22 +13,29 @@ function looksLikeFormat(s) {
   return FORMAT_RX.test(s) && /[#0]/.test(s) || s.startsWith('@')
 }
 
+const BASELINE = '.tm1baseline/TM1_Test_DEV.json'
+const skip = !existsSync(BASELINE) && `needs ${BASELINE} (private, git-ignored)`
 let formats = []
-try {
-  const d = JSON.parse(readFileSync('.tm1baseline/TM1_Test_DEV.json', 'utf8'))
-  const seen = new Set()
-  const walk = (o) => {
-    if (o == null) return
-    if (Array.isArray(o)) { o.forEach(walk); return }
-    if (typeof o === 'object') { for (const v of Object.values(o)) walk(v); return }
-    if (typeof o === 'string' && looksLikeFormat(o) && !seen.has(o)) { seen.add(o); formats.push(o) }
-  }
-  walk(d)
-} catch { /* baseline missing — run with an empty set */ }
+let parseError = null
+if (!skip) {
+  try {
+    const d = JSON.parse(readFileSync(BASELINE, 'utf8'))
+    const seen = new Set()
+    const walk = (o) => {
+      if (o == null) return
+      if (Array.isArray(o)) { o.forEach(walk); return }
+      if (typeof o === 'object') { for (const v of Object.values(o)) walk(v); return }
+      if (typeof o === 'string' && looksLikeFormat(o) && !seen.has(o)) { seen.add(o); formats.push(o) }
+    }
+    walk(d)
+  } catch (e) { parseError = e }
+}
 
 const VALUES = [0, 1, 1234.5, -1234.5, 0.5, 9999999, null]
 
-test(`applyTm1Format over ${formats.length} format strings found in the baseline`, () => {
+test('applyTm1Format over format strings found in the baseline', { skip }, () => {
+  if (parseError) throw new Error(`Could not read ${BASELINE}: ${parseError.message}`)
+  assert.ok(formats.length > 0, `${BASELINE} contained no format strings — check the fixture`)
   for (const fmt of formats) {
     for (const v of VALUES) {
       let out
