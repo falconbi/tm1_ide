@@ -793,7 +793,7 @@ function pivot(el, cfg = {}) {
     lastMdx = mdx
     const r = await window.lensBridge.call('execMDX', { mdx })
     if (r && r.truncated) throw new Error('This layout returns more than the cell limit — filter it down or move a dimension to filters.')
-    return P.cellsetToPivot(r, { formatMap: cfg.formats || {} })
+    return P.cellsetToPivot(r, { formatMap: cfg.formats || {}, measureDimension: cfg.measureDimension || null })
   }
   async function treesFor(dims) {
     const els = await Promise.all(dims.map(tree))

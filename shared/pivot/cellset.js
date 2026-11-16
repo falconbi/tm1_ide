@@ -24,10 +24,12 @@ export function elementOf(uniqueName, fallback) {
 }
 
 // a format attribute for one member: formatMap = { dim: { element: '#,##0.00' } }
-function formatOf(dim, elem, formatMap) {
+function formatOf(dim, elem, formatMap, measureDimension = null) {
     if (!elem) return null
     if (formatMap[dim]?.[elem]) return formatMap[dim][elem]
-    for (const d of Object.keys(formatMap)) { const f = formatMap[d]?.[elem]; if (typeof f === 'string' && f) return f }
+    // A measure can be named the same as an element in another dimension. Only
+    // the named measure dimension is a valid fallback; never "any dimension".
+    if (measureDimension && formatMap[measureDimension]?.[elem]) return formatMap[measureDimension][elem]
     return null
 }
 
@@ -36,7 +38,7 @@ const isEmpty = v => v == null || v === 0 || (typeof v === 'string' && (v.trim()
 // options: formatMap, pageMembers (filter members, used for formats too),
 // suppressZeros 'none' | 'rows' | 'columns' | 'all' (client-side, on top of NON EMPTY),
 // useFormat (default true)
-export function cellsetToPivot(cellset, { formatMap = {}, pageMembers = [], suppressZeros = 'none', useFormat = true } = {}) {
+export function cellsetToPivot(cellset, { formatMap = {}, pageMembers = [], suppressZeros = 'none', useFormat = true, measureDimension = null } = {}) {
     const colAxis = cellset?.Axes?.find(a => a.Ordinal === 0) ?? cellset?.Axes?.[0]
     if (!colAxis) return null
     const rowAxis = cellset.Axes.find(a => a.Ordinal === 1) ?? cellset.Axes[1]
@@ -64,8 +66,8 @@ export function cellsetToPivot(cellset, { formatMap = {}, pageMembers = [], supp
             const c = rowCells[ci]
             if (!isEmpty(c?.Value)) colHasData[col.id] = true
             let fmt = null
-            for (const m of [...rms, ...col._ms]) { fmt = formatOf(m.dim, m.elem, formatMap); if (fmt) break }
-            if (!fmt) for (const p of pageMembers) { fmt = formatOf('', p, formatMap); if (fmt) break }
+            for (const m of [...rms, ...col._ms]) { fmt = formatOf(m.dim, m.elem, formatMap, measureDimension); if (fmt) break }
+            if (!fmt) for (const p of pageMembers) { fmt = formatOf('', p, formatMap, measureDimension); if (fmt) break }
             const fv = c?.FormattedValue
             // TM1 can send Value null with FormattedValue "0.00" for a zero — read the number back
             const numericFv = stripTm1TypePrefix(fv, true)

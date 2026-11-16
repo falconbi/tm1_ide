@@ -143,6 +143,14 @@ test('formats from attributes apply to the display only; zero sent as text is re
   assert.equal(p.data.Rate.c0.fmt, '0.0%')
 })
 
+test('a format fallback uses the named measure dimension, never another dimension', () => {
+  const p = cellsetToPivot(cs([[m('Amount', 'Region')]], [[m('Amount', 'Measure')]], [{ Ordinal: 0, Value: 1234.5, FormattedValue: '1234.5' }]), {
+    formatMap: { Other: { Amount: '#,##0.0' }, Measure: { Amount: '#,##0.00' } },
+    measureDimension: 'Measure',
+  })
+  assert.equal(p.data.Amount.c0.d, '1,234.50')
+})
+
 test('a text cell that looks like a type prefix keeps its text', () => {
   const p = cellsetToPivot(cs([[m('Note', 'Measure')]], [[m('Jan', 'Period')]], [{ Ordinal: 0, Value: '1:30', FormattedValue: '1:30' }]))
   assert.equal(p.data.Note.c0.v, '1:30')

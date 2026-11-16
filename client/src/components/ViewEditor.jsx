@@ -2180,8 +2180,8 @@ export default function ViewEditor({ tab }) {
     const hierarchyData = useMemo(() => cellsetToHierarchyData(gridResult, formatAttrs, pageMembers, suppressZeros, app.settings.numFormat), [gridResult, formatAttrs, pageMembers, suppressZeros, app.settings.numFormat])
 
     // the cellset as pivot data: real value + display + kind per cell
-    const pivotData = useMemo(() => gridResult ? cellsetToPivot(gridResult, { formatMap: formatAttrs, pageMembers, suppressZeros, useFormat: app.settings.numFormat }) : null,
-        [gridResult, formatAttrs, pageMembers, suppressZeros, app.settings.numFormat])
+    const pivotData = useMemo(() => gridResult ? cellsetToPivot(gridResult, { formatMap: formatAttrs, pageMembers, suppressZeros, useFormat: app.settings.numFormat, measureDimension: cubeDims[cubeDims.length - 1] }) : null,
+        [gridResult, formatAttrs, pageMembers, suppressZeros, app.settings.numFormat, cubeDims])
 
     // after typing, refresh the view once things go quiet (totals and rules recalculate) —
     // not after every cell; the grid keeps its drill-down across the refresh
