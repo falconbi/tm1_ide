@@ -297,7 +297,7 @@ function isReadOnly(serverName) {
         if (inHost?.readOnly === true) return true
         const conn = _findConnection(serverName, cfg.connections ?? [])
         if (conn?.readOnly === true) return true
-    } catch {}
+    } catch { /* unreadable config: not read-only */ }
     return false
 }
 
@@ -318,7 +318,7 @@ function simpleSource(serverName) {
         if ((cfg.simpleServers ?? []).some(s => String(s).toLowerCase() === serverName.toLowerCase())) return 'config'
         if (_findAdminHost(serverName, cfg.adminHosts ?? [])?.simple === true) return 'config'
         if (_findConnection(serverName, cfg.connections ?? [])?.simple === true) return 'config'
-    } catch {}
+    } catch { /* unreadable config: no simple flag */ }
     return isSimpleInModes(serverName) ? 'ide' : null
 }
 const isSimple = serverName => simpleSource(serverName) !== null

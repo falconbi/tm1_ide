@@ -113,7 +113,6 @@ function parseRuleLens(rulesText, { measureElements = new Set() } = {}) {
         const source = st.text.slice(0, arrow).trim()
         const target = st.text.slice(arrow + 2).trim().replace(/;\s*$/, '')
         const sourceEls = bracketedElements(source)
-        const targetEls = bracketedElements(target)
         const targetCubes = dbCubes(target)
         items.push({
             type: 'feeder', area: source, areaElements: sourceEls,

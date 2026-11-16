@@ -55,4 +55,4 @@ That puts these first, in this order:
 | 08 | Admin: monitoring, server admin, users, catalog admin | done — round 1 (7 commits, checked); one admin rule (`core/admin_gate.js`), session/job list GETs left ungated by design |
 | 09 | MCP server (`tools/tm1mcp`) | done — round 1 (8 commits, checked); 67 tools, inventory generated and tested |
 | 10 | Lenses: kit, editor, app, patterns | done — round 1 (9 commits) + patterns round 2 (4 commits, checked); Workforce content moved to the model repo |
-| 11 | Build, tests, lint, CI, docs | done — round 1 (7 commits, checked); CI matrix + static check proven on first push; backend lint burn-down in progress |
+| 11 | Build, tests, lint, CI, docs | done — round 1 (7 commits) + backend lint burn-down (0 findings); CI matrix + static check proven on first push |

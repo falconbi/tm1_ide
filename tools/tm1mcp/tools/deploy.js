@@ -42,7 +42,7 @@ function register(server, { ok, assertTargetAllowed }) {
             const dir = packageDirFor(packageDir)
             let analyzeRisk
             try { ({ analyzeRisk } = require('../../../tools/tm1deploy/src/risk')) }
-            catch (e) { throw new Error(`Deploy tooling not available: ${e.message}`) }
+            catch (e) { throw new Error(`Deploy tooling not available: ${e.message}`, { cause: e }) }
             try {
                 assertTargetAllowed(target)
                 const r = await analyzeRisk(dir, target, null)
@@ -53,7 +53,7 @@ function register(server, { ok, assertTargetAllowed }) {
                     warnings: (r.warnings ?? []).map(w => `${w.type} ${w.name}: ${w.message}`),
                     info_count: (r.infos ?? []).length,
                 })
-            } catch (e) { throw new Error(`risk check failed: ${e.message}`) }
+            } catch (e) { throw new Error(`risk check failed: ${e.message}`, { cause: e }) }
         }
     )
 
@@ -68,7 +68,7 @@ function register(server, { ok, assertTargetAllowed }) {
             const dir = packageDirFor(packageDir)
             let driftCheck
             try { ({ driftCheck } = require('../../../tools/tm1deploy/src/diff')) }
-            catch (e) { throw new Error(`Deploy tooling not available: ${e.message}`) }
+            catch (e) { throw new Error(`Deploy tooling not available: ${e.message}`, { cause: e }) }
             try {
                 assertTargetAllowed(target)
                 const r = await driftCheck(dir, target, null)
@@ -79,7 +79,7 @@ function register(server, { ok, assertTargetAllowed }) {
                     checked: r.checked,
                     drifted: (r.drifted ?? []).map(d => `${d.type} ${d.name}${d.detail ? ` (${d.detail})` : ''}: ${d.note ?? 'differs from baseline'}`),
                 })
-            } catch (e) { throw new Error(`drift check failed: ${e.message}`) }
+            } catch (e) { throw new Error(`drift check failed: ${e.message}`, { cause: e }) }
         }
     )
 }

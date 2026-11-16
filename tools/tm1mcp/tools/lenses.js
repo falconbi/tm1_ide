@@ -54,7 +54,7 @@ function register(server, { SERVER, AGENT_USER, ok, requireChangeSet, client, lo
             try {
                 return ok(await lensStore.readLens(SERVER, name, { client: client() }))
             } catch (e) {
-                throw new Error(e.message)
+                throw new Error(e.message, { cause: e })
             }
         }
     )

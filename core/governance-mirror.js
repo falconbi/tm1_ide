@@ -21,7 +21,7 @@ const EXT = new Set(['.json', '.html', '.txt', '.md'])
 async function readGovernance(client) {
     const out = []
     const walk = async (parts) => {
-        let items = []
+        let items
         try { items = await client.listFiles(parts) } catch { return }
         for (const it of items) {
             if (it.isFolder) await walk([...parts, it.name])
@@ -41,7 +41,7 @@ async function readGovernance(client) {
 async function mirrorToRepo(server, { token, gitUser = gitIdentity.user(), ideToken, branch = 'dev', repoUrl } = {}) {
     const c = makeClient(server, ideToken)
     if (!repoUrl) {
-        try { repoUrl = (await c.post('GitStatus', { Username: gitUser, Password: token }))?.URL } catch {}
+        try { repoUrl = (await c.post('GitStatus', { Username: gitUser, Password: token }))?.URL } catch { /* no repo configured */ }
     }
     if (!repoUrl) return { ok: false, error: 'no repo URL (GitStatus failed or not initialized)' }
 
@@ -78,7 +78,7 @@ async function mirrorToRepo(server, { token, gitUser = gitIdentity.user(), ideTo
 async function applyFromRepo(server, { token, gitUser = gitIdentity.user(), ideToken, branch = 'dev', repoUrl, allow = [] } = {}) {
     const c = makeClient(server, ideToken)
     if (!repoUrl) {
-        try { repoUrl = (await c.post('GitStatus', { Username: gitUser, Password: token }))?.URL } catch {}
+        try { repoUrl = (await c.post('GitStatus', { Username: gitUser, Password: token }))?.URL } catch { /* no repo configured */ }
     }
     if (!repoUrl) return { ok: false, error: 'no repo URL' }
 

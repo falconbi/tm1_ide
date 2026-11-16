@@ -19,7 +19,7 @@ function register(server, { SERVER, AGENT_USER, cl, assertions, runAssertions, o
         async ({ label }) => {
             let seed
             try { ({ seed } = require('../../../tools/tm1deploy/src/snapshot')) }
-            catch (e) { throw new Error(`Deploy tooling not available: ${e.message}`) }
+            catch (e) { throw new Error(`Deploy tooling not available: ${e.message}`, { cause: e }) }
             const extraMeta = { last_entry_id: cl.getMaxEntryId(SERVER) }
             if (label) extraMeta.label = label
             const result = await seed(SERVER, null, null, extraMeta)
@@ -39,7 +39,7 @@ function register(server, { SERVER, AGENT_USER, cl, assertions, runAssertions, o
                 const { listBaselines } = require('../../../tools/tm1deploy/src/diff')
                 const rows = listBaselines(SERVER)
                 return rows.length ? ok(rows) : ok(`No baselines for "${SERVER}" yet — run seed_baseline.`)
-            } catch (e) { throw new Error(`list failed: ${e.message}`) }
+            } catch (e) { throw new Error(`list failed: ${e.message}`, { cause: e }) }
         }
     )
 
@@ -55,7 +55,7 @@ function register(server, { SERVER, AGENT_USER, cl, assertions, runAssertions, o
                 const { setBaselineHead } = require('../../../tools/tm1deploy/src/diff')
                 const r = setBaselineHead(SERVER, file)
                 return ok(`HEAD for "${SERVER}" → ${r.head} (position ${r._meta?.last_entry_id ?? '?'}, seeded ${r._meta?.seeded_at ?? '?'}).`)
-            } catch (e) { throw new Error(`set failed: ${e.message}`) }
+            } catch (e) { throw new Error(`set failed: ${e.message}`, { cause: e }) }
         }
     )
 
@@ -154,7 +154,7 @@ function register(server, { SERVER, AGENT_USER, cl, assertions, runAssertions, o
                 const result = await diffMod.diff(SERVER, entries, undefined, null)
                 return ok(result)
             } catch (e) {
-                throw new Error(`diff failed: ${e.message}`)
+                throw new Error(`diff failed: ${e.message}`, { cause: e })
             }
         }
     )
@@ -168,7 +168,7 @@ function register(server, { SERVER, AGENT_USER, cl, assertions, runAssertions, o
         async ({ release }) => {
             let pack
             try { ({ pack } = require('../../../tools/tm1deploy/src/packager')) }
-            catch (e) { throw new Error(`Deploy tooling not available: ${e.message}`) }
+            catch (e) { throw new Error(`Deploy tooling not available: ${e.message}`, { cause: e }) }
 
             let entries, name
             if (release) {
@@ -202,7 +202,7 @@ function register(server, { SERVER, AGENT_USER, cl, assertions, runAssertions, o
                     objects:   (result.manifest?.objects ?? []).map(o => ({ type: o.type, name: o.name, detail: o.detail ?? undefined, outcome: o.outcome })),
                     next: 'Review this package. Deploy it from the IDE (Import Package tab if on another machine), or run check_deploy_risk / check_target_drift against a target first. This tool does not deploy.',
                 })
-            } catch (e) { throw new Error(`package failed: ${e.message}`) }
+            } catch (e) { throw new Error(`package failed: ${e.message}`, { cause: e }) }
         }
     )
 }

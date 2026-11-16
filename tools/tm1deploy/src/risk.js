@@ -328,8 +328,6 @@ async function checkProcessOverwrite(obj, client) {
 
     const risks = [item('INFO', 'overwrite', 'process', obj.name, 'Overwrites existing process on target')]
 
-    // Check parameters — if target has different params, callers may break
-    const targetParams  = (existing.Parameters ?? []).map(p => p.Name)
     return risks
 }
 

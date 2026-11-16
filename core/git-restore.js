@@ -9,7 +9,7 @@
 
 // Element name from the exported subset format: Elements are
 // { "@id": "Dimensions('..')/Hierarchies('..')/Elements('NAME')" }.
-function subsetMemberName(el, dim, hier) {
+function subsetMemberName(el, _dim, _hier) {
     if (typeof el === 'string') return el
     if (el?.Name) return String(el.Name)
     const m = String(el?.['@id'] ?? '').match(/'([^']+)'\)?$/m)

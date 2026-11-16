@@ -37,6 +37,4 @@ npm run lint          # from the repository root
 npm run lint:count
 ```
 
-A fresh run on 16 Nov 2026 reported **87** problems (56 errors, 31 warnings). Most are existing
-`no-empty`, `no-useless-assignment`, `preserve-caught-error` and `no-unused-vars` findings. They
-are recorded, not fixed, so the backend now has the same “only go down” gate as the client.
+The current baseline is **0** problems. The backend ratchet is the same “only go down” gate as the client; keep it there.

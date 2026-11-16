@@ -13,7 +13,7 @@ const path = require('path')
 const DIR = path.join(__dirname, '..', 'shared', 'lens-patterns')
 
 function listPatterns(dir = DIR) {
-    let files = []
+    let files
     try { files = fs.readdirSync(dir).filter(f => f.endsWith('.json')) } catch { return [] }
     return files.map(f => { try { return JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8')) } catch { return null } })
         .filter(t => t && t.name && fs.existsSync(path.join(dir, t.name + '.html')))

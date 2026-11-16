@@ -47,13 +47,13 @@ function loadConfig({
     configPath = process.env.LENS_CONFIG || CONFIG_PATH,
     demo = process.env.LENS_DEMO === '1' || process.argv.includes('--demo'),
 } = {}) {
-    let cfg = null
+    let cfg
     try { cfg = JSON.parse(fs.readFileSync(configPath, 'utf8')) } catch (e) {
-        if (!demo) throw new Error(`No Lens app settings: create ${configPath} (see ${EXAMPLE_PATH}). ${e.message}`)
+        if (!demo) throw new Error(`No Lens app settings: create ${configPath} (see ${EXAMPLE_PATH}). ${e.message}`, { cause: e })
         try {
             cfg = JSON.parse(fs.readFileSync(EXAMPLE_PATH, 'utf8'))
             console.warn(`⚠  Demo mode: ${configPath} not readable (${e.message}) — using ${EXAMPLE_PATH} (server "${cfg.server}").`)
-        } catch { throw new Error(`No Lens app settings and the example is unreadable: ${EXAMPLE_PATH}. ${e.message}`) }
+        } catch { throw new Error(`No Lens app settings and the example is unreadable: ${EXAMPLE_PATH}. ${e.message}`, { cause: e }) }
     }
     return normalizeConfig(cfg)
 }
@@ -83,7 +83,6 @@ function normalizeConfig(cfg = {}) {
 function createSessionStore({ idleMs, beforeClose = null }) {
     const web = new Map()
     const tm1 = new Map()
-    const userKey = (server, username) => `${server}::${username}`
 
     function releaseUser(user, display) {
         const entry = tm1.get(user)
@@ -701,7 +700,7 @@ function createApp({ config, deps = {} } = {}) {
             res.set('Content-Security-Policy', `sandbox allow-scripts; default-src 'none'; script-src 'unsafe-inline' ${kit}; style-src 'unsafe-inline'; img-src data:; connect-src 'none'; font-src 'none'`)
             res.type('html')
             res.send(sharedBridge.lensSrcDoc(doc.html ?? '', { config: doc.config, theme: prefsOf(req) }))
-        } catch (e) { res.status(404).send('Lens not found') }
+        } catch { res.status(404).send('Lens not found') }
     })
 
     // The Lens toolkit (window.Lens): one self-contained bundle built into

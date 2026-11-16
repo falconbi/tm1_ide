@@ -33,7 +33,7 @@ function logLensRun({ server, app, user, lens, process, params, status, message,
 // skip: process names left out (e.g. the reservation checks a Lens runs on every load).
 function readLensActivity({ server, lens, match = {}, limit = 50, skip = [] }, file = FILE) {
     const skipped = new Set(skip.map(p => String(p).toLowerCase()))
-    let text = ''
+    let text
     try { text = fs.readFileSync(file, 'utf8') } catch { return [] }
     const want = Object.entries(match).filter(([, v]) => v !== undefined && v !== null && v !== '')
     const out = []

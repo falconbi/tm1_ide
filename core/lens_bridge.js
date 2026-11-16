@@ -100,7 +100,7 @@ async function validateLens(client, html) {
     }
 
     let cubes = []
-    try { cubes = await client.getModelCubes() } catch {}
+    try { cubes = await client.getModelCubes() } catch { /* no catalogue: skip the check */ }
     if (cubes.length) {
         const known = new Set(cubes.map(c => String(c).toLowerCase()))
         const cubeRe = /cube\s*:\s*'([^']+)'/g
@@ -323,7 +323,7 @@ async function writeCells(client, { cube, cells, allowedCubes = [] } = {}) {
         await client.updateCells(cube, norm.map(n => ({ dimElemPairs: dims.map((d, k) => ({ dim: d, element: n.elems[k] })), value: n.value })))
     } catch (e) {
         const code = String(e.response?.data?.error?.message ?? e.message)
-        throw new Error(`${plainWriteRefusal(code, cube)} Nothing was saved.`)
+        throw new Error(`${plainWriteRefusal(code, cube)} Nothing was saved.`, { cause: e })
     }
     return {
         written: norm.length,

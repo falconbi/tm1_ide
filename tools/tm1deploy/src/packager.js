@@ -352,7 +352,7 @@ async function pack(server, sessionEntries, sessionName, options = {}, ideToken)
             const relPath = `picklists/${safeFilename(cubeName)}.json`
             fs.writeFileSync(path.join(outputDir, relPath), JSON.stringify(data, null, 2))
             manifest.objects.push({ type: 'picklist-cube', name: cubeName, detail: pkCubeName, outcome, file: relPath })
-        } catch {}
+        } catch { /* picklist cube not packageable */ }
     }))
 
     // Completeness record — every object the change set touched should be in the

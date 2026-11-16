@@ -111,7 +111,7 @@ function loadPolicy(server, file = POLICY_FILE) {
     if (!fs.existsSync(file)) return buildPolicy({}, server)
     let raw
     try { raw = JSON.parse(fs.readFileSync(file, 'utf8')) }
-    catch (e) { throw new Error(`${path.basename(file)} is not valid JSON (${e.message}) — fix it; the MCP will not start on a policy it cannot read`) }
+    catch (e) { throw new Error(`${path.basename(file)} is not valid JSON (${e.message}) — fix it; the MCP will not start on a policy it cannot read`, { cause: e }) }
     return buildPolicy(raw, server)
 }
 

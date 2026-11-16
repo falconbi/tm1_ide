@@ -12,7 +12,7 @@ function createAdminGate({ makeClient, isAdminGroups, ttlMs = 2 * 60 * 1000 } = 
         const key = `${req.ideToken ?? ''}|${server}`
         const hit = cache.get(key)
         if (hit && hit.until > Date.now()) return hit.value
-        let value = false
+        let value
         try {
             const me = await makeClient(server, req.ideToken).get('ActiveUser', { $expand: 'Groups($select=Name)' })
             value = isAdminGroups(me?.Groups)
