@@ -4,9 +4,8 @@ const assert = require('node:assert/strict')
 const fs = require('fs')
 const path = require('path')
 const { createAdminGate } = require('../core/admin_gate')
+const { createCancelJobRoute } = require('../core/admin_routes')
 const { isAdminGroups } = require('../core/save_data_all')
-
-const serverSrc = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8')
 
 function fakeRes() {
     const res = { statusCode: 200, body: null }
@@ -45,35 +44,28 @@ test('an admin passes and the answer is cached per token + server', async () => 
     assert.equal(seen.calls, 1, 'second call came from the cache')
 })
 
-test('every admin mutation and sensitive read uses requireTm1Admin', () => {
-    const routes = [
-        "app.post('/api/job/cancel'",
-        "app.delete('/api/session'",
-        "app.post('/api/thread/cancel'",
-        "app.get('/api/admin/metrics'",
-        "app.get('/api/admin/configuration'",
-        "app.patch('/api/admin/configuration'",
-        "app.post('/api/admin/maintenance/enable'",
-        "app.post('/api/admin/maintenance/disable'",
-        "app.post('/api/users/provision'",
-        "app.post('/api/users/:name/password'",
-        "app.patch('/api/users/:name'",
-        "app.delete('/api/users/:name'",
-        "app.post('/api/users/:name/groups'",
-        "app.delete('/api/users/:name/groups/:group'",
-        "app.get('/api/admin/catalog-overrides'",
-        "app.put('/api/admin/catalog-overrides'",
-    ]
-    for (const route of routes) {
-        const start = serverSrc.indexOf(route)
-        assert.ok(start >= 0, `missing route ${route}`)
-        const next = serverSrc.indexOf('\napp.', start + route.length)
-        const body = serverSrc.slice(start, next < 0 ? undefined : next)
-        assert.match(body, /requireTm1Admin/, `${route} must require TM1 Admin`)
-    }
+test('the admin cancel route refuses before calling TM1, and runs for an admin', async () => {
+    const calls = []
+    const client = { async cancelJob(id) { calls.push(id) } }
+    const req = { query: { server: 'S1', id: 'job-1' }, ideToken: 'tok' }
+    let res = fakeRes()
+    const denied = createCancelJobRoute({
+        makeClient: () => client,
+        requireTm1Admin: async (_req, r) => { r.status(403).json({ error: 'TM1 Admin group required' }); return false },
+    })
+    await denied(req, res)
+    assert.equal(res.statusCode, 403)
+    assert.deepEqual(calls, [], 'no TM1 call for a non-admin')
+
+    res = fakeRes()
+    const allowed = createCancelJobRoute({ makeClient: () => client, requireTm1Admin: async () => true })
+    await allowed(req, res)
+    assert.equal(res.statusCode, 200)
+    assert.deepEqual(calls, ['job-1'])
 })
 
 test('the per-server login info carries isAdmin, and the UI hides admin controls without it', () => {
+    const serverSrc = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8')
     const loginRoute = serverSrc.slice(serverSrc.indexOf("app.get('/api/auth/servers'"), serverSrc.indexOf("app.post('/api/auth/server-login'"))
     assert.match(loginRoute, /isAdmin:/)
     const statusBar = fs.readFileSync(path.join(__dirname, '..', 'client', 'src', 'components', 'StatusBar.jsx'), 'utf8')

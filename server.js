@@ -24,7 +24,9 @@ const { readOnlyRefusal } = require('./core/readonly')
 const { createSaveDataAllRoute, isAdminGroups } = require('./core/save_data_all')
 const { createAdminGate } = require('./core/admin_gate')
 const { createProvisionUserRoute } = require('./core/user_admin')
-const { normalizeOverrides } = require('./core/catalog_overrides')
+const { createCancelJobRoute } = require('./core/admin_routes')
+const { createStartSessionRoute } = require('./core/session_routes')
+const { createCatalogOverrideRoutes } = require('./core/catalog_overrides')
 const { setSimpleInModes } = require('./core/ide_modes')
 
 // Session (Change Set) is optional for using the IDE — it groups changes for
@@ -378,16 +380,7 @@ app.use('/api', (req, res, next) => {
 })
 
 // ── Change log / Sessions ─────────────────────────────────────────────────────
-app.post('/api/sessions/start', (req, res) => {
-    try {
-        const { name, server } = req.body
-        if (!name?.trim() || !server) return res.status(400).json({ error: 'name and server required' })
-        // Read-only (PROD posture) servers don't take change sets — same refusal the
-        // MCP's start_change_set gives, with readOnly: true so the client can react.
-        if (!gateReadOnly(res, server)) return
-        res.json(cl.startSession(name.trim(), server, req.user))
-    } catch (e) { res.status(500).json({ error: e.message }) }
-})
+app.post('/api/sessions/start', createStartSessionRoute({ gateReadOnly, startSession: cl.startSession }))
 
 app.post('/api/sessions/close', async (req, res) => {
     try {
@@ -2146,13 +2139,7 @@ app.get('/api/jobs', async (req, res) => {
     }
 })
 
-app.post('/api/job/cancel', async (req, res) => {
-    try {
-        if (!(await requireTm1Admin(req, res, req.query.server))) return
-        await makeClient(req.query.server, req.ideToken).cancelJob(req.query.id)
-        res.json({ ok: true })
-    } catch (e) { res.status(500).json({ error: e.message }) }
-})
+app.post('/api/job/cancel', createCancelJobRoute({ makeClient, requireTm1Admin }))
 
 // ── Process error logs ────────────────────────────────────────────────────────
 app.get('/api/process/errorlog/content', async (req, res) => {
@@ -3132,31 +3119,14 @@ app.get('/api/deploy/archives/:id', (req, res) => {
 
 // Admin: function catalog overrides — compat, user additions, deletions
 const CATALOG_OVERRIDES_PATH = path.join(__dirname, 'config', 'function-catalog-overrides.json')
-const EMPTY_OVERRIDES = {
-    ti:    { overrides: {}, additions: {}, deletions: [] },
-    rules: { overrides: {}, additions: {}, deletions: [] },
-}
-const catalogVersion = raw => crypto.createHash('sha1').update(JSON.stringify(raw)).digest('hex').slice(0, 12)
-app.get('/api/admin/catalog-overrides', async (req, res) => {
-    const server = req.query.server ?? req.body?.server ?? PAW_LOGIN_SERVER
-    try {
-        if (!(await requireTm1Admin(req, res, server))) return
-        const raw = fs.existsSync(CATALOG_OVERRIDES_PATH)
-            ? normalizeOverrides(JSON.parse(fs.readFileSync(CATALOG_OVERRIDES_PATH, 'utf8')))
-            : EMPTY_OVERRIDES
-        res.json({ overrides: raw, version: catalogVersion(raw) })
-    } catch (e) { res.status(e.status ?? 500).json({ error: e.message }) }
+const catalogRoutes = createCatalogOverrideRoutes({
+    filePath: CATALOG_OVERRIDES_PATH,
+    requireTm1Admin,
+    gateReadOnly,
+    serverOf: req => req.query.server ?? req.body?.server ?? PAW_LOGIN_SERVER,
 })
-app.put('/api/admin/catalog-overrides', async (req, res) => {
-    const server = req.query.server ?? req.body?.server ?? PAW_LOGIN_SERVER
-    try {
-        if (!gateReadOnly(res, server)) return
-        if (!(await requireTm1Admin(req, res, server))) return
-        const overrides = normalizeOverrides(req.body?.overrides ?? req.body)
-        fs.writeFileSync(CATALOG_OVERRIDES_PATH, JSON.stringify(overrides, null, 2))
-        res.json({ ok: true, version: catalogVersion(overrides) })
-    } catch (e) { res.status(e.status ?? 500).json({ error: e.message }) }
-})
+app.get('/api/admin/catalog-overrides', catalogRoutes.get)
+app.put('/api/admin/catalog-overrides', catalogRoutes.put)
 
 // ── SPA fallback ──────────────────────────────────────────────────────────────
 // Admin: validate TI function names against the live TM1 server using syntax check.

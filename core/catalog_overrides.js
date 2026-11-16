@@ -1,5 +1,8 @@
 'use strict'
 
+const fs = require('fs')
+const crypto = require('crypto')
+
 const AREAS = ['ti', 'rules']
 const SECTIONS = ['overrides', 'additions']
 const PROTO_KEYS = new Set(['__proto__', 'prototype', 'constructor'])
@@ -7,6 +10,8 @@ const ENTRY_KEYS = new Set(['params', 'compat', 'returnType', 'description', 'de
 const COMPAT = new Set(['both', 'v11', 'v12'])
 
 const emptyArea = () => ({ overrides: {}, additions: {}, deletions: [] })
+const EMPTY_OVERRIDES = Object.freeze({ ti: emptyArea(), rules: emptyArea() })
+const catalogVersion = raw => crypto.createHash('sha1').update(JSON.stringify(raw)).digest('hex').slice(0, 12)
 
 function bad(message) {
     const e = new Error(message)
@@ -71,4 +76,30 @@ function normalizeOverrides(raw) {
     return out
 }
 
-module.exports = { normalizeOverrides, AREAS, emptyArea }
+function createCatalogOverrideRoutes({ filePath, requireTm1Admin, gateReadOnly, serverOf }) {
+    async function get(req, res) {
+        const server = serverOf(req)
+        try {
+            if (!(await requireTm1Admin(req, res, server))) return
+            const raw = fs.existsSync(filePath)
+                ? normalizeOverrides(JSON.parse(fs.readFileSync(filePath, 'utf8')))
+                : EMPTY_OVERRIDES
+            res.json({ overrides: raw, version: catalogVersion(raw) })
+        } catch (e) { res.status(e.status ?? 500).json({ error: e.message }) }
+    }
+
+    async function put(req, res) {
+        const server = serverOf(req)
+        try {
+            if (!gateReadOnly(res, server)) return
+            if (!(await requireTm1Admin(req, res, server))) return
+            const overrides = normalizeOverrides(req.body?.overrides ?? req.body)
+            fs.writeFileSync(filePath, JSON.stringify(overrides, null, 2))
+            res.json({ ok: true, version: catalogVersion(overrides) })
+        } catch (e) { res.status(e.status ?? 500).json({ error: e.message }) }
+    }
+
+    return { get, put }
+}
+
+module.exports = { normalizeOverrides, createCatalogOverrideRoutes, EMPTY_OVERRIDES, AREAS, emptyArea }

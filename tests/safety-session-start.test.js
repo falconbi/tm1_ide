@@ -11,6 +11,7 @@ let fakeReadOnly = false
 const arReal = require(resolve('core/adapter_registry'))
 stub('core/adapter_registry', { ...arReal, isReadOnly: () => fakeReadOnly })
 const { readOnlyRefusal } = require(resolve('core/readonly'))
+const { createStartSessionRoute } = require(resolve('core/session_routes'))
 
 test('start-change-set refusal fires on a read-only server (readOnly: true)', () => {
     fakeReadOnly = true
@@ -28,8 +29,29 @@ test('no refusal on a writable server', () => {
     assert.equal(readOnlyRefusal('DEV01'), null)
 })
 
-test('POST /api/sessions/start is wired to the read-only gate', () => {
-    const src = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8')
-    const route = src.slice(src.indexOf("app.post('/api/sessions/start'"), src.indexOf("app.post('/api/sessions/close'"))
-    assert.match(route, /gateReadOnly/, 'the sessions/start route must refuse via gateReadOnly')
+test('the start route refuses through gateReadOnly before starting a session', () => {
+    const res = () => {
+        const r = { statusCode: 200, body: null }
+        r.status = code => { r.statusCode = code; return r }
+        r.json = body => { r.body = body; return r }
+        return r
+    }
+    let started = null
+    const route = createStartSessionRoute({
+        gateReadOnly: (r) => { r.status(409).json({ error: 'read-only', readOnly: true }); return false },
+        startSession: (...a) => { started = a },
+    })
+    const denied = res()
+    route({ body: { name: 'Set A', server: 'PROD01' }, user: 'me' }, denied)
+    assert.equal(denied.statusCode, 409)
+    assert.equal(started, null)
+
+    const allowed = res()
+    const writable = createStartSessionRoute({
+        gateReadOnly: () => true,
+        startSession: (...a) => { started = a; return { id: 's1' } },
+    })
+    writable({ body: { name: ' Set A ', server: 'DEV01' }, user: 'me' }, allowed)
+    assert.deepEqual(started, ['Set A', 'DEV01', 'me'])
+    assert.deepEqual(allowed.body, { id: 's1' })
 })
