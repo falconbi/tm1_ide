@@ -42,13 +42,17 @@ const COOKIE = 'lens_session'
 const DEFAULT_IDLE_MINUTES = 30
 
 // ── Settings ──────────────────────────────────────────────────────────────────
-function loadConfig({ configPath = process.env.LENS_CONFIG || CONFIG_PATH } = {}) {
+function loadConfig({
+    configPath = process.env.LENS_CONFIG || CONFIG_PATH,
+    demo = process.env.LENS_DEMO === '1' || process.argv.includes('--demo'),
+} = {}) {
     let cfg = null
     try { cfg = JSON.parse(fs.readFileSync(configPath, 'utf8')) } catch (e) {
+        if (!demo) throw new Error(`No Lens app settings: create ${configPath} (see ${EXAMPLE_PATH}). ${e.message}`)
         try {
             cfg = JSON.parse(fs.readFileSync(EXAMPLE_PATH, 'utf8'))
-            console.warn(`⚠  ${configPath} not readable (${e.message}) — using ${EXAMPLE_PATH} defaults.`)
-        } catch { throw new Error(`No Lens app settings: create ${configPath} (see ${EXAMPLE_PATH}). ${e.message}`) }
+            console.warn(`⚠  Demo mode: ${configPath} not readable (${e.message}) — using ${EXAMPLE_PATH} (server "${cfg.server}").`)
+        } catch { throw new Error(`No Lens app settings and the example is unreadable: ${EXAMPLE_PATH}. ${e.message}`) }
     }
     return {
         server:       String(cfg.server ?? '').trim(),
