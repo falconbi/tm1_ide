@@ -393,6 +393,10 @@ function validateAST(ast, code, line) {
       }
       break
     }
+    case 'group': {
+      issues.push(...validateAST(ast.inner, code, line))
+      break
+    }
     case 'unary': {
       if (!ast.operand || ast.operand.kind === 'empty') {
         issues.push({ severity: 'error', line, message: `Missing operand after '${ast.op}'` })

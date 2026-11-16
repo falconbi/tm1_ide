@@ -108,6 +108,7 @@ export const PRESETS = {
       capitalization: 'asIs',
       preserveComments: true,
       preserveStrings: true,
+      expressionFormatter: 'tm1-verbose',
     },
     ti: {
       indentStyle: 'spaces2',
@@ -138,6 +139,7 @@ export const PRESETS = {
       capitalization: 'asIs',
       preserveComments: true,
       preserveStrings: true,
+      expressionFormatter: 'tm1-structured',
     },
     ti: {
       indentStyle: 'spaces2',

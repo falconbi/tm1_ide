@@ -12,6 +12,8 @@ commits that mixed a fix into a feature are included too. New features are not l
 
 ### 2026-11-16
 
+- **rules formatter** — Grouped expressions are now kept as a group in the parsed tree and the structured/verbose presets emit the brackets, so `(1 + 2) * 3` formats without becoming `1 + 2 * 3`. The presets and structure pickers are re-enabled, and a 20-rule round-trip test compares tokens for every preset and formatter
+- **rules formatter** — The tokenizer read `1+2` as one number because it consumed `+`/`-` after any digit; it now only takes an exponent sign (`1e-3`), so formatting and validation see the operators
 - **rules formatter** — The TM1 Verbose and TM1 Structured presets formatted with an expression parser that discarded parentheses, so `['X'] = N: (1 + 2) * 3;` became `1 + 2 * 3` and the rule calculated a different number. Both presets and the structure pickers are disabled until grouping is preserved; anyone who used them should re-check rules containing brackets
 - **views** — The same saved view opened from Explorer used `cubeview:…` while Cube Map and Model Health used `view:…`, so it could appear twice and "already open" failed. One `viewTabId` is used everywhere (default view keeps the three-segment id); rules/process/dimension/subset ids live in the same helper file
 - **rules/TI/view/subset** — The “someone else changed this” banner was computed from refs set in an effect after the memo, so the first conflict could be missed. The baseline is state now, the decision is a pure tested function, and the React ref warnings in `useApi` are gone

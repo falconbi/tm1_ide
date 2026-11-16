@@ -143,16 +143,22 @@ function CodePanel({ formatted, colourSettings, label, dark }) {
 }
 
 function RulesPreview({ settings, colourSettings, namingMap, dark }) {
-  const formatted = useMemo(() => {
-    try { return formatRules(SAMPLE_RULES, { ...settings.rules, expressionFormatter: null }, namingMap) }
+  const verboseFormatted = useMemo(() => {
+    try { return formatRules(SAMPLE_RULES, { ...settings.rules, expressionFormatter: 'tm1-verbose' }, namingMap) }
+    catch { return 'Error formatting preview' }
+  }, [settings.rules, namingMap])
+
+  const structuredFormatted = useMemo(() => {
+    try { return formatRules(SAMPLE_RULES, { ...settings.rules, expressionFormatter: 'tm1-structured' }, namingMap) }
     catch { return 'Error formatting preview' }
   }, [settings.rules, namingMap])
 
   return (
     <div className="flex flex-col h-full">
       <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-2">Preview</div>
-      <div className="flex flex-col flex-1 min-h-0">
-        <CodePanel formatted={formatted} colourSettings={colourSettings} label="Rules" dark={dark} />
+      <div className="flex flex-col flex-1 min-h-0 gap-2">
+        <CodePanel formatted={verboseFormatted} colourSettings={colourSettings} label="TM1 Verbose" dark={dark} />
+        <CodePanel formatted={structuredFormatted} colourSettings={colourSettings} label="TM1 Structured" dark={dark} />
       </div>
     </div>
   )
@@ -265,9 +271,19 @@ export default function FormatSettings({ onClose }) {
               {tab === 'rules' && (
                 <div>
                   <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">Structure</div>
-                  <p className="text-[10px] text-muted-foreground mb-2 leading-relaxed">
-                    Structured formatting is disabled until it preserves brackets (see BUG_FIXES 2026-11-16).
-                  </p>
+                  <div className="flex gap-1.5 mb-2">
+                    {[{ id: null, label: 'No Change' }, { id: 'tm1-verbose', label: 'TM1 Verbose' }, { id: 'tm1-structured', label: 'TM1 Structured' }].map(opt => (
+                      <button
+                        key={opt.id ?? 'none'}
+                        onClick={() => updateRuleSetting('expressionFormatter', opt.id)}
+                        className={cn('px-2 py-1 text-[10px] rounded border transition-colors flex-1',
+                          settings.rules.expressionFormatter === opt.id
+                            ? 'bg-primary text-primary-foreground border-primary'
+                            : 'bg-background text-muted-foreground border-border hover:text-foreground'
+                        )}
+                      >{opt.label}</button>
+                    ))}
+                  </div>
 
                   <Section label="Spacing" open={rulesSpacingOpen} onToggle={() => setRulesSpacingOpen(v => !v)}>
                     <Select label="Indent"     value={settings.rules.indentStyle}         onChange={v => updateRuleSetting('indentStyle', v)}         options={indentOpts} />

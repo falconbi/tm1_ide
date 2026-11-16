@@ -94,12 +94,19 @@ export function tokenize(line) {
       continue
     }
 
-    // Number
+    // Number. Do not swallow a following +/- operator — only an exponent
+    // sign belongs to the number (1e-3), so 1+2 is three tokens.
     if (/\d/.test(ch)) {
       let val = ''
-      while (i < len && (/\d/.test(line[i]) || line[i] === '.' || line[i] === 'e' || line[i] === 'E' || line[i] === '-' || line[i] === '+')) {
+      while (i < len && (/\d/.test(line[i]) || line[i] === '.')) {
         val += line[i]
         i++
+      }
+      if (i < len && (line[i] === 'e' || line[i] === 'E')) {
+        val += line[i]
+        i++
+        if (i < len && (line[i] === '-' || line[i] === '+')) val += line[i++]
+        while (i < len && /\d/.test(line[i])) val += line[i++]
       }
       tokens.push({ type: 'number', value: val, raw: val, pos: start })
       continue

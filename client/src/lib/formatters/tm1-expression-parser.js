@@ -45,12 +45,13 @@ function parsePrimary(stream) {
     return { kind: 'element_ref', value: parts.map(p => p.value).join('') }
   }
 
-  // Parenthesised sub-expression
+  // Parenthesised sub-expression — keep the group so the formatter can
+  // reproduce the explicit brackets instead of changing the calculation.
   if (t.type === 'punctuation' && t.value === '(') {
     stream.consume()
     const inner = parseExpr(stream)
     if (stream.peek()?.value === ')') stream.consume()
-    return inner
+    return { kind: 'group', inner }
   }
 
   // Unary minus

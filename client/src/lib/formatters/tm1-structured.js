@@ -63,6 +63,8 @@ function fmtExpr(node, baseLevel, settings, namingMap, preset) {
       return fmtExpr(node.left, baseLevel, settings, namingMap, preset) +
              opWrap(node.op, settings) +
              fmtExpr(node.right, baseLevel, settings, namingMap, preset)
+    case 'group':
+      return '(' + fmtExpr(node.inner, baseLevel, settings, namingMap, preset) + ')'
     case 'unary':
       return node.op + fmtExpr(node.operand, baseLevel, settings, namingMap, preset)
     default:
