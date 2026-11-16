@@ -12,6 +12,7 @@ commits that mixed a fix into a feature are included too. New features are not l
 
 ### 2026-11-16
 
+- **workspace** — `forge.json` saved the full editor bodies and dirty flags from whatever the last tab/layout action happened to hold, and restored them on reload (stale content, or a saved tab showing as dirty). It is now layout only: tabs, splits and active ids; the server strips an old client's content/dirty too
 - **tabs** — Closing a pane, closing other tabs or closing to the right discarded unsaved Rule/TI/subset tabs without asking (only the single-tab close did). Every close path and a browser-close `beforeunload` now use one dirty check that names the tabs
 - **pivot** — CSV exported raw cell values while the grid and the copy table applied the element's TM1 Format. CSV now uses the same display path (tooltip: "values as shown")
 - **grid** — With two grids open (split panes), Ctrl+F focused every toolbar's search and Ctrl+Shift+A fitted every grid. The shortcuts now act only when focus is inside that grid's wrapper

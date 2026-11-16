@@ -112,7 +112,8 @@ const _saveForge = (state) => {
       headers: { 'Content-Type': 'application/json', 'x-ide-token': localStorage.getItem('tm1-token') ?? '' },
       body: JSON.stringify({
         server: state.server,
-        tabs: state.tabs,
+        // layout only: editor bodies and dirty flags never leave the browser
+        tabs: state.tabs.map(({ content: _c, dirty: _d, ...meta }) => meta),
         activeTab: state.activeTab,
         layout: state.layout,
         activeGroupId: state.activeGroupId,
@@ -149,7 +150,7 @@ export const useStore = create((set, get) => ({
     return { tabsVisible: next }
   }),
 
-  // ── Forge ───────────────────────────────────────────────────────────────────
+  // ── Forge (layout only: open tabs, server, splits, active ids) ───────────────
   forgeLoaded: false,
   loadForge: async () => {
     try {
@@ -158,7 +159,8 @@ export const useStore = create((set, get) => ({
       const patch = {}
       if (forge.server) patch.server = forge.server
       if (forge.tabs?.length) {
-        patch.tabs = forge.tabs
+        // never restore an old client's body or dirty flag
+        patch.tabs = forge.tabs.map(({ content: _c, dirty: _d, ...meta }) => meta)
         patch.activeTab = forge.activeTab ?? null
         const layout = forge.layout
           ? forge.layout

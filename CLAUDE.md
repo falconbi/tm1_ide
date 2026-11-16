@@ -73,7 +73,7 @@ client/src/
     formatters/               # TM1 rules formatter (tokenizer, AST, presets, settings)
 config/
   servers.json                # TM1 server list { name, ... }
-  forge.json                  # Workspace persistence (open tabs, server, splitDirection)
+  forge.json                  # Workspace persistence (open tabs, server, splitDirection; layout only — never content)
   sql-connections.json        # External SQL connection definitions
   sql-queries.json            # Saved SQL queries
 static/                       # Built frontend (committed, served directly)
