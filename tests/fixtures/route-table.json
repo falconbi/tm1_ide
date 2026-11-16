@@ -89,8 +89,6 @@
   "POST /api/subset/static",
   "GET /api/dimension/attribute-values",
   "POST /api/subset/preview",
-  "POST /api/subset/generate",
-  "POST /api/mdx/generate",
   "GET /api/view/axes",
   "POST /api/mdx/execute",
   "GET /api/lineage",
@@ -179,7 +177,6 @@
   "GET /api/lenses/:name",
   "POST /api/lenses/:name",
   "DELETE /api/lenses/:name",
-  "POST /api/lenses/generate",
   "POST /api/lens/exec-mdx",
   "POST /api/lens/read-cell",
   "POST /api/lens/write-cells",
@@ -208,5 +205,8 @@
   "GET /api/sql/queries",
   "POST /api/sql/queries",
   "DELETE /api/sql/queries/:id",
+  "POST /api/subset/generate",
+  "POST /api/mdx/generate",
+  "POST /api/lenses/generate",
   "GET /{*path}"
 ]
