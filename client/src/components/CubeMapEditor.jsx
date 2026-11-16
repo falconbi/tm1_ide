@@ -1,3 +1,4 @@
+import { apiFetch } from '@/lib/api'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ReactFlow, Background, Controls,
@@ -874,7 +875,7 @@ function CubeMapInner({ tab }) {
     const requestId = ++modelRequestRef.current
     setLoading(true); setError(null); setModelReady(false)
     try {
-      const r = await fetch(`/api/cubemap/model?server=${encodeURIComponent(srv)}`, {
+      const r = await apiFetch(`/api/cubemap/model?server=${encodeURIComponent(srv)}`, {
         headers: { 'x-ide-token': token },
       })
       const d = await r.json()
@@ -902,7 +903,7 @@ function CubeMapInner({ tab }) {
   useEffect(() => {
     if (!showBar) return
     let cancelled = false
-    fetch(`/api/process/summaries?server=${encodeURIComponent(srv)}`, { headers: { 'x-ide-token': token } })
+    apiFetch(`/api/process/summaries?server=${encodeURIComponent(srv)}`, { headers: { 'x-ide-token': token } })
       .then(r => r.json())
       .then(d => { if (!cancelled && Array.isArray(d.processes)) setProcessInfo(Object.fromEntries(d.processes.map(x => [x.process, x]))) })
       .catch(() => {})

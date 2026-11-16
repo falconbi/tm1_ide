@@ -1,3 +1,4 @@
+import { apiFetch } from '@/lib/api'
 import { useState, useEffect, useRef } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { KeyRound, X, ChevronRight, ChevronDown } from 'lucide-react'
@@ -43,7 +44,7 @@ export default function ServerLoginDialog() {
       setInfo(null); setShowInfo(false)
       setServer(s)
       // Ask the server how it wants to be signed in to (no credentials sent).
-      fetch(`/api/auth/method?server=${encodeURIComponent(s)}`).then(r => r.json()).then(d => {
+      apiFetch(`/api/auth/method?server=${encodeURIComponent(s)}`).then(r => r.json()).then(d => {
         if (openRef.current !== s) return
         setInfo(d)
         if (d.method === 'cam' && d.camNamespace) setNamespace(n => n || d.camNamespace)

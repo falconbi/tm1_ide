@@ -1,3 +1,4 @@
+import { apiFetch } from '@/lib/api'
 import { useState, useRef, useMemo, useEffect, createContext, useContext, useCallback } from 'react'
 import { toast } from 'sonner'
 import { useCubes, useDims, useProcs, useChores, useSubsets, useViews, useCubeDimensions, useSaveView, useHierarchies, useCreateHierarchy, useControlObjects, useDeleteDimension, useDeleteCube, useDeleteProcess, useDeleteChore, useDeleteSubset, useDeleteView, useActiveWorkSession, useWorkSessionLog, useIsSimple, useLensProcessUsage } from '@/hooks/useApi'
@@ -481,7 +482,7 @@ function LensesSection({ server, onOpen, onNew }) {
   const load = useCallback(() => {
     setLoading(true); setError(null)
     // Lenses live in this server's model — a failed read is shown, never treated as "no lenses".
-    fetch(`/api/lenses?server=${encodeURIComponent(server)}&_=${Date.now()}`, { headers: headers() })
+    apiFetch(`/api/lenses?server=${encodeURIComponent(server)}&_=${Date.now()}`, { headers: headers() })
       .then(async r => { const d = await r.json().catch(() => ({})); if (!r.ok) throw new Error(d.error || r.statusText); return d })
       .then(d => setLenses(Array.isArray(d) ? d : []))
       .catch(e => { setLenses([]); setError(e.message) })
@@ -497,7 +498,7 @@ function LensesSection({ server, onOpen, onNew }) {
   }, [open, server, load])
   const remove = async (name) => {
     if (!window.confirm(`Delete Lens "${name}" from ${server}? This removes it from the model.`)) return
-    const r = await fetch(`/api/lenses/${encodeURIComponent(name)}?server=${encodeURIComponent(server)}`, { method: 'DELETE', headers: headers() })
+    const r = await apiFetch(`/api/lenses/${encodeURIComponent(name)}?server=${encodeURIComponent(server)}`, { method: 'DELETE', headers: headers() })
     const d = await r.json().catch(() => ({}))
     if (!r.ok) { setError(d.error || r.statusText); return }
     load()

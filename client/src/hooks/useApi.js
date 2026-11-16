@@ -3,11 +3,11 @@ import { useEffect, useMemo, useCallback, useState } from 'react'
 import { useStore } from '@/store'
 import { toast } from 'sonner'
 import { conflictEntry } from '@/lib/conflict'
-import { get, post, patch, del } from '@/lib/api'
+import { get, post, patch, del, apiFetch } from '@/lib/api'
 
 // ── Global /api fetch wrapper ─────────────────────────────────────────────────
 // 1. Attaches the IDE token to every same-origin /api call that lacks one (some
-//    components call fetch() directly).
+//    components call apiFetch() directly).
 // 2. Spots the server's "sign in to this TM1 server" answer (401 + needsServerLogin)
 //    from ANY fetch and raises 'tm1-server-login' — ServerLoginDialog handles it.
 if (typeof window !== 'undefined' && !window.__tm1FetchWrapped) {
@@ -694,7 +694,7 @@ export const useRemoveClientFromGroup = () => { const qc = useQueryClient(); ret
 export const useFilesAvailable = (server) => useQuery({
   queryKey: ['files-available', server],
   queryFn:  async () => {
-    const r = await fetch(`/api/files/list?server=${enc(server)}&path=${enc(JSON.stringify(['Files']))}`, { headers: { 'x-ide-token': localStorage.getItem('tm1-token') ?? '' } })
+    const r = await apiFetch(`/api/files/list?server=${enc(server)}&path=${enc(JSON.stringify(['Files']))}`, { headers: { 'x-ide-token': localStorage.getItem('tm1-token') ?? '' } })
     if (r.status === 404) return false
     return true
   },

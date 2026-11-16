@@ -1,3 +1,4 @@
+import { apiFetch } from '@/lib/api'
 // ── Catalog entry schema ──────────────────────────────────────────────────────
 // SINGLE SOURCE OF TRUTH: shared/tm1-function-catalog.json (repo root) — one entry
 // per TM1 Rules/TI function, covering both languages. Every consumer (this
@@ -165,7 +166,7 @@ function _cached(key, ttlMs, fn) {
 }
 
 const enc = encodeURIComponent
-const authFetch = (url) => fetch(url, { headers: { 'x-ide-token': localStorage.getItem('tm1-token') ?? '' } })
+const authFetch = (url) => apiFetch(url, { headers: { 'x-ide-token': localStorage.getItem('tm1-token') ?? '' } })
 
 async function fetchCubes(server) {
   return _cached(`cubes:${server}`, 30_000, async () => {

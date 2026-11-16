@@ -45,3 +45,13 @@ export const del = (url) => fetch(url, { method: 'DELETE', headers: authHeader()
 export const postRaw = (url, body) => fetch(url, {
   method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeader() }, body: JSON.stringify(body),
 }).then(async r => { if (!r.ok) throw await extractError(r); return r })
+
+// Authenticated fetch for a genuine one-off that is not JSON-shaped (download,
+// stream, file upload). Server state and saves belong in hooks/useApi.js.
+export const apiFetch = (input, init = {}) => {
+  const url = typeof input === 'string' ? input : input?.url ?? ''
+  if (!url.startsWith('/api/')) return fetch(input, init)
+  const headers = new Headers(init.headers ?? (typeof input !== 'string' ? input.headers : undefined))
+  if (!headers.has('x-ide-token')) headers.set('x-ide-token', authHeader()['x-ide-token'])
+  return fetch(input, { ...init, headers })
+}

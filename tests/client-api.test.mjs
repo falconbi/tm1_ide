@@ -27,3 +27,12 @@ test('post returns JSON and raises the noSession event', async () => {
   assert.equal(d.ok, true)
   assert.equal(seen.type, 'tm1-no-session')
 })
+
+test('apiFetch adds the IDE token to an /api call', async () => {
+  global.localStorage = { getItem: () => 'tok' }
+  let seen
+  global.fetch = async (_url, init) => { seen = init.headers; return { ok: true } }
+  const { apiFetch } = await import('../client/src/lib/api.js')
+  await apiFetch('/api/test')
+  assert.equal(seen.get('x-ide-token'), 'tok')
+})

@@ -1,3 +1,4 @@
+import { apiFetch } from '@/lib/api'
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { X, Plus, Trash2, ShieldCheck, Loader2, RotateCcw, Save, Pencil, Check, Zap } from 'lucide-react'
 import { toast } from 'sonner'
@@ -228,7 +229,7 @@ export default function CatalogAdmin({ server, onClose, initialTab = 'ti' }) {
 
   useEffect(() => {
     let cancelled = false
-    fetch(`/api/admin/catalog-overrides${server ? `?server=${encodeURIComponent(server)}` : ''}`, { headers: { 'x-ide-token': localStorage.getItem('tm1-token') ?? '' } })
+    apiFetch(`/api/admin/catalog-overrides${server ? `?server=${encodeURIComponent(server)}` : ''}`, { headers: { 'x-ide-token': localStorage.getItem('tm1-token') ?? '' } })
       .then(async r => {
         const d = await r.json().catch(() => null)
         if (!r.ok || d?.error) throw new Error(d?.error ?? `Load failed (${r.status})`)
@@ -318,7 +319,7 @@ export default function CatalogAdmin({ server, onClose, initialTab = 'ti' }) {
   const handleSave = async () => {
     setSaving(true)
     try {
-      const r = await fetch(`/api/admin/catalog-overrides${server ? `?server=${encodeURIComponent(server)}` : ''}`, {
+      const r = await apiFetch(`/api/admin/catalog-overrides${server ? `?server=${encodeURIComponent(server)}` : ''}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json', 'x-ide-token': localStorage.getItem('tm1-token') ?? '' },
         body: JSON.stringify(overrides),
@@ -345,7 +346,7 @@ export default function CatalogAdmin({ server, onClose, initialTab = 'ti' }) {
         name: row.name,
         code: buildTestCall(row.name, { params: row.params, isStatement: row.isStatement, returnType: row.returnType }),
       }))
-      const r = await fetch('/api/admin/validate-ti-functions', {
+      const r = await apiFetch('/api/admin/validate-ti-functions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-ide-token': localStorage.getItem('tm1-token') ?? '' },
         body: JSON.stringify({ server, tests }),
