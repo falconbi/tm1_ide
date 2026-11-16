@@ -1,3 +1,4 @@
+import { apiFetch } from '@/lib/api'
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react'
 import { useCubes, useCubeDimensions, useDims, useDimAttributes, useAttributeValues, useElements, useSubsets, useConfig } from '@/hooks/useApi'
 import { useStore } from '@/store'
@@ -711,7 +712,7 @@ export default function GuidedMDXBuilder({ tab, server: serverProp, _onSwitchToR
     setAiLoading(true)
     try {
       const token = localStorage.getItem('tm1-token') ?? ''
-      const r = await fetch('/api/mdx/generate', {
+      const r = await apiFetch('/api/mdx/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-ide-token': token },
         body: JSON.stringify({ server: tab.server, cube: selectedCube, prompt: aiPrompt }),
@@ -912,7 +913,7 @@ export default function GuidedMDXBuilder({ tab, server: serverProp, _onSwitchToR
       if (!currentMDX.trim()) return
       setPreviewLoading(true)
       try {
-        const res = await fetch(`/api/subset/preview?server=${encodeURIComponent(server)}&dimension=${encodeURIComponent(selectedDim)}`, {
+        const res = await apiFetch(`/api/subset/preview?server=${encodeURIComponent(server)}&dimension=${encodeURIComponent(selectedDim)}`, {
           method: 'POST', headers: { 'Content-Type': 'application/json', 'x-ide-token': localStorage.getItem('tm1-token') ?? '' }, body: JSON.stringify({ mdx: currentMDX }),
         })
         const d = await res.json()
@@ -953,7 +954,7 @@ export default function GuidedMDXBuilder({ tab, server: serverProp, _onSwitchToR
     if (isSubsetMode) return
     setPreviewLoading(true); setPreviewError(null)
     try {
-      const res = await fetch(`/api/mdx/execute?server=${encodeURIComponent(server)}`, {
+      const res = await apiFetch(`/api/mdx/execute?server=${encodeURIComponent(server)}`, {
         method: 'POST', headers: { 'Content-Type': 'application/json', 'x-ide-token': localStorage.getItem('tm1-token') ?? '' }, body: JSON.stringify({ mdx: activeMDX }),
       })
       const d = await res.json()

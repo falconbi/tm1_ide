@@ -1,3 +1,4 @@
+import { apiFetch } from '@/lib/api'
 import { useState, useMemo, useCallback, useEffect, useRef, useReducer } from 'react'
 import { AgGridReact } from 'ag-grid-react'
 import { AllCommunityModule, ModuleRegistry } from 'ag-grid-community'
@@ -74,7 +75,7 @@ function SourceViewPreview({ server, cube, view, processes, onOpenFull }) {
     useEffect(() => {
         let cancelled = false
         const url = `/api/view/preview-records?server=${encodeURIComponent(server)}&cube=${encodeURIComponent(cube)}&view=${encodeURIComponent(view)}`
-        fetch(url, {
+        apiFetch(url, {
             method: 'POST',
             headers: { 'x-ide-token': localStorage.getItem('tm1-token') ?? '' },
         })
@@ -687,7 +688,7 @@ function RuleBreakdown({ server, statements: allStatements, dimElemPairs, cube, 
         if (!toFetch.size) return
         setLoadingAttrs(true)
         Promise.all([...toFetch.entries()].map(([key, { dim, elem }]) =>
-            fetch(`/api/element/attributes?server=${encodeURIComponent(server)}&dimension=${encodeURIComponent(dim)}&element=${encodeURIComponent(elem)}`, {
+            apiFetch(`/api/element/attributes?server=${encodeURIComponent(server)}&dimension=${encodeURIComponent(dim)}&element=${encodeURIComponent(elem)}`, {
                 headers: { 'x-ide-token': token },
             }).then(r => r.json()).then(v => [key, v]).catch(() => [key, {}])
         )).then(results => {
@@ -729,7 +730,7 @@ function RuleBreakdown({ server, statements: allStatements, dimElemPairs, cube, 
     const getCubeDims = useCallback(async (cubeName) => {
         if (dimCache.current[cubeName]) return dimCache.current[cubeName]
         try {
-            const r = await fetch(`/api/cube/dimensions?server=${encodeURIComponent(server)}&cube=${encodeURIComponent(cubeName)}`, {
+            const r = await apiFetch(`/api/cube/dimensions?server=${encodeURIComponent(server)}&cube=${encodeURIComponent(cubeName)}`, {
                 headers: { 'x-ide-token': token },
             })
             const dims = await r.json()
@@ -744,7 +745,7 @@ function RuleBreakdown({ server, statements: allStatements, dimElemPairs, cube, 
         const key = `${dim}::${elem}`
         if (attrCache.current[key]) return attrCache.current[key]
         try {
-            const r = await fetch(`/api/element/attributes?server=${encodeURIComponent(server)}&dimension=${encodeURIComponent(dim)}&element=${encodeURIComponent(elem)}`, { headers: { 'x-ide-token': token } })
+            const r = await apiFetch(`/api/element/attributes?server=${encodeURIComponent(server)}&dimension=${encodeURIComponent(dim)}&element=${encodeURIComponent(elem)}`, { headers: { 'x-ide-token': token } })
             attrCache.current[key] = await r.json()
         } catch { attrCache.current[key] = {} }
         return attrCache.current[key]
@@ -1140,7 +1141,7 @@ function TraceSidePanel({ ctx, onClose, initialStack, onStackChange }) {
             dims = stackCubeDims
         } else {
             try {
-                const res = await fetch(`/api/cube/dimensions?server=${encodeURIComponent(ctx.server)}&cube=${encodeURIComponent(targetCube)}`, {
+                const res = await apiFetch(`/api/cube/dimensions?server=${encodeURIComponent(ctx.server)}&cube=${encodeURIComponent(targetCube)}`, {
                     headers: { 'x-ide-token': localStorage.getItem('tm1-token') ?? '' },
                 })
                 dims = await res.json()
@@ -1399,7 +1400,7 @@ export default function ViewEditor({ tab }) {
         const key = `${dim}:${attr}`
         if (aliasValueMaps[key]) return
         try {
-            const r = await fetch(`/api/dimension/alias-values?server=${encodeURIComponent(tab.server)}&dimension=${encodeURIComponent(dim)}&alias=${encodeURIComponent(attr)}`, { headers: { 'x-ide-token': localStorage.getItem('tm1-token') ?? '' } })
+            const r = await apiFetch(`/api/dimension/alias-values?server=${encodeURIComponent(tab.server)}&dimension=${encodeURIComponent(dim)}&alias=${encodeURIComponent(attr)}`, { headers: { 'x-ide-token': localStorage.getItem('tm1-token') ?? '' } })
             if (r.ok) { const map = await r.json(); setAliasValueMaps(prev => ({ ...prev, [key]: map })) }
         } catch { /* alias fetch failed — alias display just stays plain */ }
     }, [tab.server, aliasValueMaps])
@@ -2164,7 +2165,7 @@ export default function ViewEditor({ tab }) {
         const coordMap = coordsOf(tuple, members)
         const missing  = cubeDims.filter(d => !coordMap.has(d))
         if (missing.length) throw new Error(`Cannot write — move all dimensions to an axis: ${missing.join(', ')}`)
-        const res = await fetch('/api/cells/write', {
+        const res = await apiFetch('/api/cells/write', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'x-ide-token': localStorage.getItem('tm1-token') ?? '' },
             body: JSON.stringify({ server: tab.server, cube: tab.cube, dims: cubeDims.map(dim => ({ dim, element: coordMap.get(dim) })), value }),
