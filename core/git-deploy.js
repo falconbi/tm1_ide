@@ -44,10 +44,10 @@ const driftRefusal = (target, drift) => {
 const PLAN_TYPE = { cubes: 'cube', dimensions: 'dimension', processes: 'process', chores: 'chore', subsets: 'subset', views: 'view' }
 function parsePlanOp(op) {
     const m = String(op ?? '').match(/^([A-Za-z]+)\s+([A-Za-z]+)\(['"]?([^'")]*)['"]?(?:\s*,\s*['"]?([^'")]*)['"]?)?\)?/)
-    if (!m) return null
+    if (!m) return { unknown: true, raw: String(op ?? '') }
     if (m[1].toLowerCase() === 'skip') return null   // Skip = unchanged, not a change
     const type = PLAN_TYPE[m[2].toLowerCase()]
-    if (!type) return null
+    if (!type) return { unknown: true, raw: String(op ?? '') }
     // Subsets are keyed by their dimension, views by their cube — the parent is the
     // op's second argument when present.
     const parent = (type === 'subset' || type === 'view') ? (m[4] ?? null) : undefined
@@ -250,8 +250,15 @@ async function execute(target, { branch = 'dev', token, gitUser = gitIdentity.us
                 const { changedObjects, objectKey } = require('./git-release')
                 const expected = await changedObjects({ from: base, to: releaseCommit, repoUrl, token, gitUser })
                 const expectedKeys = new Set(expected.map(o => objectKey(o.type, o.name, o.parent)))
-                const unexpected = (plan.Operations ?? []).map(parsePlanOp).filter(Boolean)
-                    .filter(o => !expectedKeys.has(objectKey(o.type, o.name, o.parent)))
+                const parsedOps = (plan.Operations ?? []).map(parsePlanOp).filter(Boolean)
+                const unknownOps = parsedOps.filter(o => o.unknown)
+                if (unknownOps.length) {
+                    out.executed = false
+                    out.refused = true
+                    out.error = `Refused: the pull plan contains ${unknownOps.length} operation(s) this deploy cannot classify — ${unknownOps.map(o => o.raw).join('; ')}. Rebuild or inspect the release before deploying.`
+                    return out
+                }
+                const unexpected = parsedOps.filter(o => !expectedKeys.has(objectKey(o.type, o.name, o.parent)))
                 if (unexpected.length) {
                     out.executed = false
                     out.refused = true

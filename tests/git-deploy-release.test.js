@@ -301,3 +301,17 @@ test('a subset apply failure drives controlOk to false', async () => {
     assert.equal(out.controlOk, false, 'a failed subset apply is never control-ok')
   } finally { ctx = null; fs.rmSync(r.bare, { recursive: true, force: true }); fs.rmSync(r.w, { recursive: true, force: true }) }
 })
+test('an unrecognised pull-plan operation refuses the deploy', async () => {
+  const r = repo()
+  try {
+    baseCommit = r.base
+    const s = cl.startSession('Unknown op', 'DEV1', 'admin')
+    cl.setSessionCommit(s.id, r.releaseCommit)
+    cl.setSessionRelease(s.id, r.releaseCommit, 'TG1')
+    ctx = { bare: r.bare, releaseCommit: r.releaseCommit, sessionId: s.id, ops: ["Update Widgets('A')"] }
+    const out = await execute('TG1', { session: s.id, token: 'x', gitUser: 't' })
+    assert.equal(out.refused, true)
+    assert.match(out.error, /cannot classify/i)
+    assert.match(out.error, /Widgets/)
+  } finally { fs.rmSync(r.bare, { recursive: true, force: true }); fs.rmSync(r.w, { recursive: true, force: true }) }
+})
