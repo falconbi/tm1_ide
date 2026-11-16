@@ -54,7 +54,7 @@ Five playlists, one theme each — build with AI, everyday development, governed
 11. Dimensions & subsets — hierarchies, attributes, MDX subsets
 12. Views — native and MDX, write-back, auto-refresh when rules change
 13. Cube Map — the whole model as a living diagram, including which process writes where
-14. Find anything — search across rules and TI, and the guided MDX builder
+14. Find anything — quick process search, Rules + TI find & replace, and the guided MDX builder
 15. Period Builder — a complete period dimension and its processes from a wizard
 
 ### 3. Governed change
@@ -261,9 +261,14 @@ Browse and manage all TM1 objects: cubes, dimensions, subsets, views, processes,
 - Arrow button on tab hover — instantly send a tab to the other pane
 - Toggle horizontal/vertical split without closing panes — direction persisted across sessions
 
-### 🔎 Cross-Object Search
+### 🔎 Search and Replace
 
-`Ctrl+Shift+F` — full-text search across all rules and TI process code on the connected server simultaneously.
+There are two deliberately different search surfaces:
+
+- **Quick process search** — `Ctrl+Shift+F` (Explorer). Searches TI process code only,
+  through `GET /api/processes/search`; it is the fast "where is this process?" lookup.
+- **Find & Replace** — the Find panel. Searches Rules and TI together through
+  `GET /api/search/index`, and can replace across both. That is the cross-object search.
 
 ### 💡 Autocomplete & Intelligence
 

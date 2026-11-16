@@ -1573,32 +1573,28 @@ app.delete('/api/dimension/hierarchy', async (req, res) => {
 })
 
 // ── Search index — all rules + all process code in one call ──────────────────
+// Scope: Rules + TI, used by Find & Replace. The Explorer's Ctrl+Shift+F quick
+// search is deliberately TI-only (see /api/processes/search and FEATURES.md).
 app.get('/api/search/index', async (req, res) => {
-    console.log('[api/search/index] request:', req.query.server)
     try {
         const client = makeClient(req.query.server, req.ideToken)
-        const [cubes, processes] = await Promise.all([
-            client.getCubes(),
-            client.getProcesses(),
+        const [cubes, processData] = await Promise.all([
+            client.getAllCubesWithRules(),
+            client.get('Processes', {
+                '$select': 'Name,PrologProcedure,MetadataProcedure,DataProcedure,EpilogProcedure',
+            }),
         ])
-
-        const [rulesResults, processResults] = await Promise.all([
-            Promise.all(cubes.map(async name => {
-                const cube = await client.getCube(name)
-                return { name, rules: cube?.Rules ?? '' }
-            })),
-            Promise.all(processes.map(async name => {
-                const p = await client.getProcess(name)
-                return {
-                    name,
-                    Prolog:   p.PrologProcedure   ?? '',
-                    Metadata: p.MetadataProcedure ?? '',
-                    Data:     p.DataProcedure     ?? '',
-                    Epilog:   p.EpilogProcedure   ?? '',
-                }
-            })),
-        ])
-
+        const rulesResults = cubes.map(c => ({ name: c.Name, rules: c.Rules ?? '' }))
+        const processResults = (processData.value ?? [])
+            .filter(p => !p.Name.startsWith('}'))
+            .map(p => ({
+                name: p.Name,
+                Prolog:   p.PrologProcedure ?? '',
+                Metadata: p.MetaDataProcedure ?? p.MetadataProcedure ?? '',
+                Data:     p.DataProcedure ?? '',
+                Epilog:   p.EpilogProcedure ?? '',
+            }))
+        console.log('[api/search/index] request:', req.query.server, `${rulesResults.length} rules, ${processResults.length} processes`)
         res.json({ rules: rulesResults, processes: processResults })
     } catch (e) {
         res.status(500).json({ error: e.message })

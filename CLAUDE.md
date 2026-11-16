@@ -291,7 +291,7 @@ Data goes through hooks in `hooks/useApi.js`; a direct `fetch` is only for a one
 - Cube Editor: create/delete cubes
 - SQL Editor: multi-driver connections + schema browser + query save + post-to-TI
 - MDX Sandbox: ad-hoc MDX execution with result grid
-- Global Search: cross-object search across rules + TI code
+- Search: Explorer Ctrl+Shift+F is a quick TI-process search (`/api/processes/search`); the Find & Replace panel searches rules + TI and replaces (`/api/search/index`)
 - Period Builder: generates TI processes for period dimension maintenance
 - Autocomplete: cube name, dimension name, element context in Rules (DB, ATTRS) and TI (CellPutN, DimensionElement*, etc.)
 - Tab system: drag-to-reorder within group + right-click context menu (Split Right, Split Down, Move to other pane, Close others, Close to right, Close) + arrow button on hover to send tab to other pane
