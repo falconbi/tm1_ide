@@ -56,7 +56,6 @@ tm1_ide/
 │   └── tm1deploy/               # Package / diff / risk / deploy CLI
 ├── config/                      # Committed examples + per-install runtime state
 ├── data/                        # Runtime DB, summaries, Lens logs and prefs
-├── lenses/                      # Workforce worked-example Lenses and save.js
 ├── core-ti/                     # Hidden core TI processes and platform settings
 ├── tests/                       # node --test suite (fakes; no live TM1 required)
 ├── docs/                        # Guides and review records

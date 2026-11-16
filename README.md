@@ -101,7 +101,6 @@ Start here: [Setup](docs/ide/SETUP.md) → [Features](docs/ide/FEATURES.md) → 
 | Guide | What's in it |
 |---|---|
 | [Features](docs/ide/FEATURES.md) | Every editor and tool, with screenshots |
-| [Workforce Lenses](lenses/workforce/README.md) | The 14 pages, how they are exported from TM1 and committed |
 | [HTML apps on TM1: security](docs/lenses/TM1_HTML_APPS_SECURITY.md) | The browser security layer you own once TM1 screens are HTML you (or an AI) write — five decisions, one checklist |
 | [Lens learning lab](docs/learn/lens-lab/README.md) | Five browser-security ideas you can break on purpose, run locally with no dependencies |
 | [Setup](docs/ide/SETUP.md) | Install, configure servers, run, development mode, installing at a client (Windows untested) |
@@ -123,7 +122,7 @@ Keyboard shortcuts: press `F1` or `Ctrl+Shift+K` in the app.
 
 ## Status
 
-Active development. Core IDE features are usable. The Workforce Lenses are still under test and are not yet ready for use; MCP and the deployment pipeline are still being proven on real builds.
+Active development. Core IDE features are usable. The Workforce model and its Lenses stay in TM1, where the model lives; they are not part of this repository. MCP and the deployment pipeline are still being proven on real builds.
 
 ---
 
