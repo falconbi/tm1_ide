@@ -50,7 +50,7 @@ That puts these first, in this order:
 | 03 | Explorer and the editors (`client/src/components`, `hooks`, `store`) | round 1 done (9 commits, checked); editors split still to brief; ~100 direct fetches left for a later round |
 | 04 | Shared pivot (`shared/pivot`) and the grid | done — verdict + fixes round 1 (9 commits, checked) |
 | 05 | Validators, formatter, function catalog, autocomplete (`client/src/lib`, `core/*-lint.js`) | round 1 done (9 commits, checked); shared-module CJS/ESM convention open (see 05 QUESTIONS) |
-| 06 | Understanding the model: Cube Map, Runbook, trace, search | |
+| 06 | Understanding the model: Cube Map, Runbook, trace, search | round 1 done (9 commits, checked); Cube Map editor split and full scanner-index unification later |
 | 07 | Change sets, assertions, deploy (`core/git-*`, `core/change*`, deploy components) | |
 | 08 | Admin: monitoring, server admin, users, catalog admin | |
 | 09 | MCP server (`tools/tm1mcp`) | |
