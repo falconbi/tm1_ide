@@ -54,5 +54,5 @@ That puts these first, in this order:
 | 07 | Change sets, assertions, deploy (`core/git-*`, `core/change*`, deploy components) | round 1 done (10 commits, checked); 7 live checks for James in 07_DEPLOY_FIXES_DONE.md; round 2 (model-owned discovery + first-pull analysis) to design |
 | 08 | Admin: monitoring, server admin, users, catalog admin | done — round 1 (7 commits, checked); one admin rule (`core/admin_gate.js`), session/job list GETs left ungated by design |
 | 09 | MCP server (`tools/tm1mcp`) | done — round 1 (8 commits, checked); 67 tools, inventory generated and tested |
-| 10 | Lenses: kit, editor, app, Workforce pages | verdict + fix brief written; Workforce pages (`lenses/workforce`) not yet reviewed |
-| 11 | Build, tests, lint, CI, docs | |
+| 10 | Lenses: kit, editor, app, Workforce pages | done — round 1 (9 commits, checked); Workforce page content (`lenses/workforce`) not yet reviewed |
+| 11 | Build, tests, lint, CI, docs | done — round 1 (7 commits, checked); CI matrix + static check proven on first push; backend lint 87 recorded, not fixed |

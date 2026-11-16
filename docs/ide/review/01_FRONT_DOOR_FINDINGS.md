@@ -89,5 +89,4 @@ Do not restart servers.
    only if `node --test` cannot load them as `.js`; otherwise convert. Update the `test` script.
 5. **`package.json`.** `description`: "A browser-based IDE and MCP server for IBM Planning
    Analytics (TM1)." `author`: falconbi. `keywords`: tm1, planning-analytics, ide, mcp. `version`:
-   0.9.0. Remove `playwright` from devDependencies and from `package-lock.json`. Set CI to the
-   same Node version Setup states (20), or change Setup to 22 — pick one and say which.
+   0.9.0. (Playwright removal and the Node version moved to `11_BUILD_FIXES.md` step 4.)
