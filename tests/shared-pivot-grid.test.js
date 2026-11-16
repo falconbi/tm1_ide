@@ -153,6 +153,22 @@ test('immediate mode: each typed cell is written at once; a refused write puts t
   g.destroy(); close()
 })
 
+test('CSV exports what the screen shows (TM1 formats applied)', async () => {
+  const { P, close } = page()
+  const pivot = P.cellsetToPivot({
+    Axes: [
+      { Ordinal: 0, Tuples: [{ Members: [{ Name: 'Amount', UniqueName: '[Measure].[Measure].[Amount]' }] }] },
+      { Ordinal: 1, Tuples: [{ Members: [{ Name: 'North', UniqueName: '[Region].[Region].[North]' }] }] },
+    ],
+    Cells: [{ Ordinal: 0, Value: 1234.5, FormattedValue: '1234.5', Updateable: 1 }],
+  }, { formatMap: { Measure: { Amount: '#,##0.00' } } })
+  const g = P.createPivotGrid('#g', { pivot })
+  await wait(50)
+  const csv = g.csvText()
+  assert.ok(csv.includes('1,234.50'), `CSV should carry the formatted value, got: ${csv}`)
+  g.destroy(); close()
+})
+
 test('two dimensions on columns: stacked headings, and a total column is never typed into (bug 1)', async () => {
   const { doc, P, close } = page()
   const cols = [['North', 'Jan'], ['North', 'Q1'], ['South', 'Jan']].map(([r, p]) => [M(r, 'Region'), M(p, 'Period')])

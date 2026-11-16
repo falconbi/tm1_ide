@@ -477,6 +477,16 @@ export function createPivotGrid(host, opts = {}) {
     if (o.restore) ({ rowExp, colExp, rowKnown, colKnown, pendingOpen, rowTree = [], colTree = [] } = o.restore)
     build()
 
+    // CSV and copy share one display path: what is shown is what is exported.
+    const csvParams = (fileName) => ({
+        fileName,
+        processCellCallback: p => {
+            const id = p.column.getColId()
+            if (id.startsWith('__d')) return p.node.data?.[`${id}_label`] ?? ''
+            return show(p.node.data?.[id], (p.node.data?.__key ?? '') + '|' + id)
+        },
+    })
+
     return {
         get api() { return api },
         changes,
@@ -533,16 +543,9 @@ export function createPivotGrid(host, opts = {}) {
             })
             return [head, ...lines].join('\n')
         },
-        exportCsv(fileName) {
-            api.exportDataAsCsv({
-                fileName,
-                processCellCallback: p => {
-                    const id = p.column.getColId()
-                    if (id.startsWith('__d')) return p.node.data?.[`${id}_label`] ?? ''
-                    return p.value ?? ''
-                },
-            })
-        },
+        exportCsv(fileName) { api.exportDataAsCsv(csvParams(fileName)) },
+        // the same CSV text AG Grid would download, for tests and copy-to-clipboard hosts
+        csvText() { return api.getDataAsCsv(csvParams()) },
         destroy() { closeMenu(); if (api) api.destroy(); api = null },
     }
 }

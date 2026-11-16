@@ -12,6 +12,7 @@ commits that mixed a fix into a feature are included too. New features are not l
 
 ### 2026-11-16
 
+- **pivot** — CSV exported raw cell values while the grid and the copy table applied the element's TM1 Format. CSV now uses the same display path (tooltip: "values as shown")
 - **grid** — With two grids open (split panes), Ctrl+F focused every toolbar's search and Ctrl+Shift+A fitted every grid. The shortcuts now act only when focus is inside that grid's wrapper
 - **pivot** — A dimension name containing `]` was read only up to the first bracket (`dimOf`), so its formats and labels were attached to the wrong dimension; it now uses the same `]]`-aware parser as `elementOf`
 - **pivot** — Any formatted string with a colon as its second character (`A:B`, `1:30`) was treated as a TM1 type prefix and lost its first two characters. Only known type letters (`c`, `n`, `s`), and only for a numeric cell, are stripped now

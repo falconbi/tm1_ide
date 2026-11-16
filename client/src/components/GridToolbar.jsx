@@ -242,7 +242,7 @@ export default function GridToolbar({
       </div>
       <div className="flex items-center gap-1.5 ml-auto">{right}</div>
       {showCsv && onCsv && (
-        <button className={BTN} onClick={onCsv} title="Export grid to CSV">
+        <button className={BTN} onClick={onCsv} title="Export as CSV (values as shown)">
           <Download size={10} /> CSV
         </button>
       )}
