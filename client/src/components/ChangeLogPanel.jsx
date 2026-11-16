@@ -1,3 +1,4 @@
+import { apiFetch } from '@/lib/api'
 import { useState, useRef, useEffect } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { X, ChevronRight, ChevronDown, Clock, Box, Layers, Cog, FileText, FileCheck, Table2, List, Tag, Loader2, Diff, Rocket, ScrollText, Pencil, RotateCcw, HelpCircle } from 'lucide-react'
@@ -145,7 +146,7 @@ function SessionRow({ session, server, openTab, onClose, currentUser }) {
   const runTests = async () => {
     setTestResult('running')
     try {
-      const r = await fetch(`/api/assertions/run?server=${encodeURIComponent(server)}`, { method: 'POST', headers: authHeader(), body: '{}' }).then(r => r.json())
+      const r = await apiFetch(`/api/assertions/run?server=${encodeURIComponent(server)}`, { method: 'POST', headers: authHeader(), body: '{}' }).then(r => r.json())
       if (r.error) throw new Error(r.error)
       setTestResult(r)
     } catch (e) { setTestResult({ error: e.message }) }
@@ -153,7 +154,7 @@ function SessionRow({ session, server, openTab, onClose, currentUser }) {
   const closeSet = async () => {
     setClosing(true)
     try {
-      const r = await fetch('/api/sessions/close', { method: 'POST', headers: authHeader(), body: JSON.stringify({ id: session.id }) })
+      const r = await apiFetch('/api/sessions/close', { method: 'POST', headers: authHeader(), body: JSON.stringify({ id: session.id }) })
       const d = await r.json().catch(() => ({}))
       if (!r.ok || d.error) throw new Error(d.error || r.statusText)
       qc.invalidateQueries({ queryKey: ['work-sessions', server] })

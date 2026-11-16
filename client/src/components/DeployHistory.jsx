@@ -1,3 +1,4 @@
+import { apiFetch } from '@/lib/api'
 import { useState, Fragment, useEffect } from 'react'
 import { useDeployArchives, useServers } from '@/hooks/useApi'
 import { Loader2, ChevronDown, ChevronRight, CheckCircle2, XCircle, UserCheck, ArrowRight, Diff } from 'lucide-react'
@@ -151,7 +152,7 @@ function ArchiveDetail({ id, approval, _deployStats, onOpenDiff }) {
     setLoading(true)
     try {
       const token = localStorage.getItem('tm1-token') ?? ''
-      const r = await fetch(`/api/deploy/archives/${encodeURIComponent(id)}`, { headers: { 'x-ide-token': token } })
+      const r = await apiFetch(`/api/deploy/archives/${encodeURIComponent(id)}`, { headers: { 'x-ide-token': token } })
       setData(r.ok ? await r.json() : null)
       if (!r.ok) setErr('Failed to load archive')
     } catch { setErr('Network error') }
@@ -291,7 +292,7 @@ function GitHistoryPanel() {
     if (!target) return
     let live = true
     setBusy(true); setError(null)
-    fetch(`/api/deploy/git/history?target=${encodeURIComponent(target)}`, { headers: { 'x-ide-token': localStorage.getItem('tm1-token') ?? '' } })
+    apiFetch(`/api/deploy/git/history?target=${encodeURIComponent(target)}`, { headers: { 'x-ide-token': localStorage.getItem('tm1-token') ?? '' } })
       .then(async r => {
         const d = await r.json()
         if (!r.ok || d.error) throw new Error(d.error || r.statusText)
