@@ -1260,7 +1260,7 @@ function TraceSidePanel({ ctx, onClose, initialStack, onStackChange }) {
                             {comps.map((c, i) => {
                                 const tuple    = (c.Tuple ?? []).map(t => t.Name).join(' · ')
                                 const drillable = canDrill(c)
-                                const crossCube = c.Cube?.Name && c.Cube.Name !== ctx.cube
+                                const crossCube = c.Cube?.Name && c.Cube.Name !== current.cube
                                 return (
                                     <div
                                         key={i}
@@ -2788,6 +2788,7 @@ export default function ViewEditor({ tab }) {
         )}
         {traceCtx && (
             <TraceSidePanel
+                key={`${traceCtx.server}:${traceCtx.cube}:${(traceCtx.dimElemPairs ?? []).map(p => `${p.dim}=${p.element}`).join('|')}`}
                 ctx={traceCtx}
                 initialStack={traceRef.current?.ctx === traceCtx ? traceRef.current?.stack : null}
                 onStackChange={st => { if (traceRef.current) traceRef.current.stack = st }}
