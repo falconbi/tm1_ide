@@ -91,7 +91,7 @@ cp .env.example .env        # direct-v11 only needs PORT=8083; PAW setups need P
 npm start                   # → http://localhost:8083
 ```
 
-The frontend is pre-built — no build step needed. Full instructions: [Setup](docs/ide/SETUP.md).
+Node.js **20 or later** is required (CI tests 20 and 22). The frontend is pre-built — no build step needed. Full instructions: [Setup](docs/ide/SETUP.md).
 
 ## Documentation
 
