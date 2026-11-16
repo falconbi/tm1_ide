@@ -7,7 +7,7 @@ const { diff, loadBaseline } = require('./diff')
 const { fetchElementFormats, fetchAttributeValues, fetchPicklistCells } = require('./snapshot')
 const { isNeverDeploy } = require('./never-deploy')
 
-const PACKAGES_DIR = path.resolve(__dirname, '../../../packages')
+const PACKAGES_DIR = path.resolve(__dirname, '../../../data/packages')
 const DEPLOY_HOOKS_PATH = path.resolve(__dirname, '../../../config/deploy-hooks.json')
 
 // Post-deploy steps declared for this source server (config/deploy-hooks.json).

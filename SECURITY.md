@@ -25,7 +25,7 @@ What lives inside that boundary:
 | Anthropic API key, PAW host/creds | `.env` | your OS user (file) |
 | Live TM1 passwords, in plaintext, for the session | Node process memory (`_sessions` map in `core/paw_connect.js`) | your OS user (memory / debugger) |
 | IDE session token | browser `localStorage` (`tm1-token`) → browser profile on disk | your OS user (file) |
-| Change history, deploy baselines | `change_log.db`, `.tm1baseline/` | your OS user (file) |
+| Change history, deploy baselines | `data/change_log.db`, `.tm1baseline/` | your OS user (file) |
 
 All one bucket. Protecting the OS account protects TM1 IDE.
 

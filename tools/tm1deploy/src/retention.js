@@ -14,7 +14,7 @@ const path = require('path')
 const cl   = require('../../../core/change_log')
 const { listBaselines } = require('./diff')
 
-const ARCHIVE_DIR = path.resolve(__dirname, '../../../config/archives/change-log')
+const ARCHIVE_DIR = path.resolve(__dirname, '../../../data/archives/change-log')
 const DEFAULT_RETENTION_DAYS = Number(process.env.CHANGE_LOG_RETENTION_DAYS) || 365
 
 function retentionFloor(server) {

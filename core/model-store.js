@@ -24,7 +24,7 @@ const AREAS = {
     lenses:      { folder: 'Lenses' },
 }
 
-const MARKER_FILE = path.join(__dirname, '..', 'config', 'model-migration.json')
+const MARKER_FILE = path.join(__dirname, '..', 'data', 'model-migration.json')
 function loadMarkers() { try { return JSON.parse(fs.readFileSync(MARKER_FILE, 'utf8')) } catch { return {} } }
 function saveMarkers(m) { fs.mkdirSync(path.dirname(MARKER_FILE), { recursive: true }); fs.writeFileSync(MARKER_FILE, JSON.stringify(m, null, 2)) }
 // Has this server's <area> been migrated to the model?
@@ -80,7 +80,7 @@ async function readDoc(server, area, name, opts = {}) {
         const files = await c.listFiles(folder).catch(e => (e.response?.status === 404 ? [] : (() => { throw e })()))
         if (!files.some(f => f.name === doc && !f.isFolder)) {
             if (isMigrated(server, area)) {
-                throw new Error(`Server "${server}" is model-owned for ${area}, but ${folder.join('/')}/${doc} is missing. Restore it, or remove the migrated marker from config/model-migration.json.`)
+                throw new Error(`Server "${server}" is model-owned for ${area}, but ${folder.join('/')}/${doc} is missing. Restore it, or remove the migrated marker from data/model-migration.json.`)
             }
             return null
         }

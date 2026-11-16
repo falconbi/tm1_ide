@@ -3093,7 +3093,7 @@ app.get('/api/deploy/git/history', async (req, res) => {
 
 app.get('/api/deploy/archives', (req, res) => {
     try {
-        const dir = path.join(__dirname, 'config', 'archives')
+        const dir = path.join(__dirname, 'data', 'archives')
         if (!fs.existsSync(dir)) return res.json([])
         const archives = fs.readdirSync(dir)
             .filter(f => f.endsWith('.json'))
@@ -3111,7 +3111,7 @@ app.get('/api/deploy/archives', (req, res) => {
 
 app.get('/api/deploy/archives/:id', (req, res) => {
     try {
-        const file = path.join(__dirname, 'config', 'archives', `${req.params.id}.json`)
+        const file = path.join(__dirname, 'data', 'archives', `${req.params.id}.json`)
         if (!fs.existsSync(file)) return res.status(404).json({ error: 'Not found' })
         res.json(JSON.parse(fs.readFileSync(file, 'utf8')))
     } catch (e) { res.status(500).json({ error: e.message }) }

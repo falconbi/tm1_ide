@@ -7,7 +7,7 @@
 //
 // Model-building tools (build_dimension, build_cube, build_process, …) and every
 // other metadata write require an open change set — call start_change_set first.
-// All writes are logged to change_log.db so they surface in the IDE deploy pipeline
+// All writes are logged to data/change_log.db so they surface in the IDE deploy pipeline
 // (diff → package → risk → deploy) exactly like changes made in the IDE itself.
 //
 // This file is just the bootstrap: shared context (shared.js), server setup, wire

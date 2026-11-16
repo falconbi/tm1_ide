@@ -5,10 +5,6 @@
 config/servers.json
 
 # ── Local runtime state (per-install; not version controlled) ──
-config/deploy-approvals.json
-config/model-migration.json
-config/git-deploy-state.json
-config/git-secrets.json
 
 # ── Node / npm ──
 node_modules/
@@ -44,10 +40,16 @@ Thumbs.db
 
 # ── Baseline snapshot + deployment packages (machine-generated, not version controlled) ──
 .tm1baseline/
-packages/
+data/packages/
+
+# ── Runtime state (per install) ──
+data/git-deploy-state.json
+data/model-migration.json
+data/deploy-approvals.json
+data/git-secrets.json
 
 # ── Retention archives (change-log exports) ──
-config/archives/
+data/archives/
 
 # ── Logs / Runtime ──
 *.log
@@ -64,6 +66,7 @@ temp/
 
 # ── Bedrock / TI ──
 /Bedrock
+tm1_deploy/
 
 # Local secrets / backups — never commit
 config/certs/
@@ -74,7 +77,6 @@ config/forge.json
 config/ide-modes.json
 config/sql-connections.json
 config/assertions.json
-config/model-migration.json
 opencode.jsonc
 
 # ── Lenses live in the model (Applications/Governance/Lenses), never here ──

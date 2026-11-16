@@ -177,7 +177,7 @@ differences and risks, untested:
 | Area | On Linux today | On Windows |
 | --- | --- | --- |
 | Running as a service | `systemd --user` services (`tm1-backend`, `tm1-frontend`), logs in `/tmp/tm1-*.log`. These are machine setup, not in the repo. | Needs a Windows service wrapper (e.g. NSSM, or a scheduled task at start-up). Not written yet. |
-| `push.sh` | Bash script that pushes to GitHub | Developer convenience only, not part of the IDE. Won't run in `cmd`/PowerShell, and isn't needed. |
+| `scripts/push.sh` | Bash script that pushes to GitHub | Developer convenience only, not part of the IDE. Won't run in `cmd`/PowerShell, and isn't needed. |
 | Git | `git` must be on the PATH (used for TM1 Git deploys, drift and review) | Install Git for Windows. **Line endings:** Git for Windows defaults to `core.autocrlf=true`, which can rewrite rule/TI files on checkout and make content checks see changes that aren't there. Set `core.autocrlf=false` for the IDE's repositories. Untested. |
 | `better-sqlite3` (change log) | Prebuilt binary | Usually has a Windows prebuilt for the Node version. If not, it needs Visual Studio Build Tools to compile. |
 | Package file names | Object names made file-safe (`safeFilename`) | Windows also rejects reserved names (`CON`, `PRN`, `AUX`, `NUL`, `COM1`…) and names ending in a dot or space. An object named exactly like one of those would fail to package. Not handled yet. |

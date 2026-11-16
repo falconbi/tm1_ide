@@ -161,7 +161,7 @@ function register(server, { SERVER, AGENT_USER, cl, assertions, runAssertions, o
 
     server.tool(
         'package_change_set',
-        'Build a deployable package from the open change set (or, with release:true, every object changed since the baseline was seeded). Writes a self-contained folder under packages/ — the same artifact the IDE Deploy panel produces, including a bundled baseline. Does NOT deploy anything. Hand the returned path to a human to review and deploy, or run check_deploy_risk against a target first.',
+        'Build a deployable package from the open change set (or, with release:true, every object changed since the baseline was seeded). Writes a self-contained folder under data/packages/ — the same artifact the IDE Deploy panel produces, including a bundled baseline. Does NOT deploy anything. Hand the returned path to a human to review and deploy, or run check_deploy_risk against a target first.',
         {
             release: z.boolean().optional().describe('Package every object changed since the baseline, not just the open change set'),
         },

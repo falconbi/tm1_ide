@@ -89,9 +89,9 @@ Examples:
   node tools/tm1deploy/bin/tm1deploy.js log     --session apportionment-v1
   node tools/tm1deploy/bin/tm1deploy.js diff    --server TM1_Apportionment --session apportionment-v1
   node tools/tm1deploy/bin/tm1deploy.js package --server TM1_Apportionment --session apportionment-v1
-  node tools/tm1deploy/bin/tm1deploy.js risk    --package packages/apportionment-v1-2026-06-12 --target PROD_TM1
-  node tools/tm1deploy/bin/tm1deploy.js deploy  --package packages/apportionment-v1-2026-06-12 --target PROD_TM1
-  node tools/tm1deploy/bin/tm1deploy.js deploy  --package packages/apportionment-v1-2026-06-12 --target PROD_TM1 --dry-run
+  node tools/tm1deploy/bin/tm1deploy.js risk    --package data/packages/apportionment-v1-2026-06-12 --target PROD_TM1
+  node tools/tm1deploy/bin/tm1deploy.js deploy  --package data/packages/apportionment-v1-2026-06-12 --target PROD_TM1
+  node tools/tm1deploy/bin/tm1deploy.js deploy  --package data/packages/apportionment-v1-2026-06-12 --target PROD_TM1 --dry-run
   node tools/tm1deploy/bin/tm1deploy.js archive-log --server TM1_Apportionment --dry-run
   node tools/tm1deploy/bin/tm1deploy.js archive-log --server TM1_Apportionment --days 180
 `)
@@ -335,7 +335,7 @@ async function cmdReleaseDiff(args) {
 
 // ── archive-log command ─────────────────────────────────────────────────────
 // Manual, opt-in retention for change_log.db (IMPROVEMENTS 1.4). Exports
-// eligible entries to config/archives/change-log/ before deleting anything;
+// eligible entries to data/archives/change-log/ before deleting anything;
 // see tools/tm1deploy/src/retention.js for the safety floor.
 
 async function cmdArchiveLog(args) {

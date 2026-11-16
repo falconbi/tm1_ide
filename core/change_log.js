@@ -2,7 +2,7 @@ const Database  = require('better-sqlite3')
 const path      = require('path')
 const { randomUUID } = require('crypto')
 
-const db = new Database(path.join(__dirname, '..', 'change_log.db'))
+const db = new Database(path.join(__dirname, '..', 'data', 'change_log.db'))
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS sessions (

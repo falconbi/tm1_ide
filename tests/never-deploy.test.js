@@ -37,8 +37,8 @@ test('real objects are unaffected — including names that merely contain "Lab" 
 })
 
 // packages/ is gitignored, so this real-release check runs only where the package exists (not in CI)
-const SEP15 = path.join(__dirname, '../packages/release-2026-09-15-2026-09-15/manifest.json')
-test('the 15 Sep package keeps the WFP process and drops all 122 Bedrock objects', { skip: !fs.existsSync(SEP15) && 'packages/ is gitignored' }, () => {
+const SEP15 = path.join(__dirname, '../data/packages/release-2026-09-15-2026-09-15/manifest.json')
+test('the 15 Sep package keeps the WFP process and drops all 122 Bedrock objects', { skip: !fs.existsSync(SEP15) && 'data/packages/ is gitignored' }, () => {
     const manifest = require(SEP15)
     const kept = manifest.objects.filter(o => !isNeverDeploy(o))
     const dropped = manifest.objects.filter(isNeverDeploy)

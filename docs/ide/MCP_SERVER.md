@@ -98,7 +98,7 @@ every read.
   login, outside the reader's TM1 security and the masking rules. In `readonly` mode they're
   only offered when target servers were named on purpose (`TM1_MCP_ALLOWED_TARGETS` or
   `"mcpAllowTargets"` in `config/servers.json`). In `build` mode they're limited to that list
-  plus the bound server. `packageDir` must resolve inside the IDE's `packages/` folder and
+  plus the bound server. `packageDir` must resolve inside the IDE's `data/packages/` folder and
   contain a `manifest.json`; paths outside it are refused. A failed check is returned as a
   protocol error (`isError: true`), not as successful prose.
 - **No screen for the read audit yet.** `read_audit` keeps 90 days by default
@@ -226,7 +226,7 @@ ignored.
 
 ### Read audit
 
-Every read tool call is written to the `read_audit` table in `change_log.db`: time, server,
+Every read tool call is written to the `read_audit` table in `data/change_log.db`: time, server,
 developer, the TM1 login it ran as, tool, object, rows returned, cells masked, and the outcome
 (`ok`, `refused`, `error`). It is a separate table from the change log, so reads never appear in
 a change set, diff, package or deploy. Rows older than `TM1_MCP_AUDIT_DAYS` (default 90; `0` =
@@ -357,7 +357,7 @@ start_change_set        → open a labelled change set ("AI: <model name>")
 get_change_set          → review what's been recorded
 diff_change_set         → diff vs the deployment baseline
 close_change_set        → done
-package_change_set      → build the deployable folder under packages/ (add release:true
+package_change_set      → build the deployable folder under data/packages/ (add release:true
                           for every object changed since the baseline, not just this set)
 check_deploy_risk       → risk analysis of the package against a target (read-only)
 check_target_drift      → has the target moved from the baseline? (read-only)
@@ -374,7 +374,7 @@ including the fix loop (risk flags a bad rule → fix it → re-package → re-c
 There is deliberately no `deploy_execute` tool: the actual write to a target goes
 through a person in the IDE (Deploy panel, or Import Package on another machine).
 
-Change sets are stored in `change_log.db` (shared with the IDE), attributed to user
+Change sets are stored in `data/change_log.db` (shared with the IDE), attributed to user
 `ai-agent`. Change sets are keyed by server + developer (`TM1_MCP_USER`, default `ai-agent`), so several
 developers (or agents) can work on one server without landing in each other's set.
 
@@ -590,9 +590,9 @@ In `readonly` mode only the read tools are offered. The split is defined in
 ### Deploy — prepare & check (no change set / no writes to target)
 | Tool | Purpose |
 |---|---|
-| `package_change_set` | build the deployable folder under `packages/` (`release:true` = everything since baseline) |
-| `check_deploy_risk` | risk analysis of a package vs a target — syntax on target, missing deps, chore conflicts; `packageDir` must be under `packages/` |
-| `check_target_drift` | has the target changed from the baseline for the package's objects? `packageDir` must be under `packages/` |
+| `package_change_set` | build the deployable folder under `data/packages/` (`release:true` = everything since baseline) |
+| `check_deploy_risk` | risk analysis of a package vs a target — syntax on target, missing deps, chore conflicts; `packageDir` must be under `data/packages/` |
+| `check_target_drift` | has the target changed from the baseline for the package's objects? `packageDir` must be under `data/packages/` |
 
 *(No `deploy_execute` — the push to a target is a human step in the IDE.)*
 

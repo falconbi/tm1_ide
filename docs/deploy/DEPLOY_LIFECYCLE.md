@@ -101,7 +101,7 @@ Notes:
   re-creates the plan and checks `plan.Commit.ID`. There is **no `requireApproval` escape hatch**.
 - `/api/sessions/close` **never trusts client-sent test results** — it runs the assertions server-side and refuses to
   close on a failing block-severity assertion.
-- `config/deploy-approvals.json` and `config/git-deploy-state.json` are **local runtime state — gitignored and
+- `data/deploy-approvals.json` and `data/git-deploy-state.json` are **local runtime state — gitignored and
   untracked**.
 
 ## Reconcile is change-set-scoped — proven (6 Oct 2026)
