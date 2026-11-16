@@ -2,7 +2,10 @@ const Database  = require('better-sqlite3')
 const path      = require('path')
 const { randomUUID } = require('crypto')
 
-const db = new Database(path.join(__dirname, '..', 'data', 'change_log.db'))
+// data/ is git-ignored runtime state, so a fresh clone doesn't have it yet.
+const DATA_DIR = path.join(__dirname, '..', 'data')
+require('fs').mkdirSync(DATA_DIR, { recursive: true })
+const db = new Database(path.join(DATA_DIR, 'change_log.db'))
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS sessions (
