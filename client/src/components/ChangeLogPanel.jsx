@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { X, ChevronRight, ChevronDown, Clock, Box, Layers, Cog, FileText, Table2, List, Tag, Loader2, Diff, Rocket, ScrollText, Pencil, RotateCcw, HelpCircle } from 'lucide-react'
+import { X, ChevronRight, ChevronDown, Clock, Box, Layers, Cog, FileText, FileCheck, Table2, List, Tag, Loader2, Diff, Rocket, ScrollText, Pencil, RotateCcw, HelpCircle } from 'lucide-react'
 import HelpPanel from '@/components/HelpPanel'
 import { useWorkSessions, useWorkSessionLog, useUpdateSessionDescription, useResumeWorkSession } from '@/hooks/useApi'
 import { useStore } from '@/store'
@@ -31,6 +31,8 @@ export function autoDescription(action, objectName, detail) {
     case 'ATTRIBUTE_CREATED':  return `Attribute '${objectName}' added${detail ? ` to '${detail}'` : ''}`
     case 'ATTRIBUTE_DELETED':  return `Attribute '${objectName}' removed${detail ? ` from '${detail}'` : ''}`
     case 'ATTRIBUTE_VALUE_SET': return `Attribute value set — ${objectName}`
+    case 'ASSERTION_ADDED':    return `Assertion '${objectName}' added`
+    case 'ASSERTION_REMOVED':  return `Assertion '${objectName}' removed`
     case 'HIERARCHY_CREATED':  return `Hierarchy '${objectName}' created`
     case 'HIERARCHY_DELETED':  return `Hierarchy '${objectName}' deleted`
     case 'EDGE_REMOVED':       return `Parent relationship removed${detail ? ` in '${detail}'` : ''}`
@@ -54,6 +56,8 @@ const ACTION_META = {
   ATTRIBUTE_CREATED:  { label: 'Attribute created',   icon: Tag,      colour: 'text-emerald-400' },
   ATTRIBUTE_DELETED:  { label: 'Attribute deleted',   icon: Tag,      colour: 'text-red-400' },
   ATTRIBUTE_VALUE_SET:{ label: 'Attribute value set', icon: Tag,      colour: 'text-amber-400' },
+  ASSERTION_ADDED:    { label: 'Assertion added',     icon: FileCheck, colour: 'text-emerald-400' },
+  ASSERTION_REMOVED:  { label: 'Assertion removed',   icon: FileCheck, colour: 'text-red-400' },
   ELEMENT_ADDED:      { label: 'Element added',       icon: Layers,   colour: 'text-emerald-400' },
   ELEMENT_DELETED:    { label: 'Element deleted',     icon: Layers,   colour: 'text-red-400' },
   ELEMENT_RENAMED:    { label: 'Element renamed',     icon: Layers,   colour: 'text-amber-400' },

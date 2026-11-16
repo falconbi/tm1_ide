@@ -12,6 +12,7 @@ commits that mixed a fix into a feature are included too. New features are not l
 
 ### 2026-11-16
 
+- **MCP assertions** — `add_assertion` / `remove_assertion` are deliberately ungated, but their writes were invisible in the change log. They now log `ASSERTION_ADDED` / `ASSERTION_REMOVED` (shown in Change Log), and the tool docs state the exception
 - **MCP related objects** — Cube dimensions, chore steps, and active-thread process/function fields leaked names the visibility policy denies. They now filter or show `(not visible)`; a view on an allowed cube remains fully readable by design
 - **MCP attribute values** — `build_dimension` and `add_elements` wrote attribute values (including default Format values) without change-log entries, so MCP-built attributes could not reach the target through the deploy manifest. Every MCP attribute write now goes through one `logAttributeValue` helper that records before/after as `ATTRIBUTE_VALUE_SET`
 - **change sets** — The IDE close route wrote the model-owned closed record while the MCP close only wrote the local log, so agent-closed change sets were invisible to a fresh IDE. Both now call one `closeChangeSet` service that persists the model record before closing locally

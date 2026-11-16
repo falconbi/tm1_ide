@@ -38,3 +38,11 @@ test('list_assertions redacts a denied stored MDX', async () => {
     assert.equal(r.data.assertions[0].status, 'not visible')
     assert.equal(r.data.assertions[0].mdx, null)
 })
+
+test('assertion writes are logged even though they are ungated', async () => {
+    const h = setup({ mode: 'build', assertions: assertionStore([]) })
+    await h.call('add_assertion', { description: 'check', mdx: 'SELECT 1 ON 0 FROM [Open]', expected: 1 })
+    await h.call('remove_assertion', { id: 'a1' })
+    assert.deepEqual(h.changes.map(c => c[0]), ['ASSERTION_ADDED', 'ASSERTION_REMOVED'])
+    assert.equal(h.changes[0][2], 'a1')
+})

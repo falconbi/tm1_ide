@@ -7,7 +7,7 @@ const guard = require('../guard')
 // ASSERTIONS
 // ══════════════════════════════════════════════════════════════════════════════
 
-function register(server, { client, assertions, runAssertions, ok, SERVER, AGENT_USER, policy }) {
+function register(server, { client, assertions, runAssertions, ok, SERVER, AGENT_USER, policy, logChange }) {
     server.tool(
         'add_assertion',
         'Record an expected result for this model — an MDX query and the number it should return. ' +
@@ -15,7 +15,7 @@ function register(server, { client, assertions, runAssertions, ok, SERVER, AGENT
         'Ground rules: test the END of the logic (a real calc/consolidation output). kind="behaviour" = a specific value ' +
         'that depends on the data (runs on DEV); kind="control" = a rule that must hold on any data (runs on DEV and PROD). ' +
         'severity="block" = must stop a Close/deploy; "warn" = data-sensitive (e.g. actual-vs-forecast is always warn — never block). ' +
-        'Give a plain `description` (what) and `why` (the rule/intent it protects). It is executed once immediately so you know the query and expected value are right.',
+        'Give a plain `description` (what) and `why` (the rule/intent it protects). It does not require an open change set; the write is logged.',
         {
             description: z.string().describe('What this checks, in words — e.g. "IT pool clears: total DR = pool"'),
             why:         z.string().optional().describe('Why this test exists — the rule or intent it protects'),
@@ -30,6 +30,7 @@ function register(server, { client, assertions, runAssertions, ok, SERVER, AGENT
             const cl = require('../../../core/change_log')
             const sess = cl.getActiveSession(SERVER, AGENT_USER)
             const rec = await assertions.add(SERVER, { description, mdx, expected, tolerance, tags, kind, severity, why, author: AGENT_USER, changeSet: sess?.id ?? null })
+            logChange('ASSERTION_ADDED', 'assertion', rec.id, { detail: { description, expected, tolerance, kind, severity, changeSet: sess?.id ?? null } })
             return ok({
                 added: rec.id,
                 next: `run_assertions with ids: [${rec.id}] to check it`,
@@ -53,9 +54,13 @@ function register(server, { client, assertions, runAssertions, ok, SERVER, AGENT
 
     server.tool(
         'remove_assertion',
-        'Delete a stored assertion by id',
+        'Delete a stored assertion by id. It does not require an open change set; the write is logged',
         { id: z.string().describe('Assertion id (from add_assertion or list_assertions)') },
-        async ({ id }) => ok(await assertions.remove(SERVER, id) ? `Removed assertion ${id}.` : `No assertion ${id} for "${SERVER}".`)
+        async ({ id }) => {
+            const removed = await assertions.remove(SERVER, id)
+            if (removed) logChange('ASSERTION_REMOVED', 'assertion', id, { detail: { changeSet: null } })
+            return ok(removed ? `Removed assertion ${id}.` : `No assertion ${id} for "${SERVER}".`)
+        }
     )
 
     server.tool(

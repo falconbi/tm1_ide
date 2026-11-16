@@ -338,7 +338,10 @@ to change that. Change it after startup if needed (TI `AssignClientPassword`).
 
 **Every metadata write requires an open change set.** This is the deployment-workflow gate:
 the agent's work is captured exactly like a change made in the IDE, so it flows through
-`diff → package → risk → deploy` unchanged.
+`diff → package → risk → deploy` unchanged. The exception is `add_assertion` /
+`remove_assertion`: they write the model's governance assertions document, not model metadata,
+so they work without an open change set; when one is open, the write is still logged as
+`ASSERTION_ADDED` / `ASSERTION_REMOVED`.
 
 ```
 seed_baseline           → snapshot the server as its deploy baseline (do this FIRST,
@@ -459,9 +462,9 @@ so it's always clear which store the assertions were read from.
 
 | Tool | |
 |---|---|
-| `add_assertion` | `{ description, mdx, expected, tolerance?, tags? }` — stores it and returns the id plus the `run_assertions` command to check it (it does not execute arbitrary MDX as the builder) |
+| `add_assertion` | `{ description, mdx, expected, tolerance?, tags? }` — stores it and returns the id plus the `run_assertions` command to check it (it does not execute arbitrary MDX as the builder); does not require an open change set, the write is logged |
 | `list_assertions` | the stored set for this server; assertions whose MDX names a cube the read policy denies are listed as `status: not visible` with the MDX redacted |
-| `remove_assertion` | delete by id |
+| `remove_assertion` | delete by id; does not require an open change set, the write is logged |
 | `run_assertions` | run all, a tag subset, or `ids: [...]`; denied stored MDX is reported as `status: not visible` and never executed — returns `{ total, passed, failed[], not_visible, results[] }` |
 
 **`close_change_set` runs the assertions automatically** if any are stored, and reports
