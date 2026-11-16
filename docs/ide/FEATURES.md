@@ -47,7 +47,7 @@ Five playlists, one theme each — build with AI, everyday development, governed
 6. The built-in assistant — describe a view or subset, it builds it
 
 ### 2. The developer's IDE
-7. Rules editor — write, live checks, format, fold regions, check feeders
+7. Rules editor — write, live checks, format, fold regions
 8. Trace any cell — right-click: the rule chain, the transaction log, the notes
 9. TI editor & debugger — breakpoints and watched variables
 10. Smart completion & snippets — cube, dimension and element names as you type
@@ -91,7 +91,7 @@ Five playlists, one theme each — build with AI, everyday development, governed
 | **Pivot drill-down (View Editor + Lenses)** | Any total opens, even when the query didn't return its children (fetched on demand). Right-click a row or column heading: Expand, Expand all levels below, Collapse, Expand this level for all, Show leaves only, Keep only this, Remove this (a warning above 2,000 new rows). View-only until saved; a drilled view saves as MDX. A dimension can use an **ALT H** (View Editor pill; Lens.pivot chip with `advanced: ['hierarchies']`). **Freeze top** pins the first row; unfreezing puts it back. A view of totals only isn't shaded grey (the stripes stay). |
 | **Dimension Editor** | Hierarchy tree with CRUD, attribute grid, element search, bulk CSV import. **Alternate Hierarchies:** **+ Hierarchy → From an attribute** builds a second hierarchy (e.g. Positions *By Location*) from an attribute, optionally with the levels above taken from another dimension, and writes the TI process that keeps it in step (optionally run from another process) — never edited by hand. The editor marks an Alternate Hierarchy, says which process builds it, and shows where an element sits in each hierarchy; every Alternate Hierarchy gets its own **Default** subset. Attribute columns can be **dragged wider** and the widths are remembered per browser. Per-column **→A** button converts String attributes to Alias in one click (values preserved). **Format picker** for the Format attribute with colour swatch support |
 | **Subset Editor** | MDX code view + visual element tree, static/MDX save, MDX preview |
-| **View Editor** | Native and MDX view builder, cell grid with inline writeback, **auto-refreshes when rules for the same cube are saved**, Feeders check, **cell right-click → Trace** side drawer. A dimension pill can use an **Alternate Hierarchy** (e.g. *WFP Position › By Location*) — drag it like any dimension |
+| **View Editor** | Native and MDX view builder, cell grid with inline writeback, **auto-refreshes when rules for the same cube are saved**, **cell right-click → Trace** side drawer. A dimension pill can use an **Alternate Hierarchy** (e.g. *WFP Position › By Location*) — drag it like any dimension |
 | **Guided MDX Builder** | Axis-by-axis view builder, subset filter builder, and an MDX editor for ad-hoc queries with a result grid — the **MDX** icon in the toolbar |
 | **Chore Editor** | Schedule editor, step list, activate/deactivate/execute on demand |
 | **Cube Editor** | Create and delete cubes, dimension assignment |

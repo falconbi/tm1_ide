@@ -350,36 +350,11 @@ In `SubsetPopover` (line 498), clicking a named subset called both `onSubsetSele
 
 ---
 
-## CellContextMenu — View Grid Right-Click (Jun 2026)
+## CellContextMenu — View Grid Right-Click
 
-`client/src/components/CellContextMenu.jsx` — fixed-position popup triggered by AG Grid's `onCellContextMenu` in `ViewEditor.jsx` and `HierarchyGrid.jsx`.
-
-### How the intersection is built
-
-`handleCellContextMenu` in `ViewEditor.jsx` assembles a `dimElemPairs` array from the AG Grid event:
-
-- **Row coordinates** — `e.data.__tupleKey__` (`::`-joined) split and zipped with `axes.rows`
-- **Column coordinates** — `hierarchyData.columns.find(c => c.id === colId).members` zipped with `axes.columns`
-- **Page/title coordinates** — `axes.pages` filtered to placed members
-- `cubeDims.map(d => coordMap.get(d))` puts all dims in TM1 cube-order for API calls
-
-`isAllLeaf` is derived from `e.data.__d${i}_isLeaf__` flags set by `HierarchyGrid` — Write tab only shown for fully-leaf intersections.
-
-### Panel breakdown
-
-| Tab | Endpoint | Purpose |
-| --- | -------- | ------- |
-| Write | `POST /api/cells/write` | Inline value write; `dims` = `dimElemPairs`; triggers `handleExecute()` on success |
-| Trace | `POST /api/cube/trace` | Rule chain — shows `Type` badge (RULE/CONSOLIDATED/BASE/FEEDER), rule statements, component breakdown |
-| Log | `GET /api/transactions?elements=JSON` | Transaction history filtered to this intersection (top 30) |
-| Copy | clipboard | Writes `dim: element` pairs + MDX tuple `([Dim].[Dim].[Elem], ...)` |
-| Rules | `openTab()` | Opens rules editor tab for the cube (`type: 'rules'`) |
-
-### `.badge` utility class
-
-Added to `client/src/index.css` — `display:inline-flex`, `padding:1px 5px`, `border-radius:3px`, `font-size:10px`. Used by `TypeBadge` inside `CellContextMenu` and its sub-panels. Color applied via Tailwind bg/text classes per cell type.
-
----
+`client/src/components/CellContextMenu.jsx` is a fixed-position popup with one action: **Trace**.
+It builds the dimension/element pairs from the grid's row tuple, the column members and the filter members, then opens `TraceSidePanel` with the rule chain.
+The old Write / Log / Copy / Rules tabs and `HierarchyGrid.jsx` no longer exist; `.badge` styles the LEAF/CONSOLIDATED header and the trace badges.
 
 ### Placement-level `$expand=Subset` is the reliable approach
 The `$expand=Subset` on individual placement collections (`Rows?$expand=Subset`, `Columns?$expand=Subset`, `Titles?$expand=Subset`) works in this TM1 version, while `$expand=Rows,Columns,Titles` on the view entity returns empty objects `{}` for each placement. The fallback chain:
