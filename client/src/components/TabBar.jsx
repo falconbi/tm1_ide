@@ -112,10 +112,12 @@ export default function TabBar({ groupId }) {
 
   // ── Drag to reorder ─────────────────────────────────────────────────────────
   const dragIdx    = useRef(null)
+  const [dragFrom, setDragFrom] = useState(null)
   const [dragOver, setDragOver] = useState(null)
 
   const handleDragStart = (e, idx) => {
     dragIdx.current = idx
+    setDragFrom(idx)
     e.dataTransfer.effectAllowed = 'move'
     // Ghost image — transparent
     const ghost = document.createElement('div')
@@ -137,10 +139,11 @@ export default function TabBar({ groupId }) {
       reorderTabInGroup(groupId, dragIdx.current, idx)
     }
     dragIdx.current = null
+    setDragFrom(null)
     setDragOver(null)
   }
 
-  const handleDragEnd = () => { dragIdx.current = null; setDragOver(null) }
+  const handleDragEnd = () => { dragIdx.current = null; setDragFrom(null); setDragOver(null) }
 
   // ── Close all ───────────────────────────────────────────────────────────────
   const handleCloseAll = () => {
@@ -192,7 +195,7 @@ export default function TabBar({ groupId }) {
           {groupTabs.map((tab, idx) => {
             const mark = getTabMark(tab)
             const active = tab.id === activeTabId
-            const isDragTarget = dragOver === idx && dragIdx.current !== idx
+            const isDragTarget = dragOver === idx && dragFrom !== idx
             return (
               <div
                 key={tab.id}

@@ -29,7 +29,6 @@ function shouldAutoOpen(sectionId, target) {
   if (target.type === 'view') {
     if (type === 'cubes') return true
     if (type === 'cube' && parts[1] === target.cube) return true
-    if (type === 'cube' && parts[1] === target.cube && parts[2] === 'views') return true
     return false
   }
 

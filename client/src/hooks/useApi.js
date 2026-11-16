@@ -473,13 +473,6 @@ export const useDeleteEdge = () => useMutation({
     del(`/api/dimension/edge?server=${enc(server)}&dimension=${enc(dimension)}&parent=${enc(parent)}&child=${enc(child)}${hierarchy ? `&hierarchy=${enc(hierarchy)}` : ''}`),
 })
 
-export const useDimCubes = (server, dimension) => useQuery({
-  queryKey: ['dim-cubes', server, dimension],
-  queryFn:  () => get(`/api/dimension/cubes?server=${enc(server)}&dimension=${enc(dimension)}`),
-  enabled:  !!server && !!dimension,
-  staleTime: 60_000,
-})
-
 export const useCreateAttrDef = () => useMutation({
   mutationFn: ({ server, dimension, name, type, hierarchy }) =>
     post('/api/dimension/attribute-def', { server, dimension, name, type, hierarchy }),
