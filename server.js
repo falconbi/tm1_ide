@@ -3481,8 +3481,9 @@ app.get('/api/cube/rules-lens', async (req, res) => {
         const cubeNames = new Set(allCubes.map(c => c.Name))
         const parsed = parseRuleLens(cube.Rules ?? '', { measureElements: new Set(measureEls.map(e => e.Name)) })
         const checks = []
-        const missing = [...new Set(parsed.items.flatMap(i => i.dbSources).filter(c => !cubeNames.has(c)))]
-        if (missing.length) checks.push({ level: 'error', message: `Reads cubes that do not exist: ${missing.join(', ')}` })
+        const referenced = parsed.items.flatMap(i => [...(i.dbSources ?? []), ...(i.targetCubes ?? [])])
+        const missing = [...new Set(referenced.filter(c => !cubeNames.has(c)))]
+        if (missing.length) checks.push({ level: 'error', message: `Reads or feeds cubes that do not exist: ${missing.join(', ')}` })
         if ((cube.Rules ?? '').trim() && parsed.summary.feeders === 0) checks.push({ level: 'warn', message: 'No feeder statements found.' })
         res.json({ cube: name, dims, measureDim, hasRules: !!(cube.Rules ?? '').trim(), ...parsed, checks })
     } catch (e) {

@@ -10,7 +10,15 @@ function stripCommentsKeep(text) {
     let i = 0, inStr = false
     while (i < text.length) {
         const ch = text[i]
-        if (inStr) { out += ch; if (ch === "'") inStr = false; i++; continue }
+        if (inStr) {
+            out += ch
+            if (ch === "'") {
+                if (text[i + 1] === "'") { out += text[++i] }   // '' is an escaped quote
+                else inStr = false
+            }
+            i++
+            continue
+        }
         if (ch === "'") { inStr = true; out += ch; i++; continue }
         if (ch === '#' || (ch === '/' && text[i + 1] === '/')) {
             while (i < text.length && text[i] !== '\n') { out += ' '; i++ }
@@ -26,7 +34,10 @@ function splitStatements(text) {
     let start = 0, inStr = false
     for (let i = 0; i < text.length; i++) {
         const ch = text[i]
-        if (ch === "'") inStr = !inStr
+        if (ch === "'") {
+            if (inStr && text[i + 1] === "'") { i++; continue }
+            inStr = !inStr
+        }
         if (ch === ';' && !inStr) {
             out.push({ text: text.slice(start, i + 1), start })
             start = i + 1
@@ -39,17 +50,22 @@ function splitStatements(text) {
 const splitList = s => {
     const out = []
     let cur = '', inStr = false
-    for (const ch of s) {
-        if (ch === "'") inStr = !inStr
+    for (let i = 0; i < s.length; i++) {
+        const ch = s[i]
+        if (ch === "'") {
+            if (inStr && s[i + 1] === "'") { cur += "''"; i++; continue }
+            inStr = !inStr
+        }
         if (ch === ',' && !inStr) { out.push(cur); cur = '' } else cur += ch
     }
     out.push(cur)
-    return out.map(x => x.trim().replace(/^'|'$/g, '')).filter(Boolean)
+    return out.map(x => x.trim().replace(/^'|'$/g, '').replace(/''/g, "'").replace(/\]\]/g, ']')).filter(Boolean)
 }
 
 function bracketedElements(text) {
     const els = []
-    const re = /\[([^\]]*)\]/g
+    // Element names may contain a literal ] encoded as ]] (same rule as shared/pivot/cellset.js).
+    const re = /\[((?:[^\]]|\]\])*)\]/g
     let m
     while ((m = re.exec(text)) !== null) els.push(...splitList(m[1]))
     return [...new Set(els)]
@@ -57,9 +73,12 @@ function bracketedElements(text) {
 
 function dbCubes(text) {
     const out = []
-    const re = /\bDB\s*\(\s*'([^']+)'/gi
+    const re = /\bDB\s*\(\s*'((?:[^']|'')*)'/gi
     let m
-    while ((m = re.exec(text)) !== null) if (!out.includes(m[1])) out.push(m[1])
+    while ((m = re.exec(text)) !== null) {
+        const name = m[1].replace(/''/g, "'")
+        if (!out.includes(name)) out.push(name)
+    }
     return out
 }
 

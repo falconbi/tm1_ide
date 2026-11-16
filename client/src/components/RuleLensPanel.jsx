@@ -156,6 +156,7 @@ function RuleItem({ it, onOpenCube, onOpenLog }) {
       {it.type === 'feeder' && (
         <div className="mt-1 flex items-center gap-1 text-[10px] text-muted-foreground flex-wrap">
           <ArrowRight size={9} className="shrink-0" />
+          <span className="text-[9px] uppercase tracking-wider text-muted-foreground/50">feeds</span>
           {it.targetCubes?.length
             ? it.targetCubes.map(c => <button key={c} onClick={ev => onOpenCube(c, ev.altKey)} className="px-1 py-px rounded border border-border font-mono text-[9px] hover:text-foreground hover:bg-muted" title={`Open ${c} — Alt-click to open here`}>{c}</button>)
             : <span className="font-mono">{it.expression}</span>}

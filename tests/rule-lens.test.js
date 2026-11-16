@@ -33,3 +33,17 @@ test('semicolons inside strings do not split a rule', () => {
     assert.equal(r.items.length, 1)
     assert.equal(r.items[0].expression, "'x;y' | 'z'")
 })
+
+test('reads ]] element names and escaped apostrophes', () => {
+    const measures = new Set(['Net Sales]YTD', "O'Brien"])
+    const r = parseRuleLens("['Net Sales]]YTD'] = N: 1;\n['O''Brien'] = N: 1;", { measureElements: measures })
+    assert.deepEqual(r.items[0].areaElements, ['Net Sales]YTD'])
+    assert.deepEqual(r.items[0].measures, ['Net Sales]YTD'])
+    assert.deepEqual(r.items[1].areaElements, ["O'Brien"])
+    assert.deepEqual(r.items[1].measures, ["O'Brien"])
+})
+
+test('feeder target cube names with an escaped apostrophe are listed', () => {
+    const r = parseRuleLens("FEEDERS;\n['A'] => DB('Bob''s Cube', 'x');", { measureElements: measures })
+    assert.deepEqual(r.items[0].targetCubes, ["Bob's Cube"])
+})
