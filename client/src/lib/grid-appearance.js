@@ -1,9 +1,10 @@
 /**
- * useGridAppearance — per-grid display settings (row height, font size, zebra
+ * useGridAppearance — global user display settings (row height, font size, zebra
  * striping, number format, consolidation emphasis), persisted to localStorage.
  *
- * Each grid mounts its own instance (loads the saved settings); the View editor
- * also reads numFormat to feed raw vs formatted values into its data pipelines.
+ * One key (`tm1-grid-appearance`) applies to every grid in this browser; the View
+ * editor owns one instance and passes it to its grids. numFormat also feeds its
+ * raw vs formatted data pipelines.
  */
 
 import { useState, useEffect, useCallback } from 'react'

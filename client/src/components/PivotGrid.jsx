@@ -22,7 +22,7 @@ import GridToolbar from './GridToolbar'
 import { useGridAppearance } from '@/lib/grid-appearance'
 import { cn } from '@/lib/utils'
 
-export default function PivotGrid({
+function PivotGridView({
     pivot, rowHierarchies, colHierarchies, rowNames,
     totals = 'top', colTotals = 'top',
     onWrite, onError, onContextMenu, onDrill,
@@ -32,8 +32,7 @@ export default function PivotGrid({
     const rootRef  = useRef(null)
     const gridRef  = useRef(null)
     const apiRef   = useRef({ api: null })
-    const own      = useGridAppearance()
-    const app      = appearance ?? own
+    const app      = appearance
     const [frozen, setFrozen] = useState(false)
     // the latest callbacks, without re-creating the grid when they change
     const cb = useRef({})
@@ -81,4 +80,19 @@ export default function PivotGrid({
             </div>
         </div>
     )
+}
+
+
+// The View editor already owns one appearance instance for all of its grids; a
+// caller that passes `appearance` must not mount a second one (they share the
+// same localStorage key and would drift until a re-render).
+function PivotGridOwnAppearance(props) {
+    const own = useGridAppearance()
+    return <PivotGridView {...props} appearance={own} />
+}
+
+export default function PivotGrid({ appearance, ...props }) {
+    return appearance
+        ? <PivotGridView {...props} appearance={appearance} />
+        : <PivotGridOwnAppearance {...props} />
 }

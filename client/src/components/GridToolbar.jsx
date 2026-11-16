@@ -88,12 +88,13 @@ function AppearancePopover({ appearance }) {
       <button
         className={cn(BTN, open && 'text-primary bg-primary/10 border-primary/40')}
         onClick={() => setOpen(v => !v)}
-        title="Grid format options"
+        title="Grid format (all grids)"
       >
         <Palette size={10} /> Format
       </button>
       {open && (
         <div className="absolute right-0 top-full mt-1 z-30 w-52 bg-popover border border-border rounded shadow-xl p-2.5 flex flex-col gap-2 text-[10px]">
+          <div className="text-[10px] font-semibold text-foreground">Grid format (all grids)</div>
           <div className="flex items-center justify-between gap-2">
             <span className="text-muted-foreground">Row height</span>
             <Segmented
