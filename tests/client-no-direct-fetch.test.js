@@ -75,19 +75,7 @@ const ALLOWLIST = [
   },
   {
     "file": "components/FileManager.jsx",
-    "line": 12,
-    "kind": "pending",
-    "reason": "round 2b conversion pending"
-  },
-  {
-    "file": "components/FileManager.jsx",
-    "line": 41,
-    "kind": "pending",
-    "reason": "round 2b conversion pending"
-  },
-  {
-    "file": "components/FileManager.jsx",
-    "line": 58,
+    "line": 34,
     "kind": "pending",
     "reason": "round 2b conversion pending"
   },
@@ -106,42 +94,6 @@ const ALLOWLIST = [
   {
     "file": "components/CubeDataSources.jsx",
     "line": 25,
-    "kind": "pending",
-    "reason": "round 2b conversion pending"
-  },
-  {
-    "file": "components/LensEditor.jsx",
-    "line": 172,
-    "kind": "pending",
-    "reason": "round 2b conversion pending"
-  },
-  {
-    "file": "components/LensEditor.jsx",
-    "line": 193,
-    "kind": "pending",
-    "reason": "round 2b conversion pending"
-  },
-  {
-    "file": "components/LensEditor.jsx",
-    "line": 225,
-    "kind": "pending",
-    "reason": "round 2b conversion pending"
-  },
-  {
-    "file": "components/LensEditor.jsx",
-    "line": 252,
-    "kind": "pending",
-    "reason": "round 2b conversion pending"
-  },
-  {
-    "file": "components/LensEditor.jsx",
-    "line": 282,
-    "kind": "pending",
-    "reason": "round 2b conversion pending"
-  },
-  {
-    "file": "components/LensEditor.jsx",
-    "line": 296,
     "kind": "pending",
     "reason": "round 2b conversion pending"
   },
