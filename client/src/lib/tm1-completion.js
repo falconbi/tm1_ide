@@ -1,4 +1,4 @@
-import { apiFetch } from '@/lib/api'
+import { request } from '@/lib/api'
 // ── Catalog entry schema ──────────────────────────────────────────────────────
 // SINGLE SOURCE OF TRUTH: shared/tm1-function-catalog.json (repo root) — one entry
 // per TM1 Rules/TI function, covering both languages. Every consumer (this
@@ -37,7 +37,6 @@ function filterCatalog(lang) {
 
 const RULES_CATALOG = filterCatalog('rules')
 const TI_CATALOG    = filterCatalog('ti')
-
 
 // ── Function keyword snippets ─────────────────────────────────────────────────
 // Shown when typing a function name (not inside a call).
@@ -166,7 +165,7 @@ function _cached(key, ttlMs, fn) {
 }
 
 const enc = encodeURIComponent
-const authFetch = (url) => apiFetch(url, { headers: { 'x-ide-token': localStorage.getItem('tm1-token') ?? '' } })
+const authFetch = (url) => request(url, { headers: { 'x-ide-token': localStorage.getItem('tm1-token') ?? '' } })
 
 async function fetchCubes(server) {
   return _cached(`cubes:${server}`, 30_000, async () => {
@@ -211,7 +210,6 @@ function dimensionVariable(text, dimension) {
   }
   return null
 }
-
 
 async function fetchElements(server, dim) {
   return _cached(`elements:${server}:${dim}`, 60_000, async () => {

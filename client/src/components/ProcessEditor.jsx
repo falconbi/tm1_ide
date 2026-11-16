@@ -1,4 +1,4 @@
-import { apiFetch, get, post } from '@/lib/api'
+import { get, post, request } from '@/lib/api'
 import { useState, useRef, useEffect, useCallback } from 'react'
 import MonacoEditor from '@monaco-editor/react'
 import { useStore } from '@/store'
@@ -116,7 +116,7 @@ function EditableDatasourcePanel({ ds, server, onChange }) {
     setCsvUploading(true)
     try {
       const buffer = await file.arrayBuffer()
-      const r = await apiFetch(
+      const r = await request(
         `/api/files/upload?server=${enc(server)}&name=${enc(file.name)}`,
         { method: 'POST', headers: { 'Content-Type': 'application/octet-stream', 'x-ide-token': localStorage.getItem('tm1-token') ?? '' }, body: buffer }
       )
@@ -274,7 +274,7 @@ function DatasourcePreviewPanel({ ds, server, params }) {
         setResult({ columns: ['Element'], rows: els.slice(0, 200).map(e => [e]), rowCount: els.length })
       } else if (type === 'ASCII') {
         const file = name.split(/[\\/]/).pop()
-        const r = await apiFetch(`/api/files/content?server=${enc(server)}&name=${enc(file)}`, { headers: hdrs })
+        const r = await request(`/api/files/content?server=${enc(server)}&name=${enc(file)}`, { headers: hdrs })
         if (!r.ok) {
           const d = await r.json().catch(() => ({}))
           throw new Error(d.error || `Could not read ${file}. Reading server files needs Planning Analytics v12; on v11 TM1 has no way to read them over its API.`)
@@ -1377,7 +1377,6 @@ export default function ProcessEditor({ tab }) {
           isPending={isDebugging}
         />
       )}
-
 
       {/* ── Section tabs + actions ─────────────────────────────────────── */}
       <div className="flex items-center border-b border-border bg-muted shrink-0 overflow-x-auto">

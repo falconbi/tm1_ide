@@ -1,4 +1,4 @@
-import { apiFetch } from '@/lib/api'
+import { request } from '@/lib/api'
 import { useEffect, useMemo, useState } from 'react'
 import { Milestone, X, Copy, Workflow, ListOrdered, ExternalLink, ChevronDown, ChevronRight } from 'lucide-react'
 import { buildRunSequence } from '@/lib/run-sequence'
@@ -107,7 +107,7 @@ export default function RunbookDialog({ open, onClose, server, processData, cube
     if (!open) return
     setExpanded(null); setOpenPaths(new Set()); setCopied(false); setInfo({}); setInfoError(null)
     let cancelled = false
-    apiFetch(`/api/process/summaries?server=${encodeURIComponent(server)}`, { headers: { 'x-ide-token': localStorage.getItem('tm1-token') ?? '' } })
+    request(`/api/process/summaries?server=${encodeURIComponent(server)}`, { headers: { 'x-ide-token': localStorage.getItem('tm1-token') ?? '' } })
       .then(async r => {
         let d = {}
         try { d = await r.json() } catch { /* non-JSON error page */ }

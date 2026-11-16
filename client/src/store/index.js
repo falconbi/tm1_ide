@@ -1,4 +1,4 @@
-import { apiFetch } from '../lib/api.js'
+import { request } from '../lib/api.js'
 import { create } from 'zustand'
 import { clearCubemapSession } from '../lib/cubemap-session.js'
 
@@ -108,7 +108,7 @@ function migrateGroupsToLayout(oldGroups) {
 const _saveForge = (state) => {
   clearTimeout(_forgeTimer)
   _forgeTimer = setTimeout(() => {
-    apiFetch('/api/forge', {
+    request('/api/forge', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-ide-token': localStorage.getItem('tm1-token') ?? '' },
       body: JSON.stringify({
@@ -155,7 +155,7 @@ export const useStore = create((set, get) => ({
   forgeLoaded: false,
   loadForge: async () => {
     try {
-      const r = await apiFetch('/api/forge', { headers: { 'x-ide-token': localStorage.getItem('tm1-token') ?? '' } })
+      const r = await request('/api/forge', { headers: { 'x-ide-token': localStorage.getItem('tm1-token') ?? '' } })
       const forge = await r.json()
       const patch = {}
       if (forge.server) patch.server = forge.server

@@ -1,4 +1,4 @@
-import { apiFetch } from '@/lib/api'
+import { request } from '@/lib/api'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Loader2, RefreshCw, X, ListFilter, Workflow, AlertTriangle, AlertCircle, ArrowRight, History } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -14,7 +14,7 @@ export default function RuleLensPanel({ server, cube, onOpenCube, onOpenMap, onC
   const load = useCallback(async () => {
     setLoading(true); setError(null)
     try {
-      const r = await apiFetch(`/api/cube/rules-lens?server=${encodeURIComponent(server)}&cube=${encodeURIComponent(cube)}`, {
+      const r = await request(`/api/cube/rules-lens?server=${encodeURIComponent(server)}&cube=${encodeURIComponent(cube)}`, {
         headers: { 'x-ide-token': localStorage.getItem('tm1-token') ?? '' },
       })
       const d = await r.json()

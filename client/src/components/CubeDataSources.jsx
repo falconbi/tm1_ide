@@ -1,4 +1,4 @@
-import { apiFetch } from '@/lib/api'
+import { request } from '@/lib/api'
 import { useCallback, useEffect, useState } from 'react'
 import { ChevronDown, ChevronRight, Database, Loader2, RefreshCw, Workflow, ArrowDownToLine, ArrowUpFromLine, Copy, Sparkles } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -22,7 +22,7 @@ export default function CubeDataSources({ server, cube, onOpenCube, onOpenProces
     setLoading(true); setError(null)
     try {
       const token = localStorage.getItem('tm1-token') ?? ''
-      const r = await apiFetch(`/api/cube/data-sources?server=${encodeURIComponent(server)}&cube=${encodeURIComponent(cube)}${refresh ? '&refresh=1' : ''}`, {
+      const r = await request(`/api/cube/data-sources?server=${encodeURIComponent(server)}&cube=${encodeURIComponent(cube)}${refresh ? '&refresh=1' : ''}`, {
         headers: { 'x-ide-token': token },
       })
       const d = await r.json()
