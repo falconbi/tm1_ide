@@ -25,7 +25,9 @@ export default function StatusBar() {
   // The identity that owns change sets on this server (case-insensitive name match) —
   // show it so edits are always attributable to the person signed in to the server.
   const { data: logins = [] } = useServerLogins()
-  const serverUser = logins.find(l => String(l?.name ?? '').toLowerCase() === String(server ?? '').toLowerCase())?.username ?? null
+  const activeLogin = logins.find(l => String(l?.name ?? '').toLowerCase() === String(server ?? '').toLowerCase())
+  const serverUser = activeLogin?.username ?? null
+  const isAdmin = !!activeLogin?.isAdmin
   const { data: activeSession } = useActiveWorkSession(server)
   const qc = useQueryClient()
 
@@ -35,7 +37,7 @@ export default function StatusBar() {
   const [showAdmin,    setShowAdmin]    = useState(false)
 
   // V11 has no Jobs endpoint — don't poll it every 10s just to get a 404.
-  const jobs    = useJobs(server, { refetchInterval: 10_000, enabled: !!server && caps.jobs })
+  const jobs    = useJobs(server, { refetchInterval: 10_000, enabled: !!server && caps.jobs && isAdmin })
   const entries = (jobs.data?.items ?? jobs.data) ?? []
   const running = Array.isArray(entries) ? entries.filter(j => (j.Status ?? j.StatusMessage ?? '').toLowerCase() === 'running') : []
   const v12only = jobs.data?.v12only
@@ -87,7 +89,7 @@ export default function StatusBar() {
         <span className="ml-auto" />
 
         {/* TM1 Server Sessions */}
-        {server && (
+        {server && isAdmin && (
           <button
             onClick={() => setShowSessions(v => !v)}
             title="Active sessions — see who is connected"
@@ -102,7 +104,7 @@ export default function StatusBar() {
         )}
 
         {/* Server Admin */}
-        {server && (
+        {server && isAdmin && (
           <button
             onClick={() => setShowAdmin(v => !v)}
             title="Server Admin — configuration and sessions; status and maintenance mode on V12"
@@ -117,7 +119,7 @@ export default function StatusBar() {
         )}
 
         {/* Jobs */}
-        {server && caps.jobs && !v12only && (
+        {server && isAdmin && caps.jobs && !v12only && (
           <button
             onClick={() => setShowJobs(v => !v)}
             title="Jobs Monitor"

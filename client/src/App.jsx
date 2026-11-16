@@ -29,7 +29,7 @@ import DeployWizard from '@/components/DeployWizard'
 import GitSetup from '@/components/GitSetup'
 import GitDrift from '@/components/GitDrift'
 import DeployCenter from '@/components/DeployCenter'
-import { useIsSimple } from '@/hooks/useApi'
+import { useIsSimple, useServerLogins } from '@/hooks/useApi'
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { staleTime: 30_000, retry: 1 } },
@@ -46,6 +46,8 @@ export default function App() {
   const { loadForge, formatSettingsOpen, setFormatSettingsOpen, openTab, openDeployCenter, openDeployWizard, deployWizard, closeDeployWizard, server, token, clearAuth } = useStore()
   const layout         = useStore(s => s.layout)
   const revealTarget   = useStore(s => s.revealTarget)
+  const { data: logins = [] } = useServerLogins()
+  const isAdmin = logins.some(l => String(l?.name ?? '').toLowerCase() === String(server ?? '').toLowerCase() && l?.isAdmin)
 
   // Recursive render of the nested-split layout tree.
   const renderLayout = (node) => {
@@ -314,7 +316,7 @@ const [showCatalog, setShowCatalog]           = useState(false)
                   </div>
                 )}
               </div>
-              {server && (
+              {server && isAdmin && (
                 <button
                   onClick={() => setShowUserMgmt(v => !v)}
                   className={cn('p-1.5 rounded text-muted-foreground hover:text-foreground transition-colors', showUserMgmt && 'bg-muted text-foreground')}
@@ -438,7 +440,7 @@ const [showCatalog, setShowCatalog]           = useState(false)
           />
         )}
         {formatSettingsOpen && <FormatSettings onClose={() => setFormatSettingsOpen(false)} />}
-        {showUserMgmt && server && <UserManagement server={server} onClose={() => setShowUserMgmt(false)} />}
+        {showUserMgmt && server && isAdmin && <UserManagement server={server} onClose={() => setShowUserMgmt(false)} />}
         {showCatalog && <CatalogAdmin server={server} onClose={() => setShowCatalog(false)} />}
         {showModelHealth && <ModelHealth server={server} onClose={() => setShowModelHealth(false)} />}
         {showAssertions && <AssertionsManager server={server} onClose={() => setShowAssertions(false)} />}

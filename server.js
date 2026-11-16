@@ -22,6 +22,7 @@ const { logLensWrite, logLensRun, logLensNote, readLensActivity } = require('./c
 const lensBridge = require('./core/lens_bridge')
 const { readOnlyRefusal } = require('./core/readonly')
 const { createSaveDataAllRoute, isAdminGroups } = require('./core/save_data_all')
+const { createAdminGate } = require('./core/admin_gate')
 const { setSimpleInModes } = require('./core/ide_modes')
 
 // Session (Change Set) is optional for using the IDE — it groups changes for
@@ -37,12 +38,7 @@ function requireSession(server, user) {
     if (isSimple(server)) return true
     return !!cl.getActiveSession(server, user)
 }
-async function isTm1Admin(req, server) {
-    try {
-        const me = await makeClient(server, req.ideToken).get('ActiveUser', { '$expand': 'Groups($select=Name)' })
-        return isAdminGroups(me?.Groups)
-    } catch { return false }
-}
+const { isTm1Admin, requireTm1Admin } = createAdminGate({ makeClient, isAdminGroups })
 
 async function mayManageSession(req, session) {
     if (canManageSession(req.user, session)) return true
@@ -260,12 +256,20 @@ app.use('/api', (req, res, next) => {
 
 // Which servers this user is signed in to.
 //   status: 'signed-in' | 'needs-login' | 'rejected' | 'paw' (PAW owns the login)
-app.get('/api/auth/servers', (req, res) => {
-    res.json(listServers().map(name => {
-        if (!isDirectServer(name)) return { name, status: 'paw' }
-        const st = getServerStatus(req.ideToken, name)
-        return { name, status: st === 'ok' ? 'signed-in' : st === 'rejected' ? 'rejected' : 'needs-login', username: getServerCredentials(req.ideToken, name)?.username ?? null }
-    }))
+app.get('/api/auth/servers', async (req, res) => {
+    try {
+        res.json(await Promise.all(listServers().map(async name => {
+            if (!isDirectServer(name)) return { name, status: 'paw', isAdmin: false }
+            const st = getServerStatus(req.ideToken, name)
+            const status = st === 'ok' ? 'signed-in' : st === 'rejected' ? 'rejected' : 'needs-login'
+            return {
+                name,
+                status,
+                username: getServerCredentials(req.ideToken, name)?.username ?? null,
+                isAdmin: status === 'signed-in' ? await isTm1Admin(req, name) : false,
+            }
+        })))
+    } catch (e) { fail(res, e) }
 })
 
 // Sign in to one server. One test call; stores the login only if TM1 accepts it.
@@ -2142,6 +2146,7 @@ app.get('/api/jobs', async (req, res) => {
 
 app.post('/api/job/cancel', async (req, res) => {
     try {
+        if (!(await requireTm1Admin(req, res, req.query.server))) return
         await makeClient(req.query.server, req.ideToken).cancelJob(req.query.id)
         res.json({ ok: true })
     } catch (e) { res.status(500).json({ error: e.message }) }
@@ -2305,6 +2310,7 @@ app.get('/api/tm1-sessions', async (req, res) => {
 
 app.delete('/api/session', async (req, res) => {
     try {
+        if (!(await requireTm1Admin(req, res, req.query.server))) return
         await makeClient(req.query.server, req.ideToken).disconnectSession(req.query.id)
         res.json({ ok: true })
     } catch (e) { res.status(500).json({ error: e.message }) }
@@ -2320,6 +2326,7 @@ app.get('/api/threads', async (req, res) => {
 
 app.post('/api/thread/cancel', async (req, res) => {
     try {
+        if (!(await requireTm1Admin(req, res, req.query.server))) return
         await makeClient(req.query.server, req.ideToken).cancelThread(req.query.id)
         res.json({ ok: true })
     } catch (e) { res.status(500).json({ error: e.message }) }
@@ -2329,12 +2336,14 @@ app.post('/api/thread/cancel', async (req, res) => {
 app.get('/api/admin/metrics', async (req, res) => {
     try {
         const { server, cube } = req.query
+        if (!(await requireTm1Admin(req, res, server))) return
         res.json(await makeClient(server, req.ideToken).getMetrics(cube || null))
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
 app.get('/api/admin/configuration', async (req, res) => {
     try {
+        if (!(await requireTm1Admin(req, res, req.query.server))) return
         const client = makeClient(req.query.server, req.ideToken)
         res.json(await client.getActiveConfiguration())
     } catch (e) {
@@ -2385,6 +2394,7 @@ app.patch('/api/admin/configuration', async (req, res) => {
     try {
         const { server, section = 'Administration', values } = req.body
         if (!gateReadOnly(res, server)) return
+        if (!(await requireTm1Admin(req, res, server))) return
         res.json(await makeClient(server, req.ideToken).patchStaticConfiguration(section, values))
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
@@ -2399,6 +2409,7 @@ function sendMaintenanceError(res, e) {
 app.post('/api/admin/maintenance/enable', async (req, res) => {
     try {
         if (!gateReadOnly(res, req.body.server)) return
+        if (!(await requireTm1Admin(req, res, req.body.server))) return
         res.json(await makeClient(req.body.server, req.ideToken).enableMaintenanceMode())
     } catch (e) { sendMaintenanceError(res, e) }
 })
@@ -2406,6 +2417,7 @@ app.post('/api/admin/maintenance/enable', async (req, res) => {
 app.post('/api/admin/maintenance/disable', async (req, res) => {
     try {
         if (!gateReadOnly(res, req.body.server)) return
+        if (!(await requireTm1Admin(req, res, req.body.server))) return
         res.json(await makeClient(req.body.server, req.ideToken).disableMaintenanceMode())
     } catch (e) { sendMaintenanceError(res, e) }
 })
@@ -2417,6 +2429,7 @@ const userServer = (req) => req.query?.server ?? req.body?.server ?? PAW_LOGIN_S
 app.post('/api/users/provision', async (req, res) => {
     try {
         if (!gateReadOnly(res, userServer(req))) return
+        if (!(await requireTm1Admin(req, res, userServer(req)))) return
         const { name, password, groups = [], friendlyName = '' } = req.body
         const cl = makeClient(userServer(req), req.ideToken)
         await cl.createClient(name, password, friendlyName)
@@ -2433,6 +2446,7 @@ app.post('/api/users/provision', async (req, res) => {
 app.post('/api/users/:name/password', async (req, res) => {
     try {
         if (!gateReadOnly(res, userServer(req))) return
+        if (!(await requireTm1Admin(req, res, userServer(req)))) return
         const { password } = req.body
         const cl = makeClient(userServer(req), req.ideToken)
         await cl.resetClientPassword(req.params.name, password)
@@ -2455,6 +2469,7 @@ app.get('/api/users', async (req, res) => {
 app.post('/api/users', async (req, res) => {
     try {
         if (!gateReadOnly(res, userServer(req))) return
+        if (!(await requireTm1Admin(req, res, userServer(req)))) return
         const { name, password, friendlyName } = req.body
         const cl = makeClient(userServer(req), req.ideToken)
         res.json(await cl.createClient(name, password, friendlyName))
@@ -2464,6 +2479,7 @@ app.post('/api/users', async (req, res) => {
 app.patch('/api/users/:name', async (req, res) => {
     try {
         if (!gateReadOnly(res, userServer(req))) return
+        if (!(await requireTm1Admin(req, res, userServer(req)))) return
         const { server: _s, ...patch } = req.body
         const cl = makeClient(userServer(req), req.ideToken)
         await cl.updateClient(req.params.name, patch)
@@ -2474,6 +2490,7 @@ app.patch('/api/users/:name', async (req, res) => {
 app.delete('/api/users/:name', async (req, res) => {
     try {
         if (!gateReadOnly(res, userServer(req))) return
+        if (!(await requireTm1Admin(req, res, userServer(req)))) return
         const cl = makeClient(userServer(req), req.ideToken)
         await cl.deleteClient(req.params.name)
         res.json({ ok: true })
@@ -2497,6 +2514,7 @@ app.get('/api/users/:name/groups', async (req, res) => {
 app.post('/api/users/:name/groups', async (req, res) => {
     try {
         if (!gateReadOnly(res, userServer(req))) return
+        if (!(await requireTm1Admin(req, res, userServer(req)))) return
         const { group } = req.body
         const cl = makeClient(userServer(req), req.ideToken)
         await cl.addClientToGroup(req.params.name, group)
@@ -2510,6 +2528,7 @@ app.post('/api/users/:name/groups', async (req, res) => {
 app.delete('/api/users/:name/groups/:group', async (req, res) => {
     try {
         if (!gateReadOnly(res, userServer(req))) return
+        if (!(await requireTm1Admin(req, res, userServer(req)))) return
         const cl = makeClient(userServer(req), req.ideToken)
         await cl.removeClientFromGroup(req.params.name, req.params.group)
         res.json({ ok: true })
@@ -3141,14 +3160,16 @@ const EMPTY_OVERRIDES = {
     rules: { overrides: {}, additions: {}, deletions: [] },
     mdx:   { overrides: {}, additions: {}, deletions: [] },
 }
-app.get('/api/admin/catalog-overrides', (req, res) => {
+app.get('/api/admin/catalog-overrides', async (req, res) => {
     try {
+        if (!(await requireTm1Admin(req, res, req.query.server))) return
         if (!fs.existsSync(CATALOG_OVERRIDES_PATH)) return res.json(EMPTY_OVERRIDES)
         res.json(JSON.parse(fs.readFileSync(CATALOG_OVERRIDES_PATH, 'utf8')))
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
-app.put('/api/admin/catalog-overrides', (req, res) => {
+app.put('/api/admin/catalog-overrides', async (req, res) => {
     try {
+        if (!(await requireTm1Admin(req, res, req.query.server ?? req.body?.server))) return
         fs.writeFileSync(CATALOG_OVERRIDES_PATH, JSON.stringify(req.body, null, 2))
         res.json({ ok: true })
     } catch (e) { res.status(500).json({ error: e.message }) }

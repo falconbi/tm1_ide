@@ -12,6 +12,7 @@ commits that mixed a fix into a feature are included too. New features are not l
 
 ### 2026-11-16
 
+- **admin authorization** — The Sessions, Admin and Jobs controls were visible to every user, and session/thread/job cancel, maintenance, configuration, metrics, user management and catalog override routes accepted any IDE token. One cached TM1-Admin check now gates every admin mutation and sensitive read, `/api/auth/servers` carries `isAdmin`, and the UI hides those controls for non-admins
 - **MCP assertions** — `add_assertion` / `remove_assertion` are deliberately ungated, but their writes were invisible in the change log. They now log `ASSERTION_ADDED` / `ASSERTION_REMOVED` (shown in Change Log), and the tool docs state the exception
 - **MCP related objects** — Cube dimensions, chore steps, and active-thread process/function fields leaked names the visibility policy denies. They now filter or show `(not visible)`; a view on an allowed cube remains fully readable by design
 - **MCP attribute values** — `build_dimension` and `add_elements` wrote attribute values (including default Format values) without change-log entries, so MCP-built attributes could not reach the target through the deploy manifest. Every MCP attribute write now goes through one `logAttributeValue` helper that records before/after as `ATTRIBUTE_VALUE_SET`
