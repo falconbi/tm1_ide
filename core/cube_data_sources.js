@@ -12,7 +12,11 @@
 const { hashCode, getLatest } = require('./process_summaries')
 
 const TTL_MS = 30_000
-const cache = new Map() // server -> { at, index }
+const MAX_CACHE = 50
+// `${server}::${identity}` -> { at, index }. The identity is the per-user session
+// token (hashed by the route) or the acting user name; model scans must never be
+// shared across TM1 logins.
+const cache = new Map()
 
 function stripComments(code) {
     let out = ''
@@ -300,17 +304,26 @@ async function buildIndex(client, serverName) {
     return { cubes: index, processes: meta, viewSources }
 }
 
-async function indexFor(client, server) {
-    let hit = cache.get(server)
+function cacheKey(server, identity) {
+    return `${server}::${identity ?? ''}`
+}
+
+async function indexFor(client, server, identity) {
+    const key = cacheKey(server, identity)
+    let hit = cache.get(key)
     if (!hit || Date.now() - hit.at > TTL_MS) {
         hit = { at: Date.now(), index: await buildIndex(client, server) }
-        cache.set(server, hit)
+        cache.set(key, hit)
+        if (cache.size > MAX_CACHE) {
+            const oldest = cache.keys().next().value
+            if (oldest !== undefined) cache.delete(oldest)
+        }
     }
     return hit.index
 }
 
-async function getCubeDataSources(client, server, cube) {
-    const index = await indexFor(client, server)
+async function getCubeDataSources(client, server, cube, identity) {
+    const index = await indexFor(client, server, identity)
     const e = index.cubes[cube]
     if (!e) return { cube, dims: [], writers: [], readers: [], ruleReads: { calc: [], feeders: [] }, copiers: [] }
     // summaries are joined at read time so a just-generated one shows without a rescan
@@ -331,8 +344,8 @@ async function getCubeDataSources(client, server, cube) {
     return { cube, ...e, writers, readers }
 }
 
-async function getViewSourceUsage(client, server, cube, view) {
-    const index = await indexFor(client, server)
+async function getViewSourceUsage(client, server, cube, view, identity) {
+    const index = await indexFor(client, server, identity)
     const key = cube + '\u001f' + (view ?? '')
     const processes = (index.viewSources?.[key] ?? [])
         .filter(p => !/^_IDE_Debug_/i.test(p.process) && !p.process.startsWith('}'))
@@ -341,8 +354,8 @@ async function getViewSourceUsage(client, server, cube, view) {
 
 
 // Everything one process does, for a "what does this do" summary prompt.
-async function getProcessFacts(client, server, name) {
-    const index = await indexFor(client, server)
+async function getProcessFacts(client, server, name, identity) {
+    const index = await indexFor(client, server, identity)
     const meta = index.processes[name] ?? {}
     const writes = [], reads = new Set(meta.reads ?? []), copies = []
     for (const [cube, e] of Object.entries(index.cubes)) {
@@ -363,13 +376,16 @@ async function getProcessFacts(client, server, name) {
 }
 
 function invalidate(server) {
-    if (server) cache.delete(server)
-    else cache.clear()
+    if (!server) return cache.clear()
+    const prefix = `${server}::`
+    for (const key of cache.keys()) {
+        if (key.startsWith(prefix)) cache.delete(key)
+    }
 }
 
 // Every process with its summary status — for the server-wide summary review list.
-async function listProcessSummaries(client, server) {
-    const index = await indexFor(client, server)
+async function listProcessSummaries(client, server, identity) {
+    const index = await indexFor(client, server, identity)
     return Object.entries(index.processes).sort(([a], [b]) => a.localeCompare(b)).map(([name, m]) => {
         const latest = getLatest(server, name)
         const current = latest && latest.hash === m.codeHash ? latest : null

@@ -5,6 +5,7 @@ require('dotenv').config({ path: require('path').join(__dirname, '.env') })
 const express   = require('express')
 const path      = require('path')
 const fs        = require('fs')
+const crypto    = require('crypto')
 const ai        = require('./core/ai/registry')
 const obfuscate = require('./core/ai/obfuscate')
 const { makeClient, makeClientWithCredentials, needsServerLogin, isDirectServer, isPawNativeServer, probeAuthMethod, listServers, listServersWithFlags, isSimple, simpleSource, getDefaultAdapterType, getLoginServer } = require('./core/adapter_registry')
@@ -1497,7 +1498,7 @@ app.get('/api/view/usage', async (req, res) => {
 app.get('/api/view/source-usage', async (req, res) => {
     try {
         const client = makeClient(req.query.server, req.ideToken)
-        res.json(await getViewSourceUsage(client, req.query.server, req.query.cube, req.query.view))
+        res.json(await getViewSourceUsage(client, req.query.server, req.query.cube, req.query.view, scanIdentity(req)))
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
@@ -3362,6 +3363,13 @@ app.post('/api/admin/validate-ti-functions', async (req, res) => {
     }
 })
 
+// Cache identity for model-wide scans: the per-user session token, hashed so the
+// raw token never sits in a module-level Map. Fall back to the acting user name.
+function scanIdentity(req) {
+    if (req.ideToken) return crypto.createHash('sha256').update(String(req.ideToken)).digest('hex').slice(0, 16)
+    return req.user ?? ''
+}
+
 // ── Cube Map ──────────────────────────────────────────────────────────────────
 // The Runbook reads chores (from /api/cubemap/model) — a runbook is a chore, so there's no runbook file.
 
@@ -3401,7 +3409,7 @@ function summaryPrompt(p, f, includeCode) {
 app.get('/api/process/summaries', async (req, res) => {
     try {
         const client = makeClient(req.query.server, req.ideToken)
-        res.json({ processes: await listProcessSummaries(client, req.query.server), aiConfigured: ai.isConfigured() })
+        res.json({ processes: await listProcessSummaries(client, req.query.server, scanIdentity(req)), aiConfigured: ai.isConfigured() })
     } catch (e) {
         res.status(500).json({ error: e.message })
     }
@@ -3419,7 +3427,7 @@ app.post('/api/process/summary', async (req, res) => {
             const hit = processSummaries.get(server, name, hash)
             if (hit) return res.json({ ...hit, cached: true })
         }
-        const facts = await getProcessFacts(client, server, name)
+        const facts = await getProcessFacts(client, server, name, scanIdentity(req))
         const obf = ai.shouldObfuscate()
         let { system, user } = summaryPrompt(p, facts, !obf)
         let map = null
@@ -3486,7 +3494,7 @@ app.get('/api/cube/data-sources', async (req, res) => {
     try {
         const client = makeClient(req.query.server, req.ideToken)
         if (req.query.refresh) invalidateCubeSources(req.query.server)
-        const data = await getCubeDataSources(client, req.query.server, req.query.cube)
+        const data = await getCubeDataSources(client, req.query.server, req.query.cube, scanIdentity(req))
         res.json({ ...data, aiConfigured: ai.isConfigured() })
     } catch (e) {
         res.status(500).json({ error: e.message })

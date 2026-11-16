@@ -81,3 +81,14 @@ test('a view used as a TI datasource is reported, without debug copies', async (
     const d = await getViewSourceUsage(client(processes, cubes), 'unit-view-source', 'Cube A', 'Source View')
     assert.deepEqual(d.processes, [{ process: 'P source' }])
 })
+
+test('the index cache is per user identity', async () => {
+    const cubes = [{ Name: 'Cube A', Dimensions: [{ Name: 'Period' }, { Name: 'Measure' }], Rules: '' }]
+    const clientA = client([proc('User A writer', "CellPutN(1, 'Cube A', 'Jan', 'Amount');")], cubes)
+    const clientB = client([proc('User B writer', "CellPutN(2, 'Cube A', 'Jan', 'Amount');")], cubes)
+    invalidate()
+    const a = await getCubeDataSources(clientA, 'unit-cache', 'Cube A', 'user-a')
+    const b = await getCubeDataSources(clientB, 'unit-cache', 'Cube A', 'user-b')
+    assert.deepEqual(a.writers.map(w => w.process), ['User A writer'])
+    assert.deepEqual(b.writers.map(w => w.process), ['User B writer'])
+})
