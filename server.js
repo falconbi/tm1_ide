@@ -24,6 +24,7 @@ const { readOnlyRefusal } = require('./core/readonly')
 const { createSaveDataAllRoute, isAdminGroups } = require('./core/save_data_all')
 const { createAdminGate } = require('./core/admin_gate')
 const { createProvisionUserRoute } = require('./core/user_admin')
+const { normalizeOverrides } = require('./core/catalog_overrides')
 const { setSimpleInModes } = require('./core/ide_modes')
 
 // Session (Change Set) is optional for using the IDE — it groups changes for
@@ -3134,21 +3135,27 @@ const CATALOG_OVERRIDES_PATH = path.join(__dirname, 'config', 'function-catalog-
 const EMPTY_OVERRIDES = {
     ti:    { overrides: {}, additions: {}, deletions: [] },
     rules: { overrides: {}, additions: {}, deletions: [] },
-    mdx:   { overrides: {}, additions: {}, deletions: [] },
 }
+const catalogVersion = raw => crypto.createHash('sha1').update(JSON.stringify(raw)).digest('hex').slice(0, 12)
 app.get('/api/admin/catalog-overrides', async (req, res) => {
+    const server = req.query.server ?? req.body?.server ?? PAW_LOGIN_SERVER
     try {
-        if (!(await requireTm1Admin(req, res, req.query.server))) return
-        if (!fs.existsSync(CATALOG_OVERRIDES_PATH)) return res.json(EMPTY_OVERRIDES)
-        res.json(JSON.parse(fs.readFileSync(CATALOG_OVERRIDES_PATH, 'utf8')))
-    } catch (e) { res.status(500).json({ error: e.message }) }
+        if (!(await requireTm1Admin(req, res, server))) return
+        const raw = fs.existsSync(CATALOG_OVERRIDES_PATH)
+            ? normalizeOverrides(JSON.parse(fs.readFileSync(CATALOG_OVERRIDES_PATH, 'utf8')))
+            : EMPTY_OVERRIDES
+        res.json({ overrides: raw, version: catalogVersion(raw) })
+    } catch (e) { res.status(e.status ?? 500).json({ error: e.message }) }
 })
 app.put('/api/admin/catalog-overrides', async (req, res) => {
+    const server = req.query.server ?? req.body?.server ?? PAW_LOGIN_SERVER
     try {
-        if (!(await requireTm1Admin(req, res, req.query.server ?? req.body?.server))) return
-        fs.writeFileSync(CATALOG_OVERRIDES_PATH, JSON.stringify(req.body, null, 2))
-        res.json({ ok: true })
-    } catch (e) { res.status(500).json({ error: e.message }) }
+        if (!gateReadOnly(res, server)) return
+        if (!(await requireTm1Admin(req, res, server))) return
+        const overrides = normalizeOverrides(req.body?.overrides ?? req.body)
+        fs.writeFileSync(CATALOG_OVERRIDES_PATH, JSON.stringify(overrides, null, 2))
+        res.json({ ok: true, version: catalogVersion(overrides) })
+    } catch (e) { res.status(e.status ?? 500).json({ error: e.message }) }
 })
 
 // ── SPA fallback ──────────────────────────────────────────────────────────────

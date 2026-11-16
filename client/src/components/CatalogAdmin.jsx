@@ -24,7 +24,7 @@ function buildRows(catalog, overrides = {}) {
     returnType:  ov[name]?.returnType  ?? entry.returnType  ?? '',
     description: ov[name]?.description ?? entry.description ?? '',
     deprecated:  ov[name]?.deprecated  ?? entry.deprecated  ?? null,
-    isStatement: entry.isStatement ?? false,
+    isStatement: ov[name]?.isStatement ?? entry.isStatement ?? false,
     source: 'builtin',
     deleted: delSet.has(name),
   }))
@@ -35,7 +35,7 @@ function buildRows(catalog, overrides = {}) {
     returnType:  v.returnType  ?? '',
     description: v.description ?? '',
     deprecated:  v.deprecated  ?? null,
-    isStatement: false,
+    isStatement: v.isStatement ?? false,
     source: 'user',
     deleted: false,
   }))
@@ -115,6 +115,7 @@ function FunctionRow({ row, editing, onEdit, onEditSave, onEditCancel, onDelete,
   const badge = validateResult
     ? validateResult.status === 'valid'   ? <span className="text-[9px] text-green-500">✓</span>
     : validateResult.status === 'invalid' ? <span className="text-[9px] text-red-400">✗</span>
+    : validateResult.status === 'skipped' ? <span className="text-[9px] text-muted-foreground">not tested</span>
     : <span className="text-[9px] text-amber-400">?</span>
     : null
 
@@ -213,6 +214,9 @@ export default function CatalogAdmin({ server, onClose, initialTab = 'ti' }) {
   const [tab,             setTab]             = useState(initialTab)
   const [search,          setSearch]          = useState('')
   const [overrides,       setOverrides]       = useState(null)
+  const [loadError,       setLoadError]       = useState(null)
+  const [version,         setVersion]         = useState(null)
+  const [reload,          setReload]          = useState(0)
   const [dirty,           setDirty]           = useState(false)
   const [saving,          setSaving]          = useState(false)
   const [validateResults, setValidateResults] = useState(null)
@@ -223,14 +227,23 @@ export default function CatalogAdmin({ server, onClose, initialTab = 'ti' }) {
   const [lastSuppressed,  setLastSuppressed]  = useState(null)
 
   useEffect(() => {
-    fetch('/api/admin/catalog-overrides')
-      .then(r => r.json())
-      .then(d => setOverrides(d))
-      .catch(() => setOverrides({
-        ti:    { overrides: {}, additions: {}, deletions: [] },
-        rules: { overrides: {}, additions: {}, deletions: [] },
-      }))
-  }, [])
+    let cancelled = false
+    fetch(`/api/admin/catalog-overrides${server ? `?server=${encodeURIComponent(server)}` : ''}`, { headers: { 'x-ide-token': localStorage.getItem('tm1-token') ?? '' } })
+      .then(async r => {
+        const d = await r.json().catch(() => null)
+        if (!r.ok || d?.error) throw new Error(d?.error ?? `Load failed (${r.status})`)
+        if (!d?.overrides) throw new Error('The catalog response did not contain overrides')
+        return d
+      })
+      .then(d => {
+        if (cancelled) return
+        setOverrides(d.overrides)
+        setVersion(d.version ?? null)
+        setLoadError(null)
+      })
+      .catch(e => { if (!cancelled) setLoadError(e.message) })
+    return () => { cancelled = true }
+  }, [reload, server])
 
   const rows = useMemo(() => {
     if (!overrides) return []
@@ -305,13 +318,15 @@ export default function CatalogAdmin({ server, onClose, initialTab = 'ti' }) {
   const handleSave = async () => {
     setSaving(true)
     try {
-      const r = await fetch('/api/admin/catalog-overrides', {
+      const r = await fetch(`/api/admin/catalog-overrides${server ? `?server=${encodeURIComponent(server)}` : ''}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json', 'x-ide-token': localStorage.getItem('tm1-token') ?? '' },
         body: JSON.stringify(overrides),
       })
-      if (!r.ok) throw new Error((await r.json()).error)
+      const d = await r.json().catch(() => null)
+      if (!r.ok) throw new Error(d?.error ?? `Save failed (${r.status})`)
       setDirty(false)
+      if (d?.version) setVersion(d.version)
       toast.success('Catalog saved')
     } catch (e) {
       toast.error(`Save failed: ${e.message}`)
@@ -326,10 +341,9 @@ export default function CatalogAdmin({ server, onClose, initialTab = 'ti' }) {
     setValidateResults(null)
     setSuppressReview(null)
     try {
-      const catalog = tab === 'ti' ? TI_CATALOG : RULES_CATALOG
-      const tests = Object.entries(catalog).map(([name, entry]) => ({
-        name,
-        code: buildTestCall(name, entry),
+      const tests = rows.filter(row => !row.deleted).map(row => ({
+        name: row.name,
+        code: buildTestCall(row.name, { params: row.params, isStatement: row.isStatement, returnType: row.returnType }),
       }))
       const r = await fetch('/api/admin/validate-ti-functions', {
         method: 'POST',
@@ -349,7 +363,7 @@ export default function CatalogAdmin({ server, onClose, initialTab = 'ti' }) {
     } finally {
       setValidating(false)
     }
-  }, [tab, server])
+  }, [rows, server])
 
   const handleReviewResults = useCallback(() => {
     if (!validateResults) return
@@ -397,9 +411,9 @@ export default function CatalogAdmin({ server, onClose, initialTab = 'ti' }) {
   }, [lastSuppressed, mutateOverride])
 
   const TABS = [
-    { id: 'ti',     label: 'TI Functions' },
-    { id: 'rules',  label: 'Rules Functions' },
-    { id: 'naming', label: 'Naming / Formatter' },
+    { id: 'ti',     label: 'TI Functions', scope: 'Server-wide' },
+    { id: 'rules',  label: 'Rules Functions', scope: 'Server-wide' },
+    { id: 'naming', label: 'Naming / Formatter', scope: 'This browser only' },
   ]
 
   return (
@@ -416,7 +430,7 @@ export default function CatalogAdmin({ server, onClose, initialTab = 'ti' }) {
           </div>
           <div className="flex items-center gap-2">
             {dirty && (
-              <button onClick={handleSave} disabled={saving}
+              <button onClick={handleSave} disabled={saving || !overrides || !!loadError}
                 className="flex items-center gap-1.5 px-2.5 py-1 text-xs rounded bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-40">
                 {saving ? <Loader2 size={11} className="animate-spin" /> : <Save size={11} />}
                 Save
@@ -441,6 +455,7 @@ export default function CatalogAdmin({ server, onClose, initialTab = 'ti' }) {
               )}
             >
               {t.label}
+              <span className="ml-1.5 text-[9px] uppercase tracking-wide text-muted-foreground/60">{t.scope}</span>
             </button>
           ))}
         </div>
@@ -492,7 +507,12 @@ export default function CatalogAdmin({ server, onClose, initialTab = 'ti' }) {
         {/* Table */}
         {tab !== 'naming' && <>
           <div className="overflow-y-auto flex-1">
-            {!overrides ? (
+            {loadError ? (
+              <div className="flex flex-col items-center justify-center gap-2 py-16 text-xs text-red-400">
+                <span>Could not load the catalog: {loadError}</span>
+                <button onClick={() => setReload(n => n + 1)} className="px-2.5 py-1 rounded border border-border text-muted-foreground hover:bg-muted">Retry</button>
+              </div>
+            ) : !overrides ? (
               <div className="flex items-center justify-center py-16 text-muted-foreground text-xs gap-2">
                 <Loader2 size={14} className="animate-spin" /> Loading…
               </div>
@@ -520,7 +540,7 @@ export default function CatalogAdmin({ server, onClose, initialTab = 'ti' }) {
                       onEditCancel={() => setEditingName(null)}
                       onDelete={handleDelete}
                       onRestore={handleRestore}
-                      validateResult={validateResults?.[row.name]}
+                      validateResult={validateResults ? (validateResults[row.name] ?? { status: 'skipped' }) : undefined}
                     />
                   ))}
                 </tbody>
@@ -529,7 +549,7 @@ export default function CatalogAdmin({ server, onClose, initialTab = 'ti' }) {
           </div>
           <AddFunctionForm onAdd={handleAdd} />
           <div className="px-4 py-2 border-t border-border text-[10px] text-muted-foreground flex items-center justify-between gap-2 shrink-0">
-            <span>Changes apply to autocomplete and validation after page reload. Built-in deletions suppress warnings only.</span>
+            <span>Changes apply to autocomplete and validation after page reload. Built-in deletions suppress warnings only.{version ? ` Version ${version}.` : ''}</span>
             <div className="flex items-center gap-2">
               {lastSuppressed?.tab === tab && (
                 <button onClick={handleUndoSuppression} className="text-[10px] text-primary hover:underline">

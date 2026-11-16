@@ -28,11 +28,12 @@ function mergeCatalog(base, overrides = {}) {
   return out
 }
 
-export async function initEffectiveCatalogs(base) {
+export async function initEffectiveCatalogs(base, server = null) {
   try {
-    const r = await fetch('/api/admin/catalog-overrides')
+    const r = await fetch(`/api/admin/catalog-overrides${server ? `?server=${encodeURIComponent(server)}` : ''}`, { headers: { 'x-ide-token': localStorage.getItem('tm1-token') ?? '' } })
     if (!r.ok) return state
-    const o = await r.json()
+    const d = await r.json()
+    const o = d?.overrides ?? d
     state.rules = mergeCatalog(base.rules, o.rules)
     state.ti    = mergeCatalog(base.ti, o.ti)
   } catch {
