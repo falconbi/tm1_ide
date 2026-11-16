@@ -1,7 +1,7 @@
 {
   "name": "tm1_ide",
-  "version": "1.0.0",
-  "description": "Models-as-code tooling and IDE for IBM Planning Analytics (TM1).",
+  "version": "0.9.0",
+  "description": "A browser-based IDE and MCP server for IBM Planning Analytics (TM1).",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
@@ -13,8 +13,13 @@
     "lint": "eslint .",
     "lint:count": "eslint . --format json | node -e \"let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{const r=JSON.parse(d);console.log('lint problems:', r.reduce((a,f)=>a+f.messages.length,0))})\""
   },
-  "keywords": [],
-  "author": "",
+  "keywords": [
+    "tm1",
+    "planning-analytics",
+    "ide",
+    "mcp"
+  ],
+  "author": "falconbi",
   "license": "MIT",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.0",
