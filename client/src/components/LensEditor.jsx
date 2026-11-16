@@ -1,3 +1,4 @@
+import { apiFetch } from '@/lib/api'
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react'
 import MonacoEditor from '@monaco-editor/react'
 import { useStore } from '@/store'
@@ -168,7 +169,7 @@ export default function LensEditor({ tab }) {
 
   useEffect(() => {
     const readJson = async (url) => {
-      const r = await fetch(url, { headers: { 'x-ide-token': token() } })
+      const r = await apiFetch(url, { headers: { 'x-ide-token': token() } })
       const d = await r.json().catch(() => null)
       if (!r.ok) throw new Error(d?.error ?? `Request failed (${r.status})`)
       return d
@@ -189,7 +190,7 @@ export default function LensEditor({ tab }) {
       .then(d => setFolders(Array.isArray(d) ? [...new Set(d.map(l => l.folder).filter(Boolean))].sort() : []))
       .catch(e => setStartError(e.message))
     if (tab.name) {
-      fetch(`/api/lenses/${encodeURIComponent(tab.name)}?server=${encodeURIComponent(tab.server)}&_=${Date.now()}`, { headers: { 'x-ide-token': token() } })
+      apiFetch(`/api/lenses/${encodeURIComponent(tab.name)}?server=${encodeURIComponent(tab.server)}&_=${Date.now()}`, { headers: { 'x-ide-token': token() } })
         .then(r => r.json())
         .then(d => {
           if (d.html) { setHtml(d.html); setStatus(d.meta?.status ?? 'draft'); setDescription(d.meta?.description ?? ''); setFolder(d.meta?.folder ?? ''); setTitle(d.meta?.title ?? ''); setLook({ icon: d.meta?.icon ?? '', color: d.meta?.color ?? '', image: d.meta?.image ?? '' }); setConfigText(JSON.stringify(d.meta?.config ?? {}, null, 2) + '\n'); setGoodConfig(d.meta?.config ?? {}) }
@@ -221,7 +222,7 @@ export default function LensEditor({ tab }) {
     setGenerating(true)
     setMessage(null)
     try {
-      const res = await fetch('/api/lenses/generate', {
+      const res = await apiFetch('/api/lenses/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-ide-token': token() },
         body: JSON.stringify({ server: tab.server, cube: cube || undefined, description: prompt }),
@@ -248,7 +249,7 @@ export default function LensEditor({ tab }) {
     setMessage(null)
     setValidation([])
     try {
-      const res = await fetch(`/api/lenses/${encodeURIComponent(name.trim())}?server=${encodeURIComponent(tab.server)}`, {
+      const res = await apiFetch(`/api/lenses/${encodeURIComponent(name.trim())}?server=${encodeURIComponent(tab.server)}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-ide-token': token() },
         body: JSON.stringify({ html, description, folder, title, icon: look.icon, color: look.color, image: look.image, config: goodConfig, publish, force }),
@@ -278,7 +279,7 @@ export default function LensEditor({ tab }) {
   const startFrom = async (src) => {
     if (!src) return
     try {
-      const r = await fetch(`/api/lenses/${encodeURIComponent(src)}?server=${encodeURIComponent(tab.server)}`, { headers: { 'x-ide-token': token() }, cache: 'no-store' })
+      const r = await apiFetch(`/api/lenses/${encodeURIComponent(src)}?server=${encodeURIComponent(tab.server)}`, { headers: { 'x-ide-token': token() }, cache: 'no-store' })
       const d = await r.json()
       if (!r.ok) throw new Error(d.error || r.statusText)
       const cfg = d.meta?.config ?? {}
@@ -292,7 +293,7 @@ export default function LensEditor({ tab }) {
 
   const openPattern = async (name) => {
     try {
-      const r = await fetch(`/api/lens-patterns/${encodeURIComponent(name)}`, { headers: { 'x-ide-token': token() } })
+      const r = await apiFetch(`/api/lens-patterns/${encodeURIComponent(name)}`, { headers: { 'x-ide-token': token() } })
       const d = await r.json()
       if (!r.ok) throw new Error(d.error || r.statusText)
       setPatternView(d)
