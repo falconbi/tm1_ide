@@ -24,6 +24,18 @@ const FILE = path.join(__dirname, '..', 'config', 'assertions.json')
 const GOVERNANCE_PATH = ['Applications', 'Governance', 'Tests']
 const MODEL_DOC_NAME  = 'assertions.json'
 
+function _finiteNumber(value, field) {
+  const n = Number(value)
+  if (!Number.isFinite(n)) {
+    const e = new Error(`${field} must be a finite number`)
+    e.status = 400
+    throw e
+  }
+  return n
+}
+
+
+
 function load() {
   try { return JSON.parse(fs.readFileSync(FILE, 'utf8')) } catch { return {} }
 }
@@ -148,13 +160,20 @@ async function list(server, opts = {}) {
 }
 
 async function add(server, { description, mdx, expected, tolerance, tags, kind, severity, why, author, changeSet }, opts = {}) {
+  const expectedNumber = _finiteNumber(expected, 'expected')
+  const toleranceNumber = tolerance == null ? 0.01 : _finiteNumber(tolerance, 'tolerance')
+  if (toleranceNumber < 0) {
+    const e = new Error('tolerance must be zero or greater')
+    e.status = 400
+    throw e
+  }
   const rec = {
     id:          randomUUID().slice(0, 8),
     description: String(description ?? '').trim(),
     why:         why ? String(why).trim() : null,
     mdx:         String(mdx).trim(),
-    expected:    Number(expected),
-    tolerance:   tolerance == null ? 0.01 : Number(tolerance),
+    expected:    expectedNumber,
+    tolerance:   toleranceNumber,
     tags:        Array.isArray(tags) ? tags : [],
     kind:        kind === 'control' ? 'control' : 'behaviour',
     severity:    severity === 'warn' ? 'warn' : 'block',
@@ -316,8 +335,11 @@ function _cleanPatch(patch = {}) {
     if (patch.description !== undefined) out.description = String(patch.description).trim()
     if (patch.why !== undefined)        out.why         = patch.why ? String(patch.why).trim() : null
     if (patch.mdx !== undefined)        out.mdx        = String(patch.mdx).trim()
-    if (patch.expected !== undefined)   out.expected   = Number(patch.expected)
-    if (patch.tolerance !== undefined)  out.tolerance  = Number(patch.tolerance)
+    if (patch.expected !== undefined)   out.expected   = _finiteNumber(patch.expected, 'expected')
+    if (patch.tolerance !== undefined) {
+        out.tolerance = _finiteNumber(patch.tolerance, 'tolerance')
+        if (out.tolerance < 0) { const e = new Error('tolerance must be zero or greater'); e.status = 400; throw e }
+    }
     if (patch.tags !== undefined)       out.tags       = Array.isArray(patch.tags) ? patch.tags : []
     if (patch.kind !== undefined)       out.kind       = patch.kind === 'control' ? 'control' : 'behaviour'
     if (patch.severity !== undefined)   out.severity   = patch.severity === 'warn' ? 'warn' : 'block'
@@ -375,5 +397,10 @@ async function runOne(server, id, opts = {}) {
         error = e.response?.data?.error?.message ?? e.message
     }
     const pass = error == null && Math.abs(actual - a.expected) <= (a.tolerance ?? 0.01)
-    return { source, id: a.id, description: a.description, mdx: a.mdx, tags: a.tags ?? [], kind: a.kind ?? 'behaviour', severity: a.severity ?? 'block', expected: a.expected, actual, pass, error }
+    const result = { source, id: a.id, description: a.description, mdx: a.mdx, tags: a.tags ?? [], kind: a.kind ?? 'behaviour', severity: a.severity ?? 'block', expected: a.expected, actual, pass, error }
+    try {
+        const { recordRun } = require('./test-results')
+        await recordRun(client, { results: [result] })
+    } catch { /* history is best-effort */ }
+    return result
 }

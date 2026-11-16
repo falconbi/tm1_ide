@@ -52,6 +52,7 @@ export default function ModelHealth({ server, onClose }) {
   const [copied,  setCopied]  = useState(null)
   const [assertKind, setAssertKind] = useState('all')
   const [histories, setHistories] = useState({})
+  const [historyErrors, setHistoryErrors] = useState({})
   const [openHist,  setOpenHist]  = useState(null)
 
   const loadHistory = async f => {
@@ -61,7 +62,10 @@ export default function ModelHealth({ server, onClose }) {
       const d = await r.json()
       if (!r.ok) throw new Error(d.error || r.statusText)
       setHistories(h => ({ ...h, [f.id]: d }))
-    } catch { setHistories(h => ({ ...h, [f.id]: [] })) }
+      setHistoryErrors(h => ({ ...h, [f.id]: null }))
+    } catch (e) {
+      setHistoryErrors(h => ({ ...h, [f.id]: e.message || 'History unavailable' }))
+    }
   }
 
   const run = async () => {
@@ -198,7 +202,10 @@ export default function ModelHealth({ server, onClose }) {
                               </>
                             )}
                           </div>
-                          {openHist === f.id && histories[f.id] && (
+                          {openHist === f.id && historyErrors[f.id] && (
+                            <p className="text-[10px] text-red-600">History unavailable: {historyErrors[f.id]}</p>
+                          )}
+                          {openHist === f.id && !historyErrors[f.id] && histories[f.id] && (
                             <div className="flex items-center gap-1.5 flex-wrap">
                               <span className="text-[10px] text-muted-foreground">Last runs:</span>
                               {histories[f.id].length === 0 && <span className="text-[10px] text-muted-foreground italic">no history recorded yet</span>}

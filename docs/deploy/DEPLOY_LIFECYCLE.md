@@ -15,10 +15,10 @@ Found by code review, not by a failed deploy. Each line moves to **Fixed** as th
 - Step 6 — readiness findings now block the Git push route, and the setup screen disables Link/Commit while blockers remain.
 - Step 7 — standalone drift checks take the target's deploy lock; a concurrent check returns busy instead of racing the `prod-live` push.
 - Step 8 — change sets are owner-managed (case-insensitive); admins may also close/resume/edit. The UI hides those controls for another user's set.
+- Step 9 — single-assertion runs record to `}TestResults`; assertion writes use `gateWrite`; finite numeric fields are validated and client-supplied identity/change-set fields are ignored.
 
 **Still open**
 
-- Step 9 — single-assertion runs did not record history; assertion writes did not use the normal model-write gate; numeric fields were not validated.
 - Step 10 — two deploy surfaces and a Deploy History built from local package archives, not model deploy records.
 - First-pull element-loss analysis (`firstPullAnalysis`) is still not wired into the setup screen (round 2).
 - Round 2 — a fresh IDE cannot yet read model-owned governance without local migration markers.
@@ -251,6 +251,6 @@ Health as a readiness flag. Plus a short one-page setup guide.
 
 ## Out of scope / later phases
 
-- `}TestResults` run history (phase 2), change-set documents in the model (phase 2), deploy history/approvals/hooks into the model (phase 4), migration of existing RIG history (phase 5).
+- `}TestResults` run history (phase 2), change-set documents in the model (phase 2), deploy history/approvals/hooks into the model (phase 4), migration of existing RIG history (phase 5). Set by the maker; single runs and history read failures are surfaced now.
 - The mirror of `Applications/Governance` into the repo (the decided mechanism above) — to implement with the deploy work.
 - The first-time GitHub setup flow above (admin, once per model).

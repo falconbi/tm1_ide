@@ -2875,23 +2875,26 @@ app.get('/api/assertions', async (req, res) => {
 })
 app.post('/api/assertions', async (req, res) => {
     try {
-        if (!gateReadOnly(res, req.query.server)) return
+        if (!gateWrite(res, req.query.server)) return
         const { add } = require('./core/assertions')
-        res.json(await add(req.query.server, { ...req.body, author: req.body.author ?? req.user }, { ideToken: req.ideToken }))
-    } catch (e) { res.status(500).json({ error: e.message }) }
+        const { author: _author, changeSet: _changeSet, user: _user, createdBy: _createdBy, ...body } = req.body
+        const active = cl.getActiveSession(req.query.server, req.user)
+        res.json(await add(req.query.server, { ...body, author: req.user, changeSet: active?.id ?? null }, { ideToken: req.ideToken }))
+    } catch (e) { res.status(e.status ?? 500).json({ error: e.message }) }
 })
 app.patch('/api/assertions/:id', async (req, res) => {
     try {
-        if (!gateReadOnly(res, req.query.server)) return
+        if (!gateWrite(res, req.query.server)) return
         const { update } = require('./core/assertions')
-        const r = await update(req.query.server, req.params.id, req.body, { ideToken: req.ideToken, by: req.user })
+        const { changeSet: _changeSet, user: _user, createdBy: _createdBy, ...body } = req.body
+        const r = await update(req.query.server, req.params.id, body, { ideToken: req.ideToken, by: req.user })
         if (!r) return res.status(404).json({ error: `No assertion ${req.params.id}` })
         res.json(r)
-    } catch (e) { res.status(500).json({ error: e.message }) }
+    } catch (e) { res.status(e.status ?? 500).json({ error: e.message }) }
 })
 app.delete('/api/assertions/:id', async (req, res) => {
     try {
-        if (!gateReadOnly(res, req.query.server)) return
+        if (!gateWrite(res, req.query.server)) return
         const { remove } = require('./core/assertions')
         const ok = await remove(req.query.server, req.params.id, { ideToken: req.ideToken })
         res.json({ ok })

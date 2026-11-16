@@ -51,24 +51,22 @@ async function recordRun(client, runResult, { runId } = {}) {
 // Read the last runs for one assertion (or the latest run for all when no id).
 // Returns [{ run, pass, actual, expected }] newest-first.
 async function recentRuns(client, { assertionId, limit = 10 } = {}) {
-    try {
-        const where = assertionId ? ` WHERE ([${DIM_ASSERTION}].[${assertionId}])` : ''
-        const mdx = `SELECT {[${DIM_FIELD}].[Pass],[${DIM_FIELD}].[Actual],[${DIM_FIELD}].[Expected]} ON 0, {[${DIM_RUN}].Members} ON 1 FROM [${CUBE}]${where}`
-        const r = await client.executeMDX(mdx, 5000)
-        const cols = (r.Axes?.[0]?.Tuples ?? []).map(t => t.Members?.[0]?.Name)
-        const rows = (r.Axes?.[1]?.Tuples ?? []).map(t => t.Members?.[0]?.Name)
-        const nCols = cols.length
-        const byRun = new Map()
-        for (const c of r.Cells ?? []) {
-            const run = rows[Math.floor(c.Ordinal / nCols)]
-            const field = cols[c.Ordinal % nCols]
-            if (!byRun.has(run)) byRun.set(run, { run })
-            byRun.get(run)[field.toLowerCase()] = c.Value
-        }
-        return [...byRun.values()]
-            .sort((a, b) => (a.run > b.run ? -1 : 1))
-            .slice(0, limit)
-    } catch { return [] }
+    const where = assertionId ? ` WHERE ([${DIM_ASSERTION}].[${assertionId}])` : ''
+    const mdx = `SELECT {[${DIM_FIELD}].[Pass],[${DIM_FIELD}].[Actual],[${DIM_FIELD}].[Expected]} ON 0, {[${DIM_RUN}].Members} ON 1 FROM [${CUBE}]${where}`
+    const r = await client.executeMDX(mdx, 5000)
+    const cols = (r.Axes?.[0]?.Tuples ?? []).map(t => t.Members?.[0]?.Name)
+    const rows = (r.Axes?.[1]?.Tuples ?? []).map(t => t.Members?.[0]?.Name)
+    const nCols = cols.length
+    const byRun = new Map()
+    for (const c of r.Cells ?? []) {
+        const run = rows[Math.floor(c.Ordinal / nCols)]
+        const field = cols[c.Ordinal % nCols]
+        if (!byRun.has(run)) byRun.set(run, { run })
+        byRun.get(run)[field.toLowerCase()] = c.Value
+    }
+    return [...byRun.values()]
+        .sort((a, b) => (a.run > b.run ? -1 : 1))
+        .slice(0, limit)
 }
 
 module.exports = { recordRun, recentRuns, CUBE }
