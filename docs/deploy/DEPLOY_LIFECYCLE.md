@@ -250,6 +250,27 @@ Link **both** servers to the **same** repo — one as DEV, one as PROD. After th
 **Where it shows:** on opening an unlinked server ("this model isn't backed by GitHub yet — set it up"), and in Model
 Health as a readiness flag. Plus a short one-page setup guide.
 
+## Planned — direct PAW edits need a reconcile workflow
+
+Today a direct edit on a model (for example someone changing a cube or process in PAW) is detected by
+the drift check and pauses deploys, but the only documented response is to re-apply the change on DEV
+in a change set and release it. That is not enough when the PAW edit is legitimate and should be kept,
+or when a target must be restored to its approved state.
+
+Add an explicit, object-level **Reconcile** flow (not an automatic reset):
+
+1. **Detect** — use the existing drift check plus transaction-log evidence to show object, user and time.
+2. **Snapshot first** — preserve the current target state before changing anything, so the PAW edit is recoverable.
+3. **Offer three decisions per object:**
+   - **Adopt** — bring the PAW change back into a DEV change set and rebase the target baseline;
+   - **Restore** — put the last approved commit/release back;
+   - **Acknowledge** — leave the change, recording who accepted the drift and why.
+4. **Require approval and audit** for Restore, because it overwrites someone else's work; never auto-revert.
+5. **Refresh the anchor** after Adopt/Restore so drift is clean and the next release compares against the new truth.
+
+This turns direct PAW edits from an invisible hazard into a reviewed exception. It is a later deploy-area
+round, not part of the current fix brief.
+
 ## Out of scope / later phases
 
 - `}TestResults` run history (phase 2), change-set documents in the model (phase 2), deploy history/approvals/hooks into the model (phase 4), migration of existing RIG history (phase 5). Set by the maker; single runs and history read failures are surfaced now.
