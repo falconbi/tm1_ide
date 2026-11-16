@@ -68,3 +68,22 @@ test('the component catalogue describes exactly the toolkit components', () => {
 test('the Lens store stamps the toolkit version the kit provides', () => {
   assert.equal(require('../core/lens_store.js').TOOLKIT_VERSION, TOOLKIT_VERSION)
 })
+
+test('rows: a dimension name containing ] keeps its real name', () => {
+  const r = rows({
+    Axes: [
+      {
+        Tuples: [
+          { Members: [{ Name: 'Actual', UniqueName: '[Sales]]Plan].[Sales]]Plan].[Actual]' }] },
+        ],
+      },
+      {
+        Tuples: [
+          { Members: [{ Name: 'Total', UniqueName: '[Sales]]Plan].[Sales]]Plan].[Total]' }] },
+        ],
+      },
+    ],
+    Cells: [{ Ordinal: 0, Value: 42 }],
+  })
+  assert.equal(r[0]['Sales]Plan'], 'Total')
+})

@@ -10,11 +10,12 @@
 // _input: { [column label]: true when the cell can be typed into }, and _kind:
 // { [column label]: 'input' | 'calc' (a rule) | 'total' (a consolidation) }.
 
-// '[organization].[organization].[100]' → 'organization'
+import { dimOf as dimOfUnique } from '../pivot/cellset.js'
+
+// '[organization].[organization].[100]' → 'organization' (]] is a literal ]).
+// The fallback only matters for a result with no UniqueName at all.
 function dimOf(member, i) {
-  const u = member && member.UniqueName
-  const m = typeof u === 'string' ? /^\[([^\]]+)\]/.exec(u) : null
-  return m ? m[1] : 'dim' + (i + 1)
+  return dimOfUnique(member?.UniqueName) || 'dim' + (i + 1)
 }
 
 export function rows(cellset) {
