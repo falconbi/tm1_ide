@@ -220,7 +220,6 @@ git-readiness.js: 55,62,82,92,99-101,207   PATH-APOS
 git-reconcile.js: 88                        PATH-APOS
 git-restore.js:   108  patch `Cubes('${esc(det.cube)}')`   PATH-APOS
 git-deploy.js:    125 / git-drift.js:48,150 / server.js:3022+  GitPlans(plan.ID) → GUID
-git-review.js:    91  `git diff ${from}..${to}` → SAFE (shell; arg-delimited, not TM1)
 git-drift.js:     138  `user.name=…` → SAFE (git identity)
 git-restore.js:   49  RegExp `#region\s+${key}` → SAFE
 git-readiness.js: 152  message → SAFE

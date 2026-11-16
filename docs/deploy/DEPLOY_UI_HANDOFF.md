@@ -23,7 +23,6 @@ Eight steps, plain language, no icons:
   no assertions.
 - **Commit** = push DEV to the repo (`POST /api/deploy/git/push`, create+execute atomically). Branch field removed —
   it is fixed by the server's TM1 deployment.
-- **Review** shows the object list **and** the actual content diff (`core/git-review.js`), per object, `+`/`-` coloured.
 - **Approve** records who/when/the exact commit/target/note to `config/deploy-approvals.json`; bound to the commit.
   Deploy is disabled until approved.
 - **Verify** runs the drift check; Revert / Promote for recovery.
