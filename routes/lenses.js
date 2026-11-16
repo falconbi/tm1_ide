@@ -246,6 +246,15 @@ app.get('/api/lens/meta', async (req, res) => {
         res.json(await lensBridge.getMeta(client, req.query.cube))
     } catch (e) { fail(res, e) }
 })
+for (const [route, fn] of [['cell-trace', (c, b) => lensBridge.cellTrace(c, b.cube, b.coordinates)],
+                           ['cell-log',   (c, b) => lensBridge.cellLog(c, b.cube, b.coordinates, b.top)],
+                           ['cell-notes', (c, b) => lensBridge.cellNotes(c, b.cube, b.coordinates)]]) {
+    app.post(`/api/lens/${route}`, async (req, res) => {
+        try { res.json(await fn(makeClient(req.query.server, req.ideToken), req.body ?? {})) }
+        catch (e) { res.status(400).json({ error: e.response?.data?.error?.message ?? e.message }) }
+    })
+}
+
 }
 
 module.exports = { register }

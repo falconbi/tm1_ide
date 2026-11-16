@@ -1,8 +1,5 @@
 [
   "GET /api/config",
-  "POST /api/lens/cell-trace",
-  "POST /api/lens/cell-log",
-  "POST /api/lens/cell-notes",
   "GET /api/forge",
   "POST /api/forge",
   "GET /api/processes/search",
@@ -42,6 +39,9 @@
   "GET /api/lens/hierarchies",
   "GET /api/lens/element-tree",
   "GET /api/lens/meta",
+  "POST /api/lens/cell-trace",
+  "POST /api/lens/cell-log",
+  "POST /api/lens/cell-notes",
   "GET /api/views",
   "GET /api/view",
   "POST /api/view/preview-records",

@@ -5,10 +5,9 @@ require('dotenv').config({ path: require('path').join(__dirname, '.env') })
 const express   = require('express')
 const path      = require('path')
 const fs        = require('fs')
-const crypto    = require('crypto')
 const ai        = require('./core/ai/registry')
 const obfuscate = require('./core/ai/obfuscate')
-const { makeClient, makeClientWithCredentials, needsServerLogin, isDirectServer, isPawNativeServer, probeAuthMethod, listServers, listServersWithFlags, isSimple, simpleSource, getDefaultAdapterType, getLoginServer } = require('./core/adapter_registry')
+const { makeClient, makeClientWithCredentials, needsServerLogin, isDirectServer, isPawNativeServer, probeAuthMethod, listServers, listServersWithFlags, isSimple, simpleSource, getLoginServer } = require('./core/adapter_registry')
 const { loadConnections, saveConnections, getConnection, executeQuery, testConnection, getSchema, loadQueries, saveQueries } = require('./core/sql_client')
 const { createSession, createDirectSession, createLocalSession, attachPawSession, getSessionUser, touchSession, invalidateSession, getCachedPawSession, getCSRF, PAW_HOST, setServerCredentials, getServerCredentials, clearServerCredentials, getServerStatus, listServerEntries, getSessionCredentials } = require('./core/paw_connect')
 const cl = require('./core/change_log')
@@ -28,56 +27,28 @@ const { createCancelJobRoute } = require('./core/admin_routes')
 const { createStartSessionRoute } = require('./core/session_routes')
 const { createCatalogOverrideRoutes } = require('./core/catalog_overrides')
 const { setSimpleInModes } = require('./core/ide_modes')
+const { createHttp } = require('./routes/_http')
+const { createServerHelpers } = require('./core/server_helpers')
 
-// Session (Change Set) is optional for using the IDE — it groups changes for
-// deployment, it is not a login and must never gate whether a save works.
-// User attribution is independent of session: every write always logs the
-// actual acting user (req.user / AGENT_USER), whether or not a session is
-// open. Set TM1_REQUIRE_SESSION=1 to opt back into hard-gating writes behind
-// an open session, for anyone who wants that stricter posture.
-const SESSION_GATE_ENABLED = ['1', 'true', 'yes'].includes(String(process.env.TM1_REQUIRE_SESSION ?? '0').toLowerCase())
-function requireSession(server, user) {
-    if (!SESSION_GATE_ENABLED) return true
-    // A Simple-mode server hides change sets, so it can never demand one
-    if (isSimple(server)) return true
-    return !!cl.getActiveSession(server, user)
-}
-const { isTm1Admin, requireTm1Admin } = createAdminGate({ makeClient, isAdminGroups })
+const http = createHttp({
+    cl, isSimple, isAdminGroups, makeClient, canManageSession, readOnlyRefusal, createAdminGate,
+})
+const {
+    mayManageSession, gateReadOnly, gateWrite, fail, isTm1Admin, requireTm1Admin,
+    scanIdentity, isLoopbackReq, sendMaintenanceError, NEEDS_LOGIN_RE,
+} = http
 
-async function mayManageSession(req, session) {
-    if (canManageSession(req.user, session)) return true
-    return isTm1Admin(req, session.server)
-}
+const helpers = createServerHelpers({
+    cl, makeClientWithCredentials, isDirectServer, PAW_LOGIN_SERVER: process.env.PAW_LOGIN_SERVER,
+    createCatalogOverrideRoutes, gateReadOnly, requireTm1Admin,
+})
+const {
+    loginRateLimit, SAMPLE_PASSWORD_WARNING, isSampleLogin, SQL_PASSWORD_MASK, _GI, _GITOK,
+    catalogRoutes, LENS_CATALOGUE, txLogSearches, lensUsageCache, userServer,
+    closeServerSession, setupBlankAdmin, sendSetupError, logAttributeValue, joinContinuations,
+    extractMembersFromExpression, parseDbRefs, processCode, summaryPrompt,
+} = helpers
 
-const NO_SESSION_ERROR = 'No change set is open for this server — start one first (Change Log → Start change set) so this change can be attributed and deployed.'
-function gateReadOnly(res, server) {
-    const refusal = readOnlyRefusal(server)
-    if (refusal) {
-        res.status(409).json(refusal)
-        return false
-    }
-    return true
-}
-function gateWrite(res, server) {
-    if (!gateReadOnly(res, server)) return false
-    // Key the session gate by the acting user, so each person's saves are
-    // attributed to their own change set on a shared DEV.
-    if (!requireSession(server, res.req?.user)) {
-        res.status(409).json({ error: NO_SESSION_ERROR })
-        return false
-    }
-    return true
-}
-// One failure shape for every route (see core/tm1-error.js for the message).
-function fail(res, e) {
-    const status = e?.status ?? e?.response?.status
-    const code = e?.code
-    const out = status === 400 ? 400
-        : status === 401 || status === 403 || status === 404 ? status
-        : status === 409 || code === 'READ_ONLY' || code === 'LOCKED' ? 409
-        : 500
-    return res.status(out).json({ error: e?.message || 'Request failed' })
-}
 const { getCubeDataSources, getViewSourceUsage, getProcessFacts, listProcessSummaries, invalidate: invalidateCubeSources } = require('./core/cube_data_sources')
 const { buildCubeMapModel } = require('./core/cubemap')
 const { parseRuleLens } = require('./core/rule_lens')
@@ -88,15 +59,7 @@ const { loadBaseline: deployLoadBaseline } = require('./tools/tm1deploy/src/diff
 const FORGE_PATH = path.join(__dirname, 'config', 'forge.json')
 const PAW_LOGIN_SERVER = process.env.PAW_LOGIN_SERVER
 
-// ── Provider-agnostic AI ──────────────────────────────────────────────────────
-// All AI features (MDX/subset generation) go through core/ai/registry — pick the
-// provider in .env (AI_PROVIDER + AI_API_KEY + optional AI_MODEL/AI_BASE_URL).
-// Legacy ANTHROPIC_API_KEY is still honoured so an existing .env keeps working.
-
 const PORT = process.env.PORT || 8083
-// TM1 IDE is a local single-user developer tool — bind loopback only (see SECURITY.md).
-// Override with HOST=0.0.0.0 only if you deliberately need LAN access and understand
-// that the browser<->server leg is then plaintext HTTP with no transport security.
 const HOST = process.env.HOST || '127.0.0.1'
 
 const IDE_LOGIN    = String(process.env.IDE_LOGIN || 'auto').toLowerCase()
@@ -106,20 +69,6 @@ const LOGIN_REQUIRED = IDE_LOGIN === 'always' || !LOCAL_ONLY
 function createApp() {
 const app  = express()
 
-// ── IDE sign-in (Architect model) ─────────────────────────────────────────────
-// IDE_LOGIN=auto (default): no IDE login when the IDE listens on this machine only
-//   — open it, pick a server, sign in to that server. When HOST exposes it to the
-//   network, an IDE sign-in (through any server) is required: otherwise anyone on
-//   the network could reach stored SQL logins, the AI key and change history.
-// IDE_LOGIN=always: require the IDE sign-in even when local (e.g. a shared PC).
-// There is deliberately no "never" for a network-exposed IDE.
-const isLoopbackReq = (req) => ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(req.socket.remoteAddress)
-
-// ── Login rate limit ──────────────────────────────────────────────────────────
-// Small in-memory per-IP throttle on the unauthenticated sign-in endpoints
-// (shared with the Lens app: core/login-rate-limit.js).
-const loginRateLimit = require('./core/login-rate-limit').createIpLimiter({ max: 10, windowMs: 15 * 60_000 })
-
 app.use(express.json({ limit: '10mb' }))
 app.use(express.static(path.join(__dirname, 'static'), {
     setHeaders(res, filePath) {
@@ -128,16 +77,6 @@ app.use(express.static(path.join(__dirname, 'static'), {
 }))
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
-
-
-// End a server's TM1 session for this user (best effort) so it doesn't linger.
-async function closeServerSession(server, entry) {
-    if (!entry?.state?.cookie) return
-    const cl = makeClientWithCredentials(server, { username: entry.username, password: entry.password ?? '' }, entry.state)
-    await cl?._adapter?.closeSession?.()
-}
-
-
 
 app.get('/api/config', (req, res) => {
     res.json({
@@ -150,19 +89,6 @@ app.get('/api/config', (req, res) => {
     })
 })
 
-// Sign-in page: "Brand-new server?" — set its first admin password and sign in to
-// the IDE through it (the IDE's fallback for what Architect used to be needed for).
-
-
-// IBM's sample servers ship with admin / apple — fine in a lab, an open door anywhere shared.
-const SAMPLE_PASSWORD_WARNING = 'This server still uses IBM\'s published sample password (admin / apple) — change it before anyone else can reach it.'
-const isSampleLogin = (u, p) => String(u ?? '').toLowerCase() === 'admin' && p === 'apple'
-
-// Architect model: a local-only IDE needs no IDE login. The browser gets a session
-// that holds per-server logins only. Refused when an IDE sign-in is required, or
-// when the request doesn't come from this machine.
-
-
 app.use('/api', (req, res, next) => {
     if (['/auth/login', '/auth/logout', '/auth/local-session', '/auth/setup-login'].includes(req.path)) return next()
     const token = req.headers['x-ide-token']
@@ -174,13 +100,6 @@ app.use('/api', (req, res, next) => {
     req.user = user
     next()
 })
-
-// ── Per-server login ──────────────────────────────────────────────────────────
-// A request for a server this user hasn't signed in to is answered here — before
-// any call reaches TM1 — with 401 { needsServerLogin }. The browser shows a login
-// for that server. No stored password is ever tried against another server, and a
-// rejected one is never retried (TM1's MaximumLoginAttempts would lock the account).
-const NEEDS_LOGIN_RE = /^(?:Sign in to server "(.+)" to use it|TM1 rejected the login for server "(.+)" — sign in to it again)$/
 
 app.use('/api', (req, res, next) => {
     if (req.path.startsWith('/auth/') || req.path === '/servers/setup') return next()
@@ -213,60 +132,6 @@ app.use('/api', (req, res, next) => {
     next()
 })
 
-// Which servers this user is signed in to.
-//   status: 'signed-in' | 'needs-login' | 'rejected' | 'paw' (PAW owns the login)
-
-
-// Sign in to one server. One test call; stores the login only if TM1 accepts it.
-// useCurrent: try the credentials you signed in to the IDE with (one attempt).
-
-
-// How does this server want to be signed in to? Asked without credentials —
-// never counts as a failed login. Also the "Test connection" details.
-
-
-// Sign out of one server (ends its TM1 session).
-
-
-// "Set up new server" — set the first admin password on a fresh TM1 server
-// (native security: a new server has user admin with a blank password).
-// Exactly one attempt with the blank password; never repeated. The password must
-// be set before anything else — nobody is left signed in on a blank password.
-// Returns { state } (the TM1 session signed in with the new password) or throws
-// an Error with .status/.body for the route to send.
-async function setupBlankAdmin(server, newPassword) {
-    const fail = (status, body) => Object.assign(new Error(body.error), { status, body })
-    if (!server) throw fail(400, { error: 'server required' })
-    if (!newPassword) throw fail(400, { error: 'newPassword required' })
-    if (!isDirectServer(server)) throw fail(400, { error: `"${server}" is reached through PAW — set its password there` })
-    const blank = makeClientWithCredentials(server, { username: 'admin', password: '' }, {})
-    try {
-        await blank.get('ActiveUser', { '$select': 'Name' })
-    } catch (e) {
-        if (e.code !== 'TM1_AUTH_REJECTED') throw e
-        const w = String(e.wwwAuthenticate ?? '').toLowerCase()
-        const mode = /cam/.test(w) ? 'cam' : /negotiate|ntlm/.test(w) ? 'integrated' : 'native'
-        throw fail(409, {
-            mode, alreadyHasPassword: mode === 'native',
-            error: mode === 'native'
-                ? `"${server}" already has an admin password — sign in to it normally`
-                : `"${server}" uses ${mode === 'cam' ? 'CAM (Cognos)' : 'Windows'} security — passwords are managed in the directory, not TM1`,
-        })
-    }
-    await blank.patch("Users('admin')", { Password: newPassword })
-    await blank._adapter.closeSession()
-    const state = {}
-    await makeClientWithCredentials(server, { username: 'admin', password: newPassword }, state).get('ActiveUser', { '$select': 'Name' })
-    return { state }
-}
-
-const sendSetupError = (res, e) => e.status
-    ? res.status(e.status).json(e.body)
-    : res.status(500).json({ error: e.response?.data?.error?.message ?? e.message })
-
-// Already in the IDE: set up a new server and sign in to it.
-
-
 // No API response may be cached by the browser — the IDE serves live model state
 // and lens HTML; a heuristic-cached GET would show stale content after an edit.
 app.use('/api', (req, res, next) => {
@@ -274,690 +139,9 @@ app.use('/api', (req, res, next) => {
     next()
 })
 
-// ── Change log / Sessions ─────────────────────────────────────────────────────
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-// ── Servers ───────────────────────────────────────────────────────────────────
-
-
-// ── Cubes ─────────────────────────────────────────────────────────────────────
-
-
-// ── Dimensions ────────────────────────────────────────────────────────────────
-
-
-// Bulk import: rows = [{ name, type, parent, weight }]
-
-
-function logAttributeValue({ server, dimension, element, attribute, hierarchy, before, after, user }) {
-    if (String(before ?? '') === String(after ?? '')) return
-    try {
-        cl.writeLog({
-            server,
-            action: 'ATTRIBUTE_VALUE_SET',
-            objectType: 'attribute-value',
-            objectName: `${dimension}:${element}:${attribute}`,
-            detail: { dimension, hierarchy: hierarchy ?? dimension, element, attribute, before: before ?? null, after: after ?? null },
-            user,
-        })
-    } catch { /* history must not block the value write */ }
-}
-
-// Bulk attribute import: rows = [{ element, attrName, value }]
-
-
-
-
-
-
-
-
-
-
-
-
-// ── Processes ─────────────────────────────────────────────────────────────────
-
-
-
-
-// ── Chores ────────────────────────────────────────────────────────────────────
-
-
-
-
-
-
-
-
-// ── Rules ─────────────────────────────────────────────────────────────────────
-
-
-
-
-
-
-// ── Process detail + execute ──────────────────────────────────────────────────
-
-
-// TM1 REST API rejects newlines inside open parentheses (multi-line TI expressions).
-// Merge any continuation line into the preceding line so the code round-trips safely.
-const HANGING_KW = /\b(IF|WHILE|ELSEIF)\s*$/i
-function joinContinuations(code) {
-    let out = '', depth = 0, inStr = false, lineBuffer = ''
-    for (let i = 0; i < code.length; i++) {
-        const ch = code[i]
-        if (inStr) {
-            if (ch === "'") {
-                if (code[i + 1] === "'") { out += "''"; lineBuffer += "''"; i++ }
-                else { inStr = false; out += ch; lineBuffer += ch }
-            } else { out += ch; lineBuffer += ch }
-        } else {
-            if (ch === '#') {
-                out += '#'
-                while (i + 1 < code.length && code[i + 1] !== '\n') { out += code[++i] }
-            }
-            else if (ch === "'") { inStr = true; out += ch; lineBuffer += ch }
-            else if (ch === '(') { depth++; out += ch; lineBuffer += ch }
-            else if (ch === ')') { depth--; out += ch; lineBuffer += ch }
-            else if (ch === '\n') {
-                // Join if inside open paren OR previous line ends with IF/WHILE/ELSEIF
-                out += (depth > 0 || HANGING_KW.test(lineBuffer)) ? ' ' : '\n'
-                lineBuffer = ''
-            }
-            else { out += ch; lineBuffer += ch }
-        }
-    }
-    return out
-}
-
-
-
-
-
-
-
-
-
-
-
-// ── Cube dimensions ───────────────────────────────────────────────────────────
-
-
-// ── Dimension attributes ──────────────────────────────────────────────────────
-
-
-
-
-
-
-// ── Attribute grid (all elements × all attrs in one response) ─────────────────
-
-
-
-
-
-
-
-
-
-
-
-
-// ── Views ─────────────────────────────────────────────────────────────────────
-
-
-
-
-
-
-
-
-
-
-
-
-// ── Elements ──────────────────────────────────────────────────────────────────
-
-
-
-
-
-
-
-
-// ── Dimension element + edge write ───────────────────────────────────────────
-
-
-
-
-
-
-
-
-// Place an existing element under a parent at a given position (drag-and-drop).
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-// Alternate Hierarchies — what a hierarchy is (default / alternate / TM1's Leaves) and which
-// processes build it; an element's parents in each hierarchy; build one from an attribute.
-
-
-
-
-
-
-
-
-// ── Search index — all rules + all process code in one call ──────────────────
-// Scope: Rules + TI, used by Find & Replace. The Explorer's Ctrl+Shift+F quick
-// search is deliberately TI-only (see /api/processes/search and FEATURES.md).
-
-
-// ── Subsets ───────────────────────────────────────────────────────────────────
-
-
-
-
-
-
-
-
-
-
-// Get distinct attribute values for a dimension (samples up to 500 elements)
-
-
-
-
-
-
-
-
-// ── View → axis config (execute view, return cellset + axis dim names) ───────
-// Extract member names from an inline Subset Expression like {[Dim].[Hier].[M1], [Dim].[Hier].[M2]}
-function extractMembersFromExpression(expr) {
-    if (!expr) return null
-    const trimmed = expr.trim()
-    if (!trimmed.startsWith('{') || !trimmed.endsWith('}')) return null
-    const matches = [...trimmed.matchAll(/\[[^\]]+\]\.\[[^\]]+\]\.\[([^\]]+)\]/g)]
-    return matches.length > 0 ? matches.map(m => m[1]) : null
-}
-
-
-
-// ── Native View Execute (with suppression toggle) ────────────────────────────
-// ── MDX Execute ──────────────────────────────────────────────────────────────
-
-
-// ── Rules lineage ─────────────────────────────────────────────────────────────
-function parseDbRefs(rules) {
-    const refs = new Set()
-    const re = /\bDB[S]?\s*\(\s*'([^']+)'/gi
-    let m
-    while ((m = re.exec(rules)) !== null) refs.add(m[1])
-    return [...refs]
-}
-
-
-
-
-
-// ── PAW Book Usage — which books reference a TM1 view ─────────────────────────
-
-
-// ── Model objects (non-control) ───────────────────────────────────────────────
-
-
-// ── Chore execute / activate / deactivate / create ────────────────────────────
-
-
-// ── Jobs ──────────────────────────────────────────────────────────────────────
-
-
-
-
-// ── Process error logs ────────────────────────────────────────────────────────
-
-
-// ── Cell calculation trace ────────────────────────────────────────────────────
-
-
-
-
-
-
-// ── Cell annotations ──────────────────────────────────────────────────────────
-// ── Transaction log ───────────────────────────────────────────────────────────
-// A TM1 log search can't be cancelled once started, so a repeat of the same search by the same
-// user (a second click, a refresh) joins the one already running instead of starting another.
-const txLogSearches = new Map()
-
-
-// Restore one cell to the value it had before a logged change (the Log panel's Restore button).
-// TM1 admins only — the log isn't filtered by cell security. Refuses, unless forced, when the cell
-// has changed again since that log row, so a newer change is never wiped by accident. The write
-// goes through the user's own TM1 login, so TM1 still decides whether the cell can be written.
-
-
-// ── File management ───────────────────────────────────────────────────────────
-
-
-
-
-
-
-
-
-// ── TM1 sessions ──────────────────────────────────────────────────────────────
-
-
-
-
-
-
-
-
-// ── Server admin ─────────────────────────────────────────────────────────────
-
-
-
-
-// ── Server version (drives function-catalog compat gating) ────────────────────
-
-
-// Write all changed cube data to disk. Admin-only; falls back to }IDE.SaveDataAll
-// on servers without the REST tm1.SaveDataAll action.
-
-
-// Simple mode switch (Server Admin → IDE). It changes the IDE for everyone on the
-// server, so only TM1 admins may flip it. Kept in config/ide-modes.json; a server
-// marked simple in servers.json can't be switched off here.
-
-
-
-
-// tm1s.Enable/DisableMaintenanceMode arrived in TM1 12.6 — older servers 404.
-function sendMaintenanceError(res, e) {
-    const is404 = e.response?.status === 404 || e.message?.includes('404')
-    if (is404) return res.status(404).json({ error: 'Maintenance mode is not available on this server — it needs TM1 12.6 or later.' })
-    res.status(500).json({ error: e.message })
-}
-
-
-
-
-
-// ── User management ───────────────────────────────────────────────────────────
-// Acts on the server selected in the UI (?server= / body.server); the login
-// server only when none is given.
-const userServer = (req) => req.query?.server ?? req.body?.server ?? PAW_LOGIN_SERVER
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-// ── Forge (workspace persistence) ────────────────────────────────────────────
-// ── Control Objects ───────────────────────────────────────────────────────────
-
-
-// ── Period Builder ────────────────────────────────────────────────────────────
-// Saves 3 TI processes to the target TM1 server.
-// Request body: { server, processes: [{name, prolog, metadata, data, epilog, parameters}] }
-
-
-
-
-
-
-// ── SQL Editor ───────────────────────────────────────────────────────────────
-
-const SQL_PASSWORD_MASK = '••••••••'
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-// ── Current user ──────────────────────────────────────────────────────────────
-// ── Cell write ────────────────────────────────────────────────────────────────
-// Body: { server, cube, dims: [{ dim, element }, ...], value }
-
-
-// ── Deploy pipeline ───────────────────────────────────────────────────────────
-
-// When this server's baseline was last seeded — the start of its release window.
-
-
-
-
-// ── Git readiness check (IMPROVEMENTS 10.2) ─────────────────────────────────
-// On demand, single server or cross-server. Also run as a blocker in the deploy
-// risk check before every push. Findings: member-less view titles, stale member
-// references in views/subsets, names TM1 Git won't round-trip, tm1project Ignore.
-
-
-// ── Model health (v1) ───────────────────────────────────────────────────────
-// "Does the model compute right, would TM1 Git accept it, does it meet house
-// standards". POST: it runs assertions (MDX) + the full scan. Button-triggered.
-
-
-// ── Assertions management ───────────────────────────────────────────────────
-// List, add, update, remove and run the model's stored assertions. Writes are
-// gated on read-only posture like other model edits.
-
-
-
-
-
-
-
-// ── Git deploy (IMPROVEMENTS 10.1 hybrid) ───────────────────────────────────
-// Prepare = target baseline + pull plan preview (read-only). Execute = atomic
-// pull + control checks on the target (a real deploy — gated by the UI/approval).
-
-
-// Push the source server's live state to the repo (step 2 of the deploy flow).
-// TM1 Git commits the whole model; the plan is ephemeral, so create AND execute
-// atomically. Does not touch the target.
-
-
-// ── Change-set-scoped release ─────────────────────────────────────────────────
-// Build branch release-<target> = the target's recorded deployed commit + only
-// this change set's files. Deploying it ships exactly this change set.
-
-
-// ── Approval — the recorded human decision that gates a deploy. ─────────────
-// Bound to a specific commit + target: a new commit invalidates the old approval.
-// Stored locally (gitignored) via core/git-approvals.
-
-
-// Review — the actual content diff the target will receive (read-only).
-// ── Drift (#3): PROD pushes prod-live; diff vs its deployed commit. ─────────
-
-// Deploy lock — is anything deploying to a target right now?
-
-// Clear a STALE deploy lock (one a deploy that died left behind). Refuses to
-// clear a live lock; records who/when in the deploy history.
-
-
-// ── Git connection setup (first-time, guarded) ───────────────────────────────
-// Link an EXISTING repo only — creating one needs a broader GitHub token, so the
-// UI gives instructions instead. The token is never shown, logged or returned.
-// Already-initialised servers report their link and are never re-initialised.
-// Guardrails: no silent failures — every step reports, and a failure stops.
-const _GI = () => require('./core/git-identity')
-const _GITOK = () => process.env.TM1_GIT_TOKEN || ''
-
-
-
-
-
-
-
-
-
-// DEV first push — the initial commit.
-
-
-// PROD first pull — full overwrite; requires the typed confirmation. The object
-// list is shown first via the normal prepare route (fullOverwrite flag).
-
-
-// ── Governance mirror (#4): Applications/Governance ⇄ governance/ in the repo ──
-// ── Git reconcile (#6): deletes + attribute values the pull won't cover ──────
-
-
-// Git deploy history for the History rail: the IDE-recorded deploy and the
-// approvals for this target. Package archives stay available below as legacy.
-
-
-
-
-
-
-// Admin: function catalog overrides — compat, user additions, deletions
-const CATALOG_OVERRIDES_PATH = path.join(__dirname, 'config', 'function-catalog-overrides.json')
-const catalogRoutes = createCatalogOverrideRoutes({
-    filePath: CATALOG_OVERRIDES_PATH,
-    requireTm1Admin,
-    gateReadOnly,
-    serverOf: req => req.query.server ?? req.body?.server ?? PAW_LOGIN_SERVER,
-})
-
-
-
-// ── SPA fallback ──────────────────────────────────────────────────────────────
-// Admin: validate TI function names against the live TM1 server using syntax check.
-// Client sends { server, tests: [{name, code}] } where code is minimal TI calling that function.
-// Each function is tested by creating a temp TI process; success = TM1 accepts the syntax.
-
-
-// Cache identity for model-wide scans: the per-user session token, hashed so the
-// raw token never sits in a module-level Map. Fall back to the acting user name.
-function scanIdentity(req) {
-    if (req.ideToken) return crypto.createHash('sha256').update(String(req.ideToken)).digest('hex').slice(0, 16)
-    return req.user ?? ''
-}
-
-// ── Cube Map ──────────────────────────────────────────────────────────────────
-// The Runbook reads chores (from /api/cubemap/model) — a runbook is a chore, so there's no runbook file.
-
-// ── Process summaries (AI worded, stored outside the TI) ─────────────────────
-function processCode(p) {
-    return [p.PrologProcedure, p.MetaDataProcedure ?? p.MetadataProcedure, p.DataProcedure, p.EpilogProcedure]
-        .filter(Boolean).join('\n')
-}
-
-function summaryPrompt(p, f, includeCode) {
-    const writes = f.writes.map(w => {
-        const what = w.measures?.length ? w.measures.join(', ')
-            : w.kinds?.includes('clear') ? 'cleared'
-            : w.kinds?.includes('feeders') ? 'feeders recalculated'
-            : 'written'
-        return `- ${w.cube}: ${what}`
-    }).join('\n')
-    const params = (p.Parameters ?? []).map(x =>
-        `${x.Name}${x.Value !== '' && x.Value != null ? ` (default ${x.Value})` : ''}${x.Prompt ? ` — ${x.Prompt}` : ''}`
-    ).join('; ')
-    const system = 'You document IBM TM1 TurboIntegrator processes for a data-lineage tooltip. Write plain English for an admin. ' +
-        'Return ONLY: one or two sentences on what the process does and when it runs, then one line starting "Writes:" listing cube -> measures (or "clears"/"feeders"), ' +
-        'then one line "Reads:" with the source cubes if any. No headings, no bullets, no code fences, no invented facts, no permissions unless they change what it does. Max 90 words.'
-    const user = [
-        `Process: ${p.Name}`,
-        `Author's header:\n${f.header || '(none)'}`,
-        `Parameters: ${params || '(none)'}`,
-        `Datasource: ${f.source}`,
-        `Writes (scanned from the code):\n${writes || '(no cube writes)'}`,
-        `Reads (scanned): ${f.reads.join(', ') || '(none)'}`,
-        `Called by: ${f.calledBy.join(', ') || '(nothing)'}`,
-        includeCode ? `Code:\n${processCode(p).slice(0, 12000)}` : '',
-    ].filter(Boolean).join('\n\n')
-    return { system, user }
-}
-
-
-
-
-
-
-
-// Rule lens — a cube's rules broken into target areas, measures, DB sources and feeders.
-
-
-// Where a cube's data comes from — writers / readers / rule dependencies (Rules editor strip)
-
-
-
-
-// ── Lenses ────────────────────────────────────────────────────────────────────
-// A Lens lives in the model it belongs to: one document per Lens under
-// Applications/Governance/Lenses (core/lens_store.js → core/model-store.js),
-// holding the HTML and its details. Nothing is stored locally. Every call runs as
-// the signed-in user (req.ideToken), never the MCP's builder path. Saves and
-// deletes are model changes: they need a writable server and an open change set,
-// and are recorded in it.
-
-// Lens patterns — reference Lenses to start a new one from (a copy, never a link).
-
-
-
-
-
-// Which processes the Lenses run (their declared lens-runs), as { process: [lens, ...] } — so the
-// IDE can mark front-end actions without anyone tagging them. Cached briefly per user and server.
-const lensUsageCache = new Map()
-
-
-
-
-
-
-
-
-const LENS_CATALOGUE = JSON.stringify(require('./shared/lens-components.json'), null, 1)
-
-
-// ── Lens bridge (runs as the viewing user) ───────────────────────────────────
-
-
-
-
-
-// Write-back from a Lens preview — same checks as the Lens app (declared cubes,
-// numbers only, no calculated cells, nothing changed since it loaded), as the
-// IDE user. Data entry, not a model change, so no change set is needed; a
-// read-only (PROD-posture) server refuses it here.
-
-
-// History from a Lens preview — the same activity log and the same rules as the
-// Lens app's /api/lens/:name/history: recent saves and runs through this saved
-// Lens on this server; a match slice is checked as the IDE user first.
-
-
-// Who the IDE user is on this server, and their TM1 groups (Lens.whoami()).
-
-
-// Action buttons from a Lens preview — the process must be declared by the
-// saved Lens; parameters checked; runs as the IDE user; logged.
-
-
-// A cell's story for a Lens's right-click menu — why (rule trace), who changed it
-// (transaction log), notes — read as the IDE user; adding a note needs the saved
-// Lens to declare the cube (lens-notes / lens-writes) and is logged.
-for (const [route, fn] of [['cell-trace', (c, b) => lensBridge.cellTrace(c, b.cube, b.coordinates)],
-                           ['cell-log',   (c, b) => lensBridge.cellLog(c, b.cube, b.coordinates, b.top)],
-                           ['cell-notes', (c, b) => lensBridge.cellNotes(c, b.cube, b.coordinates)]]) {
-    app.post(`/api/lens/${route}`, async (req, res) => {
-        try { res.json(await fn(makeClient(req.query.server, req.ideToken), req.body ?? {})) }
-        catch (e) { res.status(400).json({ error: e.response?.data?.error?.message ?? e.message }) }
-    })
-}
-
-
-// Lens.pivot: a dimension's hierarchies (main + any ALT H), for the hierarchy choice.
-
-
-// Lens.pivot: one dimension's element tree, read as the IDE user.
-
-
-
-
-
-
 const routeDeps = { FORGE_PATH, LENS_CATALOGUE, LOCAL_ONLY, LOGIN_REQUIRED, PAW_HOST, PAW_LOGIN_SERVER, SAMPLE_PASSWORD_WARNING, SQL_PASSWORD_MASK, _GI, _GITOK, ai, attachPawSession, buildCubeMapModel, catalogRoutes, cl, clearServerCredentials, closeServerSession, createCancelJobRoute, createDirectSession, createLocalSession, createProvisionUserRoute, createSaveDataAllRoute, createSession, createStartSessionRoute, deployLoadBaseline, deploySeed, executeQuery, express, extractMembersFromExpression, fail, fs, gateReadOnly, gateWrite, getCSRF, getCachedPawSession, getConnection, getCubeDataSources, getLoginServer, getProcessFacts, getSchema, getServerCredentials, getServerStatus, getSessionCredentials, getViewSourceUsage, gitSecrets, invalidateCubeSources, invalidateSession, isAdminGroups, isDirectServer, isLoopbackReq, isPawNativeServer, isSampleLogin, isTm1Admin, joinContinuations, lensBridge, lensStore, lensUsageCache, listProcessSummaries, listServerEntries, listServers, listServersWithFlags, loadConnections, loadQueries, logAttributeValue, logLensNote, logLensRun, logLensWrite, loginRateLimit, makeClient, makeClientWithCredentials, mayManageSession, obfuscate, odataKey, parseDbRefs, parseRuleLens, path, probeAuthMethod, processCode, processSummaries, readLensActivity, requireTm1Admin, saveConnections, saveQueries, scanIdentity, sendMaintenanceError, sendSetupError, setServerCredentials, setSimpleInModes, setupBlankAdmin, simpleSource, summaryPrompt, testConnection, txLogSearches, userServer }
-require('./routes/workspace').register(app, routeDeps)
-
-require('./routes/search').register(app, routeDeps)
-
-require('./routes/sql').register(app, routeDeps)
-
-require('./routes/ai').register(app, routeDeps)
-
-require('./routes/lenses').register(app, routeDeps)
-
-require('./routes/views').register(app, routeDeps)
-
-require('./routes/processes').register(app, routeDeps)
-
-require('./routes/cubes').register(app, routeDeps)
-
-require('./routes/dimensions').register(app, routeDeps)
-
-require('./routes/changesets').register(app, routeDeps)
-
-require('./routes/deploy').register(app, routeDeps)
-
-require('./routes/admin').register(app, routeDeps)
-
-require('./routes/auth').register(app, routeDeps)
+for (const file of ['workspace','search','sql','ai','lenses','views','processes','cubes','dimensions','changesets','deploy','admin','auth'])
+    require(`./routes/${file}`).register(app, routeDeps)
 
 app.get('/{*path}', (req, res) => {
     res.sendFile(path.join(__dirname, 'static', 'index.html'))
@@ -975,9 +159,6 @@ if (require.main === module) {
         console.log(`TM1 IDE running at ${shown}`)
     })
 
-    // HTTPS listener for embedding lenses in HTTPS hosts (e.g. PAW over HTTPS): a
-    // self-signed cert in config/certs/ide-{cert,key}.pem. Same app, so /lenses/...
-    // is served on both ports. Browsers must be told to trust the cert once.
     const HTTPS_PORT = parseInt(process.env.HTTPS_PORT || '8443', 10)
     try {
         const https = require('https')
