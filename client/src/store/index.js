@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { clearCubemapSession } from '@/lib/cubemap-session'
+import { clearCubemapSession } from '../lib/cubemap-session.js'
 
 /**
  * @typedef {'rules'|'process'|'subset'|'dimension'|'view'|'cubeview'|'chore'|'cubeeditor'|'cubemap'|
@@ -35,6 +35,24 @@ import { clearCubemapSession } from '@/lib/cubemap-session'
  */
 
 let _forgeTimer = null
+
+// One confirm for every close path. Only dirty tabs are named; a clean close
+// never prompts. closeTab keeps its single-tab wording.
+const TAB_TYPE_LABEL = {
+  rules: 'Rules', process: 'Process', dimension: 'Dimension', subset: 'Subset',
+  cubeview: 'View', view: 'View', chore: 'Chore', cubeeditor: 'Cube',
+  cubemap: 'Cube Map', sql: 'SQL', lens: 'Lens', guidedmdxview: 'MDX Builder',
+  'session-report': 'Session', transactionlog: 'Log',
+}
+function confirmDiscard(tabs) {
+  const dirty = (tabs ?? []).filter(t => t?.dirty)
+  if (!dirty.length) return true
+  const first = `${TAB_TYPE_LABEL[dirty[0].type] ?? 'Tab'}: ${dirty[0].label}`
+  const message = dirty.length === 1
+    ? `"${first}" has unsaved changes. Close anyway?`
+    : `"${first}" and ${dirty.length - 1} more have unsaved changes. Close anyway?`
+  return window.confirm(message)
+}
 
 // ── Layout tree helpers (nested splits) ──────────────────────────────────────
 // A layout node is either:
@@ -280,7 +298,9 @@ export const useStore = create((set, get) => ({
   },
 
   closeAllTabs: () => {
-    for (const t of get().tabs) clearCubemapSession(t.id)
+    const all = get().tabs
+    if (!confirmDiscard(all)) return
+    for (const t of all) clearCubemapSession(t.id)
     const l = { type: 'leaf', id: 'g1', tabIds: [], activeTabId: null }
     set({ tabs: [], activeTab: null, layout: l, groups: [l], activeGroupId: 'g1' })
     _saveForge(get())
@@ -314,6 +334,7 @@ export const useStore = create((set, get) => ({
     if (leafCount(layout) <= 1) return
     const group = findLeaf(layout, groupId)
     if (!group) return
+    if (!confirmDiscard(group.tabIds.map(id => tabs.find(t => t.id === id)).filter(Boolean))) return
     const newLayout = removeLeaf(layout, groupId)
     const groups = collectLeaves(newLayout)
     const otherTabIds = new Set(groups.flatMap(g => g.tabIds))
@@ -407,6 +428,7 @@ export const useStore = create((set, get) => ({
     const group = findLeaf(layout, groupId)
     if (!group) return
     const idsToRemove = group.tabIds.filter(id => id !== tabId)
+    if (!confirmDiscard(idsToRemove.map(id => tabs.find(t => t.id === id)).filter(Boolean))) return
     const otherGroupTabIds = new Set(collectLeaves(layout).filter(g => g.id !== groupId).flatMap(g => g.tabIds))
     const tabsToDelete = idsToRemove.filter(id => !otherGroupTabIds.has(id))
     for (const id of tabsToDelete) clearCubemapSession(id)
@@ -422,6 +444,7 @@ export const useStore = create((set, get) => ({
     const idx = group.tabIds.indexOf(tabId)
     if (idx < 0) return
     const idsToRemove = group.tabIds.slice(idx + 1)
+    if (!confirmDiscard(idsToRemove.map(id => tabs.find(t => t.id === id)).filter(Boolean))) return
     const otherGroupTabIds = new Set(collectLeaves(layout).filter(g => g.id !== groupId).flatMap(g => g.tabIds))
     const tabsToDelete = idsToRemove.filter(id => !otherGroupTabIds.has(id))
     for (const id of tabsToDelete) clearCubemapSession(id)

@@ -157,6 +157,17 @@ const [showCatalog, setShowCatalog]           = useState(false)
 
   useEffect(() => { if (token) loadForge() }, [token])
 
+  // Closing the browser tab must not silently discard unsaved editor buffers.
+  useEffect(() => {
+    const warn = (e) => {
+      if (!useStore.getState().tabs.some(t => t.dirty)) return
+      e.preventDefault()
+      e.returnValue = ''
+    }
+    window.addEventListener('beforeunload', warn)
+    return () => window.removeEventListener('beforeunload', warn)
+  }, [])
+
   // Load Catalog Admin overrides into the effective catalogs once, so edits made
   // in the Function Catalog panel reach autocomplete / hover / validation.
   useEffect(() => {

@@ -144,13 +144,7 @@ export default function TabBar({ groupId }) {
 
   // ── Close all ───────────────────────────────────────────────────────────────
   const handleCloseAll = () => {
-    const dirty = groupTabs.filter(t => t.dirty).map(t => t.label)
-    if (dirty.length > 0) {
-      const ok = window.confirm(
-        `${dirty.length} tab${dirty.length > 1 ? 's have' : ' has'} unsaved changes:\n\n${dirty.join('\n')}\n\nClose all anyway?`
-      )
-      if (!ok) return
-    }
+    // The store asks once and names the dirty tabs (shared with every close path).
     if (multiGroup) closeGroup(groupId)
     else closeAllTabs()
   }
