@@ -391,7 +391,10 @@ function RulesEditor({ tab, onCursor }) {
   const [showRegionMenu, setShowRegionMenu] = useState(false)
   const [regionList, setRegionList] = useState([])   // scanned when the menu opens
   const [showFormatPopup, setShowFormatPopup] = useState(false)
-  const [formatStruct, setFormatStruct] = useState(() => loadSettings().rules.expressionFormatter ?? null)
+  const [formatStruct] = useState(() => {
+    const saved = loadSettings().rules.expressionFormatter
+    return saved === 'tm1-verbose' || saved === 'tm1-structured' ? null : saved ?? null
+  })
   const [checking, setChecking]             = useState(false)
   const [checkResult, setCheckResult]       = useState(null) // null | 'pass' | 'fail'
   const [checkErrors, setCheckErrors]       = useState([])   // { severity, line, message }[]
@@ -853,25 +856,9 @@ function RulesEditor({ tab, onCursor }) {
               <div className="absolute right-0 top-full mt-1 w-56 bg-popover border border-border rounded-lg shadow-lg z-50 p-3">
                 <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-2">Structure</div>
                 <div className="flex flex-col gap-1 mb-3">
-                  {[
-                    { id: null,             label: 'No Change',      desc: 'Keep existing line breaks' },
-                    { id: 'tm1-verbose',    label: 'TM1 Verbose',    desc: 'Each string arg on its own line' },
-                    { id: 'tm1-structured', label: 'TM1 Structured', desc: 'Group consecutive string args' },
-                  ].map(opt => (
-                    <button
-                      key={opt.id ?? 'none'}
-                      onClick={() => setFormatStruct(opt.id)}
-                      className={cn(
-                        'flex flex-col items-start px-2 py-1.5 rounded border text-left transition-colors',
-                        formatStruct === opt.id
-                          ? 'border-primary bg-primary/10 text-foreground'
-                          : 'border-border text-muted-foreground hover:text-foreground hover:bg-muted'
-                      )}
-                    >
-                      <span className="text-xs font-medium">{opt.label}</span>
-                      <span className="text-[10px] opacity-70">{opt.desc}</span>
-                    </button>
-                  ))}
+                  <p className="text-[10px] text-muted-foreground leading-relaxed">
+                    Structured formatting is disabled until it preserves brackets (see BUG_FIXES 2026-11-16).
+                  </p>
                 </div>
                 <div className="flex items-center gap-2">
                   <button
