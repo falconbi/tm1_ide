@@ -65,7 +65,7 @@ test('the admin cancel route refuses before calling TM1, and runs for an admin',
 })
 
 test('the per-server login info carries isAdmin, and the UI hides admin controls without it', () => {
-    const serverSrc = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8')
+    const serverSrc = fs.readFileSync(path.join(__dirname, '..', 'routes', 'auth.js'), 'utf8')
     const loginRoute = serverSrc.slice(serverSrc.indexOf("app.get('/api/auth/servers'"), serverSrc.indexOf("app.post('/api/auth/server-login'"))
     assert.match(loginRoute, /isAdmin:/)
     const statusBar = fs.readFileSync(path.join(__dirname, '..', 'client', 'src', 'components', 'StatusBar.jsx'), 'utf8')
