@@ -118,14 +118,16 @@ function scanRules(rules) {
     const calcText = feederAt >= 0 ? clean.slice(0, feederAt) : clean
     const feederText = feederAt >= 0 ? clean.slice(feederAt) : ''
     const refs = text => {
-        const re = /\bDB[S]?\s*\(\s*'([^']+)'/i
+        const re = /\bDBS?\s*\(\s*'([^']+)'/gi
         const map = new Map() // cube -> [rule line]
         for (const line of text.split('\n')) {
-            const m = line.match(re)
-            if (!m) continue
-            const code = line.trim().replace(/\s+/g, ' ').slice(0, 220)
-            if (!map.has(m[1])) map.set(m[1], [])
-            if (!map.get(m[1]).includes(code)) map.get(m[1]).push(code)
+            re.lastIndex = 0
+            let m
+            while ((m = re.exec(line)) !== null) {
+                const code = line.trim().replace(/\s+/g, ' ').slice(0, 220)
+                if (!map.has(m[1])) map.set(m[1], [])
+                if (!map.get(m[1]).includes(code)) map.get(m[1]).push(code)
+            }
         }
         return map
     }
@@ -136,7 +138,9 @@ function scanRules(rules) {
     }
 }
 
-async function buildIndex(client, serverName) {
+const CUBE_FIRST_FNS = ['ViewZeroOut', 'CubeClearData', 'CubeProcessFeeders']
+
+async function buildIndex(client, serverName, { includeControl = false } = {}) {
     const allCubes = await client.getAllCubesWithRules()
     const cubeNames = new Set(allCubes.map(c => c.Name))
     const cubeDims = {}
@@ -183,7 +187,7 @@ async function buildIndex(client, serverName) {
 
     const CELLPUT_RE = /\b(CellPut[NS](?:Complete)?|CellIncrement[NS])\s*\(/gi
     const CELLGET_RE = /\bCellGet[NS]\s*\(/gi
-    const CUBE_FIRST_RE = /\b(ViewZeroOut|CubeClearData|CubeProcessFeeders)\s*\(/gi
+    const CUBE_FIRST_RE = new RegExp(`\\b(${CUBE_FIRST_FNS.join('|')})\\s*\\(`, 'gi')
     const EXEC_RE = /\b(?:ExecuteProcess|RunProcess)\s*\(([\s\S]*?)\)\s*;/gi
     const CUBE_PARAM_RE = /'([pP]\w*[Cc]ube\w*)'\s*,\s*'([^']+)'/g
     const ASSIGN_RE = /\b([A-Za-z_]\w*)\s*=\s*'([^']*)'\s*;/g
@@ -193,6 +197,7 @@ async function buildIndex(client, serverName) {
     const procReads = {}
     const procCallers = {}
     for (const p of (pd.value ?? [])) {
+        if (!includeControl && p.Name.startsWith('}')) continue
         const rawCode = [p.PrologProcedure, p.MetadataProcedure, p.DataProcedure, p.EpilogProcedure].filter(Boolean).join('\n')
         meta[p.Name] = {
             header: processHeader(p.PrologProcedure, p.Name),
@@ -308,11 +313,11 @@ function cacheKey(server, identity) {
     return `${server}::${identity ?? ''}`
 }
 
-async function indexFor(client, server, identity) {
+async function indexFor(client, server, identity, options = {}) {
     const key = cacheKey(server, identity)
     let hit = cache.get(key)
     if (!hit || Date.now() - hit.at > TTL_MS) {
-        hit = { at: Date.now(), index: await buildIndex(client, server) }
+        hit = { at: Date.now(), index: await buildIndex(client, server, options) }
         cache.set(key, hit)
         if (cache.size > MAX_CACHE) {
             const oldest = cache.keys().next().value
@@ -322,8 +327,8 @@ async function indexFor(client, server, identity) {
     return hit.index
 }
 
-async function getCubeDataSources(client, server, cube, identity) {
-    const index = await indexFor(client, server, identity)
+async function getCubeDataSources(client, server, cube, identity, options = {}) {
+    const index = await indexFor(client, server, identity, options)
     const e = index.cubes[cube]
     if (!e) return { cube, dims: [], writers: [], readers: [], ruleReads: { calc: [], feeders: [] }, copiers: [] }
     // summaries are joined at read time so a just-generated one shows without a rescan
@@ -344,8 +349,8 @@ async function getCubeDataSources(client, server, cube, identity) {
     return { cube, ...e, writers, readers }
 }
 
-async function getViewSourceUsage(client, server, cube, view, identity) {
-    const index = await indexFor(client, server, identity)
+async function getViewSourceUsage(client, server, cube, view, identity, options = {}) {
+    const index = await indexFor(client, server, identity, options)
     const key = cube + '\u001f' + (view ?? '')
     const processes = (index.viewSources?.[key] ?? [])
         .filter(p => !/^_IDE_Debug_/i.test(p.process) && !p.process.startsWith('}'))
@@ -354,8 +359,8 @@ async function getViewSourceUsage(client, server, cube, view, identity) {
 
 
 // Everything one process does, for a "what does this do" summary prompt.
-async function getProcessFacts(client, server, name, identity) {
-    const index = await indexFor(client, server, identity)
+async function getProcessFacts(client, server, name, identity, options = {}) {
+    const index = await indexFor(client, server, identity, options)
     const meta = index.processes[name] ?? {}
     const writes = [], reads = new Set(meta.reads ?? []), copies = []
     for (const [cube, e] of Object.entries(index.cubes)) {
@@ -384,8 +389,8 @@ function invalidate(server) {
 }
 
 // Every process with its summary status — for the server-wide summary review list.
-async function listProcessSummaries(client, server, identity) {
-    const index = await indexFor(client, server, identity)
+async function listProcessSummaries(client, server, identity, options = {}) {
+    const index = await indexFor(client, server, identity, options)
     return Object.entries(index.processes).sort(([a], [b]) => a.localeCompare(b)).map(([name, m]) => {
         const latest = getLatest(server, name)
         const current = latest && latest.hash === m.codeHash ? latest : null
@@ -397,4 +402,4 @@ async function listProcessSummaries(client, server, identity) {
     })
 }
 
-module.exports = { getCubeDataSources, getViewSourceUsage, getProcessFacts, listProcessSummaries, invalidate }
+module.exports = { getCubeDataSources, getViewSourceUsage, getProcessFacts, listProcessSummaries, invalidate, stripComments, splitArgs, resolveName, CUBE_FIRST_FNS }

@@ -92,3 +92,14 @@ test('the index cache is per user identity', async () => {
     assert.deepEqual(a.writers.map(w => w.process), ['User A writer'])
     assert.deepEqual(b.writers.map(w => w.process), ['User B writer'])
 })
+
+test('every DB and DBS call on a line is a rule source', async () => {
+    const cubes = [
+        { Name: 'Cube A', Dimensions: [{ Name: 'Measure' }], Rules: "['M'] = N: DB('One') + DBS('Two');" },
+        { Name: 'One', Dimensions: [{ Name: 'Measure' }], Rules: '' },
+        { Name: 'Two', Dimensions: [{ Name: 'Measure' }], Rules: '' },
+    ]
+    invalidate()
+    const d = await getCubeDataSources(client([], cubes), 'unit-dbs', 'Cube A')
+    assert.deepEqual(d.ruleReads.calc.sort(), ['One', 'Two'])
+})
