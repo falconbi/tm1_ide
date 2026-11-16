@@ -169,34 +169,82 @@ export default function FindReplace({ onClose }) {
   const handleReplace = async () => {
     if (!preview) return
     const { rulesChanges, processChanges } = preview
-    const id = toast.loading(`Replacing in ${rulesChanges.length + processChanges.length} objects…`)
-    try {
-      await Promise.all([
-        ...rulesChanges.map(({ name, newRules }) =>
-          fetch(`/api/rules?server=${enc(server)}&cube=${enc(name)}`, {
-            method: 'POST', headers: { 'Content-Type': 'application/json', 'x-ide-token': localStorage.getItem('tm1-token') ?? '' },
-            body: JSON.stringify({ rules: newRules }),
-          })
-        ),
-        ...processChanges.map(({ name, updated }) =>
-          fetch(`/api/process?server=${enc(server)}&name=${enc(name)}`, {
-            method: 'POST', headers: { 'Content-Type': 'application/json', 'x-ide-token': localStorage.getItem('tm1-token') ?? '' },
-            body: JSON.stringify({
-              PrologProcedure:   updated.Prolog,
-              MetadataProcedure: updated.Metadata,
-              DataProcedure:     updated.Data,
-              EpilogProcedure:   updated.Epilog,
-            }),
-          })
-        ),
-      ])
-      queryClient.invalidateQueries({ queryKey: ['search-index', server] })
+
+    // Never write over an editor buffer that would later save its old text back.
+    const ruleNames  = new Set(rulesChanges.map(x => x.name))
+    const procNames  = new Set(processChanges.map(x => x.name))
+    const dirty = useStore.getState().tabs.filter(t => t.dirty && (
+      (t.type === 'rules' && ruleNames.has(t.cube)) ||
+      (t.type === 'process' && procNames.has(t.name))
+    ))
+    if (dirty.length) {
+      toast.error(`Not replacing — unsaved editor tab${dirty.length > 1 ? 's' : ''}: ${dirty.map(t => t.label || t.name || t.cube).join(', ')}`)
+      return
+    }
+
+    const save = async (url, body) => {
+      const r = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-ide-token': localStorage.getItem('tm1-token') ?? '' },
+        body: JSON.stringify(body),
+      })
+      let d = {}
+      try { d = await r.json() } catch { /* non-JSON error page */ }
+      if (!r.ok || d.error) throw new Error(d.error || `${r.status} ${r.statusText}`)
+      return d
+    }
+
+    const jobs = [
+      ...rulesChanges.map(({ name, newRules }) => ({
+        type: 'rules', name,
+        run: () => save(`/api/rules?server=${enc(server)}&cube=${enc(name)}`, { rules: newRules }),
+      })),
+      ...processChanges.map(({ name, updated }) => ({
+        type: 'process', name,
+        run: () => save(`/api/process?server=${enc(server)}&name=${enc(name)}`, {
+          PrologProcedure:   updated.Prolog,
+          MetadataProcedure: updated.Metadata,
+          DataProcedure:     updated.Data,
+          EpilogProcedure:   updated.Epilog,
+        }),
+      })),
+    ]
+
+    const id = toast.loading(`Replacing in ${jobs.length} objects…`)
+    const settled = await Promise.allSettled(jobs.map(j => j.run()))
+    const failed = settled
+      .map((result, i) => ({ result, job: jobs[i] }))
+      .filter(x => x.result.status === 'rejected')
+    const succeeded = settled
+      .map((result, i) => ({ result, job: jobs[i] }))
+      .filter(x => x.result.status === 'fulfilled')
+      .map(x => x.job)
+
+    for (const job of succeeded) {
+      if (job.type === 'rules') {
+        useStore.getState().bumpRulesVersion(server, job.name)
+        queryClient.invalidateQueries({ queryKey: ['rules', server, job.name] })
+      } else {
+        queryClient.invalidateQueries({ queryKey: ['process', server, job.name] })
+      }
+    }
+    if (succeeded.length) queryClient.invalidateQueries({ queryKey: ['search-index', server] })
+
+    if (!failed.length) {
       setPreview(null)
       setSearched(false)
-      toast.success(`Replaced in ${rulesChanges.length + processChanges.length} objects`, { id })
-    } catch (e) {
-      toast.error(e.message, { id })
+      toast.success(`Replaced in ${jobs.length} objects`, { id })
+      return
     }
+
+    const failedRules = new Set(failed.filter(x => x.job.type === 'rules').map(x => x.job.name))
+    const failedProcs = new Set(failed.filter(x => x.job.type === 'process').map(x => x.job.name))
+    setPreview({
+      rulesChanges:   rulesChanges.filter(x => failedRules.has(x.name)),
+      processChanges: processChanges.filter(x => failedProcs.has(x.name)),
+    })
+    const names = failed.map(x => `${x.job.type} ${x.job.name}`).join(', ')
+    toast.error(`Replaced in ${succeeded.length}, failed in ${failed.length}: ${names}`, { id })
   }
 
   const handleOpen = (result) => {
