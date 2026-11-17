@@ -55,7 +55,8 @@ client/src/
     ProcessEditor.jsx         # TI editor with debugger, snippets, error log viewer
     DimensionEditor.jsx       # Hierarchy tree + attribute grid
     SubsetEditor.jsx          # MDX + visual subset editor
-    ViewEditor.jsx            # Native/MDX view builder + cell grid (PivotGrid → shared pivot), auto-refreshes on rules save
+    view-editor/               # Native/MDX view editor: shell + panels, hooks/ for state, trace/ and axes/
+      ViewEditor.jsx           #   shell (under 400 lines); PivotGrid → shared pivot; auto-refreshes on rules save
     PivotGrid.jsx             # React wrapper around shared/pivot/grid.js with the IDE toolbar + appearance
     CellContextMenu.jsx       # Right-click context menu for view grid cells (trace)
     GuidedMDXBuilder.jsx      # Guided MDX view and subset builders
@@ -248,6 +249,7 @@ It builds a minimal syntactically-plausible call for every TI-usable catalog ent
   - Amber — warnings, error log viewer
   - Red — errors, destructive actions
   - Primary (theme-aware) — active/selected state
+- **Editor layout** — a large editor is a folder: a shell, panel components, `hooks/` for its state (one concern per hook), and pure logic in `lib/<editor>/`. Reads inside handlers use a query factory with `queryClient.fetchQuery` (same key/cache as the hook).
 - **Monaco widgets** — always set `fixedOverflowWidgets: true` on every MonacoEditor instance
 - **z-index for Monaco overlays** — overridden in `index.css` to `z-index: 2000+` for find widget, hover tooltips, context menus
 
