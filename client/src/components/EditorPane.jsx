@@ -34,6 +34,9 @@ import RuleLensPanel from '@/components/RuleLensPanel'
 import CubeDataSources from '@/components/CubeDataSources'
 import HelpPanel from '@/components/HelpPanel'
 import { getRulesSession, saveRulesSession } from '@/lib/rules-session'
+import { mergeCheckErrors } from '@/lib/rules-editor/check-merge'
+import { scanRegions } from '@/lib/rules-editor/regions'
+import { getRevealTarget } from '@/lib/reveal-target'
 import LensEditor from '@/components/LensEditor'
 import { rulesTabId, processTabId } from '@/lib/tab-ids'
 
@@ -448,16 +451,7 @@ function RulesEditor({ tab, onCursor }) {
         tm1Errors = d.errors ?? []
       } catch { /* TM1 check failed — static errors still shown */ }
       if (seq !== checkSeqRef.current) return
-      // Once TM1 reports a syntax error, static warnings later in the file are
-      // usually cascades from that one error (the parser has lost sync). Keep
-      // static findings before the first TM1 error, but don't bury the real
-      // error under a list of misleading warnings.
-      const firstTm1Line = tm1Errors.length
-        ? Math.min(...tm1Errors.map(e => Number(e.LineNumber) || 0))
-        : null
-      const staticToShow = firstTm1Line === null
-        ? staticErrors
-        : staticErrors.filter(e => e.line < firstTm1Line)
+      const { staticToShow, errors } = mergeCheckErrors(staticErrors, tm1Errors)
       const markers = [
         ...tm1Errors.map(e => ({
           severity: monacoRef.current.MarkerSeverity.Error,
@@ -482,10 +476,7 @@ function RulesEditor({ tab, onCursor }) {
       const errorCount = tm1Errors.length +
         staticToShow.filter(e => (e.severity ?? 'error') === 'error').length
       setCheckResult(errorCount === 0 ? 'pass' : 'fail')
-      setCheckErrors([
-        ...tm1Errors.map(e => ({ severity: 'error', line: e.LineNumber, message: e.Message })),
-        ...staticToShow.map(e => ({ severity: e.severity ?? 'error', line: e.line, message: e.message })),
-      ])
+      setCheckErrors(errors)
     } finally {
       if (seq === checkSeqRef.current) setChecking(false)
     }
@@ -685,16 +676,12 @@ function RulesEditor({ tab, onCursor }) {
   const getRegions = () => {
     const editor = editorRef.current
     if (!editor) return []
-    const regions = []
-    const lineCount = editor.getModel().getLineCount()
-    for (let line = 1; line <= lineCount; line++) {
-      const text = editor.getModel().getLineContent(line).trim()
-      const match = text.match(/^#Region\b\s*(.*)$/i)
-      if (match) {
-        regions.push({ line, name: match[1].trim() || 'Region' })
-      }
+    const model = editor.getModel()
+    const lines = []
+    for (let line = 1; line <= model.getLineCount(); line++) {
+      lines.push(model.getLineContent(line))
     }
-    return regions
+    return scanRegions(lines)
   }
 
   const goToRegion = (line) => {
@@ -1050,23 +1037,6 @@ function RulesEditor({ tab, onCursor }) {
 }
 
 // ── Dispatcher ────────────────────────────────────────────────────────────────
-
-/**
- * @param {import('@/store').Tab} tab
- * @returns {import('@/store').RevealTarget|null}
- */
-function getRevealTarget(tab) {
-  if (!tab) return null
-  if (tab.type === 'rules')     return { type: 'rules',     server: tab.server, cube: tab.cube }
-  if (tab.type === 'process')   return { type: 'process',   server: tab.server, name: tab.name }
-  if (tab.type === 'subset')    return { type: 'subset',    server: tab.server, dimension: tab.dimension, hierarchy: tab.hierarchy, subsetName: tab.subsetName }
-  if (tab.type === 'dimension') return { type: 'dimension', server: tab.server, dimension: tab.dimension }
-  if (tab.type === 'cubeview' || tab.type === 'view') {
-    if (tab.viewName) return { type: 'view', server: tab.server, cube: tab.cube, viewName: tab.viewName }
-    return { type: 'cube', server: tab.server, cube: tab.cube }
-  }
-  return null
-}
 
 export default function EditorPane({ groupId }) {
   const { tabs, groups, setRevealTarget, setActiveGroup } = useStore()
