@@ -8,7 +8,9 @@ export function parseAsciiPreview(text, { delimiter = ',', headerRecords = 1 } =
   const split = l => l.split(delim)
   const body = lines.slice(head)
   const width = Math.max(1, ...body.slice(0, 20).map(l => split(l).length))
-  const columns = head > 0 ? split(lines[0]) : Array.from({ length: width }, (_, i) => `Column ${i + 1}`)
+  const columns = head > 0 && lines.length > 0
+    ? split(lines[0])
+    : Array.from({ length: width }, (_, i) => `Column ${i + 1}`)
   return { columns, rows: body.slice(0, 20).map(split), rowCount: body.length, note: 'first 20 records' }
 }
 

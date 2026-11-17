@@ -7,7 +7,7 @@ import { registerMDXAndVariableCompletions, registerTM1Theme } from '@/lib/tm1-f
 import ProcessEditor from '@/components/process-editor/ProcessEditor'
 import SQLEditor from '@/components/SQLEditor'
 import SubsetEditor from '@/components/SubsetEditor'
-import DimensionEditor from '@/components/DimensionEditor'
+import DimensionEditor from '@/components/dimension-editor/DimensionEditor'
 import ViewEditor from '@/components/view-editor/ViewEditor'
 import ChoreEditor from '@/components/ChoreEditor'
 import GuidedMDXBuilder from '@/components/GuidedMDXBuilder'

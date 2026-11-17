@@ -507,6 +507,11 @@ export const useDeleteAttrDef = () => useMutation({
     del(`/api/dimension/attribute-def?server=${enc(server)}&dimension=${enc(dimension)}&name=${enc(name)}${hierarchy ? `&hierarchy=${enc(hierarchy)}` : ''}`),
 })
 
+export const useConvertToAlias = () => useMutation({
+  mutationFn: ({ server, dimension, attribute, hierarchy }) =>
+    post('/api/dimension/attribute/convert-to-alias', { server, dimension, attribute, hierarchy }),
+})
+
 export const useAttrGrid = (server, dimension, hierarchy) => useQuery({
   queryKey: ['attr-grid', server, dimension, hierarchy],
   queryFn:  () => get(`/api/dimension/attr-grid?server=${enc(server)}&dimension=${enc(dimension)}${hierarchy ? `&hierarchy=${enc(hierarchy)}` : ''}`),

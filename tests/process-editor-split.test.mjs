@@ -66,6 +66,13 @@ test('ascii preview: blank lines are skipped and the default delimiter is a comm
   assert.equal(result.rowCount, 1)
 })
 
+test('ascii preview: an empty file with a header row shows numbered columns and no rows', () => {
+  const result = parseAsciiPreview('', { headerRecords: 1 })
+  assert.deepEqual(result.columns, ['Column 1'])
+  assert.deepEqual(result.rows, [])
+  assert.equal(result.rowCount, 0)
+})
+
 test('ascii error: a bare status is replaced with the v12 guidance', () => {
   const message = asciiFileReadMessage('load.csv', new Error('404'))
   assert.match(message, /load\.csv/)
