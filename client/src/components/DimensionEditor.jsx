@@ -16,42 +16,13 @@ import HelpPanel from '@/components/HelpPanel'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
 import PicklistBuilder from './PicklistBuilder'
+import { buildTree, isUnder, buildTreeOrder } from '@/lib/dimension-editor/tree'
+import { TYPE_ICON, TYPE_COLOR, TYPE_LABEL, COLOUR_HEX, TM1_FORMAT_PRESETS } from '@/lib/dimension-editor/constants'
+import { parseTabDelimited } from '@/lib/dimension-editor/structure'
 
 ModuleRegistry.registerModules([AllCommunityModule])
 const lightTheme = themeBalham.withPart(colorSchemeLight).withParams({ fontSize: 12, rowHeight: 24, headerHeight: 28 })
 const darkTheme  = themeBalham.withPart(colorSchemeDark).withParams({ fontSize: 12, rowHeight: 24, headerHeight: 28 })
-
-const TYPE_ICON  = { N: '○', C: '◆', S: '"' }
-const TYPE_COLOR = { N: 'text-blue-400', C: 'text-orange-400', S: 'text-green-400' }
-const TYPE_LABEL = { N: 'Numeric', C: 'Consolidated', S: 'String' }
-
-function buildTree(elements, edges) {
-  const sorted = [...elements].sort((a, b) => (a.Index ?? 0) - (b.Index ?? 0))
-  const byName = {}
-  for (const e of sorted) byName[e.Name] = e
-  const childrenOf = {}
-  const isChild = new Set()
-  for (const edge of edges) {
-    if (!childrenOf[edge.ParentName]) childrenOf[edge.ParentName] = []
-    childrenOf[edge.ParentName].push(edge.ComponentName)
-    isChild.add(edge.ComponentName)
-  }
-  // roots follow TM1's element Index; children follow the edge order the server
-  // returns (that is what tm1.SetComponent's Before controls).
-  const roots = sorted.filter(e => !isChild.has(e.Name)).map(e => e.Name)
-  return { roots, childrenOf, byName }
-}
-
-// is `node` anywhere below `ancestor`? (used to refuse a drag that would make a loop)
-function isUnder(childrenOf, ancestor, node) {
-  const stack = [...(childrenOf[ancestor] ?? [])]
-  while (stack.length) {
-    const c = stack.pop()
-    if (c === node) return true
-    stack.push(...(childrenOf[c] ?? []))
-  }
-  return false
-}
 
 // ── Drop line between siblings (drag to place before) ───────────────────────
 function DropLine({ onDrop }) {
@@ -515,66 +486,7 @@ function FlatList({ elements, selected, onSelect, onDelete, indexMap }) {
   )
 }
 
-// ── Tree order helper ───────────────────────────────────────────────────────
-function buildTreeOrder(elements, edges) {
-  const sorted = [...elements].sort((a, b) => (a.Index ?? 0) - (b.Index ?? 0))
-  const childrenOf = {}
-  const isChild = new Set()
-  for (const edge of edges) {
-    if (!childrenOf[edge.ParentName]) childrenOf[edge.ParentName] = []
-    childrenOf[edge.ParentName].push(edge.ComponentName)
-    isChild.add(edge.ComponentName)
-  }
-  const byName = Object.fromEntries(sorted.map(e => [e.Name, e]))
-  const roots = sorted.filter(e => !isChild.has(e.Name)).map(e => e.Name)
-  const result = []
-  const visited = new Set()
-  function dfs(name, depth) {
-    if (visited.has(name)) return
-    visited.add(name)
-    const el = byName[name]
-    if (el) result.push({ ...el, depth })
-    for (const child of childrenOf[name] ?? []) dfs(child, depth + 1)
-  }
-  for (const r of roots) dfs(r, 0)
-  for (const el of sorted) if (!visited.has(el.Name)) result.push({ ...el, depth: 0 })
-  return result
-}
-
 // ── Attribute grid ──────────────────────────────────────────────────────────
-const COLOUR_HEX = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i
-
-const TM1_FORMAT_PRESETS = [
-  { group: 'Number',     items: [
-    { fmt: '#,##0',       label: '1,000' },
-    { fmt: '#,##0.0',     label: '1,000.0' },
-    { fmt: '#,##0.00',    label: '1,000.00' },
-    { fmt: '#,##0.000',   label: '1,000.000' },
-    { fmt: '0',           label: '1000' },
-    { fmt: '0.00',        label: '1000.00' },
-  ]},
-  { group: 'Currency',   items: [
-    { fmt: '$#,##0',      label: '$1,000' },
-    { fmt: '$#,##0.00',   label: '$1,000.00' },
-    { fmt: '£#,##0.00',   label: '£1,000.00' },
-    { fmt: '€#,##0.00',   label: '€1,000.00' },
-  ]},
-  { group: 'Percentage', items: [
-    { fmt: '0%',          label: '10%' },
-    { fmt: '0.0%',        label: '10.0%' },
-    { fmt: '0.00%',       label: '10.00%' },
-  ]},
-  { group: 'Accounting', items: [
-    { fmt: '#,##0;(#,##0)',       label: '1,000 / (1,000)' },
-    { fmt: '#,##0.00;(#,##0.00)', label: '1,000.00 / (1,000.00)' },
-    { fmt: '#,##0;[Red]-#,##0',   label: '1,000 / red −1,000' },
-  ]},
-  { group: 'Other',      items: [
-    { fmt: 'General',     label: 'General' },
-    { fmt: '@',           label: 'Text' },
-  ]},
-]
-
 const FormatPickerEditor = forwardRef(({ value: initialValue, stopEditing }, ref) => {
   const valueRef = useRef(initialValue ?? '')
   const [value, setValue] = useState(initialValue ?? '')
@@ -992,13 +904,6 @@ function AttrGrid({ tab, elements, edges, hierarchy, search = '', indexMap = nul
 
 // ── Main component ──────────────────────────────────────────────────────────
 // ── Structure Grid (Element / Parent / Weight bulk editor) ────────────────────
-function parseTabDelimited(text) {
-  return text.trim().split(/\r?\n/).map(line => {
-    const cols = line.split('\t')
-    return { name: cols[0]?.trim() ?? '', type: cols[1]?.trim() || 'N', parent: cols[2]?.trim() ?? '', weight: parseFloat(cols[3]) || 1 }
-  }).filter(r => r.name)
-}
-
 function StructureGrid({ tab, elements, edges, hierarchy, onApplied }) {
   const dark = useStore(s => s.dark)
   const bulkImport = useBulkDimImport()
