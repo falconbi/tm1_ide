@@ -1,3 +1,4 @@
+import { get, post, put } from '@/lib/api'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Loader2, Sparkles, Pencil, Check, X, RefreshCw, AlertTriangle, Wand2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -27,9 +28,7 @@ export default function ProcessSummariesDialog({ open, onClose, server, cube, wr
     let cancelled = false
     ;(async () => {
       try {
-        const r = await fetch(`/api/process/summaries?server=${encodeURIComponent(server)}`, { headers: { 'x-ide-token': token() } })
-        const d = await r.json()
-        if (!r.ok || d.error) throw new Error(d.error || r.statusText)
+        const d = await get(`/api/process/summaries?server=${encodeURIComponent(server)}`)
         if (cancelled) return
         const list = d.processes ?? []
         setAll(list)
@@ -55,17 +54,11 @@ export default function ProcessSummariesDialog({ open, onClose, server, cube, wr
   const staleCount = useMemo(() => visible.filter(w => !rows[w.process]?.summary || rows[w.process]?.stale).length, [visible, rows])
   if (!open) return null
 
-  function token() { return localStorage.getItem('tm1-token') ?? '' }
 
   async function generate(name, force) {
     setBusy(name); setError(null)
     try {
-      const r = await fetch('/api/process/summary', {
-        method: 'POST', headers: { 'Content-Type': 'application/json', 'x-ide-token': token() },
-        body: JSON.stringify({ server, name, force }),
-      })
-      const d = await r.json()
-      if (!r.ok || d.error) throw new Error(d.error || r.statusText)
+      const d = await post('/api/process/summary', { server, name, force })
       setRows(prev => ({ ...prev, [name]: { summary: d.summary, at: d.at, source: d.source, stale: false } }))
       onChanged?.()
       return true
@@ -90,12 +83,7 @@ export default function ProcessSummariesDialog({ open, onClose, server, cube, wr
   async function saveEdit(name) {
     setBusy(name); setError(null)
     try {
-      const r = await fetch('/api/process/summary', {
-        method: 'PUT', headers: { 'Content-Type': 'application/json', 'x-ide-token': token() },
-        body: JSON.stringify({ server, name, summary: draft }),
-      })
-      const d = await r.json()
-      if (!r.ok || d.error) throw new Error(d.error || r.statusText)
+      const d = await put('/api/process/summary', { server, name, summary: draft })
       setRows(prev => ({ ...prev, [name]: { summary: d.summary, at: d.at, source: d.source, stale: false } }))
       setEditing(null)
       onChanged?.()

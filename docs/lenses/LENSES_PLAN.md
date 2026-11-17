@@ -79,18 +79,8 @@ decides what each viewer sees, exactly as for the book around it.
 | E. Shared service account | ❌ Bypasses TM1 security — only for genuinely public data, labelled as such. |
 
 Needed whichever option: a standalone **Lens runtime** (does the calls itself instead of via the IDE page), an HTTPS
-certificate, and `Content-Security-Policy: frame-ancestors <PAW origin>` on the Lens page.
+certificate, and `Content-Security-Policy: frame-ancestors <PAW origin>` on the Lens.
 
-## Worked example and the toolkit bundle
+## Lenses are model content
 
-The Workforce app is the worked example of Lenses built with the platform: the page set lives in
-`lenses/workforce/pages/` with one HTML file and one metadata/config JSON per page, and
-`lenses/workforce/save.js` saves the whole set (or one page) back into TM1. The TM1 copy and the
-folder must match — export a page after changing it in TM1 and commit it, so the repo keeps the
-history.
-
-`static/lens-kit/lens-kit.js` is the one self-contained toolkit bundle served to the IDE and the
-Lens app. It includes ECharts (charts), AG Grid (editable grids), React Flow + dagre (flow
-diagrams), and Alpine (small interactive components), bundled as a single IIFE. The current build
-is about 2.4 MB on disk (~730 KB gzipped), so it is cached by the browser and never fetched from a
-CDN.
+A model's Lenses are model content: they live in the model, and their history belongs with the model, not in this repo.

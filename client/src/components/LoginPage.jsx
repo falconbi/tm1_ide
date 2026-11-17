@@ -1,3 +1,4 @@
+import { request } from '@/lib/api'
 import { useState, useEffect } from 'react'
 import { useStore } from '@/store'
 import { useLogin } from '@/hooks/useApi'
@@ -22,10 +23,10 @@ export default function LoginPage() {
   // IDE_LOGIN=always) shows this sign-in page.
   useEffect(() => {
     let cancelled = false
-    fetch('/api/config').then(r => r.json()).then(async c => {
+    request('/api/config').then(r => r.json()).then(async c => {
       if (cancelled) return
       if (!c.loginRequired) {
-        const r = await fetch('/api/auth/local-session', { method: 'POST' })
+        const r = await request('/api/auth/local-session', { method: 'POST' })
         if (r.ok) { const { token, username: u } = await r.json(); if (!cancelled) setAuth(token, u) ; return }
       }
       setCfg(c); setVia(c.loginServer ?? c.servers?.[0] ?? '')
@@ -53,7 +54,7 @@ export default function LoginPage() {
     if (newPwd !== newPwd2) { setError("The two passwords don't match"); return }
     setBusy(true)
     try {
-      const r = await fetch('/api/auth/setup-login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ server: via, newPassword: newPwd }) })
+      const r = await request('/api/auth/setup-login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ server: via, newPassword: newPwd }) })
       const d = await r.json().catch(() => ({}))
       if (!r.ok) throw new Error(d.error ?? 'Setup failed')
       setAuth(d.token, d.username)

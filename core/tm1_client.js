@@ -374,7 +374,7 @@ class TM1Client {
         if (!attr) throw new Error(`${dimension} has no attribute "${attribute}"`)
         const leaves = new Set((await this.getElements(dimension)).map(e => e.Name.toLowerCase()))
         // the group names must not be names the dimension already uses
-        let top = `All ${hierarchy}`, groups = []
+        let top = `All ${hierarchy}`, groups
         if (levelDimension) {
             const lv = await this.get(`Dimensions('${odataKey(levelDimension)}')/Hierarchies('${odataKey(levelDimension)}')/Elements`, { '$select': 'Name', '$expand': 'Parents($select=Name)' })
             groups = (lv.value ?? []).map(e => e.Name)
@@ -418,7 +418,7 @@ class TM1Client {
         return this.delete(`Dimensions('${odataKey(dim)}')/Hierarchies('${odataKey(hierarchy)}')/ElementAttributes('${odataKey(name)}')`)
     }
 
-    async writeElementAttribute(dim, element, attribute, value, attrType = 'S', hierarchy = dim) {
+    async writeElementAttribute(dim, element, attribute, value, attrType = 'S', _hierarchy = dim) {
         const attrCube = `}ElementAttributes_${dim}`
         return this.post(`Cubes('${odataKey(attrCube)}')/tm1.Update`, {
             Cells: [{
@@ -742,7 +742,7 @@ class TM1Client {
                     // Dimension + subset as separate args
                     new RegExp(`['"]?${safeDim}['"]?,\\s*['"]?${safeSubset}['"]?`, 'i'),
                     // MDX subset reference: [Dim].[Subset] or [Dim].[Dim].[Subset]
-                    new RegExp(`\\[${safeDim}\\]\\s*\.\\s*\\[${safeSubset}\\]`, 'i'),
+                    new RegExp(`\\[${safeDim}\\]\\s*\\.\\s*\\[${safeSubset}\\]`, 'i'),
                     // TM1SubsetToSet
                     new RegExp(`TM1SubsetToSet\\s*\\([^)]*['"]?${safeSubset}['"]?`, 'i'),
                     // ViewCreateByMDX containing subset name anywhere in MDX
@@ -1138,7 +1138,7 @@ return (d.value ?? [])
             if (view) {
                 return { ...view, _rows: getSubset(view.Rows), _columns: getSubset(view.Columns), _titles: getSubset(view.Titles) }
             }
-        } catch (e) {}
+        } catch { /* try the collection endpoint */ }
         // Try collection endpoint with $expand
         try {
             const d = await this.get(`Cubes('${odataKey(cube)}')/Views`, { '$expand': 'Rows,Columns,Titles' })
@@ -1146,7 +1146,7 @@ return (d.value ?? [])
             if (view) {
                 return { ...view, _rows: getSubset(view.Rows), _columns: getSubset(view.Columns), _titles: getSubset(view.Titles) }
             }
-        } catch (e) {}
+        } catch { /* try the basic view */ }
         // Basic fallback
         const basic = await this.getView(cube, name)
         if (basic) {
@@ -1157,7 +1157,7 @@ return (d.value ?? [])
                     this.get(`Cubes('${odataKey(cube)}')/Views('${odataKey(name)}')/Columns`),
                 ])
                 return { ...basic, _rows: getSubset(rr.value), _columns: getSubset(cr.value), _titles: [] }
-            } catch (e2) {}
+            } catch { /* keep the basic view */ }
         }
         return basic
     }
@@ -1318,7 +1318,7 @@ return (d.value ?? [])
             ...patchBody,
         }
         // Delete existing view (regardless of type) then create fresh native view
-        try { await this.deleteView(cube, name) } catch {}
+        try { await this.deleteView(cube, name) } catch { /* no previous view */ }
         await this.post(`Cubes('${odataKey(cube)}')/Views`, postBody)
     }
 
@@ -1328,7 +1328,7 @@ return (d.value ?? [])
             this.get(`Cellsets('${ID}')/Axes`, { '$expand': 'Tuples($expand=Members($select=Name,UniqueName,Type))' }),
             this.get(`Cellsets('${ID}')/Cells`, { '$select': 'Ordinal,Value,FormattedValue,Updateable,RuleDerived,Consolidated', '$top': maxCells }),
         ])
-        try { await this.delete(`Cellsets('${ID}')`) } catch {}
+        try { await this.delete(`Cellsets('${ID}')`) } catch { /* best-effort cleanup */ }
         const cells = cellData.value
         return { Axes: axisData.value, Cells: cells, truncated: cells.length >= maxCells }
     }
@@ -1340,7 +1340,7 @@ return (d.value ?? [])
             this.get(`Cellsets('${ID}')/Axes`, { '$expand': 'Tuples($expand=Members($select=Name,UniqueName,Type))' }),
             this.get(`Cellsets('${ID}')/Cells`, { '$select': 'Ordinal,Value,FormattedValue,Updateable', '$top': maxCells }),
         ])
-        try { await this.delete(`Cellsets('${ID}')`) } catch {}
+        try { await this.delete(`Cellsets('${ID}')`) } catch { /* best-effort cleanup */ }
         const cells = cellData.value
         return {
             Axes: axisData.value,
@@ -1379,7 +1379,7 @@ return (d.value ?? [])
                 viewRows: rows?.Cardinality ?? 1,
             }
         } finally {
-            try { await this.delete(`Cellsets('${ID}')`) } catch {}
+            try { await this.delete(`Cellsets('${ID}')`) } catch { /* best-effort cleanup */ }
         }
     }
 
@@ -1812,7 +1812,7 @@ return (d.value ?? [])
             })
             await this.executeProcess(procName)
         } finally {
-            try { await this.delete(`Processes('${odataKey(procName)}')`) } catch {}
+            try { await this.delete(`Processes('${odataKey(procName)}')`) } catch { /* best-effort cleanup */ }
         }
     }
 
@@ -1886,10 +1886,10 @@ return (d.value ?? [])
         await this._runTI(`AddClient(${s(clientName)});`)
         await this._runTI(`AssignClientPassword(${s(clientName)}, ${s(password)});`)
         for (const g of groups) {
-            try { await this.addClientToGroup(clientName, g) } catch {}
+            try { await this.addClientToGroup(clientName, g) } catch { /* group may already exist */ }
         }
         if (friendlyName) {
-            try { await this.updateClient(clientName, { FriendlyName: friendlyName }) } catch {}
+            try { await this.updateClient(clientName, { FriendlyName: friendlyName }) } catch { /* friendly name is optional */ }
         }
     }
 

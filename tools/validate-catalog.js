@@ -36,7 +36,7 @@ require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') }
 
 const { makeClient } = require('../core/adapter_registry')
 const CATALOG = require('../shared/tm1-function-catalog.json')
-const { buildTestCall } = require('./lib/catalog-test-call.cjs')
+const { buildTestCall } = require('../../shared/catalog-test-call.cjs')
 
 function parseArgs(argv) {
     const out = { language: 'ti' }

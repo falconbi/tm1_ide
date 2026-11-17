@@ -34,7 +34,7 @@ renders.
 ## 2. Target architecture
 
 ```
-Lens page (HTML/JS, manifest)
+Lens (HTML/JS, manifest)
         │  list / describe / query / action
         ▼
 Generic Lens bridge (Node)
@@ -51,7 +51,7 @@ Three layers, one responsibility each:
 |---|---|---|
 | TM1 model (rules/TI) | calculations, derived states, validation, writes | presentation |
 | Service catalog | query shape, parameters, limits, permissions | layout |
-| Lens page | layout, filters, formatting, messages | MDX, cube names, business rules |
+| Lens | layout, filters, formatting, messages | MDX, cube names, business rules |
 
 The Node bridge is a **generic compiler/validator**, not an application. Moving logic
 into Node would just create a second codebase.
@@ -155,7 +155,7 @@ Actions map a service name to a TI process and a parameter schema:
 }
 ```
 
-All validation, guards and writes stay in the TI. The page only supplies parameters.
+All validation, guards and writes stay in the TI. The Lens only supplies parameters.
 
 ---
 

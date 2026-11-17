@@ -8,7 +8,7 @@ const fs   = require('fs')
 
 const { seed }        = require('../src/snapshot')
 const { diff }        = require('../src/diff')
-const { pack, PACKAGES_DIR } = require('../src/packager')
+const { pack } = require('../src/packager')
 const { deploy }      = require('../src/deployer')
 const { analyzeRisk } = require('../src/risk')
 const cl              = require('../../../core/change_log')
@@ -126,7 +126,7 @@ async function cmdSeed(args) {
             const existing = JSON.parse(fs.readFileSync(outputPath, 'utf8'))
             const age = existing._meta?.seeded_at
             console.log(`Note: existing baseline found (seeded ${age ?? 'unknown date'}) — will be replaced.`)
-        } catch {}
+        } catch { /* no existing baseline */ }
     }
 
     console.log(`\ntm1deploy seed`)
@@ -203,7 +203,7 @@ function warnStaleBaseline(server) {
         if (days != null && days > 14) parts.push(`seeded ${days} days ago`)
         if (behind != null && behind > 50) parts.push(`${behind} change-log entries behind`)
         console.log(`  ⚠ baseline is stale (${parts.join(', ')}). Re-seed to keep release windows and drift checks reliable: npm run tm1deploy seed --server ${server}`)
-    } catch {}
+    } catch { /* no baseline to read */ }
 }
 
 // ── diff command ──────────────────────────────────────────────────────────────
@@ -367,7 +367,7 @@ async function cmdArchiveLog(args) {
 
 const OUTCOME_SYMBOL = { MATCH: '✓', NEW: '+', UNCHANGED: '–', DRIFT: '✗', MISSING: '✗', ERROR: '!' }
 
-function printDiffResult(server, result, { json, session, window, baselineNote, next }) {
+function printDiffResult(server, result, { json, session: _session, window: _window, baselineNote: _baselineNote, next }) {
     if (json) {
         console.log(JSON.stringify(result, null, 2))
         return

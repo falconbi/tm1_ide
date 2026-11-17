@@ -1,3 +1,4 @@
+import { request } from '@/lib/api'
 // Runtime merge of user-editable Catalog Admin overrides into the base catalogs.
 //
 // The base catalogs (RULES_CATALOG / TI_CATALOG in tm1-completion.js) drive
@@ -30,7 +31,7 @@ function mergeCatalog(base, overrides = {}) {
 
 export async function initEffectiveCatalogs(base, server = null) {
   try {
-    const r = await fetch(`/api/admin/catalog-overrides${server ? `?server=${encodeURIComponent(server)}` : ''}`, { headers: { 'x-ide-token': localStorage.getItem('tm1-token') ?? '' } })
+    const r = await request(`/api/admin/catalog-overrides${server ? `?server=${encodeURIComponent(server)}` : ''}`, { headers: { 'x-ide-token': localStorage.getItem('tm1-token') ?? '' } })
     if (!r.ok) return state
     const d = await r.json()
     const o = d?.overrides ?? d

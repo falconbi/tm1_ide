@@ -1,12 +1,13 @@
 import { useQuery, useQueries, useMutation, useQueryClient } from '@tanstack/react-query'
-import { useRef, useEffect, useMemo, useCallback, useState } from 'react'
+import { useEffect, useMemo, useCallback, useState } from 'react'
 import { useStore } from '@/store'
 import { toast } from 'sonner'
 import { conflictEntry } from '@/lib/conflict'
+import { get, post, patch, del, request } from '@/lib/api'
 
 // ── Global /api fetch wrapper ─────────────────────────────────────────────────
 // 1. Attaches the IDE token to every same-origin /api call that lacks one (some
-//    components call fetch() directly).
+//    components call request() directly).
 // 2. Spots the server's "sign in to this TM1 server" answer (401 + needsServerLogin)
 //    from ANY fetch and raises 'tm1-server-login' — ServerLoginDialog handles it.
 if (typeof window !== 'undefined' && !window.__tm1FetchWrapped) {
@@ -117,27 +118,7 @@ if (typeof window !== 'undefined' && !window.__tm1FetchWrapped) {
   window.__tm1FetchWrapped = true
 }
 
-const extractError = async (r) => {
-  // A 401 means "your IDE session ended" — except a rejected sign-in (the login
-  // page must show its error, not reset itself) and a per-server login request.
-  if (r.status === 401 && !/\/api\/auth\/login$/.test(new URL(r.url, location.href).pathname)) {
-    const d = await r.clone().json().catch(() => null)
-    if (!d?.needsServerLogin) window.dispatchEvent(new CustomEvent('tm1-unauthorized'))
-  }
-  try {
-    const d = await r.json()
-    const err = new Error(d.error || d.message || r.statusText)
-    err.data = d  // preserve full body so callers can read runLog, section, line, etc.
-    return err
-  } catch { return new Error(r.statusText) }
-}
-const authHeader = () => ({ 'x-ide-token': localStorage.getItem('tm1-token') ?? '' })
-const get   = (url)       => fetch(url, { headers: authHeader() }).then(async r => { if (!r.ok) throw await extractError(r); return r.json() })
-const post  = (url, body) => fetch(url, { method: 'POST',   headers: { 'Content-Type': 'application/json', ...authHeader() }, body: JSON.stringify(body) }).then(async r => { if (!r.ok) throw await extractError(r); const d = await r.json(); if (d?.noSession) window.dispatchEvent(new CustomEvent('tm1-no-session')); return d })
-const del   = (url)       => fetch(url, { method: 'DELETE', headers: authHeader() }).then(async r => { if (!r.ok) throw await extractError(r); return r.json() })
-const patch = (url, body) => fetch(url, { method: 'PATCH',  headers: { 'Content-Type': 'application/json', ...authHeader() }, body: JSON.stringify(body) }).then(async r => { if (!r.ok) throw await extractError(r); return r.json() })
-
-export const useLogin  = () => useMutation({ mutationFn: ({ username, password, server }) => fetch('/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username, password, server }) }).then(async r => { if (!r.ok) throw await extractError(r); return r.json() }) })
+export const useLogin  = () => useMutation({ mutationFn: ({ username, password, server }) => post('/api/auth/login', { username, password, server }) })
 
 const enc = encodeURIComponent
 
@@ -713,7 +694,7 @@ export const useRemoveClientFromGroup = () => { const qc = useQueryClient(); ret
 export const useFilesAvailable = (server) => useQuery({
   queryKey: ['files-available', server],
   queryFn:  async () => {
-    const r = await fetch(`/api/files/list?server=${enc(server)}&path=${enc(JSON.stringify(['Files']))}`, { headers: { 'x-ide-token': localStorage.getItem('tm1-token') ?? '' } })
+    const r = await request(`/api/files/list?server=${enc(server)}&path=${enc(JSON.stringify(['Files']))}`, { headers: { 'x-ide-token': localStorage.getItem('tm1-token') ?? '' } })
     if (r.status === 404) return false
     return true
   },

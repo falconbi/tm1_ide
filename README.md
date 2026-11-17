@@ -20,13 +20,12 @@ No TM1 Architect, no Perspectives, nothing to install on the server.
 
 ## Lenses (in development)
 
-**Your TM1 model, as a focused web app — not a spreadsheet.** Lenses are single-file HTML pages, one per job:
+**Your TM1 model, as a focused web app — not a spreadsheet.** Lenses are single-file HTML apps, one per job:
 assumptions, people, positions, HR matching, hire approvals, attention, cost centre, KPIs, cost, headcount,
 pay and grades, budget-to-forecast, since-last — plus the home page. Live TM1 data, one clean shell, governed
 write-back — built and previewed inside the IDE, with no BI tool or separate front-end project to stand up.
 
-The current set is a **14-page Workforce planning model** — the worked example of a model, its maths and its
-screens built together. It is being tested; it is not yet ready for use.
+The **Workforce planning model** is the worked example — the model, its maths and its Lenses built together. The model and its Lenses live in TM1, not in this repository; they are not yet ready for use.
 
 ![Lenses home — the Workforce planning model](docs/images/lenses-home-full.png)
 
@@ -101,10 +100,11 @@ Start here: [Setup](docs/ide/SETUP.md) → [Features](docs/ide/FEATURES.md) → 
 | Guide | What's in it |
 |---|---|
 | [Features](docs/ide/FEATURES.md) | Every editor and tool, with screenshots |
-| [Workforce Lenses](lenses/workforce/README.md) | The 14 pages, how they are exported from TM1 and committed |
 | [HTML apps on TM1: security](docs/lenses/TM1_HTML_APPS_SECURITY.md) | The browser security layer you own once TM1 screens are HTML you (or an AI) write — five decisions, one checklist |
 | [Lens learning lab](docs/learn/lens-lab/README.md) | Five browser-security ideas you can break on purpose, run locally with no dependencies |
 | [Setup](docs/ide/SETUP.md) | Install, configure servers, run, development mode, installing at a client (Windows untested) |
+| [First walkthrough](docs/ide/WALKTHROUGH.md) | Connect, edit Rules/TI, build a model, trace it, govern a change |
+| [v1.0 release notes](docs/ide/RELEASE_NOTES_v1.0.md) | What is in v1.0, verification, and the known limits |
 | [Contributing](CONTRIBUTING.md) | Node version, install, tests, building `static/`, both lint ratchets, CI, where each kind of change belongs |
 | [Authentication](docs/auth/AUTHENTICATION.md) | How the IDE signs in — per-server login, what's supported and tested |
 | [TM1 Authentication Guide](docs/auth/TM1_AUTHENTICATION_GUIDE.md) | How every TM1 sign-in method works, in plain English — for anyone in TM1 |
@@ -123,7 +123,7 @@ Keyboard shortcuts: press `F1` or `Ctrl+Shift+K` in the app.
 
 ## Status
 
-Active development. Core IDE features are usable. The Workforce Lenses are still under test and are not yet ready for use; MCP and the deployment pipeline are still being proven on real builds.
+Active development. Core IDE features are usable. The Workforce model and its Lenses stay in TM1, where the model lives; they are not part of this repository. MCP and the deployment pipeline are still being proven on real builds.
 
 ---
 

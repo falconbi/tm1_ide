@@ -7,7 +7,7 @@ const guard = require('../guard')
 // ASSERTIONS
 // ══════════════════════════════════════════════════════════════════════════════
 
-function register(server, { client, assertions, runAssertions, ok, SERVER, AGENT_USER, policy, logChange }) {
+function register(server, { assertions, runAssertions, ok, SERVER, AGENT_USER, policy, logChange }) {
     server.tool(
         'add_assertion',
         'Record an expected result for this model — an MDX query and the number it should return. ' +

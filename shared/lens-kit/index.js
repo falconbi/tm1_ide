@@ -289,13 +289,13 @@ function grid(el, { columns = [], rows: data = [], height, onEdit, onFocus, onSe
   // Persist the column layout (order / width / pinned / hidden) per Lens + user.
   // Same idea as Lens.pivot's key, but for a plain grid.
   const layoutKey = key ? 'lens-grid:' + key : null
-  const readLayout = () => { try { const v = JSON.parse(localStorage.getItem(layoutKey) || 'null'); return Array.isArray(v) ? v : null } catch (e) { return null } }
+  const readLayout = () => { try { const v = JSON.parse(localStorage.getItem(layoutKey) || 'null'); return Array.isArray(v) ? v : null } catch { return null } }
   const writeLayout = () => {
     if (!layoutKey || !api) return
     try {
       const state = api.getColumnState().map(c => ({ colId: c.colId, width: c.width, pinned: c.pinned, hide: c.hide }))
       localStorage.setItem(layoutKey, JSON.stringify(state))
-    } catch (e) { /* storage refused */ }
+    } catch { /* storage refused */ }
   }
   const changes = () => [...orig.keys()].map(k => {
     const [i, field] = [Number(k.slice(0, k.indexOf('|'))), k.slice(k.indexOf('|') + 1)]
@@ -393,7 +393,7 @@ function grid(el, { columns = [], rows: data = [], height, onEdit, onFocus, onSe
     } : undefined,
     rowSelection: onSelect ? { mode: 'singleRow', checkboxes: false, enableClickSelection: true } : undefined,
     onSelectionChanged: onSelect ? () => { const r = api.getSelectedRows(); onSelect(r[0] || null) } : undefined,
-    onGridReady: p => { const saved = layoutKey && readLayout(); if (saved) { try { p.api.applyColumnState({ state: saved, applyOrder: true }) } catch (e) { /* bad saved layout */ } } },
+    onGridReady: p => { const saved = layoutKey && readLayout(); if (saved) { try { p.api.applyColumnState({ state: saved, applyOrder: true }) } catch { /* bad saved layout */ } } },
     onColumnMoved: () => writeLayout(),
     onColumnResized: e => { if (e.finished !== false) writeLayout() },
     onColumnVisible: () => writeLayout(),
@@ -649,8 +649,8 @@ function pivot(el, cfg = {}) {
       if (adv.has('totals') && saved.totals) totals = saved.totals
       if (adv.has('hierarchies')) hierPick = saved.hierPick || {}
     }
-  } catch (e) { /* nothing remembered */ }
-  const remember = () => { if (storeKey) try { localStorage.setItem(storeKey, JSON.stringify({ ...layout, member, picks, suppress, totals, hierPick })) } catch (e) { /* storage refused */ } }
+  } catch { /* nothing remembered */ }
+  const remember = () => { if (storeKey) try { localStorage.setItem(storeKey, JSON.stringify({ ...layout, member, picks, suppress, totals, hierPick })) } catch { /* storage refused */ } }
 
   const trees = {}, choices = {}
   const tree = d => { const k = d + '::' + (hierOf(d) || d); return trees[k] || (trees[k] = window.lensBridge.call('elementTree', { dimension: d, hierarchy: hierOf(d) }).then(els => els, () => null)) }
@@ -710,7 +710,7 @@ function pivot(el, cfg = {}) {
   function copyText(text, what) {
     const ta = document.createElement('textarea'); ta.value = text; ta.style.cssText = 'position:fixed;opacity:0;top:0;left:0'
     document.body.appendChild(ta); ta.select()
-    let ok = false; try { ok = document.execCommand('copy') } catch (e) { ok = false }
+    let ok; try { ok = document.execCommand('copy') } catch { ok = false }
     ta.remove()
     const note = bar.querySelector('[data-adv-note]'); if (note) note.textContent = ok ? what + ' copied' : 'Copy was refused by the browser'
   }

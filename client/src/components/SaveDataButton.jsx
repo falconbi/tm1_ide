@@ -1,3 +1,4 @@
+import { request } from '@/lib/api'
 import { useState } from 'react'
 import { Loader2, Save } from 'lucide-react'
 import { toast } from 'sonner'
@@ -29,7 +30,7 @@ export default function SaveDataButton() {
 
     setBusy(true)
     try {
-      const r = await fetch('/api/server/save-data-all', {
+      const r = await request('/api/server/save-data-all', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-ide-token': token ?? localStorage.getItem('tm1-token') ?? '' },
         body: JSON.stringify({ server }),

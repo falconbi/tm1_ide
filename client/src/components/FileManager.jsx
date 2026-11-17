@@ -1,3 +1,4 @@
+import { del, get, request } from '@/lib/api'
 import { useState, useRef } from 'react'
 import { X, RefreshCw, Loader2, Folder, FileText, Upload, Download, Trash2, ChevronRight, Home } from 'lucide-react'
 import { useQueryClient } from '@tanstack/react-query'
@@ -6,13 +7,6 @@ import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
 
 const enc = encodeURIComponent
-
-function get(url) {
-  return fetch(url).then(async r => {
-    if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error(d.error || r.statusText) }
-    return r.json()
-  })
-}
 
 function fmtSize(n) {
   if (n == null) return ''
@@ -37,7 +31,7 @@ export default function FileManager({ server, onClose }) {
 
   const upload = useMutation({
     mutationFn: async ({ name, buffer }) => {
-      const r = await fetch(
+      const r = await request(
         `/api/files/upload?server=${enc(server)}&path=${enc(pathKey)}&name=${enc(name)}`,
         { method: 'POST', headers: { 'Content-Type': 'application/octet-stream', 'x-ide-token': localStorage.getItem('tm1-token') ?? '' }, body: buffer }
       )
@@ -54,8 +48,7 @@ export default function FileManager({ server, onClose }) {
 
   const deleteFile = useMutation({
     mutationFn: (name) =>
-      fetch(`/api/files?server=${enc(server)}&path=${enc(pathKey)}&name=${enc(name)}`, { method: 'DELETE' })
-        .then(r => r.json()),
+      del(`/api/files?server=${enc(server)}&path=${enc(pathKey)}&name=${enc(name)}`),
     onSuccess: (_, name) => {
       toast.success(`Deleted: ${name}`)
       setDeleting(null)

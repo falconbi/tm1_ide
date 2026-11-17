@@ -6,10 +6,6 @@
 // real TM1 name (checked when generating) and survive round-trips through the
 // model because they are short, stable and bracket-safe.
 
-function escapeRegExp(s) {
-    return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-}
-
 // Build a bidirectional name<->code map. `names` is the set of real TM1 object
 // names that will appear in the prompt/context.
 function makeMap(names) {

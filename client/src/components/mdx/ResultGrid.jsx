@@ -1,3 +1,4 @@
+import { request } from '@/lib/api'
 import { useRef, useMemo, useCallback, useEffect, useState } from 'react'
 import { useStore } from '@/store'
 import { useCubeDimensions } from '@/hooks/useApi'
@@ -84,7 +85,7 @@ async function writeCell(server, cube, coords, slicerCoords, value, cubeDimOrder
   }
   // Always send the raw value from the editor (string for string cells, numeric-looking strings for numeric cells).
   // TM1 Update accepts string values for both numeric and string cells (it parses where needed).
-  const res = await fetch('/api/cells/write', {
+  const res = await request('/api/cells/write', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-ide-token': localStorage.getItem('tm1-token') ?? '' },
     body: JSON.stringify({ server, cube, dims: allDims, value }),

@@ -24,7 +24,8 @@ it is not the IDE’s release path, which now runs through TM1 Git.
 
 ```
 tm1_ide/
-├── server.js                    # IDE Express backend — all IDE API routes
+├── server.js                    # IDE bootstrap: middleware, route registration, SPA, listen
+├── routes/                      # One register(app, deps) file per noun; _http.js has shared helpers
 ├── lens-server.js               # Lens app: sign-in, home, sandboxed Lens viewer
 ├── core/                        # Shared Node code
 │   ├── tm1_client.js            # Every TM1 REST call goes through this client
@@ -49,6 +50,7 @@ tm1_ide/
 │   ├── tm1-function-catalog.json # The one function catalog (all consumers derive from it)
 │   ├── lens-bridge.js           # postMessage contract between a Lens frame and its host
 │   ├── lens-kit/                # The Lens toolkit (ECharts, AG Grid, React Flow, Alpine)
+│   ├── lens-patterns/           # Worked Lens patterns (read-only demonstrations)
 │   └── pivot/                   # One pivot engine for the IDE View grid and Lenses
 ├── static/                      # Committed build output, served by the IDE
 ├── tools/
@@ -56,7 +58,6 @@ tm1_ide/
 │   └── tm1deploy/               # Package / diff / risk / deploy CLI
 ├── config/                      # Committed examples + per-install runtime state
 ├── data/                        # Runtime DB, summaries, Lens logs and prefs
-├── lenses/                      # Workforce worked-example Lenses and save.js
 ├── core-ti/                     # Hidden core TI processes and platform settings
 ├── tests/                       # node --test suite (fakes; no live TM1 required)
 ├── docs/                        # Guides and review records

@@ -155,8 +155,7 @@ async function execute(target, { branch = 'dev', token, gitUser = gitIdentity.us
     // Governance gate: the exact incoming commit must be approved for this target.
     // Enforced here, server-side, so it cannot be bypassed by the client.
     out.targetCommit = incomingCommit
-    let approval = null
-    approval = incomingCommit ? await approvals.find(target, incomingCommit, { ideToken }) : null
+    const approval = incomingCommit ? await approvals.find(target, incomingCommit, { ideToken }) : null
     if (!approval) {
         out.executed = false
         out.refused = true

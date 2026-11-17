@@ -22,14 +22,14 @@ async function houseStandards(server, opts = {}) {
 
     const cubes = ((await c.get('Cubes', { '$select': 'Name' })).value ?? []).map(x => x.Name).filter(n => !n.startsWith('}'))
     for (const cube of cubes) {
-        let views = []
+        let views
         try { views = ((await c.get(`Cubes('${odataKey(cube)}')/Views?$select=Name`)).value ?? []).map(v => v.Name) } catch { continue }
         if (!views.includes('Default')) out.cubesWithoutDefaultView.push(cube)
     }
 
     const dims = ((await c.get('Dimensions', { '$select': 'Name' })).value ?? []).map(d => d.Name).filter(n => !n.startsWith('}'))
     for (const dim of dims) {
-        let subs = []
+        let subs
         try { subs = ((await c.get(`Dimensions('${odataKey(dim)}')/Hierarchies('${odataKey(dim)}')/Subsets?$select=Name`)).value ?? []).map(s => s.Name) } catch { continue }
         if (!subs.includes('Default')) out.dimsWithoutDefaultSubset.push(dim)
     }

@@ -27,7 +27,6 @@ const DEFAULTS = {
 
 function config() {
     const provider = (process.env.AI_PROVIDER || '').trim().toLowerCase()
-    const adapter  = adapters[provider]
     // Legacy fallback: no AI_PROVIDER set but an ANTHROPIC_API_KEY is -> Claude.
     const apiKey = process.env.AI_API_KEY || (!provider && process.env.ANTHROPIC_API_KEY ? process.env.ANTHROPIC_API_KEY : '')
     const effectiveProvider = provider || (apiKey ? 'anthropic' : '')

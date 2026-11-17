@@ -407,7 +407,7 @@ async function snapshotPicklistCubes(client, cubeNames) {
             const dims  = (pkCube.Dimensions ?? []).map(d => d.Name ?? d).filter(d => d !== '}Picklist')
             const cells = await fetchPicklistCells(client, pkCubeName, dims)
             result[cubeName] = { dims, cells }
-        } catch {}
+        } catch { /* picklist cube unreadable */ }
     })
     return result
 }

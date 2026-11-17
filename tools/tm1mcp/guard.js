@@ -34,7 +34,7 @@ const READ_TOOLS = new Set([
     'list_assertions', 'run_assertions', 'list_baselines', 'get_change_set', 'diff_change_set',
     'check_deploy_risk', 'check_target_drift',
     // Lenses (read side)
-    'list_lens_examples', 'list_lenses', 'get_lens',
+    'list_lens_patterns', 'list_lenses', 'get_lens',
 ])
 
 const WRITE_TOOLS = new Set([
@@ -111,7 +111,7 @@ function loadPolicy(server, file = POLICY_FILE) {
     if (!fs.existsSync(file)) return buildPolicy({}, server)
     let raw
     try { raw = JSON.parse(fs.readFileSync(file, 'utf8')) }
-    catch (e) { throw new Error(`${path.basename(file)} is not valid JSON (${e.message}) — fix it; the MCP will not start on a policy it cannot read`) }
+    catch (e) { throw new Error(`${path.basename(file)} is not valid JSON (${e.message}) — fix it; the MCP will not start on a policy it cannot read`, { cause: e }) }
     return buildPolicy(raw, server)
 }
 

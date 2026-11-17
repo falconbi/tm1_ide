@@ -1,3 +1,4 @@
+import { post } from '@/lib/api'
 import { useState, useEffect, useRef, useCallback } from 'react'
 import MonacoEditor from '@monaco-editor/react'
 import { useQueryClient } from '@tanstack/react-query'
@@ -335,18 +336,16 @@ export default function SubsetEditor({ tab }) {
       // 2. Server-side validation (execution errors — syntax, missing elements, etc.)
       try {
         const enc = encodeURIComponent
-        const r = await fetch(`/api/subset/preview?server=${enc(tab.server)}&dimension=${enc(tab.dimension)}&hierarchy=${enc(hierarchy)}`, {
-          method: 'POST', headers: { 'Content-Type': 'application/json', 'x-ide-token': localStorage.getItem('tm1-token') ?? '' },
-          body: JSON.stringify({ mdx, limit: 1 }),
-        })
-        if (!r.ok) {
-          const d = await r.json().catch(() => ({}))
+        try {
+          await post(`/api/subset/preview?server=${enc(tab.server)}&dimension=${enc(tab.dimension)}&hierarchy=${enc(hierarchy)}`, { mdx, limit: 1 })
+        } catch (e) {
+          const d = e.data ?? {}
           let [sl, sc] = [1, 1]
           const m = (d.error || '').match(/line\s+(\d+)/i); if (m) sl = parseInt(m[1], 10)
           const mc = (d.error || '').match(/column\s+(\d+)/i); if (mc) sc = parseInt(mc[1], 10)
           markers.push({
             severity: monaco.MarkerSeverity.Error,
-            message: d.error || 'Invalid MDX',
+            message: d.error || e.message || 'Invalid MDX',
             startLineNumber: sl, startColumn: sc,
             endLineNumber: sl, endColumn: sc + 1,
           })

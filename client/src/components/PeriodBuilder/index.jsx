@@ -1,3 +1,4 @@
+import { request } from '@/lib/api'
 import { useState, useEffect, useMemo } from 'react'
 import { X, ChevronRight, ChevronLeft } from 'lucide-react'
 import { useStore } from '@/store'
@@ -72,7 +73,7 @@ export default function PeriodBuilder({ open, onClose }) {
         { name: `${params.dimensionName}.Rollover`,              ...rolloverSections },
       ]
 
-      const res = await fetch('/api/period-builder/run', {
+      const res = await request('/api/period-builder/run', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-ide-token': localStorage.getItem('tm1-token') ?? '' },
         body: JSON.stringify({

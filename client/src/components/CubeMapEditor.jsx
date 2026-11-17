@@ -1,3 +1,4 @@
+import { request } from '@/lib/api'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ReactFlow, Background, Controls,
@@ -41,7 +42,6 @@ function applyDagreLayout(nodes, edges, direction = 'LR') {
 }
 
 // ── Graph algorithms ──────────────────────────────────────────────────────────
-
 
 function buildReverseMap(cubeData) {
   const rev = {}
@@ -480,7 +480,6 @@ function SvgMarkers() {
   )
 }
 
-
 // Rotate cycles the dagre direction; the label is for the tooltip.
 const LAYOUT_NEXT  = { LR: 'TB', TB: 'RL', RL: 'BT', BT: 'LR' }
 const LAYOUT_LABEL = { LR: 'left to right', TB: 'top to bottom', RL: 'right to left', BT: 'bottom to top' }
@@ -848,7 +847,6 @@ function CubeMapInner({ tab }) {
   const processData = useMemo(() => (!scope ? processDataAll : Object.fromEntries(Object.entries(processDataAll).filter(([n]) => prefixOf(n) === scope))), [processDataAll, scope])
   const dimData = useMemo(() => (!scope ? dimDataAll : Object.fromEntries(Object.entries(dimDataAll).filter(([n]) => prefixOf(n) === scope))), [dimDataAll, scope])
 
-
   // Show playback
   const [showBar,        setShowBar]        = useState(false)
   const [processInfo,    setProcessInfo]    = useState({})
@@ -874,7 +872,7 @@ function CubeMapInner({ tab }) {
     const requestId = ++modelRequestRef.current
     setLoading(true); setError(null); setModelReady(false)
     try {
-      const r = await fetch(`/api/cubemap/model?server=${encodeURIComponent(srv)}`, {
+      const r = await request(`/api/cubemap/model?server=${encodeURIComponent(srv)}`, {
         headers: { 'x-ide-token': token },
       })
       const d = await r.json()
@@ -902,7 +900,7 @@ function CubeMapInner({ tab }) {
   useEffect(() => {
     if (!showBar) return
     let cancelled = false
-    fetch(`/api/process/summaries?server=${encodeURIComponent(srv)}`, { headers: { 'x-ide-token': token } })
+    request(`/api/process/summaries?server=${encodeURIComponent(srv)}`, { headers: { 'x-ide-token': token } })
       .then(r => r.json())
       .then(d => { if (!cancelled && Array.isArray(d.processes)) setProcessInfo(Object.fromEntries(d.processes.map(x => [x.process, x]))) })
       .catch(() => {})

@@ -1,3 +1,4 @@
+import { request } from '@/lib/api'
 import { useState, useEffect } from 'react'
 import { useActiveWorkSession, useCloseWorkSession, useWorkSessions } from '@/hooks/useApi'
 import { humanizeFile } from '@/lib/tm1-terms'
@@ -84,7 +85,7 @@ export default function DeployWizard({ server, onClose, onOpenTests, initialSess
 
   useEffect(() => {
     if (!sessionId) { setAddedTests(0); setSetAssertions([]); return }
-    fetch(`/api/assertions?server=${encodeURIComponent(server)}`, { headers: authHeader() })
+    request(`/api/assertions?server=${encodeURIComponent(server)}`, { headers: authHeader() })
       .then(r => r.json())
       .then(d => {
         const mine = (d.assertions ?? []).filter(a => a.changeSet === sessionId)
@@ -95,7 +96,7 @@ export default function DeployWizard({ server, onClose, onOpenTests, initialSess
   }, [sessionId, server, tests])
 
   useEffect(() => {
-    fetch('/api/servers', { headers: authHeader() }).then(r => r.json()).then(d => {
+    request('/api/servers', { headers: authHeader() }).then(r => r.json()).then(d => {
       const others = (d ?? []).map(s => s?.name).filter(n => n && n !== server)
       setServers(others)
       setTarget(t => t || (others[0] ?? ''))
@@ -105,7 +106,7 @@ export default function DeployWizard({ server, onClose, onOpenTests, initialSess
   const run = async (action, body, route) => {
     setBusy(action); setError(null)
     try {
-      const r = await fetch(route, { method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeader() }, body: JSON.stringify(body) })
+      const r = await request(route, { method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeader() }, body: JSON.stringify(body) })
       const txt = await r.text()
       let d = null
       try { d = txt ? JSON.parse(txt) : null } catch { d = null }
@@ -130,7 +131,7 @@ export default function DeployWizard({ server, onClose, onOpenTests, initialSess
   const runTests = async () => {
     setBusy('test'); setError(null)
     try {
-      const t = await fetch(`/api/assertions/run?server=${encodeURIComponent(server)}`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeader() }, body: '{}' }).then(r => r.json())
+      const t = await request(`/api/assertions/run?server=${encodeURIComponent(server)}`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeader() }, body: '{}' }).then(r => r.json())
       if (t.error) throw new Error(t.error)
       setTests(t)
     } catch (e) { setError(e.message) }
@@ -173,7 +174,7 @@ export default function DeployWizard({ server, onClose, onOpenTests, initialSess
     if (step !== 7 && step !== 8) return setLock(null)
     const t = setInterval(async () => {
       try {
-        const r = await fetch(`/api/git/lock?server=${encodeURIComponent(target)}`, { headers: authHeader() })
+        const r = await request(`/api/git/lock?server=${encodeURIComponent(target)}`, { headers: authHeader() })
         setLock(await r.json())
       } catch { /* banner is best-effort */ }
     }, 3000)

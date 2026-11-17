@@ -12,6 +12,7 @@ commits that mixed a fix into a feature are included too. New features are not l
 
 ### 2026-11-16
 
+- **Lens generate** — The Lens editor's Generate request was registered after `POST /api/lenses/:name`, so it was handled as saving a Lens called "generate" and never reached the AI. The route split moved it before the parameter route; the route-table test now enforces static-before-parameter ordering
 - **Lens status** — Saving a published Lens sent `publish:false`, silently unpublishing it. Save now leaves the status alone, Publish publishes, and Unpublish asks first; new Lenses still start as drafts
 - **Lens app settings** — A missing `config/lens-app.json` silently started the app against the example `24Retail` server. It now fails with the actionable create-file error; the example is used only in `--demo` / `LENS_DEMO=1`, and logs that it is demo data
 - **Lens editor identity** — After the first save or a rename, the preview still used the old tab name, so write/run checks ran against the wrong Lens. One save-state helper now moves both the saved name and the tab label to the name the server returned
@@ -498,4 +499,4 @@ commits that mixed a fix into a feature are included too. New features are not l
 - **fix** — Σ toggle bypasses tree view to show sorted flat list
 - **fix** — Σ toggle pushes consolidated elements to bottom of subset list
 - **fix** — Subset tree expandable consolidations + compact tab bar with hide toggle
-- change_log.js crashed on a fresh clone: it opened data/change_log.db without creating the git-ignored data/ folder (first IDE start, and CI). Now creates it. (17 Nov 2026)
+- **fix** — change_log.js crashed on a fresh clone: it opened data/change_log.db without creating the git-ignored data/ folder (first IDE start, and CI). Now creates it. (17 Nov 2026)

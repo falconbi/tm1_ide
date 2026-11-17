@@ -124,7 +124,7 @@ function installLensHost(getLensWindow, { getServer, getToken, getLens, live = f
           liveChannel = String(d.payload?.channel ?? ''); liveConn = ''
           stream = new EventSource(`${base}?channel=${encodeURIComponent(liveChannel)}`)
           stream.onmessage = (m) => {
-            let ev = null
+            let ev
             try { ev = JSON.parse(m.data) } catch { return }
             if (ev.type === 'hello') liveConn = ev.you?.id ?? ''
             getLensWindow()?.postMessage({ __lensBridge: 1, live: true, event: ev }, '*')

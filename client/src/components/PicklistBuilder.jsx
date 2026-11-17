@@ -1,10 +1,11 @@
+import { request } from '@/lib/api'
 import { useState, useMemo, useEffect } from 'react'
 import { useAttrGrid, useCreateAttrDef, useWriteElementAttribute, useDimAttributes, useSubsets } from '@/hooks/useApi'
 import { toast } from 'sonner'
 import { Search, X, Loader2, Save, Check } from 'lucide-react'
 
 const enc = encodeURIComponent
-const get = url => fetch(url).then(r => { if (!r.ok) throw new Error(r.statusText); return r.json() })
+const get = url => request(url).then(r => { if (!r.ok) throw new Error(r.statusText); return r.json() })
 
 const TYPES = [
   { value: '', label: 'None' },

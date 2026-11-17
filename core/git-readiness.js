@@ -89,12 +89,12 @@ async function scan(server, opts = {}) {
     // Cubes + views + placements
     const cubes = ((await c.get('Cubes', { '$select': 'Name' })).value ?? []).map(x => x.Name)
     for (const cube of cubes) {
-        let views = []
+        let views
         try { views = ((await c.get(`Cubes('${odataKey(cube)}')/Views?$select=Name`)).value ?? []).map(v => v.Name) } catch { continue }
         for (const view of views) {
             const bad = roundTripProblem(view)
             if (bad) out.roundTripNames.push({ kind: 'view', name: view, cube, problem: bad })
-            let rows = [], cols = [], titles = []
+            let rows, cols, titles
             try {
                 const [rr, cc, tt] = await Promise.all([
                     c.get(`Cubes('${odataKey(cube)}')/Views('${odataKey(view)}')/Rows?$expand=Subset`),
@@ -208,9 +208,9 @@ async function firstPullAnalysis(server, opts = {}) {
         const lost = []
         for (const f of dimDirs.filter(x => x.endsWith('.json') && !x.includes('.hierarchies'))) {
             const dim = f.slice(0, -5)
-            let repoEls = []
+            let repoEls
             try { repoEls = JSON.parse(fs.readFileSync(path.join(repoDir, 'dimensions', dim, `${dim}.hierarchies`, `${dim}.json`))).Elements.map(e => e.Name) } catch { continue }
-            let targetEls = []
+            let targetEls
             try { targetEls = (await c.get(`Dimensions('${odataKey(dim)}')/Hierarchies('${odataKey(dim)}')/Elements?$select=Name`)).value.map(e => e.Name) } catch { continue }
             const missing = targetEls.filter(e => !repoEls.includes(e))
             if (missing.length) lost.push({ dim, count: missing.length, sample: missing.slice(0, 8) })

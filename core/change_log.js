@@ -418,9 +418,9 @@ function pruneEntries(ids) {
 }
 
 // SQLite doesn't add columns to existing tables via CREATE TABLE — migrate if needed
-try { db.exec(`ALTER TABLE sessions ADD COLUMN description TEXT`) } catch {}
-try { db.exec(`ALTER TABLE log_entries ADD COLUMN user TEXT`) } catch {}
+try { db.exec(`ALTER TABLE sessions ADD COLUMN description TEXT`) } catch { /* already migrated */ }
+try { db.exec(`ALTER TABLE log_entries ADD COLUMN user TEXT`) } catch { /* already migrated */ }
 // The TM1 login a change was made with (the MCP's builder identity), next to the developer in `user`.
-try { db.exec(`ALTER TABLE log_entries ADD COLUMN identity TEXT`) } catch {}
+try { db.exec(`ALTER TABLE log_entries ADD COLUMN identity TEXT`) } catch { /* already migrated */ }
 
 module.exports = { startSession, getSession, getSessionManifest, closeSession, resumeSession, updateSessionDescription, setSessionCommit, setSessionRelease, markSessionDeployed, getActiveSession, getSessions, getAllSessions, getSessionLog, getCrossSessionTouches, getEntriesSince, getMaxEntryId, getEntriesSinceId, getSessionLogVerbose, getRecentLog, getObjectHistory, getEntryById, writeLog, writeReadAudit, getReadAudit, pruneReadAudit, findArchivableEntries, pruneEntries }

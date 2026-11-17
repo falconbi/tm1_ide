@@ -517,7 +517,7 @@ In `readonly` mode only the read tools are offered. The split is defined in
 | `list_cubes` | read | — | reader |
 | `list_dimensions` | read | — | reader |
 | `list_error_logs` | read | — | reader |
-| `list_lens_examples` | read | — | reader |
+| `list_lens_patterns` | read | — | reader |
 | `list_lenses` | read | — | reader |
 | `list_processes` | read | — | reader |
 | `list_subsets` | read | — | reader |
@@ -642,9 +642,9 @@ In `readonly` mode only the read tools are offered. The split is defined in
 ### Lenses
 | Tool | Purpose |
 |---|---|
-| `list_lens_examples` | reference Lenses to learn patterns from (input grid, line items with approval, dashboard, variance, process page, disclosure accounts…) — never copied wholesale |
+| `list_lens_patterns` | Lens patterns: worked demonstrations of each kind of screen (input grid, line items with approval, dashboard, variance, process page, disclosure accounts…) — learn from them, never copy one |
 | `list_lenses` / `get_lens` | Lenses stored in the model, and one Lens's full HTML and settings |
-| `save_lens` | save a Lens (own HTML or a template + config) into the model, test-running its queries (change set required) |
+| `save_lens` | save a Lens's own HTML into the model, test-running its queries (change set required) |
 | `delete_lens` | delete a Lens from the model (change set required) |
 
 ---

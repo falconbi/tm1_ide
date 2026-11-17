@@ -18,16 +18,16 @@ Lens toolkit catalogue:
 ${CATALOGUE}`
 
 function register(server, { SERVER, AGENT_USER, ok, requireChangeSet, client, logChange }) {
-    // Examples: working Lenses to learn from — there are no prebuilt templates;
+    // Patterns: worked demonstrations to learn from — there are no prebuilt templates;
     // every client's Lenses are built for their own process from the toolkit.
     server.tool(
-        'list_lens_examples',
-        'List the Lens examples — working reference Lenses (input grid, line items with approval, assumptions table, dashboard, variance report, detail list, app home page, process page, narrative document, disclosure accounts) to learn patterns from when building a Lens for this client. Pass name to get one example\'s full code. Never copy one wholesale: build each Lens to fit the client\'s own process, from the toolkit components.',
-        { name: z.string().optional().describe('An example name, to get its full code') },
+        'list_lens_patterns',
+        'List the Lens patterns — worked demonstrations of how each kind of screen is built from the toolkit (input grid, line items with approval, assumptions table, dashboard, variance report, detail list, app home, process page, narrative document, disclosure accounts). Pass name to read one pattern\'s code. Learn from them; never copy one: build each Lens for the client\'s own process from the toolkit components.',
+        { name: z.string().optional().describe('A pattern name, to get its full code') },
         async ({ name }) => {
-            const ex = require('../../../core/lens_examples')
-            if (name) return ok({ ...ex.listExamples().find(e => e.name === name), html: ex.readExample(name) })
-            return ok(ex.listExamples())
+            const ex = require('../../../core/lens_patterns')
+            if (name) return ok({ ...ex.listPatterns().find(e => e.name === name), html: ex.readPattern(name) })
+            return ok(ex.listPatterns())
         }
     )
 
@@ -54,7 +54,7 @@ function register(server, { SERVER, AGENT_USER, ok, requireChangeSet, client, lo
             try {
                 return ok(await lensStore.readLens(SERVER, name, { client: client() }))
             } catch (e) {
-                throw new Error(e.message)
+                throw new Error(e.message, { cause: e })
             }
         }
     )

@@ -29,7 +29,8 @@ Users open it in a browser, connect to a TM1 server, and edit rules, processes, 
 ## Key Files
 
 ```
-server.js                     # Express backend — all API routes
+server.js                     # IDE bootstrap: middleware, route registration, SPA fallback
+routes/                       # One file per noun; each exports register(app, deps)
 core/
   tm1_client.js               # TM1 REST client (all API calls go through here)
   paw_connect.js              # PAW session auth + CSRF caching
@@ -39,12 +40,14 @@ core/
     paw_native.js             # PAW-native session adapter
     paw_oauth2.js             # Authentik/OAuth2 adapter (PAW V12)
   sql_client.js               # External SQL connections (MSSQL/PG/MySQL/SQLite)
+shared/lens-patterns/         # Worked Lens patterns — read-only demonstrations, never copied into a model
 shared/pivot/                 # The shared pivot — one slice-and-dice grid for the IDE View editor and Lenses (docs/lenses/PIVOT_PLAN.md)
   tree.js / mdx.js / cellset.js / format.js / grid.js
 client/src/
   App.jsx                     # Root layout, tab groups, global keyboard handlers
   store/                      # Zustand: tabs, groups, splitDirection, server, UI state
   hooks/useApi.js             # All TanStack Query hooks (useCubes, useRules, etc.)
+  lib/api.js                  # One HTTP layer: get/post/patch/del/apiFetch; no raw fetch elsewhere
   components/
     Explorer.jsx              # Left sidebar: object tree for all TM1 object types
     TabBar.jsx                # Tab bar — drag-to-reorder, right-click menu, split controls
@@ -119,13 +122,13 @@ cd client && npm run dev   # terminal 2 (Vite on :5173)
 ## Architecture Constraints
 
 - **All TM1 calls go through `TM1Client`** — never call the TM1 REST API directly from a route. Add a method to `tm1_client.js` and call it from the route.
-- **All API routes are in `server.js`** — no router files. Routes follow the pattern `app.METHOD('/api/noun/verb', async (req, res) => { try { ... } catch (e) { res.status(500).json({ error: e.message }) } })`.
+- **API routes live in `routes/<noun>.js`** — each exports `register(app, deps)` and is called from `server.js` in a fixed order. Shared HTTP helpers (`fail`, `gateReadOnly`, `gateWrite`, `requireTm1Admin`, `scanIdentity`) live in `routes/_http.js`. `core/` never sees `req`/`res`.
 - **Routes report failure with `fail(res, e)`** — the adapters normalise TM1 errors (`core/tm1-error.js`), so `e.message` is TM1's own text and `e.status` is the HTTP status. The only routes that return a result object containing `error` with HTTP 200 are the command-result routes `/api/period-builder/run` and `/api/deploy/git/prepare|execute|review`.
 - **TM1 OData URL pattern**: `${PAW_HOST}/api/v0/tm1/{server}/api/v1/{path}`
 - **Connections are adapter-driven** — `config/servers.json` decides direct or PAW for each server; the client must not assume one. Server name comes from `config/servers.json`.
 - **Routes that write to TM1 use `gateWrite`**; routes that write only local files (`forge.json`, SQL connections, catalog overrides, process summaries) use `gateReadOnly`.
 - **Frontend served from `static/`** — the built assets are committed. Always rebuild (`cd client && npm run build`, which writes `static/`); never copy from `client/dist`.
-- **CommonJS throughout** — `server.js` and `core/` use `require`/`module.exports`. Ignore VS Code's "convert to ES module" hints.
+- **CommonJS throughout** — `server.js` and `core/` use `require`/`module.exports`. Ignore VS Code's "convert to ES module" hints. A pure helper used by both the client and server lives as a `.cjs` CommonJS file with a thin `.js` ESM re-export (see `shared/catalog-arity.*`).
 
 ---
 
@@ -263,7 +266,7 @@ Zustand store (`client/src/store/`) holds:
 - `rulesVersions` — `{ 'server::cube': n }` — bumped on rules save; ViewEditor watches and re-executes automatically
 
 TanStack Query handles all server state — data fetching, caching, mutations. Cache keys always include `server` as the first key segment.
-Data goes through hooks in `hooks/useApi.js`; a direct `fetch` is only for a one-off command, and it checks `r.ok`.
+Data and saves go through hooks in `hooks/useApi.js`. A genuine one-off command (download, stream, sign-in) uses `lib/api.js`; nothing else calls `fetch` directly. `tests/client-no-direct-fetch.test.js` is the gate: `apiFetch` is only allowed through its empty/explicit allowlist in `lib/api.js`.
 
 ---
 
@@ -272,7 +275,7 @@ Data goes through hooks in `hooks/useApi.js`; a direct `fetch` is only for a one
 1. Create `client/src/components/MyEditor.jsx`
 2. Add to the dispatcher in `EditorPane.jsx` or `App.jsx`
 3. Add a tab type to `openTab` calls in `Explorer.jsx`
-4. Add API routes to `server.js` (and methods to `tm1_client.js` if needed)
+4. Add API routes to the matching `routes/<noun>.js` (and methods to `tm1_client.js` if needed)
 5. Add hooks to `hooks/useApi.js`
 6. Add to the `getRevealTarget` function in `EditorPane.jsx` if it has a "show in tree" target
 

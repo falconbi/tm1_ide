@@ -1,3 +1,4 @@
+import { request } from '@/lib/api'
 import { useState } from 'react'
 import { X, Activity, RefreshCw, CheckCircle2, XCircle, ChevronDown, ChevronRight, Copy, FileCode2, Table2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -58,7 +59,7 @@ export default function ModelHealth({ server, onClose }) {
   const loadHistory = async f => {
     if (histories[f.id]) return
     try {
-      const r = await fetch(`/api/assertions/history?server=${encodeURIComponent(server)}&id=${encodeURIComponent(f.id)}`, { headers: { 'x-ide-token': localStorage.getItem('tm1-token') ?? '' } })
+      const r = await request(`/api/assertions/history?server=${encodeURIComponent(server)}&id=${encodeURIComponent(f.id)}`, { headers: { 'x-ide-token': localStorage.getItem('tm1-token') ?? '' } })
       const d = await r.json()
       if (!r.ok) throw new Error(d.error || r.statusText)
       setHistories(h => ({ ...h, [f.id]: d }))
@@ -71,7 +72,7 @@ export default function ModelHealth({ server, onClose }) {
   const run = async () => {
     setRunning(true); setError(null)
     try {
-      const r = await fetch(`/api/model-health?server=${encodeURIComponent(server)}`, {
+      const r = await request(`/api/model-health?server=${encodeURIComponent(server)}`, {
         method: 'POST',
         headers: { 'x-ide-token': localStorage.getItem('tm1-token') ?? '' },
       })
