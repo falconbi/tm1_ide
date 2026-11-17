@@ -358,6 +358,13 @@ export const cubeDimensionsQuery = (server, cube) => ({
 })
 export const useCubeDimensions = (server, cube) => useQuery(cubeDimensionsQuery(server, cube))
 
+export const useViewPreviewRecords = (server, cube, view) => useQuery({
+  queryKey: ['view-preview-records', server, cube, view],
+  queryFn: () => post(`/api/view/preview-records?server=${enc(server)}&cube=${enc(cube)}&view=${enc(view)}`, {}),
+  enabled: !!(server && cube && view),
+  staleTime: 60_000,
+})
+
 export const useViewAxes = () => useMutation({
   mutationFn: ({ server, cube, view }) =>
     get(`/api/view/axes?server=${enc(server)}&cube=${enc(cube)}&view=${enc(view)}`),
