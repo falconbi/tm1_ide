@@ -4,7 +4,7 @@
 
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { TM1Client } = require('../core/tm1_client')
+const { TM1Client } = require('../core/tm1-client')
 
 test('downloadFile uses the v11 content path and asks for binary', async () => {
     const calls = []

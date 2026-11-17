@@ -4,8 +4,8 @@
 **Scope:** how Lenses fetch data, run actions, and stay thin — so MCP can build them
 for any TM1 application without application logic living in HTML/JS.
 **Related:** `docs/lenses/LENS_APP_PLAN.md`, `docs/models/WORKFORCE_MODEL.md`,
-`docs/models/BUILDING_MODELS.md`, `docs/lenses/PIVOT_PLAN.md`, `core/lens_bridge.js`,
-`core/lens_store.js`, `shared/lens-kit/`, `shared/pivot/`.
+`docs/models/BUILDING_MODELS.md`, `docs/lenses/PIVOT_PLAN.md`, `core/lens-bridge.js`,
+`core/lens-store.js`, `shared/lens-kit/`, `shared/pivot/`.
 
 ---
 

@@ -2,7 +2,7 @@
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
 const themes = require('../shared/lens-themes.json')
-const { validateThemes, themeCss } = require('../core/lens_prefs')
+const { validateThemes, themeCss } = require('../core/lens-prefs')
 
 test('every Lens theme has a label and the colours themeCss needs', () => {
     assert.equal(validateThemes(themes), true)

@@ -50,7 +50,7 @@ test('no reader user configured: reads run as the service login and say so', () 
 // Optional live check against a lab server (skipped unless configured):
 //   TM1_MCP_LIVE_SERVER=24Retail_Lens TM1_MCP_LIVE_USER=east_mgr TM1_MCP_LIVE_PASSWORD=... node --test tests/safety-mcp-identity.test.js
 test('live: a restricted TM1 user sees fewer cubes than the service login', { skip: !process.env.TM1_MCP_LIVE_SERVER }, async () => {
-    const { makeClient, makeClientWithCredentials } = require('../core/adapter_registry')
+    const { makeClient, makeClientWithCredentials } = require('../core/adapter-registry')
     const { createIdentity } = require('../tools/tm1mcp/identity')
     const server = process.env.TM1_MCP_LIVE_SERVER
     const id = createIdentity({ server, makeClient, makeClientWithCredentials, env: {

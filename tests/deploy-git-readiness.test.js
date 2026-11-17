@@ -12,9 +12,9 @@ const fake = {
         return { value: [] }
     },
 }
-const arReal = require(resolve('core/adapter_registry'))
-require.cache[resolve('core/adapter_registry')] = {
-    id: resolve('core/adapter_registry'), filename: resolve('core/adapter_registry'), loaded: true,
+const arReal = require(resolve('core/adapter-registry'))
+require.cache[resolve('core/adapter-registry')] = {
+    id: resolve('core/adapter-registry'), filename: resolve('core/adapter-registry'), loaded: true,
     exports: { ...arReal, makeClient: () => fake },
 }
 const { memberRefs, pushReadiness } = require(resolve('core/git-readiness'))

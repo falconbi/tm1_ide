@@ -66,7 +66,7 @@ test('the component catalogue describes exactly the toolkit components', () => {
 })
 
 test('the Lens store stamps the toolkit version the kit provides', () => {
-  assert.equal(require('../core/lens_store.js').TOOLKIT_VERSION, TOOLKIT_VERSION)
+  assert.equal(require('../core/lens-store.js').TOOLKIT_VERSION, TOOLKIT_VERSION)
 })
 
 test('rows: a dimension name containing ] keeps its real name', () => {

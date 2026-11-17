@@ -4,7 +4,7 @@
 // Simple mode switched on in Server Admin is kept here, in config/ide-modes.json,
 // not in servers.json: servers.json holds passwords and the IDE never rewrites it.
 // A server can also be marked simple in servers.json ("simpleServers" or
-// "simple": true) — adapter_registry.isSimple() honours both.
+// "simple": true) — adapter-registry.isSimple() honours both.
 //
 //   { "simpleServers": ["SANDBOX", ...] }
 

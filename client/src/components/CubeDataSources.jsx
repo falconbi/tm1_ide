@@ -10,7 +10,7 @@ import ProcessSummariesDialog from '@/components/ProcessSummariesDialog'
 // A read-only summary of everything that feeds a cube: TI writers (with the measures they
 // write), the cube's rule dependencies, TI readers, and processes that copy it (snapshots).
 // Shared with the Cube Map — core/cubemap.js and this strip both scan through
-// core/cube_data_sources.js helpers.
+// core/cube-data-sources.js helpers.
 export default function CubeDataSources({ server, cube, onOpenCube, onOpenProcess, onOpenMap }) {
   const [open, setOpen] = useState(false)
   const [showSummaries, setShowSummaries] = useState(false)

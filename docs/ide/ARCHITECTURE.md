@@ -28,17 +28,17 @@ tm1_ide/
 ├── routes/                      # One register(app, deps) file per noun; _http.js has shared helpers
 ├── lens-server.js               # Lens app: sign-in, home, sandboxed Lens viewer
 ├── core/                        # Shared Node code
-│   ├── tm1_client.js            # Every TM1 REST call goes through this client
-│   ├── adapter_registry.js      # Picks direct-v11 / paw_native / paw_oauth2 per server
+│   ├── tm1-client.js            # Every TM1 REST call goes through this client
+│   ├── adapter-registry.js      # Picks direct-v11 / paw-native / paw-oauth2 per server
 │   ├── adapters/
-│   │   ├── direct_v11.js        # Direct TM1 REST, Basic Auth
-│   │   ├── paw_native.js        # PAW cookie jar + CSRF
-│   │   └── paw_oauth2.js        # PAW with an Authentik/OAuth2 machine credential
-│   ├── change_log.js            # Change sets + audit log (SQLite)
+│   │   ├── direct-v11.js        # Direct TM1 REST, Basic Auth
+│   │   ├── paw-native.js        # PAW cookie jar + CSRF
+│   │   └── paw-oauth2.js        # PAW with an Authentik/OAuth2 machine credential
+│   ├── change-log.js            # Change sets + audit log (SQLite)
 │   ├── model-store.js           # Model-owned documents (tests, Lenses, baselines)
 │   ├── git-*.js                 # TM1 Git releases, approvals, drift, readiness
 │   ├── lens_*.js                # Lens store, bridge validation, activity, preferences
-│   └── sql_client.js            # MSSQL / PostgreSQL / MySQL / SQLite connections
+│   └── sql-client.js            # MSSQL / PostgreSQL / MySQL / SQLite connections
 ├── client/                      # React + Vite frontend source (built into static/)
 │   └── src/
 │       ├── App.jsx              # Root layout, tabs, global keyboard handling
@@ -76,8 +76,8 @@ Lenses:  Browser ←→ lens-server.js ←same core adapters→ TM1
 MCP:     Agent ←stdio→ tools/tm1mcp ←same core adapters→ TM1
 ```
 
-- `core/adapter_registry.js` selects the adapter from `config/servers.json` on every request.
-- `core/tm1_client.js` wraps every TM1 call; routes and MCP tools never build REST URLs themselves.
+- `core/adapter-registry.js` selects the adapter from `config/servers.json` on every request.
+- `core/tm1-client.js` wraps every TM1 call; routes and MCP tools never build REST URLs themselves.
 - The IDE frontend uses **TanStack Query**; cache keys include `server` first.
 - The Lens frame never holds a token and never talks to the network directly: it posts to its host,
   which performs the call as the signed-in user.

@@ -1,8 +1,8 @@
 'use strict'
 
 const { z } = require('zod')
-const lensStore = require('../../../core/lens_store')
-const lensBridge = require('../../../core/lens_bridge')
+const lensStore = require('../../../core/lens-store')
+const lensBridge = require('../../../core/lens-bridge')
 
 const CATALOGUE = JSON.stringify(require('../../../shared/lens-components.json'), null, 1)
 const BRIDGE_CONTRACT = `The generated HTML runs inside a sandboxed iframe with NO network access. Data comes ONLY from the lensBridge API:
@@ -69,7 +69,7 @@ ${BRIDGE_CONTRACT}`,
             html:        z.string().describe('Complete HTML document for the lens (see contract)'),
             description: z.string().optional().describe('What the lens shows, in words'),
             config:      z.record(z.any()).optional().describe("The Lens's settings, read in the Lens with Lens.config(): bindings (cube, version, rows…) and behaviour; access: [TM1 groups] limits who can open it in the Lens app; theme: 'fixed'. Omit to keep the current config"),
-            icon:        z.string().optional().describe('Home-page icon, one of: ' + require('../../../core/lens_store').ICON_NAMES.join(', ')),
+            icon:        z.string().optional().describe('Home-page icon, one of: ' + require('../../../core/lens-store').ICON_NAMES.join(', ')),
             color:       z.string().optional().describe("Home-page tile colour, '#rrggbb'"),
             title:       z.string().optional().describe("What people see in the Lens app, in business words (e.g. '1 Enter targets'); a leading number orders steps in a folder. Omit to keep the current one"),
             folder:      z.string().optional().describe("Folder on the Lens app home page, e.g. 'Finance' or 'Planning/Forecast' ('/' = sub-folder); omit to keep the current one"),

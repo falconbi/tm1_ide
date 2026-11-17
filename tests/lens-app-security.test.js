@@ -142,7 +142,7 @@ test('the home page shows titles and folders, never a raw cube or server name', 
 
 // ── Home-page tiles: an icon on a colour, or the Lens's own image ────────────
 test('Lens icon, colour and image are checked before they are stored', () => {
-  const s = require('../core/lens_store')
+  const s = require('../core/lens-store')
   assert.equal(s.cleanIcon('target'), 'target')
   assert.throws(() => s.cleanIcon('skull'), /Unknown icon/)
   assert.equal(s.cleanColor('#0F766E'), '#0F766E')

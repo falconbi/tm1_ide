@@ -1,6 +1,6 @@
 'use strict'
 
-const { getCachedPawSession, getCSRF } = require('../paw_connect')
+const { getCachedPawSession, getCSRF } = require('../paw-connect')
 const { paramsSerializer } = require('../odata-params')   // spaces as %20 — TM1 doesn't read '+'
 const { normalizeError } = require('../tm1-error')
 

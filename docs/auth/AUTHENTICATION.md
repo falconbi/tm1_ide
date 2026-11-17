@@ -197,11 +197,11 @@ The session system is adapter-agnostic at the frontend. The browser never talks 
 **Session lifecycle:**
 
 1. User submits username + password to `POST /api/auth/login` (rate-limited: 10 attempts / 15 min / IP)
-2. Server creates a session entry in an in-memory Map (in `core/paw_connect.js`): `Map<uuid-token, { username, password, session, expiry, lastSeen }>`
+2. Server creates a session entry in an in-memory Map (in `core/paw-connect.js`): `Map<uuid-token, { username, password, session, expiry, lastSeen }>`
 3. UUID token returned to browser → stored in `localStorage` as `tm1-token`
 4. Browser sends `x-ide-token: <uuid>` header on **every** subsequent API request
 5. Server middleware validates the token on every `/api/*` request (except `/api/auth/login` and `/api/auth/logout`), bumping `lastSeen`
-6. **Token idle expiry:** a token unused for **12 hours** (`IDLE_TTL` in `paw_connect.js`) is dropped — the user must log in again. This is the only expiry that applies in `direct-v11` mode.
+6. **Token idle expiry:** a token unused for **12 hours** (`IDLE_TTL` in `paw-connect.js`) is dropped — the user must log in again. This is the only expiry that applies in `direct-v11` mode.
 7. **PAW cookie refresh (paw-native only):** the PAW SSO session behind the token is refreshed every **10 minutes** (`SESSION_TTL`) using the stored credentials — transparent to the user, independent of the idle expiry above
 
 What the `session` field contains differs by adapter:
@@ -259,7 +259,7 @@ A `"camNamespace": "YourNamespace"` field exists in `servers.json`, but the adap
 
 ##### URL resolution
 
-The `adapter_registry.js` resolves each server's base URL on first use:
+The `adapter-registry.js` resolves each server's base URL on first use:
 
 ```
 GET http://<adminHost>:<HTTPPortNumber>/api/v1/Servers
@@ -275,7 +275,7 @@ http://<server-ip>:<server-port>/api/v1/<path>
 
 ##### Credential resolution priority
 
-`adapter_registry.js` prefers the **logged-in user's credentials** (from `getSessionCredentials(ideToken)`) over the static credentials in `servers.json`. This means:
+`adapter-registry.js` prefers the **logged-in user's credentials** (from `getSessionCredentials(ideToken)`) over the static credentials in `servers.json`. This means:
 
 - If a user logs in with their own TM1 username/password, all their API calls use those credentials
 - If `getSessionCredentials` returns null (e.g. an unauthenticated internal call), it falls back to the `username`/`password` fields in `servers.json`
@@ -380,7 +380,7 @@ This means all IDE users' TM1 calls are made under the service account identity 
 
 #### How the Adapter Registry Selects an Adapter
 
-`core/adapter_registry.js` runs on every API request. Selection order:
+`core/adapter-registry.js` runs on every API request. Selection order:
 
 1. Load `config/servers.json`
 2. Search `adminHosts[]` — if the requested `serverName` appears in `h.servers`, use `DirectV11Adapter` with that admin host's URL and credentials

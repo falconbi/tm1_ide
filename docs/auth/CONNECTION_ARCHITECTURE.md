@@ -109,7 +109,7 @@ Both on-prem adapters use identical post-login behaviour. The registry selects t
 
 ### PAW V11 — Cookie + CSRF (current, verified in code)
 
-**Actual flow** (`core/paw_connect.js` — not the aspirational `/api/v1/auth/login` endpoint):
+**Actual flow** (`core/paw-connect.js` — not the aspirational `/api/v1/auth/login` endpoint):
 
 ```
 POST {paw-host}/login/form/
@@ -127,7 +127,7 @@ TM1: GET/POST {paw-host}/api/v0/tm1/{server}/api/v1/{path}
 
 Refresh: re-POST `/login/form/` with stored credentials before 10-min TTL expires.
 
-### PAW V12 — Authentik interactive (verified in `tm1_cubemap/core/paw_connect.py`)
+### PAW V12 — Authentik interactive (verified in `tm1_cubemap/core/paw-connect.py`)
 
 **This is NOT a standard OAuth2 password grant, and it does NOT end in Bearer tokens.**
 
@@ -143,7 +143,7 @@ Every request: same cookie + ba-sso-authenticity as V11
 TM1: {paw-host}/api/v0/tm1/{server}/api/v1/{path}
 ```
 
-Port `tm1_cubemap/core/paw_connect.py` to Node for the V12 adapter. Reference: `Downloads/paw-conventions.md`.
+Port `tm1_cubemap/core/paw-connect.py` to Node for the V12 adapter. Reference: `Downloads/paw-conventions.md`.
 
 ### pacontent/v1 (book-usage, PAW assets)
 
@@ -246,10 +246,10 @@ class TM1Client {
 ```
 core/
   connection_registry.js
-  tm1_client.js              (minimal change)
+  tm1-client.js              (minimal change)
   adapters/
     base.js                  (shared cookie+CSRF post-login logic)
-    paw_v11.js               (extract from paw_connect.js)
+    paw_v11.js               (extract from paw-connect.js)
     paw_v12_oidc.js          (extends paw_v11; port login from tm1_cubemap)
     admin_host.js            (discovery helper)
     factory.js               (paw-v11 | paw-v12-oidc only)
@@ -394,7 +394,7 @@ IBM PA Cloud / AWS / MCSP and PAW OAuth Bearer flows are documented in the inves
 
 | Feature | Status | Location |
 |---|---|---|
-| Per-user PAW login | ✅ Done | `paw_connect.js` Map keyed by ideToken |
+| Per-user PAW login | ✅ Done | `paw-connect.js` Map keyed by ideToken |
 | IDE session token | ✅ Done | `x-ide-token` header, localStorage |
 | PAW V11 cookie auth | ✅ Done | `/login/form/`, `ba-sso-authenticity` |
 | `PAW_LOGIN_SERVER` routing | ✅ Done | 10 user routes in `server.js` |
@@ -410,13 +410,13 @@ IBM PA Cloud / AWS / MCSP and PAW OAuth Bearer flows are documented in the inves
 |---|---|---|
 | Deploy pipeline auth broken | `/api/deploy/seed`, `/diff`, `/package`, `/risk`, `/execute` all call `new TM1Client(server)` without `ideToken` | `server.js`, `tools/tm1deploy/src/*.js` |
 | Duplicate `GET /api/sessions` | Change-log route (line 93) shadows TM1 sessions route (line 1799). `SessionsMonitor` gets wrong data | `server.js` |
-| Per-server change sets | `getActiveSession(server)` not scoped to user — two devs on same server collide | `change_log.js` |
+| Per-server change sets | `getActiveSession(server)` not scoped to user — two devs on same server collide | `change-log.js` |
 | Shared `forge.json` | All users overwrite same tabs/server state | `config/forge.json` |
 | Stale `.env` vars | `PAW_USERNAME`/`PAW_PASSWORD` ignored by Node; only Python legacy uses them | `.env.example` |
 
 ### Env vars: documented vs implemented
 
-| Variable | Node `paw_connect.js` | Notes |
+| Variable | Node `paw-connect.js` | Notes |
 |---|---|---|
 | `PAW_HOST` | ✅ Used | Single instance only |
 | `PAW_LOGIN_SERVER` | ✅ Used | User mgmt routes only |
@@ -470,8 +470,8 @@ Phase 1 compat migration (zero UX change):
 
 ### `direct-v11` — stop holding the plaintext password (deferred, bundle with Docker packaging)
 
-**Problem:** `core/adapters/direct_v11.js` re-sends `Authorization: Basic base64(user:pass)` on
-every call, so `core/paw_connect.js` keeps the plaintext password in the in-memory `_sessions`
+**Problem:** `core/adapters/direct-v11.js` re-sends `Authorization: Basic base64(user:pass)` on
+every call, so `core/paw-connect.js` keeps the plaintext password in the in-memory `_sessions`
 Map for the whole IDE session (10-min TTL, not cleared on expiry, only on logout/restart).
 The `admin`/`apple` fallback also sits plaintext in `config/servers.json` (gitignored).
 `paw-native` / `paw-oauth2` already avoid this — they hold a session/cookie, not a password.
@@ -508,11 +508,11 @@ Before building adapters, validate on live endpoints from `.env`:
 
 | Auth flow | Working code | Port target |
 |---|---|---|
-| V11 native | `tm1_ide/core/paw_connect.js` | `adapters/paw_v11.js` |
-| V12 Authentik | `tm1_cubemap/core/paw_connect.py` | `adapters/paw_v12_oidc.js` |
-| V11 native (alt) | `tm1_paw_tree/core/paw_connect.py` | Reference only |
+| V11 native | `tm1_ide/core/paw-connect.js` | `adapters/paw_v11.js` |
+| V12 Authentik | `tm1_cubemap/core/paw-connect.py` | `adapters/paw_v12_oidc.js` |
+| V11 native (alt) | `tm1_paw_tree/core/paw-connect.py` | Reference only |
 | PAW conventions | `Downloads/paw-conventions.md` | Authentik flow docs |
-| TM1 via PAW | `tm1_ide/core/tm1_client.js` | Unchanged OData methods |
+| TM1 via PAW | `tm1_ide/core/tm1-client.js` | Unchanged OData methods |
 
 ---
 

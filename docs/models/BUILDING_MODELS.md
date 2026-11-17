@@ -959,7 +959,7 @@ sub-groups, year-end close) built through the MCP and proven against published w
   before the first dot is `CON`/`PRN`/`AUX`/`NUL`/`COM1-9`/`LPT1-9` can't be created (400 code 178 "Failed to
   register object"). Names with spaces (`CON Data`) are fine; `CON.Something` is not.
 - **v11 returns 400 code 278 ("already exists"), not 409, for a duplicate POST.** Create-or-replace must PATCH
-  only on 409 or 400/278 and rethrow anything else (fixed in `tm1_client.createOrReplaceProcess`).
+  only on 409 or 400/278 and rethrow anything else (fixed in `tm1-client.createOrReplaceProcess`).
 - **A data leaf can't be a consolidated node in an alternate hierarchy** (`ElementLeafConsolidationConflict`,
   and the failed call leaves an empty hierarchy behind). For a structure-only tree over data leaves, use separate
   node elements or a parent attribute.
@@ -1028,7 +1028,7 @@ added (both live-verified); rules-lint no longer splits on commas inside area re
   save was gone**; metadata, processes, rules and attribute values survived. "Transaction log write-locked, recovery possible" is NOT replayed automatically for a service.
 - Recovered by reloading every test payload (kept as JSON files) + reprocess feeders + the full test run → all
   green. Then SaveDataAll.
-- **Rule now: SaveDataAll after every data load / build** (a `<prefix> Save Data` TI), and a scheduled save chore. The IDE header **Save data** button and MCP `save_data_all` do the same for admins, falling back to hidden `}IDE.SaveDataAll` where the REST action is missing.
+- **Rule now: SaveDataAll after every data load / build** (a `<prefix> Save Data` TI), and a scheduled save chore. The IDE header **Save data** button and MCP `save-data-all` do the same for admins, falling back to hidden `}IDE.SaveDataAll` where the REST action is missing.
   Keep test payloads as files, not only as one-off write_cells calls — they were the whole recovery.
 
 ### Storing documents in TM1 v11 Applications (Oct 2026 — phase 0 of model-owned history)

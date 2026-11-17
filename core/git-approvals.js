@@ -53,7 +53,7 @@ async function find(target, commit, { ideToken } = {}) {
 // Rule 1: an approval can only be linked through a built release (release_commit) —
 // not a raw DEV commit_ref — and the release must have been built for this target.
 function linkedChangeSet(commit, target) {
-    const cl = require('./change_log')
+    const cl = require('./change-log')
     return cl.getAllSessions(500).find(x => x.closed_at != null &&
         x.release_commit && sameCommit(x.release_commit, commit) &&
         (!x.release_target || x.release_target === target)) ?? null

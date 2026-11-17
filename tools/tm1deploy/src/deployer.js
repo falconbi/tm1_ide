@@ -431,7 +431,7 @@ async function deploy(packageDir, targetServer, options = {}, ideToken) {
         try {
             onProgress?.('baseline')
             const { seed } = require('./snapshot')
-            const cl = require('../../../core/change_log')
+            const cl = require('../../../core/change-log')
             const warn  = report.verification_failed
                 ? ` [UNVERIFIED: ${report.verification.failed.length}/${report.verification.total} assertions failing]`
                 : ''

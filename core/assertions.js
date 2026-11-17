@@ -47,7 +47,7 @@ function save(data) {
 
 function _clientFor(server, opts = {}) {
   if (opts.client) return opts.client
-  const { makeClient } = require('./adapter_registry')
+  const { makeClient } = require('./adapter-registry')
   return makeClient(server, opts.ideToken ?? null)
 }
 
@@ -286,7 +286,7 @@ async function migrate(server, { dryRun = false, force = false, ideToken, client
 // the source Dev server's assertions run against the target after a deploy.
 // Reports which store the assertions came from (source: 'model' | 'config').
 async function run(sourceServer, { targetServer, tags, kind, severity, ideToken, client: injected } = {}) {
-    const { makeClient } = require('./adapter_registry')
+    const { makeClient } = require('./adapter-registry')
     const target = targetServer ?? sourceServer
     const client = injected ?? makeClient(target, ideToken)
     const { source, assertions: stored } = await list(sourceServer, target === sourceServer ? { client, ideToken } : { ideToken })

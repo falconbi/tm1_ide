@@ -3,12 +3,12 @@
 // ── Git reconcile (#6) — after a git pull ───────────────────────────────────
 // TM1 Git doesn't propagate deletes or attribute values, so after the pull the
 // IDE reconciles them. **Scoped strictly to the change set's manifest** — the
-// manifest (change_log.getSessionManifest) says what was deleted and which
+// manifest (change-log.getSessionManifest) says what was deleted and which
 // dimensions' values changed. Nothing is inferred from the whole source, so a
 // deploy can never delete a PROD-only object or clobber a PROD-maintained
 // attribute that the change set didn't touch.
 
-const { makeClient } = require('./adapter_registry')
+const { makeClient } = require('./adapter-registry')
 const { odataKey } = require('./odata-key')
 
 // Delete exactly the objects the change set deleted (`deletes` = [{type,name}]),

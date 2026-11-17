@@ -127,7 +127,7 @@ Now read the real files with this in mind:
 
 - `lens-server.js` — sign-in, session store, `/lens/:name`, `/lens-frame/:name`, `/api/lens/*`
 - `shared/lens-bridge.js` — the frame script and the host's `installLensHost`
-- `core/lens_store.js` — `canOpenLens` (group access)
+- `core/lens-store.js` — `canOpenLens` (group access)
 
 ---
 

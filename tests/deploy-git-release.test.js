@@ -58,11 +58,11 @@ function subsetRepo() {
   return { bare, base, releaseCommit, w }
 }
 
-// In-memory change_log
+// In-memory change-log
 const realBsq = require('better-sqlite3')
 const bsqPath = require.resolve('better-sqlite3')
 require.cache[bsqPath] = { id: bsqPath, filename: bsqPath, loaded: true, exports: function () { return realBsq(':memory:') } }
-const cl = require(path.join(__dirname, '..', 'core', 'change_log'))
+const cl = require(path.join(__dirname, '..', 'core', 'change-log'))
 
 let ctx = null
 function fakeClient() {
@@ -89,8 +89,8 @@ function fakeClient() {
     }, async delete() { return {} },
   }
 }
-const arReal = require(resolve('core/adapter_registry'))
-stub('core/adapter_registry', { ...arReal, makeClient: () => fakeClient() })
+const arReal = require(resolve('core/adapter-registry'))
+stub('core/adapter-registry', { ...arReal, makeClient: () => fakeClient() })
 
 let acquired = 0, released = 0
 stub('core/git-lock', { acquire: async () => { acquired++; return { by: 't', at: 'now' } }, release: async () => { released++; return { ok: true } }, current: async () => null, clear: async () => ({ ok: true }) })

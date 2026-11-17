@@ -3,9 +3,9 @@
 // Builds the Cube Map model: cubes, rules/TI edges, process-call chains and the
 // ordered steps the map/Show playback reads. This used to live in server.js with
 // its own copies of the comment/argument/name helpers; those now come from
-// cube_data_sources so the Cube Map and the Rules Data Sources strip cannot drift.
+// cube-data-sources so the Cube Map and the Rules Data Sources strip cannot drift.
 
-const { stripComments, splitArgs, resolveName, CUBE_FIRST_FNS } = require('./cube_data_sources')
+const { stripComments, splitArgs, resolveName, CUBE_FIRST_FNS } = require('./cube-data-sources')
 
 const CATALOG = require('../shared/tm1-function-catalog.json')
 

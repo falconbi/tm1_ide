@@ -4,15 +4,15 @@ const assert = require('node:assert/strict')
 const path = require('path')
 
 const resolve = rel => require.resolve(path.join(__dirname, '..', rel))
-const arReal = require(resolve('core/adapter_registry'))
+const arReal = require(resolve('core/adapter-registry'))
 const doc = [{ id: 'a1', description: 'one', mdx: 'SELECT 5', expected: 5, tolerance: 0.01, tags: [], kind: 'control', severity: 'block' }]
 const fake = {
     async listFiles() { return [{ name: 'assertions.json', isFolder: false }] },
     async getFileContent() { return doc },
     async executeMDX() { return { Cells: [{ Value: 5 }] } },
 }
-require.cache[resolve('core/adapter_registry')] = {
-    id: resolve('core/adapter_registry'), filename: resolve('core/adapter_registry'), loaded: true,
+require.cache[resolve('core/adapter-registry')] = {
+    id: resolve('core/adapter-registry'), filename: resolve('core/adapter-registry'), loaded: true,
     exports: { ...arReal, makeClient: () => fake },
 }
 let recorded = null

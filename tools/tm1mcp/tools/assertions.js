@@ -27,7 +27,7 @@ function register(server, { assertions, runAssertions, ok, SERVER, AGENT_USER, p
             severity:    z.enum(['block', 'warn']).optional().describe('block = stops a Close/deploy; warn = just flags (data-sensitive)'),
         },
         async ({ description, mdx, expected, tolerance, tags, kind, severity, why }) => {
-            const cl = require('../../../core/change_log')
+            const cl = require('../../../core/change-log')
             const sess = cl.getActiveSession(SERVER, AGENT_USER)
             const rec = await assertions.add(SERVER, { description, mdx, expected, tolerance, tags, kind, severity, why, author: AGENT_USER, changeSet: sess?.id ?? null })
             logChange('ASSERTION_ADDED', 'assertion', rec.id, { detail: { description, expected, tolerance, kind, severity, changeSet: sess?.id ?? null } })

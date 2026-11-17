@@ -11,7 +11,7 @@ Lab test names the audit is judged against (V11 lab, `TM1_Test_DEV` only):
 
 ## Method
 
-Relevant files (the code that builds TM1 REST calls / `$filter`): `core/tm1_client.js`,
+Relevant files (the code that builds TM1 REST calls / `$filter`): `core/tm1-client.js`,
 `server.js`, `core/adapters/*`, `core/git-*.js`, `core/model-*.js`, `core/model-store.js`,
 `tools/tm1mcp/**`, `tools/tm1deploy/src/**`. For each `…${x}…` inside a quoted string we
 read the surrounding call and the escaping helper in scope.
@@ -38,10 +38,10 @@ to the actual definition in scope at each site.
 | helper | where | definition | bucket on the lab set |
 |---|---|---|---|
 | `esc` | `tools/tm1mcp/shared.js:38` | `s => encodeURIComponent(s)` | **PATH-ENC** |
-| `esc` | `core/git-*.js` (`git-readiness:16`, `git-reconcile:13`, `git-restore:18`), `core/model-health.js:16`, `tools/tm1deploy/src/deployer.js`, `risk.js`, `core/tm1_client.js` ~1066–1610 | doubles `'` (`s.replace(/'/g, "''")`) | PATH-APOS |
-| `esc` | `core/tm1_client.js` ~570, 614, 710 | regex-escapes `.*+?^${}()|[\]\\` for `new RegExp(...)` — not TM1 | **EXCLUDE — never touch** |
-| `enc` | `core/tm1_client.js` 858, 1214, 1230, 1242, 1279, 1296, 1401, 1408; `server.js` ~482, 487, 740 | `encodeURIComponent` | PATH-ENC |
-| `enc` | `core/tm1_client.js:118` | `encodeURIComponent(name)` pre-computed once | check each use site (line 122 → PATH-ENC) |
+| `esc` | `core/git-*.js` (`git-readiness:16`, `git-reconcile:13`, `git-restore:18`), `core/model-health.js:16`, `tools/tm1deploy/src/deployer.js`, `risk.js`, `core/tm1-client.js` ~1066–1610 | doubles `'` (`s.replace(/'/g, "''")`) | PATH-APOS |
+| `esc` | `core/tm1-client.js` ~570, 614, 710 | regex-escapes `.*+?^${}()|[\]\\` for `new RegExp(...)` — not TM1 | **EXCLUDE — never touch** |
+| `enc` | `core/tm1-client.js` 858, 1214, 1230, 1242, 1279, 1296, 1401, 1408; `server.js` ~482, 487, 740 | `encodeURIComponent` | PATH-ENC |
+| `enc` | `core/tm1-client.js:118` | `encodeURIComponent(name)` pre-computed once | check each use site (line 122 → PATH-ENC) |
 | `encodePath` | `server.js:2008` | PAW Assets API, deliberately double-encoded | **EXCLUDE** |
 
 **Rule for the fix pass: no search-and-replace on helper names.** Every TM1 path
@@ -55,7 +55,7 @@ Old local helpers are deleted only once nothing uses them.
 
 ---
 
-## `core/tm1_client.js` — the main surface
+## `core/tm1-client.js` — the main surface
 
 ### PATH-RAW (bare name, no encoding) — needs segmented encoder
 
@@ -269,10 +269,10 @@ risk.js/diff.js/packager.js   per-type messages → SAFE
 
 ## Core/adapters
 
-- `direct_v11.js`, `paw_native.js`, `paw-oauth2.js`: URLs are built from the admin
+- `direct-v11.js`, `paw-native.js`, `paw-oauth2.js`: URLs are built from the admin
   host / PAW base + path constants; server names go in **cookies/headers/probe
   URLs** (`/api/v0/tm1/{server}/…`) via `encodeURIComponent` in
-  `adapter_registry`/`tm1_client` URL assembly — verify the server-name segment uses
+  `adapter-registry`/`tm1-client` URL assembly — verify the server-name segment uses
   the full segment encoder, but server names are admin-config values (not user data), so
   **flagged low-risk**, not action.
 
@@ -280,7 +280,7 @@ risk.js/diff.js/packager.js   per-type messages → SAFE
 
 ## Flagged / ambiguous (checked, not guessed)
 
-1. `tm1_client.js:471…` error-log **filenames** (`ErrorLogFiles`, `Contents(...)`,
+1. `tm1-client.js:471…` error-log **filenames** (`ErrorLogFiles`, `Contents(...)`,
    `_contentsPath`) — encodeURIComponent(`'`) leaves `'`; TM1 error-log filenames embed the
    process name → likely reachable by `zz_esc_Test's #1 %`–style names. **Assume PATH-ENC→fix**
    and confirm on the lab.
@@ -295,7 +295,7 @@ risk.js/diff.js/packager.js   per-type messages → SAFE
 5. **Transport of `$filter`** (lines 138 / 1591): confirmed `''` doubling on 1591 is missing;
    both must also travel URL-encoded (`+`/space). The client/axios path already encodes
    params; any site that raw-concatenates a `?…` string must not.
-6. The `enc` helper at `tm1_client.js:245` is the odd one — it doubled `'` and encoded `%#`
+6. The `enc` helper at `tm1-client.js:245` is the odd one — it doubled `'` and encoded `%#`
    but not `& + space`. Treat as PATH-APOS (replace with `odataKey`).
 
 ---
@@ -335,13 +335,13 @@ Cleanup: prefix `zz_esc_` → delete everything at the end of each batch and con
 
 **Implemented:** `core/odata-key.js` (`odataKey` = double `'` then `encodeURIComponent`;
 `odataLit` = `''`-doubling only). Every TM1 **path** / `@odata.bind` site in the table
-above now uses `odataKey` (`core/tm1_client.js`, `server.js`, `core/git-readiness.js`,
+above now uses `odataKey` (`core/tm1-client.js`, `server.js`, `core/git-readiness.js`,
 `core/git-reconcile.js`, `core/git-restore.js`, `core/model-health.js`,
 `tools/tm1mcp/shared.js` `esc` now delegates to it, `tools/tm1mcp/tools/*`,
 `tools/tm1deploy/src/{deployer,risk}.js`). `$filter` literals use `odataLit` and travel
 URL-encoded via the adapters. Old per-file helpers (`enc`/`safe`/`e`/`esc`, `_esc`) were
-deleted once unused; the regex `esc`s in `tm1_client.js` (RegExp builders) and the HTML
-`esc` in `lens_bridge.js` are untouched (not TM1). Unit tests: `tests/odata-key.test.js`.
+deleted once unused; the regex `esc`s in `tm1-client.js` (RegExp builders) and the HTML
+`esc` in `lens-bridge.js` are untouched (not TM1). Unit tests: `tests/odata-key.test.js`.
 
 **Lab finding (TM1_Test_DEV):** TM1 itself **rejects `' ? , ; | \` in object names**
 (`TM1ObjectEx::Register`, code 54 / `ObjectNameInvalid`), so the audit's exact lab names

@@ -4,7 +4,7 @@
 // One place for the refusal decision so the route (gateReadOnly), the sessions/
 // start save gate and the tests share the exact same shape.
 
-const { isReadOnly } = require('./adapter_registry')
+const { isReadOnly } = require('./adapter-registry')
 
 const READ_ONLY_ERROR = 'This server is read-only (PROD posture) — no changes are allowed here. Switch to a writable server to edit.'
 

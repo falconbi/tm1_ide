@@ -1,7 +1,7 @@
 'use strict'
 const test = require('node:test')
 const assert = require('node:assert')
-const { parseRuleLens } = require('../core/rule_lens')
+const { parseRuleLens } = require('../core/rule-lens')
 
 const measures = new Set(['A', 'B', 'C', 'D'])
 

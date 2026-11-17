@@ -43,7 +43,7 @@ Eight steps, plain language, no icons:
 - `POST /api/sessions/close` now takes `{ id, tests }` and records the close decision.
 - `core/git-deploy.execute()` verification now returns per-assertion `results`.
 
-## Change-set records — `core/change_log.js`
+## Change-set records — `core/change-log.js`
 
 - New session columns (auto-migrated): `closed_by`, `close_tests`, `commit_ref`, `deployed_target`, `deployed_at`.
 - `closeSession(id, { user, tests })`, `setSessionCommit(id, commit)`, `markSessionDeployed(id, target)`.

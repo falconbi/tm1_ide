@@ -23,7 +23,7 @@ app.get('/api/deploy/baseline', (req, res) => {
 app.get('/api/git-readiness', async (req, res) => {
     try {
         const { scan } = require('../core/git-readiness')
-        const { listServers } = require('../core/adapter_registry')
+        const { listServers } = require('../core/adapter-registry')
         if (req.query.all === '1') {
             const results = []
             for (const s of listServers()) {

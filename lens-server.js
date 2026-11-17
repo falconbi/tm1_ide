@@ -9,7 +9,7 @@
 // user, so TM1 security decides. A Lens may only write to the cubes, run the
 // processes and annotate the cubes its SAVED copy declares (lens-writes /
 // lens-runs / lens-notes meta tags or config); every write and run is logged.
-// Working together runs over a live channel (core/lens_live.js). The
+// Working together runs over a live channel (core/lens-live.js). The
 // sign-in is the IDE's per-server login (probeAuthMethod + makeClientWithCredentials):
 // users sign in to TM1 AS THEMSELVES, one TM1 session per user, rejected
 // passwords are never retried, nothing is stored beyond the TM1 session, and the
@@ -26,13 +26,13 @@ const https = require('https')
 const crypto = require('crypto')
 const express = require('express')
 
-const { probeAuthMethod, makeClientWithCredentials } = require('./core/adapter_registry')
-const lensStore = require('./core/lens_store')
-const lensBridge = require('./core/lens_bridge')
+const { probeAuthMethod, makeClientWithCredentials } = require('./core/adapter-registry')
+const lensStore = require('./core/lens-store')
+const lensBridge = require('./core/lens-bridge')
 const sharedBridge = require('./shared/lens-bridge')
-const { logLensWrite, logLensRun, logLensNote, readLensActivity } = require('./core/lens_activity_log')
-const { createLiveHub } = require('./core/lens_live')
-const { readPrefs, savePrefs, themeCss, validateThemes } = require('./core/lens_prefs')
+const { logLensWrite, logLensRun, logLensNote, readLensActivity } = require('./core/lens-activity-log')
+const { createLiveHub } = require('./core/lens-live')
+const { readPrefs, savePrefs, themeCss, validateThemes } = require('./core/lens-prefs')
 const THEMES = require('./shared/lens-themes.json')
 validateThemes(THEMES)
 const { createIpLimiter, createFailureGuard } = require('./core/login-rate-limit')
@@ -132,7 +132,7 @@ function createSessionStore({ idleMs, beforeClose = null }) {
 const esc = s => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 
 // The Lens app's own pages follow each person's theme: the colours arrive as
-// CSS variables (core/lens_prefs.js themeCss) ahead of this.
+// CSS variables (core/lens-prefs.js themeCss) ahead of this.
 const PAGE_CSS = `
   body{font-family:system-ui,sans-serif;margin:0;background:var(--app-bg);color:var(--app-ink)}
   header{height:52px;box-sizing:border-box;background:var(--app-panel);color:var(--app-ink);padding:0 16px;display:flex;align-items:center;gap:14px;border-bottom:1px solid var(--app-rule);position:relative;z-index:10}

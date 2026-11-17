@@ -18,8 +18,8 @@ function fakeClient() {
     }
 }
 
-const arReal = require(resolve('core/adapter_registry'))
-stub('core/adapter_registry', { ...arReal, makeClient: () => fakeClient(), isReadOnly: () => fakeReadOnly })
+const arReal = require(resolve('core/adapter-registry'))
+stub('core/adapter-registry', { ...arReal, makeClient: () => fakeClient(), isReadOnly: () => fakeReadOnly })
 
 const { init } = require(resolve('core/git-setup'))
 const OPTS = { repo: 'https://github.com/x/y.git', deployment: 'DEV', gitUser: 't', token: 'x' }

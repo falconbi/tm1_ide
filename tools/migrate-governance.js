@@ -8,7 +8,7 @@
 // model-owned.
 
 require(require.resolve('dotenv', { paths: [require('path').join(__dirname, '..', '.env')] })).config({ path: require('path').join(__dirname, '..', '.env') })
-const cl = require('../core/change_log')
+const cl = require('../core/change-log')
 const store = require('../core/model-store')
 const gitApprovals = require('../core/git-approvals')
 const gitState = require('../core/git-state')

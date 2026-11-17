@@ -1,7 +1,7 @@
 'use strict'
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { declaredWriteCubes, writeCells } = require('../core/lens_bridge')
+const { declaredWriteCubes, writeCells } = require('../core/lens-bridge')
 const { createApp } = require('../lens-server')
 
 // Lens write-back: a Lens changes only the cubes it declares, only plain
@@ -116,7 +116,7 @@ test('Lens app: writes are checked against the saved Lens, run as the user, and 
 })
 
 // ── Action buttons: Lens.run → a declared process, checked parameters ─────────
-const { declaredRunProcesses, runProcess } = require('../core/lens_bridge')
+const { declaredRunProcesses, runProcess } = require('../core/lens-bridge')
 
 function procClient({ status = 'CompletedSuccessfully', message = { Process: 'Spread', Message: 'Spread 1200.' } } = {}) {
   const calls = { runs: [] }
@@ -200,7 +200,7 @@ test('Lens app: signing out runs the end-of-session processes as that user, then
 })
 
 test('a Lens may declare what it writes and runs in its config as well as its <meta> tags', () => {
-  const { lensWrites, lensRuns } = require('../core/lens_bridge')
+  const { lensWrites, lensRuns } = require('../core/lens-bridge')
   const doc = { html: '<meta name="lens-writes" content="Plan">', config: { writes: ['Income Statement', 'Plan'], runs: ['Spread'] } }
   assert.deepEqual(lensWrites(doc), ['Plan', 'Income Statement'])
   assert.deepEqual(lensRuns(doc), ['Spread'])

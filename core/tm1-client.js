@@ -2,7 +2,7 @@
 
 const { odataKey, odataLit } = require('./odata-key')
 const SAVE_DATA_ALL = require('../ti-processes/save-data-all/process.json')
-const { rebuildProcess, referencesHierarchy } = require('./hierarchy_gen')
+const { rebuildProcess, referencesHierarchy } = require('./hierarchy-gen')
 
 class TM1Client {
     constructor(server, adapter) {

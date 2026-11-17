@@ -2,7 +2,7 @@
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
 const { listPatterns, readPattern } = require('../core/lens_patterns')
-const { lensWrites } = require('../core/lens_bridge')
+const { lensWrites } = require('../core/lens-bridge')
 
 // There are no prebuilt templates: every Lens's code is its own, stored in the
 // model. The patterns are worked demonstrations to learn from.
@@ -27,7 +27,7 @@ test('saving a Lens needs its code — there is no template to fall back on', as
   store.readDoc = async () => null
   store.writeDoc = async (s, a, n, doc) => { saved[n] = doc }
   try {
-    const ls = require('../core/lens_store')
+    const ls = require('../core/lens-store')
     await assert.rejects(ls.saveLens('S', 'Empty', '', 'me', {}), /needs its code/)
     const d = await ls.saveLens('S', 'Budget', '<p>own</p>', 'me', { template: 'input-form' })
     assert.equal(saved['Budget.json'].html, '<p>own</p>')

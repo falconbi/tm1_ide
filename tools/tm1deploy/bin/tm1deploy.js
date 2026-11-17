@@ -11,7 +11,7 @@ const { diff }        = require('../src/diff')
 const { pack } = require('../src/packager')
 const { deploy }      = require('../src/deployer')
 const { analyzeRisk } = require('../src/risk')
-const cl              = require('../../../core/change_log')
+const cl              = require('../../../core/change-log')
 
 const { baselinePathFor } = require('../src/baseline-paths')
 const SERVERS_PATH  = path.resolve(__dirname, '../../../config/servers.json')

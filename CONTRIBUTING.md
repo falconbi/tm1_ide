@@ -73,7 +73,7 @@ Pick the existing pattern and keep one obvious way to do the job:
   failures through `fail(res, e)`. If a route is worth testing without Express, put the handler in
   a small factory such as `core/user_admin.js`, `core/admin_routes.js` or
   `core/session_routes.js`. See [CLAUDE.md](CLAUDE.md#architecture-constraints).
-- **A TM1 call** goes in `core/tm1_client.js`, never directly in a route. The OData URL pattern and
+- **A TM1 call** goes in `core/tm1-client.js`, never directly in a route. The OData URL pattern and
   endpoint notes are in [CLAUDE.md](CLAUDE.md#tm1-specific-conventions).
 - **A client hook** belongs in `client/src/hooks/useApi.js`; cache keys include `server` first. A
   one-off download/stream uses `client/src/lib/api.js`; no component calls `fetch` directly.

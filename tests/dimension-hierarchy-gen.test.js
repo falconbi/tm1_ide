@@ -1,8 +1,8 @@
 'use strict'
-// The TI that builds an Alternate Hierarchy from an attribute (core/hierarchy_gen.js).
+// The TI that builds an Alternate Hierarchy from an attribute (core/hierarchy-gen.js).
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { processName, rebuildProcess, referencesHierarchy } = require('../core/hierarchy_gen')
+const { processName, rebuildProcess, referencesHierarchy } = require('../core/hierarchy-gen')
 const { lintTI } = require('../core/ti-lint')
 
 test('process name: upper-case prefix kept, else the whole dimension', () => {

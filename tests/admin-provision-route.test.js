@@ -1,7 +1,7 @@
 'use strict'
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { TM1Client } = require('../core/tm1_client')
+const { TM1Client } = require('../core/tm1-client')
 const { createProvisionUserRoute } = require('../core/user_admin')
 
 function setup() {

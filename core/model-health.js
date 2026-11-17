@@ -9,7 +9,7 @@
 //                     subset named "Default" (the non-negotiable rule)
 // Checks run on demand (POST /api/model-health) — never on screen open.
 
-const { makeClient } = require('./adapter_registry')
+const { makeClient } = require('./adapter-registry')
 const assertions = require('./assertions')
 const { scan: gitScan } = require('./git-readiness')
 const { odataKey } = require('./odata-key')

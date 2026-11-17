@@ -3,7 +3,7 @@ const { test } = require('node:test')
 const assert = require('node:assert/strict')
 const http = require('http')
 const { createApp } = require('../lens-server')
-const { visibleTo } = require('../core/lens_store')
+const { visibleTo } = require('../core/lens-store')
 
 const DOCS = {
   Public:  { name: 'Public', status: 'published', toolkitVersion: 1, html: '<p>public</p>', config: {} },

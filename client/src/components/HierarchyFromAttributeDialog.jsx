@@ -1,5 +1,5 @@
 // "+ Hierarchy → From an attribute": an Alternate Hierarchy generated from an attribute, kept in
-// step by a process the IDE writes (core/hierarchy_gen.js) — never built or edited by hand.
+// step by a process the IDE writes (core/hierarchy-gen.js) — never built or edited by hand.
 import { useState, useMemo } from 'react'
 import { toast } from 'sonner'
 import { X, Loader2 } from 'lucide-react'

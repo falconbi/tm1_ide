@@ -24,10 +24,10 @@ function withServers(cfg, fn, files = {}) {
     }
     fs.writeFileSync = (p, data, ...rest) => (p === `${MODES_PATH}.tmp` ? void (files.tmp = data) : real.writeFileSync(p, data, ...rest))
     fs.renameSync = (a, b, ...rest) => (a === `${MODES_PATH}.tmp` && b === MODES_PATH ? void (files.modes = files.tmp) : real.renameSync(a, b, ...rest))
-    const fresh = ['../core/adapter_registry', '../core/ide_modes'].map(m => require.resolve(m))
+    const fresh = ['../core/adapter-registry', '../core/ide-modes'].map(m => require.resolve(m))
     try {
         fresh.forEach(m => delete require.cache[m])
-        return fn(require('../core/adapter_registry'), require('../core/ide_modes'))
+        return fn(require('../core/adapter-registry'), require('../core/ide-modes'))
     } finally {
         Object.assign(fs, real)
         fresh.forEach(m => delete require.cache[m])

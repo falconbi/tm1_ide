@@ -4,7 +4,7 @@ const assert = require('node:assert/strict')
 const path = require('path')
 
 const resolve = rel => require.resolve(path.join(__dirname, '..', rel))
-const arReal = require(resolve('core/adapter_registry'))
+const arReal = require(resolve('core/adapter-registry'))
 const fake = {
     async post(route) {
         if (route === 'GitStatus') return { URL: 'https://repo', Remote: { Branches: [] }, DeployedCommit: { ID: 'C1' } }
@@ -12,8 +12,8 @@ const fake = {
         return {}
     },
 }
-require.cache[resolve('core/adapter_registry')] = {
-    id: resolve('core/adapter_registry'), filename: resolve('core/adapter_registry'), loaded: true,
+require.cache[resolve('core/adapter-registry')] = {
+    id: resolve('core/adapter-registry'), filename: resolve('core/adapter-registry'), loaded: true,
     exports: { ...arReal, makeClient: () => fake },
 }
 let held = false

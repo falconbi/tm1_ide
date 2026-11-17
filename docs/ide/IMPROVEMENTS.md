@@ -11,7 +11,7 @@ effort estimate, and the reasoning.
 ### 1.1 Hard-gate browser write routes on an active session
 
 - **Why:** Biggest audit gap. Browser edits made with no active session log with
-  `session_id = null` (`hasSession: false`, `core/change_log.js:263`), so they have no
+  `session_id = null` (`hasSession: false`, `core/change-log.js:263`), so they have no
   user attribution, no session grouping, and no rollback linkage. Only the MCP path
   refuses writes without an open change set (`tools/tm1mcp/shared.js:79`).
 - **Fix:** Apply the same gate to the ~10 mutating routes in `server.js` — refuse (or
@@ -23,12 +23,12 @@ effort estimate, and the reasoning.
 - **Why:** Per-edit attribution currently only exists via `JOIN sessions`. Unsessioned
   edits are anonymous forever.
 - **Fix:** Schema migration (`ALTER TABLE log_entries ADD COLUMN user TEXT`) + write it in
-  `writeLog` (`core/change_log.js:231`).
+  `writeLog` (`core/change-log.js:231`).
 - **Effort:** Small.
 
 ### 1.3 Surface the 200-row `getObjectHistory` cap
 
-- **Why:** `getObjectHistory` (`core/change_log.js:210`) silently truncates at 200
+- **Why:** `getObjectHistory` (`core/change-log.js:210`) silently truncates at 200
   entries — history is hidden without the user knowing.
 - **Fix:** Return `truncated: true` and show it in `ObjectHistoryPanel.jsx`.
 - **Effort:** Trivial.
@@ -58,7 +58,7 @@ effort estimate, and the reasoning.
 
 ### 2.3 Leverage `before_state` in the diff
 
-- **Why:** `before_state` is captured (change_log.js:229) but never read by `diff.js`. It
+- **Why:** `before_state` is captured (change-log.js:229) but never read by `diff.js`. It
   would power "this session changed X: A → B" per object, independent of the baseline.
 - **Effort:** Small.
 
@@ -69,7 +69,7 @@ effort estimate, and the reasoning.
 ### 3.1 Two-baseline / release-window diff
 
 - **Why:** "What changed between baseline N and N+1" is computable *today* — the building
-  blocks exist (`getEntriesSinceId`, `core/change_log.js:182`, and the baseline's
+  blocks exist (`getEntriesSinceId`, `core/change-log.js:182`, and the baseline's
   `last_entry_id`) — it is just not wired into any command or UI.
 - **Effort:** Small–medium.
 

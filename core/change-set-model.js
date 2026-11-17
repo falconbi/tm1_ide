@@ -30,7 +30,7 @@ function buildClosedRecord(session, { closedBy, tests, audit } = {}) {
 // The light audit for a change set (from the open local log). No before/after.
 function lightAudit(sessionId) {
     try {
-        return require('./change_log').getSessionLog(sessionId).map(e => ({
+        return require('./change-log').getSessionLog(sessionId).map(e => ({
             action: e.action, object_type: e.object_type, object_name: e.object_name,
             detail: e.detail ?? null, user: e.user ?? null, timestamp: e.timestamp,
         }))

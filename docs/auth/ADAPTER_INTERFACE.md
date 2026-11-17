@@ -177,7 +177,7 @@ Step 3 — Refresh:
 new TM1Client(serverName, ideToken)
 ```
 
-- Resolves PAW session from `paw_connect.js` using `ideToken`
+- Resolves PAW session from `paw-connect.js` using `ideToken`
 - Constructs URL as `{PAW_HOST}/api/v0/tm1/{server}/api/v1/{path}`
 
 ### New constructor
@@ -215,7 +215,7 @@ adapterRegistry
 - Maintains a `Map<serverName, Map<ideUser, AdapterInstance>>`
 - On first access: reads server config, creates adapter, calls `authenticate()`
 - Subsequent calls: returns cached adapter instance
-- Uses the same per-user session pattern as current `paw_connect.js`
+- Uses the same per-user session pattern as current `paw-connect.js`
 
 ---
 
@@ -233,7 +233,7 @@ adapterRegistry
 
 1. Drop `paw-native` adapter from the codebase
 2. Remove `PAW_HOST`/`PAW_USERNAME`/`PAW_PASSWORD` from `.env`
-3. Simplify `paw_connect.js` to `null` (no-op)
+3. Simplify `paw-connect.js` to `null` (no-op)
 4. All servers connect direct
 
 ### Phase 3 — Drop single-adapter backward compat
@@ -247,11 +247,11 @@ adapterRegistry
 
 | File | Change |
 |---|---|
-| `core/tm1_client.js` | Accept adapter instead of ideToken. Delegate `get`/`post`/`patch`/`delete`/`_runTI` to adapter. |
-| `core/adapter_registry.js` | **New.** Caches adapter instances per server+user. |  
-| `core/adapters/paw_native.js` | **New.** Extracted from existing `paw_connect.js` logic, wrapped in adapter interface. |
-| `core/adapters/direct_v11.js` | **New.** Basic auth, no session. |
-| `core/adapters/paw_oauth2.js` | **New.** PAW OAuth2 client credentials → Bearer token. URL prefix `/api/v1/tm1/` (not v0). |
+| `core/tm1-client.js` | Accept adapter instead of ideToken. Delegate `get`/`post`/`patch`/`delete`/`_runTI` to adapter. |
+| `core/adapter-registry.js` | **New.** Caches adapter instances per server+user. |  
+| `core/adapters/paw-native.js` | **New.** Extracted from existing `paw-connect.js` logic, wrapped in adapter interface. |
+| `core/adapters/direct-v11.js` | **New.** Basic auth, no session. |
+| `core/adapters/paw-oauth2.js` | **New.** PAW OAuth2 client credentials → Bearer token. URL prefix `/api/v1/tm1/` (not v0). |
 | `server.js` | All `new TM1Client(server, req.ideToken)` → `new TM1Client(server, adapter)`. User management routes no longer special-case PAW_LOGIN_SERVER. |
 | `config/servers.json` | Schema v2 with `adminHosts` + `connections` + per-server adapter config. |
 | `.env` | Remove `PAW_HOST`/`PAW_USERNAME`/`PAW_PASSWORD`/`PAW_AUTH_MODE` (or keep for paw-native backward compat). |

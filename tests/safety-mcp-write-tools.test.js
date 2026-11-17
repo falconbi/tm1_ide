@@ -23,10 +23,10 @@ stub('tools/tm1deploy/src/diff', {
 stub('tools/tm1deploy/src/packager', { async pack(server, entries, name) { calls.push(['pack', name, entries.length]); return { packaged: entries.length, skipped: 0, outputDir: 'packages/x', manifest: { objects: [] } } } })
 
 // Lens store / bridge / Viewfinder: the Lens tools hold these modules, so swap the functions.
-const lensStore = require('../core/lens_store')
+const lensStore = require('../core/lens-store')
 lensStore.saveLens = async (server, name) => { calls.push(['saveLens', name]); return { name, version: 1 } }
 lensStore.deleteLens = async (server, name) => { calls.push(['deleteLens', name]) }
-require('../core/lens_bridge').validateLens = async () => []
+require('../core/lens-bridge').validateLens = async () => []
 
 const { setup } = require('./_mcp-harness')
 

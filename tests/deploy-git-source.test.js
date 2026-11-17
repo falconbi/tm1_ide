@@ -13,14 +13,14 @@ const stub = (rel, exportsObj) => {
 const realBsq = require('better-sqlite3')
 const bsqPath = require.resolve('better-sqlite3')
 require.cache[bsqPath] = { id: bsqPath, filename: bsqPath, loaded: true, exports: function () { return realBsq(':memory:') } }
-const cl = require(resolve('core/change_log'))
+const cl = require(resolve('core/change-log'))
 
 let approval = null
 let reconcileResult = {}
 let assertionsResult = { failed: [], results: [], total: 0, passed: 0 }
 
-const arReal = require(resolve('core/adapter_registry'))
-stub('core/adapter_registry', {
+const arReal = require(resolve('core/adapter-registry'))
+stub('core/adapter-registry', {
     ...arReal,
     makeClient: () => ({
         async post(route) {

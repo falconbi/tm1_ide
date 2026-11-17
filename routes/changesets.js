@@ -199,7 +199,7 @@ app.post('/api/assertions/run', async (req, res) => {
 
 app.get('/api/assertions/history', async (req, res) => {
     try {
-        const { makeClient } = require('../core/adapter_registry')
+        const { makeClient } = require('../core/adapter-registry')
         const { recentRuns } = require('../core/test-results')
         if (!req.query.server) return res.status(400).json({ error: 'server required' })
         const client = makeClient(req.query.server, req.ideToken)

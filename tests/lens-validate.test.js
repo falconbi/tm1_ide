@@ -1,7 +1,7 @@
 'use strict'
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { validateLens } = require('../core/lens_bridge')
+const { validateLens } = require('../core/lens-bridge')
 
 // The save-time check test-runs every literal MDX it finds in a Lens. A query
 // built in pieces at runtime ('SELECT … {' + member + …) must not be run as a

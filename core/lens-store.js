@@ -52,7 +52,7 @@ async function listLenses(server, { ideToken, client } = {}) {
     return out.sort((a, b) => String(a.name).localeCompare(String(b.name)))
 }
 
-// Every Lens with the processes it may run — `runsOf(doc)` is lens_bridge.lensRuns (passed in so
+// Every Lens with the processes it may run — `runsOf(doc)` is lens-bridge.lensRuns (passed in so
 // the store stays free of Lens logic). Used to mark the processes behind Lens buttons.
 async function listLensRuns(server, runsOf, { ideToken, client } = {}) {
     const names = (await store.listDocs(server, AREA, { ideToken, client })).filter(n => n.endsWith('.json'))

@@ -18,7 +18,7 @@ Users open it in a browser, connect to a TM1 server, and edit rules, processes, 
 |-------|------|
 | Backend | Node.js, Express |
 | TM1 API | IBM OData REST API v1, proxied through PAW |
-| Auth | PAW session cookie + CSRF header, managed by `core/paw_connect.js` |
+| Auth | PAW session cookie + CSRF header, managed by `core/paw-connect.js` |
 | Frontend | React 19, Vite, TanStack Query, Zustand, Tailwind v4, shadcn/ui |
 | Editor | Monaco Editor (`@monaco-editor/react`) |
 | AI | Anthropic SDK (`@anthropic-ai/sdk`) |
@@ -32,14 +32,14 @@ Users open it in a browser, connect to a TM1 server, and edit rules, processes, 
 server.js                     # IDE bootstrap: middleware, route registration, SPA fallback
 routes/                       # One file per noun; each exports register(app, deps)
 core/
-  tm1_client.js               # TM1 REST client (all API calls go through here)
-  paw_connect.js              # PAW session auth + CSRF caching
-  adapter_registry.js         # Pluggable PAW connection adapter registry
+  tm1-client.js               # TM1 REST client (all API calls go through here)
+  paw-connect.js              # PAW session auth + CSRF caching
+  adapter-registry.js         # Pluggable PAW connection adapter registry
   adapters/
-    direct_v11.js             # Direct PAW V11 native auth adapter
-    paw_native.js             # PAW-native session adapter
-    paw_oauth2.js             # Authentik/OAuth2 adapter (PAW V12)
-  sql_client.js               # External SQL connections (MSSQL/PG/MySQL/SQLite)
+    direct-v11.js             # Direct PAW V11 native auth adapter
+    paw-native.js             # PAW-native session adapter
+    paw-oauth2.js             # Authentik/OAuth2 adapter (PAW V12)
+  sql-client.js               # External SQL connections (MSSQL/PG/MySQL/SQLite)
 shared/lens-patterns/         # Worked Lens patterns — read-only demonstrations, never copied into a model
 shared/pivot/                 # The shared pivot — one slice-and-dice grid for the IDE View editor and Lenses (docs/lenses/PIVOT_PLAN.md)
   tree.js / mdx.js / cellset.js / format.js / grid.js
@@ -147,7 +147,7 @@ cd client && npm run dev   # terminal 2 (Vite on :5173)
 
 ## Architecture Constraints
 
-- **All TM1 calls go through `TM1Client`** — never call the TM1 REST API directly from a route. Add a method to `tm1_client.js` and call it from the route.
+- **All TM1 calls go through `TM1Client`** — never call the TM1 REST API directly from a route. Add a method to `tm1-client.js` and call it from the route.
 - **API routes live in `routes/<noun>.js`** — each exports `register(app, deps)` and is called from `server.js` in a fixed order. Shared HTTP helpers (`fail`, `gateReadOnly`, `gateWrite`, `requireTm1Admin`, `scanIdentity`) live in `routes/_http.js`. `core/` never sees `req`/`res`.
 - **Routes report failure with `fail(res, e)`** — the adapters normalise TM1 errors (`core/tm1-error.js`), so `e.message` is TM1's own text and `e.status` is the HTTP status. The only routes that return a result object containing `error` with HTTP 200 are the command-result routes `/api/period-builder/run` and `/api/deploy/git/prepare|execute|review`.
 - **TM1 OData URL pattern**: `${PAW_HOST}/api/v0/tm1/{server}/api/v1/{path}`
@@ -199,7 +199,7 @@ four independently hand-typed catalogs (`RULES_CATALOG`/`TI_CATALOG` in
 hand-typed lists in `core/rules-lint.js`, `core/ti-lint.js`,
 `ti-validator.js`'s `isBuiltInTM1Function`, `ti-interpreter.js`'s
 `SIMULATED_FNS`, `tm1-snippets.js`, `formatters/naming.js`, and two regex
-scanners in `core/tm1_client.js` — 17 hand-maintained lists across 14 files in
+scanners in `core/tm1-client.js` — 17 hand-maintained lists across 14 files in
 total). They drifted: two of them were even wired in as **competing, live
 Monaco completion providers on the same editor** at once. Several contained
 fabricated TM1 function names (`ETYPE`, `ElementConsolidationSet`,
@@ -302,7 +302,7 @@ Data and saves go through hooks in `hooks/useApi.js`. A genuine one-off command 
 1. Create `client/src/components/MyEditor.jsx`
 2. Add to the dispatcher in `EditorPane.jsx` or `App.jsx`
 3. Add a tab type to `openTab` calls in `Explorer.jsx`
-4. Add API routes to the matching `routes/<noun>.js` (and methods to `tm1_client.js` if needed)
+4. Add API routes to the matching `routes/<noun>.js` (and methods to `tm1-client.js` if needed)
 5. Add hooks to `hooks/useApi.js`
 6. Add it to `getRevealTarget` in `client/src/lib/reveal-target.js` if it has a "show in tree" target
 
@@ -326,7 +326,7 @@ Data and saves go through hooks in `hooks/useApi.js`. A genuine one-off command 
 - Autocomplete: cube name, dimension name, element context in Rules (DB, ATTRS) and TI (CellPutN, DimensionElement*, etc.)
 - Tab system: drag-to-reorder within group + right-click context menu (Split Right, Split Down, Move to other pane, Close others, Close to right, Close) + arrow button on hover to send tab to other pane
 - Split panes: horizontal (side-by-side) and vertical (stacked) layouts — toggle without closing panes — direction persisted in forge.json
-- Multi-user login: per-user PAW sessions, pluggable adapter registry (direct_v11, paw-native, paw-oauth2)
+- Multi-user login: per-user PAW sessions, pluggable adapter registry (direct-v11, paw-native, paw-oauth2)
 - Deploy pipeline: Change Set tracking → diff vs Prod baseline → package → risk check → deploy; browser UI + CLI
 - Deploy History: archive log of past deployments
 
@@ -334,7 +334,7 @@ Data and saves go through hooks in `hooks/useApi.js`. A genuine one-off command 
 
 ## IBM TM1 REST API Reference
 
-The Postman collection at `docs/ide/Planning Analytics.postman_collection.json` is the authoritative endpoint reference. The `TM1Client` in `core/tm1_client.js` covers all commonly used endpoints. Key endpoint groups: Dimensions, Cubes, Processes, Chores, Views/MDX, Subsets, Transactions, Jobs, ErrorLogFiles, Metrics, Configuration.
+The Postman collection at `docs/ide/Planning Analytics.postman_collection.json` is the authoritative endpoint reference. The `TM1Client` in `core/tm1-client.js` covers all commonly used endpoints. Key endpoint groups: Dimensions, Cubes, Processes, Chores, Views/MDX, Subsets, Transactions, Jobs, ErrorLogFiles, Metrics, Configuration.
 
 ---
 
@@ -367,12 +367,12 @@ Three interrelated bugs caused saved native view member selections to revert on 
 
 ### 1. TM1 API returns `Subset.Name=""` not `null`
 When `$expand=Subset` is used on a placement collection (e.g. `Views('name')/Rows?$expand=Subset`), TM1 returns `{ Subset: { Name: "", Expression: "...", ... } }` for inline subsets. The `Name` is an **empty string** `""`, not `null`. All checks using `p.Subset?.Name == null` fail — must use `!p.Subset?.Name` (falsy check) instead.
-- **Fix**: `core/tm1_client.js` `getSubset()` — changed `p.Subset?.Name == null` to `!p.Subset?.Name`
+- **Fix**: `core/tm1-client.js` `getSubset()` — changed `p.Subset?.Name == null` to `!p.Subset?.Name`
 - **Also fixed**: `server.js` `extractAxis()` — same pattern
 
 ### 2. TM1SubsetAll() needs `memberSet: 'all'` not `members: null`
 When a dimension is set to "All" members, TM1 saves the Expression as `TM1SubsetAll([Dim].[Hier])`. The `_extractMembersFromExpression` correctly returns `null` for this (doesn't start with `{`), but the display logic in `DimPill` checks `memberSet` before `members`. Without `memberSet: 'all'`, the label shows "Members" instead of "All".
-- **Fix**: `core/tm1_client.js` `getSubset()` — detect `/^TM1SubsetAll\(/i` and set `memberSet: 'all'`
+- **Fix**: `core/tm1-client.js` `getSubset()` — detect `/^TM1SubsetAll\(/i` and set `memberSet: 'all'`
 - **Fix**: `server.js` `extractAxis()` — same detection
 - **Fix**: `server.js` `dimInfo` and `nativeConfig` construction — pass `memberSet` through
 - **Fix**: `client/src/components/ViewEditor.jsx` `make()` — accept `memberSet` parameter
@@ -404,7 +404,7 @@ A view placement bound to a **named subset** never carries its parent dimension 
 
 This silently corrupted anything that stored the result: a **baseline seeded** while a view had such an axis recorded `dim: null` forever, and every later drift check compared that `null` against a freshly-read (and correctly resolved, if the read happened to hit a different fallback path) dimension — a permanent false-positive drift ("Rows dimensions changed: `[]` → `[RealDim]`") with nothing actually different on the target. This is the same underlying defect that once cost `Cost by Cost Centre` its column subset during packaging.
 
-Fixed at the source: `getViewWithSubsets` (`core/tm1_client.js`) now resolves any axis with a `subset` but no `dimension` itself — scan the cube's dimensions for one that owns a subset by that name (`getSubset(dim, name)`), cached per subset name within the call. Every caller (baseline seeding, drift check, packager, MCP `get_view`, the IDE's `/api/view/axes`) gets the fix for free; `packager.js`'s old per-call backfill (the same algorithm, done locally) was removed as redundant.
+Fixed at the source: `getViewWithSubsets` (`core/tm1-client.js`) now resolves any axis with a `subset` but no `dimension` itself — scan the cube's dimensions for one that owns a subset by that name (`getSubset(dim, name)`), cached per subset name within the call. Every caller (baseline seeding, drift check, packager, MCP `get_view`, the IDE's `/api/view/axes`) gets the fix for free; `packager.js`'s old per-call backfill (the same algorithm, done locally) was removed as redundant.
 
 **A baseline seeded before this fix still has the bad `dim: null` recorded** and will keep reporting false drift on that view until re-seeded — this is exactly the "baseline is out of sync, force it back" recovery case the Deploy Center's Baselines view exists for.
 

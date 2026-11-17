@@ -5,7 +5,7 @@
 // one, otherwise "HTTP <status> <statusText>". The response, status and TM1 flag
 // stay on the error so routes can map the status without parsing a message.
 //
-// Axios (paw_native, paw_oauth2) and the direct adapter's _settle all funnel
+// Axios (paw-native, paw-oauth2) and the direct adapter's _settle all funnel
 // through here, so "Request failed with status code 400" never reaches a user.
 
 function normalizeError(err) {
