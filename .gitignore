@@ -19,16 +19,6 @@ client/dist/
 dist/
 *.local
 
-# ── Python ──
-venv/
-__pycache__/
-*.py[cod]
-*$py.class
-*.egg-info/
-.pytest_cache/
-.mypy_cache/
-.ruff_cache/
-
 # ── Editor / OS ──
 .vscode/
 .idea/
@@ -62,10 +52,6 @@ temp/
 
 # ── Git ──
 !.gitkeep
-
-# ── Bedrock / TI ──
-/Bedrock
-tm1_deploy/
 
 # Local secrets / backups — never commit
 config/certs/
