@@ -1,4 +1,3 @@
-import { request } from '@/lib/api'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ReactFlow, Background, Controls,
@@ -7,23 +6,21 @@ import {
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import { useStore } from '../store'
-import { useLensProcessUsage } from '@/hooks/useApi'
 import {
   Network, ChevronRight, ChevronDown, Search, X, RefreshCw,
   Filter, GitBranch, BookOpen, Milestone,
   Eye, Play, Clapperboard, PanelLeftClose, PanelLeftOpen, Maximize2, ArrowLeft, RotateCw,
 } from 'lucide-react'
-import { toast } from 'sonner'
 import { loadSettings } from '@/lib/formatters/settings.js'
-import { buildRunSequence, buildPhaseSequence } from '@/lib/run-sequence'
-import { pushStep, backTo, previousStep } from '@/lib/cubemap-trail'
-import { getCubemapSession, saveCubemapSession } from '@/lib/cubemap-session'
 import RunbookDialog from '@/components/RunbookDialog'
 import { rulesTabId, processTabId, dimensionTabId, viewTabId } from '@/lib/tab-ids'
-import { NODE_W, NODE_H, applyDagreLayout } from '@/lib/cubemap-editor/layout.js'
-import { MAX_FOCUS_NODES, buildReverseMap, getReachable } from '@/lib/cubemap-editor/graph.js'
-import { prefixOf, applyLensActions, processRoots, foldProcesses, narrowToDim } from '@/lib/cubemap-editor/filters.js'
-import { computePrefixGroups, applyGrouping } from '@/lib/cubemap-editor/grouping.js'
+import { FIT_MAX_ZOOM, FIT_MIN_ZOOM_FULL, applyDagreLayout } from '@/lib/cubemap-editor/layout.js'
+import { prefixOf, applyLensActions, processRoots, foldProcesses } from '@/lib/cubemap-editor/filters.js'
+import { applyGrouping } from '@/lib/cubemap-editor/grouping.js'
+import useCubemapModel from './cubemap-editor/hooks/useCubemapModel'
+import useCubemapFilters from './cubemap-editor/hooks/useCubemapFilters'
+import useCubemapSelection from './cubemap-editor/hooks/useCubemapSelection'
+import useCubemapRun from './cubemap-editor/hooks/useCubemapRun'
 import CubeNode from './cubemap-editor/graph/CubeNode'
 import GroupNode from './cubemap-editor/graph/GroupNode'
 import ProcessNode from './cubemap-editor/graph/ProcessNode'
@@ -35,12 +32,6 @@ import DetailPanel from './cubemap-editor/DetailPanel'
 import ShowBar from './cubemap-editor/ShowBar'
 import Toggle from './cubemap-editor/Toggle'
 import reachText from './cubemap-editor/reachText'
-
-// ── Layout ────────────────────────────────────────────────────────────────────
-const FIT_MAX_ZOOM = 1.1
-const FIT_MIN_ZOOM_FULL = 0.05
-const NO_LENS_USAGE = Object.freeze({})
-const TRACE_KIND_DEFAULTS = { rule: true, feeder: true, read: true, write: true, dimwrite: true, call: true, dimuse: true }
 
 // Processes run from Lens buttons (each Lens declares the processes it may run) get a Lens badge.
 // With Lens actions switched off they leave the map, with any helper that only they run, so the
@@ -60,32 +51,11 @@ function CubeMapInner({ tab }) {
   const dark = useStore(s => s.dark)
   const themeVersion = useStore(s => s.themeVersion)
   const srv  = tab?.server ?? storeServer
-  const token = typeof localStorage !== 'undefined' ? (localStorage.getItem('tm1-token') ?? '') : ''
-
   // Configurable cube grouping key (regex) — reloads whenever settings are saved.
   const groupRegex = useMemo(() => {
     void themeVersion
     return loadSettings().cubeMap?.groupRegex ?? ''
   }, [themeVersion])
-
-  const [cubeDataAll,    setCubeData]       = useState(null)
-  const [processCallers, setProcessCallers] = useState({})
-  const [processDataAll, setProcessData]    = useState({})
-  const [dimDataAll,     setDimData]        = useState({})
-  const [chores,         setChores]         = useState([])
-  const [loading,        setLoading]        = useState(false)
-  const [error,          setError]          = useState(null)
-  const [modelReady,     setModelReady]     = useState(false)
-
-  // Prefix scope: WFP / LAB / SYS… — hides the other model instead of just clustering it.
-  const prefixes = useMemo(() => [...new Set([
-    ...Object.keys(cubeDataAll ?? {}), ...Object.keys(processDataAll ?? {}),
-  ].map(prefixOf).filter(Boolean))].sort(), [cubeDataAll, processDataAll])
-  // NO_LENS_USAGE, not `= {}`: a fresh {} on every render would re-run the map build forever.
-  const { data: lensUsage = NO_LENS_USAGE } = useLensProcessUsage(srv)
-  const procRoots = useMemo(() => processRoots(processDataAll ?? {}, processCallers ?? {}), [processDataAll, processCallers])
-  const [nodes, setNodes, onNodesChange] = useNodesState([])
-  const [edges, setEdges, onEdgesChange] = useEdgesState([])
 
   // Per-server view prefs (layout, toggles, trace depth/kinds) persisted to localStorage.
   const prefsKey = `tm1-cubemap-prefs:${srv}`
@@ -93,28 +63,68 @@ function CubeMapInner({ tab }) {
     try { return JSON.parse(localStorage.getItem(prefsKey)) ?? {} } catch { return {} }
   }, [prefsKey])
 
-  const [selectedCube,   setSelectedCube]   = useState(null)
-  const [moduleFocus,    setModuleFocus]    = useState(null)
-  const [trail,          setTrail]          = useState([])   // focus path since the full map — see Trail below
-  const [focused,        setFocused]        = useState(false)
-  const [traceKinds,     setTraceKinds]     = useState({ ...TRACE_KIND_DEFAULTS, ...(prefs.traceKinds ?? {}) })
-  const [search,         setSearch]         = useState('')
-  const [showFeeders,    setShowFeeders]     = useState(prefs.showFeeders ?? true)
-  const [showCalc,       setShowCalc]        = useState(prefs.showCalc ?? true)
+  const canvasRef = useRef(null)
+
+  const model = useCubemapModel({ srv })
+  const filters = useCubemapFilters({
+    cubeDataAll: model.cubeDataAll,
+    processDataAll: model.processDataAll,
+    dimDataAll: model.dimDataAll,
+    prefs,
+  })
+  const selection = useCubemapSelection({
+    cubeData: filters.cubeData,
+    processData: filters.processData,
+    dimData: filters.dimData,
+    processCallers: model.processCallers,
+    groupRegex, prefs, srv, openTab,
+    dimFilter: filters.dimFilter, setDimFilter: filters.setDimFilter,
+    traceKinds: filters.traceKinds, traceDepth: filters.traceDepth,
+  })
+  const run = useCubemapRun({
+    srv, tab, patchTab, canvasRef,
+    modelReady: model.modelReady,
+    cubeData: filters.cubeData,
+    processData: filters.processData,
+    dimData: filters.dimData,
+    chores: model.chores,
+    processCallers: model.processCallers,
+    selection, filters,
+  })
+
+  const {
+    processCallers, processDataAll, chores,
+    loading, error, modelReady, fetchModel, lensUsage,
+  } = model
+  const {
+    search, setSearch, showFeeders, setShowFeeders, showCalc, setShowCalc,
+    dimFilter, setDimFilter, traceDepth, setTraceDepth, traceKinds, setTraceKinds,
+    dimSpotlight, setDimSpotlight, showProcesses, setShowProcesses, allTI, setAllTI,
+    showDims, setShowDims, showLensActions, setShowLensActions, scope, setScope,
+    prefixes, cubeData, processData, dimData, filteredCubes, spotQ, spotlitCount,
+  } = filters
+  const {
+    selectedCube, setSelectedCube, moduleFocus, setModuleFocus, trail, setTrail,
+    focused, setFocused, phaseFocus, setPhaseFocus, dimmedIds, setDimmedIds,
+    showLegend, setShowLegend, sidebarOpen, setSidebarOpen, advancedOpen, setAdvancedOpen,
+    reverseMap, selectedType, modules, focusSeeds, reachableSet, stepCounts,
+    reachBreakdown, transitiveCount, reachableCapped, focusLabel,
+    focusModule, onNodeClick, onNodeDoubleClick, onPaneClick,
+    exitFocus, navigateTo, goToTrail, trailBack, handleFilterDim,
+  } = selection
+  const {
+    showBar, processInfo, stepInfoOpen, setStepInfoOpen,
+    runbookOpen, setRunbookOpen, runEntry, runSeq,
+    runScope, runIdx, setRunIdx, playing, setPlaying,
+    speed, setSpeed, follow, setFollow, runStep, runEntries, runHighlight,
+    mapMode, setMapMode, startShow, stopShow, fitToScreen, saveSession, showRunningRef,
+  } = run
+
+  const procRoots = useMemo(() => processRoots(processDataAll ?? {}, processCallers ?? {}), [processDataAll, processCallers])
+  const [nodes, setNodes, onNodesChange] = useNodesState([])
+  const [edges, setEdges, onEdgesChange] = useEdgesState([])
   const [layout,         setLayout]         = useState(prefs.layout ?? 'LR')
-  const [dimmedIds,      setDimmedIds]      = useState(new Set())
-  const [dimFilter,      setDimFilter]      = useState(null)
-  const [traceDepth,     setTraceDepth]     = useState(prefs.traceDepth ?? 1)
-  const [showLegend,     setShowLegend]     = useState(prefs.showLegend ?? true)
   const [showClusters,   setShowClusters]   = useState(prefs.showClusters ?? false)
-  const [dimSpotlight,   setDimSpotlight]   = useState('')
-  const [showProcesses,  setShowProcesses]  = useState(prefs.showProcesses ?? true)
-  const [allTI,          setAllTI]          = useState(prefs.allTI ?? false)
-  const [showDims,       setShowDims]       = useState(prefs.showDims ?? true)
-  const [showLensActions, setShowLensActions] = useState(prefs.showLensActions ?? true)
-  const [scope,          setScope]          = useState(prefs.scope ?? '')
-  const [sidebarOpen,    setSidebarOpen]    = useState(prefs.sidebarOpen ?? true)
-  const [advancedOpen,   setAdvancedOpen]   = useState(false)
   const [expandedFolds,  setExpandedFolds]  = useState(() => new Set())   // process chains opened out on the map
   const [fitTick,        setFitTick]        = useState(0)   // bumped on every map rebuild; the fit effect watches it
   const toggleFold = useCallback(name => setExpandedFolds(prev => {
@@ -122,223 +132,8 @@ function CubeMapInner({ tab }) {
     if (next.has(name)) next.delete(name); else next.add(name)
     return next
   }), [])
-  const cubeData = useMemo(() => (!cubeDataAll ? cubeDataAll : !scope ? cubeDataAll : Object.fromEntries(Object.entries(cubeDataAll).filter(([n]) => prefixOf(n) === scope))), [cubeDataAll, scope])
-  const processData = useMemo(() => (!scope ? processDataAll : Object.fromEntries(Object.entries(processDataAll).filter(([n]) => prefixOf(n) === scope))), [processDataAll, scope])
-  const dimData = useMemo(() => (!scope ? dimDataAll : Object.fromEntries(Object.entries(dimDataAll).filter(([n]) => prefixOf(n) === scope))), [dimDataAll, scope])
 
-  // Show playback
-  const [showBar,        setShowBar]        = useState(false)
-  const [processInfo,    setProcessInfo]    = useState({})
-  const [stepInfoOpen,   setStepInfoOpen]   = useState(false)
-  const [runbookOpen,    setRunbookOpen]    = useState(false)
-  const [phaseFocus,     setPhaseFocus]     = useState(null)
-  const [runEntry,       setRunEntry]       = useState('')    // 'process:<name>' | 'chore:<name>'
-  const [runSeq,         setRunSeq]         = useState(null)
-  const [runScope,       setRunScope]       = useState(null)
-  const [runIdx,         setRunIdx]         = useState(0)
-  const [playing,        setPlaying]        = useState(false)
-  const [speed,          setSpeed]          = useState(1)
-  const [follow,         setFollow]         = useState(false)
-  const canvasRef = useRef(null)
-  const playbackReturnRef = useRef(null)
-
-  const { fitView, setCenter, getNode, getViewport, setViewport } = useReactFlow()
-
-  // ── Fetch ─────────────────────────────────────────────────────────────────────
-  // Request counter: a slow older server switch must not overwrite a newer map.
-  const modelRequestRef = useRef(0)
-  const fetchModel = useCallback(async () => {
-    const requestId = ++modelRequestRef.current
-    setLoading(true); setError(null); setModelReady(false)
-    try {
-      const r = await request(`/api/cubemap/model?server=${encodeURIComponent(srv)}`, {
-        headers: { 'x-ide-token': token },
-      })
-      const d = await r.json()
-      if (d.error) throw new Error(d.error)
-      if (requestId !== modelRequestRef.current) return
-      setCubeData(d.cubes)
-      setProcessCallers(d.processCallers ?? {})
-      setProcessData(d.processes ?? {})
-      setDimData(d.dims ?? {})
-      setChores(d.chores ?? [])
-      setModelReady(true)
-    } catch (e) {
-      if (requestId !== modelRequestRef.current) return
-      setError(e.message)
-      toast.error(`CubeMap: ${e.message}`)
-    } finally {
-      if (requestId === modelRequestRef.current) setLoading(false)
-    }
-  }, [srv, token])
-
-  useEffect(() => { fetchModel() }, [fetchModel])
-  useEffect(() => () => { modelRequestRef.current++ }, [])
-
-  // Process summary/header/parameters for the Show details card.
-  useEffect(() => {
-    if (!showBar) return
-    let cancelled = false
-    request(`/api/process/summaries?server=${encodeURIComponent(srv)}`, { headers: { 'x-ide-token': token } })
-      .then(r => r.json())
-      .then(d => { if (!cancelled && Array.isArray(d.processes)) setProcessInfo(Object.fromEntries(d.processes.map(x => [x.process, x]))) })
-      .catch(() => {})
-    return () => { cancelled = true }
-  }, [showBar, srv, token])
-
-  // The runbook is a docked panel — refit the map when it opens/closes.
-  useEffect(() => {
-    const t = setTimeout(() => fitView({ padding: 0.08, duration: 250, maxZoom: FIT_MAX_ZOOM, minZoom: FIT_MIN_ZOOM_FULL }), 120)
-    return () => clearTimeout(t)
-  }, [runbookOpen, fitView])
-
-  // Explicit Fit to screen — allowed to go below the automatic minimum.
-  const fitToScreen = useCallback(() => {
-    fitView({ padding: 0.08, duration: 350, maxZoom: FIT_MAX_ZOOM, minZoom: FIT_MIN_ZOOM_FULL })
-  }, [fitView])
-
-  // Restore this tab's player/phase/camera when coming back from a rules or process tab.
-  const didRestoreRef = useRef(false)
-  useEffect(() => {
-    if (didRestoreRef.current || !modelReady || !cubeData || !processData) return
-    const saved = getCubemapSession(tab?.id)   // read now: leaving the old copy may have saved after this one rendered
-    didRestoreRef.current = true
-    if (!saved) return
-    if (saved.scope) setScope(saved.scope)
-    if (saved.sidebarOpen != null) setSidebarOpen(saved.sidebarOpen)
-    if (saved.runbookOpen != null) setRunbookOpen(!!saved.runbookOpen)
-    if (saved.phaseFocus) setPhaseFocus(saved.phaseFocus)
-    if (Array.isArray(saved.trail)) setTrail(saved.trail)
-    if (saved.dimFilter) setDimFilter(saved.dimFilter)
-    if (saved.selectedCube && (cubeData[saved.selectedCube] || processData[saved.selectedCube.slice(5)] || dimData[saved.selectedCube.slice(4)])) {
-      setSelectedCube(saved.selectedCube)
-      setFocused(!!saved.focused)
-    }
-    if (saved.runEntry && saved.showBar) {
-      setRunEntry(saved.runEntry)
-      setShowBar(true)
-      setStepInfoOpen(!!saved.stepInfoOpen)
-      const [kind, ...rest] = String(saved.runEntry).split(':')
-      const seq = kind === 'phase'
-        ? buildPhaseSequence(saved.phaseFocus, processData, cubeData, chores)
-        : buildRunSequence({ kind, name: rest.join(':') }, processData, cubeData, chores)
-      setRunSeq(seq)
-      setRunIdx(Math.min(saved.runIdx ?? 0, Math.max(0, seq.length - 1)))
-      setPlaying(false)
-      const nodes = new Set(saved.runScope?.nodes ?? [...new Set(seq.flatMap(x => x.nodes ?? []))])
-      const edges = new Set(saved.runScope?.edges ?? [...new Set(seq.flatMap(x => x.edges ?? []))])
-      setRunScope({ nodes, edges })
-    }
-    if (saved.viewport) setTimeout(() => setViewport(saved.viewport, { duration: 0 }), 250)
-  }, [modelReady, cubeData, processData, dimData, chores, setViewport, tab?.id])
-
-  // Keep the session current; the cleanup also catches a tab switch.
-  const sessionRef = useRef(null)
-  useEffect(() => {
-    sessionRef.current = { runEntry, runIdx, runScope, phaseFocus, selectedCube, focused, scope, sidebarOpen, showBar, stepInfoOpen, runbookOpen, trail, dimFilter }
-  })
-  const saveSession = useCallback(() => {
-    const st = sessionRef.current
-    if (!st) return
-    saveCubemapSession(tab?.id, {
-      ...st,
-      runScope: st.runScope ? { nodes: [...st.runScope.nodes], edges: [...st.runScope.edges] } : null,
-      viewport: getViewport(),
-    })
-  }, [tab?.id, getViewport])
-  useEffect(() => () => saveSession(), [saveSession])
-
-  // Persist view prefs for this server
-  useEffect(() => {
-    try {
-      localStorage.setItem(prefsKey, JSON.stringify({
-        layout, showCalc, showFeeders, showClusters, showDims, showProcesses, allTI,
-        showLegend, traceDepth, traceKinds, scope, sidebarOpen, showLensActions,
-      }))
-    } catch { /* prefs read failed — defaults apply */ }
-  }, [prefsKey, layout, showCalc, showFeeders, showClusters, showDims, showProcesses, allTI, showLegend, traceDepth, traceKinds, scope, sidebarOpen, showLensActions])
-
-  // Deep link from the Rules editor's Data Sources strip: focus this cube.
-  useEffect(() => {
-    if (!tab?.focusCube || !tab?.focusAt || !cubeData) return
-    if (!cubeData[tab.focusCube]) return
-    setSelectedCube(tab.focusCube)
-    setModuleFocus(null)
-    setPhaseFocus(null)
-    setFocused(true)
-    setDimmedIds(new Set())
-    // Arriving from the Rules editor starts a fresh trail at this cube — not
-    // appended to the last visit's trail, so Back always returns here.
-    setTrail([{ kind: 'node', id: tab.focusCube }])
-    patchTab(tab.id, { focusCube: null, focusAt: null })
-  }, [tab?.focusAt, tab?.focusCube, cubeData, patchTab])
-
-  // Deep link from the runbook: focus every process in a phase at once.
-  useEffect(() => {
-    if (!tab?.focusProcesses?.length || !tab?.focusAt || !cubeData) return
-    setPhaseFocus({ label: tab.phaseLabel || 'Phase', processes: tab.focusProcesses, entries: tab.phaseEntries ?? [], kind: tab.phaseKind ?? 'phase' })
-    setRunEntry('phase:current')
-    setRunSeq(null)
-    setPlaying(false)
-    setSelectedCube(null)
-    setModuleFocus(null)
-    setFocused(true)
-    setDimmedIds(new Set())
-    setTrail([])   // a runbook phase is its own view; drills from it start a new trail
-    patchTab(tab.id, { focusProcesses: null, phaseLabel: null, phaseEntries: null, phaseKind: null, focusAt: null })
-  }, [tab?.focusAt, tab?.focusProcesses, tab?.phaseLabel, tab?.phaseEntries, tab?.phaseKind, cubeData, patchTab])
-
-  // Pre-computed reverse map (who references whom)
-  const reverseMap = useMemo(() => cubeData ? buildReverseMap(cubeData) : {}, [cubeData])
-
-  // ── Reachable set (focus) ─────────────────────────────────────────────────────
-  // Anything reachable from the focused node (or module) through the selected
-  // edge kinds, depth-limited. Node ids may be cubes, `proc:<name>` or `dim:<name>`.
-  const selectedType = selectedCube?.startsWith('proc:') ? 'process' : selectedCube?.startsWith('dim:') ? 'dim' : 'cube'
-  // Modules = cubes sharing a group key (from the configured regex, or the
-  // underscore-prefix fallback). Used for the module lens.
-  const modulesMap = useMemo(() => cubeData ? computePrefixGroups(Object.keys(cubeData), groupRegex) : {}, [cubeData, groupRegex])
-  const modules = useMemo(() => Object.keys(modulesMap).sort(), [modulesMap])
-  // Where a trace starts: the module's cubes, the phase's processes, or the clicked cube.
-  const focusSeeds = useMemo(() => {
-    if (!cubeData) return null
-    if (moduleFocus) {
-      const seeds = modulesMap[moduleFocus] ?? []
-      return seeds.length ? seeds : null
-    }
-    if (phaseFocus?.processes?.length) {
-      const seeds = phaseFocus.processes.map(p => `proc:${p}`).filter(id => processData[id.slice(5)])
-      if (seeds.length) return seeds
-    }
-    return selectedCube ? [selectedCube] : null
-  }, [moduleFocus, phaseFocus, selectedCube, cubeData, processData, modulesMap])
-
-  const traceCtx = useMemo(() => ({ cubeData, processData, dimData, reverseMap, processCallers }),
-    [cubeData, processData, dimData, reverseMap, processCallers])
-
-  // A dimension filter (a 'dim' step in the thread) narrows the trace you're on, not the whole model.
-  const reachableSet = useMemo(() => (focusSeeds
-    ? narrowToDim(getReachable(focusSeeds, traceDepth, traceKinds, traceCtx), dimFilter, focusSeeds, cubeData ?? {}, processData ?? {})
-    : null), [focusSeeds, traceDepth, traceKinds, traceCtx, dimFilter, cubeData, processData])
-
-  // How much each Steps away setting would bring in, shown on its button before you click it.
-  const stepCounts = useMemo(() => (focusSeeds
-    ? [1, 2, 3, 4].map(d => narrowToDim(getReachable(focusSeeds, d, traceKinds, traceCtx), dimFilter, focusSeeds, cubeData ?? {}, processData ?? {}).size - focusSeeds.length)
-    : null), [focusSeeds, traceKinds, traceCtx, dimFilter, cubeData, processData])
-
-  // What the trace reached, by kind (folded helper processes included).
-  const reachBreakdown = useMemo(() => {
-    if (!reachableSet || !focusSeeds) return null
-    const seeds = new Set(focusSeeds)
-    const out = { cubes: 0, processes: 0, dims: 0 }
-    for (const id of reachableSet) {
-      if (seeds.has(id)) continue
-      if (id.startsWith('proc:')) out.processes++
-      else if (id.startsWith('dim:')) out.dims++
-      else out.cubes++
-    }
-    return out
-  }, [reachableSet, focusSeeds])
+  const { fitView } = useReactFlow()
 
   // ── Build graph ───────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -521,104 +316,11 @@ function CubeMapInner({ tab }) {
 
   // ── Fit view ──────────────────────────────────────────────────────────────────
   // (not while Show is running — the camera holds still there; startShow does one fit itself)
-  const showRunningRef = useRef(false)
   useEffect(() => {
     // Every rebuild of the map (model, Show switches, Steps away, a click, a filter) fits it to the
     // screen — however small that makes it. Fit to screen does the same on demand.
     if (fitTick && !showRunningRef.current) setTimeout(() => fitView({ padding: 0.08, duration: 400, maxZoom: FIT_MAX_ZOOM, minZoom: FIT_MIN_ZOOM_FULL }), 50)
   }, [fitTick, fitView])
-
-  // ── Show playback ───────────────────────────────────────────────────────────
-  // Entry points: chores, then processes nothing else calls, longest run first
-  const runEntries = useMemo(() => {
-    const procs = Object.keys(processData)
-      .filter(n => !(processCallers[n]?.length) && processData[n].steps.length)
-      .map(n => ({ key: `process:${n}`, label: n, len: buildRunSequence({ kind: 'process', name: n }, processData, cubeData ?? {}, chores).length }))
-      .sort((a, b) => b.len - a.len || a.label.localeCompare(b.label))
-    const phaseEntry = phaseFocus
-      ? [{ key: 'phase:current', label: `▶ ${phaseFocus.kind === 'process' ? 'Process' : phaseFocus.kind === 'chore' ? 'Chore' : 'Phase'} — ${phaseFocus.label}`, len: buildPhaseSequence(phaseFocus, processData, cubeData ?? {}, chores).length }]
-      : []
-    return [...phaseEntry, ...chores.map(c => ({ key: `chore:${c.name}`, label: `⏱ ${c.name}${c.active ? '' : ' (inactive)'}` })), ...procs]
-  }, [phaseFocus, processData, processCallers, cubeData, chores])
-
-  const startShow = useCallback((key) => {
-    if (!key || !cubeData) return
-    const [kind, ...rest] = key.split(':')
-    const raw = kind === 'phase'
-      ? buildPhaseSequence(phaseFocus, processData, cubeData, chores)
-      : buildRunSequence({ kind, name: rest.join(':') }, processData, cubeData, chores)
-    const seq = raw.filter(it => showDims || !(it.nodes ?? []).some(n => n.startsWith('dim:')) || (it.edges ?? []).length === 0)
-    playbackReturnRef.current = { phaseFocus, selectedCube, focused, allTI, showProcesses, sidebarOpen }
-    const nodes = new Set(), edges = new Set()
-    for (const it of seq) { (it.nodes ?? []).forEach(n => nodes.add(n)); (it.edges ?? []).forEach(e => edges.add(e)) }
-    setRunScope({ nodes, edges })
-    setFocused(false); setSelectedCube(null); setModuleFocus(null); setDimFilter(null)
-    setSidebarOpen(false)   // give the movie the canvas
-    if (kind !== 'phase') setPhaseFocus(null)
-    setRunEntry(key); setRunSeq(seq); setRunIdx(0); setPlaying(true)
-    patchTab(tab?.id, { focusProcesses: null, phaseLabel: null, phaseEntries: null, phaseKind: null, focusCube: null, focusAt: null })
-    showRunningRef.current = true
-  }, [cubeData, processData, chores, showDims, fitView, phaseFocus])
-
-  useEffect(() => { if (!runSeq) showRunningRef.current = false }, [runSeq])
-
-  const stopShow = useCallback(() => {
-    setPlaying(false); setRunSeq(null); setRunEntry(null); setRunIdx(0); setStepInfoOpen(false); setShowBar(false); setRunScope(null)
-    const prev = playbackReturnRef.current
-    if (prev) {
-      setPhaseFocus(prev.phaseFocus)
-      setSelectedCube(prev.selectedCube)
-      setFocused(prev.focused)
-      setAllTI(prev.allTI)
-      setShowProcesses(prev.showProcesses)
-      setSidebarOpen(prev.sidebarOpen ?? true)
-    }
-    playbackReturnRef.current = null
-    showRunningRef.current = false
-  }, [])
-
-  // The three tabs at the top of the sidebar: one mode at a time.
-  const mapMode = showBar ? 'run' : runbookOpen ? 'runbook' : 'map'
-  const setMapMode = useCallback(mode => {
-    if (mode !== 'run' && showBar) stopShow()
-    setRunbookOpen(mode === 'runbook')
-    if (mode === 'run') setShowBar(true)
-  }, [showBar, stopShow])
-
-  useEffect(() => {
-    if (!playing || !runSeq) return
-    if (runIdx >= runSeq.length - 1) { setPlaying(false); return }
-    const tm = setTimeout(() => setRunIdx(i => i + 1), 1600 / speed)
-    return () => clearTimeout(tm)
-  }, [playing, runIdx, runSeq, speed])
-
-  const runStep = runSeq?.[runIdx] ?? null
-
-  // Follow never zooms — it pans at the current zoom, and only when the step's nodes are off-screen
-  useEffect(() => {
-    if (!runStep || !follow || !canvasRef.current) return
-    const pts = runStep.nodes.map(id => getNode(id)).filter(Boolean)
-    if (!pts.length) return
-    const { x: vx, y: vy, zoom } = getViewport()
-    const { width, height } = canvasRef.current.getBoundingClientRect()
-    const margin = 40
-    const onScreen = pts.every(n => {
-      const sx = n.position.x * zoom + vx, sy = n.position.y * zoom + vy
-      return sx >= margin && sy >= margin && sx + NODE_W * zoom <= width - margin && sy + NODE_H * zoom <= height - margin
-    })
-    if (onScreen) return
-    const cx = pts.reduce((s, n) => s + n.position.x + NODE_W / 2, 0) / pts.length
-    const cy = pts.reduce((s, n) => s + n.position.y + NODE_H / 2, 0) / pts.length
-    setCenter(cx, cy, { zoom, duration: 400 })
-  }, [runStep, follow, getNode, getViewport, setCenter])
-
-  // active = this step; trail = everything earlier steps touched
-  const runHighlight = useMemo(() => {
-    if (!showBar || !runSeq || !runStep) return null
-    const trailNodes = new Set(), trailEdges = new Set()
-    for (let i = 0; i < runIdx; i++) { runSeq[i].nodes.forEach(n => trailNodes.add(n)); runSeq[i].edges.forEach(e => trailEdges.add(e)) }
-    return { nodes: new Set(runStep.nodes), edges: new Set(runStep.edges), trailNodes, trailEdges }
-  }, [runSeq, runStep, runIdx])
 
   // ── Dimming ───────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -628,7 +330,6 @@ function CubeMapInner({ tab }) {
   }, [reachableSet, selectedCube, nodes])
 
   // ── Visual node/edge state ────────────────────────────────────────────────────
-  const spotQ = dimSpotlight.trim().toLowerCase()
   const spotActive = !!spotQ && !selectedCube
 
   const playNode = (n) => {
@@ -671,63 +372,6 @@ function CubeMapInner({ tab }) {
     }
   }), [edges, dimmedIds, runHighlight])
 
-  // ── Interactions ──────────────────────────────────────────────────────────────
-  // ── Trail: every drill since the full map, like browser history ─────────────
-  // Each drill adds a step (revisiting a cube adds it again — it is a path, not a
-  // set); Back removes the last step; clicking a step jumps back to it. Leaving
-  // focus (Full map, Esc, empty canvas) clears it. A drill changes focus only —
-  // the relayout's fitView moves the camera once; a second animation of our own
-  // slid nodes under the pointer and lost clicks.
-  const pushTrail = useCallback((entry) => setTrail(t => pushStep(t, entry)), [])
-
-  const focusModule = useCallback((key) => {
-    if (!key) return
-    setModuleFocus(key)
-    setSelectedCube(null)
-    setFocused(true)
-    setDimmedIds(new Set())
-    setDimFilter(null)
-    pushTrail({ kind: 'module', id: key })
-  }, [pushTrail])
-
-  const onNodeClick = useCallback((_, node) => {
-    if (node.type === 'group') { focusModule(node.data.label); return }
-    setSelectedCube(node.id)
-    setModuleFocus(null)
-    setPhaseFocus(null)
-    setFocused(true)
-    setDimFilter(null)
-    pushTrail({ kind: 'node', id: node.id })
-  }, [focusModule, pushTrail])
-
-  const onNodeDoubleClick = useCallback((_, node) => {
-    if (node.type === 'cube') {
-      const hasRules = cubeData?.[node.id]?.hasRules
-      openTab(hasRules
-        ? { id: rulesTabId(srv, node.id),      type: 'rules',      label: node.id, server: srv, cube: node.id }
-        : { id: `cubeeditor:${srv}:${node.id}`, type: 'cubeeditor', label: node.id, server: srv, cube: node.id }
-      )
-      return
-    }
-    if (node.type === 'process') {
-      const name = node.id.slice('proc:'.length)
-      openTab({ id: processTabId(srv, name), type: 'process', label: name, server: srv, name, content: null })
-      return
-    }
-    if (node.type === 'dim') {
-      const dim = node.id.slice('dim:'.length)
-      openTab({ id: dimensionTabId(srv, dim, dim), type: 'dimension', label: dim, server: srv, dimension: dim })
-    }
-  }, [cubeData, openTab, srv])
-
-  const onPaneClick = useCallback(() => {
-    setModuleFocus(null); setSelectedCube(null); setPhaseFocus(null); setDimmedIds(new Set()); setFocused(false); setTrail([]); setDimFilter(null)
-  }, [])
-
-  const exitFocus = useCallback(() => {
-    setModuleFocus(null); setSelectedCube(null); setPhaseFocus(null); setDimmedIds(new Set()); setFocused(false); setTrail([]); setDimFilter(null)
-  }, [])
-
   // In a focused/phase/player map the Follow controls and the left Rules/Feeders/All TI
   // buttons must drive the same state, or one set of checkboxes appears locked.
   const focusMode = !!(focused || phaseFocus || runScope)
@@ -763,56 +407,6 @@ function CubeMapInner({ tab }) {
     setTraceKinds(k => ({ ...k, dimwrite: next, dimuse: next }))
   }
 
-  // Esc exits focus / module view
-  useEffect(() => {
-    if (!focused) return
-    const onKey = (e) => { if (e.key === 'Escape') exitFocus() }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [focused, exitFocus])
-
-  // Detail-panel links drill the same way as a map click
-  const navigateTo = useCallback((name) => {
-    setModuleFocus(null)
-    setPhaseFocus(null)
-    setSelectedCube(name)
-    setFocused(true)
-    setDimFilter(null)
-    pushTrail({ kind: 'node', id: name })
-  }, [pushTrail])
-
-  const goToTrail = useCallback((index) => {
-    const entry = trail[index]
-    if (!entry || index === trail.length - 1) return
-    setTrail(backTo(trail, index))
-    setPhaseFocus(null)
-    setDimmedIds(new Set())
-    // A 'dim' step filters the cube or module before it.
-    const base = [...trail.slice(0, index + 1)].reverse().find(e => e.kind !== 'dim')
-    setDimFilter(entry.kind === 'dim' ? entry.id : null)
-    if (!base) { exitFocus(); return }
-    if (base.kind === 'module') { setModuleFocus(base.id); setSelectedCube(null) }
-    else { setModuleFocus(null); setSelectedCube(base.id) }
-    setFocused(true)
-  }, [trail, exitFocus])
-
-  const trailBack = useCallback(() => {
-    if (previousStep(trail)) goToTrail(trail.length - 2)
-    else exitFocus()
-  }, [trail, goToTrail, exitFocus])
-
-  // Backspace or Alt+← steps back (not while typing in a field)
-  useEffect(() => {
-    if (!focused) return
-    const onKey = (e) => {
-      const el = e.target
-      if (el?.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(el?.tagName)) return
-      if (e.key === 'Backspace' || (e.altKey && e.key === 'ArrowLeft')) { e.preventDefault(); trailBack() }
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [focused, trailBack])
-
   // ── Open tab actions ──────────────────────────────────────────────────────────
   // Save where the map is before any tab opens: opening a tab or a split can rebuild the Cube Map
   // before the old copy has saved, and it would come back at the full map.
@@ -826,33 +420,6 @@ function CubeMapInner({ tab }) {
   const openDimensionCtx = (dim, here)  => (here ? openHere : openSide)({ id: dimensionTabId(srv, dim, dim),  type: 'dimension',  label: dim,  server: srv, dimension: dim })
   const openRulesCtx     = (cube, here) => (here ? openHere : openSide)({ id: rulesTabId(srv, cube),     type: 'rules',      label: cube, server: srv, cube })
   const openCubeCtx      = (cube, here) => (here ? openHere : openSide)({ id: viewTabId(srv, cube, 'Default'), type: 'cubeview', label: cube, server: srv, cube, viewName: 'Default' })
-
-  // ── Dim filter ────────────────────────────────────────────────────────────────
-  // Clicking a cube's dimension narrows the map you're on to the cubes that use it — a step in the
-  // thread, so Back (or an earlier name in the thread) removes it. Clicking it again removes it too.
-  const handleFilterDim = (dim) => {
-    if (dimFilter === dim) { trailBack(); return }
-    setDimFilter(dim)
-    setDimmedIds(new Set())
-    if (!focused && !selectedCube && !moduleFocus) return   // full map: plain filter
-    setTrail(t => [...t.filter(e => !(e.kind === 'dim' && t.indexOf(e) === t.length - 1)), { kind: 'dim', id: dim }])
-  }
-
-  // ── Sidebar list ──────────────────────────────────────────────────────────────
-  const filteredCubes = useMemo(() => {
-    if (!cubeData) return []
-    const q = search.toLowerCase()
-    return Object.keys(cubeData).filter(n => !q || n.toLowerCase().includes(q)).sort()
-  }, [cubeData, search])
-
-  const transitiveCount = reachableSet ? reachableSet.size - 1 : 0
-  const reachableCapped = reachableSet ? reachableSet.size >= MAX_FOCUS_NODES : false
-  const focusLabel = phaseFocus ? phaseFocus.label : moduleFocus ? `module ${moduleFocus}` : (selectedCube?.replace(/^(proc|dim):/, '') ?? '')
-
-  const spotlitCount = useMemo(() => {
-    if (!spotQ || !cubeData) return 0
-    return Object.values(cubeData).filter(d => d.dims.some(dim => dim.toLowerCase().includes(spotQ))).length
-  }, [spotQ, cubeData])
 
   return (
     <div style={{ display: 'flex', height: '100%', overflow: 'hidden', position: 'relative' }}>

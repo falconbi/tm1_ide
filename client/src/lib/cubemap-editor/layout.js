@@ -2,6 +2,8 @@ import dagre from '@dagrejs/dagre'
 
 export const NODE_W = 192
 export const NODE_H = 52
+export const FIT_MAX_ZOOM = 1.1
+export const FIT_MIN_ZOOM_FULL = 0.05
 
 export function applyDagreLayout(nodes, edges, direction = 'LR') {
   const g = new dagre.graphlib.Graph()
