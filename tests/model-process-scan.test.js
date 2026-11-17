@@ -110,6 +110,15 @@ test('today: Cube Map edges, steps and dimensions', async () => {
   assert.deepEqual(model.chores, [])
 })
 
+test('a failed Cube Map process scan keeps the cubes and rule edges', async () => {
+  const stub = { ...fixture.makeClient(), get: async () => { throw new Error('processes unavailable') } }
+  const model = plain(await buildCubeMapModel(stub))
+  assert.equal(model.scanError, 'processes unavailable')
+  assert.deepEqual(model.processes, {})
+  assert.deepEqual(model.cubes.Source.ruleCalcRefs, ['ReadCube', "O'Brien Sales"])
+  assert.deepEqual(model.cubes.Source.ruleFeederRefs, ['FeederCube', "O'Brien Sales"])
+})
+
 test('today: control processes are opt-in', async () => {
   const normal = plain(await buildCubeMapModel(fixture.makeClient()))
   const withControl = plain(await buildCubeMapModel(fixture.makeClient(), { includeControl: true }))

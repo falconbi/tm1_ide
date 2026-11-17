@@ -156,6 +156,22 @@ export const cubemapModelQuery = (server) => ({
   enabled:  !!server,
   staleTime: 0,
 })
+export const cubeDataSourcesQuery = (server, cube, refresh = false) => ({
+  queryKey: ['cube-data-sources', server, cube],
+  queryFn:  () => get(`/api/cube/data-sources?server=${enc(server)}&cube=${enc(cube)}${refresh ? '&refresh=1' : ''}`),
+  enabled:  !!server && !!cube,
+  staleTime: 0,
+})
+export function useCubeDataSources(server, cube) {
+  const queryClient = useQueryClient()
+  const query = useQuery(cubeDataSourcesQuery(server, cube))
+  const refresh = useCallback(async () => {
+    const data = await queryClient.fetchQuery(cubeDataSourcesQuery(server, cube, true))
+    queryClient.setQueryData(cubeDataSourcesQuery(server, cube).queryKey, data)
+    return data
+  }, [queryClient, server, cube])
+  return { ...query, loading: query.isFetching, refresh }
+}
 export const processSummariesQuery = (server) => ({
   queryKey: ['process-summaries', server],
   queryFn:  () => get(`/api/process/summaries?server=${enc(server)}`),

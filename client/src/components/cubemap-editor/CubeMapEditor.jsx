@@ -70,7 +70,7 @@ function CubeMapInner({ tab }) {
 
   const {
     processCallers, chores,
-    loading, error, modelReady, fetchModel, lensUsage,
+    loading, error, scanError, modelReady, fetchModel, lensUsage,
   } = model
   const { cubeData, processData, dimData, scope, setScope, dimFilter, traceKinds, setTraceKinds } = filters
   const {
@@ -150,6 +150,7 @@ function CubeMapInner({ tab }) {
         groupRegex={groupRegex}
         loading={loading}
         error={error}
+        scanError={scanError}
         fetchModel={fetchModel}
         fitToScreen={fitToScreen}
       />
