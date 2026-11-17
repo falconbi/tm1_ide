@@ -3,7 +3,7 @@
 Every bug-fix commit, newest first, by the date it was committed. Generated from the git history;
 commits that mixed a fix into a feature are included too. New features are not listed here.
 
-166 fixes from 2026-05-20 to 2026-10-10, plus 46 entries for 11–27 October, 6 for 28 October–1 November, 7 for 2 November, 4 for 5 November, 10 for 6 November, 9 for 9 November, 8 for 15 November and 1 for 17 November. Last updated 2026-11-17.
+166 fixes from 2026-05-20 to 2026-10-10, plus 46 entries for 11–27 October, 6 for 28 October–1 November, 7 for 2 November, 4 for 5 November, 10 for 6 November, 9 for 9 November, 8 for 15 November and 2 for 17 November. Last updated 2026-11-17.
 
 ← [Back to README](../../README.md)
 
@@ -12,6 +12,7 @@ commits that mixed a fix into a feature are included too. New features are not l
 
 ### 2026-11-17
 
+- **process datasource preview (empty file)** — Previewing an empty ASCII file with a header row threw `Cannot read properties of undefined (reading 'split')` because it read the missing first line. An empty file now shows numbered columns and no rows
 - **process datasource preview** — An ASCII file's Preview showed the bare server error on v11 instead of naming the requirement: `request()` already throws on a non-2xx answer, so the `if (!r.ok)` branch that held the "Reading server files needs Planning Analytics v12" message never ran. The preview now catches the thrown error and shows the v12 guidance when the server's own message is empty or generic (a bare 404/500), and drops the hand-built `x-ide-token` headers because `apiFetch` already adds the token
 
 ### 2026-11-16
