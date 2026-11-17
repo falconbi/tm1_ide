@@ -20,20 +20,10 @@ import { validateTICode } from '@/lib/ti-validator'
 import SnippetPanel from '@/components/SnippetPanel'
 import { ConflictBanner, ConflictSaveWarning } from '@/components/ConflictBanner'
 import DiffViewerModal from '@/components/DiffViewerModal'
-
-const CODE_TABS = [
-  { key: 'PrologProcedure',    label: 'Prolog'   },
-  { key: 'MetadataProcedure',  label: 'Metadata' },
-  { key: 'DataProcedure',      label: 'Data'     },
-  { key: 'EpilogProcedure',    label: 'Epilog'   },
-]
-const SECTION_LABEL = Object.fromEntries(CODE_TABS.map(({ key, label }) => [key, label]))
-
-const CAPTURE_HOVER = { value: 'Capture point — records the selected watches when execution reaches this line. The process runs to completion.' }
-const CAPTURE_WHEN_HELP = "Only record a capture when this TI condition is true.\n\nExamples:\n  nBad = 1\n  vPosition @= 'ENG-001'\n  vPosition @= 'ENG-001' & nBad = 1\n\nUse @= for string comparisons."
-
-const PARAM_TYPE = { 1: 'Numeric', 2: 'String', Numeric: 'Numeric', String: 'String' }
-const toTypeStr = t => (t === 1 ? 'Numeric' : t === 2 ? 'String' : t ?? 'String')
+import { CODE_TABS, SECTION_LABEL, SECTION_TO_KEY, CAPTURE_HOVER, CAPTURE_WHEN_HELP, PARAM_TYPE, toTypeStr } from '@/lib/process-editor/constants'
+import { sectionsFromEdits, runParamArray } from '@/lib/process-editor/sections'
+import { parseAsciiPreview } from '@/lib/process-editor/ascii-preview'
+import { debugIssues, unknownWatches } from '@/lib/process-editor/debug-result'
 
 function EditableParamsPanel({ params, onChange }) {
   const cell = 'w-full bg-transparent border-b border-transparent hover:border-border focus:border-primary px-1 py-0.5 font-mono focus:outline-none text-xs'
@@ -279,14 +269,10 @@ function DatasourcePreviewPanel({ ds, server, params }) {
           const d = await r.json().catch(() => ({}))
           throw new Error(d.error || `Could not read ${file}. Reading server files needs Planning Analytics v12; on v11 TM1 has no way to read them over its API.`)
         }
-        const lines = (await r.text()).split(/\r?\n/).filter(l => l !== '')
-        const delim = ds?.asciiDelimiterChar || ','
-        const head  = Number(ds?.asciiHeaderRecords ?? 1) || 0
-        const split = l => l.split(delim)
-        const body  = lines.slice(head)
-        const width = Math.max(1, ...body.slice(0, 20).map(l => split(l).length))
-        const columns = head > 0 ? split(lines[0]) : Array.from({ length: width }, (_, i) => `Column ${i + 1}`)
-        setResult({ columns, rows: body.slice(0, 20).map(split), rowCount: body.length, note: 'first 20 records' })
+        setResult(parseAsciiPreview(await r.text(), {
+          delimiter: ds?.asciiDelimiterChar || ',',
+          headerRecords: ds?.asciiHeaderRecords ?? 1,
+        }))
       }
       setLoading(false)
     } catch (e) { fail(e) }
@@ -740,8 +726,6 @@ export default function ProcessEditor({ tab }) {
   const [showCheck, setShowCheck]       = useState(false)
   const [showHelp, setShowHelp]         = useState(false)
 
-  const SECTION_TO_KEY = { Prolog: 'PrologProcedure', Metadata: 'MetadataProcedure', Data: 'DataProcedure', Epilog: 'EpilogProcedure' }
-
   const [activeSection, setActiveSection] = useState('PrologProcedure')
   const [showSaveAs, setShowSaveAs] = useState(false)
   const [showSaveMenu, setShowSaveMenu] = useState(false)
@@ -790,8 +774,7 @@ export default function ProcessEditor({ tab }) {
 
   // Build sorted variable list for watch dropdown
   const availableVars = (() => {
-    const sections = {}
-    CODE_TABS.forEach(({ key }) => { sections[key] = edits[key] ?? data?.[key] ?? '' })
+    const sections = sectionsFromEdits(edits, data)
     const params = paramEdits ?? data?.Parameters ?? []
     return scanVariables(sections, params, data?.Variables)
   })()
@@ -1067,8 +1050,7 @@ export default function ProcessEditor({ tab }) {
   const handleCreateNew = () => {
     const name = draftName.trim()
     if (!name) return
-    const body = {}
-    CODE_TABS.forEach(({ key }) => { body[key] = edits[key] ?? '' })
+    const body = sectionsFromEdits(edits)
     if (paramEdits !== null) body.Parameters = paramEdits.map(p => ({ Name: p.Name, Type: toTypeStr(p.Type), Value: String(p.Value ?? ''), Prompt: p.Prompt ?? '' }))
     if (dsEdits !== null) body.DataSource = dsEdits
     const id = toast.loading(`Creating "${name}"…`)
@@ -1083,10 +1065,7 @@ export default function ProcessEditor({ tab }) {
 
   const doSave = () => {
     if (!data) return
-    const body = {}
-    CODE_TABS.forEach(({ key }) => {
-      body[key] = edits[key] ?? data[key] ?? ''
-    })
+    const body = sectionsFromEdits(edits, data)
     if (paramEdits !== null) {
       body.Parameters = paramEdits.map(p => ({
         Name:   p.Name,
@@ -1106,8 +1085,7 @@ export default function ProcessEditor({ tab }) {
           markTabSaved(tab.id)
           toast.success('Process saved', { id })
           // Non-blocking reference integrity check
-          const sections = {}
-          CODE_TABS.forEach(({ key }) => { sections[key] = edits[key] ?? data[key] ?? '' })
+          const sections = sectionsFromEdits(edits, data)
           post('/api/process/check-references', { server: tab.server, sections })
             .then(d => { d.warnings?.forEach(w => toast.warning(w.message, { duration: 8000 })) })
             .catch(() => {})
@@ -1125,8 +1103,7 @@ export default function ProcessEditor({ tab }) {
   }
 
   const handleSaveAs = (newName) => {
-    const body = {}
-    CODE_TABS.forEach(({ key }) => { body[key] = edits[key] ?? data?.[key] ?? '' })
+    const body = sectionsFromEdits(edits, data)
     if (paramEdits !== null) body.Parameters = paramEdits.map(p => ({ Name: p.Name, Type: toTypeStr(p.Type), Value: String(p.Value ?? ''), Prompt: p.Prompt ?? '' }))
     if (dsEdits !== null) body.DataSource = dsEdits
     const id = toast.loading(`Creating "${newName}"…`)
@@ -1192,10 +1169,7 @@ export default function ProcessEditor({ tab }) {
   }, [activeSection])
 
   const handleCheck = () => {
-    const sections = {}
-    CODE_TABS.forEach(({ key }) => {
-      sections[key] = edits[key] ?? data?.[key] ?? ''
-    })
+    const sections = sectionsFromEdits(edits, data)
     const results = validateTICode(sections, { version: serverVersion })
     setCheckResults(results)
     setShowCheck(true)
@@ -1232,8 +1206,7 @@ export default function ProcessEditor({ tab }) {
   const handleDebugRun = (params) => {
     // Instrumenting an unknown name makes TI abort before any breakpoint can
     // report. Catch it here with the actual variable list instead.
-    const knownVars = new Set(availableVars.map(v => v.name.toLowerCase()))
-    const unknown = watches.filter(w => !knownVars.has(w.name.toLowerCase()))
+    const unknown = unknownWatches(watches, availableVars)
     if (unknown.length) {
         toast.warning(`Unknown watch variable${unknown.length > 1 ? 's' : ''}: ${unknown.map(w => w.name).join(', ')}. Add the variable to the process or remove the watch.`)
         return
@@ -1242,15 +1215,9 @@ export default function ProcessEditor({ tab }) {
     setRunOutput(null)
     setIsDebugging(true)
     setDebugEvents([])
-    const sections = {}
-    CODE_TABS.forEach(({ key }) => {
-      sections[key] = edits[key] ?? data?.[key] ?? ''
-    })
+    const sections = sectionsFromEdits(edits, data)
     // Build param array from RunDialog values
-    const paramArray = (data?.Parameters ?? []).map(p => {
-      const raw = params?.[p.Name]
-      return { Name: p.Name, Value: raw !== undefined ? raw : (p.Value ?? '') }
-    })
+    const paramArray = runParamArray(data?.Parameters, params)
     debugProcess.mutate({
       server: tab.server,
       name: tab.name,
@@ -1262,12 +1229,7 @@ export default function ProcessEditor({ tab }) {
     }, {
       onSuccess: res => {
         setDebugEvents(parseDebugLog(res.log))
-        setCheckResults((res.warnings ?? []).map(w => ({
-          severity: 'warning',
-          section: w.section,
-          line: w.line,
-          message: w.msg || `Unknown function "${w.name}"`,
-        })))
+        setCheckResults(debugIssues(res))
         if (res.warnings?.length) {
           toast.warning(`${res.warnings.length} unknown function${res.warnings.length > 1 ? 's' : ''} commented out — see Issues panel`)
         }
