@@ -141,7 +141,6 @@ function scanRules(rules) {
 const CUBE_FIRST_FNS = ['ViewZeroOut', 'CubeClearData', 'CubeProcessFeeders']
 
 async function buildIndex(client, serverName, { includeControl = false } = {}) {
-    const summaries = list(serverName)
     const allCubes = await client.getAllCubesWithRules()
     const cubeNames = new Set(allCubes.map(c => c.Name))
     const cubeDims = {}
@@ -184,7 +183,16 @@ async function buildIndex(client, serverName, { includeControl = false } = {}) {
         pd = await client.get('Processes', {
             '$select': 'Name,PrologProcedure,MetadataProcedure,DataProcedure,EpilogProcedure,DataSource,Parameters',
         })
-    } catch { return index }
+    } catch (e) {
+        // Rule sources are still usable; the process scan is not. Keep the same
+        // shape so every caller can report the failure instead of throwing.
+        for (const entry of Object.values(index)) {
+            entry.writers = []
+            entry.readers = []
+            entry.copiers = []
+        }
+        return { cubes: index, processes: {}, viewSources: {}, scanError: e.message }
+    }
 
     const CELLPUT_RE = /\b(CellPut[NS](?:Complete)?|CellIncrement[NS])\s*\(/gi
     const CELLGET_RE = /\bCellGet[NS]\s*\(/gi
@@ -311,11 +319,15 @@ async function indexFor(client, server, identity, options = {}) {
     const key = cacheKey(server, identity)
     let hit = cache.get(key)
     if (!hit || Date.now() - hit.at > TTL_MS) {
-        hit = { at: Date.now(), index: await buildIndex(client, server, options) }
-        cache.set(key, hit)
-        if (cache.size > MAX_CACHE) {
-            const oldest = cache.keys().next().value
-            if (oldest !== undefined) cache.delete(oldest)
+        const index = await buildIndex(client, server, options)
+        hit = { at: Date.now(), index }
+        // A failed process read is reported and retried, never cached for 30 seconds.
+        if (!index.scanError) {
+            cache.set(key, hit)
+            if (cache.size > MAX_CACHE) {
+                const oldest = cache.keys().next().value
+                if (oldest !== undefined) cache.delete(oldest)
+            }
         }
     }
     return hit.index

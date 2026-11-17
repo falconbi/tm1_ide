@@ -10,7 +10,7 @@ const path = require('path')
 const summaryFile = path.join(os.tmpdir(), `process-scan-summaries-${process.pid}.json`)
 process.env.PROCESS_SUMMARIES_FILE = summaryFile
 const summaries = require('../core/process-summaries')
-const { getCubeDataSources, getViewSourceUsage, invalidate } = require('../core/cube-data-sources')
+const { getCubeDataSources, getViewSourceUsage, getProcessFacts, listProcessSummaries, invalidate } = require('../core/cube-data-sources')
 
 test.after(() => { try { fs.unlinkSync(summaryFile) } catch { /* best effort */ } })
 
@@ -120,6 +120,34 @@ test('a writer summary is stale only when the process code changed', async () =>
     assert.equal(changed.writers[0].summary, 'Old summary.')
     assert.equal(changed.writers[0].summaryStale, true, 'changed process is stale')
     await summaries.remove(server, 'P summary')
+})
+
+test('a failed process read keeps the index shape and is not cached', async () => {
+    const cubes = [{ Name: 'Cube A', Dimensions: [{ Name: 'Period' }, { Name: 'Measure' }], Rules: '' }]
+    const processes = [proc('P writer', "CellPutN(1, 'Cube A', 'Jan', 'Amount');")]
+    let fail = true
+    let calls = 0
+    const stub = {
+        getAllCubesWithRules: async () => cubes,
+        get: async () => { calls++; if (fail) throw new Error('TM1 is unavailable'); return { value: processes } },
+    }
+    const server = 'unit-scan-failure'
+    invalidate(server)
+
+    const sources = await getCubeDataSources(stub, server, 'Cube A', 'user')
+    assert.deepEqual(sources.writers, [])
+    assert.deepEqual(sources.readers, [])
+
+    const facts = await getProcessFacts(stub, server, 'P writer', 'user')
+    assert.deepEqual(facts.writes, [])
+    assert.deepEqual(facts.reads, [])
+
+    assert.deepEqual(await listProcessSummaries(stub, server, 'user'), [])
+    assert.ok(calls >= 3, 'each failed read is retried, not served from the cache')
+
+    fail = false
+    const recovered = await getProcessFacts(stub, server, 'P writer', 'user')
+    assert.deepEqual(recovered.writes, [{ cube: 'Cube A', measures: ['Amount'], kinds: ['write'] }])
 })
 
 test('every DB and DBS call on a line is a rule source', async () => {
