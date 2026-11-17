@@ -57,7 +57,9 @@ async function listSessions(server, { ideToken, limit = 50 } = {}) {
         try {
             const s = await store.readDoc(server, AREA, n, { ideToken })
             if (s) sessions.push(s)
-        } catch { /* skip unreadable */ }
+        } catch (e) {
+            throw new Error(`Could not read model-owned change-set document Applications/Governance/ChangeSets/${n} on ${server}: ${e.message}`, { cause: e })
+        }
     }
     sessions.sort((a, b) => (a.started_at < b.started_at ? 1 : -1))
     return sessions.slice(0, limit)
