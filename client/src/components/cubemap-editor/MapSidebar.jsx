@@ -9,7 +9,7 @@ import Toggle from './Toggle'
 const LAYOUT_NEXT  = { LR: 'TB', TB: 'RL', RL: 'BT', BT: 'LR' }
 const LAYOUT_LABEL = { LR: 'left to right', TB: 'top to bottom', RL: 'right to left', BT: 'bottom to top' }
 
-export default function MapSidebar({ filters, selection, run, layoutState, groupRegex, loading, error, fetchModel, fitToScreen }) {
+export default function MapSidebar({ filters, selection, run, layoutState, groupRegex, loading, error, scanError, fetchModel, fitToScreen }) {
   const {
     search, setSearch, showFeeders, setShowFeeders, showCalc, setShowCalc,
     dimFilter, setDimFilter, traceKinds, setTraceKinds,
@@ -231,6 +231,7 @@ export default function MapSidebar({ filters, selection, run, layoutState, group
       <div style={{ overflow: 'auto', flex: 1 }}>
         {loading && <div style={{ padding: 12, fontSize: 11, color: 'var(--cm-text-muted)' }}>Loading…</div>}
         {error   && <div style={{ padding: 12, fontSize: 11, color: '#f87171' }}>{error}</div>}
+        {!error && scanError && <div style={{ padding: '6px 10px', fontSize: 10, color: '#f59e0b' }} title={scanError}>Process scan failed: {scanError}</div>}
         {filteredCubes.map(name => {
           const d = cubeData?.[name]
           const inDimFilter = dimFilter && d?.dims?.includes(dimFilter)

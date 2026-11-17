@@ -228,7 +228,7 @@ app.get('/api/cube/data-sources', async (req, res) => {
         const data = await getCubeDataSources(client, req.query.server, req.query.cube, scanIdentity(req))
         res.json({ ...data, aiConfigured: ai.isConfigured() })
     } catch (e) {
-        res.status(500).json({ error: e.message })
+        fail(res, e)
     }
 })
 
@@ -237,7 +237,7 @@ app.get('/api/cubemap/model', async (req, res) => {
         const client = makeClient(req.query.server, req.ideToken)
         res.json(await buildCubeMapModel(client))
     } catch (e) {
-        res.status(500).json({ error: e.message })
+        fail(res, e)
     }
 })
 }

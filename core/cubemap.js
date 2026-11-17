@@ -1,50 +1,26 @@
 'use strict'
 
 // Builds the Cube Map model: cubes, rules/TI edges, process-call chains and the
-// ordered steps the map/Show playback reads. This used to live in server.js with
-// its own copies of the comment/argument/name helpers; those now come from
-// cube-data-sources so the Cube Map and the Rules Data Sources strip cannot drift.
+// ordered steps the map/Show playback reads. The process and rule scanning lives in
+// core/process-scan.js and is shared with the Rules Data Sources strip; this module
+// folds the facts into edges, steps and dimension nodes, filters rule refs to the
+// cubes that exist (and are not the cube itself), and reports a failed process scan
+// without losing the rule edges.
 
-const { stripComments, splitArgs, resolveName, CUBE_FIRST_FNS } = require('./cube-data-sources')
-
-const CATALOG = require('../shared/tm1-function-catalog.json')
-
-const DB_RE = /\bDBS?\s*\(\s*'([^']+)'/gi
-
-function scanRefs(text) {
-    const clean = stripComments(text)
-    const refs = new Set()
-    DB_RE.lastIndex = 0
-    let m
-    while ((m = DB_RE.exec(clean)) !== null) refs.add(m[1])
-    DB_RE.lastIndex = 0
-    return [...refs]
-}
-
-// Dimension-changing TI calls, derived from the shared catalog (never hand-listed):
-// a statement that takes a dimname and no cubename (View*/CubeCreate take a dimname
-// but don't change it). Subset calls are excluded — the temp-view scaffolding every
-// clear-and-rebuild process does would link nearly every process to its cube's dimensions.
-const DIM_WRITE_FNS = Object.fromEntries(Object.entries(CATALOG)
-    .filter(([, f]) => f.language !== 'rules' && f.isStatement && (f.params ?? []).includes('dimname')
-        && !(f.params ?? []).some(x => x.startsWith('cubename') || x.startsWith('subset')))
-    .map(([name, f]) => [name, f.params.indexOf('dimname')]))
-const DIM_CALL_RE = new RegExp(`\\b(${Object.keys(DIM_WRITE_FNS).join('|')})\\s*\\(`, 'gi')
-const CUBE_FIRST_RE = new RegExp(`\\b(?:${CUBE_FIRST_FNS.join('|')})\\s*\\(\\s*([^,)]+)`, 'gi')
+const { fetchProcesses, scanProcess, scanRules, stripComments } = require('./process-scan')
 
 async function buildCubeMapModel(client, { includeControl = false } = {}) {
     const allCubes = await client.getAllCubesWithRules()
     const cubeNames = new Set(allCubes.map(c => c.Name))
     const cubeDims = Object.fromEntries(allCubes.map(c => [c.Name, (c.Dimensions ?? []).map(d => d.Name)]))
     const dimNames = new Set(await client.getDimensions().catch(() => []))
+    const ctx = { cubeNames, cubeDims, dimNames }
 
     // Fetch TI process code for write-ref and call-chain analysis (best-effort — skip if slow/unavailable)
-    // Catches three patterns, not just a literal cube name in CellPutN:
-    //   1. CellPutN(value, 'Literal Cube', ...)              — direct literal
-    //   2. cCube = 'Literal Cube'; ... CellPutN(value, cCube, ...) — var assigned a literal earlier, then used
-    //   3. ExecuteProcess('GenericCopier', 'pCube', 'Literal Cube', ...) — a generic process (its own
-    //      CellPutN target is a parameter, unresolvable in isolation) attributed via the call site that
-    //      names the real cube — this is how Bedrock-style reusable copy processes get credited correctly.
+    // The scanner resolves literal cubes, variables assigned a literal, variable chains, parameter
+    // defaults, and ExecuteProcess cube parameters (how Bedrock-style reusable copy processes get
+    // credited correctly). It returns the facts in code order; the arrays below fold them into the
+    // map's edges and Show playback steps.
     const tiWriteMap = {}
     const tiReadMap = {}
     const processCallers = {} // calledProcess -> [callerProcess, ...] (reverse of ExecuteProcess/RunProcess)
@@ -54,140 +30,79 @@ async function buildCubeMapModel(client, { includeControl = false } = {}) {
     const procEntry = name => (processes[name] ??= { reads: [], writes: [], calls: [], dimWrites: [], steps: [] })
     const dimWriteMap = {} // dim -> [process, ...]
 
+    const addStep = (proc, kind, target, pos, measure) => {
+        const e = procEntry(proc)
+        const list = { read: e.reads, write: e.writes, call: e.calls, dimwrite: e.dimWrites }[kind]
+        if (list.includes(target)) {
+            if (kind === 'write' && measure) {
+                const st = e.steps.find(x => x.kind === 'write' && x.target === target)
+                if (st) { st.measures = st.measures ?? []; if (!st.measures.includes(measure)) st.measures.push(measure) }
+            }
+            return
+        }
+        list.push(target)
+        const step = { kind, target, pos }
+        if (kind === 'write' && measure) step.measures = [measure]
+        e.steps.push(step)
+    }
+    const addWriter = (cube, proc, pos = Infinity) => {
+        if (!cubeNames.has(cube)) return
+        if (!tiWriteMap[cube]) tiWriteMap[cube] = []
+        if (!tiWriteMap[cube].includes(proc)) tiWriteMap[cube].push(proc)
+        addStep(proc, 'write', cube, pos)
+    }
+    const addReader = (cube, proc, pos) => {
+        if (!cubeNames.has(cube)) return
+        if (!tiReadMap[cube]) tiReadMap[cube] = []
+        if (!tiReadMap[cube].includes(proc)) tiReadMap[cube].push(proc)
+        addStep(proc, 'read', cube, pos)
+    }
+
+    let scanError = null
+    let allProcesses = []
     try {
-        const pd = await client.get('Processes', {
-            '$select': 'Name,PrologProcedure,MetadataProcedure,DataProcedure,EpilogProcedure,DataSource,Parameters',
-        })
-        const ASSIGN_RE     = /\b([A-Za-z_]\w*)\s*=\s*'([^']*)'\s*;/g
-        const VAR_ASSIGN_RE = /\b([A-Za-z_]\w*)\s*=\s*([A-Za-z_]\w*)\s*;/g
-        // cube is the 2nd arg: CellPutN/S, CellPutNComplete, CellIncrementN/S (accumulating write)
-        const CELLPUT_RE    = /\b(CellPut[NS](?:Complete)?|CellIncrement[NS])\s*\(/gi
-        // reads: cube is the 1st arg
-        const CELLGET_RE    = /\bCellGet[NS]\s*\(\s*([^,)]+)/gi
-        const EXEC_RE       = /\b(?:ExecuteProcess|RunProcess)\s*\(([\s\S]*?)\)\s*;/gi
-        const CUBE_PARAM_RE = /'([pP]\w*[Cc]ube\w*)'\s*,\s*'([^']+)'/g
+        allProcesses = await fetchProcesses(client)
+    } catch (e) {
+        // The cubes and their rule edges still draw; the TI side reports the failure.
+        scanError = e.message
+    }
 
-        const addStep = (proc, kind, target, pos, measure) => {
-            const e = procEntry(proc)
-            const list = { read: e.reads, write: e.writes, call: e.calls, dimwrite: e.dimWrites }[kind]
-            if (list.includes(target)) {
-                if (kind === 'write' && measure) {
-                    const st = e.steps.find(x => x.kind === 'write' && x.target === target)
-                    if (st) { st.measures = st.measures ?? []; if (!st.measures.includes(measure)) st.measures.push(measure) }
-                }
-                return
-            }
-            list.push(target)
-            const step = { kind, target, pos }
-            if (kind === 'write' && measure) step.measures = [measure]
-            e.steps.push(step)
+    for (const p of allProcesses.filter(p => includeControl || !p.Name.startsWith('}'))) {
+        const facts = scanProcess(p, ctx)
+
+        for (const w of facts.writes) {
+            // The scanner keeps clear/feeders; the map draws both as cube writes.
+            addWriter(w.cube, p.Name, w.pos)
+            if (w.measure) addStep(p.Name, 'write', w.cube, w.pos, w.measure)
         }
-        const addWriter = (cube, proc, pos = Infinity) => {
-            if (!cubeNames.has(cube)) return
-            if (!tiWriteMap[cube]) tiWriteMap[cube] = []
-            if (!tiWriteMap[cube].includes(proc)) tiWriteMap[cube].push(proc)
-            addStep(proc, 'write', cube, pos)
+        for (const r of facts.reads) addReader(r.cube, p.Name, r.pos)
+        for (const d of facts.dimWrites) {
+            if (!dimWriteMap[d.dim]) dimWriteMap[d.dim] = []
+            if (!dimWriteMap[d.dim].includes(p.Name)) dimWriteMap[d.dim].push(p.Name)
+            addStep(p.Name, 'dimwrite', d.dim, d.pos)
         }
-        const addReader = (cube, proc, pos) => {
-            if (!cubeNames.has(cube)) return
-            if (!tiReadMap[cube]) tiReadMap[cube] = []
-            if (!tiReadMap[cube].includes(proc)) tiReadMap[cube].push(proc)
-            addStep(proc, 'read', cube, pos)
+        for (const call of facts.calls) {
+            if (!processCallers[call.process]) processCallers[call.process] = []
+            if (!processCallers[call.process].includes(p.Name)) processCallers[call.process].push(p.Name)
+            addStep(p.Name, 'call', call.process, call.pos)
+            for (const cube of call.cubeParams) addWriter(cube, call.process)
         }
-
-        for (const p of (pd.value ?? []).filter(p => includeControl || !p.Name.startsWith('}'))) {
-            const code = stripComments([p.PrologProcedure, p.MetadataProcedure, p.DataProcedure, p.EpilogProcedure]
-                .filter(Boolean).join('\n'))
-
-            // Resolve `var = 'literal';` assignments so CellPutN(value, var, ...) can be traced, seeded
-            // with parameter defaults and following `a = b;` chains (sDimension = pDimension). A default is
-            // what the process uses when run as-is, so it's the name the map attributes it to.
-            const varValues = {}
-            for (const prm of p.Parameters ?? []) {
-                if (typeof prm.Value === 'string' && prm.Value) varValues[prm.Name] = prm.Value
-            }
-            let am
-            ASSIGN_RE.lastIndex = 0
-            while ((am = ASSIGN_RE.exec(code)) !== null) varValues[am[1]] = am[2]
-            for (let pass = 0; pass < 3; pass++) {
-                VAR_ASSIGN_RE.lastIndex = 0
-                while ((am = VAR_ASSIGN_RE.exec(code)) !== null) {
-                    if (varValues[am[1]] === undefined && varValues[am[2]] !== undefined) varValues[am[1]] = varValues[am[2]]
-                }
-            }
-
-            CELLPUT_RE.lastIndex = 0
-            let m
-            while ((m = CELLPUT_RE.exec(code)) !== null) {
-                const args = splitArgs(code, m.index + m[0].length - 1)
-                const cubeName = resolveName(args[1], varValues)
-                if (!cubeName) continue
-                addWriter(cubeName, p.Name, m.index)
-                const dims = cubeDims[cubeName] ?? []
-                const mi = dims.findIndex(d => /measure/i.test(d))
-                const measure = mi >= 0 ? resolveName(args[2 + mi], varValues) : undefined
-                addStep(p.Name, 'write', cubeName, m.index, measure)
-            }
-
-            CUBE_FIRST_RE.lastIndex = 0
-            while ((m = CUBE_FIRST_RE.exec(code)) !== null) {
-                const cubeName = resolveName(m[1], varValues)
-                if (cubeName) addWriter(cubeName, p.Name, m.index)
-            }
-
-            CELLGET_RE.lastIndex = 0
-            while ((m = CELLGET_RE.exec(code)) !== null) {
-                const cubeName = resolveName(m[1], varValues)
-                if (cubeName) addReader(cubeName, p.Name, m.index)
-            }
-
-            DIM_CALL_RE.lastIndex = 0
-            while ((m = DIM_CALL_RE.exec(code)) !== null) {
-                const ref = splitArgs(code, m.index + m[0].length - 1)[DIM_WRITE_FNS[m[1].toUpperCase()]]
-                const dim = ref && resolveName(ref, varValues)
-                if (!dim || !dimNames.has(dim)) continue
-                if (!dimWriteMap[dim]) dimWriteMap[dim] = []
-                if (!dimWriteMap[dim].includes(p.Name)) dimWriteMap[dim].push(p.Name)
-                addStep(p.Name, 'dimwrite', dim, m.index)
-            }
-
-            // A cube-view datasource is a read of the whole view, before any code runs
-            const ds = p.DataSource
-            if (ds?.Type === 'TM1CubeView' && ds.dataSourceNameForServer) addReader(ds.dataSourceNameForServer, p.Name, -1)
-
-            EXEC_RE.lastIndex = 0
-            while ((m = EXEC_RE.exec(code)) !== null) {
-                const argList = m[1]
-                const nameRef = splitArgs(`(${argList})`, 0)[0]
-                const called = nameRef && resolveName(nameRef, varValues)
-                if (!called) continue
-                if (called !== p.Name) {
-                    if (!processCallers[called]) processCallers[called] = []
-                    if (!processCallers[called].includes(p.Name)) processCallers[called].push(p.Name)
-                    addStep(p.Name, 'call', called, m.index)
-                }
-                CUBE_PARAM_RE.lastIndex = 0
-                let cm
-                while ((cm = CUBE_PARAM_RE.exec(argList)) !== null) addWriter(cm[2], called)
-            }
-        }
-    } catch { /* TI refs unavailable — continue without them */ }
+    }
 
     const cubes = {}
 
     for (const c of allCubes) {
         const rules = c.Rules ?? ''
-        const feederIdx = rules.search(/^FEEDERS\s*;/im)
-        const calcText   = feederIdx >= 0 ? rules.slice(0, feederIdx) : rules
-        const feederText = feederIdx >= 0 ? rules.slice(feederIdx) : ''
+        const refs = scanRules(rules)
+        const clean = stripComments(rules)
+        const feederAt = clean.search(/^\s*FEEDERS\s*;/im)
+        const calcText = feederAt >= 0 ? clean.slice(0, feederAt) : clean
 
-        const calcRefs   = scanRefs(calcText).filter(n => cubeNames.has(n) && n !== c.Name)
-        const feederRefs = scanRefs(feederText).filter(n => cubeNames.has(n) && n !== c.Name)
+        const calcRefs   = refs.calc.filter(n => cubeNames.has(n) && n !== c.Name)
+        const feederRefs = refs.feeders.filter(n => cubeNames.has(n) && n !== c.Name)
 
         // Non-blank, non-comment lines in the calc section
-        const ruleLoc = calcText.split('\n')
-            .filter(l => { const t = l.trim(); return t && !t.startsWith('#') && !t.startsWith('//') })
-            .length
+        const ruleLoc = calcText.split('\n').filter(l => l.trim()).length
 
         cubes[c.Name] = {
             dims:           (c.Dimensions ?? []).map(d => d.Name),
@@ -210,7 +125,9 @@ async function buildCubeMapModel(client, { includeControl = false } = {}) {
 
     const chores = await client.getChoresWithTasks().catch(() => [])
 
-    return { cubes, processCallers, processes, dims, chores }
+    const model = { cubes, processCallers, processes, dims, chores }
+    if (scanError) model.scanError = scanError
+    return model
 }
 
 module.exports = { buildCubeMapModel }

@@ -18,13 +18,14 @@ export default function useCubemapModel({ srv }) {
   const [chores,         setChores]         = useState([])
   const [loading,        setLoading]        = useState(false)
   const [error,          setError]          = useState(null)
+  const [scanError,      setScanError]      = useState(null)
   const [modelReady,     setModelReady]     = useState(false)
 
   // Request counter: a slow older server switch must not overwrite a newer map.
   const modelRequestRef = useRef(0)
   const fetchModel = useCallback(async () => {
     const requestId = ++modelRequestRef.current
-    setLoading(true); setError(null); setModelReady(false)
+    setLoading(true); setError(null); setScanError(null); setModelReady(false)
     try {
       const d = await queryClient.fetchQuery({ ...cubemapModelQuery(srv), staleTime: 0 })
       if (requestId !== modelRequestRef.current) return
@@ -33,6 +34,7 @@ export default function useCubemapModel({ srv }) {
       setProcessData(d.processes ?? {})
       setDimData(d.dims ?? {})
       setChores(d.chores ?? [])
+      setScanError(d.scanError ?? null)
       setModelReady(true)
     } catch (e) {
       if (requestId !== modelRequestRef.current) return
@@ -50,6 +52,6 @@ export default function useCubemapModel({ srv }) {
 
   return {
     cubeDataAll, processCallers, processDataAll, dimDataAll, chores,
-    loading, error, modelReady, fetchModel, lensUsage,
+    loading, error, scanError, modelReady, fetchModel, lensUsage,
   }
 }

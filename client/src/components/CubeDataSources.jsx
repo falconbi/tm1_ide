@@ -1,7 +1,7 @@
-import { request } from '@/lib/api'
-import { useCallback, useEffect, useState } from 'react'
+import { useState } from 'react'
 import { ChevronDown, ChevronRight, Database, Loader2, RefreshCw, Workflow, ArrowDownToLine, ArrowUpFromLine, Copy, Sparkles } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { useCubeDataSources } from '@/hooks/useApi'
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
 
 const TIP = 'block w-[430px] max-w-[calc(100vw-2rem)] whitespace-normal bg-popover text-foreground border border-border rounded-md p-3 text-[11px] leading-relaxed shadow-xl'
@@ -9,30 +9,13 @@ import ProcessSummariesDialog from '@/components/ProcessSummariesDialog'
 
 // A read-only summary of everything that feeds a cube: TI writers (with the measures they
 // write), the cube's rule dependencies, TI readers, and processes that copy it (snapshots).
-// Shared with the Cube Map — core/cubemap.js and this strip both scan through
-// core/cube-data-sources.js helpers.
+// Shared with the Cube Map — both read facts from core/process-scan.js, through
+// core/cube-data-sources.js here and core/cubemap.js on the map.
 export default function CubeDataSources({ server, cube, onOpenCube, onOpenProcess, onOpenMap }) {
   const [open, setOpen] = useState(false)
   const [showSummaries, setShowSummaries] = useState(false)
-  const [loading, setLoading] = useState(true)
-  const [data, setData] = useState(null)
-  const [error, setError] = useState(null)
-
-  const load = useCallback(async (refresh = false) => {
-    setLoading(true); setError(null)
-    try {
-      const token = localStorage.getItem('tm1-token') ?? ''
-      const r = await request(`/api/cube/data-sources?server=${encodeURIComponent(server)}&cube=${encodeURIComponent(cube)}${refresh ? '&refresh=1' : ''}`, {
-        headers: { 'x-ide-token': token },
-      })
-      const d = await r.json()
-      if (!r.ok || d.error) throw new Error(d.error || r.statusText)
-      setData(d)
-    } catch (e) { setError(e.message) }
-    finally { setLoading(false) }
-  }, [server, cube])
-
-  useEffect(() => { load() }, [load])
+  const { data, loading, error, refresh } = useCubeDataSources(server, cube)
+  const errorMessage = error?.message ?? null
 
   const writers  = data?.writers ?? []
   const ruleCalc = data?.ruleReads?.calc ?? []
@@ -51,8 +34,8 @@ export default function CubeDataSources({ server, cube, onOpenCube, onOpenProces
           <span className="font-medium shrink-0">Data sources</span>
           {loading ? (
             <span className="flex items-center gap-1 text-muted-foreground"><Loader2 size={10} className="animate-spin" /> scanning…</span>
-          ) : error ? (
-            <span className="text-red-400 truncate" title={error}>unavailable</span>
+          ) : errorMessage ? (
+            <span className="text-red-400 truncate" title={errorMessage}>unavailable</span>
           ) : (
             <span className="text-muted-foreground truncate">
               {writers.length
@@ -65,7 +48,7 @@ export default function CubeDataSources({ server, cube, onOpenCube, onOpenProces
           )}
         </button>
         <div className="ml-auto flex items-center gap-1 shrink-0">
-          <button onClick={() => load(true)} title="Rescan" className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors">
+          <button onClick={() => refresh().catch(() => {})} title="Rescan" className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors">
             <RefreshCw size={10} className={cn(loading && 'animate-spin')} />
           </button>
           <button onClick={() => setShowSummaries(true)} title="Write or review the plain-English summaries shown on hover"
@@ -79,7 +62,11 @@ export default function CubeDataSources({ server, cube, onOpenCube, onOpenProces
         </div>
       </div>
 
-      {open && !loading && !error && (
+      {data?.scanError && (
+        <div className="px-3 pb-1 text-[10px] text-amber-500">Process scan failed: {data.scanError}</div>
+      )}
+
+      {open && !loading && !errorMessage && (
         <div className="max-h-96 overflow-auto border-t border-border/60 px-3 py-2 grid items-start gap-x-6 gap-y-2 md:grid-cols-2">
           <Section icon={ArrowDownToLine} title="Written by" tone="text-emerald-400/80">
             {writers.length === 0
@@ -144,7 +131,7 @@ export default function CubeDataSources({ server, cube, onOpenCube, onOpenProces
       cube={cube}
       writers={writers}
       aiConfigured={!!data?.aiConfigured}
-      onChanged={() => load()}
+      onChanged={() => refresh().catch(() => {})}
     />
     </>
   )
