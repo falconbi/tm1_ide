@@ -17,6 +17,7 @@
 const fs   = require('fs')
 const path = require('path')
 const { randomUUID } = require('crypto')
+const store = require('./model-store')
 
 const FILE = path.join(__dirname, '..', 'config', 'assertions.json')
 
@@ -51,26 +52,25 @@ function _clientFor(server, opts = {}) {
   return makeClient(server, opts.ideToken ?? null)
 }
 
-// ── Migrated-server marker ──────────────────────────────────────────────────
-// A migrated server's entry in config/assertions.json is replaced with a marker
-// `{ "migrated": "model", "at": "<iso>" }` instead of being deleted. If the
-// server's document ever goes missing (folder deleted, restored from an old
-// backup), falling back to the central file would find nothing and run zero
-// assertions silently — the exact silent-pass we closed. A marker makes the
-// store throw "migrated server's document is missing" instead.
+// ── Ownership ──────────────────────────────────────────────────────────────
+// The model's governance manifest (Applications/Governance/manifest.json) says
+// whether assertions are model-owned. If it says "model" and the document is
+// missing, throw — never fall back to config/assertions.json and silently run
+// zero assertions. core/ and routes/ never write the manifest; the migration
+// tool does.
 
 function _configEntry(server) {
   return load()[server]
 }
 
-function _isMigratedMarker(entry) {
-  return !!entry && typeof entry === 'object' && !Array.isArray(entry) && entry.migrated === 'model'
+async function _isModelOwned(server, opts = {}) {
+  return store.isMigrated(server, 'assertions', opts)
 }
 
 function _missingModelError(server) {
   return new Error(
-    `Server "${server}" is marked as migrated (model-owned) in config/assertions.json, but its document ${_targetPath()} is missing on the server. ` +
-    `Restore the document (or remove the "migrated" marker from config/assertions.json) before using assertions.`
+    `Server "${server}" is model-owned for assertions (its governance manifest says so), but its document ${_targetPath()} is missing on the server. ` +
+    `Restore the document, or change assertions to "local" with: node tools/migrate-governance.js --manifest ${server} --local`
   )
 }
 
@@ -154,8 +154,8 @@ async function list(server, opts = {}) {
   const client = _clientFor(server, opts)
   const model = await _readModel(client)
   if (model) return { source: 'model', assertions: model }
+  if (await _isModelOwned(server, { client })) throw _missingModelError(server)
   const entry = _configEntry(server)
-  if (_isMigratedMarker(entry)) throw _missingModelError(server)
   return { source: 'config', assertions: entry ?? [] }
 }
 
@@ -187,7 +187,7 @@ async function add(server, { description, mdx, expected, tolerance, tags, kind, 
     model.push(rec)
     await _writeModel(client, model)
   } else {
-    if (_isMigratedMarker(_configEntry(server))) throw _missingModelError(server)
+    if (await _isModelOwned(server, { client })) throw _missingModelError(server)
     const data = load()
     ;(data[server] ??= []).push(rec)
     save(data)
@@ -207,7 +207,7 @@ async function remove(server, id, opts = {}) {
     }
     return false
   }
-  if (_isMigratedMarker(_configEntry(server))) throw _missingModelError(server)
+  if (await _isModelOwned(server, { client })) throw _missingModelError(server)
   const data = load()
   if (!data[server]) return false
   const before = data[server].length
@@ -223,18 +223,16 @@ async function isModelStored(server, opts = {}) {
 }
 
 // Copy a server's config/assertions.json entries into its model document.
-// Copy the config assertions into the model, then mark the server model-owned
-// (config entry → "migrated" marker) so a lost model document throws instead of
-// silently falling back. Refuses to overwrite an existing model document unless
-// `force`. After writing, reads the document back so the caller sees the count
-// the server actually holds.
+// Ownership is recorded in the governance manifest by tools/migrate-governance.js,
+// not here — this only copies the records. Refuses to overwrite an existing
+// model document unless `force`. After writing, reads the document back so the
+// caller sees the count the server actually holds.
 async function migrate(server, { dryRun = false, force = false, ideToken, client: injected } = {}) {
   const client = injected ?? _clientFor(server, { ideToken })
   const target = `${GOVERNANCE_PATH.join('/')}/${MODEL_DOC_NAME}`
-  const cfgEntry = _configEntry(server)
-  if (_isMigratedMarker(cfgEntry)) {
+  if (await _isModelOwned(server, { client })) {
     throw new Error(
-      `Server "${server}" is already migrated — config/assertions.json holds the "migrated" marker, so there is nothing to copy from it. ` +
+      `Server "${server}" is already model-owned for assertions (its governance manifest says so). ` +
       `Its assertions live at ${target} on the server.`
     )
   }
@@ -264,11 +262,6 @@ async function migrate(server, { dryRun = false, force = false, ideToken, client
     }
   }
   await _writeModel(client, entries)
-  // Mark the server model-owned: the config entry becomes the "migrated" marker,
-  // so a lost model document THROWS (never a silent fall back to config).
-  const data = load()
-  data[server] = { migrated: 'model', at: new Date().toISOString() }
-  save(data)
   const readBack = await _readModel(client)
   return {
     server,
@@ -371,7 +364,7 @@ async function update(server, id, patch = {}, opts = {}) {
         await _writeModel(client, model)
         return model[idx]
     }
-    if (_isMigratedMarker(_configEntry(server))) throw _missingModelError(server)
+    if (await _isModelOwned(server, { client })) throw _missingModelError(server)
     const data = load()
     const arr = data[server] ?? []
     const idx = arr.findIndex(a => a.id === id)

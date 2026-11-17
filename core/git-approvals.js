@@ -24,7 +24,7 @@ function writeLocal(arr) {
 
 async function readFor(target, { ideToken } = {}) {
     const store = require('./model-store')
-    if (store.isMigrated(target, 'approvals')) {
+    if (await store.isMigrated(target, 'approvals', { ideToken })) {
         const arr = await store.readDoc(target, 'approvals', 'approvals.json', { ideToken })
         if (arr === null) return []   // never migrated-written yet — treat as empty, pending first write
         if (!Array.isArray(arr)) throw new Error(`Model approvals on "${target}" is not an array`)
@@ -61,7 +61,7 @@ function linkedChangeSet(commit, target) {
 
 async function append(rec, { ideToken } = {}) {
     const store = require('./model-store')
-    if (store.isMigrated(rec.target, 'approvals')) {
+    if (await store.isMigrated(rec.target, 'approvals', { ideToken })) {
         const arr = (await readFor(rec.target, { ideToken })) ?? []
         arr.push(rec)
         await store.writeDoc(rec.target, 'approvals', 'approvals.json', arr, { ideToken })   // loud

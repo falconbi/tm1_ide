@@ -28,7 +28,7 @@ function save(d) {
 async function recordDeploy(server, commit, summary, { ideToken } = {}) {
     const rec = { lastDeployedCommit: commit, summary, at: new Date().toISOString() }
     const store = require('./model-store')
-    if (store.isMigrated(server, 'deployState')) {
+    if (await store.isMigrated(server, 'deployState', { ideToken })) {
         // Model is the truth here; a failure to write is loud.
         const state = (await store.readDoc(server, 'deployState', 'state.json', { ideToken })) ?? {}
         state[server] = rec
