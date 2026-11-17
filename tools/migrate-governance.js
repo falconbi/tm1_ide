@@ -108,7 +108,10 @@ async function writeOnly(opts) {
     const server = opts.manifestServer
     const value = opts.model ? 'model' : 'local'
     const areas = opts.areas ?? MANIFEST_AREAS
-    const manifest = emptyManifest()
+    // --areas changes only the areas named; the others keep their current value.
+    // Without --areas the default is all four, which also resets any unknown state.
+    const existing = opts.areas ? await readExisting(makeClient(server, null)) : null
+    const manifest = existing?.areas ? { version: MANIFEST_VERSION, areas: { ...emptyManifest().areas, ...existing.areas } } : emptyManifest()
     for (const area of areas) manifest.areas[area] = value
     console.log(`── ${server} ──`)
     await writeManifest(server, manifest)

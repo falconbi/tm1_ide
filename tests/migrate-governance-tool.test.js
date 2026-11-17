@@ -48,3 +48,18 @@ test('writeManifest writes and reads the document back', async () => {
         assert.deepEqual(JSON.parse(docs['manifest.json']), manifest)
     } finally { console.log = log }
 })
+
+test('--areas changes only the named areas and preserves the others', async () => {
+    docs['manifest.json'] = JSON.stringify({
+        version: 1,
+        areas: { changeSets: 'model', approvals: 'model', deployState: 'model', assertions: 'local' },
+    })
+    const log = console.log
+    console.log = () => {}
+    try {
+        await tool.writeOnly({ manifestServer: 'TM1_Test_DEV', model: true, local: false, areas: ['assertions'] })
+        assert.deepEqual(JSON.parse(docs['manifest.json']).areas, {
+            changeSets: 'model', approvals: 'model', deployState: 'model', assertions: 'model',
+        })
+    } finally { console.log = log }
+})
