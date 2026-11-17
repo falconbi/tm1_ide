@@ -1,6 +1,6 @@
 {
   "name": "tm1_ide",
-  "version": "0.9.0",
+  "version": "1.0.0",
   "description": "A browser-based IDE and MCP server for IBM Planning Analytics (TM1).",
   "main": "server.js",
   "scripts": {

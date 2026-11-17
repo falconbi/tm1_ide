@@ -103,6 +103,8 @@ Start here: [Setup](docs/ide/SETUP.md) → [Features](docs/ide/FEATURES.md) → 
 | [HTML apps on TM1: security](docs/lenses/TM1_HTML_APPS_SECURITY.md) | The browser security layer you own once TM1 screens are HTML you (or an AI) write — five decisions, one checklist |
 | [Lens learning lab](docs/learn/lens-lab/README.md) | Five browser-security ideas you can break on purpose, run locally with no dependencies |
 | [Setup](docs/ide/SETUP.md) | Install, configure servers, run, development mode, installing at a client (Windows untested) |
+| [First walkthrough](docs/ide/WALKTHROUGH.md) | Connect, edit Rules/TI, build a model, trace it, govern a change |
+| [v1.0 release notes](docs/ide/RELEASE_NOTES_v1.0.md) | What is in v1.0, verification, and the known limits |
 | [Contributing](CONTRIBUTING.md) | Node version, install, tests, building `static/`, both lint ratchets, CI, where each kind of change belongs |
 | [Authentication](docs/auth/AUTHENTICATION.md) | How the IDE signs in — per-server login, what's supported and tested |
 | [TM1 Authentication Guide](docs/auth/TM1_AUTHENTICATION_GUIDE.md) | How every TM1 sign-in method works, in plain English — for anyone in TM1 |
