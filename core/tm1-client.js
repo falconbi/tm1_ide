@@ -1,6 +1,7 @@
 'use strict'
 
 const { odataKey, odataLit } = require('./odata-key')
+const { extractMembersFromExpression } = require('./view-axes')
 const SAVE_DATA_ALL = require('../ti-processes/save-data-all/process.json')
 const { rebuildProcess, referencesHierarchy } = require('./hierarchy-gen')
 
@@ -1163,11 +1164,7 @@ return (d.value ?? [])
     }
 
     _extractMembersFromExpression(expr) {
-        if (!expr) return null
-        const trimmed = expr.trim()
-        if (!trimmed.startsWith('{') || !trimmed.endsWith('}')) return null
-        const matches = [...trimmed.matchAll(/\[[^\]]+\]\.\[[^\]]+\]\.\[([^\]]+)\]/g)]
-        return matches.length > 0 ? matches.map(m => m[1]) : null
+        return extractMembersFromExpression(expr)
     }
 
     async getSubsetElements(dim, name, hierarchy = dim) {

@@ -99,14 +99,6 @@ function createServerHelpers({ cl, makeClientWithCredentials, isDirectServer, PA
         return out
     }
 
-    function extractMembersFromExpression(expr) {
-        if (!expr) return null
-        const trimmed = expr.trim()
-        if (!trimmed.startsWith('{') || !trimmed.endsWith('}')) return null
-        const matches = [...trimmed.matchAll(/\[[^\]]+\]\.\[[^\]]+\]\.\[([^\]]+)\]/g)]
-        return matches.length > 0 ? matches.map(m => m[1]) : null
-    }
-
     function parseDbRefs(rules) {
         const refs = new Set()
         const re = /\bDB[S]?\s*\(\s*'([^']+)'/gi
@@ -119,7 +111,7 @@ function createServerHelpers({ cl, makeClientWithCredentials, isDirectServer, PA
         loginRateLimit, SAMPLE_PASSWORD_WARNING, isSampleLogin, SQL_PASSWORD_MASK, _GI, _GITOK,
         CATALOG_OVERRIDES_PATH, catalogRoutes, LENS_CATALOGUE, txLogSearches, lensUsageCache, userServer,
         closeServerSession, setupBlankAdmin, sendSetupError, logAttributeValue, joinContinuations,
-        extractMembersFromExpression, parseDbRefs,
+        parseDbRefs,
     }
 }
 
