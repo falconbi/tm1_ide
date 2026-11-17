@@ -12,7 +12,9 @@ no Git remote was touched: every test uses stub clients and a local fixture repo
 | 3 | `509020e` | `change-set-model.listSessions` fails loudly on an unreadable model-owned document and names it | 601 (600 pass, 1 skipped) |
 | 4 | `bc96ecf` | `firstPullAnalysis` clones the branch into a throwaway folder, compares every hierarchy (skipping `Leaves`), lists target-only objects, fails closed, and builds `loss`/`confirmText` | 606 (605 pass, 1 skipped) |
 | 5 | `cffa7b1` | `firstPull` re-runs the analysis and requires that run's sentence; read-only route `GET /api/git/setup/first-pull-analysis`; `useFirstPullAnalysis`; `GitSetup` shows plan, target-only objects, loss table and hides the box when incomplete | 608 (607 pass, 1 skipped) |
-| 6 | `71eb0fc` | Docs (`DEPLOY_LIFECYCLE`, `IMPROVEMENTS`, `BUG_FIXES`), this DONE file, the questions file; `--areas` now changes only the named areas in the tool | 609 (608 pass, 1 skipped) |
+| 6 | `610b961` | Docs (`DEPLOY_LIFECYCLE`, `IMPROVEMENTS`, `BUG_FIXES`), this DONE file, the questions file; `--areas` now changes only the named areas in the tool | 609 (608 pass, 1 skipped) |
+
+A review follow-up (`95eb93b`, 612 tests: 611 pass, 1 skipped) made assertions read the manifest **before** the model document — a missing manifest now fails closed even when an assertion document exists, and a `local` area never reads that document. It also made the migration tool refuse to merge an invalid existing manifest instead of silently resetting the other areas to local.
 
 ## Files
 
