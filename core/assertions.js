@@ -148,13 +148,19 @@ async function _writeBackup(client, records) {
 
 // ── Store API (async; callers updated) ──────────────────────────────────────
 
-// The assertions stored for a server: its model document if present, else the
-// config/assertions.json fallback. Always reports which store the set came from.
+// A model-owned server's assertions document, else null (manifest says local).
+// A model-owned server with no document THROWS instead of falling back.
+async function _modelIfOwned(server, client) {
+  if (!await _isModelOwned(server, { client })) return null
+  const model = await _readModel(client)
+  if (model === null) throw _missingModelError(server)
+  return model
+}
+
 async function list(server, opts = {}) {
   const client = _clientFor(server, opts)
-  const model = await _readModel(client)
+  const model = await _modelIfOwned(server, client)
   if (model) return { source: 'model', assertions: model }
-  if (await _isModelOwned(server, { client })) throw _missingModelError(server)
   const entry = _configEntry(server)
   return { source: 'config', assertions: entry ?? [] }
 }
@@ -182,12 +188,11 @@ async function add(server, { description, mdx, expected, tolerance, tags, kind, 
     created:     new Date().toISOString(),
   }
   const client = _clientFor(server, opts)
-  const model = await _readModel(client)
+  const model = await _modelIfOwned(server, client)
   if (model) {
     model.push(rec)
     await _writeModel(client, model)
   } else {
-    if (await _isModelOwned(server, { client })) throw _missingModelError(server)
     const data = load()
     ;(data[server] ??= []).push(rec)
     save(data)
@@ -197,7 +202,7 @@ async function add(server, { description, mdx, expected, tolerance, tags, kind, 
 
 async function remove(server, id, opts = {}) {
   const client = _clientFor(server, opts)
-  const model = await _readModel(client)
+  const model = await _modelIfOwned(server, client)
   if (model) {
     const before = model.length
     const next = model.filter(a => a.id !== id)
@@ -207,7 +212,6 @@ async function remove(server, id, opts = {}) {
     }
     return false
   }
-  if (await _isModelOwned(server, { client })) throw _missingModelError(server)
   const data = load()
   if (!data[server]) return false
   const before = data[server].length
@@ -354,7 +358,7 @@ function _noteExpectedChange(prev, rec, by) {
 async function update(server, id, patch = {}, opts = {}) {
     const rec = _cleanPatch(patch)
     const client = _clientFor(server, opts)
-    const model = await _readModel(client)
+    const model = await _modelIfOwned(server, client)
     if (model) {
         const idx = model.findIndex(a => a.id === id)
         if (idx === -1) return null
@@ -364,7 +368,6 @@ async function update(server, id, patch = {}, opts = {}) {
         await _writeModel(client, model)
         return model[idx]
     }
-    if (await _isModelOwned(server, { client })) throw _missingModelError(server)
     const data = load()
     const arr = data[server] ?? []
     const idx = arr.findIndex(a => a.id === id)

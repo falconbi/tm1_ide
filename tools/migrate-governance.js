@@ -72,17 +72,31 @@ function emptyManifest() {
     return { version: MANIFEST_VERSION, areas: Object.fromEntries(MANIFEST_AREAS.map(a => [a, 'local'])) }
 }
 
-// Read an existing manifest for merging. null means "no usable manifest" — the
-// normal migration then starts from all-local defaults.
+// Read an existing manifest for merging. null means there is no manifest yet;
+// anything unreadable or invalid throws rather than silently resetting the
+// server's other ownership areas.
 async function readExisting(client) {
+    let files
     try {
-        const files = await client.listFiles(GOVERNANCE)
-        if (!files.some(f => f.name === MANIFEST_DOC && !f.isFolder)) return null
-        const raw = await client.getFileContent(GOVERNANCE, MANIFEST_DOC)
-        const m = typeof raw === 'string' ? JSON.parse(raw) : raw
-        if (m?.version !== MANIFEST_VERSION || !m.areas || typeof m.areas !== 'object') return null
-        return m
-    } catch { return null }
+        files = await client.listFiles(GOVERNANCE)
+    } catch (e) {
+        if (e.response?.status === 404) return null
+        throw e
+    }
+    if (!files.some(f => f.name === MANIFEST_DOC && !f.isFolder)) return null
+    const raw = await client.getFileContent(GOVERNANCE, MANIFEST_DOC)
+    let m
+    try { m = typeof raw === 'string' ? JSON.parse(raw) : raw }
+    catch (e) { throw new Error(`existing ${GOVERNANCE.join('/')}/${MANIFEST_DOC} is not valid JSON: ${e.message}`, { cause: e }) }
+    if (m?.version !== MANIFEST_VERSION || !m.areas || typeof m.areas !== 'object' || Array.isArray(m.areas)) {
+        throw new Error(`existing ${GOVERNANCE.join('/')}/${MANIFEST_DOC} is invalid; fix or remove it before writing`)
+    }
+    for (const area of MANIFEST_AREAS) {
+        if (m.areas[area] !== 'model' && m.areas[area] !== 'local') {
+            throw new Error(`existing ${GOVERNANCE.join('/')}/${MANIFEST_DOC} has invalid area "${area}"; fix or remove it before writing`)
+        }
+    }
+    return m
 }
 
 async function writeManifest(server, manifest) {

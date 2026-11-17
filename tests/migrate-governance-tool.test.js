@@ -63,3 +63,16 @@ test('--areas changes only the named areas and preserves the others', async () =
         })
     } finally { console.log = log }
 })
+
+test('--areas refuses to merge an invalid existing manifest', async () => {
+    docs['manifest.json'] = '{ not json'
+    const log = console.log
+    console.log = () => {}
+    try {
+        await assert.rejects(
+            () => tool.writeOnly({ manifestServer: 'TM1_Test_DEV', model: true, local: false, areas: ['assertions'] }),
+            /not valid JSON/
+        )
+        assert.equal(docs['manifest.json'], '{ not json')
+    } finally { console.log = log }
+})
