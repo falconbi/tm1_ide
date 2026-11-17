@@ -76,9 +76,10 @@ Pick the existing pattern and keep one obvious way to do the job:
 - **An editor** follows the dispatcher and tab pattern in
   [CLAUDE.md](CLAUDE.md#adding-a-new-editor-type). A large one uses the
   `client/src/components/view-editor/` (or `cubemap-editor/`, `process-editor/`,
-  `dimension-editor/`) layout: shell, panels, `hooks/` for its own state, and pure functions in
-  `client/src/lib/view-editor/` (or `lib/cubemap-editor/`, `lib/process-editor/`,
-  `lib/dimension-editor/`).
+  `dimension-editor/`, `rules-editor/`) layout: shell, panels, `hooks/` for its own state, and
+  pure functions in `client/src/lib/view-editor/` (or `lib/cubemap-editor/`, `lib/process-editor/`,
+  `lib/dimension-editor/`, `lib/rules-editor/`). The Rules editor stays behind the `EditorPane.jsx`
+  dispatcher, which is not itself an editor.
 - **An MCP tool** goes in `tools/tm1mcp/tools/` and is registered through the security wrapper; read
   [MCP_SERVER.md](docs/ide/MCP_SERVER.md) and `tools/tm1mcp/guard.js` before adding one.
 
