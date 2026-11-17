@@ -46,7 +46,7 @@ That puts these first, in this order:
 | # | Area | Status |
 |---|---|---|
 | 01 | Front door: README, CLAUDE.md, layout, setup, docs index | done — round 1 (5 commits, checked) |
-| 02 | `server.js` and `core/` | done — round 1 (5 commits) + route split (16 commits, checked); core rename/logic move still later |
+| 02 | `server.js` and `core/` | done — round 1 + route split + core rename/logic move |
 | 03 | Explorer and the editors (`client/src/components`, `hooks`, `store`) | round 1 + 2 done; ViewEditor, Cube Map, ProcessEditor, DimensionEditor and RulesEditor splits done; EditorPane is the dispatcher |
 | 04 | Shared pivot (`shared/pivot`) and the grid | done — verdict + fixes round 1 (9 commits, checked) |
 | 05 | Validators, formatter, function catalog, autocomplete (`client/src/lib`, `core/*-lint.js`) | done — round 1 (9 commits) + shared CJS/ESM convention settled (17 Nov) |
