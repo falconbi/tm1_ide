@@ -38,7 +38,7 @@ const READ_TOOLS = new Set([
 ])
 
 const WRITE_TOOLS = new Set([
-    'add_assertion', 'remove_assertion',
+    'add_assertion', 'update_assertion', 'remove_assertion',
     'build_dimension', 'add_elements', 'create_hierarchy', 'restructure_dimension', 'set_attribute_values',
     'build_cube', 'reprocess_feeders', 'build_process', 'build_period_dimension', 'write_cells', 'create_view', 'create_subset',
     'create_chore', 'set_chore_state', 'delete_object',

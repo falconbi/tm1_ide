@@ -53,6 +53,6 @@ That puts these first, in this order:
 | 06 | Understanding the model: Cube Map, Runbook, trace, search | done — round 1 (9 commits) + Cube Map split (6 commits) + Cube Map/Data Sources scanner unification (9 commits) |
 | 07 | Change sets, assertions, deploy (`core/git-*`, `core/change*`, deploy components) | round 1 done (10 commits, checked); round 2 done (6 commits + review follow-up); 7 live checks for James in 07_DEPLOY_FIXES_DONE.md; live round-2 checks in 07_DEPLOY_ROUND2_FIXES_DONE.md |
 | 08 | Admin: monitoring, server admin, users, catalog admin | done — round 1 (7 commits, checked); one admin rule (`core/admin_gate.js`), session/job list GETs left ungated by design |
-| 09 | MCP server (`tools/tm1mcp`) | done — round 1 (8 commits, checked); 67 tools, inventory generated and tested |
+| 09 | MCP server (`tools/tm1mcp`) | done — round 1 (8 commits, checked); 68 tools, inventory generated and tested |
 | 10 | Lenses: kit, editor, app, patterns | done — round 1 (9 commits) + patterns round 2 (4 commits, checked); Workforce content moved to the model repo |
 | 11 | Build, tests, lint, CI, docs | done — round 1 (7 commits) + backend lint burn-down (0 findings); CI matrix + static check proven on first push |

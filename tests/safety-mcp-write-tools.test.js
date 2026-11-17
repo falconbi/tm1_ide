@@ -67,12 +67,14 @@ function fakeCl() {
 const fakeAssertions = {
     async list() { return { source: 'model', assertions: [] } },
     async add(server, a) { calls.push(['addAssertion']); return { id: 'a1', ...a } },
+    async update(server, id, patch) { calls.push(['updateAssertion', id, patch]); return { id, description: 'check', ...patch } },
     async remove() { calls.push(['removeAssertion']); return true },
 }
 
 // Minimal valid arguments for every write tool.
 const ARGS = {
     add_assertion:         { description: 'Sales total', mdx: 'SELECT {} ON 0 FROM [Sales]', expected: 0 },
+    update_assertion:      { id: 'a1', expected: 1 },
     remove_assertion:      { id: 'a1' },
     build_dimension:       { name: 'Region', elements: [{ name: 'North' }, { name: 'Total', type: 'C' }], edges: [{ parent: 'Total', child: 'North' }], attributes: [{ name: 'Code' }], attribute_values: [{ element: 'North', attribute: 'Code', value: 'N' }] },
     add_elements:          { dimension: 'Region', elements: [{ name: 'South' }], edges: [{ parent: 'Total', child: 'South' }] },
