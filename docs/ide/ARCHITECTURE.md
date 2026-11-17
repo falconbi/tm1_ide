@@ -61,7 +61,6 @@ tm1_ide/
 ├── core-ti/                     # Hidden core TI processes and platform settings
 ├── tests/                       # node --test suite (fakes; no live TM1 required)
 ├── docs/                        # Guides and review records
-├── scripts/                     # Small developer scripts (e.g. test DB seed)
 └── .github/workflows/ci.yml     # Node 20/22: build, static check, tests, both lint ratchets
 ```
 
