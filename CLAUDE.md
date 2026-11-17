@@ -103,7 +103,10 @@ config/
   sql-connections.json        # External SQL connection definitions
   sql-queries.json            # Saved SQL queries
 static/                       # Built frontend (committed, served directly)
+data/                         # Runtime DB, summaries, Lens logs and preferences
+tests/                        # node --test suite (fakes; no live TM1 required)
 docs/                         # Architecture docs, Postman collection
+ti-processes/                 # TI processes the IDE installs on a TM1 server
 tools/
   tm1mcp/                     # MCP server — exposes TM1 model + build/diagnostic tools to AI agents (see docs/ide/MCP_SERVER.md)
     server.js                 #   bootstrap only — build shared ctx, wire each tool group, connect

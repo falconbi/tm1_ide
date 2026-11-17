@@ -19,16 +19,6 @@ client/dist/
 dist/
 *.local
 
-# ── Python ──
-venv/
-__pycache__/
-*.py[cod]
-*$py.class
-*.egg-info/
-.pytest_cache/
-.mypy_cache/
-.ruff_cache/
-
 # ── Editor / OS ──
 .vscode/
 .idea/
@@ -53,7 +43,6 @@ data/archives/
 
 # ── Logs / Runtime ──
 *.log
-docs/Archive/writeback_debug_log.txt
 *.db
 *.sqlite
 *.sqlite3
@@ -64,15 +53,12 @@ temp/
 # ── Git ──
 !.gitkeep
 
-# ── Bedrock / TI ──
-/Bedrock
-tm1_deploy/
-
 # Local secrets / backups — never commit
 config/certs/
 config/servers.json.bak*
 
 # ── Per-machine files — each install has its own (examples are committed) ──
+.mcp.json
 config/forge.json
 config/ide-modes.json
 config/sql-connections.json
