@@ -5,7 +5,7 @@
 // its own copies of the comment/argument/name helpers; those now come from
 // cube-data-sources so the Cube Map and the Rules Data Sources strip cannot drift.
 
-const { stripComments, splitArgs, resolveName, CUBE_FIRST_FNS } = require('./cube-data-sources')
+const { stripComments, splitArgs, resolveName, CUBE_FIRST_FNS } = require('./process-scan')
 
 const CATALOG = require('../shared/tm1-function-catalog.json')
 

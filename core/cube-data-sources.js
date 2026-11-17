@@ -10,6 +10,7 @@
 // The result is cached per server briefly because it reads every process.
 
 const { hashCode, list } = require('./process-summaries')
+const { stripComments, splitArgs, resolveName, CUBE_FIRST_FNS, scanRules } = require('./process-scan')
 
 const TTL_MS = 30_000
 const MAX_CACHE = 50
@@ -17,61 +18,6 @@ const MAX_CACHE = 50
 // token (hashed by the route) or the acting user name; model scans must never be
 // shared across TM1 logins.
 const cache = new Map()
-
-function stripComments(code) {
-    let out = ''
-    let i = 0
-    const n = code.length
-    while (i < n) {
-        const ch = code[i]
-        if (ch === "'") {
-            out += "'"; i++
-            while (i < n && code[i] !== "'") { out += code[i]; i++ }
-            if (i < n) { out += "'"; i++ }
-            continue
-        }
-        if (ch === '#' || (ch === '/' && code[i + 1] === '/')) {
-            while (i < n && code[i] !== '\n') i++
-            continue
-        }
-        out += ch
-        i++
-    }
-    return out
-}
-
-function splitArgs(code, openIdx) {
-    const args = []; let depth = 0, cur = '', inStr = false
-    for (let i = openIdx + 1; i < code.length; i++) {
-        const ch = code[i]
-        if (inStr) { cur += ch; if (ch === "'") inStr = false; continue }
-        if (ch === "'") { inStr = true; cur += ch; continue }
-        if (ch === '(') depth++
-        if (ch === ')') { if (depth === 0) { args.push(cur); break } depth-- }
-        if (ch === ',' && depth === 0) { args.push(cur); cur = ''; continue }
-        if (ch === ';' && depth === 0) break
-        cur += ch
-    }
-    return args
-}
-
-function resolveName(ref, varValues) {
-    if (!ref) return undefined
-    const parts = []; let cur = '', inStr = false
-    for (const ch of ref) {
-        if (ch === "'") inStr = !inStr
-        if (ch === '|' && !inStr) { parts.push(cur); cur = '' } else cur += ch
-    }
-    parts.push(cur)
-    let out = ''
-    for (const part of parts.map(s => s.trim())) {
-        const lit = part.match(/^'([^']*)'$/)
-        const val = lit ? lit[1] : varValues[part]
-        if (val === undefined) return undefined
-        out += val
-    }
-    return out || undefined
-}
 
 function processHeader(prolog, name) {
     const lines = String(prolog ?? '').split(/\r?\n/)
@@ -111,34 +57,6 @@ function statementAt(code, start) {
     return code.slice(start, start + 240)
 }
 const tidyCode = s => String(s).replace(/\s+/g, ' ').trim().slice(0, 220)
-
-function scanRules(rules) {
-    const clean = stripComments(rules ?? '')
-    const feederAt = clean.search(/^\s*FEEDERS\s*;/im)
-    const calcText = feederAt >= 0 ? clean.slice(0, feederAt) : clean
-    const feederText = feederAt >= 0 ? clean.slice(feederAt) : ''
-    const refs = text => {
-        const re = /\bDBS?\s*\(\s*'([^']+)'/gi
-        const map = new Map() // cube -> [rule line]
-        for (const line of text.split('\n')) {
-            re.lastIndex = 0
-            let m
-            while ((m = re.exec(line)) !== null) {
-                const code = line.trim().replace(/\s+/g, ' ').slice(0, 220)
-                if (!map.has(m[1])) map.set(m[1], [])
-                if (!map.get(m[1]).includes(code)) map.get(m[1]).push(code)
-            }
-        }
-        return map
-    }
-    const calc = refs(calcText), feeders = refs(feederText)
-    return {
-        calc: [...calc.keys()], calcEvidence: Object.fromEntries(calc),
-        feeders: [...feeders.keys()], feederEvidence: Object.fromEntries(feeders),
-    }
-}
-
-const CUBE_FIRST_FNS = ['ViewZeroOut', 'CubeClearData', 'CubeProcessFeeders']
 
 async function buildIndex(client, serverName, { includeControl = false } = {}) {
     const allCubes = await client.getAllCubesWithRules()
@@ -410,4 +328,4 @@ async function listProcessSummaries(client, server, identity, options = {}) {
     })
 }
 
-module.exports = { getCubeDataSources, getViewSourceUsage, getProcessFacts, listProcessSummaries, invalidate, stripComments, splitArgs, resolveName, CUBE_FIRST_FNS }
+module.exports = { getCubeDataSources, getViewSourceUsage, getProcessFacts, listProcessSummaries, invalidate }
