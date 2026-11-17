@@ -57,7 +57,11 @@ client/src/
       hooks/                   #   useProcessEdits/Monaco/Run/Save/Debug/Check — one concern per hook
       panels/                  #   Params/Datasource/DatasourcePreview/Variables/CollapsibleSection
       dialogs/                 #   RunDialog, SaveAsDialog
-    DimensionEditor.jsx       # Hierarchy tree + attribute grid
+    dimension-editor/          # Dimension Editor: shell + toolbar/panels, hooks/ for state, pure helpers in lib/dimension-editor/
+      DimensionEditor.jsx      #   shell: wrapper + core (under 400 lines)
+      DimensionToolbar.jsx     #   the two toolbar rows, alternate-hierarchy banner and help
+      hooks/                   #   useDimensionData/ElementActions/HierarchySelection — one concern per hook
+      tree/ attrs/ dialogs/    #   tree nodes, attribute grid, bulk/pre-delete modals
     SubsetEditor.jsx          # MDX + visual subset editor
     view-editor/               # Native/MDX view editor: shell + panels, hooks/ for state, trace/ and axes/
       ViewEditor.jsx           #   shell (under 400 lines); PivotGrid → shared pivot; auto-refreshes on rules save
@@ -83,6 +87,7 @@ client/src/
     ti-interpreter.js         # TI variable scanner for the debug watch dropdown
     ti-debugger.js            # TI debugger — breakpoint injection + capture parsing
     process-editor/           # Pure TI-editor helpers: constants, sections/run params, ASCII preview, debug issues
+    dimension-editor/         # Pure Dimension-editor helpers: tree order/cycle checks, type constants, tab-delimited rows
     formatters/               # TM1 rules formatter (tokenizer, AST, presets, settings)
 config/
   servers.json                # TM1 server list { name, ... }

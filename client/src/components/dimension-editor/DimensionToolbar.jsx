@@ -1,78 +1,20 @@
-import { useState, useCallback } from 'react'
-import HierarchyFromAttributeDialog from '@/components/HierarchyFromAttributeDialog'
-import { useStore } from '@/store'
 import { ChevronRight, ChevronDown, Loader2, List, GitBranch, Plus, X, ClipboardList, Table2, Search, ListOrdered, MapPin, Grid3x3, Cog, HelpCircle } from 'lucide-react'
-import HelpPanel from '@/components/HelpPanel'
+import { useStore } from '@/store'
 import { cn } from '@/lib/utils'
-import PicklistBuilder from './PicklistBuilder'
-import AttrGrid from '@/components/dimension-editor/attrs/AttrGrid'
-import StructureGrid from '@/components/dimension-editor/StructureGrid'
-import useDimensionData from '@/components/dimension-editor/hooks/useDimensionData'
-import useElementActions from '@/components/dimension-editor/hooks/useElementActions'
-import useHierarchySelection from '@/components/dimension-editor/hooks/useHierarchySelection'
-import ElementPanel, { AlternateBanner } from '@/components/dimension-editor/ElementPanel'
-import NewDimensionScreen from '@/components/dimension-editor/NewDimensionScreen'
-import BulkAddModal from '@/components/dimension-editor/dialogs/BulkAddModal'
-import PreDeleteDialog from '@/components/dimension-editor/dialogs/PreDeleteDialog'
-import AddRow from '@/components/dimension-editor/tree/AddRow'
-import TreeNode from '@/components/dimension-editor/tree/TreeNode'
-import FlatList from '@/components/dimension-editor/tree/FlatList'
+import HelpPanel from '@/components/HelpPanel'
+import HierarchyFromAttributeDialog from '@/components/HierarchyFromAttributeDialog'
+import { AlternateBanner } from './ElementPanel'
 
-export default function DimensionEditor({ tab }) {
-  if (!tab.dimension) return <NewDimensionScreen tab={tab} />
-  return <DimensionEditorCore tab={tab} />
-}
-
-function DimensionEditorCore({ tab }) {
-  const [view, setView]           = useState('attrs')
-  const [selected, setSelected]   = useState(null)
-  const [showIndex, setShowIndex] = useState(false)
-  const [addRoot, setAddRoot]     = useState(false)
-  const [bulkAdd, setBulkAdd]     = useState(false)
-  const [showCubes, setShowCubes]       = useState(false)
-  const [filterSearch, setFilterSearch] = useState('')
-  const [showPicklist, setShowPicklist] = useState(false)
-  const [showHelp, setShowHelp] = useState(false)
-  const [dragging, setDragging] = useState(null)
-
-  const {
-    selectedHierarchy, selectHierarchy, addingHierarchy, setAddingHierarchy,
-    newHierarchyName, setNewHierarchyName, hierMenu, setHierMenu,
-    fromAttr, setFromAttr, handleFromAttrDone, createHierarchy,
-  } = useHierarchySelection({ tab, setSelected })
-
-  const {
-    elements, edges, indexMap, hierarchies, dimCubes, dimProcs, elemAttrs, loadingAttrs,
-    loadingEl, loadingEd, refetchEl, refetchEd,
-    tree, filteredElements, filteredTree, consolElements,
-    selectedEl, selectedParents, selectedChildren,
-  } = useDimensionData({ tab, selectedHierarchy, showIndex, selected, filterSearch })
-
-  const refreshData = useCallback(() => {
-    refetchEl(); refetchEd()
-  }, [refetchEl, refetchEd])
-
-  const {
-    busy, error, refresh,
-    deleteCheck, setDeleteCheck, deleteTarget, setDeleteTarget,
-    run, handleAddRoot, handleAddChild, handleBulkAdd, handleDropChildAt,
-    execDelete, handleDelete, handleAddParent, handleRemoveParent, handleUpdateWeight,
-  } = useElementActions({
-    tab, tree, edges, selected, setSelected, refresh: refreshData, selectedHierarchy,
-    closeAddRoot: () => setAddRoot(false),
-    closeBulkAdd: () => setBulkAdd(false),
-  })
-
-  if (loadingEl || loadingEd) {
-    return (
-      <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm">
-        <Loader2 size={16} className="animate-spin mr-2" /> Loading dimension…
-      </div>
-    )
-  }
-
+export default function DimensionToolbar({
+  tab, view, setView, hierarchies, selectedHierarchy, onSelectHierarchy,
+  addingHierarchy, setAddingHierarchy, newHierarchyName, setNewHierarchyName,
+  hierMenu, setHierMenu, fromAttr, setFromAttr, handleFromAttrDone, createHierarchy, run,
+  filteredElements, elements, busy, error, setAddRoot, setBulkAdd,
+  showIndex, setShowIndex, setShowPicklist, showHelp, setShowHelp,
+  dimCubes, dimProcs, showCubes, setShowCubes, filterSearch, setFilterSearch,
+}) {
   return (
-    <div className="flex flex-col h-full">
+    <>
       {/* Toolbar row 1 — title + hierarchy + actions */}
       <div className="flex items-center gap-2 px-3 py-1.5 border-b border-border bg-muted shrink-0">
         <span className="text-xs font-semibold">{tab.dimension}</span>
@@ -94,7 +36,7 @@ function DimensionEditorCore({ tab }) {
         {hierarchies.filter(h => h !== 'Leaves').length > 1 && (
           <select
             value={selectedHierarchy}
-            onChange={e => selectHierarchy(e.target.value)}
+            onChange={e => onSelectHierarchy(e.target.value)}
             className="text-xs bg-background border border-border rounded px-1.5 py-0.5 text-foreground max-w-36"
             title="Select hierarchy"
           >
@@ -241,82 +183,6 @@ function DimensionEditorCore({ tab }) {
           </div>}
         </span>
       </div>
-
-      {/* Body */}
-      <div className="flex-1 min-h-0 flex overflow-hidden">
-        {view === 'attrs' && <div className="flex-1 min-w-0 min-h-0 flex flex-col"><AttrGrid tab={tab} elements={elements} edges={edges} hierarchy={selectedHierarchy} search={filterSearch} indexMap={showIndex ? indexMap : null} /></div>}
-        {view === 'grid' && <div className="flex-1 min-w-0 min-h-0 flex flex-col"><StructureGrid tab={tab} elements={elements} edges={edges} hierarchy={selectedHierarchy} onApplied={refresh} /></div>}
-        {/* Tree / Flat pane */}
-        {view !== 'attrs' && view !== 'grid' && <>
-          <div className={cn('flex-1 min-w-0 overflow-auto', selectedEl && 'max-w-[55%]')}>
-            {view === 'flat' && (
-              <FlatList elements={filteredElements} selected={selected} onSelect={setSelected} onDelete={handleDelete} indexMap={showIndex ? indexMap : null} />
-            )}
-            {view === 'tree' && (
-              <div className="p-2">
-                {addRoot && <AddRow beforeOptions={selectedHierarchy === tab.dimension ? tree.roots : []} onConfirm={handleAddRoot} onCancel={() => setAddRoot(false)} />}
-                {filteredTree.roots.length === 0 && !addRoot && (
-                  <p className="text-xs text-muted-foreground px-2 py-4 text-center">
-                    {filterSearch ? 'No elements match the current filter.' : 'No elements. Click Add or Bulk to start.'}
-                  </p>
-                )}
-                {filteredTree.roots.map(r => (
-                  <TreeNode key={filterSearch ? `${r}|filtered` : r} filtering={!!filterSearch} name={r} childrenOf={filteredTree.childrenOf} byName={filteredTree.byName} depth={0}
-                    onAddChild={handleAddChild} onDelete={handleDelete}
-                    selected={selected} onSelect={setSelected} visited={new Set()} indexMap={showIndex ? indexMap : null}
-                    drag={dragging} onDragStart={setDragging} onDragEnd={() => setDragging(null)} onDropChildAt={handleDropChildAt} />
-                ))}
-              </div>
-            )}
-          </div>
-          {selectedEl && (
-            <div className="w-[45%] shrink-0 overflow-auto">
-              <ElementPanel
-                server={tab.server}
-                dimension={tab.dimension}
-                el={selectedEl}
-                parents={selectedParents}
-                children={selectedChildren}
-                byName={tree.byName}
-                consolElements={consolElements}
-                hierarchies={hierarchies}
-                elemAttrs={elemAttrs}
-                loadingAttrs={loadingAttrs}
-                onDelete={handleDelete}
-                onAddParent={parent => handleAddParent(selected, parent)}
-                onRemoveParent={parent => handleRemoveParent(selected, parent)}
-                onUpdateWeight={handleUpdateWeight}
-                onClose={() => setSelected(null)}
-              />
-            </div>
-          )}
-        </>}
-      </div>
-
-      {/* Bulk add modal */}
-      {bulkAdd && (
-        <BulkAddModal
-          consolElements={consolElements}
-          roots={tree.roots}
-          childrenOf={tree.childrenOf}
-          onConfirm={handleBulkAdd}
-          onClose={() => setBulkAdd(false)}
-        />
-      )}
-      {showPicklist && (
-        <PicklistBuilder
-          server={tab.server}
-          dim={tab.dimension}
-          hierarchy={selectedHierarchy}
-          onClose={() => setShowPicklist(false)}
-        />
-      )}
-      <PreDeleteDialog
-        check={deleteCheck}
-        elementName={deleteTarget}
-        onConfirm={() => { setDeleteCheck(null); execDelete(deleteTarget); setDeleteTarget(null) }}
-        onCancel={() => { setDeleteCheck(null); setDeleteTarget(null) }}
-      />
-    </div>
+    </>
   )
 }
