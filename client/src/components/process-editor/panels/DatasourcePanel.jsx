@@ -1,15 +1,14 @@
 import { useRef, useState } from 'react'
 import { Loader2, Upload } from 'lucide-react'
 import { toast } from 'sonner'
-import { request } from '@/lib/api'
-import { useCubes, useViews } from '@/hooks/useApi'
+import { useCubes, useViews, useUploadFile } from '@/hooks/useApi'
 
 export default function DatasourcePanel({ ds, server, onChange }) {
   const type = ds?.Type ?? 'None'
   const set  = (k, v) => onChange({ ...ds, Type: type, [k]: v })
   const csvInputRef = useRef(null)
   const [csvUploading, setCsvUploading] = useState(false)
-  const enc = encodeURIComponent
+  const uploadFile = useUploadFile()
 
   const handleCsvUpload = async (e) => {
     const file = e.target.files?.[0]
@@ -17,12 +16,7 @@ export default function DatasourcePanel({ ds, server, onChange }) {
     setCsvUploading(true)
     try {
       const buffer = await file.arrayBuffer()
-      const r = await request(
-        `/api/files/upload?server=${enc(server)}&name=${enc(file.name)}`,
-        { method: 'POST', headers: { 'Content-Type': 'application/octet-stream', 'x-ide-token': localStorage.getItem('tm1-token') ?? '' }, body: buffer }
-      )
-      const d = await r.json()
-      if (!r.ok) throw new Error(d.error || 'Upload failed')
+      await uploadFile.mutateAsync({ server, name: file.name, data: buffer })
       set('dataSourceNameForServer', file.name)
       toast.success(`Uploaded: ${file.name}`)
     } catch (err) {

@@ -1,14 +1,14 @@
-import { get, post, request } from '@/lib/api'
 import { useState, useRef, useEffect, useCallback } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import MonacoEditor from '@monaco-editor/react'
 import { useStore } from '@/store'
-import { useProcess, useSaveProcess, useRunProcess, useCreateProcess, useDebugProcess, usePreviewDatasource, useConflictCheck } from '@/hooks/useApi'
+import { useProcess, useSaveProcess, useRunProcess, useCreateProcess, useDebugProcess, useConflictCheck, useCheckReferences, errorLogContentQuery } from '@/hooks/useApi'
 import { registerMDXAndVariableCompletions, registerTM1Theme } from '@/lib/tm1-functions'
 import { registerTICompletions } from '@/lib/tm1-completion'
 import { cn } from '@/lib/utils'
-import { subsetTabId, processTabId } from '@/lib/tab-ids'
+import { processTabId } from '@/lib/tab-ids'
 import { toast } from 'sonner'
-import { Play, CheckCircle2, XCircle, Loader2, Search, AlertTriangle, AlertCircle, Locate, HelpCircle } from 'lucide-react'
+import { CheckCircle2, XCircle, Search, AlertTriangle, Locate, HelpCircle } from 'lucide-react'
 import { enableQuoteDoubleClick } from '@/lib/quote-select'
 import HelpPanel from '@/components/HelpPanel'
 import ObjectHistoryPanel from '@/components/ObjectHistoryPanel'
@@ -22,10 +22,10 @@ import { ConflictBanner, ConflictSaveWarning } from '@/components/ConflictBanner
 import DiffViewerModal from '@/components/DiffViewerModal'
 import { SECTION_LABEL, SECTION_TO_KEY, CAPTURE_HOVER, toTypeStr } from '@/lib/process-editor/constants'
 import { sectionsFromEdits, runParamArray } from '@/lib/process-editor/sections'
-import { parseAsciiPreview } from '@/lib/process-editor/ascii-preview'
 import { debugIssues, unknownWatches } from '@/lib/process-editor/debug-result'
 import ParamsPanel from '@/components/process-editor/panels/ParamsPanel'
 import DatasourcePanel from '@/components/process-editor/panels/DatasourcePanel'
+import DatasourcePreview from '@/components/process-editor/panels/DatasourcePreview'
 import CollapsibleSection from '@/components/process-editor/panels/CollapsibleSection'
 import VariablesPanel from '@/components/process-editor/panels/VariablesPanel'
 import RunDialog from '@/components/process-editor/dialogs/RunDialog'
@@ -34,141 +34,15 @@ import DebugPanel from '@/components/process-editor/DebugPanel'
 import ProcessToolbar from '@/components/process-editor/ProcessToolbar'
 import RunOutputPanel from '@/components/process-editor/RunOutputPanel'
 
-// Preview of what the process will read, for every datasource type: the ODBC query's rows (with ?pName?
-// tokens filled from the parameter defaults, as TM1 does), the first lines of a file, a subset's elements,
-// the first records of a cube view (read from the server, never the whole view), or a subset's elements.
-function DatasourcePreviewPanel({ ds, server, params }) {
-  const { openTab } = useStore()
-  const preview = usePreviewDatasource()
-  const [result, setResult]   = useState(null)
-  const [error,  setError]    = useState(null)
-  const [loading, setLoading] = useState(false)
-  const type = ds?.Type ?? 'None'
-  const name = ds?.dataSourceNameForServer ?? ''
-  const enc  = encodeURIComponent
-  const hdrs = { 'x-ide-token': localStorage.getItem('tm1-token') ?? '' }
-
-  useEffect(() => { setResult(null); setError(null) }, [type, name, ds?.view, ds?.subset, ds?.query])
-
-  // TM1 substitutes ?pName? as plain text, no quoting
-  const fillParams = q => (q ?? '').replace(/\?(\w+)\?/g, (m, n) => {
-    const p = (params ?? []).find(x => x.Name?.toLowerCase() === n.toLowerCase())
-    return p ? String(p.Value ?? '') : m
-  })
-
-  const fail = e => { setError(e.message ?? String(e)); setLoading(false) }
-
-  const run = async () => {
-    setResult(null); setError(null)
-    if (type === 'ODBC') {
-      preview.mutate({ dsn: name, query: fillParams(ds?.query) }, { onSuccess: setResult, onError: fail })
-      return
-    }
-    setLoading(true)
-    try {
-      if (type === 'TM1CubeView') {
-        const d = await post(`/api/view/preview-records?server=${enc(server)}&cube=${enc(name)}&view=${enc(ds?.view ?? '')}`, {})
-        setResult({ columns: d.columns, rows: d.rows, rowCount: d.rows.length, note: `the first records, as the process receives them · the view has ${d.viewRows.toLocaleString()} rows` })
-      } else if (type === 'TM1DimensionSubset') {
-        const d = await get(`/api/subset/elements?server=${enc(server)}&dimension=${enc(name)}&name=${enc(ds?.subset ?? '')}`)
-        const els = (Array.isArray(d) ? d : d.elements ?? []).map(e => e.name ?? e.Name ?? e)
-        setResult({ columns: ['Element'], rows: els.slice(0, 200).map(e => [e]), rowCount: els.length })
-      } else if (type === 'ASCII') {
-        const file = name.split(/[\\/]/).pop()
-        const r = await request(`/api/files/content?server=${enc(server)}&name=${enc(file)}`, { headers: hdrs })
-        if (!r.ok) {
-          const d = await r.json().catch(() => ({}))
-          throw new Error(d.error || `Could not read ${file}. Reading server files needs Planning Analytics v12; on v11 TM1 has no way to read them over its API.`)
-        }
-        setResult(parseAsciiPreview(await r.text(), {
-          delimiter: ds?.asciiDelimiterChar || ',',
-          headerRecords: ds?.asciiHeaderRecords ?? 1,
-        }))
-      }
-      setLoading(false)
-    } catch (e) { fail(e) }
-  }
-
-  const openSubset = () => openTab({ id: subsetTabId(server, name, name, ds.subset), type: 'subset', label: ds.subset, server, dimension: name, subsetName: ds.subset })
-
-  const busy = loading || preview.isPending
-  const btn  = 'flex items-center gap-1.5 px-2.5 py-1 text-xs rounded border border-border text-muted-foreground hover:text-foreground hover:bg-muted transition-colors disabled:opacity-40'
-  const canPreview = type === 'TM1CubeView' ? !!(name && ds?.view) : type === 'ODBC' ? !!(name && ds?.query) : type === 'ASCII' ? !!name : type === 'TM1DimensionSubset' ? !!(name && ds?.subset) : false
-
-  return (
-    <div className="px-3 py-2 space-y-2">
-      <div className="flex items-center justify-between gap-2">
-        <div className="text-[10px] text-muted-foreground truncate">
-          {type === 'TM1CubeView'
-            ? <>The process reads every record of <span className="font-mono text-foreground">{ds?.view || '—'}</span> on <span className="font-mono text-foreground">{name || '—'}</span></>
-            : type === 'ODBC' ? <>DSN: <span className="font-mono text-foreground">{name || '—'}</span>{/\?\w+\?/.test(ds?.query ?? '') && ' · parameters filled from their defaults'}</>
-            : type === 'ASCII' ? <>File: <span className="font-mono text-foreground">{name || '—'}</span></>
-            : <>Subset: <span className="font-mono text-foreground">{ds?.subset || '—'}</span> of <span className="font-mono text-foreground">{name || '—'}</span></>}
-        </div>
-        <div className="flex items-center gap-1 shrink-0">
-          {type === 'TM1DimensionSubset' && (
-            <button onClick={openSubset} disabled={!name || !ds?.subset} className={btn} title="Open the source subset in its own tab">Open subset</button>
-          )}
-          <button
-            onClick={run}
-            disabled={busy || !canPreview}
-            className="flex items-center gap-1.5 px-2.5 py-1 text-xs rounded bg-emerald-700 text-white disabled:opacity-40 hover:bg-emerald-600 transition-colors"
-          >
-            {busy ? <Loader2 size={10} className="animate-spin" /> : <Play size={10} />}
-            Preview
-          </button>
-        </div>
-      </div>
-
-      {error && (
-        <div className="flex items-start gap-2 text-red-400 text-xs">
-          <AlertCircle size={12} className="shrink-0 mt-0.5" />
-          <span className="font-mono whitespace-pre-wrap">{error}</span>
-        </div>
-      )}
-
-      {result && (
-        <div className="border border-border rounded overflow-hidden">
-          <div className="flex items-center justify-between px-2 py-1 bg-muted border-b border-border">
-            <span className="text-[10px] text-muted-foreground">
-              {result.rowCount} {type === 'TM1CubeView' ? 'record' : 'row'}{result.rowCount !== 1 ? 's' : ''}{result.note ? ` — showing ${result.note}` : ''}{result.duration != null ? ` — ${result.duration}ms` : ''}
-            </span>
-          </div>
-          <div className="overflow-x-auto max-h-48">
-            <table className="w-full text-xs border-collapse">
-              <thead className="sticky top-0 bg-muted">
-                <tr>
-                  {result.columns.map((c, i) => (
-                    <th key={i} className="text-left px-2 py-1 font-medium text-muted-foreground border-b border-border whitespace-nowrap">{c}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {result.rows.map((row, i) => (
-                  <tr key={i} className={cn('border-b border-border/50', i % 2 === 0 ? 'bg-background' : 'bg-muted/20')}>
-                    {row.map((cell, j) => (
-                      <td key={j} className="px-2 py-0.5 font-mono whitespace-nowrap max-w-xs truncate text-foreground/80">
-                        {cell === null ? <span className="text-muted-foreground italic">NULL</span> : String(cell)}
-                      </td>
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-    </div>
-  )
-}
-
 
 export default function ProcessEditor({ tab }) {
   const { server, serverVersion, dark, themeVersion, initTabContent, markTabSaved, clearScrollTo, openTab, patchTab, setRevealTarget } = useStore()
+  const queryClient = useQueryClient()
   const { data, isLoading } = useProcess(tab.server, tab.name)
   const saveProcess   = useSaveProcess()
   const runProcess    = useRunProcess()
   const createProcess = useCreateProcess()
+  const checkReferences = useCheckReferences()
   const registeredRef    = useRef(false)
   const decorationIdsRef = useRef({})
   const debugProcess     = useDebugProcess()
@@ -496,7 +370,7 @@ export default function ProcessEditor({ tab }) {
     setErrorLogLoading(true)
     setErrorLogContent(null)
     try {
-      const d = await get(`/api/process/errorlog/content?server=${encodeURIComponent(tab.server)}&filename=${encodeURIComponent(errorLogFilename)}`)
+      const d = await queryClient.fetchQuery({ ...errorLogContentQuery(tab.server, errorLogFilename), staleTime: 0 })
       setErrorLogContent(d.content ?? '')
     } catch (e) {
       setErrorLogContent(`Failed to load error log: ${e.message}`)
@@ -544,9 +418,13 @@ export default function ProcessEditor({ tab }) {
           toast.success('Process saved', { id })
           // Non-blocking reference integrity check
           const sections = sectionsFromEdits(edits, data)
-          post('/api/process/check-references', { server: tab.server, sections })
-            .then(d => { d.warnings?.forEach(w => toast.warning(w.message, { duration: 8000 })) })
-            .catch(() => {})
+          checkReferences.mutate(
+            { server: tab.server, sections },
+            {
+              onSuccess: d => { d.warnings?.forEach(w => toast.warning(w.message, { duration: 8000 })) },
+              onError: () => {},
+            },
+          )
         },
         onError:   (e) => toast.error(e.message, { id }),
       },
@@ -869,7 +747,7 @@ export default function ProcessEditor({ tab }) {
 
       {data && ['ODBC', 'ASCII', 'TM1CubeView', 'TM1DimensionSubset'].includes((dsEdits ?? data.DataSource)?.Type) && (
         <CollapsibleSection label="Datasource Preview" hint={(dsEdits ?? data.DataSource)?.dataSourceNameForServer ?? ''}>
-          <DatasourcePreviewPanel ds={dsEdits ?? data.DataSource} server={tab.server} params={paramEdits ?? data.Parameters} />
+          <DatasourcePreview ds={dsEdits ?? data.DataSource} server={tab.server} params={paramEdits ?? data.Parameters} />
         </CollapsibleSection>
       )}
 
