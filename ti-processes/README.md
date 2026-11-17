@@ -2,6 +2,8 @@
 
 Hidden, platform-level TI processes. Install once per server through the server template or a platform release; never inside an application change set.
 
+TI processes the IDE installs on a TM1 server. They are not part of the IDE's own code.
+
 | Object | Purpose |
 |---|---|
 | `}IDE.Version.Copy` | Copy a version as static values or a calculating seed. |

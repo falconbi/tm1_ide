@@ -58,7 +58,7 @@ tm1_ide/
 │   └── tm1deploy/               # Package / diff / risk / deploy CLI
 ├── config/                      # Committed examples + per-install runtime state
 ├── data/                        # Runtime DB, summaries, Lens logs and prefs
-├── core-ti/                     # Hidden core TI processes and platform settings
+├── ti-processes/                # TI processes the IDE installs on a TM1 server
 ├── tests/                       # node --test suite (fakes; no live TM1 required)
 ├── docs/                        # Guides and review records
 └── .github/workflows/ci.yml     # Node 20/22: build, static check, tests, both lint ratchets

@@ -25,5 +25,5 @@ Short walkthroughs of the IDE, each a few minutes long.
 | [deploy/](deploy/) | Change sets, baselines, assertions, packaging, deploying and the QA strategy | [DEPLOY_LIFECYCLE.md](deploy/DEPLOY_LIFECYCLE.md), [DEPLOY_QA_STRATEGY.md](deploy/DEPLOY_QA_STRATEGY.md) |
 | [auth/](auth/) | Logging in to TM1 / PAW, adapters, multi-user | [TM1_AUTHENTICATION_GUIDE.md](auth/TM1_AUTHENTICATION_GUIDE.md) |
 | [ide/](ide/) | The IDE itself: setup, the first walkthrough, features, architecture, lint, the MCP server, the REST API reference | [SETUP.md](ide/SETUP.md), [WALKTHROUGH.md](ide/WALKTHROUGH.md), [FEATURES.md](ide/FEATURES.md); [ARCHITECTURE.md](ide/ARCHITECTURE.md), [LINT.md](ide/LINT.md), [MCP_SERVER.md](ide/MCP_SERVER.md) |
-| [../core-ti/](../core-ti/) | Hidden core TI processes and platform settings | [core-ti/README.md](../core-ti/README.md) |
+| [../ti-processes/](../ti-processes/) | TI processes the IDE installs on a TM1 server | [ti-processes/README.md](../ti-processes/README.md) |
 

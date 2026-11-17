@@ -1,7 +1,7 @@
 'use strict'
 
 const { odataKey, odataLit } = require('./odata-key')
-const SAVE_DATA_ALL = require('../core-ti/save-data-all/process.json')
+const SAVE_DATA_ALL = require('../ti-processes/save-data-all/process.json')
 const { rebuildProcess, referencesHierarchy } = require('./hierarchy_gen')
 
 class TM1Client {
