@@ -75,8 +75,8 @@ Pick the existing pattern and keep one obvious way to do the job:
   [CLAUDE.md](CLAUDE.md#state-management).
 - **An editor** follows the dispatcher and tab pattern in
   [CLAUDE.md](CLAUDE.md#adding-a-new-editor-type). A large one uses the
-  `client/src/components/view-editor/` layout: shell, panels, `hooks/` for its own state, and pure
-  functions in `client/src/lib/view-editor/`.
+  `client/src/components/view-editor/` (or `cubemap-editor/`) layout: shell, panels, `hooks/` for its
+  own state, and pure functions in `client/src/lib/view-editor/` (or `lib/cubemap-editor/`).
 - **An MCP tool** goes in `tools/tm1mcp/tools/` and is registered through the security wrapper; read
   [MCP_SERVER.md](docs/ide/MCP_SERVER.md) and `tools/tm1mcp/guard.js` before adding one.
 
