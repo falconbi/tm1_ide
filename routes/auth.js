@@ -138,7 +138,6 @@ app.get('/api/paw/book-usage', async (req, res) => {
     try {
         const { server, cube, view } = req.query
         if (!server || !cube) return res.json({ books: [] })
-
         if (!PAW_HOST) return res.json({ books: [], pawUnavailable: true })
 
         let pawSession, csrf
@@ -148,99 +147,12 @@ app.get('/api/paw/book-usage', async (req, res) => {
         } catch {
             return res.json({ books: [], pawUnavailable: true })
         }
-        const base = `${PAW_HOST}/pacontent/v1`
 
-        // Recursively collect TM1 view references from PAW book content
-        function collectViews(items) {
-            const views = []
-            for (const item of items) {
-                const feats = item.features || {}
-                const candidates = [
-                    feats.PAProperties?.tm1,
-                    feats.Models_internal?.data?.parentStore,
-                ]
-                for (const tm1 of candidates) {
-                    if (tm1?.cube) {
-                        const v = {
-                            server: tm1.server || '',
-                            cube:   tm1.cube || '',
-                            view:   tm1.view || '',
-                        }
-                        if (!views.some(x => x.server === v.server && x.cube === v.cube && x.view === v.view)) {
-                            views.push(v)
-                        }
-                    }
-                }
-                if (item.items) {
-                    for (const v of collectViews(item.items)) {
-                        if (!views.some(x => x.server === v.server && x.cube === v.cube && x.view === v.view)) {
-                            views.push(v)
-                        }
-                    }
-                }
-            }
-            return views
-        }
-
-        function extractTabs(content) {
-            if (!content || !content.layout) return []
-            const tabs = []
-            for (const item of content.layout.items || []) {
-                if (item.type === 'container') {
-                    const name = item.title?.translationTable?.Default || 'Tab'
-                    tabs.push({ name, views: collectViews(item.items || []) })
-                }
-            }
-            return tabs
-        }
-
-        // Walk PAW content tree looking for books
-        // PAW 2.1.8 uses 'folder' (lowercase) and book types 'dashboard'/'workbench'
-        const encodePath = (p) => encodeURIComponent(encodeURIComponent(p)) // odata-key: ok — PAW Assets path, not a TM1 key
-        const books = []
-        const walk = async (path) => {
-            const url = `${base}/Assets(path='${encodePath(path)}')/Assets`
-            try {
-                const r = await pawSession.get(url, {
-                    headers: { 'ba-sso-authenticity': csrf },
-                    params: { '$select': 'name,id,path,type' }
-                })
-                for (const item of (r.data?.value ?? [])) {
-                    if (item.type === 'folder') {
-                        await walk(item.path)
-                    } else if (item.type === 'dashboard' || item.type === 'workbench') {
-                        try {
-                            const book = await pawSession.get(
-                                `${base}/Assets(path='${encodePath(item.path)}')?$expand=content`,
-                                { headers: { 'ba-sso-authenticity': csrf } }
-                            )
-                            const content = book.data?.content
-                            const tabs = extractTabs(content)
-                            const found = tabs.some(tab =>
-                                tab.views.some(v =>
-                                    v.cube === cube && (!view || v.view === view) && v.server === server
-                                )
-                            )
-                            if (found) {
-                                books.push({
-                                    name: item.name,
-                                    path: item.path,
-                                    id: item.id,
-                                })
-                            }
-                        } catch { /* ignore unreadable books */ }
-                    }
-                }
-            } catch { /* ignore inaccessible folders */ }
-        }
-
-        await walk('/shared')
-        await walk('/users')
-
+        const books = await require('../core/paw-books').findBooks({
+            pawSession, csrf, base: `${PAW_HOST}/pacontent/v1`, server, cube, view,
+        })
         res.json({ books, pawHost: PAW_HOST })
-    } catch (e) {
-        res.status(500).json({ error: e.message })
-    }
+    } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
 app.get('/api/tm1-sessions', async (req, res) => {
