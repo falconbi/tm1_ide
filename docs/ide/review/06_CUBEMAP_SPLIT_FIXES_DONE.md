@@ -77,5 +77,4 @@ No `get`/`post`/`put`/`patch`/`del`/`request`/raw `fetch` call remains in
 
 Open the Cube Map; switch lens/filter/prefix grouping; fold a process; focus a cube; open a
 process/rule/dimension/cube; play a run sequence and step through it; open Detail/Show sidebars;
-save rules for the same cube and confirm the map refreshes; reopen and confirm the tab keeps its
-focus/position.
+reopen and confirm the tab keeps its focus/position.
