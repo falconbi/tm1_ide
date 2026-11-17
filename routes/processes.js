@@ -463,14 +463,14 @@ app.post('/api/process/summary', async (req, res) => {
         const client = makeClient(server, req.ideToken)
         const p = await client.getProcess(name)
         if (!p?.Name) return res.status(404).json({ error: `Process "${name}" not found` })
-        const hash = processSummaries.hashCode(processCode(p))
+        const hash = processSummaries.hashCode(processSummaries.processCode(p))
         if (!req.body.force) {
             const hit = processSummaries.get(server, name, hash)
             if (hit) return res.json({ ...hit, cached: true })
         }
         const facts = await getProcessFacts(client, server, name, scanIdentity(req))
         const obf = ai.shouldObfuscate()
-        let { system, user } = summaryPrompt(p, facts, !obf)
+        let { system, user } = processSummaries.summaryPrompt(p, facts, !obf)
         let map = null
         if (obf) {
             const names = [name, ...(facts.parameters ?? []), ...(facts.calledBy ?? []), ...(facts.reads ?? []),
@@ -499,7 +499,7 @@ app.put('/api/process/summary', async (req, res) => {
         if (!p?.Name) return res.status(404).json({ error: `Process "${name}" not found` })
         if (!gateReadOnly(res, server)) return
         const entry = await processSummaries.put(server, name, {
-            hash: processSummaries.hashCode(processCode(p)),
+            hash: processSummaries.hashCode(processSummaries.processCode(p)),
             summary: String(summary).trim().slice(0, 1200),
             source: 'manual',
         })
