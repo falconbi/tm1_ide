@@ -9,6 +9,7 @@ function assertionStore(records) {
     return {
         async list() { return { source: 'model', assertions: records } },
         async add(_server, rec) { return { ...rec, id: 'a1' } },
+        async update(_server, id, patch) { const a = records.find(x => x.id === id); return a ? { ...a, ...patch } : null },
         async remove() { return true },
     }
 }
@@ -45,4 +46,17 @@ test('assertion writes are logged even though they are ungated', async () => {
     await h.call('remove_assertion', { id: 'a1' })
     assert.deepEqual(h.changes.map(c => c[0]), ['ASSERTION_ADDED', 'ASSERTION_REMOVED'])
     assert.equal(h.changes[0][2], 'a1')
+})
+
+test('update_assertion records the old and new expected value', async () => {
+    const stored = [{ id: 'a1', description: 'Baseline check', mdx: 'SELECT 1 ON 0 FROM [Open]', expected: 10, tolerance: 0.01 }]
+    const h = setup({ mode: 'build', assertions: assertionStore(stored) })
+    const r = await h.call('update_assertion', { id: 'a1', expected: 12, why: 'headcount baseline moved' })
+    assert.equal(r.data.from, 10)
+    assert.equal(r.data.to, 12)
+    assert.equal(r.isError, false)
+    assert.equal(h.changes[0][0], 'ASSERTION_UPDATED')
+    assert.equal(h.changes[0][3].detail.from, 10)
+    assert.equal(h.changes[0][3].detail.to, 12)
+    assert.equal(h.changes[0][3].detail.why, 'headcount baseline moved')
 })

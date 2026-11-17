@@ -53,6 +53,38 @@ function register(server, { assertions, runAssertions, ok, SERVER, AGENT_USER, p
     )
 
     server.tool(
+        'update_assertion',
+        'Change an existing assertion after a reviewed baseline change — for example when the DEV data moved and the new number is correct. ' +
+        'Run the assertion first; update only after a human confirms the new number. The expected-value change is recorded with who/from/to/why.',
+        {
+            id:          z.string().describe('Assertion id (from list_assertions)'),
+            expected:    z.number().describe('The new expected value'),
+            tolerance:   z.number().optional().describe('Absolute tolerance; omit to keep the current value'),
+            why:         z.string().optional().describe('Why the baseline changed; recorded in the assertion history'),
+        },
+        async ({ id, expected, tolerance, why }) => {
+            const { assertions: stored } = await assertions.list(SERVER)
+            const before = stored.find(a => a.id === id)
+            if (!before) return ok(`No assertion ${id} for "${SERVER}".`)
+            const patch = { expected }
+            if (tolerance !== undefined) patch.tolerance = tolerance
+            if (why !== undefined) patch.why = why
+            const rec = await assertions.update(SERVER, id, patch, { by: AGENT_USER })
+            if (!rec) return ok(`No assertion ${id} for "${SERVER}".`)
+            logChange('ASSERTION_UPDATED', 'assertion', id, {
+                detail: { description: rec.description, from: before.expected, to: rec.expected, why: rec.why ?? before.why ?? null },
+            })
+            return ok({
+                updated: rec.id,
+                description: rec.description,
+                from: before.expected,
+                to: rec.expected,
+                next: `run_assertions with ids: [${rec.id}] to confirm`,
+            })
+        }
+    )
+
+    server.tool(
         'remove_assertion',
         'Delete a stored assertion by id. It does not require an open change set; the write is logged',
         { id: z.string().describe('Assertion id (from add_assertion or list_assertions)') },

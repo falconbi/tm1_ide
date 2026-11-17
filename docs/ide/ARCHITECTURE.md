@@ -54,7 +54,7 @@ tm1_ide/
 │   └── pivot/                   # One pivot engine for the IDE View grid and Lenses
 ├── static/                      # Committed build output, served by the IDE
 ├── tools/
-│   ├── tm1mcp/                  # MCP server + its 67 tools and security wrapper
+│   ├── tm1mcp/                  # MCP server + its 68 tools and security wrapper
 │   └── tm1deploy/               # Package / diff / risk / deploy CLI
 ├── config/                      # Committed examples + per-install runtime state
 ├── data/                        # Runtime DB, summaries, Lens logs and prefs

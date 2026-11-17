@@ -18,5 +18,5 @@ test('the MCP docs state the actual read/write tool counts', () => {
 test('the generated tool inventory matches guard.js and registry.js', () => {
     const doc = fs.readFileSync(path.join(__dirname, '..', 'docs', 'ide', 'MCP_SERVER.md'), 'utf8')
     assert.ok(doc.includes(buildTable()), 'run node tools/tm1mcp/tool-table.js --write')
-    assert.doesNotMatch(doc, /68 tools|all 68/)
+    assert.doesNotMatch(doc, /69 tools|all 69/)
 })
