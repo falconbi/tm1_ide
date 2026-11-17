@@ -81,7 +81,7 @@ test('FEEDERS is found on comment-stripped text with leading whitespace', () => 
     const refs = scanRules(rules)
     assert.ok(refs.calc.includes('ReadCube'))
     assert.ok(!refs.calc.includes('FeederCube'), 'an indented FEEDERS; ends the calc section')
-    assert.deepEqual(refs.feeders, ['FeederCube', 'Source', 'O'])
+    assert.deepEqual(refs.feeders, ['FeederCube', 'Source', "O'Brien Sales"])
     assert.match(refs.feederEvidence.FeederCube[0], /=> DB\('FeederCube'/)
 })
 
@@ -102,6 +102,19 @@ test('calls carry their cube parameters and the version dimension', () => {
 
 test('a dimension write is reported from the shared catalog', () => {
     assert.deepEqual(facts('P dim').dimWrites, [{ dim: 'Dim', pos: 0 }])
+})
+
+test("doubled quotes inside a name resolve in TI and in rules", () => {
+    const literal = fixture.proc('P obrien literal', "CellPutN(1, 'O''Brien Sales', 'Jan', 'Amount');")
+    assert.equal(scanProcess(literal, ctx).writes[0].cube, "O'Brien Sales")
+
+    const variable = fixture.proc('P obrien variable', "cCube = 'O''Brien Sales';\nCellPutN(1, cCube, 'Jan', 'Amount');")
+    assert.equal(scanProcess(variable, ctx).writes[0].cube, "O'Brien Sales")
+
+    const refs = scanRules("['Measure'] = N: DB('O''Brien Sales', 'Measure');\nFEEDERS;\n['Measure'] => DB('O''Brien Sales', 'Measure');")
+    assert.deepEqual(refs.calc, ["O'Brien Sales"])
+    assert.deepEqual(refs.feeders, ["O'Brien Sales"])
+    assert.match(refs.calcEvidence["O'Brien Sales"][0], /DB\('O''Brien Sales'/)
 })
 
 test('comments do not create writes, reads or rule sources', () => {

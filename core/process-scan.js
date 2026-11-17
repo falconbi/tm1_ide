@@ -53,15 +53,19 @@ function splitArgs(code, openIdx) {
 function resolveName(ref, varValues) {
     if (!ref) return undefined
     const parts = []; let cur = '', inStr = false
-    for (const ch of ref) {
-        if (ch === "'") inStr = !inStr
+    for (let i = 0; i < ref.length; i++) {
+        const ch = ref[i]
+        if (ch === "'") {
+            if (inStr && ref[i + 1] === "'") { cur += "''"; i++; continue }
+            inStr = !inStr
+        }
         if (ch === '|' && !inStr) { parts.push(cur); cur = '' } else cur += ch
     }
     parts.push(cur)
     let out = ''
     for (const part of parts.map(s => s.trim())) {
-        const lit = part.match(/^'([^']*)'$/)
-        const val = lit ? lit[1] : varValues[part]
+        const lit = part.match(/^'((?:''|[^'])*)'$/)
+        const val = lit ? lit[1].replace(/''/g, "'") : varValues[part]
         if (val === undefined) return undefined
         out += val
     }
@@ -94,9 +98,9 @@ const CELLPUT_RE = /\b(CellPut[NS](?:Complete)?|CellIncrement[NS])\s*\(/gi
 const CELLGET_RE = /\bCellGet[NS]\s*\(/gi
 const CUBE_FIRST_RE = new RegExp(`\\b(${CUBE_FIRST_FNS.join('|')})\\s*\\(`, 'gi')
 const EXEC_RE = /\b(?:ExecuteProcess|RunProcess)\s*\(([\s\S]*?)\)\s*;/gi
-const CUBE_PARAM_RE = /'([pP]\w*[Cc]ube\w*)'\s*,\s*'([^']+)'/g
+const CUBE_PARAM_RE = /'([pP]\w*[Cc]ube\w*)'\s*,\s*'((?:''|[^'])+)'/g
 const VERSION_DIM_RE = /'pVersionDim'\s*,\s*([^,)]+)/i
-const ASSIGN_RE = /\b([A-Za-z_]\w*)\s*=\s*'([^']*)'\s*;/g
+const ASSIGN_RE = /\b([A-Za-z_]\w*)\s*=\s*'((?:''|[^'])*)'\s*;/g
 const VAR_ASSIGN_RE = /\b([A-Za-z_]\w*)\s*=\s*([A-Za-z_]\w*)\s*;/g
 
 function scanRules(rules) {
@@ -105,15 +109,16 @@ function scanRules(rules) {
     const calcText = feederAt >= 0 ? clean.slice(0, feederAt) : clean
     const feederText = feederAt >= 0 ? clean.slice(feederAt) : ''
     const refs = text => {
-        const re = /\bDBS?\s*\(\s*'([^']+)'/gi
+        const re = /\bDBS?\s*\(\s*'((?:''|[^'])+)'/gi
         const map = new Map() // cube -> [rule line]
         for (const line of text.split('\n')) {
             re.lastIndex = 0
             let m
             while ((m = re.exec(line)) !== null) {
+                const cube = m[1].replace(/''/g, "'")
                 const code = line.trim().replace(/\s+/g, ' ').slice(0, 220)
-                if (!map.has(m[1])) map.set(m[1], [])
-                if (!map.get(m[1]).includes(code)) map.get(m[1]).push(code)
+                if (!map.has(cube)) map.set(cube, [])
+                if (!map.get(cube).includes(code)) map.get(cube).push(code)
             }
         }
         return map
@@ -137,7 +142,7 @@ function scanProcess(p, { cubeNames = new Set(), cubeDims = {}, dimNames = new S
     }
     let m
     ASSIGN_RE.lastIndex = 0
-    while ((m = ASSIGN_RE.exec(code)) !== null) varValues[m[1]] = m[2]
+    while ((m = ASSIGN_RE.exec(code)) !== null) varValues[m[1]] = m[2].replace(/''/g, "'")
     for (let pass = 0; pass < 3; pass++) {
         VAR_ASSIGN_RE.lastIndex = 0
         while ((m = VAR_ASSIGN_RE.exec(code)) !== null) {
@@ -199,7 +204,8 @@ function scanProcess(p, { cubeNames = new Set(), cubeDims = {}, dimNames = new S
         CUBE_PARAM_RE.lastIndex = 0
         let cm
         while ((cm = CUBE_PARAM_RE.exec(argList)) !== null) {
-            if (cubeNames.has(cm[2])) cubeParams.push(cm[2])
+            const cube = cm[2].replace(/''/g, "'")
+            if (cubeNames.has(cube)) cubeParams.push(cube)
         }
         const dimArg = argList.match(VERSION_DIM_RE)
         const versionDim = dimArg ? resolveName(dimArg[1].trim(), varValues) : undefined
