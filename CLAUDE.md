@@ -57,6 +57,10 @@ client/src/
     SubsetEditor.jsx          # MDX + visual subset editor
     view-editor/               # Native/MDX view editor: shell + panels, hooks/ for state, trace/ and axes/
       ViewEditor.jsx           #   shell (under 400 lines); PivotGrid → shared pivot; auto-refreshes on rules save
+    cubemap-editor/            # Cube Map editor: shell + panels, hooks/ for state, graph/ for nodes and edges
+      CubeMapEditor.jsx        #   shell (under 400 lines); MapSidebar + MapCanvas + DetailPanel
+      hooks/                   #   useCubemapModel/Filters/Selection/Run/Layout — one concern per hook
+      graph/                   #   CubeNode/GroupNode/ProcessNode/DimNode, edges, SvgMarkers
     PivotGrid.jsx             # React wrapper around shared/pivot/grid.js with the IDE toolbar + appearance
     CellContextMenu.jsx       # Right-click context menu for view grid cells (trace)
     GuidedMDXBuilder.jsx      # Guided MDX view and subset builders
