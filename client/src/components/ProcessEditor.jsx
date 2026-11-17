@@ -8,7 +8,7 @@ import { registerTICompletions } from '@/lib/tm1-completion'
 import { cn } from '@/lib/utils'
 import { subsetTabId, processTabId } from '@/lib/tab-ids'
 import { toast } from 'sonner'
-import { ChevronRight, ChevronDown, Play, X, Braces, CheckCircle2, XCircle, Loader2, Bug, Search, AlertTriangle, AlertCircle, Map, History, Locate, HelpCircle, ListTree, ChevronsUpDown, ChevronsDownUp, Undo2, Redo2 } from 'lucide-react'
+import { Play, CheckCircle2, XCircle, Loader2, Search, AlertTriangle, AlertCircle, Locate, HelpCircle } from 'lucide-react'
 import { enableQuoteDoubleClick } from '@/lib/quote-select'
 import HelpPanel from '@/components/HelpPanel'
 import ObjectHistoryPanel from '@/components/ObjectHistoryPanel'
@@ -20,7 +20,7 @@ import { validateTICode } from '@/lib/ti-validator'
 import SnippetPanel from '@/components/SnippetPanel'
 import { ConflictBanner, ConflictSaveWarning } from '@/components/ConflictBanner'
 import DiffViewerModal from '@/components/DiffViewerModal'
-import { CODE_TABS, SECTION_LABEL, SECTION_TO_KEY, CAPTURE_HOVER, toTypeStr } from '@/lib/process-editor/constants'
+import { SECTION_LABEL, SECTION_TO_KEY, CAPTURE_HOVER, toTypeStr } from '@/lib/process-editor/constants'
 import { sectionsFromEdits, runParamArray } from '@/lib/process-editor/sections'
 import { parseAsciiPreview } from '@/lib/process-editor/ascii-preview'
 import { debugIssues, unknownWatches } from '@/lib/process-editor/debug-result'
@@ -31,6 +31,8 @@ import VariablesPanel from '@/components/process-editor/panels/VariablesPanel'
 import RunDialog from '@/components/process-editor/dialogs/RunDialog'
 import SaveAsDialog from '@/components/process-editor/dialogs/SaveAsDialog'
 import DebugPanel from '@/components/process-editor/DebugPanel'
+import ProcessToolbar from '@/components/process-editor/ProcessToolbar'
+import RunOutputPanel from '@/components/process-editor/RunOutputPanel'
 
 // Preview of what the process will read, for every datasource type: the ODBC query's rows (with ?pName?
 // tokens filled from the parameter defaults, as TM1 does), the first lines of a file, a subset's elements,
@@ -796,210 +798,54 @@ export default function ProcessEditor({ tab }) {
         />
       )}
 
-      {/* ── Section tabs + actions ─────────────────────────────────────── */}
-      <div className="flex items-center border-b border-border bg-muted shrink-0 overflow-x-auto">
-        {CODE_TABS.map(({ key, label }) => (
-          <button
-            key={key}
-            onClick={() => setActiveSection(key)}
-            className={cn(
-              'px-4 py-1.5 text-xs font-medium border-r border-border transition-colors',
-              activeSection === key
-                ? 'bg-background text-foreground border-t-2 border-t-primary -mt-px'
-                : 'text-muted-foreground hover:text-foreground hover:bg-background/50',
-            )}
-          >
-            {label}
-            {edits[key] !== undefined && (
-              <span className="ml-1.5 text-orange-400">●</span>
-            )}
-          </button>
-        ))}
-
-        <div className="ml-auto flex items-center gap-1 mr-2">
-          <button
-            onClick={() => setShowHistory(v => !v)}
-            disabled={!tab.name}
-            title="Object history"
-            className={cn(
-              'flex items-center gap-1.5 px-2.5 py-1 text-xs rounded border transition-colors disabled:opacity-40',
-              showHistory ? 'bg-primary text-primary-foreground border-primary' : 'border-border text-muted-foreground hover:text-foreground hover:bg-muted'
-            )}
-          >
-            <History size={11} />
-          </button>
-          <button
-            onClick={undo}
-            title="Undo (Ctrl/Cmd+Z)"
-            className="flex items-center gap-1.5 px-2.5 py-1 text-xs rounded border border-border text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-          >
-            <Undo2 size={11} />
-          </button>
-          <button
-            onClick={redo}
-            title="Redo (Ctrl+Shift+Z / Ctrl+Y)"
-            className="flex items-center gap-1.5 px-2.5 py-1 text-xs rounded border border-border text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-          >
-            <Redo2 size={11} />
-          </button>
-          {!tab.name ? (
-            <>
-              <input
-                value={draftName}
-                onChange={e => setDraftName(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && handleCreateNew()}
-                placeholder="Process name…"
-                className="px-2 py-1 text-xs border rounded bg-background font-mono outline-none focus:border-primary w-44"
-              />
-              <button
-                onClick={handleCreateNew}
-                disabled={!draftName.trim() || createProcess.isPending || saveProcess.isPending}
-                className="px-3 py-1 text-xs rounded bg-emerald-700 text-white disabled:opacity-40 hover:opacity-90 transition-opacity"
-              >
-                {createProcess.isPending || saveProcess.isPending ? 'Creating…' : 'Create & Save'}
-              </button>
-            </>
-          ) : (
-            <div className="relative flex items-center">
-              <button
-                onClick={handleSave}
-                disabled={(!Object.keys(edits).length && paramEdits === null && dsEdits === null) || saveProcess.isPending}
-                title="Save (Ctrl+S)"
-                className="px-3 py-1 text-xs rounded-l bg-primary text-primary-foreground disabled:opacity-40 hover:opacity-90 transition-opacity"
-              >
-                {saveProcess.isPending ? 'Saving…' : 'Save'}
-              </button>
-              <button
-                onClick={e => {
-                  const r = e.currentTarget.getBoundingClientRect()
-                  setSaveMenuRect({ top: r.bottom + 4, right: window.innerWidth - r.right })
-                  setShowSaveMenu(v => !v)
-                }}
-                disabled={!data}
-                title="Save options"
-                className="px-1 py-1 text-xs rounded-r bg-primary text-primary-foreground border-l border-primary-foreground/20 disabled:opacity-40 hover:opacity-90 transition-opacity"
-              >
-                <ChevronDown size={11} />
-              </button>
-              {showSaveMenu && saveMenuRect && (
-                <div className="fixed bg-popover border border-border rounded shadow-lg py-1 w-44"
-                  style={{ top: saveMenuRect.top, right: saveMenuRect.right, zIndex: 9999 }}
-                  onMouseLeave={() => setShowSaveMenu(false)}>
-                  <button onClick={() => { setShowSaveAs(true); setShowSaveMenu(false) }}
-                    className="w-full text-left px-3 py-1.5 text-xs hover:bg-muted transition-colors">
-                    Save As… (new name)
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
-          <button
-            onClick={() => {
-              setShowDebug(false)
-              setShowSnippets(false)
-              if (showCheck) {
-                setShowCheck(false)
-              } else {
-                handleCheck()
-              }
-            }}
-            disabled={!data}
-            title="Check code for errors and warnings"
-            className={cn(
-              'flex items-center gap-1.5 px-2.5 py-1 text-xs rounded border transition-colors disabled:opacity-40',
-              showCheck ? 'bg-amber-600 text-white border-amber-600 hover:bg-amber-700' : 'border-border text-muted-foreground hover:text-foreground hover:bg-muted'
-            )}
-          >
-            <Search size={11} />
-            <span className="hidden sm:inline">Check</span>
-          </button>
-          <button
-            onClick={() => { setShowDebug(d => !d); setShowSnippets(false) }}
-            disabled={!data}
-            title="Debug capture — click gutter to add capture points"
-            className={cn(
-              'flex items-center gap-1.5 px-2.5 py-1 text-xs rounded border transition-colors disabled:opacity-40',
-              showDebug ? 'bg-orange-600 text-white border-orange-600 hover:bg-orange-700' : 'border-border text-muted-foreground hover:text-foreground hover:bg-muted'
-            )}
-          >
-            <Bug size={11} />
-            <span className="hidden sm:inline">Capture</span>
-          </button>
-          <button
-            onClick={() => setShowRun(true)}
-            disabled={!data}
-            className="flex items-center gap-1.5 px-3 py-1 text-xs rounded bg-green-600 text-white disabled:opacity-40 hover:bg-green-700 transition-colors"
-          >
-            <Play size={11} />
-            Run
-          </button>
-          <div className="relative region-menu-container shrink-0">
-            <button
-              ref={regionBtnRef}
-              onClick={openRegionMenu}
-              title="Go to region"
-              className={cn(
-                'flex items-center gap-1.5 px-2.5 py-1 text-xs rounded border transition-colors',
-                showRegionMenu ? 'bg-primary text-primary-foreground border-primary' : 'border-border text-muted-foreground hover:text-foreground hover:bg-muted'
-              )}
-            >
-              <ListTree size={11} />
-            </button>
-            {showRegionMenu && regionRect && (
-              <div
-                className="fixed w-56 bg-popover border border-border rounded shadow-lg max-h-64 overflow-auto text-xs"
-                style={{ top: regionRect.top, right: regionRect.right, zIndex: 9999 }}
-              >
-                {regionList.length === 0 ? (
-                  <div className="px-3 py-1.5 text-muted-foreground italic">No regions found</div>
-                ) : (
-                  regionList.map(r => (
-                    <button
-                      key={r.line}
-                      onClick={() => goToRegion(r.line)}
-                      className="flex items-center gap-1.5 w-full px-3 py-1 text-left hover:bg-muted text-sidebar-foreground truncate"
-                      title={`Line ${r.line}`}
-                    >
-                      <span className="text-muted-foreground/50 font-mono text-[10px] shrink-0">{r.line}</span>
-                      <span className="truncate">{r.name}</span>
-                    </button>
-                  ))
-                )}
-              </div>
-            )}
-          </div>
-          <button
-            onClick={toggleRegions}
-            title={regionsCollapsed ? 'Expand all regions' : 'Collapse all regions'}
-            className={cn(
-              'flex items-center gap-1.5 px-2.5 py-1 text-xs rounded border transition-colors',
-              regionsCollapsed ? 'bg-primary text-primary-foreground border-primary' : 'border-border text-muted-foreground hover:text-foreground hover:bg-muted'
-            )}
-          >
-            {regionsCollapsed ? <ChevronsDownUp size={11} /> : <ChevronsUpDown size={11} />}
-          </button>
-          <button
-            onClick={() => { setShowSnippets(s => !s); setShowDebug(false) }}
-            title="Function reference"
-            className={cn(
-              'flex items-center gap-1.5 px-2.5 py-1 text-xs rounded border transition-colors',
-              showSnippets ? 'bg-primary text-primary-foreground border-primary' : 'border-border text-muted-foreground hover:text-foreground hover:bg-muted'
-            )}
-          >
-            <Braces size={11} />
-          </button>
-          <button
-            onClick={toggleMinimap}
-            title="Toggle minimap"
-            className={cn(
-              'flex items-center gap-1.5 px-2.5 py-1 text-xs rounded border transition-colors',
-              showMinimap ? 'bg-primary text-primary-foreground border-primary' : 'border-border text-muted-foreground hover:text-foreground hover:bg-muted'
-            )}
-          >
-            <Map size={11} />
-          </button>
-        </div>
-      </div>
+      <ProcessToolbar
+        tab={tab}
+        activeSection={activeSection}
+        onSectionChange={setActiveSection}
+        edits={edits}
+        showHistory={showHistory}
+        onToggleHistory={() => setShowHistory(v => !v)}
+        onUndo={undo}
+        onRedo={redo}
+        draftName={draftName}
+        onDraftNameChange={setDraftName}
+        onCreateNew={handleCreateNew}
+        creating={createProcess.isPending || saveProcess.isPending}
+        onSave={handleSave}
+        saveDisabled={!Object.keys(edits).length && paramEdits === null && dsEdits === null}
+        saving={saveProcess.isPending}
+        showSaveMenu={showSaveMenu}
+        saveMenuRect={saveMenuRect}
+        onToggleSaveMenu={rect => { setSaveMenuRect(rect); setShowSaveMenu(v => !v) }}
+        onCloseSaveMenu={() => setShowSaveMenu(false)}
+        onSaveAs={() => { setShowSaveAs(true); setShowSaveMenu(false) }}
+        hasData={!!data}
+        onToggleCheck={() => {
+          setShowDebug(false)
+          setShowSnippets(false)
+          if (showCheck) {
+            setShowCheck(false)
+          } else {
+            handleCheck()
+          }
+        }}
+        showCheck={showCheck}
+        onToggleDebug={() => { setShowDebug(d => !d); setShowSnippets(false) }}
+        showDebug={showDebug}
+        onToggleSnippets={() => { setShowSnippets(s => !s); setShowDebug(false) }}
+        showSnippets={showSnippets}
+        onRun={() => setShowRun(true)}
+        showRegionMenu={showRegionMenu}
+        regionRect={regionRect}
+        regionList={regionList}
+        onOpenRegionMenu={openRegionMenu}
+        onGoToRegion={goToRegion}
+        regionBtnRef={regionBtnRef}
+        regionsCollapsed={regionsCollapsed}
+        onToggleRegions={toggleRegions}
+        onToggleMinimap={toggleMinimap}
+        showMinimap={showMinimap}
+      />
 
       {/* ── Collapsible metadata sections ─────────────────────────────── */}
       {data && (
@@ -1049,97 +895,20 @@ export default function ProcessEditor({ tab }) {
         </CollapsibleSection>
       )}
 
-      {/* ── Run output + log panel ────────────────────────────────────── */}
       {runOutput && (
-        <div className={cn(
-          'shrink-0 border-t border-border',
-          runOutput.status === 'error' ? 'bg-red-950/20' : 'bg-green-950/10'
-        )}>
-          {/* Status bar */}
-          <div className="flex items-center gap-3 px-4 py-1.5 text-xs">
-            {runOutput.status === 'ok' ? (
-              <>
-                <CheckCircle2 size={13} className="text-green-500 shrink-0" />
-                <span className="text-green-400">
-                  Completed{runOutput.duration != null ? ` — ${runOutput.duration}ms` : ''}
-                </span>
-              </>
-            ) : (
-              <>
-                <XCircle size={13} className="text-red-400 shrink-0" />
-                <span className="text-red-300 font-mono truncate flex-1">{runOutput.message}</span>
-                {runOutput.section && runOutput.line && (
-                  <button
-                    onClick={() => jumpToError(runOutput.section, runOutput.line)}
-                    className="shrink-0 text-red-300 hover:text-red-100 underline underline-offset-2"
-                  >
-                    → {runOutput.section} line {runOutput.line}
-                  </button>
-                )}
-              </>
-            )}
-            <div className="ml-auto flex items-center gap-2 shrink-0">
-              {errorLogFilename && (
-                <button
-                  onClick={errorLogOpen ? () => setErrorLogOpen(false) : loadErrorLog}
-                  className={cn(
-                    'flex items-center gap-1 text-xs transition-colors',
-                    errorLogOpen ? 'text-amber-400 hover:text-amber-300' : 'text-amber-500 hover:text-amber-400'
-                  )}
-                  title={`View TM1 error log: ${errorLogFilename}`}
-                >
-                  <AlertCircle size={11} />
-                  Error Log
-                </button>
-              )}
-              <button
-                onClick={() => setLogOpen(o => !o)}
-                className="flex items-center gap-1 text-muted-foreground hover:text-foreground transition-colors"
-                title="Toggle run log output"
-              >
-                {logOpen ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
-                <span>Log</span>
-              </button>
-              <button
-                onClick={() => { setRunOutput(null); setLogContent(null); setErrorLogFilename(null); setErrorLogContent(null); setErrorLogOpen(false) }}
-                className="text-muted-foreground hover:text-foreground"
-              >
-                <X size={11} />
-              </button>
-            </div>
-          </div>
-
-          {/* __RUN_LOG content */}
-          {logOpen && (
-            <div className="border-t border-border/50 max-h-52 overflow-auto px-4 py-2">
-              {logContent === null ? (
-                <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <Loader2 size={11} className="animate-spin" /> Running…
-                </div>
-              ) : logContent === '' ? (
-                <p className="text-xs text-muted-foreground italic">No log output. Use AttrPutS to write to __RUN_LOG in your TI.</p>
-              ) : (
-                <pre className="text-xs font-mono text-foreground/80 whitespace-pre-wrap leading-relaxed">{logContent}</pre>
-              )}
-            </div>
-          )}
-
-          {/* TM1 Error Log file content */}
-          {errorLogOpen && (
-            <div className="border-t border-amber-900/40 bg-amber-950/10 max-h-64 overflow-auto px-4 py-2">
-              <div className="flex items-center justify-between mb-1.5">
-                <span className="text-[10px] font-mono text-amber-500/70 truncate">{errorLogFilename}</span>
-              </div>
-              {errorLogLoading ? (
-                <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <Loader2 size={11} className="animate-spin" /> Loading…
-                </div>
-              ) : (
-                <pre className="text-xs font-mono text-amber-200/80 whitespace-pre-wrap leading-relaxed">{errorLogContent ?? ''}</pre>
-              )}
-            </div>
-          )}
-        </div>
+        <RunOutputPanel
+          runOutput={runOutput}
+          onJumpToError={jumpToError}
+          errorLogFilename={errorLogFilename}
+          errorLogOpen={errorLogOpen}
+          onErrorLogClick={errorLogOpen ? () => setErrorLogOpen(false) : loadErrorLog}
+          logOpen={logOpen}
+          onToggleLog={() => setLogOpen(o => !o)}
+          logContent={logContent}
+          errorLogLoading={errorLogLoading}
+          errorLogContent={errorLogContent}
+          onClose={() => { setRunOutput(null); setLogContent(null); setErrorLogFilename(null); setErrorLogContent(null); setErrorLogOpen(false) }}
+        />
       )}
 
       {/* ── Monaco editor ─────────────────────────────────────────────── */}
