@@ -10,7 +10,7 @@
 // The result is cached per server briefly because it reads every process.
 
 const { hashCode, list } = require('./process-summaries')
-const { stripComments, splitArgs, resolveName, CUBE_FIRST_FNS, scanRules } = require('./process-scan')
+const { fetchProcesses, scanProcess, scanRules } = require('./process-scan')
 
 const TTL_MS = 30_000
 const MAX_CACHE = 50
@@ -46,16 +46,6 @@ function processHeader(prolog, name) {
     return text.length > 600 ? text.slice(0, 600) + '…' : text
 }
 
-function statementAt(code, start) {
-    let i = start, inStr = false
-    while (i < code.length) {
-        const ch = code[i]
-        if (ch === "'") inStr = !inStr
-        if (ch === ';' && !inStr) return code.slice(start, i + 1)
-        i++
-    }
-    return code.slice(start, start + 240)
-}
 const tidyCode = s => String(s).replace(/\s+/g, ' ').trim().slice(0, 220)
 
 async function buildIndex(client, serverName, { includeControl = false } = {}) {
@@ -63,6 +53,7 @@ async function buildIndex(client, serverName, { includeControl = false } = {}) {
     const cubeNames = new Set(allCubes.map(c => c.Name))
     const cubeDims = {}
     for (const c of allCubes) cubeDims[c.Name] = (c.Dimensions ?? []).map(d => d.Name)
+    const ctx = { cubeNames, cubeDims }
 
     const index = {}
     const viewSources = {}
@@ -96,11 +87,9 @@ async function buildIndex(client, serverName, { includeControl = false } = {}) {
         }
     }
 
-    let pd
+    let allProcesses
     try {
-        pd = await client.get('Processes', {
-            '$select': 'Name,PrologProcedure,MetadataProcedure,DataProcedure,EpilogProcedure,DataSource,Parameters',
-        })
+        allProcesses = await fetchProcesses(client)
     } catch (e) {
         // Rule sources are still usable; the process scan is not. Keep the same
         // shape so every caller can report the failure instead of throwing.
@@ -112,18 +101,10 @@ async function buildIndex(client, serverName, { includeControl = false } = {}) {
         return { cubes: index, processes: {}, viewSources: {}, scanError: e.message }
     }
 
-    const CELLPUT_RE = /\b(CellPut[NS](?:Complete)?|CellIncrement[NS])\s*\(/gi
-    const CELLGET_RE = /\bCellGet[NS]\s*\(/gi
-    const CUBE_FIRST_RE = new RegExp(`\\b(${CUBE_FIRST_FNS.join('|')})\\s*\\(`, 'gi')
-    const EXEC_RE = /\b(?:ExecuteProcess|RunProcess)\s*\(([\s\S]*?)\)\s*;/gi
-    const CUBE_PARAM_RE = /'([pP]\w*[Cc]ube\w*)'\s*,\s*'([^']+)'/g
-    const ASSIGN_RE = /\b([A-Za-z_]\w*)\s*=\s*'([^']*)'\s*;/g
-    const VAR_ASSIGN_RE = /\b([A-Za-z_]\w*)\s*=\s*([A-Za-z_]\w*)\s*;/g
-
     const meta = {}
     const procReads = {}
     const procCallers = {}
-    for (const p of (pd.value ?? [])) {
+    for (const p of allProcesses) {
         if (!includeControl && p.Name.startsWith('}')) continue
         const rawCode = [p.PrologProcedure, p.MetadataProcedure, p.DataProcedure, p.EpilogProcedure].filter(Boolean).join('\n')
         meta[p.Name] = {
@@ -132,75 +113,25 @@ async function buildIndex(client, serverName, { includeControl = false } = {}) {
             parameters: (p.Parameters ?? []).map(x => x.Name).filter(Boolean),
             codeHash: hashCode(rawCode),
         }
-        const code = stripComments(rawCode)
-        const varValues = {}
-        for (const prm of p.Parameters ?? []) {
-            if (typeof prm.Value === 'string' && prm.Value) varValues[prm.Name] = prm.Value
-        }
-        let m
-        ASSIGN_RE.lastIndex = 0
-        while ((m = ASSIGN_RE.exec(code)) !== null) varValues[m[1]] = m[2]
-        for (let pass = 0; pass < 3; pass++) {
-            VAR_ASSIGN_RE.lastIndex = 0
-            while ((m = VAR_ASSIGN_RE.exec(code)) !== null) {
-                if (varValues[m[1]] === undefined && varValues[m[2]] !== undefined) varValues[m[1]] = varValues[m[2]]
+
+        const facts = scanProcess(p, ctx)
+        for (const w of facts.writes) writer(w.cube, p.Name, w.kind, w.measure, undefined, { code: w.code })
+        for (const r of facts.reads) {
+            reader(r.cube, p.Name, r.how, { code: r.code })
+            ;(procReads[p.Name] ??= new Set()).add(r.cube)
+            if (r.how === 'view') {
+                const key = r.cube + '\u001f' + (r.view ?? '')
+                ;(viewSources[key] ??= []).push({ process: p.Name, cube: r.cube, view: r.view ?? '' })
             }
         }
-
-        CELLPUT_RE.lastIndex = 0
-        while ((m = CELLPUT_RE.exec(code)) !== null) {
-            const args = splitArgs(code, m.index + m[0].length - 1)
-            const cube = resolveName(args[1], varValues)
-            if (!cube || !cubeNames.has(cube)) continue
-            const dims = cubeDims[cube] ?? []
-            const mi = dims.findIndex(d => /measure/i.test(d))
-            const measure = mi >= 0 ? resolveName(args[2 + mi], varValues) : undefined
-            writer(cube, p.Name, 'write', measure, undefined, { code: statementAt(code, m.index) })
-        }
-
-        CUBE_FIRST_RE.lastIndex = 0
-        while ((m = CUBE_FIRST_RE.exec(code)) !== null) {
-            const args = splitArgs(code, m.index + m[0].length - 1)
-            const cube = resolveName(args[0], varValues)
-            if (!cube || !cubeNames.has(cube)) continue
-            writer(cube, p.Name, m[1].toLowerCase() === 'cubeprocessfeeders' ? 'feeders' : 'clear', undefined, undefined, { code: statementAt(code, m.index) })
-        }
-
-        CELLGET_RE.lastIndex = 0
-        while ((m = CELLGET_RE.exec(code)) !== null) {
-            const args = splitArgs(code, m.index + m[0].length - 1)
-            const cube = resolveName(args[0], varValues)
-            if (cube && cubeNames.has(cube)) { reader(cube, p.Name, 'cellget', { code: statementAt(code, m.index) }); (procReads[p.Name] ??= new Set()).add(cube) }
-        }
-
-        // A cube-view datasource reads the whole view before any code runs
-        if (p.DataSource?.Type === 'TM1CubeView' && p.DataSource.dataSourceNameForServer) {
-            const cube = p.DataSource.dataSourceNameForServer
-            const view = p.DataSource.view ?? ''
-            reader(cube, p.Name, 'view', { code: `Data source: view '${view}' over '${cube}'` })
-            if (cubeNames.has(cube)) {
-                (procReads[p.Name] ??= new Set()).add(cube)
-                const key = cube + '\u001f' + view
-                ;(viewSources[key] ??= []).push({ process: p.Name, cube, view })
+        for (const call of facts.calls) {
+            ;(procCallers[call.process] ??= new Set()).add(p.Name)
+            for (const cube of call.cubeParams) {
+                writer(cube, call.process, 'write', undefined, p.Name, { code: call.code, by: p.Name })
             }
-        }
-
-        EXEC_RE.lastIndex = 0
-        while ((m = EXEC_RE.exec(code)) !== null) {
-            const argList = m[1]
-            const nameRef = splitArgs(`(${argList})`, 0)[0]
-            const called = resolveName(nameRef, varValues)
-            if (!called || called === p.Name) continue
-            ;(procCallers[called] ??= new Set()).add(p.Name)
-            CUBE_PARAM_RE.lastIndex = 0
-            let cm
-            while ((cm = CUBE_PARAM_RE.exec(argList)) !== null) {
-                if (cubeNames.has(cm[2])) writer(cm[2], called, 'write', undefined, p.Name, { code: statementAt(code, m.index), by: p.Name })
-            }
-            if (/Version\.Copy$/i.test(called) || /Snapshot/i.test(called)) {
+            if (/Version\.Copy$/i.test(call.process) || /Snapshot/i.test(call.process)) {
                 // only the cubes this call's version dimension actually belongs to
-                const dimArg = argList.match(/'pVersionDim'\s*,\s*([^,)]+)/i)
-                const vdim = dimArg ? resolveName(dimArg[1].trim(), varValues) : undefined
+                const vdim = call.versionDim
                 for (const c of allCubes) {
                     const dims = cubeDims[c.Name] ?? []
                     if (vdim ? !dims.includes(vdim) : !dims.some(d => /version/i.test(d))) continue
