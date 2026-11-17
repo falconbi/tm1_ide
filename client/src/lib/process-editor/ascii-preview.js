@@ -5,7 +5,7 @@ export function parseAsciiPreview(text, { delimiter = ',', headerRecords = 1 } =
   const lines = String(text ?? '').split(/\r?\n/).filter(l => l !== '')
   const delim = delimiter || ','
   const head = Number(headerRecords ?? 1) || 0
-  const split = l => String(l).split(delim)
+  const split = l => l.split(delim)
   const body = lines.slice(head)
   const width = Math.max(1, ...body.slice(0, 20).map(l => split(l).length))
   const columns = head > 0 ? split(lines[0]) : Array.from({ length: width }, (_, i) => `Column ${i + 1}`)
