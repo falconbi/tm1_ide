@@ -72,6 +72,7 @@ config/certs/
 config/servers.json.bak*
 
 # ── Per-machine files — each install has its own (examples are committed) ──
+.mcp.json
 config/forge.json
 config/ide-modes.json
 config/sql-connections.json

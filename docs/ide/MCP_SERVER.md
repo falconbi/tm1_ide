@@ -252,7 +252,7 @@ entry in `config/servers.json` exactly (including capitals).
 
 ### With Claude Code (the normal way)
 
-The repo ships a project-level MCP config, `.mcp.json`, in the project root:
+The repo ships a project-level MCP example, `.mcp.example.json`. Copy it to `.mcp.json` (gitignored) and set your server:
 
 ```json
 {

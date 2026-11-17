@@ -63,8 +63,8 @@ below and in [ADAPTER_INTERFACE.md](ADAPTER_INTERFACE.md).
 | External SQL connection logins | `config/sql-connections.json` | **No.** It's gitignored. |
 | People's own TM1 passwords | IDE server memory only, for the session | Never written to disk. The browser holds only a random token. |
 
-**Never put a password in `.mcp.json` or `opencode.jsonc`.** `.mcp.json` is committed to the
-repository and `opencode.jsonc` is often copied around. Both should only name the server
+**Never put a password in `.mcp.json` or `opencode.jsonc`.** Both are copied around; only the
+example files belong in the repo. Both should only name the server
 (`TM1_MCP_SERVER`) and settings like `MCP_MODE`. Put any credential in `.env` or in
 `config/servers.json`. The same goes for `opencode.example.jsonc` and any other example file: use
 placeholder names, never real values.

@@ -18,6 +18,9 @@ cd client && npm ci
 
 The frontend is committed (the server serves `static/`), but its dependencies are separate.
 
+For the MCP, copy `.mcp.example.json` to `.mcp.json` and set your server. `.mcp.json` is
+per-machine and gitignored.
+
 ## Test
 
 ```bash
