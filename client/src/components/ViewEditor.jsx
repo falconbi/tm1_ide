@@ -6,7 +6,7 @@ import MonacoEditor from '@monaco-editor/react'
 import { useStore } from '@/store'
 import { useCubeDimensions, useViews, useExecuteMDX, useViewAxes } from '@/hooks/useApi'
 import { toast } from 'sonner'
-import { Loader2, Table2, GripVertical, GripHorizontal, LayoutGrid, Rows3, Columns3, Filter, ZapOff, ChevronDown, ChevronUp, BookOpen, WrapText, AlertTriangle, Cog, FileSearch, Sparkles, ArrowUpDown } from 'lucide-react'
+import { Loader2, Table2, GripVertical, GripHorizontal, LayoutGrid, Rows3, Columns3, Filter, ZapOff, ChevronDown, ChevronUp, WrapText, AlertTriangle, ArrowUpDown } from 'lucide-react'
 import HelpPanel from '@/components/HelpPanel'
 import TransactionLogPanel from '@/components/TransactionLogPanel'
 import CellContextMenu from '@/components/CellContextMenu'
@@ -15,13 +15,14 @@ import DropZone from '@/components/view-editor/axes/DropZone.jsx'
 import TraceSidePanel from '@/components/view-editor/trace/TraceSidePanel.jsx'
 import { cn } from '@/lib/utils'
 import { formatMDX } from '@/lib/mdx-format'
-import { processTabId } from '@/lib/tab-ids'
 import { useGridAppearance } from '@/lib/grid-appearance'
 import PivotGrid from '@/components/PivotGrid'
 import GridToolbar from '@/components/GridToolbar'
 import { ConflictBanner, ConflictSaveWarning } from '@/components/ConflictBanner'
 import DiffViewerModal from '@/components/DiffViewerModal'
 import ViewToolbar from '@/components/view-editor/ViewToolbar.jsx'
+import ViewAiBar from '@/components/view-editor/ViewAiBar.jsx'
+import ViewUsedIn from '@/components/view-editor/ViewUsedIn.jsx'
 import useViewLayout from '@/components/view-editor/hooks/useViewLayout.js'
 import useViewMdx from '@/components/view-editor/hooks/useViewMdx.js'
 import useViewTrace from '@/components/view-editor/hooks/useViewTrace.js'
@@ -155,23 +156,7 @@ export default function ViewEditor({ tab }) {
             />
             <HelpPanel open={showHelp} onClose={() => setShowHelp(false)} area="view" />
 
-            {/* AI bar — front door for building this view */}
-            <div className="flex items-center gap-2 px-3 py-1.5 border-b border-border bg-muted/10 shrink-0">
-                <Sparkles size={11} className={cn('shrink-0', hasAI ? 'text-violet-400' : 'text-muted-foreground/40')} />
-                {hasAI ? (
-                    <>
-                        <input value={aiPrompt} onChange={e => setAiPrompt(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleGenerateAI()}
-                            placeholder="Describe the view you want…"
-                            className="flex-1 text-xs bg-transparent outline-none placeholder:text-muted-foreground/40" />
-                        <button onClick={handleGenerateAI} disabled={!aiPrompt.trim() || generateViewMDX.isPending}
-                            className="flex items-center gap-1 px-2 py-0.5 text-xs rounded bg-violet-700 text-white disabled:opacity-40 hover:bg-violet-600 transition-colors shrink-0">
-                            {generateViewMDX.isPending ? <Loader2 size={10} className="animate-spin" /> : <Sparkles size={10} />} Generate
-                        </button>
-                    </>
-                ) : (
-                    <span className="flex-1 text-xs text-muted-foreground/40 italic">AI not configured — set AI_PROVIDER in .env</span>
-                )}
-            </div>
+            <ViewAiBar hasAI={hasAI} aiPrompt={aiPrompt} setAiPrompt={setAiPrompt} handleGenerateAI={handleGenerateAI} generateViewMDX={generateViewMDX} />
 
             {/* Complex MDX banner — Visual mode locked */}
             {mdxTooComplex && (
@@ -189,66 +174,7 @@ export default function ViewEditor({ tab }) {
                 </div>
             )}
 
-            {/* Used In */}
-            {tab.viewName && (
-                <div className="shrink-0 border-b border-border">
-                    <button
-                        onClick={() => { usedIn.setShowUsedIn(v => !v); if (!usedIn.showUsedIn) usedIn.refetchUsedIn() }}
-                        className="flex items-center gap-1.5 w-full px-3 py-1 text-[10px] text-muted-foreground hover:text-foreground hover:bg-muted/30 transition-colors"
-                    >
-                        {usedIn.showUsedIn ? <ChevronUp size={10} /> : <ChevronDown size={10} />}
-                        <FileSearch size={10} />
-                        <span>Used In</span>
-                        {usedIn.usageData?.processes?.length > 0 && <span className="opacity-60">({usedIn.usageData.processes.length})</span>}
-                        {usedIn.loadingUsedIn && <Loader2 size={10} className="animate-spin ml-1" />}
-                    </button>
-                    {usedIn.showUsedIn && (
-                        <div className="px-3 py-1.5 bg-muted/10 max-h-48 overflow-auto space-y-2">
-                            {!usedIn.usageData && !usedIn.pawBookData && !usedIn.loadingUsedIn && (
-                                <p className="text-[10px] text-muted-foreground italic">Scanning…</p>
-                            )}
-                            {usedIn.usageData && usedIn.usageData.processes.length > 0 && (
-                                <div>
-                                    <div className="text-[10px] uppercase tracking-wider text-muted-foreground/60 font-semibold mb-1">
-                                        TI Processes ({usedIn.usageData.processes.length})
-                                    </div>
-                                    {usedIn.usageData.processes.map((u, i) => (
-                                        <button key={i}
-                                            onClick={() => openTab({ id: processTabId(tab.server, u.process), type: 'process', label: u.process, server: tab.server, name: u.process })}
-                                            className="flex items-center gap-1.5 w-full px-1 py-0.5 text-[11px] hover:bg-muted rounded text-left">
-                                            <Cog size={10} className="shrink-0 text-muted-foreground" />
-                                            <span className="font-mono truncate">{u.process}</span>
-                                        </button>
-                                    ))}
-                                </div>
-                            )}
-                            <div>
-                                <div className="text-[10px] uppercase tracking-wider text-muted-foreground/60 font-semibold mb-1">
-                                    PAW Books ({usedIn.pawBookData?.books.length ?? 0})
-                                </div>
-                                {!usedIn.pawBookData ? (
-                                    <p className="text-[10px] text-muted-foreground italic">Scanning…</p>
-                                ) : usedIn.pawBookData.books.length === 0 ? (
-                                    <p className="text-[10px] text-muted-foreground italic">None found.</p>
-                                ) : (
-                                    <div className="space-y-0.5">
-                                        {usedIn.pawBookData.books.map(book => (
-                                            <a key={book.id}
-                                                href={`${usedIn.pawBookData?.pawHost || ''}/ui?type=book&path=${encodeURIComponent(book.path)}`}
-                                                target="_blank" rel="noreferrer"
-                                                className="flex items-center gap-1.5 text-[10px] hover:bg-muted rounded px-1 py-0.5"
-                                                title={book.path}>
-                                                <BookOpen size={9} className="shrink-0 text-muted-foreground" />
-                                                <span className="truncate">{book.name}</span>
-                                            </a>
-                                        ))}
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                    )}
-                </div>
-            )}
+            <ViewUsedIn tab={tab} openTab={openTab} usedIn={usedIn} />
 
             {/* Visual builder */}
             {mode === 'visual' && (
