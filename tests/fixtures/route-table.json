@@ -164,6 +164,7 @@
   "GET /api/git/setup/readiness",
   "POST /api/git/setup/init",
   "POST /api/git/setup/first-push",
+  "GET /api/git/setup/first-pull-analysis",
   "POST /api/git/setup/first-pull",
   "POST /api/deploy/seed",
   "GET /api/deploy/git/history",

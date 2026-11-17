@@ -754,6 +754,14 @@ export const useUpdateSessionDescription = () => { const qc = useQueryClient(); 
 // ── Deploy pipeline ───────────────────────────────────────────────────────────
 export const usePreDeleteElementCheck = () => useMutation({ mutationFn: (body) => post('/api/deploy/pre-delete-check', body) })
 
+export const useFirstPullAnalysis = (server, branch = 'dev', { enabled = true } = {}) => useQuery({
+  queryKey: ['git-first-pull-analysis', server, branch],
+  queryFn: () => get(`/api/git/setup/first-pull-analysis?server=${enc(server)}&branch=${enc(branch)}`),
+  staleTime: 0,
+  retry: false,
+  enabled: !!server && enabled,
+})
+
 export const useDeployBaseline = (server) => useQuery({ queryKey: ['deploy-baseline', server], queryFn: () => get(`/api/deploy/baseline?server=${encodeURIComponent(server ?? '')}`), staleTime: 60_000, enabled: !!server })
 export const useDeploySeed     = () => { const qc = useQueryClient(); return useMutation({ mutationFn: (body) => post('/api/deploy/seed', body), onSuccess: () => qc.invalidateQueries({ queryKey: ['deploy-baseline'] }) }) }
 export const useDeployArchives = () => useQuery({ queryKey: ['deploy-archives'], queryFn: () => get('/api/deploy/archives'), staleTime: 0 })
