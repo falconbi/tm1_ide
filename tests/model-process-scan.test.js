@@ -31,12 +31,12 @@ const expectedSources = {
 }
 
 const expectedCubes = {
-  'Target': {'dims':['Period','Measure'],'hasRules':false,'ruleCalcRefs':[],'ruleFeederRefs':[],'ruleLoc':0,'tiWriters':['P literal','P variable','P chain','P param default','Generic Copy','P self','P clear'],'tiReaders':[]},
-  'Source': {'dims':['Period','Measure'],'hasRules':true,'ruleCalcRefs':['ReadCube','FeederCube'],'ruleFeederRefs':[],'ruleLoc':3,'tiWriters':['P clear'],'tiReaders':['P view source']},
+  'Target': {'dims':['Period','Measure'],'hasRules':false,'ruleCalcRefs':[],'ruleFeederRefs':[],'ruleLoc':0,'tiWriters':['P literal','P variable','P chain','P param default','Generic Copy','P clear'],'tiReaders':[]},
+  'Source': {'dims':['Period','Measure'],'hasRules':true,'ruleCalcRefs':['ReadCube'],'ruleFeederRefs':['FeederCube'],'ruleLoc':1,'tiWriters':['P clear'],'tiReaders':['P view source']},
   'ReadCube': {'dims':['Period','Measure'],'hasRules':false,'ruleCalcRefs':[],'ruleFeederRefs':[],'ruleLoc':0,'tiWriters':[],'tiReaders':[]},
   'FeederCube': {'dims':['Period','Measure'],'hasRules':false,'ruleCalcRefs':[],'ruleFeederRefs':[],'ruleLoc':0,'tiWriters':[],'tiReaders':[]},
   'Sales 2026': {'dims':['Period','Measure'],'hasRules':false,'ruleCalcRefs':[],'ruleFeederRefs':[],'ruleLoc':0,'tiWriters':[],'tiReaders':['P expr read']},
-  'Sales 2026, Ltd': {'dims':['Period','Measure'],'hasRules':false,'ruleCalcRefs':[],'ruleFeederRefs':[],'ruleLoc':0,'tiWriters':[],'tiReaders':[]},
+  'Sales 2026, Ltd': {'dims':['Period','Measure'],'hasRules':false,'ruleCalcRefs':[],'ruleFeederRefs':[],'ruleLoc':0,'tiWriters':[],'tiReaders':['P comma read']},
   'Versioned': {'dims':['Period','Version','Measure'],'hasRules':false,'ruleCalcRefs':[],'ruleFeederRefs':[],'ruleLoc':0,'tiWriters':[],'tiReaders':[]},
   'Unversioned': {'dims':['Period','Measure'],'hasRules':false,'ruleCalcRefs':[],'ruleFeederRefs':[],'ruleLoc':0,'tiWriters':[],'tiReaders':[]},
   "O'Brien Sales": {'dims':['Period','Measure'],'hasRules':false,'ruleCalcRefs':[],'ruleFeederRefs':[],'ruleLoc':0,'tiWriters':[],'tiReaders':[]},
@@ -51,11 +51,10 @@ const expectedProcesses = {
   'P call generic': {'reads':[],'writes':[],'calls':['Generic Copy'],'dimWrites':[],'steps':[{'kind':'call','target':'Generic Copy','pos':0}]},
   'Generic Copy': {'reads':[],'writes':['Target'],'calls':[],'dimWrites':[],'steps':[{'kind':'write','target':'Target','pos':null}]},
   'P snapshot': {'reads':[],'writes':[],'calls':['}IDE.Version.Copy'],'dimWrites':[],'steps':[{'kind':'call','target':'}IDE.Version.Copy','pos':0}]},
-  'P self': {'reads':[],'writes':['Target'],'calls':[],'dimWrites':[],'steps':[{'kind':'write','target':'Target','pos':null}]},
   'P dim': {'reads':[],'writes':[],'calls':[],'dimWrites':['Dim'],'steps':[{'kind':'dimwrite','target':'Dim','pos':0}]},
   'P clear': {'reads':[],'writes':['Target','Source'],'calls':[],'dimWrites':[],'steps':[{'kind':'write','target':'Target','pos':0},{'kind':'write','target':'Source','pos':58}]},
   'P expr read': {'reads':['Sales 2026'],'writes':[],'calls':[],'dimWrites':[],'steps':[{'kind':'read','target':'Sales 2026','pos':16}]},
-  'P missing write': {'reads':[],'writes':['Missing Cube'],'calls':[],'dimWrites':[],'steps':[{'kind':'write','target':'Missing Cube','pos':0}]},
+  'P comma read': {'reads':['Sales 2026, Ltd'],'writes':[],'calls':[],'dimWrites':[],'steps':[{'kind':'read','target':'Sales 2026, Ltd','pos':16}]},
 }
 
 const expectedDims = {'Dim':{'writers':['P dim'],'cubes':[]}}
