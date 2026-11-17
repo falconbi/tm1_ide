@@ -52,7 +52,11 @@ client/src/
     Explorer.jsx              # Left sidebar: object tree for all TM1 object types
     TabBar.jsx                # Tab bar — drag-to-reorder, right-click menu, split controls
     EditorPane.jsx            # Rules editor + cell trace + lineage + Check Now button
-    ProcessEditor.jsx         # TI editor with debugger, snippets, error log viewer
+    process-editor/            # TI editor: shell + panels, hooks/ for state, pure helpers in lib/process-editor/
+      ProcessEditor.jsx        #   shell (under 400 lines); ProcessToolbar + RunOutputPanel + DebugPanel
+      hooks/                   #   useProcessEdits/Monaco/Run/Save/Debug/Check — one concern per hook
+      panels/                  #   Params/Datasource/DatasourcePreview/Variables/CollapsibleSection
+      dialogs/                 #   RunDialog, SaveAsDialog
     DimensionEditor.jsx       # Hierarchy tree + attribute grid
     SubsetEditor.jsx          # MDX + visual subset editor
     view-editor/               # Native/MDX view editor: shell + panels, hooks/ for state, trace/ and axes/
@@ -78,6 +82,7 @@ client/src/
     tm1-snippets.js           # TI and Rules snippet library
     ti-interpreter.js         # TI variable scanner for the debug watch dropdown
     ti-debugger.js            # TI debugger — breakpoint injection + capture parsing
+    process-editor/           # Pure TI-editor helpers: constants, sections/run params, ASCII preview, debug issues
     formatters/               # TM1 rules formatter (tokenizer, AST, presets, settings)
 config/
   servers.json                # TM1 server list { name, ... }
