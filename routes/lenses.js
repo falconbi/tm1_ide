@@ -24,7 +24,7 @@ app.get('/api/files/content', async (req, res) => {
         res.setHeader('Content-Disposition', `attachment; filename="${name}"`)
         res.setHeader('Content-Type', 'application/octet-stream')
         res.send(Buffer.isBuffer(content) ? content : Buffer.from(content))
-    } catch (e) { res.status(500).json({ error: e.message }) }
+    } catch (e) { fail(res, e) }
 })
 
 app.post('/api/files/upload', express.raw({ type: '*/*', limit: '50mb' }), async (req, res) => {
@@ -39,7 +39,7 @@ app.post('/api/files/upload', express.raw({ type: '*/*', limit: '50mb' }), async
         }
         await client.putFileContent(pathParts, name, req.body)
         res.json({ ok: true })
-    } catch (e) { res.status(500).json({ error: e.message }) }
+    } catch (e) { fail(res, e) }
 })
 
 app.delete('/api/files', async (req, res) => {
