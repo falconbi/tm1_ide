@@ -4,9 +4,6 @@ import { AgGridReact } from 'ag-grid-react'
 import { AllCommunityModule, ModuleRegistry } from 'ag-grid-community'
 import { DndContext, DragOverlay, PointerSensor, useSensor, useSensors, useDroppable, useDraggable } from '@dnd-kit/core'
 import MonacoEditor from '@monaco-editor/react'
-import { formatRules } from '@/lib/formatters/rules-formatter.js'
-import { loadSettings as loadFormatSettings } from '@/lib/formatters/settings.js'
-import { getNamingMap } from '@/lib/formatters/naming.js'
 import { useStore } from '@/store'
 import { subsetApplyCallbacks } from '@/lib/subsetCallbacks'
 import { useCubeDimensions, useSubsets, useElementsTree, useElementsTrees, useHierarchies, useHierarchiesFor, useViews, useExecuteMDX, useViewAxes, useSaveView, useSetDefaultView, usePawBookUsage, useDimAttributes, useViewUsage, useViewSourceUsage, useMultiFormatAttrs, useConflictCheck, useGenerateViewMDX, useConfig, useTraceCellCalc } from '@/hooks/useApi'
@@ -24,17 +21,6 @@ import { cellsetToHierarchyData, parseCellset, buildGridData } from '@/lib/view-
 
 ModuleRegistry.registerModules([AllCommunityModule])
 
-// Saved sessions — local drafts for experimenting before settling on the final
-// view. Same pattern as SubsetEditor's sessions: named snapshots in localStorage,
-// not saved to TM1, not shared with anyone else.
-const VIEW_SESSIONS_KEY = 'tm1-view-sessions'
-function loadViewSessions() { try { return JSON.parse(localStorage.getItem(VIEW_SESSIONS_KEY) || '[]') } catch { return [] } }
-function saveViewSessionEntry(entry) {
-    const list = loadViewSessions().filter(s => s.name !== entry.name)
-    list.unshift({ ...entry, time: Date.now() })
-    localStorage.setItem(VIEW_SESSIONS_KEY, JSON.stringify(list.slice(0, 30)))
-}
-
 import { buildMDX, widenPlacement } from '@shared/pivot/mdx.js'
 import PivotGrid from '@/components/PivotGrid'
 import { buildHierarchy, tupleIsLeaf } from '@shared/pivot/tree.js'
@@ -43,6 +29,10 @@ import GridToolbar from '@/components/GridToolbar'
 import { ConflictBanner, ConflictSaveWarning } from '@/components/ConflictBanner'
 import DiffViewerModal from '@/components/DiffViewerModal'
 import { Component } from 'react'
+import { loadViewSessions, saveViewSessionEntry } from '@/lib/view-editor/view-sessions.js'
+import { detectComplexMDX, viewerAxesToBuilderConfig } from '@/lib/view-editor/complex-mdx.js'
+import { buildElementTree } from '@/lib/view-editor/member-tree.js'
+import { isGuardStatement, fmtTraceValue, formatStatement } from '@/lib/view-editor/trace-format.js'
 
 const BIG_VIEW_ROWS = 5000
 
@@ -143,48 +133,9 @@ class TraceErrorBoundary extends Component {
     }
 }
 
-// MDX functions the visual builder cannot represent — triggers MDX-only lock
-const COMPLEX_MDX_PATTERNS = [
-    ['STRTOMEMBER',    /\bSTRTOMEMBER\b/i],
-    ['DRILLDOWNMEMBER',/\bDRILLDOWNMEMBER\b/i],
-    ['DRILLUPMEMBER',  /\bDRILLUPMEMBER\b/i],
-    ['SUBSET',         /\bSUBSET\s*\(/i],
-    ['GENERATE',       /\bGENERATE\s*\(/i],
-    ['FILTER',         /\bFILTER\s*\(/i],
-    ['ORDER',          /\bORDER\s*\(/i],
-    ['TOPCOUNT',       /\bTOPCOUNT\b/i],
-    ['BOTTOMCOUNT',    /\bBOTTOMCOUNT\b/i],
-    ['.PROPERTIES',    /\.PROPERTIES\s*\(/i],
-    ['HIERARCHIZE',    /\bHIERARCHIZE\b/i],
-]
-
 // A view entry is a dimension in one of its hierarchies: 'WFP Position', or 'WFP Position › By Location'
 // for an ALT H (Alternate Hierarchy) — both can be on the grid at once (they share the same leaves).
 const entryKey = p => (p?.hierarchy && p.hierarchy !== p.dimension) ? `${p.dimension} › ${p.hierarchy}` : p?.dimension
-
-function detectComplexMDX(mdx) {
-    if (!mdx) return null
-    const found = COMPLEX_MDX_PATTERNS.filter(([, re]) => re.test(mdx)).map(([name]) => name)
-    return found.length ? found : null
-}
-
-// Convert ViewEditor axis state → GuidedMDXBuilder dimConfig format
-function viewerAxesToBuilderConfig(axes) {
-    const toExpr = (dim, d, isFilter) => {
-        if (d.memberSet === 'leaf') return `{TM1FILTERBYLEVEL({[${dim}].[${dim}].Members}, 0)}`
-        if (d.memberSet === 'root') return `{[${dim}].[${dim}].DefaultMember}`
-        if (d.memberSet === 'all')  return `{TM1SUBSETALL([${dim}].[${dim}])}`
-        if (d.subset)               return `TM1SubsetToSet([${dim}].[${dim}], "${d.subset}", "public")`
-        if (d.members?.length > 1)  return `{${d.members.map(m => `[${dim}].[${dim}].[${m}]`).join(', ')}}`
-        if (d.member)               return isFilter ? d.member : `{[${dim}].[${dim}].[${d.member}]}`
-        return ''
-    }
-    const config = {}
-    for (const d of axes.rows)    config[d.dimension] = { axis: 'rows',    subsetExpression: toExpr(d.dimension, d, false) }
-    for (const d of axes.columns) config[d.dimension] = { axis: 'columns', subsetExpression: toExpr(d.dimension, d, false) }
-    for (const d of axes.pages)   config[d.dimension] = { axis: 'filter',  subsetExpression: toExpr(d.dimension, d, true) }
-    return config
-}
 
 // ── Cellset → AG Grid ─────────────────────────────────────────────────────────
 
@@ -238,39 +189,6 @@ function TreeNodes({ nodes, depth, isFilter, checked, expanded, toggleMember, to
             </div>
         )
     })
-}
-
-// Build a tree using Components (explicit children) when available
-function buildElementTree(elements) {
-    const byName = Object.fromEntries(elements.map(el => [el.Name, { ...el, children: [] }]))
-    const hasComponents = elements.some(el => el.Components?.length)
-
-    if (hasComponents) {
-        // Use explicit parent-child relationships from $expand=Components
-        const childSet = new Set()
-        for (const el of elements) {
-            for (const childName of (el.Components ?? [])) {
-                if (byName[childName]) {
-                    byName[el.Name].children.push(byName[childName])
-                    childSet.add(childName)
-                }
-            }
-        }
-        return Object.values(byName).filter(n => !childSet.has(n.Name))
-    }
-
-    // Fallback: group by level — show consolidations at top, leaves below
-    const maxLevel = Math.max(0, ...elements.map(el => el.Level ?? 0))
-    if (maxLevel === 0) return elements.map(el => ({ ...el, children: [] }))
-
-    // Sort by level descending so highest consolidations come first
-    const sorted = [...elements].sort((a, b) => (b.Level ?? 0) - (a.Level ?? 0))
-    const roots = []
-    for (const el of sorted) {
-        byName[el.Name].children = []
-        if ((el.Level ?? 0) === maxLevel) roots.push(byName[el.Name])
-    }
-    return roots
 }
 
 function SubsetPopover({ server, dim, zone, subsets, onSubsetSelect, onMemberSelect, onMembersSelect, onMemberSetSelect, onEditSubset, onBuildSubset, onClose }) {
@@ -626,27 +544,6 @@ function DropZone({ id, label, icon: Icon, dims, server, onRemove, onSubsetChang
 }
 
 // ── Rule breakdown component ──────────────────────────────────────────────────
-
-// The static-version guard at the top of every rule file (IF(ELPAR(...) @= 'Non-Calculating', STET,
-// CONTINUE)). TM1's trace lists it once for every cube the calculation touches; it explains nothing.
-const GUARD_RX = /IF\s*\(\s*ELPAR\s*\([^)]*\)\s*@=\s*'[^']*'\s*,\s*STET\s*,\s*CONTINUE\s*\)/i
-const isGuardStatement = s => GUARD_RX.test(s)
-
-// 366.666666 -> 366.67, 10833.33333 -> 10,833.33; strings unchanged
-const fmtTraceValue = v => {
-    if (v == null || v === '') return v
-    const n = typeof v === 'number' ? v : (/^-?\d+(\.\d+)?(e[-+]?\d+)?$/i.test(String(v).trim()) ? Number(v) : NaN)
-    if (Number.isNaN(n)) return String(v)
-    return n.toLocaleString(undefined, { minimumFractionDigits: Number.isInteger(n) ? 0 : 2, maximumFractionDigits: 2 })
-}
-
-// A rule statement laid out with the IDE's TM1 Structured formatter (DB arguments on their own lines)
-const formatStatement = stmt => {
-    try {
-        const { map } = getNamingMap()
-        return formatRules(stmt, { ...loadFormatSettings().rules, expressionFormatter: 'tm1-structured' }, map)
-    } catch { return stmt }
-}
 
 function RuleBreakdown({ server, statements: allStatements, dimElemPairs, cube, onDrill }) {
     // the statements that actually calculate the cell: no guards, no repeats
