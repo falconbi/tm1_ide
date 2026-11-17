@@ -3,9 +3,8 @@ import { AgGridReact } from 'ag-grid-react'
 import { Loader2, Plus, Upload, RefreshCw, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { useStore } from '@/store'
-import { post } from '@/lib/api'
 import { cn } from '@/lib/utils'
-import { useAttrGrid, useWriteElementAttribute, useCreateAttrDef, useDeleteAttrDef, useBulkAttrImport } from '@/hooks/useApi'
+import { useAttrGrid, useWriteElementAttribute, useCreateAttrDef, useDeleteAttrDef, useConvertToAlias, useBulkAttrImport } from '@/hooks/useApi'
 import { buildTreeOrder } from '@/lib/dimension-editor/tree'
 import { TYPE_ICON, TYPE_COLOR, COLOUR_HEX, TM1_FORMAT_PRESETS } from '@/lib/dimension-editor/constants'
 import { ATTR_DEFAULT_COL, darkTheme, lightTheme } from '../agGrid'
@@ -25,6 +24,7 @@ export default function AttrGrid({ tab, elements, edges, hierarchy, search = '',
   const writeAttr                          = useWriteElementAttribute()
   const createAttr                         = useCreateAttrDef()
   const deleteAttr                         = useDeleteAttrDef()
+  const convertToAlias                     = useConvertToAlias()
   const bulkAttrImport                     = useBulkAttrImport()
 
   const handleCreateAttr = useCallback((name, type) => {
@@ -46,13 +46,13 @@ export default function AttrGrid({ tab, elements, edges, hierarchy, search = '',
   const handleConvertToAlias = useCallback(async (attrName) => {
     if (!window.confirm(`Convert "${attrName}" from String to Alias type?\n\nAll values will be preserved.`)) return
     try {
-      const d = await post('/api/dimension/attribute/convert-to-alias', { server: tab.server, dimension: tab.dimension, attribute: attrName, hierarchy })
+      const d = await convertToAlias.mutateAsync({ server: tab.server, dimension: tab.dimension, attribute: attrName, hierarchy })
       toast.success(`Converted ${attrName} to Alias — ${d.converted} values preserved`)
       refetch()
     } catch (e) {
       toast.error(`Convert to Alias failed: ${e.message}`)
     }
-  }, [tab, hierarchy, refetch])
+  }, [tab, hierarchy, refetch, convertToAlias])
 
   const attrs = grid?.attrs ?? NO_ATTRS
 
