@@ -26,6 +26,4 @@ Short walkthroughs of the IDE, each a few minutes long.
 | [auth/](auth/) | Logging in to TM1 / PAW, adapters, multi-user | [TM1_AUTHENTICATION_GUIDE.md](auth/TM1_AUTHENTICATION_GUIDE.md) |
 | [ide/](ide/) | The IDE itself: setup, the first walkthrough, features, architecture, lint, the MCP server, the REST API reference | [SETUP.md](ide/SETUP.md), [WALKTHROUGH.md](ide/WALKTHROUGH.md), [FEATURES.md](ide/FEATURES.md); [ARCHITECTURE.md](ide/ARCHITECTURE.md), [LINT.md](ide/LINT.md), [MCP_SERVER.md](ide/MCP_SERVER.md) |
 | [../core-ti/](../core-ti/) | Hidden core TI processes and platform settings | [core-ti/README.md](../core-ti/README.md) |
-| [Archive/](Archive/) | Finished plans and old notes, kept for history | — |
 
-[HANDOVER_WORKFORCE.md](Archive/HANDOVER_WORKFORCE.md) is the Workforce build handover, kept in Archive now that the core work is committed.

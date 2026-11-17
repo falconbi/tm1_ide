@@ -43,7 +43,7 @@ working with the same person. The write-up is the article
 2. **A workforce planning model.** Versions and assumptions, pay rates, a hiring plan, FX, and
    employee income tax through to gross-to-net pay. It was deployed through the IDE's pipeline
    from a development server to a production server, and the figures **matched to the cent**.
-   See [`WORKFORCE_MODEL_PLAN.md`](../Archive/WORKFORCE_MODEL_PLAN.md).
+   See [`WORKFORCE_MODEL.md`](../models/WORKFORCE_MODEL.md).
 3. **A statutory group consolidation.** Ownership and control at any depth, goodwill and
    non-controlling interests, step acquisitions and disposals, foreign currency translation,
    and consolidation of sub-groups. Built test-first: **26 published worked examples matched**,
