@@ -130,7 +130,12 @@ export function useIsSimple(server) {
   const key = String(server ?? '').toLowerCase()
   return Array.isArray(servers) && servers.some(s => s?.simple && String(s.name).toLowerCase() === key)
 }
-export const useElements           = (server, dim, hierarchy) => useQuery({ queryKey: ['elements', server, dim, hierarchy],           queryFn: () => get(`/api/elements?server=${enc(server)}&dimension=${enc(dim)}${hierarchy ? `&hierarchy=${enc(hierarchy)}` : ''}`),           enabled: !!server && !!dim })
+export const elementsQuery = (server, dim, hierarchy) => ({
+  queryKey: ['elements', server, dim, hierarchy],
+  queryFn:  () => get(`/api/elements?server=${enc(server)}&dimension=${enc(dim)}${hierarchy ? `&hierarchy=${enc(hierarchy)}` : ''}`),
+  enabled:  !!server && !!dim,
+})
+export const useElements           = (server, dim, hierarchy) => useQuery(elementsQuery(server, dim, hierarchy))
 export const useElementsWithIndex  = (server, dim, hierarchy) => useQuery({ queryKey: ['elements-index', server, dim, hierarchy],     queryFn: () => get(`/api/elements?server=${enc(server)}&dimension=${enc(dim)}${hierarchy ? `&hierarchy=${enc(hierarchy)}` : ''}&index=1`), enabled: !!server && !!dim })
 export const useElementsTree  = (server, dim, hierarchy) => useQuery({ queryKey: ['elements-tree', server, dim, hierarchy], queryFn: () => get(`/api/elements/tree?server=${enc(server)}&dimension=${enc(dim)}${hierarchy ? `&hierarchy=${enc(hierarchy)}` : ''}`), enabled: !!server && !!dim, staleTime: 60_000 })
 // Element trees for any number of dimensions at once (shares the cache with useElementsTree)
@@ -240,6 +245,14 @@ export const useSaveRules = () => {
     },
   })
 }
+
+export const useCheckRules = () => useMutation({
+  mutationFn: ({ server, cube, rules }) => post('/api/rules/check', { server, cube, rules }),
+})
+
+export const useCheckRuleReferences = () => useMutation({
+  mutationFn: ({ server, cube, rules }) => post('/api/cube/rules/check-references', { server, cube, rules }),
+})
 
 export const useSaveProcess = () => useMutation({
   mutationFn: ({ server, name, body }) =>

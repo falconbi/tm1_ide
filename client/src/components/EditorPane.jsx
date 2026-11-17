@@ -1,8 +1,7 @@
-import { post } from '@/lib/api'
 import { useEffect, useRef, useState, useCallback } from 'react'
 import MonacoEditor from '@monaco-editor/react'
 import { useStore } from '@/store'
-import { useRules, useSaveRules, useConflictCheck, useCubeDimensions } from '@/hooks/useApi'
+import { useRules, useSaveRules, useCheckRules, useCheckRuleReferences, useConflictCheck, useCubeDimensions } from '@/hooks/useApi'
 import { registerMDXAndVariableCompletions, registerTM1Theme } from '@/lib/tm1-functions'
 import ProcessEditor from '@/components/process-editor/ProcessEditor'
 import SQLEditor from '@/components/SQLEditor'
@@ -49,6 +48,8 @@ function RulesEditor({ tab, onCursor }) {
   const { initTabContent, updateTabContent, markTabSaved, clearScrollTo, openTab, openTabToSide, server, serverVersion, dark, themeVersion, setFormatSettingsOpen, setRevealTarget, bumpRulesVersion } = useStore()
   const { data, isLoading } = useRules(tab.server, tab.cube)
   const saveRules = useSaveRules()
+  const checkRules = useCheckRules()
+  const checkReferences = useCheckRuleReferences()
   const registeredRef = useRef(false)
   const editorRef = useRef(null)
   const monacoRef = useRef(null)
@@ -131,7 +132,7 @@ function RulesEditor({ tab, onCursor }) {
       const staticErrors = validateRulesSyntax(content, { version: serverVersion })
       let tm1Errors = []
       try {
-        const d = await post('/api/rules/check', { server: tab.server, cube: tab.cube, rules: content })
+        const d = await checkRules.mutateAsync({ server: tab.server, cube: tab.cube, rules: content })
         tm1Errors = d.errors ?? []
       } catch { /* TM1 check failed — static errors still shown */ }
       if (seq !== checkSeqRef.current) return
@@ -249,7 +250,7 @@ function RulesEditor({ tab, onCursor }) {
           bumpRulesVersion(tab.server, tab.cube)
           toast.success('Rules saved', { id })
           // Non-blocking reference integrity check — warnings shown after save
-          post('/api/cube/rules/check-references', { server: tab.server, cube: tab.cube, rules: editor.getValue() })
+          checkReferences.mutateAsync({ server: tab.server, cube: tab.cube, rules: editor.getValue() })
             .then(d => {
               if (d.warnings?.length) {
                 d.warnings.forEach(w => toast.warning(w.message, { duration: 8000 }))

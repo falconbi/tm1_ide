@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import { get } from '@/lib/api'
+import { useQueryClient } from '@tanstack/react-query'
+import { elementsQuery } from '@/hooks/useApi'
 import { cn } from '@/lib/utils'
 
 export default function ElementPicker({ server, dim, value, onChange, onCommit }) {
@@ -8,6 +9,7 @@ export default function ElementPicker({ server, dim, value, onChange, onCommit }
   const [elements, setElems]  = useState(null)   // null = not yet fetched
   const [loading, setLoading] = useState(false)
   const containerRef          = useRef(null)
+  const queryClient           = useQueryClient()
 
   useEffect(() => { setSearch(value) }, [value])
 
@@ -22,7 +24,7 @@ export default function ElementPicker({ server, dim, value, onChange, onCommit }
     if (elements !== null) return
     setLoading(true)
     try {
-      const d = await get(`/api/elements?server=${encodeURIComponent(server)}&dimension=${encodeURIComponent(dim)}`)
+      const d = await queryClient.fetchQuery(elementsQuery(server, dim))
       setElems(Array.isArray(d) ? d.map(e => e.Name ?? e) : [])
     } catch { setElems([]) }
     finally { setLoading(false) }
