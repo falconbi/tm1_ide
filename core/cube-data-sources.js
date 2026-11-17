@@ -291,17 +291,10 @@ async function buildIndex(client, serverName, { includeControl = false } = {}) {
     for (const e of Object.values(index)) {
         e.writers = Object.values(e.writers).map(w => {
             const m = meta[w.process] ?? {}
-            const latest = summaries[w.process]
-            const current = latest && latest.hash === m.codeHash ? latest : null
             return {
                 ...w, ...m,
                 kinds: [...w.kinds], measures: [...w.measures], callers: [...w.callers],
                 reads: [...(procReads[w.process] ?? [])],
-                summary: current?.summary ?? null,
-                summaryAt: current?.at ?? null,
-                summarySource: current?.source ?? null,
-                summaryModel: current?.model ?? null,
-                summaryStale: !!(latest && !current),
             }
         })
         e.readers = Object.values(e.readers).map(r => ({ ...r, how: [...r.how], evidence: r.evidence ?? [] }))
@@ -346,7 +339,7 @@ async function getCubeDataSources(client, server, cube, identity, options = {}) 
             summaryStale: !!(latest && !current),
         }
     }
-    const writers = e.writers.map(w => join(w))
+    const writers = e.writers.map(w => join(w, index.processes[w.process] ?? {}))
     const readers = e.readers.map(r => join(r, index.processes[r.process] ?? {}))
     return { cube, ...e, writers, readers }
 }

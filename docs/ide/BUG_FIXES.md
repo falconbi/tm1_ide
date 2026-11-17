@@ -3,12 +3,16 @@
 Every bug-fix commit, newest first, by the date it was committed. Generated from the git history;
 commits that mixed a fix into a feature are included too. New features are not listed here.
 
-166 fixes from 2026-05-20 to 2026-10-10, plus 46 entries for 11–27 October, 6 for 28 October–1 November, 7 for 2 November, 4 for 5 November, 10 for 6 November, 9 for 9 November, 8 for 15 November and 3 for 17 November. Last updated 2026-11-17.
+166 fixes from 2026-05-20 to 2026-10-10, plus 46 entries for 11–27 October, 6 for 28 October–1 November, 7 for 2 November, 4 for 5 November, 10 for 6 November, 9 for 9 November, 8 for 15 November, 3 for 17 November and 2 for 18 November. Last updated 2026-11-18.
 
 ← [Back to README](../../README.md)
 
 
 ## November 2026
+
+### 2026-11-18
+
+- **cube data sources** — Every TI writer with a summary showed "summary stale": the read-time join passed no process meta, so the summary hash was compared with `undefined`. Writers now join the process meta exactly as readers do, and the index no longer sets summary fields the join overwrites
 
 ### 2026-11-17
 

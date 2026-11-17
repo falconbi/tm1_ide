@@ -3,7 +3,16 @@
 // (literals, variables, generic copy call sites and clear/feeder calls) plus its rules.
 const test = require('node:test')
 const assert = require('node:assert')
+const fs = require('fs')
+const os = require('os')
+const path = require('path')
+
+const summaryFile = path.join(os.tmpdir(), `process-scan-summaries-${process.pid}.json`)
+process.env.PROCESS_SUMMARIES_FILE = summaryFile
+const summaries = require('../core/process-summaries')
 const { getCubeDataSources, getViewSourceUsage, invalidate } = require('../core/cube-data-sources')
+
+test.after(() => { try { fs.unlinkSync(summaryFile) } catch { /* best effort */ } })
 
 function client(processes, cubes) {
     return {
@@ -91,6 +100,26 @@ test('the index cache is per user identity', async () => {
     const b = await getCubeDataSources(clientB, 'unit-cache', 'Cube A', 'user-b')
     assert.deepEqual(a.writers.map(w => w.process), ['User A writer'])
     assert.deepEqual(b.writers.map(w => w.process), ['User B writer'])
+})
+
+test('a writer summary is stale only when the process code changed', async () => {
+    const cubes = [{ Name: 'Cube A', Dimensions: [{ Name: 'Period' }, { Name: 'Measure' }], Rules: '' }]
+    const code = "CellPutN(1, 'Cube A', 'Jan', 'Amount');"
+    const processes = [proc('P summary', code)]
+    const server = 'unit-summary-stale'
+
+    await summaries.put(server, 'P summary', { hash: summaries.hashCode(code), summary: 'Writes Cube A.', source: 'manual' })
+    invalidate(server)
+    const current = await getCubeDataSources(client(processes, cubes), server, 'Cube A')
+    assert.equal(current.writers[0].summary, 'Writes Cube A.')
+    assert.equal(current.writers[0].summaryStale, false, 'matching hash is not stale')
+
+    await summaries.put(server, 'P summary', { hash: summaries.hashCode('old code'), summary: 'Old summary.', source: 'manual' })
+    invalidate(server)
+    const changed = await getCubeDataSources(client(processes, cubes), server, 'Cube A')
+    assert.equal(changed.writers[0].summary, 'Old summary.')
+    assert.equal(changed.writers[0].summaryStale, true, 'changed process is stale')
+    await summaries.remove(server, 'P summary')
 })
 
 test('every DB and DBS call on a line is a rule source', async () => {
