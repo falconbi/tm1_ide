@@ -30,6 +30,10 @@ stub('core/git-state', {
     load: () => ({}), FILE: '',
 })
 
+let analysis = { complete: true, confirmText: 'I understand this overwrites FRESH01' }
+const grReal = require(resolve('core/git-readiness'))
+stub('core/git-readiness', { ...grReal, firstPullAnalysis: async () => analysis })
+
 const { firstPull } = require(resolve('core/git-setup'))
 const OK = (s) => `I understand this overwrites ${s}`
 
@@ -63,9 +67,27 @@ test('first-pull is allowed on a fresh, writable server', async () => {
     gitStatus = {}
     recordedDeployed = null
     recordedDeploy = null
+    analysis = { complete: true, confirmText: OK('FRESH01') }
     const r = await firstPull('FRESH01', { confirm: OK('FRESH01'), gitUser: 't', token: 'x' })
     assert.equal(r.ok, true)
     assert.ok(!r.refused, 'not refused')
     assert.equal(r.overwritten, 2, 'two operations applied')
     assert.equal(recordedDeploy, 'C1', 'the pulled commit is recorded as the target anchor')
+})
+test('first-pull is refused when the analysis cannot read the target', async () => {
+    gitStatus = {}
+    recordedDeployed = null
+    analysis = { complete: false, reason: 'elements of Product/Product: Access denied', confirmText: null }
+    const r = await firstPull('FRESH01', { confirm: OK('FRESH01'), gitUser: 't', token: 'x' })
+    assert.equal(r.refused, true)
+    assert.match(r.error, /Access denied/)
+})
+
+test('first-pull is refused when the typed sentence does not match this run\'s loss', async () => {
+    gitStatus = {}
+    recordedDeployed = null
+    analysis = { complete: true, confirmText: 'I understand this overwrites FRESH01 and removes 2 elements in 1 dimensions' }
+    const r = await firstPull('FRESH01', { confirm: OK('FRESH01'), gitUser: 't', token: 'x' })
+    assert.equal(r.ok, false)
+    assert.match(r.error, /removes 2 elements/)
 })

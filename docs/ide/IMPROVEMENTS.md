@@ -362,12 +362,13 @@ and all **governance** (change sets, risk check, approval, assertions, Deploy Ce
   through git. Objects that exist only on PROD show up on every check until reconciled (brought into DEV/git, or removed
   from PROD) — that's intended. Attribute-value drift stays an IDE check (values don't travel). In real use PROD pushes
   with a **separate machine-user account and token limited to `prod-live`** (GitHub branch protection is per account).
-- **First-pull safety analysis (populated targets):** TM1 Git has **no "adopt current state" / baseline action** — a
-  site that already runs a model and switches to TM1 Git gets a **full overwrite on its first pull** (a never-pulled
-  target plans an Update/Create for every object it manages). Before a first pull onto a populated target, the
-  readiness check must additionally compare the target against the repo: which objects differ, anything that would be
-  **deleted**, and **elements on the target missing from the repo** (those are removed, with their data). Only proceed
-  when that analysis is clean.
+- **First-pull safety analysis (populated targets) — wired 18 Nov 2026:** TM1 Git has **no "adopt current state" /
+  baseline action** — a site that already runs a model and switches to TM1 Git gets a **full overwrite on its first
+  pull**. The IDE now clones the branch and compares every hierarchy with the target, lists target-only
+  cubes/dimensions/processes/chores, and counts **elements on the target missing from the repo** (removed with their
+  data). It refuses the pull when any read fails, and requires the exact sentence naming the loss. The setup screen
+  shows the plan, target-only objects and loss table before the confirmation box (`GET
+  /api/git/setup/first-pull-analysis`).
 - **Prevention at save time:** the IDE always sets a resolved `Selected` title member when saving a view, and warns when
   a view or subset being saved references a member that doesn't exist.
 - **Also for the community guide (TM1 Git):** "clean up stale references before adopting TM1 Git".

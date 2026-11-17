@@ -1,4 +1,5 @@
 import { request } from '@/lib/api'
+import { useFirstPullAnalysis } from '@/hooks/useApi'
 import { useState, useEffect } from 'react'
 
 // Git connection setup — link a server to an EXISTING GitHub repo (no repo
@@ -16,11 +17,13 @@ export default function GitSetup({ server, onClose }) {
   const [tokenSet, setTokenSet] = useState(false)
   const [readiness, setReadiness] = useState(null)
   const [linked, setLinked] = useState(false)
-  const [plan, setPlan] = useState(null)
+  const [showAnalysis, setShowAnalysis] = useState(false)
   const [confirm, setConfirm] = useState('')
   const [first, setFirst] = useState(null)
   const [busy, setBusy] = useState('')
   const [error, setError] = useState(null)
+  const analysisQuery = useFirstPullAnalysis(server, 'dev', { enabled: showAnalysis && linked && deployment === 'PROD' })
+  const analysis = analysisQuery.data
 
   const run = async (action, body, route) => {
     setBusy(action); setError(null)
@@ -62,10 +65,6 @@ export default function GitSetup({ server, onClose }) {
     } catch (e) { setError(e.message) }
     finally { setBusy('') }
   }
-  const showFirstPullPlan = async () => {
-    const d = await run('plan', { source: server, target: server, branch: 'dev' }, '/api/deploy/git/prepare')
-    if (d) setPlan(d)
-  }
   const doFirstPush = async () => {
     const d = await run('push', { server }, '/api/git/setup/first-push')
     if (d) setFirst(d)
@@ -80,7 +79,7 @@ export default function GitSetup({ server, onClose }) {
   }
   const doFirstPull = async () => {
     const d = await run('pull', { server, confirm }, '/api/git/setup/first-pull')
-    if (d) setFirst(d)
+    if (d) { setFirst(d); setShowAnalysis(false) }
   }
 
   const inputCls = 'bg-muted border border-border rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-ring'
@@ -185,16 +184,54 @@ export default function GitSetup({ server, onClose }) {
               {linked && deployment === 'PROD' && (
                 <div className="border border-border rounded-md p-3 space-y-2">
                   <p className="text-[10px] text-muted-foreground uppercase tracking-wide">5 · First pull (full overwrite)</p>
-                  {plan ? (
+                  {!showAnalysis ? (
+                    <button onClick={() => setShowAnalysis(true)} className={text}>Show what the first pull will replace</button>
+                  ) : analysisQuery.isLoading ? (
+                    <p className="text-xs text-muted-foreground">Checking the target against the repo…</p>
+                  ) : analysisQuery.isError ? (
+                    <p className="text-xs text-red-600 border border-red-600/40 rounded px-3 py-2">Could not check the pull: {analysisQuery.error?.message ?? 'request failed'}. The pull is refused until this can be read.</p>
+                  ) : analysis?.complete === false ? (
+                    <p className="text-xs text-red-600 border border-red-600/40 rounded px-3 py-2">Could not check the pull: {analysis.reason}. The pull is refused until this can be read.</p>
+                  ) : analysis ? (
                     <>
-                      <p className="text-xs text-amber-600">This first pull replaces every object on {server}. {plan.fullOverwrite ? 'A full overwrite has been confirmed safe.' : ''} It would bring {plan.plan?.total ?? '?'} operations.</p>
-                      <details className="text-[10px]"><summary className="cursor-pointer">Show object list</summary><pre className="mt-1 text-[10px] font-mono text-muted-foreground bg-muted/40 rounded px-2 py-1.5 max-h-40 overflow-y-auto">{plan.plan?.ops?.join('\n') || '(plan unavailable)'}</pre></details>
-                      <input value={confirm} onChange={e => setConfirm(e.target.value)} placeholder={`Type exactly: I understand this overwrites ${server}`} className={inputCls + ' w-full'} />
-                      <button onClick={doFirstPull} disabled={busy === 'pull' || confirm.trim() !== `I understand this overwrites ${server}`} className={primary}>Apply the first pull</button>
+                      <p className="text-xs text-amber-600">This first pull replaces every object on {server}. Plan: {analysis.plan?.create ?? 0} create, {analysis.plan?.update ?? 0} update, {analysis.plan?.delete ?? 0} delete, {analysis.plan?.skip ?? 0} skip.</p>
+
+                      <div className="text-[11px] space-y-1">
+                        <p className="text-muted-foreground">Only on the target (not in the repo):</p>
+                        {[['cubes', analysis.targetOnly?.cubes], ['dimensions', analysis.targetOnly?.dimensions], ['processes', analysis.targetOnly?.processes], ['chores', analysis.targetOnly?.chores]].map(([label, names]) => (
+                          names?.length ? <p key={label}><span className="text-foreground">{label}:</span> {names.join(', ')}</p> : null
+                        ))}
+                        {![...(analysis.targetOnly?.cubes ?? []), ...(analysis.targetOnly?.dimensions ?? []), ...(analysis.targetOnly?.processes ?? []), ...(analysis.targetOnly?.chores ?? [])].length && (
+                          <p className="text-muted-foreground">Nothing — every target object is in the repo.</p>
+                        )}
+                      </div>
+
+                      {analysis.elementLoss?.length ? (
+                        <div className="text-[11px] space-y-1">
+                          <p className="text-amber-600">Elements the target would lose:</p>
+                          <table className="w-full text-left border border-border rounded">
+                            <thead><tr className="text-muted-foreground"><th className="px-2 py-1">Dimension</th><th className="px-2 py-1">Hierarchy</th><th className="px-2 py-1">Count</th><th className="px-2 py-1">Sample</th></tr></thead>
+                            <tbody>
+                              {analysis.elementLoss.map(l => (
+                                <tr key={`${l.dimension}/${l.hierarchy}`} className="border-t border-border">
+                                  <td className="px-2 py-1">{l.dimension}</td>
+                                  <td className="px-2 py-1">{l.hierarchy}</td>
+                                  <td className="px-2 py-1">{l.count}</td>
+                                  <td className="px-2 py-1 text-muted-foreground">{l.sample?.join(', ')}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      ) : (
+                        <p className="text-[11px] text-emerald-700">No element loss — every target element is in the repo.</p>
+                      )}
+
+                      <button onClick={() => analysisQuery.refetch()} className={text}>Refresh analysis</button>
+                      <input value={confirm} onChange={e => setConfirm(e.target.value)} placeholder={`Type exactly: ${analysis.confirmText}`} className={inputCls + ' w-full'} />
+                      <button onClick={doFirstPull} disabled={busy === 'pull' || confirm.trim() !== analysis.confirmText} className={primary}>Apply the first pull</button>
                     </>
-                  ) : (
-                    <button onClick={showFirstPullPlan} disabled={busy === 'plan'} className={text}>{busy === 'plan' ? 'Loading…' : 'Show what the first pull will replace'}</button>
-                  )}
+                  ) : null}
                 </div>
               )}
               {linked && deployment !== 'PROD' && (

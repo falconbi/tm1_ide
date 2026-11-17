@@ -224,6 +224,15 @@ app.post('/api/git/setup/first-push', async (req, res) => {
     } catch (e) { fail(res, e) }
 })
 
+app.get('/api/git/setup/first-pull-analysis', async (req, res) => {
+    try {
+        const { server, branch = 'dev' } = req.query
+        if (!server) return res.status(400).json({ error: 'server required' })
+        const { firstPullAnalysis } = require('../core/git-readiness')
+        res.json(await firstPullAnalysis(server, { branch, gitUser: _GI().user(), token: _GITOK(), ideToken: req.ideToken }))
+    } catch (e) { fail(res, e) }
+})
+
 app.post('/api/git/setup/first-pull', async (req, res) => {
     try {
         const { server, branch = 'dev', confirm } = req.body

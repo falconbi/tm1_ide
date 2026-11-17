@@ -41,7 +41,7 @@ function lightAudit(sessionId) {
 // record and a failure THROWS (the close fails). On an unmigrated server it is
 // a silent no-op — the local log is the truth until migration.
 async function closeAndPersist(server, session, { closedBy, tests, ideToken, client } = {}) {
-    if (!store.isMigrated(server, AREA)) return { ok: true, model: false }
+    if (!await store.isMigrated(server, AREA, { ideToken, client })) return { ok: true, model: false }
     const closed = buildClosedRecord(session, { closedBy, tests, audit: lightAudit(session.id) })
     await store.writeDoc(server, AREA, `${session.id}.json`, closed, { ideToken, client })   // loud
     return { ok: true, model: true, id: session.id }
@@ -50,14 +50,16 @@ async function closeAndPersist(server, session, { closedBy, tests, ideToken, cli
 // On a migrated server, list change sets from the model; else null (fall back
 // to the local working log).
 async function listSessions(server, { ideToken, limit = 50 } = {}) {
-    if (!store.isMigrated(server, AREA)) return null
+    if (!await store.isMigrated(server, AREA, { ideToken })) return null
     const names = await store.listDocs(server, AREA, { ideToken })
     const sessions = []
     for (const n of names.filter(x => x.endsWith('.json'))) {
         try {
             const s = await store.readDoc(server, AREA, n, { ideToken })
             if (s) sessions.push(s)
-        } catch { /* skip unreadable */ }
+        } catch (e) {
+            throw new Error(`Could not read model-owned change-set document Applications/Governance/ChangeSets/${n} on ${server}: ${e.message}`, { cause: e })
+        }
     }
     sessions.sort((a, b) => (a.started_at < b.started_at ? 1 : -1))
     return sessions.slice(0, limit)

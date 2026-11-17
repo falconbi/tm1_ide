@@ -18,10 +18,13 @@ Found by code review, not by a failed deploy. Each line moves to **Fixed** as th
 - Step 9 — single-assertion runs record to `}TestResults`; assertion writes use `gateWrite`; finite numeric fields are validated and client-supplied identity/change-set fields are ignored.
 - Step 10 — one deploy surface (the step-by-step wizard); Deploy History shows model deploy records first and keeps package archives collapsed; Release opens the wizard.
 
+- Round 2 — ownership is read from the server's `Applications/Governance/manifest.json`; missing or unreadable manifests fail closed and the local migration markers are gone.
+- Round 2 — the migration tool writes the manifest (`--manifest`, `--from-markers`), and a model-owned change-set document that cannot be read fails the list instead of disappearing.
+- Round 2 — first-pull analysis clones the branch, compares every hierarchy, lists target-only objects and element loss, and refuses when any read fails; it is wired into the first-pull call, a read-only route and the setup screen.
+
 **Still open**
 
-- First-pull element-loss analysis (`firstPullAnalysis`) is still not wired into the setup screen (round 2).
-- Round 2 — a fresh IDE cannot yet read model-owned governance without local migration markers.
+- None from this round. James runs the live checks in `docs/ide/review/07_DEPLOY_ROUND2_FIXES_DONE.md`.
 
 ## The rules
 
@@ -151,7 +154,38 @@ test process, cleaned up immediately; with it removed, drift is **clean** and th
 - **Deploy history** → `Applications/Governance/Deployments/state.json`.
 - **Deploy lock** → `Applications/Governance/Deployments/_lock-<server>.json` (ephemeral coordination).
 
-One storage layer — the same Application-document mechanism assertions use (v11 `.blob` / `/Document/Content`, the 226/278/409 "already exists" handling). On a migrated server the model is the truth; a missing document **throws** (the migrated-marker pattern — never a silent gap). The local files stay as the read fallback until the migration is proven, then retire.
+One storage layer — the same Application-document mechanism assertions use (v11 `.blob` / `/Document/Content`, the 226/278/409 "already exists" handling). On a model-owned area the model is the truth; a missing document **throws** (never a silent gap). Ownership is read from `Applications/Governance/manifest.json`; nothing in `core/` or `routes/` writes it. The local files stay as the read fallback only for an area the manifest marks `local`.
+
+**Ownership comes from the manifest.** `Applications/Governance/manifest.json`:
+
+```json
+{ "version": 1,
+  "areas": { "changeSets": "model", "approvals": "model", "deployState": "model", "assertions": "local" } }
+```
+
+Each of the four areas is `model` or `local`; a missing area, any other value or a bad version is an error. A missing or unreadable manifest throws a `GovernanceManifestError` whose message names the server and the fix:
+
+```bash
+node tools/migrate-governance.js --manifest <server> --local   # or --model
+```
+
+To convert an existing install, dry-run from the old local markers, then write:
+
+```bash
+node tools/migrate-governance.js --from-markers
+node tools/migrate-governance.js --from-markers --write
+```
+
+Or set one server explicitly, all four areas or a chosen subset:
+
+```bash
+node tools/migrate-governance.js --manifest TM1_Test_DEV --model
+node tools/migrate-governance.js --manifest TM1_Test_DEV --model --areas assertions
+```
+
+`--areas` changes only the areas named; the others keep their current value.
+
+A normal migration (`node tools/migrate-governance.js TM1_Test_DEV`) writes the change sets, approvals and deploy state, then writes the manifest with those three areas `model` (preserving an existing `assertions` choice). `tools/migrate-assertions.js` only copies the assertion document; set the `assertions` area afterwards with `--manifest <server> --model --areas assertions`. The IDE never writes the manifest.
 
 **The deploy lock:** one deploy at a time per target, held in the target's own model, acquired before the pull, released on finish or failure, and shown to everyone in the wizard ("TM1_Test_PROD is being deployed by admin since HH:MM"). A second deploy to the same target is refused. Standalone drift checks take the same lock (a deploy's internal drift check skips it because the deploy already holds it). The lock is also the model-writability gate — if the target's model can't be written, the deploy stops with a clear message. A lock older than ~30 min is treated as **stale** (a deploy that died with a backend, or a failed release) and can be **cleared** from the IDE, recording who/when in the deploy history — a stale lock can no longer block a target forever. **Caveat:** `acquire` is check-then-write, so two simultaneous deploys to the same target could both pass the check before either writes — accepted for small teams; a compare-and-swap would close the race if it ever matters.
 
@@ -214,13 +248,15 @@ Auto-deploy doesn't keep DEV and PROD converged over months — a **recurring dr
 
 ## The readiness check (IMPROVEMENTS 10.2)
 
-A blocker before any push: member-less view titles, stale member references in views/subsets, names TM1 Git won't round-trip, `tm1project` Ignore. The Git push route runs the scan and refuses on blockers; warnings still travel with a successful push. It also runs on demand and cross-server (Model Health). The separate first-pull element-loss analysis is not yet wired into the setup screen.
+A blocker before any push: member-less view titles, stale member references in views/subsets, names TM1 Git won't round-trip, `tm1project` Ignore. The Git push route runs the scan and refuses on blockers; warnings still travel with a successful push. It also runs on demand and cross-server (Model Health).
+
+The first pull is analysed immediately before it runs: the IDE clones the branch into a throwaway folder, compares **every** hierarchy (skipping the server-generated `Leaves`), lists target-only cubes/dimensions/processes/chores, and counts elements the target has but the repo does not. It fails closed — any read error refuses the pull, with the object and TM1's own message. With loss, the user must type `I understand this overwrites <server> and removes <n> elements in <d> dimensions`; without loss, `I understand this overwrites <server>`. The setup screen shows the plan counts, target-only objects and the loss table before the confirmation box. `GET /api/git/setup/first-pull-analysis` returns the preview; the pull route re-runs the analysis so a target that changed since the preview no longer matches the sentence.
 
 ## What stays where (the "no model data on the IDE" rule)
 
 - **In the model / its repo:** tests, change sets, baselines (retired into git), deploy history, approvals, hooks, lenses, run history.
 - **On the IDE only:** connections (`servers.json`), secrets, preferences (`forge.json`), and a **disposable cache** (rebuildable; losing it loses nothing).
-- Missing model data must **fail loudly** (the migrated-marker pattern) — never silently start fresh.
+- Missing model data must **fail loudly** (the manifest pattern) — never silently start fresh.
 
 ## Governance documents in git — **DECIDED 5 Oct: the IDE mirrors them into the repo**
 

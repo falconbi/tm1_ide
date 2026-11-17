@@ -13,6 +13,7 @@
 
 const { makeClient, isReadOnly } = require('./adapter-registry')
 const { lastDeployed, recordDeploy } = require('./git-state')
+const { firstPullAnalysis } = require('./git-readiness')
 
 // Tells the caller how to get unblocked: init and first-pull only run on a
 // writable server, so setup must happen BEFORE marking the server read-only.
@@ -43,13 +44,16 @@ async function init(server, { repo, deployment, force, gitUser, token, ideToken 
 
 // First pull — a FULL overwrite of the server from the repo state. Requires the
 // typed confirmation, a writable (non-read-only) server, and a server with no
-// deployed commit yet.
-async function firstPull(server, { branch = 'dev', confirm, gitUser, token, ideToken } = {}) {
+// deployed commit yet. The analysis runs again immediately before the pull: if
+// the target changed since the preview, the sentence no longer matches and the
+// pull is refused. A failed analysis refuses — "couldn't check" is not safe.
+async function firstPull(server, { branch = 'dev', confirm, gitUser, token, ideToken, repoUrl } = {}) {
     if (isReadOnly(server)) return { ok: false, refused: true, error: READ_ONLY_ERROR(server) }
-    const expected = `I understand this overwrites ${server}`
-    if (String(confirm ?? '').trim() !== expected) return { ok: false, error: `Type exactly: ${expected}` }
     const state = await alreadyDeployed(server, { token, gitUser, ideToken })
     if (state.committed) return { ok: false, refused: true, error: `${server} already has a deployed commit (${state.commit}) — first-pull is only for a fresh server; use the Deploy flow instead.` }
+    const analysis = await firstPullAnalysis(server, { branch, token, gitUser, ideToken, repoUrl })
+    if (!analysis.complete) return { ok: false, refused: true, error: analysis.reason }
+    if (String(confirm ?? '').trim() !== analysis.confirmText) return { ok: false, error: `Type exactly: ${analysis.confirmText}` }
     const c = makeClient(server, ideToken)
     const plan = await c.post('GitPull', { Branch: branch, ExecutionMode: 'SingleCommit', Force: false, Username: gitUser, Password: token })
     const n = (plan.Operations ?? []).length
