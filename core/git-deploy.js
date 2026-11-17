@@ -6,7 +6,7 @@
 // plan is ephemeral, so execute re-creates it and runs immediately. The approval
 // gate is enforced inside execute — it cannot be bypassed by any caller.
 
-const { makeClient } = require('./adapter_registry')
+const { makeClient } = require('./adapter-registry')
 const assertions = require('./assertions')
 const gitIdentity = require('./git-identity')
 const approvals = require('./git-approvals')
@@ -103,7 +103,7 @@ async function prepare(source, target, { branch = 'dev', token, gitUser = gitIde
 
     // Change-set manifest (deletes + attribute dims) for the plan display.
     if (session) {
-        try { out.manifest = require('./change_log').getSessionManifest(session) } catch { /* none */ }
+        try { out.manifest = require('./change-log').getSessionManifest(session) } catch { /* none */ }
     }
 
     out.ready = true
@@ -119,7 +119,7 @@ async function execute(target, { branch = 'dev', token, gitUser = gitIdentity.us
     const c = makeClient(target, ideToken)
     const out = { target, branch }
     const lockMod = require('./git-lock')
-    const cl = require('./change_log')
+    const cl = require('./change-log')
 
     // Release mode: this change set has a built release for this target. Deploy
     // branch release-<target> and gate on the RELEASE commit, not DEV's head.
@@ -315,7 +315,7 @@ async function execute(target, { branch = 'dev', token, gitUser = gitIdentity.us
         // request body; a missing session is reported, never silently skipped).
         let manifest = { deletes: [], dims: [], attrElements: [], wholesaleDims: [] }
         if (approval.session) {
-            try { manifest = require('./change_log').getSessionManifest(approval.session) || manifest } catch { /* no manifest */ }
+            try { manifest = require('./change-log').getSessionManifest(approval.session) || manifest } catch { /* no manifest */ }
         } else {
             out.reconcileWarning = 'This approval has no linked change set — reconcile scope is unknown and was skipped (not silently).'
         }

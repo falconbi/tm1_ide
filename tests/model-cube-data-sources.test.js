@@ -3,7 +3,7 @@
 // (literals, variables, generic copy call sites and clear/feeder calls) plus its rules.
 const test = require('node:test')
 const assert = require('node:assert')
-const { getCubeDataSources, getViewSourceUsage, invalidate } = require('../core/cube_data_sources')
+const { getCubeDataSources, getViewSourceUsage, invalidate } = require('../core/cube-data-sources')
 
 function client(processes, cubes) {
     return {

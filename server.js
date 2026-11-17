@@ -7,26 +7,26 @@ const path      = require('path')
 const fs        = require('fs')
 const ai        = require('./core/ai/registry')
 const obfuscate = require('./core/ai/obfuscate')
-const { makeClient, makeClientWithCredentials, needsServerLogin, isDirectServer, isPawNativeServer, probeAuthMethod, listServers, listServersWithFlags, isSimple, simpleSource, getLoginServer } = require('./core/adapter_registry')
-const { loadConnections, saveConnections, getConnection, executeQuery, testConnection, getSchema, loadQueries, saveQueries } = require('./core/sql_client')
-const { createSession, createDirectSession, createLocalSession, attachPawSession, getSessionUser, touchSession, invalidateSession, getCachedPawSession, getCSRF, PAW_HOST, setServerCredentials, getServerCredentials, clearServerCredentials, getServerStatus, listServerEntries, getSessionCredentials } = require('./core/paw_connect')
-const cl = require('./core/change_log')
+const { makeClient, makeClientWithCredentials, needsServerLogin, isDirectServer, isPawNativeServer, probeAuthMethod, listServers, listServersWithFlags, isSimple, simpleSource, getLoginServer } = require('./core/adapter-registry')
+const { loadConnections, saveConnections, getConnection, executeQuery, testConnection, getSchema, loadQueries, saveQueries } = require('./core/sql-client')
+const { createSession, createDirectSession, createLocalSession, attachPawSession, getSessionUser, touchSession, invalidateSession, getCachedPawSession, getCSRF, PAW_HOST, setServerCredentials, getServerCredentials, clearServerCredentials, getServerStatus, listServerEntries, getSessionCredentials } = require('./core/paw-connect')
+const cl = require('./core/change-log')
 const { canManageSession } = require('./core/session_access')
 // Persisted Git token (never returned to the client) — env wins, else the secrets file.
 const gitSecrets = require('./core/git-secrets')
 const { odataKey } = require('./core/odata-key')
 if (!process.env.TM1_GIT_TOKEN && gitSecrets.getToken()) process.env.TM1_GIT_TOKEN = gitSecrets.getToken()
-const lensStore = require('./core/lens_store')
-const { logLensWrite, logLensRun, logLensNote, readLensActivity } = require('./core/lens_activity_log')
-const lensBridge = require('./core/lens_bridge')
+const lensStore = require('./core/lens-store')
+const { logLensWrite, logLensRun, logLensNote, readLensActivity } = require('./core/lens-activity-log')
+const lensBridge = require('./core/lens-bridge')
 const { readOnlyRefusal } = require('./core/readonly')
-const { createSaveDataAllRoute, isAdminGroups } = require('./core/save_data_all')
+const { createSaveDataAllRoute, isAdminGroups } = require('./core/save-data-all')
 const { createAdminGate } = require('./core/admin_gate')
 const { createProvisionUserRoute } = require('./core/user_admin')
 const { createCancelJobRoute } = require('./core/admin_routes')
 const { createStartSessionRoute } = require('./core/session_routes')
 const { createCatalogOverrideRoutes } = require('./core/catalog_overrides')
-const { setSimpleInModes } = require('./core/ide_modes')
+const { setSimpleInModes } = require('./core/ide-modes')
 const { createHttp } = require('./routes/_http')
 const { createServerHelpers } = require('./core/server_helpers')
 
@@ -46,13 +46,13 @@ const {
     loginRateLimit, SAMPLE_PASSWORD_WARNING, isSampleLogin, SQL_PASSWORD_MASK, _GI, _GITOK,
     catalogRoutes, LENS_CATALOGUE, txLogSearches, lensUsageCache, userServer,
     closeServerSession, setupBlankAdmin, sendSetupError, logAttributeValue, joinContinuations,
-    extractMembersFromExpression, parseDbRefs, processCode, summaryPrompt,
+    parseDbRefs,
 } = helpers
 
-const { getCubeDataSources, getViewSourceUsage, getProcessFacts, listProcessSummaries, invalidate: invalidateCubeSources } = require('./core/cube_data_sources')
+const { getCubeDataSources, getViewSourceUsage, getProcessFacts, listProcessSummaries, invalidate: invalidateCubeSources } = require('./core/cube-data-sources')
 const { buildCubeMapModel } = require('./core/cubemap')
-const { parseRuleLens } = require('./core/rule_lens')
-const processSummaries = require('./core/process_summaries')
+const { parseRuleLens } = require('./core/rule-lens')
+const processSummaries = require('./core/process-summaries')
 const { seed: deploySeed } = require('./tools/tm1deploy/src/snapshot')
 const { loadBaseline: deployLoadBaseline } = require('./tools/tm1deploy/src/diff')
 
@@ -139,7 +139,7 @@ app.use('/api', (req, res, next) => {
     next()
 })
 
-const routeDeps = { FORGE_PATH, LENS_CATALOGUE, LOCAL_ONLY, LOGIN_REQUIRED, PAW_HOST, PAW_LOGIN_SERVER, SAMPLE_PASSWORD_WARNING, SQL_PASSWORD_MASK, _GI, _GITOK, ai, attachPawSession, buildCubeMapModel, catalogRoutes, cl, clearServerCredentials, closeServerSession, createCancelJobRoute, createDirectSession, createLocalSession, createProvisionUserRoute, createSaveDataAllRoute, createSession, createStartSessionRoute, deployLoadBaseline, deploySeed, executeQuery, express, extractMembersFromExpression, fail, fs, gateReadOnly, gateWrite, getCSRF, getCachedPawSession, getConnection, getCubeDataSources, getLoginServer, getProcessFacts, getSchema, getServerCredentials, getServerStatus, getSessionCredentials, getViewSourceUsage, gitSecrets, invalidateCubeSources, invalidateSession, isAdminGroups, isDirectServer, isLoopbackReq, isPawNativeServer, isSampleLogin, isTm1Admin, joinContinuations, lensBridge, lensStore, lensUsageCache, listProcessSummaries, listServerEntries, listServers, listServersWithFlags, loadConnections, loadQueries, logAttributeValue, logLensNote, logLensRun, logLensWrite, loginRateLimit, makeClient, makeClientWithCredentials, mayManageSession, obfuscate, odataKey, parseDbRefs, parseRuleLens, path, probeAuthMethod, processCode, processSummaries, readLensActivity, requireTm1Admin, saveConnections, saveQueries, scanIdentity, sendMaintenanceError, sendSetupError, setServerCredentials, setSimpleInModes, setupBlankAdmin, simpleSource, summaryPrompt, testConnection, txLogSearches, userServer }
+const routeDeps = { FORGE_PATH, LENS_CATALOGUE, LOCAL_ONLY, LOGIN_REQUIRED, PAW_HOST, PAW_LOGIN_SERVER, SAMPLE_PASSWORD_WARNING, SQL_PASSWORD_MASK, _GI, _GITOK, ai, attachPawSession, buildCubeMapModel, catalogRoutes, cl, clearServerCredentials, closeServerSession, createCancelJobRoute, createDirectSession, createLocalSession, createProvisionUserRoute, createSaveDataAllRoute, createSession, createStartSessionRoute, deployLoadBaseline, deploySeed, executeQuery, express, fail, fs, gateReadOnly, gateWrite, getCSRF, getCachedPawSession, getConnection, getCubeDataSources, getLoginServer, getProcessFacts, getSchema, getServerCredentials, getServerStatus, getSessionCredentials, getViewSourceUsage, gitSecrets, invalidateCubeSources, invalidateSession, isAdminGroups, isDirectServer, isLoopbackReq, isPawNativeServer, isSampleLogin, isTm1Admin, joinContinuations, lensBridge, lensStore, lensUsageCache, listProcessSummaries, listServerEntries, listServers, listServersWithFlags, loadConnections, loadQueries, logAttributeValue, logLensNote, logLensRun, logLensWrite, loginRateLimit, makeClient, makeClientWithCredentials, mayManageSession, obfuscate, odataKey, parseDbRefs, parseRuleLens, path, probeAuthMethod, processSummaries, readLensActivity, requireTm1Admin, saveConnections, saveQueries, scanIdentity, sendMaintenanceError, sendSetupError, setServerCredentials, setSimpleInModes, setupBlankAdmin, simpleSource, testConnection, txLogSearches, userServer }
 for (const file of ['workspace','search','sql','ai','lenses','views','processes','cubes','dimensions','changesets','deploy','admin','auth'])
     require(`./routes/${file}`).register(app, routeDeps)
 

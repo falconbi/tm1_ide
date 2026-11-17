@@ -622,7 +622,7 @@ In `readonly` mode only the read tools are offered. The split is defined in
 | `execute_view` | run a view, return cells |
 | `run_process` | execute a TI (no change set needed) |
 | `copy_version` | run the installed core `}IDE.Version.Copy` (requires a change set; no Bedrock) |
-| `save_data_all` | write all changed cube data to disk (`SaveDataAll`; admin only; no change set) |
+| `save-data-all` | write all changed cube data to disk (`SaveDataAll`; admin only; no change set) |
 | `reprocess_feeders` | reprocess feeders for cubes, e.g. after recreating a cube (no change set needed) |
 | `check_rules_syntax` | static lint + server CheckRules, no write |
 | `add_assertion` / `list_assertions` / `remove_assertion` | manage stored expected-result checks |
@@ -670,7 +670,7 @@ In `readonly` mode only the read tools are offered. The split is defined in
 
 ---
 
-## Bug fixes made to `core/tm1_client.js` for this (also fix IDE features)
+## Bug fixes made to `core/tm1-client.js` for this (also fix IDE features)
 
 | Method | Was | Now |
 |---|---|---|

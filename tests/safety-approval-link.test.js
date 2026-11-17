@@ -10,7 +10,7 @@ const realBsq = require('better-sqlite3')
 const bsqPath = require.resolve('better-sqlite3')
 require.cache[bsqPath] = { id: bsqPath, filename: bsqPath, loaded: true, exports: function () { return realBsq(':memory:') } }
 
-const cl = require(path.join(__dirname, '..', 'core', 'change_log'))
+const cl = require(path.join(__dirname, '..', 'core', 'change-log'))
 const { linkedChangeSet } = require(path.join(__dirname, '..', 'core', 'git-approvals'))
 
 // COMMIT = the short prefix below is what callers (approve route) usually pass.

@@ -24,8 +24,8 @@ security didn't apply to each person.
 | First login on a brand-new server | `POST /api/auth/setup-login` | Signs in once as `admin` with the blank password and makes you set a password straight away. |
 | Local single-user mode | `POST /api/auth/local-session` | When the IDE is reachable only from this machine (`HOST=127.0.0.1`), it opens without a sign-in page. You still sign in to each TM1 server. |
 | Token on every call | `x-ide-token` header from the client | Every TM1 call runs as the person signed in to that server. |
-| One TM1 session per person per server | `core/adapter_registry.js` | Reused for every call, closed on sign-out. Before this fix, a lab server had 538 leaked sessions. |
-| Per-person change sets | `core/change_log.js` `getActiveSession(server, user)` | Each person has their own open change set on a server. Each change records who made it. |
+| One TM1 session per person per server | `core/adapter-registry.js` | Reused for every call, closed on sign-out. Before this fix, a lab server had 538 leaked sessions. |
+| Per-person change sets | `core/change-log.js` `getActiveSession(server, user)` | Each person has their own open change set on a server. Each change records who made it. |
 | No hard-coded user | `SessionControl.jsx` | The old `user: 'jdlove'` is gone. The signed-in user is used. |
 | User Management on the selected server | Server Admin | Acts on the server selected in the IDE, not on a fixed login server. |
 | Baseline and drift checks before deploy (old "Phase 3") | `/api/deploy/drift-check`, `/api/git/drift` | Drift on the target pauses a deploy. Details: [DEPLOY_LIFECYCLE.md](../deploy/DEPLOY_LIFECYCLE.md). |

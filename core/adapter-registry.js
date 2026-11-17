@@ -3,11 +3,11 @@
 const fs    = require('fs')
 const path  = require('path')
 const axios = require('axios')
-const { PawNativeAdapter }  = require('./adapters/paw_native')
-const { DirectV11Adapter, httpsAgentFor, TM1AuthRejected }  = require('./adapters/direct_v11')
-const { PawOAuth2Adapter }  = require('./adapters/paw_oauth2')
-const { getServerCredentials, markServerRejected, hasPawSession } = require('./paw_connect')
-const { isSimpleInModes } = require('./ide_modes')
+const { PawNativeAdapter }  = require('./adapters/paw-native')
+const { DirectV11Adapter, httpsAgentFor, TM1AuthRejected }  = require('./adapters/direct-v11')
+const { PawOAuth2Adapter }  = require('./adapters/paw-oauth2')
+const { getServerCredentials, markServerRejected, hasPawSession } = require('./paw-connect')
+const { isSimpleInModes } = require('./ide-modes')
 
 const SERVERS_PATH = path.join(__dirname, '..', 'config', 'servers.json')
 
@@ -246,12 +246,12 @@ async function probeAuthMethod(serverName) {
 function makeClientWithCredentials(serverName, creds, state = {}) {
     const direct = _directConfig(serverName)
     if (!direct) return null
-    const { TM1Client } = require('./tm1_client')
+    const { TM1Client } = require('./tm1-client')
     return new TM1Client(serverName, _directAdapter(serverName, direct.cfg, creds, state, null))
 }
 
 function makeClient(serverName, ideToken) {
-    const { TM1Client } = require('./tm1_client')
+    const { TM1Client } = require('./tm1-client')
     return new TM1Client(serverName, getAdapter(serverName, ideToken))
 }
 
@@ -305,7 +305,7 @@ function isReadOnly(serverName) {
 // process there (change sets, deploy, drift, tests) and never asks for a change
 // set on save. Saves are still logged with the user, and the MCP still requires
 // a change set — Simple mode changes what a person sees, not what an agent must do.
-// Switched on in Server Admin (kept in config/ide-modes.json, core/ide_modes.js),
+// Switched on in Server Admin (kept in config/ide-modes.json, core/ide-modes.js),
 // or marked the same way as read-only, in config/servers.json:
 //   "simpleServers": ["SANDBOX", ...]         — explicit per-server list
 //   a connection/adminHost with "simple": true makes every server it owns simple

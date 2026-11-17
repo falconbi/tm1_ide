@@ -40,8 +40,8 @@ function fakeClient() {
     async get() { return {} }, async patch() { return {} }, async delete() { return {} },
   }
 }
-const arReal = require(resolve('core/adapter_registry'))
-stub('core/adapter_registry', { ...arReal, makeClient: () => fakeClient() })
+const arReal = require(resolve('core/adapter-registry'))
+stub('core/adapter-registry', { ...arReal, makeClient: () => fakeClient() })
 let baseCommit = null
 stub('core/git-state', { lastDeployed: () => (baseCommit ? { lastDeployedCommit: baseCommit } : null), recordDeploy: async () => ({ ok: true }), load: () => ({}), FILE: '' })
 

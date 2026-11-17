@@ -3,7 +3,7 @@ const { test, beforeEach } = require('node:test')
 const assert = require('node:assert/strict')
 const path = require('path')
 
-// Lenses live in the model: core/lens_store.js stores one document per Lens
+// Lenses live in the model: core/lens-store.js stores one document per Lens
 // through core/model-store.js. Swap model-store for an in-memory stand-in so the
 // test runs offline, then check save / version / read / list / delete behaviour.
 const storePath = path.join(__dirname, '..', 'core', 'model-store.js')
@@ -31,8 +31,8 @@ require.cache[require.resolve(storePath)] = {
     },
   },
 }
-delete require.cache[require.resolve('../core/lens_store')]
-const lens = require('../core/lens_store')
+delete require.cache[require.resolve('../core/lens-store')]
+const lens = require('../core/lens-store')
 
 beforeEach(() => { docs.clear(); calls.length = 0 })
 

@@ -10,7 +10,7 @@
 //   firstPullAnalysis(server)   — pull-plan operations + full-overwrite warning
 //                                 (+ element-loss comparison when repoDir given)
 
-const { makeClient } = require('./adapter_registry')
+const { makeClient } = require('./adapter-registry')
 const gitIdentity = require('./git-identity')
 const { odataKey } = require('./odata-key')
 

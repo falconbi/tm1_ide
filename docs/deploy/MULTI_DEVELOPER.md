@@ -34,7 +34,7 @@ the change, not the IDE sign-in. The rule, in full:
    discarded.
 
 Implemented against the rule:
-- **Case-insensitive ownership** — `change_log.getActiveSession` matches `user` case-insensitively,
+- **Case-insensitive ownership** — `change-log.getActiveSession` matches `user` case-insensitively,
   so a set started as `JDLove` is found when the server identity is `jdlove` (and vice versa).
 - **Identity in the change-set cache + refresh on sign-in/out** — the change-set queries
   (`work-session-active`, `work-sessions`) are keyed by (server, signed-in user) and are

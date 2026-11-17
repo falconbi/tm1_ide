@@ -11,7 +11,7 @@
 
 const fs = require('fs')
 const path = require('path')
-const { makeClient } = require('./adapter_registry')
+const { makeClient } = require('./adapter-registry')
 
 const GOVERNANCE = ['Applications', 'Governance']
 

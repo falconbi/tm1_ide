@@ -34,7 +34,7 @@ test('a failed read is audited as an error', async () => {
 })
 
 test('read audit retention drops rows older than the setting, and 0 keeps everything', () => {
-    const cl = require('../core/change_log')
+    const cl = require('../core/change-log')
     const server = `retention-test-${process.pid}-${Date.now()}`
     cl.writeReadAudit({ server, tool: 'list_cubes', outcome: 'ok' })
     const later = Date.now() + 91 * 86_400_000

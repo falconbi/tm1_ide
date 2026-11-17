@@ -107,7 +107,7 @@ Notes:
 ## Reconcile is change-set-scoped — proven (6 Oct 2026)
 
 The reconcile never infers deletes or values from the whole source — only from the change set's manifest
-(`change_log.getSessionManifest`: what it deleted, the element/attribute pairs it changed, and which dimensions it
+(`change-log.getSessionManifest`: what it deleted, the element/attribute pairs it changed, and which dimensions it
 touched). The manifest is taken **from the approval's recorded change set, server-side** — a client cannot supply a
 different session to skip or misapply the reconcile; a missing session is reported, never silently skipped.
 Proven on the lab pair:

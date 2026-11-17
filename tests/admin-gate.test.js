@@ -5,7 +5,7 @@ const fs = require('fs')
 const path = require('path')
 const { createAdminGate } = require('../core/admin_gate')
 const { createCancelJobRoute } = require('../core/admin_routes')
-const { isAdminGroups } = require('../core/save_data_all')
+const { isAdminGroups } = require('../core/save-data-all')
 
 function fakeRes() {
     const res = { statusCode: 200, body: null }

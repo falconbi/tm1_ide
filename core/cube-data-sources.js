@@ -9,7 +9,7 @@
 // named by a literal, a variable assigned a literal, or an ExecuteProcess cube parameter.
 // The result is cached per server briefly because it reads every process.
 
-const { hashCode, list } = require('./process_summaries')
+const { hashCode, list } = require('./process-summaries')
 
 const TTL_MS = 30_000
 const MAX_CACHE = 50

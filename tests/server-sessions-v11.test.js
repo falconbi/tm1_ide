@@ -5,7 +5,7 @@
 // getSessions must try the working expansion and remember it.
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { TM1Client } = require('../core/tm1_client')
+const { TM1Client } = require('../core/tm1-client')
 
 function clientWith(adapter) {
   return new TM1Client('TestServer', {

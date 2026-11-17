@@ -22,8 +22,8 @@ function fakeClient() {
     }
 }
 
-const arReal = require(resolve('core/adapter_registry'))
-stub('core/adapter_registry', { ...arReal, makeClient: () => fakeClient(), isReadOnly: () => fakeReadOnly })
+const arReal = require(resolve('core/adapter-registry'))
+stub('core/adapter-registry', { ...arReal, makeClient: () => fakeClient(), isReadOnly: () => fakeReadOnly })
 stub('core/git-state', {
     lastDeployed: () => (recordedDeployed ? { lastDeployedCommit: recordedDeployed } : null),
     recordDeploy: async (_s, c) => { recordedDeploy = c; return { lastDeployedCommit: c } },

@@ -27,7 +27,7 @@ function commitAll(w, msg) {
   return g(w, 'rev-parse', 'HEAD').trim()
 }
 
-// ── In-memory change_log (never touches change_log.db) ───────────────────────
+// ── In-memory change-log (never touches change_log.db) ───────────────────────
 const realBetterSqlite = require('better-sqlite3')
 const bsqPath = require.resolve('better-sqlite3')
 require.cache[bsqPath] = { id: bsqPath, filename: bsqPath, loaded: true, exports: function () { return realBetterSqlite(':memory:') } }
@@ -37,7 +37,7 @@ const gitStatePath = resolve('core/git-state')
 let fakeBase = null
 require.cache[gitStatePath] = { id: gitStatePath, filename: gitStatePath, loaded: true, exports: { lastDeployed: () => (fakeBase ? { lastDeployedCommit: fakeBase } : null), recordDeploy: async () => ({ ok: true }), load: () => ({}), FILE: '' } }
 
-const cl = require(path.join(__dirname, '..', 'core', 'change_log'))
+const cl = require(path.join(__dirname, '..', 'core', 'change-log'))
 const { buildRelease, objectKey } = require(path.join(__dirname, '..', 'core', 'git-release'))
 
 const BASE_CONTENT = {

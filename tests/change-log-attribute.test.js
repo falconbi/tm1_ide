@@ -6,7 +6,7 @@ const path = require('path')
 const realBsq = require('better-sqlite3')
 const bsqPath = require.resolve('better-sqlite3')
 require.cache[bsqPath] = { id: bsqPath, filename: bsqPath, loaded: true, exports: function () { return realBsq(':memory:') } }
-const cl = require(path.join(__dirname, '..', 'core', 'change_log'))
+const cl = require(path.join(__dirname, '..', 'core', 'change-log'))
 
 test('attribute-value entries build a scoped manifest', () => {
     const s = cl.startSession('attrs', 'SRC', 'admin')

@@ -337,7 +337,7 @@ async function seed(server, outputPath, ideToken, extraMeta = {}) {
     // (enables the two-baseline / release-window diff). The deployer passes its
     // own; a plain `seed` computes it here.
     if (snapshot._meta.last_entry_id == null) {
-        try { snapshot._meta.last_entry_id = require('../../../core/change_log').getMaxEntryId(server) } catch { snapshot._meta.last_entry_id = null }
+        try { snapshot._meta.last_entry_id = require('../../../core/change-log').getMaxEntryId(server) } catch { snapshot._meta.last_entry_id = null }
     }
 
     let target

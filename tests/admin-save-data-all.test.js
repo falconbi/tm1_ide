@@ -1,8 +1,8 @@
 'use strict'
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { createSaveDataAllRoute, isAdminGroups } = require('../core/save_data_all')
-const { TM1Client } = require('../core/tm1_client')
+const { createSaveDataAllRoute, isAdminGroups } = require('../core/save-data-all')
+const { TM1Client } = require('../core/tm1-client')
 
 function response() {
     return {

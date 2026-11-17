@@ -16,7 +16,7 @@
 
 require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') })
 
-const { makeClient } = require('../core/adapter_registry')
+const { makeClient } = require('../core/adapter-registry')
 
 function arg(name, def) {
     const i = process.argv.indexOf('--' + name)

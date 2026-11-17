@@ -1,7 +1,7 @@
 'use strict'
 
 function register(app, deps) {
-    const { cl, extractMembersFromExpression, fail, gateWrite, getViewSourceUsage, makeClient, scanIdentity } = deps
+    const { cl, fail, gateWrite, getViewSourceUsage, makeClient, scanIdentity } = deps
 
 app.get('/api/views', async (req, res) => {
     try {
@@ -95,69 +95,9 @@ app.get('/api/view/axes', async (req, res) => {
             client.executeView(req.query.cube, req.query.view),
             client.getViewWithSubsets(req.query.cube, req.query.view),
         ])
-        // Parse dimension names from UniqueName: [Dim].[Hier].[Member] → Dim
-        const parseDim = (uniqueName) => uniqueName?.match(/^\[([^\]]+)\]/)?.[1] ?? null
-        const axisConfig = data.Axes.map(ax => ({
-            ordinal: ax.Ordinal,
-            dimensions: [...new Set(
-                (ax.Tuples?.[0]?.Members ?? []).map(m => parseDim(m.UniqueName)).filter(Boolean)
-            )],
-            selectedMembers: ax.Ordinal === 2
-                ? (ax.Tuples?.[0]?.Members ?? []).map(m => ({ dimension: parseDim(m.UniqueName), member: m.Name }))
-                : [],
-        }))
-        // Build raw native config from view definition
-        const extractAxis = (placement) => {
-            const expr = (placement.Subset?.Expression ?? '').trim()
-            const hasNamedSubset = !!(placement.SubsetName ?? (placement.Subset?.Name || null))
-            return {
-                dimension: placement.DimensionName ?? placement.Name,
-                subset:    placement.SubsetName ?? (placement.Subset?.Name || null),
-                memberSet: !hasNamedSubset && /^TM1SubsetAll\(/i.test(expr) ? 'all'
-                         : !hasNamedSubset && /^TM1FILTERBYLEVEL\s*\(/i.test(expr) ? 'leaf'
-                         : null,
-                members:   !hasNamedSubset ? extractMembersFromExpression(expr) : null,
-            }
-        }
-        const extractTitle = (t) => ({
-            dimension: t.DimensionName ?? t.Name,
-            member:    t.Selection?.Name ?? null,
-        })
-        const rawNative = viewDef ? {
-            rows:    (viewDef.Rows ?? []).length > 0 ? (viewDef.Rows ?? []).map(extractAxis) : (viewDef._rows ?? []),
-            columns: (viewDef.Columns ?? []).length > 0 ? (viewDef.Columns ?? []).map(extractAxis) : (viewDef._columns ?? []),
-            titles:  (viewDef.Titles ?? []).length > 0 ? (viewDef.Titles ?? []).map(extractTitle) : (viewDef._titles ?? []),
-            suppressEmptyRows:    !!viewDef.SuppressEmptyRows,
-            suppressEmptyColumns: !!viewDef.SuppressEmptyColumns,
-        } : null
-
-        // Rebuild nativeConfig using axisConfig (cellset) for correct axis placement
-        // and rawNative for subset/member info
-        let nativeConfig = rawNative
-        if (rawNative && axisConfig.length) {
-            const dimInfo = {}
-            for (const d of [...rawNative.rows, ...rawNative.columns, ...rawNative.titles])
-                if (d.dimension) dimInfo[d.dimension] = { subset: d.subset ?? null, memberSet: d.memberSet ?? null, members: d.members ?? null }
-
-            const colAxis    = axisConfig.find(a => a.ordinal === 0)
-            const rowAxis    = axisConfig.find(a => a.ordinal === 1)
-            const filterAxis = axisConfig.find(a => a.ordinal === 2)
-
-            nativeConfig = {
-                columns: (colAxis?.dimensions ?? []).map(d => ({ dimension: d, subset: dimInfo[d]?.subset ?? null, memberSet: dimInfo[d]?.memberSet ?? null, members: dimInfo[d]?.members ?? null })),
-                rows:    (rowAxis?.dimensions ?? []).map(d => ({ dimension: d, subset: dimInfo[d]?.subset ?? null, memberSet: dimInfo[d]?.memberSet ?? null, members: dimInfo[d]?.members ?? null })),
-                titles:  (filterAxis?.selectedMembers ?? rawNative.titles ?? []).map(t => ({
-                    dimension: t.dimension,
-                    member:    t.member ?? rawNative.titles?.find(n => n.dimension === t.dimension)?.member ?? null,
-                })),
-                suppressEmptyRows:    rawNative.suppressEmptyRows,
-                suppressEmptyColumns: rawNative.suppressEmptyColumns,
-            }
-        }
-
-        // For MDX views, return the MDX text so the client can parse it back to axes
-        const mdxText = (viewDef && viewDef['@odata.type']?.includes('MDXView')) ? (viewDef.MDX || null) : null
-        res.json({ axisConfig, cellset: data, viewType: data.ViewType, nativeConfig, mdx: mdxText })
+        const { buildViewAxes } = require('../core/view-axes')
+        const axes = buildViewAxes(data, viewDef)
+        res.json({ ...axes, cellset: data })
     } catch (e) { fail(res, e) }
 })
 

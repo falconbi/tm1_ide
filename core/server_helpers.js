@@ -99,14 +99,6 @@ function createServerHelpers({ cl, makeClientWithCredentials, isDirectServer, PA
         return out
     }
 
-    function extractMembersFromExpression(expr) {
-        if (!expr) return null
-        const trimmed = expr.trim()
-        if (!trimmed.startsWith('{') || !trimmed.endsWith('}')) return null
-        const matches = [...trimmed.matchAll(/\[[^\]]+\]\.\[[^\]]+\]\.\[([^\]]+)\]/g)]
-        return matches.length > 0 ? matches.map(m => m[1]) : null
-    }
-
     function parseDbRefs(rules) {
         const refs = new Set()
         const re = /\bDB[S]?\s*\(\s*'([^']+)'/gi
@@ -115,43 +107,11 @@ function createServerHelpers({ cl, makeClientWithCredentials, isDirectServer, PA
         return [...refs]
     }
 
-    function processCode(p) {
-        return [p.PrologProcedure, p.MetaDataProcedure ?? p.MetadataProcedure, p.DataProcedure, p.EpilogProcedure]
-            .filter(Boolean).join('\n')
-    }
-
-    function summaryPrompt(p, f, includeCode) {
-        const writes = f.writes.map(w => {
-            const what = w.measures?.length ? w.measures.join(', ')
-                : w.kinds?.includes('clear') ? 'cleared'
-                : w.kinds?.includes('feeders') ? 'feeders recalculated'
-                : 'written'
-            return `- ${w.cube}: ${what}`
-        }).join('\n')
-        const params = (p.Parameters ?? []).map(x =>
-            `${x.Name}${x.Value !== '' && x.Value != null ? ` (default ${x.Value})` : ''}${x.Prompt ? ` — ${x.Prompt}` : ''}`
-        ).join('; ')
-        const system = 'You document IBM TM1 TurboIntegrator processes for a data-lineage tooltip. Write plain English for an admin. ' +
-            'Return ONLY: one or two sentences on what the process does and when it runs, then one line starting "Writes:" listing cube -> measures (or "clears"/"feeders"), ' +
-            'then one line "Reads:" with the source cubes if any. No headings, no bullets, no code fences, no invented facts, no permissions unless they change what it does. Max 90 words.'
-        const user = [
-            `Process: ${p.Name}`,
-            `Author's header:\n${f.header || '(none)'}`,
-            `Parameters: ${params || '(none)'}`,
-            `Datasource: ${f.source}`,
-            `Writes (scanned from the code):\n${writes || '(no cube writes)'}`,
-            `Reads (scanned): ${f.reads.join(', ') || '(none)'}`,
-            `Called by: ${f.calledBy.join(', ') || '(nothing)'}`,
-            includeCode ? `Code:\n${processCode(p).slice(0, 12000)}` : '',
-        ].filter(Boolean).join('\n\n')
-        return { system, user }
-    }
-
     return {
         loginRateLimit, SAMPLE_PASSWORD_WARNING, isSampleLogin, SQL_PASSWORD_MASK, _GI, _GITOK,
         CATALOG_OVERRIDES_PATH, catalogRoutes, LENS_CATALOGUE, txLogSearches, lensUsageCache, userServer,
         closeServerSession, setupBlankAdmin, sendSetupError, logAttributeValue, joinContinuations,
-        extractMembersFromExpression, parseDbRefs, processCode, summaryPrompt,
+        parseDbRefs,
     }
 }
 

@@ -2,8 +2,8 @@
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
 const fs = require('fs'), os = require('os'), path = require('path')
-const { createLiveHub, colorFor } = require('../core/lens_live')
-const { logLensWrite, logLensRun, readLensActivity } = require('../core/lens_activity_log')
+const { createLiveHub, colorFor } = require('../core/lens-live')
+const { logLensWrite, logLensRun, readLensActivity } = require('../core/lens-activity-log')
 
 // Working together: people in the same Lens + channel hear each other; events
 // are stamped with the real user; size and rate are capped.

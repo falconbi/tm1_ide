@@ -23,7 +23,7 @@ What lives inside that boundary:
 | --- | --- | --- |
 | TM1 admin credentials (`admin` / password) | `config/servers.json` | your OS user (file) |
 | Anthropic API key, PAW host/creds | `.env` | your OS user (file) |
-| Live TM1 passwords, in plaintext, for the session | Node process memory (`_sessions` map in `core/paw_connect.js`) | your OS user (memory / debugger) |
+| Live TM1 passwords, in plaintext, for the session | Node process memory (`_sessions` map in `core/paw-connect.js`) | your OS user (memory / debugger) |
 | IDE session token | browser `localStorage` (`tm1-token`) → browser profile on disk | your OS user (file) |
 | Change history, deploy baselines | `data/change_log.db`, `.tm1baseline/` | your OS user (file) |
 
@@ -46,7 +46,7 @@ Because the tool is local, the protections are lightweight and targeted:
 
 3. **Session token expiry.** An IDE token is dropped after 12 hours of inactivity
    and the user must log in again. This is the only expiry that applies in
-   `direct-v11` mode. (`core/paw_connect.js`, `IDLE_TTL`)
+   `direct-v11` mode. (`core/paw-connect.js`, `IDLE_TTL`)
 
 4. **Custom-header auth = CSRF defence.** Every `/api` call must carry the
    `x-ide-token` header. Browsers block cross-origin pages from setting custom
@@ -106,7 +106,7 @@ block of work before it is safe:
 **Multi-user** (more than one distinct person logs in):
 
 - Each user authenticates with their own TM1 credentials; drop the
-  `servers.json` admin fallback in `core/adapter_registry.js`
+  `servers.json` admin fallback in `core/adapter-registry.js`
 - Authorization — connect to TM1 as the logged-in user so TM1's own cell /
   element / object security applies, instead of everyone acting as admin
 - Server-enforced deploy gate — `/api/deploy/execute` currently runs with

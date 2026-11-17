@@ -40,7 +40,7 @@ Re-create it on the server from its file, inside a change set, then run it from 
 ```bash
 node -e "
 require('dotenv').config({quiet:true});
-const {makeClient}=require('./core/adapter_registry');
+const {makeClient}=require('./core/adapter-registry');
 const p=require('./docs/models/workforce-setup/seed-tax-bands.json');
 makeClient('TM1_Test_DEV',null).post('Processes',p).then(()=>console.log('created',p.Name));"
 ```

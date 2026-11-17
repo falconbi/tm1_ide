@@ -7,7 +7,7 @@ const path = require('path')
 
 const file = path.join(os.tmpdir(), `process-summaries-${process.pid}.json`)
 process.env.PROCESS_SUMMARIES_FILE = file
-const store = require('../core/process_summaries')
+const store = require('../core/process-summaries')
 
 test.before(() => { try { fs.unlinkSync(file) } catch {} })
 test.after(() => { try { fs.unlinkSync(file) } catch {} })

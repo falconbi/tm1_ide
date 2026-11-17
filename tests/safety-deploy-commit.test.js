@@ -9,11 +9,11 @@ const stub = (rel, exportsObj) => {
     require.cache[r] = { id: r, filename: r, loaded: true, exports: exportsObj }
 }
 
-// In-memory change_log (a release change set is required for execute to deploy).
+// In-memory change-log (a release change set is required for execute to deploy).
 const realBsq = require('better-sqlite3')
 const bsqPath = require.resolve('better-sqlite3')
 require.cache[bsqPath] = { id: bsqPath, filename: bsqPath, loaded: true, exports: function () { return realBsq(':memory:') } }
-const cl = require(path.join(__dirname, '..', 'core', 'change_log'))
+const cl = require(path.join(__dirname, '..', 'core', 'change-log'))
 
 // ── Fake TM1 client (routers on the OData route string) ──────────────────────
 let incomingCommit = 'INCOMING1'
@@ -29,8 +29,8 @@ function fakeClient() {
     }
 }
 
-const arReal = require(resolve('core/adapter_registry'))
-stub('core/adapter_registry', { ...arReal, makeClient: () => fakeClient() })
+const arReal = require(resolve('core/adapter-registry'))
+stub('core/adapter-registry', { ...arReal, makeClient: () => fakeClient() })
 
 let acquireCount = 0, releaseCount = 0
 stub('core/git-lock', {

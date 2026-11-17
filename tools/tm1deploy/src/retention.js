@@ -11,7 +11,7 @@
 
 const fs   = require('fs')
 const path = require('path')
-const cl   = require('../../../core/change_log')
+const cl   = require('../../../core/change-log')
 const { listBaselines } = require('./diff')
 
 const ARCHIVE_DIR = path.resolve(__dirname, '../../../data/archives/change-log')

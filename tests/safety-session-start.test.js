@@ -8,8 +8,8 @@ const resolve = (rel) => require.resolve(path.join(__dirname, '..', rel))
 const stub = (rel, o) => { const r = resolve(rel); require.cache[r] = { id: r, filename: r, loaded: true, exports: o } }
 
 let fakeReadOnly = false
-const arReal = require(resolve('core/adapter_registry'))
-stub('core/adapter_registry', { ...arReal, isReadOnly: () => fakeReadOnly })
+const arReal = require(resolve('core/adapter-registry'))
+stub('core/adapter-registry', { ...arReal, isReadOnly: () => fakeReadOnly })
 const { readOnlyRefusal } = require(resolve('core/readonly'))
 const { createStartSessionRoute } = require(resolve('core/session_routes'))
 

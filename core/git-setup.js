@@ -11,7 +11,7 @@
 // only read-only guard for init and first-pull, so the user gets its actionable
 // message (and it stays enforced, and testable, without the HTTP layer).
 
-const { makeClient, isReadOnly } = require('./adapter_registry')
+const { makeClient, isReadOnly } = require('./adapter-registry')
 const { lastDeployed, recordDeploy } = require('./git-state')
 
 // Tells the caller how to get unblocked: init and first-pull only run on a

@@ -5,10 +5,10 @@
 // a change, formatting a response, running stored assertions, gating on an
 // open change set). One place, no duplication across tools/*.js.
 
-const { makeClient, makeClientWithCredentials, isReadOnly } = require('../../core/adapter_registry')
+const { makeClient, makeClientWithCredentials, isReadOnly } = require('../../core/adapter-registry')
 const { createIdentity } = require('./identity')
 const guard           = require('./guard')
-const cl              = require('../../core/change_log')
+const cl              = require('../../core/change-log')
 const { lintRules }   = require('../../core/rules-lint')
 const { lintTI }      = require('../../core/ti-lint')
 const assertions      = require('../../core/assertions')

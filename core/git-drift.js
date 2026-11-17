@@ -12,7 +12,7 @@
 const fs = require('fs')
 const os = require('os')
 const path = require('path')
-const { makeClient } = require('./adapter_registry')
+const { makeClient } = require('./adapter-registry')
 const gitIdentity = require('./git-identity')
 const { git, authUrl, sanitize } = require('./git-repo')
 

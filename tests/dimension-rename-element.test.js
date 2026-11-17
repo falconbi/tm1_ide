@@ -1,7 +1,7 @@
 'use strict'
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { TM1Client } = require('../core/tm1_client')
+const { TM1Client } = require('../core/tm1-client')
 const { odataKey } = require('../core/odata-key')
 
 // Some TM1 versions NO-OP a rename (PATCH returns 200, the name stays). The IDE

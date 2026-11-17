@@ -6,8 +6,8 @@ const path = require('path')
 const resolve = rel => require.resolve(path.join(__dirname, '..', rel))
 const calls = []
 const session = { id: 's1', server: 'S1', name: 'test' }
-require.cache[resolve('core/change_log')] = {
-    id: resolve('core/change_log'), filename: resolve('core/change_log'), loaded: true,
+require.cache[resolve('core/change-log')] = {
+    id: resolve('core/change-log'), filename: resolve('core/change-log'), loaded: true,
     exports: {
         getSession: id => (id === 's1' ? session : null),
         closeSession: (id, opts) => { calls.push(['closeSession', id, opts]); return { ...session, ...opts } },

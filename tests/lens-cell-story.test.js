@@ -1,12 +1,12 @@
 'use strict'
-// A cell's story for a Lens (core/lens_bridge.js): trace / log / notes — every
+// A cell's story for a Lens (core/lens-bridge.js): trace / log / notes — every
 // dimension named, the person must be able to read the cell, notes only on cubes
 // the saved Lens declares, and added notes show in History.
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
 const os = require('os'), fs = require('fs'), path = require('path')
-const b = require('../core/lens_bridge')
-const log = require('../core/lens_activity_log')
+const b = require('../core/lens-bridge')
+const log = require('../core/lens-activity-log')
 
 function fakeClient({ readable = true } = {}) {
   const added = []

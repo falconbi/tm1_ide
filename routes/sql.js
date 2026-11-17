@@ -69,57 +69,8 @@ app.post('/api/sql/post-to-ti', async (req, res) => {
         if (!conn) return res.status(404).json({ error: 'Connection not found' })
         if (!conn.dsn) return res.status(400).json({ error: 'Connection has no TM1 DSN configured' })
 
-        const client = makeClient(server, req.ideToken)
-
-        // Parse ?pParam? tokens from SQL
-        const tokens = [...new Set([...sql.matchAll(/\?(\w+)\?/g)].map(m => m[1]))]
-
-        // Prep TM1 comment header
-        const paramList = tokens.length ? `-- Parameters: ${tokens.map(t => '?' + t + '?').join(', ')}\n` : ''
-        const header    = `-- TM1 Process Datasource (via IDE)\n-- DSN: ${conn.dsn}\n${paramList}--\n\n`
-        const sqlWithHeader = header + sql
-
-        // TM1 REST API: all ODBC fields are camelCase inside the DataSource object
-        const odbcProps = {
-            DataSource: {
-                Type:                   'ODBC',
-                dataSourceNameForServer: conn.dsn,
-                dataSourceNameForClient: '',
-                query:                   sqlWithHeader,
-                userName:                '',
-                password:                '',
-                usesUnicode:             true,
-            },
-        }
-
-        if (createNew) {
-            await client.post('Processes', {
-                Name:               processName,
-                PrologProcedure:    '',
-                MetadataProcedure:  '',
-                DataProcedure:      '',
-                EpilogProcedure:    '',
-                HasSecurityAccess:  false,
-                ...odbcProps,
-                Parameters:         tokens.map(t => ({ Name: t, Type: 'String', Value: '', Prompt: '' })),
-                Variables:          [],
-            })
-            return res.json({ ok: true, created: true, dsn: conn.dsn, paramsAdded: tokens })
-        }
-
-        // Existing process — fetch, merge parameters, patch
-        const proc      = await client.getProcess(processName)
-        const existing  = (proc.Parameters ?? []).map(p => p.Name)
-        const newParams = tokens.filter(t => !existing.includes(t))
-            .map(t => ({ Name: t, Type: 'String', Value: '', Prompt: '' }))
-        const parameters = [...(proc.Parameters ?? []), ...newParams]
-
-        await client.patch(`Processes('${odataKey(processName)}')`, {
-            ...odbcProps,
-            Parameters: parameters,
-        })
-
-        res.json({ ok: true, created: createNew, dsn: conn.dsn, paramsAdded: newParams.map(p => p.Name) })
+        const result = await require('../core/ti-generate').postSqlToTi(makeClient(server, req.ideToken), { conn, sql, processName, createNew })
+        res.json(result)
     } catch (e) {
         console.error('[sql/post-to-ti]', e.message)
         fail(res, e)

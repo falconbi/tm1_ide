@@ -12,12 +12,12 @@ Goal: **describe a screen → AI generates hand-rolled HTML → preview it live 
 1. **Storage — files + metadata cube (single source of metadata)**
    - Lens HTML lives in `config/lenses/<name>.html` (git-versionable, avoids TM1 string-cell limits).
    - **Metadata lives ONLY in the `}Lenses` control cube** (name, owner, version, status, updated). Do NOT also write `config/lenses/*.json` — a second metadata copy recreates the duplicate-list problem from the 17 function catalogs. Pick one; the cube is it.
-   - `core/lens_store.js` (new): list/read/write lenses + cube metadata.
+   - `core/lens-store.js` (new): list/read/write lenses + cube metadata.
    - Routes: `GET /api/lenses`, `GET/POST /api/lenses/:name`.
 
 2. **Runtime + bridge — the security core**
    - `GET /lenses/:server/:name` serves the lens inside a sandboxed iframe.
-   - Bridge (`core/lens_bridge.js`, new, ~4 calls): `execMDX`, `readCell`, `getMeta`, all via `makeClient(server, req.ideToken)` — **per-user session, never the MCP admin path** (`makeClient(server, null)`).
+   - Bridge (`core/lens-bridge.js`, new, ~4 calls): `execMDX`, `readCell`, `getMeta`, all via `makeClient(server, req.ideToken)` — **per-user session, never the MCP admin path** (`makeClient(server, null)`).
    - Server-side validation on every bridge call: read-only in Stage 1, server allowlist.
 
 3. **Authoring**
@@ -49,8 +49,8 @@ The change-set pipeline only packages TM1 objects. Files in `config/lenses/` wil
 
 ## Build order
 
-1. `lens_store` + routes (~half day)
-2. Sandbox shell + CSP header + bridge + `lens_bridge.js` (2–4 days — the security-sensitive bit)
+1. `lens-store` + routes (~half day)
+2. Sandbox shell + CSP header + bridge + `lens-bridge.js` (2–4 days — the security-sensitive bit)
 3. LensEditor tab: Monaco + preview + save (1–2 days)
 4. AI generator + validation gate incl. query test-run (1–2 days + tuning loop)
 5. Bundled D3/ECharts + `lens-utils` (1 day)

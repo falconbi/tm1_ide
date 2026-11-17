@@ -1,7 +1,7 @@
 'use strict'
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { TM1Client } = require('../core/tm1_client')
+const { TM1Client } = require('../core/tm1-client')
 
 // TM1 commits a new client only at the end of the procedure that added it, so a
 // password set in the same Prolog never applies — the user ends up with no

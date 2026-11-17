@@ -6,7 +6,7 @@
 |---|---|
 | 1 attribute values as data, every deploy | **done** — `deployer.js` replays `attribute_values` always (was `!exists` only), scoped to packaged pairs; `report.attribute_values` / `attribute_value_errors` |
 | 2 dimension structure readback | **done** — `deployDimension` compares element count to package, `report.structure_gaps` |
-| 3 subset change-log key includes dimension | **done** — `change_log.js` `writeLog` collapse + 3× `GROUP BY` now use `IFNULL(detail,'')` |
+| 3 subset change-log key includes dimension | **done** — `change-log.js` `writeLog` collapse + 3× `GROUP BY` now use `IFNULL(detail,'')` |
 | 4 post-deploy hooks | **done** — `config/deploy-hooks.json` → `manifest._meta.post_deploy` → deployer runs on target before verify; `report.post_deploy` |
 | 5 baseline owned by pipeline, after hooks | **done** — sequence is deploy → hooks → verify → baseline; `clean = 0 failed objects && 0 failed hooks` (verification advisory, stamped on the baseline as `verification_failed` + an `[UNVERIFIED …]` label) |
 | 6 refuse to package an unreadable view | **done** — `getViewWithSubsets` flags `_unresolved` axes; `fetchView` throws → view lands in `manifest.skipped` with a clear reason instead of corrupting the target |
@@ -122,7 +122,7 @@ gone.
 
 ### Fix 3 — Subset change-log key includes the dimension
 
-**Where:** `core/change_log.js` `writeLog` (line ~196-208, the `COLLAPSIBLE_ACTIONS`
+**Where:** `core/change-log.js` `writeLog` (line ~196-208, the `COLLAPSIBLE_ACTIONS`
 collapse), and every `GROUP BY object_type, object_name, action` in
 `getSessionLog` / `getEntriesSince` / `getEntriesSinceId`.
 
@@ -181,7 +181,7 @@ drift" step.
 
 ### Fix 6 — `getView` reads a named-subset axis correctly
 
-**Where:** `core/tm1_client.js` `getView` axis extraction (the deploy client
+**Where:** `core/tm1-client.js` `getView` axis extraction (the deploy client
 path), mirror the CLAUDE.md ViewEditor fix.
 
 **Now:** a row/column axis pointing at a **named public subset** comes back as
