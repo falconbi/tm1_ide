@@ -1,9 +1,8 @@
 'use strict'
 
 // Derives a {min, max} argument-count range from a canonical catalog entry's
-// params array. Shared by rules-lint.js and ti-lint.js so both stay in step —
-// see shared/tm1-function-catalog.json and CLAUDE.md's "TM1 Function Catalog"
-// section for the schema this reads.
+// params array. This CommonJS file is the one implementation: the server lints
+// require it directly, and shared/catalog-arity.js re-exports it for the client.
 //
 // Trailing tag suffixes on the LAST param only:
 //   '*'  variadic — 1-or-more repeats of that type (min = params.length,

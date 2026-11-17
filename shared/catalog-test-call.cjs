@@ -1,8 +1,8 @@
 'use strict'
 
-// CommonJS copy of shared/catalog-test-call.js for the CLI. The shared ESM
-// version is used by CatalogAdmin; tests/catalog-test-call.test.mjs compares
-// both so the two cannot drift.
+// Builds the throwaway TI statement used to check one catalog entry against a
+// live server. This CommonJS file is the one implementation: tools/validate-catalog.js
+// requires it directly, and shared/catalog-test-call.js re-exports it for Catalog Admin.
 function testValue(tag, index) {
   const bare = tag.replace(/[*?]$/, '')
   if (bare === 'n') return String(index + 1)

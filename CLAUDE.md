@@ -128,7 +128,7 @@ cd client && npm run dev   # terminal 2 (Vite on :5173)
 - **Connections are adapter-driven** — `config/servers.json` decides direct or PAW for each server; the client must not assume one. Server name comes from `config/servers.json`.
 - **Routes that write to TM1 use `gateWrite`**; routes that write only local files (`forge.json`, SQL connections, catalog overrides, process summaries) use `gateReadOnly`.
 - **Frontend served from `static/`** — the built assets are committed. Always rebuild (`cd client && npm run build`, which writes `static/`); never copy from `client/dist`.
-- **CommonJS throughout** — `server.js` and `core/` use `require`/`module.exports`. Ignore VS Code's "convert to ES module" hints.
+- **CommonJS throughout** — `server.js` and `core/` use `require`/`module.exports`. Ignore VS Code's "convert to ES module" hints. A pure helper used by both the client and server lives as a `.cjs` CommonJS file with a thin `.js` ESM re-export (see `shared/catalog-arity.*`).
 
 ---
 

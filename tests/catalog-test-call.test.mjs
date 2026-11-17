@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { buildTestCall as buildClient } from '../shared/catalog-test-call.js'
-import { buildTestCall as buildTool } from '../tools/lib/catalog-test-call.cjs'
+import { buildTestCall as buildTool } from '../shared/catalog-test-call.cjs'
 
 const TABLE = [
   ['StatementNoArgs', { isStatement: true, returnType: 'void', params: [] }, 'StatementNoArgs();'],

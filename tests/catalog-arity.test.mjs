@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { deriveArity as deriveClient } from '../shared/catalog-arity.js'
-import { deriveArity as deriveServer } from '../core/catalog-arity.js'
+import { deriveArity as deriveServer } from '../shared/catalog-arity.cjs'
 
 const TABLE = [
   { name: 'fixed', entry: { params: ['a', 'b'] }, min: 2, max: 2 },

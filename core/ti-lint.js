@@ -19,7 +19,7 @@
 const { findCalls } = require('./rules-lint')
 
 const CATALOG = require('../shared/tm1-function-catalog.json')
-const { deriveArity } = require('./catalog-arity')
+const { deriveArity } = require('../shared/catalog-arity.cjs')
 
 const SIG = {}
 for (const [name, entry] of Object.entries(CATALOG)) {
