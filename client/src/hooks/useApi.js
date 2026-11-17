@@ -130,7 +130,12 @@ export function useIsSimple(server) {
   const key = String(server ?? '').toLowerCase()
   return Array.isArray(servers) && servers.some(s => s?.simple && String(s.name).toLowerCase() === key)
 }
-export const useElements           = (server, dim, hierarchy) => useQuery({ queryKey: ['elements', server, dim, hierarchy],           queryFn: () => get(`/api/elements?server=${enc(server)}&dimension=${enc(dim)}${hierarchy ? `&hierarchy=${enc(hierarchy)}` : ''}`),           enabled: !!server && !!dim })
+export const elementsQuery = (server, dim, hierarchy) => ({
+  queryKey: ['elements', server, dim, hierarchy],
+  queryFn:  () => get(`/api/elements?server=${enc(server)}&dimension=${enc(dim)}${hierarchy ? `&hierarchy=${enc(hierarchy)}` : ''}`),
+  enabled:  !!server && !!dim,
+})
+export const useElements           = (server, dim, hierarchy) => useQuery(elementsQuery(server, dim, hierarchy))
 export const useElementsWithIndex  = (server, dim, hierarchy) => useQuery({ queryKey: ['elements-index', server, dim, hierarchy],     queryFn: () => get(`/api/elements?server=${enc(server)}&dimension=${enc(dim)}${hierarchy ? `&hierarchy=${enc(hierarchy)}` : ''}&index=1`), enabled: !!server && !!dim })
 export const useElementsTree  = (server, dim, hierarchy) => useQuery({ queryKey: ['elements-tree', server, dim, hierarchy], queryFn: () => get(`/api/elements/tree?server=${enc(server)}&dimension=${enc(dim)}${hierarchy ? `&hierarchy=${enc(hierarchy)}` : ''}`), enabled: !!server && !!dim, staleTime: 60_000 })
 // Element trees for any number of dimensions at once (shares the cache with useElementsTree)
@@ -211,6 +216,24 @@ export const useControlObjects  = (server) => useQuery({ queryKey: ['control-obj
 export const useRules    = (server, cube) => useQuery({ queryKey: ['rules', server, cube], queryFn: () => get(`/api/rules?server=${enc(server)}&cube=${enc(cube)}`), enabled: !!server && !!cube })
 export const useProcess  = (server, name) => useQuery({ queryKey: ['process', server, name], queryFn: () => get(`/api/process?server=${enc(server)}&name=${enc(name)}`), enabled: !!server && !!name })
 
+export const errorLogContentQuery = (server, filename) => ({
+  queryKey: ['process-errorlog-content', server, filename],
+  queryFn:  () => get(`/api/process/errorlog/content?server=${enc(server)}&filename=${enc(filename)}`),
+  enabled:  !!(server && filename),
+})
+
+// The raw text of a document in the server's Files folder. `request()` throws
+// the server's own message on a non-2xx answer, which is what the caller wants.
+export const fileContentQuery = (server, name) => ({
+  queryKey: ['file-content', server, name],
+  queryFn:  () => request(`/api/files/content?server=${enc(server)}&name=${enc(name)}`).then(r => r.text()),
+  enabled:  !!(server && name),
+})
+
+export const useCheckReferences = () => useMutation({
+  mutationFn: ({ server, sections }) => post('/api/process/check-references', { server, sections }),
+})
+
 export const useSaveRules = () => {
   const queryClient = useQueryClient()
   return useMutation({
@@ -222,6 +245,14 @@ export const useSaveRules = () => {
     },
   })
 }
+
+export const useCheckRules = () => useMutation({
+  mutationFn: ({ server, cube, rules }) => post('/api/rules/check', { server, cube, rules }),
+})
+
+export const useCheckRuleReferences = () => useMutation({
+  mutationFn: ({ server, cube, rules }) => post('/api/cube/rules/check-references', { server, cube, rules }),
+})
 
 export const useSaveProcess = () => useMutation({
   mutationFn: ({ server, name, body }) =>
@@ -350,12 +381,14 @@ export const useAttributeValues = (server, dimension, attribute) => useQuery({
   staleTime: 60_000,
 })
 
-export const useSubsetElements = (server, dimension, name, hierarchy) => useQuery({
+export const subsetElementsQuery = (server, dimension, name, hierarchy) => ({
   queryKey: ['subset-elements', server, dimension, name, hierarchy],
   queryFn:  () => get(`/api/subset/elements?server=${enc(server)}&dimension=${enc(dimension)}&name=${enc(name)}${hierarchy ? `&hierarchy=${enc(hierarchy)}` : ''}`),
   enabled:  !!server && !!dimension && !!name,
   staleTime: 0,
 })
+
+export const useSubsetElements = (server, dimension, name, hierarchy) => useQuery(subsetElementsQuery(server, dimension, name, hierarchy))
 
 export const useSaveStaticSubset = () => useMutation({
   mutationFn: ({ server, dimension, name, elements, hierarchy }) =>
@@ -370,12 +403,14 @@ export const cubeDimensionsQuery = (server, cube) => ({
 })
 export const useCubeDimensions = (server, cube) => useQuery(cubeDimensionsQuery(server, cube))
 
-export const useViewPreviewRecords = (server, cube, view) => useQuery({
+export const viewPreviewRecordsQuery = (server, cube, view) => ({
   queryKey: ['view-preview-records', server, cube, view],
   queryFn: () => post(`/api/view/preview-records?server=${enc(server)}&cube=${enc(cube)}&view=${enc(view)}`, {}),
   enabled: !!(server && cube && view),
   staleTime: 60_000,
 })
+
+export const useViewPreviewRecords = (server, cube, view) => useQuery(viewPreviewRecordsQuery(server, cube, view))
 
 export const useViewAxes = () => useMutation({
   mutationFn: ({ server, cube, view }) =>
@@ -483,6 +518,11 @@ export const useCreateAttrDef = () => useMutation({
 export const useDeleteAttrDef = () => useMutation({
   mutationFn: ({ server, dimension, name, hierarchy }) =>
     del(`/api/dimension/attribute-def?server=${enc(server)}&dimension=${enc(dimension)}&name=${enc(name)}${hierarchy ? `&hierarchy=${enc(hierarchy)}` : ''}`),
+})
+
+export const useConvertToAlias = () => useMutation({
+  mutationFn: ({ server, dimension, attribute, hierarchy }) =>
+    post('/api/dimension/attribute/convert-to-alias', { server, dimension, attribute, hierarchy }),
 })
 
 export const useAttrGrid = (server, dimension, hierarchy) => useQuery({
@@ -714,6 +754,13 @@ export const useAddClientToGroup    = () => { const qc = useQueryClient(); retur
 export const useRemoveClientFromGroup = () => { const qc = useQueryClient(); return useMutation({ mutationFn: ({ server, name, group }) => del(`/api/users/${enc(name)}/groups/${enc(group)}?server=${enc(server)}`), onSuccess: (_, v) => qc.invalidateQueries({ queryKey: ['client-groups', v.server, v.name] }) }) }
 
 // ── Files availability probe ──────────────────────────────────────────────────
+export const useUploadFile = () => useMutation({
+  mutationFn: ({ server, name, data }) => request(
+    `/api/files/upload?server=${enc(server)}&name=${enc(name)}`,
+    { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: data },
+  ),
+})
+
 export const useFilesAvailable = (server) => useQuery({
   queryKey: ['files-available', server],
   queryFn:  async () => {

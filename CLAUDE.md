@@ -51,9 +51,23 @@ client/src/
   components/
     Explorer.jsx              # Left sidebar: object tree for all TM1 object types
     TabBar.jsx                # Tab bar — drag-to-reorder, right-click menu, split controls
-    EditorPane.jsx            # Rules editor + cell trace + lineage + Check Now button
-    ProcessEditor.jsx         # TI editor with debugger, snippets, error log viewer
-    DimensionEditor.jsx       # Hierarchy tree + attribute grid
+    EditorPane.jsx            # Dispatcher: picks the editor for the active tab + "Show in tree"
+    rules-editor/              # Rules editor: shell + toolbar/issues, hooks/ for state, lineage/ and trace/ panels
+      RulesEditor.jsx          #   shell (under 400 lines); Check Now, save, panels and Monaco
+      RulesToolbar.jsx         #   data sources/check/format/regions/panel toggles
+      IssuesList.jsx           #   static + TM1 CheckRules findings under the editor
+      hooks/                   #   useRulesPanels/Monaco/Check/Format/Save — one concern per hook
+      lineage/ trace/          #   LineagePanel/LineageNode and CellTracePanel/TraceNode/ElementPicker
+    process-editor/            # TI editor: shell + panels, hooks/ for state, pure helpers in lib/process-editor/
+      ProcessEditor.jsx        #   shell (under 400 lines); ProcessToolbar + RunOutputPanel + DebugPanel
+      hooks/                   #   useProcessEdits/Monaco/Run/Save/Debug/Check — one concern per hook
+      panels/                  #   Params/Datasource/DatasourcePreview/Variables/CollapsibleSection
+      dialogs/                 #   RunDialog, SaveAsDialog
+    dimension-editor/          # Dimension Editor: shell + toolbar/panels, hooks/ for state, pure helpers in lib/dimension-editor/
+      DimensionEditor.jsx      #   shell: wrapper + core (under 400 lines)
+      DimensionToolbar.jsx     #   the two toolbar rows, alternate-hierarchy banner and help
+      hooks/                   #   useDimensionData/ElementActions/HierarchySelection — one concern per hook
+      tree/ attrs/ dialogs/    #   tree nodes, attribute grid, bulk/pre-delete modals
     SubsetEditor.jsx          # MDX + visual subset editor
     view-editor/               # Native/MDX view editor: shell + panels, hooks/ for state, trace/ and axes/
       ViewEditor.jsx           #   shell (under 400 lines); PivotGrid → shared pivot; auto-refreshes on rules save
@@ -78,6 +92,10 @@ client/src/
     tm1-snippets.js           # TI and Rules snippet library
     ti-interpreter.js         # TI variable scanner for the debug watch dropdown
     ti-debugger.js            # TI debugger — breakpoint injection + capture parsing
+    process-editor/           # Pure TI-editor helpers: constants, sections/run params, ASCII preview, debug issues
+    dimension-editor/         # Pure Dimension-editor helpers: tree order/cycle checks, type constants, tab-delimited rows
+    rules-editor/             # Pure Rules-editor helpers: check-error merge, #Region scan
+    reveal-target.js          # getRevealTarget(tab) for the "Show in tree" button
     formatters/               # TM1 rules formatter (tokenizer, AST, presets, settings)
 config/
   servers.json                # TM1 server list { name, ... }
@@ -286,14 +304,14 @@ Data and saves go through hooks in `hooks/useApi.js`. A genuine one-off command 
 3. Add a tab type to `openTab` calls in `Explorer.jsx`
 4. Add API routes to the matching `routes/<noun>.js` (and methods to `tm1_client.js` if needed)
 5. Add hooks to `hooks/useApi.js`
-6. Add to the `getRevealTarget` function in `EditorPane.jsx` if it has a "show in tree" target
+6. Add it to `getRevealTarget` in `client/src/lib/reveal-target.js` if it has a "show in tree" target
 
 ---
 
 ## Completed Features (as of Jun 2026)
 
 - Explorer: cubes, dimensions, subsets, processes, chores, views, rules — full CRUD
-- Rules Editor: Monaco + syntax highlight + live validation (CheckRules API) + static validator (arg counts, keyword validity, line-accurate squiggles) + **Check Now** button with pass/fail glow + lineage trace + cell calculation trace panel + code formatter + **#Region/#EndRegion folding** + snippets
+- Rules Editor (`rules-editor/`): Monaco + syntax highlight + live validation (CheckRules API) + static validator (arg counts, keyword validity, line-accurate squiggles) + **Check Now** button with pass/fail glow + lineage trace + cell calculation trace panel + code formatter + **#Region/#EndRegion folding** + snippets
 - TI Editor: Monaco + 4-section tabs + parameter editor + datasource editor + run + debugger + error log viewer + snippets + static validator (section structure, IF/WHILE/FOR/NEXT block tracking, arg counts) + **IF/WHILE/FOR block folding**
 - Dimension Editor: hierarchy tree + attribute grid + element/edge CRUD + bulk import
 - Subset Editor: MDX code view + visual tree + static/MDX save + MDX preview
