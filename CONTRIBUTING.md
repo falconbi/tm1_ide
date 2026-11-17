@@ -16,6 +16,10 @@ npm ci
 cd client && npm ci
 ```
 
+Top-level folders: `client/` (frontend), `routes/` and `core/` (backend), `shared/` (client + Lens
+code), `tools/` (MCP and deploy CLI), `config/` and `data/` (config vs runtime), `ti-processes/`
+(installed TI), `tests/`, `docs/`, `static/` (built output), and `node_modules/` (installed).
+
 The frontend is committed (the server serves `static/`), but its dependencies are separate.
 
 For the MCP, copy `.mcp.example.json` to `.mcp.json` and set your server. `.mcp.json` is
