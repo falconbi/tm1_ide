@@ -3,8 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ReactFlow, Background, Controls,
   useNodesState, useEdgesState, useReactFlow,
-  ReactFlowProvider, Handle, Position,
-  getBezierPath, BaseEdge,
+  ReactFlowProvider,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import { useStore } from '../store'
@@ -25,6 +24,12 @@ import { NODE_W, NODE_H, applyDagreLayout } from '@/lib/cubemap-editor/layout.js
 import { MAX_FOCUS_NODES, buildReverseMap, getReachable } from '@/lib/cubemap-editor/graph.js'
 import { prefixOf, applyLensActions, processRoots, foldProcesses, narrowToDim } from '@/lib/cubemap-editor/filters.js'
 import { computePrefixGroups, applyGrouping } from '@/lib/cubemap-editor/grouping.js'
+import CubeNode from './cubemap-editor/graph/CubeNode'
+import GroupNode from './cubemap-editor/graph/GroupNode'
+import ProcessNode from './cubemap-editor/graph/ProcessNode'
+import DimNode from './cubemap-editor/graph/DimNode'
+import { edgeTypes, PROCESS_EDGE_TYPES } from './cubemap-editor/graph/edgeTypes'
+import SvgMarkers from './cubemap-editor/graph/SvgMarkers'
 
 // ── Layout ────────────────────────────────────────────────────────────────────
 const FIT_MAX_ZOOM = 1.1
@@ -37,185 +42,7 @@ const TRACE_KIND_DEFAULTS = { rule: true, feeder: true, read: true, write: true,
 // back-end flow (loads, recalculation, snapshots) stands out. Seeds — what you clicked — always stay.
 
 
-function CubeNode({ data, selected }) {
-  const { label, hasRules, ruleLoc = 0, dimCount = 0, isSpotlit } = data
-  const barH = hasRules ? Math.max(4, Math.min(16, 4 + Math.round(Math.log1p(ruleLoc) * 2.5))) : 0
-
-  return (
-    <div style={{
-      width: NODE_W, height: NODE_H, borderRadius: 8, position: 'relative',
-      border: isSpotlit ? '2px solid #60a5fa'
-            : selected  ? '2px solid #60a5fa'
-            : '1.5px solid var(--cm-border)',
-      background: selected ? 'var(--cm-sel-bg)'
-                : 'var(--cm-node-bg)',
-      display: 'flex', alignItems: 'center', gap: 8,
-      padding: '0 12px', cursor: 'pointer', overflow: 'hidden',
-      boxShadow: isSpotlit ? '0 0 0 3px rgba(96,165,250,0.28), 0 2px 10px rgba(96,165,250,0.15)'
-               : selected  ? '0 0 0 3px rgba(96,165,250,0.18)'
-               : '0 1px 4px rgba(0,0,0,0.2)',
-      transition: 'border-color 0.15s, background 0.15s, box-shadow 0.15s',
-    }}>
-      {barH > 0 && (
-        <div style={{
-          position: 'absolute', left: 0, top: '50%', transform: 'translateY(-50%)',
-          width: 3, height: `${barH}px`,
-          background: '#f59e0b',
-          borderRadius: '4px 0 0 4px',
-        }} />
-      )}
-      <Handle type="target" position={Position.Left} style={{ opacity: 0 }} />
-      <Layers size={13} style={{ color: hasRules ? '#f59e0b' : 'var(--cm-icon)', flexShrink: 0 }} />
-      <span style={{
-        fontSize: 12, fontWeight: 500, color: 'var(--cm-text)',
-        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1,
-      }}>{label}</span>
-      {dimCount > 0 && (
-        <span style={{ fontSize: 9, color: 'var(--cm-text-muted)', flexShrink: 0, fontVariantNumeric: 'tabular-nums', opacity: 0.7 }}>
-          {dimCount}d
-        </span>
-      )}
-      <Handle type="source" position={Position.Right} style={{ opacity: 0 }} />
-    </div>
-  )
-}
-
-function GroupNode({ data }) {
-  return (
-    <div style={{
-      width: '100%', height: '100%', borderRadius: 10,
-      border: `1.5px solid ${data.color}55`,
-      background: data.bg,
-      pointerEvents: 'auto',
-      cursor: 'pointer',
-      transition: 'border-color 0.15s',
-    }} title={`Focus module ${data.label}`}>
-      <div style={{
-        position: 'absolute', top: 6, left: 10,
-        fontSize: 9, fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase',
-        color: data.color, display: 'flex', alignItems: 'center', gap: 5, pointerEvents: 'none',
-      }}>
-        {data.label}
-        <span style={{ fontWeight: 400, opacity: 0.55, fontVariantNumeric: 'tabular-nums' }}>{data.count}</span>
-      </div>
-    </div>
-  )
-}
-
-function ProcessNode({ data }) {
-  const { label, folded = 0, expanded, onToggleFold, lens } = data
-  return (
-    <div style={{
-      width: NODE_W, height: NODE_H, borderRadius: 8,
-      border: '1.5px dashed #10b981', background: 'rgba(16,185,129,0.07)',
-      display: 'flex', alignItems: 'center', gap: 8,
-      padding: '0 12px', cursor: 'pointer', overflow: 'hidden',
-      boxShadow: '0 1px 4px rgba(0,0,0,0.15)',
-    }}>
-      <Handle type="target" position={Position.Left} style={{ opacity: 0 }} />
-      <Workflow size={12} style={{ color: '#10b981', flexShrink: 0 }} />
-      <span style={{
-        fontSize: 11, fontWeight: 500, color: 'var(--cm-text)', fontFamily: 'monospace',
-        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1,
-      }}>{label}</span>
-      {lens?.length > 0 && (
-        <span title={`Run from a Lens button — ${lens.join(', ')}`} style={{
-          flexShrink: 0, fontSize: 9, fontWeight: 600, padding: '0 5px', borderRadius: 3,
-          border: '1px solid #6366f1', color: '#6366f1', background: 'rgba(99,102,241,0.12)',
-        }}>Lens</span>
-      )}
-      {onToggleFold && (
-        <button
-          className="nodrag"
-          onClick={e => { e.stopPropagation(); onToggleFold() }}
-          title={expanded ? 'Fold this chain back into one box' : `${folded} process${folded !== 1 ? 'es' : ''} this one runs — click to show each step`}
-          style={{
-            flexShrink: 0, fontSize: 10, fontWeight: 600, padding: '1px 6px', borderRadius: 10, cursor: 'pointer',
-            border: '1px solid #10b981', background: expanded ? 'none' : 'rgba(16,185,129,0.18)', color: '#10b981',
-          }}>{expanded ? '−' : `+${folded}`}</button>
-      )}
-      <Handle type="source" position={Position.Right} style={{ opacity: 0 }} />
-    </div>
-  )
-}
-
-// A dimension some process changes — pill-shaped so it never reads as a cube
-function DimNode({ data }) {
-  return (
-    <div style={{
-      width: NODE_W, height: NODE_H - 14, borderRadius: 999,
-      border: '1.5px solid #8b5cf6', background: 'rgba(139,92,246,0.07)',
-      display: 'flex', alignItems: 'center', gap: 8,
-      padding: '0 14px', cursor: 'pointer', overflow: 'hidden',
-    }}>
-      <Handle type="target" position={Position.Left} style={{ opacity: 0 }} />
-      <Layers size={12} style={{ color: '#8b5cf6', flexShrink: 0 }} />
-      <span style={{
-        fontSize: 11, fontWeight: 500, color: 'var(--cm-text)', fontFamily: 'monospace',
-        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1,
-      }}>{data.label}</span>
-      <Handle type="source" position={Position.Right} style={{ opacity: 0 }} />
-    </div>
-  )
-}
-
 const nodeTypes = { cube: CubeNode, group: GroupNode, process: ProcessNode, dim: DimNode }
-
-// ── Custom edges ──────────────────────────────────────────────────────────────
-
-function RuleCalcEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, selected }) {
-  const [p] = getBezierPath({ sourceX, sourceY, sourcePosition, targetX, targetY, targetPosition })
-  return <BaseEdge id={id} path={p} style={{ stroke: selected ? '#fbbf24' : '#b45309', strokeWidth: selected ? 2.5 : 1.5, opacity: 0.85 }} markerEnd={`url(#arrowCalc${selected ? 'Sel' : ''})`} />
-}
-
-function RuleFeederEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition }) {
-  const [p] = getBezierPath({ sourceX, sourceY, sourcePosition, targetX, targetY, targetPosition })
-  return <BaseEdge id={id} path={p} style={{ stroke: '#475569', strokeWidth: 1.5, strokeDasharray: '5 4', opacity: 0.6 }} markerEnd="url(#arrowFeeder)" />
-}
-
-function ProcessWriteEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition }) {
-  const [p] = getBezierPath({ sourceX, sourceY, sourcePosition, targetX, targetY, targetPosition })
-  return <BaseEdge id={id} path={p} style={{ stroke: '#10b981', strokeWidth: 1.5, opacity: 0.8 }} markerEnd="url(#arrowWrite)" />
-}
-
-function ProcessReadEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition }) {
-  const [p] = getBezierPath({ sourceX, sourceY, sourcePosition, targetX, targetY, targetPosition })
-  return <BaseEdge id={id} path={p} style={{ stroke: '#0ea5e9', strokeWidth: 1.5, strokeDasharray: '6 4', opacity: 0.7 }} markerEnd="url(#arrowRead)" />
-}
-
-function ProcessDimWriteEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition }) {
-  const [p] = getBezierPath({ sourceX, sourceY, sourcePosition, targetX, targetY, targetPosition })
-  return <BaseEdge id={id} path={p} style={{ stroke: '#8b5cf6', strokeWidth: 1.5, opacity: 0.8 }} markerEnd="url(#arrowDim)" />
-}
-
-function DimUsedByEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition }) {
-  const [p] = getBezierPath({ sourceX, sourceY, sourcePosition, targetX, targetY, targetPosition })
-  return <BaseEdge id={id} path={p} style={{ stroke: '#8b5cf6', strokeWidth: 1, strokeDasharray: '2 4', opacity: 0.5 }} markerEnd="url(#arrowDim)" />
-}
-
-function ProcessCallEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition }) {
-  const [p] = getBezierPath({ sourceX, sourceY, sourcePosition, targetX, targetY, targetPosition })
-  return <BaseEdge id={id} path={p} style={{ stroke: '#10b981', strokeWidth: 1.5, strokeDasharray: '3 3', opacity: 0.55 }} markerEnd="url(#arrowCall)" />
-}
-
-const edgeTypes = { rule_calc: RuleCalcEdge, rule_feeder: RuleFeederEdge, process_write: ProcessWriteEdge, process_read: ProcessReadEdge, process_call: ProcessCallEdge, process_dimwrite: ProcessDimWriteEdge, dim_used_by: DimUsedByEdge }
-const PROCESS_EDGE_TYPES = new Set(['process_write', 'process_read', 'process_call', 'process_dimwrite', 'dim_used_by'])
-
-function SvgMarkers() {
-  return (
-    <svg style={{ position: 'absolute', width: 0, height: 0 }}>
-      <defs>
-        <marker id="arrowCalc"    markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#b45309" /></marker>
-        <marker id="arrowCalcSel" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#fbbf24" /></marker>
-        <marker id="arrowFeeder"  markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#475569" /></marker>
-        <marker id="arrowWrite"   markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#10b981" /></marker>
-        <marker id="arrowRead"    markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#0ea5e9" /></marker>
-        <marker id="arrowDim"     markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#8b5cf6" /></marker>
-        <marker id="arrowCall"    markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#10b981" /></marker>
-      </defs>
-    </svg>
-  )
-}
 
 // Rotate cycles the dagre direction; the label is for the tooltip.
 const LAYOUT_NEXT  = { LR: 'TB', TB: 'RL', RL: 'BT', BT: 'LR' }
