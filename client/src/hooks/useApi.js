@@ -350,12 +350,13 @@ export const useSaveStaticSubset = () => useMutation({
     post(`/api/subset/static?server=${enc(server)}&dimension=${enc(dimension)}&name=${enc(name)}${hierarchy ? `&hierarchy=${enc(hierarchy)}` : ''}`, { elements }),
 })
 
-export const useCubeDimensions = (server, cube) => useQuery({
+export const cubeDimensionsQuery = (server, cube) => ({
   queryKey: ['cube-dims', server, cube],
   queryFn:  () => get(`/api/cube/dimensions?server=${enc(server)}&cube=${enc(cube)}`),
   enabled:  !!server && !!cube,
   staleTime: 60_000,
 })
+export const useCubeDimensions = (server, cube) => useQuery(cubeDimensionsQuery(server, cube))
 
 export const useViewAxes = () => useMutation({
   mutationFn: ({ server, cube, view }) =>
