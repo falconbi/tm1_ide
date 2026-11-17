@@ -1,18 +1,15 @@
-import { useMemo, useState, useCallback } from 'react'
-import {
-  useElements, useElementsWithIndex, useEdges, useElementAttrValues, useHierarchies,
-  useAddElement, useDeleteElement, useAddEdge, useDeleteEdge, useUpdateEdgeWeight, useSetComponent,
-  useDimensionUsage, useCreateHierarchy, usePreDeleteElementCheck,
-} from '@/hooks/useApi'
+import { useState, useCallback } from 'react'
 import HierarchyFromAttributeDialog from '@/components/HierarchyFromAttributeDialog'
 import { useStore } from '@/store'
 import { ChevronRight, ChevronDown, Loader2, List, GitBranch, Plus, X, ClipboardList, Table2, Search, ListOrdered, MapPin, Grid3x3, Cog, HelpCircle } from 'lucide-react'
 import HelpPanel from '@/components/HelpPanel'
 import { cn } from '@/lib/utils'
-import { toast } from 'sonner'
 import PicklistBuilder from './PicklistBuilder'
 import AttrGrid from '@/components/dimension-editor/attrs/AttrGrid'
 import StructureGrid from '@/components/dimension-editor/StructureGrid'
+import useDimensionData from '@/components/dimension-editor/hooks/useDimensionData'
+import useElementActions from '@/components/dimension-editor/hooks/useElementActions'
+import useHierarchySelection from '@/components/dimension-editor/hooks/useHierarchySelection'
 import ElementPanel, { AlternateBanner } from '@/components/dimension-editor/ElementPanel'
 import NewDimensionScreen from '@/components/dimension-editor/NewDimensionScreen'
 import BulkAddModal from '@/components/dimension-editor/dialogs/BulkAddModal'
@@ -20,7 +17,6 @@ import PreDeleteDialog from '@/components/dimension-editor/dialogs/PreDeleteDial
 import AddRow from '@/components/dimension-editor/tree/AddRow'
 import TreeNode from '@/components/dimension-editor/tree/TreeNode'
 import FlatList from '@/components/dimension-editor/tree/FlatList'
-import { buildTree, isUnder } from '@/lib/dimension-editor/tree'
 
 export default function DimensionEditor({ tab }) {
   if (!tab.dimension) return <NewDimensionScreen tab={tab} />
@@ -33,171 +29,39 @@ function DimensionEditorCore({ tab }) {
   const [showIndex, setShowIndex] = useState(false)
   const [addRoot, setAddRoot]     = useState(false)
   const [bulkAdd, setBulkAdd]     = useState(false)
-  const [busy, setBusy]           = useState(false)
-  const [error, setError]         = useState(null)
   const [showCubes, setShowCubes]       = useState(false)
   const [filterSearch, setFilterSearch] = useState('')
   const [showPicklist, setShowPicklist] = useState(false)
-  const [selectedHierarchy, setSelectedHierarchy] = useState(tab.hierarchy ?? tab.dimension)
-  const [addingHierarchy, setAddingHierarchy] = useState(false)
-  const [newHierarchyName, setNewHierarchyName] = useState('')
-  const [hierMenu, setHierMenu] = useState(false)
-  const [fromAttr, setFromAttr] = useState(false)
-  const [deleteCheck, setDeleteCheck] = useState(null)
-  const [deleteTarget, setDeleteTarget] = useState(null)
   const [showHelp, setShowHelp] = useState(false)
   const [dragging, setDragging] = useState(null)
 
-  const { data: elements = [], isLoading: loadingEl, refetch: refetchEl } = useElements(tab.server, tab.dimension, selectedHierarchy)
-  const { data: indexedEls = [] } = useElementsWithIndex(showIndex ? tab.server : null, tab.dimension, selectedHierarchy)
-  const indexMap = useMemo(() => Object.fromEntries(indexedEls.map(e => [e.Name, e.Index])), [indexedEls])
-  const { data: edges    = [], isLoading: loadingEd, refetch: refetchEd } = useEdges(tab.server, tab.dimension, selectedHierarchy)
-  const { data: hierarchies = [] } = useHierarchies(tab.server, tab.dimension)
-  const { data: dimUsageData } = useDimensionUsage(tab.server, tab.dimension)
-  const dimCubes    = dimUsageData?.cubes    ?? []
-  const dimProcs    = dimUsageData?.processes ?? []
-  const { data: elemAttrs, isFetching: loadingAttrs } = useElementAttrValues(tab.server, tab.dimension, selected, selectedHierarchy)
+  const {
+    selectedHierarchy, selectHierarchy, addingHierarchy, setAddingHierarchy,
+    newHierarchyName, setNewHierarchyName, hierMenu, setHierMenu,
+    fromAttr, setFromAttr, handleFromAttrDone, createHierarchy,
+  } = useHierarchySelection({ tab, setSelected })
 
-  const addElementMut     = useAddElement()
-  const deleteElementMut  = useDeleteElement()
-  const addEdgeMut        = useAddEdge()
-  const setComponentMut   = useSetComponent()
-  const deleteEdgeMut     = useDeleteEdge()
-  const updateWeightMut   = useUpdateEdgeWeight()
-  const createHierarchyMut = useCreateHierarchy()
-  const preDeleteMut      = usePreDeleteElementCheck()
+  const {
+    elements, edges, indexMap, hierarchies, dimCubes, dimProcs, elemAttrs, loadingAttrs,
+    loadingEl, loadingEd, refetchEl, refetchEd,
+    tree, filteredElements, filteredTree, consolElements,
+    selectedEl, selectedParents, selectedChildren,
+  } = useDimensionData({ tab, selectedHierarchy, showIndex, selected, filterSearch })
 
-  const tree = useMemo(() => buildTree(elements, edges), [elements, edges])
-
-  const filteredElements = useMemo(() => {
-    let list = elements
-    if (filterSearch) {
-      const q = filterSearch.toLowerCase()
-      list = list.filter(e => e.Name.toLowerCase().includes(q))
-    }
-    return list
-  }, [elements, filterSearch])
-
-  // Tree: the matches plus the parents above them, so a match still has a path down from the top
-  const filteredTree = useMemo(() => {
-    if (!filterSearch) return buildTree(elements, edges)
-    const parentsOf = {}
-    for (const e of edges) (parentsOf[e.ComponentName] ??= []).push(e.ParentName)
-    const keep = new Set(), stack = filteredElements.map(e => e.Name)
-    while (stack.length) { const n = stack.pop(); if (keep.has(n)) continue; keep.add(n); stack.push(...(parentsOf[n] ?? [])) }
-    return buildTree(elements.filter(e => keep.has(e.Name)), edges.filter(e => keep.has(e.ParentName) && keep.has(e.ComponentName)))
-  }, [elements, filteredElements, edges, filterSearch])
-
-  const consolElements   = useMemo(() => elements.filter(e => e.Type === 'C'), [elements])
-  const selectedEl       = selected ? tree.byName[selected] : null
-  const selectedParents  = selected ? edges.filter(e => e.ComponentName === selected) : []
-  const selectedChildren = selected ? edges.filter(e => e.ParentName === selected) : []
-
-  const refresh = useCallback(() => {
-    refetchEl(); refetchEd(); setError(null)
+  const refreshData = useCallback(() => {
+    refetchEl(); refetchEd()
   }, [refetchEl, refetchEd])
 
-  const run = useCallback(async (fn) => {
-    setBusy(true); setError(null)
-    try { await fn() } catch (e) { setError(e.message); toast.error(e.message) }
-    finally { setBusy(false) }
-  }, [])
-
-  const handleAddRoot = useCallback((name, type, before) => {
-    setAddRoot(false)
-    run(async () => {
-      await addElementMut.mutateAsync({ server: tab.server, dimension: tab.dimension, name, type, before, hierarchy: selectedHierarchy })
-      refresh()
-    })
-  }, [run, addElementMut, tab, refresh, selectedHierarchy])
-
-  const handleAddChild = useCallback((parent, name, type, before) => {
-    run(async () => {
-      await addElementMut.mutateAsync({ server: tab.server, dimension: tab.dimension, name, type, parent, before, hierarchy: selectedHierarchy })
-      refresh()
-    })
-  }, [run, addElementMut, tab, refresh, selectedHierarchy])
-
-  const handleBulkAdd = useCallback((names, type, parent, before) => {
-    setBulkAdd(false)
-    run(async () => {
-      // all names go in before the same anchor, in list order — so the block keeps
-      // the order it was pasted in
-      for (const name of names) {
-        await addElementMut.mutateAsync({ server: tab.server, dimension: tab.dimension, name, type, parent, before, hierarchy: selectedHierarchy })
-      }
-      refresh()
-    })
-  }, [run, addElementMut, tab, refresh, selectedHierarchy])
-
-  // drag an element onto a consolidation (before = null → end) or between two siblings
-  const handleDropChildAt = useCallback((parent, before, child) => {
-    if (!parent || !child || parent === child || before === child) return
-    const parentEl = tree.byName[parent], childEl = tree.byName[child]
-    if (parentEl?.Type !== 'C' || !childEl) return
-    if (childEl.Type === 'S') { toast.error('String elements cannot be added under a consolidation'); return }
-    if (isUnder(tree.childrenOf, child, parent)) { toast.error(`Cannot put "${child}" under its own descendant`); return }
-    const existing = edges.find(e => e.ParentName === parent && e.ComponentName === child)
-    run(async () => {
-      await setComponentMut.mutateAsync({
-        server: tab.server, dimension: tab.dimension, parent, child, before,
-        weight: existing?.Weight ?? 1, hierarchy: selectedHierarchy,
-      })
-      refresh()
-      setSelected(parent)
-      toast.success(`${existing ? 'Moved' : 'Added'} ${child} under ${parent}`)
-    })
-  }, [tree, edges, run, setComponentMut, tab, refresh, selectedHierarchy])
-
-  const execDelete = useCallback((name) => {
-    if (selected === name) setSelected(null)
-    run(async () => {
-      const involving = edges.filter(e => e.ParentName === name || e.ComponentName === name)
-      await Promise.all(involving.map(e =>
-        deleteEdgeMut.mutateAsync({ server: tab.server, dimension: tab.dimension, parent: e.ParentName, child: e.ComponentName, hierarchy: selectedHierarchy })
-      ))
-      await deleteElementMut.mutateAsync({ server: tab.server, dimension: tab.dimension, name, hierarchy: selectedHierarchy })
-      refresh()
-    })
-  }, [run, selected, edges, deleteEdgeMut, deleteElementMut, tab, refresh, selectedHierarchy])
-
-  const handleDelete = useCallback((name) => {
-    const childCount = (tree.childrenOf[name] ?? []).length
-    if (childCount > 0 && !window.confirm(`"${name}" has ${childCount} child${childCount !== 1 ? 'ren' : ''}. Remove all edges and delete?`)) return
-    const id = toast.loading(`Checking references for "${name}"…`)
-    preDeleteMut.mutateAsync({ server: tab.server, dimension: tab.dimension, element: name, hierarchy: selectedHierarchy })
-      .then(result => {
-        toast.dismiss(id)
-        setDeleteTarget(name)
-        setDeleteCheck(result)
-      })
-      .catch(() => {
-        toast.dismiss(id)
-        execDelete(name)
-      })
-  }, [tree, tab, selectedHierarchy, preDeleteMut, execDelete])
-
-  const handleAddParent = useCallback((child, parent) => {
-    run(async () => {
-      await addEdgeMut.mutateAsync({ server: tab.server, dimension: tab.dimension, parent, child, hierarchy: selectedHierarchy })
-      refresh()
-    })
-  }, [run, addEdgeMut, tab, refresh, selectedHierarchy])
-
-  const handleRemoveParent = useCallback((child, parent) => {
-    run(async () => {
-      await deleteEdgeMut.mutateAsync({ server: tab.server, dimension: tab.dimension, parent, child, hierarchy: selectedHierarchy })
-      refresh()
-    })
-  }, [run, deleteEdgeMut, tab, refresh, selectedHierarchy])
-
-  const handleUpdateWeight = useCallback((parent, child, weight) => {
-    run(async () => {
-      await updateWeightMut.mutateAsync({ server: tab.server, dimension: tab.dimension, parent, child, weight, hierarchy: selectedHierarchy })
-      refresh()
-    })
-  }, [run, updateWeightMut, tab, refresh])
-
+  const {
+    busy, error, refresh,
+    deleteCheck, setDeleteCheck, deleteTarget, setDeleteTarget,
+    run, handleAddRoot, handleAddChild, handleBulkAdd, handleDropChildAt,
+    execDelete, handleDelete, handleAddParent, handleRemoveParent, handleUpdateWeight,
+  } = useElementActions({
+    tab, tree, edges, selected, setSelected, refresh: refreshData, selectedHierarchy,
+    closeAddRoot: () => setAddRoot(false),
+    closeBulkAdd: () => setBulkAdd(false),
+  })
 
   if (loadingEl || loadingEd) {
     return (
@@ -230,7 +94,7 @@ function DimensionEditorCore({ tab }) {
         {hierarchies.filter(h => h !== 'Leaves').length > 1 && (
           <select
             value={selectedHierarchy}
-            onChange={e => { setSelectedHierarchy(e.target.value); setSelected(null) }}
+            onChange={e => selectHierarchy(e.target.value)}
             className="text-xs bg-background border border-border rounded px-1.5 py-0.5 text-foreground max-w-36"
             title="Select hierarchy"
           >
@@ -246,10 +110,7 @@ function DimensionEditorCore({ tab }) {
               onKeyDown={e => {
                 if (e.key === 'Enter' && newHierarchyName.trim()) {
                   run(async () => {
-                    await createHierarchyMut.mutateAsync({ server: tab.server, dimension: tab.dimension, name: newHierarchyName.trim() })
-                    setAddingHierarchy(false)
-                    setNewHierarchyName('')
-                    setSelectedHierarchy(newHierarchyName.trim())
+                    await createHierarchy(newHierarchyName.trim())
                   })
                 }
                 if (e.key === 'Escape') { setAddingHierarchy(false); setNewHierarchyName('') }
@@ -341,7 +202,7 @@ function DimensionEditorCore({ tab }) {
       <AlternateBanner server={tab.server} dimension={tab.dimension} hierarchy={selectedHierarchy} />
       {fromAttr && (
         <HierarchyFromAttributeDialog server={tab.server} dimension={tab.dimension} onClose={() => setFromAttr(false)}
-          onDone={h => { setFromAttr(false); setSelectedHierarchy(h); setSelected(null) }} />
+          onDone={handleFromAttrDone} />
       )}
 
       {/* Toolbar row 2 — used in + filters */}
