@@ -418,12 +418,13 @@ export const useMultiFormatAttrs = (server, dims) => {
   })
 }
 
-export const useElementAttrValues = (server, dim, element, hierarchy) => useQuery({
+export const elementAttrsQuery = (server, dim, element, hierarchy) => ({
   queryKey: ['element-attrs', server, dim, element, hierarchy],
   queryFn:  () => get(`/api/element/attributes?server=${enc(server)}&dimension=${enc(dim)}&element=${enc(element)}${hierarchy ? `&hierarchy=${enc(hierarchy)}` : ''}`),
   enabled:  !!server && !!dim && !!element,
   staleTime: 30_000,
 })
+export const useElementAttrValues = (server, dim, element, hierarchy) => useQuery(elementAttrsQuery(server, dim, element, hierarchy))
 
 // the hierarchies of several dimensions at once (e.g. every dimension of a cube, to offer each ALT H)
 export const useHierarchiesFor = (server, dims) => useQueries({
@@ -479,12 +480,14 @@ export const useAttrGrid = (server, dimension, hierarchy) => useQuery({
   staleTime: 30_000,
 })
 
-export const useAliasValues = (server, dim, aliasAttr) => useQuery({
+export const aliasValuesQuery = (server, dim, aliasAttr) => ({
   queryKey: ['alias-values', server, dim, aliasAttr],
   queryFn:  () => get(`/api/dimension/alias-values?server=${enc(server)}&dimension=${enc(dim)}&alias=${enc(aliasAttr)}`),
   enabled:  !!server && !!dim && !!aliasAttr,
   staleTime: 60_000,
 })
+export const useAliasValues = (server, dim, aliasAttr) => useQuery(aliasValuesQuery(server, dim, aliasAttr))
+export const useWriteCell = () => useMutation({ mutationFn: (body) => post('/api/cells/write', body) })
 
 export const useWriteElementAttribute = () => useMutation({
   mutationFn: (body) => post('/api/element/attribute', body),

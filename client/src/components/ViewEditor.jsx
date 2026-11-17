@@ -1,4 +1,3 @@
-import { get, post } from '@/lib/api'
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react'
 import { AgGridReact } from 'ag-grid-react'
 import { AllCommunityModule, ModuleRegistry } from 'ag-grid-community'
@@ -6,7 +5,7 @@ import { DndContext, DragOverlay, PointerSensor, useSensor, useSensors } from '@
 import MonacoEditor from '@monaco-editor/react'
 import { useStore } from '@/store'
 import { subsetApplyCallbacks } from '@/lib/subsetCallbacks'
-import { useCubeDimensions, useElementsTrees, useHierarchiesFor, useViews, useExecuteMDX, useViewAxes, useSaveView, useSetDefaultView, usePawBookUsage, useViewUsage, useViewSourceUsage, useMultiFormatAttrs, useConflictCheck, useGenerateViewMDX, useConfig } from '@/hooks/useApi'
+import { useCubeDimensions, useElementsTrees, useHierarchiesFor, useViews, useExecuteMDX, useViewAxes, useSaveView, useSetDefaultView, usePawBookUsage, useViewUsage, useViewSourceUsage, useMultiFormatAttrs, useConflictCheck, useGenerateViewMDX, useConfig, aliasValuesQuery, useWriteCell } from '@/hooks/useApi'
 import { toast } from 'sonner'
 import { RefreshCw, Loader2, Table2, GripVertical, GripHorizontal, LayoutGrid, Rows3, Columns3, Filter, ZapOff, Zap, Save, Code2, Eye, ChevronDown, BookOpen, ChevronUp, MapPin, WrapText, Braces, History, AlertTriangle, Cog, FileSearch, Sparkles, Clock, Check, ArrowUpDown, HelpCircle } from 'lucide-react'
 import HelpPanel from '@/components/HelpPanel'
@@ -19,6 +18,7 @@ import TraceSidePanel from '@/components/view-editor/trace/TraceSidePanel.jsx'
 import { cn } from '@/lib/utils'
 import { formatMDX } from '@/lib/mdx-format'
 import { viewTabId, processTabId } from '@/lib/tab-ids'
+import { useQueryClient } from '@tanstack/react-query'
 import { useGridAppearance } from '@/lib/grid-appearance'
 import { cellsetToHierarchyData, parseCellset, buildGridData } from '@/lib/view-cellset'
 
@@ -152,16 +152,18 @@ export default function ViewEditor({ tab }) {
 
     const [dimAliases, setDimAliases]         = useState({})
     const [aliasValueMaps, setAliasValueMaps] = useState({})
+    const queryClient = useQueryClient()
+    const writeCell = useWriteCell()
     const handleAliasChange = useCallback(async (dim, attr) => {
         setDimAliases(prev => ({ ...prev, [dim]: attr || null }))
         if (!attr) return
         const key = `${dim}:${attr}`
         if (aliasValueMaps[key]) return
         try {
-            const map = await get(`/api/dimension/alias-values?server=${encodeURIComponent(tab.server)}&dimension=${encodeURIComponent(dim)}&alias=${encodeURIComponent(attr)}`)
+            const map = await queryClient.fetchQuery(aliasValuesQuery(tab.server, dim, attr))
             setAliasValueMaps(prev => ({ ...prev, [key]: map }))
         } catch { /* alias fetch failed — alias display just stays plain */ }
-    }, [tab.server, aliasValueMaps])
+    }, [tab.server, aliasValueMaps, queryClient])
 
     const [mdxEditorHeight, setMdxEditorHeight] = useState(224)
     const startMdxEditorResize = useCallback((e) => {
@@ -923,10 +925,10 @@ export default function ViewEditor({ tab }) {
         const coordMap = coordsOf(tuple, members)
         const missing  = cubeDims.filter(d => !coordMap.has(d))
         if (missing.length) throw new Error(`Cannot write — move all dimensions to an axis: ${missing.join(', ')}`)
-        await post('/api/cells/write', { server: tab.server, cube: tab.cube, dims: cubeDims.map(dim => ({ dim, element: coordMap.get(dim) })), value })
+        await writeCell.mutateAsync({ server: tab.server, cube: tab.cube, dims: cubeDims.map(dim => ({ dim, element: coordMap.get(dim) })), value })
         toast.success('Written')
         scheduleRefresh()
-    }, [coordsOf, cubeDims, tab.server, tab.cube, scheduleRefresh])
+    }, [coordsOf, cubeDims, tab.server, tab.cube, scheduleRefresh, writeCell])
 
     const handlePivotContextMenu = useCallback(({ tuple, members, cell, event }) => {
         event?.preventDefault?.()

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import { ChevronRight } from 'lucide-react'
-import { get } from '@/lib/api'
-import { useTraceCellCalc } from '@/hooks/useApi'
+import { useQueryClient } from '@tanstack/react-query'
+import { useTraceCellCalc, elementAttrsQuery, cubeDimensionsQuery } from '@/hooks/useApi'
 import { cn } from '@/lib/utils'
 import { extractRuleCalls, splitArgs, resolveArg, matchingCloseParen, splitTopLevelOps, rhsOf, splitComparison } from '@/lib/tm1-rule-parser'
 import { isGuardStatement, fmtTraceValue, formatStatement } from '@/lib/view-editor/trace-format.js'
@@ -38,14 +38,14 @@ function RuleBreakdown({ server, statements: allStatements, dimElemPairs, cube, 
         if (!toFetch.size) return
         setLoadingAttrs(true)
         Promise.all([...toFetch.entries()].map(([key, { dim, elem }]) =>
-            get(`/api/element/attributes?server=${encodeURIComponent(server)}&dimension=${encodeURIComponent(dim)}&element=${encodeURIComponent(elem)}`).then(v => [key, v]).catch(() => [key, {}])
+            queryClient.fetchQuery(elementAttrsQuery(server, dim, elem)).then(v => [key, v]).catch(() => [key, {}])
         )).then(results => {
             const map = {}
             for (const [key, vals] of results) map[key] = vals
             setAttrValues(map)
             setLoadingAttrs(false)
         })
-    }, [allCalls, server, dimElemPairs])
+    }, [allCalls, server, dimElemPairs, queryClient])
 
     // Resolve an ATTRS('Dim', elem, 'Attr') expression to its fetched attribute
     // value; element arg may be a quoted name, a !Dim ref, or another expr.
@@ -63,6 +63,7 @@ function RuleBreakdown({ server, statements: allStatements, dimElemPairs, cube, 
     const dimCache = useRef({})
     const [, bumpVal] = useReducer(x => x + 1, 0)
     const traceCell = useTraceCellCalc()
+    const queryClient = useQueryClient()
 
     const fetchCellValue = useCallback(async (targetCube, pairs) => {
         const key = `${targetCube}::${pairs.map(p => p.element).join('|')}`
@@ -78,11 +79,11 @@ function RuleBreakdown({ server, statements: allStatements, dimElemPairs, cube, 
     const getCubeDims = useCallback(async (cubeName) => {
         if (dimCache.current[cubeName]) return dimCache.current[cubeName]
         try {
-            const dims = await get(`/api/cube/dimensions?server=${encodeURIComponent(server)}&cube=${encodeURIComponent(cubeName)}`)
+            const dims = await queryClient.fetchQuery(cubeDimensionsQuery(server, cubeName))
             dimCache.current[cubeName] = dims
             return dims
         } catch { return [] }
-    }, [server])
+    }, [server, queryClient])
 
     // Attribute values by dimension + element, fetched once.
     const attrCache = useRef({})
@@ -90,10 +91,10 @@ function RuleBreakdown({ server, statements: allStatements, dimElemPairs, cube, 
         const key = `${dim}::${elem}`
         if (attrCache.current[key]) return attrCache.current[key]
         try {
-            attrCache.current[key] = await get(`/api/element/attributes?server=${encodeURIComponent(server)}&dimension=${encodeURIComponent(dim)}&element=${encodeURIComponent(elem)}`)
+            attrCache.current[key] = await queryClient.fetchQuery(elementAttrsQuery(server, dim, elem))
         } catch { attrCache.current[key] = {} }
         return attrCache.current[key]
-    }, [server])
+    }, [server, queryClient])
 
     // Work out what a coordinate expression comes to for this cell: a 'literal', a !Dim reference,
     // ATTRS(...), DB(...) or IF(cond, a, b) -- nested as deep as the rule goes. { value, source }
