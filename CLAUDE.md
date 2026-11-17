@@ -39,6 +39,7 @@ core/
     direct-v11.js             # Direct PAW V11 native auth adapter
     paw-native.js             # PAW-native session adapter
     paw-oauth2.js             # Authentik/OAuth2 adapter (PAW V12)
+  process-scan.js             # One TI/process facts scanner shared by the Cube Map and Data Sources
   sql-client.js               # External SQL connections (MSSQL/PG/MySQL/SQLite)
 shared/lens-patterns/         # Worked Lens patterns — read-only demonstrations, never copied into a model
 shared/pivot/                 # The shared pivot — one slice-and-dice grid for the IDE View editor and Lenses (docs/lenses/PIVOT_PLAN.md)

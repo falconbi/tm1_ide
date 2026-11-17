@@ -1,9 +1,11 @@
 'use strict'
 
 // Builds the Cube Map model: cubes, rules/TI edges, process-call chains and the
-// ordered steps the map/Show playback reads. This used to live in server.js with
-// its own copies of the comment/argument/name helpers; those now come from
-// cube-data-sources so the Cube Map and the Rules Data Sources strip cannot drift.
+// ordered steps the map/Show playback reads. The process and rule scanning lives in
+// core/process-scan.js and is shared with the Rules Data Sources strip; this module
+// folds the facts into edges, steps and dimension nodes, filters rule refs to the
+// cubes that exist (and are not the cube itself), and reports a failed process scan
+// without losing the rule edges.
 
 const { fetchProcesses, scanProcess, scanRules, stripComments } = require('./process-scan')
 

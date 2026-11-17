@@ -1,13 +1,13 @@
 'use strict'
 
-// Where does a cube's data come from? Scans every TI process (CellPut / CellIncrement /
-// ViewZeroOut / CubeClearData / CubeProcessFeeders, including cube names held in variables
-// or passed to a generic copy process) and the cube's own rules, and returns a compact
-// per-cube source list for the Rules editor's Data Sources strip.
+// Where does a cube's data come from? Folds the facts from core/process-scan.js into a
+// compact per-cube source list for the Rules editor's Data Sources strip: writers and
+// what they write, readers, version-copy wrappers, and the cube's own rule references.
 //
-// Same rules as the Cube Map scan: comments are stripped quote-aware, and a cube may be
-// named by a literal, a variable assigned a literal, or an ExecuteProcess cube parameter.
-// The result is cached per server briefly because it reads every process.
+// The scanning itself lives in core/process-scan.js and is shared with the Cube Map, so
+// the two screens cannot drift. This module still owns the process metadata (header,
+// source, parameters, code hash), the per-user brief cache, the summary join and the
+// view-source lookup used by the view editor.
 
 const { hashCode, list } = require('./process-summaries')
 const { fetchProcesses, scanProcess, scanRules } = require('./process-scan')
