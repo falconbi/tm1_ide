@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import {
   ArrowLeft, ArrowRight, CheckCircle2, XCircle, AlertTriangle, Loader2,
   Lock, FileCode2, Trash2, ShieldCheck, RefreshCw,
@@ -114,9 +114,19 @@ export default function LensDeploy({ source }) {
   const [approval, setApproval] = useState(null)
   const [result, setResult] = useState(null)
 
-  const { data: plan, isLoading, error } = useLensDeployPlan(source, target, comparing)
+  const { data: plan, isLoading, error, refetch } = useLensDeployPlan(source, target, comparing)
   const approve = useApproveLensDeploy()
   const execute = useExecuteLensDeploy()
+
+  useEffect(() => {
+    const onSignedIn = (e) => {
+      const s = String(e.detail?.server ?? '').toLowerCase()
+      if (!comparing || !s || ![source, target].some(x => String(x).toLowerCase() === s)) return
+      refetch()
+    }
+    window.addEventListener('tm1-server-signed-in', onSignedIn)
+    return () => window.removeEventListener('tm1-server-signed-in', onSignedIn)
+  }, [comparing, source, target, refetch])
 
   const selectedDeletes = Object.keys(delSel).filter(k => delSel[k])
   const canApprove = !!plan && plan.ok && (plan.deployable.length > 0 || selectedDeletes.length > 0) && !approve.isPending

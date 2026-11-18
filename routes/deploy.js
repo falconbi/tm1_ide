@@ -20,10 +20,18 @@ app.get('/api/deploy/baseline', (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
+function lensServerSignedIn(req, res, server) {
+    const { needsServerLogin } = require('../core/adapter-registry')
+    if (!needsServerLogin(server, req.ideToken)) return true
+    res.status(401).json({ needsServerLogin: server, error: `Sign in to server "${server}" to use it` })
+    return false
+}
+
 app.get('/api/deploy/lenses/plan', async (req, res) => {
     try {
         const { source, target } = req.query
         if (!source || !target) return res.status(400).json({ error: 'source and target required' })
+        if (!lensServerSignedIn(req, res, source) || !lensServerSignedIn(req, res, target)) return
         if (!(await requireTm1Admin(req, res, source))) return
         if (!(await requireTm1Admin(req, res, target))) return
         const { planLenses } = require('../core/lens-deploy')
@@ -35,6 +43,7 @@ app.post('/api/deploy/lenses/approve', async (req, res) => {
     try {
         const { source, target, entries, deletes, note, planHash } = req.body
         if (!source || !target) return res.status(400).json({ error: 'source and target required' })
+        if (!lensServerSignedIn(req, res, source) || !lensServerSignedIn(req, res, target)) return
         if (!(await requireTm1Admin(req, res, source))) return
         if (!(await requireTm1Admin(req, res, target))) return
         const { approveLenses } = require('../core/lens-deploy')
@@ -48,6 +57,7 @@ app.post('/api/deploy/lenses/execute', async (req, res) => {
     try {
         const { source, target, approvalId } = req.body
         if (!source || !target) return res.status(400).json({ error: 'source and target required' })
+        if (!lensServerSignedIn(req, res, source) || !lensServerSignedIn(req, res, target)) return
         if (!(await requireTm1Admin(req, res, source))) return
         if (!(await requireTm1Admin(req, res, target))) return
         const { executeLenses } = require('../core/lens-deploy')
@@ -59,6 +69,7 @@ app.get('/api/deploy/lenses/history', async (req, res) => {
     try {
         const target = req.query.target
         if (!target) return res.status(400).json({ error: 'target required' })
+        if (!lensServerSignedIn(req, res, target)) return
         if (!(await requireTm1Admin(req, res, target))) return
         const { readHistory, readApprovals } = require('../core/lens-deploy')
         const [history, approvals] = await Promise.all([
