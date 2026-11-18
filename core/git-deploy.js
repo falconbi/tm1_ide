@@ -246,9 +246,9 @@ async function execute(target, { branch = 'dev', token, gitUser = gitIdentity.us
             try {
                 const repoUrl = (await c.post('GitStatus', { Username: gitUser, Password: token }))?.URL
                 const base = require('./git-state').lastDeployed(target)?.lastDeployedCommit ?? null
-                const { changedObjects, objectKey } = require('./git-release')
+                const { changedObjects, objectKey, expectedPlanKeys } = require('./git-release')
                 const expected = await changedObjects({ from: base, to: releaseCommit, repoUrl, token, gitUser })
-                const expectedKeys = new Set(expected.map(o => objectKey(o.type, o.name, o.parent)))
+                const expectedKeys = expectedPlanKeys(expected)
                 const parsedOps = (plan.Operations ?? []).map(parsePlanOp).filter(Boolean)
                 const unknownOps = parsedOps.filter(o => o.unknown)
                 if (unknownOps.length) {

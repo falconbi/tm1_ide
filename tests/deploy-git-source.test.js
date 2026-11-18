@@ -38,6 +38,7 @@ stub('core/git-reconcile', { reconcile: async () => reconcileResult })
 stub('core/git-release', {
     changedObjects: async () => ([{ type: 'cube', name: 'A' }]),
     objectKey: (type, name) => `${type}::${String(name).toLowerCase()}`,
+    expectedPlanKeys: (objects) => new Set((objects ?? []).map(o => `${o.type}::${String(o.name).toLowerCase()}`)),
     applyReleaseComplement: async () => ({ errors: [] }),
     verifyRelease: async () => [],
 })

@@ -10,6 +10,8 @@ commits that mixed a fix into a feature are included too. New features are not l
 
 ## November 2026
 
+- **Release verifier and subset/view parents** — TM1 Git’s pull plan names the parent dimension for a subset change (and cube for a view), so the deploy check refused a release carrying only the subset/view. The expected plan keys now include those parents
+
 - **Catch-up approval dependencies** — Approval ran CheckRules against the old target before the catch-up created its cubes/elements, so a valid catch-up was refused. Catch-ups now keep the release link check but skip the rule/TI checks against the pre-pull target
 
 - **Release/catch-up renames** — Git reported a renamed process JSON as `R`, but the release treated it as an add and left the old base file behind; that stale JSON still linked a deleted `.ti` and broke the pull plan. Renames now remove the old path before adding the new one

@@ -279,3 +279,14 @@ test('a catch-up applies a rename by removing the old path from the base', async
     } finally { fs.rmSync(vw, { recursive: true, force: true }) }
   } finally { fs.rmSync(bare, { recursive: true, force: true }); fs.rmSync(w, { recursive: true, force: true }) }
 })
+
+test('expectedPlanKeys allows the parent dimension/cube of a subset/view change', () => {
+  const { expectedPlanKeys, objectKey } = require(path.join(__dirname, '..', 'core', 'git-release'))
+  const keys = expectedPlanKeys([
+    { type: 'subset', name: 'Default', parent: 'WFP Pay Component' },
+    { type: 'view', name: 'Default', parent: 'Sales' },
+  ])
+  assert.ok(keys.has(objectKey('subset', 'Default', 'WFP Pay Component')))
+  assert.ok(keys.has(objectKey('dimension', 'WFP Pay Component')))
+  assert.ok(keys.has(objectKey('cube', 'Sales')))
+})

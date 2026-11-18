@@ -93,6 +93,17 @@ const objectKey = (type, name, parent) => {
 
 const subsetNameFromId = (el) => el?.Name ?? String(el?.['@id'] ?? '').match(/Elements\('([^']+)'\)/)?.[1] ?? null
 
+// TM1 Git's pull plan names the parent object for a subset/view change. Allow
+// that parent as well as the child's own key when verifying a release.
+function expectedPlanKeys(objects) {
+    const keys = new Set((objects ?? []).map(o => objectKey(o.type, o.name, o.parent)))
+    for (const o of objects ?? []) {
+        if (o.type === 'subset' && o.parent) keys.add(objectKey('dimension', o.parent))
+        if (o.type === 'view' && o.parent) keys.add(objectKey('cube', o.parent))
+    }
+    return keys
+}
+
 // ── Link closure ─────────────────────────────────────────────────────────────
 // TM1 Git stores cross-object references as `@Code.links` (an array) or
 // `@Code.link` (one string). A released hierarchy without its linked subsets is
@@ -428,7 +439,7 @@ async function buildRelease(changeSet, target, { token, gitUser = gitIdentity.us
     }
 }
 
-module.exports = { buildRelease, objectFromFile, parseNameStatus, ENTRY_TO_OBJECT, objectKey, ownerOf, NO_BASE_ERROR, changedObjects, checkDependencies, splitTi, verifyRelease, applyReleaseComplement, linkClosure }
+module.exports = { buildRelease, objectFromFile, parseNameStatus, ENTRY_TO_OBJECT, objectKey, expectedPlanKeys, ownerOf, NO_BASE_ERROR, changedObjects, checkDependencies, splitTi, verifyRelease, applyReleaseComplement, linkClosure }
 
 // TM1 Git's pull plan has no operation for subsets or views, so a release pull
 // never applies them. After the pull, apply every included subset and view to the
