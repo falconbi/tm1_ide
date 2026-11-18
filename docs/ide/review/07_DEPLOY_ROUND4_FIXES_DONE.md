@@ -13,6 +13,7 @@ Git use. Tests use plain objects, stubs and local bare Git repos in temp folders
 | 1 | `1e8410c` | Won't deploy: `wont_deploy_at/by/reason` in the change log and the model record; owner/admin via `canManageSession`; required reason; open sets refused; mark/unmark routes and list UI; `ownerOf` skips; wizard refuses commit/release; grey badge and "Show N won't deploy" | 646 — 645 pass, 1 skipped |
 | 2 | `b31661a` | Catch-up release: admin-only entries per eligible target, typed sentence, closed empty `kind='catch-up'` session, `commit_ref` from the source GitStatus (unpushed refused), `buildRelease({catchUp:true})`, review banner/grouped included/covered/open/target-only, History kind; execute accepts the release commit | 656 — 655 pass, 1 skipped |
 | 3 | `82c8a6e` | Covered sets marked after a clean catch-up deploy only; open sets never covered; model records updated; `ownerOf` skips; list hides with "Covered by catch-up <date>" | 661 — 660 pass, 1 skipped |
+| 4a | `50b16da` | Follow-up: catch-up approval skipped the close-tests gate it can never satisfy; ordinary releases still require a clean result | 663 tests — 662 pass, 1 skipped |
 | 4 | `94589fd` | `DEPLOY_LIFECYCLE.md` in-order rule, catch-up exception, won't deploy, covered; `FEATURES.md` one line per deploy feature; Chore "run now" claim removed | 661 — 660 pass, 1 skipped |
 
 Final: **661 tests — 660 pass, 1 skipped**.
