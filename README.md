@@ -99,6 +99,9 @@ It's real code, used to build real models, and it's still evolving. Please know 
 - **Your environment, your responsibility.** Understand what an operation does and validate changes
   before applying them to an important server.
 
+See the [bug-fix log](docs/ide/BUG_FIXES.md) and [changelog](CHANGELOG.md) for what changes and how
+often.
+
 It isn't an IBM product and isn't supported by IBM.
 
 ## Getting started
@@ -134,7 +137,7 @@ ideas and pull requests are welcome, but there's no promise they'll be accepted 
 [Setup](docs/ide/SETUP.md) · [Features](docs/ide/FEATURES.md) ·
 [Architecture](docs/ide/ARCHITECTURE.md) · [MCP server](docs/ide/MCP_SERVER.md) ·
 [Deploy lifecycle](docs/deploy/DEPLOY_LIFECYCLE.md) · [Security](SECURITY.md) ·
-[Changelog](CHANGELOG.md) · [All guides](docs/README.md)
+[Changelog](CHANGELOG.md) · [Bug fixes](docs/ide/BUG_FIXES.md) · [All guides](docs/README.md)
 
 ## Licence
 
