@@ -83,7 +83,7 @@ app.get('/api/sessions', async (req, res) => {
         catch { /* no baseline yet */ }
         res.json(sessions.map(s => ({
             ...s,
-            deployed: baselineEntryId != null && s.max_entry_id != null && s.max_entry_id <= baselineEntryId,
+            deployed: !!s.deployed_target || (baselineEntryId != null && s.max_entry_id != null && s.max_entry_id <= baselineEntryId),
             phantom: phantom.has(s.id),
         })))
     }
