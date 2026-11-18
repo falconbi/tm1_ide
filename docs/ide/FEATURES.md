@@ -21,7 +21,7 @@ Every feature in one numbered list.
 7. **View Editor** — native and MDX views, grid with writeback, refreshes when the cube's rules are saved, feeders check; a dimension can use an Alternate Hierarchy.
 8. **Pivot drill-down** (View Editor and Lenses) — open any total even beyond the query, heading right-click menu (expand, collapse, leaves only, keep only), Freeze top.
 9. **Guided MDX Builder** — axis-by-axis view builder, subset filter builder, ad-hoc MDX editor with result grid.
-10. **Chore Editor** — schedules, steps, activate / deactivate / run now.
+10. **Chore Editor** — schedules, steps, activate / deactivate.
 11. **Cube Editor** — create and delete cubes, assign dimensions.
 12. **SQL Editor** — SQL Server, PostgreSQL, MySQL, SQLite; schema browser, saved queries, post as a TI datasource.
 13. **Period Builder** — wizard for a time dimension with computed attributes, three generated TI processes and subsets.
@@ -41,18 +41,22 @@ Every feature in one numbered list.
 
 22. **Assertions** — the model's known-right answers, stored in TM1, checked after every build and deploy.
 23. **Change Sets** — every save tracked; change logs grouped by action; open any changed object.
-24. **Deploy through TM1 Git** (preview) — test → close → build release → review → approve → deploy → verify, with drift checks.
-25. **Deploy History** — permanent record of every deployment: approvals, manifests, before/after snapshots with diffs.
-26. **Earlier REST deploy pipeline** — Diff → Package → Risk → Approve → Deploy; kept for history and the admin CLI.
+24. **Deploy through TM1 Git** (preview) — one change set per release, in order: test → close → build release → review → approve → deploy → verify, with drift checks.
+25. **Phantom change sets** — a closed set whose touched objects no longer exist is hidden automatically as history only; it owns nothing and cannot be committed or released. No manual mark.
+26. **Catch-up release** — admin-only, once: Deploy → Catch up a server; bring a target level with DEV in one reviewed release when its history predates change sets. Includes a reviewed target-only delete list, recorded in the approval and deploy log.
+27. **Covered sets** — after a clean catch-up, the older sets it carried count as released; open sets stay in play.
+28. **Deploy History** — permanent record of every deployment: approvals, manifests, before/after snapshots with diffs.
+29. **Earlier REST deploy pipeline** — Diff → Package → Risk → Approve → Deploy; kept for history and the admin CLI.
+29a. **Deploy → Lenses** — admin-only, no Git: compare source and target, review published new/changed Lenses (drafts disabled), block on a missing cube/process, approve the exact content hash, deploy under the target lock, verify by reading back, and keep history in the target model.
 
 ## AI
 
-27. **MCP server** — 67 operations an AI agent (e.g. Claude Code) uses to build dimensions, cubes, rules and processes inside change sets; includes version copy and period builder tools.
-28. **Built-in AI assistant** — generates views and subsets from a description (Anthropic API key).
+30. **MCP server** — 68 operations an AI agent (e.g. Claude Code) uses to build dimensions, cubes, rules and processes inside change sets; includes version copy and period builder tools.
+31. **Built-in AI assistant** — generates views and subsets from a description (Anthropic API key).
 
 ## Lenses (in development)
 
-29. **Lenses and the Lens Editor** — single-file HTML apps on live TM1 data with governed write-back, built and previewed in the IDE. The Workforce model's Lenses stay in TM1 with the model.
+32. **Lenses and the Lens Editor** — single-file HTML apps on live TM1 data with governed write-back, built and previewed in the IDE. The Workforce model's Lenses stay in TM1 with the model.
 
 ## Server and operations
 
@@ -163,7 +167,7 @@ Five playlists, one theme each — build with AI, everyday development, governed
 | **Subset Editor** | MDX code view + visual element tree, static/MDX save, MDX preview |
 | **View Editor** | Native and MDX view builder, cell grid with inline writeback, **auto-refreshes when rules for the same cube are saved**, **cell right-click → Trace** side drawer. A dimension pill can use an **Alternate Hierarchy** (e.g. *WFP Position › By Location*) — drag it like any dimension |
 | **Guided MDX Builder** | Axis-by-axis view builder, subset filter builder, and an MDX editor for ad-hoc queries with a result grid — the **MDX** icon in the toolbar |
-| **Chore Editor** | Schedule editor, step list, activate/deactivate/execute on demand |
+| **Chore Editor** | Schedule editor, step list, activate/deactivate |
 | **Cube Editor** | Create and delete cubes, dimension assignment |
 | **SQL Editor** | External database queries (SQL Server, PostgreSQL, MySQL, SQLite), schema browser, saved queries, post SQL as TI datasource |
 | **Cube Map** | Interactive dependency graph of the whole model — auto-laid-out (dagre) nodes for every cube, with edges for rule calc references, feeders, and TI process writes. Click a cube to highlight its full transitive dependency chain (upstream + downstream) with a count; layer toggles for Rules/Feeders/Groups/TI; auto-clusters related cubes into groups; shows the TI **writer** for a cube and, one hop further, what **calls** that writer — so a generic reusable process (e.g. a Bedrock copy utility) is correctly attributed wherever it's invoked. Open the cube, its rules, or the process straight from the node. Minimap + legend included. The map keeps its place per tab (player step, phase focus, camera), follows the run scope during playback, and shows process and cube facts with links to the transaction log |
@@ -172,8 +176,12 @@ Five playlists, one theme each — build with AI, everyday development, governed
 | **Process summaries** | A plain-English "what does this process do" for each TI process, written by AI or by hand and shown in the Data sources hover. Kept outside the TI code; a process that has changed since its summary shows as stale |
 | **Runbooks** | A phased review of a model update: phases in business order on the left; on the right, the processes and chores for that phase, each expanding to its steps in code order, with a phase-filtered Cube Map |
 | **Assertions** | The model's own tests — known-right answers stored in the TM1 server. List, add, edit, remove and run them; they run before release and after every build and deploy |
-| **Deploy (TM1 Git, preview)** | The one deploy flow. A release ships exactly one change set through TM1's built-in Git: test → close → commit → build release → review → approve → deploy → verify, with drift checks and a deploy lock. See [Deploy lifecycle](../deploy/DEPLOY_LIFECYCLE.md) |
-| **Deploy History** | Model deploy records and approvals first; earlier REST-pipeline package archives are kept in a collapsed section |
+| **Deploy (TM1 Git, preview)** | The one deploy flow. One change set per release, in dependency order: test → close → commit → build release → review → approve → deploy → verify, with drift checks and a deploy lock. See [Deploy lifecycle](../deploy/DEPLOY_LIFECYCLE.md) |
+| **Phantom change sets** | Closed sets whose touched objects no longer exist are detected automatically and hidden behind "Show N phantom"; no manual mark, and it does not filter files out of a catch-up |
+| **Catch-up release** | Admin-only, once per target: Deploy → Catch up a server; bring a target with a recorded deployed commit level with DEV in one reviewed release, with covered sets and target-only objects shown before approval. Includes a reviewed target-only delete list, recorded in the approval and deploy log |
+| **Covered sets** | After a clean catch-up deploy, the older closed sets it carried count as released and no longer block in-order releasing; open sets stay in play |
+| **Deploy History** | Model deploy records and approvals first (a catch-up is labelled), then earlier REST-pipeline archives in a collapsed section |
+| **Deploy → Lenses** | Admin-only, no Git. Compare the source's published Lenses with a target (new / changed / same / draft), with drafts listed but disabled and target-only Lenses offered for deletion. A Lens whose `config.writes` / `config.runs` names a cube or process missing on the target is a **blocker**, not a warning. Approval binds the exact per-Lens source hash and the plan hash — if the source changes, deploy refuses. The deploy takes the target's deploy lock, saves each Lens as published, reads it back to verify its hash, applies only the approved deletes, and records per-Lens results and history in the target model (`Applications/Governance/LensDeploys`) |
 | **MCP server (external LLM)** | A standard Model Context Protocol server (`tools/tm1mcp`, 67 operations) that **external LLM agents connect to** — Claude Code or any MCP-compatible client — to build dimensions, cubes, rules and processes by conversation, change-set gated. See [`docs/ide/MCP_SERVER.md`](MCP_SERVER.md) |
 | **Lens Editor** *(in development)* | Build a Lens — a single-file HTML Lens on live TM1 data — and preview it in the IDE. Start blank or from one of your own Lenses, set its JSON config, and pick its icon or image for the Lens app home page. Patterns are read-only worked demonstrations |
 | **AI assistant (built-in)** | The IDE's inline helper generates views and subsets from a description (Anthropic API key) |

@@ -1,7 +1,7 @@
 'use strict'
 
 const { debugProcess } = require('../core/process-debug')
-const { runProcess } = require('../core/process-run')
+const { runProcess, recordProcessRun } = require('../core/process-run')
 
 function register(app, deps) {
     const { ai, cl, fail, gateReadOnly, gateWrite, getProcessFacts, invalidateCubeSources, joinContinuations, listProcessSummaries, makeClient, obfuscate, odataKey, processCode, processSummaries, scanIdentity, summaryPrompt } = deps
@@ -142,6 +142,12 @@ app.post('/api/process/run', async (req, res) => {
     try {
         const client = makeClient(req.query.server, req.ideToken)
         const result = await runProcess(client, { name: procName, params: req.body.params })
+        recordProcessRun({
+            server: req.query.server, user: req.user, name: procName,
+            params: req.body.params ?? null,
+            status: result.ok ? 'completed' : 'failed',
+            duration: result.duration ?? null,
+        })
         if (!result.ok) return res.status(result.status).json(result.body)
         res.json(result)
     } catch (e) { fail(res, e) }

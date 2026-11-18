@@ -23,6 +23,8 @@ const { sameCommit } = require('./git-approvals')
 const { odataKey } = require('./odata-key')
 
 const NO_BASE_ERROR = (target) => `${target} has no recorded deployed commit — set it up first (init + first pull), then release against it.`
+// Releases go one change set at a time, in dependency order.
+const RELEASE_FIRST = (owner, target) => `Release "${owner}" to ${target} first, then rebuild this release.`
 
 // Map a TM1-rest parseObjectFile 'object_type' (the change-log vocabulary) to the
 // TM1 object the plan/tree refers to. rules→cube, attribute→dimension, etc.
@@ -40,7 +42,7 @@ function objectFromFile(file) {
     const f = String(file ?? '')
     let m
     m = f.match(/^dimensions\/([^/]+)\.hierarchies\/([^/]+)\.subsets\/([^/]+)\.json$/)
-    if (m) return { type: 'subset', name: m[3], parent: m[1] }
+    if (m) return { type: 'subset', name: m[3], parent: m[1], hierarchy: m[2] }
     m = f.match(/^dimensions\/([^/]+)\.hierarchies\/([^/]+)\.json$/)
     if (m) return { type: 'dimension', name: m[1], kind: 'dimension' }
     m = f.match(/^dimensions\/([^/]+)\.json$/)
@@ -64,9 +66,13 @@ function parseNameStatus(text) {
         .split('\n').filter(Boolean)
         .map(line => {
             const [status, ...rest] = line.split('\t')
-            const file = rest[rest.length - 1]      // renames: 'R100 old new' → new
-            const verb = String(status)[0]           // A, M, D (R = rename → treat as add)
-            return { status, action: verb === 'D' ? 'D' : 'A', file }
+            const verb = String(status)[0]
+            // A rename is a delete of the old path plus an add of the new one.
+            // Keeping oldFile lets the release remove what the base still has.
+            if ((verb === 'R' || verb === 'C') && rest.length >= 2) {
+                return { status, action: verb === 'R' ? 'R' : 'A', file: rest[1], oldFile: rest[0] }
+            }
+            return { status, action: verb === 'D' ? 'D' : 'A', file: rest[rest.length - 1] }
         })
 }
 
@@ -87,13 +93,83 @@ const objectKey = (type, name, parent) => {
 
 const subsetNameFromId = (el) => el?.Name ?? String(el?.['@id'] ?? '').match(/Elements\('([^']+)'\)/)?.[1] ?? null
 
+// TM1 Git's pull plan names the parent object for a subset/view change. Allow
+// that parent as well as the child's own key when verifying a release.
+function expectedPlanKeys(objects) {
+    const keys = new Set((objects ?? []).map(o => objectKey(o.type, o.name, o.parent)))
+    for (const o of objects ?? []) {
+        if (o.type === 'subset' && o.parent) keys.add(objectKey('dimension', o.parent))
+        if (o.type === 'view' && o.parent) keys.add(objectKey('cube', o.parent))
+    }
+    return keys
+}
+
+// ── Link closure ─────────────────────────────────────────────────────────────
+// TM1 Git stores cross-object references as `@Code.links` (an array) or
+// `@Code.link` (one string). A released hierarchy without its linked subsets is
+// a file TM1 cannot read ("Cannot open the file specified by link …"), so a
+// release must carry every file those links name, and every file they link in
+// turn. Paths are relative to the folder of the file that names them.
+//
+//   files — the file paths in the release tree
+//   read  — read(file) returns that file's text or parsed object, or null
+//
+// Returns [{ file, neededBy }] for links missing from the release tree. Pure:
+// no repo, no disk; the caller supplies read().
+function linkClosure(files, read) {
+    const present = new Set(files)
+    const visited = new Set()
+    const missing = []
+    const queue = [...present]
+
+    while (queue.length) {
+        const file = queue.shift()
+        if (visited.has(file)) continue
+        visited.add(file)
+        if (!/\.json$/i.test(file)) continue
+
+        let body
+        try { body = read(file) } catch { continue }
+        if (body == null) continue
+        let data = body
+        if (typeof body === 'string') {
+            try { data = JSON.parse(body) } catch { continue }
+        }
+        if (!data || typeof data !== 'object') continue
+
+        for (const [key, value] of Object.entries(data)) {
+            const many = key.endsWith('@Code.links')
+            const one = key.endsWith('@Code.link')
+            if (!many && !one) continue
+            const links = many ? (Array.isArray(value) ? value : []) : [value]
+            for (const link of links) {
+                if (typeof link !== 'string' || !link) continue
+                const target = path.posix.normalize(path.posix.join(path.posix.dirname(file), link))
+                if (present.has(target)) {
+                    if (!visited.has(target)) queue.push(target)
+                    continue
+                }
+                if (!missing.some(m => m.file === target && m.neededBy === file)) {
+                    missing.push({ file: target, neededBy: file })
+                }
+            }
+        }
+    }
+    return missing
+}
+
 // Best-effort owner of an object: another change-log session (on the change set's
-// server) whose log touched the same object. Null when unknown.
+// server) whose log touched the same object. A retired phantom set (or one
+// already covered by a catch-up) owns nothing — it must never block a release.
 function ownerOf(logsBySession, obj) {
+    const wanted = objectKey(obj.type, obj.name, obj.parent)
     for (const s of logsBySession) {
+        if (s.wont_deploy_at || s.covered_by) continue
         for (const e of s.entries) {
-            if (ENTRY_TO_OBJECT[e.object_type] && ENTRY_TO_OBJECT[e.object_type] === obj.type &&
-                String(e.object_name).toLowerCase() === String(obj.name).toLowerCase()) {
+            const type = ENTRY_TO_OBJECT[e.object_type]
+            if (!type) continue
+            const parent = (e.object_type === 'subset' || e.object_type === 'view') ? e.detail : null
+            if (objectKey(type, e.object_name, parent) === wanted) {
                 return { sessionName: s.name, user: s.user ?? null }
             }
         }
@@ -101,9 +177,68 @@ function ownerOf(logsBySession, obj) {
     return null
 }
 
+// Objects that exist on the target but not in the repo at `commit`. TM1 Git
+// never deletes target-only objects, so a catch-up review names them. Control
+// (`}`) objects are never repo objects — skip them. Best-effort: an unreadable
+// target list is reported as empty, never a failed release.
+async function targetOnlyObjects(target, work, commit, { ideToken } = {}) {
+    const repoFiles = git(work, 'ls-tree', '-r', '--name-only', commit).split('\n').filter(Boolean)
+    const repoKeys = new Set(repoFiles.map(f => String(f).toLowerCase()))
+    const repoNames = { cube: new Set(), dimension: new Set(), process: new Set(), chore: new Set() }
+    for (const file of repoFiles) {
+        const obj = objectFromFile(file)
+        if (obj && repoNames[obj.type]) repoNames[obj.type].add(String(obj.name).toLowerCase())
+    }
+    const c = makeClient(target, ideToken)
+    const out = []
+    for (const [type, url] of [['cube', 'Cubes'], ['dimension', 'Dimensions'], ['process', 'Processes'], ['chore', 'Chores']]) {
+        try {
+            const r = await c.get(url, { $select: 'Name' })
+            for (const row of r?.value ?? []) {
+                const name = row?.Name
+                if (!name || String(name).startsWith('}')) continue
+                if (!repoNames[type].has(String(name).toLowerCase())) out.push({ type, name })
+            }
+        } catch { /* target read is best-effort */ }
+    }
+    // Views and subsets are objects too; list them with their parent so the
+    // reviewed delete step can name exactly what it removes.
+    for (const cube of (await c.get('Cubes', { $select: 'Name' }).then(r => r?.value ?? []).catch(() => []))) {
+        const name = cube?.Name
+        if (!name || String(name).startsWith('}') || !repoNames.cube.has(String(name).toLowerCase())) continue
+        try {
+            const vs = await c.get(`Cubes('${odataKey(name)}')/Views`, { $select: 'Name' })
+            for (const v of vs?.value ?? []) {
+                if (!v?.Name) continue
+                const file = `cubes/${name}.views/${v.Name}.json`.toLowerCase()
+                if (!repoKeys.has(file)) out.push({ type: 'view', name: v.Name, parent: name })
+            }
+        } catch { /* best effort */ }
+    }
+    for (const dim of (await c.get('Dimensions', { $select: 'Name' }).then(r => r?.value ?? []).catch(() => []))) {
+        const name = dim?.Name
+        if (!name || String(name).startsWith('}') || !repoNames.dimension.has(String(name).toLowerCase())) continue
+        try {
+            const hs = await c.get(`Dimensions('${odataKey(name)}')/Hierarchies`, { $select: 'Name' })
+            for (const h of hs?.value ?? []) {
+                if (!h?.Name) continue
+                try {
+                    const ss = await c.get(`Dimensions('${odataKey(name)}')/Hierarchies('${odataKey(h.Name)}')/Subsets`, { $select: 'Name' })
+                    for (const sub of ss?.value ?? []) {
+                        if (!sub?.Name) continue
+                        const file = `dimensions/${name}.hierarchies/${h.Name}.subsets/${sub.Name}.json`.toLowerCase()
+                        if (!repoKeys.has(file)) out.push({ type: 'subset', name: sub.Name, parent: name, hierarchy: h.Name })
+                    }
+                } catch { /* no subsets */ }
+            }
+        } catch { /* best effort */ }
+    }
+    return out
+}
+
 // Build the release commit for one change set against the target's recorded base.
 // Returns { ok, ... } — never throws past here.
-async function buildRelease(changeSet, target, { token, gitUser = gitIdentity.user(), repoUrl, ideToken } = {}) {
+async function buildRelease(changeSet, target, { token, gitUser = gitIdentity.user(), repoUrl, ideToken, addObjects = [], by = null, catchUp = false } = {}) {
     // Re-read the session so commit_ref / release fields are the live DB values.
     const session = changeSet?.id ? (cl.getSession(changeSet.id) ?? changeSet) : changeSet
     const base = lastDeployed(target)?.lastDeployedCommit
@@ -112,6 +247,7 @@ async function buildRelease(changeSet, target, { token, gitUser = gitIdentity.us
     if (!devCommit) return { ok: false, refused: true, error: `Change set "${session?.name ?? session?.id}" has not been pushed — commit it to the repo first.` }
 
     const logEntries = session?.id ? cl.getSessionLog(session.id) : []
+    const processRuns = logEntries.filter(e => e.object_type === 'process-run').length
 
     if (!repoUrl) {
         try {
@@ -152,35 +288,72 @@ async function buildRelease(changeSet, target, { token, gitUser = gitIdentity.us
 
         // Other sessions on the same server, for the "left on DEV" owners.
         const allSessions = cl.getAllSessions(500)
-        const otherLogs = (session?.server ? allSessions : [])
+        const otherLogs = (session?.server ? allSessions.filter(s => s.server === session.server) : [])
             .filter(s => s.id !== session?.id)
-            .map(s => ({ name: s.name, user: s.user ?? null, entries: (() => { try { return cl.getSessionLog(s.id) } catch { return [] } })() }))
+            .map(s => ({ id: s.id, name: s.name, user: s.user ?? null, closed_at: s.closed_at ?? null, deployed_target: s.deployed_target ?? null, wont_deploy_at: s.wont_deploy_at ?? null, covered_by: s.covered_by ?? null, entries: (() => { try { return cl.getSessionLog(s.id) } catch { return [] } })() }))
 
+        // A catch-up takes EVERY file that changed between the target's base and
+        // DEV's pushed commit: no change-set filter, no ownership refusal. An
+        // ordinary release takes only the files whose objects this set touched.
         const included = []
         const excluded = []
-        for (const c of changed) {
-            const obj = objectFromFile(c.file)
-            if (!obj) { excluded.push({ type: 'other', name: c.file, files: [c.file] }); continue }
-            if (csetObjectKeys.has(objectKey(obj.type, obj.name, obj.parent))) {
-                included.push({ ...obj, file: c.file, action: c.action })
-            } else {
-                excluded.push({ ...obj, files: [c.file], file: c.file, owner: ownerOf(otherLogs, obj) })
+        if (catchUp) {
+            for (const c of changed) {
+                const obj = objectFromFile(c.file)
+                included.push(obj
+                    ? { ...obj, file: c.file, oldFile: c.oldFile, action: c.action }
+                    : { type: 'other', name: c.file, file: c.file, oldFile: c.oldFile, action: c.action })
+            }
+        } else {
+            for (const c of changed) {
+                const obj = objectFromFile(c.file)
+                if (!obj) { excluded.push({ type: 'other', name: c.file, files: [c.file] }); continue }
+                if (csetObjectKeys.has(objectKey(obj.type, obj.name, obj.parent))) {
+                    included.push({ ...obj, file: c.file, oldFile: c.oldFile, action: c.action })
+                } else {
+                    excluded.push({ ...obj, files: [c.file], file: c.file, owner: ownerOf(otherLogs, obj) })
+                }
             }
         }
 
         // Objects in the change set that produced no file change (e.g. only an attribute value).
         const noFile = []
-        for (const e of logEntries) {
-            const o = ENTRY_TO_OBJECT[e.object_type]
-            if (!o) continue
-            const parent = (e.object_type === 'subset' || e.object_type === 'view') ? e.detail : null
-            const key = objectKey(o, e.object_name, parent)
-            if (!included.some(i => objectKey(i.type, i.name, i.parent) === key)) noFile.push({ type: o, name: e.object_name, parent: parent ?? undefined })
+        if (!catchUp) {
+            for (const e of logEntries) {
+                const o = ENTRY_TO_OBJECT[e.object_type]
+                if (!o) continue
+                const parent = (e.object_type === 'subset' || e.object_type === 'view') ? e.detail : null
+                const key = objectKey(o, e.object_name, parent)
+                if (!included.some(i => objectKey(i.type, i.name, i.parent) === key)) noFile.push({ type: o, name: e.object_name, parent: parent ?? undefined })
+            }
+        }
+
+        // Objects added from "Left on DEV" by the person building the release.
+        // Validate here: the client is never trusted on ownership, and only an
+        // unowned excluded item may be pulled into this release.
+        const addedByUser = []
+        if (!catchUp) {
+            for (const a of addObjects) {
+                const label = `${a.type} ${a.name}${a.parent ? ` (${a.parent})` : ''}`
+                const hit = excluded.find(x => objectKey(x.type, x.name, x.parent) === objectKey(a.type, a.name, a.parent))
+                if (!hit) return { ok: false, refused: true, error: `Cannot add ${label}: it is not an unowned "left on DEV" item in this release.` }
+                if (hit.owner) return { ok: false, refused: true, error: `Cannot add ${label}: it belongs to change set "${hit.owner.sessionName}". ${RELEASE_FIRST(hit.owner.sessionName, target)}` }
+                const file = hit.file ?? hit.files?.[0] ?? null
+                if (!file) return { ok: false, refused: true, error: `Cannot add ${label}: the release has no file for it.` }
+                included.push({ ...hit, file, action: hit.action ?? 'A' })
+                addedByUser.push({ type: hit.type, name: hit.name, parent: hit.parent ?? null, file, by })
+                excluded.splice(excluded.indexOf(hit), 1)
+            }
         }
 
         // Nothing to ship?
         if (included.length === 0) {
-            return { ok: false, refused: true, error: `Nothing from change set "${changeSet?.name ?? ''}" changed files between the base and the pushed commit — nothing to release.` }
+            return {
+                ok: false, refused: true,
+                error: catchUp
+                    ? `Nothing differs between ${target}'s recorded commit and ${session?.server ?? 'the source'} — there is no catch-up to release.`
+                    : `Nothing from change set "${changeSet?.name ?? ''}" changed files between the base and the pushed commit — nothing to release.`,
+            }
         }
 
         // Apply: base + only this change set's files.
@@ -188,6 +361,9 @@ async function buildRelease(changeSet, target, { token, gitUser = gitIdentity.us
         for (const inc of included) {
             if (inc.action === 'D') git(work, 'rm', '--quiet', '--', inc.file)
             else {
+                if (inc.action === 'R' && inc.oldFile) {
+                    try { git(work, 'rm', '--quiet', '--', inc.oldFile) } catch { /* already gone in base */ }
+                }
                 git(work, 'checkout', devCommit, '--', inc.file)
                 // An MDX view carries its expression in a sibling .mdx file — include
                 // it so the release can apply (and verify) the actual MDX.
@@ -196,6 +372,49 @@ async function buildRelease(changeSet, target, { token, gitUser = gitIdentity.us
                     try { git(work, 'checkout', devCommit, '--', mdx) } catch { /* native view — no MDX */ }
                 }
             }
+        }
+
+        // A release never ships a broken link. Run the closure on the whole
+        // release tree (base + this change set), add unowned dependencies from
+        // DEV, refuse an owned or missing one, and repeat until nothing new comes
+        // in — links can be nested.
+        const existsOnDev = (file) => {
+            try { git(work, 'cat-file', '-e', `${devCommit}:${file}`); return true } catch { return false }
+        }
+        const addedAsDependency = []
+        for (;;) {
+            const releaseFiles = git(work, 'ls-files').split('\n').filter(Boolean)
+            const missing = linkClosure(releaseFiles, (file) => {
+                try { return fs.readFileSync(path.join(work, file), 'utf8') } catch { return null }
+            })
+            if (missing.length === 0) break
+            let added = 0
+            for (const m of missing) {
+                if (!existsOnDev(m.file)) {
+                    return { ok: false, refused: true, error: `${m.neededBy} links ${m.file}, which does not exist on DEV.` }
+                }
+                const obj = objectFromFile(m.file)
+                const owner = obj ? ownerOf(otherLogs, obj) : null
+                // A catch-up ships everything, so another set's ownership of a
+                // linked file is not a refusal there; an ordinary release refuses.
+                if (owner && !catchUp) {
+                    return { ok: false, refused: true, error: `${m.neededBy} needs ${m.file}, which belongs to change set "${owner.sessionName}". ${RELEASE_FIRST(owner.sessionName, target)}` }
+                }
+                git(work, 'checkout', devCommit, '--', m.file)
+                addedAsDependency.push({
+                    type: obj?.type ?? 'file',
+                    name: obj?.name ?? path.posix.basename(m.file),
+                    parent: obj?.parent ?? null,
+                    file: m.file,
+                    neededBy: m.neededBy,
+                })
+                if (obj) {
+                    const i = excluded.findIndex(x => objectKey(x.type, x.name, x.parent) === objectKey(obj.type, obj.name, obj.parent))
+                    if (i >= 0) excluded.splice(i, 1)
+                }
+                added++
+            }
+            if (added === 0) break
         }
         git(work, 'add', '-A')
         git(work, '-c', `user.name=${gitUser}`, '-c', `user.email=${gitIdentity.email()}`, 'commit', '-q', '-m', `Release ${changeSet?.name ?? 'change set'} → ${target}`)
@@ -209,12 +428,42 @@ async function buildRelease(changeSet, target, { token, gitUser = gitIdentity.us
             git(work, 'push', '-q', 'origin', `HEAD:refs/heads/release-${target}`)
         }
 
+        // A catch-up preview: which of DEV's unreleased sets touched an object
+        // this release carries. Closed sets become "covered" when the deploy
+        // succeeds; open sets stay in play and are listed as partly shipped.
+        let coveredSets = []
+        let openSets = []
+        let targetOnly = []
+        if (catchUp) {
+            const includedKeys = new Set(included
+                .map(i => objectKey(i.type, i.name, i.parent))
+                .filter(k => !k.startsWith('other::')))
+            for (const s of otherLogs) {
+                if (s.wont_deploy_at || s.covered_by || s.deployed_target) continue
+                const touches = s.entries.some(e => {
+                    const type = ENTRY_TO_OBJECT[e.object_type]
+                    if (!type) return false
+                    const parent = (e.object_type === 'subset' || e.object_type === 'view') ? e.detail : null
+                    return includedKeys.has(objectKey(type, e.object_name, parent))
+                })
+                if (!touches) continue
+                const item = { id: s.id, name: s.name, user: s.user ?? null, entries: s.entries.length, closed_at: s.closed_at ?? null }
+                if (s.closed_at) coveredSets.push(item)
+                else openSets.push(item)
+            }
+            try { targetOnly = await targetOnlyObjects(target, work, devCommit, { ideToken }) } catch { targetOnly = [] }
+        }
+
         return {
             ok: true, target, base, devCommit, releaseCommit,
             changeSet: { id: changeSet?.id ?? null, name: changeSet?.name ?? null, server: changeSet?.server ?? null },
             included: included.map(i => ({ type: i.type, name: i.name, parent: i.parent, file: i.file, action: i.action })),
             excluded: excluded.map(x => ({ type: x.type, name: x.name, parent: x.parent, file: x.file, owner: x.owner ?? null })),
+            addedByUser,
+            addedAsDependency,
+            runs: processRuns,
             noFile,
+            ...(catchUp ? { catchUp: true, coveredSets, openSets, targetOnly } : {}),
         }
     } catch (e) {
         return { ok: false, error: sanitize(e.message, token) }
@@ -223,7 +472,7 @@ async function buildRelease(changeSet, target, { token, gitUser = gitIdentity.us
     }
 }
 
-module.exports = { buildRelease, objectFromFile, parseNameStatus, ENTRY_TO_OBJECT, objectKey, NO_BASE_ERROR, changedObjects, checkDependencies, splitTi, verifyRelease, applyReleaseComplement }
+module.exports = { buildRelease, objectFromFile, parseNameStatus, ENTRY_TO_OBJECT, objectKey, expectedPlanKeys, ownerOf, NO_BASE_ERROR, changedObjects, checkDependencies, splitTi, verifyRelease, applyReleaseComplement, linkClosure }
 
 // TM1 Git's pull plan has no operation for subsets or views, so a release pull
 // never applies them. After the pull, apply every included subset and view to the
@@ -247,7 +496,7 @@ async function applyReleaseComplement(target, { base, releaseCommit, repoUrl, to
             if (!obj || (obj.type !== 'subset' && obj.type !== 'view')) continue
             const content = git(work, 'show', `${releaseCommit}:${ch.file}`)
             try {
-                if (obj.type === 'subset') applied.push(await applySubset(tm1, { dim: obj.parent, hierarchy: obj.parent, name: obj.name }, content))
+                if (obj.type === 'subset') applied.push(await applySubset(tm1, { dim: obj.parent, hierarchy: obj.hierarchy ?? obj.parent, name: obj.name }, content))
                 else {
                     let vmdx = null
                     try { vmdx = git(work, 'show', `${releaseCommit}:${ch.file.replace(/\.json$/, '.mdx')}`) } catch { /* no MDX sibling */ }
@@ -290,7 +539,7 @@ async function verifyRelease(target, { base, releaseCommit, repoUrl, token, gitU
                     ok = String(r?.Rules ?? '') === String(releaseText ?? '').replace(/\r\n/g, '\n')
                 } else if (obj.type === 'subset') {
                     const sub = JSON.parse(git(work, 'show', `${releaseCommit}:${ch.file}`))
-                    const path = `Dimensions('${odataKey(obj.parent)}')/Hierarchies('${odataKey(obj.parent)}')/Subsets('${odataKey(obj.name)}')`
+                    const path = `Dimensions('${odataKey(obj.parent)}')/Hierarchies('${odataKey(obj.hierarchy ?? obj.parent)}')/Subsets('${odataKey(obj.name)}')`
                     if (sub.Expression) {
                         const t = await c.get(path, { $select: 'Expression' })
                         ok = String(t?.Expression ?? '') === String(sub.Expression)
@@ -344,7 +593,7 @@ function splitTi(text) {
 // Dependency check BEFORE approval: run TM1 CheckRules on the target for every
 // included rule (a wrong reference can mean it belongs to another change set),
 // and TI lint for every included process. Blocks on any failure.
-async function checkDependencies(releaseCommit, target, { token, gitUser = gitIdentity.user(), repoUrl, ideToken } = {}) {
+async function checkDependencies(releaseCommit, target, { token, gitUser = gitIdentity.user(), repoUrl, ideToken, catchUp = false } = {}) {
     if (!repoUrl) {
         try { repoUrl = (await makeClient(target, ideToken).post('GitStatus', { Username: gitUser, Password: token }))?.URL } catch { /* below */ }
     }
@@ -358,6 +607,21 @@ async function checkDependencies(releaseCommit, target, { token, gitUser = gitId
         git(work, 'remote', 'add', 'origin', authUrl(repoUrl, gitUser, token))
         git(work, 'fetch', '-q', 'origin', '+refs/heads/*:refs/remotes/origin/*')
         const changed = changedFilesBetween(work, base, releaseCommit)
+
+        // A release built before the link closure existed can still be missing a
+        // linked file. Catch it here, before approval, instead of at the pull plan.
+        const releaseFiles = git(work, 'ls-tree', '-r', '--name-only', releaseCommit).split('\n').filter(Boolean)
+        for (const m of linkClosure(releaseFiles, (file) => {
+            try { return git(work, 'show', `${releaseCommit}:${file}`) } catch { return null }
+        })) {
+            blockers.push({ object: m.neededBy, message: `${m.neededBy} needs ${m.file}, which is not in the release.` })
+        }
+
+        // A catch-up creates the target's objects as part of the pull; checking
+        // rules against the old target would fail on cubes/elements it is about
+        // to add. The link closure above is the only pre-deploy dependency check.
+        if (catchUp) return { ok: blockers.length === 0, blockers }
+
         const c = makeClient(target, ideToken)
         for (const ch of changed) {
             const obj = objectFromFile(ch.file)
@@ -370,7 +634,7 @@ async function checkDependencies(releaseCommit, target, { token, gitUser = gitId
                     if (errs.length) blockers.push({
                         object: `rules ${obj.name}`,
                         message: errs.map(e => `line ${e.LineNumber ?? '?'}: ${e.Message ?? e.Description ?? JSON.stringify(e)}`).join('; ') +
-                            ' — if this reference belongs to another change set, ship that change set too (or build a combined release).',
+                            ` — if this reference belongs to another change set, release that change set to ${target} first, then rebuild this release.`,
                     })
                 } catch (e) { blockers.push({ object: `rules ${obj.name}`, message: `CheckRules could not run on ${target}: ${e.response?.data?.error?.message ?? e.message}` }) }
             } else if (obj.kind === 'process') {

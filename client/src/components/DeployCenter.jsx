@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { X, Rocket, History, HardDriveDownload, Loader2, CheckCircle2, HelpCircle } from 'lucide-react'
+import { X, Rocket, History, HardDriveDownload, Loader2, CheckCircle2, HelpCircle, FileCode2 } from 'lucide-react'
 import HelpPanel from '@/components/HelpPanel'
 import { useStore } from '@/store'
 import { cn } from '@/lib/utils'
@@ -7,6 +7,7 @@ import { toast } from 'sonner'
 import { useServers, useDeployBaseline, useDeploySeed } from '@/hooks/useApi'
 import DeployHistory from '@/components/DeployHistory'
 import DiffTab from '@/components/DiffTab'
+import LensDeploy from '@/components/LensDeploy'
 
 // A full-screen takeover for everything deploy-related — not a tab. While
 // this is open, the entire normal IDE (sidebar, tab bar, every open editor)
@@ -15,8 +16,11 @@ import DiffTab from '@/components/DiffTab'
 
 const NAV = [
   { id: 'history',   label: 'History',    icon: History },
+  { id: 'lenses',    label: 'Lenses',     icon: FileCode2, title: 'Ship model-owned Lenses to a target — no Git, admin-only, approved by content hash' },
   { id: 'baselines', label: 'Baselines',  icon: HardDriveDownload, title: 'Bootstrap or recover a baseline — deploys keep this current automatically, not a normal step' },
 ]
+
+const initialView = view => (view === 'baselines' || view === 'lenses' ? view : 'history')
 
 function BaselinesView({ defaultServer }) {
   const { data: servers }   = useServers()
@@ -89,7 +93,7 @@ function BaselinesView({ defaultServer }) {
 
 export default function DeployCenter({ onOpenWizard }) {
   const { deployCenter, closeDeployCenter, server: currentServer } = useStore()
-  const [view, setView] = useState(deployCenter?.view === 'baselines' ? 'baselines' : 'history')
+  const [view, setView] = useState(initialView(deployCenter?.view))
   // Diff views opened from inside the takeover (Package Contents row click,
   // Target State snapshot diff) can't go through the normal tab system — that's
   // hidden behind this overlay. Shown as a second overlay, above this one.
@@ -99,7 +103,7 @@ export default function DeployCenter({ onOpenWizard }) {
   // A fresh openDeployCenter() call is a new object each time — use that to
   // reset which rail view is showing, per how this particular open was triggered.
   useEffect(() => {
-    if (deployCenter) setView(deployCenter.view === 'baselines' ? 'baselines' : 'history')
+    if (deployCenter) setView(initialView(deployCenter.view))
   }, [deployCenter])
 
   if (!deployCenter) return null
@@ -156,6 +160,7 @@ export default function DeployCenter({ onOpenWizard }) {
         <div className="flex-1 min-w-0 overflow-hidden flex justify-center">
           <div className="w-full max-w-4xl min-w-0 flex flex-col">
             {view === 'history'   && <DeployHistory onOpenDiff={setDiffTab} />}
+            {view === 'lenses'    && <LensDeploy source={deployCenter.server ?? currentServer} />}
             {view === 'baselines' && <BaselinesView defaultServer={deployCenter.server ?? currentServer} />}
           </div>
         </div>

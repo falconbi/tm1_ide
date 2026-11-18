@@ -3,6 +3,35 @@
 Plain-English record of the agreed end-to-end deployment model. Source decisions:
 `docs/deploy/TM1_GIT_EVALUATION.md`, `docs/ide/IMPROVEMENTS.md` 10.1 (hybrid) + 10.2 (readiness).
 
+## Current release flow — updated 18 Nov 2026
+
+This is the behaviour the code has now; earlier sections below are the design record and proof history.
+
+- **Normal release:** one change set, in dependency order. The release carries the set's files plus any linked file the set needs (hierarchy → subsets, cube → views, MDX view → `.mdx`). The closure is recursive; a linked file owned by another set refuses and names it, and a link missing from DEV refuses. The review screen lists auto-added dependencies separately. “Add to this release” can pull one unowned left-on-DEV object into the release; the server validates ownership and records who added it.
+- **Processes run:** IDE and MCP process/chore runs are recorded in the open change set as `PROCESS_RUN` with masked parameters, status and duration. A run is a record, never a reason to ship the process file.
+- **Phantom change sets:** closed sets whose touched objects no longer exist are detected automatically on the Change Sets list and hidden as history only. There is no manual mark. This does not filter files from a catch-up.
+- **Catch-up:** admin-only, from the rocket-icon **Deploy** menu → **Catch up a server…**. Only targets with a recorded deployed commit are offered. Choose the target, type `I understand this brings <target> level with <source>`, start, then build → review → approve → deploy → verify. An existing catch-up opens directly at **Build release** in catch-up mode.
+- **Catch-up source commit:** the source's last pushed commit. TM1 v11 may return it as `LocalCommit.ID` or `DeployedCommit.ID`; if neither exists, commit DEV first. Some TM1 builds do not report unpushed changes, so the catch-up uses the last pushed state.
+- **Catch-up build:** every file that differs between the target's recorded base and the source commit, with no change-set ownership filter. Link closure still applies. Git renames remove the old base path before adding the new one; non-ASCII filenames are passed unquoted.
+- **Catch-up approval:** the release link closure is checked, but `CheckRules`/TI lint are **not** run against the old target — the catch-up creates those cubes and elements. Normal releases still run both.
+- **Catch-up deletes are reviewed and recorded.** The review lists target-only cubes, dimensions, processes, chores, views and subsets. Tick any that should be removed. Approval records that exact list; after the pull the IDE deletes those objects through the same reconcile path (views/subsets first, then processes/chores, then cubes/dimensions) and records the result. Nothing is selected by default, and a delete not in the release's target-only list is refused.
+- **After a catch-up, drift may still be non-empty.** Ticked deletes remove the objects you chose; unticked old base objects, TM1's view/hierarchy write-back, and subsets applied over REST can still differ from the release commit. Drift means PROD differs from what it last received; it pauses further deploys. Either clean the rest or reseed the PROD baseline to accept the current state.
+- **Covered sets:** only after a clean catch-up deploy, and only closed sets whose objects the catch-up carried. Open sets stay open and are listed as partly shipped.
+- **Deletes:** a normal change set records its deletes and reconcile removes exactly those on the target. A catch-up uses its approved target-only list; no other target object is deleted.
+
+### Deploy → Lenses (no Git) — 18 Nov 2026
+
+Lenses are model application documents under `Applications/Governance/Lenses`, not Git-tracked model objects. Shipping them is its own admin-only flow in the Deploy Center rail: **Deploy → Lenses**.
+
+- **Compare** — source is the current server; pick a target. The plan reads every source Lens and compares its canonical content hash with the target: **new**, **changed**, **same**, or **draft**. Only **published** Lenses can ship; drafts are listed but disabled. Source Lenses that are not on the target are never inferred — target-only Lenses are listed separately for optional deletion.
+- **Blockers, not warnings** — for every published new/changed Lens, its declared `writes` cubes and `runs` processes (`lensBridge.lensWrites` / `lensRuns`, from the `<meta>` tags plus `config.writes` / `config.runs`) are checked against the target's model cubes and processes. A missing cube or process makes that Lens a **blocker**, and the plan cannot be approved or deployed until the target has it.
+- **Review** — new/changed/same/draft counts, blockers, and target-only Lenses. All published new/changed Lenses are selected by default; target-only deletes are off by default and ticked explicitly.
+- **Approve** — records the approver, note, source/target, the exact per-Lens source hashes and the plan hash, plus the approved delete list. The approval lives in the **target model** (`Applications/Governance/LensDeploys/approvals.json`).
+- **Deploy** — takes the same **target deploy lock** as a Git deploy (`Applications/Governance/Deployments/_lock-<server>.json`), re-reads the source, and refuses if the plan hash or any approved Lens hash changed since approval. Each approved Lens is saved as published through `lensStore.saveLens`, with its description/folder/title/icon/color/image/config, then **read back and re-hashed**; a mismatch fails that Lens. Only the approved target-only Lenses are deleted.
+- **Verify and history** — every deploy records its per-Lens result (verified or the error) and each delete in `Applications/Governance/LensDeploys/history.json` on the target. The rail's history list shows who deployed what, when, and the outcome.
+
+The canonical hash covers a Lens's content (`name`, `status`, `description`, `folder`, `title`, `icon`, `color`, `image`, `config`, `html`) and deliberately ignores `version`, `updated`, `owner`, `created`, `createdBy` and `toolkitVersion`, so saving the same content twice is still the same Lens.
+
 ## Known gaps (16 Nov 2026) — being fixed in review area 07
 
 Found by code review, not by a failed deploy. Each line moves to **Fixed** as the fix lands.
@@ -21,6 +50,8 @@ Found by code review, not by a failed deploy. Each line moves to **Fixed** as th
 - Round 2 — ownership is read from the server's `Applications/Governance/manifest.json`; missing or unreadable manifests fail closed and the local migration markers are gone.
 - Round 2 — the migration tool writes the manifest (`--manifest`, `--from-markers`), and a model-owned change-set document that cannot be read fails the list instead of disappearing.
 - Round 2 — first-pull analysis clones the branch, compares every hierarchy, lists target-only objects and element loss, and refuses when any read fails; it is wired into the first-pull call, a read-only route and the setup screen.
+
+- Round 4 — releases are one change set at a time, in dependency order. A closed change set whose touched objects no longer exist is detected as a **phantom** automatically and then owns nothing. A target whose history predates change-set releases can be brought level once with a **catch-up release**, and the older sets it carried are marked **covered** after it deploys cleanly.
 
 **Still open**
 
@@ -47,6 +78,88 @@ Found by code review, not by a failed deploy. Each line moves to **Fixed** as th
    were retired 10 Oct 2026): the wizard no longer offers them, the routes and
    `git-drift.revert` / `git-drift.promote` are gone, and the drift **check** + the
    deploy pause stay.
+
+### One change set per release, in order
+
+A release carries exactly one change set. If it needs an object that another
+change set owns, it refuses and names that set: release that set to the target
+first, then rebuild this release. There is no combined release and no way to
+deploy DEV's head directly — the release is always a commit built on the
+target's recorded deployed commit, and every deploy ships a built release.
+
+The Change Sets list shows those older sets the target has not received. Work
+through them in dependency order. In practice a target that predates change-set
+releases (or a stretch of lab work) needs one of the two exceptions below.
+
+### The catch-up exception
+
+A **catch-up** is the one explicit, deliberate exception to releasing one set at
+a time. It brings a target level with DEV in a single built release: every file
+that differs between the target's recorded deployed commit and DEV's pushed
+commit, regardless of which change set touched it.
+
+- **Who:** a TM1 admin only.
+- **When:** a target has a recorded deployed commit (so it has pulled at least
+  once) and DEV's history is far ahead — typically a model that reached PROD
+  before change-set releases existed. For a never-pulled target, use first pull.
+- **How:** Deploy (rocket icon) → **Catch up a server…**, choose an eligible
+  target, type `I understand this brings <target> level with <source>`, then build,
+  review, approve, deploy and verify. An existing catch-up opens at Build release.
+  The source commit is the last pushed one (`LocalCommit.ID` or `DeployedCommit.ID`).
+  Some TM1 v11 builds do not report unpushed changes; commit DEV first if its Git
+  has no commit.
+- **What it is:** a closed, empty change set of kind `catch-up` named
+  `Catch-up: <target> level with <source> (<date>)`, with the source's pushed
+  commit as its `commit_ref`. The release is built on `release-<target>` like
+  any other, so prepare, approve, execute, verify, History and Rule 1 are
+  unchanged.
+- **Review:** the banner, every included object grouped by type, the change sets
+  it would cover, any open sets it partly ships, and the target-only objects.
+  Tick any target-only object you want deleted after the pull; approval records
+  that list.
+
+### Rehearse a catch-up on a TEST copy
+
+For a risky catch-up, rehearse it against a copy of PROD before touching PROD.
+
+1. Stop PROD and copy its **data folder**.
+2. Start the copy as a separate server: unique name and port.
+3. Add that server to `config/servers.json` and sign in to it.
+4. **Re-point its Git identity in the IDE (GitHub setup) as a TEST deployment.** A
+   copied data folder carries PROD's Git configuration and last-deployed record. If
+   left alone, the copy still identifies as `TM1_Test_PROD`, uses
+   `release-TM1_Test_PROD`, and believes it already has PROD's deployed state.
+5. Give it its own target branch, `release-<copy name>`, and its own IDE deploy
+   baseline/history. It may use the same model repo.
+6. Deploy the catch-up to the copy. Tick the target-only objects to delete for
+   that copy, approve and deploy.
+7. Run the controls and test the model on the copy.
+8. Repeat the catch-up against PROD, ticking PROD's own delete list there.
+
+What you want from the copy is PROD's **data state**, not PROD's **Git identity**.
+Deletes and deploy history are recorded per target; neither target inherits the
+other's decisions.
+
+### Phantom change sets
+
+A closed change set whose touched objects no longer exist is detected automatically as a
+**phantom**. It stays as a record but **owns nothing**: releases skip it, and the
+wizard refuses to commit or release it. An open set must be closed first. The
+list shows a grey **Phantom — empty** badge and hides these sets by default
+("Show N phantom"). No manual mark is needed. This is a current-state check; it does not
+remove or filter files.
+
+### Covered by a catch-up
+
+After a catch-up deploy succeeds (the same point where the deployed link is
+recorded), every closed change set it carried is marked
+**covered by** the catch-up, with **covered at** the deploy time. A covered set
+counts as released: it owns nothing, no longer blocks a later release, and is
+hidden with the deployed sets ("Covered by catch-up <date>").
+
+**Open sets are never covered.** Their work may have shipped in the catch-up,
+but the set stays in play so anything added to it afterwards is still released
+in order. The catch-up review lists them as open, partly shipped.
 
 ## The architecture in one line
 

@@ -1,12 +1,13 @@
 'use strict'
 
 const { z } = require('zod')
+const { recordProcessRun } = require('../../../core/process-run')
 
 // ══════════════════════════════════════════════════════════════════════════════
 // DEVELOPMENT — WRITE (existing tools, now change-set gated + logged)
 // ══════════════════════════════════════════════════════════════════════════════
 
-function register(server, { client, ok, esc: odataKey, logChange, requireChangeSet, lintRules, lintTI }) {
+function register(server, { client, ok, esc: odataKey, logChange, requireChangeSet, lintRules, lintTI, SERVER, AGENT_USER }) {
     server.tool(
         'update_cube_rules',
         'Write new rules to a cube. The full rules text replaces any existing rules. Requires an open change set. ' +
@@ -113,6 +114,11 @@ function register(server, { client, ok, esc: odataKey, logChange, requireChangeS
         async ({ process, parameters, timeout_ms }) => {
             const result = await client().executeProcess(process, parameters ?? {}, timeout_ms ? { timeout: timeout_ms } : {})
             const status = result?.ProcessExecuteStatusCode ?? result?.Status ?? 'completed'
+            recordProcessRun({
+                server: SERVER, user: AGENT_USER, name: process, kind: 'process',
+                params: parameters ?? null, status,
+                duration: result?.Times?.ExecutionTimeInMilliseconds ?? null,
+            })
             return ok({ status, result })
         }
     )

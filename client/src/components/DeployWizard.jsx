@@ -10,6 +10,12 @@ import { humanizeFile } from '@/lib/tm1-terms'
 const authHeader = () => ({ 'x-ide-token': localStorage.getItem('tm1-token') ?? '' })
 const username = () => localStorage.getItem('tm1-username') ?? 'unknown'
 
+function groupByType(items) {
+  const groups = {}
+  for (const o of items ?? []) (groups[o.type] ??= []).push(o)
+  return groups
+}
+
 function parseOps(ops) {
   return (ops ?? [])
     .map(op => {
@@ -52,15 +58,23 @@ function TestList({ title, meaning, results }) {
   )
 }
 
-export default function DeployWizard({ server, onClose, onOpenTests, initialSession = null, release: releaseMode = false }) {
-  const [step,      setStep]      = useState(releaseMode ? 4 : 1)
+export default function DeployWizard({ server, onClose, onOpenTests, initialSession = null, release: releaseMode = false, catchUp: catchUpMode = false, catchUpTarget = null }) {
+  const initialCatchUp = initialSession?.kind === 'catch-up'
+  const isCatchUp = catchUpMode || initialCatchUp
+  const catchTargetFromName = initialCatchUp ? (/^Catch-up: (.+) level with /i.exec(initialSession?.name ?? '')?.[1] ?? null) : null
+  const [step,      setStep]      = useState(releaseMode || isCatchUp ? 4 : 1)
   const [message,   setMessage]   = useState(`Deploy from ${server}`)
   const [servers,   setServers]   = useState([])
-  const [target,    setTarget]    = useState('')
+  const [target,    setTarget]    = useState(catchUpTarget ?? catchTargetFromName ?? '')
   const [sessionId, setSessionId] = useState(null)
+  const [catchSession, setCatchSession] = useState(null)
+  const [catchSentence, setCatchSentence] = useState('')
+  const [catchBusy, setCatchBusy] = useState(false)
   const [tests,     setTests]     = useState(null)
   const [pushed,    setPushed]    = useState(null)
   const [release,   setRelease]   = useState(null)
+  const [addSel,    setAddSel]    = useState({})
+  const [delSel,    setDelSel]    = useState({})
   const [prep,      setPrep]      = useState(null)
   const [res,       setRes]       = useState(null)
   const [approval,  setApproval]  = useState(null)
@@ -79,9 +93,20 @@ export default function DeployWizard({ server, onClose, onOpenTests, initialSess
   const latestClosed = (sessions ?? [])
     .filter(s => s.closed_at && !s.deployed_target && !s.deployed && s.commit_ref)
     .sort((a, b) => (a.closed_at < b.closed_at ? 1 : -1))[0] ?? null
-  const deployCtx = initialSession ?? (releaseMode ? latestClosed : activeSession ?? latestClosed)
+  const deployCtx = isCatchUp ? (catchSession ?? initialSession) : (initialSession ?? (releaseMode ? latestClosed : activeSession ?? latestClosed))
 
   useEffect(() => { if (deployCtx?.id) setSessionId(deployCtx.id) }, [deployCtx?.id])
+
+  useEffect(() => {
+    const onSignedIn = (e) => {
+      const signed = String(e.detail?.server ?? '').toLowerCase()
+      const relevant = !signed || signed === String(server ?? '').toLowerCase() || signed === String(target ?? '').toLowerCase()
+      if (!relevant) return
+      setError(prev => /Sign in to server|rejected the login/i.test(prev ?? '') ? null : prev)
+    }
+    window.addEventListener('tm1-server-signed-in', onSignedIn)
+    return () => window.removeEventListener('tm1-server-signed-in', onSignedIn)
+  }, [server, target])
 
   useEffect(() => {
     if (!sessionId) { setAddedTests(0); setSetAssertions([]); return }
@@ -96,12 +121,17 @@ export default function DeployWizard({ server, onClose, onOpenTests, initialSess
   }, [sessionId, server, tests])
 
   useEffect(() => {
-    request('/api/servers', { headers: authHeader() }).then(r => r.json()).then(d => {
-      const others = (d ?? []).map(s => s?.name).filter(n => n && n !== server)
+    const route = isCatchUp
+      ? `/api/deploy/git/catch-up/targets?source=${encodeURIComponent(server)}`
+      : '/api/servers'
+    request(route, { headers: authHeader() }).then(r => r.json()).then(d => {
+      const others = isCatchUp
+        ? (d?.targets ?? []).map(t => t.target).filter(Boolean)
+        : (d ?? []).map(s => s?.name).filter(n => n && n !== server)
       setServers(others)
       setTarget(t => t || (others[0] ?? ''))
     }).catch(() => {})
-  }, [server])
+  }, [server, isCatchUp])
 
   const run = async (action, body, route) => {
     setBusy(action); setError(null)
@@ -138,12 +168,30 @@ export default function DeployWizard({ server, onClose, onOpenTests, initialSess
     finally { setBusy('') }
   }
   const doPush = async () => {
+    if (deployCtx?.wont_deploy_at) { setError(`Change set "${deployCtx.name}" is retired as a phantom change set — restore it in Change Sets first.`); return }
     const d = await run('push', { source: server, message, session: sessionId }, '/api/deploy/git/push')
     if (d) { setPushed(d); setStep(4) }
   }
   const doBuildRelease = async () => {
-    const d = await run('release', { source: server, target, session: sessionId }, '/api/deploy/git/release')
-    if (d) { setRelease(d); setPrep(null); setApproval(null) }
+    if (deployCtx?.wont_deploy_at) { setError(`Change set "${deployCtx.name}" is retired as a phantom change set — restore it in Change Sets first.`); return }
+    const addObjects = Object.values(addSel).map(o => ({ type: o.type, name: o.name, parent: o.parent ?? null }))
+    const d = await run('release', { source: server, target, session: sessionId, addObjects }, '/api/deploy/git/release')
+    if (d) { setRelease(d); setAddSel({}); setDelSel({}); setPrep(null); setApproval(null) }
+  }
+  const doStartCatchUp = async () => {
+    setCatchBusy(true); setError(null)
+    try {
+      const r = await request('/api/deploy/git/catch-up', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...authHeader() },
+        body: JSON.stringify({ source: server, target, confirm: catchSentence }),
+      })
+      const d = await r.json().catch(() => ({}))
+      if (!r.ok || d.error) throw new Error(d.error || r.statusText)
+      setCatchSession(d.session)
+      setSessionId(d.session.id)
+    } catch (e) { setError(e.message) }
+    finally { setCatchBusy(false) }
   }
   const doPrepare = async () => {
     const d = await run('prepare', { source: server, target, session: sessionId, branch: `release-${target}` }, '/api/deploy/git/prepare')
@@ -152,7 +200,8 @@ export default function DeployWizard({ server, onClose, onOpenTests, initialSess
   const doApprove = async () => {
     const commit = release?.releaseCommit
     if (!commit) return
-    const d = await run('approve', { source: server, target, commit, note: approvalNote }, '/api/deploy/git/approve')
+    const deletes = isCatchUp ? Object.values(delSel) : undefined
+    const d = await run('approve', { source: server, target, commit, note: approvalNote, deletes }, '/api/deploy/git/approve')
     if (d) { setApproval(d); setStep(7) }
   }
   const doDeploy = async () => {
@@ -214,7 +263,9 @@ export default function DeployWizard({ server, onClose, onOpenTests, initialSess
         </div>
 
         <div className="flex items-center gap-1 px-4 py-2.5 border-b border-border bg-muted/20 flex-wrap">
-          {STEP_TITLES.map((t, i) => (
+          {STEP_TITLES.map((t, i) => {
+            if (isCatchUp && i < 3) return null
+            return (
             <span key={t} className="flex items-center gap-1">
               {i > 0 && <span className="text-muted-foreground/40 mx-0.5">→</span>}
               <button
@@ -224,11 +275,17 @@ export default function DeployWizard({ server, onClose, onOpenTests, initialSess
                 {i + 1} {t}
               </button>
             </span>
-          ))}
+          )})}
         </div>
 
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
           {error && <p className="text-xs text-red-600 border border-red-600/40 rounded px-3 py-2">{error}</p>}
+          {deployCtx?.wont_deploy_at && (
+            <p className="text-xs border border-border rounded px-3 py-2 bg-muted/30 text-muted-foreground">
+              This change set is a <span className="font-semibold text-foreground">retired phantom</span> — empty, ignored by releases, and owning nothing.
+              {deployCtx.wont_deploy_reason ? <> Reason: “{deployCtx.wont_deploy_reason}”.</> : null} Unmark it in Change Sets to use it again.
+            </p>
+          )}
           {lock && (step === 7 || step === 8) && (
             <div className={'text-xs border rounded px-3 py-2 ' + (lock.stale ? 'border-red-600/40 text-red-600' : 'border-amber-600/40 text-amber-600')}>
               {lock.stale
@@ -349,35 +406,127 @@ export default function DeployWizard({ server, onClose, onOpenTests, initialSess
           {step === 4 && (
             <div className="space-y-3">
               <p className="text-xs text-muted-foreground leading-relaxed">{STEPS[4].explain}</p>
+              {isCatchUp && !deployCtx && (
+                <div className="border border-amber-600/40 rounded-md p-3 space-y-2 bg-amber-500/5">
+                  <p className="text-xs">Catch-up release — ships everything that differs between <span className="font-semibold">{target}</span> and <span className="font-semibold">{server}</span>, outside any single change set.</p>
+                  <p className="text-[11px] text-amber-600">Once, deliberately, as an admin. Type the sentence to confirm.</p>
+                  <p className="text-[11px] font-mono text-foreground/80">I understand this brings {target} level with {server}</p>
+                  <input value={catchSentence} onChange={e => setCatchSentence(e.target.value)} className={inputCls + ' w-full'} placeholder={`I understand this brings ${target} level with ${server}`} />
+                  <button onClick={doStartCatchUp} disabled={catchBusy || !target || !catchSentence.trim()} className={primaryBtn}>Start catch-up</button>
+                </div>
+              )}
               <div className="border border-border rounded-md p-3 space-y-3">
                 <div className="flex items-center gap-2">
                   <label className="text-xs text-muted-foreground w-16">Target</label>
                   <select value={target} onChange={e => {
                     setTarget(e.target.value)
                     setRelease(null); setPrep(null); setApproval(null)
-                  }} className={inputCls}>
+                  }} disabled={isCatchUp && !!target} className={inputCls + (isCatchUp ? ' opacity-70' : '')}>
                     {servers.map(s => <option key={s} value={s} className="bg-background">{s}</option>)}
                     {servers.length === 0 && <option value="">(no other servers)</option>}
                   </select>
-                  <button onClick={doBuildRelease} disabled={busy === 'release' || !target} className={primaryBtn}>Build release</button>
+                  <button onClick={doBuildRelease} disabled={busy === 'release' || !target || (isCatchUp && !deployCtx)} className={primaryBtn}>Build release</button>
                   {busy === 'release' && <span className="text-xs text-muted-foreground">Building…</span>}
                 </div>
                 {release && (
                   <div className="space-y-2">
+                    {release.catchUp && (
+                      <div className="border border-amber-600/40 rounded-md p-2 bg-amber-500/5">
+                        <p className="text-xs font-semibold text-amber-600">Catch-up release</p>
+                        <p className="text-[11px] text-muted-foreground">Ships everything that differs between {target} and {server}, outside any single change set.</p>
+                      </div>
+                    )}
                     <p className="text-xs">Release <span className="font-mono">{release.releaseCommit}</span> built on {target}'s recorded commit <span className="font-mono">{release.base}</span>.</p>
                     <div className="border border-emerald-600/30 rounded-md p-2 space-y-1 bg-emerald-600/5">
                       <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Included — ships to {target} ({release.included?.length ?? 0})</p>
-                      {(release.included ?? []).map((o, i) => (
-                        <p key={i} className="text-[11px]"><span className="text-emerald-700">{o.action === 'D' ? 'delete' : 'update'}</span> · <span className="font-mono">{o.type} {o.name}</span> <span className="text-muted-foreground/60">({humanizeFile(o.file)})</span></p>
-                      ))}
+                      {release.catchUp
+                        ? Object.entries(groupByType(release.included)).map(([type, items]) => (
+                          <div key={type} className="space-y-0.5">
+                            <p className="text-[10px] text-muted-foreground/70 uppercase tracking-wide pt-1">{type} ({items.length})</p>
+                            {items.map((o, i) => (
+                              <p key={i} className="text-[11px]"><span className="text-emerald-700">{o.action === 'D' ? 'delete' : 'update'}</span> · <span className="font-mono">{type === 'other' ? o.name : `${o.type} ${o.name}`}</span> <span className="text-muted-foreground/60">({humanizeFile(o.file)})</span></p>
+                            ))}
+                          </div>
+                        ))
+                        : (release.included ?? []).map((o, i) => (
+                          <p key={i} className="text-[11px]"><span className="text-emerald-700">{o.action === 'D' ? 'delete' : 'update'}</span> · <span className="font-mono">{o.type} {o.name}</span> <span className="text-muted-foreground/60">({humanizeFile(o.file)})</span></p>
+                        ))}
                       {(release.included ?? []).length === 0 && <p className="text-[11px] text-muted-foreground">Nothing from this change set changed a file.</p>}
                     </div>
+                    {release.catchUp && (
+                      <div className="border border-border rounded-md p-2 space-y-1 bg-muted/20">
+                        <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Change sets this catch-up covers ({(release.coveredSets ?? []).length})</p>
+                        {(release.coveredSets ?? []).map(s => (
+                          <p key={s.id} className="text-[11px]"><span className="font-mono">{s.name}</span> <span className="text-muted-foreground/60">— {s.entries} change{s.entries !== 1 ? 's' : ''}{s.user ? `, ${s.user}` : ''}</span></p>
+                        ))}
+                        {(release.coveredSets ?? []).length === 0 && <p className="text-[11px] text-muted-foreground">None of DEV's unreleased closed change sets touch the included objects.</p>}
+                        {(release.openSets ?? []).length > 0 && (
+                          <>
+                            <p className="text-[10px] text-amber-600 uppercase tracking-wide pt-1">Open — partly shipped, stays in play</p>
+                            {(release.openSets ?? []).map(s => (
+                              <p key={s.id} className="text-[11px] text-amber-600/90"><span className="font-mono">{s.name}</span> <span className="text-muted-foreground/60">— {s.entries} change{s.entries !== 1 ? 's' : ''}{s.user ? `, ${s.user}` : ''}</span></p>
+                            ))}
+                          </>
+                        )}
+                      </div>
+                    )}
+                    {release.catchUp && (
+                      <div className="border border-border rounded-md p-2 space-y-1 bg-muted/20">
+                        <p className="text-[10px] text-muted-foreground uppercase tracking-wide">On {target} but not in the repo ({(release.targetOnly ?? []).length}) — tick any to delete after the pull</p>
+                        {(release.targetOnly ?? []).map((o, i) => {
+                          const key = `${o.type}|${o.name}|${o.parent ?? ''}|${o.hierarchy ?? ''}`
+                          return (
+                            <label key={i} className="flex items-baseline gap-2 text-[11px] font-mono text-muted-foreground">
+                              <input type="checkbox" checked={!!delSel[key]} onChange={e => setDelSel(prev => e.target.checked ? { ...prev, [key]: o } : Object.fromEntries(Object.entries(prev).filter(([k]) => k !== key)))} className="mt-0.5 accent-red-600" />
+                              <span>{o.type} {o.name}{o.parent ? ` (${o.parent}${o.hierarchy && o.hierarchy !== o.parent ? ` › ${o.hierarchy}` : ''})` : ''}</span>
+                            </label>
+                          )
+                        })}
+                        {(release.targetOnly ?? []).length === 0 && <p className="text-[11px] text-muted-foreground">Nothing target-only.</p>}
+                        {Object.keys(delSel).length > 0 && <p className="text-[10px] text-red-600 pt-1">{Object.keys(delSel).length} selected for deletion after the pull. Approval records this list.</p>}
+                      </div>
+                    )}
+                    {(release.addedAsDependency?.length > 0) && (
+                      <div className="border border-sky-600/30 rounded-md p-2 space-y-1 bg-sky-600/5">
+                        <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Added because something in the release needs it ({release.addedAsDependency.length})</p>
+                        {release.addedAsDependency.map((o, i) => (
+                          <p key={i} className="text-[11px]"><span className="font-mono">{o.type} {o.name}</span> <span className="text-muted-foreground/60">({humanizeFile(o.file)})</span>{o.neededBy ? <span className="text-muted-foreground/60"> — needed by {humanizeFile(o.neededBy)}</span> : null}</p>
+                        ))}
+                      </div>
+                    )}
+                    {(release.addedByUser?.length > 0) && (
+                      <div className="border border-emerald-600/30 rounded-md p-2 space-y-1 bg-emerald-600/5">
+                        <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Added to this release by you ({release.addedByUser.length})</p>
+                        {release.addedByUser.map((o, i) => (
+                          <p key={i} className="text-[11px]"><span className="font-mono">{o.type} {o.name}</span> <span className="text-muted-foreground/60">({humanizeFile(o.file)})</span>{o.by ? <span className="text-muted-foreground/60"> — by {o.by}</span> : null}</p>
+                        ))}
+                      </div>
+                    )}
+                    {release.runs > 0 && (release.excluded ?? []).some(o => !o.owner) && (
+                      <p className="text-[11px] text-amber-600">This change set ran {release.runs} process{release.runs !== 1 ? 'es' : ''}; unowned changes below may be their output.</p>
+                    )}
                     <div className="border border-border rounded-md p-2 space-y-1 bg-muted/20">
                       <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Left on DEV — not shipped ({release.excluded?.length ?? 0})</p>
-                      {(release.excluded ?? []).map((o, i) => (
-                        <p key={i} className="text-[11px] text-muted-foreground"><span className="font-mono">{o.type} {o.name}</span>{o.owner ? ` — in "${o.owner.sessionName}"${o.owner.user ? ` (${o.owner.user})` : ''}` : ''}</p>
-                      ))}
+                      {(release.excluded ?? []).map((o, i) => {
+                        const key = `${o.type}|${o.name}|${o.parent ?? ''}`
+                        return (
+                          <div key={i} className="flex items-baseline gap-2 text-[11px] text-muted-foreground">
+                            {!o.owner && (
+                              <input
+                                type="checkbox"
+                                checked={!!addSel[key]}
+                                onChange={e => setAddSel(prev => e.target.checked ? { ...prev, [key]: o } : Object.fromEntries(Object.entries(prev).filter(([k]) => k !== key)))}
+                                title="Add this unowned item to the release"
+                                className="mt-0.5 accent-emerald-600"
+                              />
+                            )}
+                            <span className="flex-1"><span className="font-mono">{o.type} {o.name}</span>{o.owner ? ` — in "${o.owner.sessionName}"${o.owner.user ? ` (${o.owner.user})` : ''}` : null}</span>
+                            {!o.owner && <span className="text-[10px] text-muted-foreground/60">Add to this release</span>}
+                          </div>
+                        )
+                      })}
                       {(release.excluded ?? []).length === 0 && <p className="text-[11px] text-muted-foreground">Nothing else changed between the base and DEV's commit.</p>}
+                      {Object.keys(addSel).length > 0 && <p className="text-[10px] text-emerald-600 pt-1">Build release again to include the ticked items.</p>}
                     </div>
                     {(release.noFile?.length > 0) && (
                       <p className="text-[11px] text-amber-600">In this change set but no file changed (e.g. only a value): {release.noFile.map(o => `${o.type} ${o.name}`).join(', ')}</p>
@@ -441,7 +590,7 @@ export default function DeployWizard({ server, onClose, onOpenTests, initialSess
                   <>
                     <p className="text-xs">Approve release <span className="font-mono">{release.releaseCommit}</span> for <span className="font-semibold">{target}</span>.</p>
                     <div className="border border-border rounded-md p-3 text-xs space-y-1 bg-muted/20">
-                      <p><span className="text-muted-foreground">Change set:</span> {activeSession?.name ?? (sessionId ? `(closed ${String(sessionId).slice(0, 8)})` : '—')}</p>
+                      <p><span className="text-muted-foreground">Change set:</span> {deployCtx?.name ?? (sessionId ? `(closed ${String(sessionId).slice(0, 8)})` : '—')}</p>
                       <p><span className="text-muted-foreground">Ships:</span> {(release.included ?? []).map(o => `${o.name} (${o.type})`).join(', ') || 'nothing'}</p>
                       {tests && <p><span className="text-muted-foreground">Tests:</span> {tests.passed}/{tests.total} passing{blockFails.length ? `, ${blockFails.length} blocking` : ''}</p>}
                       <p><span className="text-muted-foreground">Release commit:</span> <span className="font-mono">{release.releaseCommit}</span></p>

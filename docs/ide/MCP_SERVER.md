@@ -540,7 +540,7 @@ In `readonly` mode only the read tools are offered. The split is defined in
 | `create_hierarchy` | write | change set | builder |
 | `create_subset` | write | change set | builder |
 | `create_view` | write | change set | builder |
-| `delete_lens` | write | change set | builder |
+| `delete_lens` | write | ungated | builder |
 | `delete_object` | write | change set | builder |
 | `package_change_set` | write | change set | builder |
 | `remove_assertion` | write | ungated | builder |
@@ -548,7 +548,7 @@ In `readonly` mode only the read tools are offered. The split is defined in
 | `restructure_dimension` | write | change set | builder |
 | `run_process` | write | ungated | builder |
 | `save_data_all` | write | ungated | builder |
-| `save_lens` | write | change set | builder |
+| `save_lens` | write | ungated | builder |
 | `seed_baseline` | write | change set | builder |
 | `set_attribute_values` | write | change set | builder |
 | `set_baseline_head` | write | change set | builder |
@@ -646,8 +646,8 @@ In `readonly` mode only the read tools are offered. The split is defined in
 |---|---|
 | `list_lens_patterns` | Lens patterns: worked demonstrations of each kind of screen (input grid, line items with approval, dashboard, variance, process page, disclosure accounts…) — learn from them, never copy one |
 | `list_lenses` / `get_lens` | Lenses stored in the model, and one Lens's full HTML and settings |
-| `save_lens` | save a Lens's own HTML into the model, test-running its queries (change set required) |
-| `delete_lens` | delete a Lens from the model (change set required) |
+| `save_lens` | save a Lens's own HTML into the model, test-running its queries; Lenses deploy separately, so no model change set is required |
+| `delete_lens` | delete a Lens from the model; Lenses deploy separately, so no model change set is required |
 
 ---
 

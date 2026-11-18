@@ -3,15 +3,43 @@
 Every bug-fix commit, newest first, by the date it was committed. Generated from the git history;
 commits that mixed a fix into a feature are included too. New features are not listed here.
 
-166 fixes from 2026-05-20 to 2026-10-10, plus 46 entries for 11–27 October, 6 for 28 October–1 November, 7 for 2 November, 4 for 5 November, 10 for 6 November, 9 for 9 November, 8 for 15 November, 3 for 17 November and 3 for 18 November. Last updated 2026-11-18.
+166 fixes from 2026-05-20 to 2026-10-10, plus 46 entries for 11–27 October, 6 for 28 October–1 November, 7 for 2 November, 4 for 5 November, 10 for 6 November, 9 for 9 November, 8 for 15 November, 3 for 17 November and 9 for 18 November. Last updated 2026-11-18.
 
 ← [Back to README](../../README.md)
 
 
 ## November 2026
 
+- **Alternate-hierarchy subsets** — Subset files carried the dimension but not the hierarchy, so alternate-hierarchy subsets were applied and verified against the main hierarchy and could fail post-deploy verification. `objectFromFile` now keeps the hierarchy and apply/verify use it
+
+- **Release verifier and subset/view parents** — TM1 Git’s pull plan names the parent dimension for a subset change (and cube for a view), so the deploy check refused a release carrying only the subset/view. The expected plan keys now include those parents
+
+- **Catch-up approval dependencies** — Approval ran CheckRules against the old target before the catch-up created its cubes/elements, so a valid catch-up was refused. Catch-ups now keep the release link check but skip the rule/TI checks against the pre-pull target
+
+- **Release/catch-up renames** — Git reported a renamed process JSON as `R`, but the release treated it as an add and left the old base file behind; that stale JSON still linked a deleted `.ti` and broke the pull plan. Renames now remove the old path before adding the new one
+
+- **Release paths with non-ASCII names** — Git quoted names containing characters such as an em dash, so the catch-up passed a quoted pathspec to `git checkout` and failed. The shared Git helper now disables path quoting
+
+- **Catch-up on TM1 v11** — `GitStatus` can return `DeployedCommit` without `LocalCommit`, so a committed DEV was reported as having no pushed commit. The catch-up source commit now falls back to `DeployedCommit.ID`
+
+- **Phantom change sets** — Proof/lab sets whose objects had been deleted still appeared in the active list and needed a manual mark; the mark also could not be trusted to exclude files. Closed sets whose touched objects no longer exist are now detected automatically and hidden as history only; the manual mark/unmark routes and UI are gone
+
+- **Won’t deploy on older change sets** — Marking failed on sets that predate model-owned history: the local set had no `Applications/Governance/ChangeSets` record, and the model-first update threw. The update now backfills a closed record from the local log before writing the mark; a caller with no session still fails loudly
+
+- **Change Sets — Won’t deploy** — The mark/unmark controls were hidden for a TM1 admin who was not the set’s owner, even though the server authorises admins. The row now treats the server admin as an owner, so the hover control appears
+
+- **Catch-up approval** — A catch-up change set is created closed and empty, so it has no close-test snapshot; the approval gate treated that as a failing test and refused it. Catch-ups now skip the tests requirement (ordinary releases still require a clean recorded result)
+
+- **Git token after restart** — Startup copied the saved token into `process.env.TM1_GIT_TOKEN`, so the setup screen reported “from .env”, refused to save a replacement and left an expired token stuck. The seeding is gone: every reader goes through `gitSecrets.getToken()` (env first, then the saved file), and saving no longer writes the environment
+
+- **Release dependencies** — A subset or view was matched to its owning change set by type and name only, so a `Default` subset on one dimension falsely owned `Default` on another. Rebuilding a release could refuse with the wrong owner and hide unowned “Add to this release” items. Dependency ownership now uses the same type/name/parent key as the change set itself
+
+- **Git token setup** — `.env`’s `TM1_GIT_TOKEN` silently overrode the token saved from the setup screen after a restart, and an already-linked server still opened on a blank link form. `git-secrets.tokenSource()` now reports env/saved/none without the value, saving is refused with a 409 when `.env` owns the token, the status route returns the source (and a token-expiry hint on failure), and the linked screen shows the link, token source and a deliberate “Link to a different repo” path
+
 ### 2026-11-18
 
+- **deploy release wording** — A release refused when an object belonged to another change set, then told the user to "release that change set first, or together" and, for a failed rule reference, to "build a combined release". Releases are one change set at a time, in dependency order; both messages (and the CheckRules note) now say `Release "<owner>" to <target> first, then rebuild this release.`
+- **deploy release** — A release shipped an object file without the subsets, views or hierarchies its `@Code.links` named, so TM1's pull failed with "Cannot open the file specified by link". `buildRelease` now runs a link closure over the whole release tree, adds missing unowned files from DEV (listed as `addedAsDependency`), refuses a file owned by another change set by naming it, refuses a link that exists on neither side, and repeats until stable; `checkDependencies` blocks an older broken release before approval
 - **governance manifest** — A fresh IDE decided model ownership from two local marker files, so a server whose model owned its change sets, approvals or deploy state looked unmigrated; the IDE then wrote local copies beside them. Ownership now comes from `Applications/Governance/manifest.json` (read per server + identity, cached 30 seconds, errors never cached). A missing or unreadable manifest throws an error naming the tool command, and no local marker is read or written
 - **change sets** — A model-owned change-set document that could not be read was silently skipped, so a damaged record simply disappeared from the list. It now fails the list and names the exact document on the server
 - **first pull** — `firstPullAnalysis` was exported but never called, read only each dimension's main hierarchy, and treated every failed read as "no loss". It now clones the branch into a throwaway folder, compares every hierarchy (skipping `Leaves`), lists target-only cubes/dimensions/processes/chores and element loss, and fails closed with the object and TM1's message. First pull re-runs it immediately before executing and requires the exact sentence for that run; the setup screen shows the plan, target-only objects and loss table, and hides the confirmation box when the analysis is incomplete

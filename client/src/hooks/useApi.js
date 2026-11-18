@@ -14,7 +14,7 @@ if (typeof window !== 'undefined' && !window.__tm1FetchWrapped) {
   const nativeFetch = window.fetch.bind(window)
   const enc = encodeURIComponent
   const WRITE = new Set(['POST', 'PATCH', 'DELETE'])
-  const EXCLUDED = ['/api/auth/', '/api/sessions/', '/api/assertions', '/api/deploy', '/api/git', '/api/servers', '/api/config', '/api/catalog', '/api/explorer', '/api/log', '/api/model-health', '/api/git-readiness', '/api/readiness', '/api/admin', '/api/files', '/api/sql', '/api/jobs', '/api/maintenance', '/api/users', '/api/notebooks', '/api/period', '/api/search', '/api/mcp', '/api/function-catalog', '/api/subset/preview', '/api/mdx']
+  const EXCLUDED = ['/api/auth/', '/api/sessions/', '/api/assertions', '/api/deploy', '/api/git', '/api/servers', '/api/config', '/api/catalog', '/api/explorer', '/api/log', '/api/model-health', '/api/git-readiness', '/api/readiness', '/api/admin', '/api/files', '/api/sql', '/api/jobs', '/api/maintenance', '/api/users', '/api/notebooks', '/api/period', '/api/search', '/api/mcp', '/api/function-catalog', '/api/subset/preview', '/api/mdx', '/api/lens', '/api/lenses']
   const tok = () => localStorage.getItem('tm1-token') ?? ''
   // Read-only (PROD-posture) and Simple-mode servers, from /api/servers
   // (listServersWithFlags), cached once per page load. Both skip the change-set
@@ -765,6 +765,36 @@ export const useFirstPullAnalysis = (server, branch = 'dev', { enabled = true } 
 export const useDeployBaseline = (server) => useQuery({ queryKey: ['deploy-baseline', server], queryFn: () => get(`/api/deploy/baseline?server=${encodeURIComponent(server ?? '')}`), staleTime: 60_000, enabled: !!server })
 export const useDeploySeed     = () => { const qc = useQueryClient(); return useMutation({ mutationFn: (body) => post('/api/deploy/seed', body), onSuccess: () => qc.invalidateQueries({ queryKey: ['deploy-baseline'] }) }) }
 export const useDeployArchives = () => useQuery({ queryKey: ['deploy-archives'], queryFn: () => get('/api/deploy/archives'), staleTime: 0 })
+
+// Deploy → Lenses: a separate, governed ship with no Git. The plan is compared
+// on demand, the approval is bound to the plan hash, and history lives in the target.
+export const useLensDeployPlan = (source, target, enabled = false) => useQuery({
+  queryKey: ['lens-deploy-plan', source, target],
+  queryFn: () => get(`/api/deploy/lenses/plan?source=${enc(source)}&target=${enc(target)}`),
+  enabled: !!(source && target && enabled),
+  staleTime: 0,
+  retry: false,
+})
+export const useLensDeployHistory = (target) => useQuery({
+  queryKey: ['lens-deploy-history', target],
+  queryFn: () => get(`/api/deploy/lenses/history?target=${enc(target)}`),
+  enabled: !!target,
+  staleTime: 0,
+})
+export const useApproveLensDeploy = () => {
+  const qc = useQueryClient()
+  return useMutation({ mutationFn: (body) => post('/api/deploy/lenses/approve', body), onSuccess: () => qc.invalidateQueries({ queryKey: ['lens-deploy-history'] }) })
+}
+export const useExecuteLensDeploy = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (body) => post('/api/deploy/lenses/execute', body),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['lens-deploy-history'] })
+      qc.invalidateQueries({ queryKey: ['lens-deploy-plan'] })
+    },
+  })
+}
 
 // ── User management ───────────────────────────────────────────────────────────
 export const useClients      = (server) => useQuery({ queryKey: ['clients', server], queryFn: () => get(`/api/users?server=${enc(server)}`), enabled: !!server, staleTime: 0 })

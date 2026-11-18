@@ -22,8 +22,9 @@ const guard = require('./guard')
 //   run_process, reprocess_feeders — execute TI; no change-set entry of their own
 //   save_data_all — server operation; no change-set entry of its own
 //   add_assertion, update_assertion, remove_assertion — write the model's assertions document
+//   save_lens, delete_lens — write Lens documents, which deploy separately (no model change set)
 // Deploy execution is not an MCP tool; check_deploy_risk / check_target_drift only read.
-const UNGATED_WRITE_TOOLS = new Set(['start_change_set', 'run_process', 'reprocess_feeders', 'save_data_all', 'add_assertion', 'update_assertion', 'remove_assertion'])
+const UNGATED_WRITE_TOOLS = new Set(['start_change_set', 'run_process', 'reprocess_feeders', 'save_data_all', 'add_assertion', 'update_assertion', 'remove_assertion', 'save_lens', 'delete_lens'])
 
 // The deploy checks open a connection to ANOTHER server (possibly production) with
 // that server's service login, outside the reader's TM1 security. In readonly mode

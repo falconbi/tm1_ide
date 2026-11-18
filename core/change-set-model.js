@@ -18,10 +18,16 @@ function buildClosedRecord(session, { closedBy, tests, audit } = {}) {
     if (closeTests === null && session.close_tests) { try { closeTests = JSON.parse(session.close_tests) } catch { closeTests = null } }
     return {
         id: session.id, name: session.name, server: session.server, user: session.user,
+        kind: session.kind ?? 'change',
         started_at: session.started_at, description: session.description ?? null,
         closed_at: session.closed_at ?? new Date().toISOString(),
         closed_by: closedBy ?? session.closed_by ?? null,
         close_tests: closeTests,
+        wont_deploy_at: session.wont_deploy_at ?? null,
+        wont_deploy_by: session.wont_deploy_by ?? null,
+        wont_deploy_reason: session.wont_deploy_reason ?? null,
+        covered_by: session.covered_by ?? null,
+        covered_at: session.covered_at ?? null,
         entry_count: (audit ?? []).length,
         audit: audit ?? [],
     }
@@ -47,6 +53,24 @@ async function closeAndPersist(server, session, { closedBy, tests, ideToken, cli
     return { ok: true, model: true, id: session.id }
 }
 
+// Update fields on an already-closed record (retired phantom, covered by a
+// catch-up). Reads the existing document so the audit stays intact. On a
+// migrated server a missing or unwritable document throws — never silent.
+async function updateClosedRecord(server, id, patch, { ideToken, client, session } = {}) {
+    if (!await store.isMigrated(server, AREA, { ideToken, client })) return { ok: true, model: false }
+    const name = `${id}.json`
+    let current = await store.readDoc(server, AREA, name, { ideToken, client, missingOk: true })
+    if (!current) {
+        // Older local-only sets can pre-date the model-owned history. Backfill a
+        // closed record from the local log before appending the new field; a
+        // caller with no session still gets the loud missing-record error.
+        if (!session) throw new Error(`Change-set record Applications/Governance/ChangeSets/${name} is missing on ${server}.`)
+        current = buildClosedRecord(session, { closedBy: session.closed_by, tests: null, audit: lightAudit(id) })
+    }
+    await store.writeDoc(server, AREA, name, { ...current, ...patch }, { ideToken, client })
+    return { ok: true, model: true }
+}
+
 // On a migrated server, list change sets from the model; else null (fall back
 // to the local working log).
 async function listSessions(server, { ideToken, limit = 50 } = {}) {
@@ -65,4 +89,4 @@ async function listSessions(server, { ideToken, limit = 50 } = {}) {
     return sessions.slice(0, limit)
 }
 
-module.exports = { closeAndPersist, buildClosedRecord, lightAudit, listSessions, AREA }
+module.exports = { closeAndPersist, buildClosedRecord, lightAudit, listSessions, updateClosedRecord, AREA }

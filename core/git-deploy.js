@@ -246,9 +246,9 @@ async function execute(target, { branch = 'dev', token, gitUser = gitIdentity.us
             try {
                 const repoUrl = (await c.post('GitStatus', { Username: gitUser, Password: token }))?.URL
                 const base = require('./git-state').lastDeployed(target)?.lastDeployedCommit ?? null
-                const { changedObjects, objectKey } = require('./git-release')
+                const { changedObjects, objectKey, expectedPlanKeys } = require('./git-release')
                 const expected = await changedObjects({ from: base, to: releaseCommit, repoUrl, token, gitUser })
-                const expectedKeys = new Set(expected.map(o => objectKey(o.type, o.name, o.parent)))
+                const expectedKeys = expectedPlanKeys(expected)
                 const parsedOps = (plan.Operations ?? []).map(parsePlanOp).filter(Boolean)
                 const unknownOps = parsedOps.filter(o => o.unknown)
                 if (unknownOps.length) {
@@ -314,7 +314,11 @@ async function execute(target, { branch = 'dev', token, gitUser = gitIdentity.us
         // Scoped strictly to the change set linked to this approval (never from the
         // request body; a missing session is reported, never silently skipped).
         let manifest = { deletes: [], dims: [], attrElements: [], wholesaleDims: [] }
-        if (approval.session) {
+        if (linkedSession?.kind === 'catch-up') {
+            // A catch-up has no change-set delete log. Its approved target-only
+            // delete list is the scope; nothing else is inferred from DEV.
+            manifest.deletes = Array.isArray(approval.deletes) ? approval.deletes : []
+        } else if (approval.session) {
             try { manifest = require('./change-log').getSessionManifest(approval.session) || manifest } catch { /* no manifest */ }
         } else {
             out.reconcileWarning = 'This approval has no linked change set — reconcile scope is unknown and was skipped (not silently).'

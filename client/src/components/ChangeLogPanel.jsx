@@ -3,7 +3,7 @@ import { useState, useRef, useEffect } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { X, ChevronRight, ChevronDown, Clock, Box, Layers, Cog, FileText, FileCheck, Table2, List, Tag, Loader2, Diff, Rocket, ScrollText, Pencil, RotateCcw, HelpCircle } from 'lucide-react'
 import HelpPanel from '@/components/HelpPanel'
-import { useWorkSessions, useWorkSessionLog, useUpdateSessionDescription, useResumeWorkSession } from '@/hooks/useApi'
+import { useWorkSessions, useWorkSessionLog, useUpdateSessionDescription, useResumeWorkSession, useServerLogins } from '@/hooks/useApi'
 import { useStore } from '@/store'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
@@ -37,6 +37,7 @@ export function autoDescription(action, objectName, detail) {
     case 'HIERARCHY_CREATED':  return `Hierarchy '${objectName}' created`
     case 'HIERARCHY_DELETED':  return `Hierarchy '${objectName}' deleted`
     case 'EDGE_REMOVED':       return `Parent relationship removed${detail ? ` in '${detail}'` : ''}`
+    case 'PROCESS_RUN':        return `Process '${objectName}' run`
     default:                   return `${action.replace(/_/g, ' ').toLowerCase()} — ${objectName}`
   }
 }
@@ -65,8 +66,9 @@ const ACTION_META = {
   ELEMENT_LINKED:     { label: 'Element linked',      icon: Layers,   colour: 'text-blue-400' },
   HIERARCHY_CREATED:  { label: 'Hierarchy created',   icon: Layers,   colour: 'text-emerald-400' },
   HIERARCHY_DELETED:  { label: 'Hierarchy deleted',   icon: Layers,   colour: 'text-red-400' },
-  EDGE_REMOVED:       { label: 'Parent removed',      icon: Layers,   colour: 'text-amber-400' },
-  ROLLED_BACK:        { label: 'Rolled back',         icon: FileText, colour: 'text-purple-400' },
+  EDGE_REMOVED:       { label: 'Parent removed',     icon: Layers,   colour: 'text-amber-400' },
+  PROCESS_RUN:        { label: 'Process run',        icon: Cog,      colour: 'text-sky-400' },
+  ROLLED_BACK:        { label: 'Rolled back',        icon: FileText, colour: 'text-purple-400' },
 }
 
 function fmtTime(ts) {
@@ -130,7 +132,7 @@ function LogEntry({ entry, server, openTab }) {
   )
 }
 
-function SessionRow({ session, server, openTab, onClose, currentUser }) {
+function SessionRow({ session, server, openTab, onClose, currentUser, isAdmin = false }) {
   const { openDeployWizard } = useStore()
   const [open, setOpen]           = useState(false)
   const [editingDesc, setEditingDesc] = useState(false)
@@ -168,8 +170,10 @@ function SessionRow({ session, server, openTab, onClose, currentUser }) {
   }, [session.description])
 
   const { data: entries = [], isFetching } = useWorkSessionLog(open ? session.id : null)
+  const runs = entries.filter(e => e.object_type === 'process-run')
+  const changes = entries.filter(e => e.object_type !== 'process-run')
   const isActive = !session.closed_at
-  const owns = !session.user || !currentUser || String(session.user).toLowerCase() === String(currentUser).toLowerCase()
+  const owns = isAdmin || !session.user || !currentUser || String(session.user).toLowerCase() === String(currentUser).toLowerCase()
 
   useEffect(() => { if (editingDesc) descRef.current?.focus() }, [editingDesc])
 
@@ -195,6 +199,12 @@ function SessionRow({ session, server, openTab, onClose, currentUser }) {
                 <span className="text-xs font-medium truncate">{session.name}</span>
                 {session.deployed && (
                   <span className="text-[9px] px-1 py-0.5 rounded bg-emerald-500/15 text-emerald-400 shrink-0">Deployed</span>
+                )}
+                {(session.phantom || session.wont_deploy_at) && (
+                  <span className="text-[9px] px-1 py-0.5 rounded bg-muted text-muted-foreground shrink-0" title="No touched objects remain on this server — history only">Phantom — empty</span>
+                )}
+                {session.covered_by && (
+                  <span className="text-[9px] px-1 py-0.5 rounded bg-muted text-muted-foreground shrink-0" title="Carried by a catch-up release">Covered by catch-up{session.covered_at ? ` ${fmtDate(session.covered_at)}` : ''}</span>
                 )}
               </div>
               <div className="text-[10px] text-muted-foreground/60">
@@ -253,13 +263,13 @@ function SessionRow({ session, server, openTab, onClose, currentUser }) {
             </div>
           )}
           {owns && <button
-            onClick={e => { e.stopPropagation(); setEditingDesc(v => !v) }}
-            title="Add / edit note"
-            className="opacity-0 group-hover:opacity-100 transition-opacity p-2 rounded hover:bg-muted text-muted-foreground hover:text-foreground shrink-0"
-          >
-            <Pencil size={10} />
-          </button>}
-          {(session.entry_count ?? 0) > 0 && (
+              onClick={e => { e.stopPropagation(); setEditingDesc(v => !v) }}
+              title="Add / edit note"
+              className="opacity-0 group-hover:opacity-100 transition-opacity p-2 rounded hover:bg-muted text-muted-foreground hover:text-foreground shrink-0"
+            >
+              <Pencil size={10} />
+            </button>}
+          {(session.entry_count ?? 0) > 0 && !session.phantom && !session.wont_deploy_at && !session.covered_by && (
             <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center mr-1">
               <button
                 onClick={() => openTab({ id: `session-report:${session.id}`, type: 'session-report', label: `Report: ${session.name}`, server, session })}
@@ -305,7 +315,7 @@ function SessionRow({ session, server, openTab, onClose, currentUser }) {
             {!isFetching && entries.length === 0 && (
               <div className="px-4 py-2 text-[10px] text-muted-foreground italic">No entries yet.</div>
             )}
-            {entries.map(e => (
+            {changes.map(e => (
               <LogEntry
                 key={e.id}
                 entry={e}
@@ -313,6 +323,19 @@ function SessionRow({ session, server, openTab, onClose, currentUser }) {
                 openTab={openTab}
               />
             ))}
+            {runs.length > 0 && (
+              <>
+                <div className="px-3 py-1 mt-1 border-t border-border/40 text-[10px] uppercase tracking-wide text-muted-foreground">Processes run</div>
+                {runs.map(e => (
+                  <LogEntry
+                    key={e.id}
+                    entry={e}
+                    server={server}
+                    openTab={openTab}
+                  />
+                ))}
+              </>
+            )}
           </div>
         )}
       </div>
@@ -325,14 +348,21 @@ export default function ChangeLogPanel({ server, onClose, direction = 'up' }) {
   const { openTab, openDeployWizard, username } = useStore()
   const { data: allSessions = [], isFetching } = useWorkSessions(server)
   const [showDeployed, setShowDeployed] = useState(false)
+  const [showWontDeploy, setShowWontDeploy] = useState(false)
   const [showHelp, setShowHelp] = useState(false)
 
   // Once a change set has shipped it's not "in play" anymore -- its record
   // lives properly in Deploy History now. Keep this list to what's still
   // active or not yet deployed; deployed ones are one click away, not gone.
-  const deployedCount = allSessions.filter(s => s.deployed).length
-  const sessions = showDeployed ? allSessions : allSessions.filter(s => !s.deployed)
+  // A phantom set has no surviving objects and is hidden the same way.
+  const deployedCount = allSessions.filter(s => (s.deployed || s.covered_by) && !s.phantom && !s.wont_deploy_at).length
+  const phantomCount = allSessions.filter(s => s.phantom || s.wont_deploy_at).length
+  const sessions = allSessions.filter(s =>
+    (showWontDeploy || (!s.phantom && !s.wont_deploy_at)) &&
+    (showDeployed || (!s.deployed && !s.covered_by)))
 
+  const { data: logins = [] } = useServerLogins()
+  const isAdmin = logins.some(l => String(l?.name ?? '').toLowerCase() === String(server ?? '').toLowerCase() && l?.isAdmin)
   const openReleaseAndClose = () => { openDeployWizard({ release: true }); onClose?.() }
 
   const posClass = direction === 'down'
@@ -371,7 +401,7 @@ export default function ChangeLogPanel({ server, onClose, direction = 'up' }) {
             <p className="px-4 py-8 text-xs text-muted-foreground italic text-center">
               {allSessions.length === 0
                 ? 'No change sets yet. Start a change set to begin tracking changes.'
-                : 'Nothing in play — every change set here has already been deployed.'}
+                : 'Nothing in play — every other change set here is deployed or empty (phantom).'}
             </p>
           )}
           {sessions.map(s => (
@@ -382,6 +412,7 @@ export default function ChangeLogPanel({ server, onClose, direction = 'up' }) {
               openTab={openTab}
               onClose={onClose}
               currentUser={username}
+              isAdmin={isAdmin}
             />
           ))}
         </div>
@@ -392,6 +423,14 @@ export default function ChangeLogPanel({ server, onClose, direction = 'up' }) {
             className="shrink-0 px-3 py-1.5 text-[10px] text-muted-foreground hover:text-foreground hover:bg-muted transition-colors border-t border-border text-left"
           >
             {showDeployed ? 'Hide deployed' : `Show ${deployedCount} deployed`}
+          </button>
+        )}
+        {phantomCount > 0 && (
+          <button
+            onClick={() => setShowWontDeploy(v => !v)}
+            className="shrink-0 px-3 py-1.5 text-[10px] text-muted-foreground hover:text-foreground hover:bg-muted transition-colors border-t border-border text-left"
+          >
+            {showWontDeploy ? "Hide phantom" : `Show ${phantomCount} phantom`}
           </button>
         )}
       </div>

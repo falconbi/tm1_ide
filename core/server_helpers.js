@@ -1,6 +1,7 @@
 'use strict'
 
 const path = require('path')
+const gitSecrets = require('./git-secrets')
 
 function createServerHelpers({ cl, makeClientWithCredentials, isDirectServer, PAW_LOGIN_SERVER, createCatalogOverrideRoutes, gateReadOnly, requireTm1Admin }) {
     const loginRateLimit = require('./login-rate-limit').createIpLimiter({ max: 10, windowMs: 15 * 60_000 })
@@ -8,7 +9,7 @@ function createServerHelpers({ cl, makeClientWithCredentials, isDirectServer, PA
     const isSampleLogin = (u, p) => String(u ?? '').toLowerCase() === 'admin' && p === 'apple'
     const SQL_PASSWORD_MASK = '••••••••'
     const _GI = () => require('./git-identity')
-    const _GITOK = () => process.env.TM1_GIT_TOKEN || ''
+    const _GITOK = () => gitSecrets.getToken()
     const CATALOG_OVERRIDES_PATH = path.join(__dirname, '..', 'config', 'function-catalog-overrides.json')
     const catalogRoutes = createCatalogOverrideRoutes({
         filePath: CATALOG_OVERRIDES_PATH,

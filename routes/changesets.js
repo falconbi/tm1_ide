@@ -63,10 +63,13 @@ app.get('/api/sessions/active', (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
-app.get('/api/sessions', (req, res) => {
+app.get('/api/sessions', async (req, res) => {
     try {
         const server   = req.query.server
         const sessions = cl.getSessions(server)
+        let phantom = new Set()
+        try { phantom = await require('../core/phantom-change-set').findPhantomIds(server, sessions, { ideToken: req.ideToken }) }
+        catch { /* no model read → no automatic hiding */ }
         // A session counts as "deployed" once this server's own baseline has
         // advanced past its last entry -- deployer.js re-seeds BOTH the target's
         // and the source's baseline (stamped with the source's exact change-log
@@ -80,7 +83,8 @@ app.get('/api/sessions', (req, res) => {
         catch { /* no baseline yet */ }
         res.json(sessions.map(s => ({
             ...s,
-            deployed: baselineEntryId != null && s.max_entry_id != null && s.max_entry_id <= baselineEntryId,
+            deployed: !!s.deployed_target || (baselineEntryId != null && s.max_entry_id != null && s.max_entry_id <= baselineEntryId),
+            phantom: phantom.has(s.id),
         })))
     }
     catch (e) { res.status(500).json({ error: e.message }) }

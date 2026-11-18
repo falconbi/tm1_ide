@@ -5,7 +5,7 @@ import { useStore } from '@/store'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import { Toaster } from '@/components/ui/sonner'
-import { Search, PanelLeftClose, PanelLeftOpen, Keyboard, SlidersHorizontal, Users, BookOpen, Rocket, Settings, ExternalLink, Activity, ListChecks, GitBranch, GitCompare, History } from 'lucide-react'
+import { Search, PanelLeftClose, PanelLeftOpen, Keyboard, SlidersHorizontal, Users, BookOpen, Rocket, Settings, ExternalLink, Activity, ListChecks, GitBranch, GitCompare, History, FileCode2 } from 'lucide-react'
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels' // used for inner editor split groups only
 import ServerSelector from '@/components/ServerSelector'
 import Explorer from '@/components/Explorer'
@@ -351,6 +351,20 @@ const [showCatalog, setShowCatalog]           = useState(false)
                       Deploy step by step
                     </button>
                     <button
+                      onClick={() => { openDeployWizard({ catchUp: true }); setShowDeployMenu(false) }}
+                      className="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-left text-foreground hover:bg-muted"
+                    >
+                      <GitBranch size={13} className="shrink-0 text-muted-foreground" />
+                      Catch up a server…
+                    </button>
+                    <button
+                      onClick={() => { openDeployCenter({ server, view: 'lenses' }); setShowDeployMenu(false) }}
+                      className="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-left text-foreground hover:bg-muted"
+                    >
+                      <FileCode2 size={13} className="shrink-0 text-muted-foreground" />
+                      Deploy Lenses…
+                    </button>
+                    <button
                       onClick={() => { setShowGitDrift(true); setShowDeployMenu(false) }}
                       className="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-left text-foreground hover:bg-muted"
                     >
@@ -362,7 +376,7 @@ const [showCatalog, setShowCatalog]           = useState(false)
                       className="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-left text-foreground hover:bg-muted"
                     >
                       <History size={13} className="shrink-0 text-muted-foreground" />
-                      History &amp; baselines
+                      Deploy Center
                     </button>
                     <button
                       onClick={() => { setShowModelHealth(true); setShowDeployMenu(false) }}
@@ -450,11 +464,11 @@ const [showCatalog, setShowCatalog]           = useState(false)
         {showCatalog && <CatalogAdmin server={server} onClose={() => setShowCatalog(false)} />}
         {showModelHealth && <ModelHealth server={server} onClose={() => setShowModelHealth(false)} />}
         {showAssertions && <AssertionsManager server={server} onClose={() => setShowAssertions(false)} />}
-        {deployWizard && <DeployWizard server={server} initialSession={deployWizard.session} release={!!deployWizard.release} onClose={closeDeployWizard} onOpenTests={() => { setShowAssertions(true); closeDeployWizard() }} />}
+        {deployWizard && <DeployWizard server={server} initialSession={deployWizard.session} release={!!deployWizard.release} catchUp={!!deployWizard.catchUp} catchUpTarget={deployWizard.catchUpTarget ?? null} onClose={closeDeployWizard} onOpenTests={() => { setShowAssertions(true); closeDeployWizard() }} />}
         {showGitSetup && <GitSetup server={server} onClose={() => setShowGitSetup(false)} />}
         {showGitDrift && <GitDrift server={server} onClose={() => setShowGitDrift(false)} />}
         <PeriodBuilder open={showPeriodBuilder} onClose={() => setShowPeriodBuilder(false)} />
-        <DeployCenter onOpenWizard={() => openDeployWizard({})} />
+        <DeployCenter onOpenWizard={(cfg = {}) => openDeployWizard(cfg)} />
         <ServerLoginDialog />
         <Toaster position="bottom-right" duration={3000} />
       </TooltipProvider>
