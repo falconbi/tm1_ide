@@ -766,6 +766,36 @@ export const useDeployBaseline = (server) => useQuery({ queryKey: ['deploy-basel
 export const useDeploySeed     = () => { const qc = useQueryClient(); return useMutation({ mutationFn: (body) => post('/api/deploy/seed', body), onSuccess: () => qc.invalidateQueries({ queryKey: ['deploy-baseline'] }) }) }
 export const useDeployArchives = () => useQuery({ queryKey: ['deploy-archives'], queryFn: () => get('/api/deploy/archives'), staleTime: 0 })
 
+// Deploy → Lenses: a separate, governed ship with no Git. The plan is compared
+// on demand, the approval is bound to the plan hash, and history lives in the target.
+export const useLensDeployPlan = (source, target, enabled = false) => useQuery({
+  queryKey: ['lens-deploy-plan', source, target],
+  queryFn: () => get(`/api/deploy/lenses/plan?source=${enc(source)}&target=${enc(target)}`),
+  enabled: !!(source && target && enabled),
+  staleTime: 0,
+  retry: false,
+})
+export const useLensDeployHistory = (target) => useQuery({
+  queryKey: ['lens-deploy-history', target],
+  queryFn: () => get(`/api/deploy/lenses/history?target=${enc(target)}`),
+  enabled: !!target,
+  staleTime: 0,
+})
+export const useApproveLensDeploy = () => {
+  const qc = useQueryClient()
+  return useMutation({ mutationFn: (body) => post('/api/deploy/lenses/approve', body), onSuccess: () => qc.invalidateQueries({ queryKey: ['lens-deploy-history'] }) })
+}
+export const useExecuteLensDeploy = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (body) => post('/api/deploy/lenses/execute', body),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['lens-deploy-history'] })
+      qc.invalidateQueries({ queryKey: ['lens-deploy-plan'] })
+    },
+  })
+}
+
 // ── User management ───────────────────────────────────────────────────────────
 export const useClients      = (server) => useQuery({ queryKey: ['clients', server], queryFn: () => get(`/api/users?server=${enc(server)}`), enabled: !!server, staleTime: 0 })
 export const useGroups       = (server) => useQuery({ queryKey: ['groups',  server], queryFn: () => get(`/api/groups?server=${enc(server)}`),  enabled: !!server, staleTime: 60_000 })

@@ -47,6 +47,7 @@ Every feature in one numbered list.
 27. **Covered sets** — after a clean catch-up, the older sets it carried count as released; open sets stay in play.
 28. **Deploy History** — permanent record of every deployment: approvals, manifests, before/after snapshots with diffs.
 29. **Earlier REST deploy pipeline** — Diff → Package → Risk → Approve → Deploy; kept for history and the admin CLI.
+29a. **Deploy → Lenses** — admin-only, no Git: compare source and target, review published new/changed Lenses (drafts disabled), block on a missing cube/process, approve the exact content hash, deploy under the target lock, verify by reading back, and keep history in the target model.
 
 ## AI
 
@@ -180,6 +181,7 @@ Five playlists, one theme each — build with AI, everyday development, governed
 | **Catch-up release** | Admin-only, once per target: Deploy → Catch up a server; bring a target with a recorded deployed commit level with DEV in one reviewed release, with covered sets and target-only objects shown before approval. Includes a reviewed target-only delete list, recorded in the approval and deploy log |
 | **Covered sets** | After a clean catch-up deploy, the older closed sets it carried count as released and no longer block in-order releasing; open sets stay in play |
 | **Deploy History** | Model deploy records and approvals first (a catch-up is labelled), then earlier REST-pipeline archives in a collapsed section |
+| **Deploy → Lenses** | Admin-only, no Git. Compare the source's published Lenses with a target (new / changed / same / draft), with drafts listed but disabled and target-only Lenses offered for deletion. A Lens whose `config.writes` / `config.runs` names a cube or process missing on the target is a **blocker**, not a warning. Approval binds the exact per-Lens source hash and the plan hash — if the source changes, deploy refuses. The deploy takes the target's deploy lock, saves each Lens as published, reads it back to verify its hash, applies only the approved deletes, and records per-Lens results and history in the target model (`Applications/Governance/LensDeploys`) |
 | **MCP server (external LLM)** | A standard Model Context Protocol server (`tools/tm1mcp`, 67 operations) that **external LLM agents connect to** — Claude Code or any MCP-compatible client — to build dimensions, cubes, rules and processes by conversation, change-set gated. See [`docs/ide/MCP_SERVER.md`](MCP_SERVER.md) |
 | **Lens Editor** *(in development)* | Build a Lens — a single-file HTML Lens on live TM1 data — and preview it in the IDE. Start blank or from one of your own Lenses, set its JSON config, and pick its icon or image for the Lens app home page. Patterns are read-only worked demonstrations |
 | **AI assistant (built-in)** | The IDE's inline helper generates views and subsets from a description (Anthropic API key) |

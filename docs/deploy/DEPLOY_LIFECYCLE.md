@@ -19,6 +19,19 @@ This is the behaviour the code has now; earlier sections below are the design re
 - **Covered sets:** only after a clean catch-up deploy, and only closed sets whose objects the catch-up carried. Open sets stay open and are listed as partly shipped.
 - **Deletes:** a normal change set records its deletes and reconcile removes exactly those on the target. A catch-up uses its approved target-only list; no other target object is deleted.
 
+### Deploy → Lenses (no Git) — 18 Nov 2026
+
+Lenses are model application documents under `Applications/Governance/Lenses`, not Git-tracked model objects. Shipping them is its own admin-only flow in the Deploy Center rail: **Deploy → Lenses**.
+
+- **Compare** — source is the current server; pick a target. The plan reads every source Lens and compares its canonical content hash with the target: **new**, **changed**, **same**, or **draft**. Only **published** Lenses can ship; drafts are listed but disabled. Source Lenses that are not on the target are never inferred — target-only Lenses are listed separately for optional deletion.
+- **Blockers, not warnings** — for every published new/changed Lens, its declared `writes` cubes and `runs` processes (`lensBridge.lensWrites` / `lensRuns`, from the `<meta>` tags plus `config.writes` / `config.runs`) are checked against the target's model cubes and processes. A missing cube or process makes that Lens a **blocker**, and the plan cannot be approved or deployed until the target has it.
+- **Review** — new/changed/same/draft counts, blockers, and target-only Lenses. All published new/changed Lenses are selected by default; target-only deletes are off by default and ticked explicitly.
+- **Approve** — records the approver, note, source/target, the exact per-Lens source hashes and the plan hash, plus the approved delete list. The approval lives in the **target model** (`Applications/Governance/LensDeploys/approvals.json`).
+- **Deploy** — takes the same **target deploy lock** as a Git deploy (`Applications/Governance/Deployments/_lock-<server>.json`), re-reads the source, and refuses if the plan hash or any approved Lens hash changed since approval. Each approved Lens is saved as published through `lensStore.saveLens`, with its description/folder/title/icon/color/image/config, then **read back and re-hashed**; a mismatch fails that Lens. Only the approved target-only Lenses are deleted.
+- **Verify and history** — every deploy records its per-Lens result (verified or the error) and each delete in `Applications/Governance/LensDeploys/history.json` on the target. The rail's history list shows who deployed what, when, and the outcome.
+
+The canonical hash covers a Lens's content (`name`, `status`, `description`, `folder`, `title`, `icon`, `color`, `image`, `config`, `html`) and deliberately ignores `version`, `updated`, `owner`, `created`, `createdBy` and `toolkitVersion`, so saving the same content twice is still the same Lens.
+
 ## Known gaps (16 Nov 2026) — being fixed in review area 07
 
 Found by code review, not by a failed deploy. Each line moves to **Fixed** as the fix lands.
