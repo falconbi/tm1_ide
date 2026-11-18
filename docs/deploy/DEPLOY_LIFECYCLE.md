@@ -104,6 +104,28 @@ commit, regardless of which change set touched it.
   it would cover, any open sets it partly ships, and the objects that exist on
   the target but not in the repo (TM1 Git does not delete those).
 
+### Rehearse a catch-up on a TEST copy
+
+For a risky catch-up, rehearse it against a copy of PROD before touching PROD.
+
+1. Stop PROD and copy its **data folder**.
+2. Start the copy as a separate server: unique name and port.
+3. Add that server to `config/servers.json` and sign in to it.
+4. **Re-point its Git identity in the IDE (GitHub setup) as a TEST deployment.** A
+   copied data folder carries PROD's Git configuration and last-deployed record. If
+   left alone, the copy still identifies as `TM1_Test_PROD`, uses
+   `release-TM1_Test_PROD`, and believes it already has PROD's deployed state.
+5. Give it its own target branch, `release-<copy name>`, and its own IDE deploy
+   baseline/history. It may use the same model repo.
+6. Deploy the catch-up to the copy. Review the target-only delete list for that
+   copy, approve and deploy.
+7. Run the controls and test the model on the copy.
+8. Repeat the catch-up against PROD, reviewing PROD's own delete list there.
+
+What you want from the copy is PROD's **data state**, not PROD's **Git identity**.
+Deletes and deploy history are recorded per target; neither target inherits the
+other's decisions.
+
 ### Phantom change sets
 
 A closed change set whose touched objects no longer exist is detected automatically as a
