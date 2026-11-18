@@ -2,85 +2,106 @@
 
 # TM1 IDE
 
-**A browser-based IDE for IBM Planning Analytics (TM1)**
+**An open development experiment for the IBM Planning Analytics (TM1) community.**
 
 [![CI](https://github.com/falconbi/tm1_ide/actions/workflows/ci.yml/badge.svg)](https://github.com/falconbi/tm1_ide/actions/workflows/ci.yml)
 [![Node.js](https://img.shields.io/badge/Node.js-20+-339933?logo=node.js&logoColor=white)](https://nodejs.org)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![PAW](https://img.shields.io/badge/PAW-V11%20%7C%20V12-0062B1?logo=ibm&logoColor=white)](https://www.ibm.com/products/planning-analytics)
-[![Monaco](https://img.shields.io/badge/Editor-Monaco-646CFF)](https://microsoft.github.io/monaco-editor/)
-
-**The whole TM1 development loop in one browser tab — write, test, trace, map and deploy.**
-
-No TM1 Architect, no Perspectives, nothing to install on the server.
 
 </div>
 
+A browser-based TM1 development environment that explores what modern TM1 development could
+look like. It covers AI agents working through MCP, governed changes and deployment, and web
+applications built on TM1 data.
+
+It's working software, actively developed and shared openly as a codebase to learn from and
+build on. **This is a community project, not a supported product.**
+
+[![A view and its rules side by side in the IDE](docs/images/hero.png)](https://www.youtube.com/watch?v=_-BWl_n-aWU)
+
+> [!NOTE]
+> **Security:** the IDE is designed for local, single-user development, not as a shared
+> multi-user web service. Protect your credentials, test on non-production servers first, and
+> read the [security model](SECURITY.md) before connecting to an important TM1 system.
+
 ---
 
-## Lenses (in development)
+## Why this project exists
 
-**Your TM1 model, as a focused web app — not a spreadsheet.** Lenses are single-file HTML apps, one per job:
-assumptions, people, positions, HR matching, hire approvals, attention, cost centre, KPIs, cost, headcount,
-pay and grades, budget-to-forecast, since-last — plus the home page. Live TM1 data, one clean shell, governed
-write-back — built and previewed inside the IDE, with no BI tool or separate front-end project to stand up.
+AI agents, MCP and modern web tools are changing how software is built. TM1 can benefit from
+that too. This project explores how, through working code rather than slides. It brings together
+a development environment, an MCP server for AI-assisted model building, and a way to build
+focused web applications on TM1.
 
-The **Workforce planning model** is the worked example — the model, its maths and its Lenses built together. The model and its Lenses live in TM1, not in this repository; they are not yet ready for use.
+## What this project explores
 
-![Lenses home — the Workforce planning model](docs/images/lenses-home-full.png)
+### A modern TM1 development environment
+Rules and TI with live checking, a debugger, dimensions, views, subsets and MDX, all in one browser
+tab. The Cube Map draws the whole model, and any number can be traced back to its rule.
 
----
+▶ Watch: [IDE Basics](https://www.youtube.com/watch?v=_-BWl_n-aWU) ·
+[Rules](https://www.youtube.com/watch?v=q-eoEeDHwSA) ·
+[TI](https://www.youtube.com/watch?v=vmZzt2ud_og) ·
+[Dimensions](https://www.youtube.com/watch?v=qGAjW8m_vAg) ·
+[Views](https://www.youtube.com/watch?v=wD6n-vdmCLI) ·
+[Cube Map](https://www.youtube.com/watch?v=MM62ZqC3pjk) ·
+[all features](docs/ide/FEATURES.md)
 
-> [!IMPORTANT]
-> **Deployment now runs on TM1's built-in Git (preview).** Step-by-step deploy with approvals, drift checks and model-owned history. Tested in the lab, not yet production-proven — use it on test servers and tell us what you find.
+### MCP and AI-assisted model building
+An MCP server gives AI agents structured tools to inspect, build and test TM1 models. The
+questions it explores:
+- Can an agent build a real model?
+- How are standards communicated and enforced?
+- How is the result tested?
+- How do people stay in control?
 
-> [!WARNING]
-> **Pre-release — for initial testing only.**
-> This project is under active development and is not yet production-ready. Expect rough edges, breaking changes between commits, and features that are incomplete or unstable. Do not use in a production TM1 environment without understanding the risks.
+A financial consolidation engine was built this way, test-first:
+[how it was built](https://falconbi.github.io/articles/consolidation-built-by-ai/) ·
+[MCP server guide](docs/ide/MCP_SERVER.md).
 
-![Split pane — View + Rules](docs/images/5_screenshot.png)
+[![An AI agent building a TM1 model through MCP](docs/images/ai-build.png)](docs/ide/MCP_SERVER.md)
 
-## Why it exists
+### Governed development
+As more of the building is automated, governance matters more, not less. Every save goes into a
+change set. Tests live in the model. A release ships exactly one change set through TM1's built-in
+Git, with review, approval, deploy and verify steps.
+[How the deploy works](https://falconbi.github.io/articles/governed-tm1-deploys/).
 
-AI agents can now build TM1 models, and a modern HTML interface can do what the old desktop tools did — and more.
-This project is a working example of both:
+[![The step-by-step deploy](docs/images/deploy.png)](docs/deploy/DEPLOY_LIFECYCLE.md)
 
-- a **simple browser UI** for the whole TM1 development loop
-- an **MCP server** that lets an AI agent build and test models — with a full financial consolidation engine built
-  that way as the worked example
-- **deployment and governance** — change sets, tests, approvals, history — to test how far the bar can be raised
-  now that building can be automated
+### Web applications on TM1 (Lenses, in development)
+Focused HTML screens on live TM1 data, one per job, with governed write-back. They're built in the
+IDE and they live in the TM1 model. They're not ready for use yet.
 
-It is here to inspire further TM1 development in the agentic age, at a time when competing planning platforms are
-moving fast.
+![The Lenses home page](docs/images/lenses-home-full.png)
 
-A demonstration and reference project — to show what's possible, to learn from, and to build on. Not a supported
-product.
+## Three applications, one codebase
 
-## What's in it
+| Application | Entry point | What it's for |
+|---|---|---|
+| **IDE** | `server.js` | Developing and governing TM1 models |
+| **Lens app** | `lens-server.js` | Running Lenses for business users |
+| **MCP server** | `tools/tm1mcp/server.js` | AI agents working with TM1 models |
 
-- **A real editor for rules and TI** — Monaco (the engine behind VS Code) with TM1-aware autocomplete, signature
-  help, formatting, folding and regions. Validation catches wrong argument counts and broken IF/WHILE blocks as
-  you type, before TM1 does. TI has a debugger with breakpoints and watches.
-- **See how the model works** — the Cube Map draws every cube and how data moves between them (rules, feeders,
-  TI writes), plays a run sequence, and links each object to its process summary and transaction log. Rule Lens
-  reads a cube's rules by measure, and Data sources shows every writer and reader. Right-click any cell to trace
-  the rule chain behind its value.
-- **Prove the numbers** — assertions hold the answers you know are right and run after every build and deploy.
-  TM1 will happily return a confident wrong number; this catches it.
-- **Ship with confidence** — every save is tracked in a change set, and a release ships exactly that change set
-  through TM1's built-in Git: test → close → build release → review → approve → deploy → verify, with a full
-  history. [How and why it works](https://falconbi.github.io/articles/governed-tm1-deploys/).
-- **Build with AI** — an MCP server lets an AI agent (e.g. Claude Code) build dimensions, cubes, rules and
-  processes, inside change sets and checked by the same tests. A full financial consolidation engine was built
-  this way, test-first, and passes every one of its test cases — most of them published worked answers —
-  [how it was built](https://falconbi.github.io/articles/consolidation-built-by-ai/).
+All three share one `core/`: the TM1 client, the connection adapters (direct or through PAW,
+v11 and v12) and change logging. The function catalog is shared from `shared/`. See
+[Architecture](docs/ide/ARCHITECTURE.md).
 
-Also: dimension, subset, view, chore and cube editors, view grid with writeback, sessions and jobs monitors,
-server admin, file manager, SQL editor, MDX builder and a Period Builder. Connects to TM1 directly over the REST
-API or through PAW (v11 and v12). [See all features](docs/ide/FEATURES.md).
+## Status and expectations
 
-## Quick start
+It's real code, used to build real models, and it's still evolving. Please know before you use it:
+
+- **Actively developed.** Features, interfaces and internals change, sometimes in breaking ways.
+- **Still being tested.** Not every feature has been tested on every TM1 version and setup. Expect
+  bugs.
+- **No support or guarantees.** It's provided as-is under the MIT licence. There's no promised
+  response to issues or requests.
+- **Your environment, your responsibility.** Understand what an operation does and validate changes
+  before applying them to an important server.
+
+It isn't an IBM product and isn't supported by IBM.
+
+## Getting started
 
 ```bash
 git clone https://github.com/falconbi/tm1_ide.git
@@ -90,43 +111,42 @@ cp .env.example .env        # direct-v11 only needs PORT=8083; PAW setups need P
 npm start                   # → http://localhost:8083
 ```
 
-Node.js **20 or later** is required (CI tests 20 and 22). The frontend is pre-built — no build step needed. Full instructions: [Setup](docs/ide/SETUP.md).
+You need Node.js 20 or later, and a server in `config/servers.json`. The frontend is pre-built.
+Then see [Setup](docs/ide/SETUP.md) and the [first walkthrough](docs/ide/WALKTHROUGH.md).
+
+## Take it apart
+
+You don't need to adopt the whole application to get something from it.
+
+| If you're… | You might take |
+|---|---|
+| A TM1 developer | The editors, the checks, the Cube Map, the development ideas |
+| Building AI agents | The MCP server and its TM1 tools |
+| Designing deployment | The change sets, the tests in the model, the Git release flow |
+| A web developer | The Lens approach to apps on TM1 data |
+
+Clone it, fork it, change it, or build something better. Bug reports with steps to reproduce,
+ideas and pull requests are welcome, but there's no promise they'll be accepted or maintained. See
+[Contributing](CONTRIBUTING.md).
 
 ## Documentation
 
-Start here: [Setup](docs/ide/SETUP.md) → [Features](docs/ide/FEATURES.md) → [Architecture](docs/ide/ARCHITECTURE.md) → [CLAUDE.md](CLAUDE.md).
+[Setup](docs/ide/SETUP.md) · [Features](docs/ide/FEATURES.md) ·
+[Architecture](docs/ide/ARCHITECTURE.md) · [MCP server](docs/ide/MCP_SERVER.md) ·
+[Deploy lifecycle](docs/deploy/DEPLOY_LIFECYCLE.md) · [Security](SECURITY.md) ·
+[Changelog](CHANGELOG.md) · [All guides](docs/README.md)
 
+## Licence
 
-| Guide | What's in it |
-|---|---|
-| [Features](docs/ide/FEATURES.md) | Every editor and tool, with screenshots |
-| [HTML apps on TM1: security](docs/lenses/TM1_HTML_APPS_SECURITY.md) | The browser security layer you own once TM1 screens are HTML you (or an AI) write — five decisions, one checklist |
-| [Lens learning lab](docs/learn/lens-lab/README.md) | Five browser-security ideas you can break on purpose, run locally with no dependencies |
-| [Setup](docs/ide/SETUP.md) | Install, configure servers, run, development mode, installing at a client (Windows untested) |
-| [First walkthrough](docs/ide/WALKTHROUGH.md) | Connect, edit Rules/TI, build a model, trace it, govern a change |
-| [v1.0 release notes](docs/ide/RELEASE_NOTES_v1.0.md) | What is in v1.0, verification, and the known limits |
-| [Contributing](CONTRIBUTING.md) | Node version, install, tests, building `static/`, both lint ratchets, CI, where each kind of change belongs |
-| [Authentication](docs/auth/AUTHENTICATION.md) | How the IDE signs in — per-server login, what's supported and tested |
-| [TM1 Authentication Guide](docs/auth/TM1_AUTHENTICATION_GUIDE.md) | How every TM1 sign-in method works, in plain English — for anyone in TM1 |
-| [Architecture](docs/ide/ARCHITECTURE.md) | How the pieces fit, project structure |
-| [Deploy lifecycle](docs/deploy/DEPLOY_LIFECYCLE.md) | The current deploy — change-set releases through TM1 Git, approvals, drift, verification |
-| [Governed TM1 deploys](https://falconbi.github.io/articles/governed-tm1-deploys/) | Article: how and why the deploy works, with diagrams — a good first read |
-| [Earlier REST pipeline](docs/deploy/DEPLOYMENT.md) | Historical package/CLI notes — the IDE now has one step-by-step deploy flow |
-| [MCP server](docs/ide/MCP_SERVER.md) | Connecting an AI agent to build and test models |
-| [Building models](docs/models/BUILDING_MODELS.md) | Lessons and TM1 quirks from real model builds |
-| [Changelog](CHANGELOG.md) | Monthly summary of user-visible changes |
-| [Bug fixes](docs/ide/BUG_FIXES.md) | Every bug fix, by date committed |
-| [Security](SECURITY.md) | The security model |
-| [IBM REST API](docs/ide/Planning%20Analytics.postman_collection.json) | Postman collection of the TM1 REST API |
-
-Keyboard shortcuts: press `F1` or `Ctrl+Shift+K` in the app.
-
-## Status
-
-Active development. Core IDE features are usable. The Workforce model and its Lenses stay in TM1, where the model lives; they are not part of this repository. MCP and the deployment pipeline are still being proven on real builds.
+MIT. You may use, copy, change and share the code, provided the copyright and licence notice are
+kept. See [LICENSE](LICENSE). IBM, Planning Analytics and TM1 are trademarks of IBM.
 
 ---
 
 <div align="center">
-Built for the IBM Planning Analytics community · <a href="https://github.com/falconbi/tm1_ide/issues">Report an issue</a>
+
+**Built to explore. Shared to inspire.**
+
+Take it, learn from it, change it, or build something entirely different with it.
+
 </div>

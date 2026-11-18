@@ -8,7 +8,6 @@ Short walkthroughs of the IDE, each a few minutes long.
 
 | Video | What it shows |
 |---|---|
-| [Build Your Own TM1: Start Here](https://www.youtube.com/watch?v=dEsmssko4eY) | Building a small model from scratch in the IDE |
 | [IDE Basics](https://www.youtube.com/watch?v=_-BWl_n-aWU) | Connecting, the Explorer, tabs and split panes, the editors at a glance |
 | [Rules Editor](https://www.youtube.com/watch?v=q-eoEeDHwSA) | Writing rules and feeders, checking them, tracing a calculation |
 | [TI Editor](https://www.youtube.com/watch?v=vmZzt2ud_og) | Writing, running and debugging TI processes |
