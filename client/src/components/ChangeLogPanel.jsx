@@ -1,7 +1,7 @@
 import { request } from '@/lib/api'
 import { useState, useRef, useEffect } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { X, ChevronRight, ChevronDown, Clock, Box, Layers, Cog, FileText, FileCheck, Table2, List, Tag, Loader2, Diff, Rocket, ScrollText, Pencil, RotateCcw, HelpCircle, Ban, Undo2 } from 'lucide-react'
+import { X, ChevronRight, ChevronDown, Clock, Box, Layers, Cog, FileText, FileCheck, Table2, List, Tag, Loader2, Diff, Rocket, ScrollText, Pencil, RotateCcw, HelpCircle } from 'lucide-react'
 import HelpPanel from '@/components/HelpPanel'
 import { useWorkSessions, useWorkSessionLog, useUpdateSessionDescription, useResumeWorkSession, useServerLogins } from '@/hooks/useApi'
 import { useStore } from '@/store'
@@ -143,7 +143,6 @@ function SessionRow({ session, server, openTab, onClose, currentUser, isAdmin = 
   const qc         = useQueryClient()
   const [testResult, setTestResult] = useState(null)
   const [closing, setClosing]       = useState(false)
-  const [wontBusy, setWontBusy]     = useState(false)
 
   const blockingFails = testResult?.results?.filter(x => !x.pass && (x.severity ?? 'block') === 'block') ?? []
   const runTests = async () => {
@@ -164,31 +163,6 @@ function SessionRow({ session, server, openTab, onClose, currentUser, isAdmin = 
       qc.invalidateQueries({ queryKey: ['work-session-active', server] })
     } catch (e) { toast.error(e.message || 'Could not close the change set') }
     finally { setClosing(false) }
-  }
-
-  const markWontDeploy = async () => {
-    const reason = window.prompt(`Retire phantom change set "${session.name}"? It is empty and will be ignored by releases. Reason (required):`)
-    if (reason == null) return
-    if (!reason.trim()) { toast.error('A reason is required.'); return }
-    setWontBusy(true)
-    try {
-      const r = await request(`/api/sessions/${encodeURIComponent(session.id)}/wont-deploy`, { method: 'POST', headers: authHeader(), body: JSON.stringify({ reason }) })
-      const d = await r.json().catch(() => ({}))
-      if (!r.ok || d.error) throw new Error(d.error || r.statusText)
-      qc.invalidateQueries({ queryKey: ['work-sessions', server] })
-    } catch (e) { toast.error(e.message || 'Could not mark the change set') }
-    finally { setWontBusy(false) }
-  }
-
-  const unmarkWontDeploy = async () => {
-    setWontBusy(true)
-    try {
-      const r = await request(`/api/sessions/${encodeURIComponent(session.id)}/wont-deploy`, { method: 'DELETE', headers: authHeader() })
-      const d = await r.json().catch(() => ({}))
-      if (!r.ok || d.error) throw new Error(d.error || r.statusText)
-      qc.invalidateQueries({ queryKey: ['work-sessions', server] })
-    } catch (e) { toast.error(e.message || 'Could not unmark the change set') }
-    finally { setWontBusy(false) }
   }
 
   useEffect(() => {
@@ -226,8 +200,8 @@ function SessionRow({ session, server, openTab, onClose, currentUser, isAdmin = 
                 {session.deployed && (
                   <span className="text-[9px] px-1 py-0.5 rounded bg-emerald-500/15 text-emerald-400 shrink-0">Deployed</span>
                 )}
-                {session.wont_deploy_at && (
-                  <span className="text-[9px] px-1 py-0.5 rounded bg-muted text-muted-foreground shrink-0" title={`Retired phantom change set — empty, ignored by releases. ${session.wont_deploy_reason ?? ''}`}>Phantom — retired</span>
+                {(session.phantom || session.wont_deploy_at) && (
+                  <span className="text-[9px] px-1 py-0.5 rounded bg-muted text-muted-foreground shrink-0" title="No touched objects remain on this server — history only">Phantom — empty</span>
                 )}
                 {session.covered_by && (
                   <span className="text-[9px] px-1 py-0.5 rounded bg-muted text-muted-foreground shrink-0" title="Carried by a catch-up release">Covered by catch-up{session.covered_at ? ` ${fmtDate(session.covered_at)}` : ''}</span>
@@ -269,27 +243,6 @@ function SessionRow({ session, server, openTab, onClose, currentUser, isAdmin = 
               <RotateCcw size={10} />
             </button>
           )}
-          {!isActive && owns && (
-            session.wont_deploy_at ? (
-              <button
-                onClick={e => { e.stopPropagation(); unmarkWontDeploy() }}
-                disabled={wontBusy}
-                title={`Restore this phantom change set${session.wont_deploy_reason ? ` — was: ${session.wont_deploy_reason}` : ''}`}
-                className="opacity-0 group-hover:opacity-100 transition-opacity p-2 rounded hover:bg-muted text-muted-foreground hover:text-foreground shrink-0 disabled:opacity-40"
-              >
-                <Undo2 size={10} />
-              </button>
-            ) : (
-              <button
-                onClick={e => { e.stopPropagation(); markWontDeploy() }}
-                disabled={wontBusy}
-                title="Retire this empty phantom change set (ignored by releases)"
-                className="opacity-0 group-hover:opacity-100 transition-opacity p-2 rounded hover:bg-muted text-muted-foreground hover:text-red-400 shrink-0 disabled:opacity-40"
-              >
-                <Ban size={10} />
-              </button>
-            )
-          )}
           {isActive && owns && (
             <div className="flex items-center gap-0.5 mr-1 shrink-0">
               <button
@@ -316,7 +269,7 @@ function SessionRow({ session, server, openTab, onClose, currentUser, isAdmin = 
             >
               <Pencil size={10} />
             </button>}
-          {(session.entry_count ?? 0) > 0 && !session.wont_deploy_at && !session.covered_by && (
+          {(session.entry_count ?? 0) > 0 && !session.phantom && !session.wont_deploy_at && !session.covered_by && (
             <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center mr-1">
               <button
                 onClick={() => openTab({ id: `session-report:${session.id}`, type: 'session-report', label: `Report: ${session.name}`, server, session })}
@@ -401,11 +354,11 @@ export default function ChangeLogPanel({ server, onClose, direction = 'up' }) {
   // Once a change set has shipped it's not "in play" anymore -- its record
   // lives properly in Deploy History now. Keep this list to what's still
   // active or not yet deployed; deployed ones are one click away, not gone.
-  // A retired phantom set is empty for releases and is hidden the same way.
-  const deployedCount = allSessions.filter(s => (s.deployed || s.covered_by) && !s.wont_deploy_at).length
-  const wontDeployCount = allSessions.filter(s => s.wont_deploy_at).length
+  // A phantom set has no surviving objects and is hidden the same way.
+  const deployedCount = allSessions.filter(s => (s.deployed || s.covered_by) && !s.phantom && !s.wont_deploy_at).length
+  const phantomCount = allSessions.filter(s => s.phantom || s.wont_deploy_at).length
   const sessions = allSessions.filter(s =>
-    (showWontDeploy || !s.wont_deploy_at) &&
+    (showWontDeploy || (!s.phantom && !s.wont_deploy_at)) &&
     (showDeployed || (!s.deployed && !s.covered_by)))
 
   const { data: logins = [] } = useServerLogins()
@@ -448,7 +401,7 @@ export default function ChangeLogPanel({ server, onClose, direction = 'up' }) {
             <p className="px-4 py-8 text-xs text-muted-foreground italic text-center">
               {allSessions.length === 0
                 ? 'No change sets yet. Start a change set to begin tracking changes.'
-                : 'Nothing in play — every other change set here is deployed or marked won\'t deploy.'}
+                : 'Nothing in play — every other change set here is deployed or empty (phantom).'}
             </p>
           )}
           {sessions.map(s => (
@@ -472,12 +425,12 @@ export default function ChangeLogPanel({ server, onClose, direction = 'up' }) {
             {showDeployed ? 'Hide deployed' : `Show ${deployedCount} deployed`}
           </button>
         )}
-        {wontDeployCount > 0 && (
+        {phantomCount > 0 && (
           <button
             onClick={() => setShowWontDeploy(v => !v)}
             className="shrink-0 px-3 py-1.5 text-[10px] text-muted-foreground hover:text-foreground hover:bg-muted transition-colors border-t border-border text-left"
           >
-            {showWontDeploy ? "Hide phantom" : `Show ${wontDeployCount} phantom`}
+            {showWontDeploy ? "Hide phantom" : `Show ${phantomCount} phantom`}
           </button>
         )}
       </div>

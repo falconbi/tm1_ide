@@ -10,6 +10,8 @@ commits that mixed a fix into a feature are included too. New features are not l
 
 ## November 2026
 
+- **Phantom change sets** — Proof/lab sets whose objects had been deleted still appeared in the active list and needed a manual mark; the mark also could not be trusted to exclude files. Closed sets whose touched objects no longer exist are now detected automatically and hidden as history only; the manual mark/unmark routes and UI are gone
+
 - **Won’t deploy on older change sets** — Marking failed on sets that predate model-owned history: the local set had no `Applications/Governance/ChangeSets` record, and the model-first update threw. The update now backfills a closed record from the local log before writing the mark; a caller with no session still fails loudly
 
 - **Change Sets — Won’t deploy** — The mark/unmark controls were hidden for a TM1 admin who was not the set’s owner, even though the server authorises admins. The row now treats the server admin as an owner, so the hover control appears

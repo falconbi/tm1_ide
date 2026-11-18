@@ -26,6 +26,13 @@ After review, the flag is called **Retire phantom** everywhere (`ff9cdcb`). It r
 change set from release ownership; it does not exclude files from DEV or from a catch-up. The UI,
 docs and refusal messages now state that meaning.
 
+## Automatic phantom detection
+
+After the live check, the manual **Retire phantom** action was removed. `GET /api/sessions`
+now detects a closed set as phantom when none of the objects it touched still exist, returns
+`phantom: true`, and the list hides it behind **Show N phantom**. No manual mark or override.
+Catch-up still ships files; the check does not filter them.
+
 ## Lint
 
 | | Before (b2ef76d) | After |

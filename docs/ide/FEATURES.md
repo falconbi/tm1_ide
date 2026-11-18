@@ -42,7 +42,7 @@ Every feature in one numbered list.
 22. **Assertions** — the model's known-right answers, stored in TM1, checked after every build and deploy.
 23. **Change Sets** — every save tracked; change logs grouped by action; open any changed object.
 24. **Deploy through TM1 Git** (preview) — one change set per release, in order: test → close → build release → review → approve → deploy → verify, with drift checks.
-25. **Retire phantom** — retire an empty proof/lab set with a reason; it owns nothing and cannot be committed or released. Only for a set with no remaining changes.
+25. **Phantom change sets** — a closed set whose touched objects no longer exist is hidden automatically as history only; it owns nothing and cannot be committed or released. No manual mark.
 26. **Catch-up release** — admin-only, once: bring a target level with DEV in one reviewed release when its history predates change sets.
 27. **Covered sets** — after a clean catch-up, the older sets it carried count as released; open sets stay in play.
 28. **Deploy History** — permanent record of every deployment: approvals, manifests, before/after snapshots with diffs.
@@ -176,7 +176,7 @@ Five playlists, one theme each — build with AI, everyday development, governed
 | **Runbooks** | A phased review of a model update: phases in business order on the left; on the right, the processes and chores for that phase, each expanding to its steps in code order, with a phase-filtered Cube Map |
 | **Assertions** | The model's own tests — known-right answers stored in the TM1 server. List, add, edit, remove and run them; they run before release and after every build and deploy |
 | **Deploy (TM1 Git, preview)** | The one deploy flow. One change set per release, in dependency order: test → close → commit → build release → review → approve → deploy → verify, with drift checks and a deploy lock. See [Deploy lifecycle](../deploy/DEPLOY_LIFECYCLE.md) |
-| **Retire phantom** | Retire a closed, empty change set (proof/lab) with a reason; it owns nothing, cannot be committed or released, and hides behind "Show N phantom". It does not filter files out of a catch-up |
+| **Phantom change sets** | Closed sets whose touched objects no longer exist are detected automatically and hidden behind "Show N phantom"; no manual mark, and it does not filter files out of a catch-up |
 | **Catch-up release** | Admin-only, once per target: bring a target with a recorded deployed commit level with DEV in one reviewed release, with covered sets and target-only objects shown before approval |
 | **Covered sets** | After a clean catch-up deploy, the older closed sets it carried count as released and no longer block in-order releasing; open sets stay in play |
 | **Deploy History** | Model deploy records and approvals first (a catch-up is labelled), then earlier REST-pipeline archives in a collapsed section |

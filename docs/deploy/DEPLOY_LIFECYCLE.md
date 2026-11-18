@@ -22,7 +22,7 @@ Found by code review, not by a failed deploy. Each line moves to **Fixed** as th
 - Round 2 — the migration tool writes the manifest (`--manifest`, `--from-markers`), and a model-owned change-set document that cannot be read fails the list instead of disappearing.
 - Round 2 — first-pull analysis clones the branch, compares every hierarchy, lists target-only objects and element loss, and refuses when any read fails; it is wired into the first-pull call, a read-only route and the setup screen.
 
-- Round 4 — releases are one change set at a time, in dependency order. A change set with no remaining changes can be **retired as a phantom** (with a reason) and then owns nothing. A target whose history predates change-set releases can be brought level once with a **catch-up release**, and the older sets it carried are marked **covered** after it deploys cleanly.
+- Round 4 — releases are one change set at a time, in dependency order. A closed change set whose touched objects no longer exist is detected as a **phantom** automatically and then owns nothing. A target whose history predates change-set releases can be brought level once with a **catch-up release**, and the older sets it carried are marked **covered** after it deploys cleanly.
 
 **Still open**
 
@@ -86,15 +86,15 @@ commit, regardless of which change set touched it.
   it would cover, any open sets it partly ships, and the objects that exist on
   the target but not in the repo (TM1 Git does not delete those).
 
-### Retire phantom
+### Phantom change sets
 
 A closed change set that must never ship (a proof, lab work, a throwaway model)
-can be retired as a **phantom** with a required reason, by its owner or a TM1
+is detected as a **phantom** when none of its objects still exist, by its owner or a TM1
 admin. It stays as a record but **owns nothing**: releases skip it, and the
 wizard refuses to commit or release it. An open set must be closed first. The
-list shows a grey **Phantom — retired** badge and hides these sets by default
-("Show N phantom"). Restore it to use it again. This is only for a set whose changes
-are gone or already on the target; it does not remove or filter files.
+list shows a grey **Phantom — empty** badge and hides these sets by default
+("Show N phantom"). No manual mark is needed. This is a current-state check; it does not
+remove or filter files.
 
 ### Covered by a catch-up
 

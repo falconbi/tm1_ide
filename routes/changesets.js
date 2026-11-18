@@ -55,35 +55,6 @@ app.post('/api/sessions/resume', async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
-app.post('/api/sessions/:id/wont-deploy', async (req, res) => {
-    try {
-        const sess = cl.getSession(req.params.id)
-        if (!sess) return res.status(404).json({ error: `No change set ${req.params.id}` })
-        if (!gateReadOnly(res, sess.server)) return
-        if (!(await mayManageSession(req, sess))) {
-            return res.status(403).json({ error: `Change set ${req.params.id} belongs to ${sess.user ?? 'another user'}.` })
-        }
-        const { markWontDeploy } = require('../core/change-set-service')
-        const updated = await markWontDeploy(req.params.id, { by: req.user, reason: req.body?.reason, ideToken: req.ideToken })
-        res.json(updated)
-    } catch (e) {
-        res.status(e.code === 'OPEN_SET' ? 409 : e.code === 'REASON_REQUIRED' ? 400 : 500).json({ error: e.message })
-    }
-})
-
-app.delete('/api/sessions/:id/wont-deploy', async (req, res) => {
-    try {
-        const sess = cl.getSession(req.params.id)
-        if (!sess) return res.status(404).json({ error: `No change set ${req.params.id}` })
-        if (!gateReadOnly(res, sess.server)) return
-        if (!(await mayManageSession(req, sess))) {
-            return res.status(403).json({ error: `Change set ${req.params.id} belongs to ${sess.user ?? 'another user'}.` })
-        }
-        const { unmarkWontDeploy } = require('../core/change-set-service')
-        res.json(await unmarkWontDeploy(req.params.id, { ideToken: req.ideToken }))
-    } catch (e) { res.status(500).json({ error: e.message }) }
-})
-
 app.get('/api/sessions/active', (req, res) => {
     try {
         const s = cl.getActiveSession(req.query.server, req.user)
@@ -92,10 +63,13 @@ app.get('/api/sessions/active', (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
-app.get('/api/sessions', (req, res) => {
+app.get('/api/sessions', async (req, res) => {
     try {
         const server   = req.query.server
         const sessions = cl.getSessions(server)
+        let phantom = new Set()
+        try { phantom = await require('../core/phantom-change-set').findPhantomIds(server, sessions, { ideToken: req.ideToken }) }
+        catch { /* no model read → no automatic hiding */ }
         // A session counts as "deployed" once this server's own baseline has
         // advanced past its last entry -- deployer.js re-seeds BOTH the target's
         // and the source's baseline (stamped with the source's exact change-log
@@ -110,6 +84,7 @@ app.get('/api/sessions', (req, res) => {
         res.json(sessions.map(s => ({
             ...s,
             deployed: baselineEntryId != null && s.max_entry_id != null && s.max_entry_id <= baselineEntryId,
+            phantom: phantom.has(s.id),
         })))
     }
     catch (e) { res.status(500).json({ error: e.message }) }

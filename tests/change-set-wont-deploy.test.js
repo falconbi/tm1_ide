@@ -129,21 +129,6 @@ function recorder() {
   return res
 }
 
-test('a non-owner non-admin cannot mark a change set won\'t deploy', async () => {
-  const handlers = {}
-  const app = { post: (p, f) => { handlers['POST ' + p] = f }, get: () => {}, delete: (p, f) => { handlers['DELETE ' + p] = f }, patch: () => {} }
-  const { register } = require(path.join(__dirname, '..', 'routes', 'changesets'))
-  register(app, {
-    cl, gateReadOnly: () => true, gateWrite: () => true,
-    createStartSessionRoute: () => () => {},
-    makeClient: () => ({}), mayManageSession: async () => false, odataKey: s => s,
-  })
-  const s = closed('Not mine', 'WD-403', 'someone-else')
-  const res = recorder()
-  await handlers['POST /api/sessions/:id/wont-deploy']({ params: { id: s.id }, body: { reason: 'x' }, user: 'jdlove' }, res)
-  assert.equal(res.statusCode, 403)
-})
-
 test('releasing a change set marked won\'t deploy is refused', async () => {
   const handlers = {}
   const app = { post: (p, f) => { handlers['POST ' + p] = f }, get: () => {}, delete: () => {} }
