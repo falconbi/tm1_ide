@@ -5,7 +5,7 @@ import { useStore } from '@/store'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import { Toaster } from '@/components/ui/sonner'
-import { Search, PanelLeftClose, PanelLeftOpen, Keyboard, SlidersHorizontal, Users, BookOpen, Rocket, Settings, ExternalLink, Activity, ListChecks, GitBranch, GitCompare, History } from 'lucide-react'
+import { Search, PanelLeftClose, PanelLeftOpen, Keyboard, SlidersHorizontal, Users, BookOpen, Rocket, Settings, ExternalLink, Activity, ListChecks, GitBranch, GitCompare, History, FileCode2 } from 'lucide-react'
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels' // used for inner editor split groups only
 import ServerSelector from '@/components/ServerSelector'
 import Explorer from '@/components/Explorer'
@@ -358,6 +358,13 @@ const [showCatalog, setShowCatalog]           = useState(false)
                       Catch up a server…
                     </button>
                     <button
+                      onClick={() => { openDeployCenter({ server, view: 'lenses' }); setShowDeployMenu(false) }}
+                      className="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-left text-foreground hover:bg-muted"
+                    >
+                      <FileCode2 size={13} className="shrink-0 text-muted-foreground" />
+                      Deploy Lenses…
+                    </button>
+                    <button
                       onClick={() => { setShowGitDrift(true); setShowDeployMenu(false) }}
                       className="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-left text-foreground hover:bg-muted"
                     >
@@ -369,7 +376,7 @@ const [showCatalog, setShowCatalog]           = useState(false)
                       className="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-left text-foreground hover:bg-muted"
                     >
                       <History size={13} className="shrink-0 text-muted-foreground" />
-                      History &amp; baselines
+                      Deploy Center
                     </button>
                     <button
                       onClick={() => { setShowModelHealth(true); setShowDeployMenu(false) }}
