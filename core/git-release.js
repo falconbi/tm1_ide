@@ -144,10 +144,12 @@ function linkClosure(files, read) {
 }
 
 // Best-effort owner of an object: another change-log session (on the change set's
-// server) whose log touched the same object. Null when unknown.
+// server) whose log touched the same object. A set marked won't deploy (or
+// already covered by a catch-up) owns nothing — it must never block a release.
 function ownerOf(logsBySession, obj) {
     const wanted = objectKey(obj.type, obj.name, obj.parent)
     for (const s of logsBySession) {
+        if (s.wont_deploy_at || s.covered_by) continue
         for (const e of s.entries) {
             const type = ENTRY_TO_OBJECT[e.object_type]
             if (!type) continue
@@ -214,7 +216,7 @@ async function buildRelease(changeSet, target, { token, gitUser = gitIdentity.us
         const allSessions = cl.getAllSessions(500)
         const otherLogs = (session?.server ? allSessions.filter(s => s.server === session.server) : [])
             .filter(s => s.id !== session?.id)
-            .map(s => ({ name: s.name, user: s.user ?? null, entries: (() => { try { return cl.getSessionLog(s.id) } catch { return [] } })() }))
+            .map(s => ({ name: s.name, user: s.user ?? null, wont_deploy_at: s.wont_deploy_at ?? null, covered_by: s.covered_by ?? null, entries: (() => { try { return cl.getSessionLog(s.id) } catch { return [] } })() }))
 
         const included = []
         const excluded = []

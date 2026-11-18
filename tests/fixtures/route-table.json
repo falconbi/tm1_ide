@@ -134,6 +134,8 @@
   "POST /api/sessions/start",
   "POST /api/sessions/close",
   "POST /api/sessions/resume",
+  "POST /api/sessions/:id/wont-deploy",
+  "DELETE /api/sessions/:id/wont-deploy",
   "GET /api/sessions/active",
   "GET /api/sessions",
   "GET /api/sessions/:id/log",

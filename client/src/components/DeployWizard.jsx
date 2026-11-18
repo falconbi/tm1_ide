@@ -139,10 +139,12 @@ export default function DeployWizard({ server, onClose, onOpenTests, initialSess
     finally { setBusy('') }
   }
   const doPush = async () => {
+    if (deployCtx?.wont_deploy_at) { setError(`Change set "${deployCtx.name}" is marked won't deploy — unmark it in Change Sets first.`); return }
     const d = await run('push', { source: server, message, session: sessionId }, '/api/deploy/git/push')
     if (d) { setPushed(d); setStep(4) }
   }
   const doBuildRelease = async () => {
+    if (deployCtx?.wont_deploy_at) { setError(`Change set "${deployCtx.name}" is marked won't deploy — unmark it in Change Sets first.`); return }
     const addObjects = Object.values(addSel).map(o => ({ type: o.type, name: o.name, parent: o.parent ?? null }))
     const d = await run('release', { source: server, target, session: sessionId, addObjects }, '/api/deploy/git/release')
     if (d) { setRelease(d); setAddSel({}); setPrep(null); setApproval(null) }
@@ -231,6 +233,12 @@ export default function DeployWizard({ server, onClose, onOpenTests, initialSess
 
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
           {error && <p className="text-xs text-red-600 border border-red-600/40 rounded px-3 py-2">{error}</p>}
+          {deployCtx?.wont_deploy_at && (
+            <p className="text-xs border border-border rounded px-3 py-2 bg-muted/30 text-muted-foreground">
+              This change set is marked <span className="font-semibold text-foreground">won't deploy</span> and owns nothing.
+              {deployCtx.wont_deploy_reason ? <> Reason: “{deployCtx.wont_deploy_reason}”.</> : null} Unmark it in Change Sets to use it again.
+            </p>
+          )}
           {lock && (step === 7 || step === 8) && (
             <div className={'text-xs border rounded px-3 py-2 ' + (lock.stale ? 'border-red-600/40 text-red-600' : 'border-amber-600/40 text-amber-600')}>
               {lock.stale

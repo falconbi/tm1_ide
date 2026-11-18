@@ -55,6 +55,35 @@ app.post('/api/sessions/resume', async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
+app.post('/api/sessions/:id/wont-deploy', async (req, res) => {
+    try {
+        const sess = cl.getSession(req.params.id)
+        if (!sess) return res.status(404).json({ error: `No change set ${req.params.id}` })
+        if (!gateReadOnly(res, sess.server)) return
+        if (!(await mayManageSession(req, sess))) {
+            return res.status(403).json({ error: `Change set ${req.params.id} belongs to ${sess.user ?? 'another user'}.` })
+        }
+        const { markWontDeploy } = require('../core/change-set-service')
+        const updated = await markWontDeploy(req.params.id, { by: req.user, reason: req.body?.reason, ideToken: req.ideToken })
+        res.json(updated)
+    } catch (e) {
+        res.status(e.code === 'OPEN_SET' ? 409 : e.code === 'REASON_REQUIRED' ? 400 : 500).json({ error: e.message })
+    }
+})
+
+app.delete('/api/sessions/:id/wont-deploy', async (req, res) => {
+    try {
+        const sess = cl.getSession(req.params.id)
+        if (!sess) return res.status(404).json({ error: `No change set ${req.params.id}` })
+        if (!gateReadOnly(res, sess.server)) return
+        if (!(await mayManageSession(req, sess))) {
+            return res.status(403).json({ error: `Change set ${req.params.id} belongs to ${sess.user ?? 'another user'}.` })
+        }
+        const { unmarkWontDeploy } = require('../core/change-set-service')
+        res.json(await unmarkWontDeploy(req.params.id, { ideToken: req.ideToken }))
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
 app.get('/api/sessions/active', (req, res) => {
     try {
         const s = cl.getActiveSession(req.query.server, req.user)

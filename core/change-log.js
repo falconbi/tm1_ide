@@ -50,6 +50,9 @@ for (const [col, type] of [
     ['release_target',  'TEXT'],
     ['release_added_by_user',       'TEXT'],
     ['release_added_as_dependency', 'TEXT'],
+    ['wont_deploy_at',              'TEXT'],
+    ['wont_deploy_by',              'TEXT'],
+    ['wont_deploy_reason',          'TEXT'],
 ]) {
     try { db.exec(`ALTER TABLE sessions ADD COLUMN ${col} ${type}`) } catch { /* already exists */ }
 }
@@ -103,6 +106,20 @@ function setSessionRelease(id, commit, target, { addedByUser, addedAsDependency 
 }
 function markSessionDeployed(id, target) {
     db.prepare(`UPDATE sessions SET deployed_target = ?, deployed_at = ? WHERE id = ?`).run(target ?? null, new Date().toISOString(), id)
+}
+
+// A change set that must never ship (a proof, lab work, a throwaway). It is
+// closed and stays in the list as a record, but it owns nothing: releases skip
+// it, and the wizard refuses to commit or release it.
+function markSessionWontDeploy(id, { by, reason, at } = {}) {
+    db.prepare(`UPDATE sessions SET wont_deploy_at = ?, wont_deploy_by = ?, wont_deploy_reason = ? WHERE id = ?`)
+        .run(at ?? new Date().toISOString(), by ?? null, String(reason ?? '').trim() || null, id)
+    return db.prepare(`SELECT * FROM sessions WHERE id = ?`).get(id)
+}
+
+function unmarkSessionWontDeploy(id) {
+    db.prepare(`UPDATE sessions SET wont_deploy_at = NULL, wont_deploy_by = NULL, wont_deploy_reason = NULL WHERE id = ?`).run(id)
+    return db.prepare(`SELECT * FROM sessions WHERE id = ?`).get(id)
 }
 
 function updateSessionDescription(id, description) {
@@ -431,4 +448,4 @@ try { db.exec(`ALTER TABLE log_entries ADD COLUMN user TEXT`) } catch { /* alrea
 // The TM1 login a change was made with (the MCP's builder identity), next to the developer in `user`.
 try { db.exec(`ALTER TABLE log_entries ADD COLUMN identity TEXT`) } catch { /* already migrated */ }
 
-module.exports = { startSession, getSession, getSessionManifest, closeSession, resumeSession, updateSessionDescription, setSessionCommit, setSessionRelease, markSessionDeployed, getActiveSession, getSessions, getAllSessions, getSessionLog, getCrossSessionTouches, getEntriesSince, getMaxEntryId, getEntriesSinceId, getSessionLogVerbose, getRecentLog, getObjectHistory, getEntryById, writeLog, writeReadAudit, getReadAudit, pruneReadAudit, findArchivableEntries, pruneEntries }
+module.exports = { startSession, getSession, getSessionManifest, closeSession, resumeSession, updateSessionDescription, setSessionCommit, setSessionRelease, markSessionDeployed, markSessionWontDeploy, unmarkSessionWontDeploy, getActiveSession, getSessions, getAllSessions, getSessionLog, getCrossSessionTouches, getEntriesSince, getMaxEntryId, getEntriesSinceId, getSessionLogVerbose, getRecentLog, getObjectHistory, getEntryById, writeLog, writeReadAudit, getReadAudit, pruneReadAudit, findArchivableEntries, pruneEntries }

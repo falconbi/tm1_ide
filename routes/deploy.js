@@ -65,6 +65,10 @@ app.post('/api/deploy/git/push', async (req, res) => {
         if (!gateReadOnly(res, req.body?.source)) return
         const { source, branch = 'dev', message, session } = req.body
         if (!source) return res.status(400).json({ error: 'source required' })
+        const changeSet = session ? cl.getSession(session) : null
+        if (changeSet?.wont_deploy_at) {
+            return res.status(409).json({ error: `Change set "${changeSet.name}" is marked won't deploy — unmark it before committing.` })
+        }
         const { pushReadiness } = require('../core/git-readiness')
         const readiness = await pushReadiness(source, { ideToken: req.ideToken })
         if (!readiness.ok) {
@@ -94,6 +98,9 @@ app.post('/api/deploy/git/release', async (req, res) => {
         if (!target) return res.status(400).json({ error: 'target required' })
         const changeSet = session ? cl.getSession(session) : null
         if (!changeSet) return res.status(400).json({ error: 'a change set (session) is required' })
+        if (changeSet.wont_deploy_at) {
+            return res.status(409).json({ error: `Change set "${changeSet.name}" is marked won't deploy — unmark it before releasing.` })
+        }
         const { buildRelease } = require('../core/git-release')
         const addObjects = Array.isArray(req.body.addObjects) ? req.body.addObjects : []
         const r = await buildRelease(changeSet, target, {
