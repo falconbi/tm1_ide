@@ -290,3 +290,10 @@ test('expectedPlanKeys allows the parent dimension/cube of a subset/view change'
   assert.ok(keys.has(objectKey('dimension', 'WFP Pay Component')))
   assert.ok(keys.has(objectKey('cube', 'Sales')))
 })
+
+test('objectFromFile keeps an alternate subset hierarchy', () => {
+  const { objectFromFile } = require(path.join(__dirname, '..', 'core', 'git-release'))
+  assert.deepEqual(objectFromFile('dimensions/WFP Position.hierarchies/By Location.subsets/Default.json'), {
+    type: 'subset', name: 'Default', parent: 'WFP Position', hierarchy: 'By Location',
+  })
+})

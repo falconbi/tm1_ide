@@ -10,6 +10,8 @@ commits that mixed a fix into a feature are included too. New features are not l
 
 ## November 2026
 
+- **Alternate-hierarchy subsets** — Subset files carried the dimension but not the hierarchy, so alternate-hierarchy subsets were applied and verified against the main hierarchy and could fail post-deploy verification. `objectFromFile` now keeps the hierarchy and apply/verify use it
+
 - **Release verifier and subset/view parents** — TM1 Git’s pull plan names the parent dimension for a subset change (and cube for a view), so the deploy check refused a release carrying only the subset/view. The expected plan keys now include those parents
 
 - **Catch-up approval dependencies** — Approval ran CheckRules against the old target before the catch-up created its cubes/elements, so a valid catch-up was refused. Catch-ups now keep the release link check but skip the rule/TI checks against the pre-pull target

@@ -42,7 +42,7 @@ function objectFromFile(file) {
     const f = String(file ?? '')
     let m
     m = f.match(/^dimensions\/([^/]+)\.hierarchies\/([^/]+)\.subsets\/([^/]+)\.json$/)
-    if (m) return { type: 'subset', name: m[3], parent: m[1] }
+    if (m) return { type: 'subset', name: m[3], parent: m[1], hierarchy: m[2] }
     m = f.match(/^dimensions\/([^/]+)\.hierarchies\/([^/]+)\.json$/)
     if (m) return { type: 'dimension', name: m[1], kind: 'dimension' }
     m = f.match(/^dimensions\/([^/]+)\.json$/)
@@ -496,7 +496,7 @@ async function applyReleaseComplement(target, { base, releaseCommit, repoUrl, to
             if (!obj || (obj.type !== 'subset' && obj.type !== 'view')) continue
             const content = git(work, 'show', `${releaseCommit}:${ch.file}`)
             try {
-                if (obj.type === 'subset') applied.push(await applySubset(tm1, { dim: obj.parent, hierarchy: obj.parent, name: obj.name }, content))
+                if (obj.type === 'subset') applied.push(await applySubset(tm1, { dim: obj.parent, hierarchy: obj.hierarchy ?? obj.parent, name: obj.name }, content))
                 else {
                     let vmdx = null
                     try { vmdx = git(work, 'show', `${releaseCommit}:${ch.file.replace(/\.json$/, '.mdx')}`) } catch { /* no MDX sibling */ }
@@ -539,7 +539,7 @@ async function verifyRelease(target, { base, releaseCommit, repoUrl, token, gitU
                     ok = String(r?.Rules ?? '') === String(releaseText ?? '').replace(/\r\n/g, '\n')
                 } else if (obj.type === 'subset') {
                     const sub = JSON.parse(git(work, 'show', `${releaseCommit}:${ch.file}`))
-                    const path = `Dimensions('${odataKey(obj.parent)}')/Hierarchies('${odataKey(obj.parent)}')/Subsets('${odataKey(obj.name)}')`
+                    const path = `Dimensions('${odataKey(obj.parent)}')/Hierarchies('${odataKey(obj.hierarchy ?? obj.parent)}')/Subsets('${odataKey(obj.name)}')`
                     if (sub.Expression) {
                         const t = await c.get(path, { $select: 'Expression' })
                         ok = String(t?.Expression ?? '') === String(sub.Expression)
