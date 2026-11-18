@@ -95,6 +95,42 @@ those are TI output that belongs with this release.
   one line above the list, for example "This change set ran 2 processes; unowned changes below
   may be their output".
 
+## Step 4 — The Git token and setup screen tell the truth (bug; `BUG_FIXES.md` line)
+
+Found on 18 Nov, while fixing an expired token:
+- `core/git-secrets.js` `getToken()` prefers `process.env.TM1_GIT_TOKEN` (from `.env`) over the
+  token saved by the setup screen (`data/git-secrets.json`).
+- **Save token** also sets `process.env`, so it works until the next restart. Then the `.env`
+  value wins again, silently. A user who replaced an expired token through the screen gets the
+  same "Authentication failed" after any restart, with no clue why.
+- The setup dialog (`GitSetup.jsx`) always shows the blank "link a repo" form. Its "not set yet"
+  only means nothing was typed in the dialog. For an already-linked server with a working
+  token, it looked as though nothing was set up.
+
+Fix:
+- `git-secrets.js` gains `tokenSource()`, which returns `'env' | 'saved' | 'none'` and never the
+  token.
+- **Save token refuses when the token comes from the environment.** It returns a 409 with:
+  "This server reads TM1_GIT_TOKEN from .env, which wins over a saved token. Change it in .env
+  (or remove that line to use the saved one), then restart."
+- `GET /api/git/setup/status` adds `tokenSource`. The dialog calls it on open and shows:
+  - **already linked:** "Linked to <url> as <deployment> · remote connected ✓/✗", with the
+    linking fields hidden behind "Link to a different repo";
+  - **the token line:** "Token: from .env" / "saved in the IDE" / "not set". Never the value.
+  - **a status call that fails** (for example "Authentication failed"): TM1's message, plus
+    "the token may have expired; it needs Contents: Read and write on the repo".
+- Tests:
+  - `tokenSource` for each case;
+  - Save token refused when the env var is set;
+  - the status route never includes the token in its response.
+
+Live checks:
+1. With `TM1_GIT_TOKEN` in `.env`, the dialog says "from .env" and Save token is refused with the
+   message above.
+2. With the line removed and a saved token, it says "saved in the IDE", and it still works after
+   `systemctl --user restart tm1-backend`.
+3. A linked server opens on its status, not on a blank link form.
+
 ## Tests and rules
 
 - Tests use plain objects and stubs. Test `buildRelease` with a local bare Git repo in a temp
