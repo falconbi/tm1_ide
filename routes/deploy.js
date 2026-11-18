@@ -176,7 +176,9 @@ app.post('/api/deploy/git/approve', async (req, res) => {
         }
         let tests = null
         try { tests = linkedSession.close_tests ? JSON.parse(linkedSession.close_tests) : null } catch { tests = null }
-        if (!tests || tests.blocking > 0) {
+        // A catch-up is created closed and empty; it has no change set to test.
+        // Every ordinary release still needs a recorded, clean test result.
+        if (linkedSession.kind !== 'catch-up' && (!tests || tests.blocking > 0)) {
             return res.status(409).json({ error: `Refused: the change set for commit ${commit} has failing block-severity tests. Fix and re-close before approving.` })
         }
         // Dependency check before approval: rules must CheckRules clean on the target

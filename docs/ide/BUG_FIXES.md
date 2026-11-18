@@ -10,6 +10,8 @@ commits that mixed a fix into a feature are included too. New features are not l
 
 ## November 2026
 
+- **Catch-up approval** — A catch-up change set is created closed and empty, so it has no close-test snapshot; the approval gate treated that as a failing test and refused it. Catch-ups now skip the tests requirement (ordinary releases still require a clean recorded result)
+
 - **Git token after restart** — Startup copied the saved token into `process.env.TM1_GIT_TOKEN`, so the setup screen reported “from .env”, refused to save a replacement and left an expired token stuck. The seeding is gone: every reader goes through `gitSecrets.getToken()` (env first, then the saved file), and saving no longer writes the environment
 
 - **Release dependencies** — A subset or view was matched to its owning change set by type and name only, so a `Default` subset on one dimension falsely owned `Default` on another. Rebuilding a release could refuse with the wrong owner and hide unowned “Add to this release” items. Dependency ownership now uses the same type/name/parent key as the change set itself
