@@ -121,12 +121,13 @@ It isn't an IBM product and isn't supported by IBM.
 git clone https://github.com/falconbi/tm1_ide.git
 cd tm1_ide
 npm install
-cp .env.example .env        # direct-v11 only needs PORT=8083; PAW setups need PAW_HOST etc.
+# create .env (PORT=8083) and config/servers.json, see Setup
 npm start                   # → http://localhost:8083
 ```
 
-You need Node.js 20 or later, and a server in `config/servers.json`. The frontend is pre-built.
-Then see [Setup](docs/ide/SETUP.md) and the [first walkthrough](docs/ide/WALKTHROUGH.md).
+You need Node.js 22 (20 also works) and Git. The frontend is pre-built. `config/servers.json`
+isn't in the repo. [Setup](docs/ide/SETUP.md) shows how to create it, pointing at your TM1 Admin
+Server. Tested on Linux and Windows. Then see the [first walkthrough](docs/ide/WALKTHROUGH.md).
 
 ## Take it apart
 
