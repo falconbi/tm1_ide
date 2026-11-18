@@ -14,7 +14,7 @@ if (typeof window !== 'undefined' && !window.__tm1FetchWrapped) {
   const nativeFetch = window.fetch.bind(window)
   const enc = encodeURIComponent
   const WRITE = new Set(['POST', 'PATCH', 'DELETE'])
-  const EXCLUDED = ['/api/auth/', '/api/sessions/', '/api/assertions', '/api/deploy', '/api/git', '/api/servers', '/api/config', '/api/catalog', '/api/explorer', '/api/log', '/api/model-health', '/api/git-readiness', '/api/readiness', '/api/admin', '/api/files', '/api/sql', '/api/jobs', '/api/maintenance', '/api/users', '/api/notebooks', '/api/period', '/api/search', '/api/mcp', '/api/function-catalog', '/api/subset/preview', '/api/mdx', '/api/lenses']
+  const EXCLUDED = ['/api/auth/', '/api/sessions/', '/api/assertions', '/api/deploy', '/api/git', '/api/servers', '/api/config', '/api/catalog', '/api/explorer', '/api/log', '/api/model-health', '/api/git-readiness', '/api/readiness', '/api/admin', '/api/files', '/api/sql', '/api/jobs', '/api/maintenance', '/api/users', '/api/notebooks', '/api/period', '/api/search', '/api/mcp', '/api/function-catalog', '/api/subset/preview', '/api/mdx', '/api/lens', '/api/lenses']
   const tok = () => localStorage.getItem('tm1-token') ?? ''
   // Read-only (PROD-posture) and Simple-mode servers, from /api/servers
   // (listServersWithFlags), cached once per page load. Both skip the change-set
