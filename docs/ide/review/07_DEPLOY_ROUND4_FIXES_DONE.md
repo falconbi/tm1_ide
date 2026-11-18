@@ -16,7 +16,7 @@ Git use. Tests use plain objects, stubs and local bare Git repos in temp folders
 | 4a | `50b16da` | Follow-up: catch-up approval skipped the close-tests gate it can never satisfy; ordinary releases still require a clean result | 663 tests — 662 pass, 1 skipped |
 | 4 | `94589fd` | `DEPLOY_LIFECYCLE.md` in-order rule, catch-up exception, won't deploy, covered; `FEATURES.md` one line per deploy feature; Chore "run now" claim removed | 661 — 660 pass, 1 skipped |
 
-Final: **661 tests — 660 pass, 1 skipped**.
+Final: **663 tests — 662 pass, 1 skipped**; root lint **0**; client lint **112**.
 
 ## Lint
 
