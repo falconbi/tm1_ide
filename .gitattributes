@@ -1,0 +1,19 @@
+# Normalise text to LF in the repository and in every working tree, whatever
+# core.autocrlf says. Without this, Git for Windows checks docs out with CRLF
+# and the generated-doc tests fail.
+* text=auto eol=lf
+
+# Binary types the repo holds — never touch their line endings.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.webp binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.otf binary
+*.eot binary
+*.blob binary
+*.pdf binary
