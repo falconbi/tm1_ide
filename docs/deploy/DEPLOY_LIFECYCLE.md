@@ -14,10 +14,10 @@ This is the behaviour the code has now; earlier sections below are the design re
 - **Catch-up source commit:** the source's last pushed commit. TM1 v11 may return it as `LocalCommit.ID` or `DeployedCommit.ID`; if neither exists, commit DEV first. Some TM1 builds do not report unpushed changes, so the catch-up uses the last pushed state.
 - **Catch-up build:** every file that differs between the target's recorded base and the source commit, with no change-set ownership filter. Link closure still applies. Git renames remove the old base path before adding the new one; non-ASCII filenames are passed unquoted.
 - **Catch-up approval:** the release link closure is checked, but `CheckRules`/TI lint are **not** run against the old target — the catch-up creates those cubes and elements. Normal releases still run both.
-- **Catch-up is add/update only.** It does not delete PROD-only objects. The review lists target-only cubes, dimensions, processes and chores (not views/subsets). After the pull, leftovers stay on PROD. A reviewed catch-up delete list is **not implemented**.
-- **After a catch-up, drift may be non-empty by design.** Old base objects that TM1 Git does not delete, TM1's view/hierarchy write-back, and subsets applied over REST can differ from the release commit. Drift means PROD differs from what it last received; it pauses further deploys. Either clean PROD or reseed the PROD baseline to accept the current state.
+- **Catch-up deletes are reviewed and recorded.** The review lists target-only cubes, dimensions, processes, chores, views and subsets. Tick any that should be removed. Approval records that exact list; after the pull the IDE deletes those objects through the same reconcile path (views/subsets first, then processes/chores, then cubes/dimensions) and records the result. Nothing is selected by default, and a delete not in the release's target-only list is refused.
+- **After a catch-up, drift may still be non-empty.** Ticked deletes remove the objects you chose; unticked old base objects, TM1's view/hierarchy write-back, and subsets applied over REST can still differ from the release commit. Drift means PROD differs from what it last received; it pauses further deploys. Either clean the rest or reseed the PROD baseline to accept the current state.
 - **Covered sets:** only after a clean catch-up deploy, and only closed sets whose objects the catch-up carried. Open sets stay open and are listed as partly shipped.
-- **Deletes:** a normal change set records its deletes and reconcile removes exactly those on the target. A catch-up has no delete record, so it never removes a PROD-only object.
+- **Deletes:** a normal change set records its deletes and reconcile removes exactly those on the target. A catch-up uses its approved target-only list; no other target object is deleted.
 
 ## Known gaps (16 Nov 2026) — being fixed in review area 07
 
@@ -101,8 +101,9 @@ commit, regardless of which change set touched it.
   any other, so prepare, approve, execute, verify, History and Rule 1 are
   unchanged.
 - **Review:** the banner, every included object grouped by type, the change sets
-  it would cover, any open sets it partly ships, and the objects that exist on
-  the target but not in the repo (TM1 Git does not delete those).
+  it would cover, any open sets it partly ships, and the target-only objects.
+  Tick any target-only object you want deleted after the pull; approval records
+  that list.
 
 ### Rehearse a catch-up on a TEST copy
 
@@ -117,10 +118,10 @@ For a risky catch-up, rehearse it against a copy of PROD before touching PROD.
    `release-TM1_Test_PROD`, and believes it already has PROD's deployed state.
 5. Give it its own target branch, `release-<copy name>`, and its own IDE deploy
    baseline/history. It may use the same model repo.
-6. Deploy the catch-up to the copy. Review the target-only delete list for that
-   copy, approve and deploy.
+6. Deploy the catch-up to the copy. Tick the target-only objects to delete for
+   that copy, approve and deploy.
 7. Run the controls and test the model on the copy.
-8. Repeat the catch-up against PROD, reviewing PROD's own delete list there.
+8. Repeat the catch-up against PROD, ticking PROD's own delete list there.
 
 What you want from the copy is PROD's **data state**, not PROD's **Git identity**.
 Deletes and deploy history are recorded per target; neither target inherits the

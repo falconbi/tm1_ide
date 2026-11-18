@@ -52,3 +52,31 @@ test('approve still refuses an ordinary release with no tests', async () => {
     await app()['POST /api/deploy/git/approve']({ body: { target: 'TG', commit: 'r1' }, user: 'james', ideToken: 't' }, out)
     assert.equal(out.statusCode, 409)
 })
+
+test('approve records only target-only deletes for a catch-up', async () => {
+    linked = {
+        id: 'cu2', kind: 'catch-up', close_tests: null, release_commit: 'r2',
+        release_target_only: JSON.stringify([{ type: 'process', name: 'Old Seed' }, { type: 'view', name: 'Default', parent: 'Sales' }]),
+    }
+    const out = res()
+    await app()['POST /api/deploy/git/approve']({
+        body: { target: 'TG', commit: 'r2', deletes: [{ type: 'process', name: 'Old Seed' }] },
+        user: 'james', ideToken: 't',
+    }, out)
+    assert.equal(out.statusCode, 200)
+    assert.deepEqual(appended.at(-1).deletes, [{ type: 'process', name: 'Old Seed' }])
+})
+
+test('approve refuses a delete that is not in the catch-up target-only list', async () => {
+    linked = {
+        id: 'cu3', kind: 'catch-up', close_tests: null, release_commit: 'r3',
+        release_target_only: JSON.stringify([{ type: 'process', name: 'Old Seed' }]),
+    }
+    const out = res()
+    await app()['POST /api/deploy/git/approve']({
+        body: { target: 'TG', commit: 'r3', deletes: [{ type: 'process', name: 'Prod Only' }] },
+        user: 'james', ideToken: 't',
+    }, out)
+    assert.equal(out.statusCode, 409)
+    assert.match(out.body.error, /not in this catch-up's target-only list/)
+})

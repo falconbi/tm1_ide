@@ -157,6 +157,7 @@ app.post('/api/deploy/git/release', async (req, res) => {
             addedByUser: r.addedByUser,
             addedAsDependency: r.addedAsDependency,
             coveredSets: catchUp ? (r.coveredSets ?? []).map(s => s.id) : undefined,
+            targetOnly: catchUp ? r.targetOnly : undefined,
         })
         res.json(r)
     } catch (e) { res.status(500).json({ error: e.message }) }
@@ -192,12 +193,22 @@ app.post('/api/deploy/git/approve', async (req, res) => {
             }
         }
         const parseList = (text) => { try { return text ? JSON.parse(text) : [] } catch { return [] } }
+        const keyOf = (o) => `${o.type}|${o.name}|${o.parent ?? ''}|${o.hierarchy ?? ''}`
+        const requestedDeletes = linkedSession.kind === 'catch-up' && Array.isArray(req.body.deletes) ? req.body.deletes : []
+        if (requestedDeletes.length) {
+            const allowed = new Set(parseList(linkedSession.release_target_only).map(keyOf))
+            const bad = requestedDeletes.filter(d => !allowed.has(keyOf(d)))
+            if (bad.length) {
+                return res.status(409).json({ error: `Refused: ${bad.map(keyOf).join(', ')} is not in this catch-up's target-only list.` })
+            }
+        }
         const rec = await approvals.append({
             id: new Date().toISOString(), approved_at: new Date().toISOString(),
             approver: req.user ?? 'unknown', notes: note ?? '',
             source: source ?? null, target, commit, session: linkedSession.id, packageDir: null,
             addedByUser: parseList(linkedSession.release_added_by_user),
             addedAsDependency: parseList(linkedSession.release_added_as_dependency),
+            deletes: requestedDeletes,
         }, { ideToken: req.ideToken })
         res.json(rec)
     } catch (e) { res.status(500).json({ error: e.message }) }

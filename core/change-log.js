@@ -57,6 +57,7 @@ for (const [col, type] of [
     ['covered_sets',                'TEXT'],
     ['covered_by',                  'TEXT'],
     ['covered_at',                  'TEXT'],
+    ['release_target_only',         'TEXT'],
 ]) {
     try { db.exec(`ALTER TABLE sessions ADD COLUMN ${col} ${type}`) } catch { /* already exists */ }
 }
@@ -100,12 +101,13 @@ function setSessionCommit(id, commit) {
 // Link a change set to its build release commit (branch release-<target>), and
 // record what the release carried beyond the change set: items the person added
 // from "Left on DEV", and files pulled in because a link needed them.
-function setSessionRelease(id, commit, target, { addedByUser, addedAsDependency, coveredSets } = {}) {
-    db.prepare(`UPDATE sessions SET release_commit = ?, release_target = ?, release_added_by_user = ?, release_added_as_dependency = ?, covered_sets = ? WHERE id = ?`)
+function setSessionRelease(id, commit, target, { addedByUser, addedAsDependency, coveredSets, targetOnly } = {}) {
+    db.prepare(`UPDATE sessions SET release_commit = ?, release_target = ?, release_added_by_user = ?, release_added_as_dependency = ?, covered_sets = ?, release_target_only = ? WHERE id = ?`)
         .run(commit ?? null, target ?? null,
             addedByUser ? JSON.stringify(addedByUser) : null,
             addedAsDependency ? JSON.stringify(addedAsDependency) : null,
             coveredSets ? JSON.stringify(coveredSets) : null,
+            targetOnly ? JSON.stringify(targetOnly) : null,
             id)
     return db.prepare(`SELECT * FROM sessions WHERE id = ?`).get(id)
 }

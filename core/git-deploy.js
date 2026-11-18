@@ -314,7 +314,11 @@ async function execute(target, { branch = 'dev', token, gitUser = gitIdentity.us
         // Scoped strictly to the change set linked to this approval (never from the
         // request body; a missing session is reported, never silently skipped).
         let manifest = { deletes: [], dims: [], attrElements: [], wholesaleDims: [] }
-        if (approval.session) {
+        if (linkedSession?.kind === 'catch-up') {
+            // A catch-up has no change-set delete log. Its approved target-only
+            // delete list is the scope; nothing else is inferred from DEV.
+            manifest.deletes = Array.isArray(approval.deletes) ? approval.deletes : []
+        } else if (approval.session) {
             try { manifest = require('./change-log').getSessionManifest(approval.session) || manifest } catch { /* no manifest */ }
         } else {
             out.reconcileWarning = 'This approval has no linked change set — reconcile scope is unknown and was skipped (not silently).'

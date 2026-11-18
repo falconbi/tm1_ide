@@ -74,6 +74,7 @@ export default function DeployWizard({ server, onClose, onOpenTests, initialSess
   const [pushed,    setPushed]    = useState(null)
   const [release,   setRelease]   = useState(null)
   const [addSel,    setAddSel]    = useState({})
+  const [delSel,    setDelSel]    = useState({})
   const [prep,      setPrep]      = useState(null)
   const [res,       setRes]       = useState(null)
   const [approval,  setApproval]  = useState(null)
@@ -175,7 +176,7 @@ export default function DeployWizard({ server, onClose, onOpenTests, initialSess
     if (deployCtx?.wont_deploy_at) { setError(`Change set "${deployCtx.name}" is retired as a phantom change set — restore it in Change Sets first.`); return }
     const addObjects = Object.values(addSel).map(o => ({ type: o.type, name: o.name, parent: o.parent ?? null }))
     const d = await run('release', { source: server, target, session: sessionId, addObjects }, '/api/deploy/git/release')
-    if (d) { setRelease(d); setAddSel({}); setPrep(null); setApproval(null) }
+    if (d) { setRelease(d); setAddSel({}); setDelSel({}); setPrep(null); setApproval(null) }
   }
   const doStartCatchUp = async () => {
     setCatchBusy(true); setError(null)
@@ -199,7 +200,8 @@ export default function DeployWizard({ server, onClose, onOpenTests, initialSess
   const doApprove = async () => {
     const commit = release?.releaseCommit
     if (!commit) return
-    const d = await run('approve', { source: server, target, commit, note: approvalNote }, '/api/deploy/git/approve')
+    const deletes = isCatchUp ? Object.values(delSel) : undefined
+    const d = await run('approve', { source: server, target, commit, note: approvalNote, deletes }, '/api/deploy/git/approve')
     if (d) { setApproval(d); setStep(7) }
   }
   const doDeploy = async () => {
@@ -470,11 +472,18 @@ export default function DeployWizard({ server, onClose, onOpenTests, initialSess
                     )}
                     {release.catchUp && (
                       <div className="border border-border rounded-md p-2 space-y-1 bg-muted/20">
-                        <p className="text-[10px] text-muted-foreground uppercase tracking-wide">On {target} but not in the repo ({(release.targetOnly ?? []).length}) — TM1 Git does not delete these</p>
-                        {(release.targetOnly ?? []).map((o, i) => (
-                          <p key={i} className="text-[11px] font-mono text-muted-foreground">{o.type} {o.name}</p>
-                        ))}
+                        <p className="text-[10px] text-muted-foreground uppercase tracking-wide">On {target} but not in the repo ({(release.targetOnly ?? []).length}) — tick any to delete after the pull</p>
+                        {(release.targetOnly ?? []).map((o, i) => {
+                          const key = `${o.type}|${o.name}|${o.parent ?? ''}|${o.hierarchy ?? ''}`
+                          return (
+                            <label key={i} className="flex items-baseline gap-2 text-[11px] font-mono text-muted-foreground">
+                              <input type="checkbox" checked={!!delSel[key]} onChange={e => setDelSel(prev => e.target.checked ? { ...prev, [key]: o } : Object.fromEntries(Object.entries(prev).filter(([k]) => k !== key)))} className="mt-0.5 accent-red-600" />
+                              <span>{o.type} {o.name}{o.parent ? ` (${o.parent}${o.hierarchy && o.hierarchy !== o.parent ? ` › ${o.hierarchy}` : ''})` : ''}</span>
+                            </label>
+                          )
+                        })}
                         {(release.targetOnly ?? []).length === 0 && <p className="text-[11px] text-muted-foreground">Nothing target-only.</p>}
+                        {Object.keys(delSel).length > 0 && <p className="text-[10px] text-red-600 pt-1">{Object.keys(delSel).length} selected for deletion after the pull. Approval records this list.</p>}
                       </div>
                     )}
                     {(release.addedAsDependency?.length > 0) && (

@@ -20,7 +20,8 @@ async function reconcileDeletes(source, target, { ideToken, deletes = [] } = {})
     if (!deletes?.length) return out
     try {
         const tgtProcs = new Set(await tc.getProcesses())
-        for (const d of deletes) {
+        const order = { view: 0, subset: 1, process: 2, chore: 3, cube: 4, dimension: 5 }
+        for (const d of [...deletes].sort((a, b) => (order[a.type] ?? 9) - (order[b.type] ?? 9))) {
             try {
                 if (d.type === 'process') {
                     if (!tgtProcs.has(d.name)) {
@@ -29,13 +30,19 @@ async function reconcileDeletes(source, target, { ideToken, deletes = [] } = {})
                     }
                     await tc.deleteProcess(d.name)
                 } else if (d.type === 'subset') {
-                    if (!d.detail) throw new Error('subset delete needs its dimension')
-                    await tc.deleteSubset(d.detail, d.name, d.detail)
+                    const dim = d.parent ?? d.detail
+                    if (!dim) throw new Error('subset delete needs its dimension')
+                    await tc.deleteSubset(dim, d.name, d.hierarchy ?? dim)
                 } else if (d.type === 'view') {
-                    if (!d.detail) throw new Error('view delete needs its cube')
-                    await tc.deleteView(d.detail, d.name)
+                    const cube = d.parent ?? d.detail
+                    if (!cube) throw new Error('view delete needs its cube')
+                    await tc.deleteView(cube, d.name)
                 } else if (d.type === 'chore') {
                     await tc.deleteChore(d.name)
+                } else if (d.type === 'cube') {
+                    await tc.deleteCube(d.name)
+                } else if (d.type === 'dimension') {
+                    await tc.deleteDimension(d.name)
                 } else {
                     out.flagged.push({ type: d.type, name: d.name, error: 'not auto-applied — needs cube/dimension context' })
                     continue

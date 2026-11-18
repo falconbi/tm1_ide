@@ -183,6 +183,7 @@ function ownerOf(logsBySession, obj) {
 // target list is reported as empty, never a failed release.
 async function targetOnlyObjects(target, work, commit, { ideToken } = {}) {
     const repoFiles = git(work, 'ls-tree', '-r', '--name-only', commit).split('\n').filter(Boolean)
+    const repoKeys = new Set(repoFiles.map(f => String(f).toLowerCase()))
     const repoNames = { cube: new Set(), dimension: new Set(), process: new Set(), chore: new Set() }
     for (const file of repoFiles) {
         const obj = objectFromFile(file)
@@ -199,6 +200,38 @@ async function targetOnlyObjects(target, work, commit, { ideToken } = {}) {
                 if (!repoNames[type].has(String(name).toLowerCase())) out.push({ type, name })
             }
         } catch { /* target read is best-effort */ }
+    }
+    // Views and subsets are objects too; list them with their parent so the
+    // reviewed delete step can name exactly what it removes.
+    for (const cube of (await c.get('Cubes', { $select: 'Name' }).then(r => r?.value ?? []).catch(() => []))) {
+        const name = cube?.Name
+        if (!name || String(name).startsWith('}') || !repoNames.cube.has(String(name).toLowerCase())) continue
+        try {
+            const vs = await c.get(`Cubes('${odataKey(name)}')/Views`, { $select: 'Name' })
+            for (const v of vs?.value ?? []) {
+                if (!v?.Name) continue
+                const file = `cubes/${name}.views/${v.Name}.json`.toLowerCase()
+                if (!repoKeys.has(file)) out.push({ type: 'view', name: v.Name, parent: name })
+            }
+        } catch { /* best effort */ }
+    }
+    for (const dim of (await c.get('Dimensions', { $select: 'Name' }).then(r => r?.value ?? []).catch(() => []))) {
+        const name = dim?.Name
+        if (!name || String(name).startsWith('}') || !repoNames.dimension.has(String(name).toLowerCase())) continue
+        try {
+            const hs = await c.get(`Dimensions('${odataKey(name)}')/Hierarchies`, { $select: 'Name' })
+            for (const h of hs?.value ?? []) {
+                if (!h?.Name) continue
+                try {
+                    const ss = await c.get(`Dimensions('${odataKey(name)}')/Hierarchies('${odataKey(h.Name)}')/Subsets`, { $select: 'Name' })
+                    for (const sub of ss?.value ?? []) {
+                        if (!sub?.Name) continue
+                        const file = `dimensions/${name}.hierarchies/${h.Name}.subsets/${sub.Name}.json`.toLowerCase()
+                        if (!repoKeys.has(file)) out.push({ type: 'subset', name: sub.Name, parent: name, hierarchy: h.Name })
+                    }
+                } catch { /* no subsets */ }
+            }
+        } catch { /* best effort */ }
     }
     return out
 }
