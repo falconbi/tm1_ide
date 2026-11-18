@@ -2,6 +2,8 @@
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
 const path = require('path')
+const fs = require('fs')
+const os = require('os')
 const resolve = rel => require.resolve(path.join(__dirname, '..', rel))
 
 const secrets = require(resolve('core/git-secrets'))
@@ -10,6 +12,23 @@ test('tokenSource reports env, saved or none without the token', () => {
     assert.equal(secrets.tokenSource({ TM1_GIT_TOKEN: 'env-token' }, { TM1_GIT_TOKEN: 'saved-token' }), 'env')
     assert.equal(secrets.tokenSource({}, { TM1_GIT_TOKEN: 'saved-token' }), 'saved')
     assert.equal(secrets.tokenSource({}, {}), 'none')
+})
+
+test('a saved token without an env var is sourced as saved and can be replaced', () => {
+    const old = process.env.TM1_GIT_TOKEN
+    delete process.env.TM1_GIT_TOKEN
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'git-secrets-'))
+    const file = path.join(dir, 'git-secrets.json')
+    try {
+        secrets.setToken('new-token-123', file)
+        assert.equal(JSON.parse(fs.readFileSync(file, 'utf8')).TM1_GIT_TOKEN, 'new-token-123')
+        assert.equal(process.env.TM1_GIT_TOKEN, undefined, 'saving must not seed the environment')
+        assert.equal(secrets.getToken(file, {}), 'new-token-123')
+        assert.equal(secrets.tokenSource({}, { TM1_GIT_TOKEN: 'new-token-123' }), 'saved')
+    } finally {
+        fs.rmSync(dir, { recursive: true, force: true })
+        if (old !== undefined) process.env.TM1_GIT_TOKEN = old
+    }
 })
 
 test('saving a token is refused while the environment supplies one', () => {

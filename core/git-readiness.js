@@ -15,6 +15,7 @@ const os = require('os')
 const path = require('path')
 const { makeClient } = require('./adapter-registry')
 const gitIdentity = require('./git-identity')
+const gitSecrets = require('./git-secrets')
 const { odataKey } = require('./odata-key')
 const { git, authUrl, sanitize } = require('./git-repo')
 
@@ -282,7 +283,7 @@ function _planCounts(operations) {
 
 async function firstPullAnalysis(server, opts = {}) {
     const c = _clientFor(server, opts)
-    const token = opts.token ?? process.env.TM1_GIT_TOKEN ?? ''
+    const token = opts.token ?? gitSecrets.getToken()
     const gitUser = opts.gitUser ?? gitIdentity.user()
     const branch = opts.branch ?? 'dev'
     let work = null

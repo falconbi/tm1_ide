@@ -15,7 +15,6 @@ const { canManageSession } = require('./core/session_access')
 // Persisted Git token (never returned to the client) — env wins, else the secrets file.
 const gitSecrets = require('./core/git-secrets')
 const { odataKey } = require('./core/odata-key')
-if (!process.env.TM1_GIT_TOKEN && gitSecrets.getToken()) process.env.TM1_GIT_TOKEN = gitSecrets.getToken()
 const lensStore = require('./core/lens-store')
 const { logLensWrite, logLensRun, logLensNote, readLensActivity } = require('./core/lens-activity-log')
 const lensBridge = require('./core/lens-bridge')

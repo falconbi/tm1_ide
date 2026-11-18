@@ -10,6 +10,8 @@ commits that mixed a fix into a feature are included too. New features are not l
 
 ## November 2026
 
+- **Git token after restart** — Startup copied the saved token into `process.env.TM1_GIT_TOKEN`, so the setup screen reported “from .env”, refused to save a replacement and left an expired token stuck. The seeding is gone: every reader goes through `gitSecrets.getToken()` (env first, then the saved file), and saving no longer writes the environment
+
 - **Release dependencies** — A subset or view was matched to its owning change set by type and name only, so a `Default` subset on one dimension falsely owned `Default` on another. Rebuilding a release could refuse with the wrong owner and hide unowned “Add to this release” items. Dependency ownership now uses the same type/name/parent key as the change set itself
 
 - **Git token setup** — `.env`’s `TM1_GIT_TOKEN` silently overrode the token saved from the setup screen after a restart, and an already-linked server still opened on a blank link form. `git-secrets.tokenSource()` now reports env/saved/none without the value, saving is refused with a 409 when `.env` owns the token, the status route returns the source (and a token-expiry hint on failure), and the linked screen shows the link, token source and a deliberate “Link to a different repo” path

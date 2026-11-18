@@ -42,7 +42,7 @@ app.post('/api/deploy/git/prepare', async (req, res) => {
         const { prepare } = require('../core/git-deploy')
         const { source, target, branch, session } = req.body
         if (!source || !target) return res.status(400).json({ error: 'source and target required' })
-        res.json(await prepare(source, target, { branch, token: process.env.TM1_GIT_TOKEN, ideToken: req.ideToken, session }))
+        res.json(await prepare(source, target, { branch, token: _GITOK(), ideToken: req.ideToken, session }))
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
@@ -53,7 +53,7 @@ app.post('/api/deploy/git/execute', async (req, res) => {
         const { execute } = require('../core/git-deploy')
         const { target, branch, source, session } = req.body
         if (!target) return res.status(400).json({ error: 'target required' })
-        const result = await execute(target, { branch, token: process.env.TM1_GIT_TOKEN, ideToken: req.ideToken, source, by: req.user, session })
+        const result = await execute(target, { branch, token: _GITOK(), ideToken: req.ideToken, source, by: req.user, session })
         if (result?.missingSource) return res.status(400).json({ error: result.error })
         if (result?.approvalSession && result?.executed && result?.controlOk) try { cl.markSessionDeployed(result.approvalSession, target) } catch { /* link is best-effort */ }
         res.json(result)
@@ -76,7 +76,7 @@ app.post('/api/deploy/git/push', async (req, res) => {
         }
         const c = makeClient(source, req.ideToken)
         const gi = require('../core/git-identity')
-        const creds = { Username: gi.user(), Password: process.env.TM1_GIT_TOKEN }
+        const creds = { Username: gi.user(), Password: _GITOK() }
         const plan = await c.post('GitPush', {
             Branch: branch, NewBranch: '', Force: false,
             Message: message || `Deploy from ${source}`,
@@ -97,7 +97,7 @@ app.post('/api/deploy/git/release', async (req, res) => {
         const { buildRelease } = require('../core/git-release')
         const addObjects = Array.isArray(req.body.addObjects) ? req.body.addObjects : []
         const r = await buildRelease(changeSet, target, {
-            token: process.env.TM1_GIT_TOKEN, gitUser: _GI().user(), ideToken: req.ideToken,
+            token: _GITOK(), gitUser: _GI().user(), ideToken: req.ideToken,
             addObjects, by: req.user ?? null,
         })
         if (r.refused) return res.status(409).json({ error: r.error })
@@ -131,7 +131,7 @@ app.post('/api/deploy/git/approve', async (req, res) => {
         // change set (ship it too, or build a combined release).
         if (linkedSession.release_commit) {
             const { checkDependencies } = require('../core/git-release')
-            const dep = await checkDependencies(linkedSession.release_commit, target, { token: process.env.TM1_GIT_TOKEN, gitUser: _GI().user(), ideToken: req.ideToken })
+            const dep = await checkDependencies(linkedSession.release_commit, target, { token: _GITOK(), gitUser: _GI().user(), ideToken: req.ideToken })
             if (!dep.ok) {
                 return res.status(409).json({ error: `Refused: the release has failing dependencies — ${(dep.blockers ?? []).map(b => `${b.object}: ${b.message}`).join(' | ') || dep.error}`, blockers: dep.blockers ?? [] })
             }
@@ -160,7 +160,7 @@ app.post('/api/git/drift', async (req, res) => {
         const { driftCheck } = require('../core/git-drift')
         const server = req.body?.server ?? req.query.server
         if (!server) return res.status(400).json({ error: 'server required' })
-        res.json(await driftCheck(server, { token: process.env.TM1_GIT_TOKEN, ideToken: req.ideToken }))
+        res.json(await driftCheck(server, { token: _GITOK(), ideToken: req.ideToken }))
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 

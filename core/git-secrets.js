@@ -11,12 +11,12 @@ const path = require('path')
 
 const FILE = path.join(__dirname, '..', 'data', 'git-secrets.json')
 
-function read() {
-    try { return JSON.parse(fs.readFileSync(FILE, 'utf8')) } catch { return {} }
+function read(file = FILE) {
+    try { return JSON.parse(fs.readFileSync(file, 'utf8')) } catch { return {} }
 }
 
-function getToken() {
-    return process.env.TM1_GIT_TOKEN || read().TM1_GIT_TOKEN || ''
+function getToken(file = FILE, env = process.env) {
+    return env.TM1_GIT_TOKEN || read(file).TM1_GIT_TOKEN || ''
 }
 
 // Where the active token comes from, never the token itself.
@@ -27,7 +27,7 @@ function tokenSource(env = process.env, saved = read()) {
 }
 
 // Returns true (never the token). Throws on a blank/implausibly short token.
-function setToken(token) {
+function setToken(token, file = FILE) {
     if (process.env.TM1_GIT_TOKEN) {
         const e = new Error('This server reads TM1_GIT_TOKEN from .env, which wins over a saved token. Change it in .env (or remove that line to use the saved one), then restart.')
         e.status = 409
@@ -37,9 +37,8 @@ function setToken(token) {
         const e = new Error('That token looks wrong — it should be a GitHub fine-grained PAT (at least 8 characters).')
         throw e
     }
-    fs.mkdirSync(path.dirname(FILE), { recursive: true })
-    fs.writeFileSync(FILE, JSON.stringify({ TM1_GIT_TOKEN: token.trim() }, null, 2))
-    process.env.TM1_GIT_TOKEN = token.trim()
+    fs.mkdirSync(path.dirname(file), { recursive: true })
+    fs.writeFileSync(file, JSON.stringify({ TM1_GIT_TOKEN: token.trim() }, null, 2))
     return true
 }
 
