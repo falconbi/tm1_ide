@@ -22,6 +22,8 @@ Found by code review, not by a failed deploy. Each line moves to **Fixed** as th
 - Round 2 — the migration tool writes the manifest (`--manifest`, `--from-markers`), and a model-owned change-set document that cannot be read fails the list instead of disappearing.
 - Round 2 — first-pull analysis clones the branch, compares every hierarchy, lists target-only objects and element loss, and refuses when any read fails; it is wired into the first-pull call, a read-only route and the setup screen.
 
+- Round 4 — releases are one change set at a time, in dependency order. A change set can be marked **won't deploy** (with a reason) and then owns nothing. A target whose history predates change-set releases can be brought level once with a **catch-up release**, and the older sets it carried are marked **covered** after it deploys cleanly.
+
 **Still open**
 
 - None from this round. James runs the live checks in `docs/ide/review/07_DEPLOY_ROUND2_FIXES_DONE.md`.
@@ -47,6 +49,63 @@ Found by code review, not by a failed deploy. Each line moves to **Fixed** as th
    were retired 10 Oct 2026): the wizard no longer offers them, the routes and
    `git-drift.revert` / `git-drift.promote` are gone, and the drift **check** + the
    deploy pause stay.
+
+### One change set per release, in order
+
+A release carries exactly one change set. If it needs an object that another
+change set owns, it refuses and names that set: release that set to the target
+first, then rebuild this release. There is no combined release and no way to
+deploy DEV's head directly — the release is always a commit built on the
+target's recorded deployed commit, and every deploy ships a built release.
+
+The Change Sets list shows those older sets the target has not received. Work
+through them in dependency order. In practice a target that predates change-set
+releases (or a stretch of lab work) needs one of the two exceptions below.
+
+### The catch-up exception
+
+A **catch-up** is the one explicit, deliberate exception to releasing one set at
+a time. It brings a target level with DEV in a single built release: every file
+that differs between the target's recorded deployed commit and DEV's pushed
+commit, regardless of which change set touched it.
+
+- **Who:** a TM1 admin only.
+- **When:** a target has a recorded deployed commit (so it has pulled at least
+  once) and DEV's history is far ahead — typically a model that reached PROD
+  before change-set releases existed. For a never-pulled target, use first pull.
+- **How:** Deploy → **Catch up `<target>` with `<source>`…**, type
+  `I understand this brings <target> level with <source>`, then build, review,
+  approve, deploy and verify as usual. DEV must have no unpushed changes —
+  commit DEV first.
+- **What it is:** a closed, empty change set of kind `catch-up` named
+  `Catch-up: <target> level with <source> (<date>)`, with the source's pushed
+  commit as its `commit_ref`. The release is built on `release-<target>` like
+  any other, so prepare, approve, execute, verify, History and Rule 1 are
+  unchanged.
+- **Review:** the banner, every included object grouped by type, the change sets
+  it would cover, any open sets it partly ships, and the objects that exist on
+  the target but not in the repo (TM1 Git does not delete those).
+
+### Won't deploy
+
+A closed change set that must never ship (a proof, lab work, a throwaway model)
+can be marked **won't deploy** with a required reason, by its owner or a TM1
+admin. It stays as a record but **owns nothing**: releases skip it, and the
+wizard refuses to commit or release it. An open set must be closed first. The
+list shows a grey **Won't deploy** badge and hides these sets by default
+("Show N won't deploy"). Unmark it to use it again.
+
+### Covered by a catch-up
+
+After a catch-up deploy succeeds (the same point where the deployed link is
+recorded), every closed change set it carried is marked
+**covered by** the catch-up, with **covered at** the deploy time. A covered set
+counts as released: it owns nothing, no longer blocks a later release, and is
+hidden with the deployed sets ("Covered by catch-up <date>").
+
+**Open sets are never covered.** Their work may have shipped in the catch-up,
+but the set stays in play so anything added to it afterwards is still released
+in order. The catch-up review lists them as open, partly shipped.
 
 ## The architecture in one line
 
