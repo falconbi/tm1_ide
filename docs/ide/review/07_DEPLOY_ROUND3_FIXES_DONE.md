@@ -1,13 +1,11 @@
 # 07 — Deploy round 3: fixes done
 
-Branch `deploy-round3`. Steps 1–3 from `07_DEPLOY_ROUND3_FIXES.md`, one commit each.
+Branch `deploy-round3`. Steps 1–4 from `07_DEPLOY_ROUND3_FIXES.md`, one commit each.
 No push, no server restart, no TM1 call and no remote Git use. Tests use plain objects,
 stubs and local bare Git repos in temp folders only.
 
-> Note: while this work ran, the brief on the branch gained commit `31f1600`
-> ("Add the Git token and setup status step"), which adds a separate **Step 4** (Git token
-> / setup screen). The task asked for steps 1–3; Step 4 is not implemented here. Step 1
-> therefore sits on `31f1600`, not directly on `ea66004`.
+> The brief gained Step 4 in local commit `31f1600` while this work was in progress. Step 4
+> is included below; Step 1 sits on that brief commit.
 
 ## Commits and test counts
 
@@ -16,6 +14,7 @@ stubs and local bare Git repos in temp folders only.
 | 1 | `162591a` | Link closure; auto-add unowned dependencies, refuse owned/missing links; `checkDependencies` catches an old broken release; review screen lists `addedAsDependency` | 623 tests — 622 pass, 1 skipped |
 | 2 | `209f0bc` | "Add to this release" checkboxes for unowned excluded items; `buildRelease` validates `addObjects`; records `addedByUser` + `addedAsDependency` on the change set and approval history | 626 tests — 625 pass, 1 skipped |
 | 3 | `4bcd45a` | `PROCESS_RUN` records from IDE run route, MCP `run_process` and MCP chore run; masked parameters; "Processes run" heading; review hint; regression test proving a run never ships the process file | 630 tests — 629 pass, 1 skipped |
+| 4 | `fd3eec1` | `tokenSource()` without the value; token save refused with 409 when `.env` wins; status returns source and a token-expiry hint; linked setup opens on its link, token source and "Link to a different repo" | 635 tests — 634 pass, 1 skipped |
 
 ## Lint
 
@@ -50,8 +49,6 @@ file is added, so a chain (`dimension → hierarchy → subsets`) settles.
 
 ## Not done
 
-- **Step 4** (Git token / setup screen) added to the brief in `31f1600` after this task was
-  issued. Out of scope of steps 1–3; see `07_DEPLOY_ROUND3_QUESTIONS.md`.
 - No live checks were run (no network, TM1, Git remote or server restart allowed).
 - Out-of-scope bugs are listed in `07_DEPLOY_ROUND3_QUESTIONS.md` (not fixed):
   `ownerOf` ignores subset/view parent; identical `PROCESS_RUN` rows collapse in the view;
@@ -74,3 +71,8 @@ file is added, so a chain (`dimension → hierarchy → subsets`) settles.
    include the process file just because it ran.
 6. **Old release blocked:** before rebuilding (check 1), the review step's dependency check
    flags the missing `Cities.json` and `Default.json` instead of reaching the pull plan.
+7. **Git token source:** with `TM1_GIT_TOKEN` in `.env`, the setup dialog says "from .env"
+   and Save token is refused with the 409 message. With the line removed and a saved token,
+   it says "saved in the IDE" and still works after a backend restart.
+8. **Linked setup:** a linked server opens on its status, not a blank link form; use
+   "Link to a different repo" to show the linking fields.
