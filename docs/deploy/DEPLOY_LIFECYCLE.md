@@ -3,6 +3,22 @@
 Plain-English record of the agreed end-to-end deployment model. Source decisions:
 `docs/deploy/TM1_GIT_EVALUATION.md`, `docs/ide/IMPROVEMENTS.md` 10.1 (hybrid) + 10.2 (readiness).
 
+## Current release flow — updated 18 Nov 2026
+
+This is the behaviour the code has now; earlier sections below are the design record and proof history.
+
+- **Normal release:** one change set, in dependency order. The release carries the set's files plus any linked file the set needs (hierarchy → subsets, cube → views, MDX view → `.mdx`). The closure is recursive; a linked file owned by another set refuses and names it, and a link missing from DEV refuses. The review screen lists auto-added dependencies separately. “Add to this release” can pull one unowned left-on-DEV object into the release; the server validates ownership and records who added it.
+- **Processes run:** IDE and MCP process/chore runs are recorded in the open change set as `PROCESS_RUN` with masked parameters, status and duration. A run is a record, never a reason to ship the process file.
+- **Phantom change sets:** closed sets whose touched objects no longer exist are detected automatically on the Change Sets list and hidden as history only. There is no manual mark. This does not filter files from a catch-up.
+- **Catch-up:** admin-only, from the rocket-icon **Deploy** menu → **Catch up a server…**. Only targets with a recorded deployed commit are offered. Choose the target, type `I understand this brings <target> level with <source>`, start, then build → review → approve → deploy → verify. An existing catch-up opens directly at **Build release** in catch-up mode.
+- **Catch-up source commit:** the source's last pushed commit. TM1 v11 may return it as `LocalCommit.ID` or `DeployedCommit.ID`; if neither exists, commit DEV first. Some TM1 builds do not report unpushed changes, so the catch-up uses the last pushed state.
+- **Catch-up build:** every file that differs between the target's recorded base and the source commit, with no change-set ownership filter. Link closure still applies. Git renames remove the old base path before adding the new one; non-ASCII filenames are passed unquoted.
+- **Catch-up approval:** the release link closure is checked, but `CheckRules`/TI lint are **not** run against the old target — the catch-up creates those cubes and elements. Normal releases still run both.
+- **Catch-up is add/update only.** It does not delete PROD-only objects. The review lists target-only cubes, dimensions, processes and chores (not views/subsets). After the pull, leftovers stay on PROD. A reviewed catch-up delete list is **not implemented**.
+- **After a catch-up, drift may be non-empty by design.** Old base objects that TM1 Git does not delete, TM1's view/hierarchy write-back, and subsets applied over REST can differ from the release commit. Drift means PROD differs from what it last received; it pauses further deploys. Either clean PROD or reseed the PROD baseline to accept the current state.
+- **Covered sets:** only after a clean catch-up deploy, and only closed sets whose objects the catch-up carried. Open sets stay open and are listed as partly shipped.
+- **Deletes:** a normal change set records its deletes and reconcile removes exactly those on the target. A catch-up has no delete record, so it never removes a PROD-only object.
+
 ## Known gaps (16 Nov 2026) — being fixed in review area 07
 
 Found by code review, not by a failed deploy. Each line moves to **Fixed** as the fix lands.
@@ -73,10 +89,12 @@ commit, regardless of which change set touched it.
 - **When:** a target has a recorded deployed commit (so it has pulled at least
   once) and DEV's history is far ahead — typically a model that reached PROD
   before change-set releases existed. For a never-pulled target, use first pull.
-- **How:** Deploy → **Catch up `<target>` with `<source>`…**, type
-  `I understand this brings <target> level with <source>`, then build, review,
-  approve, deploy and verify as usual. DEV must have no unpushed changes —
-  commit DEV first.
+- **How:** Deploy (rocket icon) → **Catch up a server…**, choose an eligible
+  target, type `I understand this brings <target> level with <source>`, then build,
+  review, approve, deploy and verify. An existing catch-up opens at Build release.
+  The source commit is the last pushed one (`LocalCommit.ID` or `DeployedCommit.ID`).
+  Some TM1 v11 builds do not report unpushed changes; commit DEV first if its Git
+  has no commit.
 - **What it is:** a closed, empty change set of kind `catch-up` named
   `Catch-up: <target> level with <source> (<date>)`, with the source's pushed
   commit as its `commit_ref`. The release is built on `release-<target>` like
@@ -88,9 +106,8 @@ commit, regardless of which change set touched it.
 
 ### Phantom change sets
 
-A closed change set that must never ship (a proof, lab work, a throwaway model)
-is detected as a **phantom** when none of its objects still exist, by its owner or a TM1
-admin. It stays as a record but **owns nothing**: releases skip it, and the
+A closed change set whose touched objects no longer exist is detected automatically as a
+**phantom**. It stays as a record but **owns nothing**: releases skip it, and the
 wizard refuses to commit or release it. An open set must be closed first. The
 list shows a grey **Phantom — empty** badge and hides these sets by default
 ("Show N phantom"). No manual mark is needed. This is a current-state check; it does not
