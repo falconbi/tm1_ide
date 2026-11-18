@@ -10,6 +10,8 @@ commits that mixed a fix into a feature are included too. New features are not l
 
 ## November 2026
 
+- **Change Sets — Won’t deploy** — The mark/unmark controls were hidden for a TM1 admin who was not the set’s owner, even though the server authorises admins. The row now treats the server admin as an owner, so the hover control appears
+
 - **Catch-up approval** — A catch-up change set is created closed and empty, so it has no close-test snapshot; the approval gate treated that as a failing test and refused it. Catch-ups now skip the tests requirement (ordinary releases still require a clean recorded result)
 
 - **Git token after restart** — Startup copied the saved token into `process.env.TM1_GIT_TOKEN`, so the setup screen reported “from .env”, refused to save a replacement and left an expired token stuck. The seeding is gone: every reader goes through `gitSecrets.getToken()` (env first, then the saved file), and saving no longer writes the environment

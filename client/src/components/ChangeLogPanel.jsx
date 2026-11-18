@@ -3,7 +3,7 @@ import { useState, useRef, useEffect } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { X, ChevronRight, ChevronDown, Clock, Box, Layers, Cog, FileText, FileCheck, Table2, List, Tag, Loader2, Diff, Rocket, ScrollText, Pencil, RotateCcw, HelpCircle, Ban, Undo2 } from 'lucide-react'
 import HelpPanel from '@/components/HelpPanel'
-import { useWorkSessions, useWorkSessionLog, useUpdateSessionDescription, useResumeWorkSession } from '@/hooks/useApi'
+import { useWorkSessions, useWorkSessionLog, useUpdateSessionDescription, useResumeWorkSession, useServerLogins } from '@/hooks/useApi'
 import { useStore } from '@/store'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
@@ -132,7 +132,7 @@ function LogEntry({ entry, server, openTab }) {
   )
 }
 
-function SessionRow({ session, server, openTab, onClose, currentUser }) {
+function SessionRow({ session, server, openTab, onClose, currentUser, isAdmin = false }) {
   const { openDeployWizard } = useStore()
   const [open, setOpen]           = useState(false)
   const [editingDesc, setEditingDesc] = useState(false)
@@ -199,7 +199,7 @@ function SessionRow({ session, server, openTab, onClose, currentUser }) {
   const runs = entries.filter(e => e.object_type === 'process-run')
   const changes = entries.filter(e => e.object_type !== 'process-run')
   const isActive = !session.closed_at
-  const owns = !session.user || !currentUser || String(session.user).toLowerCase() === String(currentUser).toLowerCase()
+  const owns = isAdmin || !session.user || !currentUser || String(session.user).toLowerCase() === String(currentUser).toLowerCase()
 
   useEffect(() => { if (editingDesc) descRef.current?.focus() }, [editingDesc])
 
@@ -408,6 +408,8 @@ export default function ChangeLogPanel({ server, onClose, direction = 'up' }) {
     (showWontDeploy || !s.wont_deploy_at) &&
     (showDeployed || (!s.deployed && !s.covered_by)))
 
+  const { data: logins = [] } = useServerLogins()
+  const isAdmin = logins.some(l => String(l?.name ?? '').toLowerCase() === String(server ?? '').toLowerCase() && l?.isAdmin)
   const openReleaseAndClose = () => { openDeployWizard({ release: true }); onClose?.() }
 
   const posClass = direction === 'down'
@@ -457,6 +459,7 @@ export default function ChangeLogPanel({ server, onClose, direction = 'up' }) {
               openTab={openTab}
               onClose={onClose}
               currentUser={username}
+              isAdmin={isAdmin}
             />
           ))}
         </div>
