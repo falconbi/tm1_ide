@@ -59,16 +59,64 @@ function _tlsFor(cfg) {
 
 const _urlCache = new Map()  // `${adminHostUrl}::${serverNameLower}` → resolved base URL
 
+// A bad "url" in servers.json is a setup mistake, not a failed login. The
+// message names the cause so the sign-in dialog can show it as-is, and the
+// code lets a route treat it as a setup problem rather than "Could not reach".
+class AdminHostLookupError extends Error {
+    constructor(message) {
+        super(message)
+        this.name = 'AdminHostLookupError'
+        this.code = 'ADMIN_HOST_LOOKUP'
+    }
+}
+
+const _CONNECT_CODES = new Set([
+    'ECONNREFUSED', 'ECONNRESET', 'ETIMEDOUT', 'ECONNABORTED', 'EHOSTUNREACH',
+    'ENETUNREACH', 'ENOTFOUND', 'EAI_AGAIN', 'ERR_NETWORK',
+])
+
+function _adminHostLookupError(e, url) {
+    const status = e.response?.status
+    if (status === 401 || status === 403) {
+        return new AdminHostLookupError(
+            `The address in config/servers.json (${url}) answered as a TM1 server, not the TM1 Admin Server. ` +
+            `Set "url" to the Admin Server, usually port 5895 (HTTP) or 5898 (HTTPS).`,
+        )
+    }
+    if (_CONNECT_CODES.has(e.code) || /timeout/i.test(e.message ?? '')) {
+        return new AdminHostLookupError(
+            `Can't reach the TM1 Admin Server at ${url}. ` +
+            `Check "url" in config/servers.json and that the Admin Server service is running.`,
+        )
+    }
+    const detail = status ? `HTTP ${status}` : (e.code || e.message)
+    return new AdminHostLookupError(
+        `The address in config/servers.json (${url}) did not answer as the TM1 Admin Server (${detail}). ` +
+        `Check "url" in config/servers.json.`,
+    )
+}
+
 async function _resolveServerUrl(adminHost, serverName) {
     const key = `${adminHost.url}::${serverName.toLowerCase()}`
     if (_urlCache.has(key)) return _urlCache.get(key)
 
     const reqOpts = { timeout: 10_000 }
     if (adminHost.url?.startsWith('https')) reqOpts.httpsAgent = httpsAgentFor(_tlsFor(adminHost)).agent
-    const resp    = await axios.get(`${adminHost.url}/api/v1/Servers`, reqOpts)
+    let resp
+    try {
+        resp = await axios.get(`${adminHost.url}/api/v1/Servers`, reqOpts)
+    } catch (e) {
+        throw _adminHostLookupError(e, adminHost.url)
+    }
     const servers = resp.data?.value ?? []
     const match   = servers.find(s => s.Name.toLowerCase() === serverName.toLowerCase())
-    if (!match) throw new Error(`Server "${serverName}" not found on admin host ${adminHost.url}`)
+    if (!match) {
+        const names = servers.map(s => s.Name).filter(Boolean)
+        throw new AdminHostLookupError(
+            `Server "${serverName}" not found on the Admin Server at ${adminHost.url}. ` +
+            (names.length ? `Admin Server lists: ${names.join(', ')}.` : 'Admin Server lists no servers.'),
+        )
+    }
 
     const ip       = new URL(adminHost.url).hostname
     const protocol = match.UsingSSL ? 'https' : 'http'
@@ -337,4 +385,4 @@ function listServersWithFlags() {
     })
 }
 
-module.exports = { getAdapter, makeClient, makeClientWithCredentials, needsServerLogin, isDirectServer, isPawNativeServer, probeAuthMethod, NeedsServerLogin, TM1AuthRejected, listServers, listServersWithFlags, isReadOnly, isSimple, simpleSource, getDefaultAdapterType, getLoginServer, hasServersConfig }
+module.exports = { getAdapter, makeClient, makeClientWithCredentials, needsServerLogin, isDirectServer, isPawNativeServer, probeAuthMethod, NeedsServerLogin, TM1AuthRejected, AdminHostLookupError, listServers, listServersWithFlags, isReadOnly, isSimple, simpleSource, getDefaultAdapterType, getLoginServer, hasServersConfig }

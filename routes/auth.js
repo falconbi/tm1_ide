@@ -103,7 +103,13 @@ app.post('/api/auth/server-login', loginRateLimit, async (req, res) => {
         setServerCredentials(req.ideToken, server, { username: creds.username, password: creds.password, namespace: creds.namespace ?? null }, state)
         loginRateLimit.clear(req)
         res.json({ ok: true, server, username: creds.username, ...(isSampleLogin(creds.username, creds.password) ? { warning: SAMPLE_PASSWORD_WARNING } : {}) })
-    } catch (e) { res.status(500).json({ error: `Could not reach "${req.body?.server}": ${e.message}` }) }
+    } catch (e) {
+        // Never log the request body (it carries the password).
+        console.error(`[auth] server login for "${req.body?.server}" failed (${e.code ?? 'ERROR'}): ${e.message}`)
+        // A wrong Admin Server address is a setup problem, not a failed login.
+        if (e.code === 'ADMIN_HOST_LOOKUP') return res.status(502).json({ error: e.message, code: e.code })
+        res.status(500).json({ error: `Could not reach "${req.body?.server}": ${e.message}` })
+    }
 })
 
 app.get('/api/auth/method', async (req, res) => {

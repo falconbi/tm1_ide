@@ -40,6 +40,8 @@ commits that mixed a fix into a feature are included too. New features are not l
 
 - **CRLF checkout fails the MCP docs test** — Git for Windows checked `docs/ide/MCP_SERVER.md` out with CRLF, so the generated tool-table test compared LF with CRLF and always failed on Windows. Added `.gitattributes` (`* text=auto eol=lf` plus the binary image/font types) and the test now normalises CRLF before comparing
 
+- **Sign-in with a TM1 server's port** — `url` pointing at a TM1 server instead of the Admin Server returned "Could not reach … 401", which read as a bad password, and nothing was logged. The Admin Server lookup now names the cause (a TM1 server answered, the Admin Server is unreachable, or the server is not listed) under `ADMIN_HOST_LOOKUP`; the sign-in route logs it once without the request body and shows the setup message
+
 ### 2026-11-18
 
 - **deploy release wording** — A release refused when an object belonged to another change set, then told the user to "release that change set first, or together" and, for a failed rule reference, to "build a combined release". Releases are one change set at a time, in dependency order; both messages (and the CheckRules note) now say `Release "<owner>" to <target> first, then rebuild this release.`
