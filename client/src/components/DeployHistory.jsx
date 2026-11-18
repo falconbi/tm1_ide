@@ -338,6 +338,8 @@ function GitHistoryPanel() {
                     <span className="font-mono">{String(a.commit ?? '').slice(0, 10)}</span>
                     <span className="text-muted-foreground">{a.approver} · {fmt(a.approved_at)}</span>
                     {a.notes && <span className="text-muted-foreground/70 truncate">— {a.notes}</span>}
+                    {a.addedByUser?.length > 0 && <span className="text-muted-foreground/70 truncate">· added {a.addedByUser.map(o => `${o.type} ${o.name}`).join(', ')}</span>}
+                    {a.addedAsDependency?.length > 0 && <span className="text-muted-foreground/50 truncate">· dependencies {a.addedAsDependency.map(o => `${o.type} ${o.name}`).join(', ')}</span>}
                   </div>
                 ))}
           </div>

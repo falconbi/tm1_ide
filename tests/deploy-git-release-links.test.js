@@ -176,3 +176,59 @@ test('buildRelease refuses a link that is not on DEV either', async () => {
     assert.match(r.error, /Ghost\.json/)
   } finally { fs.rmSync(repo.bare, { recursive: true, force: true }); fs.rmSync(repo.w, { recursive: true, force: true }) }
 })
+
+// ── Step 2: addObjects is validated here, not trusted from the client ────────
+
+test('buildRelease adds an unowned excluded item the user ticked, and records it', async () => {
+  const repo = setupRepo()
+  try {
+    fakeBase = repo.base
+    const a = changeSet('Add A', 'DEV-ADD-A', repo.devCommit)
+    const r = await buildRelease(a, 'TGA-A', {
+      token: 'x', gitUser: 't', repoUrl: repo.bare, by: 'james',
+      addObjects: [{ type: 'subset', name: 'Cities', parent: 'WFP Position' }],
+    })
+    assert.equal(r.ok, true, JSON.stringify(r))
+    assert.deepEqual(r.addedByUser, [{ type: 'subset', name: 'Cities', parent: 'WFP Position', file: CITIES, by: 'james' }])
+    assert.ok(!r.excluded.some(o => o.type === 'subset' && o.name === 'Cities'), 'Cities is no longer left on DEV')
+    assert.ok(r.addedAsDependency.some(o => o.file === DEFAULT), 'the other linked subset still comes in as a dependency')
+
+    cl.setSessionRelease(a.id, r.releaseCommit, 'TGA-A', { addedByUser: r.addedByUser, addedAsDependency: r.addedAsDependency })
+    const saved = cl.getSession(a.id)
+    assert.deepEqual(JSON.parse(saved.release_added_by_user), r.addedByUser)
+    assert.deepEqual(JSON.parse(saved.release_added_as_dependency), r.addedAsDependency)
+  } finally { fs.rmSync(repo.bare, { recursive: true, force: true }); fs.rmSync(repo.w, { recursive: true, force: true }) }
+})
+
+test('buildRelease refuses addObjects for an item owned by another change set', async () => {
+  const repo = setupRepo()
+  try {
+    fakeBase = repo.base
+    cl.startSession('Add owner', 'DEV-ADD-B', 'samtm1')
+    cl.writeLog({ server: 'DEV-ADD-B', action: 'SUBSET_SAVED', objectType: 'subset', objectName: 'Cities', detail: 'WFP Position', user: 'samtm1' })
+    const a = changeSet('Add B', 'DEV-ADD-B', repo.devCommit)
+    const r = await buildRelease(a, 'TGA-B', {
+      token: 'x', gitUser: 't', repoUrl: repo.bare, by: 'james',
+      addObjects: [{ type: 'subset', name: 'Cities', parent: 'WFP Position' }],
+    })
+    assert.equal(r.ok, false)
+    assert.equal(r.refused, true)
+    assert.match(r.error, /Cannot add subset Cities/)
+    assert.match(r.error, /belongs to change set "Add owner"/)
+  } finally { fs.rmSync(repo.bare, { recursive: true, force: true }); fs.rmSync(repo.w, { recursive: true, force: true }) }
+})
+
+test('buildRelease refuses addObjects for an object that is not in the unowned excluded list', async () => {
+  const repo = setupRepo()
+  try {
+    fakeBase = repo.base
+    const a = changeSet('Add C', 'DEV-ADD-C', repo.devCommit)
+    const r = await buildRelease(a, 'TGA-C', {
+      token: 'x', gitUser: 't', repoUrl: repo.bare, by: 'james',
+      addObjects: [{ type: 'subset', name: 'NotThere', parent: 'WFP Position' }],
+    })
+    assert.equal(r.ok, false)
+    assert.equal(r.refused, true)
+    assert.match(r.error, /Cannot add subset NotThere/)
+  } finally { fs.rmSync(repo.bare, { recursive: true, force: true }); fs.rmSync(repo.w, { recursive: true, force: true }) }
+})

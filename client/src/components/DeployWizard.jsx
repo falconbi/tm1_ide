@@ -61,6 +61,7 @@ export default function DeployWizard({ server, onClose, onOpenTests, initialSess
   const [tests,     setTests]     = useState(null)
   const [pushed,    setPushed]    = useState(null)
   const [release,   setRelease]   = useState(null)
+  const [addSel,    setAddSel]    = useState({})
   const [prep,      setPrep]      = useState(null)
   const [res,       setRes]       = useState(null)
   const [approval,  setApproval]  = useState(null)
@@ -142,8 +143,9 @@ export default function DeployWizard({ server, onClose, onOpenTests, initialSess
     if (d) { setPushed(d); setStep(4) }
   }
   const doBuildRelease = async () => {
-    const d = await run('release', { source: server, target, session: sessionId }, '/api/deploy/git/release')
-    if (d) { setRelease(d); setPrep(null); setApproval(null) }
+    const addObjects = Object.values(addSel).map(o => ({ type: o.type, name: o.name, parent: o.parent ?? null }))
+    const d = await run('release', { source: server, target, session: sessionId, addObjects }, '/api/deploy/git/release')
+    if (d) { setRelease(d); setAddSel({}); setPrep(null); setApproval(null) }
   }
   const doPrepare = async () => {
     const d = await run('prepare', { source: server, target, session: sessionId, branch: `release-${target}` }, '/api/deploy/git/prepare')
@@ -380,12 +382,36 @@ export default function DeployWizard({ server, onClose, onOpenTests, initialSess
                         ))}
                       </div>
                     )}
+                    {(release.addedByUser?.length > 0) && (
+                      <div className="border border-emerald-600/30 rounded-md p-2 space-y-1 bg-emerald-600/5">
+                        <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Added to this release by you ({release.addedByUser.length})</p>
+                        {release.addedByUser.map((o, i) => (
+                          <p key={i} className="text-[11px]"><span className="font-mono">{o.type} {o.name}</span> <span className="text-muted-foreground/60">({humanizeFile(o.file)})</span>{o.by ? <span className="text-muted-foreground/60"> — by {o.by}</span> : null}</p>
+                        ))}
+                      </div>
+                    )}
                     <div className="border border-border rounded-md p-2 space-y-1 bg-muted/20">
                       <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Left on DEV — not shipped ({release.excluded?.length ?? 0})</p>
-                      {(release.excluded ?? []).map((o, i) => (
-                        <p key={i} className="text-[11px] text-muted-foreground"><span className="font-mono">{o.type} {o.name}</span>{o.owner ? ` — in "${o.owner.sessionName}"${o.owner.user ? ` (${o.owner.user})` : ''}` : ''}</p>
-                      ))}
+                      {(release.excluded ?? []).map((o, i) => {
+                        const key = `${o.type}|${o.name}|${o.parent ?? ''}`
+                        return (
+                          <div key={i} className="flex items-baseline gap-2 text-[11px] text-muted-foreground">
+                            {!o.owner && (
+                              <input
+                                type="checkbox"
+                                checked={!!addSel[key]}
+                                onChange={e => setAddSel(prev => e.target.checked ? { ...prev, [key]: o } : Object.fromEntries(Object.entries(prev).filter(([k]) => k !== key)))}
+                                title="Add this unowned item to the release"
+                                className="mt-0.5 accent-emerald-600"
+                              />
+                            )}
+                            <span className="flex-1"><span className="font-mono">{o.type} {o.name}</span>{o.owner ? ` — in "${o.owner.sessionName}"${o.owner.user ? ` (${o.owner.user})` : ''}` : null}</span>
+                            {!o.owner && <span className="text-[10px] text-muted-foreground/60">Add to this release</span>}
+                          </div>
+                        )
+                      })}
                       {(release.excluded ?? []).length === 0 && <p className="text-[11px] text-muted-foreground">Nothing else changed between the base and DEV's commit.</p>}
+                      {Object.keys(addSel).length > 0 && <p className="text-[10px] text-emerald-600 pt-1">Build release again to include the ticked items.</p>}
                     </div>
                     {(release.noFile?.length > 0) && (
                       <p className="text-[11px] text-amber-600">In this change set but no file changed (e.g. only a value): {release.noFile.map(o => `${o.type} ${o.name}`).join(', ')}</p>

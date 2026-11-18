@@ -95,10 +95,16 @@ app.post('/api/deploy/git/release', async (req, res) => {
         const changeSet = session ? cl.getSession(session) : null
         if (!changeSet) return res.status(400).json({ error: 'a change set (session) is required' })
         const { buildRelease } = require('../core/git-release')
-        const r = await buildRelease(changeSet, target, { token: process.env.TM1_GIT_TOKEN, gitUser: _GI().user(), ideToken: req.ideToken })
+        const addObjects = Array.isArray(req.body.addObjects) ? req.body.addObjects : []
+        const r = await buildRelease(changeSet, target, {
+            token: process.env.TM1_GIT_TOKEN, gitUser: _GI().user(), ideToken: req.ideToken,
+            addObjects, by: req.user ?? null,
+        })
         if (r.refused) return res.status(409).json({ error: r.error })
         if (r.ok === false) return res.status(500).json({ error: r.error })
-        cl.setSessionRelease(changeSet.id, r.releaseCommit, target)
+        cl.setSessionRelease(changeSet.id, r.releaseCommit, target, {
+            addedByUser: r.addedByUser, addedAsDependency: r.addedAsDependency,
+        })
         res.json(r)
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
@@ -130,10 +136,13 @@ app.post('/api/deploy/git/approve', async (req, res) => {
                 return res.status(409).json({ error: `Refused: the release has failing dependencies — ${(dep.blockers ?? []).map(b => `${b.object}: ${b.message}`).join(' | ') || dep.error}`, blockers: dep.blockers ?? [] })
             }
         }
+        const parseList = (text) => { try { return text ? JSON.parse(text) : [] } catch { return [] } }
         const rec = await approvals.append({
             id: new Date().toISOString(), approved_at: new Date().toISOString(),
             approver: req.user ?? 'unknown', notes: note ?? '',
             source: source ?? null, target, commit, session: linkedSession.id, packageDir: null,
+            addedByUser: parseList(linkedSession.release_added_by_user),
+            addedAsDependency: parseList(linkedSession.release_added_as_dependency),
         }, { ideToken: req.ideToken })
         res.json(rec)
     } catch (e) { res.status(500).json({ error: e.message }) }

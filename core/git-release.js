@@ -207,7 +207,7 @@ async function buildRelease(changeSet, target, { token, gitUser = gitIdentity.us
 
         // Other sessions on the same server, for the "left on DEV" owners.
         const allSessions = cl.getAllSessions(500)
-        const otherLogs = (session?.server ? allSessions : [])
+        const otherLogs = (session?.server ? allSessions.filter(s => s.server === session.server) : [])
             .filter(s => s.id !== session?.id)
             .map(s => ({ name: s.name, user: s.user ?? null, entries: (() => { try { return cl.getSessionLog(s.id) } catch { return [] } })() }))
 
