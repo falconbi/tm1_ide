@@ -36,7 +36,7 @@ async function markWontDeploy(id, { by, reason, ideToken, client } = {}) {
         wont_deploy_at: at,
         wont_deploy_by: by ?? null,
         wont_deploy_reason: text,
-    }, { ideToken, client })
+    }, { ideToken, client, session })
     return changeLog.markSessionWontDeploy(id, { by, reason: text, at })
 }
 
@@ -47,7 +47,7 @@ async function unmarkWontDeploy(id, { ideToken, client } = {}) {
         wont_deploy_at: null,
         wont_deploy_by: null,
         wont_deploy_reason: null,
-    }, { ideToken, client })
+    }, { ideToken, client, session })
     return changeLog.unmarkSessionWontDeploy(id)
 }
 
@@ -66,7 +66,7 @@ async function markCoveredAfterDeploy(catchUpId, { ideToken, client } = {}) {
         const covered = changeLog.getSession(id)
         if (!covered || !covered.closed_at || covered.wont_deploy_at || covered.covered_by) continue
         const at = new Date().toISOString()
-        await changeSetModel.updateClosedRecord(covered.server, id, { covered_by: catchUpId, covered_at: at }, { ideToken, client })
+        await changeSetModel.updateClosedRecord(covered.server, id, { covered_by: catchUpId, covered_at: at }, { ideToken, client, session: covered })
         changeLog.markSessionCovered(id, { by: catchUpId, at })
         marked.push(id)
     }

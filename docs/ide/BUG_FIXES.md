@@ -10,6 +10,8 @@ commits that mixed a fix into a feature are included too. New features are not l
 
 ## November 2026
 
+- **Won’t deploy on older change sets** — Marking failed on sets that predate model-owned history: the local set had no `Applications/Governance/ChangeSets` record, and the model-first update threw. The update now backfills a closed record from the local log before writing the mark; a caller with no session still fails loudly
+
 - **Change Sets — Won’t deploy** — The mark/unmark controls were hidden for a TM1 admin who was not the set’s owner, even though the server authorises admins. The row now treats the server admin as an owner, so the hover control appears
 
 - **Catch-up approval** — A catch-up change set is created closed and empty, so it has no close-test snapshot; the approval gate treated that as a failing test and refused it. Catch-ups now skip the tests requirement (ordinary releases still require a clean recorded result)

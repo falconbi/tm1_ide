@@ -56,11 +56,17 @@ async function closeAndPersist(server, session, { closedBy, tests, ideToken, cli
 // Update fields on an already-closed record (won't deploy, covered by a
 // catch-up). Reads the existing document so the audit stays intact. On a
 // migrated server a missing or unwritable document throws — never silent.
-async function updateClosedRecord(server, id, patch, { ideToken, client } = {}) {
+async function updateClosedRecord(server, id, patch, { ideToken, client, session } = {}) {
     if (!await store.isMigrated(server, AREA, { ideToken, client })) return { ok: true, model: false }
     const name = `${id}.json`
-    const current = await store.readDoc(server, AREA, name, { ideToken, client })
-    if (!current) throw new Error(`Change-set record Applications/Governance/ChangeSets/${name} is missing on ${server}.`)
+    let current = await store.readDoc(server, AREA, name, { ideToken, client })
+    if (!current) {
+        // Older local-only sets can pre-date the model-owned history. Backfill a
+        // closed record from the local log before appending the new field; a
+        // caller with no session still gets the loud missing-record error.
+        if (!session) throw new Error(`Change-set record Applications/Governance/ChangeSets/${name} is missing on ${server}.`)
+        current = buildClosedRecord(session, { closedBy: session.closed_by, tests: null, audit: lightAudit(id) })
+    }
     await store.writeDoc(server, AREA, name, { ...current, ...patch }, { ideToken, client })
     return { ok: true, model: true }
 }

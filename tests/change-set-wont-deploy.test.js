@@ -162,3 +162,12 @@ test('releasing a change set marked won\'t deploy is refused', async () => {
   assert.equal(res.statusCode, 409)
   assert.match(res.body.error, /marked won't deploy/)
 })
+
+test('an older closed set with no model record is backfilled before it is marked', async () => {
+  const s = cl.startSession('Old local proof', 'WD-4', 'admin')
+  cl.closeSession(s.id, { user: 'admin', tests: { passed: 1, total: 1, blocking: 0 } })
+  records.delete(`${s.id}.json`)
+  const marked = await markWontDeploy(s.id, { by: 'james', reason: 'older local set' })
+  assert.equal(marked.wont_deploy_reason, 'older local set')
+  assert.equal(records.get(`${s.id}.json`).wont_deploy_reason, 'older local set')
+})
