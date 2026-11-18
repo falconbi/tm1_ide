@@ -92,3 +92,8 @@ test('a valid manifest is cached per server + identity', async () => {
     await store.readManifest('CACHED', { client: c, identity: 'b' })
     assert.equal(reads, 2)
 })
+
+test('readDoc can return null for a missing model-owned document when the caller is backfilling', async () => {
+    const c = { async listFiles() { return [] }, async getFileContent() { return null } }
+    assert.equal(await store.readDoc('MISSING_OK', 'changeSets', 'x.json', { client: c, missingOk: true }), null)
+})

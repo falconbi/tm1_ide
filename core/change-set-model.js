@@ -59,7 +59,7 @@ async function closeAndPersist(server, session, { closedBy, tests, ideToken, cli
 async function updateClosedRecord(server, id, patch, { ideToken, client, session } = {}) {
     if (!await store.isMigrated(server, AREA, { ideToken, client })) return { ok: true, model: false }
     const name = `${id}.json`
-    let current = await store.readDoc(server, AREA, name, { ideToken, client })
+    let current = await store.readDoc(server, AREA, name, { ideToken, client, missingOk: true })
     if (!current) {
         // Older local-only sets can pre-date the model-owned history. Backfill a
         // closed record from the local log before appending the new field; a

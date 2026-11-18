@@ -152,7 +152,7 @@ async function readDoc(server, area, name, opts = {}) {
     try {
         const files = await c.listFiles(folder).catch(e => (e.response?.status === 404 ? [] : (() => { throw e })()))
         if (!files.some(f => f.name === doc && !f.isFolder)) {
-            if (MANIFEST_AREAS.includes(area) && await isMigrated(server, area, opts)) {
+            if (!opts.missingOk && MANIFEST_AREAS.includes(area) && await isMigrated(server, area, opts)) {
                 throw new Error(`Server "${server}" is model-owned for ${area} (its governance manifest says so), but ${folder.join('/')}/${doc} is missing. Restore it, or change that area to "local" with: node tools/migrate-governance.js --manifest ${server} --local`)
             }
             return null
