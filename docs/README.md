@@ -1,6 +1,8 @@
 # Docs
 
-New to the codebase? Start with [CONTRIBUTING.md](../CONTRIBUTING.md) for install, tests, the build and both lint ratchets.
+Installing it? Start with [INSTALL.md](../INSTALL.md) for the step-by-step path.
+
+New to the codebase? Start with [CONTRIBUTING.md](../CONTRIBUTING.md) for tests, the build and both lint ratchets.
 
 ## Videos
 

@@ -1,10 +1,12 @@
 # TM1 IDE — first walkthrough
 
 A first end-to-end pass through the IDE. It assumes a working TM1 server and the setup in
-[SETUP.md](SETUP.md).
+[INSTALL.md](../../INSTALL.md) or [SETUP.md](SETUP.md).
 
-> **v1.0 scope.** This is a reference release, not a supported product. Windows is untested, the
-> live deploy checks are still for James to run, and Lenses remain in development.
+> **v1.0 scope.** This is a reference release, not a supported product. Windows is partly tested
+> (install, start, sign-in and opening a cube on Windows 10, 19 Nov 2026); the other editors,
+> service wrapper and package/deploy are not. The live deploy checks are still for James to run,
+> and Lenses remain in development.
 
 ## 1. Start the IDE
 

@@ -5,7 +5,7 @@
 **An open development experiment for the IBM Planning Analytics (TM1) community.**
 
 [![CI](https://github.com/falconbi/tm1_ide/actions/workflows/ci.yml/badge.svg)](https://github.com/falconbi/tm1_ide/actions/workflows/ci.yml)
-[![Node.js](https://img.shields.io/badge/Node.js-20+-339933?logo=node.js&logoColor=white)](https://nodejs.org)
+[![Node.js](https://img.shields.io/badge/Node.js-22-339933?logo=node.js&logoColor=white)](https://nodejs.org)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 </div>
@@ -117,17 +117,23 @@ It isn't an IBM product and isn't supported by IBM.
 
 ## Getting started
 
+Installing for yourself, or asking an AI agent to install it for someone? Follow
+[INSTALL.md](INSTALL.md) step by step. It asks for the values it needs up front, then covers the
+install, a success check and the common first-run errors.
+
 ```bash
 git clone https://github.com/falconbi/tm1_ide.git
 cd tm1_ide
-npm install
-# create .env (PORT=8083) and copy config/servers.example.json to config/servers.json, see Setup
+npm ci
+# copy config/servers.example.json to config/servers.json, then edit it (Windows: copy config\servers.example.json config\servers.json)
 npm start                   # → http://localhost:8083
 ```
 
-You need Node.js 22 (20 also works) and Git. The frontend is pre-built. `config/servers.json`
-isn't in the repo. [Setup](docs/ide/SETUP.md) shows how to create it, pointing at your TM1 Admin
-Server. Tested on Linux and Windows. Then see the [first walkthrough](docs/ide/WALKTHROUGH.md).
+You need Node.js 22 (20 also works) and Git. The frontend is pre-built, so no client install or
+build is needed to run it. `config/servers.json` isn't in the repo (it holds a password); `.env` is
+optional for a direct connection. Tested on Linux, and on Windows 10 with TM1 v11 for install,
+start, sign-in and opening a cube — see the [Windows notes](docs/ide/SETUP.md#windows-partly-tested).
+Then see the [first walkthrough](docs/ide/WALKTHROUGH.md).
 
 ## Take it apart
 
@@ -146,7 +152,7 @@ ideas and pull requests are welcome, but there's no promise they'll be accepted 
 
 ## Documentation
 
-[Setup](docs/ide/SETUP.md) · [Features](docs/ide/FEATURES.md) ·
+[Install](INSTALL.md) · [Setup](docs/ide/SETUP.md) · [Features](docs/ide/FEATURES.md) ·
 [Architecture](docs/ide/ARCHITECTURE.md) · [MCP server](docs/ide/MCP_SERVER.md) ·
 [Deploy lifecycle](docs/deploy/DEPLOY_LIFECYCLE.md) · [Security](SECURITY.md) ·
 [Changelog](CHANGELOG.md) · [Bug fixes](docs/ide/BUG_FIXES.md) · [All guides](docs/README.md)

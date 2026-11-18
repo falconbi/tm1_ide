@@ -3,6 +3,11 @@
 **Release date:** 17 November 2026
 **Status:** first versioned reference release. Not a supported product; read the limits below.
 
+> **19 November 2026 update.** A Windows install has now been tested: install, start, sign-in and
+> opening a cube on Windows 10 with TM1 v11 and Node 22. See
+> [SETUP.md](SETUP.md#windows-partly-tested). The v1.0.0 notes below describe the release as it
+> shipped.
+
 ## What this is
 
 A browser-based IDE and MCP server for IBM Planning Analytics (TM1). It gives a developer one place

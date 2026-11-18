@@ -2,6 +2,10 @@
 
 Install, configure and run the IDE.
 
+> **First install?** Follow [INSTALL.md](../../INSTALL.md) for the short path: it asks for the
+> values it needs, then covers install, verify and the common first-run errors. This page is the
+> reference for PAW, TLS, multi-host, Simple mode and shared installs.
+
 ← [Back to README](../../README.md)
 
 ---
@@ -23,16 +27,15 @@ Install, configure and run the IDE.
 ```bash
 git clone https://github.com/falconbi/tm1_ide.git
 cd tm1_ide
-npm install
+npm ci
 ```
 
-On Windows, clone with `git clone -c core.autocrlf=false https://github.com/falconbi/tm1_ide.git`
-so files keep their Linux line endings. With Git for Windows' default, one test fails on line
-endings alone.
+Line endings need no special clone flags: `.gitattributes` checks the repo out with LF on Windows
+too. A clone made before that file existed still passes the docs test, which normalises CRLF.
 
 > The frontend is pre-built, so running the IDE needs no `client/` install or build step.
 > **To run the tests** (`npm test`), install the client packages first, because some tests use
-> client code: `cd client && npm install && cd ..`
+> client code: `cd client && npm ci && cd ..`
 
 ### 2. Configure
 
@@ -95,6 +98,10 @@ The example has this shape:
 | `tls` | *(optional)* TLS mode for HTTPS connections: `"verify"` (default — CA chain + hostname match), `"chain-only"` (verify the CA chain, skip the hostname match — for the stock IBM TM1 cert, which has no server name), or `"insecure"` (no verification — lab only, logs a warning). Covers both the Admin Server discovery call and the resolved model-server connections. |
 | `tlsCaFile` | *(optional)* Path to a CA / cert PEM file to add to the trust store — for an internal enterprise CA or a self-signed TM1 cert. Applies to `"verify"` and `"chain-only"`. The system trust store and `NODE_EXTRA_CA_CERTS` are always honoured too. |
 
+> **If sign-in says the address "answered as a TM1 server, not the TM1 Admin Server", `url` is a TM1
+> server's port.** Set it to the Admin Server, usually `5895` (HTTP) or `5898` (HTTPS). The same
+> message appears if the Admin Server lists the server under a different name.
+
 Create a minimal `.env` (only the port is needed):
 
 ```env
@@ -103,7 +110,8 @@ PORT=8083
 
 Don't copy `.env.example` for a direct setup. Its placeholder `PAW_*` values would be loaded.
 
-Restart the IDE after any change to `config/servers.json` or `.env`.
+`.env` is read at startup — restart the IDE after changing it. `config/servers.json` is re-read
+when it changes, so a new server, URL or TLS setting applies without a restart.
 
 ---
 
@@ -170,7 +178,7 @@ Add `config/certs/ide-cert.pem` and `ide-key.pem` only if you need HTTPS.
 npm start
 
 # Terminal 2 — frontend with hot reload
-cd client && npm install && npm run dev
+cd client && npm ci && npm run dev
 ```
 
 Open **http://localhost:5173**
@@ -213,7 +221,7 @@ the Windows service wrapper and package/deploy are still untested. Remaining dif
 | Area | On Linux today | On Windows |
 | --- | --- | --- |
 | Running as a service | `systemd --user` services (`tm1-backend`, `tm1-frontend`), logs in `/tmp/tm1-*.log`. These are machine setup, not in the repo. | Needs a Windows service wrapper (e.g. NSSM, or a scheduled task at start-up). Not written yet. |
-| Git | `git` must be on the PATH (used for TM1 Git deploys, drift and review) | Install Git for Windows. **Line endings:** Git for Windows defaults to `core.autocrlf=true`, which can rewrite rule/TI files on checkout and make content checks see changes that aren't there. Set `core.autocrlf=false` for the IDE's own clone and its repositories. |
+| Git | `git` must be on the PATH (used for TM1 Git deploys, drift and review) | Install Git for Windows. **Line endings:** `.gitattributes` keeps this clone LF, so no clone flag is needed. For the client's TM1 Git repositories, set `core.autocrlf=false` — otherwise checkout can rewrite rule/TI files and content checks see changes that aren't there. |
 | `better-sqlite3` (change log) | Prebuilt binary | Prebuilt Windows binary used with Node 22 (tested). For a Node version without one, it needs Visual Studio Build Tools to compile. |
 | Package file names | Object names made file-safe (`safeFilename`) | Windows also rejects reserved names (`CON`, `PRN`, `AUX`, `NUL`, `COM1`…) and names ending in a dot or space. An object named exactly like one of those would fail to package. Not handled yet. |
 | File permissions | No permissions are set in code. `config/servers.json` relies on the folder's permissions. | Same. Restrict the IDE folder to the service account and administrators with Windows ACLs. |
