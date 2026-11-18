@@ -26,6 +26,23 @@ build on. **This is a community project, not a supported product.**
 
 ---
 
+## ▶ Watch it working
+
+Short videos, a few minutes each, recorded on a live TM1 server.
+
+| | Video | What you'll see |
+|---|---|---|
+| ▶ | **[IDE Basics](https://www.youtube.com/watch?v=_-BWl_n-aWU)** | Connecting, the Explorer, tabs and split panes, and the editors at a glance |
+| ▶ | **[Rules Editor](https://www.youtube.com/watch?v=q-eoEeDHwSA)** | Writing rules and feeders, checking them, and tracing a calculation |
+| ▶ | **[TI Editor](https://www.youtube.com/watch?v=vmZzt2ud_og)** | Writing, running and debugging TI processes |
+| ▶ | **[Dimension Editor](https://www.youtube.com/watch?v=qGAjW8m_vAg)** | Dimensions, hierarchies, attributes, picklists and subsets |
+| ▶ | **[IDE Views](https://www.youtube.com/watch?v=wD6n-vdmCLI)** | Native and MDX views, subsets, hierarchies, working the grid and tracing a number |
+| ▶ | **[Cube Map](https://www.youtube.com/watch?v=MM62ZqC3pjk)** | A whole model on one page: the map, the Runbook and Play a run |
+
+More are on the way: AI building through MCP, deploys, and Lenses.
+
+---
+
 ## Why this project exists
 
 AI agents, MCP and modern web tools are changing how software is built. TM1 can benefit from
@@ -39,13 +56,7 @@ focused web applications on TM1.
 Rules and TI with live checking, a debugger, dimensions, views, subsets and MDX, all in one browser
 tab. The Cube Map draws the whole model, and any number can be traced back to its rule.
 
-▶ Watch: [IDE Basics](https://www.youtube.com/watch?v=_-BWl_n-aWU) ·
-[Rules](https://www.youtube.com/watch?v=q-eoEeDHwSA) ·
-[TI](https://www.youtube.com/watch?v=vmZzt2ud_og) ·
-[Dimensions](https://www.youtube.com/watch?v=qGAjW8m_vAg) ·
-[Views](https://www.youtube.com/watch?v=wD6n-vdmCLI) ·
-[Cube Map](https://www.youtube.com/watch?v=MM62ZqC3pjk) ·
-[all features](docs/ide/FEATURES.md)
+See [the videos](#-watch-it-working) and [all features](docs/ide/FEATURES.md).
 
 ### MCP and AI-assisted model building
 An MCP server gives AI agents structured tools to inspect, build and test TM1 models. The
