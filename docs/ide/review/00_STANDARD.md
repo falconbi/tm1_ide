@@ -51,7 +51,7 @@ That puts these first, in this order:
 | 04 | Shared pivot (`shared/pivot`) and the grid | done — verdict + fixes round 1 (9 commits, checked) |
 | 05 | Validators, formatter, function catalog, autocomplete (`client/src/lib`, `core/*-lint.js`) | done — round 1 (9 commits) + shared CJS/ESM convention settled (17 Nov) |
 | 06 | Understanding the model: Cube Map, Runbook, trace, search | done — round 1 (9 commits) + Cube Map split (6 commits) + Cube Map/Data Sources scanner unification (9 commits) |
-| 07 | Change sets, assertions, deploy (`core/git-*`, `core/change*`, deploy components) | round 1 done (10 commits, checked); round 2 done (6 commits + review follow-up); round 3 done (4 steps + follow-up); live checks for James in 07_DEPLOY_FIXES_DONE.md; live round-2 checks in 07_DEPLOY_ROUND2_FIXES_DONE.md |
+| 07 | Change sets, assertions, deploy (`core/git-*`, `core/change*`, deploy components) | round 1 done (10 commits, checked); round 2 done (6 commits + review follow-up); round 3 done (4 steps + follow-up); round 4 done (5 steps; catch-up, won't deploy, covered sets); live checks for James in 07_DEPLOY_FIXES_DONE.md, 07_DEPLOY_ROUND2_FIXES_DONE.md and 07_DEPLOY_ROUND4_FIXES_DONE.md |
 | 08 | Admin: monitoring, server admin, users, catalog admin | done — round 1 (7 commits, checked); one admin rule (`core/admin_gate.js`), session/job list GETs left ungated by design |
 | 09 | MCP server (`tools/tm1mcp`) | done — round 1 (8 commits, checked); 68 tools, inventory generated and tested |
 | 10 | Lenses: kit, editor, app, patterns | done — round 1 (9 commits) + patterns round 2 (4 commits, checked); Workforce content moved to the model repo |
