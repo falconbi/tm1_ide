@@ -2,12 +2,13 @@
 
 const { z } = require('zod')
 const guard = require('../guard')
+const { recordProcessRun } = require('../../../core/process-run')
 
 // ══════════════════════════════════════════════════════════════════════════════
 // MODEL BUILD — WRITE (all require an open change set)
 // ══════════════════════════════════════════════════════════════════════════════
 
-function register(server, { client, ok, esc: odataKey, logChange, logAttributeValue, requireChangeSet, lintRules, lintTI, policy }) {
+function register(server, { client, ok, esc: odataKey, logChange, logAttributeValue, requireChangeSet, lintRules, lintTI, policy, SERVER, AGENT_USER }) {
     server.tool(
         'build_dimension',
         'Create a dimension declaratively in one call — elements, consolidation edges, and element attributes. If the dimension exists, elements/edges/attributes are added to it. Use for small dimensions; drive large dimensions from a TI process (build_process) that loads from a datasource. ' +
@@ -612,7 +613,12 @@ function register(server, { client, ok, esc: odataKey, logChange, logAttributeVa
                 done.push(activate ? 'activated' : 'deactivated')
             }
             if (run) {
-                await c.executeChore(name)
+                const result = await c.executeChore(name)
+                recordProcessRun({
+                    server: SERVER, user: AGENT_USER, name, kind: 'chore',
+                    params: null, status: 'completed',
+                    duration: result?.Times?.ExecutionTimeInMilliseconds ?? null,
+                })
                 done.push('executed')
             }
             return ok(`Chore "${name}": ${done.join(', ') || 'no change'}.`)

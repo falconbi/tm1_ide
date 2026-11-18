@@ -390,6 +390,9 @@ export default function DeployWizard({ server, onClose, onOpenTests, initialSess
                         ))}
                       </div>
                     )}
+                    {release.runs > 0 && (release.excluded ?? []).some(o => !o.owner) && (
+                      <p className="text-[11px] text-amber-600">This change set ran {release.runs} process{release.runs !== 1 ? 'es' : ''}; unowned changes below may be their output.</p>
+                    )}
                     <div className="border border-border rounded-md p-2 space-y-1 bg-muted/20">
                       <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Left on DEV — not shipped ({release.excluded?.length ?? 0})</p>
                       {(release.excluded ?? []).map((o, i) => {

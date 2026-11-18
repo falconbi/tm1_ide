@@ -37,6 +37,7 @@ export function autoDescription(action, objectName, detail) {
     case 'HIERARCHY_CREATED':  return `Hierarchy '${objectName}' created`
     case 'HIERARCHY_DELETED':  return `Hierarchy '${objectName}' deleted`
     case 'EDGE_REMOVED':       return `Parent relationship removed${detail ? ` in '${detail}'` : ''}`
+    case 'PROCESS_RUN':        return `Process '${objectName}' run`
     default:                   return `${action.replace(/_/g, ' ').toLowerCase()} — ${objectName}`
   }
 }
@@ -65,8 +66,9 @@ const ACTION_META = {
   ELEMENT_LINKED:     { label: 'Element linked',      icon: Layers,   colour: 'text-blue-400' },
   HIERARCHY_CREATED:  { label: 'Hierarchy created',   icon: Layers,   colour: 'text-emerald-400' },
   HIERARCHY_DELETED:  { label: 'Hierarchy deleted',   icon: Layers,   colour: 'text-red-400' },
-  EDGE_REMOVED:       { label: 'Parent removed',      icon: Layers,   colour: 'text-amber-400' },
-  ROLLED_BACK:        { label: 'Rolled back',         icon: FileText, colour: 'text-purple-400' },
+  EDGE_REMOVED:       { label: 'Parent removed',     icon: Layers,   colour: 'text-amber-400' },
+  PROCESS_RUN:        { label: 'Process run',        icon: Cog,      colour: 'text-sky-400' },
+  ROLLED_BACK:        { label: 'Rolled back',        icon: FileText, colour: 'text-purple-400' },
 }
 
 function fmtTime(ts) {
@@ -168,6 +170,8 @@ function SessionRow({ session, server, openTab, onClose, currentUser }) {
   }, [session.description])
 
   const { data: entries = [], isFetching } = useWorkSessionLog(open ? session.id : null)
+  const runs = entries.filter(e => e.object_type === 'process-run')
+  const changes = entries.filter(e => e.object_type !== 'process-run')
   const isActive = !session.closed_at
   const owns = !session.user || !currentUser || String(session.user).toLowerCase() === String(currentUser).toLowerCase()
 
@@ -305,7 +309,7 @@ function SessionRow({ session, server, openTab, onClose, currentUser }) {
             {!isFetching && entries.length === 0 && (
               <div className="px-4 py-2 text-[10px] text-muted-foreground italic">No entries yet.</div>
             )}
-            {entries.map(e => (
+            {changes.map(e => (
               <LogEntry
                 key={e.id}
                 entry={e}
@@ -313,6 +317,19 @@ function SessionRow({ session, server, openTab, onClose, currentUser }) {
                 openTab={openTab}
               />
             ))}
+            {runs.length > 0 && (
+              <>
+                <div className="px-3 py-1 mt-1 border-t border-border/40 text-[10px] uppercase tracking-wide text-muted-foreground">Processes run</div>
+                {runs.map(e => (
+                  <LogEntry
+                    key={e.id}
+                    entry={e}
+                    server={server}
+                    openTab={openTab}
+                  />
+                ))}
+              </>
+            )}
           </div>
         )}
       </div>
