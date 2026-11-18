@@ -38,7 +38,6 @@ export default function GitSetup({ server, onClose }) {
     finally { setBusy('') }
   }
   useEffect(() => {
-    setStatusError(null)
     request(`/api/git/setup/status?server=${encodeURIComponent(server)}`, { headers: authHeader() })
       .then(r => r.json()).then(d => {
         setStatus(d)
