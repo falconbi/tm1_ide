@@ -96,6 +96,7 @@ function blockersFor(doc, resources) {
 // deletion. `planHash` binds the exact set of source contents to an approval.
 async function planLenses(source, target, opts = {}) {
     if (!source || !target) throw badRequest('source and target required')
+    if (source === target) throw badRequest('source and target must be different servers')
     const { ideToken, client } = opts
 
     const [sourceList, targetList] = await Promise.all([
@@ -263,7 +264,7 @@ async function executeLenses(source, target, opts = {}) {
         ? approvals.find(a => a.id === approvalId)
         : approvals[approvals.length - 1]
     if (!approval) throw refuse(`No approved Lens deploy for ${target} — approve a plan first.`)
-    if (approval.source !== source) throw refuse(`Approval ${approval.id} was for ${approval.source} → ${approval.target}, not ${source} → ${target}.`)
+    if (approval.source !== source || approval.target !== target) throw refuse(`Approval ${approval.id} was for ${approval.source} → ${approval.target}, not ${source} → ${target}.`)
 
     try {
         await lock.acquire(target, { by, ideToken })
