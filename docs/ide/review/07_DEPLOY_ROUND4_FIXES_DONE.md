@@ -20,6 +20,12 @@ Git use. Tests use plain objects, stubs and local bare Git repos in temp folders
 
 Final: **665 tests — 664 pass, 1 skipped**; root lint **0**; client lint **112**.
 
+## Wording correction
+
+After review, the flag is called **Retire phantom** everywhere (`ff9cdcb`). It retires an empty
+change set from release ownership; it does not exclude files from DEV or from a catch-up. The UI,
+docs and refusal messages now state that meaning.
+
 ## Lint
 
 | | Before (b2ef76d) | After |
