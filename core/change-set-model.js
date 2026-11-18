@@ -53,7 +53,7 @@ async function closeAndPersist(server, session, { closedBy, tests, ideToken, cli
     return { ok: true, model: true, id: session.id }
 }
 
-// Update fields on an already-closed record (won't deploy, covered by a
+// Update fields on an already-closed record (retired phantom, covered by a
 // catch-up). Reads the existing document so the audit stays intact. On a
 // migrated server a missing or unwritable document throws — never silent.
 async function updateClosedRecord(server, id, patch, { ideToken, client, session } = {}) {

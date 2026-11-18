@@ -167,7 +167,7 @@ function SessionRow({ session, server, openTab, onClose, currentUser, isAdmin = 
   }
 
   const markWontDeploy = async () => {
-    const reason = window.prompt(`Why must "${session.name}" never deploy? (required)`)
+    const reason = window.prompt(`Retire phantom change set "${session.name}"? It is empty and will be ignored by releases. Reason (required):`)
     if (reason == null) return
     if (!reason.trim()) { toast.error('A reason is required.'); return }
     setWontBusy(true)
@@ -227,7 +227,7 @@ function SessionRow({ session, server, openTab, onClose, currentUser, isAdmin = 
                   <span className="text-[9px] px-1 py-0.5 rounded bg-emerald-500/15 text-emerald-400 shrink-0">Deployed</span>
                 )}
                 {session.wont_deploy_at && (
-                  <span className="text-[9px] px-1 py-0.5 rounded bg-muted text-muted-foreground shrink-0" title={session.wont_deploy_reason ?? ''}>Won't deploy</span>
+                  <span className="text-[9px] px-1 py-0.5 rounded bg-muted text-muted-foreground shrink-0" title={`Retired phantom change set — empty, ignored by releases. ${session.wont_deploy_reason ?? ''}`}>Phantom — retired</span>
                 )}
                 {session.covered_by && (
                   <span className="text-[9px] px-1 py-0.5 rounded bg-muted text-muted-foreground shrink-0" title="Carried by a catch-up release">Covered by catch-up{session.covered_at ? ` ${fmtDate(session.covered_at)}` : ''}</span>
@@ -274,7 +274,7 @@ function SessionRow({ session, server, openTab, onClose, currentUser, isAdmin = 
               <button
                 onClick={e => { e.stopPropagation(); unmarkWontDeploy() }}
                 disabled={wontBusy}
-                title={`Allow this change set to deploy again${session.wont_deploy_reason ? ` — was: ${session.wont_deploy_reason}` : ''}`}
+                title={`Restore this phantom change set${session.wont_deploy_reason ? ` — was: ${session.wont_deploy_reason}` : ''}`}
                 className="opacity-0 group-hover:opacity-100 transition-opacity p-2 rounded hover:bg-muted text-muted-foreground hover:text-foreground shrink-0 disabled:opacity-40"
               >
                 <Undo2 size={10} />
@@ -283,7 +283,7 @@ function SessionRow({ session, server, openTab, onClose, currentUser, isAdmin = 
               <button
                 onClick={e => { e.stopPropagation(); markWontDeploy() }}
                 disabled={wontBusy}
-                title="Mark this change set won't deploy (it will own nothing)"
+                title="Retire this empty phantom change set (ignored by releases)"
                 className="opacity-0 group-hover:opacity-100 transition-opacity p-2 rounded hover:bg-muted text-muted-foreground hover:text-red-400 shrink-0 disabled:opacity-40"
               >
                 <Ban size={10} />
@@ -401,7 +401,7 @@ export default function ChangeLogPanel({ server, onClose, direction = 'up' }) {
   // Once a change set has shipped it's not "in play" anymore -- its record
   // lives properly in Deploy History now. Keep this list to what's still
   // active or not yet deployed; deployed ones are one click away, not gone.
-  // A set marked "won't deploy" owns nothing and is hidden the same way.
+  // A retired phantom set is empty for releases and is hidden the same way.
   const deployedCount = allSessions.filter(s => (s.deployed || s.covered_by) && !s.wont_deploy_at).length
   const wontDeployCount = allSessions.filter(s => s.wont_deploy_at).length
   const sessions = allSessions.filter(s =>
@@ -477,7 +477,7 @@ export default function ChangeLogPanel({ server, onClose, direction = 'up' }) {
             onClick={() => setShowWontDeploy(v => !v)}
             className="shrink-0 px-3 py-1.5 text-[10px] text-muted-foreground hover:text-foreground hover:bg-muted transition-colors border-t border-border text-left"
           >
-            {showWontDeploy ? "Hide won't deploy" : `Show ${wontDeployCount} won't deploy`}
+            {showWontDeploy ? "Hide phantom" : `Show ${wontDeployCount} phantom`}
           </button>
         )}
       </div>

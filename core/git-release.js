@@ -144,7 +144,7 @@ function linkClosure(files, read) {
 }
 
 // Best-effort owner of an object: another change-log session (on the change set's
-// server) whose log touched the same object. A set marked won't deploy (or
+// server) whose log touched the same object. A retired phantom set (or one
 // already covered by a catch-up) owns nothing — it must never block a release.
 function ownerOf(logsBySession, obj) {
     const wanted = objectKey(obj.type, obj.name, obj.parent)

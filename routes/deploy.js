@@ -75,7 +75,7 @@ app.post('/api/deploy/git/push', async (req, res) => {
         if (!source) return res.status(400).json({ error: 'source required' })
         const changeSet = session ? cl.getSession(session) : null
         if (changeSet?.wont_deploy_at) {
-            return res.status(409).json({ error: `Change set "${changeSet.name}" is marked won't deploy — unmark it before committing.` })
+            return res.status(409).json({ error: `Change set "${changeSet.name}" is retired as a phantom change set — restore it before committing.` })
         }
         const { pushReadiness } = require('../core/git-readiness')
         const readiness = await pushReadiness(source, { ideToken: req.ideToken })
@@ -141,7 +141,7 @@ app.post('/api/deploy/git/release', async (req, res) => {
         const changeSet = session ? cl.getSession(session) : null
         if (!changeSet) return res.status(400).json({ error: 'a change set (session) is required' })
         if (changeSet.wont_deploy_at) {
-            return res.status(409).json({ error: `Change set "${changeSet.name}" is marked won't deploy — unmark it before releasing.` })
+            return res.status(409).json({ error: `Change set "${changeSet.name}" is retired as a phantom change set — restore it before releasing.` })
         }
         const catchUp = changeSet.kind === 'catch-up'
         if (catchUp && !(await requireTm1Admin(req, res, changeSet.server))) return

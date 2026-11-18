@@ -148,12 +148,12 @@ export default function DeployWizard({ server, onClose, onOpenTests, initialSess
     finally { setBusy('') }
   }
   const doPush = async () => {
-    if (deployCtx?.wont_deploy_at) { setError(`Change set "${deployCtx.name}" is marked won't deploy — unmark it in Change Sets first.`); return }
+    if (deployCtx?.wont_deploy_at) { setError(`Change set "${deployCtx.name}" is retired as a phantom change set — restore it in Change Sets first.`); return }
     const d = await run('push', { source: server, message, session: sessionId }, '/api/deploy/git/push')
     if (d) { setPushed(d); setStep(4) }
   }
   const doBuildRelease = async () => {
-    if (deployCtx?.wont_deploy_at) { setError(`Change set "${deployCtx.name}" is marked won't deploy — unmark it in Change Sets first.`); return }
+    if (deployCtx?.wont_deploy_at) { setError(`Change set "${deployCtx.name}" is retired as a phantom change set — restore it in Change Sets first.`); return }
     const addObjects = Object.values(addSel).map(o => ({ type: o.type, name: o.name, parent: o.parent ?? null }))
     const d = await run('release', { source: server, target, session: sessionId, addObjects }, '/api/deploy/git/release')
     if (d) { setRelease(d); setAddSel({}); setPrep(null); setApproval(null) }
@@ -259,7 +259,7 @@ export default function DeployWizard({ server, onClose, onOpenTests, initialSess
           {error && <p className="text-xs text-red-600 border border-red-600/40 rounded px-3 py-2">{error}</p>}
           {deployCtx?.wont_deploy_at && (
             <p className="text-xs border border-border rounded px-3 py-2 bg-muted/30 text-muted-foreground">
-              This change set is marked <span className="font-semibold text-foreground">won't deploy</span> and owns nothing.
+              This change set is a <span className="font-semibold text-foreground">retired phantom</span> — empty, ignored by releases, and owning nothing.
               {deployCtx.wont_deploy_reason ? <> Reason: “{deployCtx.wont_deploy_reason}”.</> : null} Unmark it in Change Sets to use it again.
             </p>
           )}

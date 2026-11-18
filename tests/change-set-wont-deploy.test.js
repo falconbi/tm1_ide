@@ -160,7 +160,7 @@ test('releasing a change set marked won\'t deploy is refused', async () => {
   const res = recorder()
   await handlers['POST /api/deploy/git/release']({ body: { target: 'WD-T', session: s.id }, user: 'james', ideToken: 'x' }, res)
   assert.equal(res.statusCode, 409)
-  assert.match(res.body.error, /marked won't deploy/)
+  assert.match(res.body.error, /retired as a phantom/)
 })
 
 test('an older closed set with no model record is backfilled before it is marked', async () => {

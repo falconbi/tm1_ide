@@ -14,14 +14,15 @@ async function closeChangeSet(id, { user, tests = null, ideToken, client } = {})
     return changeLog.closeSession(id, { user, tests })
 }
 
-// Won't deploy: the set stays as a record but owns nothing and cannot be
-// committed or released. Only a closed set can be marked, and a reason is
+// Retire phantom: the set stays as a record but is empty for release purposes
+// (its changes are gone or already on the target). It owns nothing and cannot
+// be committed or released. It does not filter files out of a catch-up. Only a closed set can be marked, and a reason is
 // required. The model record is updated first on a model-owned server.
 async function markWontDeploy(id, { by, reason, ideToken, client } = {}) {
     const session = changeLog.getSession(id)
     if (!session) return null
     if (!session.closed_at) {
-        const e = new Error(`Change set "${session.name}" is still open — close it before marking it won't deploy.`)
+        const e = new Error(`Change set "${session.name}" is still open — close it before retiring it as a phantom change set.`)
         e.code = 'OPEN_SET'
         throw e
     }
