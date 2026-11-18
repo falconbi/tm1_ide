@@ -10,6 +10,8 @@ commits that mixed a fix into a feature are included too. New features are not l
 
 ## November 2026
 
+- **Catch-up approval dependencies** — Approval ran CheckRules against the old target before the catch-up created its cubes/elements, so a valid catch-up was refused. Catch-ups now keep the release link check but skip the rule/TI checks against the pre-pull target
+
 - **Release/catch-up renames** — Git reported a renamed process JSON as `R`, but the release treated it as an add and left the old base file behind; that stale JSON still linked a deleted `.ti` and broke the pull plan. Renames now remove the old path before adding the new one
 
 - **Release paths with non-ASCII names** — Git quoted names containing characters such as an em dash, so the catch-up passed a quoted pathspec to `git checkout` and failed. The shared Git helper now disables path quoting

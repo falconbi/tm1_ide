@@ -211,3 +211,13 @@ test('the catch-up targets route lists only targets with a recorded deploy', asy
   assert.equal(res.statusCode, 200)
   assert.deepEqual(res.body.targets.map(t => t.target), ['TG'])
 })
+
+test('checkDependencies skips rule checks for a catch-up and keeps link checks', async () => {
+  const repo = setupRepo()
+  try {
+    fakeBase = repo.base
+    const { checkDependencies } = require(path.join(__dirname, '..', 'core', 'git-release'))
+    const r = await checkDependencies(repo.devCommit, 'TG', { token: 'x', gitUser: 't', repoUrl: repo.bare, catchUp: true })
+    assert.equal(r.ok, true, JSON.stringify(r))
+  } finally { fs.rmSync(repo.bare, { recursive: true, force: true }); fs.rmSync(repo.w, { recursive: true, force: true }) }
+})

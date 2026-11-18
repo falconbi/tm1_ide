@@ -186,7 +186,7 @@ app.post('/api/deploy/git/approve', async (req, res) => {
         // change set (release that change set first, then rebuild this release).
         if (linkedSession.release_commit) {
             const { checkDependencies } = require('../core/git-release')
-            const dep = await checkDependencies(linkedSession.release_commit, target, { token: _GITOK(), gitUser: _GI().user(), ideToken: req.ideToken })
+            const dep = await checkDependencies(linkedSession.release_commit, target, { token: _GITOK(), gitUser: _GI().user(), ideToken: req.ideToken, catchUp: linkedSession.kind === 'catch-up' })
             if (!dep.ok) {
                 return res.status(409).json({ error: `Refused: the release has failing dependencies — ${(dep.blockers ?? []).map(b => `${b.object}: ${b.message}`).join(' | ') || dep.error}`, blockers: dep.blockers ?? [] })
             }

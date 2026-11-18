@@ -549,7 +549,7 @@ function splitTi(text) {
 // Dependency check BEFORE approval: run TM1 CheckRules on the target for every
 // included rule (a wrong reference can mean it belongs to another change set),
 // and TI lint for every included process. Blocks on any failure.
-async function checkDependencies(releaseCommit, target, { token, gitUser = gitIdentity.user(), repoUrl, ideToken } = {}) {
+async function checkDependencies(releaseCommit, target, { token, gitUser = gitIdentity.user(), repoUrl, ideToken, catchUp = false } = {}) {
     if (!repoUrl) {
         try { repoUrl = (await makeClient(target, ideToken).post('GitStatus', { Username: gitUser, Password: token }))?.URL } catch { /* below */ }
     }
@@ -572,6 +572,11 @@ async function checkDependencies(releaseCommit, target, { token, gitUser = gitId
         })) {
             blockers.push({ object: m.neededBy, message: `${m.neededBy} needs ${m.file}, which is not in the release.` })
         }
+
+        // A catch-up creates the target's objects as part of the pull; checking
+        // rules against the old target would fail on cubes/elements it is about
+        // to add. The link closure above is the only pre-deploy dependency check.
+        if (catchUp) return { ok: blockers.length === 0, blockers }
 
         const c = makeClient(target, ideToken)
         for (const ch of changed) {
