@@ -267,6 +267,23 @@ test('execute refuses any deploy that is not a built release', async () => {
   } finally { fs.rmSync(r.bare, { recursive: true, force: true }); fs.rmSync(r.w, { recursive: true, force: true }) }
 })
 
+test('execute accepts a catch-up session\'s release commit (Rule 1 unchanged)', async () => {
+  const r = repo()
+  try {
+    baseCommit = r.base
+    const s = cl.startSession('Catch-up: TG1 level with DEV1 (2026-11-18)', 'DEV1', 'admin', 'catch-up')
+    assert.equal(s.kind, 'catch-up')
+    cl.setSessionCommit(s.id, r.releaseCommit)
+    cl.setSessionRelease(s.id, r.releaseCommit, 'TG1')
+    ctx = { bare: r.bare, releaseCommit: r.releaseCommit, sessionId: s.id, ops: ["Update Cubes('A')"] }
+    const out = await execute('TG1', { session: s.id, token: 'x', gitUser: 't' })
+    assert.equal(out.executed, true, JSON.stringify(out))
+    assert.equal(out.refused, undefined)
+    assert.equal(out.release, true)
+    assert.equal(out.releaseCommit, r.releaseCommit)
+  } finally { fs.rmSync(r.bare, { recursive: true, force: true }); fs.rmSync(r.w, { recursive: true, force: true }) }
+})
+
 test('verifyRelease checks a chore against Chores(...), not Processes(...)', async () => {
   const r = choreRepo()
   try {

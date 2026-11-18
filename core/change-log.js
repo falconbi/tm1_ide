@@ -53,6 +53,8 @@ for (const [col, type] of [
     ['wont_deploy_at',              'TEXT'],
     ['wont_deploy_by',              'TEXT'],
     ['wont_deploy_reason',          'TEXT'],
+    ['kind',                        'TEXT'],
+    ['covered_sets',                'TEXT'],
 ]) {
     try { db.exec(`ALTER TABLE sessions ADD COLUMN ${col} ${type}`) } catch { /* already exists */ }
 }
@@ -70,11 +72,11 @@ function parseEntry(e) {
 
 // ── Sessions ──────────────────────────────────────────────────────────────────
 
-function startSession(name, server, user) {
+function startSession(name, server, user, kind = 'change') {
     const id  = randomUUID()
     const now = new Date().toISOString()
-    db.prepare(`INSERT INTO sessions (id, name, server, user, started_at) VALUES (?, ?, ?, ?, ?)`)
-      .run(id, name, server, user ?? 'unknown', now)
+    db.prepare(`INSERT INTO sessions (id, name, server, user, started_at, kind) VALUES (?, ?, ?, ?, ?, ?)`)
+      .run(id, name, server, user ?? 'unknown', now, kind ?? 'change')
     return db.prepare(`SELECT * FROM sessions WHERE id = ?`).get(id)
 }
 
@@ -96,11 +98,12 @@ function setSessionCommit(id, commit) {
 // Link a change set to its build release commit (branch release-<target>), and
 // record what the release carried beyond the change set: items the person added
 // from "Left on DEV", and files pulled in because a link needed them.
-function setSessionRelease(id, commit, target, { addedByUser, addedAsDependency } = {}) {
-    db.prepare(`UPDATE sessions SET release_commit = ?, release_target = ?, release_added_by_user = ?, release_added_as_dependency = ? WHERE id = ?`)
+function setSessionRelease(id, commit, target, { addedByUser, addedAsDependency, coveredSets } = {}) {
+    db.prepare(`UPDATE sessions SET release_commit = ?, release_target = ?, release_added_by_user = ?, release_added_as_dependency = ?, covered_sets = ? WHERE id = ?`)
         .run(commit ?? null, target ?? null,
             addedByUser ? JSON.stringify(addedByUser) : null,
             addedAsDependency ? JSON.stringify(addedAsDependency) : null,
+            coveredSets ? JSON.stringify(coveredSets) : null,
             id)
     return db.prepare(`SELECT * FROM sessions WHERE id = ?`).get(id)
 }

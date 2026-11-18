@@ -450,11 +450,11 @@ const [showCatalog, setShowCatalog]           = useState(false)
         {showCatalog && <CatalogAdmin server={server} onClose={() => setShowCatalog(false)} />}
         {showModelHealth && <ModelHealth server={server} onClose={() => setShowModelHealth(false)} />}
         {showAssertions && <AssertionsManager server={server} onClose={() => setShowAssertions(false)} />}
-        {deployWizard && <DeployWizard server={server} initialSession={deployWizard.session} release={!!deployWizard.release} onClose={closeDeployWizard} onOpenTests={() => { setShowAssertions(true); closeDeployWizard() }} />}
+        {deployWizard && <DeployWizard server={server} initialSession={deployWizard.session} release={!!deployWizard.release} catchUp={!!deployWizard.catchUp} catchUpTarget={deployWizard.catchUpTarget ?? null} onClose={closeDeployWizard} onOpenTests={() => { setShowAssertions(true); closeDeployWizard() }} />}
         {showGitSetup && <GitSetup server={server} onClose={() => setShowGitSetup(false)} />}
         {showGitDrift && <GitDrift server={server} onClose={() => setShowGitDrift(false)} />}
         <PeriodBuilder open={showPeriodBuilder} onClose={() => setShowPeriodBuilder(false)} />
-        <DeployCenter onOpenWizard={() => openDeployWizard({})} />
+        <DeployCenter onOpenWizard={(cfg = {}) => openDeployWizard(cfg)} />
         <ServerLoginDialog />
         <Toaster position="bottom-right" duration={3000} />
       </TooltipProvider>

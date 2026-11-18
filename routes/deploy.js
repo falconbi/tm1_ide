@@ -1,7 +1,7 @@
 'use strict'
 
 function register(app, deps) {
-    const { _GI, _GITOK, cl, deployLoadBaseline, deploySeed, fail, fs, gateReadOnly, gitSecrets, listServers, makeClient, path } = deps
+    const { _GI, _GITOK, cl, deployLoadBaseline, deploySeed, fail, fs, gateReadOnly, gitSecrets, listServers, makeClient, path, requireTm1Admin } = deps
 
 app.post('/api/deploy/pre-delete-check', async (req, res) => {
     try {
@@ -92,6 +92,40 @@ app.post('/api/deploy/git/push', async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
+// Targets with a recorded deployed commit — the only ones a catch-up can bring
+// level. Admin-only: the catch-up is an explicit, reviewed whole-model release.
+app.get('/api/deploy/git/catch-up/targets', async (req, res) => {
+    try {
+        const source = req.query.source
+        if (!source) return res.status(400).json({ error: 'source required' })
+        if (!(await requireTm1Admin(req, res, source))) return
+        const { lastDeployed } = require('../core/git-state')
+        const targets = (listServers() ?? [])
+            .filter(t => t !== source)
+            .map(target => ({ target, ...(lastDeployed(target) ?? {}) }))
+            .filter(t => t.lastDeployedCommit)
+            .map(({ target, lastDeployedCommit, at }) => ({ target, lastDeployedCommit, at: at ?? null }))
+        res.json({ source, targets })
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// Start a catch-up: a TM1 admin types the sentence and the server creates the
+// closed, empty catch-up change set. It builds like any other release after.
+app.post('/api/deploy/git/catch-up', async (req, res) => {
+    try {
+        const { source, target, confirm } = req.body
+        if (!source || !target) return res.status(400).json({ error: 'source and target required' })
+        if (!(await requireTm1Admin(req, res, source))) return
+        const { startCatchUp } = require('../core/git-catchup')
+        const r = await startCatchUp({
+            source, target, confirm, user: req.user,
+            token: _GITOK(), gitUser: _GI().user(), ideToken: req.ideToken,
+        })
+        if (r.refused) return res.status(409).json({ error: r.error })
+        res.json(r)
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
 app.post('/api/deploy/git/release', async (req, res) => {
     try {
         const { target, session } = req.body
@@ -101,16 +135,20 @@ app.post('/api/deploy/git/release', async (req, res) => {
         if (changeSet.wont_deploy_at) {
             return res.status(409).json({ error: `Change set "${changeSet.name}" is marked won't deploy — unmark it before releasing.` })
         }
+        const catchUp = changeSet.kind === 'catch-up'
+        if (catchUp && !(await requireTm1Admin(req, res, changeSet.server))) return
         const { buildRelease } = require('../core/git-release')
         const addObjects = Array.isArray(req.body.addObjects) ? req.body.addObjects : []
         const r = await buildRelease(changeSet, target, {
             token: _GITOK(), gitUser: _GI().user(), ideToken: req.ideToken,
-            addObjects, by: req.user ?? null,
+            addObjects, by: req.user ?? null, catchUp,
         })
         if (r.refused) return res.status(409).json({ error: r.error })
         if (r.ok === false) return res.status(500).json({ error: r.error })
         cl.setSessionRelease(changeSet.id, r.releaseCommit, target, {
-            addedByUser: r.addedByUser, addedAsDependency: r.addedAsDependency,
+            addedByUser: r.addedByUser,
+            addedAsDependency: r.addedAsDependency,
+            coveredSets: catchUp ? (r.coveredSets ?? []).map(s => s.id) : undefined,
         })
         res.json(r)
     } catch (e) { res.status(500).json({ error: e.message }) }
@@ -285,7 +323,13 @@ app.get('/api/deploy/git/history', async (req, res) => {
         if (!target) return res.status(400).json({ error: 'target required' })
         const state = require('../core/git-state').load()[target] ?? null
         const approvals = await require('../core/git-approvals').readFor(target, { ideToken: req.ideToken })
-        res.json({ target, deploy: state, approvals })
+        // Link each approval to its change set so History can show the kind
+        // (a catch-up reads "Catch-up", not an ordinary change set).
+        const enriched = approvals.map(a => {
+            const session = a.session ? cl.getSession(a.session) : null
+            return { ...a, sessionName: session?.name ?? null, sessionKind: session?.kind ?? null }
+        })
+        res.json({ target, deploy: state, approvals: enriched })
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 

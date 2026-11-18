@@ -155,6 +155,8 @@
   "POST /api/deploy/git/prepare",
   "POST /api/deploy/git/execute",
   "POST /api/deploy/git/push",
+  "GET /api/deploy/git/catch-up/targets",
+  "POST /api/deploy/git/catch-up",
   "POST /api/deploy/git/release",
   "POST /api/deploy/git/approve",
   "GET /api/deploy/git/approval",
