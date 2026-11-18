@@ -97,6 +97,17 @@ export default function DeployWizard({ server, onClose, onOpenTests, initialSess
   useEffect(() => { if (deployCtx?.id) setSessionId(deployCtx.id) }, [deployCtx?.id])
 
   useEffect(() => {
+    const onSignedIn = (e) => {
+      const signed = String(e.detail?.server ?? '').toLowerCase()
+      const relevant = !signed || signed === String(server ?? '').toLowerCase() || signed === String(target ?? '').toLowerCase()
+      if (!relevant) return
+      setError(prev => /Sign in to server|rejected the login/i.test(prev ?? '') ? null : prev)
+    }
+    window.addEventListener('tm1-server-signed-in', onSignedIn)
+    return () => window.removeEventListener('tm1-server-signed-in', onSignedIn)
+  }, [server, target])
+
+  useEffect(() => {
     if (!sessionId) { setAddedTests(0); setSetAssertions([]); return }
     request(`/api/assertions?server=${encodeURIComponent(server)}`, { headers: authHeader() })
       .then(r => r.json())
