@@ -103,7 +103,7 @@ app.post('/api/lenses/:name', async (req, res) => {
     try {
         const server = req.query.server
         if (!server) return res.status(400).json({ error: 'server required' })
-        if (!gateWrite(res, server)) return
+        if (!gateReadOnly(res, server)) return
         const client = makeClient(server, req.ideToken)
         const { html, description, folder, title, icon, color, image, config, publish, force } = req.body
         if (typeof html !== 'string' || !html.trim()) return res.status(400).json({ error: 'html is required' })
@@ -122,7 +122,7 @@ app.delete('/api/lenses/:name', async (req, res) => {
     try {
         const server = req.query.server
         if (!server) return res.status(400).json({ error: 'server required' })
-        if (!gateWrite(res, server)) return
+        if (!gateReadOnly(res, server)) return
         await lensStore.deleteLens(server, req.params.name, { ideToken: req.ideToken })
         cl.writeLog({ server, action: 'LENS_DELETED', objectType: 'lens', objectName: req.params.name, user: req.user })
         res.json({ ok: true })

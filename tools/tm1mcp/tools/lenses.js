@@ -17,7 +17,7 @@ Return a SINGLE complete HTML document (html, head, style, body, script). The ON
 Lens toolkit catalogue:
 ${CATALOGUE}`
 
-function register(server, { SERVER, AGENT_USER, ok, requireChangeSet, client, logChange }) {
+function register(server, { SERVER, AGENT_USER, ok, client, logChange }) {
     // Patterns: worked demonstrations to learn from — there are no prebuilt templates;
     // every client's Lenses are built for their own process from the toolkit.
     server.tool(
@@ -61,7 +61,7 @@ function register(server, { SERVER, AGENT_USER, ok, requireChangeSet, client, lo
 
     server.tool(
         'save_lens',
-        `Save a lens — a hand-rolled HTML dashboard that reads live TM1 data through the lensBridge API — into this server's model (Applications/Governance/Lenses), recorded on the open change set. You (the agent) write the HTML following the contract below, then call this tool. The queries are TEST-RUN against the live model at save, so bad cube/member names are rejected immediately.
+        `Save a lens — a hand-rolled HTML dashboard that reads live TM1 data through the lensBridge API — into this server's model (Applications/Governance/Lenses), recorded in the model's Lens history (no change set required). You (the agent) write the HTML following the contract below, then call this tool. The queries are TEST-RUN against the live model at save, so bad cube/member names are rejected immediately.
 
 ${BRIDGE_CONTRACT}`,
         {
@@ -77,7 +77,6 @@ ${BRIDGE_CONTRACT}`,
             force:       z.boolean().optional().describe('Save despite validation failures'),
         },
         async ({ name, html, description, folder, title, icon, color, config, publish, force }) => {
-            requireChangeSet()
             const errors = await lensBridge.validateLens(client(), html)
             if (errors.length && !force) {
                 return ok({ blocked: true, reason: `Lens validation failed (${errors.length}) — fix these and retry, or pass force:true:`, errors })
@@ -85,18 +84,17 @@ ${BRIDGE_CONTRACT}`,
             const saved = await lensStore.saveLens(SERVER, name, html, AGENT_USER, { publish, description, folder, title, icon, color, config })
             logChange(saved.status === 'published' ? 'LENS_PUBLISHED' : 'LENS_SAVED', 'lens', saved.name,
                 { detail: `version ${saved.version}${description ? ` — ${description}` : ''}` })
-            return ok({ saved, validation: errors, next: `Lens "${saved.name}" is saved in ${SERVER}'s model and on the change set. It shows in the IDE model tree under Lenses.` })
+            return ok({ saved, validation: errors, next: `Lens "${saved.name}" is saved in ${SERVER}'s model. It shows in the IDE model tree under Lenses.` })
         }
     )
 
     server.tool(
         'delete_lens',
-        'Delete a lens from this server\'s model. Requires an open change set.',
+        'Delete a lens from this server\'s model. No change set required.',
         {
             name: z.string().describe('Lens name'),
         },
         async ({ name }) => {
-            requireChangeSet()
             await lensStore.deleteLens(SERVER, name)
             logChange('LENS_DELETED', 'lens', name)
             return ok(`Lens "${name}" deleted from ${SERVER}'s model.`)
