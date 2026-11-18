@@ -7,6 +7,16 @@ stubs and local bare Git repos in temp folders only.
 > The brief gained Step 4 in local commit `31f1600` while this work was in progress. Step 4
 > is included below; Step 1 sits on that brief commit.
 
+## Round 3b fixes
+
+| Fix | Commit | What | `npm test` |
+|---|---|---|---|
+| 1 | `7c1989a` | Subset/view ownership uses `objectKey(type, name, parent)`; `Default` on one dimension no longer owns `Default` on another | 637 tests — 636 pass, 1 skipped |
+| 2 | `fd542eb` | One way to read the Git token: no startup seeding, all readers use `gitSecrets.getToken()`, saving no longer writes `process.env`; saved tokens stay replaceable after restart | 639 tests — 638 pass, 1 skipped |
+
+Known limit for fix 1: the ownership key holds the dimension, not the hierarchy. `Default` on
+`WFP Position` and on `WFP Position › By Location` are the same key; this round leaves that as-is.
+
 ## Commits and test counts
 
 | Step | Commit | What | `npm test` |
@@ -23,6 +33,8 @@ stubs and local bare Git repos in temp folders only.
 |---|---|---|
 | Root `npm run lint:count` | 0 | 0 |
 | Client `eslint src` | 112 (baseline `client/lint-baseline.json` = 112) | 112 |
+
+Round 3b final: root lint **0**, client lint **112**, **639 tests — 638 pass, 1 skipped**.
 
 ## Link keys the closure handles
 
