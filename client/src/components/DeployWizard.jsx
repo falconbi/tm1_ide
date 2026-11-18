@@ -59,10 +59,13 @@ function TestList({ title, meaning, results }) {
 }
 
 export default function DeployWizard({ server, onClose, onOpenTests, initialSession = null, release: releaseMode = false, catchUp: catchUpMode = false, catchUpTarget = null }) {
-  const [step,      setStep]      = useState(releaseMode || catchUpMode ? 4 : 1)
+  const initialCatchUp = initialSession?.kind === 'catch-up'
+  const isCatchUp = catchUpMode || initialCatchUp
+  const catchTargetFromName = initialCatchUp ? (/^Catch-up: (.+) level with /i.exec(initialSession?.name ?? '')?.[1] ?? null) : null
+  const [step,      setStep]      = useState(releaseMode || isCatchUp ? 4 : 1)
   const [message,   setMessage]   = useState(`Deploy from ${server}`)
   const [servers,   setServers]   = useState([])
-  const [target,    setTarget]    = useState(catchUpTarget ?? '')
+  const [target,    setTarget]    = useState(catchUpTarget ?? catchTargetFromName ?? '')
   const [sessionId, setSessionId] = useState(null)
   const [catchSession, setCatchSession] = useState(null)
   const [catchSentence, setCatchSentence] = useState('')
@@ -89,7 +92,7 @@ export default function DeployWizard({ server, onClose, onOpenTests, initialSess
   const latestClosed = (sessions ?? [])
     .filter(s => s.closed_at && !s.deployed_target && !s.deployed && s.commit_ref)
     .sort((a, b) => (a.closed_at < b.closed_at ? 1 : -1))[0] ?? null
-  const deployCtx = catchUpMode ? catchSession : (initialSession ?? (releaseMode ? latestClosed : activeSession ?? latestClosed))
+  const deployCtx = isCatchUp ? (catchSession ?? initialSession) : (initialSession ?? (releaseMode ? latestClosed : activeSession ?? latestClosed))
 
   useEffect(() => { if (deployCtx?.id) setSessionId(deployCtx.id) }, [deployCtx?.id])
 
@@ -242,7 +245,9 @@ export default function DeployWizard({ server, onClose, onOpenTests, initialSess
         </div>
 
         <div className="flex items-center gap-1 px-4 py-2.5 border-b border-border bg-muted/20 flex-wrap">
-          {STEP_TITLES.map((t, i) => (
+          {STEP_TITLES.map((t, i) => {
+            if (isCatchUp && i < 3) return null
+            return (
             <span key={t} className="flex items-center gap-1">
               {i > 0 && <span className="text-muted-foreground/40 mx-0.5">→</span>}
               <button
@@ -252,7 +257,7 @@ export default function DeployWizard({ server, onClose, onOpenTests, initialSess
                 {i + 1} {t}
               </button>
             </span>
-          ))}
+          )})}
         </div>
 
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
@@ -383,7 +388,7 @@ export default function DeployWizard({ server, onClose, onOpenTests, initialSess
           {step === 4 && (
             <div className="space-y-3">
               <p className="text-xs text-muted-foreground leading-relaxed">{STEPS[4].explain}</p>
-              {catchUpMode && !catchSession && (
+              {isCatchUp && !deployCtx && (
                 <div className="border border-amber-600/40 rounded-md p-3 space-y-2 bg-amber-500/5">
                   <p className="text-xs">Catch-up release — ships everything that differs between <span className="font-semibold">{target}</span> and <span className="font-semibold">{server}</span>, outside any single change set.</p>
                   <p className="text-[11px] text-amber-600">Once, deliberately, as an admin. Type the sentence to confirm.</p>
@@ -398,11 +403,11 @@ export default function DeployWizard({ server, onClose, onOpenTests, initialSess
                   <select value={target} onChange={e => {
                     setTarget(e.target.value)
                     setRelease(null); setPrep(null); setApproval(null)
-                  }} disabled={catchUpMode} className={inputCls + (catchUpMode ? ' opacity-70' : '')}>
+                  }} disabled={isCatchUp && !!target} className={inputCls + (isCatchUp ? ' opacity-70' : '')}>
                     {servers.map(s => <option key={s} value={s} className="bg-background">{s}</option>)}
                     {servers.length === 0 && <option value="">(no other servers)</option>}
                   </select>
-                  <button onClick={doBuildRelease} disabled={busy === 'release' || !target || (catchUpMode && !catchSession)} className={primaryBtn}>Build release</button>
+                  <button onClick={doBuildRelease} disabled={busy === 'release' || !target || (isCatchUp && !deployCtx)} className={primaryBtn}>Build release</button>
                   {busy === 'release' && <span className="text-xs text-muted-foreground">Building…</span>}
                 </div>
                 {release && (
