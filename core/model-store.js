@@ -26,6 +26,7 @@ const AREAS = {
     deployState: { folder: 'Deployments', doc: 'state.json' },
     lock:        { folder: 'Deployments' },
     lenses:      { folder: 'Lenses' },
+    lensDeploys: { folder: 'LensDeploys' },
 }
 
 // ── Governance manifest ─────────────────────────────────────────────────────

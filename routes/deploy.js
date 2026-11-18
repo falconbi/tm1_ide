@@ -20,6 +20,55 @@ app.get('/api/deploy/baseline', (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
+app.get('/api/deploy/lenses/plan', async (req, res) => {
+    try {
+        const { source, target } = req.query
+        if (!source || !target) return res.status(400).json({ error: 'source and target required' })
+        if (!(await requireTm1Admin(req, res, source))) return
+        if (!(await requireTm1Admin(req, res, target))) return
+        const { planLenses } = require('../core/lens-deploy')
+        res.json(await planLenses(source, target, { ideToken: req.ideToken }))
+    } catch (e) { fail(res, e) }
+})
+
+app.post('/api/deploy/lenses/approve', async (req, res) => {
+    try {
+        const { source, target, entries, deletes, note, planHash } = req.body
+        if (!source || !target) return res.status(400).json({ error: 'source and target required' })
+        if (!(await requireTm1Admin(req, res, source))) return
+        if (!(await requireTm1Admin(req, res, target))) return
+        const { approveLenses } = require('../core/lens-deploy')
+        res.json(await approveLenses(source, target, {
+            entries, deletes, note, planHash, by: req.user, ideToken: req.ideToken,
+        }))
+    } catch (e) { fail(res, e) }
+})
+
+app.post('/api/deploy/lenses/execute', async (req, res) => {
+    try {
+        const { source, target, approvalId } = req.body
+        if (!source || !target) return res.status(400).json({ error: 'source and target required' })
+        if (!(await requireTm1Admin(req, res, source))) return
+        if (!(await requireTm1Admin(req, res, target))) return
+        const { executeLenses } = require('../core/lens-deploy')
+        res.json(await executeLenses(source, target, { approvalId, by: req.user, ideToken: req.ideToken }))
+    } catch (e) { fail(res, e) }
+})
+
+app.get('/api/deploy/lenses/history', async (req, res) => {
+    try {
+        const target = req.query.target
+        if (!target) return res.status(400).json({ error: 'target required' })
+        if (!(await requireTm1Admin(req, res, target))) return
+        const { readHistory, readApprovals } = require('../core/lens-deploy')
+        const [history, approvals] = await Promise.all([
+            readHistory(target, { ideToken: req.ideToken }),
+            readApprovals(target, { ideToken: req.ideToken }),
+        ])
+        res.json({ target, history, approvals })
+    } catch (e) { fail(res, e) }
+})
+
 app.get('/api/git-readiness', async (req, res) => {
     try {
         const { scan } = require('../core/git-readiness')
