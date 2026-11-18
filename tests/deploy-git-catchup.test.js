@@ -129,6 +129,10 @@ test('a won\'t-deploy set is not previewed as covered', async () => {
   } finally { fs.rmSync(repo.bare, { recursive: true, force: true }); fs.rmSync(repo.w, { recursive: true, force: true }) }
 })
 
+test('sourcePushedCommit falls back to DeployedCommit on TM1 builds with no LocalCommit', () => {
+  assert.deepEqual(sourcePushedCommit({ DeployedCommit: { ID: 'pushed1' } }), { ok: true, commit: 'pushed1' })
+})
+
 test('sourcePushedCommit refuses a source with no pushed commit or pending changes', () => {
   assert.match(sourcePushedCommit({}).error, /Commit DEV first/)
   assert.match(sourcePushedCommit({ LocalCommit: { ID: 'C1' }, HasLocalChanges: true }).error, /not pushed/)

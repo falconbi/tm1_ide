@@ -25,7 +25,9 @@ const sentenceFor = (source, target) => `I understand this brings ${target} leve
 // changes (or no local commit at all) DEV is not ready and must be committed
 // first. Returns { ok, commit } or { ok: false, error }.
 function sourcePushedCommit(status) {
-    const local = status?.LocalCommit?.ID ?? null
+    // Some TM1 v11 builds return no LocalCommit; GitStatus.DeployedCommit is the
+    // pushed head of the source's branch in that case.
+    const local = status?.LocalCommit?.ID ?? status?.DeployedCommit?.ID ?? null
     const pending = status?.HasLocalChanges === true
         || status?.UnpushedChanges === true
         || status?.LocalCommit?.HasChanges === true

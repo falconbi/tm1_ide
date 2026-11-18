@@ -10,6 +10,8 @@ commits that mixed a fix into a feature are included too. New features are not l
 
 ## November 2026
 
+- **Catch-up on TM1 v11** — `GitStatus` can return `DeployedCommit` without `LocalCommit`, so a committed DEV was reported as having no pushed commit. The catch-up source commit now falls back to `DeployedCommit.ID`
+
 - **Phantom change sets** — Proof/lab sets whose objects had been deleted still appeared in the active list and needed a manual mark; the mark also could not be trusted to exclude files. Closed sets whose touched objects no longer exist are now detected automatically and hidden as history only; the manual mark/unmark routes and UI are gone
 
 - **Won’t deploy on older change sets** — Marking failed on sets that predate model-owned history: the local set had no `Applications/Governance/ChangeSets` record, and the model-first update threw. The update now backfills a closed record from the local log before writing the mark; a caller with no session still fails loudly
