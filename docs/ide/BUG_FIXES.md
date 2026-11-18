@@ -10,6 +10,8 @@ commits that mixed a fix into a feature are included too. New features are not l
 
 ## November 2026
 
+- **Release paths with non-ASCII names** — Git quoted names containing characters such as an em dash, so the catch-up passed a quoted pathspec to `git checkout` and failed. The shared Git helper now disables path quoting
+
 - **Catch-up on TM1 v11** — `GitStatus` can return `DeployedCommit` without `LocalCommit`, so a committed DEV was reported as having no pushed commit. The catch-up source commit now falls back to `DeployedCommit.ID`
 
 - **Phantom change sets** — Proof/lab sets whose objects had been deleted still appeared in the active list and needed a manual mark; the mark also could not be trusted to exclude files. Closed sets whose touched objects no longer exist are now detected automatically and hidden as history only; the manual mark/unmark routes and UI are gone

@@ -7,7 +7,7 @@
 const { execFileSync } = require('child_process')
 
 function git(cwd, ...args) {
-    return execFileSync('git', ['-C', cwd, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 32 * 1024 * 1024 })
+    return execFileSync('git', ['-C', cwd, '-c', 'core.quotePath=false', ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 32 * 1024 * 1024 })
 }
 function authUrl(url, user, token) {
     return url.replace(/^https:\/\//i, `https://${user}:${token}@`)
