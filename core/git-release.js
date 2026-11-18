@@ -87,6 +87,60 @@ const objectKey = (type, name, parent) => {
 
 const subsetNameFromId = (el) => el?.Name ?? String(el?.['@id'] ?? '').match(/Elements\('([^']+)'\)/)?.[1] ?? null
 
+// ── Link closure ─────────────────────────────────────────────────────────────
+// TM1 Git stores cross-object references as `@Code.links` (an array) or
+// `@Code.link` (one string). A released hierarchy without its linked subsets is
+// a file TM1 cannot read ("Cannot open the file specified by link …"), so a
+// release must carry every file those links name, and every file they link in
+// turn. Paths are relative to the folder of the file that names them.
+//
+//   files — the file paths in the release tree
+//   read  — read(file) returns that file's text or parsed object, or null
+//
+// Returns [{ file, neededBy }] for links missing from the release tree. Pure:
+// no repo, no disk; the caller supplies read().
+function linkClosure(files, read) {
+    const present = new Set(files)
+    const visited = new Set()
+    const missing = []
+    const queue = [...present]
+
+    while (queue.length) {
+        const file = queue.shift()
+        if (visited.has(file)) continue
+        visited.add(file)
+        if (!/\.json$/i.test(file)) continue
+
+        let body
+        try { body = read(file) } catch { continue }
+        if (body == null) continue
+        let data = body
+        if (typeof body === 'string') {
+            try { data = JSON.parse(body) } catch { continue }
+        }
+        if (!data || typeof data !== 'object') continue
+
+        for (const [key, value] of Object.entries(data)) {
+            const many = key.endsWith('@Code.links')
+            const one = key.endsWith('@Code.link')
+            if (!many && !one) continue
+            const links = many ? (Array.isArray(value) ? value : []) : [value]
+            for (const link of links) {
+                if (typeof link !== 'string' || !link) continue
+                const target = path.posix.normalize(path.posix.join(path.posix.dirname(file), link))
+                if (present.has(target)) {
+                    if (!visited.has(target)) queue.push(target)
+                    continue
+                }
+                if (!missing.some(m => m.file === target && m.neededBy === file)) {
+                    missing.push({ file: target, neededBy: file })
+                }
+            }
+        }
+    }
+    return missing
+}
+
 // Best-effort owner of an object: another change-log session (on the change set's
 // server) whose log touched the same object. Null when unknown.
 function ownerOf(logsBySession, obj) {
@@ -103,7 +157,7 @@ function ownerOf(logsBySession, obj) {
 
 // Build the release commit for one change set against the target's recorded base.
 // Returns { ok, ... } — never throws past here.
-async function buildRelease(changeSet, target, { token, gitUser = gitIdentity.user(), repoUrl, ideToken } = {}) {
+async function buildRelease(changeSet, target, { token, gitUser = gitIdentity.user(), repoUrl, ideToken, addObjects = [], by = null } = {}) {
     // Re-read the session so commit_ref / release fields are the live DB values.
     const session = changeSet?.id ? (cl.getSession(changeSet.id) ?? changeSet) : changeSet
     const base = lastDeployed(target)?.lastDeployedCommit
@@ -112,6 +166,7 @@ async function buildRelease(changeSet, target, { token, gitUser = gitIdentity.us
     if (!devCommit) return { ok: false, refused: true, error: `Change set "${session?.name ?? session?.id}" has not been pushed — commit it to the repo first.` }
 
     const logEntries = session?.id ? cl.getSessionLog(session.id) : []
+    const processRuns = logEntries.filter(e => e.object_type === 'process-run').length
 
     if (!repoUrl) {
         try {
@@ -178,6 +233,22 @@ async function buildRelease(changeSet, target, { token, gitUser = gitIdentity.us
             if (!included.some(i => objectKey(i.type, i.name, i.parent) === key)) noFile.push({ type: o, name: e.object_name, parent: parent ?? undefined })
         }
 
+        // Objects added from "Left on DEV" by the person building the release.
+        // Validate here: the client is never trusted on ownership, and only an
+        // unowned excluded item may be pulled into this release.
+        const addedByUser = []
+        for (const a of addObjects) {
+            const label = `${a.type} ${a.name}${a.parent ? ` (${a.parent})` : ''}`
+            const hit = excluded.find(x => objectKey(x.type, x.name, x.parent) === objectKey(a.type, a.name, a.parent))
+            if (!hit) return { ok: false, refused: true, error: `Cannot add ${label}: it is not an unowned "left on DEV" item in this release.` }
+            if (hit.owner) return { ok: false, refused: true, error: `Cannot add ${label}: it belongs to change set "${hit.owner.sessionName}". Release that change set first, or together.` }
+            const file = hit.file ?? hit.files?.[0] ?? null
+            if (!file) return { ok: false, refused: true, error: `Cannot add ${label}: the release has no file for it.` }
+            included.push({ ...hit, file, action: hit.action ?? 'A' })
+            addedByUser.push({ type: hit.type, name: hit.name, parent: hit.parent ?? null, file, by })
+            excluded.splice(excluded.indexOf(hit), 1)
+        }
+
         // Nothing to ship?
         if (included.length === 0) {
             return { ok: false, refused: true, error: `Nothing from change set "${changeSet?.name ?? ''}" changed files between the base and the pushed commit — nothing to release.` }
@@ -197,6 +268,47 @@ async function buildRelease(changeSet, target, { token, gitUser = gitIdentity.us
                 }
             }
         }
+
+        // A release never ships a broken link. Run the closure on the whole
+        // release tree (base + this change set), add unowned dependencies from
+        // DEV, refuse an owned or missing one, and repeat until nothing new comes
+        // in — links can be nested.
+        const existsOnDev = (file) => {
+            try { git(work, 'cat-file', '-e', `${devCommit}:${file}`); return true } catch { return false }
+        }
+        const addedAsDependency = []
+        for (;;) {
+            const releaseFiles = git(work, 'ls-files').split('\n').filter(Boolean)
+            const missing = linkClosure(releaseFiles, (file) => {
+                try { return fs.readFileSync(path.join(work, file), 'utf8') } catch { return null }
+            })
+            if (missing.length === 0) break
+            let added = 0
+            for (const m of missing) {
+                if (!existsOnDev(m.file)) {
+                    return { ok: false, refused: true, error: `${m.neededBy} links ${m.file}, which does not exist on DEV.` }
+                }
+                const obj = objectFromFile(m.file)
+                const owner = obj ? ownerOf(otherLogs, obj) : null
+                if (owner) {
+                    return { ok: false, refused: true, error: `${m.neededBy} needs ${m.file}, which belongs to change set "${owner.sessionName}". Release that change set first, or together.` }
+                }
+                git(work, 'checkout', devCommit, '--', m.file)
+                addedAsDependency.push({
+                    type: obj?.type ?? 'file',
+                    name: obj?.name ?? path.posix.basename(m.file),
+                    parent: obj?.parent ?? null,
+                    file: m.file,
+                    neededBy: m.neededBy,
+                })
+                if (obj) {
+                    const i = excluded.findIndex(x => objectKey(x.type, x.name, x.parent) === objectKey(obj.type, obj.name, obj.parent))
+                    if (i >= 0) excluded.splice(i, 1)
+                }
+                added++
+            }
+            if (added === 0) break
+        }
         git(work, 'add', '-A')
         git(work, '-c', `user.name=${gitUser}`, '-c', `user.email=${gitIdentity.email()}`, 'commit', '-q', '-m', `Release ${changeSet?.name ?? 'change set'} → ${target}`)
         const releaseCommit = git(work, 'rev-parse', 'HEAD').trim()
@@ -214,6 +326,9 @@ async function buildRelease(changeSet, target, { token, gitUser = gitIdentity.us
             changeSet: { id: changeSet?.id ?? null, name: changeSet?.name ?? null, server: changeSet?.server ?? null },
             included: included.map(i => ({ type: i.type, name: i.name, parent: i.parent, file: i.file, action: i.action })),
             excluded: excluded.map(x => ({ type: x.type, name: x.name, parent: x.parent, file: x.file, owner: x.owner ?? null })),
+            addedByUser,
+            addedAsDependency,
+            runs: processRuns,
             noFile,
         }
     } catch (e) {
@@ -223,7 +338,7 @@ async function buildRelease(changeSet, target, { token, gitUser = gitIdentity.us
     }
 }
 
-module.exports = { buildRelease, objectFromFile, parseNameStatus, ENTRY_TO_OBJECT, objectKey, NO_BASE_ERROR, changedObjects, checkDependencies, splitTi, verifyRelease, applyReleaseComplement }
+module.exports = { buildRelease, objectFromFile, parseNameStatus, ENTRY_TO_OBJECT, objectKey, NO_BASE_ERROR, changedObjects, checkDependencies, splitTi, verifyRelease, applyReleaseComplement, linkClosure }
 
 // TM1 Git's pull plan has no operation for subsets or views, so a release pull
 // never applies them. After the pull, apply every included subset and view to the
@@ -358,6 +473,16 @@ async function checkDependencies(releaseCommit, target, { token, gitUser = gitId
         git(work, 'remote', 'add', 'origin', authUrl(repoUrl, gitUser, token))
         git(work, 'fetch', '-q', 'origin', '+refs/heads/*:refs/remotes/origin/*')
         const changed = changedFilesBetween(work, base, releaseCommit)
+
+        // A release built before the link closure existed can still be missing a
+        // linked file. Catch it here, before approval, instead of at the pull plan.
+        const releaseFiles = git(work, 'ls-tree', '-r', '--name-only', releaseCommit).split('\n').filter(Boolean)
+        for (const m of linkClosure(releaseFiles, (file) => {
+            try { return git(work, 'show', `${releaseCommit}:${file}`) } catch { return null }
+        })) {
+            blockers.push({ object: m.neededBy, message: `${m.neededBy} needs ${m.file}, which is not in the release.` })
+        }
+
         const c = makeClient(target, ideToken)
         for (const ch of changed) {
             const obj = objectFromFile(ch.file)

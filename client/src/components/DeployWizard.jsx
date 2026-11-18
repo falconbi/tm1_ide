@@ -372,6 +372,14 @@ export default function DeployWizard({ server, onClose, onOpenTests, initialSess
                       ))}
                       {(release.included ?? []).length === 0 && <p className="text-[11px] text-muted-foreground">Nothing from this change set changed a file.</p>}
                     </div>
+                    {(release.addedAsDependency?.length > 0) && (
+                      <div className="border border-sky-600/30 rounded-md p-2 space-y-1 bg-sky-600/5">
+                        <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Added because something in the release needs it ({release.addedAsDependency.length})</p>
+                        {release.addedAsDependency.map((o, i) => (
+                          <p key={i} className="text-[11px]"><span className="font-mono">{o.type} {o.name}</span> <span className="text-muted-foreground/60">({humanizeFile(o.file)})</span>{o.neededBy ? <span className="text-muted-foreground/60"> — needed by {humanizeFile(o.neededBy)}</span> : null}</p>
+                        ))}
+                      </div>
+                    )}
                     <div className="border border-border rounded-md p-2 space-y-1 bg-muted/20">
                       <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Left on DEV — not shipped ({release.excluded?.length ?? 0})</p>
                       {(release.excluded ?? []).map((o, i) => (
