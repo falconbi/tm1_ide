@@ -144,10 +144,13 @@ function linkClosure(files, read) {
 // Best-effort owner of an object: another change-log session (on the change set's
 // server) whose log touched the same object. Null when unknown.
 function ownerOf(logsBySession, obj) {
+    const wanted = objectKey(obj.type, obj.name, obj.parent)
     for (const s of logsBySession) {
         for (const e of s.entries) {
-            if (ENTRY_TO_OBJECT[e.object_type] && ENTRY_TO_OBJECT[e.object_type] === obj.type &&
-                String(e.object_name).toLowerCase() === String(obj.name).toLowerCase()) {
+            const type = ENTRY_TO_OBJECT[e.object_type]
+            if (!type) continue
+            const parent = (e.object_type === 'subset' || e.object_type === 'view') ? e.detail : null
+            if (objectKey(type, e.object_name, parent) === wanted) {
                 return { sessionName: s.name, user: s.user ?? null }
             }
         }
@@ -338,7 +341,7 @@ async function buildRelease(changeSet, target, { token, gitUser = gitIdentity.us
     }
 }
 
-module.exports = { buildRelease, objectFromFile, parseNameStatus, ENTRY_TO_OBJECT, objectKey, NO_BASE_ERROR, changedObjects, checkDependencies, splitTi, verifyRelease, applyReleaseComplement, linkClosure }
+module.exports = { buildRelease, objectFromFile, parseNameStatus, ENTRY_TO_OBJECT, objectKey, ownerOf, NO_BASE_ERROR, changedObjects, checkDependencies, splitTi, verifyRelease, applyReleaseComplement, linkClosure }
 
 // TM1 Git's pull plan has no operation for subsets or views, so a release pull
 // never applies them. After the pull, apply every included subset and view to the

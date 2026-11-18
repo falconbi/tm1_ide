@@ -232,3 +232,18 @@ test('buildRelease refuses addObjects for an object that is not in the unowned e
     assert.match(r.error, /Cannot add subset NotThere/)
   } finally { fs.rmSync(repo.bare, { recursive: true, force: true }); fs.rmSync(repo.w, { recursive: true, force: true }) }
 })
+
+// ── Fix 1: subset/view ownership includes the parent ────────────────────────
+
+const { ownerOf } = require(path.join(__dirname, '..', 'core', 'git-release'))
+
+test('ownerOf does not confuse Default subsets on different dimensions', () => {
+  const logs = [{ name: 'Other', user: 'x', entries: [{ object_type: 'subset', object_name: 'Default', detail: 'DimA' }] }]
+  assert.equal(ownerOf(logs, { type: 'subset', name: 'Default', parent: 'DimB' }), null)
+  assert.deepEqual(ownerOf(logs, { type: 'subset', name: 'Default', parent: 'DimA' }), { sessionName: 'Other', user: 'x' })
+})
+
+test('ownerOf still matches non-parented objects by type and name', () => {
+  const logs = [{ name: 'Other', user: 'x', entries: [{ object_type: 'cube', object_name: 'Sales' }] }]
+  assert.deepEqual(ownerOf(logs, { type: 'cube', name: 'Sales' }), { sessionName: 'Other', user: 'x' })
+})
