@@ -10,6 +10,8 @@ commits that mixed a fix into a feature are included too. New features are not l
 
 ## November 2026
 
+- **Release/catch-up renames** — Git reported a renamed process JSON as `R`, but the release treated it as an add and left the old base file behind; that stale JSON still linked a deleted `.ti` and broke the pull plan. Renames now remove the old path before adding the new one
+
 - **Release paths with non-ASCII names** — Git quoted names containing characters such as an em dash, so the catch-up passed a quoted pathspec to `git checkout` and failed. The shared Git helper now disables path quoting
 
 - **Catch-up on TM1 v11** — `GitStatus` can return `DeployedCommit` without `LocalCommit`, so a committed DEV was reported as having no pushed commit. The catch-up source commit now falls back to `DeployedCommit.ID`

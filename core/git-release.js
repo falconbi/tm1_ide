@@ -66,9 +66,13 @@ function parseNameStatus(text) {
         .split('\n').filter(Boolean)
         .map(line => {
             const [status, ...rest] = line.split('\t')
-            const file = rest[rest.length - 1]      // renames: 'R100 old new' → new
-            const verb = String(status)[0]           // A, M, D (R = rename → treat as add)
-            return { status, action: verb === 'D' ? 'D' : 'A', file }
+            const verb = String(status)[0]
+            // A rename is a delete of the old path plus an add of the new one.
+            // Keeping oldFile lets the release remove what the base still has.
+            if ((verb === 'R' || verb === 'C') && rest.length >= 2) {
+                return { status, action: verb === 'R' ? 'R' : 'A', file: rest[1], oldFile: rest[0] }
+            }
+            return { status, action: verb === 'D' ? 'D' : 'A', file: rest[rest.length - 1] }
         })
 }
 
@@ -253,15 +257,15 @@ async function buildRelease(changeSet, target, { token, gitUser = gitIdentity.us
             for (const c of changed) {
                 const obj = objectFromFile(c.file)
                 included.push(obj
-                    ? { ...obj, file: c.file, action: c.action }
-                    : { type: 'other', name: c.file, file: c.file, action: c.action })
+                    ? { ...obj, file: c.file, oldFile: c.oldFile, action: c.action }
+                    : { type: 'other', name: c.file, file: c.file, oldFile: c.oldFile, action: c.action })
             }
         } else {
             for (const c of changed) {
                 const obj = objectFromFile(c.file)
                 if (!obj) { excluded.push({ type: 'other', name: c.file, files: [c.file] }); continue }
                 if (csetObjectKeys.has(objectKey(obj.type, obj.name, obj.parent))) {
-                    included.push({ ...obj, file: c.file, action: c.action })
+                    included.push({ ...obj, file: c.file, oldFile: c.oldFile, action: c.action })
                 } else {
                     excluded.push({ ...obj, files: [c.file], file: c.file, owner: ownerOf(otherLogs, obj) })
                 }
@@ -313,6 +317,9 @@ async function buildRelease(changeSet, target, { token, gitUser = gitIdentity.us
         for (const inc of included) {
             if (inc.action === 'D') git(work, 'rm', '--quiet', '--', inc.file)
             else {
+                if (inc.action === 'R' && inc.oldFile) {
+                    try { git(work, 'rm', '--quiet', '--', inc.oldFile) } catch { /* already gone in base */ }
+                }
                 git(work, 'checkout', devCommit, '--', inc.file)
                 // An MDX view carries its expression in a sibling .mdx file — include
                 // it so the release can apply (and verify) the actual MDX.
