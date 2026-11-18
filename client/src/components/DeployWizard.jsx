@@ -109,12 +109,17 @@ export default function DeployWizard({ server, onClose, onOpenTests, initialSess
   }, [sessionId, server, tests])
 
   useEffect(() => {
-    request('/api/servers', { headers: authHeader() }).then(r => r.json()).then(d => {
-      const others = (d ?? []).map(s => s?.name).filter(n => n && n !== server)
+    const route = isCatchUp
+      ? `/api/deploy/git/catch-up/targets?source=${encodeURIComponent(server)}`
+      : '/api/servers'
+    request(route, { headers: authHeader() }).then(r => r.json()).then(d => {
+      const others = isCatchUp
+        ? (d?.targets ?? []).map(t => t.target).filter(Boolean)
+        : (d ?? []).map(s => s?.name).filter(n => n && n !== server)
       setServers(others)
       setTarget(t => t || (others[0] ?? ''))
     }).catch(() => {})
-  }, [server])
+  }, [server, isCatchUp])
 
   const run = async (action, body, route) => {
     setBusy(action); setError(null)
