@@ -78,7 +78,7 @@ change set. Tests live in the model. A release ships exactly one change set thro
 Git, with review, approval, deploy and verify steps.
 [How the deploy works](https://falconbi.github.io/articles/governed-tm1-deploys/).
 
-[![The step-by-step deploy](docs/images/deploy.png)](docs/deploy/DEPLOY_LIFECYCLE.md)
+<a href="docs/deploy/DEPLOY_LIFECYCLE.md"><img src="docs/images/deploy.png" alt="The step-by-step deploy" width="480"></a>
 
 ### Web applications on TM1 (Lenses, in development)
 Focused HTML screens on live TM1 data, one per job, with governed write-back. They're built in the
