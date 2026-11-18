@@ -15,6 +15,7 @@ stubs and local bare Git repos in temp folders only.
 | 2 | `209f0bc` | "Add to this release" checkboxes for unowned excluded items; `buildRelease` validates `addObjects`; records `addedByUser` + `addedAsDependency` on the change set and approval history | 626 tests — 625 pass, 1 skipped |
 | 3 | `4bcd45a` | `PROCESS_RUN` records from IDE run route, MCP `run_process` and MCP chore run; masked parameters; "Processes run" heading; review hint; regression test proving a run never ships the process file | 630 tests — 629 pass, 1 skipped |
 | 4 | `fd3eec1` | `tokenSource()` without the value; token save refused with 409 when `.env` wins; status returns source and a token-expiry hint; linked setup opens on its link, token source and "Link to a different repo" | 635 tests — 634 pass, 1 skipped |
+| 4a | `327b89a` | Follow-up: removed the effect's synchronous state reset so client lint returns to the 112 baseline | 635 tests — 634 pass, 1 skipped |
 
 ## Lint
 
