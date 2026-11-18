@@ -186,19 +186,25 @@ app.post('/api/git/lock/clear', async (req, res) => {
 })
 
 app.get('/api/git/setup/status', async (req, res) => {
+    const tokenSource = gitSecrets.tokenSource()
     try {
         const server = req.query?.server
-        if (!server) return res.status(400).json({ error: 'server required' })
+        if (!server) return res.status(400).json({ error: 'server required', tokenSource })
         const st = await makeClient(server, req.ideToken).post('GitStatus', { Username: _GI().user(), Password: _GITOK() })
-        res.json({ linked: !!st?.URL, repoUrl: st?.URL ?? null, deployment: st?.Deployment ?? null, connected: st?.Remote?.Connected ?? false })
-    } catch (e) { fail(res, e) }
+        res.json({ linked: !!st?.URL, repoUrl: st?.URL ?? null, deployment: st?.Deployment ?? null, connected: st?.Remote?.Connected ?? false, tokenSource })
+    } catch (e) {
+        res.status(502).json({
+            error: `${e.message} — the token may have expired; it needs Contents: Read and write on the repo`,
+            tokenSource,
+        })
+    }
 })
 
 app.post('/api/git/setup/token', (req, res) => {
     try {
         gitSecrets.setToken(req.body?.token)
         res.json({ ok: true, note: 'token set ✓' })   // never the token itself
-    } catch (e) { res.status(400).json({ error: e.message }) }
+    } catch (e) { res.status(e.status ?? 400).json({ error: e.message }) }
 })
 
 app.get('/api/git/setup/readiness', async (req, res) => {

@@ -22,6 +22,8 @@ export default function GitSetup({ server, onClose }) {
   const [first, setFirst] = useState(null)
   const [busy, setBusy] = useState('')
   const [error, setError] = useState(null)
+  const [statusError, setStatusError] = useState(null)
+  const [showLinkForm, setShowLinkForm] = useState(false)
   const analysisQuery = useFirstPullAnalysis(server, 'dev', { enabled: showAnalysis && linked && deployment === 'PROD' })
   const analysis = analysisQuery.data
 
@@ -36,9 +38,16 @@ export default function GitSetup({ server, onClose }) {
     finally { setBusy('') }
   }
   useEffect(() => {
+    setStatusError(null)
     request(`/api/git/setup/status?server=${encodeURIComponent(server)}`, { headers: authHeader() })
-      .then(r => r.json()).then(d => { setStatus(d); if (d?.linked) setLinked(true) }).catch(() => {})
+      .then(r => r.json()).then(d => {
+        setStatus(d)
+        if (d?.error) setStatusError(d.error)
+        if (d?.linked) setLinked(true)
+      }).catch(e => setStatusError(e.message))
   }, [server])
+  const tokenSource = status?.tokenSource ?? 'none'
+  const tokenLabel = tokenSource === 'env' ? 'from .env' : tokenSource === 'saved' ? 'saved in the IDE' : 'not set'
 
   const saveToken = async () => {
     const d = await run('token', { token }, '/api/git/setup/token')
@@ -61,7 +70,7 @@ export default function GitSetup({ server, onClose }) {
       const r = await request('/api/git/setup/init', { method: 'POST', headers: authHeader(), body: JSON.stringify({ server, repo, deployment }) })
       const d = await r.json()
       if (!r.ok) throw new Error(d.error || r.statusText)
-      setLinked(true); setStatus(d); setReadiness(null)
+      setLinked(true); setStatus(d); setReadiness(null); setShowLinkForm(false)
     } catch (e) { setError(e.message) }
     finally { setBusy('') }
   }
@@ -95,8 +104,9 @@ export default function GitSetup({ server, onClose }) {
         </div>
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
           {error && <p className="text-xs text-red-600 border border-red-600/40 rounded px-3 py-2">{error}</p>}
+          {statusError && <p className="text-xs text-red-600 border border-red-600/40 rounded px-3 py-2">{statusError}</p>}
 
-          {!status?.linked && (
+          {!status?.linked && !statusError && (
             <details className="border border-border rounded-md bg-muted/20">
               <summary className="px-3 py-2 text-xs font-semibold cursor-pointer select-none">Full steps — how this works</summary>
               <div className="px-3 pb-3 pt-1 space-y-2 text-[11px] text-muted-foreground leading-relaxed">
@@ -115,15 +125,15 @@ export default function GitSetup({ server, onClose }) {
             </details>
           )}
 
-          {status?.linked ? (
+          {status?.linked && !showLinkForm ? (
             <div className="space-y-4">
               <div className="border border-border rounded-md p-3 text-xs space-y-1">
-                <p className="text-emerald-700">Already linked — nothing to do.</p>
-                <p><span className="text-muted-foreground">Repo:</span> <span className="font-mono">{status.repoUrl}</span></p>
-                <p><span className="text-muted-foreground">Deployment:</span> {status.deployment} · <span className="text-muted-foreground">Connected:</span> {status.connected ? 'yes' : 'no'}</p>
+                <p className="text-emerald-700">Linked to <span className="font-mono">{status.repoUrl}</span> as <span className="font-semibold">{status.deployment}</span> · remote {status.connected ? 'connected ✓' : 'not connected ✗'}</p>
+                <p><span className="text-muted-foreground">Token:</span> {tokenLabel}</p>
                 {String(status.deployment ?? '').toUpperCase() === 'PROD'
                   ? <p className="text-amber-600">Its first pull is still a full overwrite — use Deploy → Review to see the object list before confirming.</p>
                   : <p className="text-muted-foreground">Ready to build and commit.</p>}
+                <button onClick={() => setShowLinkForm(true)} className={text + ' mt-1'}>Link to a different repo</button>
               </div>
               {String(status.deployment ?? '').toUpperCase() !== 'PROD' && (
                 <div className="border border-border rounded-md p-3 space-y-2">
@@ -134,7 +144,7 @@ export default function GitSetup({ server, onClose }) {
                 </div>
               )}
             </div>
-          ) : (
+          ) : statusError ? null : (
             <>
               {/* 1. repo */}
               <div className="border border-border rounded-md p-3 space-y-2">
@@ -155,6 +165,7 @@ export default function GitSetup({ server, onClose }) {
               {/* 3. token */}
               <div className="border border-border rounded-md p-3 space-y-2">
                 <p className="text-[10px] text-muted-foreground uppercase tracking-wide">3 · The GitHub token</p>
+                <p className="text-xs"><span className="text-muted-foreground">Token:</span> {tokenSet ? 'saved in the IDE ✓' : tokenLabel}</p>
                 {tokenSet ? (
                   <p className="text-emerald-700 text-xs">token set ✓</p>
                 ) : (
@@ -163,7 +174,7 @@ export default function GitSetup({ server, onClose }) {
                     <button onClick={saveToken} disabled={busy === 'token' || token.trim().length < 8} className={primary}>Save token</button>
                   </div>
                 )}
-                <p className="text-[10px] text-muted-foreground/70">Stored only on this server — never shown, logged or sent back to the browser ({tokenSet ? 'set ✓' : 'not set yet'}).</p>
+                <p className="text-[10px] text-muted-foreground/70">{tokenSource === 'env' ? 'TM1_GIT_TOKEN in .env wins over a saved token. Change it there, or remove that line and restart.' : 'Stored only on this server — never shown, logged or sent back to the browser.'}</p>
               </div>
               {/* 4. readiness + init */}
               <div className="border border-border rounded-md p-3 space-y-2">

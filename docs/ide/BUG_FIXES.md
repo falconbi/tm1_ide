@@ -3,12 +3,14 @@
 Every bug-fix commit, newest first, by the date it was committed. Generated from the git history;
 commits that mixed a fix into a feature are included too. New features are not listed here.
 
-166 fixes from 2026-05-20 to 2026-10-10, plus 46 entries for 11–27 October, 6 for 28 October–1 November, 7 for 2 November, 4 for 5 November, 10 for 6 November, 9 for 9 November, 8 for 15 November, 3 for 17 November and 3 for 18 November. Last updated 2026-11-18.
+166 fixes from 2026-05-20 to 2026-10-10, plus 46 entries for 11–27 October, 6 for 28 October–1 November, 7 for 2 November, 4 for 5 November, 10 for 6 November, 9 for 9 November, 8 for 15 November, 3 for 17 November and 4 for 18 November. Last updated 2026-11-18.
 
 ← [Back to README](../../README.md)
 
 
 ## November 2026
+
+- **Git token setup** — `.env`’s `TM1_GIT_TOKEN` silently overrode the token saved from the setup screen after a restart, and an already-linked server still opened on a blank link form. `git-secrets.tokenSource()` now reports env/saved/none without the value, saving is refused with a 409 when `.env` owns the token, the status route returns the source (and a token-expiry hint on failure), and the linked screen shows the link, token source and a deliberate “Link to a different repo” path
 
 ### 2026-11-18
 
