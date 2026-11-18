@@ -51,4 +51,26 @@ async function unmarkWontDeploy(id, { ideToken, client } = {}) {
     return changeLog.unmarkSessionWontDeploy(id)
 }
 
-module.exports = { closeChangeSet, markWontDeploy, unmarkWontDeploy }
+// After a catch-up deploy succeeds, every closed set it carried counts as
+// released: covered_by the catch-up, covered_at when it shipped. An open set is
+// never covered — its work may have shipped, but the set stays in play. Called
+// only where markSessionDeployed runs, i.e. only after a clean deploy.
+async function markCoveredAfterDeploy(catchUpId, { ideToken, client } = {}) {
+    const session = changeLog.getSession(catchUpId)
+    if (!session || session.kind !== 'catch-up') return []
+    let ids
+    try { ids = session.covered_sets ? JSON.parse(session.covered_sets) : [] } catch { ids = [] }
+    const marked = []
+    for (const id of Array.isArray(ids) ? ids : []) {
+        if (id === catchUpId) continue
+        const covered = changeLog.getSession(id)
+        if (!covered || !covered.closed_at || covered.wont_deploy_at || covered.covered_by) continue
+        const at = new Date().toISOString()
+        await changeSetModel.updateClosedRecord(covered.server, id, { covered_by: catchUpId, covered_at: at }, { ideToken, client })
+        changeLog.markSessionCovered(id, { by: catchUpId, at })
+        marked.push(id)
+    }
+    return marked
+}
+
+module.exports = { closeChangeSet, markWontDeploy, unmarkWontDeploy, markCoveredAfterDeploy }

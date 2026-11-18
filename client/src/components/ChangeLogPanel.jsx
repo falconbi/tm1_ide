@@ -229,6 +229,9 @@ function SessionRow({ session, server, openTab, onClose, currentUser }) {
                 {session.wont_deploy_at && (
                   <span className="text-[9px] px-1 py-0.5 rounded bg-muted text-muted-foreground shrink-0" title={session.wont_deploy_reason ?? ''}>Won't deploy</span>
                 )}
+                {session.covered_by && (
+                  <span className="text-[9px] px-1 py-0.5 rounded bg-muted text-muted-foreground shrink-0" title="Carried by a catch-up release">Covered by catch-up{session.covered_at ? ` ${fmtDate(session.covered_at)}` : ''}</span>
+                )}
               </div>
               <div className="text-[10px] text-muted-foreground/60">
                 {fmtDate(session.started_at)} · {session.entry_count} change{session.entry_count !== 1 ? 's' : ''}{session.user ? ` · ${session.user}` : ''}
@@ -313,7 +316,7 @@ function SessionRow({ session, server, openTab, onClose, currentUser }) {
             >
               <Pencil size={10} />
             </button>}
-          {(session.entry_count ?? 0) > 0 && !session.wont_deploy_at && (
+          {(session.entry_count ?? 0) > 0 && !session.wont_deploy_at && !session.covered_by && (
             <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center mr-1">
               <button
                 onClick={() => openTab({ id: `session-report:${session.id}`, type: 'session-report', label: `Report: ${session.name}`, server, session })}
@@ -399,11 +402,11 @@ export default function ChangeLogPanel({ server, onClose, direction = 'up' }) {
   // lives properly in Deploy History now. Keep this list to what's still
   // active or not yet deployed; deployed ones are one click away, not gone.
   // A set marked "won't deploy" owns nothing and is hidden the same way.
-  const deployedCount = allSessions.filter(s => s.deployed && !s.wont_deploy_at).length
+  const deployedCount = allSessions.filter(s => (s.deployed || s.covered_by) && !s.wont_deploy_at).length
   const wontDeployCount = allSessions.filter(s => s.wont_deploy_at).length
   const sessions = allSessions.filter(s =>
     (showWontDeploy || !s.wont_deploy_at) &&
-    (showDeployed || !s.deployed))
+    (showDeployed || (!s.deployed && !s.covered_by)))
 
   const openReleaseAndClose = () => { openDeployWizard({ release: true }); onClose?.() }
 

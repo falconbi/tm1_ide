@@ -55,7 +55,15 @@ app.post('/api/deploy/git/execute', async (req, res) => {
         if (!target) return res.status(400).json({ error: 'target required' })
         const result = await execute(target, { branch, token: _GITOK(), ideToken: req.ideToken, source, by: req.user, session })
         if (result?.missingSource) return res.status(400).json({ error: result.error })
-        if (result?.approvalSession && result?.executed && result?.controlOk) try { cl.markSessionDeployed(result.approvalSession, target) } catch { /* link is best-effort */ }
+        if (result?.approvalSession && result?.executed && result?.controlOk) {
+            try {
+                cl.markSessionDeployed(result.approvalSession, target)
+                // A clean catch-up deploy also marks the older sets it carried as
+                // covered, so in-order releasing starts clean.
+                const { markCoveredAfterDeploy } = require('../core/change-set-service')
+                result.coveredDeployed = await markCoveredAfterDeploy(result.approvalSession, { ideToken: req.ideToken })
+            } catch { /* the deploy itself stands; the link is best-effort */ }
+        }
         res.json(result)
     } catch (e) { res.status(500).json({ error: e.message }) }
 })

@@ -55,6 +55,8 @@ for (const [col, type] of [
     ['wont_deploy_reason',          'TEXT'],
     ['kind',                        'TEXT'],
     ['covered_sets',                'TEXT'],
+    ['covered_by',                  'TEXT'],
+    ['covered_at',                  'TEXT'],
 ]) {
     try { db.exec(`ALTER TABLE sessions ADD COLUMN ${col} ${type}`) } catch { /* already exists */ }
 }
@@ -122,6 +124,14 @@ function markSessionWontDeploy(id, { by, reason, at } = {}) {
 
 function unmarkSessionWontDeploy(id) {
     db.prepare(`UPDATE sessions SET wont_deploy_at = NULL, wont_deploy_by = NULL, wont_deploy_reason = NULL WHERE id = ?`).run(id)
+    return db.prepare(`SELECT * FROM sessions WHERE id = ?`).get(id)
+}
+
+// A set whose work was carried by a catch-up release. It counts as released:
+// ownerOf skips it and the Change Sets list hides it with the deployed ones.
+function markSessionCovered(id, { by, at } = {}) {
+    db.prepare(`UPDATE sessions SET covered_by = ?, covered_at = ? WHERE id = ?`)
+        .run(by ?? null, at ?? new Date().toISOString(), id)
     return db.prepare(`SELECT * FROM sessions WHERE id = ?`).get(id)
 }
 
@@ -451,4 +461,4 @@ try { db.exec(`ALTER TABLE log_entries ADD COLUMN user TEXT`) } catch { /* alrea
 // The TM1 login a change was made with (the MCP's builder identity), next to the developer in `user`.
 try { db.exec(`ALTER TABLE log_entries ADD COLUMN identity TEXT`) } catch { /* already migrated */ }
 
-module.exports = { startSession, getSession, getSessionManifest, closeSession, resumeSession, updateSessionDescription, setSessionCommit, setSessionRelease, markSessionDeployed, markSessionWontDeploy, unmarkSessionWontDeploy, getActiveSession, getSessions, getAllSessions, getSessionLog, getCrossSessionTouches, getEntriesSince, getMaxEntryId, getEntriesSinceId, getSessionLogVerbose, getRecentLog, getObjectHistory, getEntryById, writeLog, writeReadAudit, getReadAudit, pruneReadAudit, findArchivableEntries, pruneEntries }
+module.exports = { startSession, getSession, getSessionManifest, closeSession, resumeSession, updateSessionDescription, setSessionCommit, setSessionRelease, markSessionDeployed, markSessionWontDeploy, unmarkSessionWontDeploy, markSessionCovered, getActiveSession, getSessions, getAllSessions, getSessionLog, getCrossSessionTouches, getEntriesSince, getMaxEntryId, getEntriesSinceId, getSessionLogVerbose, getRecentLog, getObjectHistory, getEntryById, writeLog, writeReadAudit, getReadAudit, pruneReadAudit, findArchivableEntries, pruneEntries }
