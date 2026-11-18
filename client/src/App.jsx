@@ -351,6 +351,13 @@ const [showCatalog, setShowCatalog]           = useState(false)
                       Deploy step by step
                     </button>
                     <button
+                      onClick={() => { openDeployWizard({ catchUp: true }); setShowDeployMenu(false) }}
+                      className="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-left text-foreground hover:bg-muted"
+                    >
+                      <GitBranch size={13} className="shrink-0 text-muted-foreground" />
+                      Catch up a server…
+                    </button>
+                    <button
                       onClick={() => { setShowGitDrift(true); setShowDeployMenu(false) }}
                       className="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-left text-foreground hover:bg-muted"
                     >

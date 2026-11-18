@@ -1,11 +1,10 @@
 import { useEffect, useState } from 'react'
-import { X, Rocket, History, HardDriveDownload, Loader2, CheckCircle2, HelpCircle, GitBranch } from 'lucide-react'
+import { X, Rocket, History, HardDriveDownload, Loader2, CheckCircle2, HelpCircle } from 'lucide-react'
 import HelpPanel from '@/components/HelpPanel'
 import { useStore } from '@/store'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
-import { request } from '@/lib/api'
-import { useServers, useDeployBaseline, useDeploySeed, useServerLogins } from '@/hooks/useApi'
+import { useServers, useDeployBaseline, useDeploySeed } from '@/hooks/useApi'
 import DeployHistory from '@/components/DeployHistory'
 import DiffTab from '@/components/DiffTab'
 
@@ -88,41 +87,6 @@ function BaselinesView({ defaultServer }) {
   )
 }
 
-// Catch-up entries: one per target with a recorded deployed commit. Admin only
-// (the server refuses otherwise too). Hidden when there is nothing to catch up.
-function CatchUpEntries({ source, onOpen }) {
-  const { data: logins = [] } = useServerLogins()
-  const isAdmin = logins.some(l => String(l?.name ?? '').toLowerCase() === String(source ?? '').toLowerCase() && l?.isAdmin)
-  const [data, setData] = useState({ source: null, targets: [] })
-
-  useEffect(() => {
-    if (!isAdmin || !source) return
-    let live = true
-    request(`/api/deploy/git/catch-up/targets?source=${encodeURIComponent(source)}`, { headers: { 'x-ide-token': localStorage.getItem('tm1-token') ?? '' } })
-      .then(r => r.ok ? r.json() : { targets: [] })
-      .then(d => { if (live) setData({ source, targets: d?.targets ?? [] }) })
-      .catch(() => { if (live) setData({ source, targets: [] }) })
-    return () => { live = false }
-  }, [isAdmin, source])
-
-  if (!isAdmin) return null
-  const targets = data.source === source ? data.targets : []
-  return (
-    <>
-      {targets.map(t => (
-        <button
-          key={t.target}
-          onClick={() => onOpen({ catchUp: true, catchUpTarget: t.target })}
-          title={`Bring ${t.target} level with ${source} in one reviewed release`}
-          className="flex items-center gap-2 px-4 py-2 text-xs text-left text-amber-500 hover:text-amber-400 hover:bg-muted/50 transition-colors"
-        >
-          <GitBranch size={13} className="shrink-0" /> Catch up {t.target} with {source}…
-        </button>
-      ))}
-    </>
-  )
-}
-
 export default function DeployCenter({ onOpenWizard }) {
   const { deployCenter, closeDeployCenter, server: currentServer } = useStore()
   const [view, setView] = useState(deployCenter?.view === 'baselines' ? 'baselines' : 'history')
@@ -175,10 +139,6 @@ export default function DeployCenter({ onOpenWizard }) {
           >
             <Rocket size={13} /> New Deploy
           </button>
-          <CatchUpEntries
-            source={deployCenter.server ?? currentServer}
-            onOpen={cfg => { closeDeployCenter(); onOpenWizard?.(cfg) }}
-          />
           {NAV.map(n => (
             <button
               key={n.id}
