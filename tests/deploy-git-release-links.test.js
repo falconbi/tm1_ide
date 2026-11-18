@@ -153,6 +153,7 @@ test('buildRelease refuses a linked file owned by another change set, naming it'
     assert.equal(r.ok, false)
     assert.equal(r.refused, true)
     assert.match(r.error, /belongs to change set "Subset owner"/)
+    assert.match(r.error, /Release "Subset owner" to TGL-B first, then rebuild this release\./)
     assert.match(r.error, /Cities\.json/)
     assert.ok(owner)
   } finally { fs.rmSync(repo.bare, { recursive: true, force: true }); fs.rmSync(repo.w, { recursive: true, force: true }) }
@@ -215,6 +216,7 @@ test('buildRelease refuses addObjects for an item owned by another change set', 
     assert.equal(r.refused, true)
     assert.match(r.error, /Cannot add subset Cities/)
     assert.match(r.error, /belongs to change set "Add owner"/)
+    assert.match(r.error, /Release "Add owner" to TGA-B first, then rebuild this release\./)
   } finally { fs.rmSync(repo.bare, { recursive: true, force: true }); fs.rmSync(repo.w, { recursive: true, force: true }) }
 })
 

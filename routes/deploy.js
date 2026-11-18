@@ -128,7 +128,7 @@ app.post('/api/deploy/git/approve', async (req, res) => {
         }
         // Dependency check before approval: rules must CheckRules clean on the target
         // and processes must pass TI lint — a failed reference may belong to another
-        // change set (ship it too, or build a combined release).
+        // change set (release that change set first, then rebuild this release).
         if (linkedSession.release_commit) {
             const { checkDependencies } = require('../core/git-release')
             const dep = await checkDependencies(linkedSession.release_commit, target, { token: _GITOK(), gitUser: _GI().user(), ideToken: req.ideToken })

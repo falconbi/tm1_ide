@@ -3,7 +3,7 @@
 Every bug-fix commit, newest first, by the date it was committed. Generated from the git history;
 commits that mixed a fix into a feature are included too. New features are not listed here.
 
-166 fixes from 2026-05-20 to 2026-10-10, plus 46 entries for 11–27 October, 6 for 28 October–1 November, 7 for 2 November, 4 for 5 November, 10 for 6 November, 9 for 9 November, 8 for 15 November, 3 for 17 November and 6 for 18 November. Last updated 2026-11-18.
+166 fixes from 2026-05-20 to 2026-10-10, plus 46 entries for 11–27 October, 6 for 28 October–1 November, 7 for 2 November, 4 for 5 November, 10 for 6 November, 9 for 9 November, 8 for 15 November, 3 for 17 November and 7 for 18 November. Last updated 2026-11-18.
 
 ← [Back to README](../../README.md)
 
@@ -18,6 +18,7 @@ commits that mixed a fix into a feature are included too. New features are not l
 
 ### 2026-11-18
 
+- **deploy release wording** — A release refused when an object belonged to another change set, then told the user to "release that change set first, or together" and, for a failed rule reference, to "build a combined release". Releases are one change set at a time, in dependency order; both messages (and the CheckRules note) now say `Release "<owner>" to <target> first, then rebuild this release.`
 - **deploy release** — A release shipped an object file without the subsets, views or hierarchies its `@Code.links` named, so TM1's pull failed with "Cannot open the file specified by link". `buildRelease` now runs a link closure over the whole release tree, adds missing unowned files from DEV (listed as `addedAsDependency`), refuses a file owned by another change set by naming it, refuses a link that exists on neither side, and repeats until stable; `checkDependencies` blocks an older broken release before approval
 - **governance manifest** — A fresh IDE decided model ownership from two local marker files, so a server whose model owned its change sets, approvals or deploy state looked unmigrated; the IDE then wrote local copies beside them. Ownership now comes from `Applications/Governance/manifest.json` (read per server + identity, cached 30 seconds, errors never cached). A missing or unreadable manifest throws an error naming the tool command, and no local marker is read or written
 - **change sets** — A model-owned change-set document that could not be read was silently skipped, so a damaged record simply disappeared from the list. It now fails the list and names the exact document on the server

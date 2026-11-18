@@ -23,6 +23,8 @@ const { sameCommit } = require('./git-approvals')
 const { odataKey } = require('./odata-key')
 
 const NO_BASE_ERROR = (target) => `${target} has no recorded deployed commit — set it up first (init + first pull), then release against it.`
+// Releases go one change set at a time, in dependency order.
+const RELEASE_FIRST = (owner, target) => `Release "${owner}" to ${target} first, then rebuild this release.`
 
 // Map a TM1-rest parseObjectFile 'object_type' (the change-log vocabulary) to the
 // TM1 object the plan/tree refers to. rules→cube, attribute→dimension, etc.
@@ -244,7 +246,7 @@ async function buildRelease(changeSet, target, { token, gitUser = gitIdentity.us
             const label = `${a.type} ${a.name}${a.parent ? ` (${a.parent})` : ''}`
             const hit = excluded.find(x => objectKey(x.type, x.name, x.parent) === objectKey(a.type, a.name, a.parent))
             if (!hit) return { ok: false, refused: true, error: `Cannot add ${label}: it is not an unowned "left on DEV" item in this release.` }
-            if (hit.owner) return { ok: false, refused: true, error: `Cannot add ${label}: it belongs to change set "${hit.owner.sessionName}". Release that change set first, or together.` }
+            if (hit.owner) return { ok: false, refused: true, error: `Cannot add ${label}: it belongs to change set "${hit.owner.sessionName}". ${RELEASE_FIRST(hit.owner.sessionName, target)}` }
             const file = hit.file ?? hit.files?.[0] ?? null
             if (!file) return { ok: false, refused: true, error: `Cannot add ${label}: the release has no file for it.` }
             included.push({ ...hit, file, action: hit.action ?? 'A' })
@@ -294,7 +296,7 @@ async function buildRelease(changeSet, target, { token, gitUser = gitIdentity.us
                 const obj = objectFromFile(m.file)
                 const owner = obj ? ownerOf(otherLogs, obj) : null
                 if (owner) {
-                    return { ok: false, refused: true, error: `${m.neededBy} needs ${m.file}, which belongs to change set "${owner.sessionName}". Release that change set first, or together.` }
+                    return { ok: false, refused: true, error: `${m.neededBy} needs ${m.file}, which belongs to change set "${owner.sessionName}". ${RELEASE_FIRST(owner.sessionName, target)}` }
                 }
                 git(work, 'checkout', devCommit, '--', m.file)
                 addedAsDependency.push({
@@ -498,7 +500,7 @@ async function checkDependencies(releaseCommit, target, { token, gitUser = gitId
                     if (errs.length) blockers.push({
                         object: `rules ${obj.name}`,
                         message: errs.map(e => `line ${e.LineNumber ?? '?'}: ${e.Message ?? e.Description ?? JSON.stringify(e)}`).join('; ') +
-                            ' — if this reference belongs to another change set, ship that change set too (or build a combined release).',
+                            ` — if this reference belongs to another change set, release that change set to ${target} first, then rebuild this release.`,
                     })
                 } catch (e) { blockers.push({ object: `rules ${obj.name}`, message: `CheckRules could not run on ${target}: ${e.response?.data?.error?.message ?? e.message}` }) }
             } else if (obj.kind === 'process') {
