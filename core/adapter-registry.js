@@ -264,8 +264,14 @@ function getDefaultAdapterType() {
     return 'paw-native'
 }
 
+function hasServersConfig() {
+    try { fs.statSync(SERVERS_PATH); return true } catch { return false }
+}
+
 function getLoginServer() {
-    const { adminHosts, connections } = _loadConfig()
+    let cfg
+    try { cfg = _loadConfig() } catch (e) { if (e.code === 'ENOENT') return null; throw e }
+    const { adminHosts, connections } = cfg
     if (adminHosts.length)  return adminHosts[0].loginServer  ?? adminHosts[0].servers?.[0]  ?? null
     if (connections.length) return connections[0].loginServer ?? connections[0].servers?.[0] ?? null
     return null
@@ -331,4 +337,4 @@ function listServersWithFlags() {
     })
 }
 
-module.exports = { getAdapter, makeClient, makeClientWithCredentials, needsServerLogin, isDirectServer, isPawNativeServer, probeAuthMethod, NeedsServerLogin, TM1AuthRejected, listServers, listServersWithFlags, isReadOnly, isSimple, simpleSource, getDefaultAdapterType, getLoginServer }
+module.exports = { getAdapter, makeClient, makeClientWithCredentials, needsServerLogin, isDirectServer, isPawNativeServer, probeAuthMethod, NeedsServerLogin, TM1AuthRejected, listServers, listServersWithFlags, isReadOnly, isSimple, simpleSource, getDefaultAdapterType, getLoginServer, hasServersConfig }

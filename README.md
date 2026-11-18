@@ -121,7 +121,7 @@ It isn't an IBM product and isn't supported by IBM.
 git clone https://github.com/falconbi/tm1_ide.git
 cd tm1_ide
 npm install
-# create .env (PORT=8083) and config/servers.json, see Setup
+# create .env (PORT=8083) and copy config/servers.example.json to config/servers.json, see Setup
 npm start                   # → http://localhost:8083
 ```
 

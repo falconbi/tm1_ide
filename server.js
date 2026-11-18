@@ -7,7 +7,7 @@ const path      = require('path')
 const fs        = require('fs')
 const ai        = require('./core/ai/registry')
 const obfuscate = require('./core/ai/obfuscate')
-const { makeClient, makeClientWithCredentials, needsServerLogin, isDirectServer, isPawNativeServer, probeAuthMethod, listServers, listServersWithFlags, isSimple, simpleSource, getLoginServer } = require('./core/adapter-registry')
+const { makeClient, makeClientWithCredentials, needsServerLogin, isDirectServer, isPawNativeServer, probeAuthMethod, listServers, listServersWithFlags, isSimple, simpleSource, getLoginServer, hasServersConfig } = require('./core/adapter-registry')
 const { loadConnections, saveConnections, getConnection, executeQuery, testConnection, getSchema, loadQueries, saveQueries } = require('./core/sql-client')
 const { createSession, createDirectSession, createLocalSession, attachPawSession, getSessionUser, touchSession, invalidateSession, getCachedPawSession, getCSRF, PAW_HOST, setServerCredentials, getServerCredentials, clearServerCredentials, getServerStatus, listServerEntries, getSessionCredentials } = require('./core/paw-connect')
 const cl = require('./core/change-log')
@@ -152,6 +152,9 @@ return app
 const app = createApp()
 
 if (require.main === module) {
+    if (!hasServersConfig()) {
+        console.warn('⚠  config/servers.json is missing — copy config/servers.example.json to config/servers.json and set your TM1 Admin Server details. The IDE is running with no servers.')
+    }
     app.listen(PORT, HOST, () => {
         const shown = (HOST === '0.0.0.0' ? `all interfaces on :${PORT} (LAN-exposed — no TLS)` : `http://${HOST}:${PORT}`)
             + (LOGIN_REQUIRED ? ' · IDE sign-in required' : ' · local only, no IDE sign-in (sign in per server)')

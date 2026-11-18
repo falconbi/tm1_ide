@@ -57,7 +57,17 @@ over HTTPS, by IBM default), which tells the IDE each server's port. To check, o
 `http://<tm1-machine>:5895/api/v1/Servers` in a browser. Your server should be listed with its port.
 
 **Then create `config/servers.json`.** It isn't in the repo (it holds passwords and is
-git-ignored), so create it from this example:
+git-ignored), so copy `config/servers.example.json` to `config/servers.json` and edit it:
+
+```bash
+# Linux / macOS
+cp config/servers.example.json config/servers.json
+
+# Windows (Command Prompt or PowerShell)
+copy config\servers.example.json config\servers.json
+```
+
+The example has this shape:
 
 ```json
 {
