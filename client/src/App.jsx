@@ -268,7 +268,7 @@ const [showCatalog, setShowCatalog]           = useState(false)
               <button
                 onClick={() => setShowFind(f => !f)}
                 className={cn('p-1.5 rounded text-muted-foreground hover:text-foreground transition-colors', showFind && 'bg-muted text-foreground')}
-                title="Find & Replace (Ctrl+F)"
+                title="Find & Replace across all rules and TI (Ctrl+F searches the open file)"
               >
                 <Search size={15} />
               </button>

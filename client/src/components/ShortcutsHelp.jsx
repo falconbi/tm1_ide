@@ -6,7 +6,8 @@ const SHORTCUTS = [
     group: 'Global',
     items: [
       { key: 'Ctrl + B', desc: 'Toggle sidebar' },
-      { key: 'Ctrl + F', desc: 'Find & Replace' },
+      { key: 'Search button (top right)', desc: 'Find & Replace across all rules and TI' },
+      { key: 'Ctrl + Shift + F (outside an editor)', desc: 'Search TI processes' },
       { key: 'Ctrl + Shift + K', desc: 'Keyboard Shortcuts Help' },
       { key: 'F1', desc: 'Keyboard Shortcuts Help' },
       { key: 'Alt + ,', desc: 'Previous tab' },
@@ -19,6 +20,9 @@ const SHORTCUTS = [
     items: [
       { key: 'Ctrl + S', desc: 'Save' },
       { key: 'Ctrl + Shift + S', desc: 'Save As' },
+      { key: 'Ctrl + F', desc: 'Find in this file' },
+      { key: 'Ctrl + H', desc: 'Find and replace in this file' },
+      { key: 'F3 / Shift + F3', desc: 'Next / previous match' },
       { key: 'Ctrl + Enter', desc: 'Execute / Refresh' },
       { key: 'Ctrl + Shift + F', desc: 'Format Document' },
       { key: 'Ctrl/Cmd + Z', desc: 'Undo' },
