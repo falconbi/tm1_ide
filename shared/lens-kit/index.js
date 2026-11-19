@@ -1206,8 +1206,60 @@ function run(process, params) {
   return window.lensBridge.call('runProcess', { process, params: params || {} })
 }
 
+// ── approval ──────────────────────────────────────────────────────────────────
+// Line approval, shared by every request Lens (capex, hires, contracts, journals).
+// Each line carries an Approved flag plus who approved it and when. Only the
+// approver group may set it, through the process named in the config; a TM1
+// cell-security rule then locks the approved line everywhere, not just here.
+// The component owns the rule and the words, so the buttons, status and history
+// stay the same from one client to the next.
+//   const ap = Lens.approval(cfg.approval, { who, unit, period, version })
+//   ap.can                 → true when the viewer is an approver
+//   ap.isApproved(row)     → true when the line's flag is Y
+//   ap.status(row)         → '✓ Approved · finance_mgr · 2:33 pm' / 'Not approved yet'
+//   ap.action(row, 'Approve' | 'Unapprove') → Promise (the process's message)
+//   ap.column()            → a Lens.grid column to append
+//   ap.describeRun(entry)  → the words for Lens.historyPanel
+// cfg: { process, flag, by, at, approvers: [groups],
+//        params: { unit, period, version, line, group, action } }
+function approval(cfg, { who, unit, period, version, lineField = '__line', groupField = '__group' } = {}) {
+  const c = cfg || {}, prm = c.params || {}
+  const can = whoami.inGroup(who, c.approvers || [])
+  const isApproved = row => String((row && row[c.flag]) || '') === 'Y'
+  const status = row => {
+    if (!isApproved(row)) return 'Not approved yet'
+    return '✓ Approved' + (row[c.by] ? ' · ' + row[c.by] : '') + (row[c.at] ? ' · ' + localTime(row[c.at]) : '')
+  }
+  const params = (row, action) => {
+    const out = {}
+    if (prm.unit && unit !== undefined) out[prm.unit] = unit
+    if (prm.period && period !== undefined && period !== '') out[prm.period] = period
+    if (prm.version && version !== undefined) out[prm.version] = version
+    if (prm.line) out[prm.line] = row[lineField]
+    if (prm.group && row[groupField] !== undefined) out[prm.group] = row[groupField]
+    if (prm.action) out[prm.action] = action
+    return out
+  }
+  const action = (row, verb) => {
+    if (!c.process) return Promise.reject(new Error('Line approval needs an approval process in its config'))
+    if (!can) return Promise.reject(new Error('You are not in the approver group for this Lens'))
+    return run(c.process, params(row, verb))
+  }
+  const column = () => ({
+    field: '__approved', headerName: 'Approved', minWidth: 160,
+    valueGetter: params0 => isApproved(params0.data) ? status(params0.data) : '',
+  })
+  const describeRun = e => {
+    if (!c.process || e.process !== c.process) return ''
+    const p = e.params || {}
+    return (p[prm.action] === 'Unapprove' ? 'reopened ' : 'approved ') + '#' + (prm.line ? p[prm.line] : '') +
+      (e.status && e.status !== 'CompletedSuccessfully' ? ' — refused' : '')
+  }
+  return { config: c, can, isApproved, status, params, action, column, describeRun, enabled: !!c.process }
+}
+
 // _pivot: the shared pivot's building blocks (docs/lenses/PIVOT_PLAN.md) — internal until Lens.pivot
-const Lens = { _pivot: pivotKit, pivot, cellInfo, version: TOOLKIT_VERSION, components: COMPONENTS.slice(), rows, format, localTime, theme, kpis, trend, stack, waterfall, bars, grid, flow, editing, live, history, historyPanel, legend, config, whoami, save, run, echarts }
+const Lens = { _pivot: pivotKit, pivot, cellInfo, version: TOOLKIT_VERSION, components: COMPONENTS.slice(), rows, format, localTime, theme, kpis, trend, stack, waterfall, bars, grid, flow, editing, live, history, historyPanel, legend, config, whoami, save, run, approval, echarts }
 const missing = COMPONENTS.filter(n => typeof Lens[n] !== 'function')
 if (missing.length) throw new Error('Lens toolkit is missing: ' + missing.join(', '))
 

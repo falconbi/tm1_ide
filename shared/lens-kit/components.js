@@ -1,4 +1,4 @@
 // The building blocks window.Lens provides. The component catalogue
 // (shared/lens-components.json) must describe exactly these — a test checks it.
-export const COMPONENTS = ['kpis', 'trend', 'stack', 'waterfall', 'bars', 'grid', 'pivot', 'flow', 'editing', 'live']
-export const TOOLKIT_VERSION = 12
+export const COMPONENTS = ['kpis', 'trend', 'stack', 'waterfall', 'bars', 'grid', 'pivot', 'flow', 'editing', 'live', 'approval']
+export const TOOLKIT_VERSION = 13

@@ -75,8 +75,27 @@
     "writes": [
       "Capital"
     ],
-    "runs": [],
+    "runs": [
+      "Lens Capex Approve"
+    ],
     "layout": "cards",
-    "itemLabel": "Request"
+    "itemLabel": "Request",
+    "approval": {
+      "flag": "Approved",
+      "by": "Approved By",
+      "at": "Approved At",
+      "process": "Lens Capex Approve",
+      "approvers": [
+        "Lens Finance"
+      ],
+      "params": {
+        "unit": "pOrg",
+        "period": "pYear",
+        "version": "pVersion",
+        "line": "pLine",
+        "group": "pAsset",
+        "action": "pAction"
+      }
+    }
   }
 }

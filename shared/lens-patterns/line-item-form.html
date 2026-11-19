@@ -101,7 +101,7 @@ button:disabled{opacity:.45;cursor:default}
     return
   }
   var cube = C.cube, unitDim = C.unit.dimension, lineDim = C.lines.dimension, groupCfg = C.group || null, fieldDim = C.fieldsDimension
-  var period = C.period || null, version = C.version || null, approval = C.approval || null
+  var period = C.period || null, version = C.version || null, approval = C.approval || null, ap = null
   var fields = C.fields
   // Layout: 'grid' (rows, like a spreadsheet) or 'cards' (one form per line,
   // like an online form — better for requests with text).
@@ -118,7 +118,7 @@ button:disabled{opacity:.45;cursor:default}
   var keyOf = function (r) { return r.__line + '|' + (r.__group || '') }
   var groupName = function (g0) { var n = groupNames[g0] || g0; return n.indexOf(g0 + ' ') === 0 ? n.slice(g0.length + 1) : n }
   var label = function (r) { return (groupCfg ? groupName(r.__group) + ' ' : '') + '#' + r.__line }
-  var isApproved = function (r) { return approval && String(r[approval.flag] || '') === 'Y' }
+  var isApproved = function (r) { return ap ? ap.isApproved(r) : false }
   function coords(r, field) {
     var c = Object.assign({}, C.fixed || {})
     if (version) c[version.dimension] = version.member
@@ -199,10 +199,8 @@ button:disabled{opacity:.45;cursor:default}
         }).join(', ')
       }).join(' · ')
     }
-    if (approval && e.process === approval.process) {
-      var p = e.params || {}, pr = approval.params || {}
-      return (p[pr.action] === 'Approve' ? 'approved ' : 'reopened ') + '#' + p[pr.line] + (e.status && e.status !== 'CompletedSuccessfully' ? ' — refused' : '')
-    }
+    var approvalWords = ap && ap.describeRun(e)
+    if (approvalWords) return approvalWords
     return 'ran ' + e.process
   }
   function loadHistory() {
@@ -232,6 +230,7 @@ button:disabled{opacity:.45;cursor:default}
   // ── The grid ──
   function load() {
     if (tg) tg.join(channel())
+    if (approval) ap = Lens.approval(approval, { who: who, unit: unitOf(), period: period ? periodOf() : '', version: version ? version.member : '' })
     say('Loading…', 'busy')
     var members = fields.map(function (f) { return f.member }).concat(approval ? [approval.flag, approval.by, approval.at] : [])
     var rowsSet = '{TM1FILTERBYLEVEL({TM1SUBSETALL([' + lineDim + '].[' + lineDim + '])}, ' + (C.lines.level || 0) + ')}' +
@@ -258,8 +257,7 @@ button:disabled{opacity:.45;cursor:default}
       .concat(fields.map(function (f) {
         return { field: f.member, headerName: f.label || f.member, type: f.type === 'number' ? 'number' : 'text', format: f.format, editable: true, options: f.options, minWidth: f.width || (f.type === 'number' ? 100 : 140) }
       }))
-    if (approval) cols.push({ field: '__approved', headerName: 'Approved', minWidth: 160,
-      valueGetter: function (p) { return isApproved(p.data) ? '✓ ' + (p.data[approval.by] || '') + (p.data[approval.at] ? ' · ' + Lens.localTime(p.data[approval.at]) : '') : '' } })
+    if (ap) cols.push(ap.column())
     g = Lens.grid('#grid', {
       height: C.height || '480px',
       columns: cols,
@@ -307,11 +305,11 @@ button:disabled{opacity:.45;cursor:default}
   function drawCards() {
     var titleField = fields.find(function (f) { return f.type !== 'number' }) || fields[0]
     var amtField = C.totalField ? fields.find(function (f) { return f.member === C.totalField }) : null
-    var can = approval && Lens.whoami.inGroup(who, approval.approvers || [])
+    var can = ap && ap.can
     $('grid').innerHTML = '<div class="lcards">' + (data.length ? data.map(function (r) {
       var k = keyOf(r), open = openKey === k, appr = isApproved(r)
       var t = valueOf(r, titleField.member)
-      var st = r.__new ? 'New — not saved' : appr ? '✓ Approved' + (r[approval.by] ? ' · ' + r[approval.by] : '') + (r[approval.at] ? ' · ' + Lens.localTime(r[approval.at]) : '') : approval ? 'Not approved yet' : ''
+      var st = r.__new ? 'New — not saved' : ap ? ap.status(r) : ''
       return '<div class="lc' + (open ? ' open' : '') + (appr ? ' approved' : '') + (r.__new ? ' new' : '') + '" data-k="' + esc(k) + '">' +
         '<div class="lc-h" data-toggle>' + (groupCfg ? '<span class="chip">' + esc(groupName(r.__group)) + '</span>' : '') +
         '<span class="lc-t' + (t ? '' : ' empty') + '">' + esc(t || 'Untitled') + '</span>' +
@@ -422,7 +420,7 @@ button:disabled{opacity:.45;cursor:default}
   // ── Approval: only shown to approvers; the process checks again and stamps who and when ──
   function paintApprove() {
     if (!approval || CARDS) return
-    var can = Lens.whoami.inGroup(who, approval.approvers || [])
+    var can = ap && ap.can
     $('approveBox').hidden = !can
     var real = selected && !selected.__new
     $('approve').disabled = !(can && real && !isApproved(selected))
@@ -432,11 +430,8 @@ button:disabled{opacity:.45;cursor:default}
     if (!selected) return
     // Unsaved typing first: the grid's changes, or this card's draft.
     if ((g && g.changes().length) || (CARDS && drafts[keyOf(selected)] && Object.keys(drafts[keyOf(selected)]).some(function (m) { return drafts[keyOf(selected)][m] !== selected[m] }))) return say('Save or close your changes first.', 'err')
-    var p = {}, pr = approval.params || {}
-    p[pr.unit] = unitOf(); if (pr.period) p[pr.period] = periodOf(); if (pr.version && version) p[pr.version] = version.member
-    p[pr.line] = selected.__line; if (pr.group) p[pr.group] = selected.__group; p[pr.action] = action
     say(action === 'Approve' ? 'Approving…' : 'Reopening…', 'busy')
-    Lens.run(approval.process, p)
+    ap.action(selected, action)
       .then(function (r) { tell('saved', { note: (action === 'Approve' ? 'approved ' : 'reopened ') + label(selected) }); openKey = null; return load().then(function () { say(r.message || 'Done.', 'ok') }) })
       .catch(function (e) { say('Not done: ' + (e && e.message ? e.message : e), 'err') })
   }
