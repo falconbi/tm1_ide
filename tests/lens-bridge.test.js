@@ -158,3 +158,30 @@ test('a 401 from the app sends the host back to sign-in', async () => {
     assert.match(win._posted[0].error, /session expired/)
   } finally { off() }
 })
+
+test('the shared selection is scoped per server, so two servers never mix', async () => {
+  const store = new Map()
+  global.localStorage = { getItem: k => (store.has(k) ? store.get(k) : null), setItem: (k, v) => store.set(k, String(v)) }
+  const make = server => {
+    const win = fakeDom({ source: {} })
+    const me = { ...win.contentWindow }; me.postMessage = m => win._posted.push(m)
+    global.window = win
+    const off = installLensHost(() => me, { getServer: () => server, getToken: () => '', getLens: () => 'L' })
+    return { win, me, off, reply: id => win._posted.find(p => p.id === id) }
+  }
+  const a = make('S1'), b = make('S2')
+  try {
+    a.win._emit('message', { data: { __lensBridge: 1, id: 1, chan: 'c', method: 'setContext', payload: { patch: { organization: '101' } } }, source: a.me })
+    await flush()
+    assert.deepEqual(a.reply(1).result, { organization: '101' })
+    assert.ok(store.has('tm1-lens-context:S1'))
+
+    b.win._emit('message', { data: { __lensBridge: 1, id: 2, chan: 'c', method: 'getContext', payload: {} }, source: b.me })
+    await flush()
+    assert.deepEqual(b.reply(2).result, {}, 'another server starts empty')
+
+    a.win._emit('message', { data: { __lensBridge: 1, id: 3, chan: 'c', method: 'getContext', payload: {} }, source: a.me })
+    await flush()
+    assert.deepEqual(a.reply(3).result, { organization: '101' })
+  } finally { a.off(); b.off() }
+})

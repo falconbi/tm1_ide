@@ -49,9 +49,9 @@ button:disabled{opacity:.45;cursor:default}
 (function () {
   var $ = function (id) { return document.getElementById(id) }
   var esc = function (v) { return String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;') }
-  var M = function (d, e) { return '[' + d + '].[' + d + '].[' + String(e).replace(/]/g, ']]') + ']' }
+  var M = Lens.mdx.member
   var call = function (mdx) { return window.lensBridge.call('execMDX', { mdx: mdx }) }
-  var say = function (text, kind) { var s = $('status'); if (!s) return; s.textContent = text || ''; s.className = 'status ' + (kind || '') }
+  var say = Lens.status('#status').set
   function fail(e) { say((e && e.message ? e.message : e), 'err') }
   if (!window.Lens) return fail(new Error('the Lens toolkit did not load'))
   var C = Lens.config()
@@ -62,16 +62,9 @@ button:disabled{opacity:.45;cursor:default}
     return true
   }
   // A WHERE clause from { dimension: member } (missing dimensions use their default member).
-  function where(obj) { var k = Object.keys(obj || {}); return k.length ? ' WHERE (' + k.map(function (d) { return M(d, obj[d]) }).join(',') + ')' : '' }
-  function setOf(spec) {
-    if (spec.members) return '{' + spec.members.map(function (m) { return M(spec.dimension, m) }).join(',') + '}'
-    if (spec.under) return '{TM1FILTERBYLEVEL({DESCENDANTS(' + M(spec.dimension, spec.under) + ')}, ' + (spec.level || 0) + ')}'
-    return '{TM1FILTERBYLEVEL({TM1SUBSETALL([' + spec.dimension + '].[' + spec.dimension + '])}, ' + (spec.level || 0) + ')}'
-  }
-  function names(dim, into) {
-    return call('SELECT {[}ElementAttributes_' + dim + '].[}ElementAttributes_' + dim + '].[Caption_Default]} ON 0, {TM1SUBSETALL([' + dim + '].[' + dim + '])} ON 1 FROM [}ElementAttributes_' + dim + ']')
-      .then(function (r) { Lens.rows(r).forEach(function (x) { if (x.Caption_Default) into[x[dim]] = x.Caption_Default }) }, function () {})
-  }
+  var where = Lens.mdx.where
+  var setOf = Lens.mdx.set
+  function names(dim, into) { return Lens.mdx.captions(dim, into) }
   // An optional picker (e.g. a region): its members, limited to what this person may see.
   var pick = C.pick || null, pickNames = {}
   function pickValue() { return pick ? $('pick').value : null }

@@ -60,12 +60,14 @@ const LENS_BRIDGE_SCRIPT = `
 
 const CTX_KEY = 'tm1-lens-context'
 
-function readCtx() {
-  try { return JSON.parse(localStorage.getItem(CTX_KEY) || '{}') } catch { return {} }
+// The selection a process's Lenses share (e.g. a store picked once). Kept per
+// server, so one server's selection never leaks into another's Lenses.
+function readCtx(key = CTX_KEY) {
+  try { return JSON.parse(localStorage.getItem(key) || '{}') } catch { return {} }
 }
-function writeCtx(patch) {
-  const next = { ...readCtx(), ...(patch ?? {}) }
-  localStorage.setItem(CTX_KEY, JSON.stringify(next))
+function writeCtx(patch, key = CTX_KEY) {
+  const next = { ...readCtx(key), ...(patch ?? {}) }
+  localStorage.setItem(key, JSON.stringify(next))
   return next
 }
 
@@ -83,11 +85,12 @@ function writeCtx(patch) {
 // leaves it out). Called once so the host page can return to sign-in.
 function installLensHost(getLensWindow, { getServer, getToken, getLens, live = false, readOnly = false, openLens, onUnauthorized }) {
   let stream = null, liveChannel = '', liveConn = ''
+  const ctxKey = CTX_KEY + ':' + (getServer ? String(getServer()) : '')
   const pushCtx = () => {
-    getLensWindow()?.postMessage({ __lensBridge: 1, ctx: true, context: readCtx() }, '*')
+    getLensWindow()?.postMessage({ __lensBridge: 1, ctx: true, context: readCtx(ctxKey) }, '*')
   }
   const onStorage = (e) => {
-    if (e.key === CTX_KEY) pushCtx()
+    if (e.key === ctxKey) pushCtx()
   }
   const onMessage = async (ev) => {
     const d = ev.data
@@ -98,7 +101,7 @@ function installLensHost(getLensWindow, { getServer, getToken, getLens, live = f
     }
     try {
       if (d.method === 'getContext') {
-        respond(d.id, readCtx())
+        respond(d.id, readCtx(ctxKey))
         return
       }
       // Open another Lens (an app home page's tiles, a process page's steps).
@@ -113,9 +116,9 @@ function installLensHost(getLensWindow, { getServer, getToken, getLens, live = f
         return
       }
       if (d.method === 'setContext') {
-        writeCtx(d.payload?.patch)
+        writeCtx(d.payload?.patch, ctxKey)
         pushCtx()
-        respond(d.id, readCtx())
+        respond(d.id, readCtx(ctxKey))
         return
       }
       // A preview may read, but never change data or leave a note.

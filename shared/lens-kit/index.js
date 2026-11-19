@@ -302,6 +302,7 @@ function grid(el, { columns = [], rows: data = [], height, onEdit, onFocus, onSe
     return { row: data[i], field, value: data[i][field], old: orig.get(k) }
   })
   const refresh = () => api && api.refreshCells({ force: true })
+  const clearTyped = () => { orig.clear(); refresh(); if (onEdit) onEdit([]) }
   api = createGrid(node, {
     theme: gridTheme,
     rowData: data,
@@ -417,7 +418,28 @@ function grid(el, { columns = [], rows: data = [], height, onEdit, onFocus, onSe
     // put every typed value back
     undo() { for (const ch of changes()) ch.row[ch.field] = ch.old; orig.clear(); api.setGridOption('rowData', data); if (onEdit) onEdit([]) },
     // the typed values are now in TM1: stop highlighting them
-    saved() { orig.clear(); refresh(); if (onEdit) onEdit([]) },
+    saved() { clearTyped() },
+    // Save every typed change through Lens.save, using this Lens's coordinates
+    // for a cell: coordinates(row, field) → { dimension: element } for every
+    // cube dimension. Text columns are saved as text, numbers as numbers; the
+    // value the screen showed is sent as `expect`, so a cell someone else
+    // changed is refused. Highlights clear when TM1 has accepted the save.
+    async saveCells(cube, { coordinates } = {}) {
+      const ch = changes()
+      if (!ch.length) return { written: 0 }
+      if (typeof coordinates !== 'function') throw new Error('Lens.grid.saveCells needs coordinates(row, field)')
+      const r = await save(cube, ch.map(c => {
+        const col = columns.find(x => x.field === c.field) || {}
+        const text = col.type === 'text'
+        return {
+          coordinates: coordinates(c.row, c.field),
+          value: text ? String(c.value == null ? '' : c.value) : (Number(c.value) || 0),
+          expect: text ? String(c.old == null ? '' : c.old) : (Number(c.old) || 0),
+        }
+      }))
+      clearTyped()
+      return r
+    },
     // Working together: outline the cell someone else is on (one per person —
     // `who` keys it), and show a value they typed (never over my own typing).
     mark(match, field, who, { color, label } = {}) {
@@ -1183,6 +1205,67 @@ whoami.inGroup = (who, groups) => {
   return mine.has('admin') || (groups || []).some(g => mine.has(String(g).toLowerCase()))
 }
 
+// ── mdx ───────────────────────────────────────────────────────────────────────
+// Build the MDX strings every Lens needs, with names escaped once. A ] inside a
+// name is written ]], so a dimension or element called "Sales]Plan" is safe.
+//   var M = Lens.mdx.member                       // (dim, element, hierarchy?) → [dim].[hier].[el]
+//   var where = Lens.mdx.where                    // ({ Version: 'Actual' }) → ' WHERE (...)'
+//   var setOf = Lens.mdx.set                      // ({ dimension, members | under, level }) → a set
+//   Lens.mdx.captions(dim, into)                  // captions into into[element], never rejects
+const qname = s => String(s).replace(/]/g, ']]')
+function mdxMember(dimension, element, hierarchy) {
+  const d = qname(dimension)
+  return `[${d}].[${qname(hierarchy || dimension)}].[${qname(element)}]`
+}
+function mdxWhere(obj) {
+  const keys = Object.keys(obj || {}).filter(k => obj[k] !== undefined && obj[k] !== null && obj[k] !== '')
+  return keys.length ? ' WHERE (' + keys.map(d => mdxMember(d, obj[d])).join(',') + ')' : ''
+}
+function mdxSet(spec) {
+  spec = spec || {}
+  const d = qname(spec.dimension), h = qname(spec.hierarchy || spec.dimension), level = spec.level || 0
+  if (spec.members) return '{' + spec.members.map(m => mdxMember(spec.dimension, m, spec.hierarchy)).join(',') + '}'
+  if (spec.under) return '{TM1FILTERBYLEVEL({DESCENDANTS(' + mdxMember(spec.dimension, spec.under, spec.hierarchy) + ')}, ' + level + ')}'
+  return '{TM1FILTERBYLEVEL({TM1SUBSETALL([' + d + '].[' + h + '])}, ' + level + ')}'
+}
+function mdxCaptions(dimension, into) {
+  if (!window.lensBridge) return Promise.resolve(into || {})
+  const d = qname(dimension)
+  return window.lensBridge.call('execMDX', {
+    mdx: `SELECT {[}ElementAttributes_${d}].[}ElementAttributes_${d}].[Caption_Default]} ON 0, {TM1SUBSETALL([${d}].[${d}])} ON 1 FROM [}ElementAttributes_${d}]`,
+  }).then(r => {
+    rows(r).forEach(x => { if (x.Caption_Default) (into || {})[x[dimension]] = x.Caption_Default })
+    return into || {}
+  }, () => into || {})
+}
+const mdx = { member: mdxMember, where: mdxWhere, set: mdxSet, captions: mdxCaptions }
+
+// ── context ───────────────────────────────────────────────────────────────────
+// The selection a process's Lenses share — pick a store on the home page, open a
+// Lens, and it is already there. Kept per server in the browser.
+//   const ctx = Lens.context()
+//   await ctx.set({ organization: '101' })   // merge a selection
+//   const all = await ctx.get()              // the whole selection
+//   ctx.on(sel => …)                         // whenever it changes in another tab
+function context() {
+  if (!window.lensBridge) return { get: () => Promise.resolve({}), set: () => Promise.reject(new Error('context needs the Lens app or the IDE preview')), on: () => {} }
+  return {
+    get: () => window.lensBridge.call('getContext', {}),
+    set: patch => window.lensBridge.call('setContext', { patch: patch || {} }),
+    on: cb => { if (window.lensBridge.onContext) window.lensBridge.onContext(cb) },
+  }
+}
+
+// ── status ────────────────────────────────────────────────────────────────────
+// The one status line under a Lens's toolbar. The same words and classes every
+// time, so 'busy' / 'ok' / 'err' look the same across screens.
+//   var say = Lens.status('#status').set        // say('Saving…', 'busy'); say('Saved.', 'ok')
+function status(el) {
+  const node = host(el)
+  const set = (text, kind) => { node.textContent = text || ''; node.className = ('status ' + (kind || '')).trim() }
+  return { set, busy: t => set(t, 'busy'), ok: t => set(t, 'ok'), error: t => set(t, 'err'), clear: () => set('') }
+}
+
 // ── config ────────────────────────────────────────────────────────────────────
 // The Lens's settings (its config, edited in the IDE's Config tab) — bindings
 // and behaviour, so the same code can serve different cubes, versions, rows.
@@ -1259,7 +1342,7 @@ function approval(cfg, { who, unit, period, version, lineField = '__line', group
 }
 
 // _pivot: the shared pivot's building blocks (docs/lenses/PIVOT_PLAN.md) — internal until Lens.pivot
-const Lens = { _pivot: pivotKit, pivot, cellInfo, version: TOOLKIT_VERSION, components: COMPONENTS.slice(), rows, format, localTime, theme, kpis, trend, stack, waterfall, bars, grid, flow, editing, live, history, historyPanel, legend, config, whoami, save, run, approval, echarts }
+const Lens = { _pivot: pivotKit, pivot, cellInfo, version: TOOLKIT_VERSION, components: COMPONENTS.slice(), rows, format, localTime, theme, mdx, status, context, kpis, trend, stack, waterfall, bars, grid, flow, editing, live, history, historyPanel, legend, config, whoami, save, run, approval, echarts }
 const missing = COMPONENTS.filter(n => typeof Lens[n] !== 'function')
 if (missing.length) throw new Error('Lens toolkit is missing: ' + missing.join(', '))
 
