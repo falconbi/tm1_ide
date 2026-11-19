@@ -146,11 +146,12 @@ heavier frameworks inside Lenses.
 Users sign in **as themselves**, with the identity they use for TM1 and PAW — that is what makes "runs as the viewer"
 work. Simpler than the IDE: one server only (the PROD it sits beside).
 
-1. Sign-in page; the app **detects TM1's sign-in method** (existing detection) and asks for the right details —
-   username + password (TM1 security / LDAP), or username + password + namespace (CAM).
-2. The app signs in to TM1 **as that user** and holds **one TM1 session per user**; every Lens, read, save and process
-   run uses it, so TM1 security decides what they see and change.
-3. Sign-out closes the TM1 session; idle sessions time out.
+1. Sign-in page; the app **detects the server's method** and asks for the right details — username + password
+   (TM1 security / LDAP), username + password + namespace (CAM), or through PAW for a PAW-native server
+   (`PAW_HOST` in `.env`). **PAW-native supported 19 Nov 2026.**
+2. The app signs in **as that user** and holds **one session per user** — a TM1 session, or a PAW session that every
+   read, save and process run travels through (so PAW's sign-in and TM1 security both apply).
+3. Sign-out closes the session (and releases the PAW session); idle sessions time out.
 
 Protections (reused from the IDE's per-server login): a rejected password is **never retried** (no lockouts); **no
 password stored** — only the TM1 session; the app's own session in an **HttpOnly, Secure cookie** that page scripts and

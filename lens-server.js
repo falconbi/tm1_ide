@@ -26,7 +26,8 @@ const https = require('https')
 const crypto = require('crypto')
 const express = require('express')
 
-const { probeAuthMethod, makeClientWithCredentials } = require('./core/adapter-registry')
+const { probeAuthMethod, makeClientWithCredentials, makeClient } = require('./core/adapter-registry')
+const { createSession: createPawSession, invalidateSession: invalidatePawSession } = require('./core/paw-connect')
 const lensStore = require('./core/lens-store')
 const lensBridge = require('./core/lens-bridge')
 const sharedBridge = require('./shared/lens-bridge')
@@ -91,7 +92,10 @@ function createSessionStore({ idleMs, beforeClose = null }) {
         const entry = tm1.get(user)
         if (!entry || entry.refs.size) return
         tm1.delete(user)
-        const close = () => { try { entry.client?._adapter?.closeSession?.() } catch { /* best effort */ } }
+        const close = () => {
+            try { entry.client?._adapter?.closeSession?.() } catch { /* best effort */ }
+            try { entry.onClose?.() } catch { /* best effort */ }
+        }
         if (!beforeClose) return close()
         Promise.resolve().then(() => beforeClose(entry.client, display)).catch(() => {}).finally(close)
     }
@@ -300,6 +304,14 @@ function createApp({ config, deps = {} } = {}) {
     const cfg = config ? { ...normalizeConfig(config), ...config } : loadConfig()
     const probe     = deps.probeAuthMethod      ?? ((s) => probeAuthMethod(s))
     const signIn    = deps.makeClientWithCredentials ?? ((s, c, st) => makeClientWithCredentials(s, c, st))
+    // PAW-native servers: sign in to PAW once (the IDE's paw-connect session),
+    // then call TM1 through PAW as that person. The IDE's token is the PAW
+    // session key; PawNativeAdapter already knows how to use it.
+    const pawLogin  = deps.createPawSession ?? ((u, p) => process.env.PAW_HOST
+        ? createPawSession(u, p)
+        : Promise.reject(new Error('PAW sign-in needs PAW_HOST in .env (the PAW address)')))
+    const pawLogout = deps.invalidatePawSession ?? (token => invalidatePawSession(token))
+    const pawClient = deps.makePawClient ?? ((server, token) => makeClient(server, token))
     const execMdx   = deps.execMdx  ?? ((client, mdx) => lensBridge.execMDX(client, mdx))
     const readCell  = deps.readCell ?? ((client, cube, coords) => lensBridge.readCell(client, cube, coords))
     const getMeta   = deps.getMeta  ?? ((client, cube) => lensBridge.getMeta(client, cube))
@@ -493,31 +505,49 @@ function createApp({ config, deps = {} } = {}) {
         if (waitMin) return res.status(429).json({ error: `Too many failed sign-ins for "${name}" — wait ${waitMin} minute${waitMin === 1 ? '' : 's'} before trying again (protects the account from TM1's lock-out).` })
         let method
         try { method = (await probe(cfg.server)).method } catch (e) { return res.status(502).json({ error: `Could not reach "${cfg.server}": ${e.message}` }) }
-        if (!['native', 'cam'].includes(method)) {
+        if (!['native', 'cam', 'paw'].includes(method)) {
             return res.status(400).json({ error: `Sign-in method "${method}" on ${cfg.server} is not supported by the Lens app yet` })
         }
-        // ALWAYS check the password with TM1 — even when this user already has a
-        // session. Only a verified sign-in may share (or start) the TM1 session.
+        // ALWAYS check the password with TM1/PAW — even when this user already
+        // has a session. Only a verified sign-in may share (or start) the session.
         const state = {}
-        let cl
-        try { cl = signIn(cfg.server, { username: name, password: password ?? '', namespace: namespace || null }, state) } catch { /* unreachable handled below */ }
-        if (!cl) return res.status(400).json({ error: `"${cfg.server}" is not reachable as a direct TM1 server` })
+        const viaPaw = method === 'paw'
+        let cl, pawToken = null
+        if (viaPaw) {
+            try { pawToken = await pawLogin(name, password ?? '') }
+            catch (e) {
+                const status = e.response?.status
+                if (status === 401 || status === 403) {
+                    failures.recordFailure(user.toLowerCase())
+                    return res.status(403).json({ rejected: true, error: `PAW rejected the login for "${cfg.server}" — check your username and password` })
+                }
+                return res.status(502).json({ error: `Could not reach PAW: ${e.message}` })
+            }
+            try { cl = pawClient(cfg.server, pawToken) }
+            catch (e) { pawLogout(pawToken); return res.status(400).json({ error: `"${cfg.server}" is not reachable through PAW: ${e.message}` }) }
+            if (!cl) { pawLogout(pawToken); return res.status(400).json({ error: `"${cfg.server}" is not configured as a PAW-native server` }) }
+        } else {
+            try { cl = signIn(cfg.server, { username: name, password: password ?? '', namespace: namespace || null }, state) } catch { /* unreachable handled below */ }
+            if (!cl) return res.status(400).json({ error: `"${cfg.server}" is not reachable as a direct TM1 server` })
+        }
         try { await cl.get('ActiveUser', { '$select': 'Name' }) }
         catch (e) {
+            if (pawToken) pawLogout(pawToken)
             if (e.code === 'TM1_AUTH_REJECTED' || (e.response?.status === 401)) {
                 failures.recordFailure(user.toLowerCase())
-                return res.status(403).json({ rejected: true, error: `TM1 rejected the login for "${cfg.server}" — check your username and password` })
+                return res.status(403).json({ rejected: true, error: `${viaPaw ? 'PAW' : 'TM1'} rejected the login for "${cfg.server}" — check your username and password` })
             }
             return res.status(502).json({ error: e.message })
         }
         failures.clear(user.toLowerCase())
         ipLimit.clear?.(req)
         if (store.existing(user)) {
-            // Verified, and the user already has a TM1 session: reuse it and close
-            // the one just opened for the check (one TM1 session per user).
+            // Verified, and the user already has a session: reuse it and close
+            // the one just opened for the check (one session per user).
             try { cl?._adapter?.closeSession?.() } catch { /* best effort */ }
+            if (pawToken) pawLogout(pawToken)
         } else {
-            store.adoptTm1Session(user, { client: cl, state, refs: new Set() })
+            store.adoptTm1Session(user, { client: cl, state, refs: new Set(), onClose: pawToken ? () => pawLogout(pawToken) : null })
         }
         const sid = store.addWebSession(user, name)
         res.cookie(COOKIE, sid, cookieOptions(cfg, req))
