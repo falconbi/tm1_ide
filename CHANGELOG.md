@@ -47,6 +47,33 @@ in development, but October established the shape of the product.
 
 ## November 2026 — “Trust the Editor” (in progress)
 
+### Week of 17–19 November
+
+#### Lens app
+
+- **PAW-native sign-in** — the Lens app now signs users in through PAW for a PAW-native server
+  (`PAW_HOST` in `.env`) and makes every read, save and process run through PAW as that person.
+  Sign-out releases the PAW session with the last browser session.
+- **TLS/proxy correctness** — a `trustProxy` setting makes the Secure cookie, the toolkit URL and
+  the HTTPS wording follow `X-Forwarded-Proto` behind PAW or another proxy.
+- **Session recovery** — an expired session returns to sign-in and comes back to the same Lens;
+  deep links survive sign-in. Live streams close when their session ends.
+- **Drafts are governed** — visible only to their author, chosen reviewers or TM1 admins, and
+  read-only until published. The home-page hover preview is read-only too. History and cell trace
+  respect TM1 visibility; the activity log rotates and never fails a committed write.
+- **Lens governance** — version history with one-click restore (the current version is kept),
+  concurrent-save protection, a `lensAuthors` group gate, and publisher recorded. Line approval is
+  a shared toolkit component, with MDX, status, shared selection and grid saving.
+- **Operations** — a Lens app operations guide (systemd, Windows service, container, TLS/PAW, backup)
+  and a `/healthz` endpoint.
+
+#### Installation
+
+- Windows install documented and tested for install, start, sign-in and opening a cube; a
+  step-by-step `INSTALL.md` asks for the values it needs and covers the common first-run errors.
+- `.gitattributes` keeps line endings stable on Windows; the Admin Server lookup now explains a
+  wrong `url` instead of reporting a misleading 401.
+
 ### Week of 1–6 November
 
 November is deliberately a reliability month: the goal is that a TM1 developer

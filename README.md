@@ -87,9 +87,12 @@ Git, with review, approval, deploy and verify steps.
 
 <a href="docs/deploy/DEPLOY_LIFECYCLE.md"><img src="docs/images/deploy.png" alt="The step-by-step deploy" width="480"></a>
 
-### Web applications on TM1 (Lenses, in development)
+### Web applications on TM1 (Lenses)
 Focused HTML screens on live TM1 data, one per job, with governed write-back. They're built in the
-IDE and they live in the TM1 model. They're not ready for use yet.
+IDE, live in the TM1 model, and open in the separate Lens app — people sign in as themselves, and
+TM1 security decides what each person sees and changes. Lenses can be drafted, reviewed and
+published with version history and rollback. The release-to-PROD path is the last piece still in
+progress.
 
 ![The Lenses home page](docs/images/lenses-home-full.png)
 

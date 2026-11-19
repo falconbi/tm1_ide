@@ -1,6 +1,6 @@
 # Lens app — plan
 
-Status: **in progress** — steps 1–9 built; the toolkit now owns line approval, MDX, status, shared selection and grid saving · 11 Oct 2026 · replaces [LENSES_PLAN.md](LENSES_PLAN.md) (Stage 1 inside the IDE — built, kept as history).
+Status: **in progress** — steps 1–9 built, plus PAW-native sign-in, Lens governance (authors, versions/restore, save conflicts), the toolkit behaviour layer and an ops guide; step 10 (release to PROD) is parked · 11 Oct 2026 · replaces [LENSES_PLAN.md](LENSES_PLAN.md) (Stage 1 inside the IDE — built, kept as history).
 
 ← [Back to README](../../README.md) · Running it: [LENS_APP_OPS.md](LENS_APP_OPS.md)
 
