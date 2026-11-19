@@ -39,7 +39,14 @@ Short videos, a few minutes each, recorded on a live TM1 server.
 | ▶ | **[IDE Views](https://www.youtube.com/watch?v=wD6n-vdmCLI)** | Native and MDX views, subsets, hierarchies, working the grid and tracing a number |
 | ▶ | **[Cube Map](https://www.youtube.com/watch?v=MM62ZqC3pjk)** | A whole model on one page: the map, the Runbook and Play a run |
 
-More are on the way: AI building through MCP, deploys, and Lenses.
+**Coming soon** — in production now:
+
+| | Video | What you'll see |
+|---|---|---|
+| Soon | **MCP Server — build with AI** | An agent builds dimensions, cubes, rules and processes through the MCP server |
+| Soon | **Lenses — a new UI** | Purpose-built screens on live TM1 data, built in the IDE and opened by business users |
+| Soon | **Deploy with Git** | A change set through release, approval and deploy with TM1 Git |
+| Soon | **Administration and installation** | Install the IDE and Lens app, connect a server, and run it day to day |
 
 ---
 

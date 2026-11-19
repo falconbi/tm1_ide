@@ -2,6 +2,15 @@
 
 Six playlists. Each item below is one video of about 3 minutes.
 
+## Coming soon
+
+Four headline videos are in production. They are the first place to look for the big stories:
+
+- **MCP Server — build with AI** — an agent builds dimensions, cubes, rules and processes through the MCP server, with its work tracked and tested (playlist 1)
+- **Lenses — a new UI** — purpose-built screens on live TM1 data, built in the IDE and opened by business users (playlist 4)
+- **Deploy with Git** — a change set through release, approval and deploy with TM1 Git (playlist 3)
+- **Administration and installation** — install the IDE and Lens app, connect a server, then monitor and administer it (playlists 5 and 6)
+
 ## 1. Build with AI
 - **MCP server** — an agent builds dimensions, cubes, rules and processes
 - **AI inside change sets** — the agent's work is tracked and tested like anyone's

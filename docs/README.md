@@ -17,6 +17,15 @@ Short walkthroughs of the IDE, each a few minutes long.
 | [IDE Views](https://www.youtube.com/watch?v=wD6n-vdmCLI) | The grid: native and MDX views, subsets, hierarchies, working the grid, tracing a number |
 | [Cube Map](https://www.youtube.com/watch?v=MM62ZqC3pjk) | Reading a whole model on one page: the map, Runbook and Play a run |
 
+**Coming soon** — in production now:
+
+| Video | What it will show |
+|---|---|
+| **MCP Server — build with AI** | An agent builds dimensions, cubes, rules and processes through the MCP server |
+| **Lenses — a new UI** | Purpose-built screens on live TM1 data, built in the IDE and opened by business users |
+| **Deploy with Git** | A change set through release, approval and deploy with TM1 Git |
+| **Administration and installation** | Install the IDE and Lens app, connect a server, and run it day to day |
+
 ## Folders
 
 | Folder | What's in it | Start with |
