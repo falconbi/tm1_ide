@@ -120,7 +120,7 @@ test('publish:false unpublishes, while a new Lens with no publish starts as a dr
 test('each save keeps the version it replaces, and a restore becomes a new version', async () => {
   await lens.saveLens('SrvA', 'L1', '<p>one</p>', 'author')
   await lens.saveLens('SrvA', 'L1', '<p>two</p>', 'author')
-  assert.equal(docs.get('SrvA|lenses|L1.v1.json').html, '<p>one</p>', 'version 1 is kept')
+  assert.equal(docs.get('SrvA|lensHistory|L1.v1.json').html, '<p>one</p>', 'version 1 is kept')
 
   const versions = await lens.listLensVersions('SrvA', 'L1')
   assert.deepEqual(versions.map(v => v.version), [1])
@@ -129,7 +129,7 @@ test('each save keeps the version it replaces, and a restore becomes a new versi
   const restored = await lens.restoreLensVersion('SrvA', 'L1', 1, 'reviewer', { expectVersion: 2 })
   assert.equal(restored.version, 3)
   assert.equal((await lens.readLens('SrvA', 'L1')).html, '<p>one</p>')
-  assert.equal(docs.get('SrvA|lenses|L1.v2.json').html, '<p>two</p>', 'the replaced current version is kept too')
+  assert.equal(docs.get('SrvA|lensHistory|L1.v2.json').html, '<p>two</p>', 'the replaced current version is kept too')
 })
 
 test('a save from an old copy is refused, and nothing is written', async () => {
@@ -148,5 +148,5 @@ test('deleting a Lens removes the versions kept with it', async () => {
   await lens.saveLens('SrvA', 'Gone', '<p>2</p>', 'a')
   await lens.deleteLens('SrvA', 'Gone')
   assert.equal(docs.has('SrvA|lenses|Gone.json'), false)
-  assert.equal(docs.has('SrvA|lenses|Gone.v1.json'), false)
+  assert.equal(docs.has('SrvA|lensHistory|Gone.v1.json'), false)
 })

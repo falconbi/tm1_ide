@@ -261,7 +261,8 @@ updated; every version kept; checks run on save. (No copying code out to another
 Each stage is proven in the lab before the next.
 
 ### Stage 0 — Foundations (in the IDE)
-- **A Lens is saved in the model** — `Applications/Governance/Lenses/`, reusing `core/model-store.js` — and appears in
+- **A Lens is saved in the model** — `Applications/Governance/Lenses/`, with earlier versions kept separately in
+  `Applications/Governance/LensHistory/` (never mixed into the Lens list), reusing `core/model-store.js` — and appears in
   the IDE's **model tree** under its server, alongside cubes, dimensions and processes. No local `config/lenses/`
   storage: a private model's Lenses stay private with the model.
 - The 10 early demo Lenses are **removed** (experiments; kept in git history) — nothing to migrate.

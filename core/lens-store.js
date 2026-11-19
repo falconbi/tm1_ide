@@ -10,6 +10,7 @@
 const store = require('./model-store')
 
 const AREA = 'lenses'
+const HISTORY_AREA = 'lensHistory'
 
 // Bumped when the bridge/toolkit contract changes, so the Lens app can refuse a
 // Lens it can't run (LENS_APP_PLAN.md — version check).
@@ -182,7 +183,7 @@ async function saveLens(server, name, html, owner, { publish, description, folde
     // Keep the version we are replacing, so any earlier state can be restored.
     if (existing) {
         try {
-            await store.writeDoc(server, AREA, versionDocName(safe, existing.version), existing, { ideToken, client })
+            await store.writeDoc(server, HISTORY_AREA, versionDocName(safe, existing.version), existing, { ideToken, client })
         } catch (e) {
             throw new Error(`Could not keep version ${existing.version} of "${safe}" before saving — nothing was changed. ${e.message}`, { cause: e })
         }
@@ -196,12 +197,12 @@ async function deleteLens(server, name, { ideToken, client } = {}) {
     const safe = safeName(name)
     await store.deleteDoc(server, AREA, docName(safe), { ideToken, client })
     for (const n of await versionDocs(server, safe, { ideToken, client })) {
-        try { await store.deleteDoc(server, AREA, n, { ideToken, client }) } catch { /* history cleanup is best effort */ }
+        try { await store.deleteDoc(server, HISTORY_AREA, n, { ideToken, client }) } catch { /* history cleanup is best effort */ }
     }
 }
 
 async function versionDocs(server, safe, opts) {
-    return (await store.listDocs(server, AREA, opts)).filter(n => {
+    return (await store.listDocs(server, HISTORY_AREA, opts)).filter(n => {
         const m = VERSION_DOC.exec(n)
         return m && n.startsWith(safe + '.v')
     })
@@ -214,7 +215,7 @@ async function listLensVersions(server, name, { ideToken, client } = {}) {
     const out = []
     for (const n of await versionDocs(server, safe, { ideToken, client })) {
         try {
-            const doc = await store.readDoc(server, AREA, n, { ideToken, client })
+            const doc = await store.readDoc(server, HISTORY_AREA, n, { ideToken, client })
             if (!doc) continue
             const version = Number(VERSION_DOC.exec(n)[1])
             out.push({ version, updated: doc.updated ?? null, status: doc.status ?? 'draft', owner: doc.owner ?? '', publishedBy: doc.publishedBy ?? null, publishedAt: doc.publishedAt ?? null })
@@ -225,7 +226,7 @@ async function listLensVersions(server, name, { ideToken, client } = {}) {
 
 async function readLensVersion(server, name, version, { ideToken, client } = {}) {
     const safe = safeName(name)
-    const doc = await store.readDoc(server, AREA, versionDocName(safe, version), { ideToken, client })
+    const doc = await store.readDoc(server, HISTORY_AREA, versionDocName(safe, version), { ideToken, client })
     if (!doc) throw new Error(`Version ${version} of Lens "${safe}" is not kept on ${server}`)
     return doc
 }

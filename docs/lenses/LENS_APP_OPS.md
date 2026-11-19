@@ -145,8 +145,8 @@ only when changing the front end (`cd client && npm run build`) — an install n
 
 ## Backup
 
-- The model's `Applications/Governance/Lenses` (the Lenses and their version history) — through the
-  model, not the app.
+- The model's `Applications/Governance/Lenses` (the Lenses) and `Applications/Governance/LensHistory`
+  (their earlier versions) — through the model, not the app.
 - `config/lens-app.json`, `config/servers.json`, `.env` — the installation's settings.
 - `data/lens-prefs.json` — themes; regenerable.
 - `data/lens-activity.jsonl` — activity history; regenerate nothing, archive it if it matters.
