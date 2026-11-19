@@ -782,6 +782,16 @@ iterations:
 
 ## What each build taught us
 
+### Change tracking at the grain of the change (Nov 2026)
+
+A whole-version "recalculate everything" flag is the wrong grain once one change usually touches one
+row. Track the change where it happens (here, Version × Position in a small queue cube), find the
+**transitive set** it affects, and clear only that. Some drivers are genuinely version-wide (pay
+rates, tax bands, FX, assumptions, a bulk load) — keep a version-wide escape hatch for those, not
+for every edit. Where a calculation is shared (tax is per person, year to date), the affected set is
+a graph, not one row: a Position change must include every Position held by every person on it.
+Prove partial and full paths produce identical stored cells before trusting the fast path.
+
 ### OPX Allocations (Sep 2026) — first end-to-end MCP build
 
 - **Wrong dimensionality.** Cost centres were built as `Benefits North Src` /

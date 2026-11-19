@@ -148,8 +148,8 @@ city, country and region (their rules test leaves with `DTYPE`, not `ELLEV`); co
 ## 5. The lifecycle — every change, who makes it, where
 
 Each change is dated and applies from its month onwards; months before it are never rewritten.
-Actual months are refused. Every action calls `WFP Request Recalculation` so cost follows
-(section 8).
+Actual months are refused. Every action calls `WFP Request Recalculation` with the Position it
+changed, so cost follows at the grain of the change (section 8).
 
 | # | Change | Who | Page | Process | Effect |
 |---|---|---|---|---|---|
@@ -251,13 +251,22 @@ TI; rules only for what planners must see change live.
   year at the opening. Until it does, `WFP Estimate Opening YTD` (pOverwrite) estimates it: monthly
   pay at the opening × the months of the tax year already gone (UK / NZ 9, US 12), taxed on the
   same bands. Real payroll figures replace the estimate.
-- **Cost follows every action:** each action process calls `WFP Request Recalculation` (marks
-  `WFP Control` → Cost Out Of Date for that version). Chore **`WFP Recalculate Cost`** (every
-  5 minutes) runs `WFP Recalculate If Needed` → Base + tax run for **only the versions marked**,
-  one at a time, so a change to Forecast never recomputes Budget, Downside or Actual. Pages show
-  "Cost up to date (hh:mm)" or "Cost updating…". **The TM1 server clock is UTC−8**: a chore start
-  time must be in the past in server time.
-- Run time on the full model: one version ≈ 40 s; all four ≈ 2 min.
+- **Cost follows every action:** each action process calls `WFP Request Recalculation` with
+  `pPosition` and marks that Position in **`WFP Recalc Queue`**. A worked change runs
+  **`WFP Recalculate Position`** immediately (the Positions page does this for up to 10 Positions
+  per save); if that fails or a lock is held, the mark stays for the chore. Chore
+  **`WFP Recalculate Cost`** (every 5 minutes) runs `WFP Recalculate If Needed`: position marks are
+  recalculated one Position at a time, full-version marks run the whole Base. A change to Forecast
+  never recomputes Budget, Downside or Actual. Pages show "Cost up to date (hh:mm)" or
+  "Cost updating…". **The TM1 server clock is UTC−8**: a chore start time must be in the past in
+  server time.
+- **The affected set:** a Position change is recalculated together with every person ever assigned
+  to it and **every Position those people held that version** — tax is per person, year to date,
+  and tax shares are posted to each Position. Plans with no person are taxed per Position.
+- **A version lock** (`WFP Control` → `Recalc Locked`) stops a Position run and the chore from
+  overlapping; a stale lock is taken over after 30 minutes. Queue marks are cleared only if the
+  request token has not changed during the run.
+- **Measured:** one Position ≈ 0.3–0.5 s; a full Forecast run ≈ 2 min on the full model.
 
 ---
 
