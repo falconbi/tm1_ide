@@ -131,7 +131,17 @@ function cleanConfig(config) {
     return out
 }
 
-async function saveLens(server, name, html, owner, { publish, description, folder, title, icon, color, image, config, ideToken, client } = {}) {
+// Reviewers are TM1 users or groups chosen by the author: while a Lens is a
+// draft they may open it, along with the author and TM1 admins.
+function cleanReviewers(reviewers) {
+    if (reviewers === undefined) return undefined
+    if (!Array.isArray(reviewers) || reviewers.some(r => typeof r !== 'string' || !r.trim() || r.length > 100) || reviewers.length > 50) {
+        throw new Error('reviewers must be a list of TM1 user or group names')
+    }
+    return [...new Set(reviewers.map(r => r.trim()))]
+}
+
+async function saveLens(server, name, html, owner, { publish, description, folder, title, icon, color, image, config, reviewers, ideToken, client } = {}) {
     const safe = safeName(name)
     const existing = await store.readDoc(server, AREA, docName(safe), { ideToken, client })
     const now = new Date().toISOString()
@@ -148,6 +158,7 @@ async function saveLens(server, name, html, owner, { publish, description, folde
         color:          color === undefined || color === null ? (existing?.color ?? '') : cleanColor(color),
         image:          image === undefined || image === null ? (existing?.image ?? '') : cleanImage(image),
         config:         config === undefined || config === null ? (existing?.config ?? {}) : cleanConfig(config),
+        reviewers:      reviewers === undefined ? (existing?.reviewers ?? []) : cleanReviewers(reviewers),
         created:        existing?.created ?? now,
         createdBy:      existing?.createdBy ?? owner ?? 'unknown',
         toolkitVersion: TOOLKIT_VERSION,
@@ -163,10 +174,30 @@ async function deleteLens(server, name, { ideToken, client } = {}) {
     await store.deleteDoc(server, AREA, docName(name), { ideToken, client })
 }
 
-// One gate for every list, page, frame and API read: published (or draft when
-// the Lens app shows drafts) AND the person's TM1 groups may open it.
-function visibleTo(doc, groups = [], { showDrafts = false } = {}) {
-    return (doc?.status === 'published' || (showDrafts && doc?.status === 'draft')) && canOpenLens(doc, groups)
+// One gate for every list, page, frame and API read. A published Lens follows
+// config.access. A draft is only visible to its author, its chosen reviewers,
+// or a TM1 admin — and only when the Lens app is showing drafts at all.
+function isTm1Admin(groups = [], user = '') {
+    return String(user).toLowerCase() === 'admin' || groups.some(g => String(g).toLowerCase() === 'admin')
+}
+
+function draftVisibleTo(doc, groups = [], user = '') {
+    if (isTm1Admin(groups, user)) return true
+    const me = String(user ?? '').toLowerCase()
+    const mine = new Set(groups.map(g => String(g).toLowerCase()))
+    if (me) mine.add(me)
+    if (!mine.size) return false
+    const authors = [doc?.owner, doc?.createdBy].map(x => String(x ?? '').toLowerCase()).filter(Boolean)
+    if (authors.some(a => mine.has(a))) return true
+    return (Array.isArray(doc?.reviewers) ? doc.reviewers : []).some(r => mine.has(String(r).toLowerCase()))
+}
+
+function visibleTo(doc, groups = [], { showDrafts = false, user = '' } = {}) {
+    if (!doc) return false
+    if (!canOpenLens(doc, groups)) return false
+    if (doc.status === 'published') return true
+    if (doc.status === 'draft') return showDrafts && draftVisibleTo(doc, groups, user)
+    return false
 }
 
 // May this person open the Lens? config.access lists TM1 groups; empty = everyone.
@@ -178,4 +209,4 @@ function canOpenLens(doc, groups = []) {
     return mine.has('admin') || allowed.some(g => mine.has(String(g).toLowerCase()))
 }
 
-module.exports = { listLensRuns, safeName, cleanFolder, cleanIcon, cleanColor, cleanImage, cleanConfig, canOpenLens, visibleTo, ICON_NAMES, listLenses, readLens, saveLens, deleteLens, TOOLKIT_VERSION }
+module.exports = { listLensRuns, safeName, cleanFolder, cleanIcon, cleanColor, cleanImage, cleanConfig, cleanReviewers, canOpenLens, visibleTo, ICON_NAMES, listLenses, readLens, saveLens, deleteLens, TOOLKIT_VERSION }

@@ -78,7 +78,8 @@ function writeCtx(patch) {
 // `getLens` names the Lens this host opened — a write is checked against THAT
 // saved Lens's declared cubes, never a name taken from the message.
 // `live` (Lens app only): relay the working-together stream into the frame.
-function installLensHost(getLensWindow, { getServer, getToken, getLens, live = false, openLens }) {
+// `readOnly`: a preview — reads are answered, but nothing may change data.
+function installLensHost(getLensWindow, { getServer, getToken, getLens, live = false, readOnly = false, openLens }) {
   let stream = null, liveChannel = '', liveConn = ''
   const pushCtx = () => {
     getLensWindow()?.postMessage({ __lensBridge: 1, ctx: true, context: readCtx() }, '*')
@@ -114,6 +115,10 @@ function installLensHost(getLensWindow, { getServer, getToken, getLens, live = f
         pushCtx()
         respond(d.id, readCtx())
         return
+      }
+      // A preview may read, but never change data or leave a note.
+      if (readOnly && (d.method === 'writeCells' || d.method === 'runProcess' || d.method === 'addNote')) {
+        throw new Error('This is a preview — it can read the data but not change it')
       }
       if (d.method === 'liveJoin' || d.method === 'liveSend' || (d.method === 'history' && live)) {
         const lens = getLens ? getLens() : null

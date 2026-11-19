@@ -7,7 +7,8 @@ const { visibleTo } = require('../core/lens-store')
 
 const DOCS = {
   Public:  { name: 'Public', status: 'published', toolkitVersion: 1, html: '<p>public</p>', config: {} },
-  Draft:   { name: 'Draft', status: 'draft', toolkitVersion: 1, html: '<p>draft</p>', config: {} },
+  Draft:   { name: 'Draft', status: 'draft', owner: 'author', createdBy: 'author', reviewers: ['reviewer', 'WFP HR'], toolkitVersion: 1, html: '<p>draft</p>', config: {} },
+  OtherDraft: { name: 'OtherDraft', status: 'draft', owner: 'someone-else', createdBy: 'someone-else', toolkitVersion: 1, html: '<p>other</p>', config: {} },
   Finance: { name: 'Finance', status: 'published', toolkitVersion: 1, html: '<p>finance</p>', config: { access: ['WFP Finance'] } },
 }
 
@@ -25,8 +26,8 @@ function deps() {
   }
 }
 
-async function withApp(fn) {
-  const ctl = createApp({ config: { server: 'S1', port: 0, showDrafts: false, endSessionProcesses: [] }, deps: deps() })
+async function withApp(fn, config = {}) {
+  const ctl = createApp({ config: { server: 'S1', port: 0, showDrafts: false, endSessionProcesses: [], ...config }, deps: deps() })
   const srv = http.createServer(ctl.app)
   await new Promise(r => srv.listen(0, r))
   const base = `http://127.0.0.1:${srv.address().port}`
@@ -40,12 +41,18 @@ async function withApp(fn) {
   }
 }
 
-test('visibleTo applies status and group access in one place', () => {
+test('visibleTo applies status, access, author/reviewer and admin in one place', () => {
   assert.equal(visibleTo(DOCS.Public, [], { showDrafts: false }), true)
-  assert.equal(visibleTo(DOCS.Draft, [], { showDrafts: false }), false)
-  assert.equal(visibleTo(DOCS.Draft, [], { showDrafts: true }), true)
-  assert.equal(visibleTo(DOCS.Finance, ['WFP HR'], { showDrafts: true }), false)
-  assert.equal(visibleTo(DOCS.Finance, ['WFP Finance'], { showDrafts: true }), true)
+  assert.equal(visibleTo(DOCS.Draft, [], { showDrafts: false, user: 'author' }), false, 'showDrafts off hides drafts even from the author')
+  assert.equal(visibleTo(DOCS.Draft, [], { showDrafts: true }), false, 'no signed-in identity sees no draft')
+  assert.equal(visibleTo(DOCS.Draft, [], { showDrafts: true, user: 'author' }), true)
+  assert.equal(visibleTo(DOCS.Draft, [], { showDrafts: true, user: 'reviewer' }), true)
+  assert.equal(visibleTo(DOCS.Draft, [], { showDrafts: true, user: 'someone' }), false)
+  assert.equal(visibleTo(DOCS.Draft, ['WFP HR'], { showDrafts: true, user: 'hr_user' }), true, 'a reviewer group works too')
+  assert.equal(visibleTo(DOCS.Draft, ['ADMIN'], { showDrafts: true, user: 'boss' }), true, 'a TM1 admin may review any draft')
+  assert.equal(visibleTo(DOCS.Draft, [], { showDrafts: true, user: 'admin' }), true)
+  assert.equal(visibleTo(DOCS.Finance, ['WFP HR'], { showDrafts: true, user: 'hr_user' }), false)
+  assert.equal(visibleTo(DOCS.Finance, ['WFP Finance'], { showDrafts: true, user: 'fin' }), true)
 })
 
 test('with showDrafts off, a draft is absent from lists and refused by every open route', async () => {
@@ -62,4 +69,14 @@ test('with showDrafts off, a draft is absent from lists and refused by every ope
     assert.equal((await fetch(`${base}/lens/Public`, { headers: { cookie } })).status, 200)
     assert.equal((await fetch(`${base}/api/lens/Public`, { headers: { cookie } })).status, 200)
   })
+})
+
+test('with showDrafts on, a draft is listed and opened only for its author and reviewers', async () => {
+  await withApp(async ({ base, cookie }) => {
+    const list = await (await fetch(`${base}/api/lenses`, { headers: { cookie } })).json()
+    assert.deepEqual(list.map(l => l.name).sort(), ['Draft', 'Public'], 'hr_user is a reviewer (WFP HR) of Draft, not of OtherDraft')
+
+    assert.equal((await fetch(`${base}/lens/Draft`, { headers: { cookie }, redirect: 'manual' })).status, 200)
+    assert.equal((await fetch(`${base}/lens/OtherDraft`, { headers: { cookie }, redirect: 'manual' })).status, 404, 'a draft the person may not review is not openable')
+  }, { showDrafts: true })
 })

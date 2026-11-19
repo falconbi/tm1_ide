@@ -29,6 +29,7 @@ test('trace names the cell in cube order; every dimension is required', async ()
   const r = await b.cellTrace(fakeClient(), 'C', { Entity: 'UK', Measure: 'Rate' })
   assert.deepEqual(r.pairs, [{ dim: 'Measure', element: 'Rate' }, { dim: 'Entity', element: 'UK' }])
   await assert.rejects(b.cellTrace(fakeClient(), 'C', { Measure: 'Rate' }), /missing: Entity/)
+  await assert.rejects(b.cellTrace(fakeClient({ readable: false }), 'C', co), /can't see this cell/)
 })
 
 test("log and notes only for a cell the person can read; notes are this cell's only", async () => {

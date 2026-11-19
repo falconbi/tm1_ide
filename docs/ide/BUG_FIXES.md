@@ -3,7 +3,7 @@
 Every bug-fix commit, newest first, by the date it was committed. Generated from the git history;
 commits that mixed a fix into a feature are included too. New features are not listed here.
 
-166 fixes from 2026-05-20 to 2026-10-10, plus 46 entries for 11–27 October, 6 for 28 October–1 November, 7 for 2 November, 4 for 5 November, 10 for 6 November, 9 for 9 November, 8 for 15 November, 3 for 17 November, 9 for 18 November and 2 for 19 November. Last updated 2026-11-19.
+166 fixes from 2026-05-20 to 2026-10-10, plus 46 entries for 11–27 October, 6 for 28 October–1 November, 7 for 2 November, 4 for 5 November, 10 for 6 November, 9 for 9 November, 8 for 15 November, 3 for 17 November, 9 for 18 November and 5 for 19 November. Last updated 2026-11-19.
 
 ← [Back to README](../../README.md)
 
@@ -41,6 +41,10 @@ commits that mixed a fix into a feature are included too. New features are not l
 - **CRLF checkout fails the MCP docs test** — Git for Windows checked `docs/ide/MCP_SERVER.md` out with CRLF, so the generated tool-table test compared LF with CRLF and always failed on Windows. Added `.gitattributes` (`* text=auto eol=lf` plus the binary image/font types) and the test now normalises CRLF before comparing
 
 - **Sign-in with a TM1 server's port** — `url` pointing at a TM1 server instead of the Admin Server returned "Could not reach … 401", which read as a bad password, and nothing was logged. The Admin Server lookup now names the cause (a TM1 server answered, the Admin Server is unreachable, or the server is not listed) under `ADMIN_HOST_LOOKUP`; the sign-in route logs it once without the request body and shows the setup message
+
+- **Lens drafts and previews** — A Lens app with drafts switched on showed every draft to everyone, and a draft could change data or run processes. Drafts are now limited to their author, chosen reviewers or a TM1 admin, and are display-only until published; the home-page hover preview also runs read-only, so a Lens cannot write or run just by being peeked at
+- **Lens history and trace** — History with no slice returned every user's cells, values and notes from the local activity log, and a rule trace skipped the TM1 readability check the other cell routes use. History now shows only your own activity when no slice is given, checks each cube in a slice and drops unreadable entries; trace checks the cell first
+- **Lens activity log** — A failed append after a successful TM1 write or run returned an error, so the person could retry a change that had already happened. Logging is now best-effort: the write/run reports success and the failure is a console warning
 
 ### 2026-11-18
 

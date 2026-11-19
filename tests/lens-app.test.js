@@ -31,7 +31,7 @@ async function setup(stubOverrides = {}) {
     getMeta: async (client, cube) => ({ metaFor: client._creds?.username ?? '?', cube }),
     listLenses: async (server, opts) => ([
       { name: 'PnL-Dashboard', status: 'published', version: 1, toolkitVersion: 1, updated: '2026-10-01T00:00:00Z', description: 'P&L' },
-      { name: 'Private-Draft', status: 'draft', version: 2, toolkitVersion: 1 },
+      { name: 'Private-Draft', status: 'draft', owner: 'admin', version: 2, toolkitVersion: 1 },
     ]),
     readLens: async (server, name, opts) => {
       if (name === 'Future') return { name: 'Future', status: 'published', toolkitVersion: 99, html: '<p>future</p>' }

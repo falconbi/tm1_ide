@@ -373,7 +373,9 @@ async function assertReadable(client, cube, pairs) {
         .catch(() => { throw new Error('You can\'t see this cell') })
 }
 async function cellTrace(client, cube, coordinates) {
-    return client.traceCellCalculation(cube, await cellTuple(client, cube, coordinates))
+    const pairs = await cellTuple(client, cube, coordinates)
+    await assertReadable(client, cube, pairs)
+    return client.traceCellCalculation(cube, pairs)
 }
 async function cellLog(client, cube, coordinates, top = 30) {
     const pairs = await cellTuple(client, cube, coordinates)

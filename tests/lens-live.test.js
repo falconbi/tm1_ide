@@ -68,7 +68,7 @@ test('Lens app: history checks the slice as the user before returning anything',
     makeClientWithCredentials(server, creds) { return { _adapter: { closeSession() {} }, async get() { return { Name: creds.username } } } },
     execMdx: async (client, mdx) => { asked.push(mdx); if (mdx.includes('[401]')) throw new Error('member not found'); return {} },
     listLenses: async () => [],
-    readLens: async (s, name) => ({ name, status: 'draft', toolkitVersion: 7, html: '<meta name="lens-writes" content="Income Statement">' }),
+    readLens: async (s, name) => ({ name, status: 'published', toolkitVersion: 7, html: '<meta name="lens-writes" content="Income Statement">' }),
     readLensActivity: ({ match }) => [{ kind: 'write', match }],
   }
   const { app, close } = createApp({ config: { server: 'S1', port: 0, showDrafts: true, endSessionProcesses: [] }, deps })
@@ -85,5 +85,30 @@ test('Lens app: history checks the slice as the user before returning anything',
     assert.equal(no.status, 400)
     assert.match((await no.json()).error, /can't see organization "401"/)
     assert.ok(asked.some(q => q.includes('FROM [Income Statement]')), 'checked against the Lens\'s own cube')
+  } finally { srv.close(); close() }
+})
+
+// With no slice, history may not show another person's cells, values or notes:
+// the request is narrowed to the viewer's own activity.
+test('Lens app: history with no slice returns only the viewer\'s own activity', async () => {
+  const { createApp } = require('../lens-server')
+  const deps = {
+    probeAuthMethod: async () => ({ method: 'native' }),
+    makeClientWithCredentials(server, creds) { return { _adapter: { closeSession() {} }, async get() { return { Name: creds.username } } } },
+    listLenses: async () => [],
+    readLens: async (s, name) => ({ name, status: 'published', toolkitVersion: 7, html: '<meta name="lens-writes" content="Income Statement">' }),
+    readLensActivity: () => [
+      { kind: 'write', user: 'east_mgr', cube: 'Income Statement', changes: [{ coordinates: { organization: '101' } }] },
+      { kind: 'write', user: 'someone_else', cube: 'Income Statement', changes: [{ coordinates: { organization: '999' } }] },
+    ],
+  }
+  const { app, close } = createApp({ config: { server: 'S1', port: 0, endSessionProcesses: [] }, deps })
+  const srv = await new Promise(r => { const s = app.listen(0, () => r(s)) })
+  const base = `http://127.0.0.1:${srv.address().port}`
+  try {
+    const si = await fetch(`${base}/auth/signin`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: 'east_mgr', password: 'pw' }) })
+    const cookie = (si.headers.get('set-cookie') || '').split(';')[0]
+    const h = await (await fetch(`${base}/api/lens/Target-Input/history`, { headers: { cookie } })).json()
+    assert.deepEqual(h.map(e => e.user), ['east_mgr'])
   } finally { srv.close(); close() }
 })

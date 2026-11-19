@@ -304,6 +304,13 @@ function createApp({ config, deps = {} } = {}) {
 
     if (!cfg.server) throw new Error('config/lens-app.json must set "server" — the one TM1 server this Lens app serves')
 
+    // The activity log is a convenience, never the transaction. A failed append
+    // (read-only install, full disk) must not turn a committed write or run into
+    // an error the person would retry.
+    const safeLog = (fn, entry, what) => {
+        try { fn(entry) } catch (e) { console.warn(`[lens] could not log ${what}: ${e.message}`) }
+    }
+
     // When someone's session ends, run the configured end-of-session processes
     // as them (each logged) before their TM1 session is closed.
     const endSession = deps.endSession ?? (async (client, display) => {
@@ -311,9 +318,9 @@ function createApp({ config, deps = {} } = {}) {
             const params = Object.entries(step.params ?? {}).map(([Name, Value]) => ({ Name, Value: String(Value) }))
             try {
                 const r = await client.executeProcess(step.process, params)
-                logRun({ server: cfg.server, app: 'lens', user: display, lens: '(session end)', process: step.process, params: step.params ?? {}, status: r?.ProcessExecuteStatusCode })
+                safeLog(logRun, { server: cfg.server, app: 'lens', user: display, lens: '(session end)', process: step.process, params: step.params ?? {}, status: r?.ProcessExecuteStatusCode }, 'the end-of-session run')
             } catch (e) {
-                logRun({ server: cfg.server, app: 'lens', user: display, lens: '(session end)', process: step.process, params: step.params ?? {}, status: 'Failed', message: e.response?.data?.error?.message ?? e.message })
+                safeLog(logRun, { server: cfg.server, app: 'lens', user: display, lens: '(session end)', process: step.process, params: step.params ?? {}, status: 'Failed', message: e.response?.data?.error?.message ?? e.message }, 'the end-of-session run')
             }
         }
     })
@@ -376,9 +383,10 @@ function createApp({ config, deps = {} } = {}) {
     async function visibleLensFor(sid, name, client, { notFound = 404 } = {}) {
         const key = `${sid}::${name}`
         const hit = visibleCache.get(key)
+        const user = store.get(sid)?.display ?? ''
         const allowed = hit && Date.now() - hit.at < 60_000
             ? hit.allowed
-            : lensStore.visibleTo(await readLens(cfg.server, name, { client }), await groupsFor(sid), { showDrafts: cfg.showDrafts })
+            : lensStore.visibleTo(await readLens(cfg.server, name, { client }), await groupsFor(sid), { showDrafts: cfg.showDrafts, user })
         visibleCache.set(key, { allowed, at: Date.now() })
         if (!allowed) {
             const e = new Error(`Lens "${name}" is not available to you`)
@@ -388,6 +396,14 @@ function createApp({ config, deps = {} } = {}) {
         return readLens(cfg.server, name, { client })
     }
     const visibleLens = (req, name, opts) => visibleLensFor(req.lens.sid, name, req.lens.client, opts)
+    // A draft is display-only: it may read, but it cannot change data, run a
+    // process or leave a note until it is published.
+    const requirePublished = (doc, action) => {
+        if (doc?.status === 'published') return doc
+        const e = new Error(`"${doc?.name}" is a draft — publishing it is required before it can ${action}`)
+        e.status = 403
+        throw e
+    }
     const lensArg = (req) => {
         const name = req.body?.lens ?? req.query?.lens
         if (!name || typeof name !== 'string') {
@@ -510,7 +526,7 @@ function createApp({ config, deps = {} } = {}) {
             const sid = parseCookies(req)[COOKIE]
             const lens = await listLenses(cfg.server, { client: store.clientFor(sid) })
             const myGroups = await groupsFor(sid)
-            const visible = lens.filter(l => lensStore.visibleTo(l, myGroups, { showDrafts: cfg.showDrafts }))
+            const visible = lens.filter(l => lensStore.visibleTo(l, myGroups, { showDrafts: cfg.showDrafts, user: store.get(sid)?.display }))
             const unreadable = lens.errors?.length
                 ? `<p class="err">Could not read ${lens.errors.length} Lens document${lens.errors.length === 1 ? '' : 's'}: ${lens.errors.map(e => `${esc(e.name)} (${esc(e.error)})`).join(', ')}</p>`
                 : ''
@@ -583,7 +599,8 @@ function createApp({ config, deps = {} } = {}) {
           getServer: function () { return ${JSON.stringify(cfg.server).replace(/</g, '\\u003c')} },
           getToken: function () { return null },
           getLens: function () { return name },
-          live: false
+          live: false,
+          readOnly: true
         })
         peek.appendChild(f)
         frames[name] = f
@@ -734,7 +751,7 @@ function createApp({ config, deps = {} } = {}) {
         try {
             const lens = await listLenses(cfg.server, { client: req.lens.client })
             const groups = await groupsFor(req.lens.sid)
-            const visible = lens.filter(l => lensStore.visibleTo(l, groups, { showDrafts: cfg.showDrafts }))
+            const visible = lens.filter(l => lensStore.visibleTo(l, groups, { showDrafts: cfg.showDrafts, user: req.lens.display }))
             res.json(visible)
         } catch (e) {
             res.status(e.status ?? 500).json({ error: e.message })
@@ -763,12 +780,12 @@ function createApp({ config, deps = {} } = {}) {
         try {
             const name = req.body?.lens
             if (!name || typeof name !== 'string') throw new Error('lens is required')
-            const doc = await visibleLens(req, name)
+            const doc = requirePublished(await visibleLens(req, name), 'change data')
             const result = await writeCells(req.lens.client, { cube: req.body?.cube, cells: req.body?.cells, allowedCubes: lensBridge.lensWrites(doc) })
-            logWrite({ server: cfg.server, app: 'lens', user: req.lens.display, lens: doc.name, cube: req.body.cube, changes: result.changes })
+            safeLog(logWrite, { server: cfg.server, app: 'lens', user: req.lens.display, lens: doc.name, cube: req.body.cube, changes: result.changes }, 'a cell save')
             res.json({ written: result.written })
         } catch (e) {
-            res.status(e.conflicts ? 409 : 400).json({ error: e.response?.data?.error?.message ?? e.message, conflicts: e.conflicts })
+            res.status(e.status ?? (e.conflicts ? 409 : 400)).json({ error: e.response?.data?.error?.message ?? e.message, conflicts: e.conflicts })
         }
     })
 
@@ -778,13 +795,13 @@ function createApp({ config, deps = {} } = {}) {
         const name = req.body?.lens, process = req.body?.process, params = req.body?.params ?? {}
         try {
             if (!name || typeof name !== 'string') throw new Error('lens is required')
-            const doc = await visibleLens(req, name)
+            const doc = requirePublished(await visibleLens(req, name), 'run a process')
             const result = await runProcess(req.lens.client, { process, params, allowedProcesses: lensBridge.lensRuns(doc), user: req.lens.display })
-            logRun({ server: cfg.server, app: 'lens', user: req.lens.display, lens: doc.name, process, params, status: result.status, message: result.message, detail: result.detail })
+            safeLog(logRun, { server: cfg.server, app: 'lens', user: req.lens.display, lens: doc.name, process, params, status: result.status, message: result.message, detail: result.detail }, 'a process run')
             res.json(result)
         } catch (e) {
-            if (e.status) logRun({ server: cfg.server, app: 'lens', user: req.lens.display, lens: name, process, params, status: e.status, message: e.message, detail: e.detail })
-            res.status(e.status ? 422 : 400).json({ error: e.response?.data?.error?.message ?? e.message, status: e.status })
+            if (e.status) safeLog(logRun, { server: cfg.server, app: 'lens', user: req.lens.display, lens: name, process, params, status: e.status, message: e.message, detail: e.detail }, 'a refused process run')
+            res.status(typeof e.status === 'number' ? e.status : (e.status ? 422 : 400)).json({ error: e.response?.data?.error?.message ?? e.message, status: typeof e.status === 'string' ? e.status : undefined })
         }
     })
 
@@ -803,11 +820,11 @@ function createApp({ config, deps = {} } = {}) {
         try {
             const name = req.body?.lens
             if (!name || typeof name !== 'string') throw new Error('lens is required')
-            const doc = await visibleLens(req, name)
+            const doc = requirePublished(await visibleLens(req, name), 'leave a note')
             const note = await lensBridge.addCellNote(req.lens.client, { cube: req.body?.cube, coordinates: req.body?.coordinates, text: req.body?.text, allowedCubes: lensBridge.lensNotes(doc) })
-            logLensNote({ server: cfg.server, app: 'lens', user: req.lens.display, lens: doc.name, ...note })
+            safeLog(logLensNote, { server: cfg.server, app: 'lens', user: req.lens.display, lens: doc.name, ...note }, 'a cell note')
             res.json({ ok: true })
-        } catch (e) { res.status(400).json({ error: e.response?.data?.error?.message ?? e.message }) }
+        } catch (e) { res.status(e.status ?? 400).json({ error: e.response?.data?.error?.message ?? e.message }) }
     })
 
     // Lens.pivot: a dimension's hierarchies (main + any ALT H), read as the signed-in person.
@@ -865,29 +882,44 @@ function createApp({ config, deps = {} } = {}) {
         try {
             const all = await listLenses(cfg.server, { client: req.lens.client })
             const groups = await groupsFor(req.lens.sid)
-            res.json(all.filter(d => lensStore.visibleTo(d, groups, { showDrafts: cfg.showDrafts }))
+            res.json(all.filter(d => lensStore.visibleTo(d, groups, { showDrafts: cfg.showDrafts, user: req.lens.display }))
                 .map(d => ({ name: d.name, title: d.title, folder: d.folder, icon: d.icon, color: d.color, description: d.description })))
         } catch (e) { res.status(400).json({ error: e.message }) }
     })
 
-    // History: recent saves and runs through this Lens, for one slice the person
-    // can see (match = { dimension: element }, checked as them against the
-    // Lens's own cube before anything is returned).
+    // History: recent saves, notes and runs through this Lens, for one slice the
+    // person can see (match = { dimension: element }). With a slice, every cube
+    // that appears is checked as the person and entries from a cube they can't
+    // read are dropped. With no slice, only the person's own activity is shown —
+    // never someone else's cells, values or parameters.
+    const escMember = s => `[${String(s).replace(/]/g, ']]')}]`
+    async function sliceReadable(client, cube, want) {
+        const where = want.map(([d, e]) => `${escMember(d)}.${escMember(d)}.${escMember(e)}`).join(',')
+        await execMdx(client, `SELECT {} ON 0 FROM ${escMember(cube)} WHERE (${where})`)
+    }
     app.get('/api/lens/:name/history', requireSession, async (req, res) => {
         try {
             const doc = await visibleLens(req, req.params.name)
             let match = {}
             try { match = JSON.parse(String(req.query.match ?? '{}')) } catch { throw new Error('match must be JSON') }
             if (!match || typeof match !== 'object' || Array.isArray(match)) throw new Error('match must be { dimension: element }')
-            const cube = lensBridge.lensWrites(doc)[0]
-            if (!cube && Object.keys(match).length) throw new Error('a history slice needs a Lens that changes data (lens-writes)')
-            for (const [dim, el] of Object.entries(match)) {
-                // Fails for a member this person may not see — then nothing is returned.
-                await execMdx(req.lens.client, `SELECT {} ON 0, {[${String(dim).replace(/]/g, ']]')}].[${String(dim).replace(/]/g, ']]')}].[${String(el).replace(/]/g, ']]')}]} ON 1 FROM [${cube.replace(/]/g, ']]')}]`)
-                    .catch(() => { throw new Error(`you can't see ${dim} "${el}"`) })
-            }
+            const want = Object.entries(match).filter(([, v]) => v !== undefined && v !== null && v !== '')
             const skip = String(req.query.skip ?? '').split(',').map(x => x.trim()).filter(Boolean).slice(0, 20)
-            res.json(readActivity({ server: cfg.server, lens: doc.name, match, skip, limit: Math.min(Number(req.query.limit) || 30, 100) }))
+            const entries = readActivity({ server: cfg.server, lens: doc.name, match, skip, limit: Math.min(Number(req.query.limit) || 30, 100) })
+            if (!want.length) {
+                const me = String(req.lens.display ?? '').toLowerCase()
+                return res.json(entries.filter(e => String(e.user ?? '').toLowerCase() === me))
+            }
+            const declared = lensBridge.lensWrites(doc)
+            const cubes = new Set([...entries.map(e => e.cube), ...(declared.length ? [declared[0]] : [])].filter(Boolean))
+            const readable = new Set()
+            for (const cube of cubes) {
+                try { await sliceReadable(req.lens.client, cube, want); readable.add(cube) } catch { /* not visible there */ }
+            }
+            if (cubes.size && !readable.size) {
+                throw new Error(`you can't see ${want.map(([d, e]) => `${d} "${e}"`).join(', ')}`)
+            }
+            res.json(entries.filter(e => !e.cube || readable.has(e.cube)))
         } catch (e) { res.status(400).json({ error: e.message }) }
     })
 

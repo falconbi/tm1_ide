@@ -220,7 +220,7 @@ test('a Lens limited to Finance is invisible and refused for others, open for Fi
     assert.match(await east.page(), /not available to you/)
     assert.equal((await east.frame()).status, 404)
     assert.equal(await east.api(), 404)
-    assert.equal(await east.write(), 400); assert.equal(wrote, 0, 'no write through a Lens you may not open')
+    assert.equal(await east.write(), 404); assert.equal(wrote, 0, 'no write through a Lens you may not open')
 
     const fin = await as('finance_mgr')
     assert.deepEqual((await fin.list()).sort(), ['Approvals', 'Open'], 'group names match whatever their case')

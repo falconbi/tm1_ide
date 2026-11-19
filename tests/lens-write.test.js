@@ -88,7 +88,7 @@ test('Lens app: writes are checked against the saved Lens, run as the user, and 
       return tm1
     },
     listLenses: async () => [],
-    readLens: async (s, name) => ({ name, status: 'draft', toolkitVersion: 3, html: name === 'Input' ? '<meta name="lens-writes" content="Plan">' : '<p>read only</p>' }),
+    readLens: async (s, name) => ({ name, status: 'published', toolkitVersion: 3, html: name === 'Input' ? '<meta name="lens-writes" content="Plan">' : '<p>read only</p>' }),
     logLensWrite: e => logged.push(e),
   }
   const { app, close } = createApp({ config: { server: 'S1', port: 0, showDrafts: true, endSessionProcesses: [] }, deps })
@@ -112,6 +112,37 @@ test('Lens app: writes are checked against the saved Lens, run as the user, and 
 
     const signedOut = await fetch(`${base}/api/lens/write-cells`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
     assert.equal(signedOut.status, 401)
+  } finally { srv.close(); close() }
+})
+
+// A draft may be reviewed in the Lens app, but it is display-only: publishing is
+// required before it can change data, run a process or leave a note.
+test('Lens app: a draft refuses writes, runs and notes until it is published', async () => {
+  const deps = {
+    probeAuthMethod: async () => ({ method: 'native' }),
+    makeClientWithCredentials(server, creds) { return { ...stubClient(), _creds: creds, _adapter: { closeSession() {} }, async get() { return { Name: creds.username } } } },
+    listLenses: async () => [],
+    readLens: async (s, name) => ({ name, status: 'draft', owner: 'east_mgr', toolkitVersion: 3, html: '<meta name="lens-writes" content="Plan"><meta name="lens-runs" content="Spread"><meta name="lens-notes" content="Plan">' }),
+  }
+  const { app, close } = createApp({ config: { server: 'S1', port: 0, showDrafts: true, endSessionProcesses: [] }, deps })
+  const srv = await new Promise(r => { const s = app.listen(0, () => r(s)) })
+  const base = `http://127.0.0.1:${srv.address().port}`
+  try {
+    const si = await fetch(`${base}/auth/signin`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: 'east_mgr', password: 'pw' }) })
+    const cookie = (si.headers.get('set-cookie') || '').split(';')[0]
+    const call = (route, body) => fetch(`${base}${route}`, { method: 'POST', headers: { 'Content-Type': 'application/json', cookie }, body: JSON.stringify(body) })
+
+    const w = await call('/api/lens/write-cells', { lens: 'Input', cube: 'Plan', cells: [cell('x', '1', 5)] })
+    assert.equal(w.status, 403)
+    assert.match((await w.json()).error, /is a draft — publishing it is required before it can change data/)
+
+    const r = await call('/api/lens/run-process', { lens: 'Input', process: 'Spread', params: {} })
+    assert.equal(r.status, 403)
+    assert.match((await r.json()).error, /before it can run a process/)
+
+    const n = await call('/api/lens/add-note', { lens: 'Input', cube: 'Plan', coordinates: { A: 'x', B: '1' }, text: 'x' })
+    assert.equal(n.status, 403)
+    assert.match((await n.json()).error, /before it can leave a note/)
   } finally { srv.close(); close() }
 })
 
@@ -216,4 +247,31 @@ test('text goes only into text cells and numbers only into number cells; text co
   await assert.rejects(writeCells(stubClient({ now: { 'x/desc': 'Laptops' } }), { ...ok, cells: [cell('x', 'desc', 5)] }), /wrong kind of value/)
   await assert.rejects(writeCells(stubClient({ now: { 'x/cost': 5 } }), { ...ok, cells: [cell('x', 'cost', 'five')] }), /wrong kind of value/)
   await assert.rejects(writeCells(stubClient(), { ...ok, cells: [cell('x', 'y', 'x'.repeat(1001))] }), /at most 1000 characters/)
+})
+
+// The activity log is a convenience. A failed append must never turn a write
+// TM1 already committed into an error the person would retry.
+test('Lens app: a failed activity log does not fail a successful save or run', async () => {
+  const deps = {
+    probeAuthMethod: async () => ({ method: 'native' }),
+    makeClientWithCredentials(server, creds) { return { ...stubClient(), _creds: creds, _adapter: { closeSession() {} }, async get() { return { Name: creds.username } } } },
+    listLenses: async () => [],
+    readLens: async (s, name) => ({ name, status: 'published', toolkitVersion: 3, html: '<meta name="lens-writes" content="Plan"><meta name="lens-runs" content="Spread">' }),
+    logLensWrite: () => { throw new Error('disk full') },
+    logLensRun: () => { throw new Error('disk full') },
+  }
+  const { app, close } = createApp({ config: { server: 'S1', port: 0, endSessionProcesses: [] }, deps })
+  const srv = await new Promise(r => { const s = app.listen(0, () => r(s)) })
+  const base = `http://127.0.0.1:${srv.address().port}`
+  const warnings = []
+  const realWarn = console.warn
+  console.warn = (...args) => warnings.push(args.join(' '))
+  try {
+    const si = await fetch(`${base}/auth/signin`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: 'east_mgr', password: 'pw' }) })
+    const cookie = (si.headers.get('set-cookie') || '').split(';')[0]
+    const w = await fetch(`${base}/api/lens/write-cells`, { method: 'POST', headers: { 'Content-Type': 'application/json', cookie }, body: JSON.stringify({ lens: 'Input', cube: 'Plan', cells: [cell('x', '1', 5)] }) })
+    assert.equal(w.status, 200)
+    assert.deepEqual(await w.json(), { written: 1 })
+    assert.ok(warnings.some(w => /could not log a cell save/.test(w)))
+  } finally { srv.close(); close(); console.warn = realWarn }
 })

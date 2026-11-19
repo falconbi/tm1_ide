@@ -107,3 +107,34 @@ test('the server always comes from settings, never from the message', async () =
     assert.ok(!calls[0].includes('H4x0r'), 'message-provided server never used')
   } finally { off() }
 })
+test('a read-only host answers reads but refuses writes, runs and notes', async () => {
+  const calls = []
+  const win = fakeDom({ source: {} })
+  const me = { ...win.contentWindow }; me.postMessage = (m) => win._posted.push(m)
+  global.window = win
+  global.localStorage = { getItem: () => null, setItem: () => {} }
+  global.fetch = async (url, init) => {
+    calls.push([String(url), init?.method])
+    return { ok: true, json: async () => ({ value: 'ok' }), statusText: 'OK' }
+  }
+  const off = installLensHost(() => me, { getServer: () => '24Retail', getToken: () => '', getLens: () => 'Target-Input', readOnly: true })
+  try {
+    win._emit('message', { data: { __lensBridge: 1, id: 1, chan: 'c', method: 'execMDX', payload: { mdx: 'S' } }, source: me })
+    await flush()
+    assert.equal(calls.length, 1, 'reads are answered')
+
+    for (const [id, method, payload] of [
+      [2, 'writeCells', { cube: 'Plan', cells: [] }],
+      [3, 'runProcess', { process: 'Spread', params: {} }],
+      [4, 'addNote', { cube: 'Plan', coordinates: {}, text: 'x' }],
+    ]) {
+      win._emit('message', { data: { __lensBridge: 1, id, chan: 'c', method, payload }, source: me })
+      await flush()
+      const reply = win._posted.find(p => p.id === id)
+      assert.ok(reply, `${method} is answered`)
+      assert.equal(reply.ok, false)
+      assert.match(reply.error, /preview .* can read .* not change it/)
+    }
+    assert.equal(calls.length, 1, 'nothing that changes data reached the server')
+  } finally { off() }
+})

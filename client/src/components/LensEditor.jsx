@@ -127,6 +127,7 @@ export default function LensEditor({ tab }) {
   const [description, setDescription] = useState('')
   const [folder, setFolder] = useState('')
   const [title, setTitle] = useState('')
+  const [reviewers, setReviewers] = useState('')
   const [look, setLook] = useState({ icon: '', color: '', image: '' })
   // A new Lens starts blank or from one of your own Lenses. Patterns are
   // read-only demonstrations, never copied into the model.
@@ -187,7 +188,7 @@ export default function LensEditor({ tab }) {
     if (tab.name) {
       get(`/api/lenses/${encodeURIComponent(tab.name)}?server=${encodeURIComponent(tab.server)}`)
         .then(d => {
-          if (d.html) { setHtml(d.html); setStatus(d.meta?.status ?? 'draft'); setDescription(d.meta?.description ?? ''); setFolder(d.meta?.folder ?? ''); setTitle(d.meta?.title ?? ''); setLook({ icon: d.meta?.icon ?? '', color: d.meta?.color ?? '', image: d.meta?.image ?? '' }); setConfigText(JSON.stringify(d.meta?.config ?? {}, null, 2) + '\n'); setGoodConfig(d.meta?.config ?? {}) }
+          if (d.html) { setHtml(d.html); setStatus(d.meta?.status ?? 'draft'); setDescription(d.meta?.description ?? ''); setFolder(d.meta?.folder ?? ''); setTitle(d.meta?.title ?? ''); setReviewers((d.meta?.reviewers ?? []).join(', ')); setLook({ icon: d.meta?.icon ?? '', color: d.meta?.color ?? '', image: d.meta?.image ?? '' }); setConfigText(JSON.stringify(d.meta?.config ?? {}, null, 2) + '\n'); setGoodConfig(d.meta?.config ?? {}) }
           else if (d.error) setMessage({ kind: 'error', text: `Couldn't load the Lens: ${d.error}` })
         })
         .catch(e => setMessage({ kind: 'error', text: `Couldn't load the Lens: ${e.message}` }))
@@ -239,7 +240,8 @@ export default function LensEditor({ tab }) {
     try {
       let data
       try {
-        data = await post(`/api/lenses/${encodeURIComponent(name.trim())}?server=${encodeURIComponent(tab.server)}`, { html, description, folder, title, icon: look.icon, color: look.color, image: look.image, config: goodConfig, publish, force })
+        const reviewersList = reviewers.split(',').map(r => r.trim()).filter(Boolean)
+        data = await post(`/api/lenses/${encodeURIComponent(name.trim())}?server=${encodeURIComponent(tab.server)}`, { html, description, folder, title, icon: look.icon, color: look.color, image: look.image, config: goodConfig, reviewers: reviewersList, publish, force })
       } catch (e) {
         if (Array.isArray(e.data?.validation)) setValidation(e.data.validation)
         throw e
@@ -471,6 +473,14 @@ export default function LensEditor({ tab }) {
           placeholder="What this Lens shows — people see this in the Lens app"
           value={description}
           onChange={e => setDescription(e.target.value)}
+        />
+        <span className="text-xs text-muted-foreground">Reviewers</span>
+        <input
+          className="w-52 rounded border border-border bg-background px-2 py-1 text-sm"
+          placeholder="users or groups, comma-separated"
+          value={reviewers}
+          onChange={e => setReviewers(e.target.value)}
+          title="While this Lens is a draft, only you, these TM1 users or groups, and TM1 admins can open it in the Lens app"
         />
       </div>
       {message && (

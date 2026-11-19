@@ -105,13 +105,13 @@ app.post('/api/lenses/:name', async (req, res) => {
         if (!server) return res.status(400).json({ error: 'server required' })
         if (!gateReadOnly(res, server)) return
         const client = makeClient(server, req.ideToken)
-        const { html, description, folder, title, icon, color, image, config, publish, force } = req.body
+        const { html, description, folder, title, icon, color, image, config, reviewers, publish, force } = req.body
         if (typeof html !== 'string' || !html.trim()) return res.status(400).json({ error: 'html is required' })
         const errors = await lensBridge.validateLens(client, html)
         if (errors.length && !force) {
             return res.status(400).json({ error: `Lens validation failed (${errors.length}):`, validation: errors })
         }
-        const saved = await lensStore.saveLens(server, req.params.name, html, req.user, { publish: typeof publish === 'boolean' ? publish : undefined, description, folder, title, icon, color, image, config, ideToken: req.ideToken })
+        const saved = await lensStore.saveLens(server, req.params.name, html, req.user, { publish: typeof publish === 'boolean' ? publish : undefined, description, folder, title, icon, color, image, config, reviewers, ideToken: req.ideToken })
         cl.writeLog({ server, action: saved.status === 'published' ? 'LENS_PUBLISHED' : 'LENS_SAVED', objectType: 'lens', objectName: saved.name,
             detail: `version ${saved.version}${description ? ` — ${description}` : ''}`, user: req.user })
         res.json({ ...saved, validation: errors })
