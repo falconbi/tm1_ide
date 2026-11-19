@@ -42,19 +42,26 @@ Measured on the full `WFP` model, `TM1_Test_DEV`:
 | ENG-001 start month changed | Position run **0.4 s**; partial vs full **0 differences** (214 cost cells) |
 | ENG-001 cost-centre moved for 2026-01 | old `CC-ENG-PLT` cost cleared, new `CC-ENG-APP` cost present; restore recalc matched baseline (0 differences) |
 | ENG-001 end of assignment at 2026-06 | June cost present, July zero; restore recalc matched baseline (0 differences) |
-| Full Forecast run | ≈ **115 s** |
-| Planned hire (ENG-007) hire month | mark/recalc completed, but the old and new cost snapshots were empty — inconclusive |
+| Cost-centre move, then **full** run | full run clears every stored Base/tax cell for the version; old centre zero, new centre present (118 s) |
+| Two Positions (E10002 on ENG-001 + temporary ENG-002, March) | full run **113 s**; partial vs full **0 differences**; temporary assignment removed and full restore checked |
+| Full Forecast run | ≈ **113–118 s** |
 
 The start-month test was restored and re-run; the cost-centre and end tests were also restored. ENG-007's approval and hire month were restored.
 
 ## Not done
 
-- **Two-Position YTD case:** no current person holds two Positions in Forecast, so it was not
-  exercised. (Planned Hire is per Position and was handled explicitly.)
-- **Full-version clear gap:** the scoped path clears the affected Position across every Entity /
-  Cost Centre / Currency. The *full* run still clears only the default Entity / Cost Centre, so a
-  full run after a move can leave stale cost in the old cost centre. This is the pre-existing gap;
-  partial is correct.
-- **Full-run speed:** ≈115 s, not the ~40 s stated in the brief.
-- **Change set:** the changes were made directly through the TM1 API, not through an IDE change set.
+- **Two-Position YTD case:** proven with a temporary second assignment for E10002; data removed
+  and the full run restored.
+- **Full-version clear gap — fixed:** `WFP Clear Cost Version` clears stored Base/tax for the
+  version before a full run, using a saved view with `ViewExtractSkipZeroesSet` and a Version
+  title. Proven with a cost-centre move then full rebuild.
+- **Full-run speed:** ≈113–118 s, not the ~40 s stated in the brief.
 - **Assertions** for the transfer and two-Position cases are not added.
+
+## Change set and commit
+
+- Change set: `WFP position-level recalculation` (`62c387fb-8d39-40a3-9625-97ccca857710`),
+  server `TM1_Test_DEV`, open for review/close.
+- DEV Git branch `dev` commit: `46bc5e2b` (`WFP position-level recalculation`).
+- The Workforce Lenses (`WFP-Positions` v14, `WFP-Hire-Approvals` v22) are model documents, not Git:
+  ship them with **Deploy → Lenses**, not the Git release.
