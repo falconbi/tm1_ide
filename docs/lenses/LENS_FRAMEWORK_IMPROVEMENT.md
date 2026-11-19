@@ -1,6 +1,6 @@
 # Lens framework — improvement proposal
 
-**Status:** proposal (25 Oct 2026). For discussion before build.
+**Status:** proposal (25 Oct 2026). For discussion before build — **not implemented**. Today Lenses use `Lens.mdx`, `execMDX`, `Lens.save` and `Lens.run` directly; the services layer and manifest below are the target, not the current state.
 **Scope:** how Lenses fetch data, run actions, and stay thin — so MCP can build them
 for any TM1 application without application logic living in HTML/JS.
 **Related:** `docs/lenses/LENS_APP_PLAN.md`, `docs/models/WORKFORCE_MODEL.md`,

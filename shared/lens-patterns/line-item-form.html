@@ -77,7 +77,7 @@ button:disabled{opacity:.45;cursor:default}
 </div>
 <script src="/lens-kit/lens-kit.js"></script>
 <script>
-// ── Line-item form (Viewfinder template) ─────────────────────────────────────
+// ── Line-item form (Lens pattern) ─────────────────────────────────────
 // Requests or items as lines — a capex request, a hire, a contract — one unit
 // at a time (a store, a cost centre…). The lines are the leaves of a line
 // dimension (and optionally of a group dimension, e.g. asset type, chosen when
@@ -400,12 +400,7 @@ button:disabled{opacity:.45;cursor:default}
     if (incomplete.length) return say('Fill in ' + required.map(function (m) { var f = fields.find(function (x) { return x.member === m }); return f.label || m }).join(' and ') + ' for ' + incomplete.map(label).join(', ') + ' first.', 'err')
     $('save').disabled = $('undo').disabled = true
     say('Saving…', 'busy')
-    return Lens.save(cube, ch.map(function (c) {
-      var f = fields.find(function (x) { return x.member === c.field }) || {}
-      var text = f.type !== 'number'
-      return { coordinates: coords(c.row, c.field), value: text ? String(c.value == null ? '' : c.value) : (Number(c.value) || 0), expect: text ? String(c.old == null ? '' : c.old) : (Number(c.old) || 0) }
-    })).then(function (r) {
-      g.saved()
+    return g.saveCells(cube, { coordinates: coords }).then(function (r) {
       tell('saved', { note: 'saved ' + Object.keys(touched).length + ' line' + (Object.keys(touched).length === 1 ? '' : 's') })
       return load().then(function () { say('Saved ' + r.written + ' value' + (r.written > 1 ? 's' : '') + ' to TM1.', 'ok') })
     }).catch(function (e) {

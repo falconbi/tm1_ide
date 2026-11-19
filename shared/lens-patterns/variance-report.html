@@ -43,7 +43,7 @@ button:disabled{opacity:.45;cursor:default}
 </div>
 <script src="/lens-kit/lens-kit.js"></script>
 <script>
-// ── Variance report (Viewfinder template) ────────────────────────────────────
+// ── Variance report (Lens pattern) ────────────────────────────────────
 // Actual against a comparison (budget, forecast, prior year), line by line,
 // with the variance in amount and percent, the biggest movers as bars, and an
 // optional comment per line saved to a text cell in TM1.
@@ -132,10 +132,10 @@ button:disabled{opacity:.45;cursor:default}
   function save() {
     var ch = g.changes(); if (!ch.length) return
     $('save').disabled = true; say('Saving…', 'busy')
-    Lens.save(cm.cube || C.cube, ch.map(function (c) {
-      var at = slice(); Object.keys(cm.at).forEach(function (d) { at[d] = cm.at[d] }); at[rowDim] = c.row.key
-      return { coordinates: at, value: String(c.value == null ? '' : c.value), expect: String(c.old == null ? '' : c.old) }
-    })).then(function (r) { g.saved(); return load().then(function () { say('Saved ' + r.written + ' comment' + (r.written > 1 ? 's' : '') + '.', 'ok') }) })
+    g.saveCells(cm.cube || C.cube, { coordinates: function (row) {
+      var at = slice(); Object.keys(cm.at).forEach(function (d) { at[d] = cm.at[d] }); at[rowDim] = row.key
+      return at
+    } }).then(function (r) { return load().then(function () { say('Saved ' + r.written + ' comment' + (r.written > 1 ? 's' : '') + '.', 'ok') }) })
       .catch(function (e) { $('save').disabled = false; say('Not saved: ' + (e && e.message ? e.message : e), 'err') })
   }
   $('save').onclick = save

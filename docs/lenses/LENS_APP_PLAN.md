@@ -1,6 +1,6 @@
 # Lens app — plan
 
-Status: **agreed direction, not started** · 11 Oct 2026 · replaces [LENSES_PLAN.md](LENSES_PLAN.md) (Stage 1 inside the IDE — built, kept as history).
+Status: **in progress** — steps 1–9 built; the toolkit now owns line approval, MDX, status, shared selection and grid saving · 11 Oct 2026 · replaces [LENSES_PLAN.md](LENSES_PLAN.md) (Stage 1 inside the IDE — built, kept as history).
 
 ← [Back to README](../../README.md)
 
@@ -199,29 +199,29 @@ Plain HTML by default (no build step inside a Lens); React only for rare level-3
 
 ### The toolkit
 
-Thin, tested wrappers (`Lens.waterfall(...)`, `Lens.inputGrid(...)`, `Lens.timeline(...)`), wired to the governed data
-layer, bundled inside the Lens app (no CDN at runtime).
+Thin, tested wrappers (`Lens.kpis`, `Lens.trend`, `Lens.stack`, `Lens.waterfall`, `Lens.bars`, `Lens.grid`,
+`Lens.pivot`, `Lens.flow`, `Lens.editing`, `Lens.live`, `Lens.approval`), bundled inside the Lens app (no CDN at
+runtime). Their contract and worked examples are in `shared/lens-components.json`; the patterns in
+`shared/lens-patterns/` show them in use.
 
 | Purpose | Library | Licence |
 |---|---|---|
-| Main charts (waterfall, trend + band, sankey, heatmap, tree, gauge, timeline) | Apache ECharts | Apache 2.0 |
+| Charts (bars, line, stacked, waterfall, pie, scatter, heatmap, sankey, tree, gauge, sunburst, treemap, radar, funnel) | Apache ECharts | Apache 2.0 |
 | Grids and input forms | AG Grid Community | MIT |
-| Interactivity glue (filters, tabs, linked state) | Alpine.js | MIT |
-| Styling and themes | Tailwind CSS | MIT |
-| Networks (ownership structures) | Cytoscape.js | MIT |
-| Large time series | uPlot | MIT |
-| Bespoke visuals | D3 | ISC |
-| AI-friendly, checkable charts | Vega-Lite | BSD |
+| Networks and process maps | React Flow + dagre | MIT |
+| Interactivity glue | Alpine.js (CSP build) | MIT |
+| Styling and themes | CSS variables from the viewer's theme (`Lens.theme`, `shared/lens-themes.json`) | — |
 
 **Licence rule:** MIT, Apache 2.0, BSD or ISC only, so everything ships inside an MIT project; keep each library's
 notice in `THIRD_PARTY_LICENSES`. Not allowed: Highcharts, Handsontable (paid), GSAP (own non-open licence).
-Gallery of examples: the "Lens Component Gallery" artifact (sample data).
+The component catalogue (`shared/lens-components.json`) is the gallery: every component with its purpose, call,
+data shape, options and a worked example.
 
 ### Shared data layer
 
-Components ask in business terms ("revenue by month, actual vs budget, this entity"); the layer builds the query, caches
-it, and **re-queries when a filter changes**. This gives linked views, drill-down with breadcrumbs, and **timeline
-sliders** (all periods fetched once, the slider switches between them; large data prefetched ahead).
+**Planned, not built.** The idea is that components ask in business terms ("revenue by month, actual vs budget, this
+entity"); a layer builds the query, caches it, and re-queries when a filter changes. Today a Lens builds its own MDX
+(now with `Lens.mdx`) and calls `execMDX` directly.
 
 ### The component catalogue (one source of truth)
 

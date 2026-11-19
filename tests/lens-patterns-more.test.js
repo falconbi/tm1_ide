@@ -7,7 +7,7 @@ const { JSDOM } = require('jsdom')
 const { readPattern: readTemplate, listPatterns: listTemplates } = require('../core/lens_patterns')
 
 // ── The Lens patterns, clicked through like a person ───────────
-// Each template runs with the REAL toolkit and a fake TM1 behind the bridge;
+// Each pattern runs with the REAL toolkit and a fake TM1 behind the bridge;
 // the test reads what it shows and checks exactly what reaches TM1 (the bridge
 // calls) when someone saves or clicks.
 
@@ -237,7 +237,7 @@ test('disclosure accounts: rounded, negatives in brackets, headings and totals l
   } finally { b.close() }
 })
 
-test('every new template with missing settings says what it needs instead of breaking', async () => {
+test('every new pattern with missing settings says what it needs instead of breaking', async () => {
   for (const [name, el] of [['assumptions-table', 'grid'], ['dashboard', 'kpis'], ['variance-report', 'grid'], ['detail-list', 'grid'], ['app-home', 'pages'], ['process-page', 'steps'], ['narrative-document', 'doc'], ['disclosure-accounts', 'page']]) {
     const b = await board(name, { heading: 'x' }, (m) => common(m) ?? {})
     try { await until(() => /needs its settings/.test(b.doc.getElementById(el).textContent), name + ' to ask for settings') } finally { b.close() }
