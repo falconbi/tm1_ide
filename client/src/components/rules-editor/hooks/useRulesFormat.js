@@ -9,11 +9,15 @@ import { getNamingMap } from '@/lib/formatters/naming.js'
 export default function useRulesFormat({ editorRef }) {
   const formatPopupRef = useRef(null)
   const [showFormatPopup, setShowFormatPopup] = useState(false)
-  const [formatStruct, setFormatStruct] = useState(() => loadSettings().rules.expressionFormatter ?? null)
+  const [formatStruct, setFormatStruct] = useState(() => {
+    const saved = loadSettings().rules.expressionFormatter
+    return saved === 'tm1-verbose' || saved === 'tm1-structured' ? saved : 'tm1-structured'
+  })
 
   const runFormat = () => {
     const s = loadSettings()
-    saveSettings({ ...s, rules: { ...s.rules, expressionFormatter: formatStruct } })
+    const rulesSettings = { ...s.rules, expressionFormatter: formatStruct }
+    saveSettings({ ...s, rules: rulesSettings })
     const editor = editorRef.current
     if (!editor) { setShowFormatPopup(false); return }
     const selection = editor.getSelection()
@@ -21,7 +25,7 @@ export default function useRulesFormat({ editorRef }) {
       const model = editor.getModel()
       const selectedText = model.getValueInRange(selection)
       const { map: namingMap } = getNamingMap()
-      const formatted = formatRules(selectedText, s.rules, namingMap)
+      const formatted = formatRules(selectedText, rulesSettings, namingMap)
       editor.executeEdits('format-selection', [{ range: selection, text: formatted }])
       editor.setSelection(selection)
     } else {

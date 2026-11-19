@@ -90,7 +90,6 @@ export default function RulesToolbar({
             <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-2">Structure</div>
             <div className="flex flex-col gap-1 mb-3">
               {[
-                { id: null,             label: 'No Change',      desc: 'Keep existing line breaks' },
                 { id: 'tm1-verbose',    label: 'TM1 Verbose',    desc: 'Each string arg on its own line' },
                 { id: 'tm1-structured', label: 'TM1 Structured', desc: 'Group consecutive string args' },
               ].map(opt => (

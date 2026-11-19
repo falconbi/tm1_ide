@@ -64,3 +64,11 @@ test('structured formatter preserves explicit grouping', () => {
   )
   assert.match(output, /\(1 \+ 2\)\s*\*\s*3/)
 })
+
+test('verbose output can be formatted back to structured', () => {
+  const rule = "['X'] = N: DB('Cube', !Region, !Product, 'Actual', 'USD', 'Net');"
+  const verbose = formatRules(rule, { ...PRESETS['tm1-verbose'].rules, expressionFormatter: 'tm1-verbose' }, {})
+  assert.match(verbose, /'Actual',\n/)
+  const structured = formatRules(verbose, { ...PRESETS['tm1-structured'].rules, expressionFormatter: 'tm1-structured' }, {})
+  assert.match(structured, /'Actual', 'USD', 'Net'\)/)
+})
