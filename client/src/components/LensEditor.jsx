@@ -116,34 +116,40 @@ const DEFAULT_LENS = `<!DOCTYPE html>
 
 const LOADING_LENS = '<!doctype html><html><body style="font:14px system-ui,sans-serif;color:#85908f;padding:24px">Loading…</body></html>'
 
+// Moving a Lens tab to another pane remounts the editor (the tab id stays the
+// same). Keep the editor's own state per tab so Published/Draft, unsaved code
+// and the rest do not reset on the move.
+const LENS_EDITOR_STATE = new Map()
+
 export default function LensEditor({ tab }) {
   const { dark, patchTab } = useStore()
-  const [name, setName] = useState(tab.name ?? '')
-  const [savedName, setSavedName] = useState(tab.name ?? '')
-  const [status, setStatus] = useState('draft')
-  const [version, setVersion] = useState(0)
+  const cached = LENS_EDITOR_STATE.get(tab.id)
+  const [name, setName] = useState(cached?.name ?? tab.name ?? '')
+  const [savedName, setSavedName] = useState(cached?.savedName ?? tab.name ?? '')
+  const [status, setStatus] = useState(cached?.status ?? 'draft')
+  const [version, setVersion] = useState(cached?.version ?? 0)
   const [versions, setVersions] = useState(null)
   const [showVersions, setShowVersions] = useState(false)
   const [restoring, setRestoring] = useState(null)
 
   const [prompt, setPrompt] = useState('')
   // Stored with the Lens (shown in the Lens app): loaded on open, kept on save.
-  const [description, setDescription] = useState('')
-  const [folder, setFolder] = useState('')
-  const [title, setTitle] = useState('')
-  const [reviewers, setReviewers] = useState('')
-  const [look, setLook] = useState({ icon: '', color: '', image: '' })
+  const [description, setDescription] = useState(cached?.description ?? '')
+  const [folder, setFolder] = useState(cached?.folder ?? '')
+  const [title, setTitle] = useState(cached?.title ?? '')
+  const [reviewers, setReviewers] = useState(cached?.reviewers ?? '')
+  const [look, setLook] = useState(cached?.look ?? { icon: '', color: '', image: '' })
   // A new Lens starts blank or from one of your own Lenses. Patterns are
   // read-only demonstrations, never copied into the model.
   const [starts, setStarts] = useState({ patterns: [], lenses: [] })
   const [startError, setStartError] = useState('')
   const [startsReload, setStartsReload] = useState(0)
-  const [started, setStarted] = useState(!!tab.name)   // a new Lens opens on its start page
+  const [started, setStarted] = useState(cached?.started ?? !!tab.name)   // a new Lens opens on its start page
   const [patternView, setPatternView] = useState(null)
   // The Lens's config (Config tab): JSON the Lens reads with Lens.config(). The
   // preview always runs with the last config that parsed.
-  const [configText, setConfigText] = useState('{\n}\n')
-  const [goodConfig, setGoodConfig] = useState({})
+  const [configText, setConfigText] = useState(cached?.configText ?? '{\n}\n')
+  const [goodConfig, setGoodConfig] = useState(cached?.goodConfig ?? {})
   const parseConfig = text => {
     try {
       const c = JSON.parse(text || '{}')
@@ -157,11 +163,11 @@ export default function LensEditor({ tab }) {
     if (p.config) setGoodConfig(p.config)
   }
   const [folders, setFolders] = useState([])
-  const [cube, setCube] = useState(tab.cube ?? '')
+  const [cube, setCube] = useState(cached?.cube ?? tab.cube ?? '')
   const [cubes, setCubes] = useState([])
   // A saved Lens starts on a plain placeholder (no bridge calls) until it loads —
   // never on a pattern, whose requests would race the real one.
-  const [html, setHtml] = useState(tab.name ? LOADING_LENS : DEFAULT_LENS)
+  const [html, setHtml] = useState(cached?.html ?? (tab.name ? LOADING_LENS : DEFAULT_LENS))
   const [generating, setGenerating] = useState(false)
   const [saving, setSaving] = useState(false)
   const [validation, setValidation] = useState([])
@@ -171,6 +177,18 @@ export default function LensEditor({ tab }) {
   const iframeRef = useRef(null)
   const previewTimer = useRef(null)
   const [dirtyPreview, setDirtyPreview] = useState(false)
+
+  useEffect(() => {
+    LENS_EDITOR_STATE.set(tab.id, { name, savedName, status, version, description, folder, title, reviewers, look, started, configText, goodConfig, cube, html })
+  }, [tab.id, name, savedName, status, version, description, folder, title, reviewers, look, started, configText, goodConfig, cube, html])
+
+  // Moving the tab remounts us, so only forget the saved state when the tab is
+  // actually closed (after the new pane has had a chance to mount).
+  useEffect(() => () => {
+    setTimeout(() => {
+      if (!useStore.getState().tabs.some(t => t.id === tab.id)) LENS_EDITOR_STATE.delete(tab.id)
+    }, 0)
+  }, [tab.id])
 
   useEffect(() => {
     const readJson = (url) => get(url)
@@ -189,7 +207,7 @@ export default function LensEditor({ tab }) {
     readJson(`/api/lenses?server=${encodeURIComponent(tab.server)}`)
       .then(d => setFolders(Array.isArray(d) ? [...new Set(d.map(l => l.folder).filter(Boolean))].sort() : []))
       .catch(e => setStartError(e.message))
-    if (tab.name) {
+    if (tab.name && !cached) {
       get(`/api/lenses/${encodeURIComponent(tab.name)}?server=${encodeURIComponent(tab.server)}`)
         .then(d => {
           if (d.html) { setHtml(d.html); setStatus(d.meta?.status ?? 'draft'); setVersion(Number(d.meta?.version) || 0); setDescription(d.meta?.description ?? ''); setFolder(d.meta?.folder ?? ''); setTitle(d.meta?.title ?? ''); setReviewers((d.meta?.reviewers ?? []).join(', ')); setLook({ icon: d.meta?.icon ?? '', color: d.meta?.color ?? '', image: d.meta?.image ?? '' }); setConfigText(JSON.stringify(d.meta?.config ?? {}, null, 2) + '\n'); setGoodConfig(d.meta?.config ?? {}) }
