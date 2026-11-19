@@ -135,6 +135,20 @@ function _findAdminHost(serverName, adminHosts) {
     return null
 }
 
+// Which TM1 groups (if any) may author Lenses on this server. Configured on the
+// adminHost / connection in servers.json as "lensAuthors": ["Lens Authors"].
+// Empty/absent = no restriction.
+function lensAuthors(serverName) {
+    try {
+        const { adminHosts, connections } = _loadConfig()
+        const host = _findAdminHost(serverName, adminHosts)
+        if (Array.isArray(host?.lensAuthors)) return host.lensAuthors.map(String).filter(Boolean)
+        const conn = _findConnection(serverName, connections)
+        if (Array.isArray(conn?.lensAuthors)) return conn.lensAuthors.map(String).filter(Boolean)
+    } catch { /* unreadable config: no restriction */ }
+    return []
+}
+
 function _findConnection(serverName, connections) {
     const lower = serverName.toLowerCase()
     for (const conn of connections) {
@@ -385,4 +399,4 @@ function listServersWithFlags() {
     })
 }
 
-module.exports = { getAdapter, makeClient, makeClientWithCredentials, needsServerLogin, isDirectServer, isPawNativeServer, probeAuthMethod, NeedsServerLogin, TM1AuthRejected, AdminHostLookupError, listServers, listServersWithFlags, isReadOnly, isSimple, simpleSource, getDefaultAdapterType, getLoginServer, hasServersConfig }
+module.exports = { getAdapter, makeClient, makeClientWithCredentials, needsServerLogin, isDirectServer, isPawNativeServer, probeAuthMethod, NeedsServerLogin, TM1AuthRejected, AdminHostLookupError, listServers, listServersWithFlags, isReadOnly, isSimple, simpleSource, getDefaultAdapterType, getLoginServer, hasServersConfig, lensAuthors }

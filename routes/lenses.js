@@ -1,7 +1,25 @@
 'use strict'
 
 function register(app, deps) {
-    const { cl, express, fail, gateReadOnly, gateWrite, lensBridge, lensStore, lensUsageCache, logLensNote, logLensRun, logLensWrite, makeClient, path, readLensActivity } = deps
+    const { cl, express, fail, gateReadOnly, gateWrite, lensAuthors, lensBridge, lensStore, lensUsageCache, logLensNote, logLensRun, logLensWrite, makeClient, path, readLensActivity } = deps
+
+// Authoring is a named group where the server sets "lensAuthors" in
+// config/servers.json. Empty/absent = anyone signed in may save (backward compatible).
+async function requireLensAuthor(req, res, server) {
+    const need = lensAuthors(server)
+    if (!need.length) return true
+    try {
+        const me = await makeClient(server, req.ideToken).get('ActiveUser', { '$expand': 'Groups($select=Name)' })
+        const mine = new Set((me?.Groups ?? []).map(g => String(g.Name).toLowerCase()))
+        const ok = mine.has('admin') || need.some(g => mine.has(String(g).toLowerCase()))
+        if (ok) return true
+        res.status(403).json({ error: `Saving or deleting Lenses on ${server} is limited to TM1 groups: ${need.join(', ')}` })
+        return false
+    } catch (e) {
+        res.status(502).json({ error: `Could not check your TM1 groups on ${server}: ${e.message}` })
+        return false
+    }
+}
 
 app.get('/api/files/list', async (req, res) => {
     try {
@@ -99,23 +117,53 @@ app.get('/api/lenses/:name', async (req, res) => {
     } catch (e) { res.status(/not found/.test(e.message) ? 404 : 500).json({ error: e.message }) }
 })
 
+app.get('/api/lenses/:name/versions', async (req, res) => {
+    try {
+        const server = req.query.server
+        if (!server) return res.status(400).json({ error: 'server required' })
+        res.json(await lensStore.listLensVersions(server, req.params.name, { ideToken: req.ideToken }))
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.post('/api/lenses/:name/versions/:version/restore', async (req, res) => {
+    try {
+        const server = req.query.server
+        if (!server) return res.status(400).json({ error: 'server required' })
+        if (!gateReadOnly(res, server)) return
+        if (!(await requireLensAuthor(req, res, server))) return
+        const version = Number(req.params.version)
+        if (!Number.isInteger(version) || version < 1) return res.status(400).json({ error: 'version must be a positive number' })
+        const saved = await lensStore.restoreLensVersion(server, req.params.name, version, req.user, { expectVersion: req.body?.expectVersion, ideToken: req.ideToken })
+        cl.writeLog({ server, action: 'LENS_RESTORED', objectType: 'lens', objectName: saved.name,
+            detail: `restored version ${version} as version ${saved.version}`, user: req.user })
+        res.json(saved)
+    } catch (e) {
+        if (e.code === 'LENS_CONFLICT') return res.status(409).json({ error: e.message, code: e.code, currentVersion: e.currentVersion })
+        res.status(500).json({ error: e.message })
+    }
+})
+
 app.post('/api/lenses/:name', async (req, res) => {
     try {
         const server = req.query.server
         if (!server) return res.status(400).json({ error: 'server required' })
         if (!gateReadOnly(res, server)) return
+        if (!(await requireLensAuthor(req, res, server))) return
         const client = makeClient(server, req.ideToken)
-        const { html, description, folder, title, icon, color, image, config, reviewers, publish, force } = req.body
+        const { html, description, folder, title, icon, color, image, config, reviewers, expectVersion, publish, force } = req.body
         if (typeof html !== 'string' || !html.trim()) return res.status(400).json({ error: 'html is required' })
         const errors = await lensBridge.validateLens(client, html)
         if (errors.length && !force) {
             return res.status(400).json({ error: `Lens validation failed (${errors.length}):`, validation: errors })
         }
-        const saved = await lensStore.saveLens(server, req.params.name, html, req.user, { publish: typeof publish === 'boolean' ? publish : undefined, description, folder, title, icon, color, image, config, reviewers, ideToken: req.ideToken })
+        const saved = await lensStore.saveLens(server, req.params.name, html, req.user, { publish: typeof publish === 'boolean' ? publish : undefined, description, folder, title, icon, color, image, config, reviewers, expectVersion, ideToken: req.ideToken })
         cl.writeLog({ server, action: saved.status === 'published' ? 'LENS_PUBLISHED' : 'LENS_SAVED', objectType: 'lens', objectName: saved.name,
             detail: `version ${saved.version}${description ? ` — ${description}` : ''}`, user: req.user })
         res.json({ ...saved, validation: errors })
-    } catch (e) { res.status(500).json({ error: e.message }) }
+    } catch (e) {
+        if (e.code === 'LENS_CONFLICT') return res.status(409).json({ error: e.message, code: e.code, currentVersion: e.currentVersion })
+        res.status(500).json({ error: e.message })
+    }
 })
 
 app.delete('/api/lenses/:name', async (req, res) => {
@@ -123,6 +171,7 @@ app.delete('/api/lenses/:name', async (req, res) => {
         const server = req.query.server
         if (!server) return res.status(400).json({ error: 'server required' })
         if (!gateReadOnly(res, server)) return
+        if (!(await requireLensAuthor(req, res, server))) return
         await lensStore.deleteLens(server, req.params.name, { ideToken: req.ideToken })
         cl.writeLog({ server, action: 'LENS_DELETED', objectType: 'lens', objectName: req.params.name, user: req.user })
         res.json({ ok: true })

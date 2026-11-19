@@ -7,6 +7,8 @@
       "loginServer": "MyTM1Server",
       "username": "admin",
       "password": "your_password",
+      "lensAuthors": ["Lens Authors"],
+      "_lensAuthors": "TM1 groups allowed to save, delete or restore Lenses on this server. Remove this line to allow any signed-in user; TM1 ADMIN is always allowed.",
       "servers": ["MyTM1Server"]
     }
   ]

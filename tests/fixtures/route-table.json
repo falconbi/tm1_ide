@@ -27,6 +27,8 @@
   "GET /api/lenses",
   "GET /api/lens/process-usage",
   "GET /api/lenses/:name",
+  "GET /api/lenses/:name/versions",
+  "POST /api/lenses/:name/versions/:version/restore",
   "POST /api/lenses/:name",
   "DELETE /api/lenses/:name",
   "POST /api/lens/exec-mdx",

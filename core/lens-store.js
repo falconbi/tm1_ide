@@ -22,6 +22,8 @@ function safeName(name) {
 }
 
 const docName = name => `${safeName(name)}.json`
+const VERSION_DOC = /\.v(\d+)\.json$/
+const versionDocName = (name, version) => `${safeName(name)}.v${Number(version)}.json`
 
 // A Lens's folder on the Lens app home page: 'Finance' or 'Planning/Forecast'
 // ('/' makes a sub-folder). Just a label stored with the Lens — the file stays
@@ -36,7 +38,7 @@ function cleanFolder(folder) {
 
 // Details only (no HTML) for every Lens in this server's model, sorted by name.
 async function listLenses(server, { ideToken, client } = {}) {
-    const names = (await store.listDocs(server, AREA, { ideToken, client })).filter(n => n.endsWith('.json'))
+    const names = (await store.listDocs(server, AREA, { ideToken, client })).filter(n => n.endsWith('.json') && !VERSION_DOC.test(n))
     const out = []
     out.errors = []
     for (const n of names) {
@@ -55,7 +57,7 @@ async function listLenses(server, { ideToken, client } = {}) {
 // Every Lens with the processes it may run — `runsOf(doc)` is lens-bridge.lensRuns (passed in so
 // the store stays free of Lens logic). Used to mark the processes behind Lens buttons.
 async function listLensRuns(server, runsOf, { ideToken, client } = {}) {
-    const names = (await store.listDocs(server, AREA, { ideToken, client })).filter(n => n.endsWith('.json'))
+    const names = (await store.listDocs(server, AREA, { ideToken, client })).filter(n => n.endsWith('.json') && !VERSION_DOC.test(n))
     const out = []
     out.errors = []
     for (const n of names) {
@@ -141,9 +143,19 @@ function cleanReviewers(reviewers) {
     return [...new Set(reviewers.map(r => r.trim()))]
 }
 
-async function saveLens(server, name, html, owner, { publish, description, folder, title, icon, color, image, config, reviewers, ideToken, client } = {}) {
+async function saveLens(server, name, html, owner, { publish, description, folder, title, icon, color, image, config, reviewers, expectVersion, ideToken, client } = {}) {
     const safe = safeName(name)
     const existing = await store.readDoc(server, AREA, docName(safe), { ideToken, client })
+    if (expectVersion !== undefined && expectVersion !== null) {
+        const current = Number(existing?.version) || 0
+        if (current !== Number(expectVersion)) {
+            const e = new Error(`This Lens was saved by someone else (version ${current}, you had ${expectVersion}). Reload it before saving — nothing was changed.`)
+            e.code = 'LENS_CONFLICT'
+            e.status = 409
+            e.currentVersion = current
+            throw e
+        }
+    }
     const now = new Date().toISOString()
     const doc = {
         name:           safe,
@@ -161,17 +173,74 @@ async function saveLens(server, name, html, owner, { publish, description, folde
         reviewers:      reviewers === undefined ? (existing?.reviewers ?? []) : cleanReviewers(reviewers),
         created:        existing?.created ?? now,
         createdBy:      existing?.createdBy ?? owner ?? 'unknown',
+        publishedBy:    publish === true ? (owner ?? 'unknown') : (existing?.publishedBy ?? null),
+        publishedAt:    publish === true ? now : (existing?.publishedAt ?? null),
         toolkitVersion: TOOLKIT_VERSION,
         html,
     }
     if (typeof doc.html !== 'string' || !doc.html.trim()) throw new Error('A Lens needs its code (html)')
+    // Keep the version we are replacing, so any earlier state can be restored.
+    if (existing) {
+        try {
+            await store.writeDoc(server, AREA, versionDocName(safe, existing.version), existing, { ideToken, client })
+        } catch (e) {
+            throw new Error(`Could not keep version ${existing.version} of "${safe}" before saving — nothing was changed. ${e.message}`, { cause: e })
+        }
+    }
     await store.writeDoc(server, AREA, docName(safe), doc, { ideToken, client })
     const { html: _html, ...details } = doc
     return details
 }
 
 async function deleteLens(server, name, { ideToken, client } = {}) {
-    await store.deleteDoc(server, AREA, docName(name), { ideToken, client })
+    const safe = safeName(name)
+    await store.deleteDoc(server, AREA, docName(safe), { ideToken, client })
+    for (const n of await versionDocs(server, safe, { ideToken, client })) {
+        try { await store.deleteDoc(server, AREA, n, { ideToken, client }) } catch { /* history cleanup is best effort */ }
+    }
+}
+
+async function versionDocs(server, safe, opts) {
+    return (await store.listDocs(server, AREA, opts)).filter(n => {
+        const m = VERSION_DOC.exec(n)
+        return m && n.startsWith(safe + '.v')
+    })
+}
+
+// Earlier versions kept beside the Lens (Applications/Governance/Lenses/<name>.v<n>.json).
+// Details only, newest first.
+async function listLensVersions(server, name, { ideToken, client } = {}) {
+    const safe = safeName(name)
+    const out = []
+    for (const n of await versionDocs(server, safe, { ideToken, client })) {
+        try {
+            const doc = await store.readDoc(server, AREA, n, { ideToken, client })
+            if (!doc) continue
+            const version = Number(VERSION_DOC.exec(n)[1])
+            out.push({ version, updated: doc.updated ?? null, status: doc.status ?? 'draft', owner: doc.owner ?? '', publishedBy: doc.publishedBy ?? null, publishedAt: doc.publishedAt ?? null })
+        } catch { /* skip an unreadable snapshot */ }
+    }
+    return out.sort((a, b) => b.version - a.version)
+}
+
+async function readLensVersion(server, name, version, { ideToken, client } = {}) {
+    const safe = safeName(name)
+    const doc = await store.readDoc(server, AREA, versionDocName(safe, version), { ideToken, client })
+    if (!doc) throw new Error(`Version ${version} of Lens "${safe}" is not kept on ${server}`)
+    return doc
+}
+
+// Restore a kept version as a NEW version — never a silent overwrite. The
+// current document is snapshotted first by saveLens, so the restore is reversible.
+async function restoreLensVersion(server, name, version, owner, { expectVersion, ideToken, client } = {}) {
+    const snap = await readLensVersion(server, name, version, { ideToken, client })
+    return saveLens(server, name, snap.html ?? '', owner, {
+        publish: snap.status === 'published',
+        description: snap.description, folder: snap.folder, title: snap.title,
+        icon: snap.icon, color: snap.color, image: snap.image,
+        config: snap.config, reviewers: snap.reviewers, expectVersion,
+        ideToken, client,
+    })
 }
 
 // One gate for every list, page, frame and API read. A published Lens follows
@@ -209,4 +278,4 @@ function canOpenLens(doc, groups = []) {
     return mine.has('admin') || allowed.some(g => mine.has(String(g).toLowerCase()))
 }
 
-module.exports = { listLensRuns, safeName, cleanFolder, cleanIcon, cleanColor, cleanImage, cleanConfig, cleanReviewers, canOpenLens, visibleTo, ICON_NAMES, listLenses, readLens, saveLens, deleteLens, TOOLKIT_VERSION }
+module.exports = { listLensRuns, safeName, cleanFolder, cleanIcon, cleanColor, cleanImage, cleanConfig, cleanReviewers, canOpenLens, visibleTo, ICON_NAMES, listLenses, readLens, saveLens, deleteLens, listLensVersions, readLensVersion, restoreLensVersion, TOOLKIT_VERSION }

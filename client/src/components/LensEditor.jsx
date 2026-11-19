@@ -2,7 +2,7 @@ import { get, post } from '@/lib/api'
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react'
 import MonacoEditor from '@monaco-editor/react'
 import { useStore } from '@/store'
-import { Sparkles, Save, RefreshCw, Loader2, Eye, Pencil, SlidersHorizontal } from 'lucide-react'
+import { Sparkles, Save, RefreshCw, Loader2, Eye, Pencil, SlidersHorizontal, History } from 'lucide-react'
 import ConfirmButton from '@/components/ConfirmButton'
 import { cn } from '@/lib/utils'
 import { lensSrcDoc, installLensHost } from '@shared/lens-bridge'
@@ -121,6 +121,10 @@ export default function LensEditor({ tab }) {
   const [name, setName] = useState(tab.name ?? '')
   const [savedName, setSavedName] = useState(tab.name ?? '')
   const [status, setStatus] = useState('draft')
+  const [version, setVersion] = useState(0)
+  const [versions, setVersions] = useState(null)
+  const [showVersions, setShowVersions] = useState(false)
+  const [restoring, setRestoring] = useState(null)
 
   const [prompt, setPrompt] = useState('')
   // Stored with the Lens (shown in the Lens app): loaded on open, kept on save.
@@ -188,7 +192,7 @@ export default function LensEditor({ tab }) {
     if (tab.name) {
       get(`/api/lenses/${encodeURIComponent(tab.name)}?server=${encodeURIComponent(tab.server)}`)
         .then(d => {
-          if (d.html) { setHtml(d.html); setStatus(d.meta?.status ?? 'draft'); setDescription(d.meta?.description ?? ''); setFolder(d.meta?.folder ?? ''); setTitle(d.meta?.title ?? ''); setReviewers((d.meta?.reviewers ?? []).join(', ')); setLook({ icon: d.meta?.icon ?? '', color: d.meta?.color ?? '', image: d.meta?.image ?? '' }); setConfigText(JSON.stringify(d.meta?.config ?? {}, null, 2) + '\n'); setGoodConfig(d.meta?.config ?? {}) }
+          if (d.html) { setHtml(d.html); setStatus(d.meta?.status ?? 'draft'); setVersion(Number(d.meta?.version) || 0); setDescription(d.meta?.description ?? ''); setFolder(d.meta?.folder ?? ''); setTitle(d.meta?.title ?? ''); setReviewers((d.meta?.reviewers ?? []).join(', ')); setLook({ icon: d.meta?.icon ?? '', color: d.meta?.color ?? '', image: d.meta?.image ?? '' }); setConfigText(JSON.stringify(d.meta?.config ?? {}, null, 2) + '\n'); setGoodConfig(d.meta?.config ?? {}) }
           else if (d.error) setMessage({ kind: 'error', text: `Couldn't load the Lens: ${d.error}` })
         })
         .catch(e => setMessage({ kind: 'error', text: `Couldn't load the Lens: ${e.message}` }))
@@ -241,7 +245,7 @@ export default function LensEditor({ tab }) {
       let data
       try {
         const reviewersList = reviewers.split(',').map(r => r.trim()).filter(Boolean)
-        data = await post(`/api/lenses/${encodeURIComponent(name.trim())}?server=${encodeURIComponent(tab.server)}`, { html, description, folder, title, icon: look.icon, color: look.color, image: look.image, config: goodConfig, reviewers: reviewersList, publish, force })
+        data = await post(`/api/lenses/${encodeURIComponent(name.trim())}?server=${encodeURIComponent(tab.server)}`, { html, description, folder, title, icon: look.icon, color: look.color, image: look.image, config: goodConfig, reviewers: reviewersList, expectVersion: name.trim() === savedName ? version : 0, publish, force })
       } catch (e) {
         if (Array.isArray(e.data?.validation)) setValidation(e.data.validation)
         throw e
@@ -249,6 +253,7 @@ export default function LensEditor({ tab }) {
       const next = afterLensSave(savedName, data)
       setSavedName(next.savedName)
       setStatus(data.status ?? status)
+      setVersion(Number(data.version) || version + 1)
       setName(next.savedName)
       if (next.patch) patchTab(tab.id, next.patch)
       setMessage({ kind: 'ok', text: `Saved "${data.name}" to ${tab.server}'s model (${data.status}, version ${data.version})${data.validation?.length ? ` — ${data.validation.length} validation warnings` : ''}` })
@@ -261,6 +266,38 @@ export default function LensEditor({ tab }) {
   }
 
   const refreshPreview = () => setPreviewKey(k => k + 1)
+
+  const openVersions = async () => {
+    if (showVersions) { setShowVersions(false); return }
+    setShowVersions(true); setVersions(null)
+    try {
+      setVersions(await get(`/api/lenses/${encodeURIComponent(savedName)}/versions?server=${encodeURIComponent(tab.server)}`))
+    } catch (e) {
+      setVersions([])
+      setMessage({ kind: 'error', text: `Couldn't load the versions: ${e.message}` })
+    }
+  }
+
+  const restoreVersion = async (v) => {
+    setRestoring(v)
+    try {
+      await post(`/api/lenses/${encodeURIComponent(savedName)}/versions/${v}/restore?server=${encodeURIComponent(tab.server)}`, { expectVersion: version })
+      const d = await get(`/api/lenses/${encodeURIComponent(savedName)}?server=${encodeURIComponent(tab.server)}`)
+      if (d.html) {
+        setHtml(d.html); setStatus(d.meta?.status ?? 'draft'); setVersion(Number(d.meta?.version) || 0)
+        setDescription(d.meta?.description ?? ''); setFolder(d.meta?.folder ?? ''); setTitle(d.meta?.title ?? '')
+        setReviewers((d.meta?.reviewers ?? []).join(', '))
+        setLook({ icon: d.meta?.icon ?? '', color: d.meta?.color ?? '', image: d.meta?.image ?? '' })
+        setConfigText(JSON.stringify(d.meta?.config ?? {}, null, 2) + '\n'); setGoodConfig(d.meta?.config ?? {})
+        setPreviewKey(k => k + 1)
+      }
+      setVersions(await get(`/api/lenses/${encodeURIComponent(savedName)}/versions?server=${encodeURIComponent(tab.server)}`))
+      setMessage({ kind: 'ok', text: `Restored version ${v} as version ${d.meta?.version ?? ''}. The version it replaced is kept.` })
+      window.dispatchEvent(new CustomEvent('tm1-lenses-changed', { detail: { server: tab.server } }))
+    } catch (e) {
+      setMessage({ kind: 'error', text: e.message })
+    } finally { setRestoring(null) }
+  }
 
   const startFrom = async (src) => {
     if (!src) return
@@ -418,6 +455,14 @@ export default function LensEditor({ tab }) {
           {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
           Save
         </button>
+        <button
+          onClick={openVersions}
+          disabled={!savedName}
+          className="inline-flex items-center gap-1.5 rounded border border-border px-2 py-1.5 text-sm hover:bg-accent disabled:opacity-50"
+          title="Earlier versions kept with this Lens — restoring one keeps the current version"
+        >
+          <History className="h-3.5 w-3.5" /> Versions
+        </button>
         {status === 'published' ? (
           <ConfirmButton
             label="Unpublish"
@@ -486,6 +531,33 @@ export default function LensEditor({ tab }) {
       {message && (
         <div className={cn('px-3 py-1.5 text-xs border-b', message.kind === 'error' ? 'text-red-600 border-red-200 bg-red-50' : 'text-emerald-700 border-emerald-200 bg-emerald-50')}>
           {message.text}
+        </div>
+      )}
+      {showVersions && (
+        <div className="border-b border-border bg-muted/30 px-3 py-2 text-xs">
+          <div className="mb-1 flex items-center gap-2">
+            <b>Version history</b>
+            <span className="text-muted-foreground">Restoring keeps the current version.</span>
+            <button onClick={() => setShowVersions(false)} className="ml-auto rounded px-1.5 py-0.5 hover:bg-accent">Close</button>
+          </div>
+          {versions === null ? <div className="text-muted-foreground">Loading…</div>
+            : versions.length ? versions.map(v => (
+              <div key={v.version} className="flex items-center gap-2 border-t border-border/60 py-1">
+                <span className="font-mono">v{v.version}</span>
+                <span className={v.status === 'published' ? 'text-emerald-600' : 'text-amber-600'}>{v.status}</span>
+                <span className="text-muted-foreground">{v.updated ? new Date(v.updated).toLocaleString() : ''}</span>
+                <span>{v.owner || ''}</span>
+                <ConfirmButton
+                  label="Restore"
+                  message={`Restore version ${v.version}? The editor's unsaved changes are replaced, and the current saved version is kept.`}
+                  confirmLabel="Restore"
+                  onConfirm={() => restoreVersion(v.version)}
+                  pending={restoring === v.version}
+                  className="ml-auto rounded border border-border px-2 py-0.5 text-[11px] hover:bg-accent"
+                  confirmClassName="bg-primary hover:bg-primary/90"
+                />
+              </div>
+            )) : <div className="text-muted-foreground">No earlier versions yet — they appear after the next save.</div>}
         </div>
       )}
       {validation.length > 0 && (

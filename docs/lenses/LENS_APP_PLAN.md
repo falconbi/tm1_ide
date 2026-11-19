@@ -180,8 +180,11 @@ Carried over from Stage 1 and extended:
    - **Display Lenses** (charts, dashboards, board packs — read-only): **draft → review → publish on PROD**, with real
      data. A draft is visible only to its author and chosen reviewers; publishing keeps the previous version
      (one-click rollback); who drafted, reviewed and published is recorded with the Lens. Only named authors (a TM1
-     group, e.g. "Lens Authors") can draft. Authoring starts in the IDE connected to PROD in a **Lens-authoring-only**
-     mode (no model changes); an author mode in the Lens app itself may follow.
+     group, e.g. "Lens Authors" in `lensAuthors` in `config/servers.json`) can draft — **enforced since
+     19 Nov 2026**. Authoring starts in the IDE connected to PROD in a **Lens-authoring-only** mode (no model
+     changes); an author mode in the Lens app itself may follow. **Done 19 Nov 2026:** every save keeps the version
+     it replaces, the IDE's Versions panel restores one as a new version (the current version is kept too), and
+     `publishedBy` / `publishedAt` are recorded. A separate reviewer sign-off step is not built.
    - **Anything that changes data** (write-back forms, action buttons, workflow): **built and tested on DEV**, then
      test → approve → release like models and processes. They cannot be tested on PROD — TM1 sandboxes cover cell
      writes but not processes, so a process run from a form always changes real data.
