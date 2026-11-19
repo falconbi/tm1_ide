@@ -8,6 +8,8 @@
     "key": "",
     "cert": ""
   },
+  "trustProxy": false,
+  "_trustProxy": "Behind PAW or another TLS reverse proxy, set this to true (or the number of proxy hops) so req.secure and the Secure cookie follow X-Forwarded-Proto. Leave false when the app is reached directly.",
   "endSessionProcesses": [],
   "_endSessionProcesses": "Processes run as the person when their session ends (sign out or idle timeout), e.g. [{ \"process\": \"Lens Reserve\", \"params\": { \"pAction\": \"ReleaseAll\" } }] to hand back data reservations taken through Lenses."
 }

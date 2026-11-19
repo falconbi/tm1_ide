@@ -79,7 +79,9 @@ function writeCtx(patch) {
 // saved Lens's declared cubes, never a name taken from the message.
 // `live` (Lens app only): relay the working-together stream into the frame.
 // `readOnly`: a preview — reads are answered, but nothing may change data.
-function installLensHost(getLensWindow, { getServer, getToken, getLens, live = false, readOnly = false, openLens }) {
+// `onUnauthorized`: the app's sign-in is gone (the Lens app passes one; the IDE
+// leaves it out). Called once so the host page can return to sign-in.
+function installLensHost(getLensWindow, { getServer, getToken, getLens, live = false, readOnly = false, openLens, onUnauthorized }) {
   let stream = null, liveChannel = '', liveConn = ''
   const pushCtx = () => {
     getLensWindow()?.postMessage({ __lensBridge: 1, ctx: true, context: readCtx() }, '*')
@@ -211,6 +213,10 @@ function installLensHost(getLensWindow, { getServer, getToken, getLens, live = f
       const withLens = u => `${u}${u.includes('?') ? '&' : '?'}lens=${enc(openedLens ?? '')}`
       const res = await fetch(withLens(url), init)
       const data = await res.json().catch(() => ({}))
+      if (res.status === 401 && onUnauthorized) {
+        onUnauthorized()
+        throw new Error('Your session expired — sign in again')
+      }
       if (!res.ok) throw new Error(data.error || res.statusText)
       respond(d.id, d.method === 'readCell' ? data.value : data)
     } catch (e) {

@@ -138,3 +138,23 @@ test('a read-only host answers reads but refuses writes, runs and notes', async 
     assert.equal(calls.length, 1, 'nothing that changes data reached the server')
   } finally { off() }
 })
+
+test('a 401 from the app sends the host back to sign-in', async () => {
+  const win = fakeDom({ source: {} })
+  const me = { ...win.contentWindow }; me.postMessage = (m) => win._posted.push(m)
+  global.window = win
+  global.localStorage = { getItem: () => null, setItem: () => {} }
+  global.fetch = async () => ({ ok: false, status: 401, json: async () => ({ error: 'your session expired — sign in again' }), statusText: 'Unauthorized' })
+  let sent = 0
+  const off = installLensHost(() => me, {
+    getServer: () => '24Retail', getToken: () => '', getLens: () => 'Target-Input',
+    onUnauthorized: () => { sent++ },
+  })
+  try {
+    win._emit('message', { data: { __lensBridge: 1, id: 1, chan: 'c', method: 'getMeta', payload: {} }, source: me })
+    await flush()
+    assert.equal(sent, 1)
+    assert.equal(win._posted[0].ok, false)
+    assert.match(win._posted[0].error, /session expired/)
+  } finally { off() }
+})

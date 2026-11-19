@@ -66,6 +66,9 @@ function normalizeConfig(cfg = {}) {
         showDrafts:   !!cfg.showDrafts,
         idleMinutes:  Number(cfg.idleMinutes) || DEFAULT_IDLE_MINUTES,
         https:        { enabled: !!cfg.https?.enabled, key: cfg.https?.key ?? '', cert: cfg.https?.cert ?? '' },
+        // Behind PAW or another TLS reverse proxy: trust its X-Forwarded-* headers
+        // (true, a hop count, or Express's trust-proxy string). Off by default.
+        trustProxy:   cfg.trustProxy ?? false,
         // Processes run as the person when their session ends (sign out or idle
         // timeout) — e.g. hand back the data reservations they took through Lenses.
         endSessionProcesses: Array.isArray(cfg.endSessionProcesses)
@@ -268,8 +271,16 @@ function signOutBar(display, prefs = { mode: 'system', palette: THEMES.default }
   })()</script>`
 }
 
-function cookieOptions(cfg) {
-    return { httpOnly: true, sameSite: 'strict', secure: !!cfg.https?.enabled, path: '/' }
+// Secure whenever the connection is HTTPS — directly, or through a trusted
+// proxy (set "trustProxy" in settings; req.secure then follows X-Forwarded-Proto).
+function cookieOptions(cfg, req) {
+    return { httpOnly: true, sameSite: 'strict', secure: !!cfg.https?.enabled || !!req?.secure, path: '/' }
+}
+
+// Only an internal path may follow sign-in — never another site.
+function safeNext(v) {
+    const s = String(v ?? '')
+    return s.startsWith('/') && !s.startsWith('//') ? s : '/'
 }
 
 function parseCookies(req) {
@@ -331,6 +342,7 @@ function createApp({ config, deps = {} } = {}) {
     const ipLimit = deps.ipLimiter ?? createIpLimiter({ max: 10, windowMs: 15 * 60_000 })
     const failures = deps.failureGuard ?? createFailureGuard({ maxFailures: 2, windowMs: 15 * 60_000 })
     const app = express()
+    app.set('trust proxy', cfg.trustProxy)
     app.set('case sensitive routing', true)
     app.use(express.json({ limit: '1mb' }))
     app.disable('x-powered-by')
@@ -417,17 +429,21 @@ function createApp({ config, deps = {} } = {}) {
     function requireSessionPage(req, res, next) {
         const sid = parseCookies(req)[COOKIE]
         const sess = sid ? store.get(sid) : null
-        if (!sess || !store.clientFor(sid)) return res.redirect('/signin')
+        if (!sess || !store.clientFor(sid)) {
+            return res.redirect('/signin?next=' + encodeURIComponent(req.originalUrl || '/'))
+        }
+        store.touch(sid)
         next()
     }
 
     // ── Sign-in ────────────────────────────────────────────────────────────────
     app.get('/signin', (req, res) => {
-        const mode = cfg.https?.enabled ? ' (HTTPS)' : ''
+        const secure = !!cfg.https?.enabled || !!req.secure
+        const next = safeNext(req.query.next)
         const body = `
   <div class="card">
     <h3>Sign in to ${esc(cfg.server)}</h3>
-    <p class="desc" style="font-size:12px;color:#64748b">Your TM1 identity. Connects over HTTP${mode}; nothing is stored beyond your session.</p>
+    <p class="desc" style="font-size:12px;color:#64748b">Your TM1 identity. Connects over ${secure ? 'HTTPS' : 'HTTP (unencrypted — keep it on a trusted network)'}; nothing is stored beyond your session.</p>
     <form id="f">
       <label>Username</label><input id="username" autocomplete="username" required>
       <label>Password</label><input id="password" type="password" autocomplete="current-password" required>
@@ -451,7 +467,7 @@ function createApp({ config, deps = {} } = {}) {
         password: document.getElementById('password').value,
         namespace: document.getElementById('namespace').value || null
       }) }).then(function (r) { return r.json().then(function (d) { return { r: r, d: d } }) }).then(function (o) {
-        if (o.r.ok) { window.location.href = '/' }
+        if (o.r.ok) { window.location.href = ${JSON.stringify(next).replace(/</g, '\\u003c')} }
         else { err.textContent = o.d.rejected === true ? 'TM1 rejected the login — check your username and password.' : (o.d.error || 'Sign-in failed') }
       }).catch(function () { err.textContent = 'Could not reach the Lens app.' })
     })
@@ -504,14 +520,14 @@ function createApp({ config, deps = {} } = {}) {
             store.adoptTm1Session(user, { client: cl, state, refs: new Set() })
         }
         const sid = store.addWebSession(user, name)
-        res.cookie(COOKIE, sid, cookieOptions(cfg))
+        res.cookie(COOKIE, sid, cookieOptions(cfg, req))
         res.json({ ok: true, server: cfg.server, username: name })
     })
 
     app.post('/auth/signout', (req, res) => {
         const sid = parseCookies(req)[COOKIE]
         if (sid) store.dropWebSession(sid)
-        res.clearCookie(COOKIE, cookieOptions(cfg))
+        res.clearCookie(COOKIE, cookieOptions(cfg, req))
         // The page's Sign out button is a form post: send the person back to
         // sign-in. A script asking for JSON gets JSON.
         if (req.accepts(['html', 'json']) === 'html') return res.redirect(303, '/signin')
@@ -686,7 +702,10 @@ function createApp({ config, deps = {} } = {}) {
         getToken: function () { return null },
         getLens: function () { return ${JSON.stringify(doc.name).replace(/</g, '\\u003c')} },
         openLens: function (n) { window.location.assign('/lens/' + encodeURIComponent(n)) },
-        live: true
+        live: true,
+        onUnauthorized: function () {
+          window.location.assign('/signin?next=' + encodeURIComponent(window.location.pathname + window.location.search))
+        }
       })
     })()
   </script>`
@@ -864,7 +883,17 @@ function createApp({ config, deps = {} } = {}) {
         const me = hub.join(req.params.name, channelOf(req.query.channel), req.lens.display, ev => res.write(`data: ${JSON.stringify(ev)}\n\n`))
         // A short beat, so a connection that died without saying goodbye is
         // noticed (and its ghost leaves the room) within seconds.
-        const beat = setInterval(() => { try { if (!res.write(': keep-alive\n\n') && res.destroyed) me.leave() } catch { me.leave() } }, 10_000)
+        const beat = setInterval(() => {
+            // The idle sweep may have ended this person's session: stop feeding
+            // an expired stream instead of leaving it open forever.
+            if (!store.get(req.lens.sid)) {
+                clearInterval(beat)
+                me.leave()
+                try { res.end() } catch { /* already closed */ }
+                return
+            }
+            try { if (!res.write(': keep-alive\n\n') && res.destroyed) me.leave() } catch { me.leave() }
+        }, 10_000)
         res.on('error', () => me.leave())
         req.on('close', () => { clearInterval(beat); me.leave() })
     })

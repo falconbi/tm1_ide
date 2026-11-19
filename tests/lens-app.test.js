@@ -234,3 +234,44 @@ test('the Lenses list only includes Lenses the person may open', async () => {
     assert.deepEqual(names, ['Everyone', 'HrOnly'], 'a restricted Lens is not listed')
   } finally { await teardown(); await setup() }
 })
+
+test('behind a trusted TLS proxy the app sees https, the cookie is Secure, and the toolkit URL is https', async () => {
+  await teardown()
+  try {
+    const ctl = createApp({ config: { ...CFG, trustProxy: true }, deps: stubs })
+    const srv = http.createServer(ctl.app)
+    await new Promise(r => srv.listen(0, r))
+    const b = `http://127.0.0.1:${srv.address().port}`
+    try {
+      const si = await fetch(`${b}/auth/signin`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-forwarded-proto': 'https' },
+        body: JSON.stringify({ username: 'admin', password: 'pw' }),
+      })
+      const setc = si.headers.get('set-cookie') ?? ''
+      assert.match(setc, /Secure/i, 'a Secure cookie behind TLS')
+
+      const cookie = `lens_session=${(setc.match(/lens_session=([^;]+)/) ?? [])[1]}`
+      const frame = await fetch(`${b}/lens-frame/PnL-Dashboard`, { headers: { cookie, 'x-forwarded-proto': 'https' } })
+      assert.equal(frame.status, 200)
+      assert.match(frame.headers.get('content-security-policy') ?? '', new RegExp(`script-src 'unsafe-inline' https://127\\.0\\.0\\.1:${srv.address().port}/lens-kit/`))
+
+      const page = await fetch(`${b}/signin`, { headers: { 'x-forwarded-proto': 'https' } })
+      assert.match(await page.text(), /Connects over HTTPS/)
+    } finally { ctl.close(); await new Promise(r => { srv.closeAllConnections?.(); srv.close(() => r()) }) }
+  } finally { await setup() }
+})
+
+test('an unauthenticated deep link returns to that Lens after sign-in — never to another site', async () => {
+  const deep = await get('/lens/PnL-Dashboard')
+  assert.equal(deep.status, 302)
+  assert.equal(deep.headers.get('location'), '/signin?next=%2Flens%2FPnL-Dashboard')
+
+  const page = await get('/signin?next=%2Flens%2FPnL-Dashboard')
+  assert.match(await page.text(), /window\.location\.href = "\/lens\/PnL-Dashboard"/)
+
+  const hostile = await get('/signin?next=%2F%2Fevil.example%2Fx')
+  const html = await hostile.text()
+  assert.match(html, /window\.location\.href = "\/"/)
+  assert.ok(!html.includes('evil.example'))
+})

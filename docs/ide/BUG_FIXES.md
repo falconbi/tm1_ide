@@ -3,7 +3,7 @@
 Every bug-fix commit, newest first, by the date it was committed. Generated from the git history;
 commits that mixed a fix into a feature are included too. New features are not listed here.
 
-166 fixes from 2026-05-20 to 2026-10-10, plus 46 entries for 11–27 October, 6 for 28 October–1 November, 7 for 2 November, 4 for 5 November, 10 for 6 November, 9 for 9 November, 8 for 15 November, 3 for 17 November, 9 for 18 November and 5 for 19 November. Last updated 2026-11-19.
+166 fixes from 2026-05-20 to 2026-10-10, plus 46 entries for 11–27 October, 6 for 28 October–1 November, 7 for 2 November, 4 for 5 November, 10 for 6 November, 9 for 9 November, 8 for 15 November, 3 for 17 November, 9 for 18 November and 8 for 19 November. Last updated 2026-11-19.
 
 ← [Back to README](../../README.md)
 
@@ -45,6 +45,10 @@ commits that mixed a fix into a feature are included too. New features are not l
 - **Lens drafts and previews** — A Lens app with drafts switched on showed every draft to everyone, and a draft could change data or run processes. Drafts are now limited to their author, chosen reviewers or a TM1 admin, and are display-only until published; the home-page hover preview also runs read-only, so a Lens cannot write or run just by being peeked at
 - **Lens history and trace** — History with no slice returned every user's cells, values and notes from the local activity log, and a rule trace skipped the TM1 readability check the other cell routes use. History now shows only your own activity when no slice is given, checks each cube in a slice and drops unreadable entries; trace checks the cell first
 - **Lens activity log** — A failed append after a successful TM1 write or run returned an error, so the person could retry a change that had already happened. Logging is now best-effort: the write/run reports success and the failure is a console warning
+
+- **Lens app behind a TLS proxy** — The app built the toolkit URL and the session cookie from the HTTP hop it saw, so behind PAW or another HTTPS proxy the toolkit was blocked as mixed content and the cookie was not Secure. A new `trustProxy` setting makes `req.secure`/`X-Forwarded-Proto` drive both, and the sign-in page says HTTPS
+- **Lens session expiry in an open Lens** — A bridge call after the session expired surfaced as a Lens error and left a dead screen. The host now returns to sign-in and comes back to the same Lens; deep links carry their path through sign-in (internal paths only)
+- **Lens live connections and idle** — Page views did not count as activity, and an SSE stream kept running after the idle sweep ended the session. Page views now touch the session, and the stream closes when its session is gone
 
 ### 2026-11-18
 
