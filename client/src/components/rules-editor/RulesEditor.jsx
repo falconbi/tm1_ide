@@ -56,7 +56,7 @@ export default function RulesEditor({ tab, onCursor }) {
 
   const {
     formatPopupRef, showFormatPopup, setShowFormatPopup,
-    formatStruct, setFormatStruct, runFormat,
+    formatStruct, setFormatStruct, runFormat, canUndoFormat, undoFormat,
   } = useRulesFormat({ editorRef })
 
   const {
@@ -147,6 +147,8 @@ export default function RulesEditor({ tab, onCursor }) {
           formatStruct={formatStruct}
           onSelectFormatStruct={setFormatStruct}
           runFormat={runFormat}
+          canUndoFormat={canUndoFormat}
+          onUndoFormat={undoFormat}
           onOpenFormatSettings={() => { setShowFormatPopup(false); setFormatSettingsOpen(true) }}
           showRegionMenu={showRegionMenu}
           onToggleRegionMenu={toggleRegionMenu}

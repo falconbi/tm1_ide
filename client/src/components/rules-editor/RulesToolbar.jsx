@@ -8,7 +8,7 @@ export default function RulesToolbar({
   dirty, saving, onSave, onUndo, onRedo,
   checking, checkResult, onCheck,
   showFormatPopup, onToggleFormatPopup, formatPopupRef, formatStruct, onSelectFormatStruct,
-  runFormat, onOpenFormatSettings,
+  runFormat, canUndoFormat, onUndoFormat, onOpenFormatSettings,
   showRegionMenu, onToggleRegionMenu, regionList, onGoToRegion,
   regionsCollapsed, onToggleRegions,
   showSnippets, onToggleSnippets,
@@ -114,6 +114,14 @@ export default function RulesToolbar({
                 className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 text-xs rounded bg-primary text-primary-foreground hover:opacity-90 transition-opacity"
               >
                 <AlignLeft size={11} /> Format
+              </button>
+              <button
+                onClick={onUndoFormat}
+                disabled={!canUndoFormat}
+                title="Restore the text from before the last format"
+                className="px-2 py-1.5 text-xs rounded border border-border text-muted-foreground hover:text-foreground hover:bg-muted disabled:opacity-40"
+              >
+                Undo format
               </button>
               <button
                 onClick={onOpenFormatSettings}
