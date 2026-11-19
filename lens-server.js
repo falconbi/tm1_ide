@@ -20,6 +20,7 @@
 // from this app's settings — never from the message (shared/lens-bridge.js).
 
 const path = require('path')
+require('dotenv').config({ path: path.join(__dirname, '.env') })
 const fs = require('fs')
 const http = require('http')
 const https = require('https')
@@ -358,6 +359,11 @@ function createApp({ config, deps = {} } = {}) {
     app.set('case sensitive routing', true)
     app.use(express.json({ limit: '1mb' }))
     app.disable('x-powered-by')
+    app.use((req, res, next) => {
+        res.setHeader('X-Content-Type-Options', 'nosniff')
+        res.setHeader('Referrer-Policy', 'same-origin')
+        next()
+    })
 
     // Only the exact configured server — a request naming another is refused
     // before anything else, and the message can never choose it.
@@ -484,6 +490,8 @@ function createApp({ config, deps = {} } = {}) {
       }).catch(function () { err.textContent = 'Could not reach the Lens app.' })
     })
   </script>`
+        res.set('X-Frame-Options', 'DENY')
+        res.set('Content-Security-Policy', "frame-ancestors 'none'")
         res.send(layout('Sign in', body, { narrow: true }))
     })
 
@@ -566,6 +574,8 @@ function createApp({ config, deps = {} } = {}) {
 
     // ── Home page ──────────────────────────────────────────────────────────────
     app.get('/favicon.ico', (_req, res) => res.status(204).end())
+    // For a service monitor or reverse proxy: the app is up. Does not touch TM1.
+    app.get('/healthz', (_req, res) => res.json({ ok: true, server: cfg.server }))
 
     app.get('/', requireSessionPage, async (req, res) => {
         try {
@@ -632,16 +642,24 @@ function createApp({ config, deps = {} } = {}) {
     // preview loads at a time; a preview once loaded is kept.
     (function () {
       var peek = document.getElementById('peek'), wait = document.getElementById('peekWait')
-      var frames = {}, timer = null, current = null
+      var frames = {}, offs = {}, order = [], timer = null, current = null
       function frameFor(name) {
         if (frames[name]) return frames[name]
+        // A preview used to be kept forever (one host listener + iframe per
+        // Lens hovered). Keep the last 6 and dispose the oldest.
+        if (order.length >= 6) {
+          var old = order.shift()
+          try { offs[old] && offs[old]() } catch (e) {}
+          if (frames[old]) frames[old].remove()
+          delete frames[old]; delete offs[old]
+        }
         var f = document.createElement('iframe')
         f.setAttribute('sandbox', 'allow-scripts')
         f.setAttribute('tabindex', '-1')
         f.title = 'Preview'
         f.onload = function () { if (current === name) { wait.style.display = 'none'; f.style.display = 'block' } f.dataset.loaded = '1' }
         f.src = '/lens-frame/' + encodeURIComponent(name)
-        window.LensBridge.installLensHost(function () { return f.contentWindow }, {
+        offs[name] = window.LensBridge.installLensHost(function () { return f.contentWindow }, {
           getServer: function () { return ${JSON.stringify(cfg.server).replace(/</g, '\\u003c')} },
           getToken: function () { return null },
           getLens: function () { return name },
@@ -650,6 +668,7 @@ function createApp({ config, deps = {} } = {}) {
         })
         peek.appendChild(f)
         frames[name] = f
+        order.push(name)
         return f
       }
       function show(card) {
@@ -744,7 +763,7 @@ function createApp({ config, deps = {} } = {}) {
                 left: '<a class="back" href="/" title="Back to your workspace">&larr; Workspace</a>',
                 right: signOutBar(who(req), prefsOf(req)) }))
         } catch (e) {
-            res.status(404).send(layout('Lens', `<p class="err">${esc(e.message)}</p>`))
+            res.status(e.status === 404 ? 404 : (e.status || 502)).send(layout('Lens', `<p class="err">${esc(e.message)}</p>`))
         }
     })
 
@@ -766,7 +785,9 @@ function createApp({ config, deps = {} } = {}) {
             res.set('Content-Security-Policy', `sandbox allow-scripts; default-src 'none'; script-src 'unsafe-inline' ${kit}; style-src 'unsafe-inline'; img-src data:; connect-src 'none'; font-src 'none'`)
             res.type('html')
             res.send(sharedBridge.lensSrcDoc(doc.html ?? '', { config: doc.config, theme: prefsOf(req) }))
-        } catch { res.status(404).send('Lens not found') }
+        } catch (e) {
+            res.status(e.status === 404 ? 404 : (e.status || 502)).send('Lens not found')
+        }
     })
 
     // The Lens toolkit (window.Lens): one self-contained bundle built into
@@ -943,7 +964,7 @@ function createApp({ config, deps = {} } = {}) {
             const groups = await groupsFor(req.lens.sid)
             res.json(all.filter(d => lensStore.visibleTo(d, groups, { showDrafts: cfg.showDrafts, user: req.lens.display }))
                 .map(d => ({ name: d.name, title: d.title, folder: d.folder, icon: d.icon, color: d.color, description: d.description })))
-        } catch (e) { res.status(400).json({ error: e.message }) }
+        } catch (e) { res.status(e.status ?? 500).json({ error: e.message }) }
     })
 
     // History: recent saves, notes and runs through this Lens, for one slice the
@@ -991,7 +1012,7 @@ function createApp({ config, deps = {} } = {}) {
             }
             const { html: _own, ...meta } = doc
             res.json({ html: doc.html ?? '', meta })
-        } catch (e) { res.status(404).json({ error: e.message }) }
+        } catch (e) { res.status(e.status ?? 500).json({ error: e.message }) }
     })
 
     // Idle sweep

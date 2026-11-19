@@ -271,3 +271,33 @@ test('a rejected Lens list returns JSON 500 instead of an unhandled promise', as
     assert.match((await r.json()).error, /store down/)
   }, { listLenses: async () => { throw new Error('store down') } })
 })
+
+test('the sign-in page cannot be framed and host responses carry basic security headers', async () => {
+  await withApp(async ({ base }) => {
+    const r = await fetch(`${base}/signin`)
+    assert.equal(r.headers.get('x-frame-options'), 'DENY')
+    assert.match(r.headers.get('content-security-policy') ?? '', /frame-ancestors 'none'/)
+    assert.equal(r.headers.get('x-content-type-options'), 'nosniff')
+    assert.equal(r.headers.get('referrer-policy'), 'same-origin')
+  })
+})
+
+test('a TM1 failure is reported as a server error, not as "not found"', async () => {
+  await withApp(async ({ base, signin }) => {
+    const cookie = cookieOf(await signin('admin', 'apple'))
+    const api = await fetch(`${base}/api/lens/Broken`, { headers: { cookie } })
+    assert.equal(api.status, 500)
+    assert.match((await api.json()).error, /TM1 is down/)
+    const page = await fetch(`${base}/lens/Broken`, { headers: { cookie }, redirect: 'manual' })
+    assert.equal(page.status, 502)
+    assert.match(await page.text(), /TM1 is down/)
+  }, { readLens: async () => { throw new Error('TM1 is down') } })
+})
+
+test('healthz answers without a session and without asking TM1', async () => {
+  await withApp(async ({ base }) => {
+    const r = await fetch(`${base}/healthz`)
+    assert.equal(r.status, 200)
+    assert.deepEqual(await r.json(), { ok: true, server: 'S1' })
+  })
+})

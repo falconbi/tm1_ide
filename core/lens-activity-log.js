@@ -8,9 +8,13 @@ const fs   = require('fs')
 const path = require('path')
 
 const FILE = path.join(__dirname, '..', 'data', 'lens-activity.jsonl')
+const MAX_BYTES = 5 * 1024 * 1024   // rotate to <file>.1, keep one previous file
 
 function append(entry, file) {
     fs.mkdirSync(path.dirname(file), { recursive: true })
+    try {
+        if (fs.statSync(file).size > MAX_BYTES) fs.renameSync(file, file + '.1')
+    } catch { /* no file yet, or rotation refused — keep appending */ }
     fs.appendFileSync(file, JSON.stringify({ at: new Date().toISOString(), ...entry }) + '\n')
 }
 
@@ -56,4 +60,4 @@ function readLensActivity({ server, lens, match = {}, limit = 50, skip = [] }, f
     return out
 }
 
-module.exports = { logLensWrite, logLensRun, logLensNote, readLensActivity, FILE }
+module.exports = { logLensWrite, logLensRun, logLensNote, readLensActivity, FILE, MAX_BYTES }

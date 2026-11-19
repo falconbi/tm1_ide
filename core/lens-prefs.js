@@ -31,7 +31,11 @@ function savePrefs(server, user, prefs = {}, file = FILE) {
     const all = load(file)
     all[keyOf(server, user)] = next
     fs.mkdirSync(path.dirname(file), { recursive: true })
-    fs.writeFileSync(file, JSON.stringify(all, null, 2))
+    // Write beside the file, then rename: a crash or full disk never leaves a
+    // half-written preferences file that loses everyone's themes.
+    const tmp = file + '.tmp'
+    fs.writeFileSync(tmp, JSON.stringify(all, null, 2))
+    fs.renameSync(tmp, file)
     return next
 }
 

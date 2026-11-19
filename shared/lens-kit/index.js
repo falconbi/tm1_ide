@@ -1049,7 +1049,9 @@ function editing(el, { process = 'Lens Reserve', target, mode, idleMinutes = 20,
   // graceMinutes more, finish automatically (typed numbers stay on screen).
   // display, not the hidden attribute: an inline display would override it.
   const hideIdle = () => { deadline = 0; q('[data-idle]').style.display = 'none'; lastActive = Date.now() }
-  ;['keydown', 'mousedown', 'wheel', 'touchstart'].forEach(ev => document.addEventListener(ev, () => { if (!deadline) lastActive = Date.now() }, true))
+  const active = () => { if (!deadline) lastActive = Date.now() }
+  const EVENTS = ['keydown', 'mousedown', 'wheel', 'touchstart']
+  EVENTS.forEach(ev => document.addEventListener(ev, active, true))
   q('[data-keep]').onclick = hideIdle
   q('[data-done]').onclick = () => {
     hideIdle()
@@ -1057,7 +1059,7 @@ function editing(el, { process = 'Lens Reserve', target, mode, idleMinutes = 20,
     first.then(() => { if (hasChanges()) throw new Error('Not saved, so you are still editing — your changes are on screen.') ; return api.release() })
       .catch(e => note(e.message))
   }
-  setInterval(() => {
+  const timer = setInterval(() => {
     if (state !== 'mine') { if (deadline) hideIdle(); return }
     const now = Date.now()
     if (!deadline && now - lastActive > idleMinutes * 60000) {
@@ -1071,6 +1073,12 @@ function editing(el, { process = 'Lens Reserve', target, mode, idleMinutes = 20,
       if (!left) { hideIdle(); api.release('timeout').catch(e => note(e.message)) }
     }
   }, 1000)
+  // Call when the screen is replaced or closed: no interval or document
+  // listeners left behind.
+  api.destroy = () => {
+    clearInterval(timer)
+    EVENTS.forEach(ev => document.removeEventListener(ev, active, true))
+  }
   return api
 }
 
