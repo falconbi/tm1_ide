@@ -64,6 +64,9 @@ in development, but October established the shape of the product.
 - **Lens governance** — version history with one-click restore (the current version is kept),
   concurrent-save protection, a `lensAuthors` group gate, and publisher recorded. Line approval is
   a shared toolkit component, with MDX, status, shared selection and grid saving.
+- **Deploy → Lenses** — published Lenses ship to a target without Git: compare content hashes,
+  block on a missing cube or process, approve the exact plan, deploy under the target lock, verify
+  each Lens by reading it back, and keep history in the target model.
 - **Operations** — a Lens app operations guide (systemd, Windows service, container, TLS/PAW, backup)
   and a `/healthz` endpoint.
 

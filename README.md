@@ -90,9 +90,9 @@ Git, with review, approval, deploy and verify steps.
 ### Web applications on TM1 (Lenses)
 Focused HTML screens on live TM1 data, one per job, with governed write-back. They're built in the
 IDE, live in the TM1 model, and open in the separate Lens app — people sign in as themselves, and
-TM1 security decides what each person sees and changes. Lenses can be drafted, reviewed and
-published with version history and rollback. The release-to-PROD path is the last piece still in
-progress.
+TM1 security decides what each person sees and changes. Lenses can be drafted, shared with chosen
+reviewers and published, with version history and rollback. Moving them to PROD is its own governed
+deploy: compare, approve and deploy published Lenses, with per-Lens verification and history.
 
 ![The Lenses home page](docs/images/lenses-home-full.png)
 
