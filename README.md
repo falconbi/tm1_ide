@@ -83,7 +83,7 @@ A financial consolidation engine was built this way, test-first:
 As more of the building is automated, governance matters more, not less. Every save goes into a
 change set. Tests live in the model. A release ships exactly one change set through TM1's built-in
 Git, with review, approval, deploy and verify steps.
-[How the deploy works](https://falconbi.github.io/articles/governed-tm1-deploys/).
+[How a change ships](https://falconbi.github.io/articles/shipping-tm1-changes/) · [why the deploy works this way](https://falconbi.github.io/articles/governed-tm1-deploys/).
 
 <a href="docs/deploy/DEPLOY_LIFECYCLE.md"><img src="docs/images/deploy.png" alt="The step-by-step deploy" width="480"></a>
 
@@ -93,6 +93,8 @@ IDE, live in the TM1 model, and open in the separate Lens app — people sign in
 TM1 security decides what each person sees and changes. Lenses can be drafted, shared with chosen
 reviewers and published, with version history and rollback. Moving them to PROD is its own governed
 deploy: compare, approve and deploy published Lenses, with per-Lens verification and history.
+
+[How Lens deploy works](https://falconbi.github.io/articles/deploying-lenses/).
 
 ![The Lenses home page](docs/images/lenses-home-full.png)
 
@@ -164,7 +166,7 @@ ideas and pull requests are welcome, but there's no promise they'll be accepted 
 
 [Install](INSTALL.md) · [Setup](docs/ide/SETUP.md) · [Features](docs/ide/FEATURES.md) ·
 [Architecture](docs/ide/ARCHITECTURE.md) · [MCP server](docs/ide/MCP_SERVER.md) ·
-[Deploy lifecycle](docs/deploy/DEPLOY_LIFECYCLE.md) · [Security](SECURITY.md) ·
+[Deploy lifecycle](docs/deploy/DEPLOY_LIFECYCLE.md) · [Shipping a TM1 change](https://falconbi.github.io/articles/shipping-tm1-changes/) · [When PROD drifts](https://falconbi.github.io/articles/deploy-drift-recovery/) · [Deploying Lenses](https://falconbi.github.io/articles/deploying-lenses/) · [Security](SECURITY.md) ·
 [Changelog](CHANGELOG.md) · [Bug fixes](docs/ide/BUG_FIXES.md) · [All guides](docs/README.md)
 
 ## Licence
