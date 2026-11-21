@@ -2,6 +2,7 @@ import { request } from '@/lib/api'
 import { useState, useEffect, useRef } from 'react'
 import { useActiveWorkSession, useCloseWorkSession, useWorkSessions } from '@/hooks/useApi'
 import { humanizeFile } from '@/lib/tm1-terms'
+import DiffViewerModal from '@/components/DiffViewerModal'
 
 // Deploy wizard — the deploy journey in one guided screen:
 //   Test → Close → Commit → Build release → Review → Approve → Deploy → Verify
@@ -110,6 +111,11 @@ export default function DeployWizard({ server, onClose, onOpenTests, initialSess
   const [busy,      setBusy]      = useState('')
   const [error,     setError]     = useState(null)
   const [confirming, setConfirming] = useState(false)
+  // The change set's own log, with each entry's before/after state. Review is
+  // supposed to be a review — showing the object names alone asks the approver
+  // to remember what they changed.
+  const [logEntries, setLogEntries] = useState(null)
+  const [diffEntry,  setDiffEntry]  = useState(null)
   // target → 'signed-in' | 'needs-login' | 'rejected' | 'paw'. Read up front so
   // the login requirement shows before the Build release click, not as a 401
   // after the commit.
@@ -293,6 +299,40 @@ export default function DeployWizard({ server, onClose, onOpenTests, initialSess
   const doDrift = async () => {
     const d = await run('drift', { server: target }, '/api/git/drift')
     if (d) setDrift(d)
+  }
+
+  // The change set's log carries the before/after text for each object it
+  // touched. Load it for Review so an object can be opened rather than described.
+  useEffect(() => {
+    if (!sessionId) return
+    let alive = true
+    request(`/api/sessions/${encodeURIComponent(sessionId)}/log`, { headers: authHeader() })
+      .then(r => r.json())
+      .then(d => { if (alive) setLogEntries(Array.isArray(d) ? d : d.entries ?? []) })
+      .catch(() => { if (alive) setLogEntries([]) })
+    return () => { alive = false }
+  }, [sessionId])
+
+  // Match a pull-plan row to its log entry. The plan names TM1 entities
+  // ("Cubes", "Processes"), the log uses the IDE's object types ("cube",
+  // "rules", "process"). Name first, type preferred, never guessed from a
+  // different object.
+  const entryFor = (obj) => {
+    const entries = logEntries ?? []
+    if (!entries.length) return null
+    const name = String(obj?.name ?? '').toLowerCase()
+    const same = entries.filter(e => String(e.object_name ?? '').toLowerCase() === name)
+    if (!same.length) return null
+    const t = String(obj?.type ?? '').toLowerCase()
+    const prefer = t.startsWith('cube') ? ['rules', 'cube']
+      : t.startsWith('process') ? ['process']
+      : t.startsWith('dimension') ? ['dimension', 'attribute']
+      : t.startsWith('chore') ? ['chore']
+      : t.startsWith('view') ? ['view']
+      : t.startsWith('subset') ? ['subset']
+      : []
+    const withState = same.filter(e => e.before_state != null || e.after_state != null)
+    return withState.find(e => prefer.includes(String(e.object_type).toLowerCase())) ?? withState[0] ?? null
   }
 
   // Review is the plan — fetch it on entry instead of asking for a second click.
@@ -679,13 +719,19 @@ export default function DeployWizard({ server, onClose, onOpenTests, initialSess
                     <p className="text-[11px] text-muted-foreground">The target is currently at {prep.deployedCommit} (what it last received).</p>
                     {changed.length > 0 && (
                       <div className="space-y-1 pt-1">
-                        {changed.map((o, i) => (
-                          <div key={i} className="flex items-baseline gap-2 text-xs px-2 py-1 rounded bg-muted/30">
-                            <span className="text-muted-foreground">{o.action.toLowerCase()}</span>
-                            <span className="text-muted-foreground/60">{o.type}</span>
-                            <span className="font-mono">{o.name}</span>
-                          </div>
-                        ))}
+                        {changed.map((o, i) => {
+                          const entry = entryFor(o)
+                          return (
+                            <div key={i} className="flex items-baseline gap-2 text-xs px-2 py-1 rounded bg-muted/30">
+                              <span className="text-muted-foreground">{o.action.toLowerCase()}</span>
+                              <span className="text-muted-foreground/60">{o.type}</span>
+                              <span className="font-mono">{o.name}</span>
+                              {entry
+                                ? <button onClick={() => setDiffEntry(entry)} className="ml-auto text-[10px] text-muted-foreground underline underline-offset-2 hover:text-foreground shrink-0">View change</button>
+                                : <span className="ml-auto text-[10px] text-muted-foreground/50 shrink-0" title="No recorded before/after for this object in this change set">no diff recorded</span>}
+                            </div>
+                          )
+                        })}
                       </div>
                     )}
                     {prep.plan && (prep.planByType?.Skip ?? 0) > 0 && <p className="text-[11px] text-muted-foreground">{prep.planByType.Skip} objects are unchanged — nothing to do for them.</p>}
@@ -877,6 +923,8 @@ export default function DeployWizard({ server, onClose, onOpenTests, initialSess
           )}
         </div>
       </div>
+      {/* Rendered above the wizard (its own z-index), reusing the IDE's diff. */}
+      {diffEntry && <DiffViewerModal entry={diffEntry} onClose={() => setDiffEntry(null)} />}
     </div>
   )
 }
