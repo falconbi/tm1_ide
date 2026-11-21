@@ -163,23 +163,6 @@ function SessionRow({ session, server, openTab, onClose, currentUser, isAdmin = 
     },
     onError: e => toast.error(e.message ?? 'Could not retire this change set'),
   })
-  const [closing, setClosing] = useState(false)
-
-  // Closing runs the model's assertions on the server and refuses on a blocking
-  // failure, returning the detail — so the row needs no separate test button.
-  const closeSet = async () => {
-    setClosing(true)
-    try {
-      const r = await request('/api/sessions/close', { method: 'POST', headers: authHeader(), body: JSON.stringify({ id: session.id }) })
-      const d = await r.json().catch(() => ({}))
-      if (!r.ok || d.error) throw new Error(d.error || r.statusText)
-      toast.success(`Closed — tests ${d.tests?.passed ?? 0}/${d.tests?.total ?? 0} passed`)
-      qc.invalidateQueries({ queryKey: ['work-sessions', server] })
-      qc.invalidateQueries({ queryKey: ['work-session-active', server] })
-    } catch (e) { toast.error(e.message || 'Could not close the change set', { duration: 8000 }) }
-    finally { setClosing(false) }
-  }
-
   const { data: entries = [], isFetching } = useWorkSessionLog(open ? session.id : null)
   const runs = entries.filter(e => e.object_type === 'process-run')
   const changes = entries.filter(e => e.object_type !== 'process-run')
@@ -282,21 +265,11 @@ function SessionRow({ session, server, openTab, onClose, currentUser, isAdmin = 
               </button>
             )
           )}
-          {/* Tests run in the wizard's Test step, and Close runs them again on
-              the server (that is the gate). A third button here was the same
-              call with less detail — it read as a second, different check. */}
-          {isActive && owns && (
-            <div className="flex items-center gap-0.5 mr-1 shrink-0">
-              <button
-                onClick={e => { e.stopPropagation(); closeSet() }}
-                disabled={closing}
-                title={closing ? 'Running the model tests on the server…' : 'Close this change set — the server runs the model tests first and refuses if any blocking test fails'}
-                className="px-1.5 py-0.5 text-[10px] rounded hover:bg-muted text-muted-foreground hover:text-foreground disabled:opacity-40"
-              >
-                {closing ? 'Testing…' : 'Close'}
-              </button>
-            </div>
-          )}
+          {/* No Close here. Closing runs the whole model's assertions and records
+              an immutable closed record — a gated step that belongs where the
+              results are visible (the wizard's Test → Close), not on a row. The
+              deploy button below says "Finish & deploy…" while the set is open,
+              so this row still has one obvious way forward. */}
           {owns && <button
               onClick={e => { e.stopPropagation(); setEditingDesc(v => !v) }}
               title="Add / edit note"
@@ -315,10 +288,10 @@ function SessionRow({ session, server, openTab, onClose, currentUser, isAdmin = 
               </button>
               <button
                 onClick={() => { openDeployWizard({ session }); onClose?.() }}
-                title="Deploy this session"
+                title={isActive ? 'Run the tests, close it, then deploy' : 'Deploy this change set'}
                 className="px-1.5 py-1 rounded text-[10px] font-medium text-emerald-500 hover:text-emerald-400 hover:bg-muted transition-colors"
               >
-                Deploy
+                {isActive ? 'Finish & deploy…' : 'Deploy'}
               </button>
             </div>
           )}
