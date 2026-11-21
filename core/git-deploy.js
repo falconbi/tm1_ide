@@ -78,9 +78,13 @@ async function prepare(source, target, { branch = 'dev', token, gitUser = gitIde
         out.drift = drift.clean ? 'clean' : 'drifted'
         out.driftEntries = drift.entries ?? []
         if (!drift.clean) {
+            // Do NOT return here. The plan is a read, and seeing what the pull
+            // would do is exactly what tells an operator whether the drift
+            // matters. Approval and deployment stay blocked: ready stays false,
+            // and execute() re-checks drift and refuses on its own.
             out.ready = false
+            out.blocked = true
             out.error = driftRefusal(target, drift)
-            return out
         }
     } catch (e) {
         out.error = `GitStatus failed: ${e.response?.data?.error?.message ?? e.message}`
@@ -106,7 +110,7 @@ async function prepare(source, target, { branch = 'dev', token, gitUser = gitIde
         try { out.manifest = require('./change-log').getSessionManifest(session) } catch { /* none */ }
     }
 
-    out.ready = true
+    if (!out.blocked) out.ready = true
     return out
 }
 
