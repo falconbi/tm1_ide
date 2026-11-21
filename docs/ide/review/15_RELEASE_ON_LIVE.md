@@ -479,7 +479,8 @@ offered as an alternative.
 |---|---|---|
 | Ownership registry (`ownership.json`, admin UI, suggestions from `process-scan`) | **Yes** — decisions 2 and 3. New model document, a settings screen, suggestion heuristics. ~1.5–2 days | **No** for release building. A much smaller list is still needed: *which attributes PROD's load maintains*, per dimension. ~0.25 day |
 | Merge PROD's state into a release | **Yes** — `buildRelease` gains a merge mode: dimension add-only, chore split (schedule vs steps), views/subsets conflict. Edits the JSON that `prod-live` produced. ~3–4 days | **No** |
-| Copy PROD → DEV | — | **Yes** — compare live PROD with live DEV per object, then `addElementAt` / `addEdge` / `deleteElement` / `writeElementAttribute`, `createHierarchy` / `hierarchyInfo`, `createElementAttribute`, `updateChore`, `saveView` / `saveSubset`. All object types PROD may change. ~2.5–3 days |
+| Copy PROD → DEV | — | **Yes** — compare live PROD with live DEV per object, then `addElementAt` / `addEdge` / `deleteElement` / `writeElementAttribute`, `createHierarchy` / `hierarchyInfo`, `createElementAttribute`, `getChore` (schedule and flag only), `saveView` / `saveSubset`. All object types PROD may change. ~2.5–3 days |
+| Chore state around the deploy | design 15 needs the chore **file** split (schedule vs steps) inside the merge | **No merge.** Read every chore's `Active` on the target before the pull, write the same values back after, record both in the report. `getChores` / `updateChore`. ~0.25 day |
 | Refresh UI: drift-sourced list, tick per item, deletes unticked | — | **Yes** — ~1 day (see the review-UI row) |
 | Record it in the change set | — | **Yes** — the existing `writeLog` for the open session, per object, so the change set owns what was copied. ~0.25 day |
 | Snapshot + rebuild between build and deploy | **Yes** — decision 7, `prod-live` re-snapshot, rebuild, rebind. ~1–1.5 days | **No** — the release is ordinary. The timing gap is covered by the element-loss stop that is already built (with the caveat below). |
@@ -626,15 +627,24 @@ So the item must read *"PROD deleted `A-1000` — unticked: the next deploy puts
 not merely offer a box. Otherwise the safe-looking default is the one that silently re-creates data
 someone deliberately removed.
 
-### Chores: copying the schedule onto DEV changes DEV's behaviour
+### Chores: the restore window has two edges
 
-`updateChore` on DEV with PROD's schedule and active flag means DEV's chore may become **active at
-production times** and start executing loads on DEV. Copying the flag is what makes the deploy not
-switch PROD's chore off, but it has a side effect on the dev server.
+Agreed: no file merge. DEV's chores stay **off**, so nothing ever runs on DEV; the deploy records
+every target chore's `Active` before the pull and writes those same values back immediately after.
+PROD's schedules are never switched by the deploy, and the report shows what was read and what was
+written.
 
-Mitigation: refresh chores while DEV's chores are known-inactive, or copy the schedule but force
-`Active = false` on DEV and let the deploy bring PROD's own flag from PROD's file (which is what
-design 15 does by keeping PROD's chore file). This needs a decision; it is not obvious.
+Two edges worth stating:
+
+- **A chore that fires during the deploy.** The pull replaces chore *definitions*, which can switch
+  a chore on mid-deploy (TM1 decides when to run it). The idle check refuses while a chore is
+  running and warns when one is due inside the window — that is the guard. If one still fires, the
+  restore happens after the pull, but the run has already happened: the report records the state,
+  not a rewind.
+- **Someone changing a chore on PROD during the deploy.** The restore writes back the values read
+  *before* the pull, so a change made in that window is overwritten. The window is seconds-to-minutes
+  and the idle check discourages people from being in the model, but it is a last-writer-wins step
+  and should be named in the report's text ("restored to the value read at 12:40:02").
 
 ### The idle check is a snapshot, not a lock
 
@@ -716,8 +726,9 @@ Conditions, without which I would not ship it:
    attributes are refreshed. Definitions and aliases are safe; values are the risk.
 3. **Deletes are unticked by default (agreed)** — and each item says, on screen, that leaving it
    unticked puts the object back on PROD.
-4. **The chore flag needs a decision** before it is copied onto DEV (active at production times on a
-   dev server is a real incident).
+4. **Chores: DEV stays off, PROD is restored around the deploy.** No chore file merge. The deploy
+   reads every chore's on/off on the target before the pull and writes it back after, through the
+   API, and both readings are in the report.
 5. **Refresh is explicit and recorded** — an action with a list, written into the open change set,
    never a background sync.
 6. **Confirm the load does not write rules, processes or cube structure on PROD**, because nothing in
@@ -734,7 +745,9 @@ If refresh-to-DEV is chosen, these parts of design 15 are **no longer needed**:
 - decision 6 — delta-hash approval;
 - decision 7 — snapshot rebuild without re-approval (replaced by "refresh again", bounded by the
   stop);
-- the `prod-live` snapshot as a release base.
+- the `prod-live` snapshot as a release base;
+- **the chore file split** — the chore half of the merge. Replaced by recording the target's chore
+  on/off values before the pull and restoring them after; DEV's chores simply stay off.
 
 The idle check is **new work needed either way** (see the comparison above), so it is not a reason to
 choose between the two designs.
@@ -754,7 +767,7 @@ These parts **stay**, because they are true regardless of which side the merge h
 | A2 | Do the copy as an explicit, recorded action in the open change set? | **Yes** — never automatic, never silent |
 | A3 | Copy loaded attribute *values* to DEV? | **Aliases and definitions only, plus values for a confirmed list** — element existence is what the deploy needs |
 | A4 | Deletes on refresh: ticked by default, or unticked? | **Unticked (agreed)**, with the "puts it back on PROD" consequence written on each item |
-| A5 | Chore active flag: copy it, or force inactive on DEV? | Force inactive on DEV; the deploy carries PROD's own chore file decision from design 15, so PROD's flag is never switched |
+| A5 | Chore active flag | **Agreed (no file merge):** DEV chores stay off. The deploy records every target chore's on/off **before** the pull and puts it back **after**, through the API, recorded in the report. |
 | A6 | Scope: which object types does the refresh cover? | **Dimensions, hierarchies, attributes, views, subsets, chores** (agreed). Rules, processes and cube structure stay blocking. |
 | A7 | Deploy only when the target is idle, with the refuse / warn / confirm split? | **Yes** (agreed), and put the second check as late as possible — after the backup, immediately before the pull |
 | A8 | One UI: Pre-deploy (check, refresh, test, build, review) then Deploy (approve, idle, save, backup, send, verify)? | **Yes** — it replaces Ship and the wizard, and it is what makes "one path" true rather than aspirational |
