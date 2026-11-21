@@ -426,6 +426,11 @@ export default function DeployWizard({ server, onClose, onOpenTests, initialSess
   // A deploy is six steps that fail differently; say which one failed.
   const outcome = classifyDeployOutcome(res)
 
+  // Drift splits by what a deploy could damage: views and subsets are not in
+  // TM1's pull, so they are reported and never block.
+  const driftBlocking = (drift?.entries ?? []).filter(e => e.blocking !== false)
+  const driftReported = (drift?.entries ?? []).filter(e => e.blocking === false)
+
   // A target that has no live session makes Build release fail with a 401 after
   // the commit. Say so on selection instead. 'paw' servers ride the shared PAW
   // session, so they never need this.
@@ -935,9 +940,12 @@ export default function DeployWizard({ server, onClose, onOpenTests, initialSess
                   <p className="text-xs">
                     {drift == null
                       ? 'Checking drift…'
-                      : (drift.entries?.length ?? 0) > 0
-                        ? <span className="text-amber-600">{drift.entries.length} difference{drift.entries.length !== 1 ? 's' : ''} — deploys to {target} stay paused.</span>
+                      : driftBlocking.length > 0
+                        ? <span className="text-amber-600">{driftBlocking.length} difference{driftBlocking.length !== 1 ? 's' : ''} — deploys to {target} stay paused.</span>
                         : <span className="text-emerald-700">No drift — {target} matches exactly what it was given.</span>}
+                    {driftReported.length > 0 && (
+                      <span className="text-muted-foreground"> · {driftReported.length} view/subset change{driftReported.length !== 1 ? 's' : ''} on {target} — reported, not blocking.</span>
+                    )}
                   </p>
                   <div className="flex items-center gap-2 pt-1">
                     <button onClick={handleClose} className={primaryBtn}>Done</button>
@@ -958,17 +966,28 @@ export default function DeployWizard({ server, onClose, onOpenTests, initialSess
                 {drift && (
                   <div className="border border-border rounded-md p-3 space-y-2">
                     {drift.error && <p className="text-xs text-red-600">{drift.error}</p>}
-                    {drift.entries && drift.entries.length === 0 && <p className="text-xs"><span className="font-semibold">No drift.</span> {target} matches exactly what it was given.</p>}
-                    {drift.entries && drift.entries.length > 0 && (
+                    {driftBlocking.length === 0 && <p className="text-xs"><span className="font-semibold">No drift.</span> {target} matches exactly what it was given.</p>}
+                    {driftBlocking.length > 0 && (
                       <div className="space-y-2">
-                        <p className="text-xs text-amber-600">{target} has {drift.entries.length} thing{drift.entries.length !== 1 ? 's' : ''} that changed:</p>
-                        {drift.entries.map((e, i) => (
+                        <p className="text-xs text-amber-600">{target} has {driftBlocking.length} thing{driftBlocking.length !== 1 ? 's' : ''} that changed:</p>
+                        {driftBlocking.map((e, i) => (
                           <div key={i} className="flex items-baseline gap-2 text-[11px] px-2 py-1 rounded bg-muted/30">
                             <span className="text-muted-foreground">{e.status}</span>
                             <span className="text-foreground">{humanizeFile(e.file)}</span>
                           </div>
                         ))}
                         <p className="text-[11px] text-muted-foreground pt-1">Deploys to {target} stay paused. Re-apply the change on DEV in a change set, then release it.</p>
+                      </div>
+                    )}
+                    {driftReported.length > 0 && (
+                      <div className="space-y-1 pt-2 border-t border-border/40">
+                        <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Changed on {target} — not blocking ({driftReported.length})</p>
+                        {driftReported.map((e, i) => (
+                          <p key={i} className="text-[11px] text-muted-foreground">
+                            <span className="font-mono">{e.status}</span> {humanizeFile(e.file)}
+                            <span className="text-muted-foreground/60"> · {e.kind === 'view' ? 'view' : 'subset'} — a deploy does not touch it</span>
+                          </p>
+                        ))}
                       </div>
                     )}
                   </div>

@@ -18,11 +18,15 @@ const { driftCheck } = require('./git-drift')
 async function targetDrift(target, { token, gitUser = gitIdentity.user(), ideToken } = {}) {
     try {
         const d = await driftCheck(target, { token, gitUser, ideToken, lock: false })
-        if (d?.error) return { clean: false, entries: [], error: d.error }
-        const entries = d?.entries ?? []
-        return { clean: entries.length === 0, entries, deployed: d?.deployed ?? null }
+        if (d?.error) return { clean: false, entries: [], nonBlocking: [], error: d.error }
+        const all = d?.entries ?? []
+        // Views and subsets are not in TM1's pull, so they are reported and not
+        // blocked. Everything else is blocking: a pull would replace it.
+        const entries = all.filter(e => e.blocking !== false)
+        const nonBlocking = all.filter(e => e.blocking === false)
+        return { clean: entries.length === 0, entries, nonBlocking, all, deployed: d?.deployed ?? null }
     } catch (e) {
-        return { clean: false, entries: [], error: e.message }
+        return { clean: false, entries: [], nonBlocking: [], error: e.message }
     }
 }
 
@@ -31,10 +35,14 @@ async function targetDrift(target, { token, gitUser = gitIdentity.user(), ideTok
 // until drift is clean.
 const driftRefusal = (target, drift) => {
     const objects = (drift.entries ?? []).map(e => `${e.status} ${e.file}`).join('; ')
+    // Views and subsets do not block, but they are never silent either.
+    const soft = (drift.nonBlocking ?? []).length
+        ? ` (${drift.nonBlocking.length} view/subset change${drift.nonBlocking.length === 1 ? '' : 's'} on ${target} are reported but not blocking: ${(drift.nonBlocking).map(e => e.file).join(', ')})`
+        : ''
     if (objects) {
-        return `PROD has drifted: ${objects}. Re-apply the change on DEV in a change set, then release it. Deploys to this server are paused until drift is clean.`
+        return `PROD has drifted: ${objects}. Re-apply the change on DEV in a change set, then release it. Deploys to this server are paused until drift is clean.${soft}`
     }
-    return `PROD drift could not be checked (${drift.error ?? 'unknown error'}). Deploys to this server are paused until drift is clean.`
+    return `PROD drift could not be checked (${drift.error ?? 'unknown error'}). Deploys to this server are paused until drift is clean.${soft}`
 }
 
 // Parse a GitPull plan operation ("Update Cubes('WFP Workforce Cost')",
@@ -77,6 +85,8 @@ async function prepare(source, target, { branch = 'dev', token, gitUser = gitIde
         const drift = await targetDrift(target, { token, gitUser, ideToken })
         out.drift = drift.clean ? 'clean' : 'drifted'
         out.driftEntries = drift.entries ?? []
+        // Reported, never blocking: a pull cannot touch a view or a subset.
+        out.driftNonBlocking = drift.nonBlocking ?? []
         if (!drift.clean) {
             // Do NOT return here. The plan is a read, and seeing what the pull
             // would do is exactly what tells an operator whether the drift
@@ -213,6 +223,8 @@ async function execute(target, { branch = 'dev', token, gitUser = gitIdentity.us
         const drift = await targetDrift(target, { token, gitUser, ideToken })
         out.drift = drift.clean ? 'clean' : 'drifted'
         out.driftEntries = drift.entries ?? []
+        // Reported, never blocking: a pull cannot touch a view or a subset.
+        out.driftNonBlocking = drift.nonBlocking ?? []
         if (!drift.clean) {
             out.executed = false
             out.refused = true
@@ -253,6 +265,23 @@ async function execute(target, { branch = 'dev', token, gitUser = gitIdentity.us
                 const { changedObjects, objectKey, expectedPlanKeys } = require('./git-release')
                 const expected = await changedObjects({ from: base, to: releaseCommit, repoUrl, token, gitUser })
                 const expectedKeys = expectedPlanKeys(expected)
+
+                // Views and subsets do not block drift (TM1's pull never touches
+                // them) — but the IDE applies them over REST afterwards, and that
+                // REPLACES. So if one changed on the target AND this release ships
+                // it, the deploy would silently overwrite the target's version.
+                // Refuse and name it; Review resolves this by choosing a side.
+                const { objectFromFile } = require('./git-release')
+                const conflicts = (out.driftNonBlocking ?? []).filter(e => {
+                    const o = objectFromFile(e.file)
+                    return o && expectedKeys.has(objectKey(o.type, o.name, o.parent))
+                })
+                if (conflicts.length) {
+                    out.executed = false
+                    out.refused = true
+                    out.error = `Refused: ${conflicts.map(e => e.file).join(', ')} changed on ${target} and is also in this release. The view/subset step would replace the target's version. Resolve it at Review (keep ${target}'s, or take the release's).`
+                    return out
+                }
                 const parsedOps = (plan.Operations ?? []).map(parsePlanOp).filter(Boolean)
                 const unknownOps = parsedOps.filter(o => o.unknown)
                 if (unknownOps.length) {

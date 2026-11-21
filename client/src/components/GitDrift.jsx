@@ -18,6 +18,10 @@ export default function GitDrift({ server, onClose, embedded = false }) {
   const [busy,    setBusy]    = useState('')
   const [error,   setError]   = useState(null)
   const [openDiff, setOpenDiff] = useState(null)
+  // Split by what a deploy could actually damage: everything except views and
+  // subsets is in TM1's pull, so only those block.
+  const blocking = (drift?.entries ?? []).filter(e => e.blocking !== false)
+  const reported = (drift?.entries ?? []).filter(e => e.blocking === false)
   const [showHelp, setShowHelp] = useState(false)
 
   useEffect(() => {
@@ -85,14 +89,14 @@ export default function GitDrift({ server, onClose, embedded = false }) {
                 <div className="flex-1" />
                 {drift.error
                   ? <span className="inline-flex items-center gap-1 text-xs text-red-600"><AlertTriangle size={12} /> Check failed</span>
-                  : (drift.entries?.length ?? 0) === 0
-                    ? <span className="inline-flex items-center gap-1 text-xs text-emerald-600"><CheckCircle2 size={12} /> Clean</span>
-                    : <span className="inline-flex items-center gap-1 text-xs text-red-600"><AlertTriangle size={12} /> {drift.entries.length} drifted</span>}
+                  : blocking.length === 0
+                    ? <span className="inline-flex items-center gap-1 text-xs text-emerald-600"><CheckCircle2 size={12} /> Clean{reported.length ? ` · ${reported.length} reported` : ''}</span>
+                    : <span className="inline-flex items-center gap-1 text-xs text-red-600"><AlertTriangle size={12} /> {blocking.length} drifted</span>}
               </div>
               <div className="p-3 space-y-2">
                 {drift.note && <p className="text-xs text-muted-foreground">{drift.note}</p>}
                 {drift.error && <p className="text-xs text-red-600">{drift.error}</p>}
-                {(drift.entries ?? []).map((e, i) => (
+                {blocking.map((e, i) => (
                   <div key={i} className="border border-border/60 rounded px-2 py-1.5">
                     <button className="w-full flex items-center gap-2 text-left" onClick={() => setOpenDiff(openDiff === `${e.status}:${e.file}` ? null : `${e.status}:${e.file}`)}>
                       <span className={cn('text-[10px] font-mono w-5 shrink-0', e.status === 'A' ? 'text-emerald-600' : e.status === 'D' ? 'text-red-600' : 'text-amber-600')}>{e.status}</span>
@@ -104,11 +108,24 @@ export default function GitDrift({ server, onClose, embedded = false }) {
                     )}
                   </div>
                 ))}
-                {(drift.entries?.length ?? 0) > 0 && (
+                {blocking.length > 0 && (
                   <p className="text-[11px] text-muted-foreground pt-1">
                     Deploys to {drift.server} are paused while it has drift. Re-apply the change on DEV in a change
                     set, then release it.
                   </p>
+                )}
+                {/* Views and subsets are not in TM1's pull, so a change to one is
+                    reported and never blocks — but it is never silent either. */}
+                {reported.length > 0 && (
+                  <div className="pt-2 border-t border-border/40 space-y-1">
+                    <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Changed on PROD — not blocking ({reported.length})</p>
+                    {reported.map((e, i) => (
+                      <p key={i} className="text-[11px] text-muted-foreground">
+                        <span className="font-mono">{e.status}</span> {humanizeFile(e.file)}
+                        <span className="text-muted-foreground/60"> · {e.kind === 'view' ? 'view' : 'subset'} — a deploy does not touch it</span>
+                      </p>
+                    ))}
+                  </div>
                 )}
               </div>
             </div>

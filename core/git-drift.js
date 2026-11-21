@@ -16,6 +16,23 @@ const { makeClient } = require('./adapter-registry')
 const gitIdentity = require('./git-identity')
 const { git, authUrl, sanitize } = require('./git-repo')
 
+// TM1's pull never applies views or subsets — the IDE applies those itself, after
+// the pull, and only for objects the release carries. So a change to one *cannot*
+// be damaged by a deploy, and blocking on it is pure friction: users save views on
+// PROD all the time. Those are reported, not blocked.
+//
+// Everything else (dimensions, cubes, processes, chores) IS in the pull: a
+// difference there means a deploy would replace the target's copy.
+const VIEW_FILE   = /^cubes\/[^/]+\.views\/[^/]+\.(json|mdx)$/
+const SUBSET_FILE = /^dimensions\/[^/]+\.hierarchies\/[^/]+\.subsets\/[^/]+\.json$/
+
+function classifyDriftFile(file) {
+    const f = String(file ?? '')
+    if (VIEW_FILE.test(f))   return { blocking: false, kind: 'view' }
+    if (SUBSET_FILE.test(f)) return { blocking: false, kind: 'subset' }
+    return { blocking: true, kind: 'object' }
+}
+
 async function driftCheckUnlocked(server, { token, gitUser = gitIdentity.user(), ideToken } = {}) {
     const c = makeClient(server, ideToken)
     const st = await c.post('GitStatus', { Username: gitUser, Password: token })
@@ -67,7 +84,7 @@ async function driftCheckUnlocked(server, { token, gitUser = gitIdentity.user(),
             const full = git(work, 'diff', `${deployed}..origin/prod-live`)
             for (const line of nameStatus.split('\n')) {
                 const [status, file] = line.split('\t')
-                entries.push({ status, file, diff: status === 'A' ? '(new on PROD)' : '' })
+                entries.push({ status, file, diff: status === 'A' ? '(new on PROD)' : '', ...classifyDriftFile(file) })
             }
             // attach the readable diff for modified/deleted files
             if (full) {
@@ -107,4 +124,4 @@ async function driftCheck(server, { lock = true, ...opts } = {}) {
     }
 }
 
-module.exports = { driftCheck }
+module.exports = { driftCheck, classifyDriftFile }
