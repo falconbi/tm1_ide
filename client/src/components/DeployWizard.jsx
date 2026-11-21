@@ -106,6 +106,7 @@ export default function DeployWizard({ server, onClose, onOpenTests, initialSess
   const [addSel,    setAddSel]    = useState({})
   const [delSel,    setDelSel]    = useState({})
   const [prep,      setPrep]      = useState(null)
+  const [prepAt,    setPrepAt]    = useState(null)   // when the target was last read
   const [res,       setRes]       = useState(null)
   const [approval,  setApproval]  = useState(null)
   const [approvalNote, setApprovalNote] = useState('')
@@ -284,6 +285,7 @@ export default function DeployWizard({ server, onClose, onOpenTests, initialSess
     finally { setCatchBusy(false) }
   }
   const doPrepare = async () => {
+    setPrepAt(Date.now())
     const d = await run('prepare', { source: server, target, session: sessionId, branch: `release-${target}` }, '/api/deploy/git/prepare')
     if (d) setPrep(d); else setPrep(null)   // a failed plan clears the preview → Approve stays blocked
   }
@@ -394,6 +396,19 @@ export default function DeployWizard({ server, onClose, onOpenTests, initialSess
   const blockFails = tests?.results?.filter(r => !r.pass && (r.severity ?? 'block') === 'block') ?? []
   // One row per object: the release lists files, which double up per object.
   const ships = uniqueIncluded(release?.included)
+
+  // The plan is a snapshot of the target. Offer a re-read only when it could
+  // change: no plan (the read failed), an error, or a snapshot older than 2 min.
+  // Staleness is tracked in state — asking the clock during render is impure.
+  const [prepStale, setPrepStale] = useState(false)
+  useEffect(() => {
+    if (step !== 5 || !prepAt) return
+    const check = () => setPrepStale(Date.now() - prepAt > 2 * 60 * 1000)
+    check()
+    const id = setInterval(check, 30000)
+    return () => clearInterval(id)
+  }, [step, prepAt])
+  const rereadNeeded = !prep || !!prep.error || prepStale
 
   // A target that has no live session makes Build release fail with a 401 after
   // the commit. Say so on selection instead. 'paw' servers ride the shared PAW
@@ -725,22 +740,28 @@ export default function DeployWizard({ server, onClose, onOpenTests, initialSess
               <p className="text-xs text-muted-foreground leading-relaxed">{STEPS[5].explain}</p>
               <div className="border border-border rounded-md p-3 space-y-3">
                 {!release && <p className="text-xs text-muted-foreground">Build the release first (step 4).</p>}
-                {release && !prep && (
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs text-muted-foreground">{busy === 'prepare' ? 'Reading the plan…' : 'Reading the plan…'}</span>
-                  </div>
-                )}
-                {release && prep && (
-                  <div className="flex items-center gap-2">
-                    <button onClick={doPrepare} disabled={busy === 'prepare' || !target} className={textBtn}>Refresh plan</button>
-                    {busy === 'prepare' && <span className="text-xs text-muted-foreground">Reading the plan…</span>}
-                  </div>
+                {release && !prep && busy !== 'prepare' && <span className="text-xs text-muted-foreground">Reading the target…</span>}
+                {busy === 'prepare' && <span className="text-xs text-muted-foreground">Reading the target…</span>}
+                {/* Only offered when it can change something: the read failed, or
+                    the snapshot is old enough that the target may have moved. */}
+                {release && rereadNeeded && (
+                  <button
+                    onClick={doPrepare}
+                    disabled={busy === 'prepare' || !target}
+                    className={textBtn}
+                    title="Reads the target's current state again and recomputes what this release would change. Needed only when the read failed or the target has changed since."
+                  >
+                    Re-read the target
+                  </button>
                 )}
                 {prep && (
                   <div className="border border-border rounded-md p-3 space-y-2">
                     {prep.error && <p className="text-xs text-red-600">{prep.error}</p>}
                     <p className="text-xs">On <span className="font-semibold">{target}</span>: <span className="font-semibold">{changed.length}</span> object{changed.length !== 1 ? 's' : ''} will change{prep.plan ? `, moving to ${prep.plan.targetCommit}.` : '.'}</p>
-                    <p className="text-[11px] text-muted-foreground">The target is currently at {prep.deployedCommit} (what it last received).</p>
+                    <p className="text-[11px] text-muted-foreground">
+                      The target is currently at {prep.deployedCommit} (what it last received)
+                      {prepAt ? ` · read ${new Date(prepAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : ''}.
+                    </p>
                     {changed.length > 0 && (
                       <div className="space-y-1 pt-1">
                         {changed.map((o, i) => {
