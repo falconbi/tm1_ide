@@ -435,6 +435,11 @@ export default function DeployWizard({ server, onClose, onOpenTests, initialSess
                   className={active ? 'text-xs font-semibold text-foreground underline underline-offset-4' : 'text-xs text-muted-foreground hover:text-foreground'}
                 >
                   {done ? '✓' : `${i + 1}`} {p.label}
+                  {/* A phase covers several steps, so show which one you are on
+                      — otherwise Build release looks like "still in Prepare". */}
+                  {active && STEP_TITLES[step - 1] !== p.label && (
+                    <span className="font-normal text-muted-foreground"> · {STEP_TITLES[step - 1]}</span>
+                  )}
                 </button>
               </span>
             )
