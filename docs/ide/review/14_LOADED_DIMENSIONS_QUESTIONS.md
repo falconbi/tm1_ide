@@ -23,6 +23,26 @@ The three questions below are resolved, and two of the answers change the design
 Git-ignore route. The only route left is **merge at build** (D10 below), which keeps the dimension in
 Git and therefore keeps its history — the trade-off discussed for D5 is no longer needed.
 
+### Views and subsets, tested the same day
+
+Changed a public view (`WFP Assignment Default`) and attempted a public subset on PROD, then read the
+plan and executed it.
+
+| Check | Result |
+|---|---|
+| Is a view in the pull plan? | **No** — the plan lists Dimensions, Processes, Chores, Cubes only. Views and subsets are never mentioned. |
+| Does a changed view show as drift? | **Yes** — one entry: `cubes/WFP Assignment.views/WFP Assignment Default.json` |
+| Does a pull overwrite a changed view? | **No** — the change survived, and the property had to be removed by hand to clear the drift |
+
+So for views and subsets the drift block is **friction with no protection**: a user saving a view on
+PROD pauses every deploy, while a deploy cannot damage that view. They should come out of the drift
+gate. The same does not apply to chores or cubes — they are in the pull.
+
+Subsets could not be changed over REST in this test (`PUT not supported on this resource`), so the
+subset half is inferred from the same file mechanism, not proved.
+
+A sibling design for the merge work is in [15_RELEASE_ON_LIVE.md](15_RELEASE_ON_LIVE.md).
+
 ---
 
 ## Verify first — the answer that gates the design
