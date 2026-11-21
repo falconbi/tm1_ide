@@ -45,22 +45,67 @@ function commitExists(work, sha) {
 
 async function historyEvent(target, event, { ideToken } = {}) {
     const store = require('./model-store')
-    const events = (await store.readOptional(target, 'deployState', 'restore-events.json', { ideToken })) ?? []
+    // 'lock' is the Deployments folder WITHOUT a fixed document name — 'deployState'
+    // always resolves to state.json, which would have overwritten the deploy state.
+    const events = (await store.readOptional(target, 'lock', 'restore-events.json', { ideToken })) ?? []
     events.push(event)
-    await store.writeDoc(target, 'deployState', 'restore-events.json', events, { ideToken })
+    await store.writeDoc(target, 'lock', 'restore-events.json', events, { ideToken })
+}
+
+// What a return would do to the model, worded exactly as the first pull words
+// it — because it IS the same overwrite. The element loss comes from the shared
+// compareTargetWithRepo, never a local copy of that arithmetic.
+async function returnPreview(target, { token, gitUser = gitIdentity.user(), ideToken } = {}) {
+    const recorded = lastDeployed(target)
+    const base = recorded?.lastDeployedCommit ?? null
+    if (!base) throw refusal(NOTHING_TO_RETURN(target))
+    const c = makeClient(target, ideToken)
+    let st
+    try { st = await c.post('GitStatus', { Username: gitUser, Password: token }) }
+    catch (e) { throw new Error(sanitize(e.response?.data?.error?.message ?? e.message, token)) }
+    const repoUrl = st?.URL
+    if (!repoUrl) throw refusal(`${target} is not linked to a repo.`)
+    const { compareTargetWithRepo } = require('./git-readiness')
+    const cmp = await compareTargetWithRepo(target, { commit: base, repoUrl, token, gitUser, ideToken, client: c })
+    return { target, from: st?.DeployedCommit?.ID ?? null, to: base, ...cmp }
+}
+
+// Point release-<target> at a commit that is already in the repo. Done from a
+// fresh clone so it works after the build clone is gone, and force-with-lease so
+// a concurrent move is never clobbered silently.
+async function pushReleaseLine(target, { repoUrl, gitUser, token, commit }) {
+    const work = fs.mkdtempSync(path.join(os.tmpdir(), 'tm1relpoint-'))
+    try {
+        git(work, 'init', '-q')
+        git(work, 'remote', 'add', 'origin', authUrl(repoUrl, gitUser, token))
+        git(work, 'fetch', '-q', 'origin', '+refs/heads/*:refs/remotes/origin/*')
+        let existing = null
+        try { existing = git(work, 'rev-parse', '--verify', '--quiet', `refs/remotes/origin/release-${target}`).trim() || null } catch { existing = null }
+        const ref = `${commit}:refs/heads/release-${target}`
+        if (existing) git(work, 'push', '-q', `--force-with-lease=refs/heads/release-${target}:${existing}`, 'origin', ref)
+        else git(work, 'push', '-q', 'origin', ref)
+    } finally {
+        fs.rmSync(work, { recursive: true, force: true })
+    }
 }
 
 async function returnToLastRelease(target, { token, gitUser = gitIdentity.user(), ideToken, by, confirm, reason } = {}) {
     const out = { target, ok: false }
 
-    // Deliberate friction: this is the one action that can overwrite a lot at once.
-    if (String(confirm ?? '') !== String(target)) {
-        throw refusal(`Refused: type the target name "${target}" exactly to confirm.`)
+    // Cheap guard first: an empty confirmation never reaches the target.
+    if (!String(confirm ?? '').trim()) {
+        throw refusal(`Refused: type the confirmation sentence the dialog shows — it names what this removes from ${target}.`)
     }
 
-    const recorded = lastDeployed(target)
-    const base = recorded?.lastDeployedCommit ?? null
-    if (!base) throw refusal(NOTHING_TO_RETURN(target))
+    // Deliberate friction, and the same sentence the first pull asks for: the
+    // count of elements this will remove is part of what has to be typed, so it
+    // cannot be confirmed without being read.
+    const preview = await returnPreview(target, { token, gitUser, ideToken })
+    out.preview = preview
+    if (String(confirm ?? '') !== preview.confirmText) {
+        throw refusal(`Refused: type exactly — ${preview.confirmText}`)
+    }
+    const base = preview.to
 
     const lockMod = require('./git-lock')
     await lockMod.acquire(target, { by, ideToken })
@@ -94,10 +139,15 @@ async function returnToLastRelease(target, { token, gitUser = gitIdentity.user()
                 `Restore ${target} to ${String(base).slice(0, 10)}`)
             restoreCommit = git(work, 'rev-parse', 'HEAD').trim()
 
-            git(work, 'push', '-q', 'origin', `HEAD:refs/heads/restore-${target}`)
-            // The release line restarts from what the target will hold. A release
-            // built on the old base can no longer be deployed on top of this.
-            try { git(work, 'push', '-q', '--force', 'origin', `HEAD:refs/heads/release-${target}`) } catch { /* branch may not exist */ }
+            // A second restore diverges from the first (different parent), so the
+            // record branch is force-moved — with a lease, never blindly.
+            let priorRestore = null
+            try { priorRestore = git(work, 'rev-parse', '--verify', '--quiet', `refs/remotes/origin/restore-${target}`).trim() || null } catch { priorRestore = null }
+            if (priorRestore) {
+                git(work, 'push', '-q', `--force-with-lease=refs/heads/restore-${target}:${priorRestore}`, 'origin', `HEAD:refs/heads/restore-${target}`)
+            } else {
+                git(work, 'push', '-q', 'origin', `HEAD:refs/heads/restore-${target}`)
+            }
         } finally {
             fs.rmSync(work, { recursive: true, force: true })
         }
@@ -116,9 +166,11 @@ async function returnToLastRelease(target, { token, gitUser = gitIdentity.user()
         if (changes.length === 0) {
             out.ok = true
             out.already = true
-            // Still true that the target should be recorded at the release tree.
-            await recordDeploy(target, base, `Already holds the last release (${String(base).slice(0, 10)})`, { ideToken })
-            out.recorded = base
+            // Nothing was applied, so nothing moves: the target keeps the commit it
+            // already reports, which is reachable from the release branch.
+            const keep = current ?? base
+            await recordDeploy(target, keep, `Already holds the last release (${String(base).slice(0, 10)})`, { ideToken })
+            out.recorded = keep
             return out
         }
 
@@ -126,11 +178,16 @@ async function returnToLastRelease(target, { token, gitUser = gitIdentity.user()
         out.ok = true
         out.applied = changes
 
-        // The target now holds the release's tree. Record THAT as what it last
-        // received, so drift compares against the right thing, and note the
-        // restore commit as the identity TM1 will report.
-        await recordDeploy(target, base, `Returned to the last release (${String(base).slice(0, 10)})`, { ideToken })
-        out.recorded = base
+        // The release line restarts from the restore commit. This must happen
+        // together: recording the OLD commit while the branch points at the
+        // restore commit orphans the old one (a fetch cannot see an unreachable
+        // commit, so the next drift check fails with "unknown revision" — the
+        // first live run did exactly that). Recorded and branch therefore both
+        // move to the restore commit, whose TREE is the release we returned to.
+        await pushReleaseLine(target, { repoUrl, gitUser, token, commit: restoreCommit })
+        await recordDeploy(target, restoreCommit, `Returned to the last release (${String(base).slice(0, 10)})`, { ideToken })
+        out.recorded = restoreCommit
+        out.restoredTreeOf = base
         try {
             await historyEvent(target, {
                 action: 'returned',
@@ -154,4 +211,4 @@ async function returnToLastRelease(target, { token, gitUser = gitIdentity.user()
     }
 }
 
-module.exports = { returnToLastRelease, NOTHING_TO_RETURN }
+module.exports = { returnToLastRelease, returnPreview, NOTHING_TO_RETURN }

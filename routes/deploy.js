@@ -131,6 +131,19 @@ app.post('/api/deploy/git/execute', async (req, res) => {
 // Return a target to the release it last received. The recovery for a pull that
 // died part-way. Admin only, under the deploy lock, with the target name typed
 // as the confirmation, and recorded in the target's deploy history.
+// What a return would remove, in the same words the first pull uses. Read-only.
+app.get('/api/deploy/git/return/preview', async (req, res) => {
+    try {
+        const { target } = req.query
+        if (!target) return res.status(400).json({ error: 'target required' })
+        if (!(await requireTm1Admin(req, res, target))) return
+        const { returnPreview } = require('../core/git-rollback')
+        res.json(await returnPreview(target, { token: _GITOK(), gitUser: _GI().user(), ideToken: req.ideToken }))
+    } catch (e) {
+        res.status(e.refused ? 409 : 500).json({ error: e.message })
+    }
+})
+
 app.post('/api/deploy/git/return', async (req, res) => {
     try {
         const { target, confirm, reason } = req.body

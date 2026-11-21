@@ -46,6 +46,22 @@ export default function GitDrift({ server, onClose, embedded = false }) {
     finally { setBusy('') }
   }
 
+  // Opening the return dialog asks the server what it would remove, in the same
+  // words the first pull uses ("removes N elements in M dimensions") — the count
+  // is part of what has to be typed, so it cannot be confirmed unread.
+  const openReturn = async () => {
+    const t = drift?.server ?? target
+    setRet({ confirm: '', reason: '', busy: false, error: null, result: null, loading: true })
+    try {
+      const r = await request(`/api/deploy/git/return/preview?target=${encodeURIComponent(t)}`, { headers: authHeader() })
+      const d = await r.json()
+      if (!r.ok || d.error) throw new Error(d.error || r.statusText)
+      setRet(x => ({ ...x, loading: false, preview: d }))
+    } catch (e) {
+      setRet(x => ({ ...x, loading: false, error: e.message }))
+    }
+  }
+
   const doReturn = async () => {
     setRet(r => ({ ...r, busy: true, error: null, result: null }))
     try {
@@ -136,7 +152,7 @@ export default function GitDrift({ server, onClose, embedded = false }) {
                       it last received.
                     </p>
                     <button
-                      onClick={() => setRet({ confirm: '', reason: '', busy: false, error: null, result: null })}
+                      onClick={openReturn}
                       className="flex items-center gap-1.5 px-2.5 py-1 text-[11px] rounded border border-red-600/40 text-red-600 hover:bg-red-500/10"
                     >
                       <Undo2 size={11} /> Return {drift.server} to its last release…
@@ -191,16 +207,42 @@ export default function GitDrift({ server, onClose, embedded = false }) {
                       placeholder="e.g. a pull failed part-way and the target is half-updated"
                       className="w-full bg-muted border border-border rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-ring" />
                   </div>
+                  {ret.loading && <p className="text-[11px] text-muted-foreground">Reading what this would remove…</p>}
+                  {ret.preview?.elementLoss?.length > 0 && (
+                    <div className="space-y-1">
+                      <p className="text-[11px] text-amber-700">
+                        Elements the target would lose: <span className="font-semibold">{ret.preview.loss.elements}</span> in{' '}
+                        <span className="font-semibold">{ret.preview.loss.dimensions}</span> dimension{ret.preview.loss.dimensions === 1 ? '' : 's'}
+                      </p>
+                      <table className="w-full text-left text-[11px] border border-border rounded">
+                        <thead><tr className="text-muted-foreground"><th className="px-2 py-1">Dimension</th><th className="px-2 py-1">Hierarchy</th><th className="px-2 py-1">Count</th><th className="px-2 py-1">Sample</th></tr></thead>
+                        <tbody>
+                          {ret.preview.elementLoss.map(l => (
+                            <tr key={`${l.dimension}/${l.hierarchy}`} className="border-t border-border">
+                              <td className="px-2 py-1">{l.dimension}</td>
+                              <td className="px-2 py-1 text-muted-foreground">{l.hierarchy}</td>
+                              <td className="px-2 py-1">{l.count}</td>
+                              <td className="px-2 py-1 text-muted-foreground">{l.sample?.join(', ')}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                  {ret.preview && ret.preview.elementLoss?.length === 0 && (
+                    <p className="text-[11px] text-emerald-700">No element loss — every object on the target is in that release.</p>
+                  )}
                   <div className="space-y-1">
-                    <label className="text-[11px] text-muted-foreground">Type <span className="font-mono text-foreground">{drift?.server}</span> to confirm</label>
+                    <label className="text-[11px] text-muted-foreground">Type this to confirm</label>
                     <input value={ret.confirm} onChange={e => setRet(r => ({ ...r, confirm: e.target.value }))}
-                      className="w-full bg-muted border border-border rounded px-2 py-1 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-ring" />
+                      placeholder={ret.preview ? `Type exactly: ${ret.preview.confirmText}` : 'Reading the target…'}
+                      className="w-full bg-muted border border-border rounded px-2 py-1 text-[11px] font-mono focus:outline-none focus:ring-1 focus:ring-ring" />
                   </div>
                   {ret.error && <p className="text-[11px] text-red-600 border border-red-600/40 rounded px-2 py-1">{ret.error}</p>}
                   <div className="flex items-center gap-2 pt-1">
                     <button
                       onClick={doReturn}
-                      disabled={ret.busy || ret.confirm !== drift?.server}
+                      disabled={ret.busy || ret.loading || !ret.preview || ret.confirm.trim() !== ret.preview?.confirmText}
                       className="px-3 py-1.5 text-xs rounded bg-red-700 text-white hover:bg-red-600 disabled:opacity-40"
                     >
                       {ret.busy ? 'Returning…' : `Return ${drift?.server}`}

@@ -82,3 +82,6 @@ data/process-summaries.json
 
 # Personal Claude Code settings and memory (CLAUDE.md at the root is shared; this folder is not)
 .claude/
+
+# Per-deploy reports are runtime records (also written into the target model)
+data/deploy-records.json

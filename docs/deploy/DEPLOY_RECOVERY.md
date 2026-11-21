@@ -307,12 +307,19 @@ know which objects landed. Re-running immediately would push onto an unknown sta
 2. Open **Deploy → Drift → Check.** It shows exactly which objects differ from what the
    target last received — that is your list of what the failed pull changed.
 3. Put the target back: **Deploy → Drift → Return `<target>` to its last release**.
-   - Administrators only. You type the server name to confirm, and the reason you give is
-     recorded in the deploy history with the commit it went back to.
+   - Administrators only.
+   - It first tells you what the return would cost, in the same words the first pull uses:
+     **"removes N elements in M dimensions"**, with the dimensions and a sample of the
+     elements that would go.
+   - To confirm, you type that whole sentence — the count is part of it, so it cannot be
+     confirmed without being read. The reason you give is recorded in the deploy history
+     with the commit it went back to.
    - It restores every object in that release, then reports what it changed.
    - It will not bring back **cell data** loaded in the meantime, and it will not remove
      objects created since the release (a pull never deletes). Anything outside Git —
      attribute values written over REST — is not restored either.
+   - It moves the release line onto the restored state, so the next release is built on what
+     the target now holds. Rebuild the change set's release before shipping it again.
 4. **Check drift again.** It should be clean.
 5. Ship again — now from a known state.
 
@@ -492,5 +499,11 @@ closure needs one back — Review's **Keep `<target>`'s version** calls it with 
 
 §10's recovery is `core/git-rollback.js`: it builds a forward commit whose tree is the target's
 recorded last release (GitPull takes a branch, never a commit), pulls it under the deploy lock,
-resets `release-<target>` onto it, re-records the deploy state, and writes a `restore-events.json`
-entry plus a deploy report with outcome `restored`. Admin-only, typed confirmation, `/api/deploy/git/return`.
+moves `release-<target>` onto that commit, records the deploy state as that same commit (recording
+the old one after moving the branch orphans it, and the next drift check then fails with "unknown
+revision" — the first live run did exactly that), and writes a `restore-events.json` entry plus a
+deploy report with outcome `restored`. Admin-only, `/api/deploy/git/return`.
+
+The warning is not a second copy of the arithmetic: `compareTargetWithRepo` in
+`core/git-readiness.js` is shared by the first pull and by this return, and it generates the
+confirmation sentence both of them demand.

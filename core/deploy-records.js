@@ -133,6 +133,12 @@ function buildRecord(out, { startedAt } = {}) {
 }
 
 // ── Writing ─────────────────────────────────────────────────────────────────
+// The AREA must have no fixed document name: model-store's docNameFor() resolves
+// an area with a `doc` (deployState → state.json) to that one file whatever name
+// it is given. Writing a per-deploy document through it rewrote the deploy state
+// itself — which is exactly what happened on the first live restore. 'lock' is
+// the Deployments folder with no fixed name, so each record keeps its own file.
+const AREA = 'lock'
 
 async function modelOwned(target, { ideToken } = {}) {
     try { return await require('./model-store').isMigrated(target, 'deployState', { ideToken }) } catch { return false }
@@ -152,7 +158,7 @@ async function record(out, { ideToken, startedAt } = {}) {
     // On a model-owned target the model is the truth; a failure here is loud.
     if (await modelOwned(rec.target, { ideToken })) {
         const store = require('./model-store')
-        await store.writeDoc(rec.target, 'deployState', docName(rec), rec, { ideToken })
+        await store.writeDoc(rec.target, AREA, docName(rec), rec, { ideToken })
     }
     return rec
 }
@@ -161,10 +167,10 @@ async function record(out, { ideToken, startedAt } = {}) {
 
 async function fromModel(target, { ideToken } = {}) {
     const store = require('./model-store')
-    const names = (await store.listDocs(target, 'deployState', { ideToken })).filter(n => n.startsWith(PREFIX))
+    const names = (await store.listDocs(target, AREA, { ideToken })).filter(n => n.startsWith(PREFIX))
     const out = []
     for (const n of names) {
-        const rec = await store.readOptional(target, 'deployState', n, { ideToken })
+        const rec = await store.readOptional(target, AREA, n, { ideToken })
         if (rec && rec.at) out.push(rec)
     }
     return out
@@ -191,4 +197,4 @@ async function get(target, commit, { ideToken } = {}) {
     return all.find(r => sameCommit(r.commit, commit)) ?? null
 }
 
-module.exports = { record, list, get, buildRecord, classify, sameCommit, FILE, PREFIX }
+module.exports = { record, list, get, buildRecord, classify, sameCommit, FILE, PREFIX, AREA }

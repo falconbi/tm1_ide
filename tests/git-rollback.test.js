@@ -9,10 +9,10 @@ const { test } = require('node:test')
 const assert = require('node:assert/strict')
 const { returnToLastRelease } = require('../core/git-rollback')
 
-test('it refuses without the target name typed exactly', async () => {
+test('it refuses with an empty confirmation, before touching the target', async () => {
     await assert.rejects(
-        () => returnToLastRelease('TM1_Test_PROD', { confirm: 'tm1_test_prod' }),
-        (e) => e.refused === true && /type the target name/i.test(e.message),
+        () => returnToLastRelease('TM1_Test_PROD', { confirm: '   ' }),
+        (e) => e.refused === true && /confirmation sentence/i.test(e.message),
     )
 })
 

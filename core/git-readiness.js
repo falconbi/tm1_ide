@@ -281,38 +281,28 @@ function _planCounts(operations) {
     return plan
 }
 
-async function firstPullAnalysis(server, opts = {}) {
-    const c = _clientFor(server, opts)
-    const token = opts.token ?? gitSecrets.getToken()
-    const gitUser = opts.gitUser ?? gitIdentity.user()
-    const branch = opts.branch ?? 'dev'
-    let work = null
-
+// ── Target vs a repo tree ───────────────────────────────────────────────────
+// What exists only on the target, and every element the tree does not have.
+//
+// One implementation, because two very different actions need exactly this
+// answer and must word it identically: the FIRST PULL (which overwrites the whole
+// model) and RETURN TO LAST RELEASE (the same overwrite, aimed at an older tree).
+// The typed confirmation is generated here so neither can drift into a weaker
+// sentence than the other.
+async function compareTargetWithRepo(server, { commit, repoUrl, token, gitUser = gitIdentity.user(), ideToken, client } = {}) {
+    const c = client ?? _clientFor(server, { ideToken })
+    const work = fs.mkdtempSync(path.join(os.tmpdir(), 'tm1compare-'))
     try {
-        let status
-        try { status = await c.post('GitStatus', { Username: gitUser, Password: token }) }
-        catch (e) { return EMPTY_RESULT(`GitStatus failed on ${server}: ${sanitize(_tm1Message(e), token)}`) }
-        const deployedCommit = status?.DeployedCommit?.ID ?? null
-
-        let pull
-        try { pull = await c.post('GitPull', { Branch: branch, ExecutionMode: 'SingleCommit', Force: false, Username: gitUser, Password: token }) }
-        catch (e) { return EMPTY_RESULT(`GitPull plan failed on ${server}: ${sanitize(_tm1Message(e), token)}`, { deployedCommit }) }
-        const plan = _planCounts(pull.Operations)
-
-        const repoUrl = opts.repoUrl ?? status?.URL
-        if (!repoUrl) return EMPTY_RESULT(`Cannot compare ${server} with the repo: GitStatus returned no repository URL`, { deployedCommit, plan })
-
-        work = fs.mkdtempSync(path.join(os.tmpdir(), 'tm1firstpull-'))
         git(work, 'init', '-q')
         git(work, 'remote', 'add', 'origin', authUrl(repoUrl, gitUser, token))
         git(work, 'fetch', '-q', 'origin', '+refs/heads/*:refs/remotes/origin/*')
-        git(work, 'checkout', '-q', `origin/${branch}`)
+        git(work, 'checkout', '-q', commit)
 
         const repo = _readRepo(work)
         const target = await _readTarget(c)
 
-        // Objects that exist only on the target. A target hierarchy the repo does
-        // not have also makes its dimension target-only.
+        // Objects that exist only on the target. A target hierarchy the repo
+        // does not have also makes its dimension target-only.
         const repoSets = {
             cubes: new Set(repo.cubes),
             dimensions: new Set(repo.dimensions),
@@ -360,12 +350,37 @@ async function firstPullAnalysis(server, opts = {}) {
             ? `I understand this overwrites ${server} and removes ${loss.elements} elements in ${loss.dimensions} dimensions`
             : `I understand this overwrites ${server}`
 
-        return { complete: true, reason: null, deployedCommit, plan, targetOnly, elementLoss, loss, confirmText }
-    } catch (e) {
-        return EMPTY_RESULT(`Could not analyse ${server}: ${sanitize(e.message, token)}`)
+        return { targetOnly, elementLoss, loss, confirmText }
     } finally {
-        if (work) fs.rmSync(work, { recursive: true, force: true })
+        fs.rmSync(work, { recursive: true, force: true })
     }
 }
 
-module.exports = { scan, pushReadiness, firstPullAnalysis, memberRefs }
+async function firstPullAnalysis(server, opts = {}) {
+    const c = _clientFor(server, opts)
+    const token = opts.token ?? gitSecrets.getToken()
+    const gitUser = opts.gitUser ?? gitIdentity.user()
+    const branch = opts.branch ?? 'dev'
+
+    try {
+        let status
+        try { status = await c.post('GitStatus', { Username: gitUser, Password: token }) }
+        catch (e) { return EMPTY_RESULT(`GitStatus failed on ${server}: ${sanitize(_tm1Message(e), token)}`) }
+        const deployedCommit = status?.DeployedCommit?.ID ?? null
+
+        let pull
+        try { pull = await c.post('GitPull', { Branch: branch, ExecutionMode: 'SingleCommit', Force: false, Username: gitUser, Password: token }) }
+        catch (e) { return EMPTY_RESULT(`GitPull plan failed on ${server}: ${sanitize(_tm1Message(e), token)}`, { deployedCommit }) }
+        const plan = _planCounts(pull.Operations)
+
+        const repoUrl = opts.repoUrl ?? status?.URL
+        if (!repoUrl) return EMPTY_RESULT(`Cannot compare ${server} with the repo: GitStatus returned no repository URL`, { deployedCommit, plan })
+
+        const cmp = await compareTargetWithRepo(server, { commit: `origin/${branch}`, repoUrl, token, gitUser, ideToken: opts.ideToken, client: c })
+        return { complete: true, reason: null, deployedCommit, plan, ...cmp }
+    } catch (e) {
+        return EMPTY_RESULT(`Could not analyse ${server}: ${sanitize(e.message, token)}`)
+    }
+}
+
+module.exports = { scan, pushReadiness, firstPullAnalysis, compareTargetWithRepo, memberRefs }
