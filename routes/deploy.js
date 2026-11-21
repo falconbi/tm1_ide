@@ -128,6 +128,46 @@ app.post('/api/deploy/git/execute', async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
+// Return a target to the release it last received. The recovery for a pull that
+// died part-way. Admin only, under the deploy lock, with the target name typed
+// as the confirmation, and recorded in the target's deploy history.
+app.post('/api/deploy/git/return', async (req, res) => {
+    try {
+        const { target, confirm, reason } = req.body
+        if (!target) return res.status(400).json({ error: 'target required' })
+        if (!(await requireTm1Admin(req, res, target))) return
+        const { returnToLastRelease } = require('../core/git-rollback')
+        const r = await returnToLastRelease(target, {
+            token: _GITOK(), gitUser: _GI().user(), ideToken: req.ideToken,
+            by: req.user ?? null, confirm, reason,
+        })
+        // A restore is a deployment-shaped event: write the same kind of report.
+        try {
+            const { record } = require('../core/deploy-records')
+            r.report = await record({
+                target,
+                outcome: 'restored',
+                executed: true,
+                source: null,
+                branch: `restore-${target}`,
+                baseCommit: r.from ?? null,
+                targetCommit: r.to ?? null,
+                shippedObjects: [],
+                drift: null,
+                error: null,
+                errorNote: null,
+                restoredFrom: r.from ?? null,
+                restoreCommit: r.restoreCommit ?? null,
+                applied: r.applied ?? [],
+            }, { ideToken: req.ideToken, startedAt: new Date().toISOString() })
+        } catch { /* the restore itself stands */ }
+        res.json(r)
+    } catch (e) {
+        const status = e.refused ? 409 : 500
+        res.status(status).json({ error: e.message })
+    }
+})
+
 app.post('/api/deploy/git/push', async (req, res) => {
     try {
         if (!gateReadOnly(res, req.body?.source)) return
@@ -207,15 +247,19 @@ app.post('/api/deploy/git/release', async (req, res) => {
         if (catchUp && !(await requireTm1Admin(req, res, changeSet.server))) return
         const { buildRelease } = require('../core/git-release')
         const addObjects = Array.isArray(req.body.addObjects) ? req.body.addObjects : []
+        // "Keep <target>'s version" at Review: the objects the approver decided
+        // not to overwrite, despite both sides having changed them.
+        const excludeObjects = Array.isArray(req.body.excludeObjects) ? req.body.excludeObjects : []
         const r = await buildRelease(changeSet, target, {
             token: _GITOK(), gitUser: _GI().user(), ideToken: req.ideToken,
-            addObjects, by: req.user ?? null, catchUp,
+            addObjects, excludeObjects, by: req.user ?? null, catchUp,
         })
         if (r.refused) return res.status(409).json({ error: r.error })
         if (r.ok === false) return res.status(500).json({ error: r.error })
         cl.setSessionRelease(changeSet.id, r.releaseCommit, target, {
             addedByUser: r.addedByUser,
             addedAsDependency: r.addedAsDependency,
+            excludedByUser: r.excludedByUser,
             coveredSets: catchUp ? (r.coveredSets ?? []).map(s => s.id) : undefined,
             targetOnly: catchUp ? r.targetOnly : undefined,
         })
@@ -268,6 +312,7 @@ app.post('/api/deploy/git/approve', async (req, res) => {
             source: source ?? null, target, commit, session: linkedSession.id, packageDir: null,
             addedByUser: parseList(linkedSession.release_added_by_user),
             addedAsDependency: parseList(linkedSession.release_added_as_dependency),
+            excludedByUser: parseList(linkedSession.release_excluded_by_user),
             deletes: requestedDeletes,
         }, { ideToken: req.ideToken })
         res.json(rec)

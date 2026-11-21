@@ -1,6 +1,6 @@
 import { request } from '@/lib/api'
 import { useState, useEffect } from 'react'
-import { X, GitCompare, RefreshCw, ChevronDown, ChevronRight, AlertTriangle, CheckCircle2, HelpCircle } from 'lucide-react'
+import { X, GitCompare, RefreshCw, ChevronDown, ChevronRight, AlertTriangle, CheckCircle2, HelpCircle, Undo2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import HelpPanel from '@/components/HelpPanel'
 import { humanizeFile } from '@/lib/tm1-terms'
@@ -23,6 +23,9 @@ export default function GitDrift({ server, onClose, embedded = false }) {
   const blocking = (drift?.entries ?? []).filter(e => e.blocking !== false)
   const reported = (drift?.entries ?? []).filter(e => e.blocking === false)
   const [showHelp, setShowHelp] = useState(false)
+  // Return-to-last-release: the recovery for a half-applied pull, and for a
+  // target that no longer resembles any release. Admin only, typed confirmation.
+  const [ret, setRet] = useState(null)   // { confirm, reason, busy, error, result }
 
   useEffect(() => {
     request('/api/servers', { headers: authHeader() }).then(r => r.json()).then(d => {
@@ -41,6 +44,23 @@ export default function GitDrift({ server, onClose, embedded = false }) {
       setDrift(d)
     } catch (e) { setError(e.message) }
     finally { setBusy('') }
+  }
+
+  const doReturn = async () => {
+    setRet(r => ({ ...r, busy: true, error: null, result: null }))
+    try {
+      const r = await request('/api/deploy/git/return', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...authHeader() },
+        body: JSON.stringify({ target: drift?.server ?? target, confirm: ret.confirm, reason: ret.reason }),
+      })
+      const d = await r.json()
+      if (!r.ok || d.error) throw new Error(d.error || r.statusText)
+      setRet(x => ({ ...x, busy: false, result: d }))
+      await check()
+    } catch (e) {
+      setRet(x => ({ ...x, busy: false, error: e.message }))
+    }
   }
 
   const btn = 'flex items-center gap-1.5 px-3 py-1 text-xs rounded border border-border text-foreground hover:bg-muted disabled:opacity-40 transition-colors'
@@ -109,10 +129,19 @@ export default function GitDrift({ server, onClose, embedded = false }) {
                   </div>
                 ))}
                 {blocking.length > 0 && (
-                  <p className="text-[11px] text-muted-foreground pt-1">
-                    Deploys to {drift.server} are paused while it has drift. Re-apply the change on DEV in a change
-                    set, then release it.
-                  </p>
+                  <div className="pt-1 space-y-1.5">
+                    <p className="text-[11px] text-muted-foreground">
+                      Deploys to {drift.server} are paused while it has drift. Re-apply the change on DEV in a change
+                      set, then release it — or, if {drift.server} is in an unusable state, put it back to the release
+                      it last received.
+                    </p>
+                    <button
+                      onClick={() => setRet({ confirm: '', reason: '', busy: false, error: null, result: null })}
+                      className="flex items-center gap-1.5 px-2.5 py-1 text-[11px] rounded border border-red-600/40 text-red-600 hover:bg-red-500/10"
+                    >
+                      <Undo2 size={11} /> Return {drift.server} to its last release…
+                    </button>
+                  </div>
                 )}
                 {/* Views and subsets are not in TM1's pull, so a change to one is
                     reported and never blocks — but it is never silent either. */}
@@ -132,6 +161,75 @@ export default function GitDrift({ server, onClose, embedded = false }) {
           )}
         </div>
       </div>
+
+      {ret && (
+        <div className="fixed inset-0 bg-black/50 z-[140] flex items-center justify-center" onClick={() => !ret.busy && setRet(null)}>
+          <div className="w-[520px] max-w-[calc(100vw-32px)] bg-background border border-border rounded-lg shadow-xl" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border">
+              <Undo2 size={14} className="text-red-600" />
+              <span className="text-sm font-semibold">Return {drift?.server} to its last release</span>
+              <div className="flex-1" />
+              {!ret.busy && <button onClick={() => setRet(null)} className="p-1 text-muted-foreground hover:text-foreground"><X size={14} /></button>}
+            </div>
+            <div className="p-4 space-y-3">
+              {!ret.result && (
+                <>
+                  <p className="text-xs leading-relaxed">
+                    This puts <span className="font-semibold">{drift?.server}</span> back to the model it received from its
+                    last recorded release (<span className="font-mono">{String(drift?.deployed ?? '').slice(0, 10)}</span>).
+                    Every object in that release is restored.
+                  </p>
+                  <div className="border border-amber-600/40 bg-amber-500/5 rounded px-3 py-2 space-y-1">
+                    <p className="text-[11px] font-semibold text-amber-700">What it cannot undo</p>
+                    <p className="text-[11px] text-muted-foreground">· Data values loaded since then — a pull never touches cell data.</p>
+                    <p className="text-[11px] text-muted-foreground">· Objects created after the release — a pull never deletes.</p>
+                    <p className="text-[11px] text-muted-foreground">· Anything outside Git (attribute values written over REST).</p>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[11px] text-muted-foreground">Why (recorded in the deploy history)</label>
+                    <input value={ret.reason} onChange={e => setRet(r => ({ ...r, reason: e.target.value }))}
+                      placeholder="e.g. a pull failed part-way and the target is half-updated"
+                      className="w-full bg-muted border border-border rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-ring" />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[11px] text-muted-foreground">Type <span className="font-mono text-foreground">{drift?.server}</span> to confirm</label>
+                    <input value={ret.confirm} onChange={e => setRet(r => ({ ...r, confirm: e.target.value }))}
+                      className="w-full bg-muted border border-border rounded px-2 py-1 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-ring" />
+                  </div>
+                  {ret.error && <p className="text-[11px] text-red-600 border border-red-600/40 rounded px-2 py-1">{ret.error}</p>}
+                  <div className="flex items-center gap-2 pt-1">
+                    <button
+                      onClick={doReturn}
+                      disabled={ret.busy || ret.confirm !== drift?.server}
+                      className="px-3 py-1.5 text-xs rounded bg-red-700 text-white hover:bg-red-600 disabled:opacity-40"
+                    >
+                      {ret.busy ? 'Returning…' : `Return ${drift?.server}`}
+                    </button>
+                    <button onClick={() => setRet(null)} disabled={ret.busy} className="px-3 py-1.5 text-xs rounded border border-border hover:bg-muted">Cancel</button>
+                    <span className="text-[10px] text-muted-foreground ml-auto">Administrators only</span>
+                  </div>
+                </>
+              )}
+              {ret.result && (
+                <>
+                  <div className="border border-emerald-600/30 bg-emerald-600/5 rounded px-3 py-2 space-y-1">
+                    <p className="text-xs font-semibold text-emerald-700">
+                      {ret.result.already ? 'Already holding the last release' : 'Returned to the last release'}
+                    </p>
+                    <p className="text-[11px] text-muted-foreground">
+                      {ret.result.already
+                        ? `${drift?.server} already matched its last release — nothing was changed.`
+                        : `${(ret.result.applied ?? []).length} object(s) restored. Drift should now be clean; check it above.`}
+                    </p>
+                    {ret.result.historyError && <p className="text-[11px] text-amber-700">{ret.result.historyError}</p>}
+                  </div>
+                  <button onClick={() => setRet(null)} className="px-3 py-1.5 text-xs rounded bg-emerald-700 text-white hover:bg-emerald-600">Done</button>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

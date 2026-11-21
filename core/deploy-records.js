@@ -58,6 +58,8 @@ function docName(rec) {
 // The one thing a reader needs to know first: how far did it get, and is the
 // target right? Deliberately the same vocabulary as the outcome cards.
 function classify(out) {
+    // A restore is not a deploy, and says so rather than borrowing 'ok'.
+    if (out.outcome) return out.outcome
     if (out.refused || out.executed === false) {
         if (/^Pull failed/i.test(String(out.error ?? ''))) return 'pull-failed'
         return 'refused'
@@ -123,6 +125,7 @@ function buildRecord(out, { startedAt } = {}) {
         incomplete: out.incomplete ?? [],
         incompleteCheckError: out.incompleteCheckError ?? null,
         reconcile,
+        restoreCommit: out.restoreCommit ?? null,
         startedAt: startedAt ?? null,
         finishedAt: at,
         durationMs: startedAt ? Math.max(0, Date.parse(at) - Date.parse(startedAt)) : null,

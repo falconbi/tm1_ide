@@ -87,3 +87,7 @@ test('drift entries and failed checks survive into the record', () => {
     assert.deepEqual(r.drift.reported.map(e => e.file), ['cubes/X.views/Default.json'])
     assert.equal(r.checks.failures[0].description, 'Totals tie out')
 })
+
+test('a restore is recorded as its own outcome, not as a deploy', () => {
+    assert.equal(classify({ outcome: 'restored', executed: true, controlOk: true }), 'restored')
+})

@@ -252,7 +252,7 @@ async function targetOnlyObjects(target, work, commit, { ideToken } = {}) {
 
 // Build the release commit for one change set against the target's recorded base.
 // Returns { ok, ... } — never throws past here.
-async function buildRelease(changeSet, target, { token, gitUser = gitIdentity.user(), repoUrl, ideToken, addObjects = [], by = null, catchUp = false } = {}) {
+async function buildRelease(changeSet, target, { token, gitUser = gitIdentity.user(), repoUrl, ideToken, addObjects = [], excludeObjects = [], by = null, catchUp = false } = {}) {
     // Re-read the session so commit_ref / release fields are the live DB values.
     const session = changeSet?.id ? (cl.getSession(changeSet.id) ?? changeSet) : changeSet
     const base = lastDeployed(target)?.lastDeployedCommit
@@ -360,6 +360,25 @@ async function buildRelease(changeSet, target, { token, gitUser = gitIdentity.us
             }
         }
 
+        // Objects the approver chose to keep the target's version of.
+        // Review offers this when a view or subset changed on BOTH sides: the
+        // release would otherwise replace the target's copy. Excluded here means
+        // removed from this release entirely — not "applied last", gone — and
+        // recorded, so it is never a silent decision.
+        const excludedByUser = []
+        if (!catchUp) {
+            for (const x of excludeObjects) {
+                const key = objectKey(x.type, x.name, x.parent)
+                const i = included.findIndex(inc => objectKey(inc.type, inc.name, inc.parent) === key)
+                const label = `${x.type} ${x.name}${x.parent ? ` (${x.parent})` : ''}`
+                if (i < 0) {
+                    return { ok: false, refused: true, error: `Cannot keep ${target}'s version of ${label}: it is not in this release.` }
+                }
+                const [gone] = included.splice(i, 1)
+                excludedByUser.push({ type: gone.type, name: gone.name, parent: gone.parent ?? null, file: gone.file ?? null, reason: `kept ${target}'s version`, by })
+            }
+        }
+
         // Nothing to ship?
         if (included.length === 0) {
             return {
@@ -430,6 +449,22 @@ async function buildRelease(changeSet, target, { token, gitUser = gitIdentity.us
             }
             if (added === 0) break
         }
+        // Keeping the target's version only holds if nothing else in the release
+        // needs that object: the link closure above may have pulled it back in as a
+        // dependency (a view needing the subset, say). Refuse rather than ship a
+        // version the approver asked to leave alone.
+        for (const x of excludedByUser) {
+            if (!x.file) continue
+            let differs = ''
+            try { differs = git(work, 'diff', '--cached', '--name-only', base, '--', x.file).trim() } catch { differs = '' }
+            if (differs) {
+                return {
+                    ok: false, refused: true,
+                    error: `Cannot keep ${target}'s version of ${x.type} ${x.name}: another object in this release needs it. Remove that object from the release too, or ship this one.`,
+                }
+            }
+        }
+
         git(work, 'add', '-A')
         git(work, '-c', `user.name=${gitUser}`, '-c', `user.email=${gitIdentity.email()}`, 'commit', '-q', '-m', `Release ${changeSet?.name ?? 'change set'} → ${target}`)
         const releaseCommit = git(work, 'rev-parse', 'HEAD').trim()
@@ -475,6 +510,7 @@ async function buildRelease(changeSet, target, { token, gitUser = gitIdentity.us
             excluded: excluded.map(x => ({ type: x.type, name: x.name, parent: x.parent, file: x.file, owner: x.owner ?? null })),
             addedByUser,
             addedAsDependency,
+            excludedByUser,
             runs: processRuns,
             noFile,
             ...(catchUp ? { catchUp: true, coveredSets, openSets, targetOnly } : {}),

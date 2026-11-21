@@ -302,6 +302,20 @@ export default function DeployWizard({ server, onClose, onOpenTests, initialSess
     const d = await run('prepare', { source: server, target, session: sessionId, branch: `release-${target}` }, '/api/deploy/git/prepare')
     if (d) setPrep(d); else setPrep(null)   // a failed plan clears the preview → Approve stays blocked
   }
+  // Review's other half: the target has its own version of an object this release
+  // ships, and the person decides the target's version wins. Rebuild the release
+  // WITHOUT those objects — their change stays on DEV — then re-read the target so
+  // the plan shown is the plan that will run.
+  const doKeepTargets = async () => {
+    const objs = (prep?.driftConflictObjects ?? []).map(o => ({ type: o.type, name: o.name, parent: o.parent ?? null }))
+    if (!objs.length) return
+    const d = await run('release', { source: server, target, session: sessionId, excludeObjects: objs }, '/api/deploy/git/release')
+    if (d) {
+      setRelease(d)
+      setAddSel({}); setDelSel({}); setApproval(null)
+      await doPrepare()
+    }
+  }
   const doApprove = async () => {
     const commit = release?.releaseCommit
     if (!commit) return
@@ -821,6 +835,35 @@ export default function DeployWizard({ server, onClose, onOpenTests, initialSess
                   </div>
                 )}
               </div>
+              {prep?.driftConflictObjects?.length > 0 && (
+                <div className="border border-amber-600/40 bg-amber-500/5 rounded-md p-3 space-y-2">
+                  <p className="text-xs font-semibold text-amber-600">
+                    Both sides changed {prep.driftConflictObjects.length === 1 ? 'one object' : `${prep.driftConflictObjects.length} objects`}
+                  </p>
+                  <p className="text-[11px] leading-relaxed">
+                    {target} has its own version of{' '}
+                    {prep.driftConflictObjects.map((o, i) => (
+                      <span key={i}>{i > 0 ? ', ' : ''}<span className="font-mono">{o.name}</span></span>
+                    ))}
+                    , and this release ships {prep.driftConflictObjects.length === 1 ? 'it' : 'them'} — so deploying would
+                    replace {target}'s version.
+                  </p>
+                  <button
+                    onClick={doKeepTargets}
+                    disabled={busy === 'release' || busy === 'prepare'}
+                    className="px-3 py-1.5 text-xs rounded border border-amber-600/50 text-amber-700 hover:bg-amber-500/10 disabled:opacity-40"
+                    title={`Rebuilds the release without ${prep.driftConflictObjects.map(o => o.name).join(', ')} — the change stays on ${server}`}
+                  >
+                    Keep {target}'s version
+                  </button>
+                  <p className="text-[11px] text-muted-foreground">
+                    Rebuilds the release without {prep.driftConflictObjects.length === 1 ? 'it' : 'them'}. The change is not
+                    lost: it stays on {server} and can be shipped in a later change set. The other choice is to ship this
+                    release's version, which overwrites {target}'s.
+                  </p>
+                </div>
+              )}
+
               {/* Same reason as Test: the plan can list a hundred objects. */}
               {prep && (
                 <div className={stepActionBar}>

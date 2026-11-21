@@ -107,17 +107,30 @@ async function prepare(source, target, { branch = 'dev', token, gitUser = gitIde
     // change set's own log is enough to know what it ships; no extra git fetch.
     if (out.drift === 'clean' && session && (out.driftNonBlocking ?? []).length) {
         try {
-            const { viewSubsetConflicts, expectedPlanKeys, objectFromFile } = require('./git-release')
+            const { viewSubsetConflicts, expectedPlanKeys, objectFromFile, objectKey } = require('./git-release')
             const log = require('./change-log').getSessionLog(session)
+            // Objects the approver already chose to leave alone (Review's "Keep
+            // <target>'s version") are no longer shipped by the rebuilt release, so
+            // they must not be reported as conflicts a second time.
+            const excluded = new Set(
+                ((() => { try { return JSON.parse(require('./change-log').getSession(session)?.release_excluded_by_user ?? '[]') } catch { return [] } })())
+                    .map(o => objectKey(o.type, o.name, o.parent))
+            )
             const shipped = (log ?? [])
                 .filter(e => e.object_type === 'view' || e.object_type === 'subset')
                 .map(e => ({ type: e.object_type, name: e.object_name, parent: e.detail ?? null }))
+                .filter(o => !excluded.has(objectKey(o.type, o.name, o.parent)))
             const conflicts = shipped.length ? viewSubsetConflicts(out.driftNonBlocking, expectedPlanKeys(shipped)) : []
             if (conflicts.length) {
                 const names = conflicts.map(c => objectFromFile(c.file)?.name ?? c.file)
                 out.ready = false
                 out.blocked = true
                 out.driftConflicts = conflicts.map(c => c.file)
+                // The same conflicts as objects, so Review can offer the other
+                // choice ("keep the target's version") without re-parsing paths.
+                out.driftConflictObjects = conflicts
+                    .map(c => ({ ...(objectFromFile(c.file) ?? {}), file: c.file }))
+                    .filter(o => o.type)
                 out.error = `${target} has its own version of ${names.join(', ')}, and this release ships ${names.length === 1 ? 'it' : 'them'}. Deploying would replace ${target}'s version. Resolve it before approving: keep ${target}'s copy, or take this release's.`
             }
         } catch { /* best effort here; execute() refuses regardless */ }

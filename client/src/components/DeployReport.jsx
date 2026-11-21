@@ -24,6 +24,7 @@ const OUTCOME = {
   'subsets-views':  { label: 'Deployed, some views/subsets did not apply', className: 'text-amber-600 border-amber-600/40 bg-amber-500/5' },
   incomplete:       { label: 'Deployed, some objects not confirmed', className: 'text-amber-600 border-amber-600/40 bg-amber-500/5' },
   'checks-failed':  { label: 'Deployed, but the safety checks failed', className: 'text-red-600 border-red-600/40 bg-red-500/5' },
+  restored:         { label: 'Returned to its last release', className: 'text-emerald-700 border-emerald-600/30 bg-emerald-600/5' },
 }
 
 const fmt = (iso) => {
@@ -177,7 +178,7 @@ export default function DeployReport() {
             <>
               <div className={cn('border rounded-md p-3 space-y-1', outcome?.className ?? 'border-border')}>
                 <p className="text-sm font-semibold flex items-center gap-1.5">
-                  {rec.outcome === 'ok'
+                  {rec.outcome === 'ok' || rec.outcome === 'restored'
                     ? <CheckCircle2 size={13} />
                     : rec.outcome === 'refused' ? <Ban size={13} /> : <AlertTriangle size={13} />}
                   {outcome?.label ?? rec.outcome}

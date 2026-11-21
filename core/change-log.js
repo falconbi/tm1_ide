@@ -50,6 +50,7 @@ for (const [col, type] of [
     ['release_target',  'TEXT'],
     ['release_added_by_user',       'TEXT'],
     ['release_added_as_dependency', 'TEXT'],
+    ['release_excluded_by_user',    'TEXT'],
     ['wont_deploy_at',              'TEXT'],
     ['wont_deploy_by',              'TEXT'],
     ['wont_deploy_reason',          'TEXT'],
@@ -101,11 +102,12 @@ function setSessionCommit(id, commit) {
 // Link a change set to its build release commit (branch release-<target>), and
 // record what the release carried beyond the change set: items the person added
 // from "Left on DEV", and files pulled in because a link needed them.
-function setSessionRelease(id, commit, target, { addedByUser, addedAsDependency, coveredSets, targetOnly } = {}) {
-    db.prepare(`UPDATE sessions SET release_commit = ?, release_target = ?, release_added_by_user = ?, release_added_as_dependency = ?, covered_sets = ?, release_target_only = ? WHERE id = ?`)
+function setSessionRelease(id, commit, target, { addedByUser, addedAsDependency, excludedByUser, coveredSets, targetOnly } = {}) {
+    db.prepare(`UPDATE sessions SET release_commit = ?, release_target = ?, release_added_by_user = ?, release_added_as_dependency = ?, release_excluded_by_user = ?, covered_sets = ?, release_target_only = ? WHERE id = ?`)
         .run(commit ?? null, target ?? null,
             addedByUser ? JSON.stringify(addedByUser) : null,
             addedAsDependency ? JSON.stringify(addedAsDependency) : null,
+            excludedByUser ? JSON.stringify(excludedByUser) : null,
             coveredSets ? JSON.stringify(coveredSets) : null,
             targetOnly ? JSON.stringify(targetOnly) : null,
             id)

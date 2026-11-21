@@ -9,8 +9,11 @@ Read the one that matches your screen. You do not need to read the rest.
 
 ## Before you start: the four things that are always true
 
-1. **There is no undo.** A deploy that reached the target is corrected by fixing it on DEV and
-   shipping again. Nothing in the IDE rolls a production server back.
+1. **You cannot undo one change inside a deploy** — a deploy that reached the target is
+   normally corrected by fixing it on DEV and shipping again. There is one way back:
+   **Deploy → Drift → Return `<target>` to its last release** restores the whole model the
+   target last received (§10). It is a big hammer: it also undoes intended changes, and it
+   never touches cell data or deletes objects.
 2. **Drift stops everything.** If the target has changed outside the pipeline, no deploy to it
    will run until that is resolved. This is deliberate — it is what stops a deploy quietly
    overwriting someone's work.
@@ -31,7 +34,7 @@ Read the one that matches your screen. You do not need to read the rest.
 | `the release has failing dependencies` | [4](#4-the-release-cannot-be-built) |
 | `commit … is not approved for …` | [5](#5-the-approval-no-longer-matches) |
 | `PROD has drifted` | [6](#6-prod-has-drifted--the-most-common-one) |
-| `PROD has its own version of <view>` | [7](#7-a-view-or-subset-exists-on-both-sides) |
+| `PROD has its own version of <view>` | [7](#7-a-view-or-subset-exists-on-both-sides) — with a **Keep the target's version** button |
 | `already being deployed by …` | [8](#8-someone-elses-deploy-is-running) and [9](#9-nobody-is-deploying-but-it-says-someone-is) |
 | `The pull failed part-way` | [10](#10-the-pull-failed-part-way--the-dangerous-one) |
 | `safety checks failed` | [11](#11-deployed-but-the-safety-checks-failed) |
@@ -157,7 +160,7 @@ in a change set, then release it. Deploys to this server are paused until drift 
 ```
 
 **Why:** the target no longer matches what the last deploy gave it. Something changed it
-outside the pipeline — a nightly load, someone in PAW/Architect, another tool. Deploying on
+outside the pipeline — a nightly load, someone editing the server directly, another tool. Deploying on
 top of that would silently discard whatever it was.
 
 **First, decide which case you are in.**
@@ -171,9 +174,22 @@ top of that would silently discard whatever it was.
 
 ### 6b. The change was a mistake
 
-1. Undo it **on the target** (PAW or Architect) so the object matches what it was given.
-2. Open **Deploy → Drift** and press **Check**.
-3. When it reports clean, shipping resumes.
+**For a single object or a handful**, the cleanest route is to correct it on DEV through a
+change set and ship that — the pipeline then owns the correction and records it:
+
+1. On **DEV**, set the object back to the version the target should have.
+2. Open a change set, close it, ship it.
+3. Drift returns to clean when that ships.
+
+**If the target is in an unusable state** — several objects wrong, or a pull that died part-way
+(§10) — use **Return `<target>` to its last release** instead: **Deploy → Drift**, below the
+drift list. It puts every object back to the release the target last received, in one step
+(administrators only; you type the server name to confirm; the reason you give is recorded in
+the deploy history).
+
+What a return does **not** do: it does not bring back cell data loaded since then, it does not
+remove objects created since then, and it undoes *every* change made since the last release —
+including intended ones. Use it when the target is worse off than that.
 
 **You're done when:** Drift says clean and the next ship runs.
 
@@ -186,7 +202,7 @@ until it is resolved. This is the strongest argument for keeping manual edits of
 
 ## 7. A view or subset exists on both sides
 
-**What you see:**
+**What you see:** the ship is refused, and at **Review** (or **Details** on the failed result):
 ```
 TM1_Test_PROD has its own version of WFP Assignment Default, and this release ships it.
 Deploying would replace TM1_Test_PROD's version. Resolve it before approving: keep
@@ -194,24 +210,38 @@ TM1_Test_PROD's copy, or take this release's.
 ```
 
 **Why:** views and subsets are applied over the API *after* the Git pull, and that application
-replaces whatever is there. If both sides changed the same view, one version is about to be
-lost. Unlike §6, views alone do not block deploys — only a view that this release also ships.
+replaces whatever is there. If both sides changed the same view, one of the two versions is
+about to be lost. Unlike §6, a changed view on its own does not block deploys — only one that
+this release also ships.
 
-**Do this — pick a side:**
+**Do this — pick a side.**
 
-- **Take the release's version** (the usual case: DEV's is the one you want):
-  1. Open the view on PROD and note what is there, in case you need it back.
-  2. Ship. PROD receives DEV's version. Nothing else to do.
+### Keep the target's version
 
-- **Keep PROD's version:**
-  1. Open the view on PROD and copy its definition (MDX, or the rows/columns/titles).
-  2. Paste it onto DEV, save, and commit that to the change set.
-  3. Ship. Both sides now agree, so the release carries the same definition PROD already has.
+1. At **Review**, find the *"Both sides changed …"* panel above the plan.
+2. Press **Keep `<target>`'s version**.
+3. The release is rebuilt **without** that object, and the plan is read again. The panel
+   disappears once nothing is left in conflict.
+4. **Continue to Approve** → deploy.
 
-  *There is currently no button that says "ship everything except this view". The message
-  offers that choice; the workaround is the copy above.*
+The change is not lost: it stays on DEV, in the change set, and can be shipped in a later
+change set once the two versions are reconciled. The rebuild is recorded — the approval shows
+what was left out, so nobody has to remember it.
 
-**You're done when:** the ship completes and the view on PROD is the version you chose.
+*If the target's version is the one that should survive*, bring it onto DEV first (open the
+view on the target, copy its definition, paste it into the DEV view, save) and ship normally —
+then both sides agree and the release carries the correct definition.
+
+### Take the release's version
+
+1. Open the view on the target and note what is there — this is the last chance to keep it.
+2. Ship without excluding it. The target receives DEV's version.
+3. If it was needed, it has to be rebuilt on DEV.
+
+**You're done when:** the ship completes, and the view on the target is the version you chose.
+
+**Do not** try to sidestep it by editing the view on the target to match DEV — that creates
+drift (§6) and pauses every deploy to that server.
 
 ---
 
@@ -276,12 +306,19 @@ know which objects landed. Re-running immediately would push onto an unknown sta
 1. **Do not press Ship again.**
 2. Open **Deploy → Drift → Check.** It shows exactly which objects differ from what the
    target last received — that is your list of what the failed pull changed.
-3. Choose one:
-   - **Undo on the target:** revert those objects in PAW/Architect to their pre-deploy
-     definition, then check Drift until it is clean.
-   - **Finish it from DEV:** if the half-applied state is acceptable, make DEV match it and
-     ship that as a new change set.
-4. When Drift is clean, ship again.
+3. Put the target back: **Deploy → Drift → Return `<target>` to its last release**.
+   - Administrators only. You type the server name to confirm, and the reason you give is
+     recorded in the deploy history with the commit it went back to.
+   - It restores every object in that release, then reports what it changed.
+   - It will not bring back **cell data** loaded in the meantime, and it will not remove
+     objects created since the release (a pull never deletes). Anything outside Git —
+     attribute values written over REST — is not restored either.
+4. **Check drift again.** It should be clean.
+5. Ship again — now from a known state.
+
+*If only a couple of objects are wrong and the rest of the target is fine*, correcting those
+on DEV in a change set and shipping that is gentler than a whole-target return. The return is
+for "this server is not in a state anyone can reason about".
 
 **You're done when:** Drift is clean and a ship completes.
 
@@ -389,7 +426,7 @@ step-by-step view go back to **Build release** then **Approve** the commit shown
 **What you see:** nothing until you ask — **Deploy → Drift → Check** reports differences, or the
 next ship refuses with `PROD has drifted`.
 
-**Why:** something changed the target after the deploy: a load process, a person in PAW, another
+**Why:** something changed the target after the deploy: a load process, someone editing the server directly, another
 tool. Expected over time.
 
 **Do this:** exactly §6. Decide whether the change was intended. If it was, bring it into DEV
@@ -447,3 +484,13 @@ by both paths), locks from `core/git-lock.js`, approvals from `core/git-approval
 six user-facing outcome classes from `client/src/lib/deploy/deploy-outcome.js`. The per-deploy
 record is written by `core/deploy-records.js` from the `execute()` result and read back through
 `/api/deploy/record?target=&commit=`.
+
+§7's other half is built: `buildRelease` (`core/git-release.js`) takes `excludeObjects`, removes
+them from the release, records them as `release_excluded_by_user`, and refuses if the link
+closure needs one back — Review's **Keep `<target>`'s version** calls it with the conflicts
+`prepare()` reported, then re-reads the plan.
+
+§10's recovery is `core/git-rollback.js`: it builds a forward commit whose tree is the target's
+recorded last release (GitPull takes a branch, never a commit), pulls it under the deploy lock,
+resets `release-<target>` onto it, re-records the deploy state, and writes a `restore-events.json`
+entry plus a deploy report with outcome `restored`. Admin-only, typed confirmation, `/api/deploy/git/return`.
